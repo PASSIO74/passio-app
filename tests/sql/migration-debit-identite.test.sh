@@ -164,7 +164,13 @@ begin
   execute format('select count(*) from %I.%I where %I > now() - interval ''1 minute''', TG_TABLE_SCHEMA, TG_TABLE_NAME, col_temps) into cnt;
   if cnt >= max_par_min then raise exception 'rate limit: plafond global' using errcode = 'P0001'; end if;
   return new;
-end \$\$;" >/dev/null
+end \$\$;
+-- Depuis le 2026-10-16, telemetry_pose_identite pose AUSSI l'heure (seconde
+-- garde d'ASTRA-02, celle qui reste quand trg_debit_global quitte la table) :
+-- la mutation retire les deux.
+create or replace function public.telemetry_pose_identite()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as \$\$
+begin new.auth_uid := auth.uid(); return new; end \$\$;" >/dev/null
 for i in 1 2 3 4 5; do ANON "$INS_ANTIDATE" >/dev/null 2>&1 || true; done
 m="$(Q "select count(*) from public.telemetry_events;")"
 if [ "$m" = "5" ]; then echo "  ✅ mutation : avec l'ancienne fonction, 5 antidatées repassent — le contrôle est réel"; ok=$((ok+1)); else echo "  ❌ mutation : $m lignes au lieu de 5"; ko=$((ko+1)); fi

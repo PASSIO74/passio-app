@@ -127,8 +127,9 @@ export function normaliserMotif(m) {
 // légitimes sont refusés et les mesures BAISSENT sans que la charge baisse —
 // alors on peut monter, pas descendre… pendant 2 h au plus (`aveugleMaxMs`) :
 // un flot anonyme sature la télémétrie à volonté, il ne doit pas pouvoir
-// tenir la production ralentie sans fin. Le voyant « télémétrie au plafond »
-// prévient déjà le pilote, qui peut lever le délestage d'un toucher.
+// tenir la production ralentie sans fin. Le voyant « veille aveugle » du
+// verdict (même mesure, mesureAveugle) prévient le pilote, qui peut lever le
+// délestage d'un toucher.
 // ⚠️ DEUX MESURES, AUCUNE FALSIFIABLE À BON MARCHÉ PAR UN CLIENT. La télémétrie
 // s'écrit depuis n'importe quel navigateur, clé anon comprise : compter des
 // LIGNES en panne, ou des `device_id`, donnerait à un seul compte malveillant

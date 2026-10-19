@@ -315,9 +315,21 @@ revoke execute on function public.limiter_debit_global() from public, anon, auth
 drop trigger if exists trg_debit_global on public.client_errors;
 create trigger trg_debit_global before insert on public.client_errors
   for each row execute function public.limiter_debit_global('created_at', '120');
-drop trigger if exists trg_debit_global on public.telemetry_events;
-create trigger trg_debit_global before insert on public.telemetry_events
-  for each row execute function public.limiter_debit_global('received_at', '3000');
+-- ⚠️ Après migration_telemetrie_equitable_2026-10-16, `telemetry_events` est
+-- limitée PAR LOT (`trg_debit_lot`) : rejouer ce fichier ne remet PAS le plafond
+-- global à côté d'elle (deux murs, et la veille n'en surveillerait qu'un —
+-- contre-revue du 2026-10-19). Le contrôle ⑥ ci-dessous dit alors ECHEC
+-- (un seul `trg_debit_global`, sur client_errors) : attendu.
+do $tel$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'trg_debit_lot'
+                  and tgrelid = 'public.telemetry_events'::regclass and not tgisinternal) then
+    drop trigger if exists trg_debit_global on public.telemetry_events;
+    create trigger trg_debit_global before insert on public.telemetry_events
+      for each row execute function public.limiter_debit_global('received_at', '3000');
+  end if;
+end
+$tel$;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- ④ UN SIGNALEMENT A UN STATUT ; les analytics ont une durée de vie

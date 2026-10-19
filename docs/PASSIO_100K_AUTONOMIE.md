@@ -128,7 +128,11 @@ les relire sur la page Pricing de chaque service le jour du geste.**
    contient pas : un mauvais déploiement. Logique : `supabase/functions/_shared/autonomie.js`.
 2. **Train de déploiement** : fusionner autant qu'on veut, mais ne déployer qu'une à deux fois par jour
    (sauf correctif Sentinelle). Divise la bande passante d'un facteur 10 à 20 et le risque d'autant.
-3. **Télémétrie à l'échelle** : remplacer le plafond global de 3 000 insertions/min (qui recompte la
+3. 🟡 **Télémétrie à l'échelle — écrit le 2026-10-16, à appliquer** (`migration_telemetrie_equitable_2026-10-16.sql` :
+   un compteur par lot — comptes anciens 1 800/min à eux seuls, neufs + anonymes 2 400 partagés (1 600
+   chacun), 150 par compte, refus en 429 que le client attend ; un flot anonyme n'aveugle plus les
+   comptes réels, et la veille juge l'aveuglement sur les anciens). Reste : rétention et agrégats. Avant :
+   remplacer le plafond global de 3 000 insertions/min (qui recompte la
    minute à CHAQUE ligne et refuse tout au-delà) par un compteur par lot et par compte/appareil ;
    rétention brute 3 jours + agrégats quotidiens — sinon la base se remplit de mesures avant de se
    remplir d'utilisateurs, et le pilotage devient aveugle au moment où il sert.

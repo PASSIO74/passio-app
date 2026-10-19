@@ -6265,7 +6265,7 @@ async function supaLoadOtherRead(convId) {
     if (c && maxAt) {
       c._otherReadAt = maxAt; c._otherRead = true;
       if (window._openedConvId === convId) {
-        try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
+        try { var fp = document.getElementById("conv-fullpage"); _rerendreFilSansArracher(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
       }
     }
   } catch(e) {}
@@ -6573,7 +6573,9 @@ async function _handleIncomingConvMessage(r) {
     if (r.content && typeof r.content === "string" && r.content.charAt(0) === "{") {
       var _dd = JSON.parse(r.content);
       if (_dd && (_dd.type === "del" || _dd.type === "react") && _dd.target) {
-        var _cv = getConversations().find(function(x){ return x.id === r.conv_id || (!x.isGroup && x.userId === r.from_id); });
+        // Même règle que les accusés de lecture : l'identifiant exact d'abord.
+        var _cvs = getConversations();
+        var _cv = _cvs.find(function(x){ return x.id === r.conv_id; }) || _cvs.find(function(x){ return !x.isGroup && x.userId === r.from_id; });
         if (_cv && _cv.messages) {
           if (_dd.type === "del") {
             _cv.messages = _cv.messages.filter(function(x){ return x.id !== _dd.target; });
@@ -6582,7 +6584,7 @@ async function _handleIncomingConvMessage(r) {
           }
           conversationsState = getConversations();
           saveConversations();
-          try { if (window._openedConvId === (_cv.id) || window._openedConvId === r.conv_id) { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(_cv, fp ? fp.getAttribute("data-display-name") : (_cv.userName||"")); } } catch(e) {}
+          try { if (window._openedConvId === (_cv.id) || window._openedConvId === r.conv_id) { var fp = document.getElementById("conv-fullpage"); _rerendreFilSansArracher(_cv, fp ? fp.getAttribute("data-display-name") : (_cv.userName||"")); } } catch(e) {}
           try { renderMessages(); } catch(e) {}
         }
         return;
@@ -7046,13 +7048,20 @@ function _creerCanalDb(prive) {
   dbChan
     .on("postgres_changes", { event: "*", schema: "public", table: "conv_reads" }, function(payload) {
       var r = payload.new; if (!r || r.user_id === MY_UID) return;
-      var c = getConversations().find(function(x){ return x.id === r.conv_id || (!x.isGroup && x.userId === r.user_id); });
+      // L'identifiant EXACT d'abord ; « le DM de cette personne » seulement à
+      // défaut (entrée locale dont l'id diffère du serveur). Un seul `find` aux
+      // deux critères rendait le DM de B dans le panneau d'un GROUPE ouvert où B
+      // venait de lire, si le DM précédait le groupe dans la liste (contre-revue
+      // du 2026-10-19).
+      var _cs = getConversations();
+      var c = _cs.find(function(x){ return x.id === r.conv_id; }) || _cs.find(function(x){ return !x.isGroup && x.userId === r.user_id; });
       if (!c) return;
       var t = supaTs(r.last_read_at);
       if (t > (c._otherReadAt || 0)) {
         c._otherReadAt = t; c._otherRead = true;
         if (window._openedConvId === c.id || window._openedConvId === r.conv_id) {
-          try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
+          // Un accusé de lecture ne ramène pas en bas quelqu'un qui relit l'historique.
+          try { var fp = document.getElementById("conv-fullpage"); _rerendreFilSansArracher(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
         }
       }
     });

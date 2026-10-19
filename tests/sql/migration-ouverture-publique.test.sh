@@ -615,6 +615,19 @@ psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRA
 verifier "rejouer la migration recrée la policy retirée" "OK" "$(verdict_de 8)"
 verifier "…et le trigger retiré" "OK" "$(verdict_de 11)"
 
+# ⑦ rejouée APRÈS migration_telemetrie_equitable_2026-10-16 (trg_debit_lot posé) :
+#   le plafond global ne revient PAS sur telemetry_events (deux murs, la veille
+#   n'en surveillerait qu'un — contre-revue du 2026-10-19) ; client_errors le garde.
+Q "drop trigger trg_debit_global on public.telemetry_events;
+   create function public.banc_lot() returns trigger language plpgsql as \$\$ begin return null; end \$\$;
+   create trigger trg_debit_lot after insert on public.telemetry_events referencing new table as nouvelles
+     for each statement execute function public.banc_lot();" >/dev/null
+psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" >/dev/null 2>&1
+verifier "rejouée après le limiteur par lot : pas de plafond global sur telemetry_events" "0" \
+  "$(Q "select count(*) from pg_trigger where tgname = 'trg_debit_global' and tgrelid = 'public.telemetry_events'::regclass")"
+verifier "…client_errors garde le sien" "1" \
+  "$(Q "select count(*) from pg_trigger where tgname = 'trg_debit_global' and tgrelid = 'public.client_errors'::regclass")"
+
 echo
 echo "───────────────────────────────────────────────────────────────────────"
 echo "  $ok contrôle(s) vert(s), $ko rouge(s)"

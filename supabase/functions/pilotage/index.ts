@@ -32,7 +32,7 @@ import {
   erreursFrequentes, detailsErreurs, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
-  PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE,
+  PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
 } from "../_shared/pilotage.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 import {
@@ -112,7 +112,9 @@ Deno.serve(async (req) => {
 async function veille(admin: Admin) {
   const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 60 });
   if (!plafond.ok) return json({ ok: true, ignore: "trop tôt" });
-  const [sante, signalements, github, dispo, rap] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin)]);
+  // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
+  // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
+  const [sante, signalements, github, dispo, rap, aud] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin), audience(admin, 300)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
   // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
   // laisse une trace mesurable (analytics_events, user_id système).
@@ -120,7 +122,8 @@ async function veille(admin: Admin) {
     const m = String((rap.reason && (rap.reason as { message?: string }).message) || rap.reason).slice(0, 200);
     try { await admin.from("analytics_events").insert({ user_id: MARQUE_UID, event: "rappels_echec", properties: { message: m } }); } catch { /* */ }
   }
-  const e = { sante: val(sante), signalements: val(signalements), github: val(github) };
+  const signaux: Audience | null = val(aud);
+  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null };
   // L'ALERTE D'ABORD : rien de ce qui suit (Netlify, GitHub, base) ne doit
   // pouvoir la retarder ni la faire taire.
   const v = verdict(e);
@@ -139,11 +142,9 @@ async function veille(admin: Admin) {
   }
   // Puis ce qui agit seul (délestage 2026-10-11 ; réveil et proposition
   // 2026-10-12, _shared/autonomie.js). Chaque étape est isolée : une panne de
-  // l'une ne casse ni les autres ni la veille. Les signaux sont lus UNE fois
-  // (pilotage_audience, fenêtre de 5 min) ; absents (migration pas encore
-  // appliquée), rien ne bouge.
-  let signaux: Audience | null = null;
-  try { signaux = await audience(admin, 300); } catch { /* signaux absents : chaque étape le sait */ }
+  // l'une ne casse ni les autres ni la veille. Les signaux ont été lus UNE fois,
+  // plus haut (pilotage_audience, fenêtre de 5 min) ; absents (migration pas
+  // encore appliquée), rien ne bouge.
   const etape = async (f: () => Promise<Record<string, unknown>>) => {
     try { return await f(); } catch (err) { return { erreur: String((err as { message?: string })?.message || err).slice(0, 120) }; }
   };
@@ -244,6 +245,8 @@ async function etat(admin: Admin) {
   // Ce qui agit seul, et pourquoi c'est éteint quand ça l'est (_shared/autonomie.js).
   out.autonomie = { reveilSentinelle: !!JETON_GH, retour: { mode: MODE_RETOUR, jeton: !!JETON_NETLIFY, proposition: await lireProposition(admin) } };
   out.gestesGithub = !!JETON_GH;
+  const maintenant = (out.utilisateurs as { maintenant?: Audience | null } | null)?.maintenant || null;
+  out.aveugle = maintenant && maintenant.exact ? mesureAveugle(maintenant) : null;
   const v = verdict(out as Parameters<typeof verdict>[0]);
   const dispo = out.disponibilite as { repond?: boolean } | null;
   if (dispo && dispo.repond === false) { v.couleur = "rouge"; v.titre = "Problème en cours"; v.raisons = ["le site ne répond pas", ...v.raisons.filter((x: string) => !/^Aucune/.test(x))]; }
@@ -263,9 +266,10 @@ async function lireSante(admin: Admin) {
   const prod = () => admin.from("telemetry_events").select("id", { count: "exact", head: true }).eq("env", "production").gte("received_at", depuis);
   const [evenements15, erreursJs15, api5xx15, telemetrieMinute] = await Promise.all([
     compter(prod()), compter(prod().eq("type", "error")), compter(prod().eq("type", "api").gte("http_status", 500)),
-    // Toutes origines confondues, comme le plafond global qu'elle mesure
-    // (`trg_debit_global`, 3 000 insertions/min) : au-delà, les lots sont REFUSÉS
-    // et chaque compteur ci-dessus sous-estime la réalité.
+    // Toutes origines confondues : sous `trg_debit_global` (3 000 lignes/min),
+    // au-delà, les lots sont REFUSÉS et chaque compteur ci-dessus sous-estime
+    // la réalité. Sous `trg_debit_lot`, c'est un repère de charge ; ce qui rend
+    // la veille aveugle se lit dans pilotage_audience (`estAveugle`).
     compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3))),
   ]);
   const depuis24 = ilYa(24 * 3600e3);
@@ -335,7 +339,8 @@ async function serieComptee(q: (debut: string, fin: string) => PromiseLike<{ cou
 // le SERVEUR, jamais un `user_id` ou un `device_id` écrits par le client.
 type Audience = {
   comptes: number; appareils: number; horsPublic: number; connexions: number | null; comptes5xx15: number | null;
-  echecs30: number | null; saturation: number | null; exact: boolean; tronque: boolean;
+  echecs30: number | null; saturation: number | null; saturationAveugle: number | null; saturationPlafond: number | null;
+  exact: boolean; tronque: boolean;
 };
 const nombre = (x: unknown) => (x == null || !Number.isFinite(Number(x)) ? null : Number(x));
 async function audience(admin: Admin, secondes: number): Promise<Audience> {
@@ -344,7 +349,8 @@ async function audience(admin: Admin, secondes: number): Promise<Audience> {
     const d = data as Record<string, unknown>;
     return { comptes: nombre(d.comptes) || 0, appareils: nombre(d.appareils) || 0, horsPublic: nombre(d.hors_public) || 0,
       connexions: nombre(d.comptes_connectes), comptes5xx15: nombre(d.comptes_5xx_15min), echecs30: nombre(d.comptes_echecs_30min),
-      saturation: nombre(d.saturation_minute_max), exact: true, tronque: false };
+      saturation: nombre(d.saturation_minute_max), saturationAveugle: nombre(d.saturation_aveugle),
+      saturationPlafond: nombre(d.saturation_plafond), exact: true, tronque: false };
   }
   if (error && !estObjetAbsent(error)) throw error;
   const { data: lignes, error: e2 } = await admin.from("telemetry_events").select("user_id,device_id,platform,connection,trafic:meta->>trafic")
@@ -352,7 +358,7 @@ async function audience(admin: Admin, secondes: number): Promise<Audience> {
   if (e2) throw e2;
   const l = lignes || [];
   const conn = new Set(l.filter((r) => r.user_id && r.device_id).map((r) => r.device_id)).size;
-  return { ...compterAudience(l), connexions: conn, comptes5xx15: null, echecs30: null, saturation: null, exact: false, tronque: l.length >= MAX_LIGNES_POSTGREST };
+  return { ...compterAudience(l), connexions: conn, comptes5xx15: null, echecs30: null, saturation: null, saturationAveugle: null, saturationPlafond: null, exact: false, tronque: l.length >= MAX_LIGNES_POSTGREST };
 }
 
 // ─── Réglages distants (2026-10-11) ─────────────────────────────────────────
@@ -372,10 +378,6 @@ async function lireReglages(admin: Admin) {
   return { absente: false, ...resumerReglages(lignes), coupuresPossibles: COUPURES_AUTORISEES };
 }
 
-// Au plafond global de télémétrie (3 000 lignes/min), les lots légitimes sont
-// refusés : les mesures deviennent BASSES sans que la charge le soit. Au-delà
-// de 90 % du plafond, la veille ne lève plus une protection (contre-revue).
-const SATURATION_AVEUGLE = 0.9;
 async function delestageAuto(admin: Admin, a: Audience | null) {
   const lignes = await lireLignesReglages(admin);
   if (!lignes) return { absente: true };
@@ -389,7 +391,7 @@ async function delestageAuto(admin: Admin, a: Audience | null) {
   if (a && a.exact) {
     pctConnexions = a.connexions == null ? null : Math.round((a.connexions / PLAFONDS.connexions.plafond) * 1000) / 10;
     comptes5xx15 = a.comptes5xx15;
-    aveugle = a.saturation != null && a.saturation >= SATURATION_AVEUGLE * PLAFONDS.telemetrie.plafond;
+    aveugle = estAveugle(a);
   }
   const d = decideDelestage(actuel, { pctConnexions, comptes5xx15, aveugle });
   if (!d.changer) return { niveau: d.niveau };
@@ -703,7 +705,11 @@ async function lireCapacite(admin: Admin) {
   // donc « appareils de comptes actifs sur 5 min » approche le compteur Supabase.
   const aud = await audience(admin, 300);
   const connexions = aud.connexions;
-  const telemetrie = await compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3)));
+  // La jauge de télémétrie montre le mur qui AVEUGLE la veille quand
+  // pilotage_audience le rend (réservoir des anciens sous trg_debit_lot) ;
+  // sinon le total reçu sur 60 s contre 3 000, comme avant.
+  const mur = aud.exact ? mesureAveugle(aud) : null;
+  const telemetrie = mur ? mur.mesure : await compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3)));
   // E-mails : une inscription = un e-mail de confirmation (renvois non comptés).
   const emails = await compter(admin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", ilYa(864e5)));
   let base: number | null = null, stockage: number | null = null;
@@ -712,7 +718,7 @@ async function lireCapacite(admin: Admin) {
     base = Number(m.base_octets) || null;
     stockage = Object.values((m.stockage || {}) as Record<string, number>).reduce((a, b) => a + Number(b || 0), 0);
   }
-  return { jauges: jauges({ connexions, emails, base, stockage, telemetrie }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
+  return { jauges: jauges({ connexions, emails, base, stockage, telemetrie, telemetriePlafond: mur ? mur.plafond : null }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
 }
 
 async function lireDisponibilite(admin: Admin) {

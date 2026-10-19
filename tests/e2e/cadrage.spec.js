@@ -53,16 +53,25 @@ test("un viewport qui rétrécit après le chargement est rattrapé", async ({ p
 
   // Simule l'apparition de la barre système / d'une barre d'URL après le boot.
   await page.setViewportSize({ width: 375, height: 640 });
-  await page.waitForTimeout(300);
 
-  const m = await page.evaluate(() => {
+  // Le rattrapage passe par requestAnimationFrame : sous la charge de la CI,
+  // WebKit le sert parfois au-delà de 300 ms. Attendre le RÉSULTAT (3 s au
+  // plus), pas une durée fixe — le déploiement du 13/10 a sauté sur cette
+  // seule horloge, le même arbre étant vert sur sa PR. Jamais rattrapé = rouge.
+  const mesure = () => page.evaluate(() => {
     const nav = Array.from(document.querySelectorAll(".app-nav"))
       .find((el) => !el.hidden && getComputedStyle(el).display !== "none");
     const r = nav.getBoundingClientRect();
     return { viewport: window.innerHeight, navBas: Math.round(r.bottom) };
   });
+  // La condition porte AUSSI sur le viewport : l'état d'AVANT (812, barre à
+  // 812) la satisfaisait déjà, et l'attente devenait nulle (contre-revue du
+  // 2026-10-16). Et la barre doit rester COLLÉE en bas, pas seulement au-dessus.
+  await expect.poll(async () => { const m = await mesure(); return m.viewport === 640 && m.navBas <= m.viewport; }, { timeout: 3000 }).toBe(true);
+  const m = await mesure();
   expect(m.viewport).toBe(640);
   expect(m.navBas).toBeLessThanOrEqual(m.viewport);
+  expect(m.viewport - m.navBas, "un shell qui rétrécit trop laisse une bande vide sous la barre").toBeLessThanOrEqual(1);
 });
 
 test("la safe-area du bas s'AJOUTE à la barre au lieu de rogner les icônes", async ({ page }) => {

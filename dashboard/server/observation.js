@@ -32,6 +32,10 @@ const CANARY_DEADLINE_MS = Number(process.env.DASH_CANARY_DEADLINE_S || 90) * 10
 const DB_READ_EVERY_MS = Number(process.env.DASH_DB_READ_EVERY_MIN || 5) * 60_000;
 // Échecs consécutifs du canari à partir desquels la part est UNAVAILABLE.
 const CANARY_MISSED_UNAVAILABLE = 2;
+// Canaris CONSÉCUTIFS refusés par le limiteur de débit à partir desquels la
+// part est UNAVAILABLE : une heure (4 × 15 min) de réservoir anonyme tenu plein
+// est un incident en soi, et le bout-en-bout n'est plus prouvé.
+const CANARY_LIMITED_UNAVAILABLE = 4;
 
 let admin = null;
 let anon = null;
@@ -112,6 +116,29 @@ export function noterCanariManque(c, at = nowIso()) {
   return next;
 }
 
+/**
+ * Refus de DÉBIT par réservoir (`trg_debit_lot` : PT429 → HTTP 429) : la base
+ * répond et les comptes passent, distinct d'une panne. Pure, exportée pour
+ * être verrouillée.
+ * ⚠️ PAS l'ancien plafond GLOBAL (`trg_debit_global`, P0001 « rate limit: … ») :
+ * lui refuse TOUTE la télémétrie, comptes compris — c'est l'aveuglement même
+ * que le canari doit faire sonner, il reste un manqué (contre-revue du
+ * 2026-10-19 : classé « limité », il retardait l'alerte de 30 min).
+ */
+export function estRefusDeDebit(error, status) {
+  if (status === 429) return true;
+  return !!error && error.code === "PT429";
+}
+
+/**
+ * Canari refusé par le limiteur : ni manqué ni succès. Le compte des manqués
+ * ne bouge pas, le canari en attente non plus (il n'y en a pas de nouveau).
+ */
+export function noterCanariLimite(c, at = nowIso(), detail = "") {
+  const prev = c || {};
+  return { ...prev, configured: true, limitedAt: at, limitedCount: (Number(prev.limitedCount) || 0) + 1, lastError: detail || "refusé par le limiteur de débit" };
+}
+
 async function sendCanary() {
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
     db.update((d) => { d.canary = { ...(d.canary || {}), configured: false, lastError: "SUPABASE_ANON_KEY manquante" }; });
@@ -136,16 +163,25 @@ async function sendCanary() {
       message: "synthetic observation canary",
       meta: { synthetic: true, canary_id: id, exclude_analytics: true, exclude_alerts: true },
     };
-    const { error } = await anon.from("telemetry_events").insert(row);
+    const { error, status } = await anon.from("telemetry_events").insert(row);
+    if (error && estRefusDeDebit(error, status)) {
+      // La base a répondu, et c'est le limiteur qui refuse (réservoir des
+      // anonymes plein) : la production SERT. Pas un manqué — un canari
+      // « limité », que l'état dit tel quel. Le canari ne sort pas du limiteur
+      // pour autant : un champ du client qui l'en exempterait serait forgeable.
+      db.update((d) => { d.canary = noterCanariLimite(d.canary || {}, nowIso(), String(error.message || "").slice(0, 240)); });
+      return;
+    }
     if (error) throw error;
     db.update((d) => {
       d.canary = {
         ...(d.canary || {}), configured: true, pendingId: id, sentAt,
-        deadlineAt: new Date(Date.now() + CANARY_DEADLINE_MS).toISOString(), lastError: null,
+        deadlineAt: new Date(Date.now() + CANARY_DEADLINE_MS).toISOString(), lastError: null, limitedAt: null, limitedCount: 0,
       };
     });
   } catch (e) {
-    db.update((d) => { d.canary = { ...noterCanariManque(d.canary || {}), configured: true, sentAt, lastError: String(e.message || e).slice(0, 240) }; });
+    // Un vrai échec met fin à « la base répond » : plus de « limité ».
+    db.update((d) => { d.canary = { ...noterCanariManque(d.canary || {}), configured: true, sentAt, lastError: String(e.message || e).slice(0, 240), limitedAt: null, limitedCount: 0 }; });
   }
 }
 
@@ -158,10 +194,30 @@ export function etatCanari(c, now = Date.now(), { everyMs = CANARY_EVERY_MS, dea
   if (!configure || c?.configured === false) {
     return { state: "NOT_CONFIGURED", detail: c?.lastError || "canari public non configuré", missed: 0 };
   }
+  // Dernier envoi refusé par le limiteur (après le dernier succès) : la base
+  // répond, ce n'est pas une panne. DEGRADED « limité », jamais UNAVAILABLE.
+  const limite = Boolean(c?.limitedAt && (!c?.lastSuccessAt || Date.parse(c.limitedAt) > Date.parse(c.lastSuccessAt))
+    && now - Date.parse(c.limitedAt) <= everyMs * 2);
   const enRetard = Boolean(c?.pendingId && c?.deadlineAt && now > Date.parse(c.deadlineAt));
   const missed = (Number(c?.missedCount) || 0) + (enRetard ? 1 : 0);
+  // Les manqués RÉELS d'abord : un refus de débit prouve que la base répond,
+  // pas que l'observation bout-en-bout fonctionne — il ne masque jamais un
+  // UNAVAILABLE déjà acquis (revue de sécurité automatique du 2026-10-19).
   if (missed >= CANARY_MISSED_UNAVAILABLE) {
     return { state: "UNAVAILABLE", detail: `${missed} canaris consécutifs non observés (dernier envoi ${c?.sentAt || "?"})`, missed, at: c?.lastSuccessAt || null };
+  }
+  // Le refus lui-même, tel que le serveur l'a nommé (quel réservoir) : jamais
+  // une phrase fixe, qui envoyait chercher un flot de visiteurs quand c'est le
+  // réservoir partagé avec les comptes neufs qui refusait.
+  const refus = c?.lastError || "refusé par le limiteur de débit";
+  const limites = Number(c?.limitedCount) || 0;
+  // Un manqué réel PUIS des refus : deux refus suffisent à ne plus attendre.
+  if (limite && (limites >= CANARY_LIMITED_UNAVAILABLE || (missed >= 1 && limites >= 2))) {
+    return { state: "UNAVAILABLE", detail: `${limites} canaris consécutifs refusés par le limiteur de débit${missed ? ` après ${missed} non observé(s)` : ""} : le bout-en-bout n'est plus prouvé (${refus})`, missed, at: c?.lastSuccessAt || null, limite: true };
+  }
+  // « Limité » seulement sans manqué réel : un canari perdu ne se maquille pas.
+  if (limite && missed === 0) {
+    return { state: "DEGRADED", detail: `canari limité par le débit de télémétrie (${c.limitedAt}) : la base répond — ${refus}`, missed, at: c?.lastSuccessAt || null, limite: true };
   }
   if (missed === 0 && c?.lastSuccessAt && now - Date.parse(c.lastSuccessAt) <= everyMs * 2) {
     return { state: "LIVE", detail: `bout-en-bout ${c.lastLatencyMs ?? "?"} ms`, at: c.lastSuccessAt, missed: 0 };
