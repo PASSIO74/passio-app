@@ -6,6 +6,16 @@ const { bootOnboarded } = require("./app-helper");
 // réponses pour reproduire les courses qu'un test de fonctions pures manquerait.
 async function preparer(page, count = 1, initialRandom = 0) {
   await bootOnboarded(page);
+  // La fin du démarrage AVANT de prendre l'horloge (même garde que
+  // capacite-fil-compteurs) : sa queue asynchrone relance `startFeedRefreshLoop`
+  // et `startPostLikeRefresh` après le chargement des posts.
+  await page.waitForFunction(() => window._supaInitTerminee === true || !window._supaReal, null, { timeout: 15000 }).catch(() => {});
+  // Puis arrêter les boucles TANT QUE l'horloge est réelle : un minuteur armé
+  // avant `clock.install` est natif, et le clearTimeout de l'horloge simulée ne
+  // l'annule pas. Le tour natif des likes survivait au `stopPostLikeRefresh`
+  // ci-dessous, partait en plein cas et réarmait le minuteur sur la nouvelle
+  // échéance : une lecture à l'heure de l'ancien (2 cas sur 60 en local).
+  await page.evaluate(() => { stopFeedRefreshLoop(); stopPostLikeRefresh(); });
   await page.clock.install();
   await page.evaluate(({ n, initialRandom }) => {
     stopFeedRefreshLoop();
@@ -16,6 +26,13 @@ async function preparer(page, count = 1, initialRandom = 0) {
     // Rendre les courses existantes déterministes ; les nouveaux cas ci-dessous
     // exercent explicitement le milieu et la borne haute du déphasage initial.
     Math.random = () => initialRandom;
+    // Le récap IRL de la semaine (`setTimeout(_irlWeeklyDigest, 4000)` au boot)
+    // peut s'armer APRÈS `clock.install` : l'avance d'horloge le déclenche alors,
+    // et sa notification tire un identifiant par Math.random — un tirage compté
+    // dans `__tirages` qui n'appartient pas au rafraîchissement des likes (CI de
+    // #621, 3 échecs sur 3 ; 3 sur 20 en local). Marqué fait pour la semaine,
+    // il rend la main sans rien tirer.
+    localStorage.setItem(IRL_DIGEST_KEY, _isoWeekKey());
     MY_UID = "812aee2b-214f-4949-931e-842599b6d68b";
     window.MY_UID = MY_UID;
     state.user.likedPosts = [];
