@@ -23,6 +23,7 @@ const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 const { viserCibleSupabase } = require("./cible-supabase");
 const { creerCompteE2E } = require("./compte-e2e");
+const { sansDonneesDistantes } = require("./app-helper");
 
 test.describe("Trust & Safety IRL — règle serveur, comptes réels", () => {
   test("la proposition IRL n'est permise qu'entre deux majeurs déclarés qui ne se bloquent pas", async ({ page }) => {
@@ -31,6 +32,9 @@ test.describe("Trust & Safety IRL — règle serveur, comptes réels", () => {
 
     await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
     await viserCibleSupabase(page);
+    // Le fil, les stories, les médias : rien de tout cela ne sert ici. Les
+    // appels du test (RPC en POST, blocage) ne passent pas par ces routes.
+    await sansDonneesDistantes(page);
     await page.goto("/index.html");
     await page.waitForFunction(() => typeof supa !== "undefined" && !!supa && !!window.PASSIO_SUPABASE, null, { timeout: 30000 });
 
