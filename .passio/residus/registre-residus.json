@@ -213,7 +213,7 @@
     },
     {
       "etats": { "corrige": "oui", "teste": "partiel", "deploye": "sans objet", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-30", "note": "30/09, décision (Claude, par délégation de Benjamin) : À FAIRE, pas de report de confort. Une sauvegarde jamais restaurée pour de vrai n'est pas une preuve de récupération, et c'est le seul filet pendant que de vrais utilisateurs arrivent. Seul blocage : le projet Supabase jetable (geste humain, ~5 min). Nouvelle échéance 2026-10-07 ; Claude joue le cycle dès réception. Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "reexamen": { "statut": "en_attente", "le": "2026-10-21", "note": "21/10, décision (Claude, par délégation de Benjamin) : MAINTENU À FAIRE, reporté une seule fois au 2026-11-04. L'échéance du 07/10 est passée faute du projet jetable, pas faute de volonté : le blocage reste un geste humain (~5 min). Pas de fermeture possible sans la preuve, et une sauvegarde jamais restaurée n'est pas un filet. Le risque immédiat est faible (0 inscription sur 7 j au digest du 20/10, base 0,07 Go), mais il devient réel dès la prochaine vague d'invitations : RES-14 passe AVANT tout élargissement du pilote. Si le 04/11 le jetable n'existe toujours pas, la décision suivante sera de geler les invitations plutôt que de reporter encore." },
       "id": "RES-14",
       "titre": "Cycle réel sauvegarde → altération contrôlée → restauration → relecture non rejoué sur un projet Supabase jetable (ASTRA-57/58/59)",
       "gravite": "P1",
@@ -222,7 +222,7 @@
       "scenario_residuel": "Les corrections de pagination, de propriétaires NULL et de validation d'archive sont testées avec de vrais scripts et des services SIMULÉS (PostgREST selon ses règles de statut, Storage, GoTrue, API de gestion). Le plafond max-rows réel, le comportement réel de `order`/`limit`/`offset` sur la RPC et l'UPDATE de storage.objects.owner sur un vrai projet ne sont pas mesurés.",
       "raison_du_maintien": "Aucun projet Supabase jetable n'est autorisé ni accessible depuis ce poste (il faut un projet distinct de la production, son ref de 20 lettres, et le jeton personnel sbp_… ; restaurer-donnees.js refuse la production par construction).",
       "dependances": ["projet Supabase jetable (ref) + SUPABASE_ACCESS_TOKEN", "migration_proprietaires_objets_stockage appliquée sur le jetable", "données synthétiques : deux comptes, un objet sans propriétaire, une pièce jointe"],
-      "condition_de_reexamen": { "type": "manuel", "quand": "Dès qu'un projet jetable est fourni — au plus tard le 2026-10-07 : sauvegarde complète (`--verifier` COMPLÈTE), altération contrôlée (fichier BAD, owner à B), restauration refusée (code 2) puis restauration saine prouvée (`prouvee:true`), relecture des propriétaires." },
+      "condition_de_reexamen": { "type": "manuel", "quand": "Dès qu'un projet jetable est fourni — au plus tard le 2026-11-04, et dans tous les cas avant tout élargissement du pilote : sauvegarde complète (`--verifier` COMPLÈTE), altération contrôlée (fichier BAD, owner à B), restauration refusée (code 2) puis restauration saine prouvée (`prouvee:true`), relecture des propriétaires." },
       "critere_de_fermeture": "Preuve JSON `prouvee:true` sur le jetable avec propriétaires conformes (NULL compris) et archive altérée refusée sans mutation ; sorties conservées dans preuves/.",
       "preuve_attendue": "Fichiers preuve.json des deux restaurations (refusée, prouvée) et journal de la sauvegarde.",
       "prochaine_etape": "Benjamin : créer le projet jetable et transmettre ref + jeton (jamais la clé service_role) ; Claude : jouer le cycle et déposer les preuves."
@@ -245,7 +245,7 @@
     },
     {
       "etats": { "corrige": "non", "teste": "non", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "reexamen": { "statut": "en_attente", "le": "2026-10-21", "note": "21/10, décision (Claude, par délégation de Benjamin) : REPORTÉ, rattaché à l'élargissement du pilote, au plus tard le 2026-11-30. Raisons : P2 de nuisance sans fuite (from_id = appelant, blocages, débit borné, échappement, push à texte dérivé) ; le pilote n'a pas été élargi (0 inscription sur 7 j au 20/10) ; le chantier touche la production (fonction SQL + policy) et passe après RES-14, qui protège les données. Ordre fixé : RES-14 d'abord, puis RES-16 genre par genre (like en premier) avant d'ouvrir à une nouvelle vague." },
       "id": "RES-16",
       "titre": "Notifications in-app à texte construit par le client (like, comment, event_*) : aucun événement métier vérifié côté serveur",
       "gravite": "P2",
@@ -254,7 +254,7 @@
       "scenario_residuel": "`supaInsertNotif` écrit une ligne `notifications` (genre non réservé) avec un texte que le client compose. Garde-fous en place : from_id = appelant (RLS), blocage dans les deux sens, débit borné (trg_rate_limit), échappement à l'affichage, push serveur à texte dérivé. Un compte peut encore faire apparaître « X a aimé ton post » chez quelqu'un sans avoir aimé — nuisance, pas fuite.",
       "raison_du_maintien": "Chemin validé par les contre-revues précédentes et conservé pour le pilote (mandat : ne pas transformer les P2 en blocages). La dérivation serveur pour ces genres est un chantier de la taille de celui des mentions.",
       "dependances": ["fonction SQL `notifier_evenement(genre, ref)` vérifiant l'événement (like, commentaire, participation) et dérivant le texte", "réservation des genres restants au serveur (policy)"],
-      "condition_de_reexamen": { "type": "manuel", "quand": "Élargissement du pilote (après la première vague) — au plus tard le 2026-10-15." },
+      "condition_de_reexamen": { "type": "manuel", "quand": "Élargissement du pilote (nouvelle vague d'invitations), après la fermeture de RES-14 — au plus tard le 2026-11-30." },
       "critere_de_fermeture": "Tous les genres écrits par le serveur à partir d'un événement vérifié ; policy d'INSERT client sur notifications fermée ; banc SQL et e2e verts.",
       "preuve_attendue": "Banc SQL (événement absent → refus) et suite navigateur (le client n'écrit plus notifications).",
       "prochaine_etape": "Spécifier `notifier_evenement` sur le modèle de `notifier_mentions` ; migrer un genre à la fois (like d'abord)."
