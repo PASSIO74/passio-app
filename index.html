@@ -1719,6 +1719,13 @@
      signature par carte pour n'écrire qu'au changement. La recherche est
      DÉPLACÉE, jamais reconstruite (son oninput inline appelle _globalMsgSearch). -->
 <script src="js/ui-v6a-messages.js"></script>
+<!-- UI V6A0 (#174 « Créer une activité ») — hors bloc app, inliné au build.
+     ACTIF PAR DÉFAUT ; coupé par localStorage.passio_ui_6a0="0" ou
+     window.PASSIO_UI_6A0=false (et par les réglages distants). Il RANGE la
+     modale d'openCreateEvent (couverture dominante, essentiel d'abord, options
+     repliées, aperçu, garde du double envoi) sans toucher au moteur : chaque
+     champ garde son id, submitEvent les relit tels quels. -->
+<script src="js/ui-v6a0-activite.js"></script>
 
 <!-- UI V6B (§11 Profil et multi-profils) — hors bloc app : composant autonome
      (IIFE window.PassioUIV6B), inliné individuellement au build. ACTIF PAR

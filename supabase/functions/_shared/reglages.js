@@ -68,6 +68,7 @@ export const COUPURES_AUTORISEES = Object.freeze([
   "passio_ui_5",
   "passio_ui_6",
   "passio_ui_6a",
+  "passio_ui_6a0",
   "passio_ui_6b",
   "passio_ui_6c",
   "passio_ui_7",

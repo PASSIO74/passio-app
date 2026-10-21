@@ -4448,44 +4448,44 @@
     }
     .profile-strip::-webkit-scrollbar { display: none; }
 
-    /* � CENTRER LA RANG�E QUAND ELLE TIENT  DEUX MARGES AUTO, RIEN D'AUTRE.
-       Mesur� � 390 px avec trois passions : la rang�e occupe 280 px dans une
-       colonne de contenu de 358 px, et un conteneur flex aligne au D�BUT  les
-       78 px de libre s'entassaient donc TOUS � droite. Le rail se lisait coll�
-       � gauche, d�cal� sous une carte d'identit�, elle, centr�e.
+    /* � CENTRER LA RANG�E QUAND ELLE TIENT  DEUX MARGES AUTO, RIEN D'AUTRE.
+       Mesur� � 390 px avec trois passions : la rang�e occupe 280 px dans une
+       colonne de contenu de 358 px, et un conteneur flex aligne au D�BUT  les
+       78 px de libre s'entassaient donc TOUS � droite. Le rail se lisait coll�
+       � gauche, d�cal� sous une carte d'identit�, elle, centr�e.
 
-       � NE JAMAIS METTRE `justify-content: center` � LA PLACE. Dans un
-       conteneur `overflow-x: auto` il centre AUSSI la rang�e qui D�BORDE : le
-       trop-plein part alors des deux c�t�s, et la portion sortie � gauche
-       devient INATTEIGNABLE au d�filement  `scrollLeft` ne descend pas sous
-       z�ro, donc les premi�res bulles ne reviennent JAMAIS. Les marges auto ne
-       distribuent que du libre POSITIF : d�s que la rang�e d�borde il n'y en a
-       plus, elles valent 0, et le rail coulisse depuis son vrai d�but.
+       � NE JAMAIS METTRE `justify-content: center` � LA PLACE. Dans un
+       conteneur `overflow-x: auto` il centre AUSSI la rang�e qui D�BORDE : le
+       trop-plein part alors des deux c�t�s, et la portion sortie � gauche
+       devient INATTEIGNABLE au d�filement  `scrollLeft` ne descend pas sous
+       z�ro, donc les premi�res bulles ne reviennent JAMAIS. Les marges auto ne
+       distribuent que du libre POSITIF : d�s que la rang�e d�borde il n'y en a
+       plus, elles valent 0, et le rail coulisse depuis son vrai d�but.
 
-       � NI `flex: 1 1 0` (d�faut du 2026-09-02, racont� sous `.profile-tile`) :
-       la largeur des bulles reste FIXE. On ne d�place que la rang�e enti�re.
+       � NI `flex: 1 1 0` (d�faut du 2026-09-02, racont� sous `.profile-tile`) :
+       la largeur des bulles reste FIXE. On ne d�place que la rang�e enti�re.
 
-       � BORN� � DEUX RAILS NOMM�S : mon Profil (`#v9ProfilePassions`) et le
+       � BORN� � DEUX RAILS NOMM�S : mon Profil (`#v9ProfilePassions`) et le
        FIL (`#profileStrip`, depuis le 2026-09-03, sur demande de Benjamin :
-       � aligne sur la largeur les bulles de passion sur le fil �). La
-       configuration de d�part en compte QUATRE  � Suivis � + trois passions
-       offertes  et cette rang�e-l� TIENT dans la largeur : mesur�e � 390 px
-       sous UI-7 elle occupe 4�62 + 3�10 + 20 = 298 px pour 390 de large, et
-       les 92 px de libre s'entassaient tous � droite. Elle se centre donc,
+       � aligne sur la largeur les bulles de passion sur le fil �). La
+       configuration de d�part en compte QUATRE  � Suivis � + trois passions
+       offertes  et cette rang�e-l� TIENT dans la largeur : mesur�e � 390 px
+       sous UI-7 elle occupe 4�62 + 3�10 + 20 = 298 px pour 390 de large, et
+       les 92 px de libre s'entassaient tous � droite. Elle se centre donc,
        exactement comme celle du Profil.
 
-        Au-del� de quatre bulles (passions suppl�mentaires � venir), la
-       rang�e d�borde : il n'y a plus de libre POSITIF, les marges auto
-       retombent � 0, et le rail redevient coulissant depuis son vrai d�but,
-       sans une seule bulle inatteignable. C'est tout l'int�r�t de la marge
-       auto face � `justify-content: center`, proscrit ci-dessus.
+        Au-del� de quatre bulles (passions suppl�mentaires � venir), la
+       rang�e d�borde : il n'y a plus de libre POSITIF, les marges auto
+       retombent � 0, et le rail redevient coulissant depuis son vrai d�but,
+       sans une seule bulle inatteignable. C'est tout l'int�r�t de la marge
+       auto face � `justify-content: center`, proscrit ci-dessus.
 
-       Le profil VISIT� (`#visitedPassions`) garde, lui, son alignement au
-       d�but : il n'a pas de configuration de d�part � quatre bulles, et rien
-       n'a �t� demand� pour lui. Une passion seule est � la fois `:first-child`
-       et `:last-child` : elle re�oit les deux marges, et se centre. L'�tat vide
+       Le profil VISIT� (`#visitedPassions`) garde, lui, son alignement au
+       d�but : il n'a pas de configuration de d�part � quatre bulles, et rien
+       n'a �t� demand� pour lui. Une passion seule est � la fois `:first-child`
+       et `:last-child` : elle re�oit les deux marges, et se centre. L'�tat vide
        ne porte pas `.profile-tile` (c'est `.v9-strip-empty`) : il n'est pas
-       vis�, et c'est voulu  une phrase n'est pas une rang�e de bulles. */
+       vis�, et c'est voulu  une phrase n'est pas une rang�e de bulles. */
     #v9ProfilePassions.v9-profile-strip > .profile-tile:first-child,
     #profileStrip.profile-strip > .profile-tile:first-child { margin-left: auto; }
     #v9ProfilePassions.v9-profile-strip > .profile-tile:last-child,
@@ -11365,6 +11365,107 @@ button, a, label, select, summary,
        commentaires les sépare déjà, et 9 px de blanc n'y auraient aucun motif. */
     :root.passio-ui-3 .post-actions + .v3-bridge { padding-top: 11px; }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V6A0 — « Créer une activité » (#174). ACTIF PAR DÉFAUT.
+   (coupures : localStorage.passio_ui_6a0 = "0" · window.PASSIO_UI_6A0 = false)
+   Tout est ancré à `#modalContent.v6a0`, que js/ui-v6a0-activite.js pose sur
+   la modale d'openCreateEvent. Coupé, la classe n'est jamais posée : la modale
+   d'avant reste telle quelle.
+   ⚠️ Ce bloc est posé AVANT celui d'UI-4A5, qui doit rester le DERNIER de la
+   feuille ; leurs sélecteurs sont disjoints.
+   ═══════════════════════════════════════════════════════════════════════════ */
+#modalContent.v6a0 .v6a0-masque { display: none !important; }
+
+/* ② la couverture domine : 16:9, jamais moins de 180 px, jamais plus de 260 */
+#modalContent.v6a0 .v6a0-cover {
+  height: auto !important;
+  aspect-ratio: 16 / 9;
+  min-height: 180px;
+  max-height: 260px;
+  margin: 12px 0 6px !important;
+  border-radius: 18px !important;
+  background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 55%, #c026d3 100%) !important;
+}
+#modalContent.v6a0 .v6a0-cover:focus-visible {
+  outline: 3px solid var(--accent, #7c3aed);
+  outline-offset: 3px;
+}
+#modalContent.v6a0 .v6a0-cover-titre {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+}
+#modalContent.v6a0 .v6a0-cover-aide {
+  font-size: 12px;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.85);
+}
+#modalContent.v6a0 .v6a0-cover-retirer {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  margin: 0 0 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted, #6b7280);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ④ Date · Heure · Durée : la date prend SA ligne, heure et durée dessous.
+   En trois colonnes, le champ date imposait sa largeur minimale (34 px de
+   débordement à 320 px, mesuré, déjà vrai avant ce lot) ou, rétréci, se
+   coupait (« 28/10/2 » à 390 px). La colonne de l'app ne dépasse pas 440 px. */
+#modalContent.v6a0 .v6a0-quand { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+#modalContent.v6a0 .v6a0-quand > label:first-child { grid-column: 1 / -1; }
+#modalContent.v6a0 .v6a0-quand .input { min-width: 0; width: 100%; }
+
+/* ⑤ les options repliées */
+#modalContent.v6a0 .v6a0-options {
+  margin: 6px 0 12px;
+  border-top: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  padding-top: 10px;
+}
+#modalContent.v6a0 .v6a0-options > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent, #7c3aed);
+  padding: 6px 0 10px;
+  list-style-position: inside;
+}
+
+/* ⑥ l'aperçu */
+#modalContent.v6a0 .v6a0-apercu { margin: 4px 0 12px; }
+#modalContent.v6a0 .v6a0-apercu-carte {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  background: var(--card, #fff);
+}
+#modalContent.v6a0 .v6a0-apercu-visuel {
+  aspect-ratio: 16 / 9;
+  max-height: 180px;
+  width: 100%;
+  background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 55%, #c026d3 100%);
+}
+#modalContent.v6a0 .v6a0-apercu-visuel img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#modalContent.v6a0 .v6a0-apercu-corps { padding: 12px 14px 14px; }
+#modalContent.v6a0 .v6a0-apercu-titre { font-size: 16px; font-weight: 800; line-height: 1.25; }
+#modalContent.v6a0 .v6a0-apercu-meta { font-size: 12px; margin-top: 4px; color: var(--text-muted, #6b7280); }
+#modalContent.v6a0 .v6a0-apercu-desc { font-size: 13px; margin-top: 8px; white-space: pre-line; }
+
+/* ⑦ une seule action primaire, l'aperçu à côté */
+#modalContent.v6a0 .v6a0-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+#modalContent.v6a0 .v6a0-actions .v6a0-btn-apercu { flex: 0 0 auto; }
+#modalContent.v6a0 .v6a0-actions .v6a0-publier { flex: 1 1 auto; }
+#modalContent.v6a0 .v6a0-publier[aria-busy="true"] { opacity: 0.6; cursor: progress; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtre » est une VUE de « Rencontrer ».
