@@ -17,6 +17,11 @@ const { bootOnboarded } = require("./app-helper");
 
 async function preparer(page, count = 1) {
   await bootOnboarded(page);
+  // Mêmes gardes que capacite-likes-visibles : la queue du démarrage ne relance
+  // plus les boucles sous l'horloge du banc, et leurs minuteurs natifs (que le
+  // clearTimeout simulé n'annule pas) sont arrêtés avant `clock.install`.
+  await page.waitForFunction(() => window._supaInitTerminee === true || !window._supaReal, null, { timeout: 15000 }).catch(() => {});
+  await page.evaluate(() => { stopFeedRefreshLoop(); stopPostLikeRefresh(); });
   await page.clock.install();
   await page.evaluate((n) => {
     stopFeedRefreshLoop();
@@ -26,6 +31,9 @@ async function preparer(page, count = 1) {
     _postLikeRefreshEntries.clear();
     _postLikeRefreshPas = POST_LIKE_REFRESH_MS;
     Math.random = () => 0; // jitter 0, phase initiale 200 ms : mesures exactes
+    // Même garde que capacite-likes-visibles : le récap IRL de la semaine, armé
+    // au boot, tirerait un identifiant de notification pendant le comptage.
+    localStorage.setItem(IRL_DIGEST_KEY, _isoWeekKey());
     MY_UID = "812aee2b-214f-4949-931e-842599b6d68b";
     window.MY_UID = MY_UID;
     state.user.likedPosts = [];
