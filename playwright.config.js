@@ -37,6 +37,7 @@ const { defineConfig, devices } = require("@playwright/test");
 const SUITES_PROD = [
   "authz-critical.spec.js",      // crée des comptes — barrière RLS du déploiement
   "blocage-acces.spec.js",       // crée des comptes
+  "irl-trust-safety-reel.spec.js", // crée des comptes — règle T&S IRL serveur (#69)
   "user-state-horodatage.spec.js", // crée des comptes
   "multi-comptes.spec.js",       // crée des comptes sous PASSIO_E2E_MULTI
   "confidentialite.spec.js",     // sous PASSIO_E2E_MULTI
