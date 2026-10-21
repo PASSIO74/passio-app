@@ -39,10 +39,14 @@ murs (connexions temps réel, e-mails, puissance de la base, bande passante), la
 migrations, et les décisions de modération. Compte **~15 min par semaine** et **~60 à 150 € par mois**
 de services en plus, à engager **au moment où les jauges passent à l'orange**, pas avant.
 
-**Ton seul geste pour allumer ce qui est livré** : relire la PR de la migration
-`migrations/migration_reglages_distants_2026-10-11.sql`, y poster ta contre-revue, puis
-`npm run migration:appliquer -- migrations/migration_reglages_distants_2026-10-11.sql`. Tant que ce n'est
-pas fait, tout le reste est déjà en ligne et attend sans rien casser (le panneau du pilotage le dit).
+**Allumé le 2026-10-21** : les trois migrations du lot (`migration_reglages_distants_2026-10-11.sql`,
+`migration_telemetrie_equitable_2026-10-16.sql`, `migration_purge_marqueurs_2026-10-16.sql`) sont
+appliquées en production depuis ton poste (contre-revue de mainteneur unique sur #605, verdicts OK,
+journal `migrations_appliquees`), et l'état a été relu en base le même jour (canal ①) : table
+`reglages_distants` lisible colonne par colonne par les appareils, `pilotage_audience` réservée à
+`service_role`, déclencheurs `trg_debit_avant` / `trg_debit_taille` / `trg_debit_lot` /
+`trg_telemetry_identite` sur `telemetry_events` (plus de `trg_debit_global`), tâches
+`purge_telemetrie_debit` et `purge_marqueurs_suppression` actives.
 
 ---
 
@@ -128,7 +132,7 @@ les relire sur la page Pricing de chaque service le jour du geste.**
    contient pas : un mauvais déploiement. Logique : `supabase/functions/_shared/autonomie.js`.
 2. **Train de déploiement** : fusionner autant qu'on veut, mais ne déployer qu'une à deux fois par jour
    (sauf correctif Sentinelle). Divise la bande passante d'un facteur 10 à 20 et le risque d'autant.
-3. 🟡 **Télémétrie à l'échelle — écrit le 2026-10-16, à appliquer** (`migration_telemetrie_equitable_2026-10-16.sql` :
+3. ✅ **Télémétrie à l'échelle — en production depuis le 2026-10-21** (`migration_telemetrie_equitable_2026-10-16.sql` :
    un compteur par lot — comptes anciens 1 800/min à eux seuls, neufs + anonymes 2 400 partagés (1 600
    chacun), 150 par compte, refus en 429 que le client attend ; un flot anonyme n'aveugle plus les
    comptes réels, et la veille juge l'aveuglement sur les anciens). Reste : rétention et agrégats. Avant :

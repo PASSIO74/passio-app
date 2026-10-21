@@ -135,7 +135,9 @@ deux tentatives entrelacées par une promesse tenue) ; `tests/e2e/suppression-co
   plus vieux que l'intervalle, refuse tout intervalle < 30 jours (durée de vie des artefacts de
   sauvegarde, `sauvegarde.yml`). **Planifiée à 45 jours** (30 jours de sauvegardes + marge) par
   `migrations/migration_purge_marqueurs_2026-10-16.sql` — tâche pg_cron `purge_marqueurs_suppression`,
-  chaque jour à 03:41 UTC ; en vigueur une fois appliquée sur la cible après contre-revue (RES-02).
+  chaque jour à 03:41 UTC ; appliquée sur la cible le 2026-10-21 (jobid 8, active, relue par le
+  canal ①). Le plus ancien marqueur date du 2026-09-16 : la première purge qui efface quelque chose
+  est celle du 2026-11-01, à relire pour fermer RES-02.
   Un uuid seul, sans ligne `auth.users`, sans contenu, est ce qui reste entre-temps. Une
   restauration ne vise jamais la production (`scripts/restaurer-donnees.js` refuse la source) :
   la purge du marqueur ne rouvre pas la voie à une résurrection.
