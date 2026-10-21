@@ -93,7 +93,14 @@ const ETAPES = [
           : x.defaut ? ` default ${x.defaut}` : "";
         t.get(x.tbl).push(`  ${ident(x.col)} ${x.typ}${gen}${x.nn ? " not null" : ""}`);
       }
-      return [...t].map(([n, cols]) => `create table if not exists public.${ident(n)} (\n${cols.join(",\n")}\n);`);
+      // ⚠️ RES-14 (21/10/2026, mesuré sur le staging) : `create table if not
+      // exists` SAUTE une table déjà là, avec ses colonnes d'avant. Une cible
+      // dont le schéma a dérivé (staging semé le 14/09, `notifications.origine`
+      // ajoutée depuis) recevait alors la contrainte CHECK d'une colonne
+      // absente, et toute la transaction tombait. Chaque colonne est donc aussi
+      // reposée par `add column if not exists` : sans effet sur une base à jour.
+      return [...t].map(([n, cols]) => `create table if not exists public.${ident(n)} (\n${cols.join(",\n")}\n);\n`
+        + cols.map((c) => `alter table public.${ident(n)} add column if not exists ${c.trim()};`).join("\n"));
     } },
 
   { titre: "Clés primaires, uniques, CHECK et étrangères",

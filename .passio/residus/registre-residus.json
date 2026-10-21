@@ -212,8 +212,8 @@
       "prochaine_etape": "Écrire la suite « answer perdue » (extension d'appel-reponse-rejouable.spec.js) et la correction : ack par message `answer_ack`, retransmission toutes les 2 s, sortie à 30 s."
     },
     {
-      "etats": { "corrige": "oui", "teste": "partiel", "deploye": "sans objet", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-10-21", "note": "21/10, décision (Claude, par délégation de Benjamin) : MAINTENU À FAIRE, reporté une seule fois au 2026-11-04. L'échéance du 07/10 est passée faute du projet jetable, pas faute de volonté : le blocage reste un geste humain (~5 min). Pas de fermeture possible sans la preuve, et une sauvegarde jamais restaurée n'est pas un filet. Le risque immédiat est faible (0 inscription sur 7 j au digest du 20/10, base 0,07 Go), mais il devient réel dès la prochaine vague d'invitations : RES-14 passe AVANT tout élargissement du pilote. Si le 04/11 le jetable n'existe toujours pas, la décision suivante sera de geler les invitations plutôt que de reporter encore." },
+      "etats": { "corrige": "oui", "teste": "oui", "deploye": "sans objet", "relu_sur_cible": "oui" },
+      "reexamen": { "statut": "ferme", "le": "2026-10-21", "note": "21/10 au soir, cycle réel joué par Claude (délégation de Benjamin) sur « PASSIO staging » (fcksxofaelcdmmifnwjo, ni la production ni la source) : archive de production COMPLÈTE (45 tables, 11 comptes, 43 médias, schema.sql) ; ① copie altérée (un .jpg → BAD, un propriétaire changé) → code 2, rien écrit, cible relue vide ; ② archive saine → prouvee:true, 0 écart, 43 propriétaires conformes ; ③ propriétaire NULL (copie cohérente, rejouée hors déploiement) → prouvee:true, _storage.owner OK, NULL posé. Défaut trouvé et corrigé : schema-executable.js sautait les colonnes d'une table déjà présente (add column if not exists). Détail : docs/RECUPERATION.md « Le cycle réel du 2026-10-21 ». Staging purgé et ressemé (référentiels) ensuite.", "chantier": "branche claude/res14-cycle-restauration ; preuves .passio/sauvegardes/2026-10-21-res14-preuves/ (hors git)" },
       "id": "RES-14",
       "titre": "Cycle réel sauvegarde → altération contrôlée → restauration → relecture non rejoué sur un projet Supabase jetable (ASTRA-57/58/59)",
       "gravite": "P1",
@@ -260,8 +260,8 @@
       "prochaine_etape": "Spécifier `notifier_evenement` sur le modèle de `notifier_mentions` ; migrer un genre à la fois (like d'abord)."
     },
     {
-      "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "sans objet", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "sans objet", "relu_sur_cible": "oui" },
+      "reexamen": { "statut": "ferme", "le": "2026-10-21", "note": "Mesuré en production le 21/10 pendant la sauvegarde complète de RES-14 : max-rows = 1 000 (telemetry_events 1 000/5 033, analytics_events 1 000/11 727 avec limit=100000). Valeur écrite dans docs/RECUPERATION.md ; la sauvegarde pagine déjà sous ce plafond.", "chantier": "branche claude/res14-cycle-restauration" },
       "id": "RES-17",
       "titre": "Plafond `max-rows` réel de PostgREST sur la production non mesuré (ASTRA-57)",
       "gravite": "P3",
