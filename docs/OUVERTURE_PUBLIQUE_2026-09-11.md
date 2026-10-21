@@ -171,6 +171,11 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (35 cas, dont trois qui mesurent
 
 ## 5. Les plafonds du gratuit — ce que « un maximum d'utilisateurs » veut dire ici
 
+> **Correction du 2026-10-21** : l'organisation Supabase est en **plan Pro** (relu par l'API de gestion,
+> `GET /v1/organizations/<slug>` → `plan: pro`), comme le dit `docs/STAGING.md`. Les plafonds Supabase
+> du tableau ci-dessous sont donc ceux du gratuit et ne s'appliquent plus : base 8 Go, sortie 250 Go/mois,
+> Storage 100 Go, Auth 100 000 MAU. La ligne Brevo (300 e-mails/jour) reste vraie.
+
 | Ressource | Plafond | Conséquence |
 |---|---|---|
 | Base Supabase (plan gratuit) | 500 Mo, puis **lecture seule** | **53 Mo** le 2026-09-12 ; purges à 7 j / 30 j / 13 mois ; débit borné par ③. |

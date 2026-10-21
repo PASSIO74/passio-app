@@ -162,6 +162,36 @@ Ce qui n'est toujours pas rendu par une restauration reste ce qui est écrit plu
   Supabase jetable **n'a pas été rejoué** (aucun projet jetable autorisé sur ce poste : il faut un projet
   Supabase distinct de la production, son `ref`, et le jeton personnel `sbp_…` — voir le dossier de livraison).
 
+## Le cycle réel du 2026-10-21 (RES-14) : altération refusée, restauration prouvée
+
+Cible : « PASSIO staging » (`fcksxofaelcdmmifnwjo`) — ni la production, ni la source de l'archive ; vidé
+(`--purger`) avant chaque passage, vidé et ressemé (référentiels seuls) après. Archive : production du
+21/10 à 18 h 43, `--complete` + `schema.sql` (`schema-executable.js`), `--verifier` : **COMPLÈTE**,
+45 tables, 11 comptes, 43 médias (26,8 Mo), 43 propriétaires explicites, 0 nul en base.
+
+| Passage | Archive | Résultat |
+|---|---|---|
+| ① altération contrôlée | copie : un `.jpg` remplacé par `BAD`, un propriétaire changé vers un autre compte | **code 2**, « rien n'a été écrit sur la cible » : fichier modifié ET empreinte d'inventaire ≠ manifeste détectés tous les deux ; purge relue ensuite à 0 ligne, 0 compte, 0 objet |
+| ② restauration saine | l'archive intacte | **`prouvee: true`**, 0 écart : 45 tables, 11 comptes (mêmes identifiants), 43 médias, 43 propriétaires conformes |
+| ③ propriétaire NULL | copie cohérente : un objet rendu sans propriétaire, empreinte recalculée | premier essai pollué par la CI (voir ⚠️) ; **rejoué hors déploiement : `prouvee: true`**, `_storage.owner` OK — 43 conformes, 1 sans propriétaire posé NULL |
+
+**Le défaut que l'exercice a trouvé** : `schema-executable.js` écrivait `create table if not exists` seul.
+Sur une cible dont le schéma a dérivé (staging semé le 14/09, `notifications.origine` ajoutée depuis), la
+table était sautée avec ses colonnes d'avant, puis la contrainte CHECK de la colonne absente faisait tomber
+toute la transaction (`42703`). Chaque colonne est désormais reposée par `add column if not exists` —
+sans effet sur une base à jour, rattrapage sur une base en retard.
+
+**Plafond `max-rows` de PostgREST en production : 1 000** (mesuré le même soir : `telemetry_events` et
+`analytics_events` rendent 1 000 lignes sur 5 033 et 11 727 malgré `limit=100000`). C'est pour cela que
+la sauvegarde pagine (RES-17).
+
+⚠️ **Le staging n'est plus un projet calme** : depuis le lot SUP-04, `deploy.yml` y fait tourner les suites
+à comptes réels. Le passage ③ a croisé le déploiement de 18 h 46 : 13 comptes de banc et leurs lignes sont
+apparus « en trop » pendant la restauration. Rejouer l'exercice **hors d'un déploiement** (`gh run list`
+vide en cours) — ou sur un projet jetable dédié — et ressemer le staging après.
+
+Preuves (hors git, contenu utilisateur réel) : `.passio/sauvegardes/2026-10-21-res14-preuves/`.
+
 ## Ce qu'une restauration NE REND PAS — écrit, pas tu
 
 - **Les mots de passe** : l'export ne porte pas `encrypted_password`. Chaque compte restauré reçoit un mot de passe aléatoire (jamais journalisé) et repasse par « mot de passe oublié ». Les **identités OAuth** (Google) ne sont pas dans l'export non plus. `created_at` des comptes est celui de la restauration (l'API d'administration l'impose).
