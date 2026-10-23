@@ -7880,8 +7880,31 @@ function _passionSignalSet() {
 // curiosité = 2,6 × 0,35 = 0,91) + engagement plafonné (3 × 0,12 = 0,36), soit
 // 2,27. Une publication à moi vaut au pire 1,0 + 0,35 + 0 + 1,20 = 2,55 : elle
 // passe devant, toujours, pendant la fenêtre.
+//
+// ⚠️ RELEVÉ À 4,5 LE 2026-10-23, en même temps que naissait la garantie
+// « compte suivi » ci-dessous : la publication fraîche d'un compte suivi peut
+// valoir jusqu'à 1,0 + 0,91 + 0,36 + 2,2 + 0,55 (bonus d'envie) = 5,02. La
+// mienne vaut au pire 0,96 + 4,5 = 5,46 : elle reste devant, comme promis.
 var FEED_MA_PUBLI_HEURES = 2;
-var FEED_MA_PUBLI_BONUS = 1.2;
+var FEED_MA_PUBLI_BONUS = 4.5;
+
+// ── GARANTIE « COMPTE SUIVI » (2026-10-23) ───────────────────────────────────
+// Rapport de Benjamin après un essai à trois comptes : « Jerem a fait un post
+// mais il n'apparaît pas dans mon feed ». Mesuré : la publication ARRIVAIT
+// (reçue en temps réel, présente dans `allFeedPosts`, « Suivis » coché), mais
+// sortait 19e sur 40 derrière le contenu de démonstration — dont les dates sont
+// recalculées à chaque ouverture, donc éternellement fraîches, et l'engagement
+// fabriqué. Une publication neuve a un engagement NUL : c'est exactement le
+// défaut du 2026-09-02 (« je viens de publier »), que la garantie n'avait réglé
+// que pour l'auteur lui-même. Sur le téléphone, le post n'était qu'à son profil.
+//
+// La vraie publication d'un compte suivi passe devant tout ce qui n'a pas de
+// garantie pendant la fenêtre : au pire 0,368 (48 h) + 0,35 (suivi) + 2,2 =
+// 2,92, contre 2,27 + 0,56 (meilleur bonus d'envie) = 2,83 pour le meilleur
+// score ordinaire. ⚠️ JAMAIS pour la démo : « Léa Moreau » est suivie par
+// défaut sur certains comptes, et lui donner la garantie recréerait le défaut.
+var FEED_SUIVI_HEURES = 48;
+var FEED_SUIVI_BONUS = 2.2;
 
 function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   // Fraîcheur : âge en heures via buckets 5 min (12/h), décroissance exp τ=48 h.
@@ -7935,7 +7958,13 @@ function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   // démonstration, qui n'appartient à personne.
   var mienneEtFraiche = (ageHours < FEED_MA_PUBLI_HEURES && _estMonPost(p)) ? FEED_MA_PUBLI_BONUS : 0;
 
-  return recency * 1.0 + affinity * 0.35 + engagement * 0.12 + mienneEtFraiche;
+  // Garantie « compte suivi » (cf. FEED_SUIVI_BONUS) : une VRAIE publication,
+  // jamais la démo (`_source === "seed"`, même discriminant que l'étiquette
+  // « Exemple PASSIO »), et jamais la mienne (elle a déjà sa garantie).
+  var suivieEtFraiche = (ageHours < FEED_SUIVI_HEURES && p._source !== "seed"
+    && p.authorId && followingSet.has(p.authorId) && !mienneEtFraiche) ? FEED_SUIVI_BONUS : 0;
+
+  return recency * 1.0 + affinity * 0.35 + engagement * 0.12 + mienneEtFraiche + suivieEtFraiche;
 }
 function rankFeedPosts(posts) {
   var arr = (posts || []).slice();

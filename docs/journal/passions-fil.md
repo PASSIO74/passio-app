@@ -18,6 +18,7 @@
 - 🔢 LE RÉFÉRENTIEL PASSE À 5 001 PASSIONS (vague 3, 2026-09-10)
 - 🎿 « ON EST CENSÉ AVOIR 5 000 PASSIONS ? » — TROIS SURFACES CHERCHAIENT DANS 19 (2026-09-12)
 - 🔤 ALIAS À LA CRÉATION D'UNE PASSION (2026-09-10)
+- 👥 « JEREM A PUBLIÉ, ÇA N'APPARAÎT PAS DANS MON FIL » — LA DÉMO PASSAIT DEVANT LES COMPTES SUIVIS (2026-10-23)
 
 ---
 
@@ -577,3 +578,10 @@ Trouvé en VÉRIFIANT un autre lot, pas par un rapport : après le rattrapage de
 ⚠️ **`rendrePied` POSE `innerHTML` À CHAQUE FRAPPE** : le champ d'alias garde sa valeur sur l'INSTANCE (`this.alias`), l'écoute est **déléguée** (elle survit au remplacement du nœud) et ne déclenche aucun re-rendu — même famille que le cache `_lastHtml` de `renderProfileStrip`. Le champ n'apparaît **que si la création est possible** : sous le chemin de demande les alias ne seraient transmis à personne, et un champ qui ne sert à rien est un mensonge d'interface.
 Rattrapage des passions déjà créées : `npm run passions:moderation alias --id … --ajouter "a,b"` (canal ② d'ADR-012). ⚠️ Il **REFUSE** un alias qui percute, là où le serveur l'écarte — ici il y a un humain devant. ⚠️ Réservé aux `user_suggested` : les alias des entrées curées vivent dans `data/passions/` et une retouche en base serait **écrasée au prochain delta**.
 Verrous : `scripts/verifier-migration-creation-passion.sh` (70 contrôles, gate CI — dont ⑥ quater) et `tests/e2e/creation-passion.spec.js` (18, dont ⑭–⑱). ⚠️ Le contrôle de retour arrière du banc ne supprimait **qu'une** des deux signatures : il annonçait « exécuté » en laissant la fonction vivante sous l'autre forme. Détail et points ouverts (4 résidus de test `active` en prod) : `docs/lots-ui/24-ALIAS-A-LA-CREATION-2026-09-10.md`.
+
+## 👥 « JEREM A PUBLIÉ, ÇA N'APPARAÎT PAS DANS MON FIL » — LA DÉMO PASSAIT DEVANT LES COMPTES SUIVIS (2026-10-23)
+
+Rapport de Benjamin après un essai à trois comptes réels (Jerem, compte **privé**, suivi après demande acceptée). **Mesuré, et ce n'était ni la RLS ni le suivi** : `follows` = `accepted`, `user_state` de Ben portait Jerem dans `following`, « Suivis » coché ; la télémétrie montre le post **reçu en temps réel** (`rt_recv post`, 19:28:36), puis Ben qui bascule ses bulles sans le trouver et finit par l'aimer **depuis le profil de Jerem**. Reproduit dans le vrai code : le post est dans `allFeedPosts()`, et `rankFeedPostsForIntents` le classe **19e sur 40** (1,35 contre 2,00 pour « Léa Moreau — Exemple PASSIO »).
+**Cause** : le défaut du 2026-09-02 (« je viens de publier »), que la garantie n'avait réglé que pour l'auteur. Une publication neuve a un engagement **nul** ; la démo a des dates recalculées à chaque ouverture (toujours fraîche) et un engagement fabriqué. Le fil ne peint que 20 cartes.
+**Correctif** (`feedPostScore`, app-02) : `FEED_SUIVI_BONUS = 2,2` pendant `FEED_SUIVI_HEURES = 48` pour une **vraie** publication d'un compte suivi — au pire 0,368 + 0,35 + 2,2 = 2,92 > 2,83 (meilleur score ordinaire **avec** bonus d'envie). `FEED_MA_PUBLI_BONUS` passe de 1,2 à **4,5** pour que ma publication fraîche reste devant (5,46 > 5,02). ⚠️ **Jamais pour la démo** (`_source === "seed"`, le discriminant de l'étiquette « Exemple PASSIO ») : « Léa » est suivie sur des comptes réels. ⚠️ Un barème qui garantit une place doit compter le **bonus d'envie** (jusqu'à 0,56), que le calcul du 2026-09-02 oubliait.
+Verrou : `tests/e2e/fil-suivi-garantie.spec.js` (5) — ① et ② tombent quand on remet le bonus à 0 (réinjection faite).
