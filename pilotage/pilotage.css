@@ -1,4 +1,4 @@
-/* PASSIO Pilotage (nuage) — mêmes styles que le Pilot mobile du PC (dashboard/public/css/mobile.css). */
+/* PASSIO Pilotage (nuage) — LE centre de pilotage. Trois onglets depuis le 2026-10-23 (Accueil, Détails, Réglages). */
 :root {
   color-scheme: dark;
   --fond: #0b0912;
@@ -176,7 +176,21 @@ a { color: var(--accent); }
 .mini-graphe span { flex: 1; background: var(--accent-plein); border-radius: 2px 2px 0 0; min-height: 2px; }
 .mini-graphe span.zero { background: var(--ligne); }
 .repli p { margin: 6px 14px; }
-.carte-actions .btn-reparer { background: var(--accent-plein); border-color: var(--accent-plein); color: #fff; }
+.carte-actions .btn-principal { background: var(--accent-plein); border-color: var(--accent-plein); color: #fff; }
 
 /* Protection automatique (2026-10-11) : champs des réglages distants. 16 px : iOS ne zoome pas. */
 .champ { font: inherit; font-size: 16px; min-height: 44px; border-radius: 12px; border: 1px solid var(--ligne); background: var(--carte2); color: var(--texte); padding: 0 12px; box-sizing: border-box; width: 100%; }
+
+/* ─── Pilotage simple (2026-10-23) ─────────────────────────────────── */
+.barre.trois { grid-template-columns: repeat(3, 1fr); }
+.compteur { display: inline-block; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 6px; border-radius: 10px;
+  background: var(--rouge); color: #fff; font-size: 12px; line-height: 20px; text-align: center; letter-spacing: 0; vertical-align: 1px; }
+.chiffre small.tendance { display: block; font-size: 12px; margin-top: 6px; color: var(--discret); overflow-wrap: anywhere; }
+.chiffre small.tendance.bon { color: var(--vert); }
+.chiffre small.tendance.mauvais { color: var(--rouge); }
+.carte p.quand { font-size: 12px; margin-top: 4px; }
+.carte .chiffres { margin-top: 10px; }
+/* Données périmées : une lecture a échoué, l'écran le dit au lieu de montrer un vieux vert. */
+.bandeau-perime { margin: 10px 0 0; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--orange);
+  background: color-mix(in srgb, var(--orange) 12%, var(--carte)); font-size: 14px; color: var(--texte); }
+.verdict.perime { opacity: .6; filter: grayscale(.6); }

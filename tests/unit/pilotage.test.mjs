@@ -323,3 +323,183 @@ test("㉒ aveugle : jugé contre le mur que rend pilotage_audience (anciens sous
   // Un plafond absurde (0, négatif) ne rend pas tout aveugle : retour à PLAFONDS.
   assert.equal(estAveugle({ saturationAveugle: 10, saturationPlafond: 0 }), false);
 });
+
+// ─── Pilotage simple (2026-10-23) ────────────────────────────────────────────
+// Mesuré le 2026-10-22 de 15 h à 17 h : le voyant mémorisé par la veille a
+// basculé QUATORZE fois d'orange à vert alors que l'enquête de veille #627 est
+// restée ouverte — chaque vert était une lecture GitHub manquée. MUTATIONS
+// éprouvées : laisser `tenirVerdict` baisser le voyant → ㉓ rougit ; le retirer
+// de la veille → ㉔ rougit ; rendre un vert sur une lecture incomplète dans
+// `verdictAffiche` → ㉕ rougit.
+import { tenirVerdict, verdictAffiche, sourcesManquantes, tendance, fenetreMiseEnLigne, aFaire, compteCree, compteMesurable } from "../../supabase/functions/_shared/pilotage.js";
+
+test("㉓ tenirVerdict : une lecture incomplète ne fait jamais BAISSER le voyant, mais peut le monter", () => {
+  const orange = { couleur: "orange", raisons: ["la veille signale un problème"] };
+  const rouge = { couleur: "rouge", raisons: ["1 sujet(s) qui t'attendent"], alerteLe: "2026-10-22T10:00:00Z" };
+  const vert = { couleur: "vert", titre: "Tout va bien", raisons: ["Aucune erreur récente, rien d'urgent."] };
+  // Le cas mesuré : orange (issue de veille), puis lecture GitHub ratée → « vert ».
+  const t = tenirVerdict(orange, vert, true);
+  assert.equal(t.couleur, "orange"); assert.equal(t.tenu, true);
+  assert.deepEqual(t.raisons, orange.raisons, "les raisons d'avant restent : elles n'ont pas été démenties");
+  // Le rouge tenu ne sonne pas « Problème résolu ».
+  const r = tenirVerdict(rouge, vert, true);
+  assert.equal(r.couleur, "rouge");
+  assert.equal(decideAlerte(rouge, { couleur: r.couleur, dispo: true }, Date.parse("2026-10-22T11:00:00Z")).sonner, false);
+  // Ce qui a pu être lu suffit à MONTER : 12 erreurs en 15 min passent, GitHub lu ou non.
+  const monte = tenirVerdict(orange, { couleur: "rouge", raisons: ["12 erreurs dans l'app en 15 min"] }, true);
+  assert.equal(monte.couleur, "rouge"); assert.equal(monte.tenu, undefined);
+  // Lecture complète : on croit la lecture, même si elle baisse.
+  assert.equal(tenirVerdict(rouge, vert, false).couleur, "vert");
+  // Rien de mémorisé, ou un gris mémorisé : rien à tenir.
+  assert.equal(tenirVerdict(null, vert, true).couleur, "vert");
+  assert.equal(tenirVerdict({ couleur: "gris" }, vert, true).couleur, "vert");
+  // Un gris (production illisible) ne remplace pas un état connu.
+  assert.equal(tenirVerdict(orange, { couleur: "gris", raisons: [] }, true).couleur, "orange");
+});
+
+test("㉔ la veille tient le voyant AVANT de décider l'alerte ; l'écran passe par verdictAffiche et aFaire", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  assert.match(v, /const incomplet = \[sante, signalements, github\]\.some\(\(r\) => r\.status === "rejected"\);/);
+  assert.match(v, /const vt = tenirVerdict\(prec, v, incomplet\);/);
+  assert.match(v, /const actuel = \{ couleur: vt\.couleur, raisons: vt\.raisons,/);
+  assert.ok(v.indexOf("tenirVerdict(") < v.indexOf("decideAlerte("), "le voyant est tenu avant que l'alerte ne décide");
+  const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));
+  assert.match(et, /out\.verdict = verdictAffiche\(v, nonLus\);/);
+  assert.match(et, /out\.aFaire = aFaire\(out\);/);
+  assert.ok(et.indexOf("out.aFaire =") > et.indexOf("out.verdict ="), "la liste voit l'état complet");
+  assert.match(fn, /x-ratelimit-remaining/, "un refus de GitHub dit s'il vient de la limite de lecture");
+});
+
+test("㉕ verdictAffiche : jamais de vert sur une lecture incomplète, et ce qui manque est nommé", () => {
+  const vert = { couleur: "vert", titre: "Tout va bien", raisons: ["Aucune erreur récente, rien d'urgent."] };
+  assert.equal(verdictAffiche(vert, []), vert);
+  assert.equal(verdictAffiche(vert, ["capacite", "historique"]), vert, "une partie qui ne juge pas le voyant ne le change pas");
+  const a = verdictAffiche(vert, ["github"]);
+  assert.equal(a.couleur, "orange"); assert.equal(a.incomplet, true);
+  assert.match(a.raisons.join(" "), /non lu : GitHub/);
+  const r = verdictAffiche({ couleur: "rouge", titre: "Problème en cours", raisons: ["12 erreurs"] }, ["signalements", "github"]);
+  assert.equal(r.couleur, "rouge");
+  assert.deepEqual(r.raisons, ["12 erreurs", "non lu : GitHub (enquêtes, mises en ligne), signalements"]);
+  const g = verdictAffiche({ couleur: "gris", titre: "Pas de nouvelles", raisons: ["La production n'a pas pu être lue."] }, ["sante"]);
+  assert.equal(g.couleur, "gris"); assert.deepEqual(g.raisons, ["non lu : erreurs de l'app"]);
+  assert.deepEqual(sourcesManquantes(["constructor", "sante", null]), ["erreurs de l'app"]);
+});
+
+test("㉖ tendance : sens, bonne ou mauvaise nouvelle, jamais de faux « stable » sur une valeur absente", () => {
+  assert.deepEqual(tendance(12, 8, true), { actuel: 12, precedent: 8, delta: 4, sens: "hausse", bon: true, pct: 50 });
+  assert.equal(tendance(12, 8, false).bon, false, "plus d'erreurs est une mauvaise nouvelle");
+  assert.equal(tendance(3, 9, false).bon, true);
+  assert.equal(tendance(5, 5).sens, "stable"); assert.equal(tendance(5, 5).bon, null);
+  assert.equal(tendance(4, 0).pct, null, "pas de pourcentage sur une base nulle");
+  assert.equal(tendance(null, 3), null); assert.equal(tendance(3, undefined), null); assert.equal(tendance("x", 3), null);
+});
+
+test("㉗ fenetreMiseEnLigne : seule une mise en ligne RÉUSSIE ouvre une fenêtre, bornée à 7 jours", () => {
+  const t = Date.parse("2026-10-23T12:00:00Z");
+  const f = fenetreMiseEnLigne({ conclusion: "success", le: "2026-10-23T09:00:00Z" }, t);
+  assert.equal(f.depuis, "2026-10-23T09:00:00.000Z"); assert.equal(f.avantDebut, "2026-10-23T06:00:00.000Z"); assert.equal(f.dureeMs, 3 * 3600e3);
+  const vieux = fenetreMiseEnLigne({ conclusion: "success", le: "2026-09-01T00:00:00Z" }, t);
+  assert.equal(vieux.dureeMs, 7 * 864e5, "au-delà de 7 jours, la fenêtre est bornée");
+  assert.equal(fenetreMiseEnLigne({ conclusion: "failure", le: "2026-10-23T09:00:00Z" }, t), null, "un déploiement en échec n'a rien mis en ligne");
+  assert.equal(fenetreMiseEnLigne({ conclusion: "success", le: "pas une date" }, t), null);
+  assert.equal(fenetreMiseEnLigne({ conclusion: "success", le: "2026-10-24T00:00:00Z" }, t), null, "une date future n'ouvre rien");
+  assert.equal(fenetreMiseEnLigne(null, t), null);
+});
+
+test("㉘ compteCree : les exclusions de compteMesurable, sauf la confirmation", () => {
+  const ok = { id: "u1", email: "lea@exemple.fr", created_at: "2026-10-20T00:00:00Z" };
+  assert.equal(compteCree(ok), true);
+  assert.equal(compteMesurable(ok), false, "non confirmé : créé, pas encore mesurable");
+  assert.equal(compteMesurable({ ...ok, email_confirmed_at: "2026-10-20T01:00:00Z" }), true);
+  assert.equal(compteCree({ ...ok, email: "x@passio-e2e.test" }), false);
+  assert.equal(compteCree({ ...ok, email: COMPTE_PILOTE }), false);
+  assert.equal(compteCree({ ...ok, is_anonymous: true }), false);
+  assert.equal(compteCree({ ...ok, deleted_at: "2026-10-21T00:00:00Z" }), false);
+  assert.equal(compteCree(null), false);
+});
+
+// Un état complet, tel que l'écran le reçoit.
+const MAINTENANT_AF = Date.parse("2026-10-23T12:00:00Z");
+const HOSTILE = '<img src=x onerror="alert(1)">';
+const etatAF = (extra = {}) => ({
+  gestesGithub: true,
+  disponibilite: { repond: true },
+  github: {
+    issues: [
+      iss(627, ["veille"], { depuis: "2026-10-22T11:31:07Z" }),
+      iss(12, ["sentinelle", "humain"], { titre: HOSTILE, url: "javascript:alert(1)", depuis: "2026-10-23T08:00:00Z" }),
+      iss(13, ["sentinelle"]),
+      iss(629, ["digest"]),
+      iss(700, [], { pr: true, titre: "fix: correctif" }),
+      iss(601, ["reparation"], { titre: "[RÉPARER] #627" }),
+      iss(5, ["moderation", "humain"]),
+    ],
+    runs: { deploy: { conclusion: "failure", url: "https://github.com/P/p/actions/runs/9" } },
+    aReparer: [
+      { cible: "issue", numero: 627, libelle: "#627", url: null, enCours: 601 },
+      { cible: "issue", numero: 12, libelle: "#12", url: null, enCours: null },
+      { cible: "run", cle: "deploy", libelle: "Déploiement en échec", url: "https://github.com/P/p/actions/runs/9", enCours: null },
+    ],
+  },
+  signalements: { ouverts: 1, liste: [{ id: "rep_1", type: "post", motif: HOSTILE, le: "2026-10-23T10:00:00Z" }] },
+  erreurs: { details: [
+    { message: HOSTILE, n: 3, comptes: 2, dernier: "2026-10-23T11:00:00Z" },
+    { message: "ancienne", n: 40, comptes: 9, dernier: "2026-10-20T11:00:00Z" },
+  ] },
+  capacite: { jauges: [{ cle: "base", libelle: "Base de données", pct: 93.5, couleur: "rouge" }, { cle: "emails", libelle: "E-mails", pct: 10, couleur: "vert" }] },
+  alertes: { appareils: 0 },
+  reglages: { absente: false, delestage: { niveau: 1, pose_par: "veille" }, coupures: { cles: [] }, bandeau: { texte: HOSTILE, niveau: "info" } },
+  autonomie: { retour: { mode: "proposer", jeton: true, proposition: { le: "2026-10-23T11:30:00Z", version: "aaaa1111bbbb", comptes: 6, famille: HOSTILE } } },
+  nonLus: [],
+  ...extra,
+});
+
+test("㉙ aFaire : UNE liste triée par urgence — site, retour arrière, échecs, À toi, puis à traiter, puis pour info", () => {
+  const l = aFaire(etatAF(), MAINTENANT_AF);
+  const ids = l.map((x) => x.id);
+  assert.deepEqual(l.filter((x) => x.prio === 0).map((x) => x.id).sort(), ["capacite:base", "issue:12", "retour:aaaa1111", "run:deploy"].sort());
+  assert.ok(l.every((x, i) => i === 0 || l[i - 1].prio <= x.prio), "triée par priorité");
+  for (const id of ["issue:627", "pr:700", "signalement:rep_1", "erreur:0", "issue:5"]) assert.equal(l.find((x) => x.id === id).prio, 1, id);
+  for (const id of ["issue:13", "issue:629", "issue:601", "config:alertes", "protection:delestage", "protection:bandeau"]) assert.equal(l.find((x) => x.id === id).prio, 2, id);
+  assert.ok(!ids.includes("erreur:1"), "une erreur de plus de 24 h n'est plus à faire");
+  assert.ok(!ids.includes("capacite:emails"), "une jauge verte n'est pas à faire");
+  assert.ok(!ids.includes("config:jeton-github"), "jeton posé : rien à régler");
+  // Le site injoignable passe devant tout.
+  assert.equal(aFaire(etatAF({ disponibilite: { repond: false } }), MAINTENANT_AF)[0].id, "site");
+});
+
+test("㉚ aFaire : chaque geste est une demande EXACTE, jamais un texte de tiers dans une confirmation", () => {
+  const l = aFaire(etatAF(), MAINTENANT_AF);
+  const par = (id) => l.find((x) => x.id === id);
+  assert.deepEqual(par("issue:12").gestes.map((g) => g.corps), [{ action: "reparer", cible: "issue", numero: 12 }, { action: "fermer", numero: 12 }]);
+  assert.deepEqual(par("issue:627").gestes.map((g) => g.corps), [{ action: "fermer", numero: 627 }], "réparation déjà en cours : pas de second « Réparer »");
+  assert.match(par("issue:627").detail, /#601/);
+  assert.deepEqual(par("run:deploy").gestes.map((g) => g.corps), [{ action: "reparer", cible: "run", cle: "deploy" }]);
+  assert.deepEqual(par("pr:700").gestes.map((g) => g.corps), [{ action: "fusionner", numero: 700 }, { action: "fermer", numero: 700 }]);
+  assert.deepEqual(par("signalement:rep_1").gestes.map((g) => g.corps), [{ action: "signalement", id: "rep_1", statut: "handled" }, { action: "signalement", id: "rep_1", statut: "dismissed" }]);
+  assert.deepEqual(par("protection:bandeau").gestes.map((g) => g.corps), [{ action: "reglages", cle: "bandeau", valeur: null }]);
+  assert.deepEqual(par("retour:aaaa1111").gestes, [{ libelle: "Remettre la version précédente", principal: true, special: "retour" }]);
+  assert.deepEqual(par("issue:5").gestes.map((g) => g.corps), [{ action: "fermer", numero: 5 }], "la modération ne se confie jamais à Claude");
+  assert.deepEqual(par("erreur:0").gestes, [], "une enquête Sentinelle est ouverte : pas de relance");
+  for (const x of l) for (const g of x.gestes) assert.ok(!String(g.confirmation || "").includes("<img"), x.id + " : une confirmation ne cite jamais un texte de tiers");
+  // Un lien n'est jamais autre chose que github.com.
+  assert.equal(par("issue:12").url, null);
+  assert.equal(par("run:deploy").url, "https://github.com/P/p/actions/runs/9");
+  // Les textes de tiers sont transportés tels quels (la page les rend en TEXTE).
+  assert.match(par("issue:12").titre, /<img/);
+});
+
+test("㉛ aFaire sans jeton GitHub : aucun geste GitHub, le réglage à faire est dit ; GitHub illisible : dit, avec sa raison", () => {
+  const sans = aFaire(etatAF({ gestesGithub: false }), MAINTENANT_AF);
+  // Restent : les signalements et les réglages (la base), le retour arrière (Netlify).
+  for (const x of sans) for (const g of x.gestes) assert.ok(g.special === "retour" || ["signalement", "reglages"].includes(g.corps.action), x.id + " : geste GitHub sans jeton");
+  assert.ok(sans.find((x) => x.id === "config:jeton-github"));
+  assert.ok(sans.find((x) => x.id === "erreur:0").gestes.length === 0);
+  const illisible = aFaire(etatAF({ github: null, nonLus: ["github"], erreursLecture: { github: "GitHub HTTP 403 (limite de lecture atteinte, pas de jeton)" } }), MAINTENANT_AF);
+  const g = illisible.find((x) => x.id === "lecture:github");
+  assert.equal(g.prio, 1); assert.match(g.detail, /HTTP 403/);
+  // Sans GitHub, l'erreur récente devient confiable à la Sentinelle (aucune enquête connue).
+  assert.equal(illisible.find((x) => x.id === "erreur:0").gestes[0].corps.action, "relancer");
+  assert.deepEqual(aFaire(null), []);
+});

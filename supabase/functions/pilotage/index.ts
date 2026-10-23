@@ -33,6 +33,7 @@ import {
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
+  tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree,
 } from "../_shared/pilotage.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 import {
@@ -127,8 +128,14 @@ async function veille(admin: Admin) {
   // L'ALERTE D'ABORD : rien de ce qui suit (Netlify, GitHub, base) ne doit
   // pouvoir la retarder ni la faire taire.
   const v = verdict(e);
-  const actuel = { couleur: v.couleur, raisons: v.raisons, dispo: val(dispo) !== false };
   const prec = await lireEtatMemorise(admin);
+  // Une source illisible n'est pas une source calme (2026-10-23, tenirVerdict) :
+  // une lecture incomplète ne fait jamais BAISSER le voyant mémorisé — sinon
+  // une lecture GitHub manquée sonne « Problème résolu », et la suivante
+  // « Problème » de nouveau.
+  const incomplet = [sante, signalements, github].some((r) => r.status === "rejected");
+  const vt = tenirVerdict(prec, v, incomplet);
+  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false };
   const d = decideAlerte(prec, actuel);
   let envoyes = 0;
   if (d.sonner) envoyes = await sonnerPilote(admin, d.titre!, d.texte || "");
@@ -234,23 +241,47 @@ async function etat(admin: Admin) {
     sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), activation: lireActivation(admin), signalements: lireSignalements(admin),
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
     disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin), reglages: lireReglages(admin),
+    historique: lireHistorique(admin),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
   const out: Record<string, unknown> = { genereLe: new Date().toISOString() };
   const nonLus: string[] = [];
-  res.forEach((r, i) => { if (r.status === "fulfilled") out[noms[i]] = r.value; else { out[noms[i]] = null; nonLus.push(noms[i]); } });
+  // Pourquoi une partie n'a pas été lue, en une ligne bornée (codes HTTP,
+  // délais) : « Non lu » sans raison laissait le pilote deviner.
+  const erreursLecture: Record<string, string> = {};
+  res.forEach((r, i) => {
+    if (r.status === "fulfilled") out[noms[i]] = r.value;
+    else { out[noms[i]] = null; nonLus.push(noms[i]); erreursLecture[noms[i]] = String((r.reason && (r.reason as { message?: string }).message) || r.reason || "erreur").slice(0, 120); }
+  });
   out.nonLus = nonLus;
+  out.erreursLecture = erreursLecture;
   out.relancesPossibles = JETON_GH ? Object.entries(RELANCES).map(([cle, v]) => ({ cle, libelle: v.libelle })) : [];
   // Ce qui agit seul, et pourquoi c'est éteint quand ça l'est (_shared/autonomie.js).
   out.autonomie = { reveilSentinelle: !!JETON_GH, retour: { mode: MODE_RETOUR, jeton: !!JETON_NETLIFY, proposition: await lireProposition(admin) } };
   out.gestesGithub = !!JETON_GH;
   const maintenant = (out.utilisateurs as { maintenant?: Audience | null } | null)?.maintenant || null;
   out.aveugle = maintenant && maintenant.exact ? mesureAveugle(maintenant) : null;
+  // Les tendances (2026-10-23) : chaque chiffre contre sa période précédente,
+  // et les erreurs depuis la dernière mise en ligne contre la même durée avant.
+  const u = out.utilisateurs as { inscritsSemaine?: number; inscritsSemainePrec?: number } | null;
+  const er = out.erreurs as { total7?: number; total7Prec?: number } | null;
+  out.tendances = {
+    inscriptions: u ? tendance(u.inscritsSemaine, u.inscritsSemainePrec, true) : null,
+    erreurs: er ? tendance(er.total7, er.total7Prec, false) : null,
+  };
+  try { out.miseEnLigne = await lireMiseEnLigne(admin, out.github as { runs?: { deploy?: RunResume | null } } | null); }
+  catch (err) { out.miseEnLigne = null; nonLus.push("miseEnLigne"); erreursLecture.miseEnLigne = String((err as { message?: string })?.message || err).slice(0, 120); }
   const v = verdict(out as Parameters<typeof verdict>[0]);
   const dispo = out.disponibilite as { repond?: boolean } | null;
   if (dispo && dispo.repond === false) { v.couleur = "rouge"; v.titre = "Problème en cours"; v.raisons = ["le site ne répond pas", ...v.raisons.filter((x: string) => !/^Aucune/.test(x))]; }
-  out.verdict = v;
+  // Jamais de vert sans avoir tout lu : ce qui manque est dit (verdictAffiche).
+  out.verdict = verdictAffiche(v, nonLus);
+  // Ce qui attend le pilote, en UNE liste triée par urgence (_shared/pilotage.js).
+  // Une liste qui ne se construit pas n'emporte pas le reste : la page dit alors
+  // « Liste indisponible », jamais « Rien à faire ».
+  try { out.aFaire = aFaire(out); }
+  catch (err) { out.aFaire = null; nonLus.push("aFaire"); erreursLecture.aFaire = String((err as { message?: string })?.message || err).slice(0, 120); }
   return out;
 }
 
@@ -285,14 +316,49 @@ async function lireSante(admin: Admin) {
 }
 
 async function lireErreurs7j(admin: Admin) {
-  const [{ data, error }, serie] = await Promise.all([
+  const erreurs = () => admin.from("client_errors").select("id", { count: "exact", head: true });
+  const [{ data, error }, serie, total7, total7Prec] = await Promise.all([
     admin.from("client_errors").select("message,uid,created_at,ua,url").gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(1000),
-    serieComptee((debut, fin) => admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", debut).lt("created_at", fin)),
+    serieComptee((debut, fin) => erreurs().gte("created_at", debut).lt("created_at", fin)),
+    // La tendance (2026-10-23) : 7 jours glissants contre les 7 d'avant, comptés
+    // en base (`purge_client_errors` garde 30 jours : les deux fenêtres existent).
+    compter(erreurs().gte("created_at", ilYa(7 * 864e5))),
+    compter(erreurs().gte("created_at", ilYa(14 * 864e5)).lt("created_at", ilYa(7 * 864e5))),
   ]);
   if (error) throw error;
   // Les DÉTAILS portent sur les 1 000 plus récentes (et le disent) ; la SÉRIE
   // est comptée jour par jour en base, jamais déduite d'une liste tronquée.
-  return { serie, details: detailsErreurs(data || []), detailsPartiels: (data || []).length >= MAX_LIGNES_POSTGREST };
+  return { serie, total7, total7Prec, details: detailsErreurs(data || []), detailsPartiels: (data || []).length >= MAX_LIGNES_POSTGREST };
+}
+
+// Les erreurs depuis la dernière mise en ligne RÉUSSIE, contre la même durée
+// juste avant (fenetreMiseEnLigne, bornée à 7 jours). Sans GitHub lisible, la
+// date de mise en ligne est inconnue : rien n'est compté, et c'est dit.
+type RunResume = { etat?: string | null; conclusion?: string | null; le?: string | null };
+async function lireMiseEnLigne(admin: Admin, etatGh: { runs?: { deploy?: RunResume | null } } | null) {
+  const run = etatGh && etatGh.runs ? etatGh.runs.deploy || null : null;
+  const f = fenetreMiseEnLigne(run);
+  if (!f) return { le: null, etat: run ? (run.etat !== "completed" ? "en_cours" : run.conclusion || "inconnu") : "inconnu" };
+  const erreurs = () => admin.from("client_errors").select("id", { count: "exact", head: true });
+  const [apres, avant] = await Promise.all([
+    compter(erreurs().gte("created_at", f.depuis)),
+    compter(erreurs().gte("created_at", f.avantDebut).lt("created_at", f.depuis)),
+  ]);
+  return { le: f.le, etat: "ok", dureeMs: f.dureeMs, apres, avant, tendance: tendance(apres, avant, false) };
+}
+
+// Ce qui s'est passé (2026-10-23) : les derniers CHANGEMENTS du voyant notés par
+// la veille (7 jours). Des raisons écrites par cette fonction, jamais un texte
+// de tiers ; bornées quand même.
+async function lireHistorique(admin: Admin) {
+  const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", "pilotage_etat")
+    .eq("user_id", "systeme:pilotage").gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(12);
+  if (error) throw error;
+  return (data || []).map((r) => {
+    const p = (r.properties || {}) as { couleur?: unknown; dispo?: unknown; raisons?: unknown };
+    const couleur = ["vert", "orange", "rouge", "gris"].includes(String(p.couleur)) ? String(p.couleur) : "gris";
+    return { le: r.created_at, couleur, dispo: p.dispo !== false, raisons: (Array.isArray(p.raisons) ? p.raisons : []).slice(0, 3).map((x) => String(x).slice(0, 160)) };
+  });
 }
 
 async function lireUtilisateurs(admin: Admin) {
@@ -301,10 +367,12 @@ async function lireUtilisateurs(admin: Admin) {
   // PostgREST) : au-delà de 1 000 inscriptions par semaine, le téléphone
   // affichait 1 000, et la série du jour en perdait — sans un mot.
   const profils = () => admin.from("profiles").select("id", { count: "exact", head: true });
-  const [total, jour, semaine, serieInscriptions] = await Promise.all([
+  const [total, jour, semaine, semainePrec, serieInscriptions] = await Promise.all([
     compter(profils()),
     compter(profils().gte("created_at", ilYa(864e5))),
     compter(profils().gte("created_at", ilYa(7 * 864e5))),
+    // La semaine d'avant (2026-10-23) : la tendance des inscriptions.
+    compter(profils().gte("created_at", ilYa(14 * 864e5)).lt("created_at", ilYa(7 * 864e5))),
     serieComptee((debut, fin) => profils().gte("created_at", debut).lt("created_at", fin)),
   ]);
   // Le PUBLIC seulement (2026-10-05) : robots, émulations et appareils de
@@ -316,7 +384,7 @@ async function lireUtilisateurs(admin: Admin) {
   // les inscriptions et la fenêtre de 5 min.
   const [m5, j24] = await Promise.allSettled([audience(admin, 300), audience(admin, 86400)]);
   const maintenant = m5.status === "fulfilled" ? m5.value : null, aujourdhui = j24.status === "fulfilled" ? j24.value : null;
-  return { total, inscritsJour: jour, inscritsSemaine: semaine, serieInscriptions, maintenant, aujourdhui };
+  return { total, inscritsJour: jour, inscritsSemaine: semaine, inscritsSemainePrec: semainePrec, serieInscriptions, maintenant, aujourdhui };
 }
 
 // Série « par jour » COMPTÉE en base (7 requêtes HEAD), mêmes jours que
@@ -656,11 +724,18 @@ async function lireActivation(admin: Admin) {
   const maintenant = Date.now();
   const depuis = maintenant - COHORTE_ACTIVATION_JOURS * 864e5;
   const comptes: { id: string; cree: string }[] = [];
+  // L'entonnoir (2026-10-23) : comptes CRÉÉS sur la même fenêtre, confirmés ou
+  // non (compteCree) — l'écart avec la cohorte est ce que la confirmation perd.
+  let crees = 0;
   for (let page = 1; page <= 20; page++) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) throw error;
     const lot = (data && data.users) || [];
-    for (const u of lot) if (compteMesurable(u, EXTRA) && dateUtc(u.created_at) >= depuis) comptes.push({ id: u.id, cree: u.created_at });
+    for (const u of lot) {
+      if (dateUtc(u.created_at) < depuis) continue;
+      if (compteCree(u, EXTRA)) crees++;
+      if (compteMesurable(u, EXTRA)) comptes.push({ id: u.id, cree: u.created_at });
+    }
     if (lot.length < 1000) break;
   }
   // ⚠️ À L'ÉCHELLE (2026-10-11) : `.in(uid, ids)` met chaque identifiant dans
@@ -690,7 +765,7 @@ async function lireActivation(admin: Admin) {
     }));
     for (const l of lots) gestes.push(...l);
   }
-  return { ...activation(pris, gestes, maintenant), echantillon: sur > ECHANTILLON_MAX ? { sur, pris: pris.length } : null, partiel };
+  return { ...activation(pris, gestes, maintenant), echantillon: sur > ECHANTILLON_MAX ? { sur, pris: pris.length } : null, partiel, crees };
 }
 
 async function lireSignalements(admin: Admin) {
@@ -747,7 +822,10 @@ async function lireGithub() {
   // 2 min dans l'isolat (un bonus quand il survit, jamais une garantie).
   if (cacheGh && Date.now() - cacheGh.at < 120e3) return cacheGh.val;
   const res = await gh(`/repos/${DEPOT}/issues?state=open&per_page=50`);
-  if (!res.ok) throw new Error("GitHub HTTP " + res.status);
+  // La raison d'un refus est dite au pilote (erreursLecture) : sans jeton,
+  // GitHub accorde 60 lectures par heure à une adresse PARTAGÉE avec d'autres
+  // projets — c'est ce qui rendait la veille aveugle par moments.
+  if (!res.ok) throw new Error("GitHub HTTP " + res.status + (res.headers.get("x-ratelimit-remaining") === "0" ? " (limite de lecture atteinte" + (JETON_GH ? ")" : ", pas de jeton)") : ""));
   const brut = await res.json();
   // Seule une pause ouverte par le PILOTE compte (sentinelle-autonome.yml :
   // `--author PASSIO74`) : le dépôt est public, n'importe qui ouvre une issue.
@@ -760,7 +838,8 @@ async function lireGithub() {
     return resumerRun(j && j.workflow_runs && j.workflow_runs[0]);
   };
   const [sentinelle, veille, deploy] = await Promise.all([run("sentinelle-autonome.yml"), run("veille-production.yml"), run("deploy.yml")]);
-  const val: Record<string, unknown> = { issues, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause) };
+  // `luLe` : l'heure de CETTE lecture — la réponse peut sortir du cache (2 min).
+  const val: Record<string, unknown> = { issues, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString() };
   val.aReparer = aReparer(val);
   cacheGh = { at: Date.now(), val };
   return val;
