@@ -12067,3 +12067,52 @@ button, a, label, select, summary,
   :root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   :root.passio-ui-4a5 .v4a5-bloc-titre { font-size: 16px; }
 }
+
+/* ── Créer un compte, visible dès l'arrivée d'un visiteur (2026-10-23) ─────
+   Le bouton de la barre du haut n'existe que pour `:root.passio-first-run`
+   (mode invité) : un compte existant, ou la première visite coupée, ne le
+   voient jamais. */
+.topbar-signup { display: none; }
+:root.passio-first-run .topbar-signup {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+}
+/* Cible tactile de 44 px sans grossir la pastille. */
+:root.passio-first-run .topbar-signup::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+/* Petit ecran : le nom a cote du logo cede la place au bouton (mesure a
+   360 px : la pastille chevauchait « PASSIO »). Le logo reste. */
+@media (max-width: 440px) {
+  :root.passio-first-run .app-topbar .brand-text,
+  :root.passio-first-run .app-topbar .beta-chip { display: none; }
+}
+@media (max-width: 340px) {
+  :root.passio-first-run .topbar-signup { padding: 0 10px; font-size: 12px; }
+}
+.fr-welcome-signup {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 800;
+}
+.fr-welcome-signup + .fr-welcome-signin { margin-top: 2px; }
