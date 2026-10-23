@@ -33,7 +33,7 @@ import {
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
-  tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree,
+  tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
 } from "../_shared/pilotage.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 import {
@@ -726,14 +726,19 @@ async function lireActivation(admin: Admin) {
   const comptes: { id: string; cree: string }[] = [];
   // L'entonnoir (2026-10-23) : comptes CRÉÉS sur la même fenêtre, confirmés ou
   // non (compteCree) — l'écart avec la cohorte est ce que la confirmation perd.
+  // Les mêmes comptes, par leur NOM, sont la liste « Nouveaux comptes ».
   let crees = 0;
+  const recents: { id: string; cree: string; confirme: boolean; voie: string }[] = [];
   for (let page = 1; page <= 20; page++) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) throw error;
     const lot = (data && data.users) || [];
     for (const u of lot) {
       if (dateUtc(u.created_at) < depuis) continue;
-      if (compteCree(u, EXTRA)) crees++;
+      if (compteCree(u, EXTRA)) {
+        crees++;
+        recents.push({ id: u.id, cree: u.created_at, confirme: !!(u.email_confirmed_at || u.confirmed_at), voie: String((u.app_metadata && u.app_metadata.provider) || "") });
+      }
       if (compteMesurable(u, EXTRA)) comptes.push({ id: u.id, cree: u.created_at });
     }
     if (lot.length < 1000) break;
@@ -765,7 +770,17 @@ async function lireActivation(admin: Admin) {
     }));
     for (const l of lots) gestes.push(...l);
   }
-  return { ...activation(pris, gestes, maintenant), echantillon: sur > ECHANTILLON_MAX ? { sur, pris: pris.length } : null, partiel, crees };
+  // Les noms des derniers comptes créés (30 au plus, donc 30 identifiants dans
+  // l'URL) : `username` seulement — jamais l'e-mail. Lecture ratée : la liste
+  // part sans les noms et le DIT (`nomLu: false`), elle n'emporte pas le reste.
+  const derniers = [...recents].sort((x, y) => dateUtc(y.cree) - dateUtc(x.cree)).slice(0, COMPTES_RECENTS_MAX);
+  let profils: { id: string; username: string | null }[] = [], nomsLus = true;
+  if (derniers.length) {
+    const { data: pr, error: ep } = await admin.from("profiles").select("id,username").in("id", derniers.map((c) => c.id));
+    if (ep) nomsLus = false; else profils = (pr || []) as { id: string; username: string | null }[];
+  }
+  const nouveaux = comptesRecents(derniers, profils, { nomsLus, avecGeste: new Set(gestes.map((g) => g.uid)), mesures: new Set(pris.map((c) => String(c.id))) });
+  return { ...activation(pris, gestes, maintenant), echantillon: sur > ECHANTILLON_MAX ? { sur, pris: pris.length } : null, partiel, crees, nouveaux };
 }
 
 async function lireSignalements(admin: Admin) {

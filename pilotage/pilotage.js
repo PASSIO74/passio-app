@@ -197,6 +197,7 @@
     $("verdictDetail").textContent = (v.raisons || []).slice(0, 3).join(" · ");
     rendreAFaire(d);
     rendreChiffres(d);
+    rendreNouveauxComptes(d);
     rendreSite(d);
     rendreErreurs(d);
     rendreUtilisateurs(d);
@@ -262,6 +263,60 @@
     } else if (mel && mel.etat === "en_cours") ch.append(chiffre("…", "mise en ligne en cours"));
     else if (mel && mel.etat === "failure") ch.append(chiffre("Échec", "dernière mise en ligne", "rouge"));
     else ch.append(chiffre(null, "erreurs depuis la mise en ligne", null, { texte: "date de mise en ligne inconnue" }));
+  }
+
+  // Les comptes créés, par leur NOM (2026-10-23) : le nom choisi dans l'app,
+  // jamais l'e-mail (_shared/pilotage.js, comptesRecents). Écrit par la
+  // personne : rendu en TEXTE. Accueil : les 5 derniers ; Détails : tous (30).
+  const ACCUEIL_COMPTES = 5;
+  function listeComptes(liste) {
+    const c = el("article", "carte");
+    const ul = el("ul", "liste-comptes");
+    liste.forEach((x) => {
+      const li = el("li", "compte");
+      const tete = el("div", "compte-tete");
+      tete.append(x.nom ? el("span", "compte-nom", x.nom) : el("span", "compte-nom sans-nom", x.nomLu === false ? "Nom non lu" : "Profil pas encore rempli"));
+      tete.append(el("span", "compte-quand", ilYA(x.cree)));
+      li.append(tete);
+      const det = el("p", "compte-detail");
+      const morceaux = [];
+      if (x.voie) morceaux.push(el("span", null, x.voie === "e-mail" ? "par e-mail" : "par " + x.voie));
+      if (!x.confirme) morceaux.push(el("span", "orange", "e-mail pas encore confirmé"));
+      if (x.actif === true) morceaux.push(el("span", "vert", "a fait un geste"));
+      else if (x.actif === false) morceaux.push(el("span", null, "aucun geste pour l'instant"));
+      morceaux.forEach((m, i) => { if (i) det.append(document.createTextNode(" · ")); det.append(m); });
+      if (morceaux.length) li.append(det);
+      ul.append(li);
+    });
+    c.append(ul);
+    return c;
+  }
+  function rendreNouveauxComptes(d) {
+    const acc = vider("nouveauxComptes"), tout = vider("comptesCrees");
+    const act = d.activation;
+    if (!act) { nonLu("nouveauxComptes", "Nouveaux comptes", "activation"); nonLu("comptesCrees", "Comptes créés", "activation"); return; }
+    if (!Array.isArray(act.nouveaux)) {
+      const texte = "La fonction « pilotage » n'a pas rendu la liste des comptes : elle n'est sans doute pas encore à jour.";
+      acc.append(carte("Liste indisponible", "Non lu", texte, "gris"));
+      tout.append(carte("Liste indisponible", "Non lu", texte, "gris"));
+      return;
+    }
+    const l = act.nouveaux;
+    if (!l.length) {
+      acc.append(carte("Aucun compte créé ces 30 derniers jours", "", "", ""));
+      tout.append(carte("Aucun compte créé ces 30 derniers jours", "", "Comptes de test et compte de l'éditeur exclus.", ""));
+      return;
+    }
+    const carteAccueil = listeComptes(l.slice(0, ACCUEIL_COMPTES));
+    if (l.length > ACCUEIL_COMPTES) {
+      const b = el("button", "btn", "Voir les " + l.length + " comptes"); b.type = "button";
+      b.addEventListener("click", () => { onglet("details"); const t = $("titreComptesCrees"); if (t && t.scrollIntoView) t.scrollIntoView({ block: "start" }); });
+      actions(carteAccueil).append(b);
+    }
+    acc.append(carteAccueil);
+    tout.append(listeComptes(l));
+    if (l.length >= 30) tout.append(el("p", "discret", "Les 30 plus récents. Comptes de test et compte de l'éditeur exclus."));
+    else tout.append(el("p", "discret", "Comptes de test et compte de l'éditeur exclus."));
   }
 
   function rendreSite(d) {

@@ -503,3 +503,53 @@ test("㉛ aFaire sans jeton GitHub : aucun geste GitHub, le réglage à faire es
   assert.equal(illisible.find((x) => x.id === "erreur:0").gestes[0].corps.action, "relancer");
   assert.deepEqual(aFaire(null), []);
 });
+
+// ─── Les comptes créés, par leur nom (2026-10-23) ───────────────────────────
+// Demande de Benjamin : voir sur le téléphone QUI s'est inscrit. MUTATIONS
+// éprouvées : rendre l'identifiant ou l'e-mail dans la liste → ㉜ rougit ;
+// prendre une lecture de noms ratée pour « profil pas rempli » → ㉜ rougit ;
+// lire `email` dans la fonction → ㉝ rougit.
+import { comptesRecents, COMPTES_RECENTS_MAX } from "../../supabase/functions/_shared/pilotage.js";
+
+test("㉜ comptesRecents : le NOM seul (jamais l'e-mail ni l'identifiant), les plus récents d'abord, bornés", () => {
+  const recents = [
+    { id: "u1", cree: "2026-10-20T10:00:00Z", confirme: true, voie: "google", email: "lea@exemple.fr" },
+    { id: "u2", cree: "2026-10-22T10:00:00Z", confirme: false, voie: "email" },
+    { id: "u3", cree: "2026-10-21 10:00:00", confirme: true, voie: "apple" },   // timestamp sans fuseau = UTC
+    { id: "u4", cree: "pas une date", confirme: true, voie: "email" },
+  ];
+  const profils = [{ id: "u1", username: "Léa".padEnd(80, "a") }, { id: "u3", username: '<img src=x onerror="alert(1)">' }];
+  const l = comptesRecents(recents, profils, { avecGeste: new Set(["u1"]), mesures: new Set(["u1", "u3"]) });
+  assert.deepEqual(l.map((x) => x.cree), ["2026-10-22T10:00:00.000Z", "2026-10-21T10:00:00.000Z", "2026-10-20T10:00:00.000Z"], "triés, date illisible écartée");
+  assert.deepEqual(l[0], { nom: null, nomLu: true, cree: "2026-10-22T10:00:00.000Z", confirme: false, voie: "e-mail", actif: null });
+  assert.equal(l[1].nom, '<img src=x onerror="alert(1)">', "transporté tel quel : la page le rend en TEXTE");
+  assert.equal(l[1].voie, "autre"); assert.equal(l[1].actif, false);
+  assert.ok(l[2].nom.length <= 61 && l[2].nom.startsWith("Léa"), "nom borné"); assert.equal(l[2].voie, "Google"); assert.equal(l[2].actif, true);
+  for (const x of l) {
+    assert.deepEqual(Object.keys(x).sort(), ["actif", "confirme", "cree", "nom", "nomLu", "voie"], "ni identifiant ni e-mail ne sortent");
+    assert.ok(!JSON.stringify(x).includes("@"), "aucune adresse");
+  }
+  // Noms illisibles : dit (`nomLu: false`), jamais un faux « profil pas rempli ».
+  const sans = comptesRecents(recents, [], { nomsLus: false });
+  assert.ok(sans.every((x) => x.nom === null && x.nomLu === false));
+  // Au plus COMPTES_RECENTS_MAX.
+  const beaucoup = Array.from({ length: 50 }, (_, i) => ({ id: "x" + i, cree: new Date(Date.UTC(2026, 9, 1) + i * 3600e3).toISOString(), confirme: true, voie: "email" }));
+  const b = comptesRecents(beaucoup, []);
+  assert.equal(b.length, COMPTES_RECENTS_MAX);
+  assert.equal(b[0].cree, beaucoup[49].cree, "le plus récent en tête");
+  assert.deepEqual(comptesRecents(null, null), []);
+});
+
+test("㉝ la fonction lit `id,username` des profils des derniers comptes — jamais `email` — et rend `nouveaux`", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const a = fn.slice(fn.indexOf("async function lireActivation"), fn.indexOf("async function lireSignalements"));
+  assert.match(a, /admin\.from\("profiles"\)\.select\("id,username"\)\.in\("id", derniers\.map\(\(c\) => c\.id\)\)/);
+  assert.match(a, /\.slice\(0, COMPTES_RECENTS_MAX\)/, "30 identifiants au plus dans l'URL");
+  assert.match(a, /if \(compteCree\(u, EXTRA\)\) \{/, "mêmes exclusions que l'entonnoir");
+  assert.match(a, /partiel, crees, nouveaux \};/);
+  assert.doesNotMatch(a, /email:|\.email\b(?!_confirmed_at)/, "aucune adresse e-mail ne sort de la lecture");
+  const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
+  const rendu = page.slice(page.indexOf("function listeComptes"), page.indexOf("function rendreSite"));
+  assert.doesNotMatch(rendu, /innerHTML|insertAdjacentHTML|outerHTML/, "les noms passent par textContent");
+  assert.match(rendu, /el\("span", "compte-nom", x\.nom\)/);
+});

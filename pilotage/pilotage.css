@@ -194,3 +194,15 @@ a { color: var(--accent); }
 .bandeau-perime { margin: 10px 0 0; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--orange);
   background: color-mix(in srgb, var(--orange) 12%, var(--carte)); font-size: 14px; color: var(--texte); }
 .verdict.perime { opacity: .6; filter: grayscale(.6); }
+/* Nouveaux comptes (2026-10-23) : une liste compacte, un nom par ligne. */
+.liste-comptes { list-style: none; margin: 0; padding: 0; display: grid; }
+.liste-comptes .compte { padding: 10px 0; border-top: 1px solid var(--ligne); min-width: 0; }
+.liste-comptes .compte:first-child { border-top: 0; padding-top: 0; }
+.liste-comptes .compte:last-child { padding-bottom: 0; }
+.compte-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.compte-nom { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; min-width: 0; }
+.compte-nom.sans-nom { font-weight: 600; font-style: italic; color: var(--discret); }
+.compte-quand { flex: none; font-size: 12px; color: var(--discret); }
+.carte p.compte-detail { margin-top: 3px; font-size: 13px; }
+.compte-detail .orange { color: var(--orange); font-weight: 600; }
+.compte-detail .vert { color: var(--vert); font-weight: 600; }

@@ -760,6 +760,39 @@ export function sqlActivation(cohorteJours = COHORTE_ACTIVATION_JOURS) {
     + ` from comptes c left join gestes g on g.uid = c.id group by c.id, c.cree, g.geste`;
 }
 
+// ─── LES COMPTES CRÉÉS, PAR LEUR NOM (2026-10-23) ───────────────────────────
+// Demande de Benjamin : voir sur le téléphone QUI s'est inscrit. Le pilote voit
+// le NOM choisi dans l'app (`profiles.username`) — jamais l'adresse e-mail, ni
+// l'identifiant, ni le nom du compte Google : seulement ce que les autres
+// membres voient déjà. Mêmes exclusions que l'entonnoir (`compteCree` : ni
+// tests e2e, ni éditeur, ni anonymes, ni supprimés). Le nom est écrit par la
+// personne : la page le rend en TEXTE.
+export const COMPTES_RECENTS_MAX = 30;
+const VOIES = { google: "Google", email: "e-mail" };
+/**
+ * `recents` : `{ id, cree, confirme, voie }` (comptes créés, déjà filtrés) ;
+ * `profils` : `{ id, username }` lus en base ; `nomsLus` : la lecture des noms
+ * a-t-elle réussi ? (sinon `nom: null, nomLu: false` — jamais un faux « profil
+ * pas rempli ») ; `avecGeste` / `mesures` : identifiants ayant fait un geste, et
+ * ceux dont les gestes ont été lus (hors échantillon : `actif: null`).
+ */
+export function comptesRecents(recents, profils, { nomsLus = true, avecGeste = new Set(), mesures = new Set() } = {}) {
+  const noms = new Map((profils || []).filter((p) => p && p.id != null).map((p) => [String(p.id), p.username]));
+  return (recents || []).filter((c) => c && c.id != null && Number.isFinite(dateUtc(c.cree)))
+    .sort((a, b) => dateUtc(b.cree) - dateUtc(a.cree)).slice(0, COMPTES_RECENTS_MAX)
+    .map((c) => {
+      const id = String(c.id);
+      return {
+        nom: nomsLus ? (borne(noms.get(id), 60) || null) : null,
+        nomLu: !!nomsLus,
+        cree: new Date(dateUtc(c.cree)).toISOString(),
+        confirme: !!c.confirme,
+        voie: Object.hasOwn(VOIES, c.voie) ? VOIES[c.voie] : (c.voie ? "autre" : null),
+        actif: mesures.has(id) ? avecGeste.has(id) : null,
+      };
+    });
+}
+
 /** Lignes de `sqlActivation()` → `activation()`. */
 export function activationDepuisLignes(lignes, maintenant = Date.now()) {
   const comptes = [], gestes = [];

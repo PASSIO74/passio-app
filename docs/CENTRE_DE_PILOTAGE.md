@@ -17,7 +17,9 @@ seulement) ; logique pure : `supabase/functions/_shared/pilotage.js`.
   proposé, exécution en échec, issue « humain », correctif à fusionner, signalement, erreur du
   jour, jauge de capacité, lecture GitHub ratée, réglages manquants) avec ses gestes — puis les
   **chiffres clés** et leur tendance (inscriptions et erreurs sur 7 j contre les 7 j d'avant,
-  erreurs depuis la dernière mise en ligne contre la même durée avant). *Détails* : site, erreurs,
+  erreurs depuis la dernière mise en ligne contre la même durée avant), puis les **nouveaux
+  comptes par leur nom** (les 5 derniers ; les 30 derniers dans Détails — le nom choisi dans
+  l'app, `profiles.username`, jamais l'e-mail ; `comptesRecents`). *Détails* : site, erreurs,
   utilisateurs, activation et entonnoir (créés → e-mail confirmé → actifs), machines, capacité,
   « ce qui s'est passé » (changements du voyant sur 7 j). *Réglages* : protection automatique,
   retour arrière, alertes, installation.

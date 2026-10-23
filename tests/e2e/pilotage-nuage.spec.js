@@ -46,7 +46,17 @@ const BASE = {
   sante: { evenements15: 40, erreursJs15: 2, api5xx15: 0, erreurs24h: 3, principales: [] },
   erreurs: { serie: SERIE, total7: 7, total7Prec: 2, details: [{ message: CHARGE, n: 3, comptes: 1, plateformes: [{ nom: "Android", n: 3 }], pages: [{ nom: "/fil", n: 3 }], premier: MAINTENANT, dernier: MAINTENANT, serie: SERIE }] },
   utilisateurs: { total: 41, inscritsJour: 1, inscritsSemaine: 6, inscritsSemainePrec: 4, serieInscriptions: SERIE, maintenant: { comptes: 2, appareils: 3 }, aujourdhui: { comptes: 9, appareils: 12, horsPublic: 4 } },
-  activation: { cohorte: 4, mures: 3, activesMures: 1, taux: 33, enCours: 1, enCoursActives: 0, premiers: { message: 1 }, jours: 7, cohorteJours: 30, crees: 6, echantillon: null },
+  activation: { cohorte: 4, mures: 3, activesMures: 1, taux: 33, enCours: 1, enCoursActives: 0, premiers: { message: 1 }, jours: 7, cohorteJours: 30, crees: 6, echantillon: null,
+    // Les comptes créés, par leur NOM (2026-10-23) — tels que comptesRecents les rend.
+    nouveaux: [
+      { nom: CHARGE, nomLu: true, cree: MAINTENANT, confirme: false, voie: "e-mail", actif: null },
+      { nom: "Léa", nomLu: true, cree: IL_Y_A_3H, confirme: true, voie: "Google", actif: true },
+      { nom: null, nomLu: true, cree: IL_Y_A_3H, confirme: true, voie: "e-mail", actif: false },
+      { nom: "Sam", nomLu: true, cree: IL_Y_A_3H, confirme: true, voie: "Google", actif: false },
+      { nom: "Jo", nomLu: true, cree: IL_Y_A_3H, confirme: true, voie: "e-mail", actif: false },
+      { nom: "Ana", nomLu: true, cree: IL_Y_A_3H, confirme: true, voie: "e-mail", actif: false },
+      { nom: "Tom", nomLu: true, cree: IL_Y_A_3H, confirme: true, voie: "e-mail", actif: false },
+    ] },
   tendances: { inscriptions: { actuel: 6, precedent: 4, delta: 2, sens: "hausse", bon: true, pct: 50 }, erreurs: { actuel: 7, precedent: 2, delta: 5, sens: "hausse", bon: false, pct: 250 } },
   miseEnLigne: { le: IL_Y_A_3H, etat: "ok", dureeMs: 3 * 3600e3, apres: 1, avant: 4, tendance: null },
   signalements: { ouverts: 1, liste: [{ id: "rep_1", type: "post", motif: CHARGE, le: MAINTENANT }] },
@@ -180,6 +190,9 @@ test("⑤ partie illisible : « Non lu » avec sa raison, jamais un faux 0 %", a
   await expect(page.locator("#activation")).toContainText("HTTP 500");
   await expect(page.locator("#activation")).not.toContainText("%");
   await expect(page.locator("#activationPremiers")).toBeHidden();
+  await page.click('.barre button[data-tab="accueil"]');
+  await expect(page.locator("#nouveauxComptes")).toContainText("Non lu");
+  await expect(page.locator("#nouveauxComptes")).toContainText("HTTP 500");
 });
 
 test("⑥ chaque geste envoie EXACTEMENT sa demande, avec le jeton, après confirmation", async ({ page }) => {
@@ -448,4 +461,46 @@ test("⑯ Retour arrière : la proposition est EN TÊTE de « À faire » ; aper
   expect(dialogues).toHaveLength(1);
   expect(dialogues[0]).toContain("bbbb2222");
   expect(dialogues[0]).toContain("aaaa1111");
+});
+
+test("⑰ Nouveaux comptes : les NOMS des comptes créés, en texte — 5 sur l'accueil, tous dans Détails", async ({ page }) => {
+  await poserSession(page);
+  await routerFonction(page, []);
+  await page.goto("/pilotage/");
+  const acc = page.locator("#nouveauxComptes");
+  await expect(acc.locator("li.compte")).toHaveCount(5);
+  expect(await acc.textContent()).toContain(CHARGE);
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  await expect(acc.locator("img")).toHaveCount(0);
+  await expect(acc).toContainText("Léa");
+  await expect(acc.locator("li.compte").first()).toContainText("e-mail pas encore confirmé");
+  await expect(acc.locator("li.compte", { hasText: "Léa" })).toContainText("par Google");
+  await expect(acc.locator("li.compte", { hasText: "Léa" })).toContainText("a fait un geste");
+  await expect(acc).toContainText("Profil pas encore rempli");
+  await expect(acc).not.toContainText("Tom");
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+  await acc.locator("button", { hasText: "Voir les 7 comptes" }).click();
+  await expect(page.locator("#details")).toBeVisible();
+  const tout = page.locator("#comptesCrees");
+  await expect(tout.locator("li.compte")).toHaveCount(7);
+  await expect(tout).toContainText("Tom");
+  await expect(tout).toContainText("Comptes de test et compte de l'éditeur exclus.");
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+});
+
+test("⑱ Nouveaux comptes : aucun → dit ; noms illisibles → « Nom non lu » ; fonction pas à jour → « Liste indisponible »", async ({ page }) => {
+  await poserSession(page);
+  await routerFonction(page, [], etat({ activation: { ...BASE.activation, nouveaux: [] } }));
+  await page.goto("/pilotage/");
+  await expect(page.locator("#nouveauxComptes")).toContainText("Aucun compte créé ces 30 derniers jours");
+  await page.unroute(FONCTION);
+  await routerFonction(page, [], etat({ activation: { ...BASE.activation, nouveaux: [{ nom: null, nomLu: false, cree: MAINTENANT, confirme: true, voie: "Google", actif: null }] } }));
+  await page.click("#actualiser");
+  await expect(page.locator("#nouveauxComptes")).toContainText("Nom non lu");
+  await expect(page.locator("#nouveauxComptes")).not.toContainText("Profil pas encore rempli");
+  await page.unroute(FONCTION);
+  const ancienne = { ...BASE.activation }; delete ancienne.nouveaux;
+  await routerFonction(page, [], etat({ activation: ancienne }));
+  await page.click("#actualiser");
+  await expect(page.locator("#nouveauxComptes")).toContainText("Liste indisponible");
 });
