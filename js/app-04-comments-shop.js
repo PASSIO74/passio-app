@@ -3354,6 +3354,23 @@ async function openUserProfile(authorId, source) {
   // Remplit le contenu selon les sélections (comme renderProfileContent chez moi).
   _renderVisitedContent();
   _renderVisitedEvents();
+  // « Activité » lit `allEvents()`, que seul le DÉMARRAGE remplissait : une
+  // activité publiée après l'ouverture de l'app restait absente de ce profil
+  // jusqu'à la relance (Jerem, 2026-10-23). On recharge donc ses activités,
+  // comme ses publications plus haut, puis on repeint si la vue est la même.
+  if (canSeeContent && window._supaReal && typeof supaLoadEvents === "function") {
+    supaLoadEvents(authorId).then(function (evs) {
+      if (!evs || !evs.length) return;
+      var arr = state.seed.events || (state.seed.events = []);
+      evs.forEach(function (ev) {
+        var i = arr.findIndex(function (e) { return e && e.id === ev.id; });
+        if (i >= 0) arr[i] = ev; else arr.unshift(ev);
+      });
+      if (window._visited && window._visited.authorId === authorId) _renderVisitedEvents();
+    }).catch(function (e) {
+      if (typeof diagLog === "function") diagLog("profil_visite_activites_serveur " + (e && e.message));
+    });
+  }
 
   // Aide §8 « premier profil visité » : mettre en évidence Suivre / Message.
   // Différée d'un tick — la modale vient d'être injectée, son rectangle n'est

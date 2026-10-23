@@ -5646,10 +5646,21 @@ function _oublierRefusLecturesIRL() {
   _eventColsPubliquesSeulement = false;
 }
 
-async function supaLoadEvents() {
+// `authorId` (facultatif) : les activités qu'UN compte organise, lues à
+// l'ouverture de son profil. Sans lui, la liste ne venait que du chargement
+// unique du démarrage — une activité publiée après n'apparaissait pas dans
+// l'onglet « Activité » de son profil chez ses abonnés avant qu'ils relancent
+// l'app (Jerem, 2026-10-23).
+async function supaLoadEvents(authorId) {
+  // L'identifiant entre dans un filtre `or(...)` de PostgREST : une virgule ou
+  // une parenthèse y ajouterait une condition. On n'accepte qu'un id simple.
+  if (authorId && !/^[A-Za-z0-9_-]+$/.test(String(authorId))) return [];
   try {
-    const lire = (cols) => supa.from("events").select(cols)
-      .order("created_at", { ascending: false }).limit(60);
+    const lire = (cols) => {
+      let q = supa.from("events").select(cols);
+      if (authorId) q = q.or("author_id.eq." + authorId + ",organizer_id.eq." + authorId);
+      return q.order("created_at", { ascending: false }).limit(60);
+    };
     // ⚠️ Sans compte, la demande privée est refusée à COUP SÛR (401) : on ne la
     // fait plus partir du tout. Voir `_compteAuthReel` plus haut.
     const prive = !_eventColsPubliquesSeulement && _compteAuthReel();
