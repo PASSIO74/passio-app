@@ -218,3 +218,14 @@ filtrée disparaîtrait **en silence**. Les clés retenues sont `v`, `quand`,
 | `tests/e2e/ui-v4a5-filtres.spec.js` | 25 cas |
 | `tests/e2e/cases-violet-leger.spec.js` | mesure les nouvelles familles de cases, aux deux états |
 | `tests/e2e/ui-v7-lot.spec.js`, `tests/e2e/contextual-nav.spec.js` | libellé au singulier |
+
+## Suite du 2026-10-23 — changer de lieu simplement
+
+Demande : « dans le filtre des rencontres pour les lieux, améliore le changement de ville et lieux, il faut que l'on puisse changer simplement ». Constat avant le lot : le sélecteur (`openIrlCitySelector`) déroulait les ~200 villes du dictionnaire par ordre alphabétique ; la recherche comparait en sous-chaîne brute (« nimes » ne trouvait pas Nîmes si seul l'alias accentué survivait, « sete » ne trouvait rien) ; rien n'indiquait la ville courante ; revenir à une ville déjà visitée obligeait à la retaper ; sur la page Filtre, seul le petit « Modifier » ouvrait le sélecteur.
+
+Ce qui change (aucun moteur nouveau — tout finit dans `selectIrlCity` / `selectIrlGeoCity` / `useMyPositionForIrl`) :
+- **Sélecteur « Changer de lieu »** : « Utiliser ma position » en tête (coché quand aucune ville n'est choisie), puis **Récentes** (5 max, `irlVillesRecentes()`), puis **12 grandes villes** tant que rien n'est tapé. La recherche passe par `_normIrlCityName` (sans accents), classe les débuts de nom d'abord (`style.order`, le DOM ne bouge pas), plafonne à 30 résultats locaux et dit quand rien n'est trouvé. **Entrée** choisit le premier résultat visible. La ville courante porte `aria-pressed="true"`.
+- **Carte « Où ? »** : toute la carte ouvre le sélecteur ; dessous, `#v4a5LieuRapides` propose « Ma position » (si une ville est choisie) et jusqu'à 3 villes récentes, en un tap, rendues en DOM (`textContent` + `addEventListener`, jamais un nom de ville dans un `onclick`).
+- Les villes récentes (`passio_irl_villes_recentes_v1`) sont une donnée de LIEU : la clé est dans `ACCOUNT_SCOPED_KEYS`. Rien de ces noms ne part en télémétrie (`ui_v4a5_lieu_rapide` ne porte que `type: position|recente`).
+
+Invariants conservés : `#irlCitiesGrid`, `#irlCitySearchInput`, `#irlCityRemote`, `data-localcity` et le libellé « Utiliser ma position » (visés par `ui-v4a1-intentions`, `ui-v4a5-filtres`, `ui-v7-lot`). Le GPS n'est demandé que sur le geste « Ma position ». Verrou : `tests/e2e/irl-changer-lieu.spec.js` (4).
