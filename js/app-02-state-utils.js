@@ -3348,7 +3348,7 @@ function goTo(screen) {
   if (screen === "profiles") renderProfilesScreen();
   if (screen === "studio")   renderStudio();
   if (screen === "explore")  { renderExplorer(); setTimeout(renderAiHistory, 50); }
-  if (screen === "irl")      renderIRL();
+  if (screen === "irl")      { renderIRL(); if (typeof rafraichirEvenements === "function") rafraichirEvenements(); }
   if (screen === "messages") renderMessages();
 
   // Analytics navigation (fire-and-forget, silencieux)
@@ -4261,6 +4261,9 @@ var ACCOUNT_SCOPED_KEYS = [
   // Ajoutée le 2026-10-06 : la semaine où le récap a été traité POUR CE COMPTE
   // (js/recap-semaine.js). Un autre compte sur l'appareil a droit à son récap.
   "passio_recap_semaine_v1",
+  // Ajoutée le 2026-10-23 : les dernières villes choisies dans « Rencontrer »
+  // (app-07, `irlVillesRecentes`). Une donnée de LIEU de la personne.
+  "passio_irl_villes_recentes_v1",
   //   passio_post_delete_outbox_v1 — PAS ici, délibérément : elle ne porte que
   //     des identifiants (aucun texte), porte déjà le compte (`uid`, filtré au
   //     rejeu), et son rôle est de finir une suppression pour les AUTRES comptes

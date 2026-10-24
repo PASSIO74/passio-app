@@ -2145,6 +2145,12 @@ document.addEventListener("visibilitychange", function() {
     if (feedEl && feedEl.classList.contains("active") && window._supaReal && typeof supaLoadPosts === "function") {
       feedFiletReveiller(true);
     }
+    // Même rattrapage pour « Rencontrer » : une sortie publiée pendant que
+    // l'app était en arrière-plan doit y apparaître au retour.
+    const irlEl = document.getElementById("screen-irl");
+    if (irlEl && irlEl.classList.contains("active") && typeof rafraichirEvenements === "function") {
+      rafraichirEvenements();
+    }
   } catch (e) {}
 });
 
@@ -5646,10 +5652,21 @@ function _oublierRefusLecturesIRL() {
   _eventColsPubliquesSeulement = false;
 }
 
-async function supaLoadEvents() {
+// `authorId` (facultatif) : les activités qu'UN compte organise, lues à
+// l'ouverture de son profil. Sans lui, la liste ne venait que du chargement
+// unique du démarrage — une activité publiée après n'apparaissait pas dans
+// l'onglet « Activité » de son profil chez ses abonnés avant qu'ils relancent
+// l'app (Jerem, 2026-10-23).
+async function supaLoadEvents(authorId) {
+  // L'identifiant entre dans un filtre `or(...)` de PostgREST : une virgule ou
+  // une parenthèse y ajouterait une condition. On n'accepte qu'un id simple.
+  if (authorId && !/^[A-Za-z0-9_-]+$/.test(String(authorId))) return [];
   try {
-    const lire = (cols) => supa.from("events").select(cols)
-      .order("created_at", { ascending: false }).limit(60);
+    const lire = (cols) => {
+      let q = supa.from("events").select(cols);
+      if (authorId) q = q.or("author_id.eq." + authorId + ",organizer_id.eq." + authorId);
+      return q.order("created_at", { ascending: false }).limit(60);
+    };
     // ⚠️ Sans compte, la demande privée est refusée à COUP SÛR (401) : on ne la
     // fait plus partir du tout. Voir `_compteAuthReel` plus haut.
     const prive = !_eventColsPubliquesSeulement && _compteAuthReel();
@@ -5731,6 +5748,7 @@ async function supaLoadEvents() {
       endAt: r.end_at ? supaTs(r.end_at) : null,
       status: r.status || "active",
       updatedAt: r.updated_at ? supaTs(r.updated_at) : null,
+      createdAt: r.created_at ? supaTs(r.created_at) : null,   // borne du rattrapage au fil (app-07)
       coOrganizers: Array.isArray(r.co_organizers) ? r.co_organizers : [],
       seriesId: r.series_id || null,
       recurrence: r.recurrence || "none",
@@ -5742,6 +5760,62 @@ async function supaLoadEvents() {
       fromSupabase: true,
     }));
   } catch(e) { return []; }
+}
+
+// ── Activités du serveur → cache local : UNE seule fusion ─────────────────
+// Le démarrage, le profil visité et l'écran « Rencontrer » passent tous par
+// ici. Une version serveur REMPLACE la copie de même id (titre, date, statut,
+// inscrits) ; une activité seulement locale (démo, brouillon) est conservée.
+// Rend `true` si ce qui s'affiche a changé — l'appelant ne repeint qu'alors.
+function _evenementsSig(evs) {
+  return (evs || []).map(function (e) {
+    return e ? [e.id, e.title, e.date, e.status, e.updatedAt,
+      (e.attendees || []).length, (e.maybes || []).length, (e.waitlist || []).length].join("|") : "";
+  }).sort().join("~");
+}
+function fusionnerEvenementsServeur(evs) {
+  if (!evs || !evs.length) return false;
+  const arr = state.seed.events || (state.seed.events = []);
+  const avant = _evenementsSig(arr);
+  evs.forEach(function (ev) {
+    const i = arr.findIndex(function (e) { return e && e.id === ev.id; });
+    if (i >= 0) arr[i] = ev; else arr.unshift(ev);
+  });
+  return _evenementsSig(arr) !== avant;
+}
+
+// Rechargement des activités en cours de session (2026-10-24). Elles n'étaient
+// lues qu'au DÉMARRAGE : une sortie publiée pendant qu'on avait l'app ouverte
+// n'apparaissait dans « Rencontrer » qu'après une relance. Ce n'est PAS un
+// polling : on relit à l'ENTRÉE sur l'écran et au RETOUR au premier plan, au
+// plus une fois par minute (délestage distant compris).
+const EVENEMENTS_RAFRAICHIR_MS = 60000;
+let _evenementsLusA = 0;
+let _evenementsLectureEnVol = false;
+// `apresLecture(evs)` (facultatif) reçoit la liste lue, même inchangée.
+async function rafraichirEvenements(force, apresLecture) {
+  if (!window._supaReal || typeof supa === "undefined" || !supa) return false;
+  if (window._rechargementImminent === true) return false;
+  if (_evenementsLectureEnVol) return false;
+  const pas = (typeof delaiDeleste === "function") ? delaiDeleste(EVENEMENTS_RAFRAICHIR_MS) : EVENEMENTS_RAFRAICHIR_MS;
+  if (!force && Date.now() - _evenementsLusA < pas) return false;
+  _evenementsLectureEnVol = true;
+  _evenementsLusA = Date.now();
+  try {
+    const evs = await supaLoadEvents();
+    const change = fusionnerEvenementsServeur(evs);
+    if (evs && evs.length && typeof apresLecture === "function") apresLecture(evs);
+    if (change) {
+      const irl = document.getElementById("screen-irl");
+      if (irl && irl.classList.contains("active") && typeof renderIRL === "function") renderIRL();
+    }
+    return change;
+  } catch (e) {
+    if (typeof diagLog === "function") diagLog("rafraichir_evenements " + (e && e.message));
+    return false;
+  } finally {
+    _evenementsLectureEnVol = false;
+  }
 }
 
 
@@ -8364,22 +8438,15 @@ async function supaInit() {
     setTimeout(() => {
       if (typeof supaLoadStories === "function")
         supaLoadStories().then(s => { if (s.length) { state.seed.stories = s; } }).catch(e => {});
-      if (typeof supaLoadEvents === "function")
-        supaLoadEvents().then(e => {
-          if (e && e.length) {
-            // Fusionner (au lieu de remplacer) : on garde les événements démo locaux
-            // pour ne pas vider l'écran IRL en beta quand la prod a peu d'events.
-            const ids = new Set(e.map(x => x.id));
-            const localOnly = (state.seed.events || []).filter(x => !ids.has(x.id));
-            state.seed.events = [...e, ...localOnly];
-            // Rafraîchir si l'utilisateur regarde déjà l'écran IRL (sinon il ne voyait
-            // les events Supabase qu'après re-navigation).
-            try {
-              const irlScreen = document.getElementById("screen-irl");
-              if (irlScreen && irlScreen.classList.contains("active") && typeof renderIRL === "function") renderIRL();
-            } catch(_) {}
-          }
-        }).catch(e => {});
+      // Fusionner (au lieu de remplacer) : on garde les événements démo locaux
+      // pour ne pas vider l'écran IRL en beta quand la prod a peu d'events ; et
+      // repeindre « Rencontrer » s'il est déjà affiché. Tout est dans
+      // `rafraichirEvenements`, qui sert aussi les relectures en cours de session.
+      // Au DÉMARRAGE seulement : mes activités récentes sans carte dans le fil la
+      // reçoivent (app-07) — les relectures suivantes n'ont pas à le refaire.
+      if (typeof rafraichirEvenements === "function") rafraichirEvenements(true, function (e) {
+        if (typeof rattraperActivitesAuFil === "function") rattraperActivitesAuFil(e).catch(function () {});
+      });
       // \ud83d\udd27 FIX 2026-06-17 : les notifications Supabase n'\u00e9taient charg\u00e9es que dans
       // le code mort apr\u00e8s le `return;` plus bas \u2192 la cloche n'affichait JAMAIS
       // les notifs re\u00e7ues d'autres comptes. On les charge ici (chemin vivant).

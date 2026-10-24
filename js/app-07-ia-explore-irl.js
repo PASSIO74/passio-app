@@ -1296,30 +1296,85 @@ function updateIrlCityTitle() {
   titleEl.textContent = displayName;
 }
 
+// ── Changer de lieu SIMPLEMENT (2026-10-23) ─────────────────────────────────
+// Demande de Benjamin : « dans le filtre des rencontres, améliore le changement
+// de ville et de lieu, il faut qu'on puisse changer simplement ». Constat : le
+// sélecteur déroulait 200 villes par ordre alphabétique, la recherche butait
+// sur les accents (« sete » ne trouvait pas Sète), rien ne disait quelle ville
+// était choisie, et revenir à une ville déjà visitée obligeait à la retaper.
+// Désormais : la position en tête, les villes RÉCENTES en un tap, une poignée
+// de grandes villes tant qu'on n'a rien tapé, une recherche sans accents qui
+// classe les débuts de nom d'abord, et Entrée choisit le premier résultat.
+// Aucun moteur nouveau : tout finit dans `selectIrlCity` / `selectIrlGeoCity`.
+//
+// Les villes récentes sont une donnée de LIEU : la clé est dans
+// `ACCOUNT_SCOPED_KEYS` (app-02), purgée avec le compte.
+var IRL_VILLES_RECENTES_KEY = "passio_irl_villes_recentes_v1";
+var IRL_VILLES_RECENTES_MAX = 5;
+var IRL_VILLES_POPULAIRES = ["paris", "marseille", "lyon", "toulouse", "nice", "nantes",
+  "montpellier", "strasbourg", "bordeaux", "lille", "rennes", "grenoble"];
+
+function irlVillesRecentes() {
+  try {
+    var l = JSON.parse(localStorage.getItem(IRL_VILLES_RECENTES_KEY) || "[]");
+    if (!Array.isArray(l)) return [];
+    return l.filter(function (v) {
+      return v && typeof v.name === "string" && v.name && isFinite(v.lat) && isFinite(v.lng);
+    }).slice(0, IRL_VILLES_RECENTES_MAX);
+  } catch (e) { return []; }
+}
+
+function _memoriserIrlVille(name, lat, lng) {
+  if (!name || !isFinite(lat) || !isFinite(lng)) return;
+  try {
+    var n = _normIrlCityName(name);
+    var l = irlVillesRecentes().filter(function (v) { return _normIrlCityName(v.name) !== n; });
+    l.unshift({ name: String(name).slice(0, 80), lat: Number(lat), lng: Number(lng) });
+    localStorage.setItem(IRL_VILLES_RECENTES_KEY, JSON.stringify(l.slice(0, IRL_VILLES_RECENTES_MAX)));
+  } catch (e) { _diag("[IRL] villes récentes non mémorisées: " + (e && e.message)); }
+}
+
+// Un tap sur une ville récente (sélecteur ou carte « Où ? » de la page Filtre).
+function choisirIrlVilleRecente(i) {
+  var v = irlVillesRecentes()[i];
+  if (v) selectIrlGeoCity(v.name, v.lat, v.lng);
+}
+
 // Sélecteur de ville pour IRL
 function openIrlCitySelector() {
   const citiesList = _irlCityList();
+  const courante = irlSelectedCity ? _normIrlCityName(irlSelectedCity.name) : "";
+  const pin = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>';
+  const coche = (on) => on ? ' on" aria-pressed="true' : '" aria-pressed="false';
 
   let html = `
     <div class="modal-handle"></div>
-    <div class="modal-title">Chercher une ville</div>
-    <input type="text" class="input" id="irlCitySearchInput" placeholder="Tape le nom d'une ville..." style="margin-bottom:12px;" />
-    <div id="irlCitiesGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:12px;">
+    <div class="modal-title">Changer de lieu</div>
+    <input type="search" class="input irl-ville-recherche" id="irlCitySearchInput" placeholder="Rechercher une ville ou une commune" autocomplete="off" enterkeyhint="search" aria-label="Rechercher une ville" />
+    <button type="button" class="irl-ville-pos${coche(!irlSelectedCity)}" onclick="useMyPositionForIrl()">
+      ${pin}<span><b>Utiliser ma position</b><small>${irlSelectedCity ? "Autour de moi" : "Lieu actuel"}</small></span>
+    </button>
   `;
 
-  citiesList.forEach(city => {
-    html += `<button class="pill" data-localcity="1" onclick="selectIrlCity('${escapeJsArg(city.id)}', '${escapeJsArg(city.name)}')" style="width:100%;justify-content:center;">
-      ${escapeHtml(city.name)}
-    </button>`;
-  });
+  const recentes = irlVillesRecentes();
+  if (recentes.length) {
+    html += `<div id="irlCityRecents"><div class="irl-ville-titre">Récentes</div><div class="irl-ville-chips">`
+      + recentes.map((v, i) => `<button type="button" class="pill irl-ville-chip${coche(_normIrlCityName(v.name) === courante)}" onclick="choisirIrlVilleRecente(${i})">${escapeHtml(v.name)}</button>`).join("")
+      + `</div></div>`;
+  }
 
+  html += `<div class="irl-ville-titre" id="irlCityListTitle">Grandes villes</div>
+    <div id="irlCitiesGrid" class="irl-ville-grille">`;
+  citiesList.forEach(city => {
+    const norm = _normIrlCityName(city.name);
+    const pop = IRL_VILLES_POPULAIRES.indexOf(city.id) > -1;
+    html += `<button type="button" class="pill irl-ville-btn${coche(norm === courante)}" data-localcity="1" data-norm="${escapeHtml(norm)}"${pop ? ' data-pop="1"' : ' style="display:none"'} onclick="selectIrlCity('${escapeJsArg(city.id)}', '${escapeJsArg(city.name)}')">${escapeHtml(city.name)}</button>`;
+  });
   html += `
       <div id="irlCityRemote" style="display:contents;"></div>
     </div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn secondary block" onclick="closeModal()">Annuler</button>
-      <button class="btn primary block" onclick="useMyPositionForIrl()">Utiliser ma position</button>
-    </div>
+    <div id="irlCityEmpty" class="irl-ville-vide" style="display:none;"></div>
+    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
   `;
 
   openModal(html);
@@ -1329,45 +1384,90 @@ function openIrlCitySelector() {
   // absente était donc introuvable alors qu'elle est parfaitement géocodable.
   const searchInput = document.getElementById("irlCitySearchInput");
   const citiesGrid = document.getElementById("irlCitiesGrid");
-  if (searchInput && citiesGrid) {
-    let remoteT;
-    searchInput.addEventListener("input", (e) => {
-      const query = (e.target.value || "").toLowerCase().trim();
-      let localHits = 0;
-      citiesGrid.querySelectorAll("button[data-localcity]").forEach(btn => {
-        const show = btn.textContent.toLowerCase().includes(query);
-        btn.style.display = show ? "block" : "none";
-        if (show) localHits++;
-      });
-      const remoteBox = document.getElementById("irlCityRemote");
-      if (remoteBox) remoteBox.innerHTML = "";
-      clearTimeout(remoteT);
-      if (query.length < 3) return;
-      remoteT = setTimeout(async () => {
-        const res = await passioGeoSuggest(query, 6);
-        const box = document.getElementById("irlCityRemote");
-        if (!box || searchInput.value.toLowerCase().trim() !== query) return;
-        // On ne propose que des communes, et pas celles déjà listées localement.
-        const seen = new Set();
-        const cities = res.filter(r => {
-          const c = (r.city || "").toLowerCase();
-          if (!c || seen.has(c) || FRANCE_CITIES[c]) return false;
-          seen.add(c);
-          return true;
-        });
-        if (!cities.length) return;
-        box.innerHTML = '<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:6px 0 2px;">Autres communes</div>'
-          + cities.map(c => `<button class="pill" style="width:100%;justify-content:center;"
-              onclick="selectIrlGeoCity('${escapeJsArg(c.city)}', ${Number(c.lat)}, ${Number(c.lng)})">${escapeHtml(c.city)}</button>`).join("");
-      }, 320);
+  if (!searchInput || !citiesGrid) return;
+  const titre = document.getElementById("irlCityListTitle");
+  const recentsBox = document.getElementById("irlCityRecents");
+  const vide = document.getElementById("irlCityEmpty");
+  const MAX_LOCAUX = 30;
+  let remoteT;
+
+  const montrerVide = (txt) => {
+    if (!vide) return;
+    vide.textContent = txt || "";
+    vide.style.display = txt ? "block" : "none";
+  };
+
+  searchInput.addEventListener("input", () => {
+    const query = _normIrlCityName(searchInput.value);
+    let localHits = 0;
+    citiesGrid.querySelectorAll("button[data-localcity]").forEach(btn => {
+      const norm = btn.getAttribute("data-norm") || "";
+      let show;
+      if (!query) {
+        show = btn.hasAttribute("data-pop");
+        btn.style.order = "";
+      } else {
+        const debut = norm.indexOf(query) === 0 || norm.indexOf(" " + query) > -1;
+        show = norm.indexOf(query) > -1 && localHits < MAX_LOCAUX;
+        // Les débuts de nom d'abord : « nan » → Nancy, Nanterre, Nantes avant
+        // « Saint-Nazaire ». `order` réordonne la grille sans toucher au DOM.
+        btn.style.order = debut ? "0" : "1";
+      }
+      btn.style.display = show ? "" : "none";
+      if (show) localHits++;
     });
-    setTimeout(() => searchInput.focus(), 100);
-  }
+    if (titre) titre.textContent = query ? "Résultats" : "Grandes villes";
+    if (recentsBox) recentsBox.style.display = query ? "none" : "";
+    const remoteBox = document.getElementById("irlCityRemote");
+    if (remoteBox) remoteBox.innerHTML = "";
+    clearTimeout(remoteT);
+    if (!query) { montrerVide(""); return; }
+    if (searchInput.value.trim().length < 3) {
+      montrerVide(localHits ? "" : "Continue à taper pour chercher une commune…");
+      return;
+    }
+    montrerVide(localHits ? "" : "Recherche des communes…");
+    const brut = searchInput.value.trim();
+    remoteT = setTimeout(async () => {
+      let res = [];
+      try { res = await passioGeoSuggest(brut, 6); } catch (e) { res = []; }
+      const box = document.getElementById("irlCityRemote");
+      if (!box || searchInput.value.trim() !== brut) return;
+      // On ne propose que des communes, et pas celles déjà listées localement.
+      const seen = new Set();
+      const cities = (res || []).filter(r => {
+        const c = (r.city || "").toLowerCase();
+        if (!c || seen.has(c) || FRANCE_CITIES[c]) return false;
+        seen.add(c);
+        return true;
+      });
+      if (!cities.length) {
+        montrerVide(localHits ? "" : "Aucune ville trouvée pour « " + brut + " ».");
+        return;
+      }
+      montrerVide("");
+      box.innerHTML = '<div class="irl-ville-titre" style="grid-column:1/-1;order:2;">Autres communes</div>'
+        + cities.map(c => `<button type="button" class="pill irl-ville-btn" style="order:2;"
+            onclick="selectIrlGeoCity('${escapeJsArg(c.city)}', ${Number(c.lat)}, ${Number(c.lng)})">${escapeHtml(c.city)}</button>`).join("");
+    }, 320);
+  });
+
+  // Entrée = le premier résultat affiché (dans l'ordre VISUEL, `order` compris).
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const visibles = [...citiesGrid.querySelectorAll("button")]
+      .filter(b => b.style.display !== "none" && b.offsetParent !== null)
+      .sort((a, b) => (parseInt(a.style.order || "0", 10) - parseInt(b.style.order || "0", 10)));
+    if (visibles[0]) visibles[0].click();
+  });
+  setTimeout(() => searchInput.focus(), 100);
 }
 
 // Sélection d'une commune trouvée par géocodage (hors dictionnaire local).
 function selectIrlGeoCity(name, lat, lng) {
   irlSelectedCity = { id: "geo", name: name, coords: [lat, lng] };
+  _memoriserIrlVille(name, lat, lng);
   _diag("[IRL] 🏙️ Ville géocodée: " + name);
   updateIrlCityTitle();
   closeModal();
@@ -1382,10 +1482,12 @@ function selectIrlCity(cityId, cityName) {
     name: cityName,
     coords: FRANCE_CITIES[cityId]
   };
+  if (irlSelectedCity.coords) _memoriserIrlVille(cityName, irlSelectedCity.coords[0], irlSelectedCity.coords[1]);
   _diag("[IRL] 🏙️ Ville sélectionnée: " + cityName);
   updateIrlCityTitle();
   closeModal();
   renderIRL();
+  toast("Autour de " + cityName);
 }
 
 // Geste EXPLICITE « Utiliser ma position » du sélecteur de ville (§2 du lot
@@ -4692,25 +4794,62 @@ async function shareEventInFeed(id) {
 
   try { window.tel && tel.action("share_event", { eventId: id }); } catch (e) {}
 
+  // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
+  if (typeof publicationRefuseeFautePassion === "function"
+      && publicationRefuseeFautePassion(passionDeRepartage(ev.passion))) {
+    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
+    closeModal();
+    return;
+  }
+  const authorName = await _nomAuteurActivite();
+  const newPost = _postActiviteAuFil(ev, authorName, "post_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9));
+
+  if (!state.userPosts) state.userPosts = [];
+  state.userPosts.push(newPost);
+  saveState();
+
+  closeModal();
+  setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
+  toast("Événement partagé dans ton feed.");
+
+  if (typeof supa !== "undefined" && supa) {
+    try {
+      const syncPromise = supaPublishPostWithRetry(newPost);
+      const timeout = new Promise(resolve => setTimeout(() => resolve(false), 5000));
+      const ok = await Promise.race([syncPromise, timeout]);
+      if (!ok) console.warn("⚠️ [SHARE-EVENT] Sync timeout — partagé localement uniquement");
+    } catch (e) {
+      console.warn("⚠️ [SHARE-EVENT] Erreur sync:", e.message);
+    }
+  }
+}
+
+async function _nomAuteurActivite() {
   const prof = currentProfile();
   const g = state.user.general || {};
   let authorName = g.username || (prof && prof.name) || "Moi";
-
   if (!g.username && typeof supa !== "undefined" && supa && MY_UID) {
     try {
       const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).maybeSingle();
       if (data && data.username) { state.user.general.username = data.username; authorName = data.username; }
     } catch (e) {}
   }
+  return authorName;
+}
 
+// La publication « carte d'activité » du fil — UNE seule fabrique, pour le
+// partage manuel (`shareEventInFeed`) comme pour la publication automatique à
+// la création (`publierActiviteAuFil`).
+// Texte stocké EN CLAIR : renderPostHTML l'échappe une fois (pas de double
+// échappement).
+function _postActiviteAuFil(ev, authorName, postId) {
+  const prof = currentProfile();
+  const g = state.user.general || {};
   const passion = passionById(ev.passion) || { label: ev.passion || "", emoji: "📍" };
   const d = fmtEventDate(ev.date);
   const dateStr = d.day + " " + d.month + (d.time ? " · " + d.time : "");
-
-  // Texte stocké EN CLAIR : renderPostHTML l'échappe une fois (pas de double
-  // échappement).
-  const newPost = {
-    id: "post_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+  return {
+    id: postId,
     type: "text",
     authorId: MY_UID,
     authorName: authorName,
@@ -4733,32 +4872,110 @@ async function shareEventInFeed(id) {
       passion: ev.passion || null,
     },
   };
+}
 
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE ACTIVITÉ CRÉÉE APPARAÎT DANS LE FIL (2026-10-23)
+//
+// Signalé le jour même : Jerem crée « Via ferrata » (ligne `events` présente,
+// statut actif), et rien n'arrive dans le fil — ni chez lui, ni chez ceux qui
+// le suivent. Créer une activité n'écrivait QUE dans `events` ; la seule carte
+// du fil était celle du bouton « Partager dans mon feed » de la fiche, que
+// personne ne va chercher sur sa propre activité.
+// Désormais la création publie la carte, sans geste de plus.
+// ⚠️ IDENTIFIANT DÉTERMINISTE `post_ev_<idActivité>` : c'est lui qui empêche le
+// doublon (la clé primaire refuse une seconde ligne), entre la création et le
+// rattrapage, et entre deux appareils du même compte.
+// ⚠️ UNE carte par création, même récurrente : les occurrences suivantes ne
+// publient rien (six cartes d'un coup noieraient le fil).
+// ⚠️ SILENCIEUSE : ni `closeModal`, ni `goTo` — la proposition d'invitation est
+// à l'écran juste après la création, et `openModal` n'empile pas.
+// Coupures : `localStorage.passio_activite_au_fil_v1 = "0"` ou
+// `window.PASSIO_ACTIVITE_AU_FIL = false`.
+// ═══════════════════════════════════════════════════════════════════════════
+var ACTIVITE_AU_FIL_FENETRE_MS = 7 * 86400000;
+
+function _activiteAuFilActive() {
+  try {
+    if (window.PASSIO_ACTIVITE_AU_FIL === false) return false;
+    if (localStorage.getItem("passio_activite_au_fil_v1") === "0") return false;
+  } catch (e) {}
+  return true;
+}
+
+function _postIdActiviteAuFil(evId) { return "post_ev_" + evId; }
+
+// Une carte de cette activité existe-t-elle déjà dans ce que l'appareil connaît ?
+function _activiteDejaAuFil(evId) {
+  const autoId = _postIdActiviteAuFil(evId);
+  const listes = [state.userPosts, state.supabasePosts, window._feedExtraPosts];
+  return listes.some(l => Array.isArray(l) && l.some(p => p && (p.id === autoId
+    || (p.authorId === MY_UID && p.sharedReelData && p.sharedReelData.kind === "event" && p.sharedReelData.id === evId))));
+}
+
+async function publierActiviteAuFil(ev) {
+  if (!ev || !ev.id || !_activiteAuFilActive()) return false;
+  if (!window._supaReal || typeof supaPublishPostWithRetry !== "function") return false;
+  if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return false;
+  const postId = _postIdActiviteAuFil(ev.id);
+  // Supprimée par son auteur : elle ne revient jamais.
+  if (typeof postSupprime === "function" && postSupprime(postId)) return false;
+  if (_activiteDejaAuFil(ev.id)) return false;
+  // Pas de toast ici : la passion de l'activité est déjà canonique (vérifiée
+  // par `submitEvent`) ; un état qui ne l'est pas ne publie rien, en silence.
+  if (!estPassionCanonique(passionDeRepartage(ev.passion))) return false;
+  const newPost = _postActiviteAuFil(ev, await _nomAuteurActivite(), postId);
+  if (_activiteDejaAuFil(ev.id)) return false;   // l'attente du nom a pu croiser un autre appel
   if (!state.userPosts) state.userPosts = [];
-  // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
-  if (typeof publicationRefuseeFautePassion === "function"
-      && publicationRefuseeFautePassion(newPost.passion)) {
-    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
-    closeModal();
-    return;
-  }
   state.userPosts.push(newPost);
   saveState();
+  try {
+    const feed = document.getElementById("screen-feed");
+    if (feed && feed.classList.contains("active") && typeof renderFeed === "function") renderFeed();
+  } catch (e) {}
+  try { if (window.tel && tel.action) tel.action("activite_au_fil", { v: 1 }); } catch (e) {}
+  try { return !!(await supaPublishPostWithRetry(newPost)); }
+  catch (e) { console.warn("⚠️ [ACTIVITE-FIL] publication :", e && e.message); return false; }
+}
 
-  closeModal();
-  setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
-  toast("Événement partagé dans ton feed.");
-
-  if (typeof supa !== "undefined" && supa) {
+// RATTRAPAGE : les activités créées avant ce correctif (ou dont la carte n'a
+// pas pu partir) reçoivent leur carte à la prochaine ouverture de l'app par
+// leur organisateur. Seulement les MIENNES, À VENIR, actives, créées depuis
+// moins de 7 jours — jamais une vague de cartes sur un vieux compte.
+// ⚠️ On demande au SERVEUR si une carte existe déjà (partage manuel compris :
+// les deux portent `"id":"<activité>"` dans `shared_data`, colonne TEXTE) — le
+// fil local ne porte que 60 publications.
+// Une lecture en échec ne publie RIEN.
+async function rattraperActivitesAuFil(events) {
+  if (!_activiteAuFilActive() || !Array.isArray(events)) return 0;
+  if (!window._supaReal || typeof supa === "undefined" || !supa) return 0;
+  if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return 0;
+  const maintenant = Date.now();
+  const vus = new Set();
+  const candidates = events.filter(ev => {
+    if (!ev || !ev.id || ev.fromSupabase !== true) return false;
+    if ((ev.organizerId || ev.authorId) !== MY_UID || ev.authorId !== MY_UID) return false;
+    if ((ev.status || "active") !== "active") return false;
+    if (!(Number(ev.date) > maintenant)) return false;
+    if (!(Number(ev.createdAt) > maintenant - ACTIVITE_AU_FIL_FENETRE_MS)) return false;
+    // Une série : sa première occurrence seulement.
+    const cle = ev.seriesId || ev.id;
+    if (vus.has(cle)) return false;
+    vus.add(cle);
+    return !_activiteDejaAuFil(ev.id);
+  });
+  let publiees = 0;
+  for (const ev of candidates.slice(0, 3)) {
     try {
-      const syncPromise = supaPublishPostWithRetry(newPost);
-      const timeout = new Promise(resolve => setTimeout(() => resolve(false), 5000));
-      const ok = await Promise.race([syncPromise, timeout]);
-      if (!ok) console.warn("⚠️ [SHARE-EVENT] Sync timeout — partagé localement uniquement");
-    } catch (e) {
-      console.warn("⚠️ [SHARE-EVENT] Erreur sync:", e.message);
-    }
+      const { data, error } = await supa.from("posts").select("id")
+        .eq("author_id", MY_UID)
+        .like("shared_data", '%"id":"' + ev.id + '"%')
+        .limit(1);
+      if (error || !Array.isArray(data) || data.length) continue;
+      if (await publierActiviteAuFil(ev)) publiees++;
+    } catch (e) { console.warn("⚠️ [ACTIVITE-FIL] rattrapage :", e && e.message); }
   }
+  return publiees;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -6540,6 +6757,8 @@ async function submitEvent(editId) {
   // L'invitation ne se propose que si l'activité EXISTE pour les autres :
   // publiée côté serveur (`backend && ok`), et jamais à l'édition.
   if (ok && backend && !editId) proposerInvitationActivite(ev);
+  // …et sa carte arrive dans le fil, sans geste de plus (cf. `publierActiviteAuFil`).
+  if (ok && backend && !editId) publierActiviteAuFil(ev);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
