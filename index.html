@@ -449,6 +449,10 @@
       <span class="beta-chip">Beta</span>
     </div>
     <div class="topbar-right">
+      <!-- Visiteur sans compte : la porte d'inscription reste visible en tête,
+           même carte de bienvenue fermée (2026-10-23). Masquée par CSS hors de
+           `:root.passio-first-run`, donc jamais vue d'un compte existant. -->
+      <button type="button" class="topbar-signup" id="topbarSignup" onclick="PassioFirstRun.allerInscription('topbar')">Créer un compte</button>
       <div class="topbar-bell" onclick="goTo('explore')" title="Explorer" role="button" tabindex="0" aria-label="Explorer">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
       </div>

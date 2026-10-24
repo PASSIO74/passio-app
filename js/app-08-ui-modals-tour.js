@@ -5748,6 +5748,7 @@ async function supaLoadEvents(authorId) {
       endAt: r.end_at ? supaTs(r.end_at) : null,
       status: r.status || "active",
       updatedAt: r.updated_at ? supaTs(r.updated_at) : null,
+      createdAt: r.created_at ? supaTs(r.created_at) : null,   // borne du rattrapage au fil (app-07)
       coOrganizers: Array.isArray(r.co_organizers) ? r.co_organizers : [],
       seriesId: r.series_id || null,
       recurrence: r.recurrence || "none",
@@ -5791,7 +5792,8 @@ function fusionnerEvenementsServeur(evs) {
 const EVENEMENTS_RAFRAICHIR_MS = 60000;
 let _evenementsLusA = 0;
 let _evenementsLectureEnVol = false;
-async function rafraichirEvenements(force) {
+// `apresLecture(evs)` (facultatif) reçoit la liste lue, même inchangée.
+async function rafraichirEvenements(force, apresLecture) {
   if (!window._supaReal || typeof supa === "undefined" || !supa) return false;
   if (window._rechargementImminent === true) return false;
   if (_evenementsLectureEnVol) return false;
@@ -5800,7 +5802,9 @@ async function rafraichirEvenements(force) {
   _evenementsLectureEnVol = true;
   _evenementsLusA = Date.now();
   try {
-    const change = fusionnerEvenementsServeur(await supaLoadEvents());
+    const evs = await supaLoadEvents();
+    const change = fusionnerEvenementsServeur(evs);
+    if (evs && evs.length && typeof apresLecture === "function") apresLecture(evs);
     if (change) {
       const irl = document.getElementById("screen-irl");
       if (irl && irl.classList.contains("active") && typeof renderIRL === "function") renderIRL();
@@ -8438,7 +8442,11 @@ async function supaInit() {
       // pour ne pas vider l'écran IRL en beta quand la prod a peu d'events ; et
       // repeindre « Rencontrer » s'il est déjà affiché. Tout est dans
       // `rafraichirEvenements`, qui sert aussi les relectures en cours de session.
-      if (typeof rafraichirEvenements === "function") rafraichirEvenements(true);
+      // Au DÉMARRAGE seulement : mes activités récentes sans carte dans le fil la
+      // reçoivent (app-07) — les relectures suivantes n'ont pas à le refaire.
+      if (typeof rafraichirEvenements === "function") rafraichirEvenements(true, function (e) {
+        if (typeof rattraperActivitesAuFil === "function") rattraperActivitesAuFil(e).catch(function () {});
+      });
       // \ud83d\udd27 FIX 2026-06-17 : les notifications Supabase n'\u00e9taient charg\u00e9es que dans
       // le code mort apr\u00e8s le `return;` plus bas \u2192 la cloche n'affichait JAMAIS
       // les notifs re\u00e7ues d'autres comptes. On les charge ici (chemin vivant).

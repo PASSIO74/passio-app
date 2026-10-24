@@ -812,6 +812,13 @@
       // VISIBLE, sans geste préalable, vers le compte déjà créé : le gate
       // « J'ai déjà un compte » demande, lui, d'avoir tenté un like ou un
       // commentaire (défaut vécu le 2026-09-02).
+      // ⚠️ CRÉER UN COMPTE SE VOIT DÈS L'ARRIVÉE (2026-10-23, essais de
+      // Benjamin avec d'autres personnes : « il manque sur la première page la
+      // possibilité de créer un compte »). La carte ne menait à l'inscription
+      // qu'au travers d'une action engageante (like, commentaire…) : un nouveau
+      // venu qui VOULAIT un compte ne trouvait pas la porte. Pleine largeur, sous
+      // la rangée, pour la même raison que le lien de connexion ci-dessous.
+      +   '<button type="button" class="btn fr-welcome-signup" onclick="PassioFirstRun.allerInscription(\'bienvenue\')">Créer mon compte</button>'
       +   '<button type="button" class="fr-welcome-signin" onclick="PassioFirstRun.allerConnexion(\'deja_compte\')">J\'ai déjà un compte — me connecter</button>'
       + '</section>';
   }

@@ -8,6 +8,18 @@ diagnostic pour Claude Code, pilote des sessions de test et génère des rapport
 Il est **réellement connecté** à Passio via la table Supabase `telemetry_events`,
 alimentée par l'instrumentation `js/telemetry.js` ajoutée à l'app.
 
+> **Le centre de pilotage de tous les jours, c'est [`/pilotage/`](https://passio-app.netlify.app/pilotage/)**
+> (2026-10-23) — sur le téléphone comme sur l'ordinateur, PC éteint compris. Trois onglets :
+> l'**Accueil** dit si ça va et ce qui t'attend (UNE liste « À faire », triée par urgence, avec
+> les gestes : fusionner, réparer, fermer, traiter un signalement, remettre la version
+> précédente), **Détails** sert à comprendre, **Réglages** à ce qu'on change rarement. Code :
+> `pilotage/` et la fonction `supabase/functions/pilotage` (logique pure dans
+> `supabase/functions/_shared/pilotage.js`, éprouvée par `tests/unit/pilotage.test.mjs` et
+> `tests/e2e/pilotage-nuage.spec.js`).
+> Ce dossier `dashboard/` reste l'**atelier du poste** : télémétrie détaillée, Sentinelle
+> locale, réparations, Command Center. Le Pilot mobile du PC (`mobile.html`, même Wi-Fi et PC
+> allumé obligatoires) est **retiré** — voir § 2 quater.
+
 ---
 
 ## 1. Architecture
@@ -185,34 +197,28 @@ revenu sans que la table soit republiée — un `postgres_changes` sur une table
 absente de la publication passe `SUBSCRIBED` et ne reçoit **jamais rien**.
 
 
-## 2 quater. Le pilotage sur le téléphone (2026-09-28)
+## 2 quater. Le pilotage sur le téléphone — RETIRÉ du PC le 2026-10-23
 
-Une vraie application de poche, installable sur l'écran d'accueil : `public/mobile.html`
-(+ `js/mobile.js`, `css/mobile.css`, `mobile-sw.js`, `icons/`). Cinq onglets au pouce :
+Le téléphone ouvre **https://passio-app.netlify.app/pilotage/** : il marche partout, sans PC
+allumé et sans être sur le même Wi-Fi. L'ancienne application de poche servie par le PC
+(`public/mobile.html` + `js/mobile.js`, `css/mobile.css`, son manifeste, `Autoriser-Telephone.cmd`)
+doublait cette page avec les deux contraintes du poste ; elle est retirée.
 
-| Onglet | Ce qu'on y voit / fait |
-|---|---|
-| **Accueil** | une phrase et une couleur (Tout va bien · À surveiller · Problème en cours), 4 chiffres, « Ce qui t'attend », l'activité récente |
-| **Alertes** | alertes non vues (« Marquer vu », « Tout marquer vu »), bugs ouverts (« Corrigé » / « Ignorer »), incidents |
-| **Utilisateurs** | en ligne maintenant, inscriptions (+ graphe 14 j), fréquentation jour/semaine/mois, appareils actifs |
-| **Machines** | ce que les machines ont fait, Sentinelle (lecture seule), comptes rendus, mise en production, tests autorisés |
-| **Réglages** | compte, actualisation auto, installation, adresses du PC, déconnexion |
+- `public/mobile.html` n'est plus qu'un **renvoi** vers le pilotage en ligne (aucun script), pour
+  les icônes déjà posées sur un écran d'accueil : réinstalle l'icône depuis la nouvelle adresse,
+  puis supprime l'ancienne.
+- `public/mobile-sw.js` **se désinstalle** là où il s'était installé (sur `http://localhost:4610`,
+  contexte sécurisé, il contrôlait la racine) : il vide ses caches `passio-pilot-*`, se désinscrit
+  et recharge la page. Un 404 à sa place l'aurait laissé servir l'ancienne page depuis son cache.
+- Si tu avais lancé `Autoriser-Telephone.cmd`, le port 4610 est encore ouvert sur les réseaux
+  privés. Pour le refermer (invite de commandes **administrateur**) :
+  `netsh advfirewall firewall delete rule name="Passio Pilotage (telephone)"`.
+- `server/auth.js` annonce encore les adresses `…/mobile.html` du poste (`/api/me`) : elles mènent
+  au renvoi. Ce fichier est du périmètre critique (gouvernance), il n'a pas été touché.
 
-**Installer (une fois)** : sur le PC, double-clic sur **`Autoriser-Telephone.cmd`** (ouvre le port
-4610 du pare-feu sur les réseaux **privés** seulement, et affiche l'adresse). Sur le téléphone, même
-Wi-Fi : ouvrir `http://<IP-du-PC>:4610/mobile.html`, se connecter (« Rester connecté » coché), puis
-iPhone → Partager → « Sur l'écran d'accueil » ; Android → menu ⋮ → « Ajouter à l'écran d'accueil ».
-Les adresses sont aussi imprimées au démarrage du serveur et listées dans Réglages. Hors de chez soi :
-Tailscale (gratuit) sur le PC et le téléphone — son adresse `100.x` apparaît dans la liste.
-
-⚠️ **« Rester connecté »** : `DASH_REMEMBER_DAYS` (défaut 30, plafond 90, `0` coupe l'option). Seul
-un `remember: true` EXPLICITE l'obtient ; sans lui la session garde `DASH_SESSION_HOURS`.
-⚠️ **Écritures bornées** : marquer une alerte vue, classer un bug, lancer une suite en liste
-blanche, se (dé)connecter — rien d'autre (verrou `test/mobile-app.test.js`). Tout est construit par
-nœuds + `textContent`, jamais `innerHTML` (un titre d'alerte hostile est éprouvé au navigateur).
-⚠️ En `http://` sur le réseau local, le navigateur n'active pas le service worker (contexte non
-sécurisé) : l'icône s'installe quand même, seul le mode hors ligne manque — c'est voulu, un cockpit
-hors ligne afficherait des données périmées.
+Verrous du retrait : `test/mobile-pilot.test.js` (renvoi sans script, SW qui se désinscrit sans
+gestionnaire `fetch`, plus rien ne renvoie à l'ancienne surface) et `test/mobile-entry.test.js`
+(le bouton « Pilotage » de l'en-tête mène au pilotage en ligne).
 
 ## 2 ter. Tests du pilotage
 
@@ -613,7 +619,8 @@ Voir [`docs/INTEGRATION_CLAUDE_CODE.md`](docs/INTEGRATION_CLAUDE_CODE.md).
 - La perf CPU/mémoire de l'appareil n'est pas remontée (API navigateur limitées) ;
   on mesure latence, erreurs, timings de navigation.
 - L'analyse Claude en direct nécessite `ANTHROPIC_API_KEY` ; sinon mode « copier le prompt ».
-- Le store temps réel est en mémoire (borné) ; l'historique long vit dans Supabase.
+- Le store temps réel est en mémoire (borné) ; l'historique vit dans Supabase, mais la télémétrie
+  brute n'y est gardée que 7 jours (§ 11).
 
 ### ⚠️ « Fraîcheur » ne mesure QUE le trafic réel (corrigé le 2026-08-30)
 
@@ -674,8 +681,8 @@ pour le jeton, aucun mail.
 `api.get("/x", auth.requireAuth, …)` ou `auth.requireCap("cap")` en tête du
 reste — jamais un segment frère d'un `:param` du même préfixe ; (2) ajouter
 `["GET", "/x", "@auth"]` à `ATTENDU` de `test/routes-caps.test.js` ;
-(3) l'appeler depuis `public/js/app.js` via `api.get("/x")` (ou `["nom", "/x"]`
-dans la table de `mobile.js`, ou le littéral `"/api/x"` dans `command.js`) —
+(3) l'appeler depuis `public/js/app.js` via `api.get("/x")` (ou le littéral
+`"/api/x"` dans `command.js`) —
 sinon l'ajouter à `CONNUES` de `test/front-api.test.js` avec le pourquoi ;
 (4) `npm test` : `http-routes` éprouve 401/403 seul.
 
@@ -694,6 +701,9 @@ en 2 s. Pour un changement de `.env` : `Arreter-Pilotage.cmd` puis
 
 ## 11. Améliorations recommandées
 
-- Cron `purge_telemetry(30)` (pg_cron) pour la rétention.
+- ~~Cron `purge_telemetry(30)`~~ : **fait** (mesuré le 2026-10-23 dans `cron.job`) — la télémétrie
+  est purgée chaque jour à 4 h et gardée **7 jours** (`purge_telemetry_7j`), les erreurs client
+  30 jours (`purge_client_errors`), `analytics_events` 13 mois (`passio_purge_analytics`).
+  L'historique long n'est donc PAS dans `telemetry_events` : au-delà de 7 jours, il faut un agrégat.
 - Export PDF des rapports (structure déjà en JSON/CSV).
 - URLs de médias signées côté Passio (durcissement au-delà du périmètre dashboard).
