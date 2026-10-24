@@ -776,10 +776,10 @@ const VOIES = { google: "Google", email: "e-mail" };
  * pas rempli ») ; `avecGeste` / `mesures` : identifiants ayant fait un geste, et
  * ceux dont les gestes ont été lus (hors échantillon : `actif: null`).
  */
-export function comptesRecents(recents, profils, { nomsLus = true, avecGeste = new Set(), mesures = new Set() } = {}) {
+export function comptesRecents(recents, profils, { nomsLus = true, avecGeste = new Set(), mesures = new Set(), max = COMPTES_RECENTS_MAX } = {}) {
   const noms = new Map((profils || []).filter((p) => p && p.id != null).map((p) => [String(p.id), p.username]));
   return (recents || []).filter((c) => c && c.id != null && Number.isFinite(dateUtc(c.cree)))
-    .sort((a, b) => dateUtc(b.cree) - dateUtc(a.cree)).slice(0, COMPTES_RECENTS_MAX)
+    .sort((a, b) => dateUtc(b.cree) - dateUtc(a.cree)).slice(0, max)
     .map((c) => {
       const id = String(c.id);
       return {
@@ -791,6 +791,27 @@ export function comptesRecents(recents, profils, { nomsLus = true, avecGeste = n
         actif: mesures.has(id) ? avecGeste.has(id) : null,
       };
     });
+}
+
+// ─── TOUS LES INSCRITS (2026-10-24) ─────────────────────────────────────────
+// Demande de Benjamin : le total des inscrits sur l'accueil, et tous les noms
+// en le touchant. La liste se lit À LA DEMANDE (action `inscrits`), par pages
+// de 100 — jamais à chaque relecture de l'état. Mêmes exclusions et mêmes
+// champs que les nouveaux comptes (`compteCree`, `comptesRecents`).
+export const INSCRITS_PAR_PAGE = 100;
+/**
+ * Une page des inscrits, les plus récents d'abord. `tous` : `{ id, cree, … }`
+ * déjà filtrés ; une date illisible passe en dernier (le compte existe, il
+ * n'est pas caché). La page demandée est bornée à [1, pages].
+ */
+export function pageInscrits(tous, page = 1, parPage = INSCRITS_PAR_PAGE) {
+  const t = (c) => { const v = dateUtc(c && c.cree); return Number.isFinite(v) ? v : -Infinity; };
+  const liste = (tous || []).filter((c) => c && c.id != null).slice().sort((a, b) => t(b) - t(a));
+  const taille = Math.max(1, Math.floor(Number(parPage)) || INSCRITS_PAR_PAGE);
+  const pages = Math.max(1, Math.ceil(liste.length / taille));
+  const p = Math.min(pages, Math.max(1, Math.floor(Number(page)) || 1));
+  const comptes = liste.slice((p - 1) * taille, p * taille);
+  return { total: liste.length, page: p, pages, parPage: taille, comptes, ids: comptes.map((c) => String(c.id)) };
 }
 
 /** Lignes de `sqlActivation()` → `activation()`. */

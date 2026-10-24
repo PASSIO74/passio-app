@@ -14,7 +14,7 @@
 //
 // ② PILOTE — JWT de la personne, réservé au compte de l'éditeur (`autorise`,
 //    échec fermé : 401 sans session, 403 pour tout autre compte).
-//      etat · relancer · fusionner · fermer · pause · reprendre · signalement · reparer · reglages
+//      etat · inscrits · relancer · fusionner · fermer · pause · reprendre · signalement · reparer · reglages
 //    Les gestes GitHub exigent le secret PILOTAGE_GITHUB_TOKEN (sinon 501, dit).
 //    Plafond 30/min, 600/h.
 //
@@ -34,6 +34,7 @@ import {
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
+  pageInscrits, INSCRITS_PAR_PAGE,
 } from "../_shared/pilotage.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 import {
@@ -101,6 +102,7 @@ Deno.serve(async (req) => {
     case "reglages": return poserReglage(admin, corps);
     case "retour_apercu": return retourApercu(admin);
     case "retour_arriere": return retourManuel(admin, corps);
+    case "inscrits": return listerInscrits(admin, corps);
     default: return json({ error: "Action inconnue." }, 400);
   }
 });
@@ -729,19 +731,25 @@ async function lireActivation(admin: Admin) {
   // Les mêmes comptes, par leur NOM, sont la liste « Nouveaux comptes ».
   let crees = 0;
   const recents: { id: string; cree: string; confirme: boolean; voie: string }[] = [];
+  // Le TOTAL des inscrits (2026-10-24, tuile de l'accueil) : la même boucle,
+  // sans borne de date — aucune lecture des comptes en plus. Au-delà de 20 pages
+  // (20 000 comptes), le total est une borne basse et il le DIT (`tronque`).
+  let inscrits = 0, inscritsTronque = false;
   for (let page = 1; page <= 20; page++) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) throw error;
     const lot = (data && data.users) || [];
     for (const u of lot) {
+      // compteMesurable ⊂ compteCree : un compte hors entonnoir n'est jamais mesuré.
+      if (!compteCree(u, EXTRA)) continue;
+      inscrits++;
       if (dateUtc(u.created_at) < depuis) continue;
-      if (compteCree(u, EXTRA)) {
-        crees++;
-        recents.push({ id: u.id, cree: u.created_at, confirme: !!(u.email_confirmed_at || u.confirmed_at), voie: String((u.app_metadata && u.app_metadata.provider) || "") });
-      }
+      crees++;
+      recents.push({ id: u.id, cree: u.created_at, confirme: !!(u.email_confirmed_at || u.confirmed_at), voie: String((u.app_metadata && u.app_metadata.provider) || "") });
       if (compteMesurable(u, EXTRA)) comptes.push({ id: u.id, cree: u.created_at });
     }
     if (lot.length < 1000) break;
+    if (page === 20) inscritsTronque = true;
   }
   // ⚠️ À L'ÉCHELLE (2026-10-11) : `.in(uid, ids)` met chaque identifiant dans
   // l'URL — au-delà de ~200 comptes la requête dépasse la taille admise et
@@ -780,7 +788,42 @@ async function lireActivation(admin: Admin) {
     if (ep) nomsLus = false; else profils = (pr || []) as { id: string; username: string | null }[];
   }
   const nouveaux = comptesRecents(derniers, profils, { nomsLus, avecGeste: new Set(gestes.map((g) => g.uid)), mesures: new Set(pris.map((c) => String(c.id))) });
-  return { ...activation(pris, gestes, maintenant), echantillon: sur > ECHANTILLON_MAX ? { sur, pris: pris.length } : null, partiel, crees, nouveaux };
+  return { ...activation(pris, gestes, maintenant), echantillon: sur > ECHANTILLON_MAX ? { sur, pris: pris.length } : null, partiel, crees, nouveaux,
+    inscrits: { total: inscrits, tronque: inscritsTronque } };
+}
+
+// ─── Tous les inscrits, par leur NOM (2026-10-24) ───────────────────────────
+// Le toucher sur « inscrits au total » : une page de 100, les plus récents
+// d'abord (pageInscrits), le nom choisi dans l'app et rien d'autre
+// (comptesRecents : jamais l'e-mail ni l'identifiant). Lue À LA DEMANDE,
+// jamais à chaque relecture de l'état. Au-delà de 50 000 comptes, la liste
+// est tronquée et le dit.
+const INSCRITS_PAGES_COMPTES_MAX = 50;
+async function listerInscrits(admin: Admin, corps: Record<string, unknown>) {
+  try {
+    const tous: { id: string; cree: string; confirme: boolean; voie: string }[] = [];
+    let tronque = false;
+    for (let p = 1; p <= INSCRITS_PAGES_COMPTES_MAX; p++) {
+      const { data, error } = await admin.auth.admin.listUsers({ page: p, perPage: 1000 });
+      if (error) throw error;
+      const lot = (data && data.users) || [];
+      for (const u of lot) {
+        if (compteCree(u, EXTRA)) tous.push({ id: u.id, cree: u.created_at, confirme: !!(u.email_confirmed_at || u.confirmed_at), voie: String((u.app_metadata && u.app_metadata.provider) || "") });
+      }
+      if (lot.length < 1000) break;
+      if (p === INSCRITS_PAGES_COMPTES_MAX) tronque = true;
+    }
+    const tranche = pageInscrits(tous, Number(corps.page) || 1, INSCRITS_PAR_PAGE);
+    let profils: { id: string; username: string | null }[] = [], nomsLus = true;
+    if (tranche.ids.length) {
+      const { data: pr, error: ep } = await admin.from("profiles").select("id,username").in("id", tranche.ids);
+      if (ep) nomsLus = false; else profils = (pr || []) as { id: string; username: string | null }[];
+    }
+    return json({ total: tranche.total, tronque, page: tranche.page, pages: tranche.pages, parPage: tranche.parPage,
+      comptes: comptesRecents(tranche.comptes, profils, { nomsLus, max: tranche.parPage }) });
+  } catch (err) {
+    return json({ error: "Comptes illisibles : " + String((err as { message?: string })?.message || err).slice(0, 120) }, 502);
+  }
 }
 
 async function lireSignalements(admin: Admin) {

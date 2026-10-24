@@ -51,6 +51,7 @@
           <div><strong id="verdictTitre">Chargement…</strong><p id="verdictDetail"></p></div>
         </div>
         <p id="perime" class="bandeau-perime" role="status" hidden></p>
+        <div id="tuileInscrits"></div>
         <h2>À faire <span id="nbAFaire" class="compteur" hidden></span></h2>
         <div id="afaire" class="pile"></div>
         <h2>Chiffres clés</h2>
@@ -75,7 +76,6 @@
         <h2>Inscriptions (7 jours)</h2>
         <div id="comptes" class="chiffres chiffres-petits"></div>
         <div id="grapheInscriptions" class="graphe" aria-label="Inscriptions des 7 derniers jours"></div>
-        <h2 id="titreComptesCrees">Comptes créés (30 derniers jours)</h2>
         <div id="comptesCrees" class="pile"></div>
         <h2>Activation des nouveaux comptes</h2>
         <p class="discret">Activé = dans ses 7 premiers jours, le compte a publié, commenté, suivi quelqu'un, rejoint ou organisé une activité, ou envoyé un message. Comptes des 30 derniers jours, hors tests et éditeur.</p>
@@ -92,6 +92,15 @@
         <div id="jauges" class="pile"></div>
         <h2>Ce qui s'est passé (7 jours)</h2>
         <div id="historique" class="pile"></div>
+      </section>
+
+      <!-- TOUS LES INSCRITS (2026-10-24) : ouvert par la tuile « inscrits au total »
+           de l'accueil. Hors de la barre d'onglets ; « Retour » ramène à l'accueil. -->
+      <section id="inscrits" class="onglet" data-titre="Inscrits">
+        <button id="inscritsRetour" class="btn btn-retour" type="button">‹ Retour</button>
+        <p id="inscritsResume" class="discret"></p>
+        <div id="inscritsListe" class="pile"></div>
+        <button id="inscritsSuite" class="btn btn-plein" type="button" hidden>Voir les suivants</button>
       </section>
 
       <!-- RÉGLAGES : ce qu'on change rarement. -->
