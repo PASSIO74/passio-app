@@ -364,7 +364,19 @@
     lieu.appendChild(lico);
     lieu.appendChild(corps);
     lieu.appendChild(modif);
+    // Toute la carte ouvre le sélecteur (2026-10-23, « qu'on puisse changer
+    // simplement ») : « Modifier » seul était une cible de 60 px au bout de
+    // la ligne. Le bouton garde son rôle pour le clavier et les lecteurs.
+    lieu.addEventListener("click", function () { modif.click(); });
     ou.appendChild(lieu);
+
+    // Raccourcis de lieu : revenir à sa position ou reprendre une ville
+    // récente, sans rouvrir le sélecteur. Rendus par `majLieu` en DOM pur
+    // (`textContent`) : un nom de ville n'entre jamais dans un `onclick`.
+    var rapides = document.createElement("div");
+    rapides.className = "v4a5-lieu-rapides";
+    rapides.id = "v4a5LieuRapides";
+    ou.appendChild(rapides);
 
     var sTitre = document.createElement("div");
     sTitre.className = "v4a5-sous-titre";
@@ -703,11 +715,51 @@
     if (!nom || !sub) return;
     var ref = { nom: "Choisir une ville", sub: "" };
     try { if (typeof irlLieuReference === "function") ref = irlLieuReference(); } catch (e) { fail("lieu_ref", e); }
-    var sig = String(ref.nom) + "|" + String(ref.sub);
+    var recentes = [];
+    try { if (typeof irlVillesRecentes === "function") recentes = irlVillesRecentes(); } catch (e) { fail("lieu_recentes", e); }
+    var choisie = "";
+    try { if (typeof irlSelectedCityName === "function") choisie = irlSelectedCityName(); } catch (e) {}
+    var sig = String(ref.nom) + "|" + String(ref.sub) + "|" + choisie + "|"
+      + recentes.map(function (v) { return v.name; }).join(",");
     if (sig === sigLieu) return;
     sigLieu = sig;
     nom.textContent = ref.nom;
     sub.textContent = ref.sub;
+    majLieuRapides(choisie, recentes);
+  }
+
+  function majLieuRapides(choisie, recentes) {
+    var box = el("v4a5LieuRapides");
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    var norm = function (s) {
+      return (typeof _normIrlCityName === "function") ? _normIrlCityName(s) : String(s || "").toLowerCase();
+    };
+    var courante = norm(choisie);
+    var ajout = function (label, ico, action, trace) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "v4a5-lieu-rapide";
+      if (ico) b.appendChild(svgIcone(ico.d, ico.extra));
+      var t = document.createElement("span");
+      t.textContent = label;
+      b.appendChild(t);
+      b.addEventListener("click", function () {
+        try { action(); track("ui_v4a5_lieu_rapide", { v: VERSION, type: trace }); } catch (e) { fail("lieu_rapide", e); }
+      });
+      box.appendChild(b);
+    };
+    if (choisie) {
+      ajout("Ma position", { d: "M12 3v3M12 18v3M3 12h3M18 12h3", extra: ["M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0"] },
+        function () { if (typeof useMyPositionForIrl === "function") useMyPositionForIrl(); }, "position");
+    }
+    var n = 0;
+    recentes.forEach(function (v, i) {
+      if (n >= 3 || norm(v.name) === courante) return;
+      n++;
+      ajout(v.name, null, function () { if (typeof choisirIrlVilleRecente === "function") choisirIrlVilleRecente(i); }, "recente");
+    });
+    box.style.display = box.firstChild ? "" : "none";
   }
 
   function majRaccourcis() {

@@ -12116,3 +12116,48 @@ button, a, label, select, summary,
   font-weight: 800;
 }
 .fr-welcome-signup + .fr-welcome-signin { margin-top: 2px; }
+/* ── Changer de lieu simplement (Rencontrer, 2026-10-23) ─────────────────
+   Sélecteur de ville (app-07 `openIrlCitySelector`) et raccourcis de la
+   carte « Où ? » de la page Filtre (ui-v4a5). L'état choisi ne repose jamais
+   sur la seule couleur : `aria-pressed` + contour. */
+.irl-ville-recherche { margin-bottom: 10px; font-size: 16px; }
+.irl-ville-pos {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-height: 52px; padding: 8px 12px; margin-bottom: 4px;
+  border: 1px solid var(--border); border-radius: 14px;
+  background: var(--bg-card); color: var(--text);
+  text-align: left; cursor: pointer; font: inherit;
+}
+.irl-ville-pos svg { flex: 0 0 auto; width: 22px; height: 22px; color: var(--accent); }
+.irl-ville-pos span { display: flex; flex-direction: column; min-width: 0; }
+.irl-ville-pos b { font-size: 14.5px; font-weight: 700; }
+.irl-ville-pos small { font-size: 12px; color: var(--muted); }
+.irl-ville-pos.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.irl-ville-titre {
+  margin: 12px 0 6px; font-size: 12px; font-weight: 700;
+  letter-spacing: .02em; text-transform: uppercase; color: var(--muted);
+}
+.irl-ville-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.irl-ville-grille {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  max-height: 300px; overflow-y: auto;
+}
+.irl-ville-btn { width: 100%; justify-content: center; min-height: 44px; }
+.irl-ville-chip { min-height: 40px; }
+.irl-ville-btn.on, .irl-ville-chip.on {
+  border-color: var(--accent); color: var(--accent); font-weight: 700;
+}
+.irl-ville-vide { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; }
+:root.passio-ui-4a5 .v4a5-lieu { cursor: pointer; }
+:root.passio-ui-4a5 .v4a5-lieu-rapides {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+}
+:root.passio-ui-4a5 .v4a5-lieu-rapide {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--bg-card); color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+:root.passio-ui-4a5 .v4a5-lieu-rapide svg { width: 15px; height: 15px; color: var(--accent); }
+:root.passio-ui-4a5 .v4a5-lieu-rapide:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -1296,30 +1296,85 @@ function updateIrlCityTitle() {
   titleEl.textContent = displayName;
 }
 
+// ── Changer de lieu SIMPLEMENT (2026-10-23) ─────────────────────────────────
+// Demande de Benjamin : « dans le filtre des rencontres, améliore le changement
+// de ville et de lieu, il faut qu'on puisse changer simplement ». Constat : le
+// sélecteur déroulait 200 villes par ordre alphabétique, la recherche butait
+// sur les accents (« sete » ne trouvait pas Sète), rien ne disait quelle ville
+// était choisie, et revenir à une ville déjà visitée obligeait à la retaper.
+// Désormais : la position en tête, les villes RÉCENTES en un tap, une poignée
+// de grandes villes tant qu'on n'a rien tapé, une recherche sans accents qui
+// classe les débuts de nom d'abord, et Entrée choisit le premier résultat.
+// Aucun moteur nouveau : tout finit dans `selectIrlCity` / `selectIrlGeoCity`.
+//
+// Les villes récentes sont une donnée de LIEU : la clé est dans
+// `ACCOUNT_SCOPED_KEYS` (app-02), purgée avec le compte.
+var IRL_VILLES_RECENTES_KEY = "passio_irl_villes_recentes_v1";
+var IRL_VILLES_RECENTES_MAX = 5;
+var IRL_VILLES_POPULAIRES = ["paris", "marseille", "lyon", "toulouse", "nice", "nantes",
+  "montpellier", "strasbourg", "bordeaux", "lille", "rennes", "grenoble"];
+
+function irlVillesRecentes() {
+  try {
+    var l = JSON.parse(localStorage.getItem(IRL_VILLES_RECENTES_KEY) || "[]");
+    if (!Array.isArray(l)) return [];
+    return l.filter(function (v) {
+      return v && typeof v.name === "string" && v.name && isFinite(v.lat) && isFinite(v.lng);
+    }).slice(0, IRL_VILLES_RECENTES_MAX);
+  } catch (e) { return []; }
+}
+
+function _memoriserIrlVille(name, lat, lng) {
+  if (!name || !isFinite(lat) || !isFinite(lng)) return;
+  try {
+    var n = _normIrlCityName(name);
+    var l = irlVillesRecentes().filter(function (v) { return _normIrlCityName(v.name) !== n; });
+    l.unshift({ name: String(name).slice(0, 80), lat: Number(lat), lng: Number(lng) });
+    localStorage.setItem(IRL_VILLES_RECENTES_KEY, JSON.stringify(l.slice(0, IRL_VILLES_RECENTES_MAX)));
+  } catch (e) { _diag("[IRL] villes récentes non mémorisées: " + (e && e.message)); }
+}
+
+// Un tap sur une ville récente (sélecteur ou carte « Où ? » de la page Filtre).
+function choisirIrlVilleRecente(i) {
+  var v = irlVillesRecentes()[i];
+  if (v) selectIrlGeoCity(v.name, v.lat, v.lng);
+}
+
 // Sélecteur de ville pour IRL
 function openIrlCitySelector() {
   const citiesList = _irlCityList();
+  const courante = irlSelectedCity ? _normIrlCityName(irlSelectedCity.name) : "";
+  const pin = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>';
+  const coche = (on) => on ? ' on" aria-pressed="true' : '" aria-pressed="false';
 
   let html = `
     <div class="modal-handle"></div>
-    <div class="modal-title">Chercher une ville</div>
-    <input type="text" class="input" id="irlCitySearchInput" placeholder="Tape le nom d'une ville..." style="margin-bottom:12px;" />
-    <div id="irlCitiesGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:12px;">
+    <div class="modal-title">Changer de lieu</div>
+    <input type="search" class="input irl-ville-recherche" id="irlCitySearchInput" placeholder="Rechercher une ville ou une commune" autocomplete="off" enterkeyhint="search" aria-label="Rechercher une ville" />
+    <button type="button" class="irl-ville-pos${coche(!irlSelectedCity)}" onclick="useMyPositionForIrl()">
+      ${pin}<span><b>Utiliser ma position</b><small>${irlSelectedCity ? "Autour de moi" : "Lieu actuel"}</small></span>
+    </button>
   `;
 
-  citiesList.forEach(city => {
-    html += `<button class="pill" data-localcity="1" onclick="selectIrlCity('${escapeJsArg(city.id)}', '${escapeJsArg(city.name)}')" style="width:100%;justify-content:center;">
-      ${escapeHtml(city.name)}
-    </button>`;
-  });
+  const recentes = irlVillesRecentes();
+  if (recentes.length) {
+    html += `<div id="irlCityRecents"><div class="irl-ville-titre">Récentes</div><div class="irl-ville-chips">`
+      + recentes.map((v, i) => `<button type="button" class="pill irl-ville-chip${coche(_normIrlCityName(v.name) === courante)}" onclick="choisirIrlVilleRecente(${i})">${escapeHtml(v.name)}</button>`).join("")
+      + `</div></div>`;
+  }
 
+  html += `<div class="irl-ville-titre" id="irlCityListTitle">Grandes villes</div>
+    <div id="irlCitiesGrid" class="irl-ville-grille">`;
+  citiesList.forEach(city => {
+    const norm = _normIrlCityName(city.name);
+    const pop = IRL_VILLES_POPULAIRES.indexOf(city.id) > -1;
+    html += `<button type="button" class="pill irl-ville-btn${coche(norm === courante)}" data-localcity="1" data-norm="${escapeHtml(norm)}"${pop ? ' data-pop="1"' : ' style="display:none"'} onclick="selectIrlCity('${escapeJsArg(city.id)}', '${escapeJsArg(city.name)}')">${escapeHtml(city.name)}</button>`;
+  });
   html += `
       <div id="irlCityRemote" style="display:contents;"></div>
     </div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn secondary block" onclick="closeModal()">Annuler</button>
-      <button class="btn primary block" onclick="useMyPositionForIrl()">Utiliser ma position</button>
-    </div>
+    <div id="irlCityEmpty" class="irl-ville-vide" style="display:none;"></div>
+    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
   `;
 
   openModal(html);
@@ -1329,45 +1384,90 @@ function openIrlCitySelector() {
   // absente était donc introuvable alors qu'elle est parfaitement géocodable.
   const searchInput = document.getElementById("irlCitySearchInput");
   const citiesGrid = document.getElementById("irlCitiesGrid");
-  if (searchInput && citiesGrid) {
-    let remoteT;
-    searchInput.addEventListener("input", (e) => {
-      const query = (e.target.value || "").toLowerCase().trim();
-      let localHits = 0;
-      citiesGrid.querySelectorAll("button[data-localcity]").forEach(btn => {
-        const show = btn.textContent.toLowerCase().includes(query);
-        btn.style.display = show ? "block" : "none";
-        if (show) localHits++;
-      });
-      const remoteBox = document.getElementById("irlCityRemote");
-      if (remoteBox) remoteBox.innerHTML = "";
-      clearTimeout(remoteT);
-      if (query.length < 3) return;
-      remoteT = setTimeout(async () => {
-        const res = await passioGeoSuggest(query, 6);
-        const box = document.getElementById("irlCityRemote");
-        if (!box || searchInput.value.toLowerCase().trim() !== query) return;
-        // On ne propose que des communes, et pas celles déjà listées localement.
-        const seen = new Set();
-        const cities = res.filter(r => {
-          const c = (r.city || "").toLowerCase();
-          if (!c || seen.has(c) || FRANCE_CITIES[c]) return false;
-          seen.add(c);
-          return true;
-        });
-        if (!cities.length) return;
-        box.innerHTML = '<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:6px 0 2px;">Autres communes</div>'
-          + cities.map(c => `<button class="pill" style="width:100%;justify-content:center;"
-              onclick="selectIrlGeoCity('${escapeJsArg(c.city)}', ${Number(c.lat)}, ${Number(c.lng)})">${escapeHtml(c.city)}</button>`).join("");
-      }, 320);
+  if (!searchInput || !citiesGrid) return;
+  const titre = document.getElementById("irlCityListTitle");
+  const recentsBox = document.getElementById("irlCityRecents");
+  const vide = document.getElementById("irlCityEmpty");
+  const MAX_LOCAUX = 30;
+  let remoteT;
+
+  const montrerVide = (txt) => {
+    if (!vide) return;
+    vide.textContent = txt || "";
+    vide.style.display = txt ? "block" : "none";
+  };
+
+  searchInput.addEventListener("input", () => {
+    const query = _normIrlCityName(searchInput.value);
+    let localHits = 0;
+    citiesGrid.querySelectorAll("button[data-localcity]").forEach(btn => {
+      const norm = btn.getAttribute("data-norm") || "";
+      let show;
+      if (!query) {
+        show = btn.hasAttribute("data-pop");
+        btn.style.order = "";
+      } else {
+        const debut = norm.indexOf(query) === 0 || norm.indexOf(" " + query) > -1;
+        show = norm.indexOf(query) > -1 && localHits < MAX_LOCAUX;
+        // Les débuts de nom d'abord : « nan » → Nancy, Nanterre, Nantes avant
+        // « Saint-Nazaire ». `order` réordonne la grille sans toucher au DOM.
+        btn.style.order = debut ? "0" : "1";
+      }
+      btn.style.display = show ? "" : "none";
+      if (show) localHits++;
     });
-    setTimeout(() => searchInput.focus(), 100);
-  }
+    if (titre) titre.textContent = query ? "Résultats" : "Grandes villes";
+    if (recentsBox) recentsBox.style.display = query ? "none" : "";
+    const remoteBox = document.getElementById("irlCityRemote");
+    if (remoteBox) remoteBox.innerHTML = "";
+    clearTimeout(remoteT);
+    if (!query) { montrerVide(""); return; }
+    if (searchInput.value.trim().length < 3) {
+      montrerVide(localHits ? "" : "Continue à taper pour chercher une commune…");
+      return;
+    }
+    montrerVide(localHits ? "" : "Recherche des communes…");
+    const brut = searchInput.value.trim();
+    remoteT = setTimeout(async () => {
+      let res = [];
+      try { res = await passioGeoSuggest(brut, 6); } catch (e) { res = []; }
+      const box = document.getElementById("irlCityRemote");
+      if (!box || searchInput.value.trim() !== brut) return;
+      // On ne propose que des communes, et pas celles déjà listées localement.
+      const seen = new Set();
+      const cities = (res || []).filter(r => {
+        const c = (r.city || "").toLowerCase();
+        if (!c || seen.has(c) || FRANCE_CITIES[c]) return false;
+        seen.add(c);
+        return true;
+      });
+      if (!cities.length) {
+        montrerVide(localHits ? "" : "Aucune ville trouvée pour « " + brut + " ».");
+        return;
+      }
+      montrerVide("");
+      box.innerHTML = '<div class="irl-ville-titre" style="grid-column:1/-1;order:2;">Autres communes</div>'
+        + cities.map(c => `<button type="button" class="pill irl-ville-btn" style="order:2;"
+            onclick="selectIrlGeoCity('${escapeJsArg(c.city)}', ${Number(c.lat)}, ${Number(c.lng)})">${escapeHtml(c.city)}</button>`).join("");
+    }, 320);
+  });
+
+  // Entrée = le premier résultat affiché (dans l'ordre VISUEL, `order` compris).
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const visibles = [...citiesGrid.querySelectorAll("button")]
+      .filter(b => b.style.display !== "none" && b.offsetParent !== null)
+      .sort((a, b) => (parseInt(a.style.order || "0", 10) - parseInt(b.style.order || "0", 10)));
+    if (visibles[0]) visibles[0].click();
+  });
+  setTimeout(() => searchInput.focus(), 100);
 }
 
 // Sélection d'une commune trouvée par géocodage (hors dictionnaire local).
 function selectIrlGeoCity(name, lat, lng) {
   irlSelectedCity = { id: "geo", name: name, coords: [lat, lng] };
+  _memoriserIrlVille(name, lat, lng);
   _diag("[IRL] 🏙️ Ville géocodée: " + name);
   updateIrlCityTitle();
   closeModal();
@@ -1382,10 +1482,12 @@ function selectIrlCity(cityId, cityName) {
     name: cityName,
     coords: FRANCE_CITIES[cityId]
   };
+  if (irlSelectedCity.coords) _memoriserIrlVille(cityName, irlSelectedCity.coords[0], irlSelectedCity.coords[1]);
   _diag("[IRL] 🏙️ Ville sélectionnée: " + cityName);
   updateIrlCityTitle();
   closeModal();
   renderIRL();
+  toast("Autour de " + cityName);
 }
 
 // Geste EXPLICITE « Utiliser ma position » du sélecteur de ville (§2 du lot
