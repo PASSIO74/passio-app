@@ -19,6 +19,7 @@
 - 😍 UNE RÉACTION EMOJI S'EFFAÇAIT ELLE-MÊME — suppression et insertion en parallèle (2026-10-10)
 - 🏷️ UN PSEUDO CHANGÉ RESTAIT L'ANCIEN DANS LA MESSAGERIE (2026-10-13)
 - 📍 UNE ACTIVITÉ CRÉÉE N'APPARAISSAIT PAS DANS LE FIL (2026-10-23)
+- 🤝 UNE ACTIVITÉ TAPÉE SUR UN PROFIL RAMENAIT À LA MESSAGERIE (2026-10-24)
 
 ---
 
@@ -374,3 +375,23 @@ bouton « Partager dans mon feed » de la fiche — que personne ne va chercher 
 
 Coupures : `localStorage.passio_activite_au_fil_v1="0"`, `window.PASSIO_ACTIVITE_AU_FIL=false`.
 Verrou : `tests/e2e/activite-au-fil.spec.js` (5), éprouvé par réinjection (branchement retiré → ① rouge).
+
+---
+
+## 🤝 UNE ACTIVITÉ TAPÉE SUR UN PROFIL RAMENAIT À LA MESSAGERIE (2026-10-24)
+
+Rapport d'usage : « quand je clique sur une activité sur un profil ça m'emmène sur la messagerie et
+non sur l'activité ». **Chemin** : conversation → avatar ou nom de l'en-tête (`openUserProfile`) →
+onglet « Activité » → tap. La ligne fait `closeModal();openEventDetails(id)` : la modale part, la
+fiche s'ouvre bien (`display:flex`) — mais **SOUS** le fil de messages : `#eventDetailPage` est en
+`z-index: 200`, `#conv-fullpage` en `1200`, et rien ne fermait la conversation. Depuis le fil ou
+mon propre profil, aucun panneau n'est au-dessus : le défaut ne se voyait que depuis la messagerie.
+
+**Correctif.** `openEventDetails` (app-07) ferme la conversation (`closeConversation`) AVANT de
+pousser l'entrée d'historique de la fiche, si l'activité existe. On n'a PAS remonté le z-index de
+la fiche : `closeCurrentOverlay` (app-02) ferme les panneaux dans l'ordre du z-index décroissant
+(conversation avant fiche), et les feuilles ouvertes depuis la fiche se seraient retrouvées dessous.
+Le retour depuis la fiche ramène à la liste des messages.
+
+**Verrou.** `tests/e2e/profil-activite-depuis-conversation.spec.js` (2) — mesuré par
+`elementFromPoint` au centre de l'écran ; ① rouge sans le correctif (réinjection faite).

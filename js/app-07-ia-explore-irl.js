@@ -3991,7 +3991,20 @@ function openEventDetails(id) {
   const _isRerender = window._openEventDetailId === id
     && (document.getElementById("eventDetailPage") || {}).style
     && document.getElementById("eventDetailPage").style.display !== "none";
-  if (!_isRerender) pushOverlayToHistory("event", id);
+  // ⚠️ La fiche (z-index 200) s'ouvre SOUS une conversation (#conv-fullpage,
+  // 1200). Profil visité depuis un fil de messages → onglet « Activité » → tap :
+  // la modale se fermait, la fiche s'ouvrait derrière, et l'on voyait… la
+  // messagerie (défaut signalé le 2026-10-23). On quitte la conversation AVANT
+  // de pousser l'entrée de la fiche, comme le ferait n'importe quelle
+  // navigation : le retour ramène à la liste des messages.
+  if (!_isRerender) {
+    const _conv = document.getElementById("conv-fullpage");
+    if (_conv && _conv.classList.contains("active") && allEvents().some(e => e.id === id)) {
+      if (typeof closeConversation === "function") closeConversation();
+      else _conv.classList.remove("active");
+    }
+    pushOverlayToHistory("event", id);
+  }
 
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
