@@ -4781,25 +4781,62 @@ async function shareEventInFeed(id) {
 
   try { window.tel && tel.action("share_event", { eventId: id }); } catch (e) {}
 
+  // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
+  if (typeof publicationRefuseeFautePassion === "function"
+      && publicationRefuseeFautePassion(passionDeRepartage(ev.passion))) {
+    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
+    closeModal();
+    return;
+  }
+  const authorName = await _nomAuteurActivite();
+  const newPost = _postActiviteAuFil(ev, authorName, "post_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9));
+
+  if (!state.userPosts) state.userPosts = [];
+  state.userPosts.push(newPost);
+  saveState();
+
+  closeModal();
+  setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
+  toast("Événement partagé dans ton feed.");
+
+  if (typeof supa !== "undefined" && supa) {
+    try {
+      const syncPromise = supaPublishPostWithRetry(newPost);
+      const timeout = new Promise(resolve => setTimeout(() => resolve(false), 5000));
+      const ok = await Promise.race([syncPromise, timeout]);
+      if (!ok) console.warn("⚠️ [SHARE-EVENT] Sync timeout — partagé localement uniquement");
+    } catch (e) {
+      console.warn("⚠️ [SHARE-EVENT] Erreur sync:", e.message);
+    }
+  }
+}
+
+async function _nomAuteurActivite() {
   const prof = currentProfile();
   const g = state.user.general || {};
   let authorName = g.username || (prof && prof.name) || "Moi";
-
   if (!g.username && typeof supa !== "undefined" && supa && MY_UID) {
     try {
       const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).maybeSingle();
       if (data && data.username) { state.user.general.username = data.username; authorName = data.username; }
     } catch (e) {}
   }
+  return authorName;
+}
 
+// La publication « carte d'activité » du fil — UNE seule fabrique, pour le
+// partage manuel (`shareEventInFeed`) comme pour la publication automatique à
+// la création (`publierActiviteAuFil`).
+// Texte stocké EN CLAIR : renderPostHTML l'échappe une fois (pas de double
+// échappement).
+function _postActiviteAuFil(ev, authorName, postId) {
+  const prof = currentProfile();
+  const g = state.user.general || {};
   const passion = passionById(ev.passion) || { label: ev.passion || "", emoji: "📍" };
   const d = fmtEventDate(ev.date);
   const dateStr = d.day + " " + d.month + (d.time ? " · " + d.time : "");
-
-  // Texte stocké EN CLAIR : renderPostHTML l'échappe une fois (pas de double
-  // échappement).
-  const newPost = {
-    id: "post_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+  return {
+    id: postId,
     type: "text",
     authorId: MY_UID,
     authorName: authorName,
@@ -4822,32 +4859,110 @@ async function shareEventInFeed(id) {
       passion: ev.passion || null,
     },
   };
+}
 
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE ACTIVITÉ CRÉÉE APPARAÎT DANS LE FIL (2026-10-23)
+//
+// Signalé le jour même : Jerem crée « Via ferrata » (ligne `events` présente,
+// statut actif), et rien n'arrive dans le fil — ni chez lui, ni chez ceux qui
+// le suivent. Créer une activité n'écrivait QUE dans `events` ; la seule carte
+// du fil était celle du bouton « Partager dans mon feed » de la fiche, que
+// personne ne va chercher sur sa propre activité.
+// Désormais la création publie la carte, sans geste de plus.
+// ⚠️ IDENTIFIANT DÉTERMINISTE `post_ev_<idActivité>` : c'est lui qui empêche le
+// doublon (la clé primaire refuse une seconde ligne), entre la création et le
+// rattrapage, et entre deux appareils du même compte.
+// ⚠️ UNE carte par création, même récurrente : les occurrences suivantes ne
+// publient rien (six cartes d'un coup noieraient le fil).
+// ⚠️ SILENCIEUSE : ni `closeModal`, ni `goTo` — la proposition d'invitation est
+// à l'écran juste après la création, et `openModal` n'empile pas.
+// Coupures : `localStorage.passio_activite_au_fil_v1 = "0"` ou
+// `window.PASSIO_ACTIVITE_AU_FIL = false`.
+// ═══════════════════════════════════════════════════════════════════════════
+var ACTIVITE_AU_FIL_FENETRE_MS = 7 * 86400000;
+
+function _activiteAuFilActive() {
+  try {
+    if (window.PASSIO_ACTIVITE_AU_FIL === false) return false;
+    if (localStorage.getItem("passio_activite_au_fil_v1") === "0") return false;
+  } catch (e) {}
+  return true;
+}
+
+function _postIdActiviteAuFil(evId) { return "post_ev_" + evId; }
+
+// Une carte de cette activité existe-t-elle déjà dans ce que l'appareil connaît ?
+function _activiteDejaAuFil(evId) {
+  const autoId = _postIdActiviteAuFil(evId);
+  const listes = [state.userPosts, state.supabasePosts, window._feedExtraPosts];
+  return listes.some(l => Array.isArray(l) && l.some(p => p && (p.id === autoId
+    || (p.authorId === MY_UID && p.sharedReelData && p.sharedReelData.kind === "event" && p.sharedReelData.id === evId))));
+}
+
+async function publierActiviteAuFil(ev) {
+  if (!ev || !ev.id || !_activiteAuFilActive()) return false;
+  if (!window._supaReal || typeof supaPublishPostWithRetry !== "function") return false;
+  if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return false;
+  const postId = _postIdActiviteAuFil(ev.id);
+  // Supprimée par son auteur : elle ne revient jamais.
+  if (typeof postSupprime === "function" && postSupprime(postId)) return false;
+  if (_activiteDejaAuFil(ev.id)) return false;
+  // Pas de toast ici : la passion de l'activité est déjà canonique (vérifiée
+  // par `submitEvent`) ; un état qui ne l'est pas ne publie rien, en silence.
+  if (!estPassionCanonique(passionDeRepartage(ev.passion))) return false;
+  const newPost = _postActiviteAuFil(ev, await _nomAuteurActivite(), postId);
+  if (_activiteDejaAuFil(ev.id)) return false;   // l'attente du nom a pu croiser un autre appel
   if (!state.userPosts) state.userPosts = [];
-  // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
-  if (typeof publicationRefuseeFautePassion === "function"
-      && publicationRefuseeFautePassion(newPost.passion)) {
-    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
-    closeModal();
-    return;
-  }
   state.userPosts.push(newPost);
   saveState();
+  try {
+    const feed = document.getElementById("screen-feed");
+    if (feed && feed.classList.contains("active") && typeof renderFeed === "function") renderFeed();
+  } catch (e) {}
+  try { if (window.tel && tel.action) tel.action("activite_au_fil", { v: 1 }); } catch (e) {}
+  try { return !!(await supaPublishPostWithRetry(newPost)); }
+  catch (e) { console.warn("⚠️ [ACTIVITE-FIL] publication :", e && e.message); return false; }
+}
 
-  closeModal();
-  setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
-  toast("Événement partagé dans ton feed.");
-
-  if (typeof supa !== "undefined" && supa) {
+// RATTRAPAGE : les activités créées avant ce correctif (ou dont la carte n'a
+// pas pu partir) reçoivent leur carte à la prochaine ouverture de l'app par
+// leur organisateur. Seulement les MIENNES, À VENIR, actives, créées depuis
+// moins de 7 jours — jamais une vague de cartes sur un vieux compte.
+// ⚠️ On demande au SERVEUR si une carte existe déjà (partage manuel compris :
+// les deux portent `"id":"<activité>"` dans `shared_data`, colonne TEXTE) — le
+// fil local ne porte que 60 publications.
+// Une lecture en échec ne publie RIEN.
+async function rattraperActivitesAuFil(events) {
+  if (!_activiteAuFilActive() || !Array.isArray(events)) return 0;
+  if (!window._supaReal || typeof supa === "undefined" || !supa) return 0;
+  if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return 0;
+  const maintenant = Date.now();
+  const vus = new Set();
+  const candidates = events.filter(ev => {
+    if (!ev || !ev.id || ev.fromSupabase !== true) return false;
+    if ((ev.organizerId || ev.authorId) !== MY_UID || ev.authorId !== MY_UID) return false;
+    if ((ev.status || "active") !== "active") return false;
+    if (!(Number(ev.date) > maintenant)) return false;
+    if (!(Number(ev.createdAt) > maintenant - ACTIVITE_AU_FIL_FENETRE_MS)) return false;
+    // Une série : sa première occurrence seulement.
+    const cle = ev.seriesId || ev.id;
+    if (vus.has(cle)) return false;
+    vus.add(cle);
+    return !_activiteDejaAuFil(ev.id);
+  });
+  let publiees = 0;
+  for (const ev of candidates.slice(0, 3)) {
     try {
-      const syncPromise = supaPublishPostWithRetry(newPost);
-      const timeout = new Promise(resolve => setTimeout(() => resolve(false), 5000));
-      const ok = await Promise.race([syncPromise, timeout]);
-      if (!ok) console.warn("⚠️ [SHARE-EVENT] Sync timeout — partagé localement uniquement");
-    } catch (e) {
-      console.warn("⚠️ [SHARE-EVENT] Erreur sync:", e.message);
-    }
+      const { data, error } = await supa.from("posts").select("id")
+        .eq("author_id", MY_UID)
+        .like("shared_data", '%"id":"' + ev.id + '"%')
+        .limit(1);
+      if (error || !Array.isArray(data) || data.length) continue;
+      if (await publierActiviteAuFil(ev)) publiees++;
+    } catch (e) { console.warn("⚠️ [ACTIVITE-FIL] rattrapage :", e && e.message); }
   }
+  return publiees;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -6629,6 +6744,8 @@ async function submitEvent(editId) {
   // L'invitation ne se propose que si l'activité EXISTE pour les autres :
   // publiée côté serveur (`backend && ok`), et jamais à l'édition.
   if (ok && backend && !editId) proposerInvitationActivite(ev);
+  // …et sa carte arrive dans le fil, sans geste de plus (cf. `publierActiviteAuFil`).
+  if (ok && backend && !editId) publierActiviteAuFil(ev);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
