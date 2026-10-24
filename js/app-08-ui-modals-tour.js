@@ -5731,6 +5731,7 @@ async function supaLoadEvents() {
       endAt: r.end_at ? supaTs(r.end_at) : null,
       status: r.status || "active",
       updatedAt: r.updated_at ? supaTs(r.updated_at) : null,
+      createdAt: r.created_at ? supaTs(r.created_at) : null,   // borne du rattrapage au fil (app-07)
       coOrganizers: Array.isArray(r.co_organizers) ? r.co_organizers : [],
       seriesId: r.series_id || null,
       recurrence: r.recurrence || "none",
@@ -8372,6 +8373,8 @@ async function supaInit() {
             const ids = new Set(e.map(x => x.id));
             const localOnly = (state.seed.events || []).filter(x => !ids.has(x.id));
             state.seed.events = [...e, ...localOnly];
+            // Mes activités récentes sans carte dans le fil la reçoivent (app-07).
+            if (typeof rattraperActivitesAuFil === "function") rattraperActivitesAuFil(e).catch(function () {});
             // Rafraîchir si l'utilisateur regarde déjà l'écran IRL (sinon il ne voyait
             // les events Supabase qu'après re-navigation).
             try {
