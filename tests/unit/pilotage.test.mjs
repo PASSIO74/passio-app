@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE } from "../../supabase/functions/_shared/pilotage.js";
+import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, COMMENTAIRE_CONFIER, dejaConfiee, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
 
@@ -432,7 +432,7 @@ const etatAF = (extra = {}) => ({
       iss(13, ["sentinelle"]),
       iss(629, ["digest"]),
       iss(700, [], { pr: true, titre: "fix: correctif" }),
-      iss(601, ["reparation"], { titre: "[RÉPARER] #627" }),
+      iss(601, ["reparation", "claude"], { titre: "[RÉPARER] #627" }),
       iss(5, ["moderation", "humain"]),
     ],
     runs: { deploy: { conclusion: "failure", url: "https://github.com/P/p/actions/runs/9" } },
@@ -598,4 +598,30 @@ test("㉟ le total est compté dans la boucle de l'activation (toutes dates) ; l
   assert.ok(fn.indexOf('case "inscrits": return listerInscrits(admin, corps);') > porte, "la liste des noms est derrière la porte de l'éditeur");
   const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));
   assert.doesNotMatch(et, /listerInscrits/, "jamais à chaque relecture de l'état");
+});
+
+test("㊱ réparation jamais confiée (label « claude » refusé, #653 le 24/10) : « Relancer », repli par commentaire @claude, jamais deux fois", () => {
+  // Sans label `claude` : le bouton existe et vise la CIBLE d'origine, re-vérifiée par le serveur.
+  const etat = etatAF();
+  etat.github.issues = etat.github.issues.map((i) => (i.numero === 601 ? { ...i, labels: ["reparation"] } : i));
+  const r = aFaire(etat, MAINTENANT_AF).find((x) => x.id === "issue:601");
+  assert.deepEqual(r.gestes.map((g) => g.corps), [{ action: "reparer", cible: "issue", numero: 627 }]);
+  assert.equal(r.prio, 1);
+  // Avec le label : rien à relancer.
+  assert.deepEqual(aFaire(etatAF(), MAINTENANT_AF).find((x) => x.id === "issue:601").gestes, []);
+  // Le commentaire de secours remplit la condition de claude-code.yml (`@claude`) ; texte fixe.
+  assert.match(COMMENTAIRE_CONFIER, /@claude/);
+  const wf = fs.readFileSync(".github/workflows/claude-code.yml", "utf8");
+  assert.match(wf, /github\.event_name == 'issue_comment' &&\s+github\.event\.comment\.user\.login == 'PASSIO74'[\s\S]{0,200}contains\(github\.event\.comment\.body, '@claude'\)/);
+  // Idempotence : seul un commentaire `@claude` DU PILOTE compte.
+  assert.equal(dejaConfiee([{ user: { login: "PASSIO74" }, body: COMMENTAIRE_CONFIER }]), true);
+  assert.equal(dejaConfiee([{ user: { login: "inconnu" }, body: "@claude" }, { user: { login: "PASSIO74" }, body: "merci" }]), false);
+  assert.equal(dejaConfiee(null), false);
+  // Le serveur : label d'abord, commentaire en repli, et une réparation ouverte passe par reconfier (jamais un second ordre aveugle).
+  const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const conf = src.slice(src.indexOf("async function confier"), src.indexOf("async function reconfier"));
+  assert.ok(conf.indexOf("/labels`") > 0 && conf.indexOf("/labels`") < conf.indexOf("/comments`"), "label puis commentaire");
+  assert.doesNotMatch(src, /pose-le à la main/, "plus jamais un geste renvoyé au téléphone sans tentative");
+  assert.match(src, /if \(c\.enCours\) return reconfier\(c\.enCours, etatGh\.issues\);/);
+  assert.match(src.slice(src.indexOf("async function reconfier")), /dejaConfiee\(/);
 });

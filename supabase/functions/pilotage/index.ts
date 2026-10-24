@@ -30,7 +30,7 @@ import { REVISION } from "../_shared/revision.js";
 import {
   autorise, RELANCES, LABELS_SUIVIS, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPauseDuPilote,
   erreursFrequentes, detailsErreurs, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
-  aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
+  aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, COMMENTAIRE_CONFIER, dejaConfiee, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
@@ -975,11 +975,11 @@ async function reparer(corps: Record<string, unknown>) {
     : cible === "run" ? { cible, cle: String(corps.cle || "") } : null;
   if (!demande || !titreReparation(demande)) return json({ error: "Cible de réparation invalide." }, 400);
   cacheGh = null;
-  let etatGh: { aReparer: { cible: string; numero?: number; cle?: string; url: string | null; enCours: number | null }[]; issues: { titre: string; pr: boolean }[] };
+  let etatGh: { aReparer: { cible: string; numero?: number; cle?: string; url: string | null; enCours: number | null }[]; issues: { numero: number; titre: string; pr: boolean; labels?: string[] }[] };
   try { etatGh = await lireGithub() as typeof etatGh; } catch { return json({ error: "GitHub illisible." }, 502); }
   const c = etatGh.aReparer.find((x) => x.cible === demande.cible && (x.cible === "issue" ? x.numero === (demande as { numero: number }).numero : x.cle === (demande as { cle: string }).cle));
   if (!c) return json({ error: "Rien à réparer ici : le problème est déjà réglé, ou il est déjà entre les mains de la Sentinelle." }, 409);
-  if (c.enCours) return json({ ok: true, message: "Réparation déjà en cours (#" + c.enCours + ")." });
+  if (c.enCours) return reconfier(c.enCours, etatGh.issues);
   const ouvertes = etatGh.issues.filter((i) => !i.pr && estReparation(i.titre)).length;
   if (ouvertes >= REPARATIONS_MAX) return json({ error: `Déjà ${ouvertes} réparations en cours : attends qu'une se termine.` }, 429);
   // Le label doit exister AVANT d'être posé (un ajout sur un label absent échoue).
@@ -989,10 +989,38 @@ async function reparer(corps: Record<string, unknown>) {
   const issue = await r.json();
   // `claude` APRÈS la création, seul dans son événement (course mesurée du 10 au 12/09).
   await attendre(8000);
-  const l = await gh(`/repos/${DEPOT}/issues/${issue.number}/labels`, { method: "POST", body: JSON.stringify({ labels: ["claude"] }) });
+  return confier(issue.number);
+}
+
+// Confier une issue de réparation à Claude (claude-code.yml). Voie nominale :
+// le label `claude`. Le 24/10, #653 a été OUVERTE mais le label refusé (HTTP 403)
+// et même `reparation` ignoré à la création : le jeton du pilotage peut faire
+// ce que tout compte fait sur un dépôt public (ouvrir, commenter) mais pas
+// étiqueter (droit « Issues: write » absent). Repli : un commentaire `@claude`
+// du même compte (PASSIO74) — voie de secours que le workflow accepte déjà.
+async function confier(n: number, refusLabel = 0) {
+  if (!refusLabel) {
+    const l = await gh(`/repos/${DEPOT}/issues/${n}/labels`, { method: "POST", body: JSON.stringify({ labels: ["claude"] }) });
+    cacheGh = null;
+    if (l.ok) return json({ ok: true, message: `Réparation lancée : #${n}. Le correctif arrivera dans « Correctifs en attente ».` });
+    refusLabel = l.status;
+  }
+  const c = await gh(`/repos/${DEPOT}/issues/${n}/comments`, { method: "POST", body: JSON.stringify({ body: COMMENTAIRE_CONFIER }) });
   cacheGh = null;
-  if (!l.ok) return json({ ok: true, message: `Issue #${issue.number} ouverte, mais le label « claude » a été refusé (HTTP ${l.status}) : pose-le à la main.` });
-  return json({ ok: true, message: `Réparation lancée : #${issue.number}. Le correctif arrivera dans « Correctifs en attente ».` });
+  if (c.ok) return json({ ok: true, message: `Réparation lancée : #${n} (confiée par commentaire, label « claude » refusé : HTTP ${refusLabel}). Le correctif arrivera dans « Correctifs en attente ».` });
+  return json({ error: `#${n} ouverte, mais GitHub refuse de la confier à Claude (label HTTP ${refusLabel}, commentaire HTTP ${c.status}). Donne au jeton PILOTAGE_GITHUB_TOKEN le droit « Issues: Read and write », puis touche « Relancer ».` }, 502);
+}
+
+// Une réparation déjà ouverte : si elle n'a jamais été confiée (ni label
+// `claude`, ni commentaire `@claude` du pilote), on la confie maintenant —
+// jamais deux fois, un second ordre lancerait un second agent.
+async function reconfier(n: number, issues: { numero: number; labels?: string[] }[]) {
+  const i = issues.find((x) => x.numero === n);
+  if (i && (i.labels || []).includes("claude")) return json({ ok: true, message: "Réparation déjà en cours (#" + n + ")." });
+  const r = await gh(`/repos/${DEPOT}/issues/${n}/comments?per_page=100`);
+  if (!r.ok) return json({ error: "GitHub illisible." }, 502);
+  if (dejaConfiee(await r.json())) return json({ ok: true, message: "Réparation déjà confiée à Claude (#" + n + ")." });
+  return confier(n);
 }
 
 function json(body: unknown, status = 200): Response {

@@ -51,7 +51,11 @@ avec Google ». Ajouter un compte : secret `PILOTAGE_EMAILS` de la fonction (vir
    Le tableau final doit dire `OK` ; vérifier ensuite l'état en base (`select jobname, schedule
    from cron.job`), jamais le seul tableau.
 2. **Relances depuis le téléphone** (facultatif) : jeton GitHub fin (dépôt `passio-app`, droits
-   *Actions: write* + *Issues: read*), posé en secret de fonction :
+   *Actions: write* + *Issues: write* + *Pull requests: write* + *Contents: write*), posé en secret de fonction.
+   ⚠️ Avec *Issues: read* seul, GitHub laisse ouvrir et commenter (tout compte le peut sur un dépôt
+   public) mais ignore les labels à la création et refuse `POST …/labels` en **403** — vécu le
+   2026-10-24 sur #653. Le bouton « Réparer » se rabat alors sur un commentaire `@claude` (voie de
+   secours de `claude-code.yml`) ; une réparation restée sans `claude` montre « Relancer ».
    `supabase secrets set PILOTAGE_GITHUB_TOKEN=… --project-ref njkiyoklssvefstljemx`.
    Sans lui, tout s'affiche et les alertes marchent ; seuls les gestes GitHub (relancer, fusionner, fermer, pause) sont remplacés par une explication. Les signalements, eux, se traitent sans ce jeton.
 3. **Google** : ajouter `https://passio-app.netlify.app/pilotage/` aux *Redirect URLs* (Supabase →
