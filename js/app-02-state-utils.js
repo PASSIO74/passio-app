@@ -7966,6 +7966,16 @@ function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
 
   return recency * 1.0 + affinity * 0.35 + engagement * 0.12 + mienneEtFraiche + suivieEtFraiche;
 }
+// Ordre du Fil (2026-10-24) : date décroissante, ex-æquo départagés par
+// l'identifiant pour un ordre stable d'un rendu à l'autre. Un post sans date
+// (`createdAt` absent) passe en dernier plutôt que de produire un NaN.
+function trierFilChronologique(posts) {
+  return (posts || []).slice().sort(function (a, b) {
+    var d = (b.createdAt || 0) - (a.createdAt || 0);
+    if (d) return d;
+    return String(a.id) < String(b.id) ? -1 : (String(a.id) > String(b.id) ? 1 : 0);
+  });
+}
 function rankFeedPosts(posts) {
   var arr = (posts || []).slice();
   var off = false;
@@ -8151,7 +8161,7 @@ function renderFeedExplorationFallback(list) {
   });
 
   var aExplorer = [];
-  try { aExplorer = rankFeedPosts(candidats).slice(0, FEED_EXPLORATION_MAX); }
+  try { aExplorer = trierFilChronologique(candidats).slice(0, FEED_EXPLORATION_MAX); }
   catch (e) { aExplorer = candidats.slice(0, FEED_EXPLORATION_MAX); }
 
   var quoi = etiquettes.length === 1
@@ -9088,11 +9098,14 @@ function renderFeed() {
   var emptyEl2 = $("#feedEmpty");
   if (emptyEl2) emptyEl2.style.display = "none";
 
-  // ✅ CLASSEMENT PAR PERTINENCE (fraîcheur + affinité passion/suivis + engagement).
-  // Repli chronologique strict via localStorage.passio_feed_rank="0". Voir rankFeedPosts.
-  const sortedPosts = intentsEnabled
-    ? rankFeedPostsForIntents(posts, enviesChoisies)
-    : rankFeedPosts(posts);
+  // ✅ ORDRE CHRONOLOGIQUE STRICT : le plus récent en haut, TOUJOURS (2026-10-24).
+  // Demande de Benjamin après l'essai à trois comptes : « il faut mettre toujours
+  // les posts les plus récents en haut du feed ». Le classement par pertinence
+  // (`rankFeedPosts` / bonus d'envie) n'ordonne plus le fil : une publication
+  // neuve sortait derrière des publications plus anciennes mais plus engagées,
+  // jusqu'à disparaître des 20 cartes peintes. Les envies FILTRENT toujours
+  // (`_envieRetient`, plus haut) ; elles ne réordonnent plus rien.
+  const sortedPosts = trierFilChronologique(posts);
 
   const renderLimit = window._feedRenderLimit || 20;
   const visible = sortedPosts.slice(0, renderLimit);

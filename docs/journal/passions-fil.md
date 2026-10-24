@@ -19,6 +19,7 @@
 - 🎿 « ON EST CENSÉ AVOIR 5 000 PASSIONS ? » — TROIS SURFACES CHERCHAIENT DANS 19 (2026-09-12)
 - 🔤 ALIAS À LA CRÉATION D'UNE PASSION (2026-09-10)
 - 👥 « JEREM A PUBLIÉ, ÇA N'APPARAÎT PAS DANS MON FIL » — LA DÉMO PASSAIT DEVANT LES COMPTES SUIVIS (2026-10-23)
+- 🕒 LE FIL DEVIENT CHRONOLOGIQUE : LE PLUS RÉCENT EN HAUT, TOUJOURS (2026-10-24)
 
 ---
 
@@ -585,3 +586,10 @@ Rapport de Benjamin après un essai à trois comptes réels (Jerem, compte **pri
 **Cause** : le défaut du 2026-09-02 (« je viens de publier »), que la garantie n'avait réglé que pour l'auteur. Une publication neuve a un engagement **nul** ; la démo a des dates recalculées à chaque ouverture (toujours fraîche) et un engagement fabriqué. Le fil ne peint que 20 cartes.
 **Correctif** (`feedPostScore`, app-02) : `FEED_SUIVI_BONUS = 2,2` pendant `FEED_SUIVI_HEURES = 48` pour une **vraie** publication d'un compte suivi — au pire 0,368 + 0,35 + 2,2 = 2,92 > 2,83 (meilleur score ordinaire **avec** bonus d'envie). `FEED_MA_PUBLI_BONUS` passe de 1,2 à **4,5** pour que ma publication fraîche reste devant (5,46 > 5,02). ⚠️ **Jamais pour la démo** (`_source === "seed"`, le discriminant de l'étiquette « Exemple PASSIO ») : « Léa » est suivie sur des comptes réels. ⚠️ Un barème qui garantit une place doit compter le **bonus d'envie** (jusqu'à 0,56), que le calcul du 2026-09-02 oubliait.
 Verrou : `tests/e2e/fil-suivi-garantie.spec.js` (5) — ① et ② tombent quand on remet le bonus à 0 (réinjection faite).
+
+## 🕒 LE FIL DEVIENT CHRONOLOGIQUE : LE PLUS RÉCENT EN HAUT, TOUJOURS (2026-10-24)
+
+Demande de Benjamin, le lendemain du rapport sur Jerem : « il faut mettre toujours les posts les plus récents en haut du feed ». `renderFeed` et le repli d'exploration ordonnent désormais par **`trierFilChronologique`** (app-02) : `createdAt` décroissant, ex-æquo départagés par l'identifiant. **Les envies FILTRENT toujours** (`_envieRetient`), elles ne réordonnent plus rien.
+⚠️ `rankFeedPosts`, `rankFeedPostsForIntent(s)`, `feedPostScore` et les garanties `FEED_MA_PUBLI_BONUS` / `FEED_SUIVI_BONUS` (fiche précédente) **n'ordonnent plus le Fil** ; ils restent en place, gardés par leurs suites (`feed-ranking`, `feed-intents`, `fil-suivi-garantie`). Les rebrancher, c'est rouvrir cette décision.
+⚠️ Le contenu de démonstration a des dates recalculées à chaque ouverture : en chronologique, il s'intercale avec les vraies publications selon cette date fabriquée.
+Verrou : `tests/e2e/fil-chronologique.spec.js` (3) — ① et ② tombent quand on rebranche l'ancien classement (réinjection faite).
