@@ -28,6 +28,7 @@
 - 🔥 PREMIÈRE VISITE — LES PASSIONS POPULAIRES EN DIRECT : la grille suit les publications (2026-10-06)
 - 🖥️ L'ANCIENNE LANDING REVENAIT SUR UN ORDINATEUR — compte connu, ni session ni état local (2026-10-13)
 - 🔞 LA PORTE D'ÂGE AVALAIT LA CRÉATION D'ACTIVITÉ — la saisie perdue, rien publié (2026-10-23)
+- ➕ CRÉER UN COMPTE SE VOIT DÈS L'ARRIVÉE — carte de bienvenue et barre du haut (2026-10-23)
 
 ---
 
@@ -494,3 +495,11 @@ deux cas de `tests/e2e/admission-18-plus.spec.js` (réinjection : rouge sans la 
 
 **Règle** : une porte qui s'interpose AVANT une action la rejoue après, ou dit qu'il faut recommencer
 — jamais un « Merci — c'est enregistré » sur une action abandonnée.
+
+## ➕ CRÉER UN COMPTE SE VOIT DÈS L'ARRIVÉE — carte de bienvenue et barre du haut (2026-10-23)
+
+Retour d'essais de Benjamin avec d'autres personnes : « il manque sur la première page la possibilité de créer un compte ». Depuis la première visite, un visiteur entre dans le fil sans landing ; l'inscription ne s'offrait qu'au détour d'une action engageante (`requireAuthentication`), et la carte de bienvenue ne proposait que « Personnaliser » et « J'ai déjà un compte ». Qui VOULAIT un compte ne trouvait pas la porte.
+Deux portes, toutes deux vers `PassioFirstRun.allerInscription` (aucun second système d'auth, onglet « Créer un compte » du formulaire existant) :
+- **carte de bienvenue** : bouton « Créer mon compte » pleine largeur (`.fr-welcome-signup`), sous la rangée — un troisième bouton DANS la rangée en `flex: 1 1 auto` couperait les libellés ;
+- **barre du haut** : pastille « Créer un compte » (`#topbarSignup`), STATIQUE dans `index.html`, affichée seulement sous `:root.passio-first-run` — elle reste là carte fermée, et un compte existant ou la première visite coupée ne la voient jamais. Télémétrie : `guest_signup_started` avec `ctx` `bienvenue` ou `topbar`.
+⚠️ Mesuré à 360 px : la pastille CHEVAUCHAIT « PASSIO » (la partie gauche ne rétrécit pas). Sous 440 px, en mode visiteur, le nom et la puce Beta cèdent la place, le logo reste. Verrou : `tests/e2e/creer-compte-accueil.spec.js` (8) — dont un contrôle de non-chevauchement à 320/360/390/430 px, réinjection faite (la règle 440 px retirée → 2 rouges), et le bouton de la carte retiré → ① rouge.
