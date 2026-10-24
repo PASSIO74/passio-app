@@ -114,6 +114,199 @@ export function verdict(e) {
   return { couleur: "vert", titre: "Tout va bien", raisons: ["Aucune erreur récente, rien d'urgent."] };
 }
 
+// ─── LECTURE INCOMPLÈTE (2026-10-23) ─────────────────────────────────────────
+// Mesuré le 2026-10-22 entre 15 h et 17 h : le voyant mémorisé par la veille
+// est passé QUATORZE fois d'orange à vert et retour, alors que l'enquête de
+// veille #627 est restée ouverte tout du long. Chaque « vert » était une veille
+// dont la lecture GitHub avait échoué : `github: null`, donc aucune issue, donc
+// rien à signaler. Une source illisible se lisait comme une source calme. Deux
+// règles, une par lecteur :
+//  · la VEILLE (ce qui sonne) : une lecture incomplète ne fait jamais BAISSER le
+//    voyant (`tenirVerdict`) — elle peut le monter, une source lue suffit pour
+//    ça. Sans elle, un rouge « sujet qui t'attend » sonnait « Problème résolu »
+//    à la première lecture GitHub manquée, puis « Problème » à la suivante ;
+//  · l'ÉCRAN (ce qui se lit) : il ne montre jamais de vert sans avoir tout lu
+//    (`verdictAffiche`) — il dit ce qu'il n'a pas pu lire.
+
+/** Les sources dont dépend le voyant, et leur nom pour le pilote. */
+export const SOURCES_VERDICT = Object.freeze({
+  sante: "erreurs de l'app", github: "GitHub (enquêtes, mises en ligne)", signalements: "signalements", disponibilite: "disponibilité du site",
+});
+/** Parmi les parties non lues, celles qui comptent pour le voyant (noms lisibles). */
+export function sourcesManquantes(nonLus) {
+  const l = Array.isArray(nonLus) ? nonLus : [];
+  return Object.keys(SOURCES_VERDICT).filter((n) => l.includes(n)).map((n) => SOURCES_VERDICT[n]);
+}
+const RANG = { gris: 0, vert: 0, orange: 1, rouge: 2 };
+const rang = (c) => (Object.hasOwn(RANG, c) ? RANG[c] : 0);
+/**
+ * Le voyant de la VEILLE après une lecture incomplète : celui d'avant, sauf si
+ * ce qui a pu être lu suffit à le MONTER. `prec` = dernier état mémorisé.
+ */
+export function tenirVerdict(prec, actuel, incomplet) {
+  if (!incomplet || !prec || !Object.hasOwn(RANG, prec.couleur) || prec.couleur === "gris") return actuel;
+  if (!actuel || rang(actuel.couleur) > rang(prec.couleur)) return actuel;
+  const titres = { vert: "Tout va bien", orange: "À surveiller", rouge: "Problème en cours" };
+  return { couleur: prec.couleur, titre: titres[prec.couleur], raisons: Array.isArray(prec.raisons) && prec.raisons.length ? prec.raisons : (actuel.raisons || []), tenu: true };
+}
+/** Le voyant de l'ÉCRAN : jamais vert sur une lecture incomplète, et ce qui manque est dit. */
+export function verdictAffiche(v, nonLus) {
+  const manquent = sourcesManquantes(nonLus);
+  if (!manquent.length) return v;
+  const raison = "non lu : " + manquent.join(", ");
+  if (!v || v.couleur === "vert") return { couleur: "orange", titre: "À surveiller", raisons: [raison], incomplet: true };
+  return { ...v, raisons: (v.raisons || []).filter((r) => !/^Aucune|^La production n'a pas pu/.test(r)).concat(raison), incomplet: true };
+}
+
+// ─── TENDANCES (2026-10-23) ──────────────────────────────────────────────────
+/**
+ * Une valeur et sa période précédente → le sens. `hausseBonne` : une hausse
+ * est-elle une bonne nouvelle (inscriptions) ou une mauvaise (erreurs) ? Une
+ * valeur absente n'a pas de tendance : jamais un faux « stable ».
+ */
+export function tendance(actuel, precedent, hausseBonne = true) {
+  const a = Number(actuel), p = Number(precedent);
+  if (actuel == null || precedent == null || !Number.isFinite(a) || !Number.isFinite(p)) return null;
+  const delta = a - p;
+  const sens = delta > 0 ? "hausse" : delta < 0 ? "baisse" : "stable";
+  const bon = sens === "stable" ? null : (sens === "hausse") === !!hausseBonne;
+  return { actuel: a, precedent: p, delta, sens, bon, pct: p > 0 ? Math.round((delta / p) * 100) : null };
+}
+
+/**
+ * La fenêtre « depuis la dernière mise en ligne » et la même durée juste avant,
+ * bornée à 7 jours. Seule une mise en ligne RÉUSSIE ouvre une fenêtre : un
+ * déploiement en échec n'a rien changé chez les utilisateurs.
+ */
+export function fenetreMiseEnLigne(run, maintenant = Date.now(), maxMs = 7 * 864e5) {
+  if (!run || run.conclusion !== "success") return null;
+  const le = Date.parse(String(run.le || ""));
+  if (!Number.isFinite(le) || le > maintenant) return null;
+  const duree = Math.min(maxMs, Math.max(60e3, maintenant - le));
+  const depuis = maintenant - duree;
+  return { le: new Date(le).toISOString(), depuis: new Date(depuis).toISOString(), avantDebut: new Date(depuis - duree).toISOString(), dureeMs: duree };
+}
+
+// ─── « À FAIRE » — UNE SEULE LISTE (2026-10-23) ──────────────────────────────
+// Ce qui attend le pilote était éparpillé sur quatre onglets : « À réparer » et
+// « Ce qui t'attend » (Accueil), les correctifs (Machines), les signalements
+// (Utilisateurs), la proposition de retour arrière (Capacité). Une liste, triée
+// par urgence, construite ICI (éprouvée en Node) et rendue telle quelle :
+//   prio 0 = urgent (rouge) · 1 = à traiter (orange) · 2 = pour info (gris).
+// Chaque geste est une DEMANDE que la fonction revalide (liste blanche, jeton,
+// cible relue sur GitHub) : la liste ne donne aucun droit de plus que l'écran.
+// ⚠️ Titres d'issue, messages d'erreur et motifs de signalement sont écrits par
+// des tiers : la page les rend en TEXTE, et aucune confirmation ne les cite.
+const COULEUR_PRIO = ["rouge", "orange", "gris"];
+const urlGithub = (u) => (/^https:\/\/github\.com\//.test(String(u || "")) ? u : null);
+const versionCourte = (v) => String(v || "").replace(/[^0-9a-f]/gi, "").slice(0, 8);
+
+export function aFaire(d, maintenant = Date.now()) {
+  const out = [];
+  const ajoute = (x) => out.push({ couleur: COULEUR_PRIO[x.prio] || "gris", depuis: null, url: null, gestes: [], detail: "", ...x });
+  const gh = d && d.github;
+  const gestesGh = !!(d && d.gestesGithub);
+  const issues = gh && Array.isArray(gh.issues) ? gh.issues : [];
+  const reparables = gh && Array.isArray(gh.aReparer) ? gh.aReparer : [];
+  const reparation = new Map(reparables.map((x) => [x.cible === "issue" ? "issue:" + x.numero : "run:" + x.cle, x]));
+  const gesteReparer = (x) => (gestesGh && x && !x.enCours
+    ? [{ libelle: "Réparer", principal: true, corps: x.cible === "issue" ? { action: "reparer", cible: "issue", numero: x.numero } : { action: "reparer", cible: "run", cle: x.cle },
+      confirmation: "Confier cette réparation à Claude ? Il ouvrira un correctif que tu valideras ici." }]
+    : []);
+  const gesteFermer = (n) => (gestesGh ? [{ libelle: "Fermer", corps: { action: "fermer", numero: n }, confirmation: "Fermer #" + n + " ? (si c'est réglé ou sans objet)" }] : []);
+
+  // Le site d'abord : rien d'autre ne compte s'il ne répond plus.
+  const dispo = d && d.disponibilite;
+  if (dispo && dispo.repond === false) {
+    ajoute({ id: "site", prio: 0, etiquette: "Hors ligne", titre: "Le site ne répond pas", detail: "La sonde n'obtient pas de réponse de passio-app.netlify.app." + (d.autonomie && d.autonomie.retour && d.autonomie.retour.jeton ? " Réglages › Retour arrière remet la version précédente." : "") });
+  }
+  // La proposition de retour arrière : une version casse chez des comptes anciens.
+  const prop = d && d.autonomie && d.autonomie.retour && d.autonomie.retour.proposition;
+  if (prop && prop.version) {
+    ajoute({ id: "retour:" + versionCourte(prop.version), prio: 0, etiquette: "À décider", depuis: prop.le || null,
+      titre: "La version " + versionCourte(prop.version) + " casse chez " + (Number(prop.comptes) || 0) + " comptes",
+      detail: String(prop.famille || "").slice(0, 300), gestes: d.autonomie.retour.jeton ? [{ libelle: "Remettre la version précédente", principal: true, special: "retour" }] : [] });
+  }
+  // Exécutions en échec (déploiement, Sentinelle, veille).
+  for (const x of reparables.filter((r) => r.cible === "run")) {
+    ajoute({ id: "run:" + x.cle, prio: x.cle === "deploy" ? 0 : 1, etiquette: x.enCours ? "Réparation en cours" : "En échec", titre: x.libelle,
+      detail: x.enCours ? "Réparation demandée : #" + x.enCours + ". Le correctif arrivera ici." : "", url: urlGithub(x.url), gestes: gesteReparer(x) });
+  }
+  // Les issues suivies.
+  for (const i of issues) {
+    if (i.pr) continue;
+    const labels = Array.isArray(i.labels) ? i.labels : [];
+    const base = { id: "issue:" + i.numero, depuis: i.depuis || null, url: urlGithub(i.url), titre: "#" + i.numero + " · " + i.titre };
+    if (i.pause) { ajoute({ ...base, prio: 2, etiquette: "Pause", detail: "La Sentinelle est en pause : elle n'ouvre plus d'enquête. Détails › Machines pour la relancer." }); continue; }
+    if (estReparation(i.titre)) { ajoute({ ...base, prio: 2, etiquette: "Réparation", detail: "Claude prépare un correctif ; il arrivera ici pour validation." }); continue; }
+    const x = reparation.get("issue:" + i.numero);
+    if (labels.includes("moderation")) ajoute({ ...base, prio: 1, etiquette: "Modération", detail: "Un contenu signalé attend ta décision (geste humain, jamais confié à une machine).", gestes: gesteFermer(i.numero) });
+    else if (labels.includes("humain")) ajoute({ ...base, prio: 0, etiquette: "À toi", detail: x && x.enCours ? "Réparation demandée : #" + x.enCours + "." : "Une machine s'est arrêtée : une décision humaine est attendue.", gestes: [...gesteReparer(x), ...gesteFermer(i.numero)] });
+    else if (labels.includes("veille") || labels.includes("recidive")) ajoute({ ...base, prio: 1, etiquette: labels.includes("recidive") ? "Récidive" : "Veille", detail: x && x.enCours ? "Réparation demandée : #" + x.enCours + "." : "La veille de production a vu un problème.", gestes: [...gesteReparer(x), ...gesteFermer(i.numero)] });
+    else if (labels.includes("sentinelle")) ajoute({ ...base, prio: 2, etiquette: "Sentinelle", detail: "Enquête en cours : la Sentinelle s'en occupe, le correctif arrivera ici.", gestes: gesteFermer(i.numero) });
+    else if (labels.includes("digest")) ajoute({ ...base, prio: 2, etiquette: "Résumé", detail: "Le résumé du jour. À fermer une fois lu.", gestes: gesteFermer(i.numero) });
+    else ajoute({ ...base, prio: 2, etiquette: "Info", gestes: gesteFermer(i.numero) });
+  }
+  // Les correctifs prêts (PR).
+  for (const i of issues.filter((x) => x.pr).slice(0, 15)) {
+    ajoute({ id: "pr:" + i.numero, prio: 1, etiquette: "Correctif", depuis: i.depuis || null, url: urlGithub(i.url), titre: "#" + i.numero + " · " + i.titre,
+      detail: "Un correctif attend ta validation. Fusionner le met en ligne si les tests sont verts.",
+      gestes: gestesGh ? [{ libelle: "Fusionner", principal: true, corps: { action: "fusionner", numero: i.numero }, confirmation: "Fusionner #" + i.numero + " ? Il sera mis en ligne si les tests sont verts." },
+        { libelle: "Refuser", corps: { action: "fermer", numero: i.numero }, confirmation: "Refuser et fermer #" + i.numero + " ?" }] : [] });
+  }
+  // Les signalements.
+  const sg = d && d.signalements;
+  for (const x of (sg && Array.isArray(sg.liste) ? sg.liste : [])) {
+    ajoute({ id: "signalement:" + x.id, prio: 1, etiquette: "Signalement", depuis: x.le || null, titre: "Signalement · " + x.type, detail: x.motif ? "« " + x.motif + " »" : "",
+      gestes: [{ libelle: "Traité", corps: { action: "signalement", id: x.id, statut: "handled" }, confirmation: "Marquer ce signalement comme traité ?" },
+        { libelle: "Rejeter", corps: { action: "signalement", id: x.id, statut: "dismissed" }, confirmation: "Rejeter ce signalement (sans suite) ?" }] });
+  }
+  // Les erreurs des dernières 24 h (trois au plus) : la Sentinelle les lit ; si
+  // aucune enquête n'est ouverte, le pilote peut la lancer tout de suite.
+  const enquete = issues.some((i) => !i.pr && Array.isArray(i.labels) && i.labels.includes("sentinelle"));
+  const erreurs = d && d.erreurs && Array.isArray(d.erreurs.details) ? d.erreurs.details : [];
+  erreurs.filter((x) => x.dernier && maintenant - Date.parse(x.dernier) < 864e5).slice(0, 3).forEach((x, k) => {
+    ajoute({ id: "erreur:" + k, prio: x.n >= 10 ? 0 : 1, etiquette: x.n + " fois", depuis: x.dernier, titre: x.message,
+      detail: x.comptes + " compte(s) touché(s)" + (enquete ? " · une enquête Sentinelle est ouverte" : ""),
+      gestes: gestesGh && !enquete ? [{ libelle: "Confier à la Sentinelle", corps: { action: "relancer", cible: "sentinelle" }, confirmation: "Lancer la Sentinelle maintenant ? Elle analysera les erreurs récentes et ouvrira une enquête si besoin." }] : [] });
+  });
+  // La capacité : une jauge en zone rouge est urgente, orange se prépare.
+  const jg = d && d.capacite && Array.isArray(d.capacite.jauges) ? d.capacite.jauges : [];
+  for (const j of jg.filter((x) => x.couleur === "rouge" || x.couleur === "orange")) {
+    ajoute({ id: "capacite:" + j.cle, prio: j.couleur === "rouge" ? 0 : 1, etiquette: String(j.pct).replace(".", ",") + " %", titre: j.libelle,
+      detail: j.couleur === "rouge" ? "Au-delà de 90 % du forfait : l'app peut ralentir ou refuser des inscriptions. Réglages › Protection pour alléger." : "Au-delà de 70 % du forfait : à surveiller." });
+  }
+  // Ce qui empêche le pilotage de bien voir ou d'agir.
+  if (Array.isArray(d && d.nonLus) && d.nonLus.includes("github")) {
+    const raison = d.erreursLecture && d.erreursLecture.github ? " Raison : " + borne(d.erreursLecture.github, 120) + "." : "";
+    ajoute({ id: "lecture:github", prio: 1, etiquette: "Non lu", titre: "GitHub n'a pas pu être lu",
+      detail: "Enquêtes, correctifs et mises en ligne ne sont pas vérifiés pour l'instant." + raison + (gestesGh ? "" : " Sans le secret PILOTAGE_GITHUB_TOKEN, GitHub limite les lectures : c'est la cause la plus probable.") });
+  }
+  if (d && d.gestesGithub === false) {
+    ajoute({ id: "config:jeton-github", prio: 2, etiquette: "Réglage", titre: "Gestes GitHub indisponibles",
+      detail: "Pour fusionner, fermer, réparer ou relancer depuis le téléphone, pose le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage » (Supabase › Edge Functions › pilotage › Secrets). Il rend aussi la lecture de GitHub fiable." });
+  }
+  const al = d && d.alertes;
+  if (al && al.appareils === 0) {
+    ajoute({ id: "config:alertes", prio: 2, etiquette: "Réglage", titre: "Aucun téléphone ne reçoit les alertes",
+      detail: "Ouvre PASSIO avec le compte éditeur et accepte les notifications : tu seras prévenu quand le voyant passe au rouge." });
+  }
+  // La protection active : rien à faire, mais il faut le savoir.
+  const rg = d && d.reglages;
+  if (rg && !rg.absente) {
+    const n = rg.delestage && [1, 2].includes(rg.delestage.niveau) ? rg.delestage.niveau : 0;
+    if (n) ajoute({ id: "protection:delestage", prio: 2, etiquette: n === 2 ? "Survie ×4" : "Économie ×2", titre: "L'app est ralentie pour tenir la charge",
+      detail: (rg.delestage.pose_par === "pilote" ? "Posé à la main : la veille ne le lèvera pas seule. " : "Posé par la veille, qui le lèvera seule. ") + "Réglages › Protection." });
+    const cles = rg.coupures && Array.isArray(rg.coupures.cles) ? rg.coupures.cles : [];
+    if (cles.length) ajoute({ id: "protection:coupures", prio: 2, etiquette: String(cles.length), titre: "Fonctionnalité(s) éteinte(s) chez tout le monde", detail: cles.join(", ") + " — Réglages › Protection pour rallumer." });
+    if (rg.bandeau && rg.bandeau.texte) ajoute({ id: "protection:bandeau", prio: 2, etiquette: "Affiché", titre: "Un message est affiché à tous", detail: "« " + rg.bandeau.texte + " »",
+      gestes: [{ libelle: "Retirer le message", corps: { action: "reglages", cle: "bandeau", valeur: null }, confirmation: "Retirer le message affiché à tous ?" }] });
+  }
+  // À urgence égale, l'ordre d'ajout : le site, le retour arrière, les échecs,
+  // puis chaque famille dans l'ordre de sa source (la plus récente d'abord).
+  return out.map((x, i) => ({ x, i })).sort((a, b) => a.x.prio - b.x.prio || a.i - b.i).map((o) => o.x);
+}
+
 // ─── Lot 2 (2026-09-28) : alertes, détails, capacité, disponibilité ──────────
 
 /** Titre de l'issue qui met la Sentinelle en pause (convention de sentinelle-autonome.yml). */
@@ -487,9 +680,18 @@ export function dateUtc(v) {
  * PILOTAGE_EMAILS, comme `autorise`).
  */
 export function compteMesurable(u, extra = "") {
+  return compteCree(u, extra) && !!(u.email_confirmed_at || u.confirmed_at);
+}
+
+/**
+ * Le premier étage de l'entonnoir (2026-10-23) : un compte CRÉÉ par une vraie
+ * personne, confirmé ou non — mêmes exclusions que `compteMesurable` (e2e,
+ * éditeur, anonyme, supprimé, sans e-mail), sauf la confirmation. L'écart entre
+ * les deux est ce que l'e-mail de confirmation perd.
+ */
+export function compteCree(u, extra = "") {
   if (!u || typeof u !== "object" || !u.id) return false;
   if (u.deleted_at || u.is_anonymous) return false;
-  if (!u.email_confirmed_at && !u.confirmed_at) return false;
   const email = String(u.email || "").trim().toLowerCase();
   if (!email || email.endsWith(DOMAINE_E2E)) return false;
   const editeurs = [COMPTE_PILOTE, ...String(extra || "").split(",")].map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -556,6 +758,39 @@ export function sqlActivation(cohorteJours = COHORTE_ACTIVATION_JOURS) {
     + ` gestes as (${gestes})`
     + ` select c.id, ${iso("c.cree")} as cree, g.geste, ${iso("min(g.le)")} as premier`
     + ` from comptes c left join gestes g on g.uid = c.id group by c.id, c.cree, g.geste`;
+}
+
+// ─── LES COMPTES CRÉÉS, PAR LEUR NOM (2026-10-23) ───────────────────────────
+// Demande de Benjamin : voir sur le téléphone QUI s'est inscrit. Le pilote voit
+// le NOM choisi dans l'app (`profiles.username`) — jamais l'adresse e-mail, ni
+// l'identifiant, ni le nom du compte Google : seulement ce que les autres
+// membres voient déjà. Mêmes exclusions que l'entonnoir (`compteCree` : ni
+// tests e2e, ni éditeur, ni anonymes, ni supprimés). Le nom est écrit par la
+// personne : la page le rend en TEXTE.
+export const COMPTES_RECENTS_MAX = 30;
+const VOIES = { google: "Google", email: "e-mail" };
+/**
+ * `recents` : `{ id, cree, confirme, voie }` (comptes créés, déjà filtrés) ;
+ * `profils` : `{ id, username }` lus en base ; `nomsLus` : la lecture des noms
+ * a-t-elle réussi ? (sinon `nom: null, nomLu: false` — jamais un faux « profil
+ * pas rempli ») ; `avecGeste` / `mesures` : identifiants ayant fait un geste, et
+ * ceux dont les gestes ont été lus (hors échantillon : `actif: null`).
+ */
+export function comptesRecents(recents, profils, { nomsLus = true, avecGeste = new Set(), mesures = new Set() } = {}) {
+  const noms = new Map((profils || []).filter((p) => p && p.id != null).map((p) => [String(p.id), p.username]));
+  return (recents || []).filter((c) => c && c.id != null && Number.isFinite(dateUtc(c.cree)))
+    .sort((a, b) => dateUtc(b.cree) - dateUtc(a.cree)).slice(0, COMPTES_RECENTS_MAX)
+    .map((c) => {
+      const id = String(c.id);
+      return {
+        nom: nomsLus ? (borne(noms.get(id), 60) || null) : null,
+        nomLu: !!nomsLus,
+        cree: new Date(dateUtc(c.cree)).toISOString(),
+        confirme: !!c.confirme,
+        voie: Object.hasOwn(VOIES, c.voie) ? VOIES[c.voie] : (c.voie ? "autre" : null),
+        actif: mesures.has(id) ? avecGeste.has(id) : null,
+      };
+    });
 }
 
 /** Lignes de `sqlActivation()` → `activation()`. */

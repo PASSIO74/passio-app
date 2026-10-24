@@ -1,10 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// COMPTES RENDUS — verrous de l'INTERFACE (Accueil app.js, Pilot mobile.js/mobile.html).
+// COMPTES RENDUS — verrous de l'INTERFACE (Accueil app.js). Le Pilot mobile
+// (mobile.js/mobile.html) a été RETIRÉ le 2026-10-23 : ses verrous U3/U5 sont
+// partis avec lui (test/mobile-pilot.test.js vérifie le retrait).
 //
 // Le corps du digest et les lignes de veille viennent d'issues GitHub : le
 // texte est DONNÉE. Le cahier (lot F) pose deux règles — « échapper TOUT le
 // HTML d'abord » et « liens uniquement depuis les `url` de l'API, vers
-// github.com » — et exige la présence de la carte sur l'Accueil et le Pilot.
+// github.com » — et exige la présence de la carte sur l'Accueil.
 // Mesuré le 2026-09-18 : cinq mutations restaient vertes sur 555 tests. Ce banc
 // les fait rougir ; les helpers sont ÉVALUÉS DEPUIS LE SOURCE réel, jamais
 // recopiés (même patron que spa-echappement.test.js → helpers()).
@@ -12,12 +14,8 @@
 // Mutations éprouvées (chacune rougit le test nommé) :
 //   · U1 : `esc(t).split("\n")` → `t.split("\n")` dans crMarkdown       → « U1 »
 //   · U2 : crLien `/^https:\/\/github\.com\//.test(u) ?` → `true ?`      → « U2 »
-//   · U3 : mobile.js lienGithub sans le filtre `^https:\/\/github\.com\/` → « U3 »
-//   ·      mobile.js renderComptesRendus avec innerHTML/insertAdjacentHTML → « U3 »
 //   · U4 : app.js `api.get("/comptes-rendus")` retiré du Promise.all       → « U4 »
 //   ·      app.js `setHtml("#ovComptesRendus", comptesRendusHtml(cr))` retiré → « U4 »
-//   · U5 : mobile.js `["comptes", "/comptes-rendus"]` → `/attente`        → « U5 »
-//   ·      mobile.html sans `id="comptesRendus"` sous m-attente            → « U5 »
 //   · crPill("constructor") rend la fonction Object (lookup sans hasOwn) → « pastille »
 // ═══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
@@ -28,8 +26,6 @@ import { fileURLToPath } from "node:url";
 
 const PUB = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 const APP = fs.readFileSync(path.join(PUB, "js", "app.js"), "utf8");
-const MOBILE = fs.readFileSync(path.join(PUB, "js", "mobile.js"), "utf8");
-const HTML = fs.readFileSync(path.join(PUB, "mobile.html"), "utf8");
 
 const bloc = (src, re, nom, fichier) => { const m = re.exec(src); assert.ok(m, `${nom} introuvable dans ${fichier} — relis-le avant d'ajuster ce test`); return m[0]; };
 
@@ -111,30 +107,4 @@ test("U4 : l'Accueil demande /comptes-rendus dans le MÊME Promise.all que /atte
   assert.ok(overview.includes('<div id="ovComptesRendus"></div>'), "le conteneur existe dans le montage de l'Accueil");
   assert.ok(overview.indexOf('id="ovAttente"') < overview.indexOf('id="ovComptesRendus"'), "sous « Ce qui t'attend »");
   assert.ok(/^function comptesRendusHtml\(cr\)/m.test(APP), "comptesRendusHtml existe");
-});
-
-test("U3 : mobile.js — rendreComptesRendus construit ses nœuds (ni innerHTML ni insertAdjacentHTML) ; lienDetail n'accepte que https://github.com/ ou une ancre locale", () => {
-  const rendu = bloc(MOBILE, /^function rendreComptesRendus\(d\) \{[\s\S]*?\n\}$/m, "rendreComptesRendus", "mobile.js");
-  assert.ok(!/innerHTML|insertAdjacentHTML|outerHTML|document\.write/.test(rendu), "rendu par carte()/textContent seulement");
-  assert.ok(!/\.href\s*=/.test(rendu), "aucun href posé hors lienDetail");
-  assert.ok(/\bcarte\(/.test(rendu) && /lienDetail\(/.test(rendu), rendu);
-  const lien = bloc(MOBILE, /^function lienDetail\(c, cible\) \{[\s\S]*?\n\}$/m, "lienDetail", "mobile.js");
-  assert.ok(lien.includes("/^https:\\/\\/github\\.com\\//.test(u)"), "le filtre github.com est là : " + lien);
-  assert.ok(lien.includes("/^#[a-z0-9_-]+$/i.test(u)"), "… l'ancre locale est bornée à [a-z0-9_-] : " + lien);
-  assert.ok(lien.includes("if (!href) return;"), "… et tout le reste est REFUSÉ : " + lien);
-  assert.ok(lien.includes('a.rel = "noopener"'), lien);
-  // crEtat : un état hors contrat (clé du prototype) ne devient pas une fonction dans l'étiquette.
-  assert.ok(/^const crEtat = \(e\) => \(Object\.hasOwn\(CR_ETAT, e\) \? CR_ETAT\[e\] : \["Inconnu", "gris"\]\);$/m.test(MOBILE), "crEtat par hasOwn");
-  assert.ok(!/CR_ETAT\[[^\]]+\]\s*\|\|/.test(MOBILE), "aucun lookup direct `CR_ETAT[x] ||` (constructor → fonction)");
-});
-
-test("U5 : le Pilot mobile demande /comptes-rendus dans sa liste de fetch, rend les comptes rendus sur succès et « non lu » sur échec", () => {
-  assert.ok(MOBILE.includes('["comptes", "/comptes-rendus"]'), "la route est dans la liste des requêtes (Promise.allSettled)");
-  const rendu = bloc(MOBILE, /^function rendreComptesRendus\(d\) \{[\s\S]*?\n\}$/m, "rendreComptesRendus", "mobile.js");
-  assert.ok(rendu.includes('if (!cr) { nonLu("comptesRendus", "Comptes rendus", d.erreurs.comptes); return; }'),
-    "échec → « non lu », jamais une carte vide");
-  assert.ok(HTML.includes('id="comptesRendus"'), "le conteneur existe");
-  const machines = HTML.slice(HTML.indexOf('<section id="machines"'), HTML.indexOf('<section id="reglages"'));
-  assert.ok(machines.includes('id="comptesRendus"'), "dans l'onglet Machines");
-  assert.ok(MOBILE.includes("aucun tableau de veille lu"), "le message quand la veille est null");
 });

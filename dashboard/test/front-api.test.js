@@ -91,7 +91,8 @@ test("l'extracteur trouve bien les appels — sinon ce fichier serait vert et vi
   assert.ok(distincts.size >= 45, `seulement ${distincts.size} points d'API distincts`);
   // Les trois enveloppes doivent être vues, pas seulement le client partagé.
   const fichiers = new Set(appels.map((a) => a.fichier));
-  for (const f of ["app.js", "mobile.js", "command.js", "orchestrator-panel.js"]) {
+  // `mobile.js` est parti avec le Pilot mobile du PC (2026-10-23).
+  for (const f of ["app.js", "command.js", "orchestrator-panel.js"]) {
     assert.ok(fichiers.has(f), `aucun appel détecté dans ${f} — l'enveloppe a changé de forme`);
   }
 });
@@ -142,6 +143,12 @@ test("inventaire des routes qu'AUCUNE page n'appelle", () => {
     "POST /git/branch",            // création de branche : réservée
     "POST /incidents/:id/transition",
     "PATCH /flags/:id",            // idem GET /flags : registre sans écran
+    // Lues par le Pilot mobile du PC, RETIRÉ le 2026-10-23 (le téléphone ouvre
+    // le pilotage en ligne). Les routes restent : la sonde de vie sert
+    // Lancer-Pilotage.cmd, les deux autres un écran PC à venir.
+    "GET /health",                 // sonde de vie de Lancer-Pilotage.cmd (curl), sans session
+    "GET /incidents",              // paquets d'incidents : plus d'écran depuis le retrait du Pilot mobile
+    "GET /observation",            // instantané d'observation : idem
   ];
 
   const nouvelles = orphelines.filter((k) => !CONNUES.includes(k));

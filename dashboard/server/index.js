@@ -350,7 +350,9 @@ app.get("*", (req, res) => res.sendFile(path.join(publicDir, "index.html")));
 app.listen(config.port, () => {
   console.log(`\n  PASSIO — Centre de pilotage`);
   console.log(`  ▸ http://localhost:${config.port}`);
-  for (const a of auth.adressesTelephone()) console.log(`  ▸ Téléphone (même Wi-Fi) : ${a}`);
+  // Le pilote mobile du PC est retiré (2026-10-23) : le téléphone ouvre le
+  // pilotage EN LIGNE, joignable partout, PC éteint compris.
+  console.log(`  ▸ Pilotage (téléphone, partout) : https://passio-app.netlify.app/pilotage/`);
   console.log(`  ▸ Environnement dashboard : ${config.dashEnv}${config.isProd ? " (mutations code DÉSACTIVÉES)" : ""}`);
   console.log(`  ▸ Supabase : ${supabaseReady ? "connecté (service_role)" : "NON configuré → mode local (voir .env)"}`);
   console.log(`  ▸ Mutations git : ${config.allowMutations ? "autorisées (hors prod)" : "désactivées"}\n`);

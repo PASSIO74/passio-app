@@ -148,7 +148,7 @@ function sentinelleDe(ch) {
 let _memo = { t: 0, valeur: null };
 let _deps = { chaineAutonome };
 
-/** Instantané pour la route, l'Accueil, le Pilot mobile et attente.js — mémo 5 min. */
+/** Instantané pour la route, l'Accueil et attente.js — mémo 5 min. */
 export async function comptesRendus({ now = Date.now(), force = false, fetchImpl = null } = {}) {
   if (!force && _memo.valeur && now - _memo.t < MEMO_MS) return _memo.valeur;
   const [t, ch] = await Promise.all([
