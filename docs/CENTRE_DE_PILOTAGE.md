@@ -5,6 +5,41 @@
 > l'invariant actionnable et un pointeur vers ici. Rien n'a été retiré : le contenu
 > ci-dessous est celui d'origine, à l'octet près.
 
+## ⭐ Le centre de pilotage, c'est `/pilotage/` (2026-10-23)
+
+**Une seule adresse : https://passio-app.netlify.app/pilotage/** — téléphone ou ordinateur, PC
+éteint compris. Page : `pilotage/` (copiée telle quelle dans `dist/` par `scripts/build.js`) ;
+données et gestes : Edge Function `supabase/functions/pilotage` (porte : compte de l'éditeur
+seulement) ; logique pure : `supabase/functions/_shared/pilotage.js`.
+
+- **Trois onglets.** *Accueil* : le voyant (vert / orange / rouge), **« À faire »** — UNE liste
+  triée par urgence, construite par `aFaire()` côté serveur (site injoignable, retour arrière
+  proposé, exécution en échec, issue « humain », correctif à fusionner, signalement, erreur du
+  jour, jauge de capacité, lecture GitHub ratée, réglages manquants) avec ses gestes — puis les
+  **chiffres clés** et leur tendance (inscriptions et erreurs sur 7 j contre les 7 j d'avant,
+  erreurs depuis la dernière mise en ligne contre la même durée avant), puis les **nouveaux
+  comptes par leur nom** (les 5 derniers ; les 30 derniers dans Détails — le nom choisi dans
+  l'app, `profiles.username`, jamais l'e-mail ; `comptesRecents`). *Détails* : site, erreurs,
+  utilisateurs, activation et entonnoir (créés → e-mail confirmé → actifs), machines, capacité,
+  « ce qui s'est passé » (changements du voyant sur 7 j). *Réglages* : protection automatique,
+  retour arrière, alertes, installation.
+- **Une source illisible n'est pas une source calme.** Mesuré le 2026-10-22 : le voyant mémorisé
+  par la veille a basculé 14 fois d'orange à vert en deux heures alors que l'enquête de veille
+  #627 restait ouverte — chaque « vert » était une lecture GitHub ratée (`github: null` = aucune
+  issue). Désormais la **veille** ne fait jamais baisser le voyant sur une lecture incomplète
+  (`tenirVerdict` — sinon un rouge sonne « Problème résolu » puis « Problème » à chaque lecture
+  ratée) et l'**écran** n'affiche jamais de vert sans avoir tout lu (`verdictAffiche` : « non lu :
+  GitHub… », raison HTTP dans `erreursLecture`).
+- **Données périmées dites** : au-delà de 3 min sans lecture réussie, la page grise le voyant et
+  l'écrit. Une fonction pas encore à jour (pas de liste `aFaire`) affiche « Liste indisponible »,
+  jamais « Rien à faire ».
+- **Le Pilot mobile du PC (`dashboard/public/mobile.html`) est retiré** : il exigeait le PC allumé
+  et le même Wi-Fi. `dashboard/` reste l'atelier du poste (télémétrie détaillée, Sentinelle locale,
+  réparations, Command Center).
+
+Verrous : `tests/unit/pilotage.test.mjs` (㉓ à ㉛), `tests/e2e/pilotage-nuage.spec.js` (16, dont la
+liste « À faire » construite par la VRAIE fonction), `dashboard/test/mobile-pilot.test.js`.
+
 ## Centre de pilotage (télémétrie + dashboard `dashboard/`, 2026-08-05)
 
 App INDÉPENDANTE de supervision/test temps réel, dans `dashboard/` (Node/Express + SPA vanilla, sans bundler, thème violet). Elle NE fait PAS partie du build/déploiement Passio (Netlify ignore ce dossier). Pipeline : `js/telemetry.js` (chargé dans `<head>` après platform.js) → table Supabase **`telemetry_events`** (migration `migration_telemetry.sql`, **appliquée en prod le 2026-08-05** ; ⚠️ **RETIRÉE de la publication realtime le 2026-09-20** — elle portait 91 % de ce que la base émettait pour UN seul abonné, ce backend : l'ingestion se fait désormais par **lecture incrémentale toutes les 5 s**, chemin NOMINAL et non secours, cf. `migrations/migration_realtime_telemetry_2026-09-20.sql` ; RLS insert-own + AUCUN select) → backend dashboard (clé **service_role** dans `dashboard/.env`, RLS bypassée, lecture SEULE côté serveur) → flux SSE → dashboard. **Activation** : depuis le 2026-08-05, ACTIVE par défaut en prod (suivi continu de la beta) avec **opt-out** — `?telemetry=0` (ou `PassioTelemetry.setEnabled(false)`) désactive durablement (`localStorage.passio_telemetry="0"`), `?telemetry=1` force la capture complète, localhost toujours actif. Curseur d'échantillonnage stable par appareil `window.PASSIO_TELEMETRY_SAMPLE` (1 = tous) ; `window.PASSIO_TELEMETRY_DEFAULT_ON=false` = repli opt-in strict. Données minimisées (aucun PII). `js/telemetry.js` masque le PII — **tout nouveau champ envoyé doit passer par ce filtre**. ⚠️ Rectifié le 2026-08-15 : `meta` est filtré par une liste **NOIRE** de noms de clés (`DENY_KEY`), pas par une liste blanche comme affirmé ici jusqu'alors. C'est délibéré (une liste blanche ferait disparaître en silence toute clé nouvelle), mais ça déplace la garantie : la sécurité vient de ce que `scrubMeta` ACCEPTE — uniquement des primitives (objets et tableaux jetés), passées par `redactString`, tronquées à 160 caractères, 30 clés au plus. Vérifié en prod sur 20 205 événements : 22 clés distinctes, toutes techniques, zéro e-mail/JWT/base64. ⚠️ `correlation_id` est une colonne À PART, hors de `meta` : elle n'était donc couverte par aucun filtre alors que `captureLinkOpen` y recopie le `?plk=` de l'URL — sanitisée depuis, et le marqueur non conforme est rejeté à l'entrée. Instrumentation automatique : navigation (wrap de `goTo`), clics (délégation), fetch (timing API endpoint sans query), erreurs. Marqueurs sémantiques ajoutés (guardés `window.tel && tel.action(...)`) dans `supaPublishPostWithRetry`, `likePost`, `submitComment`, `sendMessageToSupabase`, `toggleJoinEvent`. ⚠️ `telemetry.js` est un IIFE `"use strict"` : il n'expose que `window.PassioTelemetry`/`window.tel` (aucun global top-level → `audit:globals` reste vert). Lancer le dashboard : `cd dashboard && npm install && cp .env.example .env` (renseigner `SUPABASE_SERVICE_ROLE_KEY`) `&& npm start` → http://localhost:4610. Tests backend : `cd dashboard && npm test` (77 verts). Mutations git du dashboard : désactivées en prod, jamais de push, branche dédiée + confirmation, tout audité. Doc : `dashboard/README.md`, `dashboard/docs/SECURITE.md`, `dashboard/docs/INTEGRATION_CLAUDE_CODE.md`.
