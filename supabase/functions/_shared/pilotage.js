@@ -238,7 +238,17 @@ export function aFaire(d, maintenant = Date.now()) {
     const labels = Array.isArray(i.labels) ? i.labels : [];
     const base = { id: "issue:" + i.numero, depuis: i.depuis || null, url: urlGithub(i.url), titre: "#" + i.numero + " · " + i.titre };
     if (i.pause) { ajoute({ ...base, prio: 2, etiquette: "Pause", detail: "La Sentinelle est en pause : elle n'ouvre plus d'enquête. Détails › Machines pour la relancer." }); continue; }
-    if (estReparation(i.titre)) { ajoute({ ...base, prio: 2, etiquette: "Réparation", detail: "Claude prépare un correctif ; il arrivera ici pour validation." }); continue; }
+    if (estReparation(i.titre)) {
+      // Sans label `claude`, rien ne prouve que Claude l'a reçue (refus 403 du 24/10, #653) :
+      // « Relancer » la confie, par commentaire si besoin — le serveur ne la confie jamais deux fois.
+      const cible = labels.includes("claude") ? null : reparables.find((r) => r.enCours === i.numero);
+      const relancer = gestesGh && cible ? [{ libelle: "Relancer", principal: true,
+        corps: cible.cible === "issue" ? { action: "reparer", cible: "issue", numero: cible.numero } : { action: "reparer", cible: "run", cle: cible.cle },
+        confirmation: "Confier #" + i.numero + " à Claude ? (si aucun correctif n'est arrivé)" }] : [];
+      ajoute({ ...base, prio: relancer.length ? 1 : 2, etiquette: "Réparation",
+        detail: relancer.length ? "Pas de label « claude » : si aucun correctif n'arrive, touche « Relancer »." : "Claude prépare un correctif ; il arrivera ici pour validation.", gestes: relancer });
+      continue;
+    }
     const x = reparation.get("issue:" + i.numero);
     if (labels.includes("moderation")) ajoute({ ...base, prio: 1, etiquette: "Modération", detail: "Un contenu signalé attend ta décision (geste humain, jamais confié à une machine).", gestes: gesteFermer(i.numero) });
     else if (labels.includes("humain")) ajoute({ ...base, prio: 0, etiquette: "À toi", detail: x && x.enCours ? "Réparation demandée : #" + x.enCours + "." : "Une machine s'est arrêtée : une décision humaine est attendue.", gestes: [...gesteReparer(x), ...gesteFermer(i.numero)] });
@@ -601,6 +611,19 @@ export function corpsReparation(c, depot) {
       "Lis son journal (`gh run view --log-failed`) pour trouver l'étape en échec.", ...consigne].join("\n");
   }
   return null;
+}
+
+/**
+ * Ordre de secours quand le label `claude` est refusé au jeton du pilotage :
+ * claude-code.yml accepte un commentaire `@claude` de PASSIO74 sur une issue de
+ * PASSIO74. Texte FIXE : il entre dans la spécification donnée à Claude.
+ */
+export const COMMENTAIRE_CONFIER = "@claude Exécute la réparation décrite dans cette issue.";
+
+/** Le pilote a-t-il déjà confié l'issue par commentaire ? (jamais deux agents pour une réparation) */
+export function dejaConfiee(commentaires) {
+  return (Array.isArray(commentaires) ? commentaires : []).some((c) =>
+    c && c.user && c.user.login === PILOTE_GITHUB && String(c.body || "").includes("@claude"));
 }
 
 /**
