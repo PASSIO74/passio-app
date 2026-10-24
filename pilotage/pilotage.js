@@ -1,4 +1,8 @@
-// PASSIO Pilotage — la version NUAGE, sans PC (2026-09-28).
+// PASSIO Pilotage — LE centre de pilotage, dans le nuage, sans PC (2026-09-28).
+// Simplifié le 2026-10-23 : trois onglets. L'Accueil répond à « est-ce que ça
+// va, et qu'est-ce que je dois faire ? » (le voyant, UNE liste « À faire »
+// construite par la fonction, les chiffres clés avec leur tendance) ; Détails
+// sert à comprendre ; Réglages, à ce qu'on change rarement.
 // Données et gestes : Edge Function `pilotage` (Supabase), réservée au compte
 // éditeur. Session : celle de PASSIO sur ce téléphone (même origine).
 // Règles : nœuds + textContent uniquement, jamais innerHTML ; les seuls liens
@@ -10,7 +14,10 @@
   const cfg = window.PILOTAGE_SUPABASE || {};
   const sb = window.supabase && window.supabase.createClient(cfg.url, cfg.anon, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
   const FONCTION = cfg.url + "/functions/v1/pilotage";
-  let derniere = 0, enCours = false, compte = null, gestesGithub = false;
+  // Au-delà, les données affichées sont dites PÉRIMÉES : une lecture a échoué
+  // et l'écran montrerait sinon un vieux vert comme s'il était d'aujourd'hui.
+  const PERIME_MS = 3 * 60e3;
+  let derniere = 0, enCours = false, compte = null, gestesGithub = false, erreursLecture = {};
 
   // ─── Nœuds ────────────────────────────────────────────────────────────────
   function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = String(text); return n; }
@@ -43,8 +50,8 @@
     const t = Date.parse(String(v || ""));
     return Number.isFinite(t) ? new Date(t).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "date inconnue";
   }
-  function boutonRetour(c) {
-    const b = el("button", "btn", "Remettre la version précédente"); b.type = "button";
+  function boutonRetour(c, texte) {
+    const b = el("button", "btn btn-principal", texte || "Remettre la version précédente"); b.type = "button";
     b.addEventListener("click", async () => {
       b.disabled = true;
       let a;
@@ -57,22 +64,25 @@
       try {
         const r = await appeler({ action: "retour_arriere", cible: cible.id });
         succes((r && r.message) || "Fait.");
-        derniere = 0; await actualiser();
+        await actualiser();
       } catch (e) { erreur("Refusé : " + e.message); b.disabled = false; }
     });
     actions(c).append(b); return b;
   }
-  // « Réparer » : une seule fabrique pour les trois surfaces (bloc À réparer,
-  // carte d'enquête, carte d'exécution) — deux copies divergeraient.
-  function clefReparation(x) { return x.cible === "issue" ? "issue:" + x.numero : "run:" + x.cle; }
-  function boutonReparer(c, x) {
-    if (!gestesGithub || !x) return;
-    if (x.enCours) { c.append(el("p", "discret", "Réparation en cours : #" + x.enCours + " — le correctif arrivera dans « Correctifs en attente ».")); return; }
-    const corps = x.cible === "issue" ? { action: "reparer", cible: "issue", numero: x.numero } : { action: "reparer", cible: "run", cle: x.cle };
-    const b = bouton(c, "Réparer", corps, "Confier la réparation de « " + x.libelle + " » à Claude ? Il ouvrira un correctif (PR) que tu fusionneras ici.");
-    b.classList.add("btn-reparer");
+  /** Un chiffre clé : la valeur, ce qu'elle mesure, et une ligne de contexte (tendance). */
+  function chiffre(v, libelle, couleur, sous) {
+    const c = el("div", "chiffre" + (couleur ? " " + couleur : ""));
+    c.append(el("b", null, v == null ? "—" : v), el("span", null, libelle));
+    if (sous) c.append(el("small", "tendance" + (sous.classe ? " " + sous.classe : ""), sous.texte));
+    return c;
   }
-  function chiffre(v, libelle, couleur) { const c = el("div", "chiffre" + (couleur ? " " + couleur : "")); c.append(el("b", null, v == null ? "—" : v), el("span", null, libelle)); return c; }
+  /** La tendance rendue par la fonction → une ligne : ▲ +3 vs 7 j d'avant (verte si bonne nouvelle). */
+  function ligneTendance(t, periode) {
+    if (!t || typeof t !== "object") return null;
+    const fleche = t.sens === "hausse" ? "▲" : t.sens === "baisse" ? "▼" : "=";
+    const delta = Number(t.delta) || 0;
+    return { texte: fleche + " " + (delta > 0 ? "+" : "") + delta + " vs " + periode, classe: t.bon === true ? "bon" : t.bon === false ? "mauvais" : "" };
+  }
   function ilYA(v) {
     const t = typeof v === "number" ? v : Date.parse(String(v));
     if (!Number.isFinite(t)) return "date inconnue";
@@ -82,13 +92,23 @@
     if (s < 172800) return "il y a " + Math.round(s / 3600) + " h";
     return "il y a " + Math.round(s / 86400) + " j";
   }
+  function duree(ms) {
+    const m = Math.round(Number(ms) / 60e3);
+    if (!Number.isFinite(m)) return "?";
+    return m < 60 ? m + " min" : m < 2880 ? Math.round(m / 60) + " h" : Math.round(m / 1440) + " j";
+  }
   function taille(o) {
     if (o == null) return "—";
     const u = ["o", "Ko", "Mo", "Go", "To"]; let i = 0, v = Number(o);
     while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
     return (v >= 10 || i === 0 ? Math.round(v) : Number(v.toFixed(1))).toString().replace(".", ",") + " " + u[i];
   }
-  const nonLu = (id, titre) => vider(id).append(carte(titre, "Non lu", "Cette partie n'a pas pu être lue.", "gris"));
+  // « Non lu », avec la raison quand la fonction la connaît : un bloc vide ou un
+  // zéro passerait pour une mesure.
+  function nonLu(id, titre, partie) {
+    const raison = erreursLecture[partie || id];
+    vider(id).append(carte(titre, "Non lu", "Cette partie n'a pas pu être lue" + (raison ? " (" + raison + ")" : "") + ".", "gris"));
+  }
   function graphe(id, serie) {
     const g = vider(id);
     const s = Array.isArray(serie) ? serie : [];
@@ -122,8 +142,14 @@
   function succes(t) { const b = $("bandeauOk"); b.hidden = !t; b.textContent = t || ""; clearTimeout(minuteurOk); minuteurOk = setTimeout(() => { b.hidden = true; }, 6000); }
   function majEtat() {
     const e = $("etatMaj");
+    const age = derniere ? Date.now() - derniere : 0;
+    const perime = !!derniere && age > PERIME_MS && !enCours;
+    const p = $("perime");
+    p.hidden = !perime;
+    if (perime) p.textContent = "Ces informations datent de " + ilYA(derniere).replace("il y a ", "") + " : la dernière lecture a échoué. Touche ↻ pour réessayer.";
+    $("verdict").classList.toggle("perime", perime);
     if (!navigator.onLine) { e.textContent = "Hors ligne"; e.className = "etat-maj hors-ligne"; return; }
-    e.className = "etat-maj"; e.textContent = derniere ? "Mis à jour " + ilYA(derniere) : "Chargement…";
+    e.className = "etat-maj" + (perime ? " hors-ligne" : ""); e.textContent = derniere ? "Mis à jour " + ilYA(derniere) : "Chargement…";
   }
   function onglet(id) {
     document.querySelectorAll(".barre button").forEach((b) => b.classList.toggle("actif", b.dataset.tab === id));
@@ -157,129 +183,177 @@
     try {
       const r = await appeler(corps);
       succes((r && r.message) || "Fait.");
-      derniere = 0; await actualiser();
+      await actualiser();
     } catch (e) { erreur("Refusé : " + e.message); b.disabled = false; }
   }
 
   // ─── Rendu ────────────────────────────────────────────────────────────────
   function rendre(d) {
     gestesGithub = !!d.gestesGithub;
+    erreursLecture = (d.erreursLecture && typeof d.erreursLecture === "object") ? d.erreursLecture : {};
     const v = d.verdict || { couleur: "gris", titre: "Pas de nouvelles", raisons: [] };
     $("verdict").className = "verdict " + v.couleur;
     $("verdictTitre").textContent = v.titre;
     $("verdictDetail").textContent = (v.raisons || []).slice(0, 3).join(" · ");
+    rendreAFaire(d);
+    rendreChiffres(d);
+    rendreNouveauxComptes(d);
+    rendreSite(d);
+    rendreErreurs(d);
+    rendreUtilisateurs(d);
+    rendreMachines(d);
+    rendreCapacite(d);
+    rendreHistorique(d);
+    rendreReglages(d);
+  }
 
+  // « À faire » : la liste vient de la fonction (_shared/pilotage.js, aFaire),
+  // déjà triée. Elle porte des textes de tiers (titres d'issue, messages
+  // d'erreur, motifs de signalement) : tout passe par textContent.
+  function carteAFaire(x) {
+    const c = carte(x.titre, x.etiquette, x.detail, x.couleur);
+    if (x.depuis) c.append(el("p", "quand", ilYA(x.depuis)));
+    (Array.isArray(x.gestes) ? x.gestes : []).forEach((g) => {
+      if (g.special === "retour") { boutonRetour(c, g.libelle); return; }
+      if (!g.corps || typeof g.corps !== "object" || typeof g.corps.action !== "string") return;
+      const b = bouton(c, g.libelle, g.corps, g.confirmation);
+      if (g.principal) b.classList.add("btn-principal");
+    });
+    const id = String(x.id || "");
+    lien(c, x.url, id.startsWith("pr:") ? "Voir le détail" : id.startsWith("run:") ? "Voir l'exécution" : "Ouvrir sur GitHub");
+    return c;
+  }
+  function rendreAFaire(d) {
+    const z = vider("afaire"), info = vider("pourInfo");
+    const badge = $("badgeAccueil"), nb = $("nbAFaire");
+    if (!Array.isArray(d.aFaire)) {
+      // Une fonction qui ne rend pas la liste (pas encore mise à jour) : jamais un faux « rien à faire ».
+      z.append(carte("Liste indisponible", "Non lu", "La fonction « pilotage » n'a pas rendu la liste : elle n'est sans doute pas encore à jour. Détails montre le reste.", "gris"));
+      badge.hidden = true; nb.hidden = true; $("pourInfoRepli").hidden = true;
+      return;
+    }
+    const urgents = d.aFaire.filter((x) => x && x.prio <= 1);
+    const pourInfo = d.aFaire.filter((x) => x && x.prio >= 2);
+    if (!urgents.length) z.append(carte("Rien à faire", "OK", "Tout tourne tout seul. Tu seras prévenu sur ce téléphone si quelque chose casse.", "vert"));
+    urgents.forEach((x) => z.append(carteAFaire(x)));
+    badge.hidden = !urgents.length; badge.textContent = String(urgents.length);
+    nb.hidden = !urgents.length; nb.textContent = String(urgents.length);
+    $("pourInfoRepli").hidden = !pourInfo.length;
+    $("pourInfoTitre").textContent = "Pour info (" + pourInfo.length + ")";
+    pourInfo.forEach((x) => info.append(carteAFaire(x)));
+  }
+
+  function rendreChiffres(d) {
+    const ch = vider("chiffres");
+    const u = d.utilisateurs, er = d.erreurs, act = d.activation, t = d.tendances || {}, mel = d.miseEnLigne;
+    const m5 = (u && u.maintenant) || null, j24 = (u && u.aujourdhui) || null;
+    ch.append(
+      chiffre(m5 ? m5.appareils : null, "en ligne maintenant", null, m5 ? { texte: m5.comptes + " compte(s) connecté(s)" } : null),
+      chiffre(j24 ? j24.appareils : null, "visiteurs (24 h)", null, j24 ? { texte: j24.comptes + " compte(s) actif(s)" } : null),
+      chiffre(u ? u.inscritsSemaine : null, "inscriptions (7 j)", null, ligneTendance(t.inscriptions, "7 j d'avant")),
+      chiffre(er && er.total7 != null ? er.total7 : null, "erreurs (7 j)", er && er.total7 ? "orange" : null, ligneTendance(t.erreurs, "7 j d'avant")),
+      chiffre(act && act.taux != null ? act.taux + " %" : null, "nouveaux comptes activés", act && act.taux != null && act.taux < 50 ? "orange" : null,
+        act ? { texte: act.activesMures + " sur " + act.mures + " compte(s) de " + act.jours + " à " + act.cohorteJours + " j" } : null),
+    );
+    // Depuis la dernière mise en ligne : ce que la version servie a changé.
+    if (mel && mel.etat === "ok") {
+      const pire = mel.apres > mel.avant;
+      ch.append(chiffre(mel.apres, "erreurs depuis la mise en ligne", pire ? "orange" : null,
+        { texte: "mise en ligne " + ilYA(mel.le) + " · " + mel.avant + " sur les " + duree(mel.dureeMs) + " d'avant", classe: pire ? "mauvais" : mel.apres < mel.avant ? "bon" : "" }));
+    } else if (mel && mel.etat === "en_cours") ch.append(chiffre("…", "mise en ligne en cours"));
+    else if (mel && mel.etat === "failure") ch.append(chiffre("Échec", "dernière mise en ligne", "rouge"));
+    else ch.append(chiffre(null, "erreurs depuis la mise en ligne", null, { texte: "date de mise en ligne inconnue" }));
+  }
+
+  // Les comptes créés, par leur NOM (2026-10-23) : le nom choisi dans l'app,
+  // jamais l'e-mail (_shared/pilotage.js, comptesRecents). Écrit par la
+  // personne : rendu en TEXTE. Accueil : les 5 derniers ; Détails : tous (30).
+  const ACCUEIL_COMPTES = 5;
+  function listeComptes(liste) {
+    const c = el("article", "carte");
+    const ul = el("ul", "liste-comptes");
+    liste.forEach((x) => {
+      const li = el("li", "compte");
+      const tete = el("div", "compte-tete");
+      tete.append(x.nom ? el("span", "compte-nom", x.nom) : el("span", "compte-nom sans-nom", x.nomLu === false ? "Nom non lu" : "Profil pas encore rempli"));
+      tete.append(el("span", "compte-quand", ilYA(x.cree)));
+      li.append(tete);
+      const det = el("p", "compte-detail");
+      const morceaux = [];
+      if (x.voie) morceaux.push(el("span", null, x.voie === "e-mail" ? "par e-mail" : "par " + x.voie));
+      if (!x.confirme) morceaux.push(el("span", "orange", "e-mail pas encore confirmé"));
+      if (x.actif === true) morceaux.push(el("span", "vert", "a fait un geste"));
+      else if (x.actif === false) morceaux.push(el("span", null, "aucun geste pour l'instant"));
+      morceaux.forEach((m, i) => { if (i) det.append(document.createTextNode(" · ")); det.append(m); });
+      if (morceaux.length) li.append(det);
+      ul.append(li);
+    });
+    c.append(ul);
+    return c;
+  }
+  function rendreNouveauxComptes(d) {
+    const acc = vider("nouveauxComptes"), tout = vider("comptesCrees");
+    const act = d.activation;
+    if (!act) { nonLu("nouveauxComptes", "Nouveaux comptes", "activation"); nonLu("comptesCrees", "Comptes créés", "activation"); return; }
+    if (!Array.isArray(act.nouveaux)) {
+      const texte = "La fonction « pilotage » n'a pas rendu la liste des comptes : elle n'est sans doute pas encore à jour.";
+      acc.append(carte("Liste indisponible", "Non lu", texte, "gris"));
+      tout.append(carte("Liste indisponible", "Non lu", texte, "gris"));
+      return;
+    }
+    const l = act.nouveaux;
+    if (!l.length) {
+      acc.append(carte("Aucun compte créé ces 30 derniers jours", "", "", ""));
+      tout.append(carte("Aucun compte créé ces 30 derniers jours", "", "Comptes de test et compte de l'éditeur exclus.", ""));
+      return;
+    }
+    const carteAccueil = listeComptes(l.slice(0, ACCUEIL_COMPTES));
+    if (l.length > ACCUEIL_COMPTES) {
+      const b = el("button", "btn", "Voir les " + l.length + " comptes"); b.type = "button";
+      b.addEventListener("click", () => { onglet("details"); const t = $("titreComptesCrees"); if (t && t.scrollIntoView) t.scrollIntoView({ block: "start" }); });
+      actions(carteAccueil).append(b);
+    }
+    acc.append(carteAccueil);
+    tout.append(listeComptes(l));
+    if (l.length >= 30) tout.append(el("p", "discret", "Les 30 plus récents. Comptes de test et compte de l'éditeur exclus."));
+    else tout.append(el("p", "discret", "Comptes de test et compte de l'éditeur exclus."));
+  }
+
+  function rendreSite(d) {
     const dispo = d.disponibilite;
     const si = vider("site");
-    if (dispo) {
-      si.append(dispo.repond
-        ? carte("Le site répond", "En ligne", dispo.depuis ? "sans interruption depuis " + ilYA(dispo.depuis).replace("il y a ", "") : "vérifié à l'instant", "vert")
-        : carte("Le site ne répond pas", "Hors ligne", dispo.depuis ? "depuis " + ilYA(dispo.depuis).replace("il y a ", "") : "à l'instant", "rouge"));
-    }
+    if (!dispo) { nonLu("site", "Disponibilité", "disponibilite"); return; }
+    si.append(dispo.repond
+      ? carte("Le site répond", "En ligne", dispo.depuis ? "sans interruption depuis " + ilYA(dispo.depuis).replace("il y a ", "") : "vérifié à l'instant", "vert")
+      : carte("Le site ne répond pas", "Hors ligne", dispo.depuis ? "depuis " + ilYA(dispo.depuis).replace("il y a ", "") : "à l'instant", "rouge"));
+  }
 
-    const s = d.sante, u = d.utilisateurs, gh = d.github;
-    const reparables = (gh && Array.isArray(gh.aReparer)) ? gh.aReparer : [];
-    const parCle = new Map(reparables.map((x) => [clefReparation(x), x]));
-    const rp = vider("reparer");
-    $("blocReparer").hidden = !(gestesGithub && reparables.length);
-    reparables.forEach((x) => {
-      const c = carte(x.libelle, x.enCours ? "En cours" : "À réparer", "", x.enCours ? "orange" : "rouge");
-      boutonReparer(c, x);
-      lien(c, x.url, x.cible === "run" ? "Voir l'exécution" : "Ouvrir sur GitHub");
-      rp.append(c);
-    });
-    const ch = vider("chiffres");
-    ch.append(
-      chiffre(u && u.maintenant ? u.maintenant.appareils : null, "appareils en ligne"),
-      chiffre(u && u.aujourdhui ? u.aujourdhui.comptes : null, "comptes actifs (24 h)"),
-      chiffre(s ? s.erreursJs15 : null, "erreurs (15 min)", s && s.erreursJs15 >= 10 ? "rouge" : s && s.erreursJs15 ? "orange" : null),
-      chiffre(d.signalements ? d.signalements.ouverts : null, "signalements", d.signalements && d.signalements.ouverts ? "orange" : null),
-    );
-
-    // Ce qui t'attend
-    const at = vider("attente");
-    let aFaire = 0;
-    if (!gh) nonLu("attente", "Enquêtes GitHub");
-    else {
-      const issues = (gh.issues || []).filter((i) => !i.pr && !i.pause);
-      if (!issues.length) at.append(carte("Rien ne t'attend", "OK", "Aucune enquête ni alerte ouverte.", "vert"));
-      issues.forEach((i) => {
-        const humain = i.labels.includes("humain");
-        if (humain) aFaire++;
-        const [mot, coul] = humain ? ["À toi", "rouge"] : i.labels.includes("sentinelle") ? ["Sentinelle", "orange"] : i.labels.includes("veille") ? ["Veille", "orange"] : ["Info", "gris"];
-        const c = carte("#" + i.numero + " · " + i.titre, mot, "ouverte " + ilYA(i.depuis), coul);
-        boutonReparer(c, parCle.get("issue:" + i.numero));
-        lien(c, i.url);
-        if (gestesGithub) bouton(c, "Fermer", { action: "fermer", numero: i.numero }, "Fermer #" + i.numero + " ? (à faire si c'est réglé ou sans objet)");
-        at.append(c);
-      });
-    }
-    const badge = $("badgeAccueil"); badge.hidden = !aFaire; badge.textContent = String(aFaire);
-
-    // Erreurs détaillées
+  function rendreErreurs(d) {
     const er = vider("erreurs");
     const e7 = d.erreurs;
-    if (!e7) nonLu("erreurs", "Erreurs");
-    else {
-      if (!e7.details || !e7.details.length) er.append(carte("Aucune erreur sur 7 jours", "OK", "", "vert"));
-      (e7.details || []).forEach((x) => {
-        const recent = x.dernier && Date.now() - Date.parse(x.dernier) < 864e5;
-        const c = carte(x.message, x.n + " fois", x.comptes + " compte(s) · dernière " + ilYA(x.dernier), recent ? (x.n >= 10 ? "rouge" : "orange") : "gris");
-        const det = el("details", "repli");
-        det.append(el("summary", null, "Détails"));
-        det.append(el("p", null, "Première fois : " + ilYA(x.premier)));
-        if (x.plateformes && x.plateformes.length) det.append(el("p", null, "Appareils : " + x.plateformes.map((p) => p.nom + " (" + p.n + ")").join(", ")));
-        if (x.pages && x.pages.length) det.append(el("p", null, "Pages : " + x.pages.map((p) => p.nom + " (" + p.n + ")").join(", ")));
-        det.append(el("p", null, "Sur 7 jours :"));
-        det.append(miniGraphe(x.serie));
-        c.append(det);
-        if (gestesGithub && recent) bouton(c, "Confier à la Sentinelle", { action: "relancer", cible: "sentinelle" }, "Lancer la Sentinelle maintenant ? Elle analysera les erreurs récentes et ouvrira une enquête si besoin.");
-        er.append(c);
-      });
-    }
+    graphe("grapheErreurs", e7 && e7.serie);
+    if (!e7) { nonLu("erreurs", "Erreurs"); return; }
+    if (!e7.details || !e7.details.length) er.append(carte("Aucune erreur sur 7 jours", "OK", "", "vert"));
+    (e7.details || []).forEach((x) => {
+      const recent = x.dernier && Date.now() - Date.parse(x.dernier) < 864e5;
+      const c = carte(x.message, x.n + " fois", x.comptes + " compte(s) · dernière " + ilYA(x.dernier), recent ? (x.n >= 10 ? "rouge" : "orange") : "gris");
+      const det = el("details", "repli");
+      det.append(el("summary", null, "Détails"));
+      det.append(el("p", null, "Première fois : " + ilYA(x.premier)));
+      if (x.plateformes && x.plateformes.length) det.append(el("p", null, "Appareils : " + x.plateformes.map((p) => p.nom + " (" + p.n + ")").join(", ")));
+      if (x.pages && x.pages.length) det.append(el("p", null, "Pages : " + x.pages.map((p) => p.nom + " (" + p.n + ")").join(", ")));
+      det.append(el("p", null, "Sur 7 jours :"));
+      det.append(miniGraphe(x.serie));
+      c.append(det);
+      er.append(c);
+    });
+    if (e7.detailsPartiels) er.append(el("p", "discret", "Détails calculés sur les 1 000 erreurs les plus récentes ; les totaux, eux, sont comptés en base."));
+  }
 
-    // Machines
-    const pa = vider("pause");
-    if (gh) {
-      const c = gh.pause ? carte("En pause", "Pause", "La Sentinelle n'ouvre plus d'enquête.", "orange") : carte("Active", "OK", "Elle surveille les erreurs et répare.", "vert");
-      if (gestesGithub) bouton(c, gh.pause ? "Reprendre" : "Mettre en pause", { action: gh.pause ? "reprendre" : "pause" }, gh.pause ? "Relancer la Sentinelle ?" : "Mettre la Sentinelle en pause ? Plus aucune enquête ne sera ouverte jusqu'à la reprise.");
-      pa.append(c);
-    }
-    const ru = vider("runs");
-    if (!gh) nonLu("runs", "Exécutions");
-    else {
-      const NOMS = { sentinelle: "Sentinelle", veille: "Veille de production", deploy: "Déploiement" };
-      Object.keys(NOMS).forEach((k) => {
-        const r = gh.runs && gh.runs[k];
-        if (!r) { ru.append(carte(NOMS[k], "Inconnu", "", "gris")); return; }
-        const [mot, coul] = r.etat !== "completed" ? ["En cours", "orange"] : r.conclusion === "success" ? ["OK", "vert"] : r.conclusion === "failure" ? ["Échec", "rouge"] : [r.conclusion || "?", "gris"];
-        const c = carte(NOMS[k], mot, ilYA(r.le), coul); boutonReparer(c, parCle.get("run:" + k)); lien(c, r.url, "Voir l'exécution"); ru.append(c);
-      });
-    }
-    const pr = vider("prs");
-    let nPr = 0;
-    if (gh) {
-      const prs = (gh.issues || []).filter((i) => i.pr);
-      nPr = prs.length;
-      if (!prs.length) pr.append(carte("Aucun correctif en attente", "", "", "gris"));
-      prs.slice(0, 15).forEach((i) => {
-        const c = carte("#" + i.numero + " · " + i.titre, "PR", "ouverte " + ilYA(i.depuis));
-        lien(c, i.url, "Voir le détail");
-        if (gestesGithub) {
-          bouton(c, "Fusionner", { action: "fusionner", numero: i.numero }, "Fusionner #" + i.numero + " ? Il sera déployé en production si les tests sont verts.");
-          bouton(c, "Refuser", { action: "fermer", numero: i.numero }, "Refuser et fermer #" + i.numero + " ?");
-        }
-        pr.append(c);
-      });
-    }
-    const bm = $("badgeMachines"); bm.hidden = !nPr; bm.textContent = String(nPr);
-    const rl = vider("relances");
-    if (!d.relancesPossibles || !d.relancesPossibles.length) rl.append(carte("Gestes indisponibles", "", "Pour agir depuis le téléphone (relancer, fusionner, fermer, pause), pose le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». La Sentinelle tourne quand même toute seule.", "gris"));
-    (d.relancesPossibles || []).forEach((x) => { const c = carte(x.libelle, "", ""); bouton(c, "Lancer maintenant", { action: "relancer", cible: x.cle }, "Lancer « " + x.libelle + " » maintenant ?"); rl.append(c); });
-
-    // Utilisateurs
+  function rendreUtilisateurs(d) {
+    const u = d.utilisateurs;
     const m = vider("maintenant"), co = vider("comptes");
-    if (!u) { nonLu("maintenant", "Utilisateurs"); }
+    if (!u) { nonLu("maintenant", "Utilisateurs", "utilisateurs"); graphe("grapheInscriptions", []); }
     else {
       // Chaque fenêtre est mesurée à part (2026-10-13) : une passe de 24 h qui
       // échoue à l'échelle est dite « non mesurée », sans emporter le reste.
@@ -293,52 +367,86 @@
     }
     // Activation (2026-10-06) : le taux ne compte que les comptes qui ont eu
     // leurs 7 jours entiers ; les plus jeunes sont « en cours », pas des échecs.
-    const ac = vider("activation"), ap = $("activationPremiers"), act = d.activation;
+    const ac = vider("activation"), ap = $("activationPremiers"), act = d.activation, en = vider("entonnoir");
     ap.hidden = true;
-    if (!act) nonLu("activation", "Activation");
-    else {
-      ac.append(chiffre(act.taux == null ? null : act.taux + " %", "activés en " + act.jours + " j", act.taux != null && act.taux < 50 ? "orange" : ""),
-        chiffre(act.activesMures + " / " + act.mures, "comptes de " + act.jours + " à " + act.cohorteJours + " j"),
-        chiffre(act.enCours, "de moins de " + act.jours + " j" + (act.enCoursActives ? " (dont " + act.enCoursActives + " déjà actif" + (act.enCoursActives > 1 ? "s" : "") + ")" : "")));
-      const premiers = Object.entries(act.premiers || {}).sort((x, y) => y[1] - x[1]).map(([g, n]) => g + " " + n).join(" · ");
-      if (premiers) { ap.textContent = "Premier geste des comptes activés : " + premiers; ap.hidden = false; }
+    if (!act) { nonLu("activation", "Activation"); return; }
+    ac.append(chiffre(act.taux == null ? null : act.taux + " %", "activés en " + act.jours + " j", act.taux != null && act.taux < 50 ? "orange" : ""),
+      chiffre(act.activesMures + " / " + act.mures, "comptes de " + act.jours + " à " + act.cohorteJours + " j"),
+      chiffre(act.enCours, "de moins de " + act.jours + " j" + (act.enCoursActives ? " (dont " + act.enCoursActives + " déjà actif" + (act.enCoursActives > 1 ? "s" : "") + ")" : "")));
+    const premiers = Object.entries(act.premiers || {}).sort((x, y) => y[1] - x[1]).map(([g, n]) => g + " " + n).join(" · ");
+    if (premiers) { ap.textContent = "Premier geste des comptes activés : " + premiers; ap.hidden = false; }
+    // L'entonnoir (2026-10-23) : créés → e-mail confirmé → actifs. Sur un
+    // échantillon (au-delà de 1 500 comptes), les étages ne se comparent plus.
+    if (typeof act.crees === "number" && !act.echantillon) {
+      const actifs = (Number(act.activesMures) || 0) + (Number(act.enCoursActives) || 0);
+      const c = carte("Entonnoir des " + act.cohorteJours + " derniers jours", "", "", "");
+      const l = el("div", "chiffres chiffres-petits");
+      l.append(chiffre(act.crees, "comptes créés"), chiffre(act.cohorte, "e-mail confirmé"), chiffre(actifs, "ont fait un geste"));
+      c.append(l);
+      if (act.crees > act.cohorte) c.append(el("p", null, (act.crees - act.cohorte) + " compte(s) n'ont jamais confirmé leur e-mail."));
+      en.append(c);
     }
-    graphe("grapheErreurs", e7 && e7.serie);
-    const si2 = vider("signalements");
-    const sg = d.signalements;
-    if (!sg) nonLu("signalements", "Signalements");
-    else {
-      if (!sg.liste || !sg.liste.length) si2.append(carte("Aucun signalement en attente", "OK", "", "vert"));
-      (sg.liste || []).forEach((x) => {
-        const c = carte("Signalement · " + x.type, "À traiter", (x.motif ? "« " + x.motif + " » · " : "") + ilYA(x.le), "orange");
-        bouton(c, "Traité", { action: "signalement", id: x.id, statut: "handled" }, "Marquer ce signalement comme traité ?");
-        bouton(c, "Rejeter", { action: "signalement", id: x.id, statut: "dismissed" }, "Rejeter ce signalement (sans suite) ?");
-        si2.append(c);
-      });
-    }
+  }
 
-    // Capacité
+  function rendreMachines(d) {
+    const gh = d.github;
+    const pa = vider("pause"), ru = vider("runs");
+    if (!gh) { nonLu("runs", "GitHub (Sentinelle, veille, mises en ligne)", "github"); }
+    else {
+      const c = gh.pause ? carte("Sentinelle en pause", "Pause", "Elle n'ouvre plus d'enquête.", "orange") : carte("Sentinelle active", "OK", "Elle surveille les erreurs et répare.", "vert");
+      if (gestesGithub) bouton(c, gh.pause ? "Reprendre" : "Mettre en pause", { action: gh.pause ? "reprendre" : "pause" }, gh.pause ? "Relancer la Sentinelle ?" : "Mettre la Sentinelle en pause ? Plus aucune enquête ne sera ouverte jusqu'à la reprise.");
+      pa.append(c);
+      const NOMS = { sentinelle: "Sentinelle", veille: "Veille de production", deploy: "Mise en ligne (déploiement)" };
+      Object.keys(NOMS).forEach((k) => {
+        const r = gh.runs && gh.runs[k];
+        if (!r) { ru.append(carte(NOMS[k], "Inconnu", "", "gris")); return; }
+        const [mot, coul] = r.etat !== "completed" ? ["En cours", "orange"] : r.conclusion === "success" ? ["OK", "vert"] : r.conclusion === "failure" ? ["Échec", "rouge"] : [r.conclusion || "?", "gris"];
+        const c2 = carte(NOMS[k], mot, "dernière exécution " + ilYA(r.le), coul); lien(c2, r.url, "Voir l'exécution"); ru.append(c2);
+      });
+      if (gh.luLe) ru.append(el("p", "discret", "GitHub lu " + ilYA(gh.luLe) + "."));
+    }
+    const rl = vider("relances");
+    if (!d.relancesPossibles || !d.relancesPossibles.length) rl.append(carte("Gestes indisponibles", "", "Pour agir depuis le téléphone (relancer, fusionner, fermer, pause), pose le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». La Sentinelle tourne quand même toute seule.", "gris"));
+    (d.relancesPossibles || []).forEach((x) => { const c = carte(x.libelle, "", ""); bouton(c, "Lancer maintenant", { action: "relancer", cible: x.cle }, "Lancer « " + x.libelle + " » maintenant ?"); rl.append(c); });
+  }
+
+  function rendreCapacite(d) {
     const ja = vider("jauges");
-    if (!d.capacite) nonLu("jauges", "Capacité");
-    else {
-      (d.capacite.jauges || []).forEach((j) => {
-        const val = j.unite === "octets" ? taille(j.valeur) + " sur " + taille(j.plafond) : (j.valeur == null ? "—" : j.valeur) + " sur " + j.plafond;
-        const c = carte(j.libelle, j.pct == null ? "Non mesuré" : String(j.pct).replace(".", ",") + " %", val + (j.estimation ? " (estimation)" : ""), j.couleur);
-        const bar = el("div", "jauge " + j.couleur); const f = el("span"); f.style.width = Math.min(100, j.pct || 0) + "%"; bar.append(f); c.append(bar);
-        ja.append(c);
-      });
-      if (!d.capacite.mesuresServeur) ja.append(el("p", "discret", "Base et stockage : la migration « pilotage_veille » n'est pas encore appliquée."));
-      if (d.capacite.connexionsTronquees) ja.append(el("p", "discret", "Connexions : borne basse (lecture tronquée à 1 000 lignes) tant que la fonction « pilotage_audience » n'est pas en base."));
-      ja.append(el("p", "discret", "La bande passante (egress) ne se lit que sur la page Usage de Supabase."));
-    }
+    if (!d.capacite) { nonLu("jauges", "Capacité", "capacite"); return; }
+    (d.capacite.jauges || []).forEach((j) => {
+      const val = j.unite === "octets" ? taille(j.valeur) + " sur " + taille(j.plafond) : (j.valeur == null ? "—" : j.valeur) + " sur " + j.plafond;
+      const c = carte(j.libelle, j.pct == null ? "Non mesuré" : String(j.pct).replace(".", ",") + " %", val + (j.estimation ? " (estimation)" : ""), j.couleur);
+      const bar = el("div", "jauge " + j.couleur); const f = el("span"); f.style.width = Math.min(100, j.pct || 0) + "%"; bar.append(f); c.append(bar);
+      ja.append(c);
+    });
+    if (!d.capacite.mesuresServeur) ja.append(el("p", "discret", "Base et stockage : la migration « pilotage_veille » n'est pas encore appliquée."));
+    if (d.capacite.connexionsTronquees) ja.append(el("p", "discret", "Connexions : borne basse (lecture tronquée à 1 000 lignes) tant que la fonction « pilotage_audience » n'est pas en base."));
+    ja.append(el("p", "discret", "La bande passante (egress) ne se lit que sur la page Usage de Supabase."));
+  }
 
+  // Ce qui s'est passé : les changements du voyant notés par la veille (7 j).
+  const NOMS_COULEUR = { vert: "Tout va bien", orange: "À surveiller", rouge: "Problème", gris: "Pas de nouvelles" };
+  function rendreHistorique(d) {
+    const h = vider("historique");
+    if (!Array.isArray(d.historique)) { nonLu("historique", "Historique"); return; }
+    if (!d.historique.length) { h.append(carte("Rien de noté cette semaine", "", "Le voyant n'a pas changé depuis 7 jours.", "")); return; }
+    d.historique.forEach((x) => {
+      const coul = Object.hasOwn(NOMS_COULEUR, x.couleur) ? x.couleur : "gris";
+      const c = carte(NOMS_COULEUR[coul], x.dispo ? "" : "Site injoignable", (x.raisons || []).join(" · "), coul === "gris" ? "" : coul);
+      c.append(el("p", "quand", ilYA(x.le) + " · " + dateCourte(x.le)));
+      h.append(c);
+    });
+  }
+
+  function rendreReglages(d) {
     // Protection automatique (2026-10-11) : les réglages distants.
     const prot = vider("protection");
-    if (!d.reglages) nonLu("protection", "Protection");
+    if (!d.reglages) nonLu("protection", "Protection", "reglages");
     else if (d.reglages.absente) prot.append(carte("Pas encore allumée", "Migration", "Appliquer " + (d.reglages.migration || "la migration des réglages distants") + " (npm run migration:appliquer) : la veille pourra alors ralentir l'app d'elle-même.", "gris"));
     else rendreProtection(prot, d.reglages);
     // Ce qui agit seul (2026-10-12) : réveil de la Sentinelle ; le retour arrière,
-    // lui, n'est JAMAIS automatique — la veille le propose, le pilote le fait.
+    // lui, n'est JAMAIS automatique — la veille le propose (dans « À faire »),
+    // le pilote le fait.
     const au = d.autonomie;
     if (au) {
       prot.append(au.reveilSentinelle
@@ -346,35 +454,24 @@
         : carte("Réveil de la Sentinelle", "Inactif", "Il faut le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». La Sentinelle tourne quand même à son horaire.", "gris"));
       const ra = au.retour || {};
       const cr = ra.mode === "proposer"
-        ? carte("Retour arrière", "Proposé", "Si une mise en ligne provoque un échec nouveau chez 5 comptes de plus de 7 jours, tu es prévenu ici et sur le téléphone. Le bouton te montre la version qui sera remise avant que tu confirmes. Jamais seul : un retrait automatique pourrait annuler un correctif de sécurité.", "vert")
+        ? carte("Retour arrière", "Proposé", "Si une mise en ligne provoque un échec nouveau chez 5 comptes de plus de 7 jours, tu es prévenu dans « À faire » et sur le téléphone. Le bouton te montre la version qui sera remise avant que tu confirmes. Jamais seul : un retrait automatique pourrait annuler un correctif de sécurité.", "vert")
         : carte("Retour arrière", "Éteint", "Pour l'activer, poser le secret PILOTAGE_NETLIFY_TOKEN (jeton Netlify) sur la fonction « pilotage » — Supabase › Edge Functions › pilotage › Secrets. En attendant, le retour arrière reste le geste `npm run rollback:netlify` sur le PC.", "gris");
-      // La dernière proposition (24 h) : la version, le nombre de comptes, et
-      // l'échec lui-même — écrit par des navigateurs, donc rendu en TEXTE.
-      const pr = ra.proposition;
-      if (pr && pr.version) {
-        const cp = carte("Version " + pr.version + " : échec nouveau", "À décider", pr.comptes + " comptes de plus de 7 jours touchés, proposé " + ilYA(pr.le) + ".", "orange");
-        if (pr.famille) cp.append(el("p", "discret", pr.famille));
-        prot.append(cp);
-      }
       if (ra.jeton) boutonRetour(cr);
       prot.append(cr);
     }
-
-    // Réglages : alertes
+    // Alertes
     const al = vider("alertes");
     const a = d.alertes;
-    if (a) {
+    if (!a) nonLu("alertes", "Alertes");
+    else {
       al.append(a.appareils
         ? carte(a.appareils + " appareil(s) recevront les alertes", "Actif", "Tu es prévenu quand le voyant passe au rouge, quand le site ne répond plus, et quand c'est réglé.", "vert")
         : carte("Aucun appareil ne reçoit les alertes", "Inactif", "Ouvre PASSIO avec le compte éditeur et active les notifications quand elles sont proposées.", "orange"));
-      const dispo2 = d.disponibilite;
-      al.append(carte("Veille automatique", dispo2 && dispo2.veilleLe ? "Active" : "Pas encore",
-        dispo2 && dispo2.veilleLe ? "dernier changement noté " + ilYA(dispo2.veilleLe) + " · vérifie toutes les 5 min" : "Elle démarre quand la migration « pilotage_veille » est appliquée.",
-        dispo2 && dispo2.veilleLe ? "vert" : "gris"));
+      const dispo = d.disponibilite;
+      al.append(carte("Veille automatique", dispo && dispo.veilleLe ? "Active" : "Pas encore",
+        dispo && dispo.veilleLe ? "dernier changement noté " + ilYA(dispo.veilleLe) + " · vérifie toutes les 5 min" : "Elle démarre quand la migration « pilotage_veille » est appliquée.",
+        dispo && dispo.veilleLe ? "vert" : "gris"));
     }
-
-    const manquants = d.nonLus || [];
-    erreur(manquants.length ? manquants.length + " domaine(s) non lu(s) (" + manquants.join(", ") + ") — le reste est à jour." : "");
   }
 
   // ─── Protection automatique ────────────────────────────────────────────────
@@ -440,6 +537,7 @@
     try {
       const d = await appeler({ action: "etat" });
       rendre(d); derniere = Date.now();
+      erreur("");
     } catch (e) {
       if (e.status === 401) { ecran("connexion"); return; }
       if (e.status === 403) { ecran("refus"); $("refusTexte").textContent = "Le compte " + (compte || "") + " n'a pas accès au pilotage. Connecte-toi avec le compte de l'éditeur."; return; }

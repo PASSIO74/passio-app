@@ -3319,7 +3319,7 @@ async function setEventRsvp(id, rsvp) {
   // demande pas son âge à quelqu'un qui n'a pas encore de compte. Le RETRAIT
   // (`rsvp` nul ou « declined ») n'est JAMAIS gardé : un compte que la règle
   // rattrape doit toujours pouvoir sortir. Voir docs/ADMISSION_18_PLUS.md.
-  if (rsvp && rsvp !== "declined" && !(await requireAdmission("rejoindre"))) return;
+  if (rsvp && rsvp !== "declined" && !(await requireAdmission("rejoindre", function () { return setEventRsvp(id, rsvp); }))) return;
   // Muter l'objet canonique (state), pas une copie de allEvents() — sinon le
   // compteur d'inscrits et les avatars ne se mettaient jamais à jour localement.
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
@@ -5456,7 +5456,12 @@ async function admissionRappelServeur() {
 
 // LA PORTE. Rend `true` si l'action peut continuer, `false` si elle est refusée
 // ici — et dans ce cas l'utilisateur a reçu une explication, jamais un silence.
-async function requireAdmission(ctx) {
+// `reprise` (facultative) : l'action à REJOUER une fois l'année validée.
+// ⚠️ Sans elle, la porte avalait l'action : `openModal` n'empile pas, la
+// question d'âge REMPLAÇAIT le formulaire « Créer une activité », et « Valider »
+// fermait tout sans rien publier — vécu le 2026-10-23 (compte neuf, Android :
+// `admission_declaree` admis, puis aucun POST `events`, saisie perdue).
+async function requireAdmission(ctx, reprise) {
   var statut = await admissionLireStatut(false);
   // Règle éteinte, statut illisible, ou compte admis : on ne s'interpose pas.
   if (statut === "off" || statut === "inconnu" || statut === "admitted") return true;
@@ -5467,7 +5472,7 @@ async function requireAdmission(ctx) {
     if (await admissionRappelServeur()) {
       if (await admissionLireStatut(true) === "admitted") return true;
     }
-    admissionOuvrirPorte(ctx);
+    admissionOuvrirPorte(ctx, reprise);
     return false;
   }
 
@@ -5476,9 +5481,55 @@ async function requireAdmission(ctx) {
   return false;
 }
 
+// Action interrompue par la porte : la fonction à rejouer et, si une modale
+// était ouverte (le formulaire d'activité), ses NŒUDS mis de côté tels quels —
+// valeurs saisies, photo choisie et rangement UI-6A0 compris.
+var _admissionReprise = null;
+
+function admissionMettreDeCote(reprise) {
+  _admissionReprise = null;
+  if (typeof reprise !== "function") return;
+  var garde = { fn: reprise, noeuds: null, panel: null };
+  try {
+    var bd = document.getElementById("modalBackdrop");
+    var mc = document.getElementById("modalContent");
+    if (bd && mc && bd.classList.contains("active")) {
+      var frag = document.createDocumentFragment();
+      while (mc.firstChild) frag.appendChild(mc.firstChild);
+      garde.noeuds = frag;
+      garde.panel = (typeof _modalPanelCourant !== "undefined") ? _modalPanelCourant : null;
+    }
+  } catch (e) { admissionEchec("mise_de_cote", e); }
+  _admissionReprise = garde;
+}
+
+// Remet la modale d'origine à sa place et rejoue l'action. Rend `true` si une
+// reprise existait (la modale n'est alors PAS fermée : l'action s'en charge).
+function admissionReprendre() {
+  var garde = _admissionReprise;
+  _admissionReprise = null;
+  if (!garde) return false;
+  try {
+    var mc = document.getElementById("modalContent");
+    if (garde.noeuds && mc) {
+      mc.innerHTML = "";
+      mc.appendChild(garde.noeuds);
+      try { _modalPanelCourant = garde.panel; } catch (e) {}
+    } else {
+      closeModal();
+    }
+  } catch (e) { admissionEchec("restauration", e); try { closeModal(); } catch (e2) {} }
+  try {
+    var r = garde.fn();
+    if (r && typeof r.catch === "function") r.catch(function (e) { admissionEchec("reprise", e); });
+  } catch (e) { admissionEchec("reprise", e); }
+  return true;
+}
+
 // Fenêtre « quel âge as-tu ? ». Un seul champ, et ce qu'on en fait est dit.
-function admissionOuvrirPorte(ctx) {
+function admissionOuvrirPorte(ctx, reprise) {
   try { if (window.tel && tel.action) tel.action("admission_porte", admissionMeta("undeclared", ctx)); } catch (e) {}
+  admissionMettreDeCote(reprise);
   var an = "";
   try { an = state && state.user && state.user.birthYear ? String(state.user.birthYear) : ""; } catch (e) {}
   try {
@@ -5532,14 +5583,14 @@ async function admissionValiderAnnee(ctx) {
   try { if (window.tel && tel.action) tel.action("admission_declaree", admissionMeta(statut, ctx)); } catch (e) {}
 
   if (statut === "admitted" || statut === "off" || (statut === "inconnu" && envoye)) {
-    closeModal();
+    if (!admissionReprendre()) closeModal();
     toast("Merci — c'est enregistré");
     return true;
   }
-  if (statut === "minor") { openModal(admissionRefusHTML()); return false; }
+  if (statut === "minor") { _admissionReprise = null; openModal(admissionRefusHTML()); return false; }
   // Envoi impossible (hors ligne, migration absente) : on n'enferme personne
   // dehors pour une panne de courtoisie — le serveur reste seul juge.
-  closeModal();
+  if (!admissionReprendre()) closeModal();
   return true;
 }
 
@@ -6415,7 +6466,7 @@ async function submitEvent(editId) {
   // Admission 18+ : organiser une rencontre exige la majorité déclarée. On le
   // demande AVANT d'écrire, pour ne pas laisser le refus RLS se manifester par
   // une écriture à zéro ligne — l'échec silencieux que CLAUDE.md interdit.
-  if (!(await requireAdmission("activite"))) return;
+  if (!(await requireAdmission("activite", function () { return submitEvent(editId); }))) return;
   const g = (id) => document.getElementById(id);
   const title = (g("evTitle")?.value || "").trim();
   const passion = g("evPassion")?.value || "";

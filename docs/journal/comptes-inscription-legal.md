@@ -27,6 +27,7 @@
 - 🚪 PREMIÈRE VISITE — « l'application est elle-même le pitch » (ACTIF PAR DÉFAUT)
 - 🔥 PREMIÈRE VISITE — LES PASSIONS POPULAIRES EN DIRECT : la grille suit les publications (2026-10-06)
 - 🖥️ L'ANCIENNE LANDING REVENAIT SUR UN ORDINATEUR — compte connu, ni session ni état local (2026-10-13)
+- 🔞 LA PORTE D'ÂGE AVALAIT LA CRÉATION D'ACTIVITÉ — la saisie perdue, rien publié (2026-10-23)
 
 ---
 
@@ -473,3 +474,23 @@ Capture de Benjamin (Edge, Windows) : `passio-app.netlify.app` ouvrait le pitch 
 Remède : `sortirCompteSansSession()` (app-08), appelée juste avant `showLanding()` — elle termine la déconnexion que la session morte a commencée, comme le bouton « Se reconnecter » (`doLogout("signin")`) : purge des clés de compte et du jeton, intention `signin`, rechargement → fil invité + écran de connexion. **Jamais** sur un état onboardé (UXO-02 le garde, en lecture), jamais quand `getSession()` a dépassé son délai (la session peut arriver), jamais pendant une adoption (`passio_restauration_requise`), une seule fois par onglet.
 Verrou : `tests/e2e/compte-sans-session-landing.spec.js` (3) — réinjection faite : sans l'appel, ① rougit.
 
+## 🔞 LA PORTE D'ÂGE AVALAIT LA CRÉATION D'ACTIVITÉ — la saisie perdue, rien publié (2026-10-23)
+
+**Vécu** : un compte neuf (inscrit à 19:22, Android/Chrome) remplit « Créer une activité » et tape
+« Publier l'activité » à 19:38:19. Télémétrie : `admission_porte` (statut `undeclared`, ctx
+`activite`) → « Valider » → `admission_declaree` **admis** → `ui_close` → **aucun POST `events`**,
+aucune ligne `client_errors`. L'activité n'existe nulle part.
+
+**Cause** : `requireAdmission` ouvrait la question d'âge par `openModal`, qui **n'empile pas** : elle
+REMPLAÇAIT le formulaire (déjà dans la modale). « Valider » fermait la modale et rendait `true` à
+personne — `submitEvent` était sorti depuis longtemps. Même défaut, sans perte de saisie, sur
+« Je viens » (`setEventRsvp`). Invisible en test : le cas « année jamais déclarée » appelait
+`requireAdmission` seul, jamais depuis un formulaire.
+
+**Correctif** : `requireAdmission(ctx, reprise)`. La porte met les NŒUDS de la modale de côté
+(`admissionMettreDeCote` — valeurs, photo, rangement UI-6A0 compris) ; après validation
+`admissionReprendre` les remet en place et rejoue l'action. Un mineur ne rejoue rien. Verrous :
+deux cas de `tests/e2e/admission-18-plus.spec.js` (réinjection : rouge sans la reprise).
+
+**Règle** : une porte qui s'interpose AVANT une action la rejoue après, ou dit qu'il faut recommencer
+— jamais un « Merci — c'est enregistré » sur une action abandonnée.

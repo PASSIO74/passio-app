@@ -37,69 +37,68 @@
   <div id="app" hidden>
     <header class="entete">
       <div class="entete-texte">
-        <h1 id="titreOnglet">Accueil</h1>
+        <h1 id="titreOnglet">Pilotage</h1>
         <span id="etatMaj" class="etat-maj">Chargement…</span>
       </div>
       <button id="actualiser" class="btn-rond" type="button" aria-label="Actualiser">↻</button>
     </header>
 
     <main class="contenu">
-      <section id="accueil" class="onglet actif" data-titre="Accueil">
+      <!-- ACCUEIL : le voyant, ce qui t'attend, les chiffres. Tout le reste est un détail. -->
+      <section id="accueil" class="onglet actif" data-titre="Pilotage">
         <div id="verdict" class="verdict gris">
           <span class="verdict-point" aria-hidden="true"></span>
           <div><strong id="verdictTitre">Chargement…</strong><p id="verdictDetail"></p></div>
         </div>
-        <section id="blocReparer" hidden>
-          <h2>À réparer</h2>
-          <div id="reparer" class="pile"></div>
-        </section>
-        <div id="site" class="pile"></div>
+        <p id="perime" class="bandeau-perime" role="status" hidden></p>
+        <h2>À faire <span id="nbAFaire" class="compteur" hidden></span></h2>
+        <div id="afaire" class="pile"></div>
+        <h2>Chiffres clés</h2>
         <div id="chiffres" class="chiffres"></div>
-        <h2>Ce qui t'attend</h2>
-        <div id="attente" class="pile"></div>
+        <h2>Nouveaux comptes</h2>
+        <div id="nouveauxComptes" class="pile"></div>
+        <details id="pourInfoRepli" class="repli" hidden>
+          <summary id="pourInfoTitre">Pour info</summary>
+          <div id="pourInfo" class="pile"></div>
+        </details>
+      </section>
+
+      <!-- DÉTAILS : pour comprendre, quand l'accueil ne suffit pas. -->
+      <section id="details" class="onglet" data-titre="Détails">
+        <h2>Le site</h2>
+        <div id="site" class="pile"></div>
         <h2>Erreurs (7 jours)</h2>
+        <div id="grapheErreurs" class="graphe" aria-label="Erreurs des 7 derniers jours"></div>
         <div id="erreurs" class="pile"></div>
-      </section>
-
-      <section id="machines" class="onglet" data-titre="Machines">
-        <p class="discret">La Sentinelle tourne dans GitHub, jour et nuit, sans PC : elle lit les erreurs de l'app, ouvre une enquête, et Claude propose le correctif, fusionné s'il passe tous les tests.</p>
-        <h2>Sentinelle</h2>
-        <div id="pause" class="pile"></div>
-        <h2>Dernières exécutions</h2>
-        <div id="runs" class="pile"></div>
-        <h2>Correctifs en attente (PR)</h2>
-        <div id="prs" class="pile"></div>
-        <h2>Relancer maintenant</h2>
-        <div id="relances" class="pile"></div>
-      </section>
-
-      <section id="utilisateurs" class="onglet" data-titre="Utilisateurs">
-        <h2>En ce moment</h2>
+        <h2>Utilisateurs</h2>
         <div id="maintenant" class="chiffres"></div>
         <h2>Inscriptions (7 jours)</h2>
         <div id="comptes" class="chiffres chiffres-petits"></div>
         <div id="grapheInscriptions" class="graphe" aria-label="Inscriptions des 7 derniers jours"></div>
+        <h2 id="titreComptesCrees">Comptes créés (30 derniers jours)</h2>
+        <div id="comptesCrees" class="pile"></div>
         <h2>Activation des nouveaux comptes</h2>
-        <p class="discret">Activé = dans ses 7 premiers jours, le compte a publié, commenté, suivi quelqu'un, rejoint ou organisé une activité, ou envoyé un message. Comptes confirmés des 30 derniers jours, hors tests et éditeur.</p>
+        <p class="discret">Activé = dans ses 7 premiers jours, le compte a publié, commenté, suivi quelqu'un, rejoint ou organisé une activité, ou envoyé un message. Comptes des 30 derniers jours, hors tests et éditeur.</p>
         <div id="activation" class="chiffres chiffres-petits"></div>
         <p id="activationPremiers" class="discret" hidden></p>
-        <h2>Erreurs par jour</h2>
-        <div id="grapheErreurs" class="graphe" aria-label="Erreurs des 7 derniers jours"></div>
-        <h2>Signalements à traiter</h2>
-        <div id="signalements" class="pile"></div>
-      </section>
-
-      <section id="capacite" class="onglet" data-titre="Capacité">
+        <div id="entonnoir" class="pile"></div>
+        <h2>Machines</h2>
+        <p class="discret">La Sentinelle tourne dans GitHub, jour et nuit, sans PC : elle lit les erreurs de l'app, ouvre une enquête, et Claude propose le correctif.</p>
+        <div id="pause" class="pile"></div>
+        <div id="runs" class="pile"></div>
+        <div id="relances" class="pile"></div>
+        <h2>Capacité</h2>
         <p class="discret">Les limites du forfait. Orange à 70 %, rouge à 90 % : c'est le moment d'agir, avant que l'app ralentisse ou refuse des inscriptions.</p>
         <div id="jauges" class="pile"></div>
+        <h2>Ce qui s'est passé (7 jours)</h2>
+        <div id="historique" class="pile"></div>
+      </section>
+
+      <!-- RÉGLAGES : ce qu'on change rarement. -->
+      <section id="reglages" class="onglet" data-titre="Réglages">
         <h2>Protection automatique</h2>
         <p class="discret">Ralentir toute l'app plutôt que la laisser tomber, éteindre une fonctionnalité chez tout le monde, prévenir tous les utilisateurs. Les appareils l'appliquent sous 5 min, sans déploiement. La veille ralentit d'elle-même quand les connexions ou les pannes montent.</p>
         <div id="protection" class="pile"></div>
-      </section>
-
-      <section id="reglages" class="onglet" data-titre="Réglages">
-        <h2>Compte</h2>
-        <div id="compte" class="pile"></div>
         <h2>Alertes sur le téléphone</h2>
         <div id="alertes" class="pile"></div>
         <h2>Installer sur ce téléphone</h2>
@@ -107,6 +106,8 @@
           <p id="installTexte" class="discret"></p>
           <button id="installer" class="btn btn-plein" type="button" hidden>Installer l'application</button>
         </div>
+        <h2>Compte</h2>
+        <div id="compte" class="pile"></div>
         <h2>Liens</h2>
         <div class="pile">
           <a class="carte lien-carte" href="/">Ouvrir PASSIO <span aria-hidden="true">›</span></a>
@@ -120,12 +121,10 @@
       <div id="bandeauErreur" class="bandeau-erreur" role="status" hidden></div>
     </main>
 
-    <nav class="barre" aria-label="Navigation">
+    <nav class="barre trois" aria-label="Navigation">
       <button class="actif" data-tab="accueil" type="button"><span class="ico" aria-hidden="true">⌂</span>Accueil<span id="badgeAccueil" class="badge" hidden></span></button>
-      <button data-tab="machines" type="button"><span class="ico" aria-hidden="true">⚙</span>Machines<span id="badgeMachines" class="badge" hidden></span></button>
-      <button data-tab="utilisateurs" type="button"><span class="ico" aria-hidden="true">☺</span>Utilisateurs</button>
-      <button data-tab="capacite" type="button"><span class="ico" aria-hidden="true">◔</span>Capacité</button>
-      <button data-tab="reglages" type="button"><span class="ico" aria-hidden="true">≡</span>Réglages</button>
+      <button data-tab="details" type="button"><span class="ico" aria-hidden="true">☰</span>Détails</button>
+      <button data-tab="reglages" type="button"><span class="ico" aria-hidden="true">⚙</span>Réglages</button>
     </nav>
   </div>
 
