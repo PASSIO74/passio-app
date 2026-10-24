@@ -1,3 +1,19 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// PILOT MOBILE DU PC — RETIRÉ le 2026-10-23.
+//
+// Il doublait le pilotage en ligne (https://passio-app.netlify.app/pilotage/)
+// en exigeant le PC allumé et le même Wi-Fi. Ces verrous gardent le RETRAIT
+// propre :
+//   · /mobile.html ne charge plus aucun script : c'est un renvoi vers le
+//     pilotage en ligne, pour les icônes déjà posées sur un écran d'accueil ;
+//   · /mobile-sw.js se DÉSINSTALLE là où il s'était installé (localhost est un
+//     contexte sécurisé : il contrôlait la racine du Control Center). Un 404 à
+//     sa place l'aurait laissé servir l'ancienne page depuis son cache ;
+//   · plus rien ne pointe vers l'ancienne surface.
+// MUTATIONS : remettre un gestionnaire `fetch` dans le SW, ou retirer
+// `registration.unregister()` → ② rougit ; remettre un <script> dans
+// mobile.html → ① rougit.
+// ═══════════════════════════════════════════════════════════════════════════
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -7,67 +23,31 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pub = path.join(here, "..", "public");
 const read = (p) => fs.readFileSync(path.join(pub, p), "utf8");
+const PILOTAGE = "https://passio-app.netlify.app/pilotage/";
 
-test("mobile pilot is installable and starts on mobile.html", () => {
-  const m = JSON.parse(read("mobile-manifest.webmanifest"));
-  assert.equal(m.start_url, "/mobile.html");
-  assert.equal(m.display, "standalone");
-});
-
-test("mobile service worker never caches API responses", () => {
-  const sw = read("mobile-sw.js");
-  assert.match(sw, /pathname\.startsWith\("\/api\/"\).*return/);
-});
-
-test("mobile service worker controls only explicit pilot assets", () => {
-  const sw = read("mobile-sw.js");
-  assert.match(sw, /if \(!STATIC\.includes\(u\.pathname\)\) return/);
-  assert.match(sw, /\/mobile\.html/);
-  assert.match(sw, /\/css\/mobile\.css/);
-  assert.match(sw, /\/js\/mobile\.js/);
-  assert.match(sw, /\/mobile-manifest\.webmanifest/);
-});
-
-test("mobile static assets are network-first with cache only as offline fallback", () => {
-  const sw = read("mobile-sw.js");
-  assert.match(sw, /await fetch\(event\.request, \{ cache: "no-cache" \}\)/);
-  assert.match(sw, /await caches\.match\(event\.request\)/);
-  assert.doesNotMatch(sw, /caches\.match\(event\.request\)\.then\(hit => hit \|\| fetch/);
-});
-
-test("mobile surface exposes only whitelisted test launcher and no arbitrary git console", () => {
-  const js = read("js/mobile.js");
-  assert.match(js, /\/tests\/run/);
-  assert.doesNotMatch(js, /\/git\/apply|\/git\/branch|exec\(|spawn\(/);
-});
-
-test("mobile shows what awaits a human, built from nodes only (no innerHTML)", () => {
+test("① /mobile.html n'est plus qu'un renvoi vers le pilotage en ligne, sans aucun script", () => {
   const html = read("mobile.html");
-  const js = read("js/mobile.js");
-  assert.match(html, /id="attente"/);
-  assert.match(js, /\/attente/);
-  assert.match(js, /Rien ne t'attend/);
-  assert.equal((js.match(/\.innerHTML\s*=/g) || []).length, 0, "mobile.js doit rester en construction de nœuds, sans innerHTML");
+  assert.doesNotMatch(html, /<script/i, "la page retirée ne charge plus de code");
+  assert.ok(html.includes(`content="2;url=${PILOTAGE}"`), "renvoi automatique");
+  assert.ok(html.includes(`id="nouveauPilotage" class="btn" href="${PILOTAGE}"`), "et un lien à toucher");
+  assert.doesNotMatch(html, /rel="manifest"/, "plus rien à installer depuis cette adresse");
+  assert.doesNotMatch(html, /api\//, "aucune donnée du pilotage n'y est lue");
 });
 
-test("one unavailable domain cannot blank the whole mobile cockpit", () => {
-  const js = read("js/mobile.js");
-  assert.match(js, /Promise\.allSettled/);
-  assert.doesNotMatch(js, /Promise\.all\(/);
-  assert.match(js, /domaine\(s\) indisponible\(s\).*autres preuves restent affichées/);
+test("② /mobile-sw.js vide ses caches, se désinscrit, et n'intercepte plus rien", () => {
+  const sw = read("mobile-sw.js");
+  assert.match(sw, /self\.skipWaiting\(\)/, "il remplace l'ancien sans attendre");
+  assert.match(sw, /k\.startsWith\("passio-pilot-"\)/, "il ne vide QUE ses propres caches");
+  assert.match(sw, /self\.registration\.unregister\(\)/);
+  assert.doesNotMatch(sw, /addEventListener\("fetch"/, "aucun gestionnaire fetch : tout passe par le réseau");
 });
 
-test("Sentinel is visible from mobile but remains read-only", () => {
-  const html = read("mobile.html");
-  const js = read("js/mobile.js");
-  assert.match(html, /data-tab="machines"/);
-  assert.match(html, /id="sentinelleEtat"/);
-  assert.match(js, /\/sentinel\?limit=20/);
-  assert.doesNotMatch(js, /\/sentinel\/toggle|\/sentinel\/[^"'`]+\/merge/);
-});
-
-test("mobile renders autopilot result without exposing a mutation endpoint", () => {
-  const js = read("js/mobile.js");
-  assert.match(js, /repair\?\.autopilot\?\.status/);
-  assert.doesNotMatch(js, /autopilot.*fetch|\/autopilot/);
+test("③ l'ancienne surface est partie, et plus rien ne la sert ni n'y renvoie", () => {
+  for (const f of ["js/mobile.js", "css/mobile.css", "mobile-manifest.webmanifest"]) {
+    assert.equal(fs.existsSync(path.join(pub, f)), false, f + " doit être retiré");
+  }
+  assert.equal(fs.existsSync(path.join(here, "..", "Autoriser-Telephone.cmd")), false, "plus de port à ouvrir pour le téléphone");
+  for (const f of ["index.html", "command.html", "js/app.js", "js/command.js"]) {
+    assert.doesNotMatch(read(f), /mobile\.html|js\/mobile\.js|css\/mobile\.css/, f + " renvoie encore vers le Pilot retiré");
+  }
 });
