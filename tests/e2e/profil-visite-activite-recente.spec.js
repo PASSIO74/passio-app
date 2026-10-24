@@ -10,9 +10,17 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
+// Le démarrage relit les activités 2 s après `supaInit` (app-08, chargement
+// différé). Les faux serveurs ci-dessous ne doivent compter QUE les lectures
+// du geste testé : on laisse donc passer celle-là avant de les poser.
+async function apresChargementDiffere(page) {
+  await page.waitForTimeout(2500);
+}
+
 test.describe("Profil visité — activité publiée après le démarrage", () => {
   test("l'onglet Activité montre l'activité chargée à l'ouverture du profil", async ({ page }) => {
     await bootOnboarded(page);
+    await apresChargementDiffere(page);
     const absenteAvant = await page.evaluate(() => {
       window._appelsEvenements = [];
       // `u_lea` est du contenu de démonstration : le profil se résout en local.
@@ -48,5 +56,52 @@ test.describe("Profil visité — activité publiée après le démarrage", () =
     }));
     expect(r.virgule).toEqual([]);
     expect(r.parenthese).toEqual([]);
+  });
+});
+
+// « Rencontrer » — même défaut, autre écran (2026-10-24) : les activités
+// n'étaient lues qu'au démarrage. L'entrée sur l'écran les relit désormais, au
+// plus une fois par minute (ce n'est pas un polling).
+test.describe("Rencontrer — activité publiée après le démarrage", () => {
+  test("l'entrée sur l'écran relit les activités, une seule fois par minute", async ({ page }) => {
+    await bootOnboarded(page);
+    await apresChargementDiffere(page);
+    await page.evaluate(() => {
+      window._appelsEvenements = 0;
+      window._supaReal = true;
+      // La lecture du démarrage vient d'armer la minute de répit : on la
+      // lève pour mesurer l'ENTRÉE sur l'écran, et elle seule.
+      _evenementsLusA = 0;
+      window.supaLoadEvents = async () => {
+        window._appelsEvenements++;
+        return [{
+          id: "ev_rencontrer_apres_boot", authorId: "u_lea", organizerId: "u_lea",
+          title: "Sortie publiée en cours de session", passion: "musique",
+          city: "Annecy", lat: 45.8992, lng: 6.1294, date: Date.now() + 2 * 86400000,
+          attendees: ["u_lea"], maybes: [], waitlist: [], checkedIn: [], status: "active",
+        }];
+      };
+    });
+    await page.evaluate(() => goTo("irl"));
+    await expect.poll(() => page.evaluate(() => allEvents().some((e) => e.id === "ev_rencontrer_apres_boot"))).toBe(true);
+    await expect(page.locator("#screen-irl")).toContainText("Sortie publiée en cours de session");
+
+    // Aller-retour immédiat : pas de seconde lecture avant la minute.
+    await page.evaluate(() => { goTo("feed"); goTo("irl"); });
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window._appelsEvenements)).toBe(1);
+  });
+
+  test("une relecture identique ne repeint pas l'écran", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => {
+      const ev = { id: "ev_sig", title: "Identique", date: Date.now() + 86400000, status: "active", attendees: [] };
+      return {
+        premiere: fusionnerEvenementsServeur([ev]),
+        seconde: fusionnerEvenementsServeur([Object.assign({}, ev)]),
+        inscrit: fusionnerEvenementsServeur([Object.assign({}, ev, { attendees: ["u_x"] })]),
+      };
+    });
+    expect(r).toEqual({ premiere: true, seconde: false, inscrit: true });
   });
 });

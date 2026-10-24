@@ -3348,7 +3348,7 @@ function goTo(screen) {
   if (screen === "profiles") renderProfilesScreen();
   if (screen === "studio")   renderStudio();
   if (screen === "explore")  { renderExplorer(); setTimeout(renderAiHistory, 50); }
-  if (screen === "irl")      renderIRL();
+  if (screen === "irl")      { renderIRL(); if (typeof rafraichirEvenements === "function") rafraichirEvenements(); }
   if (screen === "messages") renderMessages();
 
   // Analytics navigation (fire-and-forget, silencieux)

@@ -3360,12 +3360,7 @@ async function openUserProfile(authorId, source) {
   // comme ses publications plus haut, puis on repeint si la vue est la même.
   if (canSeeContent && window._supaReal && typeof supaLoadEvents === "function") {
     supaLoadEvents(authorId).then(function (evs) {
-      if (!evs || !evs.length) return;
-      var arr = state.seed.events || (state.seed.events = []);
-      evs.forEach(function (ev) {
-        var i = arr.findIndex(function (e) { return e && e.id === ev.id; });
-        if (i >= 0) arr[i] = ev; else arr.unshift(ev);
-      });
+      if (!fusionnerEvenementsServeur(evs)) return;
       if (window._visited && window._visited.authorId === authorId) _renderVisitedEvents();
     }).catch(function (e) {
       if (typeof diagLog === "function") diagLog("profil_visite_activites_serveur " + (e && e.message));
