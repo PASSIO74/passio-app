@@ -18,6 +18,7 @@
 - 🗓️ RÉCAP DE LA SEMAINE — une carte en tête du fil, dans l'app seulement (2026-10-06)
 - 😍 UNE RÉACTION EMOJI S'EFFAÇAIT ELLE-MÊME — suppression et insertion en parallèle (2026-10-10)
 - 🏷️ UN PSEUDO CHANGÉ RESTAIT L'ANCIEN DANS LA MESSAGERIE (2026-10-13)
+- 📍 UNE ACTIVITÉ CRÉÉE N'APPARAISSAIT PAS DANS LE FIL (2026-10-23)
 
 ---
 
@@ -342,3 +343,34 @@ conversation, puis sauvegardée. Un interlocuteur de démonstration (sans `dista
 fil. `_primeProfileCache` n'écrase plus une entrée existante.
 
 **Verrou.** `tests/e2e/conv-nom-suit-pseudo.spec.js` (3) — ① et ④ rouges sans le correctif.
+
+---
+
+## 📍 UNE ACTIVITÉ CRÉÉE N'APPARAISSAIT PAS DANS LE FIL (2026-10-23)
+
+Signalé par Benjamin : « Jerem a créé une activité mais elle n'apparaît pas dans le feed ».
+**Mesuré (canal ①)** : la ligne `events` existe (« Via ferrata », `xu147b6tbmvldjb5z`, créée le
+23/10 à 19:39, statut `active`, le 31/10) ; AUCUNE ligne `posts` ne la cite. Ce n'était pas une
+panne : créer une activité n'écrivait QUE dans `events`. La seule carte du fil était celle du
+bouton « Partager dans mon feed » de la fiche — que personne ne va chercher sur sa propre activité.
+
+**Correctif** (`js/app-07-ia-explore-irl.js`) :
+- `submitEvent` appelle `publierActiviteAuFil(ev)` quand la création est CONFIRMÉE par le serveur
+  (`ok && backend && !editId`, la même condition que l'invitation). UNE carte par création, même
+  récurrente. Silencieuse : ni `closeModal` ni `goTo` (la proposition d'invitation est à l'écran,
+  `openModal` n'empile pas).
+- `_postActiviteAuFil` est la SEULE fabrique de la carte (partage manuel et automatique).
+- ⚠️ **Identifiant déterministe `post_ev_<idActivité>`** : la clé primaire refuse le doublon entre
+  la création, le rattrapage et un second appareil ; une pierre tombale sur cet id empêche la carte
+  supprimée de revenir.
+- **Rattrapage** `rattraperActivitesAuFil` (appelé après `supaLoadEvents` au boot, app-08) : mes
+  activités À VENIR, actives, créées depuis moins de 7 jours (`createdAt`, désormais mappé), au
+  plus 3 par démarrage. ⚠️ On demande au SERVEUR si une carte existe (`shared_data like
+  '%"id":"<activité>"%'`, partage manuel compris) ; une lecture en échec ne publie rien. C'est ce
+  chemin qui pose la carte de Jerem à sa prochaine ouverture de l'app (aucun canal d'écriture de
+  données depuis la session de correction).
+- ⚠️ Sous UI-3 la sous-carte `.post-vlog-card` d'un partage d'événement est MASQUÉE au profit de
+  « Voir l'activité » : un test qui attend la sous-carte visible est faux — mesurer l'ARTICLE.
+
+Coupures : `localStorage.passio_activite_au_fil_v1="0"`, `window.PASSIO_ACTIVITE_AU_FIL=false`.
+Verrou : `tests/e2e/activite-au-fil.spec.js` (5), éprouvé par réinjection (branchement retiré → ① rouge).
