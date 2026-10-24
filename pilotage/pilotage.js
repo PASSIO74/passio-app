@@ -76,6 +76,14 @@
     if (sous) c.append(el("small", "tendance" + (sous.classe ? " " + sous.classe : ""), sous.texte));
     return c;
   }
+  /** Un chiffre clé qu'on touche pour voir le détail : une vraie <button>. */
+  function chiffreBouton(v, libelle, sous, auClic) {
+    const b = el("button", "chiffre chiffre-bouton"); b.type = "button";
+    b.append(el("b", null, v == null ? "—" : v), el("span", null, libelle));
+    if (sous) b.append(el("small", "tendance", sous.texte));
+    b.addEventListener("click", auClic);
+    return b;
+  }
   /** La tendance rendue par la fonction → une ligne : ▲ +3 vs 7 j d'avant (verte si bonne nouvelle). */
   function ligneTendance(t, periode) {
     if (!t || typeof t !== "object") return null;
@@ -195,6 +203,7 @@
     $("verdict").className = "verdict " + v.couleur;
     $("verdictTitre").textContent = v.titre;
     $("verdictDetail").textContent = (v.raisons || []).slice(0, 3).join(" · ");
+    rendreTuileInscrits(d);
     rendreAFaire(d);
     rendreChiffres(d);
     rendreNouveauxComptes(d);
@@ -243,6 +252,16 @@
     pourInfo.forEach((x) => info.append(carteAFaire(x)));
   }
 
+  // Le total des inscrits (2026-10-24), juste sous le voyant : la tuile
+  // s'ouvre sur la liste de TOUS les inscrits, par leur nom (vue « Inscrits »,
+  // action `inscrits`). Activation illisible : « — », la liste s'ouvre quand même.
+  function rendreTuileInscrits(d) {
+    const act = d.activation;
+    const ins = act && act.inscrits && typeof act.inscrits.total === "number" ? act.inscrits : null;
+    const b = chiffreBouton(ins ? ins.total + (ins.tronque ? "+" : "") : null, "inscrits au total", { texte: "Voir la liste ›" }, ouvrirInscrits);
+    b.classList.add("tuile-large");
+    vider("tuileInscrits").append(b);
+  }
   function rendreChiffres(d) {
     const ch = vider("chiffres");
     const u = d.utilisateurs, er = d.erreurs, act = d.activation, t = d.tendances || {}, mel = d.miseEnLigne;
@@ -267,7 +286,7 @@
 
   // Les comptes créés, par leur NOM (2026-10-23) : le nom choisi dans l'app,
   // jamais l'e-mail (_shared/pilotage.js, comptesRecents). Écrit par la
-  // personne : rendu en TEXTE. Accueil : les 5 derniers ; Détails : tous (30).
+  // personne : rendu en TEXTE. Accueil : les 5 derniers ; « Inscrits » : tous.
   const ACCUEIL_COMPTES = 5;
   function listeComptes(liste) {
     const c = el("article", "carte");
@@ -291,33 +310,81 @@
     c.append(ul);
     return c;
   }
+  function boutonTousInscrits(c, total) {
+    const b = el("button", "btn", typeof total === "number" ? "Voir les " + total + " inscrits" : "Voir tous les inscrits"); b.type = "button";
+    b.addEventListener("click", ouvrirInscrits);
+    actions(c).append(b);
+    return b;
+  }
   function rendreNouveauxComptes(d) {
     const acc = vider("nouveauxComptes"), tout = vider("comptesCrees");
     const act = d.activation;
-    if (!act) { nonLu("nouveauxComptes", "Nouveaux comptes", "activation"); nonLu("comptesCrees", "Comptes créés", "activation"); return; }
+    const total = act && act.inscrits && typeof act.inscrits.total === "number" ? act.inscrits.total : null;
+    // Détails : un accès à la liste complète (elle se lit à la demande).
+    const cd = carte("Tous les inscrits", total == null ? "" : String(total), "Par leur nom, les plus récents d'abord. Comptes de test et compte de l'éditeur exclus.", "");
+    boutonTousInscrits(cd, total);
+    tout.append(cd);
+    if (!act) { nonLu("nouveauxComptes", "Nouveaux comptes", "activation"); return; }
     if (!Array.isArray(act.nouveaux)) {
-      const texte = "La fonction « pilotage » n'a pas rendu la liste des comptes : elle n'est sans doute pas encore à jour.";
-      acc.append(carte("Liste indisponible", "Non lu", texte, "gris"));
-      tout.append(carte("Liste indisponible", "Non lu", texte, "gris"));
+      acc.append(carte("Liste indisponible", "Non lu", "La fonction « pilotage » n'a pas rendu la liste des comptes : elle n'est sans doute pas encore à jour.", "gris"));
       return;
     }
     const l = act.nouveaux;
     if (!l.length) {
-      acc.append(carte("Aucun compte créé ces 30 derniers jours", "", "", ""));
-      tout.append(carte("Aucun compte créé ces 30 derniers jours", "", "Comptes de test et compte de l'éditeur exclus.", ""));
+      const vide = carte("Aucun compte créé ces 30 derniers jours", "", "", "");
+      if (total) boutonTousInscrits(vide, total);
+      acc.append(vide);
       return;
     }
     const carteAccueil = listeComptes(l.slice(0, ACCUEIL_COMPTES));
-    if (l.length > ACCUEIL_COMPTES) {
-      const b = el("button", "btn", "Voir les " + l.length + " comptes"); b.type = "button";
-      b.addEventListener("click", () => { onglet("details"); const t = $("titreComptesCrees"); if (t && t.scrollIntoView) t.scrollIntoView({ block: "start" }); });
-      actions(carteAccueil).append(b);
-    }
+    boutonTousInscrits(carteAccueil, total);
     acc.append(carteAccueil);
-    tout.append(listeComptes(l));
-    if (l.length >= 30) tout.append(el("p", "discret", "Les 30 plus récents. Comptes de test et compte de l'éditeur exclus."));
-    else tout.append(el("p", "discret", "Comptes de test et compte de l'éditeur exclus."));
   }
+
+  // ─── Tous les inscrits (2026-10-24) ───────────────────────────────────────
+  // Ouverts par la tuile « inscrits au total » : une page de 100 à la fois,
+  // les plus récents d'abord, lue À LA DEMANDE (action `inscrits`) — jamais à
+  // chaque relecture de l'état. Même rendu que les nouveaux comptes (le nom,
+  // jamais l'e-mail ; écrit par la personne : rendu en TEXTE).
+  let inscritsCharges = [], inscritsPage = 0, inscritsPages = 1, inscritsEnCours = false;
+  function ouvrirInscrits() {
+    onglet("inscrits");
+    inscritsCharges = []; inscritsPage = 0; inscritsPages = 1;
+    chargerInscrits();
+  }
+  async function chargerInscrits() {
+    if (inscritsEnCours) return;
+    inscritsEnCours = true;
+    const liste = $("inscritsListe"), suite = $("inscritsSuite");
+    suite.disabled = true;
+    if (!inscritsCharges.length) { vider("inscritsListe").append(carte("Chargement…", "", "", "")); $("inscritsResume").textContent = ""; }
+    try {
+      const r = await appeler({ action: "inscrits", page: inscritsPage + 1 });
+      const lot = Array.isArray(r && r.comptes) ? r.comptes : [];
+      inscritsCharges = inscritsCharges.concat(lot);
+      inscritsPage = Number(r.page) || inscritsPage + 1;
+      inscritsPages = Number(r.pages) || 1;
+      vider("inscritsListe");
+      if (!inscritsCharges.length) liste.append(carte("Aucun inscrit pour l'instant", "", "", ""));
+      else liste.append(listeComptes(inscritsCharges));
+      const total = Number(r.total) || 0;
+      $("inscritsResume").textContent = total + " inscrit" + (total > 1 ? "s" : "") + (r.tronque ? " au moins" : "") + " · hors comptes de test et compte de l'éditeur"
+        + (inscritsPages > 1 ? " · " + inscritsCharges.length + " affichés" : "");
+      suite.hidden = inscritsPage >= inscritsPages;
+    } catch (e) {
+      if (e.status === 401) { ecran("connexion"); return; }
+      const c = carte("Liste impossible à lire", "Non lu", e.message, "gris");
+      const b = el("button", "btn", "Réessayer"); b.type = "button";
+      b.addEventListener("click", () => chargerInscrits());
+      actions(c).append(b);
+      if (!inscritsCharges.length) vider("inscritsListe");
+      liste.append(c);
+    } finally {
+      inscritsEnCours = false; suite.disabled = false;
+    }
+  }
+  $("inscritsSuite").addEventListener("click", () => chargerInscrits());
+  $("inscritsRetour").addEventListener("click", () => onglet("accueil"));
 
   function rendreSite(d) {
     const dispo = d.disponibilite;
@@ -362,7 +429,8 @@
         chiffre(u.aujourdhui ? j24.comptes : null, "comptes actifs 24 h"), chiffre(u.aujourdhui ? j24.appareils : null, "appareils 24 h"));
       // Public seulement depuis le 2026-10-05 : les écartés sont dits, pas tus.
       if (typeof j24.horsPublic === "number") m.append(chiffre(j24.horsPublic, "robots / équipe 24 h (non comptés)"));
-      co.append(chiffre(u.inscritsJour, "aujourd'hui"), chiffre(u.inscritsSemaine, "7 jours"), chiffre(u.total, "au total"));
+      const ins = d.activation && d.activation.inscrits && typeof d.activation.inscrits.total === "number" ? d.activation.inscrits : null;
+      co.append(chiffre(u.inscritsJour, "aujourd'hui"), chiffre(u.inscritsSemaine, "7 jours"), chiffre(ins ? ins.total + (ins.tronque ? "+" : "") : null, "inscrits au total"));
       graphe("grapheInscriptions", u.serieInscriptions);
     }
     // Activation (2026-10-06) : le taux ne compte que les comptes qui ont eu

@@ -56,7 +56,9 @@ const BASE = {
       { nom: "Jo", nomLu: true, cree: IL_Y_A_3H, confirme: true, voie: "e-mail", actif: false },
       { nom: "Ana", nomLu: true, cree: IL_Y_A_3H, confirme: true, voie: "e-mail", actif: false },
       { nom: "Tom", nomLu: true, cree: IL_Y_A_3H, confirme: true, voie: "e-mail", actif: false },
-    ] },
+    ],
+    // Le total des inscrits (2026-10-24), toutes dates.
+    inscrits: { total: 13, tronque: false } },
   tendances: { inscriptions: { actuel: 6, precedent: 4, delta: 2, sens: "hausse", bon: true, pct: 50 }, erreurs: { actuel: 7, precedent: 2, delta: 5, sens: "hausse", bon: false, pct: 250 } },
   miseEnLigne: { le: IL_Y_A_3H, etat: "ok", dureeMs: 3 * 3600e3, apres: 1, avant: 4, tendance: null },
   signalements: { ouverts: 1, liste: [{ id: "rep_1", type: "post", motif: CHARGE, le: MAINTENANT }] },
@@ -463,7 +465,7 @@ test("⑯ Retour arrière : la proposition est EN TÊTE de « À faire » ; aper
   expect(dialogues[0]).toContain("aaaa1111");
 });
 
-test("⑰ Nouveaux comptes : les NOMS des comptes créés, en texte — 5 sur l'accueil, tous dans Détails", async ({ page }) => {
+test("⑰ Nouveaux comptes : les NOMS des comptes créés, en texte — 5 sur l'accueil ; Détails mène à la liste complète", async ({ page }) => {
   await poserSession(page);
   await routerFonction(page, []);
   await page.goto("/pilotage/");
@@ -479,13 +481,93 @@ test("⑰ Nouveaux comptes : les NOMS des comptes créés, en texte — 5 sur l'
   await expect(acc).toContainText("Profil pas encore rempli");
   await expect(acc).not.toContainText("Tom");
   expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
-  await acc.locator("button", { hasText: "Voir les 7 comptes" }).click();
-  await expect(page.locator("#details")).toBeVisible();
-  const tout = page.locator("#comptesCrees");
-  await expect(tout.locator("li.compte")).toHaveCount(7);
-  await expect(tout).toContainText("Tom");
-  await expect(tout).toContainText("Comptes de test et compte de l'éditeur exclus.");
+  // Détails : l'accès à la liste complète (elle se lit à la demande).
+  await page.click('.barre button[data-tab="details"]');
+  await expect(page.locator("#comptesCrees")).toContainText("Tous les inscrits");
+  await expect(page.locator("#comptesCrees button", { hasText: "Voir les 13 inscrits" })).toBeVisible();
+  await expect(page.locator("#comptes")).toContainText("inscrits au total");
+  await expect(page.locator("#comptes")).toContainText("13");
+});
+
+// ─── Tous les inscrits (2026-10-24) ─────────────────────────────────────────
+// La tuile « inscrits au total » de l'accueil ouvre la liste de TOUS les
+// inscrits, par leur nom, une page de 100 à la fois (action `inscrits`).
+function pageInscritsBanc(total, page, parPage = 100) {
+  const pages = Math.max(1, Math.ceil(total / parPage));
+  const debut = (page - 1) * parPage;
+  const comptes = Array.from({ length: Math.max(0, Math.min(parPage, total - debut)) }, (_, i) => {
+    const k = debut + i + 1;
+    return { nom: k === 1 ? CHARGE : "Membre " + k, nomLu: true, cree: new Date(Date.now() - k * 3600e3).toISOString(), confirme: k !== 2, voie: k % 2 ? "e-mail" : "Google", actif: null };
+  });
+  return { total, tronque: false, page, pages, parPage, comptes };
+}
+async function routerAvecInscrits(page, envois, total, { echecs = 0 } = {}) {
+  let restants = echecs;
+  await page.route(FONCTION, async (r) => {
+    const corps = r.request().postDataJSON();
+    envois.push({ corps, auth: r.request().headers().authorization || "" });
+    if (corps.action === "inscrits") {
+      if (restants > 0) { restants--; await r.fulfill({ status: 502, json: { error: "Comptes illisibles : délai dépassé (banc)" } }); return; }
+      await r.fulfill({ json: pageInscritsBanc(total, Number(corps.page) || 1) });
+      return;
+    }
+    await r.fulfill({ json: corps.action === "etat" ? etat({ activation: { ...BASE.activation, inscrits: { total, tronque: false } } }) : { ok: true, message: "Fait (banc)." } });
+  });
+}
+
+test("⑲ « inscrits au total » : la tuile de l'accueil ouvre TOUS les inscrits, par leur nom, page par page, en texte", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  await routerAvecInscrits(page, envois, 150);
+  await page.goto("/pilotage/");
+  // Juste sous le voyant, avant « À faire » : visible dès l'ouverture.
+  const tuile = page.locator("#tuileInscrits button.chiffre-bouton");
+  const [yTuile, yAFaire] = await Promise.all([tuile.boundingBox(), page.locator("#afaire").boundingBox()]).then((b) => b.map((x) => x && x.y));
+  expect(yTuile).toBeLessThan(yAFaire);
+  expect(yTuile, "visible sans faire défiler, au gabarit iPhone").toBeLessThan(780);
+  await expect(tuile).toContainText("150");
+  await expect(tuile).toContainText("inscrits au total");
+  expect(envois.filter((e) => e.corps.action === "inscrits"), "la liste ne se lit qu'au toucher").toHaveLength(0);
+  await tuile.click();
+  await expect(page.locator("#inscrits")).toBeVisible();
+  await expect(page.locator("#titreOnglet")).toHaveText("Inscrits");
+  const liste = page.locator("#inscritsListe");
+  await expect(liste.locator("li.compte")).toHaveCount(100);
+  expect(envois.filter((e) => e.corps.action === "inscrits").map((e) => e.corps)).toEqual([{ action: "inscrits", page: 1 }]);
+  expect(envois.find((e) => e.corps.action === "inscrits").auth).toMatch(/^Bearer ey/);
+  expect(await liste.textContent()).toContain(CHARGE);
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  await expect(liste.locator("img")).toHaveCount(0);
+  await expect(liste.locator("li.compte").nth(1)).toContainText("e-mail pas encore confirmé");
+  await expect(page.locator("#inscritsResume")).toContainText("150 inscrits");
+  await expect(page.locator("#inscritsResume")).toContainText("100 affichés");
   expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+  // La page suivante s'AJOUTE à la liste.
+  await page.click("#inscritsSuite");
+  await expect(liste.locator("li.compte")).toHaveCount(150);
+  await expect(liste).toContainText("Membre 150");
+  await expect(page.locator("#inscritsSuite")).toBeHidden();
+  expect(envois.filter((e) => e.corps.action === "inscrits").map((e) => e.corps.page)).toEqual([1, 2]);
+  // Retour à l'accueil.
+  await page.click("#inscritsRetour");
+  await expect(page.locator("#accueil")).toBeVisible();
+  await expect(page.locator("#inscrits")).toBeHidden();
+});
+
+test("⑳ « Voir les N inscrits » des nouveaux comptes mène à la même liste ; une lecture ratée se dit et se réessaie", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  await routerAvecInscrits(page, envois, 13, { echecs: 1 });
+  await page.goto("/pilotage/");
+  await page.locator("#nouveauxComptes button", { hasText: "Voir les 13 inscrits" }).click();
+  await expect(page.locator("#inscrits")).toBeVisible();
+  await expect(page.locator("#inscritsListe")).toContainText("Liste impossible à lire");
+  await expect(page.locator("#inscritsListe")).toContainText("délai dépassé (banc)");
+  await page.locator("#inscritsListe button", { hasText: "Réessayer" }).click();
+  await expect(page.locator("#inscritsListe li.compte")).toHaveCount(13);
+  await expect(page.locator("#inscritsListe")).not.toContainText("Liste impossible à lire");
+  await expect(page.locator("#inscritsResume")).toContainText("13 inscrits");
+  await expect(page.locator("#inscritsSuite")).toBeHidden();
 });
 
 test("⑱ Nouveaux comptes : aucun → dit ; noms illisibles → « Nom non lu » ; fonction pas à jour → « Liste indisponible »", async ({ page }) => {

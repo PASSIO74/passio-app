@@ -206,3 +206,14 @@ a { color: var(--accent); }
 .carte p.compte-detail { margin-top: 3px; font-size: 13px; }
 .compte-detail .orange { color: var(--orange); font-weight: 600; }
 .compte-detail .vert { color: var(--vert); font-weight: 600; }
+/* Tous les inscrits (2026-10-24) : la tuile qu'on touche, et le retour. */
+.chiffre-bouton { font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%; }
+.chiffre-bouton:active { background: var(--carte2); }
+.chiffre-bouton small.tendance { color: var(--accent); font-weight: 600; }
+.btn-retour { min-height: 44px; margin: 6px 0 4px; }
+#inscritsSuite { margin-top: 12px; }
+#tuileInscrits { margin-top: 10px; }
+.chiffre-bouton.tuile-large { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 14px; align-items: center; padding: 14px 16px; }
+.chiffre-bouton.tuile-large b { grid-row: 1 / span 2; font-size: 30px; }
+.chiffre-bouton.tuile-large span { margin-top: 0; font-size: 14px; color: var(--texte); font-weight: 700; }
+.chiffre-bouton.tuile-large small.tendance { margin-top: 2px; }

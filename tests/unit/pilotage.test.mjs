@@ -545,11 +545,57 @@ test("㉝ la fonction lit `id,username` des profils des derniers comptes — jam
   const a = fn.slice(fn.indexOf("async function lireActivation"), fn.indexOf("async function lireSignalements"));
   assert.match(a, /admin\.from\("profiles"\)\.select\("id,username"\)\.in\("id", derniers\.map\(\(c\) => c\.id\)\)/);
   assert.match(a, /\.slice\(0, COMPTES_RECENTS_MAX\)/, "30 identifiants au plus dans l'URL");
-  assert.match(a, /if \(compteCree\(u, EXTRA\)\) \{/, "mêmes exclusions que l'entonnoir");
-  assert.match(a, /partiel, crees, nouveaux \};/);
+  assert.match(a, /if \(!compteCree\(u, EXTRA\)\) continue;/, "mêmes exclusions que l'entonnoir");
+  assert.match(a, /partiel, crees, nouveaux,\s*inscrits: \{ total: inscrits, tronque: inscritsTronque \} \};/);
   assert.doesNotMatch(a, /email:|\.email\b(?!_confirmed_at)/, "aucune adresse e-mail ne sort de la lecture");
   const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
   const rendu = page.slice(page.indexOf("function listeComptes"), page.indexOf("function rendreSite"));
   assert.doesNotMatch(rendu, /innerHTML|insertAdjacentHTML|outerHTML/, "les noms passent par textContent");
   assert.match(rendu, /el\("span", "compte-nom", x\.nom\)/);
+});
+
+// ─── Tous les inscrits (2026-10-24) ─────────────────────────────────────────
+// Demande de Benjamin : le total des inscrits sur l'accueil, et tous les noms
+// en le touchant. MUTATIONS éprouvées : trier les plus anciens d'abord, ou ne
+// pas borner la page demandée → ㉞ rougit ; compter le total après le filtre
+// de date (30 jours) → ㉟ rougit ; lire la liste à chaque relecture de l'état
+// au lieu de l'action → ㉟ rougit.
+import { pageInscrits, INSCRITS_PAR_PAGE } from "../../supabase/functions/_shared/pilotage.js";
+
+test("㉞ pageInscrits : les plus récents d'abord, pages de 100 bornées, date illisible en dernier (jamais cachée)", () => {
+  assert.equal(INSCRITS_PAR_PAGE, 100);
+  const tous = Array.from({ length: 250 }, (_, i) => ({ id: "u" + i, cree: new Date(Date.UTC(2026, 0, 1) + i * 3600e3).toISOString(), confirme: true, voie: "email" }));
+  tous.push({ id: "sans-date", cree: "pas une date", confirme: true, voie: "email" });
+  const p1 = pageInscrits(tous, 1);
+  assert.equal(p1.total, 251); assert.equal(p1.pages, 3); assert.equal(p1.page, 1); assert.equal(p1.comptes.length, 100);
+  assert.equal(p1.comptes[0].id, "u249", "le plus récent en tête");
+  assert.deepEqual(p1.ids.slice(0, 2), ["u249", "u248"]);
+  const p3 = pageInscrits(tous, 3);
+  assert.equal(p3.comptes.length, 51); assert.equal(p3.comptes.at(-1).id, "sans-date", "date illisible : en dernier, pas caché");
+  for (const demande of [0, -4, "x", NaN, null, 2.7]) assert.equal(pageInscrits(tous, demande).page, demande === 2.7 ? 2 : 1, String(demande));
+  assert.equal(pageInscrits(tous, 99).page, 3, "au-delà de la dernière page : la dernière");
+  assert.deepEqual(pageInscrits([], 1), { total: 0, page: 1, pages: 1, parPage: 100, comptes: [], ids: [] });
+  assert.equal(pageInscrits(null).total, 0);
+  // La page passe par comptesRecents, avec la borne de la page (et non 30).
+  assert.equal(comptesRecents(p1.comptes, [], { max: p1.parPage }).length, 100);
+  assert.equal(comptesRecents(p1.comptes, []).length, COMPTES_RECENTS_MAX, "sans borne explicite : les 30 de l'accueil");
+});
+
+test("㉟ le total est compté dans la boucle de l'activation (toutes dates) ; la liste ne se lit qu'avec l'action `inscrits`, après la porte", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const a = fn.slice(fn.indexOf("async function lireActivation"), fn.indexOf("// ─── Tous les inscrits, par leur NOM"));
+  assert.ok(a.indexOf("inscrits++;") > 0 && a.indexOf("inscrits++;") < a.indexOf("if (dateUtc(u.created_at) < depuis) continue;"), "le total compte TOUTES les dates");
+  assert.ok(a.indexOf("if (!compteCree(u, EXTRA)) continue;") < a.indexOf("inscrits++;"), "et seulement les vrais comptes");
+  assert.match(a, /if \(page === 20\) inscritsTronque = true;/, "au-delà de 20 000 comptes, une borne basse dite");
+  const l = fn.slice(fn.indexOf("async function listerInscrits"), fn.indexOf("async function lireSignalements"));
+  assert.match(l, /pageInscrits\(tous, Number\(corps\.page\) \|\| 1, INSCRITS_PAR_PAGE\)/);
+  assert.match(l, /admin\.from\("profiles"\)\.select\("id,username"\)\.in\("id", tranche\.ids\)/);
+  assert.match(l, /comptesRecents\(tranche\.comptes, profils, \{ nomsLus, max: tranche\.parPage \}\)/);
+  assert.match(l, /if \(compteCree\(u, EXTRA\)\) tous\.push/);
+  assert.doesNotMatch(l, /email:|\.email\b(?!_confirmed_at)/, "aucune adresse ne sort de la liste");
+  assert.match(l, /return json\(\{ error: "Comptes illisibles : "/, "une lecture ratée répond une erreur dite, jamais une liste vide");
+  const porte = fn.indexOf("if (!autorise(user, EXTRA))");
+  assert.ok(fn.indexOf('case "inscrits": return listerInscrits(admin, corps);') > porte, "la liste des noms est derrière la porte de l'éditeur");
+  const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));
+  assert.doesNotMatch(et, /listerInscrits/, "jamais à chaque relecture de l'état");
 });
