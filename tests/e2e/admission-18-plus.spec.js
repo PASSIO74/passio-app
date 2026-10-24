@@ -342,6 +342,55 @@ test.describe("Admission 18+ — la porte côté client", () => {
     expect(apres).toBe(avant);
   });
 
+  // Vécu le 2026-10-23 : compte neuf, « Publier l'activité » → la porte
+  // REMPLAÇAIT le formulaire (openModal n'empile pas), « Valider » fermait tout,
+  // et rien ne partait en base. La saisie doit survivre et la publication repartir.
+  test("année jamais déclarée en publiant : la saisie survit et l'activité part après « Valider »", async ({ page }) => {
+    await bootOnboarded(page);
+    await installerAdmission(page, "undeclared");
+    await sansAnnee(page);
+    await page.evaluate(() => {
+      window.__publies = [];
+      window.supaPublishEvent = async (ev) => { window.__publies.push(ev.title); return true; };
+      window.supaJoinEvent = async () => true;
+    });
+    await page.evaluate(() => openCreateEvent());
+    await page.locator("#evTitle").fill("Via ferrata du samedi");
+    await page.evaluate(() => {
+      document.getElementById("evCity").value = "Annecy";
+      const sel = document.getElementById("evPassion");
+      if (sel && !sel.value) { const o = [...sel.options].find(x => x.value); if (o) sel.value = o.value; }
+    });
+    await page.evaluate(() => submitEvent());
+    await expect(page.locator("#modalBackdrop.active .modal-title")).toContainText("Ton année de naissance");
+    expect(await page.evaluate(() => window.__publies.length)).toBe(0);
+
+    await page.locator("#admissionAnnee").fill("1990");
+    await page.locator("#modalBackdrop.active .btn.primary").click();
+
+    await expect.poll(() => page.evaluate(() => window.__publies)).toEqual(["Via ferrata du samedi"]);
+    const r = await page.evaluate(() => ({
+      local: (state.userEvents || []).some(e => e.title === "Via ferrata du samedi"),
+      ouverte: document.getElementById("modalBackdrop").classList.contains("active")
+        && !!document.getElementById("evTitle"),
+    }));
+    expect(r.local).toBe(true);
+    expect(r.ouverte).toBe(false); // le formulaire s'est refermé sur la publication
+  });
+
+  test("s'inscrire sans année déclarée : l'inscription est rejouée après « Valider »", async ({ page }) => {
+    await bootOnboarded(page);
+    await installerAdmission(page, "undeclared");
+    await sansAnnee(page);
+    await semerEvenement(page);
+    await page.evaluate(() => setEventRsvp("ev_admission", "going"));
+    await expect(page.locator("#modalBackdrop.active .modal-title")).toContainText("Ton année de naissance");
+    expect(await page.evaluate(() => window.__ecritures.length)).toBe(0);
+    await page.locator("#admissionAnnee").fill("1990");
+    await page.locator("#modalBackdrop.active .btn.primary").click();
+    await expect.poll(() => page.evaluate(() => window.__ecritures.map(e => e.rsvp))).toContain("going");
+  });
+
   // ── ⑤ Traces : aucune année, aucun identifiant ───────────────────────────
 
   test("les clés de télémétrie survivent au filtre PII et ne portent ni âge ni identité", async ({ page }) => {

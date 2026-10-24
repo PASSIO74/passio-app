@@ -180,6 +180,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - File de télémétrie : un événement EN VOL ne repart pas (sauf au `pagehide`, où le navigateur annule l'envoi ordinaire) et un succès retire son lot PAR IDENTITÉ, jamais « les n premiers » (`telemetrie-doublons.spec.js`).
 - Confinement (2026-10-11) : `reglages_distants` (délestage ×2/×4, coupures d'une LISTE BLANCHE, bandeau) est lu par chaque appareil et écrit par la seule fonction `pilotage` ; le facteur s'applique à l'ARMEMENT d'un minuteur (`delaiDeleste`), jamais dans une politique pure ; un COMPTE du pilotage se compte en base, jamais par la longueur d'une liste (max-rows = 1 000). Plan 100 000 : `docs/PASSIO_100K_AUTONOMIE.md`.
 - Télémétrie (2026-10-16) : le débit se compte PAR LOT (`trg_debit_lot`) selon `auth.uid()` — anciens 1 800/min à eux seuls, neufs + anonymes 2 400 (1 600 chacun), 150 par compte, refus en 429 que le client attend (jamais un 400 qu'il jette et renvoie) ; `received_at` est posé par le serveur dans `telemetry_pose_identite` (ASTRA-02) — ne jamais retirer cette garde.
+- Le centre de pilotage, c'est `/pilotage/` (2026-10-23, trois onglets) : « À faire » vient de `aFaire()` (`_shared/pilotage.js`), jamais d'une liste recomposée dans la page ; une source illisible n'est pas une source calme — la veille ne baisse jamais le voyant sur une lecture incomplète (`tenirVerdict`), l'écran n'est jamais vert sans tout avoir lu (`verdictAffiche`).
 
 ## 📚 Références projet
 
