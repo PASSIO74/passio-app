@@ -268,7 +268,7 @@ test("⑩ « Réparer » : sur l'exécution en échec et sur l'enquête, demande
   const gh = {
     ...GH,
     issues: [{ numero: 556, titre: "[VEILLE] 2 alerte(s) : flux, deploiement", labels: ["veille"], url: "https://github.com/PASSIO74/passio-app/issues/556", depuis: MAINTENANT, pr: false, pause: false },
-      { numero: 600, titre: "[RÉPARER] #12", labels: ["reparation"], url: "https://github.com/PASSIO74/passio-app/issues/600", depuis: MAINTENANT, pr: false, pause: false },
+      { numero: 600, titre: "[RÉPARER] #12", labels: ["reparation", "claude"], url: "https://github.com/PASSIO74/passio-app/issues/600", depuis: MAINTENANT, pr: false, pause: false },
       { numero: 12, titre: CHARGE, labels: ["humain"], url: "javascript:alert(1)", depuis: MAINTENANT, pr: false, pause: false }],
     runs: { ...GH.runs, deploy: { etat: "completed", conclusion: "failure", le: MAINTENANT, url: "https://github.com/PASSIO74/passio-app/actions/runs/9" } },
     aReparer: [
