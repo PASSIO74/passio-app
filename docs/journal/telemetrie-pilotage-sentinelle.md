@@ -25,6 +25,7 @@
 - 🔎 CONTRE-REVUE DU 2026-10-13 — CE QUI DÉCIDE SE COMPTE EN BASE, SUR DES COMPTES ANCIENS
 - 🚰 TÉLÉMÉTRIE ÉQUITABLE — UN COMPTEUR PAR LOT, TROIS RÉSERVOIRS (2026-10-16)
 - 🧭 UN SEUL PILOTAGE, SIMPLE — ET UNE SOURCE ILLISIBLE N'EST PLUS UNE SOURCE CALME (2026-10-23)
+- 🔁 « RÉPARER » ROUVRAIT UNE ISSUE À CHAQUE TOUCHER — 16 « [RÉPARER] #627 », AUCUNE CONFIÉE (2026-10-25)
 
 ---
 
@@ -406,3 +407,16 @@ Demande de Benjamin : « un centre de pilotage très simple et fonctionnel ». I
 - **Cause** : le jeton `PILOTAGE_GITHUB_TOKEN` a été créé selon `docs/PILOTAGE_NUAGE.md`, qui ne demandait que *Issues: read*. Sur un dépôt PUBLIC, GitHub laisse ce jeton faire ce que fait n'importe quel compte (ouvrir une issue, commenter) mais pas étiqueter : labels ignorés à la création, `POST /issues/{n}/labels` en 403. Le workflow `claude-code.yml` ne démarrait donc jamais.
 - **Correctif (code)** : `confier()` pose le label, et sur refus poste le commentaire fixe `COMMENTAIRE_CONFIER` (`@claude …`) du même compte — voie de secours que `claude-code.yml` accepte déjà (commentaire de PASSIO74 sur une issue de PASSIO74). Une réparation déjà ouverte n'est plus un cul-de-sac (« déjà en cours ») : `reconfier()` la confie si ni label ni commentaire `@claude` du pilote (`dejaConfiee`) — jamais deux ordres, donc jamais deux agents. `aFaire` montre « Relancer » sur une réparation sans label `claude`. Verrou : test ㊱ de `tests/unit/pilotage.test.mjs`.
 - **Geste restant (humain)** : régénérer le jeton avec *Issues: write* (et *Pull requests* + *Contents: write* pour « Fusionner »). Le repli fonctionne sans, mais les labels `reparation` resteront absents.
+
+## 🔁 « RÉPARER » ROUVRAIT UNE ISSUE À CHAQUE TOUCHER — 16 « [RÉPARER] #627 », AUCUNE CONFIÉE (2026-10-25)
+
+- **Symptôme** (téléphone, 25/10, 16 h 15) : « Refusé : #657 ouverte, mais GitHub refuse de la confier à Claude (label HTTP 403, commentaire HTTP 403). » Mesuré sur GitHub : **16** issues `[RÉPARER] #627` ouvertes du 24/10 12 h 11 au 25/10 15 h 15 (#639 → #657), toutes de PASSIO74, **sans aucun label ni commentaire** ; tous leurs runs `claude-code.yml` en `skipped`.
+- **Cause 1 — le repli du 24/10 ne repliait rien.** Le jeton `PILOTAGE_GITHUB_TOKEN` (sans *Issues: write*) peut OUVRIR une issue, mais GitHub lui refuse le label **et le commentaire** (403, 403 sur #657). La fiche du 24/10 supposait que « tout compte peut commenter un dépôt public » : faux pour un jeton fin.
+- **Cause 2 — la réparation était invisible, d'où les doublons.** `lireGithub()` ne gardait que les issues à label suivi ; `reparation`, ignoré à la création, rendait la réparation invisible : jamais `enCours`, donc le téléphone reproposait « Réparer » sur #627 (qui rouvrait une issue), le plafond `REPARATIONS_MAX` comptait 0, et « Relancer » ne s'affichait jamais.
+- **Correctif (code)** :
+  1. `estReparationDuPilote(i)` — titre `[RÉPARER]` ET auteur PASSIO74, lus sur l'issue BRUTE — et `issueSuivie()` (`_shared/pilotage.js`), seul filtre de `lireGithub()` : une réparation du pilote reste suivie sans label (« Réparation demandée : #n » sur la cible, plafond juste). L'auteur est exigé : dépôt public, un tiers ne bloque ni ne reçoit une réparation.
+  2. **« Réparer » confie l'issue par son OUVERTURE** : le corps commence par l'ordre fixe `COMMENTAIRE_CONFIER` (`@claude …`), que `claude-code.yml` acceptait déjà sur l'événement `opened` d'une issue de PASSIO74. Ouvrir est le seul geste que GitHub accorde à ce jeton : réparer ne demande plus aucun droit d'écriture sur les issues. **Aucun label à la création** : le corps portant la mention, chaque `labeled` lancerait un agent de plus, et plusieurs événements dans la même seconde rejouent la course du 10 au 12/09 (le run qui travaille évincé de la file). `reparationConfiee(i)` (mention ou label `claude`) : ni « Relancer » au téléphone, ni second ordre de `reconfier()`.
+  3. Verrous `tests/unit/pilotage.test.mjs` ㊲ et ㊳ — six mutations réinjectées (filtre, marquage, mention, label à la création, second ordre après l'ouverture, `confiee` dans `reconfier` et `aFaire`), toutes attrapées.
+- **Ménage** : 15 doublons fermés (*not planned*, #639 → #655) ; #657 confiée à la main. ⚠️ `claude` et `reparation` posés dans le MÊME appel = deux événements `labeled`, donc deux runs (le second `skipped` par le `if:`) : un label par appel.
+- **Résultat de #657** (run 40206802710) : Claude a enquêté et poussé `claude/issue-657-40206802710` — #627 est l'alerte du CANARI, émis par le seul poste de pilotage ; poste éteint, alerte permanente ; décision de calibrage laissée à Benjamin. Le workflow n'a pu ni ouvrir la PR ni commenter (annotation « PR non ouverte ») : PR #658 ouverte à la main.
+- **Reste humain** : *Issues*, *Pull requests*, *Contents*, *Actions* en « Read and write » sur le jeton du pilotage (page du jeton → Edit) — pour « Fermer », « Fusionner », « Reprendre » et « Relancer » une réparation d'avant ce lot. « Réparer » n'en dépend plus.

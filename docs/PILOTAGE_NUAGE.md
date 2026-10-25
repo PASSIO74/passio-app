@@ -52,10 +52,16 @@ avec Google ». Ajouter un compte : secret `PILOTAGE_EMAILS` de la fonction (vir
    from cron.job`), jamais le seul tableau.
 2. **Relances depuis le téléphone** (facultatif) : jeton GitHub fin (dépôt `passio-app`, droits
    *Actions: write* + *Issues: write* + *Pull requests: write* + *Contents: write*), posé en secret de fonction.
-   ⚠️ Avec *Issues: read* seul, GitHub laisse ouvrir et commenter (tout compte le peut sur un dépôt
-   public) mais ignore les labels à la création et refuse `POST …/labels` en **403** — vécu le
-   2026-10-24 sur #653. Le bouton « Réparer » se rabat alors sur un commentaire `@claude` (voie de
-   secours de `claude-code.yml`) ; une réparation restée sans `claude` montre « Relancer ».
+   ⚠️ Avec *Issues: read* seul, GitHub laisse OUVRIR une issue, mais ignore les labels à la
+   création et refuse d'étiqueter (`POST …/labels` en **403**, #653 le 2026-10-24) **et de
+   commenter** (`POST …/comments` en **403**, #657 le 2026-10-25). C'est pourquoi « Réparer »
+   confie l'issue **par son ouverture** : son corps commence par l'ordre fixe `@claude …`, que
+   `claude-code.yml` accepte sur l'événement `opened` d'une issue de PASSIO74 — aucun droit
+   d'écriture sur les issues n'est nécessaire, et AUCUN label n'est posé à la création (chaque
+   `labeled` relancerait un agent). Une réparation se reconnaît à son titre `[RÉPARER]` et à son
+   auteur, jamais à son label (`estReparationDuPilote`). Sans *Issues: write* restent bloqués :
+   « Fermer », « Reprendre » la Sentinelle et « Relancer » une réparation d'avant le 2026-10-25.
+   Le droit se donne sur le jeton existant (page du jeton → **Edit** → *Repository permissions*).
    `supabase secrets set PILOTAGE_GITHUB_TOKEN=… --project-ref njkiyoklssvefstljemx`.
    Sans lui, tout s'affiche et les alertes marchent ; seuls les gestes GitHub (relancer, fusionner, fermer, pause) sont remplacés par une explication. Les signalements, eux, se traitent sans ce jeton.
 3. **Google** : ajouter `https://passio-app.netlify.app/pilotage/` aux *Redirect URLs* (Supabase →

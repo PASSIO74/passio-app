@@ -28,7 +28,7 @@ import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { REVISION } from "../_shared/revision.js";
 import {
-  autorise, RELANCES, LABELS_SUIVIS, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPauseDuPilote,
+  autorise, RELANCES, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPauseDuPilote, estReparationDuPilote, reparationConfiee, issueSuivie,
   erreursFrequentes, detailsErreurs, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, COMMENTAIRE_CONFIER, dejaConfiee, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
@@ -887,8 +887,11 @@ async function lireGithub() {
   const brut = await res.json();
   // Seule une pause ouverte par le PILOTE compte (sentinelle-autonome.yml :
   // `--author PASSIO74`) : le dépôt est public, n'importe qui ouvre une issue.
-  const issues = (Array.isArray(brut) ? brut : []).map((i) => ({ ...resumerIssue(i), pause: estPauseDuPilote(i) }))
-    .filter((i) => i.pr || i.pause || i.labels.some((l: string) => LABELS_SUIVIS.includes(l)));
+  // Une réparation du PILOTE reste suivie SANS label : un jeton sans « Issues:
+  // write » le fait tomber en silence, et la filtrer sur le label la rendait
+  // invisible — 16 « [RÉPARER] #627 » ouvertes du 24 au 25/10, une par toucher.
+  const issues = (Array.isArray(brut) ? brut : []).map((i) => ({ ...resumerIssue(i), pause: estPauseDuPilote(i), reparation: estReparationDuPilote(i), confiee: reparationConfiee(i) }))
+    .filter(issueSuivie);
   const run = async (f: string) => {
     const r = await gh(`/repos/${DEPOT}/actions/workflows/${f}/runs?per_page=1&branch=main&exclude_pull_requests=true`);
     if (!r.ok) return null;
@@ -967,7 +970,15 @@ async function traiterSignalement(admin: Admin, id: string, statut: string) {
 // ─── Réparer : une issue `[RÉPARER] …` confiée à Claude (claude-code.yml) ──────
 // La cible est RE-VÉRIFIÉE ici depuis GitHub (jamais crue du téléphone) : une
 // issue doit être ouverte et réparable, une exécution doit être en échec.
-const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// L'issue est confiée PAR SON OUVERTURE (2026-10-25) : son corps commence par
+// l'ordre fixe `@claude …` (corpsReparation), que claude-code.yml accepte sur
+// l'événement `opened` d'une issue de PASSIO74. Ouvrir est le seul geste que
+// GitHub accorde au jeton sans « Issues: write » (label et commentaire refusés,
+// #653 et #657). Et c'est UN SEUL événement : AUCUN label à la création — le
+// corps portant la mention, chaque `labeled` lancerait un agent de plus, et
+// plusieurs événements dans la même seconde rejouent la course du 10 au 12/09
+// (le run qui travaille évincé de la file de concurrence).
+const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms)); // sert au retour arrière (version servie)
 async function reparer(corps: Record<string, unknown>) {
   if (!JETON_GH) return sansJeton();
   const cible = String(corps.cible || "");
@@ -975,29 +986,27 @@ async function reparer(corps: Record<string, unknown>) {
     : cible === "run" ? { cible, cle: String(corps.cle || "") } : null;
   if (!demande || !titreReparation(demande)) return json({ error: "Cible de réparation invalide." }, 400);
   cacheGh = null;
-  let etatGh: { aReparer: { cible: string; numero?: number; cle?: string; url: string | null; enCours: number | null }[]; issues: { numero: number; titre: string; pr: boolean; labels?: string[] }[] };
+  let etatGh: { aReparer: { cible: string; numero?: number; cle?: string; url: string | null; enCours: number | null }[]; issues: { numero: number; titre: string; pr: boolean; labels?: string[]; confiee?: boolean }[] };
   try { etatGh = await lireGithub() as typeof etatGh; } catch { return json({ error: "GitHub illisible." }, 502); }
   const c = etatGh.aReparer.find((x) => x.cible === demande.cible && (x.cible === "issue" ? x.numero === (demande as { numero: number }).numero : x.cle === (demande as { cle: string }).cle));
   if (!c) return json({ error: "Rien à réparer ici : le problème est déjà réglé, ou il est déjà entre les mains de la Sentinelle." }, 409);
   if (c.enCours) return reconfier(c.enCours, etatGh.issues);
   const ouvertes = etatGh.issues.filter((i) => !i.pr && estReparation(i.titre)).length;
   if (ouvertes >= REPARATIONS_MAX) return json({ error: `Déjà ${ouvertes} réparations en cours : attends qu'une se termine.` }, 429);
-  // Le label doit exister AVANT d'être posé (un ajout sur un label absent échoue).
-  await gh(`/repos/${DEPOT}/labels`, { method: "POST", body: JSON.stringify({ name: "reparation", color: "7C3AED", description: "Réparation demandée depuis le pilotage téléphone" }) }).catch(() => null);
-  const r = await gh(`/repos/${DEPOT}/issues`, { method: "POST", body: JSON.stringify({ title: titreReparation(c), body: corpsReparation(c, DEPOT), labels: ["reparation"] }) });
+  const r = await gh(`/repos/${DEPOT}/issues`, { method: "POST", body: JSON.stringify({ title: titreReparation(c), body: corpsReparation(c, DEPOT) }) });
+  cacheGh = null;
   if (!r.ok) return json({ error: `GitHub a refusé l'ouverture (HTTP ${r.status}).` }, 502);
-  const issue = await r.json();
-  // `claude` APRÈS la création, seul dans son événement (course mesurée du 10 au 12/09).
-  await attendre(8000);
-  return confier(issue.number);
+  const issue = await r.json().catch(() => ({}));
+  return json({ ok: true, message: `Réparation lancée : #${Number(issue.number) || "?"}, confiée à Claude dès son ouverture. Le correctif arrivera dans « Correctifs en attente ».` });
 }
 
-// Confier une issue de réparation à Claude (claude-code.yml). Voie nominale :
-// le label `claude`. Le 24/10, #653 a été OUVERTE mais le label refusé (HTTP 403)
-// et même `reparation` ignoré à la création : le jeton du pilotage peut faire
-// ce que tout compte fait sur un dépôt public (ouvrir, commenter) mais pas
-// étiqueter (droit « Issues: write » absent). Repli : un commentaire `@claude`
-// du même compte (PASSIO74) — voie de secours que le workflow accepte déjà.
+// Confier APRÈS COUP une réparation qui ne porte pas la mention d'ouverture (une
+// issue d'avant le 2026-10-25) : le label `claude`, puis en repli un commentaire
+// `@claude` du même compte (PASSIO74), voie que le workflow accepte déjà.
+// ⚠️ Les deux exigent « Issues: write » : #653 (24/10) a vu le label refusé (403),
+// #657 (25/10) le label ET le commentaire (403, 403) — ouvrir passe, commenter
+// non. D'où la mention à l'ouverture (reparer) ; ce chemin ne sert plus que
+// « Relancer », et la réparation reste visible (estReparationDuPilote).
 async function confier(n: number, refusLabel = 0) {
   if (!refusLabel) {
     const l = await gh(`/repos/${DEPOT}/issues/${n}/labels`, { method: "POST", body: JSON.stringify({ labels: ["claude"] }) });
@@ -1011,12 +1020,13 @@ async function confier(n: number, refusLabel = 0) {
   return json({ error: `#${n} ouverte, mais GitHub refuse de la confier à Claude (label HTTP ${refusLabel}, commentaire HTTP ${c.status}). Donne au jeton PILOTAGE_GITHUB_TOKEN le droit « Issues: Read and write », puis touche « Relancer ».` }, 502);
 }
 
-// Une réparation déjà ouverte : si elle n'a jamais été confiée (ni label
-// `claude`, ni commentaire `@claude` du pilote), on la confie maintenant —
-// jamais deux fois, un second ordre lancerait un second agent.
-async function reconfier(n: number, issues: { numero: number; labels?: string[] }[]) {
+// Une réparation déjà ouverte : si elle n'a jamais été confiée (ni mention
+// `@claude` à l'ouverture, ni label `claude`, ni commentaire `@claude` du
+// pilote), on la confie maintenant — jamais deux fois, un second ordre
+// lancerait un second agent.
+async function reconfier(n: number, issues: { numero: number; labels?: string[]; confiee?: boolean }[]) {
   const i = issues.find((x) => x.numero === n);
-  if (i && (i.labels || []).includes("claude")) return json({ ok: true, message: "Réparation déjà en cours (#" + n + ")." });
+  if (i && (i.confiee || (i.labels || []).includes("claude"))) return json({ ok: true, message: "Réparation déjà en cours (#" + n + ")." });
   const r = await gh(`/repos/${DEPOT}/issues/${n}/comments?per_page=100`);
   if (!r.ok) return json({ error: "GitHub illisible." }, 502);
   if (dejaConfiee(await r.json())) return json({ ok: true, message: "Réparation déjà confiée à Claude (#" + n + ")." });

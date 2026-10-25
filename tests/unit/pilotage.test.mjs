@@ -625,3 +625,105 @@ test("㊱ réparation jamais confiée (label « claude » refusé, #653 le 24/10
   assert.match(src, /if \(c\.enCours\) return reconfier\(c\.enCours, etatGh\.issues\);/);
   assert.match(src.slice(src.indexOf("async function reconfier")), /dejaConfiee\(/);
 });
+
+// ─── Réparation invisible faute de label, confiée dès l'ouverture (2026-10-25) ──
+// Jeton du pilotage sans « Issues: write » : `reparation` tombe EN SILENCE à la
+// création, le label `claude` ET le commentaire `@claude` sont refusés (403, 403
+// sur #657). lireGithub filtrait sur le label : la réparation n'était jamais « en
+// cours », d'où 16 « [RÉPARER] #627 » ouvertes du 24 au 25/10, une par toucher.
+// MUTATIONS : retirer `i.reparation` d'issueSuivie, ou `reparation:
+// estReparationDuPilote(i)` de lireGithub → ㊲ rougit ; ôter la mention de
+// corpsReparation, remettre `labels` à la création, ou retirer `i.confiee` de
+// reconfier / aFaire → ㊳ rougit.
+import { estReparationDuPilote, reparationConfiee, issueSuivie } from "../../supabase/functions/_shared/pilotage.js";
+
+const brute = (number, title, login, labels = [], body = "") => ({ number, title, body, user: login ? { login } : undefined,
+  labels: labels.map((name) => ({ name })), html_url: "https://github.com/P/p/issues/" + number, created_at: "2026-10-25T15:15:00Z" });
+// L'issue résumée exactement comme lireGithub la compose (vérifié par le source plus bas).
+const resume = (i) => ({ ...resumerIssue(i), pause: estPauseDuPilote(i), reparation: estReparationDuPilote(i), confiee: reparationConfiee(i) });
+
+test("㊲ une réparation du PILOTE reste suivie SANS label : en cours, plafonnée, « Relancer » — jamais un doublon", () => {
+  assert.equal(estReparationDuPilote(brute(657, "[RÉPARER] #627", PILOTE_GITHUB)), true, "sans label : le titre ET l'auteur suffisent");
+  assert.equal(estReparationDuPilote(brute(700, "[RÉPARER] #627", "inconnu")), false, "dépôt public : un tiers ne bloque ni ne reçoit une réparation");
+  assert.equal(estReparationDuPilote(brute(701, "[RÉPARER] #627")), false, "auteur illisible : pas une réparation");
+  assert.equal(estReparationDuPilote(brute(702, "[VEILLE] 1 alerte(s) : flux", PILOTE_GITHUB)), false);
+  assert.equal(estReparationDuPilote(null), false);
+
+  // La réalité du 25/10 : #657 sans AUCUN label, et un corps d'avant la mention.
+  const issues = [
+    brute(627, "[VEILLE] 1 alerte(s) : flux", "github-actions[bot]", ["veille"]),
+    brute(657, "[RÉPARER] #627", PILOTE_GITHUB, [], "Répare le problème signalé dans #627."),
+    brute(700, "[RÉPARER] #627", "inconnu", [], "@claude"),
+    brute(701, "question", "inconnu"),
+    brute(702, "fix: correctif", "inconnu"),
+  ].map((i) => (i.number === 702 ? { ...i, pull_request: {} } : i)).map(resume).filter(issueSuivie);
+  assert.deepEqual(issues.map((i) => i.numero), [627, 657, 702], "la PR reste suivie, l'issue d'un tiers non");
+
+  // aReparer la voit EN COURS : « Réparer » repasse par reconfier au lieu d'ouvrir #658.
+  const aR = aReparer({ issues, runs: {} });
+  assert.deepEqual(aR.map((x) => [x.numero, x.enCours]), [[627, 657]]);
+
+  // aFaire : « Relancer » sur #657 (jamais confiée), et plus aucun « Réparer » sur #627.
+  const etat = etatAF();
+  etat.github = { issues, runs: {}, aReparer: aR };
+  const l = aFaire(etat, MAINTENANT_AF);
+  assert.deepEqual(l.find((x) => x.id === "issue:657").gestes.map((g) => g.corps), [{ action: "reparer", cible: "issue", numero: 627 }]);
+  assert.ok(!l.find((x) => x.id === "issue:627").gestes.some((g) => g.corps && g.corps.action === "reparer"), "une réparation en cours ne se redemande pas");
+
+  // Le plafond compte les réparations sans label (le compte que fait `reparer`).
+  const trois = [brute(1, "[RÉPARER] #1", PILOTE_GITHUB), brute(2, "[RÉPARER] #2", PILOTE_GITHUB), brute(3, "[RÉPARER] Déploiement en échec", PILOTE_GITHUB)]
+    .map(resume).filter(issueSuivie);
+  assert.equal(trois.filter((i) => !i.pr && estReparation(i.titre)).length, REPARATIONS_MAX);
+
+  // La fonction compose ses issues ainsi — un seul filtre, celui éprouvé ici.
+  const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const lire = src.slice(src.indexOf("async function lireGithub"), src.indexOf("const run = async"));
+  assert.match(lire, /\.map\(\(i\) => \(\{ \.\.\.resumerIssue\(i\), pause: estPauseDuPilote\(i\), reparation: estReparationDuPilote\(i\), confiee: reparationConfiee\(i\) \}\)\)/,
+    "même composition que `resume` ici ; l'auteur et le corps n'existent que sur l'issue BRUTE");
+  assert.match(lire, /\.filter\(issueSuivie\)/);
+  assert.match(src.slice(src.indexOf("async function reparer")), /const ouvertes = etatGh\.issues\.filter\(\(i\) => !i\.pr && estReparation\(i\.titre\)\)\.length;/);
+});
+
+test("㊳ « Réparer » confie DÈS L'OUVERTURE (mention @claude du corps) : un seul événement, aucun label, aucun droit « Issues: write »", () => {
+  // Le corps commence par l'ordre fixe, pour une issue comme pour une exécution.
+  for (const c of [{ cible: "issue", numero: 627 }, { cible: "run", cle: "deploy" }]) {
+    assert.equal(corpsReparation(c, "P/p").split("\n")[0], COMMENTAIRE_CONFIER, c.cible);
+  }
+  assert.match(COMMENTAIRE_CONFIER, /^@claude /);
+  // claude-code.yml démarre sur l'OUVERTURE d'une issue de PASSIO74 dont le corps porte @claude.
+  const wf = fs.readFileSync(".github/workflows/claude-code.yml", "utf8");
+  assert.match(wf, /\n {2}issues:\n {4}types: \[[^\]]*\bopened\b[^\]]*\]/, "l'événement `opened` déclenche le workflow");
+  assert.match(wf, /github\.event_name == 'issues' &&\s+github\.event\.issue\.user\.login == 'PASSIO74' &&\s+\(\s+github\.event\.label\.name == 'claude' \|\|\s+contains\(github\.event\.issue\.body, '@claude'\)/);
+
+  // La fonction ouvre l'issue SANS label (le corps portant la mention, chaque `labeled` lancerait un agent),
+  // puis ne donne AUCUN second ordre.
+  const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const debutRep = src.indexOf("async function reparer");
+  const rep = src.slice(debutRep, src.indexOf("\n}\n", debutRep));   // le corps de la fonction, rien d'autre
+  const ouverture = rep.slice(rep.indexOf("/issues`, { method: \"POST\""));
+  assert.match(ouverture, /^\/issues`, \{ method: "POST", body: JSON\.stringify\(\{ title: titreReparation\(c\), body: corpsReparation\(c, DEPOT\) \}\) \}\)/);
+  assert.doesNotMatch(rep, /labels: \[|\/labels`/, "aucun label à la création, ni avant");
+  assert.doesNotMatch(ouverture, /confier\(|\/comments`|attendre\(/, "aucun second ordre après l'ouverture");
+
+  // Confiée = la mention du corps OU le label `claude`, sur une réparation du PILOTE seulement.
+  const corps = corpsReparation({ cible: "issue", numero: 627 }, "P/p");
+  assert.equal(reparationConfiee(brute(660, "[RÉPARER] #627", PILOTE_GITHUB, [], corps)), true);
+  assert.equal(reparationConfiee(brute(661, "[RÉPARER] #627", PILOTE_GITHUB, ["claude"], "Répare #627")), true);
+  assert.equal(reparationConfiee(brute(662, "[RÉPARER] #627", PILOTE_GITHUB, ["reparation"], "Répare #627")), false, "issue d'avant : à relancer");
+  assert.equal(reparationConfiee(brute(663, "[RÉPARER] #627", "inconnu", [], corps)), false, "un tiers ne confie rien");
+  assert.equal(reparationConfiee(brute(664, "[VEILLE] flux", PILOTE_GITHUB, [], corps)), false);
+  assert.equal(reparationConfiee(null), false);
+
+  // aFaire : une réparation confiée à l'ouverture n'offre PAS « Relancer » (jamais un second agent).
+  const issues = [brute(627, "[VEILLE] 1 alerte(s) : flux", "github-actions[bot]", ["veille"]), brute(660, "[RÉPARER] #627", PILOTE_GITHUB, [], corps)]
+    .map(resume).filter(issueSuivie);
+  const aR = aReparer({ issues, runs: {} });
+  assert.deepEqual(aR.map((x) => [x.numero, x.enCours]), [[627, 660]]);
+  const etat = etatAF();
+  etat.github = { issues, runs: {}, aReparer: aR };
+  const r = aFaire(etat, MAINTENANT_AF).find((x) => x.id === "issue:660");
+  assert.deepEqual(r.gestes, []);
+  assert.match(r.detail, /Claude prépare un correctif/);
+  // Et le serveur, sur « Relancer » forcé : la mention vaut confiée.
+  assert.match(src.slice(src.indexOf("async function reconfier")), /if \(i && \(i\.confiee \|\| \(i\.labels \|\| \[\]\)\.includes\("claude"\)\)\) return/);
+});
