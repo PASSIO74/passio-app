@@ -33,6 +33,8 @@ Chaque signal rend `ok | warn | alert | unknown` et un texte fait de comptages (
 
 Les heures de nuit (22 h–08 h Paris) ne comptent **jamais comme silence** : la nuit est vide, c'est la normale. Les heures actives mesurées sont 09 h–21 h. Mais une alerte du soir **tient toute la nuit** : la nuit, le silence jugé est celui qui termine la dernière plage active (09 h–20 h de la veille), et la « journée quasi vide » est jugée dès 21 h puis, avant 08 h, sur la journée de la veille. Sans cela, une issue ouverte à 21 h se refermait seule à 23 h (« plus rien en alerte ») et rien ne revenait le matin — et un cron servi toutes les 2 à 5 h manquait l'heure 21 un soir sur deux. L'issue se referme au premier passage actif du lendemain où le trafic est revenu (10 h : l'heure 09 h pleine). Le canari, lui, est jugé à toute heure (c'est une machine).
 
+⚠️ **« 0 canari en 2 h » mesure l'ÉMETTEUR, et l'émetteur est le poste** (`sendCanary()`, `dashboard/server/observation.js`) : poste éteint = alerte permanente, alors que le runbook dit le poste facultatif. Décomposition de l'alerte, lectures qui tranchent et décision laissée ouverte : fiche « VEILLE #627 » de `docs/journal/telemetrie-pilotage-sentinelle.md` (2026-10-25).
+
 Les seuils sont **calibrés sur la desserte réelle de GitHub** : un cron « toutes les 30 min » est servi toutes les 2 à 5 h. Un retour au vert peut donc mettre quelques heures à se voir, et une panne n'est pas relevée dans l'heure — dans la demi-journée. Ne pas resserrer sans mesurer.
 
 ### Lectures
