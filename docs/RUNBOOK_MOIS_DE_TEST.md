@@ -25,7 +25,7 @@
 
 | Signal | Ce que ça veut dire | Geste |
 |---|---|---|
-| `flux` : 0 canari en 2 h | Le poste de pilotage est éteint, ou Supabase refuse les écritures | Allume le poste / `Lancer-Pilotage.cmd` ; sinon status.supabase.com |
+| `flux` : 0 canari en 2 h | Depuis le 2026-10-31 le canari est AUSSI émis par la veille serveur (`pilotage_veille`, pg_cron) : un poste éteint ne le fait plus taire. 0 canari = la veille ne tourne plus (cron, déploiement de `pilotage`) ou Supabase refuse les écritures | Pilotage › Sources ; `cron.job_run_details` du job `pilotage_veille` ; sinon status.supabase.com |
 | `flux` : N h actives sans ligne, journée vide | La télémétrie ne part plus des clients, ou plus personne n'utilise l'app. Une alerte du soir tient toute la nuit (la journée de la veille est jugée jusqu'à 08 h) et se referme au premier passage actif où le trafic est revenu | Centre de pilotage > Sources (canari, Realtime, ingestion) ; ouvre l'app sur ton téléphone et regarde si ta session apparaît ; sinon regarde le dernier déploiement |
 | `inscriptions` | L'e-mail de confirmation ne part plus | Tableau Brevo (envoyés/300 du jour, clé SMTP valide) → Supabase > Authentication > SMTP ; teste une inscription avec une adresse à toi |
 | `api` : 5xx groupés | Supabase répond en erreur serveur | status.supabase.com, puis Supabase > Logs. Si c'est côté PASSIO, la sentinelle ouvrira l'enquête : ne double pas |
