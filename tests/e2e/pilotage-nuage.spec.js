@@ -522,6 +522,10 @@ test("⑲ « inscrits au total » : la tuile de l'accueil ouvre TOUS les inscrit
   await page.goto("/pilotage/");
   // Juste sous le voyant, avant « À faire » : visible dès l'ouverture.
   const tuile = page.locator("#tuileInscrits button.chiffre-bouton");
+  // boundingBox() n'attend rien : mesurer avant le rendu de l'état rendait
+  // `null` une fois sur deux (CI #666, 2026-10-31). On attend les deux nœuds.
+  await expect(tuile).toBeVisible();
+  await expect(page.locator("#afaire")).toBeVisible();
   const [yTuile, yAFaire] = await Promise.all([tuile.boundingBox(), page.locator("#afaire").boundingBox()]).then((b) => b.map((x) => x && x.y));
   expect(yTuile).toBeLessThan(yAFaire);
   expect(yTuile, "visible sans faire défiler, au gabarit iPhone").toBeLessThan(780);

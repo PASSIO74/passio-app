@@ -34,7 +34,7 @@ import {
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
-  pageInscrits, INSCRITS_PAR_PAGE,
+  pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari,
 } from "../_shared/pilotage.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 import {
@@ -160,13 +160,26 @@ async function veille(admin: Admin) {
   const delestage = await etape(() => delestageAuto(admin, signaux));
   const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux));
   const retour = await etape(() => proposerRetour(admin));
+  const canari = await etape(() => emettreCanari());
   // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
   // appelable avec la seule clé anon (publique), et combien d'activités ont lieu
   // dans les 24 h ou combien de comptes sont abonnés ne regardent personne. Ils
   // se lisent dans `analytics_events` (marques `rappel_activite`, `rappels_echec`).
   return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes,
     delestage: delestage && "niveau" in delestage ? delestage.niveau : null,
-    sentinelleReveillee: !!(reveil && reveil.lance), retourPropose: !!(retour && retour.propose) });
+    sentinelleReveillee: !!(reveil && reveil.lance), retourPropose: !!(retour && retour.propose),
+    canari: !!(canari && canari.emis) });
+}
+
+// Canari serveur (2026-10-31, VEILLE #627) : la veille ne s'éteint pas, le
+// poste si. Clé ANON, comme un client public : un refus RLS ou de débit se lit
+// dans `{ error }` (le SDK ne lève pas) et la veille le rapporte sans tomber.
+async function emettreCanari(): Promise<Record<string, unknown>> {
+  if (!canariDu(new Date().getUTCMinutes())) return { emis: false };
+  const anon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await anon.from("telemetry_events").insert(ligneCanari("can_srv_" + crypto.randomUUID()));
+  if (error) return { emis: false, erreur: String(error.message || error).slice(0, 120) };
+  return { emis: true };
 }
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */

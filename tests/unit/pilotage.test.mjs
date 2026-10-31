@@ -727,3 +727,34 @@ test("㊳ « Réparer » confie DÈS L'OUVERTURE (mention @claude du corps) : un
   // Et le serveur, sur « Relancer » forcé : la mention vaut confiée.
   assert.match(src.slice(src.indexOf("async function reconfier")), /if \(i && \(i\.confiee \|\| \(i\.labels \|\| \[\]\)\.includes\("claude"\)\)\) return/);
 });
+
+import { canariDu, ligneCanari, CANARI_ACTION } from "../../supabase/functions/_shared/pilotage.js";
+
+test("㊲ VEILLE #627 : la veille serveur émet le canari un quart d'heure sur trois, clé anon, erreur lue", () => {
+  // pg_cron « */5 » : minutes 0, 5, 10, 15… — un canari aux minutes 0, 15, 30, 45 (et leur minute de retard).
+  const emis = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].filter(canariDu);
+  assert.deepEqual(emis, [0, 15, 30, 45]);
+  assert.equal(canariDu(1), true, "une veille servie avec une minute de retard émet encore");
+  assert.equal(canariDu(5), false);
+  for (const x of [-1, 60, 7.5, "x", null, undefined]) assert.equal(canariDu(x), false, String(x));
+  // Même forme que le canari du poste : la requête canaris2h de la veille et l'observation du poste le reconnaissent.
+  const l = ligneCanari("can_srv_1");
+  assert.equal(l.action, CANARI_ACTION);
+  assert.equal(CANARI_ACTION, "sentinel_observation_canary");
+  assert.equal(l.env, "production");
+  assert.equal(l.type, "lifecycle");
+  assert.equal(l.user_id, null);
+  assert.equal(l.meta.synthetic, true);
+  assert.equal(l.meta.source, "pilotage");
+  const veille = fs.readFileSync("scripts/veille-production.mjs", "utf8");
+  assert.match(veille, /action = 'sentinel_observation_canary' and received_at > now\(\) - interval '2 hours'/);
+  // Câblage : une étape isolée de la veille, APRÈS l'alerte, clé anon (jamais service_role), `{ error }` lu.
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  assert.match(v, /await etape\(\(\) => emettreCanari\(\)\)/);
+  assert.ok(v.indexOf("decideAlerte(") < v.indexOf("emettreCanari()"), "le canari ne retarde jamais l'alerte");
+  const c = fn.slice(fn.indexOf("async function emettreCanari"));
+  assert.match(c, /SUPABASE_ANON_KEY/);
+  assert.doesNotMatch(c.slice(0, c.indexOf("\n}\n")), /SERVICE_ROLE/);
+  assert.match(c, /const \{ error \} = await anon\.from\("telemetry_events"\)\.insert\(ligneCanari\(/);
+});
