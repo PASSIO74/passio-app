@@ -130,7 +130,7 @@ export function signalFlux(m, now) {
   let etat = "ok";
   if (Number.isFinite(m.canaris2h) && m.canaris2h === 0) {
     etat = "alert";
-    lignes.push("0 canari en 2 h : chaîne d'ingestion (le poste de pilotage est éteint ou Supabase refuse les écritures)");
+    lignes.push("0 canari en 2 h : chaîne d'ingestion (la veille serveur pilotage_veille ne tourne plus, ou Supabase refuse les écritures)");
   } else if (Number.isFinite(m.canaris2h)) {
     lignes.push(`${m.canaris2h} canari(s) en 2 h`);
   }

@@ -888,3 +888,30 @@ export function activationDepuisLignes(lignes, maintenant = Date.now()) {
   }
   return activation(comptes, gestes, maintenant);
 }
+
+// ─── Canari serveur (2026-10-31, VEILLE #627) ──────────────────────────────
+// Le canari bout-en-bout (`sentinel_observation_canary`) n'était émis QUE par
+// le poste (`dashboard/server/observation.js`) : PC éteint = « 0 canari en
+// 2 h » = alerte permanente, alors que l'ingestion marchait (mesuré le 31/10 :
+// aucun canari depuis plus de 7 jours, lignes humaines reçues le 29 et le 30).
+// La veille (pg_cron, toutes les 5 min, jamais éteinte) l'émet désormais
+// aussi, avec la clé ANON : même chemin PostgREST → RLS → déclencheurs de
+// débit qu'un client public, seul le réseau de départ diffère. Un quart
+// d'heure sur trois passages : le rythme du poste, pas trois fois sa charge.
+export const CANARI_ACTION = "sentinel_observation_canary";
+export const CANARI_TOUTES_MIN = 15;
+
+/** La veille de cette minute UTC émet-elle le canari ? (pg_cron : minutes 0, 5, 10…) */
+export function canariDu(minuteUtc) {
+  const m = minuteUtc;
+  return typeof m === "number" && Number.isInteger(m) && m >= 0 && m < 60 && m % CANARI_TOUTES_MIN < 5;
+}
+
+/** Ligne du canari serveur — même forme que celle du poste, source dite. */
+export function ligneCanari(id) {
+  return {
+    event_id: id, env: "production", type: "lifecycle", action: CANARI_ACTION, status: "ok", severity: "info",
+    user_id: null, correlation_id: id, message: "synthetic observation canary",
+    meta: { synthetic: true, canary_id: id, exclude_analytics: true, exclude_alerts: true, source: "pilotage" },
+  };
+}
