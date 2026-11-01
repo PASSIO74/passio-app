@@ -26,6 +26,12 @@
 // (`passions-archive-quota.spec.js`) ; ici on mesure la PAGE.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
+const { armerPlafondPassions } = require("./app-helper");
+// LANCEMENT GRATUIT (2026-11-01) : le plafond de passions est LEVÉ par défaut
+// (`PLAFOND_PASSIONS_EN_VIGUEUR`, app-06). Cette suite éprouve le plafond : elle
+// l'ARME donc elle-même, à chaque test. Le défaut levé a son propre verrou :
+// `lancement-gratuit.spec.js`.
+test.beforeEach(async ({ page }) => { await armerPlafondPassions(page); });
 const { bootOnboarded } = require("./app-helper");
 
 const APERCU = "?passio_preview=flat-passions-v1";

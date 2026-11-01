@@ -11,6 +11,12 @@
 //   · ONB-09 (Google OAuth) — exige un fournisseur réel.
 // ONB-04 (reload) est déjà couvert par onboarding-v2.spec.js.
 const { test, expect } = require("@playwright/test");
+const { armerPlafondPassions } = require("./app-helper");
+// LANCEMENT GRATUIT (2026-11-01) : le plafond de passions est LEVÉ par défaut
+// (`PLAFOND_PASSIONS_EN_VIGUEUR`, app-06). Cette suite éprouve le plafond : elle
+// l'ARME donc elle-même, à chaque test. Le défaut levé a son propre verrou :
+// `lancement-gratuit.spec.js`.
+test.beforeEach(async ({ page }) => { await armerPlafondPassions(page); });
 const { sansDonneesDistantes } = require("./app-helper");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 

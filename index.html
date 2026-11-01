@@ -1796,6 +1796,14 @@
      window.PASSIO_RECAP_SEMAINE=false, ou Paramètres › Notifications. -->
 <script src="js/recap-semaine.js"></script>
 
+<!-- AFFICHE DE LA RENCONTRE (2026-11-01, lancement gratuit) — hors bloc app :
+     composant autonome (IIFE window.PassioAffiche), inliné individuellement au
+     build. Un bouton « Affiche à imprimer » à côté du QR d'accueil de
+     l'organisateur : une image A4 avec un QR code qui ouvre la rencontre.
+     Coupé par localStorage.passio_affiche_rencontre="0" ou
+     window.PASSIO_AFFICHE_RENCONTRE=false. -->
+<script src="js/affiche-rencontre.js"></script>
+
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">
   <div id="pwa-sheet">

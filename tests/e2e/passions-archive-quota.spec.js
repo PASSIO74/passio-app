@@ -24,6 +24,12 @@
 // reste couverte par lecture de code, pas par exécution.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
+const { armerPlafondPassions } = require("./app-helper");
+// LANCEMENT GRATUIT (2026-11-01) : le plafond de passions est LEVÉ par défaut
+// (`PLAFOND_PASSIONS_EN_VIGUEUR`, app-06). Cette suite éprouve le plafond : elle
+// l'ARME donc elle-même, à chaque test. Le défaut levé a son propre verrou :
+// `lancement-gratuit.spec.js`.
+test.beforeEach(async ({ page }) => { await armerPlafondPassions(page); });
 const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 const { GATE_KEY, GATE_TOKEN } = require("./gate-helper");
 

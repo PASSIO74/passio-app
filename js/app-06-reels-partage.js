@@ -4036,7 +4036,52 @@ function passionsIllimitees() {
   try { return localStorage.getItem(CLE_PASSIONS_ILLIMITEES) === "1"; } catch (e) { return false; }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LE LANCEMENT GRATUIT  (2026-11-01, `docs/PLAN_MONETISATION_2026-11-01.md`)
+// ──────────────────────────────────────────────────────────────────────────
+// « C'est parti, je lance l'app en gratuit, mets tout en place. »
+//
+// Le plafond de trois passions et le quota de trois changements ne servent
+// qu'à l'offre payante — qui n'existe pas (`openPassionPaywall` le dit : aucun
+// paiement possible). Mesuré le 01/11 : 14 comptes, aucune connexion sur sept
+// jours. À cette échelle le mur ne rapporte rien et coûte la découverte : plus
+// de passions = plus de croisements = plus de rencontres. Il est donc LEVÉ
+// POUR TOUT LE MONDE, par le chemin même du mode « passions illimitées » de
+// l'éditeur — déjà construit et verrouillé : `plafondPassionsActif()` rend faux,
+// donc `passionsRestantesOffertes` → Infinity, le quota (`quotaChangementsActif`)
+// tombe avec lui, l'écran retire seul « sur N » et l'alerte de quota.
+//
+// ⚠️ LE MÉCANISME RESTE, ENTIER. Il sera le premier avantage de PASSIO+
+// (phase 3 du plan). Le réarmer = passer `PLAFOND_PASSIONS_EN_VIGUEUR` à true.
+//   • Un compte qui a pris cinq passions pendant le lancement les GARDE : la
+//     fusion n'ajoute que sous le plafond, elle ne rétrograde jamais l'état
+//     serveur (`reinjecterProfilsLocauxBornes`, fiche 16).
+//   • Un changement fait pendant le lancement ne sera JAMAIS facturé : le
+//     journal fige `compte: quotaChangementsActif()` À L'ÉCRITURE — faux ici.
+//
+// ⚠️ LE SENS DE L'INTERRUPTEUR EST CELUI DU RIDEAU D'ACCÈS (2026-09-11) : levé
+// par défaut, il ne s'ARME que sur adhésion explicite de l'appareil
+// (`localStorage[CLE_PLAFOND_PASSIONS] = "1"` ou `window.PASSIO_PLAFOND_PASSIONS
+// = true`). C'est ce que font les suites qui éprouvent le plafond. Armer une
+// limite sur SON appareil ne donne rien à personne ; aucune lecture ne lève
+// une limite que le produit applique.
+//
+// ⚠️ CE QUI N'EST PAS LEVÉ : les TROIS CRÉATIONS de passion (noms absents du
+// catalogue de 1 908) sont tenues par le SERVEUR (`creer_passion` +
+// `public.passion_quotas`), et un drapeau client ne lève jamais un plafond
+// serveur. Elles servent aussi d'anti-abus et passent en modération.
+// ══════════════════════════════════════════════════════════════════════════
+var PLAFOND_PASSIONS_EN_VIGUEUR = false;
+var CLE_PLAFOND_PASSIONS = "passio_plafond_passions_v1";
+
+function plafondPassionsArme() {
+  if (PLAFOND_PASSIONS_EN_VIGUEUR) return true;
+  try { if (window.PASSIO_PLAFOND_PASSIONS === true) return true; } catch (e) {}
+  try { return localStorage.getItem(CLE_PLAFOND_PASSIONS) === "1"; } catch (e) { return false; }
+}
+
 function plafondPassionsActif() {
+  if (!plafondPassionsArme()) return false;
   if (passionsIllimitees()) return false;
   try { return typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif(); }
   catch (e) { return false; }

@@ -16,6 +16,7 @@
 - 📣 INVITER JUSTE APRÈS AVOIR ORGANISÉ — le partage existait, personne ne s'en servait (2026-10-04)
 - 👋 L'INVITATION — « Léa t'invite », et Léa suivie à la création du compte (2026-10-04)
 - 📈 ENTONNOIR DES LIENS — LA MARCHE « COMPTE CRÉÉ » (2026-10-04)
+- 🪧 L'AFFICHE DE LA RENCONTRE — un QR imprimable, suivi jusqu'à l'inscription (2026-11-01)
 
 ---
 
@@ -214,3 +215,39 @@ Verrous : `tests/e2e/lien-inscription.spec.js` (8) et `dashboard/test/links-insc
 **éprouvés par RÉINJECTION de dix mutations**, chacune rouge (mémoire non posée, appel retiré, émis
 avant « déjà utilisé », garde « compte neuf » retirée, mémoire non consommée, péremption retirée ;
 inscription ignorée, taux sur tous les liens, invitant non booléen, statut absent).
+
+---
+
+## 🪧 L'AFFICHE DE LA RENCONTRE — un QR imprimable, suivi jusqu'à l'inscription (2026-11-01)
+
+Lancement gratuit (`docs/PLAN_MONETISATION_2026-11-01.md`, phase 1 : recruter les hôtes, QR dans les
+lieux partenaires). `js/affiche-rencontre.js` (hors bloc app, `window.PassioAffiche`) pose, à côté du
+« QR d'accueil des participants » de l'organisateur, un bouton « Affiche à imprimer · QR d'inscription » :
+une image A4 (1240 × 1754, 150 ppp) — passion, titre, date, lieu, prix, grand QR — à partager
+(`navigator.share` avec fichier) ou enregistrer.
+
+⚠️ **Le QR ne porte que 106 octets** (`qrEncode`, version 6 maximum, vérifiée par aller-retour). Lien
+court `/e/<id>` (50) + `?plk=lk_…` (34) tiennent ; `?inv=<compte>` (41) en plus, non. Les candidats sont
+ESSAYÉS dans l'ordre — tout, sans invitation, lien nu — et **le suivi prime sur l'invitation** : c'est
+lui qui dit au pilotage combien de scans une affiche a produits. Le lien est créé (`link_create`) à la
+fabrication, partagé (`link_share`, canal `affiche` ou `affiche_image`) au geste.
+
+⚠️ **L'affiche est une IMAGE** : titre, lieu et passion (contenu d'un tiers pour qui scanne) sont
+DESSINÉS sur un canevas, jamais injectés dans le DOM ; le prix passe par `fmtEventPrice` (ADR-009).
+Le repli générique de `passionById` (« ✨ Passion », sans `id`) n'est jamais imprimé : on écrit
+« Rencontre ».
+
+⚠️ **La porte s'ancre sur `data-orga-qr`**, posé par la fiche (app-07) sur le bouton du QR d'accueil :
+il n'existe que pour qui gère la rencontre, à venir et non annulée. La fiche est repeinte en
+`innerHTML` : le module POSE un frère après chaque repeinte (observateur sur `#eventDetailContent`),
+sans doublon, et `PassioAffiche.ouvrir` refuse à son tour une rencontre d'autrui.
+
+**L'affiche générale des lieux** (`docs/lancement/affiche-lieu-partenaire.pdf`) porte un lien
+fabriqué à la main, `?plk=affiche_lieu` : le pilotage l'accepte sans `link_create` (le magasin des
+liens crée l'entrée à la première ouverture) — toutes ces affiches se comptent ensemble.
+
+Mesuré le 01/11 : les QR d'une affiche à titre court et à titre de trois lignes, et celui de l'affiche
+générale, **décodés par jsQR** depuis l'image produite (Chromium sans `BarcodeDetector` : le cas ③ de
+la suite se saute là où le détecteur manque). Coupures : `localStorage.passio_affiche_rencontre="0"`,
+`window.PASSIO_AFFICHE_RENCONTRE=false`. Verrou : `tests/e2e/affiche-rencontre.spec.js` (5).
+
