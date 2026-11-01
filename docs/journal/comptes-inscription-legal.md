@@ -11,6 +11,7 @@
 
 ## Sommaire
 
+- 🔞 L'ANNÉE À L'INSCRIPTION, PUIS LA PROPOSITION IRL ALLUMÉE POUR TOUS (2026-11-01)
 - 🤖 CAPTCHA TURNSTILE À L'INSCRIPTION — le client d'abord, l'interrupteur ensuite (2026-09-13)
 - 🔑 MOT DE PASSE : 8 CARACTÈRES, ET LES REFUS DU SERVEUR EN FRANÇAIS (2026-09-13)
 - 🔑 CHOISIR SON MOT DE PASSE — ON AIDE, ON N'EXIGE PAS PLUS (2026-09-16)
@@ -503,3 +504,20 @@ Deux portes, toutes deux vers `PassioFirstRun.allerInscription` (aucun second sy
 - **carte de bienvenue** : bouton « Créer mon compte » pleine largeur (`.fr-welcome-signup`), sous la rangée — un troisième bouton DANS la rangée en `flex: 1 1 auto` couperait les libellés ;
 - **barre du haut** : pastille « Créer un compte » (`#topbarSignup`), STATIQUE dans `index.html`, affichée seulement sous `:root.passio-first-run` — elle reste là carte fermée, et un compte existant ou la première visite coupée ne la voient jamais. Télémétrie : `guest_signup_started` avec `ctx` `bienvenue` ou `topbar`.
 ⚠️ Mesuré à 360 px : la pastille CHEVAUCHAIT « PASSIO » (la partie gauche ne rétrécit pas). Sous 440 px, en mode visiteur, le nom et la puce Beta cèdent la place, le logo reste. Verrou : `tests/e2e/creer-compte-accueil.spec.js` (8) — dont un contrôle de non-chevauchement à 320/360/390/430 px, réinjection faite (la règle 440 px retirée → 2 rouges), et le bouton de la carte retiré → ① rouge.
+
+## 🔞 L'ANNÉE À L'INSCRIPTION, PUIS LA PROPOSITION IRL ALLUMÉE POUR TOUS (2026-11-01)
+
+**Ordre de Benjamin** : ouvrir la proposition IRL (`passio_irl_proposal_v1`, bouton 📍 d'une conversation privée) à tout le monde, « l'âge d'abord ».
+
+**Le défaut qui l'interdisait** : le parcours « Première visite » (actif depuis le 2026-09-01) ne demande l'année NULLE PART. `irl_interaction_allowed` exige deux majeurs DÉCLARÉS et échoue fermé : allumé tel quel, le bouton restait invisible pour tout compte né depuis septembre. Et `irlProposalServerVerdict` refusait (`birth_year_unavailable`) dès que l'appareil n'avait pas l'année EN LOCAL, même pour un compte admis côté serveur depuis un autre appareil.
+
+**Ce qui change** :
+- `#authBirthYear` au formulaire de création (mode `signup` seulement). Pré-filtre identique à `admissionValiderAnnee` : < 13 ans écarté, **13 à 17 ans part** (le serveur en fait un refus durable — ne pas remonter à 18).
+- L'année voyage dans `user_metadata.birth_year` (`signUp` ne rend pas de session) ; `admissionRappelServeur` la relit à la première session quand l'état local ne l'a pas, et la déclare (`declare_birth_year`).
+- La déclaration locale n'est plus une condition du verdict : le serveur reste seul juge.
+- `irlProposalEnabled()` : ACTIF par défaut, ne sait plus qu'enlever (`"0"`, `PASSIO_IRL_PROPOSAL_V1=false`, coupure distante — la clé était déjà dans la liste blanche).
+- Politique de confidentialité §2 : l'année figure parmi les données d'inscription (version `2026-11-01`).
+
+⚠️ **Reste hors champ** : un compte créé par Google n'a pas de formulaire, donc pas d'année avant sa première action IRL (la porte d'admission la demande alors). Les comptes nés entre le 2026-09-01 et ce lot non plus : le bouton leur apparaît dès qu'ils ont déclaré leur année par la porte d'admission.
+
+Verrous : `tests/e2e/annee-inscription.spec.js` (6), `tests/e2e/irl-trust-safety.spec.js` (drapeau par défaut ACTIF, « 0 » coupe).

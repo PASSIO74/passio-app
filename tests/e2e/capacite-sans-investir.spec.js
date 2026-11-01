@@ -240,7 +240,7 @@ test.describe("② le bouton Google", () => {
         // buter avant elle, et on ne mesure QUE le comportement de la garde.
         const mail = document.getElementById("authEmail"); if (mail) mail.value = "essai@exemple.com";
         const mdp = document.getElementById("authPassword"); if (mdp) mdp.value = "lavande-colibri-4917";
-        const nomChamp = document.getElementById("authName"); if (nomChamp) nomChamp.value = "Essai Capacite";
+        const nomChamp = document.getElementById("authName"); if (nomChamp) nomChamp.value = "Essai Capacite"; const anChamp = document.getElementById("authBirthYear"); if (anChamp) anChamp.value = "1995";
         // ⚠️ `onbDoAuth` valide la confirmation du mot de passe AVANT la garde de
         // consentement : sans ce champ, on mesurerait « les mots de passe ne
         // correspondent pas » au lieu du refus visé. Une prémisse non posée fait

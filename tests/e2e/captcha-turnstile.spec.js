@@ -68,6 +68,7 @@ async function ouvrirAuth(page, { sitekey = "", fauxWidget = true, erreur = null
 async function inscrire(page, email = "nouvelle@exemple.com") {
   await page.locator("#authTabSignup").click();
   await page.locator("#authName").fill("Camille");
+  await page.locator("#authBirthYear").fill("1995");
   await page.locator("#authEmail").fill(email);
   await page.locator("#authPassword").fill("motdepasse123");
   await page.locator("#authPasswordConfirm").fill("motdepasse123");
