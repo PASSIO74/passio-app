@@ -55,6 +55,8 @@ const EXCEPTIONS = {
   // écrite dans migration_barriere_suppression_2026-09-15.sql.
   "comptes_en_suppression.user_id": "barrière de suppression (v2, état par tentative) : la purger la lèverait — elle survit au succès (statut supprimee) ; rétention par purger_marqueurs_suppression(interval), durée à décider (proposition 45 j), non planifiée",
   "reports.target_id": "polymorphe (publication, rencontre, compte…) : ce n'est pas un identifiant de compte en soi",
+  // Croissance (2026-11-01) : la base l'emporte elle-même avec le compte.
+  "activite_jour.uid": "clé étrangère vers auth.users ON DELETE CASCADE (migration_croissance_2026-11-01.sql) : la ligne part avec le compte, sans passer par la purge",
 };
 
 function fichiersSql() {

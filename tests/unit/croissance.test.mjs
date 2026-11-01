@@ -102,3 +102,19 @@ test("⑧ la fonction déployée lit la croissance et décide du masquage", () =
   assert.match(src, /\.is\("decision", null\)/, "une décision ne s'écrase jamais");
   assert.match(src, /estObjetAbsent\(error\)\) return \{ absente: true/, "migration pas appliquée : « Pas encore allumée », jamais une panne");
 });
+
+test("⑨ les migrations : pré-tri borné (3 anciens, restrictive, jamais de suppression), paliers après agrégation", () => {
+  const mig = fs.readFileSync("migrations/migration_moderation_pretri_2026-11-01.sql", "utf8");
+  assert.match(mig, /interval '7 days'/, "ancienneté des signaleurs");
+  assert.match(mig, /n >= 3/);
+  assert.match(mig, /as restrictive for select/);
+  assert.match(mig, /where public\.contenus_masques\.decision is null/, "une décision du pilote n'est jamais écrasée");
+  assert.doesNotMatch(mig, /delete from public\.posts/i, "le pré-tri ne supprime jamais");
+  const cr = fs.readFileSync("migrations/migration_croissance_2026-11-01.sql", "utf8");
+  const corps = cr.slice(cr.indexOf("function public.purge_telemetrie_paliers"));
+  assert.ok(corps.indexOf("perform public.agreger_croissance") < corps.indexOf("delete from public.telemetry_events"), "agréger AVANT de purger");
+  assert.match(cr, /references auth\.users \(id\) on delete cascade/, "l'activité part avec le compte");
+  for (const f of ["pilotage_croissance(integer)", "purge_telemetrie_paliers()", "agreger_croissance(date)"]) {
+    assert.ok(cr.includes("revoke execute on function public." + f + " from public, anon, authenticated"), f + " fermée aux clients");
+  }
+});
