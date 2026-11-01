@@ -214,3 +214,38 @@ test("⑨ des exemples crédibles : étalés, sans rafale, compteurs d'une commu
   expect(r.commentairesHorsCadre, "un commentaire suit sa publication et ne vient pas du futur").toEqual([]);
   expect(r.instables, "le même fil à chaque ouverture").toBe(0);
 });
+
+// ⑩ Défaut trouvé par `capacite-fil-cache` en CI sur la première version du lot :
+// la lecture automatique partage `_feedPageLoading` avec « Charger plus », et un
+// geste qui tombait pendant elle ressortait SANS RIEN FAIRE. Il attend désormais
+// qu'elle finisse, puis lit sa propre page — jamais deux lectures en même temps.
+test("⑩ un « Charger plus » pendant une lecture automatique n'est pas perdu", async ({ page }) => {
+  await poser(page);
+  const r = await page.evaluate(async () => {
+    const t = Date.now();
+    let n = 0, enVol = 0, maxEnVol = 0, liberer = null;
+    const lot = (k) => [{ id: "5d0c1f7e-0000-4000-8000-0000000000c" + k, authorId: "a1a1a1a1-0000-4000-8000-000000000004",
+      authorName: "Réelle Retenue", passion: "musique", mood: "creation", type: "text", text: "REEL_LOT_" + k,
+      createdAt: t - (200 + k) * 3600000, likes: 0, comments: [], fromSupabase: true }];
+    window._feedServerMayHaveMore = true;
+    window.supaLoadPosts = () => {
+      const k = ++n;
+      enVol++; maxEnVol = Math.max(maxEnVol, enVol);
+      const fin = (v) => { enVol--; return v; };
+      if (k === 1) return new Promise((res) => { liberer = () => res(fin(lot(1))); });
+      return Promise.resolve(fin(lot(k)));
+    };
+    window._feedDomSig = null; goTo("feed"); renderFeed();   // lecture automatique, retenue
+    const avant = n;
+    const geste = loadMoreFeedPosts();                         // le geste tombe pendant elle
+    await new Promise((res) => setTimeout(res, 80));
+    const pendant = n;
+    liberer();
+    await geste;
+    return { avant, pendant, apres: n, maxEnVol };
+  });
+  expect(r.avant, "la lecture automatique est partie").toBe(1);
+  expect(r.pendant, "le geste attend, il ne double pas la lecture").toBe(1);
+  expect(r.apres, "puis il lit sa propre page").toBeGreaterThanOrEqual(2);
+  expect(r.maxEnVol, "jamais deux lectures en même temps").toBe(1);
+});

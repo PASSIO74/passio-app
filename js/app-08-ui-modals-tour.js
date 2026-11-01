@@ -8049,6 +8049,12 @@ async function _chargerPageServeurSuivante(loadedCount) {
 }
 
 async function loadMoreFeedPosts() {
+  // ⚠️ UN GESTE EXPLICITE N'EST JAMAIS PERDU DERRIÈRE UN CHARGEMENT AUTOMATIQUE
+  // (2026-11-01). `completerFilAvecLeReel` partage `_feedPageLoading` : sans
+  // cette attente, un « Charger plus » (ou la sentinelle) tombant pendant sa
+  // lecture sortait ici sans rien faire. On attend qu'elle finisse, puis le
+  // geste suit son cours — deux lectures ne courent jamais en même temps.
+  if (_filReelEnVol) { try { await _filReelEnVol; } catch (e) {} }
   if (window._feedPageLoading) return;
   window._feedPageLoading = true;
   const btn = document.getElementById("feedLoadMoreBtn");
@@ -8083,19 +8089,29 @@ async function loadMoreFeedPosts() {
 // les exemples font ce pour quoi ils sont là.
 const FIL_REEL_PAGES_MAX = 3;
 let _filReelPages = { owner: null, n: 0 };
+// La lecture automatique EN VOL, attendue par `loadMoreFeedPosts` (cf. son en-tête).
+let _filReelEnVol = null;
 async function completerFilAvecLeReel() {
   if (window._feedPageLoading || !window._feedServerMayHaveMore) return false;
   const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
   if (_filReelPages.owner !== owner) _filReelPages = { owner: owner, n: 0 };
   if (_filReelPages.n >= FIL_REEL_PAGES_MAX) return false;
   _filReelPages.n++;
+  // ⚠️ Le verrou est posé dans la partie SYNCHRONE : entre ce retour et la
+  // première lecture, aucun autre chargement ne peut s'intercaler.
   window._feedPageLoading = true;
+  const tache = (async function () {
+    try {
+      return await _chargerPageServeurSuivante((state.supabasePosts || []).length);
+    } catch (e) {
+      try { diagLog("fil_reel_avant_exemples: " + (e && e.message ? e.message : e)); } catch (_) {}
+      return 0;
+    } finally { window._feedPageLoading = false; }
+  })();
+  _filReelEnVol = tache;
   let ajoutees = 0;
-  try {
-    ajoutees = await _chargerPageServeurSuivante((state.supabasePosts || []).length);
-  } catch (e) {
-    try { diagLog("fil_reel_avant_exemples: " + (e && e.message ? e.message : e)); } catch (_) {}
-  } finally { window._feedPageLoading = false; }
+  try { ajoutees = await tache; }
+  finally { if (_filReelEnVol === tache) _filReelEnVol = null; }
   // Repeindre seulement s'il y a du nouveau, et seulement si le fil est à
   // l'écran (`scheduleFeedRender` sait les deux).
   if (ajoutees > 0 && typeof scheduleFeedRender === "function") scheduleFeedRender();

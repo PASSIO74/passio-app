@@ -674,6 +674,10 @@ du bas — après une vingtaine d'exemples, et insérée AU-DESSUS de ce qu'on l
 « Charger plus »), la fenêtre (`_feedRenderLimit`) n'est PAS élargie. Sans borne, un compte dont les passions ne
 croisent aucune vraie publication balaierait toute la table à chaque rendu. La boucle de pagination est
 désormais `_chargerPageServeurSuivante`, partagée avec `loadMoreFeedPosts` (corps inchangé).
+⚠️ **Trouvé par la CI sur la première version** (`capacite-fil-cache`, 3 rouges) : la lecture automatique
+partage `_feedPageLoading`, et un « Charger plus » (ou la sentinelle) tombant pendant elle ressortait SANS RIEN
+FAIRE — un geste perdu en silence. `loadMoreFeedPosts` attend désormais la lecture automatique en vol
+(`_filReelEnVol`), puis suit son cours : jamais deux lectures en même temps, jamais un geste perdu.
 
 **④ Le réalisme — ce qui trahissait la démo n'était pas le texte, c'était la STRUCTURE.** Mesuré sur les 369
 exemples : médiane 27 h et un quart dans les 14 dernières heures, des séries d'un même auteur espacées de
@@ -705,7 +709,8 @@ démarrage téléchargerait 568 Ko pour nommer de la démo. Libellés, emojis et
 `data/passions-v1.json` ; le verrou ⑦ refuse toute divergence. C'est de l'affichage : `estPassionCanonique`
 ne la lit pas.
 
-Verrou : `tests/e2e/fil-reel-dabord.spec.js` (9) — ①②⑤ tombent si `renderFeed` retrouve
+Verrou : `tests/e2e/fil-reel-dabord.spec.js` (10) — ⑩ tombe sans l'attente de `_filReelEnVol` (réinjection
+faite) ; ①②⑤ tombent si `renderFeed` retrouve
 `trierFilChronologique` ; ⑥ compte les lectures (exactement 3) ; ⑦⑧ tiennent la table et la couverture des
 passions cochées en production ; ⑨ les invariants de réalisme (plafond de « j'aime », étalement, aucune rafale
 d'auteur, aucune photo répétée deux fois de suite, commentaires dans le cadre, même fil à chaque ouverture).
