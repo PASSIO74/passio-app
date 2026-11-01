@@ -84,9 +84,11 @@ begin
      and t.auth_uid is not null
      and coalesce(t.env, '') <> 'development'
      and (t.meta ->> 'trafic') is null
-     and not exists (select 1 from auth.users u where u.id = t.auth_uid
-                      and (lower(coalesce(u.email, '')) like '%@passio-e2e.test'
-                           or lower(coalesce(u.email, '')) = 'passioadmin@gmail.com'))
+     -- Un compte qui EXISTE encore (clé étrangère) : la télémétrie d'un compte
+     -- supprimé depuis ferait échouer l'agrégation de toute la journée.
+     and exists (select 1 from auth.users u where u.id = t.auth_uid
+                  and lower(coalesce(u.email, '')) not like '%@passio-e2e.test'
+                  and lower(coalesce(u.email, '')) <> 'passioadmin@gmail.com')
   on conflict do nothing;
 
   delete from public.croissance_jour where jour = p_jour;

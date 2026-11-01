@@ -127,7 +127,9 @@ verif "② activité : identité serveur, ni e2e, ni équipe, ni dev" "$(Q "sele
 Q "delete from auth.users where id = '$(U 7)'" >/dev/null
 verif "② l'activité part avec le compte" "$(Q "select count(*) from public.activite_jour where uid = '$(U 7)'")" "0"
 verif "③ purge_telemetry_7j retirée, deux tâches posées" "$(Q "select string_agg(jobname, ',' order by jobname) from cron.job")" "agreger_croissance,purge_telemetrie_paliers"
-FICHIER "$M1" >/dev/null
+# La télémétrie de U7 (supprimé) est toujours là : le rejeu agrège ce jour-là.
+verif "③ rejeu malgré la télémétrie d'un compte supprimé" "$(FICHIER "$M1" >/dev/null 2>&1 && echo ok || echo leve)" "ok"
+verif "③ le compte supprimé ne revient pas dans l'activité" "$(Q "select count(*) from public.activite_jour where uid = '$(U 7)'")" "0"
 verif "③ rejouable (deux tâches)" "$(Q "select count(*) from cron.job")" "2"
 Q "select public.purge_telemetrie_paliers()" >/dev/null
 verif "④ paliers : échec et 5xx de 4 j gardés, le reste parti" "$(Q "select string_agg(type, ',' order by type) from public.telemetry_events where received_at < now() - interval '2 days'")" "api,error"
