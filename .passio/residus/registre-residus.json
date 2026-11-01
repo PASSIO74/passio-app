@@ -1,6 +1,6 @@
 {
   "format": "passio-residus/1",
-  "mis_a_jour_le": "2026-10-31",
+  "mis_a_jour_le": "2026-11-01",
   "_lecture": "Registre STRUCTURÉ UNIQUE des résidus (cinquième contre-revue Astra, mandat §9). Validé et évalué par scripts/audit-registre-residus.js (CI, job « Audits statiques ») ; lu par le pilotage (dashboard, domaine « résidus » du readiness). Les quatre états sont séparés : corrige, teste, deploye, relu_sur_cible — valeurs oui / non / partiel / non mesuré / sans objet. Un résidu n'est « ferme » qu'avec les quatre à oui. La condition_de_reexamen est évaluée par le contrôle contre le DÉPÔT (fichier présent, objet SQL déclaré par une migration, échéance, autre résidu fermé) ; « déclaré dans le dépôt » n'est pas « en service sur la cible ». Un résidu dont la condition devient satisfaite doit passer à traitable / planifie (avec le chantier) : sinon la CI est rouge. Les nuances acceptées par Astra sont listées à part et ne sont pas des défauts.",
   "residus": [
     {
@@ -31,9 +31,9 @@
       "condition_de_reexamen": { "type": "date", "le": "2026-11-01" },
       "critere_de_fermeture": "Une planification (pg_cron ou tâche externe) appelle purger_marqueurs_suppression avec un intervalle ≥ 30 jours, et une exécution sur la cible est relue (marqueurs plus anciens que l'intervalle absents, plus récents présents).",
       "preuve_attendue": "Ligne cron.job (ou journal de la tâche externe) et relecture de compte_en_suppression avant/après.",
-      "prochaine_etape": "Le 2026-11-01 après 03:41 UTC, canal ① : cron.job_run_details du jobid 8 (exécution « succeeded ») et comptes_en_suppression — le marqueur du 2026-09-16 absent, aucun « supprimee » de plus de 45 jours, les plus récents présents. Fermer alors RES-02.",
-      "etats": { "corrige": "oui", "teste": "oui", "deploye": "oui", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "planifie", "le": "2026-10-21", "chantier": "PR #605 (478ad57) — migration appliquée sur la cible le 2026-10-21 (journal migrations_appliquees)", "note": "Appliquée le 2026-10-21 à 10:29:56 UTC, verdict OK (fonction présente, tâche unique, active, commande exacte). Relue sur la cible le même jour : tâche présente et active, 0 exécution — la première tombe le 22/10 à 03:41 UTC et n'a rien à effacer avant le 01/11." }
+      "prochaine_etape": "Aucune : fermé. La purge tourne chaque nuit à 03:41 UTC ; rouvrir si cron.job_run_details du job purge_marqueurs_suppression montre un échec, ou si un marqueur « supprimee » de plus de 45 jours réapparaît.",
+      "etats": { "corrige": "oui", "teste": "oui", "deploye": "oui", "relu_sur_cible": "oui" },
+      "reexamen": { "statut": "ferme", "le": "2026-11-01", "chantier": "PR #605 (478ad57) — planification appliquée le 2026-10-21 ; relecture du 2026-11-01 consignée ici", "note": "01/11, relu sur la cible (canal ①, 04:06 UTC) : exécution du jobid 8 le 2026-11-01 à 03:41:00 UTC « succeeded » (celle du 31/10 aussi). Le 31/10 à 13:00 UTC, comptes_en_suppression portait 5 marqueurs « supprimee », le plus ancien du 2026-09-16 09:26 ; le 01/11 après la purge : 0 ligne, et 0 « supprimee » de plus de 45 jours. La fonction (pg_get_functiondef relu) n'efface QUE statut = 'supprimee' et supprimee_le < now() - p_retention, et refuse une rétention < 30 jours : les 5 disparus avaient donc franchi les 45 jours. « Les plus récents présents » : sans objet ce jour, aucun marqueur de moins de 45 jours n'existait. Les quatre états à oui." }
     },
     {
       "id": "RES-03",
