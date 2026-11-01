@@ -323,3 +323,41 @@ moment de signer) :
   [Legalstart (choix des classes)](https://www.legalstart.fr/fiches-pratiques/depot-marque/deposer-une-marque-comment-choisir-vos-classes/)
 - Billetterie concurrente : frais généralement payés par le participant, gratuits sur les billets
   gratuits — [aide Eventbrite](https://www.eventbrite.ca/help/fr-ca/articles/193833/[slug]/)
+
+---
+
+## 9. Paliers : « j'ai N utilisateurs, je fais quoi ? »
+
+> Ajouté le 2026-11-01. Benjamin donne un chiffre (« lundi 4 janvier, 850 utilisateurs ») ; la
+> réponse se lit ici. La même table vit dans le pilotage (`PALIERS_CROISSANCE`,
+> `supabase/functions/_shared/pilotage.js`) : une carte « Croissance » dans **À faire**, qui passe
+> en orange (« Palier franchi ») la semaine où le seuil est dépassé.
+
+**Les seuils comptent des INSCRITS** (le seul nombre exact que le pilotage compte en base). Les
+décisions de la section 3 se prennent sur des **ACTIFS** : un palier dit *quoi regarder*, jamais
+*« fais payer maintenant »*. Le signal décisif reste celui de la section 3 : **trois organisateurs qui
+demandent d'eux-mêmes à faire payer.**
+
+| Inscrits | Phase | Ce qu'on fait | Ce qu'on ne fait PAS |
+|---|---|---|---|
+| 0 → 99 | 0-1 | une ville, trois passions ; recruter 15 à 20 hôtes ; créer soi-même leurs trois premières rencontres | parler d'argent |
+| 100 | 1 | vérifier 2 à 4 rencontres réelles par semaine ; installer la Session PASSIO hebdomadaire ; kit QR dans 3 lieux | ajouter des fonctions : le goulot est la communauté |
+| 300 | 1 | mesurer chaque lundi les cinq chiffres (§ 6) ; **lancer la structure** (micro-entreprise) et le **dépôt INPI** s'ils ne sont pas faits — ils prennent des semaines | ouvrir une 2e ville |
+| 1 000 | 1 → 2 | relire les cinq seuils de la phase 2 ; s'ils tiennent et que 3 organisateurs le demandent : prérequis légaux (§ 3, phase 2), puis **billetterie** (lot L4, revue + red team) avec l'offre fondateurs | PASSIO+ |
+| 2 000 | 3 | si la densité tient : **PASSIO Orga** (tarif fondateur −50 %) et **lieux partenaires** ; PASSIO+ seulement au-delà de 2 000 **actifs** par mois | retirer une fonction gratuite |
+| 5 000 | 3 | **2e ville** avec un ambassadeur local ; PASSIO+ si la conversion mesurée le justifie | la publicité programmatique |
+| 10 000 | 4 | sponsors d'événements, affiliation étiquetée, financement (prêt d'honneur, Bourse French Tech) | sortir sur les stores avant que la PWA ait fait ses preuves |
+
+**Exemple : lundi 4 janvier, 850 inscrits.** Palier 300, prochain palier 1 000. C'est le jour du
+lancement « résolutions de janvier » (§ 7, semaine 10) : on ne monétise pas. On regarde les cinq
+chiffres de la phase 1, et si la structure juridique et la marque ne sont pas lancées, c'est
+**cette semaine** : la billetterie ne pourra pas ouvrir sans elles quand la densité arrivera.
+
+**Ce qu'il faut donner à Claude pour une réponse précise**, au-delà du nombre d'inscrits : actifs
+de la semaine, rencontres réelles de la semaine et leur taux de présence, nombre d'organisateurs, et
+toute demande d'organisateur de faire payer. Sans ces chiffres, la réponse s'appuie sur la seule
+table ci-dessus.
+
+**Veille hebdomadaire.** Chaque lundi matin, une tâche planifiée de Claude (sur le poste, app
+Claude ouverte) mesure ces chiffres en lecture seule (canal ① d'ADR-012), les compare à cette table
+et prévient Benjamin quand un palier ou un seuil de phase est franchi. Elle ne modifie rien.
