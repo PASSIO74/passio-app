@@ -4138,7 +4138,7 @@ function openEventDetails(id) {
     <!-- Côté organisateur : le QR à montrer à l'entrée. Disponible dès le jour J
          (et pas seulement pendant la fenêtre de pointage) pour préparer l'accueil. -->
     ${_canManageEvent(ev) && !over && !cancelled ? `
-      <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openEventCheckinQr('${escapeJsArg(ev.id)}')">
+      <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" data-orga-qr="${escapeHtml(ev.id)}" onclick="openEventCheckinQr('${escapeJsArg(ev.id)}')">
         QR d'accueil des participants
       </button>` : ""}
 

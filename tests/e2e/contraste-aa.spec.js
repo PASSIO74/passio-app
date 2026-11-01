@@ -9,7 +9,7 @@
 // maison est que le contrôle remonte au premier fond opaque et ignore l'alpha
 // — ici on compose l'alpha exprès, parce que c'est le voile qui fait le fond.
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, armerPlafondPassions } = require("./app-helper");
 
 const APERCU = "?passio_preview=flat-passions-v1";
 const DISPO = ["voyage", "cuisine", "photo"];
@@ -31,6 +31,9 @@ const CONTRASTE = `(el) => {
 
 test.describe("contraste AA — les deux textes que l'audit a mesurés sous 4,5:1", () => {
   test("① la porte « Ajouter une passion » : mot et titre en état plein ≥ 4,5:1 sur le lavis", async ({ page }) => {
+    // L'état « plein » n'existe que plafond ARMÉ — levé par défaut depuis le
+    // lancement gratuit (2026-11-01) : on l'arme pour mesurer cet état-là.
+    await armerPlafondPassions(page);
     await bootOnboarded(page, null, 1, { query: APERCU });
     await page.evaluate((dispo) => {
       window.supaSaveUserState = async () => {}; window.supaSavePassionState = async () => {}; window.supaUpsertProfile = async () => {};

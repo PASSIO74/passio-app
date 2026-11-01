@@ -4033,7 +4033,42 @@ if (!window._reconciliationVitrineArmee) {
   try { setTimeout(function () { _reconcilierVitrinePassions(0); }, 7000); } catch (e) {}
 }
 
-async function supaSavePassionState() {
+// ⚠️ UNE SEULE ÉCRITURE DE LA VITRINE EN VOL (2026-11-01, audit du lancement
+// gratuit). Chaque ajout de passion appelle `supaSavePassionState`, qui envoie
+// la liste COMPLÈTE lue au moment de partir. En rafale — l'onboarding attache
+// jusqu'à sept passions d'un coup depuis que le plafond de trois est levé — les
+// écritures partaient en parallèle et la dernière ARRIVÉE gagnait : parfois la
+// plus courte, jusqu'à la réconciliation du démarrage suivant.
+// Désormais : une écriture à la fois ; les appels qui arrivent pendant qu'une
+// écriture attend son tour s'y fondent, et elle lit l'état AU MOMENT DE PARTIR
+// (donc le plus récent). Chaque appelant reçoit le verdict de l'écriture qui
+// porte son état. Une écriture bloquée ne retient pas la file plus de 20 s.
+// Verrou : `tests/e2e/lancement-gratuit.spec.js` ⑥.
+var _vitrineEnVol = null;       // promesse de l'écriture en cours
+var _vitrineEnAttente = null;   // { promesse } de l'écriture qui attend son tour
+function supaSavePassionState() {
+  if (_vitrineEnAttente) return _vitrineEnAttente.promesse;
+  const precedente = _vitrineEnVol;
+  const tour = {};
+  _vitrineEnAttente = tour;
+  tour.promesse = (async function () {
+    // Laisse finir la rafale synchrone en cours : ses appels se fondent ici.
+    await null;
+    if (precedente) {
+      await Promise.race([
+        precedente.then(function () {}, function () {}),
+        new Promise(function (r) { setTimeout(r, 20000); }),
+      ]);
+    }
+    if (_vitrineEnAttente === tour) _vitrineEnAttente = null;
+    _vitrineEnVol = tour.promesse;
+    try { return await _supaSavePassionStateMaintenant(); }
+    finally { if (_vitrineEnVol === tour.promesse) _vitrineEnVol = null; }
+  })();
+  return tour.promesse;
+}
+
+async function _supaSavePassionStateMaintenant() {
   try {
     const charge = _chargeProfilComplete();
     if (!charge) return false;

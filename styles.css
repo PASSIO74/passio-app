@@ -11468,6 +11468,23 @@ button, a, label, select, summary,
 #modalContent.v6a0 .v6a0-publier[aria-busy="true"] { opacity: 0.6; cursor: progress; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   AFFICHE DE LA RENCONTRE (2026-11-01, lancement gratuit) — js/affiche-rencontre.js
+   Actif par défaut ; coupé par localStorage.passio_affiche_rencontre="0" ou
+   window.PASSIO_AFFICHE_RENCONTRE=false (le bouton n'est alors jamais posé).
+   ⚠️ Ce bloc est posé AVANT celui d'UI-4A5, qui doit rester le DERNIER de la
+   feuille.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.affiche-rencontre-btn { font-size: 12px; margin-bottom: 8px; }
+.affiche-sous { font-size: 12px; color: var(--muted); margin: -4px 0 12px; }
+.affiche-apercu {
+  display: block; width: 100%; max-width: 360px; margin: 0 auto 12px;
+  aspect-ratio: 1240 / 1754; border-radius: 12px; border: 1px solid var(--border);
+  background: #fff;
+}
+.affiche-aide { font-size: 12.5px; color: var(--text-dim); line-height: 1.6; margin-bottom: 14px; text-align: center; }
+.affiche-telecharger { margin-top: 8px; text-align: center; text-decoration: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtre » est une VUE de « Rencontrer ».
    ACTIF PAR DÉFAUT.
    (coupures : localStorage.passio_ui_4a5 = "0" · window.PASSIO_UI_4A5 = false)

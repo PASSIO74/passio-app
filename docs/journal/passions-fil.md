@@ -20,6 +20,7 @@
 - 🔤 ALIAS À LA CRÉATION D'UNE PASSION (2026-09-10)
 - 👥 « JEREM A PUBLIÉ, ÇA N'APPARAÎT PAS DANS MON FIL » — LA DÉMO PASSAIT DEVANT LES COMPTES SUIVIS (2026-10-23)
 - 🕒 LE FIL DEVIENT CHRONOLOGIQUE : LE PLUS RÉCENT EN HAUT, TOUJOURS (2026-10-24)
+- 🚀 LANCEMENT GRATUIT : LE MUR DES TROIS PASSIONS EST LEVÉ POUR TOUS (2026-11-01)
 
 ---
 
@@ -593,3 +594,48 @@ Demande de Benjamin, le lendemain du rapport sur Jerem : « il faut mettre toujo
 ⚠️ `rankFeedPosts`, `rankFeedPostsForIntent(s)`, `feedPostScore` et les garanties `FEED_MA_PUBLI_BONUS` / `FEED_SUIVI_BONUS` (fiche précédente) **n'ordonnent plus le Fil** ; ils restent en place, gardés par leurs suites (`feed-ranking`, `feed-intents`, `fil-suivi-garantie`). Les rebrancher, c'est rouvrir cette décision.
 ⚠️ Le contenu de démonstration a des dates recalculées à chaque ouverture : en chronologique, il s'intercale avec les vraies publications selon cette date fabriquée.
 Verrou : `tests/e2e/fil-chronologique.spec.js` (3) — ① et ② tombent quand on rebranche l'ancien classement (réinjection faite).
+
+---
+
+## 🚀 LANCEMENT GRATUIT : LE MUR DES TROIS PASSIONS EST LEVÉ POUR TOUS (2026-11-01)
+
+Demande de Benjamin, après le plan `docs/PLAN_MONETISATION_2026-11-01.md` : « c'est parti, je lance
+l'app en gratuit, mets tout en place ». Mesuré le 01/11 : 14 comptes, aucune connexion sur 7 jours,
+aucune rencontre payante. Le plafond de 3 passions vivantes et le quota de 3 changements ne servaient
+qu'une offre payante inexistante ; ils coûtaient la découverte (plus de passions = plus de croisements).
+
+**Le levier est UN SEUL interrupteur, en amont des deux qui existaient** : `PLAFOND_PASSIONS_EN_VIGUEUR
+= false` (app-06) fait rendre faux à `plafondPassionsArme()`, donc à `plafondPassionsActif()`, donc à
+`quotaChangementsActif()` — le chemin même du mode « passions illimitées » de l'éditeur, déjà verrouillé
+(fiche ♾️ ci-dessus) : `passionsRestantesOffertes` → Infinity, l'écran retire seul « sur N » et
+l'alerte de quota, l'onboarding revient à `ONB_MAX_PASSIONS` (7).
+
+⚠️ **Le sens est celui du rideau d'accès (2026-09-11) : levé par défaut, armé par adhésion de
+l'appareil** — `window.PASSIO_PLAFOND_PASSIONS = true` ou `localStorage.passio_plafond_passions_v1 =
+"1"`. Armer une limite sur SON appareil ne donne rien à personne ; aucune lecture ne lève une limite
+que le produit applique. Les **9 suites** qui éprouvent le plafond l'arment par `armerPlafondPassions`
+(app-helper, variable de `window` reposée à chaque navigation, insensible à un `localStorage.clear()`) —
+dont `contraste-aa.spec.js` ①, qui mesure l'état « porte pleine » qui n'existe que plafond armé.
+
+⚠️ **Ce que le lancement ne coûtera pas au retour du plafond (PASSIO+, phase 3)** : un compte qui a pris
+cinq passions les GARDE (la fusion ne rétrograde jamais l'état serveur), et un changement fait pendant
+le lancement n'est jamais facturé (le journal fige `compte: quotaChangementsActif()` À L'ÉCRITURE — faux
+ici). Les deux sont mesurés par `lancement-gratuit.spec.js` ③ et ⑤.
+
+⚠️ **Ce qui n'est PAS levé** : les 3 CRÉATIONS de passion (noms absents du catalogue), tenues par le
+serveur (`creer_passion` + `passion_quotas`). Un drapeau client ne lève jamais un plafond serveur, et
+elles servent aussi d'anti-abus (modération).
+
+⚠️ **Plafond levé = rafales d'écritures de la vitrine** (audit `audit-passio` du même jour) : chaque
+ajout appelle `supaSavePassionState`, qui envoie la liste COMPLÈTE lue au départ ; l'onboarding en
+attache jusqu'à sept d'un coup, et la dernière écriture ARRIVÉE gagnait — parfois la plus courte,
+jusqu'à la réconciliation du démarrage suivant. Défaut préexistant, amplifié de 3 à N : la fonction
+est désormais une FILE (app-08) — une écriture en vol au plus, les appels qui arrivent pendant
+qu'une écriture attend se fondent en elle, et elle lit l'état AU MOMENT DE PARTIR ; une écriture
+bloquée ne retient pas la file plus de 20 s. L'écriture elle-même est `_supaSavePassionStateMaintenant`.
+Les textes qui annonçaient encore « 3 offertes » / « retour à 3 passions » se taisent plafond levé
+(la bascule « illimité » de l'éditeur disparaît : elle ne lèverait rien).
+
+Verrou : `tests/e2e/lancement-gratuit.spec.js` (6) — **réinjection** : `PLAFOND_PASSIONS_EN_VIGUEUR =
+true` rend ①②③④ rouges, ⑤ (le réarmement) reste vert ; la file retirée rend ⑥ rouge.
+

@@ -451,4 +451,13 @@ async function sansDonneesDistantes(page, opts = {}) {
   await page.routeWebSocket(/\/realtime\/v1\/websocket/, () => {});
 }
 
-module.exports = { onboardedState, bootOnboarded, sansDonneesDistantes, miroirPassions, PASSIONS };
+// LANCEMENT GRATUIT (2026-11-01) : le plafond de trois passions et le quota de
+// trois changements sont LEVÉS par défaut (`PLAFOND_PASSIONS_EN_VIGUEUR`, app-06).
+// Une suite qui éprouve le plafond l'ARME elle-même, comme `access-gate.spec.js`
+// arme le rideau : par la variable de `window`, posée à CHAQUE navigation et
+// insensible à un `localStorage.clear()` du test.
+async function armerPlafondPassions(page) {
+  await page.addInitScript(() => { window.PASSIO_PLAFOND_PASSIONS = true; });
+}
+
+module.exports = { onboardedState, bootOnboarded, sansDonneesDistantes, miroirPassions, PASSIONS, armerPlafondPassions };
