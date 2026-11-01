@@ -544,6 +544,22 @@ test.describe("le modèle et les garde-fous", () => {
   // première rédaction préchargeait le référentiel pour tout le monde et faisait
   // rougir ⑤ et ⑰ bis, qui protègent 568 Ko sur le chemin critique.
   // ══════════════════════════════════════════════════════════════════════════
+  // ⚠️ LA PASSION D'ÉPREUVE DOIT ÊTRE INCONNUE DE TOUT CE QUI EST EMBARQUÉ (2026-11-01).
+  // Ces trois cas prenaient « sport-escalade » : depuis que le contenu d'exemple
+  // nomme ses passions précises sans le référentiel (`PASSIONS_EXEMPLES`, app-01),
+  // l'escalade s'affiche nommée d'emblée — ⑰ ter et sexies restaient verts sans
+  // plus rien prouver, ⑰ quinquies attendait un chargement devenu inutile. On
+  // éprouve donc une passion absente du socle ET de cette table, et la prémisse
+  // est vérifiée plutôt que supposée : la table peut grandir.
+  test("⑰ prémisse — la passion d'épreuve n'est nommée par rien d'embarqué", async ({ page }) => {
+    await bootOnboarded(page, null, 1);
+    const r = await page.evaluate(() => ({
+      socle: PASSIONS.some((p) => p.id === "sport-squash"),
+      exemples: typeof PASSIONS_EXEMPLES !== "undefined" && Object.prototype.hasOwnProperty.call(PASSIONS_EXEMPLES, "sport-squash"),
+    }));
+    expect(r).toEqual({ socle: false, exemples: false });
+  });
+
   test("⑰ ter — une passion du référentiel s'affiche AVEC SON NOM, sans ouvrir le sélecteur", async ({ page }) => {
     // ⚠️ MESURÉ À L'ÉCRAN PAR BENJAMIN : trois bulles « ✨ Passion » au milieu de
     // passions bien nommées. `passionById` (app-02) résout le socle embarqué,
@@ -554,22 +570,22 @@ test.describe("le modèle et les garde-fous", () => {
       user: {
         name: "Audit QA", birthYear: 1995, isMinor: false,
         currentProfileId: "pp_0",
-        profiles: [{ id: "pp_0", name: "Audit QA", passion: "sport-escalade", emoji: "🧗", bio: "", color: "#7c3aed", createdAt: 1 }],
+        profiles: [{ id: "pp_0", name: "Audit QA", passion: "sport-squash", emoji: "🏋️", bio: "", color: "#7c3aed", createdAt: 1 }],
         drafts: [], likedPosts: [], joinedEvents: [], seenStories: [], customPassions: [],
         following: [], general: { username: "Audit QA" },
       },
       userPosts: [], userEvents: [], notifications: [],
-      currentMood: "all", selectedFeedPassions: ["sport-escalade"],
+      currentMood: "all", selectedFeedPassions: ["sport-squash"],
     };
     await bootOnboarded(page, null, 1, { state: etatAvecPassionPlate });
 
     // Le nom arrive sans le moindre geste : c'est tout l'objet du correctif.
     await page.waitForFunction(
-      () => (document.getElementById("profileStrip") || {}).textContent?.includes("Escalade"),
+      () => (document.getElementById("profileStrip") || {}).textContent?.includes("Squash"),
       null, { timeout: 20000 }
     );
     const rail = await page.locator("#profileStrip").innerText();
-    expect(rail).toContain("Escalade");
+    expect(rail).toContain("Squash");
     // ⚠️ Et le générique a bien DISPARU : le repeint invalide `_lastHtml`, sans
     // quoi le rail garderait ses bulles génériques pour toute la session, un
     // référentiel pourtant chargé.
@@ -622,11 +638,11 @@ test.describe("le modèle et les garde-fous", () => {
       // 2026-09-02). On sème donc la publication d'autrui là où elle vit
       // vraiment — `supabasePosts` — DERRIÈRE les 265 publications de seed.
       state.supabasePosts = [{
-        id: "p_escalade_autrui", authorId: "u_lea", passion: "sport-escalade",
-        mood: "all", text: "Voie ouverte ce matin.", createdAt: Date.now() - 86400000 * 30,
+        id: "p_squash_autrui", authorId: "u_lea", passion: "sport-squash",
+        mood: "all", text: "Deux heures de squash ce matin.", createdAt: Date.now() - 86400000 * 30,
         likes: 0, comments: [],
       }];
-      setFeedPassions(["sport-escalade"]);
+      setFeedPassions(["sport-squash"]);
       saveState(); goTo("feed"); renderFeed();
     });
     // Prémisse VÉRIFIÉE : le seed est bien peuplé, donc la publication d'autrui
@@ -641,8 +657,8 @@ test.describe("le modèle et les garde-fous", () => {
       () => window.PassioPassions && window.PassioPassions.pret(),
       null, { timeout: 25000 }
     );
-    const nom = await page.evaluate(() => passionById("sport-escalade").label);
-    expect(nom).toBe("Escalade");
+    const nom = await page.evaluate(() => passionById("sport-squash").label);
+    expect(nom).toBe("Squash");
     expect(nom).not.toBe("Passion");
   });
 
@@ -655,22 +671,22 @@ test.describe("le modèle et les garde-fous", () => {
       onboarded: true, landingSeen: true, tourSeen: true,
       user: {
         name: "Audit QA", birthYear: 1995, isMinor: false, currentProfileId: "pp_0",
-        profiles: [{ id: "pp_0", name: "Audit QA", passion: "sport-escalade", emoji: "🧗", bio: "", color: "#7c3aed", createdAt: 1 }],
+        profiles: [{ id: "pp_0", name: "Audit QA", passion: "sport-squash", emoji: "🏋️", bio: "", color: "#7c3aed", createdAt: 1 }],
         drafts: [], likedPosts: [], joinedEvents: [], seenStories: [], customPassions: [],
         following: [], general: { username: "Audit QA" },
       },
       userPosts: [], userEvents: [], notifications: [],
-      currentMood: "all", selectedFeedPassions: ["sport-escalade"],
+      currentMood: "all", selectedFeedPassions: ["sport-squash"],
     };
     await sansDonneesDistantes(page);
     await bootOnboarded(page, null, 1, { state: etat });
     await page.evaluate(() => goTo("profiles"));
     await page.waitForFunction(
-      () => (document.getElementById("v9ProfilePassions") || {}).textContent?.includes("Escalade"),
+      () => (document.getElementById("v9ProfilePassions") || {}).textContent?.includes("Squash"),
       null, { timeout: 25000 }
     );
     const rail = await page.locator("#v9ProfilePassions").innerText();
-    expect(rail).toContain("Escalade");
+    expect(rail).toContain("Squash");
   });
 
   test("⑱ le pliage du navigateur est celui du référentiel construit", async ({ page }) => {

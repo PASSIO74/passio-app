@@ -708,6 +708,11 @@ avant le générique « ✨ Passion ») et comptée comme connue par `socleConnu
 démarrage téléchargerait 568 Ko pour nommer de la démo. Libellés, emojis et couleurs sont RECOPIÉS de
 `data/passions-v1.json` ; le verrou ⑦ refuse toute divergence. C'est de l'affichage : `estPassionCanonique`
 ne la lit pas.
+⚠️ **Une passion de cette table n'est plus « inconnue du socle »** : `passions-plates` ⑰ ter, quinquies et
+sexies éprouvaient le chargement du référentiel avec « sport-escalade » — ⑰ quinquies est tombé en CI, les deux
+autres restaient verts sans plus rien prouver. Ils éprouvent désormais « sport-squash », et un cas « ⑰ prémisse »
+vérifie qu'elle n'est nommée par rien d'embarqué. Tout test qui veut une passion « hors socle » doit la choisir
+hors de `PASSIONS_EXEMPLES` aussi.
 
 Verrou : `tests/e2e/fil-reel-dabord.spec.js` (10) — ⑩ tombe sans l'attente de `_filReelEnVol` (réinjection
 faite) ; ①②⑤ tombent si `renderFeed` retrouve
