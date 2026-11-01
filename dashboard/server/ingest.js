@@ -191,6 +191,14 @@ export async function startIngest() {
       .order("received_at", { ascending: false })
       .limit(1000);
     if (error) throw error;
+    // Complétude du magasin (moteur d'anomalies) : moins de 1000 lignes = toute
+    // la table est lue ; sinon complet depuis la plus vieille ligne lue.
+    const plusVieille = data && data.length ? Date.parse(data[data.length - 1].received_at) : NaN;
+    store.coverage = {
+      completeSince: !data || data.length < 1000 ? 0 : Number.isFinite(plusVieille) ? plusVieille : null,
+      caughtUpAt: Date.now(),
+      bufferMax: config.eventBuffer,
+    };
     (data || []).reverse().forEach((row) => {
       const ev = normalize(row);
       // La marque de reprise avance sur toute ligne lue, au brut (microsecondes).
@@ -337,5 +345,7 @@ async function pollIncrement() {
     if (error) { poll.failStreak++; poll.lastError = error.message || String(error); return; }
     poll.failStreak = 0; poll.lastError = null; poll.lastOkAt = Date.now(); poll.lastRows = (data || []).length;
     (data || []).forEach(ingestOne);
+    // Rattrapé seulement si le lot n'est pas plein : sinon il reste du retard.
+    if (store.coverage && (data || []).length < LOT_MAX) store.coverage.caughtUpAt = poll.lastOkAt;
   } catch (e) { poll.failStreak++; poll.lastError = e && e.message ? e.message : String(e); }
 }
