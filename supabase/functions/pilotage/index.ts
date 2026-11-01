@@ -14,7 +14,7 @@
 //
 // ② PILOTE — JWT de la personne, réservé au compte de l'éditeur (`autorise`,
 //    échec fermé : 401 sans session, 403 pour tout autre compte).
-//      etat · inscrits · relancer · fusionner · fermer · pause · reprendre · signalement · reparer · reglages
+//      etat · inscrits · relancer · fusionner · fermer · pause · reprendre · signalement · masquage · reparer · reglages
 //    Les gestes GitHub exigent le secret PILOTAGE_GITHUB_TOKEN (sinon 501, dit).
 //    Plafond 30/min, 600/h.
 //
@@ -34,8 +34,9 @@ import {
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
-  pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari,
+  pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel,
 } from "../_shared/pilotage.js";
+import { croissance } from "../_shared/croissance.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 import {
   CLES_REGLAGES, COUPURES_AUTORISEES, normaliserReglage, normaliserMotif, decideDelestage, resumerReglages,
@@ -98,6 +99,7 @@ Deno.serve(async (req) => {
     case "pause": return pause(true);
     case "reprendre": return pause(false);
     case "signalement": return traiterSignalement(admin, String(corps.id || ""), String(corps.statut || ""));
+    case "masquage": return deciderMasquage(admin, String(corps.id || ""), String(corps.decision || ""));
     case "reparer": return reparer(corps);
     case "reglages": return poserReglage(admin, corps);
     case "retour_apercu": return retourApercu(admin);
@@ -256,7 +258,7 @@ async function etat(admin: Admin) {
     sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), activation: lireActivation(admin), signalements: lireSignalements(admin),
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
     disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin), reglages: lireReglages(admin),
-    historique: lireHistorique(admin),
+    historique: lireHistorique(admin), croissance: lireCroissance(admin),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
@@ -285,6 +287,15 @@ async function etat(admin: Admin) {
     inscriptions: u ? tendance(u.inscritsSemaine, u.inscritsSemainePrec, true) : null,
     erreurs: er ? tendance(er.total7, er.total7Prec, false) : null,
   };
+  // La bande passante estimée et la facture (2026-11-01) : les appareils de
+  // 24 h viennent de `utilisateurs`, lus en parallèle de la capacité.
+  const cap = out.capacite as { jauges?: Record<string, unknown>[]; cout?: unknown } | null;
+  if (cap && Array.isArray(cap.jauges)) {
+    const j24 = (out.utilisateurs as { aujourdhui?: Audience | null } | null)?.aujourdhui || null;
+    const bp = j24 ? bandePassanteEstimee(j24.appareils) : null;
+    if (bp != null) cap.jauges.push(...jauges({ bandePassante: bp }).filter((j) => j.cle === "bandePassante"));
+    cap.cout = coutMensuel(cap.jauges);
+  }
   try { out.miseEnLigne = await lireMiseEnLigne(admin, out.github as { runs?: { deploy?: RunResume | null } } | null); }
   catch (err) { out.miseEnLigne = null; nonLus.push("miseEnLigne"); erreursLecture.miseEnLigne = String((err as { message?: string })?.message || err).slice(0, 120); }
   const v = verdict(out as Parameters<typeof verdict>[0]);
@@ -840,10 +851,53 @@ async function listerInscrits(admin: Admin, corps: Record<string, unknown>) {
 }
 
 async function lireSignalements(admin: Admin) {
-  const { data, error } = await admin.from("reports").select("id,target_type,reason,created_at").or("status.is.null,status.eq.open").order("created_at", { ascending: false }).limit(20);
+  const { data, error } = await admin.from("reports").select("id,target_type,target_id,reason,created_at").or("status.is.null,status.eq.open").order("created_at", { ascending: false }).limit(20);
   if (error) throw error;
-  const liste = (data || []).map((r) => ({ id: String(r.id), type: String(r.target_type || "autre").slice(0, 40), motif: String(r.reason || "").slice(0, 200), le: r.created_at }));
-  return { ouverts: liste.length, liste };
+  // Les publications masquées par le pré-tri (2026-11-01) se décident en UNE
+  // fois : leurs signalements ne sont pas listés un par un.
+  const masques = await lireMasques(admin);
+  const cibles = new Set(masques.map((m) => m.id));
+  const liste = (data || []).filter((r) => !(r.target_type === "post" && cibles.has(String(r.target_id))))
+    .map((r) => ({ id: String(r.id), type: String(r.target_type || "autre").slice(0, 40), motif: String(r.reason || "").slice(0, 200), le: r.created_at }));
+  return { ouverts: liste.length, liste, masques };
+}
+
+// Pré-tri (migration_moderation_pretri_2026-11-01) : table absente = rien de masqué.
+// L'extrait est écrit par l'auteur : la page le rend en TEXTE.
+async function lireMasques(admin: Admin) {
+  const { data, error } = await admin.from("contenus_masques").select("target_id,signaleurs,masque_le")
+    .eq("target_type", "post").is("decision", null).order("masque_le", { ascending: false }).limit(20);
+  if (error) { if (estObjetAbsent(error)) return []; throw error; }
+  const ids = (data || []).map((m) => String(m.target_id));
+  const extraits = new Map<string, string>();
+  if (ids.length) {
+    const { data: posts } = await admin.from("posts").select("id,content").in("id", ids);
+    for (const p of posts || []) extraits.set(String(p.id), String(p.content || "").slice(0, 160));
+  }
+  return (data || []).map((m) => ({ id: String(m.target_id), signaleurs: Number(m.signaleurs) || 0, le: m.masque_le, extrait: extraits.get(String(m.target_id)) || "" }));
+}
+
+// La décision du pilote : « retablir » remet la publication dans le fil (la
+// machine ne la remasquera plus), « garder » la laisse masquée. Jamais de
+// suppression. Les signalements de la publication suivent la décision.
+async function deciderMasquage(admin: Admin, id: string, decision: string) {
+  if (!id || !["retablir", "garder"].includes(decision)) return json({ error: "Décision inconnue." }, 400);
+  const { data, error } = await admin.from("contenus_masques").update({ decision: decision === "retablir" ? "retabli" : "garde", decide_le: new Date().toISOString() })
+    .eq("target_type", "post").eq("target_id", id).is("decision", null).select("target_id");
+  if (error) return json({ error: "Écriture refusée : " + String(error.message || error).slice(0, 120) }, 502);
+  if (!data || !data.length) return json({ error: "Déjà décidé, ou rien de masqué." }, 409);
+  const { error: e2 } = await admin.from("reports").update({ status: decision === "retablir" ? "dismissed" : "handled", handled_at: new Date().toISOString() })
+    .eq("target_type", "post").eq("target_id", id).or("status.is.null,status.eq.open");
+  return json({ ok: true, message: (decision === "retablir" ? "Publication rétablie." : "Publication laissée masquée.")
+    + (e2 ? " Signalements non classés : " + String(e2.message || e2).slice(0, 80) : "") });
+}
+
+// Croissance (2026-11-01, _shared/croissance.js) : une lecture agrégée.
+const MIGRATION_CROISSANCE = "migrations/migration_croissance_2026-11-01.sql";
+async function lireCroissance(admin: Admin) {
+  const { data, error } = await admin.rpc("pilotage_croissance", { p_jours: 30 });
+  if (error) { if (estObjetAbsent(error)) return { absente: true, migration: MIGRATION_CROISSANCE }; throw error; }
+  return croissance(data);
 }
 
 async function lireCapacite(admin: Admin) {

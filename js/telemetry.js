@@ -963,6 +963,51 @@
   }
   function oublierLienArrivee() { try { localStorage.removeItem(LIEN_ARRIVEE_KEY); } catch (e) {} }
 
+  // ─── Source d'arrivée (2026-11-01, onglet Croissance du pilotage) ──────────
+  // D'où vient la visite : `utm_source` (forme bornée) d'une campagne, sinon le
+  // site d'origine ramené à une FAMILLE d'une liste fermée — jamais une adresse,
+  // jamais un chemin. Le PREMIER contact est gardé 30 jours (clé d'appareil,
+  // comme le lien d'arrivée) : c'est lui qu'on attribue à l'inscription.
+  // Agrégé en base chaque heure (migration_croissance_2026-11-01.sql).
+  var ACQ_KEY = "passio_acq_v1";
+  var ACQ_FAIT_KEY = "passio_acq_signale_v1";
+  var ACQ_TTL_MS = 30 * 24 * 3600 * 1000;
+  var ACQ_RE = /^[a-z0-9_-]{1,32}$/;
+  var FAMILLES_REFERENT = [
+    ["instagram", /(^|\.)instagram\.com$/], ["facebook", /(^|\.)(facebook\.com|fb\.com|fb\.me|messenger\.com)$/],
+    ["tiktok", /(^|\.)tiktok\.com$/], ["google", /(^|\.)google\.[a-z.]+$/], ["whatsapp", /(^|\.)(whatsapp\.com|wa\.me)$/],
+    ["x", /(^|\.)(twitter\.com|x\.com|t\.co)$/], ["linkedin", /(^|\.)(linkedin\.com|lnkd\.in)$/],
+    ["snapchat", /(^|\.)snapchat\.com$/], ["youtube", /(^|\.)(youtube\.com|youtu\.be)$/], ["reddit", /(^|\.)reddit\.com$/],
+  ];
+  function sourceVisite() {
+    var p = null;
+    try { p = new URLSearchParams(location.search); } catch (e) {}
+    var utm = p ? String(p.get("utm_source") || "").toLowerCase() : "";
+    var camp = p ? String(p.get("utm_campaign") || "").toLowerCase() : "";
+    var out = { src: null, camp: ACQ_RE.test(camp) ? camp : null };
+    if (ACQ_RE.test(utm)) { out.src = utm; return out; }
+    if (p && p.get("plk")) { out.src = "lien"; return out; }
+    var hote = "";
+    try { hote = document.referrer ? new URL(document.referrer).hostname.toLowerCase() : ""; } catch (e) {}
+    if (!hote) { out.src = "direct"; return out; }
+    if (hote === location.hostname) { out.src = "direct"; return out; }   // navigation interne
+    out.src = "autre";
+    for (var i = 0; i < FAMILLES_REFERENT.length; i++) if (FAMILLES_REFERENT[i][1].test(hote)) { out.src = FAMILLES_REFERENT[i][0]; break; }
+    return out;
+  }
+  function premierContact(visite) {
+    try {
+      var a = JSON.parse(localStorage.getItem(ACQ_KEY) || "null");
+      if (a && ACQ_RE.test(a.src || "") && a.at > 0 && Date.now() - a.at <= ACQ_TTL_MS) return a;
+      if (!visite || !visite.src) return null;
+      a = { src: visite.src, camp: visite.camp || null, at: Date.now() };
+      localStorage.setItem(ACQ_KEY, JSON.stringify(a));
+      return a;
+    } catch (e) { return visite && visite.src ? visite : null; }
+  }
+  var VISITE = sourceVisite();
+  premierContact(VISITE);
+
   // ─── API publique ───────────────────────────────────────────────────────────
   function track(type, action, fields) {
     if (!ENABLED) return;
@@ -1199,7 +1244,25 @@
     // l'inscription emportait-elle un invitant annoncé (app-06) ?
     // ⚠️ L'APPELANT DIT « UN COMPTE EST NÉ » ; il ne dit jamais « le lien l'a
     // amené ». C'est la mémoire de l'appareil qui le dit, et rien d'autre.
+    // acqSignup : un compte est né sur cet appareil, lien ou pas — la marche
+    // « inscription » de l'onglet Croissance, avec la source du premier contact.
+    // Une fois par compte (`compte` = son identifiant quand l'appelant le
+    // connaît) : le chemin Google repasse par ici à chaque démarrage des
+    // 30 premières minutes.
+    acqSignup: function (voie, compte) {
+      try {
+        if (compte && localStorage.getItem(ACQ_FAIT_KEY) === String(compte)) return false;
+        if (compte) localStorage.setItem(ACQ_FAIT_KEY, String(compte));
+      } catch (e) {}
+      var pc = premierContact(null);
+      track("link", "acq_signup", {
+        severity: "info", status: "ok",
+        meta: { src: (pc && pc.src) || "direct", camp: (pc && pc.camp) || null, voie: String(voie || "?").slice(0, 24) },
+      });
+      return true;
+    },
     linkSignup: function (voie, meta) {
+      this.acqSignup(voie, meta && meta.compte);
       var a = lienArrivee();
       if (!a) return false;
       oublierLienArrivee();
@@ -1251,7 +1314,7 @@
   // ─── Hooks automatiques ─────────────────────────────────────────────────────
 
   // 1) Cycle de vie / session
-  track("session", "start", { meta: { referrer: document.referrer ? "external" : "direct", online: navigator.onLine } });
+  track("session", "start", { meta: { referrer: document.referrer ? "external" : "direct", online: navigator.onLine, src: VISITE.src, camp: VISITE.camp } });
 
   // 1quater) OUVERTURE DE LIEN CONFIRMÉE. Si l'URL porte le marqueur ?plk=<id>,
   // c'est que la page a RÉELLEMENT chargé sur l'appareil cible et que ce code

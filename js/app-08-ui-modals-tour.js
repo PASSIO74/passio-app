@@ -2738,14 +2738,17 @@ var INSCRIPTION_LIEN_FENETRE_MS = 30 * 60 * 1000;
 function signalerInscriptionViaLien(session) {
   try {
     if (!session || !session.user || !window.tel || typeof tel._lienArrivee !== "function") return "sans_objet";
+    var cree = Date.parse(session.user.created_at || "");
+    var fournisseur = (session.user.app_metadata && session.user.app_metadata.provider) || "?";
+    // Toute inscription Google compte pour l'onglet Croissance, lien ou pas
+    // (2026-11-01) ; `acqSignup` ne la compte qu'une fois par compte.
+    if (Date.now() - cree <= INSCRIPTION_LIEN_FENETRE_MS && typeof tel.acqSignup === "function") tel.acqSignup(fournisseur, session.user.id);
     var a = tel._lienArrivee();
     if (!a) return "aucun_lien";
-    var cree = Date.parse(session.user.created_at || "");
     var neuf = (Date.now() - cree <= INSCRIPTION_LIEN_FENETRE_MS) && (cree >= a.at - 2 * 60 * 1000);
     if (!neuf) { tel.linkArrivalForget(); return "compte_existant"; }
-    var fournisseur = (session.user.app_metadata && session.user.app_metadata.provider) || "?";
     var invite = !!(session.user.user_metadata && session.user.user_metadata.invite_de);
-    return tel.linkSignup(fournisseur, { invite: invite }) ? "signale" : "aucun_lien";
+    return tel.linkSignup(fournisseur, { invite: invite, compte: session.user.id }) ? "signale" : "aucun_lien";
   } catch (e) {
     try { if (window.tel && tel.error) tel.error(e, { action: "inscription_via_lien", severity: "warn" }); } catch (e2) {}
     return "erreur";
