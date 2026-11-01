@@ -26,7 +26,7 @@ async function banc(page, { coupe = false, titre = "Rando du dimanche au Semnoz"
     localStorage.setItem("passio_uid", u);
     if (c) localStorage.setItem("passio_affiche_rencontre", "0");
   }, [UID_MOI, coupe]);
-  await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true });
+  await bootOnboarded(page, null, 1);
   await page.evaluate((t) => {
     window.__toasts = []; window.toast = (x) => window.__toasts.push(String(x));
     const dans3j = Date.now() + 3 * 86400000;
@@ -65,6 +65,16 @@ test("① l'organisateur a son bouton à côté du QR d'accueil, le participant 
   await ouvrirFiche(page, "ev_mienne");
   expect(await page.locator("#eventDetailContent [data-affiche-rencontre]").count()).toBe(1);
 
+  // Un module qui RÉORGANISE la fiche (UI-4B) peut déplacer le bouton loin du
+  // QR : la mutation suivante ne doit pas en reposer un second à côté du QR.
+  await page.evaluate(() => {
+    const c = document.getElementById("eventDetailContent");
+    c.appendChild(c.querySelector("[data-affiche-rencontre]"));
+    PassioAffiche.poser();
+  });
+  expect(await page.locator("#eventDetailContent [data-affiche-rencontre]").count(),
+    "un bouton déplacé a été reposé en double").toBe(1);
+
   await ouvrirFiche(page, "ev_autre");
   expect(await page.locator("#eventDetailContent [data-affiche-rencontre]").count(),
     "un participant peut fabriquer l'affiche d'une rencontre qui n'est pas la sienne").toBe(0);
@@ -94,21 +104,67 @@ test("② l'affiche est une image A4 dont le QR porte le lien suivi de la rencon
   expect(lien.base, "le lien écrit en clair porte un suivi").not.toMatch(/plk=/);
 });
 
-test("③ le QR dessiné sur l'affiche se relit", async ({ page }) => {
+test("③ le QR dessiné est exactement la matrice du générateur, module par module", async ({ page }) => {
   await banc(page);
   await ouvrirFiche(page, "ev_mienne");
   await page.locator('[data-affiche-rencontre="ev_mienne"]').click();
   await expect(page.locator("#afficheApercu")).toBeVisible();
-  const lu = await page.evaluate(async () => {
-    if (!("BarcodeDetector" in window)) return { absent: true };
+  const vu = await page.evaluate(async () => {
     const el = document.getElementById("afficheApercu");
     if (!el.complete) await new Promise((r) => { el.onload = r; });
-    const codes = await new BarcodeDetector({ formats: ["qr_code"] }).detect(el);
-    return { absent: false, valeurs: codes.map((c) => c.rawValue) };
+    const g = PassioAffiche._geometrie();
+    const c = document.createElement("canvas");
+    c.width = el.naturalWidth; c.height = el.naturalHeight;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(el, 0, 0);
+    const q = qrEncode(g.url);
+    let ecarts = 0, modules = 0;
+    // Le CENTRE de chaque module, quatre modules de marge compris.
+    for (let r = -4; r < q.size + 4; r++) {
+      for (let k = -4; k < q.size + 4; k++) {
+        const noir = !!(r >= 0 && k >= 0 && r < q.size && k < q.size && q.modules[r][k]);
+        const x = g.qx + (k + 4) * g.cellule + (g.cellule >> 1);
+        const y = g.qy + (r + 4) * g.cellule + (g.cellule >> 1);
+        const px = ctx.getImageData(x, y, 1, 1).data;
+        const lu = (px[0] + px[1] + px[2]) / 3 < 128;
+        if (lu !== noir) ecarts++;
+        modules++;
+      }
+    }
+    let decode = null;
+    if ("BarcodeDetector" in window) {
+      const codes = await new BarcodeDetector({ formats: ["qr_code"] }).detect(el);
+      decode = codes.map((x) => x.rawValue);
+    }
+    return { ecarts, modules, url: g.url, decode, cellule: g.cellule };
   });
-  test.skip(lu.absent, "BarcodeDetector indisponible dans ce navigateur");
-  expect(lu.valeurs.length, "aucun QR lisible sur l'affiche").toBeGreaterThan(0);
-  expect(lu.valeurs[0]).toMatch(/(\/e\/ev_mienne|#irl-event-ev_mienne)/);
+  expect(vu.modules).toBeGreaterThan(600);
+  expect(vu.cellule, "un module de QR tombe sous 4 px : illisible imprimé").toBeGreaterThanOrEqual(4);
+  expect(vu.ecarts, "l'image ne porte pas la matrice du générateur").toBe(0);
+  expect(vu.url).toMatch(/(\/e\/ev_mienne|#irl-event-ev_mienne)/);
+  if (vu.decode) expect(vu.decode[0]).toBe(vu.url);
+});
+
+test("③ bis — un lien suivi qui ne tiendrait pas dans le QR n'est jamais créé", async ({ page }) => {
+  // Un identifiant de rencontre très long : le lien nu tient, le suivi non.
+  // Créer le lien quand même compterait au pilotage un lien qui ne s'ouvre pas.
+  await banc(page);
+  const vu = await page.evaluate(() => {
+    const long = "ev_" + "x".repeat(52);
+    state.seed.events.push(Object.assign({}, state.seed.events[0], { id: long }));
+    let crees = 0;
+    const avant = window.tel.linkCreate;
+    window.tel.linkCreate = function () { crees++; return avant.apply(this, arguments); };
+    const l = PassioAffiche._lien(long);
+    const court = PassioAffiche._lien("ev_mienne");
+    window.tel.linkCreate = avant;
+    return { url: l.url, lien: l.lien, crees, courtSuivi: /plk=/.test(court.url) };
+  });
+  expect(vu.url, "le lien nu a été perdu").toMatch(/ev_x+/);
+  expect(vu.url).not.toMatch(/plk=/);
+  expect(vu.lien).toBeNull();
+  expect(vu.crees, "un lien suivi impossible à porter a été créé").toBe(1);   // celui du lien court, seul
+  expect(vu.courtSuivi).toBe(true);
 });
 
 test("④ un titre hostile reste hors du DOM, un titre trop long tient dans le cadre", async ({ page }) => {

@@ -15,8 +15,8 @@
 // ⚠️ LE QR NE PORTE QUE 106 OCTETS. Le générateur maison (`qrEncode`, app-07)
 // s'arrête à la version 6 : il a été vérifié par aller-retour réel, on ne le
 // pousse pas plus loin pour une affiche. Le lien court d'une rencontre
-// (`/e/<id>`, 50 octets) + le suivi `?plk=` (21) tiennent ; l'invitation
-// `?inv=<compte>` (41) en plus ne tient pas. Les candidats sont donc ESSAYÉS
+// (`/e/<id>`, 50 octets, 69 avec un uuid) + le suivi `?plk=lk_…` (33)
+// tiennent ; l'invitation `?inv=<compte>` (41) en plus ne tient pas. Les candidats sont donc ESSAYÉS
 // dans l'ordre — tout, puis sans invitation, puis le lien nu — et le premier
 // que le générateur accepte gagne. Le SUIVI prime sur l'invitation : c'est lui
 // qui dit, au pilotage, combien de scans une affiche a produits.
@@ -79,9 +79,22 @@
     catch (e) { return String(url || "").replace(/([?&])inv=[^&#]*&?/, "$1").replace(/[?&](#|$)/, "$1"); }
   }
 
+  // « Trop long » est la SEULE réponse attendue du générateur : tout autre
+  // échec (TypeError, générateur absent) est une panne, et se dit comme telle —
+  // sinon elle se déguiserait en « lien trop long pour le QR ».
   function qrAccepte(texte) {
-    try { qrEncode(texte); return true; } catch (e) { return false; }
+    try { qrEncode(texte); return true; }
+    catch (e) {
+      if (!/trop long/i.test(String((e && e.message) || ""))) fail("qrEncode", e);
+      return false;
+    }
   }
+
+  // Gabarit d'un identifiant de suivi : `lk_` + `uid16()` de telemetry.js
+  // (8 caractères d'horodatage, un tiret, 16 aléatoires = 28), plus 2 de marge.
+  // On ne CRÉE le lien suivi que si un lien de cette longueur tient dans le
+  // QR : sinon le pilotage compterait un lien créé qui ne peut pas s'ouvrir.
+  var GABARIT_SUIVI = "lk_" + new Array(28).join("0");
 
   // Rend { url, base, lien } : `url` est ce que porte le QR, `base` le lien
   // sans suivi (écrit en clair au pied de l'affiche), `lien` l'identifiant de
@@ -92,8 +105,12 @@
       : location.origin + location.pathname + "#irl-event-" + encodeURIComponent(ev.id);
     var nu = sansInvitation(brut);
     var lk = null;
-    try { if (window.tel && typeof tel.linkCreate === "function") lk = tel.linkCreate("event", ev.id); }
-    catch (e) { fail("linkCreate", e); }
+    try {
+      var suivable = window.tel && typeof tel.linkCreate === "function" && typeof tel.tagUrl === "function";
+      if (suivable && (qrAccepte(tel.tagUrl(brut, GABARIT_SUIVI)) || qrAccepte(tel.tagUrl(nu, GABARIT_SUIVI)))) {
+        lk = tel.linkCreate("event", ev.id);
+      }
+    } catch (e) { fail("linkCreate", e); }
     var tague = function (u) { return (lk && tel.tagUrl) ? tel.tagUrl(u, lk) : u; };
     var candidats = [tague(brut), tague(nu), nu];
     for (var i = 0; i < candidats.length; i++) {
@@ -231,6 +248,7 @@
     var cellule = Math.max(4, Math.floor(dispo / zone));
     var cote = cellule * zone;
     var qx = Math.round((LARGEUR - cote) / 2), qy = y + 70;
+    _geometrie = { url: lien.url, qx: qx, qy: qy, cellule: cellule, taille: q.size };
     ctx.fillStyle = VIOLET;
     ctx.fillRect(qx - 10, qy - 10, cote + 20, cote + 20);
     ctx.fillStyle = "#ffffff";
@@ -255,6 +273,10 @@
       HAUTEUR - 68);
     return c;
   }
+
+  // Géométrie du dernier QR dessiné : lue par le banc, qui compare pixel par
+  // pixel l'image produite à la matrice du générateur.
+  var _geometrie = null;
 
   function enImage(c) {
     return new Promise(function (ok) {
@@ -344,10 +366,17 @@
     if (!actif()) return;                  // verrou de coupure DANS la décoration
     try {
       var portes = document.querySelectorAll("#eventDetailContent [data-orga-qr]");
+      var poses = document.querySelectorAll("#eventDetailContent [data-affiche-rencontre]");
+      var dejaPose = function (id) {
+        for (var j = 0; j < poses.length; j++) if (poses[j].getAttribute("data-affiche-rencontre") === id) return true;
+        return false;
+      };
       for (var i = 0; i < portes.length; i++) {
         var b = portes[i];
-        var suivant = b.nextElementSibling;
-        if (suivant && suivant.hasAttribute("data-affiche-rencontre")) continue;
+        // ⚠️ LE DOUBLON SE CHERCHE DANS TOUTE LA FICHE, PAS CHEZ LE VOISIN : un
+        // module qui réorganise la fiche (UI-4B) peut déplacer le bouton ailleurs ;
+        // le chercher seulement juste après le QR en reposerait un second.
+        if (dejaPose(b.getAttribute("data-orga-qr") || "")) continue;
         var btn = document.createElement("button");
         btn.type = "button";
         btn.className = "btn ghost block affiche-rencontre-btn";
@@ -405,6 +434,7 @@
     poser: poser,
     // Exposés pour le banc : le lien choisi et les lignes de titre.
     _lien: function (id) { var ev = trouver(id); return ev ? lienAffiche(ev) : null; },
+    _geometrie: function () { return _geometrie; },
     _lignes: function (texte, police, largeur, max) {
       var ctx = document.createElement("canvas").getContext("2d");
       ctx.font = police;

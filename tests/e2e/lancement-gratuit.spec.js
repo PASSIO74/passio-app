@@ -28,12 +28,14 @@ const APERCU = "?passio_preview=flat-passions-v1";
 // « ✨ Passion » et un test vert sur ce libellé ne dirait plus rien).
 const DISPO = ["voyage", "cuisine", "photo", "podcast", "moto", "musique"];
 
-async function poser(page, vivantes) {
+async function poser(page, vivantes, { vitrineReelle = false } = {}) {
   await bootOnboarded(page, null, 1, { query: APERCU });
   await page.evaluate((o) => {
-    // Aucune écriture distante : la suite mesure le client.
+    // Aucune écriture distante : la suite mesure le client. ⑥ garde la FILE
+    // réelle de la vitrine et remplace seulement l'écriture qu'elle ordonne.
     window.supaSaveUserState = async () => {};
-    window.supaSavePassionState = async () => {};
+    if (o.vitrine) window._supaSavePassionStateMaintenant = async () => true;
+    else window.supaSavePassionState = async () => {};
     window.supaUpsertProfile = async () => {};
     state.user.profiles = o.dispo.slice(0, o.n).map((pid, i) => ({
       id: "lg_" + i, name: "QA", passion: pid, emoji: "✨", bio: "",
@@ -44,7 +46,7 @@ async function poser(page, vivantes) {
     state.userPosts = [];
     saveState();
     goTo("profiles");
-  }, { n: vivantes, dispo: DISPO });
+  }, { n: vivantes, dispo: DISPO, vitrine: vitrineReelle });
   await page.waitForTimeout(400);
 }
 
@@ -153,4 +155,43 @@ test("⑤ réarmé par l'appareil, le plafond revient — sans rétrograder pers
   await page.waitForTimeout(400);
   expect(await page.evaluate(() => nbPassionsVivantes())).toBe(5);
   expect(await fenetrePayante(page), "au plafond réarmé, le mur ne dit plus rien").toBe(true);
+});
+
+test("⑥ une rafale d'ajouts n'envoie qu'UNE écriture de la vitrine, portant toute la liste", async ({ page }) => {
+  // Plafond levé, l'onboarding attache jusqu'à sept passions d'un coup ; chaque
+  // ajout appelait `supaSavePassionState` en parallèle et la dernière écriture
+  // ARRIVÉE gagnait — parfois la plus courte. Audit du 2026-11-01, point 5.
+  await poser(page, 1, { vitrineReelle: true });
+  await page.waitForTimeout(300);   // laisse passer les écritures du démarrage
+  const vu = await page.evaluate(async (d) => {
+    window.__envois = [];
+    // On remplace l'écriture RÉELLE (la file reste celle du produit) : elle note
+    // la liste qu'elle aurait envoyée et dure un peu, comme un aller-retour.
+    window._supaSavePassionStateMaintenant = async () => {
+      window.__envois.push(passionsVivantes().map((p) => p.passion).sort().join(","));
+      await new Promise((r) => setTimeout(r, 150));
+      return true;
+    };
+    const promesses = [];
+    for (const pid of d.slice(1, 5)) {
+      state.user.profiles.push({ id: "r_" + pid, name: "QA", passion: pid, emoji: "✨", bio: "", color: "#8b5cf6", createdAt: Date.now() });
+      promesses.push(supaSavePassionState());
+    }
+    const verdicts = await Promise.all(promesses);
+    const apresRafale = window.__envois.slice();
+    // Pendant une écriture en vol, deux appels de plus se fondent en UNE suivante.
+    const p1 = supaSavePassionState();
+    await new Promise((r) => setTimeout(r, 20));
+    state.user.profiles.push({ id: "r_x", name: "QA", passion: d[5], emoji: "✨", bio: "", color: "#8b5cf6", createdAt: Date.now() });
+    const p2 = supaSavePassionState();
+    const p3 = supaSavePassionState();
+    await Promise.all([p1, p2, p3]);
+    return { verdicts, apresRafale, tous: window.__envois.slice(), memeTour: p2 === p3 };
+  }, DISPO);
+  expect(vu.verdicts.every((v) => v === true), "un appelant n'a pas reçu le verdict de son écriture").toBe(true);
+  expect(vu.apresRafale.length, "la rafale est partie en plusieurs écritures parallèles").toBe(1);
+  expect(vu.apresRafale[0].split(",").length, "l'écriture unique ne porte pas toute la liste").toBe(5);
+  expect(vu.tous.length, "les appels pendant le vol ne se sont pas fondus en une écriture").toBe(3);
+  expect(vu.tous[2].split(",").length, "la dernière écriture n'est pas la plus récente").toBe(6);
+  expect(vu.memeTour).toBe(true);
 });

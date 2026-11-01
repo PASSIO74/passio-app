@@ -2091,8 +2091,14 @@
     if (attache.ecartees.length) {
       try {
         var offertes = (typeof PASSIONS_OFFERTES !== "undefined") ? PASSIONS_OFFERTES : attache.attachees.length;
+        // Plafond levé (lancement gratuit, 2026-11-01) : un écart n'est plus une
+        // limite atteinte mais un ajout qui a échoué — le dire tel quel.
+        var plafonne = (typeof plafondPassionsActif === "function") ? plafondPassionsActif() : true;
         if (typeof toast === "function") {
-          toast("Ton compte garde tes " + attache.attachees.length + " premières passions (" + offertes + " offertes).");
+          toast(plafonne
+            ? "Ton compte garde tes " + attache.attachees.length + " premières passions (" + offertes + " offertes)."
+            : attache.ecartees.length + " passion" + (attache.ecartees.length > 1 ? "s n'ont" : " n'a")
+              + " pas pu être ajoutée" + (attache.ecartees.length > 1 ? "s" : "") + " — tu peux les reprendre depuis ton profil.");
         }
       } catch (e) {}
     }

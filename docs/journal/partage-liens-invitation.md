@@ -227,7 +227,7 @@ une image A4 (1240 × 1754, 150 ppp) — passion, titre, date, lieu, prix, grand
 (`navigator.share` avec fichier) ou enregistrer.
 
 ⚠️ **Le QR ne porte que 106 octets** (`qrEncode`, version 6 maximum, vérifiée par aller-retour). Lien
-court `/e/<id>` (50) + `?plk=lk_…` (34) tiennent ; `?inv=<compte>` (41) en plus, non. Les candidats sont
+court `/e/<id>` (50, 69 avec un uuid) + `?plk=lk_…` (33) tiennent ; `?inv=<compte>` (41) en plus, non. Les candidats sont
 ESSAYÉS dans l'ordre — tout, sans invitation, lien nu — et **le suivi prime sur l'invitation** : c'est
 lui qui dit au pilotage combien de scans une affiche a produits. Le lien est créé (`link_create`) à la
 fabrication, partagé (`link_share`, canal `affiche` ou `affiche_image`) au geste.
@@ -249,5 +249,15 @@ liens crée l'entrée à la première ouverture) — toutes ces affiches se comp
 Mesuré le 01/11 : les QR d'une affiche à titre court et à titre de trois lignes, et celui de l'affiche
 générale, **décodés par jsQR** depuis l'image produite (Chromium sans `BarcodeDetector` : le cas ③ de
 la suite se saute là où le détecteur manque). Coupures : `localStorage.passio_affiche_rencontre="0"`,
-`window.PASSIO_AFFICHE_RENCONTRE=false`. Verrou : `tests/e2e/affiche-rencontre.spec.js` (5).
+`window.PASSIO_AFFICHE_RENCONTRE=false`. Verrou : `tests/e2e/affiche-rencontre.spec.js` (6).
+
+**Audit `audit-passio` du même jour (aucun bloquant, quatre points repris avant fusion)** : ① le
+doublon se cherche dans TOUTE la fiche, pas chez le voisin — UI-4B peut déplacer le bouton, et le
+contrôle du seul voisin en reposait un second ; ② `qrAccepte` ne rend faux que sur « trop long »,
+toute autre exception passe par `fail()` (sinon une panne du générateur se déguisait en « lien trop
+long ») ; ③ le lien suivi n'est CRÉÉ (`link_create`) que si un identifiant de sa longueur
+(`GABARIT_SUIVI`, 30 caractères) tient dans le QR — sinon le pilotage comptait un lien qui ne peut
+pas s'ouvrir ; ④ le cas ③ de la suite ne dépend plus de `BarcodeDetector` : il relit l'image produite
+au centre de CHAQUE module et la compare à `qrEncode` (0 écart exigé). Réinjections : QR décalé
+d'un module, contrôle du seul voisin — chacune rend son cas rouge.
 

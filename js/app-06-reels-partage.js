@@ -4109,6 +4109,13 @@ function basculerPassionsIllimitees() {
   // qui s'allume et ne fait rien est pire qu'un refus.
   // ⚠️ ET LE REFUS SE PRONONCE (un refus muet est indiscernable d'une panne,
   // 2026-09-04) PUIS SE TRACE : une tentative silencieuse ressemble au calme.
+  // Lancement gratuit (2026-11-01) : le plafond est levé pour tous, la bascule
+  // n'aurait aucun effet — le dire plutôt qu'annoncer « retour à 3 passions ».
+  if (!plafondPassionsArme()) {
+    try { majBoutonPassionsIllimitees(); } catch (e) {}
+    toast("Lancement gratuit : les passions sont déjà illimitées pour tout le monde.");
+    return;
+  }
   if (!compteAutorisePassionsIllimitees()) {
     try { majBoutonPassionsIllimitees(); } catch (e) {}
     try { diagLog("passions illimitées : refusé, compte non autorisé"); } catch (e) {}
@@ -4148,7 +4155,9 @@ function majBoutonPassionsIllimitees() {
   // ce panneau STATIQUE tout ce qui suppose un compte.
   // ⚠️ La visibilité se pilote et se LIT par `style.display` : `[hidden]` ne
   // replie rien sur un élément dont le CSS impose un `display` (fiche 19).
-  if (!compteAutorisePassionsIllimitees()) {
+  // ⚠️ PLAFOND LEVÉ (lancement gratuit) : la bascule ne lève plus rien, elle
+  // disparaît — un interrupteur qui s'allume et ne fait rien est pire qu'un refus.
+  if (!compteAutorisePassionsIllimitees() || !plafondPassionsArme()) {
     b.style.display = "none";
     b.setAttribute("data-passions-reserve", "1");
     b.setAttribute("data-passions-illimitees", "0");

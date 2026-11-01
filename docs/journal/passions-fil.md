@@ -626,6 +626,16 @@ ici). Les deux sont mesurés par `lancement-gratuit.spec.js` ③ et ⑤.
 serveur (`creer_passion` + `passion_quotas`). Un drapeau client ne lève jamais un plafond serveur, et
 elles servent aussi d'anti-abus (modération).
 
-Verrou : `tests/e2e/lancement-gratuit.spec.js` (5) — **réinjection** : `PLAFOND_PASSIONS_EN_VIGUEUR =
-true` rend ①②③④ rouges, ⑤ (le réarmement) reste vert.
+⚠️ **Plafond levé = rafales d'écritures de la vitrine** (audit `audit-passio` du même jour) : chaque
+ajout appelle `supaSavePassionState`, qui envoie la liste COMPLÈTE lue au départ ; l'onboarding en
+attache jusqu'à sept d'un coup, et la dernière écriture ARRIVÉE gagnait — parfois la plus courte,
+jusqu'à la réconciliation du démarrage suivant. Défaut préexistant, amplifié de 3 à N : la fonction
+est désormais une FILE (app-08) — une écriture en vol au plus, les appels qui arrivent pendant
+qu'une écriture attend se fondent en elle, et elle lit l'état AU MOMENT DE PARTIR ; une écriture
+bloquée ne retient pas la file plus de 20 s. L'écriture elle-même est `_supaSavePassionStateMaintenant`.
+Les textes qui annonçaient encore « 3 offertes » / « retour à 3 passions » se taisent plafond levé
+(la bascule « illimité » de l'éditeur disparaît : elle ne lèverait rien).
+
+Verrou : `tests/e2e/lancement-gratuit.spec.js` (6) — **réinjection** : `PLAFOND_PASSIONS_EN_VIGUEUR =
+true` rend ①②③④ rouges, ⑤ (le réarmement) reste vert ; la file retirée rend ⑥ rouge.
 
