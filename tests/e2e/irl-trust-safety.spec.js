@@ -4,7 +4,7 @@
 // #136 a fermé côté serveur l'âge prudent des deux comptes, le blocage dans les
 // deux sens et les conversations forçables. Ce lot branche enfin le CTA, mais
 // seulement après `irl_interaction_allowed = true` et avec une revalidation au
-// clic. Le flag reste OFF par défaut et sert uniquement à l'exposition canari.
+// clic. Le flag est ACTIF par défaut depuis le 2026-11-01 et ne sait plus que couper.
 //
 // Ce qui EST prouvé ici : le verdict de la garde dans les six cas décidables,
 // son échec FERMÉ quand elle ne peut plus juger, l'invariant de localisation
@@ -76,15 +76,29 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
 
   // ── Le drapeau ────────────────────────────────────────────────────────────
 
-  test("drapeau absent = OFF : aucune proposition n'est autorisée", async ({ page }) => {
+  // Allumé par défaut le 2026-11-01, une fois l'année demandée à l'inscription.
+  test("drapeau absent = ACTIF ; « 0 » coupe la proposition", async ({ page }) => {
     await bootOnboarded(page);
     await setFlag(page, null);
     const r = await page.evaluate(() => ({
       actif: irlProposalEnabled(),
       verdict: irlProposalVerdict("u_autre"),
     }));
-    expect(r.actif).toBe(false);
-    expect(r.verdict).toEqual({ ok: false, reason: "flag_off" });
+    expect(r.actif).toBe(true);
+    expect(r.verdict.ok).toBe(true);
+
+    await setFlag(page, "0");
+    const coupe = await page.evaluate(() => ({
+      actif: irlProposalEnabled(),
+      verdict: irlProposalVerdict("u_autre"),
+    }));
+    expect(coupe.actif).toBe(false);
+    expect(coupe.verdict).toEqual({ ok: false, reason: "flag_off" });
+  });
+
+  test("le drapeau figure dans la liste blanche des coupures distantes", async () => {
+    const src = fs.readFileSync(path.join(__dirname, "..", "..", "js", "reglages-distants.js"), "utf8");
+    expect(src).toContain('"passio_irl_proposal_v1"');
   });
 
   test("kill switch mémoire : PASSIO_IRL_PROPOSAL_V1=false coupe un drapeau posé à 1", async ({ page }) => {
@@ -100,7 +114,7 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
     expect(apres).toEqual({ ok: false, reason: "flag_off" });
   });
 
-  test("le lien canari active l'aperçu sans persister le drapeau", async ({ page }) => {
+  test("le lien canari ne décide plus rien : il ne persiste pas et « 0 » gagne", async ({ page }) => {
     await bootOnboarded(page);
     await page.evaluate(() => localStorage.removeItem("passio_irl_proposal_v1"));
     // ⚠️ ISOLATION DES DONNÉES DISTANTES — POSÉE ICI PARCE QUE CETTE SUITE
@@ -298,9 +312,9 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
     });
   }
 
-  test("OFF par défaut et conversation de groupe : aucun RPC d'éligibilité", async ({ page }) => {
+  test("drapeau coupé et conversation de groupe : aucun RPC d'éligibilité", async ({ page }) => {
     await bootOnboarded(page);
-    await setFlag(page, null);
+    await setFlag(page, "0");
     await installIrlRpc(page, true);
     await openIrlDirectConversation(page, "conv_off", "u_target_off");
     expect(await page.evaluate(() => window.__irlRpcCalls)).toEqual([]);

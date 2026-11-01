@@ -5132,6 +5132,8 @@ function switchAuthTab(mode) {
   // la case de consentement, elle, a besoin d'une rangée, d'où son cas à part.
   const nameWrap = document.getElementById("authNameWrap");
   if (nameWrap) nameWrap.style.display = mode === "signup" ? "" : "none";
+  const anneeWrap = document.getElementById("authBirthYearWrap");
+  if (anneeWrap) anneeWrap.style.display = mode === "signup" ? "" : "none";
   // ⚠️ `flex`, PAS `""` : `label.field` est `display:block` en CSS, et la case
   // de consentement a besoin d'une rangée (case + texte). Rendre la main au CSS
   // remettrait le texte SOUS la case, sur toute la largeur.
@@ -5826,6 +5828,26 @@ async function onbDoAuth() {
     _showAuthMsg("Choisis un nom d'utilisateur (" + NOM_COMPTE_MIN + " \u00e0 " + NOM_COMPTE_MAX + " caract\u00e8res).", "error");
     return;
   }
+  // \u26a0\ufe0f L'ANN\u00c9E DE NAISSANCE EST DEMAND\u00c9E \u00c0 LA CR\u00c9ATION (2026-11-01). Le parcours
+  // \u00ab Premi\u00e8re visite \u00bb ne la demandait nulle part : la proposition IRL, qui
+  // exige deux majeurs d\u00e9clar\u00e9s c\u00f4t\u00e9 serveur, restait invisible pour tous les
+  // comptes n\u00e9s depuis le 2026-09-01. M\u00eame pr\u00e9-filtre que la porte d'admission
+  // (`admissionValiderAnnee`, app-07) : on n'\u00e9carte ici qu'une saisie absurde
+  // (< 13 ans). NE PAS le remonter \u00e0 18 \u2014 entre 13 et 17 ans l'ann\u00e9e doit
+  // PARTIR au serveur, qui en fait un refus DURABLE ; refuser localement ferait
+  // seulement ressaisir une autre ann\u00e9e.
+  const _anneeNaissance = parseInt(document.getElementById("authBirthYear")?.value || "", 10);
+  if (_authMode === "signup") {
+    const _courante = new Date().getFullYear();
+    if (!_anneeNaissance || _anneeNaissance < 1900 || _anneeNaissance > _courante) {
+      _showAuthMsg("Indique ton ann\u00e9e de naissance.", "error");
+      return;
+    }
+    if (_courante - _anneeNaissance < 13) {
+      _showAuthMsg("V\u00e9rifie ton ann\u00e9e de naissance.", "error");
+      return;
+    }
+  }
 
   // Validation de format stricte (en plus de la confirmation par e-mail Supabase).
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -5911,6 +5933,9 @@ async function onbDoAuth() {
       const _invitation = (typeof invitationPourInscription === "function") ? invitationPourInscription() : {};
       result = await supa.auth.signUp({ email, password: pwd, options: Object.assign({ data: Object.assign({
         name: nom, display_name: nom,
+        // Relue par `admissionRappelServeur` (app-07) à la première session,
+        // qui la déclare enfin au serveur (`declare_birth_year`).
+        birth_year: _anneeNaissance,
         cgu_version: PASSIO_CGU_VERSION,
         cgu_accepted_at: _cguAccepteA,
         confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
@@ -5927,6 +5952,8 @@ async function onbDoAuth() {
           // session — l'onboarding continue alors sans redemander le prénom.
           state.user.name = nom;
           state.user.general.username = nom;
+          state.user.birthYear = _anneeNaissance;
+          state.user.isMinor = (new Date().getFullYear() - _anneeNaissance) < 18;
           try { const el = document.getElementById("userName"); if (el) el.value = nom; } catch (e2) {}
           // Qui a accepté QUOI, et QUAND. Sans la version, une réécriture des
           // CGU rendrait la trace inexploitable : « a accepté » ne dit rien.

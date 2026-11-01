@@ -53,6 +53,7 @@ async function ouvrirAuth(page) {
 
 async function remplir(page, { nom, consent = true } = {}) {
   if (nom !== undefined) await page.locator("#authName").fill(nom);
+  await page.locator("#authBirthYear").fill("1995");
   await page.locator("#authEmail").fill("nouvelle@exemple.com");
   await page.locator("#authPassword").fill("motdepasse123");
   await page.locator("#authPasswordConfirm").fill("motdepasse123");

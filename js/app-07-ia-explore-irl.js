@@ -5565,8 +5565,36 @@ async function admissionRappelServeur() {
   _admissionAnneePoussee = true;
   var an = null;
   try { an = state && state.user ? state.user.birthYear : null; } catch (e) {}
+  // L'année saisie à l'INSCRIPTION voyage dans `user_metadata.birth_year` :
+  // `signUp` ne rend pas de session (« Confirm email »), on ne peut donc pas la
+  // déclarer sur le moment, et le lien de confirmation s'ouvre souvent sur un
+  // autre appareil, où l'état local de l'inscription n'existe pas.
+  if (!an) {
+    an = await admissionAnneeDepuisSession();
+    if (an) {
+      try {
+        state.user.birthYear = an;
+        state.user.isMinor = (new Date().getFullYear() - an) < 18;
+        saveState();
+      } catch (e) { admissionEchec("local", e); }
+    }
+  }
   if (!an) return false;
   return await admissionDeclarerAnnee(an);
+}
+
+async function admissionAnneeDepuisSession() {
+  try {
+    if (!supa || !supa.auth || typeof supa.auth.getSession !== "function") return null;
+    var res = await supa.auth.getSession();
+    var u = res && res.data && res.data.session && res.data.session.user;
+    var an = Number(u && u.user_metadata && u.user_metadata.birth_year);
+    var courante = new Date().getFullYear();
+    return Number.isInteger(an) && an >= 1900 && an <= courante ? an : null;
+  } catch (e) {
+    admissionEchec("metadonnee", e);
+    return null;
+  }
 }
 
 // LA PORTE. Rend `true` si l'action peut continuer, `false` si elle est refusée
@@ -5718,10 +5746,15 @@ async function admissionValiderAnnee(ctx) {
 // `irl_interaction_allowed` : aucun âge, motif privé ou relation de blocage.
 //
 // Le drapeau reste un kill switch d'EXPOSITION, jamais une permission :
-//     localStorage.passio_irl_proposal_v1 = "1"  → proposition autorisable
-//     localStorage.passio_irl_proposal_v1 = "0"  → coupée (défaut)
+//     (rien)                                      → ACTIF (défaut depuis le 2026-11-01)
+//     localStorage.passio_irl_proposal_v1 = "0"  → coupée
 //     window.PASSIO_IRL_PROPOSAL_V1 = false      → coupure immédiate en mémoire
-//     ?passio_preview=irl-proposal-v1             → canari pour cette URL seulement
+//     réglages distants (`coupures`)              → coupure chez tout le monde
+// ⚠️ ALLUMÉ PAR DÉFAUT le 2026-11-01, sur ordre de Benjamin (« tout le monde »),
+// APRÈS que l'inscription demande l'année de naissance : sans elle, les comptes
+// nés par « Première visite » n'avaient aucune année, et le serveur (fail-closed)
+// leur refusait le bouton. Comme `first_run_experience_v1`, le drapeau ne sait
+// plus qu'ENLEVER : un "1" ou `?passio_preview=` ne décident plus rien.
 // ══════════════════════════════════════════════════════════════════════════
 var IRL_TS_VERSION = "v1";
 
@@ -5754,12 +5787,7 @@ function irlProposalEnabled() {
     stored = localStorage.getItem("passio_irl_proposal_v1");
   } catch (e) {}
   if (stored === "0") return false;
-  if (stored === "1") return true;
-  try {
-    var preview = new URLSearchParams(window.location.search).get("passio_preview");
-    if (preview === "irl-proposal-v1") return true;
-  } catch (e) {}
-  return false; // défaut : OFF — aucune proposition IRL n'est autorisée
+  return true; // défaut : ACTIF — le serveur reste seul juge de chaque paire
 }
 
 // Suis-je mineur d'après MA propre déclaration d'onboarding ? Auto-déclaratif :
@@ -5858,7 +5886,12 @@ async function irlProposalServerVerdict(targetUserId) {
       || typeof supa.rpc !== "function" || typeof MY_UID === "undefined" || !MY_UID) {
     return { ok: false, reason: "server_unavailable" };
   }
-  if (!(await irlProposalDeclareBirthYear())) return { ok: false, reason: "birth_year_unavailable" };
+  // Politesse, pas condition : l'année a pu être déclarée depuis un AUTRE
+  // appareil (inscription, porte d'admission) que celui-ci ne connaît pas.
+  // Refuser sur l'absence d'année LOCALE cachait le bouton à un compte admis
+  // côté serveur. `irl_interaction_allowed` refuse de lui-même une paire dont
+  // l'un des deux n'a rien déclaré.
+  await irlProposalDeclareBirthYear();
   try {
     var res = await supa.rpc("irl_interaction_allowed", { _other: String(targetUserId) });
     if (!res || res.error) {
