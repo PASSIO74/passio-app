@@ -154,6 +154,9 @@ class Store {
     // (client_ts) et échecs candidats en attente de leur contexte.
     this.departs = new Map();            // session_id -> [client_ts, …] (bornés)
     this.enAttente = [];                 // [{ ev, depuis }] — depuis = horloge serveur
+    // Complétude du magasin, posée par ingest.js (moteur d'anomalies) : null tant
+    // qu'aucune ingestion n'a prouvé depuis quand rien ne manque.
+    this.coverage = null;
   }
 
   /** Définit les identifiants des comptes de test à ne jamais compter. */
