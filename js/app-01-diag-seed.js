@@ -2427,6 +2427,42 @@ function _heureVraisemblable(now, ageH, cle) {
   return ageH;
 }
 
+// Jamais deux exemples du même auteur à la suite — GARANTI, pas espéré.
+// L'étalement par auteur le rend rare, mais le renvoi des publications
+// nocturnes à la veille au soir (`_heureVraisemblable`) dépend de l'HEURE de
+// l'ouverture : mesuré le 2026-11-01, 8 instants sur 144 (un toutes les 20 min
+// sur 48 h) recollaient deux cartes d'un même auteur — le verrou ⑨ était vert
+// sur la PR et rouge sur `main` une heure plus tard. Chaque adjacence est donc
+// défaite en ÉCHANGEANT la date de la seconde carte avec celle d'une carte
+// plus ancienne d'un autre auteur, choisie pour ne recoller personne.
+function _separerAuteurs(feed, now) {
+  var H = 3600000;
+  for (var tour = 0; tour < 200; tour++) {
+    var tri = feed.slice().sort(function (x, y) { return y.createdAt - x.createdAt; });
+    var echange = false;
+    for (var i = 1; i < tri.length && !echange; i++) {
+      var a = tri[i];
+      if (a.authorId !== tri[i - 1].authorId) continue;
+      for (var j = i + 1; j < tri.length; j++) {
+        var b = tri[j];
+        if (b.authorId === a.authorId) continue;
+        // b prend la place i : ni son voisin d'avant ni celui d'après ne sont de b.
+        if (tri[i - 1].authorId === b.authorId) continue;
+        if (j !== i + 1 && tri[i + 1] && tri[i + 1].authorId === b.authorId) continue;
+        // a prend la place j : mêmes précautions.
+        if (j - 1 !== i && tri[j - 1].authorId === a.authorId) continue;
+        if (tri[j + 1] && tri[j + 1].authorId === a.authorId) continue;
+        var ageA = (now - a.createdAt) / H, ageB = (now - b.createdAt) / H;
+        _redaterExemple(a, now, ageB);
+        _redaterExemple(b, now, ageA);
+        echange = true;
+        break;
+      }
+    }
+    if (!echange) return;
+  }
+}
+
 function curerExemples(posts, now) {
   if (!Array.isArray(posts) || !posts.length) return posts;
   var feed = posts.filter(function (p) { return p && !p.isReel; });
@@ -2449,6 +2485,7 @@ function curerExemples(posts, now) {
       _redaterExemple(p, now, _heureVraisemblable(now, age, p.id));
     });
   });
+  _separerAuteurs(feed, now);
 
   // ── ② LES COMPTEURS : ceux d'une communauté qui démarre ─────────────────
   // Racine carrée de l'ancien compteur (l'ordre relatif des cartes est gardé),
