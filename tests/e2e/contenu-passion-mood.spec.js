@@ -218,9 +218,10 @@ test.describe("le fil dit sa passion et son envie", () => {
   });
 
   // ── ② bis. Les séries de démonstration gardent leur forme ─────────────────
-  // Les quinze publications p401→p415 sont les EXEMPLES TYPES montrés en premier
-  // (ce sont les plus fraîches de leur passion). Chaque série tient la même
-  // partition, et c'est elle qui donne au testeur le dégradé du haut du fil :
+  // Les quinze publications p401→p415 sont les EXEMPLES TYPES de leur passion.
+  // (Elles n'en sont plus forcément les plus fraîches depuis le 2026-11-01 :
+  // `curerExemples` étale chaque auteur sur trois semaines — voir
+  // `fil-reel-dabord.spec.js`.) Chaque série tient la même partition :
   //
   //     💡 Idées · 📚 Apprendre · 🤝 Rencontrer · 🤝 Rencontrer (avec activité) · neutre
   //

@@ -1033,6 +1033,14 @@
         if (Array.isArray(l)) l.forEach(function (p) { if (p && p.id) vus[p.id] = 1; });
       }
     } catch (e) {}
+    // Les passions précises du contenu d'exemple sont nommées par app-01
+    // (`PASSIONS_EXEMPLES`, lue par `passionById`) : elles ne doivent pas, à
+    // elles seules, déclencher le chargement du référentiel à chaque démarrage.
+    try {
+      if (typeof PASSIONS_EXEMPLES !== "undefined" && PASSIONS_EXEMPLES) {
+        Object.keys(PASSIONS_EXEMPLES).forEach(function (id) { vus[id] = 1; });
+      }
+    } catch (e) {}
     return vus;
   }
 
