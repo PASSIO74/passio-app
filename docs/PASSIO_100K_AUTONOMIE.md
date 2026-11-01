@@ -135,7 +135,8 @@ les relire sur la page Pricing de chaque service le jour du geste.**
 3. ✅ **Télémétrie à l'échelle — en production depuis le 2026-10-21** (`migration_telemetrie_equitable_2026-10-16.sql` :
    un compteur par lot — comptes anciens 1 800/min à eux seuls, neufs + anonymes 2 400 partagés (1 600
    chacun), 150 par compte, refus en 429 que le client attend ; un flot anonyme n'aveugle plus les
-   comptes réels, et la veille juge l'aveuglement sur les anciens). Reste : rétention et agrégats. Avant :
+   comptes réels, et la veille juge l'aveuglement sur les anciens). ✅ Rétention et agrégats écrits le
+   2026-11-01 (`migration_croissance_2026-11-01.sql` : échecs 7 jours, reste 3 jours, agrégats 400 jours). Avant :
    remplacer le plafond global de 3 000 insertions/min (qui recompte la
    minute à CHAQUE ligne et refuse tout au-delà) par un compteur par lot et par compte/appareil ;
    rétention brute 3 jours + agrégats quotidiens — sinon la base se remplit de mesures avant de se
@@ -157,12 +158,17 @@ les relire sur la page Pricing de chaque service le jour du geste.**
    distante du lot, et la lève au déploiement du correctif.
 
 ### Pour que le pilotage décide pour toi (P2)
-8. **Jauge de coût** : la facture projetée du mois (Supabase, Netlify) à côté des jauges de capacité, et
-   une alerte quand une jauge passe 70 % avec **le geste et son prix** (le tableau du §4, vivant).
+8. ✅ **Jauge de coût — livrée le 2026-11-01.** Chaque jauge porte son geste et son prix, « À faire »
+   les dit dès l'orange, « Ce que ça coûte » (Détails) additionne forfaits et gestes à prévoir, et la
+   bande passante Netlify est enfin estimée (appareils 24 h × versions × 0,75 Mo).
+   **Et l'onglet Croissance** : inscriptions par source et par campagne (`?utm_source=…&utm_campaign=…`),
+   bouche-à-oreille, actifs par jour, rétention J1 / J7 / J30 par semaine d'inscription.
+   Fiche : `docs/journal/telemetrie-pilotage-sentinelle.md` (2026-11-01).
 9. **Page de statut publique** générée par la veille (vert / dégradé / panne), que le bandeau distant
    peut citer.
-10. **Pré-tri des signalements** : masquage automatique d'un contenu après N signalements de comptes
-    distincts, en attendant ta décision (jamais une suppression automatique).
+10. ✅ **Pré-tri des signalements — écrit le 2026-11-01** (`migration_moderation_pretri_2026-11-01.sql`) :
+    une publication signalée par 3 comptes distincts, confirmés, de plus de 7 jours, est masquée pour
+    tous sauf son auteur en attendant ta décision dans « À faire » — jamais supprimée.
 
 ### À mesurer avant de le croire (P3)
 11. Banc de charge à 1 000 comptes sur le staging, délestage 0/1/2, pour chiffrer le gain réel (le banc

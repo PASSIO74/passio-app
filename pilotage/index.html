@@ -90,8 +90,28 @@
         <h2>Capacité</h2>
         <p class="discret">Les limites du forfait. Orange à 70 %, rouge à 90 % : c'est le moment d'agir, avant que l'app ralentisse ou refuse des inscriptions.</p>
         <div id="jauges" class="pile"></div>
+        <h2>Ce que ça coûte</h2>
+        <div id="cout" class="pile"></div>
         <h2>Ce qui s'est passé (7 jours)</h2>
         <div id="historique" class="pile"></div>
+      </section>
+
+      <!-- CROISSANCE (2026-11-01) : d'où viennent les inscrits, et lesquels restent.
+           Agrégats en base (migration_croissance_2026-11-01.sql), 30 derniers jours. -->
+      <section id="croissance" class="onglet" data-titre="Croissance">
+        <p id="croissanceEtat" class="discret"></p>
+        <div id="croissanceChiffres" class="chiffres"></div>
+        <h2>D'où viennent les gens</h2>
+        <p class="discret">Appareils venus (une visite par appareil et par jour), inscriptions attribuées au premier contact. Ajoute <code>?utm_source=instagram&amp;utm_campaign=lancement</code> à tes liens de campagne pour les retrouver ici.</p>
+        <div id="croissanceSources" class="pile"></div>
+        <h2>Bouche-à-oreille</h2>
+        <p class="discret">Les liens partagés depuis PASSIO : créés, envoyés, ouverts, puis devenus des comptes.</p>
+        <div id="croissanceLiens" class="pile"></div>
+        <h2>Actifs par jour</h2>
+        <div id="grapheActifs" class="graphe" aria-label="Comptes actifs par jour, 30 derniers jours"></div>
+        <h2>Ceux qui reviennent</h2>
+        <p class="discret">Par semaine d'inscription : la part revenue le lendemain (J1), la 2ᵉ semaine (J7), le 2ᵉ mois (J30). « … » = trop tôt pour le dire.</p>
+        <div id="croissanceRetention" class="pile"></div>
       </section>
 
       <!-- TOUS LES INSCRITS (2026-10-24) : ouvert par la tuile « inscrits au total »
@@ -130,8 +150,9 @@
       <div id="bandeauErreur" class="bandeau-erreur" role="status" hidden></div>
     </main>
 
-    <nav class="barre trois" aria-label="Navigation">
+    <nav class="barre quatre" aria-label="Navigation">
       <button class="actif" data-tab="accueil" type="button"><span class="ico" aria-hidden="true">⌂</span>Accueil<span id="badgeAccueil" class="badge" hidden></span></button>
+      <button data-tab="croissance" type="button"><span class="ico" aria-hidden="true">↗</span>Croissance</button>
       <button data-tab="details" type="button"><span class="ico" aria-hidden="true">☰</span>Détails</button>
       <button data-tab="reglages" type="button"><span class="ico" aria-hidden="true">⚙</span>Réglages</button>
     </nav>

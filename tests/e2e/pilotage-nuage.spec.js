@@ -590,3 +590,65 @@ test("⑱ Nouveaux comptes : aucun → dit ; noms illisibles → « Nom non lu �
   await page.click("#actualiser");
   await expect(page.locator("#nouveauxComptes")).toContainText("Liste indisponible");
 });
+
+// ─── Croissance, coût, pré-tri (2026-11-01) ─────────────────────────────────
+// L'onglet Croissance rend ce que `croissance()` (_shared/croissance.js) fait de
+// la réponse de `pilotage_croissance` — la VRAIE fonction, comme `aFaire`.
+test("㉑ Croissance : sources, bouche-à-oreille, rétention « … » quand c'est trop tôt ; coût et geste des jauges ; publication masquée", async ({ page }) => {
+  const soucis = [];
+  page.on("pageerror", (e) => soucis.push(e.message));
+  const { croissance } = await import("../../supabase/functions/_shared/croissance.js");
+  const { jauges, coutMensuel } = await import("../../supabase/functions/_shared/pilotage.js");
+  const hier = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const cr = croissance({ jours: 30, agrege_le: hier, cumul: [
+    { mesure: "visite", valeur: "instagram", n: 120 }, { mesure: "inscription", valeur: "instagram", n: 12 },
+    { mesure: "inscription", valeur: "lien", n: 3 }, { mesure: "inscription_lien", valeur: "google", n: 3 },
+    { mesure: "lien_cree", valeur: "post", n: 9 }, { mesure: "lien_partage", valeur: "whatsapp", n: 7 }, { mesure: "lien_ouvert", valeur: "external", n: 5 },
+    { mesure: "campagne", valeur: "lancement", n: 4 },
+  ], actifs: [{ jour: hier, n: 42 }], cohortes: [{ semaine: "2026-10-26", taille: 15, j1: 6, j7: 0, j30: 0, dernier: new Date().toISOString().slice(0, 10) }] });
+  const js = jauges({ connexions: 360, emails: 250, base: 104857600 });
+  const e = etat({ croissance: cr, capacite: { mesuresServeur: true, jauges: js, cout: coutMensuel(js) },
+    signalements: { ouverts: 0, liste: [], masques: [{ id: "p_9", signaleurs: 3, le: MAINTENANT, extrait: CHARGE }] } });
+  const envois = [];
+  await poserSession(page);
+  await routerFonction(page, envois, e);
+  await page.goto("/pilotage/");
+  // Pré-tri : la publication masquée attend une décision, son extrait en TEXTE.
+  const af = page.locator("#afaire");
+  await expect(af).toContainText("Publication masquée après 3 signalements");
+  expect(await af.textContent()).toContain(CHARGE);
+  // Jauge orange : le geste et son prix.
+  await expect(af).toContainText("Brevo");
+  page.once("dialog", (d) => d.accept());
+  await af.locator("article", { hasText: "Publication masquée" }).getByRole("button", { name: "Laisser masquée" }).click();
+  await expect.poll(() => gestes(envois).map((x) => x.corps)).toContainEqual({ action: "masquage", id: "p_9", decision: "garder" });
+  // Croissance.
+  await page.click('.barre button[data-tab="croissance"]');
+  await expect(page.locator("#croissance")).toBeVisible();
+  await expect(page.locator("#croissanceChiffres")).toContainText("15");
+  await expect(page.locator("#croissanceChiffres")).toContainText("42");
+  await expect(page.locator("#croissanceSources")).toContainText("Instagram");
+  await expect(page.locator("#croissanceSources")).toContainText("120 venus · 12 inscrits · 10 %");
+  await expect(page.locator("#croissanceSources")).toContainText("lancement : 4 inscrits");
+  await expect(page.locator("#croissanceLiens")).toContainText("whatsapp 7");
+  const ligne = page.locator(".tableau-retention tr").nth(1);
+  await expect(ligne).toContainText("15");
+  await expect(ligne.locator("td").nth(2), "le plus jeune compte a été créé aujourd'hui : J1 pas encore mesurable").toHaveText("…");
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+  // Coût.
+  await page.click('.barre button[data-tab="details"]');
+  await expect(page.locator("#cout")).toContainText("~25 €");
+  await expect(page.locator("#cout")).toContainText("(à prévoir)");
+  await expect(page.locator("#jauges")).toContainText("À faire : Passer Brevo");
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  expect(soucis).toEqual([]);
+});
+
+test("㉒ Croissance : migration pas appliquée → dit, jamais un faux zéro", async ({ page }) => {
+  await poserSession(page);
+  await routerFonction(page, [], etat({ croissance: { absente: true, migration: "migrations/migration_croissance_2026-11-01.sql" } }));
+  await page.goto("/pilotage/");
+  await page.click('.barre button[data-tab="croissance"]');
+  await expect(page.locator("#croissanceSources")).toContainText("Pas encore allumée");
+  await expect(page.locator("#croissanceChiffres")).toBeEmpty();
+});

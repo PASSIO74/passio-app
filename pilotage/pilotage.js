@@ -212,6 +212,7 @@
     rendreUtilisateurs(d);
     rendreMachines(d);
     rendreCapacite(d);
+    rendreCroissance(d);
     rendreHistorique(d);
     rendreReglages(d);
   }
@@ -485,11 +486,82 @@
       const val = j.unite === "octets" ? taille(j.valeur) + " sur " + taille(j.plafond) : (j.valeur == null ? "—" : j.valeur) + " sur " + j.plafond;
       const c = carte(j.libelle, j.pct == null ? "Non mesuré" : String(j.pct).replace(".", ",") + " %", val + (j.estimation ? " (estimation)" : ""), j.couleur);
       const bar = el("div", "jauge " + j.couleur); const f = el("span"); f.style.width = Math.min(100, j.pct || 0) + "%"; bar.append(f); c.append(bar);
+      // Le geste à faire et son prix (2026-11-01), dit dès l'orange.
+      if (j.geste && (j.couleur === "orange" || j.couleur === "rouge")) c.append(el("p", "geste", "À faire : " + j.geste + (j.prix ? " (~" + j.prix + " €/mois)" : "")));
       ja.append(c);
     });
+    const co = vider("cout"), cout = d.capacite.cout;
+    if (cout && Array.isArray(cout.lignes)) {
+      const c = carte("Par mois aujourd'hui", "~" + cout.actuel + " €", cout.aPrevoir ? "À prévoir si tu fais les gestes des jauges orange : ~" + cout.aPrevoir + " € de plus par mois." : "Aucune jauge à l'orange : rien à prévoir.", cout.aPrevoir ? "orange" : "vert");
+      const ul = el("ul", "liste-cout");
+      cout.lignes.forEach((l) => ul.append(el("li", l.aPrevoir ? "a-prevoir" : null, l.libelle + " : " + (l.prix ? "~" + l.prix + " €" : "gratuit") + (l.aPrevoir ? " (à prévoir)" : ""))));
+      c.append(ul, el("p", "discret", "Estimation : relis les tarifs sur la page Pricing de chaque service le jour du geste."));
+      co.append(c);
+    } else co.append(carte("Coût", "Non lu", "La fonction « pilotage » n'a pas rendu la facture : elle n'est sans doute pas encore à jour.", "gris"));
     if (!d.capacite.mesuresServeur) ja.append(el("p", "discret", "Base et stockage : la migration « pilotage_veille » n'est pas encore appliquée."));
     if (d.capacite.connexionsTronquees) ja.append(el("p", "discret", "Connexions : borne basse (lecture tronquée à 1 000 lignes) tant que la fonction « pilotage_audience » n'est pas en base."));
     ja.append(el("p", "discret", "La bande passante (egress) ne se lit que sur la page Usage de Supabase."));
+  }
+
+  // ─── Croissance (2026-11-01) ──────────────────────────────────────────────
+  // Rendu de `_shared/croissance.js` (croissance()) : sources, liens partagés,
+  // actifs par jour, rétention par cohorte. Des chiffres agrégés en base, aucun
+  // nom ; les valeurs des sources sont réduites à [a-z0-9_.-] côté serveur.
+  const pctTexte = (v) => (v == null ? "…" : v + " %");
+  function rendreCroissance(d) {
+    const cr = d.croissance;
+    const etat = $("croissanceEtat"), ch = vider("croissanceChiffres"), so = vider("croissanceSources"), li = vider("croissanceLiens"), re = vider("croissanceRetention");
+    if (cr === undefined) { etat.textContent = "La fonction « pilotage » n'est pas encore à jour."; graphe("grapheActifs", []); return; }
+    if (!cr) { nonLu("croissanceSources", "Croissance", "croissance"); etat.textContent = ""; graphe("grapheActifs", []); return; }
+    if (cr.absente) {
+      etat.textContent = "";
+      so.append(carte("Pas encore allumée", "Migration", "Appliquer " + (cr.migration || "la migration de croissance") + " (npm run migration:appliquer) : la base agrégera alors les sources et les retours chaque heure.", "gris"));
+      graphe("grapheActifs", []);
+      return;
+    }
+    etat.textContent = "30 derniers jours" + (cr.agregeLe ? " · agrégé jusqu'au " + String(cr.agregeLe).slice(8, 10) + "/" + String(cr.agregeLe).slice(5, 7) : "") + " · public seulement (ni robots, ni équipe, ni tests).";
+    ch.append(
+      chiffre(cr.inscriptions, "inscriptions (30 j)", null, cr.conversion != null ? { texte: cr.conversion + " % des appareils venus" } : null),
+      chiffre(cr.actifsHier, "comptes actifs hier", null, cr.moyenne7 != null ? { texte: "moyenne 7 j : " + cr.moyenne7 } : null),
+      chiffre(cr.visites, "appareils venus (30 j)"),
+      chiffre(pctTexte(cr.viralite), "inscriptions par bouche-à-oreille", null, { texte: "via un lien partagé par un membre" }),
+    );
+    if (!cr.sources || !cr.sources.length) so.append(carte("Aucune visite agrégée pour l'instant", "", "Les sources apparaissent à la première heure pleine après la migration.", ""));
+    else {
+      const c = el("article", "carte");
+      const ul = el("ul", "liste-sources");
+      cr.sources.slice(0, 12).forEach((s) => {
+        const l = el("li", "source");
+        l.append(el("span", "source-nom", s.libelle), el("span", "source-chiffres", s.visites + " venus · " + s.inscriptions + " inscrits" + (s.conversion != null ? " · " + s.conversion + " %" : "")));
+        ul.append(l);
+      });
+      c.append(ul);
+      so.append(c);
+    }
+    if (cr.campagnes && cr.campagnes.length) so.append(carte("Campagnes (utm_campaign)", String(cr.campagnes.length), cr.campagnes.slice(0, 8).map((x) => x.valeur + " : " + x.n + " inscrit" + (x.n > 1 ? "s" : "")).join(" · "), ""));
+    const lk = cr.liens || {};
+    const cl = el("article", "carte");
+    const cg = el("div", "chiffres chiffres-petits");
+    cg.append(chiffre(lk.crees, "liens créés"), chiffre(lk.partages, "envoyés"), chiffre(lk.ouverts, "ouverts"), chiffre(lk.inscriptions, "comptes créés"));
+    cl.append(cg);
+    if (lk.canaux && lk.canaux.length) cl.append(el("p", "discret", "Envoyés par : " + lk.canaux.slice(0, 6).map((x) => x.valeur + " " + x.n).join(" · ")));
+    li.append(cl);
+    graphe("grapheActifs", cr.actifs || []);
+    if (!cr.cohortes || !cr.cohortes.length) re.append(carte("Pas encore de cohorte", "", "Aucun compte confirmé ces 10 dernières semaines.", ""));
+    else {
+      const c = el("article", "carte");
+      const t = el("table", "tableau-retention");
+      const tete = el("tr");
+      ["Semaine", "Comptes", "J1", "J7", "J30"].forEach((x) => tete.append(el("th", null, x)));
+      t.append(tete);
+      cr.cohortes.slice(0, 10).forEach((k) => {
+        const r = el("tr");
+        r.append(el("td", null, "du " + String(k.semaine).slice(8, 10) + "/" + String(k.semaine).slice(5, 7)), el("td", null, k.taille), el("td", null, pctTexte(k.j1)), el("td", null, pctTexte(k.j7)), el("td", null, pctTexte(k.j30)));
+        t.append(r);
+      });
+      c.append(t);
+      re.append(c);
+    }
   }
 
   // Ce qui s'est passé : les changements du voyant notés par la veille (7 j).

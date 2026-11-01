@@ -27,6 +27,7 @@
 - 🧭 UN SEUL PILOTAGE, SIMPLE — ET UNE SOURCE ILLISIBLE N'EST PLUS UNE SOURCE CALME (2026-10-23)
 - 🐤 VEILLE #627 — L'ALERTE « flux » EST CELLE DU CANARI, DONC CELLE D'UN PC ÉTEINT (2026-10-25)
 - 🔁 « RÉPARER » ROUVRAIT UNE ISSUE À CHAQUE TOUCHER — 16 « [RÉPARER] #627 », AUCUNE CONFIÉE (2026-10-25)
+- 📈 CROISSANCE, COÛT, PALIERS DE TÉLÉMÉTRIE ET PRÉ-TRI DES SIGNALEMENTS — LE PILOTAGE PASSE AU COMMERCE (2026-11-01)
 
 ---
 
@@ -437,3 +438,22 @@ Enquête demandée depuis le pilotage (bouton « Réparer » sur l'issue de veil
 - **Ménage** : 15 doublons fermés (*not planned*, #639 → #655) ; #657 confiée à la main. ⚠️ `claude` et `reparation` posés dans le MÊME appel = deux événements `labeled`, donc deux runs (le second `skipped` par le `if:`) : un label par appel.
 - **Résultat de #657** (run 40206802710) : Claude a enquêté et poussé `claude/issue-657-40206802710` — #627 est l'alerte du CANARI, émis par le seul poste de pilotage ; poste éteint, alerte permanente ; décision de calibrage laissée à Benjamin. Le workflow n'a pu ni ouvrir la PR ni commenter (annotation « PR non ouverte ») : PR #658 ouverte à la main.
 - **Reste humain** : *Issues*, *Pull requests*, *Contents*, *Actions* en « Read and write » sur le jeton du pilotage (page du jeton → Edit) — pour « Fermer », « Fusionner », « Reprendre » et « Relancer » une réparation d'avant ce lot. « Réparer » n'en dépend plus.
+
+## 📈 CROISSANCE, COÛT, PALIERS DE TÉLÉMÉTRIE ET PRÉ-TRI DES SIGNALEMENTS — LE PILOTAGE PASSE AU COMMERCE (2026-11-01)
+
+- **Demande** (Benjamin, le jour du lancement gratuit) : « me focaliser sur le commerce, trouver des utilisateurs, monter à 10 000 puis 100 000 — que l'app gère seule la montée en puissance ». Plan de référence : `docs/PASSIO_100K_AUTONOMIE.md` §5 (items 3, 8 et 10).
+- **Mesuré avant (canal ①)** : `telemetry_events` 6 600 lignes / 20 Mo, purge `purge_telemetry_7j` ; **aucune** trace de la source d'une visite (seulement `referrer: external|direct`) ; `link_*` présents mais perdus à 7 jours ; `reports` sans aucun effet automatique (2 lignes).
+- **Livré** :
+  1. **Source d'arrivée** (`js/telemetry.js`) : `session/start` porte `meta.src` — `utm_source` borné `[a-z0-9_-]{1,32}`, sinon la FAMILLE du site d'origine (liste fermée : instagram, facebook, tiktok, google, whatsapp, x, linkedin, snapchat, youtube, reddit, sinon `autre`), `lien` pour un `?plk`, `direct` sinon — **jamais une adresse**. Premier contact gardé 30 jours (`passio_acq_v1`, clé d'appareil). `acq_signup` (`tel.acqSignup`) part à CHAQUE inscription, lien ou pas, une fois par compte (`passio_acq_signale_v1`) : le chemin Google ne signalait qu'une inscription venue d'un lien.
+  2. **Agrégats** (`migration_croissance_2026-11-01.sql`) : `croissance_jour` (visites par source, liens créés / envoyés / ouverts, inscriptions par source et campagne) et `activite_jour` (compte actif un jour, identité **serveur** `auth_uid`, FK `ON DELETE CASCADE`), agrégés chaque heure (`agreger_croissance`, :07). `pilotage_croissance(p_jours)` rend tout en une lecture. Public seulement : `meta.trafic`, `env = development`, e2e et éditeur écartés de l'activité.
+  3. **Paliers** : `purge_telemetrie_paliers` remplace `purge_telemetry_7j` — échecs (type/statut/sévérité error, HTTP ≥ 400) 7 jours, tout le reste 3 jours, **après** avoir agrégé les jours touchés. Agrégats gardés 400 jours.
+  4. **Onglet Croissance** (`pilotage/`, 4ᵉ onglet) : inscriptions et conversion par source, campagnes, bouche-à-oreille (part des inscriptions venues d'un lien de membre), actifs par jour, rétention J1 / J7 / J30 par semaine d'inscription — `…` tant que la fenêtre n'est pas passée pour TOUS les comptes de la cohorte (`retentionCohorte`, même règle que l'activation).
+  5. **Coût** : chaque jauge porte son `geste` et son `prix` (`PLAFONDS`) ; « À faire » les dit dès l'orange ; « Ce que ça coûte » (Détails) = forfaits payés + gestes des jauges orange (`coutMensuel`). Nouvelle jauge **bande passante estimée** (appareils 24 h × 40 versions × 0,75 Mo, contre 100 Go) : le mur le plus probable du §4 n'était mesuré nulle part.
+  6. **Pré-tri** (`migration_moderation_pretri_2026-11-01.sql`) : une publication signalée par **3 comptes distincts, confirmés, de plus de 7 jours, autres que l'auteur** est MASQUÉE (policy RESTRICTIVE sur `posts`, l'auteur la voit encore), jamais supprimée. Le pilote décide (« Rétablir » / « Laisser masquée », action `masquage`) ; une publication rétablie n'est jamais remasquée par la machine.
+- **Pièges** :
+  - `audit-tables-compte` a refusé `activite_jour.uid` : toute colonne de compte doit être purgée ou dispensée AVEC sa raison. L'ajouter à `TABLES_COMPTE` cassait ASTRA-39 ⑧ (la migration de purge porte la même liste) — la FK `ON DELETE CASCADE` + exception écrite est le bon geste pour une table dérivée.
+  - `bandePassanteEstimee(null)` rendait 0 (`Number(null)`) — même piège que `canariDu(null)` le 31/10 : une absence de mesure devenait une mesure verte. Verrou ⑤.
+  - Les deux migrations ont été éprouvées sur un Postgres embarqué (PGlite) avant la CI — 25 scénarios : dédoublonnage, valeurs nettoyées, paliers, droits anon/authenticated, masquage, rétablissement, rejeu.
+- **Verrous** : `tests/unit/croissance.test.mjs` (dans `npm run verif`), `tests/e2e/pilotage-nuage.spec.js` ㉑ ㉒.
+- **Mise en service en deux temps** : le code (télémétrie, fonction `pilotage`, onglet) part seul en production ; les deux migrations sont dans une PR à part, **périmètre critique** (`migrations/*`) — contre-revue GitHub de PASSIO74 obligatoire, puis `npm run migration:appliquer`. Avant elles : « Pas encore allumée » dans l'onglet, aucun contenu masqué, purge à 7 jours inchangée — rien ne casse.
+- **Pas fait, délibérément** : train de déploiement (contredit la règle « en ligne direct » ; le geste équivalent est Netlify Pro, dit par la jauge) ; coupure distante pendant une réparation de la Sentinelle ; banc de charge à 1 000 comptes (il faut un staging).
