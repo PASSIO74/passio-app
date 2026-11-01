@@ -11484,6 +11484,52 @@ button, a, label, select, summary,
 .affiche-aide { font-size: 12.5px; color: var(--text-dim); line-height: 1.6; margin-bottom: 14px; text-align: center; }
 .affiche-telecharger { margin-top: 8px; text-align: center; text-decoration: none; }
 
+/* ── LE RÉEL D'ABORD, LES EXEMPLES ENSUITE (2026-11-01) ─────────────────────
+   Séparateur posé par `poserSeparateurExemples` (app-02) juste avant la
+   première carte d'exemple du fil. Frère des cartes, jamais dedans (fenêtrage).
+   ⚠️ Posé AVANT le bloc d'UI-4A5, qui doit rester le DERNIER de la feuille.
+   Coupure : localStorage.passio_fil_reel_dabord_v1 = "0" — le bloc n'a alors
+   plus d'émetteur. */
+.feed-exemples-sep {
+  margin: 18px 14px 10px;
+  padding: 12px 14px 13px;
+  border: 1.5px dashed var(--border);
+  border-radius: 14px;
+  background: var(--bg-soft);
+  text-align: center;
+}
+.feed-exemples-sep-titre {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.feed-exemples-sep-titre::before,
+.feed-exemples-sep-titre::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.feed-exemples-sep-texte {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.feed-exemples-sep-cta {
+  margin-top: 10px;
+  min-height: 44px;
+}
+/* Une photo de couverture CHARGÉE se lit comme une vraie photo : la capsule
+   « 🎸 Musique » ne reste que sur le dégradé de repli, où elle porte le sens
+   (l'en-tête de la carte nomme déjà la passion). */
+.post-cover-photo.cover-ok .post-cover-caption { display: none; }
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtre » est une VUE de « Rencontrer ».
    ACTIF PAR DÉFAUT.

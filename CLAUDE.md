@@ -165,6 +165,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - `public.passions` reste en lecture seule pour un client (écriture par `creer_passion`, SECURITY DEFINER) ; un drapeau client ne lève JAMAIS un plafond serveur.
 - `chargerReferentielPassions` PAGINE (max-rows 1 000) ; le nombre affiché vient de `PassioPassions.taille()`, jamais d'une constante ; on ne peint jamais 5 001 tuiles.
 - Le profil de remplissage (`_parDefaut`) n'est une passion NULLE PART — ni peint, ni compté ; le libellé seul décide d'un doublon, jamais un alias.
+- Fil : le RÉEL d'abord, les exemples ensuite (`ordonnerFil`, discriminant `_source === "seed"`) ; un exemple ne porte qu'une passion du socle ou de `PASSIONS_EXEMPLES` (recopiée du référentiel, verrou `fil-reel-dabord`).
 
 **Capacité, performance, temps réel, stockage** → `docs/journal/capacite-perf-realtime.md` (filets de polling, `supa.channel(`, compresseurs, `scripts/charge*.mjs`)
 - Les LECTURES ont leur file de rejeu comme les écritures ; `estEchecReseau(e)` (app-02) est la seule autorité réseau/refus ; on ne rejoue que l'idempotent.

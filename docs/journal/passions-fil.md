@@ -21,6 +21,7 @@
 - 👥 « JEREM A PUBLIÉ, ÇA N'APPARAÎT PAS DANS MON FIL » — LA DÉMO PASSAIT DEVANT LES COMPTES SUIVIS (2026-10-23)
 - 🕒 LE FIL DEVIENT CHRONOLOGIQUE : LE PLUS RÉCENT EN HAUT, TOUJOURS (2026-10-24)
 - 🚀 LANCEMENT GRATUIT : LE MUR DES TROIS PASSIONS EST LEVÉ POUR TOUS (2026-11-01)
+- 🧱 LE RÉEL D'ABORD, LES EXEMPLES ENSUITE — ET DES EXEMPLES CRÉDIBLES (2026-11-01)
 
 ---
 
@@ -593,6 +594,7 @@ Verrou : `tests/e2e/fil-suivi-garantie.spec.js` (5) — ① et ② tombent quand
 Demande de Benjamin, le lendemain du rapport sur Jerem : « il faut mettre toujours les posts les plus récents en haut du feed ». `renderFeed` et le repli d'exploration ordonnent désormais par **`trierFilChronologique`** (app-02) : `createdAt` décroissant, ex-æquo départagés par l'identifiant. **Les envies FILTRENT toujours** (`_envieRetient`), elles ne réordonnent plus rien.
 ⚠️ `rankFeedPosts`, `rankFeedPostsForIntent(s)`, `feedPostScore` et les garanties `FEED_MA_PUBLI_BONUS` / `FEED_SUIVI_BONUS` (fiche précédente) **n'ordonnent plus le Fil** ; ils restent en place, gardés par leurs suites (`feed-ranking`, `feed-intents`, `fil-suivi-garantie`). Les rebrancher, c'est rouvrir cette décision.
 ⚠️ Le contenu de démonstration a des dates recalculées à chaque ouverture : en chronologique, il s'intercale avec les vraies publications selon cette date fabriquée.
+⚠️ **Dépassé le 2026-11-01** (fiche 🧱 ci-dessous) : le réel passe désormais DEVANT toute la démo ; le chronologique ne vaut plus qu'à l'intérieur de chaque groupe.
 Verrou : `tests/e2e/fil-chronologique.spec.js` (3) — ① et ② tombent quand on rebranche l'ancien classement (réinjection faite).
 
 ---
@@ -639,3 +641,71 @@ Les textes qui annonçaient encore « 3 offertes » / « retour à 3 passions »
 Verrou : `tests/e2e/lancement-gratuit.spec.js` (6) — **réinjection** : `PLAFOND_PASSIONS_EN_VIGUEUR =
 true` rend ①②③④ rouges, ⑤ (le réarmement) reste vert ; la file retirée rend ⑥ rouge.
 
+---
+
+## 🧱 LE RÉEL D'ABORD, LES EXEMPLES ENSUITE — ET DES EXEMPLES CRÉDIBLES (2026-11-01)
+
+Demande de Benjamin : « le contenu exemple PASSIO est là juste pour remplir le feed en attendant qu'il y ait
+beaucoup d'utilisateurs ; il faut toujours afficher les contenus des vrais utilisateurs en priorité en haut et
+faire passer en second plan les exemples. Ensuite fais un gros travail sur ces exemples pour améliorer leur
+qualité et leur réalisme, et rajoutes-en ».
+
+**① L'ordre.** `ordonnerFil` (app-02) : TOUTES les publications réelles (serveur, les miennes, le direct) en
+chronologique, PUIS les exemples, en chronologique entre eux. Utilisé par `renderFeed` et par le repli
+d'exploration. Le discriminant est `p._source === "seed"` (celui de l'étiquette « Exemple PASSIO ») — jamais la
+forme d'un identifiant : `getMyUserId()` fabrique un `u_<aléatoire>` pour un appareil sans session, et sa
+publication est réelle. Avant, la démo — datée à chaque ouverture, donc toujours fraîche — passait devant une
+vraie publication d'avant-hier.
+Coupures : `localStorage.passio_fil_reel_dabord_v1 = "0"` / `window.PASSIO_FIL_REEL_DABORD = false` (l'ordre
+redevient celui du 2026-10-24 et le séparateur disparaît).
+
+**② Le séparateur « Exemples PASSIO »** (`poserSeparateurExemples`, app-02 ; style `.feed-exemples-sep`, posé
+AVANT le bloc UI-4A5). Juste avant la première carte d'exemple de la fenêtre peinte ; deux textes : après du
+réel (« Tu es à jour… ») ou seul (aucune vraie publication, bouton « Publier la première »). ⚠️ **Frère des
+cartes, jamais dedans** : le fenêtrage ne compte que les `.post[data-postid]` et la réhydratation régénère
+l'INTÉRIEUR d'une carte. Il est reposé après chaque peinture (rapide, complément différé, incrémentale, no-op) et
+APRÈS `PassioUIV2.decorateFeed`, pour qu'un module « après la Nᵉ carte » se glisse devant lui. Son état entre
+dans `_feedDomSig`.
+
+**③ Le réel plus ancien est chargé AVANT de laisser lire les exemples** (`completerFilAvecLeReel`, app-08). Une
+page serveur fait 20 lignes ; sans ce geste, une vraie publication de la page 2 n'arrivait qu'à la sentinelle
+du bas — après une vingtaine d'exemples, et insérée AU-DESSUS de ce qu'on lisait. ⚠️ **Borné** :
+`FIL_REEL_PAGES_MAX = 3` lectures par compte et par session, une seule en vol (`_feedPageLoading`, partagé avec
+« Charger plus »), la fenêtre (`_feedRenderLimit`) n'est PAS élargie. Sans borne, un compte dont les passions ne
+croisent aucune vraie publication balaierait toute la table à chaque rendu. La boucle de pagination est
+désormais `_chargerPageServeurSuivante`, partagée avec `loadMoreFeedPosts` (corps inchangé).
+
+**④ Le réalisme — ce qui trahissait la démo n'était pas le texte, c'était la STRUCTURE.** Mesuré sur les 369
+exemples : médiane 27 h et un quart dans les 14 dernières heures, des séries d'un même auteur espacées de
+48 minutes (« Léa » cinq fois en tête du fil Musique) ; médiane **134 « j'aime »**, maximum 1 203, pour un réseau
+de 14 comptes ; **365 cartes sur 369** avec l'une des 19 mêmes photos (la même forêt 36 fois). `curerExemples`
+(app-01, en fin de `buildSeed`, DÉTERMINISTE — une graine FNV par identifiant) : chaque auteur publie à son
+rythme sur 21 jours (≈ 22 exemples par jour, jamais entre 1 h et 7 h), les commentaires gardent leur écart à la
+publication ; les compteurs suivent `2 + 2,2·√ancien` avec une maturité (une carte d'une heure n'a pas encore ses
+« j'aime ») — médiane 26, maximum 70 ; une couverture sur deux environ passe en TEXTE SEUL (questions et listes
+d'abord), les autres tournent dans une famille de photos et ne se répètent jamais d'une carte à la suivante.
+⚠️ **Aucune photo nouvelle n'a été devinée** : `images.unsplash.com` est fermé dans la session de travail, donc
+les 26 clés ajoutées à `COVER_PHOTOS` (app-02) sont TOUTES des photos déjà servies par l'application (catalogue
+`PASSIONS`, affiches des bobines d'exemple). Une famille n'a que des photos dont le sujet convient à toute
+publication de la passion (la photo de pizza présumée a été écartée de la cuisine) ; une famille à une seule
+photo sûre alterne photo et texte seul. Sur une photo CHARGÉE, la capsule « 🎸 Musique » se masque
+(`.cover-ok`) : l'en-tête de la carte nomme déjà la passion. Textes retouchés : p1 et p4 (slogans « l'esprit
+PASSIO », « meet-up Passio », coquille « Quiqui »), le journal de Clara, p413 (copie de p414 : même lieu, même
+commentaire) et le commentaire jumeau de p408.
+
+**⑤ Les exemples des passions PRÉCISES.** Les 369 exemples ne portaient que les 19 passions larges ; or les vrais
+comptes cochent « Course à pied », « Football », « Trail », « Escalade », « Sport senior », « Via ferrata »…
+(`user_state.selectedFeedPassions`, mesuré le 01/11) : leur fil n'avait AUCUN exemple. `exemplesPassionsPrecises`
+(app-01) ajoute **39 personas et 99 publications** sur 46 passions précises, écrites une par une (lieux réels,
+gestes précis, aucune mention de l'application), dont deux passions créées par des comptes (`metallerie`,
+`dark-romance`). ⚠️ Aucune n'a d'`eventId` : un exemple ne promet pas une activité qui n'existe pas.
+⚠️ **Nommées SANS le référentiel** : `PASSIONS_EXEMPLES` (app-01) est lue par `passionById` (après le référentiel,
+avant le générique « ✨ Passion ») et comptée comme connue par `socleConnu` (passions-flat.js) — sinon chaque
+démarrage téléchargerait 568 Ko pour nommer de la démo. Libellés, emojis et couleurs sont RECOPIÉS de
+`data/passions-v1.json` ; le verrou ⑦ refuse toute divergence. C'est de l'affichage : `estPassionCanonique`
+ne la lit pas.
+
+Verrou : `tests/e2e/fil-reel-dabord.spec.js` (9) — ①②⑤ tombent si `renderFeed` retrouve
+`trierFilChronologique` ; ⑥ compte les lectures (exactement 3) ; ⑦⑧ tiennent la table et la couverture des
+passions cochées en production ; ⑨ les invariants de réalisme (plafond de « j'aime », étalement, aucune rafale
+d'auteur, aucune photo répétée deux fois de suite, commentaires dans le cadre, même fil à chaque ouverture).

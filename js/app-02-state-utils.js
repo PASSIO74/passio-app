@@ -2247,6 +2247,15 @@ function passionById(id) {
       if (pl) return { id: pl.id, emoji: pl.emoji, label: pl.label, color: pl.color };
     }
   } catch (e) {}
+  // Passions précises du contenu d'exemple (app-01, 2026-11-01) : nommées sans
+  // le référentiel. Même règle que le repli ci-dessus — de l'affichage, rien
+  // de plus. Après le référentiel : quand il est chargé, c'est lui qui parle.
+  try {
+    if (typeof PASSIONS_EXEMPLES !== "undefined" && Object.prototype.hasOwnProperty.call(PASSIONS_EXEMPLES, id)) {
+      var px = PASSIONS_EXEMPLES[id];
+      return { id: id, emoji: px.emoji, label: px.label, color: px.color };
+    }
+  } catch (e) {}
   return { emoji: "✨", label: "Passion", color: "#8b5cf6" };
 }
 
@@ -7979,6 +7988,104 @@ function trierFilChronologique(posts) {
     return String(a.id) < String(b.id) ? -1 : (String(a.id) > String(b.id) ? 1 : 0);
   });
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// LE RÉEL D'ABORD, LES EXEMPLES ENSUITE (2026-11-01)
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin : « le contenu exemple PASSIO est là juste pour remplir le
+// feed en attendant qu'il y ait beaucoup d'utilisateurs, il faut toujours
+// afficher les contenus des vrais utilisateurs en priorité en haut et faire
+// passer en second plan les exemples ».
+//
+// Le fil chronologique du 2026-10-24 INTERCALAIT la démo et les vraies
+// publications selon la date — or la date de la démo est FABRIQUÉE (recalculée
+// à chaque ouverture, `buildSeed`), donc toujours fraîche : une publication
+// réelle d'avant-hier passait derrière une vingtaine d'exemples.
+//
+// L'ordre devient : TOUTES les publications réelles (serveur, les miennes, le
+// direct), en chronologique ; PUIS les exemples, en chronologique entre eux.
+// Les deux groupes gardent `trierFilChronologique` : rien ne réordonne À
+// L'INTÉRIEUR d'un groupe, donc la garantie du 2026-10-24 (« le plus récent en
+// haut ») tient toujours pour le réel.
+//
+// ⚠️ LE DISCRIMINANT EST `p._source === "seed"`, posé par `allFeedPosts` — le
+// même que l'étiquette « Exemple PASSIO » (`PassioFirstRun.etiquetteDemo`) et
+// que la garantie « compte suivi ». Jamais la forme de l'identifiant ni de
+// l'auteur : `getMyUserId()` fabrique un `u_<aléatoire>` pour un appareil sans
+// session, et sa publication est bien RÉELLE.
+//
+// Coupures (soustractives, lecture seule) — l'ordre redevient celui du 2026-10-24
+// et le séparateur disparaît :
+//     localStorage.passio_fil_reel_dabord_v1 = "0"
+//     window.PASSIO_FIL_REEL_DABORD = false
+function filReelDabordActif() {
+  if (window.PASSIO_FIL_REEL_DABORD === false) return false;
+  try { if (localStorage.getItem("passio_fil_reel_dabord_v1") === "0") return false; } catch (e) {}
+  return true;
+}
+function estExempleDuFil(p) { return !!p && p._source === "seed"; }
+function ordonnerFil(posts) {
+  var tries = trierFilChronologique(posts);
+  if (!filReelDabordActif()) return tries;
+  var reels = [], exemples = [];
+  for (var i = 0; i < tries.length; i++) (estExempleDuFil(tries[i]) ? exemples : reels).push(tries[i]);
+  return reels.concat(exemples);
+}
+
+// Repère du séparateur « Exemples PASSIO » : le PREMIER exemple de la fenêtre
+// peinte, et combien de publications réelles le précèdent. `null` = aucun
+// exemple à l'écran (le fil réel suffit à le remplir) ou lot coupé.
+function repereExemplesFil(visible) {
+  if (!filReelDabordActif() || !Array.isArray(visible)) return null;
+  for (var i = 0; i < visible.length; i++) {
+    if (estExempleDuFil(visible[i])) return { id: String(visible[i].id), reels: i };
+  }
+  return null;
+}
+
+// Pose (ou déplace, ou retire) le séparateur juste AVANT la carte du premier
+// exemple. Idempotente : appelée après chaque peinture — rapide, complément
+// différé, incrémentale, et le chemin no-op.
+//
+// ⚠️ FRÈRE DES CARTES, JAMAIS DEDANS. Le fenêtrage ne compte que les
+// `.post[data-postid]` (préfixe du repeint incrémental, ancre de scroll,
+// déshydratation) et la réhydratation régénère l'INTÉRIEUR d'une carte : un
+// séparateur logé dans le HTML d'une carte disparaîtrait à la première
+// déshydratation. Même position que les modules du lot UI-2 (`insertAfterNthPost`).
+// ⚠️ Rien d'utilisateur dans ce bloc : textes en dur, aucun échappement à oublier.
+function poserSeparateurExemples(list, repere) {
+  if (!list) return;
+  var ancien = list.querySelector(":scope > .feed-exemples-sep");
+  if (!repere) { if (ancien) ancien.remove(); return; }
+  var cible = null;
+  var cartes = list.querySelectorAll(":scope > .post[data-postid]");
+  for (var i = 0; i < cartes.length; i++) {
+    if (cartes[i].getAttribute("data-postid") === repere.id) { cible = cartes[i]; break; }
+  }
+  var genre = repere.reels > 0 ? "apres-reel" : "seul";
+  if (!cible) {
+    // Carte pas encore montée (au-delà de la peinture rapide) : le complément
+    // différé rappellera. Un séparateur resté d'un rendu précédent, lui, part.
+    if (ancien) ancien.remove();
+    return;
+  }
+  if (ancien && ancien.nextElementSibling === cible && ancien.getAttribute("data-genre") === genre) return;
+  if (ancien) ancien.remove();
+  var sep = document.createElement("div");
+  sep.className = "feed-exemples-sep";
+  sep.setAttribute("role", "note");
+  sep.setAttribute("data-genre", genre);
+  sep.innerHTML = '<div class="feed-exemples-sep-titre"><span>Exemples PASSIO</span></div>'
+    + '<div class="feed-exemples-sep-texte">'
+    + (genre === "apres-reel"
+        ? "Tu es à jour : au-dessus, toutes les publications de ta communauté. En dessous, des exemples pour découvrir ce qui se partage sur PASSIO, en attendant que vous soyez plus nombreux."
+        : "Pas encore de publication de ta communauté par ici. En attendant, voici des exemples de ce qui s'y partage — les vraies publications passeront toujours au-dessus.")
+    + '</div>'
+    + (genre === "seul"
+        ? '<button type="button" class="btn small primary feed-exemples-sep-cta" onclick="goTo(\'studio\')">Publier la première</button>'
+        : "");
+  cible.parentNode.insertBefore(sep, cible);
+}
 function rankFeedPosts(posts) {
   var arr = (posts || []).slice();
   var off = false;
@@ -8164,7 +8271,8 @@ function renderFeedExplorationFallback(list) {
   });
 
   var aExplorer = [];
-  try { aExplorer = trierFilChronologique(candidats).slice(0, FEED_EXPLORATION_MAX); }
+  // Le réel d'abord, ici aussi (2026-11-01) : `ordonnerFil` = chronologique par groupe.
+  try { aExplorer = ordonnerFil(candidats).slice(0, FEED_EXPLORATION_MAX); }
   catch (e) { aExplorer = candidats.slice(0, FEED_EXPLORATION_MAX); }
 
   var quoi = etiquettes.length === 1
@@ -9108,11 +9216,23 @@ function renderFeed() {
   // neuve sortait derrière des publications plus anciennes mais plus engagées,
   // jusqu'à disparaître des 20 cartes peintes. Les envies FILTRENT toujours
   // (`_envieRetient`, plus haut) ; elles ne réordonnent plus rien.
-  const sortedPosts = trierFilChronologique(posts);
+  //
+  // ✅ ET LE RÉEL D'ABORD (2026-11-01) : toutes les publications réelles, puis
+  // les exemples — chacun des deux groupes en chronologique (`ordonnerFil`).
+  const sortedPosts = ordonnerFil(posts);
 
   const renderLimit = window._feedRenderLimit || 20;
   const visible = sortedPosts.slice(0, renderLimit);
   const hasMore = sortedPosts.length > renderLimit || window._feedServerMayHaveMore;
+  // Premier exemple de la fenêtre peinte → séparateur « Exemples PASSIO ».
+  const _repereEx = repereExemplesFil(visible);
+  // Des exemples sont à l'écran alors que le serveur a peut-être encore des
+  // publications RÉELLES plus anciennes : on va les chercher MAINTENANT. Sans
+  // ça, elles n'arrivaient qu'au bas de la fenêtre (sentinelle) — c'est-à-dire
+  // après une vingtaine d'exemples, et insérées AU-DESSUS de ce qu'on lit.
+  if (_repereEx && window._feedServerMayHaveMore && typeof completerFilAvecLeReel === "function") {
+    try { completerFilAvecLeReel(); } catch (e) { try { diagLog("completerFilAvecLeReel", e && e.message); } catch (_) {} }
+  }
 
   // ── Guard no-op : si le contenu visible est STRICTEMENT le même que le
   // dernier rendu (mêmes posts, mêmes compteurs, mêmes filtres), on ne
@@ -9127,6 +9247,8 @@ function renderFeed() {
     // Le pont Fil → IRL change le HTML des cartes sans toucher aux posts : sans
     // lui dans la signature, basculer le drapeau ne repeindrait pas le fil.
     (typeof feedIrlBridgeEnabled === "function" && feedIrlBridgeEnabled()) ? "irl1" : "irl0",
+    // Le séparateur dépend de l'ordre ET du lot : le couper doit repeindre.
+    _repereEx ? "ex:" + _repereEx.id + ":" + _repereEx.reels : (filReelDabordActif() ? "ex-" : "ex0"),
     visible.map(function(p) {
       return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
     }).join("|"),
@@ -9137,6 +9259,7 @@ function renderFeed() {
     // mort (plus rien ne s'hydrate ni ne se démonte) — trouvé par le test des
     // dix navigations, jamais par une relecture.
     feedWindowSync(list);
+    poserSeparateurExemples(list, _repereEx);
     return;
   }
   window._feedDomSig = _domSig;
@@ -9149,7 +9272,10 @@ function renderFeed() {
   // qu'il faut afficher (cas du chargement progressif), on n'ajoute que la
   // queue. Le DOM en place n'est pas retouché : ni scroll réinitialisé, ni
   // images re-décodées. Toute divergence renvoie au rendu complet ci-dessous.
-  if (feedWindowPaintIncremental(list, visible, hasMore, moreBtnHtml)) return;
+  if (feedWindowPaintIncremental(list, visible, hasMore, moreBtnHtml)) {
+    poserSeparateurExemples(list, _repereEx);
+    return;
+  }
 
   const FAST = Math.min(12, visible.length);
   list.innerHTML = visible.slice(0, FAST).map(_renderPostHTMLSafe).join("")
@@ -9168,6 +9294,9 @@ function renderFeed() {
   if (window.PassioUIV2 && typeof window.PassioUIV2.decorateFeed === "function") {
     window.PassioUIV2.decorateFeed(list, visible);
   }
+  // APRÈS la décoration UI-2 : un module inséré « après la Nᵉ carte » se glisse
+  // alors devant le séparateur, jamais entre lui et le premier exemple.
+  poserSeparateurExemples(list, _repereEx);
 
   // Aide §8 « première carte ». Différée d'un tick : la bulle s'ancre sur le
   // rectangle de la carte, qui n'est mesurable qu'une fois la peinture faite.
@@ -9207,6 +9336,8 @@ function renderFeed() {
         frais.slice(FAST).map(_renderPostHTMLSafe).join("") + feedWindowTailHtml(hasMore, moreBtnHtml));
       if (feedWindowEnabled()) list._fwSigs = frais.map(_feedWindowCardSig);
       feedWindowSync(list);
+      // Le premier exemple peut être au-delà de la peinture rapide.
+      poserSeparateurExemples(list, _repereEx);
     };
     (window.requestIdleCallback || function(f){ return setTimeout(f, 50); })(_fill, { timeout: 300 });
   }
@@ -9272,6 +9403,38 @@ const COVER_PHOTOS = {
   book:        "photo-1519681393784-d120267933ba", // mountain/book contemplative
   trail:       "photo-1464822759023-fed622ff2c3b", // trail running
   sunrise:     "photo-1513745405825-efaf9a49315f", // sunrise horizon
+  // ── Variantes du contenu d'exemple (2026-11-01) ────────────────────────────
+  // 19 photos pour 369 exemples : la même photo de forêt revenait 36 fois, et
+  // c'était le premier signe qu'un fil est fabriqué. Ces identifiants sont
+  // TOUS déjà servis par l'application (photos du catalogue `PASSIONS`,
+  // affiches des bobines d'exemple, app-05) : aucun n'est une supposition.
+  // `buildSeed` (app-01, `curerExemples`) les répartit par famille de passion.
+  guitar:      "photo-1510915361894-db8b60106cb1",
+  concert:     "photo-1514320291840-2e0a9bf2a9ae",
+  mic:         "photo-1511671782779-c97d3d27a1d4",
+  camera:      "photo-1552168324-d612d77725e3",
+  film:        "photo-1502920917128-1aa500764cbd",
+  tirage:      "photo-1452587925148-ce544e77e70d",
+  voyage:      "photo-1488085061387-422e29b40080",
+  coast:       "photo-1530841377377-3ff06c0ca713",
+  city:        "photo-1502602898657-3e91760cbb34",
+  food:        "photo-1565299624946-b28f40a0ae38",
+  coffee:      "photo-1495474472287-4d71bcdd2085",
+  gym:         "photo-1534438327276-14e5300c3a48",
+  warmup:      "photo-1517649763962-0c623066013b",
+  skate:       "photo-1543364195-077a52659557",
+  library:     "photo-1521587760476-6c12a4b040da",
+  reading:     "photo-1456513080510-7bf3a84b82f8",
+  cinema:      "photo-1485846234645-a62644f84728",
+  ai:          "photo-1531746790731-6c087fecd65a",
+  art:         "photo-1513364776144-60967b0f800f",
+  garden:      "photo-1416879595882-3373a0480b5b",
+  gaming:      "photo-1542751371-adc38448a05e",
+  yoga:        "photo-1544367567-0f2fcb009e0b",
+  fashion:     "photo-1483985988355-763728e1935b",
+  podcast:     "photo-1589903308904-1010c2294adc",
+  moto:        "photo-1558980664-10e7ec7b39cb",
+  dog:         "photo-1450778869180-41d0601e046e",
 };
 const COVER_FALLBACK_EMOJI = {
   stage: "🎤", street: "🚶", nature: "🌿", neon: "✨", studio: "🎧",
@@ -9300,7 +9463,7 @@ function renderPostCover(p, passion) {
         radial-gradient(circle at 30% 30%, ${pc}55, transparent 55%),
         linear-gradient(135deg, ${pc}33 0%, #2a2450 60%, #1c1938 100%);
     ">
-      <img class="post-cover-img" src="${primary}" alt="${escapeHtml(passionLabel)}" loading="lazy" onerror="${onerr}" />
+      <img class="post-cover-img" src="${primary}" alt="${escapeHtml(passionLabel)}" loading="lazy" onload="if(this.src.indexOf('images.unsplash.com')>-1)this.parentNode.classList.add('cover-ok');" onerror="${onerr}" />
       <div class="post-cover-overlay"></div>
       <div class="post-cover-caption">${passionEmoji} ${escapeHtml(passionLabel)}</div>
     </div>`;

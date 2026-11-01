@@ -99,6 +99,75 @@ const PASSIONS = [
   { id: "actu",       emoji: "🌍", label: "Actualité",    color: "#7c3aed", photo: "photo-1504711434969-e33886168f5c" },
 ];
 
+// ======== PASSIONS PRÉCISES DU CONTENU D'EXEMPLE (2026-11-01) ========
+// Les 369 premiers exemples ne portaient que les 19 passions LARGES du socle
+// (« Sport », « Musique »…). Or les vrais comptes cochent des passions précises :
+// mesuré en production le 01/11, `selectedFeedPassions` porte « Course à pied »,
+// « Football », « Trail », « Escalade », « Sport senior », « Via ferrata »… et
+// aucun exemple n'y entrait — leur fil restait vide, alors que remplir le fil
+// est exactement ce pour quoi les exemples existent.
+//
+// Cette table NOMME les passions des nouveaux exemples SANS télécharger le
+// référentiel (568 Ko) : `passionById` (app-02) la consulte avant le générique
+// « ✨ Passion », et `socleConnu` (passions-flat.js) la compte comme connue —
+// sinon chaque démarrage chargerait le référentiel pour nommer de la démo.
+// ⚠️ C'est un ajout d'AFFICHAGE, rien d'autre : `estPassionCanonique` (seule
+// autorité de publication) ne la lit pas.
+// ⚠️ Libellés, emojis et couleurs RECOPIÉS de `data/passions-v1.json` (et de
+// `public.passions` pour les deux passions créées par des comptes) : un verrou
+// le vérifie (`fil-reel-dabord.spec.js`), ils ne peuvent pas diverger.
+// `famille` = groupe de photos de couverture (`curerExemples`), jamais affiché.
+const PASSIONS_EXEMPLES = {
+  "running":                    { label: "Course à pied", emoji: "🏃", color: "#8b5cf6", famille: "course" },
+  "running-trail":              { label: "Trail", emoji: "🏃", color: "#8b5cf6", famille: "plein_air" },
+  "collectif":                  { label: "Sports collectifs", emoji: "⚽", color: "#7c3aed", famille: "salle" },
+  "collectif-football":         { label: "Football", emoji: "⚽", color: "#7c3aed", famille: "salle" },
+  "collectif-foot-feminin":     { label: "Football féminin", emoji: "⚽", color: "#7c3aed", famille: "salle" },
+  "collectif-basketball":       { label: "Basketball", emoji: "⚽", color: "#7c3aed", famille: "salle" },
+  "fitness":                    { label: "Musculation et fitness", emoji: "💪", color: "#7c3aed", famille: "salle" },
+  "fitness-musculation":        { label: "Musculation", emoji: "💪", color: "#7c3aed", famille: "salle" },
+  "fitness-senior":             { label: "Sport senior", emoji: "💪", color: "#7c3aed", famille: "plein_air" },
+  "sport-escalade":             { label: "Escalade", emoji: "🏋️", color: "#8b5cf6", famille: "plein_air" },
+  "outdoor":                    { label: "Montagne et outdoor", emoji: "🥾", color: "#7c3aed", famille: "plein_air" },
+  "outdoor-randonnee":          { label: "Randonnée", emoji: "🥾", color: "#7c3aed", famille: "plein_air" },
+  "outdoor-via-ferrata":        { label: "Via ferrata", emoji: "🥾", color: "#7c3aed", famille: "plein_air" },
+  "glisse-wakeboard":           { label: "Wakeboard", emoji: "🏄", color: "#8b5cf6", famille: "eau" },
+  "nautisme-plongee":           { label: "Plongée sous-marine", emoji: "⛵", color: "#7c3aed", famille: "eau" },
+  "combat":                     { label: "Sports de combat", emoji: "🥊", color: "#8b5cf6", famille: "salle" },
+  "combat-boxe":                { label: "Boxe anglaise", emoji: "🥊", color: "#8b5cf6", famille: "salle" },
+  "sport-handisport":           { label: "Handisport", emoji: "🏋️", color: "#8b5cf6", famille: "salle" },
+  "sante-sport-sante":          { label: "Sport santé", emoji: "🥗", color: "#7c3aed", famille: "plein_air" },
+  "parentalite-sport-famille":  { label: "Sport en famille", emoji: "👶", color: "#a78bfa", famille: "plein_air" },
+  "auto-sport-auto":            { label: "Sport automobile", emoji: "🚗", color: "#7c3aed", famille: "moto" },
+  "moto-enduro":                { label: "Enduro", emoji: "🏍", color: "#64748b", famille: "moto" },
+  "moto-sportive":              { label: "Sportive", emoji: "🏍", color: "#64748b", famille: "moto" },
+  "musique-piano":              { label: "Piano", emoji: "🎸", color: "#8b5cf6", famille: "musique" },
+  "musique-guitare-electrique": { label: "Guitare électrique", emoji: "🎸", color: "#8b5cf6", famille: "musique" },
+  "musique-reggaeton":          { label: "Reggaeton", emoji: "🎸", color: "#8b5cf6", famille: "danse" },
+  "danse-hip-hop":              { label: "Hip-hop", emoji: "💃", color: "#8b5cf6", famille: "danse" },
+  "photo-astrophoto":           { label: "Astrophotographie", emoji: "📷", color: "#8b5cf6", famille: "ciel" },
+  "sciences-astronomie":        { label: "Astronomie", emoji: "🔬", color: "#7c3aed", famille: "ciel" },
+  "art-dessin":                 { label: "Dessin", emoji: "🎨", color: "#8b5cf6", famille: "art" },
+  "voyage-road-trip":           { label: "Road trip", emoji: "🌍", color: "#8b5cf6", famille: "voyage" },
+  "voyage-backpacking":         { label: "Backpacking", emoji: "🌍", color: "#8b5cf6", famille: "voyage" },
+  "tech-impression-3d":         { label: "Impression 3D", emoji: "💻", color: "#7c3aed", famille: "tech" },
+  "jeuxvideo-rpg":              { label: "RPG", emoji: "🎮", color: "#8b5cf6", famille: "jeuxvideo" },
+  "cuisine-coreenne":           { label: "Cuisine coréenne", emoji: "🍳", color: "#7c3aed", famille: "cuisine" },
+  "cuisine-patisserie":         { label: "Pâtisserie", emoji: "🍳", color: "#7c3aed", famille: "cuisine" },
+  "animaux-chiens":             { label: "Chiens", emoji: "🐾", color: "#a78bfa", famille: "animaux" },
+  "jardinage-urbain":           { label: "Jardinage urbain", emoji: "🌱", color: "#8b5cf6", famille: "jardinage" },
+  "litterature-romans":         { label: "Romans", emoji: "📚", color: "#8b5cf6", famille: "litterature" },
+  "cinema-anime":               { label: "Animation japonaise", emoji: "🎬", color: "#7c3aed", famille: "cinema" },
+  "cinema-series":              { label: "Séries", emoji: "🎬", color: "#7c3aed", famille: "cinema" },
+  "jeux-echecs":                { label: "Échecs", emoji: "🎲", color: "#8b5cf6", famille: "litterature" },
+  "langues-japonais":           { label: "Japonais", emoji: "🗣️", color: "#8b5cf6", famille: "litterature" },
+  "yoga-aerien":                { label: "Yoga aérien", emoji: "🧘", color: "#8b5cf6", famille: "yoga" },
+  // Créées par des comptes (`creer_passion`, absentes du référentiel embarqué) :
+  // nom et emoji recopiés de `public.passions`, mesurés le 2026-11-01.
+  "metallerie":                 { label: "Metallerie", emoji: "✨", color: "#8b5cf6", famille: "metier", creeeParUnCompte: true },
+  "dark-romance":               { label: "Dark romance", emoji: "✨", color: "#8b5cf6", famille: "litterature", creeeParUnCompte: true },
+};
+
 // ======== ÉCONOMIE INTERNE — RETIRÉE (ADR-009) ========
 // `RANKS`, `REWARDS` et `LIKES_PER_PASSIA` ont été supprimés avec le Wallet, les
 // points, les rangs, les quêtes et les Passia. Aucun barème ne subsiste : le
@@ -164,7 +233,7 @@ function buildSeed() {
     // fonctionnalité (§6). Ils ne servaient qu'à peupler l'écran CDV et le
     // carrousel du Fil, tous deux supprimés.
     { id: "p1",  authorId: "u_lea",   passion: "musique", mood: "creation", type: "text", cover: "studio",
-      text: "Je viens de finir la démo d'un morceau que je porte depuis 3 ans. Pas parfait, mais honnête. 🎶\n\nMontrer le processus, pas la façade, c'est tout l'esprit PASSIO pour moi.",
+      text: "Je viens de finir la démo d'un morceau que je porte depuis trois ans. Pas parfaite, mais honnête. 🎶\n\nJe la poste avant de la retoucher encore une fois, sinon je ne la posterai jamais.",
       createdAt: hours(14), likes: 34, liked: false, comments: [
         { id: "c1", authorId: "u_karim", text: "Ça sonne super brut, j'adore.", createdAt: hours(1), likes: 2, likedBy: [], emojis: [], replies: [] },
         { id: "c2", authorId: "u_amira", text: "Le courage de poster une démo 👏", createdAt: hours(1), likes: 6, likedBy: [], emojis: [], replies: [] },
@@ -177,7 +246,7 @@ function buildSeed() {
       image: null, // will use CSS gradient fallback
       createdAt: hours(8), likes: 68, liked: false, comments: [] },
     { id: "p4",  authorId: "u_nina",  passion: "voyage", mood: "irl", type: "text", cover: "horizon",
-      text: "Quiqui est à Lisbonne ce week-end ? J'organise un petit meet-up Passio voyageurs samedi 18h. On partage des anecdotes de route, rien de plus.",
+      text: "📍 Lisbonne, miradouro de Santa Catarina — 📅 samedi 18h\nQui est à Lisbonne ce week-end ? Petit apéro entre voyageurs au coucher du soleil : on partage des anecdotes de route, rien de plus. Je serai près du kiosque, avec un bob jaune.",
       createdAt: hours(12), likes: 47, liked: false, comments: [] },
     { id: "p5",  authorId: "u_theo", passion: "cuisine", mood: "learn", type: "text", cover: "kitchen",
       text: "La vérité sur les sauces mères : 80% de la cuisine française tient sur 5 bases. Je vous fais le récap' en podcast la semaine prochaine.\n\nQuelle base vous voulez voir en premier ?",
@@ -217,7 +286,7 @@ function buildSeed() {
       audio: null,
       createdAt: hours(29), likes: 126, liked: false, comments: [] },
     { id: "p15", authorId: "u_clara", passion: "voyage", mood: "irl", type: "text", cover: "sunrise",
-      text: "J-12 avant le départ Copenhague → Rome à vélo. 1850 km. Solo. Terrifiée. Préparée.\n\nSi quelqu'un veut suivre le journal quotidien sur PASSIO, je poste chaque soir.",
+      text: "J-12 avant le départ Copenhague → Rome à vélo. 1850 km. Solo. Terrifiée. Préparée.\n\nJe posterai une photo et trois lignes chaque soir, même les soirs où ça ira mal.",
       createdAt: hours(6), likes: 212, liked: false, comments: [
         { id: "c6", authorId: "u_mehdi", text: "Tu vas tout déchirer. Jalousie maximale.", createdAt: hours(5), likes: 9, likedBy: [], emojis: [], replies: [] },
         { id: "c7", authorId: "u_nina", text: "Je te file mes contacts à Munich et Vérone 📍", createdAt: hours(3), likes: 5, likedBy: [], emojis: [], replies: [] },
@@ -1397,7 +1466,7 @@ function buildSeed() {
     { id: "p408", authorId: "u_karim", passion: "photo", mood: "irl", type: "text", cover: "sunrise",
       text: "📍 Paris, sortie de métro Jaurès — 📅 samedi 6h15 (oui, 6h15)\nBalade photo de rue jusqu'à Stalingrad : deux heures, on s'arrête là où la lumière nous arrête. 6 personnes maximum pour que ça reste une balade et pas une visite guidée.\nAucun niveau requis, un téléphone suffit. Il reste 2 places — commentez et je vous envoie le point de rendez-vous exact.",
       createdAt: hours(4.0), likes: 28, liked: false, comments: [
-        { id: "cp408_0", authorId: "u_inès", text: "Je prends une place ! Je viens avec un argentique, ça ira ?", createdAt: hours(3.4), likes: 3, likedBy: [], emojis: [], replies: [] },
+        { id: "cp408_0", authorId: "u_inès", text: "6 h 15, je mets trois réveils mais je viens. Il reste une place ?", createdAt: hours(3.4), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p409", authorId: "u_karim", passion: "photo", mood: "irl", type: "text", cover: "street",  eventId: "e31",
       text: "📍 Marseille, Vieux Port — 📅 samedi 10h\nAtelier photo de rue : deux heures à marcher, on s'arrête là où la lumière nous arrête, puis on relit ensemble ce que chacun a rapporté. Pas de théorie, on regarde des images.\nSix personnes maximum, il reste 2 places. Un téléphone suffit — commentez et je vous envoie le point de rendez-vous exact.",
@@ -1417,9 +1486,9 @@ function buildSeed() {
         { id: "cp412_0", authorId: "u_theo", text: "Étalée avant le repos, c'est LE truc que les livres ne disent pas. Confirmé en cuisine pro.", createdAt: hours(6.0), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p413", authorId: "u_theo", passion: "cuisine", mood: "irl", type: "text", cover: "kitchen",
-      text: "📍 Marseille, chez moi (Notre-Dame du Mont) — 📅 samedi 20h\nTable d'hôtes « retour du marché » : 8 couverts, 5 services, 30 € par personne pour couvrir les produits. Je cuisine devant vous, et vous mettez la main au dessert.\nIl reste 3 places. Version végétarienne possible si vous me le dites avant vendredi.",
+      text: "📍 Marseille, marché du Prado (entrée côté avenue du Prado) — 📅 mercredi 8h30\nTournée du marché avec moi avant le service : on choisit le poisson, on goûte les tomates qu'on ne connaît pas, et je vous montre comment je repère un étal qui vend sa propre production. Une heure et demie, on finit par un café au comptoir.\nSix personnes au plus, sinon on bloque les allées.",
       createdAt: hours(3.4), likes: 35, liked: false, comments: [
-        { id: "cp413_0", authorId: "u_emma", text: "Je prends deux places. On amène le vin ?", createdAt: hours(2.8), likes: 3, likedBy: [], emojis: [], replies: [] },
+        { id: "cp413_0", authorId: "u_emma", text: "Mercredi je ne travaille qu'à 11 h, je viens ! Il faut apporter un panier ?", createdAt: hours(2.8), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p414", authorId: "u_theo", passion: "cuisine", mood: "irl", type: "text", cover: "kitchen",  eventId: "e3",
       text: "📍 Marseille, chez moi (Notre-Dame du Mont) — 📅 samedi 19h30\nDîner entre passionnés : 8 couverts, 5 services, 30 € par personne pour couvrir les produits. Je cuisine devant vous et vous mettez la main au dessert, c'est la règle de la maison.\nIl reste 3 places. Version végétarienne possible si vous me le dites avant vendredi.",
@@ -2227,6 +2296,749 @@ function buildSeed() {
     { id: "n7", kind: "like",    fromId: "u_karim", text: "<b>Karim Belkacem</b> a réagi à ta passion photo", createdAt: hours(10), unread: false, html: true, emoji: "📷" },
   ];
 
+  // Contenu des passions PRÉCISES (2026-11-01) : ajouté EN FIN de tableau, comme
+  // les séries précédentes — trois suites prennent `state.seed.posts[0]`.
+  const _precis = exemplesPassionsPrecises(hours);
+  _precis.users.forEach(function (u) { seedUsers.push(u); });
+  _precis.posts.forEach(function (p) { seedPosts.push(p); });
+
+  // Dates étalées, compteurs crédibles, photos variées : voir `curerExemples`.
+  curerExemples(seedPosts, now);
+
   return { users: seedUsers, posts: seedPosts, events: seedEvents, stories: seedStories, notifications: seedNotifications };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// CURATION DU CONTENU D'EXEMPLE (2026-11-01)
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin : « fais un gros travail sur ces exemples pour améliorer
+// leur qualité et leur réalisme ». Les TEXTES étaient déjà écrits à la main,
+// un par un ; ce qui trahissait un fil fabriqué, c'était la STRUCTURE, mesurée
+// sur les 369 exemples le 01/11 :
+//   · les dates : médiane 27 h, un quart dans les 14 dernières heures, et les
+//     séries d'un même auteur espacées de 48 minutes (« Léa » cinq fois en tête
+//     du fil Musique, à 10:24, 09:36, 08:48…) ;
+//   · les compteurs : médiane 134 « j'aime », maximum 1 203 — pour un réseau de
+//     quatorze comptes, à côté de vraies publications à 2 ou 3 ;
+//   · les photos : 365 cartes sur 369 portaient l'une des 19 mêmes photos,
+//     la même forêt 36 fois.
+// Cette passe corrige les trois, de façon DÉTERMINISTE (une graine par
+// identifiant : le même fil à chaque ouverture, rien d'aléatoire d'un rendu à
+// l'autre), sans toucher à aucun texte ni à aucun identifiant.
+//
+// ⚠️ ELLE NE S'APPLIQUE QU'À `buildSeed`, donc qu'au contenu d'exemple : une
+// publication réelle ne passe jamais par ici.
+// ⚠️ Rien n'est AJOUTÉ à une carte : une couverture peut être retirée (texte
+// seul) ou remplacée par une sœur de la même famille, jamais créée.
+const EXEMPLES_ETALEMENT_JOURS = 21;
+
+// Graine déterministe dans [0, 1) — FNV-1a 32 bits.
+function _aleaExemple(cle) {
+  var h = 2166136261;
+  var s = String(cle);
+  for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 100000) / 100000;
+}
+
+// Familles de photos : des clés de `COVER_PHOTOS` (app-02), toutes déjà servies
+// ailleurs dans l'application. ⚠️ Une famille ne réunit que des photos dont le
+// sujet convient à TOUTE publication de la passion : mieux vaut une carte sans
+// photo qu'une photo qui contredit le texte.
+const COUVERTURES_EXEMPLES = {
+  musique:     ["studio", "guitar", "stage", "concert", "neon", "mic"],
+  photo:       ["street", "camera", "film", "sunrise", "tirage"],
+  voyage:      ["horizon", "voyage", "coast", "city"],
+  cuisine:     ["kitchen"],
+  sport:       ["trail", "gym", "warmup", "nature"],
+  litterature: ["library", "reading"],
+  cinema:      ["cinema", "neon"],
+  tech:        ["tech", "ai"],
+  art:         ["art", "workshop"],
+  jardinage:   ["garden", "nature"],
+  metier:      ["workshop"],
+  jeuxvideo:   ["gaming", "neon"],
+  yoga:        ["yoga", "nature", "sunrise"],
+  mode:        ["fashion", "street"],
+  danse:       ["dance", "stage"],
+  podcast:     ["podcast", "studio", "mic"],
+  moto:        ["moto", "trail"],
+  animaux:     ["dog", "nature"],
+  // Familles des passions précises (`PASSIONS_EXEMPLES[id].famille`).
+  plein_air:   ["trail", "nature", "sunrise"],
+  course:      ["warmup", "trail", "sunrise"],
+  salle:       ["gym", "warmup"],
+  eau:         ["horizon", "coast"],
+  ciel:        ["dark_matter", "sunrise"],
+};
+
+function _familleExemple(p) {
+  if (!p) return null;
+  if (Object.prototype.hasOwnProperty.call(COUVERTURES_EXEMPLES, p.passion)) return p.passion;
+  var px = PASSIONS_EXEMPLES[p.passion];
+  return px && px.famille ? px.famille : null;
+}
+
+// Une couverture se garde-t-elle ? Une vraie communauté publie surtout du
+// TEXTE : une question, une liste de conseils, une pensée du soir n'arrivent
+// pas avec une photo de banque d'images. Les cartes où l'image EST le propos
+// (type photo) et les rencontres reliées à une activité gardent la leur.
+function _garderCouverture(p) {
+  if (p.type === "photo" || p.type === "video") return true;
+  // Les nouveaux exemples (`pn_…`) ont été écrits avec leur couverture choisie
+  // à la main, ou sans : la passe ne la remet pas en cause.
+  if (/^pn_/.test(String(p.id))) return true;
+  var t = String(p.text || "");
+  var seuil = 0.42;
+  if (p.eventId) seuil = 0.8;
+  else if (p.mood === "irl") seuil = 0.5;
+  else if (/\?[^?\n]{0,80}$/.test(t)) seuil = 0.2;           // finit sur une question
+  else if (/(^|\n)\s*1[.)]\s/.test(t)) seuil = 0.3;           // liste de conseils
+  return _aleaExemple(p.id + "#couverture") < seuil;
+}
+
+// Redate une publication et ses commentaires en gardant l'ÉCART de chaque
+// commentaire à sa publication (un commentaire ne précède jamais sa carte, et
+// n'arrive jamais dans le futur).
+function _redaterExemple(p, now, nouvelAgeH) {
+  var H = 3600000;
+  var ancienAge = (now - (p.createdAt || now)) / H;
+  p.createdAt = Math.round(now - nouvelAgeH * H);
+  function redaterFils(liste, ageParent, ancienAgeParent, sel) {
+    (liste || []).forEach(function (c, i) {
+      if (!c) return;
+      var ancienC = (now - (c.createdAt || now)) / H;
+      var ecart = ancienAgeParent - ancienC;
+      if (!(ecart > 0.03)) ecart = 0.2 + _aleaExemple((c.id || sel + i) + "#ecart") * 6;
+      ecart = Math.min(ecart, 30, Math.max(0.02, ageParent * 0.92));
+      var ageC = Math.max(0.02, ageParent - ecart);
+      c.createdAt = Math.round(now - ageC * H);
+      if (Array.isArray(c.replies) && c.replies.length) redaterFils(c.replies, ageC, ancienC, (c.id || sel) + "r");
+    });
+  }
+  redaterFils(p.comments, nouvelAgeH, ancienAge, p.id + "c");
+}
+
+// Personne ne publie entre 1 h et 7 h du matin dans un fil crédible : on
+// renvoie la publication à la veille au soir (entre 22 h et 23 h 30 environ).
+function _heureVraisemblable(now, ageH, cle) {
+  var d = new Date(now - ageH * 3600000);
+  var h = d.getHours() + d.getMinutes() / 60;
+  if (h >= 1 && h < 7) return ageH + h + 1 + _aleaExemple(cle + "#soir") * 1.5;
+  return ageH;
+}
+
+function curerExemples(posts, now) {
+  if (!Array.isArray(posts) || !posts.length) return posts;
+  var feed = posts.filter(function (p) { return p && !p.isReel; });
+
+  // ── ① LES DATES : chaque auteur publie à SON rythme ─────────────────────
+  // Ses publications gardent leur ordre d'origine (la plus récente reste la
+  // plus récente), mais s'étalent sur trois semaines, avec un écart propre à
+  // l'auteur et un léger aléa — plus de rafales de cinq cartes en une heure.
+  var parAuteur = {};
+  feed.forEach(function (p) { (parAuteur[p.authorId] = parAuteur[p.authorId] || []).push(p); });
+  Object.keys(parAuteur).forEach(function (auteur) {
+    var liste = parAuteur[auteur].slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    var pas = (EXEMPLES_ETALEMENT_JOURS * 24) / liste.length;
+    // La première publication tombe n'importe où dans le premier intervalle de
+    // l'auteur : le débit du fil est alors le même chaque jour (≈ 22 exemples),
+    // au lieu d'une rafale où tous les auteurs auraient publié dans la nuit.
+    var age = 0.3 + _aleaExemple(auteur + "#phase") * pas;
+    liste.forEach(function (p, k) {
+      if (k > 0) age += pas * (0.55 + 0.9 * _aleaExemple(p.id + "#pas"));
+      _redaterExemple(p, now, _heureVraisemblable(now, age, p.id));
+    });
+  });
+
+  // ── ② LES COMPTEURS : ceux d'une communauté qui démarre ─────────────────
+  // Racine carrée de l'ancien compteur (l'ordre relatif des cartes est gardé),
+  // puis une maturité : une carte d'une heure n'a pas encore ses « j'aime ».
+  feed.forEach(function (p) {
+    var ageH = (now - p.createdAt) / 3600000;
+    var nbC = Array.isArray(p.comments) ? p.comments.length : 0;
+    var base = 2 + 2.2 * Math.sqrt(Math.max(0, p.likes || 0));
+    var maturite = Math.min(1, 0.3 + 0.7 * ageH / 36);
+    p.likes = Math.max(nbC + 1, Math.round(base * maturite + _aleaExemple(p.id + "#likes") * 3));
+    var plafond = Math.max(1, Math.round(p.likes / 3));
+    (p.comments || []).forEach(function (c) {
+      if (c && typeof c.likes === "number") c.likes = Math.min(c.likes, plafond);
+    });
+  });
+
+  // ── ③ LES PHOTOS : moins, et jamais la même deux fois de suite ──────────
+  // Parcours du plus récent au plus ancien ; chaque famille fait TOURNER ses
+  // photos, et une photo identique à la carte précédente est sautée.
+  var ordre = feed.slice().sort(function (a, b) { return b.createdAt - a.createdAt; });
+  var curseurs = {};
+  var dejaVue = {};
+  var precedente = null;
+  ordre.forEach(function (p) {
+    if (!p.cover || typeof p.cover !== "string") return;
+    if (!_garderCouverture(p)) { delete p.cover; return; }
+    var fam = _familleExemple(p);
+    var pool = fam ? COUVERTURES_EXEMPLES[fam] : null;
+    // Seules tournent les photos GÉNÉRIQUES de la famille. Une clé spécialisée
+    // (actualité, ciel, climat…) a été choisie pour CE texte, comme celles des
+    // nouveaux exemples (`pn_…`) : elles restent, sauf répétition (plus bas).
+    var tournante = !!pool && !/^pn_/.test(String(p.id))
+      && (pool.indexOf(p.cover) > -1 || p.cover === "book");
+    if (tournante) {
+      // Famille à UNE seule photo sûre : une carte sur deux la porte, l'autre
+      // passe en texte seul — sinon tout un fil Cuisine montrerait la même image.
+      if (pool.length === 1 && dejaVue[fam]) { dejaVue[fam] = false; delete p.cover; return; }
+      dejaVue[fam] = true;
+      var i = curseurs[fam] === undefined ? Math.floor(_aleaExemple(fam) * pool.length) : curseurs[fam];
+      var choix = pool[i % pool.length];
+      if (choix === precedente && pool.length > 1) { i++; choix = pool[i % pool.length]; }
+      curseurs[fam] = i + 1;
+      p.cover = choix;
+    }
+    // Filet commun : JAMAIS la photo de la carte d'avant. Une sœur de la même
+    // famille si elle existe, sinon la carte passe en texte seul.
+    if (p.cover === precedente) {
+      var autre = pool ? pool.filter(function (k) { return k !== precedente; })[0] : null;
+      if (autre) p.cover = autre;
+      else { delete p.cover; return; }
+    }
+    precedente = p.cover;
+  });
+  return posts;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// EXEMPLES DES PASSIONS PRÉCISES (2026-11-01)
+// ──────────────────────────────────────────────────────────────────────────
+// 39 personas et 99 publications sur les passions que les vrais comptes cochent
+// (mesuré en production le 01/11 : Course à pied, Football, Trail, Escalade,
+// Sport senior, Via ferrata, Wakeboard, Musculation, Randonnée, Road trip,
+// Backpacking, Animation japonaise, Sportive, Sport automobile, Metallerie,
+// Dark romance…) et sur les passions proposées au repos par le sélecteur.
+// Écrites une par une : des lieux qui existent, des gestes précis, des doutes —
+// jamais un slogan, jamais le nom de l'application.
+// ⚠️ « Rencontrer » garde la forme maison : 📍 un lieu, 📅 un jour, puis le
+// programme et le nombre de places. AUCUNE n'est reliée à une activité
+// (`eventId`) : une rencontre d'exemple ne doit rien promettre qui n'existe pas.
+// ⚠️ Les dates d'origine ne servent qu'à ORDONNER les publications d'un même
+// auteur : `curerExemples` les étale ensuite sur trois semaines.
+function exemplesPassionsPrecises(hours) {
+  function u(id, name, avatar, passion, mood, bio, profileEmoji) {
+    return { id: id, name: name, avatar: avatar, passion: passion, mood: mood, bio: bio, profileEmoji: profileEmoji };
+  }
+  function c(id, authorId, text, ageH, likes) {
+    return { id: id, authorId: authorId, text: text, createdAt: hours(ageH), likes: likes || 0, likedBy: [], emojis: [], replies: [] };
+  }
+  function p(id, authorId, passion, mood, type, cover, text, ageH, likes, comments) {
+    var o = { id: id, authorId: authorId, passion: passion, mood: mood, type: type, text: text,
+      createdAt: hours(ageH), likes: likes, liked: false, comments: comments || [] };
+    if (cover) o.cover = cover;
+    return o;
+  }
+
+  var users = [
+    u("u_camille", "Camille Ferrand", "#8b5cf6", "running-trail", "creation", "Traileuse du dimanche · Grenoble", "🏔"),
+    u("u_manon", "Manon Leclerc", "#a78bfa", "running", "learn", "Premier marathon en avril · Rennes", "🏃"),
+    u("u_bastien", "Bastien Lefort", "#7c3aed", "collectif-football", "irl", "Coach U13 et foot à 5 le jeudi · Nantes", "⚽"),
+    u("u_sarah", "Sarah Benali", "#8b5cf6", "collectif-foot-feminin", "irl", "Milieu défensive, équipe loisir · Lyon", "⚽"),
+    u("u_yohan", "Yohan Mendy", "#7c3aed", "collectif-basketball", "irl", "Playground de Stalingrad · Paris", "🏀"),
+    u("u_kevin", "Kévin Moulin", "#a78bfa", "fitness-musculation", "learn", "Muscu depuis six ans, zéro complément miracle · Lille", "💪"),
+    u("u_nathalie", "Nathalie Roche", "#8b5cf6", "fitness-senior", "irl", "62 ans, gym douce et marche nordique · Vannes", "🌿"),
+    u("u_alex", "Alexandre Kim", "#7c3aed", "sport-escalade", "creation", "Bloc à Fontainebleau le week-end · Paris", "🧗"),
+    u("u_elodie", "Élodie Garnier", "#a78bfa", "outdoor-randonnee", "irl", "Randos à la journée dans les Vosges · Strasbourg", "🥾"),
+    u("u_marc", "Marc Delaunay", "#8b5cf6", "outdoor-via-ferrata", "learn", "Via ferrata et canyon · Chambéry", "⛰"),
+    u("u_lucas", "Lucas Perrin", "#7c3aed", "glisse-wakeboard", "creation", "Téléski nautique le mercredi · Bordeaux", "🏄"),
+    u("u_francois", "François Lebrun", "#a78bfa", "combat-boxe", "learn", "Boxe anglaise loisir à 41 ans · Metz", "🥊"),
+    u("u_ludovic", "Ludovic Henry", "#8b5cf6", "nautisme-plongee", "creation", "Plongeur niveau 3, Méditerranée · Toulon", "🤿"),
+    u("u_samia", "Samia Kaci", "#7c3aed", "parentalite-sport-famille", "irl", "Trois enfants, un vélo cargo · Orléans", "👟"),
+    u("u_nora", "Nora Bensaïd", "#a78bfa", "sport-handisport", "creation", "Basket fauteuil, ligue régionale · Lyon", "🏀"),
+    u("u_victor", "Victor Aubry", "#8b5cf6", "auto-sport-auto", "all", "Commissaire de piste bénévole · Le Mans", "🏁"),
+    u("u_julien", "Julien Barre", "#7c3aed", "moto-enduro", "creation", "Enduro en forêt, mécanique maison · Limoges", "🏍"),
+    u("u_sofiane", "Sofiane Hadj", "#a78bfa", "moto-sportive", "learn", "Roulages sur circuit · Toulouse", "🏍"),
+    u("u_clemence", "Clémence Arnaud", "#8b5cf6", "musique-piano", "creation", "Pianiste reprise à 34 ans · Dijon", "🎹"),
+    u("u_dylan", "Dylan Rocher", "#7c3aed", "musique-guitare-electrique", "creation", "Guitare dans un groupe de garage · Rouen", "🎸"),
+    u("u_analucia", "Ana Lucía Gómez", "#a78bfa", "musique-reggaeton", "irl", "Prof de reggaeton, DJ le samedi · Montpellier", "🎶"),
+    u("u_moussa", "Moussa Diallo", "#8b5cf6", "danse-hip-hop", "creation", "Breakeur, crew de Lyon Est · Villeurbanne", "🕺"),
+    u("u_pierre", "Pierre Vasseur", "#7c3aed", "photo-astrophoto", "creation", "Astrophoto depuis le Vercors · Valence", "🔭"),
+    u("u_lena", "Léna Morel", "#a78bfa", "art-dessin", "creation", "Croquis urbain au feutre · Bordeaux", "✏️"),
+    u("u_thomas", "Thomas Girard", "#8b5cf6", "voyage-road-trip", "all", "Van aménagé, 14 000 km depuis mars", "🚐"),
+    u("u_maelle", "Maëlle Le Goff", "#7c3aed", "voyage-backpacking", "learn", "Sac de 38 litres, Asie du Sud-Est · Brest", "🎒"),
+    u("u_romain", "Romain Chevalier", "#a78bfa", "tech-impression-3d", "learn", "Impression 3D et réparations · Saint-Étienne", "🧩"),
+    u("u_ewan", "Ewan Morvan", "#8b5cf6", "jeuxvideo-rpg", "creation", "RPG et jeux de rôle papier · Quimper", "🎲"),
+    u("u_jisoo", "Ji-soo Park", "#7c3aed", "cuisine-coreenne", "learn", "La cuisine de ma grand-mère, de Busan à Lyon", "🍲"),
+    u("u_margaux", "Margaux Fabre", "#a78bfa", "cuisine-patisserie", "creation", "CAP pâtissier en candidate libre · Tours", "🧁"),
+    u("u_benoit", "Benoît Lemaire", "#8b5cf6", "animaux-chiens", "learn", "Deux border collies et de l'agility · Le Mans", "🐕"),
+    u("u_amel", "Amel Saadi", "#7c3aed", "jardinage-urbain", "creation", "Potager de balcon au 6e étage · Marseille", "🌿"),
+    u("u_oceane", "Océane Martin", "#a78bfa", "litterature-romans", "irl", "Club de lecture du mardi · Nancy", "📖"),
+    u("u_kenzo", "Kenzo Bertrand", "#8b5cf6", "cinema-anime", "all", "Animation japonaise, surtout les années 90 · Lyon", "🎬"),
+    u("u_lisa", "Lisa Caron", "#7c3aed", "cinema-series", "learn", "Séries, à mon rythme · Lille", "📺"),
+    u("u_ivan", "Ivan Petrov", "#a78bfa", "jeux-echecs", "irl", "Club d'échecs du 11e, 1 650 Elo · Paris", "♟"),
+    u("u_pauline", "Pauline Mercier", "#8b5cf6", "langues-japonais", "learn", "JLPT N4 en cours · Toulouse", "🗾"),
+    u("u_aurore", "Aurore Blanchet", "#7c3aed", "yoga-aerien", "learn", "Prof de yoga aérien · Nice", "🧘"),
+    u("u_gael", "Gaël Rivière", "#a78bfa", "metallerie", "creation", "Métallier serrurier, atelier à Cholet", "🔩"),
+  ];
+
+  var posts = [
+    // ── Trail · Course à pied ──────────────────────────────────────────────
+    p("pn_trail_1", "u_camille", "running-trail", "creation", "text", "trail",
+      "Reco de la boucle du Moucherotte ce matin : 21 km, 1 350 m de dénivelé positif. J'ai marché toutes les montées raides comme prévu et je suis arrivée en haut avec des jambes, pour une fois.\nLa descente sur Saint-Nizier reste mon point faible : je freine tout, je me crispe des épaules. Objectif de l'hiver : apprendre à lâcher les bras.",
+      3, 24, [
+        c("cpn_trail_1_0", "u_marc", "Regarde loin devant et pas tes pieds. C'est la seule chose qui m'a débloqué en descente.", 2.4, 4),
+        c("cpn_trail_1_1", "u_manon", "1 350 m « avec des jambes », j'ai du mal à imaginer 😅", 2.1, 2),
+      ]),
+    p("pn_trail_2", "u_camille", "running-trail", "irl", "text", "nature",
+      "📍 Grenoble, jardin des Dauphins (pied de la Bastille) — 📅 dimanche 8h\nSortie trail tranquille : 14 km et 900 m de dénivelé, à une allure où l'on peut parler. On monte au mont Jalla, on suit la crête jusqu'au Rachais, retour par le même chemin si le groupe le veut.\nFrontale si brouillard, un demi-litre d'eau et une couche chaude. On sera six, il reste trois places.",
+      40, 19, [
+        c("cpn_trail_2_0", "u_elodie", "Si je ne suis pas dans les Vosges ce week-end, je viens. Vous attendez les plus lentes en haut ?", 38, 3),
+      ]),
+    p("pn_trail_3", "u_camille", "running-trail", "learn", "text", null,
+      "Ce que j'aurais aimé savoir avant mon premier trail long :\n1. Manger AVANT d'avoir faim, toutes les 40 minutes, même trois bouchées\n2. Les bâtons s'apprennent à l'entraînement, jamais le jour de la course\n3. Des chaussures neuves, c'est trois sorties minimum avant\nLe reste se règle avec la tête.",
+      90, 31, []),
+    p("pn_run_1", "u_manon", "running", "learn", "text", null,
+      "Semaine 6 du plan marathon : 52 km, dont une sortie longue de 24 km à 6'10 au kilomètre.\nCe qui marche pour moi : la sortie longue le samedi matin, petit-déjeuner léger à 6 h 30, et le fractionné le mardi, jamais le lendemain d'une soirée.\nCe qui ne marche pas : la musique sur la sortie longue. Je pars trop vite à chaque refrain.",
+      5, 27, [
+        c("cpn_run_1_0", "u_camille", "Le coup des refrains, c'est tellement vrai. Je cours avec des podcasts pour cette raison.", 4.2, 3),
+      ]),
+    p("pn_run_2", "u_manon", "running", "irl", "text", "warmup",
+      "📍 Rennes, parc des Gayeulles, entrée côté piscine — 📅 mercredi 19h\nFooting du mercredi : 8 km en deux groupes, 6'30 et 5'45 au kilomètre, et personne n'est lâché. On termine par dix minutes d'étirements, c'est tout : pas de chrono, pas d'appli.\nOn était neuf la semaine dernière, dont quatre qui n'avaient jamais couru en groupe.",
+      60, 22, [
+        c("cpn_run_2_0", "u_kevin", "Le groupe à 6'30, c'est exactement ce qu'il me faut pour reprendre le cardio. Dommage que je sois à Lille.", 57, 2),
+      ]),
+    p("pn_run_3", "u_manon", "running", "all", "text", null,
+      "Couru sous une pluie fine ce matin, seule le long du canal d'Ille-et-Rance. Un héron m'a doublée à 6'40 du kilomètre. Je l'ai pris personnellement.",
+      120, 38, []),
+
+    // ── Football · Basket ──────────────────────────────────────────────────
+    p("pn_foot_1", "u_bastien", "collectif-football", "irl", "text", null,
+      "📍 Nantes, foot à 5 de Rezé (terrain 3) — 📅 jeudi 20h\nOn est huit, il en faut dix. Niveau très mélangé : on tourne les équipes à chaque but et personne ne tacle. 7 € le créneau par personne.\nSi tu n'as pas joué depuis le lycée, c'est exactement pour toi.",
+      8, 17, [
+        c("cpn_foot_1_0", "u_yohan", "« On tourne les équipes à chaque but » : la règle qui sauve tous les matchs du jeudi.", 7, 4),
+        c("cpn_foot_1_1", "u_kevin", "Je peux venir avec un pote ? Il n'a pas touché un ballon depuis dix ans.", 6.5, 1),
+      ]),
+    p("pn_foot_2", "u_bastien", "collectif-football", "learn", "text", null,
+      "Avec mes U13 cette saison, j'ai arrêté les tours de terrain à l'échauffement. On fait quinze minutes de rondo à 5 contre 2 : ils touchent le ballon soixante fois au lieu de zéro, et ils arrivent au match réveillés.\nLe plus dur, c'est de convaincre les parents que ce n'est pas « juste jouer ».",
+      70, 29, [
+        c("cpn_foot_2_0", "u_sarah", "Le rondo à l'échauffement, on fait pareil chez les seniores. Même effet, même résistance au début.", 66, 5),
+      ]),
+    p("pn_foot_3", "u_bastien", "collectif", "all", "text", null,
+      "Match nul 2-2 ce matin avec les U13, sous des trombes d'eau. Notre gardien a pleuré au premier but encaissé, puis il a arrêté un penalty à la dernière minute. Il est reparti en disant que c'était le plus beau jour de sa vie.\nLe mien aussi, un peu.",
+      150, 44, []),
+    p("pn_ff_1", "u_sarah", "collectif-foot-feminin", "irl", "text", null,
+      "📍 Lyon, stade de la Croix-Rousse (synthétique du haut) — 📅 mardi 19h30\nSéance découverte de foot féminin : on recrute pour l'équipe loisir, aucun niveau demandé. Le groupe va de 26 à 52 ans — deux mamans qui reprennent après dix ans, une prof de maths qui n'avait jamais touché un ballon.\nPas besoin de crampons la première fois, des baskets suffisent.",
+      20, 21, [
+        c("cpn_ff_1_0", "u_samia", "Ma fille de 14 ans me harcèle pour en faire. Il existe une section jeunes au club ?", 18, 3),
+      ]),
+    p("pn_ff_2", "u_sarah", "collectif-foot-feminin", "creation", "text", null,
+      "Premier match de la saison gagné 3-1, et j'ai marqué de la tête. À 31 ans. Sur corner. Je ne me remettrai jamais de cette sensation.\nLa vidéo existe, elle est floue, je la regarde en boucle.",
+      110, 36, [
+        c("cpn_ff_2_0", "u_nora", "La tête sur corner, le but le plus satisfaisant qui soit. Bravo !", 108, 2),
+      ]),
+    p("pn_bb_1", "u_yohan", "collectif-basketball", "irl", "text", null,
+      "📍 Paris, playground de Stalingrad (sous le métro aérien) — 📅 samedi 17h\nPick-up en 3 contre 3 tant qu'il fait jour. Règle de la maison : l'équipe qui perd ramasse les ballons, et on ne conteste pas une faute plus de dix secondes.\nVenez avec de l'eau, la fontaine ne marche toujours pas.",
+      14, 18, []),
+    p("pn_bb_2", "u_yohan", "collectif-basketball", "learn", "text", null,
+      "Le tir en suspension, ce qui m'a fait passer de 30 à 45 % à l'entraînement :\n1. Le coude SOUS le ballon, pas sur le côté\n2. On saute droit, on retombe au même endroit\n3. Le poignet reste cassé vers le bas jusqu'à ce que le ballon touche le cercle\nDeux cents tirs par séance pendant un mois. Pas de raccourci.",
+      96, 33, [
+        c("cpn_bb_2_0", "u_nora", "Le point 2 vaut aussi en fauteuil : on tire avec tout le buste, jamais en se penchant.", 92, 6),
+      ]),
+
+    // ── Musculation · Fitness · Sport senior ───────────────────────────────
+    p("pn_muscu_1", "u_kevin", "fitness-musculation", "learn", "text", null,
+      "Six ans de muscu, et la chose qui a le plus changé mes résultats n'est pas un exercice : c'est noter chaque séance dans un carnet. Charge, séries, répétitions, et une ligne sur le sommeil de la veille.\nQuand je stagne, je relis. Neuf fois sur dix, ce n'est pas le programme : c'est que je dors cinq heures depuis deux semaines.",
+      6, 34, [
+        c("cpn_muscu_1_0", "u_nathalie", "À 62 ans je note aussi, mais surtout mes douleurs. Même principe 🙂", 5.1, 6),
+        c("cpn_muscu_1_1", "u_francois", "Le carnet papier, c'est très sous-coté. Le mien a sept ans.", 4.6, 3),
+      ]),
+    p("pn_muscu_2", "u_kevin", "fitness-musculation", "creation", "text", "gym",
+      "Squat à 120 kg ce soir, trois répétitions propres. Il y a deux ans, une hernie discale me faisait croire que je ne squatterais plus jamais.\nRééducation, gainage tous les jours, et beaucoup de patience. Je ne poste jamais mes charges, mais celle-là, je la garde.",
+      80, 41, [
+        c("cpn_muscu_2_0", "u_alex", "Revenir d'une hernie, c'est la vraie performance. Bravo pour la patience.", 77, 4),
+      ]),
+    p("pn_muscu_3", "u_kevin", "fitness", "irl", "text", null,
+      "📍 Lille, salle de Wazemmes (rue des Sarrazins) — 📅 dimanche 10h\nSéance découverte des poids libres pour celles et ceux que cette zone de la salle intimide : squat, soulevé de terre, développé couché, à vide ou presque. On corrige la posture, on ne compte rien.\nQuatre personnes maximum, c'est la règle de la salle pour les invités.",
+      160, 15, []),
+    p("pn_senior_1", "u_nathalie", "fitness-senior", "irl", "text", "nature",
+      "📍 Vannes, parking du port de Conleau — 📅 lundi 9h30\nMarche nordique : 7 km autour de la presqu'île, une heure et demie avec les pauses. On prête des bâtons à celles et ceux qui veulent essayer avant d'acheter.\nLe groupe a de 60 à 78 ans. Tout le monde est bienvenu, y compris les plus jeunes qui acceptent notre rythme 😊",
+      12, 26, [
+        c("cpn_senior_1_0", "u_samia", "Je viendrais bien avec ma mère, elle n'ose plus marcher seule depuis sa prothèse de hanche.", 10, 5),
+      ]),
+    p("pn_senior_2", "u_nathalie", "fitness-senior", "learn", "text", null,
+      "Trois exercices d'équilibre que je fais en attendant que l'eau du thé chauffe :\n1. Debout sur une jambe, 30 secondes, la main près du plan de travail\n2. Monter sur la pointe des pieds quinze fois, lentement\n3. Marcher en posant le talon contre les orteils, dix pas\nMa kiné m'a dit que c'est ce qui évite les chutes. Six mois que je le fais, je le sens dans les escaliers.",
+      130, 39, []),
+
+    // ── Escalade · Randonnée · Via ferrata · Outdoor ───────────────────────
+    p("pn_esc_1", "u_alex", "sport-escalade", "creation", "text", null,
+      "Enfin sorti « La Marie-Rose » à Bas-Cuvier, 6a, après quatre week-ends à tomber au même mouvement. Le pied gauche, je le posais trop bas depuis le début : c'est un inconnu qui me l'a montré en passant.\nC'est un 6a. Je suis aussi content que si c'était un 8.",
+      9, 32, [
+        c("cpn_esc_1_0", "u_marc", "La Marie-Rose, c'est un rite de passage. Bravo !", 8, 5),
+        c("cpn_esc_1_1", "u_camille", "« Un inconnu qui me l'a montré en passant », c'est tout Bleau.", 7.5, 3),
+      ]),
+    p("pn_esc_2", "u_alex", "sport-escalade", "irl", "text", null,
+      "📍 Montreuil, salle de bloc Arkose — 📅 mercredi 19h\nSession bloc pour débutants : j'accompagne trois ou quatre personnes qui n'ont jamais grimpé, ou presque. On commence par les jaunes, on apprend à tomber, et on s'arrête quand les avant-bras disent stop.\nEntrée à votre charge, chaussons en location sur place.",
+      55, 14, []),
+    p("pn_esc_3", "u_alex", "sport-escalade", "learn", "text", null,
+      "Trois erreurs que je vois chaque soir en salle (et que j'ai toutes faites) :\n1. Grimper bras pliés : on tient avec le squelette, pas avec les biceps\n2. Regarder les prises de mains au lieu des prises de pieds\n3. Enchaîner les essais sans repos : trois minutes entre deux, minimum\nProgresser en bloc, c'est surtout savoir se reposer.",
+      140, 40, []),
+    p("pn_rando_1", "u_elodie", "outdoor-randonnee", "irl", "text", "trail",
+      "📍 Col de la Schlucht, parking du chalet — 📅 samedi 9h\nRando du Hohneck par le sentier des Roches : 12 km, 600 m de dénivelé, quelques passages aériens au début mais rien de technique. Pique-nique au sommet si le vent le permet, sinon à l'abri du Frankenthal.\nCovoiturage depuis Strasbourg, j'ai trois places dans la voiture.",
+      16, 23, [
+        c("cpn_rando_1_0", "u_camille", "Le sentier des Roches en automne, c'est magnifique. Attention s'il a plu la veille, ça glisse.", 15, 4),
+        c("cpn_rando_1_1", "u_thomas", "Je passe dans les Vosges dans dix jours, je garde l'idée.", 13, 1),
+      ]),
+    p("pn_rando_2", "u_elodie", "outdoor-randonnee", "all", "text", null,
+      "Rentrée à 18 h, les mollets en feu : 23 km dans le brouillard, sans voir un seul panorama. Et pourtant je suis heureuse.\nLe brouillard fait un bruit particulier dans les sapins, une espèce de silence mouillé.",
+      85, 37, []),
+    p("pn_rando_3", "u_elodie", "outdoor", "learn", "text", null,
+      "Mon sac de rando à la journée, après dix ans d'erreurs :\n1. Une couche chaude même en été — on a froid à chaque pause en altitude\n2. Une carte papier : le téléphone meurt toujours au mauvais moment\n3. Deux litres d'eau, et une tablette de chocolat que je ne mange qu'au retour\nTout le reste est négociable.",
+      170, 42, [
+        c("cpn_rando_3_0", "u_maelle", "Le chocolat du retour, rituel sacré. Ici c'est des madeleines.", 165, 3),
+      ]),
+    p("pn_vf_1", "u_marc", "outdoor-via-ferrata", "learn", "text", null,
+      "Via ferrata, la check-list que je fais réciter à chaque personne que j'emmène :\n1. Longes à absorbeur d'énergie, homologuées, de moins de dix ans\n2. Toujours UN mousqueton accroché au câble, jamais zéro\n3. Le casque même sur les parties « faciles » : c'est d'en haut que ça tombe\nC'est rébarbatif. C'est pour ça qu'on rentre tous.",
+      26, 30, [
+        c("cpn_vf_1_0", "u_alex", "Le point 2, c'est la règle d'or. J'ai vu quelqu'un décrocher les deux pour aller plus vite…", 24, 5),
+      ]),
+    p("pn_vf_2", "u_marc", "outdoor-via-ferrata", "irl", "text", "trail",
+      "📍 Chambéry, parking des Charmettes — 📅 dimanche 8h30\nVia ferrata facile à vingt minutes de la ville, idéale pour une première : deux heures sur le câble, une passerelle, et une vue sur le lac du Bourget qui fait oublier le vide.\nJe prête deux kits complets (baudrier, longes, casque). Il reste deux places.",
+      100, 20, []),
+
+    // ── Glisse · Plongée ───────────────────────────────────────────────────
+    p("pn_wake_1", "u_lucas", "glisse-wakeboard", "creation", "text", "coast",
+      "Premier ollie au-dessus du kicker ce mercredi, après trois semaines à finir dans l'eau à chaque tentative. Le moniteur m'a dit : arrête de regarder ta planche. J'ai regardé la rive, et c'est passé.\nLe téléski ferme dans quinze jours pour l'hiver, je compte les tours qui restent.",
+      30, 25, [
+        c("cpn_wake_1_0", "u_ludovic", "« Arrête de regarder ta planche » marche pour à peu près tous les sports de glisse.", 28, 3),
+      ]),
+    p("pn_wake_2", "u_lucas", "glisse-wakeboard", "irl", "text", null,
+      "📍 Bordeaux, téléski nautique de Bordeaux-Lac — 📅 mercredi 17h\nSession wake entre débutants : on se partage les conseils, on se filme, on rit des chutes. Combinaison obligatoire, on peut en louer sur place.\nOn est quatre réguliers, il y a de la place pour deux de plus.",
+      125, 13, []),
+    p("pn_plongee_1", "u_ludovic", "nautisme-plongee", "creation", "text", "horizon",
+      "Plongée sur l'épave du Donator, au large de Porquerolles : 50 m de fond, on reste à 38 sur le pont. Un congre gros comme ma cuisse dans la cale, des gorgones partout sur la coque.\nVingt ans que je plonge, et une épave me fait toujours le même effet : on entre dans l'histoire de quelqu'un.",
+      22, 35, [
+        c("cpn_plongee_1_0", "u_maelle", "Le Donator, c'est sur ma liste depuis que j'ai mon niveau 1. Un jour !", 20, 2),
+      ]),
+    p("pn_plongee_2", "u_ludovic", "nautisme-plongee", "learn", "text", null,
+      "Passer son niveau 1 cet hiver en piscine, puis découvrir la mer en mai : c'est le meilleur plan que je connaisse. Trois conseils pour la première fosse :\n1. Équilibrer les oreilles dès la surface, puis à chaque mètre\n2. Expirer lentement en remontant, ne jamais bloquer sa respiration\n3. Garder le contact visuel avec son binôme, tout le temps\nLe reste, le moniteur s'en occupe.",
+      115, 28, [
+        c("cpn_plongee_2_0", "u_maelle", "J'ai passé le mien en Thaïlande et j'ai eu peur pendant toute la première plongée. Le conseil 3 m'aurait aidée.", 112, 4),
+      ]),
+
+    // ── Boxe · Sports de combat ────────────────────────────────────────────
+    p("pn_boxe_1", "u_francois", "combat-boxe", "learn", "text", "gym",
+      "Reprendre la boxe anglaise à 41 ans, ce que j'ai appris en un an :\n1. La garde se travaille plus que le coup : menton bas, coudes collés\n2. Trois rounds de corde à sauter valent mieux que dix minutes de footing\n3. Des gants de 14 onces en sparring, pas de 10 : tes partenaires te remercieront\nEt surtout : on peut faire de la boxe sans jamais monter sur un ring.",
+      18, 27, []),
+    p("pn_boxe_2", "u_francois", "combat", "irl", "text", null,
+      "📍 Metz, club de boxe du Sablon — 📅 jeudi 19h\nCours d'essai de boxe loisir : pas de combat, du travail aux pattes d'ours et au sac, beaucoup de déplacements. Le groupe va de 19 à 58 ans, et il y a autant de femmes que d'hommes.\nUne serviette, des baskets propres, on prête les gants.",
+      75, 16, [
+        c("cpn_boxe_2_0", "u_kevin", "Si j'étais à Metz, je viendrais. La boxe en complément de la muscu, c'est le cardio que je n'arrive pas à faire seul.", 72, 3),
+      ]),
+    p("pn_boxe_3", "u_francois", "combat", "all", "text", null,
+      "Premier sparring léger hier soir. J'ai pris un direct en plein nez au bout de quarante secondes, et j'ai ri. Mon partenaire s'est excusé six fois.\nOn a fini les trois rounds, et on boit un verre jeudi.",
+      145, 43, []),
+
+    // ── Sport en famille · Handisport · Sport automobile ───────────────────
+    p("pn_famille_1", "u_samia", "parentalite-sport-famille", "irl", "text", "nature",
+      "📍 Orléans, île Charlemagne, plage côté parking — 📅 dimanche 10h\nBalade à vélo en famille : 12 km tout plats sur les bords de Loire, goûter à mi-chemin. Vélos d'enfants, remorques, tandems, draisiennes : tout est bienvenu.\nOn roule à la vitesse du plus petit. Il a quatre ans et il est très fier.",
+      11, 21, [
+        c("cpn_famille_1_0", "u_nathalie", "Quelle bonne idée. Je viens avec mon petit-fils s'il est chez moi ce week-end.", 9, 4),
+      ]),
+    p("pn_famille_2", "u_samia", "sante-sport-sante", "creation", "text", null,
+      "Trois mois que je fais vingt minutes de renforcement à la maison, trois fois par semaine, pendant que les enfants font leurs devoirs. Plus de mal de dos le matin, et ma fille de 9 ans fait la planche avec moi en comptant à voix haute.\nJe ne croyais pas qu'un truc aussi petit changerait autant.",
+      105, 35, []),
+    p("pn_handi_1", "u_nora", "sport-handisport", "creation", "text", null,
+      "Qualifiées pour les phases finales régionales de basket fauteuil ce week-end ! 54-49 contre Grenoble, un match où on menait de douze points et où tout a failli basculer au dernier quart-temps.\nJ'ai joué 32 minutes, j'ai les mains en sang à force de pousser, et je repars quand même mardi à l'entraînement.",
+      7, 40, [
+        c("cpn_handi_1_0", "u_yohan", "Bravo ! On viendrait bien vous voir jouer avec les gars du playground. Vous jouez où ?", 6, 5),
+        c("cpn_handi_1_1", "u_sarah", "Énorme ! Les finales, c'est quand ?", 5.5, 3),
+      ]),
+    p("pn_handi_2", "u_nora", "sport-handisport", "irl", "text", null,
+      "📍 Lyon, gymnase Bellecombe (6e) — 📅 vendredi 20h\nSoirée découverte du basket fauteuil, ouverte aux personnes valides comme aux personnes en situation de handicap : on prête les fauteuils de sport, on explique les règles, et on finit par un vrai match.\nC'est le meilleur moyen de comprendre pourquoi on a mal aux bras le lendemain 😄",
+      95, 19, []),
+    p("pn_auto_1", "u_victor", "auto-sport-auto", "all", "text", null,
+      "Dix-neuvième fois commissaire de piste aux 24 Heures du Mans. La nuit, sous la pluie, de 3 h à 6 h. On ne voit chaque voiture qu'une seconde et demie par tour, et on ne regarde jamais vraiment la course : on regarde la piste.\nEt c'est quand même le plus beau week-end de mon année.",
+      45, 33, [
+        c("cpn_auto_1_0", "u_sofiane", "Respect. Sous la pluie, la nuit, au drapeau… c'est vous qui faites tenir la course.", 43, 4),
+      ]),
+    p("pn_auto_2", "u_victor", "auto-sport-auto", "learn", "text", null,
+      "Devenir commissaire de piste bénévole, comment ça se passe concrètement :\n1. Une licence auprès de la fédération, et une journée de formation\n2. On commence au drapeau sur des courses régionales, pas aux 24 Heures\n3. On apprend surtout à lire la piste et à se placer pour ne jamais être en danger\nC'est la seule façon d'être aussi près des voitures sans payer un baquet.",
+      175, 24, [
+        c("cpn_auto_2_0", "u_sofiane", "Je ne savais pas que c'était ouvert à tout le monde. Je regarde pour Nogaro.", 170, 2),
+      ]),
+
+    // ── Enduro · Sportive ──────────────────────────────────────────────────
+    p("pn_enduro_1", "u_julien", "moto-enduro", "creation", "text", "moto",
+      "Fini de refaire le haut moteur de la 300 cette nuit : piston, segments, joint d'embase. Première mise en route ce matin, elle a démarré au deuxième coup de kick. J'ai fait le tour du garage en criant comme un gamin.\nDimanche on retourne en forêt, et cette fois c'est elle qui me ramène.",
+      13, 30, [
+        c("cpn_enduro_1_0", "u_greg", "Deuxième coup de kick après un haut moteur, c'est du travail propre. Bien joué.", 12, 4),
+      ]),
+    p("pn_enduro_2", "u_julien", "moto-enduro", "learn", "text", null,
+      "Enduro, ce que je dis à tous ceux qui débutent :\n1. Pneus à 0,8 bar en forêt humide, pas plus\n2. Debout sur les cale-pieds, genoux serrés, regard loin\n3. On roule sur les chemins ouverts à la circulation, toujours : c'est ce qui nous permet de continuer à rouler\nEt on ralentit, on coupe les gaz et on salue les randonneurs. Toujours.",
+      120, 29, [
+        c("cpn_enduro_2_0", "u_elodie", "Merci pour le point 3, sincèrement. Les motards qui coupent les gaz en nous croisant, on s'en souvient.", 116, 7),
+      ]),
+    p("pn_sportive_1", "u_sofiane", "moto-sportive", "irl", "text", "moto",
+      "📍 Nogaro, circuit Paul-Armagnac — 📅 samedi 8h\nJournée de roulage loisir, groupe débutants : on apprend les trajectoires derrière un moniteur, aucun chrono affiché. J'ai deux places dans le box, et on partage les frais de transport depuis Toulouse.\nCombinaison cuir (une pièce, ou deux pièces zippées) et dorsale obligatoires.",
+      35, 18, []),
+    p("pn_sportive_2", "u_sofiane", "moto-sportive", "learn", "text", null,
+      "Sur la route, la meilleure chose que m'ait apprise le circuit : regarder la sortie du virage, pas le virage. La moto va là où tu regardes. Dans la descente du col de Peyresourde, ça m'a probablement sauvé deux fois.\nEt on garde l'attaque pour la piste.",
+      150, 31, []),
+
+    // ── Piano · Guitare électrique · Reggaeton · Hip-hop ───────────────────
+    p("pn_piano_1", "u_clemence", "musique-piano", "creation", "text", null,
+      "J'avais arrêté le piano à 15 ans. Repris à 34, il y a huit mois, sur un clavier numérique d'occasion à 300 €. Ce soir j'ai joué la Gymnopédie n° 1 jusqu'au bout sans m'arrêter. Lentement, avec deux fausses notes, mais jusqu'au bout.\nMon voisin a applaudi à travers le mur.",
+      4, 37, [
+        c("cpn_piano_1_0", "u_lea", "Le voisin qui applaudit, c'est la meilleure critique possible.", 3.4, 6),
+        c("cpn_piano_1_1", "u_dylan", "Huit mois pour Satie, c'est rapide franchement.", 3, 2),
+      ]),
+    p("pn_piano_2", "u_clemence", "musique-piano", "learn", "text", null,
+      "Reprendre le piano à l'âge adulte, ce qui marche chez moi :\n1. Vingt minutes tous les jours plutôt que deux heures le dimanche\n2. Les mains séparées jusqu'à ce que ça devienne ennuyeux\n3. M'enregistrer une fois par semaine : on n'entend rien pendant qu'on joue\nLe métronome, j'ai mis trois mois à l'accepter. Maintenant je ne joue plus sans.",
+      65, 28, []),
+    p("pn_piano_3", "u_clemence", "musique-piano", "irl", "text", null,
+      "📍 Dijon, piano du hall de la gare — 📅 samedi 15h\nOn se retrouve à quelques pianistes amateurs pour jouer chacun deux morceaux sur le piano en libre accès. Pas de niveau, pas de programme, juste des gens qui attendent leur train et qui écoutent.\nLa dernière fois, un monsieur de 80 ans a joué du Chopin par cœur et tout le hall s'est arrêté.",
+      135, 22, [
+        c("cpn_piano_3_0", "u_oussa", "Les pianos de gare, c'est la plus belle scène ouverte qui existe.", 131, 3),
+      ]),
+    p("pn_gelec_1", "u_dylan", "musique-guitare-electrique", "creation", "text", "stage",
+      "Le groupe a enfin une date : le 14, au Kalif, en première partie. Quatre morceaux, dix-neuf minutes. J'ai réécrit le solo du troisième cinq fois : il fait maintenant huit mesures au lieu de trente-deux, et il est meilleur.\nLe nom du groupe, on vous le dira quand on sera sûrs.",
+      10, 26, [
+        c("cpn_gelec_1_0", "u_lea", "Huit mesures au lieu de trente-deux, c'est souvent là que le solo devient une chanson.", 9, 4),
+      ]),
+    p("pn_gelec_2", "u_dylan", "musique-guitare-electrique", "learn", "text", "guitar",
+      "Mon son, pour ceux qui m'ont demandé : une Telecaster mexicaine, une pédale d'overdrive, un petit ampli à lampes de 15 watts, et c'est tout. Le secret, c'est de baisser le gain de moitié par rapport à ce qu'on croit : on entend les notes, pas la bouillie.\nJ'ai revendu un pédalier à 600 € l'an dernier, je n'ai jamais aussi bien sonné.",
+      110, 34, []),
+    p("pn_reggaeton_1", "u_analucia", "musique-reggaeton", "irl", "text", "dance",
+      "📍 Montpellier, studio de danse du faubourg Boutonnet — 📅 jeudi 20h\nCours découverte de reggaeton : une heure pour apprendre les pas de base et une petite chorégraphie. Pas besoin de partenaire ni de niveau.\nOn finit toujours par dix minutes de freestyle, lumières baissées, et c'est là que les plus timides se révèlent.",
+      28, 20, [
+        c("cpn_reggaeton_1_0", "u_moussa", "Le freestyle lumières baissées, c'est l'arme secrète. Je pique l'idée pour le crew.", 26, 4),
+      ]),
+    p("pn_reggaeton_2", "u_analucia", "musique-reggaeton", "creation", "text", null,
+      "Mon premier set DJ entièrement reggaeton et dembow samedi, deux heures. J'avais préparé soixante morceaux, j'en ai joué trente et un, et le moment où toute la salle a crié, c'était sur un vieux Daddy Yankee que j'avais failli ne pas mettre.\nMorale : ne jamais sous-estimer 2004.",
+      140, 39, []),
+    p("pn_hiphop_1", "u_moussa", "danse-hip-hop", "creation", "text", null,
+      "Trois mois à travailler mon premier air flare. Aujourd'hui j'en ai posé un, un seul, sur le parquet du gymnase. Le crew a hurlé, j'ai cru que j'avais rêvé.\nJe le refais demain pour être sûr que ce n'était pas un accident.",
+      15, 33, [
+        c("cpn_hiphop_1_0", "u_amira", "Le premier, c'est toujours un accident. C'est le dixième qui compte. Courage 🔥", 14, 6),
+      ]),
+    p("pn_hiphop_2", "u_moussa", "danse-hip-hop", "irl", "text", "dance",
+      "📍 Villeurbanne, gymnase du Tonkin — 📅 samedi 14h\nTraining ouvert de breakdance : toprock, footwork, freezes. Les débutants sont mélangés aux confirmés, et chacun passe au cercle, même pour trois pas.\nDes genouillères si tu veux tenter le sol, et une bouteille d'eau.",
+      90, 17, []),
+
+    // ── Astrophotographie · Astronomie ─────────────────────────────────────
+    p("pn_astro_1", "u_pierre", "photo-astrophoto", "creation", "photo", "dark_matter",
+      "Nuit sans lune sur le plateau de Vassieux-en-Vercors : 3 h 20 de pose cumulée sur la nébuleuse de la Rosette, deux cents images de 60 secondes empilées. Il faisait −4 °C ; la batterie a tenu, mes doigts beaucoup moins.\nLe traitement m'a pris tout le dimanche. Je crois que c'est ma plus belle image.",
+      19, 42, [
+        c("cpn_astro_1_0", "u_karim", "Deux cents poses de 60 secondes… et moi qui râle quand je dois attendre l'heure bleue.", 17, 7),
+      ]),
+    p("pn_astro_2", "u_pierre", "sciences-astronomie", "irl", "text", "dark_matter",
+      "📍 Vassieux-en-Vercors, parking du col de la Chau — 📅 samedi 21h (si le ciel est dégagé)\nSoirée d'observation : j'installe un télescope de 200 mm et on regarde Saturne, les Pléiades et la galaxie d'Andromède. Pas besoin de matériel, juste des habits chauds et une lampe rouge.\nJe confirme le vendredi soir selon la météo.",
+      70, 24, [
+        c("cpn_astro_2_0", "u_ewan", "Saturne au télescope, c'est sur ma liste depuis toujours. Je surveille la météo.", 66, 3),
+      ]),
+    p("pn_astro_3", "u_pierre", "photo-astrophoto", "learn", "text", null,
+      "Débuter l'astrophoto sans se ruiner :\n1. Un appareil photo, un objectif lumineux (f/2.8 ou mieux) et un trépied — rien d'autre\n2. La règle des 500 : 500 divisé par la focale donne le temps de pose maximum sans traînées\n3. Fuir la ville : trente kilomètres de plus valent tous les filtres du monde\nLa Voie lactée en été, c'est la meilleure première cible.",
+      160, 36, []),
+
+    // ── Dessin ─────────────────────────────────────────────────────────────
+    p("pn_dessin_1", "u_lena", "art-dessin", "creation", "photo", "art",
+      "Un carnet par mois, un dessin par jour, au feutre noir, sans crayon avant. Le carnet d'octobre est fini : 31 dessins de Bordeaux, dont neuf de la même cabine téléphonique du quartier Saint-Michel.\nJe ne sais pas pourquoi elle m'obsède.",
+      6, 29, [
+        c("cpn_dessin_1_0", "u_inès", "Le « sans crayon avant », c'est ce qui donne ce trait vivant. Je n'ose toujours pas.", 5, 4),
+        c("cpn_dessin_1_1", "u_lou", "Neuf fois la même cabine, c'est déjà une série. Expose-la !", 4.4, 3),
+      ]),
+    p("pn_dessin_2", "u_lena", "art-dessin", "irl", "text", null,
+      "📍 Bordeaux, place du Parlement (devant la fontaine) — 📅 dimanche 10h\nSortie croquis urbain : deux heures à dessiner la place, chacun avec son carnet, puis on étale tout sur une table du café et on regarde. Débutants très bienvenus, un crayon et du papier suffisent.\nOn était onze la dernière fois, et le meilleur dessin, c'est un enfant de huit ans qui l'a fait.",
+      60, 21, []),
+    p("pn_dessin_3", "u_lena", "art-dessin", "learn", "text", null,
+      "Un exercice qui m'a débloquée en dessin d'observation : dessiner pendant deux minutes SANS regarder sa feuille, uniquement le sujet. Le résultat est moche, et c'est le but : on apprend à regarder au lieu de dessiner ce qu'on croit voir.\nFais-en cinq avant chaque séance, tu verras la différence en une semaine.",
+      155, 38, [
+        c("cpn_dessin_3_0", "u_inès", "Le dessin à l'aveugle ! Je le fais faire à mes élèves, ils détestent puis ils adorent.", 150, 3),
+      ]),
+
+    // ── Road trip · Backpacking ────────────────────────────────────────────
+    p("pn_road_1", "u_thomas", "voyage-road-trip", "all", "text", "horizon",
+      "Jour 214 dans le van. Réveil face au lac de Vassivière, café sur le réchaud, un pêcheur qui me fait signe depuis sa barque.\n14 000 km depuis mars, et je n'ai toujours rien trouvé de mieux que ces matins-là.",
+      2, 31, [
+        c("cpn_road_1_0", "u_maelle", "Le café sur le réchaud face à l'eau. Rien à ajouter.", 1.4, 3),
+        c("cpn_road_1_1", "u_elodie", "Si tu remontes vers l'est, les Vosges t'attendent 🥾", 1.1, 1),
+      ]),
+    p("pn_road_2", "u_thomas", "voyage-road-trip", "learn", "text", null,
+      "Aménager un van sans y laisser ses économies, mon bilan après huit mois :\n1. Isolation en liège plutôt qu'en mousse : pas de condensation\n2. Un seul panneau solaire de 200 W suffit si on n'a pas de frigo à compresseur\n3. Le lit fixe, c'est le confort ; le lit convertible, c'est la place — choisis une fois pour toutes\nBudget total : 7 800 €, hors véhicule.",
+      80, 35, []),
+    p("pn_road_3", "u_thomas", "voyage-road-trip", "irl", "text", "voyage",
+      "📍 Lac de Vassivière, aire de stationnement face à l'île — 📅 samedi 19h\nPetit rassemblement de vanlifers de passage dans le Limousin : chacun apporte un plat, on compare nos aménagements, on s'échange les bons coins. Enfants bienvenus.\nOn sera cinq ou six vans, il y a de la place.",
+      165, 15, []),
+    p("pn_backpack_1", "u_maelle", "voyage-backpacking", "learn", "text", null,
+      "38 litres pour trois mois en Asie du Sud-Est. Ce que j'ai emporté et que j'aurais laissé :\n1. Le deuxième jean (on vit en short et en pantalon léger)\n2. La trousse de toilette complète : on trouve tout sur place, moins cher\n3. Le roman de 600 pages, qui pèse 400 grammes\nCe que j'aurais dû prendre : une deuxième paire de sandales, et des bouchons d'oreilles.",
+      24, 32, [
+        c("cpn_backpack_1_0", "u_thomas", "Les bouchons d'oreilles, la plus grande invention du voyageur.", 22, 4),
+        c("cpn_backpack_1_1", "u_nina", "Le roman de 600 pages, je l'ai fait aussi. Tu l'as fini ?", 21, 2),
+      ]),
+    p("pn_backpack_2", "u_maelle", "voyage-backpacking", "all", "text", "city",
+      "Bus de nuit Hanoï → Ninh Binh, couchette du fond, à côté d'une grand-mère qui m'a donné la moitié de sa mangue sans un mot. On a dormi l'une contre l'autre jusqu'à 5 h.\nJe ne connais pas son nom et je pense à elle presque tous les jours.",
+      100, 45, []),
+    p("pn_backpack_3", "u_maelle", "voyage-backpacking", "irl", "text", null,
+      "📍 Brest, un café du port de commerce (je donne l'adresse en message) — 📅 mercredi 19h\nApéro des voyageurs sac au dos : ceux qui partent, ceux qui reviennent, ceux qui hésitent. On partage itinéraires, budgets et galères, devant une carte du monde et des punaises.\nJe rentre de trois mois en Asie : je répondrai à toutes vos questions sur le Vietnam et le Laos.",
+      175, 18, []),
+
+    // ── Impression 3D · RPG ────────────────────────────────────────────────
+    p("pn_3d_1", "u_romain", "tech-impression-3d", "creation", "text", "tech",
+      "Le bouton du lave-vaisselle de ma voisine était cassé : la pièce détachée coûtait 38 € et trois semaines de délai. Modélisé en quarante minutes, imprimé en vingt-cinq, en PETG. Ça tient depuis un mois.\nJ'ai maintenant une liste d'attente de voisins avec des objets cassés, et j'adore ça.",
+      12, 30, [
+        c("cpn_3d_1_0", "u_paul", "C'est exactement l'artisanat de demain. Tu imprimes avec quelle buse ?", 11, 4),
+        c("cpn_3d_1_1", "u_yanis", "Tu publies le fichier quelque part ? Le mien a le même bouton.", 10, 2),
+      ]),
+    p("pn_3d_2", "u_romain", "tech-impression-3d", "learn", "text", null,
+      "Trois réglages qui ont réglé 90 % de mes impressions ratées :\n1. Nettoyer le plateau à l'alcool isopropylique avant CHAQUE impression\n2. Calibrer la première couche avec une feuille de papier, plateau chaud\n3. Sécher le filament : un PETG humide fait des fils partout\nAvant d'acheter une nouvelle imprimante, fais ces trois-là.",
+      85, 33, []),
+    p("pn_3d_3", "u_romain", "tech-impression-3d", "irl", "text", null,
+      "📍 Saint-Étienne, Repair Café de la maison de quartier de Tarentaize — 📅 samedi 14h\nJ'apporte deux imprimantes 3D au Repair Café : si une pièce en plastique de votre objet est cassée (clip, bouton, engrenage), on essaie de la reproduire sur place. Apportez la pièce cassée, même en morceaux.\nGratuit, comme tout le reste du Repair Café.",
+      170, 16, []),
+    p("pn_rpg_1", "u_ewan", "jeuxvideo-rpg", "creation", "text", "gaming",
+      "Fini Baldur's Gate 3 en mode Honneur : 147 heures, sans perdre un seul personnage. J'ai failli abandonner trois fois au combat de la fonderie.\nJe n'ai jamais autant réfléchi avant de cliquer.",
+      20, 36, [
+        c("cpn_rpg_1_0", "u_tom", "En mode Honneur ?! Respect. J'ai perdu ma partie dès le premier acte.", 18, 5),
+        c("cpn_rpg_1_1", "u_nabil", "La fonderie, c'est le passage où tout le monde craque.", 17, 3),
+      ]),
+    p("pn_rpg_2", "u_ewan", "jeuxvideo-rpg", "irl", "text", null,
+      "📍 Quimper, boutique de jeux de la rue Kéréon — 📅 vendredi 20h\nPartie découverte de jeu de rôle sur table : un scénario d'une soirée, des personnages déjà prêts, des règles expliquées en dix minutes. Aucune expérience nécessaire, il faut juste avoir envie de raconter une histoire à plusieurs.\nTable de cinq joueurs, il reste deux places.",
+      130, 14, []),
+
+    // ── Cuisine coréenne · Pâtisserie ──────────────────────────────────────
+    p("pn_coreen_1", "u_jisoo", "cuisine-coreenne", "learn", "text", "kitchen",
+      "Le kimchi de ma grand-mère, sans complication :\n1. Le chou saumuré six heures, retourné toutes les deux heures\n2. La pâte : piment gochugaru, ail, gingembre, sauce poisson et un peu de bouillie de riz gluant\n3. Trois jours à température ambiante, puis au frigo\nIl est bon au bout d'une semaine, parfait au bout de trois.",
+      9, 38, [
+        c("cpn_coreen_1_0", "u_theo", "La bouillie de riz gluant dans la pâte, je ne connaissais pas. Elle sert à lier ?", 8, 4),
+        c("cpn_coreen_1_1", "u_hugo", "Je le lance ce week-end. Merci pour les proportions !", 7, 2),
+      ]),
+    p("pn_coreen_2", "u_jisoo", "cuisine-coreenne", "irl", "text", null,
+      "📍 Lyon, cuisine partagée de la Guillotière (rue Paul-Bert) — 📅 dimanche 11h\nAtelier kimbap : on roule ensemble les classiques (épinards, œuf, carotte, radis jaune) et une version végétarienne. Tout le monde repart avec deux rouleaux.\nHuit places, 12 € de participation pour les ingrédients.",
+      75, 20, []),
+    p("pn_coreen_3", "u_jisoo", "cuisine-coreenne", "all", "text", null,
+      "Ma grand-mère m'a appelée de Busan pour me demander si j'avais bien mis le kimchi au frais. Je vis à Lyon depuis onze ans.\nElle demande à chaque fois.",
+      160, 47, []),
+    p("pn_pat_1", "u_margaux", "cuisine-patisserie", "creation", "photo", "coffee",
+      "Paris-Brest numéro 7. Le praliné est enfin comme je le voulais (noisettes torréfiées quinze minutes à 160 °C), et la pâte à choux ne s'effondre plus à la sortie du four.\nIl me reste quatre mois avant l'épreuve du CAP en candidate libre.",
+      17, 34, [
+        c("cpn_pat_1_0", "u_hugo", "Le Paris-Brest au CAP, grand classique. Tu fais ta crème mousseline au beurre, ou une version allégée ?", 16, 3),
+        c("cpn_pat_1_1", "u_clemence", "J'en veux un 😭", 15, 2),
+      ]),
+    p("pn_pat_2", "u_margaux", "cuisine-patisserie", "learn", "text", null,
+      "La pâte à choux qui gonfle à chaque fois :\n1. Dessécher la panade deux minutes sur le feu, jusqu'à la fine pellicule au fond de la casserole\n2. Les œufs un par un, et on s'arrête quand la pâte forme un « V » au bout de la spatule\n3. Ne JAMAIS ouvrir le four pendant les vingt premières minutes\nTout le reste, c'est de l'entraînement.",
+      120, 40, []),
+
+    // ── Chiens ─────────────────────────────────────────────────────────────
+    p("pn_chien_1", "u_benoit", "animaux-chiens", "learn", "text", null,
+      "Mon chien tire en laisse : la méthode qui a marché avec mes deux border collies.\n1. Dès que la laisse se tend, je m'arrête net, et je ne repars que quand elle se détend\n2. Je récompense quand il marche à côté, pas quand il revient\n3. Des séances de cinq minutes, pas une heure de promenade frustrante\nÇa prend trois semaines. Personne ne veut l'entendre, mais c'est trois semaines.",
+      5, 33, [
+        c("cpn_chien_1_0", "u_maya", "C'est exactement ce que je donne en consultation. Le « je m'arrête net » demande une patience d'acier.", 4, 6),
+      ]),
+    p("pn_chien_2", "u_benoit", "animaux-chiens", "creation", "text", "dog",
+      "Premier concours d'agility pour Ouzo, deux ans et demi : sans faute sur le parcours jumping, 4e sur 31. Il m'a sauté dans les bras à l'arrivée, ce qu'il n'a JAMAIS le droit de faire.\nJ'ai laissé passer.",
+      65, 44, []),
+    p("pn_chien_3", "u_benoit", "animaux-chiens", "irl", "text", "nature",
+      "📍 Le Mans, parc de l'Arche de la Nature, parking de la Prairie — 📅 dimanche 9h30\nBalade canine éducative : une heure et demie de marche en groupe, et on travaille le rappel et la marche en laisse au milieu des autres chiens. Chiens sociables uniquement, en laisse au départ.\nOn est en général huit à dix chiens, de toutes les tailles.",
+      150, 19, []),
+
+    // ── Jardinage urbain ───────────────────────────────────────────────────
+    p("pn_balcon_1", "u_amel", "jardinage-urbain", "creation", "photo", "garden",
+      "Bilan de la saison sur mon balcon de 4 m² au 6e étage : 11 kg de tomates, des fraises jusqu'en octobre, et du basilic pour tout l'immeuble.\nLes courgettes, en revanche, c'était une erreur : elles ont mangé la moitié du balcon pour trois légumes.",
+      11, 36, [
+        c("cpn_balcon_1_0", "u_lucie", "11 kg sur 4 m², c'est énorme ! Tu arrosais comment pendant la canicule ?", 10, 4),
+      ]),
+    p("pn_balcon_2", "u_amel", "jardinage-urbain", "learn", "text", null,
+      "Potager de balcon, ce qui compte vraiment :\n1. Des bacs de 30 cm de profondeur minimum, sinon tout sèche en juillet\n2. Le paillage, même en pot : ça divise l'arrosage par deux\n3. Plein sud, c'est trop pour la salade en été : mets-la à l'ombre des tomates\nEt vérifie le poids : un bac de terre mouillée, c'est vite 80 kg.",
+      90, 30, []),
+    p("pn_balcon_3", "u_amel", "jardinage-urbain", "irl", "text", null,
+      "📍 Marseille, jardin partagé de la Belle de Mai — 📅 samedi 10h\nTroc de graines et de boutures avant l'hiver : apportez ce que vous avez en trop, même trois graines dans une enveloppe. Je viens avec des boutures de figuier et des graines de tomate cœur-de-bœuf de cette année.\nLe café est offert par le jardin.",
+      170, 17, []),
+
+    // ── Romans · Dark romance ──────────────────────────────────────────────
+    p("pn_roman_1", "u_oceane", "litterature-romans", "irl", "text", "reading",
+      "📍 Nancy, librairie L'Autre Rive (rue du Pont-Mouja) — 📅 mardi 19h\nClub de lecture du mois : on parle de « Veiller sur elle » de Jean-Baptiste Andrea. Pas besoin de l'avoir fini, on ne dévoile la fin qu'à partir de 20 h 30, promis.\nOn est une dizaine, de 22 à 70 ans, et les désaccords sont très bienvenus.",
+      14, 22, [
+        c("cpn_roman_1_0", "u_sofia", "Je l'ai lu en deux nuits. Hâte de savoir ce qu'en aura pensé le club.", 12, 3),
+      ]),
+    p("pn_roman_2", "u_oceane", "litterature-romans", "all", "text", null,
+      "Fini un roman à 2 h du matin, et je suis restée assise dans le noir dix minutes sans bouger.\nC'est pour ça que je lis : pour ces dix minutes-là.",
+      55, 48, []),
+    p("pn_roman_3", "u_oceane", "litterature-romans", "learn", "text", null,
+      "Comment je suis passée de 4 à 30 romans par an sans « trouver du temps » :\n1. Un livre toujours dans le sac, jamais sans\n2. Le téléphone dans une autre pièce le soir\n3. Le droit d'abandonner un livre à la page 50\nC'est le troisième point qui a tout changé.",
+      110, 41, [
+        c("cpn_roman_3_0", "u_anaïs", "Le droit d'abandonner, je l'ai découvert à 40 ans. Quelle libération.", 106, 5),
+      ]),
+    p("pn_dark_1", "u_oceane", "dark-romance", "creation", "text", null,
+      "Premier jet terminé pour ma dark romance : 92 000 mots, un antihéros que je déteste et que j'aime à la fois, et une fin que mes deux bêta-lectrices m'ont suppliée de changer. Je ne la change pas.\nRelecture en janvier, avec une relectrice en sensibilité pour les scènes difficiles.",
+      175, 29, [
+        c("cpn_dark_1_0", "u_anaïs", "La relectrice en sensibilité, très bonne idée pour ce genre-là. Bon courage pour janvier.", 172, 3),
+      ]),
+
+    // ── Animation japonaise · Séries ───────────────────────────────────────
+    p("pn_anime_1", "u_kenzo", "cinema-anime", "all", "text", "cinema",
+      "Revu « Le Voyage de Chihiro » au cinéma pour sa ressortie, avec ma nièce de 7 ans qui le découvrait. Elle a eu peur du Sans-Visage, puis elle a voulu lui tenir la main.\nTrente ans que je regarde de l'animation japonaise, et c'est l'une des plus belles séances de ma vie.",
+      8, 39, [
+        c("cpn_anime_1_0", "u_noa", "Les ressorties Ghibli en salle, c'est un cadeau. Le train sur la mer, avec le son du cinéma…", 7, 5),
+      ]),
+    p("pn_anime_2", "u_kenzo", "cinema-anime", "learn", "text", null,
+      "Débuter l'animation japonaise sans se perdre, mes cinq portes d'entrée :\n1. Mon voisin Totoro (pour tous les âges)\n2. Cowboy Bebop (la série parfaite, en 26 épisodes)\n3. Your Name (pour pleurer)\n4. Perfect Blue (pour ne plus dormir)\n5. Frieren (le meilleur de ces dernières années)\nAucune ne demande de connaître quoi que ce soit.",
+      70, 37, [
+        c("cpn_anime_2_0", "u_lisa", "Frieren, je confirme. Je l'ai commencé « pour voir », j'ai fini la saison en trois jours.", 67, 4),
+      ]),
+    p("pn_anime_3", "u_kenzo", "cinema-anime", "irl", "text", null,
+      "📍 Lyon, cinéma Comoedia (avenue Berthelot) — 📅 dimanche 16h\nOn va voir « Perfect Blue » en version restaurée, puis on en parle autour d'un chocolat chaud au café d'à côté. Âmes sensibles s'abstenir, c'est un film dur.\nOn est déjà quatre, c'est ouvert à qui veut.",
+      140, 15, []),
+    p("pn_series_1", "u_lisa", "cinema-series", "learn", "text", null,
+      "Ma règle pour ne plus enchaîner les séries sans les savourer : un épisode, puis trois lignes dans un carnet. Ce que j'ai ressenti, une réplique, une question.\nJe regarde deux fois moins, et je me souviens de tout. « The Bear », saison 1, je pourrais vous la raconter scène par scène.",
+      30, 27, []),
+    p("pn_series_2", "u_lisa", "cinema-series", "all", "text", null,
+      "Fini « Severance » saison 2 ce soir et j'ai besoin d'en parler à quelqu'un. N'importe qui. Sans rien dévoiler : la scène de l'ascenseur.\nVoilà. C'est tout. Quelqu'un ?",
+      125, 30, [
+        c("cpn_series_2_0", "u_noa", "LA scène de l'ascenseur. J'ai mis sur pause dix minutes.", 123, 4),
+        c("cpn_series_2_1", "u_kenzo", "Je n'ai vu que la saison 1… je ne lis pas les commentaires 🙈", 122, 3),
+      ]),
+
+    // ── Échecs · Japonais ──────────────────────────────────────────────────
+    p("pn_echecs_1", "u_ivan", "jeux-echecs", "irl", "text", null,
+      "📍 Paris, un café de la rue de la Roquette (adresse en message) — 📅 jeudi 19h\nÉchecs au café : j'apporte trois échiquiers et des pendules, parties rapides de dix minutes, tous niveaux. Les débutants jouent entre débutants, et on rejoue les parties ensemble à la fin.\nUne seule règle : on ne commente pas le coup de l'autre pendant la partie.",
+      7, 18, [
+        c("cpn_echecs_1_0", "u_tom", "Je joue sur mon téléphone depuis deux ans sans jamais avoir touché un vrai échiquier. Je peux venir ?", 6, 3),
+      ]),
+    p("pn_echecs_2", "u_ivan", "jeux-echecs", "learn", "text", null,
+      "Passer de 1 200 à 1 500 Elo, ce qui m'a vraiment fait progresser :\n1. Avant chaque coup, se demander : qu'est-ce que l'adversaire menace ?\n2. Jouer moins de parties en 3 minutes, plus en 15 minutes\n3. Analyser chaque défaite, même dix minutes\nAucune ouverture apprise par cœur n'a eu autant d'effet que le point 1.",
+      80, 34, []),
+    p("pn_echecs_3", "u_ivan", "jeux-echecs", "creation", "text", null,
+      "Ma première victoire en tournoi contre un joueur à 1 900, à la cinquième ronde. Une finale de tours que j'ai jouée pendant quarante minutes, persuadé qu'elle était nulle. Il s'est trompé au 61e coup.\nJe n'ai pas dormi de la nuit.",
+      150, 31, []),
+    p("pn_japonais_1", "u_pauline", "langues-japonais", "learn", "text", null,
+      "Apprendre les kanjis sans se décourager, après deux ans :\n1. Cinq kanjis par jour, pas vingt, mais tous les jours\n2. Les apprendre dans des mots, jamais seuls : 電車 (le train) plutôt que 電 tout court\n3. Une appli de répétition espacée, quinze minutes, le matin dans le bus\nJ'en suis à 640. Le JLPT N4, c'est en décembre.",
+      21, 29, [
+        c("cpn_japonais_1_0", "u_kaoru", "Le point 2, c'est la clé. Les kanjis isolés ne servent à rien dans la vraie vie.", 19, 5),
+      ]),
+    p("pn_japonais_2", "u_pauline", "langues-japonais", "irl", "text", null,
+      "📍 Toulouse, salon de thé de la rue des Filatiers — 📅 samedi 15h\nCafé conversation français–japonais : une heure en japonais, une heure en français, avec des étudiants japonais de l'université. Tous niveaux, même si vous ne savez dire que « konnichiwa ».\nTables de quatre, les débutants avec les débutants.",
+      115, 16, []),
+
+    // ── Yoga aérien ────────────────────────────────────────────────────────
+    p("pn_yogaaerien_1", "u_aurore", "yoga-aerien", "learn", "text", "yoga",
+      "Yoga aérien, les questions qu'on me pose à chaque premier cours :\n1. Non, il ne faut pas être souple : le hamac fait la moitié du travail\n2. Oui, il est solide : il est accroché à une poutre testée pour bien plus que notre poids\n3. Évitez de manger dans les deux heures avant : la tête en bas, c'est sérieux\nEt oui, on se retrouve la tête à l'envers dès le premier cours. C'est le moment préféré de tout le monde.",
+      16, 26, []),
+    p("pn_yogaaerien_2", "u_aurore", "yoga-aerien", "creation", "text", null,
+      "Nouvelle séquence pour le cours avancé : une transition de l'inversion en papillon vers le berceau, sans toucher le sol, en quarante secondes. Je l'ai répétée soixante fois avant de la montrer.\nMes élèves l'ont réussie en trois essais. Elles sont meilleures que moi.",
+      100, 32, [
+        c("cpn_yogaaerien_2_0", "u_emma", "« Elles sont meilleures que moi » : la plus belle phrase qu'une prof puisse écrire 🧘", 97, 5),
+      ]),
+
+    // ── Metallerie ─────────────────────────────────────────────────────────
+    p("pn_metal_1", "u_gael", "metallerie", "creation", "photo", "workshop",
+      "Garde-corps d'escalier terminé pour une maison de Cholet : acier brut, 46 barreaux soudés un par un, vernis mat pour garder les traces de meuleuse. Trois semaines d'atelier.\nLe client voulait « quelque chose qui ne ressemble pas à un catalogue ». Il a eu les larmes aux yeux en le voyant posé.",
+      10, 37, [
+        c("cpn_metal_1_0", "u_paul", "Le vernis mat sur l'acier brut, c'est le bon choix. Très belle pièce.", 9, 5),
+        c("cpn_metal_1_1", "u_romain", "46 barreaux soudés à la main… respect.", 8, 2),
+      ]),
+    p("pn_metal_2", "u_gael", "metallerie", "learn", "text", null,
+      "Souder à l'arc pour la première fois, les trois choses que je répète à mes apprentis :\n1. On regarde le bain de fusion, jamais l'arc\n2. L'électrode inclinée de 15 à 20°, vitesse régulière : on écoute le grésillement, il doit faire le bruit d'un œuf au plat\n3. Masque, gants, manches longues, toujours, même pour un point de deux secondes\nLe reste, c'est trois cents cordons ratés.",
+      85, 30, []),
+    p("pn_metal_3", "u_gael", "metallerie", "irl", "text", null,
+      "📍 Cholet, mon atelier de la zone du Cormier — 📅 samedi 9h\nMatinée portes ouvertes : je montre la forge, la soudure et la découpe, et chacun peut souder son premier cordon, avec tout l'équipement de protection. Idéal si vous pensez à une reconversion ou à un apprentissage.\nSix places, gratuit, café et croissants.",
+      165, 19, []),
+  ];
+
+  return { users: users, posts: posts };
+}

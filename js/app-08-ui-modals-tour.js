@@ -8016,6 +8016,38 @@ function feedAddRealtimePost(newPost) {
   } catch (e) { return false; }
 }
 window.feedAddRealtimePost = feedAddRealtimePost;
+// Va chercher la page serveur SUIVANTE du fil et l'ajoute au stock. Extraite de
+// `loadMoreFeedPosts` le 2026-11-01 pour être partagée avec
+// `completerFilAvecLeReel` — le corps est inchangé. Rend le nombre de
+// publications NOUVELLES ajoutées.
+async function _chargerPageServeurSuivante(loadedCount) {
+  const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
+  const cacheGeneration = _profileCacheGeneration, generation = _feedRefreshGeneration;
+  let ajoutees = 0;
+  // Une tête modifiée peut faire repasser sur une page déjà en mémoire.
+  // Traverser au plus trois pages sans nouveauté par geste : pas de clic
+  // perdu sur un doublon, et pas de balayage sans borne des données.
+  for (let tentative = 0; tentative < 3; tentative++) {
+    const pagination = _feedPagination && _feedPagination.owner === owner ? _feedPagination : null;
+    const stockAvant = (state.supabasePosts || []).slice();
+    const more = await supaLoadPosts(pagination ? pagination.offset : loadedCount, null,
+      { generation, ...(pagination && pagination.cursor ? { cursor: pagination.cursor } : {}) });
+    if (owner !== (typeof MY_UID !== "undefined" ? MY_UID : null)
+        || cacheGeneration !== _profileCacheGeneration || generation !== _feedRefreshGeneration) break;
+    const known = new Set((state.supabasePosts || []).map(p => p.id));
+    const fresh = more.filter(p => !known.has(p.id));
+    // Protéger aussi la queue de l'ancienne première page : elle peut
+    // sortir des 20 lignes de tête au prochain rafraîchissement.
+    const extras = new Map((window._feedExtraPosts || []).map(p => [p.id, p]));
+    stockAvant.concat(fresh).forEach(p => extras.set(p.id, p));
+    window._feedExtraPosts = Array.from(extras.values());
+    state.supabasePosts = (state.supabasePosts || []).concat(fresh);
+    ajoutees += fresh.length;
+    if (fresh.length || !window._feedServerMayHaveMore || _feedPagination === pagination) break;
+  }
+  return ajoutees;
+}
+
 async function loadMoreFeedPosts() {
   if (window._feedPageLoading) return;
   window._feedPageLoading = true;
@@ -8026,32 +8058,48 @@ async function loadMoreFeedPosts() {
     const loadedCount = (state.supabasePosts || []).length;
     // Si on approche de la fin du stock local et que le serveur peut avoir plus → page suivante
     if (window._feedServerMayHaveMore && window._feedRenderLimit >= loadedCount - 10) {
-      const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
-      const cacheGeneration = _profileCacheGeneration, generation = _feedRefreshGeneration;
-      // Une tête modifiée peut faire repasser sur une page déjà en mémoire.
-      // Traverser au plus trois pages sans nouveauté par geste : pas de clic
-      // perdu sur un doublon, et pas de balayage sans borne des données.
-      for (let tentative = 0; tentative < 3; tentative++) {
-        const pagination = _feedPagination && _feedPagination.owner === owner ? _feedPagination : null;
-        const stockAvant = (state.supabasePosts || []).slice();
-        const more = await supaLoadPosts(pagination ? pagination.offset : loadedCount, null,
-          { generation, ...(pagination && pagination.cursor ? { cursor: pagination.cursor } : {}) });
-        if (owner !== (typeof MY_UID !== "undefined" ? MY_UID : null)
-            || cacheGeneration !== _profileCacheGeneration || generation !== _feedRefreshGeneration) break;
-        const known = new Set((state.supabasePosts || []).map(p => p.id));
-        const fresh = more.filter(p => !known.has(p.id));
-        // Protéger aussi la queue de l'ancienne première page : elle peut
-        // sortir des 20 lignes de tête au prochain rafraîchissement.
-        const extras = new Map((window._feedExtraPosts || []).map(p => [p.id, p]));
-        stockAvant.concat(fresh).forEach(p => extras.set(p.id, p));
-        window._feedExtraPosts = Array.from(extras.values());
-        state.supabasePosts = (state.supabasePosts || []).concat(fresh);
-        if (fresh.length || !window._feedServerMayHaveMore || _feedPagination === pagination) break;
-      }
+      await _chargerPageServeurSuivante(loadedCount);
     }
   } catch (e) { console.warn("loadMoreFeedPosts:", e); }
   finally { window._feedPageLoading = false; }
   renderFeed();
+}
+
+// ── LE RÉEL AVANT LES EXEMPLES : compléter la fenêtre (2026-11-01) ──────────
+// `renderFeed` l'appelle quand des EXEMPLES sont peints alors que le serveur a
+// peut-être encore des publications réelles plus anciennes. Sans ce geste,
+// celles-ci n'arrivaient qu'au bas de la fenêtre (sentinelle du fenêtrage, ou
+// bouton « Charger plus ») : après une vingtaine d'exemples, et insérées
+// au-dessus de ce qu'on était en train de lire — le contraire exact de « les
+// vrais utilisateurs toujours en haut ».
+//
+// ⚠️ BORNÉ, et c'est ce qui le rend acceptable : `FIL_REEL_PAGES_MAX` pages
+// par compte et par session, une seule lecture en vol (`_feedPageLoading`,
+// partagé avec « Charger plus »). Sans borne, un compte dont les passions ne
+// croisent AUCUNE publication réelle balaierait toute la table, page après
+// page, à chaque rendu. La fenêtre (`_feedRenderLimit`) n'est PAS élargie :
+// on remplit le stock, on ne peint pas plus de cartes.
+// ⚠️ Un échec se JOURNALISE (diagLog) et se tait : le fil reste peint tel quel,
+// les exemples font ce pour quoi ils sont là.
+const FIL_REEL_PAGES_MAX = 3;
+let _filReelPages = { owner: null, n: 0 };
+async function completerFilAvecLeReel() {
+  if (window._feedPageLoading || !window._feedServerMayHaveMore) return false;
+  const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
+  if (_filReelPages.owner !== owner) _filReelPages = { owner: owner, n: 0 };
+  if (_filReelPages.n >= FIL_REEL_PAGES_MAX) return false;
+  _filReelPages.n++;
+  window._feedPageLoading = true;
+  let ajoutees = 0;
+  try {
+    ajoutees = await _chargerPageServeurSuivante((state.supabasePosts || []).length);
+  } catch (e) {
+    try { diagLog("fil_reel_avant_exemples: " + (e && e.message ? e.message : e)); } catch (_) {}
+  } finally { window._feedPageLoading = false; }
+  // Repeindre seulement s'il y a du nouveau, et seulement si le fil est à
+  // l'écran (`scheduleFeedRender` sait les deux).
+  if (ajoutees > 0 && typeof scheduleFeedRender === "function") scheduleFeedRender();
+  return ajoutees > 0;
 }
 
 // ===== SYSTÈME DE REFRESH AUTOMATIQUE DU FEED =====
