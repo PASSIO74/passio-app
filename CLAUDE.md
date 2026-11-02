@@ -184,6 +184,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Le centre de pilotage, c'est `/pilotage/` (2026-10-23, trois onglets) : « À faire » vient de `aFaire()` (`_shared/pilotage.js`), jamais d'une liste recomposée dans la page ; une source illisible n'est pas une source calme — la veille ne baisse jamais le voyant sur une lecture incomplète (`tenirVerdict`), l'écran n'est jamais vert sans tout avoir lu (`verdictAffiche`).
 - Croissance (2026-11-01) : une source d'arrivée est une FAMILLE d'une liste fermée (`sourceVisite`, telemetry.js), jamais une adresse ; la rétention se lit dans `activite_jour` (identité SERVEUR), jamais dans la télémétrie brute, qui ne vit que 3 jours (échecs 7) ; un taux de cohorte dont la fenêtre n'est pas passée vaut « … », jamais 0 %.
 - « Réparer » (2026-10-25) confie l'issue DÈS SON OUVERTURE — corps commençant par `@claude …` (`COMMENTAIRE_CONFIER`), AUCUN label à la création (chaque `labeled` relancerait un agent) ; une réparation se reconnaît à son titre ET à son auteur (`estReparationDuPilote`), jamais à son label : un jeton sans *Issues: write* le fait tomber en silence (16 doublons de #627).
+- Sentinelle (2026-11-01) : jusqu'à `MAX_ENQUETES` = `REVEIL.enquetesMax` = 3 enquêtes de front, jamais deux de même zone (`zoneCible`), un `sleep 8` avant CHAQUE label `claude` ; un bouton mort ne devient une enquête que sur clics RAGEURS de comptes serveur ET un libellé déjà écrit dans le code (dépôt public) — le clic est horodaté APRÈS la peinture (`BOUTON_AVANCE_MS`).
 
 ## 📚 Références projet
 

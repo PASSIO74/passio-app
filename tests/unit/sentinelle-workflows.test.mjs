@@ -242,19 +242,28 @@ test("veilleur : un run vivant (en cours, en file, ou qui ATTEND un runner) post
 });
 
 // ═══ Une enquête à la fois / Coupe-circuit ═══════════════════════════════
-test("« une enquête à la fois » compte par LABEL et sans `humain` ; le coupe-circuit lit par auteur + filtre local", () => {
-  // Mutation W6 : le jq de « une enquête à la fois » → `length` → rougit (deux humain bloqueraient le canal).
+test("enquêtes en parallèle : comptées par LABEL et sans `humain`, plafond 3 ; le coupe-circuit lit par auteur + filtre local", () => {
+  // Mutation W6 : le jq des enquêtes en cours → `length` → rougit (deux humain bloqueraient le canal).
   // Mutation : `--author PASSIO74` → `--search '"[SENTINELLE PAUSE]" in:title'` → rougit (forme inconnue du faux gh : l'index en retard).
   fixtures({
     "issues-open": [{ number: 1, labels: L("sentinelle", "humain") }, { number: 2, labels: L("sentinelle", "recidive", "humain") }],
     "issues-open-humain": [{ number: 1 }, { number: 2 }],
   });
-  const r = jouer(etape(SA, "detecter", "Une enquête à la fois").run);
+  const r = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
   assert.equal(r.code, 0, r.sortie);
-  assert.ok(r.out.includes("libre=true"), "deux issues humain seulement → libre\n" + r.out);
+  assert.ok(r.out.includes("libre=true") && r.out.includes("places=3"), "deux issues humain seulement → trois places\n" + r.out);
   assert.ok(r.summary.includes("2 enquête(s) attendent une décision humaine"), r.summary);
+  // Mutation : `places=$(( max - n ))` → `places=$(( n == 0 ? max : 0 ))` → rougit (une enquête gèlerait de nouveau tout le canal).
   fixtures({ "issues-open": [{ number: 1, labels: L("sentinelle", "claude") }], "issues-open-humain": [] });
-  assert.ok(jouer(etape(SA, "detecter", "Une enquête à la fois").run).out.includes("libre=false"), "une issue confiée à la machine → occupé");
+  const une = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.ok(une.out.includes("libre=true") && une.out.includes("places=2"), "une issue confiée à la machine → il reste deux places\n" + une.out);
+  const reglee = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run, { SENTINELLE_MAX_ENQUETES: "5" });
+  assert.ok(reglee.out.includes("places=4"), "variable du dépôt à 5 → quatre places\n" + reglee.out);
+  const folle = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run, { SENTINELLE_MAX_ENQUETES: "0" });
+  assert.ok(folle.out.includes("places=2"), "0 est refusé : on retombe sur 3, pas sur un canal éteint en silence\n" + folle.out);
+  fixtures({ "issues-open": [1, 2, 3].map((number) => ({ number, labels: L("sentinelle", "claude") })), "issues-open-humain": [] });
+  const pleine = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.ok(pleine.out.includes("libre=false") && pleine.out.includes("places=0"), "trois issues confiées → saturé\n" + pleine.out);
   fixtures({ "issues-author": [{ title: "[SENTINELLE PAUSE] stop" }] });
   const p = jouer(etape(SA, "detecter", "Coupe-circuit").run);
   assert.equal(p.code, 0, p.sortie);
@@ -274,7 +283,7 @@ const verdict = (cible, candidats, extra = {}) => fs.writeFileSync(BAC + "/verdi
 const lireVerdict = () => JSON.parse(fs.readFileSync(BAC + "/verdict.json", "utf8"));
 
 test("dédup : RÉINJECTION #355 — l'enquête fermée est datée sur le run deploy.yml VERT et ses builds ; le vieux client est tu, le candidat suivant est retenu", () => {
-  // Mutation W5 : `choisirCible(liste, fermees, ouvertes)` → sans `ouvertes` → rougit (test « titre ouvert » plus bas).
+  // Mutation W5 : `choisirCibles(liste, fermees, ouvertes, …)` → sans `ouvertes` → rougit (test « titre ouvert » plus bas).
   // Mutation : `f.deployeA = etat.deployeA` retiré → rougit (A non datée → règle par closedAt → A rouvre).
   verdict(A, [A, B]);
   fixtures({
@@ -336,7 +345,7 @@ test("dédup (A-02) : un correctif FUSIONNÉ dont le déploiement n'est pas fini
 });
 
 test("dédup : build corrigé encore en erreur + DEUX correctifs déployés → récidive ; un titre encore OUVERT (humain) est sauté", () => {
-  // Mutation W5 : `choisirCible(liste, fermees, ouvertes)` → `choisirCible(liste, fermees)` → rougit (deja=non sur le titre ouvert).
+  // Mutation W5 : `choisirCibles(liste, fermees, ouvertes, …)` → `choisirCibles(liste, fermees, [], …)` → rougit (deja=non sur le titre ouvert).
   // Mutation : `escaladeRecidive(cible, fermees)` → `null` → rougit (recidive=non).
   const A2 = { ...A, occurrences: [{ at: "2026-09-12T15:12:57Z", app_version: "c7bf4e49" }] };
   verdict(A2, [A2, B]);
@@ -395,12 +404,64 @@ test("ouvrir : l'enquête est créée avec le SEUL label `sentinelle` et SENTINE
 test("déclencher : `sleep 8` PUIS `--add-label claude` avec SENTINELLE_TOKEN ; un numéro non entier est refusé", () => {
   // Mutation W7 : retirer `sleep 8` → rougit (la course d'événements mesurée : un run sur trois perdu).
   // Mutation : `GH_TOKEN: ${{ secrets.SENTINELLE_TOKEN }}` → github.token dans l'env de l'étape → rougit (jeton=integre : rien ne se déclenche).
-  const d = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMERO: "999", GH_TOKEN: "perso" });
+  const d = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "999", GH_TOKEN: "perso" });
   assert.equal(d.code, 0, d.sortie);
   assert.deepEqual(d.lignes, ["sleep 8", "issue edit 999 --repo o/r --add-label claude :: jeton=perso"], d.log);
   const env = etape(SA, "detecter", "Déclencher le canal Claude").env || {};
   assert.equal(env.GH_TOKEN, "${{ secrets.SENTINELLE_TOKEN }}", "l'étape porte le jeton personnel : c'est lui qui déclenche");
-  assert.notEqual(jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMERO: "999; rm -rf /" }).code, 0);
+  const injecte = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "999; rm -rf /" });
+  assert.notEqual(injecte.code, 0);
+  assert.deepEqual(injecte.lignes, [], "rien n'est posé tant qu'un numéro est invalide");
+  assert.notEqual(jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "" }).code, 0, "liste vide : panne visible");
+});
+
+test("déclencher (parallèle) : un `sleep 8` AVANT CHAQUE label, une issue après l'autre ; un seul numéro invalide n'en pose AUCUN", () => {
+  // Mutation : sortir `sleep 8` de la boucle → rougit (deux `labeled claude` dans le même groupe d'événements).
+  // Mutation : fusionner les deux boucles (valider en posant) → rougit (998 serait déjà confiée quand « x » est refusé).
+  const d = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "997 998 999", GH_TOKEN: "perso" });
+  assert.equal(d.code, 0, d.sortie);
+  assert.deepEqual(d.lignes, [
+    "sleep 8", "issue edit 997 --repo o/r --add-label claude :: jeton=perso",
+    "sleep 8", "issue edit 998 --repo o/r --add-label claude :: jeton=perso",
+    "sleep 8", "issue edit 999 --repo o/r --add-label claude :: jeton=perso",
+  ], d.log);
+  const mixte = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "998 x", GH_TOKEN: "perso" });
+  assert.notEqual(mixte.code, 0);
+  assert.deepEqual(mixte.lignes, [], mixte.log);
+});
+
+test("dédup + ouvrir (parallèle) : PLACES=2 retient les deux premières cibles vivantes, ouvre deux issues, n'en confie que les enquêtes", () => {
+  // Mutation : `choisirCibles(liste, …, places)` → `…, 1)` → rougit (une seule cible malgré deux places).
+  const C = { ...B, cle: "GET /rest/v1/stories 500", chemin: "/rest/v1/stories", message: "HTTP 500 sur GET /rest/v1/stories" };
+  verdict(A, [A, B, C]);
+  fixtures({ "issues-closed": [], "issues-open": [], "prs-merged": [], "runs-deploy": [], "compare": { commits: [] } });
+  const r = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "2" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.ok(r.out.includes("deja=non") && r.out.includes("n=2"), r.out);
+  const v = lireVerdict();
+  assert.deepEqual(v.cibles.map((x) => x.cible.cle), [A.cle, B.cle], "les deux premières, dans l'ordre du classement");
+  assert.equal(v.cible.cle, A.cle, "`cible` reste la première (lecteurs d'avant ce lot)");
+  assert.ok(r.summary.includes("2 cible(s) retenue(s)"), r.summary);
+  const o = jouer(etape(SA, "detecter", "Ouvrir l'enquête").run, { RECIDIVE: "non", GH_TOKEN: "perso", JETON_INTEGRE: "integre" });
+  assert.equal(o.code, 0, o.sortie);
+  const creations = o.lignes.filter((x) => x.startsWith("issue create"));
+  assert.equal(creations.length, 2, o.log);
+  assert.ok(creations.every((x) => /--label sentinelle :: jeton=perso$/.test(x)), o.log);
+  assert.ok(creations[0].includes(mod.titreIssue(A)) && creations[1].includes(mod.titreIssue(B)), o.log);
+  assert.ok(o.out.includes("numeros=999 999") && o.out.includes("mode=enquete") && o.out.includes("numero=999"), o.out);
+  // Une récidive au milieu : issue `humain`, jamais confiée.
+  const rec = { recidive: true, n: 2, enquetes: [] };
+  verdict(A, [A, B], { cibles: [{ cible: A, escalade: rec }, { cible: B, escalade: { recidive: false, n: 0, enquetes: [] } }] });
+  const o2 = jouer(etape(SA, "detecter", "Ouvrir l'enquête").run, { RECIDIVE: "non", GH_TOKEN: "perso", JETON_INTEGRE: "integre" });
+  assert.equal(o2.code, 0, o2.sortie);
+  const c2 = o2.lignes.filter((x) => x.startsWith("issue create"));
+  assert.match(c2[0], /--label sentinelle --label recidive --label humain :: jeton=integre$/, o2.log);
+  assert.match(c2[1], /--label sentinelle :: jeton=perso$/, o2.log);
+  assert.ok(o2.out.includes("numeros=999\n") && o2.out.includes("mode=enquete"), "seule l'enquête est à confier\n" + o2.out);
+  // Que des récidives : rien à confier.
+  verdict(A, [A], { cibles: [{ cible: A, escalade: rec }] });
+  const o3 = jouer(etape(SA, "detecter", "Ouvrir l'enquête").run, { RECIDIVE: "non", GH_TOKEN: "perso", JETON_INTEGRE: "integre" });
+  assert.ok(o3.out.includes("mode=recidive") && o3.out.includes("numeros=\n"), o3.out);
 });
 
 // ═══ A8 — [SENTINELLE MUETTE] ════════════════════════════════════════════
