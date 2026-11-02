@@ -187,15 +187,23 @@ test.describe("Confidentialité cross-compte (RLS)", () => {
   //   ③ `event_attendees` : la liste nominative d'un événement où l'on n'est
   //      PAS inscrit (C-04 : policy SELECT `true` pour tout compte connecté).
   //
-  // ⚠️ ① et ③ ÉPINGLENT LE CONTRAT ATTENDU, pas l'état d'aujourd'hui : tant que
-  // la migration (①) n'est pas appliquée et que le périmètre de la liste des
-  // participants (③) n'est pas tranché, ils ROUGISSENT — `test.fail()` les
-  // marque « échec attendu » pour que la CI reste verte et dise le jour où le
-  // comportement change. ② passe aujourd'hui et doit continuer de passer.
+  // ⚠️ ③ ÉPINGLE LE CONTRAT ATTENDU, pas l'état d'aujourd'hui : tant que le
+  // périmètre de la liste des participants n'est pas tranché, il ROUGIT —
+  // `test.fail()` le marque « échec attendu » pour que la CI reste verte et dise
+  // le jour où le comportement change. ① est un verrou ordinaire : la cible de
+  // la CI (staging) refuse déjà le tiers ; la production le refusera après la
+  // migration du 2026-11-02. ② passe aujourd'hui et doit continuer de passer.
   // ═════════════════════════════════════════════════════════════════════════
   test("AUDIT E — accusé de lecture d'un tiers (C-01) : refusé pour le non-membre, accepté pour le membre", async ({ browser }) => {
     test.setTimeout(240000);
-    test.fail(true, "C-01 : `reads_upsert` n'exige pas l'appartenance — retirer cette marque une fois la migration du 2026-11-02 appliquée");
+    // ⚠️ Mesuré en CI le 2026-11-02 (run 41546466427) : la CIBLE de ce job est le
+    // STAGING, et il REFUSE déjà l'accusé d'un tiers (HTTP 403, 42501) — alors que
+    // le catalogue de la PRODUCTION (`pg_policies`, canal ①) porte encore
+    // `reads_upsert` sans appartenance (C-01). Staging et production divergent
+    // sur cette policy : le cas est donc un verrou ORDINAIRE (vert sur la cible
+    // de la CI) et il reste rouge contre la production tant que
+    // `migrations/migration_audit_2026-11-02_oracles_et_privileges.sql` n'y
+    // est pas appliquée — ce qui est exactement ce qu'il doit dire.
     const log = (m) => console.log(`[conf-reads] ${m}`);
     const ctxA = await browser.newContext(), ctxB = await browser.newContext(), ctxC = await browser.newContext();
     const A = await ctxA.newPage(), B = await ctxB.newPage(), C = await ctxC.newPage();
