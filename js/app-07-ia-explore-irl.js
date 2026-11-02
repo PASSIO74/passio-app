@@ -7021,7 +7021,7 @@ function openEventInvite(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) { toast("Événement introuvable"); return; }
   window._inviteEventId = eventId;
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Inviter des amis</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7257,7 +7257,7 @@ function openEventFeedback(eventId) {
   var mine = myEventRating(eventId) || { rating: 0, feedback: "" };
   window._ratingDraft = mine.rating || 0;
 
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Ton retour</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7657,7 +7657,7 @@ function _rendreCheckinQr(ev, code) {
     svg = '<div style="font-size:12px;color:var(--muted);padding:20px;">QR indisponible — utilise le code ci-dessous.</div>';
   }
 
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Accueil des participants</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7689,7 +7689,7 @@ function _copyCheckinLink(eventId) {
 function openCheckinCodeEntry(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Pointer mon arrivée</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + 'Saisis le code affiché à l\'accueil de « ' + escapeHtml(ev.title || "") + ' ».</div>'

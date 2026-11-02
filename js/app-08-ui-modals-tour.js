@@ -4686,15 +4686,37 @@ async function supaPublishPost(post) {
 // ne touche PAS `_feedServerMayHaveMore` (c'est l'état de pagination DU FIL).
 const FEED_SERVER_PAGE_SIZE = 20;
 let _feedPagination = null;
+// ⚠️ DEUX LECTURES DE LA TÊTE DU FIL PEUVENT SE CROISER, ET LA PLUS ANCIENNE
+// GAGNAIT (D-06, audit du 2026-11-02). Cinq appelants relisent la PREMIÈRE page
+// sans génération — tirer-pour-rafraîchir (app-02), retour en ligne (app-09),
+// contenu public de la première visite, rechargement après publication,
+// démarrage — et chacun fait `state.supabasePosts = posts` à la réponse. Deux
+// gestes rapprochés sur un réseau instable : la réponse partie en premier
+// arrive en dernier et REMPLACE le fil par une page PLUS VIEILLE. Mesuré au
+// banc (faux serveur qui répond à la 1re requête après la 2e) : le fil gardait
+// « ANCIENNE page », la « NOUVELLE » était perdue jusqu'au filet suivant.
+// Le filet de 60 s (`generation`) se protège déjà ; ici c'est la règle pour
+// TOUS les appelants, au seul point d'étranglement : chaque lecture de tête
+// prend un numéro, et une lecture DÉPASSÉE par une plus récente rend `[]` —
+// la valeur que tous les appelants traitent déjà comme « rien à remplacer ».
+// Les pages suivantes (`offset`/`cursor`) et les profils (`authorId`) ne sont
+// pas concernés : ils ne remplacent pas la tête.
+let _feedTeteSeq = 0;
+let _feedTeteDerniereServie = 0;
 
 async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
   try {
     const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
     const cacheGeneration = typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0;
     const paginationAvant = _feedPagination;
+    const teteSeq = (!authorId && offset === 0 && !options.cursor) ? ++_feedTeteSeq : 0;
     const lectureValide = () => owner === (typeof MY_UID !== "undefined" ? MY_UID : null)
       && cacheGeneration === (typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0)
-      && (options.generation === undefined || options.generation === _feedRefreshGeneration);
+      && (options.generation === undefined || options.generation === _feedRefreshGeneration)
+      && (!teteSeq || teteSeq > _feedTeteDerniereServie);
+    // Une lecture de tête qui va rendre son verdict (données ou page vide) est
+    // désormais la plus récente SERVIE : celles parties avant elle sont périmées.
+    const servir = () => { if (teteSeq && teteSeq > _feedTeteDerniereServie) _feedTeteDerniereServie = teteSeq; };
     const pageSize = authorId ? 60 : FEED_SERVER_PAGE_SIZE;
     const extraAvant = !authorId && offset === 0 ? new Set((window._feedExtraPosts || []).map(p => p.id)) : null;
     // ⚠️ `event_id` fait partie du SELECT depuis le 2026-08-28. Il était ÉCRIT
@@ -4778,7 +4800,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     if (typeof postSupprime === "function") {
       data = data.filter(function (r) { return !postSupprime(r.id); });
     }
-    if (!data || !data.length) { memoriserPage(); return []; }
+    if (!data || !data.length) { memoriserPage(); servir(); return []; }
     // Compteurs, mon like, aperçus et réactions : UNE lecture groupée pour la
     // page (`fil_compteurs`), et les quatre lectures d'avant en repli tant que
     // la fonction n'est pas en base.
@@ -4791,6 +4813,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     const commentProfs = await _resolveProfilesByIds(complements.auteursApercus, lectureValide);
     if (!lectureValide()) return [];
     memoriserPage();
+    servir();
     return data.map((r, idx) => {
       const cpl = complements.parPost.get(r.id) || _complementFilVide();
       // Une discussion déjà ouverte tient plus que les deux aperçus : le filet

@@ -12224,3 +12224,40 @@ button, a, label, select, summary,
 }
 :root.passio-ui-4a5 .v4a5-lieu-rapide svg { width: 15px; height: 15px; color: var(--accent); }
 :root.passio-ui-4a5 .v4a5-lieu-rapide:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AUDIT D (2026-11-02) — CIBLES TACTILES, SUITE DE DEV-01 : les boutons-icônes
+   restants. Mesurés par `elementFromPoint` au gabarit 390×844 (jamais par le
+   seul `getComputedStyle(::after)`), spec `audit-2026-11-a11y.spec.js` :
+     · « ⋯ » Paramètres de la barre du haut     34×34  (8 surfaces)
+     · « ← » et actions d'une conversation       36×36 / 34×34
+     · bouton d'envoi d'un message               40×40
+     · outil 😊 du composeur de commentaire      38×38
+     · « × » du lecteur de bobines               38×38
+     · pastille 📷 d'une passion (Mes passions)  20×20
+   Même méthode que DEV-01 : un `::after` TRANSPARENT élargit la zone de tap à
+   44 px sans bouger la mise en page ni la taille visible. Les boutons voisins
+   de la barre de conversation sont séparés de 4 à 8 px : l'inset est borné à
+   ce que la rangée tolère (−2 px en largeur), et c'est la HAUTEUR qui prend
+   les 44 px — un tap raté à côté d'un bouton de 36 px tombe sur son voisin,
+   pas sur le vide. `.hamburger` et `.conv-fp-back` sont `position: static` :
+   on les passe en `relative` (aucun décalage, mesuré). `.reel-sound-btn` est
+   déjà absolu et à 42 px : un inset de −1 px suffit. La pastille 📷 mesure
+   17 à 20 px selon la carte : inset −14 px.
+   ⚠️ Posé en FIN de feuille, après les compléments « Changer de lieu »
+   (2026-10-23) qui suivaient déjà le bloc UI-4A5 : la règle « UI-4A5 reste le
+   DERNIER bloc » n'était plus tenue à cette date (constat de l'audit, hors de
+   son périmètre de correction). */
+.hamburger, .conv-fp-back, .conv-action-btn, .conv-send-btn, .cmt-tool-btn,
+.reels-close { position: relative; }
+/* ⚠️ `.passion-photo-badge` est DÉJÀ `position: absolute` (coin de l'avatar) : le forcer en
+   `relative` le déplacerait — la leçon `.modal-close` (rouge CI #400). Son ::after suffit. */
+.hamburger::after, .reels-close::after {
+  content: ""; position: absolute; inset: -5px; min-width: 44px; min-height: 44px;
+}
+.conv-fp-back::after, .conv-action-btn::after, .conv-send-btn::after, .cmt-tool-btn::after {
+  content: ""; position: absolute; top: -6px; bottom: -6px; left: -2px; right: -2px; min-height: 44px;
+}
+.conv-action-btn.irl-proposal-action::after { content: none; }
+.reel-sound-btn::after { content: ""; position: absolute; inset: -1px; min-width: 44px; min-height: 44px; }
+.passion-photo-badge::after { content: ""; position: absolute; inset: -14px; min-width: 44px; min-height: 44px; }

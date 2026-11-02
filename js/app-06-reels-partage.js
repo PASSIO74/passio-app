@@ -1154,7 +1154,7 @@ function _peopleEmpty(msg) {
   return '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;">' + escapeHtml(msg) + '</div>';
 }
 function _peopleModal(title, bodyHTML) {
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">' + title + '</div>'
     + '<div id="peopleListBody" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;max-height:60vh;overflow-y:auto;">' + bodyHTML + '</div>');
 }
@@ -1942,7 +1942,7 @@ function openEditMainProfile() {
           <input type="url" class="input rs-link-input" data-platform="${escapeHtml(platform)}"
             placeholder="${platform.charAt(0).toUpperCase()+platform.slice(1)} URL"
             value="${escapeHtml(existing?.url||"")}"
-            style="flex:1;font-size:12px;padding:8px 12px;"/>
+            style="flex:1;font-size:16px;padding:8px 12px;"/>
         </div>`;
       }).join("")}
     </div>
@@ -3254,7 +3254,7 @@ function renderProfilesScreen() {
         + ' data-v8-card="' + escapeHtml(String(p.id)) + '" style="' + coverStyle + '"'
         + ' onclick="openEditPassionProfile(\'' + escapeJsArg(String(p.id)) + '\')">'
         + '<div class="avatar lg" style="' + avatarStyle + 'position:relative;">' + avatarContent
-        + '<div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById(\'passionPhoto_' + escapeJsArg(String(p.id)) + '\').click()">📷</div>'
+        + '<div class="passion-photo-badge" role="button" tabindex="0" aria-label="Changer la photo de cette passion" onclick="event.stopPropagation();document.getElementById(\'passionPhoto_' + escapeJsArg(String(p.id)) + '\').click()">📷</div>'
         + '<input type="file" id="passionPhoto_' + escapeHtml(String(p.id)) + '" accept="image/*" style="display:none;" onclick="event.stopPropagation();" onchange="event.stopPropagation();changePassionPhoto(event,\'' + escapeJsArg(String(p.id)) + '\')"/>'
         + '<input type="file" id="passionCover_' + escapeHtml(String(p.id)) + '" accept="image/*" style="display:none;" onclick="event.stopPropagation();" onchange="event.stopPropagation();changePassionCoverPhoto(event,\'' + escapeJsArg(String(p.id)) + '\')"/>'
         + '</div>'
@@ -3300,7 +3300,7 @@ function renderProfilesScreen() {
 
       return `<div class="profile-card ${isSelected?"selected":""} ${_pCover?"has-cover":""}" style="${coverStyle}${isSelected ? "border:2px solid var(--accent);" : ""}" onclick="toggleProfileSelect('${escapeJsArg(p.id)}')">
         <div class="avatar lg" style="${avatarStyle}position:relative;">${avatarContent}
-          <div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById('passionPhoto_${escapeJsArg(p.id)}').click()">📷</div>
+          <div class="passion-photo-badge" role="button" tabindex="0" aria-label="Changer la photo de cette passion" onclick="event.stopPropagation();document.getElementById('passionPhoto_${escapeJsArg(p.id)}').click()">📷</div>
           <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onclick="event.stopPropagation();" onchange="event.stopPropagation();changePassionPhoto(event,'${escapeJsArg(p.id)}')"/>
           <input type="file" id="passionCover_${p.id}" accept="image/*" style="display:none;" onclick="event.stopPropagation();" onchange="event.stopPropagation();changePassionCoverPhoto(event,'${escapeJsArg(p.id)}')"/>
         </div>

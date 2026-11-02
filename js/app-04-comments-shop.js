@@ -212,7 +212,7 @@ function confirmDeletePost(postId) {
   const preview = (post.text || "").slice(0, 80) + (post.text && post.text.length > 80 ? "…" : "");
   const html = `
     <div class="modal-handle"></div>
-    <span class="modal-close" onclick="closeModal()">×</span>
+    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
     <div class="pay-modal-head">
       <div class="pay-modal-emoji">🗑</div>
       <div class="pay-modal-title">Supprimer ce post ?</div>
@@ -2668,12 +2668,29 @@ function hydrateConvsFromIDB() {
   }).catch(function() {});
 }
 
+// ⚠️ LE VERROU DE DÉCONNEXION VAUT AUSSI POUR LES CONVERSATIONS (D-01, audit
+// du 2026-11-02). `doLogout` purge localStorage ET IndexedDB, puis
+// `location.reload()` 1,2 s plus tard déclenche `beforeunload`, où `supaInit`
+// a branché `saveConversationsNow` : `conversationsState` — encore en mémoire
+// avec les messages privés du compte sortant — était RÉÉCRIT dans les deux
+// stores. Mesuré au banc : après déconnexion + rechargement, « Message privé
+// de A » était de retour dans `passio_conversations_v1`, dans IndexedDB et dans
+// `getConversations()` du compte suivant. `saveState` consulte `_accountPurged`
+// depuis le 2026-08-12 ; ces deux fonctions ne le faisaient pas (la fiche de
+// `sortirCompteSansSession`, app-08, le disait déjà). Même verrou, même règle :
+// une fois la purge faite, plus rien ne s'écrit. Verrou :
+// audit-2026-11-navigation.spec.js ⑤ (rouge sur le code d'avant).
+function _conversationsPurgees() {
+  try { return typeof _accountPurged !== "undefined" && _accountPurged === true; } catch (e) { return false; }
+}
 function saveConversations() {
+  if (_conversationsPurgees()) return;
   // Debounce : évite des dizaines d'écritures localStorage en rafale.
   // La déduplication (parcours de TOUTES les convs + messages) est aussi dans le
   // debounce : elle tournait en synchrone à CHAQUE appel (jank sur chaque envoi).
   clearTimeout(_saveConvTimer);
   _saveConvTimer = setTimeout(function() {
+    if (_conversationsPurgees()) return;
     if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
     try { localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState)); } catch(e) {}
     // Store DURABLE (IndexedDB, sans limite ~5 Mo) : si le localStorage ci-dessus
@@ -2685,6 +2702,7 @@ function saveConversations() {
 // Sauvegarde immédiate pour les cas critiques (fermeture de page, etc.)
 function saveConversationsNow() {
   clearTimeout(_saveConvTimer);
+  if (_conversationsPurgees()) return;
   if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
   try { localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState)); } catch(e) {}
   if (window.idbConvSave) window.idbConvSave(conversationsState);
@@ -2731,7 +2749,7 @@ function renderMessageFilters() {
 
 function openNewMessage() {
   var html = `
-    <span class="modal-close" onclick="closeModal()">×</span>
+    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
     <div style="font-weight:800;font-size:16px;margin-bottom:14px;">Nouveau message</div>
     <div style="position:relative;">
       <input id="_nmSearch" type="text" class="input" placeholder="Chercher un utilisateur…" autocomplete="off"
@@ -3312,7 +3330,7 @@ async function openUserProfile(authorId, source) {
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
   var html = '\
-    <span class="modal-close" onclick="closeModal()" style="z-index:20;">×</span>\
+    <span class="modal-close" aria-label="Fermer" onclick="closeModal()" style="z-index:20;">×</span>\
     \
     <!-- OPTIONS DU PROFIL VISITE : voir openVisitedProfileMenu ci-dessus. -->\
     <button class="profile-dots-btn on-cover" style="right:56px;z-index:20;" onclick="openVisitedProfileMenu(event,\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="Options" aria-label="Options du profil" aria-haspopup="menu">⋯</button>\
@@ -4265,8 +4283,15 @@ function renderMessages() {
 
     // Avatar de la conv : photo de groupe, sinon photo de profil live de l'autre, sinon couleur+emoji.
     const _convU = c.isGroup ? null : { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
+    // ⚠️ `_cssUrl`, comme l'en-tête de la conversation (plus bas) et le panneau
+    // du groupe (app-05) : `passioThumb` TRANSFORME, il ne désinfecte pas (audit
+    // D du 2026-11-02 — une `groupPhoto` « javascript: » traversait intacte dans
+    // ce `url(` ; le socle de `audit-echappement` créditait à tort cette branche
+    // de `safeUrlAttr`). Aujourd'hui la photo de groupe n'est écrite que par
+    // l'appareil de son créateur (data URL), mais une ligne serveur ou une fusion
+    // multi-appareils en ferait une donnée d'autrui : le contexte décide.
     const avatarStyle = (c.isGroup && c.groupPhoto)
-      ? `background:url(${passioThumb(c.groupPhoto, 192)}) center/cover;font-size:0;`
+      ? `background:url('${_cssUrl(passioThumb(c.groupPhoto, 192)) || ""}') center/cover;font-size:0;`
       : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`);
     const _convAvInner = (c.isGroup && c.groupPhoto) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
 
