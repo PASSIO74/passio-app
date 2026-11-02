@@ -2,7 +2,7 @@
 -- ACTIVITÉS IRL — la liste d'attente a enfin une sortie : la promotion est
 -- faite PAR LA BASE (audit 2026-11-02, B-02 / E-01, P1)
 --
--- Une transaction, REJOUABLE, tableau de verdict en fin (4 lignes).
+-- Une transaction, REJOUABLE, tableau de verdict en fin (4 lignes) ; notification protégée du squat d'identifiant.
 --
 -- LE DÉFAUT. Quand une place se libère, le client qui se retire (ou
 -- l'organisateur, à la main) tentait `UPDATE event_attendees SET rsvp='going'`
@@ -97,13 +97,25 @@ begin
   if nb = 0 then return jsonb_build_object('ok', false, 'motif', 'pas_en_attente'); end if;
 
   -- Notification d'origine serveur, identifiant déterministe (rejeu sans doublon).
+  -- ⚠️ `n_pa_` n'est PAS réservé au serveur : un compte peut pré-insérer cet
+  -- identifiant à SON nom (policy client : `from_id = auth.uid()` seulement) —
+  -- le piège de la 6ᵉ contre-revue du 16/09 sur `n_m_`. Le `on conflict` ne
+  -- met donc à jour que la ligne du VRAI destinataire ; sinon on ré-insère sous
+  -- un identifiant neuf (revue indépendante du 2026-11-02, point 3e).
   perform set_config('passio.notification_serveur', '1', true);
   begin
     insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen, created_at)
     values ('n_pa_' || left(p_event_id, 12) || '_' || left(cible, 8), cible, 'event_update', ev.author_id, p_event_id,
             'Une place s''est libérée pour « ' || left(coalesce(ev.title, 'une activité'), 60) || ' » : tu es inscrit·e !',
             false, now())
-    on conflict (id) do update set content = excluded.content, seen = false, created_at = now();
+    on conflict (id) do update set content = excluded.content, seen = false, created_at = now()
+      where public.notifications.user_id = excluded.user_id and public.notifications.kind = 'event_update';
+    if not found then
+      insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen, created_at)
+      values ('n_pa_' || left(md5(p_event_id || '|' || cible || '|' || clock_timestamp()::text), 20), cible, 'event_update', ev.author_id, p_event_id,
+              'Une place s''est libérée pour « ' || left(coalesce(ev.title, 'une activité'), 60) || ' » : tu es inscrit·e !',
+              false, now());
+    end if;
   exception when others then
     raise warning 'promouvoir_attente : notification non écrite (%) — la promotion est conservée', sqlerrm;
   end;

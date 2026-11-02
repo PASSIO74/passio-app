@@ -4026,7 +4026,18 @@ function _demanderMotifSignalement(quoi) {
     };
     window._signalementValider = function () {
       var el = document.getElementById("signalementMotif");
-      fini(el ? String(el.value || "").trim() : "");
+      var motif = el ? String(el.value || "").trim() : "";
+      // ⚠️ UN MOTIF VIDE N'EST PAS UN SIGNALEMENT (audit 2026-11-02, E-05) : la
+      // fenêtre existait précisément pour que la modération reçoive autre chose
+      // qu'un identifiant nu, mais « Envoyer » acceptait le champ vide — les deux
+      // signalements de production ont `reason=''`. On garde la fenêtre ouverte
+      // et on le dit ; renoncer reste possible par « Annuler ».
+      if (motif.length < 3) {
+        try { toast("Dis-nous en deux mots ce qui ne va pas (3 caractères au moins).", "warning"); } catch (e) {}
+        try { if (el) el.focus(); } catch (e) {}
+        return;
+      }
+      fini(motif);
       try { closeModal(); } catch (e) {}
     };
     window._signalementAnnuler = function () { fini(null); try { closeModal(); } catch (e) {} };

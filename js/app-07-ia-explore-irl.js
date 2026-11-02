@@ -2863,6 +2863,14 @@ function _scheduleIrlMapUpdate() {
   clearTimeout(window._irlMapT);
   window._irlMapT = setTimeout(function () {
     var run = function () {
+      // ⚠️ La carte ne se construit que si l'écran « Rencontrer » est AFFICHÉ
+      // (audit 2026-11-02, F-01). `#irlMap` existe dans le DOM dès le chargement
+      // et `renderEverything()` rend cet écran au démarrage : MapLibre (803 Ko,
+      // 205 Ko compressés) partait donc à TOUT démarrage, visiteur compris, écran
+      // jamais ouvert. `goTo("irl")` rappelle `renderIRL()` → la carte arrive à
+      // l'ouverture. Verrou : tests/e2e/audit-2026-11-perf-dist.spec.js (① bis).
+      var ecranIrl = document.getElementById("screen-irl");
+      if (ecranIrl && !ecranIrl.classList.contains("active")) return;
       try { initIrlMap(); } catch (e) {}
       try { updateIrlMapMarkers(); } catch (e) {}
     };

@@ -414,22 +414,30 @@ test.describe("AUDIT E — signalement et masquage", () => {
     const ctxB = await browser.newContext(), ctxA = await browser.newContext();
     try {
       const b = await ouvrirCompte(ctxB, srv, B, { nom: "bob_e2e" });
-      // Signalement d'un post SANS motif : la fenêtre accepte-t-elle un motif vide ?
+      // Signalement d'un post SANS motif : la fenêtre REFUSE un motif vide (E-05,
+      // corrigé le 2026-11-02) — elle reste ouverte, le dit, et rien ne part ;
+      // avec un motif, la ligne est écrite AVEC ce motif.
       const r1 = await b.page.evaluate(async () => {
         window.__toasts = [];
         const p = reportPost("post_signale");
         await new Promise((r) => setTimeout(r, 300));
         const champ = document.getElementById("signalementMotif");
         const present = !!champ;
-        if (champ) { champ.value = ""; _signalementValider(); }
+        if (champ) { champ.value = "   "; _signalementValider(); }
+        await new Promise((r) => setTimeout(r, 300));
+        const toujoursOuverte = !!document.getElementById("signalementMotif");
+        const toastsVide = (window.__toasts || []).map((t) => t.msg);
+        if (document.getElementById("signalementMotif")) { document.getElementById("signalementMotif").value = "contenu haineux"; _signalementValider(); }
         await p;
-        return { fenetre: present, toasts: (window.__toasts || []).map((t) => t.msg) };
+        return { fenetre: present, toujoursOuverte, toastsVide, toasts: (window.__toasts || []).map((t) => t.msg) };
       });
-      const rapport1 = srv.t.reports.find((r) => r.reporter_id === B && r.target_id === "post_signale");
-      console.log("[E-f] signalement sans motif :", r1, "| ligne :", rapport1 && { reason: rapport1.reason });
+      const rapports1 = srv.t.reports.filter((r) => r.reporter_id === B && r.target_id === "post_signale");
+      console.log("[E-f] signalement sans puis avec motif :", r1, "| lignes :", rapports1.map((r) => r.reason));
       expect(r1.fenetre, "la fenêtre de motif s'ouvre").toBe(true);
-      // E-05 si vrai : un motif VIDE est accepté et envoyé (`reason: ""`).
-      test.info().annotations.push({ type: "E-f-motif", description: "motif vide envoyé = " + (!!rapport1 && rapport1.reason === "") });
+      expect(r1.toujoursOuverte, "motif vide : la fenêtre reste ouverte").toBe(true);
+      expect(r1.toastsVide.join(" | "), "…et le dit").toMatch(/deux mots/);
+      expect(rapports1.length, "UNE ligne reports, écrite avec le motif saisi ensuite").toBe(1);
+      expect(rapports1[0].reason, "le motif voyage").toBe("contenu haineux");
       // Signalement d'un profil et d'un message (surface ?) : profil via reportUser
       const r2 = await b.page.evaluate(async (uid) => { window.__toasts = []; const p = reportUser(uid, "alice_e2e"); await new Promise((r) => setTimeout(r, 300)); const ch = document.getElementById("signalementMotif"); if (ch) { ch.value = "harcèlement"; _signalementValider(); } await p; return (window.__toasts || []).map((t) => t.msg); }, A);
       expect(srv.t.reports.some((r) => r.reporter_id === B && r.target_type === "user" && r.target_id === A && r.reason === "harcèlement")).toBe(true);

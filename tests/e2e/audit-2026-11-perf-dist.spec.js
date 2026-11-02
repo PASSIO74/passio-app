@@ -15,10 +15,8 @@
 //      `renderEverything()` → `renderIRL()` → `_scheduleIrlMapUpdate()` →
 //      `initIrlMap()` → `ensureLeaflet()` : la carte est demandée à TOUT
 //      démarrage parce que `#irlMap` existe dans le DOM, écran masqué compris.
-//      Le cas est déclaré `test.fail()` : il PASSE tant que le défaut est là, et
-//      sort en « unexpected pass » le jour du correctif (app-07, hors périmètre
-//      de l'agent F) — c'est le signal pour retirer `test.fail()` et en faire un
-//      verrou ordinaire. Ne pas le faire taire autrement.
+//      CORRIGÉ le 2026-11-02 (app-07 `_scheduleIrlMapUpdate` ne construit la
+//      carte que si `#screen-irl` est actif) : le cas est un verrou ordinaire.
 //   ② budget : au plus 3 scripts externes avant le premier écran, `app.js`
 //      sous 3,5 Mo non minifié (3,0 Mo le 2026-11-02 : +15 % y rougit).
 // Les relevés sont écrits dans PASSIO_AUDIT_DIR/dist-boot.json.
@@ -86,7 +84,8 @@ test.describe("AUDIT F — budget de l'artefact servi (dist)", () => {
     });
 
     test(`① bis ${profil} : MapLibre n'est pas chargé tant que l'écran Rencontrer n'est pas ouvert (F-01)`, async ({ page }) => {
-      test.fail(true, "F-01 (audit 2026-11-02) : renderEverything() → renderIRL() → initIrlMap() demande MapLibre à TOUT démarrage. Retirer ce test.fail() avec le correctif d'app-07.");
+      // F-01 corrigé le 2026-11-02 (app-07 `_scheduleIrlMapUpdate` : la carte ne se
+      // construit que si `#screen-irl` est actif) : verrou ordinaire désormais.
       const r = await demarrer(page, profil);
       expect(r.ecranIrlOuvert).toBe(false);
       expect([...r.avant, ...r.apres].map((x) => x.url).filter((n) => /maplibre/.test(n))).toEqual([]);

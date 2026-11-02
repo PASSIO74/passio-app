@@ -217,6 +217,19 @@ verifier "deux appels simultanés : UNE promotion, l'autre rend complete" "1" "$
 verifier "capacité jamais dépassée : 2 inscrits, B (le plus ancien) promu" "2|going|waitlist" "$(GOING ev_cap2)|$(RSVP ev_cap2 "$B")|$(RSVP ev_cap2 "$A")"
 verifier "la notification de B n'a pas été dupliquée au rejeu (identifiant déterministe)" "1" "$(Q "select count(*) from public.notifications where user_id='$B' and ref_id='ev_cap2';")"
 
+echo "── ⑧ SQUAT D'IDENTIFIANT : la notification va au vrai destinataire ────"
+# `n_pa_` n'est pas réservé au serveur : D pré-insère, à SON nom, l'identifiant
+# déterministe que recevrait B. La promotion ne doit ni réécrire la ligne de D,
+# ni laisser B sans notification (revue indépendante du 2026-11-02, point 3e).
+Q "insert into public.events (id, author_id, title, status, max_attendees, date_at) values ('ev_squat', '$ORGA', 'Squat', 'active', 1, now() + interval '2 days');" >/dev/null
+Q "insert into public.event_attendees (event_id, user_id, rsvp, created_at) values ('ev_squat', '$B', 'waitlist', now() - interval '1 hour');" >/dev/null
+Q "insert into public.notifications (id, user_id, kind, from_id, ref_id, content, origine) values ('n_pa_' || left('ev_squat', 12) || '_' || left('$B', 8), '$D', 'like', '$D', 'x', 'ligne du squatteur', 'client');" >/dev/null
+verifier "précondition : l'identifiant déterministe de B est occupé par D" "$D" "$(Q "select user_id from public.notifications where id = 'n_pa_' || left('ev_squat', 12) || '_' || left('$B', 8);")"
+verifier "la promotion de B aboutit quand même" "$B" "$(MOTIF "$ORGA" ev_squat)"
+verifier "la ligne du squatteur n'est PAS réécrite (contenu, destinataire intacts)" "$D|ligne du squatteur|like" "$(Q "select user_id || '|' || content || '|' || kind from public.notifications where id = 'n_pa_' || left('ev_squat', 12) || '_' || left('$B', 8);")"
+verifier "B reçoit SA notification, sous un identifiant neuf, d'origine serveur" "1|serveur" "$(Q "select count(*) || '|' || min(origine) from public.notifications where user_id='$B' and ref_id='ev_squat' and kind='event_update';")"
+verifier "…et personne d'autre n'en reçoit pour cette activité" "1" "$(Q "select count(*) from public.notifications where ref_id='ev_squat';")"
+
 echo
 echo "RÉSULTAT : $ok ✅  $ko ❌"
 [ "$ko" -eq 0 ]

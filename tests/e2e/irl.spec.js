@@ -361,7 +361,10 @@ test.describe("IRL — participation (RSVP, liste d'attente, check-in)", () => {
     // l'animation de recadrage suffisait à faire croire que la carte était posée
     // (le recadrage se poursuivait ensuite et faisait échouer la comparaison).
     await page.waitForFunction(() => {
-      if (!window.irlMap || !irlMap.getZoom()) return false;
+      // `window.irlMap` est l'ÉLÉMENT <div id="irlMap"> (accès nommé), pas la carte :
+      // c'est le `let irlMap` d'app-07 qu'il faut lire, et il reste nul tant que
+      // l'écran n'a pas construit sa carte (depuis F-01, 2026-11-02, plus au boot).
+      if (typeof irlMap === "undefined" || !irlMap || !irlMap.getZoom()) return false;
       const c = irlMap.getCenter();
       const sig = [irlMap.getZoom(), c.lat, c.lng].join(",");
       window.__stableRuns = (window.__lastSig === sig) ? (window.__stableRuns || 0) + 1 : 0;
