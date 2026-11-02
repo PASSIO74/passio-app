@@ -889,3 +889,120 @@ test("lireApi demande app_version, severity et meta : sans eux, la dédup datée
   const urls = await avecFetchCapture(() => lireApi({ url: "https://x.supabase.co", cle: "k", heures: 24 }));
   assert.match(urls[0], /select=endpoint,http_status,action,user_id,received_at,app_version,severity,meta,auth_uid&auth_uid=not\.is\.null/);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ENQUÊTES EN PARALLÈLE ET BOUTONS MORTS (2026-11-01)
+// ═══════════════════════════════════════════════════════════════════════════
+import * as SD from "../../scripts/sentinelle-detecter.mjs";
+
+const RACINE_DEPOT = new URL("../..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const enq = (cle, extra = {}) => ({ cle, famille: "js", message: cle, n: 5, comptes: 2, dernier: "2026-11-01T10:00:00Z", versions: {}, occurrences: [{ at: "2026-11-01T10:00:00Z", app_version: null }], ...extra });
+
+test("parallèle : le plafond des enquêtes est borné (1 à 5, défaut MAX_ENQUETES)", () => {
+  assert.equal(SD.maxEnquetes(undefined), SD.MAX_ENQUETES, "variable absente : défaut");
+  assert.equal(SD.maxEnquetes("2"), 2);
+  assert.equal(SD.maxEnquetes("0"), SD.MAX_ENQUETES, "0 éteindrait le canal en silence : refusé");
+  assert.equal(SD.maxEnquetes("50"), SD.MAX_ENQUETES, "au-delà de 5 : refusé");
+  assert.equal(SD.maxEnquetes("abc"), SD.MAX_ENQUETES);
+});
+
+test("parallèle : choisirCibles rend jusqu'à N cibles vivantes dans l'ordre, sans ouvertes, sans corrigées, sans doublon", () => {
+  // Mutation : `if (choisies.length >= n) break;` retiré → rougit (4 cibles pour 3 places).
+  const [a, b, c, d] = ["A", "B", "C", "D"].map((x) => enq("erreur " + x));
+  assert.deepEqual(SD.choisirCibles([a, b, c, d], [], [], 3).map((x) => x.cle), ["erreur A", "erreur B", "erreur C"]);
+  assert.deepEqual(SD.choisirCibles([a, b, c], [], [{ title: SD.titreIssue(b) }], 3).map((x) => x.cle), ["erreur A", "erreur C"], "B est ouverte : sautée");
+  const fermee = [{ title: SD.titreIssue(a), closedAt: "2026-11-01T11:00:00Z" }];
+  assert.deepEqual(SD.choisirCibles([a, b], fermee, [], 3).map((x) => x.cle), ["erreur B"], "A corrigée après sa dernière occurrence : sautée");
+  assert.deepEqual(SD.choisirCibles([a, a, b], [], [], 3).map((x) => x.cle), ["erreur A", "erreur B"], "un titre ne part qu'une fois");
+  assert.deepEqual(SD.choisirCibles([a, b], [], [], 0), [], "aucune place : rien");
+  assert.equal(choisirCible([a, b], [], []), a, "choisirCible reste la première de choisirCibles");
+});
+
+test("parallèle : deux refus sur le MÊME appel (codes différents) ne partent pas ensemble ; deux boutons du même écran non plus", () => {
+  // Mutation : `if (zone && zones.has(zone)) continue;` retiré → rougit (deux PR concurrentes sur la même ligne).
+  const p401 = { ...enq("POST /rest/v1/posts 401"), famille: "api", methode: "POST", chemin: "/rest/v1/posts", code: 401 };
+  const p500 = { ...enq("POST /rest/v1/posts 500"), famille: "api", methode: "POST", chemin: "/rest/v1/posts", code: 500 };
+  const g = { ...enq("GET /rest/v1/posts 500"), famille: "api", methode: "GET", chemin: "/rest/v1/posts", code: 500 };
+  assert.deepEqual(SD.choisirCibles([p401, p500, g], [], [], 3).map((x) => x.cle), ["POST /rest/v1/posts 401", "GET /rest/v1/posts 500"]);
+  const b1 = { ...enq("bouton irl · Participer"), famille: "bouton", ecran: "irl" };
+  const b2 = { ...enq("bouton irl · Partager"), famille: "bouton", ecran: "irl" };
+  const b3 = { ...enq("bouton feed · Partager"), famille: "bouton", ecran: "feed" };
+  assert.deepEqual(SD.choisirCibles([b1, b2, b3], [], [], 3).map((x) => x.cle), ["bouton irl · Participer", "bouton feed · Partager"]);
+});
+
+// Bouton mort : 4 comptes, trois clics par session dans la fenêtre, aucun effet ; libellé présent dans le code.
+const clicU = (action, uid, s, t) => ({ action, screen: "irl", session_id: s, client_ts: t, auth_uid: uid, app_version: "abcd1234" });
+const CODE = '<button onclick="rejoindre()">Participer</button> <button>Fermer</button>';
+const rageurs = (action, n = 4, depart = 0) => Array.from({ length: n }, (_, k) => {
+  const i = k + depart;
+  return [
+    clicU(action, U(i), "s" + i, `2026-11-01T10:0${i}:00.000Z`),
+    clicU(action, U(i), "s" + i, `2026-11-01T10:0${i}:01.500Z`),
+    clicU(action, U(i), "s" + i, `2026-11-01T10:0${i}:02.500Z`),
+  ];
+}).flat();
+
+test("bouton mort : clics RAGEURS sans effet chez 3+ comptes serveur, libellé du code → candidat de famille `bouton`", () => {
+  const r = SD.classerBoutonsMorts(rageurs("Participer"), [], { code: CODE });
+  assert.equal(r.candidates.length, 1);
+  const c = r.candidates[0];
+  assert.equal(c.famille, "bouton");
+  assert.equal(c.cle, "bouton irl · Participer");
+  assert.equal(c.comptes, 4);
+  assert.equal(c.rageurs, 4);
+  assert.equal(c.tauxEffet, 0);
+  assert.equal(c.n, 12, "chaque clic sans effet est une occurrence (dédup datée)");
+  assert.equal(c.versions.abcd1234.n, 12);
+  assert.match(SD.titreIssue(c), /^\[SENTINELLE\] bouton irl · Participer · [0-9a-f]{8}$/);
+});
+
+test("bouton mort : un effet IMMÉDIAT (horodaté avant le clic, émis après la peinture) sauve le bouton", () => {
+  // Mutation : `te > t - BOUTON_AVANCE_MS` → `te > t` → rougit (le clic est horodaté jusqu'à 1 s après le toucher).
+  const clics = rageurs("Participer");
+  const effets = clics.map((c) => ({ session_id: c.session_id, client_ts: new Date(Date.parse(c.client_ts) - 400).toISOString() }));
+  assert.deepEqual(SD.classerBoutonsMorts(clics, effets, { code: CODE }).candidates, []);
+  assert.equal(classerBoutons(clics, effets)[0].tauxEffet, 100, "le classement du résumé profite de la même correction");
+});
+
+test("bouton mort : un bouton tapé UNE fois par personne (fermer, menu) n'est jamais une enquête", () => {
+  // Mutation : `g.rageurs >= seuils.rageursMin` retiré → rougit (tout bouton sans événement deviendrait une PR).
+  const uneFois = Array.from({ length: 12 }, (_, i) => clicU("Fermer", U(i % 6), "s" + i, `2026-11-01T10:${String(i).padStart(2, "0")}:00.000Z`));
+  assert.deepEqual(SD.classerBoutonsMorts(uneFois, [], { code: CODE }).candidates, []);
+});
+
+test("bouton mort : libellé ABSENT du code (texte écrit par quelqu'un, dépôt public) → jamais une enquête", () => {
+  // Mutation : `!libelleDuCode(libelle, code)` retiré → rougit (le nom d'une passion ou d'un compte partirait dans une issue publique).
+  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Randonnée chez Julie"), [], { code: CODE }).candidates, []);
+  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Participer"), [], {}).candidates, [], "code illisible : aucun bouton");
+  assert.equal(SD.libelleDuCode("#btnGo", 'id="btnGo"'), true, "un #id se cherche sans le dièse");
+  assert.equal(SD.libelleDuCode("<img>", "<img>"), false, "jamais de balise");
+  assert.equal(SD.libelleDuCode("a", "a"), false, "trop court pour désigner quoi que ce soit");
+});
+
+test("bouton mort : sans identité SERVEUR (auth_uid), un clic ne pèse rien ; deux comptes ne suffisent pas", () => {
+  // Mutation : `RE_COMPTE.test(...)` retiré → rougit (un anonyme fabrique des « comptes »).
+  const anonymes = rageurs("Participer").map((c) => ({ ...c, auth_uid: null }));
+  const r = SD.classerBoutonsMorts(anonymes, [], { code: CODE });
+  assert.deepEqual(r.candidates, []);
+  assert.equal(r.nonVerifiees, 12);
+  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Participer", 2), [], { code: CODE }).candidates, [], "2 comptes distincts < 3");
+});
+
+test("bouton mort : le corps d'issue départage handler cassé / effet non mesuré et interdit de retirer le bouton", () => {
+  const c = SD.classerBoutonsMorts(rageurs("Participer"), [], { code: CODE }).candidates[0];
+  const corps = corpsIssue({ fenetreHeures: 24 }, c, { date: "2026-11-01" });
+  assert.match(corps, /Bouton sans effet : 12 clics, 0 % suivis/);
+  assert.match(corps, /Jamais retirer le bouton/);
+  assert.match(corps, /docs\/sentinelle\/2026-11-01-/);
+});
+
+test("bouton mort : la lecture des clics demande l'identité serveur et la version du client", () => {
+  // Mutation : retirer `,auth_uid,app_version` de CHEMINS_BOUTONS.clics → rougit (tout clic serait « non vérifié »).
+  assert.match(CHEMINS_BOUTONS.clics, /select=action,screen,session_id,client_ts,auth_uid,app_version&/);
+});
+
+test("bouton mort : lireCodeInterface lit index.html et js/*.js (les libellés réels de l'app s'y retrouvent)", async () => {
+  const code = await SD.lireCodeInterface(RACINE_DEPOT);
+  assert.ok(code.length > 100_000, "le texte de l'interface est lu en entier");
+  assert.ok(code.includes("goTo("), "les scripts de l'app sont inclus");
+});
