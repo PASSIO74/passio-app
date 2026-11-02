@@ -222,8 +222,11 @@ test.describe("AUDIT E — messagerie entre comptes", () => {
       // Onglet 1 envoie un second message ; onglet 2 (en mémoire) ne le sait pas et re-sauvegarde
       await o1.page.evaluate((id) => { document.getElementById("convFpInput").value = "second, onglet 1"; sendMessageFp(id); }, convId);
       await o1.page.waitForFunction((id) => getConversations().find((x) => x.id === id).messages.every((m) => m.status === "sent"), convId, { timeout: 15000 });
+      // La sauvegarde locale est DÉBOUNCÉE : on la force depuis l'onglet 1 avant de
+      // mesurer, sinon le relevé dépend de la vitesse de la machine (CI : 1 au lieu de 2).
+      await o1.page.evaluate(() => { saveConversationsNow(); });
       const stockAvant = await o1.page.evaluate((id) => JSON.parse(localStorage.getItem("passio_conversations_v1")).find((x) => x.id === id).messages.length, convId);
-      expect(stockAvant).toBe(2);
+      expect(stockAvant, "PRÉCONDITION : le stockage porte les deux messages de l'onglet 1").toBe(2);
       await o2.page.evaluate(() => { saveConversationsNow(); });
       const stockApres = await o1.page.evaluate((id) => JSON.parse(localStorage.getItem("passio_conversations_v1")).find((x) => x.id === id).messages.length, convId);
       // D-07 : l'onglet 2 réécrit SON instantané → le second message disparaît du stockage

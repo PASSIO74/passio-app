@@ -1,0 +1,127 @@
+{
+ "note": "STUB LOCAL — CPU ×4 (CDP), latence 400 ms, 1,6 Mb/s. Pas la production.",
+ "demarrage": {
+  "wallMs": 27018,
+  "premiereCarteMs": null,
+  "nav": {
+   "domContentLoaded": 22770,
+   "load": 24276,
+   "responseEnd": 1561
+  },
+  "fcp": 13780,
+  "longtasksBoot": 1,
+  "longtasksBootMs": 70,
+  "pire": 70,
+  "scripts": 45,
+  "poidsJsKo": 4137
+ },
+ "ecrans": {
+  "profiles": {
+   "mediane": 98,
+   "passages": [
+    113,
+    98,
+    72
+   ]
+  },
+  "studio": {
+   "mediane": 36,
+   "passages": [
+    39,
+    36,
+    31
+   ]
+  },
+  "explore": {
+   "mediane": 64,
+   "passages": [
+    137,
+    64,
+    53
+   ]
+  },
+  "irl": {
+   "mediane": 114,
+   "passages": [
+    114,
+    187,
+    109
+   ]
+  },
+  "messages": {
+   "mediane": 97,
+   "passages": [
+    106,
+    97,
+    92
+   ]
+  },
+  "feed": {
+   "mediane": 63,
+   "passages": [
+    177,
+    63,
+    59
+   ]
+  }
+ },
+ "defilement200": {
+  "renduInitial": {
+   "renderMs": 5,
+   "cartes": 20
+  },
+  "dureeMs": 3883,
+  "cartesApres": 80,
+  "scrollTop": 6057,
+  "longtasks": 0,
+  "longtasksMs": 0,
+  "pireLongtaskMs": 0,
+  "frames": 227,
+  "frameP50": 17,
+  "frameP95": 17,
+  "framesSup50ms": 0
+ },
+ "minuteurs": {
+  "intervalsVivants": 2,
+  "liste": [
+   "30000ms ()=>this._autoRefreshTokenTick()",
+   "60000ms () => { if (!document.hidden) majSilenci"
+  ],
+  "canauxCrees": 0,
+  "canauxRetires": 0,
+  "canauxVivants": []
+ },
+ "memoire": {
+  "note": "STUB LOCAL, Chromium, après GC forcé (HeapProfiler.collectGarbage). Pas la production.",
+  "paliers": [
+   {
+    "etape": "après boot",
+    "ko": 11344
+   },
+   {
+    "etape": "écrans ×10 (60 goTo/tour)",
+    "ko": 16550
+   },
+   {
+    "etape": "écrans ×20 (60 goTo/tour)",
+    "ko": 16568
+   },
+   {
+    "etape": "écrans ×30 (60 goTo/tour)",
+    "ko": 16825
+   },
+   {
+    "etape": "conversations ×10",
+    "ko": 16587
+   },
+   {
+    "etape": "conversations ×20",
+    "ko": 16649
+   }
+  ],
+  "minuteurs": {
+   "intervalsVivants": 2,
+   "canauxVivants": 0
+  }
+ }
+}

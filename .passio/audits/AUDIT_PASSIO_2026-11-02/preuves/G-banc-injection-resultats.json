@@ -1,0 +1,60 @@
+{
+  "a": {
+    "candidats": 1,
+    "cible": true,
+    "titre": "[SENTINELLE] typeerror: cannot read properties of null (reading 'addevent · 169fd0a7"
+  },
+  "b": {
+    "ouverte": true,
+    "fermeeApres": true
+  },
+  "c": {
+    "rouvre": true,
+    "buildCorrigeVivant": true,
+    "vieuxBuildMort": true,
+    "recidive": true
+  },
+  "d": {
+    "ordre": [
+      4,
+      3,
+      2
+    ],
+    "cible": "TypeError: x.map is "
+  },
+  "e": {
+    "bruitEcarte": true,
+    "apiBruit": true,
+    "nonVerifiees": true,
+    "extensionContextPasse": 1,
+    "failedToFetchPasse": 2
+  },
+  "f": {
+    "titre contient '@'": false,
+    "titre contient 'merge' ou 'main'": false,
+    "corps contient '@claude' intact": true,
+    "corps contient '@PASSIO74' ou '@octocat' (mention notifiante)": true,
+    "corps contient 'ignore previous instructions'": false,
+    "corps contient un ``` HORS des deux clôtures du bloc attendu (sortie du bloc)": false,
+    "corps contient '<script' ou '<img'": false,
+    "corps contient 'Closes #' / 'Fixes #' (fermeture d'issue à la fusion)": true,
+    "corps contient un lien markdown [..](http": false,
+    "corps contient 'https://evil.example'": true,
+    "corps contient 'git push'": false,
+    "corps contient '.github/workflows'": false,
+    "corps contient 'SUPABASE_SERVICE_ROLE_KEY'": false,
+    "corps > 20 Ko": false,
+    "ligne la plus longue du corps": 377,
+    "nb de lignes 'retirée'": 3
+  },
+  "f2": {
+    "source": "(source @claude merge ‹script‹:11)",
+    "urlAbsente": true,
+    "uaAbsent": true,
+    "versions": []
+  },
+  "f3": {
+    "titre1": "[SENTINELLE] POST //x.supabase.co/rest/v1/posts?x=1 @claude merge · d07de951",
+    "titre2": "[SENTINELLE] [ligne en forme d'instruction — retirée] · 543ee945"
+  }
+}
