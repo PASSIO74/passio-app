@@ -172,4 +172,132 @@ test.describe("Confidentialité cross-compte (RLS)", () => {
       for (const p of [A, B, C]) await p.evaluate(async () => { try { await supa.from("follows").delete().eq("follower_id", MY_UID); } catch (e) {} try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {} try { await supa.auth.signOut(); } catch (e) {} });
     } finally { await ctxA.close(); await ctxB.close(); await ctxC.close(); }
   });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // AUDIT 2026-11-02 (agent E) — L'ESPACE D'UNE CONVERSATION, VU D'UN TIERS
+  //
+  // Trois propriétés, les deux sens à chaque fois :
+  //   ① `conv_reads` : un TIERS ne peut pas déposer d'accusé de lecture dans la
+  //      conversation d'autrui (C-01 : `reads_upsert` n'exige que `user_id = me`,
+  //      sans appartenance — la migration
+  //      `migration_audit_2026-11-02_oracles_et_privileges.sql` referme la
+  //      porte) ; et le MEMBRE, lui, dépose toujours le sien ;
+  //   ② un membre qui QUITTE un groupe ne relit ni les messages ni la liste
+  //      des membres (DELETE conv_members par soi-même) ;
+  //   ③ `event_attendees` : la liste nominative d'un événement où l'on n'est
+  //      PAS inscrit (C-04 : policy SELECT `true` pour tout compte connecté).
+  //
+  // ⚠️ ① et ③ ÉPINGLENT LE CONTRAT ATTENDU, pas l'état d'aujourd'hui : tant que
+  // la migration (①) n'est pas appliquée et que le périmètre de la liste des
+  // participants (③) n'est pas tranché, ils ROUGISSENT — `test.fail()` les
+  // marque « échec attendu » pour que la CI reste verte et dise le jour où le
+  // comportement change. ② passe aujourd'hui et doit continuer de passer.
+  // ═════════════════════════════════════════════════════════════════════════
+  test("AUDIT E — accusé de lecture d'un tiers (C-01) : refusé pour le non-membre, accepté pour le membre", async ({ browser }) => {
+    test.setTimeout(240000);
+    test.fail(true, "C-01 : `reads_upsert` n'exige pas l'appartenance — retirer cette marque une fois la migration du 2026-11-02 appliquée");
+    const log = (m) => console.log(`[conf-reads] ${m}`);
+    const ctxA = await browser.newContext(), ctxB = await browser.newContext(), ctxC = await browser.newContext();
+    const A = await ctxA.newPage(), B = await ctxB.newPage(), C = await ctxC.newPage();
+    wireHttpDiag(log, [{ who: "A", page: A }, { who: "B", page: B }, { who: "C", page: C }]);
+    let convId = null;
+    try {
+      const [uidA, uidB, uidC] = await Promise.all([signupUser(A, "Reads Alice"), signupUser(B, "Reads Bob"), signupUser(C, "Reads Carol")]);
+      expect(uidA && uidB && uidC).toBeTruthy();
+      convId = await A.evaluate(async (buid) => supaCreateConversation(buid), uidB);
+      expect(convId, "conversation A↔B créée").toBeTruthy();
+
+      // Le MEMBRE dépose le sien (contre-épreuve : la table n'est pas fermée à tous).
+      const membre = await B.evaluate(async (id) => { const r = await supa.from("conv_reads").upsert({ conv_id: id, user_id: MY_UID, last_read_at: new Date().toISOString() }, { onConflict: "conv_id,user_id" }).select("conv_id"); return { status: r.status, n: (r.data || []).length, err: r.error && r.error.code }; }, convId);
+      expect(membre.status, "CONTRE-ÉPREUVE : le membre B dépose son accusé").toBeLessThan(300);
+
+      // Le TIERS tente le même geste : le contrat attendu est un refus.
+      const tiers = await C.evaluate(async (id) => { const r = await supa.from("conv_reads").upsert({ conv_id: id, user_id: MY_UID, last_read_at: new Date().toISOString() }, { onConflict: "conv_id,user_id" }); return { status: r.status, err: r.error && r.error.code }; }, convId);
+      log("tiers C upsert conv_reads → HTTP " + tiers.status + " " + (tiers.err || ""));
+      expect(tiers.status, "un non-membre ne dépose PAS d'accusé de lecture dans la conversation d'autrui").toBeGreaterThanOrEqual(400);
+      // Et les membres ne voient aucun accusé d'un inconnu.
+      const vus = await A.evaluate(async (id) => { const r = await supa.from("conv_reads").select("user_id").eq("conv_id", id); return (r.data || []).map((x) => x.user_id); }, convId);
+      expect(vus, "A ne voit aucun accusé de C").not.toContain(uidC);
+    } finally {
+      try { await C.evaluate(async (id) => { try { await supa.from("conv_reads").delete().eq("conv_id", id).eq("user_id", MY_UID); } catch (e) {} }, convId); } catch (e) {}
+      try { await A.evaluate(async (id) => { try { await supa.from("conv_reads").delete().eq("conv_id", id); } catch (e) {} try { await supa.from("conv_members").delete().eq("conv_id", id); } catch (e) {} try { await supa.from("conversations").delete().eq("id", id); } catch (e) {} }, convId); } catch (e) {}
+      for (const p of [A, B, C]) { try { await p.evaluate(async () => { try { await supa.from("conv_members").delete().eq("user_id", MY_UID); } catch (e) {} try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {} try { await supa.auth.signOut(); } catch (e) {} }); } catch (e) {} }
+      await ctxA.close(); await ctxB.close(); await ctxC.close();
+    }
+  });
+
+  test("AUDIT E — un membre qui quitte un groupe ne relit plus rien ; un non-membre ne lit rien par identifiant", async ({ browser }) => {
+    test.setTimeout(240000);
+    const log = (m) => console.log(`[conf-groupe] ${m}`);
+    const ctxA = await browser.newContext(), ctxB = await browser.newContext(), ctxC = await browser.newContext();
+    const A = await ctxA.newPage(), B = await ctxB.newPage(), C = await ctxC.newPage();
+    wireHttpDiag(log, [{ who: "A", page: A }, { who: "B", page: B }, { who: "C", page: C }]);
+    let grpId = null;
+    try {
+      const [uidA, uidB, uidC] = await Promise.all([signupUser(A, "Grp Alice"), signupUser(B, "Grp Bob"), signupUser(C, "Grp Carol")]);
+      expect(uidA && uidB && uidC).toBeTruthy();
+      grpId = await A.evaluate(async (buid) => supaCreateGroup("Groupe audit E", [buid], null), uidB);
+      expect(grpId, "groupe A+B créé").toBeTruthy();
+      const msgId = "msg_" + Date.now().toString(36);
+      const envoi = await A.evaluate(async ([id, mid]) => { const r = await supa.from("conv_messages").insert({ id: mid, conv_id: id, from_id: MY_UID, content: "secret du groupe", created_at: new Date().toISOString() }); return r.status; }, [grpId, msgId]);
+      expect(envoi, "A écrit dans le groupe").toBeLessThan(300);
+
+      // PRÉCONDITION : B, membre, lit.
+      const avant = await B.evaluate(async (id) => { const r = await supa.from("conv_messages").select("id").eq("conv_id", id); return (r.data || []).length; }, grpId);
+      expect(avant, "PRÉCONDITION : le membre B lit le message").toBe(1);
+
+      // B quitte (DELETE sur SA ligne conv_members — le geste de `leaveGroup`).
+      const sortie = await B.evaluate(async (id) => { const r = await supa.from("conv_members").delete().eq("conv_id", id).eq("user_id", MY_UID).select("user_id"); return (r.data || []).length; }, grpId);
+      expect(sortie, "B a retiré sa propre ligne").toBe(1);
+      const apres = await B.evaluate(async (id) => { const m = await supa.from("conv_messages").select("id").eq("conv_id", id); const mb = await supa.from("conv_members").select("user_id").eq("conv_id", id); return { msgs: (m.data || []).length, membres: (mb.data || []).length }; }, grpId);
+      expect(apres.msgs, "B parti ne relit plus les messages").toBe(0);
+      expect(apres.membres, "ni la liste des membres").toBe(0);
+
+      // C, jamais membre, par identifiant : rien, et pas d'écriture non plus.
+      const tiers = await C.evaluate(async (id) => {
+        const m = await supa.from("conv_messages").select("id,content").eq("conv_id", id);
+        const w = await supa.from("conv_messages").insert({ id: "msg_intrus_" + Date.now(), conv_id: id, from_id: MY_UID, content: "intrus", created_at: new Date().toISOString() });
+        const j = await supa.from("conv_members").insert({ conv_id: id, user_id: MY_UID });
+        return { msgs: (m.data || []).length, insert: w.status, join: j.status };
+      }, grpId);
+      expect(tiers.msgs, "C ne lit rien").toBe(0);
+      expect(tiers.insert, "C ne peut pas écrire").toBeGreaterThanOrEqual(400);
+      expect(tiers.join, "C ne peut pas s'ajouter lui-même au groupe").toBeGreaterThanOrEqual(400);
+      log("✅ groupe : sortie et tiers étanches");
+    } finally {
+      try { await A.evaluate(async (id) => { try { await supa.from("conv_messages").delete().eq("conv_id", id); } catch (e) {} try { await supa.from("conv_members").delete().eq("conv_id", id); } catch (e) {} try { await supa.from("conversations").delete().eq("id", id); } catch (e) {} }, grpId); } catch (e) {}
+      for (const p of [A, B, C]) { try { await p.evaluate(async () => { try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {} try { await supa.auth.signOut(); } catch (e) {} }); } catch (e) {} }
+      await ctxA.close(); await ctxB.close(); await ctxC.close();
+    }
+  });
+
+  test("AUDIT E — participants d'un événement où l'on n'est pas inscrit (C-04) : invisibles au tiers, visibles à l'organisateur", async ({ browser }) => {
+    test.setTimeout(240000);
+    test.fail(true, "C-04 : `event_attendees_select_authentifie` vaut `true` — retirer cette marque quand le périmètre de la liste sera borné");
+    const log = (m) => console.log(`[conf-attendees] ${m}`);
+    const ctxA = await browser.newContext(), ctxB = await browser.newContext(), ctxC = await browser.newContext();
+    const A = await ctxA.newPage(), B = await ctxB.newPage(), C = await ctxC.newPage();
+    wireHttpDiag(log, [{ who: "A", page: A }, { who: "B", page: B }, { who: "C", page: C }]);
+    let eventId = null;
+    try {
+      const [uidA, uidB, uidC] = await Promise.all([signupUser(A, "Att Alice"), signupUser(B, "Att Bob"), signupUser(C, "Att Carol")]);
+      expect(uidA && uidB && uidC).toBeTruthy();
+      eventId = await A.evaluate(async () => { const id = "evt_" + uid(); const ok = await supaPublishEvent({ id, title: "Liste des présents", passion: "musique", city: "Paris", emoji: "🎸", date: Date.now() + 86400000 }); return ok ? id : null; });
+      expect(eventId).toBeTruthy();
+      const rsvpB = await B.evaluate(async (eid) => supaSetEventRsvp(eid, "going"), eventId);
+      expect(rsvpB, "B s'inscrit").toBe(true);
+      // CONTRE-ÉPREUVE : l'organisateur voit sa liste.
+      const orga = await A.evaluate(async (eid) => { const r = await supa.from("event_attendees").select("user_id").eq("event_id", eid); return (r.data || []).map((x) => x.user_id); }, eventId);
+      expect(orga, "CONTRE-ÉPREUVE : l'organisateur lit la liste nominative").toContain(uidB);
+      // Le TIERS, connecté mais ni inscrit ni organisateur : le contrat attendu est « rien ».
+      const tiers = await C.evaluate(async (eid) => { const r = await supa.from("event_attendees").select("user_id,rsvp,feedback,rating").eq("event_id", eid); return (r.data || []).map((x) => x.user_id); }, eventId);
+      log("tiers C lit " + tiers.length + " participant(s) d'un événement où il n'est pas inscrit");
+      expect(tiers, "un compte sans lien avec l'événement ne lit pas qui y va").not.toContain(uidB);
+    } finally {
+      for (const p of [B]) { try { await p.evaluate(async (eid) => { try { await supa.from("event_attendees").delete().eq("event_id", eid).eq("user_id", MY_UID); } catch (e) {} }, eventId); } catch (e) {} }
+      try { await A.evaluate(async (eid) => { try { await supa.from("events").delete().eq("id", eid); } catch (e) {} }, eventId); } catch (e) {}
+      for (const p of [A, B, C]) { try { await p.evaluate(async () => { try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {} try { await supa.auth.signOut(); } catch (e) {} }); } catch (e) {} }
+      await ctxA.close(); await ctxB.close(); await ctxC.close();
+    }
+  });
 });

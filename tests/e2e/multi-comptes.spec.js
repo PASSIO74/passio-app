@@ -1089,6 +1089,160 @@ test.describe("messagerie entre 2 comptes réels", () => {
       await ctxB.close();
     }
   });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // AUDIT 2026-11-02 (agent E) — LA LISTE D'ATTENTE A-T-ELLE UNE SORTIE ? (B-02)
+  //
+  // `_promoteNextWaitlisted` (celui qui se désinscrit) et `promoteWaitlisted`
+  // (l'organisateur) font tous deux `UPDATE event_attendees SET rsvp='going'
+  // WHERE user_id = <AUTRE>`. La seule policy UPDATE de production est
+  // `event_attendees_update_own_adult` (`user_id = auth.uid()`) : l'UPDATE
+  // d'une ligne d'autrui touche 0 ligne, le client lit honnêtement le refus
+  // (IRL-04)… et personne n'avait jamais mesuré qu'une promotion ABOUTIT en
+  // base réelle. Le cas « RSVP, liste d'attente et co-organisateur » ci-dessus
+  // ne le mesure pas (il passe B en `maybe` lui-même).
+  //
+  // Ce cas rougit sur le code et la base d'aujourd'hui : c'est VOULU. Il
+  // épingle le contrat attendu (une place libérée est réattribuée au premier
+  // en attente) et passera au vert avec le correctif proposé dans le rapport
+  // d'audit (RPC SECURITY DEFINER `promouvoir_attente` ou policy dédiée). Tant
+  // qu'il est rouge, `test.fail()` le marque « échec ATTENDU » : la CI reste
+  // verte, et le jour où la promotion aboutit, Playwright signale « le test
+  // passe alors qu'un échec était attendu » — c'est le signal pour retirer la
+  // marque. Un test qui documente un trou sans bloquer tout le monde.
+  // ═════════════════════════════════════════════════════════════════════════
+  test("AUDIT E — place libérée → le premier de la liste d'attente passe `going` EN BASE (B-02)", async ({ browser }) => {
+    test.setTimeout(180000);
+    test.fail(true, "B-02 : la promotion cross-compte est refusée par la RLS (0 ligne) — retirer cette marque avec le correctif serveur");
+    const t0 = Date.now();
+    const log = (m) => console.log(`[attente ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    wireHttpDiag(log, pageA, pageB);
+
+    let eventId = null;
+    try {
+      const uidA = await signupAnonymous(pageA, "Attente Alice");
+      const uidB = await signupAnonymous(pageB, "Attente Bob");
+      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy();
+
+      // A publie UNE place, l'occupe ; B entre en liste d'attente (vrai chemin).
+      eventId = await pageA.evaluate(async () => {
+        const id = "evt_" + uid();
+        const ok = await supaPublishEvent({ id, title: "Une place, une file", passion: "musique", city: "Paris", emoji: "🎸", date: Date.now() + 86400000, maxAttendees: 1 });
+        if (!ok) return null;
+        if (!(await supaJoinEvent(id))) return null;
+        return id;
+      });
+      expect(eventId, "événement d'A publié et sa place prise").toBeTruthy();
+      await pageB.evaluate(async ([eid, aid]) => {
+        const evs = await supaLoadEvents();
+        const ev = evs.find((e) => e.id === eid);
+        state.seed.events = (state.seed.events || []).filter((e) => e.id !== eid);
+        state.seed.events.unshift(ev || { id: eid, authorId: aid, organizerId: aid, title: "Une place, une file", passion: "musique", city: "Paris", emoji: "🎸", maxAttendees: 1, date: Date.now() + 86400000, attendees: [aid], maybes: [], waitlist: [], coOrganizers: [], fromSupabase: true });
+        await setEventRsvp(eid, "going");
+      }, [eventId, uidA]);
+      await pageB.waitForTimeout(2000);
+      const rowB = await pageB.evaluate(async (eid) => { const { data } = await supa.from("event_attendees").select("rsvp").eq("event_id", eid).eq("user_id", MY_UID).maybeSingle(); return data && data.rsvp; }, eventId);
+      expect(rowB, "PRÉCONDITION : B est en liste d'attente en base").toBe("waitlist");
+      log("B en liste d'attente");
+
+      // A se désinscrit par le VRAI chemin : `setEventRsvp(id, null)` → supaLeaveEvent → _promoteNextWaitlisted(B)
+      await pageA.evaluate(async (eid) => {
+        const evs = await supaLoadEvents();
+        const ev = evs.find((e) => e.id === eid);
+        const canon = _findCanonicalEvent(eid) || (state.userEvents.push(ev), ev);
+        Object.assign(canon, { attendees: ev.attendees, maybes: ev.maybes, waitlist: ev.waitlist, maxAttendees: 1, fromSupabase: true });
+        await setEventRsvp(eid, null);
+        await new Promise((r) => setTimeout(r, 1500));
+      }, eventId);
+
+      // LE CONTRAT : la ligne de B est passée `going` EN BASE (lue par B, propriétaire).
+      const apres = await pageB.evaluate(async (eid) => { const { data } = await supa.from("event_attendees").select("rsvp").eq("event_id", eid).eq("user_id", MY_UID).maybeSingle(); return data && data.rsvp; }, eventId);
+      log("rsvp de B après la désinscription de A : " + apres);
+      expect(apres, "une place libérée est réattribuée au premier en attente").toBe("going");
+
+      await cleanupEvent(pageA, eventId);
+      await cleanupEvent(pageB, eventId);
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // AUDIT 2026-11-02 (agent E) — DEUX COMPTES EN COURSE POUR LA DERNIÈRE PLACE
+  //
+  // Le trigger `trg_event_attendees_capacite` (IRL-05) compte sous verrou
+  // `FOR UPDATE` : deux `going` concurrents sur la dernière place doivent donner
+  // EXACTEMENT un `going` et un refus `activite_complete` — jamais deux inscrits.
+  // Le banc SQL `tests/sql/migration-capacite-activite.test.sh` le prouve sur
+  // PostgreSQL local avec deux sessions ; ce cas le prouve de BOUT EN BOUT, par
+  // deux navigateurs et le vrai `setEventRsvp`, contre la base cible de la CI.
+  // ═════════════════════════════════════════════════════════════════════════
+  test("AUDIT E — course pour la dernière place : un seul `going`, l'autre lit « complète » et n'est pas compté", async ({ browser }) => {
+    test.setTimeout(180000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[course ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const ctxC = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    const pageC = await ctxC.newPage();
+    wireHttpDiag(log, pageB, pageC);
+
+    let eventId = null;
+    try {
+      const uidA = await signupAnonymous(pageA, "Course Alice");
+      const uidB = await signupAnonymous(pageB, "Course Bob");
+      const uidC = await signupAnonymous(pageC, "Course Carol");
+      expect(uidA && uidB && uidC).toBeTruthy();
+
+      // UNE place, libre : B et C la veulent au même instant.
+      eventId = await pageA.evaluate(async () => {
+        const id = "evt_" + uid();
+        const ok = await supaPublishEvent({ id, title: "Dernière place", passion: "musique", city: "Paris", emoji: "🎸", date: Date.now() + 86400000, maxAttendees: 1 });
+        return ok ? id : null;
+      });
+      expect(eventId).toBeTruthy();
+      const charger = (page) => page.evaluate(async ([eid, aid]) => {
+        const evs = await supaLoadEvents();
+        const ev = evs.find((e) => e.id === eid) || { id: eid, authorId: aid, organizerId: aid, title: "Dernière place", passion: "musique", city: "Paris", emoji: "🎸", maxAttendees: 1, date: Date.now() + 86400000, attendees: [], maybes: [], waitlist: [], coOrganizers: [], fromSupabase: true };
+        state.seed.events = (state.seed.events || []).filter((e) => e.id !== eid);
+        state.seed.events.unshift(ev);
+        return ev.attendees.length;
+      }, [eventId, uidA]);
+      expect(await charger(pageB), "PRÉCONDITION : B voit 0 inscrit").toBe(0);
+      expect(await charger(pageC), "PRÉCONDITION : C voit 0 inscrit").toBe(0);
+
+      // Les deux écritures partent ensemble, par le vrai handler.
+      await Promise.all([pageB, pageC].map((p) => p.evaluate(async (eid) => { window.__toasts = []; const t = window.toast; window.toast = function (m, k) { window.__toasts.push(String(m)); return t.apply(this, arguments); }; await setEventRsvp(eid, "going"); }, eventId)));
+      await pageB.waitForTimeout(1500);
+
+      const going = await pageA.evaluate(async (eid) => { const { data } = await supa.from("event_attendees").select("user_id,rsvp").eq("event_id", eid); return (data || []).filter((r) => r.rsvp === "going").map((r) => r.user_id); }, eventId);
+      log("going en base : " + JSON.stringify(going));
+      expect(going.length, "la capacité 1 est tenue par le serveur : UN seul `going`").toBe(1);
+      const perdantPage = going.includes(uidB) ? pageC : pageB;
+      const perdant = await perdantPage.evaluate((eid) => ({ rsvp: myRsvp(eid), compte: (_findCanonicalEvent(eid).attendees || []).includes(MY_UID), toasts: window.__toasts || [] }), eventId);
+      log("perdant : " + JSON.stringify(perdant));
+      expect(perdant.compte, "le perdant n'est PAS compté `going` localement (optimiste annulé, ROB-02)").toBe(false);
+      expect(perdant.rsvp, "le perdant n'a aucun RSVP local").toBeNull();
+      expect(perdant.toasts.join(" | "), "le perdant lit la vraie raison, et la sortie").toMatch(/complète|liste d'attente/);
+
+      await cleanupEvent(pageA, eventId);
+      await cleanupEvent(pageB, eventId);
+      await cleanupEvent(pageC, eventId);
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+      await ctxC.close();
+    }
+  });
 });
 
 // Parcours réel : landing → Créer un compte → compte réel par e-mail/mot de passe
