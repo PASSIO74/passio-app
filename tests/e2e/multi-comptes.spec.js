@@ -1113,7 +1113,6 @@ test.describe("messagerie entre 2 comptes réels", () => {
   // ═════════════════════════════════════════════════════════════════════════
   test("AUDIT E — place libérée → le premier de la liste d'attente passe `going` EN BASE (B-02)", async ({ browser }) => {
     test.setTimeout(180000);
-    test.fail(true, "B-02 : la promotion cross-compte est refusée par la RLS (0 ligne) — retirer cette marque avec le correctif serveur");
     const t0 = Date.now();
     const log = (m) => console.log(`[attente ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
 
@@ -1128,6 +1127,17 @@ test.describe("messagerie entre 2 comptes réels", () => {
       const uidA = await signupAnonymous(pageA, "Attente Alice");
       const uidB = await signupAnonymous(pageB, "Attente Bob");
       expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy();
+
+      // Le correctif serveur (migration_promotion_attente_2026-11-02.sql : RPC
+      // `promouvoir_attente`) est-il appliqué sur la CIBLE ? Tant qu'il ne l'est
+      // pas, le cas reste un « échec ATTENDU » (test.fail) : il épingle le contrat
+      // sans bloquer la chaîne. Dès que la RPC répond, le contrat devient exigible.
+      const rpcPresente = await pageA.evaluate(async () => {
+        const r = await supa.rpc("promouvoir_attente", { p_event_id: "sonde_audit_e_" + Date.now(), p_user_id: null });
+        return !(r && r.error && String(r.error.code) === "PGRST202");
+      });
+      log("RPC promouvoir_attente sur la cible : " + (rpcPresente ? "présente" : "ABSENTE (migration non appliquée)"));
+      test.fail(!rpcPresente, "B-02 : sans la RPC promouvoir_attente, la promotion cross-compte est refusée par la RLS (0 ligne) — appliquer migrations/migration_promotion_attente_2026-11-02.sql");
 
       // A publie UNE place, l'occupe ; B entre en liste d'attente (vrai chemin).
       eventId = await pageA.evaluate(async () => {

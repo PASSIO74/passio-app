@@ -281,12 +281,25 @@ test.describe("AUDIT E — activité : capacité 2, course pour la dernière pla
         await new Promise((r) => setTimeout(r, 800));
       }, evId);
       expect(srv.t.event_attendees.some((x) => x.event_id === evId && x.user_id === B), "B n'a plus de ligne").toBe(false);
-      const tentativePromo = srv.requetes((r) => r.table === "event_attendees" && r.m === "PATCH" && r.me === B && r.url.includes("user_id=eq." + perdant));
-      expect(tentativePromo.length, "le client de B TENTE l'UPDATE de la ligne du premier en attente").toBeGreaterThan(0);
+      // B-02 CORRIGÉ (2026-11-02) : la promotion est demandée à la BASE (RPC
+      // `promouvoir_attente`, migration_promotion_attente_2026-11-02.sql), qui
+      // choisit le premier arrivé sous verrou et écrit la notification d'origine
+      // serveur. Le client ne tente plus l'UPDATE de la ligne d'autrui (0 ligne).
+      const appelsRpc = srv.requetes((r) => r.rpc && r.table === "promouvoir_attente" && r.me === B);
+      expect(appelsRpc.length, "le client de B demande la promotion à la base (RPC), pas par UPDATE de la ligne d'autrui").toBeGreaterThan(0);
+      expect(appelsRpc[0].body && appelsRpc[0].body.p_user_id, "promotion AUTOMATIQUE : la base choisit (p_user_id nul)").toBeFalsy();
+      const tentativePatch = srv.requetes((r) => r.table === "event_attendees" && r.m === "PATCH" && r.me === B && r.url.includes("user_id=eq." + perdant));
+      expect(tentativePatch.length, "plus aucun UPDATE de la ligne d'autrui (il touchait 0 ligne)").toBe(0);
       const lignePromu = srv.t.event_attendees.find((x) => x.event_id === evId && x.user_id === perdant);
-      // B-02 : la policy UPDATE `user_id = me` → 0 ligne → la file n'a pas de sortie.
-      expect(lignePromu.rsvp, "B-02 reproduit : la promotion cross-compte touche 0 ligne, la personne RESTE en attente").toBe("waitlist");
-      expect(srv.t.notifications.some((n) => n.user_id === perdant && /place s'est libérée/.test(n.content)), "aucune fausse annonce « tu es inscrit·e »").toBe(false);
+      expect(lignePromu.rsvp, "le premier de la file est passé `going` EN BASE").toBe("going");
+      const notifPromu = srv.t.notifications.filter((n) => n.user_id === perdant && /place s'est libérée/.test(n.content));
+      expect(notifPromu.length, "une seule notification « place libérée », écrite par la base").toBe(1);
+      expect(notifPromu[0].origine, "…d'origine serveur (jamais forgée par un client)").toBe("serveur");
+      const etatPromu = await pages[perdant].evaluate(async (id) => {
+        const evs = await supaLoadEvents(); const ev = evs.find((e) => e.id === id);
+        return { inscrit: (ev.attendees || []).includes(MY_UID), enAttente: (ev.waitlist || []).includes(MY_UID) };
+      }, evId);
+      expect(etatPromu, "le promu se relit inscrit (attendees) et plus en attente").toEqual({ inscrit: true, enAttente: false });
 
       // ── A annule : les inscrits sont prévenus ──────────────────────────────
       await a.page.evaluate(async (id) => {
@@ -302,11 +315,15 @@ test.describe("AUDIT E — activité : capacité 2, course pour la dernière pla
       expect(prevenus, "le `going` restant est prévenu").toContain(gagnant);
       test.info().annotations.push({ type: "E-b-annul", description: "prévenus = " + JSON.stringify(prevenus) + " ; liste d'attente prévenue = " + prevenus.includes(perdant) });
 
-      // Après annulation : rejoindre est refusé par le trigger (activite_annulee), le client le dit
-      // Le compte en liste d'attente (pas le gagnant, déjà `going` : `prev === rsvp` sortirait sans rien tenter).
-      const apresAnnul = await pages[perdant].evaluate(async (id) => {
+      // Après annulation : rejoindre est refusé par le trigger (activite_annulee), le client le dit.
+      // Depuis le correctif B-02, le perdant a été PROMU (`going`) : c'est B, qui
+      // s'était retiré, qui tente de revenir (un `going` déjà en place sortirait
+      // sans rien tenter : `prev === rsvp`).
+      const apresAnnul = await pages[B].evaluate(async (id) => {
         const evs = await supaLoadEvents(); const ev = evs.find((e) => e.id === id);
-        const canon = _findCanonicalEvent(id); Object.assign(canon, { attendees: ev.attendees, waitlist: ev.waitlist, status: "active", cancelled: false });
+        // Un client qui ne sait rien : ni l'annulation, ni le remplissage (sinon
+        // sa garde locale l'enverrait en liste d'attente sans toucher au serveur).
+        const canon = _findCanonicalEvent(id); Object.assign(canon, { attendees: [], maybes: [], waitlist: [], status: "active", cancelled: false });
         window.__toasts = [];
         _setMyRsvpLocal(id, null);
         await setEventRsvp(id, "going");
