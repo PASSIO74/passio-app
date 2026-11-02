@@ -61,8 +61,14 @@ export function pct(a, p) { return a.length ? a[Math.min(a.length - 1, Math.floo
 
 // Agrège les mesures d'une famille en une ligne de rapport. Les erreurs sont
 // comptées PAR MOTIF : « 12 × vide » se lit, « 12 erreurs » ne dit rien.
+// ⚠️ `p50/p95/p99` sont calculés sur les SEULS SUCCÈS (contrat historique, lu
+// par les rapports du 15/09) ; `p95Tous` l'est sur TOUTES les mesures, échecs et
+// délais compris — c'est lui que lit le verdict d'arrêt (audit F, 2026-11-02) :
+// un palier où la moitié des requêtes expirent affichait un p95 VERT, parce
+// que les expirées n'étaient pas des succès et sortaient donc du percentile.
 export function ligneRapport(palier, nom, mesures, duree) {
   const t = mesures.filter((m) => m.ok).map((m) => m.ms).sort((a, b) => a - b);
+  const tous = mesures.map((m) => m.ms).sort((a, b) => a - b);
   const motifs = {};
   for (const m of mesures) if (!m.ok) motifs[m.motif] = (motifs[m.motif] || 0) + 1;
   const err = mesures.length - t.length;
@@ -72,6 +78,43 @@ export function ligneRapport(palier, nom, mesures, duree) {
     p50: pct(t, 0.5) == null ? null : Math.round(pct(t, 0.5)),
     p95: pct(t, 0.95) == null ? null : Math.round(pct(t, 0.95)),
     p99: pct(t, 0.99) == null ? null : Math.round(pct(t, 0.99)),
+    p95Tous: pct(tous, 0.95) == null ? null : Math.round(pct(tous, 0.95)),
     motifs: Object.entries(motifs).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${n} × ${m}`).join(", "),
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEUILS D'ARRÊT D'UN PALIER (audit F, 2026-11-02) — même grammaire que
+// `verdictPalier` du banc authentifié (scripts/lib/charge-realiste.mjs), pour
+// que les deux bancs cessent de monter au MÊME endroit :
+//   · erreurs > 1 % sur une famille (délais compris : une requête expirée est
+//     une erreur, pas une absence) ;
+//   · p95 TOUTES MESURES > 1 000 ms sur une famille HTTP ;
+//   · la famille temps réel : une seule livraison manquée ou p95 > 2 000 ms.
+// Le 15/09, `charge.mjs` avait enchaîné 10 → 25 → 50 alors que le palier 25
+// portait déjà 7 livraisons manquées et un p99 de 13 s sur « publier » : il n'y
+// avait AUCUN seuil, et la documentation du banc (« aucun palier supérieur si
+// erreurs > 1 %, p95 > 1 s… ») ne valait que pour charge-realiste.
+// Pure : un tableau de `ligneRapport`, un verdict { ok, motifs }.
+// ═══════════════════════════════════════════════════════════════════════════
+export const SEUILS_PALIER = Object.freeze({ tauxErreurMax: 0.01, p95HttpMs: 1000, p95RealtimeMs: 2000 });
+export function verdictPalierSimple(lignes, seuils = SEUILS_PALIER) {
+  const motifs = [];
+  if (!Array.isArray(lignes) || !lignes.length) return { ok: false, motifs: ["PALIER_SANS_MESURE"] };
+  for (const l of lignes) {
+    const total = (l.ok || 0) + (l.erreurs || 0);
+    const nom = String(l.requete || "?");
+    const tempsReel = /temps r[ée]el/i.test(nom);
+    if (!total) { motifs.push(`${nom} : AUCUNE_MESURE`); continue; }
+    if (tempsReel) {
+      if (l.erreurs > 0) motifs.push(`${nom} : LIVRAISON_MANQUEE (${l.erreurs})`);
+      const p = l.p95Tous ?? l.p95;
+      if (p != null && p > seuils.p95RealtimeMs) motifs.push(`${nom} : P95_REALTIME_SUP_${seuils.p95RealtimeMs}_MS (${p})`);
+      continue;
+    }
+    if (l.erreurs / total > seuils.tauxErreurMax) motifs.push(`${nom} : ERREURS_SUP_1_PCT (${l.erreurs}/${total})`);
+    const p = l.p95Tous ?? l.p95;
+    if (p != null && p > seuils.p95HttpMs) motifs.push(`${nom} : P95_SUP_${seuils.p95HttpMs}_MS (${p})`);
+  }
+  return { ok: motifs.length === 0, motifs };
 }
