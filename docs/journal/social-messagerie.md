@@ -20,6 +20,7 @@
 - 🏷️ UN PSEUDO CHANGÉ RESTAIT L'ANCIEN DANS LA MESSAGERIE (2026-10-13)
 - 📍 UNE ACTIVITÉ CRÉÉE N'APPARAISSAIT PAS DANS LE FIL (2026-10-23)
 - 🤝 UNE ACTIVITÉ TAPÉE SUR UN PROFIL RAMENAIT À LA MESSAGERIE (2026-10-24)
+- 🚩 SIGNALER UN MESSAGE — et ce qu'un identifiant forgé, un × et un `del` d'autrui faisaient autour (2026-11-03)
 
 ---
 
@@ -395,3 +396,45 @@ Le retour depuis la fiche ramène à la liste des messages.
 
 **Verrou.** `tests/e2e/profil-activite-depuis-conversation.spec.js` (2) — mesuré par
 `elementFromPoint` au centre de l'écran ; ① rouge sans le correctif (réinjection faite).
+
+---
+
+## 🚩 SIGNALER UN MESSAGE — et ce qu'un identifiant forgé, un × et un `del` d'autrui faisaient autour (2026-11-03)
+
+Décision E-08 de l'audit du 2026-11-02 (DSA : un contenu reçu doit pouvoir être signalé). Le menu d'un message
+REÇU (appui long / clic droit, `_openMsgActions`, app-04) porte « 🚩 Signaler ce message » → `reportMessage(convId,
+msgId)` : compte réel exigé (`requireAuthentication("signaler")`), motif de 3 caractères minimum
+(`_demanderMotifSignalement`), `supaReport("message", msgId, motif)`, accusé « Signalement reçu ». Jamais sur mon
+propre message ni sur un message système. Le CONTENU ne voyage pas dans le signalement : le serveur en fait la copie
+(`signalements_preuves`, fiche du même jour dans `serveur-securite-base.md`), parce que l'auteur peut encore
+supprimer ou réécrire son message après coup.
+
+**Ce que le lot a fermé autour, trouvé en le testant :**
+
+- **Les identifiants de message entraient TELS QUELS dans les `onclick` du menu.** `conv_messages.id` n'a aucune
+  contrainte de forme : un expéditeur qui forge `m_a'),(window.__pwn='a'),('` exécutait du code chez le destinataire
+  au premier appui long. Tous les items passent par `escapeJsArg` (`cj`, `mj`), et les deux `querySelector` qui
+  cherchent un message par son identifiant (`data-mid`, `data-msgst`) par `CSS.escape`. Verrou :
+  `audit-2026-11-signaler-message.spec.js` ① et ⑤ (identifiants à apostrophe, guillemet, crochet, barre oblique).
+- **Fermer la fenêtre du motif par ×, le fond ou Échap laissait la promesse PENDANTE.** `closeModal` retire `.active`
+  du fond sans vider `#modalContent` ; l'observateur attendait que `#signalementMotif` quitte le DOM. Les quatre
+  signalements (message, publication, profil, story) restaient suspendus jusqu'à la fenêtre suivante. L'observateur
+  suit aussi la classe du fond et compare le champ par identité (`isConnected`).
+- **N'importe quel membre effaçait le message d'un AUTRE chez tout le monde.** Un message de contrôle
+  `{"type":"del","target":…}` était appliqué sans vérifier que son expéditeur était l'auteur de la cible ; une
+  réaction était comptée sans attribution. Désormais un `del` ne s'applique que si l'auteur de la cible est le
+  `from_id` de la LIGNE serveur (jamais un champ du JSON), et une réaction est attribuée à cet expéditeur
+  (`reactBy`, une par personne et par emoji) — au temps réel comme au rejeu de `supaLoadMessages`. Le canal
+  temps réel v2 (opt-in, broadcast dont la charge n'est pas prouvée par le serveur) n'applique AUCUN message de
+  contrôle : le rejeu suivant s'en charge. Verrou : `audit-2026-11-controle-auteur-messages.spec.js`.
+- **L'accusé de lecture partait sans lire sa réponse** (`supaMarkRead`, revue 10b, R6). Il lit `{ error }` : 403/42501
+  → réparation de l'appartenance par `_reparerAppartenanceConv` (même tentative mémorisée que l'envoi), une relance,
+  une trace sans donnée personnelle ; panne réseau silencieuse ; 401 jamais réparé ; réparation réservée à un 1:1 de
+  ma liste dont le pair est connu (jamais un groupe quitté). C'est le préalable de `oracles_et_privileges` (C-01).
+  Verrou : `audit-2026-11-accuse-lecture.spec.js`.
+
+**Ce qui reste (registre de l'audit, risques résiduels).** `retirer` dans `scripts/moderation.js` supprime la ligne en
+base mais pas les copies déjà chargées sur les appareils des membres (pas de marqueur `del` envoyé) ;
+`conv_messages.id` n'a toujours pas de contrainte de forme alors que `reports.target_id` est plafonné à 120
+caractères (un identifiant forgé plus long rend un message insignalable) ; le canal v2 accepte encore un
+`from_id` non prouvé pour un message ORDINAIRE (opt-in, éteint par défaut).
