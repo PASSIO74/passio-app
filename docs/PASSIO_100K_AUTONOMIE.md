@@ -153,6 +153,14 @@ les relire sur la page Pricing de chaque service le jour du geste.**
 6. ✅ **Priorité par personnes touchées — c'était déjà le cas** : `classer()` et `classerApi()`
    (`scripts/sentinelle-detecter.mjs`) trient les candidats par comptes distincts, puis par occurrences.
    La première version de ce plan le comptait à tort comme « à faire ».
+6 bis. ⏳ **Enquêtes en parallèle — écrit le 2026-11-01, attend la contre-revue humaine (PR #677, périmètre `.github/`).** Jusqu'à 3 enquêtes confiées à Claude en même
+   temps (`MAX_ENQUETES`, variable de dépôt `SENTINELLE_MAX_ENQUETES` bornée à 1–5), au lieu d'une : un
+   correctif en cours ne gèle plus la détection des autres. Deux candidats sur le même appel réseau ou le
+   même écran ne partent pas ensemble ; la veille ne réveille la Sentinelle que si une place est libre.
+6 ter. ✅ **Boutons morts réparés automatiquement — livré le 2026-11-01.** Un bouton retapé sans effet
+   (clics rageurs) par au moins 3 comptes réels, dont le libellé est un texte du code, devient une enquête
+   comme une erreur ; Claude départage handler cassé (corriger) et effet non mesuré (instrumenter).
+   Fiche : `docs/journal/telemetrie-pilotage-sentinelle.md` (2026-11-01).
 7. **Couper pendant qu'on répare** : quand une enquête vise un fichier d'un lot sous drapeau (liste
    blanche des coupures), la Sentinelle propose — ou pose si la règle est explicite — la coupure
    distante du lot, et la lève au déploiement du correctif.
