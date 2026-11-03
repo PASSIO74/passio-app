@@ -916,11 +916,14 @@ test("lireApi demande app_version, severity et meta : sans eux, la dédup datée
 // ENQUÊTES EN PARALLÈLE ET BOUTONS MORTS (2026-11-01)
 // ═══════════════════════════════════════════════════════════════════════════
 import * as SD from "../../scripts/sentinelle-detecter.mjs";
+import { REVEIL } from "../../supabase/functions/_shared/autonomie.js";
 
 const RACINE_DEPOT = new URL("../..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const enq = (cle, extra = {}) => ({ cle, famille: "js", message: cle, n: 5, comptes: 2, dernier: "2026-11-01T10:00:00Z", versions: {}, occurrences: [{ at: "2026-11-01T10:00:00Z", app_version: null }], ...extra });
 
-test("parallèle : le plafond des enquêtes est borné (1 à 5, défaut MAX_ENQUETES)", () => {
+test("parallèle : le plafond de la Sentinelle est celui que la veille respecte (MAX_ENQUETES = REVEIL.enquetesMax)", () => {
+  // Mutation : MAX_ENQUETES = 5 sans toucher la veille → rougit (la veille réveillerait une Sentinelle saturée, ou l'inverse).
+  assert.equal(SD.MAX_ENQUETES, REVEIL.enquetesMax);
   assert.equal(SD.maxEnquetes(undefined), SD.MAX_ENQUETES, "variable absente : défaut");
   assert.equal(SD.maxEnquetes("2"), 2);
   assert.equal(SD.maxEnquetes("0"), SD.MAX_ENQUETES, "0 éteindrait le canal en silence : refusé");
@@ -1098,4 +1101,35 @@ test("bouton mort : sur le VRAI code de l'app, les écrans et des libellés rée
   assert.ok(l.size > 50, "des libellés réels : " + l.size);
   assert.ok(l.has("affiche_partager"), "un data-tel réel");
   for (const pii of ["Marie", "Julie", "Annecy", "gmail.com", "Ben"]) assert.ok(!l.has(pii), pii);
+});
+
+test("bouton (contre-revue 2026-11-03, 2e passage) : le classement du RÉSUMÉ public masque tout libellé et tout écran hors code", () => {
+  // Mutation : `masquerSuspects` qui rend la liste telle quelle → rougit (un prénom lu sur un bouton paraît dans le résumé public).
+  const brut = [
+    { cle: "irl · Participer", ecran: "irl", libelle: "Participer", clics: 12, avecEffet: 0, tauxEffet: 0 },
+    { cle: "irl · Randonnée chez Julie", ecran: "irl", libelle: "Randonnée chez Julie", clics: 11, avecEffet: 0, tauxEffet: 0 },
+    { cle: "x9 · Participer", ecran: "x9", libelle: "Participer", clics: 10, avecEffet: 0, tauxEffet: 0 },
+  ];
+  const m = SD.masquerSuspects(brut, OPTS);
+  assert.deepEqual(m.map((g) => g.cle), ["irl · Participer", "irl · (texte hors code)", "? · Participer"]);
+  assert.ok(!JSON.stringify(m).includes("Julie"));
+  assert.deepEqual(SD.masquerSuspects(null, OPTS), []);
+});
+
+test("bouton (contre-revue 2026-11-03, 2e passage) : une enquête bouton remise à un HUMAIN ne gèle plus la famille", () => {
+  // Mutation : ignorer le label `humain` dans le blocage de zone → rougit (plus aucun bouton mort détecté tant que l'issue attend).
+  const b1 = { ...enq("bouton irl · Participer"), famille: "bouton", ecran: "irl" };
+  const b3 = { ...enq("bouton feed · Partager"), famille: "bouton", ecran: "feed" };
+  const ouverte = (labels) => [{ title: SD.titreIssue(b1), labels: labels.map((name) => ({ name })) }];
+  assert.deepEqual(SD.choisirCibles([b3], [], ouverte(["sentinelle", "claude"]), 3), [], "confiée à la machine : la zone reste prise");
+  assert.deepEqual(SD.choisirCibles([b3], [], ouverte(["sentinelle", "humain"]), 3).map((x) => x.cle), ["bouton feed · Partager"]);
+});
+
+test("bouton (contre-revue 2026-11-03, 2e passage) : chaque lecture de compte porte un délai maximal", async () => {
+  // Mutation : retirer `signal: AbortSignal.timeout(…)` → rougit (une API auth bloquée bloquerait toute la détection).
+  const avant = globalThis.fetch;
+  let signal = null;
+  globalThis.fetch = async (url, init) => { signal = init.signal; return { ok: false, json: async () => ({}) }; };
+  try { await SD.lireComptesAnciens({ url: "https://x.supabase.co", cle: "k", uids: [U(1)] }); } finally { globalThis.fetch = avant; }
+  assert.ok(signal && typeof signal.aborted === "boolean", "un AbortSignal est passé à fetch");
 });

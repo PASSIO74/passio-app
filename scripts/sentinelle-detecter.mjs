@@ -588,6 +588,21 @@ export function classerBoutonsMorts(clics = [], effets = [], options = {}) {
 }
 
 /**
+ * Le classement `classerBoutons` paraît dans le RÉSUMÉ du run, lisible par tous
+ * (dépôt public) : un libellé ou un écran qui n'est pas un texte du code y est
+ * remplacé par un marqueur. FONCTION PURE. (Contre-revue du 2026-11-03 : le
+ * commentaire « jamais dans une issue publique » ne protégeait rien — le
+ * résumé l'est tout autant.)
+ */
+export function masquerSuspects(liste, { libelles, ecrans } = {}) {
+  return (Array.isArray(liste) ? liste : []).map((g) => {
+    const libelle = libelleDuCode(g.libelle, libelles) ? g.libelle : "(texte hors code)";
+    const ecran = ecrans instanceof Set && ecrans.has(String(g.ecran)) ? g.ecran : "?";
+    return { ...g, cle: `${ecran} · ${libelle}`, ecran, libelle };
+  });
+}
+
+/**
  * Comptes créés depuis au moins `ancienneteMinMs`, lus sur l'API d'administration
  * de l'authentification (`auth.users.created_at`, jamais `profiles`). Bornés à
  * `comptesLusMax` lectures ; un compte illisible n'est pas ancien.
@@ -598,7 +613,8 @@ export async function lireComptesAnciens({ url, cle, uids, maintenant = Date.now
   for (let i = 0; i < liste.length; i += 10) {
     await Promise.all(liste.slice(i, i + 10).map(async (uid) => {
       try {
-        const r = await fetch(`${url}/auth/v1/admin/users/${uid}`, { headers: { apikey: cle, Authorization: "Bearer " + cle } });
+        // Délai borné : la famille bouton est un confort, elle ne bloque jamais la détection.
+        const r = await fetch(`${url}/auth/v1/admin/users/${uid}`, { headers: { apikey: cle, Authorization: "Bearer " + cle }, signal: AbortSignal.timeout(10_000) });
         if (!r.ok) return;
         const u = await r.json();
         const cree = Date.parse(u && u.created_at);
@@ -901,10 +917,13 @@ export function zoneCible(c) {
  */
 export function choisirCibles(candidats, fermees, ouvertes, places = 1) {
   const n = Number.isInteger(places) && places > 0 ? places : 0;
-  const titres = new Set((Array.isArray(ouvertes) ? ouvertes : []).map((o) => String(o?.title || "")));
+  const liste = Array.isArray(ouvertes) ? ouvertes : [];
+  const titres = new Set(liste.map((o) => String(o?.title || "")));
   const zones = new Set();
-  // Une enquête bouton déjà OUVERTE occupe la zone « bouton » pour ce passage aussi.
-  if ([...titres].some((t) => t.startsWith("[SENTINELLE] bouton "))) zones.add("bouton");
+  // Une enquête bouton OUVERTE et encore confiée à la machine occupe la zone « bouton » ;
+  // remise à un humain (label `humain`), elle ne gèle plus la famille (contre-revue du 2026-11-03).
+  const nomsLabels = (o) => (Array.isArray(o?.labels) ? o.labels : []).map((l) => String(l?.name ?? l));
+  if (liste.some((o) => String(o?.title || "").startsWith("[SENTINELLE] bouton ") && !nomsLabels(o).includes("humain"))) zones.add("bouton");
   const choisies = [];
   for (const c of candidats || []) {
     if (choisies.length >= n) break;
@@ -1347,13 +1366,14 @@ async function principal() {
       lirePagine({ url, cle, heures, chemin: CHEMINS_BOUTONS.clics }),
       lirePagine({ url, cle, heures, chemin: CHEMINS_BOUTONS.effets }),
     ]);
+    const code = await lireCodeInterface();
+    const opts = { libelles: libellesDuCode(code), ecrans: ecransDuCode(code) };
+    // ⚠️ Le résumé du run est PUBLIC (dépôt public) : un libellé hors code y est masqué (contre-revue du 2026-11-03).
     boutonsSuspects = (clics.complet && effets.complet)
-      ? classerBoutons(clics.lignes, effets.lignes).slice(0, 5)
+      ? masquerSuspects(classerBoutons(clics.lignes, effets.lignes).slice(0, 5), opts)
       : { incomplet: true, note: "Lecture tronquée : un classement partiel désignerait des innocents." };
     // Une lecture tronquée ne désigne aucun bouton : l'effet manquant peut être sur la page suivante.
     if (clics.complet && effets.complet) {
-      const code = await lireCodeInterface();
-      const opts = { libelles: libellesDuCode(code), ecrans: ecransDuCode(code) };
       // Deux passages : le premier désigne les comptes à vérifier, le second ne compte que les ANCIENS.
       const premier = classerBoutonsMorts(clics.lignes, effets.lignes, { ...opts, comptesAnciens: "tous", avecUids: true });
       const uids = premier.candidates.flatMap((c) => c._uids || []);
