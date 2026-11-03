@@ -1529,7 +1529,15 @@
               || (/\/rest\/v1\/rpc\/fil_compteurs$/i.test(path) && res.status === 404)
               // Même contrat (2026-10-11) : la table des réglages distants pas
               // encore en base — js/reglages-distants.js le mémorise une heure.
-              || (/\/rest\/v1\/reglages_distants$/i.test(path) && res.status === 404));
+              || (/\/rest\/v1\/reglages_distants$/i.test(path) && res.status === 404)
+              // Même contrat (C-04, 2026-11-03) : entre le déploiement du client
+              // et la migration `participants_visibilite`, CHAQUE session
+              // connectée reçoit un 404 (PGRST202) sur ces deux RPC — app-08 le
+              // mémorise UNE HEURE (`_memoRpcAbsenteActif` : `_participantsCompteAbsent`,
+              // `_notesEvenementAbsente`), levé plus tôt par SIGNED_IN /
+              // TOKEN_REFRESHED, et retombe sur la lecture d'avant : au plus
+              // un 404 par onglet et par heure, comme `fil_compteurs`.
+              || (/\/rest\/v1\/rpc\/(participants_compte|notes_evenement)$/i.test(path) && res.status === 404));
           Telemetry.api({
             action: method + " " + path.replace(/\/rest\/v1\//, "/"),
             endpoint: path, http_status: res.status,

@@ -89,4 +89,46 @@ test.describe("IRL-10 — la discussion d'une activité n'apparaît que si l'on 
     expect(r.conv1).toBeNull();
     expect(r.conv2).toBe("evgrp_ev1");
   });
+  // ⑤ C-04 (troisième contre-revue, 2026-11-03) : la liste des membres d'une
+  // discussion d'activité EST la liste des venants — un « peut-être » (qui se
+  // pose même sur une activité complète) n'y entre plus, et quitter « je viens »
+  // la quitte. Le serveur le refuse aussi (`can_join_event_conversation`).
+  test("⑤ « peut-être » n'entre pas dans la discussion ; passer de « je viens » à « peut-être » la quitte", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      const out = {};
+      state.user.eventRsvp = { ev1: "maybe" }; state.user.joinedEvents = [];
+      await openEventChat("ev1"); await new Promise((res) => setTimeout(res, 200));
+      out.appelsPeutEtre = window.__joinAppels;
+      out.ouvertePeutEtre = window.__ouverte || null;
+      out.toastPeutEtre = window.__toasts.slice(-1)[0] || "";
+      // Le chemin de l'inscription : on observe la DÉCISION (entrer ou sortir),
+      // le serveur de l'inscription répond « accepté ».
+      state.user.eventRsvp = { ev1: "going" }; state.user.joinedEvents = ["ev1"];
+      window.__decisions = [];
+      const vraiJoin = window._joinEventConversation, vraiLeave = window._leaveEventConversation;
+      window._joinEventConversation = async () => { window.__decisions.push("entre"); return true; };
+      window._leaveEventConversation = async () => { window.__decisions.push("sort"); };
+      window.requireAuthentication = () => true;
+      window.requireAdmission = async () => true;
+      window.supaSetEventRsvp = async () => true;
+      window.supaInsertNotif = async () => true;
+      window.supaFirstWaitlisted = async () => null;
+      window.supaPromoteFromWaitlist = async () => false;
+      try {
+        await setEventRsvp("ev1", "maybe");
+        out.versPeutEtre = window.__decisions.slice();
+        window.__decisions = [];
+        await setEventRsvp("ev1", "going");
+        out.versJeViens = window.__decisions.slice();
+      } finally { window._joinEventConversation = vraiJoin; window._leaveEventConversation = vraiLeave; }
+      return out;
+    });
+    expect(r.appelsPeutEtre, "« peut-être » : aucune demande d'entrée au serveur").toBe(0);
+    expect(r.ouvertePeutEtre, "…et aucune discussion ouverte").toBeNull();
+    expect(r.toastPeutEtre).toMatch(/Je viens/);
+    expect(await miroir(page), "aucun miroir local").toBe(false);
+    expect(r.versPeutEtre, "je viens → peut-être : la discussion est quittée, jamais rejointe").toEqual(["sort"]);
+    expect(r.versJeViens, "peut-être → je viens : la discussion est rejointe").toEqual(["entre"]);
+  });
 });

@@ -172,3 +172,42 @@ test("⑧ `alter publication … drop table` n'est PAS du DDL de table — sinon
   ));
   assert.equal(vrai.dynamiques.length, 1, "un vrai `drop table` doit toujours être signalé");
 });
+
+test("⑨ `auteur_id` est un identifiant de compte : une table qui en porte un sans décision fait ROUGIR la gate", () => {
+  // ⚠️ LE DÉFAUT (2026-11-03). `public.signalements_preuves` (E-08) porte
+  // `auteur_id` — l'auteur d'un message signalé — à côté du TEXTE privé de ce
+  // message. Le motif ne connaissait que `author_id` : la table était
+  // invisible à la gate, verte sans avoir rien décidé.
+  assert.ok(A.COLONNES_COMPTE.test("auteur_id"), "le nom français est dans le motif");
+
+  // (a) Une table neuve, jamais décidée : la gate la VOIT et en fait un oubli.
+  const fictive = A.tablesDeclarees(migrations("create table if not exists public.preuves_futures (\n  report_id text primary key,\n  auteur_id text,\n  contenu text\n);"));
+  assert.deepEqual(couples(fictive), ["preuves_futures.auteur_id"]);
+  assert.ok(!paires.has("preuves_futures.auteur_id") && !A.EXCEPTIONS["preuves_futures.auteur_id"], "prémisse : ni purgée ni dispensée");
+
+  // (b) La vraie table : vue dans le schéma résultant du dépôt, et DÉCIDÉE.
+  const r = A.auditer();
+  assert.ok(r.vues.has("signalements_preuves.auteur_id"), "la gate voit signalements_preuves.auteur_id");
+  assert.match(r.vues.get("signalements_preuves.auteur_id"), /migration_signalements_preuves_2026-11-03\.sql/);
+  assert.ok(!paires.has("signalements_preuves.auteur_id"), "décision : elle n'est PAS purgée avec le compte de l'auteur");
+  assert.match(A.EXCEPTIONS["signalements_preuves.auteur_id"], /on delete cascade/i, "la raison écrite dit ce qui l'emporte");
+  assert.deepEqual(r.oublis, []);
+
+  // (c) RÉINJECTION : sans sa décision, la gate ROUGIT et nomme le fichier.
+  const raison = A.EXCEPTIONS["signalements_preuves.auteur_id"];
+  delete A.EXCEPTIONS["signalements_preuves.auteur_id"];
+  try {
+    const rouge = A.auditer();
+    assert.deepEqual(rouge.oublis.map((o) => o.cle), ["signalements_preuves.auteur_id"]);
+    assert.match(rouge.oublis[0].fichier, /migration_signalements_preuves_2026-11-03\.sql/);
+  } finally {
+    A.EXCEPTIONS["signalements_preuves.auteur_id"] = raison;
+  }
+
+  // (d) Le contrôle du CATALOGUE (base de production) lit le même motif : la
+  // colonne y est vue par son NOM, sans clé étrangère vers auth.users.
+  const { SQL_CATALOGUE, comparerCatalogue } = require("../../scripts/lib/tables-compte-catalogue.js");
+  assert.ok(SQL_CATALOGUE.includes("auteur_id"), "la requête du catalogue cherche auteur_id");
+  const cat = comparerCatalogue([{ table: "preuves_futures", colonne: "auteur_id", type: "text", source: "nom" }], { connues: paires });
+  assert.deepEqual(cat.oublis.map((o) => o.cle), ["preuves_futures.auteur_id"]);
+});

@@ -96,6 +96,28 @@ test.describe("Télémétrie — refus attendu d'une porte d'authentification", 
     expect(autreRpc.severity).toBe("warn");
   });
 
+  // C-04 (2026-11-03) : client déployé AVANT la migration → chaque session
+  // connectée demande `participants_compte` et `notes_evenement`, absentes
+  // (PGRST202, mémorisé par app-08). Un 404 attendu n'ouvre pas de problème ;
+  // une panne (500) de la même RPC, ou le 404 d'une RPC voisine, si.
+  test("③ter 404 sur /rest/v1/rpc/participants_compte et notes_evenement (attente de la migration C-04) → info + refus_attendu ; un 500 reste un problème", async ({ page }) => {
+    for (const rpc of ["participants_compte", "notes_evenement"]) {
+      const absente = await mesurer(page, "/rest/v1/rpc/" + rpc, 404);
+      expect(absente, rpc).not.toBeNull();
+      expect(absente.status, rpc).toBe("error");
+      expect(absente.severity, rpc + " absente : refus attendu").toBe("info");
+      expect(absente.meta && absente.meta.refus_attendu, rpc).toBe(true);
+      const panne = await mesurer(page, "/rest/v1/rpc/" + rpc, 500);
+      expect(panne.severity, rpc + " en panne : un problème").toBe("warn");
+      expect(panne.meta && panne.meta.refus_attendu).toBeFalsy();
+    }
+    // Ni préfixe ni suffixe : seule la fonction exacte est attendue absente.
+    const voisine = await mesurer(page, "/rest/v1/rpc/retours_evenement", 404);
+    expect(voisine.severity).toBe("warn");
+    const suffixe = await mesurer(page, "/rest/v1/rpc/participants_compte_x", 404);
+    expect(suffixe.severity).toBe("warn");
+  });
+
   test("④ contrat de source : la marque existe dans le hook fetch de telemetry.js", async () => {
     const src = fs.readFileSync(SOURCE_TELEMETRIE, "utf8");
     expect(src).toMatch(/refus_attendu: true/);

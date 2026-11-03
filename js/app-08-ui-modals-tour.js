@@ -5711,6 +5711,45 @@ function _attendeesRefusMemorise(err, ou) {
 function _oublierRefusLecturesIRL() {
   _attendeesRefusLecture = false;
   _eventColsPubliquesSeulement = false;
+  // Les deux mémos « RPC absente » de C-04 (voir `_memoRpcAbsenteActif`) : une
+  // session rétablie est l'occasion de revoir si la migration est passée.
+  _memoRpcAbsenteLever("_participantsCompteAbsent");
+  _memoRpcAbsenteLever("_notesEvenementAbsente");
+}
+
+// ── LES MÉMOS « RPC ABSENTE » DE C-04 ONT UNE DURÉE DE VIE (revue 2026-11-03) ──
+// `participants_compte` et `notes_evenement` rendent PGRST202 tant que
+// `migration_participants_visibilite_2026-11-03.sql` n'est pas en base : on le
+// mémorise pour ne pas payer un 404 par lecture. Mais posé À VIE, le mémo
+// survivait à sa cause : une PWA ouverte AVANT la migration continuait de
+// prendre la liste nominative — devenue PARTIELLE après la migration — pour le
+// nombre d'inscrits, et la moyenne des notes restait indisponible, jusqu'au
+// prochain rechargement complet (une application installée ne recharge presque
+// jamais). Même contrat que `fil_compteurs` (`_filCompteursMemoAbsence`) : UNE
+// HEURE de vie (`FIL_COMPTEURS_ABSENTE_TTL_MS`), puis la fonction est retentée ;
+// et la levée par `_oublierRefusLecturesIRL` (SIGNED_IN / TOKEN_REFRESHED).
+// ⚠️ Le drapeau reste un booléen (`window._participantsCompteAbsent`,
+// `window._notesEvenementAbsente`, lus tels quels par les bancs) ; l'heure de
+// pose vit À CÔTÉ (`…Le`). Sans heure lisible — ou une heure dans le futur,
+// horloge reculée —, le mémo ne vaut rien : retenter coûte un aller-retour,
+// se taire à tort coûte des compteurs faux.
+function _memoRpcAbsenteActif(drapeau) {
+  try {
+    if (!window[drapeau]) return false;
+    const depuis = Number(window[drapeau + "Le"]);
+    const age = Date.now() - depuis;
+    if (Number.isFinite(depuis) && depuis > 0 && age >= 0 && age < FIL_COMPTEURS_ABSENTE_TTL_MS) return true;
+    _memoRpcAbsenteLever(drapeau);   // expiré : la prochaine lecture retente
+    return false;
+  } catch (e) { return false; }
+}
+function _memoRpcAbsentePoser(drapeau) {
+  window[drapeau] = true;
+  window[drapeau + "Le"] = Date.now();
+}
+function _memoRpcAbsenteLever(drapeau) {
+  window[drapeau] = false;
+  window[drapeau + "Le"] = 0;
 }
 
 // `authorId` (facultatif) : les activités qu'UN compte organise, lues à
@@ -5756,9 +5795,36 @@ async function supaLoadEvents(authorId) {
     // `attendees` = les VENANTS fermes uniquement (rsvp 'going') ; les « peut-être »
     // et la liste d'attente sont comptés à part pour ne pas gonfler le compteur ni
     // remplir les places réservées.
-    const attByEvent = {}, maybeByEvent = {}, waitByEvent = {}, checkedByEvent = {};
+    const attByEvent = {}, maybeByEvent = {}, waitByEvent = {}, checkedByEvent = {}, countsByEvent = {};
     if (rows.length && _attendeesLisibles()) {
       const evIds = rows.map(r => r.id);
+      // ── LE NOMBRE D'INSCRITS VIENT DE LA BASE (C-04, 2026-11-03) ──────────
+      // Depuis `migration_participants_visibilite_2026-11-03.sql`, la liste
+      // nominative lue ci-dessous est PARTIELLE pour un compte sans lien avec
+      // l'activité (lui-même, l'organisation, les personnes qu'il suit). Le
+      // compteur — venants, peut-être, liste d'attente, pointés — reste public
+      // parmi les connectés : RPC `participants_compte` (SECURITY DEFINER, 200
+      // activités par appel). RPC absente (PGRST202 : base pas encore migrée) →
+      // mémo d'UNE HEURE (`_memoRpcAbsenteActif`, levé aussi par un jeton frais)
+      // et la liste fait foi, comme avant. Un échec réseau ne mémorise rien : la
+      // prochaine lecture retente.
+      if (!_memoRpcAbsenteActif("_participantsCompteAbsent")) {
+        try {
+          const rc = await supa.rpc("participants_compte", { p_event_ids: evIds.slice(0, 200) });
+          if (rc && rc.error) {
+            if (String(rc.error.code || "") === "PGRST202") _memoRpcAbsentePoser("_participantsCompteAbsent");
+            else console.warn("participants_compte :", rc.error.message);
+          } else {
+            (rc && Array.isArray(rc.data) ? rc.data : []).forEach(c => {
+              if (!c || !c.event_id) return;
+              countsByEvent[c.event_id] = {
+                going: Number(c.going) || 0, maybe: Number(c.maybe) || 0,
+                waitlist: Number(c.waitlist) || 0, checked_in: Number(c.checked_in) || 0,
+              };
+            });
+          }
+        } catch (e) { console.warn("participants_compte : lecture interrompue —", e && e.message); }
+      }
       const ranger = (atts) => (atts || []).forEach(a => {
         const bucket = a.rsvp === "maybe" ? maybeByEvent : a.rsvp === "waitlist" ? waitByEvent
           : a.rsvp === "declined" ? null : attByEvent;
@@ -5818,6 +5884,7 @@ async function supaLoadEvents(authorId) {
       maybes: maybeByEvent[r.id] || [],
       waitlist: waitByEvent[r.id] || [],
       checkedIn: checkedByEvent[r.id] || [],
+      counts: countsByEvent[r.id] || null,   // compteurs serveur (C-04) ; null = base pas migrée ou lecture en échec
       fromSupabase: true,
     }));
   } catch(e) { return []; }
@@ -5831,7 +5898,8 @@ async function supaLoadEvents(authorId) {
 function _evenementsSig(evs) {
   return (evs || []).map(function (e) {
     return e ? [e.id, e.title, e.date, e.status, e.updatedAt,
-      (e.attendees || []).length, (e.maybes || []).length, (e.waitlist || []).length].join("|") : "";
+      (e.attendees || []).length, (e.maybes || []).length, (e.waitlist || []).length,
+      e.counts ? [e.counts.going, e.counts.maybe, e.counts.waitlist, e.counts.checked_in].join(",") : ""].join("|") : "";
   }).sort().join("~");
 }
 function fusionnerEvenementsServeur(evs) {
@@ -6300,6 +6368,65 @@ function _fractionMicrosecondes(s) {
   while (d.length < 3) d += "0";
   return Number(d) / 1000;
 }
+// ── UN MESSAGE DE CONTRÔLE N'AGIT QUE SUR CE QUI APPARTIENT À SON EXPÉDITEUR ──
+// (revue du 2026-11-03). `{type:"del"}` et `{type:"react"}` sont des lignes de
+// `conv_messages` comme les autres : TOUT membre de la conversation peut en
+// insérer, avec la cible qu'il veut. Or « Supprimer pour tous » retirait la
+// cible de la copie locale de chacun SANS regarder qui la demandait — n'importe
+// quel membre d'un groupe effaçait chez tous les autres le message d'un autre
+// membre (et la persistance locale rendait l'effacement durable). De même, une
+// réaction n'était qu'un compteur : un « add » répété le gonflait sans fin, et
+// un « remove » effaçait la réaction de quelqu'un d'autre.
+// La règle, aux DEUX points d'application (rejeu de `supaLoadMessages` et temps
+// réel de `_handleIncomingConvMessage`) :
+//   · l'expéditeur est le `from_id` DE LA LIGNE — la RLS d'INSERT l'impose égal
+//     à `auth.uid()` —, JAMAIS un champ du JSON (`from`, `user_id`… y sont
+//     ignorés : la charge est écrite par l'expéditeur) ;
+//   · une suppression ne s'applique que si l'auteur de la cible EST cet
+//     expéditeur ; une cible pas (encore) connue localement est ignorée — rien
+//     ne la mettait en attente, et rien ne la rejouerait à son arrivée ;
+//   · une réaction est attribuée à cet expéditeur (`reactBy[emoji]` = liste des
+//     identifiants) : une par personne et par emoji, retirée par elle seule.
+// `_deleteMsgForAll` (app-04) n'est pas touché : il ne propose « Supprimer pour
+// tous » que sur MES messages, et c'est mon `from_id` qui part avec le contrôle.
+// Auteur comparable d'un message local : « me » (le mien) devient MY_UID.
+function _ctrlAuteur(from) {
+  if (from === "me") return (typeof MY_UID !== "undefined" && MY_UID) ? String(MY_UID) : "me";
+  return from == null ? "" : String(from);
+}
+// Vrai si `expediteur` (le `from_id` de la ligne de contrôle) a écrit `cible`.
+// Un message sans auteur (message système) ne se supprime par aucun contrôle.
+function _ctrlSuppressionAutorisee(cible, expediteur) {
+  if (!cible) return false;
+  var auteur = _ctrlAuteur(cible.from), qui = _ctrlAuteur(expediteur);
+  return !!auteur && !!qui && auteur === qui;
+}
+// Enregistre la réaction de `expediteur` sur `tm` (clé déjà filtrée par
+// `_reactionKeySure`). Rend vrai si l'état a changé — le total doit alors
+// suivre ; faux pour un doublon, ou pour le retrait d'une réaction qui n'est pas
+// la sienne.
+// ⚠️ Transition : un message dont le total date d'avant ce correctif n'a pas de
+// `reactBy` ; le retrait d'une réaction comptée alors est ignoré en temps réel,
+// et la prochaine lecture de la conversation (rejeu complet) rétablit le total.
+function _ctrlReactionAttribuee(tm, cle, op, expediteur) {
+  if (!tm || !cle || cle === "__proto__") return false;
+  var qui = _ctrlAuteur(expediteur);
+  if (!qui) return false;
+  if (!tm.reactBy || typeof tm.reactBy !== "object" || Array.isArray(tm.reactBy)) tm.reactBy = {};
+  var par = tm.reactBy;
+  var liste = (Object.prototype.hasOwnProperty.call(par, cle) && Array.isArray(par[cle])) ? par[cle] : [];
+  var i = liste.indexOf(qui);
+  if (op === "remove") {
+    if (i < 0) return false;
+    liste.splice(i, 1);
+  } else {
+    if (i >= 0) return false;
+    liste.push(qui);
+  }
+  if (liste.length) par[cle] = liste; else delete par[cle];
+  return true;
+}
+
 async function supaLoadMessages(convId) {
   // Charge les messages (GIFs, pièces jointes, localisations encodées en JSON dans content)
   try {
@@ -6385,21 +6512,58 @@ async function supaLoadMessages(convId) {
     // puis les exclut du fil (ils ne doivent pas s'afficher comme des bulles).
     var ctrls = messages.filter(function(m){ return m._ctrl; });
     var clean = messages.filter(function(m){ return !m._ctrl; });
+    // ⚠️ UN RETRAIT « POUR TOUS » DOIT ATTEINDRE LA COPIE LOCALE (2026-11-03).
+    // Rejouer le `del` sur la liste lue ici ne suffisait pas : la fusion à
+    // l'ouverture (`_fusionnerMessagesServeur`, app-04) GARDE tout message
+    // local que le serveur ne rend plus — et c'est le cas ordinaire, puisque
+    // `_deleteMsgForAll` supprime aussi la LIGNE de la cible. Un retrait manqué
+    // en temps réel (hors ligne, socket au repos, contrôle v2 laissé au rejeu)
+    // ne quittait donc jamais l'appareil. On remet à la fusion chaque retrait
+    // dont la cible n'est pas gardée ici, avec l'expéditeur DE LA LIGNE : elle
+    // ne retire une copie locale que si son auteur est cet expéditeur
+    // (`_ctrlSuppressionAutorisee`). Un retrait refusé sur une cible que le
+    // serveur rend encore n'est pas remis : la version serveur fait foi.
+    var retraitsPourTous = [];
     if (ctrls.length) {
       var byId = {}; clean.forEach(function(m){ byId[m.id] = m; });
+      // ⚠️ `m.from` est l'EXPÉDITEUR DE LA LIGNE (`from_id`, que la RLS d'INSERT
+      // impose égal à `auth.uid()`), jamais un champ du JSON : c'est lui seul
+      // qui décide de ce que le contrôle a le droit de toucher (voir
+      // `_ctrlSuppressionAutorisee`, `_ctrlReactionAttribuee`).
       ctrls.forEach(function(m){
         var ev = m._ctrl;
-        if (ev.type === "del") { var i = clean.findIndex(function(x){ return x.id === ev.target; }); if (i >= 0) { delete byId[ev.target]; clean.splice(i,1); } }
+        if (ev.type === "del") {
+          var i = clean.findIndex(function(x){ return x.id === ev.target; });
+          // Une cible inconnue (jamais lue, ou au-delà de la borne de lecture)
+          // n'est pas mise en attente : rien ne la rejouerait à son arrivée.
+          if (i >= 0 && _ctrlSuppressionAutorisee(clean[i], m.from)) {
+            delete byId[ev.target]; clean.splice(i,1);
+            retraitsPourTous.push({ target: ev.target, from: m.from });
+          } else if (i < 0 && ev.target) {
+            // Cible absente de cette lecture (ligne supprimée, ou au-delà de la
+            // borne) : la fusion jugera la copie locale, si l'appareil en a une.
+            retraitsPourTous.push({ target: String(ev.target), from: m.from });
+          }
+        }
         else if (ev.type === "react" && ev.target) {
           // Second point d'écriture des réactions : le REJEU au chargement.
           // Il doit filtrer comme le temps réel, sinon la charge hostile entre
           // par cette porte-ci — et la persistance la garde.
           var _k = (typeof _reactionKeySure === "function") ? _reactionKeySure(ev.emoji) : ev.emoji;
-          var tm = _k ? byId[ev.target] : null; if (tm) { tm.reactions = tm.reactions || {}; if (ev.op === "remove") { tm.reactions[_k] = (tm.reactions[_k]||1)-1; if (tm.reactions[_k] <= 0) delete tm.reactions[_k]; } else { tm.reactions[_k] = (tm.reactions[_k]||0)+1; } }
+          var tm = _k ? byId[ev.target] : null;
+          // Le total est le nombre de PERSONNES qui ont cette réaction : un
+          // « add » répété ne gonfle rien, un « remove » n'efface que la sienne.
+          if (tm && _ctrlReactionAttribuee(tm, _k, ev.op, m.from)) {
+            tm.reactions = tm.reactions || {};
+            var _n = tm.reactBy[_k] ? tm.reactBy[_k].length : 0;
+            if (_n > 0) tm.reactions[_k] = _n; else delete tm.reactions[_k];
+          }
         }
       });
     }
     _diag("supaLoadMessages: ✅ " + clean.length + " messages traités");
+    // Propriété NON énumérable : les autres lecteurs du tableau ne la voient pas.
+    try { Object.defineProperty(clean, "_retraitsPourTous", { value: retraitsPourTous }); } catch (e) {}
     return clean;
   } catch(e) {
     _diag("supaLoadMessages: EXCEPTION - " + e.message);
@@ -6410,7 +6574,46 @@ async function supaLoadMessages(convId) {
 
 // ───────── Accusés de lecture réels (table conv_reads) ─────────
 // Marque la conversation comme lue par MOI (upsert de mon last_read_at).
+//
+// ⚠️ LE VERDICT DE L'UPSERT SE LIT, ET UN REFUS D'APPARTENANCE SE RÉPARE
+// (revue indépendante 10b, risque résiduel R6 de l'audit du 2026-11-02).
+// `migration_audit_2026-11-02_oracles_et_privileges.sql` ajoute
+// `is_conv_member(conv_id, auth.uid())` aux policies INSERT et UPDATE de
+// `conv_reads`. Or une conversation historique peut manquer de la ligne
+// `conv_members` de l'un de ses participants (19 sur 20 le 2026-09-10) : son
+// accusé ✓✓ serait refusé — et EN SILENCE, puisque le SDK ne lève pas sur un
+// refus RLS et que l'ancien `await` ne lisait pas `{ error }` — jusqu'au
+// premier message, dont l'envoi répare l'appartenance.
+// Sur un refus (42501 ou HTTP 403, JAMAIS 401 : un jeton absent ou expiré ne
+// se répare pas en ajoutant un membre), on passe par la MÊME réparation que
+// l'envoi d'un message (`_reparerAppartenanceConv`, app-04 : une seule
+// tentative par conversation et par session, mémo `_convReparationTentee`
+// partagé avec l'envoi), puis on retente l'upsert UNE fois. Encore refusé :
+// on le trace, et on s'arrête — ni boucle, ni rafale. Une panne réseau
+// (`estEchecReseau`, seule autorité) n'a rien à réparer et ne consomme pas la
+// tentative : l'accusé repartira à la prochaine ouverture.
+//
+// ⚠️ ON NE S'INSCRIT JAMAIS DANS UNE CONVERSATION OÙ L'ON N'EST PAS. La
+// réparation n'est tentée que pour une conversation 1-à-1 de MA liste locale,
+// avec un pair connu : ni un groupe (un groupe d'activité que j'ai QUITTÉ,
+// `supaLeaveEventConversation`, garde sa trace locale — m'y réinscrire
+// défairait le départ), ni un fil de démonstration, ni un identifiant que je
+// ne connais pas.
+function _accuseLectureReparable(convId, moi) {
+  try {
+    if (typeof _reparerAppartenanceConv !== "function" || typeof getConversations !== "function") return false;
+    var c = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+    if (!c || c.isGroup || String(c.id).indexOf("evgrp_") === 0) return false;
+    if (!c.userId || c.userId === moi) return false;
+    if (typeof SEED_CONVERSATIONS !== "undefined" && SEED_CONVERSATIONS.some(function (s) { return s && s.id === c.id; })) return false;
+    return true;
+  } catch (e) { return false; }
+}
+
 async function supaMarkRead(convId) {
+  // Trace SANS donnée personnelle : ni identifiant de conversation, ni compte,
+  // ni contenu — un code d'erreur et une étape.
+  var tracer = function (m) { try { if (typeof diagLog === "function") diagLog(m); } catch (e) {} };
   try {
     // Même famille que `profiles` et `user_state` (#367) : `reads_insert_own`
     // exige `auth.uid()`, donc un accusé de lecture posé sous le placeholder
@@ -6421,14 +6624,50 @@ async function supaMarkRead(convId) {
     // exige `user_id = auth.uid()`). On le TRACE au lieu de le taire — sans
     // trace, une divergence d'identité est indiscernable d'un calme plat.
     if (_identiteDivergeDeLaSession(MY_UID)) {
-      try { if (typeof diagLog === "function") diagLog("conv_reads: identite locale != session"); } catch (e) {}
+      tracer("conv_reads: identite locale != session");
       return;
     }
-    await supa.from("conv_reads").upsert(
-      { conv_id: convId, user_id: MY_UID, last_read_at: new Date().toISOString() },
-      { onConflict: "conv_id,user_id" }
-    );
-  } catch(e) {}
+    // L'identité est CAPTURÉE : la reprise après réparation ne part que sous le
+    // compte qui a ouvert la conversation (même règle qu'ASTRA-21 à l'envoi).
+    var moi = MY_UID;
+    var poser = function () {
+      return supa.from("conv_reads").upsert(
+        { conv_id: convId, user_id: moi, last_read_at: new Date().toISOString() },
+        { onConflict: "conv_id,user_id" }
+      );
+    };
+    var r = await poser();
+    if (!r || !r.error) return;
+    // Panne réseau : rien à réparer, rien à marquer.
+    if (typeof estEchecReseau === "function" && estEchecReseau(r.error)) return;
+    var code = String((r.error && r.error.code) || "");
+    var st = Number(r.status || 0);
+    if (st === 401 || !(st === 403 || code === "42501")) {
+      tracer("conv_reads echec " + (code || st || "?"));
+      return;
+    }
+    if (MY_UID !== moi) return; // compte changé pendant l'attente : rien sous l'ancien
+    if (!_accuseLectureReparable(convId, moi)) {
+      tracer("conv_reads refus " + (code || st) + " : conversation hors reparation");
+      return;
+    }
+    if (window._convReparationTentee && window._convReparationTentee[convId]) {
+      tracer("conv_reads refus " + (code || st) + " : reparation deja tentee");
+      return;
+    }
+    var repare = await _reparerAppartenanceConv(convId);
+    if (!repare) { tracer("conv_reads refus " + (code || st) + " : appartenance non reparee"); return; }
+    if (MY_UID !== moi) return;
+    var r2 = await poser();
+    if (r2 && r2.error) {
+      tracer("conv_reads refus apres reparation " + (String(r2.error.code || "") || r2.status || "?"));
+    }
+  } catch (e) {
+    // Une exception n'est pas un refus : soit le réseau (un fetch avorté peut
+    // lever), soit un défaut de code — et celui-là se TRACE : un catch muet a
+    // déjà caché une ReferenceError six jours (diagLog).
+    if (!(typeof estEchecReseau === "function" && estEchecReseau(e))) tracer("conv_reads exception " + String((e && e.name) || "?"));
+  }
 }
 
 // Charge l'instant de lecture des AUTRES membres → c._otherReadAt (le plus récent).
@@ -6737,8 +6976,13 @@ window.PASSIO_REALTIME_V3 = (function(){
 // Traitement d'un message entrant (factorisé : utilisé par le canal global v1
 // ET par les canaux privés v2). `r` = ligne conv_messages (payload.new ou
 // payload.record selon la source).
-async function _handleIncomingConvMessage(r) {
+// `opts.diffusionMembre` : `r` n'est PAS une ligne acceptée par le serveur mais
+// la charge d'un broadcast que N'IMPORTE QUEL membre peut émettre (canal v2
+// `conv:<id>`, voir `_subscribePrivateConv`) — son `from_id` n'est prouvé par
+// personne, et aucun message de contrôle n'y est appliqué.
+async function _handleIncomingConvMessage(r, opts) {
   if (!r || !r.conv_id) return;
+  var _diffusionMembre = !!(opts && opts.diffusionMembre);
   if (r.from_id === MY_UID) return; // nos propres messages sont déjà dans l'UI (optimistic)
   // L'autre est revenu dans cette conversation : la fenêtre anti-spam de MES
   // prochaines notifications de message repart de zéro (cf. `_notifierMessage`).
@@ -6751,15 +6995,46 @@ async function _handleIncomingConvMessage(r) {
   try {
     if (r.content && typeof r.content === "string" && r.content.charAt(0) === "{") {
       var _dd = JSON.parse(r.content);
+      // ⚠️ CANAL v2 : UN CONTRÔLE DIFFUSÉ N'EST JAMAIS APPLIQUÉ (revue du
+      // 2026-11-03). La règle « l'expéditeur est le `from_id` DE LA LIGNE » ne
+      // tient que si la ligne vient du serveur (RLS d'INSERT : `from_id =
+      // auth.uid()`). Sur `conv:<id>`, la policy `passio_rt_emettre` laisse
+      // tout membre diffuser une charge arbitraire : un `from_id` forgé à
+      // l'identifiant de l'auteur de la cible satisfaisait
+      // `_ctrlSuppressionAutorisee` et `_ctrlReactionAttribuee` — l'effacement
+      // « pour tous » du message d'autrui revenait par cette porte. Le contrôle
+      // n'est ni appliqué ni peint en bulle ; le prochain `supaLoadMessages`
+      // (lignes du serveur, `from_id` réel) le rejoue s'il existe vraiment.
+      // Les messages ordinaires, eux, continuent de passer.
+      if (_diffusionMembre && _dd && (_dd.type === "del" || _dd.type === "react")) {
+        try { if (typeof diagLog === "function") diagLog("msg_ctrl_differe " + _dd.type + " : charge diffusee non prouvee, laissee au rejeu serveur"); } catch (e) {}
+        return;
+      }
       if (_dd && (_dd.type === "del" || _dd.type === "react") && _dd.target) {
         // Même règle que les accusés de lecture : l'identifiant exact d'abord.
         var _cvs = getConversations();
         var _cv = _cvs.find(function(x){ return x.id === r.conv_id; }) || _cvs.find(function(x){ return !x.isGroup && x.userId === r.from_id; });
         if (_cv && _cv.messages) {
+          // ⚠️ L'expéditeur est `r.from_id` (la ligne, telle que le serveur l'a
+          // acceptée), jamais un champ de `_dd` : voir `_ctrlSuppressionAutorisee`.
+          var _cible = _cv.messages.find(function(x){ return x.id === _dd.target; });
           if (_dd.type === "del") {
-            _cv.messages = _cv.messages.filter(function(x){ return x.id !== _dd.target; });
+            if (_cible && _ctrlSuppressionAutorisee(_cible, r.from_id)) {
+              _cv.messages = _cv.messages.filter(function(x){ return x.id !== _dd.target; });
+            } else if (_cible) {
+              // Un membre qui tente d'effacer le message d'un autre : refusé, et tracé
+              // sans identifiant (ni message, ni conversation, ni compte).
+              try { if (typeof diagLog === "function") diagLog("msg_ctrl_refuse del : la cible n'est pas de l'expediteur"); } catch (e) {}
+            }
           } else if (typeof _applyReactionEvent === "function") {
-            _applyReactionEvent(_cv, _dd); // applique la réaction de l'autre
+            // Attribuée à l'expéditeur de la ligne : un doublon ne compte pas, un
+            // retrait n'efface que SA réaction. Le total ne bouge que si l'état
+            // de cette personne a changé ; l'événement transmis est reconstruit
+            // (cible, emoji, op), aucun autre champ de la charge ne passe.
+            var _kr = (typeof _reactionKeySure === "function") ? _reactionKeySure(_dd.emoji) : "";
+            if (_cible && _kr && _ctrlReactionAttribuee(_cible, _kr, _dd.op, r.from_id)) {
+              _applyReactionEvent(_cv, { target: _dd.target, emoji: _kr, op: _dd.op === "remove" ? "remove" : "add" }); // applique la réaction de l'autre
+            }
           }
           conversationsState = getConversations();
           saveConversations();
@@ -6784,11 +7059,18 @@ async function _handleIncomingConvMessage(r) {
   // autre entrée ayant le même partenaire → l'entrée locale a un id différent de
   // r.conv_id. Sans ce repli, le message entrant déclencherait une « nouvelle conv »
   // en double, voire serait perdu côté affichage. On route donc par partenaire.
-  if (!conv && r.from_id) {
+  // ⚠️ JAMAIS POUR UNE CHARGE DIFFUSÉE v2 (revue du 2026-11-03) : son `from_id`
+  // n'est prouvé par personne. Un membre de N'IMPORTE QUEL groupe y écrivait
+  // `conv_id` au hasard et `from_id` = Léa : ce repli rangeait le message dans
+  // MON fil privé avec Léa, signé Léa, et la fusion le gardait. Une charge v2 ne
+  // va que dans SA conversation (le canal la lie, voir `_subscribePrivateConv`),
+  // et n'en crée aucune.
+  if (!conv && r.from_id && !_diffusionMembre) {
     conv = convs.find(c => !c.isGroup && c.userId === r.from_id);
   }
 
   if (!conv) {
+    if (_diffusionMembre) return;
     // Nouvelle conv inconnue → vérifier membership Supabase puis créer localement
     try {
       const { data: membership } = await supa.from("conv_members")
@@ -6889,7 +7171,14 @@ function _subscribePrivateConv(convId) {
     .on("broadcast", { event: "INSERT" }, function(msg) {
       var p = msg && msg.payload;
       var r = p && (p.record || p.new || p); // selon le format broadcast_changes
-      if (r && r.conv_id) _handleIncomingConvMessage(r);
+      // ⚠️ `passio_rt_emettre` laisse tout MEMBRE diffuser sur `conv:<id>` :
+      // cette charge n'est pas forcément celle du trigger, et son `from_id`
+      // n'est pas prouvé. D'où `diffusionMembre` : aucun contrôle (del, react)
+      // n'est appliqué depuis ce canal. Le canal v3 (`user:<uid>`) n'a pas ce
+      // défaut : aucune policy n'y autorise l'émission d'un client.
+      // Et la charge est LIÉE au canal : un `conv_id` qui n'est pas celui de ce
+      // canal est jeté (un membre de ce groupe ne parle pas dans un autre fil).
+      if (r && r.conv_id && String(r.conv_id) === String(convId)) _handleIncomingConvMessage(r, { diffusionMembre: true });
     })
     .subscribe();
   window._privateConvChans[convId] = ch;
@@ -7792,8 +8081,12 @@ async function supaSetEventRsvp(eventId, rsvp) {
   window._irlRefusMotif = null;
   try {
     await supaEnsureProfileExists();
+    // ⚠️ `.select("event_id")`, jamais `.select()` : un RETURNING * demande AUSSI
+    // `feedback`/`rating`/`rated_at`, colonnes que la migration de visibilité
+    // (C-04, 2026-11-03) retire au rôle — PostgREST refuse alors l'UPDATE entier
+    // (42501), et « je viens » ne s'enregistrerait plus.
     const upd = await supa.from("event_attendees")
-      .update({ rsvp: rsvp }).eq("event_id", eventId).eq("user_id", MY_UID).select();
+      .update({ rsvp: rsvp }).eq("event_id", eventId).eq("user_id", MY_UID).select("event_id");
     if (!upd.error && upd.data && upd.data.length) return true;
     if (upd.error && _motifRefusRsvp(upd.error)) { window._irlRefusMotif = _motifRefusRsvp(upd.error); return false; }
     const ins = await supa.from("event_attendees")
@@ -7891,15 +8184,43 @@ async function supaRateEvent(eventId, rating, feedback) {
 }
 
 // Agrégat des notes d'un événement : { avg, count }. Null si indisponible.
+// ⚠️ L'AGRÉGAT SE CALCULE EN BASE (C-04, 2026-11-03) : la RPC `notes_evenement`
+// rend la moyenne et le nombre sans livrer QUI a mis quelle note — la colonne
+// `rating` n'est plus lisible par le rôle depuis la migration de visibilité.
+// ⚠️ `avg` PEUT VALOIR `null` sur ce chemin, et il le RESTE : sous 3 notes de
+// participants (hors organisation), la base donne le nombre sans la moyenne,
+// qui isolerait la note de quelqu'un. Le convertir en 0 faisait peindre cinq
+// étoiles vides et « 0 · 2 avis » (`_eventRatingSummaryHtml`, app-07, lit
+// `null` comme « pas encore de moyenne »).
+// Transition : RPC absente (PGRST202, base pas encore migrée) → lecture
+// d'avant sur la colonne, qui marche tant que la migration n'est pas passée
+// (et calcule la moyenne comme avant, quel que soit le nombre de notes).
 async function supaLoadEventRatings(eventId) {
   // Même porte que `supaLoadEvents` : son seul appelant n'exige que `_supaReal`,
   // vrai aussi chez un visiteur — ouvrir la fiche d'une rencontre sans compte
   // frappait donc la table fermée. `null` = « indisponible », déjà géré.
   if (!_attendeesLisibles()) return null;
   try {
+    // Mémo « RPC absente » d'UNE HEURE, comme `participants_compte` (voir
+    // `_memoRpcAbsenteActif`) : la migration passée, la moyenne revient sans
+    // rechargement.
+    if (!_memoRpcAbsenteActif("_notesEvenementAbsente")) {
+      const r = await supa.rpc("notes_evenement", { p_event_id: eventId });
+      if (r && !r.error) {
+        const d = (r.data && typeof r.data === "object") ? r.data : {};
+        const count = Number(d.count) || 0;
+        const moyenne = (d.avg == null || d.avg === "") ? NaN : Number(d.avg);
+        return { avg: (count && Number.isFinite(moyenne)) ? moyenne : null, count: count };
+      }
+      if (String((r && r.error && r.error.code) || "") !== "PGRST202") return null;
+      _memoRpcAbsentePoser("_notesEvenementAbsente");
+    }
     const { data, error } = await supa.from("event_attendees")
       .select("rating").eq("event_id", eventId).not("rating", "is", null);
-    if (error) { _attendeesRefusMemorise(error, "supaLoadEventRatings"); return null; }
+    // ⚠️ Un 42501 ICI vise la COLONNE `rating` (retirée au rôle), pas la table :
+    // il ne doit pas poser le mémo qui ferait taire toutes les lectures de
+    // participants pour la session. Les autres refus (jeton) le posent comme avant.
+    if (error) { if (String(error.code || "") !== "42501") _attendeesRefusMemorise(error, "supaLoadEventRatings"); return null; }
     const notes = (data || []).map(r => r.rating).filter(n => typeof n === "number");
     if (!notes.length) return { avg: 0, count: 0 };
     return { avg: notes.reduce((a, b) => a + b, 0) / notes.length, count: notes.length };

@@ -73,3 +73,36 @@ Après application : mesurer l'état en base (canal ①), jamais le tableau de v
 - Code : `rollback.yml` / `npm run rollback:netlify` (sélection testée, jamais exercé en réel sur 30 j) ou revert du
   merge ; aucun changement d'état local irréversible (les clés `localStorage` existantes sont inchangées).
 - Migrations : `drop function` (promotion) ; policies et GRANTs d'avant en commentaire de la migration C.
+
+## 6. Lot « décisions produit » (2026-11-03, branche `ccr-ee10535f-52nyhx`)
+
+Décisions déléguées par Benjamin et tranchées le 03/11 : C-04 (qui voit les participants), C-14 (dossier
+investisseurs hors du dépôt public), E-08 (signaler un message), F-05/F-06/F-07 (index, realtime), R5 (identifiants
+de notification réservés), R6 (accusé de lecture avant `oracles_et_privileges`). Trois tours de contre-revue
+indépendante (RV-01…RV-10 au registre). Le code client est déployable **seul** : chaque appel nouveau retombe sur
+l'ancien chemin tant que la migration manque (PGRST202, mémo d'une heure).
+
+### 6.1 Migrations — ordre d'application (après que le client est servi en production ; la n° 3 attend 48 h de plus)
+
+| # | Fichier | Objet | Banc | Pourquoi à ce rang |
+|---|---|---|---|---|
+| 1 | `migration_conv_members_reparation_2026-11-03.sql` | rajoute le créateur / le pair déclaré des 1:1 sans ambiguïté qui ont écrit (0 ligne mesurée en prod) | `migration-conv-members-reparation` 56/0 | AVANT `oracles_et_privileges`, qui conditionne `conv_reads` à l'appartenance ; s'arrête si un couple réparable est apparu depuis la revue (plafond 0, `passio.conv_members_plafond`) |
+| 2 | `migration_audit_2026-11-02_oracles_et_privileges.sql` | C-01 / C-03 (revue #681 n°5748485931, commit `5e9367d`) | 38/38 | `supaMarkRead` répare déjà l'appartenance (R6) |
+| 3 | `migration_participants_visibilite_2026-11-03.sql` | C-04 : liste par lien, compte par RPC `participants_compte`, notes en agrégat ≥ 3 (`notes_evenement`), garde d'état d'inscription, discussion d'activité réservée aux venants | `migration-participants-visibilite` 128/0 | client d'abord, **et 48 h après le déploiement** : une PWA restée ouverte garde l'ancien code (son `RETURNING *` prendrait 42501) |
+| 4 | `migration_notifications_identifiants_reserves_2026-11-03.sql` | R5 : 5 familles d'identifiants réservées au serveur, UPDATE client limité à `seen`, `follows_notifier` gardé | `migration-notifications-identifiants-reserves` 77/0 | indépendante |
+| 5 | `migration_index_realtime_2026-11-03.sql` | F-05/F-06/F-07 (DDL seul) | `migration-index-realtime` 24/0 | indépendante ; > 1 M lignes de télémétrie le jour J → index en `concurrently` à l'éditeur |
+| 6 | `migration_signalements_preuves_2026-11-03.sql` | E-08 : copie serveur du message signalé, lisible du seul `service_role` | `migration-signalements-preuves` 82/0 | indépendante ; sans elle, `moderation.js voir` retombe sur `conv_messages` |
+
+Chaque fichier porte son retour arrière en tête. Après chaque application : mesurer l'état en base au canal ①
+(policies, GRANTs par `aclexplode`, fonctions), jamais le tableau de verdict ; remesurer l'EXPLAIN F-06.
+
+### 6.2 Contrôles après livraison du lot
+
+1. `deploy.yml` vert jusqu'à « Déploiement production » ; le fichier servi porte `participants_compte`.
+2. Après la migration 3 : une activité vue par un compte sans lien montre le NOMBRE d'inscrits, aucun visage ;
+   sous 3 notes de participants, les notes affichent « N avis » seul (ni étoile ni moyenne) ; la moyenne
+   apparaît à partir de 3.
+3. Après la migration 4 : `notifications` — `update` limité à `seen` pour `authenticated` (canal ①, `aclexplode`).
+4. Après la migration 6 : un signalement de message de test crée sa preuve (`signalements_preuves`), lue par
+   `node scripts/moderation.js voir <id>` — avec un compte synthétique, jamais un vrai utilisateur.
+5. Consigner les attestations dans une PR suivante (`main` refuse le push direct).

@@ -150,11 +150,13 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - On ne retire pas une colonne d'un GRANT de table (REVOKE la table, puis GRANT colonne par colonne) ; `revoke … from public` ne ferme RIEN sur Supabase (`anon`/`authenticated` ont EXECUTE par défaut).
 - Canal Realtime privé sans policy = refusé ; la charge d'un broadcast est hostile ; une pièce jointe se lit par `data-pj` (seau privé), jamais par `src`.
 - La mémoire d'une Edge Function n'est pas une mémoire : les plafonds vivent en base (`_shared/plafond.js`). Un avertissement de linter n'est pas un défaut — les restants sont délibérés.
+- Une policy qui s'ouvre sur un état que l'appelant ÉCRIT lui-même (s'inscrire, suivre un profil public) n'est pas une frontière : règles de lecture et d'écriture se conçoivent ensemble (C-04, 2026-11-03) ; et une liste fermée ressort par toute table qui la recopie (membres de la discussion d'activité `evgrp_`). Réserver une valeur à l'INSERT ne la réserve pas (UPDATE de la clé) : là où le client n'écrit qu'une colonne, GRANT de colonne (`notifications` : `update (seen)`).
 
 **Social : suivre, messagerie, notifications, publications** → `docs/journal/social-messagerie.md`
 - `follows.status` : le serveur tranche (`trg_follows_statut`), seul un `'accepted'` explicite promeut ; CINQ surfaces peignent l'état de suivi — les changer toutes.
 - Notification de message : identifiant déterministe `n_<msgId>_<8>` (c'est lui qui empêche le doublon) ; le CONTENU du message ne voyage jamais dans une notification.
 - Deux écritures dont l'ORDRE compte (retirer puis poser) ne partent jamais en parallèle : une réaction emoji s'effaçait elle-même quand le DELETE dépassait l'INSERT (`_syncReactionEmoji`, une file par cible).
+- Un message de contrôle (`del`, `react`) s'attribue au `from_id` de la LIGNE serveur, jamais au JSON : un `del` n'efface que le message de son propre expéditeur ; un identifiant de message va dans un `onclick` par `escapeJsArg`, dans un sélecteur par `CSS.escape` (E-08, 2026-11-03).
 - Rappels d'activité J-1 / H-2 : poussés par la veille de pilotage (`_shared/rappels.js`), marqués dans `analytics_events` AVANT l'envoi (jamais dans `notifications`, qu'un client forge ou efface) ; l'abonnement push se propose juste après une inscription CONFIRMÉE, nulle part ailleurs.
 
 **Partage, liens courts, invitation** → `docs/journal/partage-liens-invitation.md` (`_ouvrirLienPartage`, `netlify/`, `?plk`)

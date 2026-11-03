@@ -24,10 +24,10 @@ Aucun P0. 5 P1 (B-02 et E-01 sont le même défaut), 32 P2, 37 P3.
 |---|---|---|---|---|
 | B-03 | Backend | les `index.ts` des Edge ne sont exécutés par aucun test (Deno absent, CI = fumée OPTIONS/401) | extraire `deciderPush` pure dans `_shared/` et la tester | non corrigé (environnement) |
 | B-04 | Dépendances | `maplibre-gl@4.7.1` : GHSA-jrc7-96c5-q579 (CVSS 10, sanitizer) ; exploitabilité faible ici (`escapeHtml` est la barrière, B-01 fermé) | monter en 6.16.0 (`map-loader.js`), gate d'avis sur `js/vendor/` | non corrigé |
-| C-01 | Données | `conv_reads` INSERT/UPDATE sans prédicat d'appartenance (9 lignes intruses en prod) ; UPDATE non filtré | `migration_audit_2026-11-02_oracles_et_privileges.sql` | **préparé** (banc 38/38) ; voir revue 10b (`supaMarkRead` doit réparer l'appartenance sur 42501) |
+| C-01 | Données | `conv_reads` INSERT/UPDATE sans prédicat d'appartenance (9 lignes intruses en prod) ; UPDATE non filtré | `migration_audit_2026-11-02_oracles_et_privileges.sql` ; préalable client `supaMarkRead` (lit `{ error }`, répare l'appartenance sur 403/42501, 03/11) ; filet `migration_conv_members_reparation_2026-11-03.sql` (0 ligne à réparer mesurée) | **préparé** (banc 38/38) ; préalable client **corrigé et retesté** (`audit-2026-11-accuse-lecture.spec.js` 7/7) |
 | C-02 | Données | `is_conv_member(conv, uid)` = oracle d'appartenance d'autrui pour tout connecté | diff proposé (chantier transverse) | non corrigé |
 | C-03 | Données | TRUNCATE/REFERENCES/TRIGGER accordés à `anon`/`authenticated` sur ~40 tables | même migration que C-01 | **préparé** |
-| C-04 | Confidentialité IRL | `event_attendees` lisible `true` par tout connecté (liste nominative + `feedback`, événements passés compris) | policy « inscrits de l'événement + organisation » | **décision produit** |
+| C-04 | Confidentialité IRL | `event_attendees` lisible `true` par tout connecté (liste nominative + `feedback`, événements passés compris) | **tranché le 03/11** : liste par lien (sa ligne, organisation, venants `going` entre eux, abonnés mutuels, jamais un blocage), nombre par `participants_compte`, notes par `notes_evenement` (≥ 3), garde d'état sur activité passée/annulée — `migration_participants_visibilite_2026-11-03.sql` ; client (compteurs `_nbInscrits` sur toutes les surfaces, RPC + repli) | client **corrigé et retesté** ; migration **préparée** (banc ; contournement « peut-être » trouvé en revue et fermé) |
 | C-05 | Données | `conversations` : création illimitée ; 113/125 sans membre en prod | anti-flood + policy de création bornée ; purge des orphelines | non corrigé |
 | D-02 | Accessibilité | 120 cibles tactiles < 44 px ; 8 catégories corrigées (⋯ Paramètres, en-tête/envoi de conversation, 😊, × bobines, 📷) | `styles.css` (ajout CRLF), `index.html` | **partiel** |
 | D-03 | Accessibilité | 7 champs à 12 px (zoom iOS) | 16 px | **corrigé et retesté** |
@@ -71,16 +71,16 @@ Aucun P0. 5 P1 (B-02 et E-01 sont le même défaut), 32 P2, 37 P3.
 | B-13 | Dette | 8 scripts jamais référencés, 16 handlers sans appel | non corrigé (retrait à relire) |
 | B-14 | Config | CSP définie deux fois (`_headers`, `netlify.toml`) | **banc ajouté** (`entetes-coherence.test.mjs`, dans `verif`) |
 | C-06…C-13 | Données | orphelins likes/commentaires/interactions (42/59/158), bio de compte privé hors CGU, oracle majorité d'un tiers, `pointer_par_code` sans plafond d'essais, mentions vers inconnus (60/min), `post_masque` oracle assumé, doublon policy realtime + stories/lives non expirés, 2 médias fantômes | non corrigés (détail C) |
-| C-14 | Exposition | dépôt public avec dossier investisseurs et vidéos | **décision produit** |
+| C-14 | Exposition | dépôt public avec dossier investisseurs et vidéos | **tranché le 03/11** : dossier sorti de l'arbre + `.gitignore`, 6 vidéos en double retirées (`b0588e0`) ; **reste dans l'historique git** (risque résiduel) |
 | D-11 | Accessibilité | Échap n'atteint pas conversation/Paramètres/Filtre | non corrigé |
 | D-12 | Accessibilité | `.modal-title` en `div` (hiérarchie de titres) | non corrigé |
 | D-13 | CSS | « UI-4A5 dernier bloc CSS » plus tenu depuis le 23/10 | non corrigé |
 | E-06 | IRL | notifications d'édition/annulation calculées sur l'objet local de l'organisateur | non corrigé (trigger serveur proposé) |
 | E-07 | Comptes | compte suspendu non informé hors connexion (`user_banned` non distingué) | non corrigé |
-| E-08 | Modération | pas de « signaler ce message » | non corrigé |
-| F-05 | Base | index doublon `passions_trgm_idx` ≡ `passions_normalized_trgm` ; 11 index jamais lus | migration proposée (décision) |
-| F-06 | Base | requête pilotage `telemetry_events` 54,6 ms de moyenne sans bon index ; `count: "exact"` | index partiel proposé |
-| F-07 | Realtime | 2 policies `realtime.messages` en initplan (doublon d'accent) | réécriture proposée |
+| E-08 | Modération | pas de « signaler ce message » | **corrigé et retesté** (client : `reportMessage`, identifiants échappés `escapeJsArg`/`CSS.escape`) ; preuve serveur `signalements_preuves` **préparée** (banc) ; `moderation.js voir` branche message |
+| F-05 | Base | index doublon `passions_trgm_idx` ≡ `passions_normalized_trgm` ; 11 index jamais lus | **tranché** : doublon + `passions_aliases_gin` retirés, les autres gardés (tables quasi vides) — `migration_index_realtime_2026-11-03.sql`, **préparé** (banc 18/18) |
+| F-06 | Base | requête pilotage `telemetry_events` 54,6 ms de moyenne sans bon index ; `count: "exact"` | index partiel, même migration, **préparé** (construction non concurrente mesurée sous la seconde ; EXPLAIN à remesurer après application) |
+| F-07 | Realtime | 2 policies `realtime.messages` en initplan (doublon d'accent) | une seule policy en `(select auth.uid())`, même migration, **préparé** |
 | F-09 | Banc | `charge.mjs` ne refusait que `GITHUB_ACTIONS`, pas `CI` | **corrigé** (`charge-gardes.test.mjs`) |
 | F-10 | Cache | vendors sans `Cache-Control` immutable | non corrigé (`_headers`, 1 ligne) |
 | F-11 | Réseau | `estEchecReseau` ignore `TimeoutError`/`AbortError` | non corrigé (avec B-10) |
@@ -90,6 +90,27 @@ Aucun P0. 5 P1 (B-02 et E-01 sont le même défaut), 32 P2, 37 P3.
 | H-09 | Pilotage | fuseau UTC non dit à l'écran | non corrigé |
 | H-10 | Télémétrie | `meta.ech` fourni par l'appelant partait sur les lignes non échantillonnées (poids ×1000 forgeable) | **corrigé et retesté** |
 | H-11 | Tests | `pilotage-nuage.spec.js` 22 rouges en local (Playwright 1.60, `import()` ESM) | **corrigé** (`require()`) |
+
+## Trouvé par les contre-revues indépendantes du lot des décisions (03/11)
+
+Deux relectures (conventions, puis vérification adverse des frontières) de la première version du lot. Tout est fermé
+dans la PR du lot ; les migrations restent à appliquer après la contre-revue humaine.
+
+| ID | Sév. | Anomalie | Correctif | Statut |
+|---|---|---|---|---|
+| RV-01 | P1 | C-04 contourné : s'écrire soi-même `maybe`/`waitlist` (activité passée, annulée ou complète comprise) ouvrait la branche « co-inscrit » | branche réservée à `going` (`vient_a_activite`) + garde `trg_event_attendees_etat` | **corrigé** (banc) |
+| RV-02 | P1 | identifiants réservés contournés par un UPDATE de `id` ; `follows_notifier` réécrivait la ligne d'un tiers (`do update` sans `where`) | GRANT `update (seen)` seul, `anon` sans écriture, `where` sur `user_id`/`from_id`, marquage serveur, purge (0 ligne en prod) | **corrigé** (banc) |
+| RV-03 | P1 | cartes UI-4A2 et fiche UI-4B (actives par défaut) comptaient la liste lisible après C-04 | `_nbInscrits` partout, signature de carte comprise | **corrigé et retesté** |
+| RV-04 | P2 | branche « je suis » gagnée en un clic (suivi d'un profil public accepté d'office) → historique de présence | abonnement mutuel exigé, blocages exclus | **corrigé** (banc) |
+| RV-05 | P2 | après C-04, une place libérée pouvait ne promouvoir personne (file relue sous un rôle qui ne la voit plus) ; et aucun passage `going` → `declined`/`maybe` ne promouvait | RPC appelée même file locale vide ; promotion sur chaque départ | **corrigé et retesté** |
+| RV-06 | P2 | `avg: null` (moins de 3 notes) affiché « ☆☆☆☆☆ 0 » | `null` gardé jusqu'à l'écran, « N avis » seul | **corrigé et retesté** |
+| RV-07 | P2 | la table des preuves échappait à `audit-tables-compte` (`auteur_id` non reconnu) | motif étendu + EXCEPTION écrite | **corrigé** |
+| RV-08 | P2 | messages de contrôle `del`/`react` appliqués sans vérifier l'auteur : un membre effaçait le message d'un autre chez tous | `from_id` de la ligne serveur seul ; v2 (opt-in) n'applique aucun contrôle ; le retrait rejoué atteint la copie locale (la fusion la gardait, préexistant) | **corrigé et retesté** |
+| RV-09 | P3 | fenêtre du motif de signalement : promesse pendante sur ×, fond, Échap (préexistant, les 4 signalements) | observation de la classe du fond | **corrigé et retesté** |
+| RV-10 | P3 | compteurs non ajustés après une promotion ; double pastille « +N autres » ; mémo PGRST202 jamais levé ; 404 des deux RPC en erreur de télémétrie ; oracle différentiel des notes ; verdict `anon` faux ; sortie précoce de la garde d'état adossée en silence à `trg_event_attendees_figes` ; sortie terminal de `moderation.js` non filtrée | voir le journal du 03/11 | **corrigés** |
+| RV-11 | **P1** | C-04 contourné par la discussion d'activité : un « peut-être » (même sur une activité complète, même bloqué par un venant) entrait dans `evgrp_<id>` et `conv_members` lui rendait la liste nominative | `can_join_event_conversation` en `going` ou organisation ; membre bloqué non montré ; purge (0 mesuré) ; le client n'entre qu'en « je viens » | **corrigé et retesté** (banc 128/0, `discussion-activite-refus` ⑤) |
+| RV-12 | P3 | retour arrière des identifiants réservés qui rouvrait TRUNCATE à `anon` ; squat `n_pa_`/`n_m_` d'origine client gardé ; second abonné au même préfixe perdu ; pair retiré d'un 1:1 réinscrit ; verdict des preuves sans droits de colonne ; retour arrière F-07 inexact ; canal v2 non lié à sa conversation ; sélecteur `data-evrating` non échappé ; attente des PWA ouvertes | voir le journal du 03/11 | **corrigés et retestés** |
+| RV-13 | P2 | Realtime diffuse les DELETE de `conv_members` et `notifications` à tout abonné, sans RLS (identifiants qui encodent l'activité et le compte) | préexistant, hors lot : refonte du temps réel | **résiduel R25** |
 
 ## Constats positifs notables (pas des anomalies)
 

@@ -24,6 +24,7 @@
 - 🚪 OUVERTURE AU PUBLIC — UN SEUL COLLER SQL, ET LA CI QUI MANGEAIT LA BANDE PASSANTE (2026-09-11)
 - 🧭 `search_path` FIGÉ — et pourquoi `''` n'est PAS la bonne réponse partout (2026-09-12)
 - 🧹 QUATRE SURFACES QUI VIEILLISSAIENT SANS TÉMOIN (2026-09-12, le soir)
+- 🛡️ QUI VA OÙ, QUI A ÉCRIT QUOI — les décisions produit de l'audit, et ce que trois contre-revues y ont trouvé (2026-11-03)
 
 ---
 
@@ -908,3 +909,95 @@ retrier.
 
 Verrous : `tests/e2e/avatars-et-ia-referentiel.spec.js` (10) et `smoke.spec.js` (+1). Réinjection
 faite pour les quatre.
+
+---
+
+## 🛡️ QUI VA OÙ, QUI A ÉCRIT QUOI — les décisions produit de l'audit, et ce que trois contre-revues y ont trouvé (2026-11-03)
+
+L'audit du 2026-11-02 (`.passio/audits/AUDIT_PASSIO_2026-11-02/`) laissait cinq décisions ouvertes. Benjamin les a
+déléguées (« je tranche moi-même au mieux pour l'app et je les mène au bout ») : elles sont tranchées ici, codées,
+testées sur banc, et **aucune migration n'est appliquée** tant que le client n'est pas servi en production et que la
+contre-revue humaine de la PR n'est pas faite. Deux relectures indépendantes ont lu la première version du lot :
+**deux défauts bloquants, trois moyens, six mineurs**, tous fermés avant la PR. La leçon tient en deux règles.
+
+**① Une policy qui s'ouvre sur un état que l'appelant écrit LUI-MÊME n'est pas une frontière.** C-04 ouvrait la liste
+nominative des participants « aux inscrits de l'activité ». Or « inscrit » se pose en une requête : la garde de
+capacité ne tenait que le passage à `going`, donc un compte s'écrivait `maybe` (ou `waitlist`) sur n'importe quelle
+activité, **passée et annulée comprises**, lisait toute la liste avec les heures de pointage, puis effaçait sa ligne.
+Même chose pour « les personnes que je suis » : suivre un profil public est accepté d'office (`trg_follows_statut`),
+la branche livrait donc l'historique de présence de n'importe qui à quiconque appuyait sur « Suivre ». **La règle de
+LECTURE et la règle d'ÉCRITURE de l'état qui l'ouvre se conçoivent ensemble** : la branche co-inscrit demande
+désormais une ligne `going` (`vient_a_activite`), une nouvelle garde `trg_event_attendees_etat` refuse tout état
+autre que `declined` sur une activité passée ou annulée, et la branche « suivi » exige la réciprocité — que la
+personne suivie est seule à accorder. Un blocage, dans un sens ou dans l'autre, ferme les deux.
+
+**①bis Une liste protégée ressort par toute table qui la RECOPIE** (troisième contre-revue, sur copie de banc avec
+les définitions de production). La liste des membres d'une discussion d'activité (`conv_members` de `evgrp_<id>`)
+EST la liste des venants : le client y inscrit chacun d'office. Or `can_join_event_conversation` y laissait entrer
+un « peut-être » — posé même sur une activité COMPLÈTE, la capacité ne gardant que `going` —, et un compte bloqué par
+un venant (seul le blocage avec l'AUTEUR était regardé) ; `conv_members_select_member` montre tous les membres à
+tout membre. La porte fermée sur `event_attendees` restait ouverte à côté, en un geste. La discussion suit
+désormais la règle de la liste : entrée en `going` ou en organisant, membre bloqué non montré dans une discussion
+d'activité, purge des membres qui n'y ont plus droit (0 mesuré), et le client ne la demande plus qu'en « je viens ».
+**Fermer une lecture, c'est chercher toutes les tables qui portent la même information** — membres d'une discussion,
+identifiants qui l'encodent (`n_pa_<activité>_<compte>`), événements temps réel (R25).
+
+**② Réserver une valeur à l'INSERT ne la réserve pas.** Les identifiants de notification écrits par le serveur
+(`n_m_`, `n_pa_`, `n_fw_`, `n_fr_`, `n_fa_`) étaient refusés à l'INSERT client ; mais `authenticated` tenait l'UPDATE
+de TABLE et la policy « Update propre » ne bornait pas les colonnes : un compte renommait sa propre notification en
+`n_fr_<A8>_<V8>` (les 8 premiers caractères d'un uuid sont publics), et le `on conflict (id) do update` de
+`follows_notifier`, sans `where`, réécrivait SA ligne — il lisait « A souhaite s'abonner à ton compte privé », V ne
+recevait rien. **Sur une table où le client n'écrit qu'une colonne, la fermeture est le GRANT de colonne**
+(`revoke update … ; grant update (seen) …`), pas la policy. `follows_notifier` garde son `do update` sur
+`user_id` ET `from_id` (le motif de `promouvoir_attente`) et marque enfin ses écritures comme serveur
+(`passio.notification_serveur`) ; la purge des identifiants réservés incohérents supprime **0 ligne** en production
+(13 lignes à préfixe réservé, toutes cohérentes, mesuré au canal ①).
+
+### Les décisions
+
+| Sujet | Décision | Où |
+|---|---|---|
+| **C-04** participants | la LISTE suit le lien (sa ligne ; l'organisation ; les venants entre eux ; les abonnés mutuels ; jamais un blocage) ; le NOMBRE reste public parmi les connectés (`participants_compte`) ; `rating`/`feedback`/`rated_at` illisibles par le rôle — moyenne par `notes_evenement` à partir de **3 notes de participants** (sinon `avg: null`, le nombre seul), retours écrits par `retours_evenement` (organisation seule) ; `anon` sans aucun droit | `migration_participants_visibilite_2026-11-03.sql` |
+| identifiants réservés (R5) | 5 familles réservées au serveur, UPDATE client limité à `seen`, `anon` sans écriture, purge des incohérents | `migration_notifications_identifiants_reserves_2026-11-03.sql` |
+| **E-08** preuve | un signalement de message COPIE le message au moment du signalement dans `signalements_preuves` (RLS sans policy, `service_role` seul en lecture/suppression), si le signalant est membre de la conversation (`is_conv_member`, sans la clause de blocage : bloquer puis signaler est le chemin normal du harcèlement) ; une copie ratée ne bloque jamais le signalement (WARNING) ; la preuve vit avec le signalement (`on delete cascade`) | `migration_signalements_preuves_2026-11-03.sql`, `scripts/moderation.js voir` |
+| appartenances (R6) | réinscrire le créateur ou le pair DÉCLARÉ d'un 1:1 non ambigu qui a écrit, jamais un tiers, un groupe, une discussion d'activité, un compte en suppression ni une paire bloquée — **mesuré : 0 ligne en production** (le seul couple orphelin est un tiers, qu'on ne réinscrit pas) ; retour arrière exact par `xmin` | `migration_conv_members_reparation_2026-11-03.sql` (AVANT `oracles_et_privileges`) |
+| **F-05/F-06/F-07** | index doublon et index jamais lu retirés ; index partiel du pilotage (construction non concurrente mesurée : 14 542 lignes, 17 Mo, sous la seconde) ; une seule policy `realtime.messages` en `(select auth.uid())` | `migration_index_realtime_2026-11-03.sql`, fiche dans `capacite-perf-realtime.md` |
+| **C-14** dépôt public | le dossier investisseurs sort de l'arbre et entre dans `.gitignore` ; les six vidéos de la racine (copies octet pour octet de `montage-video/`) sont retirées | commit `b0588e0` |
+
+**C-14, ce qui reste.** Les PDF (business plan, livre et dossier investisseurs, état du projet) restent lisibles dans
+l'HISTORIQUE git du dépôt public. Les deux remèdes ont un coût que ce lot n'a pas pris : réécrire l'historique
+(`git filter-repo` + push forcé) casse chaque clone et chaque PR ouverte ; rendre le dépôt privé peut retirer la
+protection de branche et le quota d'Actions selon le forfait GitHub. Décision à prendre par Benjamin (risque résiduel
+de l'audit). Le `git pull` qui suit la fusion SUPPRIME le dossier de son poste : il le sauvegarde AVANT.
+
+### Pièges de ce lot
+
+- **Le client d'abord, et complètement.** L'en-tête de C-04 exigeait un client prêt ; la première version ne l'était
+  pas : les cartes UI-4A2 et la fiche UI-4B (actives par défaut) comptaient la liste LISIBLE — « 1 participant · 1
+  place restante » pour 5/6 —, et `supaLoadEventRatings` changeait `avg: null` en 0 (« ☆☆☆☆☆ 0 · 2 avis »). Un
+  compteur affiché passe par `_nbInscrits` (app-07), une moyenne absente reste `null` jusqu'à l'écran.
+- **Un mémo « fonction absente » a une durée de vie.** Une PWA ouverte avant la migration gardait `PGRST202` pour la
+  session entière et affichait la liste partielle comme un nombre : une heure (`_memoRpcAbsenteActif`), levé aussi par
+  `_oublierRefusLecturesIRL`.
+- **La file se lit sous un rôle qui la voit encore.** Après C-04, celui qui se désinscrit ne voit plus la liste
+  d'attente : la promotion part par la RPC même quand la file locale est vide (la base choisit), et sur CHAQUE départ
+  (`going` → retrait, `declined` ou `maybe`).
+- **Un verdict qui ne contrôle que deux privilèges imprime OK sur un troisième.** Le verdict d'`anon` teste chaque
+  privilège de table et de colonne, MAINTAIN à partir de PostgreSQL 17.
+- **Une nouvelle table de compte doit être VUE par la barrière** : `audit-tables-compte` ne reconnaissait pas
+  `auteur_id`, la table des preuves (texte privé + auteur) lui échappait ; sa survie à la suppression du compte de
+  l'auteur est maintenant une EXCEPTION écrite, comme `reports.reporter_id`.
+
+- **Un retour arrière se lit dans l'ORDRE d'application.** Celui des identifiants réservés rendait à `anon`
+  TRUNCATE / REFERENCES / TRIGGER, que `oracles_et_privileges` (appliquée avant) venait de fermer : il rend
+  désormais l'état exact d'avant CETTE migration, et le banc compare l'empreinte des droits avant / après.
+- **Un filet qui ne doit rien faire aujourd'hui porte un plafond.** `conv_members_reparation` ne réinscrit rien en
+  production ; un pair RETIRÉ délibérément d'un 1:1 est indiscernable d'une ligne perdue : au-delà de 0 couple
+  réparable au moment de l'application, elle s'arrête (`passio.conv_members_plafond`, relu couple par couple).
+
+**Bancs** (`tests/sql/`, ramassés par `bancs-sql-restants.sh`) : participants-visibilite 128, notifications-
+identifiants-reserves 77, signalements-preuves 82, conv-members-reparation 56, index-realtime 24 — chaque correctif
+réinjecté y rougit.
+**Ordre d'application** (après la contre-revue de la PR et le client servi) : `conv_members_reparation` →
+`oracles_et_privileges` (#681) → `participants_visibilite` → `notifications_identifiants_reserves` →
+`index_realtime` → `signalements_preuves` ; puis mesurer l'état en base (canal ①), jamais le tableau de verdict.
