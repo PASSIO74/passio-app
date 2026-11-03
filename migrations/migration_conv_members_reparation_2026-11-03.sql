@@ -2,9 +2,10 @@
 -- MESSAGERIE — LES PARTICIPANTS D'UN 1:1 RETROUVENT LEUR LIGNE `conv_members`
 -- AVANT QUE `conv_reads` NE SE FERME AUX NON-MEMBRES (revue 10b, R6, 2026-11-03)
 --
--- Une transaction, REJOUABLE, tableau de verdict en fin (11 lignes : neuf
+-- Une transaction, REJOUABLE, tableau de verdict en fin (12 lignes : dix
 -- NOMBRES et deux contrôles OK/ECHEC). Rien de personnel dans ce fichier ni
--- dans son verdict : des comptes de lignes et un numéro de transaction.
+-- dans son verdict, ni dans le refus du plafond : des comptes de lignes et un
+-- numéro de transaction.
 --
 -- ⚠️ ORDRE : à appliquer AVANT `migration_audit_2026-11-02_oracles_et_privileges.sql`.
 -- Celle-ci ajoute `is_conv_member(conv_id, auth.uid())` aux policies INSERT et
@@ -31,6 +32,34 @@
 --     mesurées). Cette migration-ci n'insère donc AUCUNE ligne aujourd'hui :
 --     elle est le filet de l'état à l'instant de l'application, et son verdict
 --     le dira.
+--   · RE-MESURÉ le 2026-11-03, après la revue indépendante (canal ①, lecture
+--     seule, la classification ① ci-dessous en agrégat) : 0 couple réparable,
+--     1 tiers — inchangé. Le plafond ci-dessous ne refuse donc rien aujourd'hui.
+--
+-- ⚠️ PLAFOND — un couple réparable n'est réinscrit qu'APRÈS REVUE HUMAINE
+-- (revue indépendante du 2026-11-03, reproduit sur copie de banc). Le
+-- créateur d'un 1:1 peut RETIRER son pair (policy DELETE « Suppression
+-- admin » : soi, ou n'importe quel membre quand on est le créateur). Un pair
+-- retiré qui avait écrit laisse EXACTEMENT la trace d'une ligne perdue : des
+-- messages, aucune ligne `conv_members` — et `conv_members` ne garde aucun
+-- historique qui les distingue. La règle ci-dessous le réinscrirait, et il
+-- relirait toute la conversation, messages écrits DEPUIS son retrait compris.
+-- Donc : le plafond vaut 0 par défaut, et dès qu'un couple est réparable la
+-- migration REFUSE (`raise exception`, rien n'est inséré, le message ne porte
+-- que des nombres). Si elle refuse :
+--   1. lister les couples au canal ① (lecture seule — une table temporaire n'y
+--      est pas permise) : la requête ① en remplaçant sa première ligne
+--      `create temp table _cmr_couples on commit drop as` par
+--      `select * from (`, et son `;` final par `) s where issue = 'reparable';` ;
+--   2. les revoir UN PAR UN (un retrait délibéré ne se lit pas en base :
+--      demander au créateur, ou s'abstenir) ;
+--   3. seulement si TOUS doivent revenir, ajouter juste après `begin;` la ligne
+--      `select set_config('passio.conv_members_plafond', '<N>', true);`
+--      (N = le nombre revu) — un changement du fichier, donc une PR et sa
+--      contre-revue ; sinon, ne pas appliquer cette migration.
+-- RÉSIDU : le plafond borne un NOMBRE, pas des identités — refaire la liste le
+-- jour même, juste avant d'appliquer. Et un couple revu « à rétablir » reste un
+-- jugement humain : la base ne sait pas dire s'il avait été retiré.
 --
 -- LA RÈGLE (et rien d'autre ne reçoit de ligne) :
 --   · conversation 1:1 seulement : `coalesce(is_group, false) = false` ET
@@ -132,6 +161,21 @@ select x.conv_id, x.user_id,
   left join conv on conv.id = x.conv_id
   left join un_a_un u on u.conv_id = x.conv_id;
 
+-- ── ①bis Le plafond : sans revue humaine, aucun couple réparable n'est admis ──
+-- Un pair RETIRÉ par le créateur se lit ici comme une ligne perdue (voir l'en-tête).
+do $$
+declare
+  reparables integer := (select count(*) from _cmr_couples where issue = 'reparable');
+  plafond    integer := coalesce(nullif(current_setting('passio.conv_members_plafond', true), ''), '0')::integer;
+begin
+  if reparables > plafond then
+    raise exception 'conv_members : % couple(s) réparable(s) pour un plafond revu de % — à revoir un par un AVANT d''appliquer ; rien n''est inséré', reparables, plafond
+      using errcode = 'P0001',
+            detail = 'Un pair RETIRÉ par le créateur d''un 1:1 se lit ici comme une ligne perdue : le réinscrire lui rendrait toute la conversation, messages écrits depuis son retrait compris.',
+            hint = 'Lister les couples au canal ① (requête ① de l''en-tête), les revoir un par un, et seulement s''ils doivent TOUS revenir poser le plafond juste après begin; (voir l''en-tête).';
+  end if;
+end $$;
+
 -- ── ② La réparation : le créateur ou le pair déclaré d'un 1:1, rien d'autre ──
 insert into public.conv_members (conv_id, user_id)
 select conv_id, user_id from _cmr_couples where issue = 'reparable'
@@ -140,6 +184,8 @@ on conflict (conv_id, user_id) do nothing;
 -- ── Verdict (nombres seulement) ──
 select 'couples (conversation, émetteur) sans appartenance, AVANT' as controle, (select count(*) from _cmr_couples)::text as valeur
 union all select 'dont réparables (1:1, créateur ou pair déclaré, compte vivant, sans blocage)', (select count(*) from _cmr_couples where issue = 'reparable')::text
+union all select 'plafond revu (couples réparables admis après revue humaine ; 0 sans revue)',
+       coalesce(nullif(current_setting('passio.conv_members_plafond', true), ''), '0')
 union all select 'laissés : groupes', (select count(*) from _cmr_couples where issue = 'groupe')::text
 union all select 'laissés : discussions d''activité evgrp_', (select count(*) from _cmr_couples where issue = 'evgrp')::text
 union all select 'laissés : tiers d''un 1:1 (ni créateur ni pair déclaré)', (select count(*) from _cmr_couples where issue = 'tiers')::text

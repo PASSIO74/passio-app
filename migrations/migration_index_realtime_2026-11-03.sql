@@ -32,12 +32,25 @@
 --         décodage WAL est le poste CPU n° 1. On garde une seule policy, en
 --         `(select auth.uid())`, même prédicat.
 --
--- Rejouable ; verdict en fin. RETOUR ARRIÈRE :
---   create index passions_trgm_idx on public.passions using gin (normalized_label gin_trgm_ops);
---   create index passions_aliases_gin on public.passions using gin (aliases);
---   drop index if exists public.idx_tel_env_received_identifies;
---   create policy "Utilisateur recoit ses messages" on realtime.messages for select to authenticated
---     using (realtime.topic() = ('user:' || (auth.uid())::text));
+-- Rejouable ; verdict en fin (banc : tests/sql/migration-index-realtime.test.sh).
+-- RETOUR ARRIÈRE — EXACT, exécutable tel quel en ôtant « --| » (le banc le
+-- rejoue et compare index et policies à l'état d'avant). Il rend les DEUX
+-- policies d'origine, lues en production le 2026-11-03 (pg_policies :
+-- PERMISSIVE, authenticated, SELECT, `realtime.topic() = ('user:'::text ||
+-- (auth.uid())::text)` toutes les deux) — la première version ne recréait que
+-- la jumelle sans accent et laissait « reçoit » en initplan (revue du
+-- 2026-11-03). Les index, à leur définition de production (pg_indexes) :
+--| begin;
+--| create index if not exists passions_trgm_idx on public.passions using gin (normalized_label gin_trgm_ops);
+--| create index if not exists passions_aliases_gin on public.passions using gin (aliases);
+--| drop index if exists public.idx_tel_env_received_identifies;
+--| drop policy if exists "Utilisateur reçoit ses messages" on realtime.messages;
+--| drop policy if exists "Utilisateur recoit ses messages" on realtime.messages;
+--| create policy "Utilisateur reçoit ses messages" on realtime.messages for select to authenticated
+--|   using (realtime.topic() = ('user:' || (auth.uid())::text));
+--| create policy "Utilisateur recoit ses messages" on realtime.messages for select to authenticated
+--|   using (realtime.topic() = ('user:' || (auth.uid())::text));
+--| commit;
 -- ═════════════════════════════════════════════════
 begin;
 

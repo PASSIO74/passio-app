@@ -27,7 +27,9 @@
 #   ⑩ MUTATIONS (base neuve chacune) : sans la clause d'appartenance, le
 #      non-membre fait copier ; sans le rattrapage, une copie en échec fait
 #      tomber le signalement ; sans le REVOKE, le verdict rougit et un compte
-#      lit les preuves ;
+#      lit les preuves ; un droit de COLONNE laissé par un AUTRE concédant (que
+#      le REVOKE de la migration, qui ne retire que les siens, ne touche pas)
+#      rougit la ligne « aucun droit » — revue du 2026-11-03 ;
 #   ⑪ LE LECTEUR : `scripts/moderation.js voir` contre un PostgREST simulé —
 #      la preuve d'abord, l'enveloppe média décodée (jamais recopiée), l'auteur
 #      abrégé, le repli sur le message actuel (et sur une table absente), et
@@ -258,6 +260,24 @@ cmp -s "$MIGRATION" "$TRAVAIL/mut_c.sql" && { echo "  ❌ mutation (c) sans effe
 sc="$(psql -h "$BASE" -p "$PORT" -U postgres -d mut_c -q -f "$TRAVAIL/mut_c.sql" 2>&1)"
 verifier "(c) sans REVOKE : le verdict rougit (droits clients, service_role qui écrit)" "2" "$(printf '%s\n' "$sc" | grep -cE '\|\s*ECHEC\s*$' || true)"
 verifier "(c) … et un compte connecté LIT les preuves (RLS sans policy : 0 ligne, mais plus de refus)" "0" "$(EN_SUR mut_c "$B" "select count(*) from public.signalements_preuves;")"
+# (d) un droit de COLONNE d'un autre concédant (revue du 2026-11-03) : le fichier intact, l'état altéré.
+psql -h "$BASE" -p "$PORT" -U postgres -q -c "create database col_d" >/dev/null
+socle col_d
+psql -h "$BASE" -p "$PORT" -U postgres -d col_d -q -v ON_ERROR_STOP=1 -f "$MIGRATION" >/dev/null 2>&1
+psql -h "$BASE" -p "$PORT" -U postgres -d col_d -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+do $$ begin if not exists (select 1 from pg_roles where rolname = 'tiers_concedant') then create role tiers_concedant nologin; end if; end $$;
+grant select (contenu, auteur_id) on public.signalements_preuves to tiers_concedant with grant option;
+set role tiers_concedant;
+grant select (contenu, auteur_id) on public.signalements_preuves to authenticated;
+reset role;
+SQL
+sd="$(psql -h "$BASE" -p "$PORT" -U postgres -d col_d -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || true
+verifier "(d) le REVOKE de la migration (rejouée) ne retire pas le droit de colonne d'un autre concédant" "t" \
+  "$(psql -h "$BASE" -p "$PORT" -U postgres -d col_d -tA -c "select has_column_privilege('authenticated', 'public.signalements_preuves', 'contenu', 'SELECT');")"
+verifier "(d) … la ligne « aucun droit pour anon ni authenticated » le VOIT : ECHEC" "ECHEC" \
+  "$(printf '%s\n' "$sd" | grep -F 'aucun droit pour anon ni authenticated' | awk -F'|' '{gsub(/ /, "", $NF); print $NF}')"
+verifier "(d) … et elle seule rougit (1 ECHEC, 7 OK)" "7/1" \
+  "$(printf '%s\n' "$sd" | grep -cE '\|\s*OK\s*$' || true)/$(printf '%s\n' "$sd" | grep -cE '\|\s*ECHEC\s*$' || true)"
 
 echo "── ⑪ LE LECTEUR : scripts/moderation.js voir (PostgREST simulé) ──────"
 TYPES_ADMIS="$(Q "select pg_get_constraintdef(oid) from pg_constraint where conname = 'reports_target_type_chk';")"

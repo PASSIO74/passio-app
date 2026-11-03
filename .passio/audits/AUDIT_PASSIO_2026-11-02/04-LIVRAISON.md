@@ -86,12 +86,12 @@ l'ancien chemin tant que la migration manque (PGRST202, mémo d'une heure).
 
 | # | Fichier | Objet | Banc | Pourquoi à ce rang |
 |---|---|---|---|---|
-| 1 | `migration_conv_members_reparation_2026-11-03.sql` | rajoute le créateur / le pair déclaré des 1:1 sans ambiguïté qui ont écrit (0 ligne mesurée en prod) | `migration-conv-members-reparation` 43/0 | AVANT `oracles_et_privileges`, qui conditionne `conv_reads` à l'appartenance |
+| 1 | `migration_conv_members_reparation_2026-11-03.sql` | rajoute le créateur / le pair déclaré des 1:1 sans ambiguïté qui ont écrit (0 ligne mesurée en prod) | `migration-conv-members-reparation` 56/0 | AVANT `oracles_et_privileges`, qui conditionne `conv_reads` à l'appartenance ; s'arrête si un couple réparable est apparu depuis la revue (plafond 0, `passio.conv_members_plafond`) |
 | 2 | `migration_audit_2026-11-02_oracles_et_privileges.sql` | C-01 / C-03 (revue #681 n°5748485931, commit `5e9367d`) | 38/38 | `supaMarkRead` répare déjà l'appartenance (R6) |
-| 3 | `migration_participants_visibilite_2026-11-03.sql` | C-04 : liste par lien, compte par RPC `participants_compte`, notes en agrégat ≥ 3 (`notes_evenement`), garde d'état d'inscription | `migration-participants-visibilite` 111/0 | client d'abord, **et 48 h après le déploiement** : une PWA restée ouverte garde l'ancien code (son `RETURNING *` prendrait 42501) |
-| 4 | `migration_notifications_identifiants_reserves_2026-11-03.sql` | R5 : 5 familles d'identifiants réservées au serveur, UPDATE client limité à `seen`, `follows_notifier` gardé | `migration-notifications-identifiants-reserves` 59/0 | indépendante |
-| 5 | `migration_index_realtime_2026-11-03.sql` | F-05/F-06/F-07 (DDL seul) | `migration-index-realtime` 18/18 | indépendante ; > 1 M lignes de télémétrie le jour J → index en `concurrently` à l'éditeur |
-| 6 | `migration_signalements_preuves_2026-11-03.sql` | E-08 : copie serveur du message signalé, lisible du seul `service_role` | `migration-signalements-preuves` 79/0 | indépendante ; sans elle, `moderation.js voir` retombe sur `conv_messages` |
+| 3 | `migration_participants_visibilite_2026-11-03.sql` | C-04 : liste par lien, compte par RPC `participants_compte`, notes en agrégat ≥ 3 (`notes_evenement`), garde d'état d'inscription, discussion d'activité réservée aux venants | `migration-participants-visibilite` 128/0 | client d'abord, **et 48 h après le déploiement** : une PWA restée ouverte garde l'ancien code (son `RETURNING *` prendrait 42501) |
+| 4 | `migration_notifications_identifiants_reserves_2026-11-03.sql` | R5 : 5 familles d'identifiants réservées au serveur, UPDATE client limité à `seen`, `follows_notifier` gardé | `migration-notifications-identifiants-reserves` 77/0 | indépendante |
+| 5 | `migration_index_realtime_2026-11-03.sql` | F-05/F-06/F-07 (DDL seul) | `migration-index-realtime` 24/0 | indépendante ; > 1 M lignes de télémétrie le jour J → index en `concurrently` à l'éditeur |
+| 6 | `migration_signalements_preuves_2026-11-03.sql` | E-08 : copie serveur du message signalé, lisible du seul `service_role` | `migration-signalements-preuves` 82/0 | indépendante ; sans elle, `moderation.js voir` retombe sur `conv_messages` |
 
 Chaque fichier porte son retour arrière en tête. Après chaque application : mesurer l'état en base au canal ①
 (policies, GRANTs par `aclexplode`, fonctions), jamais le tableau de verdict ; remesurer l'EXPLAIN F-06.

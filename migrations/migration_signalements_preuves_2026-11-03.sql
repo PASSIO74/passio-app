@@ -117,15 +117,24 @@ select 'signalements_preuves : existe, RLS active, AUCUNE policy' as controle,
        case when (select relrowsecurity from pg_class where oid = to_regclass('public.signalements_preuves'))
              and not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'signalements_preuves')
             then 'OK' else 'ECHEC' end as valeur
-union all select 'signalements_preuves : aucun droit pour anon ni authenticated',
+-- Droits de TABLE, droits de COLONNE (un GRANT de colonne posé par un autre
+-- concédant survit au REVOKE ci-dessus, qui ne retire que ceux de l'appelant —
+-- revue du 2026-11-03), et MAINTAIN à partir de PostgreSQL 17 (le CASE n'évalue
+-- pas ce privilège, inconnu en 16, sur le banc).
+union all select 'signalements_preuves : aucun droit pour anon ni authenticated (table, colonne, MAINTAIN en 17)',
        case when not exists (
          select 1 from unnest(array['anon', 'authenticated']) r, unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) p
-          where has_table_privilege(r, 'public.signalements_preuves', p)) then 'OK' else 'ECHEC' end
-union all select 'signalements_preuves : service_role lit et efface, n''écrit ni ne réécrit',
+          where has_table_privilege(r, 'public.signalements_preuves', p))
+             and not exists (select 1 from unnest(array['anon', 'authenticated']) r
+                              where has_any_column_privilege(r, 'public.signalements_preuves', 'SELECT,INSERT,UPDATE,REFERENCES'))
+             and case when current_setting('server_version_num')::int >= 170000
+                      then not exists (select 1 from unnest(array['anon', 'authenticated']) r
+                                        where has_table_privilege(r, 'public.signalements_preuves', 'MAINTAIN'))
+                      else true end then 'OK' else 'ECHEC' end
+union all select 'signalements_preuves : service_role lit et efface, n''écrit ni ne réécrit (pas même une colonne)',
        case when has_table_privilege('service_role', 'public.signalements_preuves', 'SELECT')
              and has_table_privilege('service_role', 'public.signalements_preuves', 'DELETE')
-             and not has_table_privilege('service_role', 'public.signalements_preuves', 'INSERT')
-             and not has_table_privilege('service_role', 'public.signalements_preuves', 'UPDATE') then 'OK' else 'ECHEC' end
+             and not has_any_column_privilege('service_role', 'public.signalements_preuves', 'INSERT,UPDATE') then 'OK' else 'ECHEC' end
 union all select 'report_id : clé primaire, référence reports(id) ON DELETE CASCADE (la preuve vit autant que le signalement)',
        case when exists (select 1 from pg_constraint where conrelid = 'public.signalements_preuves'::regclass and contype = 'p')
              and exists (select 1 from pg_constraint where conrelid = 'public.signalements_preuves'::regclass and contype = 'f'

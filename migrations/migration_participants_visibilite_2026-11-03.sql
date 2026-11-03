@@ -44,6 +44,9 @@
 --     « declined » est refusée sur une activité ANNULÉE (`activite_annulee`) ou
 --     PASSÉE (`activite_passee`) — mêmes motifs, même définition de « passée »
 --     que la garde de capacité, qui ne tient que le passage à « going ».
+--  ⑥ LA DISCUSSION D'ACTIVITÉ (`evgrp_<id>`) suit la même règle : on n'y entre
+--     qu'en venant ou en organisant, un membre bloqué n'y est pas montré, et
+--     ceux qui n'y ont plus droit en sortent (voir le bloc ⑥).
 --
 -- CE QUE LES CONTRE-REVUES ONT FERMÉ (la première version de ce fichier) :
 --  · CONTOURNEMENT PAR « PEUT-ÊTRE » : la branche co-inscrit s'ouvrait à tout
@@ -120,6 +123,12 @@
 --   drop function if exists public.vient_a_activite(text);
 --   create policy event_attendees_select_authentifie on public.event_attendees for select to authenticated using (true);
 --   grant select on public.event_attendees to authenticated;
+--   ⑥ : recréer `can_join_event_conversation` avec `AND a.rsvp IN ('going', 'maybe')`
+--   à la place de la ligne C-04 (texte de production dans le bloc ⑥ ci-dessous) ;
+--   drop policy if exists conv_members_select_member on public.conv_members;
+--   create policy conv_members_select_member on public.conv_members for select to authenticated
+--     using (public.is_conv_member(conv_id, (select auth.uid())::text));
+--   (les membres retirés des discussions d'activité ne se rendent pas : 0 mesuré)
 --   (les RPC et `organise_activite` peuvent rester : sans appelant, elles sont
 --   inertes ; les droits d'`anon` ne se rendent pas — aucun n'était utilisé)
 -- ═════════════════════════════════════════════════
@@ -309,6 +318,80 @@ $$;
 revoke all on function public.retours_evenement(text) from public, anon;
 grant execute on function public.retours_evenement(text) to authenticated;
 
+-- ── ⑥ La discussion d'activité suit la même règle (troisième contre-revue) ──
+-- Mesuré au banc avec les définitions de PRODUCTION : `can_join_event_conversation`
+-- laissait entrer un « peut-être » — même sur une activité COMPLÈTE (la
+-- capacité ne garde que « going »), même pour un compte bloqué par un venant
+-- (seul le blocage avec l'AUTEUR était regardé) —, et `conv_members_select_member`
+-- montre TOUS les membres à tout membre. Le client inscrivant d'office chaque
+-- venant à `evgrp_<id>`, la liste nominative revenait par la discussion, en
+-- un geste. Désormais :
+--   · on n'y entre qu'en VENANT (« going », la règle de `vient_a_activite`) ou
+--     en organisant (`organise_activite`) — le reste de la fonction est celui
+--     de production, mot pour mot (discussion créée par l'auteur ou un
+--     co-organisateur, activité active, pas de blocage avec l'auteur, accès
+--     adulte) ;
+--   · dans une discussion d'activité, un membre bloqué (dans un sens ou dans
+--     l'autre) n'est pas MONTRÉ — comme la liste elle-même ;
+--   · les membres actuels qui n'y ont plus droit en sortent. Mesuré au canal ①
+--     le 2026-11-03 : 2 membres dans 2 discussions d'activité, tous deux
+--     organisation — 0 ligne retirée attendue.
+-- Résidu, dit tel quel : un venant qui repasse « peut-être » par l'API brute
+-- sans quitter la discussion y reste (le client la quitte, `_leaveEventConversation`) :
+-- il a vu la liste en venant, et peut redevenir venant tant qu'il reste une place.
+create or replace function public.can_join_event_conversation(_conv_id text)
+returns boolean
+language sql stable security definer set search_path to ''
+as $$
+  SELECT CASE
+    WHEN auth.uid() IS NULL OR _conv_id IS NULL THEN FALSE
+    ELSE EXISTS (
+      SELECT 1
+        FROM public.events e
+        JOIN public.event_attendees a
+          ON a.event_id = e.id
+         AND a.user_id = (auth.uid())::text
+        JOIN public.conversations c
+          ON c.id = e.conv_id
+       WHERE e.conv_id = _conv_id
+         AND e.conv_id = ('evgrp_' || e.id)
+         -- IRL-10 : l'auteur OU un co-organisateur a pu créer la discussion.
+         AND (c.created_by = e.author_id
+              OR (e.co_organizers IS NOT NULL
+                  AND jsonb_typeof(e.co_organizers) = 'array'
+                  AND e.co_organizers ? c.created_by))
+         AND e.status = 'active'
+         -- C-04 : « going » seul, ou l'organisation — jamais « maybe ».
+         AND (a.rsvp = 'going' OR public.organise_activite(e.id))
+         AND NOT public.is_blocked_with(e.author_id)
+         AND public.adult_access_allowed()
+    )
+  END
+$$;
+
+drop policy if exists conv_members_select_member on public.conv_members;
+create policy conv_members_select_member on public.conv_members
+  for select to authenticated
+  using (
+    public.is_conv_member(conv_id, (select auth.uid())::text)
+    and (
+      left(conv_id, 6) <> 'evgrp_'
+      or user_id = (select auth.uid())::text
+      or not public.is_blocked_with(conv_members.user_id)
+    )
+  );
+
+delete from public.conv_members cm
+ using public.events e
+ where e.conv_id = cm.conv_id
+   and cm.conv_id = 'evgrp_' || e.id
+   and cm.user_id is distinct from e.author_id
+   and cm.user_id is distinct from e.organizer_id
+   and not (e.co_organizers is not null and jsonb_typeof(e.co_organizers) = 'array' and e.co_organizers ? cm.user_id)
+   and not exists (select 1 from public.conversations c where c.id = cm.conv_id and c.created_by = cm.user_id)
+   and not exists (select 1 from public.event_attendees a
+                    where a.event_id = e.id and a.user_id = cm.user_id and a.rsvp = 'going');
+
 -- ── Verdict ──
 -- Chaque ligne MESURE ce qu'elle affirme : un privilège non nommé ici n'est pas
 -- contrôlé, d'où la liste complète pour `anon` (MAINTAIN n'existe qu'à partir de
@@ -381,6 +464,23 @@ union all select 'cinq fonctions SECURITY DEFINER à search_path vide, les RPC e
              and not has_function_privilege('anon', 'public.notes_evenement(text)', 'execute')
              and not has_function_privilege('anon', 'public.retours_evenement(text)', 'execute')
              and not has_function_privilege('anon', 'public.vient_a_activite(text)', 'execute')
-             and not has_function_privilege('anon', 'public.organise_activite(text)', 'execute') then 'OK' else 'ECHEC' end;
+             and not has_function_privilege('anon', 'public.organise_activite(text)', 'execute') then 'OK' else 'ECHEC' end
+union all select 'discussion d''activité : on n''y entre qu''en venant (« going ») ou en organisant, et un membre bloqué n''y est pas montré',
+       case when (select p.prosrc from pg_proc p where p.oid = to_regprocedure('public.can_join_event_conversation(text)')) like '%a.rsvp = ''going'' OR public.organise_activite(e.id)%'
+             and (select p.prosrc from pg_proc p where p.oid = to_regprocedure('public.can_join_event_conversation(text)')) not like '%''maybe''%'
+             and (select p.prosecdef and array_to_string(p.proconfig, ';') = 'search_path=""' from pg_proc p where p.oid = to_regprocedure('public.can_join_event_conversation(text)'))
+             and (select count(*) from pg_policies where schemaname = 'public' and tablename = 'conv_members' and cmd = 'SELECT') = 1
+             and (select qual from pg_policies where schemaname = 'public' and tablename = 'conv_members' and policyname = 'conv_members_select_member') like '%is_conv_member%'
+             and (select qual from pg_policies where schemaname = 'public' and tablename = 'conv_members' and policyname = 'conv_members_select_member') like '%evgrp\_%'
+             and (select qual from pg_policies where schemaname = 'public' and tablename = 'conv_members' and policyname = 'conv_members_select_member') like '%is_blocked_with%'
+             and (select roles::text from pg_policies where schemaname = 'public' and tablename = 'conv_members' and policyname = 'conv_members_select_member') = '{authenticated}' then 'OK' else 'ECHEC' end
+union all select 'discussion d''activité : aucun membre hors organisation, créateur ou venant',
+       case when not exists (
+         select 1 from public.conv_members cm join public.events e on e.conv_id = cm.conv_id and cm.conv_id = 'evgrp_' || e.id
+          where cm.user_id is distinct from e.author_id and cm.user_id is distinct from e.organizer_id
+            and not (e.co_organizers is not null and jsonb_typeof(e.co_organizers) = 'array' and e.co_organizers ? cm.user_id)
+            and not exists (select 1 from public.conversations c where c.id = cm.conv_id and c.created_by = cm.user_id)
+            and not exists (select 1 from public.event_attendees a where a.event_id = e.id and a.user_id = cm.user_id and a.rsvp = 'going')
+       ) then 'OK' else 'ECHEC' end;
 
 commit;

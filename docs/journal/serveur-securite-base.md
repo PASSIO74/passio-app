@@ -24,7 +24,7 @@
 - 🚪 OUVERTURE AU PUBLIC — UN SEUL COLLER SQL, ET LA CI QUI MANGEAIT LA BANDE PASSANTE (2026-09-11)
 - 🧭 `search_path` FIGÉ — et pourquoi `''` n'est PAS la bonne réponse partout (2026-09-12)
 - 🧹 QUATRE SURFACES QUI VIEILLISSAIENT SANS TÉMOIN (2026-09-12, le soir)
-- 🛡️ QUI VA OÙ, QUI A ÉCRIT QUOI — les décisions produit de l'audit, et ce que deux contre-revues y ont trouvé (2026-11-03)
+- 🛡️ QUI VA OÙ, QUI A ÉCRIT QUOI — les décisions produit de l'audit, et ce que trois contre-revues y ont trouvé (2026-11-03)
 
 ---
 
@@ -912,7 +912,7 @@ faite pour les quatre.
 
 ---
 
-## 🛡️ QUI VA OÙ, QUI A ÉCRIT QUOI — les décisions produit de l'audit, et ce que deux contre-revues y ont trouvé (2026-11-03)
+## 🛡️ QUI VA OÙ, QUI A ÉCRIT QUOI — les décisions produit de l'audit, et ce que trois contre-revues y ont trouvé (2026-11-03)
 
 L'audit du 2026-11-02 (`.passio/audits/AUDIT_PASSIO_2026-11-02/`) laissait cinq décisions ouvertes. Benjamin les a
 déléguées (« je tranche moi-même au mieux pour l'app et je les mène au bout ») : elles sont tranchées ici, codées,
@@ -930,6 +930,17 @@ LECTURE et la règle d'ÉCRITURE de l'état qui l'ouvre se conçoivent ensemble*
 désormais une ligne `going` (`vient_a_activite`), une nouvelle garde `trg_event_attendees_etat` refuse tout état
 autre que `declined` sur une activité passée ou annulée, et la branche « suivi » exige la réciprocité — que la
 personne suivie est seule à accorder. Un blocage, dans un sens ou dans l'autre, ferme les deux.
+
+**①bis Une liste protégée ressort par toute table qui la RECOPIE** (troisième contre-revue, sur copie de banc avec
+les définitions de production). La liste des membres d'une discussion d'activité (`conv_members` de `evgrp_<id>`)
+EST la liste des venants : le client y inscrit chacun d'office. Or `can_join_event_conversation` y laissait entrer
+un « peut-être » — posé même sur une activité COMPLÈTE, la capacité ne gardant que `going` —, et un compte bloqué par
+un venant (seul le blocage avec l'AUTEUR était regardé) ; `conv_members_select_member` montre tous les membres à
+tout membre. La porte fermée sur `event_attendees` restait ouverte à côté, en un geste. La discussion suit
+désormais la règle de la liste : entrée en `going` ou en organisant, membre bloqué non montré dans une discussion
+d'activité, purge des membres qui n'y ont plus droit (0 mesuré), et le client ne la demande plus qu'en « je viens ».
+**Fermer une lecture, c'est chercher toutes les tables qui portent la même information** — membres d'une discussion,
+identifiants qui l'encodent (`n_pa_<activité>_<compte>`), événements temps réel (R25).
 
 **② Réserver une valeur à l'INSERT ne la réserve pas.** Les identifiants de notification écrits par le serveur
 (`n_m_`, `n_pa_`, `n_fw_`, `n_fr_`, `n_fa_`) étaient refusés à l'INSERT client ; mais `authenticated` tenait l'UPDATE
@@ -977,8 +988,16 @@ de l'audit). Le `git pull` qui suit la fusion SUPPRIME le dossier de son poste :
   `auteur_id`, la table des preuves (texte privé + auteur) lui échappait ; sa survie à la suppression du compte de
   l'auteur est maintenant une EXCEPTION écrite, comme `reports.reporter_id`.
 
-**Bancs** (`tests/sql/`, ramassés par `bancs-sql-restants.sh`) : participants-visibilite, notifications-identifiants-
-reserves, signalements-preuves, conv-members-reparation, index-realtime — chaque correctif réinjecté y rougit.
+- **Un retour arrière se lit dans l'ORDRE d'application.** Celui des identifiants réservés rendait à `anon`
+  TRUNCATE / REFERENCES / TRIGGER, que `oracles_et_privileges` (appliquée avant) venait de fermer : il rend
+  désormais l'état exact d'avant CETTE migration, et le banc compare l'empreinte des droits avant / après.
+- **Un filet qui ne doit rien faire aujourd'hui porte un plafond.** `conv_members_reparation` ne réinscrit rien en
+  production ; un pair RETIRÉ délibérément d'un 1:1 est indiscernable d'une ligne perdue : au-delà de 0 couple
+  réparable au moment de l'application, elle s'arrête (`passio.conv_members_plafond`, relu couple par couple).
+
+**Bancs** (`tests/sql/`, ramassés par `bancs-sql-restants.sh`) : participants-visibilite 128, notifications-
+identifiants-reserves 77, signalements-preuves 82, conv-members-reparation 56, index-realtime 24 — chaque correctif
+réinjecté y rougit.
 **Ordre d'application** (après la contre-revue de la PR et le client servi) : `conv_members_reparation` →
 `oracles_et_privileges` (#681) → `participants_visibilite` → `notifications_identifiants_reserves` →
 `index_realtime` → `signalements_preuves` ; puis mesurer l'état en base (canal ①), jamais le tableau de verdict.

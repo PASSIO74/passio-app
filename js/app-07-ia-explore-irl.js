@@ -3603,8 +3603,14 @@ async function setEventRsvp(id, rsvp) {
   if (rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
     supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
   }
-  // Les participants (je viens / peut-être) rejoignent la discussion de groupe.
-  if (rsvp === "going" || rsvp === "maybe") _joinEventConversation(ev);
+  // Les VENANTS rejoignent la discussion de groupe ; tout autre état la quitte.
+  // ⚠️ « peut-être » n'y entre plus (C-04, troisième contre-revue du
+  // 2026-11-03) : la liste des membres d'une discussion d'activité EST la liste
+  // des venants, et un « peut-être » se pose même sur une activité complète. Le
+  // serveur le refuse aussi (`can_join_event_conversation`, migration
+  // participants_visibilite) ; le client ne le demande plus, et sort de la
+  // discussion en quittant « je viens ».
+  if (rsvp === "going") _joinEventConversation(ev);
   else _leaveEventConversation(ev);
 }
 
@@ -3737,7 +3743,10 @@ function _ensureLocalEventConv(ev) {
 async function openEventChat(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (!myRsvp(id) && !_canManageEvent(ev)) { toast("Rejoins l'événement pour accéder à la discussion"); return; }
+  if (myRsvp(id) !== "going" && !_canManageEvent(ev)) {
+    toast(myRsvp(id) ? "La discussion est réservée à celles et ceux qui viennent : passe en « Je viens »" : "Rejoins l'événement pour accéder à la discussion");
+    return;
+  }
   if (!ev.convId) {
     toast("Ouverture de la discussion…");
     await _joinEventConversation(ev);
@@ -4237,7 +4246,7 @@ function openEventDetails(id) {
     <!-- Discussion de groupe : le vrai moteur de participation (Meetup / FB Events). -->
     ${cancelled ? "" : `
       <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openEventChat('${escapeJsArg(ev.id)}')">
-        Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
+        Discussion des participants${myRsvp(ev.id) === "going" || mine ? "" : " · réservée à celles et ceux qui viennent"}
       </button>`}
 
     <!-- Le bouton « Raconter ce moment en carnet de voyage » a été retiré avec

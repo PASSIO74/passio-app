@@ -10,6 +10,10 @@
 # répond toujours par l'index survivant ; l'index partiel de télémétrie est là
 # et PORTE la requête du pilotage (EXPLAIN) ; une seule policy realtime, en
 # initplan, même prédicat — un compte reçoit SON topic, pas celui d'un autre.
+# Enfin le RETOUR ARRIÈRE de l'en-tête, exécuté tel quel, rend l'état d'avant
+# à l'identique : les DEUX policies jumelles (nom, rôle, commande, prédicat) et
+# les index (revue du 2026-11-03 : la première version ne recréait que la
+# jumelle sans accent) ; la migration se ré-applique ensuite.
 #
 #   bash tests/sql/migration-index-realtime.test.sh
 #
@@ -56,6 +60,12 @@ psql -h "$BASE" -p "$PORT" -U postgres -q -c "create database $DB" >/dev/null
 
 Q()    { psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -v ON_ERROR_STOP=1 -c "$1" 2>&1; }
 # Un compte connecté qui reçoit sur un topic : la policy realtime se lit comme une table.
+RETOUR_ARRIERE() { sed -n 's/^--| //p' "$MIGRATION"; }
+# L'empreinte de ce que le retour arrière doit rendre : les policies « user:<uid> » et les index touchés.
+POLICIES_USER() { Q "select coalesce(string_agg(policyname || ' | ' || permissive || ' | ' || roles::text || ' | ' || cmd || ' | ' || coalesce(qual, '-') || ' | ' || coalesce(with_check, '-'), ' ;; ' order by policyname), '-')
+                     from pg_policies where schemaname = 'realtime' and tablename = 'messages' and policyname like 'Utilisateur re%oit ses messages';"; }
+INDEX_TOUCHES() { Q "select coalesce(string_agg(indexdef, ' ;; ' order by indexname), '-') from pg_indexes
+                     where schemaname = 'public' and tablename in ('passions', 'telemetry_events');"; }
 RECOIT() { psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q \
            -c "set local role authenticated; set local request.jwt.claim.sub='$1'; set local realtime.topic='$2'; select count(*) from realtime.messages;" 2>&1; }
 
@@ -126,6 +136,7 @@ verifier "realtime.messages : deux policies jumelles « reçoit / recoit » en a
 verifier "A, abonné à son topic, reçoit (3 lignes) ; abonné au topic de B, rien (contrat d'avant, à conserver)" "3|0" "$(RECOIT "$A" "user:$A")|$(RECOIT "$A" "user:$B")"
 verifier "telemetry_events : la requête du pilotage ne dispose d'aucun index (env, received_at)" "0" \
   "$(Q "select count(*) from pg_indexes where tablename='telemetry_events' and indexdef like '%(env, received_at DESC)%';")"
+POLICIES_AVANT="$(POLICIES_USER)"; INDEX_AVANT="$(INDEX_TOUCHES)"
 
 echo "── ① APPLICATION ───────────────────────────────────────────────────"
 sortie="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || {
@@ -159,6 +170,20 @@ verifier "A reçoit toujours sur son topic, et toujours pas sur celui de B" "3|0
 verifier "B reçoit sur le sien" "3" "$(RECOIT "$B" "user:$B")"
 verifier "les trois autres policies sont intactes" "3" "$(Q "select count(*) from pg_policies where schemaname='realtime' and tablename='messages' and policyname in ('passio_rt_emettre','passio_rt_recevoir','passio_rt_recevoir_visiteur');")"
 verifier "realtime:db reste reçu par un compte (passio_rt_recevoir)" "3" "$(RECOIT "$A" "realtime:db")"
+
+echo "── ⑤ RETOUR ARRIÈRE de l'en-tête, exécuté tel quel : l'état d'avant ──"
+verifier "l'en-tête porte un retour arrière exécutable (begin; … commit;)" "oui" \
+  "$(RETOUR_ARRIERE | head -1 | grep -qx 'begin;' && RETOUR_ARRIERE | tail -1 | grep -qx 'commit;' && echo oui || echo non)"
+sortie_ra="$(RETOUR_ARRIERE | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 2>&1)" || {
+  echo "  ❌ le retour arrière ne s'exécute pas :"; echo "$sortie_ra" | tail -5; exit 1; }
+verifier "les DEUX policies « reçoit / recoit » sont rendues à l'identique (nom, PERMISSIVE, rôle, commande, auth.uid() nu)" "$POLICIES_AVANT" "$(POLICIES_USER)"
+verifier "…aucune des deux ne reste en initplan" "2|0" \
+  "$(Q "select count(*) || '|' || count(*) filter (where qual like '%( SELECT auth.uid()%') from pg_policies where schemaname='realtime' and tablename='messages' and policyname like 'Utilisateur re%oit ses messages';")"
+verifier "les index de passions et de telemetry_events sont rendus à l'identique (doublon et index d'alias revenus, index partiel parti)" "$INDEX_AVANT" "$(INDEX_TOUCHES)"
+verifier "le contrat d'avant est intact : A reçoit son topic, pas celui de B" "3|0" "$(RECOIT "$A" "user:$A")|$(RECOIT "$A" "user:$B")"
+sortie3="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" \
+  || { echo "  ❌ la migration ré-appliquée a échoué"; echo "$sortie3" | tail -5; exit 1; }
+verifier "la migration se ré-applique après le retour arrière : 4 OK / 0 ECHEC" "4/0" "$(printf '%s\n' "$sortie3" | grep -cE '\|\s*OK\s*$' || true)/$(printf '%s\n' "$sortie3" | grep -cE '\|\s*ECHEC\s*$' || true)"
 
 echo
 echo "RÉSULTAT : $ok ✅  $ko ❌"

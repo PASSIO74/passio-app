@@ -45,38 +45,70 @@
 --     `promouvoir_attente`) ; et il pose `passio.notification_serveur` comme
 --     elles, que lit `trg_notifications_origine` : ses lignes naissent
 --     `origine = 'serveur'` (les 13 lignes n_fa_/n_fr_/n_fw_ de la production
---     portaient toutes `client`). Rien d'autre ne change dans la fonction. Une
---     ligne d'autrui sous l'identifiant (collision de préfixes de 8 caractères)
---     n'est plus réécrite : la notification n'est alors pas écrite, l'abonnement
---     reste.
+--     portaient toutes `client`). Une ligne d'autrui sous l'identifiant n'est
+--     plus réécrite — et la notification ne se perd pas pour autant (revue du
+--     2026-11-03 : deux abonnés dont les uuid partagent leurs 8 premiers
+--     caractères, et le second n'était jamais annoncé) : si le `do update`
+--     gardé ne touche rien (`not found`), elle s'écrit sous un identifiant de
+--     REPLI, préfixe || 20 hexadécimaux (md5 de l'identifiant, de
+--     `clock_timestamp()` et de `random()`), d'origine serveur — le repli même
+--     de `notifier_mentions`. Rien d'autre ne change dans la fonction.
 --   · PURGE des squats déjà posés : une ligne sous un préfixe réservé dont
 --     l'identifiant n'est pas celui que la fonction serveur aurait fabriqué pour
---     SES propres colonnes est supprimée. Formats, lus dans les fonctions de
+--     SES propres colonnes — ou dont l'ORIGINE n'est pas celle que cette
+--     fonction pose — est supprimée. Formats, lus dans les fonctions de
 --     production (pg_get_functiondef, 2026-11-03) :
 --       n_fw_ / n_fr_ / n_fa_ : préfixe || left(from_id, 8) || '_' || left(user_id, 8)
 --         (from_id = l'acteur — l'abonné, le demandeur, ou pour n_fa_ celui qui
---         accepte —, user_id = la cible) ;
---       n_pa_ : 'n_pa_' || left(ref_id, 12) || '_' || left(user_id, 8) (l'activité,
---         le promu), ou le repli 'n_pa_' || 20 hexadécimaux, d'origine serveur,
---         genre event_update ;
---       n_m_  : 'n_m_' || left(md5(genre || '|' || ref_id || '|' || from_id || '|' || user_id), 20)
---         (genre = commentaire | message), ou le repli 'n_m_' || 20 hexadécimaux,
---         d'origine serveur, genre mention.
+--         accepte —, user_id = la cible), QUELLE QUE SOIT l'origine (les 13
+--         lignes de production sont d'origine client : `follows_notifier` ne
+--         posait pas le réglage) ; ou le repli préfixe || 20 hexadécimaux,
+--         d'origine serveur SEULEMENT (il naît avec cette migration) ;
+--       n_pa_ : d'origine serveur SEULEMENT — 'n_pa_' || left(ref_id, 12) || '_'
+--         || left(user_id, 8) (l'activité, le promu), ou le repli 'n_pa_' || 20
+--         hexadécimaux, genre event_update ;
+--       n_m_  : d'origine serveur SEULEMENT — 'n_m_' || left(md5(genre || '|' ||
+--         ref_id || '|' || from_id || '|' || user_id), 20) (genre = commentaire |
+--         message), ou le repli 'n_m_' || 20 hexadécimaux, genre mention.
+--     POURQUOI L'ORIGINE pour n_pa_ et n_m_ (revue du 2026-11-03, reproduit sur
+--     copie de banc) : un squat COHÉRENT — posé par un client avant cette
+--     migration, identifiant conforme à SES colonnes, `user_id` = la victime —
+--     passait la purge, et le `on conflict` de `promouvoir_attente`, gardé par
+--     `user_id` et `kind = 'event_update'` mais PAS par `from_id`, l'ADOPTAIT :
+--     contenu du serveur, émetteur du squatteur. Ces deux familles ne sont
+--     écrites que par `promouvoir_attente` et `notifier_mentions`, qui posent
+--     toutes deux `passio.notification_serveur` avant leur INSERT (lu au canal ①
+--     le 2026-11-03, pg_get_functiondef ; aucune autre fonction n'écrit ces
+--     préfixes) : une ligne `client` y est un squat. Le critère ne vaut PAS pour
+--     n_fw_ / n_fr_ / n_fa_, que `follows_notifier` écrivait en `client`
+--     jusqu'ici. Une origine `serveur` FORGÉE (l'UPDATE de colonne était
+--     ouvert) ne peut porter que sur une ligne dont le faussaire est lui-même
+--     le destinataire (« Update propre » : `user_id = moi`) : la ligne qu'un
+--     client insère pour autrui naît toujours `client` (trg_notifications_origine).
 --     Mesuré en production le 2026-11-03 (canal ①, agrégats seuls) : 13 lignes
---     sous un préfixe réservé, 0 contraire — la purge ne supprime rien
---     aujourd'hui ; elle reste pour le cas où un squat serait posé d'ici
---     l'application. Le verdict imprime le nombre supprimé par CETTE exécution.
+--     sous un préfixe réservé (n_fa_ 6, n_fr_ 6, n_fw_ 1 — toutes `client`,
+--     toutes conformes), 0 sous n_pa_ ni sous n_m_, 0 sous une forme de repli —
+--     la purge ne supprime rien aujourd'hui ; elle reste pour le cas où un squat
+--     serait posé d'ici l'application. Le verdict imprime le nombre supprimé par
+--     CETTE exécution.
 --
 -- Rejouable ; verdict en fin (banc : tests/sql/migration-notifications-identifiants-reserves.test.sh).
 -- RETOUR ARRIÈRE — exécutable tel quel en ôtant « --| » (le banc le rejoue et
--- contrôle l'empreinte) ; la purge n'en a pas (0 ligne en production) :
+-- contrôle l'empreinte ET les droits) ; la purge n'en a pas (0 ligne en
+-- production). Il rend l'état JUSTE AVANT cette migration dans l'ordre
+-- d'application (04-LIVRAISON § 6.1) : `migration_audit_2026-11-02_oracles_et_privileges.sql`
+-- est déjà passée et a retiré TRUNCATE, REFERENCES, TRIGGER (et MAINTAIN en 17)
+-- à anon et authenticated — on ne les rend PAS (la première version de ce bloc
+-- les rendait à anon et défaisait la migration précédente, revue du
+-- 2026-11-03). Si cette migration passait hors ordre, avant les oracles, ce
+-- retour arrière laisserait anon sans ces droits — ceux-là mêmes que les
+-- oracles retirent ensuite.
 --| begin;
 --| create or replace function public.identifiant_reserve_au_serveur(p_id text) returns boolean
 --|   language sql immutable set search_path = '' as $$ select p_id like 'n\_m\_%' $$;
 --| revoke update (seen) on public.notifications from authenticated;
 --| grant update on public.notifications to authenticated;
---| grant insert, update, delete, truncate, references, trigger on public.notifications to anon;
---| do $$ begin if current_setting('server_version_num')::int >= 170000 then execute 'grant maintain on public.notifications to anon'; end if; end $$;
+--| grant insert, update, delete on public.notifications to anon;
 --| -- follows_notifier : la définition de PRODUCTION lue le 2026-11-03 (pg_get_functiondef),
 --| -- md5(prosrc) = af56dfee1bf82b669bf68e4bb8a1422b, recopiée à l'octet près.
 --| CREATE OR REPLACE FUNCTION public.follows_notifier()
@@ -181,14 +213,26 @@ begin
       -- Garde par destinataire ET émetteur (revue du 2026-11-03) : une ligne d'autrui
       -- sous cet identifiant (squat, collision de préfixes) n'est jamais réécrite.
       where public.notifications.user_id = excluded.user_id and public.notifications.from_id = excluded.from_id;
+    -- Repli (revue du 2026-11-03), celui de `notifier_mentions` : la ligne en place est
+    -- d'autrui (deux comptes dont les uuid partagent leurs 8 premiers caractères) —
+    -- la notification s'écrit sous un identifiant neuf plutôt que de se perdre.
+    if not found then
+      insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen, created_at)
+      values (left(ident, 5) || left(md5(ident || '|' || clock_timestamp()::text || '|' || random()::text), 20),
+              cible, genre, acteur, acteur, coalesce(nom, 'Quelqu''un') || ' ' || texte, false, now());
+    end if;
   exception when others then
     raise warning 'follows_notifier : notification non écrite (%) — l''abonnement est conservé', sqlerrm;
   end;
   return new;
 end $function$;
 
--- ── ④ purge des squats déjà posés (préfixe réservé contraire à ses propres colonnes) ──
+-- ── ④ purge des squats déjà posés (préfixe réservé contraire à ses propres colonnes ou à son origine) ──
 -- Le prédicat est écrit UNE fois : il sert à la suppression puis à la re-mesure.
+-- n_pa_ et n_m_ : d'origine serveur, toujours (un squat cohérent d'origine client
+-- serait ADOPTÉ par le `on conflict` de `promouvoir_attente` — voir l'en-tête).
+-- n_fw_ / n_fr_ / n_fa_ : la forme déterministe quelle que soit l'origine (13 lignes
+-- client légitimes en production), la forme de repli d'origine serveur seulement.
 do $$
 declare
   contraire constant text := $p$
@@ -196,12 +240,15 @@ declare
     and not coalesce(case
       when n.id like 'n\_fw\_%' or n.id like 'n\_fr\_%' or n.id like 'n\_fa\_%'
         then n.id = left(n.id, 5) || left(n.from_id, 8) || '_' || left(n.user_id, 8)
+          or (n.id ~ '^n_f[wra]_[0-9a-f]{20}$' and n.origine = 'serveur')
       when n.id like 'n\_pa\_%'
-        then n.id = 'n_pa_' || left(n.ref_id, 12) || '_' || left(n.user_id, 8)
-          or (n.id ~ '^n_pa_[0-9a-f]{20}$' and n.kind = 'event_update' and n.origine = 'serveur')
-      else n.id in ('n_m_' || left(md5('commentaire|' || n.ref_id || '|' || n.from_id || '|' || n.user_id), 20),
-                    'n_m_' || left(md5('message|' || n.ref_id || '|' || n.from_id || '|' || n.user_id), 20))
-          or (n.id ~ '^n_m_[0-9a-f]{20}$' and n.kind = 'mention' and n.origine = 'serveur')
+        then n.origine = 'serveur'
+         and (n.id = 'n_pa_' || left(n.ref_id, 12) || '_' || left(n.user_id, 8)
+              or (n.id ~ '^n_pa_[0-9a-f]{20}$' and n.kind = 'event_update'))
+      else n.origine = 'serveur'
+       and (n.id in ('n_m_' || left(md5('commentaire|' || n.ref_id || '|' || n.from_id || '|' || n.user_id), 20),
+                     'n_m_' || left(md5('message|' || n.ref_id || '|' || n.from_id || '|' || n.user_id), 20))
+            or (n.id ~ '^n_m_[0-9a-f]{20}$' and n.kind = 'mention'))
     end, false)$p$;
   purgees   integer;
   restantes integer;
@@ -261,14 +308,17 @@ union all select 'anon garde SELECT (la policy ne lui rend rien : une lecture de
 union all select 'follows_notifier : le do update ne réécrit que la ligne du même destinataire ET du même émetteur',
        case when (select prosrc from pg_proc where oid = 'public.follows_notifier()'::regprocedure)
                  like '%on conflict (id) do update set content = excluded.content, kind = excluded.kind, seen = false, created_at = now()%where public.notifications.user_id = excluded.user_id and public.notifications.from_id = excluded.from_id;%' then 'OK' else 'ECHEC' end
+union all select 'follows_notifier : ligne d''autrui sous l''identifiant → repli sous un identifiant neuf (préfixe || 20 hexadécimaux), jamais perdue',
+       case when (select prosrc from pg_proc where oid = 'public.follows_notifier()'::regprocedure)
+                 like '%from_id = excluded.from_id;%if not found then%insert into public.notifications%left(ident, 5) || left(md5(ident || ''|'' || clock_timestamp()::text%' then 'OK' else 'ECHEC' end
 union all select 'follows_notifier : écrit en origine serveur, SECURITY DEFINER, search_path public, pg_temp ; trg_notifications_origine en place',
        case when (select p.prosrc like '%perform set_config(''passio.notification_serveur'', ''1'', true);%insert into public.notifications%'
                          and p.prosecdef and array_to_string(p.proconfig, ';') = 'search_path=public, pg_temp'
                     from pg_proc p where p.oid = 'public.follows_notifier()'::regprocedure)
              and exists (select 1 from pg_trigger where tgrelid = 'public.notifications'::regclass and tgname = 'trg_notifications_origine' and not tgisinternal) then 'OK' else 'ECHEC' end
-union all select 'squats purgés par CETTE exécution (préfixe réservé contraire à ses propres user_id / from_id)',
+union all select 'squats purgés par CETTE exécution (préfixe réservé contraire à ses propres colonnes, ou n_pa_ / n_m_ / repli d''origine client)',
        coalesce(nullif(current_setting('passio.squats_purges', true), ''), '?')
-union all select 'aucune ligne sous un préfixe réservé ne contredit ses propres colonnes (re-mesuré après la purge)',
+union all select 'aucune ligne sous un préfixe réservé ne contredit ses propres colonnes ni son origine (re-mesuré après la purge)',
        case when current_setting('passio.squats_restants', true) = '0' then 'OK' else 'ECHEC' end;
 
 commit;

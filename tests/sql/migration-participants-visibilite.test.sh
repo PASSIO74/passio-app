@@ -78,6 +78,9 @@ CHANGE()  { AUTH "$1" "update public.event_attendees set rsvp = '$3' where event
 # `$1` DÉPLACE sa ligne de l'activité `$2` vers `$3`, rsvp inchangé.
 DEPLACE() { AUTH "$1" "update public.event_attendees set event_id = '$3' where event_id = '$2' and user_id = '$1' returning event_id;"; }
 RETIRE()  { AUTH "$1" "delete from public.event_attendees where event_id = '$2' and user_id = '$1' returning 1;"; }
+# Membres de la discussion `$2` que `$1` voit (lettre du compte) ; `$1` entre dans `$2`.
+MEMBRES() { AUTH "$1" "select string_agg(substr(user_id, 1, 1), ',' order by user_id) from public.conv_members where conv_id = '$2';"; }
+ENTRE()   { AUTH "$1" "insert into public.conv_members (conv_id, user_id) values ('$2', '$1') returning 1;"; }
 # Moyenne et nombre rendus par `notes_evenement` à `$1` (`null` quand la moyenne est retenue).
 NOTES()   { AUTH "$1" "select coalesce(j->>'avg', 'null') || '|' || (j->>'count') from (select public.notes_evenement('$2') j) s;"; }
 # OK/ECHEC du tableau de verdict d'une sortie de migration.
@@ -92,6 +95,7 @@ D=66666666-6666-6666-6666-666666666666   # liste d'attente, compte PRIVÉ (deman
 T=77777777-7777-7777-7777-777777777777   # tiers : ni inscrit, ni organisation ; ami mutuel de A, demande D
 X=88888888-8888-8888-8888-888888888888   # tiers sans aucun lien — l'attaquant des contre-revues
 S=99999999-9999-9999-9999-999999999999   # suit A SANS retour (profil public : accepté d'office)
+W=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa   # tiers que A a BLOQUÉ — l'attaquant de la discussion d'activité
 
 ok=0; ko=0
 verifier() { if [ "$2" = "$3" ]; then ok=$((ok+1)); printf '  ✅ %s\n' "$1"; else ko=$((ko+1)); printf '  ❌ %s\n     attendu : %s\n     obtenu  : %s\n' "$1" "$2" "$3"; fi; }
@@ -218,6 +222,66 @@ revoke all on function public.event_attendees_figes() from public, anon, authent
 create trigger trg_event_attendees_figes before update on public.event_attendees
   for each row execute function public.event_attendees_figes();
 
+-- Discussion d'activité (`evgrp_<id>`), copies de production (canal ①, 2026-11-03) :
+-- `can_join_event_conversation` (pg_get_functiondef, CRLF ramenés à LF), policies
+-- de `conv_members` et `conversations`. `adult_access_allowed` et
+-- `suppression_de_mon_compte` sont réduites à leur valeur ordinaire (adulte, pas
+-- de suppression en cours) : elles ne sont pas l'objet de ce banc.
+alter table public.events add column conv_id text;
+create table public.conversations (id text primary key, is_group boolean default false, created_by text);
+create table public.conv_members (conv_id text not null references public.conversations(id) on delete cascade, user_id text not null,
+  primary key (conv_id, user_id));
+alter table public.conversations enable row level security;
+alter table public.conv_members enable row level security;
+grant select, insert, delete on public.conversations, public.conv_members to authenticated;
+create function public.adult_access_allowed() returns boolean language sql stable as $fn$ select true $fn$;
+create function public.suppression_de_mon_compte() returns boolean language sql stable as $fn$ select false $fn$;
+create function public.is_conv_member(_conv_id text, _uid text) returns boolean
+language sql stable security definer set search_path to ''
+as $fn$ select exists (select 1 from public.conv_members m where m.conv_id = _conv_id and m.user_id = _uid) $fn$;
+create function public.is_conversation_creator(_conv_id text) returns boolean
+language sql stable security definer set search_path to ''
+as $fn$ select case when auth.uid() is null or _conv_id is null then false
+  else exists (select 1 from public.conversations c where c.id = _conv_id and c.created_by = (auth.uid())::text) end $fn$;
+create function public.can_join_event_conversation(_conv_id text) returns boolean
+language sql stable security definer set search_path to ''
+as $fn$
+  SELECT CASE
+    WHEN auth.uid() IS NULL OR _conv_id IS NULL THEN FALSE
+    ELSE EXISTS (
+      SELECT 1
+        FROM public.events e
+        JOIN public.event_attendees a
+          ON a.event_id = e.id
+         AND a.user_id = (auth.uid())::text
+        JOIN public.conversations c
+          ON c.id = e.conv_id
+       WHERE e.conv_id = _conv_id
+         AND e.conv_id = ('evgrp_' || e.id)
+         AND (c.created_by = e.author_id
+              OR (e.co_organizers IS NOT NULL
+                  AND jsonb_typeof(e.co_organizers) = 'array'
+                  AND e.co_organizers ? c.created_by))
+         AND e.status = 'active'
+         AND a.rsvp IN ('going', 'maybe')
+         AND NOT public.is_blocked_with(e.author_id)
+         AND public.adult_access_allowed()
+    )
+  END
+$fn$;
+revoke all on function public.can_join_event_conversation(text) from public, anon;
+grant execute on function public.can_join_event_conversation(text) to authenticated;
+create policy "Ecriture propre" on public.conv_members for insert to authenticated
+  with check ((public.is_conversation_creator(conv_id) or (user_id = (select auth.uid())::text and public.can_join_event_conversation(conv_id)))
+    and (not public.is_blocked_with(user_id)) and (not public.suppression_de_mon_compte()));
+create policy conv_members_select_member on public.conv_members for select to authenticated
+  using (public.is_conv_member(conv_id, (select auth.uid())::text));
+create policy "Suppression admin" on public.conv_members for delete
+  using (user_id = (select auth.uid())::text
+    or exists (select 1 from public.conversations c where c.id = conv_members.conv_id and c.created_by = (select auth.uid())::text));
+create policy conversations_insert_creator on public.conversations for insert to authenticated with check (created_by = (select auth.uid())::text);
+create policy conversations_select_member on public.conversations for select to authenticated using (public.is_conv_member(id, (select auth.uid())::text));
+
 insert into public.events (id, author_id, organizer_id, title, status, max_attendees, date_at, end_at, co_organizers) values
   ('ev_rando', '11111111-1111-1111-1111-111111111111', null, 'Rando', 'active', 10, now() + interval '2 days', null, '["22222222-2222-2222-2222-222222222222"]'),
   ('ev_passee', '11111111-1111-1111-1111-111111111111', null, 'Passée', 'active', null, now() - interval '10 days', null, '[]'),
@@ -245,6 +309,14 @@ insert into public.follows (follower_id, following_id, status) values
   ('33333333-3333-3333-3333-333333333333', '77777777-7777-7777-7777-777777777777', 'accepted'),
   ('77777777-7777-7777-7777-777777777777', '66666666-6666-6666-6666-666666666666', 'pending'),
   ('99999999-9999-9999-9999-999999999999', '33333333-3333-3333-3333-333333333333', 'accepted');
+-- Discussions : celle de l'activité COMPLÈTE (A y vient, seul) et celle de la rando.
+insert into public.conversations (id, is_group, created_by) values
+  ('evgrp_ev_complete', true, '11111111-1111-1111-1111-111111111111'),
+  ('evgrp_ev_rando', true, '11111111-1111-1111-1111-111111111111');
+update public.events set conv_id = 'evgrp_' || id where id in ('ev_complete', 'ev_rando');
+insert into public.conv_members (conv_id, user_id) values
+  ('evgrp_ev_complete', '11111111-1111-1111-1111-111111111111'), ('evgrp_ev_complete', '33333333-3333-3333-3333-333333333333'),
+  ('evgrp_ev_rando', '11111111-1111-1111-1111-111111111111'), ('evgrp_ev_rando', '33333333-3333-3333-3333-333333333333');
 SQL
 
 echo "── ⓪ AVANT : le défaut mesuré en production ──────────────────────────"
@@ -258,13 +330,25 @@ Q "delete from public.event_attendees where user_id = '$X';" >/dev/null
 contient "le socle porte la garde figée de production : A ne DÉPLACE pas sa ligne « going » vers l'activité passée (inscription_activite_figee)" \
   "inscription_activite_figee" "$(DEPLACE "$A" ev_rando ev_passee)"
 
+echo "── ⓪bis AVANT : la discussion d'activité rend la liste (troisième contre-revue) ──"
+verifier "W s'écrit « maybe » sur l'activité COMPLÈTE — accepté (la capacité ne garde que « going »)" "1" "$(INSCRIT "$W" ev_complete maybe)"
+verifier "…entre dans sa discussion (can_join de production : going OU maybe)" "1" "$(ENTRE "$W" evgrp_ev_complete)"
+verifier "…et y lit la liste nominative : l'organisation (1) et le venant A (3)" "1,3,a" "$(MEMBRES "$W" evgrp_ev_complete)"
+Q "insert into public.blocks (blocker_id, blocked_id) values ('$A', '$W');" >/dev/null
+verifier "A a bloqué W : W s'écrit « maybe » sur la rando et entre dans sa discussion (seul le blocage avec l'AUTEUR est regardé)" "1|1" \
+  "$(INSCRIT "$W" ev_rando maybe)|$(ENTRE "$W" evgrp_ev_rando)"
+verifier "…et y lit la ligne de A, qui l'a bloqué — alors que la liste d'inscrits la lui cacherait" "1" \
+  "$(AUTH "$W" "select count(*) from public.conv_members where conv_id = 'evgrp_ev_rando' and user_id = '$A';")"
+# W garde ses deux places dans les discussions, SANS inscription : la purge doit les lui retirer.
+Q "delete from public.event_attendees where user_id = '$W';" >/dev/null
+
 echo "── ① APPLICATION ───────────────────────────────────────────────────"
 sortie="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || {
   echo "  ❌ la migration a échoué :"; echo "$sortie" | tail -5; exit 1; }
-verifier "le tableau de verdict rend 6 OK et 0 ECHEC" "6/0" "$(BILAN "$sortie")"
+verifier "le tableau de verdict rend 8 OK et 0 ECHEC" "8/0" "$(BILAN "$sortie")"
 sortie2="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" \
   || { echo "  ❌ la migration REJOUÉE a échoué"; echo "$sortie2" | tail -5; exit 1; }
-verifier "rejouée : même verdict (idempotente)" "6/0" "$(BILAN "$sortie2")"
+verifier "rejouée : même verdict (idempotente)" "8/0" "$(BILAN "$sortie2")"
 
 echo "── ② LA LISTE SUIT LE LIEN ────────────────────────────────────────"
 verifier "tiers sans aucun lien : rien" "" "$(VOIT "$X" ev_rando)"
@@ -343,21 +427,21 @@ contient "…vers l'activité ANNULÉE aussi (activite_annulee)" "activite_annul
 verifier "…mais vers une activité COMPLÈTE à venir, le déplacement PASSE (la capacité sort sur old.rsvp = 'going') : figes est le seul verrou" \
   "ev_complete" "$(DEPLACE "$X" ev_rando ev_complete)"
 Q "update public.event_attendees set event_id = 'ev_rando' where user_id = '$X' and event_id = 'ev_complete';" >/dev/null
-verifier "figes désactivé (« D ») : la migration passe, le verdict dit 5 OK / 1 ECHEC — la ligne de figes" "5/1|1" "$(VERDICT_FIGES)"
+verifier "figes désactivé (« D ») : la migration passe, le verdict dit 7 OK / 1 ECHEC — la ligne de figes" "7/1|1" "$(VERDICT_FIGES)"
 Q "alter table public.event_attendees enable replica trigger trg_event_attendees_figes;" >/dev/null
 verifier "figes en mode RÉPLICA (« R ») : il ne part pas pour une requête ordinaire — le déplacement vers l'activité complète passe" \
   "ev_complete" "$(DEPLACE "$X" ev_rando ev_complete)"
 Q "update public.event_attendees set event_id = 'ev_rando' where user_id = '$X' and event_id = 'ev_complete';" >/dev/null
-verifier "…et le verdict ne le prend pas pour actif (« <> 'D' » aurait dit OK) : 5 OK / 1 ECHEC" "5/1|1" "$(VERDICT_FIGES)"
+verifier "…et le verdict ne le prend pas pour actif (« <> 'D' » aurait dit OK) : 7 OK / 1 ECHEC" "7/1|1" "$(VERDICT_FIGES)"
 Q "alter table public.event_attendees enable trigger trg_event_attendees_figes;" >/dev/null
 DEF_FIGES="$(Q "select pg_get_functiondef('public.event_attendees_figes()'::regprocedure);")"
 Q "create or replace function public.event_attendees_figes() returns trigger language plpgsql security definer set search_path to '' as \$fn\$ begin return new; end \$fn\$;" >/dev/null
-verifier "figes actif mais VIDÉ (ne compare plus event_id) : 5 OK / 1 ECHEC — le corps est lu" "5/1|1" "$(VERDICT_FIGES)"
+verifier "figes actif mais VIDÉ (ne compare plus event_id) : 7 OK / 1 ECHEC — le corps est lu" "7/1|1" "$(VERDICT_FIGES)"
 Q "$DEF_FIGES" >/dev/null
 Q "drop trigger trg_event_attendees_figes on public.event_attendees;" >/dev/null
-verifier "figes SUPPRIMÉ : 5 OK / 1 ECHEC" "5/1|1" "$(VERDICT_FIGES)"
+verifier "figes SUPPRIMÉ : 7 OK / 1 ECHEC" "7/1|1" "$(VERDICT_FIGES)"
 Q "create trigger trg_event_attendees_figes before update on public.event_attendees for each row execute function public.event_attendees_figes();" >/dev/null
-verifier "figes rétabli : 6 OK / 0 ECHEC" "6/0|0" "$(VERDICT_FIGES)"
+verifier "figes rétabli : 8 OK / 0 ECHEC" "8/0|0" "$(VERDICT_FIGES)"
 contient "…et il refuse de nouveau le déplacement vers l'activité complète (inscription_activite_figee)" "inscription_activite_figee" "$(DEPLACE "$X" ev_rando ev_complete)"
 verifier "X se retire de la rando : accepté" "1" "$(RETIRE "$X" ev_rando)"
 verifier "un UPDATE qui GARDE rsvp passe après la fin (pointage posé par B — la fenêtre reste l'affaire de trg_event_attendees_pointage, hors banc)" "ev_passee" \
@@ -422,6 +506,29 @@ verifier "anon : plus AUCUN droit de table (SELECT, INSERT, UPDATE, DELETE, TRUN
   "$(Q "select string_agg(has_table_privilege('anon', 'public.event_attendees', p)::text, ',' order by o) || ',' || (case when current_setting('server_version_num')::int >= 170000 then has_table_privilege('anon', 'public.event_attendees', 'MAINTAIN')::text else 'f' end) || '|' || has_any_column_privilege('anon', 'public.event_attendees', 'SELECT,INSERT,UPDATE,REFERENCES')::text
         from unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) with ordinality u(p, o);" | sed 's/true/t/g; s/false/f/g')"
 
+echo "── ⑧ LA DISCUSSION D'ACTIVITÉ SUIT LA MÊME RÈGLE ────────────────"
+verifier "purge : W (sans inscription « going ») est sorti des deux discussions ; l'organisation et A y restent" "0|1,3|1,3" \
+  "$(Q "select count(*) from public.conv_members where user_id = '$W';")|$(Q "select string_agg(substr(user_id,1,1), ',' order by user_id) from public.conv_members where conv_id = 'evgrp_ev_complete';")|$(Q "select string_agg(substr(user_id,1,1), ',' order by user_id) from public.conv_members where conv_id = 'evgrp_ev_rando';")"
+verifier "W se réécrit « maybe » sur l'activité COMPLÈTE (accepté)…" "1" "$(INSCRIT "$W" ev_complete maybe)"
+contient "…mais n'entre plus dans sa discussion" "row-level security" "$(ENTRE "$W" evgrp_ev_complete)"
+contient "B (« peut-être » sur la rando) n'entre pas dans la discussion" "row-level security" "$(ENTRE "$B" evgrp_ev_rando)"
+contient "D (liste d'attente) non plus" "row-level security" "$(ENTRE "$D" evgrp_ev_rando)"
+verifier "X vient (« going ») à la rando : il entre, et voit l'organisation, A et lui-même" "1|1|1,3,8" \
+  "$(INSCRIT "$X" ev_rando going)|$(ENTRE "$X" evgrp_ev_rando)|$(MEMBRES "$X" evgrp_ev_rando)"
+Q "delete from public.conv_members where user_id = '$X'; delete from public.event_attendees where user_id = '$X' and event_id = 'ev_rando';" >/dev/null
+# Le blocage A → W posé en ⓪bis est parti avec le nettoyage de ② : on le repose.
+Q "insert into public.blocks (blocker_id, blocked_id) values ('$A', '$W') on conflict do nothing;" >/dev/null
+verifier "W, bloqué par A, vient à la rando et entre (le blocage avec l'auteur seul ferme l'entrée)…" "1|1" \
+  "$(INSCRIT "$W" ev_rando going)|$(ENTRE "$W" evgrp_ev_rando)"
+verifier "…mais n'y voit PAS A : l'organisation et lui-même seulement" "1,a" "$(MEMBRES "$W" evgrp_ev_rando)"
+verifier "…et A ne l'y voit pas non plus (le blocage vaut dans les deux sens)" "1,3" "$(MEMBRES "$A" evgrp_ev_rando)"
+verifier "l'organisation, qui n'est bloquée par personne, voit tout le monde" "1,3,a" "$(MEMBRES "$ORGA" evgrp_ev_rando)"
+verifier "une discussion qui n'est PAS d'activité garde l'ancienne lecture (W et A se voient dans un groupe ordinaire)" "3,a" \
+  "$(Q "insert into public.conversations (id, is_group, created_by) values ('grp_ordinaire', true, '$A'); insert into public.conv_members values ('grp_ordinaire', '$A'), ('grp_ordinaire', '$W');" >/dev/null; MEMBRES "$W" grp_ordinaire)"
+Q "delete from public.conv_members where user_id = '$W' or conv_id = 'grp_ordinaire'; delete from public.conversations where id = 'grp_ordinaire'; delete from public.event_attendees where user_id = '$W'; delete from public.blocks;" >/dev/null
+s8="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || { echo "  ❌ migration en échec (⑧)"; echo "$s8" | tail -3; exit 1; }
+verifier "rejouée après ces gestes : 8 OK / 0 ECHEC" "8/0" "$(BILAN "$s8")"
+
 echo "── ⑦ LE VERDICT NE PEUT PAS MENTIR SUR LES DROITS D'ANON ──────────"
 # Un droit accordé à `anon` par un AUTRE concédant survit au `revoke all` de la
 # migration (PostgreSQL ne retire que les droits de son propre concédant) : la
@@ -430,16 +537,16 @@ Q "create role tiers_concedant; grant all on public.event_attendees to tiers_con
 for priv in SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER; do
   Q "set role tiers_concedant; grant $priv on public.event_attendees to anon;" >/dev/null
   s="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || { echo "  ❌ migration en échec ($priv)"; echo "$s" | tail -3; exit 1; }
-  verifier "anon garde $priv (autre concédant) : la migration passe, le verdict dit 5 OK / 1 ECHEC — la ligne d'anon" \
-    "t|5/1|1" "$(Q "select has_table_privilege('anon', 'public.event_attendees', '$priv');" | sed 's/true/t/')|$(BILAN "$s")|$(printf '%s\n' "$s" | grep -E '\|\s*ECHEC\s*$' | grep -c "anon sans AUCUN droit" || true)"
+  verifier "anon garde $priv (autre concédant) : la migration passe, le verdict dit 7 OK / 1 ECHEC — la ligne d'anon" \
+    "t|7/1|1" "$(Q "select has_table_privilege('anon', 'public.event_attendees', '$priv');" | sed 's/true/t/')|$(BILAN "$s")|$(printf '%s\n' "$s" | grep -E '\|\s*ECHEC\s*$' | grep -c "anon sans AUCUN droit" || true)"
   Q "set role tiers_concedant; revoke $priv on public.event_attendees from anon;" >/dev/null
 done
 Q "set role tiers_concedant; grant select (event_id) on public.event_attendees to anon;" >/dev/null
 s="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || { echo "  ❌ migration en échec (colonne)"; exit 1; }
-verifier "anon garde un SELECT de COLONNE (autre concédant) : le verdict le voit aussi" "5/1" "$(BILAN "$s")"
+verifier "anon garde un SELECT de COLONNE (autre concédant) : le verdict le voit aussi" "7/1" "$(BILAN "$s")"
 Q "set role tiers_concedant; revoke select (event_id) on public.event_attendees from anon;" >/dev/null
 s="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || { echo "  ❌ migration en échec (retour)"; exit 1; }
-verifier "droits rendus : 6 OK / 0 ECHEC" "6/0" "$(BILAN "$s")"
+verifier "droits rendus : 8 OK / 0 ECHEC" "8/0" "$(BILAN "$s")"
 
 echo
 echo "RÉSULTAT : $ok ✅  $ko ❌"
