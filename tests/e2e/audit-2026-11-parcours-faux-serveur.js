@@ -77,6 +77,12 @@ class FauxServeur {
     this.participantsParLien = false;    // ① policy SELECT « par lien »
     this.colonnesRetourRetirees = false; // ③ feedback / rating / rated_at illisibles
     this.rpcParticipants = false;        // ② participants_compte, notes_evenement, retours_evenement
+    // ── R24 : `migration_promotion_discrete_vues_2026-11-03.sql` ─────────────
+    // Par défaut, le miroir de la NOUVELLE `promouvoir_attente` (nom du promu à
+    // l'organisation ou au promu seulement, organisation = `organise_activite`).
+    // `true` = la RPC d'avant, en production jusqu'à l'application : le client
+    // doit tenir dans les deux mondes.
+    this.promotionNommeeATous = false;
   }
 
   /** Bascule le banc dans le monde « migration C-04 appliquée ». */
@@ -392,7 +398,9 @@ class FauxServeur {
     if (!mr) return json(404, { message: "route inconnue " + url.pathname });
     const table = mr[2];
     let body = null; try { body = JSON.parse(req.postData() || "null"); } catch (e) {}
-    this.journal.push({ t: Date.now(), me, role, m, table, rpc: !!mr[1], url: url.pathname + url.search, body });
+    // `reponse` : posée par les RPC dont le test lit ce que la base a DIT (promotion, R24).
+    const entree = { t: Date.now(), me, role, m, table, rpc: !!mr[1], url: url.pathname + url.search, body, reponse: undefined };
+    this.journal.push(entree);
     if (this.refusToutes401 && m !== "OPTIONS") return json(401, { code: "PGRST301", message: "JWT expired" });
     const pan = this.panne(table, m);
     if (pan) return json(pan.status || 500, pan.body || { message: "panne programmée" });
@@ -420,40 +428,49 @@ class FauxServeur {
       }
       if (table === "pointer_par_code") return json(200, "ok");
       if (table === "promouvoir_attente") {
-        // Miroir de migrations/migration_promotion_attente_2026-11-02.sql
-        // (banc SQL : tests/sql/migration-promotion-attente.test.sh). Absente
+        // Miroir de migrations/migration_promotion_discrete_vues_2026-11-03.sql
+        // (banc SQL : tests/sql/migration-promotion-discrete-vues.test.sh) :
+        // l'organisation est celle d'`organise_activite` (auteur, organisateur,
+        // co-organisateur), et la base ne NOMME la personne promue qu'à
+        // l'organisation ou à cette personne (R24) — à tout autre appelant,
+        // `{ ok: true }` seul. `promotionNommeeATous` = la RPC d'AVANT
+        // (migration_promotion_attente_2026-11-02.sql, en production jusqu'à
+        // l'application de la nouvelle) : nom rendu à tout appelant, promotion
+        // choisie réservée à l'auteur et aux co-organisateurs. Absente
         // (`rpcPromotionAbsente`) = base pas encore migrée → PGRST202.
         if (this.rpcPromotionAbsente) return json(404, { code: "PGRST202", message: "Could not find the function public.promouvoir_attente" });
         if (role !== "authenticated") return json(401, { code: "42501", message: "permission denied for function promouvoir_attente" });
-        if (!me) return json(200, { ok: false, motif: "non_connecte" });
+        const repondre = (res) => { entree.reponse = res; return json(200, res); };
+        if (!me) return repondre({ ok: false, motif: "non_connecte" });
         const evId = body && body.p_event_id, voulu = body && body.p_user_id;
         const ev = this.t.events.find((e) => e.id === evId);
-        if (!ev) return json(200, { ok: false, motif: "introuvable" });
-        if (ev.status === "cancelled") return json(200, { ok: false, motif: "annulee" });
+        if (!ev) return repondre({ ok: false, motif: "introuvable" });
+        if (ev.status === "cancelled") return repondre({ ok: false, motif: "annulee" });
         const fin = ev.end_at ? Date.parse(ev.end_at) : Date.parse(ev.date_at) + 3 * 3600 * 1000;
-        if (fin < Date.now()) return json(200, { ok: false, motif: "passee" });
-        if (ev.max_attendees == null) return json(200, { ok: false, motif: "sans_capacite" });
+        if (fin < Date.now()) return repondre({ ok: false, motif: "passee" });
+        if (ev.max_attendees == null) return repondre({ ok: false, motif: "sans_capacite" });
+        const ancienne = !!this.promotionNommeeATous;
+        const orga = ancienne ? (me === ev.author_id || this.coOrg(ev, me)) : this.organiseActivite(evId, me);
         let cible = null;
         if (voulu) {
-          const coorgs = Array.isArray(ev.co_organizers) ? ev.co_organizers : [];
-          if (me !== ev.author_id && !coorgs.includes(me)) return json(200, { ok: false, motif: "non_autorise" });
+          if (!orga) return repondre({ ok: false, motif: "non_autorise" });
           cible = voulu;
         }
         const inscrits = this.t.event_attendees.filter((a) => a.event_id === evId && a.rsvp === "going").length;
-        if (inscrits >= ev.max_attendees) return json(200, { ok: false, motif: "complete" });
+        if (inscrits >= ev.max_attendees) return repondre({ ok: false, motif: "complete" });
         if (!cible) {
           const file = this.t.event_attendees.filter((a) => a.event_id === evId && a.rsvp === "waitlist").sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.user_id).localeCompare(String(b.user_id)));
-          if (!file.length) return json(200, { ok: false, motif: "personne_en_attente" });
+          if (!file.length) return repondre({ ok: false, motif: "personne_en_attente" });
           cible = file[0].user_id;
         }
         const ligne = this.t.event_attendees.find((a) => a.event_id === evId && a.user_id === cible && a.rsvp === "waitlist");
-        if (!ligne) return json(200, { ok: false, motif: "pas_en_attente" });
+        if (!ligne) return repondre({ ok: false, motif: "pas_en_attente" });
         ligne.rsvp = "going";
         const nid = "n_pa_" + String(evId).slice(0, 12) + "_" + String(cible).slice(0, 8);
         const existante = this.t.notifications.find((n) => n.id === nid);
         const notif = { id: nid, user_id: cible, kind: "event_update", from_id: ev.author_id, ref_id: evId, content: "Une place s'est libérée pour « " + String(ev.title || "une activité").slice(0, 60) + " » : tu es inscrit·e !", seen: false, created_at: new Date().toISOString(), origine: "serveur" };
         if (existante) Object.assign(existante, notif); else this.t.notifications.push(notif);
-        return json(200, { ok: true, user_id: cible });
+        return repondre(ancienne || orga || cible === me ? { ok: true, user_id: cible } : { ok: true });
       }
       if (this.rpcParticipants && (table === "participants_compte" || table === "notes_evenement" || table === "retours_evenement")) {
         // Miroirs de migrations/migration_participants_visibilite_2026-11-03.sql

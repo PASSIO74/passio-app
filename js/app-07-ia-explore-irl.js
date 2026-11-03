@@ -3649,8 +3649,19 @@ async function _promoteNextWaitlisted(ev) {
       try { if (typeof diagLog === "function") diagLog("promotion KO " + ev.id); } catch (e) {}
       return; // l'état local n'a pas bougé : rien à annuler, rien à annoncer
     }
+    // ⚠️ LA BASE NE NOMME PLUS LE PROMU À QUI N'ORGANISE PAS (R24,
+    // `migration_promotion_discrete_vues_2026-11-03.sql`) : à celui qui libère
+    // une place, elle dit que la place est donnée, pas à qui. `next` n'est
+    // qu'une estimation (la file locale n'est pas dans l'ordre de la base, et
+    // depuis C-04 elle est partielle) : la peindre comme promue serait annoncer
+    // à l'écran une personne que la base n'a pas désignée. On relit l'activité
+    // sous ses propres droits ; la notification est déjà écrite par la base.
+    if (promu.anonyme) { await _appliquerPromotionAnonyme(ev); return; }
     if (promu.userId) next = promu.userId;   // la personne que la base a RÉELLEMENT promue
     notifieeParServeur = !!promu.notifieeParServeur;
+    // Après deux allers-retours, l'objet canonique a pu être remplacé
+    // (`fusionnerEvenementsServeur`) : on peint celui qui est à l'écran.
+    ev = _findCanonicalEvent(ev.id) || ev;
   }
   if (!next) return;   // promotion écrite mais personne nommée : rien à peindre
   _appliquerPromotionLocale(ev, next);
@@ -3675,6 +3686,121 @@ function _appliquerPromotionLocale(ev, uid) {
   saveState();
   _patchEventCardJoin(ev.id);
   _refreshEventDetailIfOpen(ev.id);
+}
+
+// Une promotion confirmée par la base SANS NOM (R24) : la place est donnée, on
+// ne sait pas à qui — et on ne le devine pas. On RELIT l'activité par le chemin
+// de `supaLoadEvents` (`supaLireParticipants`, app-08) : les listes que la base
+// accepte de montrer à ce compte, et le compteur public. Avant C-04 la liste
+// est entière et fait foi ; après, elle est partielle et `counts` porte le
+// nombre — les deux mondes sont justes sans désigner personne. Rien n'est
+// annoncé : la notification de la personne promue est écrite par la base.
+// ⚠️ Trois pièges, relevés en revue (2026-11-03) :
+//   · la relecture prend deux allers-retours, et l'objet canonique a pu être
+//     REMPLACÉ entre-temps (`fusionnerEvenementsServeur`, au retour au premier
+//     plan) : on écrit dans celui qui est à l'écran, relu après l'attente ;
+//   · un geste fait PENDANT la relecture (« peut-être » juste après « je ne
+//     viens plus ») est absent d'une liste lue avant lui : MA ligne suit l'état
+//     local (`_reposerMonEtatRsvp`), comme l'optimiste de `setEventRsvp` ;
+//   · relecture en panne : `_nbInscrits` prend le plus grand de la liste et du
+//     compteur, donc baisser le compteur ne retire pas un visage périmé de la
+//     file. Les compteurs relus (ou, à défaut, ajustés au verdict) disent le
+//     nombre ; une file qu'ils disent VIDE n'a plus de visage à montrer ; et la
+//     relecture des listes est confiée à la reprise des lectures (app-02).
+async function _appliquerPromotionAnonyme(ev) {
+  if (!ev) return;
+  const id = ev.id;
+  const lu = await _lireActivitePromue(id);
+  const cible = _findCanonicalEvent(id) || ev;
+  if (lu && lu.comptesLus) cible.counts = lu.countsByEvent[id] || null;
+  else {
+    _ajusterCompteInscrits(cible, "waitlist", -1);
+    _ajusterCompteInscrits(cible, "going", +1);
+  }
+  if (lu && lu.listesLues) _poserListesRelues(cible, lu);
+  else if (cible.counts && Number(cible.counts.waitlist) === 0) cible.waitlist = [];
+  _reposerMonEtatRsvp(cible);
+  saveState();
+  _patchEventCardJoin(id);
+  _refreshEventDetailIfOpen(id);
+  if (!(lu && lu.listesLues)) _relirePromotionPlusTard(id);
+}
+
+// La relecture d'UNE activité après une promotion sans nom ; jamais ne lève.
+// Un échec est TRACÉ : une relecture muette qui retombe sur le repli serait
+// indiscernable d'une relecture réussie (profil du défaut `diagLog`).
+async function _lireActivitePromue(id) {
+  try {
+    if (typeof supaLireParticipants !== "function") return null;
+    const lu = await supaLireParticipants([id], "promotion sans nom");
+    if (!lu || !lu.listesLues) {
+      try { if (typeof diagLog === "function") diagLog("promotion sans nom : listes non relues " + id); } catch (e) {}
+    }
+    return lu || null;
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("promotion sans nom : relecture levée " + id + " — " + (e && e.message)); } catch (_e) {}
+    return null;
+  }
+}
+
+function _poserListesRelues(ev, lu) {
+  ev.attendees = lu.attByEvent[ev.id] || [];
+  ev.maybes = lu.maybeByEvent[ev.id] || [];
+  ev.waitlist = lu.waitByEvent[ev.id] || [];
+  ev.checkedIn = lu.checkedByEvent[ev.id] || [];
+}
+
+// Ma propre ligne : l'état LOCAL fait foi. Une liste relue a pu être lue AVANT
+// mon dernier geste (son écriture en vol, ou passée après l'instantané) : on y
+// repose ma réponse, et le compteur public la suit (−1 sur l'état lu, +1 sur
+// l'état local), exactement comme l'optimiste de `setEventRsvp`. « Je ne viens
+// pas » n'est rangé nulle part, comme dans la lecture.
+function _reposerMonEtatRsvp(ev) {
+  if (!ev) return;
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  const range = (r) => (r === "going" || r === "maybe" || r === "waitlist") ? r : null;
+  const dans = (arr) => (arr || []).some(x => x === meId || x === "me");
+  const lu = dans(ev.attendees) ? "going" : dans(ev.maybes) ? "maybe" : dans(ev.waitlist) ? "waitlist" : null;
+  const local = range(myRsvp(ev.id));
+  if (lu === local) return;
+  const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
+  ev.attendees = strip(ev.attendees);
+  ev.maybes = strip(ev.maybes);
+  ev.waitlist = strip(ev.waitlist);
+  if (local === "going") ev.attendees.push(meId);
+  else if (local === "maybe") ev.maybes.push(meId);
+  else if (local === "waitlist") ev.waitlist.push(meId);
+  if (lu) _ajusterCompteInscrits(ev, lu, -1);
+  if (local) _ajusterCompteInscrits(ev, local, +1);
+}
+
+// Relecture en panne (réseau, 5xx) : confiée à la reprise des lectures
+// (`noterLectureAReprendre`, app-02 — 2 s, 8 s, 30 s, puis abandon). La lecture
+// est idempotente. Un REFUS mémorisé (`_attendeesLisibles()` faux) ne se
+// rejoue pas : la même table au même rôle rendrait le même refus.
+function _relirePromotionPlusTard(id) {
+  try {
+    if (typeof noterLectureAReprendre !== "function" || typeof acquitterLecture !== "function") return;
+    if (typeof _attendeesLisibles === "function" && !_attendeesLisibles()) return;
+    const nom = "promotion sans nom " + id;
+    const rejouer = async function () {
+      const lu = await _lireActivitePromue(id);
+      if (!lu || !lu.listesLues) { noterLectureAReprendre(nom, rejouer); return; }
+      const ev = _findCanonicalEvent(id);
+      if (ev) {
+        if (lu.comptesLus) ev.counts = lu.countsByEvent[id] || null;
+        _poserListesRelues(ev, lu);
+        _reposerMonEtatRsvp(ev);
+        saveState();
+        _patchEventCardJoin(id);
+        _refreshEventDetailIfOpen(id);
+      }
+      acquitterLecture(nom);
+    };
+    noterLectureAReprendre(nom, rejouer);
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("promotion sans nom : reprise non inscrite " + id + " — " + (e && e.message)); } catch (_e) {}
+  }
 }
 
 // ===== Discussion de groupe des participants =====
@@ -6544,7 +6670,10 @@ async function promoteWaitlisted(id, userId) {
       return false;
     }
     notifieeParServeur = !!ok.notifieeParServeur;
-    if (ok.userId) promu = ok.userId;   // la personne que la base a RÉELLEMENT promue
+    // La personne que la base a RÉELLEMENT promue. En promotion CHOISIE, la base
+    // ne promeut que celle qu'on désigne (`p_user_id`), et elle la nomme à
+    // l'organisation (R24) : sans nom, la désignée reste la bonne réponse.
+    if (ok.userId) promu = ok.userId;
   }
   // Listes, compteur serveur mémorisé (C-04), carte et fiche ouverte : même
   // chemin que la promotion automatique.
