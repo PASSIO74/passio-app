@@ -371,7 +371,7 @@ jobs:
           gh issue list --repo "${R}" --state closed --label sentinelle --limit 100 \
             --json number,title,closedAt,url > /tmp/fermees.json
           gh issue list --repo "${R}" --state open --label sentinelle --limit 100 \
-            --json number,title > /tmp/ouvertes.json
+            --json number,title,labels > /tmp/ouvertes.json
           gh pr list --repo "${R}" --state merged --limit 200 \
             --json number,headRefName,mergeCommit,mergedAt > /tmp/prs-fusionnees.json
           node --input-type=module -e '
