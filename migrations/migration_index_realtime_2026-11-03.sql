@@ -18,6 +18,14 @@
 --         Un index partiel `(env, received_at desc) include (user_id) where
 --         user_id is not null` la rend bornée par son LIMIT (à remesurer au
 --         canal ① après application : EXPLAIN de la requête, § 3.2 du rapport F).
+--         Index NON concurrent (la migration est une transaction) : il prend un
+--         verrou SHARE sur `telemetry_events`, donc chaque INSERT de télémétrie
+--         attend la fin de la construction. Mesuré au canal ① le 2026-11-03 :
+--         14 542 lignes, 17 Mo (rétention 3 jours) → construction sous la
+--         seconde, une attente que le client absorbe (sa file rejoue). Si la
+--         table dépasse ~1 million de lignes le jour de l'application, sortir
+--         cet index de la transaction et le créer en `create index concurrently`
+--         à l'éditeur SQL, hors de `migration:appliquer`.
 --  F-07 · `realtime.messages` porte DEUX policies SELECT identiques — « Utilisateur
 --         reçoit ses messages » et sa jumelle sans accent — écrites `auth.uid()`
 --         nu, évalué PAR LIGNE DIFFUSÉE (advisor `auth_rls_initplan` ×2) ; le

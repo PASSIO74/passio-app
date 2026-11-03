@@ -6438,7 +6438,46 @@ async function supaLoadMessages(convId) {
 
 // ───────── Accusés de lecture réels (table conv_reads) ─────────
 // Marque la conversation comme lue par MOI (upsert de mon last_read_at).
+//
+// ⚠️ LE VERDICT DE L'UPSERT SE LIT, ET UN REFUS D'APPARTENANCE SE RÉPARE
+// (revue indépendante 10b, risque résiduel R6 de l'audit du 2026-11-02).
+// `migration_audit_2026-11-02_oracles_et_privileges.sql` ajoute
+// `is_conv_member(conv_id, auth.uid())` aux policies INSERT et UPDATE de
+// `conv_reads`. Or une conversation historique peut manquer de la ligne
+// `conv_members` de l'un de ses participants (19 sur 20 le 2026-09-10) : son
+// accusé ✓✓ serait refusé — et EN SILENCE, puisque le SDK ne lève pas sur un
+// refus RLS et que l'ancien `await` ne lisait pas `{ error }` — jusqu'au
+// premier message, dont l'envoi répare l'appartenance.
+// Sur un refus (42501 ou HTTP 403, JAMAIS 401 : un jeton absent ou expiré ne
+// se répare pas en ajoutant un membre), on passe par la MÊME réparation que
+// l'envoi d'un message (`_reparerAppartenanceConv`, app-04 : une seule
+// tentative par conversation et par session, mémo `_convReparationTentee`
+// partagé avec l'envoi), puis on retente l'upsert UNE fois. Encore refusé :
+// on le trace, et on s'arrête — ni boucle, ni rafale. Une panne réseau
+// (`estEchecReseau`, seule autorité) n'a rien à réparer et ne consomme pas la
+// tentative : l'accusé repartira à la prochaine ouverture.
+//
+// ⚠️ ON NE S'INSCRIT JAMAIS DANS UNE CONVERSATION OÙ L'ON N'EST PAS. La
+// réparation n'est tentée que pour une conversation 1-à-1 de MA liste locale,
+// avec un pair connu : ni un groupe (un groupe d'activité que j'ai QUITTÉ,
+// `supaLeaveEventConversation`, garde sa trace locale — m'y réinscrire
+// défairait le départ), ni un fil de démonstration, ni un identifiant que je
+// ne connais pas.
+function _accuseLectureReparable(convId, moi) {
+  try {
+    if (typeof _reparerAppartenanceConv !== "function" || typeof getConversations !== "function") return false;
+    var c = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+    if (!c || c.isGroup || String(c.id).indexOf("evgrp_") === 0) return false;
+    if (!c.userId || c.userId === moi) return false;
+    if (typeof SEED_CONVERSATIONS !== "undefined" && SEED_CONVERSATIONS.some(function (s) { return s && s.id === c.id; })) return false;
+    return true;
+  } catch (e) { return false; }
+}
+
 async function supaMarkRead(convId) {
+  // Trace SANS donnée personnelle : ni identifiant de conversation, ni compte,
+  // ni contenu — un code d'erreur et une étape.
+  var tracer = function (m) { try { if (typeof diagLog === "function") diagLog(m); } catch (e) {} };
   try {
     // Même famille que `profiles` et `user_state` (#367) : `reads_insert_own`
     // exige `auth.uid()`, donc un accusé de lecture posé sous le placeholder
@@ -6449,14 +6488,50 @@ async function supaMarkRead(convId) {
     // exige `user_id = auth.uid()`). On le TRACE au lieu de le taire — sans
     // trace, une divergence d'identité est indiscernable d'un calme plat.
     if (_identiteDivergeDeLaSession(MY_UID)) {
-      try { if (typeof diagLog === "function") diagLog("conv_reads: identite locale != session"); } catch (e) {}
+      tracer("conv_reads: identite locale != session");
       return;
     }
-    await supa.from("conv_reads").upsert(
-      { conv_id: convId, user_id: MY_UID, last_read_at: new Date().toISOString() },
-      { onConflict: "conv_id,user_id" }
-    );
-  } catch(e) {}
+    // L'identité est CAPTURÉE : la reprise après réparation ne part que sous le
+    // compte qui a ouvert la conversation (même règle qu'ASTRA-21 à l'envoi).
+    var moi = MY_UID;
+    var poser = function () {
+      return supa.from("conv_reads").upsert(
+        { conv_id: convId, user_id: moi, last_read_at: new Date().toISOString() },
+        { onConflict: "conv_id,user_id" }
+      );
+    };
+    var r = await poser();
+    if (!r || !r.error) return;
+    // Panne réseau : rien à réparer, rien à marquer.
+    if (typeof estEchecReseau === "function" && estEchecReseau(r.error)) return;
+    var code = String((r.error && r.error.code) || "");
+    var st = Number(r.status || 0);
+    if (st === 401 || !(st === 403 || code === "42501")) {
+      tracer("conv_reads echec " + (code || st || "?"));
+      return;
+    }
+    if (MY_UID !== moi) return; // compte changé pendant l'attente : rien sous l'ancien
+    if (!_accuseLectureReparable(convId, moi)) {
+      tracer("conv_reads refus " + (code || st) + " : conversation hors reparation");
+      return;
+    }
+    if (window._convReparationTentee && window._convReparationTentee[convId]) {
+      tracer("conv_reads refus " + (code || st) + " : reparation deja tentee");
+      return;
+    }
+    var repare = await _reparerAppartenanceConv(convId);
+    if (!repare) { tracer("conv_reads refus " + (code || st) + " : appartenance non reparee"); return; }
+    if (MY_UID !== moi) return;
+    var r2 = await poser();
+    if (r2 && r2.error) {
+      tracer("conv_reads refus apres reparation " + (String(r2.error.code || "") || r2.status || "?"));
+    }
+  } catch (e) {
+    // Une exception n'est pas un refus : soit le réseau (un fetch avorté peut
+    // lever), soit un défaut de code — et celui-là se TRACE : un catch muet a
+    // déjà caché une ReferenceError six jours (diagLog).
+    if (!(typeof estEchecReseau === "function" && estEchecReseau(e))) tracer("conv_reads exception " + String((e && e.name) || "?"));
+  }
 }
 
 // Charge l'instant de lecture des AUTRES membres → c._otherReadAt (le plus récent).

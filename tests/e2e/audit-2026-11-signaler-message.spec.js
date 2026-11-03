@@ -319,7 +319,18 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
       await page.waitForSelector("#signalementMotif");
       await page.fill("#signalementMotif", "un motif saisi puis abandonné");
       await page.locator(fermer).first().click();
+      await page.waitForTimeout(300);
+      expect(await page.evaluate(() => window.__reports.length), fermer + " : rien n'est parti à la fermeture").toBe(0);
+      // ⚠️ LE × NE REND PAS LA MAIN TOUT DE SUITE (mesuré le 2026-11-03, défaut
+      // PRÉEXISTANT de `_demanderMotifSignalement`, hors E-08) : `closeModal`
+      // retire `.active` du fond mais laisse `#signalementMotif` dans le DOM, donc
+      // le guetteur (qui attend la DISPARITION du champ) ne se prononce qu'à
+      // l'ouverture de la modale SUIVANTE. Ce banc n'exige donc que ce qui compte
+      // pour E-08 : la promesse finit par « annulé », et RIEN n'est envoyé —
+      // ni à la fermeture, ni quand la modale suivante la dénoue.
+      await page.evaluate(() => { if (!window.__fini) { openModal('<div class="modal-title">suivante</div>'); } });
       await page.waitForFunction(() => window.__fini === true, null, { timeout: 5000 });
+      await page.evaluate(() => closeModal());
       const s = await page.evaluate(() => ({
         reports: window.__reports.length, toasts: window.__toasts.map((t) => t.t),
         accuses: (state.notifications || []).filter((n) => /Signalement reçu/.test(n.text || "")).length,

@@ -187,10 +187,13 @@ test.describe("Confidentialité cross-compte (RLS)", () => {
   //   ③ `event_attendees` : la liste nominative d'un événement où l'on n'est
   //      PAS inscrit (C-04 : policy SELECT `true` pour tout compte connecté).
   //
-  // ⚠️ ③ ÉPINGLE LE CONTRAT ATTENDU, pas l'état d'aujourd'hui : tant que le
-  // périmètre de la liste des participants n'est pas tranché, il ROUGIT —
-  // `test.fail()` le marque « échec attendu » pour que la CI reste verte et dise
-  // le jour où le comportement change. ① est un verrou ordinaire : la cible de
+  // ⚠️ ③ EST CONDITIONNEL (décision C-04 tranchée le 2026-11-03,
+  // `migrations/migration_participants_visibilite_2026-11-03.sql`) : la cible
+  // est SONDÉE (RPC `participants_compte`). Migration absente → le cas reste un
+  // « échec attendu » (`test.fail()`), CI verte ; migration présente → verrou
+  // ordinaire, qui exige aussi le NOMBRE public et les colonnes de retour
+  // fermées. Même mécanique que B-02 (multi-comptes).
+  // ① est un verrou ordinaire : la cible de
   // la CI (staging) refuse déjà le tiers ; la production le refusera après la
   // migration du 2026-11-02. ② passe aujourd'hui et doit continuer de passer.
   // ═════════════════════════════════════════════════════════════════════════
@@ -281,7 +284,6 @@ test.describe("Confidentialité cross-compte (RLS)", () => {
 
   test("AUDIT E — participants d'un événement où l'on n'est pas inscrit (C-04) : invisibles au tiers, visibles à l'organisateur", async ({ browser }) => {
     test.setTimeout(240000);
-    test.fail(true, "C-04 : `event_attendees_select_authentifie` vaut `true` — retirer cette marque quand le périmètre de la liste sera borné");
     const log = (m) => console.log(`[conf-attendees] ${m}`);
     const ctxA = await browser.newContext(), ctxB = await browser.newContext(), ctxC = await browser.newContext();
     const A = await ctxA.newPage(), B = await ctxB.newPage(), C = await ctxC.newPage();
@@ -290,17 +292,65 @@ test.describe("Confidentialité cross-compte (RLS)", () => {
     try {
       const [uidA, uidB, uidC] = await Promise.all([signupUser(A, "Att Alice"), signupUser(B, "Att Bob"), signupUser(C, "Att Carol")]);
       expect(uidA && uidB && uidC).toBeTruthy();
+
+      // La migration de visibilité (C-04) est-elle appliquée sur la CIBLE ? La
+      // production la reçoit en premier, le staging peut-être jamais. Sondée
+      // SOUS UN COMPTE : la RPC n'est pas ouverte à `anon`, une sonde anonyme
+      // lirait un refus de droit (42501) comme une présence. Tableau vide :
+      // aucune activité visée, rien n'est lu. Absente (PGRST202) → le cas reste
+      // un « échec ATTENDU » qui épingle le contrat ; présente → verrou ordinaire.
+      const sonde = await C.evaluate(async () => {
+        const r = await supa.rpc("participants_compte", { p_event_ids: [] });
+        return { status: r.status, code: (r.error && String(r.error.code || "?")) || null };
+      });
+      log("RPC participants_compte sur la cible : " + JSON.stringify(sonde));
+      expect(sonde.code === null || sonde.code === "PGRST202", "sonde lisible : présente, ou absente en PGRST202 — " + JSON.stringify(sonde)).toBe(true);
+      const migree = sonde.code === null;
+      test.fail(!migree, "C-04 : sans migrations/migration_participants_visibilite_2026-11-03.sql, `event_attendees` se lit `USING (true)` — tout compte connecté lit qui va à quelle rencontre");
+
       eventId = await A.evaluate(async () => { const id = "evt_" + uid(); const ok = await supaPublishEvent({ id, title: "Liste des présents", passion: "musique", city: "Paris", emoji: "🎸", date: Date.now() + 86400000 }); return ok ? id : null; });
       expect(eventId).toBeTruthy();
       const rsvpB = await B.evaluate(async (eid) => supaSetEventRsvp(eid, "going"), eventId);
       expect(rsvpB, "B s'inscrit").toBe(true);
-      // CONTRE-ÉPREUVE : l'organisateur voit sa liste.
-      const orga = await A.evaluate(async (eid) => { const r = await supa.from("event_attendees").select("user_id").eq("event_id", eid); return (r.data || []).map((x) => x.user_id); }, eventId);
-      expect(orga, "CONTRE-ÉPREUVE : l'organisateur lit la liste nominative").toContain(uidB);
+      // CONTRE-ÉPREUVE : l'organisateur voit sa liste (colonnes restées lisibles seulement).
+      const orga = await A.evaluate(async (eid) => { const r = await supa.from("event_attendees").select("user_id,rsvp,checked_in_at").eq("event_id", eid); return { status: r.status, lignes: r.data || [] }; }, eventId);
+      expect(orga.status, "l'organisateur lit sa liste sans refus").toBeLessThan(300);
+      expect(orga.lignes.map((x) => x.user_id), "CONTRE-ÉPREUVE : l'organisateur lit la liste nominative").toContain(uidB);
       // Le TIERS, connecté mais ni inscrit ni organisateur : le contrat attendu est « rien ».
-      const tiers = await C.evaluate(async (eid) => { const r = await supa.from("event_attendees").select("user_id,rsvp,feedback,rating").eq("event_id", eid); return (r.data || []).map((x) => x.user_id); }, eventId);
-      log("tiers C lit " + tiers.length + " participant(s) d'un événement où il n'est pas inscrit");
-      expect(tiers, "un compte sans lien avec l'événement ne lit pas qui y va").not.toContain(uidB);
+      // ⚠️ `user_id,rsvp` SEULEMENT : une colonne retirée dans la projection
+      // (`feedback`, `rating`) ferait refuser la requête ENTIÈRE (42501) après la
+      // migration — le tiers « ne verrait rien » pour une autre raison que la
+      // policy, un faux vert. La lecture doit être ACCEPTÉE et filtrée.
+      const tiers = await C.evaluate(async (eid) => { const r = await supa.from("event_attendees").select("user_id,rsvp").eq("event_id", eid); return { status: r.status, code: r.error && String(r.error.code || ""), ids: (r.data || []).map((x) => x.user_id) }; }, eventId);
+      log("tiers C lit " + tiers.ids.length + " participant(s) d'un événement où il n'est pas inscrit (HTTP " + tiers.status + ")");
+      expect(tiers.status, "la lecture du tiers est acceptée (filtrée par la policy, pas refusée)").toBeLessThan(300);
+      expect(tiers.ids, "un compte sans lien avec l'événement ne lit pas qui y va").not.toContain(uidB);
+
+      // ── Migration appliquée : ce qui reste ouvert, et ce qui est fermé ──────
+      // ① Le NOMBRE reste public parmi les connectés (preuve sociale, places
+      // restantes) : le tiers le lit par la RPC, au compte près — attendu
+      // recalculé depuis la liste de l'organisateur, même règle que la RPC.
+      const attendu = {
+        event_id: eventId,
+        going: orga.lignes.filter((x) => !["maybe", "waitlist", "declined"].includes(x.rsvp || "going")).length,
+        maybe: orga.lignes.filter((x) => x.rsvp === "maybe").length,
+        waitlist: orga.lignes.filter((x) => x.rsvp === "waitlist").length,
+        checked_in: orga.lignes.filter((x) => x.checked_in_at).length,
+      };
+      expect(attendu.going, "prémisse : B compte parmi les venants").toBeGreaterThanOrEqual(1);
+      const compte = await C.evaluate(async (eid) => { const r = await supa.rpc("participants_compte", { p_event_ids: [eid] }); return { err: r.error ? String(r.error.code) + " " + r.error.message : null, lignes: r.data || [] }; }, eventId);
+      expect(compte.err, "le tiers appelle participants_compte").toBeNull();
+      expect(compte.lignes, "…et lit le NOMBRE exact, sans aucun nom").toEqual([attendu]);
+      // ② Les retours d'expérience ne se lisent plus en direct : refus de COLONNE.
+      for (const col of ["feedback", "rating", "rated_at"]) {
+        const r = await C.evaluate(async ([eid, c]) => { const x = await supa.from("event_attendees").select(c).eq("event_id", eid); return { status: x.status, code: x.error ? String(x.error.code || "") : null }; }, [eventId, col]);
+        expect(r.code, "colonne `" + col + "` illisible pour le tiers (42501) — HTTP " + r.status).toBe("42501");
+      }
+      // ③ B, inscrit, lit toujours SA ligne.
+      const propre = await B.evaluate(async (eid) => { const r = await supa.from("event_attendees").select("user_id,rsvp").eq("event_id", eid).eq("user_id", MY_UID); return { status: r.status, lignes: r.data || [] }; }, eventId);
+      expect(propre.status).toBeLessThan(300);
+      expect(propre.lignes, "B lit sa propre inscription").toEqual([{ user_id: uidB, rsvp: "going" }]);
+      log("✅ C-04 : liste par lien, nombre public, retours fermés");
     } finally {
       for (const p of [B]) { try { await p.evaluate(async (eid) => { try { await supa.from("event_attendees").delete().eq("event_id", eid).eq("user_id", MY_UID); } catch (e) {} }, eventId); } catch (e) {} }
       try { await A.evaluate(async (eid) => { try { await supa.from("events").delete().eq("id", eid); } catch (e) {} }, eventId); } catch (e) {}
