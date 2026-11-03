@@ -8,10 +8,10 @@
 // décisions passent donc de « quand GitHub voudra bien » à « dans les 5 min » :
 //
 // ① RÉVEILLER LA SENTINELLE (`doitReveillerSentinelle`) : des échecs chez au
-//    moins DEUX comptes anciens en 30 min, aucune enquête en cours, pas de
+//    moins DEUX comptes anciens en 30 min, une place libre parmi les enquêtes, pas de
 //    pause, pas de run récent → `workflow_dispatch` de sentinelle-autonome.yml.
 //    Le réveil ne décide rien d'autre : le détecteur garde ses propres filtres
-//    (comptes identifiés, dédup, une enquête à la fois, auto-fusion bornée).
+//    (comptes identifiés, dédup, `enquetesMax` enquêtes à la fois, auto-fusion bornée).
 //
 // ② PROPOSER DE RETIRER UN MAUVAIS DÉPLOIEMENT (`decideRetour`) : dans les
 //    90 min qui suivent une mise en ligne, une famille d'échec NOUVELLE — vue
@@ -43,7 +43,10 @@
 // Les fenêtres et anciennetés du réveil et de la proposition sont écrites dans
 // la migration (SQL) ; ces constantes les DISENT, et le verrou ⑫ vérifie que
 // les deux disent la même chose.
-export const REVEIL = Object.freeze({ comptesMin: 2, fenetreMs: 30 * 60e3, runRecentMs: 45 * 60e3, ancienneteMinMs: 24 * 3600e3, parJour: 12 });
+// `enquetesMax` : la Sentinelle mène jusqu'à 3 enquêtes de front (2026-11-01) —
+// égal à `MAX_ENQUETES` de scripts/sentinelle-detecter.mjs (verrou dans
+// tests/unit/sentinelle-detecter.test.mjs). Saturée, on ne la réveille pas.
+export const REVEIL = Object.freeze({ comptesMin: 2, fenetreMs: 30 * 60e3, runRecentMs: 45 * 60e3, ancienneteMinMs: 24 * 3600e3, parJour: 12, enquetesMax: 3 });
 // `entreDeuxGestesMs` : un double appui retirerait DEUX versions (le second lit
 // la version remise comme courante) — un geste réussi ferme le bouton 10 min.
 // `exclusionMs` : une version retirée ne revient jamais par ce bouton dans les
@@ -90,11 +93,11 @@ export function enquetesEnCours(issues) {
 export function doitReveillerSentinelle({ pause, enquetes, dernierRun, comptesErreurs, maintenant = Date.now() } = {}) {
   if (pause) return { reveiller: false, raison: "pause" };
   if (!Number.isFinite(comptesErreurs) || comptesErreurs < REVEIL.comptesMin) return { reveiller: false, raison: "calme" };
-  if (!Number.isFinite(enquetes) || enquetes > 0) return { reveiller: false, raison: "enquete_en_cours" };
+  if (!Number.isFinite(enquetes) || enquetes >= REVEIL.enquetesMax) return { reveiller: false, raison: "enquetes_saturees" };
   if (dernierRun && dernierRun.etat && dernierRun.etat !== "completed") return { reveiller: false, raison: "run_en_cours" };
   const le = t(dernierRun && dernierRun.le);
   if (Number.isFinite(le) && maintenant - le < REVEIL.runRecentMs) return { reveiller: false, raison: "run_recent" };
-  return { reveiller: true, raison: `${comptesErreurs} comptes en échec en 30 min, aucune enquête en cours` };
+  return { reveiller: true, raison: `${comptesErreurs} comptes en échec en 30 min, ${enquetes}/${REVEIL.enquetesMax} enquête(s) en cours` };
 }
 
 /** Empreinte courte et stable d'un texte (FNV-1a 32 bits) : ce qui sort à la place du texte. */

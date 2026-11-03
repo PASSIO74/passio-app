@@ -153,7 +153,7 @@ les relire sur la page Pricing de chaque service le jour du geste.**
 6. ✅ **Priorité par personnes touchées — c'était déjà le cas** : `classer()` et `classerApi()`
    (`scripts/sentinelle-detecter.mjs`) trient les candidats par comptes distincts, puis par occurrences.
    La première version de ce plan le comptait à tort comme « à faire ».
-6 bis. ⏳ **Enquêtes en parallèle — écrit le 2026-11-01, attend la contre-revue humaine (PR #677, périmètre `.github/`).** Jusqu'à 3 enquêtes confiées à Claude en même
+6 bis. ✅ **Enquêtes en parallèle — livré le 2026-11-01.** Jusqu'à 3 enquêtes confiées à Claude en même
    temps (`MAX_ENQUETES`, variable de dépôt `SENTINELLE_MAX_ENQUETES` bornée à 1–5), au lieu d'une : un
    correctif en cours ne gèle plus la détection des autres. Deux candidats sur le même appel réseau ou le
    même écran ne partent pas ensemble ; la veille ne réveille la Sentinelle que si une place est libre.

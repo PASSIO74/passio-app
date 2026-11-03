@@ -54,9 +54,9 @@ plus récentes `{at, app_version}` : c'est ce qui permet la dédup ci-dessous.
 
 | Label | Posé par | Jeton | Effet |
 |---|---|---|---|
-| `sentinelle` | sentinelle-autonome, à la création | `SENTINELLE_TOKEN` (enquête) / `github.token` (récidive) | marque d'origine ; avec l'auteur OWNER et le préfixe `[SENTINELLE]`, arme l'auto-fusion ; compte dans « une enquête à la fois » (sauf `humain`) |
+| `sentinelle` | sentinelle-autonome, à la création | `SENTINELLE_TOKEN` (enquête) / `github.token` (récidive) | marque d'origine ; avec l'auteur OWNER et le préfixe `[SENTINELLE]`, arme l'auto-fusion ; compte dans les enquêtes en cours, plafond `MAX_ENQUETES` = 3 (sauf `humain`) |
 | `claude` | sentinelle-autonome, étape séparée 8 s après | `SENTINELLE_TOKEN` | déclenche `claude-code.yml` (seul événement de son groupe) |
-| `humain` | veilleur (6 h), gouvernance (refus), retour-issue (non déployé), récidive | `github.token` | la machine s'arrête, e-mail à Benjamin ; l'issue ne compte plus dans « une enquête à la fois » ; `choisirCible` saute son titre tant qu'elle est ouverte |
+| `humain` | veilleur (6 h), gouvernance (refus), retour-issue (non déployé), récidive | `github.token` | la machine s'arrête, e-mail à Benjamin ; l'issue ne compte plus dans les enquêtes en cours ; `choisirCibles` saute son titre tant qu'elle est ouverte |
 | `recidive` | sentinelle-autonome (A4) | `github.token` | ≥ 2 correctifs déployés sur le même titre |
 | `sentinelle-relancee` | veilleur | `github.token` | le run Claude a été relancé une fois ; jamais deux |
 | `disponibilite` | sentinelle-autonome (`[SENTINELLE MUETTE]`), disponibilite.yml (`[DISPONIBILITÉ]`) | `github.token` | alerte de disponibilité, jamais de correctif automatique ; chaque workflow ne referme que SON préfixe de titre |
