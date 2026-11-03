@@ -1012,12 +1012,12 @@ Deux risques résiduels de l'audit du 2026-11-02 (`05-RISQUES-RESIDUELS.md`), fe
 retour arrière la rend à l'octet près — le banc construit son socle avec lui et contrôle l'empreinte.
 
 **R24 ① — une RPC ouverte à tout compte ne rend pas l'identité d'un tiers.** En mode automatique, `promouvoir_attente` est
-ouverte à tout connecté, et c'est voulu : depuis C-04, celui qui libère une place ne voit plus la file. Mais elle RENDAIT
+ouverte à tout connecté, et c'est voulu : depuis C-04, celui qui libère une place n'a plus de lien une fois parti. Mais elle RENDAIT
 `user_id` du promu — une place libre et une file suffisaient à un inconnu pour apprendre, un appel à la fois, qui vient :
 exactement la liste que C-04 ferme. Le nom ne va plus qu'à l'organisation (`organise_activite`) ou à la personne promue ;
 tout autre appelant lit `{"ok": true}` SEUL (les motifs de refus ne portent aucune identité, ils restent). **Avant C-04 la
-fuite n'ajoutait rien (la liste est lisible par tout connecté) ; c'est APRÈS qu'elle devient la seule — d'où l'application
-AVANT `participants_visibilite`.** C'est le ①bis de la fiche précédente, une surface plus loin : fermer une lecture, c'est
+fuite n'ajoutait rien (la liste est lisible par tout connecté) ; c'est APRÈS qu'elle devient une fuite SANS INSCRIPTION —
+d'où l'application AVANT `participants_visibilite`.** Ce n'est pas la seule (R27, ci-dessous) : un venant lit la file. C'est le ①bis de la fiche précédente, une surface plus loin : fermer une lecture, c'est
 chercher aussi les RPC qui RENVOIENT la même information, pas seulement les tables qui la recopient.
 
 **R24 ② — une notion, une définition.** La promotion CHOISIE comparait elle-même auteur et co-organisateurs : elle oubliait
@@ -1065,6 +1065,25 @@ imprévue du décor s'écrit au tableau (ECHEC, avec son code) sans annuler la m
 de la requête qui l'appelle) — chaque lecture d'état est une instruction à part ; **② une ACL `NULL` sur une fonction veut dire
 « EXECUTE à PUBLIC »** — `not exists (… aclexplode(proacl) … grantee = 0)` est VRAI sur NULL, d'où `proacl is not null`. Le banc
 éprouve chaque ligne par mutation (nom à tous, promue muette, auteur seul, vues gardées, décor non annulé, décor cassé).
+
+**Ce que la contre-revue red team a confirmé, et ce qu'elle a trouvé à côté** (2026-11-03 ; lecture seule ; second banc avec
+les policies et déclencheurs de production, et C-04 telle qu'écrite). Confirmé : retour arrière identique à l'octet
+(`pg_get_functiondef` en md5 `c6491165…`, mêmes attributs, même ACL) ; les deux ordres d'application (R24 puis C-04, et
+l'inverse) donnent les mêmes définitions et les mêmes droits ; le bloc ④ ne touche en production aucun déclencheur à effet
+externe (ni pg_net, ni http, ni notify) ; les trois vues n'ont aucun lecteur. Trouvé à côté, consigné et non corrigé ici
+(chacun demande sa décision ou sa revue) :
+- **R27** : un VENANT lit la file (C-04 : toute ligne hors « declined »), et un inconnu qui trouve une place libre s'inscrit,
+  lit, repart. R24 ① ferme la voie de la RPC, pas celle de l'inscription. Proposition : branche « venant » limitée à « going ».
+- **R28** : l'ordre de la file est `created_at`, que le client écrit — on passe devant la file.
+- **R29** : `organizer_id` se désigne sans le consentement de la personne désignée ; la policy UPDATE d'`events` garde sa
+  propre lecture des co-organisateurs.
+- **R30** : le pointage n'exige pas le code — `supaCheckInEvent` écrit `checked_in_at` directement, et la garde serveur
+  (`event_attendees_pointage_garde`) ne regarde que la fenêtre horaire.
+Et un défaut du client de ce lot, corrigé : sur un objet REMPLACÉ pendant la relecture (un chargement concurrent qui compte
+déjà la promotion), le −1/+1 de secours comptait la place deux fois — « complet » fictif, et le « je viens » suivant de
+l'appareil partait en liste d'attente, décidé localement : une ÉCRITURE serveur fausse. Plus de delta sur un objet remplacé :
+un nombre trop bas est sans danger (la base tranche la capacité), un nombre trop haut écrit faux. Verrou h8, rouge sans le
+correctif.
 
 **Ordre** : client d'abord (même PR), puis la migration, AVANT `participants_visibilite` (05/11 18:40 UTC). Mesure au canal ①
 après application : md5(prosrc) ≠ `1a4a2c4d…`, `prosrc` appelle `organise_activite`, `organise_activite` présente, et les trois

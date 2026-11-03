@@ -3712,8 +3712,16 @@ async function _appliquerPromotionAnonyme(ev) {
   const id = ev.id;
   const lu = await _lireActivitePromue(id);
   const cible = _findCanonicalEvent(id) || ev;
+  // ⚠️ PAS DE DELTA SUR UN OBJET REMPLACÉ PENDANT L'ATTENTE (contre-revue du
+  // 2026-11-03). Un chargement arrivé entre-temps a peut-être DÉJÀ compté la
+  // promotion : −1 en file / +1 venant la compterait deux fois, et un
+  // « complet » fictif enverrait le prochain « je viens » de cet appareil en
+  // liste d'attente (`setEventRsvp` le décide localement) — une écriture serveur
+  // fausse. Dans le doute, le nombre reste celui du chargement, et la reprise
+  // relit. Un nombre trop bas, lui, est sans danger : la base tranche la capacité.
+  const remplace = cible !== ev;
   if (lu && lu.comptesLus) cible.counts = lu.countsByEvent[id] || null;
-  else {
+  else if (!remplace) {
     _ajusterCompteInscrits(cible, "waitlist", -1);
     _ajusterCompteInscrits(cible, "going", +1);
   }
@@ -3723,7 +3731,7 @@ async function _appliquerPromotionAnonyme(ev) {
   saveState();
   _patchEventCardJoin(id);
   _refreshEventDetailIfOpen(id);
-  if (!(lu && lu.listesLues)) _relirePromotionPlusTard(id);
+  if (!(lu && lu.listesLues) || (remplace && !(lu && lu.comptesLus) && cible.counts)) _relirePromotionPlusTard(id);
 }
 
 // La relecture d'UNE activité après une promotion sans nom ; jamais ne lève.
@@ -3754,7 +3762,10 @@ function _poserListesRelues(ev, lu) {
 // mon dernier geste (son écriture en vol, ou passée après l'instantané) : on y
 // repose ma réponse, et le compteur public la suit (−1 sur l'état lu, +1 sur
 // l'état local), exactement comme l'optimiste de `setEventRsvp`. « Je ne viens
-// pas » n'est rangé nulle part, comme dans la lecture.
+// pas » n'est rangé nulle part, comme dans la lecture. Résidu assumé : listes et
+// compteur viennent de DEUX requêtes — un geste écrit entre les deux décale le
+// compteur d'une unité jusqu'au prochain chargement (un seul instantané serveur
+// demanderait une RPC qui rende les deux).
 function _reposerMonEtatRsvp(ev) {
   if (!ev) return;
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";

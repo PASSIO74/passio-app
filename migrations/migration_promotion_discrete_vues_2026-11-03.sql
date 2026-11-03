@@ -30,8 +30,8 @@
 -- CE QUI CHANGE (et rien d'autre) :
 --  ① R24, LE NOM DU PROMU. En mode automatique (`p_user_id` nul), la RPC est
 --     ouverte à tout compte connecté — c'est voulu : celui qui libère une place
---     ne voit plus la file depuis C-04, et l'effet est exactement celui que
---     produirait le prochain retrait. Mais elle RENDAIT `user_id` de la
+--     n'a plus de lien avec l'activité une fois parti (C-04), et l'effet est
+--     exactement celui que produirait le prochain retrait. Mais elle RENDAIT `user_id` de la
 --     personne promue : une place libre et une file suffisaient à un inconnu
 --     pour apprendre, un appel à la fois, qui vient — précisément la liste que
 --     C-04 ferme. Désormais `user_id` n'est rendu qu'à l'ORGANISATION de
@@ -47,8 +47,9 @@
 --     honnête, aucune écriture). Et sur une activité SANS auteur, `moi <> null`
 --     est nul, donc jamais vrai : n'importe qui désignait le promu (0 activité
 --     concernée, mesuré). La RPC appelle désormais
---     `public.organise_activite(p_event_id)` : UNE définition de l'organisation,
---     pour la liste, la discussion d'activité et la promotion.
+--     `public.organise_activite(p_event_id)` : la définition de C-04, pour la
+--     liste, la discussion d'activité et la promotion (la policy UPDATE
+--     d'`events` garde la sienne : voir « ce qui n'est pas fermé », R29).
 --     ⚠️ `organise_activite` n'existe pas encore en production : cette migration
 --     la crée, COPIE À L'OCTET PRÈS du bloc de C-04 (le banc compare les deux
 --     fichiers). `create or replace` dans les deux : dans n'importe quel ordre,
@@ -73,10 +74,29 @@
 --     sur la vue, comme sur chaque table depuis toujours (C-03 les garde) — hors
 --     de portée de PostgREST, et ce n'est pas le risque R26.
 --
+-- CE QUI N'EST PAS FERMÉ ICI, dit tel quel (contre-revue red team du
+-- 2026-11-03, mesuré sur banc ; risques résiduels R27 à R29 de l'audit) :
+--  · R27 : après C-04, un VENANT lit toute ligne hors « declined » de son
+--    activité, file d'attente comprise, dans l'ordre même où la RPC promeut :
+--    il sait qui sera promu avant de partir ; et un inconnu adulte qui trouve
+--    une place libre (la condition même d'une promotion) s'inscrit, lit la
+--    file, repart (R18). R24 ① ferme la voie de la RPC — celle qui ne demande
+--    aucune inscription —, pas celle-là. Correctif proposé : la branche
+--    « venant » de C-04 limitée aux lignes « going » (C-04 est attestée :
+--    nouvelle contre-revue).
+--  · R28 : « premier arrivé » se lit dans `created_at`, que le CLIENT écrit
+--    (INSERT, UPDATE de sa propre ligne, heure de l'appareil ; un « peut-être »
+--    qui passe en file garde sa date) : on peut passer devant la file.
+--  · R29 : `organizer_id` se désigne sans le consentement de la personne
+--    désignée (la policy INSERT d'`events` ne contraint que `author_id`), et la
+--    policy UPDATE d'`events` garde sa propre lecture des co-organisateurs
+--    (`jsonb_exists`, sans `organizer_id`, sans contrainte de tableau).
+--
 -- ORDRE : indépendante de toutes les autres. Avant C-04, la liste des
 -- participants est encore lisible par tout connecté, et `user_id` n'y ajoutait
--- rien : c'est APRÈS C-04 qu'il devient la seule fuite — à appliquer donc AVANT
--- `participants_visibilite` (au plus tard juste après). Le client du 2026-11-03
+-- rien : c'est APRÈS C-04 qu'il devient une fuite qui ne demande aucune
+-- inscription — à appliquer donc AVANT `participants_visibilite` (au plus tard
+-- juste après). Le client du 2026-11-03
 -- (même PR) lit `{"ok": true}` sans nom comme un succès : il RELIT l'activité
 -- sous ses propres droits (compteurs justes, visages que la base accepte de
 -- montrer) et ne désigne personne. Un client d'avant le lit comme un refus :
@@ -301,10 +321,10 @@ begin
   end;
   -- QUI a été promu ne se dit qu'à l'organisation, ou à la personne promue
   -- (R24, 2026-11-03). La promotion automatique est ouverte à tout compte
-  -- connecté — celui qui libère une place ne voit plus la file depuis C-04 — et
-  -- rendre le nom à n'importe quel appelant lui livrait, un appel à la fois,
-  -- la liste de qui vient : celle que C-04 ferme. Les autres apprennent que la
-  -- place est donnée, pas à qui.
+  -- connecté — celui qui libère une place n'a plus de lien avec l'activité une
+  -- fois parti (C-04) — et rendre le nom à n'importe quel appelant lui livrait,
+  -- un appel à la fois et sans s'inscrire, qui vient. Les autres apprennent que
+  -- la place est donnée, pas à qui.
   if orga or cible = moi then
     return jsonb_build_object('ok', true, 'user_id', cible);
   end if;

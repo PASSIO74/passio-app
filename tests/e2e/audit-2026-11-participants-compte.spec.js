@@ -771,6 +771,53 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
     } finally { await ctx.close(); }
   });
 
+  // Contre-revue du 2026-11-03 : pendant les deux allers-retours de la relecture,
+  // un chargement concurrent peut REMPLACER l'objet canonique par sa version
+  // serveur, qui compte DÉJÀ la promotion. Si la relecture des compteurs tombe
+  // alors en panne, le −1 file / +1 venant la comptait deux fois : 3 venants
+  // pour 2 réels, « complet » à 3 places, et le « je viens » suivant de cet
+  // appareil partait en LISTE D'ATTENTE (décidé localement) — une écriture
+  // serveur fausse. Sans delta sur un objet remplacé, la place libre le reste.
+  test("h8. objet remplacé pendant la relecture + compteurs en panne : aucun double compte, pas de « complet » fictif, « je viens » reste « je viens » en base", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    peupler(srv);
+    const E9 = "evt_c04_remplace";
+    activite(srv, E9, { date_at: iso(Date.now() + 2 * 86400000), max_attendees: 3 });
+    srv.t.event_attendees.push(ligne(E9, G[0], "going"));
+    const { ctx, page } = await ouvrirV(browser, srv);
+    try {
+      await charger(page);
+      await page.evaluate(async (id) => { await setEventRsvp(id, "going"); }, E9);
+      srv.t.event_attendees.push(ligne(E9, W2, "waitlist", { created_at: new Date().toISOString() }));
+      const lu = await charger(page);
+      expect(lu[E9].counts, "prémisse : 2 venants, 1 en file").toEqual({ going: 2, maybe: 0, waitlist: 1, checked_in: 0 });
+      await page.evaluate(() => {
+        const vraie = window.supaLireParticipants;
+        window.__remplace = 0;
+        window.supaLireParticipants = async function (ids, origine) {
+          const lu = await vraie(ids, origine);
+          if (origine !== "promotion sans nom" || window.__remplace) return lu;
+          window.__remplace = 1;
+          // Un chargement concurrent remplace l'objet canonique par sa version serveur, DÉJÀ promue…
+          const evs = await supaLoadEvents();
+          fusionnerEvenementsServeur(evs.filter((e) => e.id === ids[0]));
+          // …et la relecture des COMPTEURS de la promotion tombe en panne.
+          return Object.assign({}, lu, { comptesLus: false, countsByEvent: {} });
+        };
+      });
+      await page.evaluate(async (id) => { await setEventRsvp(id, null); }, E9);
+      await expect.poll(() => page.evaluate(() => window.__remplace), { message: "l'objet a été remplacé pendant la relecture", timeout: 5000 }).toBe(1);
+      await expect.poll(() => (srv.t.event_attendees.find((a) => a.event_id === E9 && a.user_id === W2) || {}).rsvp, { timeout: 5000 }).toBe("going");
+      await page.waitForTimeout(500);
+      const apres = await page.evaluate((id) => { const ev = _findCanonicalEvent(id); return { going: _nbInscrits(ev, "going"), complet: _eventIsFull(ev), places: _eventSpotsLeft(ev) }; }, E9);
+      expect(apres, "2 venants réels (G0, W2) : une place libre, pas de « complet »").toEqual({ going: 2, complet: false, places: 1 });
+      const revient = await page.evaluate(async (id) => { window.__toasts = []; await setEventRsvp(id, "going"); return { rsvp: myRsvp(id), toasts: window.__toasts.map((t) => t.msg) }; }, E9);
+      expect(revient.toasts.join(" | "), "aucun « c'est complet » fictif").not.toMatch(/complet/i);
+      expect(revient.rsvp).toBe("going");
+      expect(srv.t.event_attendees.find((a) => a.event_id === E9 && a.user_id === V).rsvp, "en base : « je viens », pas la liste d'attente").toBe("going");
+    } finally { await ctx.close(); }
+  });
+
   test("h3. promotion MANUELLE (organisation) du seul inscrit en attente, compteurs {going:5, waitlist:1} → plus de « Liste d'attente (1) » ni de « +1 autre »", async ({ browser }) => {
     const srv = new FauxServeur().migrerParticipants();
     peupler(srv);

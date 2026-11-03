@@ -124,7 +124,7 @@ Chaque fichier porte son retour arrière en tête. Après chaque application : m
 `migrations/migration_promotion_discrete_vues_2026-11-03.sql` (banc `migration-promotion-discrete-vues` 79/0) et le client de
 la même PR (`supaPromoteFromWaitlist`, `_promoteNextWaitlisted`, `_appliquerPromotionAnonyme`, `supaLireParticipants`).
 Indépendante des six du § 6.1, **à appliquer AVANT `participants_visibilite`** : avant C-04, le nom rendu par
-`promouvoir_attente` n'ajoute rien (la liste est lisible par tout connecté) ; après, il en devient la seule fuite. Fiche :
+`promouvoir_attente` n'ajoute rien (la liste est lisible par tout connecté) ; après, c'en est la voie SANS inscription (un venant, lui, lit la file : R27). Fiche :
 `docs/journal/serveur-securite-base.md` (« 🔕 LA PROMOTION NE NOMME PLUS LE PROMU… »).
 
 | # | Geste | Preuve attendue |
