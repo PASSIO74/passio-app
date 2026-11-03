@@ -455,45 +455,86 @@ export function classerBoutons(clics = [], effets = [], options = {}) {
 // l'écrivait : un taux bas peut être un bouton mort comme un effet non
 // instrumenté (ouvrir un menu, fermer une fenêtre n'émettent rien). Pour
 // qu'un bouton devienne une ENQUÊTE confiée à Claude, il faut davantage que
-// « peu d'effets » — quatre preuves cumulées :
+// « peu d'effets » — preuves cumulées :
 //
 //   ① des CLICS RAGEURS : la même personne retape le même bouton dans la même
 //      session, sans effet, dans la fenêtre. Un bouton « fermer » est tapé
-//      une fois ; un bouton mort est tapé deux, trois fois. C'est le signal
-//      qui sépare le défaut de l'effet silencieux ;
-//   ② chez des comptes DISTINCTS à identité SERVEUR (`auth_uid`) — ni un
-//      appareil qui boucle, ni un `user_id` recopié (ASTRA-06) ;
+//      une fois ; un bouton mort est tapé deux, trois fois ;
+//   ② chez des comptes DISTINCTS à identité SERVEUR (`auth_uid`), ANCIENS
+//      (créés depuis `BOUTON_MORT.ancienneteMinMs`, lu côté authentification,
+//      jamais dans `profiles` qu'un client écrit) — même doctrine que le retour
+//      arrière (revues du 2026-10-12) : trois comptes créés pour l'occasion ne
+//      lancent rien ;
 //   ③ un taux d'effet bas sur un volume suffisant ;
-//   ④ un libellé PRÉSENT TEL QUEL DANS LE CODE (`index.html`, `js/*.js`).
-//      ⚠️ Le dépôt est PUBLIC et l'issue arme l'auto-fusion : le libellé est
-//      lu sur le texte du bouton, donc parfois le nom d'une passion ou d'un
-//      compte. Exiger qu'il soit déjà écrit dans le code garantit qu'il n'est
-//      ni une donnée personnelle, ni un texte choisi par un inconnu — au pire
-//      un attaquant peut désigner un VRAI bouton de l'app, qui ne se « répare »
-//      qu'en passant la gouvernance (2 fichiers, 60 lignes, CI verte).
+//   ④ un ÉCRAN RÉEL (`id="screen-…"` d'index.html) et un libellé ÉGAL à un
+//      libellé écrit dans le code (`libellesDuCode`).
+//
+// ⚠️ CONTRE-REVUE DU 2026-11-03 (PR #677) — la première version cherchait le
+// libellé comme SOUS-CHAÎNE des 4 Mo d'index.html + js/*.js : 84 % des paires
+// de lettres, « Marie », « Julie », « Annecy », « gmail.com » passaient. Le
+// dépôt est PUBLIC et l'issue arme l'auto-fusion : un pseudo ou une passion lus
+// sur le texte d'un bouton finissaient dans le titre d'une issue publique. La
+// garde est désormais une ÉGALITÉ EXACTE avec un ensemble fermé extrait des
+// ATTRIBUTS (`data-tel`, `data-screen`, `aria-label`, `id`) et des textes de
+// `<button>` littéraux — jamais une valeur qui porte une interpolation.
+// ⚠️ Et l'horodatage d'une occurrence est celui du SERVEUR (`received_at`) :
+// avec `client_ts`, une horloge en avance (ou choisie) rendait chaque
+// occurrence « postérieure au correctif », et la dédup datée ne taisait plus
+// jamais le défaut. `client_ts` ne sert qu'à apparier un clic et son effet
+// DANS UNE MÊME SESSION.
+// ⚠️ Écrans inventés (`x1`, `x2`…) = zones infinies : refusés. Et une seule
+// enquête bouton à la fois (`zoneCible`, `choisirCibles`), pour qu'un flot de
+// boutons ne prenne jamais les places d'un défaut réel.
 //
 // Seuls les clics SANS effet sont des occurrences : ce sont eux que la dédup
 // datée (`dejaCorrige`) compare au déploiement du correctif.
 // ═══════════════════════════════════════════════════════════════════════════
-export const BOUTON_MORT = Object.freeze({ clicsMin: 10, comptesMin: 3, rageursMin: 2, tauxEffetMax: 20 });
-const RE_ECRAN = /^[a-z0-9_-]{1,30}$/i;
+export const BOUTON_MORT = Object.freeze({ clicsMin: 10, comptesMin: 3, rageursMin: 2, tauxEffetMax: 20, ancienneteMinMs: 7 * 864e5, comptesLusMax: 60 });
+const RE_LIBELLE_SUR = /^[^\x00-\x1f<>`${}\\]{3,60}$/u;
 
-/** Le libellé est-il un texte écrit dans le code (donc ni une donnée personnelle, ni un choix d'inconnu) ? */
-export function libelleDuCode(libelle, code) {
+/** Libellés écrits dans le code : valeurs d'attributs et textes de bouton LITTÉRAUX (≥ 3 caractères). */
+export function libellesDuCode(code) {
+  const ensemble = new Set();
+  if (typeof code !== "string") return ensemble;
+  const garder = (v, prefixe = "") => {
+    const s = String(v || "").trim();
+    if (RE_LIBELLE_SUR.test(s) && !s.includes("${") && !/['"+]\s*\+|\+\s*['"]/.test(s)) ensemble.add(prefixe + s);
+  };
+  for (const m of code.matchAll(/\b(?:data-tel|data-screen|aria-label)=["']([^"'\n]{3,60})["']/g)) garder(m[1]);
+  for (const m of code.matchAll(/\bid=["']([A-Za-z][\w-]{1,58})["']/g)) garder(m[1], "#");
+  for (const m of code.matchAll(/<button\b[^>]*>([^<>\n]{3,40})<\/button>/g)) garder(m[1]);
+  return ensemble;
+}
+
+/** Écrans réels de l'app : `id="screen-<nom>"` d'index.html. */
+export function ecransDuCode(code) {
+  const ensemble = new Set();
+  if (typeof code !== "string") return ensemble;
+  for (const m of code.matchAll(/\bid=["']screen-([a-z0-9_-]{1,30})["']/g)) ensemble.add(m[1]);
+  return ensemble;
+}
+
+/** Le libellé est-il EXACTEMENT un libellé du code (donc ni une donnée personnelle, ni un choix d'inconnu) ? */
+export function libelleDuCode(libelle, libelles) {
   const l = String(libelle || "").trim();
-  if (l.length < 2 || l.length > 60 || /[\x00-\x1f<>`]/.test(l)) return false;
-  const brut = l.startsWith("#") ? l.slice(1) : l;
-  return typeof code === "string" && brut.length >= 2 && code.includes(brut);
+  return RE_LIBELLE_SUR.test(l) && libelles instanceof Set && libelles.has(l);
 }
 
 /**
  * Candidats « bouton mort », de la même forme que ceux de `classer`/`classerApi`.
- * FONCTION PURE. `clics` : [{action, screen, session_id, client_ts, auth_uid, app_version}].
+ * FONCTION PURE. `clics` : [{action, screen, session_id, client_ts, received_at, auth_uid, app_version}].
+ * `options` : { libelles: Set, ecrans: Set, comptesAnciens: Set | "tous", avecUids }.
+ * Sans `libelles`, `ecrans` ou `comptesAnciens`, rien n'est retenu : l'absence
+ * de preuve n'est jamais une preuve. `comptesAnciens: "tous"` ne sert qu'au
+ * premier passage de `principal`, qui collecte les comptes à vérifier.
  */
 export function classerBoutonsMorts(clics = [], effets = [], options = {}) {
   const fenetre = options.fenetreMs ?? BOUTON_FENETRE_MS;
   const seuils = { ...BOUTON_MORT, ...(options.seuils || {}) };
-  const code = options.code;
+  const libelles = options.libelles instanceof Set ? options.libelles : new Set();
+  const ecrans = options.ecrans instanceof Set ? options.ecrans : new Set();
+  const anciens = options.comptesAnciens;
+  const estAncien = (uid) => anciens === "tous" || (anciens instanceof Set && anciens.has(uid));
   const parSession = new Map();
   for (const e of effets) {
     const k = String(e.session_id || "");
@@ -503,13 +544,17 @@ export function classerBoutonsMorts(clics = [], effets = [], options = {}) {
   }
   const groupes = new Map();
   let nonVerifiees = 0;
+  let recents = 0;
   for (const c of clics) {
     const t = Date.parse(c.client_ts);
-    if (!Number.isFinite(t)) continue;
-    if (!RE_COMPTE.test(String(c.auth_uid || ""))) { nonVerifiees++; continue; }
+    const recu = Date.parse(c.received_at);
+    if (!Number.isFinite(t) || !Number.isFinite(recu)) continue;
+    const uid = String(c.auth_uid || "");
+    if (!RE_COMPTE.test(uid)) { nonVerifiees++; continue; }
+    if (!estAncien(uid)) { recents++; continue; }
     const ecran = String(c.screen || "");
     const libelle = String(c.action || "").trim().slice(0, 60);
-    if (!RE_ECRAN.test(ecran) || !libelleDuCode(libelle, code)) continue;
+    if (!ecrans.has(ecran) || !libelleDuCode(libelle, libelles)) continue;
     const cle = `bouton ${ecran} · ${libelle}`;
     if (!groupes.has(cle)) {
       groupes.set(cle, { cle, famille: "bouton", ecran, libelle, message: `Clic sans effet : « ${libelle} » (écran ${ecran})`,
@@ -519,24 +564,49 @@ export function classerBoutonsMorts(clics = [], effets = [], options = {}) {
     g.clics++;
     const sess = String(c.session_id || "");
     if (aSonEffet(parSession.get(sess) || [], t, fenetre)) { g.avecEffet++; continue; }
-    g.comptes.add(String(c.auth_uid));
-    const at = String(c.client_ts);
+    g.comptes.add(uid);
+    // L'instant d'une occurrence est celui du SERVEUR (voir l'en-tête).
+    const at = new Date(recu).toISOString();
     g.n++;
     if (!g.dernier || at > g.dernier) g.dernier = at;
     noterOccurrence(g, at, c.app_version);
     // Clic rageur : un AUTRE clic mort, même session, même bouton, dans la fenêtre.
     const precedents = g.morts.get(sess) || [];
-    if (precedents.some((tp) => Math.abs(t - tp) <= fenetre)) g.rageurs.add(String(c.auth_uid));
+    if (precedents.some((tp) => Math.abs(t - tp) <= fenetre)) g.rageurs.add(uid);
     precedents.push(t);
     g.morts.set(sess, precedents);
   }
   const candidates = [...groupes.values()]
-    .map(({ morts, ...g }) => ({ ...g, comptes: g.comptes.size, rageurs: g.rageurs.size,
+    .map(({ morts, ...g }) => ({ ...g, comptes: g.comptes.size, rageurs: g.rageurs.size, _uids: [...g.comptes],
       tauxEffet: Math.round((100 * g.avecEffet) / g.clics), occurrences: bornerOccurrences(g.occurrences) }))
     .filter((g) => g.clics >= seuils.clicsMin && g.comptes >= seuils.comptesMin
       && g.rageurs >= seuils.rageursMin && g.tauxEffet <= seuils.tauxEffetMax)
-    .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n));
-  return { candidates, nonVerifiees };
+    .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n))
+    // Les identifiants ne sortent JAMAIS du détecteur (le verdict paraît dans un résumé public).
+    .map(({ _uids, ...g }) => (options.avecUids ? { ...g, _uids } : g));
+  return { candidates, nonVerifiees, recents };
+}
+
+/**
+ * Comptes créés depuis au moins `ancienneteMinMs`, lus sur l'API d'administration
+ * de l'authentification (`auth.users.created_at`, jamais `profiles`). Bornés à
+ * `comptesLusMax` lectures ; un compte illisible n'est pas ancien.
+ */
+export async function lireComptesAnciens({ url, cle, uids, maintenant = Date.now() }) {
+  const anciens = new Set();
+  const liste = [...new Set(uids)].filter((u) => RE_COMPTE.test(u)).slice(0, BOUTON_MORT.comptesLusMax);
+  for (let i = 0; i < liste.length; i += 10) {
+    await Promise.all(liste.slice(i, i + 10).map(async (uid) => {
+      try {
+        const r = await fetch(`${url}/auth/v1/admin/users/${uid}`, { headers: { apikey: cle, Authorization: "Bearer " + cle } });
+        if (!r.ok) return;
+        const u = await r.json();
+        const cree = Date.parse(u && u.created_at);
+        if (Number.isFinite(cree) && maintenant - cree >= BOUTON_MORT.ancienneteMinMs) anciens.add(uid);
+      } catch (e) { /* illisible = pas ancien : la garde se ferme, elle ne s'ouvre jamais */ }
+    }));
+  }
+  return anciens;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -811,8 +881,16 @@ export function maxEnquetes(valeur) {
 /** Zone de code d'un candidat : deux candidats de même zone ne partent pas ensemble. */
 export function zoneCible(c) {
   if (c && c.famille === "api" && c.chemin) return "api " + String(c.methode || "").toUpperCase() + " " + String(c.chemin);
-  // Deux boutons du même écran partagent souvent un handler ou un rendu : un à la fois.
-  if (c && c.famille === "bouton" && c.ecran) return "bouton " + String(c.ecran);
+  // Boutons : UNE zone pour toute la famille — une seule enquête bouton à la fois
+  // (contre-revue du 2026-11-03 : un flot de boutons ne prend jamais les places d'un défaut réel).
+  if (c && c.famille === "bouton") return "bouton";
+  // Erreurs JS : le FICHIER source — deux PR auto-fusionnées sur le même fichier
+  // ne sont jamais testées ensemble (`main` n'exige pas une branche à jour).
+  const source = c && c.exemple && c.exemple.source;
+  if (c && c.famille === "js" && source) {
+    const fichier = String(source).split(/[?#]/)[0].split("/").pop();
+    if (fichier) return "js " + fichier;
+  }
   return null;
 }
 
@@ -825,6 +903,8 @@ export function choisirCibles(candidats, fermees, ouvertes, places = 1) {
   const n = Number.isInteger(places) && places > 0 ? places : 0;
   const titres = new Set((Array.isArray(ouvertes) ? ouvertes : []).map((o) => String(o?.title || "")));
   const zones = new Set();
+  // Une enquête bouton déjà OUVERTE occupe la zone « bouton » pour ce passage aussi.
+  if ([...titres].some((t) => t.startsWith("[SENTINELLE] bouton "))) zones.add("bouton");
   const choisies = [];
   for (const c of candidats || []) {
     if (choisies.length >= n) break;
@@ -1087,7 +1167,7 @@ export const FILTRE_PRODUCTION = "&env=eq.production";
 
 /** Chemins des deux lectures « boutons morts » — exportés pour être vérifiés. */
 export const CHEMINS_BOUTONS = {
-  clics: "telemetry_events?select=action,screen,session_id,client_ts,auth_uid,app_version&type=eq.click" + FILTRE_PRODUCTION,
+  clics: "telemetry_events?select=action,screen,session_id,client_ts,received_at,auth_uid,app_version&type=eq.click" + FILTRE_PRODUCTION,
   effets: "telemetry_events?select=session_id,client_ts&type=in.(action,nav,api,flow)" + FILTRE_PRODUCTION,
 };
 
@@ -1272,7 +1352,13 @@ async function principal() {
       : { incomplet: true, note: "Lecture tronquée : un classement partiel désignerait des innocents." };
     // Une lecture tronquée ne désigne aucun bouton : l'effet manquant peut être sur la page suivante.
     if (clics.complet && effets.complet) {
-      morts = classerBoutonsMorts(clics.lignes, effets.lignes, { code: await lireCodeInterface() });
+      const code = await lireCodeInterface();
+      const opts = { libelles: libellesDuCode(code), ecrans: ecransDuCode(code) };
+      // Deux passages : le premier désigne les comptes à vérifier, le second ne compte que les ANCIENS.
+      const premier = classerBoutonsMorts(clics.lignes, effets.lignes, { ...opts, comptesAnciens: "tous", avecUids: true });
+      const uids = premier.candidates.flatMap((c) => c._uids || []);
+      const comptesAnciens = uids.length ? await lireComptesAnciens({ url, cle, uids }) : new Set();
+      morts = classerBoutonsMorts(clics.lignes, effets.lignes, { ...opts, comptesAnciens });
     }
   } catch (e) {
     boutonsSuspects = { erreur: String(e.message || e) };

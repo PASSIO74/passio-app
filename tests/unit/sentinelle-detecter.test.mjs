@@ -940,32 +940,44 @@ test("parallèle : choisirCibles rend jusqu'à N cibles vivantes dans l'ordre, s
   assert.equal(choisirCible([a, b], [], []), a, "choisirCible reste la première de choisirCibles");
 });
 
-test("parallèle : deux refus sur le MÊME appel (codes différents) ne partent pas ensemble ; deux boutons du même écran non plus", () => {
+test("parallèle : deux refus sur le MÊME appel ne partent pas ensemble ; un seul bouton à la fois ; deux erreurs du même fichier JS non plus", () => {
   // Mutation : `if (zone && zones.has(zone)) continue;` retiré → rougit (deux PR concurrentes sur la même ligne).
   const p401 = { ...enq("POST /rest/v1/posts 401"), famille: "api", methode: "POST", chemin: "/rest/v1/posts", code: 401 };
   const p500 = { ...enq("POST /rest/v1/posts 500"), famille: "api", methode: "POST", chemin: "/rest/v1/posts", code: 500 };
   const g = { ...enq("GET /rest/v1/posts 500"), famille: "api", methode: "GET", chemin: "/rest/v1/posts", code: 500 };
   assert.deepEqual(SD.choisirCibles([p401, p500, g], [], [], 3).map((x) => x.cle), ["POST /rest/v1/posts 401", "GET /rest/v1/posts 500"]);
+  // Contre-revue du 2026-11-03 : une zone pour TOUTE la famille bouton (des écrans différents ne la multiplient plus).
   const b1 = { ...enq("bouton irl · Participer"), famille: "bouton", ecran: "irl" };
-  const b2 = { ...enq("bouton irl · Partager"), famille: "bouton", ecran: "irl" };
   const b3 = { ...enq("bouton feed · Partager"), famille: "bouton", ecran: "feed" };
-  assert.deepEqual(SD.choisirCibles([b1, b2, b3], [], [], 3).map((x) => x.cle), ["bouton irl · Participer", "bouton feed · Partager"]);
+  const e = enq("erreur X");
+  assert.deepEqual(SD.choisirCibles([b1, b3, e], [], [], 3).map((x) => x.cle), ["bouton irl · Participer", "erreur X"]);
+  // Mutation : retirer le blocage par l'enquête bouton OUVERTE → rougit (un flot de boutons prend les places run après run).
+  assert.deepEqual(SD.choisirCibles([b3, e], [], [{ title: SD.titreIssue(b1) }], 3).map((x) => x.cle), ["erreur X"], "une enquête bouton déjà ouverte : aucune autre");
+  // Mutation : `zoneCible` sans la branche `js` → rougit (deux PR auto-fusionnées sur le même fichier, jamais testées ensemble).
+  const j1 = { ...enq("erreur A"), exemple: { source: "https://passio-app.netlify.app/app.3f2a.js?v=1" } };
+  const j2 = { ...enq("erreur B"), exemple: { source: "https://passio-app.netlify.app/app.3f2a.js" } };
+  const j3 = { ...enq("erreur C"), exemple: { source: "https://passio-app.netlify.app/sw.js" } };
+  assert.deepEqual(SD.choisirCibles([j1, j2, j3], [], [], 3).map((x) => x.cle), ["erreur A", "erreur C"]);
 });
 
-// Bouton mort : 4 comptes, trois clics par session dans la fenêtre, aucun effet ; libellé présent dans le code.
-const clicU = (action, uid, s, t) => ({ action, screen: "irl", session_id: s, client_ts: t, auth_uid: uid, app_version: "abcd1234" });
-const CODE = '<button onclick="rejoindre()">Participer</button> <button>Fermer</button>';
-const rageurs = (action, n = 4, depart = 0) => Array.from({ length: n }, (_, k) => {
+// Bouton mort : 4 comptes, trois clics par session dans la fenêtre, aucun effet ; libellé et écran du code, comptes anciens.
+const clicU = (action, uid, s, t, ecran = "irl") => ({ action, screen: ecran, session_id: s, client_ts: t, received_at: t, auth_uid: uid, app_version: "abcd1234" });
+const CODE = '<div id="screen-irl" class="screen"></div><button onclick="rejoindre()">Participer</button> <button>Fermer</button>'
+  + ' <a data-tel="carte_ouvrir">x</a> <i aria-label="Fermer la fenêtre"></i> <b id="btnGo"></b>'
+  + ' // commentaire : Marie et Julie habitent Annecy, gmail.com'
+  + ' <button>${p.nom}</button> <span aria-label="${nom} ok"></span>';
+const OPTS = { libelles: SD.libellesDuCode(CODE), ecrans: SD.ecransDuCode(CODE), comptesAnciens: "tous" };
+const rageurs = (action, n = 4, depart = 0, ecran = "irl") => Array.from({ length: n }, (_, k) => {
   const i = k + depart;
   return [
-    clicU(action, U(i), "s" + i, `2026-11-01T10:0${i}:00.000Z`),
-    clicU(action, U(i), "s" + i, `2026-11-01T10:0${i}:01.500Z`),
-    clicU(action, U(i), "s" + i, `2026-11-01T10:0${i}:02.500Z`),
+    clicU(action, U(i), "s" + i, `2026-11-01T10:0${i}:00.000Z`, ecran),
+    clicU(action, U(i), "s" + i, `2026-11-01T10:0${i}:01.500Z`, ecran),
+    clicU(action, U(i), "s" + i, `2026-11-01T10:0${i}:02.500Z`, ecran),
   ];
 }).flat();
 
 test("bouton mort : clics RAGEURS sans effet chez 3+ comptes serveur, libellé du code → candidat de famille `bouton`", () => {
-  const r = SD.classerBoutonsMorts(rageurs("Participer"), [], { code: CODE });
+  const r = SD.classerBoutonsMorts(rageurs("Participer"), [], OPTS);
   assert.equal(r.candidates.length, 1);
   const c = r.candidates[0];
   assert.equal(c.famille, "bouton");
@@ -975,6 +987,7 @@ test("bouton mort : clics RAGEURS sans effet chez 3+ comptes serveur, libellé d
   assert.equal(c.tauxEffet, 0);
   assert.equal(c.n, 12, "chaque clic sans effet est une occurrence (dédup datée)");
   assert.equal(c.versions.abcd1234.n, 12);
+  assert.equal(c._uids, undefined, "les identifiants ne sortent jamais du détecteur (résumé de run public)");
   assert.match(SD.titreIssue(c), /^\[SENTINELLE\] bouton irl · Participer · [0-9a-f]{8}$/);
 });
 
@@ -982,49 +995,107 @@ test("bouton mort : un effet IMMÉDIAT (horodaté avant le clic, émis après la
   // Mutation : `te > t - BOUTON_AVANCE_MS` → `te > t` → rougit (le clic est horodaté jusqu'à 1 s après le toucher).
   const clics = rageurs("Participer");
   const effets = clics.map((c) => ({ session_id: c.session_id, client_ts: new Date(Date.parse(c.client_ts) - 400).toISOString() }));
-  assert.deepEqual(SD.classerBoutonsMorts(clics, effets, { code: CODE }).candidates, []);
+  assert.deepEqual(SD.classerBoutonsMorts(clics, effets, OPTS).candidates, []);
   assert.equal(classerBoutons(clics, effets)[0].tauxEffet, 100, "le classement du résumé profite de la même correction");
 });
 
 test("bouton mort : un bouton tapé UNE fois par personne (fermer, menu) n'est jamais une enquête", () => {
   // Mutation : `g.rageurs >= seuils.rageursMin` retiré → rougit (tout bouton sans événement deviendrait une PR).
   const uneFois = Array.from({ length: 12 }, (_, i) => clicU("Fermer", U(i % 6), "s" + i, `2026-11-01T10:${String(i).padStart(2, "0")}:00.000Z`));
-  assert.deepEqual(SD.classerBoutonsMorts(uneFois, [], { code: CODE }).candidates, []);
+  assert.deepEqual(SD.classerBoutonsMorts(uneFois, [], OPTS).candidates, []);
 });
 
-test("bouton mort : libellé ABSENT du code (texte écrit par quelqu'un, dépôt public) → jamais une enquête", () => {
-  // Mutation : `!libelleDuCode(libelle, code)` retiré → rougit (le nom d'une passion ou d'un compte partirait dans une issue publique).
-  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Randonnée chez Julie"), [], { code: CODE }).candidates, []);
-  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Participer"), [], {}).candidates, [], "code illisible : aucun bouton");
-  assert.equal(SD.libelleDuCode("#btnGo", 'id="btnGo"'), true, "un #id se cherche sans le dièse");
-  assert.equal(SD.libelleDuCode("<img>", "<img>"), false, "jamais de balise");
-  assert.equal(SD.libelleDuCode("a", "a"), false, "trop court pour désigner quoi que ce soit");
+test("bouton mort (contre-revue 2026-11-03) : le libellé est une ÉGALITÉ avec un libellé du code, jamais une sous-chaîne", () => {
+  // RÉINJECTION : la première version (`code.includes`) laissait passer « Marie », « Annecy », « gmail.com » — écrits dans un commentaire.
+  // Mutation : revenir à une recherche de sous-chaîne → rougit.
+  for (const pii of ["Marie", "Julie", "Annecy", "gmail.com", "Randonnée chez Julie", "Par", "ti"]) {
+    assert.deepEqual(SD.classerBoutonsMorts(rageurs(pii), [], OPTS).candidates, [], pii);
+  }
+  const l = SD.libellesDuCode(CODE);
+  for (const ok of ["Participer", "Fermer", "carte_ouvrir", "Fermer la fenêtre", "#btnGo", "#screen-irl"]) assert.ok(l.has(ok), ok);
+  for (const non of ["${p.nom}", "${nom} ok", "Marie", "btnGo"]) assert.ok(!l.has(non), "jamais une interpolation ni un mot de commentaire : " + non);
+  assert.equal(SD.libelleDuCode("ok", new Set(["ok"])), false, "moins de 3 caractères : refusé même s'il est dans le code");
+  assert.equal(SD.libelleDuCode("<img>", new Set(["<img>"])), false, "jamais de balise");
+  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Participer"), [], { comptesAnciens: "tous" }).candidates, [], "sans libellés ni écrans lus : aucun bouton");
+});
+
+test("bouton mort (contre-revue 2026-11-03) : un écran INVENTÉ n'est jamais une enquête", () => {
+  // Mutation : `!ecrans.has(ecran)` → l'ancienne regex `[a-z0-9_-]` → rougit (x1, x2, x3… = des zones et des titres sans fin).
+  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Participer", 4, 0, "x1"), [], OPTS).candidates, []);
+  assert.deepEqual([...SD.ecransDuCode(CODE)], ["irl"]);
+});
+
+test("bouton mort (contre-revue 2026-11-03) : seuls les comptes ANCIENS pèsent ; sans liste, rien", () => {
+  // Mutation : `estAncien` → toujours vrai → rougit (trois comptes créés pour l'occasion lanceraient une PR auto-fusionnée).
+  const tous = rageurs("Participer", 5);
+  assert.deepEqual(SD.classerBoutonsMorts(tous, [], { ...OPTS, comptesAnciens: new Set([U(0), U(1)]) }).candidates, [], "2 anciens < 3 (et 6 clics)");
+  const r = SD.classerBoutonsMorts(tous, [], { ...OPTS, comptesAnciens: new Set([U(0), U(1), U(2), U(3)]) });
+  assert.equal(r.candidates.length, 1);
+  assert.equal(r.candidates[0].comptes, 4, "le compte récent ne compte pas");
+  assert.equal(r.recents, 3, "les clics du compte récent sont comptés à part, jamais classés");
+  assert.deepEqual(SD.classerBoutonsMorts(tous, [], { ...OPTS, comptesAnciens: undefined }).candidates, [], "sans preuve d'ancienneté : rien");
+});
+
+test("bouton mort (contre-revue 2026-11-03) : l'instant d'une occurrence est celui du SERVEUR, jamais l'horloge du client", () => {
+  // Mutation : `const at = new Date(recu)…` → `String(c.client_ts)` → rougit (une horloge en avance rendait le défaut éternellement « vivant »).
+  const futur = rageurs("Participer").map((c) => ({ ...c, client_ts: c.client_ts.replace("2026-11-01", "2030-01-01") }));
+  const c = SD.classerBoutonsMorts(futur, [], OPTS).candidates[0];
+  assert.ok(c.occurrences.every((o) => o.at.startsWith("2026-11-01")), JSON.stringify(c.occurrences.slice(0, 2)));
+  assert.ok(c.dernier.startsWith("2026-11-01"));
+  const fermee = [{ title: SD.titreIssue(c), closedAt: "2026-11-02T00:00:00Z" }];
+  assert.ok(dejaCorrige(c, fermee), "fermée après la dernière occurrence SERVEUR : la dédup tait le défaut");
+  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Participer").map((x) => ({ ...x, received_at: null })), [], OPTS).candidates, [], "sans heure serveur : rien");
 });
 
 test("bouton mort : sans identité SERVEUR (auth_uid), un clic ne pèse rien ; deux comptes ne suffisent pas", () => {
   // Mutation : `RE_COMPTE.test(...)` retiré → rougit (un anonyme fabrique des « comptes »).
   const anonymes = rageurs("Participer").map((c) => ({ ...c, auth_uid: null }));
-  const r = SD.classerBoutonsMorts(anonymes, [], { code: CODE });
+  const r = SD.classerBoutonsMorts(anonymes, [], OPTS);
   assert.deepEqual(r.candidates, []);
   assert.equal(r.nonVerifiees, 12);
-  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Participer", 2), [], { code: CODE }).candidates, [], "2 comptes distincts < 3");
+  assert.deepEqual(SD.classerBoutonsMorts(rageurs("Participer", 2), [], OPTS).candidates, [], "2 comptes distincts < 3");
+});
+
+test("bouton mort : lireComptesAnciens lit auth (admin), garde les comptes de plus de 7 jours, ferme la garde sur une erreur", async () => {
+  const MAINTENANT = Date.parse("2026-11-03T00:00:00Z");
+  const ages = { [U(0)]: "2026-10-01T00:00:00Z", [U(1)]: "2026-11-02T00:00:00Z", [U(2)]: "illisible" };
+  const vu = [];
+  const avant = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    vu.push({ url: String(url), auth: init.headers.Authorization });
+    const uid = String(url).split("/").pop();
+    if (uid === U(3)) return { ok: false, status: 404, json: async () => ({}) };
+    if (uid === U(4)) throw new Error("réseau");
+    return { ok: true, json: async () => ({ created_at: ages[uid] }) };
+  };
+  try {
+    const a = await SD.lireComptesAnciens({ url: "https://x.supabase.co", cle: "k", uids: [U(0), U(1), U(2), U(3), U(4), U(0), "pas-un-uuid"], maintenant: MAINTENANT });
+    assert.deepEqual([...a], [U(0)], "seul le compte d'un mois est ancien ; récent, illisible, 404, réseau : non");
+    assert.equal(vu.length, 5, "doublons et identifiants mal formés ne sont jamais lus");
+    assert.ok(vu.every((v) => v.url.startsWith("https://x.supabase.co/auth/v1/admin/users/") && v.auth === "Bearer k"));
+  } finally { globalThis.fetch = avant; }
 });
 
 test("bouton mort : le corps d'issue départage handler cassé / effet non mesuré et interdit de retirer le bouton", () => {
-  const c = SD.classerBoutonsMorts(rageurs("Participer"), [], { code: CODE }).candidates[0];
+  const c = SD.classerBoutonsMorts(rageurs("Participer"), [], OPTS).candidates[0];
   const corps = corpsIssue({ fenetreHeures: 24 }, c, { date: "2026-11-01" });
   assert.match(corps, /Bouton sans effet : 12 clics, 0 % suivis/);
   assert.match(corps, /Jamais retirer le bouton/);
   assert.match(corps, /docs\/sentinelle\/2026-11-01-/);
 });
 
-test("bouton mort : la lecture des clics demande l'identité serveur et la version du client", () => {
-  // Mutation : retirer `,auth_uid,app_version` de CHEMINS_BOUTONS.clics → rougit (tout clic serait « non vérifié »).
-  assert.match(CHEMINS_BOUTONS.clics, /select=action,screen,session_id,client_ts,auth_uid,app_version&/);
+test("bouton mort : la lecture des clics demande l'heure serveur, l'identité serveur et la version du client", () => {
+  // Mutation : retirer `,received_at` ou `,auth_uid` de CHEMINS_BOUTONS.clics → rougit (aucun clic ne serait retenu).
+  assert.match(CHEMINS_BOUTONS.clics, /select=action,screen,session_id,client_ts,received_at,auth_uid,app_version&/);
 });
 
-test("bouton mort : lireCodeInterface lit index.html et js/*.js (les libellés réels de l'app s'y retrouvent)", async () => {
+test("bouton mort : sur le VRAI code de l'app, les écrans et des libellés réels sont trouvés — et aucun mot de commentaire", async () => {
   const code = await SD.lireCodeInterface(RACINE_DEPOT);
   assert.ok(code.length > 100_000, "le texte de l'interface est lu en entier");
-  assert.ok(code.includes("goTo("), "les scripts de l'app sont inclus");
+  const ecrans = SD.ecransDuCode(code);
+  for (const e of ["feed", "irl", "messages", "profiles", "studio", "explore"]) assert.ok(ecrans.has(e), e);
+  const l = SD.libellesDuCode(code);
+  assert.ok(l.size > 50, "des libellés réels : " + l.size);
+  assert.ok(l.has("affiche_partager"), "un data-tel réel");
+  for (const pii of ["Marie", "Julie", "Annecy", "gmail.com", "Ben"]) assert.ok(!l.has(pii), pii);
 });
