@@ -13,6 +13,13 @@
  * publication ne lève aucune erreur, la souscription passe `SUBSCRIBED`, et elle
  * ne reçoit simplement jamais rien. C'est indiscernable de « il ne s'est rien
  * passé ». C'est CE sens-là que la gate garde en premier.
+ * ⚠️ ET LE SILENCE EST PLUS LARGE QUE LA LIAISON FAUTIVE (lu dans le serveur
+ * Realtime le 2026-11-03, lot R25) : `PostgresCdcRls.Subscriptions.create`
+ * insère les liaisons d'un canal en UNE transaction, et une table absente de la
+ * publication (0 ligne) l'annule ENTIÈRE — « Unable to subscribe to changes
+ * with given parameters », un message `system` que le produit n'écoute pas,
+ * réessayé toutes les 5 à 10 s. Une seule table oubliée fait taire TOUT
+ * `realtime:db` : le fil, les commentaires, les accusés de lecture, les lives.
  *
  * ⚠️ L'INVENTAIRE SE FAIT SUR TOUT LE DÉPÔT, BACKEND COMPRIS. La première
  * analyse de ce lot avait classé `telemetry_events` « aucun abonné » en ne
@@ -151,7 +158,8 @@ for (const [t, fichiers] of abonnees) {
   if (!publiees.has(t)) {
     erreurs.push(
       `souscription à « ${t} » (${[...fichiers].join(", ")}) mais la table n'est PAS publiée.\n` +
-      `      → elle ne recevra JAMAIS d'événement, et rien ne le dira.\n` +
+      `      → elle ne recevra JAMAIS d'événement, et rien ne le dira — ni les AUTRES\n` +
+      `        liaisons de son canal : Realtime les crée en une transaction, annulée entière.\n` +
       `      → republier : alter publication supabase_realtime add table public.${t};\n` +
       `      → puis l'ajouter à scripts/realtime-publication.json`
     );

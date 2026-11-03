@@ -280,8 +280,9 @@ const TOPIC_DB = "realtime:realtime:db";
 
 // ⚠️ LE BANC S'ABONNAIT À UNE SEULE LIAISON, FILTRÉE — DONC À ~1/12 DU COÛT
 // RÉEL, ET DU MAUVAIS CÔTÉ DE LA SEULE FORME QUADRATIQUE DU PRODUIT.
-// L'app (`_creerCanalDb`, app-08) pose DOUZE `postgres_changes` sur
-// `realtime:db` en configuration par DÉFAUT, dont DIX SANS FILTRE. Le coût du
+// L'app (`_creerCanalDb`, app-08) posait DOUZE `postgres_changes` sur
+// `realtime:db` en configuration par DÉFAUT, dont DIX SANS FILTRE (depuis R25,
+// 2026-11-03 : les deux filtrées sont parties, voir plus bas). Le coût du
 // temps réel est en O(changements × abonnements qui matchent) : c'est 66 % du
 // CPU de la base à lui seul (68,9 % avec la seconde forme de décodage WAL, d'où
 // les « ~69 % » cités ailleurs — les deux chiffres sont le même poste), et un
@@ -300,8 +301,13 @@ const TOPIC_DB = "realtime:realtime:db";
 // chemin que personne n'emprunte : le banc mesurerait une charge inexistante et
 // rendrait un chiffre de capacité trop bas. **Compter les `.on(` d'un fichier
 // n'est pas compter ce que l'application exécute.**
-// Les douze ci-dessous sont recopiées d'app-08 ; deux seulement portent un
-// filtre, et ce sont les deux que l'app filtre (`conv_members`, `notifications`).
+// Les liaisons ci-dessous sont recopiées d'app-08 (`post_likes` y compris, que
+// l'app n'écoute plus depuis le 2026-09-21 — écart connu de ce banc-ci).
+// ⚠️ R25 (2026-11-03) : `conv_members` et `notifications`, les deux seules
+// FILTRÉES, en sont sorties avec la publication — leurs DELETE livraient la clé
+// primaire à tout abonné, sans RLS. Le serveur pousse leurs INSERT sur
+// `user:<uid>` ; une liaison restée ici ferait échouer le join ENTIER (Realtime
+// crée les liaisons d'un canal en une transaction).
 // ⚠️ Les recopier est un COUPLAGE ASSUMÉ : si app-08 change, ce tableau doit
 // suivre, sinon le banc reprend l'écart qu'on vient de fermer. Le contrôle est
 // le nombre — `npm run audit:realtime` compte les souscriptions du dépôt,
@@ -323,12 +329,10 @@ function liaisonsApp(uid) {
     { event: "*", schema: "public", table: "conv_reads" },
     { event: "INSERT", schema: "public", table: "comment_interactions" },
     { event: "DELETE", schema: "public", table: "comment_interactions" },
-    { event: "INSERT", schema: "public", table: "conv_members", filter: "user_id=eq." + uid },
     { event: "UPDATE", schema: "public", table: "profiles" },
     { event: "INSERT", schema: "public", table: "posts" },
     { event: "INSERT", schema: "public", table: "post_likes" },
     { event: "DELETE", schema: "public", table: "post_likes" },
-    { event: "INSERT", schema: "public", table: "notifications", filter: "user_id=eq." + uid },
     { event: "INSERT", schema: "public", table: "post_comments" },
     { event: "INSERT", schema: "public", table: "event_comments" },
     { event: "*", schema: "public", table: "video_lives" },

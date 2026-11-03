@@ -174,6 +174,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Un visiteur n'ouvre pas de socket temps réel ; `postgres_changes` est ce qui ne passe pas l'échelle (`npm run audit:realtime`) ; `filetProchainPas` (app-02) règle seul la cadence des filets — une panne n'est pas un calme.
 - Forfait Supabase PRO, spend cap actif : les quotas sont des murs durs. Un média orphelin est une absence de preuve, pas une preuve d'absence.
 - Une LECTURE « de moi » (filtrée sur `MY_UID`) passe par l'autorité de compte comme une écriture : un visiteur n'a rien à lire, et ces lectures précédaient le fil (`visiteur-sans-lectures-compte.spec.js`).
+- Une table publiée dans `supabase_realtime` livre ses DELETE (clé primaire) à TOUT abonné, anon compris, sans RLS : une clé qui dit quelque chose ne se publie pas, le serveur pousse sur `user:<uid>` sous un événement ≠ `INSERT` (R25) ; une liaison vers une table dépubliée fait taire tout son canal : client d'abord, migration ensuite.
 
 **Télémétrie, pilotage, Sentinelle, veille** → `docs/journal/telemetrie-pilotage-sentinelle.md` (`js/telemetry.js`, `dashboard/`, `pilotage/`, `scripts/veille-production.mjs`, workflows `sentinelle-*`)
 - Tout comptage qui sert un ratio lit le poids `meta.ech` (`poidsEvenement`) ; on n'échantillonne que l'`api` en 200. `meta.trafic` sort un appareil de l'AUDIENCE, jamais des erreurs (trois lecteurs, un banc : `tests/unit/trafic-hors-public.test.mjs`).

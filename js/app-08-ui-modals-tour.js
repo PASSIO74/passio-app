@@ -3235,9 +3235,10 @@ async function boot() {
           // signInAnonymously()/signUp() ne résout jamais (onboarding figé sur l'auth).
           setTimeout(() => {
             try { supaInit(); } catch(e) { console.warn("supaInit on auth change:", e); }
-            // v3 : garantir l'abonnement au topic user même si supaSubscribe a déjà
+            // Garantir l'abonnement au topic user même si supaSubscribe a déjà
             // tourné avant que MY_UID soit posé (idempotent via _userTopicChan).
-            if (window.PASSIO_REALTIME_V3) { try { if (typeof _subscribeUserTopic === "function") _subscribeUserTopic(); } catch(e) {} }
+            // Tous les modes depuis R25 : il porte aussi ajouts et notifications.
+            try { if (typeof _subscribeUserTopic === "function") _subscribeUserTopic(); } catch(e) {}
           }, 0);
         }
       }
@@ -7185,19 +7186,164 @@ function _subscribePrivateConv(convId) {
 }
 window._subscribePrivateConv = _subscribePrivateConv;
 
-// v3 : s'abonne UNE fois au topic privé de l'utilisateur (`user:<MY_UID>`).
-// Reçoit tous ses messages (le trigger diffuse à chaque membre). Idempotent.
+// ════════════════════════════════════════════════════════════════════════
+// R25 (2026-11-03) — L'AJOUT À UNE CONVERSATION ET LA NOTIFICATION ARRIVENT
+// PAR `user:<moi>`, POUSSÉS PAR LE SERVEUR, ET PLUS PAR `postgres_changes`.
+// ────────────────────────────────────────────────────────────────────────
+// `realtime.apply_rls` livre chaque DELETE d'une table publiée à TOUT abonné
+// sans évaluer la RLS, clé primaire en clair : `(evgrp_<activité>, compte)` à
+// chaque départ d'une discussion d'activité, `n_pa_<activité>_<compte>` à
+// chaque notification effacée — y compris à un visiteur muni de la seule clé
+// anon (`realtime:db` lui est ouvert, et anon garde SELECT sur ces tables).
+// Les deux tables sont sorties de `supabase_realtime` et deux triggers
+// poussent chaque INSERT au SEUL destinataire, sur son topic privé
+// (migrations/migration_realtime_diffusion_privee_2026-11-03.sql, reproduit
+// au banc avec le `apply_rls` de production).
+// ⚠️ Les événements s'appellent `conv_members:INSERT` et
+// `notifications:INSERT`, JAMAIS `INSERT` : sous ce nom, la liaison des
+// messages prendrait une ligne `conv_members` (elle porte un `conv_id`) pour
+// un message — bulle fantôme, son, « Passionné t'a envoyé un message ».
+// ⚠️ Aucune policy ne laisse un client ÉMETTRE sur `user:` : la charge vient
+// du serveur. Les gardes `user_id === MY_UID` restent quand même — un canal
+// est un transport, jamais une frontière.
+// ⚠️ ORDRE DE MISE EN SERVICE : ce client EN LIGNE d'abord, la migration
+// ensuite (voir son en-tête). Realtime crée les liaisons `postgres_changes`
+// d'un canal en UNE transaction : un ancien client qui écoute encore une
+// table sortie de la publication perd TOUT `realtime:db` à son join suivant.
+
+// On m'ajoute à une conversation (l'autre personne m'inscrit comme membre,
+// ou j'entre moi-même depuis un autre appareil). `r` = { conv_id, user_id }.
+async function _rtAjoutConversationRecu(r) {
+  if (!r || r.user_id !== MY_UID) return; // ce n'est pas moi qui suis ajouté
+  const convId = r.conv_id;
+  if (!convId) return;
+  // Vérifier que je ne l'ai pas déjà
+  const convs = getConversations();
+  if (convs.find(c => c.id === convId)) return;
+  // Charger la conv depuis Supabase
+  try {
+    const { data: convData } = await supa.from("conversations").select("*").eq("id", convId).maybeSingle();
+    const { data: members } = await supa.from("conv_members")
+      .select("user_id, profiles(username,emoji,color,avatar_url)").eq("conv_id", convId);
+    const other = (members || []).find(m => m.user_id !== MY_UID);
+    // Repli sur le créateur de la conv si l'autre membre n'est pas (encore)
+    // lisible → userId résolu → la dédup par paire opère et il n'y a pas de
+    // doublon « Passionné » sans photo. (cf. supaLoadMyConversations)
+    const otherId = (other && other.user_id)
+      || (convData?.created_by && convData.created_by !== MY_UID ? convData.created_by : "")
+      || "";
+    // ⚠️ N'IMPORTE QUI peut m'ajouter à une conversation : `conversations`
+    // INSERT vaut `check: true` et le créateur insère n'importe quel
+    // `user_id` dans `conv_members`. Bloquer ne l'empêche donc PAS côté
+    // base (#134, constat 3). `renderMessages` masquait la conv au rendu —
+    // mais elle était stockée, et ses messages avec. On refuse ici, à
+    // l'ingestion : un compte que J'AI bloqué ne matérialise plus rien
+    // localement. Le sens inverse (« on m'a bloqué ») reste indécidable
+    // côté client, `blocks` étant en `blocks_select_own`.
+    if (otherId && typeof isBlocked === "function" && isBlocked(otherId)) return;
+    if (other?.profiles && typeof cacheRemoteProfile === "function") {
+      try { cacheRemoteProfile({ id: other.user_id, username: other.profiles.username, emoji: other.profiles.emoji, color: other.profiles.color, avatar_url: other.profiles.avatar_url }); } catch(e) {}
+    }
+    const newConv = {
+      id: convId,
+      isGroup: convData?.is_group || false,
+      groupName: convData?.group_name || null,
+      passion: null,
+      userId: otherId,
+      userEmoji: other?.profiles?.emoji || "✨",
+      userColor: other?.profiles?.color || "#8b5cf6",
+      userName: other?.profiles?.username || "Passionné",
+      userPhoto: other?.profiles?.avatar_url || null,
+      userIds: (members || []).map(m => m.user_id),
+      lastAt: convData && convData.created_at ? supaTs(convData.created_at) : Date.now(),
+      unread: 0,
+      messages: [],
+      fromSupabase: true,
+    };
+    conversationsState = deduplicateConversations([newConv, ...getConversations()]);
+    saveConversations();
+    if (window.PASSIO_REALTIME_V2 && window._subscribePrivateConv) window._subscribePrivateConv(convId);
+    // Backfill (v2) : en s'abonnant au canal privé d'une conv créée PENDANT la
+    // session, on peut manquer les messages déjà diffusés avant que l'abonnement
+    // soit actif (broadcasts non rejoués). On recharge donc l'historique depuis
+    // la base pour combler la course. (En v1, le canal global les attrapait.)
+    if (window.PASSIO_REALTIME_V2 && typeof supaLoadMessages === "function") {
+      try {
+        const msgs = await supaLoadMessages(convId);
+        if (msgs && msgs.length) {
+          const cc = getConversations().find(x => x.id === convId);
+          if (cc) {
+            cc.messages = msgs;
+            cc.lastAt = (msgs[msgs.length - 1] && msgs[msgs.length - 1].at) || cc.lastAt;
+            if (window._openedConvId !== convId) cc.unread = msgs.filter(m => m.from !== "me").length;
+            conversationsState = deduplicateConversations(getConversations());
+            saveConversations();
+          }
+        }
+      } catch(e) {}
+    }
+    try { renderMessages(); } catch(e) {}
+  } catch(e) {}
+}
+window._rtAjoutConversationRecu = _rtAjoutConversationRecu;
+
+// Une notification entrante (like, commentaire, suivi…). `r` = la ligne
+// `notifications`, colonne par colonne (`diffuser_notification`).
+// 🔧 Historique : jusqu'au 2026-06-17 il n'existait AUCUN canal temps réel sur
+// les notifications (elles n'arrivaient jamais en direct). `mergeSupaNotifs`
+// gère badge, panneau ouvert et déduplication.
+function _rtNotificationRecue(r) {
+  if (!r || r.user_id !== MY_UID) return; // pas pour moi
+  const notif = {
+    id: r.id, kind: r.kind, fromId: r.from_id, refId: r.ref_id,
+    text: r.content || "", emoji: _notifEmoji(r.kind),
+    createdAt: supaTs(r.created_at),
+    unread: !r.seen, fromSupabase: true,
+  };
+  if ((state.notifications || []).some(n => n.id === notif.id)) return;
+  // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
+  // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
+  const _seen = ((state.user && state.user.seenNotifIds) || []).indexOf(notif.id) > -1;
+  mergeSupaNotifs([notif]);
+  if (_seen) return;
+  // Toast cliquable → emmène vers le contenu de la notif.
+  try { toast(notif.text || "Nouvelle notification", "info", () => { markNotifRead(notif.id); openNotifTarget(notif); }); } catch(e) {}
+}
+window._rtNotificationRecue = _rtNotificationRecue;
+
+// S'abonne UNE fois au topic privé de l'utilisateur (`user:<MY_UID>`).
+// Idempotent. Trois liaisons, la première selon le mode :
+//   · `INSERT` — un MESSAGE (v3 seulement : en v1/v2 les messages arrivent par
+//     `postgres_changes` ou `conv:<id>`, les lire ici aussi les doublerait) ;
+//   · `conv_members:INSERT` — on m'ajoute à une conversation (tous modes) ;
+//   · `notifications:INSERT` — une notification (tous modes).
 function _subscribeUserTopic() {
   if (typeof supa === "undefined" || !supa || !MY_UID || window._userTopicChan) return;
   if (window._rtRepos && window._rtRepos.endormi) return; // socket au repos : le réveil rejoint
+  // Un visiteur n'a pas de topic à lui (la policy exige un compte) : même
+  // autorité que `supaSubscribe`, jamais une copie de sa condition.
+  if (typeof connexionTempsReelAutorisee === "function" && !connexionTempsReelAutorisee()) return;
 
-  window._userTopicChan = supa.channel("user:" + MY_UID, { config: { private: true } })
-    .on("broadcast", { event: "INSERT" }, function(msg) {
+  var ch = supa.channel("user:" + MY_UID, { config: { private: true } });
+  if (window.PASSIO_REALTIME_V3) {
+    ch.on("broadcast", { event: "INSERT" }, function(msg) {
       var p = msg && msg.payload;
+      // Le trigger des messages pose `table: "conv_messages"` : une autre table
+      // sous ce nom n'est PAS un message (voir l'en-tête R25 ci-dessus).
+      if (p && p.table && p.table !== "conv_messages") return;
       var r = p && (p.record || p.new || p);
       if (r && r.conv_id) _handleIncomingConvMessage(r);
-    })
-    .subscribe();
+    });
+  }
+  ch.on("broadcast", { event: "conv_members:INSERT" }, function(msg) {
+    var p = msg && msg.payload;
+    return _rtAjoutConversationRecu(p && p.record); // supabase-js ignore le retour ; un banc l'attend
+  });
+  ch.on("broadcast", { event: "notifications:INSERT" }, function(msg) {
+    var p = msg && msg.payload;
+    _rtNotificationRecue(p && p.record);
+  });
+  window._userTopicChan = ch.subscribe();
 }
 window._subscribeUserTopic = _subscribeUserTopic;
 // ════════════════════════════════════════════════════════════════════════
@@ -7247,12 +7393,12 @@ function supaSubscribe() {
     window._pushAbonnementTente = true;
     try { if (typeof ensureCallPushSubscription === "function") ensureCallPushSubscription(); } catch(e) {}
   }
-  // ── Réception des messages entrants ──
-  if (window.PASSIO_REALTIME_V3) {
-    // v3 (design définitif) : UN canal privé par utilisateur, abonné une fois.
-    // Scalable + aucune course. Nécessite migration_realtime_user_topic.sql.
-    _subscribeUserTopic();
-  } else if (window.PASSIO_REALTIME_V2) {
+  // ── Topic privé `user:<moi>` : DANS TOUS LES MODES depuis R25 (2026-11-03) ──
+  // Il porte les ajouts à une conversation et les notifications, poussés par
+  // le serveur ; les MESSAGES n'y sont lus qu'en v3 (design définitif : un
+  // canal par utilisateur, aucune course — `_subscribeUserTopic`).
+  _subscribeUserTopic();
+  if (!window.PASSIO_REALTIME_V3 && window.PASSIO_REALTIME_V2) {
     // v2 (expérimental) : un canal PRIVÉ par conversation (course sur conv créée
     // en session — voir SCALE_RUNBOOK). Nécessite migration_realtime_authorization.
     (getConversations() || []).forEach(function(c) { if (c && c.id) _subscribePrivateConv(c.id); });
@@ -7544,102 +7690,12 @@ function _creerCanalDb(prive) {
       try { if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(payload.old, "remove"); } catch(e) {}
     });
 
-  // ── Nouvelle conversation créée pour moi (l'autre personne m'ajoute comme membre) ──
-  // ⚠️ LE FILTRE EST SERVEUR (2026-09-20), ET CE QU'IL ÉVITE EST L'ÉVALUATION,
-  // PAS LA LIVRAISON. La première rédaction écrivait « poussée à TOUS les
-  // connectés » : c'est FAUX, et `audit-passio` l'a relevé. La policy
-  // `conv_members_select_member` est `is_conv_member(conv_id, auth.uid())`, donc
-  // Realtime ne LIVRAIT la ligne qu'aux membres de cette conversation — deux
-  // personnes pour un 1:1, dont une seule était jetée par la garde ci-dessous.
-  // Ce qui coûtait en O(N abonnés), c'est l'ÉVALUATION : pour décider à qui
-  // livrer, Realtime appelle `is_conv_member` (SECURITY DEFINER) une fois par
-  // abonnement et par ligne. Un filtre de colonne est tranché AVANT, sans
-  // toucher à la base. Le gain est donc réel mais d'un autre ordre que celui
-  // annoncé — et le dire juste évite que le prochain lot cherche un « O(N)
-  // livraisons » sur `conv_reads` ou `comment_interactions`, où le raisonnement
-  // serait tout aussi faux : mêmes policies de membre.
-  // ⚠️ LA GARDE CLIENT RESTE, mais PAS pour la raison d'abord écrite. Si
-  // `MY_UID` changeait, c'est le FILTRE qui deviendrait périmé — il jetterait
-  // silencieusement les événements de la nouvelle identité, et aucune garde
-  // client ne peut rattraper ce qui n'est jamais arrivé. Le risque est faible
-  // (les trois points d'écriture de `MY_UID` rechargent la page, et
-  // `notifications` porte le même filtre depuis toujours), mais la vraie règle
-  // est : **ce filtre doit être refait quand `MY_UID` change**. La garde client,
-  // elle, reste parce qu'un filtre Realtime est une optimisation de TRANSPORT,
-  // jamais une frontière de sécurité.
-  dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_members", filter: `user_id=eq.${MY_UID}` }, async payload => {
-      const r = payload.new;
-      if (!r || r.user_id !== MY_UID) return; // ce n'est pas moi qui suis ajouté
-      const convId = r.conv_id;
-      // Vérifier que je ne l'ai pas déjà
-      const convs = getConversations();
-      if (convs.find(c => c.id === convId)) return;
-      // Charger la conv depuis Supabase
-      try {
-        const { data: convData } = await supa.from("conversations").select("*").eq("id", convId).maybeSingle();
-        const { data: members } = await supa.from("conv_members")
-          .select("user_id, profiles(username,emoji,color,avatar_url)").eq("conv_id", convId);
-        const other = (members || []).find(m => m.user_id !== MY_UID);
-        // Repli sur le créateur de la conv si l'autre membre n'est pas (encore)
-        // lisible → userId résolu → la dédup par paire opère et il n'y a pas de
-        // doublon « Passionné » sans photo. (cf. supaLoadMyConversations)
-        const otherId = (other && other.user_id)
-          || (convData?.created_by && convData.created_by !== MY_UID ? convData.created_by : "")
-          || "";
-        // ⚠️ N'IMPORTE QUI peut m'ajouter à une conversation : `conversations`
-        // INSERT vaut `check: true` et le créateur insère n'importe quel
-        // `user_id` dans `conv_members`. Bloquer ne l'empêche donc PAS côté
-        // base (#134, constat 3). `renderMessages` masquait la conv au rendu —
-        // mais elle était stockée, et ses messages avec. On refuse ici, à
-        // l'ingestion : un compte que J'AI bloqué ne matérialise plus rien
-        // localement. Le sens inverse (« on m'a bloqué ») reste indécidable
-        // côté client, `blocks` étant en `blocks_select_own`.
-        if (otherId && typeof isBlocked === "function" && isBlocked(otherId)) return;
-        if (other?.profiles && typeof cacheRemoteProfile === "function") {
-          try { cacheRemoteProfile({ id: other.user_id, username: other.profiles.username, emoji: other.profiles.emoji, color: other.profiles.color, avatar_url: other.profiles.avatar_url }); } catch(e) {}
-        }
-        const newConv = {
-          id: convId,
-          isGroup: convData?.is_group || false,
-          groupName: convData?.group_name || null,
-          passion: null,
-          userId: otherId,
-          userEmoji: other?.profiles?.emoji || "✨",
-          userColor: other?.profiles?.color || "#8b5cf6",
-          userName: other?.profiles?.username || "Passionné",
-          userPhoto: other?.profiles?.avatar_url || null,
-          userIds: (members || []).map(m => m.user_id),
-          lastAt: convData && convData.created_at ? supaTs(convData.created_at) : Date.now(),
-          unread: 0,
-          messages: [],
-          fromSupabase: true,
-        };
-        conversationsState = deduplicateConversations([newConv, ...getConversations()]);
-        saveConversations();
-        if (window.PASSIO_REALTIME_V2 && window._subscribePrivateConv) window._subscribePrivateConv(convId);
-        // Backfill (v2) : en s'abonnant au canal privé d'une conv créée PENDANT la
-        // session, on peut manquer les messages déjà diffusés avant que l'abonnement
-        // soit actif (broadcasts non rejoués). On recharge donc l'historique depuis
-        // la base pour combler la course. (En v1, le canal global les attrapait.)
-        if (window.PASSIO_REALTIME_V2 && typeof supaLoadMessages === "function") {
-          try {
-            const msgs = await supaLoadMessages(convId);
-            if (msgs && msgs.length) {
-              const cc = getConversations().find(x => x.id === convId);
-              if (cc) {
-                cc.messages = msgs;
-                cc.lastAt = (msgs[msgs.length - 1] && msgs[msgs.length - 1].at) || cc.lastAt;
-                if (window._openedConvId !== convId) cc.unread = msgs.filter(m => m.from !== "me").length;
-                conversationsState = deduplicateConversations(getConversations());
-                saveConversations();
-              }
-            }
-          } catch(e) {}
-        }
-        try { renderMessages(); } catch(e) {}
-      } catch(e) {}
-    });
+  // ── Ajout à une conversation : PLUS ICI depuis R25 (2026-11-03) ──
+  // `conv_members` est sortie de la publication (ses DELETE livraient
+  // `(conversation, compte)` à tout abonné, sans RLS) : le serveur pousse
+  // l'ajout sur `user:<moi>` (`conv_members:INSERT`), reçu par
+  // `_rtAjoutConversationRecu`. Une liaison `postgres_changes` sur une table
+  // hors publication ferait échouer TOUTES celles de ce canal.
 
   // ── Mises à jour de profil en temps réel (photo/pseudo/emoji/couleur) ──
   // Quand un utilisateur change sa photo de profil ou son pseudo, on rafraîchit
@@ -7696,30 +7752,9 @@ function _creerCanalDb(prive) {
 
   // Les compteurs de likes visibles sont relus par startPostLikeRefresh (HEAD ciblés).
 
-  // ── Notifications entrantes (like, comment, follow…) en temps réel ──
-  // 🔧 FIX 2026-06-17 : il n'existait AUCUN canal realtime sur la table
-  // notifications → les notifs n'arrivaient jamais en direct. La table est dans
-  // la publication supabase_realtime (cf. migrations). mergeSupaNotifs gère
-  // badge + panneau ouvert + dédup.
-  dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${MY_UID}` }, payload => {
-      const r = payload.new;
-      if (!r || r.user_id !== MY_UID) return; // pas pour moi
-      const notif = {
-        id: r.id, kind: r.kind, fromId: r.from_id, refId: r.ref_id,
-        text: r.content || "", emoji: _notifEmoji(r.kind),
-        createdAt: supaTs(r.created_at),
-        unread: !r.seen, fromSupabase: true,
-      };
-      if ((state.notifications || []).some(n => n.id === notif.id)) return;
-      // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
-      // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
-      const _seen = ((state.user && state.user.seenNotifIds) || []).indexOf(notif.id) > -1;
-      mergeSupaNotifs([notif]);
-      if (_seen) return;
-      // Toast cliquable → emmène vers le contenu de la notif.
-      try { toast(notif.text || "Nouvelle notification", "info", () => { markNotifRead(notif.id); openNotifTarget(notif); }); } catch(e) {}
-    });
+  // ── Notifications entrantes : PLUS ICI depuis R25 (2026-11-03) ──
+  // Même raison que `conv_members` : le serveur pousse chaque notification
+  // sur `user:<moi>` (`notifications:INSERT`), reçue par `_rtNotificationRecue`.
 
   // Commentaires en temps reel
   dbChan
