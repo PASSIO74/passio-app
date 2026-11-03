@@ -5756,9 +5756,35 @@ async function supaLoadEvents(authorId) {
     // `attendees` = les VENANTS fermes uniquement (rsvp 'going') ; les « peut-être »
     // et la liste d'attente sont comptés à part pour ne pas gonfler le compteur ni
     // remplir les places réservées.
-    const attByEvent = {}, maybeByEvent = {}, waitByEvent = {}, checkedByEvent = {};
+    const attByEvent = {}, maybeByEvent = {}, waitByEvent = {}, checkedByEvent = {}, countsByEvent = {};
     if (rows.length && _attendeesLisibles()) {
       const evIds = rows.map(r => r.id);
+      // ── LE NOMBRE D'INSCRITS VIENT DE LA BASE (C-04, 2026-11-03) ──────────
+      // Depuis `migration_participants_visibilite_2026-11-03.sql`, la liste
+      // nominative lue ci-dessous est PARTIELLE pour un compte sans lien avec
+      // l'activité (lui-même, l'organisation, les personnes qu'il suit). Le
+      // compteur — venants, peut-être, liste d'attente, pointés — reste public
+      // parmi les connectés : RPC `participants_compte` (SECURITY DEFINER, 200
+      // activités par appel). RPC absente (PGRST202 : base pas encore migrée) →
+      // mémo pour la session et la liste fait foi, comme avant. Un échec réseau
+      // ne mémorise rien : la prochaine lecture retente.
+      if (!window._participantsCompteAbsent) {
+        try {
+          const rc = await supa.rpc("participants_compte", { p_event_ids: evIds.slice(0, 200) });
+          if (rc && rc.error) {
+            if (String(rc.error.code || "") === "PGRST202") window._participantsCompteAbsent = true;
+            else console.warn("participants_compte :", rc.error.message);
+          } else {
+            (rc && Array.isArray(rc.data) ? rc.data : []).forEach(c => {
+              if (!c || !c.event_id) return;
+              countsByEvent[c.event_id] = {
+                going: Number(c.going) || 0, maybe: Number(c.maybe) || 0,
+                waitlist: Number(c.waitlist) || 0, checked_in: Number(c.checked_in) || 0,
+              };
+            });
+          }
+        } catch (e) { console.warn("participants_compte : lecture interrompue —", e && e.message); }
+      }
       const ranger = (atts) => (atts || []).forEach(a => {
         const bucket = a.rsvp === "maybe" ? maybeByEvent : a.rsvp === "waitlist" ? waitByEvent
           : a.rsvp === "declined" ? null : attByEvent;
@@ -5818,6 +5844,7 @@ async function supaLoadEvents(authorId) {
       maybes: maybeByEvent[r.id] || [],
       waitlist: waitByEvent[r.id] || [],
       checkedIn: checkedByEvent[r.id] || [],
+      counts: countsByEvent[r.id] || null,   // compteurs serveur (C-04) ; null = base pas migrée ou lecture en échec
       fromSupabase: true,
     }));
   } catch(e) { return []; }
@@ -5831,7 +5858,8 @@ async function supaLoadEvents(authorId) {
 function _evenementsSig(evs) {
   return (evs || []).map(function (e) {
     return e ? [e.id, e.title, e.date, e.status, e.updatedAt,
-      (e.attendees || []).length, (e.maybes || []).length, (e.waitlist || []).length].join("|") : "";
+      (e.attendees || []).length, (e.maybes || []).length, (e.waitlist || []).length,
+      e.counts ? [e.counts.going, e.counts.maybe, e.counts.waitlist, e.counts.checked_in].join(",") : ""].join("|") : "";
   }).sort().join("~");
 }
 function fusionnerEvenementsServeur(evs) {
@@ -7792,8 +7820,12 @@ async function supaSetEventRsvp(eventId, rsvp) {
   window._irlRefusMotif = null;
   try {
     await supaEnsureProfileExists();
+    // ⚠️ `.select("event_id")`, jamais `.select()` : un RETURNING * demande AUSSI
+    // `feedback`/`rating`/`rated_at`, colonnes que la migration de visibilité
+    // (C-04, 2026-11-03) retire au rôle — PostgREST refuse alors l'UPDATE entier
+    // (42501), et « je viens » ne s'enregistrerait plus.
     const upd = await supa.from("event_attendees")
-      .update({ rsvp: rsvp }).eq("event_id", eventId).eq("user_id", MY_UID).select();
+      .update({ rsvp: rsvp }).eq("event_id", eventId).eq("user_id", MY_UID).select("event_id");
     if (!upd.error && upd.data && upd.data.length) return true;
     if (upd.error && _motifRefusRsvp(upd.error)) { window._irlRefusMotif = _motifRefusRsvp(upd.error); return false; }
     const ins = await supa.from("event_attendees")
@@ -7891,15 +7923,33 @@ async function supaRateEvent(eventId, rating, feedback) {
 }
 
 // Agrégat des notes d'un événement : { avg, count }. Null si indisponible.
+// ⚠️ L'AGRÉGAT SE CALCULE EN BASE (C-04, 2026-11-03) : la RPC `notes_evenement`
+// rend la moyenne et le nombre sans livrer QUI a mis quelle note — la colonne
+// `rating` n'est plus lisible par le rôle depuis la migration de visibilité.
+// Transition : RPC absente (PGRST202, base pas encore migrée) → lecture
+// d'avant sur la colonne, qui marche tant que la migration n'est pas passée.
 async function supaLoadEventRatings(eventId) {
   // Même porte que `supaLoadEvents` : son seul appelant n'exige que `_supaReal`,
   // vrai aussi chez un visiteur — ouvrir la fiche d'une rencontre sans compte
   // frappait donc la table fermée. `null` = « indisponible », déjà géré.
   if (!_attendeesLisibles()) return null;
   try {
+    if (!window._notesEvenementAbsente) {
+      const r = await supa.rpc("notes_evenement", { p_event_id: eventId });
+      if (r && !r.error) {
+        const d = (r.data && typeof r.data === "object") ? r.data : {};
+        const count = Number(d.count) || 0;
+        return { avg: count ? (Number(d.avg) || 0) : 0, count: count };
+      }
+      if (String((r && r.error && r.error.code) || "") !== "PGRST202") return null;
+      window._notesEvenementAbsente = true;
+    }
     const { data, error } = await supa.from("event_attendees")
       .select("rating").eq("event_id", eventId).not("rating", "is", null);
-    if (error) { _attendeesRefusMemorise(error, "supaLoadEventRatings"); return null; }
+    // ⚠️ Un 42501 ICI vise la COLONNE `rating` (retirée au rôle), pas la table :
+    // il ne doit pas poser le mémo qui ferait taire toutes les lectures de
+    // participants pour la session. Les autres refus (jeton) le posent comme avant.
+    if (error) { if (String(error.code || "") !== "42501") _attendeesRefusMemorise(error, "supaLoadEventRatings"); return null; }
     const notes = (data || []).map(r => r.rating).filter(n => typeof n === "number");
     if (!notes.length) return { avg: 0, count: 0 };
     return { avg: notes.reduce((a, b) => a + b, 0) / notes.length, count: notes.length };

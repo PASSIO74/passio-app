@@ -4986,7 +4986,7 @@ function _wireMsgActions(thread, convId) {
 // Scroll jusqu'au message cité (surbrillance brève).
 function _jumpToMsg(mid) {
   if (!mid) return;
-  var el = document.querySelector('.conv-bubble-wrap[data-mid="' + mid + '"]');
+  var el = document.querySelector('.conv-bubble-wrap[data-mid="' + (window.CSS && CSS.escape ? CSS.escape(mid) : mid) + '"]');
   if (!el) { toast("Message introuvable (peut-être plus ancien)"); return; }
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   var b = el.querySelector(".conv-bubble");
@@ -5043,14 +5043,47 @@ function _openMsgActions(convId, msgId) {
       '<div class="csetting-label"' + (danger?' style="color:#ef4444;"':'') + '>' + label + '</div></div>';
   }
   var canCopy = m.text && !/^\{/.test(m.text);
+  // ⚠️ LES IDENTIFIANTS SONT ÉCRITS PAR D'AUTRES COMPTES (audit 2026-11-03) :
+  // `conv_messages.id` et `conversations.id` sont posés par l'EXPÉDITEUR, sans
+  // forme imposée par le serveur. Concaténés tels quels dans un onclick, un
+  // identifiant forgé (`x'),alert(1),('`) s'exécutait chez quiconque appuyait
+  // longuement sur le message — XSS stockée, même famille que B-01. Le rendu
+  // des bulles les échappait (`data-mid`, escapeHtml) ; ce menu, non.
+  var cj = escapeJsArg(convId), mj = escapeJsArg(msgId);
   openModal(
     '<div class="modal-handle"></div>' + reactRow +
-    item('↩️', 'Répondre', "_setReplyTo('" + convId + "','" + msgId + "')") +
-    (canCopy ? item('📋', 'Copier le texte', "_copyMsg('" + convId + "','" + msgId + "')") : '') +
-    item('↪️', 'Transférer', "_forwardPick('" + convId + "','" + msgId + "')") +
-    item('🗑️', 'Supprimer pour moi', "_deleteMsgForMe('" + convId + "','" + msgId + "')", true) +
-    (isMe ? item('🗑️', 'Supprimer pour tous', "_deleteMsgForAll('" + convId + "','" + msgId + "')", true) : '')
+    item('↩️', 'Répondre', "_setReplyTo('" + cj + "','" + mj + "')") +
+    (canCopy ? item('📋', 'Copier le texte', "_copyMsg('" + cj + "','" + mj + "')") : '') +
+    item('↪️', 'Transférer', "_forwardPick('" + cj + "','" + mj + "')") +
+    // Signaler CE message (E-08, DSA : un contenu se signale, pas seulement son
+    // auteur) — jamais pour les miens ni pour les messages système.
+    (!isMe && m.from ? item('🚩', 'Signaler ce message', "reportMessage('" + cj + "','" + mj + "')") : '') +
+    item('🗑️', 'Supprimer pour moi', "_deleteMsgForMe('" + cj + "','" + mj + "')", true) +
+    (isMe ? item('🗑️', 'Supprimer pour tous', "_deleteMsgForAll('" + cj + "','" + mj + "')", true) : '')
   );
+}
+
+// Signaler un MESSAGE (E-08). Même contrat que les autres portes de signalement :
+// authentification, motif obligatoire, verdict lu, accusé de réception. La cible
+// est l'identifiant serveur du message (`reports.target_type = 'message'`, déjà
+// admis par la contrainte de la table et par `scripts/moderation.js`, qui sait le
+// retirer) ; le motif ne porte jamais le contenu du message, la modération le
+// relit en base.
+async function reportMessage(convId, msgId) {
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
+  if (r.m.from === "me" || !r.m.from) return;
+  try {
+    if (typeof requireAuthentication === "function" && !requireAuthentication("signaler")) return;
+  } catch (e) {}
+  var motif = await _demanderMotifSignalement("ce message");
+  if (motif === null) return;   // annulé
+  var ok = false;
+  try { if (typeof supaReport === "function") ok = await supaReport("message", msgId, motif); } catch (e) { ok = false; }
+  closeModal();
+  toast(ok
+    ? "🚩 Message signalé. Notre équipe va vérifier."
+    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  if (ok) _accuserReceptionSignalement();
 }
 
 function _reactAndClose(convId, msgId, emoji) { closeModal(); _toggleReaction(convId, msgId, emoji); }
@@ -5674,7 +5707,7 @@ function _setMsgStatus(convId, msgId, status) {
   m.status = status;
   saveConversations();
   if (window._openedConvId !== convId) return;
-  var holder = document.querySelector('#convFpThread [data-msgst="' + msgId + '"]');
+  var holder = document.querySelector('#convFpThread [data-msgst="' + (window.CSS && CSS.escape ? CSS.escape(msgId) : msgId) + '"]');
   if (holder) { holder.innerHTML = _msgStatusIndHtml(convId, msgId, status); return; }
   // Holder absent (message hors page affichée) : repli sur le re-render complet.
   try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
