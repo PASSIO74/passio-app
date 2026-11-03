@@ -8132,8 +8132,14 @@ async function supaRateEvent(eventId, rating, feedback) {
 // ⚠️ L'AGRÉGAT SE CALCULE EN BASE (C-04, 2026-11-03) : la RPC `notes_evenement`
 // rend la moyenne et le nombre sans livrer QUI a mis quelle note — la colonne
 // `rating` n'est plus lisible par le rôle depuis la migration de visibilité.
+// ⚠️ `avg` PEUT VALOIR `null` sur ce chemin, et il le RESTE : sous 3 notes de
+// participants (hors organisation), la base donne le nombre sans la moyenne,
+// qui isolerait la note de quelqu'un. Le convertir en 0 faisait peindre cinq
+// étoiles vides et « 0 · 2 avis » (`_eventRatingSummaryHtml`, app-07, lit
+// `null` comme « pas encore de moyenne »).
 // Transition : RPC absente (PGRST202, base pas encore migrée) → lecture
-// d'avant sur la colonne, qui marche tant que la migration n'est pas passée.
+// d'avant sur la colonne, qui marche tant que la migration n'est pas passée
+// (et calcule la moyenne comme avant, quel que soit le nombre de notes).
 async function supaLoadEventRatings(eventId) {
   // Même porte que `supaLoadEvents` : son seul appelant n'exige que `_supaReal`,
   // vrai aussi chez un visiteur — ouvrir la fiche d'une rencontre sans compte
@@ -8148,7 +8154,8 @@ async function supaLoadEventRatings(eventId) {
       if (r && !r.error) {
         const d = (r.data && typeof r.data === "object") ? r.data : {};
         const count = Number(d.count) || 0;
-        return { avg: count ? (Number(d.avg) || 0) : 0, count: count };
+        const moyenne = (d.avg == null || d.avg === "") ? NaN : Number(d.avg);
+        return { avg: (count && Number.isFinite(moyenne)) ? moyenne : null, count: count };
       }
       if (String((r && r.error && r.error.code) || "") !== "PGRST202") return null;
       _memoRpcAbsentePoser("_notesEvenementAbsente");

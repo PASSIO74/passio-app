@@ -1533,8 +1533,10 @@
               // Même contrat (C-04, 2026-11-03) : entre le déploiement du client
               // et la migration `participants_visibilite`, CHAQUE session
               // connectée reçoit un 404 (PGRST202) sur ces deux RPC — app-08 le
-              // mémorise pour la session (`_participantsCompteAbsent`,
-              // `_notesEvenementAbsente`) et retombe sur la lecture d'avant.
+              // mémorise UNE HEURE (`_memoRpcAbsenteActif` : `_participantsCompteAbsent`,
+              // `_notesEvenementAbsente`), levé plus tôt par SIGNED_IN /
+              // TOKEN_REFRESHED, et retombe sur la lecture d'avant : au plus
+              // un 404 par onglet et par heure, comme `fil_compteurs`.
               || (/\/rest\/v1\/rpc\/(participants_compte|notes_evenement)$/i.test(path) && res.status === 404));
           Telemetry.api({
             action: method + " " + path.replace(/\/rest\/v1\//, "/"),

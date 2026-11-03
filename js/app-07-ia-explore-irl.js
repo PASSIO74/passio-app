@@ -3577,6 +3577,16 @@ async function setEventRsvp(id, rsvp) {
     return;
   }
   if (rsvpOk === true) _rsvpRegle(true);
+  // ⚠️ TOUTE SORTIE DE « je viens » LIBÈRE UNE PLACE, pas seulement le retrait
+  // (revue du 2026-11-03). Seule la branche « retirer ma réponse » promouvait :
+  // passer de « je viens » à « je ne viens pas » ou à « peut-être » rendait la
+  // place EN BASE (un `going` de moins) sans que personne ne la reçoive — la
+  // file attendait jusqu'au retrait suivant, qui pouvait ne jamais venir. Même
+  // appel que le retrait, et seulement sur un verdict serveur POSITIF : tant que
+  // la base n'a pas écrit le changement, la place n'est pas libre (et
+  // `promouvoir_attente` le vérifierait de toute façon : elle compte les
+  // venants sous verrou avant de promouvoir quiconque).
+  if (rsvpOk === true && prev === "going" && rsvp !== "going") _promoteNextWaitlisted(ev);
   // Le rappel J-1 / H-2 part du serveur en push : encore faut-il que cet
   // appareil y soit abonné. On le propose ICI — inscription CONFIRMÉE — et
   // nulle part avant (rappels.js côté serveur, `proposerRappelsActivite` ci-dessous).
@@ -3599,8 +3609,9 @@ async function setEventRsvp(id, rsvp) {
 }
 
 // Promotion automatique du premier de la liste d'attente quand une place se
-// libère. Fait par le client qui se désinscrit : c'est le seul moment où l'on
-// sait, sans serveur, qu'une place vient de s'ouvrir.
+// libère. Fait par le client qui QUITTE « je viens » — retrait, « je ne viens
+// pas » ou « peut-être » (`setEventRsvp`) : c'est le seul moment où l'on sait,
+// sans serveur, qu'une place vient de s'ouvrir.
 async function _promoteNextWaitlisted(ev) {
   if (!ev || !ev.maxAttendees) return;
   let next = (ev.waitlist || [])[0] || null;
@@ -7450,15 +7461,29 @@ function _eventFeedbackPromptHtml(ev) {
 // Agrégat public : note moyenne d'un événement terminé (cache window._eventRatings,
 // rempli par _loadEventRatings). Rien tant qu'il n'y a aucune note — une moyenne
 // sur 0 avis ne veut rien dire et ferait fuir.
+// ⚠️ `avg: null` N'EST PAS 0 (C-04, 2026-11-03) : sous 3 notes de participants,
+// `notes_evenement` rend le NOMBRE sans la moyenne (avec 1 note, la moyenne EST
+// la note de quelqu'un ; avec 2, chacun déduit celle de l'autre). Lue comme 0,
+// elle peignait cinq étoiles vides et « 0 · 2 avis » — une soirée réussie
+// affichée comme un fiasco. Sans moyenne publiable : le nombre seul, ni étoile
+// ni chiffre (« avis » est invariable : « 1 avis », « 2 avis »).
 function _eventRatingSummaryHtml(ev) {
   var agg = (window._eventRatings && window._eventRatings[ev.id]) || null;
-  if (!agg || !agg.count) return "";
-  var avg = Math.round(agg.avg * 10) / 10;
-  var full = Math.round(agg.avg);
+  var nb = agg ? Number(agg.count) || 0 : 0;
+  if (!agg || nb <= 0) return "";
+  var moyenne = (agg.avg == null || agg.avg === "") ? NaN : Number(agg.avg);
+  if (!Number.isFinite(moyenne)) {
+    return '<div class="event-rating-summary">'
+      + '<span style="color:var(--muted);">' + nb + " avis" + '</span>'
+      + '</div>';
+  }
+  var avg = Math.round(moyenne * 10) / 10;
+  // Bornée à 0..5 : `repeat` lève sur un compte négatif, et la fiche entière tomberait.
+  var full = Math.max(0, Math.min(5, Math.round(moyenne)));
   return '<div class="event-rating-summary">'
     + '<span class="ev-rating-stars-static">' + "★".repeat(full) + "☆".repeat(5 - full) + '</span>'
     + '<b>' + String(avg).replace(".", ",") + '</b>'
-    + '<span style="color:var(--muted);">· ' + agg.count + " avis" + '</span>'
+    + '<span style="color:var(--muted);">· ' + nb + " avis" + '</span>'
     + '</div>';
 }
 
