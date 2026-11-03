@@ -47,11 +47,11 @@ croissance forte est mesuré, pas deviné : voir `05-RISQUES-RESIDUELS.md`.
   même code (Chromium épinglé par Playwright) les passe tous : ce sont des écarts d'environnement (Chrome 148 stable
   du bac à sable), pas des défauts du produit. Après les correctifs : `irl` 120/120, messagerie 119/119, IRL/carte
   80/85 (les 5 rouges = ces écarts préexistants), `npm run verif` vert à chaque commit.
-- **CI complète sur la branche** (run 41510167652 sur l'état des 5 agents) : smoke, **suites production à comptes
-  réels** (`authz-critical`, `blocage-acces`, `irl-trust-safety-reel`, `user-state-horodatage`), 6 shards navigateur,
-  WebKit iPhone, gates de l'artefact `dist`, audits statiques et bancs serveur : **tous verts** ; seule « Gouvernance
-  critique » est rouge, **par conception** : la branche touche un périmètre critique et exige ta revue GitHub ancrée
-  sur le SHA de tête. Le run du SHA final `ddaec2a` était en cours à la clôture (voir `03-RESULTATS-TECHNIQUES.md`).
+- **CI complète sur la branche** (run 41550158186 sur le SHA final `387e585`) : smoke, **suites production à comptes
+  réels** (`authz-critical`, `blocage-acces`, `irl-trust-safety-reel`, `user-state-horodatage`, `confidentialite`),
+  6 shards navigateur, WebKit iPhone, gates de l'artefact `dist`, audits statiques et bancs serveur : **tous verts** ;
+  seule « Gouvernance critique » est rouge, **par conception** : la branche touche un périmètre critique et exige ta
+  revue GitHub ancrée sur le SHA de tête (détail des runs intermédiaires dans `03-RESULTATS-TECHNIQUES.md`).
 - **Base de production, lecture seule** : inventaire complet des policies, GRANTs, fonctions `SECURITY DEFINER`
   (corps lus), triggers, buckets, publication realtime ; intégrité par agrégats (orphelins, doublons, conversations
   sans membre) ; `pg_stat_statements` sur 173 jours ; `EXPLAIN ANALYZE` des huit lectures les plus fréquentes ;
