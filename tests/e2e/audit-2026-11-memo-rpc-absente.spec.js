@@ -18,7 +18,8 @@
 //   ② une heure après la pose (heure de pose reculée : l'horloge de la page
 //      reste celle du SDK, dont les jetons dépendent), la RPC est RETENTÉE —
 //      la migration passée entre-temps, les compteurs serveur reviennent ;
-//   ③ même chose pour `notes_evenement` ;
+//   ③ même chose pour `notes_evenement` (dont la moyenne reste NULLE sous
+//      3 notes de participants : c'est ce qui la distingue de la colonne) ;
 //   ④ un jeton frais (SIGNED_IN puis TOKEN_REFRESHED, émis par le VRAI SDK)
 //      lève les deux mémos, au même point que le mémo de refus des
 //      participants (`_oublierRefusLecturesIRL`).
@@ -135,7 +136,9 @@ test.describe("Audit 2026-11 — mémos « RPC absente » de C-04 : une heure de
       await page.evaluate((h) => { window._notesEvenementAbsenteLe = Date.now() - h - 1000; }, HEURE);
       const c = await page.evaluate((id) => supaLoadEventRatings(id), E1);
       expect(compteRpc(srv, "notes_evenement"), "après l'heure : RETENTÉE").toBe(2);
-      expect(c, "la moyenne revient, calculée en base").toEqual({ avg: 4.5, count: 2 });
+      // La RPC répond, et elle seule : deux notes de participants, la moyenne
+      // RETENUE sous le seuil de 3 (`null`, jamais 0) — la colonne aurait dit 4,5.
+      expect(c, "l'agrégat revient, calculé en base").toEqual({ avg: null, count: 2 });
       expect((await memo(page, "_notesEvenementAbsente")).drapeau).toBe(false);
     } finally { await ctx.close(); }
   });
@@ -189,7 +192,7 @@ test.describe("Audit 2026-11 — mémos « RPC absente » de C-04 : une heure de
       expect(compteRpc(srv, "participants_compte"), "participants_compte retentée").toBeGreaterThan(nP);
       expect(compteRpc(srv, "notes_evenement"), "notes_evenement retentée").toBeGreaterThan(nN);
       expect(l.counts).toEqual({ going: 3, maybe: 1, waitlist: 0, checked_in: 0 });
-      expect(r).toEqual({ avg: 4.5, count: 2 });
+      expect(r, "agrégat de la base : 2 notes, moyenne retenue sous le seuil").toEqual({ avg: null, count: 2 });
 
       // TOKEN_REFRESHED : même levée.
       await poser();

@@ -476,9 +476,19 @@ class FauxServeur {
         const evId = body && body.p_event_id;
         const notees = lignesDe(evId).filter((a) => a.rating != null);
         if (table === "notes_evenement") {
-          // `avg(rating)::numeric(4,2)`, 0 sans note : l'agrégat, jamais qui a noté quoi.
-          const avg = notees.length ? Math.round((notees.reduce((s, a) => s + Number(a.rating), 0) / notees.length) * 100) / 100 : 0;
-          return json(200, { avg, count: notees.length });
+          // L'agrégat, jamais qui a noté quoi — et, comme la migration durcie du
+          // 2026-11-03 :
+          //  · ne comptent que les notes de PARTICIPANTS : `rsvp = 'going'`
+          //    (comparaison SQL stricte, un `null` ne compte pas) ou une heure de
+          //    pointage posée — une ligne « declined » ou « peut-être » notée ne
+          //    pèse pas (deux comptes jetables franchissaient sinon le seuil) ;
+          //  · `avg(rating)::numeric(4,2)` n'est rendu qu'à partir de 3 notes, ou
+          //    à l'organisation ; en dessous, `avg` est NUL (le nombre est donné),
+          //    et nul aussi sans aucune note (`avg` d'un ensemble vide).
+          const participantes = notees.filter((a) => a.rsvp === "going" || a.checked_in_at != null);
+          const nb = participantes.length;
+          const moyenne = nb ? Math.round((participantes.reduce((s, a) => s + Number(a.rating), 0) / nb) * 100) / 100 : null;
+          return json(200, { avg: (nb >= 3 || this.organiseActivite(evId, me)) ? moyenne : null, count: nb });
         }
         // retours_evenement : l'organisation seulement, sinon aucune ligne.
         if (!this.organiseActivite(evId, me)) return json(200, []);

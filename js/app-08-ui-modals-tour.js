@@ -6512,6 +6512,18 @@ async function supaLoadMessages(convId) {
     // puis les exclut du fil (ils ne doivent pas s'afficher comme des bulles).
     var ctrls = messages.filter(function(m){ return m._ctrl; });
     var clean = messages.filter(function(m){ return !m._ctrl; });
+    // ⚠️ UN RETRAIT « POUR TOUS » DOIT ATTEINDRE LA COPIE LOCALE (2026-11-03).
+    // Rejouer le `del` sur la liste lue ici ne suffisait pas : la fusion à
+    // l'ouverture (`_fusionnerMessagesServeur`, app-04) GARDE tout message
+    // local que le serveur ne rend plus — et c'est le cas ordinaire, puisque
+    // `_deleteMsgForAll` supprime aussi la LIGNE de la cible. Un retrait manqué
+    // en temps réel (hors ligne, socket au repos, contrôle v2 laissé au rejeu)
+    // ne quittait donc jamais l'appareil. On remet à la fusion chaque retrait
+    // dont la cible n'est pas gardée ici, avec l'expéditeur DE LA LIGNE : elle
+    // ne retire une copie locale que si son auteur est cet expéditeur
+    // (`_ctrlSuppressionAutorisee`). Un retrait refusé sur une cible que le
+    // serveur rend encore n'est pas remis : la version serveur fait foi.
+    var retraitsPourTous = [];
     if (ctrls.length) {
       var byId = {}; clean.forEach(function(m){ byId[m.id] = m; });
       // ⚠️ `m.from` est l'EXPÉDITEUR DE LA LIGNE (`from_id`, que la RLS d'INSERT
@@ -6524,7 +6536,14 @@ async function supaLoadMessages(convId) {
           var i = clean.findIndex(function(x){ return x.id === ev.target; });
           // Une cible inconnue (jamais lue, ou au-delà de la borne de lecture)
           // n'est pas mise en attente : rien ne la rejouerait à son arrivée.
-          if (i >= 0 && _ctrlSuppressionAutorisee(clean[i], m.from)) { delete byId[ev.target]; clean.splice(i,1); }
+          if (i >= 0 && _ctrlSuppressionAutorisee(clean[i], m.from)) {
+            delete byId[ev.target]; clean.splice(i,1);
+            retraitsPourTous.push({ target: ev.target, from: m.from });
+          } else if (i < 0 && ev.target) {
+            // Cible absente de cette lecture (ligne supprimée, ou au-delà de la
+            // borne) : la fusion jugera la copie locale, si l'appareil en a une.
+            retraitsPourTous.push({ target: String(ev.target), from: m.from });
+          }
         }
         else if (ev.type === "react" && ev.target) {
           // Second point d'écriture des réactions : le REJEU au chargement.
@@ -6543,6 +6562,8 @@ async function supaLoadMessages(convId) {
       });
     }
     _diag("supaLoadMessages: ✅ " + clean.length + " messages traités");
+    // Propriété NON énumérable : les autres lecteurs du tableau ne la voient pas.
+    try { Object.defineProperty(clean, "_retraitsPourTous", { value: retraitsPourTous }); } catch (e) {}
     return clean;
   } catch(e) {
     _diag("supaLoadMessages: EXCEPTION - " + e.message);
@@ -6955,8 +6976,13 @@ window.PASSIO_REALTIME_V3 = (function(){
 // Traitement d'un message entrant (factorisé : utilisé par le canal global v1
 // ET par les canaux privés v2). `r` = ligne conv_messages (payload.new ou
 // payload.record selon la source).
-async function _handleIncomingConvMessage(r) {
+// `opts.diffusionMembre` : `r` n'est PAS une ligne acceptée par le serveur mais
+// la charge d'un broadcast que N'IMPORTE QUEL membre peut émettre (canal v2
+// `conv:<id>`, voir `_subscribePrivateConv`) — son `from_id` n'est prouvé par
+// personne, et aucun message de contrôle n'y est appliqué.
+async function _handleIncomingConvMessage(r, opts) {
   if (!r || !r.conv_id) return;
+  var _diffusionMembre = !!(opts && opts.diffusionMembre);
   if (r.from_id === MY_UID) return; // nos propres messages sont déjà dans l'UI (optimistic)
   // L'autre est revenu dans cette conversation : la fenêtre anti-spam de MES
   // prochaines notifications de message repart de zéro (cf. `_notifierMessage`).
@@ -6969,6 +6995,21 @@ async function _handleIncomingConvMessage(r) {
   try {
     if (r.content && typeof r.content === "string" && r.content.charAt(0) === "{") {
       var _dd = JSON.parse(r.content);
+      // ⚠️ CANAL v2 : UN CONTRÔLE DIFFUSÉ N'EST JAMAIS APPLIQUÉ (revue du
+      // 2026-11-03). La règle « l'expéditeur est le `from_id` DE LA LIGNE » ne
+      // tient que si la ligne vient du serveur (RLS d'INSERT : `from_id =
+      // auth.uid()`). Sur `conv:<id>`, la policy `passio_rt_emettre` laisse
+      // tout membre diffuser une charge arbitraire : un `from_id` forgé à
+      // l'identifiant de l'auteur de la cible satisfaisait
+      // `_ctrlSuppressionAutorisee` et `_ctrlReactionAttribuee` — l'effacement
+      // « pour tous » du message d'autrui revenait par cette porte. Le contrôle
+      // n'est ni appliqué ni peint en bulle ; le prochain `supaLoadMessages`
+      // (lignes du serveur, `from_id` réel) le rejoue s'il existe vraiment.
+      // Les messages ordinaires, eux, continuent de passer.
+      if (_diffusionMembre && _dd && (_dd.type === "del" || _dd.type === "react")) {
+        try { if (typeof diagLog === "function") diagLog("msg_ctrl_differe " + _dd.type + " : charge diffusee non prouvee, laissee au rejeu serveur"); } catch (e) {}
+        return;
+      }
       if (_dd && (_dd.type === "del" || _dd.type === "react") && _dd.target) {
         // Même règle que les accusés de lecture : l'identifiant exact d'abord.
         var _cvs = getConversations();
@@ -7018,11 +7059,18 @@ async function _handleIncomingConvMessage(r) {
   // autre entrée ayant le même partenaire → l'entrée locale a un id différent de
   // r.conv_id. Sans ce repli, le message entrant déclencherait une « nouvelle conv »
   // en double, voire serait perdu côté affichage. On route donc par partenaire.
-  if (!conv && r.from_id) {
+  // ⚠️ JAMAIS POUR UNE CHARGE DIFFUSÉE v2 (revue du 2026-11-03) : son `from_id`
+  // n'est prouvé par personne. Un membre de N'IMPORTE QUEL groupe y écrivait
+  // `conv_id` au hasard et `from_id` = Léa : ce repli rangeait le message dans
+  // MON fil privé avec Léa, signé Léa, et la fusion le gardait. Une charge v2 ne
+  // va que dans SA conversation (le canal la lie, voir `_subscribePrivateConv`),
+  // et n'en crée aucune.
+  if (!conv && r.from_id && !_diffusionMembre) {
     conv = convs.find(c => !c.isGroup && c.userId === r.from_id);
   }
 
   if (!conv) {
+    if (_diffusionMembre) return;
     // Nouvelle conv inconnue → vérifier membership Supabase puis créer localement
     try {
       const { data: membership } = await supa.from("conv_members")
@@ -7123,7 +7171,14 @@ function _subscribePrivateConv(convId) {
     .on("broadcast", { event: "INSERT" }, function(msg) {
       var p = msg && msg.payload;
       var r = p && (p.record || p.new || p); // selon le format broadcast_changes
-      if (r && r.conv_id) _handleIncomingConvMessage(r);
+      // ⚠️ `passio_rt_emettre` laisse tout MEMBRE diffuser sur `conv:<id>` :
+      // cette charge n'est pas forcément celle du trigger, et son `from_id`
+      // n'est pas prouvé. D'où `diffusionMembre` : aucun contrôle (del, react)
+      // n'est appliqué depuis ce canal. Le canal v3 (`user:<uid>`) n'a pas ce
+      // défaut : aucune policy n'y autorise l'émission d'un client.
+      // Et la charge est LIÉE au canal : un `conv_id` qui n'est pas celui de ce
+      // canal est jeté (un membre de ce groupe ne parle pas dans un autre fil).
+      if (r && r.conv_id && String(r.conv_id) === String(convId)) _handleIncomingConvMessage(r, { diffusionMembre: true });
     })
     .subscribe();
   window._privateConvChans[convId] = ch;

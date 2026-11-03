@@ -4591,6 +4591,24 @@ async function _fusionnerMessagesServeur(convId, displayName, thread) {
         return m;
       });
 
+      // Les retraits « pour tous » rejoués par `supaLoadMessages` atteignent la
+      // copie locale (sinon un retrait manqué en temps réel ne quittait jamais
+      // l'appareil) — seulement si l'auteur de la copie est l'expéditeur de la
+      // ligne de contrôle, et jamais sur un message que le serveur rend encore.
+      var _retraits = (supaMessages && supaMessages._retraitsPourTous) || [];
+      if (_retraits.length && typeof _ctrlSuppressionAutorisee === "function") {
+        var _parCible = {};
+        _retraits.forEach(function (x) {
+          if (!x || !x.target) return;
+          if (!Object.prototype.hasOwnProperty.call(_parCible, x.target)) _parCible[x.target] = [];
+          _parCible[x.target].push(x.from);
+        });
+        messages = messages.filter(function (m) {
+          if (!m || !m.id || remoteMap[m.id] || !Object.prototype.hasOwnProperty.call(_parCible, m.id)) return true;
+          return !_parCible[m.id].some(function (qui) { return _ctrlSuppressionAutorisee(m, qui); });
+        });
+      }
+
       // Ajouter les messages Supabase qui n'existent pas localement
       var localIds = new Set((c2.messages || []).map(function(m) { return m.id; }).filter(Boolean));
       remote.forEach(function(m) {

@@ -31,7 +31,13 @@
 #   ⑪ LE LECTEUR : `scripts/moderation.js voir` contre un PostgREST simulé —
 #      la preuve d'abord, l'enveloppe média décodée (jamais recopiée), l'auteur
 #      abrégé, le repli sur le message actuel (et sur une table absente), et
-#      chaque type admis par `reports_target_type_chk` a son libellé.
+#      chaque type admis par `reports_target_type_chk` a son libellé ;
+#   ⑫ LE TERMINAL DU MODÉRATEUR : un texte d'autrui portant des séquences ANSI
+#      (`\x1b[2J`), OSC (`\x1b]8;;…`), un retour chariot, un DEL ou un CSI C1
+#      est imprimé SANS ses caractères de contrôle — dans CHAQUE branche de
+#      `voir` (preuve, message actuel, enveloppe texte et fichier, compte,
+#      publication, commentaires, rencontre, identifiant de cible) et dans
+#      `lister` — et son texte reste lisible.
 # ⚠️ `set local role` et sa requête partent dans le MÊME appel psql (ADR-012).
 # ═══════════════════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -81,8 +87,11 @@ C=33333333-3333-3333-3333-333333333333   # NON membre de c_ab
 D=44444444-4444-4444-4444-444444444444   # membre du groupe c_grp, a BLOQUÉ A
 
 ok=0; ko=0
-verifier() { if [ "$2" = "$3" ]; then ok=$((ok+1)); printf '  ✅ %s\n' "$1"; else ko=$((ko+1)); printf '  ❌ %s\n     attendu : %s\n     obtenu  : %s\n' "$1" "$2" "$3"; fi; }
-contient() { if printf '%s' "$3" | grep -qF -- "$2"; then ok=$((ok+1)); printf '  ✅ %s\n' "$1"; else ko=$((ko+1)); printf '  ❌ %s\n     motif attendu : %s\n     obtenu : %s\n' "$1" "$2" "$3"; fi; }
+# Ce qu'un contrôle ROUGE affiche passe sans ses caractères de contrôle C0 (§⑫) :
+# le banc ne doit pas, lui, rejouer sur le terminal les séquences qu'il éprouve.
+_vu() { printf '%s' "$1" | tr -d '\000-\010\013-\037\177'; }
+verifier() { if [ "$2" = "$3" ]; then ok=$((ok+1)); printf '  ✅ %s\n' "$1"; else ko=$((ko+1)); printf '  ❌ %s\n     attendu : %s\n     obtenu  : %s\n' "$1" "$2" "$(_vu "$3")"; fi; }
+contient() { if printf '%s' "$3" | grep -qF -- "$2"; then ok=$((ok+1)); printf '  ✅ %s\n' "$1"; else ko=$((ko+1)); printf '  ❌ %s\n     motif attendu : %s\n     obtenu : %s\n' "$1" "$2" "$(_vu "$3")"; fi; }
 absent()   { if printf '%s' "$3" | grep -qF -- "$2"; then ko=$((ko+1)); printf '  ❌ %s\n     motif INTERDIT trouvé : %s\n' "$1" "$2"; else ok=$((ok+1)); printf '  ✅ %s\n' "$1"; fi; }
 
 # ── SOCLE : tables, fonctions, policies et privilèges DE PRODUCTION (2026-11-03) ──
@@ -272,6 +281,33 @@ const MESSAGES = {
   m_3: [{ id: "m_3", conv_id: "conv_vivant_banc", from_id: VIVANT, content: "texte brut m3", created_at: "2026-11-02T09:00:00" }],
   m_4: [{ id: "m_4", conv_id: "conv_preuve_banc", from_id: AUTEUR, content: "tout va bien", created_at: "2026-11-01T10:00:00" }],
 };
+// ── ⑫ Texte HOSTILE : effacement d'écran, lien OSC 8 (terminé par BEL), retour
+// chariot, CSI C1 (U+009B) et DEL. Une fois filtré, il en reste « H_NET ».
+const H = "début\x1b[2J\x1b]8;;https://piege.invalid\x07lien\x1b]8;;\x07\rFIN\u009b31m\x7f";
+const H_NET = "début[2J]8;;https://piege.invalidlien]8;;FIN31m";
+const hostile = (id, type, cible) => Object.assign(rep(id, type, cible), { reason: "motif " + H, status: "handled", handled_at: "2026-11-03T09:00:00+00:00", handled_note: "note " + H });
+const CIBLE_HOSTILE = "ev_" + H;
+Object.assign(REPORTS, {
+  r_h_preuve: hostile("r_h_preuve", "message", "m_5"), r_h_fichier: hostile("r_h_fichier", "message", "m_6"),
+  r_h_user: hostile("r_h_user", "user", "u_1"), r_h_post: hostile("r_h_post", "post", "p_1"),
+  r_h_comment: hostile("r_h_comment", "comment", "pc_1"), r_h_ec: hostile("r_h_ec", "comment", "ec_1"),
+  r_h_event: hostile("r_h_event", "event", CIBLE_HOSTILE),
+});
+PREUVES.r_h_preuve = [{ message_id: "m_5", conv_id: H, auteur_id: "\x1b[2Jaaaa-1111", contenu: H, envoye_le: "2026-11-01T10:00:00", copie_le: "2026-11-01T10:05:00+00:00" }];
+MESSAGES.m_5 = [{ id: "m_5", conv_id: "conv_preuve_banc", from_id: AUTEUR, content: JSON.stringify({ type: "text", text: H }), created_at: "2026-11-01T10:00:00" }];
+MESSAGES.m_6 = [{ id: "m_6", conv_id: H, from_id: "\x1b]0;titre\x07bbbb", content: JSON.stringify({ type: "file", filename: H, fileType: H, url: "https://exemple.invalid/" + H }), created_at: "2026-11-02T09:00:00" }];
+const LIGNES = {
+  profiles: { u_1: { id: "u_1", username: H, bio: H, passions: [], created_at: "2026-10-01T00:00:00" } },
+  posts: { p_1: { id: "p_1", author_id: "\x1b[2Jcccc-3333", content: H, passion_id: H, created_at: "2026-11-01T00:00:00" } },
+  post_comments: { pc_1: { id: "pc_1", author_id: "\rdddd-4444", content: H, post_id: "p_1", created_at: "2026-11-01T00:00:00" } },
+  event_comments: { ec_1: { id: "ec_1", author_id: "\u009beeee-5555", author_name: H, text: H, event_id: "e_1", created_at: "2026-11-01T00:00:00" } },
+  events: { [CIBLE_HOSTILE]: { id: CIBLE_HOSTILE, title: H, description: H, author_id: AUTEUR, city: H, date_at: "2026-11-10T18:00:00" } },
+};
+// Ce que chaque branche imprime quand elle a VRAIMENT rendu sa cible.
+const ENTETE = {
+  r_h_preuve: "PREUVE copiée par le serveur", r_h_fichier: "version ACTUELLE", r_h_user: "── Le compte visé ──",
+  r_h_post: "── La publication visée ──", r_h_comment: "(sous une publication)", r_h_ec: "(sur une rencontre)", r_h_event: "── La rencontre visée ──",
+};
 const demandes = [];
 const serveur = http.createServer((req, res) => {
   const u = new URL(req.url, "http://banc");
@@ -280,12 +316,15 @@ const serveur = http.createServer((req, res) => {
   const eq = (k) => { const v = u.searchParams.get(k); return v && v.startsWith("eq.") ? v.slice(3) : null; };
   const json = (code, corps) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(corps)); };
   if (req.headers.apikey !== "cle-du-banc") return json(401, { message: "clé absente" });
-  if (table === "reports") return json(200, REPORTS[eq("id")] ? [REPORTS[eq("id")]] : []);
+  // Sans `id` : la file entière (`lister`), en une page.
+  if (table === "reports") return json(200, !u.searchParams.get("id") ? Object.values(REPORTS) : REPORTS[eq("id")] ? [REPORTS[eq("id")]] : []);
   if (table === "signalements_preuves") {
     if (eq("report_id") === "r_sans_table") return json(404, { code: "PGRST205", message: "Could not find the table 'public.signalements_preuves' in the schema cache" });
     return json(200, PREUVES[eq("report_id")] || []);
   }
   if (table === "conv_messages") return json(200, MESSAGES[eq("id")] || []);
+  if (table === "posts" && eq("author_id")) return json(200, Object.values(LIGNES.posts).filter((p) => p.author_id === eq("author_id")));
+  if (LIGNES[table]) return json(200, LIGNES[table][eq("id")] ? [LIGNES[table][eq("id")]] : []);
   return json(404, { message: "table inconnue du banc : " + table });
 });
 serveur.listen(0, "127.0.0.1", async () => {
@@ -294,9 +333,14 @@ serveur.listen(0, "127.0.0.1", async () => {
   // sur dashboard/.env (compte-e2e.js) — aucune requête ne peut partir ailleurs.
   const env = { ...process.env, SUPABASE_URL: url, PASSIO_SUPABASE_URL: url, PASSIO_SUPABASE_ANON: "anon-du-banc", SUPABASE_SERVICE_ROLE_KEY: "cle-du-banc" };
   const voir = (id) => new Promise((ok) => execFile(process.execPath, [outil, "voir", "--id", id], { env, timeout: 20000 }, (e, so, se) => ok({ code: e ? (e.code || 1) : 0, sortie: so + se })));
+  const lister = () => new Promise((ok) => execFile(process.execPath, [outil, "lister", "--tous"], { env, timeout: 20000 }, (e, so, se) => ok({ code: e ? (e.code || 1) : 0, sortie: so + se })));
   const res = {};
   for (const id of Object.keys(REPORTS)) res[id] = await voir(id);
+  const file = await lister();
   serveur.close();
+  // ⑫ Caractères de contrôle restés dans la sortie (tabulation et saut de ligne admis).
+  const controles = (s) => (s.match(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g) || []).length;
+  const hostiles = Object.keys(ENTETE).map((id) => `${id}:${res[id].code}:${controles(res[id].sortie)}:${res[id].sortie.includes(H_NET) ? "texte" : "SANS-TEXTE"}:${res[id].sortie.includes(ENTETE[id]) ? "branche" : "SANS-BRANCHE"}`).join(",");
   // Les libellés : chaque type admis par la contrainte de production en a un.
   const src = fs.readFileSync(outil, "utf8");
   const bloc = (/const LIBELLE = \{([\s\S]*?)\};/.exec(src) || [])[1] || "";
@@ -304,7 +348,11 @@ serveur.listen(0, "127.0.0.1", async () => {
   const admis = [...typesAdmis.matchAll(/'([a-z_]+)'::text/g)].map((m) => m[1]);
   const sansLibelle = admis.filter((t) => !cles.has(t));
   const R = {
-    codes: Object.values(res).map((r) => r.code).join(","),
+    codes: ["r_preuve", "r_modifie", "r_vivant", "r_sans_table", "r_story"].map((id) => res[id].code).join(","),
+    hostiles,
+    messageEchappe: [/\x1b/.test(res.r_h_preuve.sortie), /\r/.test(res.r_h_preuve.sortie), /\x07/.test(res.r_h_preuve.sortie)].join(","),
+    messageTexte: res.r_h_preuve.sortie,
+    lister: `${file.code}:${controles(file.sortie)}:${file.sortie.includes("motif " + H_NET) ? "motif" : "SANS-MOTIF"}:${file.sortie.includes(CIBLE_HOSTILE.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "")) ? "cible" : "SANS-CIBLE"}`,
     preuve: res.r_preuve.sortie, modifie: res.r_modifie.sortie, vivant: res.r_vivant.sortie, sansTable: res.r_sans_table.sortie, story: res.r_story.sortie,
     lectureMessage: demandes.some((d) => d.startsWith("/rest/v1/conv_messages?id=eq.m_2&select=id,conv_id,from_id,content,created_at")),
     lecturePreuve: demandes.some((d) => d.startsWith("/rest/v1/signalements_preuves?report_id=eq.r_preuve&select=")),
@@ -342,6 +390,17 @@ contient "table absente : repli sur le message actuel" "texte brut m3" "$S"
 contient "story : libellé du type" "Type    : story" "$(champ story)"
 verifier "chaque type admis par reports_target_type_chk a un libellé dans LIBELLE" "aucun" "$(champ sansLibelle)"
 verifier "… sur les 7 types admis" "7" "$(champ admis)"
+
+echo "── ⑫ LE TERMINAL DU MODÉRATEUR NE SE LAISSE PAS RÉÉCRIRE ─────────────"
+verifier "chaque branche de voir rend sa cible, SANS caractère de contrôle, texte lisible (id:code:contrôles:texte:branche)" \
+  "r_h_preuve:0:0:texte:branche,r_h_fichier:0:0:texte:branche,r_h_user:0:0:texte:branche,r_h_post:0:0:texte:branche,r_h_comment:0:0:texte:branche,r_h_ec:0:0:texte:branche,r_h_event:0:0:texte:branche" \
+  "$(champ hostiles)"
+verifier "le message signalé portant \\x1b[2J, \\x1b]8;; et \\r : ni ESC, ni CR, ni BEL à l'écran" "false,false,false" "$(champ messageEchappe)"
+H_MSG="$(champ messageTexte)"
+contient "…son texte reste lisible, séquences désarmées (« [2J » s'affiche, n'efface plus)" "Contenu      : début[2J]8;;https://piege.invalidlien]8;;FIN31m" "$H_MSG"
+contient "…le motif aussi" "Motif   : motif début[2J]8;;" "$H_MSG"
+contient "…l'auteur abrégé aussi (8 caractères, puis filtré)" "Auteur       : [2Jaaaa…" "$H_MSG"
+verifier "lister --tous : sortie 0, aucun caractère de contrôle, motif et identifiant de cible lisibles" "0:0:motif:cible" "$(champ lister)"
 
 echo; echo "RÉSULTAT : $ok contrôle(s) vert(s), $ko rouge(s)"
 [ "$ko" -eq 0 ]

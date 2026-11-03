@@ -7494,7 +7494,9 @@ async function _loadEventRatings(eventId) {
   if (!agg) return;
   window._eventRatings = window._eventRatings || {};
   window._eventRatings[eventId] = agg;
-  var holder = document.querySelector('[data-evrating="' + eventId + '"]');
+  // Identifiant dans un sélecteur : `CSS.escape` (un guillemet levait une
+  // SyntaxError dans cette fonction asynchrone, et le bloc restait vide).
+  var holder = document.querySelector('[data-evrating="' + ((window.CSS && CSS.escape) ? CSS.escape(String(eventId)) : String(eventId)) + '"]');
   if (holder) holder.innerHTML = _eventRatingSummaryHtml({ id: eventId });
 }
 

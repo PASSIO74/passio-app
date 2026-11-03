@@ -13,8 +13,11 @@
 // staging :
 //   · APRÈS : `ev.counts` (RPC) porte le nombre, `ev.attendees` les visages
 //     autorisés, l'écart s'écrit « +N autres » ;
-//   · AVANT : RPC absente (PGRST202) → mémo pour la session, la liste fait foi
-//     exactement comme avant.
+//   · AVANT : RPC absente (PGRST202) → mémo d'une heure (`_memoRpcAbsenteActif`,
+//     suite `audit-2026-11-memo-rpc-absente`), la liste fait foi exactement
+//     comme avant ;
+//   · la moyenne des notes reste NULLE sous 3 notes de participants (hors
+//     organisation) : l'écran dit « N avis », jamais « 0 » (cas e4).
 //
 // Faux serveur PostgREST de l'agent E (`audit-2026-11-parcours-faux-serveur.js`),
 // basculé dans le monde « après » par `migrerParticipants()` : policy par lien,
@@ -376,7 +379,10 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
     const { ctx, page } = await ouvrirV(browser, srv);
     try {
       const r = await page.evaluate(async (id) => ({ agg: await supaLoadEventRatings(id), absente: window._notesEvenementAbsente === true }), E1);
-      expect(r.agg, "agrégat de la RPC (4 et 5)").toEqual({ avg: 4.5, count: 2 });
+      // Deux notes de participants (4 et 5) : sous le seuil de 3, la base donne
+      // le NOMBRE et retient la moyenne (elle isolerait la note de l'autre) — et
+      // le client la garde nulle, jamais 0 (cas « e4 » pour l'écran).
+      expect(r.agg, "agrégat de la RPC : 2 notes, moyenne retenue (null, pas 0)").toEqual({ avg: null, count: 2 });
       expect(r.absente).toBe(false);
       const appels = srv.requetes((x) => x.rpc && x.table === "notes_evenement" && x.me === V);
       expect(appels.length).toBe(1);
@@ -427,6 +433,53 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
       expect(r2.agg).toBeNull();
       expect(r2.memo, "contre-épreuve : un jeton refusé fait taire les lectures, comme avant").toBe(true);
     } finally { await ctx.close(); }
+  });
+
+  // `avg: null` (moins de 3 notes de participants) se lisait 0 : la fiche d'une
+  // activité terminée peignait « ☆☆☆☆☆ 0 · 2 avis ». Le VRAI chemin : la fiche
+  // ouverte (`openEventDetails` → `_loadEventRatings` → RPC → bloc `data-evrating`).
+  test("e4. notes APRÈS migration, à l'écran : 2 notes → « 2 avis » seul (ni étoile, ni 0) ; 3 notes → étoiles et moyenne", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    peupler(srv);
+    const E6 = "evt_c04_passe";
+    const passe = Date.now() - 2 * 86400000;
+    activite(srv, E6, { date_at: iso(passe), end_at: iso(passe + 2 * 3600000) });
+    const note = (n) => ({ rating: n, rated_at: new Date().toISOString() });
+    srv.t.event_attendees.push(
+      ligne(E6, G[0], "going", note(4)), ligne(E6, G[1], "going", note(5)),
+      // Notes qui ne comptent PAS (migration durcie) : un retrait et un « peut-être » non pointé.
+      ligne(E6, M[0], "declined", note(1)), ligne(E6, M[1], "maybe", note(1)),
+    );
+    const bloc = (page) => page.evaluate((id) => {
+      // Le même sélecteur que `_loadEventRatings` (le lot UI-4B déplace le bloc, sans le copier).
+      const el = document.querySelector('[data-evrating="' + CSS.escape(id) + '"]');
+      return el ? el.textContent.replace(/\s+/g, " ").trim() : null;
+    }, E6);
+    const { ctx, page } = await ouvrirV(browser, srv);
+    const ctxO = await browser.newContext();
+    try {
+      await charger(page);
+      expect(await page.evaluate((id) => _eventIsOver(_findCanonicalEvent(id)), E6), "prémisse : l'activité est terminée").toBe(true);
+      await page.evaluate((id) => openEventDetails(id), E6);
+      await expect.poll(() => bloc(page), { message: "le nombre d'avis arrive de la base", timeout: 5000 }).toBe("2 avis");
+      const deux = await bloc(page);
+      expect(deux, "ni étoile pleine ni étoile vide").not.toMatch(/[★☆]/);
+      expect(deux, "aucune note chiffrée — pas de « 0 »").not.toMatch(/0|4,5/);
+      expect(await page.evaluate((id) => Object.assign({}, window._eventRatings[id]), E6), "le cache garde null").toEqual({ avg: null, count: 2 });
+
+      // L'organisation, elle, lit la moyenne dès la première note (elle lit déjà chaque retour).
+      const o = await ouvrirCompte(ctxO, srv, ORGA, { nom: "orga_c04" });
+      expect(await o.page.evaluate((id) => supaLoadEventRatings(id), E6), "organisation : la moyenne sous le seuil").toEqual({ avg: 4.5, count: 2 });
+
+      // Une 3ᵉ note de participant — pointée, sans `going` : elle compte aussi.
+      srv.t.event_attendees.push(ligne(E6, G[2], "maybe", Object.assign({ checked_in_at: new Date(passe + 600000).toISOString() }, note(4))));
+      await page.evaluate((id) => openEventDetails(id), E6);
+      await expect.poll(() => bloc(page), { message: "3 notes : la moyenne est publiée", timeout: 5000 }).toContain("3 avis");
+      const trois = await bloc(page);
+      expect(trois, "quatre étoiles pleines sur cinq (4,33 arrondi)").toContain("★★★★☆");
+      expect(trois, "la moyenne, à une décimale").toContain("4,3");
+      expect(await page.evaluate((id) => Object.assign({}, window._eventRatings[id]), E6)).toEqual({ avg: 4.33, count: 3 });
+    } finally { await ctxO.close(); await ctx.close(); }
   });
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -502,23 +555,45 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
 
   // Le MÊME scénario dans les deux mondes. V s'inscrit à une activité de 2
   // places (qu'il remplit), quelqu'un entre ensuite en liste d'attente (autre
-  // appareil — V ne relit rien), V se désinscrit : après la migration, V ne
-  // VOIT pas la file (plus de ligne, donc plus de lien) — la base choisit seule.
-  async function placeLibereeParCeluiQuiNeVoitPasLaFile(browser, srv) {
+  // appareil — V ne relit rien), V QUITTE « je viens » : après la migration, V
+  // ne VOIT pas la file (plus de ligne « going », donc plus de lien) — la base
+  // choisit seule.
+  // `depart` : la façon de quitter — `null` (retirer ma réponse, cas h0/h1),
+  // « declined » (h4) ou « maybe » (h5). Les trois rendent la place EN BASE ;
+  // seule la première promouvait (défaut de la revue du 2026-11-03).
+  // `refusDabord` : un premier changement REFUSÉ par le serveur ne libère rien —
+  // et ne doit rien promouvoir.
+  async function placeLibereeParCeluiQuiNeVoitPasLaFile(browser, srv, opts = {}) {
+    const depart = opts.depart === undefined ? null : opts.depart;
     const E3 = "evt_c04_file";
     activite(srv, E3, { date_at: iso(Date.now() + 2 * 86400000), max_attendees: 2 });
     srv.t.event_attendees.push(ligne(E3, G[0], "going"));
+    const promotions = () => srv.requetes((r) => r.rpc && r.table === "promouvoir_attente" && r.me === V);
     const { ctx, page } = await ouvrirV(browser, srv);
     try {
       await charger(page);
       await page.evaluate(async (id) => { await setEventRsvp(id, "going"); }, E3);
       expect(srv.t.event_attendees.find((a) => a.event_id === E3 && a.user_id === V).rsvp, "prémisse : V a pris la dernière place").toBe("going");
       srv.t.event_attendees.push(ligne(E3, W2, "waitlist", { created_at: new Date().toISOString() }));
-      await page.evaluate(async (id) => { await setEventRsvp(id, null); }, E3);
+      if (opts.refusDabord) {
+        // L'UPDATE tombe en panne, l'INSERT de repli bute sur la ligne existante
+        // (23505) : verdict NÉGATIF, l'optimiste est annulé — la place est
+        // toujours prise en base, personne n'est promu.
+        srv.pannes.push({ table: "event_attendees", methode: "PATCH", status: 500, body: { code: "XX000", message: "panne programmée" }, fois: 1 });
+        const refus = await page.evaluate(async ([id, d]) => { await setEventRsvp(id, d); return myRsvp(id); }, [E3, depart]);
+        expect(refus, "refus serveur : V est toujours « je viens »").toBe("going");
+        await page.waitForTimeout(400);
+        expect(promotions().length, "refus serveur : aucune promotion tentée").toBe(0);
+        expect(srv.t.event_attendees.find((a) => a.event_id === E3 && a.user_id === W2).rsvp, "…et la file n'a pas bougé").toBe("waitlist");
+      }
+      await page.evaluate(async ([id, d]) => { await setEventRsvp(id, d); }, [E3, depart]);
+      const moi = srv.t.event_attendees.find((a) => a.event_id === E3 && a.user_id === V);
+      if (depart === null) expect(moi, "prémisse : la ligne de V est retirée").toBeUndefined();
+      else expect(moi && moi.rsvp, "prémisse : V est passé à « " + depart + " » en base").toBe(depart);
       await expect.poll(() => (srv.t.event_attendees.find((a) => a.event_id === E3 && a.user_id === W2) || {}).rsvp, {
         message: "la place libérée revient à la personne en attente", timeout: 5000,
       }).toBe("going");
-      const rpc = srv.requetes((r) => r.rpc && r.table === "promouvoir_attente" && r.me === V);
+      const rpc = promotions();
       expect(rpc.length, "la promotion passe par la RPC").toBe(1);
       expect(rpc[0].body.p_user_id, "promotion AUTOMATIQUE : la base choisit (p_user_id nul)").toBeNull();
       // L'écran de V suit la personne que la BASE a promue — qu'il ne voyait pas.
@@ -608,6 +683,19 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
       const carte = await lireCarte(page, E1);
       expect(carte.pill, "la carte suit").toBe("6 inscrits · 2 peut-être");
     } finally { await ctx.close(); }
+  });
+
+  test("h4. APRÈS migration : « je viens » → « je ne viens pas » libère la place → la base promeut la personne en attente", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    peupler(srv);
+    await placeLibereeParCeluiQuiNeVoitPasLaFile(browser, srv, { depart: "declined" });
+    expect(srv.selectOk("event_attendees", { event_id: "evt_c04_file", user_id: W2, rsvp: "waitlist" }, V, "authenticated"), "V, qui ne vient plus, ne voit pas la file").toBe(false);
+  });
+
+  test("h5. APRÈS migration : « je viens » → « peut-être » libère la place → promotion ; un changement REFUSÉ, lui, ne promeut personne", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    peupler(srv);
+    await placeLibereeParCeluiQuiNeVoitPasLaFile(browser, srv, { depart: "maybe", refusDabord: true });
   });
 
   // ═════════════════════════════════════════════════════════════════════════

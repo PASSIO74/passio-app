@@ -6,15 +6,19 @@
 # `blocks` avec les policies, GRANTs et triggers de production tels que mesurés
 # au canal ① le 2026-11-03 (SELECT `true` pour authenticated, `anon` avec
 # DELETE / TRUNCATE / REFERENCES / TRIGGER, garde de capacité
-# `event_attendees_capacite_gardee` et `is_blocked_with` recopiées de
-# `pg_get_functiondef`). On MESURE D'ABORD le défaut (un tiers lit la liste
+# `event_attendees_capacite_gardee`, inscription figée `event_attendees_figes`
+# (ASTRA-35) et `is_blocked_with` recopiées de `pg_get_functiondef`). On
+# MESURE D'ABORD le défaut (un tiers lit la liste
 # nominative, la note et le texte libre de chacun ; il s'écrit « peut-être »
 # sur une activité passée ou annulée), on applique, puis on éprouve chaque
 # branche du lien : soi, organisation (auteur / organisateur /
 # co-organisateur), VENANT (« going » seulement), suivi MUTUEL, blocages dans
 # les deux sens, « declined » jamais public ; le contournement des deux
 # contre-revues (s'écrire « maybe » / « waitlist » sur une activité passée,
-# annulée ou complète pour lire la liste) ; les colonnes de retour illisibles ;
+# annulée ou complète pour lire la liste) ; une ligne « going » qu'on DÉPLACE
+# vers une activité passée ou annulée (refusée par la garde d'état seule, figes
+# désactivé — et figes exigé au verdict : désactivé, en réplica, vidé ou
+# supprimé, il rougit) ; les colonnes de retour illisibles ;
 # les compteurs et l'agrégat publics parmi les connectés, avec le seuil de 3
 # notes ; les retours réservés à l'organisation ; anon sans AUCUN droit ; et un
 # verdict qui ne peut pas imprimer OK sur un privilège resté en place.
@@ -71,6 +75,8 @@ VOIT() { AUTH "$1" "select string_agg(substr(user_id, 1, 1), ',' order by user_i
 # `$1` écrit SA ligne sur l'activité `$2` dans l'état `$3` (le geste du client, par l'API brute).
 INSCRIT() { AUTH "$1" "insert into public.event_attendees (event_id, user_id, rsvp) values ('$2', '$1', '$3') returning 1;"; }
 CHANGE()  { AUTH "$1" "update public.event_attendees set rsvp = '$3' where event_id = '$2' and user_id = '$1' returning rsvp;"; }
+# `$1` DÉPLACE sa ligne de l'activité `$2` vers `$3`, rsvp inchangé.
+DEPLACE() { AUTH "$1" "update public.event_attendees set event_id = '$3' where event_id = '$2' and user_id = '$1' returning event_id;"; }
 RETIRE()  { AUTH "$1" "delete from public.event_attendees where event_id = '$2' and user_id = '$1' returning 1;"; }
 # Moyenne et nombre rendus par `notes_evenement` à `$1` (`null` quand la moyenne est retenue).
 NOTES()   { AUTH "$1" "select coalesce(j->>'avg', 'null') || '|' || (j->>'count') from (select public.notes_evenement('$2') j) s;"; }
@@ -189,6 +195,29 @@ revoke all on function public.event_attendees_capacite_gardee() from public, ano
 create trigger trg_event_attendees_capacite before insert or update on public.event_attendees
   for each row execute function public.event_attendees_capacite_gardee();
 
+-- Inscription figée (ASTRA-35), copie de production (pg_get_functiondef et
+-- pg_get_triggerdef, 2026-11-03 ; fins de ligne CRLF ramenées à LF) : une ligne
+-- ne change ni d'activité ni de compte. EXECUTE pour postgres et service_role seuls.
+create function public.event_attendees_figes() returns trigger
+language plpgsql security definer set search_path to ''
+as $fn$
+begin
+  if auth.uid() is null then return new; end if;
+  if new.event_id is distinct from old.event_id then
+    raise exception 'inscription_activite_figee' using errcode = 'P0001',
+      hint = 'Une inscription ne se déplace pas : se désinscrire, puis s''inscrire à l''autre activité.';
+  end if;
+  if new.user_id is distinct from old.user_id then
+    raise exception 'inscription_compte_fige' using errcode = 'P0001',
+      hint = 'Une inscription ne change pas de compte.';
+  end if;
+  return new;
+end;
+$fn$;
+revoke all on function public.event_attendees_figes() from public, anon, authenticated;
+create trigger trg_event_attendees_figes before update on public.event_attendees
+  for each row execute function public.event_attendees_figes();
+
 insert into public.events (id, author_id, organizer_id, title, status, max_attendees, date_at, end_at, co_organizers) values
   ('ev_rando', '11111111-1111-1111-1111-111111111111', null, 'Rando', 'active', 10, now() + interval '2 days', null, '["22222222-2222-2222-2222-222222222222"]'),
   ('ev_passee', '11111111-1111-1111-1111-111111111111', null, 'Passée', 'active', null, now() - interval '10 days', null, '[]'),
@@ -226,14 +255,16 @@ verifier "anon tient DELETE, TRUNCATE, REFERENCES, TRIGGER de table (sans policy
 verifier "la capacité ne garde que « going » : X s'écrit « maybe » sur l'activité PASSÉE — accepté" "1" "$(INSCRIT "$X" ev_passee maybe)"
 verifier "…et « waitlist » sur l'activité ANNULÉE — accepté" "1" "$(INSCRIT "$X" ev_annulee waitlist)"
 Q "delete from public.event_attendees where user_id = '$X';" >/dev/null
+contient "le socle porte la garde figée de production : A ne DÉPLACE pas sa ligne « going » vers l'activité passée (inscription_activite_figee)" \
+  "inscription_activite_figee" "$(DEPLACE "$A" ev_rando ev_passee)"
 
 echo "── ① APPLICATION ───────────────────────────────────────────────────"
 sortie="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || {
   echo "  ❌ la migration a échoué :"; echo "$sortie" | tail -5; exit 1; }
-verifier "le tableau de verdict rend 5 OK et 0 ECHEC" "5/0" "$(BILAN "$sortie")"
+verifier "le tableau de verdict rend 6 OK et 0 ECHEC" "6/0" "$(BILAN "$sortie")"
 sortie2="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" \
   || { echo "  ❌ la migration REJOUÉE a échoué"; echo "$sortie2" | tail -5; exit 1; }
-verifier "rejouée : même verdict (idempotente)" "5/0" "$(BILAN "$sortie2")"
+verifier "rejouée : même verdict (idempotente)" "6/0" "$(BILAN "$sortie2")"
 
 echo "── ② LA LISTE SUIT LE LIEN ────────────────────────────────────────"
 verifier "tiers sans aucun lien : rien" "" "$(VOIT "$X" ev_rando)"
@@ -288,6 +319,47 @@ Q "delete from public.blocks;" >/dev/null
 verifier "blocages levés : X revoit A, B, D" "3,4,6,8" "$(VOIT "$X" ev_rando)"
 RETIRE "$X" ev_rando >/dev/null
 verifier "X retiré : il ne voit plus rien" "" "$(VOIT "$X" ev_rando)"
+
+echo "── ②ter UNE LIGNE « GOING » NE SE DÉPLACE PAS VERS UNE ACTIVITÉ PASSÉE OU ANNULÉE ──"
+# Les déclencheurs BEFORE partent dans l'ordre ALPHABÉTIQUE de leur nom :
+# capacite (sort sur old.rsvp = 'going'), etat, puis figes. La garde d'état
+# répond donc la première ; figes (ASTRA-35) reste le second verrou — et le
+# seul sur une activité COMPLÈTE à venir, ce que la ligne de verdict exige.
+# Rejoue la migration ; rend « OK/ECHEC|nombre de lignes ECHEC portant sur figes ».
+VERDICT_FIGES() {
+  local s
+  s="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" \
+    || { printf 'migration en échec : %s' "$(printf '%s' "$s" | tail -2 | tr '\n' ' ')"; return 0; }
+  printf '%s|%s' "$(BILAN "$s")" "$(printf '%s\n' "$s" | grep -E '\|\s*ECHEC\s*$' | grep -c "trg_event_attendees_figes actif" || true)"
+}
+verifier "X s'inscrit « going » à la rando (à venir, place libre)" "1" "$(INSCRIT "$X" ev_rando going)"
+contient "X DÉPLACE sa ligne « going » vers l'activité PASSÉE, rsvp inchangé : refusé par la garde d'état (activite_passee)" "activite_passee" "$(DEPLACE "$X" ev_rando ev_passee)"
+contient "…vers l'activité ANNULÉE : refusé (activite_annulee)" "activite_annulee" "$(DEPLACE "$X" ev_rando ev_annulee)"
+verifier "…la ligne n'a pas bougé, et X ne voit toujours personne sur l'activité passée" "ev_rando|" \
+  "$(Q "select string_agg(event_id, ',') from public.event_attendees where user_id = '$X';")|$(VOIT "$X" ev_passee)"
+Q "alter table public.event_attendees disable trigger trg_event_attendees_figes;" >/dev/null
+contient "figes DÉSACTIVÉ : le déplacement vers l'activité PASSÉE reste refusé — la garde d'état tient seule" "activite_passee" "$(DEPLACE "$X" ev_rando ev_passee)"
+contient "…vers l'activité ANNULÉE aussi (activite_annulee)" "activite_annulee" "$(DEPLACE "$X" ev_rando ev_annulee)"
+verifier "…mais vers une activité COMPLÈTE à venir, le déplacement PASSE (la capacité sort sur old.rsvp = 'going') : figes est le seul verrou" \
+  "ev_complete" "$(DEPLACE "$X" ev_rando ev_complete)"
+Q "update public.event_attendees set event_id = 'ev_rando' where user_id = '$X' and event_id = 'ev_complete';" >/dev/null
+verifier "figes désactivé (« D ») : la migration passe, le verdict dit 5 OK / 1 ECHEC — la ligne de figes" "5/1|1" "$(VERDICT_FIGES)"
+Q "alter table public.event_attendees enable replica trigger trg_event_attendees_figes;" >/dev/null
+verifier "figes en mode RÉPLICA (« R ») : il ne part pas pour une requête ordinaire — le déplacement vers l'activité complète passe" \
+  "ev_complete" "$(DEPLACE "$X" ev_rando ev_complete)"
+Q "update public.event_attendees set event_id = 'ev_rando' where user_id = '$X' and event_id = 'ev_complete';" >/dev/null
+verifier "…et le verdict ne le prend pas pour actif (« <> 'D' » aurait dit OK) : 5 OK / 1 ECHEC" "5/1|1" "$(VERDICT_FIGES)"
+Q "alter table public.event_attendees enable trigger trg_event_attendees_figes;" >/dev/null
+DEF_FIGES="$(Q "select pg_get_functiondef('public.event_attendees_figes()'::regprocedure);")"
+Q "create or replace function public.event_attendees_figes() returns trigger language plpgsql security definer set search_path to '' as \$fn\$ begin return new; end \$fn\$;" >/dev/null
+verifier "figes actif mais VIDÉ (ne compare plus event_id) : 5 OK / 1 ECHEC — le corps est lu" "5/1|1" "$(VERDICT_FIGES)"
+Q "$DEF_FIGES" >/dev/null
+Q "drop trigger trg_event_attendees_figes on public.event_attendees;" >/dev/null
+verifier "figes SUPPRIMÉ : 5 OK / 1 ECHEC" "5/1|1" "$(VERDICT_FIGES)"
+Q "create trigger trg_event_attendees_figes before update on public.event_attendees for each row execute function public.event_attendees_figes();" >/dev/null
+verifier "figes rétabli : 6 OK / 0 ECHEC" "6/0|0" "$(VERDICT_FIGES)"
+contient "…et il refuse de nouveau le déplacement vers l'activité complète (inscription_activite_figee)" "inscription_activite_figee" "$(DEPLACE "$X" ev_rando ev_complete)"
+verifier "X se retire de la rando : accepté" "1" "$(RETIRE "$X" ev_rando)"
 verifier "un UPDATE qui GARDE rsvp passe après la fin (pointage posé par B — la fenêtre reste l'affaire de trg_event_attendees_pointage, hors banc)" "ev_passee" \
   "$(AUTH "$B" "update public.event_attendees set checked_in_at = now() where event_id='ev_passee' and user_id='$B' returning event_id;")"
 verifier "activité EN COURS : B (peut-être) pointe, puis passe « going » — le chemin de pointer_par_code" "ev_en_cours|going" \
@@ -358,16 +430,16 @@ Q "create role tiers_concedant; grant all on public.event_attendees to tiers_con
 for priv in SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER; do
   Q "set role tiers_concedant; grant $priv on public.event_attendees to anon;" >/dev/null
   s="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || { echo "  ❌ migration en échec ($priv)"; echo "$s" | tail -3; exit 1; }
-  verifier "anon garde $priv (autre concédant) : la migration passe, le verdict dit 4 OK / 1 ECHEC — la ligne d'anon" \
-    "t|4/1|1" "$(Q "select has_table_privilege('anon', 'public.event_attendees', '$priv');" | sed 's/true/t/')|$(BILAN "$s")|$(printf '%s\n' "$s" | grep -E '\|\s*ECHEC\s*$' | grep -c "anon sans AUCUN droit" || true)"
+  verifier "anon garde $priv (autre concédant) : la migration passe, le verdict dit 5 OK / 1 ECHEC — la ligne d'anon" \
+    "t|5/1|1" "$(Q "select has_table_privilege('anon', 'public.event_attendees', '$priv');" | sed 's/true/t/')|$(BILAN "$s")|$(printf '%s\n' "$s" | grep -E '\|\s*ECHEC\s*$' | grep -c "anon sans AUCUN droit" || true)"
   Q "set role tiers_concedant; revoke $priv on public.event_attendees from anon;" >/dev/null
 done
 Q "set role tiers_concedant; grant select (event_id) on public.event_attendees to anon;" >/dev/null
 s="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || { echo "  ❌ migration en échec (colonne)"; exit 1; }
-verifier "anon garde un SELECT de COLONNE (autre concédant) : le verdict le voit aussi" "4/1" "$(BILAN "$s")"
+verifier "anon garde un SELECT de COLONNE (autre concédant) : le verdict le voit aussi" "5/1" "$(BILAN "$s")"
 Q "set role tiers_concedant; revoke select (event_id) on public.event_attendees from anon;" >/dev/null
 s="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || { echo "  ❌ migration en échec (retour)"; exit 1; }
-verifier "droits rendus : 5 OK / 0 ECHEC" "5/0" "$(BILAN "$s")"
+verifier "droits rendus : 6 OK / 0 ECHEC" "6/0" "$(BILAN "$s")"
 
 echo
 echo "RÉSULTAT : $ok ✅  $ko ❌"

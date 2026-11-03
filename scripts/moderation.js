@@ -74,8 +74,27 @@ function opt(nom) {
   const i = argv.indexOf("--" + nom);
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : null;
 }
+// ⚠️ LE TERMINAL DU MODÉRATEUR N'EST PAS UNE PAGE DE TEXTE (2026-11-03). Cet
+// outil imprime ce que d'AUTRES comptes ont écrit : motif, message, bio,
+// publication, commentaire, titre de rencontre, nom de fichier — et même les
+// identifiants (`reports.id`, `target_id`), choisis par le client. Une séquence
+// ANSI (`\x1b[2J` efface l'écran), OSC (`\x1b]8;;…` fabrique un lien
+// cliquable qui ment sur sa cible, `\x1b]0;…` retitre la fenêtre) ou un retour
+// chariot (`\r` réécrit la ligne) dans ce texte RÉÉCRIT l'écran de celui qui
+// décide : un message harcelant peut s'y faire passer pour anodin.
+// On retire tous les caractères de contrôle C0 et C1 sauf la tabulation et le
+// saut de ligne — le texte reste lisible (« [2J » s'affiche, il n'agit plus).
+// Appliqué à la LIGNE entière, à la sortie (`dire`, `sortir`), pas champ par
+// champ : un champ oublié serait une faille, une ligne ne s'oublie pas.
+const CONTROLES_TERMINAL = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
+function sansControle(texte) {
+  return String(texte == null ? "" : texte).replace(CONTROLES_TERMINAL, "");
+}
+function dire(texte) {
+  console.log(sansControle(texte));
+}
 function sortir(msg, code) {
-  console.error(msg);
+  console.error(sansControle(msg));
   process.exit(code === undefined ? 1 : code);
 }
 function abrege(uuid) {
@@ -103,7 +122,7 @@ function ecrireVus(v) {
     fs.mkdirSync(path.dirname(JOURNAL), { recursive: true });
     fs.writeFileSync(JOURNAL, JSON.stringify(v, null, 2));
   } catch (e) {
-    console.error("⚠️  journal local non écrit : " + (e && e.message));
+    console.error(sansControle("⚠️  journal local non écrit : " + (e && e.message)));
   }
 }
 
@@ -226,7 +245,7 @@ async function charger(cfg) {
     if (!r.ok && r.status !== 400) sortir(`❌ ${r.status} sur reports\n${(await r.text()).slice(0, 400)}`);
     if (!r.ok) {
       _sansStatut = true;
-      console.log("ℹ️  La base n'a pas encore de colonne `status` (migration du 2026-09-11 non appliquée) : tout est considéré ouvert.\n");
+      dire("ℹ️  La base n'a pas encore de colonne `status` (migration du 2026-09-11 non appliquée) : tout est considéré ouvert.\n");
     }
   }
   const lirePage = async (offset, taille) => {
@@ -236,7 +255,7 @@ async function charger(cfg) {
   };
   const { lignes, complet } = await lireToutesLesPages(lirePage, { taille: 500, pagesMax: 20 });
   _listeIncomplete = !complet;
-  if (!complet) console.log("⚠️  Plus de 10 000 signalements : la liste ci-dessous est TRONQUÉE aux 10 000 plus récents.\n");
+  if (!complet) dire("⚠️  Plus de 10 000 signalements : la liste ci-dessous est TRONQUÉE aux 10 000 plus récents.\n");
   return lignes;
 }
 const estOuvert = (l) => _sansStatut || l.status === undefined || l.status === null || l.status === "open";
@@ -248,31 +267,31 @@ async function lister(cfg) {
   const groupes = grouper(lignes).filter((g) => TOUS || g.ids.some((id) => !vus[id]));
 
   if (!groupes.length) {
-    console.log(lignes.length
+    dire(lignes.length
       ? `✅ Rien de nouveau. ${lignes.length} signalement(s) au total, tous déjà regardés.`
       : "✅ Aucun signalement.");
-    console.log("   (« --tous » pour revoir la file entière.)");
+    dire("   (« --tous » pour revoir la file entière.)");
     return;
   }
 
-  console.log(`\n🚩 ${groupes.length} sujet(s) à regarder — ${lignes.length} signalement(s) au total\n`);
+  dire(`\n🚩 ${groupes.length} sujet(s) à regarder — ${lignes.length} signalement(s) au total\n`);
   for (const g of groupes) {
     const neufs = g.ids.filter((id) => !vus[id]).length;
-    console.log(`  ${typeLisible(g.type).toUpperCase()} ${g.cible}`);
-    console.log(`    ${g.signaleurs} personne(s) distincte(s) · ${g.ids.length} signalement(s)`
+    dire(`  ${typeLisible(g.type).toUpperCase()} ${g.cible}`);
+    dire(`    ${g.signaleurs} personne(s) distincte(s) · ${g.ids.length} signalement(s)`
       + (neufs && neufs !== g.ids.length ? ` (dont ${neufs} nouveau(x))` : "")
       + ` · le plus ancien : il y a ${age(g.premier)}`);
     if (g.motifs.length) {
-      for (const m of g.motifs.slice(0, 3)) console.log(`    « ${m.slice(0, 160)} »`);
+      for (const m of g.motifs.slice(0, 3)) dire(`    « ${m.slice(0, 160)} »`);
     } else {
       // Vrai des 2 signalements de production : les portes ne demandaient pas
       // de motif avant le 2026-09-10.
-      console.log(`    (aucun motif écrit — signalement antérieur au 2026-09-10)`);
+      dire(`    (aucun motif écrit — signalement antérieur au 2026-09-10)`);
     }
-    console.log(`    → node scripts/moderation.js voir --id ${g.ids[0]}`);
-    console.log("");
+    dire(`    → node scripts/moderation.js voir --id ${g.ids[0]}`);
+    dire("");
   }
-  console.log(_sansStatut
+  dire(_sansStatut
     ? `Marquer comme regardé (journal LOCAL) : node scripts/moderation.js vu --id <id>\n`
     : `Fermer en base : node scripts/moderation.js traiter --id <id> --statut handled|dismissed --note "…"\n`);
 }
@@ -295,7 +314,7 @@ async function traiter(cfg) {
   const lignes = texte ? JSON.parse(texte) : [];
   // ⚠️ 0 ligne = l'identifiant n'existe pas ; un PATCH « réussi » sans ligne n'a rien fait.
   if (!lignes.length) sortir(`❌ Aucun signalement ${id} — rien n'a été modifié.`);
-  console.log(`✅ ${id} → ${statut}${note ? ` (« ${note.slice(0, 80)} »)` : ""} — statut SERVEUR, visible de tout opérateur.`);
+  dire(`✅ ${id} → ${statut}${note ? ` (« ${note.slice(0, 80)} »)` : ""} — statut SERVEUR, visible de tout opérateur.`);
   if (statut !== "open") await journaliserEtPrevenir(cfg, lignes[0], statut === "dismissed" ? "rejet" : "note", note);
 }
 
@@ -305,14 +324,14 @@ async function journaliserEtPrevenir(cfg, report, action, note) {
   const entetes = { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" };
   const j = await fetch(`${cfg.url}/rest/v1/moderation_actions`, { method: "POST", headers: entetes,
     body: JSON.stringify({ report_id: report.id, action, target_type: report.target_type || null, target_id: report.target_id || null, note: note ? String(note).slice(0, 500) : null }) });
-  if (j.ok) console.log(`   📒 journal : ${action} consigné.`);
-  else if (j.status === 404 || j.status === 400) console.log("   ⚠️  journal absent : appliquer migrations/migration_moderation_journal_2026-09-14.sql — la décision n'est PAS consignée.");
-  else console.log(`   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)}`);
+  if (j.ok) dire(`   📒 journal : ${action} consigné.`);
+  else if (j.status === 404 || j.status === 400) dire("   ⚠️  journal absent : appliquer migrations/migration_moderation_journal_2026-09-14.sql — la décision n'est PAS consignée.");
+  else dire(`   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)}`);
   const notif = notificationPourSignalant(report, action, note);
-  if (!notif) { console.log("   ℹ️  signalant sans compte : personne à prévenir."); return; }
+  if (!notif) { dire("   ℹ️  signalant sans compte : personne à prévenir."); return; }
   const n = await fetch(`${cfg.url}/rest/v1/notifications`, { method: "POST", headers: { ...entetes, Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(notif) });
-  if (n.ok) console.log(`   🔔 signalant prévenu : « ${notif.content} »`);
-  else console.log(`   ⚠️  signalant NON prévenu : ${n.status} ${(await n.text()).slice(0, 200)}`);
+  if (n.ok) dire(`   🔔 signalant prévenu : « ${notif.content} »`);
+  else dire(`   ⚠️  signalant NON prévenu : ${n.status} ${(await n.text()).slice(0, 200)}`);
 }
 
 // RETIRE le contenu visé, puis ferme, journalise et prévient — sans SQL manuel.
@@ -330,12 +349,12 @@ async function retirer(cfg) {
   const touchees = texte ? JSON.parse(texte) : [];
   // ⚠️ 0 ligne = la cible n'existe plus : rien n'a été retiré, on le dit, et on
   // ferme quand même (il n'y a plus rien à modérer).
-  console.log(touchees.length ? `✅ ${plan.libelle} (${l.target_id}).` : `ℹ️  Cible déjà absente (${l.target_id}) : rien à retirer.`);
+  dire(touchees.length ? `✅ ${plan.libelle} (${l.target_id}).` : `ℹ️  Cible déjà absente (${l.target_id}) : rien à retirer.`);
   const f = await fetch(`${cfg.url}/rest/v1/reports?id=eq.${encodeURIComponent(id)}`, { method: "PATCH",
     headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" },
     body: JSON.stringify({ status: statutApresAction("retrait"), handled_at: new Date().toISOString(), handled_note: note || plan.libelle }) });
   if (!f.ok) sortir(`❌ ${f.status} en fermant le signalement\n${(await f.text()).slice(0, 400)}`);
-  console.log(`✅ ${id} → handled.`);
+  dire(`✅ ${id} → handled.`);
   // Les autres signalements OUVERTS de la même cible sont fermés avec : la cible n'est plus là.
   const freres = (await rest(cfg, `reports?target_type=eq.${encodeURIComponent(l.target_type)}&target_id=eq.${encodeURIComponent(l.target_id)}&status=eq.open&select=*`) || []).filter((x) => x.id !== id);
   for (const fr of freres) {
@@ -344,7 +363,7 @@ async function retirer(cfg) {
       body: JSON.stringify({ status: "handled", handled_at: new Date().toISOString(), handled_note: "retrait (via " + id + ")" }) });
     await journaliserEtPrevenir(cfg, fr, "retrait", note);
   }
-  if (freres.length) console.log(`✅ ${freres.length} autre(s) signalement(s) de la même cible fermé(s).`);
+  if (freres.length) dire(`✅ ${freres.length} autre(s) signalement(s) de la même cible fermé(s).`);
   await journaliserEtPrevenir(cfg, l, "retrait", note);
 }
 
@@ -376,24 +395,24 @@ async function suspendre(cfg) {
   if (!vs.verifie) sortir(`❌ MODIFICATION NON VÉRIFIÉE — ${vs.motif}.\n   Ne pas annoncer une suspension qu'on n'a pas constatée.`);
   if (!vs.conforme) sortir(`❌ Relecture : ${vs.motif}.`);
   const relu = { banned_until: vs.jusqu };
-  console.log(`✅ ${plan.libelle} (${abrege(uid)}), jusqu'au ${relu.banned_until}.`);
+  dire(`✅ ${plan.libelle} (${abrege(uid)}), jusqu'au ${relu.banned_until}.`);
   const H = { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" };
   const j = await fetch(`${cfg.url}/rest/v1/moderation_actions`, { method: "POST", headers: H, body: JSON.stringify({ report_id: report ? report.id : null, action: "suspension", target_type: "user", target_id: uid, note: (note ? String(note) + " · " : "") + plan.jours + " j, jusqu'au " + relu.banned_until }) });
-  if (j.ok) console.log("   📒 journal : suspension consignée.");
-  else console.log(`   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)} — appliquer migrations/migration_moderation_suspension_2026-09-15.sql`);
+  if (j.ok) dire("   📒 journal : suspension consignée.");
+  else dire(`   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)} — appliquer migrations/migration_moderation_suspension_2026-09-15.sql`);
   const nc = notificationPourCible(uid, plan.jours, note);
   const n = await fetch(`${cfg.url}/rest/v1/notifications`, { method: "POST", headers: H, body: JSON.stringify(nc) });
-  if (n.ok) console.log(`   🔔 la personne suspendue est prévenue : « ${nc.content} »`);
-  else console.log(`   ⚠️  personne suspendue NON prévenue : ${n.status} ${(await n.text()).slice(0, 200)}`);
+  if (n.ok) dire(`   🔔 la personne suspendue est prévenue : « ${nc.content} »`);
+  else dire(`   ⚠️  personne suspendue NON prévenue : ${n.status} ${(await n.text()).slice(0, 200)}`);
   if (report) {
     const f = await fetch(`${cfg.url}/rest/v1/reports?id=eq.${encodeURIComponent(report.id)}`, { method: "PATCH", headers: H,
       body: JSON.stringify({ status: statutApresAction("suspension"), handled_at: new Date().toISOString(), handled_note: note || plan.libelle }) });
     if (!f.ok) sortir(`❌ ${f.status} en fermant le signalement\n${(await f.text()).slice(0, 400)}`);
-    console.log(`✅ ${report.id} → handled.`);
+    dire(`✅ ${report.id} → handled.`);
     const notif = notificationPourSignalant(report, "suspension", note);
     if (notif) {
       const ns = await fetch(`${cfg.url}/rest/v1/notifications`, { method: "POST", headers: { ...H, Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(notif) });
-      console.log(ns.ok ? `   🔔 signalant prévenu : « ${notif.content} »` : `   ⚠️  signalant NON prévenu : ${ns.status}`);
+      dire(ns.ok ? `   🔔 signalant prévenu : « ${notif.content} »` : `   ⚠️  signalant NON prévenu : ${ns.status}`);
     }
   }
 }
@@ -423,11 +442,11 @@ async function lever(cfg) {
   // un succès. Désormais : non vérifié ≠ levé, et ça sort en erreur.
   if (!v.verifie) sortir(`❌ MODIFICATION NON VÉRIFIÉE — ${v.motif}.\n   Le PUT a été accepté, mais l'état du compte ${abrege(uid)} n'a pas pu être relu : ne pas annoncer une levée qu'on n'a pas constatée.`);
   if (!v.conforme) sortir(`❌ Relecture : ${v.motif}.`);
-  console.log(`✅ ${plan.libelle} (${abrege(uid)}) — relu : aucune suspension active.`);
+  dire(`✅ ${plan.libelle} (${abrege(uid)}) — relu : aucune suspension active.`);
   // ⚠️ LE JOURNAL DIT LE RÉSULTAT RÉEL, pas l'intention : il n'est écrit que
   // sur un verdict CONSTATÉ (les deux sorties ci-dessus l'ont déjà empêché).
   const j = await fetch(`${cfg.url}/rest/v1/moderation_actions`, { method: "POST", headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ action: "levee", target_type: "user", target_id: uid, note: (note ? String(note).slice(0, 460) + " · " : "") + "levée relue et constatée" }) });
-  console.log(j.ok ? "   📒 journal : levée consignée." : `   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)}`);
+  dire(j.ok ? "   📒 journal : levée consignée." : `   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)}`);
 }
 
 // Va chercher CE QUI EST VISÉ, pas seulement l'identifiant : modérer sur un
@@ -438,13 +457,13 @@ async function voir(cfg) {
   const l = (await rest(cfg, `reports?id=eq.${encodeURIComponent(id)}&select=*`) || [])[0];
   if (!l) sortir(`❌ Signalement introuvable : ${id}`);
 
-  console.log(`\n🚩 Signalement ${l.id}`);
-  console.log(`   Type    : ${typeLisible(l.target_type)}`);
-  console.log(`   Cible   : ${l.target_id}`);
-  console.log(`   Motif   : ${String(l.reason || "").trim() || "(aucun)"}`);
-  console.log(`   Envoyé  : il y a ${age(l.created_at)} (${l.created_at})`);
-  if (l.status !== undefined) console.log(`   Statut  : ${l.status}${l.handled_at ? ` (le ${l.handled_at}${l.handled_note ? ` — ${l.handled_note}` : ""})` : ""}`);
-  console.log(`   Par     : ${abrege(l.reporter_id)}  (identité volontairement abrégée)\n`);
+  dire(`\n🚩 Signalement ${l.id}`);
+  dire(`   Type    : ${typeLisible(l.target_type)}`);
+  dire(`   Cible   : ${l.target_id}`);
+  dire(`   Motif   : ${String(l.reason || "").trim() || "(aucun)"}`);
+  dire(`   Envoyé  : il y a ${age(l.created_at)} (${l.created_at})`);
+  if (l.status !== undefined) dire(`   Statut  : ${l.status}${l.handled_at ? ` (le ${l.handled_at}${l.handled_note ? ` — ${l.handled_note}` : ""})` : ""}`);
+  dire(`   Par     : ${abrege(l.reporter_id)}  (identité volontairement abrégée)\n`);
 
   const t = l.target_type;
   const cible = encodeURIComponent(l.target_id);
@@ -452,20 +471,20 @@ async function voir(cfg) {
     if (t === "user") {
       const p = (await rest(cfg, `profiles?id=eq.${cible}&select=id,username,bio,passions,created_at`) || [])[0];
       if (p) {
-        console.log(`   ── Le compte visé ──`);
-        console.log(`   Pseudo : ${p.username || "(sans nom)"}`);
-        console.log(`   Bio    : ${String(p.bio || "").slice(0, 300) || "(vide)"}`);
+        dire(`   ── Le compte visé ──`);
+        dire(`   Pseudo : ${p.username || "(sans nom)"}`);
+        dire(`   Bio    : ${String(p.bio || "").slice(0, 300) || "(vide)"}`);
         const n = (await rest(cfg, `posts?author_id=eq.${cible}&select=id&limit=200`) || []).length;
-        console.log(`   ${n} publication(s)\n`);
-      } else console.log(`   (compte introuvable — déjà supprimé ?)\n`);
+        dire(`   ${n} publication(s)\n`);
+      } else dire(`   (compte introuvable — déjà supprimé ?)\n`);
     } else if (t === "post") {
       const p = (await rest(cfg, `posts?id=eq.${cible}&select=id,author_id,content,passion_id,created_at`) || [])[0];
       if (p) {
-        console.log(`   ── La publication visée ──`);
-        console.log(`   Auteur  : ${abrege(p.author_id)}`);
-        console.log(`   Passion : ${p.passion_id || "—"}`);
-        console.log(`   Texte   : ${String(p.content || "").slice(0, 600)}\n`);
-      } else console.log(`   (publication introuvable — déjà supprimée ?)\n`);
+        dire(`   ── La publication visée ──`);
+        dire(`   Auteur  : ${abrege(p.author_id)}`);
+        dire(`   Passion : ${p.passion_id || "—"}`);
+        dire(`   Texte   : ${String(p.content || "").slice(0, 600)}\n`);
+      } else dire(`   (publication introuvable — déjà supprimée ?)\n`);
     } else if (t === "comment") {
       // ⚠️ DEUX TABLES, DEUX COLONNES (mesuré le 2026-09-12) : un identifiant
       // `ec_…` est un commentaire de RENCONTRE (event_comments, colonne `text`),
@@ -478,18 +497,18 @@ async function voir(cfg) {
         ? (await rest(cfg, `event_comments?id=eq.${cible}&select=id,author_id,author_name,text,event_id,created_at`) || [])[0]
         : (await rest(cfg, `post_comments?id=eq.${cible}&select=id,author_id,content,post_id,created_at`) || [])[0];
       if (c) {
-        console.log(`   ── Le commentaire visé (${surRencontre ? "sur une rencontre" : "sous une publication"}) ──`);
-        console.log(`   Auteur : ${abrege(c.author_id)}`);
-        console.log(`   Texte  : ${String(surRencontre ? c.text : c.content || "").slice(0, 600)}\n`);
-      } else console.log(`   (commentaire introuvable — déjà supprimé ?)\n`);
+        dire(`   ── Le commentaire visé (${surRencontre ? "sur une rencontre" : "sous une publication"}) ──`);
+        dire(`   Auteur : ${abrege(c.author_id)}`);
+        dire(`   Texte  : ${String(surRencontre ? c.text : c.content || "").slice(0, 600)}\n`);
+      } else dire(`   (commentaire introuvable — déjà supprimé ?)\n`);
     } else if (t === "event") {
       const e = (await rest(cfg, `events?id=eq.${cible}&select=id,title,description,author_id,city,date_at`) || [])[0];
       if (e) {
-        console.log(`   ── La rencontre visée ──`);
-        console.log(`   Titre : ${e.title || "—"}`);
-        console.log(`   Ville : ${e.city || "—"}   Date : ${e.date_at || "—"}`);
-        console.log(`   Texte : ${String(e.description || "").slice(0, 600)}\n`);
-      } else console.log(`   (rencontre introuvable)\n`);
+        dire(`   ── La rencontre visée ──`);
+        dire(`   Titre : ${e.title || "—"}`);
+        dire(`   Ville : ${e.city || "—"}   Date : ${e.date_at || "—"}`);
+        dire(`   Texte : ${String(e.description || "").slice(0, 600)}\n`);
+      } else dire(`   (rencontre introuvable)\n`);
     } else if (t === "message") {
       // ⚠️ LA PREUVE D'ABORD (E-08, migration_signalements_preuves_2026-11-03.sql).
       // L'auteur d'un message peut l'effacer ou le réécrire APRÈS le signalement
@@ -503,40 +522,40 @@ async function voir(cfg) {
       const v = await lire(cfg, `conv_messages?id=eq.${cible}&select=id,conv_id,from_id,content,created_at`);
       const vivant = v.ok ? v.lignes[0] : null;
       if (preuve) {
-        console.log(`   ── Le message visé (PREUVE copiée par le serveur au signalement, le ${preuve.copie_le}) ──`);
-        console.log(`   Auteur       : ${abrege(preuve.auteur_id)}`);
-        console.log(`   Conversation : ${abrege(preuve.conv_id)}`);
-        console.log(`   Envoyé le    : ${preuve.envoye_le || "—"}`);
-        console.log(`   Contenu      : ${decrireContenuMessage(preuve.contenu)}`);
-        if (!v.ok) console.log(`   (message actuel illisible : ${v.status})`);
-        else if (!vivant) console.log(`   ⚠️  Message SUPPRIMÉ depuis le signalement : cette preuve en est la seule trace.`);
-        else if (vivant.content !== preuve.contenu) console.log(`   ⚠️  Message MODIFIÉ depuis le signalement. Version actuelle : ${decrireContenuMessage(vivant.content)}`);
-        console.log("");
+        dire(`   ── Le message visé (PREUVE copiée par le serveur au signalement, le ${preuve.copie_le}) ──`);
+        dire(`   Auteur       : ${abrege(preuve.auteur_id)}`);
+        dire(`   Conversation : ${abrege(preuve.conv_id)}`);
+        dire(`   Envoyé le    : ${preuve.envoye_le || "—"}`);
+        dire(`   Contenu      : ${decrireContenuMessage(preuve.contenu)}`);
+        if (!v.ok) dire(`   (message actuel illisible : ${v.status})`);
+        else if (!vivant) dire(`   ⚠️  Message SUPPRIMÉ depuis le signalement : cette preuve en est la seule trace.`);
+        else if (vivant.content !== preuve.contenu) dire(`   ⚠️  Message MODIFIÉ depuis le signalement. Version actuelle : ${decrireContenuMessage(vivant.content)}`);
+        dire("");
       } else {
-        console.log(p.ok
+        dire(p.ok
           ? `   ℹ️  Aucune preuve copiée pour ce signalement (antérieur à la migration, ou signalant non membre de la conversation).`
           : `   ⚠️  Preuves illisibles (${p.status}) : migrations/migration_signalements_preuves_2026-11-03.sql est-elle appliquée ? On lit le message ACTUEL.`);
         if (vivant) {
-          console.log(`   ── Le message visé (version ACTUELLE : son auteur a pu la modifier, ce n'est pas une preuve) ──`);
-          console.log(`   Auteur       : ${abrege(vivant.from_id)}`);
-          console.log(`   Conversation : ${abrege(vivant.conv_id)}`);
-          console.log(`   Envoyé le    : ${vivant.created_at || "—"}`);
-          console.log(`   Contenu      : ${decrireContenuMessage(vivant.content)}\n`);
-        } else if (!v.ok) console.log(`   (message illisible : ${v.status})\n`);
-        else console.log(`   (message introuvable — supprimé par son auteur ? Sans preuve, il n'y a plus rien à montrer.)\n`);
+          dire(`   ── Le message visé (version ACTUELLE : son auteur a pu la modifier, ce n'est pas une preuve) ──`);
+          dire(`   Auteur       : ${abrege(vivant.from_id)}`);
+          dire(`   Conversation : ${abrege(vivant.conv_id)}`);
+          dire(`   Envoyé le    : ${vivant.created_at || "—"}`);
+          dire(`   Contenu      : ${decrireContenuMessage(vivant.content)}\n`);
+        } else if (!v.ok) dire(`   (message illisible : ${v.status})\n`);
+        else dire(`   (message introuvable — supprimé par son auteur ? Sans preuve, il n'y a plus rien à montrer.)\n`);
       }
     } else if (t === "passion") {
-      console.log(`   → Cette file-là a son outil : node scripts/passions-moderation.js signalees\n`);
+      dire(`   → Cette file-là a son outil : node scripts/passions-moderation.js signalees\n`);
     }
   } catch (e) {
-    console.log(`   (contenu visé illisible : ${(e && e.message) || "?"})\n`);
+    dire(`   (contenu visé illisible : ${(e && e.message) || "?"})\n`);
   }
 
-  console.log(`   Ce que tu peux faire :`);
-  console.log(`     · RETIRER le contenu (et fermer, journaliser, prévenir) : node scripts/moderation.js retirer --id ${l.id} --note "…"`);
-  console.log(`     · rejeter (aucune infraction) : node scripts/moderation.js traiter --id ${l.id} --statut dismissed --note "…"`);
-  console.log(`     · fermer sans retrait : node scripts/moderation.js traiter --id ${l.id} --statut handled --note "…"`);
-  console.log(`     · (avant la migration) le marquer comme regardé : node scripts/moderation.js vu --id ${l.id}\n`);
+  dire(`   Ce que tu peux faire :`);
+  dire(`     · RETIRER le contenu (et fermer, journaliser, prévenir) : node scripts/moderation.js retirer --id ${l.id} --note "…"`);
+  dire(`     · rejeter (aucune infraction) : node scripts/moderation.js traiter --id ${l.id} --statut dismissed --note "…"`);
+  dire(`     · fermer sans retrait : node scripts/moderation.js traiter --id ${l.id} --statut handled --note "…"`);
+  dire(`     · (avant la migration) le marquer comme regardé : node scripts/moderation.js vu --id ${l.id}\n`);
 }
 
 function vu() {
@@ -545,7 +564,7 @@ function vu() {
   const vus = lireVus();
   vus[id] = new Date().toISOString();
   ecrireVus(vus);
-  console.log(`✅ ${id} marqué comme regardé (journal LOCAL, pas un statut serveur).`);
+  dire(`✅ ${id} marqué comme regardé (journal LOCAL, pas un statut serveur).`);
 }
 
 async function compter(cfg) {
@@ -553,7 +572,7 @@ async function compter(cfg) {
   const lignes = toutes.filter(estOuvert);
   const vus = lireVus();
   const neufs = lignes.filter((l) => !vus[l.id]).length;
-  console.log(`${lignes.length} signalement(s) ouvert(s) sur ${toutes.length}, dont ${neufs} non regardé(s) ici.`);
+  dire(`${lignes.length} signalement(s) ouvert(s) sur ${toutes.length}, dont ${neufs} non regardé(s) ici.`);
   // Code de sortie utilisable dans un contrôle quotidien.
   process.exit(neufs ? 2 : 0);
 }

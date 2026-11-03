@@ -40,10 +40,10 @@
 --     TRUNCATE, REFERENCES, TRIGGER et MAINTAIN, sans SELECT ni policy utile) :
 --     défense en profondeur.
 --  ⑤ NOUVELLE GARDE `trg_event_attendees_etat` : une inscription (INSERT, ou
---     UPDATE qui CHANGE `rsvp`) vers tout état autre que « declined » est
---     refusée sur une activité ANNULÉE (`activite_annulee`) ou PASSÉE
---     (`activite_passee`) — mêmes motifs, même définition de « passée » que la
---     garde de capacité, qui ne tient que le passage à « going ».
+--     UPDATE qui CHANGE `rsvp` OU `event_id`) vers tout état autre que
+--     « declined » est refusée sur une activité ANNULÉE (`activite_annulee`) ou
+--     PASSÉE (`activite_passee`) — mêmes motifs, même définition de « passée »
+--     que la garde de capacité, qui ne tient que le passage à « going ».
 --
 -- CE QUE LES CONTRE-REVUES ONT FERMÉ (la première version de ce fichier) :
 --  · CONTOURNEMENT PAR « PEUT-ÊTRE » : la branche co-inscrit s'ouvrait à tout
@@ -69,6 +69,14 @@
 --  · `anon` : seul DELETE était retiré ; le verdict ne contrôlait que SELECT et
 --    DELETE — il aurait imprimé OK avec TRUNCATE encore en place. Il contrôle
 --    maintenant CHAQUE privilège (MAINTAIN à partir de PostgreSQL 17).
+--  · DÉPLACER UNE LIGNE (troisième revue) : la garde d'état sortait sur « rsvp
+--    inchangé » — un UPDATE qui DÉPLACE une ligne « going » vers une AUTRE
+--    activité (passée, annulée) garde son rsvp, et passait. La capacité sort de
+--    même (`old.rsvp = 'going'`) : seul `trg_event_attendees_figes` (ASTRA-35,
+--    « une inscription ne change ni d'activité ni de compte ») l'arrêtait, et
+--    rien ici ne le disait. La sortie exige désormais la MÊME activité, et le
+--    verdict exige `trg_event_attendees_figes` présent et actif : c'est lui
+--    seul qui tient le déplacement vers une activité COMPLÈTE à venir.
 --
 -- RISQUE RÉSIDUEL, dit tel quel :
 --  · S'inscrire « going » à une activité À VENIR et non complète révèle ses
@@ -93,6 +101,12 @@
 -- 42501) ; il reconnaît `activite_passee` / `activite_annulee` pour TOUS les
 -- états (`_motifRefusRsvp`, app-08, lit le même message que la capacité) ; et il
 -- doit lire `avg: null` comme « pas encore de moyenne », jamais comme 0.
+-- ⚠️ « SERVI » NE SUFFIT PAS : une PWA installée restée ouverte garde l'ANCIEN
+-- code jusqu'à son prochain rechargement. Sur ces appareils, l'ancien
+-- `.select()` de l'inscription (RETURNING *) prendrait 42501 (« Inscription non
+-- enregistrée ») et l'ancienne lecture des notes poserait le mémo de refus des
+-- participants pour la session. Attendre 48 h après le job « Déploiement
+-- production » avant d'appliquer cette migration.
 --
 -- PIÈGE ÉVITÉ : une policy qui interroge SA PROPRE table (« suis-je inscrit ? »)
 -- déclenche « infinite recursion detected in policy » — d'où les deux helpers
@@ -184,9 +198,9 @@ create policy event_attendees_select_lien on public.event_attendees
 -- Fonction NEUVE, à côté de `event_attendees_capacite_gardee` (qui reste telle
 -- quelle et tranche toujours le passage à « going », complet compris). Mêmes
 -- motifs, même définition de « passée », même sortie sans session. Un UPDATE
--- qui GARDE son `rsvp` (pointage par `pointer_par_code`, note, retour écrit)
--- n'est pas une inscription : il passe, même après la fin. Se retirer
--- (« declined ») passe toujours.
+-- qui GARDE son `rsvp` ET son activité (pointage par `pointer_par_code`, note,
+-- retour écrit) n'est pas une inscription : il passe, même après la fin. Se
+-- retirer (« declined ») passe toujours.
 create or replace function public.event_attendees_etat_garde()
 returns trigger
 language plpgsql security definer set search_path = ''
@@ -198,7 +212,12 @@ begin
   -- ne s'applique pas — même sortie que `event_attendees_capacite_gardee`.
   if auth.uid() is null then return new; end if;
   if new.rsvp = 'declined' then return new; end if;
-  if tg_op = 'UPDATE' and new.rsvp is not distinct from old.rsvp then return new; end if;
+  -- ⚠️ « rsvp inchangé » ne suffit pas : déplacer une ligne « going » vers une
+  -- autre activité (passée, annulée) garde son rsvp. C'est une inscription à
+  -- l'activité d'arrivée, jugée comme telle — sans compter sur la seule garde
+  -- `trg_event_attendees_figes` (exigée au verdict, voir plus bas).
+  if tg_op = 'UPDATE' and new.rsvp is not distinct from old.rsvp
+     and new.event_id is not distinct from old.event_id then return new; end if;
 
   select status, date_at, end_at into ev from public.events where id = new.event_id;
   -- Activité inconnue : la clé étrangère tranche (23503), pas cette garde.
@@ -310,6 +329,20 @@ union all select 'event_attendees : garde d''état (passée / annulée) BEFORE I
                            and p.prosecdef and array_to_string(p.proconfig, ';') = 'search_path=""')
              and exists (select 1 from pg_trigger t where t.tgrelid = 'public.event_attendees'::regclass
                            and t.tgname = 'trg_event_attendees_capacite' and t.tgenabled = 'O') then 'OK' else 'ECHEC' end
+-- ⚠️ La garde d'état juge un déplacement vers une activité passée ou annulée ;
+-- vers une activité COMPLÈTE à venir, ni elle ni la capacité (qui sort sur
+-- `old.rsvp = 'going'`) ne disent rien : `trg_event_attendees_figes` (ASTRA-35)
+-- est le seul verrou, d'où cette ligne. Actif = « O » (origine) ou « A »
+-- (toujours) : un déclencheur « R » ne part qu'en réplication, donc jamais pour
+-- une requête PostgREST — `<> 'D'` imprimerait OK sur un verrou qui ne joue pas.
+-- Le corps est lu aussi : un déclencheur de ce nom qui ne compare plus
+-- `event_id` ne fige rien.
+union all select 'event_attendees : trg_event_attendees_figes actif (une inscription ne change ni d''activité ni de compte — seul verrou d''un déplacement vers une activité complète)',
+       case when exists (select 1 from pg_trigger t join pg_proc p on p.oid = t.tgfoid
+                         where t.tgrelid = 'public.event_attendees'::regclass and t.tgname = 'trg_event_attendees_figes'
+                           and p.proname = 'event_attendees_figes' and t.tgenabled in ('O', 'A')
+                           and (t.tgtype & 1) = 1 and (t.tgtype & 2) = 2 and (t.tgtype & 16) = 16
+                           and p.prosrc ilike '%new.event_id is distinct from old.event_id%') then 'OK' else 'ECHEC' end
 union all select 'event_attendees : feedback / rating / rated_at illisibles par authenticated, les 5 autres colonnes lisibles',
        case when not has_column_privilege('authenticated', 'public.event_attendees', 'feedback', 'SELECT')
              and not has_column_privilege('authenticated', 'public.event_attendees', 'rating', 'SELECT')

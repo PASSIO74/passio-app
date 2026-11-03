@@ -426,7 +426,11 @@ supprimer ou réécrire son message après coup.
   `from_id` de la LIGNE serveur (jamais un champ du JSON), et une réaction est attribuée à cet expéditeur
   (`reactBy`, une par personne et par emoji) — au temps réel comme au rejeu de `supaLoadMessages`. Le canal
   temps réel v2 (opt-in, broadcast dont la charge n'est pas prouvée par le serveur) n'applique AUCUN message de
-  contrôle : le rejeu suivant s'en charge. Verrou : `audit-2026-11-controle-auteur-messages.spec.js`.
+  contrôle : le rejeu suivant s'en charge. Et ce rejeu atteint la COPIE LOCALE : `_deleteMsgForAll` supprime la
+  ligne de la cible, le serveur ne la rend donc plus, et la fusion à l'ouverture (`_fusionnerMessagesServeur`)
+  gardait la copie — un retrait manqué en temps réel ne quittait jamais l'appareil. `supaLoadMessages` remet à la
+  fusion ses retraits (`_retraitsPourTous`, propriété non énumérable) avec l'expéditeur de la ligne ; la fusion ne
+  retire une copie que si son auteur est cet expéditeur. Verrou : `audit-2026-11-controle-auteur-messages.spec.js` (6).
 - **L'accusé de lecture partait sans lire sa réponse** (`supaMarkRead`, revue 10b, R6). Il lit `{ error }` : 403/42501
   → réparation de l'appartenance par `_reparerAppartenanceConv` (même tentative mémorisée que l'envoi), une relance,
   une trace sans donnée personnelle ; panne réseau silencieuse ; 401 jamais réparé ; réparation réservée à un 1:1 de

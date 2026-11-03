@@ -24,7 +24,11 @@
 //   ③ une réaction est attribuée à l'expéditeur de la ligne : une par personne
 //      et par emoji, retirée par elle seule ; ma réaction (`_toggleReaction`)
 //      s'ajoute et part sous mon `from_id` ; l'emoji hostile reste refusé ;
-//   ④ le rejeu au chargement applique les mêmes règles, et l'écran le montre.
+//   ④ le rejeu au chargement applique les mêmes règles, et l'écran le montre ;
+//   ⑤ sur le canal v2 (broadcast que tout MEMBRE peut émettre, `from_id` non
+//      prouvé), aucun contrôle n'est appliqué — le rejeu serveur s'en charge ;
+//   ⑥ ce rejeu atteint la COPIE LOCALE : la fusion à l'ouverture retire la
+//      copie d'un message que son auteur a retiré pour tous (et rien d'autre).
 //
 // ISOLATION (projet local) : `supa` est un VRAI client et `_supaReal` vaut vrai.
 // APRÈS `bootOnboarded`, toute requête REST/Functions/Storage est servie ici
@@ -321,5 +325,153 @@ test.describe("Audit 2026-11 — messages de contrôle : la suppression et la r�
     expect(r.bulles).not.toContain("r_moi2");
     expect(r.stocke).toEqual(["r_lea", "r_moi"]);
     expect(errors.js).toEqual([]);
+  });
+
+  // ⑤ CANAL v2 (opt-in, `passio_realtime_v2 = "1"`) : `_subscribePrivateConv`
+  // remet au gestionnaire la CHARGE d'un broadcast sur `conv:<id>` — et la
+  // policy `passio_rt_emettre` laisse n'importe quel MEMBRE y diffuser ce qu'il
+  // veut. Le `from_id` n'y est donc prouvé par personne : Marc, membre, écrit
+  // `from_id = Léa` et la règle « l'expéditeur de la ligne » se croyait
+  // satisfaite. Sur ce chemin, AUCUN contrôle n'est appliqué ; les messages
+  // ordinaires passent ; le rejeu serveur (`supaLoadMessages`, `from_id` réel)
+  // applique ceux qui existent vraiment.
+  // Le canal est simulé au plus près : `supa.channel` rend un faux canal qui
+  // capture le rappel `broadcast/INSERT` posé par le VRAI `_subscribePrivateConv`.
+  test("⑤ canal v2 (broadcast de membre) : un contrôle à `from_id` forgé n'est jamais appliqué ; les messages passent ; le rejeu serveur applique les vrais", async ({ page }) => {
+    const { errors, lignesParConv } = await banc(page);
+    const uid = await page.evaluate(() => MY_UID);
+    const r = await page.evaluate(async ([lea, marc, cid]) => {
+      const B = window.__b, out = {};
+      // Le VRAI abonnement v2, sur un faux canal qui garde le rappel.
+      let rappel = null;
+      const propre = Object.prototype.hasOwnProperty.call(supa, "channel");
+      const vrai = supa.channel;
+      supa.channel = function (nom, o) {
+        out.sujet = nom; out.prive = !!(o && o.config && o.config.private);
+        const ch = { on(type, filtre, cb) { if (type === "broadcast" && filtre && filtre.event === "INSERT") rappel = cb; return ch; }, subscribe() { return ch; }, unsubscribe() { return Promise.resolve(); } };
+        return ch;
+      };
+      try { delete window._privateConvChans[cid]; _subscribePrivateConv(cid); }
+      finally { if (propre) supa.channel = vrai; else delete supa.channel; }
+      out.abonne = typeof rappel === "function";
+      // Deux formes de charge que le rappel accepte (`p.record`, ou `p` lui-même).
+      const diffuse = async (ligne, nue) => { rappel({ payload: nue ? ligne : { record: ligne } }); await new Promise((ok) => setTimeout(ok, 150)); };
+
+      // Marc FORGE l'expéditeur : « Léa » efface le message de Léa…
+      await diffuse(B.ligne(lea, { type: "del", target: "m_lea" }));
+      // …« Léa » réagit à MON message…
+      await diffuse(B.ligne(lea, { type: "react", target: "m_moi", emoji: "❤️", op: "add" }), true);
+      // …et un contrôle à l'expéditeur VRAI (Marc retire le sien) attend lui aussi le rejeu.
+      await diffuse(B.ligne(marc, { type: "del", target: "m_marc" }));
+      out.ids = B.ids();
+      out.reactMoi = B.reactions("m_moi");
+      out.bulles = B.bulles();
+      out.stocke = B.stocke();
+      // Une charge ORDINAIRE à `conv_id` étranger : jetée — ni routée par
+      // `from_id` vers mon fil privé avec Léa, ni nouvelle conversation.
+      getConversations().push({ id: "dm_lea_banc", isGroup: false, userId: lea, userName: "Léa", unread: 0, lastAt: Date.now() - 5000, messages: [] });
+      saveConversationsNow();
+      await diffuse({ id: "m_injecte", conv_id: "conv_au_hasard", from_id: lea, content: "Je suis Léa (forgé)", created_at: new Date().toISOString().replace("Z", "") });
+      await diffuse({ id: "m_injecte2", conv_id: "dm_lea_banc", from_id: lea, content: "Je suis Léa (forgé, autre fil)", created_at: new Date().toISOString().replace("Z", "") });
+      await new Promise((ok) => setTimeout(ok, 300));
+      out.injecte = getConversations().filter((c) => (c.messages || []).some((m) => m.id === "m_injecte" || m.id === "m_injecte2")).map((c) => c.id);
+      out.convsInconnues = getConversations().filter((c) => c.id === "conv_au_hasard").length;
+      // Un message ORDINAIRE diffusé continue de s'afficher.
+      rappel({ payload: { record: { id: "m_v2", conv_id: cid, from_id: lea, content: "Bonjour par le canal v2",
+        created_at: new Date().toISOString().replace("Z", "") } } });
+      const t0 = Date.now();
+      while (!B.ids().includes("m_v2") && Date.now() - t0 < 4000) await new Promise((ok) => setTimeout(ok, 50));
+      out.ordinaire = B.ids().includes("m_v2");
+      await new Promise((ok) => setTimeout(ok, 200));
+      out.bullesOrdinaire = B.bulles();
+      return out;
+    }, [LEA, MARC, CID]);
+
+    expect(r.abonne, "prémisse : le vrai `_subscribePrivateConv` a posé son rappel").toBe(true);
+    expect(r.sujet, "prémisse : canal de la conversation").toBe("conv:" + CID);
+    expect(r.prive, "prémisse : canal privé").toBe(true);
+    expect(r.ids, "aucune suppression par diffusion — ni forgée, ni même vraie").toEqual(["m_sys", "m_lea", "m_marc", "m_moi", "m_moi2"]);
+    expect(r.reactMoi, "aucune réaction par diffusion").toEqual({});
+    expect(r.bulles, "les messages restent à l'écran").toEqual(expect.arrayContaining(["m_lea", "m_marc", "m_moi"]));
+    expect(r.bulles.filter((id) => /^ctl_/.test(id)), "un contrôle n'est jamais peint en bulle").toEqual([]);
+    expect(r.stocke, "la copie persistée garde tout").toEqual(["m_sys", "m_lea", "m_marc", "m_moi", "m_moi2"]);
+    expect(r.injecte, "une charge v2 à conv_id étranger n'entre dans aucun fil").toEqual([]);
+    expect(r.convsInconnues, "ni ne crée de conversation").toBe(0);
+    expect(r.ordinaire, "un message ordinaire diffusé s'affiche").toBe(true);
+    expect(r.bullesOrdinaire).toContain("m_v2");
+
+    // Le rejeu serveur : la diffusion forgée n'a jamais existé en base ; le
+    // retrait VRAI de Marc, si — il est appliqué, la réaction vraie de Léa aussi.
+    const t0 = Date.now() - 3600000;
+    let k = 0;
+    const ts = () => new Date(t0 + (++k) * 1000).toISOString().replace("Z", "") + "123";
+    const prof = { [LEA]: { username: "Léa", emoji: "🌿", color: "#22c55e" }, [MARC]: { username: "Marc", emoji: "🎸", color: "#0ea5e9" } };
+    const ligne = (id, from, content) => ({ id, conv_id: CID, from_id: from, content: typeof content === "string" ? content : JSON.stringify(content), created_at: ts(), profiles: prof[from] || null });
+    lignesParConv[CID] = [
+      ligne("m_lea", LEA, "Message de Léa"),
+      ligne("m_marc", MARC, "Message de Marc"),
+      ligne("m_moi", uid, "Mon message"),
+      ligne("s_del", MARC, { type: "del", target: "m_marc" }),
+      ligne("s_react", LEA, { type: "react", target: "m_moi", emoji: "👍", op: "add" }),
+    ].reverse();
+    const rejeu = await page.evaluate(async (cid) => {
+      const lus = await supaLoadMessages(cid);
+      const moi = lus.find((m) => m.id === "m_moi") || {};
+      return { ids: lus.map((m) => m.id), reactMoi: moi.reactions || null };
+    }, CID);
+    expect(rejeu.ids, "rejeu : le retrait vrai de Marc est appliqué, le message de Léa reste").toEqual(["m_lea", "m_moi"]);
+    expect(rejeu.reactMoi, "rejeu : la réaction vraie de Léa est comptée").toEqual({ "👍": 1 });
+    expect(errors.js, "aucune exception de page").toEqual([]);
+  });
+
+  // ⑥ LE RETRAIT REJOUÉ ATTEINT LA COPIE LOCALE. `_deleteMsgForAll` supprime la
+  // LIGNE de la cible en plus d'envoyer le contrôle : le serveur ne rend donc
+  // plus le message, et la fusion à l'ouverture (`_fusionnerMessagesServeur`)
+  // gardait la copie locale — un retrait manqué en temps réel (hors ligne,
+  // socket au repos, contrôle v2 laissé au rejeu) ne quittait jamais l'appareil.
+  // Mêmes règles qu'ailleurs : seul l'auteur de la copie retire la sienne, un
+  // message système ne se retire pas, et la version serveur d'un message encore
+  // servi fait foi.
+  test("⑥ rejeu → fusion : le retrait « pour tous » de son auteur efface la copie locale ; un retrait d'autrui, non", async ({ page }) => {
+    const { errors, lignesParConv } = await banc(page);
+    const uid = await page.evaluate(() => MY_UID);
+    const t0 = Date.now() - 3600000;
+    let k = 0;
+    const ts = () => new Date(t0 + (++k) * 1000).toISOString().replace("Z", "") + "123";
+    const prof = { [LEA]: { username: "Léa", emoji: "🌿", color: "#22c55e" }, [MARC]: { username: "Marc", emoji: "🎸", color: "#0ea5e9" } };
+    const ligne = (id, from, content) => ({ id, conv_id: CID, from_id: from, content: typeof content === "string" ? content : JSON.stringify(content), created_at: ts(), profiles: prof[from] || null });
+    // La ligne `m_marc` n'est plus en base : Marc l'a retirée pour tous.
+    lignesParConv[CID] = [
+      ligne("m_lea", LEA, "Message de Léa"),
+      ligne("m_moi", uid, "Mon message"),
+      ligne("s_del_marc", MARC, { type: "del", target: "m_marc" }),     // appliqué : Marc retire le sien
+      ligne("s_del_lea", MARC, { type: "del", target: "m_lea" }),       // refusé : servi encore, et pas à Marc
+      ligne("s_del_moi2", LEA, { type: "del", target: "m_moi2" }),      // refusé : la copie locale est à MOI
+      ligne("s_del_sys", MARC, { type: "del", target: "m_sys" }),       // refusé : message système
+      ligne("s_del_forge", LEA, { type: "del", target: "m_moi2", from: uid, from_id: uid }), // auteur du JSON ignoré
+    ].reverse();
+    const avant = await page.evaluate(() => window.__b.ids().slice().sort());
+    expect(avant, "prémisse : la copie locale porte le message de Marc").toContain("m_marc");
+
+    const r = await page.evaluate(async (cid) => {
+      const B = window.__b, out = {};
+      const lus = await supaLoadMessages(cid);
+      out.retraits = (lus._retraitsPourTous || []).map((x) => x.target).sort();
+      out.enumerable = Object.keys(lus).includes("_retraitsPourTous");
+      await _fusionnerMessagesServeur(cid, "Groupe du banc", document.getElementById("convFpThread"));
+      await new Promise((ok) => setTimeout(ok, 300));
+      out.ids = B.ids().slice().sort();
+      out.bulles = B.bulles();
+      out.stocke = (B.stocke() || []).slice().sort();
+      return out;
+    }, CID);
+
+    expect(r.retraits, "les retraits remis à la fusion : cibles absentes de la lecture, ou retirées par leur auteur").toEqual(["m_marc", "m_moi2", "m_moi2", "m_sys"]);
+    expect(r.enumerable, "la propriété ne se voit pas d'un parcours ordinaire du tableau").toBe(false);
+    expect(r.ids, "seule la copie de Marc, retirée par Marc, quitte l'appareil").toEqual(["m_lea", "m_moi", "m_moi2", "m_sys"]);
+    expect(r.bulles).not.toContain("m_marc");
+    expect(r.bulles).toEqual(expect.arrayContaining(["m_lea", "m_moi", "m_moi2"]));
+    expect(r.stocke, "la copie persistée suit").toEqual(["m_lea", "m_moi", "m_moi2", "m_sys"]);
+    expect(errors.js, "aucune exception de page").toEqual([]);
   });
 });
