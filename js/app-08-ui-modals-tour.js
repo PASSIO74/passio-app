@@ -6288,6 +6288,18 @@ window._idNotifMessage = _idNotifMessage;
 // Verrou : tests/e2e/audit-2026-11-messagerie-pagination.spec.js.
 var MSG_PAGE_LECTURE = 1000;
 var MSG_LECTURE_MAX = 3000;
+// La base horodate un message à la MICROSECONDE (`now()`), `supaTs` rend la
+// milliseconde : deux messages envoyés dans la même milliseconde seraient ex
+// æquo et se rangeraient par identifiant (aléatoire), donc parfois à l'envers.
+// La fraction au-delà de la milliseconde (0 ≤ f < 1) préserve l'ordre réel sans
+// changer `supaTs` ni les autres horodatages de l'app.
+function _fractionMicrosecondes(s) {
+  var m = /\.\d{3}(\d{1,3})/.exec(String(s || ""));
+  if (!m) return 0;
+  var d = m[1];
+  while (d.length < 3) d += "0";
+  return Number(d) / 1000;
+}
 async function supaLoadMessages(convId) {
   // Charge les messages (GIFs, pièces jointes, localisations encodées en JSON dans content)
   try {
@@ -6351,7 +6363,7 @@ async function supaLoadMessages(convId) {
         fromName: (r.profiles && r.profiles.username) ? r.profiles.username : "Passionné",
         fromEmoji: (r.profiles && r.profiles.emoji) ? r.profiles.emoji : "✨",
         text: contentData && contentData.text ? contentData.text : contentText,
-        at: supaTs(r.created_at),
+        at: supaTs(r.created_at) + _fractionMicrosecondes(r.created_at),
       };
 
       // Messages de contrôle (réaction / suppression) : pas de bulle, on les marque.

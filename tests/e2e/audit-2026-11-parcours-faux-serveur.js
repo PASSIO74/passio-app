@@ -422,6 +422,10 @@ class FauxServeur {
         const r = Object.assign({}, l);
         if (table === "follows") this.trgFollowsStatut(r);
         if (table === "event_attendees" || table === "posts" || table === "conv_messages" || table === "reports" || table === "notifications" || table === "conversations") r.created_at = r.created_at || new Date().toISOString();
+        // Comme en production (`rate_limit_insert` : `NEW.created_at := now()`), un
+        // message est horodaté par le SERVEUR, à la microseconde, strictement
+        // croissant d'une requête à l'autre — jamais par la valeur que le client envoie.
+        if (table === "conv_messages") r.created_at = this.horodatageServeur();
         if (!this.insertOk(table, r, me, role)) return json(role === "authenticated" ? 403 : 401, { code: "42501", message: "new row violates row-level security policy for table \"" + table + "\"", details: null, hint: null });
         const existant = rows.find((x) => this.pkMatch(table, x, r));
         if (existant) {
@@ -488,6 +492,13 @@ class FauxServeur {
     return uid;
   }
   requetes(f) { return this.journal.filter(f || (() => true)); }
+  /** `now()` de PostgreSQL : microsecondes, sans fuseau (`timestamp`), strictement croissant ici. */
+  horodatageServeur() {
+    const t = Date.now();
+    this._horloge = Math.max((this._horloge || 0) + 1, t * 1000);
+    const ms = Math.floor(this._horloge / 1000), us = this._horloge % 1000;
+    return new Date(ms).toISOString().replace("Z", "") + String(us).padStart(3, "0");
+  }
 }
 
 /**

@@ -19,6 +19,7 @@ Ce qui reste incertain, pourquoi, avec quel impact et quelle prochaine action. �
 | R13 | **Trafic d'écriture non plafonné** sur `conversations` (113 orphelines), `conv_members`, `post_likes`, `user_passions`… (C-05 et liste C §9) | pas d'anti-flood serveur sur ces tables | spam/abus à la croissance | anti-flood `trg_rate_limit` sur les tables listées ; purge des conversations sans membre |
 | R14 | **Secrets** : historique git non audité (clone shallow) | environnement | une clé dans l'historique public | `gitleaks`/`trufflehog` sur l'historique complet (Benjamin) |
 | R15 | 20 tests locaux rouges sous Chrome 148 stable, verts en CI | écart Chromium épinglé / Chrome stable | aucun pour les utilisateurs ; bruit pour qui teste hors CI | documenter `PASSIO_CHROMIUM` et le lot dans `docs/journal/` ; ou aligner la version |
+| R16 | **`compte-suspendu.spec.js` ① instable en CI** (rouge sur `main` le 01/11 et sur la branche le 02/11 : l'écran montre « Choisis un nom d'utilisateur » au lieu du refus de suspension) | onboarding/ordre des gardes, hors diff de l'audit | un déploiement de `main` retardé par un rouge sans rapport ; ou un vrai défaut d'affichage du refus pour un compte suspendu (E-07 voisin) | diagnostiquer avec le skill `diag` sur ce cas précis ; décider flaky vs défaut (Benjamin/Claude) |
 
 ## Décisions produit à prendre (pas des défauts techniques)
 
