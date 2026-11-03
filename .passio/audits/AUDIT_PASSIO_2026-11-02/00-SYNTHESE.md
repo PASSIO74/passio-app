@@ -94,4 +94,13 @@ croissance forte est mesuré, pas deviné : voir `05-RISQUES-RESIDUELS.md`.
    fusion des policies realtime F-07).
 4. **Rejouer un banc de charge sur staging** avec le protocole F (paliers 25/50/100/200, seuils d'arrêt codés).
 
-Rien n'a été appliqué en production, aucune donnée réelle touchée, aucun vrai utilisateur contacté.
+Pendant l'audit, rien n'a été appliqué en production, aucune donnée réelle touchée, aucun vrai utilisateur contacté.
+
+## Livraison (2026-11-03, mise à jour)
+
+Contre-revue posée par Benjamin à 07:22 UTC, PR #681 fusionnée à 07:23 (`89bf6f4`), **code en production à 07:37**
+(run 41596025846, tentative 2 — la première a été refusée par une course de l'index « commit → PR » de GitHub, anomalie
+**G-06**, corrigée dans le workflow et relancée). Attestation de la migration de la liste d'attente consignée ;
+l'application se fait depuis le poste de Benjamin (jeton personnel) et se mesure ensuite en base. Journal détaillé :
+`04-LIVRAISON.md` § 0. Les quatre décisions produit sont **tranchées par Claude à la demande de Benjamin** (« prends
+les décisions toi-même au mieux pour l'app », 08:41) — voir `05-RISQUES-RESIDUELS.md`.

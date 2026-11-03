@@ -103,7 +103,37 @@ jobs:
 
           pr="${EVENT_PR}"
           if [ "${EVENT_NAME}" = "push" ]; then
-            pr="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].number // empty')"
+            # ⚠️ COURSE MESURÉE (2026-11-03, run 41596025846, PR #681). L'index
+            # « commit → pull requests » de GitHub est à consistance DIFFÉRÉE : deux
+            # secondes après la fusion, `commits/<sha>/pulls` répondait VIDE, la
+            # garde a lu « push direct sur main » et REFUSÉ un déploiement légitime
+            # — gouvernance rouge, production sautée, main rouge — alors que la
+            # même requête répondait #681 une minute plus tard (le re-run des jobs
+            # échoués a suffi). On INSISTE donc (6 lectures espacées de 10 s), puis
+            # on se rabat sur le message du commit — « (#N) » ou « Merge pull
+            # request #N » — mais SEULEMENT si GitHub confirme que ce commit EST le
+            # `merge_commit_sha` de la PR N : un push direct dont le message imite
+            # une fusion ne passe pas. Verrou : tests/unit/sentinelle-workflows
+            # (« gouvernance : course de l'index »).
+            # GOUVERNANCE-INDEX:DEBUT
+            for tentative in 1 2 3 4 5 6; do
+              pr="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].number // empty' || true)"
+              [ -n "${pr}" ] && break
+              echo "Index commit → PR vide pour ${GITHUB_SHA} (lecture ${tentative}/6), nouvelle lecture dans 10 s."
+              sleep 10
+            done
+            if [ -z "${pr}" ]; then
+              message="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}" --jq '.commit.message // empty' || true)"
+              candidat="$(printf '%s\n' "${message}" | head -n 1 | grep -oE '(Merge pull request #|\(#)[0-9]+' | grep -oE '[0-9]+' | head -n 1 || true)"
+              if [ -n "${candidat}" ]; then
+                fusion="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${candidat}" --jq '.merge_commit_sha // empty' || true)"
+                if [ "${fusion}" = "${GITHUB_SHA}" ]; then
+                  pr="${candidat}"
+                  echo "Index commit → PR toujours vide : PR #${pr} retrouvée par le message du commit et CONFIRMÉE par son merge_commit_sha."
+                fi
+              fi
+            fi
+            # GOUVERNANCE-INDEX:FIN
             if [ -z "${pr}" ]; then
               echo "::error title=Push direct sur main::Aucune pull request n'est associée à ${GITHUB_SHA}. Le déploiement production est refusé."
               exit 1
