@@ -67,6 +67,24 @@ class FauxServeur {
     // ce plafond, en silence (200, `content-range` partiel). Reproduit ici pour
     // que les lectures non paginées se voient (F-03, 2026-11-02).
     this.maxRows = 1000;
+    // ── C-04 : `migration_participants_visibilite_2026-11-03.sql` ─────────────
+    // NON appliquée par défaut : le banc reste le miroir de la production
+    // d'aujourd'hui (liste des participants lisible par tout connecté, RPC
+    // inconnues → PGRST202). `migrerParticipants()` pose les trois volets d'un
+    // coup ; chacun reste réglable seul pour imiter une TRANSITION — par
+    // exemple le cache de schéma de PostgREST pas encore rechargé : privilèges
+    // de colonne déjà retirés, fonctions encore inconnues.
+    this.participantsParLien = false;    // ① policy SELECT « par lien »
+    this.colonnesRetourRetirees = false; // ③ feedback / rating / rated_at illisibles
+    this.rpcParticipants = false;        // ② participants_compte, notes_evenement, retours_evenement
+  }
+
+  /** Bascule le banc dans le monde « migration C-04 appliquée ». */
+  migrerParticipants() {
+    this.participantsParLien = true;
+    this.colonnesRetourRetirees = true;
+    this.rpcParticipants = true;
+    return this;
   }
 
   // ── Fonctions des policies (recopie des fonctions SECURITY DEFINER) ──────
@@ -93,12 +111,46 @@ class FauxServeur {
   }
   postAuteurBloque(me, pid) { const p = this.t.posts.find((x) => x.id === pid); return !!p && this.isBlockedWith(me, p.author_id); }
   coOrg(ev, me) { try { return Array.isArray(ev.co_organizers) ? ev.co_organizers.includes(me) : JSON.parse(ev.co_organizers || "[]").includes(me); } catch (e) { return false; } }
+  // Miroirs des deux helpers SECURITY DEFINER de la migration C-04 : ils ne
+  // parlent que de l'APPELANT (`organise_activite`, `inscrit_a_activite`).
+  organiseActivite(evId, me) {
+    const ev = this.t.events.find((e) => e.id === evId);
+    return !!me && !!ev && (ev.author_id === me || ev.organizer_id === me || this.coOrg(ev, me));
+  }
+  inscritActivite(evId, me) {
+    return !!me && this.t.event_attendees.some((a) => a.event_id === evId && a.user_id === me && a.rsvp !== "declined");
+  }
+  // ③ PRIVILÈGE DE COLONNE, comme PostgreSQL : `select=*` (ou absent), une
+  // colonne retirée dans la projection, dans un filtre ou dans l'ordre → la
+  // requête ENTIÈRE est refusée (42501), jamais tronquée en silence. Pour une
+  // écriture, la projection ne compte que si un RETURNING est demandé.
+  colonnesRefusees(table, url, avecProjection) {
+    if (table !== "event_attendees" || !this.colonnesRetourRetirees) return false;
+    const RETIREES = ["feedback", "rating", "rated_at"];
+    if (avecProjection) {
+      const sel = (url.searchParams.get("select") || "*").split(",").map((s) => s.trim().replace(/^[a-z_]+:/, ""));
+      if (sel.includes("*") || sel.some((c) => RETIREES.includes(c))) return true;
+    }
+    for (const [k, v] of url.searchParams.entries()) {
+      if (RETIREES.includes(k)) return true;
+      if (k === "order" && v.split(",").some((o) => RETIREES.includes(o.split(".")[0]))) return true;
+      if (k === "or" && RETIREES.some((c) => new RegExp("(^|[(,])" + c + "\\.").test(v))) return true;
+    }
+    return false;
+  }
 
   // SELECT : `qual` de la policy. `null` = aucune policy SELECT (table fermée).
   selectOk(table, r, me, role) {
     switch (table) {
       case "profiles": case "events": case "passions": case "user_passions": case "event_comments": case "event_reactions": case "comment_likes": case "video_lives": return true;
-      case "event_attendees": return role === "authenticated";          // C-04 : `true` pour tout connecté
+      case "event_attendees":
+        if (role !== "authenticated") return false;
+        if (!this.participantsParLien) return true;                     // C-04 : `true` pour tout connecté (avant migration)
+        // Après migration : soi, l'organisation, puis — hors « declined » — les
+        // co-inscrits et les personnes que l'on SUIT (abonnement accepté).
+        return r.user_id === me || this.organiseActivite(r.event_id, me)
+          || (r.rsvp !== "declined" && (this.inscritActivite(r.event_id, me)
+            || this.t.follows.some((f) => f.follower_id === me && f.following_id === r.user_id && f.status === "accepted")));
       case "posts": return (r.author_id === me || !(this.prof(r.author_id) || {}).is_private || this.abonneAccepteNonBloque(me, r.author_id)) && (r.author_id === me || !this.postMasque(r.id));
       case "stories": return r.author_id === me || !(this.prof(r.author_id) || {}).is_private || this.abonneAccepteNonBloque(me, r.author_id);
       case "post_likes": case "post_comments": return (r.user_id || r.author_id) === me || this.postVisible(me, r.post_id);
@@ -333,7 +385,13 @@ class FauxServeur {
     const prefer = h["prefer"] || "";
     const objet = /vnd\.pgrst\.object\+json/.test(accept);
     const representation = /return=representation/.test(prefer);
-    const rendre = (status, rows) => {
+    // ③ C-04 : une écriture dont le filtre ou le RETURNING touche une colonne
+    // retirée est refusée ENTIÈRE, avant d'avoir rien modifié (une seule
+    // instruction SQL, comme en production).
+    if ((m === "POST" || m === "PATCH" || m === "DELETE") && this.colonnesRefusees(table, url, representation)) {
+      return json(403, { code: "42501", message: "permission denied for table " + table, details: null, hint: null });
+    }
+    const rendre =(status, rows) => {
       if (objet) return rows.length === 1 ? json(status, rows[0]) : json(406, { code: "PGRST116", details: "Results contain " + rows.length + " rows", hint: null, message: "JSON object requested, multiple (or no) rows returned" });
       return json(status, rows);
     };
@@ -382,6 +440,37 @@ class FauxServeur {
         if (existante) Object.assign(existante, notif); else this.t.notifications.push(notif);
         return json(200, { ok: true, user_id: cible });
       }
+      if (this.rpcParticipants && (table === "participants_compte" || table === "notes_evenement" || table === "retours_evenement")) {
+        // Miroirs de migrations/migration_participants_visibilite_2026-11-03.sql
+        // (banc SQL : tests/sql/migration-participants-visibilite.test.sh).
+        // Sans `rpcParticipants`, elles tombent dans le PGRST202 générique plus bas.
+        if (role !== "authenticated") return json(401, { code: "42501", message: "permission denied for function " + table });
+        const lignesDe = (id) => this.t.event_attendees.filter((a) => a.event_id === id);
+        if (table === "participants_compte") {
+          // `= any (p_event_ids[1:200])` puis `group by` : un identifiant répété
+          // ne compte qu'une fois, une activité sans aucune ligne ne rend rien.
+          const ids = [...new Set(((body && body.p_event_ids) || []).slice(0, 200))];
+          return json(200, ids.map((id) => {
+            const l = lignesDe(id);
+            if (!l.length) return null;
+            const venant = (a) => !["maybe", "waitlist", "declined"].includes(a.rsvp == null ? "going" : a.rsvp);
+            return { event_id: id, going: l.filter(venant).length, maybe: l.filter((a) => a.rsvp === "maybe").length,
+              waitlist: l.filter((a) => a.rsvp === "waitlist").length, checked_in: l.filter((a) => a.checked_in_at != null).length };
+          }).filter(Boolean));
+        }
+        const evId = body && body.p_event_id;
+        const notees = lignesDe(evId).filter((a) => a.rating != null);
+        if (table === "notes_evenement") {
+          // `avg(rating)::numeric(4,2)`, 0 sans note : l'agrégat, jamais qui a noté quoi.
+          const avg = notees.length ? Math.round((notees.reduce((s, a) => s + Number(a.rating), 0) / notees.length) * 100) / 100 : 0;
+          return json(200, { avg, count: notees.length });
+        }
+        // retours_evenement : l'organisation seulement, sinon aucune ligne.
+        if (!this.organiseActivite(evId, me)) return json(200, []);
+        return json(200, lignesDe(evId).filter((a) => a.rating != null || String(a.feedback || "").trim())
+          .sort((a, b) => String(b.rated_at || "").localeCompare(String(a.rated_at || "")))
+          .map((a) => ({ user_id: a.user_id, rating: a.rating == null ? null : a.rating, feedback: a.feedback == null ? null : a.feedback, rated_at: a.rated_at || null })));
+      }
       if (table === "notifier_mentions") return json(200, null);
       if (table === "creer_passion") return json(200, null);
       return json(404, { code: "PGRST202", message: "Could not find the function public." + table });
@@ -392,6 +481,7 @@ class FauxServeur {
 
     if (m === "GET" || m === "HEAD") {
       if (table === "event_attendees" && role !== "authenticated") return json(401, { code: "42501", message: "permission denied for table event_attendees" });
+      if (this.colonnesRefusees(table, url, true)) return json(403, { code: "42501", message: "permission denied for table " + table, details: null, hint: null });
       let vis = rows.filter((r) => this.selectOk(table, r, me, role));
       vis = this.filtre(vis, params);
       const order = url.searchParams.get("order");
