@@ -72,6 +72,8 @@ args=("$@")
 jqexpr=""; prev=""
 for a in "$@"; do if [ "$prev" = "--jq" ]; then jqexpr="$a"; fi; prev="$a"; done
 tout="$*"
+# Échec simulé (contre-revue du 2026-11-03) : une commande qui contient FAUX_ECHEC échoue.
+if [ -n "\${FAUX_ECHEC:-}" ] && [[ "$tout" == *"\${FAUX_ECHEC}"* ]]; then echo "faux gh : échec simulé : $tout" >&2; exit 1; fi
 corps=""
 case "$tout" in
   "issue list"*"--label disponibilite"*) corps="$(cat "$FX/issues-dispo.json")" ;;
@@ -227,21 +229,44 @@ test("veilleur : un run vivant (en cours, en file, ou qui ATTEND un runner) post
   // Mutation W4 : retirer `[ "${runs}" -eq 0 ]` → rougit (relance malgré le run).
   // Mutation : retirer `.status == "pending"` / `"waiting"` / `"requested"` du jq → rougit
   // (relance à 20 min pendant qu'un run attend un runner : deux runs sur la même enquête).
+  const TA = "[SENTINELLE] erreur A · 0000000a";
   for (const status of ["in_progress", "queued", "pending", "waiting", "requested"]) {
     fixtures({
-      "issues-open": [{ number: 500, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u500" }],
-      "prs-all": [], "runs-claude": [{ status, conclusion: null, createdAt: iso(25), url: "run1" }],
+      "issues-open": [{ number: 500, title: TA, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u500" }],
+      "prs-all": [], "runs-claude": [{ status, conclusion: null, createdAt: iso(25), url: "run1", displayTitle: TA }],
     });
     const r = jouer(etape(SA, "detecter", "Veilleur").run, { JETON_SENTINELLE: "JETON-PERSO" });
     assert.equal(r.code, 0, r.sortie);
     assert.equal(r.log.trim(), "", "run " + status + " : aucune relance\n" + r.log);
   }
   fixtures({
-    "issues-open": [{ number: 500, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u500" }],
-    "prs-all": [], "runs-claude": [{ status: "completed", conclusion: "success", createdAt: iso(90), url: "run0" }],
+    "issues-open": [{ number: 500, title: TA, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u500" }],
+    "prs-all": [], "runs-claude": [{ status: "completed", conclusion: "success", createdAt: iso(90), url: "run0", displayTitle: TA }],
   });
   const r = jouer(etape(SA, "detecter", "Veilleur").run, { JETON_SENTINELLE: "JETON-PERSO" });
   assert.ok(r.log.includes("issue edit 500 --repo o/r --add-label claude"), "un run réussi AVANT l'issue ne la concerne pas\n" + r.log + r.sortie);
+});
+
+test("veilleur (contre-revue 2026-11-03) : en parallèle, le run d'une AUTRE enquête ne protège pas un run perdu", () => {
+  // RÉINJECTION : A, B, C créées ensemble, labels posés 8/16/24 s plus tard ; le run de A se perd.
+  // Mutation : retirer `select(.displayTitle == $t)` → rougit (les runs de B et C comptaient pour A : jamais relancée).
+  const TA = "[SENTINELLE] erreur A · 0000000a", TB = "[SENTINELLE] erreur B · 0000000b", TC = "[SENTINELLE] erreur C · 0000000c";
+  fixtures({
+    "issues-open": [
+      { number: 600, title: TA, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u600" },
+      { number: 601, title: TB, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u601" },
+      { number: 602, title: TC, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u602" },
+    ],
+    "prs-all": [],
+    "runs-claude": [
+      { status: "in_progress", conclusion: null, createdAt: iso(29), url: "runB", displayTitle: TB },
+      { status: "in_progress", conclusion: null, createdAt: iso(29), url: "runC", displayTitle: TC },
+    ],
+  });
+  const r = jouer(etape(SA, "detecter", "Veilleur").run, { JETON_SENTINELLE: "JETON-PERSO", GH_TOKEN: "integre" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.ok(r.lignes.some((x) => x.startsWith("issue edit 600 --repo o/r --add-label claude")), "A (run perdu) est relancée\n" + r.log);
+  assert.ok(!r.lignes.some((x) => /^issue (edit|comment) 60[12]/.test(x)), "B et C (run vivant) ne sont pas touchées\n" + r.log);
 });
 
 // ═══ Une enquête à la fois / Coupe-circuit ═══════════════════════════════
@@ -431,6 +456,24 @@ test("déclencher (parallèle) : un `sleep 8` AVANT CHAQUE label, une issue apr�
   const mixte = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "998 x", GH_TOKEN: "perso" });
   assert.notEqual(mixte.code, 0);
   assert.deepEqual(mixte.lignes, [], mixte.log);
+});
+
+test("ouvrir / déclencher (contre-revue 2026-11-03) : un échec AU MILIEU des boucles ne laisse aucune issue créée sans être confiée", () => {
+  // Mutation : remettre les `echo … >> GITHUB_OUTPUT` APRÈS la boucle (sans `trap sorties EXIT`) → rougit (numeros vide sur échec).
+  const C = { ...B, cle: "GET /rest/v1/stories 500", chemin: "/rest/v1/stories", message: "HTTP 500 sur GET /rest/v1/stories" };
+  const sans = { recidive: false, n: 0, enquetes: [] };
+  verdict(A, [A, B, C], { cibles: [{ cible: A, escalade: sans }, { cible: B, escalade: sans }, { cible: C, escalade: sans }] });
+  const o = jouer(etape(SA, "detecter", "Ouvrir l'enquête").run, { GH_TOKEN: "perso", JETON_INTEGRE: "integre", FAUX_ECHEC: mod.titreIssue(B) });
+  assert.notEqual(o.code, 0, "la création de B échoue : l'étape est rouge (alerte [SENTINELLE MUETTE])");
+  assert.equal(o.lignes.filter((x) => x.startsWith("issue create")).length, 1, "A seule a été créée\n" + o.log);
+  assert.ok(o.out.includes("numeros=999\n") && o.out.includes("mode=enquete"), "A, déjà créée, reste à confier\n" + o.out);
+  // Mutation : retirer `!cancelled() &&` du `if:` → rougit (l'étape serait sautée après l'échec d'« Ouvrir »).
+  assert.match(String(etape(SA, "detecter", "Déclencher le canal Claude").if), /^!cancelled\(\) && /);
+  // Mutation : `if gh issue edit …; then … else echecs=…; fi` → `gh issue edit …` nu → rougit (999 jamais confiée).
+  const d = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "997 998 999", GH_TOKEN: "perso", FAUX_ECHEC: "issue edit 998" });
+  assert.notEqual(d.code, 0, "un label raté rend l'étape rouge");
+  assert.ok(d.lignes.includes("issue edit 997 --repo o/r --add-label claude :: jeton=perso") && d.lignes.includes("issue edit 999 --repo o/r --add-label claude :: jeton=perso"), "997 et 999 sont confiées malgré 998\n" + d.log);
+  assert.match(d.sortie, /Label claude non posé::#998/, d.sortie);
 });
 
 test("dédup + ouvrir (parallèle) : PLACES=2 retient les deux premières cibles vivantes, ouvre deux issues, n'en confie que les enquêtes", () => {

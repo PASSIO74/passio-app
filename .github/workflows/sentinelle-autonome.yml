@@ -38,10 +38,10 @@
 #
 # ⚠️ ET UN VEILLEUR RELIT LES ENQUÊTES OUVERTES (A2), parce qu'un run peut
 # encore se perdre (quota, runner, annulation) et qu'une enquête ouverte sans
-# personne dessus rend « une enquête à la fois » muet — 18 % du temps sur 10 j.
+# personne dessus occupe une place d'enquête sans avancer — 18 % du temps sur 10 j.
 # Sans PR ni run après 20 min : relance UNE fois (label `claude` retiré puis
 # reposé). Après 6 h sans correctif fusionné : label `humain` + bilan, et
-# l'enquête sort du compte « une enquête à la fois » sans être fermée.
+# l'enquête sort du compte des enquêtes en cours sans être fermée.
 #
 # ⚠️ « AUCUNE ERREUR » NE VEUT PAS DIRE « TOUT VA BIEN ». Ce canal ne voit que
 # ce qui lève une erreur JavaScript ou un refus réseau. Bouton mort, résultat
@@ -200,10 +200,13 @@ jobs:
       #     n'a pas de `deployeA`, la dédup la lirait par date et rouvrirait la
       #     même enquête au run suivant ; ouverte et `humain`, `choisirCible`
       #     la saute.
-      # ⚠️ Les runs sont attribués par DATE (créés après l'issue) : `gh run
-      # list` ne porte pas le numéro d'issue. Avec une seule enquête active à
-      # la fois (garde ci-dessous), c'est suffisant ; un run humain `claude`
-      # contemporain retarderait au pire une relance, jamais l'escalade à 6 h.
+      # ⚠️ Les runs sont attribués par TITRE (contre-revue du 2026-11-03) : un
+      # run de claude-code.yml déclenché par une issue porte le titre de
+      # l'issue dans `displayTitle` (mesuré : « [RÉPARER] #627 »), et deux
+      # enquêtes ouvertes n'ont jamais le même titre (dédup). L'attribution par
+      # DATE seule suffisait avec une enquête à la fois ; avec des enquêtes en
+      # parallèle, les runs de B et C (labels posés 8 et 16 s après la création
+      # de A) comptaient pour A — et le run PERDU de A n'était jamais relancé.
       - name: Veilleur d'enquête
         if: github.event_name != 'pull_request' && steps.pause.outputs.actif == 'true'
         id: veilleur
@@ -216,25 +219,26 @@ jobs:
           maintenant="$(date -u +%s)"
           run_url="${GITHUB_SERVER_URL}/${R}/actions/runs/${GITHUB_RUN_ID}"
           gh issue list --repo "${R}" --state open --label sentinelle --limit 50 \
-            --json number,createdAt,labels,url > /tmp/enquetes.json
+            --json number,title,createdAt,labels,url > /tmp/enquetes.json
           gh pr list --repo "${R}" --state all --limit 200 \
             --json number,headRefName,state,url > /tmp/prs.json
           gh run list --repo "${R}" --workflow claude-code.yml --event issues --limit 50 \
-            --json status,conclusion,createdAt,url > /tmp/runs-claude.json
+            --json status,conclusion,createdAt,url,displayTitle > /tmp/runs-claude.json
           relances=0; escalades=0; suivies=0
           for n in $(jq -r '.[].number' /tmp/enquetes.json); do
             labels="$(jq -r --argjson n "${n}" '[.[] | select(.number == $n) | .labels[].name] | join(",")' /tmp/enquetes.json)"
             case ",${labels}," in *",humain,"*) continue ;; esac
             suivies=$((suivies + 1))
             creee="$(jq -r --argjson n "${n}" '.[] | select(.number == $n) | .createdAt' /tmp/enquetes.json)"
+            titre="$(jq -r --argjson n "${n}" '.[] | select(.number == $n) | .title' /tmp/enquetes.json)"
             age=$(( maintenant - $(date -u -d "${creee}" +%s) ))
             fusionnees="$(jq -r --arg p "claude/issue-${n}-" '[.[] | select(.headRefName | startswith($p)) | select(.state == "MERGED")] | length' /tmp/prs.json)"
             [ "${fusionnees}" -eq 0 ] || continue
             prs="$(jq -r --arg p "claude/issue-${n}-" '[.[] | select(.headRefName | startswith($p))] | length' /tmp/prs.json)"
             liens_pr="$(jq -r --arg p "claude/issue-${n}-" '[.[] | select(.headRefName | startswith($p)) | "- PR " + .url + " (" + .state + ")"] | join("\n")' /tmp/prs.json)"
             # Un run qui ATTEND un runner (pending, waiting, requested) est vivant : le relancer doublerait le travail.
-            runs="$(jq -r --arg c "${creee}" '[.[] | select(.createdAt >= $c) | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .conclusion == "success")] | length' /tmp/runs-claude.json)"
-            liens_run="$(jq -r --arg c "${creee}" '[.[] | select(.createdAt >= $c) | "- run " + .url + " (" + (.conclusion // .status) + ")"] | join("\n")' /tmp/runs-claude.json)"
+            runs="$(jq -r --arg c "${creee}" --arg t "${titre}" '[.[] | select(.createdAt >= $c) | select(.displayTitle == $t) | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .conclusion == "success")] | length' /tmp/runs-claude.json)"
+            liens_run="$(jq -r --arg c "${creee}" --arg t "${titre}" '[.[] | select(.createdAt >= $c) | select(.displayTitle == $t) | "- run " + .url + " (" + (.conclusion // .status) + ")"] | join("\n")' /tmp/runs-claude.json)"
             relancee=non
             case ",${labels}," in *",sentinelle-relancee,"*) relancee=oui ;; esac
             if [ "${age}" -gt 21600 ]; then
@@ -248,7 +252,7 @@ jobs:
                 echo
                 echo "Ouverte depuis $(( age / 3600 )) h sans correctif fusionné : ${raison}."
                 echo
-                echo "Elle ne compte plus dans « une enquête à la fois » (label \`humain\`) : le canal continue sur les autres défauts. Elle n'est PAS fermée — fermer sans correctif rouvrirait la même enquête au run suivant. Geste : lire les liens, décider (correctif à la main, ou fermeture motivée)."
+                echo "Elle ne compte plus dans les enquêtes en cours (label \`humain\`) : le canal continue sur les autres défauts. Elle n'est PAS fermée — fermer sans correctif rouvrirait la même enquête au run suivant. Geste : lire les liens, décider (correctif à la main, ou fermeture motivée)."
                 echo
                 if [ -n "${liens_pr}" ]; then echo "${liens_pr}"; fi
                 if [ -n "${liens_run}" ]; then echo "${liens_run}"; fi
@@ -468,6 +472,15 @@ jobs:
           # verdict sans `cibles` (d'avant ce lot) en porte une, `v.cible`.
           total="$(node -e 'const v = JSON.parse(require("fs").readFileSync("/tmp/verdict.json", "utf8")); process.stdout.write(String(Array.isArray(v.cibles) && v.cibles.length ? v.cibles.length : 1));')"
           premier=""; numeros=""; mode="recidive"
+          # ⚠️ Sorties écrites À LA SORTIE, même sur un échec au milieu de la boucle
+          # (contre-revue du 2026-11-03) : sinon les issues déjà créées restaient
+          # sans label `claude`, occupaient une place, et rien ne les relançait.
+          sorties() {
+            echo "numero=${premier}" >> "${GITHUB_OUTPUT}"
+            echo "numeros=${numeros}" >> "${GITHUB_OUTPUT}"
+            echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
+          }
+          trap sorties EXIT
           for i in $(seq 0 $(( total - 1 ))); do
             INDEX="${i}" node --input-type=module -e '
               import fs from "node:fs";
@@ -502,9 +515,6 @@ jobs:
             fi
             [ -n "${premier}" ] || premier="${numero}"
           done
-          echo "numero=${premier}" >> "${GITHUB_OUTPUT}"
-          echo "numeros=${numeros}" >> "${GITHUB_OUTPUT}"
-          echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
 
       # ⚠️ UN SEUL ÉVÉNEMENT `labeled claude`, SEUL DANS SON GROUPE (A1). Les
       # événements `opened` et `labeled sentinelle` de l'étape précédente sont
@@ -513,9 +523,12 @@ jobs:
       # le seul dont les événements déclenchent un workflow.
       # Enquêtes en parallèle : un `sleep 8` AVANT CHAQUE label, issue par
       # issue — chaque événement `labeled claude` reste seul dans son groupe.
-      # Tous les numéros sont validés AVANT le premier label.
+      # Tous les numéros sont validés AVANT le premier label. `!cancelled()` :
+      # l'étape tourne aussi quand « Ouvrir » a échoué EN COURS de boucle, pour
+      # confier les issues déjà créées ; un label qui échoue n'empêche pas les
+      # suivants, et l'étape échoue à la fin en les nommant.
       - name: Déclencher le canal Claude
-        if: github.event_name != 'pull_request' && steps.ouvrir.outputs.mode == 'enquete'
+        if: "!cancelled() && github.event_name != 'pull_request' && steps.ouvrir.outputs.mode == 'enquete'"
         id: declencher
         env:
           GH_TOKEN: ${{ secrets.SENTINELLE_TOKEN }}
@@ -530,11 +543,19 @@ jobs:
                 exit 1 ;;
             esac
           done
+          echecs=""
           for NUMERO in ${NUMEROS}; do
             sleep 8
-            gh issue edit "${NUMERO}" --repo "${GITHUB_REPOSITORY}" --add-label claude >/dev/null
-            echo "Label claude posé sur #${NUMERO} : le canal Claude est déclenché." >> "${GITHUB_STEP_SUMMARY}"
+            if gh issue edit "${NUMERO}" --repo "${GITHUB_REPOSITORY}" --add-label claude >/dev/null; then
+              echo "Label claude posé sur #${NUMERO} : le canal Claude est déclenché." >> "${GITHUB_STEP_SUMMARY}"
+            else
+              echecs="${echecs:+${echecs} }#${NUMERO}"
+            fi
           done
+          if [ -n "${echecs}" ]; then
+            echo "::error title=Label claude non posé::${echecs} : le veilleur les relancera (20 min) puis les remettra à un humain (6 h)."
+            exit 1
+          fi
 
       - name: Rien à signaler
         if: github.event_name != 'pull_request' && steps.detect.outputs.cible == 'non'
