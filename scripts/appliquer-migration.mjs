@@ -46,6 +46,10 @@
 //      le `begin;` de la migration. Soit les deux passent, soit aucune. Le DDL
 //      du journal part AVANT et son échec INTERDIT l'envoi : on ne s'autorise
 //      plus à appliquer une migration qu'on ne saurait pas journaliser.
+//   ④ LE CLIENT QUE LA MIGRATION SUPPOSE EST EN LIGNE (R25, 2026-11-03) — une
+//      migration qui déclare `-- PREREQUIS-CLIENT: <motif>` n'est envoyée à une
+//      cible dont le client est servi (la production) que si le bundle SERVI
+//      porte le motif. Illisible = refus. `--verifier` le contrôle aussi.
 //   Et le processus ne sort JAMAIS vert sur une phase échouée ou indéterminée.
 //
 // ⚠️ JOURNAL (NET-07 / TCI-15, 2026-09-15). Chaque application réussie laisse
@@ -176,6 +180,31 @@ if (att.attestation) {
 }
 else if (att.derive) console.log("           ⚠️ une attestation existe pour ce fichier mais PAS pour ce contenu (cible non protégée : on passe, on le dit).");
 else console.log("revue     : aucune attestation exigée sur une cible non protégée.");
+
+// ── ④ LE CLIENT QUE LA MIGRATION SUPPOSE EST EN LIGNE (R25) ────────────────
+const motifsClient = BAR.prerequisClient(sql);
+if (motifsClient.length) {
+  const origine = BAR.ORIGINES_CLIENT[ref] || null;
+  async function lireTexte(url) {
+    const ctrl = new AbortController();
+    const minuteur = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const r = await fetch(url, { signal: ctrl.signal, headers: { "Cache-Control": "no-cache" } });
+      return r.ok ? await r.text() : null;
+    } catch (e) { return null; }
+    finally { clearTimeout(minuteur); }
+  }
+  let html = null, bundle = null;
+  if (origine) {
+    html = await lireTexte(origine + "/?prerequis=" + Date.now());
+    const url = BAR.urlBundleServi(html, origine);
+    if (url) bundle = await lireTexte(url);
+  }
+  let p;
+  try { p = BAR.verifierPrerequisClient({ motifs: motifsClient, origine, html, bundle }); } catch (e) { echec(e.message); }
+  if (p.exige) console.log("prérequis : le client servi (" + p.url + ") porte " + p.motifs.map((m) => "« " + m + " »").join(", "));
+  else console.log("prérequis : " + motifsClient.map((m) => "« " + m + " »").join(", ") + " — non exigé ici (" + (p.raison || "cible sans client servi") + ")");
+}
 
 if (verifierSeulement) { console.log("\n✅ envoyable — la barrière est franchie (--verifier : rien n'a été envoyé, aucun jeton requis)."); process.exit(0); }
 

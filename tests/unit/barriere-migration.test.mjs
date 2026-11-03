@@ -9,6 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 const require = createRequire(import.meta.url);
 const B = require("../../scripts/lib/barriere-migration.js");
 
@@ -333,4 +334,55 @@ test("ASTRA-61 bis ③ mainteneur unique DÉCLARÉ : son auto-revue (COMMENTED, 
   assert.throws(() => B.verifierPreuveRevue({ ...base, contenuAuCommit: sql + "x" }), /a regardé un autre contenu/);
   assert.throws(() => B.verifierPreuveRevue({ ...base, revues: [{ ...revue, body: corps.replace(PROD, STAGING) }] }), /ne nomme pas la cible/);
   assert.throws(() => B.verifierPreuveRevue({ ...base, revues: [{ ...revue, body: corps.replace(B.MARQUEUR_REVUE, "LGTM") }] }), /marqueur/);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ④ LE CLIENT QUE LA MIGRATION SUPPOSE EST EN LIGNE (R25, 2026-11-03)
+// Deux relectures du lot R25 l'ont relevé : l'ordre « client d'abord, migration
+// ensuite » n'était tenu que par un commentaire. Une migration déclare ce que le
+// client SERVI doit porter (`-- PREREQUIS-CLIENT: <motif>`) ; l'outil refuse
+// d'écrire sur une cible dont le client servi ne le porte pas, et refuse aussi
+// quand il ne sait pas le lire.
+// ═══════════════════════════════════════════════════════════════════════════
+const PAGE_BUILD = '<!doctype html><html><body><script>\n(function () {\n  (window.__gateReady || Promise.resolve()).then(function () {\n' +
+  '    var s = document.createElement("script");\n    s.src = "app.js?v=464ac2e0bc";\n    document.body.appendChild(s);\n  });\n})();\n</script></body></html>';
+
+test("④ prérequis client : lecture des lignes déclarées (casse exacte, doublons, CRLF)", () => {
+  assert.deepEqual(B.prerequisClient("begin;\r\n-- PREREQUIS-CLIENT: conv_members:INSERT\r\n--PREREQUIS-CLIENT :  notifications:INSERT  \n" +
+    "-- PREREQUIS-CLIENT: conv_members:INSERT\n-- prerequis-client: ignoré\n-- texte qui cite PREREQUIS-CLIENT: au milieu\ncommit;"),
+    ["conv_members:INSERT", "notifications:INSERT"]);
+  assert.deepEqual(B.prerequisClient("begin; select 1; commit;"), []);
+});
+
+test("④ prérequis client : le bundle se trouve dans le CHARGEUR du build, pas dans une balise", () => {
+  assert.equal(B.urlBundleServi(PAGE_BUILD, "https://passio-app.netlify.app"), "https://passio-app.netlify.app/app.js?v=464ac2e0bc");
+  assert.equal(B.urlBundleServi('<script src="/app.js?v=abc123"></script>', "https://passio-app.netlify.app"), "https://passio-app.netlify.app/app.js?v=abc123");
+  for (const illisible of [null, "", "<html>maintenance</html>", '<script src="app.js"></script>']) {
+    assert.equal(B.urlBundleServi(illisible, "https://passio-app.netlify.app"), null, String(illisible));
+  }
+});
+
+test("④ prérequis client : refus si absent ou illisible, jamais une supposition", () => {
+  const origine = "https://passio-app.netlify.app";
+  const motifs = ["conv_members:INSERT", "notifications:INSERT"];
+  assert.deepEqual(B.verifierPrerequisClient({ motifs: [], origine, html: null, bundle: null }), { exige: false });
+  assert.equal(B.verifierPrerequisClient({ motifs, origine: null }).exige, false, "cible sans client servi (staging) : rien d'exigé");
+  const refus = (args, code) => assert.throws(() => B.verifierPrerequisClient(args), (e) => e instanceof B.RefusBarriere && e.code === code);
+  refus({ motifs, origine, html: null, bundle: "x" }, "prerequis_client_illisible");
+  refus({ motifs, origine, html: PAGE_BUILD, bundle: null }, "prerequis_client_illisible");
+  refus({ motifs, origine, html: PAGE_BUILD, bundle: "" }, "prerequis_client_illisible");
+  refus({ motifs, origine, html: PAGE_BUILD, bundle: 'ch.on("broadcast",{event:"INSERT"})' }, "prerequis_client_absent");
+  refus({ motifs, origine, html: PAGE_BUILD, bundle: '{event:"conv_members:INSERT"}' }, "prerequis_client_absent");
+  const ok = B.verifierPrerequisClient({ motifs, origine, html: PAGE_BUILD, bundle: '{event:"conv_members:INSERT"},{event:"notifications:INSERT"}' });
+  assert.deepEqual(ok, { exige: true, url: origine + "/app.js?v=464ac2e0bc", motifs });
+  assert.equal(B.ORIGINES_CLIENT.njkiyoklssvefstljemx, origine, "la production a un client servi");
+  assert.equal(B.ORIGINES_CLIENT.fcksxofaelcdmmifnwjo, undefined, "le staging n'en a pas (la CI y joue le client de la PR)");
+});
+
+test("④ la migration R25 déclare ses deux prérequis, et le client du dépôt les porte", () => {
+  const sql = readFileSync(new URL("../../migrations/migration_realtime_diffusion_privee_2026-11-03.sql", import.meta.url), "utf8");
+  const motifs = B.prerequisClient(sql);
+  assert.deepEqual(motifs, ["conv_members:INSERT", "notifications:INSERT"]);
+  const app08 = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
+  for (const m of motifs) assert.ok(app08.includes('event: "' + m + '"'), "le client ne lie pas « " + m + " »");
 });

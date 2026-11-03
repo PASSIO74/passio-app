@@ -9,7 +9,9 @@
 --     secure deletes so filter to pkey ») ; l'ancienne ligne part réduite à sa
 --     clé primaire, vers TOUT abonné dont le filtre la laisse passer. Le filtre
 --     et l'action (`action_filter`) sont choisis par le CLIENT au join : un
---     abonné `event: "DELETE"` (ou `"*"`) sans filtre les reçoit TOUTES ;
+--     abonné `event: "DELETE"` (ou `"*"`) sans filtre les reçoit TOUTES — même
+--     un visiteur muni de la seule clé anon (`anon` garde SELECT de table sur
+--     ces deux tables, et `realtime:db` lui est ouvert) ;
 --   · `conv_members` : PK (conv_id, user_id), identité de réplica par défaut →
 --     `(evgrp_<activité>, compte)` à chaque départ d'une discussion d'activité ;
 --     247 DELETE depuis la remise à zéro des compteurs (2026-05-07) ;
@@ -45,7 +47,13 @@
 -- ⚠️ LA CHARGE EST ÉCRITE COLONNE PAR COLONNE, jamais `to_jsonb(new)` : une
 -- colonne ajoutée demain ne partira pas d'elle-même sur un canal. `origine`
 -- (provenance, posée par `trg_notifications_origine`) n'y est pas : le client
--- ne la lit pas.
+-- ne la lit pas. `content` part BORNÉ à 500 caractères : la table ne le borne
+-- pas (le plus long mesuré en production : 61), et `apply_rls` écartait déjà
+-- les valeurs de plus de 64 octets d'un enregistrement de plus de 1 Mo — la
+-- poussée ne doit pas devenir le chemin d'une charge géante vers un socket.
+-- ⚠️ UN DESTINATAIRE QUI N'EST PAS UN UUID N'A PAS DE TOPIC : personne ne peut
+-- écouter `user:<non-uuid>` (la policy exige `auth.uid()`), on n'écrit donc
+-- rien (une ligne historique de ce genre existe en production, mesurée).
 --
 -- ⚠️ LA POUSSÉE NE PEUT PAS FAIRE ÉCHOUER L'ÉCRITURE. `realtime.send` rattrape
 -- déjà ses propres erreurs (WARNING) mais pas son ABSENCE ni un changement de
@@ -53,51 +61,88 @@
 -- `realtime` rendrait impossible toute notification et tout ajout à une
 -- conversation. Une poussée manquée se rattrape (le client relit au démarrage,
 -- au réveil du socket, à l'ouverture de la cloche ; une conversation neuve
--- apparaît à son premier message) ; une écriture refusée, non. Coût : une
--- sous-transaction par ligne — aucun chemin n'insère des dizaines de lignes
--- d'un coup dans ces tables.
+-- apparaît à son premier message) ; une écriture refusée, non. Coût : DEUX
+-- sous-transactions imbriquées par ligne (ce bloc et celui de `realtime.send`) ;
+-- un INSERT de plus de 32 lignes d'un coup dépasse le cache de 64 et ralentit
+-- les instantanés le temps de sa transaction — aucun chemin du produit ne le
+-- fait (notifications : 60 par minute et par auteur ; un ajout = une requête),
+-- seule la fixture du banc de charge `charge-realiste.mjs` sur le staging.
+--
+-- ⚠️ LE VERDICT ÉPROUVE, IL NE SE CONTENTE PAS DE LIRE (relecture adversariale
+-- du 2026-11-03 : des lignes qui comparaient le TEXTE des policies auraient
+-- laissé passer `realtime.topic() ~~ '%'` ou `(1 = 1)`). Une SONDE écrit une
+-- notification pour un destinataire sentinelle dans une SOUS-TRANSACTION, vérifie
+-- que sa poussée est écrite, puis rejoue sous le rôle `authenticated` ce que
+-- Realtime contrôle : un tiers ne LIT pas `user:<destinataire>`, le titulaire si,
+-- un tiers ne peut pas y ÉMETTRE. La sous-transaction est ensuite ANNULÉE : rien
+-- ne reste, et rien n'est diffusé (Realtime ne lit que ce qui est validé). Les
+-- triggers BEFORE de production (`notifications_origine`, `rate_limit_insert`
+-- sans auteur, `refuser_ecriture_compte_en_suppression`) laissent passer la
+-- sonde — lus au canal ① le 2026-11-03.
 --
 -- ⚠️ ORDRE D'APPLICATION — NON NÉGOCIABLE :
 --   ① le client de ce lot est EN LIGNE (job « Déploiement production » vert) :
 --     il n'écoute plus `postgres_changes` sur ces deux tables, et reçoit
 --     `conv_members:INSERT` / `notifications:INSERT` sur `user:<moi>` ;
---   ② SEULEMENT ENSUITE cette migration, dans la foulée.
+--   ② SEULEMENT ENSUITE cette migration, dans la foulée — après avoir vu au
+--     pilotage qu'aucun client ne signale plus d'écart de version
+--     (`version_skew`, `js/release-guard.js`).
 --   Lu dans le code du serveur Realtime (`PostgresCdcRls.Subscriptions.create`,
 --   `RealtimeChannel`) : les liaisons `postgres_changes` d'un canal sont créées
 --   dans UNE transaction, et une table hors publication (0 ligne insérée)
 --   l'annule ENTIÈRE (« Unable to subscribe to changes with given
 --   parameters »), réessayée toutes les 5 à 10 s, le canal restant ouvert. Un
---   onglet encore sur l'ancien code perdrait donc à son prochain join TOUT le
---   direct de `realtime:db` (fil, commentaires, accusés de lecture, lives) —
---   pas seulement ces deux tables. La PWA recharge un onglet visible dans la
---   minute qui suit un déploiement (`js/pwa-detect.js`) : ① puis ② réduit ce
---   risque à un onglet resté en arrière-plan, rechargé à son retour.
+--   onglet encore sur l'ancien code perdrait donc à son join suivant TOUT le
+--   direct de `realtime:db` (fil, commentaires, accusés de lecture, lives — et,
+--   sur un appareil en soupape v1, les MESSAGES aussi) — pas seulement ces deux
+--   tables. La PWA recharge un onglet visible dans la minute qui suit un
+--   déploiement (`js/pwa-detect.js`) ; un onglet masqué se recharge à son
+--   retour, après au plus une minute d'échec.
 --   Entre ① et ②, ces deux tables n'ont pas de direct (les relectures
 --   ci-dessus en tiennent lieu) : d'où « dans la foulée ».
+--   ⚠️ CET ORDRE EST TENU PAR L'OUTIL, PAS PAR CE COMMENTAIRE : sur la
+--   production, `appliquer-migration.mjs` (règle ④) refuse d'envoyer ce fichier
+--   tant que le bundle SERVI par https://passio-app.netlify.app ne porte pas les
+--   deux noms d'événement déclarés ici :
+-- PREREQUIS-CLIENT: conv_members:INSERT
+-- PREREQUIS-CLIENT: notifications:INSERT
 --
--- CE QUE CETTE MIGRATION NE FAIT PAS, ET LE REGISTRE LE DIT (R27) :
---   · `conv_reads` (PK conv_id, user_id ; 129 DELETE) et `post_likes` (PK
---     post_id, user_id ; 114 DELETE, lecture « selon visibilité du post »)
---     portent le MÊME défaut et restent publiées : la première porte les accusés
---     de lecture en direct, la seconde n'a plus d'abonné produit (les seuls
---     bancs de charge l'écoutent). Lot suivant ;
+-- CE QUE CETTE MIGRATION NE FAIT PAS, ET LE REGISTRE LE DIT :
+--   · R27 — `conv_reads` (PK conv_id, user_id ; 129 DELETE, dont chaque purge de
+--     compte) et `post_likes` (PK post_id, user_id ; 114 DELETE, lecture
+--     « selon visibilité du post ») portent le MÊME défaut et restent publiées ;
+--   · R28 — `comment_interactions` est en identité de réplica FULL : un DELETE
+--     évalue le filtre de l'abonné sur TOUTES les colonnes de l'ancienne ligne,
+--     un oracle (qui retire quoi, texte d'une réponse effacée) ;
+--   · la même information reste atteignable par SONDAGE : `is_conv_member`
+--     (C-02) et `promouvoir_attente` (R24). R25 ferme le canal temps réel, pas
+--     ces deux portes ;
+--   · `realtime.messages` garde la charge poussée jusqu'à la chute de sa
+--     partition, comme celle des messages depuis le v3 ;
 --   · aucune donnée, aucune policy de table, aucun GRANT de table ne bouge ;
 --   · le canal des MESSAGES (`broadcast_conv_message_users_trigger`) est intact.
 --
 -- Rejouable ; verdict en fin. Banc : tests/sql/migration-realtime-diffusion-privee.test.sh,
 -- qui REPRODUIT d'abord la fuite avec le `realtime.apply_rls` de production.
--- RETOUR ARRIÈRE — EXACT, exécutable tel quel en ôtant « --| » (le banc le
--- rejoue et compare à l'état d'avant). ⚠️ Il ROUVRE R25, et il ne rend PAS le
--- direct à lui seul : le client de ce lot n'écoute plus ces tables. Retour
--- arrière complet = ce bloc D'ABORD, puis le client d'avant (revert du commit
--- client) — l'ordre inverse de ①/② : un ancien client face à des tables hors
--- publication perdrait tout `realtime:db` (voir l'ordre d'application).
+-- RETOUR ARRIÈRE — EXACT et rejouable, exécutable tel quel en ôtant « --| » (le
+-- banc le rejoue). ⚠️ Il ROUVRE R25, et il ne rend PAS le direct à lui seul : le
+-- client de ce lot n'écoute plus ces tables. Retour arrière complet = ce bloc
+-- D'ABORD, puis le client d'avant (revert du commit client) — l'ordre inverse de
+-- ①/② : un ancien client face à des tables hors publication perdrait tout
+-- `realtime:db` (voir l'ordre d'application).
 --| begin;
 --| drop trigger if exists trg_diffuser_notification on public.notifications;
 --| drop trigger if exists trg_diffuser_ajout_membre on public.conv_members;
 --| drop function if exists public.diffuser_notification();
 --| drop function if exists public.diffuser_ajout_membre();
---| alter publication supabase_realtime add table public.conv_members, public.notifications;
+--| do $r$ declare t text; begin
+--|   foreach t in array array['conv_members', 'notifications'] loop
+--|     if not exists (select 1 from pg_publication_tables
+--|                     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
+--|       execute format('alter publication supabase_realtime add table public.%I', t);
+--|     end if;
+--|   end loop;
+--| end $r$;
 --| commit;
 -- ═══════════════════════════════════════════════════════════════════════════
 begin;
@@ -110,7 +155,8 @@ security definer
 set search_path = ''
 as $$
 begin
-  if new.user_id is null then
+  if new.user_id is null
+     or new.user_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
     return null;
   end if;
   begin
@@ -124,7 +170,7 @@ begin
           'kind', new.kind,
           'from_id', new.from_id,
           'ref_id', new.ref_id,
-          'content', new.content,
+          'content', left(new.content, 500),
           'seen', new.seen,
           'created_at', new.created_at
         )
@@ -148,7 +194,8 @@ security definer
 set search_path = ''
 as $$
 begin
-  if new.user_id is null then
+  if new.user_id is null
+     or new.user_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
     return null;
   end if;
   begin
@@ -209,6 +256,52 @@ end $$;
 
 -- ── VERDICT ────────────────────────────────────────────────────────────────
 -- ⚠️ On mesure ensuite l'état en base au canal ①, jamais ce tableau seul.
+-- La SONDE (voir l'en-tête) : tout ce qu'elle écrit est annulé avec sa
+-- sous-transaction ; seul son résultat sort, dans `passio.verdict_r25`.
+do $$
+declare
+  dest  constant text := '00000000-0000-4000-8000-00000000a125'; -- destinataire sentinelle : aucun compte
+  tiers constant text := '00000000-0000-4000-8000-00000000b125'; -- tiers sentinelle
+  ident constant text := 'n_sonde_r25_' || replace(gen_random_uuid()::text, '-', '');
+  res   jsonb := '{}'::jsonb;
+begin
+  begin
+    insert into public.notifications (id, user_id, kind, from_id, content)
+      values (ident, dest, 'sonde_r25', null, 'sonde');
+    res := res || jsonb_build_object('poussee', exists (
+      select 1 from realtime.messages m
+       where m.topic = 'user:' || dest and m.event = 'notifications:INSERT'
+         and m.payload -> 'record' ->> 'id' = ident));
+    -- Une ligne TÉMOIN, écrite par le propriétaire : les contrôles de lecture ne
+    -- doivent pas dépendre de la poussée (une table vide rendrait « personne ne
+    -- lit » aussi bien pour le titulaire que pour le tiers).
+    insert into realtime.messages (topic, extension, payload, event, private)
+      values ('user:' || dest, 'broadcast', '{}'::jsonb, 'sonde_r25', true);
+    -- Ce que Realtime contrôle, rejoué sous le rôle d'un CLIENT.
+    perform set_config('role', 'authenticated', true);
+    perform set_config('realtime.topic', 'user:' || dest, true);
+    perform set_config('request.jwt.claim.sub', tiers, true);
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', tiers, 'role', 'authenticated')::text, true);
+    res := res || jsonb_build_object('lu_par_tiers', exists (select 1 from realtime.messages));
+    begin
+      insert into realtime.messages (topic, extension, payload, event, private)
+        values ('user:' || dest, 'broadcast', '{}'::jsonb, 'notifications:INSERT', true);
+      res := res || jsonb_build_object('emis_par_tiers', true);
+    exception when others then
+      res := res || jsonb_build_object('emis_par_tiers', false);
+    end;
+    perform set_config('request.jwt.claim.sub', dest, true);
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', dest, 'role', 'authenticated')::text, true);
+    res := res || jsonb_build_object('lu_par_titulaire', exists (select 1 from realtime.messages));
+    raise exception using errcode = 'P0001', message = 'sonde_r25_annulee';
+  exception when others then
+    if sqlerrm <> 'sonde_r25_annulee' then
+      res := res || jsonb_build_object('erreur', sqlerrm);
+    end if;
+  end;
+  perform set_config('passio.verdict_r25', res::text, true);
+end $$;
+
 select 'conv_members et notifications sont HORS de supabase_realtime (plus aucun DELETE décodé pour elles)' as controle,
        case when not exists (select 1 from pg_publication_tables
                               where pubname = 'supabase_realtime' and schemaname = 'public'
@@ -242,19 +335,15 @@ union all select 'chaque poussée vise user:<destinataire>, sous un événement 
                  like '%''notifications:INSERT'',%''user:'' || new.user_id,%'
              and (select prosrc from pg_proc where oid = 'public.diffuser_ajout_membre()'::regprocedure)
                  like '%''conv_members:INSERT'',%''user:'' || new.user_id,%' then 'OK' else 'ECHEC' end
-union all select 'user:<uid> ne s''ouvre en lecture qu''à son titulaire (« Utilisateur reçoit ses messages », en initplan)',
-       case when exists (select 1 from pg_policies
-                          where schemaname = 'realtime' and tablename = 'messages' and policyname = 'Utilisateur reçoit ses messages'
-                            and cmd = 'SELECT' and qual like '%realtime.topic() = (''user:''::text || (( SELECT auth.uid() AS uid))::text)%')
-             and not exists (select 1 from pg_policies
-                              where schemaname = 'realtime' and tablename = 'messages' and cmd in ('SELECT', 'ALL')
-                                and policyname <> 'Utilisateur reçoit ses messages'
-                                and (qual is null or qual = 'true' or qual like '%user:%')) then 'OK' else 'ECHEC' end
-union all select 'aucune policy ne laisse un client ÉMETTRE sur user: (la charge reçue vient du serveur)',
-       case when not exists (select 1 from pg_policies
-                              where schemaname = 'realtime' and tablename = 'messages' and cmd in ('INSERT', 'ALL')
-                                and (coalesce(with_check, qual) is null or coalesce(with_check, qual) = 'true'
-                                     or coalesce(with_check, qual) like '%user:%')) then 'OK' else 'ECHEC' end
+union all select 'sonde : une notification écrite pousse vers user:<destinataire> (sous-transaction annulée, rien ne reste)'
+                 || coalesce(' — ' || (current_setting('passio.verdict_r25', true)::jsonb ->> 'erreur'), ''),
+       case when (current_setting('passio.verdict_r25', true)::jsonb ->> 'poussee') = 'true' then 'OK' else 'ECHEC' end
+union all select 'sonde : un TIERS ne lit pas user:<destinataire> (policy éprouvée sous authenticated)',
+       case when (current_setting('passio.verdict_r25', true)::jsonb ->> 'lu_par_tiers') = 'false' then 'OK' else 'ECHEC' end
+union all select 'sonde : le TITULAIRE lit son topic user:<lui>',
+       case when (current_setting('passio.verdict_r25', true)::jsonb ->> 'lu_par_titulaire') = 'true' then 'OK' else 'ECHEC' end
+union all select 'sonde : un TIERS ne peut pas ÉMETTRE sur user:<destinataire> (la charge reçue vient du serveur)',
+       case when (current_setting('passio.verdict_r25', true)::jsonb ->> 'emis_par_tiers') = 'false' then 'OK' else 'ECHEC' end
 union all select 'realtime.send(jsonb, text, text, boolean) existe (sans elle, chaque poussée serait sautée)',
        case when to_regprocedure('realtime.send(jsonb,text,text,boolean)') is not null then 'OK' else 'ECHEC' end
 union all select 'le canal des messages est intact (broadcast_conv_message_users_trigger actif)',

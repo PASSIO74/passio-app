@@ -1815,7 +1815,12 @@ async function confirmCreateGroup() {
     } catch(e) {}
   }
 
-  const convs = getConversations();
+  // ⚠️ PAR IDENTIFIANT, JAMAIS À L'AVEUGLE : ma propre ligne `conv_members` m'est
+  // poussée sur `user:<moi>` (`conv_members:INSERT`, R25) et peut avoir posé
+  // l'entrée pendant `supaCreateGroup` — un `unshift` nu doublait le groupe
+  // (`deduplicateConversations` ne fusionne pas les groupes). L'entrée locale,
+  // plus riche (passions, message de bienvenue), remplace celle de la poussée.
+  const convs = getConversations().filter(c => c && c.id !== groupId);
   const welcomeMsgId = "msg_" + uid();
   const newConv = {
     id: groupId,

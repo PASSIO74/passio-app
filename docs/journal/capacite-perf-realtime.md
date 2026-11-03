@@ -1064,13 +1064,14 @@ aucune donnée), banc `tests/sql/migration-index-realtime.test.sh` (18/18).
 
 Risque résiduel R25 de l'audit du 2026-11-02 (`.passio/audits/AUDIT_PASSIO_2026-11-02/05-RISQUES-RESIDUELS.md`),
 à fermer « sans perdre les fonctions temps réel ». Migration `migrations/migration_realtime_diffusion_privee_2026-11-03.sql`,
-banc `tests/sql/migration-realtime-diffusion-privee.test.sh` (53/53), verrou client `tests/e2e/realtime-diffusion-privee.spec.js` (8).
+banc `tests/sql/migration-realtime-diffusion-privee.test.sh` (65/65), verrou client `tests/e2e/realtime-diffusion-privee.spec.js` (11).
 
 ⚠️ **LE DÉFAUT EST DANS LE MOTEUR, PAS DANS NOS POLICIES.** `realtime.apply_rls` (code de production) évalue
 la RLS d'un INSERT ou d'un UPDATE par une requête préparée sous le rôle de l'abonné, et la SAUTE pour un
 DELETE (« if RLS enabled, we can't secure deletes so filter to pkey ») : la clé primaire part vers toute
 souscription dont le filtre la laisse passer — et le filtre comme l'action (`action_filter`) sont choisis par
-le CLIENT au join. **Reproduit au banc avec le `apply_rls` de production**, ce que l'audit n'avait pas pu
+le CLIENT au join. Les liaisons INSERT du produit ne recevaient donc rien ; un abonné qui DEMANDE `DELETE` ou
+`*`, si. **Reproduit au banc avec le `apply_rls` de production**, ce que l'audit n'avait pas pu
 faire : un compte sans lien reçoit `(evgrp_ev_rando, A)` au départ de A, et le même compte ne reçoit PAS
 l'arrivée (la RLS s'applique à l'INSERT). ⚠️ **Et sans compte** : `anon` garde SELECT de table sur
 `conv_members` et `notifications` (mesuré au canal ①), et `realtime:db` lui est ouvert
@@ -1137,3 +1138,42 @@ DELETE ; lecture « selon visibilité du post ») portent le MÊME défaut et re
 les accusés de lecture en direct (même remède possible : pousser aux autres membres) ; `post_likes` n'a plus
 d'abonné produit — seuls les bancs de charge l'écoutent encore. **Une table dont la clé primaire DIT quelque
 chose ne se publie pas.**
+
+**DEUX CONTRE-RELECTURES (2026-11-03, `passio-red-team` et `audit-passio`, lecture seule, canal ① pour la
+première) — aucun P0, ce que le lot ferme est fermé ; ce qu'elles ont trouvé, et ce qui en a été fait :**
+- ⚠️ **CHAQUE NOTIFICATION EN DIRECT VIDAIT LA CLOCHE** (défaut préexistant, dans le code déplacé tel quel) :
+  `mergeSupaNotifs` attend la liste COMPLÈTE du serveur et remplace les notifications distantes par celles
+  qu'on lui passe — l'ancien gestionnaire lui passait la seule nouvelle. Corrigé (`_rtNotificationRecue` lui
+  rend aussi celles qu'on tient) ; le cas ③ partait d'une cloche VIDE et ne pouvait pas le voir.
+- Le toast partait pour un émetteur bloqué (la cloche l'écartait) et affichait du texte neutralisé pour le
+  HTML (« &lt;b&gt; », « L&#39;équipe ») dans un `textContent` : il ne montre plus que ce que la cloche a
+  gardé, en texte brut (`_texteBrutNotif`, jamais par `innerHTML` d'un élément détaché, qui charge les images
+  et déclenche leurs `onerror`).
+- **La base tranche, pas la poussée** (`_rtAjoutConversationRecu`) : rien n'est matérialisé si la relecture
+  ne me compte pas parmi les membres (ajouté puis retiré aussitôt), pour un 1:1 sans correspondant lisible (le
+  CRÉATEUR reçoit sa propre ligne avant celle du pair), ou si l'entrée a été posée pendant la lecture ;
+  `confirmCreateGroup` (app-05) fusionne par identifiant au lieu d'un `unshift` aveugle (groupe en double).
+  Le `catch` vide journalise ; l'appel de `_subscribeUserTopic` dans `supaSubscribe` est gardé (une exception
+  y aurait privé la session de TOUT son temps réel).
+- **Le verdict ÉPROUVE au lieu de lire** : une sonde dans une sous-transaction annulée écrit une notification
+  pour un destinataire sentinelle, vérifie la poussée, puis rejoue sous `authenticated` lecture et émission
+  sur `user:` — `realtime.topic() ~~ '%'` ou `(1 = 1)` passaient un contrôle textuel. Une ligne TÉMOIN écrite
+  par le propriétaire sépare les contrôles de lecture de la poussée (premier jet : table vide = « personne ne
+  lit », titulaire compris, trois faux ECHEC au banc). Rien ne reste, rien n'est diffusé.
+- Poussée seulement vers un uuid (une ligne historique non-uuid existe), `content` borné à 500 (non borné en
+  table) ; retour arrière rejouable ; propriétaire non superutilisateur éprouvé au banc (sans BYPASSRLS, la
+  poussée est perdue en WARNING — la sonde le dit).
+- ⚠️ **L'ORDRE « CLIENT D'ABORD » EST TENU PAR L'OUTIL** : règle ④ de `appliquer-migration.mjs` — une migration
+  qui déclare `-- PREREQUIS-CLIENT: <motif>` n'est envoyée à la production que si le bundle SERVI porte le
+  motif (illisible = refus). ⚠️ Le bundle n'est pas une balise `<script src>` : `build.js` l'injecte par un
+  chargeur (`s.src = "app.js?v=…"`) — le premier jet de la règle, vert sur un HTML fabriqué, était aveugle sur
+  le vrai build ; essayé sur un build réel avant d'être cru.
+- Les skills `/realtime` et `/migration` conseillaient exactement le geste que R25 interdit (« ajouter la
+  table à la publication », « table absente = 0 événement ») : corrigés, comme `migration-checker`.
+- **Ce qui reste, et le registre le dit** : la même information par SONDAGE (`is_conv_member`, C-02 ;
+  `promouvoir_attente`, R24) ; R27 (`conv_reads`, dont chaque purge de compte rediffuse les clés, et
+  `post_likes`) ; R28 (`comment_interactions` en identité de réplica FULL : le filtre d'un abonné est évalué sur
+  TOUTE l'ancienne ligne — qui retire quoi, texte d'une réponse effacée — alors que son gestionnaire DELETE ne
+  sert à rien, il sort sur `!r.comment_id`) ; R29 (`notifier_mentions` lit `c.name`, colonne absente : aucune
+  @mention de conversation n'est notifiée — trouvé en passant). Et `realtime.messages` garde la charge poussée
+  jusqu'à la chute de sa partition, comme celle des messages.

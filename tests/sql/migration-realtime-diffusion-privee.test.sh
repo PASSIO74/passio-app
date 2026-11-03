@@ -100,7 +100,10 @@ LIVRE() { Q "select coalesce((select 'recu|' || coalesce((wal->'old_record')::te
 DECODEES() { Q "select string_agg(t, ',' order by t) from unnest(banc.tables_decodees()) t;"; }
 RETOUR_ARRIERE() { sed -n 's/^--| //p' "$MIGRATION"; }
 # Le tableau de verdict SEUL (sans rien réappliquer), pour éprouver chaque ligne.
-VERDICT_SEUL() { sed -n '/^-- ── VERDICT/,/^commit;/p' "$MIGRATION" | sed '$d' | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 2>&1; }
+# ⚠️ Dans UNE transaction, comme dans la migration : la sonde (bloc DO) passe son
+# résultat au SELECT par un réglage LOCAL, perdu entre deux transactions.
+VERDICT_SEUL() { { echo "begin;"; sed -n '/^-- ── VERDICT/,/^commit;/p' "$MIGRATION" | sed '$d'; echo "rollback;"; } \
+                 | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 2>&1; }
 APPLIQUER() { psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1; }
 BILAN() { printf '%s/%s' "$(printf '%s\n' "$1" | grep -cE '\|\s*OK\s*$' || true)" "$(printf '%s\n' "$1" | grep -cE '\|\s*ECHEC\s*$' || true)"; }
 # La ligne en ECHEC d'un verdict contient-elle `$2` ?
@@ -925,9 +928,11 @@ verifier "et le décodeur reçoit bien les deux tables (add-tables de list_chang
 
 echo "── ① APPLICATION ───────────────────────────────────────────────────"
 sortie="$(APPLIQUER)" || { echo "  ❌ la migration a échoué :"; echo "$sortie" | tail -5; exit 1; }
-verifier "le tableau de verdict rend 11 OK et 0 ECHEC" "11/0" "$(BILAN "$sortie")"
+verifier "le tableau de verdict rend 13 OK et 0 ECHEC" "13/0" "$(BILAN "$sortie")"
 sortie2="$(APPLIQUER)" || { echo "  ❌ la migration REJOUÉE a échoué"; echo "$sortie2" | tail -5; exit 1; }
-verifier "rejouée : même verdict (idempotente)" "11/0" "$(BILAN "$sortie2")"
+verifier "rejouée : même verdict (idempotente)" "13/0" "$(BILAN "$sortie2")"
+verifier "la sonde du verdict ne laisse RIEN : ni notification, ni poussée" "0|0" \
+  "$(Q "select count(*) from public.notifications where kind = 'sonde_r25' or id like 'n_sonde_r25%'")|$(Q "select count(*) from realtime.messages where topic like 'user:00000000-0000-4000-8000-00000000%'")"
 contient "rejouée : elle dit qu'il n'y avait plus rien à retirer" "plus publiee" "$sortie2"
 
 echo "── ② LA FUITE EST FERMÉE EN AMONT DU MOTEUR ──────────────────────────"
@@ -982,6 +987,13 @@ verifier "une notification LUE (UPDATE) ne part nulle part" "-" \
   "$(AUTH "$A" "update public.notifications set seen = true where id = 'n_like_1';" >/dev/null; POUSSEES)"
 verifier "une notification sans destinataire s'écrit, sans poussée" "1|-" \
   "$(Q "insert into public.notifications (id, user_id, kind) values ('n_orpheline', null, 'systeme') returning 1;")|$(POUSSEES)"
+verifier "un destinataire qui n'est pas un uuid (ligne historique) : écrit, sans poussée — personne n'a ce topic" "1|1|-" \
+  "$(Q "insert into public.notifications (id, user_id, kind) values ('n_historique', 'u_ancien_compte', 'like') returning 1;")|$(Q "insert into public.conv_members (conv_id, user_id) values ('grp_1', 'u_ancien_compte') returning 1;")|$(POUSSEES)"
+Q "delete from public.conv_members where user_id = 'u_ancien_compte';" >/dev/null
+VIDER
+verifier "un contenu géant part BORNÉ à 500 caractères (la ligne, elle, garde tout)" "500|5000" \
+  "$(Q "insert into public.notifications (id, user_id, kind, from_id, content) values ('n_geant', '$A', 'like', '$B', repeat('x', 5000));
+       select length(payload->'record'->>'content') from realtime.messages limit 1;")|$(Q "select length(content) from public.notifications where id = 'n_geant'")"
 
 echo "── ④ LE TOPIC user:<uid> : SON TITULAIRE LIT, PERSONNE N'ÉMET ────────"
 Q "insert into public.notifications (id, user_id, kind, from_id) values ('n_lecture', '$A', 'like', '$B');" >/dev/null
@@ -999,8 +1011,29 @@ verifier "realtime.send absente : la notification s'écrit quand même, l'ajout 
 contient "…et l'avertissement nomme la cause" "diffuser_notification : poussee sautee" \
   "$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -c "insert into public.notifications (id, user_id, kind, from_id) values ('n_sans_canal_2', '$A', 'like', '$B');" 2>&1)"
 s="$(VERDICT_SEUL)"
-verifier "…et le verdict le voit : la ligne realtime.send dit ECHEC" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "realtime.send")"
+verifier "…et le verdict le voit : la sonde ne trouve pas sa poussée, la ligne realtime.send dit ECHEC" "11/2|1|1" \
+  "$(BILAN "$s")|$(ROUGE "$s" "sonde : une notification écrite pousse")|$(ROUGE "$s" "realtime.send(jsonb")"
 Q "alter function realtime.send_absente(jsonb, text, text, boolean) rename to send;" >/dev/null
+
+echo "── ⑤bis LE PROPRIÉTAIRE : NON SUPERUTILISATEUR, MAIS BYPASSRLS (comme postgres chez Supabase) ──"
+# Le banc tourne en superutilisateur ; la production non (`postgres` : BYPASSRLS
+# oui, superutilisateur non — mesuré au canal ①). Sans BYPASSRLS, l'écriture de la
+# poussée tomberait sous `passio_rt_emettre`, qui n'autorise pas `user:` : avalée en
+# WARNING par `realtime.send`. La sonde du verdict doit le VOIR.
+Q "create role proprietaire_banc nologin; grant usage on schema realtime, public to proprietaire_banc;
+   grant select, insert on realtime.messages to proprietaire_banc;
+   alter function public.diffuser_notification() owner to proprietaire_banc;" >/dev/null
+VIDER
+verifier "propriétaire SANS bypassrls : la notification s'écrit, la poussée est perdue en silence…" "1|-" \
+  "$(AUTH "$B" "insert into public.notifications (id, user_id, kind, from_id) values ('n_proprio_1', '$A', 'like', '$B') returning 1;" | grep -v '^WARNING')|$(POUSSEES)"
+s="$(VERDICT_SEUL)"
+verifier "…et la sonde du verdict le dit" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "sonde : une notification écrite pousse")"
+Q "alter role proprietaire_banc bypassrls;" >/dev/null
+VIDER
+verifier "propriétaire AVEC bypassrls, non superutilisateur : la poussée part" "user:$A>notifications:INSERT" \
+  "$(AUTH "$B" "insert into public.notifications (id, user_id, kind, from_id) values ('n_proprio_2', '$A', 'like', '$B');" >/dev/null; POUSSEES)"
+s="$(VERDICT_SEUL)"; verifier "…et le verdict est sain" "13/0" "$(BILAN "$s")"
+Q "alter function public.diffuser_notification() owner to postgres; drop owned by proprietaire_banc; drop role proprietaire_banc;" >/dev/null
 
 echo "── ⑥ LE CANAL DES MESSAGES N'A PAS BOUGÉ ────────────────────────────"
 VIDER
@@ -1019,47 +1052,61 @@ verifier "plus de trigger ni de fonction du lot" "0|0" \
 verifier "une notification ne pousse plus rien (le direct revient par postgres_changes, avec la fuite)" "-" \
   "$(Q "insert into public.notifications (id, user_id, kind, from_id) values ('n_apres_retour', '$A', 'like', '$B');" >/dev/null; POUSSEES)"
 s3="$(APPLIQUER)" || { echo "  ❌ réapplication après retour arrière en échec"; echo "$s3" | tail -3; exit 1; }
-verifier "la migration se réapplique après le retour arrière : 11 OK / 0 ECHEC" "11/0" "$(BILAN "$s3")"
+verifier "la migration se réapplique après le retour arrière : 13 OK / 0 ECHEC" "13/0" "$(BILAN "$s3")"
+RETOUR_ARRIERE | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 \
+  && RETOUR_ARRIERE | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 \
+  && verifier "le retour arrière est REJOUABLE (deux passages de suite)" "1|1" \
+       "$(DECODEES | tr ',' '\n' | grep -cx 'public.conv_members')|$(DECODEES | tr ',' '\n' | grep -cx 'public.notifications')" \
+  || verifier "le retour arrière est REJOUABLE (deux passages de suite)" "rejouable" "le second passage a échoué"
+s3="$(APPLIQUER)" || { echo "  ❌ seconde réapplication en échec"; exit 1; }
+verifier "…puis la migration se réapplique encore : 13 OK / 0 ECHEC" "13/0" "$(BILAN "$s3")"
 
 echo "── ⑧ LE VERDICT NE PEUT PAS MENTIR ──────────────────────────────────"
-s="$(VERDICT_SEUL)"; verifier "état sain : 11 OK / 0 ECHEC" "11/0" "$(BILAN "$s")"
+s="$(VERDICT_SEUL)"; verifier "état sain : 13 OK / 0 ECHEC" "13/0" "$(BILAN "$s")"
 # Chaque mutation est posée APRÈS la migration (qui l'aurait sinon réparée), et
 # la ligne qui la garde doit dire ECHEC — elle seule.
 Q "alter publication supabase_realtime add table public.notifications;" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "notifications republiée : la ligne de la publication rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "HORS de supabase_realtime")"
+s="$(VERDICT_SEUL)"; verifier "notifications republiée : la ligne de la publication rougit" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "HORS de supabase_realtime")"
 Q "alter publication supabase_realtime drop table public.notifications; alter publication supabase_realtime drop table public.post_likes;" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "une AUTRE table retirée par erreur : la ligne des neuf rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "neuf autres")"
+s="$(VERDICT_SEUL)"; verifier "une AUTRE table retirée par erreur : la ligne des neuf rougit" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "neuf autres")"
 Q "alter publication supabase_realtime add table public.post_likes;" >/dev/null
 Q "alter table public.notifications disable trigger trg_diffuser_notification;" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "trigger des notifications désactivé : sa ligne rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "trg_diffuser_notification")"
+s="$(VERDICT_SEUL)"; verifier "trigger des notifications désactivé : sa ligne ET la sonde rougissent" "11/2|1|1" "$(BILAN "$s")|$(ROUGE "$s" "trg_diffuser_notification")|$(ROUGE "$s" "sonde : une notification écrite pousse")"
 Q "alter table public.notifications enable trigger trg_diffuser_notification; alter table public.conv_members disable trigger trg_diffuser_ajout_membre;" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "trigger des ajouts désactivé : sa ligne rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "trg_diffuser_ajout_membre")"
+s="$(VERDICT_SEUL)"; verifier "trigger des ajouts désactivé : sa ligne rougit" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "trg_diffuser_ajout_membre")"
 Q "alter table public.conv_members enable trigger trg_diffuser_ajout_membre;" >/dev/null
 Q "alter function public.diffuser_notification() reset search_path;" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "search_path retiré d'une fonction : la ligne SECURITY DEFINER rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "search_path vide")"
+s="$(VERDICT_SEUL)"; verifier "search_path retiré d'une fonction : la ligne SECURITY DEFINER rougit" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "search_path vide")"
 Q "alter function public.diffuser_notification() set search_path = '';" >/dev/null
 Q "create role tiers_concedant; grant execute on function public.diffuser_ajout_membre() to tiers_concedant with grant option;
    set role tiers_concedant; grant execute on function public.diffuser_ajout_membre() to authenticated;" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "EXECUTE rendu à authenticated par un autre concédant : la ligne des droits rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "aucun client (anon")"
-s="$(APPLIQUER)"; verifier "…et la migration REJOUÉE ne le répare pas (PostgreSQL ne retire que ses propres droits) : elle le DIT" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "aucun client (anon")"
+s="$(VERDICT_SEUL)"; verifier "EXECUTE rendu à authenticated par un autre concédant : la ligne des droits rougit" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "aucun client (anon")"
+s="$(APPLIQUER)"; verifier "…et la migration REJOUÉE ne le répare pas (PostgreSQL ne retire que ses propres droits) : elle le DIT" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "aucun client (anon")"
 Q "set role tiers_concedant; revoke execute on function public.diffuser_ajout_membre() from authenticated;" >/dev/null
 Q "drop policy \"Utilisateur reçoit ses messages\" on realtime.messages;" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "policy du topic user: retirée : sa ligne rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "ne s'ouvre en lecture")"
+s="$(VERDICT_SEUL)"; verifier "policy du topic user: retirée : le titulaire ne lit plus, la sonde le dit" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "le TITULAIRE lit")"
 Q "create policy \"Utilisateur reçoit ses messages\" on realtime.messages for select to authenticated using (realtime.topic() = ('user:' || (select auth.uid())::text));
    create policy lecture_trop_large on realtime.messages for select to authenticated using (true);" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "une policy de lecture ouverte à tous (USING true) : la même ligne rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "ne s'ouvre en lecture")"
+s="$(VERDICT_SEUL)"; verifier "une policy de lecture ouverte à tous (USING true) : la sonde voit le tiers lire" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "un TIERS ne lit pas")"
+# Les deux formes que la relecture adversariale citait : elles passaient un contrôle TEXTUEL.
 Q "drop policy lecture_trop_large on realtime.messages;
+   create policy lecture_motif on realtime.messages for select to authenticated using (realtime.topic() ~~ '%');" >/dev/null
+s="$(VERDICT_SEUL)"; verifier "…ou déguisée en motif (topic ~~ '%') : idem" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "un TIERS ne lit pas")"
+Q "drop policy lecture_motif on realtime.messages;
    create policy emission_user on realtime.messages for insert to authenticated with check (realtime.topic() ~~ 'user:%');" >/dev/null
 contient "une policy d'ÉMISSION sur user: rend la fausse notification possible…" "emis" "$(EMET "$X" "user:$A")"
-s="$(VERDICT_SEUL)"; verifier "…et le verdict le dit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "ÉMETTRE sur user:")"
-Q "drop policy emission_user on realtime.messages;" >/dev/null
+s="$(VERDICT_SEUL)"; verifier "…et la sonde le dit" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "ne peut pas ÉMETTRE")"
+Q "drop policy emission_user on realtime.messages;
+   create policy emission_tautologie on realtime.messages for insert to authenticated with check (1 = 1);" >/dev/null
+s="$(VERDICT_SEUL)"; verifier "…y compris déguisée en (1 = 1)" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "ne peut pas ÉMETTRE")"
+Q "drop policy emission_tautologie on realtime.messages;" >/dev/null
 Q "alter table public.conv_messages disable trigger broadcast_conv_message_users_trigger;" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "canal des messages coupé : sa ligne rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "canal des messages")"
+s="$(VERDICT_SEUL)"; verifier "canal des messages coupé : sa ligne rougit" "12/1|1" "$(BILAN "$s")|$(ROUGE "$s" "canal des messages")"
 Q "alter table public.conv_messages enable trigger broadcast_conv_message_users_trigger;" >/dev/null
 Q "create or replace function public.diffuser_notification() returns trigger language plpgsql security definer set search_path = ''
    as \$fn\$ begin perform realtime.send(jsonb_build_object('record', to_jsonb(new)), 'INSERT', 'user:' || new.user_id, true); return null; end \$fn\$;" >/dev/null
-s="$(VERDICT_SEUL)"; verifier "fonction réécrite sous « INSERT » (le message fantôme) : la ligne des poussées rougit" "10/1|1" "$(BILAN "$s")|$(ROUGE "$s" "distinct de « INSERT »")"
-s="$(APPLIQUER)"; verifier "la migration rejouée la remet en état : 11 OK / 0 ECHEC" "11/0" "$(BILAN "$s")"
+s="$(VERDICT_SEUL)"; verifier "fonction réécrite sous « INSERT » (le message fantôme) : la ligne des événements ET la sonde rougissent" "11/2|1|1" "$(BILAN "$s")|$(ROUGE "$s" "distinct de « INSERT »")|$(ROUGE "$s" "sonde : une notification écrite pousse")"
+s="$(APPLIQUER)"; verifier "la migration rejouée la remet en état : 13 OK / 0 ECHEC" "13/0" "$(BILAN "$s")"
 
 echo
 echo "RÉSULTAT : $ok ✅  $ko ❌"

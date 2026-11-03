@@ -129,7 +129,13 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
       window.PASSIO_REALTIME_V3 = true;
       _subscribeUserTopic();
       const recevoir = window.__liaisonUser("notifications:INSERT");
-      state.notifications = [];
+      // ⚠️ UNE CLOCHE QUI CONTIENT DÉJÀ QUELQUE CHOSE (relecture adversariale du
+      // 2026-11-03) : partir d'une cloche vide cachait que `mergeSupaNotifs`,
+      // appelée avec la seule nouvelle, REMPLAÇAIT toutes les autres.
+      state.notifications = [
+        { id: "n_ancienne", kind: "follow", fromId: "u_marc", text: "Marc te suit", createdAt: Date.parse("2026-11-02T09:00:00Z"), unread: false, fromSupabase: true },
+        { id: "n_locale", kind: "local", text: "Rappel local", createdAt: Date.parse("2026-11-02T08:00:00Z"), unread: false },
+      ];
       window.__toasts = [];
       window.toast = (texte) => { window.__toasts.push(texte); };
       // La charge EXACTE de `diffuser_notification` (même forme qu'au banc SQL) :
@@ -141,9 +147,16 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
       recevoir(message(ligne));
       recevoir(message(ligne)); // rejeu : aucune seconde entrée, aucun second toast
       recevoir(message({ ...ligne, id: "n_pour_un_autre", user_id: autre }));
+      // Un émetteur BLOQUÉ : la cloche l'écarte, et désormais le toast aussi.
+      window.isBlocked = (id) => id === "u_bloque";
+      recevoir(message({ ...ligne, id: "n_bloque", from_id: "u_bloque", content: "Je reviens" }));
+      // Une apostrophe échappée par l'émetteur : le toast la montre en clair.
+      recevoir(message({ ...ligne, id: "n_apostrophe", from_id: "u_equipe", content: "L&#39;équipe t&#39;a invité" }));
       const n = state.notifications.filter((x) => x.id === "n_like_rt_1");
       return { n: n.length, unread: n[0] && n[0].unread, kind: n[0] && n[0].kind, de: n[0] && n[0].fromId, cible: n[0] && n[0].refId,
                texte: n[0] && n[0].text, quand: n[0] && n[0].createdAt,
+               garde: ["n_ancienne", "n_locale"].map((id) => state.notifications.some((x) => x.id === id)),
+               bloque: state.notifications.some((x) => x.id === "n_bloque"),
                autre: state.notifications.some((x) => x.id === "n_pour_un_autre"), toasts: window.__toasts };
     }, { autre: AUTRE_COMPTE });
     expect(r.n).toBe(1);
@@ -153,7 +166,11 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
     expect(r.texte).toBe("Léa &lt;b&gt;aime&lt;/b&gt; ta publication");
     expect(r.quand).toBe(Date.parse("2026-11-03T10:00:00.123Z")); // `timestamp` sans fuseau = UTC (supaTs)
     expect(r.autre, "un canal est un transport : la garde `user_id === MY_UID` reste").toBe(false);
-    expect(r.toasts).toEqual(["Léa &lt;b&gt;aime&lt;/b&gt; ta publication"]);
+    expect(r.garde, "la cloche garde ce qu'elle avait : distante ET locale").toEqual([true, true]);
+    expect(r.bloque, "un émetteur bloqué n'entre pas dans la cloche").toBe(false);
+    // `toast()` écrit en `textContent` : du texte BRUT, ni « &lt;b&gt; » ni « &#39; »,
+    // et rien pour l'émetteur bloqué.
+    expect(r.toasts).toEqual(["Léa aime ta publication", "L'équipe t'a invité"]);
   });
 
   test("④ un ajout poussé fait apparaître la conversation, sans message fantôme ; celui d'un autre compte est ignoré", async ({ page }) => {
@@ -193,6 +210,72 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
     expect(r.membres).toEqual([COMPTE, "u_lea"]);
   });
 
+  test("④ bis — la base tranche : retiré aussitôt, 1:1 sans correspondant, ou déjà posée pendant la lecture → rien de matérialisé", async ({ page }) => {
+    await preparer(page);
+    const r = await page.evaluate(async () => {
+      window.PASSIO_REALTIME_V3 = true; window.PASSIO_REALTIME_V2 = false;
+      let reponses = {};
+      window.__pendantLecture = null;
+      Object.defineProperty(window.supa, "from", { configurable: true, writable: true, value: (table) => {
+        const q = { select: () => q, eq: () => q, in: () => q, order: () => q, limit: () => q,
+          maybeSingle: () => Promise.resolve(reponses[table] || { data: null, error: null }),
+          then: (ok, ko) => {
+            if (table === "conv_members" && window.__pendantLecture) window.__pendantLecture();
+            return Promise.resolve(reponses[table] || { data: [], error: null }).then(ok, ko);
+          } };
+        return q;
+      } });
+      window.__rendus = 0; window.renderMessages = () => { window.__rendus++; };
+      _subscribeUserTopic();
+      const ajout = window.__liaisonUser("conv_members:INSERT");
+      const pousser = (conv) => ajout({ payload: { "table": "conv_members", "operation": "INSERT", "record": { conv_id: conv, user_id: MY_UID } } });
+      const combien = (id) => getConversations().filter((c) => c.id === id).length;
+      // (a) Ajouté puis retiré aussitôt (« Suppression admin ») : la relecture ne me compte plus.
+      reponses = { conversations: { data: { id: "grp_retire", is_group: true, created_by: "u_lea" }, error: null },
+                   conv_members: { data: [{ user_id: "u_lea", profiles: null }], error: null } };
+      await pousser("grp_retire");
+      // (b) Le CRÉATEUR d'un 1:1 : sa ligne arrive avant celle du pair, aucun correspondant lisible.
+      reponses = { conversations: { data: { id: "dm_createur", is_group: false, created_by: MY_UID }, error: null },
+                   conv_members: { data: [{ user_id: MY_UID, profiles: null }], error: null } };
+      await pousser("dm_createur");
+      // (c) Le flux de création local pose l'entrée PENDANT la lecture des membres.
+      reponses = { conversations: { data: { id: "grp_course", is_group: true, group_name: "Course", created_by: MY_UID }, error: null },
+                   conv_members: { data: [{ user_id: MY_UID, profiles: null }, { user_id: "u_lea", profiles: null }], error: null } };
+      window.__pendantLecture = () => { conversationsState = [{ id: "grp_course", isGroup: true, groupName: "Course", messages: [] }].concat(getConversations()); };
+      await pousser("grp_course");
+      window.__pendantLecture = null;
+      return { retire: combien("grp_retire"), createur: combien("dm_createur"), course: combien("grp_course"), rendus: window.__rendus };
+    });
+    expect(r).toEqual({ retire: 0, createur: 0, course: 1, rendus: 0 });
+  });
+
+  test("④ ter — créer un groupe dont la poussée est arrivée AVANT la fin de la création : une seule entrée, la locale", async ({ page }) => {
+    await preparer(page);
+    const r = await page.evaluate(async () => {
+      // Le formulaire, réduit à ce que `confirmCreateGroup` lit.
+      document.body.insertAdjacentHTML("beforeend",
+        '<div id="__formGroupe"><input id="groupName" value="Rando du jeudi">' +
+        '<label class="group-passion-option selected"><input value="randonnee"></label>' +
+        '<label class="group-user-option selected"><input value="u_lea"></label></div>');
+      Object.defineProperty(window.supa, "from", { configurable: true, writable: true, value: () => {
+        const q = { insert: () => Promise.resolve({ error: null }), select: () => q, eq: () => q,
+          then: (ok, ko) => Promise.resolve({ data: [], error: null }).then(ok, ko) };
+        return q;
+      } });
+      // La poussée de MA ligne arrive pendant `supaCreateGroup` et pose l'entrée.
+      window.supaCreateGroup = async () => {
+        conversationsState = [{ id: "grp_pousse", isGroup: true, groupName: "Rando du jeudi", messages: [], fromSupabase: true }].concat(getConversations());
+        return "grp_pousse";
+      };
+      window.toast = () => {}; window.closeModal = () => {}; window.renderMessages = () => {};
+      await confirmCreateGroup();
+      const c = getConversations().filter((x) => x.id === "grp_pousse");
+      document.getElementById("__formGroupe").remove();
+      return { n: c.length, bienvenue: c[0] && c[0].messages.length, passions: c[0] && c[0].groupPassions };
+    });
+    expect(r).toEqual({ n: 1, bienvenue: 1, passions: ["randonnee"] });
+  });
+
   test("⑤ LE PIÈGE DU LOT : une ligne `conv_members` reçue sous « INSERT » n'est PAS un message", async ({ page }) => {
     await preparer(page);
     const r = await page.evaluate(() => {
@@ -230,7 +313,7 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
     }
     // Les colonnes que le gestionnaire LIT doivent être dans celles que le serveur
     // POUSSE : une colonne lue et jamais envoyée rendrait `undefined`, en silence.
-    const poussees = new Set([...pousseNotif.matchAll(/'([a-z_]+)', new\.\1\b/g)].map((m) => m[1]));
+    const poussees = new Set([...pousseNotif.matchAll(/'([a-z_]+)', (?:left\()?new\.\1\b/g)].map((m) => m[1]));
     const i = app08.indexOf("function _rtNotificationRecue(r)");
     const lues = new Set([...app08.slice(i, app08.indexOf("window._rtNotificationRecue =", i)).matchAll(/\br\.([a-z_]+)/g)].map((m) => m[1]));
     expect(lues.size).toBeGreaterThan(4);
@@ -240,6 +323,21 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
     const luesAjout = new Set([...app08.slice(j, app08.indexOf("window._rtAjoutConversationRecu =", j)).matchAll(/\br\.([a-z_]+)/g)].map((m) => m[1]));
     expect([...luesAjout].sort()).toEqual(["conv_id", "user_id"]);
     expect(pousseMembre).toContain("jsonb_build_object('conv_id', new.conv_id, 'user_id', new.user_id)");
+  });
+
+  test("⑨ une exception sur le topic user: n'emporte pas le reste du temps réel", async ({ page }) => {
+    await preparer(page);
+    const r = await page.evaluate(() => {
+      window.PASSIO_REALTIME_V3 = true;
+      const canal = window.supa.channel;
+      Object.defineProperty(window.supa, "channel", { configurable: true, writable: true, value: function (topic, cfg) {
+        if (String(topic).startsWith("user:")) throw new Error("refus simulé");
+        return canal.call(this, topic, cfg);
+      } });
+      supaSubscribe();
+      return window.__canaux.map((c) => c.topic);
+    });
+    expect(r, "realtime:db doit exister même si user: a levé").toContain("realtime:db");
   });
 
   test("⑦ un visiteur n'ouvre aucun topic user:", async ({ page }) => {

@@ -7190,8 +7190,10 @@ window._subscribePrivateConv = _subscribePrivateConv;
 // R25 (2026-11-03) — L'AJOUT À UNE CONVERSATION ET LA NOTIFICATION ARRIVENT
 // PAR `user:<moi>`, POUSSÉS PAR LE SERVEUR, ET PLUS PAR `postgres_changes`.
 // ────────────────────────────────────────────────────────────────────────
-// `realtime.apply_rls` livre chaque DELETE d'une table publiée à TOUT abonné
-// sans évaluer la RLS, clé primaire en clair : `(evgrp_<activité>, compte)` à
+// `realtime.apply_rls` livre chaque DELETE d'une table publiée à tout abonné
+// qui le DEMANDE (`DELETE` ou `*`, sans filtre — un choix du client au join ;
+// les liaisons INSERT du produit ne les recevaient pas), sans évaluer la RLS,
+// clé primaire en clair : `(evgrp_<activité>, compte)` à
 // chaque départ d'une discussion d'activité, `n_pa_<activité>_<compte>` à
 // chaque notification effacée — y compris à un visiteur muni de la seule clé
 // anon (`realtime:db` lui est ouvert, et anon garde SELECT sur ces tables).
@@ -7225,6 +7227,13 @@ async function _rtAjoutConversationRecu(r) {
     const { data: convData } = await supa.from("conversations").select("*").eq("id", convId).maybeSingle();
     const { data: members } = await supa.from("conv_members")
       .select("user_id, profiles(username,emoji,color,avatar_url)").eq("conv_id", convId);
+    // ⚠️ LA BASE TRANCHE, PAS LA POUSSÉE (relectures du 2026-11-03). Un créateur
+    // peut m'ajouter puis me retirer aussitôt (« Suppression admin ») : la
+    // poussée de l'ajout arrive quand même. Si la relecture ne me compte pas
+    // parmi les membres — retiré, refusé par la RLS, ou lecture échouée — je ne
+    // matérialise RIEN ; la conversation viendra par son premier message ou par
+    // la prochaine relecture complète.
+    if (!(members || []).some(m => m && m.user_id === MY_UID)) return;
     const other = (members || []).find(m => m.user_id !== MY_UID);
     // Repli sur le créateur de la conv si l'autre membre n'est pas (encore)
     // lisible → userId résolu → la dédup par paire opère et il n'y a pas de
@@ -7232,6 +7241,12 @@ async function _rtAjoutConversationRecu(r) {
     const otherId = (other && other.user_id)
       || (convData?.created_by && convData.created_by !== MY_UID ? convData.created_by : "")
       || "";
+    // Un 1:1 sans correspondant lisible serait un fantôme « Passionné » : c'est
+    // le cas du CRÉATEUR, à qui sa propre ligne est poussée avant celle du pair
+    // (deux INSERT successifs). Son flux de création construit l'entrée lui-même.
+    if (!otherId && !convData?.is_group) return;
+    // Pendant les deux lectures, le flux de création local a pu poser l'entrée.
+    if (getConversations().find(c => c.id === convId)) return;
     // ⚠️ N'IMPORTE QUI peut m'ajouter à une conversation : `conversations`
     // INSERT vaut `check: true` et le créateur insère n'importe quel
     // `user_id` dans `conv_members`. Bloquer ne l'empêche donc PAS côté
@@ -7283,7 +7298,10 @@ async function _rtAjoutConversationRecu(r) {
       } catch(e) {}
     }
     try { renderMessages(); } catch(e) {}
-  } catch(e) {}
+  } catch(e) {
+    // Jamais muet : un `catch` vide masquait aussi une ReferenceError.
+    try { diagLog("rt_ajout_conversation : " + (e && e.message)); } catch (_e) {}
+  }
 }
 window._rtAjoutConversationRecu = _rtAjoutConversationRecu;
 
@@ -7304,12 +7322,36 @@ function _rtNotificationRecue(r) {
   // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
   // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
   const _seen = ((state.user && state.user.seenNotifIds) || []).indexOf(notif.id) > -1;
-  mergeSupaNotifs([notif]);
+  // ⚠️ `mergeSupaNotifs` attend la liste COMPLÈTE du serveur : elle REMPLACE les
+  // notifications distantes par celles qu'on lui passe. Lui passer la seule
+  // nouvelle vidait la cloche de toutes les autres jusqu'à la relecture
+  // suivante (défaut préexistant, relevé par la relecture adversariale du
+  // 2026-11-03). On lui rend donc la nouvelle PLUS celles qu'on tient déjà.
+  const _dejaLa = (state.notifications || []).filter(n => n && n.fromSupabase && n.id !== notif.id);
+  const _texteToast = _texteBrutNotif(r.content);
+  mergeSupaNotifs([notif].concat(_dejaLa));
   if (_seen) return;
-  // Toast cliquable → emmène vers le contenu de la notif.
-  try { toast(notif.text || "Nouvelle notification", "info", () => { markNotifRead(notif.id); openNotifTarget(notif); }); } catch(e) {}
+  // Le toast ne montre que ce que la cloche a GARDÉ : `mergeSupaNotifs` écarte un
+  // émetteur bloqué, et le toast partait quand même (défaut préexistant).
+  if (!(state.notifications || []).some(n => n.id === notif.id)) return;
+  // Toast cliquable → emmène vers le contenu de la notif. `toast()` écrit en
+  // `textContent` : on lui donne du texte brut, pas le texte neutralisé pour
+  // le HTML de la cloche (il affichait « &lt;b&gt; » et « L&#39;équipe »).
+  try { toast(_texteToast || "Nouvelle notification", "info", () => { markNotifRead(notif.id); openNotifTarget(notif); }); } catch(e) {}
 }
 window._rtNotificationRecue = _rtNotificationRecue;
+
+// Le texte d'une notification pour un rendu `textContent` : balises retirées,
+// entités décodées. ⚠️ JAMAIS par `innerHTML` d'un élément détaché : il charge
+// les images et déclenche leurs `onerror` — le texte vient d'un autre compte.
+function _texteBrutNotif(s) {
+  return String(s == null ? "" : s)
+    .replace(/<[^>]*>/g, "")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'").replace(/&amp;/g, "&")
+    .trim();
+}
+window._texteBrutNotif = _texteBrutNotif;
 
 // S'abonne UNE fois au topic privé de l'utilisateur (`user:<MY_UID>`).
 // Idempotent. Trois liaisons, la première selon le mode :
@@ -7353,8 +7395,9 @@ function supaSubscribe() {
   // `Realtime Concurrent Peak Connections` (500 sur le forfait Pro) compte des
   // CLIENTS, pas des canaux : les canaux d'un client partagent un seul
   // WebSocket. Or 97,9 % des sessions de production n'ont pas de compte.
-  // ⚠️ Ce qu'un visiteur PERD est réel — NEUF des treize liaisons de
-  // `realtime:db` (posts, j'aime, commentaires, lives, profils) — et ce qui le
+  // ⚠️ Ce qu'un visiteur PERD est réel — les liaisons de CONTENU PUBLIC de
+  // `realtime:db` (posts, commentaires, réactions, lives, profils ; huit en
+  // tout en v3 depuis R25, 2026-11-03) — et ce qui le
   // compense est le couplage `seulChemin` du filet, 30 lignes plus bas ici et
   // dans `_vliveFiletTour` (app-05) : 60 s au lieu de 5 min. Mesure, détail du
   // marché et de ses deux termes : `connexionTempsReelAutorisee` (app-02),
@@ -7397,7 +7440,11 @@ function supaSubscribe() {
   // Il porte les ajouts à une conversation et les notifications, poussés par
   // le serveur ; les MESSAGES n'y sont lus qu'en v3 (design définitif : un
   // canal par utilisateur, aucune course — `_subscribeUserTopic`).
-  _subscribeUserTopic();
+  // ⚠️ GARDÉ : `_supaSubscribed` est déjà posé — une exception ici, non
+  // rattrapée, priverait la session de TOUT son temps réel (`realtime:db` plus
+  // bas ne serait jamais créé).
+  try { _subscribeUserTopic(); }
+  catch (e) { try { diagLog("rt_user_topic : " + (e && e.message)); } catch (_e) {} }
   if (!window.PASSIO_REALTIME_V3 && window.PASSIO_REALTIME_V2) {
     // v2 (expérimental) : un canal PRIVÉ par conversation (course sur conv créée
     // en session — voir SCALE_RUNBOOK). Nécessite migration_realtime_authorization.
@@ -7409,7 +7456,8 @@ function supaSubscribe() {
   // quota Supabase de canaux concurrents et multiplie les rejoins réseau). Les
   // bindings multiples sur un même canal étaient déjà le pattern du canal CDV
   // (5 tables). Chaque handler est INCHANGÉ — seule la plomberie canal change.
-  // Au repos un COMPTE n'a plus que 3 canaux : user:<uid> (messages v3),
+  // Au repos un COMPTE n'a plus que 3 canaux : user:<uid> (messages en v3 ;
+  // ajouts à une conversation et notifications dans tous les modes, R25),
   // ring:<uid> (appels) et realtime:db (celui-ci). ⚠️ Un visiteur en ouvrait
   // DEUX, pas trois — `ring:` est gardé par `admissionCompteReel` depuis la
   // sonde du 2026-09-11 ; il n'en ouvre plus aucun (garde en tête de fonction).
@@ -7540,8 +7588,9 @@ window._rtReveiller = _rtReveiller;
 window._rtReposTick = _rtReposTick;
 // ⚠️ PRIVÉ depuis le 2026-09-11 : quand le tableau de bord Supabase interdit les
 // canaux publics (« Allow public access » OFF — le geste qui rend les policies
-// Realtime opposables), un canal public est REFUSÉ. Celui-ci portait les accusés
-// de lecture, les interactions en direct, l'arrivée dans une conversation : il
+// Realtime opposables), un canal public est REFUSÉ. Celui-ci porte les accusés
+// de lecture et les interactions en direct (l'arrivée dans une conversation
+// est passée sur `user:<moi>` avec R25, le 2026-11-03) : il
 // serait mort sans erreur visible. Policy : `realtime.topic() = 'realtime:db'`
 // (anon ET authenticated — les tables gardent leur propre RLS, le canal n'ouvre
 // rien). Repli public si la souscription privée est refusée PAR POLICY (migration

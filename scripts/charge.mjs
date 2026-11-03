@@ -321,7 +321,7 @@ function liaisonsApp(uid) {
   // passerait `SUBSCRIBED` sans jamais rien recevoir, indiscernable de « il ne
   // s'est rien passé ».
   // ⚠️ ET LE NOM DE CETTE VARIABLE EST CE QUI REND LE BLOC VISIBLE : c'est lui
-  // qui porte le marqueur que la gate cherche. Le renommer rendrait ces treize
+  // qui porte le marqueur que la gate cherche. Le renommer rendrait ces dix
   // liaisons invisibles, sans une erreur. Un commentaire qui CITE la règle la
   // déclenche aussi — c'est ce qui a fait rougir ce fichier au premier jet,
   // et c'est le piège que la gate a déjà dû fermer sur elle-même.
@@ -366,8 +366,8 @@ function ecouter(c) {
       if (m.event === "phx_reply" && m.topic === TOPIC_DB) { ouvert = m.payload && m.payload.status === "ok"; clearTimeout(minuteur); res(ouvert); }
       if (m.event === "postgres_changes") {
         const d = m.payload && m.payload.data;
-        // ⚠️ ON NE CORRÈLE QUE `posts`. Depuis que le banc s'abonne aux treize
-        // liaisons de l'app, ce canal porte aussi `conv_messages`,
+        // ⚠️ ON NE CORRÈLE QUE `posts`. Depuis que le banc s'abonne aux liaisons
+        // de l'app (dix depuis R25, `conv_messages` n'en est pas), ce canal porte aussi
         // `post_comments`, `video_lives`… dont les lignes ont un `id` elles
         // aussi : les verser au corrélateur lui ferait compter des « arrivées
         // précoces » qui n'ont rien à voir avec la publication mesurée, et le
