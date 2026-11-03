@@ -260,3 +260,63 @@ test("⑭ la page d'aperçu se construit sans entrée et reste bien formée", ()
   assert.ok(html.includes("<title>" + TITRE_GENERIQUE + "</title>"));
   assert.ok(html.includes('name="twitter:card" content="summary"'));
 });
+
+// ── ⑮ Injection : charges hostiles RÉALISTES dans CHAQUE champ écrit dans la page
+// (audit B du 2026-11-02). Le cas ⑪ ne frappait que `posts.content` et
+// `media_url` : ici le pseudo (c'est lui qui entre dans <title>), le libellé de
+// passion, la biographie, le titre, la ville, l'emoji et les URL d'image des
+// TROIS types d'aperçu, plus des entités déjà encodées (qu'un double décodage
+// ferait redevenir du balisage). La preuve n'est pas « la chaîne hostile est
+// absente » mais « l'ensemble des balises de la page est EXACTEMENT celui du
+// gabarit » — c'est la seule mesure qui ne dépend pas de la charge choisie.
+const BALISES_GABARIT = ["a", "body", "doctype", "head", "html", "meta", "p", "title"];
+function balisesDe(html) {
+  return [...new Set((html.match(/<[a-z!/][^>]*>/gi) || []).map((b) => b.match(/^<\/?!?([a-z]+)/i)[1].toLowerCase()))].sort();
+}
+const UUID_H = "a1b2c3d4-0000-4000-8000-000000000099";
+const HOSTILE = {
+  posts: [
+    { id: "pinj", author_id: UUID_H, content: "pré-encodé &lt;script&gt;alert(4)&lt;/script&gt; &amp;amp; fin", media_url: SUPA_PUB + "content/photos/u/x.jpg\" onerror=\"alert(5)", passion_id: "pinj", vlog: null },
+  ],
+  profiles: [
+    { id: UUID_H, username: "</title><script>alert(1)</script>", bio: "\"><img src=x onerror=alert(2)>", avatar_url: "javascript:alert(3)", is_private: false },
+  ],
+  passions: [{ id: "pinj", label: "'><svg onload=alert(6)>", status: "active" }],
+  events: [{ id: "einj", title: "</title><iframe src=//evil>", date_at: "2026-12-10 16:30:00", city: "\"><script>alert(7)</script>", emoji: "<b>", cover_url: "data:image/svg+xml,<svg onload=alert(8)>", status: "active" }],
+};
+
+test("⑮ pseudo, passion, bio, titre, ville, emoji et URL hostiles : la page garde EXACTEMENT ses balises", async () => {
+  for (const [chemin, ua] of [["/p/pinj", UA_WHATSAPP], ["/u/" + UUID_H, UA_IMESSAGE], ["/e/einj", UA_TELEGRAM]]) {
+    const { r, corps } = await appeler(chemin, ua, HOSTILE);
+    assert.equal(r.status, 200, chemin);
+    assert.deepEqual(balisesDe(corps), BALISES_GABARIT, "balises inattendues sur " + chemin + " :\n" + corps);
+    // Une balise ne peut naître que d'un « < » brut : il n'en reste aucun hors du gabarit.
+    const horsGabarit = corps.replace(/<\/?(?:!doctype|html|head|meta|title|body|p|a)\b[^>]*>/gi, "");
+    assert.ok(!/[<>]/.test(horsGabarit), "chevron brut hors gabarit sur " + chemin + " : " + horsGabarit.slice(0, 200));
+    // Aucune URL d'image hostile : l'image générique les remplace toutes.
+    assert.ok(corps.includes('og:image" content="https://passio-app.netlify.app/icon-512.png"'), chemin);
+    // Aucun gestionnaire d'événement ni protocole actif ne survit tel quel dans un attribut.
+    assert.ok(!/javascript:|data:image\/svg/i.test(corps), chemin);
+  }
+});
+
+test("⑮ bis <title> : un pseudo qui ferme la balise reste du texte, et une entité pré-encodée n'est jamais décodée", async () => {
+  const { corps } = await appeler("/u/" + UUID_H, UA_FACEBOOK, HOSTILE);
+  assert.ok(corps.includes("<title>&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt; sur PASSIO</title>"), corps);
+  assert.equal((corps.match(/<title>/g) || []).length, 1);
+  const pub = await appeler("/p/pinj", UA_FACEBOOK, HOSTILE);
+  // `&lt;` écrit par un utilisateur devient `&amp;lt;` : le robot lit « &lt; », jamais « < ».
+  assert.ok(pub.corps.includes("pré-encodé &amp;lt;script&amp;gt;alert(4)&amp;lt;/script&amp;gt; &amp;amp;amp; fin"), pub.corps);
+  // Le libellé de passion hostile est dans le titre, échappé, sans quitter l'attribut.
+  assert.ok(pub.corps.includes('og:title" content="&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt; · &#39;&gt;&lt;svg onload=alert(6)&gt;"'), pub.corps);
+});
+
+test("⑮ ter imageSure refuse une URL du bon hôte dont le chemin porte un guillemet ou un gestionnaire", () => {
+  assert.equal(imageSure(SUPA_PUB + "content/photos/u/x.jpg\" onerror=\"alert(5)"), null);
+  assert.equal(imageSure(CDN + "photos/u/x.jpg%22%20onerror%3Dalert(1)"), null);
+  assert.equal(imageSure(CDN + "photos/u/x.jpg#\"><img src=x>"), null);
+  assert.equal(imageSure(CDN + "photos/u/x.jpg?\"><img src=x>"), null);
+  // Les formes LÉGITIMES tiennent toujours : la garde ne coupe pas le service.
+  assert.equal(imageSure(CDN + "photos/u/x.jpg"), CDN + "photos/u/x.jpg");
+  assert.equal(imageSure(SUPA_PUB + "content/avatars/u/a.webp"), CDN + "avatars/u/a.webp");
+});

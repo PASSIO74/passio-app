@@ -7,7 +7,7 @@
 // toutes les tables du compte, c'est coûteux, et il n'y a aucune raison d'en
 // faire plusieurs par minute.
 // ═══════════════════════════════════════════════════════════════════════════
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import { exporterCompte } from "../_shared/export-compte.js";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { REVISION } from "../_shared/revision.js";

@@ -144,6 +144,14 @@ export function desamorcer(texte, maxLignes = 40) {
       // permettent à un texte de SORTIR de son cadre et de parler en son nom.
       l = l.replace(/`/g, "\u02cb").replace(/[<>]/g, "\u2039");
       l = l.replace(/^\s{0,3}#{1,6}\s/, "");
+      // Une MENTION est un d\u00e9clencheur : `claude-code.yml` matche
+      // `contains(body/title, '@claude')` sur l'\u00e9v\u00e9nement `issues` \u2014 un texte
+      // d'erreur contenant `@claude` (\u00e9crit par n'importe quel client) relan\u00e7ait
+      // un second run avant le label, la course A1 que le lot existe pour
+      // \u00e9viter (audit 2026-11-02, G-02). Et `@quelqu'un` notifierait une vraie
+      // personne depuis une pile d'erreur. Le signe reste lisible, mais ce
+      // n'est plus un `@` pour GitHub (\uff20 pleine chasse, U+FF20).
+      l = l.replace(/@(?=[A-Za-z0-9_])/g, "\uff20");
       return l;
     })
     .join("\n")

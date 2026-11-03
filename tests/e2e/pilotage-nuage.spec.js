@@ -77,8 +77,16 @@ const BASE = {
 };
 
 // La liste « À faire » est celle que la fonction construirait (vraie fonction).
+// ⚠️ `require()` et non `import()` (audit du 2026-11-02) : `_shared/pilotage.js`
+// est un module ES dans un dossier sans `"type": "module"`. Node 22 le charge
+// par `require(esm)` dans les deux cas ; mais le chargeur ESM que Playwright
+// enregistre (`node:module.register`, transform Babel des fichiers hors
+// node_modules) le compile en CommonJS sous `import()` avec Playwright 1.60 —
+// « SyntaxError: Unexpected token 'export' », les 22 tests de la suite rouges
+// en local alors qu'ils passent en CI (1.64.1). `require()` ne passe pas par ce
+// chargeur : même module, même fonction, quelle que soit la version du banc.
 let aFaire;
-test.beforeAll(async () => { ({ aFaire } = await import("../../supabase/functions/_shared/pilotage.js")); });
+test.beforeAll(() => { ({ aFaire } = require("../../supabase/functions/_shared/pilotage.js")); });
 /** Un état complet : la base, des surcharges, et sa liste « À faire » recalculée. */
 function etat(extra = {}) {
   const e = { ...BASE, ...extra };
@@ -597,8 +605,8 @@ test("⑱ Nouveaux comptes : aucun → dit ; noms illisibles → « Nom non lu �
 test("㉑ Croissance : sources, bouche-à-oreille, rétention « … » quand c'est trop tôt ; coût et geste des jauges ; publication masquée", async ({ page }) => {
   const soucis = [];
   page.on("pageerror", (e) => soucis.push(e.message));
-  const { croissance } = await import("../../supabase/functions/_shared/croissance.js");
-  const { jauges, coutMensuel } = await import("../../supabase/functions/_shared/pilotage.js");
+  const { croissance } = require("../../supabase/functions/_shared/croissance.js");
+  const { jauges, coutMensuel } = require("../../supabase/functions/_shared/pilotage.js");
   const hier = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
   const cr = croissance({ jours: 30, agrege_le: hier, cumul: [
     { mesure: "visite", valeur: "instagram", n: 120 }, { mesure: "inscription", valeur: "instagram", n: 12 },

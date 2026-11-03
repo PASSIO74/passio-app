@@ -67,3 +67,62 @@ test("ASTRA-37 une réponse sans contenu est un succès mesurable, et un corps i
   assert.equal(inattendu.ok, false);
   assert.match(inattendu.motif, /contenu inattendu/);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDIT F (2026-11-02) — SEUILS D'ARRÊT DE `charge.mjs` ET p95 SUR TOUTES LES
+// MESURES. Fixture : les lignes RÉELLES du palier 25 du 15/09 (staging), où la
+// campagne a continué vers 50 malgré 7 livraisons manquées et un p99 de 13 s.
+// ═══════════════════════════════════════════════════════════════════════════
+import { verdictPalierSimple, SEUILS_PALIER } from "../../scripts/charge-verdict.mjs";
+
+const PALIER_25_DU_15_09 = [
+  { palier: 25, requete: "fil (auth)", ok: 603, erreurs: 0, rps: 15.1, p50: 112, p95: 459, p99: 1956 },
+  { palier: 25, requete: "publier", ok: 90, erreurs: 0, rps: 2.3, p50: 230, p95: 3754, p99: 13054 },
+  { palier: 25, requete: "temps réel (insert → reçu)", ok: 83, erreurs: 7, rps: 2.3, p50: 566, p95: 3869, p99: 4191, motifs: "7 × événement non reçu en 10 s" },
+];
+
+test("F-① le palier 25 du 15/09 est ROUGE : livraisons manquées, p95 publier > 1 s, p95 temps réel > 2 s", () => {
+  const v = verdictPalierSimple(PALIER_25_DU_15_09);
+  assert.equal(v.ok, false);
+  assert.ok(v.motifs.some((m) => /LIVRAISON_MANQUEE \(7\)/.test(m)), v.motifs.join(" ; "));
+  assert.ok(v.motifs.some((m) => /publier : P95_SUP_1000_MS/.test(m)));
+  assert.ok(v.motifs.some((m) => /P95_REALTIME_SUP_2000_MS/.test(m)));
+  assert.ok(!v.motifs.some((m) => /^fil/.test(m)), "le fil (p95 459 ms, 0 erreur) ne doit pas être cité");
+});
+
+test("F-② le palier 10 du 15/09 (tenue 5 min) est VERT hors temps réel, et ROUGE à cause des 5 livraisons manquées", () => {
+  const sans = [
+    { requete: "fil (auth)", ok: 6716, erreurs: 0, p95: 115 }, { requete: "aimer", ok: 6717, erreurs: 0, p95: 105 },
+    { requete: "publier", ok: 367, erreurs: 0, p95: 578 },
+  ];
+  assert.deepEqual(verdictPalierSimple(sans), { ok: true, motifs: [] });
+  const avec = [...sans, { requete: "temps réel (insert → reçu)", ok: 362, erreurs: 5, p95: 799 }];
+  const v = verdictPalierSimple(avec);
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.motifs, ["temps réel (insert → reçu) : LIVRAISON_MANQUEE (5)"]);
+});
+
+test("F-③ 1 % d'erreurs est la borne : 1/100 passe, 2/100 arrête ; une famille sans mesure est un motif, pas un vert", () => {
+  assert.equal(verdictPalierSimple([{ requete: "fil", ok: 99, erreurs: 1, p95: 100 }]).ok, true);
+  assert.equal(verdictPalierSimple([{ requete: "fil", ok: 98, erreurs: 2, p95: 100 }]).ok, false);
+  assert.deepEqual(verdictPalierSimple([{ requete: "fil", ok: 0, erreurs: 0 }]).motifs, ["fil : AUCUNE_MESURE"]);
+  assert.deepEqual(verdictPalierSimple([]), { ok: false, motifs: ["PALIER_SANS_MESURE"] });
+  assert.deepEqual(SEUILS_PALIER, { tauxErreurMax: 0.01, p95HttpMs: 1000, p95RealtimeMs: 2000 });
+});
+
+test("F-④ `p95Tous` compte les échecs : 50 % de requêtes expirées à 12 s donnent un p95 (succès) VERT et un p95Tous ROUGE", () => {
+  const mesures = [];
+  for (let i = 0; i < 50; i++) mesures.push({ ok: true, ms: 80 });
+  for (let i = 0; i < 50; i++) mesures.push({ ok: false, motif: "réseau : timeout", ms: 12000 });
+  const l = ligneRapport(50, "fil (auth)", mesures, 20);
+  assert.equal(l.p95, 80, "contrat historique : percentiles des seuls succès");
+  assert.equal(l.p95Tous, 12000);
+  const v = verdictPalierSimple([l]);
+  assert.equal(v.ok, false);
+  assert.ok(v.motifs.some((m) => /ERREURS_SUP_1_PCT \(50\/100\)/.test(m)));
+  assert.ok(v.motifs.some((m) => /P95_SUP_1000_MS \(12000\)/.test(m)), "c'est p95Tous qui est lu, jamais le p95 des succès");
+});
+
+test("F-⑤ sans `p95Tous` (rapport d'avant le 2026-11-02), le verdict retombe sur `p95` plutôt que de laisser passer", () => {
+  assert.equal(verdictPalierSimple([{ requete: "fil", ok: 100, erreurs: 0, p95: 1500 }]).ok, false);
+});

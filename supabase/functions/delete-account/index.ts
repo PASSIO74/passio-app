@@ -15,7 +15,7 @@
 // « en le disant » et ce fichier jetait la note : HTTP 200 `ok:true`.
 // Ici : authentifier, construire le client de service, déléguer.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import { traiterSuppression } from "../_shared/suppression-compte.js";
 import { REVISION } from "../_shared/revision.js";
 
