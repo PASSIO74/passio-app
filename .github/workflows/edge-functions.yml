@@ -119,9 +119,15 @@ jobs:
           fi
           FONCTIONS="${{ github.event.inputs.fonction }}"
           if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account pilotage"; fi
+          # ⚠️ `--yes` (2026-11-03) : la CLI `latest` demande désormais une
+          # confirmation avant de déployer — « This run can't ask because stdout
+          # is not a terminal. Nothing was changed. » — et sortait en 1 : deux
+          # déploiements de suite refusés (89bf6f4a, 36f5b3b2), la fonction en
+          # service restant l'ancienne. Le message « jeton absent » plus haut
+          # n'y était pour rien (le secret était présent, masqué `***`).
           for f in $FONCTIONS; do
             echo "── déploiement : $f ──"
-            supabase functions deploy "$f" --project-ref "$PROJECT_REF"
+            supabase functions deploy "$f" --project-ref "$PROJECT_REF" --yes
           done
           echo "DEPLOYEES=$FONCTIONS" >> "$GITHUB_ENV"
 
