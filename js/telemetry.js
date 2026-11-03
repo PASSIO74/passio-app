@@ -1085,6 +1085,13 @@
     // Posé ici, il gagne aussi sur une clé homonyme de l'appelant : sans quoi un
     // `meta: { ech: 1000 }` piloterait un multiplicateur du tableau de bord
     // depuis le client (`poidsEvenement` accepte jusqu'à 1000).
+    // ⚠️ ET IL EST RETIRÉ D'ABORD (audit du 2026-11-02) : « gagner » ne valait
+    // que sur une ligne ÉCHANTILLONNÉE. Sur toute autre ligne — l'immense
+    // majorité —, un `ech` de l'appelant traversait `scrubMeta` (clé hors de
+    // DENY_KEY, valeur numérique acceptée) et partait tel quel : un poids de
+    // 1000 forgé côté client, que `poidsEvenement` (dashboard) et `fluxHeures`
+    // (veille) auraient multiplié. Seul CE fichier pose `ech`, jamais un appelant.
+    if (ev.meta && typeof ev.meta === "object" && Object.prototype.hasOwnProperty.call(ev.meta, "ech")) delete ev.meta.ech;
     if (_taux < 1) { if (!ev.meta || typeof ev.meta !== "object") ev.meta = {}; ev.meta.ech = Math.round(1 / _taux); }
     // `trafic` : même règle que `ech`, posé APRÈS le filtre — il échappe au
     // plafond de 30 clés, et seul ce fichier le décide. Un appelant ne peut ni

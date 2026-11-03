@@ -1,0 +1,52 @@
+{
+ "visiteur": {
+  "note": "STUB LOCAL (servir-dist.js, réseau non bridé, hôtes externes coupés, aucun geste) — artefact NON minifié : la CI minifie ensuite",
+  "profil": "visiteur",
+  "premierEcranRequetes": [
+   "/index.html",
+   "/styles.css?v=48d83aa942",
+   "/app.js?v=81c482847e"
+  ],
+  "differe": [
+   "/js/vendor/supabase-js-2.116.0.js",
+   "/js/vendor/maplibre-gl-4.7.1.css",
+   "/js/vendor/maplibre-gl-4.7.1.js",
+   "/release.json?ts=1793655146611"
+  ],
+  "ecranIrlOuvert": false,
+  "decodeKo": {
+   "/styles.css": 471,
+   "/app.js": 2948,
+   "/js/vendor/supabase-js-2.116.0.js": 213,
+   "/js/vendor/maplibre-gl-4.7.1.css": 64,
+   "/js/vendor/maplibre-gl-4.7.1.js": 784,
+   "/release.json": 0
+  },
+  "scriptsAvant": 1
+ },
+ "onboarde": {
+  "note": "STUB LOCAL (servir-dist.js, réseau non bridé, hôtes externes coupés, aucun geste) — artefact NON minifié : la CI minifie ensuite",
+  "profil": "onboarde",
+  "premierEcranRequetes": [
+   "/index.html",
+   "/styles.css?v=48d83aa942",
+   "/app.js?v=81c482847e"
+  ],
+  "differe": [
+   "/js/vendor/supabase-js-2.116.0.js",
+   "/js/vendor/maplibre-gl-4.7.1.css",
+   "/js/vendor/maplibre-gl-4.7.1.js",
+   "/release.json?ts=1793655164728"
+  ],
+  "ecranIrlOuvert": false,
+  "decodeKo": {
+   "/styles.css": 471,
+   "/app.js": 2948,
+   "/js/vendor/supabase-js-2.116.0.js": 213,
+   "/js/vendor/maplibre-gl-4.7.1.css": 64,
+   "/js/vendor/maplibre-gl-4.7.1.js": 784,
+   "/release.json": 0
+  },
+  "scriptsAvant": 1
+ }
+}

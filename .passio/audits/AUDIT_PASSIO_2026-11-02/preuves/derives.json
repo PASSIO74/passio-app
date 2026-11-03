@@ -1,0 +1,67 @@
+{
+ "quotaLocalStorage": {
+  "note": "STUB — quota simulé à 4 Mo sur Storage.prototype.setItem ; vocal = 240 Ko base64 ×20",
+  "octetsConversations": 4881129,
+  "refusLocalStorage": 1,
+  "erreurSync": null,
+  "localStorageAJoue": false,
+  "localStorageMessages": null,
+  "idbLu": "OK",
+  "idbMessages": 500,
+  "idbVocaux": 20,
+  "idbVocalIntact": true
+ },
+ "fil500": {
+  "note": "STUB — ouverture d'une conversation de 500 messages texte, CPU non bridé",
+  "ouvertureMs": 25,
+  "longtasks": [],
+  "pire": 0,
+  "noeudsPanneau": 247,
+  "bulles": 0
+ },
+ "sessionLongue": {
+  "note": "STUB — visiteur onboardé sans compte Supabase, 4 tours de 60 navigations + 10 ouvertures/fermetures de conversation",
+  "tours": [
+   {
+    "etape": "après boot",
+    "intervals": 2,
+    "listeners": 136,
+    "channels": 0,
+    "live": [],
+    "tasKo": 12878
+   },
+   {
+    "etape": "tour 1 (60 goTo + 10 conv)",
+    "intervals": 2,
+    "listeners": 136,
+    "channels": 0,
+    "live": [],
+    "tasKo": 17473
+   },
+   {
+    "etape": "tour 2 (60 goTo + 10 conv)",
+    "intervals": 2,
+    "listeners": 136,
+    "channels": 0,
+    "live": [],
+    "tasKo": 21012
+   },
+   {
+    "etape": "tour 3 (60 goTo + 10 conv)",
+    "intervals": 2,
+    "listeners": 136,
+    "channels": 0,
+    "live": [],
+    "tasKo": 20059
+   },
+   {
+    "etape": "tour 4 (60 goTo + 10 conv)",
+    "intervals": 2,
+    "listeners": 136,
+    "channels": 0,
+    "live": [],
+    "tasKo": 23131
+   }
+  ]
+ }
+}

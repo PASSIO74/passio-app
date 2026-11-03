@@ -393,6 +393,25 @@ test("estSelectSeul : SELECT et WITH … SELECT passent ; DML, DDL, enchaînemen
   assert.match(SQL.fluxHeures, /else 1 end/, "une valeur absurde retombe à 1");
 });
 
+// 2026-11-02 (audit G) : depuis la migration croissance du 01/11, la purge de la télémétrie
+// s'appelle `purge_telemetrie_paliers` et `purge_telemetry_7j` est retirée. La requête ne
+// connaissait que `purge_telemetry%` : la veille écrivait « aucune purge telemetry planifiée »
+// (ATTENTION) à chaque passage, sur une base qui en avait une — mesuré sur le [TABLEAU] #504 et
+// confirmé en base (canal ①) : ancienne requête → false, requête corrigée → true.
+// Mutation éprouvée : revenir à `jobname like 'purge_telemetry%'` seul → le cas ② rougit.
+test("purgePlanifiee reconnaît les DEUX noms de la purge (purge_telemetry_7j, purge_telemetrie_paliers) et ignore la purge des compteurs de débit", () => {
+  // Rejoue le `like` de PostgreSQL sur des noms de cron.job, pour éprouver le MOTIF sans base.
+  const like = (nom, motif) => new RegExp("^" + motif.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$", "i").test(nom);
+  const motifs = [...SQL.purgePlanifiee.matchAll(/jobname like '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(motifs.length >= 2, "la requête doit porter au moins deux motifs de nom : " + JSON.stringify(motifs));
+  const planifiee = (jobs) => jobs.some((j) => motifs.some((m) => like(j, m)));
+  assert.equal(planifiee(["purge_telemetry_7j", "purge_client_errors"]), true, "① ouverture publique (11/09)");
+  assert.equal(planifiee(["purge_telemetrie_paliers", "purge_telemetrie_debit", "agreger_croissance"]), true, "② croissance (01/11) — l'état réel de la production au 02/11");
+  assert.equal(planifiee(["purge_telemetrie_debit", "purge_client_errors", "passio_purge_analytics"]), false, "③ la purge des COMPTEURS de débit n'est pas une purge de la télémétrie");
+  assert.equal(planifiee([]), false, "④ aucun job → aucune purge");
+  assert.equal(estSelectSeul(SQL.purgePlanifiee), true);
+});
+
 // 2026-10-05 : la veille a vu sentinelle-distante « sans run depuis 58,8 h »
 // alors que le dernier datait de 2 h — `per_page=1` filtré renvoyait un vieux
 // run. Mutation éprouvée : runPlusRecent → `runs[0]` rougit ce test.

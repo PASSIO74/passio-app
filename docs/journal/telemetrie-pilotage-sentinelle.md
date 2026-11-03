@@ -29,6 +29,7 @@
 - 🔁 « RÉPARER » ROUVRAIT UNE ISSUE À CHAQUE TOUCHER — 16 « [RÉPARER] #627 », AUCUNE CONFIÉE (2026-10-25)
 - 📈 CROISSANCE, COÛT, PALIERS DE TÉLÉMÉTRIE ET PRÉ-TRI DES SIGNALEMENTS — LE PILOTAGE PASSE AU COMMERCE (2026-11-01)
 - 🧯 ENQUÊTES EN PARALLÈLE ET BOUTONS MORTS — LA SENTINELLE NE FAIT PLUS LA QUEUE (2026-11-01)
+- ⏱️ GOUVERNANCE — L'INDEX « COMMIT → PR » DE GITHUB ARRIVE APRÈS LE PUSH : UN DÉPLOIEMENT LÉGITIME REFUSÉ (2026-11-03)
 
 ---
 
@@ -458,6 +459,15 @@ Enquête demandée depuis le pilotage (bouton « Réparer » sur l'issue de veil
 - **Verrous** : `tests/unit/croissance.test.mjs` (dans `npm run verif`), `tests/e2e/pilotage-nuage.spec.js` ㉑ ㉒.
 - **Mise en service en deux temps** : le code (télémétrie, fonction `pilotage`, onglet) part seul en production ; les deux migrations sont dans une PR à part, **périmètre critique** (`migrations/*`) — contre-revue GitHub de PASSIO74 obligatoire, puis `npm run migration:appliquer`. Avant elles : « Pas encore allumée » dans l'onglet, aucun contenu masqué, purge à 7 jours inchangée — rien ne casse.
 - **Pas fait, délibérément** : train de déploiement (contredit la règle « en ligne direct » ; le geste équivalent est Netlify Pro, dit par la jauge) ; coupure distante pendant une réparation de la Sentinelle ; banc de charge à 1 000 comptes (il faut un staging).
+
+## ⏱️ GOUVERNANCE — L'INDEX « COMMIT → PR » DE GITHUB ARRIVE APRÈS LE PUSH : UN DÉPLOIEMENT LÉGITIME REFUSÉ (2026-11-03)
+
+- **Ce qui s'est passé** : la PR #681 (audit du 2026-11-02) est fusionnée à 07:23:40 UTC ; le run de `main` démarre à 07:23:42 ; le job « Gouvernance critique » lit `GET commits/<sha>/pulls` pour retrouver la PR du commit fusionné et reçoit **un tableau vide** → « Push direct sur main : aucune pull request n'est associée… Le déploiement production est refusé. » Les 13 autres jobs sont verts, « Déploiement production » est SAUTÉ, `main` est rouge. Une minute plus tard, la même requête répond `#681`.
+- **Cause** : l'index « commit → pull requests » de GitHub est à **consistance différée** ; le push qui déclenche le run précède son indexation. Ce n'est ni un défaut du dépôt ni un push direct — c'est une course qu'aucune relecture n'aurait vue, puisque le même code passe quand on le rejoue.
+- **Remède immédiat** : `gh run rerun <run> --repo PASSIO74/passio-app --failed` (tentative 2 : gouvernance verte, déploiement vert à 07:37 UTC). Un run rouge « Push direct sur main » juste après une fusion **se relance, il ne se contourne jamais** (pas de push direct, pas de `--sans-attestation`, pas de retrait de la garde).
+- **Correctif durable** (`deploy.yml`, bloc `GOUVERNANCE-INDEX`) : la garde relit l'index **six fois à 10 s d'écart**, puis se rabat sur la **première ligne du message du commit** — « (#N) » ou « Merge pull request #N » — à la seule condition que GitHub confirme `pulls/N.merge_commit_sha == GITHUB_SHA` : un push direct dont le message imite une fusion reste refusé. Le chemin nominal (index renseigné) ne change pas et n'attend rien.
+- **Verrou** : `tests/unit/sentinelle-workflows.test.mjs` « gouvernance (push) : index vide… » — cinq cas (index renseigné sans attente ; repli confirmé après six `sleep 10` ; message imité → refus ; forme « Merge pull request » ; message sans numéro → refus). Deux mutations éprouvées rouges : retirer la boucle, retirer la comparaison du `merge_commit_sha`.
+- **Pièges** : `retour-issue` lit le même index, mais 30 min plus tard — on ne le touche pas. Le faux `gh` du bac ne connaissait ni `api …/commits/<sha>` ni `api …/pulls/<n>` : une forme inconnue le fait **sortir en 2**, ce que `|| true` absorbe dans la garde — d'où l'ajout des deux formes au bac, sinon le test vert aurait prouvé le repli… par son absence.
 
 ## 2026-11-01 — Release Guardian : du NO_GO structurel au GO prouvé
 

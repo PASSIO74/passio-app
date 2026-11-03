@@ -199,3 +199,35 @@ elle est donc bornée sur quatre axes.
   (mutations off), et restreindre l'accès (VPN / IP allowlist).
 - SSE + REST portent le cookie de session `same-origin`. Les mutations passent par
   POST/PATCH authentifiés.
+
+## 7 bis. Le flux SSE porte les frontières des routes (audit du 2026-11-02)
+
+`/api/stream` ne demandait que `@auth`, et `broadcast(type, data)` écrivait chaque
+message à **tous** les abonnés. Or un diagnostic de la Sentinelle (`sentinel`) cite
+du code du dépôt et le résultat d'une réparation (branche, suites jouées) : la route
+`/api/sentinel*` l'exige à raison derrière la capacité `claude`, mais un `observer`
+ou un `tester` de `DASH_EXTRA_USERS` recevait le même enregistrement par le flux —
+la bande par laquelle `/api/diagnose` avait déjà fuité une fois (§3).
+
+Correctif : `server/sse.js` associe chaque type de message à la capacité de sa route
+(`CAPACITE_PAR_TYPE` : `sentinel*` → `claude`, `test` → `tests`) et `addClient(res,
+role)` retient le rôle de la session ; `broadcast` n'écrit un type réservé qu'aux
+clients dont le rôle porte la capacité (`peutRecevoir`, même matrice que `can`). Un
+type libre (`event`, `alert`, `ping`…) reste lisible par toute session authentifiée ;
+un client sans rôle ne reçoit que les types libres (échec fermé). Verrou :
+`test/sse.test.js` (mutation « garde retirée » rougit).
+
+## 4 ter. Le patch est jugé sur ce qu'il ÉCRIT, pas sur son étiquette (audit du 2026-11-02)
+
+`validatePatch` ne lisait que les en-têtes `diff --git a/… b/…`. Or `git apply` écrit
+sur le chemin des lignes `--- a/…` / `+++ b/…` de chaque section : un patch
+« `diff --git a/js/a.js b/js/a.js` » suivi de « `+++ b/tests/e2e/x.spec.js` » passait
+la liste blanche et modifiait un **test** — mesuré avec `git apply --check` puis
+`git apply` (le fichier du `+++` est écrit). Deux barrières désormais : ① les deux
+familles d'en-têtes sont soumises à la liste blanche (`validatePatch`, verrou
+`test/repair.test.js`, mutation « lignes ---/+++ ignorées » rougit) ; ② après
+`git apply` dans le worktree, `git status --porcelain --untracked-files=all` relit ce
+qui a RÉELLEMENT changé : un fichier hors liste blanche, hors de ce que le patch
+annonçait, ou créé, et la réparation s'arrête (branche supprimée, motif dit). La
+publication (`sentinel-production.js`) re-vérifie `repair.files`, qui vient de
+`validatePatch` : elle hérite de ①.
