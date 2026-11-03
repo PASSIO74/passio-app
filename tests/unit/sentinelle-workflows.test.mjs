@@ -87,8 +87,11 @@ case "$tout" in
   "pr view"*) corps="$(cat "$FX/pr-view.json")" ;;
   "api user"*) corps='{"login":"PASSIO74"}' ;;
   "api"*"/commits/"*"/pulls"*) corps="$(cat "$FX/commit-pulls.json")" ;;
+  # Le commit lui-même (message) et une PR par numéro : le repli de la gouvernance quand l'index est vide.
+  "api"*"/commits/"*) corps="$(cat "$FX/commit.json")" ;;
   "api"*"/pulls/"*"/files"*) corps="$(cat "$FX/pr-files.json")" ;;
   "api"*"/pulls/"*"/reviews"*) corps="[]" ;;
+  "api"*"/pulls/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/pulls/([0-9]+).*#\\1#')"; corps="$(cat "$FX/pr-$n.json")" ;;
   "api"*"/issues/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/issues/([0-9]+).*#\\1#')"; corps="$(cat "$FX/issue-$n.json")" ;;
   "issue create"*) printf '%s :: jeton=%s\\n' "$tout" "\${GH_TOKEN:-}" >> "$LOG"; echo "https://github.com/o/r/issues/999"; exit 0 ;;
   "issue edit"*|"issue comment"*|"issue reopen"*|"issue close"*|"label create"*|"pr merge"*)
@@ -488,6 +491,43 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
   const g5 = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "78", TRUSTED_REVIEWER: "PASSIO74" });
   assert.equal(g5.code, 0, g5.sortie);
   assert.equal(g5.log.trim(), "", "PR humaine non critique : aucun commentaire");
+});
+
+// ═══ Gouvernance — course de l'index « commit → PR » (2026-11-03) ═════════
+test("gouvernance (push) : index vide → six lectures espacées de 10 s, puis repli sur le message du commit CONFIRMÉ par merge_commit_sha ; message imité ou sans numéro → refus « Push direct »", () => {
+  // Mesuré sur le run 41596025846 : deux secondes après la fusion de la PR #681, l'index répondait vide
+  // et la garde refusait un déploiement légitime. Mutations qui rougissent ce verrou :
+  //  - retirer la boucle `for tentative in 1 2 3 4 5 6` (plus de `sleep 10`) ;
+  //  - retirer `if [ "${fusion}" = "${GITHUB_SHA}" ]` (le message imité passerait) ;
+  //  - lire le numéro ailleurs que sur la PREMIÈRE ligne du message (le corps citant une autre PR passerait).
+  const gov = etape(DEP, "governance", "Résoudre la PR").run;
+  const SHA = "a".repeat(40);
+  const pushNonCritique = { "pr-view": { headRefName: "audit/x", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 1 }] };
+  // ① Index renseigné : aucune attente, aucune lecture du commit.
+  fixtures({ ...pushNonCritique, "commit-pulls": [{ number: 681 }] });
+  const direct = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" });
+  assert.equal(direct.code, 0, direct.sortie);
+  assert.ok(!direct.log.includes("sleep"), "index renseigné : pas d'attente\n" + direct.log);
+  assert.ok(direct.summary.includes("PR : #681"), direct.summary);
+  // ② Index vide, message « … (#681) », merge_commit_sha = GITHUB_SHA → six attentes puis PR retrouvée.
+  fixtures({ ...pushNonCritique, "commit-pulls": [], "commit": { sha: SHA, commit: { message: "Audit 2026-11-02 : qualité (#681)\n\nCorps qui cite la PR #12 sans rapport." } }, "pr-681": { number: 681, merge_commit_sha: SHA } });
+  const repli = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" });
+  assert.equal(repli.code, 0, repli.sortie);
+  assert.equal((repli.log.match(/^sleep 10$/gm) || []).length, 6, "six lectures espacées de 10 s\n" + repli.log);
+  assert.ok(repli.sortie.includes("CONFIRMÉE par son merge_commit_sha") && repli.summary.includes("PR : #681"), repli.sortie + repli.summary);
+  // ③ Même message, mais la PR 681 n'a PAS été fusionnée dans ce commit → refus.
+  fixtures({ ...pushNonCritique, "commit-pulls": [], "commit": { sha: SHA, commit: { message: "Un push direct qui imite une fusion (#681)" } }, "pr-681": { number: 681, merge_commit_sha: "c".repeat(40) } });
+  const imite = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" });
+  assert.notEqual(imite.code, 0, "message imité : refusé");
+  assert.ok(imite.sortie.includes("Push direct sur main"), imite.sortie);
+  // ④ Forme « Merge pull request #681 from … » acceptée quand GitHub la confirme.
+  fixtures({ ...pushNonCritique, "commit-pulls": [], "commit": { sha: SHA, commit: { message: "Merge pull request #681 from PASSIO74/audit\n\nAudit" } }, "pr-681": { number: 681, merge_commit_sha: SHA } });
+  assert.equal(jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" }).code, 0, "forme « Merge pull request »");
+  // ⑤ Message sans numéro de PR → refus, sans appeler une PR fantôme.
+  fixtures({ ...pushNonCritique, "commit-pulls": [], "commit": { sha: SHA, commit: { message: "Correctif poussé à la main\n\nVoir la PR #681 pour le contexte." } } });
+  const sans = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" });
+  assert.notEqual(sans.code, 0, "sans numéro sur la première ligne : refusé");
+  assert.ok(sans.sortie.includes("Push direct sur main"), sans.sortie);
 });
 
 // ═══ A7 — Retour sur l'issue au déploiement ══════════════════════════════
