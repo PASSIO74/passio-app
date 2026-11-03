@@ -10582,10 +10582,12 @@ body.ctx-locked #appMain { overflow: hidden; }
   gap: 8px;
   margin-top: 14px;
 }
-/* `flex: 1 1 auto` et non `1 1 0` : à colonnes égales, le libellé long se
-   faisait couper pendant que le court laissait du vide (piège ④ du lot UI-7). */
+/* Un SEUL bouton dans la rangée depuis le 2026-11-03 : il la remplit. Les deux
+   rangées du bas reprennent les 28 px que `padding-right` réserve au × (44 px
+   contre 16 à gauche) : elles sont SOUS lui, et sans ça le bouton seul
+   paraissait décalé vers la gauche. */
 .fr-welcome-actions .btn { flex: 1 1 auto; min-height: 44px; }
-.fr-welcome-cta { min-width: 60%; }
+.fr-welcome-actions, .fr-welcome-liens { margin-right: -28px; }
 .fr-welcome-close {
   position: absolute;
   top: 4px;
@@ -10601,16 +10603,22 @@ body.ctx-locked #appMain { overflow: hidden; }
   border-radius: 50%;
 }
 .fr-welcome-close:hover { color: var(--text); }
-/* « J'ai déjà un compte » : un lien, pas un troisième bouton dans la rangée
-   (les deux actions du dessus sont en `flex: 1 1 auto` — un troisième y
-   couperait les libelles). Cible de 44 px quand meme : c'est une action
-   essentielle, la seule porte visible vers un compte déjà créé. */
-.fr-welcome-signin {
-  display: block;
-  width: 100%;
-  margin-top: 10px;
-  padding: 0;
+/* Les autres portes sont des LIENS sous le bouton, jamais des boutons de plus
+   dans sa rangée (2026-11-03 : quatre actions à poids presque égal, c'était
+   trop). La rangée passe à la ligne : à 320 px, « Modifier mes passions » et
+   « Me connecter » s'empilent au lieu de se couper. Cible de 44 px quand
+   même : « J'ai déjà un compte » est la seule porte visible vers un compte
+   déjà créé. */
+.fr-welcome-liens {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 20px;
+  margin-top: 6px;
+}
+.fr-welcome-lien {
   min-height: 44px;
+  padding: 0 4px;
   border: none;
   background: none;
   color: var(--accent);
@@ -10619,7 +10627,7 @@ body.ctx-locked #appMain { overflow: hidden; }
   text-align: center;
   cursor: pointer;
 }
-.fr-welcome-signin:hover { text-decoration: underline; }
+.fr-welcome-lien:hover { text-decoration: underline; }
 
 /* ── Panneau « Qu'est-ce qui te passionne ? » ─────────────────────────────── */
 .fr-search-wrap { margin: 12px 0 10px; }
@@ -11336,10 +11344,10 @@ button, a, label, select, summary,
        propre zone de 44 px : deux zones qui se recouvrent, c'est la plus tardive
        qui gagne, et on aurait échangé « trop petit » contre « ça fait autre
        chose ». D'où `bottom: 0` — on ne descend pas d'un pixel. */
-    .post-action::after {
-      content: ""; position: absolute; left: 0; right: 0;
-      top: -17px; bottom: 0; min-height: 44px;
-    }
+    .post-action::after {
+      content: ""; position: absolute; left: 0; right: 0;
+      top: -17px; bottom: 0; min-height: 44px;
+    }
     .cmt-sort { position: relative; }
     .cmt-sort::after { content: ""; position: absolute; inset: -11px 0; min-height: 44px; }
     /* Boutons isolés : l'inset peut être symétrique, rien ne les jouxte. */
@@ -12168,17 +12176,6 @@ button, a, label, select, summary,
 @media (max-width: 340px) {
   :root.passio-first-run .topbar-signup { padding: 0 10px; font-size: 12px; }
 }
-.fr-welcome-signup {
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  margin-top: 8px;
-  border: 1.5px solid var(--accent);
-  background: transparent;
-  color: var(--accent);
-  font-weight: 800;
-}
-.fr-welcome-signup + .fr-welcome-signin { margin-top: 2px; }
 /* ── Changer de lieu simplement (Rencontrer, 2026-10-23) ─────────────────
    Sélecteur de ville (app-07 `openIrlCitySelector`) et raccourcis de la
    carte « Où ? » de la page Filtre (ui-v4a5). L'état choisi ne repose jamais

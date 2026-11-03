@@ -29,6 +29,7 @@
 - 🖥️ L'ANCIENNE LANDING REVENAIT SUR UN ORDINATEUR — compte connu, ni session ni état local (2026-10-13)
 - 🔞 LA PORTE D'ÂGE AVALAIT LA CRÉATION D'ACTIVITÉ — la saisie perdue, rien publié (2026-10-23)
 - ➕ CRÉER UN COMPTE SE VOIT DÈS L'ARRIVÉE — carte de bienvenue et barre du haut (2026-10-23)
+- 1️⃣ LA CARTE DE BIENVENUE N'A PLUS QU'UN BOUTON — celui que son message annonce (2026-11-03)
 
 ---
 
@@ -503,3 +504,14 @@ Deux portes, toutes deux vers `PassioFirstRun.allerInscription` (aucun second sy
 - **carte de bienvenue** : bouton « Créer mon compte » pleine largeur (`.fr-welcome-signup`), sous la rangée — un troisième bouton DANS la rangée en `flex: 1 1 auto` couperait les libellés ;
 - **barre du haut** : pastille « Créer un compte » (`#topbarSignup`), STATIQUE dans `index.html`, affichée seulement sous `:root.passio-first-run` — elle reste là carte fermée, et un compte existant ou la première visite coupée ne la voient jamais. Télémétrie : `guest_signup_started` avec `ctx` `bienvenue` ou `topbar`.
 ⚠️ Mesuré à 360 px : la pastille CHEVAUCHAIT « PASSIO » (la partie gauche ne rétrécit pas). Sous 440 px, en mode visiteur, le nom et la puce Beta cèdent la place, le logo reste. Verrou : `tests/e2e/creer-compte-accueil.spec.js` (8) — dont un contrôle de non-chevauchement à 320/360/390/430 px, réinjection faite (la règle 440 px retirée → 2 rouges), et le bouton de la carte retiré → ① rouge.
+
+## 1️⃣ LA CARTE DE BIENVENUE N'A PLUS QU'UN BOUTON — celui que son message annonce (2026-11-03)
+
+Constat en ouvrant la production comme un visiteur, à 375 px : la carte alignait QUATRE actions à poids presque égal — « Personnaliser mon expérience » (plein), « Explorer d'abord » (contour), « Créer mon compte » (contour, pleine largeur, ajouté le 2026-10-23) et « J'ai déjà un compte — me connecter » (lien). Deux étaient des DOUBLES : « Explorer d'abord » appelait `fermerBienvenue()`, exactement comme le ×, et « Créer mon compte » ouvrait l'inscription comme la pastille `#topbarSignup`, visible dès l'arrivée juste au-dessus de la carte.
+Désormais, UN bouton (`.fr-welcome-cta`), et c'est celui que le message de la carte annonce :
+- **nouveau venu** (« Bienvenue sur PASSIO ») → « Choisir mes passions » (ex-« Personnaliser mon expérience » : le libellé dit ce qui s'ouvre) ; lien « J'ai déjà un compte — me connecter » ;
+- **passions déjà choisies** (« Tes passions sont sur cet appareil / Crée ton compte pour les garder. ») → « Créer mon compte » (`allerInscription('bienvenue')`, même `ctx` de télémétrie qu'avant) ; liens « Modifier mes passions » (`.fr-welcome-passions`) et « Me connecter ».
+⚠️ **« Modifier mes passions » NE PART PAS** : la carte reste la seule porte VISIBLE vers le panneau (l'autre est l'entrée `.fr-only` des Paramètres — la leçon du 2026-09-01). **« J'ai déjà un compte » non plus** : seule porte visible, sans geste préalable, vers un compte existant (2026-09-02).
+⚠️ **L'inscription n'a pas quitté la première page** : pour un nouveau venu, sa porte est la pastille de la barre du haut, et le verrou ① bis exige qu'elle soit visible EN MÊME TEMPS que la carte — sans elle, ce lot rouvrirait le défaut du 2026-10-23.
+⚠️ Les liens partagent une rangée `.fr-welcome-liens` qui PASSE À LA LIGNE : à 320 px, « Modifier mes passions » et « Me connecter » s'empilent au lieu de se couper (mesuré par ① ter). Cibles de 44 px tenues par la boîte de chaque lien. CSS mort retiré avec son émetteur : `.fr-welcome-signup`, `.fr-welcome-cta { min-width: 60% }`. `styles.css` porte 61 lignes en LF seul (8750–8810) au milieu de ses CRLF : un outil d'édition qui normalise les fins de ligne les convertit en silence — comparer le diff à l'octet avant de committer.
+Verrous : `tests/e2e/first-run.spec.js` (« une seule action principale… » compte les `.btn` de la carte — un bouton réintroduit sous un autre nom rougit ; carte « passions choisies » mise à jour) et `tests/e2e/creer-compte-accueil.spec.js` (① réécrit, ① bis, ① ter à 320 et 390 px). **Réinjection** : un second `.btn` (« Plus tard », libellé SANS apostrophe — la première tentative cassait la syntaxe du module et rougissait pour une autre raison) remis dans la carte → 3 rouges (les deux comptes de `.btn` et ①), le témoin « elle s'affiche… » restant vert.
