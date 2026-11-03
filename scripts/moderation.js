@@ -121,11 +121,56 @@ async function rest(cfg, chemin, init) {
   return texte ? JSON.parse(texte) : null;
 }
 
+// Comme `rest`, mais sans sortir sur un refus : le verdict HTTP est RENDU à
+// l'appelant. Pour une lecture qui a un repli (la table des preuves n'existe
+// pas avant sa migration) — un 404 y est un fait à dire, pas une raison de
+// couper l'outil au milieu de `voir`.
+async function lire(cfg, chemin) {
+  const r = await fetch(`${cfg.url}/rest/v1/${chemin}`, { headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}` } });
+  const texte = await r.text();
+  let lignes = null;
+  try { lignes = texte ? JSON.parse(texte) : []; } catch (e) { lignes = null; }
+  return { ok: r.ok && Array.isArray(lignes), status: r.status, lignes: Array.isArray(lignes) ? lignes : [] };
+}
+
+// ⚠️ Chaque valeur admise par `reports_target_type_chk` a son libellé : `story`
+// manquait depuis le 2026-09-14 (migration_moderation_journal), la file
+// l'affichait sous son nom technique.
 const LIBELLE = {
   user: "compte", post: "publication", comment: "commentaire",
-  event: "rencontre", passion: "passion", message: "message",
+  event: "rencontre", passion: "passion", message: "message", story: "story",
 };
 function typeLisible(t) { return LIBELLE[t] || String(t || "?"); }
+
+// ⚠️ UN MESSAGE N'EST PAS TOUJOURS DU TEXTE. Médias, GIF, documents, position,
+// réactions et suppressions voyagent dans une ENVELOPPE JSON (`{type, text,
+// filename, url, sp…}` : `sendMessageToSupabase` app-09, `_withSenderMeta`
+// app-02). La recopier telle quelle noyait le modérateur dans une URL et un
+// profil d'envoi : on dit de QUOI il s'agit. Une URL `data:` (ancien base64)
+// n'est jamais imprimée.
+const MEDIA = {
+  image: "photo", media: "photo ou vidéo", video: "vidéo", audio: "message vocal",
+  file: "document", doc: "document", gif: "GIF", location: "position partagée",
+  react: "réaction", del: "suppression d'un message",
+};
+function decrireContenuMessage(contenu) {
+  const brut = String(contenu == null ? "" : contenu);
+  const t = brut.trim();
+  if (!t) return "(vide)";
+  let d = null;
+  if (t.charAt(0) === "{") { try { d = JSON.parse(t); } catch (e) { d = null; } }
+  if (!d || typeof d !== "object" || typeof d.type !== "string") return brut.slice(0, 600);
+  if (d.type === "text") return String(d.text == null ? "" : d.text).slice(0, 600) || "(vide)";
+  const type = d.type.replace(/[^a-z0-9_-]/gi, "").slice(0, 40) || "?";
+  const morceaux = [`[${MEDIA[type] || "type « " + type + " »"}]`];
+  if (d.fileType) morceaux.push(String(d.fileType).slice(0, 60));
+  if (d.filename) morceaux.push(`fichier « ${String(d.filename).slice(0, 120)} »`);
+  const url = typeof d.url === "string" ? d.url : "";
+  if (/^https?:\/\//i.test(url)) morceaux.push(`lien : ${url.slice(0, 160)}`);
+  else if (url) morceaux.push("données intégrées (non affichées)");
+  else if (d.expired) morceaux.push("média non synchronisé");
+  return morceaux.join(" · ");
+}
 
 // Regroupe par cible : trois personnes qui signalent le même compte, c'est UN
 // sujet à traiter, pas trois. Et le nombre de signaleurs distincts est le seul
@@ -445,6 +490,41 @@ async function voir(cfg) {
         console.log(`   Ville : ${e.city || "—"}   Date : ${e.date_at || "—"}`);
         console.log(`   Texte : ${String(e.description || "").slice(0, 600)}\n`);
       } else console.log(`   (rencontre introuvable)\n`);
+    } else if (t === "message") {
+      // ⚠️ LA PREUVE D'ABORD (E-08, migration_signalements_preuves_2026-11-03.sql).
+      // L'auteur d'un message peut l'effacer ou le réécrire APRÈS le signalement
+      // (policies « Suppression propre » et « Update propre ») : le message
+      // VIVANT n'est donc pas une preuve. La copie posée par le serveur à
+      // l'instant du signalement en est une — quand elle existe (signalant
+      // membre de la conversation, migration appliquée). Sinon on se rabat sur
+      // le message actuel, et on DIT que ce n'en est pas une.
+      const p = await lire(cfg, `signalements_preuves?report_id=eq.${encodeURIComponent(l.id)}&select=message_id,conv_id,auteur_id,contenu,envoye_le,copie_le`);
+      const preuve = p.ok ? p.lignes[0] : null;
+      const v = await lire(cfg, `conv_messages?id=eq.${cible}&select=id,conv_id,from_id,content,created_at`);
+      const vivant = v.ok ? v.lignes[0] : null;
+      if (preuve) {
+        console.log(`   ── Le message visé (PREUVE copiée par le serveur au signalement, le ${preuve.copie_le}) ──`);
+        console.log(`   Auteur       : ${abrege(preuve.auteur_id)}`);
+        console.log(`   Conversation : ${abrege(preuve.conv_id)}`);
+        console.log(`   Envoyé le    : ${preuve.envoye_le || "—"}`);
+        console.log(`   Contenu      : ${decrireContenuMessage(preuve.contenu)}`);
+        if (!v.ok) console.log(`   (message actuel illisible : ${v.status})`);
+        else if (!vivant) console.log(`   ⚠️  Message SUPPRIMÉ depuis le signalement : cette preuve en est la seule trace.`);
+        else if (vivant.content !== preuve.contenu) console.log(`   ⚠️  Message MODIFIÉ depuis le signalement. Version actuelle : ${decrireContenuMessage(vivant.content)}`);
+        console.log("");
+      } else {
+        console.log(p.ok
+          ? `   ℹ️  Aucune preuve copiée pour ce signalement (antérieur à la migration, ou signalant non membre de la conversation).`
+          : `   ⚠️  Preuves illisibles (${p.status}) : migrations/migration_signalements_preuves_2026-11-03.sql est-elle appliquée ? On lit le message ACTUEL.`);
+        if (vivant) {
+          console.log(`   ── Le message visé (version ACTUELLE : son auteur a pu la modifier, ce n'est pas une preuve) ──`);
+          console.log(`   Auteur       : ${abrege(vivant.from_id)}`);
+          console.log(`   Conversation : ${abrege(vivant.conv_id)}`);
+          console.log(`   Envoyé le    : ${vivant.created_at || "—"}`);
+          console.log(`   Contenu      : ${decrireContenuMessage(vivant.content)}\n`);
+        } else if (!v.ok) console.log(`   (message illisible : ${v.status})\n`);
+        else console.log(`   (message introuvable — supprimé par son auteur ? Sans preuve, il n'y a plus rien à montrer.)\n`);
+      }
     } else if (t === "passion") {
       console.log(`   → Cette file-là a son outil : node scripts/passions-moderation.js signalees\n`);
     }

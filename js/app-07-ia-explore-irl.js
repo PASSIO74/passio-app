@@ -3607,7 +3607,18 @@ async function _promoteNextWaitlisted(ev) {
   if (window._supaReal && ev.fromSupabase && typeof supaFirstWaitlisted === "function") {
     next = await supaFirstWaitlisted(ev.id) || next;
   }
-  if (!next) return;
+  // ⚠️ SANS FILE LISIBLE, LA BASE CHOISIT QUAND MÊME (C-04, revue du
+  // 2026-11-03). Depuis `migration_participants_visibilite_2026-11-03.sql`,
+  // celui qui part ne voit plus la liste d'attente : `supaFirstWaitlisted` part
+  // APRÈS son DELETE — il n'a plus de ligne, donc plus de lien — et rend `null`.
+  // `if (!next) return` laissait alors la place vide alors que la RPC
+  // `promouvoir_attente` choisit SEULE le premier arrivé quand `p_user_id` est
+  // nul. Sur le chemin RPC on l'appelle donc toujours ; `next` n'y est qu'une
+  // estimation, utile au seul chemin de transition (RPC absente, PGRST202), qui
+  // garde sa garde : sans personne désignée, il n'a rien à écrire.
+  const parRpc = !!(window._supaReal && ev.fromSupabase && !window._promotionRpcAbsente
+    && typeof supaPromoteFromWaitlist === "function");
+  if (!next && !parRpc) return;
   // ⚠️ LA PROMOTION N'EST ANNONCÉE QUE SI LE SERVEUR L'A ÉCRITE (IRL-04,
   // 2026-09-14). `supaPromoteFromWaitlist` rendait déjà son verdict (zéro ligne
   // = non appliquée), mais il n'était pas lu : la personne recevait « tu es
@@ -3621,17 +3632,32 @@ async function _promoteNextWaitlisted(ev) {
       try { if (typeof diagLog === "function") diagLog("promotion KO " + ev.id); } catch (e) {}
       return; // l'état local n'a pas bougé : rien à annuler, rien à annoncer
     }
-    if (promu.userId) next = promu.userId;
+    if (promu.userId) next = promu.userId;   // la personne que la base a RÉELLEMENT promue
     notifieeParServeur = !!promu.notifieeParServeur;
   }
-  ev.waitlist = (ev.waitlist || []).filter(x => x !== next);
-  if (!(ev.attendees || []).includes(next)) ev.attendees = (ev.attendees || []).concat([next]);
-  saveState();
+  if (!next) return;   // promotion écrite mais personne nommée : rien à peindre
+  _appliquerPromotionLocale(ev, next);
   // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
   if (!notifieeParServeur && typeof supaInsertNotif === "function") {
     supaInsertNotif(next, "event_update", ev.id, "une place s'est libérée, tu es inscrit·e !");
   }
+}
+
+// Une promotion ÉCRITE (par la base, ou en local hors serveur) passe la
+// personne de la file aux venants : les listes ET le compteur serveur mémorisé
+// (C-04). Sans l'ajustement, `_nbInscrits` — le plus grand de la liste et du
+// compteur — gardait « Liste d'attente (1) » et un « +1 autre » fantôme après
+// la promotion du seul inscrit en attente, jusqu'au prochain chargement. Puis
+// on repeint ce qui le montre : la carte, et la fiche si elle est ouverte.
+function _appliquerPromotionLocale(ev, uid) {
+  if (!ev || !uid) return;
+  ev.waitlist = (ev.waitlist || []).filter(x => x !== uid);
+  if (!(ev.attendees || []).includes(uid)) ev.attendees = (ev.attendees || []).concat([uid]);
+  _ajusterCompteInscrits(ev, "waitlist", -1);
+  _ajusterCompteInscrits(ev, "going", +1);
+  saveState();
   _patchEventCardJoin(ev.id);
+  _refreshEventDetailIfOpen(ev.id);
 }
 
 // ===== Discussion de groupe des participants =====
@@ -4124,24 +4150,35 @@ function openEventDetails(id) {
 
   // Trombinoscope réutilisable (venants / peut-être / liste d'attente). Une pastille
   // ✅ marque ceux qui ont pointé leur arrivée.
-  const _faces = (list, max) => (list || []).slice(0, max || 12).map(aid => {
-    const u = userById(aid) || { name: aid === "me" ? (currentProfile()?.name || "Moi") : "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
-    const firstName = (u.name || "?").split(" ")[0];
-    const here = (ev.checkedIn || []).indexOf(aid) > -1;
-    return `<div class="event-detail-participant" role="button" tabindex="0" aria-label="Profil de ${escapeHtml((u && u.name) || "participant")}" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(aid)}')">
+  const _pastilleReste = (n, titre) => `<div class="event-detail-participant"${titre ? ` title="${escapeHtml(titre)}"` : ""}><span style="font-size:12px;color:var(--muted);">+${n} autre${n > 1 ? "s" : ""}</span></div>`;
+  // `sansReste` : l'appelant écrit lui-même la pastille « +N » (`_facesEtReste`).
+  const _faces = (list, max, sansReste) => {
+    const lim = max || 12;
+    const n = (list || []).length;
+    return (list || []).slice(0, lim).map(aid => {
+      const u = userById(aid) || { name: aid === "me" ? (currentProfile()?.name || "Moi") : "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
+      const firstName = (u.name || "?").split(" ")[0];
+      const here = (ev.checkedIn || []).indexOf(aid) > -1;
+      return `<div class="event-detail-participant" role="button" tabindex="0" aria-label="Profil de ${escapeHtml((u && u.name) || "participant")}" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(aid)}')">
       <div class="avatar sm" style="background:${avatarBg(u)};position:relative;">${avatarInner(u)}${here ? '<span class="ev-here-dot" title="Sur place">✅</span>' : ""}</div>
       <div class="event-detail-participant-name">${escapeHtml(firstName)}</div>
     </div>`;
-  }).join("") + ((list || []).length > (max || 12) ? `<div class="event-detail-participant"><span style="font-size:12px;color:var(--muted);">+${(list || []).length - (max || 12)} autres</span></div>` : "");
+    }).join("") + (!sansReste && n > lim ? _pastilleReste(n - lim) : "");
+  };
   // Les visages sont ceux que la base me laisse voir (C-04) ; le nombre, lui, est
   // complet : l'écart s'écrit « +N autres » plutôt que de laisser croire que la
   // liste s'arrête là.
+  // ⚠️ UNE SEULE PASTILLE (revue du 2026-11-03) : `_faces` écrivait déjà son
+  // « +N autres » au-delà de `max`, et l'on y AJOUTAIT l'écart au nombre public —
+  // 13 visages lisibles et 3 cachés donnaient « +1 autres » puis « +3 autres ».
+  // Tout ce qui n'a pas de visage à l'écran (au-delà de `max`, ou illisible) est
+  // compté ici, une fois : total − visages montrés.
   const _facesEtReste = (list, max, total) => {
+    const lim = max || 12;
     const vus = (list || []).length;
-    const html = _faces(list, max);
-    const caches = Math.max(0, (total || 0) - vus);
-    if (!caches) return html;
-    return html + `<div class="event-detail-participant" title="Inscrits que tu ne suis pas"><span style="font-size:12px;color:var(--muted);">+${caches} autre${caches > 1 ? "s" : ""}</span></div>`;
+    const html = _faces(list, lim, true);
+    const caches = Math.max(0, Math.max(total || 0, vus) - Math.min(vus, lim));
+    return caches ? html + _pastilleReste(caches, "Autres inscrits") : html;
   };
   const participantsHtml = _facesEtReste(atts, 12, nbVenants);
 
@@ -6374,9 +6411,12 @@ function openEventManage(id) {
   if (!ev) return;
   if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cet événement"); return; }
   const cancelled = _eventIsCancelled(ev);
-  const n = (ev.attendees || []).length;
+  // Les NOMBRES affichés passent par `_nbInscrits` (C-04) : la liste lisible
+  // n'est pas le compteur, même si l'organisation, elle, lit toutes les lignes.
+  const n = _nbInscrits(ev, "going");
   const seriesCount = ev.seriesId ? allEvents().filter(e => e.seriesId === ev.seriesId).length : 0;
-  const checked = (ev.checkedIn || []).length;
+  const checked = _nbInscrits(ev, "checked_in");
+  const enAttente = _nbInscrits(ev, "waitlist");
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Gérer l'événement</div>
@@ -6384,7 +6424,7 @@ function openEventManage(id) {
     <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Co-organisateurs (${(ev.coOrganizers || []).length})</button>
-    ${(ev.waitlist || []).length ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${ev.waitlist.length})</button>` : ""}
+    ${enAttente ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'événement" : "Annuler l'événement"}</button>
     ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">Supprimer définitivement</button>
@@ -6473,6 +6513,7 @@ async function promoteWaitlisted(id, userId) {
   // était atteinte). Le verdict serveur d'abord, l'écran ensuite — comme la
   // promotion automatique, corrigée le 14/09.
   let notifieeParServeur = false;
+  let promu = userId;
   if (window._supaReal && typeof supaPromoteFromWaitlist === "function") {
     // Promotion CHOISIE par l'organisation : la base vérifie ce droit (B-02).
     const ok = await supaPromoteFromWaitlist(id, userId);
@@ -6483,12 +6524,13 @@ async function promoteWaitlisted(id, userId) {
       return false;
     }
     notifieeParServeur = !!ok.notifieeParServeur;
+    if (ok.userId) promu = ok.userId;   // la personne que la base a RÉELLEMENT promue
   }
-  ev.waitlist = (ev.waitlist || []).filter(x => x !== userId);
-  if (!(ev.attendees || []).includes(userId)) ev.attendees = (ev.attendees || []).concat([userId]);
-  saveState();
+  // Listes, compteur serveur mémorisé (C-04), carte et fiche ouverte : même
+  // chemin que la promotion automatique.
+  _appliquerPromotionLocale(ev, promu);
   // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
-  if (!notifieeParServeur && typeof supaInsertNotif === "function") supaInsertNotif(userId, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
+  if (!notifieeParServeur && typeof supaInsertNotif === "function") supaInsertNotif(promu, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
   toast("Participant inscrit");
   openEventWaitlist(id);
   return true;
@@ -6594,10 +6636,13 @@ function _prevenirSuppressionActivite(ev) {
 function _messageEventAttendees(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
+  // Le nombre annoncé est celui des personnes RÉELLEMENT prévenues
+  // (`_destinatairesActivite`, la seule liste d'envoi) — pas la longueur de
+  // `attendees`, qui comptait l'organisation et oubliait « peut-être » et file.
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Prévenir les inscrits</div>
-    <div class="modal-subtitle">${(ev.attendees || []).length} personne(s) recevront une notification.</div>
+    <div class="modal-subtitle">${_destinatairesActivite(ev).length} personne(s) recevront une notification.</div>
     <label class="field"><span>Message</span>
       <textarea class="textarea" id="evBroadcast" maxlength="200" placeholder="Ex : on se retrouve finalement devant l'entrée nord !"></textarea>
     </label>

@@ -5711,6 +5711,45 @@ function _attendeesRefusMemorise(err, ou) {
 function _oublierRefusLecturesIRL() {
   _attendeesRefusLecture = false;
   _eventColsPubliquesSeulement = false;
+  // Les deux mémos « RPC absente » de C-04 (voir `_memoRpcAbsenteActif`) : une
+  // session rétablie est l'occasion de revoir si la migration est passée.
+  _memoRpcAbsenteLever("_participantsCompteAbsent");
+  _memoRpcAbsenteLever("_notesEvenementAbsente");
+}
+
+// ── LES MÉMOS « RPC ABSENTE » DE C-04 ONT UNE DURÉE DE VIE (revue 2026-11-03) ──
+// `participants_compte` et `notes_evenement` rendent PGRST202 tant que
+// `migration_participants_visibilite_2026-11-03.sql` n'est pas en base : on le
+// mémorise pour ne pas payer un 404 par lecture. Mais posé À VIE, le mémo
+// survivait à sa cause : une PWA ouverte AVANT la migration continuait de
+// prendre la liste nominative — devenue PARTIELLE après la migration — pour le
+// nombre d'inscrits, et la moyenne des notes restait indisponible, jusqu'au
+// prochain rechargement complet (une application installée ne recharge presque
+// jamais). Même contrat que `fil_compteurs` (`_filCompteursMemoAbsence`) : UNE
+// HEURE de vie (`FIL_COMPTEURS_ABSENTE_TTL_MS`), puis la fonction est retentée ;
+// et la levée par `_oublierRefusLecturesIRL` (SIGNED_IN / TOKEN_REFRESHED).
+// ⚠️ Le drapeau reste un booléen (`window._participantsCompteAbsent`,
+// `window._notesEvenementAbsente`, lus tels quels par les bancs) ; l'heure de
+// pose vit À CÔTÉ (`…Le`). Sans heure lisible — ou une heure dans le futur,
+// horloge reculée —, le mémo ne vaut rien : retenter coûte un aller-retour,
+// se taire à tort coûte des compteurs faux.
+function _memoRpcAbsenteActif(drapeau) {
+  try {
+    if (!window[drapeau]) return false;
+    const depuis = Number(window[drapeau + "Le"]);
+    const age = Date.now() - depuis;
+    if (Number.isFinite(depuis) && depuis > 0 && age >= 0 && age < FIL_COMPTEURS_ABSENTE_TTL_MS) return true;
+    _memoRpcAbsenteLever(drapeau);   // expiré : la prochaine lecture retente
+    return false;
+  } catch (e) { return false; }
+}
+function _memoRpcAbsentePoser(drapeau) {
+  window[drapeau] = true;
+  window[drapeau + "Le"] = Date.now();
+}
+function _memoRpcAbsenteLever(drapeau) {
+  window[drapeau] = false;
+  window[drapeau + "Le"] = 0;
 }
 
 // `authorId` (facultatif) : les activités qu'UN compte organise, lues à
@@ -5766,13 +5805,14 @@ async function supaLoadEvents(authorId) {
       // compteur — venants, peut-être, liste d'attente, pointés — reste public
       // parmi les connectés : RPC `participants_compte` (SECURITY DEFINER, 200
       // activités par appel). RPC absente (PGRST202 : base pas encore migrée) →
-      // mémo pour la session et la liste fait foi, comme avant. Un échec réseau
-      // ne mémorise rien : la prochaine lecture retente.
-      if (!window._participantsCompteAbsent) {
+      // mémo d'UNE HEURE (`_memoRpcAbsenteActif`, levé aussi par un jeton frais)
+      // et la liste fait foi, comme avant. Un échec réseau ne mémorise rien : la
+      // prochaine lecture retente.
+      if (!_memoRpcAbsenteActif("_participantsCompteAbsent")) {
         try {
           const rc = await supa.rpc("participants_compte", { p_event_ids: evIds.slice(0, 200) });
           if (rc && rc.error) {
-            if (String(rc.error.code || "") === "PGRST202") window._participantsCompteAbsent = true;
+            if (String(rc.error.code || "") === "PGRST202") _memoRpcAbsentePoser("_participantsCompteAbsent");
             else console.warn("participants_compte :", rc.error.message);
           } else {
             (rc && Array.isArray(rc.data) ? rc.data : []).forEach(c => {
@@ -6328,6 +6368,65 @@ function _fractionMicrosecondes(s) {
   while (d.length < 3) d += "0";
   return Number(d) / 1000;
 }
+// ── UN MESSAGE DE CONTRÔLE N'AGIT QUE SUR CE QUI APPARTIENT À SON EXPÉDITEUR ──
+// (revue du 2026-11-03). `{type:"del"}` et `{type:"react"}` sont des lignes de
+// `conv_messages` comme les autres : TOUT membre de la conversation peut en
+// insérer, avec la cible qu'il veut. Or « Supprimer pour tous » retirait la
+// cible de la copie locale de chacun SANS regarder qui la demandait — n'importe
+// quel membre d'un groupe effaçait chez tous les autres le message d'un autre
+// membre (et la persistance locale rendait l'effacement durable). De même, une
+// réaction n'était qu'un compteur : un « add » répété le gonflait sans fin, et
+// un « remove » effaçait la réaction de quelqu'un d'autre.
+// La règle, aux DEUX points d'application (rejeu de `supaLoadMessages` et temps
+// réel de `_handleIncomingConvMessage`) :
+//   · l'expéditeur est le `from_id` DE LA LIGNE — la RLS d'INSERT l'impose égal
+//     à `auth.uid()` —, JAMAIS un champ du JSON (`from`, `user_id`… y sont
+//     ignorés : la charge est écrite par l'expéditeur) ;
+//   · une suppression ne s'applique que si l'auteur de la cible EST cet
+//     expéditeur ; une cible pas (encore) connue localement est ignorée — rien
+//     ne la mettait en attente, et rien ne la rejouerait à son arrivée ;
+//   · une réaction est attribuée à cet expéditeur (`reactBy[emoji]` = liste des
+//     identifiants) : une par personne et par emoji, retirée par elle seule.
+// `_deleteMsgForAll` (app-04) n'est pas touché : il ne propose « Supprimer pour
+// tous » que sur MES messages, et c'est mon `from_id` qui part avec le contrôle.
+// Auteur comparable d'un message local : « me » (le mien) devient MY_UID.
+function _ctrlAuteur(from) {
+  if (from === "me") return (typeof MY_UID !== "undefined" && MY_UID) ? String(MY_UID) : "me";
+  return from == null ? "" : String(from);
+}
+// Vrai si `expediteur` (le `from_id` de la ligne de contrôle) a écrit `cible`.
+// Un message sans auteur (message système) ne se supprime par aucun contrôle.
+function _ctrlSuppressionAutorisee(cible, expediteur) {
+  if (!cible) return false;
+  var auteur = _ctrlAuteur(cible.from), qui = _ctrlAuteur(expediteur);
+  return !!auteur && !!qui && auteur === qui;
+}
+// Enregistre la réaction de `expediteur` sur `tm` (clé déjà filtrée par
+// `_reactionKeySure`). Rend vrai si l'état a changé — le total doit alors
+// suivre ; faux pour un doublon, ou pour le retrait d'une réaction qui n'est pas
+// la sienne.
+// ⚠️ Transition : un message dont le total date d'avant ce correctif n'a pas de
+// `reactBy` ; le retrait d'une réaction comptée alors est ignoré en temps réel,
+// et la prochaine lecture de la conversation (rejeu complet) rétablit le total.
+function _ctrlReactionAttribuee(tm, cle, op, expediteur) {
+  if (!tm || !cle || cle === "__proto__") return false;
+  var qui = _ctrlAuteur(expediteur);
+  if (!qui) return false;
+  if (!tm.reactBy || typeof tm.reactBy !== "object" || Array.isArray(tm.reactBy)) tm.reactBy = {};
+  var par = tm.reactBy;
+  var liste = (Object.prototype.hasOwnProperty.call(par, cle) && Array.isArray(par[cle])) ? par[cle] : [];
+  var i = liste.indexOf(qui);
+  if (op === "remove") {
+    if (i < 0) return false;
+    liste.splice(i, 1);
+  } else {
+    if (i >= 0) return false;
+    liste.push(qui);
+  }
+  if (liste.length) par[cle] = liste; else delete par[cle];
+  return true;
+}
+
 async function supaLoadMessages(convId) {
   // Charge les messages (GIFs, pièces jointes, localisations encodées en JSON dans content)
   try {
@@ -6415,15 +6514,31 @@ async function supaLoadMessages(convId) {
     var clean = messages.filter(function(m){ return !m._ctrl; });
     if (ctrls.length) {
       var byId = {}; clean.forEach(function(m){ byId[m.id] = m; });
+      // ⚠️ `m.from` est l'EXPÉDITEUR DE LA LIGNE (`from_id`, que la RLS d'INSERT
+      // impose égal à `auth.uid()`), jamais un champ du JSON : c'est lui seul
+      // qui décide de ce que le contrôle a le droit de toucher (voir
+      // `_ctrlSuppressionAutorisee`, `_ctrlReactionAttribuee`).
       ctrls.forEach(function(m){
         var ev = m._ctrl;
-        if (ev.type === "del") { var i = clean.findIndex(function(x){ return x.id === ev.target; }); if (i >= 0) { delete byId[ev.target]; clean.splice(i,1); } }
+        if (ev.type === "del") {
+          var i = clean.findIndex(function(x){ return x.id === ev.target; });
+          // Une cible inconnue (jamais lue, ou au-delà de la borne de lecture)
+          // n'est pas mise en attente : rien ne la rejouerait à son arrivée.
+          if (i >= 0 && _ctrlSuppressionAutorisee(clean[i], m.from)) { delete byId[ev.target]; clean.splice(i,1); }
+        }
         else if (ev.type === "react" && ev.target) {
           // Second point d'écriture des réactions : le REJEU au chargement.
           // Il doit filtrer comme le temps réel, sinon la charge hostile entre
           // par cette porte-ci — et la persistance la garde.
           var _k = (typeof _reactionKeySure === "function") ? _reactionKeySure(ev.emoji) : ev.emoji;
-          var tm = _k ? byId[ev.target] : null; if (tm) { tm.reactions = tm.reactions || {}; if (ev.op === "remove") { tm.reactions[_k] = (tm.reactions[_k]||1)-1; if (tm.reactions[_k] <= 0) delete tm.reactions[_k]; } else { tm.reactions[_k] = (tm.reactions[_k]||0)+1; } }
+          var tm = _k ? byId[ev.target] : null;
+          // Le total est le nombre de PERSONNES qui ont cette réaction : un
+          // « add » répété ne gonfle rien, un « remove » n'efface que la sienne.
+          if (tm && _ctrlReactionAttribuee(tm, _k, ev.op, m.from)) {
+            tm.reactions = tm.reactions || {};
+            var _n = tm.reactBy[_k] ? tm.reactBy[_k].length : 0;
+            if (_n > 0) tm.reactions[_k] = _n; else delete tm.reactions[_k];
+          }
         }
       });
     }
@@ -6859,10 +6974,26 @@ async function _handleIncomingConvMessage(r) {
         var _cvs = getConversations();
         var _cv = _cvs.find(function(x){ return x.id === r.conv_id; }) || _cvs.find(function(x){ return !x.isGroup && x.userId === r.from_id; });
         if (_cv && _cv.messages) {
+          // ⚠️ L'expéditeur est `r.from_id` (la ligne, telle que le serveur l'a
+          // acceptée), jamais un champ de `_dd` : voir `_ctrlSuppressionAutorisee`.
+          var _cible = _cv.messages.find(function(x){ return x.id === _dd.target; });
           if (_dd.type === "del") {
-            _cv.messages = _cv.messages.filter(function(x){ return x.id !== _dd.target; });
+            if (_cible && _ctrlSuppressionAutorisee(_cible, r.from_id)) {
+              _cv.messages = _cv.messages.filter(function(x){ return x.id !== _dd.target; });
+            } else if (_cible) {
+              // Un membre qui tente d'effacer le message d'un autre : refusé, et tracé
+              // sans identifiant (ni message, ni conversation, ni compte).
+              try { if (typeof diagLog === "function") diagLog("msg_ctrl_refuse del : la cible n'est pas de l'expediteur"); } catch (e) {}
+            }
           } else if (typeof _applyReactionEvent === "function") {
-            _applyReactionEvent(_cv, _dd); // applique la réaction de l'autre
+            // Attribuée à l'expéditeur de la ligne : un doublon ne compte pas, un
+            // retrait n'efface que SA réaction. Le total ne bouge que si l'état
+            // de cette personne a changé ; l'événement transmis est reconstruit
+            // (cible, emoji, op), aucun autre champ de la charge ne passe.
+            var _kr = (typeof _reactionKeySure === "function") ? _reactionKeySure(_dd.emoji) : "";
+            if (_cible && _kr && _ctrlReactionAttribuee(_cible, _kr, _dd.op, r.from_id)) {
+              _applyReactionEvent(_cv, { target: _dd.target, emoji: _kr, op: _dd.op === "remove" ? "remove" : "add" }); // applique la réaction de l'autre
+            }
           }
           conversationsState = getConversations();
           saveConversations();
@@ -8009,7 +8140,10 @@ async function supaLoadEventRatings(eventId) {
   // frappait donc la table fermée. `null` = « indisponible », déjà géré.
   if (!_attendeesLisibles()) return null;
   try {
-    if (!window._notesEvenementAbsente) {
+    // Mémo « RPC absente » d'UNE HEURE, comme `participants_compte` (voir
+    // `_memoRpcAbsenteActif`) : la migration passée, la moyenne revient sans
+    // rechargement.
+    if (!_memoRpcAbsenteActif("_notesEvenementAbsente")) {
       const r = await supa.rpc("notes_evenement", { p_event_id: eventId });
       if (r && !r.error) {
         const d = (r.data && typeof r.data === "object") ? r.data : {};
@@ -8017,7 +8151,7 @@ async function supaLoadEventRatings(eventId) {
         return { avg: count ? (Number(d.avg) || 0) : 0, count: count };
       }
       if (String((r && r.error && r.error.code) || "") !== "PGRST202") return null;
-      window._notesEvenementAbsente = true;
+      _memoRpcAbsentePoser("_notesEvenementAbsente");
     }
     const { data, error } = await supa.from("event_attendees")
       .select("rating").eq("event_id", eventId).not("rating", "is", null);

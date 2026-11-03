@@ -223,13 +223,28 @@
     return false;
   }
 
+  // Nombre d'inscrits d'un état (`going`, `waitlist`, `maybe`). ⚠️ LA LISTE
+  // N'EST PLUS LE COMPTEUR (C-04, 2026-11-03) : depuis
+  // `migration_participants_visibilite_2026-11-03.sql`, un tiers ne lit qu'une
+  // partie de `attendees` / `waitlist` — le nombre public vient de la RPC
+  // `participants_compte` (`ev.counts`), et `_nbInscrits` (app-07) est la seule
+  // autorité qui réconcilie les deux. Mesuré au faux serveur : 5 inscrits, la
+  // carte disait « 1 participant ». Repli sur la liste si le moteur manque.
+  function nbInscrits(ev, etat) {
+    try { if (typeof _nbInscrits === "function") return _nbInscrits(ev, etat); }
+    catch (e) { fail("nb_inscrits", e); }
+    if (!ev) return 0;
+    var liste = etat === "waitlist" ? ev.waitlist : etat === "maybe" ? ev.maybes : ev.attendees;
+    return (liste || []).length;
+  }
+
   // Places restantes : `null` = illimité. Même calcul que le moteur, délégué
   // quand il est chargé.
   function placesRestantes(ev) {
     try { if (typeof _eventSpotsLeft === "function") return _eventSpotsLeft(ev); }
     catch (e) { fail("places", e); }
     if (!ev || !ev.maxAttendees) return null;
-    return Math.max(0, ev.maxAttendees - ((ev.attendees || []).length));
+    return Math.max(0, ev.maxAttendees - nbInscrits(ev, "going"));
   }
 
   function estComplet(ev) {
@@ -341,8 +356,9 @@
   }
 
   // Ligne « N participants · N places restantes ». Agrégat, jamais de visages
-  // (§A24). Les deux nombres sont CALCULÉS — `attendees` pour les participants,
-  // `_eventSpotsLeft` (le moteur) pour les places — jamais écrits en dur.
+  // (§A24). Les nombres sont CALCULÉS — `_nbInscrits` (le moteur) pour les
+  // participants et la file, `_eventSpotsLeft` pour les places — jamais écrits
+  // en dur, et jamais la longueur d'une liste que la base a pu tronquer (C-04).
   function ligneMonde(ev) {
     // Première visite : « ne pas afficher de faux participants ». Une activité
     // de démonstration dit ce qu'elle est, à la place des chiffres.
@@ -351,7 +367,7 @@
         return "Exemple PASSIO · participation désactivée";
       }
     } catch (e) {}
-    var n = ((ev && ev.attendees) || []).length;
+    var n = nbInscrits(ev, "going");
     var bouts = [n + " participant" + (n > 1 ? "s" : "")];
     var reste = placesRestantes(ev);
     if (reste !== null && reste !== undefined) {
@@ -359,7 +375,7 @@
         ? "complet"
         : reste + " place" + (reste > 1 ? "s" : "") + " restante" + (reste > 1 ? "s" : ""));
     }
-    var att = ((ev && ev.waitlist) || []).length;
+    var att = nbInscrits(ev, "waitlist");
     if (att) bouts.push(att + " en attente");
     return bouts.join(" · ");
   }
@@ -488,12 +504,14 @@
   // en découle. On ne réécrit QUE lorsque cette signature bouge — sinon
   // l'observateur, qui voit nos propres écritures, tournerait en rond.
   // ══════════════════════════════════════════════════════════════════════════
+  // ⚠️ Les NOMBRES affichés, pas les longueurs de liste (C-04) : un
+  // changement du seul compteur serveur (`ev.counts`) doit repeindre la ligne.
   function signature(ev) {
     return [
       etatRsvp(ev.id) || "-",
-      ((ev.attendees || []).length),
+      nbInscrits(ev, "going"),
       String(placesRestantes(ev)),
-      ((ev.waitlist || []).length),
+      nbInscrits(ev, "waitlist"),
       estAnnule(ev) ? "x" : "-",
       estTermine(ev) ? "o" : "-",
       estEnCours(ev) ? "l" : "-",

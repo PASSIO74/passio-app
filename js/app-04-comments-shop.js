@@ -4062,12 +4062,29 @@ function _demanderMotifSignalement(quoi) {
       // n'appelle `_signalementAnnuler` : sans ce guetteur, la promesse restait
       // PENDANTE À VIE et l'appelant ne reprenait jamais la main. Un abandon
       // doit se prononcer, comme un refus.
+      // ⚠️ ET CES QUATRE CHEMINS NE VIDENT PAS LA FENÊTRE (revue du 2026-11-03) :
+      // `closeModal` retire seulement `.active` du fond, le champ RESTE dans
+      // `#modalContent`. Le guetteur qui n'attendait que la disparition du champ
+      // ne se prononçait donc qu'à l'ouverture de la modale SUIVANTE — d'ici là,
+      // `reportMessage`/`reportPost`/`reportUser`/`reportStory` restaient
+      // suspendus. On guette aussi la classe du fond : `.active` perdue = fenêtre
+      // fermée = abandon, sur-le-champ. « Envoyer » et « Annuler » appellent
+      // `fini` AVANT `closeModal` : `fait` interdit la seconde résolution.
+      // Le champ est comparé par IDENTITÉ (`isConnected`), jamais par son id : une
+      // seconde fenêtre de motif ouverte par-dessus porte le même id, et la
+      // première promesse ne doit pas lui survivre.
       var racine = document.getElementById("modalContent") || document.body;
+      var fond = document.getElementById("modalBackdrop");
+      var abandonnee = function () {
+        if (!champ || !champ.isConnected) return true;
+        return !!(fond && !fond.classList.contains("active"));
+      };
       if (window.MutationObserver && racine) {
         observateur = new MutationObserver(function () {
-          if (!document.getElementById("signalementMotif")) fini(null);
+          if (abandonnee()) fini(null);
         });
         observateur.observe(racine, { childList: true, subtree: true });
+        if (fond) observateur.observe(fond, { attributes: true, attributeFilter: ["class"] });
       }
     } catch (e) {
       // ⚠️ ON N'ENCHAÎNE PAS SUR UN MOTIF VIDE. Un `catch` large ici masquerait

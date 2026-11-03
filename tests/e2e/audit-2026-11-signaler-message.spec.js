@@ -308,37 +308,90 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
     await aucuneInjection(page, errors, "signalement");
   });
 
-  test("③ bis annuler (bouton ou ×) n'envoie rien ; un refus est dit, sans accusé ; sans compte, rien ne part", async ({ page }) => {
+  test("③ bis annuler (bouton, ×, fond, Échap, poignée) rend la main SUR-LE-CHAMP et n'envoie rien ; un refus est dit, sans accusé ; sans compte, rien ne part", async ({ page }) => {
     const { errors } = await banc(page);
-    // Annuler, puis le × injecté par openModal (fermeture hors de nos boutons).
-    for (const fermer of ["#modalContent .btn.ghost", "#modalContent .modal-close"]) {
+    // ⚠️ LA FERMETURE REND LA MAIN TOUT DE SUITE (revue du 2026-11-03). `closeModal`
+    // ne retire que `.active` du fond et laisse `#signalementMotif` dans le DOM :
+    // le guetteur, qui n'attendait que la disparition du champ, ne se prononçait
+    // qu'à l'ouverture de la modale SUIVANTE — `reportMessage` (comme
+    // `reportPost`, `reportUser`, `reportStory`) restait suspendu jusque-là. Ce
+    // banc EXIGE désormais la résolution « annulé » sans qu'aucune autre modale
+    // ne s'ouvre, par chacun des chemins de fermeture : nos deux boutons, le ×
+    // injecté par `openModal`, un clic sur le fond, Échap, la poignée.
+    const fermetures = {
+      "bouton Annuler": async () => { await page.locator("#modalContent .btn.ghost").first().click(); },
+      "×": async () => { await page.locator("#modalContent .modal-close").first().click(); },
+      "fond": async () => {
+        // Un point du FOND hors de la fenêtre : on le vérifie avant de cliquer.
+        const pt = await page.evaluate(() => {
+          const fond = document.getElementById("modalBackdrop");
+          for (const [x, y] of [[4, 4], [window.innerWidth - 4, 4], [4, 60], [window.innerWidth / 2, 4]]) {
+            if (document.elementFromPoint(x, y) === fond) return { x, y };
+          }
+          return null;
+        });
+        expect(pt, "prémisse : un point du fond est cliquable hors de la fenêtre").not.toBeNull();
+        await page.mouse.click(pt.x, pt.y);
+      },
+      "Échap": async () => { await page.locator("#signalementMotif").press("Escape"); },
+      "poignée": async () => { await page.locator("#modalContent .modal-handle").first().click(); },
+    };
+    for (const [nom, fermer] of Object.entries(fermetures)) {
       await page.evaluate(([cid, mid]) => {
-        window.__fini = false; window.__toasts = [];
-        reportMessage(cid, mid).then(() => { window.__fini = true; });
+        window.__fini = false; window.__resultat = "pendante"; window.__toasts = [];
+        window.__ouvertures = 0;
+        reportMessage(cid, mid).then((v) => { window.__fini = true; window.__resultat = v; });
       }, [CID, MID_B]);
       await page.waitForSelector("#signalementMotif");
       await page.fill("#signalementMotif", "un motif saisi puis abandonné");
-      await page.locator(fermer).first().click();
-      await page.waitForTimeout(300);
-      expect(await page.evaluate(() => window.__reports.length), fermer + " : rien n'est parti à la fermeture").toBe(0);
-      // ⚠️ LE × NE REND PAS LA MAIN TOUT DE SUITE (mesuré le 2026-11-03, défaut
-      // PRÉEXISTANT de `_demanderMotifSignalement`, hors E-08) : `closeModal`
-      // retire `.active` du fond mais laisse `#signalementMotif` dans le DOM, donc
-      // le guetteur (qui attend la DISPARITION du champ) ne se prononce qu'à
-      // l'ouverture de la modale SUIVANTE. Ce banc n'exige donc que ce qui compte
-      // pour E-08 : la promesse finit par « annulé », et RIEN n'est envoyé —
-      // ni à la fermeture, ni quand la modale suivante la dénoue.
-      await page.evaluate(() => { if (!window.__fini) { openModal('<div class="modal-title">suivante</div>'); } });
-      await page.waitForFunction(() => window.__fini === true, null, { timeout: 5000 });
-      await page.evaluate(() => closeModal());
-      const s = await page.evaluate(() => ({
-        reports: window.__reports.length, toasts: window.__toasts.map((t) => t.t),
-        accuses: (state.notifications || []).filter((n) => /Signalement reçu/.test(n.text || "")).length,
-      }));
-      expect(s.reports, fermer + " : rien n'est envoyé").toBe(0);
-      expect(s.toasts.filter((t) => /signalé|impossible/i.test(t)), fermer + " : aucun verdict annoncé").toEqual([]);
+      // Toute ouverture de modale APRÈS la fermeture serait ce qui dénouait la
+      // promesse avant le correctif : on les compte, il n'y en a aucune.
+      await page.evaluate(() => {
+        const vrai = window.openModal;
+        window.__vraiOpenModal = vrai;
+        window.openModal = function () { window.__ouvertures++; return vrai.apply(this, arguments); };
+      });
+      await fermer();
+      await page.waitForFunction(() => window.__fini === true, null, { timeout: 1500 }).catch(() => {});
+      const s = await page.evaluate(() => {
+        const out = {
+          fini: window.__fini, resultat: window.__resultat === undefined ? "undefined" : String(window.__resultat),
+          ouvertures: window.__ouvertures,
+          fenetre: document.getElementById("modalBackdrop").classList.contains("active"),
+          reports: window.__reports.length, toasts: window.__toasts.map((t) => t.t),
+          accuses: (state.notifications || []).filter((n) => /Signalement reçu/.test(n.text || "")).length,
+        };
+        window.openModal = window.__vraiOpenModal;
+        return out;
+      });
+      expect(s.fenetre, nom + " : la fenêtre est fermée").toBe(false);
+      expect(s.fini, nom + " : reportMessage a rendu la main sans attendre une autre modale").toBe(true);
+      expect(s.resultat, nom + " : abandon = sortie sans verdict").toBe("undefined");
+      expect(s.ouvertures, nom + " : aucune autre modale n'a été nécessaire").toBe(0);
+      expect(s.reports, nom + " : rien n'est envoyé").toBe(0);
+      expect(s.toasts.filter((t) => /signalé|impossible/i.test(t)), nom + " : aucun verdict annoncé").toEqual([]);
       expect(s.accuses).toBe(0);
+      // Et une modale ouverte ENSUITE ne réveille rien : la promesse est déjà dénouée.
+      await page.evaluate(() => { openModal('<div class="modal-title">suivante</div>'); closeModal(); });
+      await page.waitForTimeout(100);
+      expect(await page.evaluate(() => window.__reports.length), nom + " : la modale suivante n'envoie rien").toBe(0);
     }
+
+    // « Envoyer » appelle `fini` AVANT `closeModal` : la perte de `.active` qui
+    // suit ne doit pas produire une SECONDE résolution (le guetteur de classe
+    // est retiré à la première).
+    const double = await page.evaluate(async ([cid, mid]) => {
+      window.__reports = []; window.__resolutions = [];
+      const p = _demanderMotifSignalement("ce message").then((v) => { window.__resolutions.push(v); return v; });
+      document.getElementById("signalementMotif").value = "motif valable";
+      _signalementValider();
+      const v = await p;
+      await new Promise((r) => setTimeout(r, 100));
+      return { v, resolutions: window.__resolutions.slice(), fenetre: document.getElementById("modalBackdrop").classList.contains("active") };
+    }, [CID, MID_B]);
+    expect(double.v, "« Envoyer » rend le motif saisi").toBe("motif valable");
+    expect(double.resolutions, "une seule résolution").toEqual(["motif valable"]);
+    expect(double.fenetre).toBe(false);
 
     // Refus serveur (verdict faux) : dit, sans accusé de réception.
     const refus = await page.evaluate(async ([cid, mid]) => {

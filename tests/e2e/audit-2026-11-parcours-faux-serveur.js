@@ -111,14 +111,25 @@ class FauxServeur {
   }
   postAuteurBloque(me, pid) { const p = this.t.posts.find((x) => x.id === pid); return !!p && this.isBlockedWith(me, p.author_id); }
   coOrg(ev, me) { try { return Array.isArray(ev.co_organizers) ? ev.co_organizers.includes(me) : JSON.parse(ev.co_organizers || "[]").includes(me); } catch (e) { return false; } }
-  // Miroirs des deux helpers SECURITY DEFINER de la migration C-04 : ils ne
-  // parlent que de l'APPELANT (`organise_activite`, `inscrit_a_activite`).
+  // Miroirs des helpers SECURITY DEFINER de la migration C-04 : ils ne parlent
+  // que de l'APPELANT (`organise_activite`, `vient_a_activite`).
   organiseActivite(evId, me) {
     const ev = this.t.events.find((e) => e.id === evId);
     return !!me && !!ev && (ev.author_id === me || ev.organizer_id === me || this.coOrg(ev, me));
   }
-  inscritActivite(evId, me) {
-    return !!me && this.t.event_attendees.some((a) => a.event_id === evId && a.user_id === me && a.rsvp !== "declined");
+  // `vient_a_activite`, durci le 2026-11-03 (revues) : seul un VENANT (`rsvp = 'going'`, comparaison
+  // SQL stricte — un `null` ne compte pas) lit les co-inscrits. Un « peut-être »
+  // ou une place en liste d'attente se posaient d'un clic, sans capacité : c'était
+  // une clé à la liste nominative de n'importe quelle activité.
+  venantActivite(evId, me) {
+    return !!me && this.t.event_attendees.some((a) => a.event_id === evId && a.user_id === me && a.rsvp === "going");
+  }
+  // Suivi MUTUEL accepté : un abonnement à sens unique se pose sans l'accord
+  // de la personne suivie (compte public → `accepted` d'office) — il ne peut
+  // donc pas, à lui seul, ouvrir ses participations.
+  suiviMutuel(me, autre) {
+    const ok = (a, b) => this.t.follows.some((f) => f.follower_id === a && f.following_id === b && f.status === "accepted");
+    return !!me && !!autre && ok(me, autre) && ok(autre, me);
   }
   // ③ PRIVILÈGE DE COLONNE, comme PostgreSQL : `select=*` (ou absent), une
   // colonne retirée dans la projection, dans un filtre ou dans l'ordre → la
@@ -146,11 +157,15 @@ class FauxServeur {
       case "event_attendees":
         if (role !== "authenticated") return false;
         if (!this.participantsParLien) return true;                     // C-04 : `true` pour tout connecté (avant migration)
-        // Après migration : soi, l'organisation, puis — hors « declined » — les
-        // co-inscrits et les personnes que l'on SUIT (abonnement accepté).
+        // Après migration (policy durcie du 2026-11-03) : sa propre ligne,
+        // l'organisation ; sinon — ligne hors « declined » (`is distinct from` :
+        // un `null` passe) — seulement si l'appelant VIENT à cette activité ou
+        // si le suivi est MUTUEL, et jamais à travers un blocage (dans un sens
+        // ou dans l'autre, `is_blocked_with`).
         return r.user_id === me || this.organiseActivite(r.event_id, me)
-          || (r.rsvp !== "declined" && (this.inscritActivite(r.event_id, me)
-            || this.t.follows.some((f) => f.follower_id === me && f.following_id === r.user_id && f.status === "accepted")));
+          || (r.rsvp !== "declined"
+            && (this.venantActivite(r.event_id, me) || this.suiviMutuel(me, r.user_id))
+            && !this.isBlockedWith(me, r.user_id));
       case "posts": return (r.author_id === me || !(this.prof(r.author_id) || {}).is_private || this.abonneAccepteNonBloque(me, r.author_id)) && (r.author_id === me || !this.postMasque(r.id));
       case "stories": return r.author_id === me || !(this.prof(r.author_id) || {}).is_private || this.abonneAccepteNonBloque(me, r.author_id);
       case "post_likes": case "post_comments": return (r.user_id || r.author_id) === me || this.postVisible(me, r.post_id);

@@ -1,5 +1,6 @@
 -- ═════════════════════════════════════════════════
--- AUDIT 2026-11-02, DÉCISION PRODUIT C-04 (tranchée le 2026-11-03) :
+-- AUDIT 2026-11-02, DÉCISION PRODUIT C-04 (tranchée le 2026-11-03, durcie le
+-- même jour après deux contre-revues indépendantes) :
 -- LA LISTE NOMINATIVE DES PARTICIPANTS D'UNE ACTIVITÉ N'EST PLUS PUBLIQUE
 --
 -- Mesuré en production au canal ① (lecture seule) : `event_attendees` portait
@@ -9,40 +10,104 @@
 -- Pour une application qui s'ouvre à des inconnus, c'est l'adresse et l'heure
 -- où trouver une personne, offertes à n'importe quel compte.
 --
+-- MODÈLE DE MENACE : un compte adulte quelconque, qui parle à PostgREST en
+-- direct (pas par l'interface), veut la liste de QUI va (ou est allé) à une
+-- activité donnée, l'heure de pointage de chacun, ou la note d'une personne
+-- précise. Il peut créer des comptes, écrire SA ligne d'inscription dans
+-- n'importe quel état, la retirer aussitôt, et suivre n'importe quel profil
+-- public (abonnement accepté d'office par `trg_follows_statut`).
+--
 -- CE QUI CHANGE (et ce qui est gardé) :
 --  ① LA LISTE suit le LIEN. Un compte lit une ligne d'inscription si c'est la
 --     sienne ; s'il organise l'activité (auteur, organisateur, co-organisateur :
---     pointage, liste d'attente, promotion) ; s'il y est lui-même inscrit (les
---     participants se voient entre eux — hors « declined », qui n'est jamais
---     public) ; ou si la personne inscrite est quelqu'un qu'il SUIT (abonnement
---     accepté) : « ton ami y va » reste visible, l'inconnu ne l'est plus.
+--     pointage, liste d'attente, promotion) ; s'il y VIENT lui-même (sa ligne
+--     en « going » : les venants se voient entre eux — hors « declined », qui
+--     n'est jamais public) ; ou si la personne inscrite et lui se suivent
+--     MUTUELLEMENT (deux abonnements acceptés) : « ton ami y va » reste visible,
+--     l'inconnu ne l'est plus. Un blocage, dans un sens ou dans l'autre
+--     (`is_blocked_with`), ferme ces deux dernières branches.
 --  ② LE NOMBRE reste public parmi les connectés : RPC `participants_compte`
 --     (venants, peut-être, liste d'attente, pointés) — preuve sociale, places
 --     restantes, tri par popularité continuent de fonctionner pour tous.
 --  ③ `rating`, `feedback` et `rated_at` ne sont plus LISIBLES par le rôle
 --     (révocation de colonne) : la moyenne vient de la RPC `notes_evenement`
---     (agrégat, jamais « qui a mis quoi ») ; les retours écrits se lisent par
---     `retours_evenement`, réservée à l'organisation de l'activité — c'est à
---     elle qu'ils sont adressés. Chacun écrit toujours sa propre note (policy
---     UPDATE « ma ligne », intacte).
---  ④ `anon` perd un DELETE de table qu'aucune policy ne lui ouvrait (défense en
---     profondeur).
+--     (agrégat, jamais « qui a mis quoi »), et SEULEMENT à partir de 3 notes
+--     hors organisation ; les retours écrits se lisent par `retours_evenement`,
+--     réservée à l'organisation de l'activité — c'est à elle qu'ils sont
+--     adressés. Chacun écrit toujours sa propre note (policy UPDATE « ma
+--     ligne », intacte).
+--  ④ `anon` perd TOUT droit de table sur `event_attendees` (il tenait DELETE,
+--     TRUNCATE, REFERENCES, TRIGGER et MAINTAIN, sans SELECT ni policy utile) :
+--     défense en profondeur.
+--  ⑤ NOUVELLE GARDE `trg_event_attendees_etat` : une inscription (INSERT, ou
+--     UPDATE qui CHANGE `rsvp`) vers tout état autre que « declined » est
+--     refusée sur une activité ANNULÉE (`activite_annulee`) ou PASSÉE
+--     (`activite_passee`) — mêmes motifs, même définition de « passée » que la
+--     garde de capacité, qui ne tient que le passage à « going ».
 --
--- CLIENT : déployé AVANT cette migration (PR de l'audit, 2026-11-03) — il lit
--- les compteurs par la RPC quand elle existe, retombe sur la liste sinon ; il
--- ne demande plus jamais `select *` sur cette table (un RETURNING * demanderait
--- les colonnes retirées et PostgREST refuserait l'UPDATE entier, 42501).
+-- CE QUE LES CONTRE-REVUES ONT FERMÉ (la première version de ce fichier) :
+--  · CONTOURNEMENT PAR « PEUT-ÊTRE » : la branche co-inscrit s'ouvrait à tout
+--    état hors « declined ». La garde de capacité ne tenant que « going », un
+--    compte s'écrivait « maybe » ou « waitlist » sur n'importe quelle activité
+--    — passée, annulée ou complète comprises —, lisait la liste entière avec
+--    les heures de pointage, puis effaçait sa ligne. Désormais la branche
+--    demande « going » (`vient_a_activite`, qui remplace `inscrit_a_activite`)
+--    et ⑤ refuse « maybe » / « waitlist » sur une activité passée ou annulée.
+--  · SUIVI EN UN CLIC : suivre un profil PUBLIC est accepté d'office ; la
+--    branche « je le suis » livrait donc tout l'historique de présence d'une
+--    personne à quiconque appuyait sur « Suivre ». Elle exige maintenant la
+--    réciprocité, que la personne suivie est seule à pouvoir accorder.
+--  · BLOCAGES : bloquer quelqu'un ne l'empêchait pas de lire où l'on va.
+--  · ORACLE DIFFÉRENTIEL SUR LES NOTES : avec 1 note, la moyenne EST la note
+--    de quelqu'un ; avec 2, un participant qui connaît la sienne déduit celle
+--    de l'autre. Sous 3 notes, la moyenne reste nulle (le nombre est donné),
+--    sauf pour l'organisation, qui lit de toute façon chaque retour. Ne
+--    comptent que les notes de participants (« going » ou pointés, la règle
+--    même de `_canRateEvent` côté client) : sans cela, deux comptes jetables
+--    écrits « declined » sur l'activité passée (toujours permis, c'est un
+--    retrait) suffisaient à franchir le seuil et à lire la note isolée.
+--  · `anon` : seul DELETE était retiré ; le verdict ne contrôlait que SELECT et
+--    DELETE — il aurait imprimé OK avec TRUNCATE encore en place. Il contrôle
+--    maintenant CHAQUE privilège (MAINTAIN à partir de PostgreSQL 17).
+--
+-- RISQUE RÉSIDUEL, dit tel quel :
+--  · S'inscrire « going » à une activité À VENIR et non complète révèle ses
+--    co-inscrits : c'est la fonctionnalité (les participants se voient entre
+--    eux). Un compte peut le faire par l'API puis se retirer ; la notification
+--    à l'organisation étant écrite par le CLIENT, une inscription faite à l'API
+--    brute n'en laisse aucune — l'organisation ne la voit que dans sa liste,
+--    tant que la ligne existe. Une activité sans capacité (`max_attendees`
+--    nul) n'est jamais complète.
+--  · Au-delà de 3 notes, suivre la moyenne dans le temps révèle la note du
+--    dernier arrivé (agrégat différentiel) : le seuil retire l'oracle immédiat,
+--    pas celui de l'observation patiente ; des comptes inscrits « going » AVANT
+--    la fin peuvent encore peser sur l'agrégat.
+--  · Un compte qui suit MUTUELLEMENT une personne voit où elle va : c'est le
+--    sens de la réciprocité, qu'elle seule peut accorder ou retirer.
+--
+-- ORDRE DE DÉPLOIEMENT : LE CLIENT D'ABORD (PR de l'audit, 2026-11-03), fusionné
+-- et SERVI par https://passio-app.netlify.app avant que cette migration parte.
+-- Il lit les compteurs par la RPC quand elle existe, retombe sur la liste
+-- sinon ; il ne demande plus jamais `select *` sur cette table (un RETURNING *
+-- demanderait les colonnes retirées et PostgREST refuserait l'UPDATE entier,
+-- 42501) ; il reconnaît `activite_passee` / `activite_annulee` pour TOUS les
+-- états (`_motifRefusRsvp`, app-08, lit le même message que la capacité) ; et il
+-- doit lire `avg: null` comme « pas encore de moyenne », jamais comme 0.
 --
 -- PIÈGE ÉVITÉ : une policy qui interroge SA PROPRE table (« suis-je inscrit ? »)
 -- déclenche « infinite recursion detected in policy » — d'où les deux helpers
--- SECURITY DEFINER `inscrit_a_activite` / `organise_activite`, qui ne parlent
+-- SECURITY DEFINER `vient_a_activite` / `organise_activite`, qui ne parlent
 -- que de l'APPELANT (aucun oracle sur autrui), comme `is_conv_member`.
 --
--- Rejouable (idempotent) ; verdict en fin. RETOUR ARRIÈRE :
---   drop policy event_attendees_select_lien on public.event_attendees;
+-- Rejouable (idempotent) ; verdict en fin. RETOUR ARRIÈRE (dans une transaction) :
+--   drop trigger if exists trg_event_attendees_etat on public.event_attendees;
+--   drop function if exists public.event_attendees_etat_garde();
+--   drop policy if exists event_attendees_select_lien on public.event_attendees;
+--   drop function if exists public.vient_a_activite(text);
 --   create policy event_attendees_select_authentifie on public.event_attendees for select to authenticated using (true);
 --   grant select on public.event_attendees to authenticated;
---   (les RPC et helpers peuvent rester : sans appelant, ils sont inertes)
+--   (les RPC et `organise_activite` peuvent rester : sans appelant, elles sont
+--   inertes ; les droits d'`anon` ne se rendent pas — aucun n'était utilisé)
 -- ═════════════════════════════════════════════════
 begin;
 
@@ -63,7 +128,10 @@ $$;
 revoke all on function public.organise_activite(text) from public, anon;
 grant execute on function public.organise_activite(text) to authenticated;
 
-create or replace function public.inscrit_a_activite(p_event_id text)
+-- « J'y VIENS » : ma ligne en « going », et rien d'autre. « peut-être » et
+-- « liste d'attente » ne coûtent rien (la capacité ne les garde pas) : ils
+-- n'ouvrent donc pas la liste.
+create or replace function public.vient_a_activite(p_event_id text)
 returns boolean
 language sql stable security definer set search_path = ''
 as $$
@@ -71,15 +139,19 @@ as $$
     select 1 from public.event_attendees a
     where a.event_id = p_event_id
       and a.user_id = (select auth.uid())::text
-      and a.rsvp is distinct from 'declined'
+      and a.rsvp = 'going'
   );
 $$;
-revoke all on function public.inscrit_a_activite(text) from public, anon;
-grant execute on function public.inscrit_a_activite(text) to authenticated;
+revoke all on function public.vient_a_activite(text) from public, anon;
+grant execute on function public.vient_a_activite(text) to authenticated;
 
 -- ── ① La liste suit le lien ─────────────────────────────────────────────────
 drop policy if exists event_attendees_select_authentifie on public.event_attendees;
 drop policy if exists event_attendees_select_lien on public.event_attendees;
+-- L'ancien helper (première version de ce fichier, jamais appliquée en
+-- production) s'ouvrait à « maybe » / « waitlist » : il part, APRÈS la policy
+-- qui pouvait encore en dépendre.
+drop function if exists public.inscrit_a_activite(text);
 create policy event_attendees_select_lien on public.event_attendees
   for select to authenticated
   using (
@@ -87,23 +159,70 @@ create policy event_attendees_select_lien on public.event_attendees
     or public.organise_activite(event_id)
     or (
       rsvp is distinct from 'declined'
+      and not public.is_blocked_with(event_attendees.user_id)
       and (
-        public.inscrit_a_activite(event_id)
-        or exists (
-          select 1 from public.follows f
-          where f.follower_id = (select auth.uid())::text
-            and f.following_id = event_attendees.user_id
-            and f.status = 'accepted'
+        public.vient_a_activite(event_id)
+        or (
+          exists (
+            select 1 from public.follows f
+            where f.follower_id = (select auth.uid())::text
+              and f.following_id = event_attendees.user_id
+              and f.status = 'accepted'
+          )
+          and exists (
+            select 1 from public.follows r
+            where r.follower_id = event_attendees.user_id
+              and r.following_id = (select auth.uid())::text
+              and r.status = 'accepted'
+          )
         )
       )
     )
   );
 
+-- ── ⑤ Pas d'inscription sur une activité passée ou annulée ──────────────────
+-- Fonction NEUVE, à côté de `event_attendees_capacite_gardee` (qui reste telle
+-- quelle et tranche toujours le passage à « going », complet compris). Mêmes
+-- motifs, même définition de « passée », même sortie sans session. Un UPDATE
+-- qui GARDE son `rsvp` (pointage par `pointer_par_code`, note, retour écrit)
+-- n'est pas une inscription : il passe, même après la fin. Se retirer
+-- (« declined ») passe toujours.
+create or replace function public.event_attendees_etat_garde()
+returns trigger
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  ev record;
+begin
+  -- Aucune session (postgres, service_role, tâches d'administration) : la règle
+  -- ne s'applique pas — même sortie que `event_attendees_capacite_gardee`.
+  if auth.uid() is null then return new; end if;
+  if new.rsvp = 'declined' then return new; end if;
+  if tg_op = 'UPDATE' and new.rsvp is not distinct from old.rsvp then return new; end if;
+
+  select status, date_at, end_at into ev from public.events where id = new.event_id;
+  -- Activité inconnue : la clé étrangère tranche (23503), pas cette garde.
+  if not found then return new; end if;
+  if ev.status = 'cancelled' then
+    raise exception 'activite_annulee' using errcode = 'P0001';
+  end if;
+  if coalesce(ev.end_at, ev.date_at + interval '3 hours') < now() then
+    raise exception 'activite_passee' using errcode = 'P0001';
+  end if;
+  return new;
+end
+$$;
+revoke all on function public.event_attendees_etat_garde() from public, anon, authenticated;
+drop trigger if exists trg_event_attendees_etat on public.event_attendees;
+create trigger trg_event_attendees_etat
+  before insert or update on public.event_attendees
+  for each row execute function public.event_attendees_etat_garde();
+
 -- ── ③ Colonnes de retour d'expérience retirées à la lecture directe ─────────
 revoke select on public.event_attendees from authenticated;
 grant select (event_id, user_id, rsvp, created_at, checked_in_at) on public.event_attendees to authenticated;
--- ── ④ anon : aucun DELETE (aucune policy ne le lui ouvrait) ─────────────────
-revoke delete on public.event_attendees from anon;
+-- ── ④ anon : plus aucun droit de table (aucune policy ne lui en ouvrait) ────
+revoke all on public.event_attendees from anon;
 
 -- ── ② Le nombre reste public parmi les connectés ────────────────────────────
 -- Même lecture que le client : « going » = tout ce qui n'est ni peut-être, ni
@@ -126,14 +245,31 @@ revoke all on function public.participants_compte(text[]) from public, anon;
 grant execute on function public.participants_compte(text[]) to authenticated;
 
 -- Moyenne et nombre de notes : l'agrégat, jamais qui a noté quoi.
+-- ⚠️ ORACLE DIFFÉRENTIEL : avec 1 note, la moyenne EST la note de quelqu'un ;
+-- avec 2, un participant qui connaît la sienne lit celle de l'autre. Sous 3
+-- notes, `avg` reste nul (le nombre est donné) — sauf pour l'organisation, qui
+-- lit déjà chaque retour par `retours_evenement`. `avg` nul = « pas de moyenne
+-- publiable », jamais 0.
+-- Ne comptent que les notes de PARTICIPANTS (« going » ou pointés, la règle de
+-- `_canRateEvent`) : une ligne « declined » s'écrit encore sur une activité
+-- passée (c'est un retrait) et peut porter une note ; deux comptes jetables
+-- auraient sinon suffi à franchir le seuil et à isoler la note d'autrui.
 create or replace function public.notes_evenement(p_event_id text)
 returns jsonb
 language sql stable security definer set search_path = ''
 as $$
   select case when auth.uid() is null then null
-    else jsonb_build_object(
-      'avg', coalesce((select avg(a.rating)::numeric(4,2) from public.event_attendees a where a.event_id = p_event_id and a.rating is not null), 0),
-      'count', (select count(*) from public.event_attendees a where a.event_id = p_event_id and a.rating is not null))
+    else (
+      select jsonb_build_object(
+        'avg', case when n.nb >= 3 or public.organise_activite(p_event_id) then n.moyenne end,
+        'count', n.nb)
+      from (
+        select count(*)::integer as nb, avg(a.rating)::numeric(4,2) as moyenne
+        from public.event_attendees a
+        where a.event_id = p_event_id
+          and a.rating is not null
+          and (a.rsvp = 'going' or a.checked_in_at is not null)
+      ) n)
   end;
 $$;
 revoke all on function public.notes_evenement(text) from public, anon;
@@ -155,11 +291,25 @@ revoke all on function public.retours_evenement(text) from public, anon;
 grant execute on function public.retours_evenement(text) to authenticated;
 
 -- ── Verdict ──
-select 'event_attendees SELECT : une seule policy, par lien (soi, organisation, co-inscrit, suivi)' as controle,
+-- Chaque ligne MESURE ce qu'elle affirme : un privilège non nommé ici n'est pas
+-- contrôlé, d'où la liste complète pour `anon` (MAINTAIN n'existe qu'à partir de
+-- PostgreSQL 17 : le CASE ne l'évalue que là — un OR n'a pas d'ordre garanti).
+select 'event_attendees SELECT : une seule policy, par lien (soi, organisation, venant, suivi MUTUEL, blocages exclus)' as controle,
        case when (select count(*) from pg_policies where schemaname = 'public' and tablename = 'event_attendees' and cmd = 'SELECT') = 1
              and (select qual from pg_policies where schemaname = 'public' and tablename = 'event_attendees' and policyname = 'event_attendees_select_lien') like '%organise_activite%'
-             and (select qual from pg_policies where schemaname = 'public' and tablename = 'event_attendees' and policyname = 'event_attendees_select_lien') like '%inscrit_a_activite%'
-             and (select qual from pg_policies where schemaname = 'public' and tablename = 'event_attendees' and policyname = 'event_attendees_select_lien') like '%follows%' then 'OK' else 'ECHEC' end as valeur
+             and (select qual from pg_policies where schemaname = 'public' and tablename = 'event_attendees' and policyname = 'event_attendees_select_lien') like '%vient_a_activite%'
+             and (select qual from pg_policies where schemaname = 'public' and tablename = 'event_attendees' and policyname = 'event_attendees_select_lien') like '%is_blocked_with%'
+             and (select qual from pg_policies where schemaname = 'public' and tablename = 'event_attendees' and policyname = 'event_attendees_select_lien') like '%follows%follows%'
+             and (select qual from pg_policies where schemaname = 'public' and tablename = 'event_attendees' and policyname = 'event_attendees_select_lien') not like '%inscrit_a_activite%'
+             and to_regprocedure('public.inscrit_a_activite(text)') is null then 'OK' else 'ECHEC' end as valeur
+union all select 'event_attendees : garde d''état (passée / annulée) BEFORE INSERT OR UPDATE, à côté de la capacité',
+       case when exists (select 1 from pg_trigger t join pg_proc p on p.oid = t.tgfoid
+                         where t.tgrelid = 'public.event_attendees'::regclass and t.tgname = 'trg_event_attendees_etat'
+                           and p.proname = 'event_attendees_etat_garde' and t.tgenabled = 'O'
+                           and (t.tgtype & 1) = 1 and (t.tgtype & 2) = 2 and (t.tgtype & 4) = 4 and (t.tgtype & 16) = 16
+                           and p.prosecdef and array_to_string(p.proconfig, ';') = 'search_path=""')
+             and exists (select 1 from pg_trigger t where t.tgrelid = 'public.event_attendees'::regclass
+                           and t.tgname = 'trg_event_attendees_capacite' and t.tgenabled = 'O') then 'OK' else 'ECHEC' end
 union all select 'event_attendees : feedback / rating / rated_at illisibles par authenticated, les 5 autres colonnes lisibles',
        case when not has_column_privilege('authenticated', 'public.event_attendees', 'feedback', 'SELECT')
              and not has_column_privilege('authenticated', 'public.event_attendees', 'rating', 'SELECT')
@@ -169,21 +319,35 @@ union all select 'event_attendees : feedback / rating / rated_at illisibles par 
              and has_column_privilege('authenticated', 'public.event_attendees', 'rsvp', 'SELECT')
              and has_column_privilege('authenticated', 'public.event_attendees', 'created_at', 'SELECT')
              and has_column_privilege('authenticated', 'public.event_attendees', 'checked_in_at', 'SELECT') then 'OK' else 'ECHEC' end
-union all select 'event_attendees : INSERT / UPDATE / DELETE d''authenticated intacts, anon sans aucun droit',
+union all select 'event_attendees : INSERT / UPDATE / DELETE d''authenticated intacts, anon sans AUCUN droit (table et colonnes)',
        case when has_table_privilege('authenticated', 'public.event_attendees', 'INSERT')
              and has_table_privilege('authenticated', 'public.event_attendees', 'UPDATE')
              and has_table_privilege('authenticated', 'public.event_attendees', 'DELETE')
              and not has_table_privilege('anon', 'public.event_attendees', 'SELECT')
-             and not has_table_privilege('anon', 'public.event_attendees', 'DELETE') then 'OK' else 'ECHEC' end
-union all select 'quatre RPC SECURITY DEFINER à search_path vide, exécutables par authenticated seul',
+             and not has_table_privilege('anon', 'public.event_attendees', 'INSERT')
+             and not has_table_privilege('anon', 'public.event_attendees', 'UPDATE')
+             and not has_table_privilege('anon', 'public.event_attendees', 'DELETE')
+             and not has_table_privilege('anon', 'public.event_attendees', 'TRUNCATE')
+             and not has_table_privilege('anon', 'public.event_attendees', 'REFERENCES')
+             and not has_table_privilege('anon', 'public.event_attendees', 'TRIGGER')
+             and not has_any_column_privilege('anon', 'public.event_attendees', 'SELECT')
+             and not has_any_column_privilege('anon', 'public.event_attendees', 'INSERT')
+             and not has_any_column_privilege('anon', 'public.event_attendees', 'UPDATE')
+             and not has_any_column_privilege('anon', 'public.event_attendees', 'REFERENCES')
+             and case when current_setting('server_version_num')::int >= 170000
+                      then not has_table_privilege('anon', 'public.event_attendees', 'MAINTAIN')
+                      else true end then 'OK' else 'ECHEC' end
+union all select 'cinq fonctions SECURITY DEFINER à search_path vide, les RPC exécutables par authenticated seul',
        case when (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                  where n.nspname = 'public' and p.proname in ('participants_compte', 'notes_evenement', 'retours_evenement', 'organise_activite', 'inscrit_a_activite')
+                  where n.nspname = 'public' and p.proname in ('participants_compte', 'notes_evenement', 'retours_evenement', 'organise_activite', 'vient_a_activite')
                     and p.prosecdef and array_to_string(p.proconfig, ';') = 'search_path=""') = 5
              and has_function_privilege('authenticated', 'public.participants_compte(text[])', 'execute')
              and has_function_privilege('authenticated', 'public.notes_evenement(text)', 'execute')
              and has_function_privilege('authenticated', 'public.retours_evenement(text)', 'execute')
              and not has_function_privilege('anon', 'public.participants_compte(text[])', 'execute')
              and not has_function_privilege('anon', 'public.notes_evenement(text)', 'execute')
-             and not has_function_privilege('anon', 'public.retours_evenement(text)', 'execute') then 'OK' else 'ECHEC' end;
+             and not has_function_privilege('anon', 'public.retours_evenement(text)', 'execute')
+             and not has_function_privilege('anon', 'public.vient_a_activite(text)', 'execute')
+             and not has_function_privilege('anon', 'public.organise_activite(text)', 'execute') then 'OK' else 'ECHEC' end;
 
 commit;
