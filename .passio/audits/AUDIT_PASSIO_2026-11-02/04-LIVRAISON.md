@@ -106,3 +106,16 @@ Chaque fichier porte son retour arrière en tête. Après chaque application : m
 4. Après la migration 6 : un signalement de message de test crée sa preuve (`signalements_preuves`), lue par
    `node scripts/moderation.js voir <id>` — avec un compte synthétique, jamais un vrai utilisateur.
 5. Consigner les attestations dans une PR suivante (`main` refuse le push direct).
+
+### 6.3 Journal d'application (2026-11-03)
+
+| Heure (UTC) | Geste | Preuve |
+|---|---|---|
+| 18:23 | Contre-revue de Benjamin sur #684 (revue n°5757438499, `COMMENTED`, ancrée sur `70d0967`, marqueur, phrase de mainteneur unique, cinq chemins, `cible: njkiyoklssvefstljemx`) | `get_reviews` de #684 |
+| 18:24 | « Gouvernance critique » relancé → vert ; fusion de #684 dans `main` (`7286569`) | run 41668132855, tentative 2 |
+| 18:39 | Run de `main` 41693566731 : 15 jobs verts, « Barrière RLS de la production » comprise ; **« Deploy is live! »** (déploiement Netlify `6aea2a5d88e733d2727927a4`) | job 126125355608 |
+| ~18:50 | Depuis le poste de Benjamin : attestations vérifiées (six), puis application de `conv_members_reparation`, `oracles_et_privileges`, `notifications_identifiants_reserves`, `index_realtime`, `signalements_preuves` — chacune journalisée dans sa transaction | sortie de `appliquer-migration.mjs` |
+| après | **Mesuré au canal ①** (et non lu dans les tableaux de verdict) : `conv_reads` INSERT/UPDATE exigent `is_conv_member` ; aucune TABLE de `public` ne donne TRUNCATE/REFERENCES/TRIGGER à `anon`/`authenticated` (trois VUES en gardent, voir R26) ; `notifications` : `anon` SELECT seul, `authenticated` SELECT/INSERT/DELETE + `update (seen)` seul ; `identifiant_reserve_au_serveur` couvre les cinq préfixes ; repli de `follows_notifier` présent ; `passions_trgm_idx` et `passions_aliases_gin` absents, `idx_tel_env_received_identifies` présent ; une seule policy `user:<uid>` sur `realtime.messages`, en `(select auth.uid())` ; `signalements_preuves` en RLS sans policy, aucun droit client, `service_role` SELECT/DELETE, déclencheur `trg_reports_preuve_message` actif ; `conv_members` : 0 couple réparable, 0 ligne insérée | `execute_sql` en lecture seule |
+| après | **F-06 remesuré** : la lecture du pilotage (`env = 'production' and user_id is not null and received_at > now() - 7 j order by received_at desc limit 1000`) passe en *Index Only Scan* sur `idx_tel_env_received_identifies`, bornée par sa limite : 81 tampons, 15 ms (lecture partiellement à froid), contre 54,6 ms de moyenne mesurés avant | `explain (analyze, buffers)` |
+| **reste** | `migration_participants_visibilite_2026-11-03.sql` : **à partir du 2026-11-05 18:40 UTC** (48 h après le déploiement, pour les PWA restées ouvertes), puis mesure au canal ① | rappel programmé |
+
