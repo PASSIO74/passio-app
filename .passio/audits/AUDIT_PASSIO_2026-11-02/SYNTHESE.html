@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit PASSIO — 2 novembre 2026</title>
+<style>
+  :root { --violet:#7c3aed; --violet-2:#ede9fe; --ink:#0f172a; --muted:#64748b; --ok:#15803d; --ok-bg:#dcfce7; --warn:#b45309; --warn-bg:#fef3c7; --bad:#b91c1c; --bad-bg:#fee2e2; --card:#fff; --line:#e2e8f0; --bg:#f8fafc; }
+  @media (prefers-color-scheme: dark) { :root { --ink:#e2e8f0; --muted:#94a3b8; --card:#0f172a; --line:#1e293b; --bg:#020617; --violet-2:#2e1065; --ok-bg:#052e16; --warn-bg:#451a03; --bad-bg:#450a0a; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  main { max-width:980px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:28px; margin:0 0 4px; } h2 { font-size:20px; margin:36px 0 12px; color:var(--violet); } h3 { font-size:16px; margin:20px 0 8px; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .verdict { background:var(--card); border:1px solid var(--line); border-left:6px solid var(--violet); border-radius:12px; padding:18px 20px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:18px 0; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .kpi b { display:block; font-size:28px; line-height:1.1; } .kpi span { color:var(--muted); font-size:13px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; font-size:14px; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; } th { background:var(--violet-2); color:var(--ink); font-weight:600; }
+  tr:last-child td { border-bottom:0; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .ok { background:var(--ok-bg); color:var(--ok); } .warn { background:var(--warn-bg); color:var(--warn); } .bad { background:var(--bad-bg); color:var(--bad); } .p1 { background:var(--violet-2); color:var(--violet); }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; background:var(--violet-2); padding:1px 5px; border-radius:5px; }
+  .foot { color:var(--muted); font-size:13px; margin-top:40px; }
+  @media (max-width:640px){ th, td { padding:8px; } .kpi b { font-size:22px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Audit PASSIO — 2 novembre 2026</h1>
+  <p class="sub">Qualité · fiabilité · sécurité · performance — Passio, Sentinelle, Centre de pilotage. <code>main @ 6ea94e1</code> → branche <code>audit/2026-11-02-qualite-securite</code>, PR #681.</p>
+
+  <section class="verdict">
+    <strong>Aucun P0. Cinq P1, tous traités.</strong> L'isolation des comptes est tenue par la base, pas par l'écran ; les défauts trouvés sont des trous de couverture (une fonctionnalité jamais mesurée en base réelle, une pagination oubliée, un emoji non échappé), pas des défauts d'architecture. Rien n'a été appliqué en production ; deux migrations attendent ta contre-revue.
+  </section>
+
+  <div class="kpis">
+    <div class="kpi"><b>0</b><span>P0 (fuite, accès non autorisé, perte de données)</span></div>
+    <div class="kpi"><b>5</b><span>P1 — 4 corrigés et retestés, 1 corrigé + migration prête</span></div>
+    <div class="kpi"><b>32 / 37</b><span>P2 / P3 au registre — 17 corrigés, 1 partiel, 2 préparés en migration</span></div>
+    <div class="kpi"><b>2 061</b><span>tests locaux joués (2 014 ✓ · 20 rouges préexistants, verts en CI)</span></div>
+    <div class="kpi"><b>81</b><span>cas de bancs SQL neufs sur PostgreSQL 16 (38 + 43), mutations à l'appui</span></div>
+    <div class="kpi"><b>7 + 1</b><span>agents spécialisés + revue indépendante</span></div>
+  </div>
+
+  <h2>Les cinq P1</h2>
+  <table>
+    <tr><th>ID</th><th>Problème</th><th>État</th></tr>
+    <tr><td><span class="tag p1">B-01</span></td><td>XSS stocké : l'emoji d'une activité d'autrui entrait dans le marqueur de carte sans échappement — exécution de script chez quiconque ouvrait la carte.</td><td><span class="tag ok">corrigé et retesté</span> rouge sur main, vert sur la branche</td></tr>
+    <tr><td><span class="tag p1">B-02 / E-01</span></td><td>La liste d'attente des activités n'avait aucune sortie : la promotion écrivait sur la ligne d'autrui, refusée par la RLS (0 ligne) — automatique comme manuelle, depuis toujours.</td><td><span class="tag ok">client corrigé</span> <span class="tag warn">migration à contre-revoir</span> RPC <code>promouvoir_attente</code>, banc 43/43 (concurrence, squat)</td></tr>
+    <tr><td><span class="tag p1">F-03</span></td><td>Au-delà de 1 000 messages, une conversation perdait ses messages les plus récents à l'écran (plafond silencieux de PostgREST).</td><td><span class="tag ok">corrigé et retesté</span> lecture paginée depuis la fin</td></tr>
+    <tr><td><span class="tag p1">D-01</span></td><td>À la déconnexion, les conversations du compte sortant étaient réécrites en local et pouvaient réapparaître sous le compte suivant.</td><td><span class="tag ok">corrigé et retesté</span></td></tr>
+    <tr><td><span class="tag p1">H-01</span></td><td>La réparation automatique du dashboard pouvait écrire dans <code>tests/</code> ou <code>.github/</code> malgré la liste blanche.</td><td><span class="tag ok">corrigé et retesté</span> périmètre critique</td></tr>
+  </table>
+
+  <h2>Ce qui a été démontré</h2>
+  <div class="cols">
+    <div class="card"><h3>Sécurité et données</h3><ul><li>Policies, GRANTs, 29 fonctions SECURITY DEFINER, triggers, buckets, publication realtime : inventaire complet, prédicats évalués sur le catalogue réel.</li><li><code>search_path</code> figé partout, barrière de suppression active (27 tables), <code>attachments</code> privé, 0 PII dans la télémétrie.</li><li>Aperçus de partage résistants aux charges hostiles ; portes des 5 Edge fermées.</li></ul></div>
+    <div class="card"><h3>Parcours multi-comptes</h3><ul><li>Faux serveur PostgREST avec les policies de prod, vrai SDK, un navigateur par compte : 10/10 scénarios (contenu, course pour la dernière place, messagerie, suivi, session, signalement).</li><li>Cas ajoutés aux suites à comptes réels (CI) : auto-acceptation d'un suivi, intrusion dans une conversation, RSVP d'autrui.</li></ul></div>
+    <div class="card"><h3>Sentinelle et pilotage</h3><ul><li>Injection de lots d'erreurs synthétiques : titres et corps désamorcés ; la seule brèche (<code>@claude</code> dans un texte d'erreur) est fermée.</li><li>Auto-fusion réellement bloquée par CI + contre-revue (vérifié sur #677/#678).</li><li>Chiffres du pilotage recalculés indépendamment : 0 écart sur les agrégats, 4 écarts de définition documentés.</li><li>Restauration rejouée sur archive synthétique ; crons : 100 % de réussite, servis 3–17 % des créneaux.</li></ul></div>
+    <div class="card"><h3>Performance</h3><ul><li>Artefact prod : 552 Ko (brotli) avant le fil ; MapLibre (205 Ko) ne part plus à tout démarrage.</li><li>CWV sur stub local : LCP 3,9 s (4G lent) / 12,6 s (3G lent), CLS 0,32 — à améliorer.</li><li>0 fuite mémoire, 0 tâche longue sur 200 publications ; 7 plans d'exécution sains.</li></ul></div>
+  </div>
+
+  <h2>Ce qui n'a pas pu être vérifié d'ici</h2>
+  <ul>
+    <li><span class="tag bad">bloqué</span> Production injoignable depuis le bac à sable (REST, Edge, Netlify) ; base en lecture seule, <code>SET ROLE</code> refusé → l'isolation sous rôle réel repose sur la CI (suites à comptes réels, dont <code>authz-critical</code> au push sur main) et l'analyse des prédicats.</li>
+    <li><span class="tag bad">non testé</span> Aucun banc de charge (interdit en prod, staging injoignable) : rien n'est mesuré au-delà de 100 comptes simultanés. Protocole et seuils d'arrêt prêts (désormais codés dans <code>charge.mjs</code>).</li>
+    <li><span class="tag warn">constat</span> Les suites « production » de la CI visent le <strong>staging</strong>, et il diverge déjà de la production sur <code>conv_reads</code> (le staging refuse l'accusé d'un tiers, la prod non).</li>
+    <li>WebKit/iPhone réel, Core Web Vitals réels, appareils réels : non mesurés ici.</li>
+  </ul>
+
+  <h2>Ce qu'il te reste à faire</h2>
+  <ol>
+    <li><strong>Contre-revoir la PR #681</strong> (revue GitHub ancrée sur le SHA de tête, marqueur « Contre-revue technique indépendante ») — c'est la seule porte humaine, et elle est rouge par conception tant qu'elle manque.</li>
+    <li><strong>Appliquer</strong> <code>migration_promotion_attente_2026-11-02.sql</code> (n'importe quel ordre avec le déploiement du client), puis <code>migration_audit_2026-11-02_oracles_et_privileges.sql</code> — après le correctif de <code>supaMarkRead</code> noté par la revue.</li>
+    <li>Trancher les décisions produit : liste des participants lisible par tout connecté (C-04), dépôt public avec dossier investisseurs (C-14), index et policies realtime (F-05/F-07).</li>
+    <li>Rejouer un banc de charge sur staging (paliers 25/50/100/200).</li>
+  </ol>
+
+  <h2>Où lire la suite</h2>
+  <ul>
+    <li><code>00-SYNTHESE.md</code> · <code>01-MATRICE-COUVERTURE.md</code> · <code>02-REGISTRE-ANOMALIES.md</code> · <code>03-RESULTATS-TECHNIQUES.md</code> · <code>04-LIVRAISON.md</code> · <code>05-RISQUES-RESIDUELS.md</code></li>
+    <li><code>rapports/</code> : B backend · C données/sécurité · D frontend · E parcours · F performance · G Sentinelle · H pilotage · REVUE-INDEPENDANTE</li>
+    <li><code>preuves/</code> : inventaires RLS/GRANT/fonctions, mesures CWV et artefact, crons, bancs d'injection, listes des rouges préexistants</li>
+  </ul>
+
+  <p class="foot">Audit mené par Claude (Fable 5.1) : coordinateur, sept agents spécialisés et un relecteur indépendant, du 2026-11-02 16:35 au 2026-11-03 (Paris). Lecture seule sur la production, comptes de test uniquement, aucune donnée personnelle dans les livrables.</p>
+</main>
+</body>
+</html>

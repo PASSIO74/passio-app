@@ -18,7 +18,7 @@
 // n'a jamais existé et rien ne comptait — un compte confirmé pouvait facturer
 // l'API en boucle. Une garde décrite mais absente est pire qu'un trou.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { REVISION } from "../_shared/revision.js";
 
@@ -103,8 +103,13 @@ Deno.serve(async (req) => {
       }),
     });
     if (!resp.ok) {
+      // Audit B (2026-11-02) : le corps d'erreur du fournisseur reste CÔTÉ
+      // SERVEUR (journal de la fonction). Il portait des identifiants de
+      // requête et des libellés internes, renvoyés à tout compte connecté ; le
+      // client n'en lit rien (il retombe sur le moteur local).
       const errText = await resp.text().catch(() => "");
-      return json({ error: "Anthropic " + resp.status, detail: errText.slice(0, 300) }, 502);
+      console.error("ask-ai : Anthropic " + resp.status + " — " + errText.slice(0, 300));
+      return json({ error: "Appel IA indisponible (" + resp.status + ")" }, 502);
     }
     const data = await resp.json();
     const text = Array.isArray(data?.content)
@@ -113,7 +118,8 @@ Deno.serve(async (req) => {
     if (!text) return json({ error: "Réponse vide" }, 502);
     return json({ text, model: MODEL });
   } catch (e) {
-    return json({ error: "Appel IA échoué", detail: String(e).slice(0, 200) }, 502);
+    console.error("ask-ai : appel échoué — " + String(e).slice(0, 200));
+    return json({ error: "Appel IA indisponible" }, 502);
   }
 });
 

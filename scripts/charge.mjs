@@ -61,7 +61,7 @@ import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { homedir } from "node:os";
 
-import { verdictReponse, ligneRapport } from "./charge-verdict.mjs";
+import { verdictReponse, ligneRapport, verdictPalierSimple } from "./charge-verdict.mjs";
 import { createRequire } from "node:module";
 const { Correlateur } = createRequire(import.meta.url)("./lib/charge-correlation.js");
 
@@ -74,7 +74,9 @@ function echec(m) { console.error("❌ " + m); process.exit(2); }
 const ref = arg("--projet");
 if (!ref || !/^[a-z]{20}$/.test(ref)) echec("usage : --projet <ref> [--semer N | --paliers 10,50,100 --duree 20 | --purger]");
 if (ref === PROD_REF) echec("jamais sur la production : cet outil sème des données fabriquées et sature l'API.");
-if (process.env.GITHUB_ACTIONS) echec("geste de poste, pas de CI.");
+// `CI` aussi, comme charge-realiste : un runner qui n'est pas GitHub (poste
+// d'intégration, conteneur) pose `CI=true` sans `GITHUB_ACTIONS` (audit F, 2026-11-02).
+if (process.env.GITHUB_ACTIONS || process.env.CI) echec("geste de poste, pas de CI.");
 
 function jeton() {
   if (process.env.SUPABASE_ACCESS_TOKEN) return process.env.SUPABASE_ACCESS_TOKEN.trim();
@@ -461,7 +463,7 @@ const mode = arg("--mode", "anon");
 if (!["anon", "mixte"].includes(mode)) echec("--mode attend anon ou mixte.");
 const [{ posts, profils }] = await sql("select (select count(*) from public.posts) posts, (select count(*) from public.profiles) profils");
 console.log(`charge sur ${ref} — ${profils} profils, ${posts} publications en base ; paliers ${paliers.join("/")} utilisateurs simultanés, ${duree} s chacun, mode ${mode}.\n`);
-const tout = [];
+const tout = [], verdicts = [];
 let comptes = [], purge = null;
 if (mode === "mixte") {
   const n = Math.min(Number(arg("--comptes", Math.max(...paliers))), 100);
@@ -479,7 +481,19 @@ try {
     process.stdout.write(`palier ${v}… `);
     const l = mode === "mixte" ? await palierMixte(v, comptes, cibles) : await palier(v); tout.push(...l);
     console.log("ok");
-    for (const x of l) console.log(`   ${String(x.requete).padEnd(28)} ${String(x.rps).padStart(6)} req/s   p50 ${String(x.p50).padStart(5)} ms   p95 ${String(x.p95).padStart(5)} ms   p99 ${String(x.p99).padStart(5)} ms   ok ${x.ok}   erreurs ${x.erreurs}${x.motifs ? " (" + x.motifs + ")" : ""}`);
+    for (const x of l) console.log(`   ${String(x.requete).padEnd(28)} ${String(x.rps).padStart(6)} req/s   p50 ${String(x.p50).padStart(5)} ms   p95 ${String(x.p95).padStart(5)} ms   p99 ${String(x.p99).padStart(5)} ms   p95 tous ${String(x.p95Tous).padStart(5)} ms   ok ${x.ok}   erreurs ${x.erreurs}${x.motifs ? " (" + x.motifs + ")" : ""}`);
+    // ⚠️ SEUIL D'ARRÊT (audit F, 2026-11-02) : un palier rouge n'autorise pas le
+    // suivant. Le 15/09 la campagne a enchaîné 10 → 25 → 50 avec 7 livraisons
+    // manquées et un p99 de 13 s dès 25 : sans ce verrou, « 50 a tourné » se
+    // lisait comme « 50 tient ». Le rapport garde le verdict ; `--forcer-paliers`
+    // reprend la montée en le DISANT dans le rapport (jamais en silence).
+    const verdict = verdictPalierSimple(l);
+    verdicts.push({ palier: v, ...verdict, force: !verdict.ok && drapeau("--forcer-paliers") });
+    if (!verdict.ok) {
+      console.log(`   ⛔ palier ${v} : ${verdict.motifs.join(" ; ")}`);
+      if (!drapeau("--forcer-paliers")) { console.log("   arrêt de la montée (passer --forcer-paliers pour continuer malgré tout — le rapport le dira)."); break; }
+      console.log("   --forcer-paliers : montée poursuivie, le palier reste ROUGE dans le rapport.");
+    }
     await new Promise((r) => setTimeout(r, 3000));
   }
 } finally {
@@ -490,4 +504,4 @@ try {
   }
 }
 const sortie = arg("--sortie");
-if (sortie) { writeFileSync(sortie, JSON.stringify({ projet: ref, date: new Date().toISOString(), mode, profils, posts, duree, paliers, resultats: tout, purge, brut }, null, 2)); console.log("\nécrit :", sortie, "(" + brut.length + " mesures brutes)"); }
+if (sortie) { writeFileSync(sortie, JSON.stringify({ projet: ref, date: new Date().toISOString(), mode, profils, posts, duree, paliers, paliersMesures: verdicts.map((x) => x.palier), verdicts, resultats: tout, purge, brut }, null, 2)); console.log("\nécrit :", sortie, "(" + brut.length + " mesures brutes)"); }

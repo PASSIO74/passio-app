@@ -1746,9 +1746,17 @@ function updateIrlMapMarkers() {
     const lat = ll[0] + (((h * 13) % 100) / 50000 - 0.001);
     const lng = ll[1] + (((h * 23) % 100) / 50000 - 0.001);
     const passion = passionById(ev.passion) || { emoji: "📍", label: "" };
+    // ⚠️ `events.emoji` est une colonne TEXTE écrite par l'auteur de l'activité
+    // (aucune contrainte serveur) et lue par tout le monde : c'est du contenu
+    // d'AUTRUI, et le shim pose `icon.html` dans `innerHTML`. C'était le seul
+    // site de l'app où un emoji d'activité n'était pas échappé — un
+    // `<img onerror>` fourni comme emoji s'exécutait chez quiconque ouvrait la
+    // carte (audit 2026-11-02, B-01). Même règle que `_emojiSur` : borner, puis
+    // échapper. Verrou : tests/e2e/audit-2026-11-xss-marqueur.spec.js.
+    const emojiMarqueur = ev.emoji ? _emojiBorne(ev.emoji) : (passion.emoji || "📍");
     const icon = L.divIcon({
       className: "passio-marker-wrap",
-      html: `<div class="passio-marker">${ev.emoji || passion.emoji || "📍"}</div>`,
+      html: `<div class="passio-marker">${escapeHtml(emojiMarqueur)}</div>`,
       iconSize: [36, 36],
       iconAnchor: [18, 18],
       popupAnchor: [0, -16],
@@ -1758,7 +1766,7 @@ function updateIrlMapMarkers() {
     const dk = _eventDistanceKm(ev);
     m.bindPopup(`
       <div class="irl-popup-title">${escapeHtml(ev.title || "Événement")}</div>
-      <div class="irl-popup-meta">${passion.emoji || ""} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${_eventTimeLabel(ev)}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
+      <div class="irl-popup-meta">${escapeHtml(passion.emoji || "")} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${_eventTimeLabel(ev)}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
       <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'événement</button>
     `);
     points.push([lat, lng]);
@@ -2855,6 +2863,14 @@ function _scheduleIrlMapUpdate() {
   clearTimeout(window._irlMapT);
   window._irlMapT = setTimeout(function () {
     var run = function () {
+      // ⚠️ La carte ne se construit que si l'écran « Rencontrer » est AFFICHÉ
+      // (audit 2026-11-02, F-01). `#irlMap` existe dans le DOM dès le chargement
+      // et `renderEverything()` rend cet écran au démarrage : MapLibre (803 Ko,
+      // 205 Ko compressés) partait donc à TOUT démarrage, visiteur compris, écran
+      // jamais ouvert. `goTo("irl")` rappelle `renderIRL()` → la carte arrive à
+      // l'ouverture. Verrou : tests/e2e/audit-2026-11-perf-dist.spec.js (① bis).
+      var ecranIrl = document.getElementById("screen-irl");
+      if (ecranIrl && !ecranIrl.classList.contains("active")) return;
       try { initIrlMap(); } catch (e) {}
       try { updateIrlMapMarkers(); } catch (e) {}
     };
@@ -3561,17 +3577,23 @@ async function _promoteNextWaitlisted(ev) {
   // 2026-09-14). `supaPromoteFromWaitlist` rendait déjà son verdict (zéro ligne
   // = non appliquée), mais il n'était pas lu : la personne recevait « tu es
   // inscrit·e ! » alors que sa ligne était toujours en liste d'attente.
+  let notifieeParServeur = false;
   if (window._supaReal && ev.fromSupabase && typeof supaPromoteFromWaitlist === "function") {
-    const promu = await supaPromoteFromWaitlist(ev.id, next);
+    // La base choisit (premier arrivé) et tranche la capacité : `next` n'est
+    // qu'une estimation locale, c'est le compte RENDU qui est promu (B-02).
+    const promu = await supaPromoteFromWaitlist(ev.id, next, { auto: true });
     if (!promu) {
       try { if (typeof diagLog === "function") diagLog("promotion KO " + ev.id); } catch (e) {}
       return; // l'état local n'a pas bougé : rien à annuler, rien à annoncer
     }
+    if (promu.userId) next = promu.userId;
+    notifieeParServeur = !!promu.notifieeParServeur;
   }
   ev.waitlist = (ev.waitlist || []).filter(x => x !== next);
-  ev.attendees = (ev.attendees || []).concat([next]);
+  if (!(ev.attendees || []).includes(next)) ev.attendees = (ev.attendees || []).concat([next]);
   saveState();
-  if (typeof supaInsertNotif === "function") {
+  // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
+  if (!notifieeParServeur && typeof supaInsertNotif === "function") {
     supaInsertNotif(next, "event_update", ev.id, "une place s'est libérée, tu es inscrit·e !");
   }
   _patchEventCardJoin(ev.id);
@@ -6403,7 +6425,9 @@ async function promoteWaitlisted(id, userId) {
   // ligne : elle avait quitté la liste d'attente entre-temps, ou la capacité
   // était atteinte). Le verdict serveur d'abord, l'écran ensuite — comme la
   // promotion automatique, corrigée le 14/09.
+  let notifieeParServeur = false;
   if (window._supaReal && typeof supaPromoteFromWaitlist === "function") {
+    // Promotion CHOISIE par l'organisation : la base vérifie ce droit (B-02).
     const ok = await supaPromoteFromWaitlist(id, userId);
     if (!ok) {
       try { if (typeof diagLog === "function") diagLog("promotion manuelle KO " + id); } catch (e) {}
@@ -6411,11 +6435,13 @@ async function promoteWaitlisted(id, userId) {
       openEventWaitlist(id);
       return false;
     }
+    notifieeParServeur = !!ok.notifieeParServeur;
   }
   ev.waitlist = (ev.waitlist || []).filter(x => x !== userId);
-  ev.attendees = (ev.attendees || []).concat([userId]);
+  if (!(ev.attendees || []).includes(userId)) ev.attendees = (ev.attendees || []).concat([userId]);
   saveState();
-  if (typeof supaInsertNotif === "function") supaInsertNotif(userId, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
+  // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
+  if (!notifieeParServeur && typeof supaInsertNotif === "function") supaInsertNotif(userId, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
   toast("Participant inscrit");
   openEventWaitlist(id);
   return true;
@@ -7021,7 +7047,7 @@ function openEventInvite(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) { toast("Événement introuvable"); return; }
   window._inviteEventId = eventId;
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Inviter des amis</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7257,7 +7283,7 @@ function openEventFeedback(eventId) {
   var mine = myEventRating(eventId) || { rating: 0, feedback: "" };
   window._ratingDraft = mine.rating || 0;
 
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Ton retour</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7657,7 +7683,7 @@ function _rendreCheckinQr(ev, code) {
     svg = '<div style="font-size:12px;color:var(--muted);padding:20px;">QR indisponible — utilise le code ci-dessous.</div>';
   }
 
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Accueil des participants</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7689,7 +7715,7 @@ function _copyCheckinLink(eventId) {
 function openCheckinCodeEntry(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Pointer mon arrivée</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + 'Saisis le code affiché à l\'accueil de « ' + escapeHtml(ev.title || "") + ' ».</div>'

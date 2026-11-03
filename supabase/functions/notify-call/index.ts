@@ -32,7 +32,7 @@
 //      et `text` du corps sont IGNORÉS (acceptés pour les anciens clients).
 //      Lien absent → même réponse qu'un blocage.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { identiteAppelant, lienAppel, autoriserPushNotif } from "../_shared/lien-metier.js";

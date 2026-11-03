@@ -4686,15 +4686,37 @@ async function supaPublishPost(post) {
 // ne touche PAS `_feedServerMayHaveMore` (c'est l'état de pagination DU FIL).
 const FEED_SERVER_PAGE_SIZE = 20;
 let _feedPagination = null;
+// ⚠️ DEUX LECTURES DE LA TÊTE DU FIL PEUVENT SE CROISER, ET LA PLUS ANCIENNE
+// GAGNAIT (D-06, audit du 2026-11-02). Cinq appelants relisent la PREMIÈRE page
+// sans génération — tirer-pour-rafraîchir (app-02), retour en ligne (app-09),
+// contenu public de la première visite, rechargement après publication,
+// démarrage — et chacun fait `state.supabasePosts = posts` à la réponse. Deux
+// gestes rapprochés sur un réseau instable : la réponse partie en premier
+// arrive en dernier et REMPLACE le fil par une page PLUS VIEILLE. Mesuré au
+// banc (faux serveur qui répond à la 1re requête après la 2e) : le fil gardait
+// « ANCIENNE page », la « NOUVELLE » était perdue jusqu'au filet suivant.
+// Le filet de 60 s (`generation`) se protège déjà ; ici c'est la règle pour
+// TOUS les appelants, au seul point d'étranglement : chaque lecture de tête
+// prend un numéro, et une lecture DÉPASSÉE par une plus récente rend `[]` —
+// la valeur que tous les appelants traitent déjà comme « rien à remplacer ».
+// Les pages suivantes (`offset`/`cursor`) et les profils (`authorId`) ne sont
+// pas concernés : ils ne remplacent pas la tête.
+let _feedTeteSeq = 0;
+let _feedTeteDerniereServie = 0;
 
 async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
   try {
     const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
     const cacheGeneration = typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0;
     const paginationAvant = _feedPagination;
+    const teteSeq = (!authorId && offset === 0 && !options.cursor) ? ++_feedTeteSeq : 0;
     const lectureValide = () => owner === (typeof MY_UID !== "undefined" ? MY_UID : null)
       && cacheGeneration === (typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0)
-      && (options.generation === undefined || options.generation === _feedRefreshGeneration);
+      && (options.generation === undefined || options.generation === _feedRefreshGeneration)
+      && (!teteSeq || teteSeq > _feedTeteDerniereServie);
+    // Une lecture de tête qui va rendre son verdict (données ou page vide) est
+    // désormais la plus récente SERVIE : celles parties avant elle sont périmées.
+    const servir = () => { if (teteSeq && teteSeq > _feedTeteDerniereServie) _feedTeteDerniereServie = teteSeq; };
     const pageSize = authorId ? 60 : FEED_SERVER_PAGE_SIZE;
     const extraAvant = !authorId && offset === 0 ? new Set((window._feedExtraPosts || []).map(p => p.id)) : null;
     // ⚠️ `event_id` fait partie du SELECT depuis le 2026-08-28. Il était ÉCRIT
@@ -4778,7 +4800,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     if (typeof postSupprime === "function") {
       data = data.filter(function (r) { return !postSupprime(r.id); });
     }
-    if (!data || !data.length) { memoriserPage(); return []; }
+    if (!data || !data.length) { memoriserPage(); servir(); return []; }
     // Compteurs, mon like, aperçus et réactions : UNE lecture groupée pour la
     // page (`fil_compteurs`), et les quatre lectures d'avant en repli tant que
     // la fonction n'est pas en base.
@@ -4791,6 +4813,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     const commentProfs = await _resolveProfilesByIds(complements.auteursApercus, lectureValide);
     if (!lectureValide()) return [];
     memoriserPage();
+    servir();
     return data.map((r, idx) => {
       const cpl = complements.parPost.get(r.id) || _complementFilVide();
       // Une discussion déjà ouverte tient plus que les deux aperçus : le filet
@@ -6254,16 +6277,60 @@ function _idNotifMessage(msgId, destinataireId) {
 }
 window._idNotifMessage = _idNotifMessage;
 
+// Lecture d'une conversation : par pages de `MSG_PAGE_LECTURE` lignes, du plus
+// récent au plus ancien, jusqu'à `MSG_LECTURE_MAX` lignes.
+// ⚠️ PostgREST plafonne TOUTE réponse à `max-rows` (1 000) EN SILENCE : lue en
+// ordre ascendant sans borne, une conversation de plus de 1 000 messages perdait
+// ses messages LES PLUS RÉCENTS à l'écran (les 1 000 plus anciens étaient servis,
+// sans erreur — audit 2026-11-02, F-03). On part donc de la FIN : au-delà de la
+// borne, ce sont les plus anciens qui ne sont pas relus — et la fusion locale
+// (`_fusionnerMessagesServeur`, app-04) GARDE ceux que l'appareil connaît déjà.
+// Verrou : tests/e2e/audit-2026-11-messagerie-pagination.spec.js.
+var MSG_PAGE_LECTURE = 1000;
+var MSG_LECTURE_MAX = 3000;
+// La base horodate un message à la MICROSECONDE (`now()`), `supaTs` rend la
+// milliseconde : deux messages envoyés dans la même milliseconde seraient ex
+// æquo et se rangeraient par identifiant (aléatoire), donc parfois à l'envers.
+// La fraction au-delà de la milliseconde (0 ≤ f < 1) préserve l'ordre réel sans
+// changer `supaTs` ni les autres horodatages de l'app.
+function _fractionMicrosecondes(s) {
+  var m = /\.\d{3}(\d{1,3})/.exec(String(s || ""));
+  if (!m) return 0;
+  var d = m[1];
+  while (d.length < 3) d += "0";
+  return Number(d) / 1000;
+}
 async function supaLoadMessages(convId) {
-  // Charge TOUS les messages sans limite (GIFs, pièces jointes, localisations encodées en JSON dans content)
+  // Charge les messages (GIFs, pièces jointes, localisations encodées en JSON dans content)
   try {
     _diag("supaLoadMessages: Chargement pour convId=" + convId);
 
-    const { data, error } = await supa
-      .from("conv_messages")
-      .select("id, conv_id, from_id, content, created_at, profiles(username,emoji,color)")
-      .eq("conv_id", convId)
-      .order("created_at", { ascending: true });
+    var data = [];
+    var error = null;
+    for (var depart = 0; depart < MSG_LECTURE_MAX; depart += MSG_PAGE_LECTURE) {
+      var page = await supa
+        .from("conv_messages")
+        .select("id, conv_id, from_id, content, created_at, profiles(username,emoji,color)")
+        .eq("conv_id", convId)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(depart, depart + MSG_PAGE_LECTURE - 1);
+      if (page.error) {
+        // Première page en échec : même contrat qu'avant (rien, et on le dit).
+        // Page suivante en échec : on garde ce qui est lu — les plus récents.
+        if (!data.length) { error = page.error; break; }
+        _diag("supaLoadMessages: page " + (depart / MSG_PAGE_LECTURE + 1) + " en échec - " + page.error.message + " (les " + data.length + " plus récents sont conservés)");
+        break;
+      }
+      var lignes = page.data || [];
+      data = data.concat(lignes);
+      if (lignes.length < MSG_PAGE_LECTURE) break;
+    }
+    if (!error && data.length >= MSG_LECTURE_MAX) {
+      _diag("supaLoadMessages: borne de " + MSG_LECTURE_MAX + " messages atteinte, les plus anciens ne sont pas relus");
+    }
+    // Remise dans l'ordre chronologique attendu par la suite du traitement.
+    data.reverse();
 
     if (error) {
       _diag("supaLoadMessages: ERREUR Supabase - " + error.message);
@@ -6296,7 +6363,7 @@ async function supaLoadMessages(convId) {
         fromName: (r.profiles && r.profiles.username) ? r.profiles.username : "Passionné",
         fromEmoji: (r.profiles && r.profiles.emoji) ? r.profiles.emoji : "✨",
         text: contentData && contentData.text ? contentData.text : contentText,
-        at: supaTs(r.created_at),
+        at: supaTs(r.created_at) + _fractionMicrosecondes(r.created_at),
       };
 
       // Messages de contrôle (réaction / suppression) : pas de bulle, on les marque.
@@ -7840,13 +7907,44 @@ async function supaLoadEventRatings(eventId) {
 }
 
 // Promotion d'un membre de la liste d'attente (place libérée / geste de l'orga).
-async function supaPromoteFromWaitlist(eventId, userId) {
+// ⚠️ LA PROMOTION EST FAITE PAR LA BASE (audit 2026-11-02, B-02 / E-01). L'UPDATE
+// de la ligne d'AUTRUI que faisait ce client ne pouvait jamais aboutir : la
+// seule policy UPDATE de `event_attendees` est « ma propre ligne » → 0 ligne,
+// toujours — la liste d'attente était une impasse, automatique comme manuelle.
+// La RPC `promouvoir_attente` (SECURITY DEFINER, migration du 2026-11-02)
+// verrouille l'activité, choisit le premier arrivé (ou la personne désignée par
+// l'organisation), tranche la capacité et écrit la notification d'origine serveur.
+// Rend `false` (rien n'a changé) ou `{ ok:true, userId, notifieeParServeur }`.
+//   · `opts.auto` : place libérée par un retrait → la base choisit (p_user_id nul) ;
+//     `userId` ne sert alors qu'au chemin de transition.
+// TRANSITION : fonction absente (PGRST202, migration pas encore appliquée) →
+// chemin d'avant, pour ne rien casser dans l'intervalle (et il reste honnête :
+// zéro ligne = non annoncé).
+async function supaPromoteFromWaitlist(eventId, userId, opts) {
+  opts = opts || {};
   try {
+    if (!window._promotionRpcAbsente) {
+      const r = await supa.rpc("promouvoir_attente", { p_event_id: eventId, p_user_id: opts.auto ? null : (userId || null) });
+      if (r && !r.error) {
+        const d = (r.data && typeof r.data === "object") ? r.data : {};
+        if (d.ok && d.user_id) return { ok: true, userId: String(d.user_id), notifieeParServeur: true };
+        try { if (typeof diagLog === "function") diagLog("promotion refusée " + (d.motif || "?") + " " + eventId); } catch (e) {}
+        return false;
+      }
+      const code = String((r && r.error && r.error.code) || "");
+      if (code !== "PGRST202") {
+        try { if (typeof diagLog === "function") diagLog("promotion KO " + code + " " + String((r.error && r.error.message) || "").slice(0, 80)); } catch (e) {}
+        return false;
+      }
+      window._promotionRpcAbsente = true; // migration pas encore appliquée : chemin d'avant
+    }
+    if (!userId) return false;
     // La personne a pu quitter la liste d'attente entre la sélection et l'UPDATE :
     // zéro ligne = promotion non appliquée, il ne faut pas l'annoncer.
     const res = await supa.from("event_attendees")
       .update({ rsvp: "going" }).eq("event_id", eventId).eq("user_id", userId).select("event_id");
-    return _writeVerdict(res, { expectRows: true, label: "promotion depuis la liste d'attente" }).ok;
+    return _writeVerdict(res, { expectRows: true, label: "promotion depuis la liste d'attente" }).ok
+      ? { ok: true, userId: userId, notifieeParServeur: false } : false;
   } catch(e) { return false; }
 }
 

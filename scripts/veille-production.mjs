@@ -544,7 +544,12 @@ export const SQL = {
       count(distinct device_id) filter (where http_status in (401, 403) and coalesce(endpoint, '') not like '%/auth/v1%')::int as "appRefus"
     from telemetry_events where env = 'production' and type = 'api' and received_at > now() - interval '1 hour'`,
   tailleBase: `select pg_database_size(current_database())::bigint as octets`,
-  purgePlanifiee: `select exists(select 1 from cron.job where jobname like 'purge_telemetry%' and active) as purge`,
+  // ⚠️ La purge de la télémétrie BRUTE a deux orthographes dans cron.job : `purge_telemetry_7j`
+  // (ouverture publique, 11/09) puis `purge_telemetrie_paliers` (croissance, 01/11, qui
+  // retire la première). Le motif `purge_telemetry%` seul rendait « aucune purge planifiée »
+  // (ATTENTION permanente, mesurée sur le [TABLEAU] du 02/11) sur une base qui en avait une.
+  // `purge_telemetrie_debit` (compteurs de débit, 1 h) n'est PAS une purge de la télémétrie.
+  purgePlanifiee: `select exists(select 1 from cron.job where (jobname like 'purge_telemetry%' or jobname like 'purge_telemetrie_paliers%') and active) as purge`,
   usage7j: `select count(distinct device_id)::int as "appareils7j" from telemetry_events where ${filtreHumain()} and ${filtrePublic()} and received_at > now() - interval '7 days'`,
   erreurs24h: `select (select count(*) from telemetry_events where env = 'production' and type = 'error' and (meta->>'synthetic') is null and received_at > now() - interval '24 hours')::int
       + (select count(*) from client_errors where created_at > now() - interval '24 hours')::int as "erreurs24h"`,  // Comptes confirmés des 30 derniers jours (hors e2e et éditeur) et le premier

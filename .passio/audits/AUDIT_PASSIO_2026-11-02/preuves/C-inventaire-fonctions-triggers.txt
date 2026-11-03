@@ -1,0 +1,47 @@
+# Fonctions du schéma public (hors pg_trgm) — SECURITY DEFINER, search_path, EXECUTE — 2026-11-02
+# Source : pg_proc + has_function_privilege('anon'|'authenticated', oid, 'EXECUTE') ; corps relus par pg_get_functiondef (consignés en résumé, pas de donnée)
+# TOUTES les fonctions maison ont un proconfig search_path FIGÉ (aucun NULL). Valeurs : '' (majorité), 'public', 'public, pg_temp', 'public, realtime' (broadcast), 'pg_catalog, pg_temp' (pilotage_*), 'public, extensions, pg_temp' (rechercher_passions).
+
+## SECURITY DEFINER exécutables par anon (5) — tous STABLE, SQL
+abonne_accepte_non_bloque(_auteur)   : auth.uid() NULL → false. Pour un compte : follows(me→auteur,'accepted') AND pas de bloc. Répond sur l'APPELANT (sa propre relation) — pas d'oracle sur autrui.
+comment_target_visible(cid)          : cid NULL → true ; post existe → post_is_visible ; commentaire existe → post_is_visible(post) ; sinon TRUE. ⚠ Oracle faible : true/false selon visibilité du post cible, mais révèle aussi "cid existe comme post/commentaire d'un compte privé non suivi" (false) vs "n'existe pas" (true).
+post_is_visible(pid)                 : pid NULL ou post inexistant → TRUE ; sinon auteur=me OR auteur non privé OR abonné accepté. ⚠ Oracle : distingue « post d'un compte privé que je ne suis pas » (false) de « post inexistant/public » (true). Un anon peut tester si un id de post appartient à un compte privé. Faible (ids opaques, info = existence).
+post_masque(p_id)                    : exists contenus_masques(post, p_id, decision<>'retabli'). ⚠ Oracle : révèle à un anon qu'un post donné est masqué par modération (la table contenus_masques est elle-même fermée). Info de modération exposée à tout appelant.
+suppression_de_mon_compte()          : auth.uid() NULL → false ; sinon exists comptes_en_suppression(me). Répond sur l'appelant seulement. Inoffensif.
+
+## SECURITY DEFINER exécutables par authenticated seulement (19 de plus)
+adult_access_allowed()               : me NULL → false ; interrupteur irl_adult_only coupé → true ; sinon is_adult_declared(). Sur l'appelant.
+adult_access_status()                : 'undeclared'|'off'|'admitted'|'minor' sur l'appelant.
+ajouter_passion_utilisateur(id)      : plpgsql, exige session ; passion active ; upsert user_passions(me). Pas de plafond (plafond produit levé le 2026-11-01). Écrit pour soi uniquement.
+appel_autorise(_to)                  : me non NULL, _to ≠ me, pas bloqué, ET une conv 1:1 commune. ⚠ Oracle : « ai-je une conv 1:1 avec _to » — répond sur une relation de l'appelant, pas sur autrui. OK.
+can_edit_post(pid)                   : posts.author=me OR post_collaborators(pid, me). Sur l'appelant.
+can_join_event_conversation(conv)    : me inscrit (going/maybe) à l'événement actif dont conv_id=conv ET créée par l'auteur/co-org. Sur l'appelant.
+conv_1a1_bloquee(conv)               : exists membre ≠ me d'une conv 1:1 _conv_id que je bloque/qui me bloque. ⚠ Oracle : pour un conv_id arbitraire d'autrui, true ⇒ « la conv existe, est 1:1 et l'un des membres est en blocage avec moi ». Fuite minime (combinaison improbable).
+event_auteur_bloque(ev)              : exists events(ev) AND is_blocked_with(auteur). ⚠ Oracle : « l'auteur de l'événement ev est en blocage avec moi » — events étant public, information déjà déductible (author_id public + is_blocked_with). OK.
+irl_interaction_allowed(_other)      : deux majorités ≤ aujourd'hui. ⚠ Oracle MINEUR : révèle si _other a déclaré sa majorité (true/false) — user_safety est fermée aux autres. Donnée « majeur déclaré » d'un tiers lisible par tout compte.
+is_blocked_with(_other)              : bloc dans un sens ou l'autre entre me et _other. Sur l'appelant (révèle qu'on est bloqué PAR autrui — déjà assumé dans la fiche, résidu écrit).
+is_conv_member(conv, uid)            : ⚠ ORACLE PUR : exists conv_members(conv, uid) pour N'IMPORTE QUEL uid, N'IMPORTE QUELLE conv. Un compte connecté peut tester l'appartenance d'un tiers à une conversation dont il n'est pas membre (ids evgrp_<event> publics ⇒ liste des membres de la discussion d'un événement reconstituable ; conv 1:1 : ids à deviner). Résidu « connu » depuis le 11/09 (fiche) — toujours vrai le 2026-11-02 — mesuré sous rôle, voir rapport.
+is_conversation_creator(conv)        : conversations.created_by = me. Sur l'appelant.
+post_auteur_bloque(post)             : exists posts(post) AND is_blocked_with(auteur). ⚠ Oracle : révèle l'EXISTENCE d'un post d'un compte privé (posts fermée) combiné au blocage — faible.
+creer_passion(label, emoji[, aliases]) : plpgsql ; session requise ; validations ; pg_advisory_xact_lock ; quota 3/compte (passion_quotas) ; écrit passions. ✓ borné.
+creer_et_ajouter_passion             : creer_passion + user_passions(me). ✓
+declare_birth_year(y)                : 1900 ≤ y ≤ année courante ; upsert user_safety(me) — ne RECULE jamais majority_at (WHERE … > s.majority_at). ✓
+notifier_mentions(genre, ref, [uids]) : session requise ; genre ∈ (commentaire,message) ; ≤ 20 cibles ; EXIGE un commentaire/message RÉCENT (<10 min) de l'appelant sur la cible ; cible doit exister, non bloquée, membre de la conv pour un message ; id déterministe n_m_<md5> ; ON CONFLICT gardé par destinataire. ⚠ Pas de plafond de FRÉQUENCE propre : 20 cibles × N appels/min tant que le commentaire est < 10 min (notifications.trg_rate_limit 60/min par from_id s'applique à l'INSERT côté trigger ? → from_id = moi, OUI le trigger rate_limit_insert('from_id',60) compte les notifications de from_id dans la minute → borne 60/min). Un commentaire sur un post PUBLIC suffit pour mentionner 20 inconnus par appel : spam de mention borné à 60 notifications/min/compte, cible quelconque (pas besoin d'être suivi).
+pointer_par_code(event, code)        : session ; event existe ; secret 6 car. alphabet 32 (32^6 ≈ 1,07e9) ; comparaison en clair ; messages distincts ('introuvable','code_incorrect','annulee','hors_fenetre','non_inscrit','deja_pointe','liste_attente','ok'). ⚠ AUCUN plafond d'essais : brute force en théorie possible mais 1e9 combinaisons × latence REST → impraticable dans la fenêtre (date_at-1h → end_at). ⚠ Ordre des contrôles : le code est vérifié AVANT l'inscription → un NON-INSCRIT peut tester des codes (oracle 'code_incorrect' vs 'annulee'/'hors_fenetre'/'non_inscrit' : un non-inscrit qui connaît le bon code apprend que l'événement est annulé/hors fenêtre — négligeable).
+
+## SECURITY DEFINER internes (service_role/postgres seulement) : adult_access_enforced, agreger_croissance(_recente), attendre_ecritures_en_vol, blocage_entre, export_compte_instantane, objets_stockage_du_compte, pilotage_*, planifier_*, proprietaires_objets_stockage, purge_*, purger_marqueurs_suppression, reclamer_suppression, sync_profil_passions, telemetrie_reservoir, terminer_suppression + tous les triggers.
+
+## Fonctions trigger exécutables par anon/authenticated (GRANT inerte : "trigger functions can only be called as triggers") : call_invites_figes, trg_passions_recherche, user_state_horodatage_serveur.
+## Fonctions non-DEFINER exposées : fil_compteurs (STABLE, borne 60 ids, RLS de l'appelant), genres_reserves_au_serveur, identifiant_reserve_au_serveur, passions_recherche_calculer, rechercher_passions, storage_chemin_autorise, unaccent_immutable, passion_plier (authenticated).
+
+## TRIGGERS (pg_trigger, 80 non internes) — résumé
+rate_limit_insert (par uid/min, pose created_at=now()) : analytics_events user_id 120 · comment_interactions user_id 60 · conv_messages from_id 60 · event_comments author_id 30 · event_reactions user_id 30 · events author_id 15 · follows follower_id 30 · notifications from_id 60 · post_comments author_id 30 · posts author_id 10 · reports reporter_id 10 · stories author_id 10
+limiter_debit_global : client_errors created_at 120/min (table entière)
+telemetry_events : trg_debit_avant (statement) · trg_debit_lot (statement, réservoirs 1800/1600/1600/2400, 150/compte) · trg_debit_taille (120 lignes/lot) · trg_telemetry_identite (auth_uid + received_at = now())
+client_errors : trg_client_errors_identite (auth_uid)
+zz_barriere_suppression (refuser_ecriture_compte_en_suppression) sur 27 tables (I/U) — colonnes d'identité par table
+figement : conv_messages (conv_id, from_id) · post_comments (post_id, author_id) · follows (follower_id, following_id) · call_invites (from_id, to_id) · events (author_id, via events_admission_gardee) · event_attendees (event_id, user_id) · posts (author_id — posts_freeze_author remet OLD silencieusement)
+métier : follows_statut_initial (pending vers compte privé) · follows_notifier · event_attendees_admission/capacite/pointage · events_poser_secret_pointage · notifications_origine · reports_statut_initial · trg_reports_pretri (masquage à 3 signaleurs distincts de comptes confirmés >7 j) · trg_user_passions_sync · trg_propager_identite · trg_identite_affichage (cdv_live_comments, event_comments, step_interactions, video_lives) · trg_passion_request_auto · broadcast_conv_message_to_users (realtime user:<uid>) · call_invites_sonner (realtime ring:<to>) · user_safety_majorite_non_avancable · user_state_horodatage_serveur · trg_passions_recherche
+
+## Tables SANS anti-flood serveur par compte (aucun trg_rate_limit) :
+post_likes, comment_likes, blocks, conv_members, conv_reads, conversations (création illimitée !), event_attendees, push_subscriptions, story_views, user_passions, user_state, video_lives, cdv_*, post_collaborators, step_interactions, call_invites (plafonné par notify-call Edge côté push seulement), profiles, passion_requests (5/24h via policy)
