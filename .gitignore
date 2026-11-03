@@ -86,3 +86,9 @@ playwright.poste.config.js
 
 # Rapports et manifestes des campagnes de charge (comptes synthétiques, jamais versionnés).
 work/
+
+# Documents d'affaires — JAMAIS dans ce dépôt PUBLIC (audit 2026-11-02, C-14, tranché le 2026-11-03).
+# Le dossier investisseur, le business plan et l'état du projet étaient lisibles par quiconque
+# clonait le dépôt. Ils vivent désormais hors du dépôt (copie privée sur le poste) ; cette ligne
+# empêche qu'un `git add` les y ramène. Les PDF restent dans l'HISTORIQUE (voir le journal).
+livrables_investisseurs/

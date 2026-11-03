@@ -20,6 +20,7 @@
 - 🔌 LE MUR EST UNE CONNEXION WEBSOCKET, ET 98 % ÉTAIENT PAYÉES POUR RIEN (2026-09-20)
 - 📉 CAPACITÉ, QUATRE LOTS : CE QUI EST LIVRÉ, CE QUI ATTEND UNE MAIN HUMAINE, ET CE QUI A ÉTÉ MESURÉ (2026-09-21)
 - 🚪 UN VISITEUR NE LIT PAS LE COMPTE QU'IL N'A PAS (2026-10-11)
+- 🗂️ INDEX ET REALTIME : CE QUE LA MESURE A RETIRÉ, ET CE QU'ELLE A LAISSÉ (2026-11-03)
 
 ---
 
@@ -1029,3 +1030,29 @@ moi » et le FIL est la première requête du démarrage ; ② un compte réel l
 couperait sa synchronisation sans un bruit) ; ③ chaque lecteur seul rend sa valeur vide, sans requête ;
 ④ source. **Éprouvé par RÉINJECTION** (sources de `main` remises en place) : ①, ③ et ④ rougissent, ② reste
 vert — il garde l'autre sens.
+
+---
+
+## 🗂️ INDEX ET REALTIME : CE QUE LA MESURE A RETIRÉ, ET CE QU'ELLE A LAISSÉ (2026-11-03)
+
+Suite de l'audit du 2026-11-02 (agent F, `rapports/F-performance-charge.md`), décisions F-05 / F-06 /
+F-07 tranchées le 2026-11-03. Migration `migrations/migration_index_realtime_2026-11-03.sql` (DDL seul,
+aucune donnée), banc `tests/sql/migration-index-realtime.test.sh` (18/18).
+
+- **F-05** — `passions_trgm_idx` était le doublon STRICT de `passions_normalized_trgm` (même
+  `gin (normalized_label gin_trgm_ops)`, 1 scan contre 11 743 en 173 jours) ; `passions_aliases_gin`
+  n'avait servi à rien depuis le 13/05 (la recherche passe par la colonne `recherche`). Les deux sont
+  retirés. ⚠️ **Les AUTRES index « jamais lus » (events, reports, moderation_actions) restent** : sur des
+  tables quasi vides, 0 scan ne prouve pas 0 usage — c'est une absence de preuve, pas une preuve
+  d'absence (même règle que les médias orphelins).
+- **F-06** — la lecture du pilotage sur `telemetry_events` (`kpi.js`, `retention.js` : `env = …`,
+  `user_id is not null`, `received_at > …`, tri descendant) balayait `idx_tel_user` en entier : index
+  partiel `idx_tel_env_received_identifies (env, received_at desc) include (user_id) where user_id is not
+  null`. Le banc prouve le plan sans nœud de tri ; **le gain se remesure en production** au canal ①
+  (EXPLAIN de la requête) après application, jamais d'après le banc.
+- **F-07** — `realtime.messages` portait DEUX policies SELECT jumelles (« Utilisateur reçoit ses
+  messages », avec et sans accent), écrites `auth.uid()` NU donc réévaluées pour chaque ligne diffusée
+  (advisor `auth_rls_initplan` ×2). Une seule reste, même prédicat, en `(select auth.uid())`.
+  ⚠️ **Piège du banc** : une policy de `realtime.messages` n'est PAS un filtre de lignes, elle OUVRE ou
+  FERME la souscription au topic — tout ou rien. Le premier jet du banc attendait « 1 ligne » et
+  mesurait 3 : c'était l'attente qui était fausse, pas la policy.
