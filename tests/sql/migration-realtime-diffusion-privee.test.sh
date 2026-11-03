@@ -933,6 +933,14 @@ contient "rejouée : elle dit qu'il n'y avait plus rien à retirer" "plus publie
 echo "── ② LA FUITE EST FERMÉE EN AMONT DU MOTEUR ──────────────────────────"
 verifier "le décodeur ne reçoit plus conv_members ni notifications : aucun DELETE n'atteint apply_rls" \
   "0|0" "$(DECODEES | tr ',' '\n' | grep -cx 'public.conv_members' || true)|$(DECODEES | tr ',' '\n' | grep -cx 'public.notifications' || true)"
+# ⚠️ L'ÉTAT FINAL EST LA SOURCE QUE LIT LA GATE CI. `audit:realtime` compare
+# `scripts/realtime-publication.json` au CODE ; ce banc — celui de la migration
+# de publication la plus récente — le compare à la BASE (relais repris des
+# bancs du 2026-09-19 et du 2026-09-20, qui rendent à leur attendu ce que R25
+# a retiré depuis).
+verifier "l'état final de la publication EST scripts/realtime-publication.json" \
+  "$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');console.log(d.publiees.slice().sort().join(' '))")" \
+  "$(Q "select string_agg(tablename, ' ' order by tablename) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public';")"
 verifier "les neuf autres tables sont toujours décodées" \
   "public.comment_interactions,public.conv_messages,public.conv_reads,public.event_comments,public.post_comments,public.post_likes,public.posts,public.profiles,public.video_lives" \
   "$(DECODEES)"

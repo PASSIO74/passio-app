@@ -103,11 +103,13 @@ echo "── ⑦ Les 12 restantes sont EXACTEMENT les tables abonnées du dépô
 # COURANT du dépôt, et la migration du 2026-09-20 l'en a retirée depuis (elle
 # portait 91,4 % des changements répliqués, pour un seul abonné).
 # Comparer l'état d'une migration ANCIENNE au fichier d'aujourd'hui reviendrait
-# à lui reprocher de ne pas contenir l'avenir. C'est le banc
-# `migration-realtime-telemetry.test.sh` ⑤ qui compare l'état FINAL au JSON.
+# à lui reprocher de ne pas contenir l'avenir. C'est le banc de la migration
+# la plus RÉCENTE qui compare l'état FINAL au JSON — depuis le 2026-11-03,
+# `migration-realtime-diffusion-privee.test.sh` (R25 a retiré `conv_members` et
+# `notifications`, dont les DELETE livraient leur clé primaire à tout abonné).
 restantes=$(Q "select string_agg(c.relname, ' ' order by c.relname) from pg_publication_rel pr join pg_publication p on p.oid=pr.prpubid join pg_class c on c.oid=pr.prrelid where p.pubname='supabase_realtime'")
-attendu=$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');const l=d.publiees.slice();if(!l.includes('telemetry_events'))l.push('telemetry_events');console.log(l.sort().join(' '))")
-verifier "⑦ la liste en base = le JSON de la gate + telemetry_events (retirée le 2026-09-20)" "$attendu" "$restantes"
+attendu=$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');const l=d.publiees.slice();for(const t of ['telemetry_events','conv_members','notifications'])if(!l.includes(t))l.push(t);console.log(l.sort().join(' '))")
+verifier "⑦ la liste en base = le JSON de la gate + telemetry_events (retirée le 2026-09-20) + conv_members, notifications (retirées le 2026-11-03)" "$attendu" "$restantes"
 
 echo "── ⑧ Rejouabilité : une seconde application ne doit pas tout casser ──"
 # ⚠️ `|| true` OBLIGATOIRE : sous `set -e`, une ASSIGNATION dont la
