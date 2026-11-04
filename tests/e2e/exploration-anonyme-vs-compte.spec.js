@@ -455,6 +455,7 @@ test.describe("Exploration anonyme puis connexion à un vrai compte", () => {
       // saisit à l'identique de ce que l'onboarding avait posé, sinon c'est ce
       // champ-ci qui ferait foi et le marqueur mesuré plus bas disparaîtrait.
       document.getElementById("authName").value = "Prénom saisi pendant l'onboarding";
+      document.getElementById("authBirthYear").value = "1995";
       document.getElementById("authEmail").value = "neuf@exemple.test";
       // ⚠️ AVEC UN CHIFFRE (2026-09-16). En CRÉATION, `onbDoAuth` vérifie
       // désormais lettres + chiffres AVANT d’appeler le serveur — la règle
