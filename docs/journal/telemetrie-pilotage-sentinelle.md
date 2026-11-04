@@ -32,6 +32,7 @@
 - ⏱️ GOUVERNANCE — L'INDEX « COMMIT → PR » DE GITHUB ARRIVE APRÈS LE PUSH : UN DÉPLOIEMENT LÉGITIME REFUSÉ (2026-11-03)
 - 🎞️ « PIC D'ERREURS » — LE DÉFAUT ÉTAIT DANS SAFARI, ET LA SURVEILLANCE NE SAVAIT PAS LE DIRE (2026-11-04)
 - 🎯 DEUX BESOINS, UN ÉCRAN, UN BOUTON PAR PROBLÈME (2026-11-04)
+- 🔑 LE VOYANT FIGÉ AU ROUGE ET LE JETON GITHUB QUI EXPIRE EN SILENCE (2026-11-04)
 
 ---
 
@@ -540,3 +541,12 @@ Alerte `spike` du 03/11 à 20:46 UTC. La fiche « Réparer » ne disait que « 6
 - ⚠️ `<summary>` n'accepte que du contenu de phrase : les textes d'une ligne sont des `span` en bloc, et l'aperçu du retour arrière s'écrit DANS le `summary` — dans le `details` fermé, il ne se voyait pas pendant les 5 s où il doit se voir.
 - **Verrous** : `tests/unit/pilotage.test.mjs` ㊴, ㊶ à ㊽, `tests/e2e/pilotage-nuage.spec.js` ㉓ à ㉜. Dix-huit mutations réinjectées ; une restait verte (« Tout régler » envoyait deux fois le même geste) : ㉚ la couvre.
 - **Pas fait, délibérément** : élaguer les 30 vues de l'atelier (il n'est plus sur le chemin, et d'autres fiches en dépendent) ; un bouton « Masquer » sur un signalement (`scripts/moderation.js` porte le vrai retrait et son journal, à rebrancher à part). Le palier de croissance (#674, fusionnée le même jour) n'a pas de bouton parce que ce n'est pas un problème : « pour info » dans le détail, et montré dans la croissance la semaine où il est franchi (`franchi`).
+
+## 🔑 LE VOYANT FIGÉ AU ROUGE ET LE JETON GITHUB QUI EXPIRE EN SILENCE (2026-11-04)
+
+- **Trouvé en contrôlant la mise en ligne du nouvel écran** (canal ① et appel direct de la veille) : le voyant mémorisé restait rouge (« 10 erreurs dans l'app en 15 min ») du 03/11 20 h 50 au 04/11 12 h 23, alors que la dernière erreur date de 20 h 46 ; aucune issue `humain`, déploiement vert. Une ligne `pilotage_etat` toutes les 6 h : c'est le rappel, « 🔴 Toujours un problème », sur un téléphone. Aucun vert noté depuis le 28/10.
+- **Mécanique** : `tenirVerdict` (2026-10-23) ne baisse jamais le voyant sur une lecture incomplète. C'est juste, mais une lecture incomplète EN CONTINU fige le voyant, et `decideAlerte` rappelait la raison périmée. L'écran, lui, recalcule : il disait la vérité, seules les alertes mentaient.
+- **Cause la plus probable** : `PILOTAGE_GITHUB_TOKEN` expiré. Posé le 28/09 (lot 2), un jeton fin dure 30 jours par défaut, soit le 28/10, dernier jour où le voyant a bougé seul. Un jeton invalide reçoit 401 même sur un dépôt public : `lireGithub` lève, et tout geste GitHub échoue. ⚠️ Non prouvé depuis le poste : le secret ne se lit pas, et aucun journal ne disait la raison — d'où la trace ci-dessous.
+- **Livré** : la veille écrit la raison d'une lecture incomplète dans ses journaux (`function_logs`, « veille : lecture incomplète », jamais dans sa réponse, publique) ; un voyant tenu ne rappelle plus (`!a.tenu`), le site injoignable sonne toujours ; un 401 de GitHub devient LA première ligne, « Le jeton GitHub du pilotage a expiré », dont le bouton ouvre GitHub et le second geste les secrets de Supabase, sans aucun bouton muet à côté (`jetonExpire` coupe les gestes GitHub) ; GitHub annonce la fin du jeton à chaque réponse (`github-authentication-token-expiration`) : l'écran la dit `JETON_ALERTE_JOURS` (7) jours avant.
+- **Reste humain, délibérément** : renouveler le jeton. Aucune machine ne crée de jeton ni n'en colle un. À faire avec une longue durée.
+- **Verrous** : `tests/unit/pilotage.test.mjs` ㊾ ㊿ ㉛bis, `tests/e2e/pilotage-nuage.spec.js` ㉝.
