@@ -9,16 +9,14 @@ Il est **réellement connecté** à Passio via la table Supabase `telemetry_even
 alimentée par l'instrumentation `js/telemetry.js` ajoutée à l'app.
 
 > **Le centre de pilotage de tous les jours, c'est [`/pilotage/`](https://passio-app.netlify.app/pilotage/)**
-> (2026-10-23) — sur le téléphone comme sur l'ordinateur, PC éteint compris. Trois onglets :
-> l'**Accueil** dit si ça va et ce qui t'attend (UNE liste « À faire », triée par urgence, avec
-> les gestes : fusionner, réparer, fermer, traiter un signalement, remettre la version
-> précédente), **Détails** sert à comprendre, **Réglages** à ce qu'on change rarement. Code :
-> `pilotage/` et la fonction `supabase/functions/pilotage` (logique pure dans
-> `supabase/functions/_shared/pilotage.js`, éprouvée par `tests/unit/pilotage.test.mjs` et
-> `tests/e2e/pilotage-nuage.spec.js`).
-> Ce dossier `dashboard/` reste l'**atelier du poste** : télémétrie détaillée, Sentinelle
-> locale, réparations, Command Center. Le Pilot mobile du PC (`mobile.html`, même Wi-Fi et PC
-> allumé obligatoires) est **retiré** — voir § 2 quater.
+> (refait le 2026-11-04) — sur le téléphone comme sur l'ordinateur, PC éteint compris : UN écran,
+> ce qu'il y a à régler (un bouton par problème) et le nombre d'utilisateurs. L'icône « Centre de
+> pilotage » du Bureau y mène directement (`creer-raccourci-bureau.cmd`). Code : `pilotage/` et la
+> fonction `supabase/functions/pilotage` (logique pure dans `supabase/functions/_shared/pilotage.js`,
+> éprouvée par `tests/unit/pilotage.test.mjs` et `tests/e2e/pilotage-nuage.spec.js`).
+> Ce dossier `dashboard/` reste l'**atelier technique du poste** (`Lancer-Pilotage.cmd`) : télémétrie
+> détaillée, Sentinelle locale, réparations, Command Center. Le Pilot mobile du PC (`mobile.html`,
+> même Wi-Fi et PC allumé obligatoires) est **retiré** — voir § 2 quater.
 
 ---
 

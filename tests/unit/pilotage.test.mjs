@@ -331,7 +331,7 @@ test("㉒ aveugle : jugé contre le mur que rend pilotage_audience (anciens sous
 // éprouvées : laisser `tenirVerdict` baisser le voyant → ㉓ rougit ; le retirer
 // de la veille → ㉔ rougit ; rendre un vert sur une lecture incomplète dans
 // `verdictAffiche` → ㉕ rougit.
-import { tenirVerdict, verdictAffiche, sourcesManquantes, tendance, fenetreMiseEnLigne, aFaire, compteCree, compteMesurable } from "../../supabase/functions/_shared/pilotage.js";
+import { tenirVerdict, verdictAffiche, sourcesManquantes, tendance, fenetreMiseEnLigne, aFaire, compteCree, compteMesurable, PAGES_REGLAGE, resumerPr, croissanceInscrits, COURBE_POINTS_MAX, REPARATION_MAX_MS } from "../../supabase/functions/_shared/pilotage.js";
 
 test("㉓ tenirVerdict : une lecture incomplète ne fait jamais BAISSER le voyant, mais peut le monter", () => {
   const orange = { couleur: "orange", raisons: ["la veille signale un problème"] };
@@ -431,7 +431,7 @@ const etatAF = (extra = {}) => ({
       iss(12, ["sentinelle", "humain"], { titre: HOSTILE, url: "javascript:alert(1)", depuis: "2026-10-23T08:00:00Z" }),
       iss(13, ["sentinelle"]),
       iss(629, ["digest"]),
-      iss(700, [], { pr: true, titre: "fix: correctif" }),
+      iss(700, [], { pr: true, titre: "fix: correctif", correctif: true }),
       iss(601, ["reparation", "claude"], { titre: "[RÉPARER] #627" }),
       iss(5, ["moderation", "humain"]),
     ],
@@ -460,47 +460,60 @@ test("㉙ aFaire : UNE liste triée par urgence — site, retour arrière, éche
   const ids = l.map((x) => x.id);
   assert.deepEqual(l.filter((x) => x.prio === 0).map((x) => x.id).sort(), ["capacite:base", "issue:12", "retour:aaaa1111", "run:deploy"].sort());
   assert.ok(l.every((x, i) => i === 0 || l[i - 1].prio <= x.prio), "triée par priorité");
-  for (const id of ["issue:627", "pr:700", "signalement:rep_1", "erreur:0", "issue:5"]) assert.equal(l.find((x) => x.id === id).prio, 1, id);
-  for (const id of ["issue:13", "issue:629", "issue:601", "config:alertes", "protection:delestage", "protection:bandeau"]) assert.equal(l.find((x) => x.id === id).prio, 2, id);
-  assert.ok(!ids.includes("erreur:1"), "une erreur de plus de 24 h n'est plus à faire");
+  for (const id of ["issue:627", "pr:700", "signalement:rep_1"]) assert.equal(l.find((x) => x.id === id).prio, 1, id);
+  // Pour info : ce qu'une machine porte déjà, et l'alerte de modération qui redit les signalements listés.
+  for (const id of ["issue:13", "issue:629", "issue:601", "issue:5", "erreurs", "config:alertes", "protection:delestage", "protection:bandeau"]) assert.equal(l.find((x) => x.id === id).prio, 2, id);
+  assert.ok(!l.find((x) => x.id === "erreurs").reference.includes("ancienne"), "une erreur de plus de 24 h n'est plus à faire");
   assert.ok(!ids.includes("capacite:emails"), "une jauge verte n'est pas à faire");
   assert.ok(!ids.includes("config:jeton-github"), "jeton posé : rien à régler");
   // Le site injoignable passe devant tout.
   assert.equal(aFaire(etatAF({ disponibilite: { repond: false } }), MAINTENANT_AF)[0].id, "site");
 });
 
-test("㉚ aFaire : chaque geste est une demande EXACTE, jamais un texte de tiers dans une confirmation", () => {
+test("㉚ aFaire : chaque geste est une demande EXACTE, jamais un texte de tiers dans ce que dit le bouton", () => {
   const l = aFaire(etatAF(), MAINTENANT_AF);
   const par = (id) => l.find((x) => x.id === id);
   assert.deepEqual(par("issue:12").gestes.map((g) => g.corps), [{ action: "reparer", cible: "issue", numero: 12 }, { action: "fermer", numero: 12 }]);
   assert.deepEqual(par("issue:627").gestes.map((g) => g.corps), [{ action: "fermer", numero: 627 }], "réparation déjà en cours : pas de second « Réparer »");
-  assert.match(par("issue:627").detail, /#601/);
+  assert.match(par("issue:627").quoi, /#601/);
+  assert.equal(par("issue:627").enCours, true);
   assert.deepEqual(par("run:deploy").gestes.map((g) => g.corps), [{ action: "reparer", cible: "run", cle: "deploy" }]);
   assert.deepEqual(par("pr:700").gestes.map((g) => g.corps), [{ action: "fusionner", numero: 700 }, { action: "fermer", numero: 700 }]);
   assert.deepEqual(par("signalement:rep_1").gestes.map((g) => g.corps), [{ action: "signalement", id: "rep_1", statut: "handled" }, { action: "signalement", id: "rep_1", statut: "dismissed" }]);
   assert.deepEqual(par("protection:bandeau").gestes.map((g) => g.corps), [{ action: "reglages", cle: "bandeau", valeur: null }]);
-  assert.deepEqual(par("retour:aaaa1111").gestes, [{ libelle: "Remettre la version précédente", principal: true, special: "retour" }]);
-  assert.deepEqual(par("issue:5").gestes.map((g) => g.corps), [{ action: "fermer", numero: 5 }], "la modération ne se confie jamais à Claude");
-  assert.deepEqual(par("erreur:0").gestes, [], "une enquête Sentinelle est ouverte : pas de relance");
-  for (const x of l) for (const g of x.gestes) assert.ok(!String(g.confirmation || "").includes("<img"), x.id + " : une confirmation ne cite jamais un texte de tiers");
+  assert.deepEqual(par("retour:aaaa1111").gestes, [{ libelle: "Régler", principal: true, special: "retour" }]);
+  assert.deepEqual(par("issue:5").gestes, [], "signalements listés : l'alerte de modération n'a rien à faire de plus, et jamais Claude");
+  const sansListe = aFaire(etatAF({ signalements: { ouverts: 0, liste: [] } }), MAINTENANT_AF).find((x) => x.id === "issue:5");
+  assert.deepEqual(sansListe.gestes.map((g) => g.corps), [{ action: "fermer", numero: 5 }], "la modération ne se confie jamais à Claude");
+  assert.equal(sansListe.prio, 1);
+  assert.deepEqual(par("erreurs").gestes, [], "une enquête Sentinelle est ouverte : pas de relance");
+  for (const x of l) {
+    assert.ok(!String(x.quoi || "").includes("<img"), x.id + " : ce que dit le bouton ne cite jamais un texte de tiers");
+    for (const g of x.gestes) assert.ok(!String(g.libelle || "").includes("<img"), x.id + " : le libellé d'un bouton non plus");
+  }
   // Un lien n'est jamais autre chose que github.com.
   assert.equal(par("issue:12").url, null);
   assert.equal(par("run:deploy").url, "https://github.com/P/p/actions/runs/9");
   // Les textes de tiers sont transportés tels quels (la page les rend en TEXTE).
-  assert.match(par("issue:12").titre, /<img/);
+  assert.match(par("issue:12").reference, /<img/);
+  assert.match(par("signalement:rep_1").detail, /<img/);
 });
 
-test("㉛ aFaire sans jeton GitHub : aucun geste GitHub, le réglage à faire est dit ; GitHub illisible : dit, avec sa raison", () => {
+test("㉛ aFaire sans jeton GitHub : aucun geste GitHub, le bouton mène à la page du jeton ; GitHub illisible : dit, avec sa raison", () => {
   const sans = aFaire(etatAF({ gestesGithub: false }), MAINTENANT_AF);
-  // Restent : les signalements et les réglages (la base), le retour arrière (Netlify).
-  for (const x of sans) for (const g of x.gestes) assert.ok(g.special === "retour" || ["signalement", "reglages"].includes(g.corps.action), x.id + " : geste GitHub sans jeton");
-  assert.ok(sans.find((x) => x.id === "config:jeton-github"));
-  assert.ok(sans.find((x) => x.id === "erreur:0").gestes.length === 0);
+  // Restent : les signalements et les réglages (la base), le retour arrière (Netlify), et les pages à ouvrir.
+  for (const x of sans) for (const g of x.gestes) assert.ok(g.special === "retour" || g.ouvrir || ["signalement", "reglages", "masquage"].includes(g.corps.action), x.id + " : geste GitHub sans jeton");
+  const jeton = sans.find((x) => x.id === "config:jeton-github");
+  assert.equal(jeton.prio, 0, "sans lui aucun bouton ne répare : c'est le premier problème");
+  assert.equal(jeton.gestes[0].ouvrir, PAGES_REGLAGE.secrets);
+  assert.match(jeton.reference, /PILOTAGE_GITHUB_TOKEN/);
+  assert.ok(sans.find((x) => x.id === "erreurs").gestes.length === 0);
   const illisible = aFaire(etatAF({ github: null, nonLus: ["github"], erreursLecture: { github: "GitHub HTTP 403 (limite de lecture atteinte, pas de jeton)" } }), MAINTENANT_AF);
   const g = illisible.find((x) => x.id === "lecture:github");
-  assert.equal(g.prio, 1); assert.match(g.detail, /HTTP 403/);
+  assert.equal(g.prio, 1); assert.match(g.reference, /HTTP 403/);
+  assert.equal(g.gestes[0].special, "relire");
   // Sans GitHub, l'erreur récente devient confiable à la Sentinelle (aucune enquête connue).
-  assert.equal(illisible.find((x) => x.id === "erreur:0").gestes[0].corps.action, "relancer");
+  assert.equal(illisible.find((x) => x.id === "erreurs").gestes[0].corps.action, "relancer");
   assert.deepEqual(aFaire(null), []);
 });
 
@@ -546,7 +559,7 @@ test("㉝ la fonction lit `id,username` des profils des derniers comptes — jam
   assert.match(a, /admin\.from\("profiles"\)\.select\("id,username"\)\.in\("id", derniers\.map\(\(c\) => c\.id\)\)/);
   assert.match(a, /\.slice\(0, COMPTES_RECENTS_MAX\)/, "30 identifiants au plus dans l'URL");
   assert.match(a, /if \(!compteCree\(u, EXTRA\)\) continue;/, "mêmes exclusions que l'entonnoir");
-  assert.match(a, /partiel, crees, nouveaux,\s*inscrits: \{ total: inscrits, tronque: inscritsTronque \} \};/);
+  assert.match(a, /partiel, crees, nouveaux,\s*(\/\/[^\n]*\s*)?inscrits: \{ total: inscrits, tronque: inscritsTronque, /);
   assert.doesNotMatch(a, /email:|\.email\b(?!_confirmed_at)/, "aucune adresse e-mail ne sort de la lecture");
   const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
   const rendu = page.slice(page.indexOf("function listeComptes"), page.indexOf("function rendreSite"));
@@ -723,7 +736,7 @@ test("㊳ « Réparer » confie DÈS L'OUVERTURE (mention @claude du corps) : un
   etat.github = { issues, runs: {}, aReparer: aR };
   const r = aFaire(etat, MAINTENANT_AF).find((x) => x.id === "issue:660");
   assert.deepEqual(r.gestes, []);
-  assert.match(r.detail, /Claude prépare un correctif/);
+  assert.match(r.titre, /Claude prépare un correctif/);
   // Et le serveur, sur « Relancer » forcé : la mention vaut confiée.
   assert.match(src.slice(src.indexOf("async function reconfier")), /if \(i && \(i\.confiee \|\| \(i\.labels \|\| \[\]\)\.includes\("claude"\)\)\) return/);
 });
@@ -757,4 +770,260 @@ test("㊲ VEILLE #627 : la veille serveur émet le canari un quart d'heure sur t
   assert.match(c, /SUPABASE_ANON_KEY/);
   assert.doesNotMatch(c.slice(0, c.indexOf("\n}\n")), /SERVICE_ROLE/);
   assert.match(c, /const \{ error \} = await anon\.from\("telemetry_events"\)\.insert\(ligneCanari\(/);
+});
+
+// ─── UN PROBLÈME, UN BOUTON (2026-11-04) ─────────────────────────────────────
+// Demande de Benjamin : « suivre la croissance avec le nombre d'utilisateurs, et
+// régler n'importe quel problème en un seul clic ». MUTATIONS éprouvées : retirer
+// un `gestes` d'une famille → ㊴ rougit ; mettre `tout` sur le retour arrière ou la
+// modération → ㊵ ; retirer le contrôle du dépôt d'origine de resumerPr → ㊶ (un fork
+// nommé `claude/issue-1-2` devenait « un correctif est prêt ») ; retirer `vue` des
+// erreurs → ㊷ ; retirer REPARATION_MAX_MS → ㊸ ; retirer le filet → ㊹ ; compter le
+// cumul sans trier les jours → ㊺ ; armer l'auto-fusion depuis la veille → ㊻ ; remettre
+// un confirm() ou élargir LIENS_SURS → ㊼.
+const MUTE_LE = "2026-10-23T03:00:00Z"; // 9 h avant MAINTENANT_AF : la Sentinelle est muette
+const touteLaPanne = (extra = {}) => ({
+  gestesGithub: true,
+  verdict: { couleur: "rouge", titre: "Problème en cours", raisons: ["tout"] },
+  disponibilite: { repond: false },
+  sante: { api5xx15: 6 },
+  nonLus: ["github", "sante"],
+  erreursLecture: { github: "GitHub HTTP 502" },
+  github: {
+    issues: [
+      iss(1, ["humain"]), iss(2, ["veille"]), iss(3, ["recidive"]), iss(4, ["moderation"]),
+      iss(5, ["reparation"], { titre: "[RÉPARER] #2", reparation: true }),
+      iss(6, ["reparation", "claude"], { titre: "[RÉPARER] #90", reparation: true, confiee: true, depuis: "2026-10-22T00:00:00Z" }),
+      iss(7, [], { pr: true, correctif: true, titre: "fix: x" }),
+    ],
+    runs: { deploy: { conclusion: "failure", etat: "completed" }, sentinelle: { conclusion: "success", etat: "completed", le: MUTE_LE }, veille: { conclusion: "failure", etat: "completed", le: MUTE_LE } },
+    aReparer: [
+      { cible: "issue", numero: 1, libelle: "#1", enCours: null }, { cible: "issue", numero: 2, libelle: "#2", enCours: 5 }, { cible: "issue", numero: 3, libelle: "#3", enCours: null },
+      { cible: "run", cle: "deploy", libelle: "d", enCours: null }, { cible: "run", cle: "veille", libelle: "v", enCours: null },
+    ],
+    prNonLues: "GitHub HTTP 502",
+  },
+  signalements: { ouverts: 0, liste: [], masques: [{ id: "p_1", signaleurs: 3, le: MUTE_LE, extrait: "x" }] },
+  erreurs: { details: [{ message: "E", n: 40, comptes: 3, dernier: "2026-10-23T11:00:00Z" }] },
+  capacite: { jauges: jauges({ connexions: 480, emails: 280, base: 8 * 1024 ** 3, stockage: 99 * 1024 ** 3, telemetrie: 2900, bandePassante: 99 * 1024 ** 3 }) },
+  autonomie: { retour: { jeton: true, proposition: { le: MUTE_LE, version: "aaaa1111", comptes: 6, famille: "E" } } },
+  reglages: { absente: false, delestage: { niveau: 0 }, coupures: { cles: [] } },
+  ...extra,
+});
+
+test("㊴ n'importe quel problème a son bouton : un seul « Régler », et il dit ce qu'il va faire", () => {
+  const avecSignalement = touteLaPanne({ signalements: { ouverts: 1, liste: [{ id: "r", type: "comment", motif: "m", le: MUTE_LE }], masques: [] } });
+  const etats = [touteLaPanne(), avecSignalement, touteLaPanne({ autonomie: { retour: { jeton: false, proposition: { le: MUTE_LE, version: "aaaa1111", comptes: 6 } } } })];
+  for (const d of etats) {
+    const pbs = aFaire(d, MAINTENANT_AF).filter((x) => x.prio <= 1 && !x.enCours);
+    assert.ok(pbs.length >= 8, "le banc couvre bien toutes les familles : " + pbs.map((x) => x.id));
+    for (const x of pbs) {
+      const principaux = x.gestes.filter((g) => g.principal);
+      if (x.id.startsWith("signalement:")) {
+        assert.equal(principaux.length, 0, "aucune machine ne décide d'un signalement");
+        assert.deepEqual(x.gestes.map((g) => g.corps.statut), ["handled", "dismissed"]);
+      } else {
+        assert.equal(principaux.length, 1, x.id + " : un problème sans bouton, ou avec deux");
+        assert.equal(principaux[0].libelle, "Régler", x.id);
+        assert.ok(principaux[0].corps || principaux[0].special || principaux[0].ouvrir, x.id);
+      }
+      assert.ok(x.quoi, x.id + " : le bouton dit ce qu'il va faire");
+      assert.ok(x.quoi.length <= 50, x.id + " : « " + x.quoi + " » ne tient plus sur une ligne de téléphone");
+    }
+  }
+  // Une réparation en cours n'appelle aucun « Régler » : elle se dit, et rien de plus.
+  const l = aFaire(touteLaPanne(), MAINTENANT_AF);
+  assert.equal(l.find((x) => x.id === "issue:2").enCours, true);
+  assert.ok(!l.find((x) => x.id === "issue:2").gestes.some((g) => g.principal));
+  // Plus aucune confirmation à relire : la page laisse 5 s pour annuler.
+  for (const x of l) for (const g of x.gestes) assert.equal(g.confirmation, undefined, x.id);
+});
+
+test("㊵ « Tout régler » : seulement ce qui répare ; jamais le retour arrière, la modération, ni un paiement", () => {
+  const l = aFaire({ ...touteLaPanne(), signalements: { ouverts: 1, liste: [{ id: "r", type: "post", motif: "m" }], masques: [{ id: "p_1", signaleurs: 3 }] } }, MAINTENANT_AF);
+  const tout = l.flatMap((x) => x.gestes.filter((g) => g.tout).map((g) => ({ id: x.id, g })));
+  assert.ok(tout.length >= 4);
+  for (const { id, g } of tout) {
+    assert.ok(g.corps, id + " : une demande à la fonction, jamais une page à ouvrir");
+    assert.ok(["reparer", "relancer", "fusionner", "fermer"].includes(g.corps.action), id + " : " + g.corps.action);
+    assert.equal(g.principal, true, id);
+  }
+  for (const x of l.filter((y) => /^(retour:|site$|signalement:|masque:|capacite:)/.test(y.id))) {
+    assert.ok(!x.gestes.some((g) => g.tout), x.id + " : c'est un choix, pas une réparation");
+  }
+});
+
+test("㊶ une PR n'est un correctif que sur une branche de la chaîne, de CE dépôt ; un chantier n'est pas un problème", () => {
+  const pr = (ref, depot, extra = {}) => ({ number: 1, head: { ref, repo: { full_name: depot } }, ...extra });
+  assert.equal(resumerPr(pr("claude/issue-657-40206802710", "P/p"), "P/p").correctif, true);
+  assert.equal(resumerPr(pr("sentinelle/2026-11-04-abc", "P/p"), "P/p").correctif, true);
+  assert.equal(resumerPr(pr("feat/paliers-croissance", "P/p"), "P/p").correctif, false);
+  assert.equal(resumerPr(pr("claude/awesome-hypatia-atk8b3", "P/p"), "P/p").correctif, false, "une session Claude n'est pas la chaîne de réparation");
+  const fork = resumerPr(pr("claude/issue-1-2", "pirate/p"), "P/p");
+  assert.deepEqual(fork, { externe: true, correctif: false, autoFusion: false, brouillon: false, maj: null }, "dépôt public : un fork nomme sa branche comme il veut");
+  assert.equal(resumerPr({ number: 1, head: { ref: "claude/issue-1-2", repo: null } }, "P/p").correctif, false, "dépôt supprimé : rien ne prouve son origine");
+  assert.equal(resumerPr(pr("claude/issue-1-2", "P/p", { auto_merge: { merge_method: "squash" } }), "P/p").autoFusion, true);
+  assert.equal(resumerPr(pr("claude/issue-1-2", "P/p", { draft: true }), "P/p").brouillon, true);
+  assert.equal(resumerPr(null, "P/p").correctif, false);
+
+  const etat = (extra) => ({ gestesGithub: true, github: { issues: [iss(9, [], { pr: true, titre: "t", ...extra })], runs: {}, aReparer: [] } });
+  const une = (extra) => aFaire(etat(extra), MAINTENANT_AF).find((x) => x.id === "pr:9");
+  const correctif = une({ correctif: true });
+  assert.equal(correctif.prio, 1);
+  assert.deepEqual(correctif.gestes.map((g) => [g.libelle, g.corps.action]), [["Régler", "fusionner"], ["Refuser", "fermer"]]);
+  const partant = une({ correctif: true, autoFusion: true });
+  assert.equal(partant.enCours, true); assert.ok(!partant.gestes.some((g) => g.principal), "elle part toute seule : rien à presser");
+  // Armée puis rien (un test rouge l'arrête sans le dire) : elle revient comme un problème, et se referme d'un toucher.
+  const fige = une({ correctif: true, autoFusion: true, maj: new Date(MAINTENANT_AF - REPARATION_MAX_MS - 60e3).toISOString() });
+  assert.equal(fige.enCours, false); assert.equal(fige.prio, 1);
+  assert.deepEqual(fige.gestes.map((g) => [g.principal, g.corps]), [[true, { action: "fermer", numero: 9 }]]);
+  assert.equal(fige.gestes[0].tout, undefined, "refermer un correctif reste un geste à part");
+  assert.equal(une({ correctif: true, autoFusion: true, maj: new Date(MAINTENANT_AF - 60e3).toISOString() }).enCours, true, "elle vient d'être armée");
+  // Le cas mesuré le 04/11 : huit chantiers d'autres sessions, huit « correctifs » sur l'accueil.
+  const chantier = une({ correctif: false, externe: false });
+  assert.equal(chantier.prio, 2); assert.equal(chantier.enCours, false);
+  assert.ok(!chantier.gestes.some((g) => g.principal));
+  assert.deepEqual(chantier.gestes.map((g) => g.corps.action), ["fusionner", "fermer"], "les gestes restent, rangés dans Détails");
+  assert.equal(une({ correctif: true, brouillon: true }).prio, 2, "un brouillon n'est pas prêt");
+  assert.deepEqual(une({ correctif: false, externe: true }).gestes.map((g) => g.corps.action), ["fermer"], "un fork ne se fusionne pas d'ici");
+  // La fonction : une lecture de plus, illisible = chantier (jamais un bouton à l'aveugle), et c'est dit.
+  const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const lire = src.slice(src.indexOf("async function lireGithub"), src.indexOf("const sansJeton"));
+  assert.match(lire, /gh\(`\/repos\/\$\{DEPOT\}\/pulls\?state=open&per_page=50`\)/);
+  assert.match(lire, /resumerPr\(p, DEPOT\)/);
+  assert.match(lire, /infosPr\.get\(i\.numero\) \|\| \{ externe: true, correctif: false, autoFusion: false, brouillon: false \}/);
+  assert.match(lire, /prNonLues: pulls\.ok \? null : /);
+  assert.equal(aFaire({ github: { issues: [], runs: {}, aReparer: [], prNonLues: "GitHub HTTP 502" }, gestesGithub: true }, MAINTENANT_AF)[0].id, "lecture:pr");
+});
+
+test("㊷ les erreurs : une ligne, un bouton, et il finit par régler — vue par la Sentinelle, elle n'attend plus personne", () => {
+  const det = [{ message: "A", n: 3, comptes: 1, dernier: "2026-10-23T10:00:00Z" }, { message: "B", n: 12, comptes: 2, dernier: "2026-10-23T11:00:00Z" }, { message: "vieille", n: 99, comptes: 9, dernier: "2026-10-20T10:00:00Z" }];
+  const avec = (sentinelle, issues = []) => aFaire({ gestesGithub: true, erreurs: { details: det }, github: { issues, runs: { sentinelle }, aReparer: [] } }, MAINTENANT_AF).filter((x) => x.id === "erreurs");
+  // Personne ne l'a encore vue : UNE ligne pour deux erreurs, urgente car l'une dépasse 10.
+  const avant = avec({ etat: "completed", conclusion: "success", le: "2026-10-23T10:30:00Z" });
+  assert.equal(avant.length, 1);
+  assert.match(avant[0].titre, /^2 erreurs : 15 fois en 24 h/);
+  assert.match(avant[0].reference, /^B/, "la pire d'abord");
+  assert.equal(avant[0].prio, 0);
+  assert.deepEqual(avant[0].gestes[0].corps, { action: "relancer", cible: "sentinelle" });
+  // Le toucher lance la Sentinelle : elle tourne…
+  const pendant = avec({ etat: "in_progress", conclusion: null, le: "2026-10-23T11:30:00Z" })[0];
+  assert.equal(pendant.enCours, true); assert.deepEqual(pendant.gestes, []);
+  // …puis elle a fini sans rien ouvrir : la ligne quitte l'accueil, sinon elle y survivrait 24 h au geste.
+  const apres = avec({ etat: "completed", conclusion: "success", le: "2026-10-23T11:45:00Z" })[0];
+  assert.equal(apres.prio, 2); assert.equal(apres.enCours, false); assert.deepEqual(apres.gestes, []);
+  // Une exécution en échec n'a rien vu.
+  assert.equal(avec({ etat: "completed", conclusion: "failure", le: "2026-10-23T11:45:00Z" })[0].prio, 0);
+  // Une enquête ouverte a déjà sa ligne : celle-ci ne la redit pas.
+  assert.equal(avec({ etat: "completed", conclusion: "success", le: "2026-10-23T10:30:00Z" }, [iss(8, ["sentinelle"])])[0].prio, 2);
+});
+
+test("㊸ une réparation qui n'a rien donné ne reste pas « en cours » pour toujours", () => {
+  const rep = (depuis, enCours = 9) => {
+    const issues = [iss(2, ["veille"]), iss(9, ["reparation", "claude"], { titre: "[RÉPARER] #2", reparation: true, confiee: true, depuis })];
+    return aFaire({ gestesGithub: true, github: { issues, runs: {}, aReparer: enCours ? [{ cible: "issue", numero: 2, libelle: "#2", enCours }] : [] } }, MAINTENANT_AF).find((x) => x.id === "issue:9");
+  };
+  const recente = rep(new Date(MAINTENANT_AF - REPARATION_MAX_MS + 60e3).toISOString());
+  assert.equal(recente.prio, 2); assert.deepEqual(recente.gestes, []);
+  const vieille = rep(new Date(MAINTENANT_AF - REPARATION_MAX_MS - 60e3).toISOString());
+  assert.equal(vieille.prio, 1);
+  assert.deepEqual(vieille.gestes.map((g) => g.corps), [{ action: "fermer", numero: 9 }], "la refermer rouvre le bouton du problème d'origine");
+  // Sa cible a disparu : il ne reste qu'elle pour dire que Claude travaille.
+  assert.equal(rep(new Date(MAINTENANT_AF - 60e3).toISOString(), 0).enCours, true);
+});
+
+test("㊹ un voyant orange ou rouge a toujours une ligne : pannes du serveur, Sentinelle muette, le filet", () => {
+  const relance = (x) => x.gestes[0].corps;
+  const serveur = (veille) => aFaire({ gestesGithub: true, sante: { api5xx15: 2 }, github: { issues: [], runs: { veille }, aReparer: [] } }, MAINTENANT_AF).find((x) => x.id === "serveur");
+  assert.deepEqual(relance(serveur({ etat: "completed", conclusion: "success", le: "2026-10-23T09:00:00Z" })), { action: "relancer", cible: "veille" });
+  assert.equal(serveur({ etat: "in_progress", le: "2026-10-23T11:59:00Z" }).enCours, true);
+  assert.equal(serveur({ etat: "completed", conclusion: "success", le: "2026-10-23T11:55:00Z" }).prio, 2, "elle vient de vérifier");
+  const muette = (extra = {}) => aFaire({ gestesGithub: true, github: { issues: [], runs: { sentinelle: { etat: "completed", conclusion: "success", le: MUTE_LE } }, aReparer: [], ...extra } }, MAINTENANT_AF).find((x) => x.id === "sentinelle:muette");
+  assert.deepEqual(relance(muette()), { action: "relancer", cible: "sentinelle" });
+  assert.equal(muette({ pause: true }), undefined, "le pilote l'a mise en pause : elle se tait à sa demande");
+  // Le filet : une raison sans ligne dédiée (ici, la veille aveugle).
+  const raisons = ["veille aveugle : la télémétrie est au plafond", "autre raison"];
+  const filet = aFaire({ gestesGithub: true, verdict: { couleur: "orange", titre: "À surveiller", raisons }, github: { issues: [], runs: {}, aReparer: [] } }, MAINTENANT_AF);
+  assert.equal(filet[0].id, "voyant"); assert.equal(filet[0].prio, 1);
+  assert.match(filet[0].titre, /^Veille aveugle/);
+  assert.deepEqual(relance(filet[0]), { action: "relancer", cible: "sentinelle" });
+  // Vert, ou une autre ligne porte déjà le problème : pas de filet.
+  assert.equal(aFaire({ verdict: { couleur: "vert", raisons: [] } }, MAINTENANT_AF).length, 0);
+  assert.ok(!aFaire(etatAF({ verdict: { couleur: "rouge", raisons: ["x"] } }), MAINTENANT_AF).some((x) => x.id === "voyant"));
+});
+
+test("㊺ la marche des utilisateurs : le cumul finit sur le total, tout compte a sa marche, et rien n'est inventé", () => {
+  const t = Date.parse("2026-11-04T12:00:00Z");
+  const dates = ["2026-10-30T09:00:00Z", "2026-06-23T10:00:00Z", "2026-06-23 11:00:00", "2026-10-25T09:00:00Z", "2026-10-01T09:00:00Z", "pas une date", null, "2027-01-01T00:00:00Z"];
+  const c = croissanceInscrits(dates, t);
+  assert.deepEqual(c.courbe, [
+    { jour: "2026-06-23", n: 2, total: 2 }, { jour: "2026-10-01", n: 1, total: 3 }, { jour: "2026-10-25", n: 1, total: 4 }, { jour: "2026-10-30", n: 1, total: 5 },
+  ], "triée par jour, deux comptes du même jour = une marche de deux, date illisible ou future écartée");
+  assert.equal(c.semaine, 1, "30/10 : moins de 7 jours");
+  assert.equal(c.semainePrec, 1, "25/10 : entre 7 et 14 jours");
+  assert.equal(c.mois, 2);
+  assert.deepEqual(croissanceInscrits(null, t), { semaine: 0, semainePrec: 0, mois: 0, courbe: [] });
+  // À l'échelle, les marches se groupent sans jamais mentir sur le total.
+  const beaucoup = Array.from({ length: 1000 }, (_, i) => new Date(t - i * 864e5).toISOString());
+  const g = croissanceInscrits(beaucoup, t);
+  assert.ok(g.courbe.length <= COURBE_POINTS_MAX, String(g.courbe.length));
+  assert.equal(g.courbe.at(-1).total, 1000);
+  assert.equal(g.courbe.reduce((s, x) => s + x.n, 0), 1000);
+  for (let i = 1; i < g.courbe.length; i++) {
+    assert.ok(g.courbe[i].jour > g.courbe[i - 1].jour); assert.equal(g.courbe[i].total, g.courbe[i - 1].total + g.courbe[i].n);
+  }
+  // La fonction : les mêmes comptes que le total, aucune lecture de plus, et pas de courbe sur une liste tronquée.
+  const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const a = src.slice(src.indexOf("async function lireActivation"), src.indexOf("async function lireSignalements"));
+  assert.ok(a.indexOf("compteCree(u, EXTRA)") < a.indexOf("arrivees.push(u.created_at)"), "mêmes exclusions que le total");
+  assert.ok(a.indexOf("inscrits++") < a.indexOf("arrivees.push(u.created_at)"));
+  assert.ok(a.indexOf("arrivees.push(u.created_at)") < a.indexOf("if (dateUtc(u.created_at) < depuis) continue;"), "avant la borne de 30 jours : toute l'histoire");
+  assert.match(a, /\.\.\.\(inscritsTronque \? \{\} : croissanceInscrits\(arrivees, maintenant\)\)/);
+});
+
+test("㊻ « Régler » sur un correctif : le geste du pilote arme l'auto-fusion de GitHub si les tests tournent — jamais la machine seule", () => {
+  const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const f = src.slice(src.indexOf("async function fusionner"), src.indexOf("// L'auto-fusion native de GitHub"));
+  assert.match(f, /if \(r\.status === 405 && p\.mergeable !== false && await armerAutoFusion\(/, "seulement sur un « pas encore fusionnable », jamais sur un conflit");
+  assert.ok(f.indexOf("/merge`") < f.indexOf("armerAutoFusion("), "on tente d'abord de fusionner");
+  assert.match(f, /if \(p\.state !== "open" \|\| p\.draft\)/, "ni fermée ni brouillon");
+  const a = src.slice(src.indexOf("async function armerAutoFusion"), src.indexOf("async function fermer"));
+  assert.match(a, /enablePullRequestAutoMerge/);
+  assert.match(a, /Array\.isArray\(j\.errors\)/, "GraphQL répond 200 même en échec : les erreurs se lisent");
+  // Seul le pilote, derrière la porte : ni la veille (appelable sans compte), ni la réparation.
+  const appels = src.match(/armerAutoFusion\(/g) || [];
+  assert.equal(appels.length, 2, "sa définition et le seul appel, dans fusionner");
+  const v = src.slice(src.indexOf("async function veille"), src.indexOf("/** Rappels d'activité"));
+  assert.doesNotMatch(v, /fusionner\(|armerAutoFusion/);
+  assert.ok(src.indexOf('case "fusionner": return fusionner(') > src.indexOf("if (!autorise(user, EXTRA))"), "derrière la porte de l'éditeur");
+  // Un refus de droit dit quel droit donner.
+  assert.match(src, /refusDroit\(res\.status, "Actions"\)/);
+  assert.match(f, /refusDroit\(r\.status, "Pull requests » et « Contents"\)/);
+  // Une réparation reste relue : la consigne donnée à Claude ne change pas.
+  assert.match(corpsReparation({ cible: "issue", numero: 1 }, "P/p"), /Ne fusionne rien/);
+});
+
+test("㊼ la page : aucun confirm(), aucun innerHTML, et un bouton n'ouvre que les pages prévues", () => {
+  const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
+  assert.doesNotMatch(page, /\bconfirm\(/, "un seul toucher : plus aucune confirmation");
+  assert.doesNotMatch(page, /\.innerHTML|insertAdjacentHTML|document\.write/);
+  const m = page.match(/const LIENS_SURS = (\/.*\/);/);
+  assert.ok(m, "LIENS_SURS introuvable");
+  const sur = new Function("return " + m[1])();
+  for (const u of [...Object.values(PAGES_REGLAGE), ...jauges({ connexions: 1 }).map((j) => j.url).filter(Boolean)]) assert.ok(sur.test(u), u);
+  for (const u of ["javascript:alert(1)", "https://evil.example/", "https://github.com.evil.example/x", "https://supabase.com.evil.example/dashboard/", "https://supabase.com/autre", "http://github.com/x", "//github.com/x"]) {
+    assert.equal(sur.test(u), false, u);
+  }
+  // Toute jauge qu'on peut acheter mène à sa page ; la télémétrie, elle, ne s'achète pas.
+  for (const j of jauges({ connexions: 1, emails: 1, base: 1, stockage: 1, telemetrie: 1, bandePassante: 1 })) {
+    if (j.cle === "telemetrie") assert.equal(j.url, null);
+    else assert.ok(Object.values(PAGES_REGLAGE).includes(j.url), j.cle);
+  }
+  // L'écran : plus de barre d'onglets, deux besoins, le reste rangé.
+  const html = fs.readFileSync("pilotage/index.html", "utf8");
+  const css = fs.readFileSync("pilotage/pilotage.css", "utf8");
+  assert.doesNotMatch(html, /class="barre/);
+  assert.doesNotMatch(css, /\.barre\b(?!-j)/, "cible supprimée : ses règles partent avec");
+  assert.ok(html.indexOf('id="afaire"') < html.indexOf('id="marche"'), "ce qui est cassé d'abord");
+  assert.ok(html.indexOf('id="marche"') < html.indexOf('class="plus"'));
 });

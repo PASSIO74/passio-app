@@ -5,26 +5,38 @@
 > l'invariant actionnable et un pointeur vers ici. Rien n'a été retiré : le contenu
 > ci-dessous est celui d'origine, à l'octet près.
 
-## ⭐ Le centre de pilotage, c'est `/pilotage/` (2026-10-23)
+## ⭐ Le centre de pilotage, c'est `/pilotage/` (refait le 2026-11-04)
 
 **Une seule adresse : https://passio-app.netlify.app/pilotage/** — téléphone ou ordinateur, PC
-éteint compris. Page : `pilotage/` (copiée telle quelle dans `dist/` par `scripts/build.js`) ;
-données et gestes : Edge Function `supabase/functions/pilotage` (porte : compte de l'éditeur
-seulement) ; logique pure : `supabase/functions/_shared/pilotage.js`.
+éteint compris ; l'icône « Centre de pilotage » du Bureau y mène directement. Page : `pilotage/`
+(copiée telle quelle dans `dist/` par `scripts/build.js`) ; données et gestes : Edge Function
+`supabase/functions/pilotage` (porte : compte de l'éditeur seulement) ; logique pure :
+`supabase/functions/_shared/pilotage.js`.
 
-- **Trois onglets.** *Accueil* : le voyant (vert / orange / rouge), **« À faire »** — UNE liste
-  triée par urgence, construite par `aFaire()` côté serveur (site injoignable, retour arrière
-  proposé, exécution en échec, issue « humain », correctif à fusionner, signalement, erreur du
-  jour, jauge de capacité, lecture GitHub ratée, réglages manquants) avec ses gestes — puis les
-  **chiffres clés** et leur tendance (inscriptions et erreurs sur 7 j contre les 7 j d'avant,
-  erreurs depuis la dernière mise en ligne contre la même durée avant) — la première tuile,
-  **« inscrits au total »**, s'ouvre sur la vue « Inscrits » : TOUS les inscrits par leur nom,
-  100 par page, lus à la demande (action `inscrits`) — puis les **nouveaux comptes par leur nom**
-  (les 5 derniers — le nom choisi dans l'app, `profiles.username`, jamais l'e-mail ;
-  `comptesRecents`). *Détails* : site, erreurs,
-  utilisateurs, activation et entonnoir (créés → e-mail confirmé → actifs), machines, capacité,
-  « ce qui s'est passé » (changements du voyant sur 7 j). *Réglages* : protection automatique,
-  retour arrière, alertes, installation.
+- **Un seul écran, les deux besoins de Benjamin, sans barre d'onglets.** D'abord **ce qu'il y a à
+  régler** : le voyant (vert / orange / rouge), puis une ligne par problème, construite par
+  `aFaire()` côté serveur (trois d'un coup, pour garder la croissance à l'écran). Puis **le nombre
+  d'utilisateurs** : le total, sa marche depuis le premier compte (`croissanceInscrits`), l'évolution
+  de la semaine, qui est là maintenant, et les 3 derniers arrivés par leur nom. Toucher le nombre
+  ouvre TOUS les utilisateurs par leur nom, 100 par page, lus à la demande (action `inscrits`) — le
+  nom choisi dans l'app, `profiles.username`, jamais l'e-mail (`comptesRecents`).
+- **Un problème, un bouton « Régler ».** Le serveur décide de ce que fait le bouton (`gestes[]`,
+  `principal`) et le dit en une ligne (`quoi`) : Claude prépare le correctif, mettre en ligne, remettre
+  la version d'avant, ouvrir la page du forfait… Aucun problème sans issue (banc ㊴). Une décision
+  qu'aucune machine ne prend (un signalement) garde ses deux gestes sous les yeux. Le reste (la
+  référence technique, refuser, voir sur GitHub) se déplie en touchant le texte.
+- **Aucune confirmation : 5 s pour annuler.** Le toucher arme le geste, le bouton affiche « Annuler
+  (5) », le geste part seul (`armer`) ; quitter la page le fait partir tout de suite. **« Tout régler »**
+  enchaîne ce qui répare (`tout: true`) : jamais le retour arrière ni la modération.
+- **Ce qui n'est pas un problème a quitté l'accueil** : une PR n'est un « correctif » que sur une
+  branche de la chaîne de réparation, dans CE dépôt (`resumerPr`) ; les chantiers des autres sessions
+  sont « pour info », dans le détail, comme ce qu'une machine porte déjà. Une erreur que la Sentinelle
+  a vue passer sans rien ouvrir n'attend plus personne.
+- **Le reste est rangé derrière trois lignes** : *D'où viennent les gens* (sources, bouche-à-oreille,
+  actifs, rétention, utilisateurs mois par mois), *Tout le détail technique* (chiffres clés, site,
+  erreurs, activation et entonnoir, machines, capacité, coût, « ce qui s'est passé »), *Réglages*
+  (protection automatique, retour arrière, alertes, installation). Le bouton retour du téléphone y
+  fonctionne.
 - **Une source illisible n'est pas une source calme.** Mesuré le 2026-10-22 : le voyant mémorisé
   par la veille a basculé 14 fois d'orange à vert en deux heures alors que l'enquête de veille
   #627 restait ouverte — chaque « vert » était une lecture GitHub ratée (`github: null` = aucune
@@ -34,13 +46,14 @@ seulement) ; logique pure : `supabase/functions/_shared/pilotage.js`.
   GitHub… », raison HTTP dans `erreursLecture`).
 - **Données périmées dites** : au-delà de 3 min sans lecture réussie, la page grise le voyant et
   l'écrit. Une fonction pas encore à jour (pas de liste `aFaire`) affiche « Liste indisponible »,
-  jamais « Rien à faire ».
+  jamais « Rien à régler ».
 - **Le Pilot mobile du PC (`dashboard/public/mobile.html`) est retiré** : il exigeait le PC allumé
-  et le même Wi-Fi. `dashboard/` reste l'atelier du poste (télémétrie détaillée, Sentinelle locale,
-  réparations, Command Center).
+  et le même Wi-Fi. `dashboard/` reste l'atelier technique du poste (télémétrie détaillée, Sentinelle
+  locale, réparations, Command Center), lancé par `Lancer-Pilotage.cmd`.
 
-Verrous : `tests/unit/pilotage.test.mjs` (㉓ à ㉛), `tests/e2e/pilotage-nuage.spec.js` (16, dont la
-liste « À faire » construite par la VRAIE fonction), `dashboard/test/mobile-pilot.test.js`.
+Verrous : `tests/unit/pilotage.test.mjs` (㉓ à ㉛, ㊴ à ㊼), `tests/e2e/pilotage-nuage.spec.js` (dont
+la liste construite par la VRAIE fonction), `dashboard/test/mobile-pilot.test.js`. Fiche du lot :
+`docs/journal/telemetrie-pilotage-sentinelle.md`.
 
 ## Centre de pilotage (télémétrie + dashboard `dashboard/`, 2026-08-05)
 

@@ -65,6 +65,19 @@ export function resumerIssue(i) {
   };
 }
 
+/**
+ * Ce que la liste des issues ne dit pas d'une pull request : sa branche, et donc
+ * si elle vient de la chaîne de réparation (`claude/issue-<n>-<run>` de
+ * claude-code.yml, `sentinelle/*` du poste) ou d'un chantier. La branche seule ne
+ * suffit pas : le dépôt est PUBLIC, un fork peut nommer la sienne comme il veut —
+ * seule une branche de CE dépôt, où seuls les mainteneurs écrivent, compte.
+ */
+const BRANCHE_CORRECTIF = /^(claude\/issue-\d+-\d+|sentinelle\/)/;
+export function resumerPr(p, depot) {
+  const tete = (p && p.head) || {};
+  const memeDepot = !!(tete.repo && tete.repo.full_name === depot);
+  return { externe: !memeDepot, correctif: memeDepot && BRANCHE_CORRECTIF.test(String(tete.ref || "")), autoFusion: !!(p && p.auto_merge), brouillon: !!(p && p.draft), maj: (p && p.updated_at) || null };
+}
 /** Résume la dernière exécution d'un workflow. */
 export function resumerRun(r) {
   if (!r) return null;
@@ -75,6 +88,8 @@ export function resumerRun(r) {
   };
 }
 
+/** Au-delà, la Sentinelle est dite muette : orange au voyant, et une ligne à régler. */
+export const SENTINELLE_MUETTE_MS = 8 * 3600e3;
 /**
  * Le verdict en une phrase et une couleur. Seuils volontairement simples :
  * ils se lisent, se contestent et se changent ici, pas dans l'écran.
@@ -107,7 +122,7 @@ export function verdict(e) {
   if (veille) orange.push("la veille signale un problème");
   const signal = Number(e && e.signalements && e.signalements.ouverts) || 0;
   if (signal) orange.push(`${signal} signalement(s) à traiter`);
-  if (runs.sentinelle && runs.sentinelle.le && Date.now() - Date.parse(runs.sentinelle.le) > 8 * 3600e3) orange.push("la Sentinelle n'a pas tourné depuis plus de 8 h");
+  if (runs.sentinelle && runs.sentinelle.le && Date.now() - Date.parse(runs.sentinelle.le) > SENTINELLE_MUETTE_MS) orange.push("la Sentinelle n'a pas tourné depuis plus de 8 h");
   if (rouge.length) return { couleur: "rouge", titre: "Problème en cours", raisons: rouge.concat(orange) };
   if (orange.length) return { couleur: "orange", titre: "À surveiller", raisons: orange };
   if (!e || !e.sante) return { couleur: "gris", titre: "Pas de nouvelles", raisons: ["La production n'a pas pu être lue."] };
@@ -187,124 +202,245 @@ export function fenetreMiseEnLigne(run, maintenant = Date.now(), maxMs = 7 * 864
   return { le: new Date(le).toISOString(), depuis: new Date(depuis).toISOString(), avantDebut: new Date(depuis - duree).toISOString(), dureeMs: duree };
 }
 
-// ─── « À FAIRE » — UNE SEULE LISTE (2026-10-23) ──────────────────────────────
-// Ce qui attend le pilote était éparpillé sur quatre onglets : « À réparer » et
-// « Ce qui t'attend » (Accueil), les correctifs (Machines), les signalements
-// (Utilisateurs), la proposition de retour arrière (Capacité). Une liste, triée
-// par urgence, construite ICI (éprouvée en Node) et rendue telle quelle :
-//   prio 0 = urgent (rouge) · 1 = à traiter (orange) · 2 = pour info (gris).
-// Chaque geste est une DEMANDE que la fonction revalide (liste blanche, jeton,
+// ─── « À RÉGLER » — UN PROBLÈME, UN BOUTON (2026-11-04) ──────────────────────
+// Demande de Benjamin : « régler n'importe quel problème en un seul clic ». La
+// liste unique du 2026-10-23 (ce qui attendait le pilote était éparpillé sur
+// quatre onglets) reste construite ICI, éprouvée en Node et rendue telle quelle,
+// mais elle répond à une seule question : qu'est-ce qui est cassé, et que fait
+// le bouton ?
+//   prio 0 = urgent (rouge) · 1 = à régler (orange) · 2 = pour info (rangé dans Détails).
+//   `enCours` = une machine s'en occupe : l'accueil le dit, sans bouton à presser.
+// Un problème (prio ≤ 1, pas en cours) a TOUJOURS une issue, et le banc le vérifie :
+//   · UN geste `principal`, libellé « Régler » : une demande à la fonction
+//     (`corps`), une action de la page (`special` : retour, relire), ou la page où
+//     ça se règle (`ouvrir`) quand seul un humain peut payer ou poser un secret ;
+//   · ou, pour une DÉCISION qu'aucune machine ne prend (un signalement), ses deux
+//     gestes côte à côte, chacun d'un toucher.
+// `tout: true` : le geste entre dans « Tout régler ». Jamais le retour arrière,
+// jamais la modération : ce sont des choix, pas des réparations.
+// `quoi` dit en clair ce que le bouton va faire, en une ligne de téléphone : un texte
+// FIXE, écrit ici. `detail` reste visible (ce sur quoi on décide : le motif d'un
+// signalement) ; `reference` (le numéro, le titre de l'issue, le message d'erreur) se
+// replie : l'écran dit ce qui est cassé, pas comment la machine l'a nommé.
+// Plus aucune confirmation : la page laisse 5 s pour annuler (pilotage.js, armer).
+// Chaque geste reste une DEMANDE que la fonction revalide (liste blanche, jeton,
 // cible relue sur GitHub) : la liste ne donne aucun droit de plus que l'écran.
 // ⚠️ Titres d'issue, messages d'erreur et motifs de signalement sont écrits par
-// des tiers : la page les rend en TEXTE, et aucune confirmation ne les cite.
+// des tiers : ils vont dans `detail` ou `reference`, que la page rend en TEXTE,
+// jamais dans `quoi`.
 const COULEUR_PRIO = ["rouge", "orange", "gris"];
 const urlGithub = (u) => (/^https:\/\/github\.com\//.test(String(u || "")) ? u : null);
 const versionCourte = (v) => String(v || "").replace(/[^0-9a-f]/gi, "").slice(0, 8);
+const REGLER = "Régler";
+const QUOI_CLAUDE = "Claude prépare le correctif.";
+const quoiClaudeEnCours = (n) => "Claude prépare le correctif (#" + n + ").";
+const TITRES_RUN = Object.freeze({
+  deploy: "La mise en ligne a échoué", sentinelle: "La Sentinelle s'est arrêtée", veille: "La surveillance s'est arrêtée",
+});
+const NATURES_SIGNALEMENT = Object.freeze({ post: "une publication", comment: "un commentaire", user: "un profil", story: "une story", event: "une activité" });
+/** Une réparation sans correctif après ce délai n'en donnera plus : le bouton la referme pour pouvoir la relancer. */
+export const REPARATION_MAX_MS = 6 * 3600e3;
+/**
+ * Les pages où se règle ce qu'aucune machine ne peut faire (payer, poser un
+ * secret). Le bouton y mène directement ; la page n'ouvre rien d'autre (LIENS_SURS).
+ */
+export const PAGES_REGLAGE = Object.freeze({
+  secrets: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/functions/secrets",
+  facturation: "https://supabase.com/dashboard/org/_/billing",
+  calcul: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/settings/compute-and-disk",
+  netlify: "https://app.netlify.com/",
+  brevo: "https://app.brevo.com/",
+});
 
 export function aFaire(d, maintenant = Date.now()) {
   const out = [];
-  const ajoute = (x) => out.push({ couleur: COULEUR_PRIO[x.prio] || "gris", depuis: null, url: null, gestes: [], detail: "", ...x });
+  const ajoute = (x) => out.push({ couleur: COULEUR_PRIO[x.prio] || "gris", depuis: null, url: null, gestes: [], detail: "", reference: "", quoi: "", enCours: false, ...x });
   const gh = d && d.github;
   const gestesGh = !!(d && d.gestesGithub);
   const issues = gh && Array.isArray(gh.issues) ? gh.issues : [];
   const reparables = gh && Array.isArray(gh.aReparer) ? gh.aReparer : [];
+  const runs = (gh && gh.runs) || {};
+  const sg = d && d.signalements;
+  const signalements = sg && Array.isArray(sg.liste) ? sg.liste : [];
   const reparation = new Map(reparables.map((x) => [x.cible === "issue" ? "issue:" + x.numero : "run:" + x.cle, x]));
-  const gesteReparer = (x) => (gestesGh && x && !x.enCours
-    ? [{ libelle: "Réparer", principal: true, corps: x.cible === "issue" ? { action: "reparer", cible: "issue", numero: x.numero } : { action: "reparer", cible: "run", cle: x.cle },
-      confirmation: "Confier cette réparation à Claude ? Il ouvrira un correctif que tu valideras ici." }]
-    : []);
-  const gesteFermer = (n) => (gestesGh ? [{ libelle: "Fermer", corps: { action: "fermer", numero: n }, confirmation: "Fermer #" + n + " ? (si c'est réglé ou sans objet)" }] : []);
+  const regler = (corps, tout = true) => ({ libelle: REGLER, principal: true, ...(tout ? { tout: true } : {}), corps });
+  const relancer = (cible) => (gestesGh ? [regler({ action: "relancer", cible })] : []);
+  const relire = { libelle: REGLER, principal: true, special: "relire" };
+  const corpsReparer = (x) => (x.cible === "issue" ? { action: "reparer", cible: "issue", numero: x.numero } : { action: "reparer", cible: "run", cle: x.cle });
+  const gesteReparer = (x) => (gestesGh && x && !x.enCours ? [regler(corpsReparer(x))] : []);
+  const pasUnProbleme = (n) => (gestesGh ? [{ libelle: "Ce n'est pas un problème", corps: { action: "fermer", numero: n } }] : []);
+  const retourPossible = !!(d && d.autonomie && d.autonomie.retour && d.autonomie.retour.jeton);
+  const gesteRetour = retourPossible ? { libelle: REGLER, principal: true, special: "retour" } : { libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.netlify };
+  const quoiRetour = retourPossible ? "Remet la version d'avant." : "Ouvre Netlify pour remettre la version d'avant.";
 
   // Le site d'abord : rien d'autre ne compte s'il ne répond plus.
   const dispo = d && d.disponibilite;
   if (dispo && dispo.repond === false) {
-    ajoute({ id: "site", prio: 0, etiquette: "Hors ligne", titre: "Le site ne répond pas", detail: "La sonde n'obtient pas de réponse de passio-app.netlify.app." + (d.autonomie && d.autonomie.retour && d.autonomie.retour.jeton ? " Réglages › Retour arrière remet la version précédente." : "") });
+    ajoute({ id: "site", prio: 0, etiquette: "Hors ligne", titre: "Le site ne répond pas", reference: "Les gens ne peuvent plus ouvrir PASSIO.", quoi: quoiRetour, gestes: [gesteRetour] });
   }
   // La proposition de retour arrière : une version casse chez des comptes anciens.
   const prop = d && d.autonomie && d.autonomie.retour && d.autonomie.retour.proposition;
   if (prop && prop.version) {
     ajoute({ id: "retour:" + versionCourte(prop.version), prio: 0, etiquette: "À décider", depuis: prop.le || null,
-      titre: "La version " + versionCourte(prop.version) + " casse chez " + (Number(prop.comptes) || 0) + " comptes",
-      detail: String(prop.famille || "").slice(0, 300), gestes: d.autonomie.retour.jeton ? [{ libelle: "Remettre la version précédente", principal: true, special: "retour" }] : [] });
+      titre: "La mise en ligne casse l'app chez " + (Number(prop.comptes) || 0) + " comptes", quoi: quoiRetour,
+      reference: ("Version " + versionCourte(prop.version) + ". " + String(prop.famille || "").slice(0, 300)).trim(), gestes: [gesteRetour] });
+  }
+  // Ce qui empêche le pilotage de bien voir ou d'agir : avant ce qu'il a pu lire, et avant
+  // les boutons qu'un jeton manquant rendrait muets.
+  const nonLus = Array.isArray(d && d.nonLus) ? d.nonLus : [];
+  if (nonLus.includes("github")) {
+    const raison = d.erreursLecture && d.erreursLecture.github ? " Raison : " + borne(d.erreursLecture.github, 120) + "." : "";
+    ajoute({ id: "lecture:github", prio: 1, etiquette: "Non lu", titre: "GitHub n'a pas pu être lu", quoi: "Relit GitHub maintenant.",
+      reference: "Enquêtes, correctifs et mises en ligne ne sont pas vérifiés pour l'instant." + raison, gestes: [relire] });
+  }
+  if (gh && gh.prNonLues) {
+    ajoute({ id: "lecture:pr", prio: 1, etiquette: "Non lu", titre: "Les correctifs n'ont pas pu être lus", quoi: "Relit GitHub maintenant.", reference: "Raison : " + borne(gh.prNonLues, 120) + ".", gestes: [relire] });
+  }
+  const autresNonLus = sourcesManquantes(nonLus.filter((n) => n !== "github"));
+  if (autresNonLus.length) {
+    ajoute({ id: "lecture:autres", prio: 1, etiquette: "Non lu", titre: "Une partie n'a pas pu être lue", quoi: "Relit tout maintenant.", reference: "Non lu : " + autresNonLus.join(", ") + ".", gestes: [relire] });
+  }
+  if (d && d.gestesGithub === false) {
+    ajoute({ id: "config:jeton-github", prio: 0, etiquette: "Réglage", titre: "Il manque le jeton GitHub du pilotage", quoi: "Ouvre la page où le poser.",
+      reference: "Secret à poser : PILOTAGE_GITHUB_TOKEN. Sans lui, les boutons ne peuvent pas réparer, et GitHub se lit mal.", gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.secrets }] });
   }
   // Exécutions en échec (déploiement, Sentinelle, veille).
   for (const x of reparables.filter((r) => r.cible === "run")) {
-    ajoute({ id: "run:" + x.cle, prio: x.cle === "deploy" ? 0 : 1, etiquette: x.enCours ? "Réparation en cours" : "En échec", titre: x.libelle,
-      detail: x.enCours ? "Réparation demandée : #" + x.enCours + ". Le correctif arrivera ici." : "", url: urlGithub(x.url), gestes: gesteReparer(x) });
+    ajoute({ id: "run:" + x.cle, prio: x.cle === "deploy" ? 0 : 1, etiquette: x.enCours ? "Réparation en cours" : "En échec", titre: TITRES_RUN[x.cle] || x.libelle,
+      enCours: !!x.enCours, quoi: x.enCours ? quoiClaudeEnCours(x.enCours) : QUOI_CLAUDE, url: urlGithub(x.url), gestes: gesteReparer(x) });
   }
   // Les issues suivies.
   for (const i of issues) {
     if (i.pr) continue;
     const labels = Array.isArray(i.labels) ? i.labels : [];
-    const base = { id: "issue:" + i.numero, depuis: i.depuis || null, url: urlGithub(i.url), titre: "#" + i.numero + " · " + i.titre };
-    if (i.pause) { ajoute({ ...base, prio: 2, etiquette: "Pause", detail: "La Sentinelle est en pause : elle n'ouvre plus d'enquête. Détails › Machines pour la relancer." }); continue; }
+    const base = { id: "issue:" + i.numero, depuis: i.depuis || null, url: urlGithub(i.url), reference: "#" + i.numero + " · " + i.titre };
+    if (i.pause) {
+      ajoute({ ...base, prio: 2, etiquette: "Pause", titre: "La Sentinelle est en pause", quoi: "Elle n'ouvre plus d'enquête.", gestes: gestesGh ? [{ libelle: "Reprendre", corps: { action: "reprendre" } }] : [] });
+      continue;
+    }
     if (estReparation(i.titre)) {
       // Ni mention `@claude` à l'ouverture (`confiee`, lue par lireGithub) ni label `claude` : rien
-      // ne prouve que Claude l'a reçue (refus 403 du 24/10, #653) — « Relancer » la confie, par
+      // ne prouve que Claude l'a reçue (refus 403 du 24/10, #653) — le bouton la confie, par
       // commentaire si besoin ; le serveur ne la confie jamais deux fois.
-      const cible = labels.includes("claude") || i.confiee ? null : reparables.find((r) => r.enCours === i.numero);
-      const relancer = gestesGh && cible ? [{ libelle: "Relancer", principal: true,
-        corps: cible.cible === "issue" ? { action: "reparer", cible: "issue", numero: cible.numero } : { action: "reparer", cible: "run", cle: cible.cle },
-        confirmation: "Confier #" + i.numero + " à Claude ? (si aucun correctif n'est arrivé)" }] : [];
-      ajoute({ ...base, prio: relancer.length ? 1 : 2, etiquette: "Réparation",
-        detail: relancer.length ? "Pas encore confiée à Claude : touche « Relancer »." : "Claude prépare un correctif ; il arrivera ici pour validation.", gestes: relancer });
+      const confiee = labels.includes("claude") || !!i.confiee;
+      const cible = reparables.find((r) => r.enCours === i.numero);
+      const age = maintenant - dateUtc(i.depuis);
+      if (gestesGh && cible && !confiee) {
+        ajoute({ ...base, prio: 1, etiquette: "Réparation", titre: "Une réparation n'est pas partie", quoi: "La confie à Claude.", gestes: [regler(corpsReparer(cible))] });
+      } else if (gestesGh && Number.isFinite(age) && age > REPARATION_MAX_MS) {
+        ajoute({ ...base, prio: 1, etiquette: "Réparation", titre: "Une réparation n'a rien donné", quoi: "Referme la tentative pour pouvoir relancer.", gestes: [regler({ action: "fermer", numero: i.numero })] });
+      } else {
+        // La cible porte déjà la ligne « en cours » : la réparation elle-même n'est que pour info.
+        ajoute({ ...base, prio: 2, etiquette: "Réparation", enCours: !cible, titre: "Claude prépare un correctif", quoi: "Il apparaîtra ici, prêt à mettre en ligne." });
+      }
       continue;
     }
     const x = reparation.get("issue:" + i.numero);
-    if (labels.includes("moderation")) ajoute({ ...base, prio: 1, etiquette: "Modération", detail: "Un contenu signalé attend ta décision (geste humain, jamais confié à une machine).", gestes: gesteFermer(i.numero) });
-    else if (labels.includes("humain")) ajoute({ ...base, prio: 0, etiquette: "À toi", detail: x && x.enCours ? "Réparation demandée : #" + x.enCours + "." : "Une machine s'est arrêtée : une décision humaine est attendue.", gestes: [...gesteReparer(x), ...gesteFermer(i.numero)] });
-    else if (labels.includes("veille") || labels.includes("recidive")) ajoute({ ...base, prio: 1, etiquette: labels.includes("recidive") ? "Récidive" : "Veille", detail: x && x.enCours ? "Réparation demandée : #" + x.enCours + "." : "La veille de production a vu un problème.", gestes: [...gesteReparer(x), ...gesteFermer(i.numero)] });
-    else if (labels.includes("sentinelle")) ajoute({ ...base, prio: 2, etiquette: "Sentinelle", detail: "Enquête en cours : la Sentinelle s'en occupe, le correctif arrivera ici.", gestes: gesteFermer(i.numero) });
-    else if (labels.includes("digest")) ajoute({ ...base, prio: 2, etiquette: "Résumé", detail: "Le résumé du jour. À fermer une fois lu.", gestes: gesteFermer(i.numero) });
-    else ajoute({ ...base, prio: 2, etiquette: "Info", gestes: gesteFermer(i.numero) });
+    const prise = !!(x && x.enCours);
+    const quoiReparer = prise ? quoiClaudeEnCours(x.enCours) : QUOI_CLAUDE;
+    if (labels.includes("moderation")) {
+      // L'alerte de modération redit les signalements listés plus bas : elle ne compte pas deux fois.
+      const listes = signalements.length > 0;
+      ajoute({ ...base, prio: listes ? 2 : 1, etiquette: "Modération", titre: "Des signalements attendent depuis plus de 24 h",
+        quoi: listes ? "Ils sont listés ici : l'alerte se referme une fois traités." : "Ils sont traités : referme l'alerte.",
+        gestes: !listes && gestesGh ? [regler({ action: "fermer", numero: i.numero }, false)] : [] });
+    } else if (labels.includes("humain")) ajoute({ ...base, prio: 0, etiquette: "À toi", enCours: prise, titre: "Un problème attend ta décision", quoi: quoiReparer, gestes: [...gesteReparer(x), ...pasUnProbleme(i.numero)] });
+    else if (labels.includes("veille") || labels.includes("recidive")) ajoute({ ...base, prio: 1, etiquette: labels.includes("recidive") ? "Récidive" : "Veille", enCours: prise, titre: labels.includes("recidive") ? "Un problème est revenu" : "Un problème a été repéré", quoi: quoiReparer, gestes: [...gesteReparer(x), ...pasUnProbleme(i.numero)] });
+    else if (labels.includes("sentinelle")) ajoute({ ...base, prio: 2, etiquette: "Sentinelle", enCours: true, titre: "La Sentinelle enquête", quoi: "Elle prépare le correctif toute seule.", gestes: pasUnProbleme(i.numero) });
+    else if (labels.includes("digest")) ajoute({ ...base, prio: 2, etiquette: "Résumé", titre: "Le résumé du jour", quoi: "À fermer une fois lu.", gestes: gestesGh ? [{ libelle: "Fermer", corps: { action: "fermer", numero: i.numero } }] : [] });
+    else ajoute({ ...base, prio: 2, etiquette: "Info", titre: "Une note ouverte", gestes: gestesGh ? [{ libelle: "Fermer", corps: { action: "fermer", numero: i.numero } }] : [] });
   }
-  // Les correctifs prêts (PR).
+  // Les pull requests. Seules celles de la chaîne de réparation (`correctif`,
+  // resumerPr) sont des problèmes à régler : mesuré le 2026-11-04, 8 PR ouvertes
+  // — toutes des chantiers d'autres sessions — affichaient chacune « Un correctif
+  // attend ta validation » sur l'accueil, avec ses deux boutons.
   for (const i of issues.filter((x) => x.pr).slice(0, 15)) {
-    ajoute({ id: "pr:" + i.numero, prio: 1, etiquette: "Correctif", depuis: i.depuis || null, url: urlGithub(i.url), titre: "#" + i.numero + " · " + i.titre,
-      detail: "Un correctif attend ta validation. Fusionner le met en ligne si les tests sont verts.",
-      gestes: gestesGh ? [{ libelle: "Fusionner", principal: true, corps: { action: "fusionner", numero: i.numero }, confirmation: "Fusionner #" + i.numero + " ? Il sera mis en ligne si les tests sont verts." },
-        { libelle: "Refuser", corps: { action: "fermer", numero: i.numero }, confirmation: "Refuser et fermer #" + i.numero + " ?" }] : [] });
+    const base = { id: "pr:" + i.numero, depuis: i.depuis || null, url: urlGithub(i.url) };
+    const reference = "#" + i.numero + " · " + i.titre;
+    const fusionner = { corps: { action: "fusionner", numero: i.numero } };
+    const refuser = gestesGh ? [{ libelle: "Refuser", corps: { action: "fermer", numero: i.numero } }] : [];
+    if (i.correctif && !i.brouillon) {
+      // Armée puis rien : un test rouge arrête la fusion, sans le dire à personne. Elle revient
+      // ici plutôt que de rester « part en ligne » pour toujours. `maj` et non `depuis` : un
+      // correctif peut attendre son « Régler » des heures, c'est l'armement qui compte.
+      const fige = maintenant - dateUtc(i.maj);
+      if (i.autoFusion && gestesGh && Number.isFinite(fige) && fige > REPARATION_MAX_MS) ajoute({ ...base, prio: 1, etiquette: "Correctif", reference, titre: "Un correctif n'arrive pas à partir", quoi: "Le referme pour pouvoir relancer.", gestes: [regler({ action: "fermer", numero: i.numero }, false)] });
+      else if (i.autoFusion) ajoute({ ...base, prio: 2, etiquette: "Correctif", enCours: true, reference, titre: "Un correctif part en ligne", quoi: "Dès que les tests sont passés.", gestes: refuser });
+      else ajoute({ ...base, prio: 1, etiquette: "Correctif", reference, titre: "Un correctif est prêt", quoi: "Le met en ligne après les tests.", gestes: gestesGh ? [{ libelle: REGLER, principal: true, tout: true, ...fusionner }, ...refuser] : [] });
+    } else {
+      // Un chantier en cours n'est pas un problème : rangé dans Détails. Une PR
+      // venue d'un fork (dépôt public) ne se fusionne pas d'ici, quel que soit son titre.
+      ajoute({ ...base, prio: 2, etiquette: "Chantier", titre: reference, quoi: "Un chantier en cours, pas un problème.",
+        gestes: gestesGh ? [...(i.externe ? [] : [{ libelle: "Fusionner", ...fusionner }]), ...refuser] : [] });
+    }
   }
-  // Les signalements.
-  const sg = d && d.signalements;
-  for (const x of (sg && Array.isArray(sg.liste) ? sg.liste : [])) {
-    ajoute({ id: "signalement:" + x.id, prio: 1, etiquette: "Signalement", depuis: x.le || null, titre: "Signalement · " + x.type, detail: x.motif ? "« " + x.motif + " »" : "",
-      gestes: [{ libelle: "Traité", corps: { action: "signalement", id: x.id, statut: "handled" }, confirmation: "Marquer ce signalement comme traité ?" },
-        { libelle: "Rejeter", corps: { action: "signalement", id: x.id, statut: "dismissed" }, confirmation: "Rejeter ce signalement (sans suite) ?" }] });
+  // Les signalements : une décision humaine, en deux gestes d'un toucher.
+  for (const x of signalements) {
+    ajoute({ id: "signalement:" + x.id, prio: 1, etiquette: "Signalement", depuis: x.le || null,
+      titre: "Quelqu'un a signalé " + (Object.hasOwn(NATURES_SIGNALEMENT, x.type) ? NATURES_SIGNALEMENT[x.type] : "un contenu"),
+      quoi: "À toi de trancher.", detail: x.motif ? "« " + x.motif + " »" : "",
+      gestes: [{ libelle: "C'est traité", corps: { action: "signalement", id: x.id, statut: "handled" } },
+        { libelle: "Sans suite", corps: { action: "signalement", id: x.id, statut: "dismissed" } }] });
   }
-  // Les erreurs des dernières 24 h (trois au plus) : la Sentinelle les lit ; si
-  // aucune enquête n'est ouverte, le pilote peut la lancer tout de suite.
+  // Les erreurs des dernières 24 h, en UNE ligne (Détails les liste une par une) :
+  // la Sentinelle les lit toutes d'un coup, un seul bouton suffit. Une erreur
+  // qu'elle a déjà vue passer sans rien ouvrir n'attend plus personne : sans cette
+  // règle, la carte survivait 24 h au geste, et le bouton ne réglait jamais rien.
   const enquete = issues.some((i) => !i.pr && Array.isArray(i.labels) && i.labels.includes("sentinelle"));
   const erreurs = d && d.erreurs && Array.isArray(d.erreurs.details) ? d.erreurs.details : [];
-  erreurs.filter((x) => x.dernier && maintenant - Date.parse(x.dernier) < 864e5).slice(0, 3).forEach((x, k) => {
-    ajoute({ id: "erreur:" + k, prio: x.n >= 10 ? 0 : 1, etiquette: x.n + " fois", depuis: x.dernier, titre: x.message,
-      detail: x.comptes + " compte(s) touché(s)" + (enquete ? " · une enquête Sentinelle est ouverte" : ""),
-      gestes: gestesGh && !enquete ? [{ libelle: "Confier à la Sentinelle", corps: { action: "relancer", cible: "sentinelle" }, confirmation: "Lancer la Sentinelle maintenant ? Elle analysera les erreurs récentes et ouvrira une enquête si besoin." }] : [] });
-  });
-  // La capacité : une jauge en zone rouge est urgente, orange se prépare.
+  const recentes = erreurs.filter((x) => x.dernier && maintenant - dateUtc(x.dernier) < 864e5);
+  if (recentes.length) {
+    const fois = recentes.reduce((s, x) => s + (Number(x.n) || 0), 0);
+    const pire = recentes.reduce((a, x) => ((Number(x.n) || 0) > (Number(a.n) || 0) ? x : a));
+    const derniere = Math.max(...recentes.map((x) => dateUtc(x.dernier)));
+    const rs = runs.sentinelle;
+    const analyse = !!(rs && rs.etat && rs.etat !== "completed");
+    const vue = !!(rs && rs.conclusion === "success" && dateUtc(rs.le) > derniere);
+    const base = { id: "erreurs", depuis: pire.dernier, etiquette: fois + " fois",
+      titre: (recentes.length === 1 ? "Une erreur : " : recentes.length + " erreurs : ") + fois + " fois en 24 h",
+      reference: pire.message + (Number(pire.comptes) ? " (" + pire.comptes + " compte(s) touché(s))" : "") };
+    // Une enquête ouverte a déjà sa ligne « en cours » : celle-ci ne la redirait pas.
+    if (enquete) ajoute({ ...base, prio: 2, quoi: "La Sentinelle enquête." });
+    else if (analyse) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle l'analyse." });
+    else if (vue) ajoute({ ...base, prio: 2, quoi: "La Sentinelle l'a vue : rien à corriger." });
+    else ajoute({ ...base, prio: recentes.some((x) => Number(x.n) >= 10) ? 0 : 1, quoi: "La Sentinelle s'en occupe.", gestes: relancer("sentinelle") });
+  }
+  // Les pannes du serveur : la veille les lit (la Sentinelle ne lit que les erreurs de l'app).
+  const pannes = Number(d && d.sante && d.sante.api5xx15) || 0;
+  if (pannes > 0) {
+    const rv = runs.veille;
+    const verifiee = !!(rv && rv.conclusion === "success" && maintenant - dateUtc(rv.le) < 15 * 60e3);
+    const encours = !!(rv && rv.etat && rv.etat !== "completed");
+    const base = { id: "serveur", etiquette: pannes + " fois", titre: "Le serveur a échoué " + pannes + " fois en 15 min" };
+    if (encours) ajoute({ ...base, prio: 1, enCours: true, quoi: "La surveillance vérifie." });
+    else if (verifiee) ajoute({ ...base, prio: 2, quoi: "La surveillance vient de vérifier." });
+    else ajoute({ ...base, prio: pannes >= 5 ? 0 : 1, quoi: "La surveillance vérifie tout.", gestes: relancer("veille") });
+  }
+  // La Sentinelle muette (les crons de GitHub ne sont pas une garantie). Pas si le pilote l'a mise en pause.
+  const rs0 = runs.sentinelle;
+  if (rs0 && rs0.le && !(gh && gh.pause) && maintenant - dateUtc(rs0.le) > SENTINELLE_MUETTE_MS) {
+    ajoute({ id: "sentinelle:muette", prio: 1, etiquette: "Machines", titre: "La Sentinelle n'a pas tourné depuis plus de 8 h", quoi: "La relance maintenant.", gestes: relancer("sentinelle") });
+  }
+  // La capacité : une jauge en zone rouge est urgente, orange se prépare. Ce qui
+  // s'achète se règle sur la page du fournisseur : le bouton y mène. La télémétrie,
+  // elle, ne s'achète pas : le bouton ralentit l'app d'un cran.
   const jg = d && d.capacite && Array.isArray(d.capacite.jauges) ? d.capacite.jauges : [];
+  const niveau = d && d.reglages && d.reglages.delestage && [1, 2].includes(d.reglages.delestage.niveau) ? d.reglages.delestage.niveau : 0;
   for (const j of jg.filter((x) => x.couleur === "rouge" || x.couleur === "orange")) {
     const prix = Number(j.prix) > 0 ? " (~" + j.prix + " €/mois)" : "";
-    ajoute({ id: "capacite:" + j.cle, prio: j.couleur === "rouge" ? 0 : 1, etiquette: String(j.pct).replace(".", ",") + " %", titre: j.libelle,
-      detail: (j.couleur === "rouge" ? "Au-delà de 90 % du forfait : l'app peut ralentir ou refuser des inscriptions. Réglages › Protection pour alléger." : "Au-delà de 70 % du forfait : c'est le moment d'agir, avant le mur.")
-        + (j.geste ? " Le geste : " + j.geste + prix : "") });
+    const pctTexte = String(j.pct).replace(".", ",") + " %";
+    const ralentir = j.cle === "telemetrie" && niveau < 2;
+    const gestes = ralentir ? [regler({ action: "reglages", cle: "delestage", valeur: { niveau: niveau + 1 } }, false)]
+      : j.url ? [{ libelle: REGLER, principal: true, ouvrir: j.url }] : [];
+    ajoute({ id: "capacite:" + j.cle, prio: j.couleur === "rouge" ? 0 : 1, etiquette: pctTexte, titre: j.libelle + " : " + pctTexte,
+      quoi: ralentir ? "Ralentit l'app d'un cran." : gestes.length ? "Ouvre la page du forfait." : "",
+      reference: (j.couleur === "rouge" ? "L'app peut ralentir ou refuser des inscriptions." : "C'est le moment d'agir, avant le mur.") + (j.geste ? " Le geste : " + j.geste + prix : ""), gestes });
   }
   // Les contenus masqués par le pré-tri (2026-11-01) : ils attendent une décision.
   for (const x of (sg && Array.isArray(sg.masques) ? sg.masques : [])) {
-    ajoute({ id: "masque:" + x.id, prio: 1, etiquette: "Masqué", depuis: x.le || null, titre: "Publication masquée après " + (Number(x.signaleurs) || 0) + " signalements",
-      detail: "Le pré-tri l'a retirée du fil en attendant ta décision. Rien n'est supprimé." + (x.extrait ? " « " + borne(x.extrait, 160) + " »" : ""),
-      gestes: [{ libelle: "Rétablir", corps: { action: "masquage", id: x.id, decision: "retablir" }, confirmation: "Rétablir cette publication dans le fil ? Les signalements seront classés sans suite." },
-        { libelle: "Laisser masquée", principal: true, corps: { action: "masquage", id: x.id, decision: "garder" }, confirmation: "Laisser cette publication masquée pour tous (son auteur la voit encore) ?" }] });
-  }
-  // Ce qui empêche le pilotage de bien voir ou d'agir.
-  if (Array.isArray(d && d.nonLus) && d.nonLus.includes("github")) {
-    const raison = d.erreursLecture && d.erreursLecture.github ? " Raison : " + borne(d.erreursLecture.github, 120) + "." : "";
-    ajoute({ id: "lecture:github", prio: 1, etiquette: "Non lu", titre: "GitHub n'a pas pu être lu",
-      detail: "Enquêtes, correctifs et mises en ligne ne sont pas vérifiés pour l'instant." + raison + (gestesGh ? "" : " Sans le secret PILOTAGE_GITHUB_TOKEN, GitHub limite les lectures : c'est la cause la plus probable.") });
-  }
-  if (d && d.gestesGithub === false) {
-    ajoute({ id: "config:jeton-github", prio: 2, etiquette: "Réglage", titre: "Gestes GitHub indisponibles",
-      detail: "Pour fusionner, fermer, réparer ou relancer depuis le téléphone, pose le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage » (Supabase › Edge Functions › pilotage › Secrets). Il rend aussi la lecture de GitHub fiable." });
+    ajoute({ id: "masque:" + x.id, prio: 1, etiquette: "Masqué", depuis: x.le || null, titre: "Une publication a été masquée après " + (Number(x.signaleurs) || 0) + " signalements",
+      quoi: "La laisse masquée. Rien n'est supprimé.", detail: x.extrait ? "« " + borne(x.extrait, 160) + " »" : "",
+      gestes: [regler({ action: "masquage", id: x.id, decision: "garder" }, false), { libelle: "La rétablir", corps: { action: "masquage", id: x.id, decision: "retablir" } }] });
   }
   const al = d && d.alertes;
   if (al && al.appareils === 0) {
@@ -314,14 +450,29 @@ export function aFaire(d, maintenant = Date.now()) {
   // La protection active : rien à faire, mais il faut le savoir.
   const rg = d && d.reglages;
   if (rg && !rg.absente) {
-    const n = rg.delestage && [1, 2].includes(rg.delestage.niveau) ? rg.delestage.niveau : 0;
-    if (n) ajoute({ id: "protection:delestage", prio: 2, etiquette: n === 2 ? "Survie ×4" : "Économie ×2", titre: "L'app est ralentie pour tenir la charge",
+    if (niveau) ajoute({ id: "protection:delestage", prio: 2, etiquette: niveau === 2 ? "Survie ×4" : "Économie ×2", titre: "L'app est ralentie pour tenir la charge",
       detail: (rg.delestage.pose_par === "pilote" ? "Posé à la main : la veille ne le lèvera pas seule. " : "Posé par la veille, qui le lèvera seule. ") + "Réglages › Protection." });
     const cles = rg.coupures && Array.isArray(rg.coupures.cles) ? rg.coupures.cles : [];
     if (cles.length) ajoute({ id: "protection:coupures", prio: 2, etiquette: String(cles.length), titre: "Fonctionnalité(s) éteinte(s) chez tout le monde", detail: cles.join(", ") + " — Réglages › Protection pour rallumer." });
     if (rg.bandeau && rg.bandeau.texte) ajoute({ id: "protection:bandeau", prio: 2, etiquette: "Affiché", titre: "Un message est affiché à tous", detail: "« " + rg.bandeau.texte + " »",
-      gestes: [{ libelle: "Retirer le message", corps: { action: "reglages", cle: "bandeau", valeur: null }, confirmation: "Retirer le message affiché à tous ?" }] });
+      gestes: [{ libelle: "Retirer le message", corps: { action: "reglages", cle: "bandeau", valeur: null } }] });
   }
+  // Une mise en ligne qui part : ce que devient un correctif après son « Régler ».
+  const rd = runs.deploy;
+  if (rd && rd.etat && rd.etat !== "completed") {
+    ajoute({ id: "deploy:en-cours", prio: 2, etiquette: "Mise en ligne", enCours: true, titre: "Mise en ligne en cours", quoi: "Les dernières corrections arrivent chez les utilisateurs.", url: urlGithub(rd.url) });
+  }
+  // Le filet : un voyant orange ou rouge a toujours une ligne, donc un bouton. Sans
+  // lui, une raison sans carte dédiée laissait « Problème en cours » sans rien à toucher.
+  const v = d && d.verdict;
+  if (v && (v.couleur === "rouge" || v.couleur === "orange") && !out.some((x) => x.prio <= 1 || x.enCours)) {
+    const raisons = Array.isArray(v.raisons) ? v.raisons : [];
+    const premiere = String(raisons[0] || v.titre || "");
+    ajoute({ id: "voyant", prio: v.couleur === "rouge" ? 0 : 1, etiquette: "À vérifier", titre: premiere.charAt(0).toUpperCase() + premiere.slice(1), reference: raisons.slice(1).join(" · "),
+      quoi: "La Sentinelle analyse tout.", gestes: relancer("sentinelle") });
+  }
+  // Sans jeton, ce que le bouton ferait ne peut pas se faire : la ligne le dit, au lieu de promettre.
+  if (d && d.gestesGithub === false) for (const x of out) if (x.prio <= 1 && !x.enCours && !x.gestes.length) x.quoi = "Il faut d'abord le jeton GitHub.";
   // À urgence égale, l'ordre d'ajout : le site, le retour arrière, les échecs,
   // puis chaque famille dans l'ordre de sa source (la plus récente d'abord).
   return out.map((x, i) => ({ x, i })).sort((a, b) => a.x.prio - b.x.prio || a.i - b.i).map((o) => o.x);
@@ -481,17 +632,17 @@ export function detailsErreurs(lignes, max = 8, maintenant = Date.now()) {
 // (tarif public indicatif, en euros, à relire sur la page Pricing le jour du
 // geste). Le pilotage le dit au lieu de laisser le pilote chercher.
 export const PLAFONDS = {
-  connexions: { libelle: "Connexions en direct (comptes)", plafond: 500, unite: "",
+  connexions: { libelle: "Connexions en direct (comptes)", plafond: 500, unite: "", url: PAGES_REGLAGE.facturation,
     geste: "Supabase › Billing : poser une alerte de budget, puis lever le spend cap (ou acheter des connexions temps réel).", prix: 10 },
-  emails: { libelle: "E-mails d'inscription (24 h)", plafond: 300, unite: "",
+  emails: { libelle: "E-mails d'inscription (24 h)", plafond: 300, unite: "", url: PAGES_REGLAGE.brevo,
     geste: "Passer Brevo sur une offre payante (ou Resend), puis relever « emails per hour » dans Supabase › Auth › Rate Limits.", prix: 20 },
-  base: { libelle: "Base de données", plafond: 8 * 1024 ** 3, unite: "octets",
+  base: { libelle: "Base de données", plafond: 8 * 1024 ** 3, unite: "octets", url: PAGES_REGLAGE.calcul,
     geste: "Supabase › Settings › Compute : passer en Small, puis Medium si la latence reste haute (quelques minutes d'indisponibilité).", prix: 15 },
-  stockage: { libelle: "Stockage des médias", plafond: 100 * 1024 ** 3, unite: "octets",
+  stockage: { libelle: "Stockage des médias", plafond: 100 * 1024 ** 3, unite: "octets", url: PAGES_REGLAGE.facturation,
     geste: "Rien à changer avant longtemps : au-delà de 100 Go, Supabase facture le Go en plus.", prix: 5 },
   // Estimée (2026-11-01) : le mur le plus probable du §4. Chaque mise en ligne
   // fait retélécharger ~0,75 Mo à chaque appareil actif.
-  bandePassante: { libelle: "Bande passante de l'app (estimée, par mois)", plafond: 100 * 1024 ** 3, unite: "octets",
+  bandePassante: { libelle: "Bande passante de l'app (estimée, par mois)", plafond: 100 * 1024 ** 3, unite: "octets", url: PAGES_REGLAGE.netlify,
     geste: "Grouper les mises en ligne, puis passer Netlify en Pro (1 To) ou l'app sur Cloudflare Pages.", prix: 19 },
   // Le plafond d'insertion de la télémétrie : 3 000/min en tout (`trg_debit_global`,
   // ouverture publique 2026-09-11). Sous `trg_debit_lot` (2026-10-16) : anciens
@@ -560,7 +711,7 @@ export function jauges(m) {
   const out = [];
   const ajoute = (cle, valeur, estimation, mur) => {
     const p = mur ? { ...PLAFONDS[cle], ...mur } : PLAFONDS[cle];
-    const g = { geste: p.geste || "", prix: Number(p.prix) || 0 };
+    const g = { geste: p.geste || "", prix: Number(p.prix) || 0, url: p.url || null };
     if (valeur == null || !Number.isFinite(Number(valeur))) { out.push({ cle, libelle: p.libelle, valeur: null, plafond: p.plafond, unite: p.unite, pct: null, couleur: "gris", estimation, ...g }); return; }
     const pct = Math.round((Number(valeur) / p.plafond) * 1000) / 10;
     out.push({ cle, libelle: p.libelle, valeur: Number(valeur), plafond: p.plafond, unite: p.unite, pct, couleur: pct >= 90 ? "rouge" : pct >= 70 ? "orange" : "vert", estimation, ...g });
@@ -695,7 +846,7 @@ export function corpsReparation(c, depot) {
     "Ne fusionne rien et ne ferme aucune issue toi-même : Benjamin relit et fusionne depuis le pilotage.",
     "Si la cause n'est pas dans le code (réglage externe, panne d'un fournisseur, faux positif de la veille), ne modifie rien : explique-le en commentaire, avec le geste à faire.",
     "",
-    "_Demandé depuis le pilotage téléphone (bouton « Réparer »)._",
+    "_Demandé depuis le pilotage (bouton « Régler »)._",
   ];
   if (c && c.cible === "issue") {
     return [COMMENTAIRE_CONFIER, "", `Répare le problème signalé dans #${c.numero}.`, "",
@@ -913,6 +1064,44 @@ export function comptesRecents(recents, profils, { nomsLus = true, avecGeste = n
         actif: mesures.has(id) ? avecGeste.has(id) : null,
       };
     });
+}
+
+// ─── LA MARCHE DES UTILISATEURS (2026-11-04) ─────────────────────────────────
+// Demande de Benjamin : « suivre la croissance de l'app avec le nombre
+// d'utilisateurs ». Une marche par jour où quelqu'un est arrivé, depuis le premier
+// compte : le cumul se lit d'un coup d'œil, et chaque marche est une vraie personne
+// tant que l'app est petite. Dates de la boucle `listUsers` de l'activation (aucune
+// lecture en plus), mêmes exclusions que le total (`compteCree`) : la courbe finit
+// exactement sur le nombre affiché. Un compte supprimé disparaît de son passé :
+// c'est le nombre de comptes d'aujourd'hui, par date d'arrivée.
+export const COURBE_POINTS_MAX = 180;
+export function croissanceInscrits(dates, maintenant = Date.now(), maxPoints = COURBE_POINTS_MAX) {
+  const parJour = new Map();
+  let semaine = 0, semainePrec = 0, mois = 0;
+  for (const v of Array.isArray(dates) ? dates : []) {
+    const t = dateUtc(v);
+    if (!Number.isFinite(t) || t > maintenant) continue;
+    const age = maintenant - t;
+    if (age < 7 * 864e5) semaine++;
+    else if (age < 14 * 864e5) semainePrec++;
+    if (age < 30 * 864e5) mois++;
+    const jour = new Date(t).toISOString().slice(0, 10);
+    parJour.set(jour, (parJour.get(jour) || 0) + 1);
+  }
+  let cumul = 0;
+  let courbe = [...parJour.keys()].sort().map((jour) => { const n = parJour.get(jour); cumul += n; return { jour, n, total: cumul }; });
+  // Au-delà de maxPoints jours d'arrivées, les marches se groupent : chaque paquet
+  // garde son dernier jour et son cumul, donc la courbe ne ment jamais sur le total.
+  if (courbe.length > maxPoints) {
+    const taille = Math.ceil(courbe.length / maxPoints);
+    const paquets = [];
+    for (let k = 0; k < courbe.length; k += taille) {
+      const p = courbe.slice(k, k + taille), fin = p[p.length - 1];
+      paquets.push({ jour: fin.jour, n: p.reduce((t, x) => t + x.n, 0), total: fin.total });
+    }
+    courbe = paquets;
+  }
+  return { semaine, semainePrec, mois, courbe };
 }
 
 // ─── TOUS LES INSCRITS (2026-10-24) ─────────────────────────────────────────
