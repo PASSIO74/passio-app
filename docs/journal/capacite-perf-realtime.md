@@ -1149,7 +1149,8 @@ reconstruire l'index. La réécriture n'est pas publiée par le décodage logiqu
 
 **Ce qui reste, dit tel quel** : un abonné sans filtre voit qu'UN effacement a eu lieu, et quand, sur ces
 tables ; `posts`, `post_comments`, `conv_messages`, `event_comments` et `profiles` envoient toujours leur
-identifiant unique, opaque — mais **`video_lives` envoie `vl_<8 premiers caractères du compte>_<horodatage>`**
+identifiant unique — une part aléatoire et l'instant de création : il dit QUAND la ligne effacée avait été
+créée, jamais QUI ni OÙ — mais **`video_lives` envoie `vl_<8 premiers caractères du compte>_<horodatage>`**
 (fabriqué par le client) : sans fuite aujourd'hui parce que ses lignes sont lisibles par tous, à revoir le jour
 où elles ne le seraient plus ; un filtre sur `rid` ne reconnaît que les lignes dont l'abonné connaît le `rid`
 (qu'il lit ou a lues), et `rid` ne change jamais — la poignée survit à un blocage ou à une exclusion. Hors temps

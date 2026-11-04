@@ -167,7 +167,7 @@ par le client, verrou bloquant sur cinq tables, index supprimable sans garde. To
 
 | Fichier | Objet | Banc | Quand |
 |---|---|---|---|
-| `migration_realtime_identite_opaque_2026-11-03.sql` | `rid` aléatoire de 53 bits (chiffres 17 à 32 d'un UUID v4, masque 2^53 − 1 : exact en JSON), index unique `<table>_rid_key` et `replica identity using index` sur `conv_members`, `notifications`, `conv_reads`, `post_likes` ; `comment_interactions` en identité DEFAULT (l'oracle du filtre se ferme) ; garde `trg_rid_opaque` (le `rid` n'est écrit que par la base) ; verrous NOWAIT en boucle ; verdict en 10 lignes | `migration-realtime-identite-opaque` 236/0 (`realtime.apply_rls` de production recopiée à l'octet, nourrie du WAL réel du banc ; attaque par encadrement rejouée ; verdict sous verrous concurrents ; retour arrière pendant que le temps réel décode ; dix-neuf mutations rouges) — fichier sha256 `45f04527…` | **dès la fusion** : serveur seul, aucun changement client. De préférence AVANT `participants_visibilite`, dont la purge efface des lignes `conv_members` qui partiront alors opaques |
+| `migration_realtime_identite_opaque_2026-11-03.sql` | `rid` aléatoire de 53 bits (chiffres 17 à 32 d'un UUID v4, masque 2^53 − 1 : exact en JSON), index unique `<table>_rid_key` et `replica identity using index` sur `conv_members`, `notifications`, `conv_reads`, `post_likes` ; `comment_interactions` en identité DEFAULT (l'oracle du filtre se ferme) ; garde `trg_rid_opaque` (le `rid` n'est écrit que par la base) ; verrous NOWAIT en boucle ; verdict en 10 lignes | `migration-realtime-identite-opaque` 239/0 (`realtime.apply_rls` de production recopiée à l'octet, nourrie du WAL réel du banc ; attaque par encadrement rejouée ; verdict sous verrous concurrents ; retour arrière pendant que le temps réel décode ; vingt mutations rouges) — fichier sha256 `9f48ffe1…` | **dès la fusion** : serveur seul, aucun changement client. De préférence AVANT `participants_visibilite`, dont la purge efface des lignes `conv_members` qui partiront alors opaques |
 
 Ordre à partir du 04/11 : `promotion_discrete_vues` (§ 7) est APPLIQUÉE (07:47 UTC, mesurée au canal ①) ; reste R25
 (ici, dès la fusion), puis `participants_visibilite` (§ 6, à partir du 2026-11-05 18:40 UTC). R25 est indépendante
@@ -221,8 +221,10 @@ slot, selon l'en-tête. Code : revert du merge ; aucun état local touché.
 Trois relecteurs indépendants, en lecture seule, sur la version finale (fuite temps réel, sûreté de la migration et de sa
 gate, reprise et sauvegarde), chaque constat P1/P2 soumis à un vérificateur chargé de le réfuter. **Aucune fuite ouverte,
 aucune casse à l'application** : le banc rejoué (202/0 sur la version relue), et contre-éprouvé avec le VRAI wal2json et l'`apply_rls` de
-production. En cours de correction dans la PR : RV-20 à RV-24 (verdict sans verrou ni comparaison par morceaux, retour
-arrière qui garde la colonne, gate étendue, en-tête exact). Côté reprise et sauvegarde (même revue) : la lecture exacte est juste (aller-retour réel sur
+production. Corrigés dans la PR, puis éprouvés par deux vérificateurs adverses (gate : conforme ; migration : quatre P3
+résiduels, corrigés à leur tour — un retour chariot seul dans un commentaire, l'en-tête sur les identifiants
+horodatés, le prérequis PostgreSQL 15) : RV-20 à RV-24 — verdict sans verrou ni comparaison par morceaux, retour
+arrière qui garde la colonne et réapplication qui tire les `rid` de nouveau, gate étendue, en-tête exact. Côté reprise et sauvegarde (même revue) : la lecture exacte est juste (aller-retour réel sur
 PostgreSQL 16 : 0 écart ; archive ancienne : 0 fausse divergence), le recoupement du DDL reconstruit avec la R25
 finale rejoué (10 OK) — mais RV-25 (une sauvegarde qu'un compte fait échouer par un jsonb très imbriqué écrit chez
 lui — préexistant vers 4 171 niveaux, abaissé à ≈ 2 847 par la première version de ce lot ; l'export n'a désormais
