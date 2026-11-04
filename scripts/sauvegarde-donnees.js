@@ -107,13 +107,24 @@ async function exporter(cfg, table, tri, flux) {
       headers: entetes(cfg.cle),
     });
     if (!r.ok) throw new Error(`${table} : HTTP ${r.status} ${await r.text()}`);
-    // ⚠️ R25 (2026-11-04) : JAMAIS `r.json()` ici. Il arrondit tout entier
-    // au-delà de 2^53, et l'archive porterait une valeur que la base n'a jamais
-    // eue. Deux valeurs distinctes s'y confondraient, et la restauration
-    // jetterait l'une des deux lignes sur la clé unique. `lireJsonExact` garde
-    // le texte source d'un tel nombre, que `JSON.stringify` réécrit tel quel.
-    const lignes = JE.lireJsonExact(await r.text());
-    for (const l of lignes) flux.write(JSON.stringify(l) + "\n");
+    // ⚠️ R25 (2026-11-04) : JAMAIS `r.json()` puis `JSON.stringify` ici. Un
+    // entier au-delà de 2^53 en sortait arrondi : l'archive portait une valeur
+    // que la base n'a jamais eue, deux valeurs distinctes s'y confondaient, et la
+    // restauration jetait l'une des deux lignes sur la clé unique. Les lignes sont
+    // DÉCOUPÉES dans le texte de la page et écrites telles que la base les a
+    // rendues (`decouperLignes`, linéaire : aucune profondeur ne l'arrête — un
+    // reviver récursif cassait vers 2 836 niveaux, qu'un compte écrit dans son
+    // propre user_state). `JSON.parse` seul ne fait que vérifier chaque objet.
+    const page = `${debut}–${debut + PAGE - 1}`;
+    let lignes;
+    try { lignes = JE.decouperLignes(await r.text()); }
+    catch (e) { throw new Error(`${table} : page ${page} illisible — ${e.message}`); }
+    for (const l of lignes) {
+      let o;
+      try { o = JSON.parse(l); } catch (e) { throw new Error(`${table} : ligne JSON invalide (page ${page}) — ${e.message}`); }
+      if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error(`${table} : une ligne de la page ${page} n'est pas un objet JSON`);
+      flux.write(l + "\n");
+    }
     total += lignes.length;
     if (lignes.length < PAGE) break;
     debut += PAGE;

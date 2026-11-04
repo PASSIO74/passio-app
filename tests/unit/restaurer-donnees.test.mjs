@@ -157,7 +157,7 @@ const JE = require("../../scripts/lib/json-exact.js");
 const { _internes: SAUV } = require("../../scripts/sauvegarde-donnees.js");
 const GRAND_A = "2906581903110193585", GRAND_B = "2906581903110193586";
 
-test("⑤ la sauvegarde écrit les chiffres EXACTS d'un entier au-delà de 2^53 — deux valeurs voisines restent deux (RÉINJECTION : r.json() les confond)", async () => {
+test("⑤ la sauvegarde écrit chaque ligne TELLE QUE LA BASE L'A RENDUE — un entier au-delà de 2^53 garde ses chiffres, deux valeurs voisines restent deux (RÉINJECTION : r.json() les confond)", async () => {
   assert.equal(JSON.parse(GRAND_A), JSON.parse(GRAND_B), "prémisse : JSON.parse confond les deux valeurs");
   const page = `[{"id":"a","rid":${GRAND_A},"prix":10.00},{"id":"b","rid":${GRAND_B},"prix":1.5}]`;
   const ecrit = [];
@@ -167,8 +167,8 @@ test("⑤ la sauvegarde écrit les chiffres EXACTS d'un entier au-delà de 2^53 
     const n = await SAUV.exporter({ url: "https://exemple.invalid", cle: "k" }, "post_likes", "id", { write: (x) => ecrit.push(x) });
     assert.equal(n, 2);
   } finally { globalThis.fetch = vrai; }
-  assert.deepEqual(ecrit, [`{"id":"a","rid":${GRAND_A},"prix":10}\n`, `{"id":"b","rid":${GRAND_B},"prix":1.5}\n`],
-    "les rid gardent leurs chiffres ; un nombre que JavaScript lit sans perte reste un nombre ordinaire");
+  assert.deepEqual(ecrit, [`{"id":"a","rid":${GRAND_A},"prix":10.00}\n`, `{"id":"b","rid":${GRAND_B},"prix":1.5}\n`],
+    "le texte de chaque ligne est recopié : rid au chiffre près, et même l'échelle de 10.00");
 });
 
 test("⑤ bis la vérification compare au chiffre près : un rid faux est DIVERGENT, un rid juste est conforme (RÉINJECTION : JSON.parse dit « conforme »)", () => {
@@ -199,12 +199,14 @@ test("⑤ ter rien ne change pour ce que JavaScript lit sans perte — une archi
   assert.notEqual(JE.canonique(GRAND_A), JE.canonique(String(JSON.parse(GRAND_A))));
 });
 
-test("⑤ quater sans JSON.rawJSON (Node < 21), un entier au-delà de 2^53 fait ÉCHOUER la lecture — jamais un arrondi silencieux", () => {
+test("⑤ quater sans JSON.rawJSON (Node < 21), TOUT nombre à risque fait ÉCHOUER la lecture — entier au-delà de 2^53, décimal à 19 chiffres, 1e400 : jamais un arrondi ni un null silencieux", () => {
   const vrai = JSON.rawJSON;
   JSON.rawJSON = undefined;
   try {
-    assert.throws(() => JE.lireJsonExact(`[${GRAND_A}]`), /2\^53/);
-    assert.deepEqual(JE.lireJsonExact("[12, 1.5]"), [12, 1.5], "ce qui se lit sans perte passe toujours");
+    for (const t of [`[${GRAND_A}]`, "[0.1234567890123456789]", "[1e400]", "[-1e400]"]) {
+      assert.throws(() => JE.lireJsonExact(t), /JSON\.rawJSON/, `${t} doit être refusé`);
+    }
+    assert.deepEqual(JE.lireJsonExact("[12, 1.5, 1e-07, 10.00]"), [12, 1.5, 1e-7, 10], "ce qui se lit sans perte passe toujours");
   } finally { JSON.rawJSON = vrai; }
 });
 
@@ -218,4 +220,59 @@ test("⑤ quinquies la relecture de la cible et la lecture de l'archive sont exa
     const l = await lignesCible({ url: "https://exemple.invalid", cle: "k" }, "post_likes", "id");
     assert.deepEqual(l.map((x) => JE.texteValeur(x.rid)), [GRAND_A, GRAND_B]);
   } finally { globalThis.fetch = vrai; }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ⑥ CONTRE-REVUE FINALE (2026-11-04) — AUCUNE PROFONDEUR NE FAIT ÉCHOUER LA
+// SAUVEGARDE. Le reviver de JSON.parse est RÉCURSIF : il cassait vers 2 836
+// niveaux (RangeError), et un compte écrit le jsonb qu'il veut dans SA ligne
+// user_state — 6 Ko de crochets suffisaient à faire échouer chaque nuit.
+// ─────────────────────────────────────────────────────────────────────────
+// 6 000 niveaux : au-delà du reviver (≈ 2 836) ET de JSON.stringify(JSON.parse()) (≈ 4 111), les deux formes du défaut.
+const PROFOND = "[".repeat(6000) + "1" + "]".repeat(6000);
+
+test("⑥ une ligne imbriquée sur 6 000 niveaux s'exporte au texte près (RÉINJECTION : avec le reviver, ou relue puis réécrite, RangeError et aucune archive)", async () => {
+  const ligne = `{"user_id":"u1","data":${PROFOND}}`;
+  const ecrit = [];
+  const vrai = globalThis.fetch;
+  globalThis.fetch = async () => new Response(`[${ligne}]`, { status: 200 });
+  try {
+    assert.equal(await SAUV.exporter({ url: "https://exemple.invalid", cle: "k" }, "user_state", "user_id", { write: (x) => ecrit.push(x) }), 1);
+  } finally { globalThis.fetch = vrai; }
+  assert.deepEqual(ecrit, [ligne + "\n"]);
+  // …et la reprise la relit (sans nombre à risque : JSON.parse seul, sans reviver).
+  const { lireNdjson } = R._phases;
+  const relue = lireNdjson(fichier("user_state.ndjson", ligne + "\n"));
+  assert.equal(relue.length, 1);
+});
+
+test("⑥ bis profondeur ET nombre à risque : une RangeError NOMMÉE, que la reprise dit « non vérifiable », jamais « corrompu »", () => {
+  assert.throws(() => JE.lireJsonExact(`{"rid":${GRAND_A},"d":${PROFOND}}`), (e) => e instanceof RangeError && /imbrication trop profonde/.test(e.message));
+});
+
+test("⑥ ter decouperLignes : chaînes à crochets, virgules et guillemets échappés, sauts de ligne hors chaîne, page vide — et refus d'une page tronquée", () => {
+  const page = '[{"id":"a","t":"x],[{\\"y","n":10.00}, \n {"id":"b","j":{"k": [1, 2]}}]';
+  const lignes = JE.decouperLignes(page);
+  assert.deepEqual(lignes, ['{"id":"a","t":"x],[{\\"y","n":10.00}', '{"id":"b","j":{"k": [1, 2]}}']);
+  for (const l of lignes) assert.doesNotThrow(() => JSON.parse(l));
+  assert.deepEqual(JE.decouperLignes("[]"), []);
+  assert.deepEqual(JE.decouperLignes('[{"a":\n1}]'), ['{"a": 1}'], "un saut de ligne hors chaîne devient une espace : une ligne NDJSON reste une ligne");
+  for (const t of ['[{"a":1}', '[{"a":1},]', '[{"a":1}] x', '{"a":1}', '[{"a":"x]']) assert.throws(() => JE.decouperLignes(t), Error, t);
+});
+
+test("⑥ quater une page tronquée fait ÉCHOUER l'export en nommant la table et la page", async () => {
+  const vrai = globalThis.fetch;
+  globalThis.fetch = async () => new Response('[{"id":"a"},{"id":"b"', { status: 200 });
+  try {
+    await assert.rejects(SAUV.exporter({ url: "https://exemple.invalid", cle: "k" }, "post_likes", "id", { write: () => {} }), /post_likes : page 0–\d+ illisible/);
+  } finally { globalThis.fetch = vrai; }
+});
+
+test("⑦ le DDL de reprise REFUSE une table partitionnée ou étrangère au lieu d'écrire un DDL qui échouerait à la reprise — et la garde est la première section", () => {
+  const { ETAPES } = require("../../scripts/schema-executable.js");
+  assert.match(ETAPES[0].titre, /^Garde/);
+  assert.match(ETAPES[0].sql, /relkind in \('p','f'\)/);
+  assert.deepEqual(ETAPES[0].rendu([]), [], "rien à refuser : aucune instruction, la suite continue");
+  assert.throws(() => ETAPES[0].rendu([{ relname: "journaux", k: "p" }]), /journaux \(partitionnée\)/);
+  assert.throws(() => ETAPES[0].rendu([{ relname: "distante", k: "f" }]), /distante \(étrangère\)/);
 });

@@ -234,7 +234,14 @@ function validerArchive(ctx) {
     const f = path.join(ctx.archive, t + ".ndjson");
     if (!fs.existsSync(f)) { bloquants.push(`table ${t} : fichier absent (manifeste : ${info.exporte} ligne(s))`); continue; }
     let n;
-    try { n = lireNdjson(f).length; } catch (e) { bloquants.push(`table ${t} : NDJSON illisible (${String(e.message).slice(0, 60)}) — fichier tronqué ou corrompu`); continue; }
+    try { n = lireNdjson(f).length; } catch (e) {
+      // Une imbrication trop profonde pour la lecture EXACTE n'est pas un fichier
+      // corrompu : la ligne est intègre, on ne sait pas la relire au chiffre près.
+      bloquants.push(e instanceof RangeError
+        ? `table ${t} : ligne non vérifiable (${String(e.message).slice(0, 90)})`
+        : `table ${t} : NDJSON illisible (${String(e.message).slice(0, 60)}) — fichier tronqué ou corrompu`);
+      continue;
+    }
     if (n !== info.exporte) bloquants.push(`table ${t} : ${n} ligne(s) sur disque, ${info.exporte} au manifeste — fichier tronqué ou étranger`);
   }
   // ② médias

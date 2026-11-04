@@ -79,6 +79,21 @@ const litt = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const SANS_EXTENSION = "p.oid not in (select objid from pg_depend where deptype='e')";
 
 const ETAPES = [
+  { titre: "Garde — aucune table partitionnée ni étrangère dans public (le DDL de reprise ne sait pas les rendre)",
+    // ⚠️ Contre-revue finale de R25 (2026-11-04). La section « Tables » ne rend
+    // que les tables ordinaires (relkind 'r') : un parent PARTITIONNÉ ('p') ou
+    // une table ÉTRANGÈRE ('f') n'était pas rendu, et le DDL échouait plus loin —
+    // contraintes, `OWNED BY` d'un serial, droits d'une séquence d'identité —,
+    // à la reprise, c'est-à-dire trop tard. Le générateur REFUSE donc d'écrire un
+    // DDL qu'il sait faux : la sauvegarde de la nuit le dit en rouge. Aucune en
+    // production le 2026-11-04 (canal ① : 0 'p', 0 'f', 52 'r').
+    sql: `select c.relname, c.relkind::text k from pg_class c
+           where c.relnamespace='public'::regnamespace and c.relkind in ('p','f') order by 1`,
+    rendu: (r) => {
+      if (r.length) throw new Error("DDL de reprise impossible : public porte " + r.map((x) => `${x.relname} (${x.k === "p" ? "partitionnée" : "étrangère"})`).join(", ") + " — scripts/schema-executable.js ne sait pas les rendre ; l'étendre avant de compter sur la reprise.");
+      return [];
+    } },
+
   { titre: "Extensions",
     sql: `select e.extname, n.nspname from pg_extension e join pg_namespace n on n.oid=e.extnamespace where e.extname not in ('plpgsql') order by 1`,
     rendu: (r) => r.map((x) => `create extension if not exists ${ident(x.extname)} with schema ${ident(x.nspname)};`) },
