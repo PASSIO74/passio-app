@@ -1114,11 +1114,34 @@ lot ; `docs/RECUPERATION.md` fait rejouer le verdict de la migration après une 
 ⚠️ **La migration ne tient jamais un verrou en en attendant un autre** : les cinq tables d'un coup, en
 `NOWAIT`, en boucle — attendre en tenant bloquait les lecteurs, et un interblocage avec l'instruction
 préparée d'`apply_rls` a été reproduit.
+⚠️ **…Y COMPRIS DANS SON VERDICT** (contre-revue finale, 2026-11-04, mesuré) : `pg_publication_tables` OUVRE
+chaque table publiée (`pg_get_publication_tables` → `table_open(…, AccessShareLock)`, PostgreSQL 16 comme
+17.6, dès qu'aucune liste de colonnes n'est posée). Tenant les cinq tables en ACCESS EXCLUSIVE, le verdict
+attendait sur `posts` dès qu'une autre session la verrouillait : chaque client des cinq tables bloqué jusqu'au
+`lock_timeout`, puis la migration entière annulée. Le verdict lit `pg_publication_rel` (et
+`pg_publication_namespace`), qui n'ouvre aucune table. Règle : **dans une migration qui tient des verrous,
+aucune lecture qui en prend d'autres** — vues système comprises.
+⚠️ **NE PAS SUPPRIMER (NI RENOMMER) UNE COLONNE D'UNE TABLE PUBLIÉE SANS DRAINER LE SLOT** (même revue,
+mesuré avec le vrai wal2json et l'`apply_rls` de production) : le décodage relit les changements avec le
+catalogue HISTORIQUE (la colonne y existe), `apply_rls` avec le catalogue COURANT
+(`has_column_privilege(…, 'rid', 'SELECT')` → « column does not exist ») ; `pg_logical_slot_get_changes` a
+déjà avancé le slot, ce qui n'est pas transactionnel : le lot entier — messages d'autres tables compris — n'est
+jamais livré en direct. Le retour arrière de R25 GARDE donc `rid` (inerte : identité, garde et index retirés) ;
+la supprimer se fait à part, après drainage (procédure dans l'en-tête de la migration).
+⚠️ **Un verdict compare à l'IDENTIQUE, jamais par morceaux** : « le défaut contient `gen_random_uuid()`,
+`17, 16` et `9007199254740991` » laissait passer `(…) & 7` (3 bits) ; une regex de corps de garde ancrée à la
+seule fin laissait passer un `if new.rid is not null then return new;` en tête. Le défaut se compare au
+déparse, par le même serveur, d'une colonne témoin portant l'expression exacte ; le corps, par une regex
+ancrée aux deux bouts.
 
 **Ce qui reste, dit tel quel** : un abonné sans filtre voit qu'UN effacement a eu lieu, et quand, sur ces
-tables ; `posts`, `post_comments`, `conv_messages`, `event_comments`, `video_lives`, `profiles` envoient
-toujours leur identifiant unique, opaque ; un filtre sur `rid` ne reconnaît que les lignes dont l'abonné connaît
-le `rid` (qu'il lit ou a lues). **Après application** (`04-LIVRAISON.md` § 8.3) : mesurer au canal ①
+tables ; `posts`, `post_comments`, `conv_messages`, `event_comments` et `profiles` envoient toujours leur
+identifiant unique, opaque — mais **`video_lives` envoie `vl_<8 premiers caractères du compte>_<horodatage>`**
+(fabriqué par le client) : sans fuite aujourd'hui parce que ses lignes sont lisibles par tous, à revoir le jour
+où elles ne le seraient plus ; un filtre sur `rid` ne reconnaît que les lignes dont l'abonné connaît le `rid`
+(qu'il lit ou a lues), et `rid` ne change jamais — la poignée survit à un blocage ou à une exclusion. Hors temps
+réel, le même fait « qui a effacé quoi » se sonde encore par l'identifiant PRÉVISIBLE `n_<message>_<8>` d'une
+notification de message (un INSERT refusé en 23505 tant qu'elle existe) — préexistant, R32. **Après application** (`04-LIVRAISON.md` § 8.3) : mesurer au canal ①
 `relreplident` des cinq tables, `indisreplident`, le défaut de `rid` et la garde, puis relancer les suites
 production (comptes synthétiques) — un UPDATE ou un DELETE refusé faute d'identité y tomberait au rouge. Côté
 client, `old_record` nul arrive en `payload.old = {}` (supabase-js, `convertChangeData`).

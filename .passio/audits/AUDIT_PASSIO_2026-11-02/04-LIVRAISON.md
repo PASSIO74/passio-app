@@ -205,6 +205,17 @@ que la R26 du § 7 laisse à `anon` deviendrait une lecture des erreurs client.
 
 ### 8.4 Retour arrière
 
-Le bloc `--|` de l'en-tête, exécutable tel quel : l'identité d'abord, l'index ensuite, la colonne enfin (dans l'autre
-ordre, tout UPDATE et DELETE des tables publiées est refusé ; la gate le refuse aussi). Il rend à `comment_interactions` son
-identité FULL d'origine. Code : revert du merge ; aucun état local touché.
+Le bloc `--|` de l'en-tête, exécutable tel quel : l'identité d'abord, puis la garde, puis l'index (dans l'autre ordre,
+tout UPDATE et DELETE des tables publiées est refusé ; la gate le refuse aussi). Il rend à `comment_interactions` son
+identité FULL d'origine. **La colonne `rid` RESTE**, inerte : la supprimer pendant que le temps réel n'a pas tout décodé
+fait lever `apply_rls` et perd le lot en cours (contre-revue finale, mesuré) — la retirer se fait à part, après drainage du
+slot, selon l'en-tête. Code : revert du merge ; aucun état local touché.
+
+### 8.5 Contre-revue finale (2026-11-04)
+
+Trois relecteurs indépendants, en lecture seule, sur la version finale (fuite temps réel, sûreté de la migration et de sa
+gate, reprise et sauvegarde), chaque constat P1/P2 soumis à un vérificateur chargé de le réfuter. **Aucune fuite ouverte,
+aucune casse à l'application** : le banc rejoué (202/0), et contre-éprouvé avec le VRAI wal2json et l'`apply_rls` de
+production. En cours de correction dans la PR : RV-20 à RV-24 (verdict sans verrou ni comparaison par morceaux, retour
+arrière qui garde la colonne, gate étendue, en-tête exact). Trouvés à côté et consignés, hors lot : R31 (P2, confirmé — supprimer une
+publication rend ses commentaires et « j'aime » publics), R32, R33.
