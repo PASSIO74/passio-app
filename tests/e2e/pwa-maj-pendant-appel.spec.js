@@ -999,6 +999,8 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
 
     // La compression tient : aucun message, aucun dépôt, seule la marque retient la page.
     await miseAJourPendant(page, docs);
+    // La marque dure 15 s, et une CI chargée peut en passer une bonne part à installer B.
+    await page.evaluate(() => _mediaEnPreparation());
     await toujoursRetenue(page, docs);
     expect(await messagesRelus(page)).toEqual([]);
 
