@@ -44,7 +44,9 @@
       }, true);
       // Un champ d'un écran masqué ou d'un panneau sorti sur le côté ne compte plus :
       // `#convFpInput` garde son texte quand la conversation se referme, et celui-ci
-      // est déjà dans le brouillon. Pas de test vertical : dans un long formulaire,
+      // est déjà dans le brouillon. ⚠️ LE CADRE, PAS LA FENÊTRE : sur un grand écran,
+      // `.app-shell` ne fait que 440 px, et le panneau refermé reste dans la fenêtre,
+      // découpé seulement par le cadre. Pas de test vertical : dans un long formulaire,
       // le champ rempli passe souvent au-dessus ou au-dessous de ce qu'on regarde.
       const saisieEnCours = () => {
         const champs = document.querySelectorAll('input, textarea');
@@ -52,7 +54,8 @@
           const c = champs[i];
           if (!champsSaisis.has(c) || !c.value.trim()) continue;
           const r = c.getBoundingClientRect();
-          if (r.width > 0 && r.height > 0 && r.right > 0 && r.left < window.innerWidth) return true;
+          const cadre = (c.closest('.app-shell') || document.documentElement).getBoundingClientRect();
+          if (r.width > 0 && r.height > 0 && r.right > cadre.left && r.left < cadre.right) return true;
         }
         return false;
       };

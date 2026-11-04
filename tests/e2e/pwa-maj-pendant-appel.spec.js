@@ -460,6 +460,9 @@ test.describe("PWA — le rechargement d'une mise à jour attend la fin de ce qu
   });
 
   test("⑧ saisie dans une conversation : rien n'est perdu, et la page recharge en la quittant", async ({ page }) => {
+    // Sur un grand écran, `.app-shell` ne fait que 440 px : le panneau refermé reste dans
+    // la fenêtre, découpé seulement par le cadre, et son texte ne doit plus rien retenir.
+    await page.setViewportSize({ width: 1280, height: 800 });
     await ouvrirInstallee(page);
     await clientSimule(page);
     await page.evaluate(() => { goTo("messages"); renderMessages(); openConversation("dm_lea"); });
