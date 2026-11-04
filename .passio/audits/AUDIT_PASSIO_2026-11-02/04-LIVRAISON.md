@@ -185,9 +185,11 @@ que la R26 du § 7 laisse à `anon` deviendrait une lecture des erreurs client.
   à leur colonne (elles étaient doublées en `*_seq1`, l'orpheline gardant `rwU`), `OWNED BY` des `serial`, droits de
   séquence ; banc `schema-executable-identite` 40/0 avec la forme finale du `rid`, rouge sur le générateur d'avant
   (25 ✅ / 15 ❌) ; procédure d'après reconstruction dans `docs/RECUPERATION.md`.
-- `scripts/sauvegarde-donnees.js` et `scripts/restaurer-donnees.js` : lecture exacte des nombres
-  (`scripts/lib/json-exact.js`) à l'export, à la relecture de l'archive et à celle de la cible ;
-  `tests/unit/restaurer-donnees.test.mjs` 17/17, rouge sur trois réinjections.
+- `scripts/sauvegarde-donnees.js` et `scripts/restaurer-donnees.js` (`scripts/lib/json-exact.js`) : l'export
+  écrit le texte de chaque ligne tel que la base l'a rendu (découpage linéaire, aucune profondeur ne l'arrête) ;
+  la vérification relit archive et cible au chiffre près ; sans `JSON.rawJSON`, un nombre à risque fait échouer
+  la lecture ; le DDL de reprise refuse une table partitionnée ou étrangère ; `tests/unit/restaurer-donnees.test.mjs`
+  22/22, rouge sur six réinjections.
 - `scripts/audit-identite-replication.js` dans `npm run verif` (test unitaire 12/12) : une migration qui supprime un
   index `*_rid_key`, ou la colonne `rid`, tant qu'il porte l'identité est refusée, retour arrière compris.
 
@@ -217,5 +219,8 @@ Trois relecteurs indépendants, en lecture seule, sur la version finale (fuite t
 gate, reprise et sauvegarde), chaque constat P1/P2 soumis à un vérificateur chargé de le réfuter. **Aucune fuite ouverte,
 aucune casse à l'application** : le banc rejoué (202/0), et contre-éprouvé avec le VRAI wal2json et l'`apply_rls` de
 production. En cours de correction dans la PR : RV-20 à RV-24 (verdict sans verrou ni comparaison par morceaux, retour
-arrière qui garde la colonne, gate étendue, en-tête exact). Trouvés à côté et consignés, hors lot : R31 (P2, confirmé — supprimer une
-publication rend ses commentaires et « j'aime » publics), R32, R33.
+arrière qui garde la colonne, gate étendue, en-tête exact). Côté reprise et sauvegarde (même revue) : la lecture exacte est juste (aller-retour réel sur
+PostgreSQL 16 : 0 écart ; archive ancienne : 0 fausse divergence), le recoupement du DDL reconstruit avec la R25
+finale rejoué (10 OK) — mais RV-25 (P2, introduit par ce lot : le reviver récursif faisait échouer la sauvegarde
+sur un jsonb profond qu'un compte écrit chez lui), RV-26 et RV-27, corrigés. Trouvés à côté et consignés, hors
+lot : R31 (P2, confirmé — supprimer une publication rend ses commentaires et « j'aime » publics), R32, R33, R34.

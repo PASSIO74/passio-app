@@ -209,7 +209,7 @@ reconstruit sortait « contenu identique » du verdict — `--verifier` compare 
 | droits de séquence | ceux qu'un projet Supabase donne à toute séquence neuve : `rwU` pour `anon` et `authenticated` | identiques à la production AUJOURD'HUI (ses deux séquences ont `rwU`, canal ①, 2026-11-04) ; mais tout droit RESSERRÉ revenait en silence — la première version de R25 retirait tout droit client sur les séquences de `rid` : les lire, c'est estimer le volume d'écritures d'une table ; les reculer, c'est faire percuter l'index unique à l'insertion suivante |
 | `OWNED BY` d'un `serial` | une séquence que `pg_get_serial_sequence` ne trouve pas | le recalage des séquences de `restaurer-donnees.js` la sautait : la première insertion après la reprise percutait une clé restaurée (« duplicate key »). Aucune colonne `serial` en production : défaut latent |
 
-**Le correctif** (`schema-executable.js`, 19 sections au lieu de 16) : la section « Séquences » ne crée plus
+**Le correctif** (`schema-executable.js`, 19 sections au lieu de 16 — 20 avec la garde ajoutée par la contre-revue finale, plus bas) : la section « Séquences » ne crée plus
 d'avance une séquence d'identité (pg_depend `i` : elle naît avec sa colonne) ; une section rattache chaque
 `serial` à sa colonne (`OWNED BY`) ; une section **identité de réplication**, après les index, rend chaque
 table publique — DEFAULT compris, si bien qu'une cible semée qui a dérivé revient à la source — et un
@@ -237,8 +237,17 @@ réappliquer la migration** : **11 OK / 0 ECHEC** pour la version du commit 1387
 dans les deux, le DDL s'applique sans erreur et un DELETE ne publie plus que `rid`. La migration n'était pas
 finalisée : ce recoupement ne vaut que pour ces deux empreintes. **La forme FINALE** (`rid` de 53 bits, chiffres
 17 à 32 de l'UUID, migration sha256 `6471496f…`) est celle que porte désormais la table `aimes` du banc — défaut
-et garde recopiés à l'octet près : 40 ✅ / 0 ❌ (2026-11-04) ; le recoupement sur le socle de la revue n'a pas
-été rejoué pour cette empreinte.
+et garde recopiés à l'octet près : 40 ✅ / 0 ❌ (2026-11-04). La contre-revue finale (2026-11-04) a REJOUÉ le
+recoupement pour cette empreinte : source 10 OK, DDL rendu puis appliqué à une base vide de type Supabase,
+verdict de R25 lu sur la base reconstruite sans réappliquer la migration **10 OK / 0 ECHEC**, rejeu du DDL et de la
+migration sans erreur. Les corrections de R25 qui ont suivi (verdict, retour arrière, en-tête) ne changent ni
+l'identité, ni le défaut de `rid`, ni la garde.
+
+**Garde du générateur** (même revue) : une table PARTITIONNÉE ou ÉTRANGÈRE de `public` n'était pas rendue, et le
+DDL échouait plus loin, à la reprise (contraintes, `OWNED BY` d'un serial, droits d'une séquence d'identité). La
+première des 20 sections REFUSE désormais d'écrire le DDL dans ce cas, en nommant la table : la sauvegarde de la
+nuit le dit en rouge, au lieu de livrer une archive qui ne se restaure pas. Aucune en production (canal ①,
+2026-11-04). Verrou : `tests/unit/restaurer-donnees.test.mjs` ⑦.
 
 ### ④ Après toute reconstruction : rejouer les migrations de sécurité, mesurer l'identité
 
@@ -305,16 +314,36 @@ reprise, et `--verifier`, qui relisait les deux côtés par `JSON.parse`, ne le 
 même double auraient fait refuser la seconde ligne par `<table>_rid_key` (`on conflict do nothing` : elle
 manquait au verdict).
 
-**Correctif** : `scripts/lib/json-exact.js` (`lireJsonExact`). Un nombre que JavaScript lit en dénotant la même
-valeur décimale que son texte reste un nombre (`10.00`, `1e-07`, `0.1` : une archive d'avant le correctif se
-vérifie toujours à l'identique) ; un nombre que la lecture changerait garde son texte source (`JSON.rawJSON`,
-Node 21 et plus — la CI est en 22), que `JSON.stringify` réécrit tel quel. Sans `JSON.rawJSON`, un entier
-au-delà de 2^53 fait échouer la lecture au lieu d'être arrondi. Il sert aux trois lectures : la page exportée
-(`exporter`), l'archive relue et la cible relue par la vérification (`lireNdjson`, `lignesCible`), dont la
-clé de comparaison prend le texte exact (`texteValeur`). Verrous : `tests/unit/restaurer-donnees.test.mjs`
-⑤ à ⑤ quinquies, rouges sur trois réinjections (`r.json()` à l'export, `JSON.parse` à la relecture, `String()`
-dans la clé). Aucune archive existante n'est à reprendre : jusqu'ici, les seules colonnes `bigint` de `public`
-étaient les deux compteurs d'identité, et aucune n'était en `numeric` (canal ①, 2026-11-04).
+**Correctif** (`scripts/lib/json-exact.js`) :
+- **l'export n'interprète plus ses lignes** : `decouperLignes` découpe le tableau que rend PostgREST en textes de
+  lignes, par un balayage LINÉAIRE (profondeur, chaînes, échappements), et `exporter` les écrit tels que la base
+  les a rendus — exact par construction, échelle de `10.00` comprise. `JSON.parse` seul vérifie que chaque ligne
+  est un objet ; une page tronquée fait échouer l'export en nommant la table et la page ;
+- **la vérification compare au chiffre près** : `lireJsonExact` (archive relue, cible relue, `lireNdjson`,
+  `lignesCible`) garde le texte source d'un nombre que JavaScript changerait (`JSON.rawJSON`, Node 21 et plus — la
+  CI est en 22) ; un nombre qu'il lit en dénotant la même valeur décimale reste un nombre (`10.00`, `1e-07`,
+  `0.1` : une archive d'avant le correctif se vérifie toujours à l'identique — rejoué sur PostgreSQL 16 par la
+  contre-revue, 0 écart). La clé de comparaison prend le texte exact (`texteValeur`) ;
+- ⚠️ **aucune profondeur ne fait échouer la sauvegarde** (contre-revue finale, P2 introduit puis corrigé dans ce
+  lot) : un `reviver` de `JSON.parse` est récursif et cassait vers 2 836 niveaux, qu'un compte peut écrire dans
+  SON `user_state` (6 Ko de crochets) — plus aucune archive, nuit après nuit. L'export ne relit plus rien ;
+  `lireJsonExact` balaie d'abord les jetons numériques et n'appelle le reviver que s'il en trouve un « à risque » ;
+- **sans `JSON.rawJSON`, tout nombre à risque fait échouer la lecture** (entier au-delà de 2^53, décimal à plus de
+  15 chiffres, `1e400` qui deviendrait `null`) : jamais un arrondi silencieux.
+Verrous : `tests/unit/restaurer-donnees.test.mjs` ⑤ à ⑥ quater, rouges sur six réinjections (`r.json()` à
+l'export, `JSON.parse` à la relecture, `String()` dans la clé, export relu puis réécrit, lecture toujours par
+reviver, repli qui arrondit les décimaux). Aucune archive existante n'est à reprendre : jusqu'ici, les seules
+colonnes `bigint` de `public` étaient les deux compteurs d'identité, aucune n'était en `numeric` ni `json`, et les
+1 291 nombres des `jsonb` sauvegardés ont tous 15 chiffres significatifs au plus (canal ①, 2026-11-04).
+
+**Limites qui restent, dites telles quelles** :
+- la COMPARAISON de la reprise (`canoniser`, récursive) plafonne vers 2 600 niveaux d'imbrication — préexistant :
+  une ligne plus profonde fait échouer le verdict (il ne dit pas « conforme ») ; l'export et le chargement, eux,
+  n'ont plus de plafond propre ;
+- la sauvegarde de la nuit n'inscrit jamais `schema_sha256` au manifeste — préexistant : l'étape « Exporter » de
+  `sauvegarde.yml` tourne AVANT « Archiver le schéma », et ne hache `schema.sql` que s'il existe déjà. Le contrôle
+  « ce DDL est celui de cette archive » (ASTRA-32) ne sert donc pas encore ; inverser les étapes ferait dépendre
+  l'export des données de l'étape du schéma. Risque résiduel R34 de l'audit du 2026-11-02.
 
 ## Ce qu'une restauration NE REND PAS — écrit, pas tu
 
