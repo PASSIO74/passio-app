@@ -217,11 +217,27 @@ que la R26 du § 7 laisse à `anon` deviendrait une lecture des erreurs client.
 
 ### 8.4 Retour arrière
 
-Le bloc `--|` de l'en-tête, exécutable tel quel : l'identité d'abord, puis la garde, puis l'index (dans l'autre ordre,
+Le bloc `--|` de l'en-tête, en ôtant « --| » (`sed -n 's/^--| //p'`, comme le banc ; JAMAIS les lignes `--|+` qui le
+suivent, réservées à une base sans temps réel vivant) : l'identité d'abord, puis la garde, puis l'index (dans l'autre ordre,
 tout UPDATE et DELETE des tables publiées est refusé ; la gate le refuse aussi). Il rend à `comment_interactions` son
 identité FULL d'origine. **La colonne `rid` RESTE**, inerte : la supprimer pendant que le temps réel n'a pas tout décodé
 fait lever `apply_rls` et perd le lot en cours (contre-revue finale, mesuré) — la retirer se fait à part, après drainage du
-slot, selon l'en-tête. Code : revert du merge ; aucun état local touché.
+slot, selon l'en-tête.
+
+Vérification finale (04/11, registre RV-33) — trois précisions :
+- le bloc n'a **pas de tableau de verdict** : il se joue à l'éditeur SQL (canal ③), jamais par `appliquer-migration.mjs`,
+  qui sortirait en code 1 APRÈS validation ; l'état d'arrivée se MESURE ensuite au canal ① (`relreplident` `d` sur les
+  quatre tables et `f` sur `comment_interactions`, aucun `trg_rid_opaque`, aucune `rid_opaque_garde`, aucun `*_rid_key`,
+  colonne `rid` présente) ;
+- il laisse les **commentaires de colonne** de `rid` (« tiré par la base seule… »), faux une fois la garde retirée : les
+  remettre à NULL (`comment on column public.<table>.rid is null`) dans la même séance ;
+- **depuis la seconde couche** (§ 8.7, `diffusion_privee`), `conv_members` et `notifications` sont hors publication :
+  défaire R25 seule y rend une identité DEFAULT sans effet sur le temps réel ; le retour arrière de la seconde couche est
+  le SIEN, à jouer d'abord si l'on défait tout.
+
+Code : **rien à revenir**, R25 ne touche aucune ligne de `js/`. Ne PAS revenir la fusion #692 : elle porte aussi la
+sauvegarde exacte, l'identité du DDL de reprise, la suite de R26 (`security_invoker`), la gate, et le seul texte qui
+documente la colonne `rid` laissée en base et sa procédure de retrait.
 
 ### 8.5 Contre-revue finale (2026-11-04)
 

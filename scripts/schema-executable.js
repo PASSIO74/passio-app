@@ -65,13 +65,41 @@ function lireJeton() {
   return fs.existsSync(p) ? fs.readFileSync(p, "utf8").trim() : null;
 }
 
-async function requete(jeton, sql) {
-  const r = await fetch(`https://api.supabase.com/v1/projects/${REF}/database/query`, {
-    method: "POST", headers: { Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" }, body: JSON.stringify({ query: sql }),
-  });
-  const t = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${t.slice(0, 300)}`);
-  return JSON.parse(t);
+// ⚠️ UNE PANNE PASSAGÈRE NE DOIT PAS COÛTER L'ARCHIVE DE LA NUIT (vérification
+// finale de R25, 2026-11-04). Dans sauvegarde.yml, l'étape du schéma précède
+// Vérifier, Chiffrer et Déposer : un seul 429 ou 5xx de l'API de gestion
+// faisait échouer le générateur, donc sauter le dépôt, données comprises.
+// L'API plafonne vers 60 appels par minute (429 « ThrottlerException »,
+// docs/RECUPERATION.md), le générateur en fait 20, et la veille partage le
+// jeton. Même politique que restaurer-donnees.js : deux reprises sur un 429
+// (fenêtre suivante, 61 s), une sur un 5xx ou une panne réseau (5 s). Ce sont
+// des SELECT de catalogue : les rejouer est sans effet. Tout autre refus
+// (400, 401, 403…) n'est pas passager : il lève aussitôt.
+// Verrou : tests/unit/schema-executable-requete.test.mjs.
+const PAUSES = { trop: 61000, panne: 5000 };
+
+async function requete(jeton, sql, {
+  fetchFn = globalThis.fetch,
+  attendre = (ms) => new Promise((r) => setTimeout(r, ms)),
+  journal = (m) => process.stderr.write(m + "\n"),
+} = {}) {
+  let trop = 0, panne = 0;
+  for (;;) {
+    let r;
+    try {
+      r = await fetchFn(`https://api.supabase.com/v1/projects/${REF}/database/query`, {
+        method: "POST", headers: { Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" }, body: JSON.stringify({ query: sql }),
+      });
+    } catch (e) {
+      if (panne++ < 1) { journal(`   (réseau : ${e.message} — nouvel essai dans ${PAUSES.panne / 1000} s)`); await attendre(PAUSES.panne); continue; }
+      throw e;
+    }
+    const t = await r.text();
+    if (r.ok) return JSON.parse(t);
+    if (r.status === 429 && trop++ < 2) { journal(`   (429 : pause ${PAUSES.trop / 1000} s)`); await attendre(PAUSES.trop); continue; }
+    if (r.status >= 500 && panne++ < 1) { journal(`   (HTTP ${r.status} : nouvel essai dans ${PAUSES.panne / 1000} s)`); await attendre(PAUSES.panne); continue; }
+    throw new Error(`HTTP ${r.status} ${t.slice(0, 300)}`);
+  }
 }
 
 const ident = (s) => `"${String(s).replace(/"/g, '""')}"`;
@@ -244,9 +272,11 @@ const ETAPES = [
 
   { titre: "Privilèges de SÉQUENCE pour anon/authenticated — retirés puis rendus tels qu'en prod",
     // ⚠️ R25 : les droits par défaut de Supabase donnent `rwU` (USAGE, SELECT,
-    // UPDATE) à anon et authenticated sur toute séquence NEUVE. La migration
-    // R25 les retire aux séquences de `rid` (son verdict l'exige) : une base
-    // reconstruite les rendait. Une séquence d'IDENTITÉ est désignée par SA
+    // UPDATE) à anon et authenticated sur toute séquence NEUVE. La PREMIÈRE
+    // version de R25 (rid d'identité séquentielle, jamais appliquée) les
+    // retirait aux séquences de `rid` ; la version appliquée n'a plus aucune
+    // séquence. Mais tout droit de séquence RESSERRÉ revenait en silence avec
+    // une base reconstruite. Une séquence d'IDENTITÉ est désignée par SA
     // COLONNE (`pg_get_serial_sequence`, à l'exécution) : son nom n'est pas une
     // donnée de la source — une table renommée garde l'ancien, la cible en
     // donne un neuf. Absente de la cible, c'est une erreur : un droit qu'on
@@ -320,4 +350,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error("ÉCHEC :", e.message); process.exit(1); });
-module.exports = { ETAPES };
+module.exports = { ETAPES, requete, PAUSES };

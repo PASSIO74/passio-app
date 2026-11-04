@@ -15,7 +15,7 @@
 2. **`timestamp` vs `timestamptz` mixés** → `supaTs(s)` obligatoire (liste dans `PASSIO_SYSTEM_MODEL.md`).
 3. **Jamais base64 en DB** → Supabase Storage.
 4. **Embed `profiles(...)` = 400** sans FK réelle → jointure manuelle.
-5. **Realtime** : la table doit être dans la publication realtime ; livraison respecte la RLS (prouvée par tests multi-comptes).
+5. **Realtime** : la table doit être dans la publication realtime. La livraison respecte la RLS pour un INSERT ou un UPDATE (prouvé par les tests multi-comptes), **jamais pour un DELETE** : `realtime.apply_rls` le livre à TOUT abonné qui le demande, visiteur compris, réduit à clé primaire ∩ identité de réplication, et ses filtres s'y essaient (R25). Une table dont la clé primaire dit qui ou quoi ne publie pas cette clé : identité `rid` opaque, ou table hors publication (skill `migration`).
 6. **Migration** = additive par défaut, jamais destructive sans stratégie + rollback (playbook `database-migration`).
 
 ## Accès prod (opérateur)
@@ -25,7 +25,7 @@ Trois canaux disjoints, fixés par [ADR-012](../adr/ADR-012-canal-acces-base-de-
 - **② Écrire des données** (purge des comptes de test, mesures, sauvegardes) : PostgREST via `configAdmin()` (`tests/e2e/compte-e2e.js`) — `npm run purge:e2e:rest`. En CI, GitHub Actions, seul à détenir les secrets.
 - **③ Écrire de la structure** (DDL) : `psql` depuis un poste, ou le SQL Editor du tableau de bord. Migrations réelles : voir skill `migration`.
 
-Hors ligne, sans aucun canal : `../../migrations/SCHEMA_PROD_REFERENCE.sql` est la photographie de la structure **réelle** de la prod, faite pour répondre à « quelles colonnes existent vraiment ? ». Ne jamais répondre depuis les `migrations/*.sql` seuls — le repo n'est pas la source de vérité.
+Hors ligne, sans aucun canal : `../../migrations/SCHEMA_PROD_REFERENCE.sql` est une photographie de la structure **réelle** de la prod, faite pour répondre à « quelles colonnes existent vraiment ? ». ⚠️ Elle date du **2026-08-17** et ne porte aucune migration postérieure (R5, C-03, R24, R25…), ni l'identité de réplication, ni le corps des déclencheurs : citer sa date avec toute réponse, et lire le canal ① dès qu'il est ouvert. Ne jamais répondre depuis les `migrations/*.sql` seuls — le repo n'est pas la source de vérité.
 
 ## Détail & pièges
 `../../docs/PIEGES_CONNUS.md` (Supabase/realtime), `../../migrations/`, `../../docs/SCALE_RUNBOOK.md` (index & scale).
