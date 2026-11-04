@@ -6,7 +6,8 @@ significative · **P3** mineur. Statut : **corrigé et retesté** · **préparé
 contre-revue) · **partiel** · **non corrigé** (cause et correctif proposés dans le rapport cité) · **constat** (pas un
 défaut). Le détail (reproduction, cause, fichiers, retest) est dans `rapports/<lettre>-….md`, à l'identifiant.
 
-Aucun P0. 5 P1 (B-02 et E-01 sont le même défaut), 32 P2, 37 P3.
+Aucun P0 à l'audit du 02/11 ; R31, trouvé le 04/11 (section « Trouvé après l'audit »), en est un par nature — préparé.
+5 P1 (B-02 et E-01 sont le même défaut), 32 P2, 37 P3.
 
 ## P1
 
@@ -124,3 +125,9 @@ dans la PR du lot ; les migrations restent à appliquer après la contre-revue h
 ## Déjà connus, reproduits par un parcours complet
 C-01 (accusé d'un non-membre accepté ET visible des membres), D-07 (étendu aux conversations), B-02 (bout en bout,
 E b). D-01 : vérifié corrigé (E e2).
+
+## Trouvé après l'audit (04/11)
+
+| ID | Sév. | Anomalie | Correctif | Statut |
+|---|---|---|---|---|
+| **R31** | **P0** par nature (fuite) | Supprimer une publication — ou son compte — rendait ses commentaires, « j'aime » et interactions lisibles par TOUS, visiteur compris : aucune clé étrangère vers `posts`, `deletePost` et la purge de compte n'effaçaient que la publication, `post_is_visible` rendait VRAI sur une ligne `posts` manquante, `comment_target_visible` sur toute cible inconnue. Même chose quand un commentaire était supprimé (les réponses d'autrui devenaient publiques), et, SANS suppression, pour les réactions aux réponses d'une publication privée (`srep_…`). Trouvé par la contre-revue finale de R25, confirmé sur deux bancs ; aucune fuite effective confirmée en production (80 orphelins au format réel, tous antérieurs au 2026-09-01) | `migrations/migration_publications_supprimees_2026-11-04.sql` : cible absente publique seulement pour un EXEMPLE (`est_identifiant_exemple`, liste fermée) ; interaction lue comme son FIL (`comment_target_visible(comment_id, post_id)`) ; déclencheurs AFTER DELETE `trg_purger_cibles_publication` / `trg_purger_cibles_commentaire` ; orphelins du passé effacés sous plafond ; `supabase/functions/_shared/purge-compte.js` relève, purge et relit les dépendances d'autrui ; aucun changement client | **préparé** : banc `migration-publications-supprimees` 63/0 (défaut mesuré d'abord, verdict réinjecté rouge, 9 mutations), `identifiants-exemple` 4/4, `purge-compte` R31 ①–⑧ (6 rouges sur la purge d'avant) ; **migration non appliquée (contre-revue)** — résiduel R31 dans `05-RISQUES-RESIDUELS.md` |

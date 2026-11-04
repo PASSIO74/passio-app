@@ -94,6 +94,30 @@ export const TABLES_COMPTE = [
 //     des objets partagés qui survivent à leur créateur ; l'identifiant y est
 //     orphelin, pas une donnée lisible.
 
+// ⚠️ R31 (audit du 2026-11-02, corrigé le 2026-11-04) — CE QUE LES AUTRES ONT ÉCRIT SUR
+// SES PUBLICATIONS ET SES COMMENTAIRES. `TABLES_COMPTE` efface ce qui PORTE l'identifiant
+// du compte. Les commentaires, « j'aime », co-auteurs et interactions que d'AUTRES comptes
+// ont laissés sur ses publications — et les réponses ou réactions laissées sur ses
+// commentaires — portent l'identifiant de LEUR auteur : ils restaient, orphelins, et
+// `post_is_visible` (« pas de ligne posts → public ») les rendait lisibles par tous, visiteur
+// compris. La migration R31 (`migration_publications_supprimees_2026-11-04.sql`) ferme cette
+// lecture et pose les déclencheurs qui les emportent avec la publication. La purge les efface
+// AUSSI, elle-même, et les RELIT : elle ne dépend pas de l'ordre d'application de la
+// migration, et une dépendance qui reste est un reste NOMMÉ (fail-closed). Ce n'est pas
+// l'export : ces lignes sont les données d'autrui (l'export ne lit que `TABLES_COMPTE`).
+/** Ce qui vise une PUBLICATION du compte (colonne = identifiant de la publication). */
+export const DEPENDANCES_PUBLICATION = [
+  ["post_comments", "post_id"], ["post_likes", "post_id"], ["post_collaborators", "post_id"],
+  // Le FIL : réactions de la publication, réponses, réactions aux réponses (`srep_…`).
+  ["comment_interactions", "post_id"],
+  // La CIBLE : une réaction de publication écrite sans fil (anciennes lignes).
+  ["comment_interactions", "comment_id"],
+];
+/** Ce qui vise un COMMENTAIRE du compte (réponses et réactions d'autrui, où que soit le fil). */
+export const DEPENDANCES_COMMENTAIRE = [["comment_interactions", "comment_id"]];
+/** Taille d'un lot d'identifiants dans un filtre `in.(…)` (URL PostgREST bornée). */
+export const LOT_IN = 50;
+
 /** Dossiers du seau `content` où le client dépose sous `<dossier>/<uid>/…`. */
 export const DOSSIERS_CONTENU = ["photos", "videos", "audios", "events", "avatars", "covers", "passion_covers", "passion_photos"];
 
@@ -130,6 +154,54 @@ async function compterRestes(admin, table, col, uid) {
     if (r && r.error) return -1;                 // illisible : compte comme un reste
     return typeof r.count === "number" ? r.count : 0;
   } catch (_e) { return -1; }
+}
+
+/**
+ * Les identifiants (`id`) des lignes de `table` que le compte a écrites, TOUS (pages de
+ * `PAGE`, ordre stable). Rend `{ ids }` ou `{ erreur }` — une liste illisible n'est jamais
+ * une liste vide : sans elle, on ne saurait plus quelles publications étaient les siennes.
+ */
+export async function listerIdentifiants(admin, table, col, uid) {
+  const ids = [];
+  try {
+    for (let de = 0; ; de += PAGE) {
+      const r = await admin.from(table).select("id").eq(col, uid).order("id").range(de, de + PAGE - 1);
+      if (!r || r.error) return { erreur: (r && r.error && (r.error.message || r.error.code)) || "lecture" };
+      const page = (r.data || []).map((x) => x && x.id).filter(Boolean);
+      ids.push(...page);
+      if ((r.data || []).length < PAGE) return { ids };
+    }
+  } catch (e) { return { erreur: (e && e.message) || "exception" }; }
+}
+
+/** Efface `[table, col] ∈ deps` où `col ∈ ids`, par lots. Rend les échecs NOMMÉS ; une table absente est notée, pas un échec. */
+async function supprimerDependances(admin, deps, ids, absentes) {
+  const echecs = [];
+  for (const [table, col] of deps) {
+    for (let i = 0; i < ids.length; i += LOT_IN) {
+      let m = null;
+      try {
+        const r = await admin.from(table).delete().in(col, ids.slice(i, i + LOT_IN));
+        if (r && r.error) m = r.error.message || (r.error.code ? String(r.error.code) : "erreur");
+        if (m && (estTableAbsente(m) || estTableAbsente(r.error.code))) { absentes.push(`dependances:${table}:${col}`); break; }
+      } catch (e) { m = (e && e.message) || "exception"; }
+      if (m) { echecs.push(`dependances:${table}:${col} (${m})`); break; }
+    }
+  }
+  return echecs;
+}
+
+/** Combien de `[table, col]` visent encore `ids` : un nombre, `-1` si illisible, `null` si la table est absente. */
+async function compterDependances(admin, table, col, ids) {
+  let n = 0;
+  for (let i = 0; i < ids.length; i += LOT_IN) {
+    try {
+      const r = await admin.from(table).select("*", { count: "exact", head: true }).in(col, ids.slice(i, i + LOT_IN));
+      if (r && r.error) return (estTableAbsente(r.error.message) || estTableAbsente(r.error.code)) ? null : -1;
+      n += typeof r.count === "number" ? r.count : 0;
+    } catch (_e) { return -1; }
+  }
+  return n;
 }
 
 /**
@@ -290,6 +362,8 @@ export async function marquerAuthEchec(admin, uid, jeton, detail) {
  * ET la tentative encore la nôtre. `code` nomme un arrêt avant purge :
  * `infrastructure_absente`, `deja_en_cours`, `deja_supprimee`, `barriere`, `en_vol`, `jeton_perdu`, `incomplete`.
  * `jeton` identifie CETTE tentative ; `delete-account` le repasse à `marquerSupprime`.
+ * `dependances` (R31) = { publications, commentaires } : combien de publications et de
+ * commentaires du compte ont vu purger ce que d'AUTRES y avaient écrit (restes : `dependances:…`).
  */
 export async function purgerCompte(admin, uid, options) {
   const jeton = (options && options.jeton) || (globalThis.crypto && globalThis.crypto.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now()) + "-" + Math.random());
@@ -357,6 +431,19 @@ export async function purgerCompte(admin, uid, options) {
   const objets = releve.objets || [];
   base.objets = objets.length;
 
+  // ①bis R31 — ce que les AUTRES ont écrit sur ses publications et sur ses commentaires.
+  //    Relevé AVANT ② : une fois ses publications effacées, plus rien ne dit lesquelles
+  //    étaient les siennes. Une liste illisible est un échec nommé, jamais « rien à faire ».
+  const pubs = await listerIdentifiants(admin, "posts", "author_id", uid);
+  const coms = await listerIdentifiants(admin, "post_comments", "author_id", uid);
+  if (pubs.erreur) echecs.push(`dependances:relevé posts (${pubs.erreur})`);
+  if (coms.erreur) echecs.push(`dependances:relevé post_comments (${coms.erreur})`);
+  const idsPubs = pubs.ids || [];
+  const idsComs = coms.ids || [];
+  base.dependances = { publications: idsPubs.length, commentaires: idsComs.length };
+  echecs.push(...await supprimerDependances(admin, DEPENDANCES_PUBLICATION, idsPubs, absentes));
+  echecs.push(...await supprimerDependances(admin, DEPENDANCES_COMMENTAIRE, idsComs, absentes));
+
   // ② Lignes, une table à la fois, chaque verdict lu.
   for (const [table, col] of TABLES_COMPTE) {
     const err = await supprimerLignes(admin, table, col, uid);
@@ -406,6 +493,22 @@ export async function purgerCompte(admin, uid, options) {
       else n = await compterRestes(admin, table, col, uid);
     }
     if (n !== 0) restes.push(`${table}:${col}=${n < 0 ? "illisible" : n}`);
+  }
+  // ④bis R31 — plus rien ne vise ses publications ni ses commentaires. Un TIERS qui commente
+  //    ou aime pendant la purge (la barrière ne garde que les écritures DU compte) laisse une
+  //    ligne tardive : réeffacée UNE fois, comme celles du compte ; ce qui subsiste est nommé.
+  for (const [deps, ids] of [[DEPENDANCES_PUBLICATION, idsPubs], [DEPENDANCES_COMMENTAIRE, idsComs]]) {
+    if (!ids.length) continue;
+    for (const [table, col] of deps) {
+      let n = await compterDependances(admin, table, col, ids);
+      if (n === null) continue;                      // table absente : déjà notée en ①bis
+      if (n > 0) {
+        const err = await supprimerDependances(admin, [[table, col]], ids, absentes);
+        if (err.length) echecs.push(...err.map((e) => e.replace(/ \(/, " (reprise : ")));
+        n = await compterDependances(admin, table, col, ids);
+      }
+      if (n !== 0 && n !== null) restes.push(`dependances:${table}:${col}=${n < 0 ? "illisible" : n}`);
+    }
   }
 
   const purgeOk = echecs.length === 0 && restes.length === 0;

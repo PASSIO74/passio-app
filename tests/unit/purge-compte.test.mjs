@@ -19,9 +19,12 @@
 //      seconde qui finit ; une relecture Storage en panne n'est pas « zéro reste »
 //   ⑨ fonction absente = échec nommé, jamais une purge sans autorité
 //   ⑩ plus de 1 000 objets : tout part (pagination)
+//   R31 ①–⑧ (2026-11-04) : ce que les AUTRES ont écrit sur ses publications et ses commentaires
+//      part aussi — relevé AVANT l'effacement, purgé par lots, RELU (reste nommé), sans dépendre
+//      de la migration ; les listes collent aux déclencheurs de la migration R31
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { purgerCompte, marquerSupprime, listerObjetsDuCompte, TABLES_COMPTE, DOSSIERS_CONTENU, RPC_OBJETS, RPC_RECLAMER, RPC_TERMINER, RPC_ATTENDRE, PAGE } from "../../supabase/functions/_shared/purge-compte.js";
+import { purgerCompte, marquerSupprime, listerObjetsDuCompte, TABLES_COMPTE, DOSSIERS_CONTENU, RPC_OBJETS, RPC_RECLAMER, RPC_TERMINER, RPC_ATTENDRE, PAGE, DEPENDANCES_PUBLICATION, DEPENDANCES_COMMENTAIRE, LOT_IN } from "../../supabase/functions/_shared/purge-compte.js";
 
 import { fauxAdmin, baseComplete, U, AUTRE } from "./lib/faux-admin-purge.mjs";
 
@@ -348,4 +351,129 @@ test("marquerSupprime transmet le jeton et le statut `supprimee`", async () => {
   assert.deepEqual([dernier.nom, dernier.args.p_jeton, dernier.args.p_statut], [RPC_TERMINER, JETON, "supprimee"]);
   const refus = fauxAdmin({ terminerRefuse: true });
   assert.equal((await marquerSupprime(refus, U, JETON)).ok, false, "un refus est rendu tel quel, jamais avalé");
+});
+
+// ── R31 (audit du 2026-11-02, 2026-11-04) — ce que les AUTRES ont écrit sur ses publications ──
+// `TABLES_COMPTE` efface ce qui porte l'uid du compte ; un commentaire, un « j'aime », une
+// réponse d'AUTRE sur une publication de U porte l'uid d'AUTRE : avant R31 il restait,
+// orphelin, et `post_is_visible` le rendait lisible par tous. La purge le relève AVANT
+// d'effacer les publications, l'efface, et le RELIT.
+function baseR31() {
+  return {
+    tables: {
+      posts: [{ id: "p_U_1", author_id: U }, { id: "p_U_2", author_id: U }, { id: "p_A_1", author_id: AUTRE }],
+      post_comments: [
+        { id: "c_A_sur_U", post_id: "p_U_1", author_id: AUTRE, content: "AUTRE sur la publication de U" },
+        { id: "c_U_sur_A", post_id: "p_A_1", author_id: U, content: "U sur la publication d'AUTRE" },
+        { id: "c_A_sur_A", post_id: "p_A_1", author_id: AUTRE, content: "AUTRE chez lui" },
+      ],
+      post_likes: [{ post_id: "p_U_1", user_id: AUTRE }, { post_id: "p_A_1", user_id: AUTRE }],
+      post_collaborators: [{ post_id: "p_U_2", user_id: AUTRE, added_by: U }],
+      comment_interactions: [
+        { id: "i1", comment_id: "c_A_sur_U", post_id: "p_U_1", user_id: AUTRE, kind: "like" },      // dans le fil de U
+        { id: "i2", comment_id: "srep_2026", post_id: "p_U_1", user_id: AUTRE, kind: "emoji" },     // réaction à une RÉPONSE, que seul le fil rattache
+        { id: "i3", comment_id: "p_U_2", post_id: null, user_id: AUTRE, kind: "emoji" },            // réaction de publication sans fil (ancienne ligne)
+        { id: "i4", comment_id: "c_U_sur_A", post_id: "p_A_1", user_id: AUTRE, kind: "reply" },     // réponse d'AUTRE au commentaire de U, chez AUTRE
+        { id: "i5", comment_id: "c_A_sur_A", post_id: "p_A_1", user_id: AUTRE, kind: "like" },      // sans lien avec U : reste
+      ],
+    },
+  };
+}
+
+test("R31 ① ce que les AUTRES ont écrit sur ses publications et ses commentaires part avec le compte — et rien d'autre", async () => {
+  const admin = fauxAdmin(baseR31());
+  const r = await purgerCompte(admin, U);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(r.dependances, { publications: 2, commentaires: 1 });
+  assert.deepEqual(admin._t.posts.map((x) => x.id), ["p_A_1"]);
+  assert.deepEqual(admin._t.post_comments.map((x) => x.id), ["c_A_sur_A"], "le commentaire d'AUTRE sur la publication de U part ; celui d'AUTRE chez lui reste");
+  assert.deepEqual(admin._t.post_likes, [{ post_id: "p_A_1", user_id: AUTRE }]);
+  assert.deepEqual(admin._t.post_collaborators, []);
+  assert.deepEqual(admin._t.comment_interactions.map((x) => x.id), ["i5"],
+    "fil de U (i1), réaction à une réponse (i2), réaction sans fil (i3), réponse au commentaire de U (i4) : partis");
+});
+
+test("R31 ② un relevé illisible (publications ou commentaires du compte) est un ÉCHEC nommé, jamais « rien à faire »", async () => {
+  for (const table of ["posts", "post_comments"]) {
+    const r = await purgerCompte(fauxAdmin({ ...baseR31(), pannesSelect: [table] }), U);
+    assert.equal(r.ok, false, table);
+    assert.ok(r.echecs.includes(`dependances:relevé ${table} (panne select ${table})`), JSON.stringify(r.echecs));
+  }
+});
+
+test("R31 ③ une dépendance qui reste après relecture est un reste NOMMÉ", async () => {
+  const admin = fauxAdmin(baseR31());
+  const vraiFrom = admin.from.bind(admin);
+  admin.from = (table) => {
+    const b = vraiFrom(table);
+    if (table !== "post_likes") return b;
+    b.delete = () => { b.select("*", { head: true }); return b; };   // « réussit » sans rien retirer
+    return b;
+  };
+  const r = await purgerCompte(admin, U);
+  assert.equal(r.ok, false);
+  assert.ok(r.restes.includes("dependances:post_likes:post_id=1"), JSON.stringify(r.restes));
+});
+
+test("R31 ④ un TIERS qui commente pendant la purge : la ligne tardive est réeffacée une fois ; si elle revient encore, c'est un reste nommé", async () => {
+  for (const [fois, ok] of [[1, true], [Infinity, false]]) {
+    const admin = fauxAdmin(baseR31());
+    const vraiFrom = admin.from.bind(admin);
+    let reste = fois;
+    admin.from = (table) => {
+      const b = vraiFrom(table);
+      if (table !== "post_comments") return b;
+      const vraiSelect = b.select.bind(b), vraiIn = b.in.bind(b);
+      let comptage = false;
+      b.select = (c, o) => { comptage = !!(o && o.head); return vraiSelect(c, o); };
+      b.in = (col, vals) => {
+        if (comptage && col === "post_id" && reste-- > 0) admin._t.post_comments.push({ id: "c_tardif_" + reste, post_id: vals[0], author_id: AUTRE });
+        return vraiIn(col, vals);
+      };
+      return b;
+    };
+    const r = await purgerCompte(admin, U);
+    assert.equal(r.ok, ok, JSON.stringify(r));
+    if (ok) assert.equal(admin._t.post_comments.some((x) => x.id.startsWith("c_tardif")), false, "la ligne tardive est partie");
+    else assert.ok(r.restes.includes("dependances:post_comments:post_id=1"), JSON.stringify(r.restes));
+  }
+});
+
+test("R31 ⑤ plus de 1 000 publications : toutes relevées (pages), toutes purgées (lots)", async () => {
+  const n = PAGE + 7;
+  const posts = Array.from({ length: n }, (_, i) => ({ id: "p_U_" + String(i).padStart(5, "0"), author_id: U }));
+  const likes = posts.map((p) => ({ post_id: p.id, user_id: AUTRE }));
+  const admin = fauxAdmin({ tables: { posts, post_likes: likes } });
+  const r = await purgerCompte(admin, U);
+  assert.equal(r.ok, true, JSON.stringify(r.restes));
+  assert.equal(r.dependances.publications, n);
+  assert.equal(admin._t.post_likes.length, 0, "les « j'aime » de la 1 001ᵉ publication et suivantes aussi");
+  const lots = admin._j.filter((g) => g === "post_likes:delete").length;
+  assert.ok(lots >= Math.ceil(n / LOT_IN), "par lots de " + LOT_IN + " (" + lots + " suppressions)");
+});
+
+test("R31 ⑥ l'ORDRE : ses publications sont relevées, et leurs dépendances effacées, AVANT qu'elles ne partent", async () => {
+  const admin = fauxAdmin(baseR31());
+  await purgerCompte(admin, U);
+  const j = admin._j;
+  const releve = j.indexOf("posts:select"), dep = j.indexOf("post_comments:delete"), pub = j.indexOf("posts:delete");
+  assert.ok(releve > j.indexOf("rpc:" + RPC_OBJETS), "après la barrière et le relevé Storage : " + j.join(" → "));
+  assert.ok(releve < dep && dep < pub, "relevé → dépendances → publications : " + j.join(" → "));
+});
+
+test("R31 ⑦ une table de dépendance ABSENTE (environnement d'avant la migration) se note, sans échec ni reste de dépendance", async () => {
+  const r = await purgerCompte(fauxAdmin({ ...baseR31(), tablesAbsentes: ["post_collaborators"] }), U);
+  assert.ok(r.absentes.includes("dependances:post_collaborators:post_id"), JSON.stringify(r.absentes));
+  assert.equal(r.echecs.some((e) => e.startsWith("dependances:")), false, JSON.stringify(r.echecs));
+  assert.equal(r.restes.some((e) => e.startsWith("dependances:")), false, JSON.stringify(r.restes));
+});
+
+test("R31 ⑧ les listes de dépendances couvrent ce que la migration R31 purge avec la publication et le commentaire", async () => {
+  const { readFileSync } = await import("node:fs");
+  const sql = readFileSync(new URL("../../migrations/migration_publications_supprimees_2026-11-04.sql", import.meta.url), "utf8");
+  const corps = (nom) => sql.slice(sql.indexOf("create or replace function public." + nom + "()"), sql.indexOf("$$;", sql.indexOf("create or replace function public." + nom + "()")));
+  const tablesDe = (texte) => [...texte.matchAll(/delete from public\.([a-z_]+)/g)].map((m) => m[1]).sort();
+  assert.deepEqual([...new Set(DEPENDANCES_PUBLICATION.map(([t]) => t))].sort(), tablesDe(corps("purger_cibles_publications")),
+    "une table que le déclencheur de posts purge et que la purge de compte oublierait (ou l'inverse)");
+  assert.deepEqual([...new Set(DEPENDANCES_COMMENTAIRE.map(([t]) => t))].sort(), tablesDe(corps("purger_cibles_commentaires")));
 });
