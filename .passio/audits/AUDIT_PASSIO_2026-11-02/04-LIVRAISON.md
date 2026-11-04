@@ -187,9 +187,11 @@ que la R26 du § 7 laisse à `anon` deviendrait une lecture des erreurs client.
   (25 ✅ / 15 ❌) ; procédure d'après reconstruction dans `docs/RECUPERATION.md`.
 - `scripts/sauvegarde-donnees.js` et `scripts/restaurer-donnees.js` (`scripts/lib/json-exact.js`) : l'export
   écrit le texte de chaque ligne tel que la base l'a rendu (découpage linéaire, aucune profondeur ne l'arrête) ;
-  la vérification relit archive et cible au chiffre près ; sans `JSON.rawJSON`, un nombre à risque fait échouer
-  la lecture ; le DDL de reprise refuse une table partitionnée ou étrangère ; `tests/unit/restaurer-donnees.test.mjs`
-  22/22, rouge sur six réinjections.
+  la vérification relit archive et cible au chiffre près, la VALIDATION d'une archive ne fait que compter (sans
+  lecture exacte) ; la reprise exige Node 21 ou plus récent, et le dit ; une table partitionnée ou étrangère rend un
+  DDL qui lève à la reprise : la nuit dépose ses données, puis le run passe au rouge ;
+  `tests/unit/restaurer-donnees.test.mjs` 23/23, `restaurer-phases` 14/14, `reprise-verdicts` 31/31, rouges sur
+  huit réinjections.
 - `scripts/audit-identite-replication.js` dans `npm run verif` (test unitaire 24/24) : une migration qui supprime un
   index `*_rid_key`, ou la colonne `rid`, tant qu'il porte l'identité est refusée, retour arrière compris ; et, sauf
   marqueur motivé, tout ce qui le contourne — index renommé ou retouché, `drop constraint`, table supprimée, renommée
@@ -230,3 +232,9 @@ finale rejoué (10 OK) — mais RV-25 (une sauvegarde qu'un compte fait échouer
 lui — préexistant vers 4 171 niveaux, abaissé à ≈ 2 847 par la première version de ce lot ; l'export n'a désormais
 plus de plafond), RV-26 et RV-27, corrigés. Trouvés à côté et consignés, hors
 lot : R31 (P2, confirmé — supprimer une publication rend ses commentaires et « j'aime » publics), R32, R33, R34.
+La revue du correctif de sauvegarde (même jour) : rien ne casse la sauvegarde de la nuit ni ne fausse son archive
+(découpage éprouvé sur 20 000 pages, 300 000 jetons numériques, aller-retour PostgreSQL 16 sans écart) — mais RV-28
+(**P2**, introduit par ce lot puis corrigé : la validation par lecture exacte faisait refuser une archive entière sur
+une seule ligne écrite par un compte), RV-29, et R35 (les `float8` archivés sur 15 chiffres, préexistant). Dernière
+passe sur l'état final (cinq commits non relus, cohérence d'ensemble) : aucun P1 ni P2, migration applicable le jour
+même ; deux P3 traités (une archive au DDL incomplet était dite « complète » ; ce paragraphe).

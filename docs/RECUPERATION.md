@@ -237,7 +237,7 @@ réappliquer la migration** : **11 OK / 0 ECHEC** pour la version du commit 1387
 dans les deux, le DDL s'applique sans erreur et un DELETE ne publie plus que `rid`. La migration n'était pas
 finalisée : ce recoupement ne vaut que pour ces deux empreintes. **La forme FINALE** (`rid` de 53 bits, chiffres
 17 à 32 de l'UUID, migration sha256 `6471496f…`) est celle que porte désormais la table `aimes` du banc — défaut
-et garde recopiés à l'octet près : 40 ✅ / 0 ❌ (2026-11-04). La contre-revue finale (2026-11-04) a REJOUÉ le
+recopié à l'octet près, garde au même code exécutable (sans ses commentaires) : 40 ✅ / 0 ❌ (2026-11-04). La contre-revue finale (2026-11-04) a REJOUÉ le
 recoupement pour cette empreinte : source 10 OK, DDL rendu puis appliqué à une base vide de type Supabase,
 verdict de R25 lu sur la base reconstruite sans réappliquer la migration **10 OK / 0 ECHEC**, rejeu du DDL et de la
 migration sans erreur. Les corrections de R25 qui ont suivi (verdict, retour arrière, en-tête) ne changent ni
@@ -248,7 +248,9 @@ DDL échouait plus loin, à la reprise (contraintes, `OWNED BY` d'un serial, dro
 première des 20 sections le DIT désormais : sa seule instruction LÈVE à l'application, en nommant la table — la
 reprise s'arrête avant d'avoir rien posé —, et le générateur le signale au journal du workflow (`::warning`). Il
 n'échoue PAS : un échec à cette étape sautait le chiffrement et le dépôt de la nuit, données comprises (relevé par
-la contre-revue de ce correctif). Aucune en production (canal ①, 2026-11-04). Verrou :
+la contre-revue de ce correctif). `--verifier` dit alors l'archive PARTIELLE (en note : l'archive est déposée), et
+une dernière étape de `sauvegarde.yml`, APRÈS le dépôt, rend le run ROUGE — sinon trente nuits « vertes » ne
+reconstruiraient pas une base vide (dernière passe de la contre-revue, `reprise-verdicts.test.mjs`). Aucune en production (canal ①, 2026-11-04). Verrou :
 `tests/unit/restaurer-donnees.test.mjs` ⑦.
 
 ### ④ Après toute reconstruction : rejouer les migrations de sécurité, mesurer l'identité
