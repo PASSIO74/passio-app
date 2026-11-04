@@ -31,13 +31,13 @@ if exist "%PIDF%" (
 )
 
 REM Tous les superviseurs de CE dossier, meme sans fichier PID.
-for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*supervise.mjs*' -and $_.CommandLine -like '*%DASH:~0,-1%*' } | Select-Object -ExpandProperty ProcessId"`) do (
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*supervise.mjs*' -and $_.CommandLine -like '*%DASH:~0,-1%*' } | Select-Object -ExpandProperty ProcessId"`) do (
   echo Arret d un superviseur survivant ^(pid %%p^)...
   taskkill /PID %%p /T /F >nul 2>&1
 )
 
-REM Filet : ce qui ecoute encore sur 4610 (motif strict : ":4610 " suivi de LISTENING).
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":4610 .*LISTENING"') do (
+REM Filet : ce qui ecoute encore sur 4610 (scripts\pid-port.ps1, netstat ne le voit plus).
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\pid-port.ps1" 4610`) do (
   echo %%p| findstr /R /C:"^[0-9][0-9]*$" >nul && (
     echo Liberation du port 4610 ^(pid %%p^)...
     taskkill /PID %%p /T /F >nul 2>&1
@@ -47,8 +47,8 @@ for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":4610 .*LISTENING"') d
 REM Verification : rien ne doit survivre.
 timeout /t 1 /nobreak >nul
 set "RESTE="
-for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*supervise.mjs*' -and $_.CommandLine -like '*%DASH:~0,-1%*' } | Select-Object -ExpandProperty ProcessId"`) do set "RESTE=%%p"
-netstat -ano | findstr /R /C:":4610 .*LISTENING" >nul 2>&1 && set "RESTE=port"
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*supervise.mjs*' -and $_.CommandLine -like '*%DASH:~0,-1%*' } | Select-Object -ExpandProperty ProcessId"`) do set "RESTE=%%p"
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\pid-port.ps1" 4610`) do set "RESTE=port"
 if defined RESTE (
   echo ATTENTION : quelque chose survit encore ^(%RESTE%^). Relance ce script, ou regarde le Gestionnaire des taches.
 ) else (
