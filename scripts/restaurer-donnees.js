@@ -233,13 +233,15 @@ function validerArchive(ctx) {
   for (const [t, info] of Object.entries(ctx.man.tables || {})) {
     const f = path.join(ctx.archive, t + ".ndjson");
     if (!fs.existsSync(f)) { bloquants.push(`table ${t} : fichier absent (manifeste : ${info.exporte} ligne(s))`); continue; }
+    // ⚠️ Contre-revue finale (2026-11-04) : la validation ne fait que COMPTER et
+    // vérifier la syntaxe — `JSON.parse` seul, itératif, sans la lecture EXACTE
+    // (`lireNdjson`), dont le reviver casse vers 2 846 niveaux quand une ligne
+    // porte un nombre à risque. Une seule ligne ainsi écrite par un compte chez
+    // lui faisait refuser l'archive ENTIÈRE, « INVALIDE », sans recours ; main la
+    // validait. La comparaison au chiffre près reste au verdict.
     let n;
-    try { n = lireNdjson(f).length; } catch (e) {
-      // Une imbrication trop profonde pour la lecture EXACTE n'est pas un fichier
-      // corrompu : la ligne est intègre, on ne sait pas la relire au chiffre près.
-      bloquants.push(e instanceof RangeError
-        ? `table ${t} : ligne non vérifiable (${String(e.message).slice(0, 90)})`
-        : `table ${t} : NDJSON illisible (${String(e.message).slice(0, 60)}) — fichier tronqué ou corrompu`);
+    try { n = compterLignesNdjson(f); } catch (e) {
+      bloquants.push(`table ${t} : NDJSON illisible (${String(e.message).slice(0, 200)}) — fichier tronqué ou corrompu`);
       continue;
     }
     if (n !== info.exporte) bloquants.push(`table ${t} : ${n} ligne(s) sur disque, ${info.exporte} au manifeste — fichier tronqué ou étranger`);
@@ -287,6 +289,13 @@ async function schema(ctx) {
 // Lecture EXACTE (R25, 2026-11-04) : un entier au-delà de 2^53 garde son texte
 // (scripts/lib/json-exact.js). Arrondi, il ferait passer pour conformes deux
 // valeurs que la base distingue.
+/** Nombre de lignes d'un NDJSON, chacune validée par `JSON.parse` seul (itératif : aucune profondeur ne l'arrête). */
+function compterLignesNdjson(f) {
+  if (!fs.existsSync(f)) return 0;
+  const lignes = fs.readFileSync(f, "utf8").split("\n").filter(Boolean);
+  for (const l of lignes) JSON.parse(l);
+  return lignes.length;
+}
 function lireNdjson(f) {
   if (!fs.existsSync(f)) return [];
   return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JE.lireJsonExact(l));
@@ -694,7 +703,15 @@ async function medias(ctx) {
 function canoniser(v) {
   if (JE.estBrut(v)) return v; // nombre gardé exact par lireJsonExact : JSON.stringify le réécrit tel quel
   if (Array.isArray(v)) return v.map(canoniser);
-  if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) o[k] = canoniser(v[k]); return o; }
+  // Chaque clé est CRÉÉE (defineProperty), jamais affectée (contre-revue finale,
+  // préexistant depuis ASTRA-16) : sur un `{}`, `o["__proto__"] = …` change le
+  // prototype au lieu de créer la clé, que JSON.stringify ignore — deux lignes qui
+  // ne différaient que là étaient dites identiques.
+  if (v && typeof v === "object") {
+    const o = {};
+    for (const k of Object.keys(v).sort()) Object.defineProperty(o, k, { value: canoniser(v[k]), enumerable: true, writable: true, configurable: true });
+    return o;
+  }
   return v;
 }
 function cleDe(ligne, tri) { return tri.split(",").map((c) => JE.texteValeur(ligne[c.trim()])).join("\u0001"); }
@@ -919,6 +936,11 @@ async function purger(ctx) {
 module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
   _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible } };
 if (require.main === module) (async () => {
+  // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
+  // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :
+  // une archive saine ne doit pas passer pour « corrompue » parce que le poste est
+  // en Node 20 (contre-revue finale, 2026-11-04).
+  if (typeof JSON.rawJSON !== "function") echec(`Node ${process.versions.node} : la reprise exige Node 21 ou plus récent (JSON.rawJSON, lecture exacte des nombres). Rien n'a été lu ni écrit.`);
   const ctx = await contexte();
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);
   if (drapeau("--purger")) { await purger(ctx); return; }

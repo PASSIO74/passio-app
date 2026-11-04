@@ -78,8 +78,9 @@ jobs:
       # SUPABASE_ACCESS_TOKEN, posé pour edge-functions.yml) — jamais service_role.
       # ⚠️ Lecture seule (une requête SELECT par section sur les catalogues : 20
       # depuis le 2026-11-04 — identités de réplication, droits de séquence, et une
-      # garde qui REFUSE une table partitionnée ou étrangère, revue R25) : ce n'est
-      # pas du DDL depuis la CI, ADR-012 n'est pas contredit. Le vérificateur exige que le fichier soit un DDL de PASSIO
+      # garde : une table partitionnée ou étrangère rend un DDL qui LÈVE à la reprise
+      # et une annotation ::warning ici, sans faire échouer l'étape, revue R25) : ce
+      # n'est pas du DDL depuis la CI, ADR-012 n'est pas contredit. Le vérificateur exige que le fichier soit un DDL de PASSIO
       # (≥ 20 tables, ≥ 20 policies), pas un vide.
       - name: Archiver le schéma (DDL exécutable)
         env:

@@ -268,11 +268,22 @@ test("⑥ quater une page tronquée fait ÉCHOUER l'export en nommant la table e
   } finally { globalThis.fetch = vrai; }
 });
 
-test("⑦ le DDL de reprise REFUSE une table partitionnée ou étrangère au lieu d'écrire un DDL qui échouerait à la reprise — et la garde est la première section", () => {
+test("⑦ une table partitionnée ou étrangère : le DDL de reprise LÈVE en tête, en la nommant — sans faire échouer la sauvegarde des données (la garde est la première section)", () => {
   const { ETAPES } = require("../../scripts/schema-executable.js");
   assert.match(ETAPES[0].titre, /^Garde/);
   assert.match(ETAPES[0].sql, /relkind in \('p','f'\)/);
-  assert.deepEqual(ETAPES[0].rendu([]), [], "rien à refuser : aucune instruction, la suite continue");
-  assert.throws(() => ETAPES[0].rendu([{ relname: "journaux", k: "p" }]), /journaux \(partitionnée\)/);
-  assert.throws(() => ETAPES[0].rendu([{ relname: "distante", k: "f" }]), /distante \(étrangère\)/);
+  assert.deepEqual(ETAPES[0].rendu([]), [], "rien à signaler : aucune instruction, la suite continue");
+  let lignes;
+  assert.doesNotThrow(() => { lignes = ETAPES[0].rendu([{ relname: "journaux", k: "p" }, { relname: "distante", k: "f" }]); }, "le générateur n'échoue pas : un échec sautait le dépôt de la nuit");
+  assert.equal(lignes.length, 1);
+  assert.match(lignes[0], /^do \$\$ begin raise exception/);
+  assert.match(lignes[0], /journaux \(partitionnée\), distante \(étrangère\)/);
+  assert.ok(!/--/.test(lignes[0]), "aucun « -- » dans le DDL rendu (contrôle begin;/commit; de la reprise)");
+});
+
+test("⑦ bis la comparaison voit une différence rangée sous une clé « __proto__ » (préexistant : elle la perdait)", () => {
+  const a = [JSON.parse('{"id":"a","d":{"__proto__":{"x":1}}}')];
+  const b = [JSON.parse('{"id":"a","d":{"__proto__":{"x":2}}}')];
+  assert.deepEqual(comparerLignes(a, b, "id").divergentes, ["a"]);
+  assert.deepEqual(comparerLignes(a, [JSON.parse('{"id":"a","d":{"__proto__":{"x":1}}}')], "id"), { manquantes: [], divergentes: [], enTrop: [] });
 });

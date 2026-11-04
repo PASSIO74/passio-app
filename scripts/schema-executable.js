@@ -84,14 +84,19 @@ const ETAPES = [
     // que les tables ordinaires (relkind 'r') : un parent PARTITIONNÉ ('p') ou
     // une table ÉTRANGÈRE ('f') n'était pas rendu, et le DDL échouait plus loin —
     // contraintes, `OWNED BY` d'un serial, droits d'une séquence d'identité —,
-    // à la reprise, c'est-à-dire trop tard. Le générateur REFUSE donc d'écrire un
-    // DDL qu'il sait faux : la sauvegarde de la nuit le dit en rouge. Aucune en
-    // production le 2026-11-04 (canal ① : 0 'p', 0 'f', 52 'r').
+    // à la reprise, c'est-à-dire trop tard. Le DDL le DIT donc, en tête : sa
+    // première instruction LÈVE à l'application, en nommant la table — la reprise
+    // s'arrête avant d'avoir rien posé. Le générateur n'échoue PAS : un échec
+    // ici faisait sauter le chiffrement et le dépôt de la nuit, données comprises
+    // (contre-revue finale) ; il signale le défaut au journal du workflow
+    // (`::warning`, voir main). Aucune en production le 2026-11-04 (canal ① :
+    // 0 'p', 0 'f', 52 'r').
     sql: `select c.relname, c.relkind::text k from pg_class c
            where c.relnamespace='public'::regnamespace and c.relkind in ('p','f') order by 1`,
     rendu: (r) => {
-      if (r.length) throw new Error("DDL de reprise impossible : public porte " + r.map((x) => `${x.relname} (${x.k === "p" ? "partitionnée" : "étrangère"})`).join(", ") + " — scripts/schema-executable.js ne sait pas les rendre ; l'étendre avant de compter sur la reprise.");
-      return [];
+      if (!r.length) return [];
+      const quoi = r.map((x) => `${x.relname} (${x.k === "p" ? "partitionnée" : "étrangère"})`).join(", ");
+      return [`do $$ begin raise exception '%', ${litt(`DDL de reprise INCOMPLET : public porte ${quoi} — scripts/schema-executable.js ne sait pas les rendre. Recréer ce schéma à la main, puis restaurer les données sans l'option schéma.`)}; end $$;`];
     } },
 
   { titre: "Extensions",
@@ -301,6 +306,9 @@ async function main() {
   let n = 0;
   for (const e of ETAPES) {
     const lignes = e.rendu(await requete(jeton, e.sql));
+    // La garde a parlé : le DDL lèvera à la reprise. Le dire au journal du workflow
+    // (annotation GitHub), sans faire échouer la sauvegarde des données.
+    if (e === ETAPES[0] && lignes.length) console.log(`::warning title=DDL de reprise incomplet::${lignes[0].replace(/\s+/g, " ").slice(0, 400)}`);
     n += lignes.length;
     out.push(`-- ${"─".repeat(70)}`, `-- ${e.titre} (${lignes.length})`, `-- ${"─".repeat(70)}`, lignes.length ? lignes.join("\n\n") : "--   (aucun objet — vérifié, pas supposé)", "");
     process.stderr.write(`… ${e.titre} : ${lignes.length}\n`);
