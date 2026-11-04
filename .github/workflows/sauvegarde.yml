@@ -94,6 +94,9 @@ jobs:
           fi
           node scripts/schema-executable.js sauvegarde/schema.sql --projet "${SUPABASE_PROJECT_REF}"
           grep -c 'create table' sauvegarde/schema.sql | sed 's/^/create table : /' | tee -a "${GITHUB_STEP_SUMMARY}"
+          # Un DDL que le générateur sait incomplet : les DONNÉES sont quand même
+          # chiffrées et déposées, puis le run passe au rouge (dernière étape).
+          if grep -q 'DDL de reprise INCOMPLET' sauvegarde/schema.sql; then echo "DDL_INCOMPLET=1" >> "${GITHUB_ENV}"; fi
 
       - name: Vérifier l'archive
         run: |
@@ -133,3 +136,13 @@ jobs:
           path: ${{ env.nom }}
           retention-days: 30
           if-no-files-found: error
+
+      # Contre-revue finale de R25 (2026-11-04) : une table partitionnée ou
+      # étrangère dans public rend un DDL qui LÈVE à la reprise. Les données de la
+      # nuit viennent d'être déposées ; le run doit quand même être ROUGE, sinon
+      # trente nuits d'archives « vertes » ne reconstruiraient pas une base vide.
+      - name: Signaler un DDL de reprise incomplet (données déposées)
+        if: env.DDL_INCOMPLET == '1'
+        run: |
+          echo "::error title=DDL de reprise incomplet::schema.sql lèvera à la reprise (table partitionnée ou étrangère dans public) — étendre scripts/schema-executable.js. Les données de la nuit SONT déposées."
+          exit 1
