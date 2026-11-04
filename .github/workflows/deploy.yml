@@ -72,6 +72,12 @@ on:
 # 2026-09-01). Les pushes sur `main` gardent leur groupe dédié : c'est lui qui
 # empêche une PR d'évincer un déploiement, le défaut réparé le 2026-08-30, et il
 # n'est pas touché.
+#
+# ⚠️ CES DEUX GROUPES RESTENT EN `queue: single`, LE DÉFAUT, ET C'EST DÉLIBÉRÉ. Un
+# run en attente n'y est remplacé que par un run plus récent du MÊME fil : `main`
+# est linéaire, le commit suivant contient le précédent, et le dernier poussé reste
+# le dernier déployé. `queue: max` ferait rejouer et déployer chaque commit
+# intermédiaire. La file d'attente, c'est le verrou de `test-prod` qui la porte.
 concurrency:
   group: ${{ github.event_name == 'push' && 'passio-deploy-main' || format('passio-ci-pr-{0}', github.event.pull_request.number) }}
   cancel-in-progress: false
@@ -634,9 +640,26 @@ jobs:
     #
     # `cancel-in-progress: false` : une suite en cours a déjà créé des comptes que
     # son teardown doit nettoyer. L'interrompre les laisserait derrière elle.
+    #
+    # ⚠️ `queue: max` : CHACUN ATTEND SON TOUR, PLUS PERSONNE N'EST ÉVINCÉ (2026-11-04).
+    # Sans cette clé, GitHub ne garde qu'UN job en attente par groupe : tout nouvel
+    # entrant annule celui qui patiente, même celui d'un run de `main` — `smoke`
+    # rouge, `deploy` sauté, code vert. Mesuré le 2026-11-04 : 14 suites évincées sur
+    # 64, dont 4 de `main` ; le commit de #701 a demandé quatre essais et 33 min.
+    #
+    # La clé ne change que l'attente. Une seule suite tourne toujours à la fois : la
+    # purge et le quota restent tenus exactement comme avant. La contrepartie est
+    # l'ordre d'arrivée : `main` passe après les jobs déjà en file (rejeu de cette
+    # journée : 3 min en moyenne, 9 au pire). Les 100 places ne se remplissent pas :
+    # une PR n'a qu'un job ici à la fois, `passio-ci-pr-<n>` sérialise ses runs.
+    #
+    # ⚠️ TOUT ENTRANT DE CE GROUPE PORTE LA CLÉ, CAR C'EST L'ARRIVANT QUI DÉCIDE.
+    # Mesuré au banc : un entrant sans la clé annule le job qui attend, même si
+    # celui-ci la porte. Verrou : tests/unit/verrou-comptes-reels.test.mjs.
     concurrency:
       group: passio-e2e-prod
       cancel-in-progress: false
+      queue: max
     env:
       # Autorise la purge du teardown. À NE POSER QUE sur le job qui tient le
       # verrou : ailleurs, elle effacerait les comptes de celui-ci en plein vol.
