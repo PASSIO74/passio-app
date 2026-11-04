@@ -21,7 +21,7 @@
 // rechargement rendrait tous les autres cas verts. Chaque cas vérifie aussi sa
 // prémisse : `SW_UPDATED` reçu, donc le worker B a bien pris la main.
 //
-// ⑭ à ㉚ : ni un enregistrement, ni un média en attente, ni un envoi. Sous Chromium,
+// ⑭ à ㉛ : ni un enregistrement, ni un média en attente, ni un envoi. Sous Chromium,
 // les vrais `MediaRecorder` tournent sur le micro et la caméra factices du navigateur ;
 // le WebKit de Playwright n'a ni l'un ni l'autre, d'où un double, et seuls les
 // gestionnaires y sont éprouvés. Sur un iPhone, ils existent.
@@ -952,7 +952,7 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
     expect(apres.ecritures).toContain("stories:" + id);
   });
 
-  test("㉔ publication de texte, en cours ou en renvoi : elle survit au rechargement, la page n'attend pas", async ({ page }) => {
+  test("㉔ publication de texte en cours : elle survit au rechargement, la page n'attend pas", async ({ page }) => {
     await ouvrirInstallee(page);
     await clientSimule(page);
     await ouvrirStudio(page);
@@ -964,11 +964,6 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
     });
     await insertionTenue(page);
     const id = await page.evaluate(() => state.userPosts[0].id);
-    // Comme après un premier échec : un renvoi est prévu, et il n'a rien à protéger.
-    await page.evaluate(() => {
-      state.userPosts[0].syncStatus = "offline";
-      window._reelRetryTimer = setTimeout(() => {}, 60000);
-    });
     // Ce qui retient la page, c'est le média en mémoire : pas une URL déjà déposée.
     expect(await page.evaluate(() => [
       _publicationPorteUnMedia({ audio: "data:audio/mp4;base64,AAAA" }),
@@ -1126,5 +1121,31 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
     await rechargeSurB(page, docs);
     expect(await messagesRelus(page)).toEqual([{ id, statut: "failed", vocal: false, image: false, video: false }]);
     expect(await page.evaluate((i) => JSON.parse(localStorage.getItem("passio_outbox_v1") || "[]").some((x) => x.msgId === i), id)).toBe(true);
+  });
+
+  test("㉛ publication de texte en échec, renvoi prévu : rien à protéger, la page n'attend pas", async ({ page }) => {
+    await ouvrirInstallee(page);
+    await clientSimule(page);
+    await ouvrirStudio(page);
+    // ⚠️ APRÈS LA REPRISE DU DÉMARRAGE (6 s, `_rejouerPublicationsEnAttente`) : elle remet
+    // `_reelRetryTimer` à zéro le temps de son essai, et le renvoi prévu ne se verrait plus.
+    await page.waitForFunction(() => performance.now() > 7000, null, { polling: 100, timeout: 15000 });
+    await page.evaluate(() => {
+      window.__tenue.insertionRefusee = true;
+      studioType = "text";
+      document.getElementById("postText").value = "Mon texte";
+      window.__publication = publishPost();
+    });
+    await page.waitForFunction(() => state.userPosts[0].syncStatus === "offline" && !!window._reelRetryTimer, null, { polling: 50, timeout: 15000 });
+    const id = await page.evaluate(() => state.userPosts[0].id);
+    await page.evaluate(() => window.__publication);
+    await page.evaluate(() => goTo("feed"));
+    const { docs } = await lireSonde(page);
+
+    await deployerB(page);
+    await rechargeSurB(page, docs);
+    const relue = await publicationRelue(page, id);
+    expect(relue.texte).toBe("Mon texte");
+    expect(relue.statut).toBe("offline");
   });
 });
