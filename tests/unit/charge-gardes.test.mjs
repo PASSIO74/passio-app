@@ -4,6 +4,7 @@
 // `scripts/charge.mjs` exécute du code au niveau module (il lit un jeton et parle
 // à l'API de gestion) : on ne peut pas l'importer dans un test. On le lance
 // donc comme un PROCESSUS, sans réseau nécessaire, et on mesure ses refus :
+//   ⓪ le socle de tout le reste : cet enfant ne peut pas voir le jeton du poste ;
 //   ① la production est refusée EN DUR, avant tout accès réseau ou jeton ;
 //   ② `CI=true` sans `GITHUB_ACTIONS` est refusé (parité avec charge-realiste) ;
 //   ③ une référence de projet mal formée est refusée ;
@@ -18,7 +19,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -27,15 +29,51 @@ const CHARGE = resolve(racine, "scripts", "charge.mjs");
 const REALISTE = resolve(racine, "scripts", "charge-realiste.mjs");
 const PROD = "njkiyoklssvefstljemx";
 
+// ⚠️ UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT, JAMAIS EN LE RETIRANT.
+// `os.homedir()` lit HOME sous POSIX et USERPROFILE sous Windows (HOMEDRIVE et
+// HOMEPATH n'y jouent aucun rôle), et si la variable manque, il retombe sans
+// erreur sur le VRAI dossier du compte. Avec HOME seul, ce banc trouvait donc
+// sous Windows le vrai `~/.supabase/access-token` : charge.mjs tournait 20 s
+// contre le staging, le `timeout` le tuait, et `npm run verif` s'arrêtait là.
+const DOSSIER_INEXISTANT = "/nonexistent-home-audit-f";
+const ENV_SANS_JETON = { PATH: process.env.PATH, HOME: DOSSIER_INEXISTANT, USERPROFILE: DOSSIER_INEXISTANT };
+
+// Ce que verrait un enfant lancé avec cet environnement : le même calcul que `jeton()` dans charge.mjs.
+function sonder(env) {
+  const code = `const { homedir } = require("node:os"), { resolve } = require("node:path"), { existsSync } = require("node:fs");
+console.log(JSON.stringify({ home: homedir(), jeton: existsSync(resolve(homedir(), ".supabase", "access-token")) }));`;
+  const r = spawnSync(process.execPath, ["-e", code], { cwd: racine, encoding: "utf8", timeout: 20000, env });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+}
+
 function lancer(args, env = {}) {
+  // AVANT le processus : une isolation rompue échoue ici, au lieu de lancer une vraie charge contre le staging.
+  const vu = sonder(ENV_SANS_JETON);
+  assert.deepEqual(vu, { home: DOSSIER_INEXISTANT, jeton: false }, `isolation rompue, charge.mjs n'est pas lancé : ${JSON.stringify(vu)}`);
   const r = spawnSync(process.execPath, [CHARGE, ...args], {
     cwd: racine, encoding: "utf8", timeout: 20000,
     // Aucun jeton, aucun réseau : un refus qui arrive APRÈS la lecture du jeton
     // échouerait ici sur « aucun jeton », ce qui prouverait l'inverse.
-    env: { PATH: process.env.PATH, HOME: "/nonexistent-home-audit-f", ...env },
+    env: { ...ENV_SANS_JETON, ...env },
   });
   return { code: r.status, sortie: (r.stdout || "") + (r.stderr || "") };
 }
+
+test("⓪ l'enfant ne voit pas le jeton du poste, et la sonde saurait en voir un", () => {
+  // Témoin positif : sans lui, « jeton: false » pourrait venir d'une sonde aveugle.
+  const leurre = mkdtempSync(resolve(tmpdir(), "charge-gardes-"));
+  try {
+    mkdirSync(resolve(leurre, ".supabase"));
+    writeFileSync(resolve(leurre, ".supabase", "access-token"), "sbp_leurre\n");
+    assert.deepEqual(sonder({ PATH: process.env.PATH, HOME: leurre, USERPROFILE: leurre }), { home: leurre, jeton: true });
+  } finally { rmSync(leurre, { recursive: true, force: true }); }
+  assert.deepEqual(sonder(ENV_SANS_JETON), { home: DOSSIER_INEXISTANT, jeton: false });
+  // La CI tourne sous Linux et n'y lit que HOME : sans cette ligne, y retirer USERPROFILE resterait vert.
+  assert.deepEqual([ENV_SANS_JETON.HOME, ENV_SANS_JETON.USERPROFILE], [DOSSIER_INEXISTANT, DOSSIER_INEXISTANT]);
+  // La sonde ne vaut que tant que charge.mjs lit le jeton de cette façon.
+  assert.match(readFileSync(CHARGE, "utf8"), /resolve\(homedir\(\), "\.supabase", "access-token"\)/);
+});
 
 test("① charge.mjs refuse la PRODUCTION en dur, avant toute lecture de jeton", () => {
   const r = lancer(["--projet", PROD, "--paliers", "10", "--duree", "20"]);
