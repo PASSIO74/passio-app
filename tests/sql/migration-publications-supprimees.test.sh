@@ -670,7 +670,13 @@ echo "── ⑥ VERROU : une écriture qui tient posts fait échouer la migrati
 psql -h "$BASE" -p "$PORT" -U postgres -q -c "create database verrou template socle" >/dev/null
 psql -h "$BASE" -p "$PORT" -U postgres -d verrou -q -c "begin; lock table public.posts in row exclusive mode; select pg_sleep(12); commit;" >/dev/null 2>&1 &
 TENEUR=$!
-sleep 1
+# Le verrou doit être TENU avant d'appliquer (une machine lente ne doit pas rendre le cas vert par hasard).
+tenu=0
+for _ in $(seq 1 40); do
+  [ "$(QD verrou "select count(*) from pg_locks l join pg_class c on c.oid = l.relation where c.relname = 'posts' and l.mode = 'RowExclusiveLock' and l.granted and l.pid <> pg_backend_pid();")" = "1" ] && { tenu=1; break; }
+  sleep 0.25
+done
+verifier "un écrivain tient bien posts (RowExclusiveLock accordé) avant l'application" "1" "$tenu"
 debut=$(date +%s)
 s_v="$(APPLIQUER verrou "$MIGRATION" || true)"
 duree=$(( $(date +%s) - debut ))

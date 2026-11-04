@@ -1101,7 +1101,7 @@ d'attestation ignore (elle normalise) mais que `prosrc` garde. Ici : aucun `\r`,
 
 Risque résiduel R31 de l'audit du 2026-11-02 (trouvé par la contre-revue finale de R25, confirmé sur deux bancs aux corps
 et policies de production), fermé par `migrations/migration_publications_supprimees_2026-11-04.sql` — banc
-`tests/sql/migration-publications-supprimees.test.sh` (63 contrôles), unitaires `tests/unit/identifiants-exemple.test.mjs`
+`tests/sql/migration-publications-supprimees.test.sh` (64 contrôles), unitaires `tests/unit/identifiants-exemple.test.mjs`
 (4) et `tests/unit/purge-compte.test.mjs` R31 ①–⑧. **Serveur seul : le client ne change pas** — `deletePost` garde son
 DELETE vérifié par relecture, et sa confirmation « Le post et ses commentaires seront supprimés » devient vraie.
 
