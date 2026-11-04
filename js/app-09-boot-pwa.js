@@ -252,9 +252,9 @@ function togglePwd(id, btn) {
     navigator.serviceWorker.addEventListener("message", function(e) {
       if (e.data && e.data.type === "OFFLINE") showOffline();
       if (e.data && e.data.type === "SW_UPDATED") {
-        // Page en appel, en Live ou en pleine saisie : la mise à jour s'appliquera
-        // seule à la fin (pwa-detect.js). « Recharge pour l'appliquer » inviterait
-        // l'utilisateur à couper lui-même ce que le report vient de protéger.
+        // Page occupée (appel, Live, saisie, enregistrement, média, envoi) : la mise à
+        // jour s'appliquera seule à la fin (pwa-detect.js). « Recharge pour l'appliquer »
+        // inviterait à couper soi-même ce que le report vient de protéger.
         if (typeof window.passioMajDifferee === "function" && window.passioMajDifferee()) return;
         // Propose un rechargement discret quand le SW a été mis à jour
         try { toast("✨ Mise à jour disponible — recharge pour l'appliquer", "info"); } catch(_) {}
@@ -827,6 +827,7 @@ function handleAttachFile(input, kind) {
     _diag("handleAttachFile: Aucun fichier sélectionné");
     return;
   }
+  _mediaEnPreparation();
   // Images : compresser AVANT envoi (toute taille acceptée → ~150-400 Ko),
   // puis traiter le fichier compressé. Évite les uploads énormes et les échecs.
   if (kind === "media" && file.type && file.type.indexOf("image/") === 0 && typeof passioCompressImage === "function") {
@@ -887,7 +888,11 @@ function _processAttach(input, kind, file) {
   _diag("handleAttachFile: convId=" + convId + ", kind=" + kind);
 
   // Lire le fichier pour l'affichage local ET pour l'upload à Supabase Storage
+  // ⚠️ UNE MISE À JOUR ATTEND CET ENVOI (pwa-detect.js) : rechargé en plein dépôt, le
+  // message restait affiché chez son auteur et ne partait jamais, sans erreur ni file.
+  var _finEnvoi = _envoiCommence();
   var reader = new FileReader();
+  reader.onerror = _finEnvoi;
   reader.onload = function(e) {
     var dataUrl = e.target.result;
     _diag("handleAttachFile: FileReader completed - taille=" + dataUrl.length);
@@ -896,6 +901,7 @@ function _processAttach(input, kind, file) {
     var c = convs.find(x => x.id === convId);
     if (!c || !c.messages) {
       _diag("handleAttachFile: Conversation NOT FOUND or no messages array");
+      _finEnvoi();
       return;
     }
 
@@ -967,7 +973,7 @@ function _processAttach(input, kind, file) {
     }).catch(function(err) {
       _diag("handleAttachFile: Storage exception - " + err.message + " (fallback)");
       sendMessageToSupabase(msgId, convId, dataUrl, file.type, file.name, kind);
-    });
+    }).then(_finEnvoi, _finEnvoi);
 
     _diag("handleAttachFile: ✅ Sauvegarde locale OK");
     input.value = "";
@@ -1039,11 +1045,15 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
   // et portée jusqu'à l'échec — une purge pendant l'envoi du média périme la
   // remise en file (c'est `_outboxAdd` qui tranche, avec ce contexte).
   var _generationMedia = (typeof _outboxGenerationActuelle === "function") ? _outboxGenerationActuelle() : null;
+  // Une mise à jour attend le verdict (pwa-detect.js) : ce chemin n'écrit dans la file
+  // qu'à l'échec, et une insertion coupée par un rechargement n'en rendrait aucun.
+  var _finEnvoi = _envoiCommence();
   function _echec(raison) {
     _diag("handleAttachFile: ❌ Échec définitif - " + raison);
     try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "failed"); } catch (e) {}
     try { if (typeof _outboxAdd === "function") _outboxAdd(convId, msgId, _charge, _proprietaireMedia, { generation: _generationMedia, auteur: _auteurMedia }); } catch (e) {}
     _flowSaved(false, raison);
+    _finEnvoi();
   }
   function _succes(voie) {
     _diag("handleAttachFile: ✅ Supabase OK (" + voie + ")");
@@ -1055,6 +1065,7 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
     // seulement, et sans attendre — la cloche ne doit pas retarder l'envoi.
     try { if (typeof _notifierMessage === "function") _notifierMessage(convId, msgId); } catch (e) {}
     _flowSaved(true);
+    _finEnvoi();
   }
 
   supa.from("conv_messages").insert({
@@ -1621,6 +1632,7 @@ async function startVoiceRecord() {
       _voiceUIStop();
       var elapsed = Date.now() - _voiceStartAt;
       if (_voiceCancelled || !_voiceChunks.length || elapsed < 600) return; // tap trop court / annulé
+      _mediaEnPreparation();
       var dur = Math.max(1, Math.round(elapsed / 1000));
       var blob = new Blob(_voiceChunks, { type: _voiceRecorder.mimeType || "audio/webm" });
       var reader = new FileReader();
@@ -1687,6 +1699,8 @@ function _sendVoiceMessage(dataUrl, duration) {
 
     // Sync Supabase : upload Storage puis message (même pipeline que les pièces jointes)
     if (typeof supa === "undefined" || !supa) return;
+    // ⚠️ UNE MISE À JOUR ATTEND CET ENVOI (pwa-detect.js), comme pour une pièce jointe.
+    var _finEnvoi = _envoiCommence();
     try {
       var byteString = atob(dataUrl.split(",")[1]);
       var ia = new Uint8Array(byteString.length);
@@ -1715,8 +1729,8 @@ function _sendVoiceMessage(dataUrl, duration) {
         // iPhone (mp4) — le défaut corrigé sur le chemin de succès, survivant
         // sur celui de l'échec.
         sendMessageToSupabase(msgId, convId, dataUrl, _vt, "Message vocal (" + duration + "s)", "audio");
-      });
-    } catch (e) { console.warn("_sendVoiceMessage sync:", e); }
+      }).then(_finEnvoi, _finEnvoi);
+    } catch (e) { _finEnvoi(); console.warn("_sendVoiceMessage sync:", e); }
   } catch (e) { console.error("_sendVoiceMessage:", e); }
 }
 // ═══ fin wrappers messagerie ═══ (audit 2026-06-10)

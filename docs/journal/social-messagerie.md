@@ -22,6 +22,7 @@
 - 🤝 UNE ACTIVITÉ TAPÉE SUR UN PROFIL RAMENAIT À LA MESSAGERIE (2026-10-24)
 - 🚩 SIGNALER UN MESSAGE — et ce qu'un identifiant forgé, un × et un `del` d'autrui faisaient autour (2026-11-03)
 - 📞 UNE MISE À JOUR SILENCIEUSE COUPAIT L'APPEL, LE LIVE ET LA SAISIE — le rechargement attend (2026-11-04)
+- 🎙️ UNE MISE À JOUR SILENCIEUSE PERDAIT LE VOCAL, LA CAPTURE ET L'ENVOI — le rechargement attend aussi (2026-11-04)
 
 ---
 
@@ -480,4 +481,40 @@ Suite de #704 (`buildId`, journal Télémétrie). Chaque build qui change réins
 - **Deux onglets, deux déploiements pendant le même appel, même contrôle**, Chromium et WebKit : l'onglet libre recharge à chaque version ; l'onglet en appel reste la même page, puis recharge une seule fois à la fin, sur la dernière version, 3,8 et 4,2 s après.
 - **Non vérifié** : aucun iPhone réel ; la vraie conversation et le vrai Live n'ont tourné que sous Chromium, sur un seul poste (le WebKit de Playwright n'a pas WebRTC).
 - ⚠️ **Deux PR vertes peuvent faire un `main` rouge.** Cette fiche avait sa ligne dans `CLAUDE.md`. #716 en a ajouté une de son côté, après le passage de la CI de cette PR : 39 617 + 259 + 150 = 40 026 caractères, 26 au-dessus du plafond. `tests/unit/audit-claude-md.test.mjs` a rougi sur `main` seulement, et le déploiement a sauté, pour cette PR comme pour les suivantes. La ligne est retirée. `CLAUDE.md` est à 39 876 : une ligne de plus demande d'en retirer une, et une PR qui y touche se relit contre le `main` du moment, juste avant de fusionner.
-- **Hors champ, toujours interrompus par le rechargement** : l'enregistrement d'un vocal (app-09), la capture d'une story ou d'une bobine (app-08), l'envoi d'une publication en cours (`publishPost`, `storage.upload`).
+- **Hors champ de cette fiche** : l'enregistrement d'un vocal (app-09), la capture d'une story ou d'une bobine (app-08), l'envoi d'une publication en cours (`publishPost`, `storage.upload`). Mesurés et traités le même jour, fiche suivante.
+
+## 🎙️ UNE MISE À JOUR SILENCIEUSE PERDAIT LE VOCAL, LA CAPTURE ET L'ENVOI — le rechargement attend aussi (2026-11-04)
+
+Suite de la fiche précédente. La question : une mise à jour silencieuse interrompt-elle un enregistrement ou un envoi en cours ? Oui, et deux de ces pertes ne se voyaient nulle part.
+
+- **Mesuré avant correctif**, même banc : vrai worker, deux artefacts, serveur qui bascule de A à B. Chromium avec son micro et sa caméra factices, vrais `MediaRecorder`, vrais gestionnaires, vrai SDK, réseau tenu par `page.route`. La page recharge partout entre 65 ms et 1,1 s après la fin de `update()` (témoin : 273 ms).
+
+| Au moment du déploiement | Après le rechargement |
+|---|---|
+| Vocal en cours, 2 s enregistrées | Rien, 0 vocal |
+| Vocal ou pièce jointe envoyés, dépôt en cours | Affiché chez l'auteur, sans statut, **0 insertion et rien en file**, encore 9 s après : le destinataire ne le reçoit jamais, et personne ne le sait |
+| Vidéo jointe en cours d'optimisation | Rien, 0 message |
+| Bobine ou story en cours de capture | Rien, éditeur fermé |
+| Bobine ou story dans l'aperçu, avant publication | Rien, éditeur fermé |
+| Audio du Studio en cours, ou prêt à publier ; photo choisie au Studio | Rien |
+| Photo, vidéo ou audio publiés, dépôt en cours | `perdue`, « son média n'est plus sur cet appareil — republie-la » |
+| Bobine publiée, dépôt en cours | Reste dans `userPosts` **sans vidéo, sans statut, jamais renvoyée, sans un mot** |
+| Story publiée, dépôt en cours | Disparue |
+| Photo en échec, renvoi prévu dans 45 s | `perdue` |
+
+- **Trois mesures sans perte, donc rien d'ajouté** : une publication de texte repart seule au démarrage (`synced`, « Publication envoyée ») ; un message texte en vol, vraie requête sans réponse vers le banc, est écrit dans `passio_outbox_v1` avant le départ de la page, sous Chromium et WebKit ; une caméra ouverte sans rien de filmé n'a qu'à se refermer. ㉔ et ⑰ gardent la publication et la caméra : la page recharge aussitôt.
+- **Cause** : un média ne vit qu'en mémoire tant que le serveur ne l'a pas. `_leanState` retire le base64 de `userPosts` et n'écrit jamais `seed`, donc les stories.
+- **Correctif** : `pageOccupee()` lit aussi `enregistrementEnCours()`, `mediaEnAttente()` et `envoiEnCours()`, toujours sur `window` ou dans le DOM. Enregistrer : `_isRecording`, `meCam.recording`, `_enregistreurStudio.state` (`let mediaRecorder` n'est pas sur `window`). Attendre : `#mediaEditor.open.phase-edit`, l'aperçu du Studio sur `#screen-studio.active`, `#meProgressOv`. Envoyer : `_envoiCommence()` (app-02) à `supaPublishPostWithRetry`, `supaPublishStory`, `_processAttach`, `_sendVoiceMessage`, `sendMessageToSupabase`.
+- ⚠️ **Toutes les lectures sont bornées, un rechargement ne se perd jamais** (⑮, ㉗, ㉘, ㉙). Le vocal n'a aucune durée maximale : 15 min, ici seulement. La capture s'arrête seule à 60 s, le Studio à 120 s. Un envoi : 15 min depuis le dernier lancé, assez pour 25 Mo à 256 kb/s. L'optimisation : 90 s (`VIDEO_COMPRESSION_DELAI_MAX`). L'aperçu et le Studio se comportent comme un champ rempli : ils finissent quand on les quitte.
+- ⚠️ **ENCORE UN TROU ENTRE L'ARRÊT ET LA SUITE.** Dès `recorder.stop()`, plus rien ne dit qu'un enregistrement existe : la lecture du fichier est asynchrone, et l'aperçu ou l'envoi n'arrivent qu'après. `_mediaEnPreparation()` pose une marque de 15 s à l'arrêt des trois enregistreurs et au choix d'une pièce jointe (`handleAttachFile`, la compression précède aussi l'envoi). Jamais effacée : au pire, 15 s de report en plus. `preparationDepassee` la fait passer dans les cas, sinon elle couvrirait la suite, comme `gesteDepasse` à la fiche précédente.
+- ⚠️ **`_publishInProgress` ne dit rien de l'envoi** : `publishPost` rend la main au bout de 5 s (« Post en local »), le verrou retombe et le dépôt continue. Le lire aurait rechargé en plein dépôt (㉑). D'où un compteur au point d'écriture central, pour tous les producteurs.
+- ⚠️ **Un échec n'est pas une fin.** Sans `_mediaARenvoyer()`, une coupure réseau ouvrait la porte : dépôt échoué, 3,5 s de calme, rechargement, média perdu, avant même le premier des huit renvois (㉖). La lecture exige `_reelRetryTimer` : plus aucun après le dernier essai, et la page recharge (㉗). C'est une fonction, lue dans un `try` : une exception ici ne rechargerait plus jamais.
+- ⚠️ **Seul le média compte** (`_publicationPorteUnMedia`, ㉔, ㉛) : ni un texte, ni une publication dont le média est déjà une URL. L'envoi d'une story compte toujours : `seed` n'est jamais écrit, même une story sans média n'existe qu'en mémoire.
+- **La prise de contrôle ne coupe pas un dépôt.** `sw.js` ne touche pas aux POST. Contrôle ponctuel, Chromium : vrai SDK, requête tenue par `page.route`, cache de B seul présent, 6 s plus tard la réponse arrive : `synced`, 4,0 s après, sur le code de B. Même chose pour une pièce jointe.
+- **Banc** : `launchOptions` y est une fonction, parce que ces drapeaux n'ont de sens que pour Chromium et que la suite tourne aussi sous WebKit, qui n'a ni `MediaRecorder` ni `mediaDevices` (double, sous WebKit seulement : `vraisMedias`). Le client simulé gagne `storage` et peut tenir un dépôt ou une insertion ; une écriture aboutie s'inscrit dans `sessionStorage`, seule preuve qui survive au rechargement (`ecritures`). Seules les tables mesurées sont tenues : une notification qui passe ne doit pas prendre la place de l'écriture attendue.
+- **Verrou** : `tests/e2e/pwa-maj-pendant-appel.spec.js`, 18 cas de plus (⑭ à ㉛), Chromium et socle WebKit de la CI. Le témoin ① reste : une page sans activité recharge aussitôt.
+- **Mutations** : 40 réinjectées, 40 rouges. Chaque lecture retirée → son cas (⑭, ⑯, ⑱, ⑲, ⑳, ㉑ ㉒ ㉓ ㉕, ㉖) ; chaque borne retirée → ⑮, ㉘, ㉙ ; `#screen-studio.active` élargi → ⑱ ; envoi non compté → ⑭, ㉑ ㉒, ㉓, ㉕ ; fin d'envoi oubliée à chaque point → ⑭, ㉑, ㉓, ㉕, ㉚ ; fin comptée deux fois → ㉙ ; marque oubliée à chaque arrêt → ⑭, ⑯, ⑱, ㉕ ; image, vidéo, audio ignorés → ㉑, ㉒, ㉔ ; texte compté → ㉔, ㉛ ; renvoi sans minuteur → ㉗. Le témoin ①, repassé sous chacune : vert sous les 40.
+- ⚠️ **La première passe en a laissé filer une** : « renvoi d'un texte compté » restait vert. Le cas posait lui-même `_reelRetryTimer`, et la reprise du démarrage (`_rejouerPublicationsEnAttente`, à 6 s) l'effaçait avant le déploiement : vert pour une mauvaise raison. ㉛ passe par le vrai chemin d'échec, après ces 6 s, et il rougit.
+- **Artefact minifié comme en CI** (`html-minifier-terser`, `terser --compress --mangle`), contrôle ponctuel hors suite : ①, ⑭, ⑮, ⑯, ⑱, ㉑, ㉓, ㉕ et ㉖ verts sous Chromium et WebKit. `meCam` et `_voiceStartAt` sont des `var` de premier niveau, donc des propriétés de `window`, et sans `--toplevel` le minifieur ne les renomme pas.
+- **Non vérifié** : aucun iPhone réel, et sous WebKit l'enregistreur est un double : seuls les gestionnaires y sont éprouvés. Pas de cas pour `reader.onerror` et pour une conversation disparue à la lecture du fichier : si leur fin d'envoi manquait, seule la borne rendrait la main.
+- **Hors champ** : le report ne protège que d'une mise à jour. Une application fermée pendant un dépôt coupe le même code, sans mesure à ce jour : vocal ou pièce jointe affichés sans jamais partir, bobine sans vidéo. Les autres dépôts (photo de profil, couverture d'événement) n'ont pas été mesurés. Un média laissé au Studio puis l'écran quitté part au rechargement, comme un texte.

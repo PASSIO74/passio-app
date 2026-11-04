@@ -296,6 +296,22 @@ function rechargementImminent() {
 }
 window.rechargementImminent = rechargementImminent;
 
+// Ce qu'une mise à jour silencieuse doit attendre, lu par js/pwa-detect.js : un envoi
+// dont le média n'existe qu'en mémoire, et le temps de lire un média qu'on vient de
+// produire. Fiche : docs/journal/social-messagerie.md (2026-11-04).
+// Rend la fin de l'envoi, appelable plusieurs fois sans fausser le compte.
+function _envoiCommence() {
+  window._envoisEnCours = (window._envoisEnCours || 0) + 1;
+  window._envoiLanceA = performance.now();
+  var fini = false;
+  return function () {
+    if (fini) return;
+    fini = true;
+    window._envoisEnCours--;
+  };
+}
+function _mediaEnPreparation() { window._mediaPrepareA = performance.now(); }
+
 function saveState() {
   if (_accountPurged) return;
   clearTimeout(_saveStateTimer);
