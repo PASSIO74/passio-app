@@ -138,8 +138,14 @@ async function veille(admin: Admin) {
   // une lecture GitHub manquée sonne « Problème résolu », et la suivante
   // « Problème » de nouveau.
   const incomplet = [sante, signalements, github].some((r) => r.status === "rejected");
+  // Une lecture incomplète laisse sa raison dans les journaux de la fonction : sans elle, rien ne disait
+  // pourquoi le voyant mémorisé restait figé. Des codes et des délais, jamais une donnée.
+  if (incomplet) {
+    const raison = (r: PromiseSettledResult<unknown>) => (r.status === "rejected" ? String((r.reason && (r.reason as { message?: string }).message) || r.reason).slice(0, 120) : "ok");
+    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: raison(github) }));
+  }
   const vt = tenirVerdict(prec, v, incomplet);
-  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false };
+  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, tenu: !!vt.tenu };
   const d = decideAlerte(prec, actuel);
   let envoyes = 0;
   if (d.sonner) envoyes = await sonnerPilote(admin, d.titre!, d.texte || "");
@@ -955,6 +961,8 @@ async function lireGithub() {
   // GitHub accorde 60 lectures par heure à une adresse PARTAGÉE avec d'autres
   // projets — c'est ce qui rendait la veille aveugle par moments.
   if (!res.ok) throw new Error("GitHub HTTP " + res.status + (res.headers.get("x-ratelimit-remaining") === "0" ? " (limite de lecture atteinte" + (JETON_GH ? ")" : ", pas de jeton)") : ""));
+  // La fin du jeton, annoncée par GitHub à chaque réponse : dite une semaine avant (aFaire).
+  const finJeton = Date.parse(res.headers.get("github-authentication-token-expiration") || "");
   const brut = await res.json();
   // Seule une pause ouverte par le PILOTE compte (sentinelle-autonome.yml :
   // `--author PASSIO74`) : le dépôt est public, n'importe qui ouvre une issue.
@@ -975,7 +983,7 @@ async function lireGithub() {
   const infosPr = new Map(pulls.ok ? ((await pulls.json()) as { number: number }[]).map((p) => [p.number, resumerPr(p, DEPOT)]) : []);
   const suivies = issues.map((i) => (i.pr ? { ...i, ...(infosPr.get(i.numero) || { externe: true, correctif: false, autoFusion: false, brouillon: false }) } : i));
   // `luLe` : l'heure de CETTE lecture — la réponse peut sortir du cache (2 min).
-  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.ok ? null : "GitHub HTTP " + pulls.status };
+  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.ok ? null : "GitHub HTTP " + pulls.status, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
   val.aReparer = aReparer(val);
   cacheGh = { at: Date.now(), val };
   return val;
@@ -983,7 +991,7 @@ async function lireGithub() {
 
 const sansJeton = () => json({ error: "Geste indisponible : le secret PILOTAGE_GITHUB_TOKEN n'est pas posé sur la fonction." }, 501);
 // Un refus de droit dit QUEL droit donner : « HTTP 403 » seul ne mène nulle part.
-const refusDroit = (statut: number, droit: string) => (statut === 403 ? ` Le jeton du pilotage n'a pas ce droit : donne-lui « ${droit} » en lecture et écriture (page du jeton sur GitHub, Edit).` : "");
+const refusDroit = (statut: number, droit: string) => (statut === 401 ? " Le jeton du pilotage a expiré : renouvelle-le sur GitHub, puis dans les secrets de la fonction." : statut === 403 ? ` Le jeton du pilotage n'a pas ce droit : donne-lui « ${droit} » en lecture et écriture (page du jeton sur GitHub, Edit).` : "");
 const numeroValide = (n: number) => Number.isInteger(n) && n > 0 && n < 1e7;
 
 async function relancer(cible: string) {

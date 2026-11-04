@@ -969,3 +969,22 @@ test("㉛ un palier franchi : une bonne nouvelle dans la croissance, jamais un p
   await page.click("#actualiser");
   await expect(palier).toBeHidden();
 });
+
+test("㉝ jeton GitHub expiré : première ligne, le bouton ouvre GitHub, le second geste ouvre les secrets, aucun bouton muet", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  await routerFonction(page, envois, etat({ github: null, nonLus: ["github"], erreursLecture: { github: "GitHub HTTP 401" },
+    verdict: { couleur: "orange", titre: "À surveiller", raisons: ["non lu : GitHub (enquêtes, mises en ligne)"], incomplet: true }, signalements: { ouverts: 0, liste: [] }, capacite: { mesuresServeur: true, jauges: [] } }));
+  await page.goto("/pilotage/");
+  const ligne = page.locator("#afaire article").first();
+  await expect(ligne).toContainText("Le jeton GitHub du pilotage a expiré");
+  await expect(ligne.locator("a.btn-regler")).toHaveAttribute("href", "https://github.com/settings/personal-access-tokens");
+  await ligne.locator("summary").click();
+  await expect(ligne.locator(".ligne-decisions a", { hasText: "Coller le jeton dans Supabase" })).toHaveAttribute("href", /supabase\.com\/dashboard\/project\/[a-z]+\/functions\/secrets$/);
+  await expect(ligne).toContainText("PILOTAGE_GITHUB_TOKEN");
+  // L'erreur du jour ne promet rien : GitHub refuserait la relance.
+  const erreur = page.locator("#afaire article", { hasText: "3 fois" });
+  await expect(erreur).toContainText("Il faut d'abord le jeton GitHub.");
+  await expect(erreur.locator(".btn-regler")).toHaveCount(0);
+  await expect(page.locator("#toutRegler")).toBeHidden();
+});

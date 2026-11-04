@@ -65,6 +65,7 @@ avec Google ». Ajouter un compte : secret `PILOTAGE_EMAILS` de la fonction (vir
    « Fermer », « Reprendre » la Sentinelle et « Relancer » une réparation d'avant le 2026-10-25.
    Le droit se donne sur le jeton existant (page du jeton → **Edit** → *Repository permissions*).
    `supabase secrets set PILOTAGE_GITHUB_TOKEN=… --project-ref njkiyoklssvefstljemx`.
+   ⚠️ **Choisir une longue durée** : un jeton fin dure 30 jours par défaut. Expiré, GitHub répond 401 à tout, lectures comprises : plus aucun bouton ne répare et le voyant mémorisé se fige. L'écran le dit une semaine avant, puis en première ligne.
    Sans lui, tout s'affiche et les alertes marchent ; seuls les gestes GitHub (relancer, fusionner, fermer, pause) sont remplacés par une explication. Les signalements, eux, se traitent sans ce jeton.
 3. **Google** : ajouter `https://passio-app.netlify.app/pilotage/` aux *Redirect URLs* (Supabase →
    Authentication → URL Configuration). Sans ça, Google ramène sur l'accueil de PASSIO : rouvrir

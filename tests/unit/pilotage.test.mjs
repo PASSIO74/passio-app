@@ -1059,3 +1059,59 @@ test("㊵ paliers : le bon palier, montré la semaine du franchissement sans com
   assert.match(memeTotal.titre, /· 13 inscrits$/);
   assert.ok(!aFaire(etatAF({ utilisateurs: null }), MAINTENANT_AF).some((x) => x.id.startsWith("croissance:")), "utilisateurs illisibles : pas de carte");
 });
+
+// ─── Le voyant figé et le jeton expiré (2026-11-04) ─────────────────────────
+// Mesuré : voyant mémorisé rouge du 03/11 20 h 50 au 04/11 12 h 23, zéro erreur depuis 20 h 46, et
+// « 🔴 Toujours un problème » toutes les 6 h : chaque veille tenait le voyant sur une lecture incomplète.
+// MUTATIONS éprouvées : retirer `!a.tenu` → ㊾ rougit ; retirer `tenu` de la veille → ㊾ ; lire le 401
+// comme une panne ordinaire → ㊿ ; proposer un geste GitHub sur un jeton expiré → ㊿ ; retirer l'alerte
+// de fin de jeton → ㉛bis.
+import { JETON_ALERTE_JOURS } from "../../supabase/functions/_shared/pilotage.js";
+
+test("㊾ un voyant TENU ne rappelle pas « Toujours un problème » ; un vrai rouge et le site injoignable sonnent toujours", () => {
+  const t = Date.parse("2026-11-04T09:00:00Z");
+  const prec = { couleur: "rouge", dispo: true, alerteLe: "2026-11-04T02:55:00Z", raisons: ["10 erreurs dans l'app en 15 min"] };
+  assert.equal(decideAlerte(prec, { couleur: "rouge", dispo: true, tenu: true, raisons: prec.raisons }, t).sonner, false, "rien de neuf : aucune raison de sonner");
+  assert.equal(decideAlerte(prec, { couleur: "rouge", dispo: true, tenu: false, raisons: ["12 erreurs"] }, t).sonner, true, "un rouge mesuré se rappelle");
+  assert.equal(decideAlerte(prec, { couleur: "rouge", dispo: false, tenu: true }, t).sonner, true, "le site injoignable sonne, lecture incomplète ou non");
+  // La veille transmet l'état tenu, et laisse la raison dans ses journaux (jamais dans sa réponse, publique).
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  assert.match(v, /tenu: !!vt\.tenu \}/);
+  assert.match(v, /console\.warn\("veille : lecture incomplète "/);
+  const reponse = v.slice(v.indexOf("return json({ ok: true, couleur"));
+  assert.doesNotMatch(reponse, /raison|github|incomplet/, "la veille s'appelle avec la clé anon : sa réponse ne dit rien de plus");
+});
+
+test("㊿ jeton expiré (401) : c'est LE problème, son bouton mène à GitHub, et aucun bouton muet n'est proposé", () => {
+  const brut = { gestesGithub: true, github: null, nonLus: ["github"], erreursLecture: { github: "GitHub HTTP 401" }, erreurs: { details: [{ message: "E", n: 3, comptes: 1, dernier: "2026-10-23T11:00:00Z" }] } };
+  const l = aFaire(brut, MAINTENANT_AF);
+  assert.equal(l[0].id, "config:jeton-expire"); assert.equal(l[0].prio, 0);
+  assert.deepEqual(l[0].gestes.map((g) => [g.libelle, g.ouvrir]), [["Régler", PAGES_REGLAGE.jeton], ["Coller le jeton dans Supabase", PAGES_REGLAGE.secrets]]);
+  assert.match(l[0].reference, /PILOTAGE_GITHUB_TOKEN/);
+  assert.ok(!l.some((x) => x.id === "lecture:github"), "pas deux lignes pour la même cause");
+  const err = l.find((x) => x.id === "erreurs");
+  assert.deepEqual(err.gestes, [], "GitHub refuserait la relance : aucun bouton");
+  assert.match(err.quoi, /jeton GitHub/);
+  // Une autre panne de lecture reste une panne : le bouton relit.
+  const panne = aFaire({ ...brut, erreursLecture: { github: "GitHub HTTP 502" } }, MAINTENANT_AF);
+  assert.equal(panne.find((x) => x.id === "lecture:github").gestes[0].special, "relire");
+  assert.equal(panne.find((x) => x.id === "erreurs").gestes[0].corps.action, "relancer");
+  // La page sait ouvrir ces deux adresses.
+  const sur = new Function("return " + fs.readFileSync("pilotage/pilotage.js", "utf8").match(/const LIENS_SURS = (\/.*\/);/)[1])();
+  assert.ok(sur.test(PAGES_REGLAGE.jeton)); assert.ok(sur.test(PAGES_REGLAGE.secrets));
+});
+
+test("㉛bis la fin du jeton se dit une semaine avant, et jamais sur une date absente", () => {
+  const dans = (j) => aFaire({ gestesGithub: true, github: { issues: [], runs: {}, aReparer: [], jetonExpire: j == null ? null : new Date(MAINTENANT_AF + j * 864e5).toISOString() } }, MAINTENANT_AF).find((x) => x.id === "config:jeton-bientot");
+  assert.equal(dans(null), undefined, "jeton sans date, ou date illisible : rien à dire");
+  assert.equal(dans(JETON_ALERTE_JOURS + 1), undefined);
+  const b = dans(JETON_ALERTE_JOURS);
+  assert.equal(b.prio, 1); assert.match(b.titre, /dans 7 jours/);
+  assert.equal(b.gestes[0].ouvrir, PAGES_REGLAGE.jeton);
+  assert.match(dans(0.5).titre, /aujourd'hui ou demain/);
+  // La fonction lit l'annonce de GitHub sur la réponse.
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.match(fn.slice(fn.indexOf("async function lireGithub"), fn.indexOf("const sansJeton")), /github-authentication-token-expiration/);
+  assert.match(fn, /statut === 401 \? " Le jeton du pilotage a expiré/);
+});

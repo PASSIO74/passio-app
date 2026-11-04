@@ -300,12 +300,13 @@
   // (la référence technique, refuser, fermer, voir sur GitHub) se déplie en touchant
   // le texte. Les textes de tiers (titres d'issue, messages d'erreur, motifs) passent
   // par textContent.
+  function lienReglage(g, classe) {
+    if (!LIENS_SURS.test(String(g.ouvrir))) return null;
+    const a = el("a", classe, g.libelle); a.href = g.ouvrir; a.target = "_blank"; a.rel = "noopener";
+    return a;
+  }
   function boutonPrincipal(g, zone) {
-    if (g.ouvrir) {
-      if (!LIENS_SURS.test(String(g.ouvrir))) return null;
-      const a = el("a", "btn btn-regler", g.libelle); a.href = g.ouvrir; a.target = "_blank"; a.rel = "noopener";
-      return a;
-    }
+    if (g.ouvrir) return lienReglage(g, "btn btn-regler");
     if (g.special === "retour") return boutonRetourNu(g.libelle, zone, "btn-regler");
     if (g.special === "relire") {
       const b = el("button", "btn btn-regler", g.libelle); b.type = "button";
@@ -334,7 +335,7 @@
     if (x.reference) suite.push(el("span", "ligne-reference", x.reference));
     if (autres.length || url) {
       const zone = el("div", "ligne-decisions");
-      autres.forEach((g) => zone.append(boutonGeste(g.libelle, g.corps)));
+      autres.forEach((g) => { const n = g.ouvrir ? lienReglage(g) : boutonGeste(g.libelle, g.corps); if (n) zone.append(n); });
       if (url) { const a = el("a", null, libelleLien(x)); a.href = url; a.target = "_blank"; a.rel = "noopener"; zone.append(a); }
       suite.push(zone);
     }

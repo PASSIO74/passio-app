@@ -238,6 +238,9 @@ const TITRES_RUN = Object.freeze({
   deploy: "La mise en ligne a échoué", sentinelle: "La Sentinelle s'est arrêtée", veille: "La surveillance s'est arrêtée",
 });
 const NATURES_SIGNALEMENT = Object.freeze({ post: "une publication", comment: "un commentaire", user: "un profil", story: "une story", event: "une activité" });
+/** Un jeton GitHub qui expire se dit une semaine avant : expiré, plus aucun bouton ne répare. */
+export const JETON_ALERTE_JOURS = 7;
+const REFERENCE_JETON = "Sans lui, plus aucun bouton ne répare et GitHub n'est plus lu. Régénère-le (Actions, Issues, Pull requests et Contents en lecture et écriture, avec une longue durée), puis colle-le dans Supabase sous le nom PILOTAGE_GITHUB_TOKEN.";
 /** Une réparation sans correctif après ce délai n'en donnera plus : le bouton la referme pour pouvoir la relancer. */
 export const REPARATION_MAX_MS = 6 * 3600e3;
 /**
@@ -245,6 +248,7 @@ export const REPARATION_MAX_MS = 6 * 3600e3;
  * secret). Le bouton y mène directement ; la page n'ouvre rien d'autre (LIENS_SURS).
  */
 export const PAGES_REGLAGE = Object.freeze({
+  jeton: "https://github.com/settings/personal-access-tokens",
   secrets: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/functions/secrets",
   facturation: "https://supabase.com/dashboard/org/_/billing",
   calcul: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/settings/compute-and-disk",
@@ -289,7 +293,11 @@ export function aFaire(d, maintenant = Date.now()) {
   const out = [];
   const ajoute = (x) => out.push({ couleur: COULEUR_PRIO[x.prio] || "gris", depuis: null, url: null, gestes: [], detail: "", reference: "", quoi: "", enCours: false, ...x });
   const gh = d && d.github;
-  const gestesGh = !!(d && d.gestesGithub);
+  const nonLus = Array.isArray(d && d.nonLus) ? d.nonLus : [];
+  // Un jeton expiré : GitHub répond 401 à TOUT, lectures comprises (un dépôt public se lit sans
+  // jeton, mais pas avec un mauvais). Aucun bouton GitHub ne pourrait agir : aucun n'est proposé.
+  const jetonExpire = nonLus.includes("github") && /HTTP 401/.test(String(d.erreursLecture && d.erreursLecture.github));
+  const gestesGh = !!(d && d.gestesGithub) && !jetonExpire;
   const issues = gh && Array.isArray(gh.issues) ? gh.issues : [];
   const reparables = gh && Array.isArray(gh.aReparer) ? gh.aReparer : [];
   const runs = (gh && gh.runs) || {};
@@ -320,11 +328,18 @@ export function aFaire(d, maintenant = Date.now()) {
   }
   // Ce qui empêche le pilotage de bien voir ou d'agir : avant ce qu'il a pu lire, et avant
   // les boutons qu'un jeton manquant rendrait muets.
-  const nonLus = Array.isArray(d && d.nonLus) ? d.nonLus : [];
-  if (nonLus.includes("github")) {
+  const renouveler = [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.jeton }, { libelle: "Coller le jeton dans Supabase", ouvrir: PAGES_REGLAGE.secrets }];
+  if (jetonExpire) {
+    ajoute({ id: "config:jeton-expire", prio: 0, etiquette: "Réglage", titre: "Le jeton GitHub du pilotage a expiré", quoi: "Ouvre GitHub pour le renouveler.", reference: REFERENCE_JETON, gestes: renouveler });
+  } else if (nonLus.includes("github")) {
     const raison = d.erreursLecture && d.erreursLecture.github ? " Raison : " + borne(d.erreursLecture.github, 120) + "." : "";
     ajoute({ id: "lecture:github", prio: 1, etiquette: "Non lu", titre: "GitHub n'a pas pu être lu", quoi: "Relit GitHub maintenant.",
       reference: "Enquêtes, correctifs et mises en ligne ne sont pas vérifiés pour l'instant." + raison, gestes: [relire] });
+  }
+  // Dit AVANT qu'il casse : GitHub annonce la fin du jeton à chaque réponse.
+  const joursJeton = gh && gh.jetonExpire ? Math.ceil((dateUtc(gh.jetonExpire) - maintenant) / 864e5) : NaN;
+  if (Number.isFinite(joursJeton) && joursJeton <= JETON_ALERTE_JOURS) {
+    ajoute({ id: "config:jeton-bientot", prio: 1, etiquette: "Réglage", titre: joursJeton > 1 ? "Le jeton GitHub expire dans " + joursJeton + " jours" : "Le jeton GitHub expire aujourd'hui ou demain", quoi: "Ouvre GitHub pour le renouveler.", reference: REFERENCE_JETON, gestes: renouveler });
   }
   if (gh && gh.prNonLues) {
     ajoute({ id: "lecture:pr", prio: 1, etiquette: "Non lu", titre: "Les correctifs n'ont pas pu être lus", quoi: "Relit GitHub maintenant.", reference: "Raison : " + borne(gh.prNonLues, 120) + ".", gestes: [relire] });
@@ -518,7 +533,7 @@ export function aFaire(d, maintenant = Date.now()) {
       quoi: "La Sentinelle analyse tout.", gestes: relancer("sentinelle") });
   }
   // Sans jeton, ce que le bouton ferait ne peut pas se faire : la ligne le dit, au lieu de promettre.
-  if (d && d.gestesGithub === false) for (const x of out) if (x.prio <= 1 && !x.enCours && !x.gestes.length) x.quoi = "Il faut d'abord le jeton GitHub.";
+  if (d && (d.gestesGithub === false || jetonExpire)) for (const x of out) if (x.prio <= 1 && !x.enCours && !x.gestes.length) x.quoi = "Il faut d'abord le jeton GitHub.";
   // À urgence égale, l'ordre d'ajout : le site, le retour arrière, les échecs,
   // puis chaque famille dans l'ordre de sa source (la plus récente d'abord).
   return out.map((x, i) => ({ x, i })).sort((a, b) => a.x.prio - b.x.prio || a.i - b.i).map((o) => o.x);
@@ -790,7 +805,9 @@ export function decideAlerte(prec, actuel, maintenant = Date.now(), rappelMs = 6
   if (a.dispo === false && p.dispo !== false) return { sonner: true, titre: "🔴 PASSIO ne répond plus", texte: "Le site ne répond pas à la sonde. Ouvre le pilotage." };
   if (a.dispo !== false && p.dispo === false) return { sonner: true, titre: "✅ PASSIO répond de nouveau", texte: "Le site est revenu." };
   if (a.couleur === "rouge" && p.couleur !== "rouge") return { sonner: true, titre: "🔴 Problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") || "Ouvre le pilotage." };
-  if (a.couleur === "rouge" && p.alerteLe && maintenant - Date.parse(p.alerteLe) >= rappelMs) return { sonner: true, titre: "🔴 Toujours un problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") };
+  // Tenu sur une lecture incomplète (tenirVerdict), le voyant ne dit rien de neuf : pas de rappel. Mesuré
+  // le 2026-11-04 : « 🔴 Toujours un problème : 10 erreurs en 15 min » toutes les 6 h, quinze heures après la dernière erreur.
+  if (a.couleur === "rouge" && !a.tenu && p.alerteLe && maintenant - Date.parse(p.alerteLe) >= rappelMs) return { sonner: true, titre: "🔴 Toujours un problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") };
   if (a.couleur !== "rouge" && p.couleur === "rouge") return { sonner: true, titre: "✅ Problème résolu", texte: a.couleur === "orange" ? "Plus d'urgence, quelques points à surveiller." : "Tout va bien de nouveau." };
   return { sonner: false };
 }
