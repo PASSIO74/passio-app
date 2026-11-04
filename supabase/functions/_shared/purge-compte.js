@@ -94,6 +94,47 @@ export const TABLES_COMPTE = [
 //     des objets partagés qui survivent à leur créateur ; l'identifiant y est
 //     orphelin, pas une donnée lisible.
 
+// ⚠️ R31 (audit du 2026-11-02, corrigé le 2026-11-04) — CE QUE LES AUTRES ONT ÉCRIT SUR
+// SES PUBLICATIONS ET SES COMMENTAIRES. `TABLES_COMPTE` efface ce qui PORTE l'identifiant
+// du compte. Les commentaires, « j'aime », co-auteurs et interactions que d'AUTRES comptes
+// ont laissés sur ses publications — et les réponses ou réactions laissées sur ses
+// commentaires — portent l'identifiant de LEUR auteur : ils restaient, orphelins, et
+// `post_is_visible` (« pas de ligne posts → public ») les rendait lisibles par tous, visiteur
+// compris. La migration R31 (`migration_publications_supprimees_2026-11-04.sql`) ferme cette
+// lecture et pose les déclencheurs qui les emportent avec la publication. La purge les efface
+// AUSSI, elle-même, et les RELIT : elle ne dépend pas de l'ordre d'application de la
+// migration, et une dépendance qui reste est un reste NOMMÉ (fail-closed). Ce n'est pas
+// l'export : ces lignes sont les données d'autrui (l'export ne lit que `TABLES_COMPTE`).
+//
+// ⚠️ L'IDENTIFIANT EST CHOISI PAR LE CLIENT, ET CETTE PURGE EFFACE AVEC LA CLÉ DE SERVICE. Sans
+// garde, un compte qui publie sous l'identifiant d'une activité ou d'un exemple, qui commente
+// sous celui d'une publication ou d'une réponse, puis se supprime, emportait ce qui visait
+// l'original. Mêmes gardes que les déclencheurs de la migration R31, et les mêmes raisons :
+// `cribler` écarte ce qui n'est pas de lui, et `planDependances` tient chaque interaction à
+// son FIL. Un identifiant écarté n'entre dans aucun filtre : il est compté, jamais répété.
+/** Ce qui vise une PUBLICATION du compte (colonne = identifiant de la publication). */
+export const DEPENDANCES_PUBLICATION = [
+  ["post_comments", "post_id"], ["post_likes", "post_id"], ["post_collaborators", "post_id"],
+  // Le FIL : réactions de la publication, réponses, réactions aux réponses (`srep_…`).
+  ["comment_interactions", "post_id"],
+  // La CIBLE : une réaction de publication écrite SANS fil (anciennes lignes, 0 le 04/11).
+  ["comment_interactions", "comment_id"],
+];
+/** Ce qui vise un COMMENTAIRE du compte : réponses et réactions d'autrui, dans le fil de ce commentaire. */
+export const DEPENDANCES_COMMENTAIRE = [["comment_interactions", "comment_id"]];
+/** Taille d'un lot d'identifiants dans un filtre `in.(…)` (URL PostgREST bornée). */
+export const LOT_IN = 50;
+/** Un identifiant plus long n'est pas de ceux que le client fabrique (`ci_ids_len_check` : 120 ; mesuré le 04/11 : 31 au plus). */
+export const ID_LONGUEUR_MAX = 120;
+/** Le jeu de caractères qu'un identifiant peut porter dans un filtre (mesuré le 04/11 : aucune ligne hors de lui). */
+const ID_FORME = /^[A-Za-z0-9_:.+-]+$/;
+/** La liste FERMÉE d'`est_identifiant_exemple` (migration R31) : `identifiants-exemple.test.mjs` compare les deux. */
+export const EXPRESSION_EXEMPLE = /^(p[0-9]+|p[mpv][0-9]+|pn_[a-z0-9]+_[0-9]+|pac_[a-z]+|p_ev_[a-z]+|p_ev[0-9]+_e[0-9]+|reel_seed_[a-z0-9_]+|e[0-9]+)$/;
+/** Dans un fil d'exemple, seul un commentaire au format du client compte : `c1`, `cp1_1`… sont ceux de démonstration. */
+const COMMENTAIRE_REEL = /^c_[0-9a-z]{8,17}$/;
+const estBorne = (id) => typeof id === "string" && id.length <= ID_LONGUEUR_MAX && ID_FORME.test(id);
+const estExemple = (id) => typeof id === "string" && EXPRESSION_EXEMPLE.test(id);
+
 /** Dossiers du seau `content` où le client dépose sous `<dossier>/<uid>/…`. */
 export const DOSSIERS_CONTENU = ["photos", "videos", "audios", "events", "avatars", "covers", "passion_covers", "passion_photos"];
 
@@ -128,8 +169,131 @@ async function compterRestes(admin, table, col, uid) {
   try {
     const r = await admin.from(table).select("*", { count: "exact", head: true }).eq(col, uid);
     if (r && r.error) return -1;                 // illisible : compte comme un reste
-    return typeof r.count === "number" ? r.count : 0;
+    return typeof r.count === "number" ? r.count : -1;   // un comptage absent n'est pas zéro
   } catch (_e) { return -1; }
+}
+
+/**
+ * Les lignes de `table` que le compte a écrites, TOUTES (pages de `PAGE`, ordre stable).
+ * Rend `{ lignes }` ou `{ erreur }` — une liste illisible n'est jamais une liste vide :
+ * sans elle, on ne saurait plus quelles publications étaient les siennes.
+ */
+export async function listerLignes(admin, table, col, uid, colonnes) {
+  const lignes = [];
+  try {
+    for (let de = 0; ; de += PAGE) {
+      const r = await admin.from(table).select(colonnes).eq(col, uid).order("id").range(de, de + PAGE - 1);
+      if (!r || r.error) return { erreur: (r && r.error && (r.error.message || r.error.code)) || "lecture" };
+      lignes.push(...(r.data || []).filter((x) => x && x.id));
+      if ((r.data || []).length < PAGE) return { lignes };
+    }
+  } catch (e) { return { erreur: (e && e.message) || "exception" }; }
+}
+
+/** Ceux de `ids` qui existent aussi dans `table`. Rend `{ homonymes }` ou `{ erreur }` ; une table absente n'a pas d'homonyme. */
+async function chercherHomonymes(admin, table, ids) {
+  const homonymes = new Set();
+  for (let i = 0; i < ids.length; i += LOT_IN) {
+    try {
+      const r = await admin.from(table).select("id").in("id", ids.slice(i, i + LOT_IN));
+      if (r && r.error) {
+        if (estTableAbsente(r.error.message) || estTableAbsente(r.error.code)) return { homonymes };
+        return { erreur: r.error.message || String(r.error.code || "lecture") };
+      }
+      for (const x of (r && r.data) || []) homonymes.add(x.id);
+    } catch (e) { return { erreur: (e && e.message) || "exception" }; }
+  }
+  return { homonymes };
+}
+
+/**
+ * Ce qu'une purge peut viser sans toucher à autrui : `garde(ligne)` pour la forme, puis aucun
+ * homonyme dans `tables`. Rend `{ lignes, ecartes }`, et `erreur` si un relevé est illisible :
+ * alors RIEN n'est gardé (on ne peut plus dire ce qui est à lui).
+ */
+async function cribler(admin, lignes, garde, tables) {
+  const formes = lignes.filter(garde);
+  let reste = formes;
+  for (const table of tables) {
+    const h = await chercherHomonymes(admin, table, reste.map((l) => l.id));
+    if (h.erreur) return { lignes: [], ecartes: lignes.length, erreur: `${table} (${h.erreur})` };
+    reste = reste.filter((l) => !h.homonymes.has(l.id));
+  }
+  return { lignes: reste, ecartes: lignes.length - reste.length };
+}
+
+/** Une publication du compte, vraiment : bornée, hors exemple, sans homonyme parmi les activités. */
+const criblerPublications = (admin, lignes) =>
+  cribler(admin, lignes, (l) => estBorne(l.id) && !estExemple(l.id), ["events"]);
+
+/** Un commentaire du compte, vraiment : hors réponse et exemple, sans homonyme parmi les publications et les commentaires d'activité. */
+const criblerCommentaires = (admin, lignes) =>
+  cribler(admin, lignes, (l) => estBorne(l.id) && (l.post_id == null || estBorne(l.post_id))
+    && !l.id.startsWith("srep_") && !estExemple(l.id)
+    && (!estExemple(l.post_id) || COMMENTAIRE_REEL.test(l.id)), ["posts", "event_comments"]);
+
+/**
+ * Les effacements à faire, chacun avec sa condition de fil : une interaction n'appartient qu'à
+ * son FIL. La cible seule ne vaut que sans fil ; un commentaire n'emporte que le sien.
+ */
+export function planDependances(publications, commentaires) {
+  const plan = [];
+  const ids = publications.map((l) => l.id);
+  for (const [table, col] of DEPENDANCES_PUBLICATION) {
+    plan.push({ table, col, ids, sansFil: table === "comment_interactions" && col === "comment_id" });
+  }
+  const parFil = new Map();
+  for (const c of commentaires) {
+    if (c.post_id == null) continue;
+    if (!parFil.has(c.post_id)) parFil.set(c.post_id, []);
+    parFil.get(c.post_id).push(c.id);
+  }
+  for (const [table, col] of DEPENDANCES_COMMENTAIRE) {
+    for (const [fil, idsFil] of parFil) plan.push({ table, col, ids: idsFil, fil });
+    plan.push({ table, col, ids: commentaires.map((c) => c.id), sansFil: true });
+  }
+  return plan.filter((e) => e.ids.length);
+}
+
+const limiter = (q, e, lot) => {
+  const f = q.in(e.col, lot);
+  if (e.sansFil) return f.is("post_id", null);
+  return e.fil ? f.eq("post_id", e.fil) : f;
+};
+
+/** Exécute le `plan`, par lots. Rend les échecs NOMMÉS ; une table absente est notée, pas un échec. */
+async function supprimerDependances(admin, plan, absentes) {
+  const echecs = [];
+  for (const e of plan) {
+    for (let i = 0; i < e.ids.length; i += LOT_IN) {
+      let m = null;
+      try {
+        const r = await limiter(admin.from(e.table).delete(), e, e.ids.slice(i, i + LOT_IN));
+        if (r && r.error) m = r.error.message || (r.error.code ? String(r.error.code) : "erreur");
+        if (m && (estTableAbsente(m) || estTableAbsente(r.error.code))) {
+          const cle = `dependances:${e.table}:${e.col}`;
+          if (!absentes.includes(cle)) absentes.push(cle);
+          break;
+        }
+      } catch (ex) { m = (ex && ex.message) || "exception"; }
+      if (m) { echecs.push(`dependances:${e.table}:${e.col} (${m})`); break; }
+    }
+  }
+  return echecs;
+}
+
+/** Combien de lignes une entrée du `plan` vise encore : un nombre, `-1` si illisible, `null` si la table est absente. */
+async function compterDependances(admin, e) {
+  let n = 0;
+  for (let i = 0; i < e.ids.length; i += LOT_IN) {
+    try {
+      const r = await limiter(admin.from(e.table).select("*", { count: "exact", head: true }), e, e.ids.slice(i, i + LOT_IN));
+      if (r && r.error) return (estTableAbsente(r.error.message) || estTableAbsente(r.error.code)) ? null : -1;
+      if (typeof r.count !== "number") return -1;   // un comptage absent n'est pas zéro
+      n += r.count;
+    } catch (_e) { return -1; }
+  }
+  return n;
 }
 
 /**
@@ -290,6 +454,9 @@ export async function marquerAuthEchec(admin, uid, jeton, detail) {
  * ET la tentative encore la nôtre. `code` nomme un arrêt avant purge :
  * `infrastructure_absente`, `deja_en_cours`, `deja_supprimee`, `barriere`, `en_vol`, `jeton_perdu`, `incomplete`.
  * `jeton` identifie CETTE tentative ; `delete-account` le repasse à `marquerSupprime`.
+ * `dependances` (R31) = { publications, commentaires, ecartes } : combien de publications et de
+ * commentaires du compte ont vu purger ce que d'AUTRES y avaient écrit (restes : `dependances:…`),
+ * et combien d'identifiants n'étaient pas de lui (forme ou homonyme : rien n'est effacé en leur nom).
  */
 export async function purgerCompte(admin, uid, options) {
   const jeton = (options && options.jeton) || (globalThis.crypto && globalThis.crypto.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now()) + "-" + Math.random());
@@ -357,6 +524,24 @@ export async function purgerCompte(admin, uid, options) {
   const objets = releve.objets || [];
   base.objets = objets.length;
 
+  // ①bis R31 — ce que les AUTRES ont écrit sur ses publications et sur ses commentaires.
+  //    Relevé AVANT ② : une fois ses publications effacées, plus rien ne dit lesquelles
+  //    étaient les siennes. Une liste illisible est un échec nommé, jamais « rien à faire ».
+  //    ⚠️ Un identifiant est choisi par le client : le crible écarte ce qui n'est pas de lui.
+  const pubs = await listerLignes(admin, "posts", "author_id", uid, "id");
+  const coms = await listerLignes(admin, "post_comments", "author_id", uid, "id, post_id");
+  if (pubs.erreur) echecs.push(`dependances:relevé posts (${pubs.erreur})`);
+  if (coms.erreur) echecs.push(`dependances:relevé post_comments (${coms.erreur})`);
+  const criblePubs = await criblerPublications(admin, pubs.lignes || []);
+  const cribleComs = await criblerCommentaires(admin, coms.lignes || []);
+  if (criblePubs.erreur) echecs.push(`dependances:homonymes de publications, ${criblePubs.erreur}`);
+  if (cribleComs.erreur) echecs.push(`dependances:homonymes de commentaires, ${cribleComs.erreur}`);
+  const ecartes = criblePubs.ecartes + cribleComs.ecartes;
+  base.dependances = { publications: criblePubs.lignes.length, commentaires: cribleComs.lignes.length, ecartes };
+  if (ecartes && !criblePubs.erreur && !cribleComs.erreur) notes.push(`dependances : ${ecartes} identifiant(s) écarté(s), forme ou homonyme`);
+  const plan = planDependances(criblePubs.lignes, cribleComs.lignes);
+  echecs.push(...await supprimerDependances(admin, plan, absentes));
+
   // ② Lignes, une table à la fois, chaque verdict lu.
   for (const [table, col] of TABLES_COMPTE) {
     const err = await supprimerLignes(admin, table, col, uid);
@@ -407,6 +592,27 @@ export async function purgerCompte(admin, uid, options) {
     }
     if (n !== 0) restes.push(`${table}:${col}=${n < 0 ? "illisible" : n}`);
   }
+  // ④bis R31 — plus rien ne vise ses publications ni ses commentaires. Un TIERS qui commente
+  //    ou aime pendant la purge (la barrière ne garde que les écritures DU compte) laisse une
+  //    ligne tardive : réeffacée UNE fois, comme celles du compte ; ce qui subsiste est nommé.
+  const parCle = new Map();
+  for (const e of plan) {
+    let n = await compterDependances(admin, e);
+    if (n === null) continue;                        // table absente : déjà notée en ①bis
+    if (n > 0) {
+      const err = await supprimerDependances(admin, [e], absentes);
+      if (err.length) echecs.push(...err.map((x) => x.replace(/ \(/, " (reprise : ")));
+      n = await compterDependances(admin, e);
+    }
+    if (n === null) continue;
+    const cle = `${e.table}:${e.col}`;
+    const avant = parCle.has(cle) ? parCle.get(cle) : 0;
+    parCle.set(cle, avant < 0 || n < 0 ? -1 : avant + n);
+  }
+  for (const [cle, n] of parCle) if (n !== 0) restes.push(`dependances:${cle}=${n < 0 ? "illisible" : n}`);
+
+  // Une table absente ne fait pas échouer la purge : `delete-account` le dit dans ses notes.
+  if (absentes.length) notes.push(`tables absentes : ${absentes.join(", ")}`);
 
   const purgeOk = echecs.length === 0 && restes.length === 0;
   // ⑤ FIN D'OPÉRATION, PAR JETON. Sur un succès la protection est CONSERVÉE

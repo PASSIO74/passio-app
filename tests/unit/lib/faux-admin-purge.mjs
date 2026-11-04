@@ -37,7 +37,14 @@ export const AUTRE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 // le marqueur est en `en_cours` / `purgee` / `supprimee` (le comportement de
 // `refuser_ecriture_compte_en_suppression`).
 export const MODELES_BARRIERE = ["v2", "v3"];
-export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [], pannesList = [], pannesRemove = [], rpc = "ok", pannesListApres = [], ecrituresTardives = {}, barriere = "ok", modele = "v3", enVol = { en_vol_initial: 0, restantes: 0, attendu_ms: 0 }, terminerRefuse = false, perimeMs = 15 * 60 * 1000, horloge = null } = {}) {
+// `pannesSelect` : tables dont une LECTURE de lignes (pas un comptage) rend une erreur — le
+// relevé des publications et commentaires du compte (R31) doit alors échouer nommément.
+// `tablesAbsentes` : tables que la base ne porte pas (PGRST205), comme sur un environnement
+// d'avant la migration qui les crée.
+// `comptagesAbsents` : tables dont un comptage répond sans `count`.
+// `maxRows` : le plafond de PostgREST (`db-max-rows`) : une lecture ne rend jamais plus,
+// quelle que soit la plage demandée. Une purge qui ne pagine pas s'arrêterait là.
+export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [], pannesList = [], pannesRemove = [], pannesSelect = [], tablesAbsentes = [], comptagesAbsents = [], maxRows = 1000, rpc = "ok", pannesListApres = [], ecrituresTardives = {}, barriere = "ok", modele = "v3", enVol = { en_vol_initial: 0, restantes: 0, attendu_ms: 0 }, terminerRefuse = false, perimeMs = 15 * 60 * 1000, horloge = null } = {}) {
   const t = JSON.parse(JSON.stringify(tables));
   if (!MODELES_BARRIERE.includes(modele)) throw new Error("modèle de barrière inconnu : " + modele);
   const maintenant = () => (horloge ? horloge() : Date.now());
@@ -103,10 +110,11 @@ export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCo
   // Mesuré par réinjection : en déplaçant la pose après le relevé Storage, la
   // version précédente de ce banc restait VERTE.
   const journal = [];
+  const filtresVus = [];
   // Les appels aux fonctions de la barrière, AVEC leurs arguments.
   const appels = [];
   return {
-    _t: t, _s: s, _n: compteurs, _j: journal, _a: appels,
+    _t: t, _s: s, _n: compteurs, _j: journal, _a: appels, _filtres: filtresVus,
     /** Le marqueur tel que le modèle le tient (null sans réclamation). */
     marqueur,
     /**
@@ -122,16 +130,24 @@ export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCo
     },
     from(table) {
       const filtres = [];
-      let mode = "select", head = false;
+      let mode = "select", head = false, plage = null, tri = null;
       const rows = () => (t[table] || []).filter((r) => filtres.every((f) => f(r)));
       const b = {
         select(_c, o) { mode = "select"; head = !!(o && o.head); return b; },
         delete() { mode = "delete"; return b; },
         upsert(ligne) { mode = "upsert"; b.__ligne = ligne; return b; },
         eq(col, v) { filtres.push((r) => r[col] === v); return b; },
+        in(col, vals) { filtresVus.push(...vals); const s = new Set(vals); filtres.push((r) => s.has(r[col])); return b; },
+        is(col, v) { filtres.push((r) => (r[col] === undefined ? null : r[col]) === v); return b; },
+        order(col) { tri = col; return b; },
+        range(de, a) { plage = [de, a]; return b; },
         then(res, rej) {
           let out;
           journal.push(table + ":" + (head ? "count" : mode));
+          if (tablesAbsentes.includes(table)) {
+            out = { data: null, error: { code: "PGRST205", message: "Could not find the table 'public." + table + "' in the schema cache" } };
+            return Promise.resolve(out).then(res, rej);
+          }
           if (table === "comptes_en_suppression") {
             // v2 : le marqueur n'est PLUS écrit directement (le service n'a que
             // SELECT). Un accès direct est une régression vers la v1 : refusé.
@@ -144,8 +160,16 @@ export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCo
           } else if (head) {
             if (tardives[table] > 0) { tardives[table]--; (t[table] = t[table] || []).push({ user_id: U, author_id: U, id: "tardif" }); }
             if (pannesCount.includes(table)) out = { data: null, count: null, error: { message: "panne count " + table } };
+            else if (comptagesAbsents.includes(table)) out = { data: null, error: null };
             else out = { data: null, count: rows().length, error: null };
-          } else out = { data: rows(), error: null };
+          } else if (pannesSelect.includes(table)) out = { data: null, error: { message: "panne select " + table } };
+          else {
+            let lignes = rows();
+            if (tri) lignes = lignes.slice().sort((x, y) => String(x[tri]).localeCompare(String(y[tri])));
+            if (plage) lignes = lignes.slice(plage[0], plage[1] + 1);
+            lignes = lignes.slice(0, maxRows);
+            out = { data: lignes, error: null };
+          }
           return Promise.resolve(out).then(res, rej);
         },
       };

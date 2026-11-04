@@ -26,6 +26,7 @@
 - 🧹 QUATRE SURFACES QUI VIEILLISSAIENT SANS TÉMOIN (2026-09-12, le soir)
 - 🛡️ QUI VA OÙ, QUI A ÉCRIT QUOI — les décisions produit de l'audit, et ce que trois contre-revues y ont trouvé (2026-11-03)
 - 🔕 LA PROMOTION NE NOMME PLUS LE PROMU À N'IMPORTE QUI, ET LES VUES PERDENT LEURS DROITS HORS RLS (R24, R26 — 2026-11-03, le soir)
+- 🗑️ UNE PUBLICATION SUPPRIMÉE N'OUVRE PLUS SES COMMENTAIRES À TOUS — ELLE LES EMPORTE (R31 — 2026-11-04)
 
 ---
 
@@ -1104,3 +1105,107 @@ au canal ①** à 07:48 : `md5(prosrc)` de `promouvoir_attente` = `3edef536…`,
 (24 avant), `service_role` inchangé ; 0 reste du décor. ⚠️ Comparer `md5(prosrc)` au fichier, c'est comparer des OCTETS : la
 mesure calcule aussi `md5(replace(prosrc, E'\r', ''))`, car un worktree Windows en CRLF enverrait des `\r` que l'empreinte
 d'attestation ignore (elle normalise) mais que `prosrc` garde. Ici : aucun `\r`, les deux valeurs sont égales.
+
+## 🗑️ UNE PUBLICATION SUPPRIMÉE N'OUVRE PLUS SES COMMENTAIRES À TOUS — ELLE LES EMPORTE (R31 — 2026-11-04)
+
+Risque résiduel R31 de l'audit du 2026-11-02 (trouvé par la contre-revue finale de R25, confirmé sur deux bancs aux corps
+et policies de production), fermé par `migrations/migration_publications_supprimees_2026-11-04.sql` — banc
+`tests/sql/migration-publications-supprimees.test.sh`, unitaires `tests/unit/identifiants-exemple.test.mjs`
+(5) et `tests/unit/purge-compte.test.mjs` R31 ①–⑮. **Serveur seul : le client ne change pas** — `deletePost` garde son
+DELETE vérifié par relecture, et sa confirmation « Le post et ses commentaires seront supprimés » devient vraie.
+
+**Le défaut.** Aucune clé étrangère ne relie `post_comments`, `post_likes`, `comment_interactions` à `posts` ; `deletePost`
+et la purge de compte n'effaçaient que la publication. Et `post_is_visible` rendait VRAI quand la ligne `posts` manque — une
+branche écrite le 2026-07-20 pour le contenu de démonstration (« pas de ligne posts = contenu seed/local → public »).
+`comment_target_visible` faisait de même pour toute cible inconnue. M (privé) publie, V (abonné) commente et aime, M répond :
+sans compte, 0 / 0 / 0. M supprime la publication, ou son compte : sans compte et sans filtre, on lit le commentaire de V,
+son « j'aime », la réponse de M. V supprime SON commentaire : la réponse de M devient publique. Et sans AUCUNE suppression,
+les réactions aux RÉPONSES d'une publication privée (`comment_id = srep_<date>`) étaient lisibles par tous. Le banc ①
+rejoue les quatre voies sur les définitions de production (md5 vérifiés) avant de rien corriger.
+
+**① Une absence n'est jamais une autorisation.** La base ne distingue pas « n'a jamais existé » de « a été supprimé » : une
+règle qui ouvre sur une ligne MANQUANTE ouvre aussi tout ce qui viendra à manquer. L'exception d'origine était un cas (le
+contenu de démonstration) écrit comme une règle (« pas de ligne → public »). Elle se NOMME désormais :
+`est_identifiant_exemple(id)`, une liste FERMÉE des familles que le client fabrique (`buildSeed()` d'app-01,
+`SEED_REEL_VIDEOS` d'app-05 : `p<n>`, `pm|pp|pv<n>`, `pn_<thème>_<n>`, `pac_<thème>`, `p_ev_<thème>`, `p_ev<n>_e<n>`,
+`reel_seed_…`, `e<n>`). `identifiants-exemple.test.mjs` la confronte au seed (tout exemple y entre), aux générateurs du
+contenu RÉEL (`uid()`, `"reel_" + uid()`, `post_<ms>_<9>` : aucun n'y entre) et au format de la purge ; il rougit sur un
+exemple ajouté sans elle. ⚠️ **Un exemple nouveau qui n'y entre pas a ses commentaires lisibles par leur seul auteur** :
+c'est le test qui le dit, pas un utilisateur.
+
+**② Une interaction se lit comme son FIL, pas comme sa cible.** La correction littérale (« cible inconnue → personne » dans
+`comment_target_visible`) aurait CACHÉ, mesuré au canal ① avant d'écrire une ligne, les interactions des commentaires
+d'activité (38 dans des activités d'exemple `e<n>`, 1 dans une activité réelle : leurs `ec_…` ne sont dans aucune table) et
+les réactions aux réponses des publications réelles (6) : leur cible est un identifiant que seul le client fabrique. Ce qui
+les rattache, c'est `post_id`, que le client pose toujours (0 ligne sans, 0 dont la cible contredit le fil). La policy passe
+donc par une surcharge, `comment_target_visible(comment_id, post_id)` : publication existante → sa règle ; activité
+existante → publique (comme `events` et `event_comments`) ; exemple → public ; fil disparu ou inconnu → personne ; sans fil,
+la cible. La mutation « cible seule » du banc ⑧ montre ce que l'autre choix coûtait : l'auteur ne lit plus les réactions à
+SES réponses.
+
+**③ La cible supprimée emporte ce qui la vise — par déclencheur.** Ni clé étrangère (un commentaire sur un EXEMPLE n'a, par
+construction, aucune ligne `posts` à viser, et `comment_interactions` vise trois sortes de cibles), ni RPC de suppression (le
+DELETE direct reste permis, la purge de compte passe par la clé de service, les scripts par SQL). Deux déclencheurs AFTER
+DELETE **par instruction**, à table de transition (une purge de compte efface toutes les publications d'un auteur en un
+passage), fonctions SECURITY DEFINER à `search_path` vide — les noms de transition se résolvent avant tout schéma, mesuré
+sur banc : `trg_purger_cibles_publication` (`posts` → commentaires, « j'aime », co-auteurs, interactions dont la publication
+est le fil OU la cible) et `trg_purger_cibles_commentaire` (`post_comments` → ses réponses et réactions, que la RLS ne
+laissait effacer au client que pour les siennes). Index `idx_ci_post` : le prédicat du déclencheur et de la policy.
+
+**④ Le passé.** 14 commentaires, 16 « j'aime » et 50 interactions visaient une publication ou une activité SUPPRIMÉE
+(format réel, sans ligne ; la plus récente le 2026-09-01) : effacés par la migration, ce que ③ aurait fait. Identification
+POSITIVE (le format que le client fabrique pour le contenu réel), jamais « tout ce qui n'a pas de ligne » : les exemples,
+l'ancien `p_vlog_…` (26 commentaires, 9 « j'aime », 61 interactions — le client ne le fabrique plus, il est caché comme un
+inconnu), les lives et étapes de carnet retirés (`live_…`, `carnetstep:…`) restent, lisibles par leur seul auteur hors
+exemples. Plafond de 300 : au-delà, la migration REFUSE et rien n'est appliqué (banc ⑤) ; une hausse expliquée se pose
+après `begin;` — un changement du fichier, donc une contre-revue. Le banc ⑧ « purge large » montre ce que le plafond ne
+voit pas et que le format garde : un filtre trop large efface les EXEMPLES.
+
+**⑤ La purge de compte relève AVANT d'effacer.** `supabase/functions/_shared/purge-compte.js` (`DEPENDANCES_PUBLICATION`,
+`DEPENDANCES_COMMENTAIRE`) relève les publications et commentaires du compte, efface ce que d'AUTRES y ont écrit (par lots
+de 50), puis le RELIT : une dépendance qui reste est un reste nommé (`dependances:…`). Elle ne dépend pas de l'ordre
+d'application de la migration (avant elle, c'est le seul filet). ⚠️ **La barrière de suppression ne garde que les écritures
+DU compte** : un tiers qui commente pendant la purge laisse une ligne tardive, réeffacée une fois (R31 ④ du test). Une
+liste illisible est un échec nommé, jamais « rien à faire ». Ce n'est pas l'export : ces lignes sont les données d'autrui.
+
+**⑥ Un identifiant CHOISI n'efface rien d'autrui (relecture de la PR, 04/11).** Le client choisit l'identifiant de ce qu'il
+crée, et un déclencheur SECURITY DEFINER, comme la purge à la clé de service, efface pour tout le monde. La première version
+s'y fiait : publier sous l'identifiant d'une activité ou d'un exemple puis supprimer emportait leur fil ; commenter sous
+l'identifiant d'une publication, d'une réponse (`srep_…`) ou d'un commentaire d'exemple puis supprimer emportait les
+réactions de l'original. Trois règles, aux DEUX endroits (déclencheurs et `purge-compte.js`) :
+- une publication homonyme d'une activité, ou au format d'un exemple, n'emporte rien ;
+- une interaction n'appartient qu'à son FIL : la cible seule ne vaut que sans fil, et un commentaire n'emporte que le sien ;
+- un commentaire n'emporte rien s'il porte le nom d'une publication, d'un commentaire d'activité, d'un exemple ou d'une
+  réponse ; dans un fil d'exemple, seul un `c_<uid>` compte (`c1`, `cp1_1`… sont ceux de démonstration).
+La purge de compte ajoute une borne : un identifiant de plus de 120 caractères ou hors du jeu que le client fabrique n'entre
+dans AUCUN filtre (`cribler`, compté dans `dependances.ecartes`, jamais répété). Mesuré le 04/11 : 0 homonyme, 0 interaction
+dont le fil contredit la cible, 31 caractères au plus. ⚠️ Le format d'un commentaire réel fait 19 caractères (`c_` + 17) : le
+test ⑤ a rejeté une première expression trop courte, en tirant de vrais `uid()`.
+
+**Pièges du lot.**
+- **Un verdict qui mesure la RLS doit la mesurer SOUS LE RÔLE.** Le bloc ④ lit sous `anon` et `authenticated`
+  (`set local role` dans le DO, possible parce que `postgres` en est membre — mesuré, `pg_auth_members`) et supprime par
+  l'AUTEUR sous son rôle (la policy « Suppression propre » joue) ; la suppression en nombre se fait comme la purge, sans
+  session. Tout est annulé (`passio_verdict_annule`), rien n'est décodé par le temps réel.
+- **Un verrou qui ne vient pas fait ÉCHOUER la migration, il ne fait pas attendre l'application.** `set local lock_timeout
+  = '5s'` : sans lui, `create trigger` sur `posts` attend derrière une écriture et met en file toutes les suivantes (banc ⑥ :
+  un écrivain qui tient `posts` 12 s, échec en 5, rien d'appliqué).
+- **Chaque ligne effacée par le déclencheur part en DELETE du temps réel.** Avant R25 (#692), celui de `post_likes` porte
+  `(post_id, user_id)` à tout abonné : qui avait aimé, une fois — au lieu d'une lecture permanente par la clé publique.
+  Appliquer R25 d'abord, de préférence.
+
+**Ce qui reste, dit tel quel.** Un orphelin peut encore NAÎTRE : un « j'aime » ou un commentaire écrit APRÈS la suppression
+(client resté ouvert, file hors-ligne, fenêtre de la suppression) — les INSERT ne vérifient pas que la cible existe ; il
+n'est lisible que par son auteur, sauf si quelqu'un recrée une publication SOUS LE MÊME IDENTIFIANT (choisi par le client).
+Proposition : `post_is_visible(post_id)` / `comment_target_visible(comment_id, post_id)` dans le WITH CHECK des trois
+INSERT. Les réactions aux réponses d'un commentaire supprimé restent dans le public de leur publication (affichées nulle
+part, effacées avec elle). Un commentaire d'activité supprimé garde ses interactions (contenu public). TRUNCATE ne déclenche
+pas DELETE. `comment_likes` n'entre pas dans ce lot, décision prise : le client ne l'écrit que pour les commentaires d'activité
+et de carnet (publics par conception), et aucune de ses 3 lignes ne vise un commentaire de publication (mesuré le 04/11).
+
+**Ordre et mesure.** Indépendante (ni identité de réplication, ni C-04, ni promotion), de préférence après R25. Après
+application (poste de Benjamin, `node scripts/appliquer-migration.mjs migrations/migration_publications_supprimees_2026-11-04.sql
+--projet njkiyoklssvefstljemx`), mesurer au canal ① : `md5(prosrc)` des deux fonctions (≠ `5ff0bf77…` / `f02f0f69…`, = le
+fichier), la présence de `comment_target_visible(text,text)` et d'`est_identifiant_exemple` sans EXECUTE pour `anon` /
+`authenticated`, le texte de la policy, les deux déclencheurs (`tgenabled = 'O'`), `idx_ci_post`, et 0 orphelin au format
+réel — jamais le tableau de verdict seul.
