@@ -30,6 +30,7 @@
 - 📈 CROISSANCE, COÛT, PALIERS DE TÉLÉMÉTRIE ET PRÉ-TRI DES SIGNALEMENTS — LE PILOTAGE PASSE AU COMMERCE (2026-11-01)
 - 🧯 ENQUÊTES EN PARALLÈLE ET BOUTONS MORTS — LA SENTINELLE NE FAIT PLUS LA QUEUE (2026-11-01)
 - ⏱️ GOUVERNANCE — L'INDEX « COMMIT → PR » DE GITHUB ARRIVE APRÈS LE PUSH : UN DÉPLOIEMENT LÉGITIME REFUSÉ (2026-11-03)
+- 🎬 CONTRÔLES VIDÉO DE SAFARI — UN BUG DU NAVIGATEUR COMPTÉ COMME LE NÔTRE (2026-11-04)
 
 ---
 
@@ -495,3 +496,12 @@ Demande de Benjamin : « tout problème qui arrive doit se régler automatiqueme
 - ⚠️ **LE CLIC EST HORODATÉ APRÈS LA PEINTURE** : `telemetry.js` émet `click` après deux `requestAnimationFrame` (secours à 1 000 ms), donc 16 ms à 1 s après le toucher ; un effet émis dans le handler porte un horodatage ANTÉRIEUR. La règle « effet strictement après » comptait mort tout bouton à effet immédiat — y compris dans le classement du résumé, faussé depuis sa création. On accepte un effet jusqu'à 1 100 ms avant (`BOUTON_AVANCE_MS`).
 - Le corps d'issue d'un bouton fait départager à Claude : (a) handler cassé, absent, masqué ou bloqué → corriger ; (b) geste qui aboutit sans événement → ajouter `Telemetry.action(...)` sans donnée personnelle, sans toucher au comportement. **Jamais retirer le bouton pour faire taire la mesure.**
 - Hors champ, délibérément : le retour arrière AUTOMATIQUE reste retiré (revues du 2026-10-12 : le signal vient des navigateurs) ; « couper pendant qu'on répare » (plan 100 000, point 7) reste à faire — une coupure déclenchée par de la télémétrie est un levier de déni de service tant que son seuil n'est pas revu.
+
+## 🎬 CONTRÔLES VIDÉO DE SAFARI — UN BUG DU NAVIGATEUR COMPTÉ COMME LE NÔTRE (2026-11-04)
+
+`ReferenceError: Can't find variable: EmptyRanges`, pile `played@ / syncControl@ / handleEvent@` sans aucune adresse : 9 à 10 erreurs en une seconde sur un seul iPhone, au passage en arrière-plan. Bug de WebKit, pas de PASSIO : les accesseurs `buffered`/`played`/`seekable` de `MediaController.NullMedia` citaient `EmptyRanges` sans le qualifier (bug WebKit 318284, corrigé par le commit `b13f9879ad3c`, référence vérifiée à la source le 2026-11-04).
+
+- **Dégâts** : « Pic d'erreurs » levé par un seul appareil, et les 5 remontées de `client_errors` de la session consommées, donc une vraie erreur suivante perdue.
+- **Correctif** : `estBugVideoSafari` (`js/platform.js`) écarte l'erreur sur des conditions cumulées (nom de la variable, accesseur en tête de pile, aucune adresse dans la source ni dans la pile). `js/telemetry.js` en garde UNE trace par session, `safari_video_controls_bug`, de type `context` : c'est elle qui dira quand le bug disparaît. Sans `platform.js`, tout remonte : le doute ne cache jamais une erreur.
+- **Pilotage** : l'alerte de pic dit le nombre d'appareils, l'erreur dominante et l'écran (`resumerPic`) ; « Réparer » depuis une alerte retrouve le bug groupé, et retombe sur l'événement si le bug a quitté le tampon.
+- **Pas couvert** : aucun test sur un vrai iPhone. Le filtre est éprouvé avec les piles réelles de production dans `tests/unit/bug-video-safari.test.mjs` et `tests/e2e/monitoring-bruit.spec.js`.
