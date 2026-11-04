@@ -7,6 +7,7 @@
 - **Conséquences** :
   - (+) Modèle de sécurité simple, vérifiable en base, indépendant du client.
   - (−) Dépendance à 100 % sur la justesse des policies → audits `rls-audit`, et la livraison realtime cross-compte n'est **prouvable que par les tests multi-comptes**.
+  - (−) **Exception, mesurée le 2026-11-03 (R25)** : Supabase Realtime n'applique PAS la RLS aux DELETE (`realtime.apply_rls`). Tout abonné, visiteur compris, reçoit clé primaire ∩ identité de réplication, et ses filtres s'y essaient. Pour une table publiée, la frontière est donc aussi l'identité de réplication : `rid` opaque, ou table hors publication. Gate : `scripts/audit-identite-replication.js` ; fiche : `docs/journal/capacite-perf-realtime.md`.
   - Interdit désormais : « sécuriser » une donnée uniquement en cachant un bouton ; requêter dans `onAuthStateChange` (deadlock) ; utiliser le global `supabase` au top-level (SDK paresseux `ensureSupabase()`).
 - **Alternatives écartées** : logique d'autorisation côté client (non sûre) ; backend applicatif dédié (over-engineering au stade beta ; Edge Functions réservées à la logique qui ne peut pas être RLS).
 - **Trigger de réexamen** : besoin de logique d'autorisation trop complexe pour la RLS → Edge Functions / couche serveur via nouvel ADR.

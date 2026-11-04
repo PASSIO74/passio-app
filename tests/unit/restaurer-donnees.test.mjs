@@ -59,7 +59,7 @@ test("③ l'INSERT ne nomme QUE les colonnes reçues — les autres prennent leu
   // refuse toute valeur explicite — le journal des migrations tombait entier.
   assert.match(sql, /insert into public\."follows" \("follower_id", "following_id"\) overriding system value select "follower_id", "following_id" from json_populate_recordset/);
   assert.doesNotMatch(sql, /created_at/, "une colonne absente de l'archive ne doit pas être nommée (elle serait posée à NULL)");
-  assert.match(sql, /on conflict do nothing/);
+  assert.match(sql, /on conflict do nothing/, "sans clé primaire connue : l'ancienne clause");
   assert.match(sql, /disable trigger user[\s\S]*enable trigger user/, "triggers utilisateur coupés puis rendus");
   assert.doesNotMatch(sql, /disable trigger all/i, "les contraintes (FK, CHECK) restent actives : jamais TRIGGER ALL");
 });
@@ -286,4 +286,105 @@ test("⑦ bis la comparaison voit une différence rangée sous une clé « __pro
   const b = [JSON.parse('{"id":"a","d":{"__proto__":{"x":2}}}')];
   assert.deepEqual(comparerLignes(a, b, "id").divergentes, ["a"]);
   assert.deepEqual(comparerLignes(a, [JSON.parse('{"id":"a","d":{"__proto__":{"x":1}}}')], "id"), { manquantes: [], divergentes: [], enTrop: [] });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ⑧ VÉRIFICATION FINALE DE R25 (2026-11-04) — un conflit d'unicité qui n'est
+// pas un rejeu se NOMME. `on conflict do nothing` sans cible écartait sans un
+// mot une ligne en conflit sur n'importe quelle contrainte unique (deux `rid`
+// égaux sur `<table>_rid_key`, un pseudonyme déjà pris) : seul l'écart de
+// compte du verdict le disait, sans le pourquoi. Mesuré sur PostgreSQL 16 :
+// avec la clé primaire pour cible, la collision de `rid` lève 23505, le rejeu
+// d'une même clé reste sans effet, et le rejeu ligne à ligne pose la ligne
+// saine en nommant l'autre.
+// ─────────────────────────────────────────────────────────────────────────
+const { clauseConflit, _phases: PH } = R;
+
+test("⑧ la clause de conflit vise la CLÉ PRIMAIRE de la cible, dans l'ordre de l'index (RÉINJECTION : sans cible, un conflit de rid se tait)", () => {
+  assert.equal(clauseConflit(["post_id", "user_id"]), 'on conflict ("post_id", "user_id") do nothing');
+  assert.equal(clauseConflit([]), "on conflict do nothing", "sans clé connue : l'ancienne clause");
+  assert.equal(clauseConflit(undefined), "on conflict do nothing");
+  const a = ordreInsert("post_likes", ["post_id", "user_id", "rid"], "[]", ["post_id", "user_id"]);
+  assert.match(a, /json_populate_recordset\(null::public\."post_likes", \$r\$\[\]\$r\$::json\) on conflict \("post_id", "user_id"\) do nothing;/);
+  assert.doesNotMatch(a, /on conflict do nothing/, "aucune clause sans cible quand la clé est connue");
+  const b = ordreLigneALigne("post_likes", ["post_id", "user_id", "rid"], "[]", ["post_id", "user_id"]);
+  assert.match(b, /json_populate_record\(null::public\."post_likes", e\) on conflict \("post_id", "user_id"\) do nothing;/);
+  assert.match(b, /exception when others then insert into _refus/, "le conflit qui lève est NOMMÉ, ligne par ligne");
+});
+
+/** Un faux monde minimal pour `chargerTable` : l'API de gestion (routée par le SQL) et PostgREST. */
+function mondeChargement({ colonnes, cles, restOk = true }) {
+  const envoye = [];
+  const fetchFn = async (url, init = {}) => {
+    const u = String(url);
+    if (u.endsWith("/database/query")) {
+      const q = JSON.parse(init.body).query;
+      envoye.push(q);
+      const json = (x) => new Response(JSON.stringify(x), { status: 200 });
+      if (/^select table_name t, column_name c from information_schema\.columns/.test(q)) return json(colonnes);
+      if (/where i\.indisprimary/.test(q)) return json(cles);
+      if (/^begin;\nalter table public\."/.test(q)) return json([]);
+      throw new Error("SQL non routé : " + q.slice(0, 60));
+    }
+    if (u.includes("/rest/v1/")) { envoye.push("REST " + u.slice(u.indexOf("/rest/v1/"))); return new Response("", { status: restOk ? 201 : 400 }); }
+    throw new Error("URL non routée : " + u);
+  };
+  return { envoye, fetchFn };
+}
+async function avecFetch(fetchFn, fn) { const vrai = globalThis.fetch; globalThis.fetch = fetchFn; try { return await fn(); } finally { globalThis.fetch = vrai; } }
+function archiveTable(t, lignes) {
+  const d = mkdtempSync(join(tmpdir(), "passio-charge-"));
+  writeFileSync(join(d, `${t}.ndjson`), lignes.map((l) => l + "\n").join(""));
+  return { jeton: "sbp_x", ref: "jetable", url: "https://cible.invalid", cle: "service", archive: d };
+}
+
+test("⑧ bis chargerTable lit la clé primaire de la cible (UNE requête, gardée) et l'envoie aux deux ordres de chargement", async () => {
+  const m = mondeChargement({
+    colonnes: [{ t: "post_likes", c: "post_id" }, { t: "post_likes", c: "user_id" }, { t: "post_likes", c: "rid" }],
+    cles: [{ t: "post_likes", c: "post_id" }, { t: "post_likes", c: "user_id" }],
+  });
+  const ctx = archiveTable("post_likes", ['{"post_id":"p1","user_id":"u1","rid":777}']);
+  const bl = { notes: [], refus: [] };
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx, "post_likes", bl));
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx, "post_likes", bl));
+  assert.equal(m.envoye.filter((q) => /where i\.indisprimary/.test(q)).length, 1, "les clés primaires se lisent une fois par reprise");
+  const chargements = m.envoye.filter((q) => q.startsWith("begin;"));
+  assert.equal(chargements.length, 2);
+  for (const q of chargements) assert.match(q, /on conflict \("post_id", "user_id"\) do nothing;/);
+  assert.deepEqual(bl.refus, []);
+  assert.deepEqual(bl.notes, []);
+});
+
+test("⑧ ter une table SANS clé primaire sur la cible : l'ancienne clause, et le bilan le DIT", async () => {
+  const m = mondeChargement({ colonnes: [{ t: "journal", c: "x" }], cles: [] });
+  const ctx = archiveTable("journal", ['{"x":1}']);
+  const bl = { notes: [], refus: [] };
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx, "journal", bl));
+  assert.match(m.envoye.find((q) => q.startsWith("begin;")), /on conflict do nothing;/);
+  assert.equal(bl.notes.length, 1);
+  assert.match(bl.notes[0], /^journal : aucune clé primaire sur la cible/);
+});
+
+test("⑧ quater une ligne trop grosse passe par PostgREST : le bilan dit que les déclencheurs y sont ACTIFS, et nomme `rid` quand la ligne en porte un (RÉINJECTION : « passée par PostgREST » seul)", async () => {
+  const m = mondeChargement({
+    colonnes: [{ t: "notifications", c: "id" }, { t: "notifications", c: "content" }, { t: "notifications", c: "rid" }],
+    cles: [{ t: "notifications", c: "id" }],
+  });
+  const geante = JSON.stringify({ id: "n1", content: "a".repeat(LOT_OCTETS + 10), rid: 4242 });
+  const ctx = archiveTable("notifications", [geante]);
+  const bl = { notes: [], refus: [] };
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx, "notifications", bl));
+  assert.ok(m.envoye.includes("REST /rest/v1/notifications"), "la ligne géante part par PostgREST");
+  assert.equal(m.envoye.filter((q) => q.startsWith("begin;")).length, 0, "et pas par l'API de gestion");
+  assert.equal(bl.notes.length, 1);
+  assert.match(bl.notes[0], /passée par PostgREST/);
+  assert.match(bl.notes[0], /déclencheurs ACTIFS/);
+  assert.match(bl.notes[0], /`rid`, re-tiré par trg_rid_opaque/);
+  assert.match(bl.notes[0], /la vérification dira la ligne divergente/);
+  // Sans `rid` dans la ligne, la note garde l'avertissement général, sans nommer `rid`.
+  const ctx2 = archiveTable("notifications", [JSON.stringify({ id: "n2", content: "b".repeat(LOT_OCTETS + 10) })]);
+  const bl2 = { notes: [], refus: [] };
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx2, "notifications", bl2));
+  assert.match(bl2.notes[0], /déclencheurs ACTIFS/);
+  assert.doesNotMatch(bl2.notes[0], /trg_rid_opaque/);
 });

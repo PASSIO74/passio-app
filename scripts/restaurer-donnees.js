@@ -416,7 +416,36 @@ async function colonnes(ctx) {
   return ctx._cols;
 }
 
-function ordreInsert(t, cols, json) {
+/** Clé primaire de chaque table sur la CIBLE, colonnes dans l'ordre de l'index — UNE requête pour toutes. */
+async function clesPrimaires(ctx) {
+  if (ctx._pk) return ctx._pk;
+  const l = await sql(ctx, `select c.relname t, a.attname c
+  from pg_index i
+  join pg_class c on c.oid = i.indrelid and c.relnamespace = 'public'::regnamespace
+  join lateral unnest(i.indkey::int2[]) with ordinality k(attnum, rang) on true
+  join pg_attribute a on a.attrelid = c.oid and a.attnum = k.attnum
+ where i.indisprimary
+ order by c.relname, k.rang`);
+  ctx._pk = new Map();
+  for (const x of l) { if (!ctx._pk.has(x.t)) ctx._pk.set(x.t, []); ctx._pk.get(x.t).push(x.c); }
+  return ctx._pk;
+}
+
+/**
+ * La clause de conflit d'un chargement. ⚠️ AVEC SA CIBLE (vérification finale
+ * de R25, 2026-11-04) : sans cible, `on conflict do nothing` écartait sans un
+ * mot une ligne en conflit sur N'IMPORTE QUELLE contrainte unique — deux `rid`
+ * égaux (`<table>_rid_key`), un pseudonyme déjà pris — et seul l'écart de
+ * compte du verdict le disait, sans dire pourquoi. La clé primaire pour cible
+ * garde le rejeu (une ligne déjà là, même clé, est laissée telle quelle) ; tout
+ * AUTRE conflit lève (23505) : le lot est rejoué ligne à ligne et le refus est
+ * NOMMÉ au bilan. Sans clé primaire connue, l'ancienne clause, et une note.
+ */
+function clauseConflit(cle) {
+  return cle && cle.length ? `on conflict (${cle.map((x) => `"${x}"`).join(", ")}) do nothing` : "on conflict do nothing";
+}
+
+function ordreInsert(t, cols, json, cle = []) {
   // ⚠️ LA LISTE DE COLONNES EST EXPLICITE, et c'est une leçon de l'exercice
   // (2026-09-14) : `insert … select * from json_populate_recordset` pose NULL
   // sur toute colonne ABSENTE du JSON — donc une colonne ajoutée APRÈS
@@ -424,8 +453,9 @@ function ordreInsert(t, cols, json) {
   // n'obtient jamais son DEFAULT et l'insertion tombe sur NOT NULL. On ne
   // nomme que les colonnes que l'archive porte ET que la cible connaît : les
   // autres prennent leur défaut, comme à l'écriture d'origine.
-  // `on conflict do nothing` : rejouable (toute table du manifeste a une clé
-  // primaire — c'est le discriminant qui l'a fait entrer dans l'archive).
+  // `on conflict (<clé primaire>) do nothing` : rejouable (toute table du
+  // manifeste a une clé primaire — c'est le discriminant qui l'a fait entrer
+  // dans l'archive). Pourquoi la cible : `clauseConflit` ci-dessus.
   // ⚠️ `overriding system value` (exercice du 2026-09-15) : une colonne
   // d'identité `generated always` (`migrations_appliquees.id`) REFUSE toute
   // valeur explicite — les quatre lignes du journal tombaient, nommées dans le
@@ -433,12 +463,12 @@ function ordreInsert(t, cols, json) {
   const c = cols.map((x) => `"${x}"`).join(", ");
   return `begin;
 alter table public."${t}" disable trigger user;
-insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_recordset(null::public."${t}", ${litteral(json)}::json) on conflict do nothing;
+insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_recordset(null::public."${t}", ${litteral(json)}::json) ${clauseConflit(cle)};
 alter table public."${t}" enable trigger user;
 commit;`;
 }
 
-function ordreLigneALigne(t, cols, json) {
+function ordreLigneALigne(t, cols, json, cle = []) {
   const c = cols.map((x) => `"${x}"`).join(", ");
   return `begin;
 alter table public."${t}" disable trigger user;
@@ -446,7 +476,7 @@ create temp table _refus (motif text) on commit drop;
 do $$ declare e json; begin
   for e in select * from json_array_elements(${litteral(json)}::json) loop
     begin
-      insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_record(null::public."${t}", e) on conflict do nothing;
+      insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_record(null::public."${t}", e) ${clauseConflit(cle)};
     exception when others then insert into _refus values (left(sqlerrm, 160)); end;
   end loop;
 end $$;
@@ -472,23 +502,32 @@ async function chargerTable(ctx, t, bilan) {
   const cols = [...cles].filter((k) => presentes.has(k));
   const ignorees = [...cles].filter((k) => !presentes.has(k));
   if (ignorees.length) bilan.notes.push(`${t} : colonne(s) de l'archive inconnue(s) de la cible, ignorée(s) : ${ignorees.join(", ")}`);
+  const pk = (await clesPrimaires(ctx)).get(t) || [];
+  if (!pk.length) bilan.notes.push(`${t} : aucune clé primaire sur la cible — un conflit d'unicité y écarte une ligne sans la nommer`);
   for (const paquet of paquets) {
     // Un lot d'UNE ligne plus grosse que le plafond de l'API de gestion
     // (mesuré : 4,8 Mo pour un seul `user_state`) part par PostgREST —
-    // triggers ACTIFS sur ce chemin-là, c'est écrit dans le bilan.
+    // déclencheurs ACTIFS sur ce chemin-là, et le bilan le dit AVEC SON EFFET :
+    // une colonne qu'un déclencheur pose (`rid` re-tiré par `trg_rid_opaque`
+    // depuis R25, `created_at` d'une notification par `rate_limit_insert`) n'a
+    // plus la valeur de l'archive, et la vérification dira la ligne divergente.
     if (paquet.length === 1 && paquet[0].length > LOT_OCTETS) {
-      try { await insererParRest(ctx, t, paquet[0]); bilan.notes.push(`${t} : 1 ligne de ${Math.round(paquet[0].length / 1024)} Ko passée par PostgREST (trop grosse pour l'API de gestion)`); }
+      const aRid = Object.prototype.hasOwnProperty.call(JSON.parse(paquet[0]), "rid");
+      try {
+        await insererParRest(ctx, t, paquet[0]);
+        bilan.notes.push(`${t} : 1 ligne de ${Math.round(paquet[0].length / 1024)} Ko passée par PostgREST (trop grosse pour l'API de gestion) — déclencheurs ACTIFS sur ce chemin : une colonne posée par un déclencheur${aRid ? " (`rid`, re-tiré par trg_rid_opaque)" : ""} diffère de l'archive, et la vérification dira la ligne divergente`);
+      }
       catch (e) { bilan.refus.push(`${t} : ${e.message}`); }
       continue;
     }
-    try { await sql(ctx, ordreInsert(t, cols, "[" + paquet.join(",") + "]")); }
+    try { await sql(ctx, ordreInsert(t, cols, "[" + paquet.join(",") + "]", pk)); }
     catch (e) {
       // Le lot est atomique : UNE ligne refusée (clé étrangère vers une ligne
       // absente, contrainte ajoutée après l'archive) faisait tomber tout le
       // lot. On le rejoue ligne à ligne DANS LA BASE (un seul aller-retour :
       // l'API de gestion plafonne les appels) pour poser ce qui se pose et
       // NOMMER ce qui ne se pose pas — c'est le refus qui est l'information.
-      const motifs = await sql(ctx, ordreLigneALigne(t, cols, "[" + paquet.join(",") + "]"));
+      const motifs = await sql(ctx, ordreLigneALigne(t, cols, "[" + paquet.join(",") + "]", pk));
       for (const m of motifs) bilan.refus.push(`${t} : ${m.n} ligne(s) refusée(s) — ${m.motif}`);
     }
   }
@@ -933,8 +972,8 @@ async function purger(ctx) {
 // `_phases` : les VRAIES fonctions de phase, pour les tests d'intégration
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
-module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible } };
+module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
+  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible, chargerTable, clesPrimaires } };
 if (require.main === module) (async () => {
   // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
   // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :

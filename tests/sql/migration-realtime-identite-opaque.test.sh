@@ -1541,22 +1541,33 @@ verifier "INSERT du client sans rid (V aime de nouveau) : accepté, rid posé pa
   "$(AUTH "$V" "insert into public.post_likes (post_id, user_id) values ('p_prive', '$V') returning rid is not null;")"
 verifier "aucune séquence ne numérote rid (ni identité, ni serial), sur les quatre tables" "0" \
   "$(Q "select count(*) from unnest(array['conv_members', 'notifications', 'conv_reads', 'post_likes']) t where pg_get_serial_sequence('public.' || t, 'rid') is not null;")"
-# Le chemin de scripts/restaurer-donnees.js (ordreInsert), à l'identique :
-# déclencheurs utilisateur coupés, colonnes NOMMÉES (celles que l'archive
-# porte), overriding system value, on conflict do nothing.
-RESTAURER() { Q "begin; alter table public.post_likes disable trigger user;
-   insert into public.post_likes ($1) overriding system value select $1 from json_populate_recordset(null::public.post_likes, '$2'::json) on conflict do nothing;
-   alter table public.post_likes enable trigger user; commit;" >/dev/null; }
-RESTAURER "post_id, user_id, rid" "[{\"post_id\":\"p_public\",\"user_id\":\"$A\",\"rid\":900001}]"
+# Le chemin de scripts/restaurer-donnees.js, ENGENDRÉ par le module lui-même
+# (`ordreInsert`, clé primaire de la cible pour cible du conflit) : il ne peut
+# plus dériver d'une recopie. Déclencheurs utilisateur coupés, colonnes NOMMÉES
+# (celles que l'archive porte), overriding system value,
+# on conflict (post_id, user_id) do nothing.
+ORDRE_RESTAURER() { node -e 'process.stdout.write(require(process.argv[1]).ordreInsert("post_likes", process.argv[2].split(", "), process.argv[3], ["post_id", "user_id"]))' \
+  "$RACINE/scripts/restaurer-donnees.js" "$1" "$2"; }
+RESTAURER() { psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -v ON_ERROR_STOP=1 -c "$(ORDRE_RESTAURER "$1" "$2")" 2>&1; }
+contient "l'ordre de chargement du module vise la clé primaire de post_likes" 'on conflict ("post_id", "user_id") do nothing' \
+  "$(ORDRE_RESTAURER "post_id, user_id" "[]")"
+RESTAURER "post_id, user_id, rid" "[{\"post_id\":\"p_public\",\"user_id\":\"$A\",\"rid\":900001}]" >/dev/null
 verifier "restauration (déclencheurs coupés, overriding system value — inerte sans identité) : le rid de l'archive est GARDÉ" "900001" \
   "$(Q "select rid from public.post_likes where post_id = 'p_public' and user_id = '$A';")"
-RESTAURER "post_id, user_id" "[{\"post_id\":\"p_prive\",\"user_id\":\"$A\"}]"
+RESTAURER "post_id, user_id" "[{\"post_id\":\"p_prive\",\"user_id\":\"$A\"}]" >/dev/null
 verifier "…une archive d'avant R25 (sans rid) : le défaut en tire un, aléatoire" "t" \
   "$(Q "select rid > 1000000 and rid <> 900001 and rid <= 9007199254740991 from public.post_likes where post_id = 'p_prive' and user_id = '$A';")"
 rid_like_x="$(Q "select rid from public.post_likes where post_id = 'p_public' and user_id = '$X';" || true)"
-RESTAURER "post_id, user_id, rid" "[{\"post_id\":\"p_prive\",\"user_id\":\"$ORGA\",\"rid\":${rid_like_x:-0}}]"
-verifier "…un rid d'archive déjà pris : la ligne est écartée (on conflict do nothing), sans erreur — l'unicité tient" "0|t" \
+# ⚠️ Vérification finale de R25 (2026-11-04) : sans cible, `on conflict do
+# nothing` ÉCARTAIT cette ligne sans un mot, et seul l'écart de compte du
+# verdict le disait. Avec la clé primaire pour cible, le conflit de `rid` LÈVE :
+# restaurer-donnees.js rejoue alors le lot ligne à ligne et NOMME le refus.
+contient "…un rid d'archive déjà pris : le chargement LÈVE sur post_likes_rid_key (23505), il ne se tait plus" "post_likes_rid_key" \
+  "$(RESTAURER "post_id, user_id, rid" "[{\"post_id\":\"p_prive\",\"user_id\":\"$ORGA\",\"rid\":${rid_like_x:-0}}]")"
+verifier "…la ligne n'est pas posée, et l'unicité tient" "0|t" \
   "$(Q "select count(*) from public.post_likes where post_id = 'p_prive' and user_id = '$ORGA';")|$(Q "select count(*) = count(distinct rid) from public.post_likes;")"
+verifier "…le REJEU d'une ligne déjà là (même clé primaire) reste sans effet ni erreur : son rid ne bouge pas" "|900001" \
+  "$(RESTAURER "post_id, user_id, rid" "[{\"post_id\":\"p_public\",\"user_id\":\"$A\",\"rid\":123}]")|$(Q "select rid from public.post_likes where post_id = 'p_public' and user_id = '$A';")"
 verifier "…et l'étape « séquences » du script (nextval ou identité) ne trouve rien à recaler pour rid" "0" \
   "$(Q "select count(*) from information_schema.columns c where c.table_schema = 'public' and c.column_name = 'rid' and (c.column_default like 'nextval%' or c.is_identity = 'YES');")"
 verifier "INSERT d'administration avec un rid explicite DÉJÀ PRIS, déclencheurs actifs : accepté, rid NEUF (la valeur fournie est ignorée)" "t|1" \

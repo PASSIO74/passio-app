@@ -117,10 +117,14 @@ ni les migrations, ni les purges, ni la restauration. Il ne remplace donc pas le
 `docs/APPLIQUER_MIGRATION_PASSIONS.md` — délibérément refusé, parce qu'il
 donnerait à la CI le pouvoir d'écrire la structure de la production.
 
-**Substitut hors ligne, à privilégier même quand un canal est ouvert.** Pour
-« quelles colonnes existent vraiment ? », `migrations/SCHEMA_PROD_REFERENCE.sql`
-est la photographie de la structure **réelle** de la production, faite
-exactement pour répondre sans réseau. Ne jamais répondre depuis les
+**Substitut hors ligne, SEULEMENT quand aucun canal n'est ouvert, et en disant
+sa date.** Pour « quelles colonnes existent vraiment ? »,
+`migrations/SCHEMA_PROD_REFERENCE.sql` est une photographie de la structure
+**réelle** de la production, faite pour répondre sans réseau. ⚠️ Elle date du
+2026-08-17 : elle ne porte aucune migration postérieure (R5, C-03, R24, R25…),
+ni l'identité de réplication, ni le corps des déclencheurs, et son générateur
+(`scripts/schema-baseline.js`) passe par la CLI retirée. La structure
+courante se lit au canal ① (amendé le 2026-11-04, vérification finale de R25). Ne jamais répondre depuis les
 `migrations/*.sql` seuls : le dépôt n'est pas la source de vérité.
 
 ## Alternatives écartées

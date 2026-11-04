@@ -186,7 +186,9 @@ for (const [t, fichiers] of abonnees) {
       `souscription à « ${t} » (${[...fichiers].join(", ")}) mais la table n'est PAS publiée.\n` +
       `      → elle ne recevra JAMAIS d'événement, et rien ne le dira — ni les AUTRES\n` +
       `        liaisons de son canal : Realtime les crée en une transaction, annulée entière.\n` +
-      `      → republier : alter publication supabase_realtime add table public.${t};\n` +
+      `      → AVANT de republier : un DELETE publié part à TOUT abonné, sans RLS (R25). Si la clé\n` +
+      `        primaire de « ${t} » dit qui ou quoi : identité \`rid\` opaque (skill migration), ou retirer la liaison.\n` +
+      `      → sinon : alter publication supabase_realtime add table public.${t};\n` +
       `      → puis l'ajouter à scripts/realtime-publication.json`
     );
   }
