@@ -33,8 +33,8 @@
 - 🎞️ « PIC D'ERREURS » — LE DÉFAUT ÉTAIT DANS SAFARI, ET LA SURVEILLANCE NE SAVAIT PAS LE DIRE (2026-11-04)
 - 🎯 DEUX BESOINS, UN ÉCRAN, UN BOUTON PAR PROBLÈME (2026-11-04)
 - 🔑 LE VOYANT FIGÉ AU ROUGE ET LE JETON GITHUB QUI EXPIRE EN SILENCE (2026-11-04)
-- 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
 - 🚦 LE VERROU ÉVINÇAIT `main` — UN PUSH DE PR FAISAIT SAUTER LE DÉPLOIEMENT (2026-11-04)
+- 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
 
 ---
 
@@ -553,30 +553,6 @@ Alerte `spike` du 03/11 à 20:46 UTC. La fiche « Réparer » ne disait que « 6
 - **Reste humain, délibérément** : renouveler le jeton. Aucune machine ne crée de jeton ni n'en colle un. ✅ Fait par Benjamin le 04/11 (366 jours) : plus aucune lecture incomplète depuis 13 h 05 UTC, voyant revenu au vert à 13 h 10 UTC, après sept jours sans un seul vert noté. ⚠️ Ses droits d'écriture n'ont pas encore servi : le premier vrai « Régler » les prouvera, et un refus dit quel droit donner (`refusDroit`).
 - **Verrous** : `tests/unit/pilotage.test.mjs` ㊾ ㊿ ㉛bis, `tests/e2e/pilotage-nuage.spec.js` ㉝.
 
-## 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
-
-Trouvé en livrant #699 (fiche « PIC D'ERREURS »). `scripts/build.js` calculait `buildId` à son étape 3, avant que l'étape 4 n'inline les `<script src="js/…">`. Le commentaire de l'étape suivante affirmait pourtant : « une modif réelle change cet identifiant ».
-
-- **Mesuré** : les 36 scripts inlinés étaient hors du calcul, pas seulement `platform.js` et `telemetry.js` : `first-run.js`, `pwa-detect.js`, `release-guard.js`, `passions-flat*`, tous les `ui-v*`. #699 en a changé deux et la production a gardé `a191f756f06d`, le `buildId` de #696. `index.html` passant par le réseau d'abord, l'application ouverte recevait quand même ces scripts à son prochain chargement. C'est la mise à jour silencieuse qui n'avait pas lieu.
-- **Effet, en navigateur réel** : deux artefacts, le vrai worker, une page déjà contrôlée, `reg.update()` comme le fait `majSilencieuse`. Résultat identique sous Chromium et sous le WebKit de Playwright (pas un iPhone).
-
-| Différence entre A et B | `buildId` | Décalage vu par `release-guard` | Worker réinstallé | Page rechargée seule |
-|---|---|---|---|---|
-| Ancien build, `platform.js` seul | identique | non | non | non |
-| Nouveau build, `platform.js` seul | change | oui | oui | oui, sur le code de B |
-| Nouveau build, `release-guard.js` seul | change | oui | oui | oui, sur le code de B |
-| Nouveau build, `ui-v2-shell.js` seul | change | oui | oui | oui, sur le code de B |
-| Nouveau build, commit seul | identique | non | non | non |
-
-- **Correctif** : le HTML est coupé devant `telemetry.js`, chaque morceau est inliné, `buildId` est calculé sur les deux morceaux, `app.js` et le CSS, puis le contrat et la cible Supabase sont posés entre les deux. Le calcul ne peut donc pas lire ce qu'il produit, et aucune marque n'est à remplacer dans le texte des scripts. Comparé à l'ancien build dans trois configurations (sans variable, `COMMIT_REF`, cible staging), l'artefact a les mêmes octets une fois le `buildId` substitué (hors le commentaire d'en-tête de `sw.js`, corrigé par ce lot).
-- ⚠️ **Le commit et la cible restent hors du calcul, et c'est le point le plus important** : `reloadOnce` (`pwa-detect.js`) recharge les pages contrôlées à chaque changement de worker. Avec le commit dans le calcul, un commit de documentation rechargerait toutes les pages ouvertes.
-- ⚠️ **Ce que coûte un `buildId` qui change plus souvent** : sur les 436 commits de `main` depuis le 20/08, classés par chemins avec l'`index.html` de chaque commit, il changeait 240 fois et changerait 256 fois (+16, +6,7 %), dont 7 pour `telemetry.js`. Chaque changement réinstalle le worker, efface les anciens caches, recharge les pages visibles sous 60 s et affiche le toast « Mise à jour disponible ». `reloadOnce` ne regarde ni une saisie ni un appel en cours : c'est antérieur à ce lot, et ce lot l'étend à ces 6,7 %.
-- **Lecteurs du `buildId`, rien à changer** : `release-recorder.js` et `public-release-evidence.js` ne le comparent que si le manifeste local porte le commit attendu ; un build du poste porte `commit: null` et n'attend aucun `buildId`. `telemetry.js` et `idb-store.js` lisent le commit d'abord, `b<buildId>` seulement sans commit. `rollback-netlify.mjs` et `controle-cible-pilote.mjs` ne font que l'afficher. `version_skew` part maintenant aussi pour ces versions : le moteur d'anomalies (`anomaly-engine.js`, lu par `release-guardian.js`) le voit comme après n'importe quel autre déploiement. `pwa-maj-silencieuse.spec.js` travaille sur un faux conteneur et ne voit pas le `buildId`.
-- ⚠️ **Hors du calcul, délibérément** : `sw.js` (ses octets suffisent à le réinstaller, fiche UXO-11), `data/*.json` (URL en `?r=<commit>`), `js/vendor/*` (nom de fichier versionné, loaders inlinés), `pilotage/` (page autonome), `manifest.json` et les icônes.
-- **Verrou** : `tests/unit/build-id.test.mjs` (6) exécute le vrai `scripts/build.js` avec un `fs` en mémoire, en moins de 2 s (47 builds sur le disque prenaient 148 s sur le poste chargé). La liste des scripts vient de l'artefact, pas d'une liste écrite à la main ; ⑥ compare à un vrai build sur le disque.
-- **Mutations** : défaut d'origine remis → ① rouge, 36 scripts nommés ; scripts de tête seuls comptés → 32 ; scripts d'après le contrat seuls → 4 ; liste écrite à la main (`platform` + `telemetry`) → 34 ; gardes oubliés → 2 ; commit, date ou cible dans le calcul → ④ ; worker sous un autre identifiant → ① ⑤ ⑥ ; contrat après `telemetry.js` → ⑤ ; banc à liste vide → ② ; `fs` qui ment → ① ③ ⑥ ; mutation jamais appliquée → ① ③. Deux restent vertes, à raison : retirer `app.js` ou le CSS du calcul ne change rien, leur hash `?v=` est déjà dans le HTML.
-- **Non vérifié** : aucun iPhone réel. Le chemin « worker réinstallé → page rechargée » reste un contrôle ponctuel hors suite : `pwa-premiere-installation.spec.js` ne couvre que les pages sans contrôleur.
-
 ## 🚦 LE VERROU ÉVINÇAIT `main` — UN PUSH DE PR FAISAIT SAUTER LE DÉPLOIEMENT (2026-11-04)
 
 Trouvé en finalisant une dizaine de PR. Le groupe `passio-e2e-prod` ne gardait qu'un job en attente : tout nouvel entrant annulait celui qui patientait, y compris la suite production d'un run de `main`. `smoke` passait rouge et `deploy` était sauté, alors que le code était vert.
@@ -605,4 +581,32 @@ Trouvé en finalisant une dizaine de PR. Le groupe `passio-e2e-prod` ne gardait 
 - ⚠️ `queue: max` avec `cancel-in-progress: true` est une erreur de validation : GitHub refuse le workflow entier. Une fois sur `main`, cette combinaison empêcherait donc tout déploiement.
 - **Verrou** : `tests/unit/verrou-comptes-reels.test.mjs` lit tous les workflows, y compris un futur quatrième entrant. Un fichier que le lecteur YAML refuse n'est toléré que s'il ne nomme ni le verrou ni le marqueur `PASSIO_E2E_PROD`.
 - **Mutations**, rejouées par le test sur le texte réel, chacune rouge en nommant l'entrant : clé retirée sur chacun des trois ; groupe par déclencheur ; `cancel-in-progress: true` ; sortie du verrou avec purge conservée ; marqueur posé sur `test-local` ; bloc écrit en flux ; groupe du run rendu constant ; `queue: max` au niveau du run ; `test-prod` retiré de `deploy` ou de `smoke`. Avant le correctif, le test rougissait sur les trois entrants.
-- **Non vérifié** : le banc utilise ses propres groupes et ne touche jamais `passio-e2e-prod`. Le correctif ne se verra en vraie contention qu'après la fusion, au prochain run de `main` qui attend pendant qu'une PR pousse. Il devra rester au vert sans relance ; `conclusion: cancelled` sur son job « Suites production » contredirait cette fiche. La limite des 100 places n'a pas été éprouvée.
+- **Vu sur le vrai groupe, sur cette PR** : le 04/11 à 13:43 UTC, `health` et `test-prod` y sont entrés pendant qu'une autre PR tenait le verrou. Ils ont attendu tous les deux, sans annulation ni chevauchement : 13:41 → 13:45, puis 13:45 → 13:48, puis 13:48 → 13:54.
+- ⚠️ **Deux pièges de cette livraison, sans rapport avec la clé** :
+  - une migration qui retire une table de la publication, appliquée au staging (#689, 13:38:28 UTC), fait perdre tout le direct de `realtime:db` à un client qui écoute encore cette table. Les deux runs de cette PR sans le client de #689 ont rougi sur `multi-comptes.spec.js:154`, trois essais sur trois ; ceux qui le contenaient, lus le même jour, sont restés verts. Un push sur `main` aurait vu son déploiement sauté. La règle ④ de `appliquer-migration.mjs` ne garde que la production ;
+  - pour relancer une PR sur le `main` à jour, `gh run rerun` garde l'ancien merge-ref, et le run d'un `reopened` peut l'extraire lui aussi : celui de 14:19 a pris `36c2357`, alors que GitHub affichait le nouveau une seconde après. Vérifier `merge_commit_sha` et ses parents avant de rouvrir, puis `HEAD is now at` dans le journal du job. La fermeture efface aussi l'auto-fusion.
+- **Non vérifié** : le cas d'origine, un run de `main` qui attend pendant qu'une PR pousse, ne se verra qu'après la fusion. Il devra rester au vert sans relance ; `conclusion: cancelled` sur son job « Suites production » contredirait cette fiche. La limite des 100 places n'a pas été éprouvée.
+
+## 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
+
+Trouvé en livrant #699 (fiche « PIC D'ERREURS »). `scripts/build.js` calculait `buildId` à son étape 3, avant que l'étape 4 n'inline les `<script src="js/…">`. Le commentaire de l'étape suivante affirmait pourtant : « une modif réelle change cet identifiant ».
+
+- **Mesuré** : les 36 scripts inlinés étaient hors du calcul, pas seulement `platform.js` et `telemetry.js` : `first-run.js`, `pwa-detect.js`, `release-guard.js`, `passions-flat*`, tous les `ui-v*`. #699 en a changé deux et la production a gardé `a191f756f06d`, le `buildId` de #696. `index.html` passant par le réseau d'abord, l'application ouverte recevait quand même ces scripts à son prochain chargement. C'est la mise à jour silencieuse qui n'avait pas lieu.
+- **Effet, en navigateur réel** : deux artefacts, le vrai worker, une page déjà contrôlée, `reg.update()` comme le fait `majSilencieuse`. Résultat identique sous Chromium et sous le WebKit de Playwright (pas un iPhone).
+
+| Différence entre A et B | `buildId` | Décalage vu par `release-guard` | Worker réinstallé | Page rechargée seule |
+|---|---|---|---|---|
+| Ancien build, `platform.js` seul | identique | non | non | non |
+| Nouveau build, `platform.js` seul | change | oui | oui | oui, sur le code de B |
+| Nouveau build, `release-guard.js` seul | change | oui | oui | oui, sur le code de B |
+| Nouveau build, `ui-v2-shell.js` seul | change | oui | oui | oui, sur le code de B |
+| Nouveau build, commit seul | identique | non | non | non |
+
+- **Correctif** : le HTML est coupé devant `telemetry.js`, chaque morceau est inliné, `buildId` est calculé sur les deux morceaux, `app.js` et le CSS, puis le contrat et la cible Supabase sont posés entre les deux. Le calcul ne peut donc pas lire ce qu'il produit, et aucune marque n'est à remplacer dans le texte des scripts. Comparé à l'ancien build dans trois configurations (sans variable, `COMMIT_REF`, cible staging), l'artefact a les mêmes octets une fois le `buildId` substitué (hors le commentaire d'en-tête de `sw.js`, corrigé par ce lot).
+- ⚠️ **Le commit et la cible restent hors du calcul, et c'est le point le plus important** : `reloadOnce` (`pwa-detect.js`) recharge les pages contrôlées à chaque changement de worker. Avec le commit dans le calcul, un commit de documentation rechargerait toutes les pages ouvertes.
+- ⚠️ **Ce que coûte un `buildId` qui change plus souvent** : sur les 436 commits de `main` depuis le 20/08, classés par chemins avec l'`index.html` de chaque commit, il changeait 240 fois et changerait 256 fois (+16, +6,7 %), dont 7 pour `telemetry.js`. Chaque changement réinstalle le worker, efface les anciens caches, recharge les pages visibles sous 60 s et affiche le toast « Mise à jour disponible ». `reloadOnce` ne regarde ni une saisie ni un appel en cours : c'est antérieur à ce lot, et ce lot l'étend à ces 6,7 %.
+- **Lecteurs du `buildId`, rien à changer** : `release-recorder.js` et `public-release-evidence.js` ne le comparent que si le manifeste local porte le commit attendu ; un build du poste porte `commit: null` et n'attend aucun `buildId`. `telemetry.js` et `idb-store.js` lisent le commit d'abord, `b<buildId>` seulement sans commit. `rollback-netlify.mjs` et `controle-cible-pilote.mjs` ne font que l'afficher. `version_skew` part maintenant aussi pour ces versions : le moteur d'anomalies (`anomaly-engine.js`, lu par `release-guardian.js`) le voit comme après n'importe quel autre déploiement. `pwa-maj-silencieuse.spec.js` travaille sur un faux conteneur et ne voit pas le `buildId`.
+- ⚠️ **Hors du calcul, délibérément** : `sw.js` (ses octets suffisent à le réinstaller, fiche UXO-11), `data/*.json` (URL en `?r=<commit>`), `js/vendor/*` (nom de fichier versionné, loaders inlinés), `pilotage/` (page autonome), `manifest.json` et les icônes.
+- **Verrou** : `tests/unit/build-id.test.mjs` (6) exécute le vrai `scripts/build.js` avec un `fs` en mémoire, en moins de 2 s (47 builds sur le disque prenaient 148 s sur le poste chargé). La liste des scripts vient de l'artefact, pas d'une liste écrite à la main ; ⑥ compare à un vrai build sur le disque.
+- **Mutations** : défaut d'origine remis → ① rouge, 36 scripts nommés ; scripts de tête seuls comptés → 32 ; scripts d'après le contrat seuls → 4 ; liste écrite à la main (`platform` + `telemetry`) → 34 ; gardes oubliés → 2 ; commit, date ou cible dans le calcul → ④ ; worker sous un autre identifiant → ① ⑤ ⑥ ; contrat après `telemetry.js` → ⑤ ; banc à liste vide → ② ; `fs` qui ment → ① ③ ⑥ ; mutation jamais appliquée → ① ③. Deux restent vertes, à raison : retirer `app.js` ou le CSS du calcul ne change rien, leur hash `?v=` est déjà dans le HTML.
+- **Non vérifié** : aucun iPhone réel. Le chemin « worker réinstallé → page rechargée » reste un contrôle ponctuel hors suite : `pwa-premiere-installation.spec.js` ne couvre que les pages sans contrôleur.
