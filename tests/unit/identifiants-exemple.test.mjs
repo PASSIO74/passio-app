@@ -22,6 +22,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
+import { EXPRESSION_EXEMPLE } from "../../supabase/functions/_shared/purge-compte.js";
 
 const MIGRATION = "migrations/migration_publications_supprimees_2026-11-04.sql";
 const sql = fs.readFileSync(MIGRATION, "utf8");
@@ -141,4 +142,15 @@ test("④ les représentants que le verdict éprouve existent dans le seed — e
   // L'ancien carnet d'exemple n'est plus fabriqué : il n'est plus un exemple (ses lignes ne sont lisibles que par leur auteur).
   assert.equal([...posts].some((id) => id.startsWith("p_vlog_")), false, "le client fabrique de nouveau des p_vlog_ : les rendre exemples");
   assert.equal(re.test("p_vlog_marrakech"), false);
+});
+
+test("⑤ la purge de compte reconnaît les mêmes exemples que la base, et le même format de commentaire réel", () => {
+  assert.equal(EXPRESSION_EXEMPLE.source, expressionExemples().source, "purge-compte.js et est_identifiant_exemple ont divergé");
+  assert.ok(sql.includes("s.id ~ '^c_[0-9a-z]{8,17}$'"), "le déclencheur des commentaires garde ce format");
+  const reel = /^c_[0-9a-z]{8,17}$/;
+  const uid = uidDuClient();
+  for (let i = 0; i < 200; i++) assert.match("c_" + uid(), reel, "un commentaire réel du client doit passer");
+  for (const demo of ["c1", "c12a", "cp1_1", "cp_ev2_e9_0", "comment_reel_seed_cuisine_1_0", "ecdemo_e1_0", "c_ev_12"]) {
+    assert.doesNotMatch(demo, reel, demo + " est un commentaire de démonstration");
+  }
 });

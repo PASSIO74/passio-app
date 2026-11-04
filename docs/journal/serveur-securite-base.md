@@ -1110,8 +1110,8 @@ d'attestation ignore (elle normalise) mais que `prosrc` garde. Ici : aucun `\r`,
 
 Risque résiduel R31 de l'audit du 2026-11-02 (trouvé par la contre-revue finale de R25, confirmé sur deux bancs aux corps
 et policies de production), fermé par `migrations/migration_publications_supprimees_2026-11-04.sql` — banc
-`tests/sql/migration-publications-supprimees.test.sh` (64 contrôles), unitaires `tests/unit/identifiants-exemple.test.mjs`
-(4) et `tests/unit/purge-compte.test.mjs` R31 ①–⑧. **Serveur seul : le client ne change pas** — `deletePost` garde son
+`tests/sql/migration-publications-supprimees.test.sh`, unitaires `tests/unit/identifiants-exemple.test.mjs`
+(5) et `tests/unit/purge-compte.test.mjs` R31 ①–⑮. **Serveur seul : le client ne change pas** — `deletePost` garde son
 DELETE vérifié par relecture, et sa confirmation « Le post et ses commentaires seront supprimés » devient vraie.
 
 **Le défaut.** Aucune clé étrangère ne relie `post_comments`, `post_likes`, `comment_interactions` à `posts` ; `deletePost`
@@ -1168,6 +1168,20 @@ d'application de la migration (avant elle, c'est le seul filet). ⚠️ **La bar
 DU compte** : un tiers qui commente pendant la purge laisse une ligne tardive, réeffacée une fois (R31 ④ du test). Une
 liste illisible est un échec nommé, jamais « rien à faire ». Ce n'est pas l'export : ces lignes sont les données d'autrui.
 
+**⑥ Un identifiant CHOISI n'efface rien d'autrui (relecture de la PR, 04/11).** Le client choisit l'identifiant de ce qu'il
+crée, et un déclencheur SECURITY DEFINER, comme la purge à la clé de service, efface pour tout le monde. La première version
+s'y fiait : publier sous l'identifiant d'une activité ou d'un exemple puis supprimer emportait leur fil ; commenter sous
+l'identifiant d'une publication, d'une réponse (`srep_…`) ou d'un commentaire d'exemple puis supprimer emportait les
+réactions de l'original. Trois règles, aux DEUX endroits (déclencheurs et `purge-compte.js`) :
+- une publication homonyme d'une activité, ou au format d'un exemple, n'emporte rien ;
+- une interaction n'appartient qu'à son FIL : la cible seule ne vaut que sans fil, et un commentaire n'emporte que le sien ;
+- un commentaire n'emporte rien s'il porte le nom d'une publication, d'un commentaire d'activité, d'un exemple ou d'une
+  réponse ; dans un fil d'exemple, seul un `c_<uid>` compte (`c1`, `cp1_1`… sont ceux de démonstration).
+La purge de compte ajoute une borne : un identifiant de plus de 120 caractères ou hors du jeu que le client fabrique n'entre
+dans AUCUN filtre (`cribler`, compté dans `dependances.ecartes`, jamais répété). Mesuré le 04/11 : 0 homonyme, 0 interaction
+dont le fil contredit la cible, 31 caractères au plus. ⚠️ Le format d'un commentaire réel fait 19 caractères (`c_` + 17) : le
+test ⑤ a rejeté une première expression trop courte, en tirant de vrais `uid()`.
+
 **Pièges du lot.**
 - **Un verdict qui mesure la RLS doit la mesurer SOUS LE RÔLE.** Le bloc ④ lit sous `anon` et `authenticated`
   (`set local role` dans le DO, possible parce que `postgres` en est membre — mesuré, `pg_auth_members`) et supprime par
@@ -1186,7 +1200,8 @@ n'est lisible que par son auteur, sauf si quelqu'un recrée une publication SOUS
 Proposition : `post_is_visible(post_id)` / `comment_target_visible(comment_id, post_id)` dans le WITH CHECK des trois
 INSERT. Les réactions aux réponses d'un commentaire supprimé restent dans le public de leur publication (affichées nulle
 part, effacées avec elle). Un commentaire d'activité supprimé garde ses interactions (contenu public). TRUNCATE ne déclenche
-pas DELETE.
+pas DELETE. `comment_likes` n'entre pas dans ce lot, décision prise : le client ne l'écrit que pour les commentaires d'activité
+et de carnet (publics par conception), et aucune de ses 3 lignes ne vise un commentaire de publication (mesuré le 04/11).
 
 **Ordre et mesure.** Indépendante (ni identité de réplication, ni C-04, ni promotion), de préférence après R25. Après
 application (poste de Benjamin, `node scripts/appliquer-migration.mjs migrations/migration_publications_supprimees_2026-11-04.sql

@@ -14,7 +14,7 @@
 #      publique. Le compte de M2 part (toutes ses publications, clé de service) :
 #      ses commentaires, « j'aime » et réponses deviennent publics.
 #   ② le verdict de la migration, réinjecté sur cet état de production, ROUGIT
-#   ③ la migration s'applique (17 OK, 0 ECHEC), efface les orphelins RÉELS que ①
+#   ③ la migration s'applique (18 OK, 0 ECHEC), efface les orphelins RÉELS que ①
 #      a laissés — et rien d'autre (exemples, ancien p_vlog_, live, carnet) —,
 #      se rejoue (rien de plus à effacer) ; les policies des commentaires et des
 #      « j'aime » ne bougent pas, ni les ACL des deux fonctions
@@ -588,7 +588,7 @@ verifier "réinjecté : rien n'a changé (sous-transaction, puis rollback)" "$MD
 echo "── ③ APPLICATION, VERDICT, PURGE DU PASSÉ, REJEU ────────────────────"
 sortie="$(APPLIQUER "$DB" "$MIGRATION")" || { echo "  ❌ la migration a échoué :"; echo "$sortie" | tail -8; exit 1; }
 printf '%s\n' "$sortie" | sed 's/^/     │ /'
-verifier "le verdict rend 17 OK et 0 ECHEC" "17/0" "$(compte_verdict "$sortie")"
+verifier "le verdict rend 18 OK et 0 ECHEC" "18/0" "$(compte_verdict "$sortie")"
 verifier "le passé : 4 commentaires, 3 « j'aime », 1 co-auteur, 6 interactions d'une publication ou activité supprimée effacés" \
   "4 / 3 / 1 / 6 (plafond 300)" "$(ligne "$sortie" "passé · orphelins")"
 verifier "…et seulement eux : les commentaires et « j'aime » d'exemples, de l'ancien p_vlog_, restent" "2 / 1 | 1 / 1" "$(ligne "$sortie" "laissés · commentaires")"
@@ -599,7 +599,7 @@ verifier "les policies des commentaires et des « j'aime » n'ont pas bougé (m�
   "$(qual_policy post_comments 'Lecture selon visibilite du post')|$(qual_policy post_likes 'Lecture selon visibilite du post')"
 verifier "les ACL de post_is_visible et comment_target_visible(text) n'ont pas bougé (create or replace)" "$ACL_AVANT" "$(acl_fns)"
 sortie2="$(APPLIQUER "$DB" "$MIGRATION")" || { echo "  ❌ la migration REJOUÉE a échoué"; echo "$sortie2" | tail -8; exit 1; }
-verifier "rejeu : toujours 17 OK, 0 ECHEC" "17/0" "$(compte_verdict "$sortie2")"
+verifier "rejeu : toujours 18 OK, 0 ECHEC" "18/0" "$(compte_verdict "$sortie2")"
 verifier "rejeu : plus rien à effacer" "0 / 0 / 0 / 0 (plafond 300)" "$(ligne "$sortie2" "passé · orphelins")"
 
 echo "── ④ APRÈS : le même scénario, plus rien à lire ni en base ──────────"
@@ -645,6 +645,27 @@ verifier "V supprime son commentaire sur P7 : la réponse de M et le « j'aime �
 SERVICE "delete from public.posts where author_id = '$M3';" >/dev/null
 verifier "le compte de M3 part (clé de service, une instruction, deux publications) : 0 commentaire, 0 « j'aime », 0 interaction" "0|0|0" \
   "$(Q "select (select count(*) from public.post_comments where post_id in ('$P8', '$P9')) || '|' || (select count(*) from public.post_likes where post_id in ('$P8', '$P9')) || '|' || (select count(*) from public.comment_interactions where post_id in ('$P8', '$P9') or comment_id in ('c_xr31banc00c8', '$P9'));")"
+echo "  — un identifiant CHOISI n'efface rien d'autrui (N, sous son rôle)"
+Q "insert into public.posts (id, author_id, content) values ('$EV1', '$N', 'sous le nom d''une activité'), ('p1', '$N', 'sous le nom d''un exemple'), ('c_xr31bancpubl', '$N', 'sous le nom d''un commentaire');
+   insert into public.posts (id, author_id, content) values ('xr31bancpubliq1', '$W', 'publique de W');
+   insert into public.post_comments (id, post_id, author_id, content) values
+     ('c_xr31bancpubl', 'xr31bancpubliq1', '$W', 'de W'),
+     ('xr31bancpubliq1', 'xr31bancpubliq1', '$N', 'sous le nom de la publication'),
+     ('srep_r31banc_w', 'xr31bancpubliq1', '$N', 'sous le nom de la réponse'),
+     ('xr31bancautrefil', 'xr31bancpubliq1', '$N', 'dans un autre fil'),
+     ('c1', 'p1', '$N', 'sous le nom d''un commentaire d''exemple');
+   insert into public.comment_interactions (id, comment_id, post_id, user_id, kind, payload) values
+     ('ci_banc_51', 'xr31bancpubliq1', 'xr31bancpubliq1', '$V', 'emoji', '🔥'),
+     ('ci_banc_52', 'srep_r31banc_w', 'xr31bancpubliq1', '$V', 'emoji', '👍'),
+     ('ci_banc_53', 'xr31bancautrefil', '$EV1', '$V', 'like', null),
+     ('ci_banc_54', 'c1', 'p1', '$V', 'like', null),
+     ('ci_banc_55', 'c_xr31bancpubl', 'xr31bancpubliq1', '$V', 'reply', 'réponse à W');" >/dev/null
+AUTH "$N" "delete from public.posts where author_id = '$N';" >/dev/null
+AUTH "$N" "delete from public.post_comments where id in ('xr31bancpubliq1', 'srep_r31banc_w', 'xr31bancautrefil', 'c1');" >/dev/null
+verifier "N supprime ce qu'il a créé sous ces noms : ses lignes partent" "0|0" \
+  "$(Q "select (select count(*) from public.posts where author_id = '$N') || '|' || (select count(*) from public.post_comments where author_id = '$N' and id in ('xr31bancpubliq1', 'srep_r31banc_w', 'xr31bancautrefil', 'c1'));")"
+verifier "…et rien d'autrui : le fil de l'activité, le commentaire et la réaction d'exemple, le commentaire de W et sa réponse, les réactions à la publication et à la réponse, l'autre fil" "1|1|1|1|1|1|1|1" \
+  "$(Q "select (select count(*) from public.comment_interactions where id = 'ci_banc_09') || '|' || (select count(*) from public.post_comments where id = 'c_xr31banc0e1') || '|' || (select count(*) from public.comment_interactions where id = 'ci_banc_54') || '|' || (select count(*) from public.post_comments where id = 'c_xr31bancpubl') || '|' || (select count(*) from public.comment_interactions where id = 'ci_banc_55') || '|' || (select count(*) from public.comment_interactions where id = 'ci_banc_51') || '|' || (select count(*) from public.comment_interactions where id = 'ci_banc_52') || '|' || (select count(*) from public.comment_interactions where id = 'ci_banc_53');")"
 verifier "les rôles clients n'appellent pas est_identifiant_exemple ni les fonctions de purge" "permission denied|permission denied" \
   "$(ANON "select public.est_identifiant_exemple('p1');" | grep -o 'permission denied' | head -1)|$(AUTH "$V" "select public.est_identifiant_exemple('p1');" | grep -o 'permission denied' | head -1)"
 
@@ -663,7 +684,7 @@ open(sys.argv[2], "w", encoding="utf-8").write(s.replace("\nbegin;\n", "\nbegin;
 PY
 chmod 644 "$SQLDIR/plafond_400.sql"
 s_p2="$(APPLIQUER plafond "$SQLDIR/plafond_400.sql" || true)"
-verifier "le plafond posé juste après begin; (le geste de l'en-tête) : 17 OK, les 301 « j'aime » effacés" "17/0|0 / 301 / 0 / 0 (plafond 400)" \
+verifier "le plafond posé juste après begin; (le geste de l'en-tête) : 18 OK, les 301 « j'aime » effacés" "18/0|0 / 301 / 0 / 0 (plafond 400)" \
   "$(compte_verdict "$s_p2")|$(ligne "$s_p2" "passé · orphelins")"
 
 echo "── ⑥ VERROU : une écriture qui tient posts fait échouer la migration en 5 s ──"
@@ -699,7 +720,7 @@ verifier "retour : surcharge, est_identifiant_exemple, fonctions et déclencheur
   "$(md5_fn 'public.comment_target_visible(text,text)')|$(md5_fn 'public.est_identifiant_exemple(text)')|$(md5_fn 'public.purger_cibles_publications()')|$(md5_fn 'public.purger_cibles_commentaires()')|$(Q "select count(*) from pg_trigger where tgname like 'trg_purger_cibles_%';")|$(Q "select count(*) from pg_class where relname = 'idx_ci_post';")"
 verifier "retour : l'ancien comportement revient (une cible inconnue redevient publique)" "t" "$(ANON "select public.post_is_visible('xjamaispublie000');" | sed 's/true/t/;s/false/f/')"
 sortie3="$(APPLIQUER "$DB" "$MIGRATION")" || { echo "  ❌ la migration rejouée après retour arrière a échoué"; echo "$sortie3" | tail -8; exit 1; }
-verifier "la migration se rejoue après un retour arrière : 17 OK, 0 ECHEC" "17/0" "$(compte_verdict "$sortie3")"
+verifier "la migration se rejoue après un retour arrière : 18 OK, 0 ECHEC" "18/0" "$(compte_verdict "$sortie3")"
 
 echo "── ⑧ MUTATIONS : chaque ligne du verdict rougit sur le défaut qu'elle garde ──"
 muter() {   # $1 nom, $2 texte à remplacer (exactement une fois), $3 remplaçant ; rend le verdict
@@ -738,6 +759,23 @@ verifier "le décor non annulé : « aucune trace » ROUGIT (le contrôle n'est 
 s_m="$(muter purge_large "  forme   constant text := '^(x[0-9a-z]{8,16}|reel_x[0-9a-z]{8,16}|post_[0-9]{13}_[0-9a-z]{1,9})\$';" "  forme   constant text := '^.*\$';")"
 verifier "une purge au filtre trop large efface les EXEMPLES : le banc le voit (rien de laissé), la purge le compte" "0 / 0 | 0 / 0|7 / 5 / 1 / 10 (plafond 300)" \
   "$(ligne "$s_m" "laissés · commentaires")|$(ligne "$s_m" "passé · orphelins")"
+
+# Chaque garde des identifiants choisis fait rougir la ligne qui la garde.
+CHOISI="un identifiant CHOISI"
+s_m="$(muter garde_exemple $'   where not public.est_identifiant_exemple(s.id)\n     and not exists (select 1 from public.events e where e.id = s.id);' $'   where not exists (select 1 from public.events e where e.id = s.id);')"
+verifier "publication sous le nom d'un exemple, sans garde : « identifiant choisi » ROUGIT ; « l'auteur supprime » reste vert" "ECHEC|OK" "$(ligne "$s_m" "$CHOISI")|$(ligne "$s_m" "l'auteur supprime sa publication")"
+s_m="$(muter garde_activite $'   where not public.est_identifiant_exemple(s.id)\n     and not exists (select 1 from public.events e where e.id = s.id);' $'   where not public.est_identifiant_exemple(s.id);')"
+verifier "publication sous le nom d'une activité, sans garde : « identifiant choisi » ROUGIT" "ECHEC" "$(ligne "$s_m" "$CHOISI")"
+s_m="$(muter cible_avec_fil $'      or (i.post_id is null and i.comment_id = any (ids)\n          and not exists (select 1 from public.post_comments c where c.id = i.comment_id)\n          and not exists (select 1 from public.event_comments ec where ec.id = i.comment_id));' $'      or i.comment_id = any (ids);')"
+verifier "la CIBLE vaut même avec un fil : « identifiant choisi » ROUGIT" "ECHEC" "$(ligne "$s_m" "$CHOISI")"
+s_m="$(muter fil_ignore $'     and (i.post_id is null or i.post_id = s.post_id)\n' '')"
+verifier "un commentaire emporte les interactions d'un autre fil : « identifiant choisi » ROUGIT ; « un commentaire supprimé » reste vert" "ECHEC|OK" "$(ligne "$s_m" "$CHOISI")|$(ligne "$s_m" "un commentaire supprimé par son auteur")"
+s_m="$(muter garde_reponse $'     and s.id !~ \'^srep_\'\n' '')"
+verifier "un commentaire sous le nom d'une réponse, sans garde : « identifiant choisi » ROUGIT" "ECHEC" "$(ligne "$s_m" "$CHOISI")"
+s_m="$(muter garde_publication $'     and not exists (select 1 from public.posts p where p.id = s.id)\n' '')"
+verifier "un commentaire sous le nom d'une publication, sans garde : « identifiant choisi » ROUGIT" "ECHEC" "$(ligne "$s_m" "$CHOISI")"
+s_m="$(muter garde_fil_exemple $'     and (not public.est_identifiant_exemple(s.post_id) or s.id ~ \'^c_[0-9a-z]{8,17}$\')\n' '')"
+verifier "un commentaire d'exemple repris dans son fil, sans garde : « identifiant choisi » ROUGIT" "ECHEC" "$(ligne "$s_m" "$CHOISI")"
 
 echo
 echo "RÉSULTAT : $ok ✅  $ko ❌"

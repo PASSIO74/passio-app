@@ -3,7 +3,7 @@
 -- PUBLICATION — OU SON COMPTE — NE REND PLUS SES COMMENTAIRES, « J'AIME » ET
 -- INTERACTIONS LISIBLES PAR TOUS. ILS PARTENT AVEC ELLE.
 --
--- Une transaction, REJOUABLE, tableau de verdict en fin (20 lignes : dix-sept
+-- Une transaction, REJOUABLE, tableau de verdict en fin (21 lignes : dix-huit
 -- contrôles OK/ECHEC et trois NOMBRES). Rien de personnel dans ce fichier ni
 -- dans son verdict : des nombres, des formes d'identifiants, des définitions.
 --
@@ -112,6 +112,20 @@
 --       réactions d'un commentaire supprimé — le client essayait déjà
 --       (`_supaDeleteCommentRow`, app-04), mais la RLS ne lui laisse effacer
 --       que SES lignes.
+--     ⚠️ UN IDENTIFIANT CHOISI N'EFFACE RIEN D'AUTRUI (relecture de la PR, 04/11) : le
+--     client choisit l'identifiant de ce qu'il crée, et un déclencheur SECURITY DEFINER
+--     efface pour tout le monde. Sans garde, publier sous l'identifiant d'une activité
+--     ou d'un exemple puis supprimer emportait leur fil ; commenter sous l'identifiant
+--     d'une publication, d'une réponse (`srep_…`) ou d'un commentaire d'exemple puis
+--     supprimer emportait les réactions de l'original. Donc :
+--     · une publication homonyme d'une ACTIVITÉ, ou au format d'un EXEMPLE, n'emporte rien ;
+--     · une interaction n'appartient qu'à son FIL : la CIBLE seule ne vaut que SANS fil
+--       (0 ligne le 04/11), et sans homonyme parmi les commentaires ;
+--     · un commentaire n'emporte que les interactions de SON fil, et rien s'il porte
+--       l'identifiant d'une publication, d'un commentaire d'activité, d'un exemple ou
+--       d'une réponse ; dans un fil d'exemple, seul un `c_<uid>` compte.
+--     Mesuré le 04/11 : 0 homonyme, 0 interaction dont le fil contredit la cible ; rien de
+--     ce que le client écrit aujourd'hui n'est écarté.
 --     Index `idx_ci_post` sur `comment_interactions (post_id)` : le prédicat du
 --     déclencheur et de la policy (389 lignes : construction instantanée).
 --  ③ LE PASSÉ. Les orphelins dont le fil est une publication ou une activité
@@ -169,6 +183,9 @@
 --    fabrique pas ; 0 en base) prendrait la place de l'exemple : sa règle
 --    s'appliquerait à ses commentaires — rien ne s'ouvre, l'exemple se ferme ;
 --  · TRUNCATE ne déclenche pas DELETE (administration seulement) ;
+--  · `comment_likes` n'entre pas dans ce lot, décision prise : le client ne l'écrit que
+--    pour les commentaires d'activité et de carnet (app-08), publics par conception, et
+--    aucune de ses 3 lignes ne vise un commentaire de publication (mesuré le 04/11) ;
 --  · chaque ligne effacée par ② ou ③ part en événement DELETE du temps réel. Tant
 --    que R25 (#692) n'est pas appliquée, celui de `post_likes` porte sa clé
 --    primaire (`post_id`, `user_id`) à tout abonné : qui avait aimé, une fois,
@@ -370,23 +387,30 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  ids text[];
 begin
+  -- ⚠️ L'identifiant est CHOISI par le client, et cette fonction efface pour tout le monde.
+  -- Une publication créée sous l'identifiant d'une ACTIVITÉ ou d'un EXEMPLE n'est pas le
+  -- fil de ce qui s'y écrit : la supprimer n'emporte rien.
+  select coalesce(array_agg(s.id), '{}') into ids
+    from publications_supprimees s
+   where not public.est_identifiant_exemple(s.id)
+     and not exists (select 1 from public.events e where e.id = s.id);
+  if cardinality(ids) = 0 then return null; end if;
   -- Les commentaires des publications supprimées ; leur propre déclencheur
   -- (`trg_purger_cibles_commentaire`) emporte leurs réponses et réactions.
-  delete from public.post_comments c
-   using publications_supprimees s
-   where c.post_id = s.id;
-  delete from public.post_likes l
-   using publications_supprimees s
-   where l.post_id = s.id;
-  delete from public.post_collaborators k
-   using publications_supprimees s
-   where k.post_id = s.id;
+  delete from public.post_comments c where c.post_id = any (ids);
+  delete from public.post_likes l where l.post_id = any (ids);
+  delete from public.post_collaborators k where k.post_id = any (ids);
   -- Les interactions dont la publication est le FIL (réactions, réponses, réactions aux
-  -- réponses) ou la CIBLE (une réaction de publication écrite sans fil).
+  -- réponses). La CIBLE seule ne vaut que SANS fil, et sans commentaire du même nom : une
+  -- ligne qui a un fil appartient à ce fil.
   delete from public.comment_interactions i
-   using publications_supprimees s
-   where i.post_id = s.id or i.comment_id = s.id;
+   where i.post_id = any (ids)
+      or (i.post_id is null and i.comment_id = any (ids)
+          and not exists (select 1 from public.post_comments c where c.id = i.comment_id)
+          and not exists (select 1 from public.event_comments ec where ec.id = i.comment_id));
   return null;
 end
 $$;
@@ -403,9 +427,20 @@ as $$
 begin
   -- Les réponses et réactions des commentaires supprimés, de QUI qu'elles soient
   -- (la RLS ne laissait au client effacer que les siennes).
+  -- ⚠️ L'identifiant est CHOISI par le client. Un commentaire posé sous le nom d'une
+  -- publication, d'un commentaire d'activité, d'un exemple ou d'une réponse ne vise pas
+  -- ces réactions-là, et une interaction n'appartient qu'à son FIL. Dans un fil d'exemple,
+  -- seul un commentaire au format du client (`c_<uid>`) compte : `c1`, `cp1_1`… sont les
+  -- commentaires de démonstration, qu'aucune table ne porte.
   delete from public.comment_interactions i
    using commentaires_supprimes s
-   where i.comment_id = s.id;
+   where i.comment_id = s.id
+     and (i.post_id is null or i.post_id = s.post_id)
+     and s.id !~ '^srep_'
+     and not public.est_identifiant_exemple(s.id)
+     and (not public.est_identifiant_exemple(s.post_id) or s.id ~ '^c_[0-9a-z]{8,17}$')
+     and not exists (select 1 from public.posts p where p.id = s.id)
+     and not exists (select 1 from public.event_comments ec where ec.id = s.id);
   return null;
 end
 $$;
@@ -521,6 +556,10 @@ declare
   ev  constant text := 'zz_r31_e_' || sfx;     -- une activité
   rep constant text := 'srep_zz_r31_' || sfx;  -- une RÉPONSE (cible qu'aucune table ne porte)
   inconnu constant text := 'x' || left(md5(sfx || 'inconnu'), 16);   -- format réel, jamais publié
+  pv  constant text := 'zz_r31_pv_' || sfx;    -- publication PUBLIQUE de V, que N commente sous des noms choisis
+  cv  constant text := 'zz_r31_cv_' || sfx;    -- commentaire de V sur pv
+  rv  constant text := 'srep_zz_r31_v_' || sfx; -- une RÉPONSE dans pv (cible qu'aucune table ne porte)
+  dx  constant text := 'zz_r31_dx_' || sfx;    -- un nom que N reprend dans un AUTRE fil
   mes jsonb := '{}'::jsonb;
   k   bigint;
 begin
@@ -613,6 +652,45 @@ begin
       'd_q_like', (select count(*) from public.post_likes x where x.post_id = q),
       'd_q_reaction', (select count(*) from public.comment_interactions x where x.comment_id = q));
 
+    -- g. UN IDENTIFIANT CHOISI N'EFFACE RIEN D'AUTRUI. N crée sous des noms qui ne sont pas à
+    --    lui (écrit sans session : c'est la SUPPRESSION qu'on mesure), puis supprime sous SON
+    --    rôle : ce qui visait l'original reste. Publications : l'activité, un exemple, un
+    --    commentaire de V. Commentaires : la publication de V, sa réponse, un autre fil, un
+    --    commentaire d'exemple.
+    insert into public.posts (id, author_id, content) values (pv, v, 'mesure R31 : publique');
+    insert into public.post_comments (id, post_id, author_id, content) values (cv, pv, v, 'commentaire de V sur pv');
+    insert into public.comment_interactions (id, comment_id, post_id, user_id, kind, payload) values
+      ('zz_r31_g1_' || sfx, pv,   pv,   m, 'emoji', '🔥'),   -- une réaction à pv
+      ('zz_r31_g2_' || sfx, rv,   pv,   m, 'emoji', '👍'),   -- une réaction à une réponse dans pv
+      ('zz_r31_g3_' || sfx, dx,   q,    v, 'like',  null),   -- dans un autre fil que le commentaire de N
+      ('zz_r31_g4_' || sfx, 'c1', 'p1', v, 'like',  null),   -- sur un commentaire d'exemple
+      ('zz_r31_g5_' || sfx, cv,   pv,   m, 'reply', 'réponse de M à V');  -- sur le commentaire de V
+    insert into public.posts (id, author_id, content) values
+      (ev, n, 'sous le nom d''une activité'), ('p1', n, 'sous le nom d''un exemple'), (cv, n, 'sous le nom d''un commentaire');
+    insert into public.post_comments (id, post_id, author_id, content) values
+      (pv, pv, n, 'sous le nom de la publication'), (rv, pv, n, 'sous le nom de la réponse'),
+      (dx, pv, n, 'dans un autre fil'), ('c1', 'p1', n, 'sous le nom d''un commentaire d''exemple');
+    execute 'set local role authenticated';
+    perform set_config('request.jwt.claim.sub', n, true);
+    execute 'delete from public.posts where author_id = $1' using n;
+    get diagnostics k = row_count;  mes := mes || jsonb_build_object('g_publications', k);
+    execute 'delete from public.post_comments where author_id = $1' using n;
+    get diagnostics k = row_count;  mes := mes || jsonb_build_object('g_commentaires', k);
+    execute 'reset role';
+    perform set_config('request.jwt.claim.sub', '', true);
+    mes := mes || jsonb_build_object('g_intacts', jsonb_build_array(
+      (select count(*) from public.comment_interactions x where x.id = 'zz_r31_i9_' || sfx),   -- le fil de l'activité
+      (select count(*) from public.post_comments x where x.id = ex),                           -- un commentaire sur l'exemple
+      (select count(*) from public.comment_interactions x where x.id = 'zz_r31_i8_' || sfx),   -- le fil de l'exemple
+      (select count(*) from public.comment_interactions x where x.id = 'zz_r31_g5_' || sfx),   -- le commentaire de V (homonyme : une publication)
+      (select count(*) from public.comment_interactions x where x.id = 'zz_r31_g1_' || sfx),   -- la réaction à pv (homonyme : un commentaire)
+      (select count(*) from public.comment_interactions x where x.id = 'zz_r31_g2_' || sfx),   -- la réaction à la réponse (homonyme : un commentaire)
+      (select count(*) from public.comment_interactions x where x.id = 'zz_r31_g3_' || sfx),   -- l'autre fil
+      (select count(*) from public.comment_interactions x where x.id = 'zz_r31_g4_' || sfx))); -- le commentaire d'exemple
+    delete from public.comment_interactions x where x.id like 'zz\_r31\_g%';
+    delete from public.post_comments x where x.post_id = pv;
+    delete from public.posts x where x.id = pv;
+
     -- e. Suppression EN NOMBRE, comme la purge de compte (une instruction, sans session).
     delete from public.posts where author_id = m;
     get diagnostics k = row_count;  mes := mes || jsonb_build_object('e_supprimees', k);
@@ -680,6 +758,9 @@ union all select 'R31 · un commentaire supprimé par son auteur emporte ses ré
        (select case when j->>'d_supprime' = '1' and (j->>'d_restes_i', j->>'d_q', j->>'d_q_like', j->>'d_q_reaction') = ('0', '1', '1', '1') then 'OK' else 'ECHEC' end from v)
 union all select 'R31 · une suppression EN NOMBRE (purge de compte : toutes les publications d''un auteur en une instruction) n''oublie rien',
        (select case when j->>'e_supprimees' = '3' and j->>'e_restes' = '0' then 'OK' else 'ECHEC' end from v)
+union all select 'un identifiant CHOISI n''efface rien d''autrui : une publication créée sous le nom d''une activité, d''un exemple ou d''un commentaire, un commentaire sous celui d''une publication, d''une réponse, d''un exemple ou dans un autre fil — leur auteur les supprime, ce qui visait l''original reste',
+       (select case when j->>'g_publications' = '3' and j->>'g_commentaires' = '4'
+                     and j->'g_intacts' = '[1, 1, 1, 1, 1, 1, 1, 1]'::jsonb then 'OK' else 'ECHEC' end from v)
 union all select 'exemples : publications, bobines et activités d''exemple restent publiques sans compte, leurs fils aussi ; un commentaire écrit sur un exemple se lit sans compte, son interaction aussi',
        (select case when j->'f_exemples' = '[true, true, true, true, true, true, true, true, true, true, true, true, true]'::jsonb
                      and (j->>'a_anon_ex_c', j->>'a_anon_ex_i') = ('1', '1') then 'OK' else 'ECHEC' end from v)
