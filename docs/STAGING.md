@@ -8,7 +8,7 @@
 |---|---|---|
 | ref | `njkiyoklssvefstljemx` | `fcksxofaelcdmmifnwjo` (« PASSIO staging ») |
 | région / PG | eu-west-1 / 17.6 | eu-west-1 / 17.6 |
-| structure | — | identique le 2026-09-14 (16 compteurs d'objets égaux, `npm run schema:executable` + `npm run restaurer -- --schema`, voir `docs/RECUPERATION.md`). ⚠️ **A dérivé depuis**, mesuré le 2026-11-04 : 48 tables contre 52, publication plus large (`cdv_*`), et son journal ne porte que R25. Les migrations récentes n'y passent pas d'office : une suite à comptes réels n'éprouve une migration que si on l'y a appliquée d'abord |
+| structure | — | identique le 2026-09-14 (16 compteurs d'objets égaux, `npm run schema:executable` + `npm run restaurer -- --schema`, voir `docs/RECUPERATION.md`). ⚠️ **A dérivé depuis**, mesuré le 2026-11-04 : 48 tables contre 52, publication plus large (`cdv_*`), et son journal ne porte que les deux couches de R25. Les migrations récentes n'y passent pas d'office : une suite à comptes réels n'éprouve une migration que si on l'y a appliquée d'abord |
 | données | réelles | **aucune donnée personnelle** : `passions`, `passion_relations`, `access_policies` seulement (`npm run restaurer -- --tables passions,passion_relations,access_policies`) ; les comptes qui y vivent sont ceux des bancs, purgés par `npm run purge:e2e:rest` |
 | Edge Functions | 4 déployées | **aucune** (à déployer avec `supabase functions deploy --project-ref fcksxofaelcdmmifnwjo` quand un banc en aura besoin) |
 | réglages auth | confirmation d'e-mail, captcha, mot de passe 8 | défaut Supabase — le banc de comptes n'y passe pas (`generate_link` + `verifyOtp`) |

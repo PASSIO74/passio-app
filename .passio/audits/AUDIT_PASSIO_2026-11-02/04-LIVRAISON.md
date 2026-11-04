@@ -170,7 +170,7 @@ par le client, verrou bloquant sur cinq tables, index supprimable sans garde. To
 | `migration_realtime_identite_opaque_2026-11-03.sql` | `rid` aléatoire de 53 bits (chiffres 17 à 32 d'un UUID v4, masque 2^53 − 1 : exact en JSON), index unique `<table>_rid_key` et `replica identity using index` sur `conv_members`, `notifications`, `conv_reads`, `post_likes` ; `comment_interactions` en identité DEFAULT (l'oracle du filtre se ferme) ; garde `trg_rid_opaque` (le `rid` n'est écrit que par la base) ; verrous NOWAIT en boucle ; verdict en 10 lignes | `migration-realtime-identite-opaque` 239/0 (`realtime.apply_rls` de production recopiée à l'octet, nourrie du WAL réel du banc ; attaque par encadrement rejouée ; verdict sous verrous concurrents ; retour arrière pendant que le temps réel décode ; vingt mutations rouges) — fichier sha256 `9f48ffe1…` | **dès la fusion** : serveur seul, aucun changement client. De préférence AVANT `participants_visibilite`, dont la purge efface des lignes `conv_members` qui partiront alors opaques |
 
 Ordre à partir du 04/11 : `promotion_discrete_vues` (§ 7) est APPLIQUÉE (07:47 UTC, mesurée au canal ①), R25 aussi
-(12:45:52 UTC, § 8.6) ; reste `participants_visibilite` (§ 6, à partir du 2026-11-05 18:40 UTC). R25 est indépendante
+(12:45:52 UTC, § 8.6) et sa seconde couche (14:25:07 UTC, § 8.7) ; reste `participants_visibilite` (§ 6, à partir du 2026-11-05 18:40 UTC). R25 est indépendante
 des deux autres ; la nouvelle `promouvoir_attente` nomme les colonnes de son INSERT dans `notifications` (canal ①, 04/11),
 comme `follows_notifier` et `notifier_mentions` : le `rid` y prend son défaut et sa garde.
 
@@ -257,3 +257,30 @@ même ; deux P3 traités (une archive au DDL incomplet était dite « complète 
 | Remesure au canal ① | 13:10 | identique à 12:46 (mêmes comptes, mêmes bornes, un seul défaut de `rid`) ; garde `SECURITY DEFINER` à `search_path` vide ; toujours aucune ligne dans `client_errors` depuis 12:45:52 (5 sur les 24 h d'avant) |
 
 **Reste à lire le 05/11** : `client_errors` sans « replica identity » sur 24 h (0 à 12:46). La fonction temps réel n'a pas été éprouvée en production de bout en bout : elle l'a été au staging, et sur le banc avec le vrai wal2json.
+
+### 8.7 Seconde couche : application (2026-11-04)
+
+`migration_realtime_diffusion_privee_2026-11-03.sql` (#689) sort `conv_members` et `notifications` de `supabase_realtime`, et deux déclencheurs poussent leurs INSERT à `user:<destinataire>`, sous `conv_members:INSERT` et `notifications:INSERT`. Une liaison vers une table dépubliée fait taire tout son canal : le client passe d'abord (règle ④ de la barrière). Détail : fiche 🔒 de `docs/journal/capacite-perf-realtime.md`.
+
+| Étape | UTC | Résultat |
+|---|---|---|
+| Contre-revue | 13:38:21 | n°5769264156 sur `4582035`, empreinte `1e28f89b…`. Postée depuis le compte PASSIO74 par Claude Code, sur le « Oui, finalise-la » de Benjamin : revue de mainteneur unique, pas une relecture humaine indépendante, et la même session a écrit les derniers commits de cette tête, ce que la revue dit |
+| Staging | 13:38:28 | 13 lignes OK. Suite à comptes réels du run 41839817486, partie à 13:41, après l'application : 18 réussis, 3 ignorés |
+| Fusion, déploiement | 14:05:33, 14:18:43 | #689, `6b368cfc`, run 41844129290, job « Déploiement production » vert ; bundle servi `app.js?v=ea45c5d3e8`, qui porte les deux noms d'événement |
+| Lecture avant application | 14:24:58 | aucun `version_skew` depuis le déploiement (le dernier à 13:20:03), aucun verrou en attente, aucune erreur client |
+| Production | 14:25:07 | 13 lignes OK, règle ④ vérifiée par l'outil, journalisée dans sa transaction |
+| Mesure au canal ① | 14:27 | `conv_members` et `notifications` absentes de `pg_publication_tables`, 9 tables publiées, celles de `scripts/realtime-publication.json` ; `trg_diffuser_notification` et `trg_diffuser_ajout_membre` AFTER INSERT, par ligne, actifs ; fonctions `SECURITY DEFINER`, `search_path` vide, non exécutables par `anon` et `authenticated` ; `broadcast_conv_message_users_trigger` actif ; première couche intacte (identité `i` sur les quatre tables, `d` sur `comment_interactions`, quatre gardes actives) ; 169 notifications et 22 appartenances, comme à 14:24 |
+| Onglets sur l'ancien code | 14:30 | depuis l'application, la seule session vue sur une version antérieure (`9e6466a2`) est un appareil marqué `equipe`, sans compte, donc sans socket |
+| Barrière RLS | 15:21 | `authz-critical` verte sur la production (run 41856007079 de `main`, 1 réussi). Elle y écrit de vraies lignes, et `realtime.messages` porte leurs poussées : 2 `notifications:INSERT` et 1 `conv_members:INSERT`, toutes privées, toutes sur un topic `user:` |
+| Erreurs client | 15:38 | aucune ligne dans `client_errors` depuis l'application |
+
+**Essai strict au staging (14:44 UTC).** Le « realtime OK » de `multi-comptes` se satisfait d'une relecture REST, son commentaire le dit : il ne prouve pas la poussée. Essai ponctuel, hors de la suite, avec le vrai client, le vrai serveur Realtime et trois comptes jetables effacés ensuite :
+
+- une notification écrite par B arrive chez A en 268 ms, par une trame `notifications:INSERT`, les lectures REST de `notifications` étant bloquées chez A (aucune tentée) ; elle entre dans la cloche, non lue, avec son émetteur ;
+- un ajout à une conversation arrive en 727 ms, par une trame `conv_members:INSERT` ; sans aucun message, la conversation apparaît chez A avec son correspondant ;
+- un tiers qui rejoint `user:<A>` reçoit `CHANNEL_ERROR` (« Unauthorized ») et aucune trame, alors que A reçoit la même notification ; la fausse notification qu'il y envoie n'arrive pas chez A. ⚠️ `send` lui répond pourtant « ok » : hors d'un canal rejoint, supabase-js se replie sur l'API REST, et cette réponse ne dit rien de la livraison ;
+- un visiteur SANS COMPTE abonné à ces deux tables ne reçoit rien quand A efface deux notifications et quitte la conversation ; abonné à `post_likes` (le témoin), il reçoit bien la suppression, sans aucune clé : `old` est vide.
+
+**Ce qui n'est pas prouvé en production** : la réception par un vrai client. Une poussée écrite n'est pas une poussée reçue, et l'éprouver demanderait d'y écrire à deux comptes connectés. Le staging l'a prouvée avec le même fichier. Aucune mesure serveur ne verra la réception : en production, le premier signe viendra d'un compte réel, et aucune notification ni aucun message réel n'y avait été écrit depuis 72 h à 14:46.
+
+**Reste à lire le 05/11** : `client_errors` sur 24 h (ligne de R25 du § 8.6).
