@@ -243,3 +243,16 @@ La revue du correctif de sauvegarde (même jour) : rien ne casse la sauvegarde d
 une seule ligne écrite par un compte), RV-29, et R35 (les `float8` archivés sur 15 chiffres, préexistant). Dernière
 passe sur l'état final (cinq commits non relus, cohérence d'ensemble) : aucun P1 ni P2, migration applicable le jour
 même ; deux P3 traités (une archive au DDL incomplet était dite « complète » ; ce paragraphe).
+
+### 8.6 Application (2026-11-04)
+
+| Étape | UTC | Résultat |
+|---|---|---|
+| Contre-revues | 12:05, 12:17 | n°5767930760 sur `7b83a86` (relecture et mesures au canal ①, Claude Code, sur le « Oui » de Benjamin) ; n°5768092517 sur `0133b05`, la tête fusionnée. Même fichier, empreinte `9f48ffe1…` |
+| Staging | 12:06 | 9 lignes OK ; la ligne 10 dit ECHEC, c'est attendu : la publication du staging a dérivé (`cdv_*`). Suite à comptes réels du run 41828027145, partie à 12:18, après l'application : 18 réussis, 3 ignorés |
+| Fusion, déploiement | 12:31, 12:44 | #692, `b9ba01b6`, job « Déploiement production » vert |
+| Production | 12:45:52 | 10 lignes OK, journalisée dans sa transaction |
+| Mesure au canal ① | 12:46 | identité `i` et index `<table>_rid_key` sur les quatre tables, `d` sur `comment_interactions` ; un seul défaut de `rid` ; quatre gardes actives sans clause WHEN ; fonction non exécutable par `anon` et `authenticated` ; `count(distinct rid) = count(*)` (22, 169, 31, 76) et `rid` dans [0, 2^53 − 1] ; 11 tables publiées, aucune en FULL. Lecture `anon` en `select=*` : HTTP 200, `rid` rendu |
+| Barrière RLS | après l'application | `authz-critical` verte à 12:49:20 (run 41831787191 de `main`, sur la production) ; aucune ligne dans `client_errors` depuis l'application à 12:49 |
+
+**Reste à lire le 05/11** : `client_errors` sans « replica identity » sur 24 h (0 à 12:46). La fonction temps réel n'a pas été éprouvée en production de bout en bout : elle l'a été au staging, et sur le banc avec le vrai wal2json.
