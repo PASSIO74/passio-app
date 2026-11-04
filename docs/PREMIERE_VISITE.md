@@ -211,7 +211,8 @@ personne.
    **Depuis le 2026-11-03, la carte n'a plus qu'UN bouton**, celui que son message
    annonce : « Choisir mes passions » pour un nouveau venu, « Créer mon compte »
    quand des passions sont déjà choisies — « Modifier mes passions » et la
-   connexion deviennent des liens dessous. Fiche : `docs/journal/comptes-inscription-legal.md`.
+   connexion deviennent des liens dessous. Le nouveau venu y a aussi un lien
+   « Créer un compte » (2026-11-04). Fiches : `docs/journal/comptes-inscription-legal.md`.
 
 ⑪ **LES AIDES AU GESTE NE SONT PAS DES ÉTAPES DE TOUR.** Quatre bulles se sont
    ajoutées (bulles de passion, envies, stories, bobines) parce que le tour à trois
@@ -282,14 +283,14 @@ personne qui a un compte se retrouve traitée en visiteur, sans porte vers lui.
 
 **Trois portes, désormais, et aucune ne demande de geste préalable :**
 
-① **La carte de bienvenue du fil invité** porte le lien « J'ai déjà un compte —
-me connecter » (`.fr-welcome-signin` → `PassioFirstRun.allerConnexion`). Le gate
-d'action engageante l'offrait déjà, mais il faut avoir tenté un like ou un
-commentaire pour le voir : ce n'est pas une porte, c'est une conséquence.
+① **La carte de bienvenue du fil invité** porte le lien « J'ai déjà un compte »
+(`.fr-welcome-signin` → `PassioFirstRun.allerConnexion`). Le gate d'action
+engageante l'offrait déjà, mais il faut avoir tenté un like ou un commentaire pour
+le voir : ce n'est pas une porte, c'est une conséquence.
 ⚠️ C'est un LIEN (rangée `.fr-welcome-liens`, sous l'unique bouton de la carte
-depuis le 2026-11-03), jamais un bouton de plus dans `.fr-welcome-actions`. Quand
-des passions sont déjà choisies, son libellé se raccourcit en « Me connecter » :
-il partage alors sa rangée avec « Modifier mes passions ».
+depuis le 2026-11-03), jamais un bouton de plus dans `.fr-welcome-actions`. Il
+partage sa rangée avec « Créer un compte » ; quand des passions sont déjà choisies,
+il devient « Me connecter », à côté de « Modifier mes passions ».
 
 ② **Paramètres → Compte** porte un bouton dont le libellé suit l'état RÉEL,
 réécrit à chaque ouverture du panneau par `majSectionCompte()` (app-02, appelée
