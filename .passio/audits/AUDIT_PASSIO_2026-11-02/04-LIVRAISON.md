@@ -146,7 +146,13 @@ Retour arrière : le bloc `--|` de l'en-tête (définition de production à l'oc
 | 06:44 | « Gouvernance critique » relancé → vert ; prévisualisation Netlify déployée | run 41721152209, tentative 2 |
 | ~06:46 | Fusion de #690 dans `main` par commit de fusion (`4da2a8e`) : le commit revu `9abfaba` reste dans l'historique | `merge_pull_request` |
 | ensuite | Attestation consignée (empreinte `5e1b4c45…`, PR suivante), validée hors ligne par `verifierAttestation` et `verifierPreuveRevue` sur la revue relue par l'API GitHub ; la barrière la relira avec `gh` au moment d'appliquer | `.passio/migrations/attestations.json` |
-| **reste** | Application depuis le poste de Benjamin (`npm run migration:appliquer -- migrations/migration_promotion_discrete_vues_2026-11-03.sql --projet njkiyoklssvefstljemx`), **avant `participants_visibilite`**, puis mesure au canal ① | — |
+| 06:58 | Run de `main` 41787670317 (`4da2a8e`) : tous les jobs verts, **« Déploiement production » vert** — le client R24 est servi AVANT la migration. Le `app.js` servi n'a pas été relu : `passio-app.netlify.app` est refusé par le réseau de la session, la preuve est le job | job 126437501725 |
+| 07:00 | Fusion de #691 (attestation et journal) dans `main` (`1fbd853`) ; run 41789275072 vert | `merge_pull_request` |
+| ~07:19 | Attestation revérifiée sur les fichiers EXACTS de `main` (`choisirCible`, `verifierAttestation`) : production → exigée, trouvée (#690, revue 5764341120, commit `9abfaba`), empreinte identique | barrière, hors ligne |
+| 07:41 | Premier essai lancé depuis `C:\Users\BENJAMIN`, hors du clone : `git` et `npm` refusent, **rien n'est parti** | sortie PowerShell |
+| 07:47 | **Appliquée** depuis le poste de Benjamin, dans un worktree détaché d'`origin/main` (`PASSIO-wt/migration-r24`), par `node scripts/appliquer-migration.mjs … --projet njkiyoklssvefstljemx` : barrière franchie (attestation ; revue n°5764341120 relue par `gh`, « AUTO-REVUE DE MAINTENEUR UNIQUE » affichée), verdict **17 × OK**, journalisée dans sa transaction (`migrations_appliquees`, 07:47:27 UTC, empreinte `5e1b4c45…`) | sortie de `appliquer-migration.mjs` |
+| 07:48 | **Mesuré au canal ①** (et non lu dans le tableau) : `md5(prosrc)` de `promouvoir_attente` = `3edef536245e92950486226daf712c01`, celui du corps du fichier revu (était `1a4a2c4d…`), sans `\r` ; `prosrc` appelle `organise_activite`, réserve le nom (`if orga or cible = moi`), ne lit plus `co_organizers` ; SECURITY DEFINER, `search_path` vide ; EXECUTE : `authenticated`, `service_role`, `postgres` — ni `anon` ni PUBLIC. `organise_activite(text)` présente, `md5` = `144cba40…` (= fichier), STABLE, SECURITY DEFINER, `search_path` vide, même ACL. Vues de `public` : **aucun** TRUNCATE / REFERENCES / TRIGGER / MAINTAIN pour `anon` / `authenticated` (24 avant) ; SELECT / INSERT / UPDATE / DELETE intacts (24) ; `service_role` garde TRUNCATE / REFERENCES / TRIGGER. 0 ligne `zz_verdict_r24_%` dans `events` / `notifications` | `execute_sql` en lecture seule |
+| **reste** | `participants_visibilite` à son heure (§ 6.3, à partir du 05/11 18:40 UTC) : son `create or replace` d'`organise_activite` ne change rien (copie à l'octet près, banc ⓪). R27 se tranche AVANT elle si la branche « venant » doit se limiter à « going » | — |
 
 ## 8. R25 — un effacement publié par le temps réel ne dit plus ni qui ni quoi ; reprise et sauvegarde fidèles (2026-11-04)
 
@@ -163,8 +169,10 @@ par le client, verrou bloquant sur cinq tables, index supprimable sans garde. To
 |---|---|---|---|
 | `migration_realtime_identite_opaque_2026-11-03.sql` | `rid` aléatoire de 53 bits (chiffres 17 à 32 d'un UUID v4, masque 2^53 − 1 : exact en JSON), index unique `<table>_rid_key` et `replica identity using index` sur `conv_members`, `notifications`, `conv_reads`, `post_likes` ; `comment_interactions` en identité DEFAULT (l'oracle du filtre se ferme) ; garde `trg_rid_opaque` (le `rid` n'est écrit que par la base) ; verrous NOWAIT en boucle ; verdict en 10 lignes | `migration-realtime-identite-opaque` 202/0 (`realtime.apply_rls` de production recopiée à l'octet, nourrie du WAL réel du banc ; attaque par encadrement rejouée ; dix mutations rouges) | **dès la fusion** : serveur seul, aucun changement client. De préférence AVANT `participants_visibilite`, dont la purge efface des lignes `conv_members` qui partiront alors opaques |
 
-Ordre complet à partir de maintenant : R25 (ici), puis `promotion_discrete_vues` (§ 7, attestée), puis
-`participants_visibilite` (§ 6, à partir du 2026-11-05 18:40 UTC). R25 est indépendante des deux autres.
+Ordre à partir du 04/11 : `promotion_discrete_vues` (§ 7) est APPLIQUÉE (07:47 UTC, mesurée au canal ①) ; reste R25
+(ici, dès la fusion), puis `participants_visibilite` (§ 6, à partir du 2026-11-05 18:40 UTC). R25 est indépendante
+des deux autres ; la nouvelle `promouvoir_attente` nomme les colonnes de son INSERT dans `notifications` (canal ①, 04/11),
+comme `follows_notifier` et `notifier_mentions` : le `rid` y prend son défaut et sa garde.
 
 Les trois anciens fichiers qui recréent les vues de statistiques (`migration_monitoring_view.sql`, `APPLY_ALL_scaling.sql`,
 `migration_telemetry.sql`) ne sont PAS à appliquer : ils posent désormais `with (security_invoker = on)`, parce qu'un
