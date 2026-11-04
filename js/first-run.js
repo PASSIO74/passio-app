@@ -809,6 +809,11 @@
     // ⚠️ « J'ai déjà un compte » NON PLUS : c'est la seule porte VISIBLE, sans
     // geste préalable, vers un compte déjà créé — le gate de l'action
     // engageante demande d'avoir tenté un like ou un commentaire (2026-09-02).
+    // ⚠️ LE NOUVEAU VENU GARDE UNE PORTE VERS L'INSCRIPTION (2026-11-04). La
+    // pastille de la barre du haut retirée, plus rien n'y menait à l'arrivée :
+    // le défaut même des essais du 2026-10-23 (« il manque sur la première page
+    // la possibilité de créer un compte »). Un lien et non un bouton : la carte
+    // reste à une seule action principale.
     return ''
       + '<section class="fr-welcome" id="frWelcome" role="region" aria-labelledby="frWelcomeTitle">'
       +   '<button type="button" class="fr-welcome-close" onclick="PassioFirstRun.fermerBienvenue()" aria-label="Fermer la carte de bienvenue">×</button>'
@@ -822,9 +827,9 @@
       +   '<div class="fr-welcome-liens">'
       +     (dejaChoisi
             ? '<button type="button" class="fr-welcome-lien fr-welcome-passions" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Modifier mes passions</button>'
-            : '')
+            : '<button type="button" class="fr-welcome-lien fr-welcome-signup" onclick="PassioFirstRun.allerInscription(\'bienvenue\')">Créer un compte</button>')
       +     '<button type="button" class="fr-welcome-lien fr-welcome-signin" onclick="PassioFirstRun.allerConnexion(\'deja_compte\')">'
-      +       (dejaChoisi ? 'Me connecter' : 'J\'ai déjà un compte — me connecter')
+      +       (dejaChoisi ? 'Me connecter' : 'J\'ai déjà un compte')
       +     '</button>'
       +   '</div>'
       + '</section>';

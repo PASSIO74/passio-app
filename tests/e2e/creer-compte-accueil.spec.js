@@ -2,12 +2,13 @@
 // CRÉER UN COMPTE DEPUIS LE FIL  (2026-10-23, revu le 2026-11-04)
 //
 // Retour d'essais de Benjamin : « il manque sur la première page la possibilité
-// de créer un compte ». La porte est la carte de bienvenue, quand des passions
-// sont déjà choisies : « Créer mon compte » y est l'action PRINCIPALE.
+// de créer un compte ». La porte est la carte de bienvenue, dans ses deux états :
+//   ① passions déjà choisies : « Créer mon compte » y est l'action PRINCIPALE ;
+//   ① bis nouveau venu : un LIEN « Créer un compte », sous l'action principale.
 // ⚠️ 2026-11-04 : le bouton de la barre du haut (`#topbarSignup`) est RETIRÉ à
-// la demande de Benjamin (« il y est déjà une fois dans le fil »). Un nouveau
-// venu passe par « Choisir mes passions », puis par la carte ci-dessus, ou par
-// le formulaire que la carte ouvre via « J'ai déjà un compte ».
+// la demande de Benjamin (« il y est déjà une fois dans le fil »), ce que ① bis
+// rend vrai aussi pour un nouveau venu : sans ce lien, plus rien ne menait à
+// l'inscription à l'arrivée, sans geste préalable.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -37,40 +38,59 @@ test.describe("Créer un compte depuis la première page", () => {
     await formulaireInscriptionOuvert(page);
   });
 
-  test("① bis la barre du haut ne porte plus de bouton d'inscription", async ({ page }) => {
+  // Le geste complet, jamais la seule présence : le lien doit OUVRIR l'inscription.
+  test("① bis nouveau venu : un lien ouvre l'inscription, sans bouton de plus sur la carte", async ({ page }) => {
+    await bootVisiteur(page);
+    const lien = page.locator("#frWelcome .fr-welcome-signup");
+    await expect(lien).toBeVisible({ timeout: 15000 });
+    await expect(lien).toHaveText("Créer un compte");
+    await expect(page.locator("#frWelcome .btn")).toHaveCount(1);
+    const h = await lien.evaluate((el) => el.getBoundingClientRect().height);
+    expect(h).toBeGreaterThanOrEqual(44);
+    await lien.click();
+    await formulaireInscriptionOuvert(page);
+  });
+
+  test("① ter la barre du haut ne porte plus de bouton d'inscription", async ({ page }) => {
     await bootVisiteur(page);
     await expect(page.locator("#frWelcome")).toBeVisible({ timeout: 15000 });
     await expect(page.locator(".app-topbar").getByRole("button", { name: "Créer un compte" })).toHaveCount(0);
     await expect(page.locator("#topbarSignup")).toHaveCount(0);
   });
 
-  // Les deux liens de la carte « passions choisies » partagent une rangée qui
-  // passe à la ligne : à 320 px ils s'empilent, ils ne se coupent pas.
-  for (const largeur of [320, 390]) {
-    test(`① ter à ${largeur} px, les liens de la carte tiennent, sur une ligne chacun`, async ({ page }) => {
-      await page.setViewportSize({ width: largeur, height: 760 });
-      await bootVisiteur(page, { prefs: PREFS_CHOISIES });
-      await expect(page.locator("#frWelcome")).toBeVisible({ timeout: 15000 });
-      const liens = await page.locator("#frWelcome .fr-welcome-lien").evaluateAll((els) => els.map((el) => {
-        const b = el.getBoundingClientRect();
-        const carte = document.getElementById("frWelcome").getBoundingClientRect();
-        const ligne = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.3;
-        const r = document.createRange();
-        r.selectNodeContents(el);
-        return {
-          texte: el.textContent,
-          hauteur: b.height,
-          dedans: b.left >= carte.left - 0.5 && b.right <= carte.right + 0.5,
-          lignes: Math.round(r.getBoundingClientRect().height / ligne),
-        };
-      }));
-      expect(liens.map((l) => l.texte)).toEqual(["Modifier mes passions", "Me connecter"]);
-      for (const l of liens) {
-        expect(l.hauteur).toBeGreaterThanOrEqual(43.5);
-        expect(l.dedans).toBe(true);
-        expect(l.lignes).toBe(1);
-      }
-    });
+  // Les deux liens de la carte partagent une rangée qui passe à la ligne : à
+  // 320 px ils s'empilent, ils ne se coupent pas. Les deux états de la carte.
+  const ETATS_LIENS = [
+    { nom: "nouveau venu", prefs: null, attendu: ["Créer un compte", "J'ai déjà un compte"] },
+    { nom: "passions choisies", prefs: PREFS_CHOISIES, attendu: ["Modifier mes passions", "Me connecter"] },
+  ];
+  for (const etat of ETATS_LIENS) {
+    for (const largeur of [320, 390]) {
+      test(`① quater ${etat.nom}, à ${largeur} px : les liens de la carte tiennent, sur une ligne chacun`, async ({ page }) => {
+        await page.setViewportSize({ width: largeur, height: 760 });
+        await bootVisiteur(page, etat.prefs ? { prefs: etat.prefs } : {});
+        await expect(page.locator("#frWelcome")).toBeVisible({ timeout: 15000 });
+        const liens = await page.locator("#frWelcome .fr-welcome-lien").evaluateAll((els) => els.map((el) => {
+          const b = el.getBoundingClientRect();
+          const carte = document.getElementById("frWelcome").getBoundingClientRect();
+          const ligne = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.3;
+          const r = document.createRange();
+          r.selectNodeContents(el);
+          return {
+            texte: el.textContent,
+            hauteur: b.height,
+            dedans: b.left >= carte.left - 0.5 && b.right <= carte.right + 0.5,
+            lignes: Math.round(r.getBoundingClientRect().height / ligne),
+          };
+        }));
+        expect(liens.map((l) => l.texte)).toEqual(etat.attendu);
+        for (const l of liens) {
+          expect(l.hauteur).toBeGreaterThanOrEqual(43.5);
+          expect(l.dedans).toBe(true);
+          expect(l.lignes).toBe(1);
+        }
+      });
+    }
   }
 
   // Le nom et la puce Beta tiennent de nouveau dans la barre du visiteur : ils
