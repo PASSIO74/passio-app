@@ -237,7 +237,7 @@ window.__fixWithClaude = fixWithClaude;
 window.__fixEvent = (id) => { const ev = S.buffer.find((e) => e.id === id); if (ev) fixWithClaude({ event: trimEvent(ev) }, actionLabel(ev)); };
 window.__fixBug = (id, title) => fixWithClaude({ bugId: id }, title);
 // Réparer depuis une alerte : on retrouve l'alerte par id (jamais de texte dans l'onclick).
-window.__fixAlert = (id) => { const a = S.alerts.find((x) => x.id === id); if (a) fixWithClaude({ event: { message: a.title, stack: a.message || "", severity: "error", type: "error" } }, a.title); };
+window.__fixAlert = (id) => { const a = S.alerts.find((x) => x.id === id); if (a) fixWithClaude({ bugId: a.meta?.bug || undefined, event: { message: a.title, stack: a.message || "", severity: "error", type: "error" } }, a.title); };
 function trimEvent(e) { return { id: e.id, ts: e.ts, type: e.type, action: e.action, screen: e.screen, message: e.message, stack: e.stack, severity: e.severity, endpoint: e.endpoint, http_status: e.http_status, session_id: e.session_id, app_version: e.app_version, user_id: e.user_id, device_id: e.device_id }; }
 
 function renderFixResult(r) {
