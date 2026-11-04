@@ -189,6 +189,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Gouvernance (2026-11-03) : l'index « commit → PR » de GitHub arrive APRÈS le push qui déclenche le run — la garde relit 6 × 10 s puis se rabat sur le message du commit confirmé par `merge_commit_sha` ; un run rouge « Push direct sur main » juste après une fusion se RELANCE (`gh run rerun --failed`), ne se contourne jamais.
 - « Réparer » (2026-10-25) confie l'issue DÈS SON OUVERTURE — corps commençant par `@claude …` (`COMMENTAIRE_CONFIER`), AUCUN label à la création (chaque `labeled` relancerait un agent) ; une réparation se reconnaît à son titre ET à son auteur (`estReparationDuPilote`), jamais à son label : un jeton sans *Issues: write* le fait tomber en silence (16 doublons de #627).
 - Sentinelle (2026-11-01) : jusqu'à `MAX_ENQUETES` = `REVEIL.enquetesMax` = 3 enquêtes de front, jamais deux de même zone (`zoneCible`), un `sleep 8` avant CHAQUE label `claude` ; un bouton mort ne devient une enquête que sur clics RAGEURS de comptes serveur ET un libellé déjà écrit dans le code (dépôt public) — le clic est horodaté APRÈS la peinture (`BOUTON_AVANCE_MS`).
+- `buildId` (2026-11-04) se calcule APRÈS l'inlining des `<script src="js/…">` et couvre tout ce que la page exécute, jamais le commit ni la cible : un script inliné réinstalle le worker, un commit de documentation ne recharge personne (`tests/unit/build-id.test.mjs`).
 
 ## 📚 Références projet
 
