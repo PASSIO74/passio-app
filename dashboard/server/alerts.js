@@ -139,7 +139,24 @@ export function raise(a, now = Date.now()) {
   }, now);
 }
 
-let errorWindow = [];
+let errorWindow = [];   // { ts, device, message, bug, screen }
+
+/**
+ * Fonction PURE : ce que contient un pic — combien d'appareils, et l'erreur qui
+ * domine avec son bug groupé. Sans cela, l'alerte ne disait que « 6 erreurs en
+ * 1 minute » et l'analyse partait sans message, sans pile et sans appareil.
+ */
+export function resumerPic(fenetre) {
+  const parMessage = new Map();
+  for (const e of fenetre) {
+    const c = parMessage.get(e.message) || { n: 0, bug: null, screen: null };
+    c.n++; c.bug = c.bug || e.bug; c.screen = c.screen || e.screen;
+    parMessage.set(e.message, c);
+  }
+  let message = "erreur", top = { n: 0, bug: null, screen: null };
+  for (const [m, c] of parMessage) if (c.n > top.n) { message = m; top = c; }
+  return { n: fenetre.length, appareils: new Set(fenetre.map((e) => e.device)).size, messages: parMessage.size, message, bug: top.bug, screen: top.screen };
+}
 
 // ─── « API très lente » : agrégation par endpoint sur 15 min ────────────────
 const SLOW_MS = 4000;
@@ -250,10 +267,13 @@ export function onEvent(ev, now = Date.now()) {
         message: `${bug.title} — ${bug.users} utilisateurs, ${bug.count} occurrences`, meta: { bug: bug.id } }, now);
     }
     // Pic d'erreurs (>= 6 en 60 s)
-    errorWindow.push(now);
-    errorWindow = errorWindow.filter((t) => now - t < 60_000);
+    errorWindow.push({ ts: now, device: deviceDe(ev), message: String(ev.message || ev.action || "erreur"), bug: bug?.id || null, screen: ev.screen || null });
+    errorWindow = errorWindow.filter((e) => now - e.ts < 60_000);
     if (errorWindow.length >= 6) {
-      emit({ level: "high", key: "spike", title: "Pic d'erreurs", message: `${errorWindow.length} erreurs en 1 minute` }, now);
+      const pic = resumerPic(errorWindow);
+      emit({ level: "high", key: "spike", title: "Pic d'erreurs",
+        message: `${pic.n} erreurs en 1 minute · ${pic.appareils} appareil${pic.appareils > 1 ? "s" : ""} · « ${pic.message.slice(0, 120)} »`,
+        meta: { bug: pic.bug, screen: pic.screen, n: pic.n, appareils: pic.appareils, messages: pic.messages } }, now);
     }
   }
 

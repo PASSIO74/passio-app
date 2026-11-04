@@ -25,6 +25,14 @@ test("« Script error. » est écarté : le navigateur refuse d'en dire plus", (
   assert.equal(estDuBruit("Promise rejetée: newestWorker is null"), false);
 });
 
+test("le défaut EmptyRanges de Safari est écarté, et lui seul", () => {
+  // Observé en production le 2026-11-03. Un client resté sur l'ancien app.js en
+  // cache l'envoie encore : sans cela, il ouvrirait une enquête sans objet.
+  assert.equal(estDuBruit("ReferenceError: Can't find variable: EmptyRanges"), true);
+  assert.equal(estDuBruit("ReferenceError: Can't find variable: _pwaInstalled"), false);
+  assert.equal(estDuBruit("TypeError: EmptyRanges is not a function"), false);
+});
+
 test("les variantes d'une même cause se regroupent", () => {
   // Les nombres et les URL varient d'une occurrence à l'autre : sans
   // normalisation, un seul défaut se compterait comme dix causes distinctes et
