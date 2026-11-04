@@ -71,7 +71,8 @@
 #
 #   bash tests/sql/migration-realtime-identite-opaque.test.sh
 #
-# Prérequis : PostgreSQL 14+ (binaires serveur, `test_decoding`). Ne touche
+# Prérequis : PostgreSQL 15+ (binaires serveur, `test_decoding` ; le verdict lit
+# `pg_publication_namespace` et ④l publie `tables in schema`, tous deux de la 15). Ne touche
 # AUCUNE base réelle.
 # ═══════════════════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -1965,6 +1966,29 @@ verifier "…et c'est bien un défaut : X (authenticated) plante un rid sur une 
 Q "delete from public.notifications where id = 'n_x_prefixe';" >/dev/null
 Q "$DEF_GARDE" >/dev/null || true
 RETABLI "corps rendu"
+# La même ligne CACHÉE dans un commentaire, derrière un retour chariot SEUL
+# (contre-revue finale) : PL/pgSQL clôt un commentaire `--` sur \r, donc le code
+# qui suit s'exécute. Une ligne 7 qui ôtait les \r lisait ce code comme du
+# commentaire, et disait la garde conforme.
+CR=$'\r'
+Q "create or replace function public.rid_opaque_garde() returns trigger language plpgsql security definer set search_path to '' as \$fn\$
+begin
+  -- commentaire anodin${CR}if tg_op = 'INSERT' and new.rid is not null then return new; end if;
+  if tg_op = 'INSERT' then
+    new.rid := (('x' || pg_catalog.substr(pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', ''), 17, 16))::bit(64)::bigint & 9007199254740991);
+  else
+    new.rid := old.rid;
+  end if;
+  return new;
+end
+\$fn\$;" >/dev/null
+s="$(VERDICT)"
+verifier "garde dont un commentaire cache, derrière un retour chariot SEUL, « if … new.rid is not null then return new » : 9 OK / 1 ECHEC" "9/1|1" "$(BILAN "$s")|$(ECHEC_SUR "$s" 'garde trg_rid_opaque')"
+verifier "…et c'est bien un défaut : le code caché s'exécute, le rid planté par X est GARDÉ" "|7777777777" \
+  "$(AUTH "$X" "insert into public.notifications (id, user_id, kind, from_id, content, rid) values ('n_x_cr', '$V', 'like', '$X', 'x', 7777777777);")|$(Q "select rid from public.notifications where id = 'n_x_cr';")"
+Q "delete from public.notifications where id = 'n_x_cr';" >/dev/null
+Q "$DEF_GARDE" >/dev/null || true
+RETABLI "corps rendu"
 Q "drop trigger trg_rid_opaque on public.conv_members;" >/dev/null || true
 s="$(VERDICT)"
 verifier "garde SUPPRIMÉE sur conv_members : 9 OK / 1 ECHEC" "9/1|1" "$(BILAN "$s")|$(ECHEC_SUR "$s" 'garde trg_rid_opaque')"
@@ -2027,8 +2051,8 @@ Q "alter publication supabase_realtime drop table public.banc_part; drop table p
 RETABLI "partition retirée"
 # n. la migration EXTRAITE EN CRLF (poste Windows, core.autocrlf) : le corps de
 #    la garde garde ses retours chariot ; la ligne 7, ancrée ligne à ligne, les
-#    ôte avant de lire — sinon c'est la garde de production qui serait dite
-#    fausse.
+#    change en fins de ligne avant de lire — sinon c'est la garde de production
+#    qui serait dite fausse.
 sed 's/$/\r/' "$MIGRATION" >"$BASE/r25_crlf.sql"
 crlf="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$BASE/r25_crlf.sql" 2>&1 || true)"
 verifier "migration extraite en CRLF : 10 OK / 0 ECHEC — et le corps de la garde porte bien des retours chariot" "10/0|t" \

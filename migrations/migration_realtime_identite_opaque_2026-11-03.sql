@@ -121,7 +121,9 @@
 --     défaut du schéma la leur donnaient). Le verdict lit son corps EN ENTIER,
 --     de `begin` à `end` : avant la branche INSERT, rien que des commentaires
 --     (une ligne « si un rid est fourni, le garder » glissée en tête passait la
---     forme précédente du contrôle, ancrée à la fin seulement).
+--     forme précédente du contrôle, ancrée à la fin seulement) ; un retour
+--     chariot seul y vaut une fin de ligne, comme pour PL/pgSQL, qui clôt un
+--     commentaire `--` sur `\r` (sinon du code s'y cachait).
 --   ④ LES QUATRE INDEX `<table>_rid_key` NE SE SUPPRIMENT PAS. Une identité
 --     USING INDEX dont l'index disparaît vaut NOTHING : PostgreSQL REFUSE alors
 --     tout UPDATE et tout DELETE d'une table publiée (« does not have a replica
@@ -184,8 +186,10 @@
 --     old_record reste null).
 --   · posts, post_comments, conv_messages, event_comments et profiles gardent
 --     leur identité par défaut : leur DELETE envoie toujours leur `id`, un
---     identifiant opaque à une colonne (aléatoire ; pour profiles,
---     l'identifiant du compte, déjà public) — rien qu'un tiers ne relie sans
+--     identifiant à une colonne fait d'une part aléatoire et de l'instant de
+--     création (`Date.now`, `uid()` d'app-02) : il dit QUAND la ligne effacée
+--     avait été créée, jamais QUI ni OÙ (pour profiles, l'identifiant du
+--     compte, déjà public) — rien qu'un tiers ne relie à quelqu'un sans
 --     connaître déjà cet id. video_lives garde aussi la sienne, mais son `id`
 --     PARLE : `vl_` + les 8 premiers caractères du compte + `_` + l'instant de
 --     création en base 36 (`startVideoLive`, js/app-05-config-profil.js) — son
@@ -635,9 +639,12 @@ union all select 7, 'garde trg_rid_opaque ARMÉE sur les quatre tables (BEFORE I
                             -- branche INSERT qui pose l'expression aléatoire SANS
                             -- condition (pas de « if new.rid is null », rien qui
                             -- rende `new` avant elle), l'UPDATE qui rend l'ancien,
-                            -- `end`. Retours chariot ôtés : un fichier extrait en
-                            -- CRLF (Windows) donne le même corps.
-                            and pg_catalog.replace(p.prosrc, chr(13), '')
+                            -- `end`. Retours chariot CHANGÉS EN FINS DE LIGNE, jamais
+                            -- ôtés : un fichier extrait en CRLF (Windows) donne le
+                            -- même corps, et un retour chariot SEUL — qui clôt un
+                            -- commentaire `--` pour PL/pgSQL — ne cache plus de code
+                            -- derrière un commentaire (contre-revue finale).
+                            and pg_catalog.regexp_replace(p.prosrc, '\r\n?', chr(10), 'g')
                                 ~ ('^\s*begin[ \t]*(--[^\n]*)?(\n[ \t]*(--[^\n]*)?)*\n[ \t]*'
                                    || 'if tg_op = ''INSERT'' then\s+new\.rid := \(\(''x'' \|\| pg_catalog\.substr\(pg_catalog\.replace\(pg_catalog\.gen_random_uuid\(\)::text, ''-'', ''''\), 17, 16\)\)::bit\(64\)::bigint & 9007199254740991\);'
                                    || '\s+else\s+new\.rid := old\.rid;\s+end if;\s+return new;\s+end\s*$')
