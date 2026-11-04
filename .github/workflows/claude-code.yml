@@ -54,12 +54,13 @@ jobs:
     # acceptait tout `labeled` et tout `edited` d'une issue portant la mention :
     # corriger une faute ou poser une étiquette relançait un agent (4 agents ainsi
     # sur #38 et #41, le 2026-08-19 ; au banc, avec `queue: max` et l'ancien `if:`,
-    # 20 agents pour 10 ordres). Sont des ordres : le label `claude` posé ; l'ouverture avec la mention ; une
-    # modification, de l'issue ou d'un commentaire, qui AJOUTE la mention ; un
-    # nouveau commentaire qui la porte. `github.event.changes.<champ>` est testé
-    # d'abord : sans lui, `contains(null, …)` vaut faux, et une modification du
-    # titre passerait pour un ajout dans le corps. Reposer le label `claude` reste
-    # un second ordre, voulu : c'est la relance du veilleur de la sentinelle.
+    # 20 agents pour 10 ordres). Sont des ordres : le label `claude` posé ;
+    # l'ouverture avec la mention ; une modification, de l'issue ou d'un commentaire,
+    # qui AJOUTE la mention ; un nouveau commentaire qui la porte.
+    # `github.event.changes.<champ>` est testé d'abord : sans lui, `contains(null, …)`
+    # vaut faux, et une modification du titre passerait pour un ajout dans le corps.
+    # Reposer le label `claude` reste un second ordre, voulu : c'est la relance du
+    # veilleur de la sentinelle.
     # Verrou : table de vérité rejouée sur ce texte, tests/unit/sentinelle-workflows.test.mjs.
     if: |
       (
