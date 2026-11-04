@@ -247,8 +247,8 @@ test.describe("Carte de bienvenue", () => {
 
   // ⚠️ UN SEUL BOUTON (2026-11-03). La carte en alignait quatre à poids presque
   // égal, dont deux en double : « Explorer d'abord » faisait ce que fait le ×,
-  // « Créer mon compte » ce que fait la pastille de la barre du haut. On compte
-  // les BOUTONS (`.btn`), pas les libellés : un bouton de plus, réintroduit
+  // « Créer mon compte » ce que faisait la pastille de la barre du haut, retirée
+  // depuis (2026-11-04). On compte les BOUTONS (`.btn`), pas les libellés : un bouton de plus, réintroduit
   // sous un autre nom, rougit ici.
   test("une seule action principale — choisir ses passions —, le reste en lien", async ({ page }) => {
     await bootVisiteur(page);
@@ -258,9 +258,6 @@ test.describe("Carte de bienvenue", () => {
     await expect(carte.locator(".fr-welcome-cta")).toHaveText("Choisir mes passions");
     await expect(carte.locator(".fr-welcome-lien")).toHaveCount(1);
     await expect(carte.locator(".fr-welcome-signin")).toHaveText("J'ai déjà un compte — me connecter");
-    // L'inscription n'a pas disparu de la première page : sa porte est dans la
-    // barre du haut, visible EN MÊME TEMPS que la carte.
-    await expect(page.locator("#topbarSignup")).toBeVisible();
   });
 });
 
