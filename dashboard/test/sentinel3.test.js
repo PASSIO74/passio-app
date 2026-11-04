@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateSeries } from "../server/anomaly-engine.js";
+import { evaluateSeries, anomalySnapshot } from "../server/anomaly-engine.js";
 import { evaluateReleaseGates } from "../server/release-guardian.js";
 import { canTransitionIncident } from "../server/incident-packets.js";
 import { noteSseHeartbeat, acknowledgeSseHeartbeat, observationSnapshot } from "../server/observation.js";
@@ -108,6 +108,27 @@ test("anomaly engine utilise la baseline robuste et ignore un bruit faible", () 
   const spike = evaluateSeries(15, [1, 1, 2, 1]);
   assert.equal(spike.anomalous, true);
   assert.ok(spike.threshold < spike.current);
+});
+
+test("anomalies : fenêtres vides sous une ingestion à jour = baseline mesurée, pas INSUFFICIENT", () => {
+  const now = Date.parse("2026-11-01T20:00:00Z");
+  // Sans preuve de complétude : comportement historique, rien ne s'invente.
+  assert.equal(anomalySnapshot(now, [], null).state, "INSUFFICIENT");
+  // Ingestion complète depuis 2 h et rattrapée il y a 5 s : quatre zéros mesurés.
+  const vivant = { completeSince: now - 2 * 3_600_000, caughtUpAt: now - 5_000, bufferMax: 100 };
+  const r = anomalySnapshot(now, [], vivant);
+  assert.equal(r.state, "BASELINE");
+  assert.ok(r.coverageMinutes >= 25);
+  // Ingestion figée depuis 2 min : une fenêtre vide ne prouve plus rien.
+  assert.equal(anomalySnapshot(now, [], { ...vivant, caughtUpAt: now - 120_000 }).state, "INSUFFICIENT");
+  // Complète depuis 10 min seulement (redémarrage, table lue partiellement) : trop court.
+  assert.equal(anomalySnapshot(now, [], { ...vivant, completeSince: now - 600_000 }).state, "INSUFFICIENT");
+  // Tampon plein : l'éviction borne la complétude au plus vieil événement gardé.
+  const plein = [{ ts: now - 60_000, type: "nav" }];
+  assert.equal(anomalySnapshot(now, plein, { ...vivant, bufferMax: 1 }).state, "INSUFFICIENT");
+  // Une vraie rafale d'erreurs reste une anomalie.
+  const rafale = Array.from({ length: 12 }, (_, i) => ({ ts: now - 1000 - i, type: "error", severity: "error" }));
+  assert.equal(anomalySnapshot(now, rafale, vivant).state, "ANOMALY");
 });
 
 test("ACK SSE navigateur est distinct du write serveur", () => {

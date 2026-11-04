@@ -1,0 +1,2858 @@
+{
+ "note": "STUB LOCAL — artefact de production minifié (html-minifier-terser + terser + clean-css comme deploy.yml), servi en brotli q5 depuis 127.0.0.1 ; CPU ×4 (CDP) ; hôtes externes coupés (Supabase, Google Fonts, Unsplash). PAS la production.",
+ "date": "2026-11-02T20:49:35.094Z",
+ "reseaux": {
+  "slow4g": {
+   "latency": 150,
+   "downloadThroughput": 200000,
+   "uploadThroughput": 93750,
+   "libelle": "Slow 4G (1,6 Mb/s ↓, 750 kb/s ↑, 150 ms)"
+  },
+  "slow3g": {
+   "latency": 400,
+   "downloadThroughput": 50000,
+   "uploadThroughput": 50000,
+   "libelle": "3G lent (400 kb/s, 400 ms)"
+  }
+ },
+ "series": {
+  "slow4g_visiteur_froid": {
+   "reseau": "Slow 4G (1,6 Mb/s ↓, 750 kb/s ↑, 150 ms)",
+   "profil": "visiteur",
+   "chaud": false,
+   "repetitions": 5,
+   "reussies": 5,
+   "medianes": {
+    "ttfb": 7,
+    "htmlFin": 851,
+    "domContentLoaded": 994,
+    "load": 3838,
+    "fcp": 960,
+    "lcp": 3880,
+    "tbt": 224,
+    "longtasks": 3,
+    "pireLongtask": 201,
+    "premierEcran": 981,
+    "premiereCarte": 3675,
+    "wallMs": 7135,
+    "tasKo": 10039,
+    "domNoeuds": 3060
+   },
+   "cls": {
+    "mediane": 0.317,
+    "max": 0.328
+   },
+   "lcpElement": [
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte"
+   ],
+   "ecranActif": [
+    "screen-feed",
+    "screen-feed",
+    "screen-feed",
+    "screen-feed",
+    "screen-feed"
+   ],
+   "swControle": [
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "ressources": [
+    {
+     "n": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 400,
+     "type": "link"
+    },
+    {
+     "n": "/styles.css?v=48d83aa942",
+     "transfert": 39030,
+     "decode": 230326,
+     "fin": 893,
+     "type": "link"
+    },
+    {
+     "n": "/app.js?v=81c482847e",
+     "transfert": 361522,
+     "decode": 1484582,
+     "fin": 3205,
+     "type": "script"
+    },
+    {
+     "n": "/js/vendor/supabase-js-2.116.0.js",
+     "transfert": 52311,
+     "decode": 218318,
+     "fin": 3782,
+     "type": "script"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4289,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4290,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4290,
+     "type": "fetch"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4746,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4834,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4835,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4835,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4835,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4835,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4835,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4836,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4836,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4836,
+     "type": "img"
+    },
+    {
+     "n": "/release.json?ts=1793652581677",
+     "transfert": 404,
+     "decode": 138,
+     "fin": 5125,
+     "type": "fetch"
+    },
+    {
+     "n": "https://picsum.photos/seed/community/200/200",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5067,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s1/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5191,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s2/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5191,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s3/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5192,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s4/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5192,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s5/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5193,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s6/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5194,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s7/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5194,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/kitchen-p413/900/560",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5195,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/neon-p243/900/560",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5195,
+     "type": "img"
+    },
+    {
+     "n": "https://loremflickr.com/900/560/kitchen",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5255,
+     "type": "img"
+    },
+    {
+     "n": "https://loremflickr.com/900/560/neon",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5255,
+     "type": "img"
+    },
+    {
+     "n": "/js/vendor/maplibre-gl-4.7.1.css",
+     "transfert": 0,
+     "decode": 65534,
+     "fin": 5435,
+     "type": "link"
+    },
+    {
+     "n": "/js/vendor/maplibre-gl-4.7.1.js",
+     "transfert": 0,
+     "decode": 803086,
+     "fin": 5611,
+     "type": "script"
+    },
+    {
+     "n": "https://tiles.openfreemap.org/styles/liberty",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5917,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5944,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5984,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 5991,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=passion_id%2Cauthor_id%2Ccreated_at&created_at=gte.2026-08-04T20%3A49%3A43.390Z&order=created_at.desc&limit=300",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 6685,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=passion_id%2Cauthor_id%2Ccreated_at&created_at=gte.2026-08-04T20%3A49%3A43.390Z&order=created_at.desc&limit=300",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 7699,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 7997,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 8004,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 8010,
+     "type": "fetch"
+    }
+   ],
+   "requetes": [
+    {
+     "url": "/",
+     "type": "document",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 100245,
+     "cc": "no-store, no-cache, must-revalidate"
+    },
+    {
+     "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "externe": true,
+     "type": "stylesheet"
+    },
+    {
+     "url": "/styles.css?v=48d83aa942",
+     "type": "stylesheet",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 38730,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "/app.js?v=81c482847e",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 361222,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "/js/vendor/supabase-js-2.116.0.js",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 52011,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "/release.json?ts=1793652581677",
+     "type": "fetch",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 104,
+     "cc": "no-store, no-cache, must-revalidate"
+    },
+    {
+     "url": "https://picsum.photos/seed/community/200/200",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s1/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s2/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s3/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s4/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s5/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s6/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s7/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/kitchen-p413/900/560",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/neon-p243/900/560",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://loremflickr.com/900/560/kitchen",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://loremflickr.com/900/560/neon",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "/js/vendor/maplibre-gl-4.7.1.css",
+     "type": "stylesheet",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 8338,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "/js/vendor/maplibre-gl-4.7.1.js",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 196609,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://tiles.openfreemap.org/styles/liberty",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=passion_id%2Cauthor_id%2Ccreated_at&created_at=gte.2026-08-04T20%3A49%3A43.390Z&order=created_at.desc&limit=300",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=passion_id%2Cauthor_id%2Ccreated_at&created_at=gte.2026-08-04T20%3A49%3A43.390Z&order=created_at.desc&limit=300",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "externe": true,
+     "type": "fetch"
+    }
+   ],
+   "passes": [
+    {
+     "fcp": 1268,
+     "lcp": 4852,
+     "tbt": 603,
+     "cls": 0.328,
+     "premierEcran": 1295,
+     "premiereCarte": 4257,
+     "load": 4748,
+     "wallMs": 8328
+    },
+    {
+     "fcp": 960,
+     "lcp": 3884,
+     "tbt": 224,
+     "cls": 0.317,
+     "premierEcran": 1001,
+     "premiereCarte": 3675,
+     "load": 3839,
+     "wallMs": 7160
+    },
+    {
+     "fcp": 948,
+     "lcp": 3880,
+     "tbt": 221,
+     "cls": 0.317,
+     "premierEcran": 959,
+     "premiereCarte": 3698,
+     "load": 3838,
+     "wallMs": 7135
+    },
+    {
+     "fcp": 948,
+     "lcp": 3792,
+     "tbt": 198,
+     "cls": 0.317,
+     "premierEcran": 981,
+     "premiereCarte": 3652,
+     "load": 3775,
+     "wallMs": 7078
+    },
+    {
+     "fcp": 964,
+     "lcp": 3776,
+     "tbt": 225,
+     "cls": 0.317,
+     "premierEcran": 972,
+     "premiereCarte": 3608,
+     "load": 3746,
+     "wallMs": 6995
+    }
+   ]
+  },
+  "slow4g_onboarde_froid": {
+   "reseau": "Slow 4G (1,6 Mb/s ↓, 750 kb/s ↑, 150 ms)",
+   "profil": "onboarde",
+   "chaud": false,
+   "repetitions": 5,
+   "reussies": 5,
+   "medianes": {
+    "ttfb": 9,
+    "htmlFin": 853,
+    "domContentLoaded": 997,
+    "load": 3577,
+    "fcp": 960,
+    "lcp": 3972,
+    "tbt": 166,
+    "longtasks": 4,
+    "pireLongtask": 168,
+    "premierEcran": 985,
+    "premiereCarte": 3792,
+    "wallMs": 7089,
+    "tasKo": 11094,
+    "domNoeuds": 3005
+   },
+   "cls": {
+    "mediane": 0.122,
+    "max": 0.122
+   },
+   "lcpElement": [
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte"
+   ],
+   "ecranActif": [
+    "landing",
+    "landing",
+    "landing",
+    "landing",
+    "landing"
+   ],
+   "swControle": [
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "ressources": [
+    {
+     "n": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 327,
+     "type": "link"
+    },
+    {
+     "n": "/styles.css?v=48d83aa942",
+     "transfert": 39030,
+     "decode": 230326,
+     "fin": 861,
+     "type": "link"
+    },
+    {
+     "n": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 392,
+     "type": "link"
+    },
+    {
+     "n": "/app.js?v=81c482847e",
+     "transfert": 361522,
+     "decode": 1484582,
+     "fin": 2849,
+     "type": "script"
+    },
+    {
+     "n": "/js/vendor/supabase-js-2.116.0.js",
+     "transfert": 52311,
+     "decode": 218318,
+     "fin": 3389,
+     "type": "script"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3470,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3775,
+     "type": "fetch"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3933,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3933,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3933,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3934,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3934,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3934,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3934,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3935,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3935,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3935,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3935,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3935,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3936,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1530841377377-3ff06c0ca713?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3936,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3936,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3936,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3936,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3937,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/community/200/200",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3985,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/musique/200/200",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3986,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s1/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3994,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s2/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3996,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s3/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4001,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s4/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4003,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s5/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4003,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s6/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4003,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s7/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4004,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/guitar-p_ev2_e46/900/560",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4004,
+     "type": "img"
+    },
+    {
+     "n": "https://loremflickr.com/900/560/guitar",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4065,
+     "type": "img"
+    },
+    {
+     "n": "/js/vendor/maplibre-gl-4.7.1.css",
+     "transfert": 0,
+     "decode": 65534,
+     "fin": 4122,
+     "type": "link"
+    },
+    {
+     "n": "/js/vendor/maplibre-gl-4.7.1.js",
+     "transfert": 0,
+     "decode": 803086,
+     "fin": 4167,
+     "type": "script"
+    },
+    {
+     "n": "https://tiles.openfreemap.org/styles/liberty",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4348,
+     "type": "fetch"
+    },
+    {
+     "n": "/release.json?ts=1793652618596",
+     "transfert": 0,
+     "decode": 138,
+     "fin": 4369,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4541,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 4959,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 6551,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 6970,
+     "type": "fetch"
+    }
+   ],
+   "requetes": [
+    {
+     "url": "/",
+     "type": "document",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 100245,
+     "cc": "no-store, no-cache, must-revalidate"
+    },
+    {
+     "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "externe": true,
+     "type": "stylesheet"
+    },
+    {
+     "url": "/styles.css?v=48d83aa942",
+     "type": "stylesheet",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 38730,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "externe": true,
+     "type": "stylesheet"
+    },
+    {
+     "url": "/app.js?v=81c482847e",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 361222,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "/js/vendor/supabase-js-2.116.0.js",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 52011,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1530841377377-3ff06c0ca713?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/community/200/200",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/musique/200/200",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s1/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s2/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s3/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s4/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s5/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s6/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s7/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/guitar-p_ev2_e46/900/560",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://loremflickr.com/900/560/guitar",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "/js/vendor/maplibre-gl-4.7.1.css",
+     "type": "stylesheet",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 8338,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "/js/vendor/maplibre-gl-4.7.1.js",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 196609,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://tiles.openfreemap.org/styles/liberty",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "/release.json?ts=1793652618596",
+     "type": "fetch",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 104,
+     "cc": "no-store, no-cache, must-revalidate"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    }
+   ],
+   "passes": [
+    {
+     "fcp": 968,
+     "lcp": 3928,
+     "tbt": 196,
+     "cls": 0.122,
+     "premierEcran": 981,
+     "premiereCarte": 3758,
+     "load": 3518,
+     "wallMs": 7035
+    },
+    {
+     "fcp": 932,
+     "lcp": 3908,
+     "tbt": 166,
+     "cls": 0.122,
+     "premierEcran": 965,
+     "premiereCarte": 3756,
+     "load": 3539,
+     "wallMs": 7003
+    },
+    {
+     "fcp": 948,
+     "lcp": 3996,
+     "tbt": 165,
+     "cls": 0.122,
+     "premierEcran": 989,
+     "premiereCarte": 3800,
+     "load": 3577,
+     "wallMs": 7102
+    },
+    {
+     "fcp": 976,
+     "lcp": 4032,
+     "tbt": 202,
+     "cls": 0.122,
+     "premierEcran": 1013,
+     "premiereCarte": 3884,
+     "load": 3602,
+     "wallMs": 7136
+    },
+    {
+     "fcp": 960,
+     "lcp": 3972,
+     "tbt": 145,
+     "cls": 0.122,
+     "premierEcran": 985,
+     "premiereCarte": 3792,
+     "load": 3577,
+     "wallMs": 7089
+    }
+   ]
+  },
+  "slow3g_visiteur_froid": {
+   "reseau": "3G lent (400 kb/s, 400 ms)",
+   "profil": "visiteur",
+   "chaud": false,
+   "repetitions": 3,
+   "reussies": 3,
+   "medianes": {
+    "ttfb": 6,
+    "htmlFin": 3207,
+    "domContentLoaded": 3242,
+    "load": 12606,
+    "fcp": 3060,
+    "lcp": 12616,
+    "tbt": 208,
+    "longtasks": 4,
+    "pireLongtask": 194,
+    "premierEcran": 3225,
+    "premiereCarte": 12461,
+    "wallMs": 15875,
+    "tasKo": 10375,
+    "domNoeuds": 3060
+   },
+   "cls": {
+    "mediane": 0.317,
+    "max": 0.317
+   },
+   "lcpElement": [
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte"
+   ],
+   "ecranActif": [
+    "screen-feed",
+    "screen-feed",
+    "screen-feed"
+   ],
+   "swControle": [
+    true,
+    true,
+    true
+   ],
+   "ressources": [
+    {
+     "n": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1021,
+     "type": "link"
+    },
+    {
+     "n": "/styles.css?v=48d83aa942",
+     "transfert": 39030,
+     "decode": 230326,
+     "fin": 2962,
+     "type": "link"
+    },
+    {
+     "n": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1289,
+     "type": "link"
+    },
+    {
+     "n": "/app.js?v=81c482847e",
+     "transfert": 361522,
+     "decode": 1484582,
+     "fin": 10702,
+     "type": "script"
+    },
+    {
+     "n": "/release.json?ts=1793652655373",
+     "transfert": 404,
+     "decode": 138,
+     "fin": 5393,
+     "type": "fetch"
+    },
+    {
+     "n": "/js/vendor/supabase-js-2.116.0.js",
+     "transfert": 52311,
+     "decode": 218318,
+     "fin": 12263,
+     "type": "script"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12470,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12471,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12472,
+     "type": "fetch"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12628,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12628,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12629,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12629,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12630,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12630,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12631,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12631,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12632,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12632,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12633,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12633,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12634,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12634,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1530841377377-3ff06c0ca713?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12635,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12635,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12636,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12636,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12636,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/community/200/200",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12684,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s1/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12692,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s2/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12693,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s3/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12694,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s4/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12702,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s5/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12703,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s6/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12707,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s7/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12708,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/kitchen-p413/900/560",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12714,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/neon-p243/900/560",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12715,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/news_europe-p80/900/560",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12722,
+     "type": "img"
+    },
+    {
+     "n": "https://loremflickr.com/900/560/kitchen",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12802,
+     "type": "img"
+    },
+    {
+     "n": "https://loremflickr.com/900/560/neon",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12803,
+     "type": "img"
+    },
+    {
+     "n": "https://loremflickr.com/900/560/news%2Ceurope",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12812,
+     "type": "img"
+    },
+    {
+     "n": "/js/vendor/maplibre-gl-4.7.1.css",
+     "transfert": 0,
+     "decode": 65534,
+     "fin": 12884,
+     "type": "link"
+    },
+    {
+     "n": "/js/vendor/maplibre-gl-4.7.1.js",
+     "transfert": 0,
+     "decode": 803086,
+     "fin": 12937,
+     "type": "script"
+    },
+    {
+     "n": "https://tiles.openfreemap.org/styles/liberty",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 13138,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 13660,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 13677,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 13680,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=passion_id%2Cauthor_id%2Ccreated_at&created_at=gte.2026-08-04T20%3A51%3A05.102Z&order=created_at.desc&limit=300",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 14667,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 15681,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=passion_id%2Cauthor_id%2Ccreated_at&created_at=gte.2026-08-04T20%3A51%3A05.102Z&order=created_at.desc&limit=300",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 15684,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 15686,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 15692,
+     "type": "fetch"
+    }
+   ],
+   "requetes": [
+    {
+     "url": "/",
+     "type": "document",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 100245,
+     "cc": "no-store, no-cache, must-revalidate"
+    },
+    {
+     "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "externe": true,
+     "type": "stylesheet"
+    },
+    {
+     "url": "/styles.css?v=48d83aa942",
+     "type": "stylesheet",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 38730,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "externe": true,
+     "type": "stylesheet"
+    },
+    {
+     "url": "/app.js?v=81c482847e",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 361222,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "/release.json?ts=1793652655373",
+     "type": "fetch",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 104,
+     "cc": "no-store, no-cache, must-revalidate"
+    },
+    {
+     "url": "/js/vendor/supabase-js-2.116.0.js",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 52011,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1530841377377-3ff06c0ca713?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/community/200/200",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s1/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s2/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s3/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s4/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s5/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s6/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s7/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/kitchen-p413/900/560",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/neon-p243/900/560",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/news_europe-p80/900/560",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://loremflickr.com/900/560/kitchen",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://loremflickr.com/900/560/neon",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://loremflickr.com/900/560/news%2Ceurope",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "/js/vendor/maplibre-gl-4.7.1.css",
+     "type": "stylesheet",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 8338,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "/js/vendor/maplibre-gl-4.7.1.js",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 196609,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://tiles.openfreemap.org/styles/liberty",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=passion_id%2Cauthor_id%2Ccreated_at&created_at=gte.2026-08-04T20%3A51%3A05.102Z&order=created_at.desc&limit=300",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=passion_id%2Cauthor_id%2Ccreated_at&created_at=gte.2026-08-04T20%3A51%3A05.102Z&order=created_at.desc&limit=300",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/events?select=id%2Cauthor_id%2Ctitle%2Cpassion_id%2Clat%2Clng%2Ccity%2Cdescription%2Cemoji%2Cmax_attendees%2Cdate_at%2Ccreated_at%2Cvenue%2Cpostal_code%2Cprice%2Cexternal_link%2Cevent_type%2Ccover_url%2Corganizer_id%2Cend_at%2Cstatus%2Cupdated_at%2Cco_organizers%2Cseries_id%2Crecurrence&order=created_at.desc&limit=60",
+     "externe": true,
+     "type": "fetch"
+    }
+   ],
+   "passes": [
+    {
+     "fcp": 3056,
+     "lcp": 12616,
+     "tbt": 200,
+     "cls": 0.317,
+     "premierEcran": 3223,
+     "premiereCarte": 12453,
+     "load": 12606,
+     "wallMs": 15882
+    },
+    {
+     "fcp": 3064,
+     "lcp": 12616,
+     "tbt": 244,
+     "cls": 0.317,
+     "premierEcran": 3225,
+     "premiereCarte": 12461,
+     "load": 12606,
+     "wallMs": 15875
+    },
+    {
+     "fcp": 3060,
+     "lcp": 12664,
+     "tbt": 208,
+     "cls": 0.317,
+     "premierEcran": 3240,
+     "premiereCarte": 12483,
+     "load": 12616,
+     "wallMs": 15873
+    }
+   ]
+  },
+  "slow3g_onboarde_froid": {
+   "reseau": "3G lent (400 kb/s, 400 ms)",
+   "profil": "onboarde",
+   "chaud": false,
+   "repetitions": 3,
+   "reussies": 3,
+   "medianes": {
+    "ttfb": 10,
+    "htmlFin": 3209,
+    "domContentLoaded": 3246,
+    "load": 12435,
+    "fcp": 3064,
+    "lcp": 3064,
+    "tbt": 4,
+    "longtasks": 3,
+    "pireLongtask": 98,
+    "premierEcran": 3234,
+    "premiereCarte": null,
+    "wallMs": 15573,
+    "tasKo": 7343,
+    "domNoeuds": 1344
+   },
+   "cls": {
+    "mediane": 0,
+    "max": 0
+   },
+   "lcpElement": [
+    "DIV.brand-name",
+    "DIV.brand-name",
+    "DIV.brand-name"
+   ],
+   "ecranActif": [
+    "landing",
+    "landing",
+    "landing"
+   ],
+   "swControle": [
+    true,
+    true,
+    true
+   ],
+   "ressources": [
+    {
+     "n": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1031,
+     "type": "link"
+    },
+    {
+     "n": "/styles.css?v=48d83aa942",
+     "transfert": 39030,
+     "decode": 230326,
+     "fin": 2968,
+     "type": "link"
+    },
+    {
+     "n": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1298,
+     "type": "link"
+    },
+    {
+     "n": "/app.js?v=81c482847e",
+     "transfert": 361522,
+     "decode": 1484582,
+     "fin": 10650,
+     "type": "script"
+    },
+    {
+     "n": "/release.json?ts=1793652703538",
+     "transfert": 404,
+     "decode": 138,
+     "fin": 5399,
+     "type": "fetch"
+    },
+    {
+     "n": "/js/vendor/supabase-js-2.116.0.js",
+     "transfert": 52311,
+     "decode": 218318,
+     "fin": 12208,
+     "type": "script"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 12288,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 13351,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 15366,
+     "type": "fetch"
+    }
+   ],
+   "requetes": [
+    {
+     "url": "/",
+     "type": "document",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 100245,
+     "cc": "no-store, no-cache, must-revalidate"
+    },
+    {
+     "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "externe": true,
+     "type": "stylesheet"
+    },
+    {
+     "url": "/styles.css?v=48d83aa942",
+     "type": "stylesheet",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 38730,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "externe": true,
+     "type": "stylesheet"
+    },
+    {
+     "url": "/app.js?v=81c482847e",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 361222,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "/release.json?ts=1793652703538",
+     "type": "fetch",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 104,
+     "cc": "no-store, no-cache, must-revalidate"
+    },
+    {
+     "url": "/js/vendor/supabase-js-2.116.0.js",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 52011,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    }
+   ],
+   "passes": [
+    {
+     "fcp": 3064,
+     "lcp": 3064,
+     "tbt": 5,
+     "cls": 0,
+     "premierEcran": 3234,
+     "premiereCarte": null,
+     "load": 12324,
+     "wallMs": 15438
+    },
+    {
+     "fcp": 3044,
+     "lcp": 3044,
+     "tbt": 4,
+     "cls": 0,
+     "premierEcran": 3230,
+     "premiereCarte": null,
+     "load": 12441,
+     "wallMs": 15619
+    },
+    {
+     "fcp": 3116,
+     "lcp": 3116,
+     "tbt": 0,
+     "cls": 0,
+     "premierEcran": 3262,
+     "premiereCarte": null,
+     "load": 12435,
+     "wallMs": 15573
+    }
+   ]
+  },
+  "slow4g_onboarde_chaud": {
+   "reseau": "Slow 4G (1,6 Mb/s ↓, 750 kb/s ↑, 150 ms)",
+   "profil": "onboarde",
+   "chaud": true,
+   "repetitions": 2,
+   "reussies": 2,
+   "medianes": {
+    "ttfb": 15,
+    "htmlFin": 118,
+    "domContentLoaded": 214,
+    "load": 371,
+    "fcp": 188,
+    "lcp": 1104,
+    "tbt": 18,
+    "longtasks": 3,
+    "pireLongtask": 92,
+    "premierEcran": 211,
+    "premiereCarte": 980,
+    "wallMs": 3509,
+    "tasKo": 13794,
+    "domNoeuds": 3002
+   },
+   "cls": {
+    "mediane": 0.123,
+    "max": 0.123
+   },
+   "lcpElement": [
+    "DIV.feed-exemples-sep-texte",
+    "DIV.feed-exemples-sep-texte"
+   ],
+   "ecranActif": [
+    "landing",
+    "landing"
+   ],
+   "swControle": [
+    true,
+    true
+   ],
+   "ressources": [
+    {
+     "n": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 109,
+     "type": "link"
+    },
+    {
+     "n": "/styles.css?v=48d83aa942",
+     "transfert": 0,
+     "decode": 230326,
+     "fin": 122,
+     "type": "link"
+    },
+    {
+     "n": "/app.js?v=81c482847e",
+     "transfert": 0,
+     "decode": 1484582,
+     "fin": 258,
+     "type": "script"
+    },
+    {
+     "n": "/js/vendor/supabase-js-2.116.0.js",
+     "transfert": 0,
+     "decode": 218318,
+     "fin": 314,
+     "type": "script"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 361,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1044,
+     "type": "fetch"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1151,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1163,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1164,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1164,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1165,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1165,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1165,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1171,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1171,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1172,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1172,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1172,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1173,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1530841377377-3ff06c0ca713?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1173,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1173,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1173,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1174,
+     "type": "img"
+    },
+    {
+     "n": "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=720&h=1280&fit=crop&auto=format&q=80",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1174,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/community/200/200",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1238,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/musique/200/200",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1242,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s1/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1247,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s2/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1259,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s3/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1262,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s4/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1270,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s5/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1277,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s6/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1284,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/s7/160/160",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1291,
+     "type": "img"
+    },
+    {
+     "n": "https://picsum.photos/seed/guitar-p_ev2_e46/900/560",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1294,
+     "type": "img"
+    },
+    {
+     "n": "https://loremflickr.com/900/560/guitar",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1333,
+     "type": "img"
+    },
+    {
+     "n": "/js/vendor/maplibre-gl-4.7.1.css",
+     "transfert": 0,
+     "decode": 65534,
+     "fin": 1406,
+     "type": "link"
+    },
+    {
+     "n": "/js/vendor/maplibre-gl-4.7.1.js",
+     "transfert": 0,
+     "decode": 803086,
+     "fin": 1483,
+     "type": "script"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1452,
+     "type": "fetch"
+    },
+    {
+     "n": "https://tiles.openfreemap.org/styles/liberty",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 1615,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 2213,
+     "type": "fetch"
+    },
+    {
+     "n": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "transfert": 0,
+     "decode": 0,
+     "fin": 3478,
+     "type": "fetch"
+    }
+   ],
+   "requetes": [
+    {
+     "url": "/",
+     "type": "document",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 100245,
+     "cc": "no-store, no-cache, must-revalidate"
+    },
+    {
+     "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+     "externe": true,
+     "type": "stylesheet"
+    },
+    {
+     "url": "/styles.css?v=48d83aa942",
+     "type": "stylesheet",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 38730,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "/app.js?v=81c482847e",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 361222,
+     "cc": "public, max-age=31536000, immutable"
+    },
+    {
+     "url": "/js/vendor/supabase-js-2.116.0.js",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 52011,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1530841377377-3ff06c0ca713?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=720&h=1280&fit=crop&auto=format&q=80",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/community/200/200",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/musique/200/200",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s1/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s2/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s3/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s4/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s5/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s6/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/s7/160/160",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://picsum.photos/seed/guitar-p_ev2_e46/900/560",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "https://loremflickr.com/900/560/guitar",
+     "externe": true,
+     "type": "image"
+    },
+    {
+     "url": "/js/vendor/maplibre-gl-4.7.1.css",
+     "type": "stylesheet",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 8338,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "/js/vendor/maplibre-gl-4.7.1.js",
+     "type": "script",
+     "externe": false,
+     "status": 200,
+     "enc": "br",
+     "len": 196609,
+     "cc": "public, max-age=0, must-revalidate"
+    },
+    {
+     "url": "https://tiles.openfreemap.org/styles/liberty",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/posts?select=id%2Cauthor_id%2Cpassion_id%2Cmood%2Ccontent%2Cmedia_url%2Ccreated_at%2Cis_reel%2Coverlays%2Cvlog%2Cshared_from_post_id%2Cshared_data%2Cevent_id%2Cprofiles%21author_id%28username%2Cemoji%2Ccolor%2Cavatar_url%2Cis_private%29&order=created_at.desc%2Cid.desc&offset=0&limit=20",
+     "externe": true,
+     "type": "fetch"
+    },
+    {
+     "url": "https://njkiyoklssvefstljemx.supabase.co/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000",
+     "externe": true,
+     "type": "fetch"
+    }
+   ],
+   "passes": [
+    {
+     "fcp": 172,
+     "lcp": 1172,
+     "tbt": 27,
+     "cls": 0.123,
+     "premierEcran": 210,
+     "premiereCarte": 1008,
+     "load": 368,
+     "wallMs": 3518
+    },
+    {
+     "fcp": 204,
+     "lcp": 1036,
+     "tbt": 8,
+     "cls": 0.123,
+     "premierEcran": 211,
+     "premiereCarte": 951,
+     "load": 374,
+     "wallMs": 3499
+    }
+   ]
+  }
+ }
+}

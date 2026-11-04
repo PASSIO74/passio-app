@@ -116,8 +116,21 @@ export function validatePatch(patch) {
   if (!patch || patch.length < 20) return { ok: false, raison: "aucun patch dans la réponse" };
   if (patch.length > 200_000) return { ok: false, raison: "patch trop volumineux" };
 
-  const files = [...patch.matchAll(/^diff --git a\/(.+?) b\/(.+?)$/gm)].flatMap((m) => [m[1], m[2]]);
+  // ⚠️ LES DEUX FAMILLES D'EN-TÊTES, PAS SEULEMENT `diff --git` (audit du
+  // 2026-11-02). `git apply` écrit sur le chemin des lignes `--- a/…` / `+++ b/…`
+  // de chaque section ; la ligne `diff --git` n'est qu'une étiquette. Un patch
+  // « diff --git a/js/a.js b/js/a.js » suivi de « +++ b/tests/e2e/x.spec.js »
+  // passait donc la liste blanche et modifiait un TEST — exactement ce que ce
+  // filtre existe pour interdire (mesuré : `git apply --check` l'accepte, le
+  // fichier du `+++` est écrit). Tout chemin nommé par l'une ou l'autre ligne
+  // est soumis à la liste blanche ; `/dev/null` (création, suppression) est déjà
+  // refusé plus bas par les marqueurs de mode.
+  const files = [...patch.matchAll(/^diff --git a\/(.+?) b\/(.+?)\r?$/gm)].flatMap((m) => [m[1], m[2]]);
   if (!files.length) return { ok: false, raison: "patch illisible (aucun fichier)" };
+  for (const m of patch.matchAll(/^(?:---|\+\+\+) (?:[ab]\/)?(.+?)\r?$/gm)) {
+    const f = m[1].trim().split("\t")[0];
+    if (f && f !== "/dev/null") files.push(f);
+  }
   const uniques = [...new Set(files)];
   if (uniques.length > REPAIR.maxFiles) return { ok: false, raison: `${uniques.length} fichiers touchés (maximum ${REPAIR.maxFiles})` };
 
@@ -301,6 +314,19 @@ export async function attemptRepair(diagnosis, analyzer) {
     }
     await git(["apply", ".sentinelle.patch"], { cwd: dir });
     fs.rmSync(tmpPatch, { force: true });
+    // Ce que le patch a RÉELLEMENT touché, lu dans le worktree — pas ce que ses
+    // en-têtes annoncent (audit du 2026-11-02 : `git apply` suit les lignes
+    // ---/+++, l'étiquette `diff --git` peut dire autre chose). Un fichier écrit
+    // hors de la liste blanche, ou un fichier créé, et tout s'arrête ici.
+    const touche = (await git(["status", "--porcelain", "--untracked-files=all"], { cwd: dir })).out
+      .split(/\r?\n/).map((l) => l.slice(3).trim()).filter(Boolean)
+      .map((f) => (f.includes(" -> ") ? f.split(" -> ").pop() : f).replace(/^"|"$/g, ""));
+    const horsListe = touche.filter((f) => !ALLOWED.some((re) => re.test(f)) || !v.files.includes(f));
+    if (horsListe.length) {
+      rapport.raison = "correctif refusé : il modifie " + horsListe.slice(0, 3).join(", ") + " — hors du périmètre annoncé";
+      rapport.steps.push({ key: "apply", ok: false, detail: rapport.raison });
+      return finish(rapport, dir, branch);
+    }
     rapport.steps.push({ key: "apply", ok: true });
 
     // 3. Vérifier. Syntaxe d'abord (instantané), puis les suites déclarées.

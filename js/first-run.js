@@ -793,33 +793,40 @@
     var dejaChoisi = prefs().passions.length > 0;
     var titre = dejaChoisi ? "Tes passions sont sur cet appareil" : "Bienvenue sur PASSIO";
     var texte = dejaChoisi
-      ? "Crée ton compte pour les garder, ou continue d'explorer."
+      ? "Crée ton compte pour les garder."
       : "Tout ce que tu aimes, au même endroit.";
-    var principal = dejaChoisi ? "Modifier mes passions" : "Personnaliser mon expérience";
-    var secondaire = dejaChoisi ? "Plus tard" : "Explorer d'abord";
+    // ⚠️ UN SEUL BOUTON, ET C'EST CELUI QUE LE MESSAGE ANNONCE (2026-11-03). La
+    // carte en alignait quatre à poids presque égal — « Personnaliser mon
+    // expérience », « Explorer d'abord », « Créer mon compte », « J'ai déjà un
+    // compte » — dont deux en double : « Explorer d'abord » faisait exactement
+    // ce que fait le ×, et « Créer mon compte » ce que faisait la pastille de la
+    // barre du haut (retirée le 2026-11-04, à la demande de Benjamin).
+    // Nouveau venu → choisir ses passions ; passions déjà choisies → créer le
+    // compte qui les garde. Le reste devient des LIENS sous le bouton.
+    // ⚠️ « Modifier mes passions » NE PART PAS : cette carte est la seule porte
+    // visible vers le panneau (l'autre est une entrée des Paramètres, que
+    // personne ne va chercher — cf. CARTE DE BIENVENUE ci-dessus).
+    // ⚠️ « J'ai déjà un compte » NON PLUS : c'est la seule porte VISIBLE, sans
+    // geste préalable, vers un compte déjà créé — le gate de l'action
+    // engageante demande d'avoir tenté un like ou un commentaire (2026-09-02).
     return ''
       + '<section class="fr-welcome" id="frWelcome" role="region" aria-labelledby="frWelcomeTitle">'
       +   '<button type="button" class="fr-welcome-close" onclick="PassioFirstRun.fermerBienvenue()" aria-label="Fermer la carte de bienvenue">×</button>'
       +   '<div class="fr-welcome-title" id="frWelcomeTitle">' + escapeHtml(titre) + '</div>'
       +   '<div class="fr-welcome-text">' + escapeHtml(texte) + '</div>'
       +   '<div class="fr-welcome-actions">'
-      +     '<button type="button" class="btn primary fr-welcome-cta" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">' + escapeHtml(principal) + '</button>'
-      +     '<button type="button" class="btn ghost fr-welcome-alt" onclick="PassioFirstRun.fermerBienvenue()">' + escapeHtml(secondaire) + '</button>'
+      +     (dejaChoisi
+            ? '<button type="button" class="btn primary fr-welcome-cta" onclick="PassioFirstRun.allerInscription(\'bienvenue\')">Créer mon compte</button>'
+            : '<button type="button" class="btn primary fr-welcome-cta" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Choisir mes passions</button>')
       +   '</div>'
-      // ⚠️ TROISIÈME LIGNE, ET PAS UN TROISIÈME BOUTON DANS LA RANGÉE : les
-      // deux actions ci-dessus partagent une rangée en `flex: 1 1 auto`, un
-      // troisième bouton y écraserait les libellés. Ce lien est la seule porte
-      // VISIBLE, sans geste préalable, vers le compte déjà créé : le gate
-      // « J'ai déjà un compte » demande, lui, d'avoir tenté un like ou un
-      // commentaire (défaut vécu le 2026-09-02).
-      // ⚠️ CRÉER UN COMPTE SE VOIT DÈS L'ARRIVÉE (2026-10-23, essais de
-      // Benjamin avec d'autres personnes : « il manque sur la première page la
-      // possibilité de créer un compte »). La carte ne menait à l'inscription
-      // qu'au travers d'une action engageante (like, commentaire…) : un nouveau
-      // venu qui VOULAIT un compte ne trouvait pas la porte. Pleine largeur, sous
-      // la rangée, pour la même raison que le lien de connexion ci-dessous.
-      +   '<button type="button" class="btn fr-welcome-signup" onclick="PassioFirstRun.allerInscription(\'bienvenue\')">Créer mon compte</button>'
-      +   '<button type="button" class="fr-welcome-signin" onclick="PassioFirstRun.allerConnexion(\'deja_compte\')">J\'ai déjà un compte — me connecter</button>'
+      +   '<div class="fr-welcome-liens">'
+      +     (dejaChoisi
+            ? '<button type="button" class="fr-welcome-lien fr-welcome-passions" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Modifier mes passions</button>'
+            : '')
+      +     '<button type="button" class="fr-welcome-lien fr-welcome-signin" onclick="PassioFirstRun.allerConnexion(\'deja_compte\')">'
+      +       (dejaChoisi ? 'Me connecter' : 'J\'ai déjà un compte — me connecter')
+      +     '</button>'
+      +   '</div>'
       + '</section>';
   }
 

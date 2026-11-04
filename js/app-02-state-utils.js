@@ -6024,7 +6024,7 @@ async function onbDoAuth() {
       // marche de son entonnoir au pilotage. Émis ICI, sur l'appareil d'arrivée,
       // et pas à la confirmation : le lien de confirmation s'ouvre souvent dans
       // un AUTRE navigateur, qui ne sait rien du lien d'arrivée.
-      try { if (window.tel && tel.linkSignup) tel.linkSignup("email", { invite: !!(data && data.user && data.user.user_metadata && data.user.user_metadata.invite_de) }); } catch (e) {}
+      try { if (window.tel && tel.linkSignup) tel.linkSignup("email", { invite: !!(data && data.user && data.user.user_metadata && data.user.user_metadata.invite_de), compte: data && data.user && data.user.id }); } catch (e) {}
       // Pas de session → e-mail à confirmer. On NE rentre PAS dans l'app sans
       // adresse confirmée (exigence : « il faut une adresse mail valide »).
       if (!data?.session) {

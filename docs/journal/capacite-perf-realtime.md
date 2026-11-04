@@ -20,6 +20,8 @@
 - 🔌 LE MUR EST UNE CONNEXION WEBSOCKET, ET 98 % ÉTAIENT PAYÉES POUR RIEN (2026-09-20)
 - 📉 CAPACITÉ, QUATRE LOTS : CE QUI EST LIVRÉ, CE QUI ATTEND UNE MAIN HUMAINE, ET CE QUI A ÉTÉ MESURÉ (2026-09-21)
 - 🚪 UN VISITEUR NE LIT PAS LE COMPTE QU'IL N'A PAS (2026-10-11)
+- 🗂️ INDEX ET REALTIME : CE QUE LA MESURE A RETIRÉ, ET CE QU'ELLE A LAISSÉ (2026-11-03)
+- 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 
 ---
 
@@ -1029,3 +1031,82 @@ moi » et le FIL est la première requête du démarrage ; ② un compte réel l
 couperait sa synchronisation sans un bruit) ; ③ chaque lecteur seul rend sa valeur vide, sans requête ;
 ④ source. **Éprouvé par RÉINJECTION** (sources de `main` remises en place) : ①, ③ et ④ rougissent, ② reste
 vert — il garde l'autre sens.
+
+---
+
+## 🗂️ INDEX ET REALTIME : CE QUE LA MESURE A RETIRÉ, ET CE QU'ELLE A LAISSÉ (2026-11-03)
+
+Suite de l'audit du 2026-11-02 (agent F, `rapports/F-performance-charge.md`), décisions F-05 / F-06 /
+F-07 tranchées le 2026-11-03. Migration `migrations/migration_index_realtime_2026-11-03.sql` (DDL seul,
+aucune donnée), banc `tests/sql/migration-index-realtime.test.sh` (18/18).
+
+- **F-05** — `passions_trgm_idx` était le doublon STRICT de `passions_normalized_trgm` (même
+  `gin (normalized_label gin_trgm_ops)`, 1 scan contre 11 743 en 173 jours) ; `passions_aliases_gin`
+  n'avait servi à rien depuis le 13/05 (la recherche passe par la colonne `recherche`). Les deux sont
+  retirés. ⚠️ **Les AUTRES index « jamais lus » (events, reports, moderation_actions) restent** : sur des
+  tables quasi vides, 0 scan ne prouve pas 0 usage — c'est une absence de preuve, pas une preuve
+  d'absence (même règle que les médias orphelins).
+- **F-06** — la lecture du pilotage sur `telemetry_events` (`kpi.js`, `retention.js` : `env = …`,
+  `user_id is not null`, `received_at > …`, tri descendant) balayait `idx_tel_user` en entier : index
+  partiel `idx_tel_env_received_identifies (env, received_at desc) include (user_id) where user_id is not
+  null`. Le banc prouve le plan sans nœud de tri ; **le gain se remesure en production** au canal ①
+  (EXPLAIN de la requête) après application, jamais d'après le banc.
+- **F-07** — `realtime.messages` portait DEUX policies SELECT jumelles (« Utilisateur reçoit ses
+  messages », avec et sans accent), écrites `auth.uid()` NU donc réévaluées pour chaque ligne diffusée
+  (advisor `auth_rls_initplan` ×2). Une seule reste, même prédicat, en `(select auth.uid())`.
+  ⚠️ **Piège du banc** : une policy de `realtime.messages` n'est PAS un filtre de lignes, elle OUVRE ou
+  FERME la souscription au topic — tout ou rien. Le premier jet du banc attendait « 1 ligne » et
+  mesurait 3 : c'était l'attente qui était fausse, pas la policy.
+
+## 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
+
+**Symptôme.** Sur le poste de Benjamin, `npm run verif` s'arrêtait au maillon 30 sur 55 : le cas ③ de
+`tests/unit/charge-gardes.test.mjs` rendait `status null` au lieu de 2, après 20 s. Vert en CI Linux.
+La chaîne est en `&&` : les 25 contrôles suivants ne tournaient plus sur ce poste depuis l'entrée du
+test dans la chaîne (2026-11-03).
+
+**Cause.** `lancer()` isolait le jeton par `HOME` seul, or `scripts/charge.mjs` le lit par
+`resolve(homedir(), ".supabase", "access-token")`. Mesuré sous Windows, dans un enfant :
+
+| Environnement de l'enfant | `os.homedir()` |
+|---|---|
+| `HOME` posé, seul | le VRAI dossier du compte |
+| aucune de ces variables | le VRAI dossier du compte |
+| `HOMEDRIVE` + `HOMEPATH` posés | le VRAI dossier du compte |
+| `USERPROFILE` vide | lève `ENOENT` |
+| `HOME` et `USERPROFILE` posés | le dossier posé |
+
+⚠️ **RETIRER N'EST PAS NEUTRALISER.** L'environnement de `lancer()` était déjà reconstruit à partir de
+rien : `USERPROFILE` en était absent, et c'est précisément ce qui faisait retomber `homedir()` sur le
+vrai dossier. `HOMEDRIVE` et `HOMEPATH` n'y jouent aucun rôle.
+
+⚠️ **UN TEST DE REFUS QUI NE REFUSE PAS DEVIENT LE GESTE QU'IL DEVAIT INTERDIRE.** Sur un poste connecté
+(`supabase login`), chaque `npm run verif` révélait les clés du staging par l'API de gestion, puis y
+envoyait 10 lecteurs simultanés pendant 20 s, jusqu'au `timeout`. Portée vérifiée à la lecture de
+`charge.mjs` : mode anon, donc lectures seules, sans compte créé ni donnée semée, et jamais la
+production (`PROD_REF`). La reproduction du 04/11 a joué ce run une fois de plus.
+
+**Correctif, dans le test seul** (`charge.mjs` n'y est pour rien) :
+- `ENV_SANS_JETON` pose `HOME` ET `USERPROFILE` vers un dossier inexistant ;
+- `lancer()` sonde ce que verrait l'enfant AVANT de lancer `charge.mjs` : une isolation rompue échoue en
+  quelques dizaines de millisecondes, sans réseau, au lieu de partir contre le staging ;
+- le cas ⓪ porte un témoin positif (un dossier leurre avec un jeton EST vu, sinon `jeton: false` ne
+  prouverait rien), verrouille les deux variables (la CI Linux ne verrait jamais `USERPROFILE` autrement)
+  et la forme de lecture du jeton dans `charge.mjs`, dont la sonde est la copie.
+
+**Mesuré** : 20,8 s et un rouge avant, 0,84 s et 6/6 après. Mutations sur une copie temporaire :
+retirer `USERPROFILE` (le défaut d'origine) rougit ⓪①②③ en 447 ms au total avec
+`isolation rompue, charge.mjs n'est pas lancé` ; retirer `HOME` rougit ⓪ ; une sonde aveugle rougit ⓪.
+
+**Survivants cherchés : aucun.** `grep "HOME:"` ne trouve que ce test. Les autres lecteurs du jeton de
+poste, lus en contexte, ne sont atteints par aucun test :
+- `appliquer-migration.mjs` : `barriere-migration` ne le lance qu'avec `--verifier`, qui sort avant le jeton ;
+- `charge-realiste.mjs` : le test ne joue que le mode plan, et `--executer` n'y est éprouvé que refusé ;
+- `verifier-prerequis-fonctions.mjs` : le banc SQL passe par `--psql`, sans jeton ;
+- `generer-migration-initplan.mjs`, `restaurer-donnees.js` : le jeton n'est lu que derrière la garde
+  « script principal » ; les tests appellent les fonctions exportées (les phases de la reprise, avec un
+  contexte fabriqué) ;
+- `schema-executable.js`, `rollback-netlify.mjs` : aucun test ne les lance.
+
+**Règle.** Un test qui veut priver un enfant du dossier personnel pose `HOME` ET `USERPROFILE` vers un
+dossier inexistant, et le vérifie avant de lancer ce qu'il protège.

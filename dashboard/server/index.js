@@ -102,7 +102,9 @@ api.get("/stream", auth.requireAuth, (req, res) => {
     Connection: "keep-alive", "X-Accel-Buffering": "no",
   });
   res.write(`event: hello\ndata: ${JSON.stringify({ ...ingestState(), clients: clientCount() })}\n\n`);
-  addClient(res);
+  // Le rôle de la session voyage avec la connexion : `broadcast` ne lui écrit
+  // que ce que ses routes lui rendraient (sse.js, CAPACITE_PAR_TYPE).
+  addClient(res, req.session.role);
 });
 
 // `supervise` : compteurs transmis par supervise.mjs (relances depuis le logon) —

@@ -217,3 +217,18 @@ a { color: var(--accent); }
 .chiffre-bouton.tuile-large b { grid-row: 1 / span 2; font-size: 30px; }
 .chiffre-bouton.tuile-large span { margin-top: 0; font-size: 14px; color: var(--texte); font-weight: 700; }
 .chiffre-bouton.tuile-large small.tendance { margin-top: 2px; }
+
+/* Croissance et coût (2026-11-01) */
+.carte .geste { margin-top: 8px; font-size: 13px; color: var(--texte, inherit); }
+.liste-cout, .liste-sources { list-style: none; margin: 8px 0 0; padding: 0; display: grid; }
+.liste-cout li { padding: 4px 0; font-size: 14px; }
+.liste-cout li.a-prevoir { color: var(--orange, #f59e0b); }
+.liste-sources .source { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--ligne); min-width: 0; }
+.liste-sources .source:first-child { border-top: 0; padding-top: 0; }
+.source-nom { font-weight: 600; overflow-wrap: anywhere; }
+.source-chiffres { color: var(--discret); font-size: 13px; text-align: right; }
+.tableau-retention { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tableau-retention th, .tableau-retention td { text-align: right; padding: 6px 4px; border-top: 1px solid var(--ligne); }
+.tableau-retention th:first-child, .tableau-retention td:first-child { text-align: left; }
+.tableau-retention th { color: var(--discret); font-weight: 600; border-top: 0; }
+#croissance code { font-size: 12px; overflow-wrap: anywhere; }

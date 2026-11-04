@@ -634,10 +634,40 @@ function _setMyRsvpLocal(eventId, rsvp) {
   if (joined) state.user.joinedEvents.push(eventId);
 }
 
+// ── NOMBRE D'INSCRITS : LA LISTE N'EST PLUS LE COMPTEUR (C-04, 2026-11-03) ──
+// Depuis `migration_participants_visibilite_2026-11-03.sql`, la base ne rend à
+// un compte la LISTE nominative d'une activité que s'il y a un lien : lui-même,
+// l'organisation, les autres inscrits quand il est inscrit, et les personnes
+// qu'il suit. Pour tout autre compte connecté, `ev.attendees` est donc PARTIEL
+// — mais le NOMBRE reste public parmi les connectés, servi par la RPC
+// `participants_compte` (`ev.counts`, posé par supaLoadEvents). On prend le
+// plus grand des deux : la liste locale peut porter une inscription optimiste
+// que le serveur n'a pas encore comptée, et le compteur serveur porte ceux
+// qu'on ne voit pas. Base pas encore migrée (RPC absente) : `counts` est nul
+// et la liste fait foi, exactement comme avant.
+function _nbInscrits(ev, kind) {
+  if (!ev) return 0;
+  const k = kind || "going";
+  const liste = k === "going" ? ev.attendees : k === "maybe" ? ev.maybes
+    : k === "waitlist" ? ev.waitlist : k === "checked_in" ? ev.checkedIn : null;
+  const n = (liste || []).length;
+  const c = ev.counts ? Number(ev.counts[k]) : 0;
+  return Math.max(n, c > 0 ? c : 0);
+}
+// Un geste optimiste (je viens / je quitte) déplace aussi le compteur serveur
+// mémorisé, sinon « quitter » laissait le nombre d'avant jusqu'au prochain
+// chargement (le max ci-dessus ne sait pas descendre tout seul).
+function _ajusterCompteInscrits(ev, kind, delta) {
+  if (!ev || !ev.counts || !kind) return;
+  const c = Number(ev.counts[kind]);
+  if (!(c >= 0)) return;
+  ev.counts[kind] = Math.max(0, c + delta);
+}
+
 // Places restantes (null = illimité). Seuls les « je viens » occupent une place.
 function _eventSpotsLeft(ev) {
   if (!ev || !ev.maxAttendees) return null;
-  return Math.max(0, ev.maxAttendees - (ev.attendees || []).length);
+  return Math.max(0, ev.maxAttendees - _nbInscrits(ev, "going"));
 }
 function _eventIsFull(ev) { const s = _eventSpotsLeft(ev); return s !== null && s <= 0; }
 
@@ -1746,9 +1776,17 @@ function updateIrlMapMarkers() {
     const lat = ll[0] + (((h * 13) % 100) / 50000 - 0.001);
     const lng = ll[1] + (((h * 23) % 100) / 50000 - 0.001);
     const passion = passionById(ev.passion) || { emoji: "📍", label: "" };
+    // ⚠️ `events.emoji` est une colonne TEXTE écrite par l'auteur de l'activité
+    // (aucune contrainte serveur) et lue par tout le monde : c'est du contenu
+    // d'AUTRUI, et le shim pose `icon.html` dans `innerHTML`. C'était le seul
+    // site de l'app où un emoji d'activité n'était pas échappé — un
+    // `<img onerror>` fourni comme emoji s'exécutait chez quiconque ouvrait la
+    // carte (audit 2026-11-02, B-01). Même règle que `_emojiSur` : borner, puis
+    // échapper. Verrou : tests/e2e/audit-2026-11-xss-marqueur.spec.js.
+    const emojiMarqueur = ev.emoji ? _emojiBorne(ev.emoji) : (passion.emoji || "📍");
     const icon = L.divIcon({
       className: "passio-marker-wrap",
-      html: `<div class="passio-marker">${ev.emoji || passion.emoji || "📍"}</div>`,
+      html: `<div class="passio-marker">${escapeHtml(emojiMarqueur)}</div>`,
       iconSize: [36, 36],
       iconAnchor: [18, 18],
       popupAnchor: [0, -16],
@@ -1758,7 +1796,7 @@ function updateIrlMapMarkers() {
     const dk = _eventDistanceKm(ev);
     m.bindPopup(`
       <div class="irl-popup-title">${escapeHtml(ev.title || "Événement")}</div>
-      <div class="irl-popup-meta">${passion.emoji || ""} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${_eventTimeLabel(ev)}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
+      <div class="irl-popup-meta">${escapeHtml(passion.emoji || "")} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${_eventTimeLabel(ev)}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
       <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'événement</button>
     `);
     points.push([lat, lng]);
@@ -2634,7 +2672,7 @@ function _sortIrlEvents(list) {
   }
   if (irlSort === "popular") {
     return list.slice().sort(function(a, b) {
-      return ((b.attendees || []).length - (a.attendees || []).length) || a.date - b.date;
+      return (_nbInscrits(b, "going") - _nbInscrits(a, "going")) || a.date - b.date;
     });
   }
   // "soon" : le prochain d'abord ; en mode « Passés », le plus récent d'abord.
@@ -2855,6 +2893,14 @@ function _scheduleIrlMapUpdate() {
   clearTimeout(window._irlMapT);
   window._irlMapT = setTimeout(function () {
     var run = function () {
+      // ⚠️ La carte ne se construit que si l'écran « Rencontrer » est AFFICHÉ
+      // (audit 2026-11-02, F-01). `#irlMap` existe dans le DOM dès le chargement
+      // et `renderEverything()` rend cet écran au démarrage : MapLibre (803 Ko,
+      // 205 Ko compressés) partait donc à TOUT démarrage, visiteur compris, écran
+      // jamais ouvert. `goTo("irl")` rappelle `renderIRL()` → la carte arrive à
+      // l'ouverture. Verrou : tests/e2e/audit-2026-11-perf-dist.spec.js (① bis).
+      var ecranIrl = document.getElementById("screen-irl");
+      if (ecranIrl && !ecranIrl.classList.contains("active")) return;
       try { initIrlMap(); } catch (e) {}
       try { updateIrlMapMarkers(); } catch (e) {}
     };
@@ -2972,9 +3018,9 @@ function renderIRL() {
     const distStr = distKm != null && distKm < 20000 ? " · " + _fmtDistance(distKm) : "";
     const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(fmtEventPrice(e.price))}</span>` : "";
     const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(e.eventType)}</span>` : "";
-    const attCount = (e.attendees || []).length;
-    const maybeCount = (e.maybes || []).length;
-    const waitCount = (e.waitlist || []).length;
+    const attCount = _nbInscrits(e, "going");
+    const maybeCount = _nbInscrits(e, "maybe");
+    const waitCount = _nbInscrits(e, "waitlist");
     const isFull = _eventIsFull(e);
     const myState = myRsvp(e.id);
     const spotsTag = e.maxAttendees
@@ -3466,9 +3512,11 @@ async function setEventRsvp(id, rsvp) {
   // annoncée (toast, notification, conversation rejointe) AVANT le verdict du
   // serveur, et un refus ne défaisait rien — la personne se croyait inscrite,
   // l'événement ne la comptait pas. Un échec ANNULE désormais l'affichage.
-  const avant = { attendees: (ev.attendees || []).slice(), maybes: (ev.maybes || []).slice(), waitlist: (ev.waitlist || []).slice() };
+  const avant = { attendees: (ev.attendees || []).slice(), maybes: (ev.maybes || []).slice(), waitlist: (ev.waitlist || []).slice(),
+    counts: ev.counts ? Object.assign({}, ev.counts) : null };
   const annuler = (message) => {
     ev.attendees = avant.attendees; ev.maybes = avant.maybes; ev.waitlist = avant.waitlist;
+    if (avant.counts) ev.counts = avant.counts;
     _setMyRsvpLocal(id, prev);
     saveState();
     _patchEventCardJoin(id);
@@ -3486,6 +3534,9 @@ async function setEventRsvp(id, rsvp) {
   if (rsvp === "going") ev.attendees.push(meId);
   else if (rsvp === "maybe") ev.maybes.push(meId);
   else if (rsvp === "waitlist") ev.waitlist.push(meId);
+  // Le compteur serveur mémorisé suit le geste (C-04) : −1 sur l'état quitté, +1 sur l'état pris.
+  if (prev === "going" || prev === "maybe" || prev === "waitlist") _ajusterCompteInscrits(ev, prev, -1);
+  if (rsvp === "going" || rsvp === "maybe" || rsvp === "waitlist") _ajusterCompteInscrits(ev, rsvp, +1);
 
   _setMyRsvpLocal(id, rsvp);
   saveState();
@@ -3526,6 +3577,16 @@ async function setEventRsvp(id, rsvp) {
     return;
   }
   if (rsvpOk === true) _rsvpRegle(true);
+  // ⚠️ TOUTE SORTIE DE « je viens » LIBÈRE UNE PLACE, pas seulement le retrait
+  // (revue du 2026-11-03). Seule la branche « retirer ma réponse » promouvait :
+  // passer de « je viens » à « je ne viens pas » ou à « peut-être » rendait la
+  // place EN BASE (un `going` de moins) sans que personne ne la reçoive — la
+  // file attendait jusqu'au retrait suivant, qui pouvait ne jamais venir. Même
+  // appel que le retrait, et seulement sur un verdict serveur POSITIF : tant que
+  // la base n'a pas écrit le changement, la place n'est pas libre (et
+  // `promouvoir_attente` le vérifierait de toute façon : elle compte les
+  // venants sous verrou avant de promouvoir quiconque).
+  if (rsvpOk === true && prev === "going" && rsvp !== "going") _promoteNextWaitlisted(ev);
   // Le rappel J-1 / H-2 part du serveur en push : encore faut-il que cet
   // appareil y soit abonné. On le propose ICI — inscription CONFIRMÉE — et
   // nulle part avant (rappels.js côté serveur, `proposerRappelsActivite` ci-dessous).
@@ -3542,39 +3603,215 @@ async function setEventRsvp(id, rsvp) {
   if (rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
     supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
   }
-  // Les participants (je viens / peut-être) rejoignent la discussion de groupe.
-  if (rsvp === "going" || rsvp === "maybe") _joinEventConversation(ev);
+  // Les VENANTS rejoignent la discussion de groupe ; tout autre état la quitte.
+  // ⚠️ « peut-être » n'y entre plus (C-04, troisième contre-revue du
+  // 2026-11-03) : la liste des membres d'une discussion d'activité EST la liste
+  // des venants, et un « peut-être » se pose même sur une activité complète. Le
+  // serveur le refuse aussi (`can_join_event_conversation`, migration
+  // participants_visibilite) ; le client ne le demande plus, et sort de la
+  // discussion en quittant « je viens ».
+  if (rsvp === "going") _joinEventConversation(ev);
   else _leaveEventConversation(ev);
 }
 
 // Promotion automatique du premier de la liste d'attente quand une place se
-// libère. Fait par le client qui se désinscrit : c'est le seul moment où l'on
-// sait, sans serveur, qu'une place vient de s'ouvrir.
+// libère. Fait par le client qui QUITTE « je viens » — retrait, « je ne viens
+// pas » ou « peut-être » (`setEventRsvp`) : c'est le seul moment où l'on sait,
+// sans serveur, qu'une place vient de s'ouvrir.
 async function _promoteNextWaitlisted(ev) {
   if (!ev || !ev.maxAttendees) return;
   let next = (ev.waitlist || [])[0] || null;
   if (window._supaReal && ev.fromSupabase && typeof supaFirstWaitlisted === "function") {
     next = await supaFirstWaitlisted(ev.id) || next;
   }
-  if (!next) return;
+  // ⚠️ SANS FILE LISIBLE, LA BASE CHOISIT QUAND MÊME (C-04, revue du
+  // 2026-11-03). Depuis `migration_participants_visibilite_2026-11-03.sql`,
+  // celui qui part ne voit plus la liste d'attente : `supaFirstWaitlisted` part
+  // APRÈS son DELETE — il n'a plus de ligne, donc plus de lien — et rend `null`.
+  // `if (!next) return` laissait alors la place vide alors que la RPC
+  // `promouvoir_attente` choisit SEULE le premier arrivé quand `p_user_id` est
+  // nul. Sur le chemin RPC on l'appelle donc toujours ; `next` n'y est qu'une
+  // estimation, utile au seul chemin de transition (RPC absente, PGRST202), qui
+  // garde sa garde : sans personne désignée, il n'a rien à écrire.
+  const parRpc = !!(window._supaReal && ev.fromSupabase && !window._promotionRpcAbsente
+    && typeof supaPromoteFromWaitlist === "function");
+  if (!next && !parRpc) return;
   // ⚠️ LA PROMOTION N'EST ANNONCÉE QUE SI LE SERVEUR L'A ÉCRITE (IRL-04,
   // 2026-09-14). `supaPromoteFromWaitlist` rendait déjà son verdict (zéro ligne
   // = non appliquée), mais il n'était pas lu : la personne recevait « tu es
   // inscrit·e ! » alors que sa ligne était toujours en liste d'attente.
+  let notifieeParServeur = false;
   if (window._supaReal && ev.fromSupabase && typeof supaPromoteFromWaitlist === "function") {
-    const promu = await supaPromoteFromWaitlist(ev.id, next);
+    // La base choisit (premier arrivé) et tranche la capacité : `next` n'est
+    // qu'une estimation locale, c'est le compte RENDU qui est promu (B-02).
+    const promu = await supaPromoteFromWaitlist(ev.id, next, { auto: true });
     if (!promu) {
       try { if (typeof diagLog === "function") diagLog("promotion KO " + ev.id); } catch (e) {}
       return; // l'état local n'a pas bougé : rien à annuler, rien à annoncer
     }
+    // ⚠️ LA BASE NE NOMME PLUS LE PROMU À QUI N'ORGANISE PAS (R24,
+    // `migration_promotion_discrete_vues_2026-11-03.sql`) : à celui qui libère
+    // une place, elle dit que la place est donnée, pas à qui. `next` n'est
+    // qu'une estimation (la file locale n'est pas dans l'ordre de la base, et
+    // depuis C-04 elle est partielle) : la peindre comme promue serait annoncer
+    // à l'écran une personne que la base n'a pas désignée. On relit l'activité
+    // sous ses propres droits ; la notification est déjà écrite par la base.
+    if (promu.anonyme) { await _appliquerPromotionAnonyme(ev); return; }
+    if (promu.userId) next = promu.userId;   // la personne que la base a RÉELLEMENT promue
+    notifieeParServeur = !!promu.notifieeParServeur;
+    // Après deux allers-retours, l'objet canonique a pu être remplacé
+    // (`fusionnerEvenementsServeur`) : on peint celui qui est à l'écran.
+    ev = _findCanonicalEvent(ev.id) || ev;
   }
-  ev.waitlist = (ev.waitlist || []).filter(x => x !== next);
-  ev.attendees = (ev.attendees || []).concat([next]);
-  saveState();
-  if (typeof supaInsertNotif === "function") {
+  if (!next) return;   // promotion écrite mais personne nommée : rien à peindre
+  _appliquerPromotionLocale(ev, next);
+  // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
+  if (!notifieeParServeur && typeof supaInsertNotif === "function") {
     supaInsertNotif(next, "event_update", ev.id, "une place s'est libérée, tu es inscrit·e !");
   }
+}
+
+// Une promotion ÉCRITE (par la base, ou en local hors serveur) passe la
+// personne de la file aux venants : les listes ET le compteur serveur mémorisé
+// (C-04). Sans l'ajustement, `_nbInscrits` — le plus grand de la liste et du
+// compteur — gardait « Liste d'attente (1) » et un « +1 autre » fantôme après
+// la promotion du seul inscrit en attente, jusqu'au prochain chargement. Puis
+// on repeint ce qui le montre : la carte, et la fiche si elle est ouverte.
+function _appliquerPromotionLocale(ev, uid) {
+  if (!ev || !uid) return;
+  ev.waitlist = (ev.waitlist || []).filter(x => x !== uid);
+  if (!(ev.attendees || []).includes(uid)) ev.attendees = (ev.attendees || []).concat([uid]);
+  _ajusterCompteInscrits(ev, "waitlist", -1);
+  _ajusterCompteInscrits(ev, "going", +1);
+  saveState();
   _patchEventCardJoin(ev.id);
+  _refreshEventDetailIfOpen(ev.id);
+}
+
+// Une promotion confirmée par la base SANS NOM (R24) : la place est donnée, on
+// ne sait pas à qui — et on ne le devine pas. On RELIT l'activité par le chemin
+// de `supaLoadEvents` (`supaLireParticipants`, app-08) : les listes que la base
+// accepte de montrer à ce compte, et le compteur public. Avant C-04 la liste
+// est entière et fait foi ; après, elle est partielle et `counts` porte le
+// nombre — les deux mondes sont justes sans désigner personne. Rien n'est
+// annoncé : la notification de la personne promue est écrite par la base.
+// ⚠️ Trois pièges, relevés en revue (2026-11-03) :
+//   · la relecture prend deux allers-retours, et l'objet canonique a pu être
+//     REMPLACÉ entre-temps (`fusionnerEvenementsServeur`, au retour au premier
+//     plan) : on écrit dans celui qui est à l'écran, relu après l'attente ;
+//   · un geste fait PENDANT la relecture (« peut-être » juste après « je ne
+//     viens plus ») est absent d'une liste lue avant lui : MA ligne suit l'état
+//     local (`_reposerMonEtatRsvp`), comme l'optimiste de `setEventRsvp` ;
+//   · relecture en panne : `_nbInscrits` prend le plus grand de la liste et du
+//     compteur, donc baisser le compteur ne retire pas un visage périmé de la
+//     file. Les compteurs relus (ou, à défaut, ajustés au verdict) disent le
+//     nombre ; une file qu'ils disent VIDE n'a plus de visage à montrer ; et la
+//     relecture des listes est confiée à la reprise des lectures (app-02).
+async function _appliquerPromotionAnonyme(ev) {
+  if (!ev) return;
+  const id = ev.id;
+  const lu = await _lireActivitePromue(id);
+  const cible = _findCanonicalEvent(id) || ev;
+  // ⚠️ PAS DE DELTA SUR UN OBJET REMPLACÉ PENDANT L'ATTENTE (contre-revue du
+  // 2026-11-03). Un chargement arrivé entre-temps a peut-être DÉJÀ compté la
+  // promotion : −1 en file / +1 venant la compterait deux fois, et un
+  // « complet » fictif enverrait le prochain « je viens » de cet appareil en
+  // liste d'attente (`setEventRsvp` le décide localement) — une écriture serveur
+  // fausse. Dans le doute, le nombre reste celui du chargement, et la reprise
+  // relit. Un nombre trop bas, lui, est sans danger : la base tranche la capacité.
+  const remplace = cible !== ev;
+  if (lu && lu.comptesLus) cible.counts = lu.countsByEvent[id] || null;
+  else if (!remplace) {
+    _ajusterCompteInscrits(cible, "waitlist", -1);
+    _ajusterCompteInscrits(cible, "going", +1);
+  }
+  if (lu && lu.listesLues) _poserListesRelues(cible, lu);
+  else if (cible.counts && Number(cible.counts.waitlist) === 0) cible.waitlist = [];
+  _reposerMonEtatRsvp(cible);
+  saveState();
+  _patchEventCardJoin(id);
+  _refreshEventDetailIfOpen(id);
+  if (!(lu && lu.listesLues) || (remplace && !(lu && lu.comptesLus) && cible.counts)) _relirePromotionPlusTard(id);
+}
+
+// La relecture d'UNE activité après une promotion sans nom ; jamais ne lève.
+// Un échec est TRACÉ : une relecture muette qui retombe sur le repli serait
+// indiscernable d'une relecture réussie (profil du défaut `diagLog`).
+async function _lireActivitePromue(id) {
+  try {
+    if (typeof supaLireParticipants !== "function") return null;
+    const lu = await supaLireParticipants([id], "promotion sans nom");
+    if (!lu || !lu.listesLues) {
+      try { if (typeof diagLog === "function") diagLog("promotion sans nom : listes non relues " + id); } catch (e) {}
+    }
+    return lu || null;
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("promotion sans nom : relecture levée " + id + " — " + (e && e.message)); } catch (_e) {}
+    return null;
+  }
+}
+
+function _poserListesRelues(ev, lu) {
+  ev.attendees = lu.attByEvent[ev.id] || [];
+  ev.maybes = lu.maybeByEvent[ev.id] || [];
+  ev.waitlist = lu.waitByEvent[ev.id] || [];
+  ev.checkedIn = lu.checkedByEvent[ev.id] || [];
+}
+
+// Ma propre ligne : l'état LOCAL fait foi. Une liste relue a pu être lue AVANT
+// mon dernier geste (son écriture en vol, ou passée après l'instantané) : on y
+// repose ma réponse, et le compteur public la suit (−1 sur l'état lu, +1 sur
+// l'état local), exactement comme l'optimiste de `setEventRsvp`. « Je ne viens
+// pas » n'est rangé nulle part, comme dans la lecture. Résidu assumé : listes et
+// compteur viennent de DEUX requêtes — un geste écrit entre les deux décale le
+// compteur d'une unité jusqu'au prochain chargement (un seul instantané serveur
+// demanderait une RPC qui rende les deux).
+function _reposerMonEtatRsvp(ev) {
+  if (!ev) return;
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  const range = (r) => (r === "going" || r === "maybe" || r === "waitlist") ? r : null;
+  const dans = (arr) => (arr || []).some(x => x === meId || x === "me");
+  const lu = dans(ev.attendees) ? "going" : dans(ev.maybes) ? "maybe" : dans(ev.waitlist) ? "waitlist" : null;
+  const local = range(myRsvp(ev.id));
+  if (lu === local) return;
+  const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
+  ev.attendees = strip(ev.attendees);
+  ev.maybes = strip(ev.maybes);
+  ev.waitlist = strip(ev.waitlist);
+  if (local === "going") ev.attendees.push(meId);
+  else if (local === "maybe") ev.maybes.push(meId);
+  else if (local === "waitlist") ev.waitlist.push(meId);
+  if (lu) _ajusterCompteInscrits(ev, lu, -1);
+  if (local) _ajusterCompteInscrits(ev, local, +1);
+}
+
+// Relecture en panne (réseau, 5xx) : confiée à la reprise des lectures
+// (`noterLectureAReprendre`, app-02 — 2 s, 8 s, 30 s, puis abandon). La lecture
+// est idempotente. Un REFUS mémorisé (`_attendeesLisibles()` faux) ne se
+// rejoue pas : la même table au même rôle rendrait le même refus.
+function _relirePromotionPlusTard(id) {
+  try {
+    if (typeof noterLectureAReprendre !== "function" || typeof acquitterLecture !== "function") return;
+    if (typeof _attendeesLisibles === "function" && !_attendeesLisibles()) return;
+    const nom = "promotion sans nom " + id;
+    const rejouer = async function () {
+      const lu = await _lireActivitePromue(id);
+      if (!lu || !lu.listesLues) { noterLectureAReprendre(nom, rejouer); return; }
+      const ev = _findCanonicalEvent(id);
+      if (ev) {
+        if (lu.comptesLus) ev.counts = lu.countsByEvent[id] || null;
+        _poserListesRelues(ev, lu);
+        _reposerMonEtatRsvp(ev);
+        saveState();
+        _patchEventCardJoin(id);
+        _refreshEventDetailIfOpen(id);
+      }
+      acquitterLecture(nom);
+    };
+    noterLectureAReprendre(nom, rejouer);
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("promotion sans nom : reprise non inscrite " + id + " — " + (e && e.message)); } catch (_e) {}
+  }
 }
 
 // ===== Discussion de groupe des participants =====
@@ -3643,7 +3880,10 @@ function _ensureLocalEventConv(ev) {
 async function openEventChat(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (!myRsvp(id) && !_canManageEvent(ev)) { toast("Rejoins l'événement pour accéder à la discussion"); return; }
+  if (myRsvp(id) !== "going" && !_canManageEvent(ev)) {
+    toast(myRsvp(id) ? "La discussion est réservée à celles et ceux qui viennent : passe en « Je viens »" : "Rejoins l'événement pour accéder à la discussion");
+    return;
+  }
   if (!ev.convId) {
     toast("Ouverture de la discussion…");
     await _joinEventConversation(ev);
@@ -3781,7 +4021,8 @@ function _patchEventCardJoin(id) {
   const card = document.querySelector('#eventList .event-card[data-evid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
   if (!ev || !card) { renderIRL(); return; }
   const atts = ev.attendees || [];
-  const maybeCount = (ev.maybes || []).length;
+  const nbVenants = _nbInscrits(ev, "going");
+  const maybeCount = _nbInscrits(ev, "maybe");
   const myState = myRsvp(id);
   const full = _eventIsFull(ev);
   const footer = card.querySelector(".event-footer");
@@ -3789,7 +4030,7 @@ function _patchEventCardJoin(id) {
   footer.innerHTML = `<div class="attendees">${atts.slice(0, 4).map(aid => {
       const u = userById(aid) || { avatar: "#64748b", profileEmoji: "?" };
       return `<div class="avatar sm" style="background:${avatarBg(u)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(aid)}')">${avatarInner(u)}</div>`;
-    }).join("")}<span class="pill" style="margin-left:6px;padding:3px 8px;">${atts.length} inscrit${atts.length > 1 ? "s" : ""}${maybeCount ? " · " + maybeCount + " peut-être" : ""}</span></div>
+    }).join("")}<span class="pill" style="margin-left:6px;padding:3px 8px;">${nbVenants} inscrit${nbVenants > 1 ? "s" : ""}${maybeCount ? " · " + maybeCount + " peut-être" : ""}</span></div>
     <button class="btn small ${myState ? "ghost" : "primary"}" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(id)}')">${myState ? RSVP_LABELS[myState].short : full ? "Liste d'attente" : "+ Rejoindre"}</button>`;
 }
 
@@ -4057,24 +4298,46 @@ function openEventDetails(id) {
   const timeStr = _eventTimeLabel(ev);
 
   const atts = ev.attendees || [];
+  const nbVenants = _nbInscrits(ev, "going");
   const maxStr = ev.maxAttendees ? ` / ${ev.maxAttendees} max` : "";
-  const spotsLeft = ev.maxAttendees ? ev.maxAttendees - atts.length : null;
+  const spotsLeft = ev.maxAttendees ? ev.maxAttendees - nbVenants : null;
   const spotsHtml = spotsLeft !== null
     ? `<span style="font-size:11px;color:${spotsLeft <= 3 ? "#ef4444" : "var(--muted)"};">${spotsLeft <= 0 ? "Complet" : spotsLeft <= 3 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""}` : `${spotsLeft} places disponibles`}</span>`
     : "";
 
   // Trombinoscope réutilisable (venants / peut-être / liste d'attente). Une pastille
   // ✅ marque ceux qui ont pointé leur arrivée.
-  const _faces = (list, max) => (list || []).slice(0, max || 12).map(aid => {
-    const u = userById(aid) || { name: aid === "me" ? (currentProfile()?.name || "Moi") : "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
-    const firstName = (u.name || "?").split(" ")[0];
-    const here = (ev.checkedIn || []).indexOf(aid) > -1;
-    return `<div class="event-detail-participant" role="button" tabindex="0" aria-label="Profil de ${escapeHtml((u && u.name) || "participant")}" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(aid)}')">
+  const _pastilleReste = (n, titre) => `<div class="event-detail-participant"${titre ? ` title="${escapeHtml(titre)}"` : ""}><span style="font-size:12px;color:var(--muted);">+${n} autre${n > 1 ? "s" : ""}</span></div>`;
+  // `sansReste` : l'appelant écrit lui-même la pastille « +N » (`_facesEtReste`).
+  const _faces = (list, max, sansReste) => {
+    const lim = max || 12;
+    const n = (list || []).length;
+    return (list || []).slice(0, lim).map(aid => {
+      const u = userById(aid) || { name: aid === "me" ? (currentProfile()?.name || "Moi") : "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
+      const firstName = (u.name || "?").split(" ")[0];
+      const here = (ev.checkedIn || []).indexOf(aid) > -1;
+      return `<div class="event-detail-participant" role="button" tabindex="0" aria-label="Profil de ${escapeHtml((u && u.name) || "participant")}" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(aid)}')">
       <div class="avatar sm" style="background:${avatarBg(u)};position:relative;">${avatarInner(u)}${here ? '<span class="ev-here-dot" title="Sur place">✅</span>' : ""}</div>
       <div class="event-detail-participant-name">${escapeHtml(firstName)}</div>
     </div>`;
-  }).join("") + ((list || []).length > (max || 12) ? `<div class="event-detail-participant"><span style="font-size:12px;color:var(--muted);">+${(list || []).length - (max || 12)} autres</span></div>` : "");
-  const participantsHtml = _faces(atts, 12);
+    }).join("") + (!sansReste && n > lim ? _pastilleReste(n - lim) : "");
+  };
+  // Les visages sont ceux que la base me laisse voir (C-04) ; le nombre, lui, est
+  // complet : l'écart s'écrit « +N autres » plutôt que de laisser croire que la
+  // liste s'arrête là.
+  // ⚠️ UNE SEULE PASTILLE (revue du 2026-11-03) : `_faces` écrivait déjà son
+  // « +N autres » au-delà de `max`, et l'on y AJOUTAIT l'écart au nombre public —
+  // 13 visages lisibles et 3 cachés donnaient « +1 autres » puis « +3 autres ».
+  // Tout ce qui n'a pas de visage à l'écran (au-delà de `max`, ou illisible) est
+  // compté ici, une fois : total − visages montrés.
+  const _facesEtReste = (list, max, total) => {
+    const lim = max || 12;
+    const vus = (list || []).length;
+    const html = _faces(list, lim, true);
+    const caches = Math.max(0, Math.max(total || 0, vus) - Math.min(vus, lim));
+    return caches ? html + _pastilleReste(caches, "Autres inscrits") : html;
+  };
+  const participantsHtml = _facesEtReste(atts, 12, nbVenants);
 
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
   const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
@@ -4120,7 +4383,7 @@ function openEventDetails(id) {
     <!-- Discussion de groupe : le vrai moteur de participation (Meetup / FB Events). -->
     ${cancelled ? "" : `
       <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openEventChat('${escapeJsArg(ev.id)}')">
-        Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
+        Discussion des participants${myRsvp(ev.id) === "going" || mine ? "" : " · réservée à celles et ceux qui viennent"}
       </button>`}
 
     <!-- Le bouton « Raconter ce moment en carnet de voyage » a été retiré avec
@@ -4169,17 +4432,17 @@ function openEventDetails(id) {
       <div style="font-size:14px;font-weight:700;">${escapeHtml(organizer.name || "?")}</div>
     </div>
 
-    <div class="event-detail-section-title">Participants (${atts.length}${maxStr})</div>
+    <div class="event-detail-section-title">Participants (${nbVenants}${maxStr})</div>
     ${spotsHtml ? `<div style="margin-bottom:8px;">${spotsHtml}</div>` : ""}
     <div class="event-detail-participants">${participantsHtml || "<span style='font-size:13px;color:var(--muted);'>Aucun inscrit pour l'instant — sois le premier !</span>"}</div>
 
-    ${(ev.maybes || []).length ? `
-      <div class="event-detail-section-title">Peut-être (${ev.maybes.length})</div>
-      <div class="event-detail-participants">${_faces(ev.maybes, 8)}</div>` : ""}
+    ${_nbInscrits(ev, "maybe") ? `
+      <div class="event-detail-section-title">Peut-être (${_nbInscrits(ev, "maybe")})</div>
+      <div class="event-detail-participants">${_facesEtReste(ev.maybes, 8, _nbInscrits(ev, "maybe"))}</div>` : ""}
 
-    ${(ev.waitlist || []).length ? `
-      <div class="event-detail-section-title">Liste d'attente (${ev.waitlist.length})</div>
-      <div class="event-detail-participants">${_faces(ev.waitlist, 8)}</div>
+    ${_nbInscrits(ev, "waitlist") ? `
+      <div class="event-detail-section-title">Liste d'attente (${_nbInscrits(ev, "waitlist")})</div>
+      <div class="event-detail-participants">${_facesEtReste(ev.waitlist, 8, _nbInscrits(ev, "waitlist"))}</div>
       ${mine ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Ils seront inscrits automatiquement dès qu'une place se libère.</div>` : ""}` : ""}
 
     ${(ev.coOrganizers || []).length ? `
@@ -4241,7 +4504,7 @@ function _refreshEventDetailCta(ev, joined) {
     cta.innerHTML = `<button class="btn primary block" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">Partager mon expérience</button>`;
     return;
   }
-  const spotsLeft = ev.maxAttendees ? ev.maxAttendees - (ev.attendees || []).length : null;
+  const spotsLeft = ev.maxAttendees ? ev.maxAttendees - _nbInscrits(ev, "going") : null;
   const isFull = spotsLeft !== null && spotsLeft <= 0 && !joined;
   cta.innerHTML = `
     <button class="btn ${joined ? "ghost" : "primary"} block" ${isFull ? "disabled" : ""} onclick="toggleJoinEventDetail('${escapeJsArg(ev.id)}')">
@@ -4357,10 +4620,10 @@ function toggleJoinEventDetail(id) {
   const joined = (state.user.joinedEvents || []).includes(id);
   _refreshEventDetailCta(ev, joined);
   // Refresh spots count
-  const atts = ev.attendees || [];
+  const nbVenants = _nbInscrits(ev, "going");
   const maxStr = ev.maxAttendees ? ` / ${ev.maxAttendees} max` : "";
   const titles = document.querySelectorAll(".event-detail-section-title");
-  titles.forEach(t => { if (t.textContent.startsWith("Participants")) t.textContent = `Participants (${atts.length}${maxStr})`; });
+  titles.forEach(t => { if (t.textContent.startsWith("Participants")) t.textContent = `Participants (${nbVenants}${maxStr})`; });
 }
 
 function closeEventDetail() {
@@ -4480,7 +4743,7 @@ function _irlWeeklyDigest() {
     soon.sort((a, b) => {
       const pa = myPassions.has(a.passion) ? 0 : 1, pb = myPassions.has(b.passion) ? 0 : 1;
       if (pa !== pb) return pa - pb;
-      return (b.attendees || []).length - (a.attendees || []).length;
+      return _nbInscrits(b, "going") - _nbInscrits(a, "going");
     });
 
     localStorage.setItem(IRL_DIGEST_KEY, wk);
@@ -6305,9 +6568,12 @@ function openEventManage(id) {
   if (!ev) return;
   if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cet événement"); return; }
   const cancelled = _eventIsCancelled(ev);
-  const n = (ev.attendees || []).length;
+  // Les NOMBRES affichés passent par `_nbInscrits` (C-04) : la liste lisible
+  // n'est pas le compteur, même si l'organisation, elle, lit toutes les lignes.
+  const n = _nbInscrits(ev, "going");
   const seriesCount = ev.seriesId ? allEvents().filter(e => e.seriesId === ev.seriesId).length : 0;
-  const checked = (ev.checkedIn || []).length;
+  const checked = _nbInscrits(ev, "checked_in");
+  const enAttente = _nbInscrits(ev, "waitlist");
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Gérer l'événement</div>
@@ -6315,7 +6581,7 @@ function openEventManage(id) {
     <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Co-organisateurs (${(ev.coOrganizers || []).length})</button>
-    ${(ev.waitlist || []).length ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${ev.waitlist.length})</button>` : ""}
+    ${enAttente ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'événement" : "Annuler l'événement"}</button>
     ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">Supprimer définitivement</button>
@@ -6403,7 +6669,10 @@ async function promoteWaitlisted(id, userId) {
   // ligne : elle avait quitté la liste d'attente entre-temps, ou la capacité
   // était atteinte). Le verdict serveur d'abord, l'écran ensuite — comme la
   // promotion automatique, corrigée le 14/09.
+  let notifieeParServeur = false;
+  let promu = userId;
   if (window._supaReal && typeof supaPromoteFromWaitlist === "function") {
+    // Promotion CHOISIE par l'organisation : la base vérifie ce droit (B-02).
     const ok = await supaPromoteFromWaitlist(id, userId);
     if (!ok) {
       try { if (typeof diagLog === "function") diagLog("promotion manuelle KO " + id); } catch (e) {}
@@ -6411,11 +6680,17 @@ async function promoteWaitlisted(id, userId) {
       openEventWaitlist(id);
       return false;
     }
+    notifieeParServeur = !!ok.notifieeParServeur;
+    // La personne que la base a RÉELLEMENT promue. En promotion CHOISIE, la base
+    // ne promeut que celle qu'on désigne (`p_user_id`), et elle la nomme à
+    // l'organisation (R24) : sans nom, la désignée reste la bonne réponse.
+    if (ok.userId) promu = ok.userId;
   }
-  ev.waitlist = (ev.waitlist || []).filter(x => x !== userId);
-  ev.attendees = (ev.attendees || []).concat([userId]);
-  saveState();
-  if (typeof supaInsertNotif === "function") supaInsertNotif(userId, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
+  // Listes, compteur serveur mémorisé (C-04), carte et fiche ouverte : même
+  // chemin que la promotion automatique.
+  _appliquerPromotionLocale(ev, promu);
+  // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
+  if (!notifieeParServeur && typeof supaInsertNotif === "function") supaInsertNotif(promu, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
   toast("Participant inscrit");
   openEventWaitlist(id);
   return true;
@@ -6521,10 +6796,13 @@ function _prevenirSuppressionActivite(ev) {
 function _messageEventAttendees(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
+  // Le nombre annoncé est celui des personnes RÉELLEMENT prévenues
+  // (`_destinatairesActivite`, la seule liste d'envoi) — pas la longueur de
+  // `attendees`, qui comptait l'organisation et oubliait « peut-être » et file.
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Prévenir les inscrits</div>
-    <div class="modal-subtitle">${(ev.attendees || []).length} personne(s) recevront une notification.</div>
+    <div class="modal-subtitle">${_destinatairesActivite(ev).length} personne(s) recevront une notification.</div>
     <label class="field"><span>Message</span>
       <textarea class="textarea" id="evBroadcast" maxlength="200" placeholder="Ex : on se retrouve finalement devant l'entrée nord !"></textarea>
     </label>
@@ -7021,7 +7299,7 @@ function openEventInvite(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) { toast("Événement introuvable"); return; }
   window._inviteEventId = eventId;
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Inviter des amis</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7257,7 +7535,7 @@ function openEventFeedback(eventId) {
   var mine = myEventRating(eventId) || { rating: 0, feedback: "" };
   window._ratingDraft = mine.rating || 0;
 
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Ton retour</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7332,15 +7610,29 @@ function _eventFeedbackPromptHtml(ev) {
 // Agrégat public : note moyenne d'un événement terminé (cache window._eventRatings,
 // rempli par _loadEventRatings). Rien tant qu'il n'y a aucune note — une moyenne
 // sur 0 avis ne veut rien dire et ferait fuir.
+// ⚠️ `avg: null` N'EST PAS 0 (C-04, 2026-11-03) : sous 3 notes de participants,
+// `notes_evenement` rend le NOMBRE sans la moyenne (avec 1 note, la moyenne EST
+// la note de quelqu'un ; avec 2, chacun déduit celle de l'autre). Lue comme 0,
+// elle peignait cinq étoiles vides et « 0 · 2 avis » — une soirée réussie
+// affichée comme un fiasco. Sans moyenne publiable : le nombre seul, ni étoile
+// ni chiffre (« avis » est invariable : « 1 avis », « 2 avis »).
 function _eventRatingSummaryHtml(ev) {
   var agg = (window._eventRatings && window._eventRatings[ev.id]) || null;
-  if (!agg || !agg.count) return "";
-  var avg = Math.round(agg.avg * 10) / 10;
-  var full = Math.round(agg.avg);
+  var nb = agg ? Number(agg.count) || 0 : 0;
+  if (!agg || nb <= 0) return "";
+  var moyenne = (agg.avg == null || agg.avg === "") ? NaN : Number(agg.avg);
+  if (!Number.isFinite(moyenne)) {
+    return '<div class="event-rating-summary">'
+      + '<span style="color:var(--muted);">' + nb + " avis" + '</span>'
+      + '</div>';
+  }
+  var avg = Math.round(moyenne * 10) / 10;
+  // Bornée à 0..5 : `repeat` lève sur un compte négatif, et la fiche entière tomberait.
+  var full = Math.max(0, Math.min(5, Math.round(moyenne)));
   return '<div class="event-rating-summary">'
     + '<span class="ev-rating-stars-static">' + "★".repeat(full) + "☆".repeat(5 - full) + '</span>'
     + '<b>' + String(avg).replace(".", ",") + '</b>'
-    + '<span style="color:var(--muted);">· ' + agg.count + " avis" + '</span>'
+    + '<span style="color:var(--muted);">· ' + nb + " avis" + '</span>'
     + '</div>';
 }
 
@@ -7351,7 +7643,9 @@ async function _loadEventRatings(eventId) {
   if (!agg) return;
   window._eventRatings = window._eventRatings || {};
   window._eventRatings[eventId] = agg;
-  var holder = document.querySelector('[data-evrating="' + eventId + '"]');
+  // Identifiant dans un sélecteur : `CSS.escape` (un guillemet levait une
+  // SyntaxError dans cette fonction asynchrone, et le bloc restait vide).
+  var holder = document.querySelector('[data-evrating="' + ((window.CSS && CSS.escape) ? CSS.escape(String(eventId)) : String(eventId)) + '"]');
   if (holder) holder.innerHTML = _eventRatingSummaryHtml({ id: eventId });
 }
 
@@ -7657,7 +7951,7 @@ function _rendreCheckinQr(ev, code) {
     svg = '<div style="font-size:12px;color:var(--muted);padding:20px;">QR indisponible — utilise le code ci-dessous.</div>';
   }
 
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Accueil des participants</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
@@ -7689,7 +7983,7 @@ function _copyCheckinLink(eventId) {
 function openCheckinCodeEntry(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
     + '<div class="modal-title">Pointer mon arrivée</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + 'Saisis le code affiché à l\'accueil de « ' + escapeHtml(ev.title || "") + ' ».</div>'

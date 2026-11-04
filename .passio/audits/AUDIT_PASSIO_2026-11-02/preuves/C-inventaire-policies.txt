@@ -1,0 +1,94 @@
+# Inventaire RLS — projet njkiyoklssvefstljemx — 2026-11-02 (canal ① execute_sql, supabase_read_only_user, PG 17.6)
+# Source : select … from pg_policies where schemaname='public'  (aucune donnée personnelle)
+# 51 tables sous RLS (list_tables : rls_enabled=true partout). 8 tables RLS sans policy (refus total pour anon/authenticated) :
+#   access_policies, activite_jour, comptes_en_suppression, contenus_masques, croissance_jour, migrations_appliquees, moderation_actions, telemetrie_debit
+
+table                 | policy                                     | cmd    | roles                | qual / with_check (résumé)
+----------------------+--------------------------------------------+--------+----------------------+-----------------------------------------------------------
+analytics_events      | analytics_insert_own                       | INSERT | public               | wc: user_id = auth.uid() AND NOT suppression_de_mon_compte()   (AUCUN SELECT → table écrite seulement)
+blocks                | blocks_select_own / insert_own / delete_own| S/I/D  | public               | blocker_id = auth.uid()
+call_invites          | call_invites_select_siennes                | SELECT | authenticated        | from_id = me OR to_id = me
+call_invites          | call_invites_insert_propre                 | INSERT | authenticated        | from_id = me AND appel_autorise(to_id) AND NOT suppr
+call_invites          | call_invites_update_propre                 | UPDATE | authenticated        | qual from_id=me ; wc idem + appel_autorise(to_id)
+cdv_live_* (5 tables) | *_select                                   | SELECT | public               | true (cdv_lives : visibility<>'private' OR author=me)  — fonctionnalité RETIRÉE (ADR-011), tables résiduelles
+client_errors         | Insert erreurs                             | INSERT | public               | wc: true AND NOT suppr   (AUCUN SELECT)
+comment_interactions  | Lecture selon visibilite de la cible       | SELECT | public               | user_id = me OR comment_target_visible(comment_id)
+comment_interactions  | ci_insert / ci_delete                      | I/D    | public               | user_id = me
+comment_likes         | select true / insert own / delete own      | S/I/D  | public               |
+conv_members          | conv_members_select_member                 | SELECT | authenticated        | is_conv_member(conv_id, me)
+conv_members          | Ecriture propre                            | INSERT | authenticated        | (is_conversation_creator(conv_id) OR (user_id=me AND can_join_event_conversation(conv_id))) AND NOT is_blocked_with(user_id) AND NOT suppr
+conv_members          | Suppression admin                          | DELETE | public               | user_id=me OR conversations.created_by=me
+conv_messages         | conv_messages_select_member                | SELECT | authenticated        | is_conv_member(conv_id, me) AND NOT is_blocked_with(from_id)
+conv_messages         | conv_messages_insert_member                | INSERT | authenticated        | from_id=me AND is_conv_member AND NOT conv_1a1_bloquee AND NOT suppr
+conv_messages         | Update propre                              | UPDATE | authenticated        | qual from_id=me ; wc from_id=me AND is_conv_member AND NOT conv_1a1_bloquee  (+ trg_identifiants_figes conv_id,from_id)
+conv_messages         | Suppression propre                         | DELETE | public               | from_id = me
+conv_reads            | reads_select                               | SELECT | authenticated        | is_conv_member(conv_id, me)
+conv_reads            | reads_upsert / reads_update                | I/U    | public               | user_id = me   (⚠ aucune vérif d'appartenance à la conv sur l'INSERT)
+conversations         | conversations_select_member                | SELECT | authenticated        | is_conv_member(id, me)
+conversations         | conversations_insert_creator               | INSERT | authenticated        | created_by = me
+conversations         | Suppression conversation orpheline         | DELETE | public               | created_by=me AND aucun conv_members
+                      | (AUCUN UPDATE)                             |        |                      |
+event_attendees       | event_attendees_select_authentifie         | SELECT | authenticated        | true  (liste nominative visible par TOUT compte connecté)
+event_attendees       | insert_own_adult / update_own_adult        | I/U    | authenticated        | user_id=me AND (adult_access_allowed() OR rsvp='declined')
+event_attendees       | Suppression propre                         | DELETE | public               | user_id = me
+event_checkin_secrets | secret_lisible_par_organisateurs           | SELECT | public               | events.author_id=me OR co_organizers ? me   (GRANT table à authenticated seulement ; aucun I/U/D)
+event_comments        | select true / insert own(+NOT event_auteur_bloque) / delete own
+event_reactions       | select true / insert own / delete own
+events                | Lecture publique                           | SELECT | public               | true  (anon : GRANT COLONNES seulement — address, contact, conv_id exclus)
+events                | events_insert_author_adult                 | INSERT | authenticated        | author_id=me AND adult_access_allowed()
+events                | Update organisateurs                       | UPDATE | public               | author_id=me OR jsonb_exists(co_organizers, me)
+events                | Suppression propre                         | DELETE | public               | author_id = me
+follows               | follows_lecture                            | SELECT | anon,authenticated   | status='accepted' OR follower_id=me OR following_id=me
+follows               | Ecriture propre                            | INSERT | authenticated        | follower_id=me AND NOT is_blocked_with(following_id)
+follows               | follows_accepter                           | UPDATE | authenticated        | qual following_id=me ; wc following_id=me AND status='accepted'
+follows               | Suppression propre                         | DELETE | public               | follower_id=me OR following_id=me
+notifications         | Lecture propre / Update propre / Suppression propre | S/U/D | public         | user_id = me
+notifications         | notifications_insert_own_author            | INSERT | authenticated        | from_id=me AND NOT is_blocked_with(user_id) AND NOT genres_reserves_au_serveur(kind) AND NOT identifiant_reserve_au_serveur(id)
+passion_quotas        | passion_quotas_select_own                  | SELECT | public               | user_id = auth.uid()
+passion_relations     | passion_relations_select_all               | SELECT | public               | true
+passion_requests      | passion_requests_insert_own                | INSERT | public               | user_id=me AND status='pending' AND resolved NULL AND <5/24h
+passion_requests      | passion_requests_select_own                | SELECT | public               | user_id = me
+passions              | passions_select_all                        | SELECT | public               | true (écriture par creer_passion uniquement)
+post_collaborators    | select true / insert owner / delete
+post_comments         | Lecture selon visibilite du post           | SELECT | public               | author_id=me OR post_is_visible(post_id)
+post_comments         | Ecriture propre / Update propre            | I/U    | authenticated        | author_id=me AND NOT post_auteur_bloque(post_id)  (+ trg_identifiants_figes post_id,author_id)
+post_comments         | Suppression propre                         | DELETE | public               | author_id = me
+post_likes            | Lecture selon visibilite du post           | SELECT | public               | user_id=me OR post_is_visible(post_id)
+post_likes            | Ecriture propre                            | INSERT | authenticated        | user_id=me AND NOT post_auteur_bloque(post_id)
+post_likes            | Suppression propre                         | DELETE | public               | user_id = me
+posts                 | Lecture respectant les comptes prives      | SELECT | public  PERMISSIVE   | author_id=me OR NOT profiles.is_private OR abonne_accepte_non_bloque(author_id)
+posts                 | Masquage apres signalements                | SELECT | public  RESTRICTIVE  | author_id=me OR NOT post_masque(id)
+posts                 | Ecriture propre                            | INSERT | public               | author_id = me
+posts                 | Update propre                              | UPDATE | authenticated        | can_edit_post(id)  (+ trg_posts_freeze_author)
+posts                 | Suppression propre                         | DELETE | public               | author_id = me
+profiles              | Lecture publique                           | SELECT | public               | true  (TOUTES colonnes, compte privé compris)
+profiles              | Upsert propre / Update propre / Suppression propre | I/U/D | public        | id = me
+push_subscriptions    | push_select_own / insert / update / delete | S/I/U/D| public               | user_id = me
+reglages_distants     | reglages_distants_lecture                  | SELECT | anon,authenticated   | true (colonnes cle, valeur, maj seulement)
+reports               | reports_insert                             | INSERT | public               | reporter_id = me   (AUCUN SELECT/UPDATE/DELETE)
+step_interactions     | si_select true / si_insert own / si_delete own
+stories               | Lecture stories respectant les comptes prives | SELECT | public            | idem posts (sans masquage)
+stories               | Ecriture propre / Suppression propre       | I/D    | public               | author_id = me   (AUCUN UPDATE)
+story_views           | select own / insert own / delete own       | S/I/D  | public               | user_id = me
+telemetry_events      | telemetry_insert_own                       | INSERT | public               | (user_id IS NULL OR user_id = me) AND NOT suppr   (AUCUN SELECT)
+user_passions         | user_passions_select_all                   | SELECT | public               | true
+user_passions         | insert own / update own / delete own       | I/U/D  | public               | user_id = me
+user_safety           | user_safety_select_own                     | SELECT | authenticated        | user_id = me  (GRANT SELECT seulement ; écriture via declare_birth_year)
+user_state            | user_state_select/insert/update/delete_own | S/I/U/D| public               | auth.uid()::text = user_id
+video_lives           | select true / insert own / update own / delete own
+
+# storage.objects
+passio_content_read               | SELECT | public        | bucket_id = 'content'
+passio_attachments_read_membre    | SELECT | authenticated | bucket_id='attachments' AND is_conv_member(foldername(name)[2], me)
+passio_media_insert_cloisonne     | INSERT | authenticated | storage_chemin_autorise(bucket_id,name) AND NOT suppr
+passio_media_update_cloisonne     | UPDATE | authenticated | qual bucket in (content,attachments) AND owner=me ; wc storage_chemin_autorise
+passio_media_delete               | DELETE | authenticated | bucket in (content,attachments) AND owner = auth.uid()
+# storage.buckets : attachments public=false (26 Mo) ; content public=true (26 Mo) ; allowed_mime_types NULL sur les deux
+
+# realtime.messages
+passio_rt_emettre                 | INSERT | authenticated | topic call:% OR vlive:% OR (typing:% AND membre) OR (conv:% AND membre)
+passio_rt_recevoir                | SELECT | authenticated | (ring:<me>) OR call:% OR vlive:% OR realtime:db OR (typing:%/conv:%/conv_specific:% AND membre)
+passio_rt_recevoir_visiteur       | SELECT | anon          | topic = 'realtime:db'
+Utilisateur recoit ses messages (×2, doublon accent) | SELECT | authenticated | topic = 'user:' || auth.uid()
+
+# Publication supabase_realtime (postgres_changes) : comment_interactions, conv_members, conv_messages, conv_reads, event_comments, notifications, post_comments, post_likes, posts, profiles, video_lives

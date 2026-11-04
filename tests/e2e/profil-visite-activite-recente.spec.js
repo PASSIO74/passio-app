@@ -77,7 +77,10 @@ test.describe("Rencontrer — activité publiée après le démarrage", () => {
         return [{
           id: "ev_rencontrer_apres_boot", authorId: "u_lea", organizerId: "u_lea",
           title: "Sortie publiée en cours de session", passion: "musique",
-          city: "Annecy", lat: 45.8992, lng: 6.1294, date: Date.now() + 2 * 86400000,
+          // Dans l'heure : à J+2, la carte passait derrière les exemples datés
+          // des jours suivants et sortait de la liste affichée (13ᵉ sur 36,
+          // mesuré le dimanche 01/11) — le test dépendait du jour de la semaine.
+          city: "Annecy", lat: 45.8992, lng: 6.1294, date: Date.now() + 3600000,
           attendees: ["u_lea"], maybes: [], waitlist: [], checkedIn: [], status: "active",
         }];
       };

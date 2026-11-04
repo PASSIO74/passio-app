@@ -35,10 +35,31 @@ export function evaluateSeries(current, baseline) {
   return { current, baseline, median: med, mad: dispersion, threshold, anomalous, confidence };
 }
 
-export function anomalySnapshot(now = Date.now(), events = store.events) {
+// Une ingestion à jour il y a plus longtemps que ça ne prouve plus qu'une
+// fenêtre vide est un vrai zéro (même seuil que `pollingOk` d'ingest.js).
+const INGEST_FRESH_MS = 30_000;
+
+/** Depuis quand le magasin est-il COMPLET ? `store.coverage` est posé par
+ *  l'ingestion : `completeSince` (historique lu jusqu'au début de la table, ou
+ *  jusqu'à sa plus vieille ligne) et `caughtUpAt` (dernier polling rattrapé).
+ *  Sans ingestion fraîche : null — on retombe sur l'âge du plus vieil événement.
+ *  Avant (2026-11-01) : seul ce repli existait, et avec un trafic faible aucune
+ *  fenêtre de 25 min ne contenait d'événement assez vieux — le gate restait
+ *  UNKNOWN pour toujours, alors que quatre fenêtres vides sous une ingestion
+ *  vivante sont une baseline mesurée à zéro. */
+function completeSince(now, events, coverage) {
+  if (!coverage || coverage.completeSince == null || coverage.caughtUpAt == null) return null;
+  if (now - coverage.caughtUpAt > INGEST_FRESH_MS) return null;
+  // Tampon plein : tout ce qui précède le plus vieil événement gardé a été évincé.
+  const evince = coverage.bufferMax && events.length >= coverage.bufferMax && Number.isFinite(events[0]?.ts) ? events[0].ts : -Infinity;
+  return Math.max(coverage.completeSince, evince);
+}
+
+export function anomalySnapshot(now = Date.now(), events = store.events, coverage = store.coverage) {
   const rows = (events || []).filter((e) => e && Number.isFinite(e.ts) && e.ts <= now && now - e.ts < WINDOW_MS * (BASE_WINDOWS + 1));
   const oldest = rows.reduce((m, e) => Math.min(m, e.ts), Infinity);
-  const coverageMs = Number.isFinite(oldest) ? now - oldest : 0;
+  const depuis = completeSince(now, events || [], coverage);
+  const coverageMs = depuis != null ? Math.max(0, now - depuis) : Number.isFinite(oldest) ? now - oldest : 0;
   if (coverageMs < WINDOW_MS * BASE_WINDOWS) {
     return {
       state: "INSUFFICIENT",

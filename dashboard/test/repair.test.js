@@ -68,6 +68,25 @@ test("REFUSE toute sortie du dépôt par le chemin", () => {
   assert.equal(validatePatch(diff("js/../../secret.js")).ok, false);
 });
 
+test("REFUSE un en-tête `diff --git` honnête qui cache un `+++` vers un test ou la CI (audit du 2026-11-02)", () => {
+  // `git apply` écrit sur le chemin des lignes ---/+++, pas sur celui de
+  // `diff --git` : mesuré, un tel patch modifiait tests/e2e/x.spec.js en passant
+  // la liste blanche. Les deux familles d'en-têtes sont désormais soumises.
+  const ruse = (cible) => `diff --git a/js/app-04.js b/js/app-04.js\n--- a/${cible}\n+++ b/${cible}\n@@ -1 +1 @@\n-a\n+b\n`;
+  for (const cible of ["tests/e2e/smoke.spec.js", ".github/workflows/deploy.yml", "migrations/x.sql", "dashboard/server/repair.js", "scripts/build.js"]) {
+    const v = validatePatch(ruse(cible));
+    assert.equal(v.ok, false, `${cible} par la ligne +++ devrait être refusé`);
+    assert.match(v.raison, /hors périmètre/);
+  }
+  // Un `+++` qui sort du dépôt est un chemin suspect, même sous un `diff --git` propre.
+  assert.equal(validatePatch(ruse("js/../../etc/passwd.js")).ok, false);
+  // Un patch honnête (mêmes chemins partout) reste accepté, fins de ligne CRLF comprises.
+  assert.equal(validatePatch(diff("js/app-04.js")).ok, true);
+  assert.equal(validatePatch(diff("js/app-04.js").replace(/\n/g, "\r\n")).ok, true);
+  // Les en-têtes `--- a/x\t(date)` (format GNU) ne cassent pas la lecture.
+  assert.equal(validatePatch("diff --git a/js/a.js b/js/a.js\n--- a/js/a.js\t2026-01-01\n+++ b/js/a.js\t2026-01-01\n@@ -1 +1 @@\n-a\n+b\n").ok, true);
+});
+
 // ─── Forme et taille ─────────────────────────────────────────────────────────
 
 test("REFUSE création, suppression et renommage de fichier", () => {
