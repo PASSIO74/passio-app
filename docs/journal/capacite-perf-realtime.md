@@ -1107,7 +1107,12 @@ désactive les déclencheurs et garde les valeurs de l'archive. Le verdict exige
 lui, PostgreSQL refuse TOUT UPDATE et DELETE de la table (« does not have a replica identity and publishes
 updates »). L'avis « index jamais lu » de Supabase le signalera toujours — ce dépôt a déjà retiré des index
 sur ce critère (F-05). La gate `scripts/audit-identite-replication.js` (`npm run verif`) refuse une migration
-qui le retire sans rendre d'abord une identité à la table.
+qui le retire sans rendre d'abord une identité à la table — et, sauf marqueur motivé, tout ce qui contourne ce
+refus par le NOM qu'elle suit : un index renommé puis supprimé, un `drop constraint` (un `add constraint … using
+index` renomme l'index), une table reconstruite, renommée ou déplacée (elle revient en identité DEFAULT, sans `rid`
+ni garde), une colonne `rid` renommée, la garde retirée ou désarmée (`disable trigger`, `enable replica trigger`,
+`create or replace trigger … when`), `replica identity` FULL ou `using index` sur une table publiée, y compris
+dans le fichier même qui la publie (contre-revue finale, un test rouge par règle).
 ⚠️ **UNE RECONSTRUCTION DOIT RENDRE L'IDENTITÉ** : le générateur de schéma des sauvegardes
 (`scripts/schema-executable.js`) n'écrivait aucun `replica identity` — un projet reconstruit rouvrait R25 en
 silence, pendant que `restaurer-donnees.js --verifier` disait « contenu identique ». Corrigé dans le même
@@ -1133,7 +1138,14 @@ la supprimer se fait à part, après drainage (procédure dans l'en-tête de la 
 `17, 16` et `9007199254740991` » laissait passer `(…) & 7` (3 bits) ; une regex de corps de garde ancrée à la
 seule fin laissait passer un `if new.rid is not null then return new;` en tête. Le défaut se compare au
 déparse, par le même serveur, d'une colonne témoin portant l'expression exacte ; le corps, par une regex
-ancrée aux deux bouts.
+ancrée aux deux bouts. ⚠️ Et `pg_get_expr(adbin, adrelid)` OUVRE la table dont il déparse le défaut (mesuré sur
+PostgreSQL 16) : laissé au planificateur, il était évalué sur tous les défauts de `pg_attrdef`, `posts` compris, et
+le verdict attendait de nouveau sur une table verrouillée ailleurs — les quatre défauts de `rid` se lisent d'abord
+par un CTE `MATERIALIZED`, et seuls eux sont déparsés.
+⚠️ **Après un retour arrière, la réapplication TIRE DE NOUVEAU chaque `rid`** : la colonne gardée sans garde est écrite par le
+client pendant la fenêtre (un `rid` planté reviendrait, ou un doublon ferait échouer l'index unique — les deux
+mesurés) ; la migration le voit (colonne présente, garde absente) et tire chaque valeur de nouveau avant de
+reconstruire l'index. La réécriture n'est pas publiée par le décodage logique (0 changement, mesuré).
 
 **Ce qui reste, dit tel quel** : un abonné sans filtre voit qu'UN effacement a eu lieu, et quand, sur ces
 tables ; `posts`, `post_comments`, `conv_messages`, `event_comments` et `profiles` envoient toujours leur
