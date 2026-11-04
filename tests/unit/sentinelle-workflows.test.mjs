@@ -32,6 +32,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parse } from "./lib/yaml-mini.mjs";
+import { evaluer, decide } from "./lib/expression-github.mjs";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 // ⚠️ Le faux `jq` du bac (alignement LF, plus bas) rappelle `"$JQ_BIN"` : ce chemin DOIT
@@ -911,4 +912,259 @@ test("digest.yml : Tableau — issue présente → `issue edit N --body-file`, A
   assert.ok(!r.log.includes("issue create"), "présente → aucune création\n" + r.log);
   assert.ok(!r.log.includes("810"), "#810 (la veille) intacte\n" + r.log);
   assert.ok(r.summary.includes("Tableau mis à jour : #811"), r.summary);
+});
+
+// ═══ Canal Claude : la file garde les ordres, et un événement n'est un ordre que s'il en donne un nouveau ═══
+// Fiche : docs/journal/telemetrie-pilotage-sentinelle.md, « LE CANAL NE PERD PLUS UN ORDRE ».
+// Ce qui est MESURÉ sur GitHub : le banc (branches orphelines, vrais événements pull_request). Un événement
+// `issues` ne se déclenche que depuis la branche par défaut : le `if:` réel ne peut être rejoué qu'ici, par
+// tests/unit/lib/expression-github.mjs, lui-même ancré sur les verdicts rendus par GitHub (test ②).
+const IF_REEL = CC.jobs.claude.if;
+const PILOTE = "PASSIO74";
+const TIERS = "un-tiers";
+const MENTION = "@claude";
+const evIssue = (action, { corps = "tâche", titre = "titre", auteur = PILOTE, etiquette = null, changes = null } = {}) => ({
+  github: { event_name: "issues", event: { action, issue: { body: corps, title: titre, user: { login: auteur } }, ...(etiquette ? { label: { name: etiquette } } : {}), ...(changes ? { changes } : {}) } },
+});
+const evCommentaire = (nom, cleCible) => (action, { corps = "remarque", auteur = PILOTE, cible = PILOTE, changes = null } = {}) => ({
+  github: { event_name: nom, event: { action, comment: { body: corps, user: { login: auteur } }, [cleCible]: { user: { login: cible } }, ...(changes ? { changes } : {}) } },
+});
+const lignesCommentaire = (etiquette, ev) => [
+  [`${etiquette} : nouveau, avec la mention`, ev("created", { corps: `${MENTION} fais-le` }), true],
+  [`${etiquette} : nouveau, sans la mention`, ev("created"), false],
+  [`${etiquette} : nouveau, d'un tiers`, ev("created", { corps: MENTION, auteur: TIERS }), false],
+  [`${etiquette} : nouveau, sur la cible d'un tiers`, ev("created", { corps: MENTION, cible: TIERS }), false],
+  [`${etiquette} : corrigé, la mention y était déjà`, ev("edited", { corps: `${MENTION} v2`, changes: { body: { from: `${MENTION} v1` } } }), false],
+  [`${etiquette} : corrigé, il gagne la mention`, ev("edited", { corps: `${MENTION} v2`, changes: { body: { from: "v1" } } }), true],
+  [`${etiquette} : corrigé, il perd la mention`, ev("edited", { corps: "v2", changes: { body: { from: `${MENTION} v1` } } }), false],
+  [`${etiquette} : modifié sans changement de texte`, ev("edited", { corps: MENTION, changes: {} }), false],
+  [`${etiquette} : gagne la mention, d'un tiers`, ev("edited", { corps: MENTION, auteur: TIERS, changes: { body: { from: "v1" } } }), false],
+];
+const TABLE_ORDRES = [
+  ["ouverture, mention dans le corps (Réparer du pilotage)", evIssue("opened", { corps: `${MENTION} répare` }), true],
+  ["ouverture, mention dans le titre", evIssue("opened", { titre: `${MENTION} test` }), true],
+  ["ouverture sans mention", evIssue("opened"), false],
+  ["ouverture avec mention, issue d'un tiers", evIssue("opened", { corps: MENTION, auteur: TIERS }), false],
+  ["label claude posé", evIssue("labeled", { etiquette: "claude" }), true],
+  ["label claude sur une issue mentionnée (relance d'un run perdu)", evIssue("labeled", { etiquette: "claude", corps: MENTION }), true],
+  ["label claude sur l'issue d'un tiers", evIssue("labeled", { etiquette: "claude", auteur: TIERS }), false],
+  ["label sentinelle sans mention (ouverture d'une enquête)", evIssue("labeled", { etiquette: "sentinelle" }), false],
+  ["autre label sur une issue mentionnée", evIssue("labeled", { etiquette: "reparation", corps: MENTION }), false],
+  ["autre label sur un titre mentionné", evIssue("labeled", { etiquette: "reparation", titre: MENTION }), false],
+  ["titre corrigé, mention déjà dans le titre (#41, 2026-08-19)", evIssue("edited", { titre: `${MENTION} v2`, changes: { title: { from: `${MENTION} v1` } } }), false],
+  ["corps corrigé, mention déjà dans le corps", evIssue("edited", { corps: `${MENTION} v2`, changes: { body: { from: `${MENTION} v1` } } }), false],
+  ["titre changé, mention dans le corps", evIssue("edited", { corps: MENTION, titre: "b", changes: { title: { from: "a" } } }), false],
+  ["corps changé, mention dans le titre", evIssue("edited", { titre: MENTION, corps: "b", changes: { body: { from: "a" } } }), false],
+  ["le corps gagne la mention", evIssue("edited", { corps: MENTION, changes: { body: { from: "x" } } }), true],
+  ["corps vide qui gagne la mention (from vide)", evIssue("edited", { corps: MENTION, changes: { body: { from: "" } } }), true],
+  ["corps vide qui gagne la mention (from nul)", evIssue("edited", { corps: MENTION, changes: { body: { from: null } } }), true],
+  ["le titre gagne la mention", evIssue("edited", { titre: MENTION, changes: { title: { from: "x" } } }), true],
+  ["le corps perd la mention", evIssue("edited", { corps: "x", changes: { body: { from: MENTION } } }), false],
+  ["le titre perd la mention, corps mentionné", evIssue("edited", { corps: MENTION, titre: "x", changes: { title: { from: MENTION } } }), false],
+  ["modifiée sans aucun changement, corps mentionné", evIssue("edited", { corps: MENTION, changes: {} }), false],
+  ["le corps gagne la mention, issue d'un tiers", evIssue("edited", { corps: MENTION, auteur: TIERS, changes: { body: { from: "x" } } }), false],
+  // Forme théorique : seule l'action dit qu'il s'agit d'une modification, jamais la présence de `changes`.
+  ["une étiquette dont la charge porterait `changes`", evIssue("labeled", { etiquette: "reparation", corps: MENTION, changes: { body: { from: "x" } } }), false],
+  ...lignesCommentaire("commentaire d'issue", evCommentaire("issue_comment", "issue")),
+  ...lignesCommentaire("commentaire de revue", evCommentaire("pull_request_review_comment", "pull_request")),
+];
+const ecartsOrdres = (expr) => TABLE_ORDRES.filter(([, ctx, attendu]) => decide(expr, ctx) !== attendu).map(([nom]) => nom);
+
+test("expression-github : les règles de GitHub, et tout ce qui sort du sous-ensemble lève", () => {
+  const c = { github: { vide: "", nul: null, liste: ["a", "b"], objet: { x: 1 }, nom: "Claude" } };
+  assert.equal(decide("github.absent.encore", c), false, "chemin absent : nul, donc faux, sans lever");
+  assert.equal(decide("github.objet", c), true, "un objet est vrai, même celui d'un `changes` sans `from`");
+  assert.equal(decide("github.vide", c), false);
+  assert.equal(evaluer("github.nul || 'repli'", c), "repli", "|| rend un opérande");
+  assert.equal(evaluer("github.objet && 'suite'", c), "suite", "&& rend un opérande");
+  assert.equal(decide("github.nom == 'claude'", c), true, "deux chaînes : sans casse");
+  assert.equal(decide("github.nul == 'claude'", c), false, "nul contre chaîne non numérique : faux");
+  assert.equal(decide("github.nul == ''", c), true, "nul et vide valent tous deux 0");
+  assert.equal(decide("contains(github.nul, '@claude')", c), false, "contains sur nul : faux, donc ! rend vrai");
+  assert.equal(decide("!contains(github.nul, '@claude')", c), true);
+  assert.equal(decide("contains('Un @CLAUDE ici', '@claude')", c), true, "sous-chaîne sans casse");
+  assert.equal(decide("contains(github.liste, 'B')", c), true, "tableau : égalité d'un élément");
+  assert.equal(decide("contains(github.liste, 'ab')", c), false);
+  assert.equal(decide("'a' == 'a' && !('b' == 'c') || false", c), true, "priorités");
+  assert.equal(decide("false && false || true", c), true);
+  assert.equal(decide("true || false && false", c), true);
+  assert.equal(evaluer("'l''apostrophe'", c), "l'apostrophe");
+  for (const hors of ["startsWith('a', 'b')", "github.a ==", "(true", "true)", "github.a[0]", "'ouverte", "1 < 2", "toJSON(github)"]) {
+    assert.throws(() => evaluer(hors, c), Error, "doit lever : " + hors);
+  }
+});
+
+test("le banc : l'évaluateur rend, ligne à ligne, les verdicts que GitHub a rendus sur 26 vrais événements", () => {
+  // Mesuré le 2026-11-04 (PR 710 à 713, entre branches orphelines), workflows `p-actuel-rmax` (ancien `if:`,
+  // `queue: max`, donc sans éviction) et `p-serre-jmax` (ce `if:`, au niveau du job). Le `if:` du banc était
+  // généré du texte réel par les mêmes substitutions que `transposer` ci-dessous. Une issue et une PR portent
+  // les mêmes champs (`action`, `label`, `changes`, `body`, `title`) : seul le nom de l'objet change.
+  const O = "ORDRE-BANC";
+  const ANCIEN_IF = `(
+    github.event_name == 'issues' && github.event.issue.user.login == 'PASSIO74' &&
+    (github.event.label.name == 'claude' || contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))
+  ) || (
+    github.event_name == 'issue_comment' && github.event.comment.user.login == 'PASSIO74' && github.event.issue.user.login == 'PASSIO74' &&
+    contains(github.event.comment.body, '@claude')
+  ) || (
+    github.event_name == 'pull_request_review_comment' && github.event.comment.user.login == 'PASSIO74' && github.event.pull_request.user.login == 'PASSIO74' &&
+    contains(github.event.comment.body, '@claude')
+  )`;
+  const transposer = (s) => s.split("github.event.issue.").join("github.event.pull_request.")
+    .split("github.event_name == 'issues'").join("github.event_name == 'pull_request'")
+    .split("'@claude'").join(`'${O}'`)
+    .split("github.event.label.name == 'claude'").join("github.event.label.name == 'banc-label-ordre'");
+  const pr = (action, corps, titre, { etiquette = null, changes = null } = {}) => ({
+    github: { event_name: "pull_request", event: { action, pull_request: { body: corps, title: titre, user: { login: PILOTE } }, ...(etiquette ? { label: { name: etiquette } } : {}), ...(changes ? { changes } : {}) } },
+  });
+  const revue = (action, corps, from) => evCommentaire("pull_request_review_comment", "pull_request")(action, { corps, ...(from !== undefined ? { changes: { body: { from } } } : {}) });
+  const p1 = "banc PR1", p1b = "banc PR1 titre 2", c1 = `tache ${O}`, c1b = `tache ${O} precisee`;
+  const MESURE = [
+    ["opened, mention dans le corps", pr("opened", c1, p1), true, true],
+    ["labeled banc-a, même seconde", pr("labeled", c1, p1, { etiquette: "banc-a" }), true, false],
+    ["labeled banc-b, même seconde", pr("labeled", c1, p1, { etiquette: "banc-b" }), true, false],
+    ["edited titre, mention dans le corps", pr("edited", c1, p1b, { changes: { title: { from: p1 } } }), true, false],
+    ["edited corps, mention déjà là", pr("edited", c1b, p1b, { changes: { body: { from: c1 } } }), true, false],
+    ["labeled ordre", pr("labeled", c1b, p1b, { etiquette: "banc-label-ordre" }), true, true],
+    ["labeled ordre, second", pr("labeled", c1b, p1b, { etiquette: "banc-label-ordre" }), true, true],
+    ["commentaire de revue created, mention", revue("created", `fais ca ${O}`), true, true],
+    ["commentaire edited, mention déjà là", revue("edited", `fais ca ${O} stp`, `fais ca ${O}`), true, false],
+    ["commentaire created, sans mention", revue("created", "remarque sans ordre"), false, false],
+    ["commentaire created, sans mention (2)", revue("created", "a reprendre"), false, false],
+    ["commentaire edited qui ajoute la mention", revue("edited", `a reprendre ${O}`, "a reprendre"), true, true],
+    ["opened sans mention", pr("opened", "tache sans ordre", "banc PR2"), false, false],
+    ["labeled autre, sans mention", pr("labeled", "tache sans ordre", "banc PR2", { etiquette: "banc-a" }), false, false],
+    ["edited corps ajoute la mention", pr("edited", `tache ${O}`, "banc PR2", { changes: { body: { from: "tache sans ordre" } } }), true, true],
+    ["edited corps, mention déjà là (2)", pr("edited", `tache ${O} v2`, "banc PR2", { changes: { body: { from: `tache ${O}` } } }), true, false],
+    ["edited titre, corps déjà mentionné", pr("edited", `tache ${O} v2`, "banc PR2 titre 2", { changes: { title: { from: "banc PR2" } } }), true, false],
+    ["edited corps retire la mention", pr("edited", "tache sans ordre", "banc PR2 titre 2", { changes: { body: { from: `tache ${O} v2` } } }), false, false],
+    ["edited corps remet la mention", pr("edited", `tache ${O} v3`, "banc PR2 titre 2", { changes: { body: { from: "tache sans ordre" } } }), true, true],
+    ["opened corps vide", pr("opened", "", "banc PR3"), false, false],
+    ["edited corps vide vers mention", pr("edited", `ordre ${O}`, "banc PR3", { changes: { body: { from: "" } } }), true, true],
+    ["edited titre ajoute la mention", pr("edited", `ordre ${O}`, `banc PR3 ${O}`, { changes: { title: { from: "banc PR3" } } }), true, true],
+    ["edited titre retire la mention", pr("edited", `ordre ${O}`, "banc PR3 retire", { changes: { title: { from: `banc PR3 ${O}` } } }), true, false],
+    ["opened, mention dans le titre", pr("opened", "corps simple", `${O} banc PR4`), true, true],
+    ["edited corps, titre mentionné", pr("edited", "corps modifie", `${O} banc PR4`, { changes: { body: { from: "corps simple" } } }), true, false],
+    ["edited titre, mention déjà là", pr("edited", "corps modifie", `${O} banc PR4 bis`, { changes: { title: { from: `${O} banc PR4` } } }), true, false],
+  ];
+  assert.equal(MESURE.length, 26);
+  assert.equal(MESURE.filter((l) => l[2]).length, 20, "GitHub, ancien `if:` : 20 agents");
+  assert.equal(MESURE.filter((l) => l[3]).length, 10, "GitHub, ce `if:` : 10 agents, autant que d'ordres");
+  const ecarts = (expr, col) => MESURE.filter((l) => decide(transposer(expr), l[1]) !== l[col]).map((l) => l[0]);
+  assert.deepEqual(ecarts(ANCIEN_IF, 2), [], "l'évaluateur rend les verdicts de GitHub sur l'ancien `if:`");
+  assert.deepEqual(ecarts(IF_REEL, 3), [], "le `if:` réel rend les verdicts mesurés : tout changement se re-mesure au banc");
+  // Le défaut d'origine sur la table réelle : l'ancien `if:` laisse passer ce que la file ne jette plus.
+  const defaut = ecartsOrdres(ANCIEN_IF);
+  for (const nom of ["autre label sur une issue mentionnée", "titre corrigé, mention déjà dans le titre (#41, 2026-08-19)", "corps corrigé, mention déjà dans le corps", "commentaire d'issue : corrigé, la mention y était déjà", "commentaire de revue : corrigé, la mention y était déjà"]) {
+    assert.ok(defaut.includes(nom), "attendu rouge avec l'ancien `if:` : " + nom + "\nlu : " + defaut.join(" | "));
+  }
+});
+
+test("claude-code.yml : un événement n'est un ordre que s'il en donne un nouveau, et chaque clause se défend par une mutation", () => {
+  assert.deepEqual(ecartsOrdres(IF_REEL), []);
+  const muter = (avant, apres, attendu) => {
+    const m = typeof avant === "string" ? IF_REEL.replace(avant, () => apres) : IF_REEL.replace(avant, apres);
+    assert.notEqual(m, IF_REEL, "la mutation doit s'appliquer : " + avant);
+    const e = ecartsOrdres(m);
+    assert.ok(e.includes(attendu), `mutation ${avant} : attendu « ${attendu} », lu : ${e.join(" | ")}`);
+  };
+  // L'ordre par label, et la porte d'ouverture.
+  muter(/github\.event\.label\.name == 'claude' \|\|\s+/, "", "label claude posé");
+  muter(/github\.event\.action == 'opened' &&\s+/, "", "autre label sur une issue mentionnée");
+  muter(/contains\(github\.event\.issue\.body, '@claude'\) \|\|\s+/, "", "ouverture, mention dans le corps (Réparer du pilotage)");
+  muter(/\|\|\s+contains\(github\.event\.issue\.title, '@claude'\)\s+\)\s+\) \|\|/, ") ) ||", "ouverture, mention dans le titre");
+  // Une modification ne relance que si elle AJOUTE la mention, champ par champ.
+  muter(/(contains\(github\.event\.issue\.body, '@claude'\)) &&\s+!contains\(github\.event\.changes\.body\.from, '@claude'\)/, "$1", "corps corrigé, mention déjà dans le corps");
+  muter(/(contains\(github\.event\.issue\.title, '@claude'\)) &&\s+!contains\(github\.event\.changes\.title\.from, '@claude'\)/, "$1", "titre corrigé, mention déjà dans le titre (#41, 2026-08-19)");
+  muter(/github\.event\.changes\.body &&\s+(contains\(github\.event\.issue\.body)/, "$1", "titre changé, mention dans le corps");
+  muter(/github\.event\.changes\.title &&\s+(contains\(github\.event\.issue\.title)/, "$1", "corps changé, mention dans le titre");
+  muter(/github\.event\.action == 'edited' &&\s+/, "", "une étiquette dont la charge porterait `changes`");
+  // Les deux formes de commentaire, chacune pour elle-même.
+  const nomCommentaire = { issue_comment: "commentaire d'issue", pull_request_review_comment: "commentaire de revue" };
+  for (const [ev, nom] of Object.entries(nomCommentaire)) {
+    const bloc = new RegExp(`(github\\.event_name == '${ev}'[\\s\\S]*?contains\\(github\\.event\\.comment\\.body, '@claude'\\)) &&\\s+\\(\\s+github\\.event\\.action == 'created' \\|\\|\\s+\\(\\s+github\\.event\\.changes\\.body &&\\s+!contains\\(github\\.event\\.changes\\.body\\.from, '@claude'\\)\\s+\\)\\s+\\)`);
+    muter(bloc, "$1", `${nom} : corrigé, la mention y était déjà`);
+    const sansGarde = new RegExp(`(github\\.event_name == '${ev}'[\\s\\S]*?github\\.event\\.action == 'created' \\|\\|\\s+\\(\\s+)github\\.event\\.changes\\.body &&\\s+(!contains)`);
+    muter(sansGarde, "$1$2", `${nom} : modifié sans changement de texte`);
+    const sansAjout = new RegExp(`(github\\.event_name == '${ev}'[\\s\\S]*?github\\.event\\.action == 'created' \\|\\|\\s+\\(\\s+github\\.event\\.changes\\.body)\\s+&&\\s+!contains\\(github\\.event\\.changes\\.body\\.from, '@claude'\\)`);
+    muter(sansAjout, "$1", `${nom} : corrigé, la mention y était déjà`);
+    muter(new RegExp(`(github\\.event_name == '${ev}' &&\\s+)github\\.event\\.comment\\.user\\.login == 'PASSIO74' &&\\s+`), "$1", `${nom} : nouveau, d'un tiers`);
+  }
+  // La frontière de confiance sur la cible, sur chacune des trois portes.
+  muter(/(github\.event_name == 'issues' &&\s+)github\.event\.issue\.user\.login == 'PASSIO74' &&\s+/, "$1", "label claude sur l'issue d'un tiers");
+  muter(/(github\.event_name == 'issue_comment' &&\s+github\.event\.comment\.user\.login == 'PASSIO74' &&\s+)github\.event\.issue\.user\.login == 'PASSIO74' &&\s+/, "$1", "commentaire d'issue : nouveau, sur la cible d'un tiers");
+  muter(/(github\.event_name == 'pull_request_review_comment' &&\s+github\.event\.comment\.user\.login == 'PASSIO74' &&\s+)github\.event\.pull_request\.user\.login == 'PASSIO74' &&\s+/, "$1", "commentaire de revue : nouveau, sur la cible d'un tiers");
+});
+
+// La file : au niveau du job, par issue, `queue: max`. Le groupe et ses entrants sont lus sur tous les workflows.
+const GROUPE_CLAUDE = "claude-code-${{ github.event.issue.number || github.event.pull_request.number }}";
+const workflowsReels = () => Object.fromEntries(fs.readdirSync(path.join(RACINE, ".github/workflows")).filter((f) => /\.ya?ml$/.test(f)).sort()
+  .map((f) => [f, fs.readFileSync(path.join(RACINE, ".github/workflows", f), "utf8").split("\r\n").join("\n")]));
+function auditerFileClaude(fichiers) {
+  const defauts = [];
+  const doc = parse(fichiers["claude-code.yml"]);
+  const c = doc.jobs.claude.concurrency;
+  if (doc.concurrency) defauts.push("`concurrency` au niveau du run : un événement écarté par le `if:` entrerait dans la file, y attendrait et y prendrait une place");
+  if (!c || typeof c !== "object") defauts.push("le job `claude` n'a pas de bloc `concurrency` écrit en lignes");
+  else {
+    if (c.group !== GROUPE_CLAUDE) defauts.push(`groupe modifié (${c.group}) : il doit rester PAR ISSUE, sinon des enquêtes en parallèle s'attendent`);
+    if (c.queue !== "max") defauts.push("`queue: max` manque : un troisième ordre remplacerait celui qui attend, sans une trace");
+    if (c["cancel-in-progress"] !== "false") defauts.push("`cancel-in-progress` doit rester false : un ordre en cours serait tué, et GitHub refuse le workflow avec `queue: max`");
+  }
+  // C'est l'ARRIVANT qui décide : tout autre entrant de ce groupe annulerait celui qui attend.
+  for (const [f, texte] of Object.entries(fichiers)) {
+    const n = texte.split("\n").filter((l) => !/^\s*#/.test(l) && /group:.*claude-code-/.test(l)).length;
+    if (n > (f === "claude-code.yml" ? 1 : 0)) defauts.push(`${f} : entrant de plus dans le groupe claude-code-<n> (${n}) : sans la clé, il évincerait l'ordre qui attend`);
+  }
+  return defauts;
+}
+
+test("claude-code.yml : la file est au niveau du job, par issue, en `queue: max`, et ses mutations rougissent", () => {
+  const vrai = workflowsReels();
+  assert.deepEqual(auditerFileClaude(vrai), []);
+  const muter = (avant, apres, f = "claude-code.yml") => {
+    const texte = typeof avant === "string" ? vrai[f].replace(avant, () => apres) : vrai[f].replace(avant, apres);
+    assert.notEqual(texte, vrai[f], "la mutation doit s'appliquer : " + avant);
+    return { ...vrai, [f]: texte };
+  };
+  const rouge = (fichiers, motif) => {
+    const d = auditerFileClaude(fichiers);
+    assert.ok(d.some((x) => motif.test(x)), `attendu ${motif}, lu : ${JSON.stringify(d)}`);
+  };
+  const BLOC = `    concurrency:\n      group: ${GROUPE_CLAUDE}\n      cancel-in-progress: false\n      queue: max\n`;
+  assert.ok(vrai["claude-code.yml"].includes(BLOC), "le bloc attendu est dans le fichier");
+  rouge(muter(/(group: claude-code-[^\n]*\n\s+cancel-in-progress: false\n)\s+queue: max\n/, "$1"), /`queue: max` manque/);
+  rouge(muter(/(group: claude-code-[^\n]*\n\s+cancel-in-progress: )false/, "$1true"), /`cancel-in-progress` doit rester false/);
+  rouge(muter(`group: ${GROUPE_CLAUDE}`, "group: claude-code"), /groupe modifié/);
+  rouge(muter(BLOC, `    concurrency: claude-code-1\n`), /pas de bloc `concurrency` écrit en lignes/);
+  // Le bloc remonté au niveau du run : le défaut d'origine, même avec la clé.
+  const remonte = vrai["claude-code.yml"].replace(BLOC, "").replace("\njobs:\n", `\nconcurrency:\n  group: ${GROUPE_CLAUDE}\n  cancel-in-progress: false\n  queue: max\n\njobs:\n`);
+  assert.notEqual(remonte, vrai["claude-code.yml"]);
+  rouge({ ...vrai, "claude-code.yml": remonte }, /au niveau du run/);
+  // Un second entrant, ailleurs : c'est lui qui déciderait à l'arrivée.
+  rouge(muter("concurrency:\n  group: sentinelle-autonome\n", `concurrency:\n  group: ${GROUPE_CLAUDE}\n`, "sentinelle-autonome.yml"), /sentinelle-autonome\.yml : entrant de plus/);
+  // Un commentaire qui cite le groupe n'est pas un entrant.
+  assert.deepEqual(auditerFileClaude({ ...vrai, "digest.yml": `# group: ${GROUPE_CLAUDE}\n` + vrai["digest.yml"] }), []);
+});
+
+test("claude-code.yml : le message d'annulation ne promet plus une éviction qui n'existe plus, et il dit comment relancer", () => {
+  // Un avertissement qui survit à sa cause apprend à ne plus lire les avertissements.
+  const etapeAnnulation = etape(CC, "claude", "Signaler l'annulation");
+  assert.equal(String(etapeAnnulation.if), "cancelled() && (github.event.issue.number || github.event.pull_request.number)", "la marche reste : un job démarré peut encore être arrêté");
+  assert.doesNotMatch(etapeAnnulation.run, /ne garde qu'UN run|troisième|remplacé dans la file/, "phrase de l'ancienne file");
+  assert.match(etapeAnnulation.run, /jusqu'à 100 par issue/);
+  assert.match(etapeAnnulation.run, /repose/, "le geste de relance y est écrit");
+  fixtures({});
+  const r = jouer(etapeAnnulation.run, { NUMERO: "12", DEPOT: "o/r", ATTENDUE: "claude/issue-12-1", LIEN: "u", GH_TOKEN: "integre" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.ok(r.lignes.some((x) => x.startsWith("issue comment 12 --repo o/r --body-file ") && x.includes("Run annulé") && x.endsWith("jeton=integre")), r.log);
+});
+
+test("sentinelle-autonome.yml : le `sleep 8` et le veilleur restent, et leur raison est écrite (aucune enquête depuis #370)", () => {
+  // Retirer le geste se décide sur une vraie enquête passée par la nouvelle file, pas sur le banc seul.
+  const texte = workflowsReels()["sentinelle-autonome.yml"];
+  assert.ok(etape(SA, "detecter", "Déclencher le canal Claude").run.includes("sleep 8"), "le `sleep 8` avant chaque label");
+  assert.ok(etape(SA, "detecter", "Veilleur").run.includes("sleep 8"), "le `sleep 8` de la relance");
+  assert.match(texte, /DEPUIS LE 2026-11-04, CETTE FILE NE PERD PLUS RIEN/);
+  assert.match(texte, /aucune enquête n'a tourné\n# depuis #370/);
 });

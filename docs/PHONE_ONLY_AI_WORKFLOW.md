@@ -42,7 +42,7 @@ that requires a machine to be awake; it is not the primary channel.
 | Path | How | Why |
 |---|---|---|
 | **Label `claude`** (nominal) | Apply the `claude` label to an issue authored by PASSIO74 | A label cannot be misspelled. Issues #68, #69 and #73 were never executed because their text lacked the exact string `@claude`, and runs 9–14 exited `skipped` — a status visually indistinguishable from success. |
-| `@claude` (fallback) | Put `@claude` in the issue title/body or in a comment | Kept for continuity with existing issues. |
+| `@claude` (fallback) | Put `@claude` in the issue title/body when opening it, add it by an edit, or post it in a comment | Kept for continuity with existing issues. An edit that does not add the mention starts nothing. |
 
 Every path additionally requires the author to be `PASSIO74`.
 
