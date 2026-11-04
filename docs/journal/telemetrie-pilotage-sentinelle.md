@@ -34,6 +34,7 @@
 - 🎯 DEUX BESOINS, UN ÉCRAN, UN BOUTON PAR PROBLÈME (2026-11-04)
 - 🔑 LE VOYANT FIGÉ AU ROUGE ET LE JETON GITHUB QUI EXPIRE EN SILENCE (2026-11-04)
 - 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
+- 🚦 LE VERROU ÉVINÇAIT `main` — UN PUSH DE PR FAISAIT SAUTER LE DÉPLOIEMENT (2026-11-04)
 
 ---
 
@@ -575,3 +576,33 @@ Trouvé en livrant #699 (fiche « PIC D'ERREURS »). `scripts/build.js` calculai
 - **Verrou** : `tests/unit/build-id.test.mjs` (6) exécute le vrai `scripts/build.js` avec un `fs` en mémoire, en moins de 2 s (47 builds sur le disque prenaient 148 s sur le poste chargé). La liste des scripts vient de l'artefact, pas d'une liste écrite à la main ; ⑥ compare à un vrai build sur le disque.
 - **Mutations** : défaut d'origine remis → ① rouge, 36 scripts nommés ; scripts de tête seuls comptés → 32 ; scripts d'après le contrat seuls → 4 ; liste écrite à la main (`platform` + `telemetry`) → 34 ; gardes oubliés → 2 ; commit, date ou cible dans le calcul → ④ ; worker sous un autre identifiant → ① ⑤ ⑥ ; contrat après `telemetry.js` → ⑤ ; banc à liste vide → ② ; `fs` qui ment → ① ③ ⑥ ; mutation jamais appliquée → ① ③. Deux restent vertes, à raison : retirer `app.js` ou le CSS du calcul ne change rien, leur hash `?v=` est déjà dans le HTML.
 - **Non vérifié** : aucun iPhone réel. Le chemin « worker réinstallé → page rechargée » reste un contrôle ponctuel hors suite : `pwa-premiere-installation.spec.js` ne couvre que les pages sans contrôleur.
+
+## 🚦 LE VERROU ÉVINÇAIT `main` — UN PUSH DE PR FAISAIT SAUTER LE DÉPLOIEMENT (2026-11-04)
+
+Trouvé en finalisant une dizaine de PR. Le groupe `passio-e2e-prod` ne gardait qu'un job en attente : tout nouvel entrant annulait celui qui patientait, y compris la suite production d'un run de `main`. `smoke` passait rouge et `deploy` était sauté, alors que le code était vert.
+
+- **Mesuré sur la journée** (API GitHub, jobs « Suites production » de `deploy.yml`) : 64 exécutions, 14 annulées avant leur première étape, dont 4 sur `main`. Le run 41809850498 (`effd7221`) a été annulé au premier essai ; le run 41811622107 (`4acf11a4`, #701) l'a été trois fois de suite et a mis 33 min à se déployer. Chaque relance était manuelle et devait vérifier que le run portait encore le dernier commit de `main`. Les 10 autres annulations touchaient des PR, relancées à la main elles aussi. Deux jobs de plus ont été annulés en pleine exécution : `cancel-in-progress: false` met le verrou hors de cause.
+- **Correctif** : `queue: max` sur les trois entrants (`test-prod`, le `health` de `sentinelle-distante.yml`, `controle-realtime.yml`). Disponible sur GitHub depuis le 2026-05-07 : jusqu'à 100 jobs en attente, traités dans l'ordre d'arrivée, un ordre que la documentation ne garantit pas strictement. Le verrou n'en a pas besoin : l'ordre des déploiements est tenu par `passio-deploy-main`.
+- **Les deux raisons du verrou tiennent** : le groupe reste constant, donc une seule suite tourne à la fois. La purge par motif ne peut toujours pas effacer les comptes d'une autre suite. Le débit maximal d'inscriptions ne bouge pas : une suite à la fois, environ 4,5 min chacune. La file ne fait qu'attendre au lieu d'annuler.
+
+**Le banc, sur GitHub** (2026-11-04, branche orpheline jetable, supprimée ensuite). Trois poussées donc trois runs, entrant au niveau du job dans des groupes propres au banc : un job tient le groupe 240 s, un deuxième attend, comme celui de `main`, un troisième arrive, comme celui d'une PR. Runs 41838927874, 41838988655, 41839067241.
+
+| Clé `queue` : celui qui attend / celui qui arrive | Celui qui attend | Celui qui arrive |
+|---|---|---|
+| absente / absente (témoin, le défaut d'origine) | **annulé** | passe |
+| `max` / `max` (le correctif) | passe, 13:36:00 | passe après lui, 13:36:20 |
+| `max` / absente | **annulé** | passe |
+| absente / `max` | passe | passe après lui |
+
+- ⚠️ **C'est l'ARRIVANT qui décide** : un seul entrant sans la clé annule le job qui attend, même si celui-ci la porte. D'où la clé sur les trois entrants, et non sur le seul `test-prod` : le cron de la sentinelle distante aurait continué d'annuler `main`.
+- ⚠️ **Pendant la transition** : un run lancé avant la fusion garde son ancien fichier, et sa relance aussi. Relancer une vieille PR pendant qu'un run de `main` attend peut donc encore l'annuler. Une nouvelle poussée prend le fichier à jour, car un run de PR lit le workflow du commit de fusion.
+- **Le prix est l'ordre d'arrivée, ce n'est pas une priorité stricte** : `main` passe après les jobs déjà en file. Rejeu approché de la journée (les 52 premiers essais, 5 min par suite, aucune éviction) : `main` aurait attendu 3,1 min en moyenne et 9,1 min au pire, les PR 4,3 et 13,3. Les 100 places ne se remplissent pas : `passio-ci-pr-<n>` sérialise les runs d'une PR, qui n'a donc qu'un job dans la file à la fois.
+- **Au niveau du run, les groupes restent en `single`, délibérément** : un run en attente n'y est remplacé que par un run plus récent du même fil. `main` est linéaire, le commit suivant contient le précédent. `queue: max` y ferait rejouer et déployer chaque commit intermédiaire.
+- **Écarté** :
+  - un groupe distinct pour `main` : `main` et les PR se chevaucheraient sur le staging, et chaque teardown y purge tous les `%@passio-e2e.test`, soit l'incident du 2026-09-01. Cloisonner les comptes par run toucherait `compte-e2e.js` et les chemins de purge, pour un quota qui ne serait plus borné ;
+  - une relance automatique : un workflow de plus avec `actions: write`, qu'une PR suivante pouvait évincer à nouveau, et dont chaque essai raté passait par `retour-issue`, qui écrit « NON déployé » et rouvre les issues de la Sentinelle ;
+  - retirer `test-prod` des `needs` de `deploy` : la barrière de production disparaîtrait.
+- ⚠️ `queue: max` avec `cancel-in-progress: true` est une erreur de validation : GitHub refuse le workflow entier. Une fois sur `main`, cette combinaison empêcherait donc tout déploiement.
+- **Verrou** : `tests/unit/verrou-comptes-reels.test.mjs` lit tous les workflows, y compris un futur quatrième entrant. Un fichier que le lecteur YAML refuse n'est toléré que s'il ne nomme ni le verrou ni le marqueur `PASSIO_E2E_PROD`.
+- **Mutations**, rejouées par le test sur le texte réel, chacune rouge en nommant l'entrant : clé retirée sur chacun des trois ; groupe par déclencheur ; `cancel-in-progress: true` ; sortie du verrou avec purge conservée ; marqueur posé sur `test-local` ; bloc écrit en flux ; groupe du run rendu constant ; `queue: max` au niveau du run ; `test-prod` retiré de `deploy` ou de `smoke`. Avant le correctif, le test rougissait sur les trois entrants.
+- **Non vérifié** : le banc utilise ses propres groupes et ne touche jamais `passio-e2e-prod`. Le correctif ne se verra en vraie contention qu'après la fusion, au prochain run de `main` qui attend pendant qu'une PR pousse. Il devra rester au vert sans relance ; `conclusion: cancelled` sur son job « Suites production » contredirait cette fiche. La limite des 100 places n'a pas été éprouvée.
