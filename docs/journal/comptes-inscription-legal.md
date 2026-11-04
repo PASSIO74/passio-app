@@ -11,6 +11,7 @@
 
 ## Sommaire
 
+- 🔞 L'ANNÉE À L'INSCRIPTION, PUIS LA PROPOSITION IRL ALLUMÉE POUR TOUS (2026-11-01)
 - 🤖 CAPTCHA TURNSTILE À L'INSCRIPTION — le client d'abord, l'interrupteur ensuite (2026-09-13)
 - 🔑 MOT DE PASSE : 8 CARACTÈRES, ET LES REFUS DU SERVEUR EN FRANÇAIS (2026-09-13)
 - 🔑 CHOISIR SON MOT DE PASSE — ON AIDE, ON N'EXIGE PAS PLUS (2026-09-16)
@@ -30,6 +31,9 @@
 - 🔞 LA PORTE D'ÂGE AVALAIT LA CRÉATION D'ACTIVITÉ — la saisie perdue, rien publié (2026-10-23)
 - ➕ CRÉER UN COMPTE SE VOIT DÈS L'ARRIVÉE — carte de bienvenue et barre du haut (2026-10-23)
 - 1️⃣ LA CARTE DE BIENVENUE N'A PLUS QU'UN BOUTON — celui que son message annonce (2026-11-03)
+- ➖ LE BOUTON « CRÉER UN COMPTE » QUITTE LA BARRE DU HAUT (2026-11-04)
+- 🔔 UXO-11 — « MISE À JOUR DISPONIBLE » AU TOUT PREMIER ÉCRAN : le worker annonçait sa première installation (2026-11-04)
+- 🔗 LE NOUVEAU VENU RETROUVE UNE PORTE D'INSCRIPTION — un lien sur la carte (2026-11-04)
 
 ---
 
@@ -505,6 +509,33 @@ Deux portes, toutes deux vers `PassioFirstRun.allerInscription` (aucun second sy
 - **barre du haut** : pastille « Créer un compte » (`#topbarSignup`), STATIQUE dans `index.html`, affichée seulement sous `:root.passio-first-run` — elle reste là carte fermée, et un compte existant ou la première visite coupée ne la voient jamais. Télémétrie : `guest_signup_started` avec `ctx` `bienvenue` ou `topbar`.
 ⚠️ Mesuré à 360 px : la pastille CHEVAUCHAIT « PASSIO » (la partie gauche ne rétrécit pas). Sous 440 px, en mode visiteur, le nom et la puce Beta cèdent la place, le logo reste. Verrou : `tests/e2e/creer-compte-accueil.spec.js` (8) — dont un contrôle de non-chevauchement à 320/360/390/430 px, réinjection faite (la règle 440 px retirée → 2 rouges), et le bouton de la carte retiré → ① rouge.
 
+## 🔞 L'ANNÉE À L'INSCRIPTION, PUIS LA PROPOSITION IRL ALLUMÉE POUR TOUS (2026-11-01)
+
+**Ordre de Benjamin** : ouvrir la proposition IRL (`passio_irl_proposal_v1`, bouton 📍 d'une conversation privée) à tout le monde, « l'âge d'abord ».
+
+**Le défaut qui l'interdisait** : le parcours « Première visite » (actif depuis le 2026-09-01) ne demande l'année NULLE PART. `irl_interaction_allowed` exige deux majeurs DÉCLARÉS et échoue fermé : allumé tel quel, le bouton restait invisible pour tout compte né depuis septembre. Et `irlProposalServerVerdict` refusait (`birth_year_unavailable`) dès que l'appareil n'avait pas l'année EN LOCAL, même pour un compte admis côté serveur depuis un autre appareil.
+
+**Ce qui change** :
+- `#authBirthYear` au formulaire de création (mode `signup` seulement). **Sous 18 ans, rien ne part** : la politique (§ 10) dit que l'inscription est refusée, et le message laisse corriger une faute de frappe. Ne pas confondre avec `admissionValiderAnnee`, où le compte existe déjà : son pré-filtre reste à 13 ans, et le serveur fait de l'année un refus durable.
+- L'année voyage dans `user_metadata.birth_year` (`signUp` ne rend pas de session). `admissionAnneeDuCompte` (app-07) la relit à la première session et elle part par `declare_birth_year`, une fois par compte et par page. Elle n'est plus recopiée en local à cette occasion.
+- La déclaration locale n'est plus une condition du verdict : le serveur reste seul juge. Un visiteur et une session expirée s'arrêtent avant le réseau (`server_unavailable`).
+- `irlProposalEnabled()` : ACTIF par défaut, ne sait plus qu'enlever (`"0"`, `PASSIO_IRL_PROPOSAL_V1=false`, coupure distante — la clé était déjà dans la liste blanche).
+- Politique de confidentialité §2 : l'année figure parmi les données d'inscription (version `2026-11-04`, jour de sa mise en ligne : la date affichée ne précède pas la publication).
+
+⚠️ **Reste hors champ** : un compte créé par Google n'a pas de formulaire, donc pas d'année avant sa première action IRL (la porte d'admission la demande alors). Les comptes nés entre le 2026-09-01 et ce lot non plus : le bouton leur apparaît dès qu'ils ont déclaré leur année par la porte d'admission.
+
+⚠️ **Relecture adversariale avant la mise en ligne (2026-11-04) : deux défauts graves, vérifiés dans le code puis corrigés.**
+- **L'année de A partait sous le jeton de B, et c'est définitif.** `declare_birth_year` part avec le jeton de la SESSION, alors que `state` et `MY_UID` peuvent être ceux d'un autre compte : le rappel part au démarrage, avant l'adoption, et un lien de confirmation ouvert dans ce navigateur apporte la session de B sur l'état de A. Le serveur ne reculant jamais une date de majorité, un adulte pouvait rester classé mineur, et un compte sans âge déclaré être admis. `admissionAnneeDuCompte` est désormais la seule autorité : l'année locale ne vaut que si `_uidProprietaireEtat`, `MY_UID` et la session désignent le même compte, sinon seule compte `user_metadata`. Le défaut date de septembre ; demander l'année à tous l'aurait armé.
+- **Un compte déclaré de 13 à 17 ans était créé et conservé**, alors que le § 10 dit « refusée » et « supprimé » : PASSIO aurait gardé l'e-mail et l'année d'une personne qu'il sait mineure, sans aucun chemin de suppression dans le code. D'où le refus à 18 ans à la création, sans appel à `signUp`.
+- Corrigés aussi : l'année n'entre dans l'état que sur un compte créé AVEC une session (un refus laissait 2012 sur l'état du compte suivant) ; le verrou du rappel se pose après la lecture de session ; une déclaration par compte et par page au lieu de trois par démarrage et une par conversation ; l'étape « âge » est sautée quand l'année est connue ; une coupure réseau d'`irlTsFail` est un `warn` ; § 2 vrai pour un compte Google.
+
+⚠️ **Résidus laissés, délibérément** :
+- `irl_interaction_allowed` reste un oracle : tout compte connecté peut l'appeler sans plafond sur les identifiants publics, et `false` couvre « mineur », « non déclaré » et « bloqué ». Refuser sous 18 ans à la création lui retire l'essentiel de son intérêt ; le fermer demande une migration (exiger une conversation commune, patron `appel_autorise`), donc une contre-revue.
+- `irlProposerEstMineur` lit `state.user.isMinor` sans le recalculer : le refus local reste prudent, et un cas de la suite IRL le fixe tel quel.
+- `birthYear` et `isMinor` restent dans `_syncableState` (`user_state`, lisible par son seul propriétaire) ; `irl_proposal_guard` peut porter `reason=self_minor` ; `DENY_KEY` ne liste pas ces noms, car aucun appelant ne les envoie.
+
+Verrous : `tests/e2e/annee-inscription.spec.js` (12, dont ③ le refus à 18 ans, ⑦ l'année d'un autre compte, ⑧ une seule déclaration, ⑨ visiteur et session expirée, ⑩ le verrou), `tests/e2e/irl-trust-safety.spec.js` (drapeau par défaut ACTIF, « 0 » coupe), `tests/e2e/admission-18-plus.spec.js`.
+
 ## 1️⃣ LA CARTE DE BIENVENUE N'A PLUS QU'UN BOUTON — celui que son message annonce (2026-11-03)
 
 Constat en ouvrant la production comme un visiteur, à 375 px : la carte alignait QUATRE actions à poids presque égal — « Personnaliser mon expérience » (plein), « Explorer d'abord » (contour), « Créer mon compte » (contour, pleine largeur, ajouté le 2026-10-23) et « J'ai déjà un compte — me connecter » (lien). Deux étaient des DOUBLES : « Explorer d'abord » appelait `fermerBienvenue()`, exactement comme le ×, et « Créer mon compte » ouvrait l'inscription comme la pastille `#topbarSignup`, visible dès l'arrivée juste au-dessus de la carte.
@@ -520,3 +551,22 @@ Verrous : `tests/e2e/first-run.spec.js` (« une seule action principale… » co
 
 Demande de Benjamin : « supprime créer mon compte en haut, il y est déjà une fois dans le fil ». `#topbarSignup` et son style sont retirés, ainsi que la règle qui masquait le nom et la puce Beta du visiteur sous 440 px : elle n'existait que pour lui faire de la place.
 ⚠️ **Ce qui reste comme porte** : « Créer mon compte » sur la carte du fil, seulement si des passions sont déjà choisies ; la fenêtre d'une action engageante (like, commentaire…) ; l'onglet du formulaire ouvert par « J'ai déjà un compte ». **Le nouveau venu n'a plus de bouton d'inscription direct à l'arrivée** : c'est un choix de Benjamin, qui revient sur le verrou ① bis du 2026-11-03. Verrou : `tests/e2e/creer-compte-accueil.spec.js`.
+
+## 🔔 UXO-11 — « MISE À JOUR DISPONIBLE » AU TOUT PREMIER ÉCRAN : le worker annonçait sa première installation (2026-11-04)
+
+Relevé par l'audit de septembre (UXO-11, P3, confirmé, jamais corrigé), retrouvé en contrôlant la carte de bienvenue en production : sur un navigateur vierge (worker, caches et stockage vidés), « ✨ Mise à jour disponible — recharge pour l'appliquer » paraissait 0,85 s après l'ouverture. Rien à mettre à jour, et 3 s de bruit sur le premier écran d'un nouveau visiteur.
+Cause : `sw.js` postait `SW_UPDATED` à CHAQUE `activate`, installation initiale comprise, et `app-09` en fait un toast sans condition. `pwa-detect.js` portait déjà la garde pour le RECHARGEMENT (`hadController`), pas pour le toast. Correctif à la SOURCE : le worker n'annonce que s'il trouve le cache d'une version précédente (`passio-v*` différent de `CACHE`). Le cache, et non une variable posée dans `install` : le navigateur peut arrêter le worker entre les deux événements.
+⚠️ **PAS DE GARDE CÔTÉ PAGE, contrairement à ce que proposait l'audit.** Une page ouverte sans contrôleur (une première visite encore ouverte au moment d'un déploiement) ne recharge pas toute seule : pour elle, ce toast est la seule façon d'apprendre la mise à jour. Le filtrer sur `navigator.serviceWorker.controller` l'aurait laissée sur l'ancienne version, en silence (② le mesure).
+⚠️ **LE PRÉFIXE COMPTE** : le centre de pilotage écrit `passio-pilotage-*` sur la même origine. « N'importe quel autre cache » aurait déclenché l'annonce sur un appareil passé par `/pilotage/` (③). Le worker de l'application continue d'effacer ce cache à chaque activation : comportement existant, hors de ce lot.
+⚠️ **UN CHANGEMENT DE `sw.js` SEUL NE CHANGE PAS LE NOM DU CACHE** (mesuré : même `buildId` que la production avant ce lot). Le navigateur réinstalle bien le worker, ses octets ayant changé, mais il ne trouve aucun « ancien cache » : pas d'annonce, et c'est juste, l'application n'a pas changé. Les pages contrôlées rechargent quand même, par `controllerchange`.
+⚠️ **UN TOAST VIT 3 s, `bootVisiteur` EN ATTEND 3,2** : lire l'écran à la fin du démarrage serait vert sur le code défectueux. La sonde compte les toasts au vol, par un `MutationObserver` posé en tête de document.
+Verrou : `tests/e2e/pwa-premiere-installation.spec.js` (3), le VRAI worker dans un contexte vierge. **Réinjection** : ancien défaut → ① et ③ rouges ; préfixe retiré → ③ rouge ; message supprimé → ② rouge (c'est le témoin : sans lui, une sonde cassée rendrait ① vert). Contrôle ponctuel hors suite, visiteur déjà installé avec deux workers réels (`register('./sw.js?maj=1')`) : la page recharge seule et l'ancien cache disparaît.
+⚠️ **Le rouge de CI de cette PR n'était pas ce lot** : `compte-suspendu.spec.js` était la seule des sept suites passant de « Créer un compte » à l'onglet de connexion à ne pas attendre `#authTabSignup.active`, alors qu'`exitLandingAsAuth` repose l'onglet 50 ms après le clic. Sous la charge de la CI, son clic passait avant le minuteur (« Choisis un nom d'utilisateur » au lieu du refus). Mesuré : 50/50 vert en local avec et sans ce correctif ; minuteur élargi à 600 ms → même message que la CI, et vert une fois l'attente ajoutée.
+
+## 🔗 LE NOUVEAU VENU RETROUVE UNE PORTE D'INSCRIPTION — un lien sur la carte (2026-11-04)
+
+Retirer le bouton de la barre du haut (fiche ➖) reposait sur « il y est déjà une fois dans le fil » : ce n'était vrai que si des passions étaient déjà choisies, depuis la carte à un seul bouton du 2026-11-03. Un nouveau venu n'avait donc plus aucune porte d'inscription visible à l'arrivée, le défaut même des essais du 2026-10-23. Benjamin tranche le jour même : un LIEN « Créer un compte » (`.fr-welcome-signup`, `allerInscription('bienvenue')`, même `ctx` de télémétrie que le bouton) à côté de « J'ai déjà un compte ». La barre du haut reste vide.
+⚠️ **UN LIEN, JAMAIS UN BOUTON** : la carte reste à une seule action principale, et le compte des `.btn` le verrouille. Quand des passions sont déjà choisies, le lien n'existe pas : « Créer mon compte » y est déjà le bouton.
+⚠️ **« J'ai déjà un compte — me connecter » DEVIENT « J'ai déjà un compte » sur la carte** : le libellé long ne tenait pas sur la rangée. Mesuré à 375 px : 110 + 20 + 127 = 257 px dans une rangée de 280 px, sur une ligne, sans que la carte grandisse ; à 320 px les deux liens s'empilent. C'est la paire de mots du gate d'action engageante ; l'entrée des Paramètres garde le libellé long.
+⚠️ **UN `PASSIO_PORT` CHOISI À LA MAIN N'EST PAS UN PORT LIBRE.** Une autre session servait son propre worktree sur 8097 : `reuseExistingServer` a fait mesurer à cette suite SES fichiers, soit quatre rouges identiques avec et sans le lien. Lire ce que sert le port (`curl …/js/first-run.js`) avant de croire un résultat, surtout un résultat qui ne change pas entre deux variantes.
+Verrous : `tests/e2e/creer-compte-accueil.spec.js` (① bis, le geste complet jusqu'au formulaire ; ① quater, les deux états de la carte à 320 et 390 px) et `tests/e2e/first-run.spec.js` (« une seule action principale… »). **Réinjection** : lien retiré → 4 rouges ; lien changé en bouton → 2 rouges ; le témoin « elle s'affiche… » reste vert.

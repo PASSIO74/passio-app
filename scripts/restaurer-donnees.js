@@ -54,6 +54,7 @@
 const fs = require("fs");
 const path = require("path");
 const RV = require("./lib/reprise-verdicts.js");
+const JE = require("./lib/json-exact.js");
 const os = require("os");
 const crypto = require("crypto");
 
@@ -232,8 +233,17 @@ function validerArchive(ctx) {
   for (const [t, info] of Object.entries(ctx.man.tables || {})) {
     const f = path.join(ctx.archive, t + ".ndjson");
     if (!fs.existsSync(f)) { bloquants.push(`table ${t} : fichier absent (manifeste : ${info.exporte} ligne(s))`); continue; }
+    // ⚠️ Contre-revue finale (2026-11-04) : la validation ne fait que COMPTER et
+    // vérifier la syntaxe — `JSON.parse` seul, itératif, sans la lecture EXACTE
+    // (`lireNdjson`), dont le reviver casse vers 2 846 niveaux quand une ligne
+    // porte un nombre à risque. Une seule ligne ainsi écrite par un compte chez
+    // lui faisait refuser l'archive ENTIÈRE, « INVALIDE », sans recours ; main la
+    // validait. La comparaison au chiffre près reste au verdict.
     let n;
-    try { n = lireNdjson(f).length; } catch (e) { bloquants.push(`table ${t} : NDJSON illisible (${String(e.message).slice(0, 60)}) — fichier tronqué ou corrompu`); continue; }
+    try { n = compterLignesNdjson(f); } catch (e) {
+      bloquants.push(`table ${t} : NDJSON illisible (${String(e.message).slice(0, 200)}) — fichier tronqué ou corrompu`);
+      continue;
+    }
     if (n !== info.exporte) bloquants.push(`table ${t} : ${n} ligne(s) sur disque, ${info.exporte} au manifeste — fichier tronqué ou étranger`);
   }
   // ② médias
@@ -276,9 +286,19 @@ async function schema(ctx) {
 }
 
 // ───────────────────────────── ② comptes ─────────────────────────────
+// Lecture EXACTE (R25, 2026-11-04) : un entier au-delà de 2^53 garde son texte
+// (scripts/lib/json-exact.js). Arrondi, il ferait passer pour conformes deux
+// valeurs que la base distingue.
+/** Nombre de lignes d'un NDJSON, chacune validée par `JSON.parse` seul (itératif : aucune profondeur ne l'arrête). */
+function compterLignesNdjson(f) {
+  if (!fs.existsSync(f)) return 0;
+  const lignes = fs.readFileSync(f, "utf8").split("\n").filter(Boolean);
+  for (const l of lignes) JSON.parse(l);
+  return lignes.length;
+}
 function lireNdjson(f) {
   if (!fs.existsSync(f)) return [];
-  return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JE.lireJsonExact(l));
 }
 
 // ⚠️ ASTRA-31 — LIRE AUTH, OU DIRE QU'ON N'A PAS SU LIRE. `.json()` puis
@@ -396,7 +416,36 @@ async function colonnes(ctx) {
   return ctx._cols;
 }
 
-function ordreInsert(t, cols, json) {
+/** Clé primaire de chaque table sur la CIBLE, colonnes dans l'ordre de l'index — UNE requête pour toutes. */
+async function clesPrimaires(ctx) {
+  if (ctx._pk) return ctx._pk;
+  const l = await sql(ctx, `select c.relname t, a.attname c
+  from pg_index i
+  join pg_class c on c.oid = i.indrelid and c.relnamespace = 'public'::regnamespace
+  join lateral unnest(i.indkey::int2[]) with ordinality k(attnum, rang) on true
+  join pg_attribute a on a.attrelid = c.oid and a.attnum = k.attnum
+ where i.indisprimary
+ order by c.relname, k.rang`);
+  ctx._pk = new Map();
+  for (const x of l) { if (!ctx._pk.has(x.t)) ctx._pk.set(x.t, []); ctx._pk.get(x.t).push(x.c); }
+  return ctx._pk;
+}
+
+/**
+ * La clause de conflit d'un chargement. ⚠️ AVEC SA CIBLE (vérification finale
+ * de R25, 2026-11-04) : sans cible, `on conflict do nothing` écartait sans un
+ * mot une ligne en conflit sur N'IMPORTE QUELLE contrainte unique — deux `rid`
+ * égaux (`<table>_rid_key`), un pseudonyme déjà pris — et seul l'écart de
+ * compte du verdict le disait, sans dire pourquoi. La clé primaire pour cible
+ * garde le rejeu (une ligne déjà là, même clé, est laissée telle quelle) ; tout
+ * AUTRE conflit lève (23505) : le lot est rejoué ligne à ligne et le refus est
+ * NOMMÉ au bilan. Sans clé primaire connue, l'ancienne clause, et une note.
+ */
+function clauseConflit(cle) {
+  return cle && cle.length ? `on conflict (${cle.map((x) => `"${x}"`).join(", ")}) do nothing` : "on conflict do nothing";
+}
+
+function ordreInsert(t, cols, json, cle = []) {
   // ⚠️ LA LISTE DE COLONNES EST EXPLICITE, et c'est une leçon de l'exercice
   // (2026-09-14) : `insert … select * from json_populate_recordset` pose NULL
   // sur toute colonne ABSENTE du JSON — donc une colonne ajoutée APRÈS
@@ -404,8 +453,9 @@ function ordreInsert(t, cols, json) {
   // n'obtient jamais son DEFAULT et l'insertion tombe sur NOT NULL. On ne
   // nomme que les colonnes que l'archive porte ET que la cible connaît : les
   // autres prennent leur défaut, comme à l'écriture d'origine.
-  // `on conflict do nothing` : rejouable (toute table du manifeste a une clé
-  // primaire — c'est le discriminant qui l'a fait entrer dans l'archive).
+  // `on conflict (<clé primaire>) do nothing` : rejouable (toute table du
+  // manifeste a une clé primaire — c'est le discriminant qui l'a fait entrer
+  // dans l'archive). Pourquoi la cible : `clauseConflit` ci-dessus.
   // ⚠️ `overriding system value` (exercice du 2026-09-15) : une colonne
   // d'identité `generated always` (`migrations_appliquees.id`) REFUSE toute
   // valeur explicite — les quatre lignes du journal tombaient, nommées dans le
@@ -413,12 +463,12 @@ function ordreInsert(t, cols, json) {
   const c = cols.map((x) => `"${x}"`).join(", ");
   return `begin;
 alter table public."${t}" disable trigger user;
-insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_recordset(null::public."${t}", ${litteral(json)}::json) on conflict do nothing;
+insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_recordset(null::public."${t}", ${litteral(json)}::json) ${clauseConflit(cle)};
 alter table public."${t}" enable trigger user;
 commit;`;
 }
 
-function ordreLigneALigne(t, cols, json) {
+function ordreLigneALigne(t, cols, json, cle = []) {
   const c = cols.map((x) => `"${x}"`).join(", ");
   return `begin;
 alter table public."${t}" disable trigger user;
@@ -426,7 +476,7 @@ create temp table _refus (motif text) on commit drop;
 do $$ declare e json; begin
   for e in select * from json_array_elements(${litteral(json)}::json) loop
     begin
-      insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_record(null::public."${t}", e) on conflict do nothing;
+      insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_record(null::public."${t}", e) ${clauseConflit(cle)};
     exception when others then insert into _refus values (left(sqlerrm, 160)); end;
   end loop;
 end $$;
@@ -452,23 +502,32 @@ async function chargerTable(ctx, t, bilan) {
   const cols = [...cles].filter((k) => presentes.has(k));
   const ignorees = [...cles].filter((k) => !presentes.has(k));
   if (ignorees.length) bilan.notes.push(`${t} : colonne(s) de l'archive inconnue(s) de la cible, ignorée(s) : ${ignorees.join(", ")}`);
+  const pk = (await clesPrimaires(ctx)).get(t) || [];
+  if (!pk.length) bilan.notes.push(`${t} : aucune clé primaire sur la cible — un conflit d'unicité y écarte une ligne sans la nommer`);
   for (const paquet of paquets) {
     // Un lot d'UNE ligne plus grosse que le plafond de l'API de gestion
     // (mesuré : 4,8 Mo pour un seul `user_state`) part par PostgREST —
-    // triggers ACTIFS sur ce chemin-là, c'est écrit dans le bilan.
+    // déclencheurs ACTIFS sur ce chemin-là, et le bilan le dit AVEC SON EFFET :
+    // une colonne qu'un déclencheur pose (`rid` re-tiré par `trg_rid_opaque`
+    // depuis R25, `created_at` d'une notification par `rate_limit_insert`) n'a
+    // plus la valeur de l'archive, et la vérification dira la ligne divergente.
     if (paquet.length === 1 && paquet[0].length > LOT_OCTETS) {
-      try { await insererParRest(ctx, t, paquet[0]); bilan.notes.push(`${t} : 1 ligne de ${Math.round(paquet[0].length / 1024)} Ko passée par PostgREST (trop grosse pour l'API de gestion)`); }
+      const aRid = Object.prototype.hasOwnProperty.call(JSON.parse(paquet[0]), "rid");
+      try {
+        await insererParRest(ctx, t, paquet[0]);
+        bilan.notes.push(`${t} : 1 ligne de ${Math.round(paquet[0].length / 1024)} Ko passée par PostgREST (trop grosse pour l'API de gestion) — déclencheurs ACTIFS sur ce chemin : une colonne posée par un déclencheur${aRid ? " (`rid`, re-tiré par trg_rid_opaque)" : ""} diffère de l'archive, et la vérification dira la ligne divergente`);
+      }
       catch (e) { bilan.refus.push(`${t} : ${e.message}`); }
       continue;
     }
-    try { await sql(ctx, ordreInsert(t, cols, "[" + paquet.join(",") + "]")); }
+    try { await sql(ctx, ordreInsert(t, cols, "[" + paquet.join(",") + "]", pk)); }
     catch (e) {
       // Le lot est atomique : UNE ligne refusée (clé étrangère vers une ligne
       // absente, contrainte ajoutée après l'archive) faisait tomber tout le
       // lot. On le rejoue ligne à ligne DANS LA BASE (un seul aller-retour :
       // l'API de gestion plafonne les appels) pour poser ce qui se pose et
       // NOMMER ce qui ne se pose pas — c'est le refus qui est l'information.
-      const motifs = await sql(ctx, ordreLigneALigne(t, cols, "[" + paquet.join(",") + "]"));
+      const motifs = await sql(ctx, ordreLigneALigne(t, cols, "[" + paquet.join(",") + "]", pk));
       for (const m of motifs) bilan.refus.push(`${t} : ${m.n} ligne(s) refusée(s) — ${m.motif}`);
     }
   }
@@ -681,11 +740,20 @@ async function medias(ctx) {
 // Les deux fonctions de comparaison sont PURES et éprouvées dans
 // tests/unit/restaurer-donnees.test.mjs.
 function canoniser(v) {
+  if (JE.estBrut(v)) return v; // nombre gardé exact par lireJsonExact : JSON.stringify le réécrit tel quel
   if (Array.isArray(v)) return v.map(canoniser);
-  if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) o[k] = canoniser(v[k]); return o; }
+  // Chaque clé est CRÉÉE (defineProperty), jamais affectée (contre-revue finale,
+  // préexistant depuis ASTRA-16) : sur un `{}`, `o["__proto__"] = …` change le
+  // prototype au lieu de créer la clé, que JSON.stringify ignore — deux lignes qui
+  // ne différaient que là étaient dites identiques.
+  if (v && typeof v === "object") {
+    const o = {};
+    for (const k of Object.keys(v).sort()) Object.defineProperty(o, k, { value: canoniser(v[k]), enumerable: true, writable: true, configurable: true });
+    return o;
+  }
   return v;
 }
-function cleDe(ligne, tri) { return tri.split(",").map((c) => String(ligne[c.trim()])).join("\u0001"); }
+function cleDe(ligne, tri) { return tri.split(",").map((c) => JE.texteValeur(ligne[c.trim()])).join("\u0001"); }
 /** Compare deux jeux de lignes par clé et par contenu. Rend { manquantes, divergentes, enTrop }. */
 function comparerLignes(archive, cible, tri) {
   const a = new Map(), c = new Map();
@@ -721,7 +789,9 @@ async function lignesCible(ctx, t, tri) {
   for (let debut = 0; ; debut += 1000) {
     const r = await fetch(`${ctx.url}/rest/v1/${t}?select=*&order=${encodeURIComponent(tri)}&limit=1000&offset=${debut}`, { headers: entetes(ctx.cle) });
     if (!r.ok) throw new Error(`${t} : relecture HTTP ${r.status}`);
-    const l = await r.json(); out.push(...l);
+    // Même lecture exacte que l'archive : sinon les deux côtés arrondissent
+    // pareil, et une valeur fausse se compare « conforme ».
+    const l = JE.lireJsonExact(await r.text()); out.push(...l);
     if (l.length < 1000) return out;
   }
 }
@@ -902,9 +972,14 @@ async function purger(ctx) {
 // `_phases` : les VRAIES fonctions de phase, pour les tests d'intégration
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
-module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire } };
+module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, clauseConflit, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
+  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible, chargerTable, clesPrimaires } };
 if (require.main === module) (async () => {
+  // La vérification relit archive et cible AU CHIFFRE PRÈS (scripts/lib/json-exact.js),
+  // ce qui exige JSON.rawJSON. Sans lui, refuser AVANT toute lecture, en le disant :
+  // une archive saine ne doit pas passer pour « corrompue » parce que le poste est
+  // en Node 20 (contre-revue finale, 2026-11-04).
+  if (typeof JSON.rawJSON !== "function") echec(`Node ${process.versions.node} : la reprise exige Node 21 ou plus récent (JSON.rawJSON, lecture exacte des nombres). Rien n'a été lu ni écrit.`);
   const ctx = await contexte();
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);
   if (drapeau("--purger")) { await purger(ctx); return; }

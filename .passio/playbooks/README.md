@@ -8,7 +8,7 @@
 |---|---|---|
 | Développer une feature | `/feature` | Definition of Done : `../context/ENGINEERING_PRINCIPLES.md`. Vérifier le multi-profil (`../context/MULTI_PROFILE.md`). |
 | Corriger un bug | `/diag` puis `/review` | Lire `client_errors`, reproduire, isoler, corriger, prouver. |
-| Migration Supabase (`database-migration`) | `/migration` (+ subagent `migration-checker`) | Schéma prod ≠ repo (ADR-005) ; additive par défaut ; RLS + publication realtime ; rollback prévu. |
+| Migration Supabase (`database-migration`) | `/migration` (+ subagent `migration-checker`) | Schéma prod ≠ repo (ADR-005) ; additive par défaut ; RLS + publication realtime (⚠️ un DELETE publié part à tout abonné, sans RLS : identité `rid` opaque ou table hors publication, R25) ; rollback prévu. |
 | Mettre en prod | `/ship` | Tests + audits verts → build → commit → push `main` (= déploiement). **SENSITIVE WRITE**. |
 | Incident prod | `/prod-errors` puis `/diag` | Distinguer « PASSIO KO » de « pilotage sans données » (`../context/VISION.md`). |
 | Revue avant lancement | `/review`, `/rls-audit`, `/xss-audit`, `/e2e-multi` | Couvre code, RLS, XSS, cross-compte. |

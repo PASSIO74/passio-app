@@ -453,7 +453,11 @@ test("stop/start pendant HEAD : ancienne réponse écartée et nouveau cycle viv
   expect(await page.evaluate(() => state.supabasePosts[0].likes)).toBe(7);
 });
 
-test("dix bindings CDC : messages privés, notifications et posts continuent de répondre", async ({ page }) => {
+test("huit bindings CDC : messages privés, notifications (poussées sur user:) et posts continuent de répondre", async ({ page }) => {
+  // ⚠️ R25 (2026-11-03) : `conv_members` et `notifications` ne sont plus des
+  // liaisons `postgres_changes` (tables hors publication : leurs DELETE
+  // livraient la clé primaire à tout abonné, sans RLS). Le serveur les pousse
+  // sur `user:<moi>` sous `conv_members:INSERT` / `notifications:INSERT`.
   await preparer(page);
   const result = await page.evaluate(async () => {
     stopPostLikeRefresh();
@@ -470,13 +474,17 @@ test("dix bindings CDC : messages privés, notifications et posts continuent de 
     window._profilAuteur = async () => ({ username: "Visible" });
     _subscribeUserTopic();
     _creerCanalDb(true);
-    broadcasts.find(b => b.topic === "user:" + MY_UID).callback({ payload: { id: "message-prive", conv_id: "conversation" } });
-    bindings.find(b => b.config.table === "notifications").callback({ new: { id: "notification-privee", user_id: MY_UID, kind: "like", created_at: "2026-09-20T12:00:00Z" } });
+    const surUser = evt => broadcasts.find(b => b.topic === "user:" + MY_UID && b.config.event === evt);
+    surUser("INSERT").callback({ payload: { id: "message-prive", conv_id: "conversation" } });
+    surUser("notifications:INSERT").callback({ payload: { table: "notifications", operation: "INSERT",
+      record: { id: "notification-privee", user_id: MY_UID, kind: "like", created_at: "2026-09-20T12:00:00" } } });
     await bindings.find(b => b.config.table === "posts").callback({ new: { id: "post-recu", author_id: "autre", content: "Nouveau", created_at: "2026-09-20T12:00:00Z" } });
     return { count: bindings.length, likes: bindings.filter(b => b.config.table === "post_likes").length,
       received, postPresent: !!findPostAnywhere("post-recu"),
-      userFilter: bindings.find(b => b.config.table === "notifications").config.filter };
+      prives: bindings.filter(b => ["conv_members", "notifications"].includes(b.config.table)).length,
+      filtres: bindings.filter(b => b.config.filter).length,
+      evenementsUser: broadcasts.filter(b => b.topic === "user:" + MY_UID).map(b => b.config.event) };
   });
-  expect(result).toEqual({ count: 10, likes: 0, received: ["message-prive", "notification-privee"], postPresent: true,
-    userFilter: "user_id=eq.812aee2b-214f-4949-931e-842599b6d68b" });
+  expect(result).toEqual({ count: 8, likes: 0, received: ["message-prive", "notification-privee"], postPresent: true,
+    prives: 0, filtres: 0, evenementsUser: ["INSERT", "conv_members:INSERT", "notifications:INSERT"] });
 });

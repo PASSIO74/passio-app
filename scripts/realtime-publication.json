@@ -1,12 +1,10 @@
 {
-  "_lisezMoi": "Les tables de la publication `supabase_realtime`. Toute table écoutée par un `postgres_changes` DOIT y figurer : sinon la souscription ne reçoit JAMAIS d'événement, et elle ne lève RIEN — le symptôme est un silence, pas une erreur. Toute table qui y figure SANS abonné est du WAL décodé pour personne : `postgres_changes` coûte en O(changements × clients), c'est ce coût-là qui borne le nombre de connectés. Source de vérité en base : migrations/migration_realtime_publication_2026-09-19.sql.",
+  "_lisezMoi": "Les tables de la publication `supabase_realtime`. Toute table écoutée par un `postgres_changes` DOIT y figurer : sinon la souscription ne reçoit JAMAIS d'événement, et elle ne lève RIEN — le symptôme est un silence, pas une erreur. ⚠️ Et le silence est plus large qu'elle (lu dans le serveur Realtime, 2026-11-03) : les liaisons d'un canal sont créées en UNE transaction, une seule table absente l'annule ENTIÈRE — tout le canal se tait. Toute table qui y figure SANS abonné est du WAL décodé pour personne : `postgres_changes` coûte en O(changements × clients), c'est ce coût-là qui borne le nombre de connectés. Source de vérité en base : migrations/migration_realtime_publication_2026-09-19.sql.",
   "publiees": [
     "comment_interactions",
-    "conv_members",
     "conv_messages",
     "conv_reads",
     "event_comments",
-    "notifications",
     "post_comments",
     "post_likes",
     "posts",
@@ -14,5 +12,5 @@
     "video_lives"
   ],
   "publieesSansAbonne": {},
-  "_note": "`publieesSansAbonne` accueille une table publiée volontairement sans abonné, AVEC SA RAISON (même convention que scripts/tests-isolation-socle.json). Elle est vide, et c'est l'état voulu.  ⚠️ 2026-09-20 : `telemetry_events` est SORTIE de la publication. Elle produisait 481 554 des 526 756 changements répliqués (91,4 %) pour UN abonné — le Centre de pilotage — alors que le décodage WAL est le premier poste de CPU de la base (68,9 %). Le pilotage lit désormais par son polling, devenu son chemin NOMINAL (dashboard/server/ingest.js). Migration : migrations/migration_realtime_telemetry_2026-09-20.sql ; retour arrière immédiat par `alter publication supabase_realtime add table public.telemetry_events;` + restauration du canal."
+  "_note": "`publieesSansAbonne` accueille une table publiée volontairement sans abonné, AVEC SA RAISON (même convention que scripts/tests-isolation-socle.json). Elle est vide, et c'est l'état voulu.  ⚠️ 2026-09-20 : `telemetry_events` est SORTIE de la publication. Elle produisait 481 554 des 526 756 changements répliqués (91,4 %) pour UN abonné — le Centre de pilotage — alors que le décodage WAL est le premier poste de CPU de la base (68,9 %). Le pilotage lit désormais par son polling, devenu son chemin NOMINAL (dashboard/server/ingest.js). Migration : migrations/migration_realtime_telemetry_2026-09-20.sql ; retour arrière immédiat par `alter publication supabase_realtime add table public.telemetry_events;` + restauration du canal.  ⚠️ 2026-11-03 (R25) : `conv_members` et `notifications` sont SORTIES de la publication. `realtime.apply_rls` livre chaque DELETE d'une table publiée à TOUT abonné sans évaluer la RLS, clé primaire en clair — `(evgrp_<activité>, compte)` à chaque départ d'une discussion d'activité, `n_pa_<activité>_<compte>` à chaque notification effacée, même à un visiteur muni de la clé anon. Leurs INSERT sont poussés par le serveur sur `user:<destinataire>` (événements `conv_members:INSERT`, `notifications:INSERT`). Migration : migrations/migration_realtime_diffusion_privee_2026-11-03.sql ; banc : tests/sql/migration-realtime-diffusion-privee.test.sh. Une table dont la clé primaire DIT quelque chose ne se publie pas : `conv_reads` et `post_likes` portent le même défaut (R31)."
 }

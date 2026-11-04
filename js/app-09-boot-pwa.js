@@ -252,6 +252,10 @@ function togglePwd(id, btn) {
     navigator.serviceWorker.addEventListener("message", function(e) {
       if (e.data && e.data.type === "OFFLINE") showOffline();
       if (e.data && e.data.type === "SW_UPDATED") {
+        // Page en appel, en Live ou en pleine saisie : la mise à jour s'appliquera
+        // seule à la fin (pwa-detect.js). « Recharge pour l'appliquer » inviterait
+        // l'utilisateur à couper lui-même ce que le report vient de protéger.
+        if (typeof window.passioMajDifferee === "function" && window.passioMajDifferee()) return;
         // Propose un rechargement discret quand le SW a été mis à jour
         try { toast("✨ Mise à jour disponible — recharge pour l'appliquer", "info"); } catch(_) {}
       }

@@ -326,6 +326,11 @@
           <input type="text" class="input" id="authName" placeholder="Benjamin" maxlength="40" autocomplete="nickname" style="font-size:16px;"/>
           <span style="display:block;font-size:11px;line-height:1.4;color:var(--muted);margin-top:4px;">C'est ton nom public sur PASSIO. Tu pourras le changer plus tard.</span>
         </label>
+        <label class="field" id="authBirthYearWrap" style="display:none;">
+          <span>Année de naissance</span>
+          <input type="number" class="input" id="authBirthYear" placeholder="1995" min="1900" inputmode="numeric" autocomplete="bday-year" style="font-size:16px;"/>
+          <span style="display:block;font-size:11px;line-height:1.4;color:var(--muted);margin-top:4px;">PASSIO est réservé aux 18 ans et plus. Ton année n'est jamais affichée sur ton profil.</span>
+        </label>
         <label class="field">
           <span>Adresse e-mail</span>
           <input type="email" class="input" id="authEmail" placeholder="toi@exemple.com" autocomplete="email" style="font-size:16px;"/>

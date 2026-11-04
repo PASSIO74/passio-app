@@ -189,6 +189,7 @@ test.describe("Invitation — l'inscription l'emporte", () => {
       };
     });
     await page.locator("#authName").fill("Sam");
+    await page.locator("#authBirthYear").fill("1995");
     await page.locator("#authEmail").fill("sam@exemple.com");
     await page.locator("#authPassword").fill("motdepasse123");
     await page.locator("#authPasswordConfirm").fill("motdepasse123");

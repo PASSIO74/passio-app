@@ -965,6 +965,8 @@ recevait rien. **Sur une table où le client n'écrit qu'une colonne, la fermetu
 | appartenances (R6) | réinscrire le créateur ou le pair DÉCLARÉ d'un 1:1 non ambigu qui a écrit, jamais un tiers, un groupe, une discussion d'activité, un compte en suppression ni une paire bloquée — **mesuré : 0 ligne en production** (le seul couple orphelin est un tiers, qu'on ne réinscrit pas) ; retour arrière exact par `xmin` | `migration_conv_members_reparation_2026-11-03.sql` (AVANT `oracles_et_privileges`) |
 | **F-05/F-06/F-07** | index doublon et index jamais lu retirés ; index partiel du pilotage (construction non concurrente mesurée : 14 542 lignes, 17 Mo, sous la seconde) ; une seule policy `realtime.messages` en `(select auth.uid())` | `migration_index_realtime_2026-11-03.sql`, fiche dans `capacite-perf-realtime.md` |
 | **C-14** dépôt public | le dossier investisseurs sort de l'arbre et entre dans `.gitignore` ; les six vidéos de la racine (copies octet pour octet de `montage-video/`) sont retirées | commit `b0588e0` |
+| **R25** temps réel (appliquée le 2026-11-04 à 12:45 UTC) | identité de réplication opaque et ALÉATOIRE (`rid`, 53 bits) sur `conv_members`, `notifications`, `conv_reads`, `post_likes` : un DELETE ne publie plus la clé ; `comment_interactions` en identité par défaut ; garde `trg_rid_opaque` ; gate des index `*_rid_key` ; DDL de reprise et sauvegarde rendus fidèles (identité, séquences, nombres au-delà de 2^53) | `migration_realtime_identite_opaque_2026-11-03.sql`, fiche « 🕳️ CE QUE REALTIME DIT D'UNE SUPPRESSION » dans `capacite-perf-realtime.md` |
+| **R25**, seconde couche (appliquée le 2026-11-04 à 14:25 UTC, client déployé d'abord) | `conv_members` et `notifications` hors de `supabase_realtime` : plus aucun événement de suppression ; leurs INSERT poussés au seul destinataire sur `user:<uid>`, sous `conv_members:INSERT` et `notifications:INSERT` | `migration_realtime_diffusion_privee_2026-11-03.sql`, fiche « 🔒 R25 » dans `capacite-perf-realtime.md` |
 
 **C-14, ce qui reste.** Les PDF (business plan, livre et dossier investisseurs, état du projet) restent lisibles dans
 l'HISTORIQUE git du dépôt public. Les deux remèdes ont un coût que ce lot n'a pas pris : réécrire l'historique
@@ -1055,6 +1057,13 @@ tables de base sans policy de lecture), les trois autres sont inertes (vues non 
 concret mesuré : TRIGGER laissait un rôle client poser un déclencheur INSTEAD OF sur une vue qui n'est pas à lui. ⚠️ Ce qui
 reste, dit tel quel : UPDATE / DELETE suffisent encore à un `LOCK TABLE` sur la vue, comme sur chaque table (C-03 les garde) —
 hors de portée de PostgREST, et ce n'est pas R26.
+
+**⚠️ R26, suite (2026-11-04) — SELECT gardé n'est inerte que tant que la vue lit sous les droits de l'appelant.** Trois
+anciens fichiers recréaient ces vues par `create or replace view … as` SANS option : mesuré sur PostgreSQL 16, l'option
+`security_invoker` DISPARAÎT au remplacement — la vue lit alors sous les droits de son propriétaire, et le SELECT qu'`anon`
+garde rend les erreurs client et la télémétrie malgré la RLS des tables. Rejouer `migration_monitoring_view.sql`,
+`APPLY_ALL_scaling.sql` ou `migration_telemetry.sql` suffisait. Ils posent désormais `with (security_invoker = on)` ; aucun
+n'est à rejouer. **Règle : une vue se recrée toujours AVEC ses options** — `create or replace view` n'en garde aucune.
 
 **⚠️ UN VERDICT QUI MESURE LE COMPORTEMENT EN PRODUCTION SANS Y LAISSER UNE LIGNE.** Le tableau ne lit pas le texte de la
 fonction pour dire « ne nomme pas » : il crée une activité SYNTHÉTIQUE dans une sous-transaction, appelle la RPC treize fois sous

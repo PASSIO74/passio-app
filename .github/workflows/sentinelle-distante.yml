@@ -37,9 +37,13 @@ jobs:
     # s'attendre. C'est voulu — ils touchent la même base. Le coût est faible
     # (`test-prod` détient le verrou ~3 min, la sentinelle passe une fois par
     # heure) et ce job est déjà `continue-on-error` sur son canari.
+    #
+    # `queue: max` (2026-11-04) : sans elle, ce job annule le `test-prod` qui attend,
+    # même celui de `main`, même s'il porte la clé. Motif complet sur `test-prod`.
     concurrency:
       group: passio-e2e-prod
       cancel-in-progress: false
+      queue: max
     name: Santé distante PASSIO
     runs-on: ubuntu-latest
     timeout-minutes: 20

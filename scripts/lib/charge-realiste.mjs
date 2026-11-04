@@ -10,6 +10,9 @@ export function emailCapacite(campagne, index) {
 }
 export const LIMITES = Object.freeze({ octets: 180_000_000, octetsNettoyage: 20_000_000,
   messagesRealtime: 150_000, requetes: 20_000, dureeCampagneMs: 45 * 60_000 });
+// ⚠️ Le nom est un IDENTIFIANT de CLI (`--profil-realtime`), pas un compte : depuis R25
+// (2026-11-03) ce profil porte HUIT liaisons, `legacy12` DIX — `conv_members` et
+// `notifications` sont sorties de la publication et poussées sur `user:<uid>`.
 export const PROFIL_REALTIME = "likes-visibles10";
 export const LIKES_VISIBLES = Object.freeze({ maximum: 3, fraicheurMs: 15000, jitterMs: 1500,
   initialJitterMs: 15000, minimumDepartMs: 200, plafondMs: 60000 });
@@ -70,17 +73,18 @@ export function abonnements(uid, profil = PROFIL_REALTIME) {
   if (![PROFIL_REALTIME, "legacy12"].includes(profil)) throw new Error("PROFIL_REALTIME_INVALIDE");
   // Même tableau littéral que le chemin Realtime V3 de l'app. Le canal privé
   // user:<uuid> s'ajoute sur la même socket ; conv_messages n'est pas écoutée
-  // en postgres_changes lorsque V3 est actif.
+  // en postgres_changes lorsque V3 est actif. Depuis R25 (2026-11-03), ni
+  // `conv_members` ni `notifications` : hors publication, une seule liaison vers
+  // elles ferait échouer TOUTES celles du canal (Realtime les crée en une
+  // transaction) ; leurs INSERT arrivent par broadcast sur user:<uuid>.
   const postgres_changes = [
     { event: "*", schema: "public", table: "conv_reads" },
     { event: "INSERT", schema: "public", table: "comment_interactions" },
     { event: "DELETE", schema: "public", table: "comment_interactions" },
-    { event: "INSERT", schema: "public", table: "conv_members", filter: "user_id=eq." + uid },
     { event: "UPDATE", schema: "public", table: "profiles" },
     { event: "INSERT", schema: "public", table: "posts" },
     { event: "INSERT", schema: "public", table: "post_likes" },
     { event: "DELETE", schema: "public", table: "post_likes" },
-    { event: "INSERT", schema: "public", table: "notifications", filter: "user_id=eq." + uid },
     { event: "INSERT", schema: "public", table: "post_comments" },
     { event: "INSERT", schema: "public", table: "event_comments" },
     { event: "*", schema: "public", table: "video_lives" },

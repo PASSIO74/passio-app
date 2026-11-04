@@ -30,6 +30,12 @@
 - 📈 CROISSANCE, COÛT, PALIERS DE TÉLÉMÉTRIE ET PRÉ-TRI DES SIGNALEMENTS — LE PILOTAGE PASSE AU COMMERCE (2026-11-01)
 - 🧯 ENQUÊTES EN PARALLÈLE ET BOUTONS MORTS — LA SENTINELLE NE FAIT PLUS LA QUEUE (2026-11-01)
 - ⏱️ GOUVERNANCE — L'INDEX « COMMIT → PR » DE GITHUB ARRIVE APRÈS LE PUSH : UN DÉPLOIEMENT LÉGITIME REFUSÉ (2026-11-03)
+- 🎞️ « PIC D'ERREURS » — LE DÉFAUT ÉTAIT DANS SAFARI, ET LA SURVEILLANCE NE SAVAIT PAS LE DIRE (2026-11-04)
+- 🎯 DEUX BESOINS, UN ÉCRAN, UN BOUTON PAR PROBLÈME (2026-11-04)
+- 🔑 LE VOYANT FIGÉ AU ROUGE ET LE JETON GITHUB QUI EXPIRE EN SILENCE (2026-11-04)
+- 🚦 LE VERROU ÉVINÇAIT `main` — UN PUSH DE PR FAISAIT SAUTER LE DÉPLOIEMENT (2026-11-04)
+- 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
+- 📨 LE CANAL NE PERD PLUS UN ORDRE, ET UNE MODIFICATION NE LANCE PLUS UN AGENT (2026-11-04)
 
 ---
 
@@ -495,3 +501,187 @@ Demande de Benjamin : « tout problème qui arrive doit se régler automatiqueme
 - ⚠️ **LE CLIC EST HORODATÉ APRÈS LA PEINTURE** : `telemetry.js` émet `click` après deux `requestAnimationFrame` (secours à 1 000 ms), donc 16 ms à 1 s après le toucher ; un effet émis dans le handler porte un horodatage ANTÉRIEUR. La règle « effet strictement après » comptait mort tout bouton à effet immédiat — y compris dans le classement du résumé, faussé depuis sa création. On accepte un effet jusqu'à 1 100 ms avant (`BOUTON_AVANCE_MS`).
 - Le corps d'issue d'un bouton fait départager à Claude : (a) handler cassé, absent, masqué ou bloqué → corriger ; (b) geste qui aboutit sans événement → ajouter `Telemetry.action(...)` sans donnée personnelle, sans toucher au comportement. **Jamais retirer le bouton pour faire taire la mesure.**
 - Hors champ, délibérément : le retour arrière AUTOMATIQUE reste retiré (revues du 2026-10-12 : le signal vient des navigateurs) ; « couper pendant qu'on répare » (plan 100 000, point 7) reste à faire — une coupure déclenchée par de la télémétrie est un levier de déni de service tant que son seuil n'est pas revu.
+- ⚠️ **« Le pilotage ne s'ouvre plus », `EADDRINUSE` sur 4610 (2026-11-04) : le serveur allait bien.** Sur Windows 11 build 26300, `netstat -ano` n'affiche plus la ligne `LISTENING` de `[::]:4610` et `Get-NetTCPConnection` la rend avec un état vide. `Lancer-Pilotage.cmd` concluait « port libre » et lançait un second serveur ; `Relancer` et `Arreter` croyaient aussi le port libre. Désormais `dashboard/scripts/pid-port.ps1` (port distant nul, jamais `State -eq Listen`), et la sonde `/api/health` passe avant tout. Au passage, dans un `for /f`, cmd remplace `=` par une espace : le `-Filter "Name='node.exe'"` d'`Arreter-Pilotage.cmd` était refusé et les superviseurs sans fichier PID survivaient en silence. Verrous : `dashboard/test/lanceurs.test.js`.
+
+## 🎞️ « PIC D'ERREURS » — LE DÉFAUT ÉTAIT DANS SAFARI, ET LA SURVEILLANCE NE SAVAIT PAS LE DIRE (2026-11-04)
+
+Alerte `spike` du 03/11 à 20:46 UTC. La fiche « Réparer » ne disait que « 6 erreurs en 1 minute », à 0 utilisateur et 0 appareil : aucune cause ne pouvait s'en déduire.
+
+- **Mesuré** : 10 `window_error` en 756 ms, un seul appareil, une seule session sans compte (Mac, Safari 26.6.2), entre le retour au premier plan et la fin de session 900 ms plus tard. `client_errors` n'en a gardé que 5 (plafond de session). Ce sont les seules erreurs que la télémétrie conservait ce jour-là (rétention 7 jours : le constat ne vaut pas au-delà).
+- **Cause** : `ReferenceError: Can't find variable: EmptyRanges`, levée par les contrôles vidéo INTÉGRÉS à WebKit. `MediaController.NullMedia` remplace la vidéo quand le navigateur l'a libérée, et ses accesseurs `buffered`, `played` et `seekable` lisaient une variable hors de portée. Bug WebKit 318284, corrigé le 2026-07-04 (commit `b13f9879ad3`). La version de Safari qui embarque ce correctif n'est pas connue. Signature : pile sans aucune adresse, `filename` valant littéralement `"undefined"`.
+- **Trois défauts de notre côté** : ① ce bruit comptait comme une erreur de PASSIO ; ② il consommait les 5 remontées de la session (`sent >= 5`, platform.js), donc une vraie erreur suivante n'atteignait plus `client_errors` ; ③ `spike` ne portait aucun contexte, et `__fixAlert` fabriquait un faux bug (titre de l'alerte en message, son texte en pile).
+- **Correctif** : `estBugVideoSafari` (platform.js, exposée en `window.passioBugVideoSafari`) écarte l'erreur AVANT le plafond ; telemetry.js en garde UNE trace par session (`context/safari_video_controls_bug`) ; `resumerPic` (alerts.js) donne au pic ses appareils, son erreur dominante, son écran et `meta.bug` ; `__fixAlert` passe ce bug et `quickFix` retombe sur l'événement si le bug est sorti du tampon ; le détecteur Sentinelle range le message dans `BRUIT`, pour les pages restées ouvertes sur l'ancienne version.
+- ⚠️ **La signature reste étroite, ne pas l'élargir à « toute erreur sans adresse »** : le nom de la variable, un des trois accesseurs en tête de pile, et aucune adresse ni dans la pile ni dans la source. Une pile absente se remonte : le doute ne cache jamais une erreur.
+- ⚠️ **Une trace `context`, pas une rétrogradation en `warn`** : `warn` sort du pic et des bugs (`onEvent`, `_isProblem`), mais la veille et la fonction `pilotage` comptent tout `type = 'error'`, quelle qu'en soit la gravité, et le pilotage passe au rouge à 10 erreurs en 15 min (`erreursJs15`) : ce seul incident y suffisait.
+- ⚠️ **`platform.js` et `telemetry.js` sont inlinés dans `index.html`, pas dans `app.js`** : `appHash` ne change donc pas avec eux. **Rectifié le même jour** : ce déploiement a aussi gardé le `buildId` `a191f756f06d` et le cache du service worker, mais c'était un défaut de `scripts/build.js`, corrigé par la fiche « LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS » : un script inliné change désormais `buildId`. La preuve d'une livraison en production reste le texte servi et le `commit` de `release.json` : un commit sans changement de code garde son `buildId`, par construction.
+- ⚠️ **`meta.bug` sur `spike` n'ouvre pas l'analyse de la Sentinelle** : dans `triage`, le préfixe `spike` de `skipKeys` passe avant le test de `meta.bug`. L'alerte reste au niveau `high`, seuil inchangé : un seul appareil peut encore la lever avec une autre erreur.
+- **Verrous** : `tests/unit/bug-video-safari.test.mjs` (5, sur les vrais blocs de platform.js et telemetry.js), `dashboard/test/alerts.test.js` (3), `tests/unit/sentinelle-detecter.test.mjs` (1), `tests/e2e/monitoring-bruit.spec.js` (1). Douze mutations éprouvées, toutes rouges.
+- **Non vérifié** : aucune reproduction dans un vrai Safari (il faut que le navigateur ait libéré la vidéo ; l'erreur est simulée avec la pile de production), et pas de test automatique du bouton « Réparer » ni du repli de `quickFix`.
+- **À retirer** quand `context/safari_video_controls_bug` aura disparu durablement de la télémétrie : le filtre sera alors du code mort.
+
+
+## 🎯 DEUX BESOINS, UN ÉCRAN, UN BOUTON PAR PROBLÈME (2026-11-04)
+
+- **Demande de Benjamin** : « je trouve le centre de pilotage trop compliqué à gérer ! simplifie-le, j'ai deux besoins principaux : suivre la croissance de l'app avec le nombre d'utilisateurs et régler n'importe quel problème en un seul clic ».
+- **Mesuré avant** :
+  1. L'icône « Centre de pilotage » du Bureau visait toujours `Lancer-Pilotage.cmd`, donc l'atelier du poste : `localhost:4610`, un mot de passe, **30 vues**. La doc disait `/pilotage/` depuis le 23/10 ; le geste de tous les jours, non.
+  2. `/pilotage/` avait regrossi : 4 onglets, plus de 20 blocs, 6 tuiles sur l'accueil.
+  3. 🔴 **Toute PR ouverte était annoncée « Un correctif attend ta validation »** : `issueSuivie` garde toutes les PR, `aFaire` les rendait toutes pareilles. Le 04/11 : **8 cartes** (#671 à #700), toutes des chantiers d'autres sessions, deux en conflit, chacune avec [Fusionner] [Refuser] — et une PR de fork aurait eu les mêmes boutons.
+  4. Des problèmes sans aucun bouton : site hors ligne, jauges, lecture GitHub ratée ; pannes du serveur et Sentinelle muette n'avaient même pas de ligne, seulement une raison au voyant.
+  5. Un geste = deux touchers (`confirm()`).
+  6. La carte d'une erreur survivait 24 h au geste : on touchait « Confier à la Sentinelle », elle tournait, n'ouvrait rien, et la carte restait, bouton compris.
+  7. Le bandeau de résultat vivait au pied du contenu : sur une longue page, on touchait et on ne voyait rien.
+- **Livré, page** (`pilotage/`) : un écran sans barre d'onglets. Le panneau (une ligne quand tout est calme) puis la **marche des utilisateurs**, le nombre posé dans le vide que laisse l'escalier ; au plus trois problèmes à la fois, pour que le nombre reste sur le premier écran d'un iPhone même un mauvais jour (mesuré au banc). Le reste derrière trois lignes, le bouton retour du téléphone y fonctionne (`pushState`) ; sur un grand écran, deux colonnes.
+- **Livré, un toucher** : plus aucun `confirm()`. `armer` : le toucher arme, le bouton affiche « Annuler (5) », le geste part seul ; quitter la page le fait partir tout de suite (`pagehide`, `visibilitychange`) — sinon « Régler » puis verrouiller le téléphone laissait le geste en attente. **« Tout régler »** enchaîne les gestes `tout: true`, chaque demande une fois.
+- **Livré, serveur** (`aFaire`) : un problème = un geste `principal` libellé « Régler », ou deux gestes pour une décision humaine (signalement). `quoi` dit ce que fait le bouton, en une ligne de téléphone (banc : 50 caractères) ; `detail` reste visible (ce sur quoi on décide), `reference` (numéro, titre d'issue, message d'erreur) se replie. Ce qui ne s'automatise pas mène à la page où ça se règle (`ouvrir`, `PAGES_REGLAGE`, contrôlé par `LIENS_SURS` côté page). Le filet `voyant` : un voyant orange ou rouge sans ligne en reçoit une.
+- **Livré, correctifs** : `resumerPr` — une lecture de `/pulls` en plus (mise en cache avec le reste) : correctif = branche `claude/issue-<n>-<run>` ou `sentinelle/*` **de ce dépôt**. Illisible, la PR reste un chantier et c'est dit (`prNonLues`). « Régler » sur un correctif dont les tests tournent arme l'auto-fusion native de GitHub (`armerAutoFusion`) : plus besoin de revenir ; c'est le geste du pilote qui arme, un rouge arrête la PR.
+- **Livré, croissance** : `croissanceInscrits` — les dates de la boucle `listUsers` de l'activation, aucune lecture en plus, mêmes exclusions que le total : la courbe finit exactement sur le nombre affiché (ce que `utilisateurs.total`, qui compte `profiles`, ne ferait pas : il y a le compte éditeur). Une marche par jour d'arrivée, regroupées au-delà de 180. Une liste tronquée (> 20 000 comptes) ne rend pas de courbe plutôt qu'une fausse.
+- **Livré, poste** : `creer-raccourci-bureau.ps1` écrit un `.url` vers le pilotage en ligne ; l'atelier s'appelle désormais « Atelier technique » et sa page de connexion renvoie au centre. Il reste entier : `Lancer-Pilotage.cmd`.
+- ⚠️ **Le second toucher d'une réparation est DÉLIBÉRÉ.** « Régler » confie à Claude ; quand le correctif est prêt, une ligne « Un correctif est prêt » attend un toucher de plus. Le retirer ferait fusionner sans humain du code écrit par un agent qui lit une issue et ses commentaires sur un dépôt PUBLIC, sans le bornage de la Sentinelle (`js/*`, 60 lignes, 2 fichiers, gouvernance). Pour le retirer un jour : imposer le même bornage aux réparations du pilote, pas seulement armer l'auto-fusion.
+- ✅ **La question restée ouverte le 23/10 est tranchée : les gestes partent bien sous WebKit, c'était le banc.** Dès que le service worker du pilotage contrôle la page, WebKit envoie les appels sans passer par `page.route` : le geste du banc partait vers la VRAIE fonction avec son faux jeton (401, mesuré), d'où « un geste n'envoie rien » ; `confirm()` n'y était pour rien. `serviceWorkers: "block"` dans la suite, qui revient au socle iPhone.
+- ⚠️ **Une relecture ne repeint jamais sous un geste armé** : le rendu reconstruit tout, le bouton « Annuler » disparaissait et le geste partait sans plus pouvoir s'arrêter. `actualiser` attend (`armes.size`), y compris une lecture déjà partie au moment du toucher.
+- ⚠️ **Supabase redit `SIGNED_IN` au retour sur l'onglet** : `demarrer` repart. Une navigation faite au démarrage doit être gardée (`demarre`), sinon la page remonte en haut à chaque retour.
+- ⚠️ `<summary>` n'accepte que du contenu de phrase : les textes d'une ligne sont des `span` en bloc, et l'aperçu du retour arrière s'écrit DANS le `summary` — dans le `details` fermé, il ne se voyait pas pendant les 5 s où il doit se voir.
+- **Verrous** : `tests/unit/pilotage.test.mjs` ㊴, ㊶ à ㊽, `tests/e2e/pilotage-nuage.spec.js` ㉓ à ㉜. Dix-huit mutations réinjectées ; une restait verte (« Tout régler » envoyait deux fois le même geste) : ㉚ la couvre.
+- **Pas fait, délibérément** : élaguer les 30 vues de l'atelier (il n'est plus sur le chemin, et d'autres fiches en dépendent) ; un bouton « Masquer » sur un signalement (`scripts/moderation.js` porte le vrai retrait et son journal, à rebrancher à part). Le palier de croissance (#674, fusionnée le même jour) n'a pas de bouton parce que ce n'est pas un problème : « pour info » dans le détail, et montré dans la croissance la semaine où il est franchi (`franchi`).
+
+## 🔑 LE VOYANT FIGÉ AU ROUGE ET LE JETON GITHUB QUI EXPIRE EN SILENCE (2026-11-04)
+
+- **Trouvé en contrôlant la mise en ligne du nouvel écran** (canal ① et appel direct de la veille) : le voyant mémorisé restait rouge (« 10 erreurs dans l'app en 15 min ») du 03/11 20 h 50 au 04/11 12 h 23, alors que la dernière erreur date de 20 h 46 ; aucune issue `humain`, déploiement vert. Une ligne `pilotage_etat` toutes les 6 h : c'est le rappel, « 🔴 Toujours un problème », sur un téléphone. Aucun vert noté depuis le 28/10.
+- **Mécanique** : `tenirVerdict` (2026-10-23) ne baisse jamais le voyant sur une lecture incomplète. C'est juste, mais une lecture incomplète EN CONTINU fige le voyant, et `decideAlerte` rappelait la raison périmée. L'écran, lui, recalcule : il disait la vérité, seules les alertes mentaient.
+- **Cause mesurée dès la trace en place** (`function_logs`, 04/11 12 h 45 UTC) : `{"sante":"ok","signalements":"ok","github":"GitHub HTTP 401"}` à chaque veille. `PILOTAGE_GITHUB_TOKEN` n'était plus accepté : un jeton invalide reçoit 401 même sur un dépôt public, `lireGithub` lève, et tout geste GitHub échoue. La date reste une déduction : posé le 28/09 (lot 2), un jeton fin dure 30 jours par défaut, soit le 28/10, dernier jour où le voyant a bougé seul.
+- **Livré** : la veille écrit la raison d'une lecture incomplète dans ses journaux (`function_logs`, « veille : lecture incomplète », jamais dans sa réponse, publique) ; un voyant tenu ne rappelle plus (`!a.tenu`), le site injoignable sonne toujours ; un 401 de GitHub devient LA première ligne, « Le jeton GitHub du pilotage a expiré », dont le bouton ouvre GitHub et le second geste les secrets de Supabase, sans aucun bouton muet à côté (`jetonExpire` coupe les gestes GitHub) ; GitHub annonce la fin du jeton à chaque réponse (`github-authentication-token-expiration`) : l'écran la dit `JETON_ALERTE_JOURS` (7) jours avant.
+- **Reste humain, délibérément** : renouveler le jeton. Aucune machine ne crée de jeton ni n'en colle un. ✅ Fait par Benjamin le 04/11 (366 jours) : plus aucune lecture incomplète depuis 13 h 05 UTC, voyant revenu au vert à 13 h 10 UTC, après sept jours sans un seul vert noté. ⚠️ Ses droits d'écriture n'ont pas encore servi : le premier vrai « Régler » les prouvera, et un refus dit quel droit donner (`refusDroit`).
+- **Verrous** : `tests/unit/pilotage.test.mjs` ㊾ ㊿ ㉛bis, `tests/e2e/pilotage-nuage.spec.js` ㉝.
+
+## 🚦 LE VERROU ÉVINÇAIT `main` — UN PUSH DE PR FAISAIT SAUTER LE DÉPLOIEMENT (2026-11-04)
+
+Trouvé en finalisant une dizaine de PR. Le groupe `passio-e2e-prod` ne gardait qu'un job en attente : tout nouvel entrant annulait celui qui patientait, y compris la suite production d'un run de `main`. `smoke` passait rouge et `deploy` était sauté, alors que le code était vert.
+
+- **Mesuré sur la journée** (API GitHub, jobs « Suites production » de `deploy.yml`) : 64 exécutions, 14 annulées avant leur première étape, dont 4 sur `main`. Le run 41809850498 (`effd7221`) a été annulé au premier essai ; le run 41811622107 (`4acf11a4`, #701) l'a été trois fois de suite et a mis 33 min à se déployer. Chaque relance était manuelle et devait vérifier que le run portait encore le dernier commit de `main`. Les 10 autres annulations touchaient des PR, relancées à la main elles aussi. Deux jobs de plus ont été annulés en pleine exécution : `cancel-in-progress: false` met le verrou hors de cause.
+- **Correctif** : `queue: max` sur les trois entrants (`test-prod`, le `health` de `sentinelle-distante.yml`, `controle-realtime.yml`). Disponible sur GitHub depuis le 2026-05-07 : jusqu'à 100 jobs en attente, traités dans l'ordre d'arrivée, un ordre que la documentation ne garantit pas strictement. Le verrou n'en a pas besoin : l'ordre des déploiements est tenu par `passio-deploy-main`.
+- **Les deux raisons du verrou tiennent** : le groupe reste constant, donc une seule suite tourne à la fois. La purge par motif ne peut toujours pas effacer les comptes d'une autre suite. Le débit maximal d'inscriptions ne bouge pas : une suite à la fois, environ 4,5 min chacune. La file ne fait qu'attendre au lieu d'annuler.
+
+**Le banc, sur GitHub** (2026-11-04, branche orpheline jetable, supprimée ensuite). Trois poussées donc trois runs, entrant au niveau du job dans des groupes propres au banc : un job tient le groupe 240 s, un deuxième attend, comme celui de `main`, un troisième arrive, comme celui d'une PR. Runs 41838927874, 41838988655, 41839067241.
+
+| Clé `queue` : celui qui attend / celui qui arrive | Celui qui attend | Celui qui arrive |
+|---|---|---|
+| absente / absente (témoin, le défaut d'origine) | **annulé** | passe |
+| `max` / `max` (le correctif) | passe, 13:36:00 | passe après lui, 13:36:20 |
+| `max` / absente | **annulé** | passe |
+| absente / `max` | passe | passe après lui |
+
+- ⚠️ **C'est l'ARRIVANT qui décide** : un seul entrant sans la clé annule le job qui attend, même si celui-ci la porte. D'où la clé sur les trois entrants, et non sur le seul `test-prod` : le cron de la sentinelle distante aurait continué d'annuler `main`.
+- ⚠️ **Pendant la transition** : un run lancé avant la fusion garde son ancien fichier, et sa relance aussi. Relancer une vieille PR pendant qu'un run de `main` attend peut donc encore l'annuler. Une nouvelle poussée prend le fichier à jour, car un run de PR lit le workflow du commit de fusion.
+- **Le prix est l'ordre d'arrivée, ce n'est pas une priorité stricte** : `main` passe après les jobs déjà en file. Rejeu approché de la journée (les 52 premiers essais, 5 min par suite, aucune éviction) : `main` aurait attendu 3,1 min en moyenne et 9,1 min au pire, les PR 4,3 et 13,3. Les 100 places ne se remplissent pas : `passio-ci-pr-<n>` sérialise les runs d'une PR, qui n'a donc qu'un job dans la file à la fois.
+- **Au niveau du run, les groupes restent en `single`, délibérément** : un run en attente n'y est remplacé que par un run plus récent du même fil. `main` est linéaire, le commit suivant contient le précédent. `queue: max` y ferait rejouer et déployer chaque commit intermédiaire.
+- **Écarté** :
+  - un groupe distinct pour `main` : `main` et les PR se chevaucheraient sur le staging, et chaque teardown y purge tous les `%@passio-e2e.test`, soit l'incident du 2026-09-01. Cloisonner les comptes par run toucherait `compte-e2e.js` et les chemins de purge, pour un quota qui ne serait plus borné ;
+  - une relance automatique : un workflow de plus avec `actions: write`, qu'une PR suivante pouvait évincer à nouveau, et dont chaque essai raté passait par `retour-issue`, qui écrit « NON déployé » et rouvre les issues de la Sentinelle ;
+  - retirer `test-prod` des `needs` de `deploy` : la barrière de production disparaîtrait.
+- ⚠️ `queue: max` avec `cancel-in-progress: true` est une erreur de validation : GitHub refuse le workflow entier. Une fois sur `main`, cette combinaison empêcherait donc tout déploiement.
+- **Verrou** : `tests/unit/verrou-comptes-reels.test.mjs` lit tous les workflows, y compris un futur quatrième entrant. Un fichier que le lecteur YAML refuse n'est toléré que s'il ne nomme ni le verrou ni le marqueur `PASSIO_E2E_PROD`.
+- **Mutations**, rejouées par le test sur le texte réel, chacune rouge en nommant l'entrant : clé retirée sur chacun des trois ; groupe par déclencheur ; `cancel-in-progress: true` ; sortie du verrou avec purge conservée ; marqueur posé sur `test-local` ; bloc écrit en flux ; groupe du run rendu constant ; `queue: max` au niveau du run ; `test-prod` retiré de `deploy` ou de `smoke`. Avant le correctif, le test rougissait sur les trois entrants.
+- **Vu sur le vrai groupe, sur cette PR** : le 04/11 à 13:43 UTC, `health` et `test-prod` y sont entrés pendant qu'une autre PR tenait le verrou. Ils ont attendu tous les deux, sans annulation ni chevauchement : 13:41 → 13:45, puis 13:45 → 13:48, puis 13:48 → 13:54.
+- ⚠️ **Deux pièges de cette livraison, sans rapport avec la clé** :
+  - une migration qui retire une table de la publication, appliquée au staging (#689, 13:38:28 UTC), fait perdre tout le direct de `realtime:db` à un client qui écoute encore cette table. Les deux runs de cette PR sans le client de #689 ont rougi sur `multi-comptes.spec.js:154`, trois essais sur trois ; ceux qui le contenaient, lus le même jour, sont restés verts. Un push sur `main` aurait vu son déploiement sauté. La règle ④ de `appliquer-migration.mjs` ne garde que la production ;
+  - pour relancer une PR sur le `main` à jour, `gh run rerun` garde l'ancien merge-ref, et le run d'un `reopened` peut l'extraire lui aussi : celui de 14:19 a pris `36c2357`, alors que GitHub affichait le nouveau une seconde après. Vérifier `merge_commit_sha` et ses parents avant de rouvrir, puis `HEAD is now at` dans le journal du job. La fermeture efface aussi l'auto-fusion.
+- **Non vérifié** : le cas d'origine, un run de `main` qui attend pendant qu'une PR pousse, ne se verra qu'après la fusion. Il devra rester au vert sans relance ; `conclusion: cancelled` sur son job « Suites production » contredirait cette fiche. La limite des 100 places n'a pas été éprouvée.
+
+## 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
+
+Trouvé en livrant #699 (fiche « PIC D'ERREURS »). `scripts/build.js` calculait `buildId` à son étape 3, avant que l'étape 4 n'inline les `<script src="js/…">`. Le commentaire de l'étape suivante affirmait pourtant : « une modif réelle change cet identifiant ».
+
+- **Mesuré** : les 36 scripts inlinés étaient hors du calcul, pas seulement `platform.js` et `telemetry.js` : `first-run.js`, `pwa-detect.js`, `release-guard.js`, `passions-flat*`, tous les `ui-v*`. #699 en a changé deux et la production a gardé `a191f756f06d`, le `buildId` de #696. `index.html` passant par le réseau d'abord, l'application ouverte recevait quand même ces scripts à son prochain chargement. C'est la mise à jour silencieuse qui n'avait pas lieu.
+- **Effet, en navigateur réel** : deux artefacts, le vrai worker, une page déjà contrôlée, `reg.update()` comme le fait `majSilencieuse`. Résultat identique sous Chromium et sous le WebKit de Playwright (pas un iPhone).
+
+| Différence entre A et B | `buildId` | Décalage vu par `release-guard` | Worker réinstallé | Page rechargée seule |
+|---|---|---|---|---|
+| Ancien build, `platform.js` seul | identique | non | non | non |
+| Nouveau build, `platform.js` seul | change | oui | oui | oui, sur le code de B |
+| Nouveau build, `release-guard.js` seul | change | oui | oui | oui, sur le code de B |
+| Nouveau build, `ui-v2-shell.js` seul | change | oui | oui | oui, sur le code de B |
+| Nouveau build, commit seul | identique | non | non | non |
+
+- **Correctif** : le HTML est coupé devant `telemetry.js`, chaque morceau est inliné, `buildId` est calculé sur les deux morceaux, `app.js` et le CSS, puis le contrat et la cible Supabase sont posés entre les deux. Le calcul ne peut donc pas lire ce qu'il produit, et aucune marque n'est à remplacer dans le texte des scripts. Comparé à l'ancien build dans trois configurations (sans variable, `COMMIT_REF`, cible staging), l'artefact a les mêmes octets une fois le `buildId` substitué (hors le commentaire d'en-tête de `sw.js`, corrigé par ce lot).
+- ⚠️ **Le commit et la cible restent hors du calcul, et c'est le point le plus important** : `reloadOnce` (`pwa-detect.js`) recharge les pages contrôlées à chaque changement de worker. Avec le commit dans le calcul, un commit de documentation rechargerait toutes les pages ouvertes.
+- ⚠️ **Ce que coûte un `buildId` qui change plus souvent** : sur les 436 commits de `main` depuis le 20/08, classés par chemins avec l'`index.html` de chaque commit, il changeait 240 fois et changerait 256 fois (+16, +6,7 %), dont 7 pour `telemetry.js`. Chaque changement réinstalle le worker, efface les anciens caches, recharge les pages visibles sous 60 s et affiche le toast « Mise à jour disponible ». `reloadOnce` ne regarde ni une saisie ni un appel en cours : c'est antérieur à ce lot, et ce lot l'étend à ces 6,7 %.
+- **Lecteurs du `buildId`, rien à changer** : `release-recorder.js` et `public-release-evidence.js` ne le comparent que si le manifeste local porte le commit attendu ; un build du poste porte `commit: null` et n'attend aucun `buildId`. `telemetry.js` et `idb-store.js` lisent le commit d'abord, `b<buildId>` seulement sans commit. `rollback-netlify.mjs` et `controle-cible-pilote.mjs` ne font que l'afficher. `version_skew` part maintenant aussi pour ces versions : le moteur d'anomalies (`anomaly-engine.js`, lu par `release-guardian.js`) le voit comme après n'importe quel autre déploiement. `pwa-maj-silencieuse.spec.js` travaille sur un faux conteneur et ne voit pas le `buildId`.
+- ⚠️ **Hors du calcul, délibérément** : `sw.js` (ses octets suffisent à le réinstaller, fiche UXO-11), `data/*.json` (URL en `?r=<commit>`), `js/vendor/*` (nom de fichier versionné, loaders inlinés), `pilotage/` (page autonome), `manifest.json` et les icônes.
+- **Verrou** : `tests/unit/build-id.test.mjs` (6) exécute le vrai `scripts/build.js` avec un `fs` en mémoire, en moins de 2 s (47 builds sur le disque prenaient 148 s sur le poste chargé). La liste des scripts vient de l'artefact, pas d'une liste écrite à la main ; ⑥ compare à un vrai build sur le disque.
+- **Mutations** : défaut d'origine remis → ① rouge, 36 scripts nommés ; scripts de tête seuls comptés → 32 ; scripts d'après le contrat seuls → 4 ; liste écrite à la main (`platform` + `telemetry`) → 34 ; gardes oubliés → 2 ; commit, date ou cible dans le calcul → ④ ; worker sous un autre identifiant → ① ⑤ ⑥ ; contrat après `telemetry.js` → ⑤ ; banc à liste vide → ② ; `fs` qui ment → ① ③ ⑥ ; mutation jamais appliquée → ① ③. Deux restent vertes, à raison : retirer `app.js` ou le CSS du calcul ne change rien, leur hash `?v=` est déjà dans le HTML.
+- **Non vérifié** : aucun iPhone réel. Le chemin « worker réinstallé → page rechargée » reste un contrôle ponctuel hors suite : `pwa-premiere-installation.spec.js` ne couvre que les pages sans contrôleur.
+
+## 📨 LE CANAL NE PERD PLUS UN ORDRE, ET UNE MODIFICATION NE LANCE PLUS UN AGENT (2026-11-04)
+
+Question posée après la fiche « LE VERROU ÉVINÇAIT `main` » : `queue: max` doit-elle fermer l'éviction des runs dans `claude-code.yml` ?
+
+**Décision : oui, mais pas seule.** Posée seule, la clé lance 20 agents pour 10 ordres. Trois changements vont ensemble :
+
+1. `queue: max` : les ordres attendent leur tour au lieu de se remplacer.
+2. La file passe du run au job : le `if:` y est évalué avant le groupe, donc un événement écarté n'entre plus dans la file.
+3. Le `if:` n'accepte plus qu'un ordre NOUVEAU : le label `claude` posé, l'ouverture avec la mention, une modification qui AJOUTE la mention, un nouveau commentaire qui la porte. Un `edited` ou un autre `labeled` ne relance plus rien. Reposer le label `claude` reste un second ordre : c'est la relance du veilleur.
+
+**Banc 1, le groupe** (branche orpheline jetable, groupes propres au banc, 2026-11-04). Quatre poussées dans quatre groupes : un agent de 150 s tient le groupe, B est un ordre qui attend, C est écarté par le `if:`, D est un ordre qui arrive ensuite.
+
+| File | B, l'ordre qui attend | C, l'événement écarté | D |
+|---|---|---|---|
+| run, sans clé (l'existant) | **annulé par C**, dès son arrivée | annulé par D | passe |
+| run, `queue: max` | passe | attend 267 s, puis écarté | passe |
+| job, sans clé | **annulé par D** | écarté en 1 s, n'évince rien | passe |
+| job, `queue: max` (retenu) | passe | écarté en 1 s | passe, 237 s plus tard |
+
+- ⚠️ **Dans l'existant, le commentaire de n'importe quel compte évince l'ordre qui attend** : il entre dans le groupe avant que le `if:` ne l'écarte, et l'ordre disparaît sans job, donc sans le commentaire d'annulation. Le dépôt est public.
+- `timeout-minutes` ne compte pas l'attente : D a attendu 237 s avec `timeout-minutes: 3` et a réussi.
+- Un run qui attend se lit `pending` aux deux niveaux, ce que le veilleur compte déjà comme vivant. L'ordre d'arrivée a été tenu dans les deux groupes en `queue: max`.
+
+**Banc 2, le `if:`** (2026-11-04, PR 710 à 713 entre branches orphelines, fermées depuis). 26 vrais événements `pull_request` et `pull_request_review_comment`, dont 10 ordres, agent de 30 s. Le `if:` du banc est généré du texte réel, seules les cibles sont remplacées (marqueur sans `@` : aucune notification à un tiers).
+
+| Condition, file | Agents | Évincés | Écartés | Attente d'un écarté (médiane, pire) |
+|---|---|---|---|---|
+| ancien `if:`, run, sans clé (l'existant) | 9 | 14 | 3 | 7 s, 10 s |
+| ancien `if:`, run, `queue: max` | **20** | 0 | 6 | 90 s, 264 s |
+| nouveau `if:`, run, `queue: max` | 10 | 0 | 16 | 38 s, 107 s |
+| nouveau `if:`, job, `queue: max` (retenu) | 10 | 0 | 16 | 1 s, 9 s |
+
+- **Réponse au premier point : avec l'ancien `if:`, un `edited` ou un `labeled` lance bien un agent de plus**, dès que le corps ou le titre porte la mention. Sans clé, la file en absorbait une partie, au hasard : sur ce banc, 3 ordres sur 10 évincés (le label posé, le commentaire, le titre qui gagne la mention) et 2 agents sans ordre (un titre corrigé, un titre qui perd la mention).
+- Le nouveau `if:` rend exactement les 10 ordres, aux deux niveaux. Les 2 `labeled` de la même seconde n'évincent rien.
+
+**L'historique** (API GitHub, tous les runs de `claude-code.yml`, 2026-08-19 au 2026-11-04) : 504 runs, 440 écartés, 53 agents, 11 annulés.
+
+- **3 ordres perdus par éviction** : #316, #327, #337, tous avant A1. 6 autres évictions sans perte : un événement écarté dans 4 enquêtes (#312, #346, #350, #370), 1 commentaire de bot (#103), 1 commentaire sans mention (#136).
+- **2 annulations inexpliquées** : #161 et #162, le 26/08, 0 job, closes plus de deux jours plus tard. #162 était seul de son groupe : ce n'est pas une éviction, et cette clé ne la ferme pas.
+- **4 agents lancés par un `edited`** : #38 et #41, le 19/08, mention dans le titre. Depuis, plus aucun. Les 19 agents lancés par un commentaire viennent tous d'un `created` : le nouveau `if:` n'aurait bloqué aucun autre ordre vécu.
+- **Le gain est structurel, pas urgent** : 0 fenêtre à trois ordres pendant un agent, 1 seul ordre a attendu derrière un agent (#89, 383 s), et un seul agent depuis le 13/09 (#657).
+
+**Temps en file des événements écartés.** Il n'a de coût que dans la file du run. Rejeu : les vrais runs, leurs vraies durées, sans éviction, 1,5 s par écarté.
+
+| | Écartés | Plus d'une minute | 99 % en moins de | Pire |
+|---|---|---|---|---|
+| vécu, run sans clé | 440 | 9 | 6 min 8 s | 16 min 31 s |
+| rejeu, run `queue: max` | 448 | 15 | 11 min 33 s | 16 min 47 s |
+| job | aucun n'entre | | | 1 s au banc |
+
+Attendre ne coûte rien en soi. Le vrai défaut de la file au niveau du run : chaque écarté y prend une des 100 places, et la documentation annonce qu'au-delà c'est le NOUVEL arrivant qui est annulé. Cent commentaires d'un tiers pendant un agent y feraient donc disparaître l'ordre suivant. Au niveau du job, un tiers n'y peut plus rien.
+
+**Ce qui reste, délibérément** :
+
+- ⚠️ **Le `sleep 8` et le veilleur restent.** Le banc montre qu'une rafale n'évince plus rien, mais **aucune enquête n'a tourné depuis #370, le 13/09** : ni A1, ni le veilleur (label `sentinelle-relancee` : 0 issue), ni cette file n'ont été vus sur une vraie enquête. Le critère pour rouvrir le `sleep 8` : une vraie enquête passée par la nouvelle file. Huit secondes par enquête ne coûtent rien en attendant. Le veilleur a sa raison propre : un run peut se perdre sans la file, comme #162.
+- La marche « Signaler l'annulation » reste, avec un texte corrigé : elle ne voit qu'un job démarré puis arrêté.
+- Le commentaire de `reparer` (`supabase/functions/pilotage/index.ts`) dit encore que chaque `labeled` lancerait un agent : ce n'est plus vrai. Ouvrir sans label reste juste, pour les droits du jeton. Il n'est pas corrigé ici, car toucher ce dossier redéploie les Edge Functions.
+- **Deux ordres restent deux agents** : une issue ouverte avec la mention ET le label `claude`, ou deux commentaires `@claude` à la suite. Le second agent ne voit pas la PR du premier. Comportement inchangé, jamais vécu sur une ouverture en 11 semaines. `reparer` ne pose aucun label, `reconfier` ne confie pas une issue déjà mentionnée.
+
+**Écarté** :
+
+- `queue: max` seule, au niveau du run : 20 agents pour 10 ordres.
+- Le job sans la clé : le deuxième ordre remplace encore celui qui attend, en silence (ligne 3 du banc 1).
+- Le run avec la clé et le nouveau `if:` : il tient les ordres, mais laisse la file des 100 places ouverte aux tiers.
+- Retirer `edited` des types : modifier une issue pour y ajouter la mention est un ordre réel, et il se perdrait sans un mot, le défaut des 19–21 août.
+- Une garde en tête de job (« une PR existe déjà ») : elle bloquerait aussi les relances et les ordres de suite.
+
+- **Verrou** : `tests/unit/sentinelle-workflows.test.mjs` rejoue le `if:` réel sur une table de 41 événements, avec `tests/unit/lib/expression-github.mjs`, un évaluateur minimal qui lève sur tout le reste. Cet évaluateur est ancré sur les 26 verdicts de GitHub : il doit les rendre sur l'ancien `if:` comme sur le nouveau. La file est lue sur tous les workflows, car c'est l'arrivant qui décide.
+- **Mutations**, rejouées par le test sur le texte réel, chacune rouge en nommant la ligne : `queue: max` retirée ; `cancel-in-progress: true` ; groupe constant ; bloc remonté au run ; bloc réduit à une ligne ; second entrant dans un autre workflow ; ancien `if:` remis ; chaque clause retirée (label, `opened`, `edited`, corps, titre, `from`, garde `changes`, auteur, cible), sur les issues et sur les deux formes de commentaire. Une clause restée verte au premier passage (`action == 'edited'`) a reçu sa ligne de table.
+- **Non vérifié** :
+  - Un événement `issues` ou `issue_comment` réel : ils ne se déclenchent que depuis la branche par défaut. Le banc a joué `pull_request` et `pull_request_review_comment`, dont les champs `action`, `label` et `changes` ont la même forme (schémas octokit de `issues.edited` et `issue_comment.edited`). Le premier `labeled claude` et le premier `edited` après la fusion trancheront : le premier doit lancer un agent, le second doit sortir `skipped`.
+  - La limite des 100 places n'a pas été éprouvée, ni un run figé en tête de file : #162 n'était pas dans ce cas. Il ne bloquerait que son issue.
+- **Runs** (ils restent sous « banc-cc » dans Actions le temps de la contre-revue) : poussées `r-single`, B 41845387846 ; `r-max`, C 41845457967 ; `j-single`, C 41845457805 ; `j-max`, C 41845457792 ; événements `p-actuel-rmax` et `p-serre-jmax`. Les 52 runs de `p-actuel-rsingle` et `p-serre-rmax` sont supprimés, leurs chiffres sont dans le tableau.

@@ -33,9 +33,14 @@ async function installerAdmission(page, statut, opts = {}) {
     // cette ligne, le test mesurerait la porte TRANSPARENTE et serait vert sans
     // rien prouver.
     MY_UID = uid; window.MY_UID = uid;
+    // L'année locale ne part que si l'état et la session sont ceux de ce compte
+    // (`admissionAnneeDuCompte`) : le décor les fait concorder.
+    _uidProprietaireEtat = uid;
+    window.supa.auth.getSession = async () => ({ data: { session: { user: { id: uid, user_metadata: {} } } }, error: null });
     // Session fraîche : le rappel « une fois par session » et le statut mis en
     // cache ne doivent rien hériter du démarrage.
     _admissionAnneePoussee = false;
+    _admissionDeclaration = null;
     _admissionStatut = null;
     window.__rpc = [];
     window.__statutServeur = statut;

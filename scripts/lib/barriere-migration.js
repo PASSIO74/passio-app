@@ -300,4 +300,61 @@ function verdictGlobal(phases) {
   return { ok: echecs.length === 0, echecs, code: echecs.length ? 1 : 0 };
 }
 
-module.exports = { CIBLES_PROTEGEES, RefusBarriere, empreinte, choisirCible, verifierAttestation, verifierPreuveRevue, exigerFournisseurReel, MARQUEUR_REVUE, PHRASE_MAINTENEUR_UNIQUE, sqlColonnesJournal, sqlAvecJournal, verdictGlobal };
+// ── ④ LE CLIENT QUE LA MIGRATION SUPPOSE EST DÉJÀ EN LIGNE (R25, 2026-11-03) ──
+// Certaines migrations cassent l'ANCIEN client : sortir une table de la
+// publication `supabase_realtime` fait échouer TOUT le canal `realtime:db` d'un
+// client qui l'écoute encore (Realtime crée les liaisons d'un canal en une
+// transaction). Leur ordre — client d'abord, migration ensuite — n'était tenu
+// que par un commentaire ; deux relectures du 2026-11-03 l'ont relevé. Un
+// commentaire n'est pas une garde.
+// La migration DÉCLARE ce que le client servi doit porter, une ligne par motif :
+//   -- PREREQUIS-CLIENT: conv_members:INSERT
+// et l'outil refuse d'écrire sur une cible dont le client servi ne le porte pas.
+// Sur une cible sans client servi connu (le staging : la CI y joue le client de
+// la PR), rien n'est exigé. Illisible = refus : on ne devine pas.
+const ORIGINES_CLIENT = { njkiyoklssvefstljemx: "https://passio-app.netlify.app" };
+const LIGNE_PREREQUIS = /^--[ \t]*PREREQUIS-CLIENT[ \t]*:[ \t]*(\S(?:.*\S)?)[ \t]*$/gm;
+
+function prerequisClient(sql) {
+  const motifs = [];
+  for (const m of String(sql || "").replace(/\r\n/g, "\n").matchAll(LIGNE_PREREQUIS)) {
+    if (!motifs.includes(m[1])) motifs.push(m[1]);
+  }
+  return motifs;
+}
+
+// Le bundle que la page servie charge : `app.js?v=<empreinte>`. ⚠️ Pas une balise
+// `<script src>` : `scripts/build.js` l'injecte par un CHARGEUR (`s.src = "…"`,
+// après le gate) — on cherche donc la chaîne citée, où qu'elle soit (premier jet
+// de cette règle : vert sur un HTML fabriqué, aveugle sur le vrai build).
+function urlBundleServi(html, origine) {
+  const m = /["']((?:\.?\/)?app\.js\?v=[0-9a-z]+)["']/i.exec(String(html || ""));
+  if (!m || !origine) return null;
+  try { return new URL(m[1], origine.replace(/\/?$/, "/")).toString(); } catch (e) { return null; }
+}
+
+function verifierPrerequisClient({ motifs, origine, html, bundle } = {}) {
+  if (!motifs || !motifs.length) return { exige: false };
+  if (!origine) return { exige: false, motifs, raison: "aucun client servi connu pour cette cible" };
+  const url = urlBundleServi(html, origine);
+  if (!url) {
+    throw new RefusBarriere("prerequis_client_illisible",
+      "prérequis client : la page servie par " + origine + " n'a pas pu être lue, ou ne charge pas `app.js?v=…`. " +
+      "On refuse plutôt que de supposer le client à jour — relancer quand le site répond.", { origine });
+  }
+  if (typeof bundle !== "string" || !bundle.length) {
+    throw new RefusBarriere("prerequis_client_illisible",
+      "prérequis client : le bundle " + url + " n'a pas pu être lu. On refuse plutôt que de supposer le client à jour.", { url });
+  }
+  const manquants = motifs.filter((m) => !bundle.includes(m));
+  if (manquants.length) {
+    throw new RefusBarriere("prerequis_client_absent",
+      "prérequis client : le client SERVI (" + url + ") ne porte pas " + manquants.map((m) => "« " + m + " »").join(", ") + ". " +
+      "Cette migration casserait les clients en ligne : déployer d'abord (fusion de la PR, job « Déploiement production » vert), puis relancer.",
+      { url, manquants });
+  }
+  return { exige: true, url, motifs };
+}
+
+module.exports = { CIBLES_PROTEGEES, RefusBarriere, empreinte, choisirCible, verifierAttestation, verifierPreuveRevue, exigerFournisseurReel, MARQUEUR_REVUE, PHRASE_MAINTENEUR_UNIQUE, sqlColonnesJournal, sqlAvecJournal, verdictGlobal,
+  ORIGINES_CLIENT, prerequisClient, urlBundleServi, verifierPrerequisClient };

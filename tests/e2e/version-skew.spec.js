@@ -100,8 +100,9 @@ test.describe("Version skew — cohérence des versions servies", () => {
     expect(m[1].length, "l'identifiant de build doit être un hash, pas une constante")
       .toBeGreaterThanOrEqual(8);
 
-    // Et il doit dériver du contenu réellement déployé : le build le calcule
-    // sur index.html + app.js, donc changer app.js doit changer ce cache.
+    // Et il doit dériver du contenu réellement déployé : le build le calcule sur la
+    // page et ses scripts inlinés, app.js et le CSS. La preuve par mutation est dans
+    // tests/unit/build-id.test.mjs ; ici, seul le câblage du source est vérifié.
     const source = lire("sw.js");
     expect(source, "le source doit laisser le build injecter l'identifiant")
       .toMatch(/const CACHE = "passio-v"/);

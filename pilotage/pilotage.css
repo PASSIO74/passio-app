@@ -1,4 +1,4 @@
-/* PASSIO Pilotage (nuage) — LE centre de pilotage. Trois onglets depuis le 2026-10-23 (Accueil, Détails, Réglages). */
+/* PASSIO Pilotage (nuage) — LE centre de pilotage. Un seul écran depuis le 2026-11-04 : ce qu'il y a à régler, le nombre d'utilisateurs. */
 :root {
   color-scheme: dark;
   --fond: #0b0912;
@@ -9,11 +9,12 @@
   --discret: #a69cb8;
   --accent: #a78bfa;
   --accent-plein: #7c3aed;
+  /* La marche : un seul trait, dans le violet de PASSIO, validé contre les deux fonds. */
+  --marche: #9b7bf7;
   --vert: #4ade80;
   --orange: #fbbf24;
   --rouge: #f87171;
   --gris: #8f86a0;
-  --barre-h: 64px;
 }
 @media (prefers-color-scheme: light) {
   :root {
@@ -26,6 +27,7 @@
     --discret: #5f566e;
     --accent: #6d28d9;
     --accent-plein: #7c3aed;
+    --marche: #6d28d9;
     --vert: #15803d;
     --orange: #b45309;
     --rouge: #dc2626;
@@ -37,88 +39,168 @@
 html, body { margin: 0; background: var(--fond); color: var(--texte); }
 body { font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
 [hidden] { display: none !important; }
-h1 { font-size: 22px; margin: 0; }
-h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--discret); margin: 22px 4px 8px; font-weight: 700; }
+h1 { font-size: 20px; margin: 0; line-height: 1.2; }
+h2 { font-size: 17px; color: var(--texte); margin: 26px 4px 8px; font-weight: 700; }
 code { font-size: 13px; }
 a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ─── Écrans pleins (connexion, injoignable) ───────────────────────── */
+/* ─── Écrans pleins (connexion, refus) ─────────────────────────────── */
 .ecran-plein { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; gap: 12px;
   padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom)); max-width: 440px; margin: 0 auto; }
 .ecran-plein p { color: var(--discret); margin: 0; }
 .logo { border-radius: 18px; }
-.aide-liste { color: var(--discret); padding-left: 20px; margin: 4px 0 8px; display: grid; gap: 6px; }
-.form { display: grid; gap: 14px; margin-top: 8px; }
-.form label { display: grid; gap: 6px; font-size: 14px; color: var(--discret); }
-.form input:not([type=checkbox]) { font-size: 16px; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--ligne);
-  background: var(--carte); color: var(--texte); min-height: 48px; }
-.form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.case { display: flex !important; align-items: center; gap: 10px; color: var(--texte) !important; }
-.case input { width: 22px; height: 22px; accent-color: var(--accent-plein); flex: none; }
-.case-large { min-height: 44px; }
 .erreur { color: var(--rouge); font-weight: 600; }
 
 /* ─── Boutons ──────────────────────────────────────────────────────── */
 .btn { font: inherit; font-weight: 700; border-radius: 12px; border: 1px solid var(--ligne); background: var(--carte2); color: var(--texte);
-  min-height: 48px; padding: 0 16px; cursor: pointer; }
+  min-height: 48px; padding: 0 16px; cursor: pointer; position: relative; overflow: hidden; }
 .btn:disabled { opacity: .55; }
 .btn-plein { background: var(--accent-plein); border-color: var(--accent-plein); color: #fff; width: 100%; }
 .btn-danger { width: 100%; margin-top: 22px; color: var(--rouge); }
-.btn-petit { min-height: 36px; font-size: 13px; padding: 0 12px; }
+.btn-google { width: 100%; background: #fff; color: #1f1f1f; border-color: #dadce0; }
 .btn-rond { font-size: 22px; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--ligne); background: var(--carte2);
   color: var(--texte); cursor: pointer; flex: none; }
 .btn-rond.tourne { animation: tourne .8s linear infinite; }
 @keyframes tourne { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .btn-rond.tourne { animation: none; opacity: .5; } }
+
+/* Le bouton de tout le centre : un toucher. Largeur fixe : « Annuler (5) » ne fait pas sauter la ligne. */
+.btn-regler { display: inline-flex; align-items: center; justify-content: center; flex: none; align-self: start; width: 100px; min-height: 44px; padding: 0 4px;
+  background: var(--accent-plein); border-color: var(--accent-plein); color: #fff; text-decoration: none; font-size: 15px; }
+/* Armé : le geste part tout seul quand la barre est vide ; retoucher l'annule. */
+.btn.arme { background: var(--carte2); border-color: var(--accent); color: var(--texte); }
+.btn.arme::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--accent); transform-origin: left;
+  animation: vider var(--delai, 5s) linear forwards; }
+@keyframes vider { to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .btn-rond.tourne { animation: none; opacity: .5; } .btn.arme::after { animation: none; } }
 
 /* ─── En-tête ──────────────────────────────────────────────────────── */
-.entete { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--fond); border-bottom: 1px solid var(--ligne); }
-.entete-texte { display: grid; }
+.entete { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px;
+  padding: calc(8px + env(safe-area-inset-top)) 16px 8px; background: var(--fond); border-bottom: 1px solid var(--ligne); }
+.entete-texte { display: grid; flex: 1; min-width: 0; }
 .etat-maj { font-size: 12px; color: var(--discret); }
 .etat-maj.hors-ligne { color: var(--rouge); font-weight: 600; }
 
-.contenu { padding: 8px 14px calc(var(--barre-h) + 28px + env(safe-area-inset-bottom)); max-width: 640px; margin: 0 auto; }
-.onglet { display: none; }
+.contenu { padding: 12px 16px calc(32px + env(safe-area-inset-bottom)); max-width: 1080px; margin: 0 auto; }
+.onglet { display: none; max-width: 640px; margin: 0 auto; }
 .onglet.actif { display: block; }
+#accueil { max-width: none; }
 
-/* ─── Verdict (Accueil) ────────────────────────────────────────────── */
-.verdict { display: flex; gap: 14px; align-items: center; padding: 18px; border-radius: 18px; margin-top: 10px;
-  background: var(--carte); border: 1px solid var(--ligne); }
-.verdict strong { font-size: 20px; display: block; }
-.verdict p { margin: 4px 0 0; color: var(--discret); font-size: 14px; }
-.verdict-point { width: 18px; height: 18px; border-radius: 50%; flex: none; background: var(--gris); }
-.verdict.vert .verdict-point { background: var(--vert); box-shadow: 0 0 0 6px color-mix(in srgb, var(--vert) 22%, transparent); }
-.verdict.orange .verdict-point { background: var(--orange); box-shadow: 0 0 0 6px color-mix(in srgb, var(--orange) 22%, transparent); }
-.verdict.rouge .verdict-point { background: var(--rouge); box-shadow: 0 0 0 6px color-mix(in srgb, var(--rouge) 22%, transparent); }
-.verdict.vert { border-color: color-mix(in srgb, var(--vert) 45%, var(--ligne)); }
-.verdict.orange { border-color: color-mix(in srgb, var(--orange) 55%, var(--ligne)); }
-.verdict.rouge { border-color: color-mix(in srgb, var(--rouge) 60%, var(--ligne)); }
+/* ─── L'accueil : ce qu'il y a à régler, le nombre d'utilisateurs ──── */
+.accueil-colonnes { display: grid; gap: 20px; }
+
+/* Le panneau : une ligne quand tout est calme, il ne grandit que s'il y a quelque chose à faire. */
+.panneau { background: var(--carte); border: 1px solid var(--ligne); border-radius: 18px; overflow: hidden; min-width: 0; }
+.panneau.vert { border-color: color-mix(in srgb, var(--vert) 45%, var(--ligne)); }
+.panneau.orange { border-color: color-mix(in srgb, var(--orange) 55%, var(--ligne)); }
+.panneau.rouge { border-color: color-mix(in srgb, var(--rouge) 60%, var(--ligne)); }
+.verdict { display: flex; gap: 12px; align-items: flex-start; padding: 14px 14px 12px; }
+.verdict strong { font-size: 18px; line-height: 1.25; display: block; }
+.verdict p { margin: 2px 0 0; color: var(--discret); font-size: 14px; }
+.verdict-point { width: 12px; height: 12px; border-radius: 50%; flex: none; margin: 6px 3px 0; background: var(--gris); }
+.verdict.vert .verdict-point { background: var(--vert); box-shadow: 0 0 0 4px color-mix(in srgb, var(--vert) 22%, transparent); }
+.verdict.orange .verdict-point { background: var(--orange); box-shadow: 0 0 0 4px color-mix(in srgb, var(--orange) 22%, transparent); }
+.verdict.rouge .verdict-point { background: var(--rouge); box-shadow: 0 0 0 4px color-mix(in srgb, var(--rouge) 22%, transparent); }
+.verdict.perime { opacity: .6; filter: grayscale(.6); }
+.bandeau-perime { margin: 0 14px 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--orange);
+  background: color-mix(in srgb, var(--orange) 12%, var(--carte)); font-size: 14px; color: var(--texte); }
+.btn-tout { display: block; width: calc(100% - 28px); margin: 0 14px 14px; }
+
+/* Une ligne : ce qui est cassé et ce que le bouton va faire, le bouton sous le pouce. */
+.ligne { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--ligne); min-width: 0; }
+.ligne.rouge { box-shadow: inset 3px 0 0 var(--rouge); }
+.ligne.orange { box-shadow: inset 3px 0 0 var(--orange); }
+.ligne-titre, .ligne-quoi, .ligne-detail, .ligne-reference, .apercu { display: block; overflow-wrap: anywhere; }
+.ligne-titre { font-weight: 700; font-size: 15px; line-height: 1.3; }
+.ligne-quoi { color: var(--discret); font-size: 14px; margin-top: 2px; }
+.ligne-detail { color: var(--texte); font-size: 14px; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ligne-reference { color: var(--discret); font-size: 13px; margin-top: 6px; }
+.apercu { font-size: 13px; margin-top: 6px; color: var(--texte); }
+.ligne-decisions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.ligne-decisions .btn { min-height: 40px; font-size: 14px; padding: 0 12px; }
+.ligne-decisions a { display: inline-flex; align-items: center; min-height: 40px; font-size: 14px; font-weight: 600; }
+.ligne-texte { min-width: 0; }
+.ligne summary { cursor: pointer; list-style: none; }
+.ligne summary::-webkit-details-marker { display: none; }
+.depliable::after { content: "›"; display: inline-block; margin-left: 6px; color: var(--discret); font-weight: 400; transition: transform .15s; }
+details[open] .depliable::after { transform: rotate(90deg); }
+.lien-suite { font: inherit; font-size: 14px; font-weight: 600; color: var(--accent); background: none; border: 0; border-top: 1px solid var(--ligne); width: 100%; min-height: 44px; cursor: pointer; }
+.en-cours-titre { font-size: 13px; font-weight: 600; color: var(--discret); margin: 0; padding: 12px 14px 6px; border-top: 1px solid var(--ligne); }
+.lignes-calmes .ligne { border-top: 0; padding-top: 4px; }
+.lignes-calmes .ligne.rouge, .lignes-calmes .ligne.orange { box-shadow: none; }
+.lignes-calmes .ligne-titre { font-weight: 600; font-size: 14px; }
+
+/* ─── La marche des utilisateurs ───────────────────────────────────── */
+.croissance-zone { min-width: 0; }
+/* Le nombre se pose dans le vide que l'escalier laisse en haut à gauche. */
+.hero { position: relative; height: 212px; }
+.marche { position: absolute; inset: 0; touch-action: pan-y; border-radius: 4px; }
+.marche svg { display: block; overflow: visible; }
+.marche-base { stroke: var(--ligne); stroke-width: 1; }
+.marche-aire { fill: var(--marche); opacity: .1; }
+.marche-trait { fill: none; stroke: var(--marche); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.marche-bout { fill: var(--marche); stroke: var(--fond); stroke-width: 2; }
+.marche-repere { stroke: var(--discret); stroke-width: 1; }
+.marche-info { position: absolute; top: 0; z-index: 2; display: grid; padding: 6px 10px; border-radius: 10px; pointer-events: none; white-space: nowrap;
+  background: var(--carte2); border: 1px solid var(--ligne); font-size: 12px; color: var(--discret); }
+.marche-info strong { color: var(--texte); font-size: 14px; }
+.total { position: absolute; top: 0; left: 0; z-index: 1; display: grid; justify-items: start; padding: 0 8px 4px 0; font: inherit; color: var(--texte); text-align: left; background: none; border: 0; cursor: pointer; }
+.total b { font-size: clamp(64px, 19vw, 92px); font-weight: 800; line-height: .95; letter-spacing: -.04em; text-shadow: 0 0 14px var(--fond), 0 0 3px var(--fond); }
+.total span { font-size: 15px; font-weight: 600; color: var(--discret); margin-top: 2px; text-shadow: 0 0 8px var(--fond), 0 0 2px var(--fond); text-decoration: underline; text-decoration-color: var(--ligne); text-underline-offset: 3px; }
+.marche-axe { display: flex; justify-content: space-between; font-size: 12px; color: var(--discret); margin-top: 4px; }
+.evolution { margin: 12px 0 0; font-size: 15px; }
+.evolution strong { font-weight: 700; }
+.evolution span { color: var(--discret); }
+.palier { display: grid; gap: 2px; margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--marche); font-size: 14px; color: var(--discret); }
+.palier strong { color: var(--texte); }
+.audience { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0 0; }
+.audience > div { min-width: 0; display: flex; flex-direction: column-reverse; justify-content: flex-end; }
+.audience dd { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.15; }
+.audience dt { font-size: 12px; color: var(--discret); }
+#nouveauxComptes { margin-top: 16px; }
+.carte .derniers-titre { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+
+/* Le reste, rangé. */
+.plus { display: grid; margin-top: 24px; border-top: 1px solid var(--ligne); }
+.plus button { display: flex; justify-content: space-between; align-items: center; font: inherit; font-size: 15px; font-weight: 600; color: var(--texte);
+  min-height: 52px; padding: 0 4px; background: none; border: 0; border-bottom: 1px solid var(--ligne); cursor: pointer; text-align: left; }
+.plus button span { color: var(--discret); font-size: 20px; }
+
+/* Sur un grand écran, les deux besoins côte à côte. */
+@media (min-width: 900px) {
+  .accueil-colonnes { grid-template-columns: minmax(360px, 5fr) 7fr; gap: 36px; align-items: start; }
+  .hero { height: 300px; }
+  .plus { max-width: 640px; }
+}
 
 /* ─── Chiffres ─────────────────────────────────────────────────────── */
 .chiffres { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
 .chiffres-petits { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .chiffre { background: var(--carte); border: 1px solid var(--ligne); border-radius: 14px; padding: 12px; min-width: 0; }
-.chiffre b { display: block; font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.chiffre b { display: block; font-size: 26px; line-height: 1.1; }
 .chiffres-petits .chiffre b { font-size: 20px; }
 .chiffre span { display: block; font-size: 12px; color: var(--discret); margin-top: 3px; overflow-wrap: anywhere; }
 .chiffre.rouge b { color: var(--rouge); }
 .chiffre.orange b { color: var(--orange); }
+.chiffre small.tendance { display: block; font-size: 12px; margin-top: 6px; color: var(--discret); overflow-wrap: anywhere; }
+.chiffre small.tendance.bon { color: var(--vert); }
+.chiffre small.tendance.mauvais { color: var(--rouge); }
 
-/* ─── Cartes ───────────────────────────────────────────────────────── */
+/* ─── Cartes (les pages de détail) ─────────────────────────────────── */
 .pile { display: grid; gap: 8px; }
 .carte { background: var(--carte); border: 1px solid var(--ligne); border-radius: 14px; padding: 13px 14px; min-width: 0; }
 .carte-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .carte-titre { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
 .carte p { margin: 6px 0 0; color: var(--discret); font-size: 14px; overflow-wrap: anywhere; }
-.carte .corps { white-space: pre-wrap; }
+.carte p.quand { font-size: 12px; margin-top: 4px; }
+.carte .chiffres { margin-top: 10px; }
 .carte-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .carte-actions .btn { min-height: 40px; font-size: 14px; }
+.carte-actions .btn-principal { background: var(--accent-plein); border-color: var(--accent-plein); color: #fff; }
 .carte-actions a { display: inline-flex; align-items: center; min-height: 40px; font-weight: 600; }
 .lien-carte { display: flex; justify-content: space-between; align-items: center; min-height: 52px; text-decoration: none; color: var(--texte); font-weight: 600; }
 .discret { color: var(--discret); font-size: 14px; margin: 4px 4px 8px; }
 .carte .discret { margin: 0; }
-
 .etiquette { flex: none; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .etiquette.vert { color: var(--vert); }
 .etiquette.orange { color: var(--orange); }
@@ -127,47 +209,22 @@ a { color: var(--accent); }
 .carte.rouge { border-left: 4px solid var(--rouge); }
 .carte.orange { border-left: 4px solid var(--orange); }
 .carte.vert { border-left: 4px solid var(--vert); }
+.carte .geste { margin-top: 8px; font-size: 13px; color: var(--texte); }
 
-.titre-ligne { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
-.titre-ligne h2 { margin-bottom: 8px; }
-
-.repli { background: var(--carte); border: 1px solid var(--ligne); border-radius: 14px; margin-top: 8px; }
+.repli { background: var(--carte); border: 1px solid var(--ligne); border-radius: 14px; margin-top: 8px; overflow: hidden; }
 .repli > summary { min-height: 48px; display: flex; align-items: center; padding: 0 14px; font-weight: 700; cursor: pointer; list-style: none; }
 .repli > summary::-webkit-details-marker { display: none; }
 .repli > summary::after { content: "›"; margin-left: auto; transition: transform .15s; color: var(--discret); font-size: 20px; }
 .repli[open] > summary::after { transform: rotate(90deg); }
-.repli > .pile { padding: 0 8px 8px; }
+.repli p { margin: 6px 14px; }
+#pourInfoRepli { margin-top: 4px; }
 
-/* ─── Graphe inscriptions ──────────────────────────────────────────── */
+/* ─── Graphes de détail ────────────────────────────────────────────── */
 .graphe { display: flex; align-items: flex-end; gap: 4px; height: 90px; margin-top: 10px; padding: 10px 10px 22px;
   background: var(--carte); border: 1px solid var(--ligne); border-radius: 14px; position: relative; }
 .graphe .barre-j { flex: 1; background: var(--accent-plein); border-radius: 4px 4px 0 0; min-height: 2px; position: relative; }
 .graphe .barre-j.zero { background: var(--ligne); }
 .graphe .barre-j span { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: 9px; color: var(--discret); white-space: nowrap; }
-
-/* ─── Bandeau d'erreur ─────────────────────────────────────────────── */
-.bandeau-erreur { margin-top: 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--rouge);
-  color: var(--texte); background: color-mix(in srgb, var(--rouge) 12%, var(--carte)); font-size: 14px; }
-
-/* ─── Barre d'onglets (en bas, au pouce) ───────────────────────────── */
-.barre { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(5, 1fr);
-  height: calc(var(--barre-h) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
-  background: var(--carte); border-top: 1px solid var(--ligne); }
-.barre button { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  font: inherit; font-size: 11px; font-weight: 600; color: var(--discret); background: none; border: 0; cursor: pointer; min-width: 0; }
-.barre .ico { font-size: 20px; line-height: 1; font-weight: 700; }
-.barre button.actif { color: var(--accent); }
-.badge { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  background: var(--rouge); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
-
-@media (min-width: 700px) {
-  .barre { max-width: 640px; margin: 0 auto; border-left: 1px solid var(--ligne); border-right: 1px solid var(--ligne); }
-}
-
-.barre.quatre { grid-template-columns: repeat(4, 1fr); }
-.btn-google { width: 100%; background: #fff; color: #1f1f1f; border-color: #dadce0; }
-.bandeau-ok { margin-top: 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--vert);
-  background: color-mix(in srgb, var(--vert) 12%, var(--carte)); font-size: 14px; }
 .jauge { height: 10px; border-radius: 5px; background: var(--ligne); overflow: hidden; margin-top: 10px; }
 .jauge > span { display: block; height: 100%; border-radius: 5px; background: var(--vert); }
 .jauge.orange > span { background: var(--orange); }
@@ -175,26 +232,17 @@ a { color: var(--accent); }
 .mini-graphe { display: flex; align-items: flex-end; gap: 3px; height: 34px; margin-top: 10px; }
 .mini-graphe span { flex: 1; background: var(--accent-plein); border-radius: 2px 2px 0 0; min-height: 2px; }
 .mini-graphe span.zero { background: var(--ligne); }
-.repli p { margin: 6px 14px; }
-.carte-actions .btn-principal { background: var(--accent-plein); border-color: var(--accent-plein); color: #fff; }
+
+/* ─── Ce qu'un geste a donné : à l'écran quel que soit le défilement ── */
+.bandeau-ok, .bandeau-erreur { position: fixed; z-index: 30; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto;
+  padding: 12px 14px; border-radius: 12px; font-size: 14px; color: var(--texte); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
+.bandeau-ok { border: 1px solid var(--vert); background: color-mix(in srgb, var(--vert) 14%, var(--carte)); pointer-events: none; }
+.bandeau-erreur { border: 1px solid var(--rouge); background: color-mix(in srgb, var(--rouge) 14%, var(--carte)); cursor: pointer; }
 
 /* Protection automatique (2026-10-11) : champs des réglages distants. 16 px : iOS ne zoome pas. */
 .champ { font: inherit; font-size: 16px; min-height: 44px; border-radius: 12px; border: 1px solid var(--ligne); background: var(--carte2); color: var(--texte); padding: 0 12px; box-sizing: border-box; width: 100%; }
 
-/* ─── Pilotage simple (2026-10-23) ─────────────────────────────────── */
-.barre.trois { grid-template-columns: repeat(3, 1fr); }
-.compteur { display: inline-block; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 6px; border-radius: 10px;
-  background: var(--rouge); color: #fff; font-size: 12px; line-height: 20px; text-align: center; letter-spacing: 0; vertical-align: 1px; }
-.chiffre small.tendance { display: block; font-size: 12px; margin-top: 6px; color: var(--discret); overflow-wrap: anywhere; }
-.chiffre small.tendance.bon { color: var(--vert); }
-.chiffre small.tendance.mauvais { color: var(--rouge); }
-.carte p.quand { font-size: 12px; margin-top: 4px; }
-.carte .chiffres { margin-top: 10px; }
-/* Données périmées : une lecture a échoué, l'écran le dit au lieu de montrer un vieux vert. */
-.bandeau-perime { margin: 10px 0 0; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--orange);
-  background: color-mix(in srgb, var(--orange) 12%, var(--carte)); font-size: 14px; color: var(--texte); }
-.verdict.perime { opacity: .6; filter: grayscale(.6); }
-/* Nouveaux comptes (2026-10-23) : une liste compacte, un nom par ligne. */
+/* Les comptes : une liste compacte, un nom par ligne. */
 .liste-comptes { list-style: none; margin: 0; padding: 0; display: grid; }
 .liste-comptes .compte { padding: 10px 0; border-top: 1px solid var(--ligne); min-width: 0; }
 .liste-comptes .compte:first-child { border-top: 0; padding-top: 0; }
@@ -206,28 +254,17 @@ a { color: var(--accent); }
 .carte p.compte-detail { margin-top: 3px; font-size: 13px; }
 .compte-detail .orange { color: var(--orange); font-weight: 600; }
 .compte-detail .vert { color: var(--vert); font-weight: 600; }
-/* Tous les inscrits (2026-10-24) : la tuile qu'on touche, et le retour. */
-.chiffre-bouton { font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%; }
-.chiffre-bouton:active { background: var(--carte2); }
-.chiffre-bouton small.tendance { color: var(--accent); font-weight: 600; }
-.btn-retour { min-height: 44px; margin: 6px 0 4px; }
 #inscritsSuite { margin-top: 12px; }
-#tuileInscrits { margin-top: 10px; }
-.chiffre-bouton.tuile-large { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 14px; align-items: center; padding: 14px 16px; }
-.chiffre-bouton.tuile-large b { grid-row: 1 / span 2; font-size: 30px; }
-.chiffre-bouton.tuile-large span { margin-top: 0; font-size: 14px; color: var(--texte); font-weight: 700; }
-.chiffre-bouton.tuile-large small.tendance { margin-top: 2px; }
 
 /* Croissance et coût (2026-11-01) */
-.carte .geste { margin-top: 8px; font-size: 13px; color: var(--texte, inherit); }
 .liste-cout, .liste-sources { list-style: none; margin: 8px 0 0; padding: 0; display: grid; }
 .liste-cout li { padding: 4px 0; font-size: 14px; }
-.liste-cout li.a-prevoir { color: var(--orange, #f59e0b); }
+.liste-cout li.a-prevoir { color: var(--orange); }
 .liste-sources .source { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--ligne); min-width: 0; }
 .liste-sources .source:first-child { border-top: 0; padding-top: 0; }
 .source-nom { font-weight: 600; overflow-wrap: anywhere; }
 .source-chiffres { color: var(--discret); font-size: 13px; text-align: right; }
-.tableau-retention { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tableau-retention { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
 .tableau-retention th, .tableau-retention td { text-align: right; padding: 6px 4px; border-top: 1px solid var(--ligne); }
 .tableau-retention th:first-child, .tableau-retention td:first-child { text-align: left; }
 .tableau-retention th { color: var(--discret); font-weight: 600; border-top: 0; }

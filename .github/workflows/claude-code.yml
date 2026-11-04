@@ -34,10 +34,6 @@ on:
   issues:
     types: [opened, edited, labeled]
 
-concurrency:
-  group: claude-code-${{ github.event.issue.number || github.event.pull_request.number }}
-  cancel-in-progress: false
-
 jobs:
   claude:
     # Première frontière de confiance. DEUX conditions, pas une : l'INSTRUCTION
@@ -51,26 +47,100 @@ jobs:
     # instruction de PASSIO74, rien d'autre. Un canal séparé, où le contenu
     # externe serait explicitement de la donnée non fiable, reste à construire
     # le jour où ce besoin apparaîtra.
+    #
+    # ⚠️ UN ÉVÉNEMENT N'EST UN ORDRE QUE S'IL EN DONNE UN NOUVEAU (2026-11-04).
+    # La file ci-dessous ne jette plus rien : chaque événement accepté ici lance
+    # donc un agent, sur sa propre branche, jusqu'à 45 min. Le `if:` d'avant
+    # acceptait tout `labeled` et tout `edited` d'une issue portant la mention :
+    # corriger une faute ou poser une étiquette relançait un agent (4 agents ainsi
+    # sur #38 et #41, le 2026-08-19 ; au banc, avec `queue: max` et l'ancien `if:`,
+    # 20 agents pour 10 ordres). Sont des ordres : le label `claude` posé ;
+    # l'ouverture avec la mention ; une modification, de l'issue ou d'un commentaire,
+    # qui AJOUTE la mention ; un nouveau commentaire qui la porte.
+    # `github.event.changes.<champ>` est testé d'abord : sans lui, `contains(null, …)`
+    # vaut faux, et une modification du titre passerait pour un ajout dans le corps.
+    # Reposer le label `claude` reste un second ordre, voulu : c'est la relance du
+    # veilleur de la sentinelle.
+    # Verrou : table de vérité rejouée sur ce texte, tests/unit/sentinelle-workflows.test.mjs.
     if: |
       (
         github.event_name == 'issues' &&
         github.event.issue.user.login == 'PASSIO74' &&
         (
           github.event.label.name == 'claude' ||
-          contains(github.event.issue.body, '@claude') ||
-          contains(github.event.issue.title, '@claude')
+          (
+            github.event.action == 'opened' &&
+            (
+              contains(github.event.issue.body, '@claude') ||
+              contains(github.event.issue.title, '@claude')
+            )
+          ) ||
+          (
+            github.event.action == 'edited' &&
+            (
+              (
+                github.event.changes.body &&
+                contains(github.event.issue.body, '@claude') &&
+                !contains(github.event.changes.body.from, '@claude')
+              ) ||
+              (
+                github.event.changes.title &&
+                contains(github.event.issue.title, '@claude') &&
+                !contains(github.event.changes.title.from, '@claude')
+              )
+            )
+          )
         )
       ) || (
         github.event_name == 'issue_comment' &&
         github.event.comment.user.login == 'PASSIO74' &&
         github.event.issue.user.login == 'PASSIO74' &&
-        contains(github.event.comment.body, '@claude')
+        contains(github.event.comment.body, '@claude') &&
+        (
+          github.event.action == 'created' ||
+          (
+            github.event.changes.body &&
+            !contains(github.event.changes.body.from, '@claude')
+          )
+        )
       ) || (
         github.event_name == 'pull_request_review_comment' &&
         github.event.comment.user.login == 'PASSIO74' &&
         github.event.pull_request.user.login == 'PASSIO74' &&
-        contains(github.event.comment.body, '@claude')
+        contains(github.event.comment.body, '@claude') &&
+        (
+          github.event.action == 'created' ||
+          (
+            github.event.changes.body &&
+            !contains(github.event.changes.body.from, '@claude')
+          )
+        )
       )
+    # ⚠️ LA FILE EST ICI, AU NIVEAU DU JOB, ET ELLE GARDE TOUS LES ORDRES (2026-11-04).
+    # Posée au niveau du run sans `queue: max`, elle ne gardait qu'un run en attente,
+    # et TOUT événement y entrait, même celui que le `if:` écarte ensuite : le
+    # commentaire de n'importe quel compte évinçait l'ordre qui attendait, sans une
+    # trace (0 job, donc pas même le commentaire d'annulation). #316, #327, #337 :
+    # canal muet 6 h, 28 h 51 et 9 h. Mesuré au banc :
+    #   · au niveau du job, le `if:` passe AVANT le groupe : un événement écarté
+    #     n'entre pas dans la file, n'évince personne et n'attend rien. Au niveau du
+    #     run, avec `queue: max`, il attendrait derrière les agents (rejeu de
+    #     l'historique : 17 min au pire) et prendrait une des 100 places, qu'un tiers
+    #     pourrait donc remplir à coups de commentaires ;
+    #   · `queue: max` : les ordres attendent leur tour, jusqu'à 100 par issue. Sans
+    #     elle, un troisième ordre remplace celui qui attend. Au-delà de 100, le
+    #     nouvel arrivant est annulé : il faudrait 100 ordres de Benjamin sur une issue.
+    # Le groupe reste PAR ISSUE : des enquêtes en parallèle ne s'attendent pas.
+    # ⚠️ TOUT ENTRANT DE CE GROUPE PORTE LA CLÉ, CAR C'EST L'ARRIVANT QUI DÉCIDE : un
+    # entrant sans elle annule celui qui attend, même si celui-ci la porte.
+    # `queue: max` avec `cancel-in-progress: true` est une erreur de validation : GitHub
+    # refuse le workflow entier, et le canal se tait. Verrou et fiche :
+    # tests/unit/sentinelle-workflows.test.mjs, docs/journal/telemetrie-pilotage-sentinelle.md
+    # (« LE CANAL NE PERD PLUS UN ORDRE »).
+    concurrency:
+      group: claude-code-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     # Le tour n'est pas une borne suffisante : sans plafond horaire, le défaut
     # GitHub est de 360 minutes. Trois fois plus de tours sans limite de temps
@@ -1082,12 +1152,12 @@ jobs:
           gh issue comment "${NUMERO}" --repo "${DEPOT}" --body-file "${RUNNER_TEMP}/succes.md"
 
       # Un run ANNULÉ n'est ni un succès ni un échec : `if: failure()` ne le voit
-      # pas, et sans cette marche il ne laisse AUCUNE trace sur l'issue. Or la
-      # concurrence de ce workflow (`cancel-in-progress: false`) ne garde qu'UN
-      # run en attente par groupe : un troisième déclencheur annule celui qui
-      # patientait. L'ordre de Benjamin disparaissait donc en silence, et il
-      # n'avait aucun moyen de le savoir — le défaut de classe « silence » que
-      # tout ce canal existe pour rendre impossible.
+      # pas, et sans cette marche il ne laisse AUCUNE trace sur l'issue : le défaut
+      # de classe « silence » que tout ce canal existe pour rendre impossible.
+      # ⚠️ Cette marche ne tourne que pour un job DÉMARRÉ, puis arrêté. Un job annulé
+      # dans la file n'exécute aucune marche : c'est pourquoi #316, #327 et #337 n'ont
+      # laissé aucun commentaire. Depuis `queue: max`, la file n'annule plus rien
+      # (voir `concurrency` plus haut, seul le dépassement des 100 places le ferait).
       - name: Signaler l'annulation sur l'issue
         if: cancelled() && (github.event.issue.number || github.event.pull_request.number)
         env:
@@ -1106,12 +1176,13 @@ jobs:
             echo "| Branche attendue | \`${ATTENDUE}\` |"
             echo "| Run | ${LIEN} |"
             echo
-            echo "Ce run a été annulé avant d'aboutir. Rien n'a été modifié dans le dépôt."
+            echo "Ce run a été arrêté après son démarrage, avant d'aboutir. Ce n'est pas la"
+            echo "file d'attente : elle garde les ordres, jusqu'à 100 par issue."
             echo
-            echo "Cause la plus fréquente : un run plus récent l'a remplacé dans la file."
-            echo "Ce workflow ne garde qu'UN run en attente par issue ; un troisième"
-            echo "déclencheur annule celui qui patientait. Relance la tâche quand la file"
-            echo "est libre — sans cette marche, cette annulation serait passée inaperçue."
+            echo "Ouvre le run pour la cause (annulation à la main, plafond de 45 min, runner"
+            echo "perdu) et pour voir jusqu'où il est allé. Pour relancer : retire puis repose"
+            echo "le label \`claude\`, ou poste un nouveau commentaire. Modifier l'issue ne"
+            echo "relance rien, sauf si la modification ajoute la mention."
             echo
             echo "---"
             echo "_Generated by [Claude Code](https://claude.ai/code)_"

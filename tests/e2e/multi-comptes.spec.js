@@ -293,8 +293,13 @@ test.describe("messagerie entre 2 comptes réels", () => {
       // supaInsertNotif est fire-and-forget : laisser les inserts atterrir.
       await pageB.waitForTimeout(2500);
 
-      // ── 4. Best-effort : A a-t-il reçu en temps réel ? (dépend de la
-      //     publication realtime de la table notifications — informatif) ──
+      // ── 4. Best-effort : A a-t-il reçu en temps réel ? Informatif. Depuis R25
+      //     (2026-11-03) le direct ne dépend plus de la publication de
+      //     `notifications` (elle en est sortie) mais du trigger
+      //     `trg_diffuser_notification` du projet visé : sans la migration
+      //     `migration_realtime_diffusion_privee_2026-11-03.sql`, rien n'arrive en
+      //     direct. ⚠️ La condition est faible : une relecture REST la satisfait
+      //     aussi — la preuve stricte reste l'essai à deux comptes après application. ──
       let rtKinds = [];
       try {
         await pageA.waitForFunction(
@@ -304,7 +309,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
         rtKinds = await pageA.evaluate(() => (state.notifications || []).filter((n) => n.fromSupabase).map((n) => n.kind));
         log("realtime OK chez A: " + JSON.stringify(rtKinds));
       } catch (e) {
-        log("realtime non livré sous 8s (publication notifications ?) — on valide via le chargement");
+        log("realtime non livré sous 8s (trigger trg_diffuser_notification appliqué sur ce projet ?) — on valide via le chargement");
       }
 
       // ── 5. Garantie : A charge ses notifications depuis Supabase ──

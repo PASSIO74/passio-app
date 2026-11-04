@@ -54,6 +54,25 @@ geste, pas un effet de bord). Il n'applique rien et ne parle à aucun projet.
   les tests mesurent les refus du CLI et la décision pure, jamais un
   « envoyable » servi par un faux.
 
+**Exception ASTRA-61 bis (21/09/2026, décision de Benjamin).** PASSIO n'a qu'un
+compte humain. Pour le seul `mainteneur_unique` de `relecteurs-autorises.json`,
+sur sa propre PR, une revue `COMMENTED` est admise (GitHub interdit de
+s'approuver soi-même). Son corps doit porter le marqueur « Contre-revue technique
+indépendante », la phrase « revue de mainteneur unique : j'assume l'application
+de cette migration », le fichier et `cible: <ref>`. L'attestation et le journal
+d'application l'inscrivent (`auto_revue_mainteneur_unique: true`). **Ce n'est
+pas une revue indépendante, c'est une décision tracée** : AGENTS.md, et
+`scripts/lib/barriere-migration.js`. Exemples : les deux attestations de R25
+(04/11/2026). Retirer le champ `mainteneur_unique` rétablit la règle stricte.
+
+**Un retour arrière n'a pas de tableau de verdict.** Le bloc `--|` d'une
+migration se termine par `commit;` sans requête de contrôle. Envoyé par
+`appliquer-migration.mjs`, il serait validé, PUIS l'outil sortirait en code 1
+(« aucune ligne de verdict rendue »), et il lui faudrait en plus une attestation
+de sa propre empreinte. Il se joue donc à l'éditeur SQL du tableau de bord
+(canal ③), puis il se MESURE au canal ① : la migration donne, dans son en-tête,
+l'état d'arrivée attendu.
+
 ## Appliquer depuis le poste (Windows, PowerShell)
 
 Le script lit le fichier, l'attestation et la revue **dans le clone où il est
@@ -73,6 +92,12 @@ node scripts/appliquer-migration.mjs migrations/<fichier>.sql --projet njkiyokls
 PowerShell, le passage du `--` à npm dépend des versions, et sans `--projet` la
 barrière refuse (rien ne part, rien n'est appliqué). Ensuite : mesurer au
 canal ①, jamais le tableau ; puis `git worktree remove` du dossier, depuis le clone.
+
+## Éprouver une migration avant la production
+
+Le job « Suites production (comptes réels) » vise le **staging**, jamais la production : le relancer après une application en production ne prouve rien. Pour éprouver une migration en conditions réelles, attester aussi `fcksxofaelcdmmifnwjo` (la revue doit nommer cette cible), l'y appliquer, puis laisser ce job tourner sur la tête de la PR. Fait pour R25 le 04/11. Le staging a dérivé (`docs/STAGING.md`) : un contrôle de publication de son verdict peut y dire ECHEC sans défaut de la migration.
+
+⚠️ **Une migration à prérequis client (règle ④), une fois au staging, y fait rougir toute PR dont la base précède ce client** : la suite teste l'ancien client contre la base migrée. Vécu le 2026-11-04 : deux rouges de `multi-comptes` sur #709, le second sur un run créé 14 minutes après la fusion du client, encore fusionné sur l'ancienne base. Avant de chercher un défaut, lire `HEAD is now at … into <base>` dans le journal du job. Le remède est une relance sur une base à jour ; `gh run rerun` garde la fusion du run d'origine. Appliquer au staging juste avant de fusionner le client, pas avant.
 
 ## Ce que la barrière ne fait pas
 

@@ -359,3 +359,19 @@ test("ASTRA-58 ④ une entrée `{}` dans l'inventaire : archive INVALIDE (propri
     assert.equal(m.objets.get("content/systeme.png").owner, OWN_B, "rien n'a été écrit");
   });
 });
+
+// ═══ CONTRE-REVUE FINALE DE R25 (2026-11-04) ═══
+test("validation de l'archive : une ligne imbriquée sur 3 000 niveaux portant un nombre à risque ne fait PAS refuser l'archive — elle compte et vérifie la syntaxe, sans relire au chiffre près (RÉINJECTION : par lireNdjson, « INVALIDE », sans recours)", () => {
+  const a = archive({ fichiers: { "content/photos/u/a.jpg": "AAA" } });
+  const ligne = `{"user_id":"u1","data":${"[".repeat(3000)}12345678901234567890${"]".repeat(3000)}}`;
+  a.man.tables = { user_state: { exporte: 1, octets: ligne.length } };
+  fs.writeFileSync(path.join(a.dossier, "user_state.ndjson"), ligne + "\n");
+  fs.writeFileSync(path.join(a.dossier, "manifeste.json"), JSON.stringify(a.man));
+  const v = validerArchive(contexte(a));
+  assert.deepEqual([v.ok, v.bloquants], [true, []], JSON.stringify(v.bloquants));
+  // …et une ligne vraiment illisible reste un refus, cause entière.
+  fs.writeFileSync(path.join(a.dossier, "user_state.ndjson"), '{"user_id":"u1","data":[1,\n');
+  const v2 = validerArchive(contexte(a));
+  assert.equal(v2.ok, false);
+  assert.ok(v2.bloquants.some((b) => /table user_state : NDJSON illisible/.test(b)), JSON.stringify(v2.bloquants));
+});

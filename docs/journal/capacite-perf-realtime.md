@@ -21,6 +21,8 @@
 - 📉 CAPACITÉ, QUATRE LOTS : CE QUI EST LIVRÉ, CE QUI ATTEND UNE MAIN HUMAINE, ET CE QUI A ÉTÉ MESURÉ (2026-09-21)
 - 🚪 UN VISITEUR NE LIT PAS LE COMPTE QU'IL N'A PAS (2026-10-11)
 - 🗂️ INDEX ET REALTIME : CE QUE LA MESURE A RETIRÉ, ET CE QU'ELLE A LAISSÉ (2026-11-03)
+- 🕳️ CE QUE REALTIME DIT D'UNE SUPPRESSION — LA CLÉ PRIMAIRE, À TOUS, SANS RLS (2026-11-03, R25) → `rid` opaque depuis le 2026-11-04
+- 🔒 R25 — UNE TABLE PUBLIÉE LIVRE SES SUPPRESSIONS À TOUT LE MONDE, ET UNE TABLE DÉPUBLIÉE FAIT TAIRE SON CANAL (2026-11-03)
 - 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 
 ---
@@ -1057,6 +1059,231 @@ aucune donnée), banc `tests/sql/migration-index-realtime.test.sh` (18/18).
   ⚠️ **Piège du banc** : une policy de `realtime.messages` n'est PAS un filtre de lignes, elle OUVRE ou
   FERME la souscription au topic — tout ou rien. Le premier jet du banc attendait « 1 ligne » et
   mesurait 3 : c'était l'attente qui était fausse, pas la policy.
+
+## 🕳️ CE QUE REALTIME DIT D'UNE SUPPRESSION — LA CLÉ PRIMAIRE, À TOUS, SANS RLS (2026-11-03, R25) → `rid` opaque depuis le 2026-11-04
+
+Risque résiduel R25 de l'audit du 2026-11-02, trouvé en contre-revue du lot C-04 et **lu dans le code de
+production** (`realtime.apply_rls`, canal ①), pas supposé. Migration
+`migrations/migration_realtime_identite_opaque_2026-11-03.sql`, banc
+`tests/sql/migration-realtime-identite-opaque.test.sh` (copies md5 de production d'`apply_rls` et de ses
+dépendances, nourries de WAL réellement décodé). **Appliquée au staging puis en production le 2026-11-04 (12:45 UTC), mesurée au canal ①.**
+
+**Ce que fait `apply_rls` d'un DELETE — trois faits, dans le code :**
+1. il n'applique **aucune RLS** (`if not is_rls_enabled or action = 'DELETE' then visible_role_sub_ids = … ||
+   subscription_id`) : tout abonné à la table reçoit l'événement, `anon` compris par le sujet `realtime:db` ;
+2. la charge `old_record` est l'**identité de réplication** de la ligne, réduite aux colonnes de **clé
+   primaire** quand la RLS est active (« we can't secure deletes so filter to pkey ») ;
+3. le **filtre** d'un abonnement est évalué sur cette identité (`is_visible_through_filters(old_columns, …)`).
+Donc, avant : `conv_members` livrait `(conv_id, user_id)` à chaque départ — qui quitte quelle discussion
+d'activité `evgrp_<activité>` ; `notifications` livrait son `id`, qui ENCODE `n_pa_<activité>_<compte>` ou
+`n_fr_<A>_<V>` ; `conv_reads` et `post_likes`, leurs couples de compte. Et `comment_interactions`, en identité
+FULL, laissait filtrer un DELETE sur **n'importe quelle colonne** (`user_id=eq.<victime>`) : un oracle, même
+si la charge ne portait que l'`id`.
+
+**Le correctif est côté base seul, le client ne change pas.** Sur les quatre tables : une colonne opaque
+`rid`, **aléatoire** (53 bits : les chiffres 17 à 32 d'un `gen_random_uuid()`, masqués à 2^53 − 1), un index
+unique sur elle seule, et `replica identity using index`. **53 et pas 63** : au-delà de 2^53, un entier n'est
+plus exact en JavaScript — la sauvegarde l'arrondissait (`2906581903110193585` → `…193700`), et deux `rid`
+confondus dans l'archive se percutaient à la restauration ; et la forme à 63 bits (chiffres 1 à 16) n'en avait
+que 59 d'aléatoires, le quartet de version de l'UUID tombant dans la valeur. Un DELETE ne publie plus que `rid` ; `rid` n'est pas une colonne de clé primaire, donc
+`old_record` est **nul** ; un filtre sur `conv_id`, `user_id` ou `id` ne reconnaît plus aucun DELETE.
+`comment_interactions` revient en identité par défaut (sa charge reste `{id}`, l'oracle se ferme). Clés,
+RLS, droits et publication ne bougent pas.
+
+⚠️ **UNE PREMIÈRE VERSION TIRAIT `rid` D'UNE SÉQUENCE, ET C'ÉTAIT UNE NOUVELLE FUITE** (contre-revue des
+invariants). Un abonné lit le `rid` de SES lignes posées juste avant et juste après celle d'une victime,
+s'abonne avec `rid=in.(…)` — le filtre est accepté, `rid` étant lisible — et apprend l'heure exacte de
+l'effacement d'une ligne qu'il ne peut pas lire ; `anon` bissectait avec `rid=lt.N`. Une colonne qu'on ajoute
+pour cacher une clé ne doit **rien ordonner** : aléatoire, ou elle redevient un horodatage.
+⚠️ **UNE COLONNE QUE LE CLIENT PEUT ÉCRIRE REDEVIENT UN ORACLE** : `authenticated` tient l'INSERT de table, et
+`notifications_insert_own_author` laisse X écrire une notification adressée à V. Sans garde, X y PLANTE un
+`rid` de son choix, s'abonne à `rid=eq.<planté>` et apprend l'instant où V l'efface — une ligne qu'il ne peut
+pas lire (mesuré au banc, garde coupée puis active). Sur la première version, poser la prochaine valeur de la
+séquence faisait en plus échouer l'insertion suivante de n'importe qui (23505), `follows_notifier` compris. La
+garde `trg_rid_opaque` (SECURITY DEFINER, `search_path` vide) tire un `rid` neuf à chaque INSERT, quelle que
+soit la valeur fournie, et garde l'ancien sur un UPDATE de `rid` ; la restauration (`restaurer-donnees.js`)
+désactive les déclencheurs et garde les valeurs de l'archive. Le verdict exige la garde ARMÉE (sans clause
+`WHEN`) : une garde « présente » ne prouvait rien.
+⚠️ **NE JAMAIS SUPPRIMER UN `*_rid_key`** : l'index porte l'identité de réplication d'une table PUBLIÉE ; sans
+lui, PostgreSQL refuse TOUT UPDATE et DELETE de la table (« does not have a replica identity and publishes
+updates »). L'avis « index jamais lu » de Supabase le signalera toujours — ce dépôt a déjà retiré des index
+sur ce critère (F-05). La gate `scripts/audit-identite-replication.js` (`npm run verif`) refuse une migration
+qui le retire sans rendre d'abord une identité à la table — et, sauf marqueur motivé, tout ce qui contourne ce
+refus par le NOM qu'elle suit : un index renommé puis supprimé, un `drop constraint` (un `add constraint … using
+index` renomme l'index), une table reconstruite, renommée ou déplacée (elle revient en identité DEFAULT, sans `rid`
+ni garde), une colonne `rid` renommée, la garde retirée ou désarmée (`disable trigger`, `enable replica trigger`,
+`create or replace trigger … when`), `replica identity` FULL ou `using index` sur une table publiée, y compris
+dans le fichier même qui la publie (contre-revue finale, un test rouge par règle).
+⚠️ **UNE RECONSTRUCTION DOIT RENDRE L'IDENTITÉ** : le générateur de schéma des sauvegardes
+(`scripts/schema-executable.js`) n'écrivait aucun `replica identity` — un projet reconstruit rouvrait R25 en
+silence, pendant que `restaurer-donnees.js --verifier` disait « contenu identique ». Corrigé dans le même
+lot ; `docs/RECUPERATION.md` fait rejouer le verdict de la migration après une reprise.
+⚠️ **La migration ne tient jamais un verrou en en attendant un autre** : les cinq tables d'un coup, en
+`NOWAIT`, en boucle — attendre en tenant bloquait les lecteurs, et un interblocage avec l'instruction
+préparée d'`apply_rls` a été reproduit.
+⚠️ **…Y COMPRIS DANS SON VERDICT** (contre-revue finale, 2026-11-04, mesuré) : `pg_publication_tables` OUVRE
+chaque table publiée (`pg_get_publication_tables` → `table_open(…, AccessShareLock)`, PostgreSQL 16 comme
+17.6, dès qu'aucune liste de colonnes n'est posée). Tenant les cinq tables en ACCESS EXCLUSIVE, le verdict
+attendait sur `posts` dès qu'une autre session la verrouillait : chaque client des cinq tables bloqué jusqu'au
+`lock_timeout`, puis la migration entière annulée. Le verdict lit `pg_publication_rel` (et
+`pg_publication_namespace`), qui n'ouvre aucune table. Règle : **dans une migration qui tient des verrous,
+aucune lecture qui en prend d'autres** — vues système comprises.
+⚠️ **NE PAS SUPPRIMER (NI RENOMMER) UNE COLONNE D'UNE TABLE PUBLIÉE SANS DRAINER LE SLOT** (même revue,
+mesuré avec le vrai wal2json et l'`apply_rls` de production) : le décodage relit les changements avec le
+catalogue HISTORIQUE (la colonne y existe), `apply_rls` avec le catalogue COURANT
+(`has_column_privilege(…, 'rid', 'SELECT')` → « column does not exist ») ; `pg_logical_slot_get_changes` a
+déjà avancé le slot, ce qui n'est pas transactionnel : le lot entier — messages d'autres tables compris — n'est
+jamais livré en direct. Le retour arrière de R25 GARDE donc `rid` (inerte : identité, garde et index retirés) ;
+la supprimer se fait à part, après drainage (procédure dans l'en-tête de la migration).
+⚠️ **Un verdict compare à l'IDENTIQUE, jamais par morceaux** : « le défaut contient `gen_random_uuid()`,
+`17, 16` et `9007199254740991` » laissait passer `(…) & 7` (3 bits) ; une regex de corps de garde ancrée à la
+seule fin laissait passer un `if new.rid is not null then return new;` en tête. Le défaut se compare au
+déparse, par le même serveur, d'une colonne témoin portant l'expression exacte ; le corps, par une regex
+ancrée aux deux bouts. ⚠️ Et `pg_get_expr(adbin, adrelid)` OUVRE la table dont il déparse le défaut (mesuré sur
+PostgreSQL 16) : laissé au planificateur, il était évalué sur tous les défauts de `pg_attrdef`, `posts` compris, et
+le verdict attendait de nouveau sur une table verrouillée ailleurs — les quatre défauts de `rid` se lisent d'abord
+par un CTE `MATERIALIZED`, et seuls eux sont déparsés.
+⚠️ **Après un retour arrière, la réapplication TIRE DE NOUVEAU chaque `rid`** : la colonne gardée sans garde est écrite par le
+client pendant la fenêtre (un `rid` planté reviendrait, ou un doublon ferait échouer l'index unique — les deux
+mesurés) ; la migration le voit (colonne présente, garde absente) et tire chaque valeur de nouveau avant de
+reconstruire l'index. La réécriture n'est pas publiée par le décodage logique (0 changement, mesuré).
+
+**Ce qui reste, dit tel quel** : un abonné sans filtre voit qu'UN effacement a eu lieu, et quand, sur ces
+tables ; `posts`, `post_comments`, `conv_messages`, `event_comments` et `profiles` envoient toujours leur
+identifiant unique — une part aléatoire et l'instant de création : il dit QUAND la ligne effacée avait été
+créée, jamais QUI ni OÙ — mais **`video_lives` envoie `vl_<8 premiers caractères du compte>_<horodatage>`**
+(fabriqué par le client) : sans fuite aujourd'hui parce que ses lignes sont lisibles par tous, à revoir le jour
+où elles ne le seraient plus ; un filtre sur `rid` ne reconnaît que les lignes dont l'abonné connaît le `rid`
+(qu'il lit ou a lues), et `rid` ne change jamais — la poignée survit à un blocage ou à une exclusion. Hors temps
+réel, le même fait « qui a effacé quoi » se sonde encore par l'identifiant PRÉVISIBLE `n_<message>_<8>` d'une
+notification de message (un INSERT refusé en 23505 tant qu'elle existe) — préexistant, R32. **Après application** (`04-LIVRAISON.md` § 8.3) : mesurer au canal ①
+`relreplident` des cinq tables, `indisreplident`, le défaut de `rid` et la garde. Le fonctionnel se prouve
+AVANT, sur le staging : les « Suites production » de la CI visent le STAGING (SUP-04), jamais la production — un
+UPDATE ou un DELETE refusé faute d'identité y tomberait au rouge. Côté
+client, `old_record` nul arrive en `payload.old = {}` (supabase-js, `convertChangeData`).
+
+## 🔒 R25 — UNE TABLE PUBLIÉE LIVRE SES SUPPRESSIONS À TOUT LE MONDE, ET UNE TABLE DÉPUBLIÉE FAIT TAIRE SON CANAL (2026-11-03)
+
+Risque résiduel R25 de l'audit du 2026-11-02 (`.passio/audits/AUDIT_PASSIO_2026-11-02/05-RISQUES-RESIDUELS.md`),
+à fermer « sans perdre les fonctions temps réel ». Migration `migrations/migration_realtime_diffusion_privee_2026-11-03.sql`,
+banc `tests/sql/migration-realtime-diffusion-privee.test.sh` (65/65), verrou client `tests/e2e/realtime-diffusion-privee.spec.js` (11). **Appliquée au staging puis, client déployé d'abord, en production le 2026-11-04 (14:25 UTC), mesurée au canal ①.**
+
+⚠️ **C'EST LA SECONDE COUCHE, APRÈS L'IDENTITÉ OPAQUE DE LA FICHE PRÉCÉDENTE.** Les deux lots traitaient R25 sans se connaître ; fusionnés à blanc le 04/11, ils sont compatibles dans les deux ordres (mêmes bancs verts, même état final). L'identité opaque retire la clé de CHAQUE suppression des quatre tables, mais un abonné voit encore QU'un effacement a lieu ; ce lot retire tout le flux pour `conv_members` et `notifications`, et deux liaisons `postgres_changes` sur les tables les plus écrites. ⚠️ Le verdict de la première couche exige « les 11 mêmes tables » : **rejoué après ce lot, sa ligne 10 dit ECHEC, et c'est attendu** (neuf tables).
+
+⚠️ **LE DÉFAUT EST DANS LE MOTEUR, PAS DANS NOS POLICIES.** `realtime.apply_rls` (code de production) évalue
+la RLS d'un INSERT ou d'un UPDATE par une requête préparée sous le rôle de l'abonné, et la SAUTE pour un
+DELETE (« if RLS enabled, we can't secure deletes so filter to pkey ») : la clé primaire part vers toute
+souscription dont le filtre la laisse passer — et le filtre comme l'action (`action_filter`) sont choisis par
+le CLIENT au join. Les liaisons INSERT du produit ne recevaient donc rien ; un abonné qui DEMANDE `DELETE` ou
+`*`, si. **Reproduit au banc avec le `apply_rls` de production**, ce que l'audit n'avait pas pu
+faire : un compte sans lien reçoit `(evgrp_ev_rando, A)` au départ de A, et le même compte ne reçoit PAS
+l'arrivée (la RLS s'applique à l'INSERT). ⚠️ **Et sans compte** : `anon` garde SELECT de table sur
+`conv_members` et `notifications` (mesuré au canal ①), et `realtime:db` lui est ouvert
+(`passio_rt_recevoir_visiteur`) — la clé anon publique suffisait. Volumes depuis la remise à zéro des
+compteurs (2026-05-07) : 247 DELETE de `conv_members`, 2 895 de `notifications` pour 3 082 INSERT.
+
+**Le remède a deux moitiés, et une seule ferme la fuite.** ① les deux tables SORTENT de la publication :
+`realtime.list_changes` ne passe à wal2json que les tables de la publication (`add-tables`), plus aucun
+DELETE n'atteint le moteur. ② deux triggers AFTER INSERT (SECURITY DEFINER, `search_path` vide, EXECUTE
+retiré à `anon`/`authenticated` — un trigger ne vérifie pas EXECUTE au déclenchement, éprouvé au banc)
+poussent la ligne au SEUL destinataire sur `user:<user_id>`, le topic du canal v3 des messages. La policy
+« Utilisateur reçoit ses messages » ne l'ouvre qu'à son titulaire ; aucune policy n'y laisse émettre un
+client, donc ce qui y arrive vient du serveur. ② garde la fonction ; c'est ① qui ferme.
+
+⚠️ **LE PIÈGE DU LOT EST UN NOM D'ÉVÉNEMENT.** Le client v3 traitait tout `INSERT` reçu sur `user:` et porteur
+d'un `conv_id` comme un MESSAGE ; une ligne `conv_members` en porte un. Diffusée sous `INSERT` (le choix
+naturel, celui de `broadcast_changes` avec `TG_OP`), elle aurait peint chez chaque onglet resté sur l'ancien
+code une bulle vide, joué le son et affiché « Passionné t'a envoyé un message ». D'où `conv_members:INSERT` et
+`notifications:INSERT` — supabase-js compare un nom de liaison broadcast par ÉGALITÉ, insensible à la casse
+(lu dans `js/vendor/supabase-js-2.116.0.js`) — et une garde `p.table` dans la liaison des messages.
+
+⚠️ **« UNE TABLE HORS PUBLICATION NE REÇOIT RIEN » ÉTAIT INCOMPLET, ET C'EST CE QUI FIXE L'ORDRE.** La gate
+`audit:realtime` l'écrivait depuis le 2026-09-19. Lu dans le serveur Realtime
+(`PostgresCdcRls.Subscriptions.create`, `RealtimeChannel`) : les liaisons `postgres_changes` d'un canal sont
+insérées en UNE transaction, et une table absente (0 ligne) l'annule ENTIÈRE — un message `system` que le
+produit n'écoute pas, réessayé toutes les 5 à 10 s, le canal restant ouvert et son broadcast intact. Un
+onglet resté sur l'ancien code aurait donc perdu à son join suivant TOUT `realtime:db` (fil, commentaires,
+accusés de lecture, lives). **Ordre : le client EN LIGNE d'abord, la migration ensuite, dans la foulée** (entre
+les deux, ces tables n'ont pas de direct ; la cloche se relit au démarrage, au réveil et à l'ouverture, une
+conversation neuve apparaît à son premier message). La PWA recharge un onglet visible dans la minute d'un
+déploiement (`js/pwa-detect.js`). Retour arrière : la base d'abord, le client ensuite — l'ordre inverse.
+La gate et son manifeste le disent désormais.
+
+- **La poussée ne peut pas faire échouer l'écriture** : `realtime.send` rattrape ses erreurs mais pas son
+  absence ni un changement de signature ; le bloc `exception` du trigger le couvre (banc : `send` renommée,
+  la notification et l'ajout s'écrivent, l'avertissement nomme la cause, le verdict rougit).
+- **La charge est écrite colonne par colonne**, pas `to_jsonb(new)` : `origine` ne voyage pas, et une colonne
+  ajoutée demain ne partira pas d'elle-même. Le verrou ⑥ exige que les colonnes LUES par le client soient
+  incluses dans celles que le serveur POUSSE (une colonne lue et jamais envoyée rendrait `undefined`).
+- **Le topic `user:` s'ouvre dans TOUS les modes** (soupapes v1/v2 comprises), la liaison des messages en v3
+  seulement — sans quoi un appareil en v1 aurait perdu ses notifications en direct sans un bruit.
+- Le verdict de la migration a treize lignes, chacune éprouvée au banc contre la mutation qu'elle garde
+  (table republiée, autre table retirée, trigger désactivé, `search_path` retiré, EXECUTE rendu par un autre
+  concédant, policy du topic retirée ou élargie, policy d'émission sur `user:`, canal des messages coupé,
+  fonction réécrite sous « INSERT »).
+
+⚠️ **QUATRE PIÈGES DE BANC.** ① `apply_rls` rend UNE ligne PAR RÔLE : prendre « la première » rendait un faux
+« rien » (anon se trie avant authenticated) ; ② `claims_role` de `realtime.subscription` est une colonne
+GÉNÉRÉE, que `pg_attrdef` affiche comme un défaut — recopiée en `default`, PostgreSQL la refuse ; ③ le bloc
+différé de `supaInit` (~2 s) relit les notifications : tombé dans le cas du réveil, il comptait une relecture
+que le réveil n'avait pas faite — **1 rouge sur 3**, même piège que `capacite-socket-au-repos`, même remède ;
+④ la gate textuelle prend une assertion `'table: "x"'` pour une souscription si le marqueur CDC est à moins
+de 400 caractères — son propre piège du fantôme, rejoué par le titre d'un test.
+**Éprouvé par réinjection** : quatre mutations de la migration (retrait de publication supprimé, événement
+« INSERT », destinataire = auteur, bloc `exception` retiré) et cinq du client (garde `p.table`, nom
+d'événement, topic en v3 seulement, garde de destinataire, ancienne liaison remise) rougissent toutes.
+
+**CE QUE CE LOT NE PROUVE PAS** : aucun serveur Realtime ne tourne au banc. La livraison de bout en bout se
+mesure après application — au canal ① (les deux tables hors de `pg_publication_tables`, les deux triggers
+présents) et à deux comptes (une notification et un ajout reçus sans recharger ; `multi-comptes.spec.js`
+journalise « realtime OK » sur le staging quand la migration y est appliquée).
+**CE QUI L'A PROUVÉ, LE 2026-11-04** : ce « realtime OK » se satisfait d'une relecture REST. Un essai ponctuel au staging
+(vrai client, vrai serveur Realtime, trois comptes jetables, lectures REST de `notifications` bloquées chez le destinataire)
+a rendu : notification reçue en 268 ms par une trame `notifications:INSERT`, ajout à une conversation en 727 ms par
+`conv_members:INSERT`, tiers refusé (`CHANNEL_ERROR`) et sa fausse notification jamais livrée, visiteur sans compte muet
+sur ces deux tables alors que son témoin `post_likes` reçoit la suppression, clés vides. ⚠️ `send` hors d'un canal rejoint
+répond « ok » : c'est le repli REST de supabase-js, seule la réception chez la cible compte. Détail, et ce qui reste à
+prouver en production : § 8.7 de `.passio/audits/AUDIT_PASSIO_2026-11-02/04-LIVRAISON.md`.
+**CE QUI RESTE PUBLIÉ** : `conv_reads`, `post_likes` et `comment_interactions`. Leurs clés ne partent plus (fiche précédente), mais leurs suppressions restent des événements. `conv_reads` porte les accusés de lecture en direct ; `post_likes` n'a plus d'abonné produit, seuls les bancs de charge l'écoutent encore. **Une table dont la clé primaire DIT quelque chose ne publie pas cette clé.**
+
+**DEUX CONTRE-RELECTURES (2026-11-03, `passio-red-team` et `audit-passio`, lecture seule, canal ① pour la
+première) — aucun P0, ce que le lot ferme est fermé ; ce qu'elles ont trouvé, et ce qui en a été fait :**
+- ⚠️ **CHAQUE NOTIFICATION EN DIRECT VIDAIT LA CLOCHE** (défaut préexistant, dans le code déplacé tel quel) :
+  `mergeSupaNotifs` attend la liste COMPLÈTE du serveur et remplace les notifications distantes par celles
+  qu'on lui passe — l'ancien gestionnaire lui passait la seule nouvelle. Corrigé (`_rtNotificationRecue` lui
+  rend aussi celles qu'on tient) ; le cas ③ partait d'une cloche VIDE et ne pouvait pas le voir.
+- Le toast partait pour un émetteur bloqué (la cloche l'écartait) et affichait du texte neutralisé pour le
+  HTML (« &lt;b&gt; », « L&#39;équipe ») dans un `textContent` : il ne montre plus que ce que la cloche a
+  gardé, en texte brut (`_texteBrutNotif`, jamais par `innerHTML` d'un élément détaché, qui charge les images
+  et déclenche leurs `onerror`).
+- **La base tranche, pas la poussée** (`_rtAjoutConversationRecu`) : rien n'est matérialisé si la relecture
+  ne me compte pas parmi les membres (ajouté puis retiré aussitôt), pour un 1:1 sans correspondant lisible (le
+  CRÉATEUR reçoit sa propre ligne avant celle du pair), ou si l'entrée a été posée pendant la lecture ;
+  `confirmCreateGroup` (app-05) fusionne par identifiant au lieu d'un `unshift` aveugle (groupe en double).
+  Le `catch` vide journalise ; l'appel de `_subscribeUserTopic` dans `supaSubscribe` est gardé (une exception
+  y aurait privé la session de TOUT son temps réel).
+- **Le verdict ÉPROUVE au lieu de lire** : une sonde dans une sous-transaction annulée écrit une notification
+  pour un destinataire sentinelle, vérifie la poussée, puis rejoue sous `authenticated` lecture et émission
+  sur `user:` — `realtime.topic() ~~ '%'` ou `(1 = 1)` passaient un contrôle textuel. Une ligne TÉMOIN écrite
+  par le propriétaire sépare les contrôles de lecture de la poussée (premier jet : table vide = « personne ne
+  lit », titulaire compris, trois faux ECHEC au banc). Rien ne reste, rien n'est diffusé.
+- Poussée seulement vers un uuid (une ligne historique non-uuid existe), `content` borné à 500 (non borné en
+  table) ; retour arrière rejouable ; propriétaire non superutilisateur éprouvé au banc (sans BYPASSRLS, la
+  poussée est perdue en WARNING — la sonde le dit).
+- ⚠️ **L'ORDRE « CLIENT D'ABORD » EST TENU PAR L'OUTIL** : règle ④ de `appliquer-migration.mjs` — une migration
+  qui déclare `-- PREREQUIS-CLIENT: <motif>` n'est envoyée à la production que si le bundle SERVI porte le
+  motif (illisible = refus). ⚠️ Le bundle n'est pas une balise `<script src>` : `build.js` l'injecte par un
+  chargeur (`s.src = "app.js?v=…"`) — le premier jet de la règle, vert sur un HTML fabriqué, était aveugle sur
+  le vrai build ; essayé sur un build réel avant d'être cru.
+- Les skills `/realtime` et `/migration` conseillaient exactement le geste que R25 interdit (« ajouter la
+  table à la publication », « table absente = 0 événement ») : corrigés, comme `migration-checker`.
+- **Ce qui reste, et le registre le dit** : la même information par SONDAGE (`is_conv_member`, C-02 —
+  `promouvoir_attente` ne nomme plus le promu depuis R24, appliquée le 04/11) ; R36 (`notifier_mentions` lit
+  `c.name`, colonne absente : aucune @mention de conversation n'est notifiée — trouvé en passant, mesuré de
+  nouveau le 04/11). `comment_interactions` : son gestionnaire DELETE ne sert à rien, il sort sur
+  `!r.comment_id`. Et `realtime.messages` garde la charge poussée
+  jusqu'à la chute de sa partition, comme celle des messages.
+
 
 ## 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 

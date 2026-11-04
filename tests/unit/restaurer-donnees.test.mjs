@@ -59,7 +59,7 @@ test("③ l'INSERT ne nomme QUE les colonnes reçues — les autres prennent leu
   // refuse toute valeur explicite — le journal des migrations tombait entier.
   assert.match(sql, /insert into public\."follows" \("follower_id", "following_id"\) overriding system value select "follower_id", "following_id" from json_populate_recordset/);
   assert.doesNotMatch(sql, /created_at/, "une colonne absente de l'archive ne doit pas être nommée (elle serait posée à NULL)");
-  assert.match(sql, /on conflict do nothing/);
+  assert.match(sql, /on conflict do nothing/, "sans clé primaire connue : l'ancienne clause");
   assert.match(sql, /disable trigger user[\s\S]*enable trigger user/, "triggers utilisateur coupés puis rendus");
   assert.doesNotMatch(sql, /disable trigger all/i, "les contraintes (FK, CHECK) restent actives : jamais TRIGGER ALL");
 });
@@ -142,4 +142,249 @@ test("④ quinquies médias multipart : un eTag « <hex>-<n> » n'est pas un MD5
   assert.deepEqual(comparerMedias(fichiers, tronque).divergents, ["content/videos/u/reel_a.mp4"]);
   // Un eTag simple (pas de « -n ») reste un MD5 et se compare.
   assert.deepEqual(comparerMedias([{ name: "x", taille: 3, md5: "900150983cd24fb0d6963f7d28e17f72" }], [{ name: "x", taille: "3", etag: '"d41d8cd98f00b204e9800998ecf8427e"' }]).divergents, ["x"]);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ⑤ R25 (2026-11-04) — UN NOMBRE DE L'ARCHIVE EST CELUI DE LA BASE, AU CHIFFRE
+// PRÈS. `r.json()` puis `JSON.stringify` arrondissait tout entier au-delà de
+// 2^53 : 2906581903110193585 et 2906581903110193586 s'écrivaient tous deux
+// 2906581903110193700. Deux lignes distinctes se confondaient alors sur une
+// clé unique (`<table>_rid_key`), et `on conflict do nothing` en jetait une à
+// la restauration. La vérification, qui arrondissait les deux côtés pareil,
+// disait « conforme ». Lecture exacte : scripts/lib/json-exact.js.
+// ─────────────────────────────────────────────────────────────────────────
+const JE = require("../../scripts/lib/json-exact.js");
+const { _internes: SAUV } = require("../../scripts/sauvegarde-donnees.js");
+const GRAND_A = "2906581903110193585", GRAND_B = "2906581903110193586";
+
+test("⑤ la sauvegarde écrit chaque ligne TELLE QUE LA BASE L'A RENDUE — un entier au-delà de 2^53 garde ses chiffres, deux valeurs voisines restent deux (RÉINJECTION : r.json() les confond)", async () => {
+  assert.equal(JSON.parse(GRAND_A), JSON.parse(GRAND_B), "prémisse : JSON.parse confond les deux valeurs");
+  const page = `[{"id":"a","rid":${GRAND_A},"prix":10.00},{"id":"b","rid":${GRAND_B},"prix":1.5}]`;
+  const ecrit = [];
+  const vrai = globalThis.fetch;
+  globalThis.fetch = async () => new Response(page, { status: 200 });
+  try {
+    const n = await SAUV.exporter({ url: "https://exemple.invalid", cle: "k" }, "post_likes", "id", { write: (x) => ecrit.push(x) });
+    assert.equal(n, 2);
+  } finally { globalThis.fetch = vrai; }
+  assert.deepEqual(ecrit, [`{"id":"a","rid":${GRAND_A},"prix":10.00}\n`, `{"id":"b","rid":${GRAND_B},"prix":1.5}\n`],
+    "le texte de chaque ligne est recopié : rid au chiffre près, et même l'échelle de 10.00");
+});
+
+test("⑤ bis la vérification compare au chiffre près : un rid faux est DIVERGENT, un rid juste est conforme (RÉINJECTION : JSON.parse dit « conforme »)", () => {
+  const archive = [JE.lireJsonExact(`{"id":"a","rid":${GRAND_A}}`)];
+  const fausse = [JE.lireJsonExact(`{"id":"a","rid":${GRAND_B}}`)];
+  const juste = [JE.lireJsonExact(`{"id":"a","rid":${GRAND_A}}`)];
+  assert.deepEqual(comparerLignes(archive, fausse, "id").divergentes, ["a"]);
+  assert.deepEqual(comparerLignes(archive, juste, "id"), { manquantes: [], divergentes: [], enTrop: [] });
+  // La même comparaison sur une lecture ordinaire ne voit rien : c'est le défaut corrigé.
+  assert.deepEqual(comparerLignes([JSON.parse(`{"id":"a","rid":${GRAND_A}}`)], [JSON.parse(`{"id":"a","rid":${GRAND_B}}`)], "id").divergentes, []);
+  // Un grand entier en CLÉ de tri : deux valeurs voisines font deux clés.
+  const parRid = comparerLignes([JE.lireJsonExact(`{"rid":${GRAND_A}}`)], [JE.lireJsonExact(`{"rid":${GRAND_B}}`)], "rid");
+  assert.deepEqual([parRid.manquantes, parRid.enTrop], [[GRAND_A], [GRAND_B]]);
+});
+
+test("⑤ ter rien ne change pour ce que JavaScript lit sans perte — une archive d'avant le correctif se vérifie toujours", () => {
+  const v = JE.lireJsonExact("[10.00, 1e-07, 0.1, 12, -3.5, 1e+20, 9007199254740991, 2906581903110193700]");
+  assert.ok(v.every((x) => typeof x === "number"), "aucun de ces nombres ne perd sa valeur : tous restent des nombres");
+  // Une archive ancienne porte la valeur DÉJÀ arrondie ; la cible restaurée
+  // depuis elle porte les mêmes chiffres : conforme, comme avant.
+  const ancienne = [JSON.parse('{"id":"a","rid":2906581903110193700,"prix":10}')];
+  const cible = [JE.lireJsonExact('{"id":"a","rid":2906581903110193700,"prix":10.00}')];
+  assert.deepEqual(comparerLignes(ancienne, cible, "id").divergentes, []);
+  // Un numeric à 20 chiffres significatifs, lui, se garde tel quel.
+  assert.equal(JSON.stringify(JE.lireJsonExact('{"n":1.2345678901234567890}')), '{"n":1.2345678901234567890}');
+  assert.equal(JE.canonique("10.00"), JE.canonique("10"));
+  assert.equal(JE.canonique("1e-07"), JE.canonique("0.0000001"));
+  assert.notEqual(JE.canonique(GRAND_A), JE.canonique(String(JSON.parse(GRAND_A))));
+});
+
+test("⑤ quater sans JSON.rawJSON (Node < 21), TOUT nombre à risque fait ÉCHOUER la lecture — entier au-delà de 2^53, décimal à 19 chiffres, 1e400 : jamais un arrondi ni un null silencieux", () => {
+  const vrai = JSON.rawJSON;
+  JSON.rawJSON = undefined;
+  try {
+    for (const t of [`[${GRAND_A}]`, "[0.1234567890123456789]", "[1e400]", "[-1e400]"]) {
+      assert.throws(() => JE.lireJsonExact(t), /JSON\.rawJSON/, `${t} doit être refusé`);
+    }
+    assert.deepEqual(JE.lireJsonExact("[12, 1.5, 1e-07, 10.00]"), [12, 1.5, 1e-7, 10], "ce qui se lit sans perte passe toujours");
+  } finally { JSON.rawJSON = vrai; }
+});
+
+test("⑤ quinquies la relecture de la cible et la lecture de l'archive sont exactes toutes les deux", async () => {
+  const { lireNdjson, lignesCible } = R._phases;
+  const f = fichier("post_likes.ndjson", `{"id":"a","rid":${GRAND_A}}\n{"id":"b","rid":${GRAND_B}}\n`);
+  assert.deepEqual(lireNdjson(f).map((l) => JE.texteValeur(l.rid)), [GRAND_A, GRAND_B]);
+  const vrai = globalThis.fetch;
+  globalThis.fetch = async () => new Response(`[{"id":"a","rid":${GRAND_A}},{"id":"b","rid":${GRAND_B}}]`, { status: 200 });
+  try {
+    const l = await lignesCible({ url: "https://exemple.invalid", cle: "k" }, "post_likes", "id");
+    assert.deepEqual(l.map((x) => JE.texteValeur(x.rid)), [GRAND_A, GRAND_B]);
+  } finally { globalThis.fetch = vrai; }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ⑥ CONTRE-REVUE FINALE (2026-11-04) — AUCUNE PROFONDEUR NE FAIT ÉCHOUER LA
+// SAUVEGARDE. Le reviver de JSON.parse est RÉCURSIF : il cassait vers 2 836
+// niveaux (RangeError), et un compte écrit le jsonb qu'il veut dans SA ligne
+// user_state — 6 Ko de crochets suffisaient à faire échouer chaque nuit.
+// ─────────────────────────────────────────────────────────────────────────
+// 6 000 niveaux : au-delà du reviver (≈ 2 836) ET de JSON.stringify(JSON.parse()) (≈ 4 111), les deux formes du défaut.
+const PROFOND = "[".repeat(6000) + "1" + "]".repeat(6000);
+
+test("⑥ une ligne imbriquée sur 6 000 niveaux s'exporte au texte près (RÉINJECTION : avec le reviver, ou relue puis réécrite, RangeError et aucune archive)", async () => {
+  const ligne = `{"user_id":"u1","data":${PROFOND}}`;
+  const ecrit = [];
+  const vrai = globalThis.fetch;
+  globalThis.fetch = async () => new Response(`[${ligne}]`, { status: 200 });
+  try {
+    assert.equal(await SAUV.exporter({ url: "https://exemple.invalid", cle: "k" }, "user_state", "user_id", { write: (x) => ecrit.push(x) }), 1);
+  } finally { globalThis.fetch = vrai; }
+  assert.deepEqual(ecrit, [ligne + "\n"]);
+  // …et la reprise la relit (sans nombre à risque : JSON.parse seul, sans reviver).
+  const { lireNdjson } = R._phases;
+  const relue = lireNdjson(fichier("user_state.ndjson", ligne + "\n"));
+  assert.equal(relue.length, 1);
+});
+
+test("⑥ bis profondeur ET nombre à risque : une RangeError NOMMÉE, que la reprise dit « non vérifiable », jamais « corrompu »", () => {
+  assert.throws(() => JE.lireJsonExact(`{"rid":${GRAND_A},"d":${PROFOND}}`), (e) => e instanceof RangeError && /imbrication trop profonde/.test(e.message));
+});
+
+test("⑥ ter decouperLignes : chaînes à crochets, virgules et guillemets échappés, sauts de ligne hors chaîne, page vide — et refus d'une page tronquée", () => {
+  const page = '[{"id":"a","t":"x],[{\\"y","n":10.00}, \n {"id":"b","j":{"k": [1, 2]}}]';
+  const lignes = JE.decouperLignes(page);
+  assert.deepEqual(lignes, ['{"id":"a","t":"x],[{\\"y","n":10.00}', '{"id":"b","j":{"k": [1, 2]}}']);
+  for (const l of lignes) assert.doesNotThrow(() => JSON.parse(l));
+  assert.deepEqual(JE.decouperLignes("[]"), []);
+  assert.deepEqual(JE.decouperLignes('[{"a":\n1}]'), ['{"a": 1}'], "un saut de ligne hors chaîne devient une espace : une ligne NDJSON reste une ligne");
+  for (const t of ['[{"a":1}', '[{"a":1},]', '[{"a":1}] x', '{"a":1}', '[{"a":"x]']) assert.throws(() => JE.decouperLignes(t), Error, t);
+});
+
+test("⑥ quater une page tronquée fait ÉCHOUER l'export en nommant la table et la page", async () => {
+  const vrai = globalThis.fetch;
+  globalThis.fetch = async () => new Response('[{"id":"a"},{"id":"b"', { status: 200 });
+  try {
+    await assert.rejects(SAUV.exporter({ url: "https://exemple.invalid", cle: "k" }, "post_likes", "id", { write: () => {} }), /post_likes : page 0–\d+ illisible/);
+  } finally { globalThis.fetch = vrai; }
+});
+
+test("⑦ une table partitionnée ou étrangère : le DDL de reprise LÈVE en tête, en la nommant — sans faire échouer la sauvegarde des données (la garde est la première section)", () => {
+  const { ETAPES } = require("../../scripts/schema-executable.js");
+  assert.match(ETAPES[0].titre, /^Garde/);
+  assert.match(ETAPES[0].sql, /relkind in \('p','f'\)/);
+  assert.deepEqual(ETAPES[0].rendu([]), [], "rien à signaler : aucune instruction, la suite continue");
+  let lignes;
+  assert.doesNotThrow(() => { lignes = ETAPES[0].rendu([{ relname: "journaux", k: "p" }, { relname: "distante", k: "f" }]); }, "le générateur n'échoue pas : un échec sautait le dépôt de la nuit");
+  assert.equal(lignes.length, 1);
+  assert.match(lignes[0], /^do \$\$ begin raise exception/);
+  assert.match(lignes[0], /journaux \(partitionnée\), distante \(étrangère\)/);
+  assert.ok(!/--/.test(lignes[0]), "aucun « -- » dans le DDL rendu (contrôle begin;/commit; de la reprise)");
+});
+
+test("⑦ bis la comparaison voit une différence rangée sous une clé « __proto__ » (préexistant : elle la perdait)", () => {
+  const a = [JSON.parse('{"id":"a","d":{"__proto__":{"x":1}}}')];
+  const b = [JSON.parse('{"id":"a","d":{"__proto__":{"x":2}}}')];
+  assert.deepEqual(comparerLignes(a, b, "id").divergentes, ["a"]);
+  assert.deepEqual(comparerLignes(a, [JSON.parse('{"id":"a","d":{"__proto__":{"x":1}}}')], "id"), { manquantes: [], divergentes: [], enTrop: [] });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ⑧ VÉRIFICATION FINALE DE R25 (2026-11-04) — un conflit d'unicité qui n'est
+// pas un rejeu se NOMME. `on conflict do nothing` sans cible écartait sans un
+// mot une ligne en conflit sur n'importe quelle contrainte unique (deux `rid`
+// égaux sur `<table>_rid_key`, un pseudonyme déjà pris) : seul l'écart de
+// compte du verdict le disait, sans le pourquoi. Mesuré sur PostgreSQL 16 :
+// avec la clé primaire pour cible, la collision de `rid` lève 23505, le rejeu
+// d'une même clé reste sans effet, et le rejeu ligne à ligne pose la ligne
+// saine en nommant l'autre.
+// ─────────────────────────────────────────────────────────────────────────
+const { clauseConflit, _phases: PH } = R;
+
+test("⑧ la clause de conflit vise la CLÉ PRIMAIRE de la cible, dans l'ordre de l'index (RÉINJECTION : sans cible, un conflit de rid se tait)", () => {
+  assert.equal(clauseConflit(["post_id", "user_id"]), 'on conflict ("post_id", "user_id") do nothing');
+  assert.equal(clauseConflit([]), "on conflict do nothing", "sans clé connue : l'ancienne clause");
+  assert.equal(clauseConflit(undefined), "on conflict do nothing");
+  const a = ordreInsert("post_likes", ["post_id", "user_id", "rid"], "[]", ["post_id", "user_id"]);
+  assert.match(a, /json_populate_recordset\(null::public\."post_likes", \$r\$\[\]\$r\$::json\) on conflict \("post_id", "user_id"\) do nothing;/);
+  assert.doesNotMatch(a, /on conflict do nothing/, "aucune clause sans cible quand la clé est connue");
+  const b = ordreLigneALigne("post_likes", ["post_id", "user_id", "rid"], "[]", ["post_id", "user_id"]);
+  assert.match(b, /json_populate_record\(null::public\."post_likes", e\) on conflict \("post_id", "user_id"\) do nothing;/);
+  assert.match(b, /exception when others then insert into _refus/, "le conflit qui lève est NOMMÉ, ligne par ligne");
+});
+
+/** Un faux monde minimal pour `chargerTable` : l'API de gestion (routée par le SQL) et PostgREST. */
+function mondeChargement({ colonnes, cles, restOk = true }) {
+  const envoye = [];
+  const fetchFn = async (url, init = {}) => {
+    const u = String(url);
+    if (u.endsWith("/database/query")) {
+      const q = JSON.parse(init.body).query;
+      envoye.push(q);
+      const json = (x) => new Response(JSON.stringify(x), { status: 200 });
+      if (/^select table_name t, column_name c from information_schema\.columns/.test(q)) return json(colonnes);
+      if (/where i\.indisprimary/.test(q)) return json(cles);
+      if (/^begin;\nalter table public\."/.test(q)) return json([]);
+      throw new Error("SQL non routé : " + q.slice(0, 60));
+    }
+    if (u.includes("/rest/v1/")) { envoye.push("REST " + u.slice(u.indexOf("/rest/v1/"))); return new Response("", { status: restOk ? 201 : 400 }); }
+    throw new Error("URL non routée : " + u);
+  };
+  return { envoye, fetchFn };
+}
+async function avecFetch(fetchFn, fn) { const vrai = globalThis.fetch; globalThis.fetch = fetchFn; try { return await fn(); } finally { globalThis.fetch = vrai; } }
+function archiveTable(t, lignes) {
+  const d = mkdtempSync(join(tmpdir(), "passio-charge-"));
+  writeFileSync(join(d, `${t}.ndjson`), lignes.map((l) => l + "\n").join(""));
+  return { jeton: "sbp_x", ref: "jetable", url: "https://cible.invalid", cle: "service", archive: d };
+}
+
+test("⑧ bis chargerTable lit la clé primaire de la cible (UNE requête, gardée) et l'envoie aux deux ordres de chargement", async () => {
+  const m = mondeChargement({
+    colonnes: [{ t: "post_likes", c: "post_id" }, { t: "post_likes", c: "user_id" }, { t: "post_likes", c: "rid" }],
+    cles: [{ t: "post_likes", c: "post_id" }, { t: "post_likes", c: "user_id" }],
+  });
+  const ctx = archiveTable("post_likes", ['{"post_id":"p1","user_id":"u1","rid":777}']);
+  const bl = { notes: [], refus: [] };
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx, "post_likes", bl));
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx, "post_likes", bl));
+  assert.equal(m.envoye.filter((q) => /where i\.indisprimary/.test(q)).length, 1, "les clés primaires se lisent une fois par reprise");
+  const chargements = m.envoye.filter((q) => q.startsWith("begin;"));
+  assert.equal(chargements.length, 2);
+  for (const q of chargements) assert.match(q, /on conflict \("post_id", "user_id"\) do nothing;/);
+  assert.deepEqual(bl.refus, []);
+  assert.deepEqual(bl.notes, []);
+});
+
+test("⑧ ter une table SANS clé primaire sur la cible : l'ancienne clause, et le bilan le DIT", async () => {
+  const m = mondeChargement({ colonnes: [{ t: "journal", c: "x" }], cles: [] });
+  const ctx = archiveTable("journal", ['{"x":1}']);
+  const bl = { notes: [], refus: [] };
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx, "journal", bl));
+  assert.match(m.envoye.find((q) => q.startsWith("begin;")), /on conflict do nothing;/);
+  assert.equal(bl.notes.length, 1);
+  assert.match(bl.notes[0], /^journal : aucune clé primaire sur la cible/);
+});
+
+test("⑧ quater une ligne trop grosse passe par PostgREST : le bilan dit que les déclencheurs y sont ACTIFS, et nomme `rid` quand la ligne en porte un (RÉINJECTION : « passée par PostgREST » seul)", async () => {
+  const m = mondeChargement({
+    colonnes: [{ t: "notifications", c: "id" }, { t: "notifications", c: "content" }, { t: "notifications", c: "rid" }],
+    cles: [{ t: "notifications", c: "id" }],
+  });
+  const geante = JSON.stringify({ id: "n1", content: "a".repeat(LOT_OCTETS + 10), rid: 4242 });
+  const ctx = archiveTable("notifications", [geante]);
+  const bl = { notes: [], refus: [] };
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx, "notifications", bl));
+  assert.ok(m.envoye.includes("REST /rest/v1/notifications"), "la ligne géante part par PostgREST");
+  assert.equal(m.envoye.filter((q) => q.startsWith("begin;")).length, 0, "et pas par l'API de gestion");
+  assert.equal(bl.notes.length, 1);
+  assert.match(bl.notes[0], /passée par PostgREST/);
+  assert.match(bl.notes[0], /déclencheurs ACTIFS/);
+  assert.match(bl.notes[0], /`rid`, re-tiré par trg_rid_opaque/);
+  assert.match(bl.notes[0], /la vérification dira la ligne divergente/);
+  // Sans `rid` dans la ligne, la note garde l'avertissement général, sans nommer `rid`.
+  const ctx2 = archiveTable("notifications", [JSON.stringify({ id: "n2", content: "b".repeat(LOT_OCTETS + 10) })]);
+  const bl2 = { notes: [], refus: [] };
+  await avecFetch(m.fetchFn, () => PH.chargerTable(ctx2, "notifications", bl2));
+  assert.match(bl2.notes[0], /déclencheurs ACTIFS/);
+  assert.doesNotMatch(bl2.notes[0], /trg_rid_opaque/);
 });

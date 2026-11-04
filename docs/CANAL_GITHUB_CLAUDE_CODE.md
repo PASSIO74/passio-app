@@ -21,7 +21,13 @@ marqueur, et l'issue doit appartenir à PASSIO74 :
 | Voie | Condition exacte |
 |---|---|
 | **label `claude`** (nominal) | événement `labeled` sur une issue de PASSIO74 |
-| `@claude` (secours) | dans le titre/corps d'une issue, ou un commentaire de PASSIO74 sur une issue de PASSIO74 |
+| `@claude` (secours) | dans le titre/corps d'une issue à son ouverture ou par une modification qui l'ajoute, ou dans un commentaire de PASSIO74 sur une issue de PASSIO74, nouveau ou modifié pour l'ajouter |
+
+Depuis le 2026-11-04, chaque événement accepté lance son agent, à son tour : la file
+n'en jette plus aucun. Modifier une issue ou poser un autre label ne lance rien, sauf
+si la modification ajoute la mention. Pour relancer : retirer puis reposer `claude`,
+ou poster un nouveau commentaire. Mesures : `docs/journal/telemetrie-pilotage-sentinelle.md`,
+« LE CANAL NE PERD PLUS UN ORDRE ».
 
 ⚠️ **Un run `skipped` à la création d'une issue est NORMAL.** La condition teste
 `github.event.label.name`, champ qui n'existe **que** sur l'événement `labeled` :
