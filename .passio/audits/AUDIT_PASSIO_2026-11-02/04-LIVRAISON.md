@@ -147,3 +147,56 @@ Retour arrière : le bloc `--|` de l'en-tête (définition de production à l'oc
 | ~06:46 | Fusion de #690 dans `main` par commit de fusion (`4da2a8e`) : le commit revu `9abfaba` reste dans l'historique | `merge_pull_request` |
 | ensuite | Attestation consignée (empreinte `5e1b4c45…`, PR suivante), validée hors ligne par `verifierAttestation` et `verifierPreuveRevue` sur la revue relue par l'API GitHub ; la barrière la relira avec `gh` au moment d'appliquer | `.passio/migrations/attestations.json` |
 | **reste** | Application depuis le poste de Benjamin (`npm run migration:appliquer -- migrations/migration_promotion_discrete_vues_2026-11-03.sql --projet njkiyoklssvefstljemx`), **avant `participants_visibilite`**, puis mesure au canal ① | — |
+
+## 8. R25 — un effacement publié par le temps réel ne dit plus ni qui ni quoi ; reprise et sauvegarde fidèles (2026-11-04)
+
+Le dernier résidu ouvert de la contre-revue du 03/11 (R25), plus trois défauts trouvés en le corrigeant : le DDL de reprise
+rouvrait R25 (identités de réplication et droits de séquence non rendus, séquences d'identité doublées), la sauvegarde
+arrondissait tout entier au-delà de 2^53, et trois anciens fichiers de vues effaçaient `security_invoker` s'ils étaient
+rejoués (suite de R26, § 7). Deux revues indépendantes sur la première version de R25 (registre RV-14…RV-17) : `rid` tiré
+d'un compteur, donc ORDONNÉ (un abonné encadrait la ligne d'une victime entre deux de ses propres `rid`), `rid` inscriptible
+par le client, verrou bloquant sur cinq tables, index supprimable sans garde. Tout est corrigé ; R24/R26 restent ceux du § 7.
+
+### 8.1 Migration
+
+| Fichier | Objet | Banc | Quand |
+|---|---|---|---|
+| `migration_realtime_identite_opaque_2026-11-03.sql` | `rid` aléatoire de 53 bits (chiffres 17 à 32 d'un UUID v4, masque 2^53 − 1 : exact en JSON), index unique `<table>_rid_key` et `replica identity using index` sur `conv_members`, `notifications`, `conv_reads`, `post_likes` ; `comment_interactions` en identité DEFAULT (l'oracle du filtre se ferme) ; garde `trg_rid_opaque` (le `rid` n'est écrit que par la base) ; verrous NOWAIT en boucle ; verdict en 10 lignes | `migration-realtime-identite-opaque` 202/0 (`realtime.apply_rls` de production recopiée à l'octet, nourrie du WAL réel du banc ; attaque par encadrement rejouée ; dix mutations rouges) | **dès la fusion** : serveur seul, aucun changement client. De préférence AVANT `participants_visibilite`, dont la purge efface des lignes `conv_members` qui partiront alors opaques |
+
+Ordre complet à partir de maintenant : R25 (ici), puis `promotion_discrete_vues` (§ 7, attestée), puis
+`participants_visibilite` (§ 6, à partir du 2026-11-05 18:40 UTC). R25 est indépendante des deux autres.
+
+Les trois anciens fichiers qui recréent les vues de statistiques (`migration_monitoring_view.sql`, `APPLY_ALL_scaling.sql`,
+`migration_telemetry.sql`) ne sont PAS à appliquer : ils posent désormais `with (security_invoker = on)`, parce qu'un
+`create or replace view` sans l'option rend la vue aux droits de son propriétaire (mesuré sur PostgreSQL 16) — et le SELECT
+que la R26 du § 7 laisse à `anon` deviendrait une lecture des erreurs client.
+
+### 8.2 Hors migration (servi au déploiement, sans geste)
+
+- `scripts/schema-executable.js` (DDL de reprise) : identité de réplication de chaque table, séquences d'identité laissées
+  à leur colonne (elles étaient doublées en `*_seq1`, l'orpheline gardant `rwU`), `OWNED BY` des `serial`, droits de
+  séquence ; banc `schema-executable-identite` 40/0 avec la forme finale du `rid`, rouge sur le générateur d'avant
+  (25 ✅ / 15 ❌) ; procédure d'après reconstruction dans `docs/RECUPERATION.md`.
+- `scripts/sauvegarde-donnees.js` et `scripts/restaurer-donnees.js` : lecture exacte des nombres
+  (`scripts/lib/json-exact.js`) à l'export, à la relecture de l'archive et à celle de la cible ;
+  `tests/unit/restaurer-donnees.test.mjs` 17/17, rouge sur trois réinjections.
+- `scripts/audit-identite-replication.js` dans `npm run verif` (test unitaire 12/12) : une migration qui supprime un
+  index `*_rid_key`, ou la colonne `rid`, tant qu'il porte l'identité est refusée, retour arrière compris.
+
+### 8.3 Contrôles après application (canal ①, jamais le tableau de verdict)
+
+1. `relreplident` = `i` sur les quatre tables, `d` sur `comment_interactions` ; `indisreplident` sur les quatre
+   `<table>_rid_key` ; aucune table de `supabase_realtime` en FULL ; défaut de `rid` identique sur les quatre tables
+   (`pg_get_expr`, chiffres 17 à 32, masque `9007199254740991`) ; `trg_rid_opaque` actif, sans clause WHEN ;
+   `rid_opaque_garde()` non exécutable par `anon`/`authenticated` ; par table, `max(rid) <= 9007199254740991` et
+   `count(distinct rid) = count(*)` (agrégats seuls).
+2. Relancer le job « Suites production (comptes réels) » du dernier run de `main` (`PASSIO_E2E_MULTI=1`, comptes
+   synthétiques) : un « j'aime » retiré, une notification effacée, un départ de conversation — un UPDATE ou un DELETE
+   refusé faute d'identité y tomberait au rouge.
+3. Consigner l'attestation dans une PR suivante.
+
+### 8.4 Retour arrière
+
+Le bloc `--|` de l'en-tête, exécutable tel quel : l'identité d'abord, l'index ensuite, la colonne enfin (dans l'autre
+ordre, tout UPDATE et DELETE des tables publiées est refusé ; la gate le refuse aussi). Il rend à `comment_interactions` son
+identité FULL d'origine. Code : revert du merge ; aucun état local touché.
