@@ -12,17 +12,19 @@
 | **Fonction `pilotage`** | Supabase Edge Function | lit la prod (service_role, côté serveur) + GitHub, rend un état résumé |
 | **Page `/pilotage/`** | Netlify (HTTPS, installable) | l'écran du téléphone |
 
-Le centre de pilotage du PC (`dashboard/`) reste utile pour le détail ; il n'est plus nécessaire pour surveiller.
+L'atelier technique du PC (`dashboard/`) reste utile pour le détail ; il n'est plus nécessaire pour surveiller.
 
-## Ce que la page fait (lot 2, 2026-09-28)
+## Ce que la page fait (refaite le 2026-11-04)
 
-| Onglet | Contenu | Gestes |
+| Où | Contenu | Gestes |
 |---|---|---|
-| Accueil | verdict, « le site répond depuis… », chiffres, ce qui t'attend, erreurs 7 j détaillées (appareils, pages, courbe) | Fermer une enquête · Confier à la Sentinelle |
-| Machines | Sentinelle active/en pause, exécutions, PR en attente, relances | Pause/Reprendre · Fusionner · Refuser · Relancer |
-| Utilisateurs | en ligne, inscriptions et erreurs par jour (7 j), signalements | Traité · Rejeter |
-| Capacité | jauges : connexions (≈, plafond 500), e-mails 24 h (≈, 300), base (8 Go), stockage (100 Go) | — |
-| Réglages | appareils qui reçoivent les alertes, état de la veille, installation | Déconnexion |
+| Accueil, en haut | le voyant, une ligne par problème (ce qui est cassé, ce que le bouton va faire), ce que les machines font déjà | **Régler** (un par problème) · **Tout régler** · une décision de signalement · le reste en dépliant la ligne |
+| Accueil, dessous | le nombre d'utilisateurs, sa marche depuis le premier compte, l'évolution de la semaine, qui est là, les derniers arrivés | Toucher le nombre : tous les utilisateurs, par leur nom |
+| D'où viennent les gens | sources, bouche-à-oreille, actifs par jour, rétention, utilisateurs mois par mois | — |
+| Tout le détail technique | pour info (chantiers, résumés), chiffres clés, site, erreurs 7 j, activation, machines, jauges de capacité, coût, historique du voyant | Pause/Reprendre · Relancer · Fusionner ou refuser un chantier |
+| Réglages | protection automatique, retour arrière, appareils qui reçoivent les alertes, installation | Délestage · Coupures · Message à tous · Déconnexion |
+
+**Tout geste part d'un seul toucher et s'annule pendant 5 s** (`armer`, `pilotage/pilotage.js`) : plus aucune boîte de confirmation du navigateur.
 
 **Alertes sur le téléphone** : `pg_cron` appelle la fonction toutes les 5 min (`action: "veille"`,
 migration `migration_pilotage_veille_2026-09-28.sql`). Elle sonne les appareils de l'éditeur où
@@ -63,6 +65,7 @@ avec Google ». Ajouter un compte : secret `PILOTAGE_EMAILS` de la fonction (vir
    « Fermer », « Reprendre » la Sentinelle et « Relancer » une réparation d'avant le 2026-10-25.
    Le droit se donne sur le jeton existant (page du jeton → **Edit** → *Repository permissions*).
    `supabase secrets set PILOTAGE_GITHUB_TOKEN=… --project-ref njkiyoklssvefstljemx`.
+   ⚠️ **Choisir une longue durée** : un jeton fin dure 30 jours par défaut. Expiré, GitHub répond 401 à tout, lectures comprises : plus aucun bouton ne répare et le voyant mémorisé se fige. L'écran le dit une semaine avant, puis en première ligne.
    Sans lui, tout s'affiche et les alertes marchent ; seuls les gestes GitHub (relancer, fusionner, fermer, pause) sont remplacés par une explication. Les signalements, eux, se traitent sans ce jeton.
 3. **Google** : ajouter `https://passio-app.netlify.app/pilotage/` aux *Redirect URLs* (Supabase →
    Authentication → URL Configuration). Sans ça, Google ramène sur l'accueil de PASSIO : rouvrir
@@ -70,11 +73,11 @@ avec Google ». Ajouter un compte : secret `PILOTAGE_EMAILS` de la fonction (vir
 
 ## Garde-fous
 
-- Écritures possibles, toutes confirmées à l'écran : relancer 3 workflows en liste blanche, fusionner/fermer une PR ou une issue par son numéro, poser/retirer la pause Sentinelle, passer un signalement à `handled`/`dismissed`. Une fusion reste soumise à la protection de `main` (CI verte, contre-revue).
+- Écritures possibles, chacune annulable 5 s à l'écran : relancer 3 workflows en liste blanche, fusionner/fermer une PR ou une issue par son numéro, poser/retirer la pause Sentinelle, passer un signalement à `handled`/`dismissed`. Une fusion reste soumise à la protection de `main` (CI verte, contre-revue).
 - Aucun corps d'issue ni auteur ne quitte la fonction (`resumerIssue`) ; liens limités à github.com.
 - Plafond 30/min, 600/h (`plafond.js`).
 - Rendu par nœuds + `textContent` ; titre hostile éprouvé au navigateur.
 
-Verrous : `tests/unit/pilotage.test.mjs` (10, dans `npm run verif` et avant déploiement),
-`tests/e2e/pilotage-nuage.spec.js` (7, éprouvé par réinjection : `innerHTML` → rouge, confirmation retirée → rouge),
+Verrous : `tests/unit/pilotage.test.mjs` (dans `npm run verif` et avant déploiement),
+`tests/e2e/pilotage-nuage.spec.js` (éprouvé par réinjection : `innerHTML` → rouge, annulation retirée → rouge),
 `tests/sql/migration-pilotage-veille.test.sh` (11, dont le mutant sans `revoke … from anon` qui doit lever).

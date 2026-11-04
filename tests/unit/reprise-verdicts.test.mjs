@@ -358,3 +358,15 @@ test("ASTRA-55 ② l'index est lu strictement (forme, total, md5, empreinte)", (
   assert.match(V.lireIndexMedias("{}", "a", "b").erreur, /empreinte/);
   assert.match(V.lireIndexMedias(null).erreur, /absent/);
 });
+
+test("contre-revue finale de R25 (2026-11-04) : un DDL que le générateur sait INCOMPLET rend l'archive PARTIELLE — en note, jamais en anomalie (les données de la nuit sont déposées, le workflow rougit après)", () => {
+  const { ETAPES } = require("../../scripts/schema-executable.js");
+  const ligne = ETAPES[0].rendu([{ relname: "telemetry_events_p", k: "p" }])[0];
+  const n = V.natureArchive({ schemaPresent: true, schemaDdl: ligne + "\n" + DDL, comptesExportes: true, mediasExportes: true });
+  assert.equal(n.complete, false);
+  assert.equal(n.nature, "partielle");
+  assert.deepEqual(n.anomalies, [], "pas d'anomalie : --verifier sort en 0 et l'archive est déposée");
+  assert.ok(n.notes.some((x) => /DDL de reprise INCOMPLET/.test(x)), JSON.stringify(n.notes));
+  // Le même DDL sans le marqueur reste complet.
+  assert.equal(V.natureArchive({ schemaPresent: true, schemaDdl: DDL, comptesExportes: true, mediasExportes: true }).complete, true);
+});

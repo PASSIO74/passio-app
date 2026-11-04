@@ -169,6 +169,15 @@ function natureArchive({ schemaPresent, schemaDdl, schemaEmpreinte, empreinteAtt
       ddlValide = false;
     }
     if (empreinteAttendue && !schemaEmpreinte) notes.push("schema.sql présent mais non haché : empreinte non vérifiée");
+    // Contre-revue finale de R25 (2026-11-04) : un DDL que le générateur sait
+    // INCOMPLET (table partitionnée ou étrangère) lève à sa première instruction.
+    // Il ne permet pas de repartir d'une base vide : l'archive est PARTIELLE, et
+    // le dit — en note, pas en anomalie, pour que les DONNÉES de la nuit soient
+    // déposées ; c'est le workflow qui rend le run rouge APRÈS le dépôt.
+    if (/DDL de reprise INCOMPLET/.test(String(schemaDdl || ""))) {
+      ddlValide = false;
+      notes.push("schema.sql : DDL de reprise INCOMPLET (table partitionnée ou étrangère) — il lèvera à la reprise ; archive PARTIELLE, restaurer le schéma à la main");
+    }
   }
   // ASTRA-45 : des médias sans inventaire COMPLET de leurs propriétaires ne
   // permettent pas de repartir d'une base vide avec des objets qui appartiennent
