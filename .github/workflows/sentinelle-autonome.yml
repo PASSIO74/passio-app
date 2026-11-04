@@ -30,11 +30,17 @@
 # Mesuré du 10 au 12/09 : `gh issue create --label claude --label sentinelle`
 # émettait TROIS événements dans la même seconde (opened, labeled claude,
 # labeled sentinelle) vers le même groupe de concurrence de `claude-code.yml`,
-# qui ne garde qu'UN run en attente. Une fois sur trois, l'évincé était le run
-# `labeled claude` — le seul qui travaille — annulé en file (0 job, donc pas
+# qui ne gardait alors qu'UN run en attente. Une fois sur trois, l'évincé était le
+# run `labeled claude` — le seul qui travaille — annulé en file (0 job, donc pas
 # même le commentaire d'annulation). #316, #327, #337 : aucune PR, aucun
 # commentaire, canal muet 6 h, 28 h 51 et 9 h. Un seul événement `labeled
 # claude`, seul dans son groupe : plus de course.
+# ⚠️ DEPUIS LE 2026-11-04, CETTE FILE NE PERD PLUS RIEN (`queue: max` au niveau du
+# job, claude-code.yml), ET CE GESTE RESTE QUAND MÊME : aucune enquête n'a tourné
+# depuis #370, le 13/09. Ni A1, ni le veilleur, ni la nouvelle file n'ont donc été
+# vus sur une vraie enquête. Huit secondes par enquête ne coûtent rien : les retirer
+# se décide sur cette mesure-là, pas sur le banc seul (fiche « LE CANAL NE PERD PLUS
+# UN ORDRE », docs/journal/telemetrie-pilotage-sentinelle.md).
 #
 # ⚠️ ET UN VEILLEUR RELIT LES ENQUÊTES OUVERTES (A2), parce qu'un run peut
 # encore se perdre (quota, runner, annulation) et qu'une enquête ouverte sans

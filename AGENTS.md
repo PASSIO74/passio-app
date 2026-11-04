@@ -25,7 +25,13 @@ marker, and the issue must belong to `PASSIO74`:
 | Path | Exact condition |
 |---|---|
 | **`claude` label** (nominal) | a `labeled` event on an issue opened by PASSIO74 |
-| `@claude` (fallback) | in an issue title/body, or in a PASSIO74 comment on a PASSIO74 issue |
+| `@claude` (fallback) | in an issue title/body when it is opened or when an edit adds it, or in a PASSIO74 comment on a PASSIO74 issue, new or edited to add it |
+
+Since 2026-11-04 every accepted event starts its own agent, in turn: the queue no
+longer drops any. Editing an issue or applying another label starts nothing unless
+the edit adds the mention. To relaunch, remove and re-apply `claude`, or post a new
+comment. Measures: `docs/journal/telemetrie-pilotage-sentinelle.md`, « LE CANAL NE
+PERD PLUS UN ORDRE ».
 
 **A `skipped` run when an issue is created is expected.** The condition reads
 `github.event.label.name`, a field that exists **only** on the `labeled` event.

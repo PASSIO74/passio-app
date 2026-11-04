@@ -706,9 +706,9 @@ test("㊳ « Réparer » confie DÈS L'OUVERTURE (mention @claude du corps) : un
   // claude-code.yml démarre sur l'OUVERTURE d'une issue de PASSIO74 dont le corps porte @claude.
   const wf = fs.readFileSync(".github/workflows/claude-code.yml", "utf8");
   assert.match(wf, /\n {2}issues:\n {4}types: \[[^\]]*\bopened\b[^\]]*\]/, "l'événement `opened` déclenche le workflow");
-  assert.match(wf, /github\.event_name == 'issues' &&\s+github\.event\.issue\.user\.login == 'PASSIO74' &&\s+\(\s+github\.event\.label\.name == 'claude' \|\|\s+contains\(github\.event\.issue\.body, '@claude'\)/);
+  assert.match(wf, /github\.event_name == 'issues' &&\s+github\.event\.issue\.user\.login == 'PASSIO74' &&\s+\(\s+github\.event\.label\.name == 'claude' \|\|\s+\(\s+github\.event\.action == 'opened' &&\s+\(\s+contains\(github\.event\.issue\.body, '@claude'\)/);
 
-  // La fonction ouvre l'issue SANS label (le corps portant la mention, chaque `labeled` lancerait un agent),
+  // La fonction ouvre l'issue SANS label (un seul événement, aucun droit « Issues: write » demandé),
   // puis ne donne AUCUN second ordre.
   const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const debutRep = src.indexOf("async function reparer");

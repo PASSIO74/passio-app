@@ -34,6 +34,7 @@
 - 🎯 DEUX BESOINS, UN ÉCRAN, UN BOUTON PAR PROBLÈME (2026-11-04)
 - 🔑 LE VOYANT FIGÉ AU ROUGE ET LE JETON GITHUB QUI EXPIRE EN SILENCE (2026-11-04)
 - 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
+- 📨 LE CANAL NE PERD PLUS UN ORDRE, ET UNE MODIFICATION NE LANCE PLUS UN AGENT (2026-11-04)
 
 ---
 
@@ -575,3 +576,77 @@ Trouvé en livrant #699 (fiche « PIC D'ERREURS »). `scripts/build.js` calculai
 - **Verrou** : `tests/unit/build-id.test.mjs` (6) exécute le vrai `scripts/build.js` avec un `fs` en mémoire, en moins de 2 s (47 builds sur le disque prenaient 148 s sur le poste chargé). La liste des scripts vient de l'artefact, pas d'une liste écrite à la main ; ⑥ compare à un vrai build sur le disque.
 - **Mutations** : défaut d'origine remis → ① rouge, 36 scripts nommés ; scripts de tête seuls comptés → 32 ; scripts d'après le contrat seuls → 4 ; liste écrite à la main (`platform` + `telemetry`) → 34 ; gardes oubliés → 2 ; commit, date ou cible dans le calcul → ④ ; worker sous un autre identifiant → ① ⑤ ⑥ ; contrat après `telemetry.js` → ⑤ ; banc à liste vide → ② ; `fs` qui ment → ① ③ ⑥ ; mutation jamais appliquée → ① ③. Deux restent vertes, à raison : retirer `app.js` ou le CSS du calcul ne change rien, leur hash `?v=` est déjà dans le HTML.
 - **Non vérifié** : aucun iPhone réel. Le chemin « worker réinstallé → page rechargée » reste un contrôle ponctuel hors suite : `pwa-premiere-installation.spec.js` ne couvre que les pages sans contrôleur.
+
+## 📨 LE CANAL NE PERD PLUS UN ORDRE, ET UNE MODIFICATION NE LANCE PLUS UN AGENT (2026-11-04)
+
+Question posée après la fiche « LE VERROU ÉVINÇAIT `main` » : `queue: max` doit-elle fermer l'éviction des runs dans `claude-code.yml` ?
+
+**Décision : oui, mais pas seule.** Posée seule, la clé lance 20 agents pour 10 ordres. Trois changements vont ensemble :
+
+1. `queue: max` : les ordres attendent leur tour au lieu de se remplacer.
+2. La file passe du run au job : le `if:` y est évalué avant le groupe, donc un événement écarté n'entre plus dans la file.
+3. Le `if:` n'accepte plus qu'un ordre NOUVEAU : le label `claude` posé, l'ouverture avec la mention, une modification qui AJOUTE la mention, un nouveau commentaire qui la porte. Un `edited` ou un autre `labeled` ne relance plus rien. Reposer le label `claude` reste un second ordre : c'est la relance du veilleur.
+
+**Banc 1, le groupe** (branche orpheline jetable, groupes propres au banc, 2026-11-04). Quatre poussées dans quatre groupes : un agent de 150 s tient le groupe, B est un ordre qui attend, C est écarté par le `if:`, D est un ordre qui arrive ensuite.
+
+| File | B, l'ordre qui attend | C, l'événement écarté | D |
+|---|---|---|---|
+| run, sans clé (l'existant) | **annulé par C**, dès son arrivée | annulé par D | passe |
+| run, `queue: max` | passe | attend 267 s, puis écarté | passe |
+| job, sans clé | **annulé par D** | écarté en 1 s, n'évince rien | passe |
+| job, `queue: max` (retenu) | passe | écarté en 1 s | passe, 237 s plus tard |
+
+- ⚠️ **Dans l'existant, le commentaire de n'importe quel compte évince l'ordre qui attend** : il entre dans le groupe avant que le `if:` ne l'écarte, et l'ordre disparaît sans job, donc sans le commentaire d'annulation. Le dépôt est public.
+- `timeout-minutes` ne compte pas l'attente : D a attendu 237 s avec `timeout-minutes: 3` et a réussi.
+- Un run qui attend se lit `pending` aux deux niveaux, ce que le veilleur compte déjà comme vivant. L'ordre d'arrivée a été tenu dans les deux groupes en `queue: max`.
+
+**Banc 2, le `if:`** (2026-11-04, PR 710 à 713 entre branches orphelines, fermées depuis). 26 vrais événements `pull_request` et `pull_request_review_comment`, dont 10 ordres, agent de 30 s. Le `if:` du banc est généré du texte réel, seules les cibles sont remplacées (marqueur sans `@` : aucune notification à un tiers).
+
+| Condition, file | Agents | Évincés | Écartés | Attente d'un écarté (médiane, pire) |
+|---|---|---|---|---|
+| ancien `if:`, run, sans clé (l'existant) | 9 | 14 | 3 | 7 s, 10 s |
+| ancien `if:`, run, `queue: max` | **20** | 0 | 6 | 90 s, 264 s |
+| nouveau `if:`, run, `queue: max` | 10 | 0 | 16 | 38 s, 107 s |
+| nouveau `if:`, job, `queue: max` (retenu) | 10 | 0 | 16 | 1 s, 9 s |
+
+- **Réponse au premier point : avec l'ancien `if:`, un `edited` ou un `labeled` lance bien un agent de plus**, dès que le corps ou le titre porte la mention. Sans clé, la file en absorbait une partie, au hasard : sur ce banc, 3 ordres sur 10 évincés (le label posé, le commentaire, le titre qui gagne la mention) et 2 agents sans ordre (un titre corrigé, un titre qui perd la mention).
+- Le nouveau `if:` rend exactement les 10 ordres, aux deux niveaux. Les 2 `labeled` de la même seconde n'évincent rien.
+
+**L'historique** (API GitHub, tous les runs de `claude-code.yml`, 2026-08-19 au 2026-11-04) : 504 runs, 440 écartés, 53 agents, 11 annulés.
+
+- **3 ordres perdus par éviction** : #316, #327, #337, tous avant A1. 6 autres évictions sans perte : un événement écarté dans 4 enquêtes (#312, #346, #350, #370), 1 commentaire de bot (#103), 1 commentaire sans mention (#136).
+- **2 annulations inexpliquées** : #161 et #162, le 26/08, 0 job, closes plus de deux jours plus tard. #162 était seul de son groupe : ce n'est pas une éviction, et cette clé ne la ferme pas.
+- **4 agents lancés par un `edited`** : #38 et #41, le 19/08, mention dans le titre. Depuis, plus aucun. Les 19 agents lancés par un commentaire viennent tous d'un `created` : le nouveau `if:` n'aurait bloqué aucun autre ordre vécu.
+- **Le gain est structurel, pas urgent** : 0 fenêtre à trois ordres pendant un agent, 1 seul ordre a attendu derrière un agent (#89, 383 s), et un seul agent depuis le 13/09 (#657).
+
+**Temps en file des événements écartés.** Il n'a de coût que dans la file du run. Rejeu : les vrais runs, leurs vraies durées, sans éviction, 1,5 s par écarté.
+
+| | Écartés | Plus d'une minute | 99 % en moins de | Pire |
+|---|---|---|---|---|
+| vécu, run sans clé | 440 | 9 | 6 min 8 s | 16 min 31 s |
+| rejeu, run `queue: max` | 448 | 15 | 11 min 33 s | 16 min 47 s |
+| job | aucun n'entre | | | 1 s au banc |
+
+Attendre ne coûte rien en soi. Le vrai défaut de la file au niveau du run : chaque écarté y prend une des 100 places, et la documentation annonce qu'au-delà c'est le NOUVEL arrivant qui est annulé. Cent commentaires d'un tiers pendant un agent y feraient donc disparaître l'ordre suivant. Au niveau du job, un tiers n'y peut plus rien.
+
+**Ce qui reste, délibérément** :
+
+- ⚠️ **Le `sleep 8` et le veilleur restent.** Le banc montre qu'une rafale n'évince plus rien, mais **aucune enquête n'a tourné depuis #370, le 13/09** : ni A1, ni le veilleur (label `sentinelle-relancee` : 0 issue), ni cette file n'ont été vus sur une vraie enquête. Le critère pour rouvrir le `sleep 8` : une vraie enquête passée par la nouvelle file. Huit secondes par enquête ne coûtent rien en attendant. Le veilleur a sa raison propre : un run peut se perdre sans la file, comme #162.
+- La marche « Signaler l'annulation » reste, avec un texte corrigé : elle ne voit qu'un job démarré puis arrêté.
+- Le commentaire de `reparer` (`supabase/functions/pilotage/index.ts`) dit encore que chaque `labeled` lancerait un agent : ce n'est plus vrai. Ouvrir sans label reste juste, pour les droits du jeton. Il n'est pas corrigé ici, car toucher ce dossier redéploie les Edge Functions.
+- **Deux ordres restent deux agents** : une issue ouverte avec la mention ET le label `claude`, ou deux commentaires `@claude` à la suite. Le second agent ne voit pas la PR du premier. Comportement inchangé, jamais vécu sur une ouverture en 11 semaines. `reparer` ne pose aucun label, `reconfier` ne confie pas une issue déjà mentionnée.
+
+**Écarté** :
+
+- `queue: max` seule, au niveau du run : 20 agents pour 10 ordres.
+- Le job sans la clé : le deuxième ordre remplace encore celui qui attend, en silence (ligne 3 du banc 1).
+- Le run avec la clé et le nouveau `if:` : il tient les ordres, mais laisse la file des 100 places ouverte aux tiers.
+- Retirer `edited` des types : modifier une issue pour y ajouter la mention est un ordre réel, et il se perdrait sans un mot, le défaut des 19–21 août.
+- Une garde en tête de job (« une PR existe déjà ») : elle bloquerait aussi les relances et les ordres de suite.
+
+- **Verrou** : `tests/unit/sentinelle-workflows.test.mjs` rejoue le `if:` réel sur une table de 41 événements, avec `tests/unit/lib/expression-github.mjs`, un évaluateur minimal qui lève sur tout le reste. Cet évaluateur est ancré sur les 26 verdicts de GitHub : il doit les rendre sur l'ancien `if:` comme sur le nouveau. La file est lue sur tous les workflows, car c'est l'arrivant qui décide.
+- **Mutations**, rejouées par le test sur le texte réel, chacune rouge en nommant la ligne : `queue: max` retirée ; `cancel-in-progress: true` ; groupe constant ; bloc remonté au run ; bloc réduit à une ligne ; second entrant dans un autre workflow ; ancien `if:` remis ; chaque clause retirée (label, `opened`, `edited`, corps, titre, `from`, garde `changes`, auteur, cible), sur les issues et sur les deux formes de commentaire. Une clause restée verte au premier passage (`action == 'edited'`) a reçu sa ligne de table.
+- **Non vérifié** :
+  - Un événement `issues` ou `issue_comment` réel : ils ne se déclenchent que depuis la branche par défaut. Le banc a joué `pull_request` et `pull_request_review_comment`, dont les champs `action`, `label` et `changes` ont la même forme (schémas octokit de `issues.edited` et `issue_comment.edited`). Le premier `labeled claude` et le premier `edited` après la fusion trancheront : le premier doit lancer un agent, le second doit sortir `skipped`.
+  - La limite des 100 places n'a pas été éprouvée, ni un run figé en tête de file : #162 n'était pas dans ce cas. Il ne bloquerait que son issue.
+- **Runs** (ils restent sous « banc-cc » dans Actions le temps de la contre-revue) : poussées `r-single`, B 41845387846 ; `r-max`, C 41845457967 ; `j-single`, C 41845457805 ; `j-max`, C 41845457792 ; événements `p-actuel-rmax` et `p-serre-jmax`. Les 52 runs de `p-actuel-rsingle` et `p-serre-rmax` sont supprimés, leurs chiffres sont dans le tableau.
