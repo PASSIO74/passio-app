@@ -260,7 +260,8 @@ Une archive porte des lignes, et le DDL de la nuit où elle a été prise. Ce qu
 verdict de données. Donc, avant d'ouvrir un projet reconstruit :
 
 1. **Rejouer sur la cible** chaque migration de sécurité dont l'effet n'est pas une ligne — au minimum
-   `migration_realtime_identite_opaque_2026-11-03.sql` dès qu'elle est appliquée en production. Elles sont
+   `migration_realtime_identite_opaque_2026-11-03.sql` puis `migration_realtime_diffusion_privee_2026-11-03.sql`,
+   toutes deux appliquées en production le 2026-11-04. Elles sont
    idempotentes et impriment leur tableau de verdict :
    `npm run migration:appliquer -- migrations/<fichier>.sql --projet <ref de la cible>` — tout OK, ou le
    projet ne s'ouvre pas. Le journal `migrations_appliquees`, restauré avec l'archive, dit lesquelles la
