@@ -498,4 +498,196 @@ test.describe("Créer une passion", () => {
     const r2 = await page.evaluate((n) => window.PassioPassions.creerPassion(n), NOM_ESSAI);
     expect(r2.aliasRetenus).toEqual([]);
   });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // LA DEMANDE D'UN COMPTE REVIENT COMME UNE PASSION (2026-11-04)
+  //
+  // Migration `migration_passion_requests_recursion_2026-11-04.sql` : la
+  // demande d'un compte ne lève plus 42P17, et `trg_passion_request_auto` la
+  // résout dans le même INSERT (`creer_passion`, rattachement dans
+  // `user_passions`, `status = 'approved'`). L'ancien client n'en savait rien :
+  // il annonçait « en vérification », ne sélectionnait rien — et le prochain
+  // enregistrement des passions défaisait le rattachement du serveur. Il disait
+  // aussi « elle partira à la prochaine connexion » sur des refus, alors
+  // qu'aucun rejeu n'existe.
+  //
+  // ⚠️ Ici on mesure le CLIENT. La base (garde, quota, oracle, récursion) est
+  // prouvée sur un vrai PostgreSQL par
+  // `tests/sql/migration-passion-requests-recursion.test.sh`.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // `passion_requests` factice : `insert(…).select(…)` rend `reponse` et
+  // journalise ce qui part ; la RELECTURE de la passion rendue
+  // (`passions.select("id,label,emoji,color").eq("id", …)`) rend `relue`.
+  // ⚠️ Tout le reste de `passions` passe au client d'origine : rendre `relue` à
+  // `resoudreNomsManquants` (même colonnes, mais `.in`) injecterait la passion
+  // au référentiel AVANT la frappe — le sélecteur la verrait alors comme un
+  // doublon, et le cas mesurerait autre chose que son sujet (vécu à l'écriture).
+  // ⚠️ On MUTE l'objet `supa` partagé (voir l'en-tête).
+  async function poserDemandes(page, reponse, relue) {
+    await page.evaluate(([rep, rel]) => {
+      window._supaReal = true;
+      window.__demandes = [];
+      window.__relectures = [];
+      window.__toasts = [];
+      window.toast = (m) => { window.__toasts.push(String(m)); };
+      const avant = window.supa.from.bind(window.supa);
+      window.supa.from = function (table) {
+        if (table === "passion_requests") {
+          return {
+            insert(ligne) {
+              const appel = { ligne: ligne, colonnes: null };
+              window.__demandes.push(appel);
+              return { select(colonnes) { appel.colonnes = colonnes; return Promise.resolve(rep); } };
+            },
+          };
+        }
+        if (table === "passions" && rel) {
+          const vrai = avant(table);
+          return {
+            select(colonnes) {
+              if (colonnes !== "id,label,emoji,color") return vrai.select(colonnes);
+              return {
+                eq(col, val) {
+                  if (col !== "id") return vrai.select(colonnes).eq(col, val);
+                  window.__relectures.push({ col: col, val: val });
+                  return Promise.resolve(rel);
+                },
+                in() { return Promise.resolve({ data: [], error: null }); },
+              };
+            },
+          };
+        }
+        return avant(table);
+      };
+    }, [reponse, relue || null]);
+  }
+
+  async function monterEtSaisir(page, hoteId) {
+    await page.evaluate((id) => {
+      window.__choisies = [];
+      const hote = document.createElement("div");
+      hote.id = id;
+      document.body.appendChild(hote);
+      PassionSearchSelector.monterDans(hote, { mode: "multi", onChangement: (ids) => { window.__choisies = ids; } });
+    }, hoteId);
+    await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
+    await page.locator("#" + hoteId + " .psel-input").fill(NOM_ESSAI);
+    const bouton = page.locator("#" + hoteId + " .psel-ajouter");
+    await expect(bouton).toBeVisible({ timeout: 10000 });
+    return bouton;
+  }
+
+  const APPROUVEE = { data: [{ status: "approved", resolved_passion_id: ID_ESSAI }], error: null };
+  const RELUE = { data: [{ id: ID_ESSAI, label: LIBELLE_ESSAI, emoji: "🧊", color: "#7c3aed" }], error: null };
+  const PROMESSE_FAUSSE = /partira|prochaine connexion|en vérification/i;
+
+  // ⑲ Sans compte réel, rien ne part — et l'écran ne promet aucun envoi.
+  test("⑲ sans compte, la demande reste sur l'appareil : rien ne part, rien n'est promis", async ({ page }) => {
+    await bootAvecCompte(page, { uid: null });
+    await poserServeur(page, CREEE);
+    await poserDemandes(page, APPROUVEE, RELUE);
+    const bouton = await monterEtSaisir(page, "hoteVisiteur");
+    await expect(bouton).toContainText("Demander l'ajout");
+    await bouton.click();
+    await expect.poll(async () => await page.evaluate(() => window.__toasts.length), { timeout: 10000 }).toBeGreaterThan(0);
+    // ⚠️ LE VISITEUR N'ÉCRIT PLUS EN PRODUCTION : `MY_UID` porte un
+    // `u_<aléatoire>`, et c'est sous ce faux nom que partaient les 158 refus en
+    // 500 du 2026-11-04.
+    expect(await page.evaluate(() => window.__demandes.length)).toBe(0);
+    expect(await page.evaluate(() => window.PassioPassions.demandes().map((d) => d.normalise))).toContain(NOM_ESSAI);
+    const vus = await page.evaluate(() => window.__toasts.join(" | "));
+    expect(vus).toMatch(/notée sur cet appareil/i);
+    expect(vus).not.toMatch(PROMESSE_FAUSSE);
+    expect(await page.evaluate(() => window.__choisies)).toEqual([]);
+  });
+
+  // ⑳ Le cœur : approuvée par le serveur, la demande est une passion — choisie,
+  // publiable, annoncée pour ce qu'elle est.
+  test("⑳ un compte : la demande approuvée est choisie, publiable, et dite « ajoutée »", async ({ page }) => {
+    await bootAvecCompte(page);
+    // La RPC échoue sans motif nommé : `creerPassion` se replie sur la DEMANDE.
+    await poserServeur(page, { error: { message: "panne passagère", code: "XX000" } });
+    await poserDemandes(page, APPROUVEE, RELUE);
+    const bouton = await monterEtSaisir(page, "hoteApprouvee");
+    await expect(bouton).toContainText("Créer");
+    await bouton.click();
+
+    await expect(page.locator("#hoteApprouvee .psel-puce")).toContainText(LIBELLE_ESSAI, { timeout: 10000 });
+    expect(await page.evaluate(() => window.__choisies)).toContain(ID_ESSAI);
+    expect(await page.evaluate((i) => estPassionCanonique(i), ID_ESSAI)).toBe(true);
+    const vus = await page.evaluate(() => window.__toasts.join(" | "));
+    expect(vus).toMatch(/ajoutée à tes passions/);
+    expect(vus).not.toMatch(PROMESSE_FAUSSE);
+
+    // Ce qui part : le NOM et le statut demandé, au nom du compte — rien que le
+    // serveur ne pose lui-même (id, heures, résolution) ; et la réponse est LUE.
+    const d = await page.evaluate(() => window.__demandes);
+    expect(d).toHaveLength(1);
+    expect(Object.keys(d[0].ligne).sort()).toEqual(["label", "normalized_label", "status", "user_id"]);
+    expect(d[0].ligne.status).toBe("pending");
+    expect(d[0].ligne.user_id).toBe(UID);
+    expect(d[0].colonnes).toBe("status,resolved_passion_id");
+    expect(await page.evaluate(() => window.__relectures.map((x) => x.val))).toEqual([ID_ESSAI]);
+    // La demande notée sur l'appareil dit ce que le serveur en a fait.
+    expect(await page.evaluate((n) => (window.PassioPassions.demandes().find((x) => x.normalise === n) || {}).status, NOM_ESSAI)).toBe("approved");
+  });
+
+  // ⑳ bis Sans relecture possible, le libellé est celui que le serveur écrit.
+  test("⑳ bis la passion approuvée garde un nom, même sans relecture", async ({ page }) => {
+    await bootAvecCompte(page);
+    await poserServeur(page, { error: { message: "panne passagère", code: "XX000" } });
+    await poserDemandes(page, APPROUVEE, { data: null, error: { message: "relecture impossible", code: "PGRST000" } });
+    const r = await page.evaluate((n) => window.PassioPassions.creerPassion(n), NOM_ESSAI);
+    expect(r.repli).toBe("demande");
+    expect(r.approuvee).toBe(true);
+    expect(r.passion.id).toBe(ID_ESSAI);
+    // `creer_passion` capitalise la première lettre et garde le reste tel quel.
+    expect(r.passion.label).toBe(LIBELLE_ESSAI);
+    expect(await page.evaluate((i) => passionById(i).label, ID_ESSAI)).toBe(LIBELLE_ESSAI);
+  });
+
+  // ㉑ ㉒ ㉓ ㉔ Un refus se NOMME, rien n'est choisi, et rien ne « partira ».
+  const REFUS = [
+    { titre: "㉑ le quota de la garde (42501, 5 demandes / 24 h)", attendu: /5 demandes en 24 h/,
+      erreur: { code: "42501", message: 'new row violates row-level security policy for table "passion_requests"', hint: "quota : 5 demandes par compte et par 24 h" } },
+    { titre: "㉒ une demande déjà faite (23505)", attendu: /déjà demandé/,
+      erreur: { code: "23505", message: 'duplicate key value violates unique constraint "passion_requests_unique_par_personne"' } },
+    { titre: "㉓ un nom refusé par creer_passion (22023)", attendu: /deux lettres au moins/,
+      erreur: { code: "22023", message: "nom_invalide" } },
+    { titre: "㉔ une coupure réseau (le SDK rend l'échec, il ne lève pas)", attendu: /n'est pas partie/,
+      erreur: { code: "", message: "TypeError: Failed to fetch", details: "", hint: "" } },
+  ];
+  for (const cas of REFUS) {
+    test(cas.titre + " : le refus est nommé, rien n'est choisi", async ({ page }) => {
+      await bootAvecCompte(page);
+      await poserServeur(page, { error: { message: "panne passagère", code: "XX000" } });
+      await poserDemandes(page, { data: null, error: cas.erreur }, RELUE);
+      const bouton = await monterEtSaisir(page, "hoteRefus");
+      await bouton.click();
+      await expect.poll(async () => await page.evaluate(() => window.__toasts.length), { timeout: 10000 }).toBeGreaterThan(0);
+      const vus = await page.evaluate(() => window.__toasts.join(" | "));
+      expect(vus).toMatch(cas.attendu);
+      expect(vus).not.toMatch(PROMESSE_FAUSSE);
+      expect(vus).not.toMatch(/ajoutée/);
+      expect(await page.evaluate(() => window.__choisies)).toEqual([]);
+      expect(await page.evaluate((i) => estPassionCanonique(i), ID_ESSAI)).toBe(false);
+      expect(await page.evaluate(() => window.__relectures.length)).toBe(0);
+    });
+  }
+
+  // ㉕ Le plafond des créations refuse aussi la DEMANDE d'un nom nouveau
+  // (`trg_passion_request_auto` passe par `creer_passion`) : même mur, qui dit
+  // de quel plafond il s'agit.
+  test("㉕ au plafond des créations, la demande ouvre le paywall des créations", async ({ page }) => {
+    await bootAvecCompte(page);
+    await poserServeur(page, { error: { message: "panne passagère", code: "XX000" } });
+    await poserDemandes(page, { data: null, error: { code: "53400", message: "quota_creation" } }, RELUE);
+    const bouton = await monterEtSaisir(page, "hotePlafondDemande");
+    await bouton.click();
+    const modale = page.locator("#modalContent");
+    await expect(modale).toBeVisible({ timeout: 10000 });
+    await expect(modale).toContainText("Trois créations offertes");
+    expect(await page.evaluate((i) => estPassionCanonique(i), ID_ESSAI)).toBe(false);
+  });
 });

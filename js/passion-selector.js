@@ -420,11 +420,12 @@
   };
 
   // ── « Je ne trouve pas ma passion » ───────────────────────────────────────
-  // ⚠️ LA DEMANDE N'EST PAS UNE PASSION PUBLIABLE. Elle apparaît dans « Mes
-  // passions » avec l'état « En vérification », elle ne s'affiche pas sur le
-  // profil public, et publier dessous reste refusé : `estPassionCanonique`
-  // (app-02) est la seule autorité, et la clé étrangère de `posts.passion_id`
-  // la refuserait de toute façon.
+  // ⚠️ DEPUIS LE 2026-11-04, LA DEMANDE D'UN COMPTE REVIENT COMME UNE PASSION :
+  // le serveur la résout dans le même INSERT (`trg_passion_request_auto` →
+  // `creer_passion`, rattachement dans `user_passions`, `status = 'approved'`),
+  // et l'écran la traite comme une création — sélectionnée, publiable, annoncée
+  // « ajoutée à tes passions ». Un refus se NOMME par son motif. Et AUCUN rejeu
+  // n'existe : rien n'annonce qu'une demande non partie « partira plus tard ».
   var MOTIFS = {
     auth_requise:     "Crée ton compte pour ajouter une passion.",
     nom_invalide:     "Choisis un nom de passion — deux lettres au moins, pas d'adresse web.",
@@ -434,14 +435,21 @@
     quota_jour:       "Tu as créé beaucoup de passions aujourd'hui. Reviens demain pour en créer d'autres.",
     quota_total:      "Tu as atteint le nombre de passions que tu peux créer.",
     trop_court:       "Donne un nom d'au moins 2 caractères.",
-    trop_long:        "Un nom plus court : six mots au maximum."
+    trop_long:        "Un nom plus court : six mots au maximum.",
+    // Refus et issues d'une DEMANDE (`deposerDemande`, passions-flat.js).
+    trop_de_demandes: "Tu as déjà fait 5 demandes en 24 h. Réessaie demain.",
+    deja_demandee:    "Tu as déjà demandé cette passion.",
+    demande_refusee:  "Cette passion n'a pas pu être ajoutée à ton compte.",
+    serveur_indisponible: "Le serveur n'a pas pu traiter la demande : rien n'a été ajouté. Réessaie dans un instant.",
+    hors_ligne:       "Pas de connexion : la demande n'est pas partie. Réessaie quand tu seras en ligne.",
+    sans_compte:      "Demande notée sur cet appareil. Crée un compte pour ajouter cette passion à tes passions."
   };
 
   // ── « Je ne trouve pas ma passion » → ON LA CRÉE ───────────────────
   // Le geste CONCLUT : le serveur écrit la passion au référentiel, elle est
   // sélectionnée dans la foulée, et PUBLIABLE tout de suite. Le chemin de
-  // DEMANDE (« en vérification ») subsiste comme repli — hors ligne, sans compte,
-  // ou tant que la migration n'est pas appliquée.
+  // DEMANDE subsiste comme repli — hors ligne, sans compte, ou quand la RPC
+  // échoue sans motif nommé — et, pour un compte, il conclut de même.
   Selecteur.prototype.creer = function () {
     var self = this;
     var m = moteur();
@@ -487,56 +495,7 @@
       .slice(0, 5);
 
     m.creerPassion(q, alias.length ? { alias: alias } : null).then(function (r) {
-      r = r || {};
-      if (r.erreur && !r.repli) {
-        // ⚠️ TROIS CRÉATIONS OFFERTES, ENSUITE C'EST PAYANT (2026-09-08, soir).
-        // Le plafond est tenu par le SERVEUR (`creer_passion` → `quota_creation`),
-        // jamais par l'écran : un attribut d'affichage n'a jamais été une garde.
-        // Mais un refus qui ne se prononce pas est indiscernable d'une panne —
-        // règle de la fiche 16, réaffirmée par le revirement du 2026-09-04 :
-        // une porte fermée doit dire par où passer. On ouvre donc le paywall,
-        // comme TOUTES les autres portes d'acquisition, plutôt qu'un toast qui
-        // disparaît avant d'être lu.
-        if (/^quota_/.test(r.erreur)) {
-          try { if (typeof toast === "function") toast(MOTIFS[r.erreur] || MOTIFS.quota_creation); } catch (e) {}
-          try {
-            if (typeof openPassionPaywall === "function") openPassionPaywall({ creation: true });
-          } catch (e) { journal("paywall", e); }
-          return;
-        }
-        try { if (typeof toast === "function") toast(MOTIFS[r.erreur] || "Impossible de créer cette passion pour le moment."); } catch (e) {}
-        return;
-      }
-      if (r.passion && r.passion.id) {
-        self.input.value = "";
-        self.frappe = "";
-        self.alias = "";
-        self.basculer(r.passion.id);
-        self.chercher();
-        try {
-          if (typeof toast === "function") {
-            toast(r.cree
-              ? "✨ « " + r.passion.label + " » créée et ajoutée."
-              : "« " + r.passion.label + " » existe déjà — ajoutée.", "success");
-          }
-        } catch (e) {}
-        // ⚠️ AUCUNE FRAPPE EN TÉLÉMÉTRIE : on n'envoie ni le nom, ni la recherche.
-        try { if (window.tel && tel.action) tel.action(r.cree ? "passion_creee" : "passion_deja_connue", {}); } catch (e) {}
-        return;
-      }
-      // Repli : une demande a été déposée. On le DIT — un « en vérification »
-      // silencieux se lit comme un échec.
-      self.input.value = "";
-      self.frappe = "";
-      self.chercher();
-      try {
-        if (typeof toast === "function") {
-          toast(r.envoyee
-            ? "Demande envoyée. La passion apparaîtra « en vérification »."
-            : "Demande enregistrée sur cet appareil. Elle partira à la prochaine connexion.", "success");
-        }
-      } catch (e) {}
-      try { if (typeof self.cfg.onDemande === "function") self.cfg.onDemande(r); } catch (e) {}
+      self.conclure(r);
     }).catch(function (e) {
       // ⚠️ JAMAIS MUET : sans ce toast, une faute dans le `.then` ci-dessus
       // faisait un tap qui ne produit RIEN — indiscernable d'un bouton mort.
@@ -550,7 +509,17 @@
     var m = moteur();
     if (!m) return;
     var q = String(this.frappe || "").trim();
+    // ⚠️ LE PLAFOND SE VÉRIFIE AVANT D'ÉCRIRE AU SERVEUR — comme pour une
+    // création, et pour la même raison : la demande d'un compte est approuvée
+    // et rattachée par le serveur ; refusée ensuite à la sélection, elle serait
+    // créée, quota consommé, et nulle part à l'écran.
+    if (this.cfg.mode !== "unique" && this.cfg.max && this.selection.length >= this.cfg.max) {
+      if (typeof this.cfg.onMax === "function") { try { this.cfg.onMax(this.cfg.max); } catch (e) { journal("onMax", e); } return; }
+      try { if (typeof toast === "function") toast("Maximum " + this.cfg.max + " passions pour commencer"); } catch (e) {}
+      return;
+    }
     m.deposerDemande(q).then(function (r) {
+      r = r || {};
       if (!r.valide) {
         try { if (typeof toast === "function") toast("Donne un nom d'au moins 2 caractères."); } catch (e) {}
         return;
@@ -564,18 +533,78 @@
         try { if (typeof toast === "function") toast("« " + r.doublon.label + " » existe déjà — ajoutée.", "success"); } catch (e) {}
         return;
       }
+      self.conclure(r);
+    }).catch(function (e) {
+      journal("demande", e);
+      try { if (typeof toast === "function") toast(MOTIFS.serveur_indisponible); } catch (_) {}
+    });
+  };
+
+  // Ce que l'écran fait d'une réponse — création, ou demande. UNE fonction pour
+  // les deux chemins : une passion obtenue est sélectionnée et annoncée, un refus
+  // est NOMMÉ, et une demande non partie le dit sans rien promettre.
+  Selecteur.prototype.conclure = function (r) {
+    var self = this;
+    r = r || {};
+    if (r.erreur) {
+      // ⚠️ TROIS CRÉATIONS OFFERTES, ENSUITE C'EST PAYANT (2026-09-08, soir).
+      // Le plafond est tenu par le SERVEUR (`creer_passion` → `quota_creation`),
+      // jamais par l'écran : un attribut d'affichage n'a jamais été une garde.
+      // Mais un refus qui ne se prononce pas est indiscernable d'une panne —
+      // règle de la fiche 16, réaffirmée par le revirement du 2026-09-04 :
+      // une porte fermée doit dire par où passer. On ouvre donc le paywall,
+      // comme TOUTES les autres portes d'acquisition, plutôt qu'un toast qui
+      // disparaît avant d'être lu. Le même plafond refuse la DEMANDE d'un nom
+      // nouveau (`trg_passion_request_auto` passe par `creer_passion`).
+      if (/^quota_(creation|jour|total)$/.test(r.erreur)) {
+        try { if (typeof toast === "function") toast(MOTIFS[r.erreur] || MOTIFS.quota_creation); } catch (e) {}
+        try {
+          if (typeof openPassionPaywall === "function") openPassionPaywall({ creation: true });
+        } catch (e) { journal("paywall", e); }
+        return;
+      }
+      try { if (typeof toast === "function") toast(MOTIFS[r.erreur] || "Impossible d'ajouter cette passion pour le moment."); } catch (e) {}
+      return;
+    }
+    if (r.passion && r.passion.id) {
       self.input.value = "";
       self.frappe = "";
+      self.alias = "";
+      // ⚠️ LA SÉLECTION EST CE QUI LA GARDE : l'enregistrement des passions
+      // réécrit le serveur depuis l'état local et retire de `user_passions` ce
+      // qui n'y est pas — une passion approuvée mais pas choisie en repartirait.
+      self.basculer(r.passion.id);
       self.chercher();
       try {
         if (typeof toast === "function") {
-          toast(r.envoyee
-            ? "Demande envoyée. La passion apparaîtra « en vérification »."
-            : "Demande enregistrée sur cet appareil. Elle partira à la prochaine connexion.", "success");
+          toast(r.approuvee
+            ? "« " + r.passion.label + " » ajoutée à tes passions."
+            : r.cree
+              ? "✨ « " + r.passion.label + " » créée et ajoutée."
+              : "« " + r.passion.label + " » existe déjà — ajoutée.", "success");
         }
       } catch (e) {}
-      try { if (typeof self.cfg.onDemande === "function") self.cfg.onDemande(r); } catch (e) {}
-    }).catch(function (e) { journal("demande", e); });
+      // ⚠️ AUCUNE FRAPPE EN TÉLÉMÉTRIE : on n'envoie ni le nom, ni la recherche.
+      try {
+        if (window.tel && tel.action) {
+          tel.action(r.approuvee ? "passion_demande_approuvee" : (r.cree ? "passion_creee" : "passion_deja_connue"), {});
+        }
+      } catch (e) {}
+      return;
+    }
+    // Rien d'obtenu : la demande est partie et attend côté serveur, ou elle
+    // n'est pas partie (sans compte, hors ligne). On le DIT — et sans rien
+    // promettre : aucun code ne renvoie une demande restée sur l'appareil.
+    self.input.value = "";
+    self.frappe = "";
+    self.chercher();
+    try {
+      if (typeof toast === "function") {
+        if (r.envoyee) toast("Demande envoyée.", "success");
+        else toast(MOTIFS[r.raison] || MOTIFS.hors_ligne);
+      }
+    } catch (e) {}
+    try { if (typeof self.cfg.onDemande === "function") self.cfg.onDemande(r); } catch (e) {}
   };
 
   // ══════════════════════════════════════════════════════════════════════════

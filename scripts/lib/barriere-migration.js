@@ -312,6 +312,13 @@ function verdictGlobal(phases) {
 // et l'outil refuse d'écrire sur une cible dont le client servi ne le porte pas.
 // Sur une cible sans client servi connu (le staging : la CI y joue le client de
 // la PR), rien n'est exigé. Illisible = refus : on ne devine pas.
+// ⚠️ LE CLIENT SERVI, C'EST LE BUNDLE `app.js` ET LA PAGE (2026-11-04). Hors du
+// bloc BUILD:APP, `scripts/build.js` INLINE dans la page chaque `<script
+// src="js/…">` — passions-flat.js, passion-selector.js, la colle… Un motif porté
+// par l'un d'eux n'est JAMAIS dans `app.js` : chercher là seul refusait pour
+// toujours la migration passion_requests du 2026-11-04, dont le prérequis vit
+// dans passions-flat.js. La page et le bundle sortent du même build et du même
+// déploiement ; un motif se lit dans l'un OU l'autre.
 const ORIGINES_CLIENT = { njkiyoklssvefstljemx: "https://passio-app.netlify.app" };
 const LIGNE_PREREQUIS = /^--[ \t]*PREREQUIS-CLIENT[ \t]*:[ \t]*(\S(?:.*\S)?)[ \t]*$/gm;
 
@@ -346,10 +353,11 @@ function verifierPrerequisClient({ motifs, origine, html, bundle } = {}) {
     throw new RefusBarriere("prerequis_client_illisible",
       "prérequis client : le bundle " + url + " n'a pas pu être lu. On refuse plutôt que de supposer le client à jour.", { url });
   }
-  const manquants = motifs.filter((m) => !bundle.includes(m));
+  const page = String(html);
+  const manquants = motifs.filter((m) => !bundle.includes(m) && !page.includes(m));
   if (manquants.length) {
     throw new RefusBarriere("prerequis_client_absent",
-      "prérequis client : le client SERVI (" + url + ") ne porte pas " + manquants.map((m) => "« " + m + " »").join(", ") + ". " +
+      "prérequis client : le client SERVI (" + url + ", et la page " + origine + ") ne porte pas " + manquants.map((m) => "« " + m + " »").join(", ") + ". " +
       "Cette migration casserait les clients en ligne : déployer d'abord (fusion de la PR, job « Déploiement production » vert), puis relancer.",
       { url, manquants });
   }

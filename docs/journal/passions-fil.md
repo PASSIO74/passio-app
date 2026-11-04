@@ -22,6 +22,7 @@
 - 🕒 LE FIL DEVIENT CHRONOLOGIQUE : LE PLUS RÉCENT EN HAUT, TOUJOURS (2026-10-24)
 - 🚀 LANCEMENT GRATUIT : LE MUR DES TROIS PASSIONS EST LEVÉ POUR TOUS (2026-11-01)
 - 🧱 LE RÉEL D'ABORD, LES EXEMPLES ENSUITE — ET DES EXEMPLES CRÉDIBLES (2026-11-01)
+- 🔁 « INFINITE RECURSION » SUR `passion_requests` — PLUS UNE DEMANDE NE PASSAIT, ET LA CORRECTION NAÏVE ROUVRAIT UN ORACLE (2026-11-04) — migration à appliquer APRÈS le client
 
 ---
 
@@ -728,3 +729,187 @@ Verrou : `tests/e2e/fil-reel-dabord.spec.js` (11) — ⑪ tombe sans `_separerAu
 `trierFilChronologique` ; ⑥ compte les lectures (exactement 3) ; ⑦⑧ tiennent la table et la couverture des
 passions cochées en production ; ⑨ les invariants de réalisme (plafond de « j'aime », étalement, aucune rafale
 d'auteur, aucune photo répétée deux fois de suite, commentaires dans le cadre, même fil à chaque ouverture).
+
+## 🔁 « INFINITE RECURSION » SUR `passion_requests` — PLUS UNE DEMANDE NE PASSAIT, ET LA CORRECTION NAÏVE ROUVRAIT UN ORACLE (2026-11-04) — migration à appliquer APRÈS le client
+
+**Défaut** (mesuré au canal ①, catalogue, journaux et agrégats seuls). Toute INSERT cliente dans
+`public.passion_requests` échouait au **PARSE** : `42P17 infinite recursion detected in policy for relation
+"passion_requests"`, 162 fois en 24 h dans postgres_logs, une seule forme de requête — celle que PostgREST bâtit
+pour `deposerDemande` (`js/passions-flat.js`), recopiée dans le verdict et le banc, et attestée par un second
+témoin : `pg_stat_statements` ne connaît qu'UNE forme d'INSERT PostgREST sur la table (md5 `daa27ef6…`,
+785 caractères normalisés), que le banc retrouve — et HTTP 500 côté API.
+Les 158 POST de la fenêtre portaient **tous le jeton anon**, HeadlessChrome, référent `127.0.0.1:8080`,
+81 adresses aux États-Unis : selon toute vraisemblance les suites e2e de la CI, qui envoyaient leurs demandes de
+visiteur à la production. Aucun compte dans la fenêtre — mais une demande de compte (repli de `creerPassion`
+quand la RPC `creer_passion` échoue) prenait la même erreur. La table n'a que 2 lignes, du 2026-09-08.
+
+**Cause — deux défauts empilés et deux trous, tous prouvés au banc** :
+① **La récursion** (depuis le 2026-09-14). La WITH CHECK de l'INSERT comptait les demandes de l'appelant par
+une sous-requête SUR `passion_requests`. Le réécrivain (`fireRIRrules`) applique à cette sous-requête la policy
+SELECT de la même table, qui est déjà dans sa pile : dès que CETTE policy porte une sous-requête, il lève 42P17.
+`migration_rls_initplan_2026-09-14.sql` la lui a donnée en écrivant `auth.uid()` en `(select auth.uid())` ;
+avec `auth.uid()` nu (`migration_passions_plat.sql`), la même INSERT ne lève rien. Une lecture, elle, passe.
+② **La contradiction, latente** (masquée par ①). `trg_passion_request_auto` — BEFORE INSERT, né **hors dépôt** —
+fait créer la passion par `creer_passion`, la rattache dans `user_passions` pour `new.user_id`, puis pose
+`status = 'approved'` et `resolved_passion_id`. Or la WITH CHECK juge la ligne **après** les déclencheurs BEFORE,
+et exigeait `status = 'pending' AND resolved_passion_id IS NULL` : la correction naïve (policy SELECT rendue à
+`auth.uid()` nu) guérit 42P17, et **aucune demande conforme ne passe** (42501). Pire, elle **rouvre un oracle** :
+au nom d'un autre compte, le déclencheur écrit dans `user_passions` AVANT que la policy ne juge, et le refus
+nomme « user_passions » si ce compte est en cours de suppression, « passion_requests » sinon.
+③ **Le trou de la limite**, préexistant : `created_at` est écrit par le client (droit d'INSERT de TABLE, aucun
+droit de colonne) ; une demande antidatée sortait de la fenêtre de 24 h, et rien ne sérialisait le compte.
+④ **Le trou des doublons** (trouvé par la contre-revue de la version 1, SEC-01/02) : `normalized_label`, seule
+colonne de l'index unique avec `user_id`, était écrit par le client ; et un dépôt en conflit sous
+`Prefer: resolution=ignore-duplicates` (`ON CONFLICT DO NOTHING`) n'est écarté qu'APRÈS les déclencheurs
+BEFORE — `creer_passion` avait tourné, la passion était rattachée, aucune ligne n'était écrite : le quota ne
+comptait jamais ces passages.
+
+**Correction** — `migrations/migration_passion_requests_recursion_2026-11-04.sql` (version 2, contre-revue intégrée) :
+- une **garde** `aa_passion_requests_garde` (BEFORE INSERT ; « aa_ » pour passer AVANT
+  `trg_passion_request_auto`, les déclencheurs se suivant par nom) sur `passion_requests_garde()`, SECURITY
+  DEFINER, search_path vide, exécutable par aucun rôle client. Elle refuse en 42501 (le message même d'un refus
+  RLS) un rôle CLIENT sans identité — un visiteur : `current_setting('role')` vaut `anon` ou `authenticated`,
+  `auth.uid()` nul —, sans plus dépendre de `creer_passion` pour cela ; pour une session à identité, une demande
+  au nom d'autrui, non `pending` ou déjà résolue — jugée sur les valeurs du CLIENT ; pose `id`, `created_at`,
+  `updated_at` ET `normalized_label` (`passion_plier(label)`) du serveur ; puis, sous un verrou consultatif de
+  TRANSACTION du compte, refuse un doublon (23505, le message de l'index unique) AVANT tout effet de
+  `creer_passion`, et la 6ᵉ demande en 24 h (42501, indice « quota ») — exacte sous deux dépôts simultanés ;
+- la policy d'INSERT ne garde que le compte appelant et la barrière de suppression — la forme de
+  `user_passions_insert_own` — et **ne lit plus sa table**. La policy SELECT, `trg_passion_request_auto`,
+  `creer_passion` et la barrière ne bougent pas d'un octet ; aucune fonction appelable n'est ajoutée ;
+- **fermée sur échec** (SEC-04) : les 23 lignes du verdict sont relevées dans une table temporaire AVANT
+  `commit;`. Une ligne de catalogue en échec — policies, présence et RANG de la garde, son corps (md5) et ses
+  droits, les corps de production de `passion_request_auto_creer`, de la barrière et des DEUX `creer_passion`,
+  la RLS — ou, dès que le décor a mesuré (ligne 1 OK), une ligne de comportement en échec, lève 55000 en
+  nommant les lignes : RIEN n'est appliqué (ni le correctif, ni une trace du décor, ni la ligne de journal de
+  l'outil), et la production reste fermée (42P17) plutôt qu'à moitié ouverte. Seule une PANNE du décor (ligne 1
+  en ECHEC : rien n'a été mesuré) ne bloque pas.
+Écartés (détail dans l'en-tête) : la policy SELECT rendue à `auth.uid()` nu (guérit ① seul, rouvre l'oracle,
+et le générateur d'initplan la recasserait) ; une fonction SECURITY DEFINER de comptage dans la WITH CHECK
+(guérit ①, mais jugée encore APRÈS le déclencheur : ② et l'oracle demeurent) ; le déclencheur automatique passé
+en AFTER (réécrit une fonction née hors dépôt) ; des droits de colonne (ne règlent ni ①, ni ②).
+
+**Le client change AVEC la migration** (EXP-01, P2 de la contre-revue : la migration n'était pas applicable
+seule). Dès qu'une demande de compte PASSE, `trg_passion_request_auto` la résout et rattache la passion dans le
+même INSERT — en CRÉANT la passion si le nom est nouveau (l'une des 3 créations du compte), ce que la RPC fait
+aussi, et en la RATTACHANT, ce que la RPC ne fait pas. L'ancien client insérait sans lire la réponse, annonçait
+« en vérification », ne sélectionnait rien, et son enregistrement suivant (`_supaSavePassionStateMaintenant`,
+app-08 : il réécrit `profiles.passions` depuis l'état LOCAL puis retire de `user_passions` ce qui y manque)
+défaisait le rattachement ; tous ses refus disaient « elle partira à la prochaine connexion », sans rejeu.
+Désormais (`js/passions-flat.js`, `js/passion-selector.js`) :
+- `deposerDemande` n'envoie que pour un vrai compte (`uidReel()`, comme `creerPassion`) : un visiteur garde sa
+  demande sur l'appareil, et l'écran le dit ;
+- `.insert({…}).select("status,resolved_passion_id")` : une réponse `approved` est traitée comme une CRÉATION
+  (`passionResolue` : le référentiel en mémoire, sinon une relecture de `passions`, sinon un repli au libellé ;
+  `enregistrerPassionCanonique`, puis `basculer`) — la passion est SÉLECTIONNÉE, l'état local la tient, et le
+  message dit ce que le serveur a fait : « « X » ajoutée à tes passions. » ;
+- chaque refus est nommé par son SQLSTATE (`motifDemande`) : 42501 + quota → « 5 demandes en 24 h »,
+  42501 → refusée, 23505 → déjà demandée, 22023 → nom refusé, 53400 → plafond des créations (le mur), réseau →
+  « la demande n'est pas partie » ; plus jamais de « partira à la prochaine connexion » sans rejeu ;
+- l'invariant de `js/passions-flat.js` (« une demande n'est pas une passion ») dit ce qui est vrai.
+**L'ordre est tenu par l'outil, pas par un commentaire** : la migration déclare
+`-- PREREQUIS-CLIENT: passion_requests:reponse-lue`, littéral porté par `js/passions-flat.js`
+(`REPONSE_DEMANDE_LUE`, journalisé à chaque réponse lue) ; `npm run migration:appliquer` refuse la production
+tant que la page SERVIE ne le porte pas.
+⚠️ **Un prérequis porté par un script INLINÉ vit dans la PAGE, pas dans `app.js`** : `scripts/build.js` inline
+`passions-flat.js` dans `index.html` (hors bloc BUILD:APP) ; la règle ④ de `scripts/lib/barriere-migration.js`
+ne lisait que le bundle et aurait refusé à tort — elle lit maintenant la page ET le bundle
+(`tests/unit/barriere-migration.test.mjs`, deux cas). Vérifié sur le VRAI build : `node scripts/build.js`, puis
+`html-minifier-terser` aux options de la CI — le littéral survit (une fois, au point d'usage), la règle ④ passe
+sur la page minifiée et refuse sans le motif.
+
+⚠️ **Une policy ne lit JAMAIS sa propre table par une sous-requête** : il suffit que la policy SELECT de cette
+table porte UNE sous-requête — un simple `(select auth.uid())` — pour que le réécrivain lève 42P17, au parse,
+pour tout rôle. Compter dans un déclencheur ou une fonction SECURITY DEFINER. Recherche de survivants faite au
+canal ① le 2026-11-04 : aucune autre policy de `public`, `storage`, `realtime` ne lit sa table ni ne forme de
+cycle par sous-requête (fonctions exclues : le réécrivain ne les développe pas). Règle durable recopiée dans
+`docs/PIEGES_CONNUS.md`.
+⚠️ **Une WITH CHECK juge la ligne APRÈS les déclencheurs BEFORE** : elle ne sait pas ce que le client a écrit
+dès qu'un déclencheur réécrit la colonne — ce contrat se juge dans un déclencheur qui passe AVANT.
+⚠️ **`ON CONFLICT DO NOTHING` n'écarte la ligne qu'APRÈS les déclencheurs BEFORE**, dont les effets ont eu
+lieu : un doublon se refuse DANS le déclencheur, sur une clé que le SERVEUR calcule — une colonne d'index unique
+écrite par le client n'est pas une clé.
+⚠️ **Un refus doit être le même quel que soit l'état du compte visé** : un déclencheur qui écrit pour
+`new.user_id` avant la policy fait parler les barrières des AUTRES tables — et un refus qui dépend d'une
+fonction tierce (`auth_requise` de `creer_passion`) rouvre l'oracle le jour où elle change : la garde refuse
+elle-même.
+
+**Mesure** :
+- `tests/sql/migration-passion-requests-recursion.test.sh` — **136 ✅ / 0 ❌** (≈ 25 s ; la version finale passée
+  deux fois, dont une sous charge CPU, puis par `scripts/bancs-sql-restants.sh` : 40 bancs, 0 rouge). Socle =
+  production, bâti et migré par un `postgres` NON superutilisateur (BYPASSRLS, membre
+  d'anon / authenticated / service_role, search_path de production — EXP-03) ; témoin externe
+  `pg_stat_statements` ; helpers qui lisent le code de sortie de psql (VB-07). Défaut reproduit (42P17 au
+  PREPARE sous `authenticated` et `anon`), correction naïve réfutée, migration réinjectée sur la production :
+  REFUSÉE par son garde-fou (lignes 2 à 14, 17, 19, 20), et sans garde-fou son tableau rougit exactement ces
+  lignes. Verdict 23/23 par `psql -f`, en rejeu, en UNE requête (`psql -c`), en CRLF. Comportement sous les
+  vrais rôles : quota par compte, antidate, `normalized_label` du serveur (et « Photo » déguisée en « yoga »
+  reste SA demande), la ligne écrite relue comme la relit le nouveau client (`RETURNING` : « approved » et la
+  passion, sans 42P17), oracle fermé (comptes ET visiteur, message compris), concurrence, connexion restée ouverte
+  après son commit (VB-02), fenêtre de 24 h amorcée à −23 h 30 / −24 h 30 (VB-01), doublon sous
+  ignore-duplicates refusé avant tout effet (SEC-01), et une `creer_passion` qui DÉRIVERAIT après application :
+  le visiteur reste refusé par la garde (VB-03). Décor sans trace ni verrou. **Fermé sur échec** : huit dérives
+  du catalogue (déclencheur trié avant « aa_ », les trois corps de production, auto coupé, RLS coupée, troisième
+  policy, droit de colonne) et six mutations du fichier (corps sans empreinte, droits, ordre, récursion,
+  barrière, INVOKER) — chaque refus nomme ses lignes, la base reste celle d'avant (et fermée). Retour arrière à
+  l'octet (défaut revenu, puis 23/23). **Quinze mutations de comportement**, empreinte recalculée comme le ferait
+  un développeur : le garde-fou refuse chacune en nommant exactement ses lignes (limite, heure, pli, doublon,
+  propriétaire, statut, visiteur, comptage global, fenêtre 25 h et 1 h, verrou de session, décor gardé) ; sans
+  lui, le banc voit la garde mutée à l'œuvre (la passion rangée qui ressort, l'oracle du visiteur qui rouvre,
+  55P03 sur la connexion ouverte) ; le décor cassé ou hors rôle client le DIT sans bloquer ; seul le verrou
+  retiré échappe au verdict — une session seule ne voit pas une course —, et la concurrence l'attrape.
+- e2e (`tests/e2e/creation-passion.spec.js`) : ⑲ un visiteur n'envoie rien et le message le dit ; ⑳ une demande
+  approuvée est sélectionnée, canonique, annoncée « ajoutée à tes passions », la requête porte exactement
+  `label, normalized_label, status, user_id` et lit `status,resolved_passion_id` ; ⑳ bis le repli au libellé ;
+  ㉑–㉔ 42501 quota, 23505, 22023, réseau : chacun son message, jamais la fausse promesse ; ㉕ 53400 ouvre le
+  mur. RÉINJECTÉ sur l'ancien client : les huit tombent. Les douze suites du domaine (sélecteur, référentiel,
+  profil, première visite), navigateur COUPÉ du réseau : 260 ✅, 5 ❌ — et les cinq tombent À L'IDENTIQUE sur le
+  client d'avant, dans le même environnement (⑭ de `creation-passion`, ⑥ d'`isolation-referentiel-passions`
+  qui attend un libellé d'erreur réseau précis, trois cas de profil visité de `profil-entete-passions`) : ce
+  sont des effets du réseau coupé, pas du lot. WebKit non joué (pas de binaire sur le poste).
+
+**Ce qui reste** (hors lot, dit tel quel) :
+- SEC-03 : rien ne surveille la garde APRÈS l'application (présence, rang, md5) — une vérification permanente
+  du catalogue (veille ou Sentinelle, en lecture seule) est à faire ; ou, quand `trg_passion_request_auto` sera
+  versionné, lui faire refuser `new.user_id is distinct from auth.uid()::text` lui-même ;
+- `creer_passion` (lot à part) : sa branche de création passe en `approved` les demandes EN ATTENTE de TOUS les
+  comptes du même nom, et la barrière en fait un oracle (inaccessible tant qu'aucune demande ne reste en
+  attente, SEC-05) ; elle ignore la barrière de suppression par la RPC et accepte des caractères de contrôle
+  (SEC-06) ; le commentaire de `passion_request_auto_creer` annonce des quotas qui n'existent pas
+  (« 5 créations / 24 h, 30 au total » ; la règle est `passion_quotas`, 3 par défaut — SEC-08) ;
+- la CI : avec ce lot, un visiteur n'envoie plus rien (les ~160 POST anon par jour s'arrêtent dès le
+  déploiement du client) ; mais `tests/e2e/app-helper.js` ne détourne toujours pas `passion_requests` : une
+  suite qui simulerait un compte (uuid factice, sans session) enverrait encore une demande, refusée en 42501 ;
+- `trg_passion_request_auto` et `passion_request_auto_creer` restent hors dépôt : le verdict ferme sur leur
+  empreinte, aucune migration ne les versionne ;
+- le miroir GÉNÉRÉ `migrations/migration_passions_plat.sql` (et `parties/partie-07.sql`) recrée encore les
+  policies du 2026-09-01 (`auth.uid()` nu, sans barrière) : rejoué EN ENTIER en production, il rendrait la
+  WITH CHECK contradictoire (plus une demande ne passerait — la garde, restée, empêcherait l'oracle) et
+  défairait l'initplan et la barrière de `user_passions`. Les vagues passent par un delta
+  (`generer-delta-passions.js`), qui ne touche pas aux policies ; aligner le miroir est un autre lot ;
+- `submitPassionRequest` (`js/app-02-state-utils.js`) est du code mort : sa porte (`openCreateCustomPassion`)
+  est fermée par `passionsPersoSuspendues()`, sa requête ne part jamais (constructeur sans `.then` ni `await` :
+  supabase-js n'envoie qu'au `then`), et elle viserait des colonnes absentes (`name`, `emoji`, `reason`,
+  `link`, `is_creator`) avec un `id` qui n'est pas un uuid. À retirer dans un lot à part ;
+- PostgreSQL 17.6 (la production) n'est éprouvé par aucun banc : seuls les binaires 16 sont installés.
+
+**Livré en DEUX PR**, parce que la gouvernance l'impose : une PR qui touche `migrations/` n'a ni preview ni
+production sans une contre-revue de PASSIO74 ancrée sur son SHA (job « Gouvernance critique »). Le CLIENT,
+la règle ④ de la barrière et la documentation partent d'abord, hors périmètre critique. Avant la migration,
+une demande de compte reçoit encore 42P17 (HTTP 500), et le nouveau client le dit (« Le serveur n'a pas pu
+traiter la demande : rien n'a été ajouté »). Ensuite la migration, son banc et le verrou unitaire qui
+relie son `PREREQUIS-CLIENT` au littéral du client, avec la contre-revue.
+
+**Appliquer** — DANS CET ORDRE (canal ③, poste de Benjamin, APRÈS la contre-revue et son attestation dans
+`.passio/migrations/attestations.json`) :
+1. le client de ce lot fusionné et DÉPLOYÉ (job « Déploiement production » vert) — sinon l'outil refuse
+   (`prerequis_client_absent`) ;
+2. `npm run migration:appliquer -- migrations/migration_passion_requests_recursion_2026-11-04.sql --projet njkiyoklssvefstljemx`
+   — verdict attendu : 23 lignes, 23 OK. Un refus 55000 = RIEN n'est appliqué : lire les lignes nommées, ne pas
+   insister. Une ligne 1 en ECHEC = passée SANS mesure : mesurer au canal ① avant toute autre chose ;
+3. puis mesurer au canal ①, jamais le tableau : WITH CHECK de `passion_requests_insert_own` (`pg_get_expr`),
+   déclencheurs de la table (`aa_passion_requests_garde` en tête) ; dans postgres_logs, **0 nouvelle 42P17** ;
+   dans edge_logs, un POST `/rest/v1/passion_requests` sous le jeton anon rend **401** (plus 500) ; pour les
+   comptes, lire le SQLSTATE dans postgres_logs (42501 garde ou quota, 23505 doublon, 22023 nom refusé, 53400
+   plafond des créations) plutôt que le seul code HTTP.
+Retour arrière : le bloc `--|` de l'en-tête — il rend aussi le défaut.

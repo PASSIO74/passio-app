@@ -379,6 +379,17 @@ test("④ prérequis client : refus si absent ou illisible, jamais une suppositi
   assert.equal(B.ORIGINES_CLIENT.fcksxofaelcdmmifnwjo, undefined, "le staging n'en a pas (la CI y joue le client de la PR)");
 });
 
+test("④ un motif porté par un script INLINÉ dans la page (hors bloc app) se lit dans la page servie", () => {
+  const origine = "https://passio-app.netlify.app";
+  const motifs = ["passion_requests:reponse-lue"];
+  const page = PAGE_BUILD.replace("</body>", '<script>!function(){var e="passion_requests:reponse-lue";window.x=e}();</script></body>');
+  const ok = B.verifierPrerequisClient({ motifs, origine, html: page, bundle: "var a=1;" });
+  assert.deepEqual(ok, { exige: true, url: origine + "/app.js?v=464ac2e0bc", motifs });
+  // Ni dans la page, ni dans le bundle : refus, comme avant.
+  assert.throws(() => B.verifierPrerequisClient({ motifs, origine, html: PAGE_BUILD, bundle: "var a=1;" }),
+    (e) => e instanceof B.RefusBarriere && e.code === "prerequis_client_absent");
+});
+
 test("④ la migration R25 déclare ses deux prérequis, et le client du dépôt les porte", () => {
   const sql = readFileSync(new URL("../../migrations/migration_realtime_diffusion_privee_2026-11-03.sql", import.meta.url), "utf8");
   const motifs = B.prerequisClient(sql);
