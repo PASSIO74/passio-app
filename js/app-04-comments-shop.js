@@ -4519,8 +4519,9 @@ async function openConversation(convId) {
   }, 320);
 
   // Le CTA IRL n'est jamais présent dans le HTML initial. Il est ajouté
-  // seulement après le verdict serveur âge + blocage de #136. Le drapeau reste
-  // OFF par défaut ; ce point d'appel ne fait donc aucun accès réseau hors canari.
+  // seulement après le verdict serveur âge + blocage de #136. Le drapeau est actif
+  // par défaut : visiteur et session expirée s'arrêtent avant le réseau
+  // (`irlProposalServerVerdict`, app-07).
   if (!c.isGroup && typeof irlProposalEnabled === "function" && irlProposalEnabled()
       && typeof irlProposalMountConversationAction === "function") {
     irlProposalMountConversationAction(convId, c.userId);

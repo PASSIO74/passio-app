@@ -20,8 +20,11 @@
 //
 // ⚠️ CE QUE L'EXERCICE A APPRIS, et qu'une reconstruction « aux tables et
 // aux policies » ne sait pas — chaque point ci-dessous a été VU manquer :
-//   · les SÉQUENCES avant les tables (`client_errors.id` est un serial :
-//     sans la séquence, le `default nextval(…)` de la table échoue) ;
+//   · les SÉQUENCES d'une colonne `serial` avant les tables (sans elle, le
+//     `default nextval(…)` de la table échoue), puis rattachées à leur colonne
+//     (OWNED BY) — mais JAMAIS une séquence d'IDENTITÉ : elle naît avec sa
+//     colonne (`client_errors.id` et `migrations_appliquees.id` sont des
+//     identités, pas des serial ; voir la section « Séquences ») ;
 //   · les PRIVILÈGES de table ET de colonne pour `anon`/`authenticated` :
 //     `events.address` et `events.contact` ne sont privés QUE par un GRANT
 //     de colonnes — une base reconstruite sans eux rend l'adresse d'un
@@ -34,10 +37,17 @@
 //   · les tâches CRON (purges de télémétrie) ;
 //   · le bloc « ajouter une contrainte » doit avaler `invalid_table_definition`
 //     (« multiple primary keys ») pour être rejouable, pas seulement
-//     `duplicate_object`.
+//     `duplicate_object` ;
+//   · l'IDENTITÉ DE RÉPLICATION et les PRIVILÈGES DE SÉQUENCE (revue
+//     indépendante du 2026-11-03, risque R25) : sans eux, une base
+//     reconstruite remettait toute table en identité DEFAULT — la clé
+//     primaire, que le temps réel publie à chaque DELETE — et rendait `rwU` à
+//     anon/authenticated sur chaque séquence, alors que `--verifier` disait
+//     « contenu identique ». Banc : tests/sql/schema-executable-identite.test.sh.
 // Ordre d'exécution = ordre du tableau ETAPES : une fonction avant la policy
-// qui l'appelle, une table avant sa clé étrangère, PUBLIC révoqué avant les
-// grants nominatifs. LECTURE SEULE sur le projet source.
+// qui l'appelle, une table avant sa clé étrangère, un index avant l'identité
+// de réplication qui le désigne, PUBLIC révoqué avant les grants nominatifs.
+// LECTURE SEULE sur le projet source.
 // ═══════════════════════════════════════════════════════════════════════════
 const fs = require("fs");
 const os = require("os");
@@ -69,12 +79,43 @@ const litt = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const SANS_EXTENSION = "p.oid not in (select objid from pg_depend where deptype='e')";
 
 const ETAPES = [
+  { titre: "Garde — aucune table partitionnée ni étrangère dans public (le DDL de reprise ne sait pas les rendre)",
+    // ⚠️ Contre-revue finale de R25 (2026-11-04). La section « Tables » ne rend
+    // que les tables ordinaires (relkind 'r') : un parent PARTITIONNÉ ('p') ou
+    // une table ÉTRANGÈRE ('f') n'était pas rendu, et le DDL échouait plus loin —
+    // contraintes, `OWNED BY` d'un serial, droits d'une séquence d'identité —,
+    // à la reprise, c'est-à-dire trop tard. Le DDL le DIT donc, en tête : sa
+    // première instruction LÈVE à l'application, en nommant la table — la reprise
+    // s'arrête avant d'avoir rien posé. Le générateur n'échoue PAS : un échec
+    // ici faisait sauter le chiffrement et le dépôt de la nuit, données comprises
+    // (contre-revue finale) ; il signale le défaut au journal du workflow
+    // (`::warning`, voir main). Aucune en production le 2026-11-04 (canal ① :
+    // 0 'p', 0 'f', 52 'r').
+    sql: `select c.relname, c.relkind::text k from pg_class c
+           where c.relnamespace='public'::regnamespace and c.relkind in ('p','f') order by 1`,
+    rendu: (r) => {
+      if (!r.length) return [];
+      const quoi = r.map((x) => `${x.relname} (${x.k === "p" ? "partitionnée" : "étrangère"})`).join(", ");
+      return [`do $$ begin raise exception '%', ${litt(`DDL de reprise INCOMPLET : public porte ${quoi} — scripts/schema-executable.js ne sait pas les rendre. Recréer ce schéma à la main, puis restaurer les données sans l'option schéma.`)}; end $$;`];
+    } },
+
   { titre: "Extensions",
     sql: `select e.extname, n.nspname from pg_extension e join pg_namespace n on n.oid=e.extnamespace where e.extname not in ('plpgsql') order by 1`,
     rendu: (r) => r.map((x) => `create extension if not exists ${ident(x.extname)} with schema ${ident(x.nspname)};`) },
 
-  { titre: "Séquences (avant les tables qui les référencent)",
-    sql: `select sequencename, data_type, start_value, increment_by from pg_sequences where schemaname='public' order by 1`,
+  { titre: "Séquences (avant les tables qui les référencent) — hors séquences d'identité",
+    // ⚠️ Une séquence d'IDENTITÉ (`generated … as identity`, pg_depend
+    // deptype 'i') NAÎT AVEC SA COLONNE. La créer ici d'abord, c'était prendre
+    // son nom : la colonne en recevait une seconde, `<table>_<col>_seq1`, et la
+    // première restait orpheline, avec les droits par défaut de Supabase. Les
+    // deux séquences de la production (canal ①, 2026-11-04) sont des
+    // identités : chaque reconstruction les doublait. Restent ici les
+    // séquences autonomes et celles des colonnes `serial`.
+    sql: `select s.sequencename, s.data_type, s.start_value, s.increment_by from pg_sequences s
+           where s.schemaname='public'
+             and not exists (select 1 from pg_depend d where d.classid='pg_class'::regclass and d.deptype='i'
+                               and d.objid=format('%I.%I', s.schemaname, s.sequencename)::regclass)
+           order by 1`,
     rendu: (r) => r.map((x) => `create sequence if not exists public.${ident(x.sequencename)} as ${x.data_type} start ${x.start_value} increment ${x.increment_by};`) },
 
   { titre: "Tables et colonnes",
@@ -103,6 +144,22 @@ const ETAPES = [
         + cols.map((c) => `alter table public.${ident(n)} add column if not exists ${c.trim()};`).join("\n"));
     } },
 
+  { titre: "Séquences rattachées à leur colonne (serial : OWNED BY)",
+    // Créée seule plus haut, la séquence d'un `serial` n'appartenait à rien :
+    // `pg_get_serial_sequence` la disait NULL, et `restaurer-donnees.js`, qui
+    // recale PAR ELLE les séquences après le chargement, la sautait — la
+    // première insertion suivante repartait de 1 et percutait une clé
+    // restaurée. Aucune colonne `serial` en production le 2026-11-04 ; la
+    // première qui naîtra sera rendue juste.
+    sql: `select s.relname seq, t.relname tbl, a.attname col
+            from pg_class s
+            join pg_depend d on d.classid='pg_class'::regclass and d.objid=s.oid and d.deptype='a'
+                            and d.refclassid='pg_class'::regclass and d.refobjsubid>0
+            join pg_class t on t.oid=d.refobjid
+            join pg_attribute a on a.attrelid=d.refobjid and a.attnum=d.refobjsubid
+           where s.relnamespace='public'::regnamespace and s.relkind='S' order by 1`,
+    rendu: (r) => r.map((x) => `alter sequence public.${ident(x.seq)} owned by public.${ident(x.tbl)}.${ident(x.col)};`) },
+
   { titre: "Clés primaires, uniques, CHECK et étrangères",
     sql: `select conrelid::regclass::text as tbl, conname, pg_get_constraintdef(oid) as def, contype from pg_constraint
            where connamespace='public'::regnamespace and contype in ('p','u','f','c')
@@ -117,6 +174,28 @@ const ETAPES = [
              and not exists (select 1 from pg_constraint con where con.conname=pi.indexname and con.connamespace='public'::regnamespace)
            order by pi.tablename, pi.indexname`,
     rendu: (r) => r.map((x) => x.indexdef.replace(/^CREATE INDEX /i, "create index if not exists ").replace(/^CREATE UNIQUE INDEX /i, "create unique index if not exists ") + ";") },
+
+  { titre: "Identité de réplication — ce qu'un UPDATE ou un DELETE publie au temps réel",
+    // ⚠️ R25 (revue indépendante du 2026-11-03). Sans cette section, une base
+    // reconstruite remettait EN SILENCE chaque table en identité DEFAULT, la
+    // clé primaire : `migration_realtime_identite_opaque_2026-11-03.sql` ferme
+    // la fuite par `replica identity using index <table>_rid_key` (un DELETE ne
+    // publie plus que `rid`), et la reconstruction la rouvrait — conversation
+    // et compte de chaque départ, publiés à tout abonné. TOUTES les tables sont
+    // rendues, DEFAULT compris : sur une cible déjà semée, une identité qui a
+    // dérivé revient à celle de la source (comme les privilèges : retirés puis
+    // rendus). Après les index, puisque USING INDEX en désigne un.
+    sql: `select c.relname tbl, c.relreplident::text ri, ic.relname idx
+            from pg_class c
+            left join pg_index i on i.indrelid=c.oid and i.indisreplident
+            left join pg_class ic on ic.oid=i.indexrelid
+           where c.relnamespace='public'::regnamespace and c.relkind='r' order by 1`,
+    // 'i' sans index marqué : l'index a été supprimé, et PostgreSQL se conduit
+    // alors en NOTHING (il refuse UPDATE et DELETE d'une table publiée). On
+    // rend ce comportement, pas un `using index` sans nom qui ferait tomber
+    // toute la transaction.
+    rendu: (r) => r.map((x) => `alter table public.${ident(x.tbl)} replica identity ${
+      x.ri === "f" ? "full" : x.ri === "n" ? "nothing" : x.ri === "i" ? (x.idx ? `using index ${ident(x.idx)}` : "nothing") : "default"};`) },
 
   { titre: "Fonctions (hors extensions) — source exacte, SECURITY DEFINER et search_path compris",
     sql: `select pg_get_functiondef(p.oid) as def from pg_proc p join pg_namespace n on n.oid=p.pronamespace
@@ -163,6 +242,36 @@ const ETAPES = [
            group by 1,2,3 order by 1,2,3`,
     rendu: (r) => r.map((x) => `grant ${x.priv.toLowerCase()} (${x.cols}) on public.${ident(x.tbl)} to ${x.role};`) },
 
+  { titre: "Privilèges de SÉQUENCE pour anon/authenticated — retirés puis rendus tels qu'en prod",
+    // ⚠️ R25 : les droits par défaut de Supabase donnent `rwU` (USAGE, SELECT,
+    // UPDATE) à anon et authenticated sur toute séquence NEUVE. La migration
+    // R25 les retire aux séquences de `rid` (son verdict l'exige) : une base
+    // reconstruite les rendait. Une séquence d'IDENTITÉ est désignée par SA
+    // COLONNE (`pg_get_serial_sequence`, à l'exécution) : son nom n'est pas une
+    // donnée de la source — une table renommée garde l'ancien, la cible en
+    // donne un neuf. Absente de la cible, c'est une erreur : un droit qu'on
+    // n'a pas su poser ne se tait pas.
+    sql: `select c.relname seq, r.rolname role,
+                 concat_ws(', ', case when has_sequence_privilege(r.rolname, c.oid, 'USAGE') then 'usage' end,
+                                 case when has_sequence_privilege(r.rolname, c.oid, 'SELECT') then 'select' end,
+                                 case when has_sequence_privilege(r.rolname, c.oid, 'UPDATE') then 'update' end) privs,
+                 t.relname id_tbl, a.attname id_col
+            from pg_class c cross join (values ('anon'),('authenticated')) r(rolname)
+            left join pg_depend d on d.classid='pg_class'::regclass and d.objid=c.oid and d.deptype='i' and d.refclassid='pg_class'::regclass
+            left join pg_class t on t.oid=d.refobjid
+            left join pg_attribute a on a.attrelid=d.refobjid and a.attnum=d.refobjsubid
+           where c.relnamespace='public'::regnamespace and c.relkind='S' order by 1, 2`,
+    rendu: (r) => r.map((x) => {
+      if (!x.id_tbl) return `revoke all on sequence public.${ident(x.seq)} from ${x.role};`
+        + (x.privs ? `\ngrant ${x.privs} on sequence public.${ident(x.seq)} to ${x.role};` : "");
+      const colonne = `public.${ident(x.id_tbl)}.${ident(x.id_col)}`;
+      return `do $$ declare s text := pg_get_serial_sequence(${litt(`public.${ident(x.id_tbl)}`)}, ${litt(x.id_col)}); begin\n`
+        + `  if s is null then raise exception '%', ${litt(`aucune séquence d'identité pour ${colonne} sur la cible`)}; end if;\n`
+        + `  execute 'revoke all on sequence ' || s || ' from ${x.role}';\n`
+        + (x.privs ? `  execute 'grant ${x.privs} on sequence ' || s || ' to ${x.role}';\n` : "")
+        + "end $$;";
+    }) },
+
   { titre: "EXECUTE sur les fonctions — PUBLIC révoqué, puis anon/authenticated tels qu'en prod",
     sql: `select p.oid::regprocedure::text sig, r.rolname role, has_function_privilege(r.rolname, p.oid, 'EXECUTE') ok
             from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join (values ('anon'),('authenticated')) r(rolname)
@@ -197,6 +306,9 @@ async function main() {
   let n = 0;
   for (const e of ETAPES) {
     const lignes = e.rendu(await requete(jeton, e.sql));
+    // La garde a parlé : le DDL lèvera à la reprise. Le dire au journal du workflow
+    // (annotation GitHub), sans faire échouer la sauvegarde des données.
+    if (e === ETAPES[0] && lignes.length) console.log(`::warning title=DDL de reprise incomplet::${lignes[0].replace(/\s+/g, " ").slice(0, 400)}`);
     n += lignes.length;
     out.push(`-- ${"─".repeat(70)}`, `-- ${e.titre} (${lignes.length})`, `-- ${"─".repeat(70)}`, lignes.length ? lignes.join("\n\n") : "--   (aucun objet — vérifié, pas supposé)", "");
     process.stderr.write(`… ${e.titre} : ${lignes.length}\n`);

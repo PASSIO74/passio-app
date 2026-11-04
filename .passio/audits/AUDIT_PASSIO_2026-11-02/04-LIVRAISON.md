@@ -153,3 +153,106 @@ Retour arrière : le bloc `--|` de l'en-tête (définition de production à l'oc
 | 07:47 | **Appliquée** depuis le poste de Benjamin, dans un worktree détaché d'`origin/main` (`PASSIO-wt/migration-r24`), par `node scripts/appliquer-migration.mjs … --projet njkiyoklssvefstljemx` : barrière franchie (attestation ; revue n°5764341120 relue par `gh`, « AUTO-REVUE DE MAINTENEUR UNIQUE » affichée), verdict **17 × OK**, journalisée dans sa transaction (`migrations_appliquees`, 07:47:27 UTC, empreinte `5e1b4c45…`) | sortie de `appliquer-migration.mjs` |
 | 07:48 | **Mesuré au canal ①** (et non lu dans le tableau) : `md5(prosrc)` de `promouvoir_attente` = `3edef536245e92950486226daf712c01`, celui du corps du fichier revu (était `1a4a2c4d…`), sans `\r` ; `prosrc` appelle `organise_activite`, réserve le nom (`if orga or cible = moi`), ne lit plus `co_organizers` ; SECURITY DEFINER, `search_path` vide ; EXECUTE : `authenticated`, `service_role`, `postgres` — ni `anon` ni PUBLIC. `organise_activite(text)` présente, `md5` = `144cba40…` (= fichier), STABLE, SECURITY DEFINER, `search_path` vide, même ACL. Vues de `public` : **aucun** TRUNCATE / REFERENCES / TRIGGER / MAINTAIN pour `anon` / `authenticated` (24 avant) ; SELECT / INSERT / UPDATE / DELETE intacts (24) ; `service_role` garde TRUNCATE / REFERENCES / TRIGGER. 0 ligne `zz_verdict_r24_%` dans `events` / `notifications` | `execute_sql` en lecture seule |
 | **reste** | `participants_visibilite` à son heure (§ 6.3, à partir du 05/11 18:40 UTC) : son `create or replace` d'`organise_activite` ne change rien (copie à l'octet près, banc ⓪). R27 se tranche AVANT elle si la branche « venant » doit se limiter à « going » | — |
+
+## 8. R25 — un effacement publié par le temps réel ne dit plus ni qui ni quoi ; reprise et sauvegarde fidèles (2026-11-04)
+
+Le dernier résidu ouvert de la contre-revue du 03/11 (R25), plus trois défauts trouvés en le corrigeant : le DDL de reprise
+rouvrait R25 (identités de réplication et droits de séquence non rendus, séquences d'identité doublées), la sauvegarde
+arrondissait tout entier au-delà de 2^53, et trois anciens fichiers de vues effaçaient `security_invoker` s'ils étaient
+rejoués (suite de R26, § 7). Deux revues indépendantes sur la première version de R25 (registre RV-14…RV-17) : `rid` tiré
+d'un compteur, donc ORDONNÉ (un abonné encadrait la ligne d'une victime entre deux de ses propres `rid`), `rid` inscriptible
+par le client, verrou bloquant sur cinq tables, index supprimable sans garde. Tout est corrigé ; R24/R26 restent ceux du § 7.
+
+### 8.1 Migration
+
+| Fichier | Objet | Banc | Quand |
+|---|---|---|---|
+| `migration_realtime_identite_opaque_2026-11-03.sql` | `rid` aléatoire de 53 bits (chiffres 17 à 32 d'un UUID v4, masque 2^53 − 1 : exact en JSON), index unique `<table>_rid_key` et `replica identity using index` sur `conv_members`, `notifications`, `conv_reads`, `post_likes` ; `comment_interactions` en identité DEFAULT (l'oracle du filtre se ferme) ; garde `trg_rid_opaque` (le `rid` n'est écrit que par la base) ; verrous NOWAIT en boucle ; verdict en 10 lignes | `migration-realtime-identite-opaque` 239/0 (`realtime.apply_rls` de production recopiée à l'octet, nourrie du WAL réel du banc ; attaque par encadrement rejouée ; verdict sous verrous concurrents ; retour arrière pendant que le temps réel décode ; vingt mutations rouges) — fichier sha256 `9f48ffe1…` | **dès la fusion** : serveur seul, aucun changement client. De préférence AVANT `participants_visibilite`, dont la purge efface des lignes `conv_members` qui partiront alors opaques |
+
+Ordre à partir du 04/11 : `promotion_discrete_vues` (§ 7) est APPLIQUÉE (07:47 UTC, mesurée au canal ①) ; reste R25
+(ici, dès la fusion), puis `participants_visibilite` (§ 6, à partir du 2026-11-05 18:40 UTC). R25 est indépendante
+des deux autres ; la nouvelle `promouvoir_attente` nomme les colonnes de son INSERT dans `notifications` (canal ①, 04/11),
+comme `follows_notifier` et `notifier_mentions` : le `rid` y prend son défaut et sa garde.
+
+Les trois anciens fichiers qui recréent les vues de statistiques (`migration_monitoring_view.sql`, `APPLY_ALL_scaling.sql`,
+`migration_telemetry.sql`) ne sont PAS à appliquer : ils posent désormais `with (security_invoker = on)`, parce qu'un
+`create or replace view` sans l'option rend la vue aux droits de son propriétaire (mesuré sur PostgreSQL 16) — et le SELECT
+que la R26 du § 7 laisse à `anon` deviendrait une lecture des erreurs client.
+
+### 8.2 Hors migration (servi au déploiement, sans geste)
+
+- `scripts/schema-executable.js` (DDL de reprise) : identité de réplication de chaque table, séquences d'identité laissées
+  à leur colonne (elles étaient doublées en `*_seq1`, l'orpheline gardant `rwU`), `OWNED BY` des `serial`, droits de
+  séquence ; banc `schema-executable-identite` 40/0 avec la forme finale du `rid`, rouge sur le générateur d'avant
+  (25 ✅ / 15 ❌) ; procédure d'après reconstruction dans `docs/RECUPERATION.md`.
+- `scripts/sauvegarde-donnees.js` et `scripts/restaurer-donnees.js` (`scripts/lib/json-exact.js`) : l'export
+  écrit le texte de chaque ligne tel que la base l'a rendu (découpage linéaire, aucune profondeur ne l'arrête) ;
+  la vérification relit archive et cible au chiffre près, la VALIDATION d'une archive ne fait que compter (sans
+  lecture exacte) ; la reprise exige Node 21 ou plus récent, et le dit ; une table partitionnée ou étrangère rend un
+  DDL qui lève à la reprise : la nuit dépose ses données, puis le run passe au rouge ;
+  `tests/unit/restaurer-donnees.test.mjs` 23/23, `restaurer-phases` 14/14, `reprise-verdicts` 31/31, rouges sur
+  huit réinjections.
+- `scripts/audit-identite-replication.js` dans `npm run verif` (test unitaire 24/24) : une migration qui supprime un
+  index `*_rid_key`, ou la colonne `rid`, tant qu'il porte l'identité est refusée, retour arrière compris ; et, sauf
+  marqueur motivé, tout ce qui le contourne — index renommé ou retouché, `drop constraint`, table supprimée, renommée
+  ou déplacée, colonne `rid` renommée, garde retirée ou désarmée, `replica identity` FULL ou `using index` sur une
+  table publiée (y compris dans le fichier qui la publie), action ou nom calculé.
+
+### 8.3 Contrôles après application (canal ①, jamais le tableau de verdict)
+
+1. `relreplident` = `i` sur les quatre tables, `d` sur `comment_interactions` ; `indisreplident` sur les quatre
+   `<table>_rid_key` ; aucune table de `supabase_realtime` en FULL ; défaut de `rid` identique sur les quatre tables
+   (`pg_get_expr`, chiffres 17 à 32, masque `9007199254740991`) ; `trg_rid_opaque` actif, sans clause WHEN ;
+   `rid_opaque_garde()` non exécutable par `anon`/`authenticated` ; par table, `max(rid) <= 9007199254740991` et
+   `count(distinct rid) = count(*)` (agrégats seuls).
+2. **Le fonctionnel se prouve sur le STAGING, AVANT la production** (réserve de la contre-revue n°5767930760) : le
+   job « Suites production (comptes réels) » vise le STAGING (`fcksxofaelcdmmifnwjo`, SUP-04), jamais la production —
+   le relancer après une application en production ne prouve rien. Donc : appliquer d'abord au staging (l'attestation
+   doit nommer cette cible aussi ; la ligne 10 du verdict y dira ECHEC, sa publication ayant dérivé, et c'est
+   attendu), relancer ce job (`PASSIO_E2E_MULTI=1`, comptes synthétiques : un « j'aime » retiré, une notification
+   effacée, un départ de conversation — un UPDATE ou un DELETE refusé faute d'identité y tomberait au rouge), puis
+   appliquer en production. En production ensuite : le point 1, la « Barrière RLS de la production »
+   (`authz-critical`) du prochain run de `main`, et `client_errors` sans erreur « replica identity » sur 24 h.
+3. Consigner l'attestation dans une PR suivante.
+
+### 8.4 Retour arrière
+
+Le bloc `--|` de l'en-tête, exécutable tel quel : l'identité d'abord, puis la garde, puis l'index (dans l'autre ordre,
+tout UPDATE et DELETE des tables publiées est refusé ; la gate le refuse aussi). Il rend à `comment_interactions` son
+identité FULL d'origine. **La colonne `rid` RESTE**, inerte : la supprimer pendant que le temps réel n'a pas tout décodé
+fait lever `apply_rls` et perd le lot en cours (contre-revue finale, mesuré) — la retirer se fait à part, après drainage du
+slot, selon l'en-tête. Code : revert du merge ; aucun état local touché.
+
+### 8.5 Contre-revue finale (2026-11-04)
+
+Trois relecteurs indépendants, en lecture seule, sur la version finale (fuite temps réel, sûreté de la migration et de sa
+gate, reprise et sauvegarde), chaque constat P1/P2 soumis à un vérificateur chargé de le réfuter. **Aucune fuite ouverte,
+aucune casse à l'application** : le banc rejoué (202/0 sur la version relue), et contre-éprouvé avec le VRAI wal2json et l'`apply_rls` de
+production. Corrigés dans la PR, puis éprouvés par deux vérificateurs adverses (gate : conforme ; migration : quatre P3
+résiduels, corrigés à leur tour — un retour chariot seul dans un commentaire, l'en-tête sur les identifiants
+horodatés, le prérequis PostgreSQL 15) : RV-20 à RV-24 — verdict sans verrou ni comparaison par morceaux, retour
+arrière qui garde la colonne et réapplication qui tire les `rid` de nouveau, gate étendue, en-tête exact. Côté reprise et sauvegarde (même revue) : la lecture exacte est juste (aller-retour réel sur
+PostgreSQL 16 : 0 écart ; archive ancienne : 0 fausse divergence), le recoupement du DDL reconstruit avec la R25
+finale rejoué (10 OK) — mais RV-25 (une sauvegarde qu'un compte fait échouer par un jsonb très imbriqué écrit chez
+lui — préexistant vers 4 171 niveaux, abaissé à ≈ 2 847 par la première version de ce lot ; l'export n'a désormais
+plus de plafond), RV-26 et RV-27, corrigés. Trouvés à côté et consignés, hors
+lot : R31 (P2, confirmé — supprimer une publication rend ses commentaires et « j'aime » publics), R32, R33, R34.
+La revue du correctif de sauvegarde (même jour) : rien ne casse la sauvegarde de la nuit ni ne fausse son archive
+(découpage éprouvé sur 20 000 pages, 300 000 jetons numériques, aller-retour PostgreSQL 16 sans écart) — mais RV-28
+(**P2**, introduit par ce lot puis corrigé : la validation par lecture exacte faisait refuser une archive entière sur
+une seule ligne écrite par un compte), RV-29, et R35 (les `float8` archivés sur 15 chiffres, préexistant). Dernière
+passe sur l'état final (cinq commits non relus, cohérence d'ensemble) : aucun P1 ni P2, migration applicable le jour
+même ; deux P3 traités (une archive au DDL incomplet était dite « complète » ; ce paragraphe).
+
+### 8.6 Application (2026-11-04)
+
+| Étape | UTC | Résultat |
+|---|---|---|
+| Contre-revues | 12:05, 12:17 | n°5767930760 sur `7b83a86` (relecture et mesures au canal ①, Claude Code, sur le « Oui » de Benjamin) ; n°5768092517 sur `0133b05`, la tête fusionnée. Même fichier, empreinte `9f48ffe1…` |
+| Staging | 12:06 | 9 lignes OK ; la ligne 10 dit ECHEC, c'est attendu : la publication du staging a dérivé (`cdv_*`). Suite à comptes réels du run 41828027145, partie à 12:18, après l'application : 18 réussis, 3 ignorés |
+| Fusion, déploiement | 12:31, 12:44 | #692, `b9ba01b6`, job « Déploiement production » vert |
+| Production | 12:45:52 | 10 lignes OK, journalisée dans sa transaction |
+| Mesure au canal ① | 12:46 | identité `i` et index `<table>_rid_key` sur les quatre tables, `d` sur `comment_interactions` ; un seul défaut de `rid` ; quatre gardes actives sans clause WHEN ; fonction non exécutable par `anon` et `authenticated` ; `count(distinct rid) = count(*)` (22, 169, 31, 76) et `rid` dans [0, 2^53 − 1] ; 11 tables publiées, aucune en FULL. Lecture `anon` en `select=*` : HTTP 200, `rid` rendu |
+| Barrière RLS | après l'application | `authz-critical` verte à 12:49:20 (run 41831787191 de `main`, sur la production) ; aucune ligne dans `client_errors` depuis l'application à 12:49 |
+
+**Reste à lire le 05/11** : `client_errors` sans « replica identity » sur 24 h (0 à 12:46). La fonction temps réel n'a pas été éprouvée en production de bout en bout : elle l'a été au staging, et sur le banc avec le vrai wal2json.

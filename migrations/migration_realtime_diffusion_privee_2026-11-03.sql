@@ -107,13 +107,16 @@
 -- PREREQUIS-CLIENT: conv_members:INSERT
 -- PREREQUIS-CLIENT: notifications:INSERT
 --
+-- C'EST LA SECONDE COUCHE, APRÈS `migration_realtime_identite_opaque_2026-11-03.sql`
+-- (appliquée le 2026-11-04). Celle-là retire la clé de chaque suppression de quatre
+-- tables ; celle-ci retire tout le flux pour deux d'entre elles, qui gardent leur
+-- `rid` et leur identité. Le verdict de la première exige « les 11 mêmes tables » :
+-- rejoué après celle-ci, sa ligne 10 dit ECHEC, et c'est attendu (neuf tables).
+--
 -- CE QUE CETTE MIGRATION NE FAIT PAS, ET LE REGISTRE LE DIT :
---   · R31 — `conv_reads` (PK conv_id, user_id ; 129 DELETE, dont chaque purge de
---     compte) et `post_likes` (PK post_id, user_id ; 114 DELETE, lecture
---     « selon visibilité du post ») portent le MÊME défaut et restent publiées ;
---   · R32 — `comment_interactions` est en identité de réplica FULL : un DELETE
---     évalue le filtre de l'abonné sur TOUTES les colonnes de l'ancienne ligne,
---     un oracle (qui retire quoi, texte d'une réponse effacée) ;
+--   · `conv_reads`, `post_likes` et `comment_interactions` restent publiées. Leur
+--     clé ne part plus (identité opaque ou par défaut, voir ci-dessus), mais leurs
+--     suppressions restent des événements : QU'un effacement a lieu se voit encore ;
 --   · l'appartenance reste atteignable par SONDAGE : `is_conv_member` (C-02).
 --     R25 ferme le canal temps réel, pas cette porte (`promouvoir_attente`, lui,
 --     ne nomme plus le promu depuis R24, appliquée le 04/11) ;
@@ -125,8 +128,9 @@
 -- Rejouable ; verdict en fin. Banc : tests/sql/migration-realtime-diffusion-privee.test.sh,
 -- qui REPRODUIT d'abord la fuite avec le `realtime.apply_rls` de production.
 -- RETOUR ARRIÈRE — EXACT et rejouable, exécutable tel quel en ôtant « --| » (le
--- banc le rejoue). ⚠️ Il ROUVRE R25, et il ne rend PAS le direct à lui seul : le
--- client de ce lot n'écoute plus ces tables. Retour arrière complet = ce bloc
+-- banc le rejoue). ⚠️ Il rend aux deux tables leur flux de suppression (sans clé,
+-- depuis l'identité opaque), et il ne rend PAS le direct à lui seul : le client
+-- de ce lot n'écoute plus ces tables. Retour arrière complet = ce bloc
 -- D'ABORD, puis le client d'avant (revert du commit client) — l'ordre inverse de
 -- ①/② : un ancien client face à des tables hors publication perdrait tout
 -- `realtime:db` (voir l'ordre d'application).
@@ -146,6 +150,11 @@
 --| commit;
 -- ═══════════════════════════════════════════════════════════════════════════
 begin;
+
+-- Un filet : `create trigger` et `alter publication` n'attendent pas indéfiniment
+-- derrière une écriture longue, avec les clients en file derrière eux. Dépassé :
+-- rien n'est appliqué, la rejouer.
+set local lock_timeout = '5s';
 
 -- ── ① Une notification : à son SEUL destinataire, sur son topic privé ───────
 create or replace function public.diffuser_notification()

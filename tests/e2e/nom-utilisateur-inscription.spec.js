@@ -53,6 +53,7 @@ async function ouvrirAuth(page) {
 
 async function remplir(page, { nom, consent = true } = {}) {
   if (nom !== undefined) await page.locator("#authName").fill(nom);
+  await page.locator("#authBirthYear").fill("1995");
   await page.locator("#authEmail").fill("nouvelle@exemple.com");
   await page.locator("#authPassword").fill("motdepasse123");
   await page.locator("#authPasswordConfirm").fill("motdepasse123");
@@ -244,7 +245,7 @@ test("⑦ boot() appelle appliquerNomCompte, entre l'hydratation et le profil de
 // continué. Ce chemin est vivant : sans ce saut, le formulaire demande le nom,
 // puis l'écran suivant redemande « Comment t'appelles-tu ? ».
 // ──────────────────────────────────────────────────────────────────────────
-async function allerAgeAvecSession(page, nom) {
+async function creerAvecSession(page, nom) {
   await page.evaluate(() => {
     supa.auth.signUp = async () => ({
       data: { user: { id: "u1", identities: [{ id: "i1" }] },
@@ -260,29 +261,19 @@ async function allerAgeAvecSession(page, nom) {
 const etapeActive = () =>
   document.querySelector(".onb-step.active")?.getAttribute("data-onb-step");
 
-test("⑧ signUp qui rend une session : l'étape « prénom » est SAUTÉE", async ({ page }) => {
+test("⑧ signUp qui rend une session : ni le nom ni l'âge ne sont redemandés", async ({ page }) => {
   await ouvrirAuth(page);
-  await allerAgeAvecSession(page, "Camille");
+  await creerAvecSession(page, "Camille");
 
-  // L'inscription a continué l'onboarding : on est sur l'âge.
-  expect(await page.evaluate(etapeActive)).toBe("age");
-
-  await page.locator("#birthYear").fill("1995");
-  await page.getByRole("button", { name: "Valider" }).first().click();
-  await page.waitForTimeout(300);
-
-  // ⚠️ LE POINT CENTRAL : on passe directement aux passions, la question du nom
-  // ayant déjà sa réponse — et le nom saisi au formulaire est intact.
+  // ⚠️ LE POINT CENTRAL : on passe directement aux passions, le formulaire ayant
+  // déjà répondu aux deux questions — et le nom saisi au formulaire est intact.
   expect(await page.evaluate(etapeActive)).toBe("passions");
   expect(await page.evaluate(() => state.user.name)).toBe("Camille");
 });
 
 test("⑧ bis sauter l'étape ne saute pas ce qu'elle préparait (grille peinte)", async ({ page }) => {
   await ouvrirAuth(page);
-  await allerAgeAvecSession(page, "Camille");
-  await page.locator("#birthYear").fill("1995");
-  await page.getByRole("button", { name: "Valider" }).first().click();
-  await page.waitForTimeout(400);
+  await creerAvecSession(page, "Camille");
 
   // `onbValidateName` peignait la grille APRÈS son `onbNext()` : sans report,
   // l'écran des passions s'ouvrirait VIDE — défaut muet, invisible aux gates.
@@ -294,27 +285,22 @@ test("⑧ bis sauter l'étape ne saute pas ce qu'elle préparait (grille peinte)
 
 test("⑨ sans nom connu, l'étape « prénom » est bien POSÉE", async ({ page }) => {
   await ouvrirAuth(page);
-  await allerAgeAvecSession(page, "Camille");
+  await creerAvecSession(page, "Camille");
   // On efface le nom : le saut ne doit tenir qu'à la réponse déjà connue,
   // jamais à l'inscription elle-même — sinon plus personne n'est jamais nommé.
-  await page.evaluate(() => { state.user.name = ""; });
-  await page.locator("#birthYear").fill("1995");
-  await page.getByRole("button", { name: "Valider" }).first().click();
-  await page.waitForTimeout(300);
+  await page.evaluate(() => { state.user.name = ""; onbPrev(); });
+  await page.waitForTimeout(200);
   expect(await page.evaluate(etapeActive)).toBe("name");
 });
 
 test("⑩ le saut vaut DANS LES DEUX SENS (le retour ne rouvre pas l'étape)", async ({ page }) => {
   await ouvrirAuth(page);
-  await allerAgeAvecSession(page, "Camille");
-  await page.locator("#birthYear").fill("1995");
-  await page.getByRole("button", { name: "Valider" }).first().click();
-  await page.waitForTimeout(300);
+  await creerAvecSession(page, "Camille");
   expect(await page.evaluate(etapeActive)).toBe("passions");
 
-  // Sauter à l'aller seulement laisserait « ← Retour » ré-afficher l'étape
-  // évitée : une porte fermée dans un seul sens.
+  // Sauter à l'aller seulement laisserait « ← Retour » ré-afficher les étapes
+  // évitées : une porte fermée dans un seul sens.
   await page.evaluate(() => onbPrev());
   await page.waitForTimeout(200);
-  expect(await page.evaluate(etapeActive)).toBe("age");
+  expect(await page.evaluate(etapeActive)).toBe("splash");
 });

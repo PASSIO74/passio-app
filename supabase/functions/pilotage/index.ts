@@ -34,7 +34,7 @@ import {
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
-  pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel,
+  pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
 } from "../_shared/pilotage.js";
 import { croissance } from "../_shared/croissance.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
@@ -138,8 +138,14 @@ async function veille(admin: Admin) {
   // une lecture GitHub manquée sonne « Problème résolu », et la suivante
   // « Problème » de nouveau.
   const incomplet = [sante, signalements, github].some((r) => r.status === "rejected");
+  // Une lecture incomplète laisse sa raison dans les journaux de la fonction : sans elle, rien ne disait
+  // pourquoi le voyant mémorisé restait figé. Des codes et des délais, jamais une donnée.
+  if (incomplet) {
+    const raison = (r: PromiseSettledResult<unknown>) => (r.status === "rejected" ? String((r.reason && (r.reason as { message?: string }).message) || r.reason).slice(0, 120) : "ok");
+    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: raison(github) }));
+  }
   const vt = tenirVerdict(prec, v, incomplet);
-  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false };
+  const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, tenu: !!vt.tenu };
   const d = decideAlerte(prec, actuel);
   let envoyes = 0;
   if (d.sonner) envoyes = await sonnerPilote(admin, d.titre!, d.texte || "");
@@ -759,6 +765,8 @@ async function lireActivation(admin: Admin) {
   // sans borne de date — aucune lecture des comptes en plus. Au-delà de 20 pages
   // (20 000 comptes), le total est une borne basse et il le DIT (`tronque`).
   let inscrits = 0, inscritsTronque = false;
+  // La marche des utilisateurs (2026-11-04, croissanceInscrits) : les mêmes comptes, par date d'arrivée.
+  const arrivees: string[] = [];
   for (let page = 1; page <= 20; page++) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) throw error;
@@ -767,6 +775,7 @@ async function lireActivation(admin: Admin) {
       // compteMesurable ⊂ compteCree : un compte hors entonnoir n'est jamais mesuré.
       if (!compteCree(u, EXTRA)) continue;
       inscrits++;
+      arrivees.push(u.created_at);
       if (dateUtc(u.created_at) < depuis) continue;
       crees++;
       recents.push({ id: u.id, cree: u.created_at, confirme: !!(u.email_confirmed_at || u.confirmed_at), voie: String((u.app_metadata && u.app_metadata.provider) || "") });
@@ -813,7 +822,8 @@ async function lireActivation(admin: Admin) {
   }
   const nouveaux = comptesRecents(derniers, profils, { nomsLus, avecGeste: new Set(gestes.map((g) => g.uid)), mesures: new Set(pris.map((c) => String(c.id))) });
   return { ...activation(pris, gestes, maintenant), echantillon: sur > ECHANTILLON_MAX ? { sur, pris: pris.length } : null, partiel, crees, nouveaux,
-    inscrits: { total: inscrits, tronque: inscritsTronque } };
+    // Tronquée, la liste ne dirait plus la vérité sur le passé : pas de courbe, plutôt qu'une fausse.
+    inscrits: { total: inscrits, tronque: inscritsTronque, ...(inscritsTronque ? {} : croissanceInscrits(arrivees, maintenant)) } };
 }
 
 // ─── Tous les inscrits, par leur NOM (2026-10-24) ───────────────────────────
@@ -951,6 +961,8 @@ async function lireGithub() {
   // GitHub accorde 60 lectures par heure à une adresse PARTAGÉE avec d'autres
   // projets — c'est ce qui rendait la veille aveugle par moments.
   if (!res.ok) throw new Error("GitHub HTTP " + res.status + (res.headers.get("x-ratelimit-remaining") === "0" ? " (limite de lecture atteinte" + (JETON_GH ? ")" : ", pas de jeton)") : ""));
+  // La fin du jeton, annoncée par GitHub à chaque réponse : dite une semaine avant (aFaire).
+  const finJeton = Date.parse(res.headers.get("github-authentication-token-expiration") || "");
   const brut = await res.json();
   // Seule une pause ouverte par le PILOTE compte (sentinelle-autonome.yml :
   // `--author PASSIO74`) : le dépôt est public, n'importe qui ouvre une issue.
@@ -965,15 +977,21 @@ async function lireGithub() {
     const j = await r.json();
     return resumerRun(j && j.workflow_runs && j.workflow_runs[0]);
   };
-  const [sentinelle, veille, deploy] = await Promise.all([run("sentinelle-autonome.yml"), run("veille-production.yml"), run("deploy.yml")]);
+  const [sentinelle, veille, deploy, pulls] = await Promise.all([run("sentinelle-autonome.yml"), run("veille-production.yml"), run("deploy.yml"), gh(`/repos/${DEPOT}/pulls?state=open&per_page=50`)]);
+  // Correctif de la chaîne ou chantier en cours (resumerPr) ? Illisible, la PR reste
+  // un chantier — jamais un bouton qui met en ligne à l'aveugle — et c'est dit (`prNonLues`).
+  const infosPr = new Map(pulls.ok ? ((await pulls.json()) as { number: number }[]).map((p) => [p.number, resumerPr(p, DEPOT)]) : []);
+  const suivies = issues.map((i) => (i.pr ? { ...i, ...(infosPr.get(i.numero) || { externe: true, correctif: false, autoFusion: false, brouillon: false }) } : i));
   // `luLe` : l'heure de CETTE lecture — la réponse peut sortir du cache (2 min).
-  const val: Record<string, unknown> = { issues, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString() };
+  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.ok ? null : "GitHub HTTP " + pulls.status, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
   val.aReparer = aReparer(val);
   cacheGh = { at: Date.now(), val };
   return val;
 }
 
 const sansJeton = () => json({ error: "Geste indisponible : le secret PILOTAGE_GITHUB_TOKEN n'est pas posé sur la fonction." }, 501);
+// Un refus de droit dit QUEL droit donner : « HTTP 403 » seul ne mène nulle part.
+const refusDroit = (statut: number, droit: string) => (statut === 401 ? " Le jeton du pilotage a expiré : renouvelle-le sur GitHub, puis dans les secrets de la fonction." : statut === 403 ? ` Le jeton du pilotage n'a pas ce droit : donne-lui « ${droit} » en lecture et écriture (page du jeton sur GitHub, Edit).` : "");
 const numeroValide = (n: number) => Number.isInteger(n) && n > 0 && n < 1e7;
 
 async function relancer(cible: string) {
@@ -981,7 +999,8 @@ async function relancer(cible: string) {
   if (!r) return json({ error: "Relance inconnue." }, 400);
   if (!JETON_GH) return sansJeton();
   const res = await gh(`/repos/${DEPOT}/actions/workflows/${r.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
-  if (res.status !== 204) return json({ error: `GitHub a refusé la relance (HTTP ${res.status}).` }, 502);
+  if (res.status !== 204) return json({ error: `GitHub a refusé la relance (HTTP ${res.status}).` + refusDroit(res.status, "Actions") }, 502);
+  cacheGh = null; // pour que l'écran voie l'exécution partir, sans attendre le cache de 2 min
   return json({ ok: true, message: "Lancé : " + r.libelle });
 }
 
@@ -994,9 +1013,30 @@ async function fusionner(n: number) {
   if (p.state !== "open" || p.draft) return json({ error: "Cette PR n'est pas ouverte, ou elle est en brouillon." }, 409);
   const r = await gh(`/repos/${DEPOT}/pulls/${n}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "merge" }) });
   cacheGh = null;
-  if (r.ok) return json({ ok: true, message: "Fusionnée. Le déploiement suit tout seul." });
+  if (r.ok) return json({ ok: true, message: "C'est parti : la mise en ligne suit toute seule." });
   const j = await r.json().catch(() => ({}));
-  return json({ error: r.status === 405 ? "Pas encore fusionnable : tests en cours ou contre-revue manquante." : `GitHub a refusé (HTTP ${r.status}) ${String(j.message || "").slice(0, 120)}` }, 409);
+  // Les tests tournent encore : un seul geste quand même. GitHub fusionnera SEUL
+  // quand tout sera vert, et rien d'autre : un rouge arrête la PR, la protection
+  // de `main` (CI, contre-revue) reste entière. C'est le geste du pilote qui arme,
+  // jamais la machine : une réparation n'est jamais fusionnée sans lui.
+  if (r.status === 405 && p.mergeable !== false && await armerAutoFusion(String(p.node_id || ""))) {
+    cacheGh = null;
+    return json({ ok: true, message: "Les tests tournent encore : il partira en ligne tout seul dès qu'ils sont verts." });
+  }
+  if (p.mergeable === false) return json({ error: "Ce correctif est en conflit avec la version en ligne : refuse-le, puis relance la réparation." }, 409);
+  return json({ error: r.status === 405 ? "Pas encore fusionnable : tests en échec ou contre-revue manquante." : `GitHub a refusé (HTTP ${r.status}) ${String(j.message || "").slice(0, 120)}` + refusDroit(r.status, "Pull requests » et « Contents") }, 409);
+}
+
+// L'auto-fusion native de GitHub, celle que `gh pr merge --auto --squash` arme pour la Sentinelle.
+async function armerAutoFusion(idPr: string): Promise<boolean> {
+  if (!idPr) return false;
+  const r = await gh("/graphql", { method: "POST", body: JSON.stringify({
+    query: "mutation($id: ID!) { enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) { clientMutationId } }",
+    variables: { id: idPr },
+  }) });
+  if (!r.ok) return false;
+  const j = await r.json().catch(() => null);
+  return !!j && !(Array.isArray(j.errors) && j.errors.length);
 }
 
 async function fermer(n: number) {
@@ -1004,7 +1044,7 @@ async function fermer(n: number) {
   if (!JETON_GH) return sansJeton();
   const r = await gh(`/repos/${DEPOT}/issues/${n}`, { method: "PATCH", body: JSON.stringify({ state: "closed", state_reason: "not_planned" }) });
   cacheGh = null;
-  if (!r.ok) return json({ error: `GitHub a refusé (HTTP ${r.status}).` }, 502);
+  if (!r.ok) return json({ error: `GitHub a refusé (HTTP ${r.status}).` + refusDroit(r.status, "Issues") }, 502);
   return json({ ok: true, message: "Fermé." });
 }
 
@@ -1062,9 +1102,9 @@ async function reparer(corps: Record<string, unknown>) {
   if (ouvertes >= REPARATIONS_MAX) return json({ error: `Déjà ${ouvertes} réparations en cours : attends qu'une se termine.` }, 429);
   const r = await gh(`/repos/${DEPOT}/issues`, { method: "POST", body: JSON.stringify({ title: titreReparation(c), body: corpsReparation(c, DEPOT) }) });
   cacheGh = null;
-  if (!r.ok) return json({ error: `GitHub a refusé l'ouverture (HTTP ${r.status}).` }, 502);
+  if (!r.ok) return json({ error: `GitHub a refusé l'ouverture (HTTP ${r.status}).` + refusDroit(r.status, "Issues") }, 502);
   const issue = await r.json().catch(() => ({}));
-  return json({ ok: true, message: `Réparation lancée : #${Number(issue.number) || "?"}, confiée à Claude dès son ouverture. Le correctif arrivera dans « Correctifs en attente ».` });
+  return json({ ok: true, message: `Réparation lancée (#${Number(issue.number) || "?"}) : Claude prépare le correctif, il apparaîtra ici, prêt à mettre en ligne.` });
 }
 
 // Confier APRÈS COUP une réparation qui ne porte pas la mention d'ouverture (une
@@ -1078,13 +1118,13 @@ async function confier(n: number, refusLabel = 0) {
   if (!refusLabel) {
     const l = await gh(`/repos/${DEPOT}/issues/${n}/labels`, { method: "POST", body: JSON.stringify({ labels: ["claude"] }) });
     cacheGh = null;
-    if (l.ok) return json({ ok: true, message: `Réparation lancée : #${n}. Le correctif arrivera dans « Correctifs en attente ».` });
+    if (l.ok) return json({ ok: true, message: `Réparation lancée (#${n}) : Claude prépare le correctif, il apparaîtra ici, prêt à mettre en ligne.` });
     refusLabel = l.status;
   }
   const c = await gh(`/repos/${DEPOT}/issues/${n}/comments`, { method: "POST", body: JSON.stringify({ body: COMMENTAIRE_CONFIER }) });
   cacheGh = null;
-  if (c.ok) return json({ ok: true, message: `Réparation lancée : #${n} (confiée par commentaire, label « claude » refusé : HTTP ${refusLabel}). Le correctif arrivera dans « Correctifs en attente ».` });
-  return json({ error: `#${n} ouverte, mais GitHub refuse de la confier à Claude (label HTTP ${refusLabel}, commentaire HTTP ${c.status}). Donne au jeton PILOTAGE_GITHUB_TOKEN le droit « Issues: Read and write », puis touche « Relancer ».` }, 502);
+  if (c.ok) return json({ ok: true, message: `Réparation lancée (#${n}, confiée par commentaire, label « claude » refusé : HTTP ${refusLabel}) : le correctif apparaîtra ici, prêt à mettre en ligne.` });
+  return json({ error: `#${n} ouverte, mais GitHub refuse de la confier à Claude (label HTTP ${refusLabel}, commentaire HTTP ${c.status}). Donne au jeton PILOTAGE_GITHUB_TOKEN le droit « Issues: Read and write », puis touche « Régler ».` }, 502);
 }
 
 // Une réparation déjà ouverte : si elle n'a jamais été confiée (ni mention

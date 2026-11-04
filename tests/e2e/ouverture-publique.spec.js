@@ -447,7 +447,8 @@ test.describe("⑧ la politique dit ce que la base fait", () => {
     // texte — sans quoi « a accepté » ne désigne plus rien.
     // 2026-09-14 : §1 nomme le responsable du traitement (ASTRA-09) et §2 ter dit
     // ce qu'un compte privé protège (CONT-11 / SUP-01, décision « 2 »). La version suit.
-    expect(r.version).toBe("2026-09-14");
+    // 2026-11-04 : §2 compte l'année de naissance parmi les données d'inscription. La version suit.
+    expect(r.version).toBe("2026-11-04");
     // Les textes légaux vivent dans js/legal-textes.js depuis #334 (lisibles sans code).
     const legal = lire("js/legal-textes.js");
     expect(legal).toMatch(/13 mois au maximum<\/strong> — en pratique la mesure d\\'usage détaillée est effacée après <strong[^>]*>7 jours<\/strong> et les rapports d\\'erreur après <strong[^>]*>30 jours/);

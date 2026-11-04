@@ -74,6 +74,10 @@ PowerShell, le passage du `--` à npm dépend des versions, et sans `--projet` l
 barrière refuse (rien ne part, rien n'est appliqué). Ensuite : mesurer au
 canal ①, jamais le tableau ; puis `git worktree remove` du dossier, depuis le clone.
 
+## Éprouver une migration avant la production
+
+Le job « Suites production (comptes réels) » vise le **staging**, jamais la production : le relancer après une application en production ne prouve rien. Pour éprouver une migration en conditions réelles, attester aussi `fcksxofaelcdmmifnwjo` (la revue doit nommer cette cible), l'y appliquer, puis laisser ce job tourner sur la tête de la PR. Fait pour R25 le 04/11. Le staging a dérivé (`docs/STAGING.md`) : un contrôle de publication de son verdict peut y dire ECHEC sans défaut de la migration.
+
 ## Ce que la barrière ne fait pas
 
 Elle ne remplace pas la revue : elle empêche seulement d'appliquer autre chose

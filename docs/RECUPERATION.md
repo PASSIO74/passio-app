@@ -14,12 +14,15 @@ Ce qui manquait n'était pas un fichier, c'était l'exercice (EXP-01, contre-rev
 npm run sauvegarde -- --complete                              # ① l'archive (données + comptes + médias)
 npm run schema:executable                                     # ② le DDL de la prod (structure seule)
 npm run restaurer -- --archive <dossier> --projet <ref> --schema <ddl.sql>   # ③ tout reverser, puis compter
+npm run migration:appliquer -- migrations/<sécurité>.sql --projet <ref>     # ④ rejouer les migrations de sécurité, lire leur verdict
 ```
+
+Le geste ④ n'est pas facultatif : un verdict de données ne voit pas une structure qui fuit (voir « ④ Après toute reconstruction », plus bas).
 
 | Outil | Ce qu'il fait | Ce qu'il rend |
 |---|---|---|
 | `scripts/sauvegarde-donnees.js` | export NDJSON par table (PostgREST, `service_role`), comptes par l'API d'administration, médias par l'API Storage ; `--verifier` relit l'archive | manifeste avec décompte serveur par table |
-| `scripts/schema-executable.js` | lit le **catalogue** Postgres de la production par l'API de gestion (canal ③ d'ADR-012, jamais la CLI) et rend un DDL en une transaction, rejouable : extensions, séquences, tables, contraintes, index, fonctions, vues, déclencheurs, RLS, policies, privilèges de table/colonne/fonction, publication realtime, seaux, cron | `.passio/sauvegardes/schema-<date>.sql` (hors git : une photographie) |
+| `scripts/schema-executable.js` | lit le **catalogue** Postgres de la production par l'API de gestion (canal ③ d'ADR-012, jamais la CLI) et rend un DDL en une transaction, rejouable : extensions, séquences (hors identité ; celles des `serial` rattachées à leur colonne), tables, contraintes, index, **identité de réplication**, fonctions, vues, déclencheurs, RLS, policies, privilèges de table/colonne/**séquence**/fonction, publication realtime, seaux, cron | `.passio/sauvegardes/schema-<date>.sql` (hors git : une photographie) |
 | `scripts/restaurer-donnees.js` | ① schéma (applique `--schema` si des tables manquent) · ② comptes **avec leur identifiant d'origine** · ③ tables par lots SQL, triggers utilisateur coupés, parents d'abord · ④ médias, chemins préservés · ⑤ verdict : chaque table recomptée sur la cible contre le manifeste, comptes, objets Storage | `✅ restauration prouvée` ou la liste des écarts, exit 1 |
 
 **Garde :** `restaurer` refuse la production (`njkiyoklssvefstljemx`, en dur) ET le projet écrit dans le manifeste de l'archive. On ne restaure jamais par-dessus la source. `--purger` vide la cible (même garde) : c'est ce qui rend l'exercice rejouable.
@@ -191,6 +194,178 @@ apparus « en trop » pendant la restauration. Rejouer l'exercice **hors d'un d�
 vide en cours) — ou sur un projet jetable dédié — et ressemer le staging après.
 
 Preuves (hors git, contenu utilisateur réel) : `.passio/sauvegardes/2026-10-21-res14-preuves/`.
+
+## La revue du 2026-11-03 (R25) : la structure qu'une reprise ne rendait pas
+
+Revue indépendante du 2026-11-03, reproduite au banc puis corrigée le 2026-11-04. Le DDL de reprise
+(`schema.sql` de chaque archive, écrit chaque nuit par `schema-executable.js`) ne portait ni l'identité de
+réplication des tables, ni les droits de séquence, et doublait chaque séquence d'identité. Un projet
+reconstruit sortait « contenu identique » du verdict — `--verifier` compare des **lignes** — et pourtant :
+
+| Ce qui manquait | Ce que la reconstruction rendait | Ce que cela rouvrait |
+|---|---|---|
+| `REPLICA IDENTITY` | toutes les tables en DEFAULT, la clé primaire | `migration_realtime_identite_opaque_2026-11-03.sql` ne fait plus publier d'un DELETE que `rid` (`replica identity using index <table>_rid_key` sur `conv_members`, `notifications`, `conv_reads`, `post_likes`) ; sur la base reconstruite, chaque départ republiait la conversation et le compte à tout abonné — R25 rouvert sans un signe. `comment_interactions`, FULL aujourd'hui, perdait aussi la sienne |
+| séquences d'identité | créées d'avance comme séquences autonomes : la colonne en recevait une **seconde** (`*_seq1`), la première restait orpheline | deux séquences par colonne d'identité — `client_errors.id` et `migrations_appliquees.id` en sont (canal ①, 2026-11-04 : ce sont des identités, jamais des `serial`) |
+| droits de séquence | ceux qu'un projet Supabase donne à toute séquence neuve : `rwU` pour `anon` et `authenticated` | identiques à la production AUJOURD'HUI (ses deux séquences ont `rwU`, canal ①, 2026-11-04) ; mais tout droit RESSERRÉ revenait en silence — la première version de R25 retirait tout droit client sur les séquences de `rid` : les lire, c'est estimer le volume d'écritures d'une table ; les reculer, c'est faire percuter l'index unique à l'insertion suivante |
+| `OWNED BY` d'un `serial` | une séquence que `pg_get_serial_sequence` ne trouve pas | le recalage des séquences de `restaurer-donnees.js` la sautait : la première insertion après la reprise percutait une clé restaurée (« duplicate key »). Aucune colonne `serial` en production : défaut latent |
+
+**Le correctif** (`schema-executable.js`, 19 sections au lieu de 16 — 20 avec la garde ajoutée par la contre-revue finale, plus bas) : la section « Séquences » ne crée plus
+d'avance une séquence d'identité (pg_depend `i` : elle naît avec sa colonne) ; une section rattache chaque
+`serial` à sa colonne (`OWNED BY`) ; une section **identité de réplication**, après les index, rend chaque
+table publique — DEFAULT compris, si bien qu'une cible semée qui a dérivé revient à la source — et un
+USING INDEX dont l'index a disparu en NOTHING, son effet réel ; une section **privilèges de séquence** retire
+puis rend à `anon` et `authenticated` ce que `has_sequence_privilege` lit dans la source, la séquence d'une
+identité désignée par SA COLONNE (`pg_get_serial_sequence` : une table renommée garde l'ancien nom de
+séquence, la cible en donne un neuf). Une séquence d'identité absente de la cible est une erreur, pas un
+silence.
+
+**Le banc** `tests/sql/schema-executable-identite.test.sh` (40 contrôles, PostgreSQL jetable, exécuté en CI
+par `scripts/bancs-sql-restants.sh`) rend le DDL par les ETAPES du dépôt contre une source qui porte les deux
+formes de R25 (`rid` d'identité séquentielle, puis `rid` aléatoire), une table FULL, une NOTHING, une identité
+ALWAYS, l'identité d'une table renommée, un `bigserial` et une séquence autonome aux droits choisis ;
+l'applique à une base vide aux droits par défaut de Supabase ; compare identités, séquences et droits ;
+reverse les lignes comme `restaurer-donnees.js` (`ordreInsert`, texte NDJSON tel quel, son recalage des
+séquences) et insère encore une ligne par table ; lit dans le WAL (`test_decoding`) ce qu'un DELETE publie ;
+puis rejoue le DDL sur la base semée et sur une cible qui a dérivé. **Rouge prouvé** sur le générateur
+d'`origin/main` (3e4019d, worktree privé) : 25 ✅ 15 ❌ — dont les DELETE de la base reconstruite qui
+publient `conv_id[text]:'c1' user_id[text]:'u1'` et `post_id[text]:'p1' user_id[text]:'u2'`.
+
+**Recoupé** sur le socle de la revue (la vraie migration R25, `realtime.apply_rls` de production recopiée à
+l'octet), reconstruit avec le générateur corrigé, le verdict de R25 lu sur la base reconstruite **sans
+réappliquer la migration** : **11 OK / 0 ECHEC** pour la version du commit 13874e4 (`rid` d'identité, sha256
+`51a2f4c2…`), **10 OK / 0 ECHEC** pour la version de travail du 2026-11-04 (`rid` aléatoire, `bb3ae779…`) ;
+dans les deux, le DDL s'applique sans erreur et un DELETE ne publie plus que `rid`. La migration n'était pas
+finalisée : ce recoupement ne vaut que pour ces deux empreintes. **La forme FINALE** (`rid` de 53 bits, chiffres
+17 à 32 de l'UUID, migration sha256 `6471496f…`) est celle que porte désormais la table `aimes` du banc — défaut
+recopié à l'octet près, garde au même code exécutable (sans ses commentaires) : 40 ✅ / 0 ❌ (2026-11-04). La contre-revue finale (2026-11-04) a REJOUÉ le
+recoupement pour cette empreinte : source 10 OK, DDL rendu puis appliqué à une base vide de type Supabase,
+verdict de R25 lu sur la base reconstruite sans réappliquer la migration **10 OK / 0 ECHEC**, rejeu du DDL et de la
+migration sans erreur. Les corrections de R25 qui ont suivi (verdict, retour arrière, en-tête) ne changent ni
+l'identité, ni le défaut de `rid`, ni la garde.
+
+**Garde du générateur** (même revue) : une table PARTITIONNÉE ou ÉTRANGÈRE de `public` n'était pas rendue, et le
+DDL échouait plus loin, à la reprise (contraintes, `OWNED BY` d'un serial, droits d'une séquence d'identité). La
+première des 20 sections le DIT désormais : sa seule instruction LÈVE à l'application, en nommant la table — la
+reprise s'arrête avant d'avoir rien posé —, et le générateur le signale au journal du workflow (`::warning`). Il
+n'échoue PAS : un échec à cette étape sautait le chiffrement et le dépôt de la nuit, données comprises (relevé par
+la contre-revue de ce correctif). `--verifier` dit alors l'archive PARTIELLE (en note : l'archive est déposée), et
+une dernière étape de `sauvegarde.yml`, APRÈS le dépôt, rend le run ROUGE — sinon trente nuits « vertes » ne
+reconstruiraient pas une base vide (dernière passe de la contre-revue, `reprise-verdicts.test.mjs`). Aucune en production (canal ①, 2026-11-04). Verrou :
+`tests/unit/restaurer-donnees.test.mjs` ⑦.
+
+### ④ Après toute reconstruction : rejouer les migrations de sécurité, mesurer l'identité
+
+Une archive porte des lignes, et le DDL de la nuit où elle a été prise. Ce qu'une migration de sécurité pose
+**sans écrire de ligne** — identité de réplication, droits, policies, publication — n'est vu par aucun
+verdict de données. Donc, avant d'ouvrir un projet reconstruit :
+
+1. **Rejouer sur la cible** chaque migration de sécurité dont l'effet n'est pas une ligne — au minimum
+   `migration_realtime_identite_opaque_2026-11-03.sql` dès qu'elle est appliquée en production. Elles sont
+   idempotentes et impriment leur tableau de verdict :
+   `npm run migration:appliquer -- migrations/<fichier>.sql --projet <ref de la cible>` — tout OK, ou le
+   projet ne s'ouvre pas. Le journal `migrations_appliquees`, restauré avec l'archive, dit lesquelles la
+   source avait reçues. ⚠️ Une seule exception, attendue : `migration_realtime_identite_opaque` exige « les
+   11 mêmes tables » publiées ; rejouée après `migration_realtime_diffusion_privee`, qui en retire deux, sa
+   ligne 10 dit ECHEC. Les rejouer dans cet ordre-là : l'identité opaque d'abord.
+2. **Mesurer l'identité de réplication** par le canal de lecture seule (canal ① d'ADR-012 ; sur un projet que
+   le connecteur ne vise pas, la même requête — un SELECT seul — par l'API de gestion), puis la comparer à la
+   même lecture sur la production :
+
+   ```sql
+   select c.relname, c.relreplident,
+          (select ic.relname from pg_index i join pg_class ic on ic.oid = i.indexrelid
+            where i.indrelid = c.oid and i.indisreplident) as index_identite
+     from pg_class c
+    where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and c.relreplident <> 'd'
+    order by 1;
+   ```
+
+   Attendu une fois R25 appliquée : `conv_members`, `conv_reads`, `notifications`, `post_likes` en `i` sur
+   `<table>_rid_key`, et aucune autre ligne.
+3. **Mesurer les séquences** de la même façon : aucune `*_seq1`, et les mêmes droits que la production
+   (`has_sequence_privilege(<rôle>, c.oid, 'USAGE, SELECT, UPDATE')` est vrai dès qu'UN droit reste) :
+
+   ```sql
+   select c.relname,
+          has_sequence_privilege('anon', c.oid, 'USAGE, SELECT, UPDATE') as anon,
+          has_sequence_privilege('authenticated', c.oid, 'USAGE, SELECT, UPDATE') as authenticated
+     from pg_class c
+    where c.relnamespace = 'public'::regnamespace and c.relkind = 'S'
+    order by 1;
+   ```
+
+### Ce que le DDL ne rend toujours pas — écrit
+
+- **Les options d'une séquence d'identité** (départ, pas, bornes, cache) : l'identité renaît avec celles de
+  PostgreSQL par défaut. Les deux de la production les ont (canal ①, 2026-11-04), et la reprise recale la
+  valeur courante sur le maximum restauré.
+- **La valeur courante d'une séquence autonome** (rattachée à aucune colonne) : elle repart de son départ —
+  l'archive ne porte pas de séquences. Aucune en production.
+- **Un projet reconstruit avec l'ancien générateur** (le staging, le 2026-09-14) porte probablement une
+  séquence orpheline par colonne d'identité, la colonne se servant de `*_seq1` — non mesuré ; sans effet,
+  puisque rien ne s'en sert, et le DDL ne supprime rien.
+- Le banc tourne sur PostgreSQL 16 (poste et CI) ; la production est en 17.6. Aucun cycle réel sur un projet
+  Supabase n'a été rejoué avec ces sections. Les requêtes de catalogue des sections neuves ont été lues sur la
+  production (canal ①, 2026-11-04) : elles s'exécutent, et rendent l'identité de 52 tables (seule
+  `comment_interactions` hors DEFAULT, en FULL), aucune séquence à créer d'avance, aucun `OWNED BY`, et les
+  droits des deux séquences d'identité pour `anon` et `authenticated`, désignées par leur colonne.
+
+### Trouvé en écrivant le banc : l'ARCHIVE arrondissait un entier au-delà de 2^53 (corrigé le 2026-11-04)
+
+`sauvegarde-donnees.js` lisait chaque page de PostgREST par `r.json()` et la réécrivait par `JSON.stringify` :
+un `bigint` au-delà de 2^53 y devenait le double le plus proche — mesuré : `2906581903110193585` →
+`2906581903110193700`, et deux valeurs distinctes (`4176641050114934105`, `4176641050114934300`) devenaient la
+même. `restaurer-donnees.js` passe, lui, le texte NDJSON tel quel : c'était l'archive qui perdait, pas la
+reprise, et `--verifier`, qui relisait les deux côtés par `JSON.parse`, ne le voyait pas. Deux `rid` arrondis au
+même double auraient fait refuser la seconde ligne par `<table>_rid_key` (`on conflict do nothing` : elle
+manquait au verdict).
+
+**Correctif** (`scripts/lib/json-exact.js`) :
+- **l'export n'interprète plus ses lignes** : `decouperLignes` découpe le tableau que rend PostgREST en textes de
+  lignes, par un balayage LINÉAIRE (profondeur, chaînes, échappements), et `exporter` les écrit tels que la base
+  les a rendus — exact par construction, échelle de `10.00` comprise. `JSON.parse` seul vérifie que chaque ligne
+  est un objet ; une page tronquée fait échouer l'export en nommant la table et la page ;
+- **la vérification compare au chiffre près** : `lireJsonExact` (archive relue, cible relue, `lireNdjson`,
+  `lignesCible`) garde le texte source d'un nombre que JavaScript changerait (`JSON.rawJSON`, Node 21 et plus — la
+  CI est en 22) ; un nombre qu'il lit en dénotant la même valeur décimale reste un nombre (`10.00`, `1e-07`,
+  `0.1` : une archive d'avant le correctif se vérifie toujours à l'identique — rejoué sur PostgreSQL 16 par la
+  contre-revue, 0 écart). La clé de comparaison prend le texte exact (`texteValeur`) ;
+- ⚠️ **aucune profondeur ne fait échouer la sauvegarde** (contre-revue finale, 2026-11-04) : un compte écrit le
+  jsonb qu'il veut dans SON `user_state`, et la production en accepte au moins 8 000 niveaux (mesuré). L'ancien
+  export (`r.json()` puis `JSON.stringify`) cassait déjà vers 4 171 niveaux — plus aucune archive, nuit après nuit —,
+  et la première version de ce lot, par un `reviver` récursif, vers 2 847. L'export ne relit plus rien : aucun
+  plafond de profondeur, l'ancien compris. `lireJsonExact` balaie d'abord les jetons numériques et n'appelle le
+  reviver que s'il en trouve un « à risque » ;
+- **sans `JSON.rawJSON`, tout nombre à risque fait échouer la lecture** (entier au-delà de 2^53, décimal à plus de
+  15 chiffres, `1e400` qui deviendrait `null`) : jamais un arrondi silencieux.
+- **la VALIDATION d'une archive ne relit rien au chiffre près** : elle compte et vérifie la syntaxe (`JSON.parse`
+  seul, `compterLignesNdjson`). Par la lecture exacte, une seule ligne très imbriquée portant un nombre à risque —
+  qu'un compte écrit chez lui — faisait refuser l'archive ENTIÈRE, « INVALIDE », sans recours (P2 relevé par la
+  contre-revue de ce correctif, confirmé, rouge sur réinjection : `restaurer-phases.test.mjs`) ;
+- **la reprise refuse de démarrer sans `JSON.rawJSON`** (Node < 21), en le disant, au lieu de déclarer « corrompue »
+  une archive saine ; et la comparaison voit une différence rangée sous une clé `__proto__` (préexistant :
+  `canoniser` l'affectait, ce qui changeait le prototype au lieu de créer la clé).
+Verrous : `tests/unit/restaurer-donnees.test.mjs` ⑤ à ⑦ bis, rouges sur six réinjections (`r.json()` à
+l'export, `JSON.parse` à la relecture, `String()` dans la clé, export relu puis réécrit, lecture toujours par
+reviver, repli qui arrondit les décimaux). Aucune archive existante n'est à reprendre : jusqu'ici, les seules
+colonnes `bigint` de `public` étaient les deux compteurs d'identité, aucune n'était en `numeric` ni `json`, et les
+1 291 nombres des `jsonb` sauvegardés ont tous 15 chiffres significatifs au plus (canal ①, 2026-11-04).
+
+**Limites qui restent, dites telles quelles** :
+- les `float8` : la production rend ses flottants sur 15 chiffres (`extra_float_digits = 0`), et le `json_agg` de
+  PostgREST les écrit ainsi — `0.30000000000000004` s'archive `0.3`, se restaure `0.3`, et le verdict compare `0.3` à
+  `0.3`. Préexistant (l'ancien export faisait de même) ; aucune valeur touchée le 2026-11-04 (canal ①). Risque
+  résiduel R35 ;
+- une colonne de type `json` (pas `jsonb`) garde ses blancs d'origine ; le découpage change un saut de ligne hors
+  chaîne en espace, et le verdict, qui compare des valeurs, ne le voit pas. Aucune colonne `json` en production ;
+- la COMPARAISON de la reprise (`canoniser`, récursive) plafonne entre ≈ 2 600 et ≈ 4 170 niveaux d'imbrication
+  selon l'état du moteur (mesuré par la contre-revue) — préexistant :
+  une ligne plus profonde fait échouer le verdict (il ne dit pas « conforme ») ; l'export et le chargement, eux,
+  n'ont plus de plafond propre ;
+- la sauvegarde de la nuit n'inscrit jamais `schema_sha256` au manifeste — préexistant : l'étape « Exporter » de
+  `sauvegarde.yml` tourne AVANT « Archiver le schéma », et ne hache `schema.sql` que s'il existe déjà. Le contrôle
+  « ce DDL est celui de cette archive » (ASTRA-32) ne sert donc pas encore ; inverser les étapes ferait dépendre
+  l'export des données de l'étape du schéma. Risque résiduel R34 de l'audit du 2026-11-02.
 
 ## Ce qu'une restauration NE REND PAS — écrit, pas tu
 
