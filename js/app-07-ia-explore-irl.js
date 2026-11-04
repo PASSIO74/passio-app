@@ -5819,45 +5819,66 @@ async function admissionLireStatut(force) {
   }
 }
 
-// Au démarrage : pousser une fois l'année déjà saisie à l'onboarding, pour que
-// les comptes EXISTANTS deviennent admis sans qu'on leur redemande rien.
-// ⚠️ Sans ce rappel, allumer la règle couperait l'IRL à tous les comptes créés
-// avant elle — ils ont une année en local et aucune ligne côté serveur.
-async function admissionRappelServeur() {
-  if (_admissionAnneePoussee || !admissionCanalPret()) return false;
-  _admissionAnneePoussee = true;
-  var an = null;
-  try { an = state && state.user ? state.user.birthYear : null; } catch (e) {}
-  // L'année saisie à l'INSCRIPTION voyage dans `user_metadata.birth_year` :
-  // `signUp` ne rend pas de session (« Confirm email »), on ne peut donc pas la
-  // déclarer sur le moment, et le lien de confirmation s'ouvre souvent sur un
-  // autre appareil, où l'état local de l'inscription n'existe pas.
-  if (!an) {
-    an = await admissionAnneeDepuisSession();
-    if (an) {
-      try {
-        state.user.birthYear = an;
-        state.user.isMinor = (new Date().getFullYear() - an) < 18;
-        saveState();
-      } catch (e) { admissionEchec("local", e); }
-    }
-  }
-  if (!an) return false;
-  return await admissionDeclarerAnnee(an);
-}
-
-async function admissionAnneeDepuisSession() {
+// L'ANNÉE DU COMPTE RÉELLEMENT CONNECTÉ, ET RIEN D'AUTRE (relecture du 2026-11-04).
+// `declare_birth_year` part avec le jeton de la SESSION, alors que `state` et
+// `MY_UID` peuvent être encore ceux d'un autre compte : le rappel part au
+// démarrage, avant l'adoption, et un lien de confirmation ouvert dans ce navigateur
+// apporte la session de B sur l'état de A. L'année de A partait alors sous le jeton
+// de B, et c'est définitif : le serveur ne recule jamais une date de majorité (un
+// adulte classé mineur, ou un compte sans âge déclaré admis).
+// L'année locale n'est donc retenue que si l'état appartient à ce compte. Sinon seule
+// compte `user_metadata.birth_year`, où l'inscription l'a déposée : `signUp` ne rend
+// pas de session (« Confirm email ») et le lien de confirmation s'ouvre souvent sur
+// un autre appareil. Rend `{ uid, an }`, ou `null` s'il n'y a rien à déclarer.
+async function admissionAnneeDuCompte() {
   try {
     if (!supa || !supa.auth || typeof supa.auth.getSession !== "function") return null;
     var res = await supa.auth.getSession();
     var u = res && res.data && res.data.session && res.data.session.user;
-    var an = Number(u && u.user_metadata && u.user_metadata.birth_year);
+    if (!u || !u.id) return null;
     var courante = new Date().getFullYear();
-    return Number.isInteger(an) && an >= 1900 && an <= courante ? an : null;
+    var valide = function (x) {
+      var n = Number(x);
+      return Number.isInteger(n) && n >= 1900 && n <= courante ? n : null;
+    };
+    var locale = null;
+    if (_uidProprietaireEtat === u.id && MY_UID === u.id && state && state.user) locale = valide(state.user.birthYear);
+    var an = locale !== null ? locale : valide(u.user_metadata && u.user_metadata.birth_year);
+    return an === null ? null : { uid: u.id, an: an };
   } catch (e) {
     admissionEchec("metadonnee", e);
     return null;
   }
+}
+
+// UNE déclaration par compte et par page : le rappel du démarrage, la connexion et
+// chaque conversation ouverte la demandent, et la proposition IRL est active pour
+// tout le monde. Un échec libère la place : la demande suivante réessaie.
+var _admissionDeclaration = null;
+function admissionDeclarerUneFois(compte) {
+  if (_admissionDeclaration && _admissionDeclaration.uid === compte.uid) return _admissionDeclaration.promesse;
+  var suivi = { uid: compte.uid, promesse: null };
+  suivi.promesse = admissionDeclarerAnnee(compte.an).then(function (ok) {
+    if (!ok && _admissionDeclaration === suivi) _admissionDeclaration = null;
+    return ok;
+  });
+  _admissionDeclaration = suivi;
+  return suivi.promesse;
+}
+
+// Au démarrage : pousser une fois l'année déjà connue, pour que les comptes
+// EXISTANTS deviennent admis sans qu'on leur redemande rien.
+// ⚠️ Sans ce rappel, allumer la règle couperait l'IRL à tous les comptes créés
+// avant elle — ils ont une année en local et aucune ligne côté serveur.
+// ⚠️ LE VERROU SE POSE APRÈS LA LECTURE : un démarrage sans session ne le consomme
+// pas, sinon une session arrivée sans rechargement ne déclarerait plus rien, et la
+// porte redemanderait une année déjà donnée à l'inscription.
+async function admissionRappelServeur() {
+  if (_admissionAnneePoussee || !admissionCanalPret()) return false;
+  var compte = await admissionAnneeDuCompte();
+  if (!compte || _admissionAnneePoussee) return false;
+  _admissionAnneePoussee = true;
+  return await admissionDeclarerUneFois(compte);
 }
 
 // LA PORTE. Rend `true` si l'action peut continuer, `false` si elle est refusée
@@ -6030,7 +6051,11 @@ function irlTsFail(ou, err) {
   try { if (typeof diagLog === "function") diagLog(msg); } catch (e) {}
   try {
     if (window.tel && tel.error) {
-      tel.error(err instanceof Error ? err : new Error(msg), { action: "irl_ts", meta: { v: IRL_TS_VERSION, reason: String(ou) } });
+      // Une coupure réseau n'est pas une panne : la proposition IRL est active pour
+      // tout le monde, ces refus nourriraient la veille à chaque tunnel de métro.
+      var reseau = false;
+      try { reseau = typeof estEchecReseau === "function" && estEchecReseau(err); } catch (e) {}
+      tel.error(err instanceof Error ? err : new Error(msg), { action: "irl_ts", severity: reseau ? "warn" : "error", meta: { v: IRL_TS_VERSION, reason: String(ou) } });
     }
   } catch (e) {}
 }
@@ -6111,29 +6136,15 @@ function irlProposalAllowed(targetUserId) {
   return verdict.ok;
 }
 
-// Déclare au serveur l'année déjà auto-déclarée à l'onboarding. Le RPC refuse
-// une année invalide et interdit de « se vieillir » après une première valeur.
-// Aucune année ni identité n'entre dans les logs ou la télémétrie.
+// Déclare au serveur l'année du compte connecté (`admissionAnneeDuCompte`, seule
+// autorité). Le RPC refuse une année invalide et interdit de « se vieillir » après
+// une première valeur. Aucune année ni identité n'entre dans les logs ou la
+// télémétrie. Le verdict d'interaction ci-dessous reste la seule autorité.
 async function irlProposalDeclareBirthYear() {
   try {
-    if (!irlProposalEnabled() || !window._supaReal || typeof supa === "undefined"
-        || !supa || typeof supa.rpc !== "function" || typeof MY_UID === "undefined" || !MY_UID) return false;
-    var year = Number(state && state.user && state.user.birthYear);
-    var currentYear = new Date().getFullYear();
-    if (!Number.isInteger(year) || year < 1900 || year > currentYear) return false;
-    if (!supa.auth || typeof supa.auth.getSession !== "function") return false;
-    var authRes = await supa.auth.getSession();
-    var authUser = authRes && authRes.data && authRes.data.session && authRes.data.session.user;
-    if (!authUser || !authUser.id) return false;
-    var res = await supa.rpc("declare_birth_year", { _birth_year: year });
-    if (!res || res.error) {
-      irlTsFail("birth_year_server", res && res.error);
-      return false;
-    }
-    // `false` peut simplement signifier que la même déclaration prudente était
-    // déjà enregistrée. Le verdict d'interaction ci-dessous reste la seule
-    // autorité et dira false si la ligne n'existe réellement pas.
-    return true;
+    if (!irlProposalEnabled() || !admissionCanalPret()) return false;
+    var compte = await admissionAnneeDuCompte();
+    return compte ? await admissionDeclarerUneFois(compte) : false;
   } catch (e) {
     irlTsFail("birth_year_server", e);
     return false;
@@ -6145,8 +6156,9 @@ async function irlProposalDeclareBirthYear() {
 async function irlProposalServerVerdict(targetUserId) {
   var local = irlProposalVerdict(targetUserId);
   if (!local.ok) return local;
-  if (!window._supaReal || typeof supa === "undefined" || !supa
-      || typeof supa.rpc !== "function" || typeof MY_UID === "undefined" || !MY_UID) {
+  // Un visiteur et une session expirée n'ont rien à demander : `anon` n'a pas EXECUTE
+  // sur ce RPC, et chaque refus nourrirait la Sentinelle à chaque fil de démonstration.
+  if (!admissionCanalPret() || sessionExpiree()) {
     return { ok: false, reason: "server_unavailable" };
   }
   // Politesse, pas condition : l'année a pu être déclarée depuis un AUTRE

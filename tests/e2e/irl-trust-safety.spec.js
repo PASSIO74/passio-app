@@ -40,8 +40,14 @@ async function installIrlRpc(page, interactionResults) {
     window._supaReal = true;
     window.__irlRpcCalls = [];
     window.__irlInteractionResults = Array.isArray(results) ? results.slice() : [results];
+    // Un vrai uuid, et un état qui appartient à ce compte : un visiteur n'interroge
+    // plus le serveur, et une année locale ne part que pour son propre compte.
+    const uid = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    MY_UID = uid; window.MY_UID = uid;
+    _uidProprietaireEtat = uid;
+    _admissionDeclaration = null;
     window.supa.auth.getSession = async () => ({
-      data: { session: { user: { id: "u_auth_qa" } } }, error: null,
+      data: { session: { user: { id: uid } } }, error: null,
     });
     window.supa.rpc = async (name, args) => {
       window.__irlRpcCalls.push({ name, args });
@@ -345,10 +351,8 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
     await expect(cta).toHaveCount(0);
     await expect(page.locator("#modalBackdrop.active")).toHaveCount(0);
     const names = await page.evaluate(() => window.__irlRpcCalls.map(c => c.name));
-    expect(names).toEqual([
-      "declare_birth_year", "irl_interaction_allowed",
-      "declare_birth_year", "irl_interaction_allowed",
-    ]);
+    // Le verdict est redemandé au clic ; l'année, elle, n'est déclarée qu'une fois par page.
+    expect(names).toEqual(["declare_birth_year", "irl_interaction_allowed", "irl_interaction_allowed"]);
   });
 
   test("le clic autorisé ouvre le formulaire IRL existant et reste sans identifiant dans les traces", async ({ page }) => {

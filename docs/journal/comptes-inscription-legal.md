@@ -514,15 +514,25 @@ Deux portes, toutes deux vers `PassioFirstRun.allerInscription` (aucun second sy
 **Le défaut qui l'interdisait** : le parcours « Première visite » (actif depuis le 2026-09-01) ne demande l'année NULLE PART. `irl_interaction_allowed` exige deux majeurs DÉCLARÉS et échoue fermé : allumé tel quel, le bouton restait invisible pour tout compte né depuis septembre. Et `irlProposalServerVerdict` refusait (`birth_year_unavailable`) dès que l'appareil n'avait pas l'année EN LOCAL, même pour un compte admis côté serveur depuis un autre appareil.
 
 **Ce qui change** :
-- `#authBirthYear` au formulaire de création (mode `signup` seulement). Pré-filtre identique à `admissionValiderAnnee` : < 13 ans écarté, **13 à 17 ans part** (le serveur en fait un refus durable — ne pas remonter à 18).
-- L'année voyage dans `user_metadata.birth_year` (`signUp` ne rend pas de session) ; `admissionRappelServeur` la relit à la première session quand l'état local ne l'a pas, et la déclare (`declare_birth_year`).
-- La déclaration locale n'est plus une condition du verdict : le serveur reste seul juge.
+- `#authBirthYear` au formulaire de création (mode `signup` seulement). **Sous 18 ans, rien ne part** : la politique (§ 10) dit que l'inscription est refusée, et le message laisse corriger une faute de frappe. Ne pas confondre avec `admissionValiderAnnee`, où le compte existe déjà : son pré-filtre reste à 13 ans, et le serveur fait de l'année un refus durable.
+- L'année voyage dans `user_metadata.birth_year` (`signUp` ne rend pas de session). `admissionAnneeDuCompte` (app-07) la relit à la première session et elle part par `declare_birth_year`, une fois par compte et par page. Elle n'est plus recopiée en local à cette occasion.
+- La déclaration locale n'est plus une condition du verdict : le serveur reste seul juge. Un visiteur et une session expirée s'arrêtent avant le réseau (`server_unavailable`).
 - `irlProposalEnabled()` : ACTIF par défaut, ne sait plus qu'enlever (`"0"`, `PASSIO_IRL_PROPOSAL_V1=false`, coupure distante — la clé était déjà dans la liste blanche).
 - Politique de confidentialité §2 : l'année figure parmi les données d'inscription (version `2026-11-04`, jour de sa mise en ligne : la date affichée ne précède pas la publication).
 
 ⚠️ **Reste hors champ** : un compte créé par Google n'a pas de formulaire, donc pas d'année avant sa première action IRL (la porte d'admission la demande alors). Les comptes nés entre le 2026-09-01 et ce lot non plus : le bouton leur apparaît dès qu'ils ont déclaré leur année par la porte d'admission.
 
-Verrous : `tests/e2e/annee-inscription.spec.js` (6), `tests/e2e/irl-trust-safety.spec.js` (drapeau par défaut ACTIF, « 0 » coupe).
+⚠️ **Relecture adversariale avant la mise en ligne (2026-11-04) : deux défauts graves, vérifiés dans le code puis corrigés.**
+- **L'année de A partait sous le jeton de B, et c'est définitif.** `declare_birth_year` part avec le jeton de la SESSION, alors que `state` et `MY_UID` peuvent être ceux d'un autre compte : le rappel part au démarrage, avant l'adoption, et un lien de confirmation ouvert dans ce navigateur apporte la session de B sur l'état de A. Le serveur ne reculant jamais une date de majorité, un adulte pouvait rester classé mineur, et un compte sans âge déclaré être admis. `admissionAnneeDuCompte` est désormais la seule autorité : l'année locale ne vaut que si `_uidProprietaireEtat`, `MY_UID` et la session désignent le même compte, sinon seule compte `user_metadata`. Le défaut date de septembre ; demander l'année à tous l'aurait armé.
+- **Un compte déclaré de 13 à 17 ans était créé et conservé**, alors que le § 10 dit « refusée » et « supprimé » : PASSIO aurait gardé l'e-mail et l'année d'une personne qu'il sait mineure, sans aucun chemin de suppression dans le code. D'où le refus à 18 ans à la création, sans appel à `signUp`.
+- Corrigés aussi : l'année n'entre dans l'état que sur un compte créé AVEC une session (un refus laissait 2012 sur l'état du compte suivant) ; le verrou du rappel se pose après la lecture de session ; une déclaration par compte et par page au lieu de trois par démarrage et une par conversation ; l'étape « âge » est sautée quand l'année est connue ; une coupure réseau d'`irlTsFail` est un `warn` ; § 2 vrai pour un compte Google.
+
+⚠️ **Résidus laissés, délibérément** :
+- `irl_interaction_allowed` reste un oracle : tout compte connecté peut l'appeler sans plafond sur les identifiants publics, et `false` couvre « mineur », « non déclaré » et « bloqué ». Refuser sous 18 ans à la création lui retire l'essentiel de son intérêt ; le fermer demande une migration (exiger une conversation commune, patron `appel_autorise`), donc une contre-revue.
+- `irlProposerEstMineur` lit `state.user.isMinor` sans le recalculer : le refus local reste prudent, et un cas de la suite IRL le fixe tel quel.
+- `birthYear` et `isMinor` restent dans `_syncableState` (`user_state`, lisible par son seul propriétaire) ; `irl_proposal_guard` peut porter `reason=self_minor` ; `DENY_KEY` ne liste pas ces noms, car aucun appelant ne les envoie.
+
+Verrous : `tests/e2e/annee-inscription.spec.js` (12, dont ③ le refus à 18 ans, ⑦ l'année d'un autre compte, ⑧ une seule déclaration, ⑨ visiteur et session expirée, ⑩ le verrou), `tests/e2e/irl-trust-safety.spec.js` (drapeau par défaut ACTIF, « 0 » coupe), `tests/e2e/admission-18-plus.spec.js`.
 
 ## 1️⃣ LA CARTE DE BIENVENUE N'A PLUS QU'UN BOUTON — celui que son message annonce (2026-11-03)
 

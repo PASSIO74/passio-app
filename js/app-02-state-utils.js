@@ -4911,6 +4911,11 @@ function showOnbStep(name) {
 // le « ← Retour » de l'écran des passions ré-afficher l'étape qu'on vient
 // d'éviter — une porte fermée dans un seul sens (piège maison).
 function _onbEtapeASauter(nom) {
+  // L'année a déjà été donnée au formulaire de création : elle n'est demandée qu'une fois.
+  if (nom === "age") {
+    const an = Number(typeof state !== "undefined" && state && state.user && state.user.birthYear);
+    return Number.isInteger(an) && an >= 1900 && new Date().getFullYear() - an >= 18;
+  }
   // Une seule autorité sur ce qu'est un nom valide : `nomCompteValide`.
   return nom === "name" && !!nomCompteValide((typeof state !== "undefined" && state && state.user && state.user.name) || "");
 }
@@ -5828,14 +5833,15 @@ async function onbDoAuth() {
     _showAuthMsg("Choisis un nom d'utilisateur (" + NOM_COMPTE_MIN + " \u00e0 " + NOM_COMPTE_MAX + " caract\u00e8res).", "error");
     return;
   }
-  // \u26a0\ufe0f L'ANN\u00c9E DE NAISSANCE EST DEMAND\u00c9E \u00c0 LA CR\u00c9ATION (2026-11-01). Le parcours
-  // \u00ab Premi\u00e8re visite \u00bb ne la demandait nulle part : la proposition IRL, qui
-  // exige deux majeurs d\u00e9clar\u00e9s c\u00f4t\u00e9 serveur, restait invisible pour tous les
-  // comptes n\u00e9s depuis le 2026-09-01. M\u00eame pr\u00e9-filtre que la porte d'admission
-  // (`admissionValiderAnnee`, app-07) : on n'\u00e9carte ici qu'une saisie absurde
-  // (< 13 ans). NE PAS le remonter \u00e0 18 \u2014 entre 13 et 17 ans l'ann\u00e9e doit
-  // PARTIR au serveur, qui en fait un refus DURABLE ; refuser localement ferait
-  // seulement ressaisir une autre ann\u00e9e.
+  // ⚠️ L'ANNÉE DE NAISSANCE EST DEMANDÉE À LA CRÉATION (2026-11-01). Le parcours
+  // « Première visite » ne la demandait nulle part : la proposition IRL, qui exige
+  // deux majeurs déclarés côté serveur, restait invisible pour tous les comptes nés
+  // depuis le 2026-09-01.
+  // ⚠️ SOUS 18 ANS, RIEN NE PART (relecture du 2026-11-04). La politique (§ 10) dit
+  // que l'inscription est refusée : créer le compte garderait l'e-mail et l'année
+  // d'une personne qu'on sait mineure. Le message laisse corriger une faute de frappe.
+  // Ne pas confondre avec `admissionValiderAnnee` (app-07), où le compte existe déjà :
+  // là, l'année part au serveur, qui en fait un refus durable.
   const _anneeNaissance = parseInt(document.getElementById("authBirthYear")?.value || "", 10);
   if (_authMode === "signup") {
     const _courante = new Date().getFullYear();
@@ -5843,8 +5849,8 @@ async function onbDoAuth() {
       _showAuthMsg("Indique ton ann\u00e9e de naissance.", "error");
       return;
     }
-    if (_courante - _anneeNaissance < 13) {
-      _showAuthMsg("V\u00e9rifie ton ann\u00e9e de naissance.", "error");
+    if (_courante - _anneeNaissance < 18) {
+      _showAuthMsg("PASSIO est r\u00e9serv\u00e9 aux 18 ans et plus. Si tu t'es tromp\u00e9 d'ann\u00e9e, corrige-la.", "error");
       return;
     }
   }
@@ -5952,8 +5958,14 @@ async function onbDoAuth() {
           // session — l'onboarding continue alors sans redemander le prénom.
           state.user.name = nom;
           state.user.general.username = nom;
-          state.user.birthYear = _anneeNaissance;
-          state.user.isMinor = (new Date().getFullYear() - _anneeNaissance) < 18;
+          // ⚠️ L'année n'entre dans l'état que sur un compte créé AVEC une session : un
+          // refus (« déjà utilisé ») ou une attente de confirmation laisserait sinon
+          // l'année de cette saisie sur l'état du compte qui se reconnectera ensuite.
+          // Sans session, `user_metadata` suffit (`admissionAnneeDuCompte`, app-07).
+          if (result && !result.error && result.data && result.data.session) {
+            state.user.birthYear = _anneeNaissance;
+            state.user.isMinor = (new Date().getFullYear() - _anneeNaissance) < 18;
+          }
           try { const el = document.getElementById("userName"); if (el) el.value = nom; } catch (e2) {}
           // Qui a accepté QUOI, et QUAND. Sans la version, une réécriture des
           // CGU rendrait la trace inexploitable : « a accepté » ne dit rien.

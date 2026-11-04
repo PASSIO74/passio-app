@@ -142,7 +142,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Un refus montre TOUJOURS sa sortie à l'écran (renvoi du lien sous le message, `_showResendConfirmation` seule autorité) : deux testeuses iPhone bloquées le 17/09, sans la moindre trace d'erreur.
 - `MY_UID` ne prouve pas qu'un compte existe (`getMyUserId()` fabrique `u_<aléatoire>`) : lire la SESSION. `nomCompteValide` (app-02) est la seule autorité du nom, et on n'écrase jamais un nom déjà choisi.
 - `js/legal-textes.js` (`PASSIO_EDITEUR`) est la SEULE source des textes légaux et de l'identité de l'éditeur ; la version des CGU suit le texte ; les CGU ne décrivent que ce que le code applique.
-- Majorité : règle CONTRACTUELLE et déclarative ; la seule barrière serveur est la RLS de l'IRL (`irl_adult_only`, allumé). Ne pas remonter à 18 le pré-filtre d'`admissionValiderAnnee`.
+- Majorité : règle CONTRACTUELLE et déclarative ; la seule barrière serveur est la RLS de l'IRL (`irl_adult_only`, allumé). Ne pas remonter à 18 le pré-filtre d'`admissionValiderAnnee` (le compte existe déjà) ; à la création, sous 18 ans, rien ne part. L'année ne part au serveur que par `admissionAnneeDuCompte` : `state` peut être celui d'un autre compte que la session, et une date de majorité ne recule jamais.
 
 **Sécurité serveur, RLS, migrations, Edge Functions** → `docs/journal/serveur-securite-base.md` (`migrations/`, `supabase/`, `tests/sql/`, toute lecture de `events`)
 - PostgREST refuse la requête ENTIÈRE (42501) dès qu'UNE colonne manque au rôle : jamais `select("*")` sur une table à colonnes réservées (`events` : `_EVENT_COLS_PUBLIC`).
