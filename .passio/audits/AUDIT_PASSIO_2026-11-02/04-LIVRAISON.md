@@ -119,3 +119,37 @@ Chaque fichier porte son retour arrière en tête. Après chaque application : m
 | après | **F-06 remesuré** : la lecture du pilotage (`env = 'production' and user_id is not null and received_at > now() - 7 j order by received_at desc limit 1000`) passe en *Index Only Scan* sur `idx_tel_env_received_identifies`, bornée par sa limite : 81 tampons, 15 ms (lecture partiellement à froid), contre 54,6 ms de moyenne mesurés avant | `explain (analyze, buffers)` |
 | **reste** | `migration_participants_visibilite_2026-11-03.sql` : **à partir du 2026-11-05 18:40 UTC** (48 h après le déploiement, pour les PWA restées ouvertes), puis mesure au canal ① | rappel programmé |
 
+## 7. R24 et R26 — la promotion ne nomme plus le promu à n'importe qui, les vues perdent leurs droits hors RLS (2026-11-03, le soir)
+
+`migrations/migration_promotion_discrete_vues_2026-11-03.sql` (banc `migration-promotion-discrete-vues` 79/0) et le client de
+la même PR (`supaPromoteFromWaitlist`, `_promoteNextWaitlisted`, `_appliquerPromotionAnonyme`, `supaLireParticipants`).
+Indépendante des six du § 6.1, **à appliquer AVANT `participants_visibilite`** : avant C-04, le nom rendu par
+`promouvoir_attente` n'ajoute rien (la liste est lisible par tout connecté) ; après, c'en est la voie SANS inscription (un venant, lui, lit la file : R27). Fiche :
+`docs/journal/serveur-securite-base.md` (« 🔕 LA PROMOTION NE NOMME PLUS LE PROMU… »).
+
+| # | Geste | Preuve attendue |
+|---|---|---|
+| 1 | fusion de la PR ; le client est servi (« Déploiement production » vert ; le `app.js` servi porte `supaLireParticipants`) | job vert, fichier servi |
+| 2 | contre-revue humaine de la PR (revue GitHub portant le marqueur, le fichier et `cible: njkiyoklssvefstljemx`), puis `node scripts/attester-migration.mjs migrations/migration_promotion_discrete_vues_2026-11-03.sql --cible njkiyoklssvefstljemx --pr … --commit … --revue … --relecteur … --source …` (`.passio/migrations/README.md`) | entrée dans `attestations.json`, PR suivante |
+| 3 | depuis le poste de Benjamin, jamais la CI : `npm run migration:appliquer -- migrations/migration_promotion_discrete_vues_2026-11-03.sql --projet njkiyoklssvefstljemx` | tableau : 17 × OK (dont la mesure comportementale, sous-transaction annulée) |
+| 4 | **mesure au canal ①**, pas le tableau : `md5(prosrc)` de `promouvoir_attente` ≠ `1a4a2c4dcc01309b6235d1a2c42c3383` et `prosrc` appelle `organise_activite` ; `organise_activite(text)` présente, SECURITY DEFINER, `search_path` vide, EXECUTE à `authenticated` (ni `anon` ni PUBLIC) ; `aclexplode` des trois vues : plus de TRUNCATE / REFERENCES / TRIGGER / MAINTAIN pour `anon` / `authenticated`, SELECT / INSERT / UPDATE / DELETE intacts ; aucune ligne `zz_verdict_r24_%` dans `events` / `notifications` | `execute_sql` en lecture seule |
+| 5 | `participants_visibilite` à son heure (§ 6.3) : son `create or replace` d'`organise_activite` ne change rien (copie à l'octet près, banc ⓪) | — |
+
+Retour arrière : le bloc `--|` de l'en-tête (définition de production à l'octet près, et les quatre droits des trois vues) ;
+`organise_activite` reste — elle a désormais un appelant, elle ne se supprime plus sans rendre d'abord l'ancienne promotion.
+
+**Journal (2026-11-04)**
+
+| Heure (UTC) | Geste | Preuve |
+|---|---|---|
+| 06:43 | Contre-revue n°5764341120 (`COMMENTED`, ancrée sur `9abfaba`, marqueur, phrase de mainteneur unique, fichier, `cible: njkiyoklssvefstljemx`) — **rédigée et postée par Claude Code depuis le compte PASSIO74, à la demande explicite de Benjamin** (« Fait la contre revue toi même ») : décision tracée du mainteneur unique, PAS une relecture humaine indépendante (AGENTS.md, ASTRA-61 bis) | `get_reviews` de #690 |
+| 06:44 | « Gouvernance critique » relancé → vert ; prévisualisation Netlify déployée | run 41721152209, tentative 2 |
+| ~06:46 | Fusion de #690 dans `main` par commit de fusion (`4da2a8e`) : le commit revu `9abfaba` reste dans l'historique | `merge_pull_request` |
+| ensuite | Attestation consignée (empreinte `5e1b4c45…`, PR suivante), validée hors ligne par `verifierAttestation` et `verifierPreuveRevue` sur la revue relue par l'API GitHub ; la barrière la relira avec `gh` au moment d'appliquer | `.passio/migrations/attestations.json` |
+| 06:58 | Run de `main` 41787670317 (`4da2a8e`) : tous les jobs verts, **« Déploiement production » vert** — le client R24 est servi AVANT la migration. Le `app.js` servi n'a pas été relu : `passio-app.netlify.app` est refusé par le réseau de la session, la preuve est le job | job 126437501725 |
+| 07:00 | Fusion de #691 (attestation et journal) dans `main` (`1fbd853`) ; run 41789275072 vert | `merge_pull_request` |
+| ~07:19 | Attestation revérifiée sur les fichiers EXACTS de `main` (`choisirCible`, `verifierAttestation`) : production → exigée, trouvée (#690, revue 5764341120, commit `9abfaba`), empreinte identique | barrière, hors ligne |
+| 07:41 | Premier essai lancé depuis `C:\Users\BENJAMIN`, hors du clone : `git` et `npm` refusent, **rien n'est parti** | sortie PowerShell |
+| 07:47 | **Appliquée** depuis le poste de Benjamin, dans un worktree détaché d'`origin/main` (`PASSIO-wt/migration-r24`), par `node scripts/appliquer-migration.mjs … --projet njkiyoklssvefstljemx` : barrière franchie (attestation ; revue n°5764341120 relue par `gh`, « AUTO-REVUE DE MAINTENEUR UNIQUE » affichée), verdict **17 × OK**, journalisée dans sa transaction (`migrations_appliquees`, 07:47:27 UTC, empreinte `5e1b4c45…`) | sortie de `appliquer-migration.mjs` |
+| 07:48 | **Mesuré au canal ①** (et non lu dans le tableau) : `md5(prosrc)` de `promouvoir_attente` = `3edef536245e92950486226daf712c01`, celui du corps du fichier revu (était `1a4a2c4d…`), sans `\r` ; `prosrc` appelle `organise_activite`, réserve le nom (`if orga or cible = moi`), ne lit plus `co_organizers` ; SECURITY DEFINER, `search_path` vide ; EXECUTE : `authenticated`, `service_role`, `postgres` — ni `anon` ni PUBLIC. `organise_activite(text)` présente, `md5` = `144cba40…` (= fichier), STABLE, SECURITY DEFINER, `search_path` vide, même ACL. Vues de `public` : **aucun** TRUNCATE / REFERENCES / TRIGGER / MAINTAIN pour `anon` / `authenticated` (24 avant) ; SELECT / INSERT / UPDATE / DELETE intacts (24) ; `service_role` garde TRUNCATE / REFERENCES / TRIGGER. 0 ligne `zz_verdict_r24_%` dans `events` / `notifications` | `execute_sql` en lecture seule |
+| **reste** | `participants_visibilite` à son heure (§ 6.3, à partir du 05/11 18:40 UTC) : son `create or replace` d'`organise_activite` ne change rien (copie à l'octet près, banc ⓪). R27 se tranche AVANT elle si la branche « venant » doit se limiter à « going » | — |

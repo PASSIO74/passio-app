@@ -22,6 +22,7 @@
 - 🚪 UN VISITEUR NE LIT PAS LE COMPTE QU'IL N'A PAS (2026-10-11)
 - 🗂️ INDEX ET REALTIME : CE QUE LA MESURE A RETIRÉ, ET CE QU'ELLE A LAISSÉ (2026-11-03)
 - 🔒 R25 — UNE TABLE PUBLIÉE LIVRE SES SUPPRESSIONS À TOUT LE MONDE, ET UNE TABLE DÉPUBLIÉE FAIT TAIRE SON CANAL (2026-11-03)
+- 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 
 ---
 
@@ -1133,7 +1134,7 @@ d'événement, topic en v3 seulement, garde de destinataire, ancienne liaison re
 mesure après application — au canal ① (les deux tables hors de `pg_publication_tables`, les deux triggers
 présents) et à deux comptes (une notification et un ajout reçus sans recharger ; `multi-comptes.spec.js`
 journalise « realtime OK » sur le staging quand la migration y est appliquée).
-**RESTE, R27** : `conv_reads` (PK conv_id, user_id ; 129 DELETE) et `post_likes` (PK post_id, user_id ; 114
+**RESTE, R31** : `conv_reads` (PK conv_id, user_id ; 129 DELETE) et `post_likes` (PK post_id, user_id ; 114
 DELETE ; lecture « selon visibilité du post ») portent le MÊME défaut et restent publiées. `conv_reads` porte
 les accusés de lecture en direct (même remède possible : pousser aux autres membres) ; `post_likes` n'a plus
 d'abonné produit — seuls les bancs de charge l'écoutent encore. **Une table dont la clé primaire DIT quelque
@@ -1170,10 +1171,65 @@ première) — aucun P0, ce que le lot ferme est fermé ; ce qu'elles ont trouv�
   le vrai build ; essayé sur un build réel avant d'être cru.
 - Les skills `/realtime` et `/migration` conseillaient exactement le geste que R25 interdit (« ajouter la
   table à la publication », « table absente = 0 événement ») : corrigés, comme `migration-checker`.
-- **Ce qui reste, et le registre le dit** : la même information par SONDAGE (`is_conv_member`, C-02 ;
-  `promouvoir_attente`, R24) ; R27 (`conv_reads`, dont chaque purge de compte rediffuse les clés, et
-  `post_likes`) ; R28 (`comment_interactions` en identité de réplica FULL : le filtre d'un abonné est évalué sur
+- **Ce qui reste, et le registre le dit** : la même information par SONDAGE (`is_conv_member`, C-02 —
+  `promouvoir_attente` ne nomme plus le promu depuis R24, appliquée le 04/11) ; R31 (`conv_reads`, dont chaque purge de compte rediffuse les clés, et
+  `post_likes`) ; R32 (`comment_interactions` en identité de réplica FULL : le filtre d'un abonné est évalué sur
   TOUTE l'ancienne ligne — qui retire quoi, texte d'une réponse effacée — alors que son gestionnaire DELETE ne
-  sert à rien, il sort sur `!r.comment_id`) ; R29 (`notifier_mentions` lit `c.name`, colonne absente : aucune
+  sert à rien, il sort sur `!r.comment_id`) ; R33 (`notifier_mentions` lit `c.name`, colonne absente : aucune
   @mention de conversation n'est notifiée — trouvé en passant). Et `realtime.messages` garde la charge poussée
   jusqu'à la chute de sa partition, comme celle des messages.
+
+---
+
+## 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
+
+**Symptôme.** Sur le poste de Benjamin, `npm run verif` s'arrêtait au maillon 30 sur 55 : le cas ③ de
+`tests/unit/charge-gardes.test.mjs` rendait `status null` au lieu de 2, après 20 s. Vert en CI Linux.
+La chaîne est en `&&` : les 25 contrôles suivants ne tournaient plus sur ce poste depuis l'entrée du
+test dans la chaîne (2026-11-03).
+
+**Cause.** `lancer()` isolait le jeton par `HOME` seul, or `scripts/charge.mjs` le lit par
+`resolve(homedir(), ".supabase", "access-token")`. Mesuré sous Windows, dans un enfant :
+
+| Environnement de l'enfant | `os.homedir()` |
+|---|---|
+| `HOME` posé, seul | le VRAI dossier du compte |
+| aucune de ces variables | le VRAI dossier du compte |
+| `HOMEDRIVE` + `HOMEPATH` posés | le VRAI dossier du compte |
+| `USERPROFILE` vide | lève `ENOENT` |
+| `HOME` et `USERPROFILE` posés | le dossier posé |
+
+⚠️ **RETIRER N'EST PAS NEUTRALISER.** L'environnement de `lancer()` était déjà reconstruit à partir de
+rien : `USERPROFILE` en était absent, et c'est précisément ce qui faisait retomber `homedir()` sur le
+vrai dossier. `HOMEDRIVE` et `HOMEPATH` n'y jouent aucun rôle.
+
+⚠️ **UN TEST DE REFUS QUI NE REFUSE PAS DEVIENT LE GESTE QU'IL DEVAIT INTERDIRE.** Sur un poste connecté
+(`supabase login`), chaque `npm run verif` révélait les clés du staging par l'API de gestion, puis y
+envoyait 10 lecteurs simultanés pendant 20 s, jusqu'au `timeout`. Portée vérifiée à la lecture de
+`charge.mjs` : mode anon, donc lectures seules, sans compte créé ni donnée semée, et jamais la
+production (`PROD_REF`). La reproduction du 04/11 a joué ce run une fois de plus.
+
+**Correctif, dans le test seul** (`charge.mjs` n'y est pour rien) :
+- `ENV_SANS_JETON` pose `HOME` ET `USERPROFILE` vers un dossier inexistant ;
+- `lancer()` sonde ce que verrait l'enfant AVANT de lancer `charge.mjs` : une isolation rompue échoue en
+  quelques dizaines de millisecondes, sans réseau, au lieu de partir contre le staging ;
+- le cas ⓪ porte un témoin positif (un dossier leurre avec un jeton EST vu, sinon `jeton: false` ne
+  prouverait rien), verrouille les deux variables (la CI Linux ne verrait jamais `USERPROFILE` autrement)
+  et la forme de lecture du jeton dans `charge.mjs`, dont la sonde est la copie.
+
+**Mesuré** : 20,8 s et un rouge avant, 0,84 s et 6/6 après. Mutations sur une copie temporaire :
+retirer `USERPROFILE` (le défaut d'origine) rougit ⓪①②③ en 447 ms au total avec
+`isolation rompue, charge.mjs n'est pas lancé` ; retirer `HOME` rougit ⓪ ; une sonde aveugle rougit ⓪.
+
+**Survivants cherchés : aucun.** `grep "HOME:"` ne trouve que ce test. Les autres lecteurs du jeton de
+poste, lus en contexte, ne sont atteints par aucun test :
+- `appliquer-migration.mjs` : `barriere-migration` ne le lance qu'avec `--verifier`, qui sort avant le jeton ;
+- `charge-realiste.mjs` : le test ne joue que le mode plan, et `--executer` n'y est éprouvé que refusé ;
+- `verifier-prerequis-fonctions.mjs` : le banc SQL passe par `--psql`, sans jeton ;
+- `generer-migration-initplan.mjs`, `restaurer-donnees.js` : le jeton n'est lu que derrière la garde
+  « script principal » ; les tests appellent les fonctions exportées (les phases de la reprise, avec un
+  contexte fabriqué) ;
+- `schema-executable.js`, `rollback-netlify.mjs` : aucun test ne les lance.
+
+**Règle.** Un test qui veut priver un enfant du dossier personnel pose `HOME` ET `USERPROFILE` vers un
+dossier inexistant, et le vérifie avant de lancer ce qu'il protège.

@@ -121,11 +121,18 @@ const compter = (page) => page.evaluate(() =>
 test.describe("event_attendees : une lecture réservée aux comptes", () => {
   test("⓪ source — les quatre lectures sont gardées, et aucune ne jette son { error }", () => {
     const src = fs.readFileSync(SOURCE_APP08, "utf8");
-    for (const nom of ["supaLoadEvents", "supaLoadMyRsvps", "supaLoadEventRatings", "supaFirstWaitlisted"]) {
+    // Depuis R24 (2026-11-03), `supaLoadEvents` lit les participants par
+    // `supaLireParticipants`, qu'emprunte aussi la promotion sans nom : la garde
+    // est vérifiée là où la table est LUE, et le câblage à part — une garde dans
+    // une fonction que `supaLoadEvents` n'appellerait plus ne garderait rien.
+    for (const nom of ["supaLireParticipants", "supaLoadMyRsvps", "supaLoadEventRatings", "supaFirstWaitlisted"]) {
       const corps = corpsDeFonction(src, nom);
       expect(corps, `${nom} existe toujours`).not.toBe("");
       expect(corps.includes("_attendeesLisibles("), `${nom} passe par la garde`).toBe(true);
     }
+    const chargement = corpsDeFonction(src, "supaLoadEvents");
+    expect(chargement.includes("await supaLireParticipants("), "supaLoadEvents lit les participants par la lecture gardée").toBe(true);
+    expect(chargement.includes("\"event_attendees\""), "…et ne lit plus la table lui-même").toBe(false);
     // La forme EXACTE du défaut : un résultat déstructuré sans son `error`.
     expect(src.includes("const { data: atts } = await supa"),
       "plus aucune lecture de participants n'ignore son { error }").toBe(false);

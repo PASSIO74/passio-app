@@ -108,15 +108,15 @@
 -- PREREQUIS-CLIENT: notifications:INSERT
 --
 -- CE QUE CETTE MIGRATION NE FAIT PAS, ET LE REGISTRE LE DIT :
---   · R27 — `conv_reads` (PK conv_id, user_id ; 129 DELETE, dont chaque purge de
+--   · R31 — `conv_reads` (PK conv_id, user_id ; 129 DELETE, dont chaque purge de
 --     compte) et `post_likes` (PK post_id, user_id ; 114 DELETE, lecture
 --     « selon visibilité du post ») portent le MÊME défaut et restent publiées ;
---   · R28 — `comment_interactions` est en identité de réplica FULL : un DELETE
+--   · R32 — `comment_interactions` est en identité de réplica FULL : un DELETE
 --     évalue le filtre de l'abonné sur TOUTES les colonnes de l'ancienne ligne,
 --     un oracle (qui retire quoi, texte d'une réponse effacée) ;
---   · la même information reste atteignable par SONDAGE : `is_conv_member`
---     (C-02) et `promouvoir_attente` (R24). R25 ferme le canal temps réel, pas
---     ces deux portes ;
+--   · l'appartenance reste atteignable par SONDAGE : `is_conv_member` (C-02).
+--     R25 ferme le canal temps réel, pas cette porte (`promouvoir_attente`, lui,
+--     ne nomme plus le promu depuis R24, appliquée le 04/11) ;
 --   · `realtime.messages` garde la charge poussée jusqu'à la chute de sa
 --     partition, comme celle des messages depuis le v3 ;
 --   · aucune donnée, aucune policy de table, aucun GRANT de table ne bouge ;

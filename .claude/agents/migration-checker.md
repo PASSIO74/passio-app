@@ -28,7 +28,7 @@ Quand un outil dédié existe, le préférer à une requête brute : `list_table
 # Points de contrôle
 1. **RLS présente** sur chaque table sensible, avec policies SELECT/INSERT/UPDATE/DELETE cohérentes. Une policy UPDATE/DELETE manquante = mutations qui échouent en silence (0 ligne).
 2. **FK vers profiles** présentes là où un embed `profiles(...)` est utilisé côté client (sinon 400).
-3. **Publication realtime** contient bien les tables dont le client écoute les changements — et AUCUNE dont la clé primaire dit quelque chose (qui, avec qui) : une table publiée livre ses DELETE, clé primaire en clair, à tout abonné qui les demande, `anon` compris, sans RLS (R25). Vérifier aussi `relreplident` : une identité FULL (`'f'`) fait évaluer le filtre de l'abonné sur toute l'ancienne ligne (R28).
+3. **Publication realtime** contient bien les tables dont le client écoute les changements — et AUCUNE dont la clé primaire dit quelque chose (qui, avec qui) : une table publiée livre ses DELETE, clé primaire en clair, à tout abonné qui les demande, `anon` compris, sans RLS (R25). Vérifier aussi `relreplident` : une identité FULL (`'f'`) fait évaluer le filtre de l'abonné sur toute l'ancienne ligne (R32).
 4. **Colonnes** attendues par le code client (grep les `.select(...)` / `.insert({...})` dans `js/app-*.js`) existent réellement.
 5. **timestamp vs timestamptz** — cohérent avec l'usage de `supaTs`.
 

@@ -269,7 +269,8 @@ export async function analyze(bugId, extra = {}, actor = null) {
  * est disponible (clé API OU `claude` local GRATUIT). Point d'entrée du bouton « Réparer ».
  */
 export async function quickFix({ bugId, event, note, deep = false } = {}, actor = null) {
-  const ctx = bugId ? await buildContext(bugId) : buildContextFromEvent(event);
+  // Un bug sorti du tampon retombe sur l'événement, s'il y en a un.
+  const ctx = (bugId && await buildContext(bugId)) || buildContextFromEvent(event);
   if (!ctx) return { error: "Problème introuvable." };
   const prompt = buildPrompt(ctx, { deep }) + (note ? `\n\n## Note du testeur\n${note}` : "");
   const via = config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel";

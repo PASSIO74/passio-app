@@ -563,6 +563,14 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
   // seule la première promouvait (défaut de la revue du 2026-11-03).
   // `refusDabord` : un premier changement REFUSÉ par le serveur ne libère rien —
   // et ne doit rien promouvoir.
+  // R24 (`migration_promotion_discrete_vues_2026-11-03.sql`) : V n'organise pas
+  // l'activité et n'est pas la personne promue — la base lui répond `{ ok: true }`
+  // SEUL. Son écran ne la nomme pas : il RELIT l'activité sous ses propres droits.
+  // `voitLePromu` : V peut-il, après coup, voir la personne promue ? Avant C-04
+  // (liste lisible par tout connecté) oui — par la RELECTURE, jamais par la
+  // réponse de la RPC ; après C-04 non : V ne vient plus, il n'a plus de lien.
+  // `ancienneRpc` : la base d'AVANT R24 (`promotionNommeeATous`), qui nommait le
+  // promu à tout appelant — le client du 03/11 doit y tenir aussi.
   async function placeLibereeParCeluiQuiNeVoitPasLaFile(browser, srv, opts = {}) {
     const depart = opts.depart === undefined ? null : opts.depart;
     const E3 = "evt_c04_file";
@@ -596,18 +604,38 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
       const rpc = promotions();
       expect(rpc.length, "la promotion passe par la RPC").toBe(1);
       expect(rpc[0].body.p_user_id, "promotion AUTOMATIQUE : la base choisit (p_user_id nul)").toBeNull();
-      // L'écran de V suit la personne que la BASE a promue — qu'il ne voyait pas.
-      await expect.poll(() => page.evaluate((id) => (_findCanonicalEvent(id).attendees || []).slice(), E3), { timeout: 5000 }).toContain(W2);
-      const local = await page.evaluate((id) => { const ev = _findCanonicalEvent(id); return { waitlist: ev.waitlist.slice(), going: _nbInscrits(ev, "going"), attente: _nbInscrits(ev, "waitlist") }; }, E3);
-      expect(local, "2 venants (G0 + W2), file vide").toEqual({ waitlist: [], going: 2, attente: 0 });
+      if (opts.ancienneRpc) expect(rpc[0].reponse, "base d'avant R24 : le nom du promu est rendu à V").toEqual({ ok: true, user_id: W2 });
+      else expect(rpc[0].reponse, "R24 : à V, ni organisation ni personne promue, la base répond {ok: true} SEUL").toEqual({ ok: true });
+      // Les compteurs de V suivent la promotion : 2 venants (G0 + la personne promue), file vide.
+      await expect.poll(() => page.evaluate((id) => { const ev = _findCanonicalEvent(id); return { going: _nbInscrits(ev, "going"), attente: _nbInscrits(ev, "waitlist") }; }, E3),
+        { message: "les compteurs de V suivent la place donnée", timeout: 5000 }).toEqual({ going: 2, attente: 0 });
+      const local = await page.evaluate((id) => { const ev = _findCanonicalEvent(id); return { waitlist: ev.waitlist.slice(), attendees: (ev.attendees || []).slice() }; }, E3);
+      expect(local.waitlist, "file vide à l'écran de V").toEqual([]);
+      if (opts.voitLePromu) expect(local.attendees, "liste lisible : l'écran de V montre la personne promue").toContain(W2);
+      else expect(local.attendees, "après C-04 : V ne voit pas qui a été promu — ni par la réponse, ni par une estimation locale").not.toContain(W2);
+      if (!opts.ancienneRpc) {
+        // Sans nom, le client RELIT l'activité (`supaLireParticipants`) après la RPC.
+        const tRpc = rpc[0].t;
+        expect(srv.requetes((r) => r.table === "event_attendees" && r.m === "GET" && r.me === V && r.t >= tRpc && /event_id=in\.%28evt_c04_file%29|event_id=in\.\(evt_c04_file\)/.test(r.url)).length,
+          "la promotion sans nom est suivie d'une RELECTURE de l'activité").toBeGreaterThan(0);
+      }
+      // Ni annonce, ni notification forgée par le client : celle de la base suffit.
+      expect(srv.t.notifications.filter((n) => n.user_id === W2 && n.ref_id === E3).map((n) => n.origine), "UNE notification, d'origine serveur").toEqual(["serveur"]);
       return srv;
     } finally { await ctx.close(); }
   }
 
-  test("h0. contrôle AVANT migration : place libérée → la personne en attente est promue (la file est lisible)", async ({ browser }) => {
+  test("h0. contrôle AVANT migration C-04 : place libérée → la personne en attente est promue ; sans nom (R24), la RELECTURE la montre (la file est lisible)", async ({ browser }) => {
     const srv = new FauxServeur();
     peupler(srv);
-    await placeLibereeParCeluiQuiNeVoitPasLaFile(browser, srv);
+    await placeLibereeParCeluiQuiNeVoitPasLaFile(browser, srv, { voitLePromu: true });
+  });
+
+  test("h0 bis. base d'AVANT R24 (le nom rendu à tout appelant) : le client du 03/11 y tient — la personne nommée passe aux venants", async ({ browser }) => {
+    const srv = new FauxServeur();
+    srv.promotionNommeeATous = true;
+    peupler(srv);
+    await placeLibereeParCeluiQuiNeVoitPasLaFile(browser, srv, { voitLePromu: true, ancienneRpc: true });
   });
 
   test("h1. APRÈS migration : place libérée par un participant qui ne VOIT pas la file → la base promeut quand même", async ({ browser }) => {
@@ -620,7 +648,7 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
     expect(srv.selectOk("event_attendees", { event_id: "evt_c04_file", user_id: W2, rsvp: "waitlist" }, V, "authenticated"), "…sans que V puisse la voir").toBe(false);
   });
 
-  test("h2. promotion AUTOMATIQUE confirmée : compteurs ajustés, carte et fiche ouverte repeintes — plus de « Liste d'attente (1) » ni de « +1 autre »", async ({ browser }) => {
+  test("h2. promotion AUTOMATIQUE confirmée SANS NOM (R24) : compteurs ajustés, carte et fiche ouverte repeintes — plus de « Liste d'attente (1) », et la personne promue n'est désignée nulle part", async ({ browser }) => {
     const srv = new FauxServeur().migrerParticipants();
     peupler(srv);
     const E7 = "evt_c04_auto";
@@ -639,14 +667,154 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
 
       await page.evaluate(async (id) => { await setEventRsvp(id, null); }, E7);
       await expect.poll(() => (srv.t.event_attendees.find((a) => a.event_id === E7 && a.user_id === W2) || {}).rsvp, { timeout: 5000 }).toBe("going");
+      const rpc = srv.requetes((r) => r.rpc && r.table === "promouvoir_attente" && r.me === V);
+      expect(rpc.map((r) => r.reponse), "R24 : V ne vient plus et n'organise pas — la base ne lui dit pas qui").toEqual([{ ok: true }]);
       await expect.poll(() => page.evaluate((id) => Object.assign({}, _findCanonicalEvent(id).counts), E7), { message: "compteur : −1 en attente, +1 venant", timeout: 5000 })
         .toEqual({ going: 2, maybe: 0, waitlist: 0, checked_in: 0 });
       const fiche = await lireFiche(page);
       expect(fiche.titres, "la fiche ouverte est repeinte").toContain("Participants (2 / 2 max)");
       expect(fiche.titres.filter((t) => /^Liste d'attente/.test(t)), "plus de section « liste d'attente »").toEqual([]);
-      expect(Object.values(fiche.sections).flatMap((s) => (s ? s.restes : [])), "aucune pastille fantôme").toEqual([]);
+      // V ne vient plus : depuis C-04, la relecture ne lui rend plus aucun visage
+      // de l'activité. Le nombre reste juste, l'écart s'écrit « +2 autres » —
+      // jamais un « +1 autre » fantôme dans une file vide, ni W2 désignée.
+      expect(fiche.sections["Participants (2 / 2 max)"], "aucun visage, le nombre entier").toEqual({ visages: 0, restes: ["+2 autres"] });
+      expect(await page.evaluate((id) => (_findCanonicalEvent(id).attendees || []).slice(), E7), "W2, promue, n'est désignée nulle part").not.toContain(W2);
       const carte = await lireCarte(page, E7);
       expect(carte.pill, "la carte suit").toBe("2 inscrits");
+    } finally { await ctx.close(); }
+  });
+
+  // Revue du 2026-11-03 : la relecture qui suit une promotion sans nom peut
+  // tomber en panne (réseau, 5xx). `_nbInscrits` prend le plus grand de la liste
+  // et du compteur : baisser le compteur ne retirait pas W2, visage périmé, de la
+  // file — « Liste d'attente (1) » restait. Les compteurs relus disent le nombre,
+  // une file qu'ils disent vide perd ses visages, et la relecture des listes est
+  // confiée à la reprise des lectures (app-02), qui la refait quelques secondes après.
+  test("h2 bis. promotion sans nom, RELECTURE EN PANNE : nombre juste, aucune file fantôme, puis la reprise des lectures repeint les listes", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    peupler(srv);
+    const E7 = "evt_c04_auto";
+    activite(srv, E7, { date_at: iso(Date.now() + 2 * 86400000), max_attendees: 2 });
+    srv.t.event_attendees.push(ligne(E7, G[0], "going"));
+    const { ctx, page } = await ouvrirV(browser, srv);
+    try {
+      await charger(page);
+      await page.evaluate(async (id) => { await setEventRsvp(id, "going"); }, E7);
+      srv.t.event_attendees.push(ligne(E7, W2, "waitlist", { created_at: new Date().toISOString() }));
+      const lu = await charger(page);
+      expect(lu[E7].waitlist, "prémisse : V, venant, voit W2 en file").toEqual([W2]);
+      await page.evaluate((id) => openEventDetails(id), E7);
+      // Les trois lectures de la table qui suivent le départ tombent en panne : la
+      // file (supaFirstWaitlisted), la relecture, et son repli sans `rsvp`.
+      srv.pannes.push({ table: "event_attendees", methode: "GET", status: 500, body: { code: "XX000", message: "panne programmée" }, fois: 3 });
+      const tDepart = Date.now();
+      await page.evaluate(async (id) => { await setEventRsvp(id, null); }, E7);
+      await expect.poll(() => (srv.t.event_attendees.find((a) => a.event_id === E7 && a.user_id === W2) || {}).rsvp, { timeout: 5000 }).toBe("going");
+      await expect.poll(() => page.evaluate((id) => { const ev = _findCanonicalEvent(id); return { counts: Object.assign({}, ev.counts), waitlist: ev.waitlist.slice() }; }, E7),
+        { message: "compteurs relus par la RPC, file vidée", timeout: 5000 }).toEqual({ counts: { going: 2, maybe: 0, waitlist: 0, checked_in: 0 }, waitlist: [] });
+      const fiche = await lireFiche(page);
+      expect(fiche.titres, "le nombre est juste").toContain("Participants (2 / 2 max)");
+      expect(fiche.titres.filter((t) => /^Liste d'attente/.test(t)), "aucune file fantôme").toEqual([]);
+      expect(await page.evaluate((id) => (_findCanonicalEvent(id).attendees || []).slice(), E7), "W2 n'est désignée nulle part").not.toContain(W2);
+      // La reprise des lectures refait la lecture des listes : V ne vient plus,
+      // la base ne lui rend plus aucun visage (C-04) — G0, périmé, disparaît.
+      await expect.poll(() => srv.requetes((r) => r.table === "event_attendees" && r.m === "GET" && r.me === V && r.t >= tDepart).length,
+        { message: "la relecture est REFAITE après la panne", timeout: 15000 }).toBeGreaterThanOrEqual(4);
+      await expect.poll(() => page.evaluate((id) => (_findCanonicalEvent(id).attendees || []).slice(), E7),
+        { message: "les listes reprises sont celles de la base", timeout: 15000 }).toEqual([]);
+      expect(await page.evaluate((id) => Object.assign({}, _findCanonicalEvent(id).counts), E7)).toEqual({ going: 2, maybe: 0, waitlist: 0, checked_in: 0 });
+      expect((await lireFiche(page)).sections["Participants (2 / 2 max)"], "aucun visage, le nombre entier").toEqual({ visages: 0, restes: ["+2 autres"] });
+    } finally { await ctx.close(); }
+  });
+
+  // Revue du 2026-11-03 : la relecture prend deux allers-retours. Un geste fait
+  // PENDANT ce temps (« peut-être » juste après « je ne viens plus ») était
+  // ÉCRASÉ par une liste lue avant lui : V absent des « peut-être », compteur
+  // faux d'une unité, jusqu'au prochain chargement. On rend la relecture
+  // déterministe : elle lit la base AVANT le geste, et ne répond qu'APRÈS.
+  test("h7. un geste fait pendant la relecture n'est pas effacé : ma ligne suit mon état local, le compteur aussi", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    peupler(srv);
+    const E7 = "evt_c04_geste";
+    activite(srv, E7, { date_at: iso(Date.now() + 2 * 86400000), max_attendees: 2 });
+    srv.t.event_attendees.push(ligne(E7, G[0], "going"));
+    const { ctx, page } = await ouvrirV(browser, srv);
+    try {
+      await charger(page);
+      await page.evaluate(async (id) => { await setEventRsvp(id, "going"); }, E7);
+      srv.t.event_attendees.push(ligne(E7, W2, "waitlist", { created_at: new Date().toISOString() }));
+      await charger(page);
+      await page.evaluate(() => {
+        const vraie = window.supaLireParticipants;
+        window.__relecture = { appels: 0, liberer: null };
+        window.supaLireParticipants = async function (ids, origine) {
+          if (origine !== "promotion sans nom") return vraie(ids, origine);
+          window.__relecture.appels++;
+          const instantane = await vraie(ids, origine);                         // lu AVANT le geste
+          await new Promise((r) => { window.__relecture.liberer = r; });        // rendu APRÈS
+          return instantane;
+        };
+      });
+      const depart = page.evaluate(async (id) => { await setEventRsvp(id, null); }, E7);
+      await expect.poll(() => page.evaluate(() => !!(window.__relecture && window.__relecture.liberer)), { message: "la relecture a lu la base, et attend", timeout: 5000 }).toBe(true);
+      await depart;
+      const geste = await page.evaluate(async (id) => { await setEventRsvp(id, "maybe"); return myRsvp(id); }, E7);
+      expect(geste, "prémisse : V a choisi « peut-être » pendant la relecture").toBe("maybe");
+      expect(srv.t.event_attendees.find((a) => a.event_id === E7 && a.user_id === V).rsvp, "…et la base l'a écrit").toBe("maybe");
+      await page.evaluate(() => window.__relecture.liberer());
+      await page.waitForTimeout(300);
+      const fin = await page.evaluate((id) => { const ev = _findCanonicalEvent(id); return { maybes: ev.maybes.slice(), counts: Object.assign({}, ev.counts), rsvp: myRsvp(id) }; }, E7);
+      expect(fin.rsvp).toBe("maybe");
+      expect(fin.maybes, "V reste parmi les « peut-être » malgré la liste lue avant son geste").toContain(V);
+      expect(fin.counts, "le compteur suit : la base compte bien 1 « peut-être » (V), 2 venants, file vide").toEqual({ going: 2, maybe: 1, waitlist: 0, checked_in: 0 });
+      expect(await page.evaluate(() => window.__relecture.appels)).toBe(1);
+    } finally { await ctx.close(); }
+  });
+
+  // Contre-revue du 2026-11-03 : pendant les deux allers-retours de la relecture,
+  // un chargement concurrent peut REMPLACER l'objet canonique par sa version
+  // serveur, qui compte DÉJÀ la promotion. Si la relecture des compteurs tombe
+  // alors en panne, le −1 file / +1 venant la comptait deux fois : 3 venants
+  // pour 2 réels, « complet » à 3 places, et le « je viens » suivant de cet
+  // appareil partait en LISTE D'ATTENTE (décidé localement) — une écriture
+  // serveur fausse. Sans delta sur un objet remplacé, la place libre le reste.
+  test("h8. objet remplacé pendant la relecture + compteurs en panne : aucun double compte, pas de « complet » fictif, « je viens » reste « je viens » en base", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    peupler(srv);
+    const E9 = "evt_c04_remplace";
+    activite(srv, E9, { date_at: iso(Date.now() + 2 * 86400000), max_attendees: 3 });
+    srv.t.event_attendees.push(ligne(E9, G[0], "going"));
+    const { ctx, page } = await ouvrirV(browser, srv);
+    try {
+      await charger(page);
+      await page.evaluate(async (id) => { await setEventRsvp(id, "going"); }, E9);
+      srv.t.event_attendees.push(ligne(E9, W2, "waitlist", { created_at: new Date().toISOString() }));
+      const lu = await charger(page);
+      expect(lu[E9].counts, "prémisse : 2 venants, 1 en file").toEqual({ going: 2, maybe: 0, waitlist: 1, checked_in: 0 });
+      await page.evaluate(() => {
+        const vraie = window.supaLireParticipants;
+        window.__remplace = 0;
+        window.supaLireParticipants = async function (ids, origine) {
+          const lu = await vraie(ids, origine);
+          if (origine !== "promotion sans nom" || window.__remplace) return lu;
+          window.__remplace = 1;
+          // Un chargement concurrent remplace l'objet canonique par sa version serveur, DÉJÀ promue…
+          const evs = await supaLoadEvents();
+          fusionnerEvenementsServeur(evs.filter((e) => e.id === ids[0]));
+          // …et la relecture des COMPTEURS de la promotion tombe en panne.
+          return Object.assign({}, lu, { comptesLus: false, countsByEvent: {} });
+        };
+      });
+      await page.evaluate(async (id) => { await setEventRsvp(id, null); }, E9);
+      await expect.poll(() => page.evaluate(() => window.__remplace), { message: "l'objet a été remplacé pendant la relecture", timeout: 5000 }).toBe(1);
+      await expect.poll(() => (srv.t.event_attendees.find((a) => a.event_id === E9 && a.user_id === W2) || {}).rsvp, { timeout: 5000 }).toBe("going");
+      await page.waitForTimeout(500);
+      const apres = await page.evaluate((id) => { const ev = _findCanonicalEvent(id); return { going: _nbInscrits(ev, "going"), complet: _eventIsFull(ev), places: _eventSpotsLeft(ev) }; }, E9);
+      expect(apres, "2 venants réels (G0, W2) : une place libre, pas de « complet »").toEqual({ going: 2, complet: false, places: 1 });
+      const revient = await page.evaluate(async (id) => { window.__toasts = []; await setEventRsvp(id, "going"); return { rsvp: myRsvp(id), toasts: window.__toasts.map((t) => t.msg) }; }, E9);
+      expect(revient.toasts.join(" | "), "aucun « c'est complet » fictif").not.toMatch(/complet/i);
+      expect(revient.rsvp).toBe("going");
+      expect(srv.t.event_attendees.find((a) => a.event_id === E9 && a.user_id === V).rsvp, "en base : « je viens », pas la liste d'attente").toBe("going");
     } finally { await ctx.close(); }
   });
 
@@ -672,6 +840,8 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
         return { ok: !!ok, counts: Object.assign({}, ev.counts), attendees: ev.attendees.slice(), waitlist: ev.waitlist.slice(), toasts: window.__toasts.map((t) => t.msg) };
       }, [E1, W1]);
       expect(r.ok).toBe(true);
+      expect(srv.requetes((x) => x.rpc && x.table === "promouvoir_attente" && x.me === ORGA).map((x) => x.reponse), "à l'organisation, la base NOMME la personne promue (R24)")
+        .toEqual([{ ok: true, user_id: W1 }]);
       expect(srv.t.event_attendees.find((a) => a.event_id === E1 && a.user_id === W1).rsvp, "en base : `going`").toBe("going");
       expect(r.counts, "compteur : −1 en attente, +1 venant").toEqual({ going: 6, maybe: 2, waitlist: 0, checked_in: 0 });
       expect(r.waitlist).toEqual([]);
@@ -683,6 +853,58 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
       const carte = await lireCarte(page, E1);
       expect(carte.pill, "la carte suit").toBe("6 inscrits · 2 peut-être");
     } finally { await ctx.close(); }
+  });
+
+  // R24 ② : l'organisateur DÉSIGNÉ (`organizer_id`), ni auteur ni co-organisateur.
+  // Le client lui ouvre la liste d'attente (`_canManageEvent`), C-04 aussi
+  // (`organise_activite`) ; la RPC d'avant le refusait (`non_autorise`). Les deux
+  // mondes : base d'avant R24 → refus DIT, rien d'écrit ; base d'après → inscrit.
+  async function promotionParOrganisateurDesigne(browser, srv) {
+    const ORG2 = "aaaaaaaa-0000-4000-8000-000000000049";
+    const E8 = "evt_c04_organisateur";
+    srv.compte(ORG2, "orga_designe");
+    activite(srv, E8, { author_id: G[4], organizer_id: ORG2, date_at: iso(Date.now() + 2 * 86400000), max_attendees: 3 });
+    srv.t.event_attendees.push(ligne(E8, G[0], "going"), ligne(E8, G[1], "going"), ligne(E8, W1, "waitlist"));
+    const ctx = await browser.newContext();
+    try {
+      const o = await ouvrirCompte(ctx, srv, ORG2, { nom: "orga_designe" });
+      await o.page.evaluate(() => goTo("irl"));
+      await o.page.waitForFunction(() => { const s = document.getElementById("screen-irl"); return !!s && s.classList.contains("active") && !_evenementsLectureEnVol; }, null, { timeout: 15000 });
+      const lu = await charger(o.page);
+      expect(lu[E8].waitlist, "prémisse : l'organisateur désigné lit la file").toEqual([W1]);
+      expect(await o.page.evaluate((id) => _canManageEvent(_findCanonicalEvent(id)), E8), "prémisse : le client lui ouvre la gestion").toBe(true);
+      const r = await o.page.evaluate(async ([id, cible]) => {
+        window.__toasts = [];
+        const ok = await promoteWaitlisted(id, cible);
+        const ev = _findCanonicalEvent(id);
+        return { ok: !!ok, attendees: ev.attendees.slice(), waitlist: ev.waitlist.slice(), toasts: window.__toasts.map((t) => t.msg) };
+      }, [E8, W1]);
+      return { r, E8, ORG2, rpc: srv.requetes((x) => x.rpc && x.table === "promouvoir_attente" && x.me === ORG2) };
+    } finally { await ctx.close(); }
+  }
+
+  test("h6. promotion MANUELLE par l'ORGANISATEUR désigné (organizer_id, ni auteur ni co-organisateur) : acceptée et nommée (R24 ②)", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    peupler(srv);
+    const { r, E8, rpc } = await promotionParOrganisateurDesigne(browser, srv);
+    expect(rpc.map((x) => x.reponse), "la base accepte l'organisateur désigné et lui nomme la personne").toEqual([{ ok: true, user_id: W1 }]);
+    expect(r.ok).toBe(true);
+    expect(srv.t.event_attendees.find((a) => a.event_id === E8 && a.user_id === W1).rsvp, "en base : `going`").toBe("going");
+    expect(r.attendees).toContain(W1);
+    expect(r.waitlist).toEqual([]);
+    expect(r.toasts.join(" | ")).toMatch(/Participant inscrit/);
+  });
+
+  test("h6 bis. base d'AVANT R24 : la même promotion par l'organisateur désigné est REFUSÉE — rien d'écrit, et le client le dit", async ({ browser }) => {
+    const srv = new FauxServeur().migrerParticipants();
+    srv.promotionNommeeATous = true;
+    peupler(srv);
+    const { r, E8, rpc } = await promotionParOrganisateurDesigne(browser, srv);
+    expect(rpc.map((x) => x.reponse), "le défaut R24 ② : non_autorise").toEqual([{ ok: false, motif: "non_autorise" }]);
+    expect(r.ok).toBe(false);
+    expect(srv.t.event_attendees.find((a) => a.event_id === E8 && a.user_id === W1).rsvp, "en base : toujours en attente").toBe("waitlist");
+    expect(r.attendees).not.toContain(W1);
+    expect(r.toasts.join(" | ")).toMatch(/non enregistrée/);
   });
 
   test("h4. APRÈS migration : « je viens » → « je ne viens pas » libère la place → la base promeut la personne en attente", async ({ browser }) => {
