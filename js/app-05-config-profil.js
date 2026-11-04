@@ -487,6 +487,12 @@ const CALL_ICE_SERVERS = [
 
 // État global d'un appel en cours (un seul à la fois).
 window._call = window._call || null;
+// Instant du dernier geste qui lance un appel ou un Live, lu par pwa-detect.js :
+// entre le geste et la pose de `_call`, de `_vliveHost` ou de `_vliveView`, il y a
+// une attente (permission du micro, titre du Live, lecture réseau) pendant laquelle
+// aucun état ne dit qu'un appel se prépare. Une mise à jour silencieuse rechargerait
+// alors la page sous un appel que l'utilisateur vient d'accepter.
+function _appelEnPreparation() { window._appelLanceA = performance.now(); }
 
 let callTimerInterval = null;
 
@@ -575,6 +581,7 @@ async function startCall(convId, kind) {
   if (!peer.id || /^u_/.test(peer.id)) { toast("Ce contact de démo n'est pas joignable"); return; }
 
   let stream;
+  _appelEnPreparation();
   try {
     stream = await _callGetMedia(kind);
   } catch (e) {
@@ -1132,6 +1139,7 @@ async function acceptIncomingCall() {
   window._callIncoming = null;
   if (typeof RTCPeerConnection === "undefined") { toast("Appels non supportés"); return; }
   let stream;
+  _appelEnPreparation();
   try { stream = await _callGetMedia(inv.kind); }
   catch (e) { toast("Caméra/micro refusé"); _callDeclineSilent(inv); _callCloseUI(); return; }
 
@@ -1353,6 +1361,7 @@ function _callOverlayEl() {
   return el;
 }
 function _callCloseUI() {
+  window._appelLanceA = null;
   const el = document.getElementById("callOverlay");
   if (el) { el.classList.remove("active"); el.innerHTML = ""; }
 }
@@ -1618,6 +1627,7 @@ function _checkIncomingCallFromUrl() {
     const p = new URLSearchParams(location.search);
     const callId = p.get("call");
     if (!callId) return;
+    _appelEnPreparation();
     // Nettoie l'URL (évite de re-déclencher au prochain rendu / partage du lien).
     try { history.replaceState(null, "", location.pathname); } catch (e) {}
     const d = { callId: callId, from: p.get("from"), kind: p.get("kind") || "voice", cname: p.get("cname"), cemoji: p.get("cemoji") };
@@ -1637,6 +1647,7 @@ function _checkLiveFromUrl() {
     const p = new URLSearchParams(location.search);
     const liveId = p.get("live");
     if (!liveId) return;
+    _appelEnPreparation();
     try { history.replaceState(null, "", location.pathname); } catch (e) {}
     let tries = 0;
     const iv = setInterval(() => {
@@ -3917,6 +3928,7 @@ async function startVideoLive() {
   const compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
   if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour lancer un live"); return; }
 
+  _appelEnPreparation();
   const title = await _vlivePromptTitle();
   if (title === null) return;  // annulé
 
@@ -4202,6 +4214,7 @@ async function joinVideoLive(liveId) {
   const compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
   if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour rejoindre un live"); return; }
 
+  _appelEnPreparation();
   // Vérifie que le live est encore vivant (statut + heartbeat récent).
   let row = (window._videoLives || []).find(r => r.id === liveId) || null;
   try {
@@ -4708,6 +4721,7 @@ function _vliveOverlayEl() {
   return el;
 }
 function _vliveCloseUI() {
+  window._appelLanceA = null;
   const el = document.getElementById("vliveOverlay");
   if (el) { el.classList.remove("active"); el.innerHTML = ""; }
 }

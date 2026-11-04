@@ -21,6 +21,7 @@
 - 📍 UNE ACTIVITÉ CRÉÉE N'APPARAISSAIT PAS DANS LE FIL (2026-10-23)
 - 🤝 UNE ACTIVITÉ TAPÉE SUR UN PROFIL RAMENAIT À LA MESSAGERIE (2026-10-24)
 - 🚩 SIGNALER UN MESSAGE — et ce qu'un identifiant forgé, un × et un `del` d'autrui faisaient autour (2026-11-03)
+- 📞 UNE MISE À JOUR SILENCIEUSE COUPAIT L'APPEL, LE LIVE ET LA SAISIE — le rechargement attend (2026-11-04)
 
 ---
 
@@ -442,3 +443,38 @@ base mais pas les copies déjà chargées sur les appareils des membres (pas de 
 `conv_messages.id` n'a toujours pas de contrainte de forme alors que `reports.target_id` est plafonné à 120
 caractères (un identifiant forgé plus long rend un message insignalable) ; le canal v2 accepte encore un
 `from_id` non prouvé pour un message ORDINAIRE (opt-in, éteint par défaut).
+
+## 📞 UNE MISE À JOUR SILENCIEUSE COUPAIT L'APPEL, LE LIVE ET LA SAISIE — le rechargement attend (2026-11-04)
+
+Suite de #704 (`buildId`, journal Télémétrie). Chaque build qui change réinstalle le worker, et `reloadOnce` (`js/pwa-detect.js`) ne regardait que `hadController` et `_reloaded` : une page contrôlée rechargeait, quoi qu'elle fût en train de faire. Le `buildId` change 256 fois sur les 76 jours mesurés par #704, soit plus de trois rechargements par jour pour une page restée ouverte.
+
+- **Mesuré avant correctif** : deux vrais artefacts (`scripts/build.js` lancé deux fois), le vrai worker, `reg.update()` comme le fait `majSilencieuse`, l'état posé tel que l'écrivent les gestionnaires. Délai entre le déploiement et le rechargement :
+
+| Page contrôlée | Chromium | WebKit de Playwright |
+|---|---|---|
+| Sans activité (témoin) | 437 ms | 217 ms |
+| Appel en cours (`_call`) | 544 ms | 421 ms |
+| Appel sortant qui sonne (`_call`) | 486 ms | 249 ms |
+| Sonnerie entrante (`_callIncoming`) | 244 ms | 637 ms |
+| Je diffuse un Live (`_vliveHost`) | 506 ms | 630 ms |
+| Je regarde un Live (`_vliveView`) | 735 ms | 619 ms |
+
+- **La saisie perdait aussi, contrairement à ce qu'on croyait** : `c.draft` ne protège pas la frappe en cours. `_draftTimer` (350 ms) se réarme à chaque touche, donc rien n'est écrit tant qu'on tape. Vraies frappes clavier, rechargement pendant la frappe, à 120 ms par touche : Chromium 24 caractères tapés, 0 relu ; WebKit 25 et 23, 0 relu ; à 250 ms par touche, 12 ou 13 sur 12 ou 13 perdus. Le flush `beforeunload` ne change rien à ces chiffres : il écrit un `c.draft` qui n'a pas encore été posé. Une pause de 1,5 s avant le déploiement : tout est relu. Une pause de 500 ms sans ce flush, branché seulement à la fin de `supaInit` : 32 caractères perdus. Au Studio (`#postText`) et dans un commentaire, aucun brouillon : 31 caractères tapés, 0 relu, même après 1,5 s de pause.
+- **Exposition aujourd'hui** : le Live et la saisie. Les appels sont coupés pour le pilote (`PASSIO_APPELS_ACTIFS = false`, ASTRA-60) et les suites les arment elles-mêmes ; ce report les protège pour le jour où ils reviennent.
+- **Correctif** : le rechargement n'est jamais annulé, il attend. `pageOccupee()` = `appelOuLiveEnCours() || saisieEnCours()`. Occupée, `reloadOnce` arme une minuterie de 500 ms, qui n'existe que le temps du report et relit l'état ; après 3,5 s de calme, la page recharge. La nouvelle version a déjà pris la main, seule la page reste sur l'ancienne le temps de finir.
+- ⚠️ **Un rechargement reporté ne se perd pas parce qu'on relit l'état au lieu de brancher chaque fin** : un appel finit par raccrocher, le pair qui raccroche, un refus, une connexion perdue, l'absence de réponse. En oublier un laisserait la page sur l'ancienne version.
+- ⚠️ **L'état se lit sur `window.`** : ce script tourne en tête de page, avant le bloc app. Un `_call` nu lèverait une `ReferenceError` si `app.js` n'a pas chargé, et la page ne rechargerait plus jamais (⑫).
+- ⚠️ **IL Y A UN TROU ENTRE LE GESTE ET L'ÉTAT, et c'est le pire moment.** `acceptIncomingCall` efface `_callIncoming`, puis attend la permission du micro AVANT de poser `_call` : pendant ce temps, aucun état n'existe. Sans rien de plus, un rechargement reporté à cause de la sonnerie partait sous un appel que l'utilisateur vient d'accepter. Mêmes trous : `startCall`, `startVideoLive` (titre, caméra, insertion), `joinVideoLive` (lecture), et les deux liens `?call=` et `?live=`, qui nettoient l'URL puis attendent le client. `_appelEnPreparation()` (app-05) pose `window._appelLanceA` à ces six gestes.
+- ⚠️ **La marque est bornée à 60 s et s'efface à la fermeture de l'interface** (`_callCloseUI`, `_vliveCloseUI`) : une marque sans borne, sur un geste abandonné, retiendrait la page pour toujours ; sans effacement, un refus d'appel retenait la page une minute (⑬, ④, ⑦). Un geste abandonné sans fermeture (micro refusé à `startCall`, titre annulé) retient la page au plus 60 s, délibérément.
+- ⚠️ **SEUL COMPTE CE QUE L'UTILISATEUR A TAPÉ** (`isTrusted`, ⑩). Un champ rempli par l'application (brouillon restauré, formulaire prérempli) n'a rien à perdre : s'il retenait la page, un seul champ prérempli à l'écran suffirait à ne plus jamais appliquer de mise à jour.
+- ⚠️ **Un champ masqué ne retient rien** (⑧, ⑨) : `#convFpInput` garde son texte quand le panneau sort sur le côté, et ce texte est déjà dans le brouillon. **Le cadre, pas la fenêtre** : sur un grand écran, `.app-shell` ne fait que 440 px, le panneau refermé reste dans la fenêtre, découpé seulement par le cadre ; le test sur `window.innerWidth`, vert sur un téléphone, retenait la page pour toujours sur un ordinateur (⑧ tourne à 1 280 px pour ça). Pas de test vertical : dans un long formulaire, le champ rempli sort souvent de l'écran. **Limite assumée** : un texte laissé au Studio puis l'écran quitté part au rechargement, comme avant.
+- ⚠️ **Le toast se tait pendant le report** (`passioMajDifferee`, app-09) : « recharge pour l'appliquer » inviterait à couper soi-même l'appel qu'on vient de protéger. **Pas sur une page sans contrôleur** : elle ne recharge pas d'elle-même, le toast reste sa seule annonce (UXO-11, ⑪).
+- ⚠️ **Les 3,5 s de calme viennent du toast de fin** : « Live terminé · 3 min · pic 5 spectateurs » vit 3 s et n'existe nulle part ailleurs. Le calme est mesuré dans la page (`pagehide` − fin) : une attente de Playwright rougirait au moindre ralentissement de la CI.
+- ⚠️ **Le banc a failli ne rien prouver** : la marque du geste couvrait toute la durée de chaque test, et retirer la lecture de `_call` n'aurait fait rougir aucun cas, alors qu'à la 61ᵉ seconde d'un vrai appel la page aurait rechargé. `gesteDepasse` fait passer la borne après la pose de l'état.
+- ⚠️ **Banc : la cible Supabase des artefacts n'existe pas et le proxy est mort.** Sous WebKit, une page contrôlée échappe à `page.route` (fiche du 04/11 sur le pilotage) : la route seule ne garantissait pas qu'aucune requête n'atteigne la production. Le WebKit de Playwright n'a ni WebRTC ni `mediaDevices` : un double, pour que les vrais gestionnaires tournent.
+- **Verrou** : `tests/e2e/pwa-maj-pendant-appel.spec.js` (13), le vrai worker, deux artefacts, les vrais gestionnaires ; seul le client du serveur est simulé. Chromium, et socle WebKit de la CI.
+- **Mutations** : 28 réinjectées, 28 rouges. Aucun report → ② à ⑨ ; la minuterie ne recharge jamais → ② ⑥ ; page toujours occupée → ① ⑩ ⑬ ; chaque lecture d'état retirée → son cas (② ③, ③, ⑤, ⑥) ; marque ignorée → ② à ⑦ ; borne retirée → ⑬ ; chacun des six gestes non marqué → son cas ; marque non effacée → ④, ⑦ ; pas de calme → ② ⑤ ; saisie ignorée → ⑧ ⑨ ; `isTrusted` retiré → ⑩ ; focus exigé → ⑨ ; champ masqué compté, panneau compté, fenêtre au lieu du cadre → ⑧ (et ⑨ pour le premier) ; toast sans garde → ② ⑤ ⑧ ; `hadController` oublié au toast → ⑪, au rechargement → `pwa-premiere-installation.spec.js` ② ; lecture sans `window.` → ⑫. Le témoin ①, repassé sous chaque mutation : vert sous 26, rouge quand la page est toujours occupée et quand `hadController` saute (une première installation recharge alors). C'est lui qui prouve que la sonde voit un rechargement.
+- **Artefact minifié comme en CI** (`html-minifier-terser`, `terser --compress --mangle`), contrôle ponctuel hors suite : sous Chromium et WebKit, même page et aucun toast pendant l'appel, la sonnerie et le Live ; rechargement 4,0 à 4,4 s après la fin, sur le code et le `buildId` de B. `window._call` et `_appelLanceA` sont des propriétés : le minifieur ne les renomme pas.
+- **Une vraie conversation, contrôle ponctuel hors suite** : deux pages Chromium, deux vrais `RTCPeerConnection`, le média factice du navigateur, les vrais gestionnaires des deux côtés, la signalisation relayée par le script. Mise à jour pendant l'appel, puis 6 s : toujours `connected`, 102 750 octets envoyés au lieu de 27 336, 105 087 reçus au lieu de 29 043, aucun toast ; A raccroche, les deux pages rechargent sur le code de B, 4,7 et 4,2 s après. Le même contrôle sur le code d'avant : plus d'appel des deux côtés, et le toast.
+- **Non vérifié** : aucun iPhone réel ; cette vraie conversation n'a tourné que sous Chromium, et sur un seul poste (le WebKit de Playwright n'a pas WebRTC).
+- **Hors champ, toujours interrompus par le rechargement** : l'enregistrement d'un vocal (app-09), la capture d'une story ou d'une bobine (app-08), l'envoi d'une publication en cours (`publishPost`, `storage.upload`).

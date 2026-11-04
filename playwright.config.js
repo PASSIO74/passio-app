@@ -84,6 +84,7 @@ const SUITES_WEBKIT = [
   "first-run.spec.js",           // première visite d'un visiteur
   "conv-ouverture-fil.spec.js",  // ouvrir une conversation
   "pilotage-nuage.spec.js",      // le centre de pilotage, ses gestes d'un toucher
+  "pwa-maj-pendant-appel.spec.js", // le vrai worker : une mise à jour ne coupe ni un appel, ni un Live, ni une saisie
 ];
 const PROJET_WEBKIT = {
   name: "webkit-iphone",
