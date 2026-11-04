@@ -245,9 +245,11 @@ l'identité, ni le défaut de `rid`, ni la garde.
 
 **Garde du générateur** (même revue) : une table PARTITIONNÉE ou ÉTRANGÈRE de `public` n'était pas rendue, et le
 DDL échouait plus loin, à la reprise (contraintes, `OWNED BY` d'un serial, droits d'une séquence d'identité). La
-première des 20 sections REFUSE désormais d'écrire le DDL dans ce cas, en nommant la table : la sauvegarde de la
-nuit le dit en rouge, au lieu de livrer une archive qui ne se restaure pas. Aucune en production (canal ①,
-2026-11-04). Verrou : `tests/unit/restaurer-donnees.test.mjs` ⑦.
+première des 20 sections le DIT désormais : sa seule instruction LÈVE à l'application, en nommant la table — la
+reprise s'arrête avant d'avoir rien posé —, et le générateur le signale au journal du workflow (`::warning`). Il
+n'échoue PAS : un échec à cette étape sautait le chiffrement et le dépôt de la nuit, données comprises (relevé par
+la contre-revue de ce correctif). Aucune en production (canal ①, 2026-11-04). Verrou :
+`tests/unit/restaurer-donnees.test.mjs` ⑦.
 
 ### ④ Après toute reconstruction : rejouer les migrations de sécurité, mesurer l'identité
 
@@ -332,13 +334,26 @@ manquait au verdict).
   reviver que s'il en trouve un « à risque » ;
 - **sans `JSON.rawJSON`, tout nombre à risque fait échouer la lecture** (entier au-delà de 2^53, décimal à plus de
   15 chiffres, `1e400` qui deviendrait `null`) : jamais un arrondi silencieux.
-Verrous : `tests/unit/restaurer-donnees.test.mjs` ⑤ à ⑥ quater, rouges sur six réinjections (`r.json()` à
+- **la VALIDATION d'une archive ne relit rien au chiffre près** : elle compte et vérifie la syntaxe (`JSON.parse`
+  seul, `compterLignesNdjson`). Par la lecture exacte, une seule ligne très imbriquée portant un nombre à risque —
+  qu'un compte écrit chez lui — faisait refuser l'archive ENTIÈRE, « INVALIDE », sans recours (P2 relevé par la
+  contre-revue de ce correctif, confirmé, rouge sur réinjection : `restaurer-phases.test.mjs`) ;
+- **la reprise refuse de démarrer sans `JSON.rawJSON`** (Node < 21), en le disant, au lieu de déclarer « corrompue »
+  une archive saine ; et la comparaison voit une différence rangée sous une clé `__proto__` (préexistant :
+  `canoniser` l'affectait, ce qui changeait le prototype au lieu de créer la clé).
+Verrous : `tests/unit/restaurer-donnees.test.mjs` ⑤ à ⑦ bis, rouges sur six réinjections (`r.json()` à
 l'export, `JSON.parse` à la relecture, `String()` dans la clé, export relu puis réécrit, lecture toujours par
 reviver, repli qui arrondit les décimaux). Aucune archive existante n'est à reprendre : jusqu'ici, les seules
 colonnes `bigint` de `public` étaient les deux compteurs d'identité, aucune n'était en `numeric` ni `json`, et les
 1 291 nombres des `jsonb` sauvegardés ont tous 15 chiffres significatifs au plus (canal ①, 2026-11-04).
 
 **Limites qui restent, dites telles quelles** :
+- les `float8` : la production rend ses flottants sur 15 chiffres (`extra_float_digits = 0`), et le `json_agg` de
+  PostgREST les écrit ainsi — `0.30000000000000004` s'archive `0.3`, se restaure `0.3`, et le verdict compare `0.3` à
+  `0.3`. Préexistant (l'ancien export faisait de même) ; aucune valeur touchée le 2026-11-04 (canal ①). Risque
+  résiduel R35 ;
+- une colonne de type `json` (pas `jsonb`) garde ses blancs d'origine ; le découpage change un saut de ligne hors
+  chaîne en espace, et le verdict, qui compare des valeurs, ne le voit pas. Aucune colonne `json` en production ;
 - la COMPARAISON de la reprise (`canoniser`, récursive) plafonne entre ≈ 2 600 et ≈ 4 170 niveaux d'imbrication
   selon l'état du moteur (mesuré par la contre-revue) — préexistant :
   une ligne plus profonde fait échouer le verdict (il ne dit pas « conforme ») ; l'export et le chargement, eux,
