@@ -204,7 +204,7 @@ reconstruit sortait « contenu identique » du verdict — `--verifier` compare 
 
 | Ce qui manquait | Ce que la reconstruction rendait | Ce que cela rouvrait |
 |---|---|---|
-| `REPLICA IDENTITY` | toutes les tables en DEFAULT, la clé primaire | `migration_realtime_identite_opaque_2026-11-03.sql` ne fait plus publier d'un DELETE que `rid` (`replica identity using index <table>_rid_key` sur `conv_members`, `notifications`, `conv_reads`, `post_likes`) ; sur la base reconstruite, chaque départ republiait la conversation et le compte à tout abonné — R25 rouvert sans un signe. `comment_interactions`, FULL aujourd'hui, perdait aussi la sienne |
+| `REPLICA IDENTITY` | toutes les tables en DEFAULT, la clé primaire | `migration_realtime_identite_opaque_2026-11-03.sql` ne fait plus publier d'un DELETE que `rid` (`replica identity using index <table>_rid_key` sur `conv_members`, `notifications`, `conv_reads`, `post_likes`) ; sur la base reconstruite, chaque départ republiait la conversation et le compte à tout abonné — R25 rouvert sans un signe. `comment_interactions`, en FULL jusqu'au 2026-11-04 (DEFAULT depuis R25), perdait aussi la sienne |
 | séquences d'identité | créées d'avance comme séquences autonomes : la colonne en recevait une **seconde** (`*_seq1`), la première restait orpheline | deux séquences par colonne d'identité — `client_errors.id` et `migrations_appliquees.id` en sont (canal ①, 2026-11-04 : ce sont des identités, jamais des `serial`) |
 | droits de séquence | ceux qu'un projet Supabase donne à toute séquence neuve : `rwU` pour `anon` et `authenticated` | identiques à la production AUJOURD'HUI (ses deux séquences ont `rwU`, canal ①, 2026-11-04) ; mais tout droit RESSERRÉ revenait en silence — la première version de R25 retirait tout droit client sur les séquences de `rid` : les lire, c'est estimer le volume d'écritures d'une table ; les reculer, c'est faire percuter l'index unique à l'insertion suivante |
 | `OWNED BY` d'un `serial` | une séquence que `pg_get_serial_sequence` ne trouve pas | le recalage des séquences de `restaurer-donnees.js` la sautait : la première insertion après la reprise percutait une clé restaurée (« duplicate key »). Aucune colonne `serial` en production : défaut latent |
@@ -235,8 +235,9 @@ l'octet), reconstruit avec le générateur corrigé, le verdict de R25 lu sur la
 réappliquer la migration** : **11 OK / 0 ECHEC** pour la version du commit 13874e4 (`rid` d'identité, sha256
 `51a2f4c2…`), **10 OK / 0 ECHEC** pour la version de travail du 2026-11-04 (`rid` aléatoire, `bb3ae779…`) ;
 dans les deux, le DDL s'applique sans erreur et un DELETE ne publie plus que `rid`. La migration n'était pas
-finalisée : ce recoupement ne vaut que pour ces deux empreintes. **La forme FINALE** (`rid` de 53 bits, chiffres
-17 à 32 de l'UUID, migration sha256 `6471496f…`) est celle que porte désormais la table `aimes` du banc — défaut
+finalisée : ce recoupement ne vaut que pour ces deux empreintes. **La forme FINALE** du `rid` (53 bits, chiffres
+17 à 32 de l'UUID), introduite par le fichier sha256 `6471496f…` — le fichier attesté et APPLIQUÉ est `9f48ffe1…`,
+dont défaut, index, identité et code de la garde sont identiques —, est celle que porte désormais la table `aimes` du banc — défaut
 recopié à l'octet près, garde au même code exécutable (sans ses commentaires) : 40 ✅ / 0 ❌ (2026-11-04). La contre-revue finale (2026-11-04) a REJOUÉ le
 recoupement pour cette empreinte : source 10 OK, DDL rendu puis appliqué à une base vide de type Supabase,
 verdict de R25 lu sur la base reconstruite sans réappliquer la migration **10 OK / 0 ECHEC**, rejeu du DDL et de la
@@ -265,9 +266,15 @@ verdict de données. Donc, avant d'ouvrir un projet reconstruit :
    idempotentes et impriment leur tableau de verdict :
    `npm run migration:appliquer -- migrations/<fichier>.sql --projet <ref de la cible>` — tout OK, ou le
    projet ne s'ouvre pas. Le journal `migrations_appliquees`, restauré avec l'archive, dit lesquelles la
-   source avait reçues. ⚠️ Une seule exception, attendue : `migration_realtime_identite_opaque` exige « les
-   11 mêmes tables » publiées ; rejouée après `migration_realtime_diffusion_privee`, qui en retire deux, sa
-   ligne 10 dit ECHEC. Les rejouer dans cet ordre-là : l'identité opaque d'abord.
+   source avait reçues. ⚠️ Une seule exception, attendue : la ligne 10 de `migration_realtime_identite_opaque`
+   exige « les 11 mêmes tables » publiées. Elle dit ECHEC dès que la publication de la cible ne porte plus
+   `conv_members` ni `notifications` : après `migration_realtime_diffusion_privee`, ET sur toute base
+   reconstruite d'une archive prise après le 2026-11-04 à 14:25 UTC, dont le DDL publie déjà neuf tables —
+   l'ordre des rejeux n'y change rien (reproduit, vérification finale de R25). L'attendu est alors : R25,
+   lignes 1 à 9 OK et ligne 10 ECHEC ; `diffusion_privee`, tout OK ; et la publication de la cible égale à
+   celle de la production (canal ①). `appliquer-migration.mjs` sort en code 1 sur cette ligne, transaction
+   validée : c'est le tableau qui fait foi, pas le code de sortie. Rejouer l'identité opaque d'abord reste
+   l'ordre sûr pour une archive d'AVANT cette heure.
 2. **Mesurer l'identité de réplication** par le canal de lecture seule (canal ① d'ADR-012 ; sur un projet que
    le connecteur ne vise pas, la même requête — un SELECT seul — par l'API de gestion), puis la comparer à la
    même lecture sur la production :
@@ -307,8 +314,9 @@ verdict de données. Donc, avant d'ouvrir un projet reconstruit :
   puisque rien ne s'en sert, et le DDL ne supprime rien.
 - Le banc tourne sur PostgreSQL 16 (poste et CI) ; la production est en 17.6. Aucun cycle réel sur un projet
   Supabase n'a été rejoué avec ces sections. Les requêtes de catalogue des sections neuves ont été lues sur la
-  production (canal ①, 2026-11-04) : elles s'exécutent, et rendent l'identité de 52 tables (seule
-  `comment_interactions` hors DEFAULT, en FULL), aucune séquence à créer d'avance, aucun `OWNED BY`, et les
+  production (canal ①, 2026-11-04, AVANT l'application de R25) : elles s'exécutent, et rendent l'identité de
+  52 tables (seule `comment_interactions` hors DEFAULT, en FULL ; depuis 12:45:52 UTC, les quatre tables de R25
+  en `i` et `comment_interactions` en DEFAULT), aucune séquence à créer d'avance, aucun `OWNED BY`, et les
   droits des deux séquences d'identité pour `anon` et `authenticated`, désignées par leur colonne.
 
 ### Trouvé en écrivant le banc : l'ARCHIVE arrondissait un entier au-delà de 2^53 (corrigé le 2026-11-04)
