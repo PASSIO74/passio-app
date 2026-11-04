@@ -43,6 +43,7 @@ const SUITES_PROD = [
   "confidentialite.spec.js",     // sous PASSIO_E2E_MULTI
   "qa-campaign.spec.js",         // sous PASSIO_QA_CAMPAIGN (via qa-helper.js)
   "suppression-compte.spec.js",  // sous PASSIO_E2E_MULTI
+  "realtime-poussee-reelle.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : la poussée user:<uid> (R25)
 ];
 const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);
 

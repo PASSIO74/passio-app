@@ -84,7 +84,8 @@ function souscriptions(fichier) {
   const out = [];
   let i = 0;
   while ((i = src.indexOf("postgres_changes", i)) !== -1) {
-    const rel = path.relative(path.join(__dirname, ".."), fichier);
+    // En `/` sur tous les postes : `sondesHorsPublication` nomme ses fichiers ainsi.
+    const rel = path.relative(path.join(__dirname, ".."), fichier).split(path.sep).join("/");
 
     // ⚠️ LA FORME *TABLEAU* ÉTAIT COMPTÉE POUR UNE SEULE LIAISON, ET C'EST LE
     // SENS MUET QUE CETTE GATE EXISTE POUR FERMER. Une jonction brute
@@ -132,17 +133,42 @@ function souscriptions(fichier) {
 const declare = JSON.parse(fs.readFileSync(DECLARE, "utf8"));
 const publiees = new Set(declare.publiees);
 const tolerees = declare.publieesSansAbonne || {};
+// ⚠️ UNE SONDE N'EST PAS UN ABONNÉ (2026-11-04). Une suite peut s'abonner EXPRÈS à une
+// table retirée de la publication, pour prouver que plus rien n'en sort (R25, cas ④).
+// Elle s'inscrit fichier par fichier, table par table, avec sa raison ; partout
+// ailleurs, la même table reste refusée : le sens muet ne s'ouvre pas pour autant.
+const sondes = declare.sondesHorsPublication || {};
+const estSonde = (s) => Object.prototype.hasOwnProperty.call(sondes[s.fichier] || {}, s.table);
 
 const trouvees = [];
 for (const r of RACINES) for (const f of fichiersJs(r)) trouvees.push(...souscriptions(f));
 
 const abonnees = new Map();
+const sondesVues = new Set();
 for (const s of trouvees) {
+  if (estSonde(s)) { sondesVues.add(s.fichier + "|" + s.table); continue; }
   if (!abonnees.has(s.table)) abonnees.set(s.table, new Set());
   abonnees.get(s.table).add(s.fichier);
 }
 
 const erreurs = [];
+
+// ④ Une sonde doit exister, dire pourquoi, et viser une table vraiment hors publication.
+let nbSondes = 0;
+for (const [fichier, tables] of Object.entries(sondes)) {
+  for (const [t, raison] of Object.entries(tables)) {
+    nbSondes++;
+    if (!sondesVues.has(fichier + "|" + t)) {
+      erreurs.push(`la sonde « ${t} » de ${fichier} n'existe plus dans ce fichier.\n      → la retirer de "sondesHorsPublication".`);
+    }
+    if (!String(raison || "").trim()) {
+      erreurs.push(`la sonde « ${t} » de ${fichier} ne dit pas sa raison.\n      → l'écrire dans "sondesHorsPublication".`);
+    }
+    if (publiees.has(t)) {
+      erreurs.push(`la sonde « ${t} » de ${fichier} vise une table PUBLIÉE : elle prouvait son silence.\n      → retirer la table de la publication, ou la sonde et ce qu'elle prouvait.`);
+    }
+  }
+}
 
 // ③ Ce que la gate n'a pas su lire : jamais en silence.
 for (const f of [...new Set(illisibles)]) {
@@ -185,6 +211,6 @@ if (erreurs.length) {
 
 console.log(
   `OK — publication realtime cohérente : ${publiees.size} tables publiées, ` +
-  `${abonnees.size} écoutées, ${Object.keys(tolerees).length} tolérée(s) sans abonné ` +
+  `${abonnees.size} écoutées, ${Object.keys(tolerees).length} tolérée(s) sans abonné, ${nbSondes} sonde(s) hors publication ` +
   `(${trouvees.length} souscriptions scannées dans ${RACINES.join(", ")}).`
 );

@@ -29,7 +29,9 @@ const RACINE = fileURLToPath(new URL("../..", import.meta.url));
 // le `scripts/` du faux dépôt. (Une première version y ajoutait un
 // `gate.replace(/__dirname, "\.\."/g, ...)` — un remplacement IDENTIQUE, donc
 // un no-op présenté comme un ajustement de racine : du code mort trompeur.)
-function surDepotFabrique(fichiers) {
+// ⚠️ Les sondes du vrai dépôt nomment un fichier qui n'existe pas ici : un dépôt fabriqué
+// ne porte que celles qu'on lui donne.
+function surDepotFabrique(fichiers, sondes = {}) {
   const dossier = mkdtempSync(join(tmpdir(), "gate-rt-"));
   try {
     for (const d of ["js", "dashboard", "scripts", "supabase/functions", "tests/e2e"]) {
@@ -39,9 +41,10 @@ function surDepotFabrique(fichiers) {
       join(dossier, "scripts", "audit-realtime-publication.js"),
       readFileSync(join(RACINE, "scripts/audit-realtime-publication.js"), "utf8"),
     );
+    const declare = JSON.parse(readFileSync(join(RACINE, "scripts/realtime-publication.json"), "utf8"));
     writeFileSync(
       join(dossier, "scripts", "realtime-publication.json"),
-      readFileSync(join(RACINE, "scripts/realtime-publication.json"), "utf8"),
+      JSON.stringify({ ...declare, sondesHorsPublication: sondes }),
     );
     for (const [chemin, contenu] of Object.entries(fichiers)) {
       writeFileSync(join(dossier, chemin), contenu);
@@ -139,4 +142,70 @@ test("③ une liaison vers une table NON PUBLIÉE est REFUSÉE, même au milieu 
   const r = surDepotFabrique({ "js/faux.js": bloc });
   assert.notEqual(r.code, 0, "la gate a accepté une table inexistante en fin de bloc");
   assert.match(r.sortie, /table_qui_nexiste_pas/);
+});
+
+// ── Une sonde : une souscription VOULUE vers une table retirée (R25, cas ④) ─────
+const toutesPubliees = () => JSON.parse(readFileSync(join(RACINE, "scripts/realtime-publication.json"), "utf8")).publiees;
+const blocDesPubliees = () =>
+  "const postgres_changes = [\n" +
+  toutesPubliees().map((t) => `  { event: "INSERT", schema: "public", table: "${t}" },`).join("\n") +
+  "\n];\n";
+const liaison = (table) => `canal.on("postgres_changes", { event: "*", schema: "public", table: "${table}" }, cb);\n`;
+
+test("④ une sonde déclarée passe dans SON fichier, et la même table reste refusée ailleurs", () => {
+  const sondes = { "tests/e2e/sonde.spec.js": { table_retiree: "prouve que plus rien n'en sort" } };
+  const seule = surDepotFabrique({ "js/faux.js": blocDesPubliees(), "tests/e2e/sonde.spec.js": liaison("table_retiree") }, sondes);
+  assert.equal(seule.code, 0, seule.sortie);
+  assert.match(seule.sortie, /1 sonde\(s\) hors publication/);
+
+  const ailleurs = surDepotFabrique(
+    { "js/faux.js": blocDesPubliees() + liaison("table_retiree"), "tests/e2e/sonde.spec.js": liaison("table_retiree") },
+    sondes,
+  );
+  assert.notEqual(ailleurs.code, 0, "la sonde d'une suite a ouvert la même table au produit");
+  assert.match(ailleurs.sortie, /table_retiree/);
+  assert.match(ailleurs.sortie, /js\/faux\.js/);
+  assert.doesNotMatch(ailleurs.sortie, /sonde\.spec\.js/, "le fichier qui déclare sa sonde n'est pas en cause");
+});
+
+test("⑤ une sonde sur une AUTRE table du même fichier reste refusée", () => {
+  const r = surDepotFabrique(
+    { "js/faux.js": blocDesPubliees(), "tests/e2e/sonde.spec.js": liaison("table_retiree") + liaison("autre_table") },
+    { "tests/e2e/sonde.spec.js": { table_retiree: "raison" } },
+  );
+  assert.notEqual(r.code, 0);
+  assert.match(r.sortie, /autre_table/);
+});
+
+test("⑥ une sonde qui n'existe plus, sans raison, ou sur une table publiée est refusée", () => {
+  const disparue = surDepotFabrique({ "js/faux.js": blocDesPubliees() }, { "tests/e2e/sonde.spec.js": { table_retiree: "raison" } });
+  assert.notEqual(disparue.code, 0, "une sonde retirée laisse sa déclaration ouverte");
+  assert.match(disparue.sortie, /n'existe plus/);
+
+  const muette = surDepotFabrique(
+    { "js/faux.js": blocDesPubliees(), "tests/e2e/sonde.spec.js": liaison("table_retiree") },
+    { "tests/e2e/sonde.spec.js": { table_retiree: "  " } },
+  );
+  assert.notEqual(muette.code, 0, "une sonde sans raison passe");
+  assert.match(muette.sortie, /ne dit pas sa raison/);
+
+  const publiee = toutesPubliees()[0];
+  const revenue = surDepotFabrique(
+    { "js/faux.js": blocDesPubliees(), "tests/e2e/sonde.spec.js": liaison(publiee) },
+    { "tests/e2e/sonde.spec.js": { [publiee]: "raison" } },
+  );
+  assert.notEqual(revenue.code, 0, "une sonde sur une table publiée passe : son silence n'est plus prouvé");
+  assert.match(revenue.sortie, /vise une table PUBLIÉE/);
+});
+
+test("⑦ le vrai dépôt déclare la sonde du verrou de R25, et ces deux tables restent hors publication", () => {
+  const declare = JSON.parse(readFileSync(join(RACINE, "scripts/realtime-publication.json"), "utf8"));
+  assert.deepEqual(
+    Object.keys(declare.sondesHorsPublication["tests/e2e/realtime-poussee-reelle.spec.js"]).sort(),
+    ["conv_members", "notifications"],
+  );
+  for (const t of ["conv_members", "notifications"]) assert.ok(!declare.publiees.includes(t), t + " est republiée");
+  const r = lancer();
+  assert.equal(r.code, 0, r.sortie);
+  assert.match(r.sortie, /2 sonde\(s\) hors publication/);
 });
