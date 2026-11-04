@@ -1166,7 +1166,7 @@ client, `old_record` nul arrive en `payload.old = {}` (supabase-js, `convertChan
 
 Risque résiduel R25 de l'audit du 2026-11-02 (`.passio/audits/AUDIT_PASSIO_2026-11-02/05-RISQUES-RESIDUELS.md`),
 à fermer « sans perdre les fonctions temps réel ». Migration `migrations/migration_realtime_diffusion_privee_2026-11-03.sql`,
-banc `tests/sql/migration-realtime-diffusion-privee.test.sh` (65/65), verrou client `tests/e2e/realtime-diffusion-privee.spec.js` (11).
+banc `tests/sql/migration-realtime-diffusion-privee.test.sh` (65/65), verrou client `tests/e2e/realtime-diffusion-privee.spec.js` (11). **Appliquée au staging puis, client déployé d'abord, en production le 2026-11-04 (14:25 UTC), mesurée au canal ①.**
 
 ⚠️ **C'EST LA SECONDE COUCHE, APRÈS L'IDENTITÉ OPAQUE DE LA FICHE PRÉCÉDENTE.** Les deux lots traitaient R25 sans se connaître ; fusionnés à blanc le 04/11, ils sont compatibles dans les deux ordres (mêmes bancs verts, même état final). L'identité opaque retire la clé de CHAQUE suppression des quatre tables, mais un abonné voit encore QU'un effacement a lieu ; ce lot retire tout le flux pour `conv_members` et `notifications`, et deux liaisons `postgres_changes` sur les tables les plus écrites. ⚠️ Le verdict de la première couche exige « les 11 mêmes tables » : **rejoué après ce lot, sa ligne 10 dit ECHEC, et c'est attendu** (neuf tables).
 
@@ -1217,7 +1217,7 @@ La gate et son manifeste le disent désormais.
   incluses dans celles que le serveur POUSSE (une colonne lue et jamais envoyée rendrait `undefined`).
 - **Le topic `user:` s'ouvre dans TOUS les modes** (soupapes v1/v2 comprises), la liaison des messages en v3
   seulement — sans quoi un appareil en v1 aurait perdu ses notifications en direct sans un bruit.
-- Le verdict de la migration a onze lignes, chacune éprouvée au banc contre la mutation qu'elle garde
+- Le verdict de la migration a treize lignes, chacune éprouvée au banc contre la mutation qu'elle garde
   (table republiée, autre table retirée, trigger désactivé, `search_path` retiré, EXECUTE rendu par un autre
   concédant, policy du topic retirée ou élargie, policy d'émission sur `user:`, canal des messages coupé,
   fonction réécrite sous « INSERT »).
@@ -1237,6 +1237,13 @@ d'événement, topic en v3 seulement, garde de destinataire, ancienne liaison re
 mesure après application — au canal ① (les deux tables hors de `pg_publication_tables`, les deux triggers
 présents) et à deux comptes (une notification et un ajout reçus sans recharger ; `multi-comptes.spec.js`
 journalise « realtime OK » sur le staging quand la migration y est appliquée).
+**CE QUI L'A PROUVÉ, LE 2026-11-04** : ce « realtime OK » se satisfait d'une relecture REST. Un essai ponctuel au staging
+(vrai client, vrai serveur Realtime, trois comptes jetables, lectures REST de `notifications` bloquées chez le destinataire)
+a rendu : notification reçue en 268 ms par une trame `notifications:INSERT`, ajout à une conversation en 727 ms par
+`conv_members:INSERT`, tiers refusé (`CHANNEL_ERROR`) et sa fausse notification jamais livrée, visiteur sans compte muet
+sur ces deux tables alors que son témoin `post_likes` reçoit la suppression, clés vides. ⚠️ `send` hors d'un canal rejoint
+répond « ok » : c'est le repli REST de supabase-js, seule la réception chez la cible compte. Détail, et ce qui reste à
+prouver en production : § 8.7 de `.passio/audits/AUDIT_PASSIO_2026-11-02/04-LIVRAISON.md`.
 **CE QUI RESTE PUBLIÉ** : `conv_reads`, `post_likes` et `comment_interactions`. Leurs clés ne partent plus (fiche précédente), mais leurs suppressions restent des événements. `conv_reads` porte les accusés de lecture en direct ; `post_likes` n'a plus d'abonné produit, seuls les bancs de charge l'écoutent encore. **Une table dont la clé primaire DIT quelque chose ne publie pas cette clé.**
 
 **DEUX CONTRE-RELECTURES (2026-11-03, `passio-red-team` et `audit-passio`, lecture seule, canal ① pour la

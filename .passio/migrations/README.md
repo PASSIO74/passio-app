@@ -97,6 +97,8 @@ canal ①, jamais le tableau ; puis `git worktree remove` du dossier, depuis le 
 
 Le job « Suites production (comptes réels) » vise le **staging**, jamais la production : le relancer après une application en production ne prouve rien. Pour éprouver une migration en conditions réelles, attester aussi `fcksxofaelcdmmifnwjo` (la revue doit nommer cette cible), l'y appliquer, puis laisser ce job tourner sur la tête de la PR. Fait pour R25 le 04/11. Le staging a dérivé (`docs/STAGING.md`) : un contrôle de publication de son verdict peut y dire ECHEC sans défaut de la migration.
 
+⚠️ **Une migration à prérequis client (règle ④), une fois au staging, y fait rougir toute PR dont la base précède ce client** : la suite teste l'ancien client contre la base migrée. Vécu le 2026-11-04 : deux rouges de `multi-comptes` sur #709, le second sur un run créé 14 minutes après la fusion du client, encore fusionné sur l'ancienne base. Avant de chercher un défaut, lire `HEAD is now at … into <base>` dans le journal du job. Le remède est une relance sur une base à jour ; `gh run rerun` garde la fusion du run d'origine. Appliquer au staging juste avant de fusionner le client, pas avant.
+
 ## Ce que la barrière ne fait pas
 
 Elle ne remplace pas la revue : elle empêche seulement d'appliquer autre chose

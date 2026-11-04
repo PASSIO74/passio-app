@@ -35,6 +35,9 @@
 # réels : `global-teardown` purge TOUS les comptes e2e, et deux exécutions
 # simultanées s'effacent mutuellement leurs comptes — c'est l'incident du
 # 2026-09-01, `main` rouge et déploiement sauté. Ne jamais retirer ce verrou.
+#
+# `queue: max` (2026-11-04) : sans elle, ce run annule le `test-prod` qui attend,
+# même celui de `main`, même s'il porte la clé. Motif complet sur `test-prod` (deploy.yml).
 # ═══════════════════════════════════════════════════════════════════════════
 
 name: Contrôle Realtime (à la demande)
@@ -45,6 +48,7 @@ on:
 concurrency:
   group: passio-e2e-prod
   cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read
