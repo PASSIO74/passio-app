@@ -1065,7 +1065,7 @@ Risque résiduel R25 de l'audit du 2026-11-02, trouvé en contre-revue du lot C-
 production** (`realtime.apply_rls`, canal ①), pas supposé. Migration
 `migrations/migration_realtime_identite_opaque_2026-11-03.sql`, banc
 `tests/sql/migration-realtime-identite-opaque.test.sh` (copies md5 de production d'`apply_rls` et de ses
-dépendances, nourries de WAL réellement décodé).
+dépendances, nourries de WAL réellement décodé). **Appliquée au staging puis en production le 2026-11-04 (12:45 UTC), mesurée au canal ①.**
 
 **Ce que fait `apply_rls` d'un DELETE — trois faits, dans le code :**
 1. il n'applique **aucune RLS** (`if not is_rls_enabled or action = 'DELETE' then visible_role_sub_ids = … ||
