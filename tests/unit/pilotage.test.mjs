@@ -776,7 +776,7 @@ test("㊲ VEILLE #627 : la veille serveur émet le canari un quart d'heure sur t
 // Demande de Benjamin : « suivre la croissance avec le nombre d'utilisateurs, et
 // régler n'importe quel problème en un seul clic ». MUTATIONS éprouvées : retirer
 // un `gestes` d'une famille → ㊴ rougit ; mettre `tout` sur le retour arrière ou la
-// modération → ㊵ ; retirer le contrôle du dépôt d'origine de resumerPr → ㊶ (un fork
+// modération → ㊽ ; retirer le contrôle du dépôt d'origine de resumerPr → ㊶ (un fork
 // nommé `claude/issue-1-2` devenait « un correctif est prêt ») ; retirer `vue` des
 // erreurs → ㊷ ; retirer REPARATION_MAX_MS → ㊸ ; retirer le filet → ㊹ ; compter le
 // cumul sans trier les jours → ㊺ ; armer l'auto-fusion depuis la veille → ㊻ ; remettre
@@ -839,7 +839,7 @@ test("㊴ n'importe quel problème a son bouton : un seul « Régler », et il d
   for (const x of l) for (const g of x.gestes) assert.equal(g.confirmation, undefined, x.id);
 });
 
-test("㊵ « Tout régler » : seulement ce qui répare ; jamais le retour arrière, la modération, ni un paiement", () => {
+test("㊽ « Tout régler » : seulement ce qui répare ; jamais le retour arrière, la modération, ni un paiement", () => {
   const l = aFaire({ ...touteLaPanne(), signalements: { ouverts: 1, liste: [{ id: "r", type: "post", motif: "m" }], masques: [{ id: "p_1", signaleurs: 3 }] } }, MAINTENANT_AF);
   const tout = l.flatMap((x) => x.gestes.filter((g) => g.tout).map((g) => ({ id: x.id, g })));
   assert.ok(tout.length >= 4);
@@ -1026,4 +1026,36 @@ test("㊼ la page : aucun confirm(), aucun innerHTML, et un bouton n'ouvre que l
   assert.doesNotMatch(css, /\.barre\b(?!-j)/, "cible supprimée : ses règles partent avec");
   assert.ok(html.indexOf('id="afaire"') < html.indexOf('id="marche"'), "ce qui est cassé d'abord");
   assert.ok(html.indexOf('id="marche"') < html.indexOf('class="plus"'));
+});
+
+// ─── Paliers de croissance (2026-11-01) ─────────────────────────────────────
+// Demande de Benjamin : être alerté quand un palier d'inscrits appelle un geste.
+// MUTATIONS éprouvées : `franchiCetteSemaine` toujours faux → ㊵ rougit (le
+// palier franchi n'est jamais montré) ; un total illisible lu comme
+// 0 → ㊵ rougit (« Lancement » affiché sur une panne de lecture).
+import { palierCroissance, PALIERS_CROISSANCE } from "../../supabase/functions/_shared/pilotage.js";
+
+test("㊵ paliers : le bon palier, montré la semaine du franchissement sans compter comme un problème, rien sur un total illisible", () => {
+  assert.equal(palierCroissance(14).nom, "Lancement");
+  assert.equal(palierCroissance(850, 40).seuil, 300);
+  assert.equal(palierCroissance(850, 40).suivant.seuil, 1000);
+  assert.equal(palierCroissance(1000, 0).seuil, 1000, "le seuil lui-même est atteint");
+  assert.equal(palierCroissance(1040, 60).franchiCetteSemaine, true, "980 il y a 7 j → franchi cette semaine");
+  assert.equal(palierCroissance(1040, 20).franchiCetteSemaine, false, "1 020 il y a 7 j → déjà franchi");
+  assert.equal(palierCroissance(40, 40).franchiCetteSemaine, false, "le palier 0 ne se franchit pas");
+  assert.equal(palierCroissance(999999).suivant, null, "dernier palier : pas de suivant");
+  for (const x of [null, undefined, "", "abc", -1, NaN]) assert.equal(palierCroissance(x), null, String(x));
+  assert.ok(PALIERS_CROISSANCE.every((p, i) => i === 0 || p.seuil > PALIERS_CROISSANCE[i - 1].seuil), "seuils croissants");
+
+  const franchi = aFaire(etatAF({ utilisateurs: { total: 1040, inscritsSemaine: 60 } }), MAINTENANT_AF).find((x) => x.id === "croissance:1000");
+  assert.equal(franchi.prio, 2, "une bonne nouvelle, pas un problème : aucun bouton à presser");
+  assert.equal(franchi.franchi, true, "mais l'accueil la montre, dans la croissance");
+  assert.equal(franchi.etiquette, "Palier franchi");
+  assert.match(franchi.detail, /PLAN_MONETISATION/);
+  const info = aFaire(etatAF({ utilisateurs: { total: 850, inscritsSemaine: 10 } }), MAINTENANT_AF).find((x) => x.id === "croissance:300");
+  assert.equal(info.prio, 2); assert.equal(info.franchi, false);
+  // Le total affiché sur l'accueil d'abord : le palier ne doit pas contredire le nombre.
+  const memeTotal = aFaire(etatAF({ utilisateurs: { total: 14, inscritsSemaine: 0 }, activation: { inscrits: { total: 13, semaine: 0 } } }), MAINTENANT_AF).find((x) => x.id === "croissance:0");
+  assert.match(memeTotal.titre, /· 13 inscrits$/);
+  assert.ok(!aFaire(etatAF({ utilisateurs: null }), MAINTENANT_AF).some((x) => x.id.startsWith("croissance:")), "utilisateurs illisibles : pas de carte");
 });

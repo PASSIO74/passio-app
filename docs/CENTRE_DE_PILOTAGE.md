@@ -51,7 +51,7 @@
   et le même Wi-Fi. `dashboard/` reste l'atelier technique du poste (télémétrie détaillée, Sentinelle
   locale, réparations, Command Center), lancé par `Lancer-Pilotage.cmd`.
 
-Verrous : `tests/unit/pilotage.test.mjs` (㉓ à ㉛, ㊴ à ㊼), `tests/e2e/pilotage-nuage.spec.js` (dont
+Verrous : `tests/unit/pilotage.test.mjs` (㉓ à ㉛, ㊴ à ㊽), `tests/e2e/pilotage-nuage.spec.js` (dont
 la liste construite par la VRAIE fonction), `dashboard/test/mobile-pilot.test.js`. Fiche du lot :
 `docs/journal/telemetrie-pilotage-sentinelle.md`.
 

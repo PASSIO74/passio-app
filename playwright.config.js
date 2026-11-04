@@ -74,8 +74,8 @@ const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);
 // route sous WebKit). Mesuré sur le premier passage CI de la PR #595 ; elle reste
 // verte sur Chromium. Le job étant BLOQUANT, la garder ici aurait arrêté tout
 // déploiement de production. Une suite ne rentre qu'après un passage WebKit vert
-// en CI. `pilotage-nuage.spec.js`, sortie le même jour (un geste confirmé par
-// `confirm()` n'envoyait rien), est revenue le 2026-11-04 : plus aucun `confirm()`.
+// en CI. `pilotage-nuage.spec.js`, sortie le même jour (« un geste n'envoie rien »),
+// est revenue le 2026-11-04 : c'était son service worker qui échappait à `page.route`.
 const SUITES_WEBKIT = [
   "smoke.spec.js",               // démarrage de l'application
   "cadrage.spec.js",             // hauteur d'écran mesurée (jamais 100dvh)

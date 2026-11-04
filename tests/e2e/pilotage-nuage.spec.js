@@ -113,13 +113,14 @@ const gestes = (envois) => envois.filter((e) => e.corps.action !== "etat");
 /** Depuis n'importe où : l'accueil, puis la page rangée en bas. */
 async function aller(page, vue) {
   const retour = page.locator("#retour");
-  while (await retour.isVisible()) await retour.click();
+  if (await retour.isVisible()) await retour.click();
+  await expect(page.locator("#accueil")).toBeVisible();
   await page.click(`.plus button[data-tab="${vue}"]`);
   await expect(page.locator("#" + vue)).toBeVisible();
 }
 async function accueil(page) {
   const retour = page.locator("#retour");
-  while (await retour.isVisible()) await retour.click();
+  if (await retour.isVisible()) await retour.click();
   await expect(page.locator("#accueil")).toBeVisible();
 }
 /** Un geste rangé sous le texte de la ligne (refuser, fermer…). */
@@ -128,7 +129,11 @@ async function autreChoix(ligne, libelle) {
   await ligne.locator("button", { hasText: libelle }).click();
 }
 
-test.use({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
+// ⚠️ `serviceWorkers: "block"` (2026-11-04) : dès que le service worker du pilotage contrôle la page,
+// WebKit envoie les appels à la fonction sans passer par `page.route` : le geste du banc partait vers
+// la VRAIE fonction avec son faux jeton (401 mesuré). C'est ce qui avait sorti cette suite du socle
+// iPhone le 2026-10-11, attribué à tort à confirm() : un défaut du banc, pas d'iPhone.
+test.use({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
 
 test.beforeEach(async ({ page }) => { await sansDonneesDistantes(page); });
 
@@ -188,6 +193,10 @@ test("② Accueil : UN écran, ce qu'il y a à régler et le nombre d'utilisateu
   await expect(ch.locator(".tendance.mauvais").first()).toContainText("+5");
   await expect(ch).toContainText("33 %");
   await expect(ch).toContainText("erreurs depuis la mise en ligne");
+  // Le palier de croissance (13 utilisateurs → « Lancement ») reste « pour info » : ce n'est pas un problème.
+  await expect(page.locator("#pourInfoRepli")).toBeVisible();
+  await page.click("#pourInfoTitre");
+  await expect(page.locator("#pourInfo")).toContainText("Lancement · 13 inscrits");
   for (const t of ["details", "reglages", "croissance"]) {
     await aller(page, t);
     expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
@@ -806,7 +815,7 @@ test("㉕ un chantier en cours n'est pas un problème : hors de l'accueil, ses g
   await expect(fork.locator("button", { hasText: "Fusionner" }), "dépôt public : le titre d'un fork ne prouve rien").toHaveCount(0);
 });
 
-test("㉖ une relecture ne repeint jamais sous un geste armé ; quitter la page fait partir le geste", async ({ page }) => {
+test("㉖ une relecture ne repeint jamais sous un geste armé", async ({ page }) => {
   await poserSession(page, "passioadmin@gmail.com", 60000);
   const envois = [];
   await routerFonction(page, envois);
@@ -822,14 +831,27 @@ test("㉖ une relecture ne repeint jamais sous un geste armé ; quitter la page 
   expect(lectures()).toBe(avant);
   await expect(b).toHaveText(/^Annuler/);
   expect(gestes(envois)).toEqual([]);
-  // Le téléphone se verrouille : le geste part tout de suite, il n'attend pas le retour.
+  // Annuler libère la relecture mise en attente.
+  await b.click();
+  await expect(b).toHaveText("Régler");
+  await expect.poll(lectures).toBeGreaterThan(avant);
+  expect(gestes(envois)).toEqual([]);
+});
+
+test("㉜ le téléphone se verrouille pendant le délai : le geste part tout de suite, il n'attend pas le retour", async ({ page }) => {
+  await poserSession(page, "passioadmin@gmail.com", 60000);
+  const envois = [];
+  await routerFonction(page, envois);
+  await page.goto("/pilotage/");
+  const b = page.locator("#afaire article", { hasText: "Un correctif est prêt" }).locator(".btn-regler");
+  await b.click();
+  await expect(b).toHaveText(/^Annuler/);
+  expect(gestes(envois)).toEqual([]);
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect.poll(() => gestes(envois).map((e) => e.corps)).toEqual([{ action: "fusionner", numero: 13 }]);
-  // Et la relecture mise en attente repart.
-  await expect.poll(lectures).toBeGreaterThan(avant);
 });
 
 test("㉗ la marche : elle se lit au doigt et au clavier, finit sur le total, et se retrouve mois par mois", async ({ page }) => {
@@ -886,6 +908,12 @@ test("㉘ le bouton retour du téléphone revient à l'accueil, au lieu de ferme
   await expect(page.locator("#accueil")).toBeVisible();
   await expect(page.locator("#retour")).toBeHidden();
   await expect(page.locator("#titreOnglet")).toHaveText("Pilotage");
+  // Un double toucher sur « ‹ » ne recule qu'une fois : on reste dans le pilotage.
+  await page.click('.plus button[data-tab="reglages"]');
+  await page.evaluate(() => { const r = document.getElementById("retour"); r.click(); r.click(); });
+  await expect(page.locator("#accueil")).toBeVisible();
+  await page.waitForTimeout(200);
+  expect(new URL(page.url()).pathname).toBe("/pilotage/");
   // Rouvrir la page sur une adresse de détail : la page, et « ‹ » ramène à l'accueil.
   await page.goto("/pilotage/#details");
   await expect(page.locator("#details")).toBeVisible();
@@ -923,4 +951,21 @@ test("㉚ la Sentinelle muette et les erreurs demandent le même geste : « Tout
   await page.click("#toutRegler");
   await expect(page.locator("#bandeauOk")).toContainText("2 problèmes pris en main.");
   expect(gestes(envois).map((e) => e.corps)).toEqual([{ action: "reparer", cible: "issue", numero: 556 }, { action: "relancer", cible: "sentinelle" }]);
+});
+
+test("㉛ un palier franchi : une bonne nouvelle dans la croissance, jamais un problème à régler", async ({ page }) => {
+  await poserSession(page);
+  const activation = { ...BASE.activation, inscrits: { ...BASE.activation.inscrits, total: 104, semaine: 9 } };
+  await routerFonction(page, [], etat({ activation }));
+  await page.goto("/pilotage/");
+  const palier = page.locator("#palier");
+  await expect(palier).toContainText("100 inscrits atteints");
+  await expect(palier).toContainText("Prochain palier : 300 inscrits.");
+  await expect(page.locator("#afaire")).not.toContainText("100 inscrits");
+  await expect(page.locator("#verdictDetail"), "il ne compte pas parmi les choses à régler").toHaveText("4 choses à régler.");
+  // La semaine suivante : retour dans le détail, plus rien sur l'accueil.
+  await page.unroute(FONCTION);
+  await routerFonction(page, [], etat({ activation: { ...activation, inscrits: { ...activation.inscrits, semaine: 1 } } }));
+  await page.click("#actualiser");
+  await expect(palier).toBeHidden();
 });

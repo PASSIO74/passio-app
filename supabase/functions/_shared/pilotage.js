@@ -252,6 +252,39 @@ export const PAGES_REGLAGE = Object.freeze({
   brevo: "https://app.brevo.com/",
 });
 
+// ─── PALIERS DE CROISSANCE (2026-11-01) ─────────────────────────────────────
+// Demande de Benjamin : « m'alerter quand je dois mettre en place quelque chose »
+// à mesure que les inscrits montent. Le plan de référence est
+// docs/PLAN_MONETISATION_2026-11-01.md (§ 9, même table) : ici, seulement le
+// palier atteint et le geste qui l'accompagne. Les seuils sont des INSCRITS
+// (compte exact en base) ; ceux du plan sont des ACTIFS — la carte le rappelle,
+// et un palier ne déclenche jamais un paiement à lui seul.
+export const PALIERS_CROISSANCE = Object.freeze([
+  { seuil: 0, nom: "Lancement", geste: "Densité d'abord : une ville, trois passions, recruter 15 à 20 hôtes. Aucune monétisation." },
+  { seuil: 100, nom: "100 inscrits", geste: "Vérifier que 2 à 4 rencontres réelles ont lieu chaque semaine ; installer la Session PASSIO hebdomadaire." },
+  { seuil: 300, nom: "300 inscrits", geste: "Mesurer les actifs par semaine et la rétention à 4 semaines ; lancer la structure (micro-entreprise) et le dépôt INPI s'ils ne sont pas faits." },
+  { seuil: 1000, nom: "1 000 inscrits", geste: "Relire les 5 seuils de la phase 2 (§ 3) ; si 3 organisateurs demandent à faire payer : prérequis légaux, puis billetterie (lot L4)." },
+  { seuil: 2000, nom: "2 000 inscrits", geste: "Phase 3 si la densité tient : PASSIO Orga et lieux partenaires ; PASSIO+ seulement au-delà de 2 000 ACTIFS par mois." },
+  { seuil: 5000, nom: "5 000 inscrits", geste: "Ouvrir la 2e ville avec un ambassadeur local ; PASSIO+ si la conversion mesurée le justifie." },
+  { seuil: 10000, nom: "10 000 inscrits", geste: "Phase 4 : sponsors d'événements, affiliation, financement (prêt d'honneur, Bourse French Tech)." },
+]);
+
+/**
+ * Le palier atteint par `total` inscrits, et s'il vient d'être franchi : les
+ * `semaine` inscrits des 7 derniers jours l'ont fait passer au-dessus du seuil.
+ * `null` si le total n'est pas mesuré — un total illisible n'est pas zéro.
+ */
+export function palierCroissance(total, semaine = 0) {
+  if (total === null || total === undefined || total === "") return null;
+  const t = Number(total);
+  if (!Number.isFinite(t) || t < 0) return null;
+  let i = 0;
+  while (i + 1 < PALIERS_CROISSANCE.length && t >= PALIERS_CROISSANCE[i + 1].seuil) i++;
+  const p = PALIERS_CROISSANCE[i], suivant = PALIERS_CROISSANCE[i + 1] || null;
+  const s = Math.max(0, Number(semaine) || 0);
+  return { ...p, rang: i, suivant, franchiCetteSemaine: p.seuil > 0 && t - s < p.seuil };
+}
+
 export function aFaire(d, maintenant = Date.now()) {
   const out = [];
   const ajoute = (x) => out.push({ couleur: COULEUR_PRIO[x.prio] || "gris", depuis: null, url: null, gestes: [], detail: "", reference: "", quoi: "", enCours: false, ...x });
@@ -441,6 +474,19 @@ export function aFaire(d, maintenant = Date.now()) {
     ajoute({ id: "masque:" + x.id, prio: 1, etiquette: "Masqué", depuis: x.le || null, titre: "Une publication a été masquée après " + (Number(x.signaleurs) || 0) + " signalements",
       quoi: "La laisse masquée. Rien n'est supprimé.", detail: x.extrait ? "« " + borne(x.extrait, 160) + " »" : "",
       gestes: [regler({ action: "masquage", id: x.id, decision: "garder" }, false), { libelle: "La rétablir", corps: { action: "masquage", id: x.id, decision: "retablir" } }] });
+  }
+  // Le palier de croissance (2026-11-01) : une bonne nouvelle, pas un problème. Pas de bouton à
+  // presser ; l'accueil le montre dans la croissance la semaine où il est franchi (`franchi`).
+  // Le total affiché là-haut d'abord (mêmes exclusions), celui des profils à défaut.
+  const u = d && d.utilisateurs;
+  const ins = d && d.activation && d.activation.inscrits;
+  const totalInscrits = ins && typeof ins.total === "number" ? ins.total : u ? u.total : null;
+  const pc = palierCroissance(totalInscrits, ins && typeof ins.semaine === "number" ? ins.semaine : u ? u.inscritsSemaine : 0);
+  if (pc) {
+    ajoute({ id: "croissance:" + pc.seuil, prio: 2, franchi: pc.franchiCetteSemaine, etiquette: pc.franchiCetteSemaine ? "Palier franchi" : "Croissance",
+      titre: (pc.seuil ? pc.nom + " atteints" : pc.nom) + " · " + Number(totalInscrits) + " inscrits",
+      detail: pc.geste + (pc.suivant ? " Prochain palier : " + pc.suivant.nom + "." : "")
+        + " Le plan compte des actifs, pas des inscrits : docs/PLAN_MONETISATION_2026-11-01.md § 9." });
   }
   const al = d && d.alertes;
   if (al && al.appareils === 0) {

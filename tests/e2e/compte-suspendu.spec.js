@@ -20,6 +20,10 @@ async function ouvrirConnexion(page, erreur) {
   await page.waitForSelector("#landing.active", { timeout: 25000 });
   await page.getByRole("button", { name: "Créer un compte" }).first().click();
   await page.waitForFunction(() => typeof onbDoAuth === "function" && typeof supa !== "undefined" && !!supa, null, { timeout: 25000 });
+  // `exitLandingAsAuth` présélectionne l'onglet dans un setTimeout de 50 ms :
+  // agir avant ferait basculer le mode sous le test (rouge vécu en CI le
+  // 2026-11-04 : « Choisis un nom d'utilisateur » au lieu du refus de connexion).
+  await expect(page.locator("#authTabSignup")).toHaveClass(/active/);
   await page.evaluate((err) => {
     supa.auth.signInWithPassword = async () => ({ data: { session: null, user: null }, error: err });
   }, erreur);

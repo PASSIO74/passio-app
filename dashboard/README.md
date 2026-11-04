@@ -106,6 +106,8 @@ erreur de démarrage). Journal borné dans `data/supervise.log`.
 | `Arreter-Pilotage.cmd` | arrête superviseur + serveur (repart à la prochaine session) |
 | `Connecter-Claude.cmd` | reconnecte Claude Code pour le pilotage (`/etat` : vérifier) — rien à redémarrer ensuite |
 
+⚠️ **`netstat` ne voit plus l'écoute de 4610** (Windows 11 build 26300, 2026-11-04) : les lanceurs passent par `scripts/pid-port.ps1`, et `Lancer-Pilotage.cmd` sonde d'abord `/api/health` : un serveur tenu par le superviseur s'ouvre au lieu de finir sur `EADDRINUSE`.
+
 ⚠️ **Le pilotage vit sur le disque système.** 22 plantages `ENOSPC` (disque
 plein) du serveur entre le 1er et le 10 septembre 2026 : à chaque écriture
 refusée (alertes, diagnostics, journal) le processus tombe, le superviseur le

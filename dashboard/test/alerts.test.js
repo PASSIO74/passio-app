@@ -26,7 +26,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const alerts = await import("../server/alerts.js");
-const { raise, onEvent, flushOffline, autoAcquitter, listAlerts, evaluerLenteur, _resetForTests, _setSinksForTests } = alerts;
+const { raise, onEvent, flushOffline, autoAcquitter, listAlerts, evaluerLenteur, resumerPic, _resetForTests, _setSinksForTests } = alerts;
 const sinks = await import("../server/notify-sinks.js");
 
 const T0 = Date.parse("2026-09-18T10:00:00Z");
@@ -362,4 +362,45 @@ test("retour : le passage périodique rattrape un historique où le retour n'a p
   const ouvertes = listAlerts().filter((a) => !a.acknowledged && a.level !== "info");
   assert.deepEqual(ouvertes.map((a) => a.ts), [T0], "seule la panne postérieure au retour reste ouverte");
   assert.ok(listAlerts().filter((a) => a.ackBy === "retour").length === 2);
+});
+
+// ─── Pic d'erreurs ───────────────────────────────────────────────────────────
+const erreur = (over = {}) => ({ type: "error", severity: "error", action: "window_error", message: "ReferenceError: x", device_id: "dev_a", screen: "feed", ...over });
+const pics = () => listAlerts().filter((a) => a.key === "spike");
+
+test("pic d'erreurs : 5 erreurs n'en font pas un ; la 6e lève une alerte qui dit appareils, erreur dominante et écran", () => {
+  vierge();
+  for (let i = 0; i < 5; i++) onEvent(erreur(), T0 + i);
+  assert.equal(pics().length, 0);
+  onEvent(erreur({ message: "autre", device_id: "dev_b", screen: "profil" }), T0 + 5);
+  assert.equal(pics().length, 1);
+  const [pic] = pics();
+  assert.equal(pic.level, "high", "le niveau ne change pas");
+  assert.equal(pic.message, "6 erreurs en 1 minute · 2 appareils · « ReferenceError: x »");
+  assert.equal(pic.meta.appareils, 2);
+  assert.equal(pic.meta.messages, 2);
+  assert.equal(pic.meta.screen, "feed");
+});
+
+test("pic d'erreurs : un seul appareil au singulier, message tronqué, erreurs rétrogradées et anciennes hors du compte", () => {
+  vierge();
+  for (let i = 0; i < 10; i++) onEvent(erreur({ severity: "warn" }), T0 + i);
+  assert.equal(pics().length, 0, "une erreur en warn n'alimente pas le pic");
+  for (let i = 0; i < 5; i++) onEvent(erreur(), T0 + i);
+  onEvent(erreur(), T0 + 2 * MIN);
+  assert.equal(pics().length, 0, "les erreurs de plus de 60 s sortent de la fenêtre");
+  vierge();
+  const long = "E".repeat(500);
+  for (let i = 0; i < 6; i++) onEvent(erreur({ message: long }), T0 + i);
+  assert.equal(pics()[0].message, "6 erreurs en 1 minute · 1 appareil · « " + "E".repeat(120) + " »");
+});
+
+test("resumerPic est pure : l'erreur la plus fréquente gagne, avec le premier bug et le premier écran connus", () => {
+  const r = resumerPic([
+    { device: "a", message: "rare", bug: "b_rare", screen: "s1" },
+    { device: "a", message: "frequente", bug: null, screen: null },
+    { device: "b", message: "frequente", bug: "b_freq", screen: "s2" },
+  ]);
+  assert.deepEqual(r, { n: 3, appareils: 2, messages: 2, message: "frequente", bug: "b_freq", screen: "s2" });
+  assert.deepEqual(resumerPic([]), { n: 0, appareils: 0, messages: 0, message: "erreur", bug: null, screen: null });
 });

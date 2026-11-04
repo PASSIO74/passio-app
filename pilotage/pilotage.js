@@ -42,9 +42,8 @@
   }
 
   // ─── Un toucher, et c'est parti (2026-11-04) ──────────────────────────────
-  // « Régler en un seul clic » : plus aucune boîte de confirmation du navigateur,
-  // qui faisait deux touchers pour un et n'envoyait rien sous WebKit (suite hors du
-  // socle iPhone depuis le 2026-10-11). Le toucher ARME le geste, qui part seul au bout de 5 s ; le bouton
+  // « Régler en un seul clic » : plus aucune boîte de confirmation du navigateur, qui
+  // faisait deux touchers pour un. Le toucher ARME le geste, qui part seul au bout de 5 s ; le bouton
   // affiche « Annuler (5) » : retoucher annule, ce qui rattrape un doigt qui glisse.
   // Quitter la page fait partir le geste tout de suite : celui qui a touché
   // « Régler » puis verrouille son téléphone ne doit pas le retrouver en attente.
@@ -233,12 +232,16 @@
   };
   window.addEventListener("popstate", () => afficher(vueDuLien()));
   $("retour").addEventListener("click", () => {
-    if (history.state && history.state.depuisPage) { history.back(); return; }
+    if ($("retour").hidden) return;
+    // Caché tout de suite : history.back() n'agit qu'un instant plus tard, et un double toucher
+    // reculerait deux fois, jusqu'à quitter le pilotage.
+    if (history.state && history.state.depuisPage) { $("retour").hidden = true; history.back(); return; }
     history.replaceState(null, "", location.pathname); afficher("accueil");
   });
   document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => aller(b.dataset.tab)));
 
   // ─── Appels ───────────────────────────────────────────────────────────────
+  let pageQuittee = false;
   async function appeler(corps) {
     const { data } = await sb.auth.getSession();
     const jeton = data && data.session && data.session.access_token;
@@ -249,8 +252,8 @@
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + jeton, apikey: cfg.anon },
       body: JSON.stringify(corps || { action: "etat" }),
       cache: "no-store",
-      // Un geste doit partir même si la page se ferme juste après (voir `armer`).
-      keepalive: action !== "etat" && action !== "inscrits",
+      // Un geste doit arriver même si la page se ferme juste après son départ (voir `armer`).
+      keepalive: pageQuittee && action !== "etat",
     });
     let j = null; try { j = await r.json(); } catch (_e) { /* corps illisible */ }
     if (!r.ok) { const e = new Error((j && j.error) || ("HTTP " + r.status)); e.status = r.status; throw e; }
@@ -523,6 +526,11 @@
       $("marche").setAttribute("aria-label", "De " + marche[0].total + " le " + dateJour(marche[0].jour, annee) + " à " + marche[marche.length - 1].total + " utilisateurs aujourd'hui.");
     }
     dessinerMarche();
+    // Un palier franchi cette semaine (_shared/pilotage.js) : une bonne nouvelle, et ce qu'elle appelle.
+    const zp = vider("palier");
+    const palier = Array.isArray(d.aFaire) ? d.aFaire.find((x) => x && x.franchi) : null;
+    zp.hidden = !palier;
+    if (palier) zp.append(el("strong", null, palier.titre), el("span", null, palier.detail));
     // Qui est là, maintenant : trois chiffres, jamais un faux zéro.
     const m5 = (u && u.maintenant) || null, j24 = (u && u.aujourdhui) || null;
     const au = vider("audience");
@@ -982,7 +990,7 @@
   }
   $("actualiser").addEventListener("click", actualiser);
   // Quitter la page fait partir ce qui était armé (voir `armer`).
-  function partirTout() { [...armes].forEach((a) => a.partir()); }
+  function partirTout() { pageQuittee = true; [...armes].forEach((a) => a.partir()); }
   window.addEventListener("pagehide", partirTout);
 
   // ─── Connexion ────────────────────────────────────────────────────────────
@@ -1029,6 +1037,7 @@
   sb && sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN") setTimeout(demarrer, 0); });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") { partirTout(); return; }
+    pageQuittee = false;
     if (!$("app").hidden && Date.now() - derniere > 20000) actualiser();
   });
   window.addEventListener("online", () => { majEtat(); if (!$("app").hidden) actualiser(); });
