@@ -42,8 +42,9 @@
 --     et 42 « j'aime » (17 / 9 / 16) ; 0 co-auteur ;
 --   · interactions par FIL (`post_id`) : 144 dans une publication existante,
 --     1 dans une activité, 121 dans un exemple, 123 dans un fil disparu
---     (61 `p_vlog_…`, 6 lives et étapes de carnet retirés, 50 au format réel :
---     publications et activités supprimées, la plus récente le 2026-09-01) ;
+--     (61 `p_vlog_…`, 12 lives et étapes de carnet retirés — 9 `live_…`,
+--     3 `carnetstep:…` —, 50 au format réel : publications et activités
+--     supprimées, la plus récente le 2026-09-01) ;
 --     0 interaction sans `post_id` ; 0 dont la cible (publication ou
 --     commentaire) contredit le fil ;
 --   · 1 publication d'un compte privé porte aujourd'hui 1 commentaire et
@@ -150,6 +151,13 @@
 --    CHECK des INSERT de `post_comments` / `post_likes`, et
 --    `comment_target_visible(comment_id, post_id)` dans celui de
 --    `comment_interactions` (risque résiduel consigné) ;
+--  · les lignes LAISSÉES et cachées par ③ (26 commentaires et 9 « j'aime » de
+--    l'ancien `p_vlog_…`, 73 interactions de `p_vlog_…`, `live_…`,
+--    `carnetstep:…`) ne sont lisibles que par leur auteur tant que leur fil
+--    n'existe pas ; une publication ou une ACTIVITÉ créée sous l'identifiant de
+--    ce fil (choisi par le client) les rendrait de nouveau lisibles. Les purger,
+--    ou contraindre l'identifiant à la création, reste à décider (correctifs de
+--    relecture de la PR) ;
 --  · les réactions aux RÉPONSES d'un commentaire supprimé (`srep_<date>`, que
 --    seul le fil rattache) restent dans une publication qui existe : lisibles
 --    par son seul public, affichées nulle part, effacées avec la publication ;
@@ -421,6 +429,11 @@ create index if not exists idx_ci_post on public.comment_interactions (post_id);
 -- client fabrique pour le contenu RÉEL — `uid()` (app-02), `"reel_" + uid()`
 -- (app-08), `"post_" + Date.now() + "_" + …` (app-03/05/07) — publications ET
 -- activités. Ni un exemple, ni l'ancien `p_vlog_…`, ni `live_…` / `carnetstep:…`.
+-- `posts` et `post_comments` (create trigger), `comment_interactions` (alter
+-- policy) sont déjà verrouillées ; ces deux-là non : un « j'aime » écrit entre le
+-- comptage et l'effacement fausserait la différence de comptes (faux ECHEC au
+-- verdict). Le verrou tient jusqu'à la fin de la transaction, sous lock_timeout.
+lock table public.post_likes, public.post_collaborators in share row exclusive mode;
 do $purge$
 declare
   forme   constant text := '^(x[0-9a-z]{8,16}|reel_x[0-9a-z]{8,16}|post_[0-9]{13}_[0-9a-z]{1,9})$';

@@ -154,7 +154,7 @@ create table public.post_comments (
   id text primary key, post_id text, author_id text constraint post_comments_author_id_fkey references public.profiles(id),
   content text, created_at timestamp default now());
 create table public.post_likes (post_id text not null, user_id text not null, primary key (post_id, user_id));
-create table public.post_collaborators (post_id text not null, user_id text not null, added_by text not null, created_at timestamptz default now());
+create table public.post_collaborators (post_id text not null, user_id text not null, added_by text not null, created_at timestamptz default now(), primary key (post_id, user_id));
 create table public.comment_interactions (
   id text primary key, comment_id text not null, post_id text, user_id text not null, kind text not null, payload text,
   created_at timestamptz not null default now(),
