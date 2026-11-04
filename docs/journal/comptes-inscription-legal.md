@@ -30,7 +30,9 @@
 - 🔞 LA PORTE D'ÂGE AVALAIT LA CRÉATION D'ACTIVITÉ — la saisie perdue, rien publié (2026-10-23)
 - ➕ CRÉER UN COMPTE SE VOIT DÈS L'ARRIVÉE — carte de bienvenue et barre du haut (2026-10-23)
 - 1️⃣ LA CARTE DE BIENVENUE N'A PLUS QU'UN BOUTON — celui que son message annonce (2026-11-03)
+- ➖ LE BOUTON « CRÉER UN COMPTE » QUITTE LA BARRE DU HAUT (2026-11-04)
 - 🔔 UXO-11 — « MISE À JOUR DISPONIBLE » AU TOUT PREMIER ÉCRAN : le worker annonçait sa première installation (2026-11-04)
+- 🔗 LE NOUVEAU VENU RETROUVE UNE PORTE D'INSCRIPTION — un lien sur la carte (2026-11-04)
 
 ---
 
@@ -532,3 +534,11 @@ Cause : `sw.js` postait `SW_UPDATED` à CHAQUE `activate`, installation initiale
 ⚠️ **UN TOAST VIT 3 s, `bootVisiteur` EN ATTEND 3,2** : lire l'écran à la fin du démarrage serait vert sur le code défectueux. La sonde compte les toasts au vol, par un `MutationObserver` posé en tête de document.
 Verrou : `tests/e2e/pwa-premiere-installation.spec.js` (3), le VRAI worker dans un contexte vierge. **Réinjection** : ancien défaut → ① et ③ rouges ; préfixe retiré → ③ rouge ; message supprimé → ② rouge (c'est le témoin : sans lui, une sonde cassée rendrait ① vert). Contrôle ponctuel hors suite, visiteur déjà installé avec deux workers réels (`register('./sw.js?maj=1')`) : la page recharge seule et l'ancien cache disparaît.
 ⚠️ **Le rouge de CI de cette PR n'était pas ce lot** : `compte-suspendu.spec.js` était la seule des sept suites passant de « Créer un compte » à l'onglet de connexion à ne pas attendre `#authTabSignup.active`, alors qu'`exitLandingAsAuth` repose l'onglet 50 ms après le clic. Sous la charge de la CI, son clic passait avant le minuteur (« Choisis un nom d'utilisateur » au lieu du refus). Mesuré : 50/50 vert en local avec et sans ce correctif ; minuteur élargi à 600 ms → même message que la CI, et vert une fois l'attente ajoutée.
+
+## 🔗 LE NOUVEAU VENU RETROUVE UNE PORTE D'INSCRIPTION — un lien sur la carte (2026-11-04)
+
+Retirer le bouton de la barre du haut (fiche ➖) reposait sur « il y est déjà une fois dans le fil » : ce n'était vrai que si des passions étaient déjà choisies, depuis la carte à un seul bouton du 2026-11-03. Un nouveau venu n'avait donc plus aucune porte d'inscription visible à l'arrivée, le défaut même des essais du 2026-10-23. Benjamin tranche le jour même : un LIEN « Créer un compte » (`.fr-welcome-signup`, `allerInscription('bienvenue')`, même `ctx` de télémétrie que le bouton) à côté de « J'ai déjà un compte ». La barre du haut reste vide.
+⚠️ **UN LIEN, JAMAIS UN BOUTON** : la carte reste à une seule action principale, et le compte des `.btn` le verrouille. Quand des passions sont déjà choisies, le lien n'existe pas : « Créer mon compte » y est déjà le bouton.
+⚠️ **« J'ai déjà un compte — me connecter » DEVIENT « J'ai déjà un compte » sur la carte** : le libellé long ne tenait pas sur la rangée. Mesuré à 375 px : 110 + 20 + 127 = 257 px dans une rangée de 280 px, sur une ligne, sans que la carte grandisse ; à 320 px les deux liens s'empilent. C'est la paire de mots du gate d'action engageante ; l'entrée des Paramètres garde le libellé long.
+⚠️ **UN `PASSIO_PORT` CHOISI À LA MAIN N'EST PAS UN PORT LIBRE.** Une autre session servait son propre worktree sur 8097 : `reuseExistingServer` a fait mesurer à cette suite SES fichiers, soit quatre rouges identiques avec et sans le lien. Lire ce que sert le port (`curl …/js/first-run.js`) avant de croire un résultat, surtout un résultat qui ne change pas entre deux variantes.
+Verrous : `tests/e2e/creer-compte-accueil.spec.js` (① bis, le geste complet jusqu'au formulaire ; ① quater, les deux états de la carte à 320 et 390 px) et `tests/e2e/first-run.spec.js` (« une seule action principale… »). **Réinjection** : lien retiré → 4 rouges ; lien changé en bouton → 2 rouges ; le témoin « elle s'affiche… » reste vert.
