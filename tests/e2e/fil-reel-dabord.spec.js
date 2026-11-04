@@ -249,3 +249,36 @@ test("⑩ un « Charger plus » pendant une lecture automatique n'est pas perdu"
   expect(r.apres, "puis il lit sa propre page").toBeGreaterThanOrEqual(2);
   expect(r.maxEnVol, "jamais deux lectures en même temps").toBe(1);
 });
+
+// ⑪ Le réalisme ne doit pas dépendre de l'HEURE d'ouverture. ⑨ était vert sur la
+// PR et rouge sur `main` une heure plus tard : le renvoi des publications
+// nocturnes à la veille au soir recollait parfois deux cartes d'un même auteur
+// (8 instants sur 144, mesuré le 2026-11-01). On reconstruit donc le contenu à
+// 144 instants simulés — un toutes les 20 minutes sur 48 h — et les invariants
+// doivent tenir à CHACUN. `_separerAuteurs` (app-01) les garantit par construction.
+test("⑪ les invariants de réalisme tiennent à toute heure d'ouverture", async ({ page }) => {
+  await bootOnboarded(page, null, 1, {});
+  const echecs = await page.evaluate(() => {
+    const vrai = Date.now;
+    const base = Date.UTC(2026, 10, 1, 0, 0, 0);
+    const out = [];
+    try {
+      for (let k = 0; k < 144; k++) {
+        const t = base + k * 20 * 60000;
+        Date.now = () => t;
+        const tri = buildSeed().posts.filter((p) => !p.isReel).sort((a, b) => b.createdAt - a.createdAt);
+        let memeAuteur = 0, memePhoto = 0, precedente = null, horsCadre = 0;
+        for (let i = 1; i < tri.length; i++) if (tri[i].authorId === tri[i - 1].authorId) memeAuteur++;
+        tri.forEach((p) => {
+          (p.comments || []).forEach((c) => { if (!(c.createdAt >= p.createdAt && c.createdAt <= t)) horsCadre++; });
+          if (!p.cover) return;
+          if (p.cover === precedente) memePhoto++;
+          precedente = p.cover;
+        });
+        if (memeAuteur || memePhoto || horsCadre) out.push(new Date(t).toISOString() + " auteur=" + memeAuteur + " photo=" + memePhoto + " cadre=" + horsCadre);
+      }
+    } finally { Date.now = vrai; }
+    return out;
+  });
+  expect(echecs, "instants où un invariant de réalisme tombe").toEqual([]);
+});

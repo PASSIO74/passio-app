@@ -345,6 +345,60 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
 
       log("storage : écriture cloisonnée (dépôt, move, copy, chemin fabriqué, conv)");
       await stor(B.token, `object/content/${sien}`, { method: "DELETE" }).catch(() => {});
+
+      // ── 12. Les relations SOCIALES ne se forgent pas pour autrui ───────────
+      //    (audit 2026-11-02, agent E). Trois écritures que l'application tente
+      //    ou qu'un attaquant tenterait, toutes en « ligne d'autrui » :
+      //    · B s'auto-accepte comme abonné d'A : `follows_accepter` n'ouvre
+      //      l'UPDATE qu'à la CIBLE (A) → 0 ligne ; sinon « compte privé » ne
+      //      protège plus rien ;
+      //    · B s'ajoute lui-même à une conversation d'A dont il n'est pas
+      //      membre : « Ecriture propre » n'admet que le créateur ou un inscrit
+      //      à l'événement lié → refus ;
+      //    · B change le RSVP d'A sur un événement (et donc la promotion depuis
+      //      la liste d'attente, B-02 : c'est le MÊME UPDATE) → 0 ligne.
+      //    ⚠️ Comme pour le post (2.), un UPDATE refusé ne LÈVE pas : on compte
+      //    les lignes, et on relit l'état depuis le propriétaire.
+      const upsert = { Prefer: "return=representation,resolution=merge-duplicates" };
+      await rest(A.token, "profiles", { method: "POST", headers: upsert, body: JSON.stringify({ id: A.uid, username: "e2e_authz_a", is_private: true }) });
+      const demande = await rest(B.token, "follows", { method: "POST", body: JSON.stringify({ follower_id: B.uid, following_id: A.uid }) });
+      expect(demande.status, "B demande à suivre A (compte privé)").toBeLessThan(300);
+      const autoAccept = await rest(B.token, `follows?follower_id=eq.${B.uid}&following_id=eq.${A.uid}`, { method: "PATCH", body: JSON.stringify({ status: "accepted" }) });
+      expect(Array.isArray(autoAccept.body) ? autoAccept.body.length : 0, "B s'auto-accepte comme abonné d'A → doit toucher 0 ligne").toBe(0);
+      const relation = await rest(A.token, `follows?follower_id=eq.${B.uid}&following_id=eq.${A.uid}&select=status`);
+      expect(Array.isArray(relation.body) && relation.body[0] && relation.body[0].status, "la demande reste `pending` côté A").toBe("pending");
+      log("auto-acceptation d'un suivi : 0 ligne, demande toujours en attente");
+
+      const convId = `conv_authz_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const conv = await rest(A.token, "conversations", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ id: convId, is_group: false, created_by: A.uid }) });
+      expect(conv.status, "A crée une conversation").toBeLessThan(300);
+      expect((await rest(A.token, "conv_members", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ conv_id: convId, user_id: A.uid }) })).status, "A en est membre").toBeLessThan(300);
+      const intrusion = await rest(B.token, "conv_members", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ conv_id: convId, user_id: B.uid }) });
+      expect(intrusion.status, "B s'ajoute à la conversation d'A sans y être invité → doit être refusé").toBeGreaterThanOrEqual(400);
+      const membres = await rest(A.token, `conv_members?conv_id=eq.${convId}&select=user_id`);
+      expect((Array.isArray(membres.body) ? membres.body : []).map((m) => m.user_id), "la conversation n'a qu'un membre : A").toEqual([A.uid]);
+      log("intrusion dans une conversation : refusée");
+
+      const evId = `evt_authz_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const ev = await rest(A.token, "events", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ id: evId, author_id: A.uid, organizer_id: A.uid, title: "authz", passion_id: "musique", city: "Paris", date_at: new Date(Date.now() + 86400000).toISOString(), max_attendees: 2 }) });
+      // ⚠️ L'INSERT d'`events` exige `adult_access_allowed()` : un compte e2e neuf
+      // n'a pas déclaré sa majorité. Si la règle refuse ici (403), le cas 12c est
+      // SAUTÉ en le disant — on ne confond pas « admission » et « RLS d'autrui ».
+      if (ev.status < 300) {
+        const rsvpA = await rest(A.token, "event_attendees", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ event_id: evId, user_id: A.uid, rsvp: "waitlist" }) });
+        if (rsvpA.status < 300) {
+          const promo = await rest(B.token, `event_attendees?event_id=eq.${evId}&user_id=eq.${A.uid}`, { method: "PATCH", body: JSON.stringify({ rsvp: "going" }) });
+          expect(Array.isArray(promo.body) ? promo.body.length : 0, "B change le RSVP d'A (= promotion cross-compte, B-02) → doit toucher 0 ligne").toBe(0);
+          const relu = await rest(A.token, `event_attendees?event_id=eq.${evId}&user_id=eq.${A.uid}&select=rsvp`);
+          expect(Array.isArray(relu.body) && relu.body[0] && relu.body[0].rsvp, "le RSVP d'A est intact").toBe("waitlist");
+          log("RSVP d'autrui : 0 ligne touchée (la liste d'attente n'a donc pas de sortie côté client — B-02)");
+        } else log(`12c sauté : RSVP d'A refusé (HTTP ${rsvpA.status}, admission 18+ non déclarée pour un compte e2e)`);
+      } else log(`12c sauté : création d'événement refusée (HTTP ${ev.status}, admission 18+ non déclarée pour un compte e2e)`);
+      await rest(A.token, `event_attendees?event_id=eq.${evId}`, { method: "DELETE" }).catch(() => {});
+      await rest(A.token, `events?id=eq.${evId}`, { method: "DELETE" }).catch(() => {});
+      await rest(A.token, `conv_members?conv_id=eq.${convId}`, { method: "DELETE" }).catch(() => {});
+      await rest(A.token, `conversations?id=eq.${convId}`, { method: "DELETE" }).catch(() => {});
+      await rest(B.token, `follows?follower_id=eq.${B.uid}`, { method: "DELETE" }).catch(() => {});
     } finally {
       // ── Nettoyage : A retire son propre post. Les comptes e2e sont purgés
       //    par `npm run purge:e2e` (suppression service_role).

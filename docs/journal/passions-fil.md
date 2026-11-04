@@ -714,8 +714,17 @@ autres restaient verts sans plus rien prouver. Ils éprouvent désormais « spor
 vérifie qu'elle n'est nommée par rien d'embarqué. Tout test qui veut une passion « hors socle » doit la choisir
 hors de `PASSIONS_EXEMPLES` aussi.
 
-Verrou : `tests/e2e/fil-reel-dabord.spec.js` (10) — ⑩ tombe sans l'attente de `_filReelEnVol` (réinjection
-faite) ; ①②⑤ tombent si `renderFeed` retrouve
+⚠️ **UN INVARIANT DE RÉALISME DOIT TENIR À TOUTE HEURE** (même jour, après la fusion) : ⑨ était vert sur la PR
+et ROUGE sur `main` une heure plus tard — le déploiement a été sauté. Le renvoi des publications nocturnes à la
+veille au soir (`_heureVraisemblable`) dépend de l'heure d'ouverture et recollait parfois deux cartes d'un même
+auteur (8 instants sur 144, balayage sur 48 h). `_separerAuteurs` défait chaque adjacence par échange de dates
+avec une carte plus ancienne d'un autre auteur : l'invariant est désormais GARANTI, et ⑪ le vérifie à 144
+instants simulés (`Date.now` remplacé le temps de `buildSeed`) — rouge sans le correctif, aux instants mêmes de
+la CI de `main`. Leçon : un contenu calculé à partir de l'heure se teste sur un balayage d'heures, jamais à
+l'instant du run.
+
+Verrou : `tests/e2e/fil-reel-dabord.spec.js` (11) — ⑪ tombe sans `_separerAuteurs` et ⑩ sans l'attente de
+`_filReelEnVol` (réinjections faites) ; ①②⑤ tombent si `renderFeed` retrouve
 `trierFilChronologique` ; ⑥ compte les lectures (exactement 3) ; ⑦⑧ tiennent la table et la couverture des
 passions cochées en production ; ⑨ les invariants de réalisme (plafond de « j'aime », étalement, aucune rafale
 d'auteur, aucune photo répétée deux fois de suite, commentaires dans le cadre, même fil à chaque ouverture).

@@ -32,7 +32,12 @@ test("① réveil : des échecs chez 2 comptes, rien en cours, pas de pause, pas
   assert.equal(doitReveillerSentinelle(base).reveiller, true);
   assert.equal(doitReveillerSentinelle({ ...base, comptesErreurs: 1 }).raison, "calme", "un seul compte : peut-être son appareil");
   assert.equal(doitReveillerSentinelle({ ...base, comptesErreurs: null }).raison, "calme", "pas de mesure : on ne réveille pas");
-  assert.equal(doitReveillerSentinelle({ ...base, enquetes: 1 }).raison, "enquete_en_cours");
+  // Enquêtes en parallèle (2026-11-01) : une ou deux en cours laissent une place ; au plafond, on ne réveille pas.
+  // Mutation : `enquetes >= REVEIL.enquetesMax` → `enquetes > 0` → rougit (une enquête bloquerait de nouveau tout le canal).
+  assert.equal(doitReveillerSentinelle({ ...base, enquetes: 1 }).reveiller, true, "une enquête en cours : il reste des places");
+  assert.equal(doitReveillerSentinelle({ ...base, enquetes: REVEIL.enquetesMax - 1 }).reveiller, true);
+  assert.equal(doitReveillerSentinelle({ ...base, enquetes: REVEIL.enquetesMax }).raison, "enquetes_saturees");
+  assert.equal(doitReveillerSentinelle({ ...base, enquetes: REVEIL.enquetesMax + 2 }).reveiller, false);
   assert.equal(doitReveillerSentinelle({ ...base, pause: true }).raison, "pause", "la pause du pilote gagne");
   assert.equal(doitReveillerSentinelle({ ...base, dernierRun: { etat: "in_progress", le: ilYa(120) } }).raison, "run_en_cours");
   assert.equal(doitReveillerSentinelle({ ...base, dernierRun: { etat: "completed", le: ilYa(REVEIL.runRecentMs / 60e3 - 1) } }).raison, "run_recent");

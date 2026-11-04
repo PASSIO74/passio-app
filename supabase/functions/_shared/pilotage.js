@@ -284,8 +284,17 @@ export function aFaire(d, maintenant = Date.now()) {
   // La capacité : une jauge en zone rouge est urgente, orange se prépare.
   const jg = d && d.capacite && Array.isArray(d.capacite.jauges) ? d.capacite.jauges : [];
   for (const j of jg.filter((x) => x.couleur === "rouge" || x.couleur === "orange")) {
+    const prix = Number(j.prix) > 0 ? " (~" + j.prix + " €/mois)" : "";
     ajoute({ id: "capacite:" + j.cle, prio: j.couleur === "rouge" ? 0 : 1, etiquette: String(j.pct).replace(".", ",") + " %", titre: j.libelle,
-      detail: j.couleur === "rouge" ? "Au-delà de 90 % du forfait : l'app peut ralentir ou refuser des inscriptions. Réglages › Protection pour alléger." : "Au-delà de 70 % du forfait : à surveiller." });
+      detail: (j.couleur === "rouge" ? "Au-delà de 90 % du forfait : l'app peut ralentir ou refuser des inscriptions. Réglages › Protection pour alléger." : "Au-delà de 70 % du forfait : c'est le moment d'agir, avant le mur.")
+        + (j.geste ? " Le geste : " + j.geste + prix : "") });
+  }
+  // Les contenus masqués par le pré-tri (2026-11-01) : ils attendent une décision.
+  for (const x of (sg && Array.isArray(sg.masques) ? sg.masques : [])) {
+    ajoute({ id: "masque:" + x.id, prio: 1, etiquette: "Masqué", depuis: x.le || null, titre: "Publication masquée après " + (Number(x.signaleurs) || 0) + " signalements",
+      detail: "Le pré-tri l'a retirée du fil en attendant ta décision. Rien n'est supprimé." + (x.extrait ? " « " + borne(x.extrait, 160) + " »" : ""),
+      gestes: [{ libelle: "Rétablir", corps: { action: "masquage", id: x.id, decision: "retablir" }, confirmation: "Rétablir cette publication dans le fil ? Les signalements seront classés sans suite." },
+        { libelle: "Laisser masquée", principal: true, corps: { action: "masquage", id: x.id, decision: "garder" }, confirmation: "Laisser cette publication masquée pour tous (son auteur la voit encore) ?" }] });
   }
   // Ce qui empêche le pilotage de bien voir ou d'agir.
   if (Array.isArray(d && d.nonLus) && d.nonLus.includes("github")) {
@@ -467,18 +476,64 @@ export function detailsErreurs(lignes, max = 8, maintenant = Date.now()) {
  * (mesurée le 2026-09-20, CLAUDE.md « LE MUR EST UNE CONNEXION WEBSOCKET »).
  * `estimation` = la valeur est un indicateur approché, et l'écran le dit.
  */
+// `geste` + `prix` (2026-11-01, docs/PASSIO_100K_AUTONOMIE.md §4) : ce qu'il
+// faut faire quand la jauge passe à l'orange, et ce que ça coûte par mois
+// (tarif public indicatif, en euros, à relire sur la page Pricing le jour du
+// geste). Le pilotage le dit au lieu de laisser le pilote chercher.
 export const PLAFONDS = {
-  connexions: { libelle: "Connexions en direct (comptes)", plafond: 500, unite: "" },
-  emails: { libelle: "E-mails d'inscription (24 h)", plafond: 300, unite: "" },
-  base: { libelle: "Base de données", plafond: 8 * 1024 ** 3, unite: "octets" },
-  stockage: { libelle: "Stockage des médias", plafond: 100 * 1024 ** 3, unite: "octets" },
+  connexions: { libelle: "Connexions en direct (comptes)", plafond: 500, unite: "",
+    geste: "Supabase › Billing : poser une alerte de budget, puis lever le spend cap (ou acheter des connexions temps réel).", prix: 10 },
+  emails: { libelle: "E-mails d'inscription (24 h)", plafond: 300, unite: "",
+    geste: "Passer Brevo sur une offre payante (ou Resend), puis relever « emails per hour » dans Supabase › Auth › Rate Limits.", prix: 20 },
+  base: { libelle: "Base de données", plafond: 8 * 1024 ** 3, unite: "octets",
+    geste: "Supabase › Settings › Compute : passer en Small, puis Medium si la latence reste haute (quelques minutes d'indisponibilité).", prix: 15 },
+  stockage: { libelle: "Stockage des médias", plafond: 100 * 1024 ** 3, unite: "octets",
+    geste: "Rien à changer avant longtemps : au-delà de 100 Go, Supabase facture le Go en plus.", prix: 5 },
+  // Estimée (2026-11-01) : le mur le plus probable du §4. Chaque mise en ligne
+  // fait retélécharger ~0,75 Mo à chaque appareil actif.
+  bandePassante: { libelle: "Bande passante de l'app (estimée, par mois)", plafond: 100 * 1024 ** 3, unite: "octets",
+    geste: "Grouper les mises en ligne, puis passer Netlify en Pro (1 To) ou l'app sur Cloudflare Pages.", prix: 19 },
   // Le plafond d'insertion de la télémétrie : 3 000/min en tout (`trg_debit_global`,
   // ouverture publique 2026-09-11). Sous `trg_debit_lot` (2026-10-16) : anciens
   // 1 800 à eux seuls, neufs + anonymes 2 400 (1 600 chacun) — un flot anonyme
   // n'aveugle plus les comptes, et l'aveuglement se juge sur les anciens
   // (`estAveugle`). Cette jauge reste le total reçu, repère de charge.
-  telemetrie: { libelle: "Télémétrie reçue (par minute)", plafond: 3000, unite: "" },
+  telemetrie: { libelle: "Télémétrie reçue (par minute)", plafond: 3000, unite: "",
+    geste: "Rien à acheter : l'échantillonnage suit le délestage. Si ça dure, Réglages › Protection › Économie.", prix: 0 },
 };
+
+/** Poids d'un téléchargement complet de l'app, compressé (mesuré le 2026-10-11). */
+export const OCTETS_PAR_VERSION = 0.75 * 1024 ** 2;
+/** Mises en ligne par mois retenues pour l'estimation (≈ 50 mesurées en octobre). */
+export const VERSIONS_PAR_MOIS = 40;
+/** La bande passante du mois, estimée : appareils actifs sur 24 h × versions × poids. */
+export function bandePassanteEstimee(appareils24h, versions = VERSIONS_PAR_MOIS) {
+  if (appareils24h == null || appareils24h === "") return null;
+  const a = Number(appareils24h);
+  if (!Number.isFinite(a) || a < 0) return null;
+  return Math.round(a * versions * OCTETS_PAR_VERSION);
+}
+
+/** Forfaits payés aujourd'hui (2026-11-01), en euros par mois. */
+export const FORFAITS = Object.freeze([
+  Object.freeze({ libelle: "Supabase Pro", prix: 25 }),
+  Object.freeze({ libelle: "Netlify (gratuit, 100 Go)", prix: 0 }),
+  Object.freeze({ libelle: "Brevo (gratuit, 300 e-mails/jour)", prix: 0 }),
+]);
+/**
+ * La facture : ce qui est payé aujourd'hui, et ce que coûteraient les gestes des
+ * jauges orange ou rouges. Une estimation, et l'écran le dit : les tarifs se
+ * relisent sur la page Pricing de chaque service le jour du geste.
+ */
+export function coutMensuel(js) {
+  const lignes = FORFAITS.map((f) => ({ libelle: f.libelle, prix: f.prix, aPrevoir: false }));
+  for (const j of Array.isArray(js) ? js : []) {
+    if (!j || (j.couleur !== "orange" && j.couleur !== "rouge") || !(Number(j.prix) > 0)) continue;
+    lignes.push({ libelle: j.libelle, prix: Number(j.prix), aPrevoir: true, geste: j.geste || "" });
+  }
+  const somme = (f) => lignes.filter(f).reduce((s, l) => s + l.prix, 0);
+  return { actuel: somme((l) => !l.aPrevoir), aPrevoir: somme((l) => l.aPrevoir), lignes };
+}
 /**
  * La veille est-elle AVEUGLE ? Quand le mur qui coupe ses signaux est atteint,
  * les lots légitimes sont refusés : les mesures deviennent BASSES sans que la
@@ -505,9 +560,10 @@ export function jauges(m) {
   const out = [];
   const ajoute = (cle, valeur, estimation, mur) => {
     const p = mur ? { ...PLAFONDS[cle], ...mur } : PLAFONDS[cle];
-    if (valeur == null || !Number.isFinite(Number(valeur))) { out.push({ cle, libelle: p.libelle, valeur: null, plafond: p.plafond, unite: p.unite, pct: null, couleur: "gris", estimation }); return; }
+    const g = { geste: p.geste || "", prix: Number(p.prix) || 0 };
+    if (valeur == null || !Number.isFinite(Number(valeur))) { out.push({ cle, libelle: p.libelle, valeur: null, plafond: p.plafond, unite: p.unite, pct: null, couleur: "gris", estimation, ...g }); return; }
     const pct = Math.round((Number(valeur) / p.plafond) * 1000) / 10;
-    out.push({ cle, libelle: p.libelle, valeur: Number(valeur), plafond: p.plafond, unite: p.unite, pct, couleur: pct >= 90 ? "rouge" : pct >= 70 ? "orange" : "vert", estimation });
+    out.push({ cle, libelle: p.libelle, valeur: Number(valeur), plafond: p.plafond, unite: p.unite, pct, couleur: pct >= 90 ? "rouge" : pct >= 70 ? "orange" : "vert", estimation, ...g });
   };
   ajoute("connexions", m && m.connexions, true);
   ajoute("emails", m && m.emails, true);
@@ -520,6 +576,8 @@ export function jauges(m) {
     ? { plafond: Number(m.telemetriePlafond), libelle: Number(m.telemetriePlafond) === PLAFONDS.telemetrie.plafond ? "Télémétrie reçue (pire minute, 5 min)" : "Télémétrie des comptes anciens (pire minute, 5 min)" }
     : null;
   ajoute("telemetrie", m && m.telemetrie, false, murTel);
+  // Rangée seulement quand on sait l'estimer (appareils 24 h lus).
+  if (m && m.bandePassante != null) ajoute("bandePassante", m.bandePassante, true);
   return out;
 }
 

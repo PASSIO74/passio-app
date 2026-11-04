@@ -176,7 +176,7 @@ test.describe("Carte de bienvenue", () => {
     await page.evaluate(() => renderFeed());
     await expect(carte).toBeVisible();
 
-    await page.locator("#frWelcome .fr-welcome-alt").click();  // « Explorer d'abord »
+    await page.locator("#frWelcome .fr-welcome-close").click();
     await expect(carte).toHaveCount(0);
     // Fermée, elle n'insiste pas DANS CETTE SESSION : un simple repeint du fil
     // ne la ramène pas.
@@ -233,10 +233,31 @@ test.describe("Carte de bienvenue", () => {
     await expect(carte).toContainText("Tes passions sont sur cet appareil");
     await expect(carte).toContainText("Crée ton compte pour les garder");
     await expect(carte).not.toContainText("Bienvenue sur PASSIO");
-    // Et la porte du panneau reste là, sous un libellé qui dit ce qu'elle fait.
-    await expect(carte.locator(".fr-welcome-cta")).toHaveText("Modifier mes passions");
-    await carte.locator(".fr-welcome-cta").click();
+    // Le seul bouton est celui que le message annonce : créer le compte
+    // (son ouverture est mesurée dans creer-compte-accueil.spec.js).
+    await expect(carte.locator(".btn")).toHaveCount(1);
+    await expect(carte.locator(".fr-welcome-cta")).toHaveText("Créer mon compte");
+    await expect(carte.locator(".fr-welcome-signin")).toHaveText("Me connecter");
+    // Et la porte du panneau reste là, en lien, sous un libellé qui dit ce
+    // qu'elle fait : la carte est la seule porte VISIBLE vers le panneau.
+    await expect(carte.locator(".fr-welcome-passions")).toHaveText("Modifier mes passions");
+    await carte.locator(".fr-welcome-passions").click();
     await expect(page.locator("#modalContent")).toContainText("Qu'est-ce qui te passionne ?");
+  });
+
+  // ⚠️ UN SEUL BOUTON (2026-11-03). La carte en alignait quatre à poids presque
+  // égal, dont deux en double : « Explorer d'abord » faisait ce que fait le ×,
+  // « Créer mon compte » ce que faisait la pastille de la barre du haut, retirée
+  // depuis (2026-11-04). On compte les BOUTONS (`.btn`), pas les libellés : un bouton de plus, réintroduit
+  // sous un autre nom, rougit ici.
+  test("une seule action principale — choisir ses passions —, le reste en lien", async ({ page }) => {
+    await bootVisiteur(page);
+    const carte = page.locator("#frWelcome");
+    await expect(carte).toBeVisible({ timeout: 15000 });
+    await expect(carte.locator(".btn")).toHaveCount(1);
+    await expect(carte.locator(".fr-welcome-cta")).toHaveText("Choisir mes passions");
+    await expect(carte.locator(".fr-welcome-lien")).toHaveCount(1);
+    await expect(carte.locator(".fr-welcome-signin")).toHaveText("J'ai déjà un compte — me connecter");
   });
 });
 
@@ -386,7 +407,7 @@ test.describe("Personnalisation", () => {
 test.describe("Tour contextuel", () => {
   test("trois indications au maximum, non bloquantes, mémorisées, relançables", async ({ page }) => {
     await bootVisiteur(page);
-    await page.locator("#frWelcome .fr-welcome-alt").click(); // libère la place
+    await page.locator("#frWelcome .fr-welcome-close").click(); // libère la place
 
     const bulle = page.locator(".fr-tip");
     await expect(bulle).toBeVisible({ timeout: 15000 });
@@ -427,7 +448,7 @@ test.describe("Tour contextuel", () => {
 
   test("navigation clavier : Entrée active une seule fois, Échap ferme", async ({ page }) => {
     await bootVisiteur(page);
-    await page.locator("#frWelcome .fr-welcome-alt").click();
+    await page.locator("#frWelcome .fr-welcome-close").click();
     await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 15000 });
 
     // Le bouton « Compris » reçoit le focus : la bulle est utilisable au clavier.
@@ -1187,7 +1208,7 @@ test.describe("Cadrage mobile", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 
       // Les actions de la carte tiennent dans l'écran et sont assez grandes.
-      for (const sel of ["#frWelcome .fr-welcome-cta", "#frWelcome .fr-welcome-alt", "#frWelcome .fr-welcome-close"]) {
+      for (const sel of ["#frWelcome .fr-welcome-cta", "#frWelcome .fr-welcome-signin", "#frWelcome .fr-welcome-close"]) {
         const b = await page.locator(sel).boundingBox();
         expect(b.height).toBeGreaterThanOrEqual(43.5);
         expect(b.x).toBeGreaterThanOrEqual(-0.5);

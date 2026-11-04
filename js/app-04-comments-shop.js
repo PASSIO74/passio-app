@@ -212,7 +212,7 @@ function confirmDeletePost(postId) {
   const preview = (post.text || "").slice(0, 80) + (post.text && post.text.length > 80 ? "…" : "");
   const html = `
     <div class="modal-handle"></div>
-    <span class="modal-close" onclick="closeModal()">×</span>
+    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
     <div class="pay-modal-head">
       <div class="pay-modal-emoji">🗑</div>
       <div class="pay-modal-title">Supprimer ce post ?</div>
@@ -2668,12 +2668,29 @@ function hydrateConvsFromIDB() {
   }).catch(function() {});
 }
 
+// ⚠️ LE VERROU DE DÉCONNEXION VAUT AUSSI POUR LES CONVERSATIONS (D-01, audit
+// du 2026-11-02). `doLogout` purge localStorage ET IndexedDB, puis
+// `location.reload()` 1,2 s plus tard déclenche `beforeunload`, où `supaInit`
+// a branché `saveConversationsNow` : `conversationsState` — encore en mémoire
+// avec les messages privés du compte sortant — était RÉÉCRIT dans les deux
+// stores. Mesuré au banc : après déconnexion + rechargement, « Message privé
+// de A » était de retour dans `passio_conversations_v1`, dans IndexedDB et dans
+// `getConversations()` du compte suivant. `saveState` consulte `_accountPurged`
+// depuis le 2026-08-12 ; ces deux fonctions ne le faisaient pas (la fiche de
+// `sortirCompteSansSession`, app-08, le disait déjà). Même verrou, même règle :
+// une fois la purge faite, plus rien ne s'écrit. Verrou :
+// audit-2026-11-navigation.spec.js ⑤ (rouge sur le code d'avant).
+function _conversationsPurgees() {
+  try { return typeof _accountPurged !== "undefined" && _accountPurged === true; } catch (e) { return false; }
+}
 function saveConversations() {
+  if (_conversationsPurgees()) return;
   // Debounce : évite des dizaines d'écritures localStorage en rafale.
   // La déduplication (parcours de TOUTES les convs + messages) est aussi dans le
   // debounce : elle tournait en synchrone à CHAQUE appel (jank sur chaque envoi).
   clearTimeout(_saveConvTimer);
   _saveConvTimer = setTimeout(function() {
+    if (_conversationsPurgees()) return;
     if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
     try { localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState)); } catch(e) {}
     // Store DURABLE (IndexedDB, sans limite ~5 Mo) : si le localStorage ci-dessus
@@ -2685,6 +2702,7 @@ function saveConversations() {
 // Sauvegarde immédiate pour les cas critiques (fermeture de page, etc.)
 function saveConversationsNow() {
   clearTimeout(_saveConvTimer);
+  if (_conversationsPurgees()) return;
   if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
   try { localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState)); } catch(e) {}
   if (window.idbConvSave) window.idbConvSave(conversationsState);
@@ -2731,7 +2749,7 @@ function renderMessageFilters() {
 
 function openNewMessage() {
   var html = `
-    <span class="modal-close" onclick="closeModal()">×</span>
+    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
     <div style="font-weight:800;font-size:16px;margin-bottom:14px;">Nouveau message</div>
     <div style="position:relative;">
       <input id="_nmSearch" type="text" class="input" placeholder="Chercher un utilisateur…" autocomplete="off"
@@ -3312,7 +3330,7 @@ async function openUserProfile(authorId, source) {
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
   var html = '\
-    <span class="modal-close" onclick="closeModal()" style="z-index:20;">×</span>\
+    <span class="modal-close" aria-label="Fermer" onclick="closeModal()" style="z-index:20;">×</span>\
     \
     <!-- OPTIONS DU PROFIL VISITE : voir openVisitedProfileMenu ci-dessus. -->\
     <button class="profile-dots-btn on-cover" style="right:56px;z-index:20;" onclick="openVisitedProfileMenu(event,\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="Options" aria-label="Options du profil" aria-haspopup="menu">⋯</button>\
@@ -4008,7 +4026,18 @@ function _demanderMotifSignalement(quoi) {
     };
     window._signalementValider = function () {
       var el = document.getElementById("signalementMotif");
-      fini(el ? String(el.value || "").trim() : "");
+      var motif = el ? String(el.value || "").trim() : "";
+      // ⚠️ UN MOTIF VIDE N'EST PAS UN SIGNALEMENT (audit 2026-11-02, E-05) : la
+      // fenêtre existait précisément pour que la modération reçoive autre chose
+      // qu'un identifiant nu, mais « Envoyer » acceptait le champ vide — les deux
+      // signalements de production ont `reason=''`. On garde la fenêtre ouverte
+      // et on le dit ; renoncer reste possible par « Annuler ».
+      if (motif.length < 3) {
+        try { toast("Dis-nous en deux mots ce qui ne va pas (3 caractères au moins).", "warning"); } catch (e) {}
+        try { if (el) el.focus(); } catch (e) {}
+        return;
+      }
+      fini(motif);
       try { closeModal(); } catch (e) {}
     };
     window._signalementAnnuler = function () { fini(null); try { closeModal(); } catch (e) {} };
@@ -4033,12 +4062,29 @@ function _demanderMotifSignalement(quoi) {
       // n'appelle `_signalementAnnuler` : sans ce guetteur, la promesse restait
       // PENDANTE À VIE et l'appelant ne reprenait jamais la main. Un abandon
       // doit se prononcer, comme un refus.
+      // ⚠️ ET CES QUATRE CHEMINS NE VIDENT PAS LA FENÊTRE (revue du 2026-11-03) :
+      // `closeModal` retire seulement `.active` du fond, le champ RESTE dans
+      // `#modalContent`. Le guetteur qui n'attendait que la disparition du champ
+      // ne se prononçait donc qu'à l'ouverture de la modale SUIVANTE — d'ici là,
+      // `reportMessage`/`reportPost`/`reportUser`/`reportStory` restaient
+      // suspendus. On guette aussi la classe du fond : `.active` perdue = fenêtre
+      // fermée = abandon, sur-le-champ. « Envoyer » et « Annuler » appellent
+      // `fini` AVANT `closeModal` : `fait` interdit la seconde résolution.
+      // Le champ est comparé par IDENTITÉ (`isConnected`), jamais par son id : une
+      // seconde fenêtre de motif ouverte par-dessus porte le même id, et la
+      // première promesse ne doit pas lui survivre.
       var racine = document.getElementById("modalContent") || document.body;
+      var fond = document.getElementById("modalBackdrop");
+      var abandonnee = function () {
+        if (!champ || !champ.isConnected) return true;
+        return !!(fond && !fond.classList.contains("active"));
+      };
       if (window.MutationObserver && racine) {
         observateur = new MutationObserver(function () {
-          if (!document.getElementById("signalementMotif")) fini(null);
+          if (abandonnee()) fini(null);
         });
         observateur.observe(racine, { childList: true, subtree: true });
+        if (fond) observateur.observe(fond, { attributes: true, attributeFilter: ["class"] });
       }
     } catch (e) {
       // ⚠️ ON N'ENCHAÎNE PAS SUR UN MOTIF VIDE. Un `catch` large ici masquerait
@@ -4265,8 +4311,15 @@ function renderMessages() {
 
     // Avatar de la conv : photo de groupe, sinon photo de profil live de l'autre, sinon couleur+emoji.
     const _convU = c.isGroup ? null : { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
+    // ⚠️ `_cssUrl`, comme l'en-tête de la conversation (plus bas) et le panneau
+    // du groupe (app-05) : `passioThumb` TRANSFORME, il ne désinfecte pas (audit
+    // D du 2026-11-02 — une `groupPhoto` « javascript: » traversait intacte dans
+    // ce `url(` ; le socle de `audit-echappement` créditait à tort cette branche
+    // de `safeUrlAttr`). Aujourd'hui la photo de groupe n'est écrite que par
+    // l'appareil de son créateur (data URL), mais une ligne serveur ou une fusion
+    // multi-appareils en ferait une donnée d'autrui : le contexte décide.
     const avatarStyle = (c.isGroup && c.groupPhoto)
-      ? `background:url(${passioThumb(c.groupPhoto, 192)}) center/cover;font-size:0;`
+      ? `background:url('${_cssUrl(passioThumb(c.groupPhoto, 192)) || ""}') center/cover;font-size:0;`
       : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`);
     const _convAvInner = (c.isGroup && c.groupPhoto) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
 
@@ -4537,6 +4590,24 @@ async function _fusionnerMessagesServeur(convId, displayName, thread) {
         if (rm) { if (m.myReact) rm.myReact = m.myReact; if (m.status && !rm.status) rm.status = m.status; return rm; }
         return m;
       });
+
+      // Les retraits « pour tous » rejoués par `supaLoadMessages` atteignent la
+      // copie locale (sinon un retrait manqué en temps réel ne quittait jamais
+      // l'appareil) — seulement si l'auteur de la copie est l'expéditeur de la
+      // ligne de contrôle, et jamais sur un message que le serveur rend encore.
+      var _retraits = (supaMessages && supaMessages._retraitsPourTous) || [];
+      if (_retraits.length && typeof _ctrlSuppressionAutorisee === "function") {
+        var _parCible = {};
+        _retraits.forEach(function (x) {
+          if (!x || !x.target) return;
+          if (!Object.prototype.hasOwnProperty.call(_parCible, x.target)) _parCible[x.target] = [];
+          _parCible[x.target].push(x.from);
+        });
+        messages = messages.filter(function (m) {
+          if (!m || !m.id || remoteMap[m.id] || !Object.prototype.hasOwnProperty.call(_parCible, m.id)) return true;
+          return !_parCible[m.id].some(function (qui) { return _ctrlSuppressionAutorisee(m, qui); });
+        });
+      }
 
       // Ajouter les messages Supabase qui n'existent pas localement
       var localIds = new Set((c2.messages || []).map(function(m) { return m.id; }).filter(Boolean));
@@ -4950,7 +5021,7 @@ function _wireMsgActions(thread, convId) {
 // Scroll jusqu'au message cité (surbrillance brève).
 function _jumpToMsg(mid) {
   if (!mid) return;
-  var el = document.querySelector('.conv-bubble-wrap[data-mid="' + mid + '"]');
+  var el = document.querySelector('.conv-bubble-wrap[data-mid="' + (window.CSS && CSS.escape ? CSS.escape(mid) : mid) + '"]');
   if (!el) { toast("Message introuvable (peut-être plus ancien)"); return; }
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   var b = el.querySelector(".conv-bubble");
@@ -5007,14 +5078,47 @@ function _openMsgActions(convId, msgId) {
       '<div class="csetting-label"' + (danger?' style="color:#ef4444;"':'') + '>' + label + '</div></div>';
   }
   var canCopy = m.text && !/^\{/.test(m.text);
+  // ⚠️ LES IDENTIFIANTS SONT ÉCRITS PAR D'AUTRES COMPTES (audit 2026-11-03) :
+  // `conv_messages.id` et `conversations.id` sont posés par l'EXPÉDITEUR, sans
+  // forme imposée par le serveur. Concaténés tels quels dans un onclick, un
+  // identifiant forgé (`x'),alert(1),('`) s'exécutait chez quiconque appuyait
+  // longuement sur le message — XSS stockée, même famille que B-01. Le rendu
+  // des bulles les échappait (`data-mid`, escapeHtml) ; ce menu, non.
+  var cj = escapeJsArg(convId), mj = escapeJsArg(msgId);
   openModal(
     '<div class="modal-handle"></div>' + reactRow +
-    item('↩️', 'Répondre', "_setReplyTo('" + convId + "','" + msgId + "')") +
-    (canCopy ? item('📋', 'Copier le texte', "_copyMsg('" + convId + "','" + msgId + "')") : '') +
-    item('↪️', 'Transférer', "_forwardPick('" + convId + "','" + msgId + "')") +
-    item('🗑️', 'Supprimer pour moi', "_deleteMsgForMe('" + convId + "','" + msgId + "')", true) +
-    (isMe ? item('🗑️', 'Supprimer pour tous', "_deleteMsgForAll('" + convId + "','" + msgId + "')", true) : '')
+    item('↩️', 'Répondre', "_setReplyTo('" + cj + "','" + mj + "')") +
+    (canCopy ? item('📋', 'Copier le texte', "_copyMsg('" + cj + "','" + mj + "')") : '') +
+    item('↪️', 'Transférer', "_forwardPick('" + cj + "','" + mj + "')") +
+    // Signaler CE message (E-08, DSA : un contenu se signale, pas seulement son
+    // auteur) — jamais pour les miens ni pour les messages système.
+    (!isMe && m.from ? item('🚩', 'Signaler ce message', "reportMessage('" + cj + "','" + mj + "')") : '') +
+    item('🗑️', 'Supprimer pour moi', "_deleteMsgForMe('" + cj + "','" + mj + "')", true) +
+    (isMe ? item('🗑️', 'Supprimer pour tous', "_deleteMsgForAll('" + cj + "','" + mj + "')", true) : '')
   );
+}
+
+// Signaler un MESSAGE (E-08). Même contrat que les autres portes de signalement :
+// authentification, motif obligatoire, verdict lu, accusé de réception. La cible
+// est l'identifiant serveur du message (`reports.target_type = 'message'`, déjà
+// admis par la contrainte de la table et par `scripts/moderation.js`, qui sait le
+// retirer) ; le motif ne porte jamais le contenu du message, la modération le
+// relit en base.
+async function reportMessage(convId, msgId) {
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
+  if (r.m.from === "me" || !r.m.from) return;
+  try {
+    if (typeof requireAuthentication === "function" && !requireAuthentication("signaler")) return;
+  } catch (e) {}
+  var motif = await _demanderMotifSignalement("ce message");
+  if (motif === null) return;   // annulé
+  var ok = false;
+  try { if (typeof supaReport === "function") ok = await supaReport("message", msgId, motif); } catch (e) { ok = false; }
+  closeModal();
+  toast(ok
+    ? "🚩 Message signalé. Notre équipe va vérifier."
+    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  if (ok) _accuserReceptionSignalement();
 }
 
 function _reactAndClose(convId, msgId, emoji) { closeModal(); _toggleReaction(convId, msgId, emoji); }
@@ -5638,7 +5742,7 @@ function _setMsgStatus(convId, msgId, status) {
   m.status = status;
   saveConversations();
   if (window._openedConvId !== convId) return;
-  var holder = document.querySelector('#convFpThread [data-msgst="' + msgId + '"]');
+  var holder = document.querySelector('#convFpThread [data-msgst="' + (window.CSS && CSS.escape ? CSS.escape(msgId) : msgId) + '"]');
   if (holder) { holder.innerHTML = _msgStatusIndHtml(convId, msgId, status); return; }
   // Holder absent (message hors page affichée) : repli sur le re-render complet.
   try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}

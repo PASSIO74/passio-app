@@ -1,0 +1,159 @@
+[
+  {
+    "wf": "sentinelle-autonome",
+    "cron_min": 60,
+    "runs_lus": 100,
+    "plus_ancien_lu": "2026-10-14T00:25",
+    "sched_7j": 29,
+    "attendus_7j": 168,
+    "taux_service_pct": 17,
+    "succes_7j": 29,
+    "conclusions_7j": {
+      "success": 29
+    },
+    "ecart_median_h": "5.83",
+    "ecart_max_h": "7.64",
+    "dernier_succes_sched": "2026-11-02T07:46:36Z",
+    "age_dernier_succes_h": "9.4",
+    "dernier_run": "2026-11-02T11:40:13Z pull_request success"
+  },
+  {
+    "wf": "sentinelle-distante",
+    "cron_min": 240,
+    "runs_lus": 100,
+    "plus_ancien_lu": "2026-10-04T23:10",
+    "sched_7j": 21,
+    "attendus_7j": 42,
+    "taux_service_pct": 50,
+    "succes_7j": 21,
+    "conclusions_7j": {
+      "success": 21
+    },
+    "ecart_median_h": "8.73",
+    "ecart_max_h": "9.56",
+    "dernier_succes_sched": "2026-11-02T06:03:43Z",
+    "age_dernier_succes_h": "11.1",
+    "dernier_run": "2026-11-02T06:03:43Z schedule success"
+  },
+  {
+    "wf": "veille-production",
+    "cron_min": 30,
+    "runs_lus": 100,
+    "plus_ancien_lu": "2026-10-15T14:20",
+    "sched_7j": 31,
+    "attendus_7j": 336,
+    "taux_service_pct": 9,
+    "succes_7j": 31,
+    "conclusions_7j": {
+      "success": 31
+    },
+    "ecart_median_h": "5.41",
+    "ecart_max_h": "7.28",
+    "dernier_succes_sched": "2026-11-02T08:06:04Z",
+    "age_dernier_succes_h": "9.1",
+    "dernier_run": "2026-11-02T08:06:04Z schedule success"
+  },
+  {
+    "wf": "pilotage-veille",
+    "cron_min": 10,
+    "runs_lus": 100,
+    "plus_ancien_lu": "2026-10-16T14:18",
+    "sched_7j": 33,
+    "attendus_7j": 1008,
+    "taux_service_pct": 3,
+    "succes_7j": 33,
+    "conclusions_7j": {
+      "success": 33
+    },
+    "ecart_median_h": "5.11",
+    "ecart_max_h": "7.05",
+    "dernier_succes_sched": "2026-11-02T08:15:13Z",
+    "age_dernier_succes_h": "8.9",
+    "dernier_run": "2026-11-02T08:15:13Z schedule success"
+  },
+  {
+    "wf": "digest",
+    "cron_min": 1440,
+    "runs_lus": 53,
+    "plus_ancien_lu": "2026-09-18T13:20",
+    "sched_7j": 7,
+    "attendus_7j": 7,
+    "taux_service_pct": 100,
+    "succes_7j": 7,
+    "conclusions_7j": {
+      "success": 7
+    },
+    "ecart_median_h": "24.78",
+    "ecart_max_h": "26.70",
+    "dernier_succes_sched": "2026-11-02T16:21:14Z",
+    "age_dernier_succes_h": "0.8",
+    "dernier_run": "2026-11-02T16:21:14Z schedule success"
+  },
+  {
+    "wf": "disponibilite",
+    "cron_min": 10,
+    "runs_lus": 100,
+    "plus_ancien_lu": "2026-10-16T06:21",
+    "sched_7j": 33,
+    "attendus_7j": 1008,
+    "taux_service_pct": 3,
+    "succes_7j": 33,
+    "conclusions_7j": {
+      "success": 33
+    },
+    "ecart_median_h": "4.87",
+    "ecart_max_h": "7.57",
+    "dernier_succes_sched": "2026-11-02T09:46:39Z",
+    "age_dernier_succes_h": "7.4",
+    "dernier_run": "2026-11-02T09:46:39Z schedule success"
+  },
+  {
+    "wf": "controle-realtime",
+    "cron_min": null,
+    "runs_lus": 6,
+    "plus_ancien_lu": "2026-09-12T10:04",
+    "sched_7j": 0,
+    "attendus_7j": null,
+    "taux_service_pct": null,
+    "succes_7j": 0,
+    "conclusions_7j": {},
+    "age_dernier_succes_h": "jamais",
+    "dernier_run": "2026-09-12T18:01:20Z workflow_dispatch success"
+  },
+  {
+    "wf": "sauvegarde",
+    "cron_min": 1440,
+    "runs_lus": 53,
+    "plus_ancien_lu": "2026-09-12T08:40",
+    "sched_7j": 7,
+    "attendus_7j": 7,
+    "taux_service_pct": 100,
+    "succes_7j": 7,
+    "conclusions_7j": {
+      "success": 7
+    },
+    "ecart_median_h": "24.24",
+    "ecart_max_h": "24.85",
+    "dernier_succes_sched": "2026-11-02T09:54:51Z",
+    "age_dernier_succes_h": "7.2",
+    "dernier_run": "2026-11-02T09:54:51Z schedule success"
+  },
+  {
+    "wf": "moderation-alerte",
+    "cron_min": 1440,
+    "runs_lus": 56,
+    "plus_ancien_lu": "2026-09-11T16:42",
+    "sched_7j": 7,
+    "attendus_7j": 7,
+    "taux_service_pct": 100,
+    "succes_7j": 7,
+    "conclusions_7j": {
+      "success": 7
+    },
+    "ecart_median_h": "24.73",
+    "ecart_max_h": "26.58",
+    "dernier_succes_sched": "2026-11-02T16:06:09Z",
+    "age_dernier_succes_h": "1.1",
+    "dernier_run": "2026-11-02T16:06:09Z schedule success"
+  }
+]

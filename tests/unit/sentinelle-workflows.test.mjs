@@ -72,6 +72,8 @@ args=("$@")
 jqexpr=""; prev=""
 for a in "$@"; do if [ "$prev" = "--jq" ]; then jqexpr="$a"; fi; prev="$a"; done
 tout="$*"
+# Échec simulé (contre-revue du 2026-11-03) : une commande qui contient FAUX_ECHEC échoue.
+if [ -n "\${FAUX_ECHEC:-}" ] && [[ "$tout" == *"\${FAUX_ECHEC}"* ]]; then echo "faux gh : échec simulé : $tout" >&2; exit 1; fi
 corps=""
 case "$tout" in
   "issue list"*"--label disponibilite"*) corps="$(cat "$FX/issues-dispo.json")" ;;
@@ -87,8 +89,11 @@ case "$tout" in
   "pr view"*) corps="$(cat "$FX/pr-view.json")" ;;
   "api user"*) corps='{"login":"PASSIO74"}' ;;
   "api"*"/commits/"*"/pulls"*) corps="$(cat "$FX/commit-pulls.json")" ;;
+  # Le commit lui-même (message) et une PR par numéro : le repli de la gouvernance quand l'index est vide.
+  "api"*"/commits/"*) corps="$(cat "$FX/commit.json")" ;;
   "api"*"/pulls/"*"/files"*) corps="$(cat "$FX/pr-files.json")" ;;
   "api"*"/pulls/"*"/reviews"*) corps="[]" ;;
+  "api"*"/pulls/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/pulls/([0-9]+).*#\\1#')"; corps="$(cat "$FX/pr-$n.json")" ;;
   "api"*"/issues/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/issues/([0-9]+).*#\\1#')"; corps="$(cat "$FX/issue-$n.json")" ;;
   "issue create"*) printf '%s :: jeton=%s\\n' "$tout" "\${GH_TOKEN:-}" >> "$LOG"; echo "https://github.com/o/r/issues/999"; exit 0 ;;
   "issue edit"*|"issue comment"*|"issue reopen"*|"issue close"*|"label create"*|"pr merge"*)
@@ -224,37 +229,69 @@ test("veilleur : un run vivant (en cours, en file, ou qui ATTEND un runner) post
   // Mutation W4 : retirer `[ "${runs}" -eq 0 ]` → rougit (relance malgré le run).
   // Mutation : retirer `.status == "pending"` / `"waiting"` / `"requested"` du jq → rougit
   // (relance à 20 min pendant qu'un run attend un runner : deux runs sur la même enquête).
+  const TA = "[SENTINELLE] erreur A · 0000000a";
   for (const status of ["in_progress", "queued", "pending", "waiting", "requested"]) {
     fixtures({
-      "issues-open": [{ number: 500, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u500" }],
-      "prs-all": [], "runs-claude": [{ status, conclusion: null, createdAt: iso(25), url: "run1" }],
+      "issues-open": [{ number: 500, title: TA, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u500" }],
+      "prs-all": [], "runs-claude": [{ status, conclusion: null, createdAt: iso(25), url: "run1", displayTitle: TA }],
     });
     const r = jouer(etape(SA, "detecter", "Veilleur").run, { JETON_SENTINELLE: "JETON-PERSO" });
     assert.equal(r.code, 0, r.sortie);
     assert.equal(r.log.trim(), "", "run " + status + " : aucune relance\n" + r.log);
   }
   fixtures({
-    "issues-open": [{ number: 500, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u500" }],
-    "prs-all": [], "runs-claude": [{ status: "completed", conclusion: "success", createdAt: iso(90), url: "run0" }],
+    "issues-open": [{ number: 500, title: TA, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u500" }],
+    "prs-all": [], "runs-claude": [{ status: "completed", conclusion: "success", createdAt: iso(90), url: "run0", displayTitle: TA }],
   });
   const r = jouer(etape(SA, "detecter", "Veilleur").run, { JETON_SENTINELLE: "JETON-PERSO" });
   assert.ok(r.log.includes("issue edit 500 --repo o/r --add-label claude"), "un run réussi AVANT l'issue ne la concerne pas\n" + r.log + r.sortie);
 });
 
+test("veilleur (contre-revue 2026-11-03) : en parallèle, le run d'une AUTRE enquête ne protège pas un run perdu", () => {
+  // RÉINJECTION : A, B, C créées ensemble, labels posés 8/16/24 s plus tard ; le run de A se perd.
+  // Mutation : retirer `select(.displayTitle == $t)` → rougit (les runs de B et C comptaient pour A : jamais relancée).
+  const TA = "[SENTINELLE] erreur A · 0000000a", TB = "[SENTINELLE] erreur B · 0000000b", TC = "[SENTINELLE] erreur C · 0000000c";
+  fixtures({
+    "issues-open": [
+      { number: 600, title: TA, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u600" },
+      { number: 601, title: TB, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u601" },
+      { number: 602, title: TC, createdAt: iso(30), labels: L("sentinelle", "claude"), url: "u602" },
+    ],
+    "prs-all": [],
+    "runs-claude": [
+      { status: "in_progress", conclusion: null, createdAt: iso(29), url: "runB", displayTitle: TB },
+      { status: "in_progress", conclusion: null, createdAt: iso(29), url: "runC", displayTitle: TC },
+    ],
+  });
+  const r = jouer(etape(SA, "detecter", "Veilleur").run, { JETON_SENTINELLE: "JETON-PERSO", GH_TOKEN: "integre" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.ok(r.lignes.some((x) => x.startsWith("issue edit 600 --repo o/r --add-label claude")), "A (run perdu) est relancée\n" + r.log);
+  assert.ok(!r.lignes.some((x) => /^issue (edit|comment) 60[12]/.test(x)), "B et C (run vivant) ne sont pas touchées\n" + r.log);
+});
+
 // ═══ Une enquête à la fois / Coupe-circuit ═══════════════════════════════
-test("« une enquête à la fois » compte par LABEL et sans `humain` ; le coupe-circuit lit par auteur + filtre local", () => {
-  // Mutation W6 : le jq de « une enquête à la fois » → `length` → rougit (deux humain bloqueraient le canal).
+test("enquêtes en parallèle : comptées par LABEL et sans `humain`, plafond 3 ; le coupe-circuit lit par auteur + filtre local", () => {
+  // Mutation W6 : le jq des enquêtes en cours → `length` → rougit (deux humain bloqueraient le canal).
   // Mutation : `--author PASSIO74` → `--search '"[SENTINELLE PAUSE]" in:title'` → rougit (forme inconnue du faux gh : l'index en retard).
   fixtures({
     "issues-open": [{ number: 1, labels: L("sentinelle", "humain") }, { number: 2, labels: L("sentinelle", "recidive", "humain") }],
     "issues-open-humain": [{ number: 1 }, { number: 2 }],
   });
-  const r = jouer(etape(SA, "detecter", "Une enquête à la fois").run);
+  const r = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
   assert.equal(r.code, 0, r.sortie);
-  assert.ok(r.out.includes("libre=true"), "deux issues humain seulement → libre\n" + r.out);
+  assert.ok(r.out.includes("libre=true") && r.out.includes("places=3"), "deux issues humain seulement → trois places\n" + r.out);
   assert.ok(r.summary.includes("2 enquête(s) attendent une décision humaine"), r.summary);
+  // Mutation : `places=$(( max - n ))` → `places=$(( n == 0 ? max : 0 ))` → rougit (une enquête gèlerait de nouveau tout le canal).
   fixtures({ "issues-open": [{ number: 1, labels: L("sentinelle", "claude") }], "issues-open-humain": [] });
-  assert.ok(jouer(etape(SA, "detecter", "Une enquête à la fois").run).out.includes("libre=false"), "une issue confiée à la machine → occupé");
+  const une = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.ok(une.out.includes("libre=true") && une.out.includes("places=2"), "une issue confiée à la machine → il reste deux places\n" + une.out);
+  const reglee = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run, { SENTINELLE_MAX_ENQUETES: "5" });
+  assert.ok(reglee.out.includes("places=4"), "variable du dépôt à 5 → quatre places\n" + reglee.out);
+  const folle = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run, { SENTINELLE_MAX_ENQUETES: "0" });
+  assert.ok(folle.out.includes("places=2"), "0 est refusé : on retombe sur 3, pas sur un canal éteint en silence\n" + folle.out);
+  fixtures({ "issues-open": [1, 2, 3].map((number) => ({ number, labels: L("sentinelle", "claude") })), "issues-open-humain": [] });
+  const pleine = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.ok(pleine.out.includes("libre=false") && pleine.out.includes("places=0"), "trois issues confiées → saturé\n" + pleine.out);
   fixtures({ "issues-author": [{ title: "[SENTINELLE PAUSE] stop" }] });
   const p = jouer(etape(SA, "detecter", "Coupe-circuit").run);
   assert.equal(p.code, 0, p.sortie);
@@ -274,7 +311,7 @@ const verdict = (cible, candidats, extra = {}) => fs.writeFileSync(BAC + "/verdi
 const lireVerdict = () => JSON.parse(fs.readFileSync(BAC + "/verdict.json", "utf8"));
 
 test("dédup : RÉINJECTION #355 — l'enquête fermée est datée sur le run deploy.yml VERT et ses builds ; le vieux client est tu, le candidat suivant est retenu", () => {
-  // Mutation W5 : `choisirCible(liste, fermees, ouvertes)` → sans `ouvertes` → rougit (test « titre ouvert » plus bas).
+  // Mutation W5 : `choisirCibles(liste, fermees, ouvertes, …)` → sans `ouvertes` → rougit (test « titre ouvert » plus bas).
   // Mutation : `f.deployeA = etat.deployeA` retiré → rougit (A non datée → règle par closedAt → A rouvre).
   verdict(A, [A, B]);
   fixtures({
@@ -336,7 +373,7 @@ test("dédup (A-02) : un correctif FUSIONNÉ dont le déploiement n'est pas fini
 });
 
 test("dédup : build corrigé encore en erreur + DEUX correctifs déployés → récidive ; un titre encore OUVERT (humain) est sauté", () => {
-  // Mutation W5 : `choisirCible(liste, fermees, ouvertes)` → `choisirCible(liste, fermees)` → rougit (deja=non sur le titre ouvert).
+  // Mutation W5 : `choisirCibles(liste, fermees, ouvertes, …)` → `choisirCibles(liste, fermees, [], …)` → rougit (deja=non sur le titre ouvert).
   // Mutation : `escaladeRecidive(cible, fermees)` → `null` → rougit (recidive=non).
   const A2 = { ...A, occurrences: [{ at: "2026-09-12T15:12:57Z", app_version: "c7bf4e49" }] };
   verdict(A2, [A2, B]);
@@ -395,12 +432,82 @@ test("ouvrir : l'enquête est créée avec le SEUL label `sentinelle` et SENTINE
 test("déclencher : `sleep 8` PUIS `--add-label claude` avec SENTINELLE_TOKEN ; un numéro non entier est refusé", () => {
   // Mutation W7 : retirer `sleep 8` → rougit (la course d'événements mesurée : un run sur trois perdu).
   // Mutation : `GH_TOKEN: ${{ secrets.SENTINELLE_TOKEN }}` → github.token dans l'env de l'étape → rougit (jeton=integre : rien ne se déclenche).
-  const d = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMERO: "999", GH_TOKEN: "perso" });
+  const d = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "999", GH_TOKEN: "perso" });
   assert.equal(d.code, 0, d.sortie);
   assert.deepEqual(d.lignes, ["sleep 8", "issue edit 999 --repo o/r --add-label claude :: jeton=perso"], d.log);
   const env = etape(SA, "detecter", "Déclencher le canal Claude").env || {};
   assert.equal(env.GH_TOKEN, "${{ secrets.SENTINELLE_TOKEN }}", "l'étape porte le jeton personnel : c'est lui qui déclenche");
-  assert.notEqual(jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMERO: "999; rm -rf /" }).code, 0);
+  const injecte = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "999; rm -rf /" });
+  assert.notEqual(injecte.code, 0);
+  assert.deepEqual(injecte.lignes, [], "rien n'est posé tant qu'un numéro est invalide");
+  assert.notEqual(jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "" }).code, 0, "liste vide : panne visible");
+});
+
+test("déclencher (parallèle) : un `sleep 8` AVANT CHAQUE label, une issue après l'autre ; un seul numéro invalide n'en pose AUCUN", () => {
+  // Mutation : sortir `sleep 8` de la boucle → rougit (deux `labeled claude` dans le même groupe d'événements).
+  // Mutation : fusionner les deux boucles (valider en posant) → rougit (998 serait déjà confiée quand « x » est refusé).
+  const d = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "997 998 999", GH_TOKEN: "perso" });
+  assert.equal(d.code, 0, d.sortie);
+  assert.deepEqual(d.lignes, [
+    "sleep 8", "issue edit 997 --repo o/r --add-label claude :: jeton=perso",
+    "sleep 8", "issue edit 998 --repo o/r --add-label claude :: jeton=perso",
+    "sleep 8", "issue edit 999 --repo o/r --add-label claude :: jeton=perso",
+  ], d.log);
+  const mixte = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "998 x", GH_TOKEN: "perso" });
+  assert.notEqual(mixte.code, 0);
+  assert.deepEqual(mixte.lignes, [], mixte.log);
+});
+
+test("ouvrir / déclencher (contre-revue 2026-11-03) : un échec AU MILIEU des boucles ne laisse aucune issue créée sans être confiée", () => {
+  // Mutation : remettre les `echo … >> GITHUB_OUTPUT` APRÈS la boucle (sans `trap sorties EXIT`) → rougit (numeros vide sur échec).
+  const C = { ...B, cle: "GET /rest/v1/stories 500", chemin: "/rest/v1/stories", message: "HTTP 500 sur GET /rest/v1/stories" };
+  const sans = { recidive: false, n: 0, enquetes: [] };
+  verdict(A, [A, B, C], { cibles: [{ cible: A, escalade: sans }, { cible: B, escalade: sans }, { cible: C, escalade: sans }] });
+  const o = jouer(etape(SA, "detecter", "Ouvrir l'enquête").run, { GH_TOKEN: "perso", JETON_INTEGRE: "integre", FAUX_ECHEC: mod.titreIssue(B) });
+  assert.notEqual(o.code, 0, "la création de B échoue : l'étape est rouge (alerte [SENTINELLE MUETTE])");
+  assert.equal(o.lignes.filter((x) => x.startsWith("issue create")).length, 1, "A seule a été créée\n" + o.log);
+  assert.ok(o.out.includes("numeros=999\n") && o.out.includes("mode=enquete"), "A, déjà créée, reste à confier\n" + o.out);
+  // Mutation : retirer `!cancelled() &&` du `if:` → rougit (l'étape serait sautée après l'échec d'« Ouvrir »).
+  assert.match(String(etape(SA, "detecter", "Déclencher le canal Claude").if), /^!cancelled\(\) && /);
+  // Mutation : `if gh issue edit …; then … else echecs=…; fi` → `gh issue edit …` nu → rougit (999 jamais confiée).
+  const d = jouer(etape(SA, "detecter", "Déclencher le canal Claude").run, { NUMEROS: "997 998 999", GH_TOKEN: "perso", FAUX_ECHEC: "issue edit 998" });
+  assert.notEqual(d.code, 0, "un label raté rend l'étape rouge");
+  assert.ok(d.lignes.includes("issue edit 997 --repo o/r --add-label claude :: jeton=perso") && d.lignes.includes("issue edit 999 --repo o/r --add-label claude :: jeton=perso"), "997 et 999 sont confiées malgré 998\n" + d.log);
+  assert.match(d.sortie, /Label claude non posé::#998/, d.sortie);
+});
+
+test("dédup + ouvrir (parallèle) : PLACES=2 retient les deux premières cibles vivantes, ouvre deux issues, n'en confie que les enquêtes", () => {
+  // Mutation : `choisirCibles(liste, …, places)` → `…, 1)` → rougit (une seule cible malgré deux places).
+  const C = { ...B, cle: "GET /rest/v1/stories 500", chemin: "/rest/v1/stories", message: "HTTP 500 sur GET /rest/v1/stories" };
+  verdict(A, [A, B, C]);
+  fixtures({ "issues-closed": [], "issues-open": [], "prs-merged": [], "runs-deploy": [], "compare": { commits: [] } });
+  const r = jouer(etape(SA, "detecter", "Ce défaut a-t-il").run, { PLACES: "2" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.ok(r.out.includes("deja=non") && r.out.includes("n=2"), r.out);
+  const v = lireVerdict();
+  assert.deepEqual(v.cibles.map((x) => x.cible.cle), [A.cle, B.cle], "les deux premières, dans l'ordre du classement");
+  assert.equal(v.cible.cle, A.cle, "`cible` reste la première (lecteurs d'avant ce lot)");
+  assert.ok(r.summary.includes("2 cible(s) retenue(s)"), r.summary);
+  const o = jouer(etape(SA, "detecter", "Ouvrir l'enquête").run, { RECIDIVE: "non", GH_TOKEN: "perso", JETON_INTEGRE: "integre" });
+  assert.equal(o.code, 0, o.sortie);
+  const creations = o.lignes.filter((x) => x.startsWith("issue create"));
+  assert.equal(creations.length, 2, o.log);
+  assert.ok(creations.every((x) => /--label sentinelle :: jeton=perso$/.test(x)), o.log);
+  assert.ok(creations[0].includes(mod.titreIssue(A)) && creations[1].includes(mod.titreIssue(B)), o.log);
+  assert.ok(o.out.includes("numeros=999 999") && o.out.includes("mode=enquete") && o.out.includes("numero=999"), o.out);
+  // Une récidive au milieu : issue `humain`, jamais confiée.
+  const rec = { recidive: true, n: 2, enquetes: [] };
+  verdict(A, [A, B], { cibles: [{ cible: A, escalade: rec }, { cible: B, escalade: { recidive: false, n: 0, enquetes: [] } }] });
+  const o2 = jouer(etape(SA, "detecter", "Ouvrir l'enquête").run, { RECIDIVE: "non", GH_TOKEN: "perso", JETON_INTEGRE: "integre" });
+  assert.equal(o2.code, 0, o2.sortie);
+  const c2 = o2.lignes.filter((x) => x.startsWith("issue create"));
+  assert.match(c2[0], /--label sentinelle --label recidive --label humain :: jeton=integre$/, o2.log);
+  assert.match(c2[1], /--label sentinelle :: jeton=perso$/, o2.log);
+  assert.ok(o2.out.includes("numeros=999\n") && o2.out.includes("mode=enquete"), "seule l'enquête est à confier\n" + o2.out);
+  // Que des récidives : rien à confier.
+  verdict(A, [A], { cibles: [{ cible: A, escalade: rec }] });
+  const o3 = jouer(etape(SA, "detecter", "Ouvrir l'enquête").run, { RECIDIVE: "non", GH_TOKEN: "perso", JETON_INTEGRE: "integre" });
+  assert.ok(o3.out.includes("mode=recidive") && o3.out.includes("numeros=\n"), o3.out);
 });
 
 // ═══ A8 — [SENTINELLE MUETTE] ════════════════════════════════════════════
@@ -488,6 +595,43 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
   const g5 = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "78", TRUSTED_REVIEWER: "PASSIO74" });
   assert.equal(g5.code, 0, g5.sortie);
   assert.equal(g5.log.trim(), "", "PR humaine non critique : aucun commentaire");
+});
+
+// ═══ Gouvernance — course de l'index « commit → PR » (2026-11-03) ═════════
+test("gouvernance (push) : index vide → six lectures espacées de 10 s, puis repli sur le message du commit CONFIRMÉ par merge_commit_sha ; message imité ou sans numéro → refus « Push direct »", () => {
+  // Mesuré sur le run 41596025846 : deux secondes après la fusion de la PR #681, l'index répondait vide
+  // et la garde refusait un déploiement légitime. Mutations qui rougissent ce verrou :
+  //  - retirer la boucle `for tentative in 1 2 3 4 5 6` (plus de `sleep 10`) ;
+  //  - retirer `if [ "${fusion}" = "${GITHUB_SHA}" ]` (le message imité passerait) ;
+  //  - lire le numéro ailleurs que sur la PREMIÈRE ligne du message (le corps citant une autre PR passerait).
+  const gov = etape(DEP, "governance", "Résoudre la PR").run;
+  const SHA = "a".repeat(40);
+  const pushNonCritique = { "pr-view": { headRefName: "audit/x", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 1 }] };
+  // ① Index renseigné : aucune attente, aucune lecture du commit.
+  fixtures({ ...pushNonCritique, "commit-pulls": [{ number: 681 }] });
+  const direct = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" });
+  assert.equal(direct.code, 0, direct.sortie);
+  assert.ok(!direct.log.includes("sleep"), "index renseigné : pas d'attente\n" + direct.log);
+  assert.ok(direct.summary.includes("PR : #681"), direct.summary);
+  // ② Index vide, message « … (#681) », merge_commit_sha = GITHUB_SHA → six attentes puis PR retrouvée.
+  fixtures({ ...pushNonCritique, "commit-pulls": [], "commit": { sha: SHA, commit: { message: "Audit 2026-11-02 : qualité (#681)\n\nCorps qui cite la PR #12 sans rapport." } }, "pr-681": { number: 681, merge_commit_sha: SHA } });
+  const repli = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" });
+  assert.equal(repli.code, 0, repli.sortie);
+  assert.equal((repli.log.match(/^sleep 10$/gm) || []).length, 6, "six lectures espacées de 10 s\n" + repli.log);
+  assert.ok(repli.sortie.includes("CONFIRMÉE par son merge_commit_sha") && repli.summary.includes("PR : #681"), repli.sortie + repli.summary);
+  // ③ Même message, mais la PR 681 n'a PAS été fusionnée dans ce commit → refus.
+  fixtures({ ...pushNonCritique, "commit-pulls": [], "commit": { sha: SHA, commit: { message: "Un push direct qui imite une fusion (#681)" } }, "pr-681": { number: 681, merge_commit_sha: "c".repeat(40) } });
+  const imite = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" });
+  assert.notEqual(imite.code, 0, "message imité : refusé");
+  assert.ok(imite.sortie.includes("Push direct sur main"), imite.sortie);
+  // ④ Forme « Merge pull request #681 from … » acceptée quand GitHub la confirme.
+  fixtures({ ...pushNonCritique, "commit-pulls": [], "commit": { sha: SHA, commit: { message: "Merge pull request #681 from PASSIO74/audit\n\nAudit" } }, "pr-681": { number: 681, merge_commit_sha: SHA } });
+  assert.equal(jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" }).code, 0, "forme « Merge pull request »");
+  // ⑤ Message sans numéro de PR → refus, sans appeler une PR fantôme.
+  fixtures({ ...pushNonCritique, "commit-pulls": [], "commit": { sha: SHA, commit: { message: "Correctif poussé à la main\n\nVoir la PR #681 pour le contexte." } } });
+  const sans = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74" });
+  assert.notEqual(sans.code, 0, "sans numéro sur la première ligne : refusé");
+  assert.ok(sans.sortie.includes("Push direct sur main"), sans.sortie);
 });
 
 // ═══ A7 — Retour sur l'issue au déploiement ══════════════════════════════

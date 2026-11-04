@@ -208,6 +208,10 @@ personne.
    revient à chaque visite, et disparaît définitivement dès qu'un compte existe.
    Son message suit l'état : passions déjà choisies → « Tes passions sont sur cet
    appareil / Crée ton compte pour les garder », bouton « Modifier mes passions ».
+   **Depuis le 2026-11-03, la carte n'a plus qu'UN bouton**, celui que son message
+   annonce : « Choisir mes passions » pour un nouveau venu, « Créer mon compte »
+   quand des passions sont déjà choisies — « Modifier mes passions » et la
+   connexion deviennent des liens dessous. Fiche : `docs/journal/comptes-inscription-legal.md`.
 
 ⑪ **LES AIDES AU GESTE NE SONT PAS DES ÉTAPES DE TOUR.** Quatre bulles se sont
    ajoutées (bulles de passion, envies, stories, bobines) parce que le tour à trois
@@ -282,9 +286,10 @@ personne qui a un compte se retrouve traitée en visiteur, sans porte vers lui.
 me connecter » (`.fr-welcome-signin` → `PassioFirstRun.allerConnexion`). Le gate
 d'action engageante l'offrait déjà, mais il faut avoir tenté un like ou un
 commentaire pour le voir : ce n'est pas une porte, c'est une conséquence.
-⚠️ C'est une TROISIÈME LIGNE, pas un troisième bouton dans `.fr-welcome-actions`
-— les deux actions y sont en `flex: 1 1 auto`, un troisième y couperait les
-libellés (piège ④ du lot UI-7).
+⚠️ C'est un LIEN (rangée `.fr-welcome-liens`, sous l'unique bouton de la carte
+depuis le 2026-11-03), jamais un bouton de plus dans `.fr-welcome-actions`. Quand
+des passions sont déjà choisies, son libellé se raccourcit en « Me connecter » :
+il partage alors sa rangée avec « Modifier mes passions ».
 
 ② **Paramètres → Compte** porte un bouton dont le libellé suit l'état RÉEL,
 réécrit à chaque ouverture du panneau par `majSectionCompte()` (app-02, appelée

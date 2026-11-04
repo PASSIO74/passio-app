@@ -34,7 +34,13 @@ const RACINE = path.join(__dirname, "..");
 
 // Les noms de colonne qui désignent un compte PASSIO. Volontairement larges :
 // mieux vaut une question de trop qu'une table oubliée.
-const COLONNES_COMPTE = /^(user_id|author_id|from_id|to_id|owner_id|uid|auth_uid|follower_id|following_id|blocker_id|blocked_id|added_by|reporter_id|created_by|organizer_id|handled_by|target_user_id)$/;
+// ⚠️ LES NOMS FRANÇAIS AUSSI (2026-11-03). `signalements_preuves.auteur_id`
+// (identifiant de l'auteur d'un message signalé, à côté de son texte privé)
+// est née sans que la gate la voie : le motif ne connaissait que `author_id`.
+// Le schéma neuf s'écrit en français — un nom de colonne en français est un
+// nom de colonne. Cette liste nourrit aussi le contrôle du CATALOGUE
+// (`scripts/lib/tables-compte-catalogue.js`, base de production).
+const COLONNES_COMPTE = /^(user_id|author_id|auteur_id|from_id|to_id|owner_id|uid|auth_uid|follower_id|following_id|blocker_id|blocked_id|added_by|reporter_id|created_by|organizer_id|handled_by|target_user_id)$/;
 
 // ⚠️ CHAQUE EXCEPTION PORTE SA RAISON. Elles reprennent, mot pour mot, les
 // décisions déjà écrites dans `purge-compte.js` — les répéter ici serait les
@@ -55,6 +61,13 @@ const EXCEPTIONS = {
   // écrite dans migration_barriere_suppression_2026-09-15.sql.
   "comptes_en_suppression.user_id": "barrière de suppression (v2, état par tentative) : la purger la lèverait — elle survit au succès (statut supprimee) ; rétention par purger_marqueurs_suppression(interval), durée à décider (proposition 45 j), non planifiée",
   "reports.target_id": "polymorphe (publication, rencontre, compte…) : ce n'est pas un identifiant de compte en soi",
+  // Croissance (2026-11-01) : la base l'emporte elle-même avec le compte.
+  "activite_jour.uid": "clé étrangère vers auth.users ON DELETE CASCADE (migration_croissance_2026-11-01.sql) : la ligne part avec le compte, sans passer par la purge",
+  // E-08 (2026-11-03, migration_signalements_preuves_2026-11-03.sql) : la copie
+  // du message signalé. La purger avec le compte de son AUTEUR rendrait à
+  // celui-ci le pouvoir d'effacer la preuve que la table existe pour garder —
+  // il suffirait de supprimer son compte entre le signalement et la décision.
+  "signalements_preuves.auteur_id": "preuve de modération d'un tiers : vit avec le signalement (report_id → reports(id) on delete cascade), survit à la suppression du compte de l'auteur comme reports.reporter_id ; durée de conservation des signalements traités à fixer côté juridique",
 };
 
 function fichiersSql() {

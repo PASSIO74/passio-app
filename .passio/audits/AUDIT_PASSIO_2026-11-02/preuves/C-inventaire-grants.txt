@@ -1,0 +1,24 @@
+# GRANTs de table et de colonne pour anon / authenticated — schéma public — 2026-11-02
+# Source : aclexplode(pg_class.relacl) et aclexplode(pg_attribute.attacl)  (information_schema.role_table_grants est VIDE pour le rôle read-only : ne pas s'y fier)
+# Lecture : "TOUT" = DELETE,INSERT,MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE (défaut Supabase ; la RLS filtre, mais TRUNCATE/TRIGGER/REFERENCES ne passent pas par la RLS — voir rapport C-xx)
+
+## Tables sans AUCUN grant à anon ni authenticated (refus total avant même la RLS)
+access_policies, activite_jour, comptes_en_suppression, contenus_masques, croissance_jour, migrations_appliquees, moderation_actions, telemetrie_debit
+
+## Grants réduits (délibérés)
+events                 | anon          : DELETE,MAINTAIN,REFERENCES,TRIGGER,TRUNCATE,UPDATE (PAS de SELECT table) + SELECT COLONNES : author_id, city, co_organizers, cover_url, created_at, date_at, description, emoji, end_at, event_type, external_link, id, lat, lng, max_attendees, organizer_id, passion_id, postal_code, price, recurrence, series_id, status, title, updated_at, venue
+                       |                 → exclus pour anon : address, contact, conv_id (et toute colonne future)
+events                 | authenticated : TOUT
+event_attendees        | anon          : DELETE,MAINTAIN,REFERENCES,TRIGGER,TRUNCATE (PAS de SELECT/INSERT/UPDATE)
+event_checkin_secrets  | anon : rien   | authenticated : TOUT (RLS : lecture organisateurs ; aucune policy I/U/D → refus)
+conv_members           | anon          : DELETE,MAINTAIN,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE (pas INSERT) — policies SELECT réservées à authenticated → 0 ligne
+conv_messages          | anon          : idem (pas INSERT)
+conversations          | anon          : idem (pas INSERT)
+call_invites           | anon : rien   | authenticated : TOUT
+reglages_distants      | anon, authenticated : SELECT COLONNES cle, maj, valeur seulement
+user_safety            | anon : rien   | authenticated : SELECT seulement
+
+## Toutes les autres tables (analytics_events, blocks, cdv_*, client_errors, comment_*, conv_reads, event_comments, event_reactions, follows, notifications, passion_quotas, passion_relations, passion_requests, passions, post_*, posts, profiles, push_subscriptions, reports, step_interactions, stories, story_views, telemetry_events, user_passions, user_state, video_lives) : TOUT à anon ET authenticated (défaut Supabase) ; la RLS fait seule la frontière.
+## Vues (security_invoker=on) : client_errors_par_heure, client_errors_top_24h, telemetry_last24h : TOUT à anon/authenticated → mais la RLS de client_errors/telemetry_events n'a AUCUNE policy SELECT → 0 ligne (vérifié sous rôle, voir rapport).
+
+## ⚠ Observation structurelle : TRUNCATE est accordé à anon/authenticated sur ~40 tables. TRUNCATE n'est PAS soumis à la RLS. PostgREST n'expose pas TRUNCATE (pas de verbe HTTP), donc non exploitable via l'API REST ; exploitable seulement avec une connexion SQL directe au rôle anon/authenticated (non offerte par Supabase). Risque théorique, défense en profondeur : REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN FROM anon, authenticated.

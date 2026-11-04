@@ -132,6 +132,10 @@ test.describe("Audit identité / isolation / emoji (2026-08-12)", () => {
       const DEVICE = [
         "passio_device_id", "passio_telemetry", "passio_logo_variant", "passio_debug",
         "passio_parental_code", "passio_limit_sec", "dash_adv_open",
+        // Source d'arrivée de l'APPAREIL (premier contact, 2026-11-01) et
+        // marque « inscription déjà comptée » : la purger ferait recompter
+        // l'inscription au prochain démarrage (telemetry.js, acqSignup).
+        "passio_acq_v1", "passio_acq_signale_v1",
       ];
       const estAppareil = (k) => DEVICE.includes(k)
         || k.indexOf("passio_pwa") === 0 || k.indexOf("passio_realtime_") === 0

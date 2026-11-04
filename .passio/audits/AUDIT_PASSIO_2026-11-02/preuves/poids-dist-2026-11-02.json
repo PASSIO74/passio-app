@@ -1,0 +1,74 @@
+[
+ {
+  "fichier": "index.html",
+  "brut": 381900,
+  "gzip": 109292,
+  "brotli": 100245
+ },
+ {
+  "fichier": "app.js",
+  "brut": 1484582,
+  "gzip": 423809,
+  "brotli": 361222
+ },
+ {
+  "fichier": "styles.css",
+  "brut": 230326,
+  "gzip": 40390,
+  "brotli": 38730
+ },
+ {
+  "fichier": "sw.js",
+  "brut": 14684,
+  "gzip": 5308,
+  "brotli": 5114
+ },
+ {
+  "fichier": "release.json",
+  "brut": 138,
+  "gzip": 122,
+  "brotli": 104
+ },
+ {
+  "fichier": "manifest.json",
+  "brut": 791,
+  "gzip": 301,
+  "brotli": 263
+ },
+ {
+  "fichier": "icon-192.png",
+  "brut": 5516,
+  "gzip": 5417,
+  "brotli": 5472
+ },
+ {
+  "fichier": "icon-512.png",
+  "brut": 22203,
+  "gzip": 18643,
+  "brotli": 18893
+ },
+ {
+  "fichier": "data/passions-v1.json",
+  "brut": 581675,
+  "gzip": 145516,
+  "brotli": 139524
+ },
+ {
+  "fichier": "js/vendor/maplibre-gl-4.7.1.js",
+  "brut": 803086,
+  "gzip": 212058,
+  "brotli": 196609
+ },
+ {
+  "fichier": "js/vendor/maplibre-gl-4.7.1.css",
+  "brut": 65534,
+  "gzip": 9261,
+  "brotli": 8338
+ },
+ {
+  "fichier": "js/vendor/supabase-js-2.116.0.js",
+  "brut": 218318,
+  "gzip": 55620,
+  "brotli": 52011
+ }
+]

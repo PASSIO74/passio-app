@@ -267,6 +267,22 @@
     catch (e) { fail("etat_termine", e); return false; }
   }
 
+  // Nombre d'inscrits d'un état (`going`, `waitlist`, `maybe`). ⚠️ LA LISTE
+  // N'EST PLUS LE COMPTEUR (C-04, 2026-11-03) : depuis
+  // `migration_participants_visibilite_2026-11-03.sql`, un tiers ne lit qu'une
+  // partie de `attendees` / `waitlist` — le nombre public vient de la RPC
+  // `participants_compte` (`ev.counts`), et `_nbInscrits` (app-07) est la seule
+  // autorité qui réconcilie les deux. Mesuré au faux serveur : 5 inscrits, le
+  // bloc « Le rendez-vous » disait « 1 participant ». Repli sur la liste si le
+  // moteur manque (l'activité de démonstration n'a pas de compteur).
+  function nbInscrits(ev, etat) {
+    try { if (typeof _nbInscrits === "function") return _nbInscrits(ev, etat); }
+    catch (e) { fail("nb_inscrits", e); }
+    if (!ev) return 0;
+    var liste = etat === "waitlist" ? ev.waitlist : etat === "maybe" ? ev.maybes : ev.attendees;
+    return (liste || []).length;
+  }
+
   // Places restantes : `null` = illimité. Même calcul que le moteur historique,
   // délégué quand il est chargé.
   function placesRestantes(ev) {
@@ -274,7 +290,7 @@
       if (typeof _eventSpotsLeft === "function") return _eventSpotsLeft(ev);
     } catch (e) { fail("places", e); }
     if (!ev || !ev.maxAttendees) return null;
-    return Math.max(0, ev.maxAttendees - ((ev.attendees || []).length));
+    return Math.max(0, ev.maxAttendees - nbInscrits(ev, "going"));
   }
 
   function estComplet(ev) {
@@ -309,14 +325,14 @@
   // Participants AGRÉGÉS : un compte, l'état des places, la file d'attente.
   // Les visages individuels restent dans la section Participants, plus bas.
   function texteParticipation(ev) {
-    var n = (ev.attendees || []).length;
+    var n = nbInscrits(ev, "going");
     var bouts = [n + " participant" + (n > 1 ? "s" : "")];
     var reste = placesRestantes(ev);
     if (reste !== null) {
       bouts.push(reste <= 0 ? "complet"
         : reste + " place" + (reste > 1 ? "s" : "") + " restante" + (reste > 1 ? "s" : ""));
     }
-    var att = (ev.waitlist || []).length;
+    var att = nbInscrits(ev, "waitlist");
     if (att) bouts.push(att + " en liste d'attente");
     return bouts.join(" · ");
   }

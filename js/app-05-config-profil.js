@@ -226,7 +226,7 @@ function openConfigurator() {
 
   var html = '\
     <div class="modal-handle"></div>\
-    <span class="modal-close" onclick="closeModal()">×</span>\
+    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>\
     <div style="text-align:center;margin-bottom:16px;">\
       <div style="font-weight:800;font-size:18px;color:var(--text);">Configurateur</div>\
       <div style="font-size:12px;color:var(--muted);">Personnalise PASSIO à ton image</div>\
@@ -1773,7 +1773,7 @@ function openCreateGroup() {
 
   const html = `
     <div class="modal-handle"></div>
-    <span class="modal-close" onclick="closeModal()">×</span>
+    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
     <div class="pay-modal-head">
       <div class="pay-modal-emoji">👥</div>
       <div class="pay-modal-title">Nouveau groupe</div>
