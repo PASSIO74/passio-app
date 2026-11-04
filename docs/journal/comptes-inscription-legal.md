@@ -517,7 +517,7 @@ Deux portes, toutes deux vers `PassioFirstRun.allerInscription` (aucun second sy
 - L'année voyage dans `user_metadata.birth_year` (`signUp` ne rend pas de session) ; `admissionRappelServeur` la relit à la première session quand l'état local ne l'a pas, et la déclare (`declare_birth_year`).
 - La déclaration locale n'est plus une condition du verdict : le serveur reste seul juge.
 - `irlProposalEnabled()` : ACTIF par défaut, ne sait plus qu'enlever (`"0"`, `PASSIO_IRL_PROPOSAL_V1=false`, coupure distante — la clé était déjà dans la liste blanche).
-- Politique de confidentialité §2 : l'année figure parmi les données d'inscription (version `2026-11-01`).
+- Politique de confidentialité §2 : l'année figure parmi les données d'inscription (version `2026-11-04`, jour de sa mise en ligne : la date affichée ne précède pas la publication).
 
 ⚠️ **Reste hors champ** : un compte créé par Google n'a pas de formulaire, donc pas d'année avant sa première action IRL (la porte d'admission la demande alors). Les comptes nés entre le 2026-09-01 et ce lot non plus : le bouton leur apparaît dès qu'ils ont déclaré leur année par la porte d'admission.
 

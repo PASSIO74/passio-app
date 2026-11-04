@@ -107,7 +107,7 @@ const PASSIO_CGU_VERSION = "2026-09-10";
 // et personne ne peut savoir ce qui lui a été communiqué. Celle de juin 2026
 // décrivait encore les « carnets » (retirés par ADR-011) et ne déclarait AUCUNE
 // des mesures d'usage que l'application enregistre depuis.
-const PASSIO_CONFIDENTIALITE_VERSION = "2026-11-01";
+const PASSIO_CONFIDENTIALITE_VERSION = "2026-11-04";
 
 // Même table que `escapeHtml` (app-02). Dupliquée ici parce que ce fichier
 // s'exécute AVANT l'application ; ne jamais y ajouter un cas sans l'ajouter
