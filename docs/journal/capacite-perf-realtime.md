@@ -1156,8 +1156,9 @@ où elles ne le seraient plus ; un filtre sur `rid` ne reconnaît que les lignes
 (qu'il lit ou a lues), et `rid` ne change jamais — la poignée survit à un blocage ou à une exclusion. Hors temps
 réel, le même fait « qui a effacé quoi » se sonde encore par l'identifiant PRÉVISIBLE `n_<message>_<8>` d'une
 notification de message (un INSERT refusé en 23505 tant qu'elle existe) — préexistant, R32. **Après application** (`04-LIVRAISON.md` § 8.3) : mesurer au canal ①
-`relreplident` des cinq tables, `indisreplident`, le défaut de `rid` et la garde, puis relancer les suites
-production (comptes synthétiques) — un UPDATE ou un DELETE refusé faute d'identité y tomberait au rouge. Côté
+`relreplident` des cinq tables, `indisreplident`, le défaut de `rid` et la garde. Le fonctionnel se prouve
+AVANT, sur le staging : les « Suites production » de la CI visent le STAGING (SUP-04), jamais la production — un
+UPDATE ou un DELETE refusé faute d'identité y tomberait au rouge. Côté
 client, `old_record` nul arrive en `payload.old = {}` (supabase-js, `convertChangeData`).
 
 ## 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)

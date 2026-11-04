@@ -205,9 +205,14 @@ que la R26 du § 7 laisse à `anon` deviendrait une lecture des erreurs client.
    (`pg_get_expr`, chiffres 17 à 32, masque `9007199254740991`) ; `trg_rid_opaque` actif, sans clause WHEN ;
    `rid_opaque_garde()` non exécutable par `anon`/`authenticated` ; par table, `max(rid) <= 9007199254740991` et
    `count(distinct rid) = count(*)` (agrégats seuls).
-2. Relancer le job « Suites production (comptes réels) » du dernier run de `main` (`PASSIO_E2E_MULTI=1`, comptes
-   synthétiques) : un « j'aime » retiré, une notification effacée, un départ de conversation — un UPDATE ou un DELETE
-   refusé faute d'identité y tomberait au rouge.
+2. **Le fonctionnel se prouve sur le STAGING, AVANT la production** (réserve de la contre-revue n°5767930760) : le
+   job « Suites production (comptes réels) » vise le STAGING (`fcksxofaelcdmmifnwjo`, SUP-04), jamais la production —
+   le relancer après une application en production ne prouve rien. Donc : appliquer d'abord au staging (l'attestation
+   doit nommer cette cible aussi ; la ligne 10 du verdict y dira ECHEC, sa publication ayant dérivé, et c'est
+   attendu), relancer ce job (`PASSIO_E2E_MULTI=1`, comptes synthétiques : un « j'aime » retiré, une notification
+   effacée, un départ de conversation — un UPDATE ou un DELETE refusé faute d'identité y tomberait au rouge), puis
+   appliquer en production. En production ensuite : le point 1, la « Barrière RLS de la production »
+   (`authz-critical`) du prochain run de `main`, et `client_errors` sans erreur « replica identity » sur 24 h.
 3. Consigner l'attestation dans une PR suivante.
 
 ### 8.4 Retour arrière
