@@ -36,8 +36,10 @@ for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-CimInstan
   taskkill /PID %%p /T /F >nul 2>&1
 )
 
-REM Filet : ce qui ecoute encore sur 4610 (motif strict : ":4610 " suivi de LISTENING).
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":4610 .*LISTENING"') do (
+REM Filet : ce qui ecoute encore sur 4610. Lu par PowerShell (socket d ecoute =
+REM port distant 0) : netstat n affichait pas toujours la ligne LISTENING du
+REM 4610 (2026-11-03), le filet et la verification passaient a cote.
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 4610 -ErrorAction SilentlyContinue | Where-Object { $_.RemotePort -eq 0 -and $_.OwningProcess -gt 4 } | Select-Object -ExpandProperty OwningProcess -Unique"`) do (
   echo %%p| findstr /R /C:"^[0-9][0-9]*$" >nul && (
     echo Liberation du port 4610 ^(pid %%p^)...
     taskkill /PID %%p /T /F >nul 2>&1
@@ -48,9 +50,9 @@ REM Verification : rien ne doit survivre.
 timeout /t 1 /nobreak >nul
 set "RESTE="
 for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*supervise.mjs*' -and $_.CommandLine -like '*%DASH:~0,-1%*' } | Select-Object -ExpandProperty ProcessId"`) do set "RESTE=%%p"
-netstat -ano | findstr /R /C:":4610 .*LISTENING" >nul 2>&1 && set "RESTE=port"
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 4610 -ErrorAction SilentlyContinue | Where-Object { $_.RemotePort -eq 0 -and $_.OwningProcess -gt 4 } | Select-Object -ExpandProperty OwningProcess -Unique"`) do set "RESTE=port (pid %%p)"
 if defined RESTE (
-  echo ATTENTION : quelque chose survit encore ^(%RESTE%^). Relance ce script, ou regarde le Gestionnaire des taches.
+  echo ATTENTION : quelque chose survit encore ^(!RESTE!^). Relance ce script, ou regarde le Gestionnaire des taches.
 ) else (
   echo Centre de pilotage arrete ^(verifie : aucun superviseur, port 4610 libre^).
 )

@@ -7,24 +7,33 @@ setlocal enabledelayedexpansion
 set "PORT=4610"
 set "URL=http://localhost:%PORT%"
 
-rem --- Un process ecoute-t-il deja sur le port ? On recupere son PID ---
+rem --- Un serveur repond-il deja ? On sonde /api/health AVANT tout ---
+rem (2026-11-03 : netstat n affichait pas toujours la ligne LISTENING du port
+rem  4610 alors que le serveur du superviseur repondait ; le script lancait un
+rem  second serveur qui mourait en EADDRINUSE. La sonde HTTP fait foi.)
+set "ALIVE="
+set "HAVE_CURL="
+where curl >nul 2>nul && set "HAVE_CURL=1"
+if defined HAVE_CURL (
+  curl -s -f -m 4 -o nul "%URL%/api/health" && set "ALIVE=1"
+)
+if defined ALIVE (
+  echo Le serveur tourne deja et repond. Ouverture du navigateur...
+  start "" "%URL%"
+  timeout /t 2 >nul
+  exit /b 0
+)
+
+rem --- Qui tient le port ? PowerShell (Get-NetTCPConnection), pas netstat ---
 set "HOLDER_PID="
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R /C:":%PORT% .*LISTENING"') do set "HOLDER_PID=%%a"
+for /f "usebackq delims=" %%a in (`powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort %PORT% -ErrorAction SilentlyContinue | Where-Object { $_.RemotePort -eq 0 -and $_.OwningProcess -gt 4 } | Select-Object -ExpandProperty OwningProcess -Unique"`) do (
+  echo %%a| findstr /R /C:"^[0-9][0-9]*$" >nul && set "HOLDER_PID=%%a"
+)
 
 if defined HOLDER_PID (
-  rem --- Un serveur tient le port : repond-il vraiment ? (instance figee = ne s'ouvre plus) ---
-  set "ALIVE="
-  set "HAVE_CURL="
-  where curl >nul 2>nul && set "HAVE_CURL=1"
-  if defined HAVE_CURL (
-    curl -s -m 4 -o nul "%URL%/api/health" && set "ALIVE=1"
-  ) else (
+  if not defined HAVE_CURL (
     rem Pas de curl pour sonder : on suppose l'instance vivante.
-    set "ALIVE=1"
-  )
-
-  if defined ALIVE (
-    echo Le serveur tourne deja et repond. Ouverture du navigateur...
+    echo Le serveur tourne deja. Ouverture du navigateur...
     start "" "%URL%"
     timeout /t 2 >nul
     exit /b 0
