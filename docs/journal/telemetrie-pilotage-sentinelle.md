@@ -30,6 +30,7 @@
 - 📈 CROISSANCE, COÛT, PALIERS DE TÉLÉMÉTRIE ET PRÉ-TRI DES SIGNALEMENTS — LE PILOTAGE PASSE AU COMMERCE (2026-11-01)
 - 🧯 ENQUÊTES EN PARALLÈLE ET BOUTONS MORTS — LA SENTINELLE NE FAIT PLUS LA QUEUE (2026-11-01)
 - ⏱️ GOUVERNANCE — L'INDEX « COMMIT → PR » DE GITHUB ARRIVE APRÈS LE PUSH : UN DÉPLOIEMENT LÉGITIME REFUSÉ (2026-11-03)
+- 🎞️ « PIC D'ERREURS » — LE DÉFAUT ÉTAIT DANS SAFARI, ET LA SURVEILLANCE NE SAVAIT PAS LE DIRE (2026-11-04)
 
 ---
 
@@ -495,3 +496,19 @@ Demande de Benjamin : « tout problème qui arrive doit se régler automatiqueme
 - ⚠️ **LE CLIC EST HORODATÉ APRÈS LA PEINTURE** : `telemetry.js` émet `click` après deux `requestAnimationFrame` (secours à 1 000 ms), donc 16 ms à 1 s après le toucher ; un effet émis dans le handler porte un horodatage ANTÉRIEUR. La règle « effet strictement après » comptait mort tout bouton à effet immédiat — y compris dans le classement du résumé, faussé depuis sa création. On accepte un effet jusqu'à 1 100 ms avant (`BOUTON_AVANCE_MS`).
 - Le corps d'issue d'un bouton fait départager à Claude : (a) handler cassé, absent, masqué ou bloqué → corriger ; (b) geste qui aboutit sans événement → ajouter `Telemetry.action(...)` sans donnée personnelle, sans toucher au comportement. **Jamais retirer le bouton pour faire taire la mesure.**
 - Hors champ, délibérément : le retour arrière AUTOMATIQUE reste retiré (revues du 2026-10-12 : le signal vient des navigateurs) ; « couper pendant qu'on répare » (plan 100 000, point 7) reste à faire — une coupure déclenchée par de la télémétrie est un levier de déni de service tant que son seuil n'est pas revu.
+
+## 🎞️ « PIC D'ERREURS » — LE DÉFAUT ÉTAIT DANS SAFARI, ET LA SURVEILLANCE NE SAVAIT PAS LE DIRE (2026-11-04)
+
+Alerte `spike` du 03/11 à 20:46 UTC. La fiche « Réparer » ne disait que « 6 erreurs en 1 minute », à 0 utilisateur et 0 appareil : aucune cause ne pouvait s'en déduire.
+
+- **Mesuré** : 10 `window_error` en 756 ms, un seul appareil, une seule session sans compte (Mac, Safari 26.6.2), entre le retour au premier plan et la fin de session 900 ms plus tard. `client_errors` n'en a gardé que 5 (plafond de session). Ce sont les seules erreurs que la télémétrie conservait ce jour-là (rétention 7 jours : le constat ne vaut pas au-delà).
+- **Cause** : `ReferenceError: Can't find variable: EmptyRanges`, levée par les contrôles vidéo INTÉGRÉS à WebKit. `MediaController.NullMedia` remplace la vidéo quand le navigateur l'a libérée, et ses accesseurs `buffered`, `played` et `seekable` lisaient une variable hors de portée. Bug WebKit 318284, corrigé le 2026-07-04 (commit `b13f9879ad3`). La version de Safari qui embarque ce correctif n'est pas connue. Signature : pile sans aucune adresse, `filename` valant littéralement `"undefined"`.
+- **Trois défauts de notre côté** : ① ce bruit comptait comme une erreur de PASSIO ; ② il consommait les 5 remontées de la session (`sent >= 5`, platform.js), donc une vraie erreur suivante n'atteignait plus `client_errors` ; ③ `spike` ne portait aucun contexte, et `__fixAlert` fabriquait un faux bug (titre de l'alerte en message, son texte en pile).
+- **Correctif** : `estBugVideoSafari` (platform.js, exposée en `window.passioBugVideoSafari`) écarte l'erreur AVANT le plafond ; telemetry.js en garde UNE trace par session (`context/safari_video_controls_bug`) ; `resumerPic` (alerts.js) donne au pic ses appareils, son erreur dominante, son écran et `meta.bug` ; `__fixAlert` passe ce bug et `quickFix` retombe sur l'événement si le bug est sorti du tampon ; le détecteur Sentinelle range le message dans `BRUIT`, pour les pages restées ouvertes sur l'ancienne version.
+- ⚠️ **La signature reste étroite, ne pas l'élargir à « toute erreur sans adresse »** : le nom de la variable, un des trois accesseurs en tête de pile, et aucune adresse ni dans la pile ni dans la source. Une pile absente se remonte : le doute ne cache jamais une erreur.
+- ⚠️ **Une trace `context`, pas une rétrogradation en `warn`** : `warn` sort du pic et des bugs (`onEvent`, `_isProblem`), mais la veille et la fonction `pilotage` comptent tout `type = 'error'`, quelle qu'en soit la gravité, et le pilotage passe au rouge à 10 erreurs en 15 min (`erreursJs15`) : ce seul incident y suffisait.
+- ⚠️ **`platform.js` et `telemetry.js` sont inlinés dans `index.html`, pas dans `app.js`** : `buildId`, `appHash` et le cache du service worker ne changent donc pas avec eux. La livraison passe par le réseau d'abord sur `index.html` : un appareil en ligne la reçoit à son prochain chargement. La preuve en production est le texte servi et le `commit` de `release.json`, jamais `buildId`.
+- ⚠️ **`meta.bug` sur `spike` n'ouvre pas l'analyse de la Sentinelle** : dans `triage`, le préfixe `spike` de `skipKeys` passe avant le test de `meta.bug`. L'alerte reste au niveau `high`, seuil inchangé : un seul appareil peut encore la lever avec une autre erreur.
+- **Verrous** : `tests/unit/bug-video-safari.test.mjs` (5, sur les vrais blocs de platform.js et telemetry.js), `dashboard/test/alerts.test.js` (3), `tests/unit/sentinelle-detecter.test.mjs` (1), `tests/e2e/monitoring-bruit.spec.js` (1). Douze mutations éprouvées, toutes rouges.
+- **Non vérifié** : aucune reproduction dans un vrai Safari (il faut que le navigateur ait libéré la vidéo ; l'erreur est simulée avec la pile de production), et pas de test automatique du bouton « Réparer » ni du repli de `quickFix`.
+- **À retirer** quand `context/safari_video_controls_bug` aura disparu durablement de la télémétrie : le filtre sera alors du code mort.

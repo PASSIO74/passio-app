@@ -1402,10 +1402,23 @@
   }, 20000);
 
   // 3) Erreurs JS (complète platform.js, table distincte, usage distinct)
+  // Le bug des contrôles vidéo de Safari (voir js/platform.js) laisse UNE trace
+  // par session, pour voir quand il disparaît, mais hors du type « error » : le
+  // pic, la veille et le verdict du pilotage comptent ce type-là.
+  var _bugVideoSafariVu = false;
   window.addEventListener("error", function (e) {
+    var _pile = e.error && e.error.stack;
+    if (typeof window.passioBugVideoSafari === "function"
+        && window.passioBugVideoSafari(e.message, e.filename, _pile)) {
+      if (!_bugVideoSafariVu) {
+        _bugVideoSafariVu = true;
+        track("context", "safari_video_controls_bug", { severity: "info", status: "ok" });
+      }
+      return;
+    }
     track("error", "window_error", {
       severity: "error", status: "error",
-      message: e.message, stack: e.error && e.error.stack,
+      message: e.message, stack: _pile,
       endpoint: e.filename ? String(e.filename).replace(/\?.*$/, "") : null,
       meta: { line: e.lineno, col: e.colno },
     });
