@@ -324,10 +324,12 @@ manquait au verdict).
   CI est en 22) ; un nombre qu'il lit en dénotant la même valeur décimale reste un nombre (`10.00`, `1e-07`,
   `0.1` : une archive d'avant le correctif se vérifie toujours à l'identique — rejoué sur PostgreSQL 16 par la
   contre-revue, 0 écart). La clé de comparaison prend le texte exact (`texteValeur`) ;
-- ⚠️ **aucune profondeur ne fait échouer la sauvegarde** (contre-revue finale, P2 introduit puis corrigé dans ce
-  lot) : un `reviver` de `JSON.parse` est récursif et cassait vers 2 836 niveaux, qu'un compte peut écrire dans
-  SON `user_state` (6 Ko de crochets) — plus aucune archive, nuit après nuit. L'export ne relit plus rien ;
-  `lireJsonExact` balaie d'abord les jetons numériques et n'appelle le reviver que s'il en trouve un « à risque » ;
+- ⚠️ **aucune profondeur ne fait échouer la sauvegarde** (contre-revue finale, 2026-11-04) : un compte écrit le
+  jsonb qu'il veut dans SON `user_state`, et la production en accepte au moins 8 000 niveaux (mesuré). L'ancien
+  export (`r.json()` puis `JSON.stringify`) cassait déjà vers 4 171 niveaux — plus aucune archive, nuit après nuit —,
+  et la première version de ce lot, par un `reviver` récursif, vers 2 847. L'export ne relit plus rien : aucun
+  plafond de profondeur, l'ancien compris. `lireJsonExact` balaie d'abord les jetons numériques et n'appelle le
+  reviver que s'il en trouve un « à risque » ;
 - **sans `JSON.rawJSON`, tout nombre à risque fait échouer la lecture** (entier au-delà de 2^53, décimal à plus de
   15 chiffres, `1e400` qui deviendrait `null`) : jamais un arrondi silencieux.
 Verrous : `tests/unit/restaurer-donnees.test.mjs` ⑤ à ⑥ quater, rouges sur six réinjections (`r.json()` à
@@ -337,7 +339,8 @@ colonnes `bigint` de `public` étaient les deux compteurs d'identité, aucune n'
 1 291 nombres des `jsonb` sauvegardés ont tous 15 chiffres significatifs au plus (canal ①, 2026-11-04).
 
 **Limites qui restent, dites telles quelles** :
-- la COMPARAISON de la reprise (`canoniser`, récursive) plafonne vers 2 600 niveaux d'imbrication — préexistant :
+- la COMPARAISON de la reprise (`canoniser`, récursive) plafonne entre ≈ 2 600 et ≈ 4 170 niveaux d'imbrication
+  selon l'état du moteur (mesuré par la contre-revue) — préexistant :
   une ligne plus profonde fait échouer le verdict (il ne dit pas « conforme ») ; l'export et le chargement, eux,
   n'ont plus de plafond propre ;
 - la sauvegarde de la nuit n'inscrit jamais `schema_sha256` au manifeste — préexistant : l'étape « Exporter » de

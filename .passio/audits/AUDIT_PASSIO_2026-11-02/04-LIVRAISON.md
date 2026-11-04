@@ -221,6 +221,7 @@ aucune casse à l'application** : le banc rejoué (202/0), et contre-éprouvé a
 production. En cours de correction dans la PR : RV-20 à RV-24 (verdict sans verrou ni comparaison par morceaux, retour
 arrière qui garde la colonne, gate étendue, en-tête exact). Côté reprise et sauvegarde (même revue) : la lecture exacte est juste (aller-retour réel sur
 PostgreSQL 16 : 0 écart ; archive ancienne : 0 fausse divergence), le recoupement du DDL reconstruit avec la R25
-finale rejoué (10 OK) — mais RV-25 (P2, introduit par ce lot : le reviver récursif faisait échouer la sauvegarde
-sur un jsonb profond qu'un compte écrit chez lui), RV-26 et RV-27, corrigés. Trouvés à côté et consignés, hors
+finale rejoué (10 OK) — mais RV-25 (une sauvegarde qu'un compte fait échouer par un jsonb très imbriqué écrit chez
+lui — préexistant vers 4 171 niveaux, abaissé à ≈ 2 847 par la première version de ce lot ; l'export n'a désormais
+plus de plafond), RV-26 et RV-27, corrigés. Trouvés à côté et consignés, hors
 lot : R31 (P2, confirmé — supprimer une publication rend ses commentaires et « j'aime » publics), R32, R33, R34.
