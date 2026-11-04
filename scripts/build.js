@@ -73,13 +73,43 @@ const cssHash = crypto.createHash("sha1").update(css).digest("hex").slice(0, 10)
 const cssRef = "styles.css?v=" + cssHash;
 html = html.replace(CSS_TAG, '  <link rel="stylesheet" href="' + cssRef + '" />');
 
-// 3. Contrat de release — UNE identité commune au navigateur, au cockpit et à
+// 3. Les gardes sont chargés juste après telemetry.js :
+//    - identity-transition observe les POST telemetry_events avant le bloc app ;
+//    - release-guard connaît déjà PASSIO_RELEASE au moment de son initialisation.
+//    Le HTML est coupé devant telemetry.js : le contrat de release s'y posera à
+//    l'étape 5, une fois connu le buildId qu'il porte lui-même.
+const TELEMETRY_TAG = '  <script src="js/telemetry.js"></script>';
+const posTelemetry = html.indexOf(TELEMETRY_TAG);
+if (posTelemetry === -1) throw new Error("Tag telemetry.js introuvable");
+const htmlAvantContrat = html.slice(0, posTelemetry);
+const htmlApresContrat = TELEMETRY_TAG + "\n"
+  + '  <script src="js/identity-transition.js"></script>\n'
+  + '  <script src="js/release-guard.js"></script>'
+  + html.slice(posTelemetry + TELEMETRY_TAG.length);
+
+// 4. Scripts individuels restants (uniquement src="js/…")
+const inliner = (morceau) => morceau.replace(/^([ \t]*)<script src="(js\/[^"]+)"><\/script>$/gm,
+  (m, indent, file) => indent + "<script>\n" + read(file) + indent + "</script>");
+const pageAvantContrat = inliner(htmlAvantContrat);
+const pageApresContrat = inliner(htmlApresContrat);
+
+// 5. Contrat de release — UNE identité commune au navigateur, au cockpit et à
 //    Sentinel. Le buildId ne dépend PAS d'un timestamp : deux builds des mêmes
 //    sources produisent le même identifiant. Le commit est une preuve additionnelle
 //    quand Netlify/GitHub la fournit, jamais une valeur inventée en local.
+//    ⚠️ IL COUVRE TOUT CE QUE LA PAGE EXÉCUTE : le HTML avec ses scripts inlinés,
+//    app.js et le CSS. Calculé avant l'inlining jusqu'au 2026-11-04, il ignorait
+//    telemetry.js, platform.js, first-run.js, ui-v*… : une version qui ne changeait
+//    qu'eux gardait son buildId, et aucun worker ne se réinstallait.
+//    ⚠️ RIEN DE CE QUE PORTE LE CONTRAT N'Y ENTRE, ni le commit ni la cible Supabase :
+//    ils sont posés APRÈS le calcul, entre les deux morceaux (pas de dépendance
+//    circulaire). Sinon un commit de documentation changerait l'identifiant, et
+//    chaque déploiement rechargerait toutes les pages ouvertes (pwa-detect.js).
+//    Verrou : tests/unit/build-id.test.mjs.
 const commitRef = process.env.COMMIT_REF || process.env.GITHUB_SHA || null;
 const buildId = crypto.createHash("sha1")
-  .update(html).update("\0").update(appJs).update("\0").update(css)
+  .update(pageAvantContrat).update("\0").update(pageApresContrat)
+  .update("\0").update(appJs).update("\0").update(css)
   .digest("hex").slice(0, 12);
 const release = {
   schema: 1,
@@ -90,11 +120,6 @@ const release = {
   builtAt: process.env.PASSIO_BUILD_TIME || null,
 };
 
-// Les gardes sont chargés juste après telemetry.js :
-// - identity-transition observe les POST telemetry_events avant le bloc app ;
-// - release-guard connaît déjà PASSIO_RELEASE au moment de son initialisation.
-const TELEMETRY_TAG = '  <script src="js/telemetry.js"></script>';
-if (!html.includes(TELEMETRY_TAG)) throw new Error("Tag telemetry.js introuvable");
 // SUP-04 (2026-09-14) : un artefact construit avec PASSIO_SUPABASE_URL et
 // PASSIO_SUPABASE_ANON vise CE projet (aperçu de PR sur le staging) — le
 // script est posé avant telemetry.js et le bloc app, donc avant app-08, qui
@@ -108,16 +133,9 @@ const cibleBootstrap = cibleUrl
   : "";
 if (cibleUrl) console.log("cible Supabase de l'artefact : " + cibleUrl + " (PAS la production)");
 const releaseBootstrap = '  <script>window.PASSIO_RELEASE=' + JSON.stringify(release).replace(/</g, "\\u003c") + ';</script>';
-html = html.replace(TELEMETRY_TAG,
-  cibleBootstrap + releaseBootstrap + "\n" + TELEMETRY_TAG + "\n"
-  + '  <script src="js/identity-transition.js"></script>\n'
-  + '  <script src="js/release-guard.js"></script>');
+html = pageAvantContrat + cibleBootstrap + releaseBootstrap + "\n" + pageApresContrat;
 
-// 4. Scripts individuels restants (uniquement src="js/…")
-html = html.replace(/^([ \t]*)<script src="(js\/[^"]+)"><\/script>$/gm,
-  (m, indent, file) => indent + "<script>\n" + read(file) + indent + "</script>");
-
-// 5. Service worker : même buildId que le contrat de release. Une modif réelle
+// 6. Service worker : même buildId que le contrat de release. Une modif réelle
 //    change cet identifiant → dist/sw.js change → le navigateur réinstalle le SW.
 //    Le contrat et le cache parlent ainsi EXACTEMENT de la même release.
 let sw = read("sw.js");
@@ -133,7 +151,7 @@ fs.writeFileSync(path.join(path.dirname(outPath), "styles.css"), css);
 fs.writeFileSync(path.join(path.dirname(outPath), "sw.js"), sw);
 fs.writeFileSync(path.join(path.dirname(outPath), "release.json"), JSON.stringify(release, null, 2) + "\n");
 
-// 6. Données servies À LA DEMANDE (data/*.json) — recopiées telles quelles.
+// 7. Données servies À LA DEMANDE (data/*.json) — recopiées telles quelles.
 //    ⚠️ ELLES NE DOIVENT SURTOUT PAS PASSER PAR L'ÉTAPE 4 : celle-ci inline
 //    tout `<script src="js/…">` dans le monolithe. Le référentiel des passions
 //    (≈ 568 Ko) atterrirait alors sur le chemin critique du démarrage, pour une
@@ -156,7 +174,7 @@ if (fs.existsSync(dataDir)) {
   }
   if (nData) console.log("  + data/ :", nData, "fichier(s) JSON copié(s)");
 }
-// 7. Bibliothèques AUTO-HÉBERGÉES (js/vendor/*) — chargées à la demande par les
+// 8. Bibliothèques AUTO-HÉBERGÉES (js/vendor/*) — chargées à la demande par les
 //    loaders (supabase-loader.js, map-loader.js), donc jamais inlinées à l'étape 4,
 //    donc à copier ICI. Même règle que data/ : un asset qui n'existe qu'en CI est
 //    un asset qu'on découvre manquant en production.
@@ -172,7 +190,7 @@ if (fs.existsSync(vendorDir)) {
   }
   console.log("  + js/vendor/ :", nVendor, "fichier(s) copié(s)");
 }
-// 8. Le PILOTAGE NUAGE (pilotage/) — page téléphone autonome, hors du monolithe
+// 9. Le PILOTAGE NUAGE (pilotage/) — page téléphone autonome, hors du monolithe
 //    (ses scripts ne doivent jamais être inlinés dans l'app). Copié tel quel,
 //    même règle que data/ et js/vendor/ : un asset qui n'existe qu'en CI est un
 //    asset qu'on découvre manquant en production.

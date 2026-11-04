@@ -1,6 +1,7 @@
-// Version du cache. En PROD, scripts/build.js réécrit cette ligne avec un hash du
-// build (HTML+app.js) → réinstallation auto du SW à chaque vraie modif (plus de
-// bump manuel). En DEV (sw.js servi tel quel, sans build), Date.now() suffit.
+// Version du cache. En PROD, scripts/build.js réécrit cette ligne avec le buildId
+// (HTML et scripts inlinés, app.js, CSS) → réinstallation auto du SW à chaque vraie
+// modif (plus de bump manuel). En DEV (sw.js servi tel quel, sans build), Date.now()
+// suffit.
 const CACHE = "passio-v" + Date.now();
 
 // Répond au message SKIP_WAITING

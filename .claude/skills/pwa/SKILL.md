@@ -9,7 +9,7 @@ PASSIO est une PWA mobile-first (pas d'app store) → l'expérience PWA EST l'ex
 
 ## Points de contrôle
 1. **Installabilité** : manifest valide (icônes, nom, theme_color violet, display standalone), critères Chrome/Android remplis. `pwa-landing.js`/`pwa-detect.js` gèrent l'invite d'installation.
-2. **Service Worker** (`sw.js`) : stratégie de cache, **buildId** qui se bump quand app.js/styles.css changent (via le hash dans le HTML). Symptôme « ça se met pas à jour » = SW sert du cache périmé → vérifier le versioning du cache et `reg.update()` (suspendu si `document.hidden`).
+2. **Service Worker** (`sw.js`) : stratégie de cache, **buildId** qui change avec tout ce que la page exécute (HTML et scripts inlinés, app.js, styles.css), jamais avec le seul commit (`tests/unit/build-id.test.mjs`). Symptôme « ça se met pas à jour » = SW sert du cache périmé → vérifier le versioning du cache et `reg.update()` (suspendu si `document.hidden`).
 3. **Offline** : file d'attente commentaires (`_cmtOb*`), messages (outbox), conversations en IndexedDB (`idbConvLoad/Save`), realtime avec rattrapage. Que se passe-t-il vraiment sans réseau ?
 4. **Push** : Web Push VAPID pour les appels (`notify-call`). ⚠️ iOS = seulement si PWA **installée** sur l'écran d'accueil (pas onglet Safari).
 5. **Partage natif** : `navigator.share` sur les contenus. Share target entrant (recevoir un partage) = piste.
