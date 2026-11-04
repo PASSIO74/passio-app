@@ -71,11 +71,11 @@ const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);
 // passage, que seule la CI mesure).
 // ⚠️ HORS DU SOCLE, À DIAGNOSTIQUER (2026-10-11) : `lien-inscription.spec.js`
 // (② ④ rouges, ① instable — les lignes `telemetry_events` n'arrivent pas à la
-// route sous WebKit) et `pilotage-nuage.spec.js` (④ ⑧ rouges — un geste
-// confirmé par `confirm()` n'envoie rien). Mesuré sur le premier passage CI de
-// la PR #595 ; toutes deux restent vertes sur Chromium. Le job étant BLOQUANT,
-// les garder ici aurait arrêté tout déploiement de production. Une suite ne
-// rentre qu'après un passage WebKit vert en CI.
+// route sous WebKit). Mesuré sur le premier passage CI de la PR #595 ; elle reste
+// verte sur Chromium. Le job étant BLOQUANT, la garder ici aurait arrêté tout
+// déploiement de production. Une suite ne rentre qu'après un passage WebKit vert
+// en CI. `pilotage-nuage.spec.js`, sortie le même jour (« un geste n'envoie rien »),
+// est revenue le 2026-11-04 : c'était son service worker qui échappait à `page.route`.
 const SUITES_WEBKIT = [
   "smoke.spec.js",               // démarrage de l'application
   "cadrage.spec.js",             // hauteur d'écran mesurée (jamais 100dvh)
@@ -83,6 +83,7 @@ const SUITES_WEBKIT = [
   "feed-premier-rendu.spec.js",  // premier rendu du fil
   "first-run.spec.js",           // première visite d'un visiteur
   "conv-ouverture-fil.spec.js",  // ouvrir une conversation
+  "pilotage-nuage.spec.js",      // le centre de pilotage, ses gestes d'un toucher
 ];
 const PROJET_WEBKIT = {
   name: "webkit-iphone",

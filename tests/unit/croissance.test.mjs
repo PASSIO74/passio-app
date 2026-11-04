@@ -88,11 +88,12 @@ test("⑦ « À faire » : une jauge orange dit le geste et le prix ; une public
   };
   const l = aFaire(d, J("2026-11-01"));
   const cap = l.find((x) => x.id === "capacite:emails");
-  assert.match(cap.detail, /Brevo/); assert.match(cap.detail, /€\/mois/);
+  assert.match(cap.reference, /Brevo/); assert.match(cap.reference, /€\/mois/);
   const m = l.find((x) => x.id === "masque:p_1");
   assert.equal(m.prio, 1);
-  assert.deepEqual(m.gestes.map((g) => g.corps), [{ action: "masquage", id: "p_1", decision: "retablir" }, { action: "masquage", id: "p_1", decision: "garder" }]);
-  assert.match(m.detail, /Rien n'est supprimé/);
+  assert.deepEqual(m.gestes.map((g) => g.corps), [{ action: "masquage", id: "p_1", decision: "garder" }, { action: "masquage", id: "p_1", decision: "retablir" }], "« Régler » la laisse masquée ; la rétablir reste un choix");
+  assert.match(m.quoi, /Rien n'est supprimé/);
+  assert.match(m.detail, /texte de l'auteur/);
 });
 
 test("⑧ la fonction déployée lit la croissance et décide du masquage", () => {

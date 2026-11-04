@@ -36,6 +36,7 @@
 
   <div id="app" hidden>
     <header class="entete">
+      <button id="retour" class="btn-rond" type="button" aria-label="Retour" hidden>‹</button>
       <div class="entete-texte">
         <h1 id="titreOnglet">Pilotage</h1>
         <span id="etatMaj" class="etat-maj">Chargement…</span>
@@ -44,28 +45,56 @@
     </header>
 
     <main class="contenu">
-      <!-- ACCUEIL : le voyant, ce qui t'attend, les chiffres. Tout le reste est un détail. -->
+      <!-- ACCUEIL (2026-11-04) : les deux besoins, sur un seul écran. Ce qu'il y a à
+           régler, puis le nombre d'utilisateurs. Tout le reste est rangé plus bas. -->
       <section id="accueil" class="onglet actif" data-titre="Pilotage">
-        <div id="verdict" class="verdict gris">
-          <span class="verdict-point" aria-hidden="true"></span>
-          <div><strong id="verdictTitre">Chargement…</strong><p id="verdictDetail"></p></div>
+        <div class="accueil-colonnes">
+          <section id="panneau" class="panneau gris" aria-label="Problèmes">
+            <div id="verdict" class="verdict gris">
+              <span class="verdict-point" aria-hidden="true"></span>
+              <div><strong id="verdictTitre">Chargement…</strong><p id="verdictDetail"></p></div>
+            </div>
+            <p id="perime" class="bandeau-perime" role="status" hidden></p>
+            <button id="toutRegler" class="btn btn-plein btn-tout" type="button" hidden>Tout régler</button>
+            <div id="afaire" class="lignes"></div>
+            <button id="afaireSuite" class="lien-suite" type="button" hidden></button>
+            <div id="enCoursZone" hidden>
+              <h2 class="en-cours-titre">En cours</h2>
+              <div id="enCours" class="lignes lignes-calmes"></div>
+            </div>
+          </section>
+
+          <section class="croissance-zone" aria-label="Croissance">
+            <div class="hero">
+              <div id="marche" class="marche" role="img" tabindex="0" aria-label="Évolution du nombre d'utilisateurs"></div>
+              <button id="totalUtilisateurs" class="total" type="button">
+                <b id="totalNombre">—</b><span id="totalLibelle">utilisateurs</span>
+              </button>
+              <div id="marcheInfo" class="marche-info" hidden></div>
+            </div>
+            <div id="marcheAxe" class="marche-axe" hidden><span id="marcheDebut"></span><span>aujourd'hui</span></div>
+            <p id="evolution" class="evolution"><strong id="evolutionSemaine"></strong> <span id="evolutionAvant"></span></p>
+            <p id="palier" class="palier" hidden></p>
+            <dl id="audience" class="audience"></dl>
+            <div id="nouveauxComptes"></div>
+          </section>
         </div>
-        <p id="perime" class="bandeau-perime" role="status" hidden></p>
-        <div id="tuileInscrits"></div>
-        <h2>À faire <span id="nbAFaire" class="compteur" hidden></span></h2>
-        <div id="afaire" class="pile"></div>
-        <h2>Chiffres clés</h2>
-        <div id="chiffres" class="chiffres"></div>
-        <h2>Nouveaux comptes</h2>
-        <div id="nouveauxComptes" class="pile"></div>
-        <details id="pourInfoRepli" class="repli" hidden>
-          <summary id="pourInfoTitre">Pour info</summary>
-          <div id="pourInfo" class="pile"></div>
-        </details>
+
+        <nav class="plus" aria-label="Plus de détails">
+          <button type="button" data-tab="croissance">D'où viennent les gens <span aria-hidden="true">›</span></button>
+          <button type="button" data-tab="details">Tout le détail technique <span aria-hidden="true">›</span></button>
+          <button type="button" data-tab="reglages">Réglages <span aria-hidden="true">›</span></button>
+        </nav>
       </section>
 
       <!-- DÉTAILS : pour comprendre, quand l'accueil ne suffit pas. -->
-      <section id="details" class="onglet" data-titre="Détails">
+      <section id="details" class="onglet" data-titre="Tout le détail">
+        <details id="pourInfoRepli" class="repli" hidden>
+          <summary id="pourInfoTitre">Pour info</summary>
+          <div id="pourInfo" class="lignes"></div>
+        </details>
+        <h2>Chiffres clés</h2>
+        <div id="chiffres" class="chiffres"></div>
         <h2>Le site</h2>
         <div id="site" class="pile"></div>
         <h2>Erreurs (7 jours)</h2>
@@ -98,10 +127,10 @@
 
       <!-- CROISSANCE (2026-11-01) : d'où viennent les inscrits, et lesquels restent.
            Agrégats en base (migration_croissance_2026-11-01.sql), 30 derniers jours. -->
-      <section id="croissance" class="onglet" data-titre="Croissance">
+      <section id="croissance" class="onglet" data-titre="D'où viennent les gens">
         <p id="croissanceEtat" class="discret"></p>
         <div id="croissanceChiffres" class="chiffres"></div>
-        <h2>D'où viennent les gens</h2>
+        <h2>Par source</h2>
         <p class="discret">Appareils venus (une visite par appareil et par jour), inscriptions attribuées au premier contact. Ajoute <code>?utm_source=instagram&amp;utm_campaign=lancement</code> à tes liens de campagne pour les retrouver ici.</p>
         <div id="croissanceSources" class="pile"></div>
         <h2>Bouche-à-oreille</h2>
@@ -112,12 +141,12 @@
         <h2>Ceux qui reviennent</h2>
         <p class="discret">Par semaine d'inscription : la part revenue le lendemain (J1), la 2ᵉ semaine (J7), le 2ᵉ mois (J30). « … » = trop tôt pour le dire.</p>
         <div id="croissanceRetention" class="pile"></div>
+        <h2>Utilisateurs, mois par mois</h2>
+        <div id="croissanceMois" class="pile"></div>
       </section>
 
-      <!-- TOUS LES INSCRITS (2026-10-24) : ouvert par la tuile « inscrits au total »
-           de l'accueil. Hors de la barre d'onglets ; « Retour » ramène à l'accueil. -->
-      <section id="inscrits" class="onglet" data-titre="Inscrits">
-        <button id="inscritsRetour" class="btn btn-retour" type="button">‹ Retour</button>
+      <!-- TOUS LES UTILISATEURS (2026-10-24) : ouvert en touchant le nombre de l'accueil. -->
+      <section id="inscrits" class="onglet" data-titre="Utilisateurs">
         <p id="inscritsResume" class="discret"></p>
         <div id="inscritsListe" class="pile"></div>
         <button id="inscritsSuite" class="btn btn-plein" type="button" hidden>Voir les suivants</button>
@@ -145,17 +174,10 @@
         </div>
         <button id="deconnexion" class="btn btn-danger" type="button">Se déconnecter du pilotage</button>
       </section>
-
-      <div id="bandeauOk" class="bandeau-ok" role="status" hidden></div>
-      <div id="bandeauErreur" class="bandeau-erreur" role="status" hidden></div>
     </main>
 
-    <nav class="barre quatre" aria-label="Navigation">
-      <button class="actif" data-tab="accueil" type="button"><span class="ico" aria-hidden="true">⌂</span>Accueil<span id="badgeAccueil" class="badge" hidden></span></button>
-      <button data-tab="croissance" type="button"><span class="ico" aria-hidden="true">↗</span>Croissance</button>
-      <button data-tab="details" type="button"><span class="ico" aria-hidden="true">☰</span>Détails</button>
-      <button data-tab="reglages" type="button"><span class="ico" aria-hidden="true">⚙</span>Réglages</button>
-    </nav>
+    <div id="bandeauOk" class="bandeau-ok" role="status" hidden></div>
+    <div id="bandeauErreur" class="bandeau-erreur" role="status" hidden></div>
   </div>
 
   <script src="/pilotage/config.js"></script>
