@@ -24,8 +24,8 @@
 //     REFUSE d'en dire plus par sécurité. Il n'y a rien à lire, jamais.
 //   · Les extensions de navigateur du visiteur ne sont pas notre code.
 //   · `EmptyRanges` est un défaut des contrôles vidéo intégrés à Safari (bug
-//     WebKit 318284). `js/platform.js` ne le remonte plus, mais un client resté
-//     sur l'ancien app.js en cache (PWA) l'enverra encore quelque temps.
+//     WebKit 318284). `js/platform.js` ne le remonte plus, mais une page restée
+//     ouverte sur l'ancienne version l'enverra encore quelque temps.
 export const BRUIT = [
   /^script error\.?$/i,
   /^resizeobserver loop/i,

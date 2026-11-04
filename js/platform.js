@@ -26,8 +26,8 @@
       // pas (`EmptyRanges`) quand le navigateur a déjà libéré la vidéo. Corrigé
       // chez WebKit le 2026-07-04 (bug 318284, commit b13f9879ad3), encore vu sur
       // Safari 26.6.2. Mesuré le 2026-11-03 : 10 erreurs en une seconde sur un
-      // seul appareil, pendant que l'onglet se refermait — « Pic d'erreurs » levé
-      // et les 5 remontées de la session consommées.
+      // seul appareil, juste avant que l'onglet soit masqué ou fermé — « Pic
+      // d'erreurs » levé et les 5 remontées de la session consommées.
       //
       // Signature volontairement étroite : le nom de la variable, un des trois
       // accesseurs fautifs en tête de pile, et AUCUNE adresse dans la pile ni la
