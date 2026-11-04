@@ -271,7 +271,8 @@ même ; deux P3 traités (une archive au DDL incomplet était dite « complète 
 | Production | 14:25:07 | 13 lignes OK, règle ④ vérifiée par l'outil, journalisée dans sa transaction |
 | Mesure au canal ① | 14:27 | `conv_members` et `notifications` absentes de `pg_publication_tables`, 9 tables publiées, celles de `scripts/realtime-publication.json` ; `trg_diffuser_notification` et `trg_diffuser_ajout_membre` AFTER INSERT, par ligne, actifs ; fonctions `SECURITY DEFINER`, `search_path` vide, non exécutables par `anon` et `authenticated` ; `broadcast_conv_message_users_trigger` actif ; première couche intacte (identité `i` sur les quatre tables, `d` sur `comment_interactions`, quatre gardes actives) ; 169 notifications et 22 appartenances, comme à 14:24 |
 | Onglets sur l'ancien code | 14:30 | depuis l'application, la seule session vue sur une version antérieure (`9e6466a2`) est un appareil marqué `equipe`, sans compte, donc sans socket |
-| Erreurs client | 14:46 | aucune ligne dans `client_errors` depuis l'application |
+| Barrière RLS | 15:21 | `authz-critical` verte sur la production (run 41856007079 de `main`, 1 réussi). Elle y écrit de vraies lignes, et `realtime.messages` porte leurs poussées : 2 `notifications:INSERT` et 1 `conv_members:INSERT`, toutes privées, toutes sur un topic `user:` |
+| Erreurs client | 15:38 | aucune ligne dans `client_errors` depuis l'application |
 
 **Essai strict au staging (14:44 UTC).** Le « realtime OK » de `multi-comptes` se satisfait d'une relecture REST, son commentaire le dit : il ne prouve pas la poussée. Essai ponctuel, hors de la suite, avec le vrai client, le vrai serveur Realtime et trois comptes jetables effacés ensuite :
 
@@ -280,6 +281,6 @@ même ; deux P3 traités (une archive au DDL incomplet était dite « complète 
 - un tiers qui rejoint `user:<A>` reçoit `CHANNEL_ERROR` (« Unauthorized ») et aucune trame, alors que A reçoit la même notification ; la fausse notification qu'il y envoie n'arrive pas chez A. ⚠️ `send` lui répond pourtant « ok » : hors d'un canal rejoint, supabase-js se replie sur l'API REST, et cette réponse ne dit rien de la livraison ;
 - un visiteur SANS COMPTE abonné à ces deux tables ne reçoit rien quand A efface deux notifications et quitte la conversation ; abonné à `post_likes` (le témoin), il reçoit bien la suppression, sans aucune clé : `old` est vide.
 
-**Ce qui n'est pas prouvé en production** : ce même aller-retour jusqu'à un vrai client. Aucune notification ni aucun message n'y avait été écrit depuis 72 h à 14:46, et `realtime.messages` y était vide : aucune poussée réelle n'avait encore eu lieu. La sonde du verdict a écrit la sienne, annulée avec sa sous-transaction. La barrière `authz-critical` du run de `main` qui suit cette consignation écrit une notification et une appartenance sur la production, et ses poussées doivent apparaître dans `realtime.messages` sous les deux noms d'événement.
+**Ce qui n'est pas prouvé en production** : la réception par un vrai client. Une poussée écrite n'est pas une poussée reçue, et l'éprouver demanderait d'y écrire à deux comptes connectés. Le staging l'a prouvée avec le même fichier. Aucune mesure serveur ne verra la réception : en production, le premier signe viendra d'un compte réel, et aucune notification ni aucun message réel n'y avait été écrit depuis 72 h à 14:46.
 
-**Reste à lire le 05/11** : `client_errors` sur 24 h (ligne de R25 du § 8.6), et `realtime.messages` à la première notification réelle.
+**Reste à lire le 05/11** : `client_errors` sur 24 h (ligne de R25 du § 8.6).
