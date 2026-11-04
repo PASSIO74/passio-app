@@ -76,9 +76,11 @@ jobs:
       # est écrit dans l'archive : sans lui, une restauration sur base VIDE n'a
       # rien où poser les lignes. Le jeton est celui de l'API de gestion (secret
       # SUPABASE_ACCESS_TOKEN, posé pour edge-functions.yml) — jamais service_role.
-      # ⚠️ Lecture seule (16 requêtes SELECT sur les catalogues) : ce n'est pas du
-      # DDL depuis la CI, ADR-012 n'est pas contredit. Le vérificateur exige que
-      # le fichier soit un DDL de PASSIO (≥ 20 tables, ≥ 20 policies), pas un vide.
+      # ⚠️ Lecture seule (une requête SELECT par section sur les catalogues : 19
+      # depuis le 2026-11-04, identités de réplication et droits de séquence
+      # compris, revue R25) : ce n'est pas du DDL depuis la CI, ADR-012 n'est pas
+      # contredit. Le vérificateur exige que le fichier soit un DDL de PASSIO
+      # (≥ 20 tables, ≥ 20 policies), pas un vide.
       - name: Archiver le schéma (DDL exécutable)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
