@@ -18,6 +18,7 @@ description: "Temps réel Supabase : canaux, broadcast, presence, cross-compte. 
 3. Le canal est-il bien souscrit (pas dans du code mort) ? ⚠️ `supaInit` a un GROS bloc mort après `return;` — `supaSubscribe()` en a été extrait (un bug historique : personne ne recevait rien).
 4. Jamais de requête Supabase dans `onAuthStateChange` (deadlock) → `setTimeout(...,0)`.
 5. Pollings de secours suspendus si `document.hidden` (rattrapage au retour).
+6. **Un DELETE qui arrive « vide » est voulu (R25, 2026-11-04).** `conv_reads` et `post_likes` sont en identité `rid` : un DELETE y livre `payload.old = {}`. `comment_interactions` (identité DEFAULT, RLS active) ne livre que `{id}`. Aucun filtre sur `conv_id` ou `user_id` ne reconnaît un DELETE de ces tables. Un gestionnaire DELETE qui lit `payload.old.comment_id` ne reçoit donc jamais rien : c'est le cas d'`_applyCommentInteractionEvent`, risque R37 de l'audit du 2026-11-02. **Jamais REPLICA IDENTITY FULL** pour « réparer » : c'est l'oracle de filtre que R25 a fermé, et la gate `audit-identite-replication` le refuse. Il faut relire la ligne, ou tenir côté client un index id → cible.
 
 ## Valider
 La livraison cross-compte ne se prouve QUE par `/e2e-multi` (2 comptes réels, `PASSIO_E2E_RT=v3|v2`). Vérifier la réception ~1 s sans rechargement.

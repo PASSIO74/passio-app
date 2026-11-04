@@ -54,6 +54,25 @@ geste, pas un effet de bord). Il n'applique rien et ne parle à aucun projet.
   les tests mesurent les refus du CLI et la décision pure, jamais un
   « envoyable » servi par un faux.
 
+**Exception ASTRA-61 bis (21/09/2026, décision de Benjamin).** PASSIO n'a qu'un
+compte humain. Pour le seul `mainteneur_unique` de `relecteurs-autorises.json`,
+sur sa propre PR, une revue `COMMENTED` est admise (GitHub interdit de
+s'approuver soi-même). Son corps doit porter le marqueur « Contre-revue technique
+indépendante », la phrase « revue de mainteneur unique : j'assume l'application
+de cette migration », le fichier et `cible: <ref>`. L'attestation et le journal
+d'application l'inscrivent (`auto_revue_mainteneur_unique: true`). **Ce n'est
+pas une revue indépendante, c'est une décision tracée** : AGENTS.md, et
+`scripts/lib/barriere-migration.js`. Exemples : les deux attestations de R25
+(04/11/2026). Retirer le champ `mainteneur_unique` rétablit la règle stricte.
+
+**Un retour arrière n'a pas de tableau de verdict.** Le bloc `--|` d'une
+migration se termine par `commit;` sans requête de contrôle. Envoyé par
+`appliquer-migration.mjs`, il serait validé, PUIS l'outil sortirait en code 1
+(« aucune ligne de verdict rendue »), et il lui faudrait en plus une attestation
+de sa propre empreinte. Il se joue donc à l'éditeur SQL du tableau de bord
+(canal ③), puis il se MESURE au canal ① : la migration donne, dans son en-tête,
+l'état d'arrivée attendu.
+
 ## Appliquer depuis le poste (Windows, PowerShell)
 
 Le script lit le fichier, l'attestation et la revue **dans le clone où il est

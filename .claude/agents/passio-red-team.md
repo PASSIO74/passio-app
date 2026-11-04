@@ -40,6 +40,7 @@ Tu es la **red team** de PASSIO (réseau social PWA vanilla JS + Supabase). Ton 
 
 ## 7. Realtime / cross-compte
 - Un canal realtime diffuse-t-il au-delà de ce que la RLS autorise ? La preuve ne peut venir que d'un raisonnement sur la policy + `tests/e2e/multi-comptes.spec.js`.
+- ⚠️ **Sauf pour un DELETE, où la policy ne dit RIEN (R25, mesuré le 2026-11-03)** : `realtime.apply_rls` livre tout DELETE d'une table publiée à tout abonné qui le demande, visiteur compris, réduit à clé primaire ∩ identité de réplication, et ses filtres s'y essaient. Pour chaque table de `supabase_realtime`, lire sa clé primaire et `relreplident` : une clé qui dit qui ou quoi, sur des lignes qui ne sont pas lisibles par tous, est une fuite. Une identité FULL est un oracle de filtre.
 
 ## 8. Business logic
 - Budget CDV négatif, RSVP au-delà de la capacité, check-in QR rejouable, badge auto-attribué, feedback d'event non-participant.
