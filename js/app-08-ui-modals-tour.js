@@ -5752,6 +5752,76 @@ function _memoRpcAbsenteLever(drapeau) {
   window[drapeau + "Le"] = 0;
 }
 
+// ── LES PARTICIPANTS D'ACTIVITÉS, TELS QUE LA BASE LES REND À CE COMPTE ─────
+// Sorti de `supaLoadEvents` (R24, 2026-11-03) pour servir AUSSI la promotion
+// sans nom : quand la base donne une place sans dire à qui
+// (`_appliquerPromotionAnonyme`, app-07), le client relit UNE activité par ce
+// même chemin au lieu de deviner. Une lecture, deux appelants : deux copies
+// du rangement finiraient par diverger sur celle qu'on oublie.
+// `attByEvent` = les VENANTS fermes (rsvp 'going') ; « peut-être » et liste
+// d'attente sont rangés à part pour ne pas gonfler le compteur ni remplir les
+// places réservées ; `declined` n'est rangé nulle part. `listesLues` /
+// `comptesLus` disent ce qui a VRAIMENT été lu : chez qui relit, un échec ne
+// doit pas passer pour « personne ». `origine` nomme l'appelant au diagnostic
+// d'un refus.
+async function supaLireParticipants(evIds, origine) {
+  const lu = { attByEvent: {}, maybeByEvent: {}, waitByEvent: {}, checkedByEvent: {}, countsByEvent: {}, listesLues: false, comptesLus: false };
+  const qui = origine || "supaLoadEvents";
+  if (!evIds || !evIds.length || !_attendeesLisibles()) return lu;
+  // ── LE NOMBRE D'INSCRITS VIENT DE LA BASE (C-04, 2026-11-03) ──────────────
+  // Depuis `migration_participants_visibilite_2026-11-03.sql`, la liste
+  // nominative lue ci-dessous est PARTIELLE pour un compte sans lien avec
+  // l'activité (lui-même, l'organisation, les personnes qu'il suit). Le
+  // compteur — venants, peut-être, liste d'attente, pointés — reste public
+  // parmi les connectés : RPC `participants_compte` (SECURITY DEFINER, 200
+  // activités par appel). RPC absente (PGRST202 : base pas encore migrée) →
+  // mémo d'UNE HEURE (`_memoRpcAbsenteActif`, levé aussi par un jeton frais)
+  // et la liste fait foi, comme avant. Un échec réseau ne mémorise rien : la
+  // prochaine lecture retente.
+  if (!_memoRpcAbsenteActif("_participantsCompteAbsent")) {
+    try {
+      const rc = await supa.rpc("participants_compte", { p_event_ids: evIds.slice(0, 200) });
+      if (rc && rc.error) {
+        if (String(rc.error.code || "") === "PGRST202") _memoRpcAbsentePoser("_participantsCompteAbsent");
+        else console.warn("participants_compte :", rc.error.message);
+      } else {
+        (rc && Array.isArray(rc.data) ? rc.data : []).forEach(c => {
+          if (!c || !c.event_id) return;
+          lu.countsByEvent[c.event_id] = {
+            going: Number(c.going) || 0, maybe: Number(c.maybe) || 0,
+            waitlist: Number(c.waitlist) || 0, checked_in: Number(c.checked_in) || 0,
+          };
+        });
+        lu.comptesLus = true;
+      }
+    } catch (e) { console.warn("participants_compte : lecture interrompue —", e && e.message); }
+  }
+  const ranger = (atts) => (atts || []).forEach(a => {
+    const bucket = a.rsvp === "maybe" ? lu.maybeByEvent : a.rsvp === "waitlist" ? lu.waitByEvent
+      : a.rsvp === "declined" ? null : lu.attByEvent;
+    if (bucket) (bucket[a.event_id] = bucket[a.event_id] || []).push(a.user_id);
+    if (a.checked_in_at) (lu.checkedByEvent[a.event_id] = lu.checkedByEvent[a.event_id] || []).push(a.user_id);
+  });
+  // ⚠️ Le `try` reste : un échec RÉSEAU (le SDK lève, lui) ne doit pas tomber
+  // dans le `catch` de l'appelant — chez `supaLoadEvents`, il rendrait `[]`
+  // alors que les activités sont déjà chargées.
+  try {
+    const r1 = await supa.from("event_attendees")
+      .select("event_id,user_id,rsvp,checked_in_at").in("event_id", evIds);
+    if (!r1.error) { ranger(r1.data); lu.listesLues = true; }
+    // ⚠️ Le repli ne vise QUE la colonne `rsvp` absente (base pas encore
+    // migrée). Un REFUS, lui, ne se retente pas : la même table au même rôle
+    // rendrait le même refus — deux appels 401 au lieu d'un.
+    else if (!_attendeesRefusMemorise(r1.error, qui)) {
+      const r2 = await supa.from("event_attendees")
+        .select("event_id,user_id").in("event_id", evIds);
+      if (r2.error) _attendeesRefusMemorise(r2.error, qui + " (repli sans rsvp)");
+      else { ranger(r2.data); lu.listesLues = true; }
+    }
+  } catch(e) { console.warn("participants : lecture interrompue —", e && e.message); }
+  return lu;
+}
+
 // `authorId` (facultatif) : les activités qu'UN compte organise, lues à
 // l'ouverture de son profil. Sans lui, la liste ne venait que du chargement
 // unique du démarrage — une activité publiée après n'apparaissait pas dans
@@ -5791,64 +5861,10 @@ async function supaLoadEvents(authorId) {
     const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));
     // Charger les vrais participants (compteurs/avatars cross-compte). Sans ça,
     // supaLoadEvents renvoyait attendees:[] → tout événement affichait "0 inscrit"
-    // même si plusieurs comptes l'avaient rejoint. (Corrigé le 2026-06-18.)
-    // `attendees` = les VENANTS fermes uniquement (rsvp 'going') ; les « peut-être »
-    // et la liste d'attente sont comptés à part pour ne pas gonfler le compteur ni
-    // remplir les places réservées.
-    const attByEvent = {}, maybeByEvent = {}, waitByEvent = {}, checkedByEvent = {}, countsByEvent = {};
-    if (rows.length && _attendeesLisibles()) {
-      const evIds = rows.map(r => r.id);
-      // ── LE NOMBRE D'INSCRITS VIENT DE LA BASE (C-04, 2026-11-03) ──────────
-      // Depuis `migration_participants_visibilite_2026-11-03.sql`, la liste
-      // nominative lue ci-dessous est PARTIELLE pour un compte sans lien avec
-      // l'activité (lui-même, l'organisation, les personnes qu'il suit). Le
-      // compteur — venants, peut-être, liste d'attente, pointés — reste public
-      // parmi les connectés : RPC `participants_compte` (SECURITY DEFINER, 200
-      // activités par appel). RPC absente (PGRST202 : base pas encore migrée) →
-      // mémo d'UNE HEURE (`_memoRpcAbsenteActif`, levé aussi par un jeton frais)
-      // et la liste fait foi, comme avant. Un échec réseau ne mémorise rien : la
-      // prochaine lecture retente.
-      if (!_memoRpcAbsenteActif("_participantsCompteAbsent")) {
-        try {
-          const rc = await supa.rpc("participants_compte", { p_event_ids: evIds.slice(0, 200) });
-          if (rc && rc.error) {
-            if (String(rc.error.code || "") === "PGRST202") _memoRpcAbsentePoser("_participantsCompteAbsent");
-            else console.warn("participants_compte :", rc.error.message);
-          } else {
-            (rc && Array.isArray(rc.data) ? rc.data : []).forEach(c => {
-              if (!c || !c.event_id) return;
-              countsByEvent[c.event_id] = {
-                going: Number(c.going) || 0, maybe: Number(c.maybe) || 0,
-                waitlist: Number(c.waitlist) || 0, checked_in: Number(c.checked_in) || 0,
-              };
-            });
-          }
-        } catch (e) { console.warn("participants_compte : lecture interrompue —", e && e.message); }
-      }
-      const ranger = (atts) => (atts || []).forEach(a => {
-        const bucket = a.rsvp === "maybe" ? maybeByEvent : a.rsvp === "waitlist" ? waitByEvent
-          : a.rsvp === "declined" ? null : attByEvent;
-        if (bucket) (bucket[a.event_id] = bucket[a.event_id] || []).push(a.user_id);
-        if (a.checked_in_at) (checkedByEvent[a.event_id] = checkedByEvent[a.event_id] || []).push(a.user_id);
-      });
-      // ⚠️ Le `try` reste : un échec RÉSEAU (le SDK lève, lui) ne doit pas tomber
-      // dans le `catch` de la fonction entière, qui rendrait `[]` — les événements
-      // sont déjà chargés, ils survivent sans leurs participants.
-      try {
-        const r1 = await supa.from("event_attendees")
-          .select("event_id,user_id,rsvp,checked_in_at").in("event_id", evIds);
-        if (!r1.error) ranger(r1.data);
-        // ⚠️ Le repli ne vise QUE la colonne `rsvp` absente (base pas encore
-        // migrée). Un REFUS, lui, ne se retente pas : la même table au même rôle
-        // rendrait le même refus — deux appels 401 au lieu d'un.
-        else if (!_attendeesRefusMemorise(r1.error, "supaLoadEvents")) {
-          const r2 = await supa.from("event_attendees")
-            .select("event_id,user_id").in("event_id", evIds);
-          if (r2.error) _attendeesRefusMemorise(r2.error, "supaLoadEvents (repli sans rsvp)");
-          else ranger(r2.data);
-        }
-      } catch(e) { console.warn("participants : lecture interrompue —", e && e.message); }
-    }
+    // même si plusieurs comptes l'avaient rejoint. (Corrigé le 2026-06-18.) Une
+    // lecture en échec laisse les listes vides : les activités, déjà chargées,
+    // survivent sans leurs participants.
+    const { attByEvent, maybeByEvent, waitByEvent, checkedByEvent, countsByEvent } = await supaLireParticipants(rows.map(r => r.id));
     return rows.map(r => ({
       id: r.id,
       authorId: r.author_id,
@@ -8238,6 +8254,12 @@ async function supaLoadEventRatings(eventId) {
 // Rend `false` (rien n'a changé) ou `{ ok:true, userId, notifieeParServeur }`.
 //   · `opts.auto` : place libérée par un retrait → la base choisit (p_user_id nul) ;
 //     `userId` ne sert alors qu'au chemin de transition.
+//   · `{ ok:true, userId:null, anonyme:true }` : la place est DONNÉE, mais la
+//     base ne dit pas à qui. Depuis `migration_promotion_discrete_vues_2026-11-03.sql`
+//     (R24), elle ne nomme la personne promue qu'à l'organisation de l'activité
+//     ou à cette personne : rendu à n'importe quel appelant, le nom livrait, un
+//     appel à la fois, la liste de qui vient. C'est un SUCCÈS — le lire comme un
+//     refus laissait les compteurs en retard d'un chargement.
 // TRANSITION : fonction absente (PGRST202, migration pas encore appliquée) →
 // chemin d'avant, pour ne rien casser dans l'intervalle (et il reste honnête :
 // zéro ligne = non annoncé).
@@ -8248,7 +8270,8 @@ async function supaPromoteFromWaitlist(eventId, userId, opts) {
       const r = await supa.rpc("promouvoir_attente", { p_event_id: eventId, p_user_id: opts.auto ? null : (userId || null) });
       if (r && !r.error) {
         const d = (r.data && typeof r.data === "object") ? r.data : {};
-        if (d.ok && d.user_id) return { ok: true, userId: String(d.user_id), notifieeParServeur: true };
+        if (d.ok === true && d.user_id) return { ok: true, userId: String(d.user_id), notifieeParServeur: true };
+        if (d.ok === true) return { ok: true, userId: null, anonyme: true, notifieeParServeur: true };
         try { if (typeof diagLog === "function") diagLog("promotion refusée " + (d.motif || "?") + " " + eventId); } catch (e) {}
         return false;
       }

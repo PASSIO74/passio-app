@@ -162,6 +162,11 @@ sortie2="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1
   || { echo "  ❌ la migration REJOUÉE a échoué"; echo "$sortie2" | tail -5; exit 1; }
 verifier "rejeu : toujours 4 OK" "4" "$(printf '%s\n' "$sortie2" | grep -cE '\|\s*OK\s*$' || true)"
 
+# ⚠️ Ce banc éprouve le fichier du 02/11 TEL QU'IL A ÉTÉ APPLIQUÉ : ici un compte
+# quelconque (D) apprend QUI est promu, et la promotion choisie ignore
+# `organizer_id` — le risque R24, fermé par
+# `migration_promotion_discrete_vues_2026-11-03.sql` (banc
+# `migration-promotion-discrete-vues.test.sh`, qui part de cette définition).
 echo "── ③ PREMIER ARRIVÉ, PREMIER SERVI — et la capacité tient ───────────"
 verifier "une place libre (1/2) : un compte quelconque (D) déclenche la promotion → B (le plus ancien)" "$B" "$(MOTIF "$D" ev_cap2)"
 verifier "B est passé en going" "going" "$(RSVP ev_cap2 "$B")"
