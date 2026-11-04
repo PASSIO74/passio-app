@@ -31,6 +31,12 @@
 #      tenir de verrou pendant ses pauses (un lecteur n'attend pas), renonce
 #      proprement, puis passe dès que la table se libère ; verdict, réécriture
 #      non publiée, rid aléatoires sur 53 bits, rejeu ;
+#   ①ter une AUTRE table publiée tenue (posts : en ACCESS EXCLUSIVE, puis
+#      derrière un lecteur long avec un ACCESS EXCLUSIVE en file) — le verdict
+#      seul comme la migration rejouée passent sans une attente de verrou
+#      (constat de la contre-revue finale : `pg_publication_tables` ouvrait
+#      chaque table publiée, et la migration attendait posts en tenant ses
+#      cinq ; la ligne 5, elle, déparsait le défaut de posts) ;
 #   ② APRÈS : un DELETE / UPDATE ne publie plus que rid (id pour
 #      comment_interactions), un INSERT tout ; écritures du client, de la
 #      restauration (chemin de restaurer-donnees.js), conflits de clé inchangés ;
@@ -43,13 +49,22 @@
 #      plus rien, les écoutes du client sont toujours servies ;
 #   ③c L'ENCADREMENT (constat 1 des revues) : rid SÉQUENTIEL (le premier jet,
 #      reconstitué), les rid de X avant / après encadrent la ligne de V et
-#      `rid=in.(…)` livre son effacement ; la migration rejouée RECRÉE la
-#      colonne, et la même attaque ne reconnaît plus rien — sauf la ligne que
+#      `rid=in.(…)` livre son effacement ; le remède de l'en-tête (retour
+#      arrière, puis ses quatre `drop column` en `--|+`, puis la migration)
+#      RECRÉE la colonne — et ce `drop column` fait LEVER apply_rls sur un
+#      effacement décodé après lui (pourquoi le retour arrière, lui, garde la
+#      colonne) ; la même attaque ne reconnaît plus rien — sauf la ligne que
 #      l'abonné LIT (le résidu, mesuré) ;
 #   ④ le verdict ne peut pas mentir : chaque propriété cassée rougit SA ligne
-#      (et seulement elle) — garde désarmée par WHEN (false), rid redevenu
-#      compteur compris —, chaque réparation est remesurée à 10 / 0 ;
-#   ⑤ le retour arrière de l'en-tête rend l'état d'avant, puis on réapplique.
+#      (et seulement elle) — garde désarmée par WHEN (false), garde qui GARDE
+#      un rid fourni par une ligne glissée en tête, rid redevenu compteur,
+#      défaut `(<expression>) & 7` (et rejoué : la migration le DIT), table
+#      publiée par SCHÉMA, partition FULL compris —, chaque réparation est
+#      remesurée à 10 / 0 ; la migration extraite en CRLF rend 10 / 0 ;
+#   ⑤ le retour arrière de l'en-tête rend l'identité d'avant et retire garde
+#      et index, la colonne RESTE (inerte) : un effacement écrit avant lui et
+#      décodé après est toujours livré ; un rid planté ou doublé pendant la
+#      fenêtre est TIRÉ DE NOUVEAU quand on réapplique, sans rien publier.
 #
 # Le serveur Realtime (Elixir) n'est pas sur le banc : ce qui y est éprouvé,
 # c'est la fonction SQL qui décide QUI reçoit QUOI.
@@ -108,6 +123,9 @@ APPLIQUER() { psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STO
 VERDICT() { awk '/^-- ── Verdict/{f=1} /^commit;$/{f=0} f' "$MIGRATION" \
               | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f - 2>&1; }
 RETOUR_ARRIERE() { sed -n 's/^--| //p' "$MIGRATION"; }
+# Les quatre `drop column` explicites du remède de la PREMIÈRE VERSION (lignes
+# « --|+ » de l'en-tête, qui suivent le retour arrière).
+SUPPRESSION_RID() { sed -n 's/^--|+ //p' "$MIGRATION"; }
 # OK/ECHEC du tableau de verdict d'une sortie de migration.
 BILAN() { printf '%s/%s' "$(printf '%s\n' "$1" | grep -cE '\|\s*OK\s*$' || true)" "$(printf '%s\n' "$1" | grep -cE '\|\s*ECHEC\s*$' || true)"; }
 # Nombre de lignes ECHEC dont l'intitulé contient `$2`.
@@ -1136,6 +1154,38 @@ create function banc.cles(p_phase text, p_motif text, p_abonnement uuid, p_cle t
       where p_abonnement = any (r.subscription_ids) limit 1),
     'non livré')
 $fn$;
+
+-- Un DELETE ÉCRIT AVANT un changement de schéma et DÉCODÉ APRÈS (Realtime en
+-- retard sur le slot) : wal2json le décode avec le catalogue HISTORIQUE — son
+-- identité, ce sont les colonnes que la ligne de WAL porte, avec leurs noms et
+-- types d'alors (test_decoding lit le même catalogue historique), et non
+-- celles du catalogue courant comme `banc.wal_v2` les reconstruit. `pk` : la
+-- clé primaire (inchangée).
+create function banc.wal_v2_historique(p_ligne text) returns jsonb language plpgsql stable as $fn$
+declare
+  m    text[];
+  v_id jsonb;
+  v_pk jsonb;
+begin
+  m := regexp_match(p_ligne, '^table ([^.]+)\.([^:]+): DELETE: (.*)$');
+  if m is null then raise exception 'ligne de DELETE illisible : %', p_ligne; end if;
+  select jsonb_agg(jsonb_build_object('name', t.nom, 'type', t.typ, 'typeoid', t.typ::regtype::oid,
+                                      'value', case when t.nul then 'null'::jsonb else to_jsonb(t.val) end) order by t.rang)
+    into v_id from banc.colonnes_td(m[3]) t;
+  select jsonb_agg(jsonb_build_object('name', a.attname, 'type', format_type(a.atttypid, a.atttypmod), 'typeoid', a.atttypid) order by a.attnum)
+    into v_pk
+    from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any (i.indkey)
+   where i.indrelid = (quote_ident(m[1]) || '.' || quote_ident(m[2]))::regclass and i.indisprimary;
+  return jsonb_build_object('action', 'D', 'timestamp', now()::text, 'schema', m[1], 'table', m[2],
+                            'pk', coalesce(v_pk, '[]'::jsonb), 'identity', coalesce(v_id, '[]'::jsonb));
+end $fn$;
+create function banc.recu_historique(p_phase text, p_motif text, p_abonnement uuid, p_cle text) returns text language sql volatile as $fn$
+  select coalesce(
+    (select coalesce((r.wal -> p_cle)::text, 'absent')
+       from realtime.apply_rls(banc.wal_v2_historique(banc.ligne(p_phase, p_motif))) r
+      where p_abonnement = any (r.subscription_ids) limit 1),
+    'non livré')
+$fn$;
 SQL
 
 # Données : une activité et sa discussion, un 1:1 V–M, la publication privée de
@@ -1355,6 +1405,100 @@ FLUX rejeu
 verifier "…sans rien réécrire ni publier, et sans toucher un seul rid" "0|identiques" \
   "$(Q "select count(*) from banc.flux where phase = 'rejeu';")|$([ "$(RIDS)" = "$rids_avant" ] && echo identiques || echo différents)"
 
+echo "── ①ter une AUTRE table publiée tenue (posts) : ni le verdict ni la migration n'attendent ─"
+# Constat de la contre-revue finale du 2026-11-04 : le verdict lisait
+# pg_publication_tables, dont la fonction OUVRE (ACCESS SHARE) chaque table
+# publiée sans liste de colonnes ; la migration, qui tenait déjà ses cinq
+# tables, attendait alors posts — et chaque client des cinq attendait derrière
+# elle, jusqu'à l'abandon par lock_timeout. Le même piège dormait dans la
+# ligne 5, trouvé en écrivant ce cas : `pg_get_expr(adbin, adrelid)` ouvre la
+# table dont il déparse le défaut, et le planificateur de ce banc le poussait
+# dans le parcours de pg_attrdef — posts.prive a un défaut (d'où `rid_col`,
+# MATERIALIZED : la production, elle, a un autre plan, qui n'est pas une
+# garantie). Deux façons de tenir posts : un ACCESS EXCLUSIVE ACCORDÉ ; un
+# lecteur long, et un ACCESS EXCLUSIVE EN FILE derrière lui (toute demande
+# neuve, même ACCESS SHARE, fait alors la queue).
+APPLI_P=r25_banc_posts_tenue
+POSTS_TENUE() { Q "select count(*) from pg_locks l join pg_class c on c.oid = l.relation where c.relname = 'posts' and l.mode = '$1' and l.granted = $2 and l.pid <> pg_backend_pid();"; }
+ATTENDRE_POSTS() { for _ in $(seq 1 100); do [ "$(POSTS_TENUE "$1" "$2")" -ge 1 ] 2>/dev/null && return 0; sleep 0.1; done; return 1; }
+TENEURS_POSTS=""
+LACHER_POSTS() {
+  local reste
+  for _ in $(seq 1 30); do
+    Q "select pg_terminate_backend(l.pid) from pg_locks l join pg_class c on c.oid = l.relation where c.relname = 'posts' and l.pid <> pg_backend_pid();" >/dev/null || true
+    reste="$(Q "select count(*) from pg_locks l join pg_class c on c.oid = l.relation where c.relname = 'posts' and l.pid <> pg_backend_pid();")"
+    [ "$reste" = "0" ] && break
+    sleep 0.1
+  done
+  for p in $TENEURS_POSTS; do wait "$p" 2>/dev/null || true; done
+  TENEURS_POSTS=""
+}
+# Une lecture NEUVE de posts attend-elle ? (la tenue est réelle : « bloquée »)
+LECTURE_POSTS() {
+  local sortie_l
+  sortie_l="$(PGOPTIONS="-c lock_timeout=300" psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -c "select count(*) from public.posts;" 2>&1 || true)"
+  case "$sortie_l" in *"lock timeout"*) echo bloquée ;; *) echo libre ;; esac
+}
+# Lance `$1` (verdict | migration) sous l'étiquette $APPLI_P ; toutes les 50 ms,
+# relève ses demandes de verrou NON accordées et la latence d'un lecteur de
+# conv_reads (une des cinq tables). Rend « durée ms|OK/ECHEC|attentes|latence max ms ».
+# Le verdict seul part avec lock_timeout = 3 s : une version fautive échoue
+# au lieu de pendre (la migration pose le sien, 5 s).
+SOUS_POSTS_TENUE() {
+  local debut fin pid attentes=0 lat lat_max=0 t0 f="$BASE/posts_tenue.sortie"
+  debut=$(date +%s%N)
+  if [ "$1" = verdict ]; then
+    ( export PGAPPNAME="$APPLI_P" PGOPTIONS="-c lock_timeout=3000"; VERDICT ) >"$f" 2>&1 &
+  else
+    ( export PGAPPNAME="$APPLI_P"; APPLIQUER ) >"$f" 2>&1 &
+  fi
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    attentes=$(( attentes + $(Q "select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid where a.application_name = '$APPLI_P' and not l.granted;") ))
+    t0=$(date +%s%N); Q "select count(*) from public.conv_reads;" >/dev/null || true; lat=$(( ($(date +%s%N) - t0) / 1000000 ))
+    [ "$lat" -gt "$lat_max" ] && lat_max=$lat
+    sleep 0.05
+  done
+  wait "$pid" || true
+  fin=$(date +%s%N)
+  printf '%s|%s|%s|%s' "$(( (fin - debut) / 1000000 ))" "$(BILAN "$(cat "$f")")" "$attentes" "$lat_max"
+}
+# « rapide|10/0|0[|oui] » attendu : moins de $2 ms, 10 OK, aucune attente de
+# verrou [, lecteur de conv_reads jamais bloqué 1 s].
+JUGER() {
+  local d b w l; IFS='|' read -r d b w l <<<"$1"
+  printf '%s|%s|%s' "$([ "$d" -lt "$2" ] && echo rapide || echo "lent ($d ms)")" "$b" "$w"
+  [ "${3:-}" = lecteur ] && printf '|%s' "$([ "$l" -lt 1000 ] && echo oui || echo "non ($l ms)")"
+  return 0
+}
+# a. posts en ACCESS EXCLUSIVE, accordé.
+psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -c "begin; lock table public.posts in access exclusive mode; select pg_sleep(60); commit;" >/dev/null 2>&1 &
+TENEURS_POSTS="$!"
+ATTENDRE_POSTS AccessExclusiveLock true || true
+verifier "une session TIENT posts en ACCESS EXCLUSIVE : une lecture neuve de posts attend (la tenue est réelle)" "bloquée" "$(LECTURE_POSTS)"
+r_v="$(SOUS_POSTS_TENUE verdict)"
+verifier "…le verdict SEUL passe sans attendre : en moins de 2 s, 10 OK, 0 demande de verrou non accordée" "rapide|10/0|0" "$(JUGER "$r_v" 2000)"
+r_m="$(SOUS_POSTS_TENUE migration)"
+verifier "…la migration REJOUÉE aussi — et un lecteur de conv_reads n'attend jamais 1 s derrière elle" "rapide|10/0|0|oui" "$(JUGER "$r_m" 3000 lecteur)"
+verifier "…posts était tenue de bout en bout" "1" "$(POSTS_TENUE AccessExclusiveLock true)"
+LACHER_POSTS
+# b. un lecteur LONG de posts, et un ACCESS EXCLUSIVE en FILE derrière lui.
+psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -c "begin; select count(*) from public.posts; select pg_sleep(60); commit;" >/dev/null 2>&1 &
+TENEURS_POSTS="$!"
+ATTENDRE_POSTS AccessShareLock true || true
+psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -c "begin; lock table public.posts in access exclusive mode; commit;" >/dev/null 2>&1 &
+TENEURS_POSTS="$TENEURS_POSTS $!"
+ATTENDRE_POSTS AccessExclusiveLock false || true
+verifier "un lecteur long de posts, et un ACCESS EXCLUSIVE EN FILE derrière lui : une lecture neuve fait la queue" "bloquée" "$(LECTURE_POSTS)"
+r_v="$(SOUS_POSTS_TENUE verdict)"
+verifier "…le verdict SEUL passe sans attendre : en moins de 2 s, 10 OK, 0 demande de verrou non accordée" "rapide|10/0|0" "$(JUGER "$r_v" 2000)"
+r_m="$(SOUS_POSTS_TENUE migration)"
+verifier "…la migration REJOUÉE aussi — et un lecteur de conv_reads n'attend jamais 1 s derrière elle" "rapide|10/0|0|oui" "$(JUGER "$r_m" 3000 lecteur)"
+verifier "…le lecteur tenait toujours posts, l'ACCESS EXCLUSIVE toujours en file" "1|1" "$(POSTS_TENUE AccessShareLock true)|$(POSTS_TENUE AccessExclusiveLock false)"
+LACHER_POSTS
+verifier "posts libérée : plus aucun verrou d'une autre session dessus" "0" \
+  "$(Q "select count(*) from pg_locks l join pg_class c on c.oid = l.relation where c.relname = 'posts' and l.pid <> pg_backend_pid();")"
+
 echo "── ② APRÈS : ce que le WAL publie ─────────────────────────────────────"
 verifier "V quitte de nouveau la discussion d'activité" "1" "$(AUTH "$V" "delete from public.conv_members where conv_id = '$EVGRP' and user_id = '$V' returning 1;")"
 # Après la migration, la ligne de WAL ne dit plus de quelle notification il
@@ -1561,14 +1705,30 @@ FLUX enc_ordre
 
 # Puis la migration, jouée sur le premier jet : elle REFUSE, et dit quoi faire.
 s6="$(APPLIQUER || true)"
-contient "la migration, jouée sur le premier jet, REFUSE de s'appliquer et dit quoi faire (retour arrière, puis migration)" \
-  "identité SÉQUENTIELLE de la première version" "$s6"
+contient "la migration, jouée sur le premier jet, REFUSE de s'appliquer et dit quoi faire (retour arrière, « drop column » explicites, migration)" \
+  "identité SÉQUENTIELLE de la première version.*retour arrière.*drop column" "$s6"
 verifier "…sans rien changer : rid porte toujours son identité, la garde est toujours coupée" "d|D" \
   "$(Q "select a.attidentity::text || '|' || t.tgenabled::text from pg_attribute a join pg_trigger t on t.tgrelid = a.attrelid and t.tgname = 'trg_rid_opaque' where a.attrelid = 'public.conv_members'::regclass and a.attname = 'rid' and not a.attisdropped;")"
+# Un effacement ÉCRIT avant le remède, que Realtime n'aurait pas encore lu :
+# X efface une de SES notifications ; le slot ne sera lu qu'après le remède.
+verifier "X efface une de ses notifications (le slot n'est pas lu : Realtime en retard)" "1" \
+  "$(AUTH "$X" "delete from public.notifications where id = 'n_x_q01' returning 1;")"
 n_cm="$(Q "select count(*) from public.conv_members;")"; n_no="$(Q "select count(*) from public.notifications;")"
 ra6="$(RETOUR_ARRIERE | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f - 2>&1)" || { echo "  ❌ le retour arrière a échoué (③c) :"; echo "$ra6" | tail -5; exit 1; }
+s6="$(APPLIQUER || true)"
+contient "le retour arrière SEUL ne suffit pas : il GARDE la colonne, et l'identité séquentielle avec elle — la migration refuse encore" \
+  "identité SÉQUENTIELLE de la première version" "$s6"
+sup6="$(SUPPRESSION_RID | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f - 2>&1)" || { echo "  ❌ les « drop column » du remède ont échoué (③c) :"; echo "$sup6" | tail -5; exit 1; }
+verifier "les quatre « drop column » du remède (lignes --|+ de l'en-tête) : plus de colonne rid, plus de séquence d'identité" "0|0" \
+  "$(Q "select count(*) from pg_attribute where attname = 'rid' and not attisdropped and attrelid in ('public.conv_members'::regclass, 'public.notifications'::regclass, 'public.conv_reads'::regclass, 'public.post_likes'::regclass);")|$(Q "select count(*) from pg_class where relkind = 'S' and relname like '%rid%';")"
+FLUX enc_remede
+correspond "l'effacement écrit AVANT le remède, décodé APRÈS : le WAL le rend avec le catalogue d'ALORS — identité rid" \
+  "^table public\.notifications: DELETE: rid\[bigint\]:[0-9]+$" "$(LIGNE enc_remede 'table public.notifications: DELETE:%')"
+contient "…colonne supprimée, apply_rls LÈVE sur ce message (has_column_privilege) — c'est tout le lot qui ne serait plus livré en direct : pourquoi le retour arrière, lui, GARDE la colonne" \
+  'column "rid" of relation "notifications" does not exist' \
+  "$(LIBRE "select banc.recu_historique('enc_remede', 'table public.notifications: DELETE:%', '$S_NO_X', 'old_record');" || true)"
 s6="$(APPLIQUER)" || { echo "  ❌ migration en échec (③c)"; echo "$s6" | tail -3; exit 1; }
-verifier "le remède de l'en-tête — retour arrière, puis migration : 10 OK / 0 ECHEC" "10/0" "$(BILAN "$s6")"
+verifier "le remède de l'en-tête — retour arrière, quatre « drop column » explicites, puis migration : 10 OK / 0 ECHEC" "10/0" "$(BILAN "$s6")"
 verifier "…la colonne est RECRÉÉE (ni identité ni séquence), garde réarmée, lignes intactes" \
   "conv_members sans identité sans séquence O,notifications sans identité sans séquence O|$n_cm|$n_no" \
   "$(Q "select string_agg(c.relname || case when a.attidentity = '' then ' sans identité' else ' IDENTITÉ' end || case when pg_get_serial_sequence('public.' || c.relname, 'rid') is null then ' sans séquence' else ' SÉQUENCE' end || ' ' || t.tgenabled::text, ',' order by c.relname) from pg_class c join pg_attribute a on a.attrelid = c.oid and a.attname = 'rid' and not a.attisdropped join pg_trigger t on t.tgrelid = c.oid and t.tgname = 'trg_rid_opaque' where c.oid in ('public.conv_members'::regclass, 'public.notifications'::regclass);")|$(Q "select count(*) from public.conv_members;")|$(Q "select count(*) from public.notifications;")"
@@ -1688,6 +1848,27 @@ s="$(VERDICT)"
 verifier "défaut de conv_reads à l'ANCIENNE forme sur 63 bits : 9 OK / 1 ECHEC — la ligne de rid" "9/1|1" "$(BILAN "$s")|$(ECHEC_SUR "$s" 'rid : bigint')"
 Q "alter table public.conv_reads alter column rid set default $DEF_RID;" >/dev/null || true
 RETABLI "défaut à 53 bits"
+# `(<expression>) & 7` sur les QUATRE tables : chaque fragment que cherchait la
+# forme précédente du contrôle (gen_random_uuid(), « , 17, 16) », le masque à
+# 53 bits) y est, et le défaut est le même partout — mais il ne tire plus que
+# 3 bits. Seule l'égalité EXACTE avec le témoin le voit.
+for t in conv_members notifications conv_reads post_likes; do
+  Q "alter table public.$t alter column rid set default (($DEF_RID) & 7);" >/dev/null || true
+done
+s="$(VERDICT)"
+verifier "défaut « (<expression>) & 7 » sur les QUATRE tables (tous les fragments présents, le même partout) : 9 OK / 1 ECHEC — la ligne de rid" "9/1|1" "$(BILAN "$s")|$(ECHEC_SUR "$s" 'rid : bigint')"
+verifier "…et c'est bien un défaut : un rid tiré par le défaut (chemin de la restauration, garde coupée) tombe entre 0 et 7" "t" \
+  "$(Q "begin; alter table public.post_likes disable trigger trg_rid_opaque;
+       insert into public.post_likes (post_id, user_id) values ('p_sept', '$X') returning rid between 0 and 7;
+       rollback;")"
+# …et rejouée sur ce défaut, la migration ne le corrige pas en silence
+# (`add column if not exists` garde la colonne et son défaut) : son verdict le DIT.
+s="$(APPLIQUER || true)"
+verifier "…rejouée sur ce défaut modifié, la migration ne le corrige pas en silence : son propre verdict rend 9 OK / 1 ECHEC" "9/1|1" "$(BILAN "$s")|$(ECHEC_SUR "$s" 'rid : bigint')"
+for t in conv_members notifications conv_reads post_likes; do
+  Q "alter table public.$t alter column rid set default $DEF_RID;" >/dev/null || true
+done
+RETABLI "défaut exact"
 # h. la garde désactivée, en réplica, désarmée (WHEN), vidée, conditionnelle, séquentielle,
 #    supprimée, réduite à l'INSERT, exécutable
 # (`|| true` : si la migration n'a pas posé la garde, ces gestes échouent ; les contrôles, eux, rougissent.)
@@ -1762,6 +1943,28 @@ s="$(VERDICT)"
 verifier "garde qui tire encore l'ANCIENNE valeur sur 63 bits : 9 OK / 1 ECHEC" "9/1|1" "$(BILAN "$s")|$(ECHEC_SUR "$s" 'garde trg_rid_opaque')"
 Q "$DEF_GARDE" >/dev/null || true
 RETABLI "corps rendu"
+# Le corps EXACT, précédé d'UNE ligne qui rend `new` quand un rid est fourni :
+# la forme précédente du contrôle, ancrée à la fin seulement, le trouvait
+# conforme — et rouvrait RV-16 (le rid planté dans une notification adressée
+# à autrui).
+Q "create or replace function public.rid_opaque_garde() returns trigger language plpgsql security definer set search_path to '' as \$fn\$
+begin
+  if tg_op = 'INSERT' and new.rid is not null then return new; end if;
+  if tg_op = 'INSERT' then
+    new.rid := (('x' || pg_catalog.substr(pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', ''), 17, 16))::bit(64)::bigint & 9007199254740991);
+  else
+    new.rid := old.rid;
+  end if;
+  return new;
+end
+\$fn\$;" >/dev/null
+s="$(VERDICT)"
+verifier "garde au corps exact PRÉCÉDÉ d'une ligne « if tg_op = 'INSERT' and new.rid is not null then return new » : 9 OK / 1 ECHEC" "9/1|1" "$(BILAN "$s")|$(ECHEC_SUR "$s" 'garde trg_rid_opaque')"
+verifier "…et c'est bien un défaut : X (authenticated) plante un rid sur une notification adressée à V — accepté, rid GARDÉ" "|8888888888" \
+  "$(AUTH "$X" "insert into public.notifications (id, user_id, kind, from_id, content, rid) values ('n_x_prefixe', '$V', 'like', '$X', 'x', 8888888888);")|$(Q "select rid from public.notifications where id = 'n_x_prefixe';")"
+Q "delete from public.notifications where id = 'n_x_prefixe';" >/dev/null
+Q "$DEF_GARDE" >/dev/null || true
+RETABLI "corps rendu"
 Q "drop trigger trg_rid_opaque on public.conv_members;" >/dev/null || true
 s="$(VERDICT)"
 verifier "garde SUPPRIMÉE sur conv_members : 9 OK / 1 ECHEC" "9/1|1" "$(BILAN "$s")|$(ECHEC_SUR "$s" 'garde trg_rid_opaque')"
@@ -1799,26 +2002,86 @@ s="$(VERDICT)"
 verifier "une 12ᵉ table ajoutée : 9 OK / 1 ECHEC" "9/1|1" "$(BILAN "$s")|$(ECHEC_SUR "$s" 'supabase_realtime : les 11')"
 Q "alter publication supabase_realtime drop table public.conversations;" >/dev/null
 RETABLI "11 tables"
+# l. une appartenance PAR SCHÉMA (FOR TABLES IN SCHEMA) n'est pas dans
+#    pg_publication_rel : le verdict, qui ne lit plus que lui, doit la voir
+#    autrement — par pg_publication_namespace — et rougir plutôt que se taire.
+Q "create schema banc_pub; create table banc_pub.ecrits (id text primary key, qui text);
+   alter table banc_pub.ecrits replica identity full;
+   alter publication supabase_realtime add tables in schema banc_pub;" >/dev/null
+s="$(VERDICT)"
+verifier "une appartenance PAR SCHÉMA (absente de pg_publication_rel), une table FULL dedans : 8 OK / 2 ECHEC — « aucune table FULL » et « les 11 »" "8/2|1|1" \
+  "$(BILAN "$s")|$(ECHEC_SUR "$s" 'REPLICA IDENTITY FULL')|$(ECHEC_SUR "$s" 'supabase_realtime : les 11')"
+Q "alter publication supabase_realtime drop tables in schema banc_pub; drop schema banc_pub cascade;" >/dev/null
+RETABLI "appartenance par schéma retirée"
+# m. une table PARTITIONNÉE publiée : ses partitions le sont avec elle, sans
+#    ligne dans pg_publication_rel — une partition FULL doit rougir la ligne 9
+#    (pg_publication_tables les listait ; le verdict descend pg_inherits).
+Q "create table public.banc_part (id text not null, k int not null, primary key (id, k)) partition by list (k);
+   create table public.banc_part_1 partition of public.banc_part for values in (1);
+   alter table public.banc_part_1 replica identity full;
+   alter publication supabase_realtime add table public.banc_part;" >/dev/null
+s="$(VERDICT)"
+verifier "une table PARTITIONNÉE publiée, sa partition en FULL : 8 OK / 2 ECHEC — « aucune table FULL » (partitions comprises) et « les 11 »" "8/2|1|1" \
+  "$(BILAN "$s")|$(ECHEC_SUR "$s" 'REPLICA IDENTITY FULL')|$(ECHEC_SUR "$s" 'supabase_realtime : les 11')"
+Q "alter publication supabase_realtime drop table public.banc_part; drop table public.banc_part;" >/dev/null
+RETABLI "partition retirée"
+# n. la migration EXTRAITE EN CRLF (poste Windows, core.autocrlf) : le corps de
+#    la garde garde ses retours chariot ; la ligne 7, ancrée ligne à ligne, les
+#    ôte avant de lire — sinon c'est la garde de production qui serait dite
+#    fausse.
+sed 's/$/\r/' "$MIGRATION" >"$BASE/r25_crlf.sql"
+crlf="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$BASE/r25_crlf.sql" 2>&1 || true)"
+verifier "migration extraite en CRLF : 10 OK / 0 ECHEC — et le corps de la garde porte bien des retours chariot" "10/0|t" \
+  "$(BILAN "$crlf")|$(Q "select position(chr(13) in prosrc) > 0 from pg_proc where oid = 'public.rid_opaque_garde()'::regprocedure;")"
 s4="$(APPLIQUER)" || { echo "  ❌ migration en échec (④)"; echo "$s4" | tail -3; exit 1; }
-verifier "migration rejouée sur l'état rétabli : 10 OK / 0 ECHEC" "10/0" "$(BILAN "$s4")"
+verifier "migration rejouée sur l'état rétabli (en LF) : 10 OK / 0 ECHEC, corps de la garde sans retour chariot" "10/0|f" \
+  "$(BILAN "$s4")|$(Q "select position(chr(13) in prosrc) > 0 from pg_proc where oid = 'public.rid_opaque_garde()'::regprocedure;")"
 
 echo "── ⑤ RETOUR ARRIÈRE (en-tête, tel quel) ───────────────────────────────"
 COMPTES() { Q "select (select count(*) from public.conv_members) || '|' || (select count(*) from public.notifications) || '|' || (select count(*) from public.conv_reads) || '|' || (select count(*) from public.post_likes);"; }
+FLUX avant_retour
+# Un effacement ÉCRIT avant le retour arrière, que Realtime n'a pas encore lu :
+# le slot ne sera lu qu'après.
+verifier "X efface une de ses notifications juste avant le retour arrière (le slot n'est pas lu : Realtime en retard)" "1" \
+  "$(AUTH "$X" "delete from public.notifications where id = 'n_x_s01' returning 1;")"
 comptes_avant="$(COMPTES)"
 ra="$(RETOUR_ARRIERE | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f - 2>&1)" || { echo "  ❌ le retour arrière a échoué :"; echo "$ra" | tail -5; ko=$((ko+1)); }
 verifier "identités d'avant : DEFAULT ×4, comment_interactions FULL" "conv_members:d,conv_reads:d,notifications:d,post_likes:d|f" \
   "$(Q "select string_agg(relname || ':' || relreplident::text, ',' order by relname) from pg_class where oid in ('public.conv_members'::regclass, 'public.notifications'::regclass, 'public.conv_reads'::regclass, 'public.post_likes'::regclass);")|$(Q "select relreplident from pg_class where oid = 'public.comment_interactions'::regclass;")"
-verifier "plus de colonne rid, de séquence, d'index rid, de garde" "0|0|0|0|0" \
-  "$(Q "select count(*) from pg_attribute where attname = 'rid' and not attisdropped and attrelid in ('public.conv_members'::regclass, 'public.notifications'::regclass, 'public.conv_reads'::regclass, 'public.post_likes'::regclass);")|$(Q "select count(*) from pg_class where relkind = 'S' and relname like '%rid%';")|$(Q "select count(*) from pg_class where relkind = 'i' and relname like '%rid_key';")|$(Q "select count(*) from pg_trigger where tgname = 'trg_rid_opaque';")|$(Q "select count(*) from pg_proc where proname = 'rid_opaque_garde';")"
+verifier "la colonne rid RESTE sur les quatre tables (NOT NULL, défaut aléatoire inchangé) ; plus d'index *_rid_key, ni garde, ni fonction, ni séquence" "4|0|0|0|0" \
+  "$(Q "select count(*) from pg_attribute a join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum where a.attname = 'rid' and not a.attisdropped and a.attnotnull and a.attidentity = '' and pg_get_expr(d.adbin, d.adrelid) = '$(sql_lit "$DEF_RID")' and a.attrelid in ('public.conv_members'::regclass, 'public.notifications'::regclass, 'public.conv_reads'::regclass, 'public.post_likes'::regclass);")|$(Q "select count(*) from pg_class where relkind = 'i' and relname like '%rid_key';")|$(Q "select count(*) from pg_trigger where tgname = 'trg_rid_opaque';")|$(Q "select count(*) from pg_proc where proname = 'rid_opaque_garde';")|$(Q "select count(*) from pg_class where relkind = 'S' and relname like '%rid%';")"
 verifier "les lignes sont intactes (conv_members, notifications, conv_reads, post_likes)" "$comptes_avant" "$(COMPTES)"
-FLUX avant_retour
+FLUX retard
+correspond "l'effacement écrit AVANT le retour arrière, décodé APRÈS : le WAL le rend avec le catalogue d'ALORS — identité rid" \
+  "^table public\.notifications: DELETE: rid\[bigint\]:[0-9]+$" "$(LIGNE retard 'table public.notifications: DELETE:%')"
+verifier "…et apply_rls, qui lit le catalogue COURANT, le traite sans erreur — la colonne est restée : livré à l'abonné sans filtre, old_record null" "null" \
+  "$(LIBRE "select banc.recu_historique('retard', 'table public.notifications: DELETE:%', '$S_NO_X', 'old_record');" || true)"
 AUTH "$X" "delete from public.conv_members where conv_id = 'x_horloge' and user_id = '$A';" >/dev/null
 FLUX retour
-verifier "…et le DELETE republie la clé (l'état d'avant, exactement)" \
+verifier "…et un DELETE d'après republie la clé (l'identité d'avant, exactement)" \
   "table public.conv_members: DELETE: conv_id[text]:'x_horloge' user_id[text]:'$A'" "$(LIGNE retour 'table public.conv_members: DELETE:%')"
 Q "insert into public.conv_members (conv_id, user_id) values ('x_horloge', '$A');" >/dev/null
-s5="$(APPLIQUER)" || { echo "  ❌ réapplication en échec"; echo "$s5" | tail -3; exit 1; }
-verifier "réappliquée après le retour arrière : 10 OK / 0 ECHEC" "10/0" "$(BILAN "$s5")"
+# La FENÊTRE : sans garde ni index unique, un client écrit le rid qu'il veut.
+verifier "fenêtre : un INSERT sans rid passe toujours (le défaut en tire un)" "t" \
+  "$(AUTH "$X" "insert into public.notifications (id, user_id, kind, from_id, content) values ('n_x_fenetre0', '$X', 'like', '$X', 'f') returning rid between 0 and 9007199254740991;")"
+verifier "fenêtre : X plante un rid (5151515151) sur une notification adressée à V, et en double un autre (6161616161) — tout est accepté, gardé" "|5151515151|2" \
+  "$(AUTH "$X" "insert into public.notifications (id, user_id, kind, from_id, content, rid) values ('n_x_fenetre1', '$V', 'like', '$X', 'f', 5151515151), ('n_x_fenetre2', '$X', 'like', '$X', 'f', 6161616161), ('n_x_fenetre3', '$X', 'like', '$X', 'f', 6161616161);")|$(Q "select rid from public.notifications where id = 'n_x_fenetre1';")|$(Q "select count(*) from public.notifications where rid = 6161616161;")"
+comptes_fenetre="$(COMPTES)"
+# Revenir : rejouer la migration. À blanc d'abord — ce qu'elle verrouille en revenant.
+sortie_blanc5="$(A_BLANC "select 'VERROUS=' || string_agg(distinct c.relname::text, ',' order by c.relname::text) from pg_locks l join pg_class c on c.oid = l.relation join pg_namespace n on n.oid = c.relnamespace where l.pid = pg_backend_pid() and l.granted and n.nspname = 'public' and c.relkind in ('r', 'p');" \
+  | psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f - 2>&1 || true)"
+verifier "réappliquée À BLANC depuis le retour arrière : 10 OK / 0 ECHEC, et toujours ses cinq tables seules sous verrou" \
+  "10/0|VERROUS=comment_interactions,conv_members,conv_reads,notifications,post_likes" \
+  "$(BILAN "$sortie_blanc5")|$(printf '%s\n' "$sortie_blanc5" | grep -o 'VERROUS=[a-z_,]*' | tail -1)"
+FLUX avant_reprise
+s5="$(APPLIQUER || true)"
+verifier "réappliquée après le retour arrière : 10 OK / 0 ECHEC — et chaque rid des quatre tables TIRÉ DE NOUVEAU (annoncé, table par table)" "10/0|4" \
+  "$(BILAN "$s5")|$(printf '%s\n' "$s5" | grep -c 'tiré de nouveau' || true)"
+verifier "…le rid planté pendant la fenêtre n'y est plus, le doublon non plus : tous les rid uniques, sur les quatre tables" "f|0|t" \
+  "$(Q "select rid = 5151515151 from public.notifications where id = 'n_x_fenetre1';")|$(Q "select count(*) from public.notifications where rid = 6161616161;")|$(Q "select bool_and(n = d) from (select count(*) n, count(distinct rid) d from public.conv_members union all select count(*), count(distinct rid) from public.notifications union all select count(*), count(distinct rid) from public.conv_reads union all select count(*), count(distinct rid) from public.post_likes) s;")"
+FLUX reprise
+verifier "…sans rien publier (la réécriture ne passe pas au décodage), lignes intactes, rid sur 53 bits" "0|$comptes_fenetre|t" \
+  "$(Q "select count(*) from banc.flux where phase = 'reprise';")|$(COMPTES)|$(RID_53)"
 
 echo
 echo "RÉSULTAT : $ok ✅  $ko ❌"
