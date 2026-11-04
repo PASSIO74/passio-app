@@ -733,12 +733,32 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // DEMANDES D'AJOUT — « Ajouter « X » à mes passions »
-  // ⚠️ Une demande N'EST PAS une passion. Elle ne devient jamais publiable :
-  // `estPassionCanonique` (app-02) reste la seule autorité, et la clé étrangère
-  // de `posts.passion_id` refuserait l'écriture de toute façon.
+  // DEMANDES D'AJOUT — « Demander l'ajout de « X » »
+  // ⚠️ UNE DEMANDE DE COMPTE EST RÉSOLUE PAR LE SERVEUR, DANS LE MÊME INSERT
+  // (2026-11-04, migrations/migration_passion_requests_recursion_2026-11-04.sql).
+  // `trg_passion_request_auto` la confie à `creer_passion` — qui CRÉE la passion
+  // (une des trois créations du compte) ou rend l'existante —, la rattache dans
+  // `user_passions` et pose `status = 'approved'`. Elle devient donc une passion
+  // PUBLIABLE, et le client la traite exactement comme une création : injection
+  // au référentiel en mémoire, `enregistrerPassionCanonique` (app-02, seule
+  // autorité de publication), sélection. Sans ça, le prochain enregistrement des
+  // passions (`_supaSavePassionStateMaintenant`, app-08), qui réécrit
+  // `profiles.passions` depuis l'état LOCAL et retire de `user_passions` tout ce
+  // qui y manque, défaisait en silence le rattachement fait par le serveur.
+  // ⚠️ SANS COMPTE RÉEL, RIEN NE PART (`uidReel()`, jamais `MY_UID`, qu'un
+  // visiteur porte en `u_<aléatoire>`) : la demande reste notée sur l'appareil,
+  // et AUCUN rejeu n'existe — l'écran ne promet donc jamais qu'elle « partira ».
   // ══════════════════════════════════════════════════════════════════════════
   var CLE_DEMANDES = "passio_passions_demandes";
+
+  // ⚠️ PRÉREQUIS CLIENT de la migration du 2026-11-04
+  // (`-- PREREQUIS-CLIENT: passion_requests:reponse-lue`) : `scripts/appliquer-migration.mjs`
+  // refuse d'écrire en production tant que la page SERVIE ne porte pas cette
+  // chaîne — l'ancien client affichait « en vérification » sur une demande que
+  // le serveur approuve désormais, et la défaisait au prochain enregistrement.
+  // La renommer, c'est renommer la ligne de la migration (verrou :
+  // tests/unit/barriere-migration.test.mjs ④).
+  var REPONSE_DEMANDE_LUE = "passion_requests:reponse-lue";
 
   function demandes() {
     try {
@@ -769,6 +789,72 @@
     return { valide: true, texte: String(texte).trim(), normalise: n, doublon: exact, proches: proches };
   }
 
+  function noterStatutDemande(normalise, statut) {
+    try {
+      var l = demandes();
+      for (var i = 0; i < l.length; i++) if (l[i] && l[i].normalise === normalise) l[i].status = statut;
+      localStorage.setItem(CLE_DEMANDES, JSON.stringify(l));
+    } catch (e) { journal("demande_locale", e); }
+  }
+
+  // Le libellé que `creer_passion` écrit pour un nom NOUVEAU : espaces repliés,
+  // 60 caractères au plus, première lettre en capitale. Sert de repli quand la
+  // passion ne se relit pas après coup.
+  function libelleServeur(texte) {
+    var b = String(texte || "").trim().replace(/\s+/g, " ").slice(0, 60);
+    return b.charAt(0).toUpperCase() + b.slice(1);
+  }
+
+  // Un refus de demande, NOMMÉ. Le code SQLSTATE dit qui a refusé : la garde ou
+  // la policy (42501, l'indice « quota » pour les 5 demandes par 24 h), l'index
+  // unique (23505), `creer_passion` (22023 pour un nom refusé, 53400 au plafond
+  // des créations). Le texte anglais de la base ne se montre jamais.
+  function motifDemande(err) {
+    var code = String((err && err.code) || "");
+    var texte = String((err && err.message) || "") + " " + String((err && err.details) || "") + " " + String((err && err.hint) || "");
+    var m = motifErreur(texte);
+    if (m) return m;
+    if (code === "42501") return /quota/i.test(texte) ? "trop_de_demandes" : "demande_refusee";
+    if (code === "23505") return "deja_demandee";
+    if (code === "53400") return "quota_creation";
+    if (code === "22023") return "nom_invalide";
+    try { if (typeof estEchecReseau === "function" && estEchecReseau(err)) return "hors_ligne"; } catch (e) {}
+    return "serveur_indisponible";
+  }
+
+  // La passion qu'a rendue le serveur, prête à être choisie : connue du
+  // référentiel en mémoire, ou relue (la réponse de l'INSERT ne la porte pas :
+  // une passion que `creer_passion` vient d'écrire n'est pas visible de la même
+  // instruction). Faute de relecture, le libellé que le serveur a écrit.
+  function passionResolue(id, a) {
+    function retenir(p) {
+      noterUtilisation(p.id);
+      // Publiable TOUT DE SUITE, comme une création : `estPassionCanonique`
+      // (app-02) est la seule autorité de publication.
+      try { if (typeof enregistrerPassionCanonique === "function") enregistrerPassionCanonique(p.id); } catch (e) {}
+      return p;
+    }
+    var connue = parId(id);
+    if (connue) return Promise.resolve(retenir(connue));
+    var repli = { id: id, label: libelleServeur(a.texte), emoji: "✨", color: "#7c3aed" };
+    try {
+      return supa.from("passions").select("id,label,emoji,color").eq("id", id)
+        .then(function (r) {
+          var l = (r && !r.error && r.data && r.data[0]) || null;
+          return retenir(injecterPassion(l && l.id === id ? l : repli));
+        })
+        .catch(function (e) { journal("demande_relecture", e); return retenir(injecterPassion(repli)); });
+    } catch (e) {
+      journal("demande_relecture_sync", e);
+      return Promise.resolve(retenir(injecterPassion(repli)));
+    }
+  }
+
+  // Rend TOUJOURS une promesse d'un objet, jamais un rejet :
+  //   { approuvee: true, passion }        → le serveur l'a résolue : elle est à soi
+  //   { envoyee: true }                   → partie, en attente côté serveur
+  //   { envoyee: false, erreur: <motif> } → refusée (motif nommé), ou partie en échec
+  //   { envoyee: false, raison }          → pas partie : sans compte, hors ligne
   function deposerDemande(texte) {
     var a = analyserDemande(texte);
     if (!a.valide) return Promise.resolve(a);
@@ -782,24 +868,46 @@
       l.unshift(enregistrement);
       localStorage.setItem(CLE_DEMANDES, JSON.stringify(l.slice(0, 50)));
     } catch (e) { journal("demande_locale", e); }
+    function rendre(extra) { return Object.assign({}, a, { enregistrement: enregistrement }, extra); }
 
-    // Visiteur non connecté : la demande reste locale et sera envoyée plus
-    // tard. Connecté : on l'envoie, et on LIT `{ error }` — le SDK Supabase ne
-    // lève pas sur un refus RLS, une écriture non lue « réussit » à l'écran et
-    // disparaît au rechargement.
+    // ⚠️ UN VRAI COMPTE, OU RIEN NE PART. `MY_UID` porte un `u_<aléatoire>` pour
+    // tout visiteur : l'INSERT partait alors en production sous le jeton anon —
+    // les 158 refus en 500 du 2026-11-04 étaient ceux-là.
+    var uid = uidReel();
+    if (!uid) return Promise.resolve(rendre({ envoyee: false, raison: "sans_compte" }));
+    if (!serveurUtilisable()) return Promise.resolve(rendre({ envoyee: false, raison: "hors_ligne" }));
+
+    // On LIT la réponse : le SDK Supabase ne lève pas sur un refus, et une
+    // écriture non lue « réussit » à l'écran. `.select()` fait rendre la ligne
+    // écrite — c'est elle qui dit si le serveur a résolu la demande.
     try {
-      var uid = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null;
-      if (uid && serveurUtilisable()) {
-        return supa.from("passion_requests")
-          .insert({ user_id: uid, label: a.texte, normalized_label: a.normalise, status: "pending" })
-          .then(function (r) {
-            if (r && r.error) journal("demande_serveur", r.error.message || r.error);
-            return Object.assign({}, a, { enregistrement: enregistrement, envoyee: !(r && r.error) });
-          })
-          .catch(function (e) { journal("demande_serveur_catch", e); return Object.assign({}, a, { enregistrement: enregistrement, envoyee: false }); });
-      }
-    } catch (e) { journal("demande", e); }
-    return Promise.resolve(Object.assign({}, a, { enregistrement: enregistrement, envoyee: false }));
+      return supa.from("passion_requests")
+        .insert({ user_id: uid, label: a.texte, normalized_label: a.normalise, status: "pending" })
+        .select("status,resolved_passion_id")
+        .then(function (r) {
+          if (r && r.error) {
+            var motif = motifDemande(r.error);
+            journal("demande_serveur", String(r.error.code || "") + " " + motif);
+            return rendre({ envoyee: false, erreur: motif });
+          }
+          var ligne = (r && r.data && r.data[0]) || null;
+          journal(REPONSE_DEMANDE_LUE, (ligne && ligne.status) || "sans_ligne");
+          if (ligne && ligne.status) noterStatutDemande(a.normalise, ligne.status);
+          if (!ligne || ligne.status !== "approved" || !ligne.resolved_passion_id) return rendre({ envoyee: true });
+          return passionResolue(ligne.resolved_passion_id, a).then(function (p) {
+            return rendre({ envoyee: true, approuvee: true, cree: false, passion: p });
+          });
+        })
+        .catch(function (e) {
+          journal("demande_serveur_catch", e);
+          var reseau = false;
+          try { reseau = typeof estEchecReseau === "function" && estEchecReseau(e); } catch (_) {}
+          return rendre({ envoyee: false, erreur: reseau ? "hors_ligne" : "serveur_indisponible" });
+        });
+    } catch (e) {
+      journal("demande", e);
+      return Promise.resolve(rendre({ envoyee: false, erreur: "serveur_indisponible" }));
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -809,6 +917,8 @@
   // référentiel en contient 5 001, mais quand la recherche ne trouvait rien,
   // la seule issue était une DEMANDE (`deposerDemande` ci-dessus) — une entrée
   // « en vérification », jamais publiable. Une porte qui ne mène nulle part.
+  // (Depuis le 2026-11-04, la demande d'un compte est résolue par le serveur et
+  // revient comme une passion : voir l'en-tête des demandes.)
   //
   // ⚠️ LE CLIENT NE CHOISIT QUE LE NOM. L'identifiant, le statut, la source et
   // le pliage sont écrits par `creer_passion` (RPC `SECURITY DEFINER`,
@@ -898,7 +1008,9 @@
   // Rend TOUJOURS une promesse d'un objet, jamais un rejet :
   //   { cree: true,  passion }                → créée à l'instant
   //   { cree: false, passion, doublon }       → elle existait déjà, on la rend
-  //   { cree: false, repli: "demande" }       → demande déposée (hors ligne…)
+  //   { cree: false, repli: "demande", … }    → repli sur la DEMANDE, avec ce que
+  //                                              rend `deposerDemande` (passion
+  //                                              approuvée, refus nommé, ou non partie)
   //   { cree: false, erreur: "<motif>" }      → refus serveur, motif nommé
   function creerPassion(texte, options) {
     options = options || {};
