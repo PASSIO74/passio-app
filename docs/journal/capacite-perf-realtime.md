@@ -22,6 +22,7 @@
 - 🚪 UN VISITEUR NE LIT PAS LE COMPTE QU'IL N'A PAS (2026-10-11)
 - 🗂️ INDEX ET REALTIME : CE QUE LA MESURE A RETIRÉ, ET CE QU'ELLE A LAISSÉ (2026-11-03)
 - 🕳️ CE QUE REALTIME DIT D'UNE SUPPRESSION — LA CLÉ PRIMAIRE, À TOUS, SANS RLS (2026-11-03, R25)
+- 🔒 R25 — UNE TABLE PUBLIÉE LIVRE SES SUPPRESSIONS À TOUT LE MONDE, ET UNE TABLE DÉPUBLIÉE FAIT TAIRE SON CANAL (2026-11-03)
 - 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 
 ---
@@ -1160,6 +1161,122 @@ notification de message (un INSERT refusé en 23505 tant qu'elle existe) — pr�
 AVANT, sur le staging : les « Suites production » de la CI visent le STAGING (SUP-04), jamais la production — un
 UPDATE ou un DELETE refusé faute d'identité y tomberait au rouge. Côté
 client, `old_record` nul arrive en `payload.old = {}` (supabase-js, `convertChangeData`).
+
+## 🔒 R25 — UNE TABLE PUBLIÉE LIVRE SES SUPPRESSIONS À TOUT LE MONDE, ET UNE TABLE DÉPUBLIÉE FAIT TAIRE SON CANAL (2026-11-03)
+
+Risque résiduel R25 de l'audit du 2026-11-02 (`.passio/audits/AUDIT_PASSIO_2026-11-02/05-RISQUES-RESIDUELS.md`),
+à fermer « sans perdre les fonctions temps réel ». Migration `migrations/migration_realtime_diffusion_privee_2026-11-03.sql`,
+banc `tests/sql/migration-realtime-diffusion-privee.test.sh` (65/65), verrou client `tests/e2e/realtime-diffusion-privee.spec.js` (11).
+
+⚠️ **C'EST LA SECONDE COUCHE, APRÈS L'IDENTITÉ OPAQUE DE LA FICHE PRÉCÉDENTE.** Les deux lots traitaient R25 sans se connaître ; fusionnés à blanc le 04/11, ils sont compatibles dans les deux ordres (mêmes bancs verts, même état final). L'identité opaque retire la clé de CHAQUE suppression des quatre tables, mais un abonné voit encore QU'un effacement a lieu ; ce lot retire tout le flux pour `conv_members` et `notifications`, et deux liaisons `postgres_changes` sur les tables les plus écrites. ⚠️ Le verdict de la première couche exige « les 11 mêmes tables » : **rejoué après ce lot, sa ligne 10 dit ECHEC, et c'est attendu** (neuf tables).
+
+⚠️ **LE DÉFAUT EST DANS LE MOTEUR, PAS DANS NOS POLICIES.** `realtime.apply_rls` (code de production) évalue
+la RLS d'un INSERT ou d'un UPDATE par une requête préparée sous le rôle de l'abonné, et la SAUTE pour un
+DELETE (« if RLS enabled, we can't secure deletes so filter to pkey ») : la clé primaire part vers toute
+souscription dont le filtre la laisse passer — et le filtre comme l'action (`action_filter`) sont choisis par
+le CLIENT au join. Les liaisons INSERT du produit ne recevaient donc rien ; un abonné qui DEMANDE `DELETE` ou
+`*`, si. **Reproduit au banc avec le `apply_rls` de production**, ce que l'audit n'avait pas pu
+faire : un compte sans lien reçoit `(evgrp_ev_rando, A)` au départ de A, et le même compte ne reçoit PAS
+l'arrivée (la RLS s'applique à l'INSERT). ⚠️ **Et sans compte** : `anon` garde SELECT de table sur
+`conv_members` et `notifications` (mesuré au canal ①), et `realtime:db` lui est ouvert
+(`passio_rt_recevoir_visiteur`) — la clé anon publique suffisait. Volumes depuis la remise à zéro des
+compteurs (2026-05-07) : 247 DELETE de `conv_members`, 2 895 de `notifications` pour 3 082 INSERT.
+
+**Le remède a deux moitiés, et une seule ferme la fuite.** ① les deux tables SORTENT de la publication :
+`realtime.list_changes` ne passe à wal2json que les tables de la publication (`add-tables`), plus aucun
+DELETE n'atteint le moteur. ② deux triggers AFTER INSERT (SECURITY DEFINER, `search_path` vide, EXECUTE
+retiré à `anon`/`authenticated` — un trigger ne vérifie pas EXECUTE au déclenchement, éprouvé au banc)
+poussent la ligne au SEUL destinataire sur `user:<user_id>`, le topic du canal v3 des messages. La policy
+« Utilisateur reçoit ses messages » ne l'ouvre qu'à son titulaire ; aucune policy n'y laisse émettre un
+client, donc ce qui y arrive vient du serveur. ② garde la fonction ; c'est ① qui ferme.
+
+⚠️ **LE PIÈGE DU LOT EST UN NOM D'ÉVÉNEMENT.** Le client v3 traitait tout `INSERT` reçu sur `user:` et porteur
+d'un `conv_id` comme un MESSAGE ; une ligne `conv_members` en porte un. Diffusée sous `INSERT` (le choix
+naturel, celui de `broadcast_changes` avec `TG_OP`), elle aurait peint chez chaque onglet resté sur l'ancien
+code une bulle vide, joué le son et affiché « Passionné t'a envoyé un message ». D'où `conv_members:INSERT` et
+`notifications:INSERT` — supabase-js compare un nom de liaison broadcast par ÉGALITÉ, insensible à la casse
+(lu dans `js/vendor/supabase-js-2.116.0.js`) — et une garde `p.table` dans la liaison des messages.
+
+⚠️ **« UNE TABLE HORS PUBLICATION NE REÇOIT RIEN » ÉTAIT INCOMPLET, ET C'EST CE QUI FIXE L'ORDRE.** La gate
+`audit:realtime` l'écrivait depuis le 2026-09-19. Lu dans le serveur Realtime
+(`PostgresCdcRls.Subscriptions.create`, `RealtimeChannel`) : les liaisons `postgres_changes` d'un canal sont
+insérées en UNE transaction, et une table absente (0 ligne) l'annule ENTIÈRE — un message `system` que le
+produit n'écoute pas, réessayé toutes les 5 à 10 s, le canal restant ouvert et son broadcast intact. Un
+onglet resté sur l'ancien code aurait donc perdu à son join suivant TOUT `realtime:db` (fil, commentaires,
+accusés de lecture, lives). **Ordre : le client EN LIGNE d'abord, la migration ensuite, dans la foulée** (entre
+les deux, ces tables n'ont pas de direct ; la cloche se relit au démarrage, au réveil et à l'ouverture, une
+conversation neuve apparaît à son premier message). La PWA recharge un onglet visible dans la minute d'un
+déploiement (`js/pwa-detect.js`). Retour arrière : la base d'abord, le client ensuite — l'ordre inverse.
+La gate et son manifeste le disent désormais.
+
+- **La poussée ne peut pas faire échouer l'écriture** : `realtime.send` rattrape ses erreurs mais pas son
+  absence ni un changement de signature ; le bloc `exception` du trigger le couvre (banc : `send` renommée,
+  la notification et l'ajout s'écrivent, l'avertissement nomme la cause, le verdict rougit).
+- **La charge est écrite colonne par colonne**, pas `to_jsonb(new)` : `origine` ne voyage pas, et une colonne
+  ajoutée demain ne partira pas d'elle-même. Le verrou ⑥ exige que les colonnes LUES par le client soient
+  incluses dans celles que le serveur POUSSE (une colonne lue et jamais envoyée rendrait `undefined`).
+- **Le topic `user:` s'ouvre dans TOUS les modes** (soupapes v1/v2 comprises), la liaison des messages en v3
+  seulement — sans quoi un appareil en v1 aurait perdu ses notifications en direct sans un bruit.
+- Le verdict de la migration a onze lignes, chacune éprouvée au banc contre la mutation qu'elle garde
+  (table republiée, autre table retirée, trigger désactivé, `search_path` retiré, EXECUTE rendu par un autre
+  concédant, policy du topic retirée ou élargie, policy d'émission sur `user:`, canal des messages coupé,
+  fonction réécrite sous « INSERT »).
+
+⚠️ **QUATRE PIÈGES DE BANC.** ① `apply_rls` rend UNE ligne PAR RÔLE : prendre « la première » rendait un faux
+« rien » (anon se trie avant authenticated) ; ② `claims_role` de `realtime.subscription` est une colonne
+GÉNÉRÉE, que `pg_attrdef` affiche comme un défaut — recopiée en `default`, PostgreSQL la refuse ; ③ le bloc
+différé de `supaInit` (~2 s) relit les notifications : tombé dans le cas du réveil, il comptait une relecture
+que le réveil n'avait pas faite — **1 rouge sur 3**, même piège que `capacite-socket-au-repos`, même remède ;
+④ la gate textuelle prend une assertion `'table: "x"'` pour une souscription si le marqueur CDC est à moins
+de 400 caractères — son propre piège du fantôme, rejoué par le titre d'un test.
+**Éprouvé par réinjection** : quatre mutations de la migration (retrait de publication supprimé, événement
+« INSERT », destinataire = auteur, bloc `exception` retiré) et cinq du client (garde `p.table`, nom
+d'événement, topic en v3 seulement, garde de destinataire, ancienne liaison remise) rougissent toutes.
+
+**CE QUE CE LOT NE PROUVE PAS** : aucun serveur Realtime ne tourne au banc. La livraison de bout en bout se
+mesure après application — au canal ① (les deux tables hors de `pg_publication_tables`, les deux triggers
+présents) et à deux comptes (une notification et un ajout reçus sans recharger ; `multi-comptes.spec.js`
+journalise « realtime OK » sur le staging quand la migration y est appliquée).
+**CE QUI RESTE PUBLIÉ** : `conv_reads`, `post_likes` et `comment_interactions`. Leurs clés ne partent plus (fiche précédente), mais leurs suppressions restent des événements. `conv_reads` porte les accusés de lecture en direct ; `post_likes` n'a plus d'abonné produit, seuls les bancs de charge l'écoutent encore. **Une table dont la clé primaire DIT quelque chose ne publie pas cette clé.**
+
+**DEUX CONTRE-RELECTURES (2026-11-03, `passio-red-team` et `audit-passio`, lecture seule, canal ① pour la
+première) — aucun P0, ce que le lot ferme est fermé ; ce qu'elles ont trouvé, et ce qui en a été fait :**
+- ⚠️ **CHAQUE NOTIFICATION EN DIRECT VIDAIT LA CLOCHE** (défaut préexistant, dans le code déplacé tel quel) :
+  `mergeSupaNotifs` attend la liste COMPLÈTE du serveur et remplace les notifications distantes par celles
+  qu'on lui passe — l'ancien gestionnaire lui passait la seule nouvelle. Corrigé (`_rtNotificationRecue` lui
+  rend aussi celles qu'on tient) ; le cas ③ partait d'une cloche VIDE et ne pouvait pas le voir.
+- Le toast partait pour un émetteur bloqué (la cloche l'écartait) et affichait du texte neutralisé pour le
+  HTML (« &lt;b&gt; », « L&#39;équipe ») dans un `textContent` : il ne montre plus que ce que la cloche a
+  gardé, en texte brut (`_texteBrutNotif`, jamais par `innerHTML` d'un élément détaché, qui charge les images
+  et déclenche leurs `onerror`).
+- **La base tranche, pas la poussée** (`_rtAjoutConversationRecu`) : rien n'est matérialisé si la relecture
+  ne me compte pas parmi les membres (ajouté puis retiré aussitôt), pour un 1:1 sans correspondant lisible (le
+  CRÉATEUR reçoit sa propre ligne avant celle du pair), ou si l'entrée a été posée pendant la lecture ;
+  `confirmCreateGroup` (app-05) fusionne par identifiant au lieu d'un `unshift` aveugle (groupe en double).
+  Le `catch` vide journalise ; l'appel de `_subscribeUserTopic` dans `supaSubscribe` est gardé (une exception
+  y aurait privé la session de TOUT son temps réel).
+- **Le verdict ÉPROUVE au lieu de lire** : une sonde dans une sous-transaction annulée écrit une notification
+  pour un destinataire sentinelle, vérifie la poussée, puis rejoue sous `authenticated` lecture et émission
+  sur `user:` — `realtime.topic() ~~ '%'` ou `(1 = 1)` passaient un contrôle textuel. Une ligne TÉMOIN écrite
+  par le propriétaire sépare les contrôles de lecture de la poussée (premier jet : table vide = « personne ne
+  lit », titulaire compris, trois faux ECHEC au banc). Rien ne reste, rien n'est diffusé.
+- Poussée seulement vers un uuid (une ligne historique non-uuid existe), `content` borné à 500 (non borné en
+  table) ; retour arrière rejouable ; propriétaire non superutilisateur éprouvé au banc (sans BYPASSRLS, la
+  poussée est perdue en WARNING — la sonde le dit).
+- ⚠️ **L'ORDRE « CLIENT D'ABORD » EST TENU PAR L'OUTIL** : règle ④ de `appliquer-migration.mjs` — une migration
+  qui déclare `-- PREREQUIS-CLIENT: <motif>` n'est envoyée à la production que si le bundle SERVI porte le
+  motif (illisible = refus). ⚠️ Le bundle n'est pas une balise `<script src>` : `build.js` l'injecte par un
+  chargeur (`s.src = "app.js?v=…"`) — le premier jet de la règle, vert sur un HTML fabriqué, était aveugle sur
+  le vrai build ; essayé sur un build réel avant d'être cru.
+- Les skills `/realtime` et `/migration` conseillaient exactement le geste que R25 interdit (« ajouter la
+  table à la publication », « table absente = 0 événement ») : corrigés, comme `migration-checker`.
+- **Ce qui reste, et le registre le dit** : la même information par SONDAGE (`is_conv_member`, C-02 —
+  `promouvoir_attente` ne nomme plus le promu depuis R24, appliquée le 04/11) ; R36 (`notifier_mentions` lit
+  `c.name`, colonne absente : aucune @mention de conversation n'est notifiée — trouvé en passant, mesuré de
+  nouveau le 04/11). `comment_interactions` : son gestionnaire DELETE ne sert à rien, il sort sur
+  `!r.comment_id`. Et `realtime.messages` garde la charge poussée
+  jusqu'à la chute de sa partition, comme celle des messages.
+
 
 ## 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 

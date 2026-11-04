@@ -280,8 +280,9 @@ const TOPIC_DB = "realtime:realtime:db";
 
 // ⚠️ LE BANC S'ABONNAIT À UNE SEULE LIAISON, FILTRÉE — DONC À ~1/12 DU COÛT
 // RÉEL, ET DU MAUVAIS CÔTÉ DE LA SEULE FORME QUADRATIQUE DU PRODUIT.
-// L'app (`_creerCanalDb`, app-08) pose DOUZE `postgres_changes` sur
-// `realtime:db` en configuration par DÉFAUT, dont DIX SANS FILTRE. Le coût du
+// L'app (`_creerCanalDb`, app-08) posait DOUZE `postgres_changes` sur
+// `realtime:db` en configuration par DÉFAUT, dont DIX SANS FILTRE (depuis R25,
+// 2026-11-03 : les deux filtrées sont parties, voir plus bas). Le coût du
 // temps réel est en O(changements × abonnements qui matchent) : c'est 66 % du
 // CPU de la base à lui seul (68,9 % avec la seconde forme de décodage WAL, d'où
 // les « ~69 % » cités ailleurs — les deux chiffres sont le même poste), et un
@@ -300,8 +301,13 @@ const TOPIC_DB = "realtime:realtime:db";
 // chemin que personne n'emprunte : le banc mesurerait une charge inexistante et
 // rendrait un chiffre de capacité trop bas. **Compter les `.on(` d'un fichier
 // n'est pas compter ce que l'application exécute.**
-// Les douze ci-dessous sont recopiées d'app-08 ; deux seulement portent un
-// filtre, et ce sont les deux que l'app filtre (`conv_members`, `notifications`).
+// Les liaisons ci-dessous sont recopiées d'app-08 (`post_likes` y compris, que
+// l'app n'écoute plus depuis le 2026-09-21 — écart connu de ce banc-ci).
+// ⚠️ R25 (2026-11-03) : `conv_members` et `notifications`, les deux seules
+// FILTRÉES, en sont sorties avec la publication — leurs DELETE livraient la clé
+// primaire à tout abonné, sans RLS. Le serveur pousse leurs INSERT sur
+// `user:<uid>` ; une liaison restée ici ferait échouer le join ENTIER (Realtime
+// crée les liaisons d'un canal en une transaction).
 // ⚠️ Les recopier est un COUPLAGE ASSUMÉ : si app-08 change, ce tableau doit
 // suivre, sinon le banc reprend l'écart qu'on vient de fermer. Le contrôle est
 // le nombre — `npm run audit:realtime` compte les souscriptions du dépôt,
@@ -315,7 +321,7 @@ function liaisonsApp(uid) {
   // passerait `SUBSCRIBED` sans jamais rien recevoir, indiscernable de « il ne
   // s'est rien passé ».
   // ⚠️ ET LE NOM DE CETTE VARIABLE EST CE QUI REND LE BLOC VISIBLE : c'est lui
-  // qui porte le marqueur que la gate cherche. Le renommer rendrait ces treize
+  // qui porte le marqueur que la gate cherche. Le renommer rendrait ces dix
   // liaisons invisibles, sans une erreur. Un commentaire qui CITE la règle la
   // déclenche aussi — c'est ce qui a fait rougir ce fichier au premier jet,
   // et c'est le piège que la gate a déjà dû fermer sur elle-même.
@@ -323,12 +329,10 @@ function liaisonsApp(uid) {
     { event: "*", schema: "public", table: "conv_reads" },
     { event: "INSERT", schema: "public", table: "comment_interactions" },
     { event: "DELETE", schema: "public", table: "comment_interactions" },
-    { event: "INSERT", schema: "public", table: "conv_members", filter: "user_id=eq." + uid },
     { event: "UPDATE", schema: "public", table: "profiles" },
     { event: "INSERT", schema: "public", table: "posts" },
     { event: "INSERT", schema: "public", table: "post_likes" },
     { event: "DELETE", schema: "public", table: "post_likes" },
-    { event: "INSERT", schema: "public", table: "notifications", filter: "user_id=eq." + uid },
     { event: "INSERT", schema: "public", table: "post_comments" },
     { event: "INSERT", schema: "public", table: "event_comments" },
     { event: "*", schema: "public", table: "video_lives" },
@@ -362,8 +366,8 @@ function ecouter(c) {
       if (m.event === "phx_reply" && m.topic === TOPIC_DB) { ouvert = m.payload && m.payload.status === "ok"; clearTimeout(minuteur); res(ouvert); }
       if (m.event === "postgres_changes") {
         const d = m.payload && m.payload.data;
-        // ⚠️ ON NE CORRÈLE QUE `posts`. Depuis que le banc s'abonne aux treize
-        // liaisons de l'app, ce canal porte aussi `conv_messages`,
+        // ⚠️ ON NE CORRÈLE QUE `posts`. Depuis que le banc s'abonne aux liaisons
+        // de l'app (dix depuis R25, `conv_messages` n'en est pas), ce canal porte aussi
         // `post_comments`, `video_lives`… dont les lignes ont un `id` elles
         // aussi : les verser au corrélateur lui ferait compter des « arrivées
         // précoces » qui n'ont rien à voir avec la publication mesurée, et le

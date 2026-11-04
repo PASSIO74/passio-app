@@ -310,20 +310,25 @@ test("⑧ quinquies le gestionnaire temps réel TRANSMET le payload — à la SO
   expect(bloc, "le repli direct reste").toContain("supaRefreshVideoLives");
 });
 
-// ── ⑨ conv_members : O(N) → O(1) ────────────────────────────────────────────
+// ── ⑨ conv_members : O(N) → O(1), puis R25 : le SERVEUR pousse ─────────────
 
-test("⑨ `conv_members` porte un filtre SERVEUR, et la garde client reste", () => {
+test("⑨ `conv_members` n'est plus une liaison CDC : le serveur pousse l'ajout sur user:<moi>, la garde client reste", () => {
   const src = lire("js/app-08-ui-modals-tour.js");
-  const i = src.indexOf('table: "conv_members"');
-  expect(i, "le binding conv_members doit exister").toBeGreaterThan(0);
-  const ligne = src.slice(i, i + 220);
-  expect(
-    ligne,
-    "sans filtre serveur, CHAQUE ligne conv_members de tout PASSIO est poussée à TOUS les connectés pour être jetée à la première ligne du gestionnaire"
-  ).toMatch(/filter:\s*`user_id=eq\.\$\{MY_UID\}`/);
-  // ⚠️ Un filtre Realtime est une optimisation de TRANSPORT, jamais une
-  // frontière de sécurité : la garde client ne part pas avec.
-  expect(src.slice(i, i + 500)).toContain("r.user_id !== MY_UID");
+  // ⚠️ Ce cas ne NOMME pas le marqueur CDC à moins de 400 caractères de la
+  // chaîne cherchée ci-dessous : `audit-realtime-publication.js` lit le texte et
+  // prendrait l'assertion pour une souscription (son propre piège du fantôme).
+  // ⚠️ R25 (2026-11-03). Le filtre serveur `user_id=eq.<moi>` (2026-09-20)
+  // évitait l'évaluation en O(abonnés) de chaque INSERT ; il ne pouvait rien
+  // contre les DELETE, que `realtime.apply_rls` livre à TOUT abonné sans RLS,
+  // clé primaire `(conversation, compte)` en clair. La table est sortie de la
+  // publication : un ajout est désormais UN message vers UN topic, poussé par
+  // `diffuser_ajout_membre` — O(1) par construction, et plus rien à fuir.
+  expect(src, "plus aucune liaison CDC vers conv_members").not.toContain('table: "conv_members"');
+  expect(src, "l'ajout arrive sur le topic de l'utilisateur").toContain('ch.on("broadcast", { event: "conv_members:INSERT" }');
+  // ⚠️ Un canal est un TRANSPORT, jamais une frontière : la garde client ne part pas.
+  const debut = src.indexOf("async function _rtAjoutConversationRecu(");
+  expect(debut, "le gestionnaire de l'ajout doit exister").toBeGreaterThan(0);
+  expect(src.slice(debut, src.indexOf("window._rtAjoutConversationRecu =", debut))).toContain("r.user_id !== MY_UID");
 });
 
 // ── ⑩ ET ⑪ LES DEUX FILETS RECULENT QUAND ILS NE TROUVENT RIEN ─────────────

@@ -264,7 +264,9 @@ verdict de données. Donc, avant d'ouvrir un projet reconstruit :
    idempotentes et impriment leur tableau de verdict :
    `npm run migration:appliquer -- migrations/<fichier>.sql --projet <ref de la cible>` — tout OK, ou le
    projet ne s'ouvre pas. Le journal `migrations_appliquees`, restauré avec l'archive, dit lesquelles la
-   source avait reçues.
+   source avait reçues. ⚠️ Une seule exception, attendue : `migration_realtime_identite_opaque` exige « les
+   11 mêmes tables » publiées ; rejouée après `migration_realtime_diffusion_privee`, qui en retire deux, sa
+   ligne 10 dit ECHEC. Les rejouer dans cet ordre-là : l'identité opaque d'abord.
 2. **Mesurer l'identité de réplication** par le canal de lecture seule (canal ① d'ADR-012 ; sur un projet que
    le connecteur ne vise pas, la même requête — un SELECT seul — par l'API de gestion), puis la comparer à la
    même lecture sur la production :

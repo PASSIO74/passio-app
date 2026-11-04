@@ -11,7 +11,10 @@
 #   ① que la migration ne retire QUE cette table (son verdict LÈVE sinon) ;
 #   ② qu'elle est REJOUABLE (contrairement à celle du 2026-09-19) ;
 #   ③ que l'état final est EXACTEMENT `scripts/realtime-publication.json`,
-#      la source que la gate `audit:realtime` compare au code du dépôt.
+#      la source que la gate `audit:realtime` compare au code du dépôt —
+#      à ce qu'une migration POSTÉRIEURE a retiré près (R25, 2026-11-03 :
+#      `conv_members`, `notifications`), et c'est désormais le banc de la plus
+#      récente, `migration-realtime-diffusion-privee.test.sh`, qui le garde.
 #      Sans ce dernier contrôle, la base et la gate pourraient diverger —
 #      et une souscription à une table non publiée passe `SUBSCRIBED` sans
 #      jamais rien livrer : le défaut MUET que toute cette chaîne combat.
@@ -95,8 +98,13 @@ echo "── ⑤ L'état final EST la source que lit la gate CI ──"
 # BASE. Sans les deux, une table pourrait rester publiée sans abonné (du WAL
 # décodé pour personne) ou, bien pire, être écoutée sans être publiée —
 # `SUBSCRIBED` et jamais rien, indiscernable de « il ne s'est rien passé ».
-attendu=$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');console.log(d.publiees.slice().sort().join(' '))")
-verifier "⑤ la liste en base = scripts/realtime-publication.json" "$attendu" "$(liste)"
+# ⚠️ Comparer l'état d'une migration ANCIENNE au fichier d'aujourd'hui
+# reviendrait à lui reprocher de ne pas contenir l'avenir (même règle que le
+# banc du 2026-09-19, ⑦) : on rend à l'attendu ce que R25 (2026-11-03) a
+# retiré depuis. L'état FINAL est comparé au JSON par le banc de la migration
+# la plus récente, `migration-realtime-diffusion-privee.test.sh`.
+attendu=$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');const l=d.publiees.slice();for(const t of ['conv_members','notifications'])if(!l.includes(t))l.push(t);console.log(l.sort().join(' '))")
+verifier "⑤ la liste en base = scripts/realtime-publication.json + conv_members, notifications (retirées le 2026-11-03)" "$attendu" "$(liste)"
 
 echo "── ⑥ REJOUABLE : un second passage ne casse rien et ne change rien ──"
 sortie2="$(FICHIER "$MIGRATION" || true)"

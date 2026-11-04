@@ -98,15 +98,22 @@ test("les partenaires de messagerie sont distincts et connectés même au palier
   assert.equal(partenaire(24, 25), 0);
 });
 
-test("les dix handlers V3 retirent uniquement les deux likes et gardent les filtres personnels", () => {
+test("les huit handlers V3 retirent les deux likes ; R25 : plus aucune liaison vers conv_members ni notifications", () => {
   const subscriptions = abonnements("compte-test");
-  assert.equal(subscriptions.length, 10);
-  assert.equal(new Set(subscriptions.map(s => s.table)).size, 9);
+  assert.equal(subscriptions.length, 8);
+  assert.equal(new Set(subscriptions.map(s => s.table)).size, 7);
   const legacy = abonnements("compte-test", "legacy12");
-  assert.equal(legacy.length, 12);
+  assert.equal(legacy.length, 10);
   assert.deepEqual(subscriptions, legacy.filter(s => s.table !== "post_likes"));
   assert.equal(subscriptions.some(s => ["conv_messages", "telemetry_events"].includes(s.table)), false);
-  for (const table of ["conv_members", "notifications"]) assert.equal(subscriptions.find(s => s.table === table).filter, "user_id=eq.compte-test");
+  // ⚠️ R25 (2026-11-03) : ces deux tables sont HORS publication. Une liaison vers
+  // elles ferait échouer le join ENTIER du canal (Realtime crée ses liaisons en une
+  // transaction) ; leurs INSERT arrivent par broadcast sur user:<uid>. Les deux
+  // profils, l'ancien compris : `legacy12` ne joindrait plus du tout.
+  for (const profil of [subscriptions, legacy]) {
+    assert.equal(profil.some(s => ["conv_members", "notifications"].includes(s.table)), false);
+    assert.equal(profil.some(s => s.filter), false, "plus aucune liaison filtrée : les deux filtrées étaient celles de R25");
+  }
 });
 
 test("les scénarios comparés ont les mêmes pauses ; la lecture ne produit pas d'écriture mesurée", () => {
@@ -191,7 +198,7 @@ test("les deux phx_reply ne donnent pas CDC prêt ; system peut précéder ou su
     assert.equal(etat.observer(ordre[0]), false);
     assert.equal(etat.observer(ordre[1]), false);
     assert.equal(etat.observer(ordre[2]), true);
-    assert.equal(etat.systemes.ok, 1); assert.equal(etat.handlers, 10);
+    assert.equal(etat.systemes.ok, 1); assert.equal(etat.handlers, 8); // R25 : conv_members et notifications sont parties
   }
 });
 
@@ -243,7 +250,7 @@ test("legacy12 reste consultable hors ligne mais aucune exécution ne peut le ch
   assert.throws(() => optionsBanc([...cible, "--profil-realtime", "9"]), /PROFIL_REALTIME_INVALIDE/);
   const legacy = new DisponibiliteRealtime(uidReady, "legacy12");
   for (const message of [joinDB, joinUser, systemReady]) legacy.observer(message);
-  assert.equal(legacy.pret, false, "dix bindings ne suffisent pas pour le contrat legacy douze");
+  assert.equal(legacy.pret, false, "les huit bindings du profil courant ne suffisent pas pour le contrat legacy (dix)");
   const actuel = new DisponibiliteRealtime(uidReady);
   const trop = structuredClone(joinDB);
   trop.payload.response.postgres_changes = abonnements(uidReady, "legacy12").map((a, id) => ({ ...a, id }));
