@@ -102,7 +102,8 @@ END $$;
 -- ─── Vue d'agrégation légère (optionnelle, lecture service_role) ───────────
 -- Compteurs par type sur les dernières 24 h, pour un démarrage rapide du
 -- dashboard sans scanner toute la table.
-CREATE OR REPLACE VIEW telemetry_last24h AS
+-- ⚠️ security_invoker (2026-11-03, contre-revue R26) : sans lui, rejouer ce fichier rendait la vue exécutée avec les droits de son PROPRIÉTAIRE — anon et authenticated relisaient les compteurs de télémétrie malgré la RLS de la table.
+CREATE OR REPLACE VIEW telemetry_last24h WITH (security_invoker = on) AS
   SELECT type, severity, COUNT(*) AS n,
          MAX(received_at) AS last_seen
   FROM telemetry_events

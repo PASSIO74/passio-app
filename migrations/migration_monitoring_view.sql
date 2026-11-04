@@ -9,7 +9,8 @@
 CREATE INDEX IF NOT EXISTS idx_client_errors_created ON client_errors (created_at DESC);
 
 -- Top des erreurs des dernières 24 h (message normalisé → fréquence + users touchés).
-CREATE OR REPLACE VIEW client_errors_top_24h AS
+-- ⚠️ security_invoker (2026-11-03, contre-revue R26) : sans lui, rejouer ce fichier rendait la vue exécutée avec les droits de son PROPRIÉTAIRE — anon et authenticated relisaient les erreurs client malgré la RLS de la table.
+CREATE OR REPLACE VIEW client_errors_top_24h WITH (security_invoker = on) AS
 SELECT
   left(coalesce(message, '(sans message)'), 200) AS message,
   count(*)                                        AS occurrences,
@@ -21,7 +22,8 @@ GROUP BY 1
 ORDER BY occurrences DESC;
 
 -- Volume horaire (pour repérer un pic après un déploiement).
-CREATE OR REPLACE VIEW client_errors_par_heure AS
+-- ⚠️ security_invoker (2026-11-03, contre-revue R26) : sans lui, rejouer ce fichier rendait la vue exécutée avec les droits de son PROPRIÉTAIRE — anon et authenticated relisaient les erreurs client malgré la RLS de la table.
+CREATE OR REPLACE VIEW client_errors_par_heure WITH (security_invoker = on) AS
 SELECT
   date_trunc('hour', created_at) AS heure,
   count(*)                       AS erreurs

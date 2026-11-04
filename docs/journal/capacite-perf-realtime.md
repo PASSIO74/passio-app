@@ -21,6 +21,7 @@
 - 📉 CAPACITÉ, QUATRE LOTS : CE QUI EST LIVRÉ, CE QUI ATTEND UNE MAIN HUMAINE, ET CE QUI A ÉTÉ MESURÉ (2026-09-21)
 - 🚪 UN VISITEUR NE LIT PAS LE COMPTE QU'IL N'A PAS (2026-10-11)
 - 🗂️ INDEX ET REALTIME : CE QUE LA MESURE A RETIRÉ, ET CE QU'ELLE A LAISSÉ (2026-11-03)
+- 🕳️ CE QUE REALTIME DIT D'UNE SUPPRESSION — LA CLÉ PRIMAIRE, À TOUS, SANS RLS (2026-11-03, R25)
 - 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 
 ---
@@ -1057,6 +1058,108 @@ aucune donnée), banc `tests/sql/migration-index-realtime.test.sh` (18/18).
   ⚠️ **Piège du banc** : une policy de `realtime.messages` n'est PAS un filtre de lignes, elle OUVRE ou
   FERME la souscription au topic — tout ou rien. Le premier jet du banc attendait « 1 ligne » et
   mesurait 3 : c'était l'attente qui était fausse, pas la policy.
+
+## 🕳️ CE QUE REALTIME DIT D'UNE SUPPRESSION — LA CLÉ PRIMAIRE, À TOUS, SANS RLS (2026-11-03, R25)
+
+Risque résiduel R25 de l'audit du 2026-11-02, trouvé en contre-revue du lot C-04 et **lu dans le code de
+production** (`realtime.apply_rls`, canal ①), pas supposé. Migration
+`migrations/migration_realtime_identite_opaque_2026-11-03.sql`, banc
+`tests/sql/migration-realtime-identite-opaque.test.sh` (copies md5 de production d'`apply_rls` et de ses
+dépendances, nourries de WAL réellement décodé).
+
+**Ce que fait `apply_rls` d'un DELETE — trois faits, dans le code :**
+1. il n'applique **aucune RLS** (`if not is_rls_enabled or action = 'DELETE' then visible_role_sub_ids = … ||
+   subscription_id`) : tout abonné à la table reçoit l'événement, `anon` compris par le sujet `realtime:db` ;
+2. la charge `old_record` est l'**identité de réplication** de la ligne, réduite aux colonnes de **clé
+   primaire** quand la RLS est active (« we can't secure deletes so filter to pkey ») ;
+3. le **filtre** d'un abonnement est évalué sur cette identité (`is_visible_through_filters(old_columns, …)`).
+Donc, avant : `conv_members` livrait `(conv_id, user_id)` à chaque départ — qui quitte quelle discussion
+d'activité `evgrp_<activité>` ; `notifications` livrait son `id`, qui ENCODE `n_pa_<activité>_<compte>` ou
+`n_fr_<A>_<V>` ; `conv_reads` et `post_likes`, leurs couples de compte. Et `comment_interactions`, en identité
+FULL, laissait filtrer un DELETE sur **n'importe quelle colonne** (`user_id=eq.<victime>`) : un oracle, même
+si la charge ne portait que l'`id`.
+
+**Le correctif est côté base seul, le client ne change pas.** Sur les quatre tables : une colonne opaque
+`rid`, **aléatoire** (53 bits : les chiffres 17 à 32 d'un `gen_random_uuid()`, masqués à 2^53 − 1), un index
+unique sur elle seule, et `replica identity using index`. **53 et pas 63** : au-delà de 2^53, un entier n'est
+plus exact en JavaScript — la sauvegarde l'arrondissait (`2906581903110193585` → `…193700`), et deux `rid`
+confondus dans l'archive se percutaient à la restauration ; et la forme à 63 bits (chiffres 1 à 16) n'en avait
+que 59 d'aléatoires, le quartet de version de l'UUID tombant dans la valeur. Un DELETE ne publie plus que `rid` ; `rid` n'est pas une colonne de clé primaire, donc
+`old_record` est **nul** ; un filtre sur `conv_id`, `user_id` ou `id` ne reconnaît plus aucun DELETE.
+`comment_interactions` revient en identité par défaut (sa charge reste `{id}`, l'oracle se ferme). Clés,
+RLS, droits et publication ne bougent pas.
+
+⚠️ **UNE PREMIÈRE VERSION TIRAIT `rid` D'UNE SÉQUENCE, ET C'ÉTAIT UNE NOUVELLE FUITE** (contre-revue des
+invariants). Un abonné lit le `rid` de SES lignes posées juste avant et juste après celle d'une victime,
+s'abonne avec `rid=in.(…)` — le filtre est accepté, `rid` étant lisible — et apprend l'heure exacte de
+l'effacement d'une ligne qu'il ne peut pas lire ; `anon` bissectait avec `rid=lt.N`. Une colonne qu'on ajoute
+pour cacher une clé ne doit **rien ordonner** : aléatoire, ou elle redevient un horodatage.
+⚠️ **UNE COLONNE QUE LE CLIENT PEUT ÉCRIRE REDEVIENT UN ORACLE** : `authenticated` tient l'INSERT de table, et
+`notifications_insert_own_author` laisse X écrire une notification adressée à V. Sans garde, X y PLANTE un
+`rid` de son choix, s'abonne à `rid=eq.<planté>` et apprend l'instant où V l'efface — une ligne qu'il ne peut
+pas lire (mesuré au banc, garde coupée puis active). Sur la première version, poser la prochaine valeur de la
+séquence faisait en plus échouer l'insertion suivante de n'importe qui (23505), `follows_notifier` compris. La
+garde `trg_rid_opaque` (SECURITY DEFINER, `search_path` vide) tire un `rid` neuf à chaque INSERT, quelle que
+soit la valeur fournie, et garde l'ancien sur un UPDATE de `rid` ; la restauration (`restaurer-donnees.js`)
+désactive les déclencheurs et garde les valeurs de l'archive. Le verdict exige la garde ARMÉE (sans clause
+`WHEN`) : une garde « présente » ne prouvait rien.
+⚠️ **NE JAMAIS SUPPRIMER UN `*_rid_key`** : l'index porte l'identité de réplication d'une table PUBLIÉE ; sans
+lui, PostgreSQL refuse TOUT UPDATE et DELETE de la table (« does not have a replica identity and publishes
+updates »). L'avis « index jamais lu » de Supabase le signalera toujours — ce dépôt a déjà retiré des index
+sur ce critère (F-05). La gate `scripts/audit-identite-replication.js` (`npm run verif`) refuse une migration
+qui le retire sans rendre d'abord une identité à la table — et, sauf marqueur motivé, tout ce qui contourne ce
+refus par le NOM qu'elle suit : un index renommé puis supprimé, un `drop constraint` (un `add constraint … using
+index` renomme l'index), une table reconstruite, renommée ou déplacée (elle revient en identité DEFAULT, sans `rid`
+ni garde), une colonne `rid` renommée, la garde retirée ou désarmée (`disable trigger`, `enable replica trigger`,
+`create or replace trigger … when`), `replica identity` FULL ou `using index` sur une table publiée, y compris
+dans le fichier même qui la publie (contre-revue finale, un test rouge par règle).
+⚠️ **UNE RECONSTRUCTION DOIT RENDRE L'IDENTITÉ** : le générateur de schéma des sauvegardes
+(`scripts/schema-executable.js`) n'écrivait aucun `replica identity` — un projet reconstruit rouvrait R25 en
+silence, pendant que `restaurer-donnees.js --verifier` disait « contenu identique ». Corrigé dans le même
+lot ; `docs/RECUPERATION.md` fait rejouer le verdict de la migration après une reprise.
+⚠️ **La migration ne tient jamais un verrou en en attendant un autre** : les cinq tables d'un coup, en
+`NOWAIT`, en boucle — attendre en tenant bloquait les lecteurs, et un interblocage avec l'instruction
+préparée d'`apply_rls` a été reproduit.
+⚠️ **…Y COMPRIS DANS SON VERDICT** (contre-revue finale, 2026-11-04, mesuré) : `pg_publication_tables` OUVRE
+chaque table publiée (`pg_get_publication_tables` → `table_open(…, AccessShareLock)`, PostgreSQL 16 comme
+17.6, dès qu'aucune liste de colonnes n'est posée). Tenant les cinq tables en ACCESS EXCLUSIVE, le verdict
+attendait sur `posts` dès qu'une autre session la verrouillait : chaque client des cinq tables bloqué jusqu'au
+`lock_timeout`, puis la migration entière annulée. Le verdict lit `pg_publication_rel` (et
+`pg_publication_namespace`), qui n'ouvre aucune table. Règle : **dans une migration qui tient des verrous,
+aucune lecture qui en prend d'autres** — vues système comprises.
+⚠️ **NE PAS SUPPRIMER (NI RENOMMER) UNE COLONNE D'UNE TABLE PUBLIÉE SANS DRAINER LE SLOT** (même revue,
+mesuré avec le vrai wal2json et l'`apply_rls` de production) : le décodage relit les changements avec le
+catalogue HISTORIQUE (la colonne y existe), `apply_rls` avec le catalogue COURANT
+(`has_column_privilege(…, 'rid', 'SELECT')` → « column does not exist ») ; `pg_logical_slot_get_changes` a
+déjà avancé le slot, ce qui n'est pas transactionnel : le lot entier — messages d'autres tables compris — n'est
+jamais livré en direct. Le retour arrière de R25 GARDE donc `rid` (inerte : identité, garde et index retirés) ;
+la supprimer se fait à part, après drainage (procédure dans l'en-tête de la migration).
+⚠️ **Un verdict compare à l'IDENTIQUE, jamais par morceaux** : « le défaut contient `gen_random_uuid()`,
+`17, 16` et `9007199254740991` » laissait passer `(…) & 7` (3 bits) ; une regex de corps de garde ancrée à la
+seule fin laissait passer un `if new.rid is not null then return new;` en tête. Le défaut se compare au
+déparse, par le même serveur, d'une colonne témoin portant l'expression exacte ; le corps, par une regex
+ancrée aux deux bouts. ⚠️ Et `pg_get_expr(adbin, adrelid)` OUVRE la table dont il déparse le défaut (mesuré sur
+PostgreSQL 16) : laissé au planificateur, il était évalué sur tous les défauts de `pg_attrdef`, `posts` compris, et
+le verdict attendait de nouveau sur une table verrouillée ailleurs — les quatre défauts de `rid` se lisent d'abord
+par un CTE `MATERIALIZED`, et seuls eux sont déparsés.
+⚠️ **Après un retour arrière, la réapplication TIRE DE NOUVEAU chaque `rid`** : la colonne gardée sans garde est écrite par le
+client pendant la fenêtre (un `rid` planté reviendrait, ou un doublon ferait échouer l'index unique — les deux
+mesurés) ; la migration le voit (colonne présente, garde absente) et tire chaque valeur de nouveau avant de
+reconstruire l'index. La réécriture n'est pas publiée par le décodage logique (0 changement, mesuré).
+
+**Ce qui reste, dit tel quel** : un abonné sans filtre voit qu'UN effacement a eu lieu, et quand, sur ces
+tables ; `posts`, `post_comments`, `conv_messages`, `event_comments` et `profiles` envoient toujours leur
+identifiant unique — une part aléatoire et l'instant de création : il dit QUAND la ligne effacée avait été
+créée, jamais QUI ni OÙ — mais **`video_lives` envoie `vl_<8 premiers caractères du compte>_<horodatage>`**
+(fabriqué par le client) : sans fuite aujourd'hui parce que ses lignes sont lisibles par tous, à revoir le jour
+où elles ne le seraient plus ; un filtre sur `rid` ne reconnaît que les lignes dont l'abonné connaît le `rid`
+(qu'il lit ou a lues), et `rid` ne change jamais — la poignée survit à un blocage ou à une exclusion. Hors temps
+réel, le même fait « qui a effacé quoi » se sonde encore par l'identifiant PRÉVISIBLE `n_<message>_<8>` d'une
+notification de message (un INSERT refusé en 23505 tant qu'elle existe) — préexistant, R32. **Après application** (`04-LIVRAISON.md` § 8.3) : mesurer au canal ①
+`relreplident` des cinq tables, `indisreplident`, le défaut de `rid` et la garde. Le fonctionnel se prouve
+AVANT, sur le staging : les « Suites production » de la CI visent le STAGING (SUP-04), jamais la production — un
+UPDATE ou un DELETE refusé faute d'identité y tomberait au rouge. Côté
+client, `old_record` nul arrive en `payload.old = {}` (supabase-js, `convertChangeData`).
 
 ## 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 
