@@ -30,6 +30,7 @@
 - 🔞 LA PORTE D'ÂGE AVALAIT LA CRÉATION D'ACTIVITÉ — la saisie perdue, rien publié (2026-10-23)
 - ➕ CRÉER UN COMPTE SE VOIT DÈS L'ARRIVÉE — carte de bienvenue et barre du haut (2026-10-23)
 - 1️⃣ LA CARTE DE BIENVENUE N'A PLUS QU'UN BOUTON — celui que son message annonce (2026-11-03)
+- 🔔 UXO-11 — « MISE À JOUR DISPONIBLE » AU TOUT PREMIER ÉCRAN : le worker annonçait sa première installation (2026-11-04)
 
 ---
 
@@ -520,3 +521,14 @@ Verrous : `tests/e2e/first-run.spec.js` (« une seule action principale… » co
 
 Demande de Benjamin : « supprime créer mon compte en haut, il y est déjà une fois dans le fil ». `#topbarSignup` et son style sont retirés, ainsi que la règle qui masquait le nom et la puce Beta du visiteur sous 440 px : elle n'existait que pour lui faire de la place.
 ⚠️ **Ce qui reste comme porte** : « Créer mon compte » sur la carte du fil, seulement si des passions sont déjà choisies ; la fenêtre d'une action engageante (like, commentaire…) ; l'onglet du formulaire ouvert par « J'ai déjà un compte ». **Le nouveau venu n'a plus de bouton d'inscription direct à l'arrivée** : c'est un choix de Benjamin, qui revient sur le verrou ① bis du 2026-11-03. Verrou : `tests/e2e/creer-compte-accueil.spec.js`.
+
+## 🔔 UXO-11 — « MISE À JOUR DISPONIBLE » AU TOUT PREMIER ÉCRAN : le worker annonçait sa première installation (2026-11-04)
+
+Relevé par l'audit de septembre (UXO-11, P3, confirmé, jamais corrigé), retrouvé en contrôlant la carte de bienvenue en production : sur un navigateur vierge (worker, caches et stockage vidés), « ✨ Mise à jour disponible — recharge pour l'appliquer » paraissait 0,85 s après l'ouverture. Rien à mettre à jour, et 3 s de bruit sur le premier écran d'un nouveau visiteur.
+Cause : `sw.js` postait `SW_UPDATED` à CHAQUE `activate`, installation initiale comprise, et `app-09` en fait un toast sans condition. `pwa-detect.js` portait déjà la garde pour le RECHARGEMENT (`hadController`), pas pour le toast. Correctif à la SOURCE : le worker n'annonce que s'il trouve le cache d'une version précédente (`passio-v*` différent de `CACHE`). Le cache, et non une variable posée dans `install` : le navigateur peut arrêter le worker entre les deux événements.
+⚠️ **PAS DE GARDE CÔTÉ PAGE, contrairement à ce que proposait l'audit.** Une page ouverte sans contrôleur (une première visite encore ouverte au moment d'un déploiement) ne recharge pas toute seule : pour elle, ce toast est la seule façon d'apprendre la mise à jour. Le filtrer sur `navigator.serviceWorker.controller` l'aurait laissée sur l'ancienne version, en silence (② le mesure).
+⚠️ **LE PRÉFIXE COMPTE** : le centre de pilotage écrit `passio-pilotage-*` sur la même origine. « N'importe quel autre cache » aurait déclenché l'annonce sur un appareil passé par `/pilotage/` (③). Le worker de l'application continue d'effacer ce cache à chaque activation : comportement existant, hors de ce lot.
+⚠️ **UN CHANGEMENT DE `sw.js` SEUL NE CHANGE PAS LE NOM DU CACHE** (mesuré : même `buildId` que la production avant ce lot). Le navigateur réinstalle bien le worker, ses octets ayant changé, mais il ne trouve aucun « ancien cache » : pas d'annonce, et c'est juste, l'application n'a pas changé. Les pages contrôlées rechargent quand même, par `controllerchange`.
+⚠️ **UN TOAST VIT 3 s, `bootVisiteur` EN ATTEND 3,2** : lire l'écran à la fin du démarrage serait vert sur le code défectueux. La sonde compte les toasts au vol, par un `MutationObserver` posé en tête de document.
+Verrou : `tests/e2e/pwa-premiere-installation.spec.js` (3), le VRAI worker dans un contexte vierge. **Réinjection** : ancien défaut → ① et ③ rouges ; préfixe retiré → ③ rouge ; message supprimé → ② rouge (c'est le témoin : sans lui, une sonde cassée rendrait ① vert). Contrôle ponctuel hors suite, visiteur déjà installé avec deux workers réels (`register('./sw.js?maj=1')`) : la page recharge seule et l'ancien cache disparaît.
+⚠️ **Le rouge de CI de cette PR n'était pas ce lot** : `compte-suspendu.spec.js` était la seule des sept suites passant de « Créer un compte » à l'onglet de connexion à ne pas attendre `#authTabSignup.active`, alors qu'`exitLandingAsAuth` repose l'onglet 50 ms après le clic. Sous la charge de la CI, son clic passait avant le minuteur (« Choisis un nom d'utilisateur » au lieu du refus). Mesuré : 50/50 vert en local avec et sans ce correctif ; minuteur élargi à 600 ms → même message que la CI, et vert une fois l'attente ajoutée.

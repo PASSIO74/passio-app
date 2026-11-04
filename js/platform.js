@@ -21,6 +21,27 @@
       var sent = 0;
       var pending = [];
 
+      // ─── Bug connu de Safari : pas un défaut de PASSIO ───────────────────
+      // Les contrôles vidéo INTÉGRÉS à Safari lisent une variable qui n'existe
+      // pas (`EmptyRanges`) quand le navigateur a déjà libéré la vidéo. Corrigé
+      // chez WebKit le 2026-07-04 (bug 318284, commit b13f9879ad3), encore vu sur
+      // Safari 26.6.2. Mesuré le 2026-11-03 : 10 erreurs en une seconde sur un
+      // seul appareil, juste avant que l'onglet soit masqué ou fermé — « Pic
+      // d'erreurs » levé et les 5 remontées de la session consommées.
+      //
+      // Signature volontairement étroite : le nom de la variable, un des trois
+      // accesseurs fautifs en tête de pile, et AUCUNE adresse dans la pile ni la
+      // source. Une ligne de PASSIO porte toujours une adresse : une erreur de
+      // notre code ne peut pas passer pour celle-ci.
+      function estBugVideoSafari(message, source, pile) {
+        var p = String(pile || "").trim();
+        if (String(message || "").indexOf("EmptyRanges") < 0) return false;
+        if (String(source || "").indexOf("://") >= 0) return false;
+        if (!/^(buffered|played|seekable)@/.test(p)) return false;
+        return !/@(?!\[native code\])\S/.test(p);
+      }
+      window.passioBugVideoSafari = estBugVideoSafari;
+
       // ─── Ne pas remonter depuis localhost ────────────────────────────────
       // Il n'existe qu'UNE base : ce qui part d'ici atterrit dans la table de
       // PRODUCTION. Or la suite e2e provoque des erreurs VOLONTAIRES — le spec
@@ -72,7 +93,9 @@
         } catch (e) {}
       }
       window.addEventListener("error", function(e) {
-        report(e.message, e.filename, e.lineno, e.colno, e.error && e.error.stack);
+        var pile = e.error && e.error.stack;
+        if (estBugVideoSafari(e.message, e.filename, pile)) return;
+        report(e.message, e.filename, e.lineno, e.colno, pile);
         flush();
       });
       window.addEventListener("unhandledrejection", function(e) {

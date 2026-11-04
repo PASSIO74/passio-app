@@ -102,4 +102,31 @@ test.describe("Monitoring — bruit de test", () => {
     expect(envois[0].message || "", "le message d'erreur doit être transmis").toContain("erreur de test volontaire");
     await ctx.close();
   });
+
+  test("le bug des contrôles vidéo de Safari ne part pas, et la vraie erreur suivante part", async ({ browser }) => {
+    test.setTimeout(60000);
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const envois = await compteurRemontees(page);
+
+    await poserGateSansPremiereVisite(page);
+    await page.goto("/index.html?monitoring=1");
+    await page.waitForSelector("#landing.active", { timeout: 30000 });
+    await attendreClientReel(page);
+    await page.evaluate(() => {
+      for (let i = 0; i < 10; i++) {
+        window.dispatchEvent(new ErrorEvent("error", {
+          message: "ReferenceError: Can't find variable: EmptyRanges",
+          filename: "undefined", lineno: 1705,
+          error: { stack: "played@\nsyncControl@\nhandleEvent@" },
+        }));
+      }
+    });
+    await provoquerErreur(page);
+
+    const messages = envois.map((e) => e.message || "");
+    expect(messages.filter((m) => m.includes("EmptyRanges")), "le bug de Safari ne part pas").toEqual([]);
+    expect(messages.some((m) => m.includes("erreur de test volontaire")), "il n'a pas consommé le quota de 5").toBe(true);
+    await ctx.close();
+  });
 });

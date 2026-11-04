@@ -29,13 +29,32 @@ self.addEventListener("install", e => {
 self.addEventListener("activate", e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim()) // Prend le contrôle immédiatement
-      .then(() => {
-        // Notifie tous les onglets ouverts de recharger
-        return self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
-          clients.forEach(client => client.postMessage({ type: "SW_UPDATED" }));
-        });
+      .then(keys => {
+        // ⚠️ UNE PREMIÈRE INSTALLATION N'EST PAS UNE MISE À JOUR (UXO-11, 2026-11-04).
+        // `activate` se déclenche aussi sur un appareil vierge : annoncer
+        // SW_UPDATED à chaque fois faisait écrire « Mise à jour disponible —
+        // recharge pour l'appliquer » (app-09) sur le tout premier écran d'un
+        // nouveau visiteur, qui n'avait rien à mettre à jour.
+        // La preuve qu'une version précédente a tourné ici, c'est son cache :
+        // durable, contrairement à une variable posée dans `install` (le
+        // navigateur peut arrêter le worker entre les deux événements). Le préfixe
+        // compte : le centre de pilotage (`passio-pilotage-*`, même origine) n'est
+        // pas une version de l'application.
+        // ⚠️ LA GARDE EST ICI, PAS DANS LA PAGE. Une page ouverte sans contrôleur
+        // qui reçoit un VRAI déploiement ne recharge pas toute seule
+        // (`hadController`, pwa-detect.js) : pour elle, ce message est la seule
+        // façon de l'apprendre. Le filtrer côté page la laisserait sur l'ancienne
+        // version, en silence.
+        const versionPrecedente = keys.some(k => k !== CACHE && k.startsWith("passio-v"));
+        return Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+          .then(() => self.clients.claim()) // Prend le contrôle immédiatement
+          .then(() => {
+            if (!versionPrecedente) return;
+            // Notifie tous les onglets ouverts de recharger
+            return self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+              clients.forEach(client => client.postMessage({ type: "SW_UPDATED" }));
+            });
+          });
       })
   );
 });
