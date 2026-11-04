@@ -34,6 +34,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const RV = require("./lib/reprise-verdicts.js");
+const JE = require("./lib/json-exact.js");
 const crypto = require("node:crypto");
 
 // Tables d'observabilité : volumineuses et REGÉNÉRABLES. Les inclure d'office
@@ -106,7 +107,12 @@ async function exporter(cfg, table, tri, flux) {
       headers: entetes(cfg.cle),
     });
     if (!r.ok) throw new Error(`${table} : HTTP ${r.status} ${await r.text()}`);
-    const lignes = await r.json();
+    // ⚠️ R25 (2026-11-04) : JAMAIS `r.json()` ici. Il arrondit tout entier
+    // au-delà de 2^53, et l'archive porterait une valeur que la base n'a jamais
+    // eue. Deux valeurs distinctes s'y confondraient, et la restauration
+    // jetterait l'une des deux lignes sur la clé unique. `lireJsonExact` garde
+    // le texte source d'un tel nombre, que `JSON.stringify` réécrit tel quel.
+    const lignes = JE.lireJsonExact(await r.text());
     for (const l of lignes) flux.write(JSON.stringify(l) + "\n");
     total += lignes.length;
     if (lignes.length < PAGE) break;
@@ -502,9 +508,10 @@ function verifier(dossier) {
   process.exit(pb ? 1 : 0);
 }
 
-// Les internes, pour les tests d'intégration (tests/unit/sauvegarde-medias.test.mjs) :
+// Les internes, pour les tests d'intégration (tests/unit/sauvegarde-medias.test.mjs,
+// et `exporter` pour tests/unit/restaurer-donnees.test.mjs) :
 // seul `fetch` y est doublé.
-module.exports = { _internes: { exporterMedias, paginerProprietaires, PAGE_PROPRIETAIRES, MAX_PAGES_PROPRIETAIRES } };
+module.exports = { _internes: { exporter, exporterMedias, paginerProprietaires, PAGE_PROPRIETAIRES, MAX_PAGES_PROPRIETAIRES } };
 
 const args = process.argv.slice(2);
 const iv = args.indexOf("--verifier");

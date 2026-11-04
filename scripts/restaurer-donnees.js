@@ -54,6 +54,7 @@
 const fs = require("fs");
 const path = require("path");
 const RV = require("./lib/reprise-verdicts.js");
+const JE = require("./lib/json-exact.js");
 const os = require("os");
 const crypto = require("crypto");
 
@@ -276,9 +277,12 @@ async function schema(ctx) {
 }
 
 // ───────────────────────────── ② comptes ─────────────────────────────
+// Lecture EXACTE (R25, 2026-11-04) : un entier au-delà de 2^53 garde son texte
+// (scripts/lib/json-exact.js). Arrondi, il ferait passer pour conformes deux
+// valeurs que la base distingue.
 function lireNdjson(f) {
   if (!fs.existsSync(f)) return [];
-  return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JE.lireJsonExact(l));
 }
 
 // ⚠️ ASTRA-31 — LIRE AUTH, OU DIRE QU'ON N'A PAS SU LIRE. `.json()` puis
@@ -681,11 +685,12 @@ async function medias(ctx) {
 // Les deux fonctions de comparaison sont PURES et éprouvées dans
 // tests/unit/restaurer-donnees.test.mjs.
 function canoniser(v) {
+  if (JE.estBrut(v)) return v; // nombre gardé exact par lireJsonExact : JSON.stringify le réécrit tel quel
   if (Array.isArray(v)) return v.map(canoniser);
   if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) o[k] = canoniser(v[k]); return o; }
   return v;
 }
-function cleDe(ligne, tri) { return tri.split(",").map((c) => String(ligne[c.trim()])).join("\u0001"); }
+function cleDe(ligne, tri) { return tri.split(",").map((c) => JE.texteValeur(ligne[c.trim()])).join("\u0001"); }
 /** Compare deux jeux de lignes par clé et par contenu. Rend { manquantes, divergentes, enTrop }. */
 function comparerLignes(archive, cible, tri) {
   const a = new Map(), c = new Map();
@@ -721,7 +726,9 @@ async function lignesCible(ctx, t, tri) {
   for (let debut = 0; ; debut += 1000) {
     const r = await fetch(`${ctx.url}/rest/v1/${t}?select=*&order=${encodeURIComponent(tri)}&limit=1000&offset=${debut}`, { headers: entetes(ctx.cle) });
     if (!r.ok) throw new Error(`${t} : relecture HTTP ${r.status}`);
-    const l = await r.json(); out.push(...l);
+    // Même lecture exacte que l'archive : sinon les deux côtés arrondissent
+    // pareil, et une valeur fausse se compare « conforme ».
+    const l = JE.lireJsonExact(await r.text()); out.push(...l);
     if (l.length < 1000) return out;
   }
 }
@@ -903,7 +910,7 @@ async function purger(ctx) {
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
 module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire } };
+  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire, lireNdjson, lignesCible } };
 if (require.main === module) (async () => {
   const ctx = await contexte();
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);

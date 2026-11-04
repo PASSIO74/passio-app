@@ -143,3 +143,79 @@ test("④ quinquies médias multipart : un eTag « <hex>-<n> » n'est pas un MD5
   // Un eTag simple (pas de « -n ») reste un MD5 et se compare.
   assert.deepEqual(comparerMedias([{ name: "x", taille: 3, md5: "900150983cd24fb0d6963f7d28e17f72" }], [{ name: "x", taille: "3", etag: '"d41d8cd98f00b204e9800998ecf8427e"' }]).divergents, ["x"]);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// ⑤ R25 (2026-11-04) — UN NOMBRE DE L'ARCHIVE EST CELUI DE LA BASE, AU CHIFFRE
+// PRÈS. `r.json()` puis `JSON.stringify` arrondissait tout entier au-delà de
+// 2^53 : 2906581903110193585 et 2906581903110193586 s'écrivaient tous deux
+// 2906581903110193700. Deux lignes distinctes se confondaient alors sur une
+// clé unique (`<table>_rid_key`), et `on conflict do nothing` en jetait une à
+// la restauration. La vérification, qui arrondissait les deux côtés pareil,
+// disait « conforme ». Lecture exacte : scripts/lib/json-exact.js.
+// ─────────────────────────────────────────────────────────────────────────
+const JE = require("../../scripts/lib/json-exact.js");
+const { _internes: SAUV } = require("../../scripts/sauvegarde-donnees.js");
+const GRAND_A = "2906581903110193585", GRAND_B = "2906581903110193586";
+
+test("⑤ la sauvegarde écrit les chiffres EXACTS d'un entier au-delà de 2^53 — deux valeurs voisines restent deux (RÉINJECTION : r.json() les confond)", async () => {
+  assert.equal(JSON.parse(GRAND_A), JSON.parse(GRAND_B), "prémisse : JSON.parse confond les deux valeurs");
+  const page = `[{"id":"a","rid":${GRAND_A},"prix":10.00},{"id":"b","rid":${GRAND_B},"prix":1.5}]`;
+  const ecrit = [];
+  const vrai = globalThis.fetch;
+  globalThis.fetch = async () => new Response(page, { status: 200 });
+  try {
+    const n = await SAUV.exporter({ url: "https://exemple.invalid", cle: "k" }, "post_likes", "id", { write: (x) => ecrit.push(x) });
+    assert.equal(n, 2);
+  } finally { globalThis.fetch = vrai; }
+  assert.deepEqual(ecrit, [`{"id":"a","rid":${GRAND_A},"prix":10}\n`, `{"id":"b","rid":${GRAND_B},"prix":1.5}\n`],
+    "les rid gardent leurs chiffres ; un nombre que JavaScript lit sans perte reste un nombre ordinaire");
+});
+
+test("⑤ bis la vérification compare au chiffre près : un rid faux est DIVERGENT, un rid juste est conforme (RÉINJECTION : JSON.parse dit « conforme »)", () => {
+  const archive = [JE.lireJsonExact(`{"id":"a","rid":${GRAND_A}}`)];
+  const fausse = [JE.lireJsonExact(`{"id":"a","rid":${GRAND_B}}`)];
+  const juste = [JE.lireJsonExact(`{"id":"a","rid":${GRAND_A}}`)];
+  assert.deepEqual(comparerLignes(archive, fausse, "id").divergentes, ["a"]);
+  assert.deepEqual(comparerLignes(archive, juste, "id"), { manquantes: [], divergentes: [], enTrop: [] });
+  // La même comparaison sur une lecture ordinaire ne voit rien : c'est le défaut corrigé.
+  assert.deepEqual(comparerLignes([JSON.parse(`{"id":"a","rid":${GRAND_A}}`)], [JSON.parse(`{"id":"a","rid":${GRAND_B}}`)], "id").divergentes, []);
+  // Un grand entier en CLÉ de tri : deux valeurs voisines font deux clés.
+  const parRid = comparerLignes([JE.lireJsonExact(`{"rid":${GRAND_A}}`)], [JE.lireJsonExact(`{"rid":${GRAND_B}}`)], "rid");
+  assert.deepEqual([parRid.manquantes, parRid.enTrop], [[GRAND_A], [GRAND_B]]);
+});
+
+test("⑤ ter rien ne change pour ce que JavaScript lit sans perte — une archive d'avant le correctif se vérifie toujours", () => {
+  const v = JE.lireJsonExact("[10.00, 1e-07, 0.1, 12, -3.5, 1e+20, 9007199254740991, 2906581903110193700]");
+  assert.ok(v.every((x) => typeof x === "number"), "aucun de ces nombres ne perd sa valeur : tous restent des nombres");
+  // Une archive ancienne porte la valeur DÉJÀ arrondie ; la cible restaurée
+  // depuis elle porte les mêmes chiffres : conforme, comme avant.
+  const ancienne = [JSON.parse('{"id":"a","rid":2906581903110193700,"prix":10}')];
+  const cible = [JE.lireJsonExact('{"id":"a","rid":2906581903110193700,"prix":10.00}')];
+  assert.deepEqual(comparerLignes(ancienne, cible, "id").divergentes, []);
+  // Un numeric à 20 chiffres significatifs, lui, se garde tel quel.
+  assert.equal(JSON.stringify(JE.lireJsonExact('{"n":1.2345678901234567890}')), '{"n":1.2345678901234567890}');
+  assert.equal(JE.canonique("10.00"), JE.canonique("10"));
+  assert.equal(JE.canonique("1e-07"), JE.canonique("0.0000001"));
+  assert.notEqual(JE.canonique(GRAND_A), JE.canonique(String(JSON.parse(GRAND_A))));
+});
+
+test("⑤ quater sans JSON.rawJSON (Node < 21), un entier au-delà de 2^53 fait ÉCHOUER la lecture — jamais un arrondi silencieux", () => {
+  const vrai = JSON.rawJSON;
+  JSON.rawJSON = undefined;
+  try {
+    assert.throws(() => JE.lireJsonExact(`[${GRAND_A}]`), /2\^53/);
+    assert.deepEqual(JE.lireJsonExact("[12, 1.5]"), [12, 1.5], "ce qui se lit sans perte passe toujours");
+  } finally { JSON.rawJSON = vrai; }
+});
+
+test("⑤ quinquies la relecture de la cible et la lecture de l'archive sont exactes toutes les deux", async () => {
+  const { lireNdjson, lignesCible } = R._phases;
+  const f = fichier("post_likes.ndjson", `{"id":"a","rid":${GRAND_A}}\n{"id":"b","rid":${GRAND_B}}\n`);
+  assert.deepEqual(lireNdjson(f).map((l) => JE.texteValeur(l.rid)), [GRAND_A, GRAND_B]);
+  const vrai = globalThis.fetch;
+  globalThis.fetch = async () => new Response(`[{"id":"a","rid":${GRAND_A}},{"id":"b","rid":${GRAND_B}}]`, { status: 200 });
+  try {
+    const l = await lignesCible({ url: "https://exemple.invalid", cle: "k" }, "post_likes", "id");
+    assert.deepEqual(l.map((x) => JE.texteValeur(x.rid)), [GRAND_A, GRAND_B]);
+  } finally { globalThis.fetch = vrai; }
+});
