@@ -157,7 +157,6 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Notification de message : identifiant déterministe `n_<msgId>_<8>` (c'est lui qui empêche le doublon) ; le CONTENU du message ne voyage jamais dans une notification.
 - Deux écritures dont l'ORDRE compte (retirer puis poser) ne partent jamais en parallèle : une réaction emoji s'effaçait elle-même quand le DELETE dépassait l'INSERT (`_syncReactionEmoji`, une file par cible).
 - Un message de contrôle (`del`, `react`) s'attribue au `from_id` de la LIGNE serveur, jamais au JSON : un `del` n'efface que le message de son propre expéditeur ; un identifiant de message va dans un `onclick` par `escapeJsArg`, dans un sélecteur par `CSS.escape` (E-08, 2026-11-03).
-- Mise à jour silencieuse (2026-11-04) : une activité qu'un rechargement détruirait se déclare dans `pageOccupee` (`pwa-detect.js`), jamais ailleurs.
 - Rappels d'activité J-1 / H-2 : poussés par la veille de pilotage (`_shared/rappels.js`), marqués dans `analytics_events` AVANT l'envoi (jamais dans `notifications`, qu'un client forge ou efface) ; l'abonnement push se propose juste après une inscription CONFIRMÉE, nulle part ailleurs.
 
 **Partage, liens courts, invitation** → `docs/journal/partage-liens-invitation.md` (`_ouvrirLienPartage`, `netlify/`, `?plk`)
