@@ -799,8 +799,8 @@
     // carte en alignait quatre à poids presque égal — « Personnaliser mon
     // expérience », « Explorer d'abord », « Créer mon compte », « J'ai déjà un
     // compte » — dont deux en double : « Explorer d'abord » faisait exactement
-    // ce que fait le ×, et « Créer mon compte » ce que fait la pastille de la
-    // barre du haut, visible dès l'arrivée et carte fermée (2026-10-23).
+    // ce que fait le ×, et « Créer mon compte » ce que faisait la pastille de la
+    // barre du haut (retirée le 2026-11-04, à la demande de Benjamin).
     // Nouveau venu → choisir ses passions ; passions déjà choisies → créer le
     // compte qui les garde. Le reste devient des LIENS sous le bouton.
     // ⚠️ « Modifier mes passions » NE PART PAS : cette carte est la seule porte

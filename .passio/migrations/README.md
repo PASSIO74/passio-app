@@ -54,6 +54,26 @@ geste, pas un effet de bord). Il n'applique rien et ne parle à aucun projet.
   les tests mesurent les refus du CLI et la décision pure, jamais un
   « envoyable » servi par un faux.
 
+## Appliquer depuis le poste (Windows, PowerShell)
+
+Le script lit le fichier, l'attestation et la revue **dans le clone où il est
+lancé** : depuis `C:\Users\BENJAMIN`, `git` et `npm` ne trouvent rien (vécu le
+04/11, rien n'est parti). Pour ne toucher ni à la branche du clone ni à une
+session qui y travaille, un worktree détaché de `main` (fait le 04/11 pour R24) :
+
+```bash
+cd C:/Users/BENJAMIN/Desktop/PASSIO
+git fetch origin main
+git worktree add --detach C:/Users/BENJAMIN/Desktop/PASSIO-wt/migration-<lot> origin/main
+cd C:/Users/BENJAMIN/Desktop/PASSIO-wt/migration-<lot>
+node scripts/appliquer-migration.mjs migrations/<fichier>.sql --projet njkiyoklssvefstljemx
+```
+
+`node` directement plutôt que `npm run migration:appliquer -- …` : sous
+PowerShell, le passage du `--` à npm dépend des versions, et sans `--projet` la
+barrière refuse (rien ne part, rien n'est appliqué). Ensuite : mesurer au
+canal ①, jamais le tableau ; puis `git worktree remove` du dossier, depuis le clone.
+
 ## Ce que la barrière ne fait pas
 
 Elle ne remplace pas la revue : elle empêche seulement d'appliquer autre chose
