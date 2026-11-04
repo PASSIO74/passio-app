@@ -147,7 +147,10 @@ test("② Accueil : voyant, « À faire » en texte, chiffres et tendances ; tro
   await expect(ch).toContainText("33 %");
   await expect(ch).toContainText("erreurs depuis la mise en ligne");
   await expect(ch).toContainText("4 sur les 3 h d'avant");
-  await expect(page.locator("#pourInfoRepli")).toBeHidden();
+  // Le palier de croissance (41 inscrits → « Lancement ») reste « pour info » : il ne compte pas dans les 5 de « À faire ».
+  await expect(page.locator("#pourInfoRepli")).toBeVisible();
+  await expect(page.locator("#pourInfoTitre")).toContainText("Pour info (1)");
+  await expect(page.locator("#pourInfo")).toContainText("Lancement · 41 inscrits");
   for (const t of ["details", "reglages", "accueil"]) {
     await page.click(`.barre button[data-tab="${t}"]`);
     await expect(page.locator("#" + t)).toBeVisible();
@@ -252,7 +255,7 @@ test("⑧ sans jeton GitHub : aucun geste GitHub, le réglage à faire est dit",
   await page.goto("/pilotage/");
   await expect(page.locator("#afaire button", { hasText: /Fusionner|Refuser|Réparer|Fermer|Sentinelle/ })).toHaveCount(0);
   await expect(page.locator("#pourInfoRepli")).toBeVisible();
-  await expect(page.locator("#pourInfoTitre")).toContainText("Pour info (1)");
+  await expect(page.locator("#pourInfoTitre")).toContainText("Pour info (2)");
   await page.click("#pourInfoTitre");
   await expect(page.locator("#pourInfo")).toContainText("PILOTAGE_GITHUB_TOKEN");
   await page.click('.barre button[data-tab="details"]');
@@ -315,6 +318,7 @@ test("⑪ « À faire » vide : « Rien à faire », sans badge ; liste absente 
   await page.goto("/pilotage/");
   await expect(page.locator("#afaire")).toContainText("Rien à faire");
   await expect(page.locator("#badgeAccueil")).toBeHidden();
+  await expect(page.locator("#pourInfoRepli")).toBeHidden();
   await page.unroute(FONCTION);
   const ancien = etat(); delete ancien.aFaire;
   await routerFonction(page, [], ancien);
