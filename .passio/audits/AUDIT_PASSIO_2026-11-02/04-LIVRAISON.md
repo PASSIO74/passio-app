@@ -169,8 +169,8 @@ par le client, verrou bloquant sur cinq tables, index supprimable sans garde. To
 |---|---|---|---|
 | `migration_realtime_identite_opaque_2026-11-03.sql` | `rid` aléatoire de 53 bits (chiffres 17 à 32 d'un UUID v4, masque 2^53 − 1 : exact en JSON), index unique `<table>_rid_key` et `replica identity using index` sur `conv_members`, `notifications`, `conv_reads`, `post_likes` ; `comment_interactions` en identité DEFAULT (l'oracle du filtre se ferme) ; garde `trg_rid_opaque` (le `rid` n'est écrit que par la base) ; verrous NOWAIT en boucle ; verdict en 10 lignes | `migration-realtime-identite-opaque` 239/0 (`realtime.apply_rls` de production recopiée à l'octet, nourrie du WAL réel du banc ; attaque par encadrement rejouée ; verdict sous verrous concurrents ; retour arrière pendant que le temps réel décode ; vingt mutations rouges) — fichier sha256 `9f48ffe1…` | **dès la fusion** : serveur seul, aucun changement client. De préférence AVANT `participants_visibilite`, dont la purge efface des lignes `conv_members` qui partiront alors opaques |
 
-Ordre à partir du 04/11 : `promotion_discrete_vues` (§ 7) est APPLIQUÉE (07:47 UTC, mesurée au canal ①) ; reste R25
-(ici, dès la fusion), puis `participants_visibilite` (§ 6, à partir du 2026-11-05 18:40 UTC). R25 est indépendante
+Ordre à partir du 04/11 : `promotion_discrete_vues` (§ 7) est APPLIQUÉE (07:47 UTC, mesurée au canal ①), R25 aussi
+(12:45:52 UTC, § 8.6) ; reste `participants_visibilite` (§ 6, à partir du 2026-11-05 18:40 UTC). R25 est indépendante
 des deux autres ; la nouvelle `promouvoir_attente` nomme les colonnes de son INSERT dans `notifications` (canal ①, 04/11),
 comme `follows_notifier` et `notifier_mentions` : le `rid` y prend son défaut et sa garde.
 
@@ -254,5 +254,6 @@ même ; deux P3 traités (une archive au DDL incomplet était dite « complète 
 | Production | 12:45:52 | 10 lignes OK, journalisée dans sa transaction |
 | Mesure au canal ① | 12:46 | identité `i` et index `<table>_rid_key` sur les quatre tables, `d` sur `comment_interactions` ; un seul défaut de `rid` ; quatre gardes actives sans clause WHEN ; fonction non exécutable par `anon` et `authenticated` ; `count(distinct rid) = count(*)` (22, 169, 31, 76) et `rid` dans [0, 2^53 − 1] ; 11 tables publiées, aucune en FULL. Lecture `anon` en `select=*` : HTTP 200, `rid` rendu |
 | Barrière RLS | après l'application | `authz-critical` verte à 12:49:20 (run 41831787191 de `main`, sur la production) ; aucune ligne dans `client_errors` depuis l'application à 12:49 |
+| Remesure au canal ① | 13:10 | identique à 12:46 (mêmes comptes, mêmes bornes, un seul défaut de `rid`) ; garde `SECURITY DEFINER` à `search_path` vide ; toujours aucune ligne dans `client_errors` depuis 12:45:52 (5 sur les 24 h d'avant) |
 
 **Reste à lire le 05/11** : `client_errors` sans « replica identity » sur 24 h (0 à 12:46). La fonction temps réel n'a pas été éprouvée en production de bout en bout : elle l'a été au staging, et sur le banc avec le vrai wal2json.
