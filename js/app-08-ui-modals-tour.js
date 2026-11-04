@@ -1015,6 +1015,7 @@ function meStopRecording(silent) {
   if (!meCam.recording) return;
   meCam.recording = false;
   meCam._silent = !!silent;
+  if (!silent) _mediaEnPreparation();
   try { if (meCam.recorder && meCam.recorder.state !== "inactive") meCam.recorder.stop(); } catch(e) {}
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-recording");
   var sh = document.getElementById("meShutter"); if (sh) sh.style.setProperty("--p", 0);
@@ -1764,6 +1765,16 @@ function _publicationRejouable(p) {
   if (p.type === "audio") return typeof p.audio === "string" && p.audio.length > 0;
   return true;
 }
+// Son média n'existe-t-il encore qu'en mémoire ? `_leanState` retire ces champs quand
+// ils portent du base64 : après un rechargement, il n'en reste rien.
+function _publicationPorteUnMedia(p) {
+  return !!p && [p.image, p.video, p.audio].some(function (v) { return typeof v === "string" && v.indexOf("data:") === 0; });
+}
+// Lu par pwa-detect.js : un renvoi est prévu pour un média qui disparaîtrait au
+// rechargement. Le minuteur borne l'attente : plus aucun après le dernier essai.
+window._mediaARenvoyer = function () {
+  return !!window._reelRetryTimer && _publicationsEnAttente().some(_publicationPorteUnMedia);
+};
 function _publicationsEnAttente() {
   if (!window._supaReal || typeof supaPublishPostWithRetry !== "function") return [];
   if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return [];
@@ -4265,7 +4276,14 @@ function diagLog(msg) {
 // ===== SYSTÈME DE PUBLICATION FIABLE MULTI-APPAREILS =====
 // TIMEOUT COURT: Supabase répond ou on considère que c'est un problème réseau
 
+// ⚠️ UNE MISE À JOUR ATTEND CET ENVOI, s'il porte un média (pwa-detect.js). Un texte
+// n'a rien à perdre : il est dans `userPosts` et repart seul au démarrage suivant.
 async function supaPublishPostWithRetry(post, maxRetries = 2) {
+  const fin = _publicationPorteUnMedia(post) ? _envoiCommence() : null;
+  try { return await _publierAvecEssais(post, maxRetries); }
+  finally { if (fin) fin(); }
+}
+async function _publierAvecEssais(post, maxRetries) {
   // ⚠️ `pid`, PAS `passion` (2026-09-18) : la clé « passion » percute DENY_KEY
   // (/pass/) et était JETÉE en silence par scrubMeta — le pilotage ne pouvait
   // pas regrouper les publications par passion. Même valeur, nom neutre.
@@ -5334,7 +5352,14 @@ async function supaLoadComments(postId, opts) {
 }
 
 // ---- STORIES ----
+// ⚠️ UNE MISE À JOUR ATTEND CET ENVOI (pwa-detect.js) : `seed` n'est jamais écrit
+// (`_leanState`), une story en cours n'existe qu'en mémoire, même sans média.
 async function supaPublishStory(story) {
+  const fin = _envoiCommence();
+  try { return await _envoyerStory(story); }
+  finally { fin(); }
+}
+async function _envoyerStory(story) {
   // Upload média + insert = plusieurs requêtes → confirmation explicite, comme
   // pour la publication (l'auto-tag réseau désignerait l'upload, pas le résultat).
   var _cid = null;

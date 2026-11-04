@@ -59,7 +59,50 @@
         }
         return false;
       };
-      const pageOccupee = () => appelOuLiveEnCours() || saisieEnCours();
+      // ══════════════════════════════════════════════════════════════════
+      // NI UN ENREGISTREMENT, NI UN MÉDIA EN ATTENTE, NI UN ENVOI
+      // ──────────────────────────────────────────────────────────────────
+      // Un média ne vit qu'en mémoire tant que le serveur ne l'a pas : `_leanState`
+      // retire le base64 de tout ce qu'il écrit. Mesuré le 2026-11-04 avec le même
+      // banc : un vocal, une capture ou son aperçu partaient sans trace ; une photo en
+      // cours d'envoi revenait « perdue » ; une bobine restait sans vidéo, une story
+      // disparaissait ; un vocal ou une pièce jointe en cours de dépôt restait affiché
+      // chez son auteur sans jamais partir, sans erreur et sans file.
+      //
+      // ⚠️ RIEN ICI NE RETIENT CE QUI SURVIT AU RECHARGEMENT. Une publication de texte
+      // en cours repart seule au démarrage suivant, et une caméra ouverte sans rien de
+      // filmé n'a rien à perdre : mesurées, elles ne sont pas lues ici.
+      //
+      // ⚠️ TOUTE LECTURE EST BORNÉE, parce qu'un rechargement ne se perd jamais. Le
+      // vocal n'a aucune durée maximale : sa borne est ici. La capture s'arrête seule à
+      // 60 s et le Studio à 120 s. `ENVOI_MAX_MS` laisse passer la pièce jointe la plus
+      // lourde (25 Mo à 256 kb/s : 13 min) ; une publication abandonne bien avant (deux
+      // essais de 180 s). L'aperçu et le Studio se comportent comme un champ rempli :
+      // ils finissent quand on les quitte.
+      const ENREGISTREMENT_MAX_MS = 15 * 60000;
+      const PREPARATION_MEDIA_MS = 15000;
+      const ENVOI_MAX_MS = 15 * 60000;
+      const enregistrementEnCours = () => {
+        if (window._isRecording === true && Date.now() - window._voiceStartAt < ENREGISTREMENT_MAX_MS) return true;
+        if (window.meCam && window.meCam.recording === true) return true;
+        const studio = window._enregistreurStudio;
+        return !!studio && studio.state === 'recording';
+      };
+      // ⚠️ IL Y A UN TROU ENTRE L'ARRÊT ET L'APERÇU, comme entre le geste et l'appel :
+      // la lecture du fichier enregistré est asynchrone, et pendant ce temps plus aucun
+      // état n'existe. `_mediaPrepareA` (app-02) le couvre, le temps de cette lecture.
+      const mediaEnAttente = () => {
+        const prepare = window._mediaPrepareA;
+        if (typeof prepare === 'number' && performance.now() - prepare < PREPARATION_MEDIA_MS) return true;
+        return !!document.querySelector('#meProgressOv, #mediaEditor.open.phase-edit, #screen-studio.active #photoPreviewBox > *, #screen-studio.active #videoPreviewBox > *, #screen-studio.active #recPlayback > *');
+      };
+      // Une publication en échec n'est pas finie : son média attend le prochain essai
+      // (`_reelRetryTimer`, huit au plus), et recharger le perdrait à coup sûr.
+      const envoiEnCours = () => {
+        if (window._envoisEnCours > 0 && performance.now() - window._envoiLanceA < ENVOI_MAX_MS) return true;
+        try { return typeof window._mediaARenvoyer === 'function' && window._mediaARenvoyer(); } catch (e) { return false; }
+      };
+      const pageOccupee = () => appelOuLiveEnCours() || saisieEnCours() || enregistrementEnCours() || mediaEnAttente() || envoiEnCours();
       window.addEventListener('load', async () => {
         try {
           // ⚠️ CAPTURÉ AVANT register : y a-t-il DÉJÀ un SW qui contrôle la page ?

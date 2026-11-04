@@ -5103,6 +5103,7 @@ function _passioBestAudioMime() {
 
 async function toggleRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
+    _mediaEnPreparation();
     mediaRecorder.stop();
     $("#recBtn").classList.remove("recording");
     $("#recStatus").textContent = "Traitement...";
@@ -5129,6 +5130,7 @@ async function toggleRecording() {
     } catch (e) {
       mediaRecorder = new MediaRecorder(stream);   // repli : réglages par défaut
     }
+    window._enregistreurStudio = mediaRecorder;   // lu par pwa-detect.js (`let` n'est pas sur window)
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
     mediaRecorder.onstop = () => {
       // Le type RÉEL est celui des morceaux produits par l'encodeur — jamais
