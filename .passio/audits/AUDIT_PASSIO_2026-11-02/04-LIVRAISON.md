@@ -137,3 +137,13 @@ Indépendante des six du § 6.1, **à appliquer AVANT `participants_visibilite`*
 
 Retour arrière : le bloc `--|` de l'en-tête (définition de production à l'octet près, et les quatre droits des trois vues) ;
 `organise_activite` reste — elle a désormais un appelant, elle ne se supprime plus sans rendre d'abord l'ancienne promotion.
+
+**Journal (2026-11-04)**
+
+| Heure (UTC) | Geste | Preuve |
+|---|---|---|
+| 06:43 | Contre-revue n°5764341120 (`COMMENTED`, ancrée sur `9abfaba`, marqueur, phrase de mainteneur unique, fichier, `cible: njkiyoklssvefstljemx`) — **rédigée et postée par Claude Code depuis le compte PASSIO74, à la demande explicite de Benjamin** (« Fait la contre revue toi même ») : décision tracée du mainteneur unique, PAS une relecture humaine indépendante (AGENTS.md, ASTRA-61 bis) | `get_reviews` de #690 |
+| 06:44 | « Gouvernance critique » relancé → vert ; prévisualisation Netlify déployée | run 41721152209, tentative 2 |
+| ~06:46 | Fusion de #690 dans `main` par commit de fusion (`4da2a8e`) : le commit revu `9abfaba` reste dans l'historique | `merge_pull_request` |
+| ensuite | Attestation consignée (empreinte `5e1b4c45…`, PR suivante), validée hors ligne par `verifierAttestation` et `verifierPreuveRevue` sur la revue relue par l'API GitHub ; la barrière la relira avec `gh` au moment d'appliquer | `.passio/migrations/attestations.json` |
+| **reste** | Application depuis le poste de Benjamin (`npm run migration:appliquer -- migrations/migration_promotion_discrete_vues_2026-11-03.sql --projet njkiyoklssvefstljemx`), **avant `participants_visibilite`**, puis mesure au canal ① | — |
