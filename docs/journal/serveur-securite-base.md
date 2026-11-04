@@ -1209,3 +1209,15 @@ application (poste de Benjamin, `node scripts/appliquer-migration.mjs migrations
 fichier), la présence de `comment_target_visible(text,text)` et d'`est_identifiant_exemple` sans EXECUTE pour `anon` /
 `authenticated`, le texte de la policy, les deux déclencheurs (`tgenabled = 'O'`), `idx_ci_post`, et 0 orphelin au format
 réel — jamais le tableau de verdict seul.
+
+**Appliquée le 2026-11-04** (revue n°5773659643 sur `d1dba655`, auto-revue de mainteneur unique postée par Claude Code sur
+l'ordre de Benjamin ; empreinte `cbd9428a…`) :
+- **Staging, 18:32 UTC** : 18 OK, mesuré en base. Les suites à comptes réels, à la tête de `main` et sur la base migrée :
+  19 verts, 3 ignorés.
+- **Production, 18:37 UTC** : 18 OK ; `14 / 16 / 0 / 50`, `19 / 17 | 26 / 9`, `121 | 73`, les valeurs attendues. Mesuré au
+  canal ① : `post_is_visible` `5bfa68f2…`, `comment_target_visible(text)` `f8af90b8…`, `(text, text)` `e28dab52…` ; policy,
+  deux déclencheurs à `O`, droits, `idx_ci_post` ; 0 orphelin au format réel ; 77 commentaires, 60 « j'aime », 339 interactions.
+- **Sans compte, par PostgREST** (le connecteur refuse de prendre le rôle `anon`, 42501) : 21 commentaires, 18 « j'aime »,
+  131 interactions lisibles, dont aucun sans cible, et aucune réaction à une réponse hors du public.
+- **Pas éprouvé** : une vraie suppression de publication ou de compte en production, depuis l'application. Le verdict la
+  rejoue dans une sous-transaction annulée ; le staging l'a passée par `suppression-compte`. La revue red team n'a jamais été rendue.
