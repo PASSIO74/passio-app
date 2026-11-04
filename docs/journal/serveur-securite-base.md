@@ -1088,3 +1088,10 @@ correctif.
 **Ordre** : client d'abord (même PR), puis la migration, AVANT `participants_visibilite` (05/11 18:40 UTC). Mesure au canal ①
 après application : md5(prosrc) ≠ `1a4a2c4d…`, `prosrc` appelle `organise_activite`, `organise_activite` présente, et les trois
 vues sans les quatre droits pour `anon` / `authenticated`.
+
+**Appliquée le 04/11 à 07:47 UTC** depuis le poste de Benjamin (verdict 17 × OK, journalisée dans sa transaction), **mesurée
+au canal ①** à 07:48 : `md5(prosrc)` de `promouvoir_attente` = `3edef536…`, celui du corps du fichier revu ; `organise_activite`
+= `144cba40…` ; EXECUTE ni à `anon` ni à PUBLIC ; plus aucun des quatre droits sur les vues pour `anon` / `authenticated`
+(24 avant), `service_role` inchangé ; 0 reste du décor. ⚠️ Comparer `md5(prosrc)` au fichier, c'est comparer des OCTETS : la
+mesure calcule aussi `md5(replace(prosrc, E'\r', ''))`, car un worktree Windows en CRLF enverrait des `\r` que l'empreinte
+d'attestation ignore (elle normalise) mais que `prosrc` garde. Ici : aucun `\r`, les deux valeurs sont égales.
