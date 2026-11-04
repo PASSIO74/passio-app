@@ -1283,6 +1283,26 @@ première) — aucun P0, ce que le lot ferme est fermé ; ce qu'elles ont trouv�
   nouveau le 04/11). `comment_interactions` : son gestionnaire DELETE ne sert à rien, il sort sur
   `!r.comment_id`. Et `realtime.messages` garde la charge poussée
   jusqu'à la chute de sa partition, comme celle des messages.
+- **Le verrou (2026-11-04)** : `tests/e2e/realtime-poussee-reelle.spec.js`, projet `prod`, sous `PASSIO_E2E_MULTI`, staging
+  seulement (elle refuse tout autre projet, côté banc et côté page). Avant lui, le seul contrôle en CI était le « realtime OK »
+  de `multi-comptes`, informatif, qui se satisfait d'une relecture REST. Vrai client, vrai serveur Realtime, en un test de 1 min :
+  notification reçue en 130 à 280 ms, lectures REST bloquées, trame comptée ; ajout à une conversation en 480 à 730 ms, par la
+  trame et par le vrai gestionnaire (un filet relit aussi les conversations : la seule présence ne prouverait rien) ; tiers
+  refusé (`CHANNEL_ERROR`), sa fausse notification jamais livrée, témoin chez A ; visiteur muet, témoin `post_likes` reçu sans clé.
+  Rouge par réinjection : chaque liaison retirée, chaque garde de destinataire, chaque sonde braquée sur une table publiée.
+  - ⚠️ **Une sonde par client.** L'essai d'origine réunissait les deux tables sur un canal : une liaison vers une table non
+    publiée annule TOUTES celles de son canal, donc `notifications` republiée seule restait muette sous `conv_members`, et le
+    verrou restait vert. Trouvé en braquant une sonde sur `post_likes` : vert. Un test de silence doit prouver qu'il pourrait
+    entendre.
+  - ⚠️ **La gate `audit:realtime` distingue une sonde d'un abonné** (`sondesHorsPublication`, dans
+    `scripts/realtime-publication.json`) : fichier par fichier, table par table, avec sa raison. La même table reste refusée
+    ailleurs, et une sonde disparue, sans raison ou sur une table republiée est refusée (`audit-realtime-publication.test.mjs` ④ à ⑦).
+  - ⚠️ **Pour lancer une suite à comptes réels depuis le poste : jamais la config du dépôt telle quelle.** `global-teardown`
+    purge dès que `PASSIO_E2E_MULTI` est posé, `PASSIO_E2E_PROD` ou non : 37 comptes de test du staging partis pendant le
+    premier essai de ce verrou, alors qu'une CI pouvait y tourner (aucune n'a rougi, celle de #719 avait fini 15 s plus tôt).
+    Une config locale reprend la vraie et retire `globalTeardown`.
+  - **Non éprouvé** : la policy de `user:<uid>` n'a pas été mutée sur le staging (DDL sur un bien partagé) ; le refus du tiers
+    est mesuré, pas son retrait. La réception par un vrai client EN PRODUCTION reste à voir sur un compte réel.
 
 
 ## 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
