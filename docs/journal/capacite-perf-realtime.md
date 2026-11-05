@@ -1427,7 +1427,7 @@ lecture des identifiants à tout instant. Les routes de comptage sont donc posé
 filet du fil est arrêté chez B après la chaîne de démarrage (un tour de `fil_compteurs` ferait partir la réaction
 pour une autre raison que celle qu'on mesure).
 
-**Trouvé en passant (RV-37, non corrigé : migration et décision produit).** Épingler un commentaire n'atteint
+**Trouvé en passant (RV-38, non corrigé : migration et décision produit).** Épingler un commentaire n'atteint
 jamais la base. `togglePinComment` écrit `kind = 'pin'`, mais la contrainte de production `ci_kind_check`
 n'admet que `like`, `reply`, `emoji` et `gif` ; le refus (23514) est avalé. L'épingle reste locale.
 
