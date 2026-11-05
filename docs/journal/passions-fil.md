@@ -913,3 +913,24 @@ relie son `PREREQUIS-CLIENT` au littéral du client, avec la contre-revue.
    comptes, lire le SQLSTATE dans postgres_logs (42501 garde ou quota, 23505 doublon, 22023 nom refusé, 53400
    plafond des créations) plutôt que le seul code HTTP.
 Retour arrière : le bloc `--|` de l'en-tête — il rend aussi le défaut.
+
+**Appliquée le 2026-11-05 à 07:23:32 UTC** depuis le poste de Benjamin, et mesurée au canal ①.
+- Préalables : contre-revue n°5780548656 sur `ab61c057` (auto-revue de mainteneur unique, ASTRA-61 bis), postée par une autre session sur l'ordre de Benjamin ; attestation inscrite ; prérequis client trouvé sur le site servi (`app.js?v=d5761604e4`) ; verdict **23/23 OK** ; journal écrit dans la transaction.
+- Mesuré au canal ① à 07:24 UTC :
+  - déclencheurs `aa_passion_requests_garde`, `trg_passion_request_auto`, `zz_barriere_suppression`, tous actifs, la garde EN TÊTE ;
+  - WITH CHECK `user_id = (select auth.uid())::text AND NOT suppression_de_mon_compte()`, policy SELECT inchangée (`100a0f66…`), deux policies, RLS active ;
+  - garde `SECURITY DEFINER`, `search_path` vide, corps `6a382282…` (celui du fichier), non exécutable par `anon` ni `authenticated` ;
+  - journal `cb1e697bf51d` ; aucune trace du décor (0 demande, 0 rattachement, 0 passion, 0 marqueur synthétiques).
+- `postgres_logs` : aucune erreur depuis l'application. La dernière 42P17 date du 2026-11-04 vers 20:00 UTC : les envois de visiteur ont cessé avec #722 (21:38 UTC), AVANT l'application. Ce chiffre ne départage donc plus rien ; ce sont les mesures de catalogue ci-dessus qui font foi.
+
+**Revue indépendante de la version 2** (trois agents Claude Code en lecture seule, 2026-11-05 : intégration des constats, red team, applicabilité en production) : aucun P0, P1 ni P2. Les 23 lignes avaient été prédites OK sur le catalogue de production. Ce qui reste :
+- P3 : une panne TARDIVE du décor (ligne 1 en ECHEC) rend non bloquantes des lignes de comportement déjà mesurées. Avec ce fichier, le risque reste théorique : la garde est épinglée par la ligne 20, qui est bloquante. Remède pour une version 3 : bloquer chaque ligne dès que SA mesure existe, et isoler chaque `set_config('role', …)` ;
+- P4 :
+  - `set local search_path` est à épingler : une session dont le chemin porte `auth` serait refusée à tort, en fermant ;
+  - le verdict mesure l'ancienne forme de requête (`RETURNING 1`), pas `return=representation` ;
+  - deux contrôles du banc sont faibles (table temporaire mal nommée ; première connexion de `fuite()` non relue) ;
+  - le client nomme mal deux refus rares (23514, et 23505 sur `passions_pkey`) ;
+  - le décor dépend de `user_passions_update_own` ;
+  - le verrou exclusif dure quelques secondes ;
+  - le prérequis client ne tient, dans la page minifiée, que par l'appel `journal(…)`.
+Aucun ne justifiait de retoucher un fichier contre-revu et attesté.
