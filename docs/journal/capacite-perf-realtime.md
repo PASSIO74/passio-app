@@ -25,6 +25,7 @@
 - 🔒 R25 — UNE TABLE PUBLIÉE LIVRE SES SUPPRESSIONS À TOUT LE MONDE, ET UNE TABLE DÉPUBLIÉE FAIT TAIRE SON CANAL (2026-11-03)
 - 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 - 🧹 R37 — UN DELETE N'APPORTE QUE LA CLÉ : LE RETRAIT SE RETROUVE DANS CE QU'ON A LU, JAMAIS PAR UNE RELECTURE (2026-11-05)
+- 🪞 RV-39 — MES PUBLICATIONS ONT DEUX COPIES : CE QUE LE SERVEUR REND S'ÉCRIT SUR CELLE QUE LA PASTILLE LIT (2026-11-05)
 
 ---
 
@@ -1458,7 +1459,7 @@ corrigés dans le même lot.**
 - Dans le banc staging : un tour du fil n'y compte que s'il relit P, et la charge `{ id }` est vérifiée sur les DELETE de A
   seulement.
 
-**Trouvé en passant par la contre-revue (RV-39, non corrigé, préexistant).** Sur l'appareil qui a publié, la pastille d'une
+**Trouvé en passant par la contre-revue (RV-39, préexistant ; corrigé le jour même, fiche « 🪞 RV-39 » ci-dessous).** Sur l'appareil qui a publié, la pastille d'une
 publication à moi lit la copie `userPosts` (`_postReactItems` → `findPostAnywhere`), que le serveur ne met jamais à jour :
 `supaLoadPosts` n'y recopie que `commentsTotal`. Les réactions d'autrui relues par `fil_compteurs` n'y apparaissent donc
 jamais ; seules celles reçues en direct, ou persistées, s'y affichent.
@@ -1485,3 +1486,67 @@ pour la contre-revue, les pierres tombales des deux lectures (⑨), la borne des
 vrais comptes. La charge d'un DELETE mesurée sur la trame (`old_record` = `{ id }`), puis le retrait du like et de
 l'emoji vu en direct par B, ses relectures de ces interactions BLOQUÉES. Puis la réaction d'une publication lue
 par `fil_compteurs` qui part sans un tour du fil ; puis une réaction reçue en direct qui repart sans aucune lecture.
+
+## 🪞 RV-39 — MES PUBLICATIONS ONT DEUX COPIES : CE QUE LE SERVEUR REND S'ÉCRIT SUR CELLE QUE LA PASTILLE LIT (2026-11-05)
+
+Registre RV-39 de l'audit du 2026-11-02, trouvé par la contre-revue du lot R37, **préexistant**.
+
+**Le défaut.** Une publication à moi vit dans `userPosts` (la copie gardée à la publication) ET dans
+`supabasePosts` (la copie que rend le serveur). `findPostAnywhere` préfère la première, et la pastille la lit
+(`_postReactItems`). Or `supaLoadPosts` n'y recopiait que `commentsTotal`. Sur l'appareil qui a publié, les
+réactions d'autrui lues par `fil_compteurs` n'apparaissaient donc jamais : seules s'y voyaient celles reçues en
+direct, ou persistées par une session précédente. Une réaction retirée pendant que le socket dormait y restait
+pour toujours. Et pas sur ce seul appareil : `userPosts` voyage dans le blob `user_state` (`_syncableState`,
+recopié tel quel par `_applyUserState` au démarrage), donc tout appareil du compte portait la même copie figée. Le
+commentaire de `findPostAnywhere` affirmait « pour lire, c'est sans importance » : c'était faux dès qu'une donnée
+serveur n'était recopiée que d'un côté. Il dit désormais à quelle condition c'est vrai.
+
+**Le remède (client seul : aucune migration, aucune RLS, aucune requête de plus).** `_recopierReactionsAutrui`
+(app-04), appelée par `supaLoadPosts` à côté de la recopie de `commentsTotal`, remplace dans mes copies
+`userPosts` les réactions d'AUTRUI par celles de la copie serveur, selon cinq règles :
+- **mes entrées restent les miennes** : optimistes (pas encore en base), ou retirées ici et pas encore effacées
+  là-bas. Le serveur ne ressuscite pas une réaction que je viens d'enlever (verrou ②) ;
+- **une entrée d'autrui que le serveur rend aussi est GARDÉE** (le même objet), et son `ci` avec elle. Une ligne
+  serveur sans `ci` (`fil_compteurs` ne le rend pas) apprend celui de l'entrée locale, sur la copie serveur
+  aussi : c'est lui qui fait voir un retrait en direct sans aucune lecture (R37, `_ciRetirerParCiAffiche`) ;
+- **une entrée d'autrui absente du serveur n'est retirée que si elle était là AVANT la lecture**
+  (`_reactionsAutruiAvantLecture`, pris juste avant `_chargerComplementsFil`). Une réaction reçue en direct
+  pendant la lecture n'est pas jugée par un instantané qui la précède, comme dans `_ciVerifierReactionsPost` ;
+- **rien ne bouge si les réactions n'ont pas été LUES.** Chaque chemin pose `reactionsLues` : `fil_compteurs`
+  quand le champ est un tableau, le repli quand sa lecture n'a ni erreur ni réponse à `max-rows`
+  (`FIL_REPLI_LIGNES_MAX`). Une publication absente de la réponse reçoit `_complementFilVide()`, où il est faux ;
+- **un état déjà juste ne réécrit rien.** Une signature (identifiant, `ci`, auteur, genre, texte, instant) évite
+  la sauvegarde, la synchronisation `user_state` (où `userPosts` voyage) et la repeinte. Ce chemin tourne à
+  CHAQUE tour du filet : sans elle, chaque compte qui a publié réécrirait son blob à chaque tour.
+
+La pastille est repeinte EN PLACE (`updatePostReactionsUI`). Les signatures du fil (`_feedPostsSig`,
+`_feedDomSig`) ne regardent que la copie serveur : elles ne repeindraient pas une carte dont seule ma copie a
+changé. Effet de bord voulu : la pastille d'une publication à moi rattrape désormais au tour du filet un ajout ou un
+retrait tombé pendant le repos du socket, comme celle d'une publication d'autrui.
+
+⚠️ **TROIS PIÈGES DU LOT.**
+① **Une liste vide n'est pas une absence.** Le repli (`_chargerComplementsFilLegacy`) avale l'échec de sa lecture
+des réactions (`reactsRes.data || []`). Recopier sans `reactionsLues` aurait vidé ma pastille à chaque panne. C'est
+la règle de la réponse tronquée de R37, appliquée à l'échec (verrou ⑤).
+② **L'identifiant d'une entrée n'est pas une clé.** `semoji_<created_at>_<compte>` change de forme entre le temps
+réel (`… +00`) et REST (`…+00:00`). On apparie donc par `ci` quand les deux côtés le portent, sinon par la clé
+naturelle, l'instant passé par `supaTs` (verrou ④ : Bob, reçu en direct, puis relu sans doublon).
+③ **Remplacer, c'est perdre le `ci`.** Recopier les lignes serveur telles quelles aurait effacé l'identifiant d'une
+réaction persistée : son retrait en direct aurait coûté une lecture des identifiants au lieu de zéro, et la copie
+serveur ne l'aurait jamais appris (verrou ③).
+
+**Ce que le lot ne fait pas, dit tel quel.**
+- Un DELETE reçu PENDANT la lecture, pour une ligne que l'instantané porte encore, la fait revenir jusqu'au tour
+  suivant du filet. `fil_compteurs` ne rend pas l'`id`, et la pierre tombale de R37 ne reconnaît donc pas la ligne.
+  C'est le sort de la copie serveur d'une publication d'autrui (préexistant).
+- Les réactions d'un compte bloqué ne sont pas filtrées : la pastille ne les filtre nulle part
+  (`_postReactItems`), et ma copie fait désormais comme la copie serveur.
+- Mes propres réactions ne viennent jamais du serveur par ce chemin (première règle) : une réaction posée depuis un
+  autre appareil du compte n'arrive, comme avant, que par le blob `user_state`, au démarrage (préexistant).
+- La forme structurelle reste celle de R37 : ajouter `'id', i.id` à `fil_compteurs`.
+
+**Verrou.** `tests/e2e/reactions-mes-publications.spec.js` (5 cas, navigateur, vraie lecture du fil, vrai filet,
+vraie liaison temps réel, rien n'est écrit), éprouvé par RÉINJECTION. Sept mutations, chacune rougit son cas et
+laisse les autres verts : sans la recopie (① à ⑤), sans l'instantané « avant » (④), mes lignes du serveur
+recopiées au lieu de mes entrées locales (②), sans reporter le `ci` local (③), sans `reactionsLues` (⑤), sans la
+repeinte en place (① ② ④), sans la comparaison de signature (②).

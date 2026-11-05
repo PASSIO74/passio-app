@@ -1749,6 +1749,141 @@ function _ciRetirerReactionPost(r) {
   return true;
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// RV-39 — LES RÉACTIONS D'AUTRUI SUR MES PUBLICATIONS SUIVENT LE SERVEUR
+// (2026-11-05, trouvé par la contre-revue de R37)
+// ────────────────────────────────────────────────────────────────────────
+// Une publication à moi vit dans `userPosts` (la copie gardée à la publication)
+// ET dans `supabasePosts` (la copie que rend le serveur). `findPostAnywhere`
+// préfère la première, et la pastille la lit (`_postReactItems`). Or
+// `supaLoadPosts` n'y recopiait que `commentsTotal` : les réactions d'autrui
+// lues par `fil_compteurs` n'apparaissaient JAMAIS sur l'appareil qui a publié
+// (ni sur un autre appareil du compte : `userPosts` voyage dans le blob
+// `user_state`). Seules s'y voyaient celles reçues en direct, ou persistées par
+// une session précédente ; et une réaction retirée pendant que le socket dormait
+// y restait.
+//
+// À chaque lecture du fil, les réactions d'AUTRUI de la copie serveur sont donc
+// recopiées dans mes copies `userPosts` (`_recopierReactionsAutrui`, appelée
+// par `supaLoadPosts`), et rien d'autre :
+//   · MES entrées restent les miennes : optimistes (pas encore en base), ou
+//     retirées ici et pas encore effacées là-bas. Le serveur ne doit ni
+//     ressusciter les unes ni retirer les autres ;
+//   · une entrée d'autrui que le serveur rend aussi est GARDÉE (le même objet),
+//     avec son `ci`. Une ligne serveur sans `ci` (c'est le cas de
+//     `fil_compteurs`) reçoit celui de l'entrée locale, sur la copie serveur
+//     aussi : c'est lui qui fait voir un retrait en direct (R37) ;
+//   · une entrée d'autrui absente du serveur n'est retirée que si elle était là
+//     AVANT la lecture. Une réaction reçue en direct pendant la lecture n'est
+//     pas jugée par un instantané qui la précède (même règle que
+//     `_ciVerifierReactionsPost`) ;
+//   · rien ne bouge si les réactions n'ont pas été LUES (lecture en échec,
+//     réponse du repli à la borne, publication absente de la réponse) : une
+//     liste vide n'est pas une absence (`reactionsLues`, app-08) ;
+//   · un état déjà juste ne change rien : ni sauvegarde, ni synchronisation
+//     `user_state`, ni repeinte. Ce chemin tourne à CHAQUE tour du filet.
+// La pastille est repeinte EN PLACE : la signature du fil (`_feedPostsSig`,
+// `_feedDomSig`) ne regarde que la copie serveur, et ne repeindrait pas une
+// carte dont seule ma copie a changé.
+// ⚠️ Ce que ce bloc ne fait pas, dit tel quel : un DELETE reçu PENDANT la lecture
+// d'une ligne que l'instantané porte encore la fait revenir jusqu'au tour
+// suivant (`fil_compteurs` ne rend pas l'`id`, la pierre tombale ne la reconnaît
+// pas), exactement comme sur la copie serveur d'une publication d'autrui.
+// Verrou : `tests/e2e/reactions-mes-publications.spec.js`. Fiche :
+// `docs/journal/capacite-perf-realtime.md`, « 🪞 RV-39 ».
+function _estReactionAutrui(x) {
+  return !!(x && x.authorId && !_ciEstMoi(x.authorId) && (x.type === "emoji_reaction" || x.type === "gif_reaction"));
+}
+// La clé naturelle d'une entrée de réaction (forme client), faute de `ci` :
+// l'instant y est déjà passé par `supaTs` des deux côtés (REST `…+00:00`, temps
+// réel `…+00`) — jamais l'`id` de l'entrée, dont la forme suit ce format.
+function _cleReactionPost(x) {
+  var t = Number(x && x.createdAt);
+  if (!x || !Number.isFinite(t)) return null;
+  return [x.type || "", x.authorId || "", x.text == null ? "" : String(x.text), t].join("\u0001");
+}
+function _signatureReactions(arr) {
+  return (Array.isArray(arr) ? arr : []).map(function (x) {
+    if (!x) return "";
+    return [x.id, x.ci || "", x.authorId || "", x.type || "", x.text == null ? "" : String(x.text), Number(x.createdAt) || 0].join("\u0001");
+  }).join("\u0002");
+}
+// Les entrées d'autrui de mes copies d'une page, AVANT la lecture des réactions :
+// les seules qu'une réponse du serveur a le droit de retirer.
+function _reactionsAutruiAvantLecture(postIds) {
+  var avant = new Set();
+  try {
+    var ids = new Set(postIds || []);
+    if (!ids.size || !Array.isArray(state.userPosts)) return avant;
+    state.userPosts.forEach(function (u) {
+      if (!u || !ids.has(u.id) || !Array.isArray(u.reactions)) return;
+      u.reactions.forEach(function (x) { if (_estReactionAutrui(x)) avant.add(x); });
+    });
+  } catch (e) { try { diagLog("rv39_avant : " + (e && e.message)); } catch (_e) {} }
+  return avant;
+}
+// `serveur` : le tableau `reactions` que `supaLoadPosts` vient de construire pour
+// `postId` (la copie serveur, MUTÉE seulement pour y apprendre un `ci`) ;
+// `avant` : `_reactionsAutruiAvantLecture`. Rend vrai si une de mes copies a changé.
+function _recopierReactionsAutrui(postId, serveur, avant) {
+  var change = false;
+  try {
+    if (!postId || !Array.isArray(serveur) || !Array.isArray(state.userPosts)) return false;
+    var duServeur = serveur.filter(_estReactionAutrui);
+    state.userPosts.forEach(function (u) {
+      if (!u || u.id !== postId) return;
+      var locales = Array.isArray(u.reactions) ? u.reactions : [];
+      var signatureAvant = _signatureReactions(locales);
+      // Mes entrées d'autrui, rangées par `ci` et par clé naturelle : l'appariement
+      // reste linéaire (ce chemin tourne à chaque tour, une publication peut porter
+      // des centaines de réactions).
+      var parCi = new Map(), parCle = new Map();
+      var ranger = function (table, k, x) { if (!k) return; var l = table.get(k); if (l) l.push(x); else table.set(k, [x]); };
+      locales.forEach(function (x) {
+        if (!_estReactionAutrui(x)) return;
+        if (x.ci) ranger(parCi, x.ci, x);
+        ranger(parCle, _cleReactionPost(x), x);
+      });
+      var prises = new Set();
+      var premiere = function (liste, retenir) {
+        for (var i = 0; liste && i < liste.length; i++) {
+          if (!prises.has(liste[i]) && (!retenir || retenir(liste[i]))) return liste[i];
+        }
+        return null;
+      };
+      var autrui = duServeur.map(function (s) {
+        // La même ligne : par l'identifiant quand les deux côtés le portent ;
+        // sinon par la clé naturelle (une entrée qui a un AUTRE `ci` est une
+        // autre ligne).
+        var k = _cleReactionPost(s);
+        var l = s.ci
+          ? (premiere(parCi.get(s.ci)) || premiere(k && parCle.get(k), function (x) { return !x.ci; }))
+          : premiere(k && parCle.get(k));
+        if (!l) return Object.assign({}, s);
+        prises.add(l);
+        if (!l.ci && s.ci) l.ci = s.ci;
+        else if (l.ci && !s.ci) s.ci = l.ci;
+        return l;
+      });
+      var gardees = locales.filter(function (x) {
+        if (prises.has(x)) return false;
+        if (!_estReactionAutrui(x)) return true;           // les miennes, et ce que le serveur ne couvre pas
+        return avant instanceof Set && !avant.has(x);      // reçue PENDANT la lecture
+      });
+      var nouvelles = autrui.concat(gardees);
+      nouvelles.sort(function (a, b) { return (Number(a && a.createdAt) || 0) - (Number(b && b.createdAt) || 0); });
+      if (_signatureReactions(nouvelles) === signatureAvant) return;
+      u.reactions = nouvelles;
+      change = true;
+    });
+    if (change) {
+      try { saveState(); } catch (e) {}
+      if (typeof updatePostReactionsUI === "function") updatePostReactionsUI(postId);
+    }
+  } catch (e) { try { diagLog("rv39_recopie : " + (e && e.message)); } catch (_e) {} }
+  return change;
+}
+
 // Applique en TEMPS RÉEL une interaction de commentaire reçue d'un autre compte
 // (canal realtime:comment_interactions, app-08). op = "add" (INSERT) | "remove"
 // (DELETE : la ligne vient de l'index R37, la charge du serveur n'a que l'`id`).
