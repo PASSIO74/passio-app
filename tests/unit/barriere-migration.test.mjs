@@ -390,6 +390,21 @@ test("④ un motif porté par un script INLINÉ dans la page (hors bloc app) se 
     (e) => e instanceof B.RefusBarriere && e.code === "prerequis_client_absent");
 });
 
+test("④ la migration passion_requests déclare son prérequis, et c'est la PAGE qui le porte (passions-flat.js, inliné par le build)", () => {
+  const sql = readFileSync(new URL("../../migrations/migration_passion_requests_recursion_2026-11-04.sql", import.meta.url), "utf8");
+  const motifs = B.prerequisClient(sql);
+  assert.deepEqual(motifs, ["passion_requests:reponse-lue"]);
+  const flat = readFileSync(new URL("../../js/passions-flat.js", import.meta.url), "utf8");
+  assert.ok(flat.includes('"' + motifs[0] + '"'), "passions-flat.js ne porte plus le littéral « " + motifs[0] + " »");
+  // ⚠️ Le fichier vit HORS du bloc BUILD:APP : `scripts/build.js` l'inline dans
+  // la page, il n'entre jamais dans app.js — d'où la lecture de la page par ④.
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  const debut = html.indexOf("<!-- BUILD:APP-START"), fin = html.indexOf("<!-- BUILD:APP-END -->");
+  const balise = html.indexOf('<script src="js/passions-flat.js"></script>');
+  assert.ok(debut > 0 && fin > debut && balise > 0, "balises introuvables dans index.html");
+  assert.ok(balise < debut || balise > fin, "passions-flat.js est entré dans le bloc app : le motif se lirait dans app.js");
+});
+
 test("④ la migration R25 déclare ses deux prérequis, et le client du dépôt les porte", () => {
   const sql = readFileSync(new URL("../../migrations/migration_realtime_diffusion_privee_2026-11-03.sql", import.meta.url), "utf8");
   const motifs = B.prerequisClient(sql);
