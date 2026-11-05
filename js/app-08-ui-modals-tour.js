@@ -5127,7 +5127,7 @@ async function _chargerComplementsFilLegacy(postIds, out) {
     ]);
     likesData = likesRes.data || [];
     commentsData = commentsRes.data || [];
-    reactsData = reactsRes.data || [];
+    reactsData = (typeof _ciSansTombees === "function") ? _ciSansTombees(reactsRes.data || []) : (reactsRes.data || []);
     if (typeof _ciIndexer === "function") reactsData.forEach(function (x) { if (x && (x.kind === "emoji" || x.kind === "gif")) _ciIndexer(x); });
   } catch(e) {}
   const moi = typeof MY_UID !== "undefined" ? MY_UID : null;
@@ -5229,7 +5229,10 @@ async function supaLoadCommentInteractions(commentIds) {
     // qu'il retire (`_ciIndexer`, app-04). Sans eux, aucun retrait d'un autre
     // compte ne se voit avant la réouverture de la discussion.
     var res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
-    (res.data || []).forEach(function(r){
+    // Une ligne dont le DELETE est déjà arrivé (pendant cette lecture) est morte,
+    // même si l'instantané de la réponse la porte encore (contre-revue R37).
+    var lignesCi = (typeof _ciSansTombees === "function") ? _ciSansTombees(res.data || []) : (res.data || []);
+    lignesCi.forEach(function(r){
       if (typeof _ciIndexer === "function") _ciIndexer(r);
       var o = out[r.comment_id] || (out[r.comment_id] = { likes: 0, likedBy: [], replies: [], emojis: [] });
       var ci = r.id || null;

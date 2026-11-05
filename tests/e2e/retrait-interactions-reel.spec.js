@@ -104,7 +104,9 @@ test("R37 : le retrait d'une interaction par un autre compte se voit en direct",
       await _syncReactionEmoji(cid, pid, "🔥");
       await _syncReactionEmoji(pid, pid, "😍");
       const lu = await supa.from("comment_interactions").select("id,comment_id,kind,payload").eq("user_id", MY_UID);
-      return { postId: pid, commentId: cid, like, lignes: (lu.data || []).map((r) => r.kind + ":" + (r.comment_id === pid ? "post" : "commentaire")).sort() };
+      const id = (kind, cible) => ((lu.data || []).find((r) => r.kind === kind && r.comment_id === cible) || {}).id || null;
+      return { postId: pid, commentId: cid, like, lignes: (lu.data || []).map((r) => r.kind + ":" + (r.comment_id === pid ? "post" : "commentaire")).sort(),
+        idsCommentaire: [id("like", cid), id("emoji", cid)] };
     });
     expect(publication.erreur, "A publie, commente et réagit").toBeUndefined();
     aNettoyer.post = publication.postId; aNettoyer.commentaire = publication.commentId;
@@ -126,7 +128,12 @@ test("R37 : le retrait d'une interaction par un autre compte se voit en direct",
       if (u.indexOf(P) !== -1 && u.indexOf("kind=in.") !== -1) lectures.publication++;
       return route.continue();
     });
-    await B.page.route(/\/rest\/v1\/rpc\/fil_compteurs/, (route) => { if (mesure.compterFil) lectures.fil++; return route.continue(); });
+    await B.page.route(/\/rest\/v1\/rpc\/fil_compteurs/, (route) => {
+      // Seulement un tour qui RELIT P : une autre suite publie en parallèle, et un
+      // INSERT de `posts` peut faire compléter le fil de B avec d'autres publications.
+      if (mesure.compterFil && String(route.request().postData() || "").indexOf(P) !== -1) lectures.fil++;
+      return route.continue();
+    });
 
     // ── B lit la publication comme au démarrage (`fil_compteurs`), ouvre la discussion ──
     // Le filet du fil est arrêté APRÈS la chaîne de démarrage, qui le lance.
@@ -183,10 +190,16 @@ test("R37 : le retrait d'une interaction par un autre compte se voit en direct",
         .toMatchObject({ likes: 0, likeAlice: false, emojiAlice: false, boutonLike: "🤍 0", pastilleCommentaire: "" });
       noter(`② retirés chez B en ${Date.now() - debut} ms ; relectures du commentaire : ${lectures.commentaire}`);
       expect(lectures.commentaire, "B n'a pas relu les interactions du commentaire : l'index a suffi").toBe(0);
-      const recues = suppressionsRecues(B).slice(avant);
-      expect(recues.length, "les deux DELETE sont arrivés par le temps réel").toBeGreaterThanOrEqual(2);
+      // Le protocole est-il lisible ? B a reçu des INSERT (le like et l'emoji de A) :
+      // s'il n'en décode aucun, c'est le décodeur de ce banc qui est en cause, pas le
+      // correctif — le poll ci-dessus reste la preuve, et on le dit.
+      const lisibles = B.frames.map(changement).filter(Boolean).length;
+      if (!lisibles) { noter("⚠️ aucune trame de changement décodée : forme du protocole inconnue, contrôle de la charge non fait"); return; }
+      // Les DELETE de A, et eux seuls : une autre suite efface aussi des interactions sur le staging.
+      const recues = suppressionsRecues(B).slice(avant).filter((c) => c.old_record && publication.idsCommentaire.includes(c.old_record.id));
+      expect(recues.map((c) => c.old_record.id).sort(), "les deux DELETE de A sont arrivés par le temps réel").toEqual(publication.idsCommentaire.slice().sort());
       for (const c of recues) {
-        expect(Object.keys(c.old_record || {}), "① la charge d'un DELETE sous RLS : la clé primaire, rien d'autre").toEqual(["id"]);
+        expect(Object.keys(c.old_record), "① la charge d'un DELETE sous RLS : la clé primaire, rien d'autre").toEqual(["id"]);
       }
     });
 

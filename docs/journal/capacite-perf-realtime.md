@@ -1398,7 +1398,7 @@ rien et ne touche que ce que l'appareil a vu.
   « une autre du même compte ». À défaut de `ci`, la clé naturelle (`_ciMemeLigne`).
 - **Le trou de `fil_compteurs`.** Un DELETE inconnu de l'index déclenche UNE lecture des identifiants
   (`_ciVerifierReactionsPost`). Elle est coalescée à 400 ms, jamais lancée depuis une page masquée (le
-  rendez-vous est reporté au retour), suspendue 60 s après un échec, et bornée aux publications À L'ÉCRAN dont
+  rendez-vous est reporté au retour), reculée après un échec (10 → 60 s, demande reportée, pas perdue), et bornée aux publications À L'ÉCRAN dont
   une réaction d'autrui n'a pas d'identifiant. Elle apprend les identifiants, retire ce que le serveur n'a plus
   (seulement les entrées présentes AVANT la lecture, et seulement si la réponse n'est pas tronquée). Aux tours
   suivants du filet, `_ciRetrouverId` retrouve chaque identifiant par la clé naturelle. Le coût suit donc ce que
@@ -1427,6 +1427,42 @@ lecture des identifiants à tout instant. Les routes de comptage sont donc posé
 filet du fil est arrêté chez B après la chaîne de démarrage (un tour de `fil_compteurs` ferait partir la réaction
 pour une autre raison que celle qu'on mesure).
 
+⚠️ **LA CONTRE-REVUE DU LOT (`audit-passio`, lecture seule, quatre cas reproduits hors dépôt) : aucun P0 ni P1, deux P2
+corrigés dans le même lot.**
+- **P2-a — un DELETE qui arrive PENDANT une lecture dont l'instantané le précède.** La réponse périmée réindexait la ligne
+  morte et rendait son `ci` à l'entrée : la relecture de rattrapage ne la voyait plus (elle ne prend que les entrées sans
+  `ci`), et la réaction ou le like restaient affichés jusqu'au tour suivant du filet, ou à une réouverture. C'est le
+  mécanisme de rattrapage du lot lui-même qui était contourné. Remède : des **pierres tombales** (`_ciTombes`, 2 000
+  entrées, deux minutes). Tout DELETE reçu, connu ou non, y est noté. L'index le refuse, et les trois lectures (discussion,
+  repli du fil, identifiants) écartent ses lignes. Verrou ⑨, pour la lecture des identifiants puis pour la discussion.
+- **P2-b — une réponse tronquée relisait sans fin.** Elle n'apprenait qu'une partie des identifiants, sans ordre, et chaque
+  DELETE inconnu de la base refaisait la même lecture de 1 000 lignes. Remède : on ne demande que des publications dont les
+  réactions connues tiennent sous 250 lignes, et une publication qui dépasse seule cette borne n'est jamais demandée (son
+  retrait attend le filet). La limite est de 500, et non la valeur de `max-rows` : une limite serveur plus basse que prévu
+  ferait passer une réponse tronquée pour complète. Une réponse qui l'atteint compte comme un **échec**. Le recul est alors
+  de 10, 20, 40 puis 60 s ; la demande est reportée à sa fin, au plus trois fois, puis seul un nouveau DELETE redemande.
+  Verrou ⑩. La forme structurelle reste ouverte : ajouter `'id', i.id` à `fil_compteurs`. Le client est prêt
+  (`ci: x.id || …`), mais c'est une migration.
+- P3/P4, corrigés :
+  - la lecture pouvait partir d'une page masquée, si le minuteur avait été armé page visible (verrou ⑤ étendu) ;
+  - `catch(e) {}` muet sur toute l'application des retraits : il journalise désormais (`ci_appliquer`) ;
+  - `_ciVerifEnCours` était posé hors du `try` : une exception aurait tué la vérification pour la session ;
+  - trois sélecteurs (`updatePostReactionsUI`, `_patchCmtReact`, `_patchCmtLike`) passent par `CSS.escape`, car un
+    identifiant de publication est un texte choisi par son auteur (E-08, verrou ⑫) ;
+  - un GIF hérité reçu en direct rafraîchit la liste, au lieu de patcher une pastille qui l'ignore ;
+  - le balayage des entrées persistées est regroupé par rafale (100 ms) ;
+  - la frontière des exemples passe par `_ciEstExemple` (appartenance à `state.seed.posts`), et non plus par
+    `fromSupabase`, qu'une copie `userPosts` ne porte pas : mes publications sortaient du rattrapage.
+- **« Jamais mes entrées »** n'était verrouillé par aucun cas (retirer `!_ciEstMoi` laissait tout vert). Verrou ⑪ : ma
+  réaction optimiste, pas encore en base, n'est ni retirée ni candidate à la lecture.
+- Dans le banc staging : un tour du fil n'y compte que s'il relit P, et la charge `{ id }` est vérifiée sur les DELETE de A
+  seulement.
+
+**Trouvé en passant par la contre-revue (RV-39, non corrigé, préexistant).** Sur l'appareil qui a publié, la pastille d'une
+publication à moi lit la copie `userPosts` (`_postReactItems` → `findPostAnywhere`), que le serveur ne met jamais à jour :
+`supaLoadPosts` n'y recopie que `commentsTotal`. Les réactions d'autrui relues par `fil_compteurs` n'y apparaissent donc
+jamais ; seules celles reçues en direct, ou persistées, s'y affichent.
+
 **Trouvé en passant (RV-38, non corrigé : migration et décision produit).** Épingler un commentaire n'atteint
 jamais la base. `togglePinComment` écrit `kind = 'pin'`, mais la contrainte de production `ci_kind_check`
 n'admet que `like`, `reply`, `emoji` et `gif` ; le refus (23514) est avalé. L'épingle reste locale.
@@ -1439,10 +1475,12 @@ identité opaque (`rid`), la charge serait vide et plus aucun retrait ne se rés
 `audit-identite-replication` exige déjà un marqueur motivé pour tout `replica identity` sur cette table, et ce
 marqueur devra citer R37.
 
-**Verrous.** `tests/e2e/retrait-interactions-direct.spec.js` (8 cas, navigateur, rien n'est écrit, la vraie
-liaison nourrie de la charge exacte `{ id }`), éprouvé par RÉINJECTION, chaque mutation rougissant son cas :
+**Verrous.** `tests/e2e/retrait-interactions-direct.spec.js` (12 cas, navigateur, rien n'est écrit, la vraie
+liaison nourrie de la charge exacte `{ id }`), éprouvé par RÉINJECTION — quinze mutations, chacune rougissant son cas :
 l'ancien gestionnaire (①→⑤), la garde RV-31 (⑥), `id`/`post_id` à la lecture (① ⑦), l'exclusion des exemples
-(④), le report d'une page masquée (⑤), la clé naturelle au tour du filet (② ③), la recherche à l'écran (⑧).
+(④), le report d'une page masquée (⑤), la clé naturelle au tour du filet (② ③), la recherche à l'écran (⑧) ; puis,
+pour la contre-revue, les pierres tombales des deux lectures (⑨), la borne des lignes attendues et la réponse tronquée
+(⑩), « jamais mes entrées » aux deux endroits (⑪), `CSS.escape` (⑫) et le minuteur tombé page masquée (⑤).
 `tests/e2e/retrait-interactions-reel.spec.js` (projet `prod`, sous `PASSIO_E2E_MULTI`, staging seulement) : deux
 vrais comptes. La charge d'un DELETE mesurée sur la trame (`old_record` = `{ id }`), puis le retrait du like et de
 l'emoji vu en direct par B, ses relectures de ces interactions BLOQUÉES. Puis la réaction d'une publication lue

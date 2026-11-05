@@ -27,11 +27,19 @@
 //   ⑥ RV-31 : un DELETE de `conv_reads` n'est pas un accusé de lecture ;
 //   ⑦ le contrat de lecture (`id`, `post_id`) et la borne de l'index ;
 //   ⑧ une réaction PERSISTÉE par une session précédente (elle porte son
-//     identifiant, l'index en mémoire ne l'a jamais vue) part quand même.
+//     identifiant, l'index en mémoire ne l'a jamais vue) part quand même ;
+//   ⑨ à ⑫, de la contre-revue du lot : un DELETE PENDANT une lecture (la réponse
+//     périmée ne ressuscite rien) ; les bornes (publication trop réagie jamais
+//     demandée, réponse tronquée = recul) ; jamais mes entrées ; un identifiant
+//     de publication portant un guillemet.
 // Éprouvée par RÉINJECTION (2026-11-05) : l'ancien gestionnaire rougit ①→⑤ ;
 // sans la garde RV-31, ⑥ ; sans `id`/`post_id` à la lecture, ① et ⑦ ; sans
 // l'exclusion des exemples, ④ ; sans le report d'une page masquée, ⑤ ; sans la
-// clé naturelle au tour du filet, ② et ③ ; sans la recherche à l'écran, ⑧.
+// clé naturelle au tour du filet, ② et ③ ; sans la recherche à l'écran, ⑧. Puis la
+// contre-revue : sans les pierres tombales (lecture des identifiants, ou discussion), ⑨ ;
+// sans la borne des lignes attendues, ou en prenant une réponse tronquée pour complète, ⑩ ;
+// en retirant mes entrées, ou en les rendant candidates, ⑪ ; sans `CSS.escape`, ⑫ ; si le
+// minuteur tombé page masquée lit quand même, ⑤.
 // Aucune requête ne part : `supa.channel`, `supa.from` et `supa.rpc` sont simulés.
 // Fiche : `docs/journal/capacite-perf-realtime.md`, « 🧹 R37 ».
 // ═══════════════════════════════════════════════════════════════════════════
@@ -119,10 +127,21 @@ async function preparer(page, opts = {}) {
           if (table === "comment_interactions") {
             let rows = __interactions.filter((i) => (req.ins.comment_id || []).includes(i.comment_id));
             if (req.ins.kind) rows = rows.filter((i) => req.ins.kind.includes(i.kind));
-            // La forme d'une ligne REST : les seules colonnes demandées.
+            // Réponse forcée (réponse tronquée) : N lignes d'autres comptes.
+            if (window.__forcerLignesCi) {
+              const cible = (req.ins.comment_id || [])[0];
+              rows = Array.from({ length: window.__forcerLignesCi }, (_, k) => ({ id: "ci_masse_" + k, comment_id: cible, post_id: cible,
+                user_id: "u_masse_" + k, kind: "emoji", payload: "👍", created_at: "2026-11-05T08:00:00+00:00" }));
+            }
+            // La forme d'une ligne REST : les seules colonnes demandées. L'instantané
+            // est pris À LA REQUÊTE, comme une vraie lecture.
             const cols = String(req.cols || "").split(",").map((s) => s.trim()).filter(Boolean);
             rows = rows.map((i) => Object.fromEntries(cols.map((c) => [c, i[c]])));
-            return rendre({ data: rows, error: null });
+            const reponse = { data: rows, error: null };
+            // Un geste PENDANT la lecture (un DELETE qui arrive avant la réponse).
+            if (typeof window.__pendantLectureCi === "function") { const f = window.__pendantLectureCi; window.__pendantLectureCi = null; setTimeout(f, 10); }
+            if (window.__delaiCi) return new Promise((r) => setTimeout(r, window.__delaiCi)).then(() => reponse).then(ok, ko);
+            return rendre(reponse);
           }
           return rendre({ data: [], error: null });
         },
@@ -151,7 +170,7 @@ async function preparer(page, opts = {}) {
         commit_timestamp: "2026-11-05T10:00:00Z", errors: null, new: {}, old: { id } });
     };
     window.__lecturesCi = () => __lectures.filter((q) => q.table === "comment_interactions");
-    window.__pastille = (pid) => Array.from(document.querySelectorAll('[data-postchip="' + pid + '"]')).map((h) => h.textContent.trim());
+    window.__pastille = (pid) => Array.from(document.querySelectorAll('[data-postchip="' + CSS.escape(pid) + '"]')).map((h) => h.textContent.trim());
     window.__poserCarte = (pid) => {
       document.querySelectorAll("[data-r37-carte]").forEach((n) => n.remove());
       const carte = document.createElement("div");
@@ -246,7 +265,7 @@ test.describe("R37 — un retrait d'interaction se voit en direct", () => {
       stats: Object.assign({}, window._ciStats),
     }));
     expect(r.lectures, "une seule lecture, bornée à la publication à l'écran et aux réactions").toEqual([
-      { comment_id: ["post_r37"], kind: ["emoji", "gif"], cols: "id,comment_id,post_id,user_id,kind,payload,created_at", limit: 1000 },
+      { comment_id: ["post_r37"], kind: ["emoji", "gif"], cols: "id,comment_id,post_id,user_id,kind,payload,created_at", limit: 500 },
     ]);
     expect(r.reactions).toEqual([{ auteur: ZOE, texte: "🎸", ci: "ci_post_Z" }]);
     expect(r.stats.verifications).toBe(1);
@@ -270,11 +289,12 @@ test.describe("R37 — un retrait d'interaction se voit en direct", () => {
   test("③ réaction reçue en direct puis retirée : zéro requête, à travers les deux formats d'horodatage", async ({ page }) => {
     await preparer(page, { reactionsPost: false });
     await page.evaluate(async () => { state.supabasePosts = await supaLoadPosts(); __poserCarte("post_r37"); });
-    // L'INSERT tel que supabase-js le rend : horodatage au format du temps réel (`+00`).
+    // L'INSERT tel que supabase-js le rend : un `timestamptz` passe TEL QUEL
+    // (vendor 2.116.0, aucune conversion) — la forme du décodage, espace et décalage court.
     await page.evaluate(([alice]) => {
       const ligne = { id: "ci_direct_A", comment_id: "post_r37", post_id: "post_r37", user_id: alice, kind: "emoji", payload: "🎉" };
       __interactions.push(Object.assign({ created_at: "2026-11-05T10:00:00.123456+00:00" }, ligne));
-      __liaison("comment_interactions", "INSERT")({ eventType: "INSERT", old: {}, new: Object.assign({ created_at: "2026-11-05T10:00:00.123456+00" }, ligne) });
+      __liaison("comment_interactions", "INSERT")({ eventType: "INSERT", old: {}, new: Object.assign({ created_at: "2026-11-05 10:00:00.123456+00" }, ligne) });
     }, [ALICE]);
     expect(await page.evaluate(() => __pastille("post_r37")[0])).toBe("🎉 1");
     // Le filet relit la publication : REST écrit `+00:00`, et l'identifiant suit.
@@ -282,7 +302,7 @@ test.describe("R37 — un retrait d'interaction se voit en direct", () => {
       state.supabasePosts = await supaLoadPosts(); __poserCarte("post_r37");
       return findPostAnywhere("post_r37").reactions.map((x) => x.ci);
     });
-    expect(ci, "la clé naturelle traverse `+00` et `+00:00`").toEqual(["ci_direct_A"]);
+    expect(ci, "la clé naturelle traverse `… +00` et `…T…+00:00`").toEqual(["ci_direct_A"]);
 
     await page.evaluate(() => { __lectures.length = 0; __supprimer("ci_direct_A"); });
     expect(await page.evaluate(() => __pastille("post_r37")[0]), "retirée aussitôt").toBe("");
@@ -327,6 +347,23 @@ test.describe("R37 — un retrait d'interaction se voit en direct", () => {
     });
     await expect.poll(() => page.evaluate(() => __pastille("post_r37")[0]), { message: "rattrapé au retour" }).toBe("🎸 1");
     expect(await page.evaluate(() => __lecturesCi().length)).toBe(1);
+
+    // Le minuteur armé page VISIBLE, la page masquée avant son échéance : rien ne part non plus.
+    await page.evaluate(async () => {
+      await (async () => { state.supabasePosts = await supaLoadPosts(); __poserCarte("post_r37"); })();
+      // Une réaction de Zoé neuve et sans identifiant : la publication redevient à vérifier.
+      findPostAnywhere("post_r37").reactions.push({ id: "semoji_neuve", authorId: "u_neuve", text: "🌟", type: "emoji_reaction", createdAt: 5 });
+      __lectures.length = 0;
+      __liaison("comment_interactions", "DELETE")({ eventType: "DELETE", new: {}, old: { id: "ci_armee_visible" } });
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    });
+    await page.waitForTimeout(800);
+    expect(await page.evaluate(() => __lecturesCi().length), "le minuteur tombé page masquée ne lit rien").toBe(0);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(() => page.evaluate(() => __lecturesCi().length), { message: "et la lecture repart au retour" }).toBe(1);
   });
 
   test("⑥ RV-31 : un DELETE de conv_reads n'est pas un accusé de lecture", async ({ page }) => {
@@ -358,7 +395,7 @@ test.describe("R37 — un retrait d'interaction se voit en direct", () => {
       state.userPosts = state.userPosts || [];
       state.userPosts.unshift({ id: "post_mien_r37", authorId: MY_UID, authorName: "Moi", authorEmoji: "✨", authorColor: "#8b5cf6",
         authorAvatar: null, passion: "photo", mood: "all", type: "text", text: "Ma publication", image: null, video: null, audio: null,
-        createdAt: Date.now() - 3600000, likes: 0, liked: false, comments: [], fromSupabase: true,
+        createdAt: Date.now() - 3600000, likes: 0, liked: false, comments: [],
         reactions: [{ id: "semoji_x_" + alice, ci: "ci_persiste", authorId: alice, text: "🙌", type: "emoji_reaction", createdAt: Date.now() - 1000 }] });
       __poserCarte("post_mien_r37");
       const avant = __pastille("post_mien_r37")[0];
@@ -371,6 +408,103 @@ test.describe("R37 — un retrait d'interaction se voit en direct", () => {
     expect(r.avant).toBe("🙌 1");
     expect(r.connue, "prémisse : l'index ne la connaît pas").toBe(false);
     expect(r).toMatchObject({ apres: "", reactions: 0, lectures: 0 });
+  });
+
+  test("⑨ un DELETE qui arrive PENDANT une lecture : la réponse périmée ne ressuscite rien (lecture des identifiants, puis discussion)", async ({ page }) => {
+    await preparer(page);
+    // Lecture des identifiants : un DELETE étranger la déclenche, et A retire son 😍 pendant qu'elle est en vol.
+    await page.evaluate(async () => { state.supabasePosts = await supaLoadPosts(); __poserCarte("post_r37"); });
+    await page.evaluate(() => {
+      __lectures.length = 0;
+      window.__delaiCi = 600;
+      window.__pendantLectureCi = () => __supprimer("ci_post_A");
+      __liaison("comment_interactions", "DELETE")({ eventType: "DELETE", new: {}, old: { id: "ci_etranger" } });
+    });
+    await expect.poll(() => page.evaluate(() => __pastille("post_r37")[0]), { message: "la réaction d'Alice part malgré la réponse périmée" }).toBe("🎸 1");
+    let r = await page.evaluate(() => ({ indexee: _ciIndex.has("ci_post_A"), ecartees: window._ciStats.tombesEcartees,
+      reactions: findPostAnywhere("post_r37").reactions.map((x) => x.text) }));
+    expect(r).toEqual({ indexee: false, ecartees: 1, reactions: ["🎸"] });
+
+    // Discussion : A retire son like pendant que l'ouverture lit les interactions.
+    r = await page.evaluate(async () => {
+      window.__delaiCi = 600;
+      window.__pendantLectureCi = () => __supprimer("ci_like_A");
+      window._cmtThreadLoadedAt = {};
+      await openComments("post_r37");
+      const n = findPostAnywhere("post_r37").comments.find((c) => c.id === "c_r37");
+      return { likes: n.likes, likedBy: n.likedBy.slice(), indexee: _ciIndex.has("ci_like_A") };
+    });
+    expect(r, "le like d'Alice n'est ni compté ni indexé").toEqual({ likes: 1, likedBy: [ZOE], indexee: false });
+    await expect(page.locator('#commentsBox [data-cmtlike="c_r37"]')).toHaveText("🤍 1");
+  });
+
+  test("⑩ bornes : une publication trop réagie n'est jamais demandée, une réponse tronquée recule au lieu de relire à chaque DELETE", async ({ page }) => {
+    await preparer(page);
+    // 300 réactions d'autres comptes, sans identifiant : au-delà de la borne, jamais demandée.
+    await page.evaluate(async () => {
+      state.supabasePosts = await supaLoadPosts();
+      const p = findPostAnywhere("post_r37");
+      p.reactions = Array.from({ length: 300 }, (_, k) => ({ id: "semoji_m" + k, authorId: "u_m" + k, text: "👍", type: "emoji_reaction", createdAt: 1000 + k }));
+      __poserCarte("post_r37");
+      __lectures.length = 0;
+      for (let k = 0; k < 5; k++) __liaison("comment_interactions", "DELETE")({ eventType: "DELETE", new: {}, old: { id: "ci_loin_" + k } });
+    });
+    await page.waitForTimeout(800);
+    expect(await page.evaluate(() => __lecturesCi().length), "au-delà de la borne : aucune lecture, jamais").toBe(0);
+
+    // Sous la borne, mais le serveur rend une réponse tronquée : un échec, avec son recul.
+    await page.evaluate(() => {
+      const p = findPostAnywhere("post_r37");
+      p.reactions = p.reactions.slice(0, 2);
+      window.__forcerLignesCi = 500;
+      __liaison("comment_interactions", "DELETE")({ eventType: "DELETE", new: {}, old: { id: "ci_loin_a" } });
+    });
+    await expect.poll(() => page.evaluate(() => __lecturesCi().length)).toBe(1);
+    await page.evaluate(() => { for (let k = 0; k < 5; k++) __liaison("comment_interactions", "DELETE")({ eventType: "DELETE", new: {}, old: { id: "ci_loin_b" + k } }); });
+    await page.waitForTimeout(1500);
+    const r = await page.evaluate(() => ({ lectures: __lecturesCi().length, retirees: findPostAnywhere("post_r37").reactions.length, echecs: _ciVerifEchecs }));
+    expect(r.lectures, "pendant le recul, les DELETE suivants ne relisent pas").toBe(1);
+    expect(r.retirees, "une réponse tronquée ne prouve aucune absence : rien n'est retiré").toBe(2);
+    expect(r.echecs).toBe(1);
+  });
+
+  test("⑪ jamais mes entrées : ma réaction optimiste, absente du serveur, reste ; et elle ne fait rien relire", async ({ page }) => {
+    await preparer(page);
+    const r = await page.evaluate(async () => {
+      state.supabasePosts = await supaLoadPosts();
+      const p = findPostAnywhere("post_r37");
+      // Ma réaction, posée à l'instant : pas encore en base, pas d'identifiant.
+      p.reactions.push({ id: "emoji_local", authorId: MY_UID, text: "🙂", type: "emoji_reaction", createdAt: Date.now() });
+      __poserCarte("post_r37");
+      __lectures.length = 0;
+      __liaison("comment_interactions", "DELETE")({ eventType: "DELETE", new: {}, old: { id: "ci_ailleurs_x" } });
+      await new Promise((ok) => setTimeout(ok, 800));
+      const apres1 = { lectures: __lecturesCi().length, miennes: p.reactions.filter((x) => x.authorId === MY_UID).length,
+        autres: p.reactions.filter((x) => x.authorId !== MY_UID).map((x) => !!x.ci) };
+      // Tout ce qui est d'autrui a maintenant son identifiant : la mienne seule ne fait rien relire.
+      __liaison("comment_interactions", "DELETE")({ eventType: "DELETE", new: {}, old: { id: "ci_ailleurs_y" } });
+      await new Promise((ok) => setTimeout(ok, 800));
+      return { apres1, lectures2: __lecturesCi().length, miennes2: findPostAnywhere("post_r37").reactions.filter((x) => x.authorId === MY_UID).length };
+    });
+    expect(r.apres1, "une lecture (les réactions d'autrui sans identifiant) ; la mienne reste").toEqual({ lectures: 1, miennes: 1, autres: [true, true] });
+    expect(r.lectures2, "ma réaction sans identifiant ne fait pas relire").toBe(1);
+    expect(r.miennes2).toBe(1);
+  });
+
+  test("⑫ un identifiant de publication portant un guillemet ne casse ni la pastille ni le retrait (CSS.escape)", async ({ page }) => {
+    await preparer(page, { reactionsPost: false });
+    const r = await page.evaluate(async ([alice]) => {
+      const PID = 'post_"r37';
+      __posts[0].id = PID; __commentaires[0].post_id = PID;
+      state.supabasePosts = await supaLoadPosts();
+      __poserCarte(PID);
+      const ligne = { id: "ci_guillemet", comment_id: PID, post_id: PID, user_id: alice, kind: "emoji", payload: "🎈", created_at: "2026-11-05 10:00:00.5+00" };
+      __liaison("comment_interactions", "INSERT")({ eventType: "INSERT", old: {}, new: ligne });
+      const apresAjout = __pastille(PID)[0];
+      __supprimer("ci_guillemet");
+      return { apresAjout, apresRetrait: __pastille(PID)[0], journal: (window._diagLines || []).filter((l) => /ci_/.test(String(l))).length };
+    }, [ALICE]);
+    expect(r).toMatchObject({ apresAjout: "🎈 1", apresRetrait: "" });
   });
 
   test("⑦ contrat : la lecture d'une discussion demande `id` et `post_id`, et l'index reste borné", async ({ page }) => {
