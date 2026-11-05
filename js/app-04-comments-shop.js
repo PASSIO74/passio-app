@@ -1237,9 +1237,14 @@ async function openComments(postId) {
   if (_nc) _syncComposerSendState(_nc);
 
   // Charger les vrais commentaires Supabase — SAUF si ce fil a déjà été chargé il
-  // y a moins de 20 s (le realtime `comment_interactions` maintient déjà tout à
-  // jour) : rouvrir la même discussion est alors INSTANTANÉ, sans re-fetch réseau
-  // (~300-700 ms) ni re-render. C'est le correctif « ouverture fluide ».
+  // y a moins de 20 s : rouvrir la même discussion est alors INSTANTANÉ, sans
+  // re-fetch réseau (~300-700 ms) ni re-render. C'est le correctif « ouverture
+  // fluide ». Pendant ces 20 s, le temps réel `comment_interactions` tient les
+  // interactions à jour : un AJOUT par sa charge, un RETRAIT par l'index des
+  // lignes lues ou reçues (R37, 2026-11-05 — avant, aucun retrait d'un autre
+  // compte n'arrivait : la charge d'un DELETE n'a que l'`id`). Ce que le temps
+  // réel ne voit pas, il ne le rattrape pas : un événement tombé pendant que le
+  // socket dormait (repos, onglet masqué) attend la prochaine lecture.
   if (_willLoad) {
     try {
       // Première page (les plus récents) ; « précédents » charge la suite.
@@ -1364,13 +1369,287 @@ function _flashNewComment(box, id) {
   } catch (e) {}
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// R37 — UN RETRAIT D'INTERACTION SE VOIT EN DIRECT (2026-11-05)
+// ────────────────────────────────────────────────────────────────────────
+// Un DELETE de `comment_interactions` n'apporte QUE `{ id }`, et le client n'y
+// peut rien : `realtime.apply_rls` (code de production) réduit l'ancienne ligne
+// d'un DELETE à la clé primaire dès que la RLS est active (« we can't secure
+// deletes so filter to pkey »), avant R25 comme après. Le gestionnaire d'avant
+// passait cette charge à `_applyCommentInteractionEvent`, qui sort sur
+// `!r.comment_id` : AUCUN retrait d'un autre compte (like, emoji, GIF,
+// réaction de publication) ne s'affichait en direct. Il attendait la
+// réouverture de la discussion (20 s au moins) ou le rechargement.
+//
+// ⚠️ JAMAIS « REPLICA IDENTITY FULL » POUR Y REMÉDIER : la charge porterait la
+// ligne entière, mais un filtre `user_id=eq.<victime>` reconnaîtrait alors
+// chaque effacement de la victime. C'est l'oracle que R25 a fermé, et la gate
+// `audit-identite-replication` le refuse.
+//
+// LE REMÈDE EST UN INDEX, PAS UNE RELECTURE. Chaque ligne que cet appareil a
+// LUE (`supaLoadCommentInteractions`, le repli du fil) ou REÇUE (un INSERT
+// appliqué) y est notée sous son identifiant, avec sa cible, son compte, son
+// genre et sa charge. Un DELETE se résout alors ici : zéro requête, et il ne
+// touche que ce que l'appareil a vu.
+// ⚠️ « RELIRE LA DISCUSSION OUVERTE À CHAQUE DELETE » ÉTAIT L'AUTRE PISTE, ET
+// ELLE AMPLIFIE. La suppression part à TOUS les abonnés (aucune RLS sur un
+// DELETE), donc chaque effacement, n'importe où, ferait relire leur discussion
+// à tous les connectés qui en ont une ouverte : c'est le motif de la fiche « le
+// mur, c'est l'amplification ». Elle laissait aussi la pastille des
+// publications de côté, puisque celle-ci n'appartient pas à la discussion.
+// ⚠️ LE TROU QUE L'INDEX NE BOUCHE PAS SEUL : `fil_compteurs` (la lecture du
+// fil) rend les réactions d'une publication SANS leur identifiant. Un DELETE
+// inconnu déclenche donc UNE lecture coalescée des identifiants, limitée aux
+// publications À L'ÉCRAN dont une réaction d'autrui n'a pas encore le sien
+// (`_ciVerifierReactionsPost`). Une réaction lue une fois garde son
+// identifiant : à la lecture suivante du fil, sa clé naturelle le retrouve
+// (`_ciRetrouverId`). Le coût suit donc ce que l'écran montre de NEUF, jamais
+// le débit des suppressions.
+// Verrous : `tests/e2e/retrait-interactions-direct.spec.js` (navigateur, rien
+// n'est écrit) et `tests/e2e/retrait-interactions-reel.spec.js` (deux vrais
+// comptes, staging). Fiche : `docs/journal/capacite-perf-realtime.md`, « 🧹 R37 ».
+const CI_INDEX_MAX = 5000;
+const _ciIndex = new Map();   // identifiant → { id, comment_id, post_id, user_id, kind, payload, created_at }
+const _ciParCle = new Map();  // clé naturelle → identifiant (réactions venues de fil_compteurs, sans id)
+window._ciStats = { indexees: 0, retraitsAppliques: 0, inconnues: 0, verifications: 0 };
+
+function _ciEstMoi(uid) {
+  if (!uid) return false;
+  if (uid === "me") return true;
+  if (typeof MY_UID !== "undefined" && MY_UID && uid === MY_UID) return true;
+  return !!(state.user && state.user.id && uid === state.user.id);
+}
+// Clé naturelle d'une ligne : ce que `fil_compteurs` rend, faute d'identifiant.
+// L'instant passe par `supaTs` : REST écrit `…+00:00`, le temps réel `…+00`.
+function _ciCle(r) {
+  if (!r || !r.comment_id || !r.user_id || !r.kind || r.created_at == null || r.created_at === "") return null;
+  return [r.comment_id, r.user_id, r.kind, r.payload == null ? "" : String(r.payload), supaTs(r.created_at)].join("\u0001");
+}
+function _ciOublier(id) {
+  var e = _ciIndex.get(id);
+  if (!e) return null;
+  _ciIndex.delete(id);
+  var k = _ciCle(e);
+  if (k && _ciParCle.get(k) === id) _ciParCle.delete(k);
+  return e;
+}
+// Note une ligne LUE ou REÇUE. Borné (FIFO) : une entrée évincée coûte au pire
+// un retrait qui attendra la réouverture, comme avant ce lot.
+function _ciIndexer(r) {
+  try {
+    if (!r || typeof r.id !== "string" || !r.id || !r.comment_id) return;
+    var e = { id: r.id, comment_id: r.comment_id, post_id: r.post_id || null, user_id: r.user_id || null,
+      kind: r.kind || null, payload: r.payload == null ? null : r.payload, created_at: r.created_at == null ? null : r.created_at };
+    _ciOublier(e.id);
+    _ciIndex.set(e.id, e);
+    var k = _ciCle(e);
+    if (k) _ciParCle.set(k, e.id);
+    window._ciStats.indexees++;
+    while (_ciIndex.size > CI_INDEX_MAX) _ciOublier(_ciIndex.keys().next().value);
+  } catch (err) { try { diagLog("ci_index : " + (err && err.message)); } catch (_e) {} }
+}
+// L'identifiant d'une ligne rendue sans lui (`fil_compteurs`), si cet appareil
+// l'a déjà lue ou reçue ; sinon null.
+function _ciRetrouverId(r) {
+  var k = _ciCle(r);
+  return k ? (_ciParCle.get(k) || null) : null;
+}
+// Cette entrée locale (réponse, réaction de commentaire ou de publication)
+// est-elle la ligne `r` ? Par l'identifiant d'abord ; à défaut (entrée d'avant
+// ce lot, ou rendue sans lui), par la clé naturelle. `type` : le genre d'entrée
+// attendu (`emoji_reaction`, `gif_reaction`), ou null pour une réponse.
+function _ciMemeLigne(x, r, type) {
+  if (!x || !r) return false;
+  if (x.ci) return x.ci === r.id;
+  if (type ? x.type !== type : (x.type === "emoji_reaction" || x.type === "gif_reaction")) return false;
+  if (x.authorId !== r.user_id) return false;
+  if (String(x.text == null ? "" : x.text) !== String(r.payload == null ? "" : r.payload)) return false;
+  return r.created_at != null && r.created_at !== "" && Number(x.createdAt) === supaTs(r.created_at);
+}
+function _ciTypeEntree(kind) {
+  return kind === "emoji" ? "emoji_reaction" : (kind === "gif" ? "gif_reaction" : null);
+}
+// Retire, EN PLACE, les entrées de `arr` qui sont la ligne `r`. Rend leur nombre.
+function _ciRetirerDe(arr, r, type) {
+  if (!Array.isArray(arr)) return 0;
+  var n = 0;
+  for (var i = arr.length - 1; i >= 0; i--) {
+    if (_ciMemeLigne(arr[i], r, type)) { arr.splice(i, 1); n++; }
+  }
+  return n;
+}
+
+// Une réaction de publication À L'ÉCRAN qui porte déjà cet identifiant sans
+// être dans l'index : l'index ne vit qu'en mémoire, mais l'entrée a pu être
+// persistée par une session précédente (une publication à moi, dans
+// `userPosts`). On la retire de toutes les copies. Jamais une entrée à moi :
+// ce que j'ai fait ici est déjà appliqué, comme pour un ajout.
+function _ciRetirerParCiAffiche(id) {
+  var vus = {}, n = 0;
+  try {
+    document.querySelectorAll("[data-postchip]").forEach(function (h) {
+      var pid = h.getAttribute("data-postchip");
+      if (!pid || vus[pid]) return;
+      vus[pid] = 1;
+      var ici = 0;
+      _copiesDiscussion(pid, null).forEach(function (p) {
+        if (!p || !Array.isArray(p.reactions)) return;
+        for (var i = p.reactions.length - 1; i >= 0; i--) {
+          var x = p.reactions[i];
+          if (x && x.ci === id && !_ciEstMoi(x.authorId)) { p.reactions.splice(i, 1); ici++; }
+        }
+      });
+      if (ici) { n += ici; if (typeof updatePostReactionsUI === "function") updatePostReactionsUI(pid); }
+    });
+    if (n) { window._ciStats.retraitsAppliques++; try { saveState(); } catch (e) {} }
+  } catch (e) { try { diagLog("ci_retrait_ecran : " + (e && e.message)); } catch (_e) {} }
+  return n > 0;
+}
+
+// Gestionnaire DELETE de `comment_interactions` (liaison de `_creerCanalDb`,
+// app-08). `old` vaut `{ id }` : la ligne est retrouvée dans l'index.
+function _commentInteractionRetiree(old) {
+  try {
+    var id = old && typeof old.id === "string" ? old.id : null;
+    var r = id ? _ciOublier(id) : null;
+    if (!r) {
+      // Hors de l'index : une entrée persistée qui porte son identifiant, ou —
+      // seule autre possibilité à l'écran — une réaction de publication venue
+      // de `fil_compteurs`, qui ne l'a pas.
+      window._ciStats.inconnues++;
+      if (id && _ciRetirerParCiAffiche(id)) return;
+      _ciNonReconnue();
+      return;
+    }
+    _applyCommentInteractionEvent(r, "remove");
+  } catch (e) { try { diagLog("ci_retrait : " + (e && e.message)); } catch (_e) {} }
+}
+
+// ── La lecture des identifiants manquants : une fois, coalescée, bornée ──
+const CI_VERIF_DELAI_MS = 400;
+const CI_VERIF_POSTS_MAX = 30;
+const CI_VERIF_LIGNES_MAX = 1000;   // max-rows de PostgREST : au-delà, la liste est tronquée
+const CI_VERIF_RECUL_MS = 60000;    // après un échec, on ne martèle pas
+var _ciVerifMinuteur = null, _ciVerifEnAttente = false, _ciVerifEnCours = false, _ciVerifEchecA = 0;
+function _ciNonReconnue() {
+  try {
+    // Une page masquée ne peint rien : le rendez-vous est REPORTÉ au retour.
+    if (document.hidden) { _ciVerifEnAttente = true; return; }
+    if (_ciVerifMinuteur) return;                 // une rafale, un seul rendez-vous
+    _ciVerifMinuteur = setTimeout(function () {
+      _ciVerifMinuteur = null;
+      _ciVerifEnAttente = false;
+      _ciVerifierReactionsPost();
+    }, CI_VERIF_DELAI_MS);
+  } catch (e) { try { diagLog("ci_verif_arm : " + (e && e.message)); } catch (_e) {} }
+}
+function _ciRattraper() { if (!document.hidden && _ciVerifEnAttente) _ciNonReconnue(); }
+document.addEventListener("visibilitychange", _ciRattraper);
+window.addEventListener("pageshow", _ciRattraper);
+// Les publications À L'ÉCRAN (une pastille `[data-postchip]` dans le DOM) dont
+// une réaction d'un autre compte n'a pas encore son identifiant. Jamais un
+// exemple : il n'a pas de ligne en base.
+function _ciPostsAVerifier() {
+  var ids = [];
+  try {
+    document.querySelectorAll("[data-postchip]").forEach(function (h) {
+      if (ids.length >= CI_VERIF_POSTS_MAX) return;
+      var pid = h.getAttribute("data-postchip");
+      if (!pid || ids.indexOf(pid) !== -1) return;
+      var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(pid) : null;
+      if (!p || p.fromSupabase !== true || p._source === "seed" || !Array.isArray(p.reactions)) return;
+      if (p.reactions.some(function (x) {
+        return x && !x.ci && x.authorId && !_ciEstMoi(x.authorId) && (x.type === "emoji_reaction" || x.type === "gif_reaction");
+      })) ids.push(pid);
+    });
+  } catch (e) { try { diagLog("ci_verif_ecran : " + (e && e.message)); } catch (_e) {} }
+  return ids;
+}
+async function _ciVerifierReactionsPost() {
+  if (_ciVerifEnCours) { _ciVerifEnAttente = true; return; }
+  if (_ciVerifEchecA && Date.now() - _ciVerifEchecA < CI_VERIF_RECUL_MS) return;
+  if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+  var ids = _ciPostsAVerifier();
+  if (!ids.length) return;
+  _ciVerifEnCours = true;
+  window._ciStats.verifications++;
+  // Ce qui était à l'écran AVANT la lecture : seule une de CES entrées peut être
+  // retirée. Une entrée posée pendant la lecture (filet du fil, INSERT) n'est
+  // pas jugée par une réponse qui la précède.
+  var avant = new Set();
+  ids.forEach(function (pid) {
+    _copiesDiscussion(pid, null).forEach(function (p) {
+      (Array.isArray(p.reactions) ? p.reactions : []).forEach(function (x) { if (x && !x.ci) avant.add(x); });
+    });
+  });
+  try {
+    var res = await supa.from("comment_interactions")
+      .select("id,comment_id,post_id,user_id,kind,payload,created_at")
+      .in("comment_id", ids).in("kind", ["emoji", "gif"])
+      .limit(CI_VERIF_LIGNES_MAX);
+    if (res.error) {
+      _ciVerifEchecA = Date.now();
+      try { diagLog("ci_verif : " + (res.error.code || "") + " " + (res.error.message || "")); } catch (_e) {}
+      return;
+    }
+    var lignes = Array.isArray(res.data) ? res.data : [];
+    lignes.forEach(_ciIndexer);
+    // Une réponse tronquée ne prouve pas une absence : on apprend les
+    // identifiants, on ne retire rien.
+    var complete = lignes.length < CI_VERIF_LIGNES_MAX;
+    ids.forEach(function (pid) {
+      var serveur = lignes.filter(function (l) { return l && l.comment_id === pid && l.payload != null; });
+      var retire = 0;
+      _copiesDiscussion(pid, null).forEach(function (p) {
+        if (!Array.isArray(p.reactions)) return;
+        for (var i = p.reactions.length - 1; i >= 0; i--) {
+          var x = p.reactions[i];
+          if (!x || x.ci) continue;
+          var ligne = serveur.find(function (l) { return _ciMemeLigne(x, l, _ciTypeEntree(l.kind)); });
+          if (ligne) { x.ci = ligne.id; continue; }
+          if (complete && avant.has(x) && x.authorId && !_ciEstMoi(x.authorId)) { p.reactions.splice(i, 1); retire++; }
+        }
+      });
+      if (retire) {
+        window._ciStats.retraitsAppliques += retire;
+        try { saveState(); } catch (e) {}
+        if (typeof updatePostReactionsUI === "function") updatePostReactionsUI(pid);
+      }
+    });
+  } catch (e) {
+    _ciVerifEchecA = Date.now();
+    try { diagLog("ci_verif : " + (e && e.message)); } catch (_e) {}
+  } finally {
+    _ciVerifEnCours = false;
+    // Un DELETE inconnu arrivé pendant la lecture : on regarde de nouveau, au
+    // cas où l'écran aurait changé entre-temps.
+    if (_ciVerifEnAttente && !document.hidden) { _ciVerifEnAttente = false; _ciNonReconnue(); }
+  }
+}
+// Le retrait d'une réaction portée par une PUBLICATION (comment_id === post_id),
+// sur toutes ses copies : en oublier une la ferait revenir au rendu suivant.
+function _ciRetirerReactionPost(r) {
+  var type = _ciTypeEntree(r.kind);
+  if (!type || typeof _copiesDiscussion !== "function") return false;
+  var n = 0;
+  _copiesDiscussion(r.post_id, null).forEach(function (p) { n += _ciRetirerDe(p && p.reactions, r, type); });
+  if (!n) return false;
+  window._ciStats.retraitsAppliques++;
+  try { saveState(); } catch (e) {}
+  if (typeof updatePostReactionsUI === "function") updatePostReactionsUI(r.post_id);
+  return true;
+}
+
 // Applique en TEMPS RÉEL une interaction de commentaire reçue d'un autre compte
-// (canal realtime:comment_interactions, app-08). op = "add" (INSERT) | "remove" (DELETE).
+// (canal realtime:comment_interactions, app-08). op = "add" (INSERT) | "remove"
+// (DELETE : la ligne vient de l'index R37, la charge du serveur n'a que l'`id`).
 function _applyCommentInteractionEvent(r, op) {
   try {
     if (!r || !r.comment_id) return;
     if (typeof MY_UID !== "undefined" && r.user_id === MY_UID) return; // déjà appliqué localement
-    if (typeof isBlocked === "function" && isBlocked(r.user_id)) return;
+    // Un compte bloqué n'AJOUTE rien ; ce qu'il retire part quand même (retirer
+    // ne montre rien de lui, et sa ligne a pu être comptée par une lecture).
+    if (op === "add" && typeof isBlocked === "function" && isBlocked(r.user_id)) return;
     // Résolution générique : post, événement IRL ou live CDV (post_id sert d'id de fil).
     var thread = (r.post_id && typeof _findCommentThread === "function") ? _findCommentThread(r.post_id) : null;
     // Cible un commentaire OU une réponse (réactions de réponse sync via le même canal).
@@ -1387,14 +1666,19 @@ function _applyCommentInteractionEvent(r, op) {
     if (!comment) {
       // Réaction portée par le POST lui-même (convention comment_id === post_id) :
       // on l'applique à post.reactions → pastille « 😍 N » mise à jour en direct.
-      if (op === "add" && r.comment_id === r.post_id && (r.kind === "emoji" || r.kind === "gif")
-          && r.payload && typeof findPostAnywhere === "function") {
-        var _post = findPostAnywhere(r.post_id);
+      if (r.comment_id === r.post_id && (r.kind === "emoji" || r.kind === "gif")) {
+        if (op === "remove") { _ciRetirerReactionPost(r); return; }
+        var _post = (r.payload && typeof findPostAnywhere === "function") ? findPostAnywhere(r.post_id) : null;
         if (_post) {
           if (!Array.isArray(_post.reactions)) _post.reactions = [];
           var _prid = (r.kind === "emoji" ? "semoji_" : "sgif_") + (r.created_at || Date.now()) + "_" + r.user_id;
-          if (!_post.reactions.find(function(x){ return x.id === _prid; })) {
-            _post.reactions.push({ id: _prid, authorId: r.user_id, text: r.payload,
+          // Indexée même si l'entrée existe déjà : c'est ce qui permettra d'en
+          // voir le retrait (R37).
+          _ciIndexer(r);
+          var _deja = _post.reactions.find(function(x){ return x.id === _prid; });
+          if (_deja) { if (!_deja.ci && r.id) _deja.ci = r.id; }
+          else {
+            _post.reactions.push({ id: _prid, ci: r.id || null, authorId: r.user_id, text: r.payload,
               type: r.kind === "emoji" ? "emoji_reaction" : "gif_reaction", createdAt: supaTs(r.created_at) });
             try { saveState(); } catch(e) {}
             if (typeof updatePostReactionsUI === "function") updatePostReactionsUI(r.post_id);
@@ -1404,28 +1688,48 @@ function _applyCommentInteractionEvent(r, op) {
       return; // sinon : fil/commentaire pas chargé localement → rien à faire
     }
     comment.likedBy = comment.likedBy || []; comment.replies = comment.replies || []; comment.emojis = comment.emojis || [];
+    // La ligne d'un INSERT appliqué entre dans l'index : son retrait sera reconnu.
+    if (op === "add") _ciIndexer(r);
+    var _type = _ciTypeEntree(r.kind);   // null pour un like ou une réponse
     if (r.kind === "like") {
       if (op === "add") { if (comment.likedBy.indexOf(r.user_id) < 0) { comment.likedBy.push(r.user_id); comment.likes = (comment.likes || 0) + 1; } }
-      else { if (comment.likedBy.indexOf(r.user_id) > -1) { comment.likedBy = comment.likedBy.filter(function(x){ return x !== r.user_id; }); comment.likes = Math.max(0, (comment.likes || 1) - 1); } }
-    } else if (r.kind === "reply" && op === "add") {
+      else {
+        // UNE ligne retirée = UNE occurrence : la lecture compte une entrée par
+        // ligne (`supaLoadCommentInteractions`), doublons d'appareils compris.
+        var _iL = comment.likedBy.indexOf(r.user_id);
+        if (_iL < 0) return;
+        comment.likedBy.splice(_iL, 1);
+        comment.likes = Math.max(0, (comment.likes || 1) - 1);
+        window._ciStats.retraitsAppliques++;
+      }
+    } else if (op === "remove") {
+      // Emoji, GIF ou réponse (un GIF de réponse est une réponse) : l'entrée
+      // qui EST cette ligne, jamais une autre du même compte.
+      if (r.kind !== "reply" && !_type) return;
+      if (!_ciRetirerDe(comment.replies, r, _type)) return;
+      window._ciStats.retraitsAppliques++;
+    } else if (r.kind === "reply") {
       var rid = "srep_" + r.created_at;
-      if (!comment.replies.find(function(x){ return x.id === rid; })) comment.replies.push({ id: rid, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
-    } else if (r.kind === "emoji" && op === "add" && r.payload) {
+      var _repDeja = comment.replies.find(function(x){ return x.id === rid; });
+      if (!_repDeja) comment.replies.push({ id: rid, ci: r.id || null, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
+      else if (!_repDeja.ci && r.id) _repDeja.ci = r.id;
+    } else if (r.kind === "emoji" && r.payload) {
       var eid = "semoji_" + (r.created_at || Date.now()) + "_" + r.user_id;
       if (!comment.replies.find(function(x){ return x.id === eid; }))
-        comment.replies.push({ id: eid, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
-    } else if (r.kind === "gif" && op === "add" && r.payload) {
+        comment.replies.push({ id: eid, ci: r.id || null, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
+    } else if (r.kind === "gif" && r.payload) {
       var gid = "sgif_" + (r.created_at || Date.now()) + "_" + r.user_id;
       if (!comment.replies.find(function(x){ return x.id === gid; }))
-        comment.replies.push({ id: gid, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
+        comment.replies.push({ id: gid, ci: r.id || null, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
     }
     if (typeof thread.save === "function") thread.save(); else saveState();
     // Fluidité : un like/une réaction d'un autre compte se patche EN PLACE (ne
-    // détruit pas un composeur de réponse ouvert ni le scroll) ; seule une nouvelle
-    // RÉPONSE (change la liste) déclenche un refresh complet.
+    // détruit pas un composeur de réponse ouvert ni le scroll) ; ce qui change
+    // la LISTE des réponses (une réponse, un GIF — rendu en ligne, pas dans la
+    // pastille) déclenche un refresh complet.
     var _patched = false;
     if (r.kind === "like") _patched = _patchCmtLike(r.post_id, r.comment_id);
-    else if (r.kind === "emoji" || r.kind === "gif") _patched = _patchCmtReact(r.post_id, r.comment_id);
+    else if (r.kind === "emoji" || (r.kind === "gif" && op === "add")) _patched = _patchCmtReact(r.post_id, r.comment_id);
     if (!_patched && typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id);
     // Profil de l'auteur inconnu localement → le résoudre puis re-render, sinon
     // la réponse/réaction realtime s'affiche avec « ? » comme pseudo.

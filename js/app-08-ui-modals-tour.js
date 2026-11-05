@@ -4938,7 +4938,13 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         // `comments` ne porte plus que les aperçus. `nbCommentairesPost` (app-02)
         // est la seule autorité d'affichage. Absent (repli), on compte la liste.
         ...(Number.isSafeInteger(cpl.commentaires) ? { commentsTotal: cpl.commentaires } : {}),
+        // `ci` : l'identifiant de la ligne (R37). Le repli du fil le lit ;
+        // `fil_compteurs` ne le rend pas, et la clé naturelle le retrouve si
+        // cet appareil a déjà lu ou reçu la ligne (`_ciRetrouverId`, app-04).
         reactions: cpl.reactions.map(x => ({ id: (x.kind === "emoji" ? "semoji_" : "sgif_") + x.created_at + "_" + x.user_id,
+            ci: x.id || (typeof _ciRetrouverId === "function"
+              ? _ciRetrouverId({ comment_id: r.id, user_id: x.user_id, kind: x.kind, payload: x.payload, created_at: x.created_at })
+              : null),
             authorId: x.user_id, text: x.payload,
             type: x.kind === "emoji" ? "emoji_reaction" : "gif_reaction", createdAt: supaTs(x.created_at) })),
         isReel: !!r.is_reel, // bobine (exclu du feed, affiché dans Bobines)
@@ -5116,11 +5122,13 @@ async function _chargerComplementsFilLegacy(postIds, out) {
       supa.from("post_comments").select("post_id, id, author_id, content, created_at").in("post_id", postIds).order("created_at", { ascending: false }).limit(200),
       // Réactions emoji/GIF portées par les POSTS (convention comment_id === post_id
       // dans comment_interactions) → pastille « 😍 N » visible cross-compte.
-      supa.from("comment_interactions").select("comment_id, user_id, kind, payload, created_at").in("comment_id", postIds),
+      // `id`, `post_id` : l'index des retraits en direct (R37, `_ciIndexer`).
+      supa.from("comment_interactions").select("id, comment_id, post_id, user_id, kind, payload, created_at").in("comment_id", postIds),
     ]);
     likesData = likesRes.data || [];
     commentsData = commentsRes.data || [];
     reactsData = reactsRes.data || [];
+    if (typeof _ciIndexer === "function") reactsData.forEach(function (x) { if (x && (x.kind === "emoji" || x.kind === "gif")) _ciIndexer(x); });
   } catch(e) {}
   const moi = typeof MY_UID !== "undefined" ? MY_UID : null;
   postIds.forEach(function (id) {
@@ -5216,13 +5224,19 @@ async function supaLoadCommentInteractions(commentIds) {
   try {
     var uniq = [...new Set((commentIds || []).filter(Boolean))];
     if (!uniq.length || typeof supa === "undefined" || !supa || !window._supaReal) return out;
-    var res = await supa.from("comment_interactions").select("comment_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
+    // `id` et `post_id` (R37, 2026-11-05) : un DELETE temps réel n'apporte que
+    // l'identifiant de la ligne ; c'est cette lecture qui permet de savoir ce
+    // qu'il retire (`_ciIndexer`, app-04). Sans eux, aucun retrait d'un autre
+    // compte ne se voit avant la réouverture de la discussion.
+    var res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
     (res.data || []).forEach(function(r){
+      if (typeof _ciIndexer === "function") _ciIndexer(r);
       var o = out[r.comment_id] || (out[r.comment_id] = { likes: 0, likedBy: [], replies: [], emojis: [] });
+      var ci = r.id || null;
       if (r.kind === "like") { o.likes++; o.likedBy.push(r.user_id); }
-      else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
-      else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
-      else if (r.kind === "gif" && r.payload) o.replies.push({ id: "sgif_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
+      else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, ci: ci, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
+      else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, ci: ci, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
+      else if (r.kind === "gif" && r.payload) o.replies.push({ id: "sgif_" + r.created_at + "_" + r.user_id, ci: ci, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
       else if (r.kind === "pin") { if (!o._pinAt || r.created_at > o._pinAt) { o._pinAt = r.created_at; o.pinned = (r.payload === "1" || r.payload === 1 || r.payload === true); } } // #11 épingle
     });
     // Résoudre les profils des auteurs d'interactions inconnus localement, sinon
@@ -7751,6 +7765,10 @@ function _creerCanalDb(prive) {
   // ── Accusés de lecture : un autre membre a lu → met à jour le ✓✓ en direct ──
   dbChan
     .on("postgres_changes", { event: "*", schema: "public", table: "conv_reads" }, function(payload) {
+      // RV-31 : un DELETE n'est pas un accusé de lecture. Depuis R25 sa charge
+      // est vide (`new` = `old` = {}), et `undefined === undefined` aurait pu
+      // rattacher un « lu » à une conversation sans correspondant.
+      if (!payload || payload.eventType === "DELETE") return;
       var r = payload.new; if (!r || r.user_id === MY_UID) return;
       // L'identifiant EXACT d'abord ; « le DM de cette personne » seulement à
       // défaut (entrée locale dont l'id diffère du serveur). Un seul `find` aux
@@ -7776,8 +7794,13 @@ function _creerCanalDb(prive) {
       try { if (payload.new && payload.new.user_id !== MY_UID) tel && tel.recv("cint", { commentId: payload.new.comment_id }); } catch(e) {}
       try { if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(payload.new, "add"); } catch(e) {}
     })
+    // ⚠️ `payload.old` vaut `{ id }` et rien d'autre (`apply_rls` réduit un
+    // DELETE sous RLS à la clé primaire) : le passer tel quel à
+    // `_applyCommentInteractionEvent` ne retirait jamais rien (R37). La ligne
+    // est retrouvée dans l'index de ce qu'on a lu ou reçu (app-04).
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "comment_interactions" }, function(payload) {
-      try { if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(payload.old, "remove"); } catch(e) {}
+      try { if (typeof _commentInteractionRetiree === "function") _commentInteractionRetiree(payload && payload.old); }
+      catch (e) { try { diagLog("rt_ci_delete : " + (e && e.message)); } catch (_e) {} }
     });
 
   // ── Ajout à une conversation : PLUS ICI depuis R25 (2026-11-03) ──

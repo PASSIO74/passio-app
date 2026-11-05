@@ -37,7 +37,8 @@
  *      · tout `alter table … replica identity` sur une des cinq tables de R25
  *        (les quatre, plus comment_interactions, qu'elle a remise en DEFAULT :
  *        en FULL, un filtre `user_id=eq.<victime>` reconnaît chaque effacement
- *        de la victime) ;
+ *        de la victime ; et le retrait en direct, R37, lit `old.id` — une
+ *        identité qui ne publierait plus `id` le rendrait muet) ;
  *      · sur toute table PUBLIÉE — `scripts/realtime-publication.json`, plus
  *        les tables que le FICHIER ajoute lui-même à `supabase_realtime`
  *        (`alter publication … add|set table`, `create publication … for

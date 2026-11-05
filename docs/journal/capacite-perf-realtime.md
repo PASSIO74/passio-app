@@ -24,6 +24,7 @@
 - 🕳️ CE QUE REALTIME DIT D'UNE SUPPRESSION — LA CLÉ PRIMAIRE, À TOUS, SANS RLS (2026-11-03, R25) → `rid` opaque depuis le 2026-11-04
 - 🔒 R25 — UNE TABLE PUBLIÉE LIVRE SES SUPPRESSIONS À TOUT LE MONDE, ET UNE TABLE DÉPUBLIÉE FAIT TAIRE SON CANAL (2026-11-03)
 - 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
+- 🧹 R37 — UN DELETE N'APPORTE QUE LA CLÉ : LE RETRAIT SE RETROUVE DANS CE QU'ON A LU, JAMAIS PAR UNE RELECTURE (2026-11-05)
 
 ---
 
@@ -1280,8 +1281,8 @@ première) — aucun P0, ce que le lot ferme est fermé ; ce qu'elles ont trouv�
 - **Ce qui reste, et le registre le dit** : la même information par SONDAGE (`is_conv_member`, C-02 —
   `promouvoir_attente` ne nomme plus le promu depuis R24, appliquée le 04/11) ; R36 (`notifier_mentions` lit
   `c.name`, colonne absente : aucune @mention de conversation n'est notifiée — trouvé en passant, mesuré de
-  nouveau le 04/11). `comment_interactions` : son gestionnaire DELETE ne sert à rien, il sort sur
-  `!r.comment_id`. Et `realtime.messages` garde la charge poussée
+  nouveau le 04/11). `comment_interactions` : son gestionnaire DELETE ne servait à rien, il sortait sur
+  `!r.comment_id` — corrigé côté client le 2026-11-05 (fiche « 🧹 R37 », fin de fichier). Et `realtime.messages` garde la charge poussée
   jusqu'à la chute de sa partition, comme celle des messages.
 - **Le verrou (2026-11-04)** : `tests/e2e/realtime-poussee-reelle.spec.js`, projet `prod`, sous `PASSIO_E2E_MULTI`, staging
   seulement (elle refuse tout autre projet, côté banc et côté page). Avant lui, le seul contrôle en CI était le « realtime OK »
@@ -1357,3 +1358,92 @@ poste, lus en contexte, ne sont atteints par aucun test :
 
 **Règle.** Un test qui veut priver un enfant du dossier personnel pose `HOME` ET `USERPROFILE` vers un
 dossier inexistant, et le vérifie avant de lancer ce qu'il protège.
+
+## 🧹 R37 — UN DELETE N'APPORTE QUE LA CLÉ : LE RETRAIT SE RETROUVE DANS CE QU'ON A LU, JAMAIS PAR UNE RELECTURE (2026-11-05)
+
+Risque résiduel R37 de l'audit du 2026-11-02 (registre RV-30), relevé par la vérification finale de R25 et
+**préexistant** : R25 ne l'a ni causé ni aggravé.
+
+**Le défaut.** Le gestionnaire DELETE de `comment_interactions` (`_creerCanalDb`, app-08) passait `payload.old`
+à `_applyCommentInteractionEvent`, qui sort sur `!r.comment_id`. Or `realtime.apply_rls` réduit l'ancienne
+ligne d'un DELETE à la clé primaire dès que la RLS est active : `payload.old` vaut `{ id }`, en identité FULL
+(avant R25) comme en DEFAULT (après). Aucun retrait d'un autre compte ne se voyait donc en direct (like, emoji,
+GIF, réaction de publication) : il fallait rouvrir la discussion (cache de 20 s) ou recharger. Et même avec
+`comment_id`, seule la branche « like » savait retirer. Le commentaire d'`openComments` affirmait « le realtime
+`comment_interactions` maintient déjà tout à jour » : c'était vrai des ajouts, et faux des retraits.
+
+**Mesuré au canal ① avant d'écrire une ligne.** `comment_interactions` : `relreplident = d`, RLS active, clé
+primaire `id`, publiée ; SELECT « mon compte OU `comment_target_visible` », DELETE « mon compte » ; 653 INSERT
+et 309 DELETE depuis la remise à zéro des compteurs (2026-05-07), 339 lignes vivantes, TOUTES avec un `post_id` ;
+index `idx_ci_comment` sur `comment_id`. Et `fil_compteurs`, la lecture du fil, rend les réactions d'une
+publication SANS leur `id` (corps de la fonction).
+
+**Le choix, et pourquoi pas l'autre piste.** Relire la discussion ouverte à chaque DELETE (comme
+`vliveRefreshCoalesce` le fait pour les lives) **amplifie** : une suppression part à TOUS les abonnés, puisque
+`apply_rls` ne juge pas la RLS d'un DELETE, et chaque effacement fait n'importe où aurait fait relire leur
+discussion à tous les connectés qui en ont une d'ouverte. C'est le motif des fiches de capacité plus haut. Elle
+laissait aussi de côté la pastille des publications, qui n'est pas dans la discussion. **L'index**, lui, ne coûte
+rien et ne touche que ce que l'appareil a vu.
+
+**Ce que fait le remède (client seul : aucune migration, aucune RLS touchée, identité inchangée).**
+- `_ciIndex` (app-04) : `id → { comment_id, post_id, user_id, kind, payload, created_at }`, rempli par CHAQUE
+  lecture (`supaLoadCommentInteractions` et le repli du fil demandent désormais `id, post_id`) et par chaque
+  INSERT appliqué. Il est borné à 5 000 entrées (FIFO) : une entrée évincée coûte au pire un retrait qui attend
+  la réouverture, comme avant le lot.
+- `_commentInteractionRetiree(old)` résout le DELETE, puis `_applyCommentInteractionEvent(r, "remove")` applique
+  ses branches. Le like retire UNE occurrence, puisque la lecture compte une entrée par ligne. L'emoji, le GIF et
+  la réponse retirent L'entrée qui est cette ligne. La réaction de publication est retirée de toutes ses copies
+  (`_copiesDiscussion`).
+- Chaque entrée locale née d'une ligne porte `ci`, l'identifiant de cette ligne : on retire l'entrée, jamais
+  « une autre du même compte ». À défaut de `ci`, la clé naturelle (`_ciMemeLigne`).
+- **Le trou de `fil_compteurs`.** Un DELETE inconnu de l'index déclenche UNE lecture des identifiants
+  (`_ciVerifierReactionsPost`). Elle est coalescée à 400 ms, jamais lancée depuis une page masquée (le
+  rendez-vous est reporté au retour), suspendue 60 s après un échec, et bornée aux publications À L'ÉCRAN dont
+  une réaction d'autrui n'a pas d'identifiant. Elle apprend les identifiants, retire ce que le serveur n'a plus
+  (seulement les entrées présentes AVANT la lecture, et seulement si la réponse n'est pas tronquée). Aux tours
+  suivants du filet, `_ciRetrouverId` retrouve chaque identifiant par la clé naturelle. Le coût suit donc ce que
+  l'écran montre de NEUF, jamais le débit des suppressions.
+- RV-31, dans le même lot : le gestionnaire `conv_reads` « * » sort sur un DELETE. Depuis R25, sa charge est vide,
+  et `undefined === undefined` pouvait faire passer « lue » une conversation 1:1 sans correspondant.
+
+⚠️ **CINQ PIÈGES DU LOT.**
+① **Deux formats d'horodatage.** REST écrit `…+00:00` et le temps réel `…+00`. Une clé naturelle comparée en
+chaîne n'aurait jamais retrouvé une réaction reçue en direct puis relue par le filet. L'instant passe par
+`supaTs` des deux côtés (verrou ③).
+② **L'index vit en mémoire, l'état est persisté** (trouvé en relisant le lot). Une réaction reçue lors d'une
+session précédente, sur une publication à moi (`userPosts`, que `findPostAnywhere` préfère), porte son `ci` sans
+être dans l'index : elle n'était ni reconnue ni candidate à la lecture, puisqu'elle a un identifiant. On la
+cherche donc d'abord à l'écran par cet identifiant (`_ciRetirerParCiAffiche`, verrou ⑧).
+③ **Les exemples du fil ont des réactions et aucune ligne en base.** Sans l'exclusion (`fromSupabase`,
+`_source`), chaque DELETE inconnu aurait relu pour eux, indéfiniment (verrou ④).
+④ **« Aucune requête du tout » était une assertion fausse.** L'application a sa propre activité de fond
+(événements, notifications, abonnements, blocages), qui tombait dans le journal au hasard : deux rouges sur
+trois essais, sans rapport avec le lot. Le verrou mesure ce qu'il prétend, c'est-à-dire que la DISCUSSION n'est
+pas relue (`comment_interactions` et `post_comments`), et non le silence du réseau.
+⑤ **La gate `audit:realtime` prend tout `postgres_changes` littéral pour une souscription.** La suite staging
+LIT les trames que reçoit l'application et ne s'abonne à rien : elle ne nomme pas l'événement.
+Et sur le staging, deux suites tournent en parallèle (`workers: 2` en CI) : un DELETE étranger peut déclencher la
+lecture des identifiants à tout instant. Les routes de comptage sont donc posées AVANT toute lecture de B, et le
+filet du fil est arrêté chez B après la chaîne de démarrage (un tour de `fil_compteurs` ferait partir la réaction
+pour une autre raison que celle qu'on mesure).
+
+**Trouvé en passant (RV-37, non corrigé : migration et décision produit).** Épingler un commentaire n'atteint
+jamais la base. `togglePinComment` écrit `kind = 'pin'`, mais la contrainte de production `ci_kind_check`
+n'admet que `like`, `reply`, `emoji` et `gif` ; le refus (23514) est avalé. L'épingle reste locale.
+
+**Ce que le lot ne fait pas, dit tel quel.** Un retrait tombé pendant que le socket dormait (repos, onglet masqué)
+n'est pas rattrapé, comme un ajout : `postgres_changes` ne rejoue rien, et `_rtRattraper` ne relit pas la
+discussion d'une publication. Le like d'un autre compte n'a pas d'entrée par ligne (`likedBy`) : il ne se
+retire que par l'index, jamais par la recherche à l'écran. Si un jour `comment_interactions` passait en
+identité opaque (`rid`), la charge serait vide et plus aucun retrait ne se résoudrait : la gate
+`audit-identite-replication` exige déjà un marqueur motivé pour tout `replica identity` sur cette table, et ce
+marqueur devra citer R37.
+
+**Verrous.** `tests/e2e/retrait-interactions-direct.spec.js` (8 cas, navigateur, rien n'est écrit, la vraie
+liaison nourrie de la charge exacte `{ id }`), éprouvé par RÉINJECTION, chaque mutation rougissant son cas :
+l'ancien gestionnaire (①→⑤), la garde RV-31 (⑥), `id`/`post_id` à la lecture (① ⑦), l'exclusion des exemples
+(④), le report d'une page masquée (⑤), la clé naturelle au tour du filet (② ③), la recherche à l'écran (⑧).
+`tests/e2e/retrait-interactions-reel.spec.js` (projet `prod`, sous `PASSIO_E2E_MULTI`, staging seulement) : deux
+vrais comptes. La charge d'un DELETE mesurée sur la trame (`old_record` = `{ id }`), puis le retrait du like et de
+l'emoji vu en direct par B, ses relectures de ces interactions BLOQUÉES. Puis la réaction d'une publication lue
+par `fil_compteurs` qui part sans un tour du fil ; puis une réaction reçue en direct qui repart sans aucune lecture.
