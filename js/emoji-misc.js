@@ -665,7 +665,9 @@ function addGifToPost(postId, gifUrl) {
 // même présentation que les réactions de commentaire. Patch ciblé (pas de re-render).
 function updatePostReactionsUI(postId) {
   if (typeof _postReactChipHtml !== "function") return;
-  document.querySelectorAll('[data-postchip="' + postId + '"]').forEach(function(h){
+  // `CSS.escape` : `posts.id` est un texte choisi par son auteur — un guillemet
+  // faisait lever le sélecteur (E-08 ; appelé aussi par le retrait en direct, R37).
+  document.querySelectorAll('[data-postchip="' + CSS.escape(String(postId)) + '"]').forEach(function(h){
     h.innerHTML = _postReactChipHtml(postId);
   });
 }
