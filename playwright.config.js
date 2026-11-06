@@ -45,6 +45,7 @@ const SUITES_PROD = [
   "suppression-compte.spec.js",  // sous PASSIO_E2E_MULTI
   "realtime-poussee-reelle.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : la poussée user:<uid> (R25)
   "retrait-interactions-reel.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : le retrait en direct (R37)
+  "epingle-commentaire-reel.spec.js", // sous PASSIO_E2E_MULTI, staging seulement : l'épingle partagée (RV-38)
 ];
 const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);
 

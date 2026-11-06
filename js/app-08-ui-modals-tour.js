@@ -5208,8 +5208,13 @@ async function supaAddComment(postId, content, commentId) {
 
 // ───────── Interactions sur les commentaires (like / réponse / emoji) ─────────
 // Stockées dans comment_interactions (RLS owner) → propagées à tous les comptes.
-async function supaCommentInteract(commentId, postId, kind, payload) {
-  if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return false;
+// L'écriture AVEC son verdict : { ok } ou { ok: false, code, message, indice,
+// reseau }, ou { ok: false, horsLigne: true } quand rien n'est parti (pas de
+// client réel). Le SDK ne LÈVE PAS sur un refus (RLS, contrainte, garde) : son
+// `error` se LIT, sinon le geste reste « réussi » à l'écran et disparaît au
+// rechargement — c'était RV-38 : chaque épingle refusée en 23514, en silence.
+async function supaEcrireInteraction(commentId, postId, kind, payload) {
+  if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return { ok: false, horsLigne: true };
   // Émission d'une interaction de commentaire (like/réponse/emoji) — sur un POST,
   // comment_id === post_id. Apparié à recv_cint (autre appareil) par le pilotage.
   try { window.tel && tel.action("cint", { commentId: commentId, postId: postId || null, ck: kind }); } catch (e) {}
@@ -5225,9 +5230,19 @@ async function supaCommentInteract(commentId, postId, kind, payload) {
       user_id: MY_UID, kind: kind, payload: payload ? _truncU16Safe(String(payload), 500) : null,
       created_at: new Date().toISOString(),
     });
-    if (error) return false;
-    return true;
-  } catch(e) { return false; }
+    if (error) {
+      return { ok: false, code: typeof error.code === "string" ? error.code : null, message: String(error.message || ""),
+        indice: String(error.hint || ""), reseau: typeof estEchecReseau === "function" && estEchecReseau(error) };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, code: null, message: String((e && e.message) || e || ""), indice: "",
+      reseau: typeof estEchecReseau === "function" && estEchecReseau(e) };
+  }
+}
+// La forme historique (un booléen), pour les appelants qui ne lisent pas le verdict.
+async function supaCommentInteract(commentId, postId, kind, payload) {
+  return (await supaEcrireInteraction(commentId, postId, kind, payload)).ok === true;
 }
 async function supaCommentRemoveLike(commentId) {
   try {
@@ -5247,16 +5262,27 @@ async function supaCommentRemoveReactions(commentId) {
   } catch(e) {}
 }
 // Charge les interactions de plusieurs commentaires → { [cid]: {likes,likedBy,replies,emojis} }.
+// ⚠️ `null` quand la lecture n'a pas eu lieu (pas de client réel) ou a ÉCHOUÉ :
+// rien n'est connu, et l'appelant ne doit rien en conclure. `{}` veut dire « lue,
+// et rien ». Une source illisible n'est pas une source calme : lue comme « aucune
+// épingle », une panne retirait l'épingle de l'écran (RV-38).
 async function supaLoadCommentInteractions(commentIds) {
   var out = {};
+  var lu = false;
   try {
     var uniq = [...new Set((commentIds || []).filter(Boolean))];
-    if (!uniq.length || typeof supa === "undefined" || !supa || !window._supaReal) return out;
+    if (!uniq.length) return out;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return null;
     // `id` et `post_id` (R37, 2026-11-05) : un DELETE temps réel n'apporte que
     // l'identifiant de la ligne ; c'est cette lecture qui permet de savoir ce
     // qu'il retire (`_ciIndexer`, app-04). Sans eux, aucun retrait d'un autre
     // compte ne se voit avant la réouverture de la discussion.
     var res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
+    if (!res || res.error) {
+      try { diagLog("ci_lecture : " + String((res && res.error && (res.error.code || res.error.message)) || "réponse vide")); } catch (_e) {}
+      return null;
+    }
+    lu = true;
     // Une ligne dont le DELETE est déjà arrivé (pendant cette lecture) est morte,
     // même si l'instantané de la réponse la porte encore (contre-revue R37).
     var lignesCi = (typeof _ciSansTombees === "function") ? _ciSansTombees(res.data || []) : (res.data || []);
@@ -5268,7 +5294,9 @@ async function supaLoadCommentInteractions(commentIds) {
       else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, ci: ci, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
       else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, ci: ci, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
       else if (r.kind === "gif" && r.payload) o.replies.push({ id: "sgif_" + r.created_at + "_" + r.user_id, ci: ci, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
-      else if (r.kind === "pin") { if (!o._pinAt || r.created_at > o._pinAt) { o._pinAt = r.created_at; o.pinned = (r.payload === "1" || r.payload === 1 || r.payload === true); } } // #11 épingle
+      // #11 épingle (RV-38) : les lignes « pin » ne se lisent pas ici, commentaire par
+      // commentaire, mais par FIL (`supaLireEpingleFil`) — une page de 30 n'en porte
+      // qu'une partie. Elles restent indexées ci-dessus (R37).
     });
     // Résoudre les profils des auteurs d'interactions inconnus localement, sinon
     // le renderer (userById) affiche « ? » comme pseudo sur les réponses/réactions
@@ -5277,23 +5305,89 @@ async function supaLoadCommentInteractions(commentIds) {
     var unknownIds = [...new Set((res.data || []).map(function(r){ return r.user_id; }))]
       .filter(function(id){ return id && id !== MY_UID && !(typeof userById === "function" && userById(id)); });
     if (unknownIds.length) await _resolveProfilesByIds(unknownIds);
-  } catch(e) {}
+  } catch(e) {
+    try { diagLog("ci_lecture : " + (e && e.message)); } catch (_e) {}
+    if (!lu) return null;
+  }
   return out;
 }
-// Applique les interactions chargées sur les objets commentaires d'un post.
-async function hydrateCommentInteractions(post) {
+// #11 épingle (RV-38) : les lignes « pin » du PROPRIÉTAIRE du fil, DANS ce fil, de
+// la plus récente à la plus ancienne — la règle (`_epingleDesLignes`, app-04) ne
+// regarde que la tête. ⚠️ `null` quand la lecture n'a pas eu lieu ou a échoué :
+// rien n'est connu, et rien ne change à l'écran. Une ligne d'un autre compte ou
+// d'un autre fil n'est jamais demandée. Indexées (R37) : leur retrait (une purge)
+// est reconnu sans relecture.
+const EPINGLE_LIGNES_MAX = 50;
+async function supaLireEpingleFil(fil, proprio) {
+  if (!fil || !proprio || typeof supa === "undefined" || !supa || !window._supaReal) return null;
+  try {
+    var res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at")
+      .eq("post_id", fil).eq("kind", "pin").eq("user_id", proprio)
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(EPINGLE_LIGNES_MAX);
+    if (!res || res.error) {
+      try { diagLog("epingle_lecture : " + String((res && res.error && (res.error.code || res.error.message)) || "réponse vide")); } catch (_e) {}
+      return null;
+    }
+    var lignes = (typeof _ciSansTombees === "function") ? _ciSansTombees(res.data || []) : (res.data || []);
+    if (typeof _ciIndexer === "function") lignes.forEach(function (r) { _ciIndexer(r); });
+    return lignes;
+  } catch (e) {
+    try { diagLog("epingle_lecture : " + (e && e.message)); } catch (_e) {}
+    return null;
+  }
+}
+// Un commentaire de publication par son identifiant : l'épinglé, quand il est
+// plus ancien que la première page (RV-38). La forme de `supaLoadComments` ;
+// null s'il est absent (supprimé) ou si la lecture échoue.
+// Rend le commentaire, `false` quand la base dit qu'il N'EXISTE PAS (lecture
+// réussie, aucune ligne), `null` quand on ne sait pas (pas de base, échec) : une
+// lecture en échec n'est pas une preuve d'absence (RV-38, l'épinglé gardé).
+async function supaLireCommentaire(postId, commentId) {
+  if (!postId || !commentId || typeof supa === "undefined" || !supa || !window._supaReal) return null;
+  try {
+    const { data, error } = await supa.from("post_comments").select("id, post_id, author_id, content, created_at")
+      .eq("id", commentId).eq("post_id", postId).limit(1);
+    if (error) { try { diagLog("commentaire_lecture : " + (error.code || error.message)); } catch (_e) {} return null; }
+    const r = (data || [])[0];
+    if (!r) return false;
+    const profs = await _resolveProfilesByIds([r.author_id]);
+    const p = profs[r.author_id] || {};
+    return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨",
+      content: r.content, text: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true };
+  } catch (e) {
+    try { diagLog("commentaire_lecture : " + (e && e.message)); } catch (_e) {}
+    return null;
+  }
+}
+// Applique les interactions chargées sur les objets commentaires d'un fil.
+// `post` : une publication, ou `{ id: <identifiant du fil>, comments }` — l'`id`
+// est le FIL. `opts.epingle === false` : ne pas relire l'épingle du fil (une page
+// « précédents », l'épinglé chargé à part, le panneau d'une bobine, une activité
+// rechargée par le temps réel : elle vient d'être lue, ou le direct la tient).
+async function hydrateCommentInteractions(post, opts) {
+  // #11 épingle (RV-38) : un état du FIL, lu au niveau du fil, EN PARALLÈLE des
+  // interactions. Ni l'une ni l'autre n'attend (contre-revue du delta, P3-A : les
+  // « j'aime » attendaient la chaîne de l'épingle) ; l'épingle ne s'APPLIQUE
+  // qu'après les interactions (P2-A : repeinte avant elles, la discussion qu'une
+  // page venait de reconstruire montrait « 🤍 0 »), et ne repeint que si elle change.
+  var finInteractions = null;
   try {
     if (!post || !Array.isArray(post.comments) || !post.comments.length) return;
     var ids = post.comments.map(function(c){ return c.id; });
+    if (post.id && !(opts && opts.epingle === false) && typeof _lireEpingleFil === "function") {
+      var apresInteractions = new Promise(function (r) { finInteractions = r; });
+      _lireEpingleFil(post.id, apresInteractions);
+    }
     var map = await supaLoadCommentInteractions(ids);
-    post.comments.forEach(function(c){
-      var info = map[c.id]; if (!info) return;
-      c.likes = info.likes || 0;
-      c.likedBy = info.likedBy || [];
-      if (typeof info.pinned !== "undefined") c.pinned = info.pinned; // #11 épingle
-      // Réponses serveur (texte + emoji_reaction + gif_reaction) — source de vérité.
-      c.replies = (info.replies || []).slice();
-    });
+    if (map) {
+      post.comments.forEach(function(c){
+        var info = map[c.id]; if (!info) return;
+        c.likes = info.likes || 0;
+        c.likedBy = info.likedBy || [];
+        // Réponses serveur (texte + emoji_reaction + gif_reaction) — source de vérité.
+        c.replies = (info.replies || []).slice();
+      });
+    }
     // 2e passe : réactions emoji portées sur les RÉPONSES (comment_interactions dont
     // comment_id = id d'une réponse, ex. « srep_… » déterministe). Les réponses sont
     // reconstruites ci-dessus avec des ids stables → on peut leur rattacher leurs
@@ -5302,7 +5396,7 @@ async function hydrateCommentInteractions(post) {
     post.comments.forEach(function(c){ (c.replies || []).forEach(function(r){ if (r && r.id) replyIds.push(r.id); }); });
     if (replyIds.length) {
       var rmap = await supaLoadCommentInteractions(replyIds);
-      post.comments.forEach(function(c){
+      if (rmap) post.comments.forEach(function(c){
         (c.replies || []).forEach(function(r){
           var ri = rmap[r.id]; if (!ri) return;
           r.likes = ri.likes || 0;
@@ -5311,7 +5405,14 @@ async function hydrateCommentInteractions(post) {
         });
       });
     }
-  } catch(e) {}
+  } catch(e) {
+    // Une exception ici (une fonction absente comprise) était indiscernable de
+    // « rien à appliquer » (règle du catch large).
+    try { diagLog("ci_hydrate : " + (e && e.message)); } catch (_e) {}
+  } finally {
+    // Les interactions sont appliquées (ou ont échoué) : l'épingle peut l'être.
+    if (finInteractions) finInteractions();
+  }
 }
 
 // Résout des profils (username/emoji/color) par ids en UNE requête, SANS embed
@@ -7912,7 +8013,11 @@ function _creerCanalDb(prive) {
         if (post) {
           const prof = await _profilAuteur(r.author_id);
           if (!post.comments) post.comments = [];
-          if (!post.comments.find(c => c.id === r.id)) {
+          const dejaLa = post.comments.find(c => c.id === r.id);
+          // L'épinglé lu à part (RV-38) qu'on reçoit en direct est un commentaire
+          // comme les autres : il ne quittera pas la liste avec l'épingle.
+          if (dejaLa && dejaLa._epingleGarde) { delete dejaLa._epingleGarde; delete dejaLa._aVerifier; }
+          if (!dejaLa) {
             post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true });
             // Le compte exact du fil (`commentsTotal`) est celui du dernier
             // chargement : ce commentaire est en base, il compte désormais.
@@ -7942,7 +8047,11 @@ function _creerCanalDb(prive) {
         const page = document.getElementById("eventDetailPage");
         const open = page && page.style.display !== "none" && document.getElementById("eventCommentsList");
         if (open && typeof _loadEventComments === "function" && window._openEventDetailId === r.event_id) {
-          _loadEventComments(r.event_id);
+          // Sans relire l'épingle quand elle est CONNUE : le direct la tient (RV-38)
+          // — sinon chaque commentaire reçu coûtait une lecture à chaque spectateur.
+          // Inconnue (la lecture d'ouverture a échoué), elle se relit.
+          const connue = typeof _epingleConnue === "function" && _epingleConnue(r.event_id);
+          _loadEventComments(r.event_id, connue ? { epingle: false } : undefined);
         }
       } catch(e) {}
     });

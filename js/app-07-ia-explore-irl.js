@@ -5303,7 +5303,9 @@ function _setEventComments(eventId, serverList) {
   return arr;
 }
 
-async function _loadEventComments(eventId) {
+// `opts.epingle === false` : ne pas relire l'épingle (un rechargement déclenché
+// par le temps réel : le direct la tient déjà — RV-38, contre-revue du delta P3-B).
+async function _loadEventComments(eventId, opts) {
   // Cible : la page détail (#eventCommentsList) OU la feuille inline ouverte depuis
   // une carte (#cmtThreadList). Sans ce 2ᵉ cas, commenter un événement depuis sa
   // carte n'affichait jamais les commentaires distants (early-return → "Chargement…").
@@ -5322,7 +5324,8 @@ async function _loadEventComments(eventId) {
   // Interactions cross-compte (likes + réponses + emojis) via comment_interactions :
   // hydrate puis re-render avec le renderer riche unifié.
   if (typeof hydrateCommentInteractions === "function") {
-    hydrateCommentInteractions({ comments: _eventCommentsCache[eventId] }).then(function(){ _persistEventComments(); _renderEventComments(eventId); });
+    // `id` : le FIL (l'activité) — sans lui, aucune épingle n'est décidée (RV-38).
+    hydrateCommentInteractions({ id: eventId, comments: _eventCommentsCache[eventId] }, opts).then(function(){ _persistEventComments(); _renderEventComments(eventId); });
   }
 }
 
