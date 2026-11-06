@@ -32,7 +32,12 @@
 //      ET PAR `user_id` — une seule clé aurait fait échouer le lot entier dès
 //      121 rappels dus (une activité de 150 inscrits), donc plus aucun rappel,
 //      jamais. Au plus une fois : une push perdue n'est pas rejouée, un doublon
-//      est pire qu'un oubli ;
+//      est pire qu'un oubli. Et une fois MÊME EN PARALLÈLE : la marque porte
+//      l'identifiant de sa clé (`idGeste`, HMAC sous le secret serveur — un
+//      identifiant calculable laisserait un compte occuper la marque d'un autre
+//      et taire son rappel), posé en « ON CONFLICT DO NOTHING » : seul le tour
+//      qui l'a écrite envoie (deux veilles concurrentes avaient envoyé deux fois
+//      le même J-1 le 2026-10-30) ;
 //   ④ seuls les participants qui VIENNENT (`going`, `maybe` — la même liste que
 //      `joinedEvents` côté client), plus l'organisateur ; jamais la liste
 //      d'attente ni un refus ; jamais une activité annulée ;
@@ -44,6 +49,8 @@
 //   ⑦ l'heure est dite en heure de Paris, absolue (« à 18:00 ») : une veille
 //      reprise en retard ne dit jamais « dans 2 h » à 30 minutes du départ.
 // ═══════════════════════════════════════════════════════════════════════════
+
+import { idGeste } from "./autonomie.js";
 
 export const FUSEAU = "Europe/Paris";
 export const MARQUE_EVENEMENT = "rappel_activite";
@@ -146,6 +153,9 @@ export function rappelsDus({ maintenant, activites, participants, dejaEnvoyes, m
     parActivite.set(p.event_id, l);
   }
   const dus = [];
+  // Une clé par tour : une activité lue deux fois (une ligne décalée entre deux
+  // pages) ne fait pas deux rappels — l'envoi « une fois » se tient par clé.
+  const prises = new Set();
   for (const a of activites || []) {
     if (!a || !ID_ACTIVITE_RE.test(String(a.id || ""))) continue;
     if (a.status === "cancelled") continue;
@@ -163,7 +173,8 @@ export function rappelsDus({ maintenant, activites, participants, dejaEnvoyes, m
       // (Une date illisible est traitée comme ancienne : mieux vaut rappeler.)
       if (d.inscrit > ouverture) continue;
       const cle = cleRappel(a.id, palier.cle, d.uid);
-      if (deja.has(cle)) continue;
+      if (deja.has(cle) || prises.has(cle)) continue;
+      prises.add(cle);
       const { titre, texte } = textesRappel(a, debut, maintenant, palier.cle);
       const reste = debut - maintenant;
       dus.push({
@@ -208,7 +219,7 @@ const paquets = (l, n) => { const r = []; for (let i = 0; i < l.length; i += n) 
  * Les lectures sont TRIÉES (le plus proche d'abord) et PAGINÉES : une limite
  * plate laissait des activités au hasard hors du tour, indéfiniment.
  */
-export async function envoyerRappels(admin, envoyer, maintenant = Date.now()) {
+export async function envoyerRappels(admin, envoyer, maintenant = Date.now(), secret = "") {
   const activites = await toutesLesPages(() => admin.from("events")
     .select("id,title,city,date_at,status,author_id,created_at")
     .gte("date_at", isoNaif(maintenant)).lte("date_at", isoNaif(maintenant + 24 * HEURE + 60e3))
@@ -237,16 +248,28 @@ export async function envoyerRappels(admin, envoyer, maintenant = Date.now()) {
   const dus = rappelsDus({ maintenant, activites, participants, dejaEnvoyes });
   if (!dus.length) return { activites: activites.length, dus: 0, envoyes: 0 };
 
-  // ③ La marque AVANT l'envoi : refusée → on lève et RIEN ne part.
-  const { error: e4 } = await admin.from("analytics_events").insert(dus.map((r) => ({
+  // ③ La marque AVANT l'envoi, et UNE FOIS : chaque marque porte l'identifiant
+  // déterministe de sa clé, posé en « ON CONFLICT DO NOTHING », et seules les
+  // marques ÉCRITES PAR CE TOUR partent. La lecture ci-dessus ne suffisait pas :
+  // deux tours concurrents la faisaient tous deux avant d'écrire — un rappel J-1
+  // envoyé deux fois au même compte le 30/10 (marques à 30 ms d'écart).
+  // Refusée (ou secret serveur absent : `idGeste` lève) → on lève et RIEN ne part.
+  const lignes = await Promise.all(dus.map(async (r) => ({
+    id: await idGeste("rappel:" + r.cle, secret),
     user_id: marqueUid(r.uid), event: MARQUE_EVENEMENT, properties: { cle: r.cle, palier: r.palier },
   })));
+  const { data: posees, error: e4 } = await admin.from("analytics_events")
+    .upsert(lignes, { onConflict: "id", ignoreDuplicates: true }).select("id");
   if (e4) throw e4;
+  const ecrites = new Set((posees || []).map((x) => x && x.id));
+  const aEnvoyer = dus.filter((_r, i) => ecrites.has(lignes[i].id));
+  const dejaPris = dus.length - aEnvoyer.length;
+  if (!aEnvoyer.length) return { activites: activites.length, dus: 0, envoyes: 0, dejaPris };
 
   let envoyes = 0, sansAppareil = 0;
   const morts = [];
   const parCompte = new Map();
-  for (const uids of paquets([...new Set(dus.map((r) => r.uid))], PAQUET)) {
+  for (const uids of paquets([...new Set(aEnvoyer.map((r) => r.uid))], PAQUET)) {
     const { data: abonnements, error: e5 } = await admin.from("push_subscriptions")
       .select("endpoint,user_id,subscription").in("user_id", uids);
     if (e5) throw e5;
@@ -256,7 +279,7 @@ export async function envoyerRappels(admin, envoyer, maintenant = Date.now()) {
       parCompte.set(s.user_id, l);
     }
   }
-  await Promise.all(dus.map(async (r) => {
+  await Promise.all(aEnvoyer.map(async (r) => {
     const subs = parCompte.get(r.uid) || [];
     if (!subs.length) { sansAppareil++; return; }
     const charge = JSON.stringify({ type: "rappel", titre: r.titre, texte: r.texte, eventId: r.idActivite });
@@ -270,5 +293,5 @@ export async function envoyerRappels(admin, envoyer, maintenant = Date.now()) {
   }));
   // Un abonnement expiré (404/410) se retire, comme notify-call et la veille le font.
   if (morts.length) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch (_e) { /* au tour suivant */ } }
-  return { activites: activites.length, dus: dus.length, envoyes, sansAppareil, expires: morts.length };
+  return { activites: activites.length, dus: aEnvoyer.length, envoyes, sansAppareil, expires: morts.length, dejaPris };
 }

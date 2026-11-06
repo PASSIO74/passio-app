@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
+import { idGeste } from "../../supabase/functions/_shared/autonomie.js";
 import {
   palierDu, rappelsDus, envoyerRappels, texteSur, jourRelatif, duree, dateUtc, cleRappel,
   MARQUE_EVENEMENT, MAX_PAR_TOUR, marqueUid,
@@ -14,6 +15,7 @@ import {
 const H = 3600e3;
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
+const S = "secret-serveur-de-test-0123456789"; // le secret serveur (clé service_role en production)
 const C = "33333333-3333-4333-8333-333333333333";
 const ORGA = "44444444-4444-4444-8444-444444444444";
 // 2026-10-05 12:00 UTC = 14:00 à Paris (heure d'été).
@@ -114,15 +116,32 @@ test("⑧ borne par tour : au plus MAX_PAR_TOUR rappels, le reste au tour suivan
   assert.equal(rappelsDus({ maintenant: T0, activites: [activite(T0 + H, { author_id: null })], participants: p, dejaEnvoyes: [] }).length, MAX_PAR_TOUR);
 });
 
+test("⑧ bis une activité lue DEUX fois (ligne décalée entre deux pages) : une clé, un rappel", () => {
+  const a = activite(T0 + H, { author_id: null });
+  const dus = rappelsDus({ maintenant: T0, activites: [a, { ...a }], participants: [inscrit(A)], dejaEnvoyes: [] });
+  assert.deepEqual(dus.map((r) => r.cle), [cleRappel("ev_1", "h2", A)]);
+});
+
 /**
  * Faux client PostgREST : applique les filtres `in`/`eq` sur les colonnes que les
  * lignes portent, pagine par `range`, note chaque écriture dans l'ORDRE et chaque
  * tri demandé — et refuse un INSERT qui dépasserait `trg_rate_limit` (120 lignes
  * par minute et par `user_id` sur analytics_events), comme la production.
+ * `analytics_events` a sa CLÉ PRIMAIRE (`id`) : une écriture y devient visible
+ * aux lectures suivantes ; un upsert `ignoreDuplicates` ne rend que les lignes
+ * qu'il a ÉCRITES (ON CONFLICT DO NOTHING … RETURNING), un upsert sans lui les
+ * rend toutes (fusion). `rendezVous: n` retient chaque lecture des marques
+ * jusqu'à ce que n tours les aient lues : l'entrelacement mesuré en production
+ * (deux veilles qui lisent toutes deux « aucune marque » avant d'écrire).
  */
-function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refuserMarque = false }) {
+function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refuserMarque = false, rendezVous = 0, idsPris = [] }) {
   const journal = [];
   const lignes = { events, event_attendees: attendees, analytics_events: marques, push_subscriptions: subs };
+  // `idsPris` : des marques écrites par un tour concurrent APRÈS notre lecture —
+  // la clé primaire les connaît, la lecture ne les a pas vues.
+  const ids = new Set([...marques.filter((m) => m && m.id).map((m) => m.id), ...idsPris]);
+  let lus = 0, ouvrir;
+  const porte = new Promise((r) => { ouvrir = r; });
   const table = (nom) => {
     const q = {
       _op: "select", _filtres: [], _range: null,
@@ -132,22 +151,35 @@ function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refus
       in(col, vals) { q._filtres.push([col, vals]); q._in = vals; return q; },
       range(a, b) { q._range = [a, b]; return q; },
       limit() { return q; },
-      insert(rows) { journal.push({ op: "insert", nom, rows }); q._op = "insert"; q._rows = rows; return q; },
+      insert(rows) { journal.push({ op: "insert", nom, rows, options: null }); q._op = "insert"; q._rows = rows; return q; },
+      upsert(rows, options) { journal.push({ op: "insert", nom, rows, options }); q._op = "upsert"; q._rows = rows; q._options = options; return q; },
       delete() { q._op = "delete"; return q; },
       then(res, rej) {
         let out;
-        if (q._op === "insert") {
+        if (q._op === "insert" || q._op === "upsert") {
           const parUid = {};
           for (const r of q._rows) parUid[r.user_id] = (parUid[r.user_id] || 0) + 1;
           const limite = nom === "analytics_events" && Object.values(parUid).some((n) => n > 120);
           out = (nom === "analytics_events" && refuserMarque) ? { error: { message: "refusé" } }
             : limite ? { error: { message: "rate limit: max 120 insertions/minute sur analytics_events" } } : { error: null };
+          if (!out.error && nom === "analytics_events") {
+            const neuves = q._rows.filter((r) => !(r.id && ids.has(r.id)));
+            if (q._op === "insert" && neuves.length < q._rows.length) out = { error: { code: "23505", message: "duplicate key value violates unique constraint \"analytics_events_pkey\"" } };
+            else {
+              for (const r of neuves) { if (r.id) ids.add(r.id); lignes.analytics_events.push(r); }
+              if (q._op === "upsert") out = { data: ((q._options && q._options.ignoreDuplicates) ? neuves : q._rows).map((r) => ({ id: r.id })), error: null };
+            }
+          }
         } else if (q._op === "delete") { journal.push({ op: "delete", nom, valeurs: q._in }); out = { error: null }; }
         else {
           let l = (lignes[nom] || []).filter((r) => q._filtres.every(([c, vals]) => !(c in r) || vals.includes(r[c])));
           if (q._range) l = l.slice(q._range[0], q._range[1] + 1);
           journal.push({ op: "select", nom });
           out = { data: l, error: null };
+          if (nom === "analytics_events" && rendezVous) {
+            if (++lus >= rendezVous) ouvrir();
+            return porte.then(() => out).then(res, rej);
+          }
         }
         return Promise.resolve(out).then(res, rej);
       },
@@ -168,38 +200,83 @@ test("⑨ enveloppe : la marque est écrite AVANT l'envoi ; charge « rappel » 
     envois.push({ sub, charge: JSON.parse(charge), opts, marqueDeja: admin.journal.some((j) => j.op === "insert") });
     if (sub.endpoint === "https://push/a2") { const e = new Error("parti"); e.statusCode = 410; throw e; }
   };
-  const r = await envoyerRappels(admin, envoyer, T0);
-  assert.deepEqual(r, { activites: 1, dus: 2, envoyes: 1, sansAppareil: 1, expires: 1 }, "B n'a aucun appareil");
+  const r = await envoyerRappels(admin, envoyer, T0, S);
+  assert.deepEqual(r, { activites: 1, dus: 2, envoyes: 1, sansAppareil: 1, expires: 1, dejaPris: 0 }, "B n'a aucun appareil");
   assert.ok(envois.length === 2 && envois.every((e) => e.marqueDeja), "aucune push ne part avant la marque");
   assert.deepEqual(envois[0].charge, { type: "rappel", titre: "Rando au Salève", texte: "Ça commence dans 1 h (à 15:00) · Annecy", eventId: "ev_1" });
   assert.deepEqual(envois[0].opts, { TTL: 3600, urgency: "high" });
   const marque = admin.journal.find((j) => j.op === "insert");
   assert.deepEqual(marque.rows.map((x) => [x.user_id, x.event, x.properties.cle]).sort(),
     [[marqueUid(A), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", A)], [marqueUid(B), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", B)]].sort());
+  assert.deepEqual(marque.options, { onConflict: "id", ignoreDuplicates: true }, "ON CONFLICT (id) DO NOTHING : seul le tour qui écrit la marque envoie");
+  for (const x of marque.rows) assert.equal(x.id, await idGeste("rappel:" + x.properties.cle, S), "l'identifiant de la marque est celui de sa CLÉ");
   assert.deepEqual(admin.journal.find((j) => j.op === "delete"), { op: "delete", nom: "push_subscriptions", valeurs: ["https://push/a2"] });
 
   // Tour suivant : les marques existent → rien ne repart.
   const admin2 = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs,
     marques: marque.rows.map((x) => ({ user_id: x.user_id, event: x.event, properties: x.properties })) });
   const envois2 = [];
-  assert.deepEqual(await envoyerRappels(admin2, async (s) => { envois2.push(s); }, T0 + 5 * 60e3), { activites: 1, dus: 0, envoyes: 0 });
+  assert.deepEqual(await envoyerRappels(admin2, async (s) => { envois2.push(s); }, T0 + 5 * 60e3, S), { activites: 1, dus: 0, envoyes: 0 });
   assert.equal(envois2.length, 0);
+});
+
+test("⑨ bis deux tours EN PARALLÈLE (deux veilles dans la même seconde, mesuré le 30/10) : chaque rappel part UNE fois", async () => {
+  // Réinjection éprouvée : l'ancien `insert` sans identifiant → 4 pushes ; un
+  // upsert sans `ignoreDuplicates` (fusion) → 4 pushes ; ce test rougit.
+  const subs = [
+    { endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } },
+    { endpoint: "https://push/b", user_id: B, subscription: { endpoint: "https://push/b" } },
+  ];
+  const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs, rendezVous: 2 });
+  const envois = [];
+  const [r1, r2] = await Promise.all([
+    envoyerRappels(admin, async (s) => { envois.push(s.endpoint); }, T0, S),
+    envoyerRappels(admin, async (s) => { envois.push(s.endpoint); }, T0 + 30, S),
+  ]);
+  assert.deepEqual(envois.sort(), ["https://push/a", "https://push/b"], "une push par compte, pas deux");
+  assert.equal(r1.dus + r2.dus, 2);
+  assert.deepEqual([r1.dejaPris, r2.dejaPris].sort(), [0, 2], "le second tour a trouvé ses marques déjà prises — il n'envoie rien");
+  // Et le tour suivant lit les marques écrites : rien ne repart.
+  assert.deepEqual(await envoyerRappels(fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs,
+    marques: admin.journal.filter((j) => j.op === "insert" && j.nom === "analytics_events").flatMap((j) => j.rows) }), async () => { throw new Error("jamais"); }, T0 + 5 * 60e3, S),
+  { activites: 1, dus: 0, envoyes: 0 });
+});
+
+test("⑨ ter conflit PARTIEL : la marque de A vient d'être prise par un tour concurrent — seul B part", async () => {
+  const subs = [
+    { endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } },
+    { endpoint: "https://push/b", user_id: B, subscription: { endpoint: "https://push/b" } },
+  ];
+  const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs,
+    idsPris: [await idGeste("rappel:" + cleRappel("ev_1", "h2", A), S)] });
+  const envois = [];
+  const r = await envoyerRappels(admin, async (s) => { envois.push(s.endpoint); }, T0, S);
+  assert.deepEqual(envois, ["https://push/b"], "A a déjà son rappel, envoyé par l'autre tour");
+  assert.deepEqual(r, { activites: 1, dus: 1, envoyes: 1, sansAppareil: 0, expires: 0, dejaPris: 1 });
 });
 
 test("⑩ enveloppe : marque refusée → on LÈVE et RIEN ne part ; aucune activité → aucune lecture de plus", async () => {
   const admin = fauxAdmin({ events: [activite(T0 + H)], attendees: [inscrit(A)], subs: [{ endpoint: "e", user_id: A, subscription: {} }], refuserMarque: true });
   let envoye = 0;
-  await assert.rejects(envoyerRappels(admin, async () => { envoye++; }, T0), (e) => e && e.message === "refusé");
+  await assert.rejects(envoyerRappels(admin, async () => { envoye++; }, T0, S), (e) => e && e.message === "refusé");
   assert.equal(envoye, 0);
   const vide = fauxAdmin({});
-  assert.deepEqual(await envoyerRappels(vide, async () => { throw new Error("jamais"); }, T0), { activites: 0, dus: 0, envoyes: 0 });
+  assert.deepEqual(await envoyerRappels(vide, async () => { throw new Error("jamais"); }, T0, S), { activites: 0, dus: 0, envoyes: 0 });
+});
+
+test("⑩ quater sans le secret serveur, aucune marque et AUCUN envoi : un identifiant calculable d'avance laisserait un compte taire le rappel d'un autre", async () => {
+  const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A)], subs: [{ endpoint: "e", user_id: A, subscription: {} }] });
+  let envoye = 0;
+  await assert.rejects(envoyerRappels(admin, async () => { envoye++; }, T0), /secret serveur absent/);
+  assert.equal(envoye, 0);
+  assert.equal(admin.journal.filter((j) => j.op === "insert").length, 0, "rien n'est écrit");
 });
 
 test("⑩ bis une activité de 150 inscrits : le lot de marques passe la limite de 120/min par user_id, et tous sont rappelés", async () => {
   const p = [];
   for (let i = 0; i < 150; i++) p.push(inscrit(`66666666-6666-4666-8666-${String(i).padStart(12, "0")}`));
   const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: p });
-  const r = await envoyerRappels(admin, async () => {}, T0);
+  const r = await envoyerRappels(admin, async () => {}, T0, S);
   assert.equal(r.dus, 150, "une seule clé système aurait fait échouer les 150 marques — donc tous les rappels");
   const uids = new Set(admin.journal.find((j) => j.op === "insert").rows.map((x) => x.user_id));
   assert.equal(uids.size, 150, "une marque par destinataire, sous son propre identifiant système");
@@ -211,7 +288,7 @@ test("⑩ ter lectures TRIÉES et PAGINÉES : 1 200 activités sont toutes lues,
   for (let i = 0; i < 1200; i++) evs.push(activite(T0 + H + i * 60e3, { id: "ev_" + String(i).padStart(4, "0"), author_id: null }));
   const p = [inscrit(A, "going", T0 - 864e5, "ev_1199")];
   const admin = fauxAdmin({ events: evs, attendees: p });
-  const r = await envoyerRappels(admin, async () => {}, T0);
+  const r = await envoyerRappels(admin, async () => {}, T0, S);
   assert.equal(r.activites, 1200, "une limite plate en aurait laissé hors du tour");
   assert.equal(r.dus, 1, "l'inscrit de la 1 200ᵉ activité est rappelé");
   assert.ok(admin.journal.some((j) => j.op === "order" && j.nom === "events" && j.col === "date_at"), "le plus proche d'abord");

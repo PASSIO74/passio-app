@@ -43,7 +43,7 @@ import {
 } from "../_shared/reglages.js";
 import {
   RETOUR, REVEIL, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
-  continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt,
+  continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt, prendreCreneau,
 } from "../_shared/autonomie.js";
 // Parcours critiques, politique d'automatisation, battement (2026-11-06).
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
@@ -115,12 +115,15 @@ Deno.serve(async (req) => {
 
 // ─── ① Veille ───────────────────────────────────────────────────────────────
 // Appelable par n'importe qui (clé anon) : elle ne fait jamais rien de plus que
-// ce que ferait pg_cron, et au plus une fois par minute. Le plafond horaire
-// vaut 60 (une par minute) : à 20, vingt appels anonymes en début d'heure
-// affamaient la veille pendant les 40 minutes suivantes (contre-revue).
+// ce que ferait pg_cron, et jamais deux fois à moins d'une minute. Un appel
+// anonyme qui prend le créneau fait tourner la MÊME veille : il ne l'affame pas.
+// Le créneau est ATOMIQUE (`prendreCreneau`, clé primaire sous HMAC) : l'ancien plafond
+// « lire, puis écrire » laissait passer DEUX veilles en parallèle une fois sur
+// deux depuis que deux ordonnanceurs l'appellent à la même seconde (2026-10-21)
+// — rappel envoyé deux fois, voyant noté deux fois (mesuré le 2026-11-06).
 async function veille(admin: Admin) {
-  const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 60 });
-  if (!plafond.ok) return json({ ok: true, ignore: "trop tôt" });
+  const creneau = await prendreCreneau(admin, "systeme:pilotage-veille", "pilotage-veille", SECRET_GESTES);
+  if (!creneau.ok) return json({ ok: true, ignore: "trop tôt" });
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
   const t0 = Date.now();
@@ -222,7 +225,7 @@ async function rappels(admin: Admin) {
   if (!pub || !priv) return { inactif: "VAPID absent" };
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
   // deno-lint-ignore no-explicit-any
-  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts));
+  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts), Date.now(), SECRET_GESTES);
 }
 
 async function lireEtatMemorise(admin: Admin) {

@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import {
   REVEIL, RETOUR, EVT, enquetesEnCours, doitReveillerSentinelle, empreinte, decideRetour, deploiementsProduction,
   choisirPrecedent, continuerPagination, reveilsEpuises, idGeste, commitCourt, modeRetour, corpsProposition, TITRE_PROPOSITION,
+  prendreCreneau,
 } from "../../supabase/functions/_shared/autonomie.js";
 import { filtrerProduction, precedentDe, continuerPagination as continuerReference } from "../../scripts/rollback-selection.mjs";
 
@@ -194,7 +195,7 @@ test("⑩ le geste : verrou de 10 min, cible de l'APERÇU, marque HMAC AVANT la 
   assert.match(g, /const id = await idGeste\(`\$\{EVT\.manuel\}:\$\{p\.courant\.id\}:\$\{Math\.floor\(Date\.now\(\) \/ 3600e3\)\}`, SECRET_GESTES\);/, "clé HMAC, une par heure et par version servie");
   // Le secret est la clé service_role (posée sur toute fonction, jamais côté client) ; la clé anon, publique, ne vaut rien.
   assert.match(FN, /const SECRET_GESTES = Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\) \|\| "";/);
-  assert.equal(FN.split("SECRET_GESTES").length - 1, 3, "déclaration + deux clés de geste, aucun autre usage");
+  assert.equal(FN.split("SECRET_GESTES").length - 1, 5, "déclaration + deux clés de geste + le créneau de la veille + les marques de rappel (⑰), aucun autre usage");
   assert.doesNotMatch(FN, /idGeste\([^)]*ANON/, "jamais la clé anon comme secret");
   assert.match(g, /code === "23505" \? "retour_en_cours" : "journal_refuse"/);
   assert.match(g, /de_deploy: p\.courant\.id/, "la version retirée est notée : elle ne reviendra pas par ce bouton");
@@ -274,4 +275,70 @@ test("⑬ la proposition se compte EN BASE, sa clé est HMAC, et rien du texte c
   // Le texte va au PILOTE seulement : lu par lireProposition, derrière la porte (etat).
   assert.equal(FN.split("lireProposition(").length - 1, 2, "déclaration + etat()");
   assert.ok(position(FN, 'case "etat": return json(await etat(admin));', "case etat") > position(FN, "if (!autorise(user, EXTRA))", "porte"));
+});
+
+// ─── Créneau ATOMIQUE de la veille (2026-11-06) ─────────────────────────────
+// Mesuré en production : depuis le 2026-10-21, deux ordonnanceurs pg_net
+// appellent la veille à la même seconde, et le plafond « lire, puis écrire »
+// laissait passer les DEUX une fois sur deux (rappel J-1 envoyé deux fois le
+// 30/10, voyant noté deux fois). Mutations éprouvées à la main : un seul
+// créneau (`[m]`) → ⑮ rougit ; un identifiant aléatoire → ⑭ rougit ; un
+// identifiant sans la minute → ⑮ rougit ; une panne lue comme un succès → ⑯.
+
+/**
+ * Faux `analytics_events` : une CLÉ PRIMAIRE (Set des id) et une INSERT
+ * multi-lignes ATOMIQUE (une ligne en conflit → 23505, rien d'écrit), comme
+ * PostgREST. Un tour de boucle avant d'écrire : deux appels lancés ensemble
+ * s'entrelacent là, comme deux requêtes HTTP dans la même milliseconde.
+ */
+function fausseTable({ panne = false } = {}) {
+  const ids = new Set();
+  const ecrits = [];
+  const client = { from: () => ({ insert: async (lignes) => {
+    await null;
+    if (panne) return { error: { code: "08006", message: "connexion perdue" } };
+    const l = Array.isArray(lignes) ? lignes : [lignes];
+    if (l.some((x) => ids.has(x.id))) return { error: { code: "23505", message: 'duplicate key value violates unique constraint "analytics_events_pkey"' } };
+    for (const x of l) { ids.add(x.id); ecrits.push(x); }
+    return { error: null };
+  } }) };
+  return { client, ids, ecrits };
+}
+const SC = "secret-serveur-de-test-0123456789";
+const M0 = Date.parse("2026-11-06T18:45:00Z");
+const creneau = (t, ms, secret = SC) => prendreCreneau(t.client, "systeme:pilotage-veille", "pilotage-veille", secret, ms);
+
+test("⑭ deux veilles dans la MÊME milliseconde (deux ordonnanceurs) : une seule prend le créneau", async () => {
+  const t = fausseTable();
+  const [a, b] = await Promise.all([creneau(t, M0 + 959), creneau(t, M0 + 993)]);
+  assert.deepEqual([a, b].map((x) => x.ok).sort(), [false, true], "jamais les deux");
+  assert.deepEqual([a, b].find((x) => !x.ok), { ok: false, raison: "pris" });
+  assert.equal(t.ecrits.length, 2, "le gagnant tient sa minute ET la suivante, en une instruction");
+  assert.ok(t.ecrits.every((x) => x.user_id === "systeme:pilotage-veille" && x.event === "edge_pilotage-veille"));
+  assert.equal(t.ecrits[0].id, await idGeste("creneau:pilotage-veille:systeme:pilotage-veille:" + Math.floor(M0 / 60e3), SC), "l'identifiant est un HMAC sous le secret serveur");
+});
+
+test("⑮ deux passages acceptés sont toujours à plus de 60 s — même de part et d'autre d'une minute ronde", async () => {
+  const t = fausseTable();
+  assert.equal((await creneau(t, M0 - 10)).ok, true, "18:44:59.990");
+  assert.equal((await creneau(t, M0 + 10)).ok, false, "18:45:00.010 : 20 ms plus tard, de l'autre côté de la minute — refusé");
+  assert.equal((await creneau(t, M0 + 59e3)).ok, false, "18:45:59 : la minute suivante est tenue");
+  assert.equal((await creneau(t, M0 + 60e3)).ok, true, "18:46:00.000 : 60,01 s après — la veille suivante passe");
+  assert.equal((await creneau(t, M0 + 61e3)).ok, false);
+  assert.equal((await creneau(t, M0 + 5 * 60e3)).ok, true, "le cron de 5 min n'est jamais gêné");
+});
+
+test("⑯ panne de la base ou secret serveur absent : le créneau est REFUSÉ (fail-closed), rien n'est écrit", async () => {
+  const t = fausseTable({ panne: true });
+  assert.deepEqual(await creneau(t, M0), { ok: false, raison: "erreur" });
+  assert.equal(t.ecrits.length, 0);
+  const u = fausseTable();
+  assert.deepEqual(await creneau(u, M0, ""), { ok: false, raison: "erreur" }, "sans secret, un créneau calculable d'avance serait préemptable par un client");
+  assert.equal(u.ecrits.length, 0);
+});
+
+test("⑰ la veille prend son créneau sous le secret serveur, et les rappels aussi", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.match(fn, /await prendreCreneau\(admin, "systeme:pilotage-veille", "pilotage-veille", SECRET_GESTES\);/);
+  assert.match(fn, /return envoyerRappels\(admin, \([^)]*\) => webpush\.sendNotification\(sub, charge, opts\), Date\.now\(\), SECRET_GESTES\);/);
 });

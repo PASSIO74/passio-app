@@ -200,6 +200,47 @@ export async function idGeste(cle, secret) {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 
+/**
+ * Prend un CRÉNEAU pour `fonction`, ATOMIQUEMENT — pour une tâche qui ne doit
+ * jamais tourner deux fois en même temps (la veille du pilotage).
+ *
+ * `verifierPlafondEnBase` lit, PUIS écrit : deux appels dans la même
+ * milliseconde lisent tous deux « 0 » et passent tous deux. Mesuré en
+ * production : depuis le 2026-10-21, deux ordonnanceurs pg_net appellent la
+ * veille à la même seconde, et une fois sur deux les DEUX veilles tournaient —
+ * un rappel J-1 envoyé deux fois au même compte (30/10, deux marques à 30 ms),
+ * des changements du voyant notés deux fois, parfois contradictoires.
+ *
+ * Ici, le passage écrit DEUX lignes en UNE instruction — sa minute et la
+ * suivante —, chacune sous `idGeste` de (fonction, uid, minute) : la clé
+ * primaire refuse le second preneur de l'une ou de l'autre, quel que soit
+ * l'ordre d'arrivée, et l'instruction refusée n'écrit rien. Deux passages
+ * acceptés sont donc toujours à plus de 60 s l'un de l'autre, même de part et
+ * d'autre d'une minute ronde. Le secret serveur rend les créneaux futurs
+ * incalculables pour un client (sinon : les pré-occuper, et la veille se tait).
+ * Toute autre erreur, secret absent compris, REFUSE (fail-closed).
+ *
+ * @param {{ from: (t: string) => any }} admin  client service_role
+ * @param {string} uid       identifiant système (« systeme:… »)
+ * @param {string} fonction  ex. "pilotage-veille" → événement "edge_pilotage-veille"
+ * @param {string} secret    secret serveur (clé service_role de la fonction)
+ * @param {number} [maintenant]
+ * @returns {Promise<{ ok: true } | { ok: false, raison: "pris" | "erreur" }>}
+ */
+export async function prendreCreneau(admin, uid, fonction, secret, maintenant = Date.now()) {
+  const m = Math.floor(maintenant / 60_000);
+  let lignes;
+  try {
+    lignes = await Promise.all([m, m + 1].map(async (minute) => ({
+      id: await idGeste(`creneau:${fonction}:${uid}:${minute}`, secret),
+      user_id: uid, event: "edge_" + fonction, properties: { minute },
+    })));
+  } catch (_e) { return { ok: false, raison: "erreur" }; }
+  const { error } = await admin.from("analytics_events").insert(lignes);
+  if (!error) return { ok: true };
+  return { ok: false, raison: String(error.code || "") === "23505" ? "pris" : "erreur" };
+}
+
 /** Un commit court et sûr à afficher ou à recopier (8 hex), sinon « ? ». */
 export function commitCourt(v) {
   return typeof v === "string" && /^[0-9a-f]{7,40}$/.test(v) ? v.slice(0, 8) : "?";
