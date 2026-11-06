@@ -7179,7 +7179,10 @@ function onbFinish() {
 // revenue au chargement). Cette fonction rend la copie LOCALE, tandis que
 // `allFeedPosts` dédoublonne dans l'ordre seed → supabase → me et affiche donc la
 // copie SERVEUR. Conséquence : MUTER l'objet rendu ici ne change rien à l'écran.
-// Pour lire, c'est sans importance ; pour ÉCRIRE, passer par allPostCopies(id).
+// Pour ÉCRIRE, passer par allPostCopies(id). Pour LIRE, c'est sans importance
+// TANT QUE ce que le serveur rend est aussi recopié sur ma copie : `supaLoadPosts`
+// y écrit `commentsTotal` et les réactions d'autrui (RV-39, 2026-11-05 — avant, la
+// pastille d'une publication à moi ne montrait jamais une réaction lue du serveur).
 function findPostAnywhere(id) {
   return (state.seed.posts || []).find(p => p.id === id)
       || (state.userPosts || []).find(p => p.id === id)
