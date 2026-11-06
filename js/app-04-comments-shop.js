@@ -1180,7 +1180,14 @@ function _postReactItems(postId) {
   // réaction : il est posté en COMMENTAIRE (rendu en image inline), jamais dans
   // le compteur (demande utilisateur 2026-07-07).
   var arr = Array.isArray(post.reactions) ? post.reactions : [];
-  var reacts = arr.filter(function(r){ return r && r.type === "emoji_reaction"; });
+  // Un compte BLOQUÉ ne compte pas : son contenu est masqué et ses interactions
+  // ignorées (`isBlocked`), comme ses commentaires. Filtré ICI, à l'affichage,
+  // pour toutes les copies : depuis RV-39, ma copie `userPosts` reçoit aussi ce
+  // que rend le serveur, et la RLS laisse un compte bloqué réagir à une
+  // publication publique (contre-revue du lot).
+  var reacts = arr.filter(function(r){
+    return r && r.type === "emoji_reaction" && !(typeof isBlocked === "function" && isBlocked(r.authorId));
+  });
   return _dedupReactionsByAuthor(reacts).map(function(r){ return { authorId: r.authorId, text: r.text }; });
 }
 function _postReactChipHtml(postId) {
@@ -1466,6 +1473,39 @@ function _ciEstTombee(id) {
   if (Date.now() - t >= CI_TOMBES_TTL_MS) { _ciTombes.delete(id); return false; }
   return true;
 }
+// Pierres tombales par CLÉ NATURELLE, pour les seules réactions de publication
+// (RV-39, contre-revue) : `fil_compteurs` rend ces lignes SANS identifiant, et un
+// DELETE reçu pendant sa lecture faisait revenir la réaction — `_ciOublier` venait
+// d'effacer la clé qui l'aurait reconnue. Posées quand un retrait est résolu (par
+// l'index, ou par la recherche à l'écran), consultées en construisant la copie
+// serveur (`supaLoadPosts`). Mêmes bornes que les pierres par identifiant.
+const _ciTombesCle = new Map();   // clé naturelle (`_ciCle`) → instant du retrait
+function _ciNoterTombeCle(k) {
+  if (!k) return;
+  var maintenant = Date.now();
+  _ciTombesCle.delete(k);
+  _ciTombesCle.set(k, maintenant);
+  for (var it = _ciTombesCle.entries(), e = it.next(); !e.done; e = it.next()) {
+    if (_ciTombesCle.size <= CI_TOMBES_MAX && maintenant - e.value[1] < CI_TOMBES_TTL_MS) break;
+    _ciTombesCle.delete(e.value[0]);
+  }
+}
+// La clé d'une entrée de réaction (forme client) portée par la publication `postId`.
+function _ciCleEntree(postId, x) {
+  var kind = x && (x.type === "emoji_reaction" ? "emoji" : (x.type === "gif_reaction" ? "gif" : null));
+  return kind ? _ciCle({ comment_id: postId, user_id: x.authorId, kind: kind, payload: x.text, created_at: x.createdAt }) : null;
+}
+// Cette réaction de publication, telle que la rend `fil_compteurs` (`x` : user_id,
+// kind, payload, created_at), a-t-elle été retirée il y a moins de deux minutes ?
+function _ciReactionPostTombee(postId, x) {
+  if (!_ciTombesCle.size || !x) return false;
+  var k = _ciCle({ comment_id: postId, user_id: x.user_id, kind: x.kind, payload: x.payload, created_at: x.created_at });
+  var t = k ? _ciTombesCle.get(k) : null;
+  if (t == null) return false;
+  if (Date.now() - t >= CI_TOMBES_TTL_MS) { _ciTombesCle.delete(k); return false; }
+  window._ciStats.tombesEcartees++;
+  return true;
+}
 // Les lignes d'une lecture, sans celles qu'un DELETE déjà reçu a retirées.
 function _ciSansTombees(lignes) {
   if (!Array.isArray(lignes) || !_ciTombes.size) return lignes;
@@ -1549,7 +1589,10 @@ function _ciRetirerParCiAffiche(ids) {
         if (!p || !Array.isArray(p.reactions)) return;
         for (var i = p.reactions.length - 1; i >= 0; i--) {
           var x = p.reactions[i];
-          if (x && x.ci && cherches.has(x.ci) && !_ciEstMoi(x.authorId)) { p.reactions.splice(i, 1); ici++; }
+          if (x && x.ci && cherches.has(x.ci) && !_ciEstMoi(x.authorId)) {
+            _ciNoterTombeCle(_ciCleEntree(pid, x));   // une lecture en vol ne la ramène pas (RV-39)
+            p.reactions.splice(i, 1); ici++;
+          }
         }
       });
       if (ici) { n += ici; if (typeof updatePostReactionsUI === "function") updatePostReactionsUI(pid); }
@@ -1580,7 +1623,13 @@ function _commentInteractionRetiree(old) {
     var id = old && typeof old.id === "string" ? old.id : null;
     if (id) _ciNoterTombe(id);
     var r = id ? _ciOublier(id) : null;
-    if (r) { _applyCommentInteractionEvent(r, "remove"); return; }
+    if (r) {
+      // Une réaction de PUBLICATION : `fil_compteurs` la rendrait sans `id`, et
+      // la pierre par identifiant ne la reconnaîtrait pas (RV-39).
+      if (r.comment_id === r.post_id && _ciTypeEntree(r.kind)) _ciNoterTombeCle(_ciCle(r));
+      _applyCommentInteractionEvent(r, "remove");
+      return;
+    }
     // Hors de l'index : une entrée persistée qui porte son identifiant (le
     // balayage de l'écran), ou — seule autre possibilité à l'écran — une
     // réaction de publication venue de `fil_compteurs`, qui ne l'a pas (la
@@ -1781,14 +1830,20 @@ function _ciRetirerReactionPost(r) {
 //     réponse du repli à la borne, publication absente de la réponse) : une
 //     liste vide n'est pas une absence (`reactionsLues`, app-08) ;
 //   · un état déjà juste ne change rien : ni sauvegarde, ni synchronisation
-//     `user_state`, ni repeinte. Ce chemin tourne à CHAQUE tour du filet.
+//     `user_state`, ni repeinte. Ce chemin tourne à CHAQUE tour du filet ;
+//   · une réponse plus VIEILLE que la dernière recopiée pour cette publication
+//     est ignorée (numéro de lecture). Toute lecture recopie : tête du fil, page
+//     suivante, profil, bobines. Deux lectures non séquencées se croisent, et
+//     l'instantané le plus ancien, arrivé le dernier, ramenait une réaction
+//     retirée entre les deux (contre-revue du lot).
 // La pastille est repeinte EN PLACE : la signature du fil (`_feedPostsSig`,
 // `_feedDomSig`) ne regarde que la copie serveur, et ne repeindrait pas une
 // carte dont seule ma copie a changé.
-// ⚠️ Ce que ce bloc ne fait pas, dit tel quel : un DELETE reçu PENDANT la lecture
-// d'une ligne que l'instantané porte encore la fait revenir jusqu'au tour
-// suivant (`fil_compteurs` ne rend pas l'`id`, la pierre tombale ne la reconnaît
-// pas), exactement comme sur la copie serveur d'une publication d'autrui.
+// ⚠️ Un DELETE reçu PENDANT la lecture, d'une ligne que l'instantané porte
+// encore, est écarté par sa pierre tombale par CLÉ (`_ciReactionPostTombee`, à
+// la construction de la copie serveur) : `fil_compteurs` ne rend pas l'`id`.
+// Un compte bloqué entre dans ma copie comme dans la copie serveur ; c'est
+// l'affichage qui l'écarte (`_postReactItems`).
 // Verrou : `tests/e2e/reactions-mes-publications.spec.js`. Fiche :
 // `docs/journal/capacite-perf-realtime.md`, « 🪞 RV-39 ».
 function _estReactionAutrui(x) {
@@ -1808,16 +1863,21 @@ function _signatureReactions(arr) {
     return [x.id, x.ci || "", x.authorId || "", x.type || "", x.text == null ? "" : String(x.text), Number(x.createdAt) || 0].join("\u0001");
   }).join("\u0002");
 }
-// Les entrées d'autrui de mes copies d'une page, AVANT la lecture des réactions :
-// les seules qu'une réponse du serveur a le droit de retirer.
+// Numéro de la dernière lecture partie, et, par publication, celui de la lecture
+// la plus fraîche déjà recopiée (bornée : seules mes publications y entrent).
+var _rv39Lectures = 0;
+const _rv39Servie = new Map();
+const RV39_SERVIE_MAX = 2000;
+// AVANT la lecture des réactions : son numéro, et les entrées d'autrui de mes
+// copies de la page — les seules qu'une réponse du serveur a le droit de retirer.
 function _reactionsAutruiAvantLecture(postIds) {
-  var avant = new Set();
+  var avant = { seq: ++_rv39Lectures, entrees: new Set() };
   try {
     var ids = new Set(postIds || []);
     if (!ids.size || !Array.isArray(state.userPosts)) return avant;
     state.userPosts.forEach(function (u) {
       if (!u || !ids.has(u.id) || !Array.isArray(u.reactions)) return;
-      u.reactions.forEach(function (x) { if (_estReactionAutrui(x)) avant.add(x); });
+      u.reactions.forEach(function (x) { if (_estReactionAutrui(x)) avant.entrees.add(x); });
     });
   } catch (e) { try { diagLog("rv39_avant : " + (e && e.message)); } catch (_e) {} }
   return avant;
@@ -1829,9 +1889,19 @@ function _recopierReactionsAutrui(postId, serveur, avant) {
   var change = false;
   try {
     if (!postId || !Array.isArray(serveur) || !Array.isArray(state.userPosts)) return false;
+    var mesCopies = state.userPosts.filter(function (u) { return u && u.id === postId; });
+    if (!mesCopies.length) return false;
+    // Une lecture partie APRÈS celle-ci a déjà été recopiée : son instantané est
+    // plus juste, celui-ci ne le défait pas.
+    var seq = (avant && avant.seq) || 0;
+    if (seq) {
+      if ((_rv39Servie.get(postId) || 0) > seq) return false;
+      _rv39Servie.delete(postId);
+      _rv39Servie.set(postId, seq);
+      while (_rv39Servie.size > RV39_SERVIE_MAX) _rv39Servie.delete(_rv39Servie.keys().next().value);
+    }
     var duServeur = serveur.filter(_estReactionAutrui);
-    state.userPosts.forEach(function (u) {
-      if (!u || u.id !== postId) return;
+    mesCopies.forEach(function (u) {
       var locales = Array.isArray(u.reactions) ? u.reactions : [];
       var signatureAvant = _signatureReactions(locales);
       // Mes entrées d'autrui, rangées par `ci` et par clé naturelle : l'appariement
@@ -1868,7 +1938,7 @@ function _recopierReactionsAutrui(postId, serveur, avant) {
       var gardees = locales.filter(function (x) {
         if (prises.has(x)) return false;
         if (!_estReactionAutrui(x)) return true;           // les miennes, et ce que le serveur ne couvre pas
-        return avant instanceof Set && !avant.has(x);      // reçue PENDANT la lecture
+        return !!(avant && avant.entrees instanceof Set) && !avant.entrees.has(x);   // reçue PENDANT la lecture
       });
       var nouvelles = autrui.concat(gardees);
       nouvelles.sort(function (a, b) { return (Number(a && a.createdAt) || 0) - (Number(b && b.createdAt) || 0); });
@@ -1919,7 +1989,11 @@ function _applyCommentInteractionEvent(r, op) {
           // Indexée même si l'entrée existe déjà : c'est ce qui permettra d'en
           // voir le retrait (R37).
           _ciIndexer(r);
-          var _deja = _post.reactions.find(function(x){ return x.id === _prid; });
+          // Par la LIGNE, pas seulement par l'`id` d'entrée : une lecture du fil a
+          // pu la poser juste avant, au format REST (`…+00:00`), quand le temps
+          // réel écrit `… +00` — l'`id` diffère, c'est la même réaction (RV-39).
+          var _typeP = _ciTypeEntree(r.kind);
+          var _deja = _post.reactions.find(function(x){ return x && (x.id === _prid || _ciMemeLigne(x, r, _typeP)); });
           if (_deja) { if (!_deja.ci && r.id) _deja.ci = r.id; }
           else {
             _post.reactions.push({ id: _prid, ci: r.id || null, authorId: r.user_id, text: r.payload,

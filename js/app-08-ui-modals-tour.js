@@ -4944,7 +4944,10 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         // `ci` : l'identifiant de la ligne (R37). Le repli du fil le lit ;
         // `fil_compteurs` ne le rend pas, et la clé naturelle le retrouve si
         // cet appareil a déjà lu ou reçu la ligne (`_ciRetrouverId`, app-04).
-        reactions: cpl.reactions.map(x => ({ id: (x.kind === "emoji" ? "semoji_" : "sgif_") + x.created_at + "_" + x.user_id,
+        // Une réaction dont le retrait est arrivé PENDANT cette lecture ne revient
+        // pas : sa pierre tombale par clé l'écarte (RV-39, `_ciReactionPostTombee`).
+        reactions: cpl.reactions.filter(x => !(typeof _ciReactionPostTombee === "function" && _ciReactionPostTombee(r.id, x)))
+          .map(x => ({ id: (x.kind === "emoji" ? "semoji_" : "sgif_") + x.created_at + "_" + x.user_id,
             ci: x.id || (typeof _ciRetrouverId === "function"
               ? _ciRetrouverId({ comment_id: r.id, user_id: x.user_id, kind: x.kind, payload: x.payload, created_at: x.created_at })
               : null),
@@ -5127,8 +5130,11 @@ function _discussionChargee(postId, apercus, profils) {
 // commentaires au plus pour toute la page (donc un compte FAUX au-delà — c'est
 // précisément ce que `fil_compteurs` corrige). Sans `commentsTotal` : l'affichage
 // compte la liste, comme avant.
-// `max-rows` du projet : une réponse qui l'atteint est peut-être tronquée.
-const FIL_REPLI_LIGNES_MAX = 1000;
+// Limite EXPLICITE de la lecture des réactions du repli, deux fois sous `max-rows`
+// (1 000) : une réponse qui l'atteint est peut-être tronquée, et une limite serveur
+// plus basse que prévu ne doit pas la faire passer pour complète (même règle que
+// la lecture des identifiants de R37).
+const FIL_REPLI_LIGNES_MAX = 500;
 async function _chargerComplementsFilLegacy(postIds, out) {
   let likesData = [], commentsData = [], reactsData = [], reactionsLues = false;
   try {
@@ -5140,7 +5146,7 @@ async function _chargerComplementsFilLegacy(postIds, out) {
       // Réactions emoji/GIF portées par les POSTS (convention comment_id === post_id
       // dans comment_interactions) → pastille « 😍 N » visible cross-compte.
       // `id`, `post_id` : l'index des retraits en direct (R37, `_ciIndexer`).
-      supa.from("comment_interactions").select("id, comment_id, post_id, user_id, kind, payload, created_at").in("comment_id", postIds),
+      supa.from("comment_interactions").select("id, comment_id, post_id, user_id, kind, payload, created_at").in("comment_id", postIds).limit(FIL_REPLI_LIGNES_MAX),
     ]);
     likesData = likesRes.data || [];
     commentsData = commentsRes.data || [];

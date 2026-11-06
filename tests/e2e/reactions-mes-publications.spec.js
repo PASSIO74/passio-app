@@ -16,6 +16,7 @@
 // rien n'est écrit) :
 //   ① la réaction d'un autre compte rendue par `fil_compteurs` apparaît sur la
 //     pastille de ma publication, repeinte EN PLACE sur une carte déjà à l'écran ;
+//     son INSERT arrivé après la lecture ne la double pas ;
 //   ② au tour du FILET (le vrai `startFeedRefreshLoop`), ma réaction optimiste
 //     reste, ma ligne encore en base (retrait pas encore parti) ne revient pas,
 //     et un second tour ne change plus rien (même tableau, aucune repeinte) ;
@@ -26,14 +27,24 @@
 //     identifiant au tour d'après, sans doublon ;
 //   ⑤ une lecture qui n'a pas LU les réactions ne retire rien (publication
 //     absente de la réponse, `fil_compteurs` puis repli en échec, réponse du
-//     repli à la borne) ; et le repli, quand il lit, recopie avec l'identifiant.
-// Éprouvée par RÉINJECTION (2026-11-05) : sans la recopie, ① ② ③ ④ ⑤ rougissent ;
-// sans l'instantané « avant » (tout ce qui manque au serveur retiré), ④ ; en
-// recopiant aussi mes lignes du serveur (au lieu de garder mes entrées locales),
-// ② ; sans reporter le `ci` local (lignes serveur clonées telles quelles), ③ ;
-// sans `reactionsLues` (toute réponse prise pour une liste complète), ⑤ ; sans
-// la repeinte en place, ① ② ④ ; sans la comparaison de signature (toujours
-// écrire), ②. Chaque autre cas reste vert sous chacune de ces mutations.
+//     repli à la borne) ; et le repli, quand il lit, recopie avec l'identifiant,
+//     qu'une entrée locale sans `ci` apprend (même objet) ;
+//   ⑥ (contre-revue) un compte BLOQUÉ ne compte pas sur la pastille, même revenu
+//     par la lecture ; et l'ordre des réactions suit leur instant ;
+//   ⑦ (contre-revue) un retrait reçu PENDANT la lecture ne revient pas, qu'il soit
+//     résolu par l'index ou par la recherche à l'écran ;
+//   ⑧ (contre-revue) une lecture plus VIEILLE arrivée après une plus fraîche (le
+//     profil et la tête du fil croisés) ne défait rien.
+// Éprouvée par RÉINJECTION (2026-11-05, puis 2026-11-06 sur la version finale,
+// après la contre-revue) — chaque mutation rougit au moins le cas qui la vise :
+// sans la recopie, ① à ⑥ et ⑧ (⑦ éprouve les pierres tombales des deux copies,
+// recopie ou non) ; sans l'instantané « avant », ④ ; mes lignes du serveur au lieu
+// de mes entrées locales, ② ⑥ ; sans reporter le `ci` local, ③ ⑤ ; sans
+// `reactionsLues`, ⑤ ; sans la repeinte en place, ① ② ④ ⑧ ; sans la signature,
+// ② ; sans apprendre le `ci` à une entrée locale, ⑤ ; sans écarter un compte
+// bloqué, ⑥ ; sans le tri, ⑥ ; sans les pierres tombales par clé, ⑦ ; sans le
+// numéro de lecture, ⑧ ; sans retrouver par la ligne l'entrée d'un INSERT
+// tardif, ①.
 // Fiche : `docs/journal/capacite-perf-realtime.md`, « 🪞 RV-39 ».
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
@@ -92,10 +103,11 @@ async function preparer(page, opts = {}) {
       { id: o.bob, username: "Bob", emoji: "🎉", color: "#246810", avatar_url: null, passion_id: "photo", passions: [], bio: "" },
     ];
     // Réglages par cas : `fil_compteurs` ok | erreur | absente, publications
-    // absentes de sa réponse, et la lecture `comment_interactions` du repli
-    // ok | erreur | borne (une réponse de 1 000 lignes, `max-rows`).
+    // absentes de sa réponse, délais de ses réponses (une file, un par appel),
+    // et la lecture `comment_interactions` du repli ok | erreur | borne.
     window.__rpcMode = "ok";
     window.__rpcSans = [];
+    window.__rpcDelais = [];
     window.__ciMode = "ok";
     // `fil_compteurs` rend les réactions SANS identifiant : c'est le fait de production.
     // L'instantané est pris À LA REQUÊTE, comme une vraie lecture.
@@ -107,13 +119,16 @@ async function preparer(page, opts = {}) {
       const reponse = { data: (args._post_ids || []).filter((id) => !__rpcSans.includes(id)).map((id) => ({
         post_id: id, likes: 0, aime: false, commentaires: 0, apercus: [],
         reactions: __interactions.filter((i) => i.comment_id === id && (i.kind === "emoji" || i.kind === "gif") && i.payload != null)
+          .sort((a, b) => supaTs(a.created_at) - supaTs(b.created_at))   // `order by i.created_at`
           .map((i) => ({ user_id: i.user_id, kind: i.kind, payload: i.payload, created_at: i.created_at })),
       })), error: null };
       // Un geste PENDANT la lecture : il arrive après l'instantané, avant la réponse.
+      const delai = __rpcDelais.length ? __rpcDelais.shift() : 0;
       if (typeof window.__pendantLecture === "function") {
         const f = window.__pendantLecture; window.__pendantLecture = null;
-        return new Promise((ok) => { setTimeout(f, 10); setTimeout(() => ok(reponse), 150); });
+        return new Promise((ok) => { setTimeout(f, 10); setTimeout(() => ok(reponse), Math.max(150, delai)); });
       }
+      if (delai) return new Promise((ok) => setTimeout(() => ok(reponse), delai));
       return Promise.resolve(reponse);
     };
     supa.from = function (table) {
@@ -135,12 +150,13 @@ async function preparer(page, opts = {}) {
             if (__ciMode === "erreur") return rendre({ data: null, error: { code: "57014", message: "canceling statement due to statement timeout" } });
             let rows = __interactions.filter((i) => (req.ins.comment_id || []).includes(i.comment_id));
             if (req.ins.kind) rows = rows.filter((i) => req.ins.kind.includes(i.kind));
-            // À la borne : 1 000 lignes, toutes d'une AUTRE publication — la
-            // réponse ne dit rien de la mienne.
+            // À la borne : plus de lignes que la limite demandée, toutes d'une
+            // AUTRE publication — la réponse tronquée ne dit rien de la mienne.
             if (__ciMode === "borne") {
               rows = Array.from({ length: 1000 }, (_, k) => ({ id: "ci_masse_" + k, comment_id: "post_ailleurs", post_id: "post_ailleurs",
                 user_id: "u_masse_" + k, kind: "emoji", payload: "👍", created_at: "2026-11-05T08:00:00+00:00" }));
             }
+            if (req.limit) rows = rows.slice(0, req.limit);   // PostgREST honore `limit`
             const cols = String(req.cols || "").split(",").map((s) => s.trim()).filter(Boolean);
             return rendre({ data: rows.map((i) => Object.fromEntries(cols.map((c) => [c, i[c]]))), error: null });
           }
@@ -161,6 +177,12 @@ async function preparer(page, opts = {}) {
       const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === tbl && x.filtre.event === evenement);
       if (!l) throw new Error("aucune liaison " + evenement + " sur " + tbl);
       return l.cb;
+    };
+    // La charge EXACTE d'un DELETE sous RLS : la clé primaire, rien d'autre.
+    window.__supprimer = (id) => {
+      window.__interactions = __interactions.filter((i) => i.id !== id);
+      __liaison("comment_interactions", "DELETE")({ schema: "public", table: "comment_interactions", eventType: "DELETE",
+        commit_timestamp: "2026-11-05T10:00:00Z", errors: null, new: {}, old: { id } });
     };
     window.__lecturesCi = () => __lectures.filter((x) => x.table === "comment_interactions");
     window.__lecturesFil = () => __lectures.filter((x) => x.table === "rpc:fil_compteurs").length;
@@ -211,6 +233,16 @@ test.describe("RV-39 — les réactions d'autrui sur mes publications suivent le
     expect(r.pastille, "la carte déjà à l'écran montre la réaction d'Alice").toBe("😍 1");
     expect(r.reactions).toEqual([{ auteur: ALICE, texte: "😍", ci: null }]);
     expect(r.copieLocale).toBe(true);
+
+    // L'INSERT de cette même ligne arrive APRÈS la lecture (temps réel en retard,
+    // format `… +00`) : c'est la même réaction, pas une seconde.
+    const tardif = await page.evaluate(([alice]) => {
+      __liaison("comment_interactions", "INSERT")({ eventType: "INSERT", old: {}, new: { id: "ci_A", comment_id: "post_rv39", post_id: "post_rv39",
+        user_id: alice, kind: "emoji", payload: "😍", created_at: "2026-11-05 09:00:05.654321+00" } });
+      return { reactions: __reactions(__maCopie()), pastille: __pastille("post_rv39") };
+    }, [ALICE]);
+    expect(tardif.reactions, "aucun doublon, et l'entrée apprend son identifiant").toEqual([{ auteur: ALICE, texte: "😍", ci: "ci_A" }]);
+    expect(tardif.pastille).toBe("😍 1");
   });
 
   test("② au tour du filet : ma réaction optimiste reste, ma ligne en cours de retrait ne revient pas, et un second tour ne change plus rien", async ({ page }) => {
@@ -272,16 +304,20 @@ test.describe("RV-39 — les réactions d'autrui sur mes publications suivent le
       __lectures.length = 0;
       __interactions = __interactions.filter((i) => i.id !== "ci_A");
       __liaison("comment_interactions", "DELETE")({ eventType: "DELETE", new: {}, old: { id: "ci_A" } });
-      await new Promise((ok) => setTimeout(ok, 800));
-      return { apresLecture, pastille: __pastille("post_rv39"), lectures: __lecturesCi().length,
-        miennes: __maCopie().reactions.length, serveur: __copieServeur().reactions.length };
+      return apresLecture;
     });
-    expect(r.apresLecture.memeObjet, "l'entrée locale est gardée, pas remplacée").toBe(true);
-    expect(r.apresLecture.miennes).toEqual([{ auteur: ALICE, texte: "😍", ci: "ci_A" }]);
-    expect(r.apresLecture.serveur, "la copie serveur apprend l'identifiant que fil_compteurs ne rend pas").toEqual([{ auteur: ALICE, texte: "😍", ci: "ci_A" }]);
-    expect(r.apresLecture.indexee, "prémisse : l'index ne la connaît pas").toBe(false);
-    expect(r.apresLecture.pastille).toBe("😍 1");
-    expect(r, "retirée des deux copies, sans relire").toMatchObject({ pastille: "", lectures: 0, miennes: 0, serveur: 0 });
+    // Le retrait se voit (balayage de l'écran, ~100 ms) ; puis on laisse passer
+    // le rendez-vous de la lecture des identifiants (400 ms) : il ne doit RIEN lire.
+    await expect.poll(() => page.evaluate(() => __pastille("post_rv39")), { message: "le retrait en direct se voit" }).toBe("");
+    await page.waitForTimeout(700);
+    const apres = await page.evaluate(() => ({ pastille: __pastille("post_rv39"), lectures: __lecturesCi().length,
+      miennes: __maCopie().reactions.length, serveur: __copieServeur().reactions.length }));
+    expect(r.memeObjet, "l'entrée locale est gardée, pas remplacée").toBe(true);
+    expect(r.miennes).toEqual([{ auteur: ALICE, texte: "😍", ci: "ci_A" }]);
+    expect(r.serveur, "la copie serveur apprend l'identifiant que fil_compteurs ne rend pas").toEqual([{ auteur: ALICE, texte: "😍", ci: "ci_A" }]);
+    expect(r.indexee, "prémisse : l'index ne la connaît pas").toBe(false);
+    expect(r.pastille).toBe("😍 1");
+    expect(apres, "retirée des deux copies, sans relire").toEqual({ pastille: "", lectures: 0, miennes: 0, serveur: 0 });
   });
 
   test("④ une réaction d'autrui retirée pendant que le socket dormait part ; celle reçue en direct PENDANT la lecture reste, puis prend son identifiant", async ({ page }) => {
@@ -324,9 +360,14 @@ test.describe("RV-39 — les réactions d'autrui sur mes publications suivent le
   test("⑤ une lecture qui n'a pas lu les réactions ne retire rien ; le repli, quand il lit, recopie avec l'identifiant", async ({ page }) => {
     await preparer(page, {
       // Une réaction de Zoé que le serveur n'a plus : seule une VRAIE lecture peut la retirer.
-      locales: [{ id: "semoji_zoe", authorId: ZOE, text: "🎸", type: "emoji_reaction", createdAt: Date.parse("2026-11-05T08:59:00Z") }],
+      // Et celle d'Alice, déjà là mais SANS identifiant (posée par une lecture de `fil_compteurs`).
+      locales: [
+        { id: "semoji_zoe", authorId: ZOE, text: "🎸", type: "emoji_reaction", createdAt: Date.parse("2026-11-05T08:59:00Z") },
+        { id: "semoji_alice_fil", authorId: ALICE, text: "😍", type: "emoji_reaction", createdAt: T_ALICE },
+      ],
     });
     const r = await page.evaluate(async () => {
+      const alice = __maCopie().reactions[1];
       const etat = async () => {
         const lus = await supaLoadPosts();
         return { lus: lus.length, reactions: __reactions(__maCopie()).map((x) => x.texte + (x.ci ? ":" + x.ci : "")) };
@@ -345,12 +386,99 @@ test.describe("RV-39 — les réactions d'autrui sur mes publications suivent le
       __ciMode = "ok";
       out.repli = await etat();
       out.cheminsLus = __lectures.filter((q) => q.table === "comment_interactions").length;
+      out.limites = __lectures.filter((q) => q.table === "comment_interactions").map((q) => q.limit);
+      out.memeAlice = __maCopie().reactions[0] === alice;
       return out;
     });
-    expect(r.absente, "publication absente de la réponse : rien n'est prouvé").toEqual({ lus: 1, reactions: ["🎸"] });
-    expect(r.echec, "lecture en échec : une liste vide n'est pas une absence").toEqual({ lus: 1, reactions: ["🎸"] });
-    expect(r.borne, "réponse à la borne : elle ne prouve aucune absence").toEqual({ lus: 1, reactions: ["🎸"] });
-    expect(r.repli, "le repli a lu : Zoé part, Alice arrive avec son identifiant").toEqual({ lus: 1, reactions: ["😍:ci_A"] });
+    expect(r.absente, "publication absente de la réponse : rien n'est prouvé").toEqual({ lus: 1, reactions: ["🎸", "😍"] });
+    expect(r.echec, "lecture en échec : une liste vide n'est pas une absence").toEqual({ lus: 1, reactions: ["🎸", "😍"] });
+    expect(r.borne, "réponse à la borne : elle ne prouve aucune absence").toEqual({ lus: 1, reactions: ["🎸", "😍"] });
+    expect(r.repli, "le repli a lu : Zoé part, Alice apprend son identifiant").toEqual({ lus: 1, reactions: ["😍:ci_A"] });
+    expect(r.memeAlice, "la même entrée, qui a appris son `ci`").toBe(true);
+    expect(new Set(r.limites), "le repli demande une limite explicite, sous max-rows").toEqual(new Set([500]));
     expect(r.cheminsLus, "prémisse : le repli a bien interrogé comment_interactions, trois fois au moins").toBeGreaterThanOrEqual(3);
+  });
+  test("⑥ un compte bloqué ne compte pas sur la pastille, même revenu par la lecture ; l'ordre suit l'instant", async ({ page }) => {
+    const MAL = "0f0e0d0c-0b0a-4909-8807-060504030201";
+    await preparer(page, {
+      serveur: [LIGNE_ALICE, { id: "ci_MAL", comment_id: P, post_id: P, user_id: MAL, kind: "emoji", payload: "🤬", created_at: "2026-11-05T09:00:03.000000+00:00" }],
+      // Mon 🙂, posé AVANT les deux autres.
+      locales: [{ id: "emoji_mien", authorId: MOI, text: "🙂", type: "emoji_reaction", createdAt: Date.parse("2026-11-05T09:00:01Z") }],
+    });
+    const r = await page.evaluate(async ([mal]) => {
+      state.user.blocked = [mal];
+      // Le temps réel l'écarte déjà (« un compte bloqué n'AJOUTE rien ») ; la lecture, non.
+      __liaison("comment_interactions", "INSERT")({ eventType: "INSERT", old: {}, new: { id: "ci_MAL2", comment_id: "post_rv39", post_id: "post_rv39",
+        user_id: mal, kind: "emoji", payload: "👎", created_at: "2026-11-05 09:00:04+00" } });
+      state.supabasePosts = await supaLoadPosts();
+      __poserCarte("post_rv39");
+      return {
+        ordre: __reactions(__maCopie()).map((x) => x.texte),
+        reacteurs: _postReactItems("post_rv39").map((x) => x.text),
+        pastille: __pastille("post_rv39"),
+      };
+    }, [MAL]);
+    expect(r.ordre, "ma copie suit le serveur, dans l'ordre des instants (le compte bloqué y entre, comme dans la copie serveur)").toEqual(["🙂", "🤬", "😍"]);
+    expect(r.reacteurs, "mais il ne compte pas, ni sur la pastille ni dans la liste des réacteurs").toEqual(["🙂", "😍"]);
+    expect(r.pastille, "« 🙂 » en tête : la plus ancienne des deux réactions à égalité").toBe("🙂 2");
+  });
+
+  test("⑦ un retrait reçu PENDANT la lecture ne revient pas, résolu par l'index comme par la recherche à l'écran", async ({ page }) => {
+    await preparer(page);
+    // Par l'INDEX : la réaction d'Alice est arrivée en direct (indexée, posée avec son
+    // identifiant), puis Alice la retire pendant qu'une lecture du fil est en vol.
+    const parIndex = await page.evaluate(async ([alice]) => {
+      __poserCarte("post_rv39");
+      __liaison("comment_interactions", "INSERT")({ eventType: "INSERT", old: {}, new: { id: "ci_A", comment_id: "post_rv39", post_id: "post_rv39",
+        user_id: alice, kind: "emoji", payload: "😍", created_at: "2026-11-05 09:00:05.654321+00" } });
+      const avant = { pastille: __pastille("post_rv39"), indexee: _ciIndex.has("ci_A") };
+      window.__pendantLecture = () => __supprimer("ci_A");   // après l'instantané de la réponse
+      state.supabasePosts = await supaLoadPosts();
+      return { avant, miennes: __reactions(__maCopie()), serveur: __reactions(__copieServeur()), pastille: __pastille("post_rv39") };
+    }, [ALICE]);
+    expect(parIndex.avant).toEqual({ pastille: "😍 1", indexee: true });
+    expect(parIndex, "l'instantané la portait encore : elle ne revient ni sur ma copie ni sur la copie serveur")
+      .toMatchObject({ miennes: [], serveur: [], pastille: "" });
+
+    // Par la RECHERCHE À L'ÉCRAN : une réaction persistée (elle porte son identifiant,
+    // l'index ne la connaît pas), retirée pendant une lecture plus lente que le balayage.
+    const parEcran = await page.evaluate(async ([alice, t]) => {
+      window.__interactions = [{ id: "ci_P", comment_id: "post_rv39", post_id: "post_rv39", user_id: alice, kind: "emoji", payload: "🌻",
+        created_at: "2026-11-05T09:10:00.000000+00:00" }];
+      __maCopie().reactions = [{ id: "semoji_veille", ci: "ci_P", authorId: alice, text: "🌻", type: "emoji_reaction", createdAt: t }];
+      __poserCarte("post_rv39");
+      const avant = { pastille: __pastille("post_rv39"), indexee: _ciIndex.has("ci_P") };
+      __rpcDelais = [400];
+      window.__pendantLecture = () => __supprimer("ci_P");
+      state.supabasePosts = await supaLoadPosts();
+      return { avant, miennes: __reactions(__maCopie()), serveur: __reactions(__copieServeur()), pastille: __pastille("post_rv39") };
+    }, [ALICE, Date.parse("2026-11-05T09:10:00Z")]);
+    expect(parEcran.avant).toEqual({ pastille: "🌻 1", indexee: false });
+    expect(parEcran).toMatchObject({ miennes: [], serveur: [], pastille: "" });
+  });
+
+  test("⑧ une lecture plus VIEILLE arrivée après une plus fraîche ne défait rien (profil et tête du fil croisés)", async ({ page }) => {
+    await preparer(page, {
+      serveur: [LIGNE_ALICE, { id: "ci_Z", comment_id: P, post_id: P, user_id: ZOE, kind: "emoji", payload: "🎸", created_at: "2026-11-05T08:59:00.000000+00:00" }],
+      locales: [{ id: "semoji_zoe", authorId: ZOE, text: "🎸", type: "emoji_reaction", createdAt: Date.parse("2026-11-05T08:59:00Z") }],
+    });
+    const r = await page.evaluate(async () => {
+      __poserCarte("post_rv39");
+      // A : la lecture du PROFIL (non séquencée par la tête du fil), lente.
+      __rpcDelais = [600, 0];
+      const a = supaLoadPosts(0, MY_UID);
+      await new Promise((ok) => setTimeout(ok, 60));   // son instantané est pris
+      // Zoé retire sa réaction pendant que le socket dormait : aucun DELETE reçu.
+      window.__interactions = __interactions.filter((i) => i.id !== "ci_Z");
+      // B : la tête du fil, instantané plus frais, réponse immédiate.
+      state.supabasePosts = await supaLoadPosts();
+      const apresB = __reactions(__maCopie()).map((x) => x.texte);
+      await a;
+      return { apresB, apresA: __reactions(__maCopie()).map((x) => x.texte), pastille: __pastille("post_rv39"), lectures: __lecturesFil() };
+    });
+    expect(r.lectures, "prémisse : deux lectures du fil").toBe(2);
+    expect(r.apresB, "la plus fraîche retire Zoé").toEqual(["😍"]);
+    expect(r.apresA, "la plus vieille, arrivée après, ne la ramène pas").toEqual(["😍"]);
+    expect(r.pastille).toBe("😍 1");
   });
 });
