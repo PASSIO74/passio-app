@@ -1141,3 +1141,67 @@ test("bouton (contre-revue 2026-11-03, 2e passage) : chaque lecture de compte po
   try { await SD.lireComptesAnciens({ url: "https://x.supabase.co", cle: "k", uids: [U(1)] }); } finally { globalThis.fetch = avant; }
   assert.ok(signal && typeof signal.aborted === "boolean", "un AbortSignal est passé à fetch");
 });
+
+// ─── Quatrième famille : les parcours qui échouent (2026-11-06) ───────────────
+// Mutations éprouvées à la main : compter une ligne sans `auth_uid` → ㉚② rougit ;
+// prendre un refus légitime pour un échec → ㉚③ rougit.
+import { classerParcours, CHEMIN_FLUX, zoneCible as zoneParcours, choisirCibles as choisirParcours } from "../../scripts/sentinelle-detecter.mjs";
+const UID_A = "11111111-1111-4111-8111-111111111111", UID_B = "22222222-2222-4222-8222-222222222222";
+const T_P = Date.parse("2026-11-06T12:00:00Z");
+let nP = 0;
+function fluxP(action, { compte = UID_A, ok = false, rc = "42501", fin = true, synth = false } = {}) {
+  const cid = "fl_sd" + (++nP).toString(36).padStart(6, "0");
+  const ts = new Date(T_P - 20 * 60e3).toISOString();
+  const l = [{ event_id: cid + "s", correlation_id: cid, action: "start", status: "ok", meta: { flow_action: action, ...(synth ? { synthetic: true } : {}) }, auth_uid: compte, received_at: ts, client_ts: ts, app_version: "v1" }];
+  if (fin) {
+    l.push({ event_id: cid + "v", correlation_id: cid, action: "step", status: ok ? "ok" : "error", meta: { step: "saved", ...(rc && !ok ? { rc } : {}) }, auth_uid: compte, received_at: ts, client_ts: ts });
+    l.push({ event_id: cid + "e", correlation_id: cid, action: "end", status: ok ? "ok" : "error", meta: {}, auth_uid: compte, received_at: ts, client_ts: ts });
+  }
+  return l;
+}
+
+test("㉚① un parcours refusé chez deux comptes serveur devient une enquête, au titre sans texte libre", () => {
+  const r = classerParcours([...fluxP("send_message"), ...fluxP("send_message", { compte: UID_B }), ...fluxP("send_message", { ok: true })], { maintenant: T_P });
+  assert.equal(r.candidates.length, 1);
+  const c = r.candidates[0];
+  assert.equal(c.famille, "parcours");
+  assert.equal(c.cle, "parcours send_message 42501");
+  assert.equal(c.comptes, 2);
+  assert.equal(c.n, 2);
+  assert.match(titreIssue(c), /^\[SENTINELLE\] parcours send_message 42501 · [0-9a-f]{8}$/, "identifiant du contrat et code fermé, rien d’autre");
+  assert.match(c.exemple.stack, /Source de vérité : conv_messages/);
+  assert.equal(zoneParcours(c), "parcours send_message");
+  assert.match(CHEMIN_FLUX, /type=eq\.flow/);
+  assert.doesNotMatch(CHEMIN_FLUX, /user_id/, "l'identité vient du serveur (auth_uid), jamais du client");
+});
+
+test("㉚② une ligne sans compte serveur, ou au format douteux, est écartée et comptée", () => {
+  const r = classerParcours([...fluxP("send_message", { compte: null }), ...fluxP("send_message", { compte: "pas-un-uuid" }), ...fluxP("send_message", { compte: null })], { maintenant: T_P, min: 2 });
+  assert.equal(r.candidates.length, 0);
+  assert.equal(r.nonVerifiees, 3);
+});
+
+test("㉚③ refus légitime, action sans verdict et sonde ne font pas d'enquête", () => {
+  const r = classerParcours([
+    ...fluxP("event_join", { rc: "complete" }), ...fluxP("event_join", { rc: "complete", compte: UID_B }),
+    ...fluxP("send_message", { fin: false }), ...fluxP("send_message", { fin: false, compte: UID_B }),
+    ...fluxP("report_content", { synth: true }), ...fluxP("report_content", { synth: true, compte: UID_B }),
+  ], { maintenant: T_P });
+  assert.deepEqual(r.candidates, []);
+});
+
+test("㉚④ un code hostile est assaini ; deux codes du même parcours ne partent pas ensemble", () => {
+  const hostile = classerParcours([...fluxP("comment_post", { rc: "x'); rm -rf /" }), ...fluxP("comment_post", { rc: "x'); rm -rf /", compte: UID_B })], { maintenant: T_P });
+  assert.equal(hostile.candidates[0].cle, "parcours comment_post autre");
+  const deux = classerParcours([...fluxP("comment_post"), ...fluxP("comment_post", { compte: UID_B }), ...fluxP("comment_post", { rc: "23514" }), ...fluxP("comment_post", { rc: "23514", compte: UID_B })], { maintenant: T_P });
+  assert.equal(deux.candidates.length, 2);
+  assert.equal(choisirParcours(deux.candidates, [], [], 3).length, 1, "une enquête par parcours à la fois");
+});
+
+test("㉚⑤ la consigne d'une enquête parcours cite le contrat et interdit de maquiller l'échec", () => {
+  const c = classerParcours([...fluxP("report_content"), ...fluxP("report_content", { compte: UID_B })], { maintenant: T_P }).candidates[0];
+  const corps = corpsIssue({ fenetreHeures: 24 }, c, { date: "2026-11-06" });
+  assert.match(corps, /contrats-actions\.js/);
+  assert.match(corps, /Jamais transformer l’échec en succès/);
+  assert.match(corps, /Signaler un contenu ou un compte/);
+});

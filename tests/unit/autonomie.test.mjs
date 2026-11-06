@@ -231,8 +231,15 @@ test("⑫ les marques ont UNE orthographe, lue et écrite par les mêmes constan
   assert.match(s, /\.eq\("event", EVT\.reveil\)/);
   assert.match(s, /event: EVT\.reveil/);
   assert.match(s, /verifierPlafondEnBase\(admin, "systeme:sentinelle-reveil", "sentinelle-reveil", \{ parMinute: 1, parHeure: 2 \}\)/);
-  assert.match(s, /if \(!a \|\| !a\.exact \|\| a\.echecs30 == null\) return \{ raison: "mesure_absente" \}/, "pas de mesure en base, pas de réveil");
-  assert.match(s, /comptesErreurs: a\.echecs30 \}/, "le réveil décide sur les comptes ANCIENS comptés en base");
+  // Deux sources depuis le 2026-11-06 (parcours en panne) — la même exigence pour les deux :
+  // seuls des comptes ANCIENS décident, comptés en base OU relus dans l'authentification.
+  assert.match(s, /const mesure = a && a\.exact && a\.echecs30 != null \? a\.echecs30 : null;/, "la mesure en base n'est retenue qu'exacte");
+  assert.match(s, /if \(mesure == null && !comptesParcours\) return \{ raison: "mesure_absente" \}/, "ni mesure en base ni parcours en panne chez des comptes anciens : pas de réveil");
+  assert.match(s, /comptesErreurs: Math\.max\(mesure \|\| 0, comptesParcours\) \}/, "le réveil décide sur les comptes ANCIENS");
+  assert.match(s, /comptesAnciens\(admin, \[\.\.\.new Set\(enPanne\.flatMap\(\(p\) => p\.comptesEchecIds \|\| \[\]\)\)\], REVEIL\.ancienneteMinMs\)/, "les comptes d'un parcours sont relus, avec l'ancienneté du réveil");
+  const anciens = corpsDe("comptesAnciens");
+  assert.match(anciens, /u && u\.email_confirmed_at && Date\.now\(\) - dateUtc\(u\.created_at\) >= ancienneteMs/, "confirmé ET assez ancien, sinon il ne compte pas");
+  assert.match(anciens, /uids\.slice\(0, 20\)/, "lecture bornée");
   assert.equal(reveilsEpuises(11), false);
   assert.equal(reveilsEpuises(12), true);
   assert.equal(reveilsEpuises(NaN), true, "comptage illisible : on ne réveille pas");

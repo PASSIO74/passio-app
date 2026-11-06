@@ -988,3 +988,67 @@ test("㉝ jeton GitHub expiré : première ligne, le bouton ouvre GitHub, le sec
   await expect(erreur.locator(".btn-regler")).toHaveCount(0);
   await expect(page.locator("#toutRegler")).toBeHidden();
 });
+
+// ─── Parcours critiques, veille, politique (2026-11-06) ────────────────────────
+// L'état est construit par les VRAIES fonctions du serveur (bilanParcours,
+// resumerBattement, resumerPolitique), comme la liste « À faire ».
+function etatParcours({ battementAge = 5 * 60e3, codeHostile = false } = {}) {
+  const { bilanParcours, couverture } = require("../../supabase/functions/_shared/parcours.js");
+  const { resumerBattement } = require("../../supabase/functions/_shared/battement.js");
+  const { resumerPolitique } = require("../../supabase/functions/_shared/politique-autonomie.js");
+  const t = Date.now(), ts = new Date(t - 10 * 60e3).toISOString();
+  const lignes = [];
+  const flux = (action, compte, ok, rc) => {
+    const cid = "fl_e2e" + (lignes.length + 1000);
+    lignes.push({ event_id: cid + "a", correlation_id: cid, action: "start", status: "ok", meta: { flow_action: action }, auth_uid: compte, received_at: ts, client_ts: ts });
+    lignes.push({ event_id: cid + "b", correlation_id: cid, action: "step", status: ok ? "ok" : "error", meta: { step: "saved", ...(rc ? { rc } : {}) }, auth_uid: compte, received_at: ts, client_ts: ts });
+    lignes.push({ event_id: cid + "c", correlation_id: cid, action: "end", status: ok ? "ok" : "error", meta: {}, auth_uid: compte, received_at: ts, client_ts: ts });
+  };
+  ["u1", "u2", "u3"].forEach((u) => flux("send_message", u, false, codeHostile ? CHARGE : "42501"));
+  flux("like_post", "u1", true);
+  const jour = bilanParcours(lignes, { maintenant: t });
+  const parcours = { ...jour, couverture: couverture(jour), recent: { parcours: jour.parcours } };
+  const lect = { sante: "ok", signalements: "ok", github: "ok", parcours: "ok" };
+  const battement = resumerBattement({ created_at: new Date(t - battementAge).toISOString(), properties: { lectures: lect, revision: "abc1234", gestes: { reveil: "fait" } } }, 95, t);
+  return etat({ parcours, battement, politique: resumerPolitique() });
+}
+
+test("㉞ parcours en panne : une ligne sur l'accueil et son bouton ; le détail dit le dénominateur, le gris et la couverture", async ({ page }) => {
+  const envois = [];
+  await poserSession(page);
+  await routerFonction(page, envois, etatParcours());
+  await page.goto("/pilotage/");
+  const ligne = page.locator("#afaire .ligne", { hasText: "« Envoyer un message » échoue" });
+  await expect(ligne).toBeVisible();
+  await ligne.locator("button", { hasText: "Régler" }).click();
+  await expect.poll(() => gestes(envois).map((e) => e.corps)).toEqual([{ action: "relancer", cible: "sentinelle" }]);
+  await aller(page, "details");
+  const msg = page.locator("#parcours .carte", { hasText: "Envoyer un message ★" });
+  await expect(msg).toContainText("En panne");
+  await expect(msg).toContainText("0 réussie(s) sur 3 jugée(s) en 24 h");
+  await expect(msg).toContainText("Codes des échecs : 42501 ×3");
+  // Une seule action réussie : « Trop peu », gris — jamais « OK » par défaut.
+  await expect(page.locator("#parcours .carte", { hasText: "Aimer une publication" })).toContainText("Trop peu");
+  await expect(page.locator("#parcours .carte", { hasText: "Signaler un contenu" })).toContainText("Pas vu");
+  await expect(page.locator("#couverture")).toContainText("pas encore instrumenté");
+  await expect(page.locator("#couverture")).toContainText("Se connecter");
+  await expect(page.locator("#veilleBattement")).toContainText("Elle tourne");
+  await expect(page.locator("#veilleBattement")).toContainText("95/96 battements en 24 h");
+  await expect(page.locator("#politique")).toContainText("Appliquée");
+  await expect(page.locator("#politique")).toContainText("Jamais seuls : Retirer seule une mise en ligne");
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+});
+
+test("㉟ veille arrêtée : urgence en tête, le bouton ouvre sa planification ; un code hostile reste du texte", async ({ page }) => {
+  await poserSession(page);
+  await routerFonction(page, [], etatParcours({ battementAge: 3 * 3600e3, codeHostile: true }));
+  await page.goto("/pilotage/");
+  const ligne = page.locator("#afaire .ligne", { hasText: "La veille ne tourne plus" });
+  await expect(ligne).toBeVisible();
+  await expect(ligne.locator("a", { hasText: "Régler" })).toHaveAttribute("href", /supabase\.com\/dashboard\/project\/njkiyoklssvefstljemx\/integrations\/cron/);
+  await aller(page, "details");
+  await expect(page.locator("#veilleBattement")).toContainText("Arrêtée");
+  // Le code écrit par un navigateur arrive assaini par le serveur, et rendu en texte.
+  await expect(page.locator("#parcours .carte", { hasText: "Envoyer un message ★" })).toContainText("Codes des échecs : autre ×3");
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+});

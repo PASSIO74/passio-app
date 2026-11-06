@@ -1,0 +1,199 @@
+// Parcours critiques dans le nuage (2026-11-06) — contrats d'action et bilan
+// des flux. Le fichier éprouvé est CELUI que Deno déploie (_shared/).
+// Mutations éprouvées à la main avant livraison (chacune rougit au moins un test) :
+//   · `issueFlux` rend « reussi » quand aucun verdict n'est arrivé    → ④ rougit ;
+//   · la panne compte les lignes anonymes comme des comptes            → ⑦ rougit ;
+//   · `juges` inclut les refus légitimes                               → ⑥ rougit ;
+//   · un état « sain » sous `minJuges`                                 → ⑧ rougit ;
+//   · la durée prise sur `received_at` au lieu de `client_ts`          → ⑨ rougit ;
+//   · le `rc` recopié sans assainissement                              → ⑩ rougit.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { CONTRATS, VERSION_CONTRATS, validerContrats, contratDe, contratsCritiques, PARCOURS_NON_INSTRUMENTES } from "../../supabase/functions/_shared/contrats-actions.js";
+import { regrouperFlux, issueFlux, bilanParcours, etatParcours, raisonsVerdict, parcoursARegler, couverture, centile, SEUILS } from "../../supabase/functions/_shared/parcours.js";
+import { COUPURES_AUTORISEES } from "../../supabase/functions/_shared/reglages.js";
+
+const T0 = Date.parse("2026-11-06T12:00:00Z");
+const iso = (ms) => new Date(ms).toISOString();
+let seq = 0;
+// Un flux complet : start → saved → end, sur la même horloge d'appareil.
+function flux(action, { cid, ok = true, rc = null, compte = "u1", debut = T0 - 10 * 60e3, duree = 400, fin = true, pending = false, synth = false, decalageClient = 0, version = "abc1234" } = {}) {
+  const c = cid || "fl_t" + (++seq).toString(36).padStart(6, "0");
+  const lignes = [{ event_id: "e" + (++seq), correlation_id: c, action: "start", status: "ok", meta: { flow_action: action, step: "handler", ...(synth ? { synthetic: true } : {}) }, auth_uid: compte, received_at: iso(debut + 50), client_ts: iso(debut + decalageClient), app_version: version }];
+  if (pending) {
+    lignes.push({ event_id: "e" + (++seq), correlation_id: c, action: "step", status: "ok", meta: { step: "queued", rc: rc || "hors_ligne" }, auth_uid: compte, received_at: iso(debut + duree + 50), client_ts: iso(debut + duree + decalageClient) });
+    lignes.push({ event_id: "e" + (++seq), correlation_id: c, action: "end", status: "pending", meta: { step: "done" }, auth_uid: compte, received_at: iso(debut + duree + 50), client_ts: iso(debut + duree + decalageClient) });
+    return lignes;
+  }
+  if (!fin) return lignes;
+  lignes.push({ event_id: "e" + (++seq), correlation_id: c, action: "step", status: ok ? "ok" : "error", meta: { step: "saved", ...(rc ? { rc } : {}) }, auth_uid: compte, received_at: iso(debut + duree + 50), client_ts: iso(debut + duree + decalageClient) });
+  lignes.push({ event_id: "e" + (++seq), correlation_id: c, action: "end", status: ok ? "ok" : "error", meta: { step: "done" }, auth_uid: compte, received_at: iso(debut + duree + 50), client_ts: iso(debut + duree + decalageClient) });
+  return lignes;
+}
+const bilanDe = (lignes, opts = {}) => bilanParcours(lignes, { maintenant: T0, ...opts });
+const parcoursDe = (b, id) => b.parcours.find((p) => p.id === id);
+
+test("① le registre est valide, versionné, et ses coupures sont dans la liste blanche", () => {
+  assert.equal(VERSION_CONTRATS, 1);
+  assert.deepEqual(validerContrats(CONTRATS, COUPURES_AUTORISEES), []);
+  assert.ok(contratsCritiques().includes("send_message") && contratsCritiques().includes("report_content"));
+  assert.equal(contratDe("send_message").id, "send_message");
+  assert.equal(contratDe("__proto__"), null, "une clé héritée n'est pas un contrat");
+  assert.equal(contratDe("inconnu"), null);
+  assert.ok(PARCOURS_NON_INSTRUMENTES.length >= 3, "ce qui n'est pas instrumenté est recensé, pas tu");
+});
+
+test("② la validation refuse un contrat mal formé — un registre invalide ne juge rien", () => {
+  const casse = (patch) => validerContrats({ ...CONTRATS, send_message: { ...CONTRATS.send_message, ...patch } }, COUPURES_AUTORISEES);
+  assert.ok(casse({ libelle: "" }).some((e) => /libelle/.test(e)));
+  assert.ok(casse({ finMs: 0 }).some((e) => /finMs/.test(e)));
+  assert.ok(casse({ objectifP95Ms: 999e3 }).some((e) => /objectifP95Ms/.test(e)), "objectif au-delà du délai");
+  assert.ok(casse({ refusLegitimes: ["<script>"] }).some((e) => /hors format/.test(e)));
+  assert.ok(casse({ refusLegitimes: ["hors_ligne"] }).some((e) => /à la fois/.test(e)), "attente et refus à la fois");
+  assert.ok(casse({ coupure: "passio_mvp_state_v1" }).some((e) => /liste blanche/.test(e)));
+  assert.ok(casse({ emetteurs: ["../../etc/passwd"] }).some((e) => /émetteur/.test(e)));
+  assert.ok(casse({ verrous: [] }).some((e) => /verrou/.test(e)));
+  assert.ok(casse({ criticite: "moyenne" }).some((e) => /criticité/.test(e)));
+  const b = bilanParcours([], { contrats: { ...CONTRATS, send_message: { ...CONTRATS.send_message, finMs: -1 } } });
+  assert.ok(b.contratsInvalides && b.contratsInvalides.length, "le bilan le dit");
+  assert.deepEqual(b.parcours, []);
+  assert.ok(raisonsVerdict(b).orange.some((r) => /invalides/.test(r)));
+});
+
+test("③ désordre et doublons : la fin lue avant le début, la copie d'un événement", () => {
+  const l = flux("send_message", { cid: "fl_ordre01" });
+  const melange = [l[2], l[1], l[0], { ...l[1] }];
+  const { flux: f, doublons } = regrouperFlux(melange);
+  assert.equal(doublons, 1);
+  const x = f.get("fl_ordre01");
+  assert.equal(x.action, "send_message");
+  assert.equal(x.confirmation, "ok");
+  assert.equal(issueFlux(x, CONTRATS.send_message, T0), "reussi");
+  // Une fin sans début dans la fenêtre : orpheline, jamais jugée.
+  const orph = bilanDe([l[1], l[2]]);
+  assert.equal(orph.orphelins, 1);
+  assert.equal(parcoursDe(orph, "send_message").tentes, 0);
+});
+
+test("④ une action sans verdict n'est ni réussie ni échouée : en cours, puis inconnue", () => {
+  const recent = flux("send_message", { fin: false, debut: T0 - 5e3 });
+  const vieux = flux("send_message", { fin: false, debut: T0 - 10 * 60e3 });
+  const { flux: f } = regrouperFlux([...recent, ...vieux]);
+  const [a, b] = [...f.values()];
+  assert.equal(issueFlux(a, CONTRATS.send_message, T0), "en_cours");
+  assert.equal(issueFlux(b, CONTRATS.send_message, T0), "inconnu");
+  const bl = parcoursDe(bilanDe([...recent, ...vieux]), "send_message");
+  assert.equal(bl.enCours, 1); assert.equal(bl.inconnus, 1); assert.equal(bl.reussis, 0); assert.equal(bl.echoues, 0);
+});
+
+test("⑤ refus légitime, file locale et échec réel se distinguent", () => {
+  const complet = flux("event_join", { ok: false, rc: "complete" });
+  const generique = flux("event_join", { ok: false, rc: "refus" });
+  const file = flux("send_message", { pending: true });
+  const { flux: f } = regrouperFlux([...complet, ...generique, ...file]);
+  const issues = [...f.values()].map((x) => issueFlux(x, CONTRATS[x.action], T0));
+  assert.deepEqual(issues, ["refuse", "echoue", "attente"]);
+});
+
+test("⑥ le dénominateur est dit : réussies + échouées + inconnues, jamais les refus ni la file", () => {
+  const l = [
+    ...flux("event_join"), ...flux("event_join"), ...flux("event_join", { ok: false, rc: "refus", compte: "u2" }),
+    ...flux("event_join", { ok: false, rc: "complete" }), ...flux("event_join", { ok: false, rc: "passee" }),
+    ...flux("event_join", { fin: false, debut: T0 - 30 * 60e3 }),
+  ];
+  const p = parcoursDe(bilanDe(l), "event_join");
+  assert.equal(p.tentes, 6);
+  assert.equal(p.refuses, 2);
+  assert.equal(p.juges, 4, "2 réussies + 1 échouée + 1 inconnue");
+  assert.equal(p.tauxSucces, 50);
+});
+
+test("⑦ une panne exige des comptes SERVEUR distincts : un appareil anonyme ne fait pas sonner", () => {
+  const anonymes = Array.from({ length: 6 }, () => flux("send_message", { ok: false, rc: "42501", compte: null })).flat();
+  const pa = parcoursDe(bilanDe(anonymes), "send_message");
+  assert.notEqual(pa.etat, "panne");
+  assert.equal(pa.anonymesEchec, 6);
+  assert.equal(pa.etat, "degrade", "dit, en orange — jamais « sain »");
+  assert.deepEqual(raisonsVerdict(bilanDe(anonymes)).rouge, []);
+  const unSeul = Array.from({ length: 6 }, () => flux("send_message", { ok: false, rc: "42501", compte: "u1" })).flat();
+  assert.notEqual(parcoursDe(bilanDe(unSeul), "send_message").etat, "panne", "un seul compte en boucle");
+  const deux = [...unSeul, ...flux("send_message", { ok: false, rc: "42501", compte: "u2" })];
+  const pd = parcoursDe(bilanDe(deux), "send_message");
+  assert.equal(pd.etat, "panne");
+  assert.equal(pd.comptesEchec, 2);
+  assert.deepEqual(pd.codes, [{ code: "42501", n: 7 }]);
+  const v = raisonsVerdict(bilanDe(deux));
+  assert.equal(v.rouge.length, 1, "parcours critique en panne : rouge");
+  assert.match(v.rouge[0], /Envoyer un message.*en panne/);
+});
+
+test("⑧ pas d'état sain sans volume ; non observé n'est pas sain non plus", () => {
+  const peu = [...flux("like_post"), ...flux("like_post")];
+  const p = parcoursDe(bilanDe(peu), "like_post");
+  assert.equal(p.etat, "insuffisant");
+  assert.equal(parcoursDe(bilanDe(peu), "send_message").etat, "non_observe");
+  const assez = Array.from({ length: SEUILS.minJuges }, () => flux("like_post")).flat();
+  assert.equal(parcoursDe(bilanDe(assez), "like_post").etat, "sain");
+  assert.deepEqual(raisonsVerdict(bilanDe(peu)), { rouge: [], orange: [] }, "l'insuffisant ne sonne pas");
+});
+
+test("⑨ deux horloges ne se soustraient pas : un appareil décalé d'un jour ne fabrique ni lenteur ni panne", () => {
+  const decale = Array.from({ length: 20 }, () => flux("comment_post", { duree: 300, decalageClient: 864e5 })).flat();
+  const p = parcoursDe(bilanDe(decale), "comment_post");
+  assert.equal(p.p95Ms, 300);
+  assert.equal(p.etat, "sain");
+  // Âge d'une action sans fin : horloge du serveur (received_at), pas celle de l'appareil.
+  const enAvance = flux("comment_post", { fin: false, debut: T0 - 2e3, decalageClient: 864e5 });
+  assert.equal(parcoursDe(bilanDe(enAvance), "comment_post").enCours, 1);
+  // Lent sur assez de mesures : dégradé, avec l'objectif dit.
+  const lent = Array.from({ length: 25 }, () => flux("comment_post", { duree: 4000 })).flat();
+  const pl = parcoursDe(bilanDe(lent), "comment_post");
+  assert.equal(pl.etat, "degrade");
+  assert.match(pl.raisons[0], /p95 4000 ms pour un objectif de 1000 ms/);
+});
+
+test("⑩ le code de refus écrit par un navigateur est assaini", () => {
+  const l = flux("report_content", { ok: false, rc: "<img src=x onerror=alert(1)>", compte: "u3" });
+  const p = parcoursDe(bilanDe(l), "report_content");
+  assert.deepEqual(p.codes, [{ code: "autre", n: 1 }]);
+  assert.equal(regrouperFlux([{ correlation_id: "fl_x'); drop", action: "start", meta: { flow_action: "send_message" } }]).flux.size, 0, "corrélation hors format écartée");
+  assert.equal(regrouperFlux([{ correlation_id: "fl_abcdef", action: "start", meta: { flow_action: "Send Message!" } }]).flux.get("fl_abcdef").action, null, "action hors format : non jugée");
+});
+
+test("⑪ sondes et actions hors contrat sont comptées à part", () => {
+  const l = [...flux("send_message", { synth: true }), ...flux("share_post")];
+  const b = bilanDe(l);
+  assert.equal(parcoursDe(b, "send_message").sondes, 1);
+  assert.equal(parcoursDe(b, "send_message").tentes, 0, "une sonde n'est pas du public");
+  assert.equal(b.horsContrat, 1);
+});
+
+test("⑫ ordre des parcours à régler, couverture calculée", () => {
+  const panne = [...Array.from({ length: 3 }, (_, i) => flux("send_message", { ok: false, rc: "42501", compte: "c" + i })).flat()];
+  const degrade = [...flux("like_post", { ok: false, compte: "a" }), ...flux("like_post", { ok: false, compte: "b" }), ...Array.from({ length: 6 }, () => flux("like_post")).flat()];
+  const b = bilanDe([...degrade, ...panne]);
+  assert.deepEqual(parcoursARegler(b).map((p) => [p.id, p.etat]), [["send_message", "panne"], ["like_post", "degrade"]]);
+  const cv = couverture(b);
+  assert.equal(cv.sousContrat, Object.keys(CONTRATS).length);
+  assert.equal(cv.recenses, Object.keys(CONTRATS).length + PARCOURS_NON_INSTRUMENTES.length);
+  assert.equal(cv.observes, 2);
+  assert.ok(cv.nonObserves.includes("report_content"));
+});
+
+test("⑬ centile au rang le plus proche ; états en mots", () => {
+  assert.equal(centile([], 95), null);
+  assert.equal(centile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 95), 10);
+  assert.equal(centile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 50), 5);
+  assert.equal(etatParcours({ tentes: 0 }).etat, "non_observe");
+});
+
+test("⑭ chaque émetteur déclaré porte bien le flux de son contrat (même règle que la garde)", () => {
+  for (const c of Object.values(CONTRATS)) {
+    for (const f of c.emetteurs) {
+      const src = fs.readFileSync(f, "utf8");
+      assert.ok(src.includes(`"${c.id}"`), `${f} ne nomme pas ${c.id}`);
+    }
+    for (const v of c.verrous) assert.ok(fs.existsSync(v), `verrou absent : ${v}`);
+  }
+});

@@ -4,6 +4,7 @@
 > pilotage et la Sentinelle, et faire que si demain 100 000 personnes l'utilisent, tous les problèmes
 > soient auto-réparés — je veux lancer sans trop gérer la partie technique ».
 > Ce document distingue ce qui est **mesuré**, ce qui est **estimé** (et le dit), et ce qui est **livré**.
+> **Suite du 2026-11-06** : parcours jugés dans le nuage, battement de la veille lu par un chien de garde extérieur, politique d'automatisation sous forme de code, matrice des 48 cas — `docs/AUTONOMIE_EXPLOITATION.md`.
 
 ## En une page
 

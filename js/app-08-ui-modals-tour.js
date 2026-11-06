@@ -5191,6 +5191,11 @@ async function supaGetLikeCount(postId) {
 // backend pas encore prêt) → permet à la file d'attente (#14) de réessayer.
 async function supaAddComment(postId, content, commentId) {
   if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return false;
+  // Flux « comment_post » : ouvert à l'écriture RÉELLE, fermé à son verdict
+  // (2026-11-06, contrats-actions.js). Chaque essai de la file est un flux.
+  let _cmtCid = null;
+  try { if (window.tel && tel.flowStart) _cmtCid = tel.flowStart("comment_post", { postId: postId }); } catch (e) {}
+  const _cmtRegle = (ok, err) => { try { if (_cmtCid && window.tel && tel.settle) tel.settle(_cmtCid, "saved", ok, err || null); } catch (e) {} _cmtCid = null; };
   try {
     await supaEnsureProfileExists();
     const { error } = await supa.from("post_comments").insert({
@@ -5199,11 +5204,20 @@ async function supaAddComment(postId, content, commentId) {
       id: commentId || ("c_" + uid()), post_id: postId, author_id: MY_UID, content,
       created_at: new Date().toISOString(),
     });
-    if (error) { console.warn("Comment error:", error.message); return false; }
+    if (error) {
+      // Réponse perdue puis renvoi : la ligne est déjà là, et c'est la mienne
+      // (_conflitClePrimaire + _ligneDejaEnBase, app-02). Les mentions ne
+      // partent qu'APRÈS une réponse positive : l'essai dont la réponse s'est
+      // perdue ne les a donc pas envoyées — elles partent maintenant, une fois.
+      const dejaLa = !!commentId && _conflitClePrimaire(error, "post_comments") && await _ligneDejaEnBase("post_comments", commentId, "author_id", MY_UID);
+      if (!dejaLa) { console.warn("Comment error:", error.message); _cmtRegle(false, error); return false; }
+      try { if (window.tel && _cmtCid) tel.step(_cmtCid, "deja_en_base", "ok"); } catch (e) {}
+    }
+    _cmtRegle(true);
     // ASTRA-24 : les mentions, maintenant que le commentaire existe en base.
     try { if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, content); } catch (e) {}
     return true;
-  } catch(e) { console.warn("Comment error:", e); return false; }
+  } catch(e) { console.warn("Comment error:", e); _cmtRegle(false, e); return false; }
 }
 
 // ───────── Interactions sur les commentaires (like / réponse / emoji) ─────────
@@ -5218,7 +5232,16 @@ async function supaEcrireInteraction(commentId, postId, kind, payload) {
   // Émission d'une interaction de commentaire (like/réponse/emoji) — sur un POST,
   // comment_id === post_id. Apparié à recv_cint (autre appareil) par le pilotage.
   try { window.tel && tel.action("cint", { commentId: commentId, postId: postId || null, ck: kind }); } catch (e) {}
-  try { window.tel && tel.flowStart && tel.flowStart("cint", { commentId: commentId, postId: postId || null }); } catch (e) {}
+  // ⚠️ LE FLUX SE FERME AU VERDICT (2026-11-06). Son identifiant était JETÉ :
+  // chaque réaction ouvrait un flux sans fin, que le pilotage aurait lu
+  // « sans verdict » pour toujours — mesuré en production le 2026-11-03, une
+  // réaction enregistrée en base, son flux réduit à son début. Contrat :
+  // supabase/functions/_shared/contrats-actions.js (cint) ; garde :
+  // scripts/audit-contrats-actions.mjs (un `flowStart` dont le retour n'est pas
+  // gardé fait échouer la CI).
+  let _cintCid = null;
+  try { if (window.tel && tel.flowStart) _cintCid = tel.flowStart("cint", { commentId: commentId, postId: postId || null, ck: kind }); } catch (e) {}
+  const _cintRegle = (ok, err) => { try { if (_cintCid && window.tel && tel.settle) tel.settle(_cintCid, "saved", ok, err || null); } catch (e) {} _cintCid = null; };
   try {
     const { error } = await supa.from("comment_interactions").insert({
       id: "ci_" + uid(), comment_id: commentId, post_id: postId || null,
@@ -5231,11 +5254,14 @@ async function supaEcrireInteraction(commentId, postId, kind, payload) {
       created_at: new Date().toISOString(),
     });
     if (error) {
+      _cintRegle(false, error);
       return { ok: false, code: typeof error.code === "string" ? error.code : null, message: String(error.message || ""),
         indice: String(error.hint || ""), reseau: typeof estEchecReseau === "function" && estEchecReseau(error) };
     }
+    _cintRegle(true);
     return { ok: true };
   } catch (e) {
+    _cintRegle(false, e);
     return { ok: false, code: null, message: String((e && e.message) || e || ""), indice: "",
       reseau: typeof estEchecReseau === "function" && estEchecReseau(e) };
   }
@@ -8313,15 +8339,24 @@ async function supaLoadBlocks() {
 // Renvoie true seulement si le signalement est réellement en base. Sans ce verdict,
 // une policy INSERT absente ou cassée faisait disparaître le signalement sans le
 // moindre signal — l'utilisateur croyait avoir alerté, personne ne recevait rien.
+// Flux « report_content » (2026-11-06, contrats-actions.js) : un signalement
+// perdu est un défaut de SÉCURITÉ, pas d'ergonomie — il est désormais jugé au
+// pilotage comme un message ou une publication. Ni le motif ni la cible ne
+// partent dans la télémétrie : leur nature seule (`cible`), jamais le texte.
 async function supaReport(targetType, targetId, reason) {
+  let _repCid = null;
+  try { if (window.tel && tel.flowStart) _repCid = tel.flowStart("report_content", { cible: String(targetType || "").slice(0, 20) }); } catch (e) {}
+  const _repRegle = (ok, err) => { try { if (_repCid && window.tel && tel.settle) tel.settle(_repCid, "saved", ok, err || null); } catch (e) {} _repCid = null; };
   try {
     const res = await supa.from("reports").insert({
       id: "r_" + uid(), reporter_id: MY_UID || null,
       target_type: targetType, target_id: String(targetId || ""),
       reason: String(reason || "").slice(0, 500), created_at: new Date().toISOString(),
     });
-    return _writeVerdict(res, { label: "signalement" }).ok;
-  } catch(e) { console.warn("signalement :", e && e.message); return false; }
+    const v = _writeVerdict(res, { label: "signalement" });
+    _repRegle(v.ok, v.error);
+    return v.ok;
+  } catch(e) { console.warn("signalement :", e && e.message); _repRegle(false, e); return false; }
 }
 
 // ---- STORIES : VUES SYNCHRONISÉES (cross-appareil) ----

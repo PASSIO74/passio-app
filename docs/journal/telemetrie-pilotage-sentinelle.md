@@ -37,6 +37,7 @@
 - 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
 - 📨 LE CANAL NE PERD PLUS UN ORDRE, ET UNE MODIFICATION NE LANCE PLUS UN AGENT (2026-11-04)
 - 🧱 UNE INSTALLATION FIGÉE TENAIT LA CHAÎNE SIX HEURES — CHAQUE ESSAI A SA BORNE, CHAQUE JOB LA SIENNE (2026-11-06)
+- 🧭 LES PARCOURS JUGÉS DANS LE NUAGE, LA VEILLE QUI PROUVE SON TRAVAIL, LA POLITIQUE QUI DIT CE QUE FAIT LE CODE (2026-11-06)
 
 ---
 
@@ -736,3 +737,25 @@ v2, run 42201705763 — l'étape RÉELLE de `test-local`, extraite par le lecteu
 - **Mutations**, rejouées sur le texte réel, chacune rouge en nommant son défaut : borne de job retirée, posée à 30 ou à 360 min, ou sous celle de l'étape ; borne d'étape retirée ou posée sous sa propre boucle ; essai sans `timeout` ; un seul essai ; `exit 1` final retiré (deux échecs passaient pour un succès, ce que le bac rejoue aussi) ; `pkill apt-get` retiré ; `pkill -f` ; réparation dpkg retirée ; une copie qui dérive ; un nouveau job sans borne ni mesure.
 - **Le geste quand les deux essais échouent** : « Re-run failed jobs », dans `docs/RUNBOOK_MOIS_DE_TEST.md` §1. Un job **annulé** que personne n'a annulé a dépassé sa propre borne : là, c'est un test figé, pas le miroir.
 - **Non vérifié** : le figement réel du 06/11 ne se reproduit pas à la demande, le banc le simule par un serveur muet. Le premier vrai figement après la fusion devra se lire « essai 1/2 en échec ou figé », puis une tranche verte, sans geste humain. Les autres jobs (`governance`, `audits`, `smoke`, `deploy`, `retour-issue`, `preview`) n'installent pas Playwright et gardent les 360 min par défaut : hors de ce lot.
+
+## 🧭 LES PARCOURS JUGÉS DANS LE NUAGE, LA VEILLE QUI PROUVE SON TRAVAIL, LA POLITIQUE QUI DIT CE QUE FAIT LE CODE (2026-11-06)
+
+Consigne du 2026-11-06 (« Sentinelle, centre de pilotage et exploitation autonome »). Doc de référence : `docs/AUTONOMIE_EXPLOITATION.md` (architecture, matrice des 48 cas, blocages). Ici, les pièges.
+
+**Le nuage ne jugeait aucun résultat métier.** Les flux d'action (`tel.flowStart` → `step "saved"` → `flowEnd`) n'étaient relus que par l'atelier du poste (`dashboard/server/traces.js`). Désormais : `_shared/contrats-actions.js` (15 contrats, la SEULE définition) → `_shared/parcours.js` (bilan PUR) → fonction `pilotage` (voyant, « À faire », réveil) et Sentinelle (famille `parcours`).
+
+⚠️ **UN `flowStart` DONT LE RETOUR EST JETÉ NE SE FERME JAMAIS.** Mesuré en production le 2026-11-03 : une réaction enregistrée en base, son flux réduit à son `start`. Les flux `cint` et `comment_post` avaient la forme `window.tel && tel.flowStart && tel.flowStart("cint", …)` — exactement le défaut du RSVP corrigé le 2026-09-18, revenu ailleurs. `scripts/audit-contrats-actions.mjs` (dans `npm run verif`, et en CI via `tests/unit/audit-contrats-actions.test.mjs` ①) refuse toute occurrence qui n'est pas la partie droite d'une affectation. ⚠️ Le flux d'un commentaire s'ouvre dans `supaAddComment` (l'écriture RÉELLE, que la file peut envoyer plus tard), plus dans `submitComment`.
+
+⚠️ **LE CHEMIN TEXTE DES MESSAGES N'AVAIT AUCUN FLUX** — seul le média en avait. `_fluxEnvoiMessage` (app-04) : `regle` au verdict de la base, `attente` pour une mise en file (hors ligne, échec réseau : `estEchecReseau`), échec pour un serveur qui répond en erreur.
+
+⚠️ **RÉPONSE PERDUE = MESSAGE « NON ENVOYÉ » POUR TOUJOURS.** Le premier envoi écrit la ligne, la réponse se perd ; le renvoi du MÊME `msgId` reçoit 23505, `_refusDefinitif` dit non, `_outboxAdd` remet en file — à chaque démarrage, jusqu'au plafond, pendant que le destinataire lit le message. Même chose pour les commentaires. Remède : `_conflitClePrimaire(e, table)` (le conflit porte sur `<table>_pkey` ou « Key (id)= », jamais un « duplicate » vague) PUIS `_ligneDejaEnBase(table, id, colonneAuteur, auteur)` (la ligne relue porte bien MON identité). Une relecture impossible ne prouve rien : l'échec suit son cours. Verrou : `parcours-flux.spec.js` ③⑥ (rouges sans le rapprochement), ④⑦ (autre contrainte, autre auteur : pas de faux succès).
+
+⚠️ **« SANS VERDICT » N'EST NI UN SUCCÈS NI UN ÉCHEC.** Une action sans fin dans `finMs` est `inconnu` : la télémétrie a pu se perdre (onglet fermé). Elle compte au dénominateur, dégrade si elle est majoritaire, n'ouvre jamais d'enquête. Une PANNE exige ≥ 2 comptes SERVEUR (`auth_uid`) ; des échecs anonymes dégradent (orange, ne sonne pas), comme une erreur JS anonyme.
+
+⚠️ **LE RÉVEIL NE VOYAIT PAS LES PARCOURS** : `comptes_echecs_30min` (`pilotage_famille_echec`) ne compte que `error` et `api` — un refus en HTTP 200 n'y est pas. Le réveil prend désormais le max des deux sources, et relit l'ANCIENNETÉ des comptes d'un parcours dans l'authentification (`comptesAnciens` : confirmés, ≥ 24 h) — même règle que la base, jamais des comptes neufs.
+
+⚠️ **UNE ENQUÊTE VOISINE NE REND PAS CALME UN PARCOURS EN PANNE.** Premier jet : la ligne « À faire » d'un parcours passait « pour info » dès qu'une enquête `[SENTINELLE]` QUELCONQUE était ouverte (copie de la règle des erreurs). Trouvé par `pilotage-nuage.spec.js` ㉞. Seule une enquête dont le titre est `[SENTINELLE] parcours <id> …` le prend en charge (`pilotage.test.mjs` ㉿⑤).
+
+⚠️ **LE BATTEMENT EST UNE PREUVE DE TRAVAIL, LE CANARI UNE PREUVE D'INGESTION.** Le canari emprunte exprès le chemin public (clé anon) : il est forgeable et ne dit pas si la veille a lu ses sources. Le battement (`_shared/battement.js`) est écrit EN DERNIER par la clé service_role, au plus une fois par quart d'heure, et porte lectures, voyant, gestes et politique. Lu par l'écran ET par `veille-production.mjs` (signal `battement`) — le chien de garde EXTÉRIEUR, chez GitHub.
+
+⚠️ **UNE POLITIQUE QUI NE DIT PAS CE QUE FAIT LE CODE EST UN DOCUMENT.** `_shared/politique-autonomie.js` ne déclare que des bornes APPLIQUÉES ; `tests/unit/politique-autonomie.test.mjs` les compare à `REVEIL`, `RETOUR`, `SEUILS_DELESTAGE`, `MAX_ENQUETES`, `RECIDIVE_SEUIL` et aux lignes de `deploy.yml` / `sentinelle-autonome.yml`. Changer une borne d'un côté sans l'autre rougit la CI. La politique ne touche pas `.github/` : elle VÉRIFIE le workflow, elle ne le pilote pas (périmètre critique).

@@ -1365,7 +1365,10 @@ function submitComment(postId) {
   let post = findPostAnywhere(postId);
   if (!post) return;
   try { window.tel && tel.action("comment_post", { postId: postId, len: text.length }); } catch (e) {}
-  try { window.tel && tel.flowStart && tel.flowStart("comment_post", { postId: postId }); } catch (e) {}
+  // Le flux « comment_post » s'ouvre et se ferme dans `supaAddComment`, au
+  // moment de l'écriture réelle (la file des commentaires peut l'envoyer plus
+  // tard, hors ligne). Ouvert ICI, son identifiant était jeté et aucun verdict
+  // ne le fermait (2026-11-06, contrats-actions.js).
   if (!post.comments) post.comments = [];
   const realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const p = currentProfile();
@@ -6965,6 +6968,27 @@ function _estCompteReel(uid) {
   try { return typeof uid === "string" && typeof RE_UID_COMPTE !== "undefined" && RE_UID_COMPTE.test(uid); }
   catch (e) { return false; }
 }
+// ───────── Flux « send_message » du chemin TEXTE (2026-11-06) ─────────
+// Le chemin média (sendMessageToSupabase, app-09) portait son flux ; le chemin
+// TEXTE — l'immense majorité des messages — n'en avait AUCUN : un message refusé
+// n'existait au pilotage que s'il levait aussi un appel réseau en échec, et un
+// message enregistré n'était jamais confirmé. Contrat :
+// supabase/functions/_shared/contrats-actions.js (send_message). Ouvert à
+// l'écriture RÉELLE, fermé au verdict de la base ; une mise en file locale se
+// déclare « pending » (attente annoncée, pas un échec), un refus porte son code.
+function _fluxEnvoiMessage(convId) {
+  var cid = null;
+  try { if (window.tel && tel.flowStart) cid = tel.flowStart("send_message", { convId: convId, kind: "text" }); } catch (e) {}
+  return {
+    etape: function (cle) { try { if (cid && window.tel) tel.step(cid, cle, "ok"); } catch (e) {} },
+    regle: function (ok, err) { try { if (cid && window.tel && tel.settle) tel.settle(cid, "saved", ok, err || null); } catch (e) {} cid = null; },
+    attente: function (motif) {
+      try { if (cid && window.tel) { tel.step(cid, "queued", "ok", { rc: motif || "hors_ligne" }); tel.flowEnd(cid, "pending"); } } catch (e) {}
+      cid = null;
+    },
+  };
+}
+
 function _sendTextToSupa(convId, msgId, content, auteur, generation) {
   var moi = auteur || (typeof MY_UID !== "undefined" ? MY_UID : null);
   var gen = generation || _outboxGenerationActuelle();
@@ -6988,10 +7012,13 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
     _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); return;
   }
   if (navigator && navigator.onLine === false) {
-    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); return;
+    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null);
+    _fluxEnvoiMessage(convId).attente("hors_ligne");
+    return;
   }
   if (_msgEstEnVol(msgId)) return;
   _msgEnVol[msgId] = true;
+  var _flux = _fluxEnvoiMessage(convId);
   // `from_id: moi` et non `MY_UID` : même si la garde ci-dessus était un jour
   // contournée, l'insertion ne peut pas partir sous une autre identité que
   // celle qui a écrit le texte.
@@ -7003,38 +7030,13 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
       // 503 revenu après une déconnexion remettait le texte en file — c'est le
       // « la réponse tardive repeuple la file purgée » d'ASTRA-21.
       if (gen !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== moi) {
+        // Le flux dit le verdict de la BASE, quoi que l'écran en fasse ensuite.
+        _flux.regle(!(res && res.error), res && res.error);
         _setMsgStatus(convId, msgId, "failed");
         try { if (typeof diagLog === "function") diagLog("msg_reponse_perimee " + String(msgId)); } catch (e) {}
         return;
       }
-      if (res && res.error) {
-        _setMsgStatus(convId, msgId, "failed");
-        // ⚠️ 403 SEULEMENT, JAMAIS 401 : un jeton absent ou expiré ne se répare
-        // pas en ajoutant un membre, et tenter l'écriture sous une identité
-        // qui n'existe pas consommerait la tentative unique pour rien.
-        var estRefusAcces = Number(res.status) === 403 || String(res.error && res.error.code) === "42501";
-        if (estRefusAcces && !window._convReparationTentee[convId]) {
-          // ⚠️ LA RÉCURSION PORTE L'AUTEUR (ASTRA-21). Sans lui, elle relisait
-          // `MY_UID` : si le compte avait changé pendant la réparation, le texte
-          // de A repartait sous B — et sans passer par la file, donc hors de
-          // portée de la garde d'AUTH-06.
-          _reparerAppartenanceConv(convId).then(function (repare) {
-            if (repare) { _sendTextToSupa(convId, msgId, content, moi, gen); return; }
-            _setMsgStatus(convId, msgId, "failed"); _outboxRemove(msgId);
-          });
-          return;
-        }
-        if (_refusDefinitif(res.error, res.status)) {
-          // Sortie de la file : plus AUCUN renvoi automatique pour celui-ci.
-          _outboxRemove(msgId);
-          // Le refus doit laisser une trace : sans elle, il redevient invisible
-          // — c'est exactement ce qui a permis six jours de refus silencieux.
-          try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
-        } else {
-          _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
-        }
-      }
-      else {
+      var _envoye = function () {
         _setMsgStatus(convId, msgId, "sent"); _outboxRemove(msgId);
         // ⚠️ LA NOTIFICATION ÉTAIT BRANCHÉE SUR UNE FONCTION MORTE (2026-09-10).
         // `_notifierMessage` n'était appelée que par `supaSendMessage`, qui n'a
@@ -7046,14 +7048,73 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
         // C'est ICI qu'il faut notifier : dans la branche de SUCCÈS, jamais avant
         // — annoncer un message que la base a refusé annoncerait un message qui
         // n'existe pas. Fire-and-forget : l'envoi n'attend pas la cloche.
+        // (Identifiant déterministe `n_<msgId>_…` : un renvoi ne la double pas.)
         try { if (typeof _notifierMessage === "function") _notifierMessage(convId, msgId); } catch (e) {}
         // ASTRA-24 : les mentions du message, maintenant qu'il existe en base.
         try { if (typeof _mentionnerApresEnvoi === "function") _mentionnerApresEnvoi(msgId); } catch (e) {}
+      };
+      var _refuse = function () {
+        _setMsgStatus(convId, msgId, "failed");
+        // ⚠️ 403 SEULEMENT, JAMAIS 401 : un jeton absent ou expiré ne se répare
+        // pas en ajoutant un membre, et tenter l'écriture sous une identité
+        // qui n'existe pas consommerait la tentative unique pour rien.
+        var estRefusAcces = Number(res.status) === 403 || String(res.error && res.error.code) === "42501";
+        if (estRefusAcces && !window._convReparationTentee[convId]) {
+          // ⚠️ LA RÉCURSION PORTE L'AUTEUR (ASTRA-21). Sans lui, elle relisait
+          // `MY_UID` : si le compte avait changé pendant la réparation, le texte
+          // de A repartait sous B — et sans passer par la file, donc hors de
+          // portée de la garde d'AUTH-06.
+          _reparerAppartenanceConv(convId).then(function (repare) {
+            // Réparé : ce flux attend le suivant (le renvoi ouvre le sien).
+            if (repare) { _flux.attente("reparation"); _sendTextToSupa(convId, msgId, content, moi, gen); return; }
+            _flux.regle(false, res.error);
+            _setMsgStatus(convId, msgId, "failed"); _outboxRemove(msgId);
+          });
+          return;
+        }
+        if (_refusDefinitif(res.error, res.status)) {
+          _flux.regle(false, res.error);
+          // Sortie de la file : plus AUCUN renvoi automatique pour celui-ci.
+          _outboxRemove(msgId);
+          // Le refus doit laisser une trace : sans elle, il redevient invisible
+          // — c'est exactement ce qui a permis six jours de refus silencieux.
+          try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
+        } else {
+          // Rejoué par la file : un réseau absent est une ATTENTE ; un serveur
+          // qui répond en échec est un ÉCHEC de cet essai (le suivant aura le sien).
+          if (typeof estEchecReseau === "function" && estEchecReseau(res.error)) _flux.attente("hors_ligne");
+          else _flux.regle(false, res.error);
+          _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
+        }
+      };
+      if (res && res.error) {
+        // ② RÉPONSE PERDUE PUIS RENVOI (2026-11-06). Le premier envoi a écrit la
+        // ligne, sa réponse s'est perdue ; ce renvoi du MÊME identifiant reçoit
+        // 23505. Sans ce rapprochement, le message restait « ⚠️ non envoyé » et
+        // repartait en file à chaque démarrage, pour toujours, alors que le
+        // destinataire le lisait. On ne le dit envoyé que sur PREUVE : conflit
+        // sur `conv_messages_pkey`, et la ligne relue porte `from_id = moi`
+        // (_conflitClePrimaire, _ligneDejaEnBase — app-02). Sinon, le refus suit
+        // son cours ordinaire. Verrou : tests/e2e/parcours-flux.spec.js.
+        if (typeof _conflitClePrimaire === "function" && _conflitClePrimaire(res.error, "conv_messages")) {
+          _ligneDejaEnBase("conv_messages", msgId, "from_id", moi).then(function (dejaLa) {
+            var encoreMoi = gen === _outboxGenerationActuelle() && (typeof MY_UID !== "undefined" ? MY_UID : null) === moi;
+            if (dejaLa && encoreMoi) { _flux.etape("deja_en_base"); _flux.regle(true); _envoye(); return; }
+            _refuse();
+          }, _refuse);
+          return;
+        }
+        _refuse();
       }
+      else { _flux.regle(true); _envoye(); }
     })
     // ⚠️ ASTRA-43 : le REJET porte le même contexte que la résolution — sans lui,
     // une panne réseau revenue après la purge ressuscitait la file.
-    .catch(function() { delete _msgEnVol[msgId]; _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi }); });
+    .catch(function(err) {
+      delete _msgEnVol[msgId];
+      if (typeof estEchecReseau === "function" && estEchecReseau(err)) _flux.attente("hors_ligne"); else _flux.regle(false, err);
+      _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
+    });
 }
 
 // Renvoi manuel d'un message en échec.

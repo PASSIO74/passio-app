@@ -18,6 +18,11 @@
 // machine. Le silence de ce script n'est jamais une preuve de santé.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// La quatrième famille (2026-11-06) juge les parcours avec le MÊME registre et
+// la MÊME règle que le pilotage du nuage — jamais une copie.
+import { CONTRATS, contratDe } from "../supabase/functions/_shared/contrats-actions.js";
+import { regrouperFlux, issueFlux } from "../supabase/functions/_shared/parcours.js";
+
 // Messages qui ne portent AUCUNE information exploitable : les corriger est
 // impossible, les compter fait du bruit qui masque le vrai signal.
 //   · « Script error. » = erreur d'un script d'une autre origine, le navigateur
@@ -372,6 +377,83 @@ export function classerApi(lignes = [], options = {}) {
 
   return { candidates, ecartees, nonVerifiees };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUATRIÈME FAMILLE — LES PARCOURS QUI ÉCHOUENT (2026-11-06)
+//
+// C'est l'angle mort écrit en tête de ce fichier : « un résultat faux en HTTP
+// 200 » ne lève aucune erreur JS et aucun appel en échec. Les flux d'action
+// (`tel.flowStart` → `step "saved"`) disent, eux, si la SOURCE DE VÉRITÉ a
+// accepté. Une action dont la confirmation est un échec (hors refus légitime
+// et hors file locale, contrats-actions.js) devient un candidat, groupé par
+// action et par code fermé. Règles, une par piège :
+//  · identité SERVEUR seulement (`auth_uid`, posée par le trigger) — une
+//    ligne sans compte ou au format douteux est écartée et comptée ;
+//  · une action sans verdict n'est PAS un échec (télémétrie perdue possible) :
+//    elle se lit au pilotage (« sans verdict »), elle n'ouvre pas d'enquête ;
+//  · le titre ne porte que l'identifiant du contrat et le code assaini : rien
+//    d'écrit librement par un navigateur ;
+//  · même seuil que la famille API : assez d'occurrences, ou deux comptes.
+// Cette famille est un CONFORT comme les boutons : sa lecture qui échoue ne
+// fait jamais échouer la détection.
+// ═══════════════════════════════════════════════════════════════════════════
+export function classerParcours(lignes = [], options = {}) {
+  const min = options.min ?? MIN_OCCURRENCES_API;
+  const contrats = options.contrats || CONTRATS;
+  const maintenant = Number.isFinite(options.maintenant) ? options.maintenant : Date.now();
+  const { flux } = regrouperFlux(lignes, contrats);
+  const groupes = new Map();
+  let ecartees = 0, nonVerifiees = 0;
+  for (const f of flux.values()) {
+    const contrat = f.action ? contratDe(f.action, contrats) : null;
+    if (!contrat) continue;
+    if (f.synthetique) { ecartees++; continue; }
+    if (issueFlux(f, contrat, maintenant) !== "echoue") continue;
+    if (!RE_COMPTE.test(String(f.compte || ""))) { ecartees++; nonVerifiees++; continue; }
+    const rc = f.rc || "sans_code";
+    const cle = `parcours ${contrat.id} ${rc}`;
+    if (!groupes.has(cle)) {
+      groupes.set(cle, { cle, famille: "parcours", action: contrat.id, rc, message: `Parcours « ${contrat.libelle} » : échec ${rc}`,
+        n: 0, comptes: new Set(), dernier: null, exemple: null, versions: {}, occurrences: [] });
+    }
+    const g = groupes.get(cle);
+    g.n++;
+    g.comptes.add(String(f.compte));
+    const at = Number.isFinite(f.debutRecu) ? new Date(f.debutRecu).toISOString() : "";
+    if (at && (!g.dernier || at > g.dernier)) g.dernier = at;
+    noterOccurrence(g, at, f.version);
+  }
+  const candidates = [...groupes.values()].map((g) => {
+    const comptes = g.comptes.size;
+    const c = contrats[g.action];
+    return {
+      ...g, comptes, occurrences: bornerOccurrences(g.occurrences),
+      // Le contexte que l'enquête n'aurait pas autrement : le contrat lui-même.
+      exemple: {
+        stack: [
+          `Contrat ${c.id} (supabase/functions/_shared/contrats-actions.js) — ${c.libelle}`,
+          `Source de vérité : ${c.verite}`,
+          `Confirmation attendue : étape « ${c.confirmation} » au verdict de l'écriture.`,
+          `Code du refus : ${g.rc} — ${g.n} échec(s), ${comptes} compte(s) identifié(s) par le serveur.`,
+          `Émetteur(s) : ${c.emetteurs.join(", ")} ; verrou(x) : ${c.verrous.join(", ")}.`,
+          "",
+          "Aucune erreur JavaScript n'a pu être levée : l'écriture a rendu un refus que",
+          "l'app a LU et rapporté. Établir pourquoi la source de vérité refuse (code",
+          "PostgreSQL ou PostgREST) et si l'app envoie ce qu'elle doit. Un refus qui",
+          "vient d'une règle d'accès (RLS) ou d'une migration est HORS du périmètre",
+          "autorisé : décrire la cause et laisser la main.",
+        ].join("\n"),
+        source: null, line: null, url: null,
+      },
+    };
+  })
+    .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n))
+    .filter((g) => g.n >= min || g.comptes >= 2);
+  return { candidates, ecartees, nonVerifiees };
+}
+
+/** Les flux de la fenêtre : la seule colonne d'identité retenue est `auth_uid` (serveur). */
+export const CHEMIN_FLUX = "telemetry_events?select=event_id,correlation_id,action,status,meta,auth_uid,received_at,client_ts,app_version&type=eq.flow";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TROISIÈME FAMILLE — LES BOUTONS QUI N'ONT AUCUN EFFET MESURÉ (2026-09-10)
@@ -904,6 +986,9 @@ export function zoneCible(c) {
   // Boutons : UNE zone pour toute la famille — une seule enquête bouton à la fois
   // (contre-revue du 2026-11-03 : un flot de boutons ne prend jamais les places d'un défaut réel).
   if (c && c.famille === "bouton") return "bouton";
+  // Parcours : une enquête par action à la fois — deux codes du même parcours
+  // touchent le même code, et deux PR auto-fusionnées dessus ne sont jamais testées ensemble.
+  if (c && c.famille === "parcours" && c.action) return "parcours " + String(c.action);
   // Erreurs JS : le FICHIER source — deux PR auto-fusionnées sur le même fichier
   // ne sont jamais testées ensemble (`main` n'exige pas une branche à jour).
   const source = c && c.exemple && c.exemple.source;
@@ -1114,6 +1199,11 @@ export function corpsIssue(v, c, options = {}) {
   if (c?.famille === "bouton") {
     L.push(`> Bouton sans effet : ${Number(c.clics) || 0} clics, ${Number(c.tauxEffet) || 0} % suivis d’un effet mesuré en 3 s, ${Number(c.rageurs) || 0} compte(s) l’ont retapé sans résultat. Le libellé est un texte du code : le retrouver par \`grep\` dans \`index.html\` et \`js/\`.`);
     L.push("> Deux causes possibles, à départager AVANT d’écrire : (a) le handler est cassé, absent, masqué par un autre élément ou bloqué par une garde — corriger pour que le geste aboutisse ; (b) le geste aboutit mais n’émet aucun événement mesurable — ne PAS toucher au comportement, ajouter seulement `Telemetry.action(...)` sans donnée personnelle. Jamais retirer le bouton pour faire taire la mesure.");
+    L.push("");
+  }
+  if (c?.famille === "parcours") {
+    L.push("> Parcours en échec : l’app a LU un refus de la source de vérité et l’a rapporté (étape « saved » en erreur). Le contrat du parcours, ses émetteurs et ses verrous sont dans `supabase/functions/_shared/contrats-actions.js`.");
+    L.push("> Deux causes possibles, à départager AVANT d’écrire : (a) l’app envoie une écriture invalide (colonne, identifiant, garde absente) — corriger l’émetteur ; (b) la règle serveur refuse à raison ou par défaut de migration — HORS périmètre : décrire et laisser la main. Jamais transformer l’échec en succès, jamais retirer l’étape « saved » pour faire taire la mesure.");
     L.push("");
   }
   L.push("1. Établir la CAUSE dans le code. Sans cause établie, ne rien corriger : commenter ce qui manque et s’arrêter.");
@@ -1387,6 +1477,18 @@ async function principal() {
   } catch (e) {
     boutonsSuspects = { erreur: String(e.message || e) };
   }
+  // Quatrième famille (2026-11-06) : les parcours en échec. Un confort, comme
+  // les boutons — sa lecture qui échoue ou se tronque ne fait rien échouer et
+  // ne désigne rien (une page manquante pourrait porter la confirmation).
+  let parcours = { candidates: [], ecartees: 0, nonVerifiees: 0 };
+  let parcoursSource = null;
+  try {
+    const fl = await lirePagine({ url, cle, heures, chemin: CHEMIN_FLUX + FILTRE_PRODUCTION });
+    parcoursSource = { lues: fl.lignes.length, complet: fl.complet };
+    if (fl.complet) parcours = classerParcours(fl.lignes);
+  } catch (e) {
+    parcoursSource = { erreur: String(e.message || e).slice(0, 160) };
+  }
   const js = classer(lignes);
   const api = classerApi(appels);
   // ⚠️ LES DEUX FAMILLES SONT MISES EN CONCURRENCE SUR LA MÊME RÈGLE — comptes
@@ -1394,14 +1496,14 @@ async function principal() {
   // principe : une erreur JavaScript n'est pas plus grave qu'un envoi de
   // message refusé 798 fois. C'est ce que subissent les gens qui tranche.
   // Les boutons morts (2026-11-01) entrent dans la MÊME concurrence.
-  const candidates = [...js.candidates, ...api.candidates, ...morts.candidates]
+  const candidates = [...js.candidates, ...api.candidates, ...morts.candidates, ...parcours.candidates]
     .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n));
   const verdict = {
     fenetreHeures: heures,
     lues: erreursClient.length + erreursTelemetrie.length + appels.length,
-    ecartees: js.ecartees + api.ecartees + fusion.doublons + fusion.plafonnees,
+    ecartees: js.ecartees + api.ecartees + fusion.doublons + fusion.plafonnees + parcours.ecartees,
     retenues: candidates.length,
-    parFamille: { js: js.candidates.length, api: api.candidates.length, bouton: morts.candidates.length },
+    parFamille: { js: js.candidates.length, api: api.candidates.length, bouton: morts.candidates.length, parcours: parcours.candidates.length },
     // Ce que chaque source a fourni : un zéro durable sur l'une d'elles se lit
     // ici, pas dans le silence du verdict (les champs existants ne changent pas).
     sources: {
@@ -1410,6 +1512,7 @@ async function principal() {
       api: appels.length,
       doublonsJs: fusion.doublons,
       plafonneesJs: fusion.plafonnees,
+      parcours: parcoursSource,
     },
     // ⚠️ HORS `cible`, DÉLIBÉRÉMENT : ce classement-ci n'ouvre aucune issue — un
     // taux bas seul peut être un bouton mort comme un effet non instrumenté.
@@ -1422,7 +1525,7 @@ async function principal() {
     // ⚠️ ASTRA-08 (2026-09-15) : TOUS les candidats, pas cinq — cinq déjà fermés
     // masquaient le sixième, actif. La liste reste bornée par le classement lui-même.
     candidats: candidates.slice(),
-    identitesNonVerifiees: (js.nonVerifiees || 0) + (api.nonVerifiees || 0) + (morts.nonVerifiees || 0),
+    identitesNonVerifiees: (js.nonVerifiees || 0) + (api.nonVerifiees || 0) + (morts.nonVerifiees || 0) + (parcours.nonVerifiees || 0),
   };
   console.log(JSON.stringify(verdict, null, 2));
 }

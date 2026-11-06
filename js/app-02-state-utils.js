@@ -417,6 +417,34 @@ function _syncableState() {
 // `expectRows` : mettre à true quand zéro ligne touchée signifie l'échec (on
 // modifie une ligne censée exister). `dupOk` : un 23505 signifie que l'état voulu
 // est déjà atteint — succès, sauf si l'intention portait sur le CONTENU de la ligne.
+// ══════════════════════════════════════════════════════════════════════════
+// UNE ÉCRITURE DÉJÀ FAITE N'EST PAS UN ÉCHEC (2026-11-06, consigne §16 ②)
+// ──────────────────────────────────────────────────────────────────────────
+// Un envoi part, la ligne est écrite, la RÉPONSE se perd (réseau coupé, page
+// en veille). La file renvoie le même identifiant : le serveur répond 23505.
+// Jusqu'ici le message (ou le commentaire) restait « ⚠️ non envoyé » et
+// repartait en file à chaque démarrage, POUR TOUJOURS — alors qu'il était en
+// base et lu par le destinataire. La règle : on ne conclut « déjà écrit » que
+// sur une PREUVE, en deux temps :
+//   ① le conflit porte sur la CLÉ PRIMAIRE de la table (le message PostgreSQL
+//      nomme `<table>_pkey`, ou son détail « Key (id)=… ») — jamais un
+//      « duplicate » vague, qu'une autre contrainte d'unicité produirait ;
+//   ② la ligne relue par son identifiant porte bien l'AUTEUR qui l'envoie.
+// Une relecture impossible ne prouve rien : l'appelant garde son échec.
+function _conflitClePrimaire(e, table) {
+  if (!e || String(e.code) !== "23505" || !table) return false;
+  var msg = String(e.message || ""), det = String(e.details || "");
+  var pk = new RegExp("\\b" + String(table).replace(/[^a-z0-9_]/gi, "") + "_pkey\\b", "i");
+  return pk.test(msg) || pk.test(det) || /Key\s*\(\s*id\s*\)/i.test(det);
+}
+async function _ligneDejaEnBase(table, id, colonneAuteur, auteur) {
+  if (typeof supa === "undefined" || !supa || !table || !id || !colonneAuteur || !auteur) return false;
+  try {
+    var r = await supa.from(table).select(colonneAuteur).eq("id", id).maybeSingle();
+    return !!(r && !r.error && r.data && String(r.data[colonneAuteur]) === String(auteur));
+  } catch (e) { return false; }
+}
+
 function _writeVerdict(res, opts) {
   opts = opts || {};
   const label = opts.label || "écriture";
