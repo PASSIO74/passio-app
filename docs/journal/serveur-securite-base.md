@@ -28,6 +28,7 @@
 - 🔕 LA PROMOTION NE NOMME PLUS LE PROMU À N'IMPORTE QUI, ET LES VUES PERDENT LEURS DROITS HORS RLS (R24, R26 — 2026-11-03, le soir)
 - 🗑️ UNE PUBLICATION SUPPRIMÉE N'OUVRE PLUS SES COMMENTAIRES À TOUS — ELLE LES EMPORTE (R31 — 2026-11-04)
 - 📌 RV-38 — L'ÉPINGLE D'UN COMMENTAIRE N'ATTEIGNAIT JAMAIS LA BASE ; SEUL LE PROPRIÉTAIRE DU FIL Y ÉPINGLERA (2026-11-05)
+- 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
 
 ---
 
@@ -1386,3 +1387,125 @@ ce qu'a mesuré sa première exécution en CI (#727) ; présente, A épingle, B 
 
 **Ce qui reste.** La contre-revue humaine de la PR de migration, son attestation (production ET staging), son
 application, la mesure au canal ① ; la ligne RV-38 ne se ferme qu'avec cette preuve.
+## 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
+
+**Statut : préparé, pas appliqué.** `migrations/migration_discussions_activite_2026-11-06.sql` (sha256 `6e7c7e28…`), banc
+`tests/sql/migration-discussions-activite.test.sh` 168/0, client `removeGroupMember` (app-05) et son verrou
+`tests/e2e/retrait-membre-groupe.spec.js` 18/18. Application, contrôles et retour arrière : § 9 de
+`.passio/audits/AUDIT_PASSIO_2026-11-02/04-LIVRAISON.md`. Revu le même jour, avant toute attestation, par cinq relecteurs
+contre-vérifiés chacun par un sceptique : quatre défauts confirmés et treize mineurs, corrigés ou consignés ci-dessous.
+
+**Le défaut.** `is_conv_member(_conv_id, _uid)` (`SECURITY DEFINER`, EXECUTE pour `authenticated`) répondait pour n'importe
+quel `_uid` (C-02, au registre depuis le 02/11 comme « chantier transverse »). Sans incidence tant que la liste des
+participants se lisait en clair ; C-04 l'a fermée, et son bloc ⑥ a fait de la discussion `evgrp_<activité>` la RECOPIE de la
+liste des venants (le client y inscrit chaque « je viens ») : `rpc/is_conv_member`, profil par profil, la rendait (R41). Et
+RV-44, régression de C-04 : sa policy SELECT cachait au créateur de la discussion un membre bloqué avec lui, donc le DELETE de
+« Suppression admin » touchait 0 ligne — et `removeGroupMember` annonçait le retrait sans lire le résultat.
+
+**Le choix : fermer la fonction, pas ses appelants.** Inventaire de production (canal ①, 06/11) : les 11 policies qui
+l'appellent lui passent toutes `(select auth.uid())::text`, `storage_chemin_autorise` aussi, `trg_reports_preuve_message`
+passe `new.reporter_id` que `reports_insert` lie à l'appelant ; aucun client, aucune fonction Edge. Un corps qui ne répond
+QUE sur l'appelant connecté — `(_uid = (auth.uid())::text or auth.uid() is null) and exists(…)` — ne change donc rien pour
+eux, et le verdict REFUSE la base si l'inventaire a bougé (lignes 13 à 15). Sans session : inchangée (déclencheurs,
+service_role). L'ordre est voulu : l'appelant est contrôlé avant la lecture (sur autrui, conv_members n'est pas lu : 0 lecture
+sur 100 appels, 100 avec l'ordre inverse) et l'égalité vient en tête (les policies n'évaluent auth.uid() qu'une fois : +26 à
++28 % sur une lecture de 40 messages au lieu de +46 %). Le créateur d'une discussion voit tous ses membres
+(`or is_conversation_creator(conv_id)`), comme l'organisation voit toute la liste dans `event_attendees_select_lien` : il peut
+les retirer, ce que la policy DELETE lui accordait déjà.
+
+**Le client : l'écran ne dit que ce que le serveur a rendu.** Retrait LOCAL, sans requête, pour ce que le serveur n'a jamais pu
+avoir (visiteur — `_compteAuthReel()`, pas `_supaReal`, vrai pour tout appareil dès que le SDK se charge —, ébauche
+`conv_grp_…`, identifiant non uuid : les personnages de démonstration que « Nouveau groupe » propose, que la clé étrangère
+refuse) ; rien ne change, et l'écran le dit, pour un compte réel qui ne joint pas le serveur (session expirée, SDK absent) ;
+sinon DELETE … RETURNING, `{ error }` et le nombre de lignes, et sur 0 ligne une RELECTURE de sa ligne et de la mienne. Le
+succès arrive après l'aller-retour : ne repeindre que ce qui montre encore ce groupe.
+
+**Pièges du lot.**
+- **pg_depend ne voit pas tous les appelants.** Une policy y figure ; une fonction plpgsql, ou SQL sans `BEGIN ATOMIC`, non :
+  `storage_chemin_autorise` et `trg_reports_preuve_message` n'apparaissent qu'en cherchant `is_conv_member` dans le `prosrc`
+  de TOUTES les fonctions de TOUS les schémas. Fermer un oracle, c'est faire les deux recherches, plus le dépôt.
+- **Un DELETE dont le WHERE lit des colonnes applique AUSSI les policies SELECT.** Cacher une ligne à la lecture, c'est
+  empêcher qu'on la retire : toute policy SELECT qui masque doit laisser voir à qui a le droit de supprimer.
+- **Un retrait ne s'annonce qu'après la ligne rendue — et « 0 ligne » n'est pas « toujours membre ».** Le SDK ne lève pas sur
+  un refus RLS, et un DELETE filtré rend 0 ligne SANS erreur : `.select("user_id")` sur le DELETE, compter `data`. Mais 0 ligne
+  dit seulement que rien n'a été ôté ICI : le membre a pu partir de lui-même, être retiré ailleurs, ou n'avoir jamais été en
+  base (ajout refusé — un personnage de démonstration ne l'est jamais). Relire avant de conclure, avec sa propre ligne pour
+  témoin, et ne pas conclure là où la lecture elle-même est masquée (`evgrp_` avant la migration). Ne prendre le chemin serveur
+  que pour ce que le serveur a pu avoir, et ne jamais « retirer localement » ce que le serveur garde (session expirée, SDK
+  absent) : c'est le mensonge même qu'on corrige. La première version de ce correctif avait les deux défauts (retrait devenu
+  impossible pour tout groupe dont un membre est un personnage, c'est-à-dire tout groupe créé par « Nouveau groupe »).
+- **Un succès asynchrone ne repeint que ce qui montre ENCORE sa cible.** Le code d'avant était synchrone avec le clic ; attendre
+  le serveur a fait tourner `_renderGroupMembersModal` (qui finit par `openModal`) et `renderConvFpThread` après l'aller-retour :
+  la modale fermée revenait, et le fil du groupe s'affichait dans le panneau d'une autre conversation — dont le bouton d'envoi
+  restait lié à l'autre destinataire. Gardes : `#modalBackdrop` actif ET `_grpConvId` ET `#grpPanel_members` ; `_openedConvId`.
+- **Un verdict n'est fermé sur échec que si sa MESURE l'est aussi.** La première version prenait toute erreur levée sous
+  authenticated, celle du correctif comprise, pour une « panne du décor » non bloquante : une branche créateur récursive (42P17)
+  passait — mesuré, APPLIQUÉE, et plus aucun compte ne lisait conv_members. Désormais : un bloc par mesure (son SQLSTATE dans sa
+  clé, sa ligne en ECHEC), `decor = ok`, la phase, et la ligne 1 BLOQUANTE (le canal ① ne mesure pas le comportement : un décor
+  en panne fait relancer, jamais appliquer à l'aveugle).
+- **Un verdict sans témoin négatif ne voit pas « tout le monde est membre de tout ».** Mesuré sur le verdict d'avant :
+  `coalesce(_uid = auth.uid(), false) or (auth.uid() is null and exists…)` passait 15/15 ; de même un oracle laissé ouvert sur
+  les 1-à-1 (aucune au décor) et une forme « claims seuls » qui n'était plus éprouvée (claim.sub jamais relevé). Il faut un compte
+  qui n'est PAS membre, une conversation de chaque forme, et relever l'identité qu'on croit poser.
+- **L'ordre des conjonctions est de l'hygiène, pas la fermeture d'un canal.** Le temps de lecture d'une ligne de conv_members sous
+  RLS dit si elle existe (`texteq` leakproof : la policy ne s'évalue que si la ligne existe ; +41 µs au corps de production, +88 à
+  +92 µs au corps neuf) : un canal caché de la RLS, antérieur au lot, qu'aucun ordre ne ferme. Le dire, ne pas le présenter
+  comme corrigé.
+- **Une migration « rejouable » peut défaire la suivante.** Rejouer `participants_visibilite` réécrirait
+  conv_members_select_member avec le texte de C-04, et son verdict ne regarde la policy que par motifs LIKE : RV-44 reviendrait
+  en silence. Après tout geste sur conv_members, mesurer le déparsage (md5 `ff0689d9…`).
+- **Un décor de verdict qui écrit dans une table PUBLIÉE ne livre rien s'il est annulé.** `conv_members` exige des profils
+  (clé étrangère), et `profiles` est publiée ; `trg_diffuser_ajout_membre` appelle `realtime.send`. Le décodage logique
+  écarte une sous-transaction annulée : le banc le prouve sur un slot `test_decoding`, et un témoin positif (décor NON annulé)
+  montre que le même slot décode bien ces insertions — sans témoin, un contrôle « 0 ligne décodée » serait aveugle.
+- **Une fonction SECURITY INVOKER rappelée par la policy de la table qu'elle lit tourne sans fin** (54001) dès que l'appelant y
+  a sa ligne : mesurée clé par clé, la mutation « invoker » rougit tout ce qui lit sa propre appartenance (3, 4, 6, 7, 8, 17),
+  pas l'oracle sur autrui (l'appelant est contrôlé avant la lecture) ni le témoin négatif (sans ligne, la récursion s'arrête).
+- **`pg_get_expr` ouvre la table qu'il déparse** (RV-20) : le verdict ne déparse que conv_members, reports et les policies que
+  `pg_depend` rattache à la fonction, jamais tout le catalogue.
+- **Une définition recopiée à la main n'est pas une définition de production.** Le relevé remis au lot avait perdu deux
+  blocs de commentaires et une espace de fin : `md5(prosrc)` l'a dit au banc ⓪, `to_json(prosrc)` au canal ① a montré
+  l'écart. Le socle se contrôle par empreinte, fonction par fonction et policy par policy.
+- **Le canal ① ne mesure pas le comportement d'une fonction réservée à `authenticated`** : le lecteur n'a ni EXECUTE ni SET
+  ROLE. Seul le verdict, dans la transaction de la migration, la mesure en production ; après coup, le catalogue.
+
+**Réinjections (mesurées le 06/11).**
+- **Migration, banc § ⑨, sur le fichier corrigé — toutes REFUSÉES (55000), base inchangée** : clause `_uid` retirée → lignes
+  2, 4 (2, 4, 11 sans empreinte recalculée) ; branche créateur retirée → 6, 7 (6, 7, 13) ; branche créateur RÉCURSIVE (R3) →
+  6, 7, 8, 16, 17 ; EXECUTE rendu à anon ou à PUBLIC → 12 ; « sans session » fermée → 5 ; SECURITY INVOKER → 3, 4, 6, 7, 8,
+  11, 17 ; policy TO public → 13 ; décor non annulé → 9 ; décor cassé → 1 à 8, 16, 17 ; décor hors rôle client → 1, 8, 16,
+  17 ; « tout connecté membre de tout » → 16, 17 ; forme claims seuls non éprouvée → 1 ; oracle ouvert sur les 1-à-1 → 2 ; et
+  dix dérives de la base (D1 à D10). L'ordre d'AVANT, empreinte recalculée, passe le verdict 17/0 : seul le compteur du banc
+  le voit (100 lectures de conv_members au lieu de 0).
+- **Contre le verdict d'AVANT la revue (15 lignes)** : « tout connecté membre de tout », claims seuls non éprouvés et oracle
+  ouvert sur les 1-à-1 passaient 15/0 ; R3 était APPLIQUÉE (vecteur EEEEOEEEOOOOOOO, ligne 1 « ECHEC — 42P17 », non bloquante).
+- **Dans le fichier corrigé** : l'ordre d'avant réinjecté rougit les deux comptages de lectures du § ③ (0 → 100 ; 0|0 →
+  100|50) et rien d'autre ; le garde-fou d'avant (ligne 1 jamais bloquante, comportement bloquant seulement si la ligne 1 est
+  OK) réinjecté rend APPLIQUÉES les mutations « décor cassé », « décor hors rôle client » et « claims non éprouvés » (et D10 ne
+  rougit plus que 13) — R3 reste refusée, par ses blocs de mesure.
+- **Client** (`tests/e2e/retrait-membre-groupe.spec.js`, 18 cas ; chaque variante d'app-05 servie par `page.route`, le
+  worktree intact) : code d'avant le lot → 16 rouges (tous sauf ⑫ ⑬ : il était synchrone, l'écran ne pouvait pas dériver) ;
+  première version du correctif → 15 rouges (verts : ②, ④, ⑥) ; gardes d'écran ôtées → ⑫ ⑬ ; panne postgrest-js lue comme un
+  refus → ③bis ; gardes « personnage » et « ébauche » ôtées → ⑧ ⑨ ; garde du compte réel ôtée → ⑦ ; garde de session ôtée →
+  ⑩ ; relecture ôtée → ② ②b ⑤ ; garde `evgrp_` ôtée → ②c ; garde du SDK absent ôtée (retrait local) → ⑪ ; le code du lot,
+  servi de la même façon → 0 rouge.
+
+**Ce qui reste, dit tel quel.** Dans `conv_members`, les membres d'une discussion se voient entre eux, sauf blocage (C-04 : un
+venant connaît la liste) ; HORS de conv_members, une discussion d'activité montre encore à tout membre les membres bloqués avec
+lui — `conv_reads` (reads_select : is_conv_member seul), les pièces jointes (chemin `<uid>/<conversation>/…`) et la diffusion
+`typing:` : résidu de C-04, préexistant, hors lot (RV-49, R42). Le créateur d'une discussion d'activité qui n'organise plus
+(co-organisateur retiré) peut y revenir à tout moment, y voir tous les membres, bloqués compris, et en ajouter (RV-50 : une
+branche qui suit l'organisation, `is_conversation_creator(conv_id) and organise_activite(substr(conv_id, 7))`, écartée ici — son
+verdict devrait écrire une activité synthétique en production). Le temps de lecture sous RLS (ci-dessus). `notifier_mentions`
+dira l'appartenance d'autrui à un ancien membre dès que R36 sera corrigé (RV-51 : exiger `is_conv_member(p_ref_id, moi)` et
+figer `created_at`). Un rôle `authenticated` sans `sub` (Supabase Auth n'en émet pas) lirait encore toute appartenance par la
+RPC. `conv_1a1_bloquee` dit si un compte BLOQUÉ avec l'appelant est membre d'une conversation 1-à-1 donnée (identifiant
+aléatoire), `is_blocked_with` reste interrogeable sur tout uid (R40) : hors lot. Côté client : dans une discussion d'activité,
+le retrait d'un membre qui n'y est pas (la liste locale vient des inscrits, `_ensureLocalEventConv`) dit « pas confirmé »
+jusqu'au prochain rafraîchissement serveur, qui l'ôte ; `addGroupMember` ignore toujours le résultat de son INSERT
+(préexistant, hors lot).
+
+**Ordre.** APRÈS C-04 (la ligne 10 refuse une base sans sa policy : le staging aujourd'hui — y appliquer C-04 d'abord, puis ce
+lot), et JAMAIS C-04 rejouée après ; indépendante du client, pas de `PREREQUIS-CLIENT` — le client ne dit que ce que le serveur
+lui rend : avant la migration, un créateur qui retire un membre que C-04 lui cache lit « le retrait n'a pas été confirmé » ;
+après, le retrait passe.

@@ -2094,23 +2094,172 @@ function addGroupMember(convId, userId) {
   if (fp && fp.classList.contains("active")) renderConvFpThread(c, c.groupName || "Groupe");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// RETIRER UN MEMBRE D'UN GROUPE — L'ÉCRAN NE DIT QUE CE QUE LE SERVEUR A RENDU
+// (RV-44, 2026-11-06 ; corrigé après la revue du même jour)
+// ──────────────────────────────────────────────────────────────────────────
+// Le retrait partait à l'aveugle : DELETE envoyé, résultat ignoré, membre ôté de
+// l'état local et « retiré·e du groupe » annoncé quoi qu'il arrive. Or le SDK ne
+// LÈVE PAS sur un refus RLS, et un DELETE que la RLS filtre touche 0 ligne SANS
+// erreur : depuis C-04, la policy de lecture de conv_members cachait au CRÉATEUR
+// d'une discussion d'activité le membre qu'il avait bloqué — « Suppression admin »
+// touchait 0 ligne, le membre restait (il lisait et écrivait), et l'écran disait
+// le contraire. Côté base : migration_discussions_activite_2026-11-06.sql.
+// TROIS CHEMINS :
+//   · ce que le serveur n'a JAMAIS pu avoir → retrait LOCAL, comme avant, sans
+//     requête : un visiteur (pas de compte réel, `_compteAuthReel`), une ébauche
+//     de groupe restée locale (`conv_grp_…` : `supaCreateGroup` a échoué), un
+//     membre qui ne peut pas être en base (identifiant non uuid — les personnages
+//     de démonstration que « Nouveau groupe » propose : la clé étrangère
+//     conv_members.user_id → profiles les refuse) ;
+//   · un compte réel qui ne peut pas joindre le serveur — session expirée
+//     (`sessionExpiree()`) ou SDK absent (`_supaReal` faux) : RIEN ne change, et
+//     l'écran le dit — le membre est en base, l'ôter localement serait le
+//     mensonge corrigé ici ;
+//   · sinon DELETE … RETURNING user_id (`.select("user_id")`), en lisant
+//     `{ error }` ET le nombre de lignes : 1 ligne → retiré, le comportement
+//     d'avant ; une erreur → « le serveur a refusé » ; une panne réseau → « pas
+//     de connexion : le retrait n'a pas été CONFIRMÉ » (la ligne a pu partir) ;
+//     0 ligne n'est PAS « toujours membre » : on relit sa ligne ET la mienne —
+//     lui présent → « toujours membre » (lu) ; lui absent et moi visible → il
+//     n'y est déjà plus (parti, retiré ailleurs, ajout refusé) : retrait local,
+//     idempotent — SAUF dans une discussion d'activité (`evgrp_`), où C-04 cache
+//     au créateur, tant que la migration n'est pas appliquée, le membre bloqué
+//     qui se relirait « absent » : là, et dans tout autre doute, « le retrait
+//     n'a pas été confirmé par le serveur ».
+// Le succès arrive APRÈS l'aller-retour : la modale et le fil ne sont repeints
+// que s'ils montrent ENCORE ce groupe — sinon la modale fermée revenait, et le
+// fil du groupe s'affichait dans le panneau d'une AUTRE conversation, dont le
+// bouton d'envoi restait lié à l'autre destinataire (`_openedConvId`, la règle
+// de tout rendu asynchrone du fil, app-04). Un double toucher pendant
+// l'aller-retour ne repart pas. Rend une promesse (true = retiré) sur le chemin
+// serveur, false quand rien n'a pu partir, rien sur le chemin local ; l'onclick
+// inline l'ignore. Verrou : tests/e2e/retrait-membre-groupe.spec.js.
+// ══════════════════════════════════════════════════════════════════════════
+var _retraitsMembreEnVol = {};
+var _RE_UUID_MEMBRE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Le serveur a-t-il pu avoir cette appartenance ? Sinon : retrait local, comme avant.
+function _retraitMembreViseLeServeur(convId, userId) {
+  if (typeof _compteAuthReel !== "function" || !_compteAuthReel()) return false;
+  if (/^conv_grp_/.test(String(convId || ""))) return false;
+  return _RE_UUID_MEMBRE.test(String(userId || ""));
+}
+function _retraitMembreLocal(c, convId, userId, name, apresAllerRetour) {
+  c.userIds = (c.userIds || []).filter(function(id) { return id !== userId; });
+  c.messages.push({ id: "msg_" + uid(), from: "me", text: "👋 " + name + " a quitté le groupe.", at: Date.now(), fromName: "Passio" });
+  c.lastAt = Date.now();
+  saveConversations();
+  toast("🗑 " + name + " retiré·e du groupe");
+  if (!apresAllerRetour) {
+    _renderGroupMembersModal(convId);
+    var fp = document.getElementById("conv-fullpage");
+    if (fp && fp.classList.contains("active")) renderConvFpThread(c, c.groupName || "Groupe");
+    return;
+  }
+  // L'écran a pu changer pendant l'aller-retour : ne repeindre que ce qui montre ENCORE ce groupe.
+  var bd = document.getElementById("modalBackdrop");
+  if (bd && bd.classList.contains("active") && window._grpConvId === convId && document.getElementById("grpPanel_members")) {
+    _renderGroupMembersModal(convId);
+  }
+  var fp2 = document.getElementById("conv-fullpage");
+  if (fp2 && fp2.classList.contains("active") && window._openedConvId === convId) renderConvFpThread(c, c.groupName || "Groupe");
+}
+// L'échec, dit sans affirmer plus que ce qui a été lu. Trace sans donnée
+// personnelle : ni nom, ni identifiant — la cause et le code seuls.
+function _retraitMembreEchec(name, cause, raison) {
+  var textes = {
+    reseau: "Pas de connexion : le retrait de " + name + " n'a pas été confirmé. Réessaie quand le réseau revient.",
+    hors_ligne: "Pas de connexion : le retrait de " + name + " n'a pas pu partir. Réessaie quand le réseau revient.",
+    session: "Ta session a expiré — reconnecte-toi pour retirer " + name + " du groupe.",
+    refus: "Le serveur a refusé le retrait de " + name + ".",
+    toujours_membre: name + " est toujours membre du groupe : le serveur n'a pas accepté le retrait.",
+    non_confirme: "Le retrait de " + name + " n'a pas été confirmé par le serveur.",
+  };
+  try {
+    if (typeof diagLog === "function") {
+      var code = raison && typeof raison === "object" ? (raison.code || raison.status || "") : "";
+      diagLog("conv_members retrait non confirmé", cause, String(code).slice(0, 12));
+    }
+  } catch (e) {}
+  toast(textes[cause] || textes.non_confirme, "error");
+}
+// 0 ligne : le membre est-il encore là ? Sa ligne ET la mienne (témoin : si je ne
+// me vois pas, son absence ne prouve rien). Rend "present", "absent" ou "inconnu".
+function _relireAppartenance(convId, userId) {
+  var moi = typeof MY_UID !== "undefined" && MY_UID ? MY_UID : "";
+  var lecture;
+  try {
+    lecture = Promise.resolve(supa.from("conv_members").select("user_id").eq("conv_id", convId).in("user_id", [moi, userId]));
+  } catch (e) {
+    lecture = Promise.reject(e);
+  }
+  return lecture.then(function(r) {
+    if (!r || r.error || !Array.isArray(r.data)) return "inconnu";
+    var ids = r.data.map(function(x) { return x && x.user_id; });
+    if (ids.indexOf(userId) >= 0) return "present";
+    if (ids.indexOf(moi) < 0) return "inconnu";
+    // C-04 cache, dans une discussion d'activité, un membre bloqué avec moi — même
+    // à son créateur avant la migration : là, « absent » n'est pas une preuve.
+    if (/^evgrp_/.test(String(convId || ""))) return "inconnu";
+    return "absent";
+  }, function() { return "inconnu"; });
+}
 function removeGroupMember(convId, userId) {
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) return;
   var name = _groupMemberName(userId);
-  c.userIds = (c.userIds || []).filter(function(id) { return id !== userId; });
-  c.messages.push({ id: "msg_" + uid(), from: "me", text: "👋 " + name + " a quitté le groupe.", at: Date.now(), fromName: "Passio" });
-  c.lastAt = Date.now();
-  saveConversations();
-  // Sync Supabase : retire le membre (autorisé au créateur via policy « Suppression admin »).
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal) {
-    try { supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", userId).then(function(){}, function(){}); } catch(e) {}
+  if (!_retraitMembreViseLeServeur(convId, userId)) {
+    _retraitMembreLocal(c, convId, userId, name);
+    return;
   }
-  toast("🗑 " + name + " retiré·e du groupe");
-  _renderGroupMembersModal(convId);
-  var fp = document.getElementById("conv-fullpage");
-  if (fp && fp.classList.contains("active")) renderConvFpThread(c, c.groupName || "Groupe");
+  if (typeof sessionExpiree === "function" && sessionExpiree()) {
+    _retraitMembreEchec(name, "session");
+    return false;
+  }
+  if (!(typeof supa !== "undefined" && supa && window._supaReal)) {
+    _retraitMembreEchec(name, "hors_ligne");
+    return false;
+  }
+  var cle = convId + "\u0000" + userId;
+  if (_retraitsMembreEnVol[cle]) return _retraitsMembreEnVol[cle];
+  var envoi;
+  // Supabase : retire le membre (autorisé au créateur via la policy « Suppression admin »).
+  try {
+    envoi = Promise.resolve(supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", userId).select("user_id"));
+  } catch (e) {
+    envoi = Promise.reject(e);
+  }
+  var retirerIci = function() {
+    // L'état a pu être relu pendant l'aller-retour : on retire sur la conversation COURANTE.
+    var courante = getConversations().find(function(x) { return x.id === convId; }) || c;
+    _retraitMembreLocal(courante, convId, userId, name, true);
+    return true;
+  };
+  var suite = envoi.then(function(r) {
+    if (r && r.error) {
+      _retraitMembreEchec(name, typeof estEchecReseau === "function" && estEchecReseau(r.error) ? "reseau" : "refus", r.error);
+      return false;
+    }
+    if (r && Array.isArray(r.data) && r.data.length >= 1) return retirerIci();
+    return _relireAppartenance(convId, userId).then(function(etat) {
+      if (etat === "absent") return retirerIci();
+      _retraitMembreEchec(name, etat === "present" ? "toujours_membre" : "non_confirme", { code: "0 ligne" });
+      return false;
+    });
+  }, function(e) {
+    _retraitMembreEchec(name, typeof estEchecReseau === "function" && estEchecReseau(e) ? "reseau" : "non_confirme", e);
+    return false;
+  }).then(function(ok) {
+    delete _retraitsMembreEnVol[cle];
+    return ok;
+  }, function(e) {
+    delete _retraitsMembreEnVol[cle];
+    try { console.warn("[groupe] retrait d'un membre :", e && e.message); } catch (_e) {}
+    return false;
+  });
+  _retraitsMembreEnVol[cle] = suite;
+  return suite;
 }
 
 // Quitter un groupe : retire MA propre adhésion (RLS « Suppression propre ») et
