@@ -1763,9 +1763,9 @@ function _applyCommentInteractionEvent(r, op) {
     // #11 épingle (RV-38) : un état du FIL, ni « j'aime » ni réponse — seule la ligne
     // du PROPRIÉTAIRE du fil fait foi (`_epingleRecue`), la mienne comprise : elle
     // vient peut-être d'un autre de mes appareils. Indexée (R37) : son retrait — une
-    // purge, avec le commentaire ou la publication — est reconnu sans relecture, et
-    // n'a rien à défaire.
-    if (r.kind === "pin") { if (op === "add") { _ciIndexer(r); _epingleRecue(r); } return; }
+    // purge, avec le commentaire ou la publication, ou le retour arrière de la
+    // migration — se reconnaît, et la vérité du fil se RELIT (`_epingleRetiree`).
+    if (r.kind === "pin") { if (op === "add") { _ciIndexer(r); _epingleRecue(r); } else _epingleRetiree(r); return; }
     if (typeof MY_UID !== "undefined" && r.user_id === MY_UID) return; // déjà appliqué localement
     // Un compte bloqué n'AJOUTE rien ; ce qu'il retire part quand même (retirer
     // ne montre rien de lui, et sa ligne a pu être comptée par une lecture).
@@ -2033,8 +2033,9 @@ function openCommentOptions(threadId, commentId, mine, event) {
     + _cmtRow("🎬", "Réagir avec un GIF", "gif")
     + _cmtRow("📋", "Copier le texte", "copy");
   window._cmtSheetCtx.owner = (typeof _isThreadOwner === "function") ? _isThreadOwner(threadId) : false;
-  // Épingler : réservé au propriétaire du fil (auteur du post/événement/live).
-  if (window._cmtSheetCtx.owner) {
+  // Épingler : réservé au propriétaire du fil (auteur du post/événement/live) — et
+  // jamais dans un fil homonyme, que la garde du serveur refuse (`_filAmbigu`).
+  if (window._cmtSheetCtx.owner && !_filAmbigu(threadId)) {
     rows += _cmtRow("📌", _estEpingle(threadId, c) ? "Retirer l'épingle" : "Épingler en haut", "pin");
   }
   if (isMine) {
@@ -2241,12 +2242,31 @@ function _sauverEtRepeindreFil(fil) {
   try { if (t && typeof t.save === "function") t.save(); else saveState(); } catch (e) {}
   _refreshCommentThreadUINow(fil);
 }
+// Un identifiant de fil connu ICI à la fois comme PUBLICATION et comme ACTIVITÉ
+// n'a pas de propriétaire sûr (red team RV-38, P2). Les identifiants sont choisis
+// par le client : un compte peut publier sous l'identifiant de l'activité d'autrui,
+// et `_findCommentThread` cherchant d'abord une publication, l'auteur de la
+// publication homonyme passait pour le propriétaire de l'activité — ses épingles
+// s'affichaient sur elle. La garde du serveur refuse d'épingler dans un fil
+// ambigu ; ici, il n'a ni épingle lue, ni reçue, ni posée. Une lecture
+// impossible des activités vaut ambiguïté : sans propriétaire sûr, aucune épingle.
+function _filAmbigu(fil) {
+  if (!fil || typeof findPostAnywhere !== "function" || !findPostAnywhere(fil)) return false;
+  try {
+    return typeof allEvents === "function" && allEvents().some(function (e) { return e && e.id === fil; });
+  } catch (e) {
+    try { diagLog("epingle_fil_ambigu : " + (e && e.message)); } catch (_e) {}
+    return true;
+  }
+}
 // Le PROPRIÉTAIRE du fil : l'auteur de la publication, l'organisateur de
 // l'activité — la définition même de la garde du serveur (`posts.author_id`,
-// `coalesce(organizer_id, author_id)`, que `organizerId` reprend). Inconnu
-// ici : null, et rien ne se décide.
+// `coalesce(nullif(organizer_id, ''), author_id)`, que `organizerId` reprend :
+// `organizer_id || author_id`). Inconnu ici, ou fil homonyme : null, et rien
+// ne se décide.
 function _proprietaireFil(fil) {
-  var t = (fil && typeof _findCommentThread === "function") ? _findCommentThread(fil) : null;
+  if (!fil || _filAmbigu(fil)) return null;
+  var t = (typeof _findCommentThread === "function") ? _findCommentThread(fil) : null;
   var p = t ? t.targetUserId : null;
   if (p === "me") p = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null;
   return (typeof p === "string" && p) ? p : null;
@@ -2347,6 +2367,19 @@ function _epingleRecue(r) {
     if (val === "1") _assurerCommentaireEpingle(fil, r.comment_id);
   } catch (e) { try { diagLog("epingle_recue : " + (e && e.message)); } catch (_e) {} }
 }
+// Une ligne d'épingle RETIRÉE en direct (la ligne vient de l'index R37) : une
+// purge — le commentaire, la publication — ou le retour arrière de la migration.
+// La vérité du fil se RELIT : elle ne se déduit pas d'une ligne qui n'est plus
+// (red team RV-38 : l'épingle restait affichée jusqu'à la lecture suivante). Une
+// discussion fermée se relit à sa prochaine ouverture.
+function _epingleRetiree(r) {
+  try {
+    var fil = r && r.post_id;
+    if (!fil || !_discussionAffichee(fil)) return;
+    _epingleNouvelleGeneration(fil);   // une lecture partie avant le retrait est périmée
+    _lireEpingleFil(fil);
+  } catch (e) { try { diagLog("epingle_retiree : " + (e && e.message)); } catch (_e) {} }
+}
 // Ce que dit un refus, selon sa nature. 23514 : la contrainte de la base n'admet
 // pas (encore) l'épingle ; 42501 : la garde ou la RLS la refuse — au propriétaire
 // lui-même (seul à voir ce geste) : un commentaire que la base ne rattache pas à
@@ -2364,6 +2397,9 @@ async function togglePinComment(threadId, commentId) {
     var target = thread.comments.find(function (c) { return c.id === commentId; });
     if (!target) return;
     if (!_isThreadOwner(threadId)) { toast("Seul l'auteur du fil peut épingler un commentaire"); return; }
+    // Un fil homonyme (une publication et une activité sous le même identifiant) :
+    // la garde du serveur refuse d'y épingler, ce client n'y lit aucune épingle.
+    if (_filAmbigu(threadId)) { toast("Épingle indisponible sur ce fil"); return; }
     // Pas encore en base (publication : `_pending` ; activité : `ec_local_…`) : la garde
     // le refuserait, et le refus dirait autre chose que la vraie raison.
     if (target._pending || /^ec_local_/.test(String(target.id))) {

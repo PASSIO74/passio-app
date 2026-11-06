@@ -35,9 +35,15 @@
 //     « 0 » de l'ancien s'est perdu ;
 //   ⑪ une page relue PENDANT l'écriture : l'épingle confirmée reste à l'écran ;
 //   ⑫ l'épinglé plus ancien que la première page (30) est lu par son identifiant
-//     et montré en tête, chez tous ; « précédents » ne le redouble pas.
+//     et montré en tête, chez tous ; « précédents » ne le redouble pas ;
+//   ⑬ un fil HOMONYME (une publication et une activité sous le même identifiant)
+//     n'a pas de propriétaire : aucune épingle lue, reçue ni posée — l'auteur de
+//     la publication homonyme passait pour le propriétaire de l'activité ;
+//   ⑭ une ligne d'épingle RETIRÉE en direct (purge, retour arrière) : la vérité
+//     du fil se relit.
 // ⑨ à ⑫ (et ⑦) viennent de la contre-revue du lot (audit-passio, six
-// reproductions). Aucune requête ne part : `supa.from` et `supa.channel` sont
+// reproductions), ⑬ et ⑭ de la red team de la migration (P2 et P4).
+// Aucune requête ne part : `supa.from` et `supa.channel` sont
 // simulés. Fiche : docs/journal/serveur-securite-base.md, « 📌 RV-38 ».
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
@@ -473,5 +479,66 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
     }, P);
     expect(apres).toEqual({ charges: 35, n00: 1 });
     expect((await etat(page, P)).premier).toBe("c_p00");
+  });
+
+  test("⑬ un fil HOMONYME — une publication et une activité sous le même identifiant — n'a pas de propriétaire : aucune épingle lue, reçue ni posée", async ({ page }) => {
+    await preparer(page);
+    const E = "ev_rv38_alice";
+    // La red team (P2) : Alice organise l'activité E ; Zoé PUBLIE sous l'identifiant E
+    // (rien ne l'interdit), y épingle son commentaire w1, puis commente l'activité
+    // d'Alice sous ce même identifiant. Le visiteur a la publication de Zoé dans son fil.
+    await page.evaluate(({ e, alice, zoe }) => {
+      state.seed.events = (state.seed.events || []).concat([{ id: e, title: "L'activité d'Alice", date: Date.now() + 86400000, organizerId: alice, authorId: alice }]);
+      state.supabasePosts.push({ id: e, authorId: zoe, authorName: "Zoé", authorEmoji: "🎸", passion: "musique", mood: "all",
+        text: "Homonyme", content: "Homonyme", createdAt: Date.now() - 1000, likes: 0, liked: false, comments: [], reactions: [], fromSupabase: true });
+      window._eventCommentsCache = window._eventCommentsCache || {};
+      window._eventCommentsCache[e] = [{ id: "ec_rv38_w1", authorId: zoe, authorName: "Zoé", text: "w1", content: "w1", createdAt: Date.now() - 500, replies: [], likes: 0, likedBy: [] }];
+      __interactions.push(__ligne("ci_h1", "ec_rv38_w1", e, zoe, "1", "2026-11-05T08:30:00+00:00"));
+    }, { e: E, alice: ALICE, zoe: ZOE });
+    // L'ouverture de la discussion de l'activité (`_loadEventComments` → hydrate) : AUCUNE
+    // lecture d'épingle — avant le correctif, Zoé passait pour la propriétaire.
+    await page.evaluate((e) => hydrateCommentInteractions({ id: e, comments: window._eventCommentsCache[e] }), E);
+    const lues = await page.evaluate((e) => __lectures.filter((l) => l.table === "comment_interactions"
+      && l.eqs.some(([c, v]) => c === "post_id" && v === e) && l.eqs.some(([c]) => c === "kind")).length, E);
+    expect(lues, "aucune épingle lue dans un fil homonyme").toBe(0);
+    expect(await page.evaluate((e) => _estEpingle(e, { id: "ec_rv38_w1" }), E)).toBe(false);
+    // … ni reçue en direct.
+    await page.evaluate(({ e, zoe }) => __recevoir(__ligne("ci_h2", "ec_rv38_w1", e, zoe, "1", "2026-11-05T09:40:00+00:00")), { e: E, zoe: ZOE });
+    expect(await page.evaluate((e) => _estEpingle(e, { id: "ec_rv38_w1" }), E), "ni reçue en direct").toBe(false);
+
+    // … ni posée : MA publication P, puis une activité d'Alice sous l'identifiant P.
+    await page.evaluate((p) => __ouvrir(p), P);
+    await expect(page.locator('#commentsBox .comment[data-commentid="c_rv38_1"]')).toHaveCount(1);
+    const proposee = async () => page.evaluate((p) => {
+      openCommentOptions(p, "c_rv38_1", 0);
+      const rangs = Array.from(document.querySelectorAll("#cmtSheet .cmt-sheet-row")).map((b) => b.textContent);
+      _closeCmtSheet();
+      return rangs.some((t) => /pingl/i.test(t));
+    }, P);
+    expect(await proposee(), "fil sans homonyme : l'épingle est proposée au propriétaire").toBe(true);
+    await page.evaluate(({ p, alice }) => {
+      state.seed.events.push({ id: p, title: "Homonyme de ma publication", date: Date.now() + 86400000, organizerId: alice, authorId: alice });
+    }, { p: P, alice: ALICE });
+    expect(await proposee(), "fil homonyme : plus d'épingle proposée").toBe(false);
+    await page.evaluate((p) => togglePinComment(p, "c_rv38_1"), P);
+    expect(await page.evaluate(() => __ecritures.length), "rien ne part").toBe(0);
+    expect((await etat(page, P)).epingles).toEqual([]);
+    expect(await page.evaluate(() => __toasts.slice(-1)[0])).toBe("Épingle indisponible sur ce fil");
+  });
+
+  test("⑭ une ligne d'épingle RETIRÉE en direct (une purge, le retour arrière) : la vérité du fil se relit", async ({ page }) => {
+    await preparer(page);
+    await page.evaluate(({ pa, alice }) => { __interactions.push(__ligne("ci_x1", "c_rv38_a1", pa, alice, "1", "2026-11-05T08:40:00+00:00")); }, { pa: PA, alice: ALICE });
+    await page.evaluate((pa) => __ouvrir(pa), PA);
+    await expect.poll(async () => (await etat(page, PA)).badges).toEqual(["c_rv38_a1"]);
+    // Le serveur purge la ligne ; le temps réel n'en livre que la clé primaire (R37).
+    await page.evaluate(() => {
+      window.__interactions = window.__interactions.filter((i) => i.id !== "ci_x1");
+      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === "comment_interactions" && x.filtre.event === "DELETE");
+      if (!l) throw new Error("aucune liaison DELETE sur comment_interactions");
+      l.cb({ schema: "public", table: "comment_interactions", eventType: "DELETE", commit_timestamp: "2026-11-05T10:00:00Z", errors: null, new: {}, old: { id: "ci_x1" } });
+    });
+    await expect.poll(async () => { const e = await etat(page, PA); return [e.epingles, e.badges]; },
+      { message: "relue : plus rien d'épinglé" }).toEqual([[], []]);
   });
 });
