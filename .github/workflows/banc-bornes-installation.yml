@@ -1,16 +1,16 @@
-# BANC TEMPORAIRE (2026-11-06) — retiré avant la PR, résultats consignés dans
+# BANC TEMPORAIRE (2026-11-06), v2 — retiré avant la PR, résultats consignés dans
 # docs/journal/telemetrie-pilotage-sentinelle.md. Ne tourne que sur la branche de
 # travail, et seulement quand ce fichier change. Aucun secret, aucune écriture.
-#   ①②③④ : ce que GitHub fait d'une étape puis d'un job qui dépassent leur
-#             `timeout-minutes`, ce qu'en voient un agrégat `if: always()` (le
-#             modèle de `smoke`) et un job dépendant (le modèle de `deploy`) ;
-#             puis la relance « Re-run failed jobs » de ces jobs, par l'API.
-#   ⑤       : l'étape RÉELLE de deploy.yml, extraite par le lecteur du dépôt, avec
-#             un premier essai figé dans APT par construction (serveur qui accepte
-#             la connexion et ne répond jamais) : l'essai est-il tué, le verrou
-#             APT rendu, le second essai mené à bien ?
-#   ⑥       : APT reprend-il ce qu'un essai coupé a téléchargé ? (miroir ralenti à
-#             ~40 ko/s, le régime du 06/11 : 34 ko/s).
+# La v1 (run 42196781730) a mesuré ce que GitHub fait d'une étape ou d'un job
+# hors délai, la relance « Re-run failed jobs », et TROUVÉ LE DÉFAUT corrigé ici :
+# `timeout` ne joint pas l'`apt-get` lancé par `sudo`, qui garde le verrou APT.
+#   figee   : l'étape RÉELLE de test-local, premier essai figé dans APT (serveur
+#             qui accepte la connexion et ne répond jamais) → coupé, survivants
+#             achevés, second essai mené à bien ?
+#   reprise : l'étape RÉELLE, premier essai sur un miroir ralenti à ~40 ko/s (le
+#             régime du 06/11 : 34 ko/s) coupé en plein téléchargement → le second
+#             repart-il de ce qu'APT a déjà téléchargé ?
+# Dans les deux, la borne d'essai est ramenée de 10 à 2 min (seule réécriture).
 name: Banc temporaire — bornes d'installation
 
 on:
@@ -24,41 +24,11 @@ permissions:
   contents: read
 
 jobs:
-  etape-bornee:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Étape figée, bornée à 1 min
-        timeout-minutes: 1
-        run: sleep 150
-      - name: Étape suivante
-        run: echo "étape suivante exécutée"
-
-  job-borne:
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
-    steps:
-      - name: Étape figée, job borné à 1 min
-        run: sleep 150
-
-  agregat:
-    if: always()
-    needs: [etape-bornee, job-borne]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Lire needs.*.result
-        env:
-          R_ETAPE: ${{ needs.etape-bornee.result }}
-          R_JOB: ${{ needs.job-borne.result }}
-        run: echo "etape-bornee=${R_ETAPE} job-borne=${R_JOB}"
-
-  dependant:
-    needs: [etape-bornee, job-borne]
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "ce job ne devrait pas tourner"
-
-  installation-figee:
+  banc:
+    strategy:
+      fail-fast: false
+      matrix:
+        cas: [figee, reprise]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -81,46 +51,18 @@ jobs:
             console.log(banc);
           '
 
-      - name: Piège APT (accepte la connexion, ne répond jamais), levé après 45 s
+      - name: Piège APT figé (accepte, ne répond jamais), levé après 45 s
+        if: matrix.cas == 'figee'
         run: |
           nohup node -e 'require("net").createServer(() => {}).listen(9999, "127.0.0.1")' >/dev/null 2>&1 &
           sleep 1
-          printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:9999";' 'Acquire::https::Proxy "http://127.0.0.1:9999";' 'Acquire::http::Timeout "3600";' 'Acquire::https::Timeout "3600";' | sudo tee /etc/apt/apt.conf.d/99-banc-fige
-          nohup bash -c 'sleep 45; sudo rm -f /etc/apt/apt.conf.d/99-banc-fige' >/dev/null 2>&1 &
+          printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:9999";' 'Acquire::https::Proxy "http://127.0.0.1:9999";' 'Acquire::http::Timeout "3600";' 'Acquire::https::Timeout "3600";' | sudo tee /etc/apt/apt.conf.d/99-banc
+          nohup bash -c 'sleep 45; sudo rm -f /etc/apt/apt.conf.d/99-banc' >/dev/null 2>&1 &
 
-      - name: Lancer l'étape réelle
-        timeout-minutes: 25
+      - name: Miroir APT ralenti à ~40 ko/s, levé après 100 s (avant la coupure)
+        if: matrix.cas == 'reprise'
         run: |
-          debut=$(date +%s)
-          bash -e "${RUNNER_TEMP}/installer.sh"
-          echo "BANC durée totale de l'étape : $(( $(date +%s) - debut )) s"
-
-      - name: Constats
-        if: always()
-        run: |
-          ls -d "${HOME}"/.cache/ms-playwright/chromium-* || echo "BANC aucun Chromium installé"
-          pgrep -a -x apt-get || echo "BANC aucun apt-get restant"
-          pgrep -af /usr/lib/apt/methods || echo "BANC aucune méthode APT restante"
-          sudo fuser -v /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock 2>&1 || echo "BANC aucun détenteur des verrous APT"
-          npx playwright --version
-
-  reprise-apres-coupure:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
-      - name: Préparer (listes APT à jour, paquet Playwright)
-        run: |
-          npm install --no-save @playwright/test
           sudo apt-get update -qq
-
-      - name: Miroir APT ralenti à ~40 ko/s (mandataire local)
-        run: |
           cat > "${RUNNER_TEMP}/lent.mjs" <<'JS'
           import http from "node:http";
           const [port, debit] = process.argv.slice(2).map(Number);
@@ -143,18 +85,24 @@ jobs:
           JS
           nohup node "${RUNNER_TEMP}/lent.mjs" 8899 40000 > "${RUNNER_TEMP}/lent.log" 2>&1 &
           sleep 1
-          cat "${RUNNER_TEMP}/lent.log"
-          echo 'Acquire::http::Proxy "http://127.0.0.1:8899";' | sudo tee /etc/apt/apt.conf.d/99-banc-lent
+          echo 'Acquire::http::Proxy "http://127.0.0.1:8899";' | sudo tee /etc/apt/apt.conf.d/99-banc
+          nohup bash -c 'sleep 100; sudo rm -f /etc/apt/apt.conf.d/99-banc' >/dev/null 2>&1 &
 
-      - name: Premier essai, coupé à 2 min par timeout (comme en production)
+      - name: Lancer l'étape réelle
+        timeout-minutes: 25
+        shell: bash
         run: |
-          if timeout --kill-after=30s 2m npx playwright install --with-deps chromium; then echo "BANC fini avant la coupure"; else echo "BANC coupé, code $?"; fi
-          echo "BANC paquets complets :"; ls -la /var/cache/apt/archives/*.deb 2>/dev/null || echo "(aucun)"
-          echo "BANC paquets partiels :"; sudo ls -la /var/cache/apt/archives/partial/ || true
+          set -o pipefail
+          debut=$(date +%s)
+          bash -e "${RUNNER_TEMP}/installer.sh" 2>&1 | tee "${RUNNER_TEMP}/etape.log"
+          echo "BANC étape réelle VERTE en $(( $(date +%s) - debut )) s"
 
-      - name: Second essai, miroir rendu
+      - name: Constats
+        if: always()
         run: |
-          sudo rm -f /etc/apt/apt.conf.d/99-banc-lent
-          npx playwright install --with-deps chromium 2>&1 | tee "${RUNNER_TEMP}/essai2.log"
-          echo "BANC ce que le second essai a dû télécharger :"
-          grep -E "Need to get|Fetched|Get:[0-9]+ http" "${RUNNER_TEMP}/essai2.log" || true
+          echo "BANC essais lancés : $(grep -c 'Installing dependencies' "${RUNNER_TEMP}/etape.log" || true)"
+          echo "BANC ce que chaque essai a dû télécharger :"; grep -E "Need to get|Fetched" "${RUNNER_TEMP}/etape.log" || echo "(rien)"
+          grep -E "Could not get lock|dpkg was interrupted" "${RUNNER_TEMP}/etape.log" && echo "BANC verrou ou dpkg en défaut" || echo "BANC aucun verrou en défaut"
+          ls -d "${HOME}"/.cache/ms-playwright/chromium-* || echo "BANC aucun Chromium installé"
+          pgrep -a -x apt-get || echo "BANC aucun apt-get restant"
+          pgrep -a -x dpkg || echo "BANC aucun dpkg restant"

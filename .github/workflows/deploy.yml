@@ -691,6 +691,9 @@ jobs:
           for essai in 1 2; do
             if timeout --kill-after=30s 10m npx playwright install --with-deps chromium; then exit 0; fi
             echo "::warning title=Installation Playwright::essai ${essai}/2 en échec ou figé au-delà de 10 min (miroir APT ou CDN Playwright)"
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -x dpkg || true
+            sleep 2
             sudo dpkg --configure -a || true
           done
           echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
@@ -822,10 +825,15 @@ jobs:
       # sans relance aurait donc rendu rouges des runs sains.
       #
       # D'où : chaque ESSAI est borné à 10 min par `timeout` (toute installation
-      # Chromium mesurée tient dans un essai), puis relancé UNE fois. Le signal va
-      # à tout le groupe de processus, `sudo apt-get` compris : le verrou APT est
-      # rendu et le second essai rouvre des connexions neuves. `dpkg --configure -a`
-      # répare entre-temps un dpkg coupé en plein dépaquetage (sans effet sinon).
+      # Chromium mesurée tient dans un essai), puis relancé UNE fois, sur des
+      # connexions neuves.
+      # ⚠️ `timeout` NE JOINT PAS CE QUE `sudo` A LANCÉ (mesuré au banc, 06/11) :
+      # coupé, l'essai laissait `apt-get` vivant, verrou APT en main, et le second
+      # mourait sur « Could not get lock ». D'où les deux `pkill` — par NOM
+      # d'exécutable, ils n'atteignent jamais `sudo` ni le shell de l'étape — puis
+      # `dpkg --configure -a`, pour un dpkg coupé en plein dépaquetage (sans effet
+      # sinon). Ce qu'APT a déjà téléchargé reste dans son cache : le second essai
+      # repart de là (mesuré au banc, voir le journal).
       # `timeout-minutes` sur l'étape est le FILET : deux essais de 10 min et leur
       # grâce font 21 min, plus le `npm install` — 25 min ne coupe jamais un essai.
       #
@@ -840,6 +848,9 @@ jobs:
           for essai in 1 2; do
             if timeout --kill-after=30s 10m npx playwright install --with-deps chromium; then exit 0; fi
             echo "::warning title=Installation Playwright::essai ${essai}/2 en échec ou figé au-delà de 10 min (miroir APT ou CDN Playwright)"
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -x dpkg || true
+            sleep 2
             sudo dpkg --configure -a || true
           done
           echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
@@ -884,6 +895,9 @@ jobs:
           for essai in 1 2; do
             if timeout --kill-after=30s 10m npx playwright install --with-deps webkit; then exit 0; fi
             echo "::warning title=Installation Playwright::essai ${essai}/2 en échec ou figé au-delà de 10 min (miroir APT ou CDN Playwright)"
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -x dpkg || true
+            sleep 2
             sudo dpkg --configure -a || true
           done
           echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
@@ -924,6 +938,9 @@ jobs:
           for essai in 1 2; do
             if timeout --kill-after=30s 10m npx playwright install --with-deps chromium; then exit 0; fi
             echo "::warning title=Installation Playwright::essai ${essai}/2 en échec ou figé au-delà de 10 min (miroir APT ou CDN Playwright)"
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -x dpkg || true
+            sleep 2
             sudo dpkg --configure -a || true
           done
           echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
