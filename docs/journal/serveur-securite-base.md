@@ -1084,6 +1084,8 @@ externe (ni pg_net, ni http, ni notify) ; les trois vues n'ont aucun lecteur. Tr
 (chacun demande sa décision ou sa revue) :
 - **R27** : un VENANT lit la file (C-04 : toute ligne hors « declined »), et un inconnu qui trouve une place libre s'inscrit,
   lit, repart. R24 ① ferme la voie de la RPC, pas celle de l'inscription. Proposition : branche « venant » limitée à « going ».
+  **Tranché le 06/11 : assumé**, C-04 part telle qu'attestée (0 ligne « peut-être » ni « attente » en production ; raisons et
+  conditions de réouverture : `05-RISQUES-RESIDUELS.md` de l'audit du 02/11).
 - **R28** : l'ordre de la file est `created_at`, que le client écrit — on passe devant la file.
 - **R29** : `organizer_id` se désigne sans le consentement de la personne désignée ; la policy UPDATE d'`events` garde sa
   propre lecture des co-organisateurs.
