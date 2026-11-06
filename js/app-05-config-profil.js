@@ -3012,7 +3012,9 @@ async function _chargerDiscussionBobine(postId) {
     _fusionnerPageCommentaires(findPostAnywhere(postId) || reel, page);
     // Les index d'une réponse en cours ne survivent pas à un re-tri.
     window.replyingToCommentIdx = null;
-    if (typeof hydrateCommentInteractions === "function") { try { await hydrateCommentInteractions(reel); } catch (e) {} }
+    // Sans l'épingle (RV-38) : ce panneau ne l'affiche pas. La page détail d'une
+    // bobine, elle, la lit (`_loadPostDetailComments`).
+    if (typeof hydrateCommentInteractions === "function") { try { await hydrateCommentInteractions(reel, { epingle: false }); } catch (e) {} }
     window._cmtThreadLoadedAt[postId] = Date.now();
     if (window.currentReelCommentPostId === postId) loadReelComments(postId);
   } catch (e) { try { diagLog("bobine_commentaires", e && e.message); } catch (_e) {} }

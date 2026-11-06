@@ -5331,16 +5331,22 @@ async function supaLireCommentaire(postId, commentId) {
 // Applique les interactions chargées sur les objets commentaires d'un fil.
 // `post` : une publication, ou `{ id: <identifiant du fil>, comments }` — l'`id`
 // est le FIL. `opts.epingle === false` : ne pas relire l'épingle du fil (une page
-// « précédents », l'épinglé chargé à part : elle vient d'être lue).
+// « précédents », l'épinglé chargé à part, le panneau d'une bobine, une activité
+// rechargée par le temps réel : elle vient d'être lue, ou le direct la tient).
 async function hydrateCommentInteractions(post, opts) {
+  // #11 épingle (RV-38) : un état du FIL, lu au niveau du fil, EN PARALLÈLE des
+  // interactions. Ni l'une ni l'autre n'attend (contre-revue du delta, P3-A : les
+  // « j'aime » attendaient la chaîne de l'épingle) ; l'épingle ne s'APPLIQUE
+  // qu'après les interactions (P2-A : repeinte avant elles, la discussion qu'une
+  // page venait de reconstruire montrait « 🤍 0 »), et ne repeint que si elle change.
+  var finInteractions = null;
   try {
     if (!post || !Array.isArray(post.comments) || !post.comments.length) return;
     var ids = post.comments.map(function(c){ return c.id; });
-    // #11 épingle (RV-38) : un état du FIL, lu au niveau du fil, EN PARALLÈLE des
-    // interactions (aucune attente de plus). Pas pour une bobine : son panneau
-    // (`loadReelComments`) n'affiche pas d'épingle.
-    var lectureEpingle = (post.id && !post.isReel && !(opts && opts.epingle === false) && typeof _lireEpingleFil === "function")
-      ? _lireEpingleFil(post.id) : null;
+    if (post.id && !(opts && opts.epingle === false) && typeof _lireEpingleFil === "function") {
+      var apresInteractions = new Promise(function (r) { finInteractions = r; });
+      _lireEpingleFil(post.id, apresInteractions);
+    }
     var map = await supaLoadCommentInteractions(ids);
     if (map) {
       post.comments.forEach(function(c){
@@ -5351,7 +5357,6 @@ async function hydrateCommentInteractions(post, opts) {
         c.replies = (info.replies || []).slice();
       });
     }
-    if (lectureEpingle) await lectureEpingle;
     // 2e passe : réactions emoji portées sur les RÉPONSES (comment_interactions dont
     // comment_id = id d'une réponse, ex. « srep_… » déterministe). Les réponses sont
     // reconstruites ci-dessus avec des ids stables → on peut leur rattacher leurs
@@ -5373,6 +5378,9 @@ async function hydrateCommentInteractions(post, opts) {
     // Une exception ici (une fonction absente comprise) était indiscernable de
     // « rien à appliquer » (règle du catch large).
     try { diagLog("ci_hydrate : " + (e && e.message)); } catch (_e) {}
+  } finally {
+    // Les interactions sont appliquées (ou ont échoué) : l'épingle peut l'être.
+    if (finInteractions) finInteractions();
   }
 }
 
@@ -8004,7 +8012,9 @@ function _creerCanalDb(prive) {
         const page = document.getElementById("eventDetailPage");
         const open = page && page.style.display !== "none" && document.getElementById("eventCommentsList");
         if (open && typeof _loadEventComments === "function" && window._openEventDetailId === r.event_id) {
-          _loadEventComments(r.event_id);
+          // Sans relire l'épingle : le direct la tient (RV-38) — sinon chaque
+          // commentaire reçu coûtait une lecture à chaque spectateur.
+          _loadEventComments(r.event_id, { epingle: false });
         }
       } catch(e) {}
     });
