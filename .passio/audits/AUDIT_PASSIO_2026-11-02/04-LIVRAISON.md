@@ -317,7 +317,7 @@ Verdict : rien n'a cassé sur les cinq tables dans les 24 h qui ont suivi R25. C
 
 ## 9. C-02 et RV-44 — l'appartenance ne se lit plus sur autrui (2026-11-06)
 
-**Préparé, PAS appliqué.** La contre-vérification de l'état d'après C-04 (06/11, registre R41, RV-44) a trouvé une voie que
+**Appliqué en production le 06/11 à 21:38:05 UTC et mesuré au canal ①** (§ 9.8). La contre-vérification de l'état d'après C-04 (06/11, registre R41, RV-44) a trouvé une voie que
 C-04 ne ferme pas : `is_conv_member(_conv_id, _uid)` (C-02, `SECURITY DEFINER`, EXECUTE pour `authenticated`) répond pour
 N'IMPORTE QUEL `_uid`. Depuis le bloc ⑥ de C-04, la discussion `evgrp_<activité>` ne contient plus que les venants et
 l'organisation, et le client y inscrit d'office chaque « je viens » : un compte connecté reconstituait donc, profil par profil
@@ -334,7 +334,7 @@ n'était pas fermé sur l'échec de sa PROPRE mesure, et trois défauts du clien
 jamais eu ; « 0 ligne » lu comme « toujours membre » ; le succès qui repeignait, après l'aller-retour, une modale fermée et le
 fil d'une autre conversation) — et treize mineurs, corrigés ci-dessous ou consignés (RV-49, RV-50, RV-51 ; R36 ; R42).
 **Contre-revu ensuite sur sa tête** (§ 9.7) : rien de bloquant ; les mineurs trouvés sont corrigés ou consignés (RV-52, RV-53,
-R18, R32). Le sha256 ci-dessous est celui du fichier d'après la contre-revue : l'attestation, pas encore posée, se fait sur LUI.
+R18, R32). Le sha256 ci-dessous est celui du fichier d'après la contre-revue : c'est sur LUI que porte l'attestation (consignée, § 9.8).
 
 ### 9.1 Migration
 
@@ -422,8 +422,8 @@ cache lit « le retrait n'a pas été confirmé » ; après, le retrait passe.
 | # | Geste | Preuve attendue |
 |---|---|---|
 | 1 | PR du lot ; CI verte (le banc tourne par `scripts/bancs-sql-restants.sh`, sans toucher `.github/`) ; « Déploiement production » vert | job vert, le `app.js` servi porte `_relireAppartenance` |
-| 2 | contre-revue de la PR par PASSIO74, ancrée sur la tête (ASTRA-61 bis : le mainteneur unique, sur SA PR, en état COMMENTED — GitHub interdit de s'approuver soi-même), portant le marqueur « Contre-revue technique indépendante », la phrase « revue de mainteneur unique : j'assume l'application de cette migration », le fichier, `cible: njkiyoklssvefstljemx`, et qui l'a produite ; puis, sur le poste, dans le clone à jour de `main` : `node scripts/attester-migration.mjs migrations/migration_discussions_activite_2026-11-06.sql --cible njkiyoklssvefstljemx --pr '#736' --commit <tête revue, 40 hex> --revue <id de la revue> --relecteur PASSIO74 --source '<url de la revue>'` — sous PowerShell, `'#736'` ENTRE APOSTROPHES (sans elles, `#` ouvre un commentaire et la fin de la ligne disparaît) | « ✅ attestation inscrite » ; entrée dans `.passio/migrations/attestations.json` (empreinte `2d423d5f…`), consignée par la PR suivante |
-| 3 | depuis le poste de Benjamin, jamais la CI, dans le même clone : `node scripts/appliquer-migration.mjs migrations/migration_discussions_activite_2026-11-06.sql --projet njkiyoklssvefstljemx` (`node` directement : sous PowerShell, le `--` de `npm run …` dépend des versions, `.passio/migrations/README.md`) ; puis rendre `.passio/migrations/attestations.json` à son état versionné (`git checkout -- …`), sinon le prochain `git pull` refuse | tableau : 17 × OK. Refus 55000 : RIEN n'est appliqué — ligne 1, le décor ou la mesure a échoué (lire la phase et le SQLSTATE) : diagnostiquer, relancer, jamais appliquer sans elle ; ligne 10, la base a bougé depuis le 06/11 ; 13, 14 ou 15, une policy, une fonction appelée ou un appelant a changé : refaire l'inventaire. `55P03` (`lock timeout`) : une autre transaction tenait conv_members plus de 3 s, ou une table du décor plus de 200 ms — rien n'est appliqué, relancer est sûr (RV-42) |
+| 2 | contre-revue de la PR par PASSIO74, ancrée sur la tête (ASTRA-61 bis : le mainteneur unique, sur SA PR, en état COMMENTED — GitHub interdit de s'approuver soi-même), portant le marqueur « Contre-revue technique indépendante », la phrase « revue de mainteneur unique : j'assume l'application de cette migration », le fichier, `cible: njkiyoklssvefstljemx`, et qui l'a produite ; puis, sur le poste, dans un worktree détaché de `origin/main` (`.passio/migrations/README.md`) — JAMAIS dans le dossier de travail, qui peut porter le travail non commité d'une autre session (§ 9.8) : `node scripts/attester-migration.mjs migrations/migration_discussions_activite_2026-11-06.sql --cible njkiyoklssvefstljemx --pr '#736' --commit <tête revue, 40 hex> --revue <id de la revue> --relecteur PASSIO74 --source '<url de la revue>'` — sous PowerShell, `'#736'` ENTRE APOSTROPHES (sans elles, `#` ouvre un commentaire et la fin de la ligne disparaît) | « ✅ attestation inscrite » ; entrée dans `.passio/migrations/attestations.json` (empreinte `2d423d5f…`), consignée par la PR suivante |
+| 3 | depuis le poste de Benjamin, jamais la CI, dans le même worktree : `node scripts/appliquer-migration.mjs migrations/migration_discussions_activite_2026-11-06.sql --projet njkiyoklssvefstljemx` (`node` directement : sous PowerShell, le `--` de `npm run …` dépend des versions, `.passio/migrations/README.md`) ; puis imprimer `git diff -- .passio/migrations/attestations.json` (l'entrée, que la PR suivante consigne) et, depuis le clone, `git worktree remove --force` le dossier | tableau : 17 × OK. Refus 55000 : RIEN n'est appliqué — ligne 1, le décor ou la mesure a échoué (lire la phase et le SQLSTATE) : diagnostiquer, relancer, jamais appliquer sans elle ; ligne 10, la base a bougé depuis le 06/11 ; 13, 14 ou 15, une policy, une fonction appelée ou un appelant a changé : refaire l'inventaire. `55P03` (`lock timeout`) : une autre transaction tenait conv_members plus de 3 s, ou une table du décor plus de 200 ms — rien n'est appliqué, relancer est sûr (RV-42) |
 | 4 | **mesure au canal ①** (§ 9.4), jamais le tableau | `execute_sql` en lecture seule |
 
 ⚠️ **Ne JAMAIS rejouer `participants_visibilite` (C-04) en production après ce lot** : son bloc ⑥ réécrit
@@ -533,3 +533,19 @@ l'outil insérée après le vrai `begin;`, le retour arrière exact à l'octet.
 Infos non retenues : la ligne 16 du verdict accepte aussi le message que la barrière de suppression imite (inatteignable :
 aucun compte synthétique en suppression) ; le retour arrière n'est pas fermé sur échec (acceptable : il se mesure au canal ①) ;
 le faux `supa` de l'e2e accepte n'importe quel ordre de chaîne (la chaîne employée est valide pour le SDK auto-hébergé).
+
+### 9.8 Application et mesure (06/11, soir)
+
+| Quand (UTC) | Fait | Preuve |
+|---|---|---|
+| 21:23:43 | #736 fusionnée (`8e7e4628`) ; « Déploiement production » vert (run 42292743258) : le client de RV-44 est servi AVANT la migration | job `success` |
+| 21:36:35 | Premier essai depuis le poste : arrêté au `git pull --ff-only`. Le bloc travaillait DANS le dossier de travail (`Desktop\PASSIO`), qui portait le travail non commité d'une autre session (branche `security/audit-2026-11-06` : deux migrations de sécurité ajoutées, `dashboard/`, `js/`, fonctions Edge, tests) ; il l'avait fait passer sur `main` (git garde les modifications non commitées) et avait remis `attestations.json` à son état versionné (copie dans `%TEMP%`). **Rien n'est parti** : ni attestation, ni envoi | sortie PowerShell |
+| ~21:37 | Dossier de travail RENDU (retour sur `security/audit-2026-11-06`, copie d'`attestations.json` remise), puis worktree détaché de `origin/main` à `8e7e4628` — la procédure du README, que le premier bloc n'avait pas suivie | sortie PowerShell |
+| 21:38:05 | Attestation inscrite dans le worktree (empreinte `2d423d5f…`, revue n°5806677467 `COMMENTED` relue par l'API, ancrée sur `0a558bc4`, « AUTO-REVUE DE MAINTENEUR UNIQUE » affichée) ; **appliquée** : verdict **17 × OK**, journalisée dans sa transaction (`migrations_appliquees` id 33, 21:38:05 UTC) ; worktree retiré | sortie de `appliquer-migration.mjs` ; l'entrée, identique au `git diff` imprimé, est consignée ici dans `.passio/migrations/attestations.json` |
+| ~21:40 | **Mesuré au canal ①**, pas lu dans le tableau : `is_conv_member(text,text)` corps `814ad66c…` (fins de ligne normalisées), `sql`, STABLE, SECURITY DEFINER, `search_path=""`, PARALLEL UNSAFE, ni STRICT ni LEAKPROOF, EXECUTE pour `authenticated`, `postgres`, `service_role` exactement ; `conv_members_select_member` déparsée `ff0689d9…`, `{authenticated}`, permissive, SELECT ; conv_members porte trois policies, RLS active ; **11 dépendants** d'`is_conv_member` dans `pg_depend`, tous `pg_policy` ; la policy neuve dépend d'`is_conversation_creator` ; les deux fonctions qui la citent à leur corps de production (`storage_chemin_autorise` `0ab32680…`, `trg_reports_preuve_message` `816c7ac7…`) ; **0 trace du décor** (profils `…c2a%`, conversations, appartenances, messages, blocages, `realtime.messages`) | `execute_sql` en lecture seule |
+| 21:30 → 21:42 | Journaux : `postgres_logs` sans aucune ligne ERROR, FATAL, PANIC ni WARNING ; `edge_logs` sur conversations, conv_members, conv_messages, conv_reads : 8 requêtes depuis 21:38, toutes 200 (le trafic est maigre : c'est une absence d'erreur, pas une preuve d'usage) ; dans les deux heures d'avant, les 401 habituels (jetons expirés) et un 403 par quart d'heure au plus, avant l'application | `query_logs` |
+
+**Pas encore mesuré** : la « Barrière RLS de la production » (`authz-critical`) du run de `main` qui suit (elle fait lire à un
+membre les membres de sa conversation) ; l'usage réel d'un retrait de membre bloqué par un créateur (aucune activité à venir le
+06/11) ; les journaux sur 24 h.
+

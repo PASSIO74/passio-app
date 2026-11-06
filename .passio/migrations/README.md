@@ -93,6 +93,14 @@ PowerShell, le passage du `--` à npm dépend des versions, et sans `--projet` l
 barrière refuse (rien ne part, rien n'est appliqué). Ensuite : mesurer au
 canal ①, jamais le tableau ; puis `git worktree remove` du dossier, depuis le clone.
 
+L'attestation (`attester-migration.mjs`) se pose dans le MÊME worktree, juste
+avant l'envoi : elle s'y écrit, `git --no-pager diff -- .passio/migrations/attestations.json`
+l'imprime pour la PR qui la consigne, et elle part avec le worktree. **Jamais de
+`git checkout`, de `git pull` ni de `git checkout -- <fichier>` dans le dossier
+de travail** : le 06/11 (C-02), un bloc qui l'a fait a basculé sur `main` le
+travail non commité d'une autre session — rien n'était perdu, mais elle n'était
+plus sur sa branche (`docs/journal/serveur-securite-base.md`, C-02).
+
 ## Éprouver une migration avant la production
 
 Le job « Suites production (comptes réels) » vise le **staging**, jamais la production : le relancer après une application en production ne prouve rien. Pour éprouver une migration en conditions réelles, attester aussi `fcksxofaelcdmmifnwjo` (la revue doit nommer cette cible), l'y appliquer, puis laisser ce job tourner sur la tête de la PR. Fait pour R25 le 04/11. Le staging a dérivé (`docs/STAGING.md`) : un contrôle de publication de son verdict peut y dire ECHEC sans défaut de la migration.
