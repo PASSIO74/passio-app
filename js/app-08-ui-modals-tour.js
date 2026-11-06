@@ -5311,6 +5311,9 @@ async function supaLireEpingleFil(fil, proprio) {
 // Un commentaire de publication par son identifiant : l'épinglé, quand il est
 // plus ancien que la première page (RV-38). La forme de `supaLoadComments` ;
 // null s'il est absent (supprimé) ou si la lecture échoue.
+// Rend le commentaire, `false` quand la base dit qu'il N'EXISTE PAS (lecture
+// réussie, aucune ligne), `null` quand on ne sait pas (pas de base, échec) : une
+// lecture en échec n'est pas une preuve d'absence (RV-38, l'épinglé gardé).
 async function supaLireCommentaire(postId, commentId) {
   if (!postId || !commentId || typeof supa === "undefined" || !supa || !window._supaReal) return null;
   try {
@@ -5318,7 +5321,7 @@ async function supaLireCommentaire(postId, commentId) {
       .eq("id", commentId).eq("post_id", postId).limit(1);
     if (error) { try { diagLog("commentaire_lecture : " + (error.code || error.message)); } catch (_e) {} return null; }
     const r = (data || [])[0];
-    if (!r) return null;
+    if (!r) return false;
     const profs = await _resolveProfilesByIds([r.author_id]);
     const p = profs[r.author_id] || {};
     return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨",
@@ -8012,9 +8015,11 @@ function _creerCanalDb(prive) {
         const page = document.getElementById("eventDetailPage");
         const open = page && page.style.display !== "none" && document.getElementById("eventCommentsList");
         if (open && typeof _loadEventComments === "function" && window._openEventDetailId === r.event_id) {
-          // Sans relire l'épingle : le direct la tient (RV-38) — sinon chaque
-          // commentaire reçu coûtait une lecture à chaque spectateur.
-          _loadEventComments(r.event_id, { epingle: false });
+          // Sans relire l'épingle quand elle est CONNUE : le direct la tient (RV-38)
+          // — sinon chaque commentaire reçu coûtait une lecture à chaque spectateur.
+          // Inconnue (la lecture d'ouverture a échoué), elle se relit.
+          const connue = typeof _epingleConnue === "function" && _epingleConnue(r.event_id);
+          _loadEventComments(r.event_id, connue ? { epingle: false } : undefined);
         }
       } catch(e) {}
     });

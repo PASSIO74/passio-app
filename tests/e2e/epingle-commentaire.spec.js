@@ -495,9 +495,72 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
     }, P);
     expect(apres).toEqual({ charges: 35, n00: 1 });
     expect((await etat(page, P)).premier).toBe("c_p00");
+    // Apporté par « précédents », il est chargé comme les autres : retirer l'épingle ne
+    // l'enlève pas de la liste (seul l'épinglé lu À PART la quitte avec l'épingle).
+    await page.evaluate((p) => togglePinComment(p, "c_p00"), P);
+    expect(await page.evaluate((p) => findPostAnywhere(p).comments.filter((c) => c.id === "c_p00").length, P),
+      "toujours dans la liste après le retrait de l'épingle").toBe(1);
   });
 
-  test("⑫ bis la page relue à la réouverture GARDE l'épinglé lu à part : il n'est pas relu par son identifiant", async ({ page }) => {
+  test("⑫ bis l'épinglé lu à part est GARDÉ par la page relue, sans quitter l'écran, et se REVÉRIFIE : supprimé en base, il part", async ({ page }) => {
+    await preparer(page);
+    await page.evaluate(async ({ p, moi, alice }) => {
+      const base = Date.parse("2026-11-05T07:00:00Z");
+      __commentaires = [];
+      for (let i = 0; i < 35; i++) __commentaires.push({ id: "c_p" + String(i).padStart(2, "0"), post_id: p, author_id: alice, content: "n°" + i, created_at: new Date(base + i * 60000).toISOString().replace("Z", "") });
+      __interactions.push(__ligne("ci_old", "c_p00", p, moi, "1", "2026-11-05T08:40:00+00:00"));
+      // L'épinglé chargé à part n'envoie rien dans `user_state` (P2-B) : compté dès la première ouverture.
+      window.__sauvegardesChargement = 0;
+      const vraiSave = window.saveState;
+      window.saveState = function () {
+        if (/_assurerCommentaireEpingle/.test(new Error().stack || "")) window.__sauvegardesChargement++;
+        return vraiSave.apply(this, arguments);
+      };
+      await __ouvrir(p);
+    }, { p: P, moi: MOI, alice: ALICE });
+    const parId = () => page.evaluate(() => __lectures.filter((l) => l.table === "post_comments" && l.eqs.some(([c, v]) => c === "id" && v === "c_p00")).length);
+    await expect.poll(parId).toBe(1);
+    await expect.poll(async () => (await etat(page, P)).premier).toBe("c_p00");
+    // Les 30 de la page restent affichés : l'épinglé lu à part n'en prend pas une place (P4).
+    expect(await page.evaluate(() => ({
+      montres: document.querySelectorAll("#commentsBox .comment[data-commentid]").length,
+      voirPlus: Array.from(document.querySelectorAll("#commentsBox button")).some((b) => /Voir \d+ commentaires de plus/.test(b.textContent)),
+    }))).toEqual({ montres: 31, voirPlus: false });
+    // Réouvertures (la page est relue) : il reste en tête à CHAQUE rendu, et sa présence en base
+    // se revérifie une fois par page relue ; rien ne part dans `user_state` (P2-B).
+    const r = await page.evaluate(async (p) => {
+      const premiers = [];
+      const obs = new MutationObserver(() => {
+        const el = document.querySelector("#commentsBox .comment[data-commentid]");
+        if (el) premiers.push(el.getAttribute("data-commentid"));
+      });
+      obs.observe(document.getElementById("modalContent"), { childList: true, subtree: true });
+      for (let i = 0; i < 2; i++) {
+        closeModal();
+        window._cmtThreadLoadedAt = {};
+        await openComments(p);
+        await new Promise((res) => setTimeout(res, 150));
+      }
+      obs.disconnect();
+      return { autres: premiers.filter((x) => x !== "c_p00"), sauvegardes: window.__sauvegardesChargement };
+    }, P);
+    expect(r.autres, "l'épinglé n'a jamais quitté la tête de la liste").toEqual([]);
+    expect(r.sauvegardes, "aucune sauvegarde pour l'épinglé chargé à part").toBe(0);
+    await expect.poll(parId, { message: "une vérification par page relue" }).toBe(3);
+
+    // Son auteur le SUPPRIME ; la ligne d'épingle reste (un homonyme : la purge R31 ne la prend pas).
+    await page.evaluate((p) => {
+      __commentaires = __commentaires.filter((c) => c.id !== "c_p00");
+      closeModal();
+      window._cmtThreadLoadedAt = {};
+      return openComments(p);
+    }, P);
+    await expect.poll(async () => page.evaluate((p) => findPostAnywhere(p).comments.some((c) => c.id === "c_p00"), P),
+      { message: "absent en base : la copie gardée part" }).toBe(false);
+    expect((await etat(page, P)).badges).toEqual([]);
+  });
+
+  test("⑫ ter l'épinglé lu à part quitte la liste quand l'épingle le QUITTE (retiré, ou purgé avec son commentaire)", async ({ page }) => {
     await preparer(page);
     await page.evaluate(async ({ p, moi, alice }) => {
       const base = Date.parse("2026-11-05T07:00:00Z");
@@ -506,32 +569,17 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
       __interactions.push(__ligne("ci_old", "c_p00", p, moi, "1", "2026-11-05T08:40:00+00:00"));
       await __ouvrir(p);
     }, { p: P, moi: MOI, alice: ALICE });
-    const parId = () => page.evaluate(() => __lectures.filter((l) => l.table === "post_comments" && l.eqs.some(([c, v]) => c === "id" && v === "c_p00")).length);
-    await expect.poll(parId).toBe(1);
     await expect.poll(async () => (await etat(page, P)).premier).toBe("c_p00");
-    // L'épinglé chargé à part n'envoie rien dans `user_state` (contre-revue du delta, P2-B).
-    await page.evaluate(() => {
-      window.__sauvegardesChargement = 0;
-      const vraiSave = window.saveState;
-      window.saveState = function () {
-        if (/_assurerCommentaireEpingle/.test(new Error().stack || "")) window.__sauvegardesChargement++;
-        return vraiSave.apply(this, arguments);
-      };
-      // L'épinglé est oublié : il sera relu par son identifiant à la prochaine ouverture.
-      const post = findPostAnywhere("post_rv38_moi");
-      _copiesDiscussion(post.id, post).forEach((c) => { c.comments = c.comments.filter((x) => x.id !== "c_p00"); });
-      window.__lectures = window.__lectures.filter((l) => !(l.table === "post_comments" && l.eqs.some(([c, v]) => c === "id" && v === "c_p00")));
-    });
-    await page.evaluate((p) => { closeModal(); return __ouvrir(p); }, P);
-    await expect.poll(parId).toBe(1);
-    await expect.poll(async () => (await etat(page, P)).premier).toBe("c_p00");
-    expect(await page.evaluate(() => window.__sauvegardesChargement), "aucune sauvegarde pour l'épinglé chargé à part").toBe(0);
-    for (let i = 0; i < 2; i++) {
-      await page.evaluate((p) => { closeModal(); return __ouvrir(p); }, P);
-      await expect.poll(async () => (await etat(page, P)).premier).toBe("c_p00");
-    }
-    await page.waitForTimeout(300);
-    expect(await parId(), "trois ouvertures, une seule lecture par identifiant").toBe(1);
+    // La purge R31 : le commentaire supprimé emporte sa ligne d'épingle. À la réouverture, plus d'épingle.
+    await page.evaluate((p) => {
+      __commentaires = __commentaires.filter((c) => c.id !== "c_p00");
+      __interactions = __interactions.filter((i) => i.id !== "ci_old");
+      closeModal();
+      window._cmtThreadLoadedAt = {};
+      return openComments(p);
+    }, P);
+    await expect.poll(async () => page.evaluate((p) => findPostAnywhere(p).comments.some((c) => c.id === "c_p00"), P),
+      { message: "l'épingle l'a quitté : la copie gardée part" }).toBe(false);
   });
 
   test("⑮ ouvrir une discussion : l'épingle s'applique APRÈS les « j'aime » et ne les fait pas attendre ; rien ne change → ni repeinte ni sauvegarde", async ({ page }) => {
@@ -645,6 +693,22 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
       __delaiEcriture = 0;
     }, { p: P, moi: MOI });
     await expect.poll(async () => (await etat(page, P)).epingles, { message: "relu : le plus récent en base, celui de l'autre appareil" }).toEqual(["c_rv38_2"]);
+    // L'ÉCHO de ma propre écriture, arrivé pendant le geste, n'est pas un autre appareil :
+    // aucune relecture (contre-vérification de 84cb6b3, D2).
+    await page.waitForTimeout(200);
+    const relues = await page.evaluate(async ({ p, moi }) => {
+      const avant = __lectures.length;
+      __delaiEcriture = 300;
+      const geste = togglePinComment(p, "c_rv38_1");   // C2 → C1 : « 1 » pour C1, puis « 0 » pour C2
+      await new Promise((r) => setTimeout(r, 50));
+      __recevoir(__ligne("ci_echo", "c_rv38_1", p, moi, "1", "2026-11-05T23:30:00+00:00"));
+      await geste;
+      __delaiEcriture = 0;
+      await new Promise((r) => setTimeout(r, 200));
+      return __lectures.slice(avant).filter((x) => x.table === "comment_interactions" && x.eqs.some(([c]) => c === "kind")).length;
+    }, { p: P, moi: MOI });
+    expect(relues, "l'écho de ma propre écriture ne coûte aucune relecture").toBe(0);
+    expect((await etat(page, P)).epingles).toEqual(["c_rv38_1"]);
   });
 
   test("⑱ un fil d'EXEMPLE (auteur sans compte) ne lit aucune épingle ; le panneau d'une bobine non plus — sa page détail, si", async ({ page }) => {
@@ -673,36 +737,43 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
     expect(bobine).toEqual({ panneau: 0, detail: 1 });
   });
 
-  test("⑲ une activité rechargée par le temps réel (un commentaire reçu) ne relit pas l'épingle : le direct la tient", async ({ page }) => {
+  test("⑲ une activité rechargée par le temps réel (un commentaire reçu) ne relit pas une épingle CONNUE ; inconnue, elle la relit", async ({ page }) => {
     await preparer(page);
-    const E = "ev_rv38_direct";
-    const lues = await page.evaluate(async ({ e, alice, zoe }) => {
-      state.seed.events = (state.seed.events || []).concat([{ id: e, title: "Activité d'Alice", date: Date.now() + 86400000, organizerId: alice, authorId: alice }]);
-      window._eventCommentsCache = window._eventCommentsCache || {};
-      window._eventCommentsCache[e] = [{ id: "ec_rv38_d1", authorId: zoe, authorName: "Zoé", text: "d1", content: "d1", createdAt: Date.now() - 500, replies: [], likes: 0, likedBy: [] }];
-      window.supaLoadEventComments = async () => [{ id: "ec_rv38_d1", authorId: zoe, author: "Zoé", text: "d1", at: Date.now() - 500 }];
-      // La fiche de l'activité est ouverte (sa liste de commentaires, seule).
+    const r = await page.evaluate(async ({ alice, zoe }) => {
       const fiche = document.getElementById("eventDetailPage");
       if (!fiche) throw new Error("fiche d'activité absente du DOM");
       fiche.innerHTML = '<div id="eventCommentsList"></div>';
       fiche.style.display = "block";
-      window._openEventDetailId = e;
+      window._eventCommentsCache = window._eventCommentsCache || {};
+      window.supaLoadEventComments = async () => [{ id: "ec_rv38_d1", authorId: zoe, author: "Zoé", text: "d1", at: Date.now() - 500 }];
       const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === "event_comments" && x.filtre.event === "INSERT");
       if (!l) throw new Error("aucune liaison INSERT sur event_comments");
-      const avant = __lectures.length;
-      l.cb({ schema: "public", table: "event_comments", eventType: "INSERT", new: { id: "ec_rv38_d2", event_id: e, author_id: zoe, text: "d2", created_at: "2026-11-05T10:00:00+00:00" }, old: {} });
-      await new Promise((res) => setTimeout(res, 400));
-      return __lectures.slice(avant).filter((x) => x.table === "comment_interactions" && x.eqs.some(([c]) => c === "kind")).length;
-    }, { e: E, alice: ALICE, zoe: ZOE });
-    expect(lues, "aucune relecture de l'épingle pour un rechargement en direct").toBe(0);
-    // Le témoin : l'ouverture de la fiche, elle, la lit.
-    const ouverture = await page.evaluate(async (e) => {
-      const avant = __lectures.length;
-      await _loadEventComments(e);
+      const lues = (e, depuis) => __lectures.slice(depuis).filter((x) => x.table === "comment_interactions"
+        && x.eqs.some(([c, v]) => c === "post_id" && v === e) && x.eqs.some(([c]) => c === "kind")).length;
+      const recevoir = async (e) => {
+        const avant = __lectures.length;
+        l.cb({ schema: "public", table: "event_comments", eventType: "INSERT", new: { id: "ec_rv38_x_" + e, event_id: e, author_id: zoe, text: "x", created_at: "2026-11-05T10:00:00+00:00" }, old: {} });
+        await new Promise((res) => setTimeout(res, 400));
+        return lues(e, avant);
+      };
+      const out = {};
+      for (const e of ["ev_rv38_connue", "ev_rv38_inconnue"]) {
+        state.seed.events = (state.seed.events || []).concat([{ id: e, title: "Activité d'Alice", date: Date.now() + 86400000, organizerId: alice, authorId: alice }]);
+        window._eventCommentsCache[e] = [{ id: "ec_rv38_d1", authorId: zoe, authorName: "Zoé", text: "d1", content: "d1", createdAt: Date.now() - 500, replies: [], likes: 0, likedBy: [] }];
+      }
+      // CONNUE : la fiche a été ouverte, sa lecture a eu lieu.
+      window._openEventDetailId = "ev_rv38_connue";
+      const avantOuverture = __lectures.length;
+      await _loadEventComments("ev_rv38_connue");
       await new Promise((res) => setTimeout(res, 200));
-      return __lectures.slice(avant).filter((x) => x.table === "comment_interactions" && x.eqs.some(([c]) => c === "kind")).length;
-    }, E);
-    expect(ouverture, "l'ouverture lit l'épingle").toBe(1);
+      out.ouverture = lues("ev_rv38_connue", avantOuverture);
+      out.connue = await recevoir("ev_rv38_connue");
+      // INCONNUE : aucune lecture n'a abouti pour cette fiche.
+      window._openEventDetailId = "ev_rv38_inconnue";
+      out.inconnue = await recevoir("ev_rv38_inconnue");
+      return out;
+    }, { alice: ALICE, zoe: ZOE });
+    expect(r, "l'ouverture lit ; le direct ne relit qu'une épingle inconnue").toEqual({ ouverture: 1, connue: 0, inconnue: 1 });
   });
 
   test("⑬ un fil HOMONYME — une publication et une activité sous le même identifiant — n'a pas de propriétaire : aucune épingle lue, reçue ni posée", async ({ page }) => {

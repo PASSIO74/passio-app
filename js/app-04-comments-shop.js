@@ -663,7 +663,10 @@ function _renderCommentsList(allComments, postId) {
   // fils quel que soit le contexte (fil/IRL/CDV).
   var _LIMIT = 30;
   window._cmtShown = window._cmtShown || {};
-  var _shown = window._cmtShown[postId] || _LIMIT;
+  // L'épinglé lu à part (RV-38, hors des pages chargées) s'ajoute à ce qui est
+  // montré, il n'y prend pas la place du 30ᵉ (contre-revue du delta, P4).
+  var _aPart = _visible.filter(function (c) { return c && c._epingleGarde; }).length;
+  var _shown = (window._cmtShown[postId] || _LIMIT) + _aPart;
   var _olderBtn = "";
   if (_visible.length > _shown) {
     var _remaining = _visible.length - _shown;
@@ -860,12 +863,16 @@ function _fusionnerPageCommentaires(post, page) {
   // suite : il reste — sinon chaque réouverture le relisait par son identifiant
   // (contre-revue du delta, P3-B). Sans suite, la page est la liste entière, et
   // l'épinglé qui n'y est pas a été supprimé.
+  // Gardé, il reste À VÉRIFIER : sa présence en base se revérifie à chaque page
+  // relue (`_assurerCommentaireEpingle`) — supprimé, il ne doit pas rester en tête
+  // (contre-vérification de 84cb6b3, D1).
   var epingle = (typeof _epingleConnue === "function") ? _epingleConnue(post.id) : undefined;
   var garde = (epingle && epingle.cid && page.suite && !ids.has(epingle.cid))
     ? (post.comments || []).filter(function (c) {
-        return c && c.id === epingle.cid && c.fromSupabase && (c.createdAt || 0) < plancher && anciennes.indexOf(c) < 0;
+        return c && c._epingleGarde && c.id === epingle.cid && c.fromSupabase && (c.createdAt || 0) < plancher && anciennes.indexOf(c) < 0;
       })
     : [];
+  garde.forEach(function (c) { c._aVerifier = true; });
   var liste = page.map(function (c) { return Object.assign({}, c, { text: c.content || c.text || "" }); })
     .concat(anciennes, garde, locaux)
     .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
@@ -879,7 +886,8 @@ function _fusionnerPageCommentaires(post, page) {
 function _commentairesSuiteHtml(postId) {
   var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
   if (!post || !post._commentsSuite) return "";
-  var charges = (post.comments || []).filter(function (c) { return c && c.fromSupabase; }).length;
+  // L'épinglé lu à part (RV-38) n'est pas une page chargée : il ne réduit pas ce qui reste.
+  var charges = (post.comments || []).filter(function (c) { return c && c.fromSupabase && !c._epingleGarde; }).length;
   var total = _totalConnu(postId, post);
   var restants = Number.isSafeInteger(total) ? Math.max(0, total - charges) : 0;
   if (_commentairesEnCours.has(postId)) {
@@ -901,6 +909,12 @@ async function _chargerCommentairesPrecedents(postId) {
     // est en état MAINTENANT, et sur toutes ses copies.
     post = findPostAnywhere(postId) || post;
     var connus = new Set((post.comments || []).map(function (c) { return c.id; }));
+    // L'épinglé lu à part que cette page apporte est désormais chargé comme les
+    // autres : il n'est plus « gardé » (RV-38).
+    var dansLaPage = new Set(page.map(function (c) { return c.id; }));
+    (post.comments || []).forEach(function (c) {
+      if (c && c._epingleGarde && dansLaPage.has(c.id)) { delete c._epingleGarde; delete c._aVerifier; }
+    });
     var nouveaux = page.filter(function (c) { return !connus.has(c.id); })
       .map(function (c) { return Object.assign({}, c, { text: c.content || c.text || "" }); });
     var liste = (post.comments || []).concat(nouveaux)
@@ -2207,11 +2221,25 @@ async function _supaUpdateCommentRow(commentId, text) {
 var _epinglesFil = {};         // fil → { cid } : la vérité connue (cid null : aucun épinglé)
 var _epinglesEnVol = {};       // fil → écritures d'épingle en cours
 var _epinglesRecuesEnVol = {}; // fil → une épingle du propriétaire est arrivée en direct PENDANT l'écriture
+var _epinglesEcrites = {};     // fil → « commentaire|charge » des écritures du geste en cours (leur écho n'est pas un autre appareil)
 var _epinglesGeneration = {};  // fil → +1 à chaque épingle posée ou reçue
 var _epinglesACharger = {};    // fil + commentaire → lecture de l'épinglé en cours
 // Seul un vrai compte écrit une ligne (`user_id` = `auth.uid()`) : le fil d'un
 // exemple (`u_…`) ou d'un visiteur ne se lit pas (contre-revue du delta, P4).
 var COMPTE_EPINGLE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// ⚠️ PRÉREQUIS CLIENT de la migration RV-38
+// (`-- PREREQUIS-CLIENT: comment_interactions:epingle-du-fil`) :
+// `scripts/appliquer-migration.mjs` refuse d'écrire en production tant que le
+// client SERVI ne porte pas cette chaîne. L'ancien lecteur appliquait une ligne
+// « pin » par son seul `comment_id`, de qui qu'elle soit, dans n'importe quel fil :
+// un identifiant de commentaire réutilisé APRÈS l'épingle (dans l'autre table de
+// commentaires, ou par un commentaire renommé) faisait paraître l'épingle d'un
+// compte dans le fil d'autrui — la garde du serveur juge l'écriture, pas ce qu'un
+// identifiant désignera plus tard (red team, P1). Ce client lit l'épingle par fil
+// et par propriétaire, et n'en voit aucune dans un fil homonyme. La renommer,
+// c'est renommer la ligne de la migration (verrou :
+// tests/unit/barriere-migration.test.mjs).
+var EPINGLE_DU_FIL = "comment_interactions:epingle-du-fil";
 function _epingleGeneration(fil) { return (fil && _epinglesGeneration[fil]) || 0; }
 function _epingleNouvelleGeneration(fil) { if (fil) _epinglesGeneration[fil] = _epingleGeneration(fil) + 1; }
 function _epingleConnue(fil) {
@@ -2250,6 +2278,24 @@ function _poserEpingleFil(fil, cid) {
     if (cid && c.id === cid) c.pinned = true;
     else if (c.pinned) c.pinned = false;
   });
+}
+// Retire de toutes les copies de la discussion l'épinglé lu À PART (`_epingleGarde`)
+// qui n'est plus l'épinglé `sauf` (null : tous) — hors de sa page, il n'était là
+// que parce qu'il était épinglé. Appelé sur une vérité du SERVEUR seulement
+// (lecture, ligne reçue, écriture confirmée, absence lue) : un geste optimiste
+// refusé doit pouvoir revenir sans relecture. Rend vrai si quelque chose est parti.
+function _retirerEpinglesGardes(fil, sauf) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(fil) : null;
+  if (!post) return false;
+  var parti = false;
+  _copiesDiscussion(fil, post).forEach(function (copie) {
+    var arr = copie && copie.comments;
+    if (!Array.isArray(arr)) return;
+    for (var i = arr.length - 1; i >= 0; i--) {
+      if (arr[i] && arr[i]._epingleGarde && arr[i].id !== sauf) { arr.splice(i, 1); parti = true; }
+    }
+  });
+  return parti;
 }
 function _sauverEtRepeindreFil(fil) {
   var t = (typeof _findCommentThread === "function") ? _findCommentThread(fil) : null;
@@ -2349,9 +2395,10 @@ async function _lireEpingleFil(fil, apres) {
     var avant = _idEpingleFil(fil, t && t.comments);
     var cid = _epingleDesLignes(lignes);
     _poserEpingleFil(fil, cid);
-    if (cid !== avant) _sauverEtRepeindreFil(fil);
+    var parti = _retirerEpinglesGardes(fil, cid);
+    if (cid !== avant || parti) _sauverEtRepeindreFil(fil);
     if (cid) await _assurerCommentaireEpingle(fil, cid);
-  } catch (e) { try { diagLog("epingle_lue : " + (e && e.message)); } catch (_e) {} }
+  } catch (e) { try { diagLog(EPINGLE_DU_FIL + " : " + (e && e.message)); } catch (_e) {} }
 }
 // L'épinglé doit être à l'écran même hors de la première page (les 30 plus
 // récents) : il est lu par son identifiant et rangé dans la discussion — le
@@ -2363,11 +2410,24 @@ async function _assurerCommentaireEpingle(fil, cid) {
   try {
     var t = _findCommentThread(fil);
     if (!t || t.kind !== "post" || !Array.isArray(t.comments)) return;
-    if (t.comments.some(function (c) { return c && c.id === cid; })) return;
+    var deja = t.comments.find(function (c) { return c && c.id === cid; });
+    // Apporté par une page : rien à faire. GARDÉ par la fusion (lu à part, plus
+    // ancien que la page) : sa présence en base se revérifie, une fois par page
+    // relue, sans quitter l'écran pendant ce temps (contre-vérification de 84cb6b3, D1).
+    if (deja && !(deja._epingleGarde && deja._aVerifier)) return;
     if (!_discussionAffichee(fil) || typeof supaLireCommentaire !== "function" || _epinglesACharger[cle]) return;
     _epinglesACharger[cle] = true;
     var c = await supaLireCommentaire(fil, cid);
+    if (deja) {
+      if (c === false) {
+        // La base dit qu'il n'existe plus (supprimé par son auteur, la modération) :
+        // il part. Une lecture en ÉCHEC ne prouve rien : il reste, à revérifier.
+        if (_retirerEpinglesGardes(fil, null)) _refreshCommentThreadUINow(fil);
+      } else if (c) delete deja._aVerifier;
+      return;
+    }
     if (!c) return;
+    c._epingleGarde = true;   // lu à part : ni page ni « précédents » ne l'ont apporté
     var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(fil) : null;
     if (!post) return;
     // Sur TOUTES les copies (fil, `userPosts`, bobines) : une seule ne suffit pas.
@@ -2406,9 +2466,12 @@ function _epingleRecue(r) {
     // Reçue PENDANT une écriture de ce fil (un autre appareil du propriétaire, ou
     // l'écho de la mienne) : la fin de l'écriture relira le fil au lieu de
     // réimposer son propre état (contre-revue du delta, P4).
-    if (_epinglesEnVol[fil]) _epinglesRecuesEnVol[fil] = true;
+    // L'écho d'une de MES écritures en cours n'est pas un autre appareil : il ne
+    // coûte pas de relecture (contre-vérification de 84cb6b3, D2).
+    if (_epinglesEnVol[fil] && (_epinglesEcrites[fil] || []).indexOf(r.comment_id + "|" + val) < 0) _epinglesRecuesEnVol[fil] = true;
     _poserEpingleFil(fil, cid);
-    if (cid === avant) return;   // l'écho de ce qu'on sait : rien à repeindre
+    var parti = _retirerEpinglesGardes(fil, cid);
+    if (cid === avant && !parti) return;   // l'écho de ce qu'on sait : rien à repeindre
     // Repeinte SANS sauvegarde : la vérité vit en base et se relit à chaque
     // ouverture ; sauver ici envoyait `user_state` en entier à chaque spectateur,
     // pour chaque épingle reçue — un coût que le propriétaire pouvait provoquer
@@ -2476,6 +2539,7 @@ async function togglePinComment(threadId, commentId) {
     if (!reel) { toast(willPin ? "Commentaire épinglé" : "Épingle retirée"); return; }   // aucune base : rien à partager
     _epinglesEnVol[threadId] = (_epinglesEnVol[threadId] || 0) + 1;
     delete _epinglesRecuesEnVol[threadId];
+    _epinglesEcrites[threadId] = [commentId + "|" + (willPin ? "1" : "0")].concat(willPin && actuel ? [actuel + "|0"] : []);
     _epingleNouvelleGeneration(threadId);
     var res;
     try {
@@ -2491,7 +2555,7 @@ async function togglePinComment(threadId, commentId) {
       }
     } finally {
       _epinglesEnVol[threadId]--;
-      if (!_epinglesEnVol[threadId]) delete _epinglesEnVol[threadId];
+      if (!_epinglesEnVol[threadId]) { delete _epinglesEnVol[threadId]; delete _epinglesEcrites[threadId]; }
       // Une lecture partie PENDANT l'écriture est périmée elle aussi.
       _epingleNouvelleGeneration(threadId);
     }
@@ -2506,6 +2570,7 @@ async function togglePinComment(threadId, commentId) {
       if (recue) _lireEpingleFil(threadId);
       else {
         _poserEpingleFil(threadId, willPin ? commentId : null);
+        _retirerEpinglesGardes(threadId, willPin ? commentId : null);
         _sauverEtRepeindreFil(threadId);
       }
       toast(willPin ? "Commentaire épinglé" : "Épingle retirée");
