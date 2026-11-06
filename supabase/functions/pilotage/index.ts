@@ -49,7 +49,7 @@ import {
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
-import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, descripteurAccuse, pidNeuf, avecAccuse, bilanReception } from "../_shared/reception.js";
+import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, PAQUET_RAPPELS, PLAFOND_PAQUET, descripteurAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi } from "../_shared/reception.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -252,33 +252,49 @@ async function rappels(admin: Admin) {
 }
 
 /**
- * Les accusés de réception (_shared/reception.js) : les envois notés depuis
- * 48 h, et les accusés des seuls pid envoyés — l'index (type, received_at) de
- * telemetry_events borne la lecture aux lignes `push`. Une lecture qui atteint
- * ses plafonds le dit (`tronque`).
+ * Les accusés de réception (_shared/reception.js). Revue adversariale du
+ * 2026-11-06 : un compte qui reçoit SON rappel connaît SON pid et peut en
+ * déposer des milliers d'accusés anonymes. Donc :
+ *   ① la DERNIÈRE alerte se lit seule (sa note), et ses accusés par SES pid —
+ *      inconnus de tout autre que les appareils du pilote : aucun flot ne la noie ;
+ *   ② les rappels des 24 h se lisent par paquets de PAQUET_RAPPELS pid ; un
+ *      paquet plein, ou une liste de notes au plafond, rend le taux « partiel ».
+ * L'index (type, received_at) de telemetry_events borne chaque lecture aux
+ * lignes `push` (un index sur le pid serait une migration : § 8).
  */
 async function lireReception(admin: Admin) {
-  const depuis = new Date(Date.now() - JUGEMENT_MAX_MS).toISOString();
-  const { data: envois, error } = await admin.from("analytics_events").select("created_at,properties")
-    .eq("event", EVT_ENVOI).in("user_id", ["systeme:pilotage", MARQUE_UID]).gte("created_at", depuis)
-    .order("created_at", { ascending: false }).limit(200);
-  if (error) throw error;
-  const liste = (envois || []) as { created_at: string; properties: Record<string, unknown> }[];
-  const pids = [...new Set(liste.flatMap((e) => {
-    const p = (e.properties || {}) as { pid?: unknown; pids?: unknown };
-    return Array.isArray(p.pids) ? p.pids.map(String) : (p.pid ? [String(p.pid)] : []);
-  }))];
-  let tronque = liste.length >= 200;
+  const maintenant = Date.now();
+  const depuis = new Date(maintenant - JUGEMENT_MAX_MS).toISOString();
+  const lirePush = (pids: string[], apres: string, plafond: number) => admin.from("telemetry_events").select("pid:meta->>pid,received_at")
+    .eq("type", TYPE_ACCUSE).eq("action", ACTION_ACCUSE).gte("received_at", apres).in("meta->>pid", pids).limit(plafond);
+  const { data: alertes, error: e1 } = await admin.from("analytics_events").select("created_at,properties")
+    .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").gte("created_at", depuis)
+    .order("created_at", { ascending: false }).limit(1);
+  if (e1) throw e1;
+  const { data: rappels, error: e2 } = await admin.from("analytics_events").select("created_at,properties")
+    .eq("event", EVT_ENVOI).eq("user_id", MARQUE_UID).gte("created_at", new Date(maintenant - FENETRE_RAPPELS_MS).toISOString())
+    .order("created_at", { ascending: false }).limit(300);
+  if (e2) throw e2;
+  const envois = [...(alertes || []), ...(rappels || [])] as { created_at: string; properties: Record<string, unknown> }[];
   const accuses: { pid: string; received_at: string }[] = [];
-  for (let i = 0; i < pids.length; i += 100) {
-    const { data, error: ea } = await admin.from("telemetry_events").select("pid:meta->>pid,received_at")
-      .eq("type", TYPE_ACCUSE).eq("action", ACTION_ACCUSE).gte("received_at", depuis)
-      .in("meta->>pid", pids.slice(i, i + 100)).limit(1000);
-    if (ea) throw ea;
-    if ((data || []).length >= 1000) tronque = true;
+  const derniere = (alertes || [])[0] as { created_at: string; properties: Record<string, unknown> } | undefined;
+  if (derniere) {
+    const pids = pidsEnvoi(derniere);
+    if (pids.length) {
+      const { data, error } = await lirePush(pids, derniere.created_at, 200);
+      if (error) throw error;
+      accuses.push(...((data || []) as { pid: string; received_at: string }[]));
+    }
+  }
+  let tronqueRappels = (rappels || []).length >= 300;
+  const pidsRappels = [...new Set(((rappels || []) as { created_at: string; properties: Record<string, unknown> }[]).flatMap((e) => pidsEnvoi(e)))];
+  for (let i = 0; i < pidsRappels.length; i += PAQUET_RAPPELS) {
+    const { data, error } = await lirePush(pidsRappels.slice(i, i + PAQUET_RAPPELS), depuis, PLAFOND_PAQUET);
+    if (error) throw error;
+    if ((data || []).length >= PLAFOND_PAQUET) tronqueRappels = true;
     accuses.push(...((data || []) as { pid: string; received_at: string }[]));
   }
-  return bilanReception({ envois: liste, accuses, maintenant: Date.now(), tronque });
+  return bilanReception({ envois, accuses, maintenant, tronqueRappels });
 }
 
 async function lireEtatMemorise(admin: Admin) {
@@ -329,23 +345,27 @@ async function sonnerPilote(admin: Admin, titre: string, texte: string): Promise
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
   const uids = await uidsPilotes(admin);
   if (!uids.length) return 0;
-  const { data: subs } = await admin.from("push_subscriptions").select("endpoint, subscription").in("user_id", uids);
-  // Un pid ALÉATOIRE par alerte : le service worker l'accuse après l'affichage
-  // (_shared/reception.js) ; l'écran dit « reçue sur N appareils », pas « envoyée ».
-  const pid = ACCUSE ? pidNeuf() : null;
-  const payload = JSON.stringify(avecAccuse({ type: "pilotage", titre, texte }, pid, ACCUSE));
+  const { data: subs, error: es } = await admin.from("push_subscriptions").select("endpoint, subscription").in("user_id", uids);
+  if (es) console.warn("pilotage : abonnements illisibles " + String((es as { code?: string }).code || ""));
+  // Un pid ALÉATOIRE PAR APPAREIL : le service worker l'accuse après l'affichage
+  // (_shared/reception.js) ; l'écran dit lequel a reçu, pas « envoyée ».
+  const appareils: { pid: string | null; service: string; accepte: boolean }[] = [];
   let n = 0; const morts: string[] = [];
   await Promise.all((subs || []).map(async (s) => {
-    try { await webpush.sendNotification(s.subscription, payload, { TTL: 3600, urgency: "high" }); n++; }
+    const app = { pid: ACCUSE ? pidNeuf() : null, service: serviceDe(s.endpoint), accepte: false };
+    appareils.push(app);
+    const payload = JSON.stringify(avecAccuse({ type: "pilotage", titre, texte }, app.pid, ACCUSE));
+    try { await webpush.sendNotification(s.subscription, payload, { TTL: 3600, urgency: "high" }); n++; app.accepte = true; }
     catch (e) { const c = (e as { statusCode?: number })?.statusCode; if (c === 404 || c === 410) morts.push(s.endpoint); }
   }));
-  // La note d'envoi ne retarde ni ne casse l'alerte : elle est partie.
-  if (pid) {
-    try {
-      const { error: en } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_ENVOI, properties: { genre: "pilotage", pid, acceptes: n } });
-      if (en) console.warn("pilotage : note d'envoi refusée " + String((en as { code?: string }).code || ""));
-    } catch { console.warn("pilotage : note d'envoi injoignable"); }
-  }
+  // La note d'envoi part TOUJOURS — une mesure impossible se dit (« non
+  // mesurée »), elle ne laisse pas l'écran « calme ». Elle ne retarde ni ne casse
+  // l'alerte : elle est partie. Ni le titre ni le texte n'y entrent.
+  const mesure = es ? "abonnements_illisibles" : ACCUSE ? "ok" : "sans_adresse";
+  try {
+    const { error: en } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_ENVOI, properties: { genre: "pilotage", mesure, acceptes: n, appareils } });
+    if (en) console.warn("pilotage : note d'envoi refusée " + String((en as { code?: string }).code || ""));
+  } catch { console.warn("pilotage : note d'envoi injoignable"); }
   // Un refus PERMANENT (404/410) oublie l'abonnement — geste du catalogue (politique).
   if (morts.length && autoriser(POLITIQUE, "purge_abonnements_morts").ok) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch { /* */ } }
   return n;

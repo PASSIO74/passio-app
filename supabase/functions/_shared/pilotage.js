@@ -163,6 +163,8 @@ export function verdict(e) {
 export const SOURCES_VERDICT = Object.freeze({
   sante: "erreurs de l'app", github: "GitHub (enquêtes, mises en ligne)", signalements: "signalements", disponibilite: "disponibilité du site",
   parcours: "parcours critiques", battement: "battement de la veille",
+  // Une lecture des accusés en échec ne laisse pas l'écran « calme » (revue du 2026-11-06).
+  reception: "réception des alertes",
 });
 
 /** Le bilan qui juge le voyant : l'heure écoulée (`recent`) quand l'écran a lu la journée. */

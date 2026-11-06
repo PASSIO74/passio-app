@@ -175,7 +175,11 @@
     }
     const a = r.derniereAlerte || { etat: "aucune" };
     const sur = (x) => x.recus + " appareil(s) sur " + x.acceptes;
-    if (a.etat === "recue") zone.append(carte("Dernière alerte reçue", "Reçue", sur(a) + (Number.isFinite(a.delaiMs) ? ", " + Math.max(1, Math.round(a.delaiMs / 1000)) + " s après l'envoi" : "") + " · " + ilYA(a.le), "vert"));
+    // Lequel s'est tu : la famille du navigateur (le service de notification), jamais qui.
+    const NOMS_SERVICES = { chrome: "Chrome", edge: "Edge (Windows)", apple: "Safari (Apple)", firefox: "Firefox", autre: "autre navigateur" };
+    const muets = (Array.isArray(a.appareils) ? a.appareils : []).filter((x) => x && !x.recu).map((x) => NOMS_SERVICES[x.service] || "autre navigateur");
+    if (a.etat === "recue") zone.append(carte("Dernière alerte reçue", "Reçue", sur(a) + (Number.isFinite(a.delaiMs) ? ", " + Math.max(1, Math.round(a.delaiMs / 1000)) + " s après l'envoi" : "") + " · " + ilYA(a.le) + (muets.length ? " · pas d'accusé de : " + muets.join(", ") : ""), muets.length ? "orange" : "vert"));
+    else if (a.etat === "non_mesuree") zone.append(carte("Dernière alerte non mesurée", "Non mesurée", "Envoyée " + ilYA(a.le) + " : la réception n'a pas pu être mesurée (" + (a.raison === "sans_adresse" ? "adresse d'accusé absente" : a.raison === "abonnements_illisibles" ? "abonnements illisibles" : "mesure impossible") + ").", "orange"));
     else if (a.etat === "en_attente") zone.append(carte("Dernière alerte envoyée", "En attente", ilYA(a.le) + " : pas encore d'accusé de l'appareil.", "gris"));
     else if (a.etat === "non_recue") zone.append(carte("Dernière alerte non reçue", "Aucun accusé", "Envoyée " + ilYA(a.le) + " à " + a.acceptes + " appareil(s), aucun n'a accusé. Rouvre PASSIO sur ton téléphone et vérifie les notifications.", "orange"));
     else if (a.etat === "aucun_appareil") zone.append(carte("Dernière alerte : aucun appareil", "Personne", "Le service de notification n'a accepté l'alerte pour aucun appareil.", "orange"));
@@ -183,6 +187,7 @@
     else zone.append(carte("Aucune alerte depuis 48 h", "Calme", "La réception se mesurera à la prochaine alerte.", "gris"));
     const rp = r.rappels;
     if (rp && rp.etat === "mesure") zone.append(carte("Rappels d'activité reçus (24 h)", Math.round(rp.taux * 100) + " %", rp.recus + " reçus sur " + rp.envoyes + " envoyés" + (rp.enAttente ? " · " + rp.enAttente + " en attente" : ""), rp.taux >= 0.8 ? "vert" : "orange"));
+    else if (rp && rp.etat === "partiel") zone.append(carte("Rappels d'activité (24 h)", "Partiel", "La lecture des accusés a touché son plafond : pas de taux, au moins " + rp.recus + " reçus sur " + rp.envoyes + ".", "gris"));
     else if (rp) zone.append(carte("Rappels d'activité (24 h)", "Trop peu", rp.envoyes + " envoi(s) jugeable(s) : il en faut 5 pour un taux" + (rp.enAttente ? " · " + rp.enAttente + " en attente" : "") + ".", "gris"));
     if (r.tronque) zone.append(carte("Réception : lecture partielle", "Partielle", "Les accusés dépassent ce que la lecture parcourt : les nombres sont des minimums.", "gris"));
   }

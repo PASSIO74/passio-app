@@ -89,11 +89,18 @@ function accuser(data, genre) {
       client_ts: new Date().toISOString(), type: "push", action: "recu", status: "ok",
       meta: { pid: data.pid, genre: String(genre || "").slice(0, 16) },
     }];
-    return fetch(u + "/rest/v1/telemetry_events", {
+    const envoyer = () => fetch(u + "/rest/v1/telemetry_events", {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: k, Authorization: "Bearer " + k, Prefer: "return=minimal" },
       body: JSON.stringify(corps),
-    }).then(() => {}, () => {});
+    });
+    // Un refus de débit (429 : le réservoir des envois anonymes est commun) ou une
+    // coupure : UN second essai après 5 s, jamais plus — l'événement push ne vit
+    // que le temps de son waitUntil.
+    const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+    return envoyer()
+      .then((r) => (r && r.status === 429 ? pause(5000).then(envoyer) : r), () => pause(5000).then(envoyer))
+      .then(() => {}, () => {});
   } catch (_e) { return Promise.resolve(); }
 }
 

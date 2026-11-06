@@ -1088,12 +1088,43 @@ test("㊲ une alerte NON reçue : la ligne « À faire » mène à l'application
   await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte non reçue" })).toBeVisible();
   await expect(page.locator("#alertes .carte", { hasText: "Rappels d'activité (24 h)" })).toContainText("il en faut 5");
 
-  // La lecture des accusés a échoué : la carte le dit, elle ne se tait pas.
-  const sans = etat({ alertes: { appareils: 1, vapid: true }, erreursLecture: { reception: "délai dépassé" } });
+  // La lecture des accusés a échoué : l'ACCUEIL ne dit pas « Rien à régler » (le
+  // voyant de l'écran vient de verdictAffiche, où « reception » est une source), et
+  // la carte le dit.
+  const { verdictAffiche } = require("../../supabase/functions/_shared/pilotage.js");
+  const sans = etat({ alertes: { appareils: 1, vapid: true }, erreursLecture: { reception: "délai dépassé" }, nonLus: ["reception"],
+    verdict: verdictAffiche({ couleur: "vert", titre: "Tout va bien", raisons: [] }, ["reception"]), aFaire: [] });
   delete sans.reception;
   await routerFonction(page, [], sans);
   await page.reload();
+  await expect(page.locator("#verdictDetail")).toContainText("non lu : réception des alertes");
+  await expect(page.locator("#verdictDetail")).not.toContainText("Rien à régler");
+  await expect(page.locator("#verdictTitre")).not.toHaveText("Tout va bien");
   await aller(page, "reglages");
   await expect(page.locator("#alertes .carte", { hasText: "Réception des alertes" })).toContainText("Non lu");
   await expect(page.locator("#alertes .carte", { hasText: "Réception des alertes" })).toContainText("délai dépassé");
+});
+
+test("㊳ alerte reçue sur un seul de deux appareils : la carte dit LEQUEL s'est tu ; une mesure impossible et un taux partiel se disent", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 3600e3).toISOString();
+  await routerFonction(page, [], etat({ alertes: { appareils: 2, vapid: true },
+    reception: { derniereAlerte: { etat: "recue", le, acceptes: 2, recus: 1, delaiMs: 3000, appareils: [{ service: "chrome", recu: false, delaiMs: null }, { service: "edge", recu: true, delaiMs: 3000 }] },
+      rappels: { etat: "partiel", envoyes: 12, recus: 9, enAttente: 0 }, accusesIgnores: 0, tronque: true } }));
+  await page.goto("/pilotage/");
+  await aller(page, "reglages");
+  const recue = page.locator("#alertes .carte", { hasText: "Dernière alerte reçue" });
+  await expect(recue).toContainText("pas d'accusé de : Chrome");
+  await expect(page.locator("#alertes .carte", { hasText: "Rappels d'activité (24 h)" })).toContainText("pas de taux");
+  await expect(page.locator("#alertes .carte", { hasText: "Rappels d'activité (24 h)" })).not.toContainText("%");
+
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true },
+    reception: { derniereAlerte: { etat: "non_mesuree", le, raison: "sans_adresse" }, rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false } }));
+  await page.reload();
+  await accueil(page);
+  await expect(page.locator("#afaire .ligne").first()).toBeVisible();
+  if (await page.locator("#afaireSuite").isVisible()) await page.locator("#afaireSuite").click();
+  await expect(page.locator("#afaire .ligne", { hasText: "n'a pas pu être mesurée" })).toBeVisible();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte non mesurée" })).toContainText("adresse d'accusé absente");
 });

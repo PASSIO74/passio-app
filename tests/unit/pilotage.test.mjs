@@ -1245,19 +1245,24 @@ test("㉿⑧ la veille prend un CRÉNEAU atomique d'abord — jamais le plafond 
 // AVANT de l'envoyer → ㉿⑨ rougit ; une ligne pour une alerte reçue → ㉿⑩ rougit.
 import { PAGES_REGLAGE as PAGES } from "../../supabase/functions/_shared/pilotage.js";
 
-test("㉿⑨ l'alerte part avec un pid aléatoire et son adresse d'accusé, et se note APRÈS l'envoi — sans le texte ; la lecture ne prend que les accusés `push`", () => {
+test("㉿⑨ l'alerte part avec un pid aléatoire PAR APPAREIL, se note TOUJOURS après l'envoi (mesure dite) — sans le texte ; l'alerte se lit SEULE par ses pid, les rappels par petits paquets", () => {
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const s = fn.slice(fn.indexOf("async function sonnerPilote"), fn.indexOf("// ─── ② État complet"));
   assert.match(fn, /const ACCUSE = descripteurAccuse\(Deno\.env\.get\("SUPABASE_URL"\) \|\| "", Deno\.env\.get\("SUPABASE_ANON_KEY"\) \|\| ""\);/);
-  assert.match(s, /const pid = ACCUSE \? pidNeuf\(\) : null;/);
-  assert.match(s, /JSON\.stringify\(avecAccuse\(\{ type: "pilotage", titre, texte \}, pid, ACCUSE\)\)/);
+  assert.match(s, /const app = \{ pid: ACCUSE \? pidNeuf\(\) : null, service: serviceDe\(s\.endpoint\), accepte: false \};/, "un pid par abonnement");
+  assert.match(s, /JSON\.stringify\(avecAccuse\(\{ type: "pilotage", titre, texte \}, app\.pid, ACCUSE\)\)/);
   const envoi = s.indexOf("webpush.sendNotification(");
   const note = s.indexOf("event: EVT_ENVOI");
   assert.ok(envoi > 0 && note > envoi, "la note suit l'envoi : elle ne retarde jamais l'alerte");
-  assert.match(s, /properties: \{ genre: "pilotage", pid, acceptes: n \}/, "un pid, un nombre — jamais le titre ni le texte");
+  assert.match(s, /const mesure = es \? "abonnements_illisibles" : ACCUSE \? "ok" : "sans_adresse";/, "une mesure impossible se dit");
+  assert.match(s, /properties: \{ genre: "pilotage", mesure, acceptes: n, appareils \}/, "des pid, des familles de service, des nombres — jamais le titre ni le texte");
+  assert.doesNotMatch(s.slice(note - 300, note + 200), /if \(pid\)|if \(ACCUSE\)/, "la note n'est pas conditionnée à la mesure : sans adresse, elle dit « non mesurée »");
   const l = fn.slice(fn.indexOf("async function lireReception"), fn.indexOf("async function lireEtatMemorise"));
-  assert.match(l, /\.eq\("type", TYPE_ACCUSE\)\.eq\("action", ACTION_ACCUSE\)\.gte\("received_at", depuis\)/);
-  assert.match(l, /\.in\("meta->>pid", pids\.slice\(i, i \+ 100\)\)/, "seuls les pid envoyés sont lus");
+  assert.match(l, /\.eq\("type", TYPE_ACCUSE\)\.eq\("action", ACTION_ACCUSE\)\.gte\("received_at", apres\)\.in\("meta->>pid", pids\)\.limit\(plafond\)/);
+  assert.match(l, /\.eq\("user_id", "systeme:pilotage"\)[^;]*\.limit\(1\)/, "la DERNIÈRE alerte se lit seule : 300 notes de rappels ne la poussent pas hors de la lecture");
+  assert.match(l, /const pids = pidsEnvoi\(derniere\);[\s\S]*?lirePush\(pids, derniere\.created_at, 200\)/, "ses accusés par SES pid : un flot sur le pid d'un rappel ne la noie pas");
+  assert.match(l, /pidsRappels\.slice\(i, i \+ PAQUET_RAPPELS\)/);
+  assert.match(l, /if \(\(data \|\| \[\]\)\.length >= PLAFOND_PAQUET\) tronqueRappels = true;/, "un paquet plein rend le taux « partiel »");
   assert.match(l, /select\("pid:meta->>pid,received_at"\)/, "jamais `meta` entier");
   assert.match(fn, /reception: lireReception\(admin\)/);
 });
@@ -1272,4 +1277,9 @@ test("㉿⑩ « À faire » : une alerte NON reçue a sa ligne et son bouton ver
   for (const etat of ["recue", "en_attente", "ancienne", "aucune"]) {
     assert.equal(aFaire({ reception: { derniereAlerte: { etat, le: "2026-11-06T20:00:00.000Z", acceptes: 1, recus: 1 } } }, T6).some((x) => x.id === "alertes:reception"), false, etat);
   }
+  // Une mesure impossible a sa ligne ; une lecture des accusés en échec n'est jamais « calme ».
+  const nm = aFaire({ reception: { derniereAlerte: { etat: "non_mesuree", le: "2026-11-06T20:00:00.000Z", raison: "sans_adresse" } } }, T6).find((x) => x.id === "alertes:reception");
+  assert.match(nm.titre, /n'a pas pu être mesurée/);
+  assert.equal(SOURCES_VERDICT.reception, "réception des alertes", "la source compte pour le voyant de l'écran : non lue, il n'est jamais vert");
+  assert.ok(sourcesManquantes(["reception"]).includes("réception des alertes"));
 });

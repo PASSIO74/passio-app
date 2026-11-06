@@ -366,7 +366,8 @@ function chargerSw({ fetch: fetchSw = () => {} } = {}) {
       claim: () => Promise.resolve(),
     },
   };
-  vm.runInNewContext(fs.readFileSync("sw.js", "utf8"), { self, caches: {}, fetch: fetchSw, URL, console, Response: class {}, crypto: globalThis.crypto });
+  // Les pauses du service worker (second essai d'un accusé) passent sans attendre.
+  vm.runInNewContext(fs.readFileSync("sw.js", "utf8"), { self, caches: {}, fetch: fetchSw, URL, console, Response: class {}, crypto: globalThis.crypto, setTimeout: (f) => setTimeout(f, 0) });
   const attendre = async (f) => { let p; f({ waitUntil: (x) => { p = x; } }); await p; };
   return {
     handlers, notifs, ouverts, messages,
@@ -420,6 +421,22 @@ test("⑫ ter service worker : APRÈS l'affichage, un accusé SANS CONTENU à l'
   const leve = chargerSw({ fetch: () => { throw new Error("fetch indisponible"); } });
   await leve.push({ type: "rappel", titre: "x", eventId: "ev_1", pid: PID1, ack: ACK });
   assert.equal(leve.notifs.length, 1);
+
+  // Refus de débit (429) ou coupure : UN second essai, jamais deux.
+  for (const premier of [() => Promise.resolve({ status: 429 }), () => Promise.reject(new Error("coupure"))]) {
+    const essais = [];
+    const r = chargerSw({ fetch: () => { essais.push(1); return essais.length === 1 ? premier() : Promise.resolve({ status: 201 }); } });
+    await r.push({ type: "pilotage", titre: "x", pid: PID1, ack: ACK });
+    assert.equal(essais.length, 2, "un second essai");
+  }
+  const toujours = [];
+  const r429 = chargerSw({ fetch: () => { toujours.push(1); return Promise.resolve({ status: 429 }); } });
+  await r429.push({ type: "pilotage", titre: "x", pid: PID1, ack: ACK });
+  assert.equal(toujours.length, 2, "jamais un troisième : l'événement push ne vit pas indéfiniment");
+  const ok = [];
+  const r201 = chargerSw({ fetch: () => { ok.push(1); return Promise.resolve({ status: 201 }); } });
+  await r201.push({ type: "pilotage", titre: "x", pid: PID1, ack: ACK });
+  assert.equal(ok.length, 1, "un accusé accepté ne repart pas");
 });
 
 test("⑨ sexies l'accusé côté envoi : un pid ALÉATOIRE par rappel et l'adresse ; seuls les rappels ACCEPTÉS sont notés envoyés ; sans adresse, ni pid ni note", async () => {
