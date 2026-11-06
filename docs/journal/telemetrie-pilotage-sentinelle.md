@@ -36,6 +36,7 @@
 - 🚦 LE VERROU ÉVINÇAIT `main` — UN PUSH DE PR FAISAIT SAUTER LE DÉPLOIEMENT (2026-11-04)
 - 🪪 LE `buildId` NE VOYAIT PAS LES SCRIPTS INLINÉS — UNE APPLICATION OUVERTE RESTAIT SUR L'ANCIEN CODE (2026-11-04)
 - 📨 LE CANAL NE PERD PLUS UN ORDRE, ET UNE MODIFICATION NE LANCE PLUS UN AGENT (2026-11-04)
+- 🧱 UNE INSTALLATION FIGÉE TENAIT LA CHAÎNE SIX HEURES — CHAQUE ESSAI A SA BORNE, CHAQUE JOB LA SIENNE (2026-11-06)
 
 ---
 
@@ -685,3 +686,53 @@ Attendre ne coûte rien en soi. Le vrai défaut de la file au niveau du run : ch
   - Un événement `issues` ou `issue_comment` réel : ils ne se déclenchent que depuis la branche par défaut. Le banc a joué `pull_request` et `pull_request_review_comment`, dont les champs `action`, `label` et `changes` ont la même forme (schémas octokit de `issues.edited` et `issue_comment.edited`). Le premier `labeled claude` et le premier `edited` après la fusion trancheront : le premier doit lancer un agent, le second doit sortir `skipped`.
   - La limite des 100 places n'a pas été éprouvée, ni un run figé en tête de file : #162 n'était pas dans ce cas. Il ne bloquerait que son issue.
 - **Runs** (ils restent sous « banc-cc » dans Actions le temps de la contre-revue) : poussées `r-single`, B 41845387846 ; `r-max`, C 41845457967 ; `j-single`, C 41845457805 ; `j-max`, C 41845457792 ; événements `p-actuel-rmax` et `p-serre-jmax`. Les 52 runs de `p-actuel-rsingle` et `p-serre-rmax` sont supprimés, leurs chiffres sont dans le tableau.
+
+## 🧱 UNE INSTALLATION FIGÉE TENAIT LA CHAÎNE SIX HEURES — CHAQUE ESSAI A SA BORNE, CHAQUE JOB LA SIENNE (2026-11-06)
+
+Le 06/11 sur la PR #726 (run 42174403472), la tranche 1/6 de `test-local` est restée 52 min dans « Installer Playwright », avant son premier test : `apt-get update` (la partie `--with-deps`) n'a plus rien reçu de `azure.archive.ubuntu.com` après 06:26:49. Aucun des jobs de `deploy.yml` qui installent Playwright n'avait de borne, sauf `test-webkit` (25 min) : GitHub l'aurait laissée tourner 360 min, la PR et le déploiement de `main` avec. Il a fallu annuler le run, puis relancer les jobs annulés.
+
+**Mesuré** (API Actions, les 35 derniers runs verts de `main`, 03/11 18:43 → 06/11 08:30 UTC, 315 jobs). La collecte, transcrite par lots, a été recoupée sur un run lu directement (0 écart) et sur la cohérence interne de chaque ligne (0 anomalie).
+
+| Job | Médiane | Pire | Pire hors installation | Borne posée |
+|---|---|---|---|---|
+| `test-local`, 210 tranches | 11,4 min | 19,3 (dont 7,8 d'installation) | 13,8 | 40 |
+| `test-prod` | 5,1 | 6,9 | 6,2 | 30 |
+| `gates-artefact` | 0,7 | 7,1 (dont 6,8) | 0,8 | 30 |
+| `test-webkit` | 6,0 | 21,3 (dont 15,9) | 7,9 | 35 (était 25) |
+
+- **L'installation a deux régimes.** Médiane 0,4 min, p95 1,0. Mais une fenêtre lente le 04/11 (16:34 → 17:53 UTC) a donné de 4,5 à 15,9 min, toutes **réussies**, et le 06/11 la tranche 6/6 tirait 15,8 Mo de polices à 34 kB/s (7 min 41 s) le matin même où la 1/6 figeait. Lent n'est pas figé.
+- ⇒ **La borne d'étape de 5 à 10 min envisagée, sans relance, aurait rougi des runs sains** : 10 min coupait le WebKit du run 41869170343 (15,9 min), 5 min coupait quatre runs.
+- **Forme retenue** : chaque essai borné à 10 min par `timeout` (toute installation Chromium mesurée tient dans un essai), une relance, et `timeout-minutes: 25` sur l'étape comme filet. Sur chaque job, une borne qui dépasse celle de l'étape et couvre le pire sain : deux essais au pire (21 min), plus le pire hors installation, plus une marge. Pour `test-prod`, elle compte double : ce job tient le verrou global `passio-e2e-prod`, et figé il bloquait tous les déploiements.
+
+**Le banc, sur GitHub** (workflow temporaire sur la branche de travail, retiré avant la PR).
+
+v1, run 42196781730 :
+
+| Ce qui dépasse sa borne | Ce que GitHub en fait | `needs.<job>.result` |
+|---|---|---|
+| une étape (`timeout-minutes: 1`, `sleep 150`) | coupée à 72 s, « The action '…' has timed out after 1 minutes. », étape et job `failure`, étapes suivantes `skipped` | `failure` |
+| un job (`timeout-minutes: 1`) | coupé à 87 s, « The operation was canceled. », job `cancelled` : le journal ne le distingue pas d'une annulation à la main | `cancelled` |
+
+- Un agrégat en `if: always()` (le modèle de `smoke`) voit les deux rouges ; un job qui en dépend sans `always()` (le modèle de `deploy`) est `skipped`.
+- **La relance** : `rerun_failed_jobs` par l'API, c'est-à-dire « Re-run failed jobs » ou `gh run rerun <id> --failed`, a rejoué le job `failure` ET le job `cancelled`, avec leurs dépendants, sans toucher au job vert (tentative 2 du même run).
+- ⚠️ **LE DÉFAUT QUE LE BANC A TROUVÉ, AVANT TOUTE PR.** La première forme se fiait au signal de groupe de `timeout`. Coupé à 2 min dans un APT figé par construction (un serveur local qui accepte la connexion et ne répond jamais), l'essai laissait `apt-get update` (pid 2467) et ses méthodes vivants, verrou `/var/lib/apt/lists/lock` en main : le second essai est mort en moins de 4 s sur « Could not get lock … held by process 2467 (apt-get) ». Sous un miroir ralenti, même chose avec `apt-get install` et `/var/lib/dpkg/lock-frontend`. **`timeout` ne joint pas ce que `sudo` a lancé** : la relance n'aurait rien relancé, et un test unitaire sur un faux `npx` ne pouvait pas le voir.
+- **Correctif** : entre deux essais, `sudo pkill -KILL -x apt-get`, puis `-x dpkg`, 2 s, puis `sudo dpkg --configure -a`. Par NOM d'exécutable : `pkill -f` compare la ligne de commande, et atteindrait `sudo` (dont la ligne contient le motif) ou le shell de l'étape.
+
+v2, run 42201705763 — l'étape RÉELLE de `test-local`, extraite par le lecteur du dépôt ; seule réécriture, la borne d'essai ramenée de 10 à 2 min :
+
+| Cas | Premier essai | Second essai | Étape |
+|---|---|---|---|
+| figé : serveur muet, levé après 45 s | coupé à 2 min | APT et navigateur installés | **verte en 146 s** ; aucun verrou en défaut, plus aucun `apt-get` ni `dpkg` |
+| lent : ~40 ko/s, levé avant la coupure | « Need to get 21.1 MB », coupé à 2 min | « Need to get 17.6 MB/21.1 MB » | **verte** |
+
+- Les paquets tirés **en entier** par l'essai coupé restent dans le cache APT (ici `fonts-ipafont-gothic`, 3,5 Mo). Le paquet entamé ne se mesure pas comme repris : « Need to get » le compte en entier. Au régime lent du 06/11 (34 ko/s, environ 2 Mo par minute), un essai de 10 min laisse donc l'essentiel au second.
+- Un essai coupé en plein téléchargement du NAVIGATEUR (CDN de Playwright) ne bloque pas le suivant : le verrou de répertoire `__dirlock` est réputé périmé après 10 s (`stale: 1e4`, lu dans playwright-core 1.63). Ce chemin-là n'a pas été joué au banc.
+- **Écarté** :
+  - la borne d'étape seule, de 5 à 10 min : la mesure la contredit (ci-dessus) ;
+  - `sudo env "PATH=$PATH" timeout … npx playwright install-deps`, puis `install` : `timeout` du même côté que `sudo`, sans `pkill`. Valable, mais il réécrit les deux commandes que `webkit-ci.test.mjs` tient, pour le même effet ;
+  - relancer le job entier par un workflow : déjà écarté dans la fiche du verrou (`actions: write`, évincé par une PR suivante, et chaque essai raté passe par `retour-issue`). La relance dans l'étape ne rejoue jamais un test : un rouge de test reste un rouge ;
+  - mettre le navigateur en cache (`actions/cache`) : c'est APT qui a figé, pas le CDN de Playwright.
+- **Verrou** : `tests/unit/bornes-ci.test.mjs` (12), dans `npm run verif` et dans la CI. Il lit `deploy.yml` tel quel : tout job qui installe Playwright, présent ou futur, doit porter les deux bornes et une mesure de sa durée hors installation, sinon il rougit. Il joue le bloc `run:` réel contre un faux `npx` (figé, en échec, réussi) et le vrai `timeout` raccourci, et exige que le runbook nomme l'annotation et la relance.
+- **Mutations**, rejouées sur le texte réel, chacune rouge en nommant son défaut : borne de job retirée, posée à 30 ou à 360 min, ou sous celle de l'étape ; borne d'étape retirée ou posée sous sa propre boucle ; essai sans `timeout` ; un seul essai ; `exit 1` final retiré (deux échecs passaient pour un succès, ce que le bac rejoue aussi) ; `pkill apt-get` retiré ; `pkill -f` ; réparation dpkg retirée ; une copie qui dérive ; un nouveau job sans borne ni mesure.
+- **Le geste quand les deux essais échouent** : « Re-run failed jobs », dans `docs/RUNBOOK_MOIS_DE_TEST.md` §1. Un job **annulé** que personne n'a annulé a dépassé sa propre borne : là, c'est un test figé, pas le miroir.
+- **Non vérifié** : le figement réel du 06/11 ne se reproduit pas à la demande, le banc le simule par un serveur muet. Le premier vrai figement après la fusion devra se lire « essai 1/2 en échec ou figé », puis une tranche verte, sans geste humain. Les autres jobs (`governance`, `audits`, `smoke`, `deploy`, `retour-issue`, `preview`) n'installent pas Playwright et gardent les 360 min par défaut : hors de ce lot.
