@@ -397,14 +397,18 @@ export function classerApi(lignes = [], options = {}) {
 //    n'est retenu : l'absence de preuve n'est jamais une preuve ;
 //  · une action sans verdict n'est PAS un échec (télémétrie perdue possible) :
 //    elle se lit au pilotage (« sans verdict »), elle n'ouvre pas d'enquête ;
-//  · le titre ne porte que l'identifiant du contrat et le code assaini : rien
-//    d'écrit librement par un navigateur ;
-//  · même seuil que la famille API : assez d'occurrences, ou deux comptes.
+//  · le titre ne porte QUE l'identifiant du contrat (revue adversariale du
+//    2026-11-06) : un code de refus dans le titre laissait un navigateur choisir
+//    des mots, et chaque nouveau code contournait la dédup (titre neuf). Un
+//    candidat par ACTION ; les codes, FERMÉS (`codeFerme`), vont dans le corps ;
+//  · au moins DEUX comptes anciens distincts — jamais « assez d'occurrences »
+//    d'un seul compte ;
+//  · UNE zone pour toute la famille (`zoneCible`), comme les boutons : un flot
+//    de parcours forgés ne prend jamais les places d'un défaut réel.
 // Cette famille est un CONFORT comme les boutons : sa lecture qui échoue ne
 // fait jamais échouer la détection.
 // ═══════════════════════════════════════════════════════════════════════════
 export function classerParcours(lignes = [], options = {}) {
-  const min = options.min ?? MIN_OCCURRENCES_API;
   const anciens = options.comptesAnciens;
   const contrats = options.contrats || CONTRATS;
   const maintenant = Number.isFinite(options.maintenant) ? options.maintenant : Date.now();
@@ -419,14 +423,15 @@ export function classerParcours(lignes = [], options = {}) {
     if (!RE_COMPTE.test(String(f.compte || ""))) { ecartees++; nonVerifiees++; continue; }
     if (anciens !== "tous" && !(anciens instanceof Set && anciens.has(String(f.compte)))) { ecartees++; nonVerifiees++; continue; }
     const rc = f.rc || "sans_code";
-    const cle = `parcours ${contrat.id} ${rc}`;
+    const cle = `parcours ${contrat.id}`;
     if (!groupes.has(cle)) {
-      groupes.set(cle, { cle, famille: "parcours", action: contrat.id, rc, message: `Parcours « ${contrat.libelle} » : échec ${rc}`,
-        n: 0, comptes: new Set(), dernier: null, exemple: null, versions: {}, occurrences: [] });
+      groupes.set(cle, { cle, famille: "parcours", action: contrat.id, message: `Parcours « ${contrat.libelle} » : refus de la source de vérité`,
+        n: 0, comptes: new Set(), codes: new Map(), dernier: null, exemple: null, versions: {}, occurrences: [] });
     }
     const g = groupes.get(cle);
     g.n++;
     g.comptes.add(String(f.compte));
+    g.codes.set(rc, (g.codes.get(rc) || 0) + 1);
     const at = Number.isFinite(f.debutRecu) ? new Date(f.debutRecu).toISOString() : "";
     if (at && (!g.dernier || at > g.dernier)) g.dernier = at;
     noterOccurrence(g, at, f.version);
@@ -434,9 +439,10 @@ export function classerParcours(lignes = [], options = {}) {
   const candidates = [...groupes.values()].map((g) => {
     const comptes = g.comptes.size;
     const c = contrats[g.action];
-    const { comptes: ensemble, ...reste } = g;
+    const { comptes: ensemble, codes: lesCodes, ...reste } = g;
+    const codes = [...lesCodes.entries()].sort((x, y) => y[1] - x[1]).slice(0, 5);
     return {
-      ...reste, comptes, occurrences: bornerOccurrences(g.occurrences),
+      ...reste, comptes, codes: codes.map(([code, n]) => ({ code, n })), occurrences: bornerOccurrences(g.occurrences),
       // Le premier passage seulement : les identités ne partent jamais dans le verdict (résumé PUBLIC).
       ...(options.avecUids ? { _uids: [...ensemble] } : {}),
       // Le contexte que l'enquête n'aurait pas autrement : le contrat lui-même.
@@ -445,7 +451,7 @@ export function classerParcours(lignes = [], options = {}) {
           `Contrat ${c.id} (supabase/functions/_shared/contrats-actions.js) — ${c.libelle}`,
           `Source de vérité : ${c.verite}`,
           `Confirmation attendue : étape « ${c.confirmation} » au verdict de l'écriture.`,
-          `Code du refus : ${g.rc} — ${g.n} échec(s), ${comptes} compte(s) identifié(s) par le serveur.`,
+          `Codes des refus (fermés : SQLSTATE, PostgREST ou codes de l'app) : ${codes.map(([c, n]) => c + " ×" + n).join(", ")} — ${g.n} échec(s), ${comptes} compte(s) ancien(s).`,
           `Émetteur(s) : ${c.emetteurs.join(", ")} ; verrou(x) : ${c.verrous.join(", ")}.`,
           "",
           "Aucune erreur JavaScript n'a pu être levée : l'écriture a rendu un refus que",
@@ -459,7 +465,8 @@ export function classerParcours(lignes = [], options = {}) {
     };
   })
     .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n))
-    .filter((g) => g.n >= min || g.comptes >= 2);
+    // Deux comptes ANCIENS distincts au moins : jamais un seul compte, même en boucle.
+    .filter((g) => g.comptes >= 2);
   return { candidates, ecartees, nonVerifiees };
 }
 
@@ -493,7 +500,10 @@ export function uidsAVerifier(candidats, { parAction = PARCOURS_VERIFICATION.par
 }
 
 /** Les flux de la fenêtre : la seule colonne d'identité retenue est `auth_uid` (serveur). */
-export const CHEMIN_FLUX = "telemetry_events?select=event_id,correlation_id,action,status,meta,auth_uid,received_at,client_ts,app_version&type=eq.flow";
+// Les SEULES clés utiles de `meta`, à plat (un `meta` hostile peut peser des
+// mégaoctets), et jamais une ligne sans identité serveur (elle ne pèse rien, et
+// un flot anonyme poussait les vraies lignes hors des pages : « incomplet »).
+export const CHEMIN_FLUX = "telemetry_events?select=event_id,correlation_id,action,status,auth_uid,received_at,client_ts,app_version,flow_action:meta->>flow_action,step:meta->>step,rc:meta->>rc,synthetic:meta->>synthetic,trafic:meta->>trafic&type=eq.flow&auth_uid=not.is.null";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TROISIÈME FAMILLE — LES BOUTONS QUI N'ONT AUCUN EFFET MESURÉ (2026-09-10)
@@ -1026,9 +1036,9 @@ export function zoneCible(c) {
   // Boutons : UNE zone pour toute la famille — une seule enquête bouton à la fois
   // (contre-revue du 2026-11-03 : un flot de boutons ne prend jamais les places d'un défaut réel).
   if (c && c.famille === "bouton") return "bouton";
-  // Parcours : une enquête par action à la fois — deux codes du même parcours
-  // touchent le même code, et deux PR auto-fusionnées dessus ne sont jamais testées ensemble.
-  if (c && c.famille === "parcours" && c.action) return "parcours " + String(c.action);
+  // Parcours : UNE zone pour toute la famille, comme les boutons (revue adversariale
+  // du 2026-11-06) — trois parcours forgés prenaient les trois places de MAX_ENQUETES.
+  if (c && c.famille === "parcours") return "parcours";
   // Erreurs JS : le FICHIER source — deux PR auto-fusionnées sur le même fichier
   // ne sont jamais testées ensemble (`main` n'exige pas une branche à jour).
   const source = c && c.exemple && c.exemple.source;
@@ -1053,6 +1063,7 @@ export function choisirCibles(candidats, fermees, ouvertes, places = 1) {
   // remise à un humain (label `humain`), elle ne gèle plus la famille (contre-revue du 2026-11-03).
   const nomsLabels = (o) => (Array.isArray(o?.labels) ? o.labels : []).map((l) => String(l?.name ?? l));
   if (liste.some((o) => String(o?.title || "").startsWith("[SENTINELLE] bouton ") && !nomsLabels(o).includes("humain"))) zones.add("bouton");
+  if (liste.some((o) => String(o?.title || "").startsWith("[SENTINELLE] parcours ") && !nomsLabels(o).includes("humain"))) zones.add("parcours");
   const choisies = [];
   for (const c of candidats || []) {
     if (choisies.length >= n) break;

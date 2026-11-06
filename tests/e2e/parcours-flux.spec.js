@@ -284,3 +284,25 @@ test.describe("Parcours critiques : codes fermés et preuve en vol", () => {
     expect(r.notifs).toBe(1);
   });
 });
+
+test.describe("Parcours critiques : refus de règle", () => {
+  test("⑬ un message vers un compte que j'ai BLOQUÉ, refusé par la RLS, est une règle (« bloque »), jamais une panne", async ({ page }) => {
+    await preparer(page);
+    const r = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      const convs = getConversations();
+      convs.push({ id: "conv_b1", userId: "u_bloque_1", userName: "X", messages: [{ id: "msg_b1", text: "coucou", mine: true, status: "sending" }] });
+      saveConversations();
+      state.user.blocked = ["u_bloque_1"];
+      window._convReparationTentee["conv_b1"] = true;   // pas de réparation d'appartenance : le refus suit son cours
+      window.__reponses.conv_messages = { insert: { status: 403, error: { code: "42501", message: "new row violates row-level security policy" } } };
+      _sendTextToSupa("conv_b1", "msg_b1", "coucou");
+      await new Promise((res) => setTimeout(res, 80));
+      return window.__statut("conv_b1", "msg_b1");
+    });
+    expect(r).toBe("failed");
+    const saved = chaine(await flux(page), "send_message", "error");
+    expect(saved.meta.rc).toBe("bloque");
+  });
+});
+

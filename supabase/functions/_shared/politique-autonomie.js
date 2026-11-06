@@ -23,7 +23,9 @@
 //       humain décide.
 //
 // `autoriser()` est consultée par la fonction `pilotage` AVANT chaque geste
-// automatique de la veille. Elle échoue FERMÉ : politique absente, invalide ou
+// automatique de la VEILLE (banc : tests/unit/pilotage.test.mjs ㉿④). Les gestes
+// exécutés par GitHub (correctif, relance) sont imposés par leurs workflows : la
+// politique les DÉCRIT et le banc vérifie que le workflow applique ces bornes. Elle échoue FERMÉ : politique absente, invalide ou
 // en mode observation → aucun geste, l'observation continue (voyant, alertes,
 // battement). Une alerte n'est jamais un geste : observer n'est pas réparer.
 // La politique ne change que par une PR (revue, CI) : aucune machine ne la
@@ -68,7 +70,7 @@ export const POLITIQUE = Object.freeze({
     }),
     reveil_sentinelle: rb({
       libelle: "Lancer la Sentinelle dès que des comptes échouent", circuit: "A", autonome: true, suspenduParPause: true,
-      symptome: "échecs chez ≥ 2 comptes réels créés depuis plus de 24 h en 30 min, ou parcours critique en panne",
+      symptome: "échecs chez ≥ 2 comptes réels créés depuis plus de 24 h en 30 min (erreurs et refus comptés en base), ou un parcours en panne CONFIRMÉE sur la dernière heure",
       action: "workflow_dispatch de sentinelle-autonome.yml (lecture, classement, enquête : la détection garde ses propres filtres)",
       preconditions: ["jeton GitHub posé", "pas de pause", "place libre parmi les enquêtes", "pas de run en cours ni de moins de 45 min"],
       limites: { comptesMin: 2, fenetreMin: 30, parHeure: 2, parJour: 12, runRecentMin: 45, enquetesMax: 3 },
@@ -103,6 +105,13 @@ export const POLITIQUE = Object.freeze({
       preconditions: ["l'entrée appartient au compte courant (AUTH-06)", "génération de file courante (ASTRA-43)", "pas déjà en vol (ROB-06)"],
       limites: { essaisMax: 10 }, verification: "statut « envoyé » seulement sur verdict de la base", retour: "le message reste à l'écran, renvoyable à la main",
       escalade: "plafond atteint : le message reste en échec, visible", appliquePar: "js/app-04-comments-shop.js (_sendTextToSupa, _flushOutbox)",
+    }),
+    rappels_activite: rb({
+      libelle: "Rappeler une activité aux participants (J-1, H-2)", circuit: "A", autonome: true,
+      symptome: "une activité commence dans 24 h ou 2 h", action: "un push par participant inscrit (going, maybe), une marque par rappel ; oubli d'un abonnement refusé pour toujours (404/410)",
+      preconditions: ["clés VAPID posées", "marque posée AVANT l'envoi (idempotent)"], limites: { parTour: 300, codesOubli: "404,410" },
+      verification: "la marque `rappel_activite` existe ; un second tour ne renvoie rien", retour: "aucun nécessaire : un rappel ne modifie aucune donnée de l'utilisateur",
+      escalade: "panne : marque `rappels_echec` (analytics_events)", appliquePar: "supabase/functions/_shared/rappels.js (envoyerRappels)",
     }),
     purge_battements: rb({
       libelle: "Effacer les battements de la veille de plus de 7 jours", circuit: "A", autonome: true,

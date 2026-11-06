@@ -7053,6 +7053,17 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
         // ASTRA-24 : les mentions du message, maintenant qu'il existe en base.
         try { if (typeof _mentionnerApresEnvoi === "function") _mentionnerApresEnvoi(msgId); } catch (e) {}
       };
+      // Le code fermé d'un refus de RÈGLE (revue adversariale du 2026-11-06) : une
+      // conversation avec un compte que J'AI bloqué (`isBlocked`) refuse en 42501 —
+      // c'est la règle, pas une panne du parcours.
+      var _codeRefus = function () {
+        try {
+          var refusRls = Number(res.status) === 403 || String(res.error && res.error.code) === "42501";
+          var c = refusRls ? getConversations().find(function (x) { return x.id === convId; }) : null;
+          if (c && c.userId && typeof isBlocked === "function" && isBlocked(c.userId)) return { code: "bloque", message: "bloque" };
+        } catch (e) {}
+        return res.error;
+      };
       var _refuse = function () {
         _setMsgStatus(convId, msgId, "failed");
         // ⚠️ 403 SEULEMENT, JAMAIS 401 : un jeton absent ou expiré ne se répare
@@ -7067,13 +7078,13 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
           _reparerAppartenanceConv(convId).then(function (repare) {
             // Réparé : ce flux attend le suivant (le renvoi ouvre le sien).
             if (repare) { _flux.attente("reparation"); _sendTextToSupa(convId, msgId, content, moi, gen); return; }
-            _flux.regle(false, res.error);
+            _flux.regle(false, _codeRefus());
             _setMsgStatus(convId, msgId, "failed"); _outboxRemove(msgId);
           });
           return;
         }
         if (_refusDefinitif(res.error, res.status)) {
-          _flux.regle(false, res.error);
+          _flux.regle(false, _codeRefus());
           // Sortie de la file : plus AUCUN renvoi automatique pour celui-ci.
           _outboxRemove(msgId);
           // Le refus doit laisser une trace : sans elle, il redevient invisible

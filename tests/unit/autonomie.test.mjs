@@ -238,11 +238,12 @@ test("⑫ les marques ont UNE orthographe, lue et écrite par les mêmes constan
   assert.match(s, /comptesErreurs: Math\.max\(mesure \|\| 0, comptesParcours\) \}/, "le réveil décide sur les comptes ANCIENS");
   assert.match(s, /p\.etat === "panne" && p\.panneConfirmee === true/, "seules les pannes CONFIRMÉES par des comptes anciens réveillent");
   const conf = corpsDe("confirmer");
-  assert.match(conf, /estCompteAncien\(admin, uid, REVEIL\.ancienneteMinMs\)/, "les comptes d'un parcours sont relus, avec l'ancienneté du réveil");
-  assert.match(conf, /for \(const uid of melanger\(p\.comptesEchecIds \|\| \[\]\)\)/, "ordre TIRÉ AU HASARD, jamais celui des lignes (revue de sécurité)");
-  assert.match(conf, /if \(anciens >= SEUILS_PARCOURS\.panneComptesMin\) break;/, "arrêt dès que le seuil est atteint");
-  assert.match(conf, /if \(lus >= RELECTURES_PAR_PANNE \|\| budget <= 0\) \{ nonLus\.add\(uid\); continue; \}/, "lecture bornée, et ce qui n'est pas relu est DIT");
-  assert.match(conf, /confirmerPannes\(b, \{ anciens, nonLus \}\)/);
+  assert.match(conf, /delaiBorne\(estCompteAncien\(admin, uid, REVEIL\.ancienneteMinMs\), 3000, null/, "relu avec l'ancienneté du réveil, chaque lecture bornée dans le temps");
+  assert.match(conf, /for \(const c of comptesAVerifier\(b\)\)/, "chaque parcours CANDIDAT, quel que soit son taux");
+  assert.match(conf, /for \(const cote of \[c\.F, c\.N\]\)/, "les deux côtés : comptes en échec ET comptes sans échec");
+  assert.match(conf, /const tires = melanger\(cote\)/, "ordre TIRÉ AU HASARD, jamais celui des lignes (revue de sécurité)");
+  assert.match(conf, /if \(i < RELECTURES_PAR_COTE && budget > 0\) \{ aLire\.push\(uid\); budget--; \} else nonLus\.add\(uid\);/, "lecture bornée, et ce qui n'est pas relu est DIT");
+  assert.match(conf, /confirmerPannes\(b, \{ anciens, verifies, nonLus \}\)/);
   const anciens = corpsDe("estCompteAncien");
   assert.match(anciens, /u && u\.email_confirmed_at && Date\.now\(\) - dateUtc\(u\.created_at\) >= ancienneteMs/, "confirmé ET assez ancien, sinon il ne compte pas");
   assert.match(FN, /async function lireParcoursVeille[\s\S]{0,400}await confirmer\(admin,/, "la veille confirme avant de juger");

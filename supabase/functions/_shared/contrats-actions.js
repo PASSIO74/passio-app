@@ -50,6 +50,25 @@ export const RE_CODE = /^[a-z0-9_]{1,40}$/;
 //    du serveur : compté à part (`reseau`), jamais dans les actions jugées.
 export const REFUS_COMMUNS = Object.freeze(["limite"]);
 export const CODE_RESEAU = "reseau";
+// ⚠️ LA LISTE DES CODES EST FERMÉE CÔTÉ SERVEUR (revue adversariale du 2026-11-06).
+// `[a-z0-9_]{1,40}` laissait un navigateur choisir des MOTS (« ignore_previous_
+// instructions… ») qui finissaient dans une enquête. Un code n'est retenu que s'il
+// est l'un des nôtres, un SQLSTATE PostgreSQL (5 caractères dont au moins un
+// chiffre : 42501, 23505, P0001, 42P01) ou un code PostgREST (PGRST116) ; tout le
+// reste devient « autre ». Le client honnête n'émet que ceux-là.
+export const CODES_FERMES = Object.freeze([
+  "hors_ligne", "reseau", "limite", "doublon", "bloque", "majorite", "reparation", "refus", "sans_code", "sans_verdict", "autre",
+  "complete", "annulee", "passee", "introuvable", "hors_fenetre",
+  "infrastructure_absente", "en_vol",
+]);
+const RE_SQLSTATE = /^(?=[a-z]*\d)[0-9a-z]{5}$/;
+const RE_PGRST = /^pgrst\d{3}$/;
+/** Un code d'un navigateur → un code FERMÉ, ou « autre ». */
+export function codeFerme(v) {
+  const s = String(v == null ? "" : v).trim().toLowerCase();
+  if (!s) return null;
+  return CODES_FERMES.includes(s) || RE_SQLSTATE.test(s) || RE_PGRST.test(s) ? s : "autre";
+}
 // Un identifiant d'action : celui que `tel.flowStart` reçoit.
 export const RE_ACTION = /^[a-z][a-z0-9_]{1,39}$/;
 
@@ -78,6 +97,7 @@ export const CONTRATS = Object.freeze({
     verite: "conv_messages (ligne id = identifiant du message, from_id = l'auteur)",
     finMs: 20e3, objectifP95Ms: 1000,
     attente: ["hors_ligne"],
+    refusLegitimes: ["bloque"],       // conversation avec un compte que j'ai bloqué
     reprise: "file_locale", sensibilite: "privee",
     emetteurs: ["js/app-04-comments-shop.js", "js/app-09-boot-pwa.js"],
     verrous: ["tests/e2e/parcours-flux.spec.js", "tests/e2e/message-refus-definitif.spec.js", "tests/e2e/file-messages-par-compte.spec.js", "tests/e2e/message-media-echec.spec.js"],
@@ -119,6 +139,7 @@ export const CONTRATS = Object.freeze({
     verite: "post_comments (ligne id = identifiant local)",
     finMs: 20e3, objectifP95Ms: 1000,
     attente: ["hors_ligne"],
+    refusLegitimes: ["bloque"],       // publication d'un compte que j'ai bloqué
     reprise: "file_locale", sensibilite: "publique",
     emetteurs: ["js/app-08-ui-modals-tour.js"],
     verrous: ["tests/e2e/parcours-flux.spec.js"],
@@ -189,7 +210,7 @@ export const CONTRATS = Object.freeze({
     reaction: "« Je viens » s'affiche, annulé si le serveur refuse ; complet = liste d'attente",
     verite: "event_attendees (event_id, user_id, rsvp)",
     finMs: 20e3, objectifP95Ms: 1500,
-    refusLegitimes: ["complete", "annulee", "passee", "introuvable", "hors_fenetre"],
+    refusLegitimes: ["complete", "annulee", "passee", "introuvable", "majorite"],   // majorité : règle IRL (irl_adult_only)
     reprise: "aucune", sensibilite: "compte",
     emetteurs: ["js/app-07-ia-explore-irl.js"],
     verrous: ["tests/e2e/telemetrie-rsvp.spec.js"],

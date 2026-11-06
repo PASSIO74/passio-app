@@ -5199,7 +5199,11 @@ async function supaAddComment(postId, content, commentId) {
   // (« hors_ligne », contrat comment_post), le limiteur un refus légitime.
   const _cmtRegle = (ok, err) => {
     try {
-      const code = !ok && typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(err) : null;
+      let code = !ok && typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(err) : null;
+      if (!ok && !code && err && String(err.code) === "42501") {
+        const auteur = typeof findPostAnywhere === "function" ? (findPostAnywhere(postId) || {}).authorId : null;
+        if (auteur && typeof isBlocked === "function" && isBlocked(auteur)) code = "bloque";
+      }
       if (_cmtCid && window.tel && code === "reseau") { tel.step(_cmtCid, "queued", "ok", { rc: "hors_ligne" }); tel.flowEnd(_cmtCid, "pending"); }
       else if (_cmtCid && window.tel && tel.settle) tel.settle(_cmtCid, "saved", ok, code ? { code, message: code } : (err || null));
     } catch (e) {}

@@ -113,6 +113,8 @@ export function verdict(e) {
   // sonne ; « insuffisant » et « non observé » ne colorent rien.
   const pv = raisonsParcours(parcoursDuVoyant(e && e.parcours));
   rouge.push(...pv.rouge); orange.push(...pv.orange);
+  // Une lecture des parcours tronquée ne prouve pas le calme : elle se dit.
+  if (e && e.parcours && e.parcours.tronque) orange.push("parcours : lecture partielle (trop d'étapes sur la fenêtre) — le calme n'est pas prouvé");
   // La veille elle-même (le battement) : si elle ne tourne plus, le téléphone
   // ne sonnera pas — c'est la seule panne que la veille ne peut pas annoncer.
   const bt = e && e.battement;

@@ -361,7 +361,7 @@ test("㉔ la veille tient le voyant AVANT de décider l'alerte ; l'écran passe 
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
   // Les parcours (2026-11-06) entrent dans le voyant : leur lecture manquée est une lecture incomplète.
-  assert.match(v, /const incomplet = \[sante, signalements, github, parc\]\.some\(\(r\) => r\.status === "rejected"\);/);
+  assert.match(v, /const incomplet = \[sante, signalements, github, parc\]\.some\(\(r\) => r\.status === "rejected"\) \|\| !!\(parcoursVeille && parcoursVeille\.tronque\);/, "une lecture des parcours tronquée est une lecture incomplète");
   assert.match(v, /const vt = tenirVerdict\(prec, v, incomplet\);/);
   assert.match(v, /const actuel = \{ couleur: vt\.couleur, raisons: vt\.raisons,/);
   assert.ok(v.indexOf("tenirVerdict(") < v.indexOf("decideAlerte("), "le voyant est tenu avant que l'alerte ne décide");
@@ -1213,4 +1213,18 @@ test("㉿⑥ une panne NON confirmée (comptes neufs) n'est jamais rouge ni urge
   const neufs = confirmerPannes(brute, new Set());
   assert.equal(verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: neufs }).couleur, "orange");
   assert.match(neufs.parcours.find((p) => p.id === "send_message").raisons[0], /panne non confirmée : 0 compte/);
+});
+
+test("㉿⑦ chaque geste de la veille passe par la politique — les rappels aussi ; la réponse publique ne dit rien de l'état", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const r = fn.slice(fn.indexOf("async function rappels(admin: Admin)"), fn.indexOf("async function lireEtatMemorise"));
+  assert.match(r, /const pol = autoriser\(POLITIQUE, "rappels_activite"\);\s*if \(!pol\.ok\) return/);
+  assert.ok(r.indexOf("autoriser(") < r.indexOf("envoyerRappels("), "la politique AVANT l'envoi");
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  assert.match(v, /return json\(\{ ok: true \}\);/, "la veille s'appelle avec la clé anon : aucun oracle de l'état");
+  assert.doesNotMatch(v, /return json\(\{ ok: true, couleur/);
+  // La lecture des flux : à plat, sans lignes anonymes.
+  assert.match(fn, /\.not\("auth_uid", "is", null\)/);
+  assert.match(fn, /flow_action:meta->>flow_action,step:meta->>step,rc:meta->>rc/);
+  assert.doesNotMatch(fn.slice(fn.indexOf("async function lireLignesFlux"), fn.indexOf("async function lireLignesFlux") + 900), /,meta,/, "jamais `meta` entier");
 });

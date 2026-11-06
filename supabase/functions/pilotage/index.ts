@@ -46,7 +46,7 @@ import {
   continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt,
 } from "../_shared/autonomie.js";
 // Parcours critiques, politique d'automatisation, battement (2026-11-06).
-import { bilanParcours, couverture as couvertureParcours, confirmerPannes, melanger, SEUILS as SEUILS_PARCOURS } from "../_shared/parcours.js";
+import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
 
@@ -145,7 +145,9 @@ async function veille(admin: Admin) {
   // une lecture incomplète ne fait jamais BAISSER le voyant mémorisé — sinon
   // une lecture GitHub manquée sonne « Problème résolu », et la suivante
   // « Problème » de nouveau.
-  const incomplet = [sante, signalements, github, parc].some((r) => r.status === "rejected");
+  // Une lecture des parcours TRONQUÉE (au-delà de 5 pages) ne prouve pas le calme :
+  // un flot de lignes peut pousser l'heure réelle hors de la lecture (revue adversariale).
+  const incomplet = [sante, signalements, github, parc].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque);
   // Une lecture incomplète laisse sa raison dans les journaux de la fonction : sans elle, rien ne disait
   // pourquoi le voyant mémorisé restait figé. Des codes et des délais, jamais une donnée.
   if (incomplet) {
@@ -191,10 +193,12 @@ async function veille(admin: Admin) {
   // appelable avec la seule clé anon (publique), et combien d'activités ont lieu
   // dans les 24 h ou combien de comptes sont abonnés ne regardent personne. Ils
   // se lisent dans `analytics_events` (marques `rappel_activite`, `rappels_echec`).
-  return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes,
-    delestage: delestage && "niveau" in delestage ? delestage.niveau : null,
-    sentinelleReveillee: !!(reveil && reveil.lance), retourPropose: !!(retour && retour.propose),
-    canari: !!(canari && canari.emis), battement: !!(battement && battement.ecrit) });
+  // ⚠️ RÉPONSE PUBLIQUE MINIMALE (revue adversariale du 2026-11-06) : la veille
+  // s'appelle avec la clé anon. Le voyant et les décisions renvoyés servaient
+  // d'ORACLE pour régler une dilution des parcours. Tout se lit au pilotage, au
+  // battement (analytics_events) et dans les journaux de la fonction.
+  console.log("veille " + JSON.stringify({ couleur: actuel.couleur, sonne: d.sonner, envoyes, reveil: !!(reveil && reveil.lance), battement: !!(battement && battement.ecrit) }));
+  return json({ ok: true });
 }
 
 // Canari serveur (2026-10-31, VEILLE #627) : la veille ne s'éteint pas, le
@@ -210,6 +214,10 @@ async function emettreCanari(): Promise<Record<string, unknown>> {
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
 async function rappels(admin: Admin) {
+  // Un geste de la veille comme les autres : il pousse ET oublie les abonnements
+  // morts — sous la politique (revue adversariale du 2026-11-06).
+  const pol = autoriser(POLITIQUE, "rappels_activite");
+  if (!pol.ok) return { inactif: "politique:" + pol.raison };
   const pub = Deno.env.get("VAPID_PUBLIC_KEY"), priv = Deno.env.get("VAPID_PRIVATE_KEY");
   if (!pub || !priv) return { inactif: "VAPID absent" };
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
@@ -619,8 +627,11 @@ async function lireLignesFlux(admin: Admin, fenetreMs: number) {
   const lignes: Record<string, unknown>[] = [];
   for (let page = 0; page < PARCOURS_PAGES_MAX; page++) {
     const { data, error } = await admin.from("telemetry_events")
-      .select("event_id,correlation_id,action,status,meta,auth_uid,received_at,client_ts,app_version")
-      .eq("type", "flow").eq("env", "production").gte("received_at", depuis)
+      // Les SEULES clés utiles de `meta`, à plat : un `meta` hostile peut peser des
+      // mégaoctets (revue adversariale). Et jamais une ligne sans identité serveur :
+      // elle ne pèse rien, et un flot anonyme repoussait l'heure réelle hors des pages.
+      .select("event_id,correlation_id,action,status,auth_uid,received_at,client_ts,app_version,flow_action:meta->>flow_action,step:meta->>step,rc:meta->>rc,synthetic:meta->>synthetic,trafic:meta->>trafic")
+      .eq("type", "flow").eq("env", "production").gte("received_at", depuis).not("auth_uid", "is", null)
       .order("received_at", { ascending: false }).order("id", { ascending: false })
       .range(page * MAX_LIGNES_POSTGREST, (page + 1) * MAX_LIGNES_POSTGREST - 1);
     if (error) throw error;
@@ -630,38 +641,41 @@ async function lireLignesFlux(admin: Admin, fenetreMs: number) {
   }
   return { lignes, tronque: true };
 }
-// Une panne ne sonne que CONFIRMÉE (revue de sécurité du 2026-11-06) : ses
-// comptes en échec sont relus dans l'authentification (confirmés, > 24 h,
-// comme le réveil) ; sinon elle redescend en « dégradé ». La lecture est
-// bornée, donc elle ne doit pas se borner sur un ordre qu'un émetteur choisit :
-// PAR PANNE, dans un ordre TIRÉ AU HASARD (`melanger`), arrêt dès que le seuil
-// est atteint, budget commun par passage ; un compte que le budget n'a pas
-// permis de relire est dit « non relu » (`verificationIncomplete`), jamais
-// « neuf ». `confirmerPannes` retire ensuite les identités : rien de nominatif
-// ne quitte la fonction.
-const RELECTURES_PAR_PANNE = 40;
+// Une panne ne sonne que CONFIRMÉE (revues du 2026-11-06). Pour chaque parcours
+// CANDIDAT (assez d'échecs chez assez de comptes, quel que soit son taux), on
+// relit dans l'authentification un échantillon TIRÉ AU HASARD (`melanger`) des
+// comptes en échec ET des comptes sans échec : la part des comptes ANCIENS
+// (confirmés, > 24 h, comme le réveil) se juge des deux côtés, et une nuée de
+// comptes neufs qui réussissent ne cache plus une panne (`confirmerPannes`).
+// Lectures par lots de 10, chacune bornée à 3 s, budget commun par passage ; un
+// compte que le budget n'a pas permis de relire est « non relu », jamais « neuf ».
+// `confirmerPannes` retire ensuite les identités : rien de nominatif ne sort.
+const RELECTURES_PAR_COTE = 20;
 const RELECTURES_PAR_PASSAGE = 120;
+const delaiBorne = <T,>(p: Promise<T>, ms: number, sinon: T) => Promise.race([p, new Promise<T>((r) => setTimeout(() => r(sinon), ms))]);
 async function confirmer(admin: Admin, ...bilans: Record<string, unknown>[]) {
   const vus = new Map<string, boolean>();
   const nonLus = new Set<string>();
   let budget = RELECTURES_PAR_PASSAGE;
+  const aLire: string[] = [];
   for (const b of bilans) {
-    const liste = Array.isArray(b.parcours) ? b.parcours as { etat?: string; comptesEchecIds?: string[] }[] : [];
-    for (const p of liste.filter((x) => x && x.etat === "panne")) {
-      let anciens = 0, lus = 0;
-      for (const uid of melanger(p.comptesEchecIds || [])) {
-        if (anciens >= SEUILS_PARCOURS.panneComptesMin) break;
-        if (!vus.has(uid)) {
-          if (lus >= RELECTURES_PAR_PANNE || budget <= 0) { nonLus.add(uid); continue; }
-          lus++; budget--;
-          vus.set(uid, await estCompteAncien(admin, uid, REVEIL.ancienneteMinMs));
+    for (const c of comptesAVerifier(b)) {
+      for (const cote of [c.F, c.N]) {
+        const tires = melanger(cote).filter((u: string) => !vus.has(u) && !aLire.includes(u));
+        for (const [i, uid] of tires.entries()) {
+          if (i < RELECTURES_PAR_COTE && budget > 0) { aLire.push(uid); budget--; } else nonLus.add(uid);
         }
-        if (vus.get(uid)) anciens++;
       }
     }
   }
+  for (let i = 0; i < aLire.length; i += 10) {
+    const lot = aLire.slice(i, i + 10);
+    const r = await Promise.all(lot.map((uid) => delaiBorne(estCompteAncien(admin, uid, REVEIL.ancienneteMinMs), 3000, null as boolean | null)));
+    lot.forEach((uid, k) => { if (r[k] === null) nonLus.add(uid); else vus.set(uid, r[k] as boolean); });
+  }
   const anciens = new Set([...vus].filter(([, ok]) => ok).map(([uid]) => uid));
-  return bilans.map((b) => confirmerPannes(b, { anciens, nonLus }));
+  const verifies = new Set(vus.keys());
+  return bilans.map((b) => confirmerPannes(b, { anciens, verifies, nonLus }));
 }
 async function lireParcours(admin: Admin) {
   const { lignes, tronque } = await lireLignesFlux(admin, 864e5);

@@ -45,7 +45,7 @@
 // Ce fichier ne fait AUCUN appel réseau ; tests/unit/parcours.test.mjs.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { CONTRATS, VERSION_CONTRATS, RE_CODE, RE_ACTION, REFUS_COMMUNS, CODE_RESEAU, validerContrats, PARCOURS_NON_INSTRUMENTES } from "./contrats-actions.js";
+import { CONTRATS, VERSION_CONTRATS, RE_ACTION, REFUS_COMMUNS, CODE_RESEAU, codeFerme, validerContrats, PARCOURS_NON_INSTRUMENTES } from "./contrats-actions.js";
 
 export const SEUILS = Object.freeze({
   minJuges: 5,             // en dessous : « insuffisant », jamais « sain »
@@ -68,8 +68,13 @@ export const ISSUES = Object.freeze({
 });
 
 const ms = (v) => { const t = Date.parse(String(v || "")); return Number.isFinite(t) ? t : NaN; };
-const code = (v) => { const s = String(v == null ? "" : v).trim().toLowerCase(); return RE_CODE.test(s) ? s : (s ? "autre" : null); };
+// Codes FERMÉS (contrats-actions.js, `codeFerme`) : un mot choisi par un navigateur devient « autre ».
+const code = codeFerme;
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+// Trafic hors public (meta.trafic, telemetry.js) : les robots et les émulations
+// ne pèsent pas dans un parcours (comptés à part) ; l'équipe, si — ce sont de
+// vraies actions, et un échec de l'équipe est un échec.
+const TRAFIC_ECARTE = new Set(["robot", "emulation"]);
 
 /**
  * Regroupe les lignes par corrélation. Rend { flux: Map(cid → flux), doublons }.
@@ -88,11 +93,17 @@ export function regrouperFlux(lignes, contrats = CONTRATS) {
     if (eid) { if (vus.has(eid)) { doublons++; continue; } vus.add(eid); }
     let f = flux.get(cid);
     if (!f) { f = { cid, action: null, debutClient: NaN, debutRecu: NaN, finClient: NaN, statutFin: null, confirmation: null, rc: null, compte: null, version: null, synthetique: false, trafic: null }; flux.set(cid, f); }
-    const meta = objet(l.meta);
+    // La fonction ne lit que les clés utiles de `meta` (colonnes à plat : un
+    // `meta` hostile peut peser des mégaoctets) ; les bancs passent `meta` entier.
+    const brut = objet(l.meta);
+    const meta = {
+      flow_action: l.flow_action != null ? l.flow_action : brut.flow_action, step: l.step != null ? l.step : brut.step,
+      rc: l.rc != null ? l.rc : brut.rc, synthetic: l.synthetic != null ? l.synthetic : brut.synthetic, trafic: l.trafic != null ? l.trafic : brut.trafic,
+    };
     if (l.auth_uid && !f.compte) f.compte = String(l.auth_uid);
     // Une version est écrite par le navigateur : assainie, elle ne porte jamais de texte libre.
     if (l.app_version && !f.version) f.version = /^[0-9A-Za-z._+-]{1,40}$/.test(String(l.app_version)) ? String(l.app_version) : "autre";
-    if (meta.synthetic === true) f.synthetique = true;
+    if (meta.synthetic === true || meta.synthetic === "true") f.synthetique = true;
     if (typeof meta.trafic === "string" && !f.trafic) f.trafic = meta.trafic.slice(0, 20);
     const etape = l.action;
     if (etape === "start") {
@@ -154,9 +165,9 @@ export function centile(tries, p) {
 const vide = (c) => ({
   id: c.id, libelle: c.libelle, domaine: c.domaine, criticite: c.criticite, objectifP95Ms: c.objectifP95Ms,
   tentes: 0, reussis: 0, refuses: 0, attente: 0, reseau: 0, echoues: 0, enCours: 0, inconnus: 0, juges: 0,
-  tauxSucces: null, comptes: 0, comptesEchec: 0, anonymes: 0, anonymesEchec: 0, sondes: 0, p50Ms: null, p95Ms: null, mesures: 0,
+  tauxSucces: null, comptes: 0, comptesEchec: 0, anonymes: 0, anonymesEchec: 0, sondes: 0, horsPublic: 0, comptesReseau: 0, p50Ms: null, p95Ms: null, mesures: 0,
   codes: [], versionsEchec: [], dernier: null, etat: "non_observe", raisons: [],
-  _comptes: new Set(), _comptesEchec: new Set(), _durees: [], _codes: new Map(), _versions: new Map(), _parCompte: new Map(),
+  _comptes: new Set(), _comptesEchec: new Set(), _comptesReseau: new Set(), _durees: [], _codes: new Map(), _versions: new Map(), _parCompte: new Map(),
 });
 
 /**
@@ -183,6 +194,7 @@ export function bilanParcours(lignes, opts = {}) {
     const b = par.get(f.action);
     if (!b) { horsContrat++; continue; }
     if (f.synthetique) { b.sondes++; continue; }
+    if (f.trafic && TRAFIC_ECARTE.has(f.trafic)) { b.horsPublic++; continue; }
     const contrat = contrats[f.action];
     const issue = issueFlux(f, contrat, maintenant);
     // Sans identité serveur : dit, jamais pesé (revue de sécurité du 2026-11-06).
@@ -201,7 +213,7 @@ export function bilanParcours(lignes, opts = {}) {
       if (Number.isFinite(d) && d >= 0 && d <= seuils.dureeMaxMs) b._durees.push(d);
     } else if (issue === "refuse") b.refuses++;
     else if (issue === "attente") b.attente++;
-    else if (issue === "reseau") b.reseau++;
+    else if (issue === "reseau") { b.reseau++; b._comptesReseau.add(f.compte); }
     else if (issue === "en_cours") b.enCours++;
     else if (issue === "inconnu") b.inconnus++;
     else if (issue === "echoue") {
@@ -218,10 +230,17 @@ export function bilanParcours(lignes, opts = {}) {
     b.tauxSucces = b.juges ? Math.round((b.reussis / b.juges) * 1000) / 10 : null;
     b.comptes = b._comptes.size;
     b.comptesEchec = b._comptesEchec.size;
+    b.comptesReseau = b._comptesReseau.size;
     // TOUS les comptes, jamais les « n premiers » : l'ordre des lignes est celui
     // qu'un émetteur choisit (revue de sécurité du 2026-11-06). C'est la
     // vérification qui tire au hasard et se borne (`melanger`, la fonction).
-    if (opts.garderComptes) b.comptesEchecIds = [...b._comptesEchec];
+    // Les comptes jugés SANS échec aussi : la confirmation estime la part des
+    // comptes ANCIENS des deux côtés, pour qu'une nuée de comptes neufs qui
+    // réussissent ne fasse pas passer une panne pour du calme.
+    if (opts.garderComptes) {
+      b.comptesEchecIds = [...b._comptesEchec];
+      b.comptesSansEchecIds = [...b._parCompte.keys()].filter((u) => !b._comptesEchec.has(u));
+    }
     const durees = b._durees.sort((x, y) => x - y);
     b.mesures = durees.length;
     b.p50Ms = centile(durees, 50);
@@ -237,7 +256,7 @@ export function bilanParcours(lignes, opts = {}) {
     b.tauxEchecPondere = pt ? pe / pt : 0;
     b.tauxInconnuPondere = pt ? pi / pt : 0;
     Object.assign(b, etatParcours(b, seuils));
-    for (const k of ["_comptes", "_comptesEchec", "_durees", "_codes", "_versions", "_parCompte"]) delete b[k];
+    for (const k of ["_comptes", "_comptesEchec", "_comptesReseau", "_durees", "_codes", "_versions", "_parCompte"]) delete b[k];
     parcours.push(b);
   }
   return {
@@ -260,6 +279,11 @@ export function etatParcours(b, seuils = SEUILS) {
   if (b.echoues >= seuils.degradeEchecsMin && tauxEchec >= seuils.degradeTaux) raisons.push(`${sur} (${b.comptesEchec} compte(s))`);
   if (b.inconnus >= seuils.inconnusMin && tauxInconnu >= seuils.inconnusTaux) raisons.push(`${b.inconnus} action(s) sans verdict sur ${b.juges} : résultat non confirmé`);
   if (b.mesures >= seuils.lenteurEchantillonsMin && b.p95Ms != null && b.objectifP95Ms && b.p95Ms > b.objectifP95Ms) raisons.push(`lent : p95 ${Math.round(b.p95Ms)} ms pour un objectif de ${b.objectifP95Ms} ms (${b.mesures} mesures)`);
+  // Des coupures réseau MAJORITAIRES chez plusieurs comptes ne sont pas un calme :
+  // une panne CORS, DNS ou de service worker n'émet QUE des « reseau ». Orange,
+  // jamais une panne (le réseau d'un appareil ne prouve rien du serveur).
+  const essais = b.juges + (b.reseau || 0);
+  if ((b.comptesReseau || 0) >= 3 && essais && b.reseau / essais >= 0.5) raisons.push(`${b.reseau} coupure(s) réseau sur ${essais} essai(s), chez ${b.comptesReseau} comptes : le serveur est-il joignable ?`);
   if (raisons.length) return { etat: "degrade", raisons };
   if (b.juges < seuils.minJuges) return { etat: "insuffisant", raisons: [`${b.juges} action(s) jugée(s) : trop peu pour conclure (il en faut ${seuils.minJuges})`] };
   return { etat: "sain", raisons: [`${b.reussis} réussie(s) sur ${b.juges} jugée(s)`] };
@@ -274,25 +298,56 @@ export function etatParcours(b, seuils = SEUILS) {
  */
 export function confirmerPannes(bilan, verification, seuils = SEUILS) {
   if (!bilan || !Array.isArray(bilan.parcours)) return bilan;
-  // `verification` : l'ensemble des comptes anciens, ou { anciens, nonLus } quand
-  // la lecture a été bornée — un compte NON LU n'est ni ancien ni neuf.
-  const v = verification instanceof Set ? { anciens: verification, nonLus: new Set() } : (verification || {});
+  // `verification` : { anciens, verifies, nonLus } (Sets) — ce que la fonction a
+  // relu dans l'authentification, ce qu'elle a relu tout court, ce que son budget
+  // ne lui a pas permis de relire. Un Set seul vaut { anciens: Set, verifies: Set }.
+  const v = verification instanceof Set ? { anciens: verification, verifies: verification, nonLus: new Set() } : (verification || {});
   const ok = v.anciens instanceof Set ? v.anciens : new Set();
+  const lus = v.verifies instanceof Set ? v.verifies : ok;
   const nonLus = v.nonLus instanceof Set ? v.nonLus : new Set();
   const parcours = bilan.parcours.map((p) => {
-    const { comptesEchecIds, ...reste } = p;
+    const { comptesEchecIds, comptesSansEchecIds, ...reste } = p;
+    const F = Array.isArray(comptesEchecIds) ? comptesEchecIds : [];
+    const N = Array.isArray(comptesSansEchecIds) ? comptesSansEchecIds : [];
+    if (!estCandidatPanne(p, seuils)) return reste;
+    // Les comptes ANCIENS, des deux côtés, estimés sur ce qui a été relu (tirage au hasard).
+    const lusF = F.filter((u) => lus.has(u)), lusN = N.filter((u) => lus.has(u));
+    const oF = lusF.filter((u) => ok.has(u)).length, oN = lusN.filter((u) => ok.has(u)).length;
+    const estF = lusF.length ? (oF / lusF.length) * F.length : 0;
+    const estN = lusN.length ? (oN / lusN.length) * N.length : 0;
+    const tauxAnciens = estF + estN > 0 ? estF / (estF + estN) : 0;
+    if (oF >= seuils.panneComptesMin && tauxAnciens >= seuils.panneTaux) {
+      const raisons = p.etat === "panne" ? p.raisons : [`${p.echoues} échec(s) chez ${oF} compte(s) ancien(s) : panne chez les comptes anciens, d'autres comptes réussissent`];
+      return { ...reste, etat: "panne", panneConfirmee: true, comptesEchecAnciens: oF, raisons };
+    }
     if (p.etat !== "panne") return reste;
-    const ids = Array.isArray(comptesEchecIds) ? comptesEchecIds : [];
-    const n = ids.filter((u) => ok.has(u)).length;
-    if (n >= seuils.panneComptesMin) return { ...reste, panneConfirmee: true, comptesEchecAnciens: n };
     // Lecture bornée atteinte : la panne n'est PAS déclarée non confirmée en
     // silence — elle le dit (« vérification incomplète »), en orange.
-    const nl = ids.filter((u) => nonLus.has(u)).length;
-    const pourquoi = nl ? `vérification incomplète : ${nl} compte(s) non relu(s) (lecture bornée), ${n} ancien(s) trouvé(s)` : `${n} compte(s) ancien(s) sur ${p.comptesEchec} en échec (il en faut ${seuils.panneComptesMin})`;
-    return { ...reste, etat: "degrade", panneConfirmee: false, comptesEchecAnciens: n, verificationIncomplete: nl > 0,
+    const nl = F.filter((u) => nonLus.has(u)).length + N.filter((u) => nonLus.has(u)).length;
+    const pourquoi = nl ? `vérification incomplète : ${nl} compte(s) non relu(s) (lecture bornée), ${oF} ancien(s) en échec trouvé(s)`
+      : oF < seuils.panneComptesMin ? `${oF} compte(s) ancien(s) sur ${p.comptesEchec} en échec (il en faut ${seuils.panneComptesMin})`
+        : `chez les comptes anciens, ${Math.round(tauxAnciens * 100)} % d'échecs seulement`;
+    return { ...reste, etat: "degrade", panneConfirmee: false, comptesEchecAnciens: oF, verificationIncomplete: nl > 0,
       raisons: [`panne non confirmée : ${pourquoi} — ${p.raisons[0]}`] };
   });
   return { ...bilan, parcours };
+}
+
+/** Un parcours mérite-t-il qu'on relise ses comptes ? Assez d'échecs chez assez de comptes, QUEL QUE SOIT son taux. */
+export function estCandidatPanne(p, seuils = SEUILS) {
+  return !!p && p.echoues >= seuils.panneEchecsMin && p.comptesEchec >= seuils.panneComptesMin;
+}
+
+/** Les comptes à relire, par parcours candidat : { id, F (en échec), N (sans échec) } — usage INTERNE. */
+export function comptesAVerifier(bilan, seuils = SEUILS) {
+  if (!bilan || !Array.isArray(bilan.parcours)) return [];
+  return bilan.parcours.filter((p) => estCandidatPanne(p, seuils))
+    .map((p) => ({ id: p.id, F: p.comptesEchecIds || [], N: p.comptesSansEchecIds || [] }));
+}
+
+/** Les identités des comptes en échec des parcours candidats (usage INTERNE à la fonction). */
+export function comptesDesPannes(bilan) {
+  return [...new Set(comptesAVerifier(bilan).flatMap((x) => x.F))];
 }
 
 /**
@@ -309,12 +364,6 @@ export function melanger(liste, aleatoire = null) {
   };
   for (let i = a.length - 1; i > 0; i--) { const j = tirer(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
-}
-
-/** Les identités des comptes en échec des parcours en panne (usage INTERNE à la fonction). */
-export function comptesDesPannes(bilan) {
-  if (!bilan || !Array.isArray(bilan.parcours)) return [];
-  return [...new Set(bilan.parcours.filter((p) => p.etat === "panne").flatMap((p) => p.comptesEchecIds || []))];
 }
 
 const nomParcours = (p) => "« " + p.libelle + " »";
