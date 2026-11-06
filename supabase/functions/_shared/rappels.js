@@ -51,6 +51,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { idGeste } from "./autonomie.js";
+import { pidNeuf, avecAccuse, EVT_ENVOI } from "./reception.js";
 
 export const FUSEAU = "Europe/Paris";
 export const MARQUE_EVENEMENT = "rappel_activite";
@@ -232,7 +233,7 @@ const paquets = (l, n) => { const r = []; for (let i = 0; i < l.length; i += n) 
  * Les lectures sont TRIÉES (le plus proche d'abord) et PAGINÉES : une limite
  * plate laissait des activités au hasard hors du tour, indéfiniment.
  */
-export async function envoyerRappels(admin, envoyer, maintenant = Date.now(), secret = "") {
+export async function envoyerRappels(admin, envoyer, maintenant = Date.now(), secret = "", accuse = null) {
   const activites = await toutesLesPages(() => admin.from("events")
     .select("id,title,city,date_at,status,author_id,created_at")
     .gte("date_at", isoNaif(maintenant)).lte("date_at", isoNaif(maintenant + 24 * HEURE + 60e3))
@@ -296,18 +297,32 @@ export async function envoyerRappels(admin, envoyer, maintenant = Date.now(), se
       parCompte.set(s.user_id, l);
     }
   }
+  // L'accusé de réception (2026-11-06, _shared/reception.js) : un pid ALÉATOIRE
+  // par rappel, partagé par les appareils du destinataire ; noté après l'envoi
+  // pour les seuls rappels qu'un service de notification a acceptés.
+  const pidsAcceptes = [];
   await Promise.all(aEnvoyer.map(async (r) => {
     const subs = parCompte.get(r.uid) || [];
     if (!subs.length) { sansAppareil++; return; }
-    const charge = JSON.stringify({ type: "rappel", titre: r.titre, texte: r.texte, eventId: r.idActivite });
+    const pid = accuse ? pidNeuf() : null;
+    const charge = JSON.stringify(avecAccuse({ type: "rappel", titre: r.titre, texte: r.texte, eventId: r.idActivite }, pid, accuse));
+    let accepte = false;
     await Promise.all(subs.map(async (s) => {
-      try { await envoyer(s.subscription, charge, { TTL: r.ttl, urgency: r.urgence }); envoyes++; }
+      try { await envoyer(s.subscription, charge, { TTL: r.ttl, urgency: r.urgence }); envoyes++; accepte = true; }
       catch (e) {
         const c = e && e.statusCode;
         if (c === 404 || c === 410) morts.push(s.endpoint);
       }
     }));
+    if (pid && accepte) pidsAcceptes.push(pid);
   }));
+  // La note d'envoi ne casse jamais un tour : les rappels sont partis.
+  if (pidsAcceptes.length) {
+    try {
+      const { error: e6 } = await admin.from("analytics_events").insert({ user_id: MARQUE_UID, event: EVT_ENVOI, properties: { genre: "rappel", pids: pidsAcceptes, acceptes: envoyes } });
+      if (e6) console.warn("rappels : note d'envoi refusée " + String(e6.code || ""));
+    } catch (_e) { console.warn("rappels : note d'envoi injoignable"); }
+  }
   // Un abonnement expiré (404/410) se retire, comme notify-call et la veille le font.
   if (morts.length) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch (_e) { /* au tour suivant */ } }
   return { activites: activites.length, dus: aEnvoyer.length, envoyes, sansAppareil, expires: morts.length, dejaPris };

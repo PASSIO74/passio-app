@@ -9,7 +9,7 @@ import vm from "node:vm";
 import { idGeste } from "../../supabase/functions/_shared/autonomie.js";
 import {
   palierDu, rappelsDus, envoyerRappels, texteSur, jourRelatif, duree, dateUtc, cleRappel,
-  MARQUE_EVENEMENT, MAX_PAR_TOUR, MAX_PAR_COMPTE, marqueUid,
+  MARQUE_EVENEMENT, MAX_PAR_TOUR, MAX_PAR_COMPTE, marqueUid, MARQUE_UID,
 } from "../../supabase/functions/_shared/rappels.js";
 
 const H = 3600e3;
@@ -164,7 +164,7 @@ function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refus
       in(col, vals) { q._filtres.push([col, vals]); q._in = vals; return q; },
       range(a, b) { q._range = [a, b]; return q; },
       limit() { return q; },
-      insert(rows) { journal.push({ op: "insert", nom, rows, options: null }); q._op = "insert"; q._rows = rows; return q; },
+      insert(rows) { journal.push({ op: "insert", nom, rows, options: null }); q._op = "insert"; q._rows = Array.isArray(rows) ? rows : [rows]; return q; },
       upsert(rows, options) { journal.push({ op: "insert", nom, rows, options }); q._op = "upsert"; q._rows = rows; q._options = options; return q; },
       delete() { q._op = "delete"; return q; },
       then(res, rej) {
@@ -348,7 +348,7 @@ test("⑪ dateUtc lit la base comme supaTs : sans fuseau = UTC", () => {
 });
 
 /** Le service worker, exécuté pour de vrai dans une machine virtuelle. */
-function chargerSw() {
+function chargerSw({ fetch: fetchSw = () => {} } = {}) {
   const handlers = {};
   const notifs = [];
   const ouverts = [];
@@ -357,14 +357,17 @@ function chargerSw() {
   const self = {
     addEventListener: (t, f) => { handlers[t] = f; },
     skipWaiting() {},
-    registration: { showNotification: (titre, opts) => { notifs.push({ titre, opts }); return Promise.resolve(); } },
+    // L'affichage se TERMINE plus tard, comme dans un navigateur : un accusé parti
+    // avant la fin de l'affichage se voit (⑫ ter).
+    registration: { showNotification: (titre, opts) => new Promise((r) => setTimeout(() => { notifs.push({ titre, opts }); r(); }, 0)) },
     clients: {
       matchAll: () => Promise.resolve(fenetres),
       openWindow: (u) => { ouverts.push(u); return Promise.resolve(); },
       claim: () => Promise.resolve(),
     },
   };
-  vm.runInNewContext(fs.readFileSync("sw.js", "utf8"), { self, caches: {}, fetch: () => {}, URL, console, Response: class {} });
+  // Les pauses du service worker (second essai d'un accusé) passent sans attendre.
+  vm.runInNewContext(fs.readFileSync("sw.js", "utf8"), { self, caches: {}, fetch: fetchSw, URL, console, Response: class {}, crypto: globalThis.crypto, setTimeout: (f) => setTimeout(f, 0) });
   const attendre = async (f) => { let p; f({ waitUntil: (x) => { p = x; } }); await p; };
   return {
     handlers, notifs, ouverts, messages,
@@ -373,6 +376,102 @@ function chargerSw() {
     async clic(notification, action = "") { await attendre((ext) => handlers.notificationclick({ ...ext, action, notification: { close() {}, ...notification } })); },
   };
 }
+
+const ACK = { u: "https://njkiyoklssvefstljemx.supabase.co", k: "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.c2ln" };
+const PID1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const PID2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+test("⑫ ter service worker : APRÈS l'affichage, un accusé SANS CONTENU à l'adresse portée — jamais ailleurs, et l'affichage ne dépend pas de lui", async () => {
+  // Réinjections éprouvées : accuser avant l'affichage → l'ordre rougit ; ne
+  // plus valider l'adresse → « aucune requête hors forme » rougit.
+  const appels = [];
+  let sw;
+  sw = chargerSw({ fetch: (u, o) => { appels.push({ u, o, affichees: sw.notifs.length }); return Promise.resolve({ ok: true }); } });
+  await sw.push({ type: "pilotage", titre: "Problème", texte: "Le voyant passe au rouge", pid: PID1, ack: ACK });
+  assert.equal(sw.notifs.length, 1);
+  assert.equal(appels.length, 1);
+  assert.equal(appels[0].affichees, 1, "la notification est affichée AVANT l'accusé");
+  assert.equal(appels[0].u, ACK.u + "/rest/v1/telemetry_events");
+  assert.equal(appels[0].o.method, "POST");
+  assert.equal(appels[0].o.headers.apikey, ACK.k);
+  const corps = JSON.parse(appels[0].o.body);
+  assert.equal(corps.length, 1);
+  assert.deepEqual({ type: corps[0].type, action: corps[0].action, status: corps[0].status, meta: corps[0].meta },
+    { type: "push", action: "recu", status: "ok", meta: { pid: PID1, genre: "pilotage" } });
+  assert.match(corps[0].event_id, /^[0-9a-f]{16}$/);
+  assert.ok(!/Problème|rouge/.test(appels[0].o.body), "rien du texte de la notification dans l'accusé");
+  assert.equal(corps[0].user_id, undefined, "aucune identité : la RLS l'admet nulle, et l'accusé n'en a pas besoin");
+
+  await sw.push({ type: "rappel", titre: "Rando", texte: "x", eventId: "ev_1", pid: PID2, ack: ACK });
+  assert.equal(JSON.parse(appels[1].o.body)[0].meta.genre, "rappel");
+
+  // Adresse hors forme, pid absent ou hors forme : AUCUNE requête, la notification s'affiche quand même.
+  for (const ack of [{ ...ACK, u: "https://evil.example" }, { ...ACK, u: ACK.u + ".evil.example" }, { ...ACK, u: ACK.u + "/x" }, { ...ACK, k: "pas une clé" }, null, "chaine"]) {
+    await sw.push({ type: "pilotage", titre: "x", pid: PID1, ack });
+  }
+  await sw.push({ type: "pilotage", titre: "x", ack: ACK });
+  await sw.push({ type: "pilotage", titre: "x", pid: "pas-un-pid", ack: ACK });
+  assert.equal(appels.length, 2, "aucune requête hors forme");
+  assert.equal(sw.notifs.length, 2 + 8, "chaque notification affichée");
+
+  // Un réseau en panne n'empêche ni l'affichage, ni la fin de l'événement (la promesse se résout).
+  const enPanne = chargerSw({ fetch: () => Promise.reject(new Error("hors ligne")) });
+  await enPanne.push({ type: "pilotage", titre: "x", pid: PID1, ack: ACK });
+  assert.equal(enPanne.notifs.length, 1);
+  const leve = chargerSw({ fetch: () => { throw new Error("fetch indisponible"); } });
+  await leve.push({ type: "rappel", titre: "x", eventId: "ev_1", pid: PID1, ack: ACK });
+  assert.equal(leve.notifs.length, 1);
+
+  // Refus de débit (429) ou coupure : UN second essai, jamais deux.
+  for (const premier of [() => Promise.resolve({ status: 429 }), () => Promise.reject(new Error("coupure"))]) {
+    const essais = [];
+    const r = chargerSw({ fetch: () => { essais.push(1); return essais.length === 1 ? premier() : Promise.resolve({ status: 201 }); } });
+    await r.push({ type: "pilotage", titre: "x", pid: PID1, ack: ACK });
+    assert.equal(essais.length, 2, "un second essai");
+  }
+  const toujours = [];
+  const r429 = chargerSw({ fetch: () => { toujours.push(1); return Promise.resolve({ status: 429 }); } });
+  await r429.push({ type: "pilotage", titre: "x", pid: PID1, ack: ACK });
+  assert.equal(toujours.length, 2, "jamais un troisième : l'événement push ne vit pas indéfiniment");
+  const ok = [];
+  const r201 = chargerSw({ fetch: () => { ok.push(1); return Promise.resolve({ status: 201 }); } });
+  await r201.push({ type: "pilotage", titre: "x", pid: PID1, ack: ACK });
+  assert.equal(ok.length, 1, "un accusé accepté ne repart pas");
+});
+
+test("⑨ sexies l'accusé côté envoi : un pid ALÉATOIRE par rappel et l'adresse ; seuls les rappels ACCEPTÉS sont notés envoyés ; sans adresse, ni pid ni note", async () => {
+  const subs = [
+    { endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } },
+    { endpoint: "https://push/b", user_id: B, subscription: { endpoint: "https://push/b" } },
+  ];
+  const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs });
+  const charges = [];
+  const envoyer = async (s, charge) => {
+    charges.push({ fin: s.endpoint, c: JSON.parse(charge) });
+    if (s.endpoint === "https://push/b") { const e = new Error("refus"); e.statusCode = 500; throw e; }
+  };
+  await envoyerRappels(admin, envoyer, T0, S, ACK);
+  assert.equal(charges.length, 2);
+  for (const { c } of charges) {
+    assert.match(c.pid, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.deepEqual(c.ack, ACK);
+  }
+  assert.notEqual(charges[0].c.pid, charges[1].c.pid, "un pid par rappel : jamais dérivé de la clé");
+  const premiere = (j) => [].concat(j.rows)[0] || {};
+  const notes = admin.journal.filter((j) => j.op === "insert" && premiere(j).event === "push_envoye");
+  assert.equal(notes.length, 1, "UNE note par tour");
+  const ligne = premiere(notes[0]);
+  assert.equal(ligne.user_id, MARQUE_UID);
+  assert.deepEqual(ligne.properties, { genre: "rappel", pids: [charges.find((x) => x.fin === "https://push/a").c.pid], acceptes: 1 }, "B : refus du service de notification → pas noté envoyé");
+  assert.ok(!JSON.stringify(ligne).includes("Rando"), "aucun texte dans la note");
+
+  // Sans adresse d'accusé : la charge d'avant, et aucune note.
+  const admin2 = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A)], subs: [subs[0]] });
+  const c2 = [];
+  await envoyerRappels(admin2, async (_s, charge) => { c2.push(JSON.parse(charge)); }, T0, S);
+  assert.deepEqual(Object.keys(c2[0]).sort(), ["eventId", "texte", "titre", "type"]);
+  assert.equal(admin2.journal.some((j) => j.op === "insert" && premiere(j).event === "push_envoye"), false);
+});
 
 test("⑫ service worker : la push « rappel » s'affiche et le TAP ouvre l'activité ; un identifiant douteux n'ouvre que l'accueil", async () => {
   const sw = chargerSw();

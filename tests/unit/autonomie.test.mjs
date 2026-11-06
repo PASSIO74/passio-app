@@ -352,7 +352,7 @@ test("⑰ la veille prend son créneau sous le secret serveur, et les rappels au
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   assert.match(fn, /await prendreCreneau\(admin, "systeme:pilotage-veille", "pilotage-veille", SECRET_GESTES\);/);
   assert.match(fn, /if \(creneau\.raison === "erreur"\) console\.warn\("veille : créneau refusé "/, "un créneau en erreur laisse sa trace");
-  assert.match(fn, /return envoyerRappels\(admin, \([^)]*\) => webpush\.sendNotification\(sub, charge, opts\), Date\.now\(\), SECRET_GESTES\);/);
+  assert.match(fn, /return envoyerRappels\(admin, \([^)]*\) => webpush\.sendNotification\(sub, charge, opts\), Date\.now\(\), SECRET_GESTES, ACCUSE\);/, "le secret des marques ET l'adresse des accusés");
   // Deux veilles qui se chevauchent lisent le même état : la seconde se heurte
   // à la clé primaire de la transition et ne sonne pas (mutation : sonner avant).
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
