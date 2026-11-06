@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { raisonsVerdict as raisonsParcours, parcoursARegler } from "./parcours.js";
+import { ligneReception } from "./reception.js";
 
 /** Le compte de l'éditeur (même adresse que PASSIO_EDITEUR.email, js/legal-textes.js). */
 export const COMPTE_PILOTE = "passioadmin@gmail.com";
@@ -277,6 +278,9 @@ export const PAGES_REGLAGE = Object.freeze({
   brevo: "https://app.brevo.com/",
   cron: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/integrations/cron/jobs",
   logsPilotage: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/functions/pilotage/logs",
+  // L'application, appareil marqué « équipe » (?equipe=1) : la rouvrir met à jour
+  // son service worker (qui apprend à accuser) et propose les notifications.
+  app: "https://passio-app.netlify.app/?equipe=1",
 });
 
 // ─── PALIERS DE CROISSANCE (2026-11-01) ─────────────────────────────────────
@@ -507,6 +511,15 @@ export function aFaire(d, maintenant = Date.now()) {
       gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.cron }, { libelle: "Journaux de la fonction", ouvrir: PAGES_REGLAGE.logsPilotage }] });
   } else if (bt && bt.etat === "incomplet") {
     ajoute({ id: "veille:incomplete", prio: 2, etiquette: "Machines", titre: "La dernière veille n'a pas tout lu", detail: borne((bt.raisons || []).join(" · "), 300) });
+  }
+  // L'alerte elle-même (2026-11-06) : envoyée n'est pas reçue. Sans accusé du
+  // service worker 10 min après l'envoi, la ligne le dit (_shared/reception.js).
+  const lr = ligneReception(d && d.reception);
+  if (lr) {
+    ajoute({ id: "alertes:reception", prio: 1, etiquette: "Alertes", titre: lr.titre,
+      quoi: "Ouvre PASSIO sur ton téléphone : la mise à jour lui apprend à accuser, et vérifie que les notifications y sont autorisées.",
+      reference: borne(lr.reference, 400),
+      gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.app }] });
   }
   // Les pannes du serveur : la veille les lit (la Sentinelle ne lit que les erreurs de l'app).
   const pannes = Number(d && d.sante && d.sante.api5xx15) || 0;

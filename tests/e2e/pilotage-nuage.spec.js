@@ -1053,3 +1053,47 @@ test("㉟ veille arrêtée : urgence en tête, le bouton ouvre sa planification 
   await expect(page.locator("#parcours .carte", { hasText: "Envoyer un message ★" })).toContainText("Codes des échecs : autre ×3");
   expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
 });
+
+// ─── Accusés de réception des notifications (2026-11-06) ─────────────────────
+// « Abonné » n'est pas « reçue » : la carte des abonnements ne promet plus rien,
+// la réception se dit par les accusés du service worker (_shared/reception.js).
+test("㊱ réception : l'écran dit « abonné », puis ce que l'accusé prouve, et le taux des rappels ; aucune ligne pour une alerte reçue", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 2 * 3600e3).toISOString();
+  await routerFonction(page, [], etat({ alertes: { appareils: 2, vapid: true },
+    reception: { derniereAlerte: { etat: "recue", le, acceptes: 2, recus: 1, delaiMs: 4000 }, rappels: { etat: "mesure", envoyes: 10, recus: 9, enAttente: 1, taux: 0.9 }, accusesIgnores: 0, tronque: false } }));
+  await page.goto("/pilotage/");
+  await expect(page.locator("#afaire .ligne", { hasText: "aucun appareil" })).toHaveCount(0);
+  await aller(page, "reglages");
+  const z = page.locator("#alertes");
+  await expect(z).toContainText("2 appareil(s) abonné(s) aux alertes");
+  await expect(z).not.toContainText("recevront");
+  await expect(z.locator(".carte", { hasText: "Dernière alerte reçue" })).toContainText("1 appareil(s) sur 2, 4 s après l'envoi");
+  await expect(z.locator(".carte", { hasText: "Rappels d'activité reçus (24 h)" })).toContainText("90 %");
+  await expect(z.locator(".carte", { hasText: "Rappels d'activité reçus (24 h)" })).toContainText("1 en attente");
+});
+
+test("㊲ une alerte NON reçue : la ligne « À faire » mène à l'application, la carte le dit ; une lecture manquée dit « Non lu », jamais « calme »", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 3600e3).toISOString();
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true },
+    reception: { derniereAlerte: { etat: "non_recue", le, acceptes: 1, recus: 0 }, rappels: { etat: "insuffisant", envoyes: 2, recus: 1, enAttente: 0 }, accusesIgnores: 3, tronque: false } }));
+  await page.goto("/pilotage/");
+  // Une ligne de priorité 1 vient après les urgences de l'état de base : la liste se déplie.
+  await page.locator("#afaireSuite").click();
+  const ligne = page.locator("#afaire .ligne", { hasText: "Ta dernière alerte n'est arrivée sur aucun appareil" });
+  await expect(ligne).toBeVisible();
+  await expect(ligne.locator("a", { hasText: "Régler" })).toHaveAttribute("href", "https://passio-app.netlify.app/?equipe=1");
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte non reçue" })).toBeVisible();
+  await expect(page.locator("#alertes .carte", { hasText: "Rappels d'activité (24 h)" })).toContainText("il en faut 5");
+
+  // La lecture des accusés a échoué : la carte le dit, elle ne se tait pas.
+  const sans = etat({ alertes: { appareils: 1, vapid: true }, erreursLecture: { reception: "délai dépassé" } });
+  delete sans.reception;
+  await routerFonction(page, [], sans);
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Réception des alertes" })).toContainText("Non lu");
+  await expect(page.locator("#alertes .carte", { hasText: "Réception des alertes" })).toContainText("délai dépassé");
+});

@@ -49,6 +49,7 @@ import {
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
+import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, descripteurAccuse, pidNeuf, avecAccuse, bilanReception } from "../_shared/reception.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -71,6 +72,9 @@ const SITE_NETLIFY = Deno.env.get("PILOTAGE_NETLIFY_SITE") || "eee53fe0-9fb2-41f
 // fonction connaît. La clé service_role est posée sur toute fonction et ne
 // sort jamais ; un HMAC ne la révèle pas.
 const SECRET_GESTES = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+// L'adresse des accusés de réception (_shared/reception.js) : l'URL du projet et
+// sa clé anon, PUBLIQUE. Absente ou mal formée → les notifications partent sans.
+const ACCUSE = descripteurAccuse(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_ANON_KEY") || "");
 type Admin = ReturnType<typeof createClient>;
 
 Deno.serve(async (req) => {
@@ -244,7 +248,37 @@ async function rappels(admin: Admin) {
   if (!pub || !priv) return { inactif: "VAPID absent" };
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
   // deno-lint-ignore no-explicit-any
-  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts), Date.now(), SECRET_GESTES);
+  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts), Date.now(), SECRET_GESTES, ACCUSE);
+}
+
+/**
+ * Les accusés de réception (_shared/reception.js) : les envois notés depuis
+ * 48 h, et les accusés des seuls pid envoyés — l'index (type, received_at) de
+ * telemetry_events borne la lecture aux lignes `push`. Une lecture qui atteint
+ * ses plafonds le dit (`tronque`).
+ */
+async function lireReception(admin: Admin) {
+  const depuis = new Date(Date.now() - JUGEMENT_MAX_MS).toISOString();
+  const { data: envois, error } = await admin.from("analytics_events").select("created_at,properties")
+    .eq("event", EVT_ENVOI).in("user_id", ["systeme:pilotage", MARQUE_UID]).gte("created_at", depuis)
+    .order("created_at", { ascending: false }).limit(200);
+  if (error) throw error;
+  const liste = (envois || []) as { created_at: string; properties: Record<string, unknown> }[];
+  const pids = [...new Set(liste.flatMap((e) => {
+    const p = (e.properties || {}) as { pid?: unknown; pids?: unknown };
+    return Array.isArray(p.pids) ? p.pids.map(String) : (p.pid ? [String(p.pid)] : []);
+  }))];
+  let tronque = liste.length >= 200;
+  const accuses: { pid: string; received_at: string }[] = [];
+  for (let i = 0; i < pids.length; i += 100) {
+    const { data, error: ea } = await admin.from("telemetry_events").select("pid:meta->>pid,received_at")
+      .eq("type", TYPE_ACCUSE).eq("action", ACTION_ACCUSE).gte("received_at", depuis)
+      .in("meta->>pid", pids.slice(i, i + 100)).limit(1000);
+    if (ea) throw ea;
+    if ((data || []).length >= 1000) tronque = true;
+    accuses.push(...((data || []) as { pid: string; received_at: string }[]));
+  }
+  return bilanReception({ envois: liste, accuses, maintenant: Date.now(), tronque });
 }
 
 async function lireEtatMemorise(admin: Admin) {
@@ -296,12 +330,22 @@ async function sonnerPilote(admin: Admin, titre: string, texte: string): Promise
   const uids = await uidsPilotes(admin);
   if (!uids.length) return 0;
   const { data: subs } = await admin.from("push_subscriptions").select("endpoint, subscription").in("user_id", uids);
-  const payload = JSON.stringify({ type: "pilotage", titre, texte });
+  // Un pid ALÉATOIRE par alerte : le service worker l'accuse après l'affichage
+  // (_shared/reception.js) ; l'écran dit « reçue sur N appareils », pas « envoyée ».
+  const pid = ACCUSE ? pidNeuf() : null;
+  const payload = JSON.stringify(avecAccuse({ type: "pilotage", titre, texte }, pid, ACCUSE));
   let n = 0; const morts: string[] = [];
   await Promise.all((subs || []).map(async (s) => {
     try { await webpush.sendNotification(s.subscription, payload, { TTL: 3600, urgency: "high" }); n++; }
     catch (e) { const c = (e as { statusCode?: number })?.statusCode; if (c === 404 || c === 410) morts.push(s.endpoint); }
   }));
+  // La note d'envoi ne retarde ni ne casse l'alerte : elle est partie.
+  if (pid) {
+    try {
+      const { error: en } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_ENVOI, properties: { genre: "pilotage", pid, acceptes: n } });
+      if (en) console.warn("pilotage : note d'envoi refusée " + String((en as { code?: string }).code || ""));
+    } catch { console.warn("pilotage : note d'envoi injoignable"); }
+  }
   // Un refus PERMANENT (404/410) oublie l'abonnement — geste du catalogue (politique).
   if (morts.length && autoriser(POLITIQUE, "purge_abonnements_morts").ok) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch { /* */ } }
   return n;
@@ -314,7 +358,7 @@ async function etat(admin: Admin) {
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
     disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin), reglages: lireReglages(admin),
     historique: lireHistorique(admin), croissance: lireCroissance(admin),
-    parcours: lireParcours(admin), battement: lireBattement(admin),
+    parcours: lireParcours(admin), battement: lireBattement(admin), reception: lireReception(admin),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));

@@ -1239,3 +1239,37 @@ test("㉿⑧ la veille prend un CRÉNEAU atomique d'abord — jamais le plafond 
   assert.doesNotMatch(v, /verifierPlafondEnBase/, "le plafond lit puis écrit : deux appels simultanés passent tous deux");
   assert.match(v.slice(garde, garde + 700), /return json\(\{ ok: true, ignore: "trop tôt" \}\);/, "la réponse publique ne dit pas pourquoi");
 });
+
+// ─── Accusés de réception des notifications (2026-11-06) ─────────────────────
+// Mutations éprouvées à la main : sonner sans pid → ㉿⑨ rougit ; noter l'envoi
+// AVANT de l'envoyer → ㉿⑨ rougit ; une ligne pour une alerte reçue → ㉿⑩ rougit.
+import { PAGES_REGLAGE as PAGES } from "../../supabase/functions/_shared/pilotage.js";
+
+test("㉿⑨ l'alerte part avec un pid aléatoire et son adresse d'accusé, et se note APRÈS l'envoi — sans le texte ; la lecture ne prend que les accusés `push`", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const s = fn.slice(fn.indexOf("async function sonnerPilote"), fn.indexOf("// ─── ② État complet"));
+  assert.match(fn, /const ACCUSE = descripteurAccuse\(Deno\.env\.get\("SUPABASE_URL"\) \|\| "", Deno\.env\.get\("SUPABASE_ANON_KEY"\) \|\| ""\);/);
+  assert.match(s, /const pid = ACCUSE \? pidNeuf\(\) : null;/);
+  assert.match(s, /JSON\.stringify\(avecAccuse\(\{ type: "pilotage", titre, texte \}, pid, ACCUSE\)\)/);
+  const envoi = s.indexOf("webpush.sendNotification(");
+  const note = s.indexOf("event: EVT_ENVOI");
+  assert.ok(envoi > 0 && note > envoi, "la note suit l'envoi : elle ne retarde jamais l'alerte");
+  assert.match(s, /properties: \{ genre: "pilotage", pid, acceptes: n \}/, "un pid, un nombre — jamais le titre ni le texte");
+  const l = fn.slice(fn.indexOf("async function lireReception"), fn.indexOf("async function lireEtatMemorise"));
+  assert.match(l, /\.eq\("type", TYPE_ACCUSE\)\.eq\("action", ACTION_ACCUSE\)\.gte\("received_at", depuis\)/);
+  assert.match(l, /\.in\("meta->>pid", pids\.slice\(i, i \+ 100\)\)/, "seuls les pid envoyés sont lus");
+  assert.match(l, /select\("pid:meta->>pid,received_at"\)/, "jamais `meta` entier");
+  assert.match(fn, /reception: lireReception\(admin\)/);
+});
+
+test("㉿⑩ « À faire » : une alerte NON reçue a sa ligne et son bouton vers l'application ; une alerte reçue, aucune", () => {
+  const non = aFaire({ reception: { derniereAlerte: { etat: "non_recue", le: "2026-11-06T20:00:00.000Z", acceptes: 2, recus: 0 } } }, T6);
+  const l = non.find((x) => x.id === "alertes:reception");
+  assert.ok(l, "la ligne existe");
+  assert.equal(l.prio, 1, "jamais une urgence : une cause bénigne est connue");
+  assert.equal(l.gestes[0].ouvrir, PAGES.app);
+  assert.match(l.reference, /ne sait pas encore accuser/);
+  for (const etat of ["recue", "en_attente", "ancienne", "aucune"]) {
+    assert.equal(aFaire({ reception: { derniereAlerte: { etat, le: "2026-11-06T20:00:00.000Z", acceptes: 1, recus: 1 } } }, T6).some((x) => x.id === "alertes:reception"), false, etat);
+  }
+});

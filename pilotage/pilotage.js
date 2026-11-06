@@ -19,7 +19,7 @@
   // et l'écran montrerait sinon un vieux vert comme s'il était d'aujourd'hui.
   const PERIME_MS = 3 * 60e3;
   // Les seules adresses qu'un bouton « Régler » peut ouvrir (PAGES_REGLAGE, _shared/pilotage.js).
-  const LIENS_SURS = /^https:\/\/(github\.com|supabase\.com\/dashboard|app\.netlify\.com|app\.brevo\.com)\//;
+  const LIENS_SURS = /^https:\/\/(github\.com|supabase\.com\/dashboard|app\.netlify\.com|app\.brevo\.com|passio-app\.netlify\.app)\//;
   let derniere = 0, enCours = false, compte = null, gestesGithub = false, erreursLecture = {};
 
   // ─── Nœuds ────────────────────────────────────────────────────────────────
@@ -164,6 +164,28 @@
   }
   // « Non lu », avec la raison quand la fonction la connaît : un bloc vide ou un
   // zéro passerait pour une mesure.
+  // La réception des notifications (accusés du service worker, _shared/reception.js).
+  // « Reçue » = affichée par l'appareil, jamais « lue » ; sans accusé, « en
+  // attente » pendant 10 min, puis « non reçue ».
+  function rendreReception(zone, r) {
+    if (!r) {
+      const raison = erreursLecture.reception;
+      zone.append(carte("Réception des alertes", "Non lu", "Cette partie n'a pas pu être lue" + (raison ? " (" + raison + ")" : "") + ".", "gris"));
+      return;
+    }
+    const a = r.derniereAlerte || { etat: "aucune" };
+    const sur = (x) => x.recus + " appareil(s) sur " + x.acceptes;
+    if (a.etat === "recue") zone.append(carte("Dernière alerte reçue", "Reçue", sur(a) + (Number.isFinite(a.delaiMs) ? ", " + Math.max(1, Math.round(a.delaiMs / 1000)) + " s après l'envoi" : "") + " · " + ilYA(a.le), "vert"));
+    else if (a.etat === "en_attente") zone.append(carte("Dernière alerte envoyée", "En attente", ilYA(a.le) + " : pas encore d'accusé de l'appareil.", "gris"));
+    else if (a.etat === "non_recue") zone.append(carte("Dernière alerte non reçue", "Aucun accusé", "Envoyée " + ilYA(a.le) + " à " + a.acceptes + " appareil(s), aucun n'a accusé. Rouvre PASSIO sur ton téléphone et vérifie les notifications.", "orange"));
+    else if (a.etat === "aucun_appareil") zone.append(carte("Dernière alerte : aucun appareil", "Personne", "Le service de notification n'a accepté l'alerte pour aucun appareil.", "orange"));
+    else if (a.etat === "ancienne") zone.append(carte("Dernière alerte", "Ancienne", ilYA(a.le) + " : trop ancienne pour être jugée (les accusés vivent 3 jours).", "gris"));
+    else zone.append(carte("Aucune alerte depuis 48 h", "Calme", "La réception se mesurera à la prochaine alerte.", "gris"));
+    const rp = r.rappels;
+    if (rp && rp.etat === "mesure") zone.append(carte("Rappels d'activité reçus (24 h)", Math.round(rp.taux * 100) + " %", rp.recus + " reçus sur " + rp.envoyes + " envoyés" + (rp.enAttente ? " · " + rp.enAttente + " en attente" : ""), rp.taux >= 0.8 ? "vert" : "orange"));
+    else if (rp) zone.append(carte("Rappels d'activité (24 h)", "Trop peu", rp.envoyes + " envoi(s) jugeable(s) : il en faut 5 pour un taux" + (rp.enAttente ? " · " + rp.enAttente + " en attente" : "") + ".", "gris"));
+    if (r.tronque) zone.append(carte("Réception : lecture partielle", "Partielle", "Les accusés dépassent ce que la lecture parcourt : les nombres sont des minimums.", "gris"));
+  }
   function nonLu(id, titre, partie) {
     const raison = erreursLecture[partie || id];
     vider(id).append(carte(titre, "Non lu", "Cette partie n'a pas pu être lue" + (raison ? " (" + raison + ")" : "") + ".", "gris"));
@@ -988,9 +1010,12 @@
     const a = d.alertes;
     if (!a) nonLu("alertes", "Alertes");
     else {
+      // Un ABONNEMENT n'est pas une réception (2026-11-06) : la carte dit combien
+      // d'appareils sont abonnés ; la suivante, ce que leurs accusés prouvent.
       al.append(a.appareils
-        ? carte(a.appareils + " appareil(s) recevront les alertes", "Actif", "Tu es prévenu quand le voyant passe au rouge, quand le site ne répond plus, et quand c'est réglé.", "vert")
-        : carte("Aucun appareil ne reçoit les alertes", "Inactif", "Ouvre PASSIO avec le compte éditeur et active les notifications quand elles sont proposées.", "orange"));
+        ? carte(a.appareils + " appareil(s) abonné(s) aux alertes", "Abonné", "Tu es prévenu quand le voyant passe au rouge, quand le site ne répond plus, et quand c'est réglé.", "vert")
+        : carte("Aucun appareil abonné aux alertes", "Inactif", "Ouvre PASSIO avec le compte éditeur et active les notifications quand elles sont proposées.", "orange"));
+      rendreReception(al, d.reception);
       const dispo = d.disponibilite;
       al.append(carte("Veille automatique", dispo && dispo.veilleLe ? "Active" : "Pas encore",
         dispo && dispo.veilleLe ? "dernier changement noté " + ilYA(dispo.veilleLe) + " · vérifie toutes les 5 min" : "Elle démarre quand la migration « pilotage_veille » est appliquée.",
