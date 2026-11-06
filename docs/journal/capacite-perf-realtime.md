@@ -26,6 +26,7 @@
 - 🪟 UN DOSSIER PERSONNEL SE NEUTRALISE EN LE POSANT : DEPUIS WINDOWS, LE TEST DES GARDES LANÇAIT LA CHARGE (2026-11-04)
 - 🧹 R37 — UN DELETE N'APPORTE QUE LA CLÉ : LE RETRAIT SE RETROUVE DANS CE QU'ON A LU, JAMAIS PAR UNE RELECTURE (2026-11-05)
 - 🪞 RV-39 — MES PUBLICATIONS ONT DEUX COPIES : CE QUE LE SERVEUR REND S'ÉCRIT SUR CELLE QUE LA PASTILLE LIT (2026-11-05)
+- 🚫 UN COMPTE BLOQUÉ NE COMPTE PAS NON PLUS SUR LA PASTILLE D'UN COMMENTAIRE (2026-11-06)
 
 ---
 
@@ -1579,9 +1580,10 @@ fonctions) : aucune perte de réaction, un P2 et deux P3 réels, tous corrigés 
 **Ce que le lot ne fait pas, dit tel quel.**
 - Mes propres réactions ne viennent jamais du serveur par ce chemin (première règle) : une réaction posée depuis un
   autre appareil du compte n'arrive, comme avant, que par le blob `user_state`, au démarrage (préexistant).
-- Le compte bloqué n'est écarté que de la pastille des PUBLICATIONS ; celle des commentaires (`_cmtReactions`)
-  ne le filtre pas encore (préexistant, hors lot).
 - La forme structurelle reste celle de R37 : ajouter `'id', i.id` à `fil_compteurs`.
+
+Un résidu de cette liste est fermé depuis : la pastille d'un COMMENTAIRE écarte elle aussi un compte bloqué
+(2026-11-06, fiche « 🚫 » ci-dessous).
 
 **Verrou.** `tests/e2e/reactions-mes-publications.spec.js` (8 cas, navigateur, vraie lecture du fil, vrai filet,
 vraie liaison temps réel, rien n'est écrit), éprouvé par RÉINJECTION le 2026-11-06 sur la version finale. Treize
@@ -1604,3 +1606,86 @@ mutations ; chacune rougit au moins le cas qui la vise (les autres colonnes sont
 | sans retrouver par la ligne l'entrée d'un INSERT tardif | ① |
 
 Les suites de R37 (`retrait-interactions-direct.spec.js`, 12) restent vertes.
+
+## 🚫 UN COMPTE BLOQUÉ NE COMPTE PAS NON PLUS SUR LA PASTILLE D'UN COMMENTAIRE (2026-11-06)
+
+Le résidu de RV-39 (« Ce que le lot ne fait pas »), **préexistant**, fermé le lendemain.
+
+**Le défaut.** Depuis RV-39, la pastille d'une PUBLICATION écarte un compte bloqué (`_postReactItems`). Celle d'un
+COMMENTAIRE ou d'une réponse, non : `_cmtReactions` (app-04) gardait toutes les `emoji_reaction` de
+`comment.replies`. Le temps réel ignorait déjà son AJOUT (`_applyCommentInteractionEvent`, « un compte bloqué
+n'AJOUTE rien »). Mais la lecture de la discussion ramène ses réactions, puisque la RLS laisse un compte bloqué lire
+et réagir sur une publication publique : `hydrateCommentInteractions` (app-08) appelle `supaLoadCommentInteractions`
+en deux passes, les commentaires puis leurs réponses. Or ses commentaires, eux, sont masqués dans la discussion
+(`_renderCommentsList`). La victime voyait donc « 🤬 3 » sous un commentaire, et le nom du compte bloqué dans
+« Réactions · 3 ».
+
+**Le remède (client seul : aucune migration, aucune RLS, aucune requête de plus).** Un prédicat,
+`_reactionEmojiComptee(r)` (app-04) : un emoji, jamais celui d'un compte bloqué. C'est la SEULE autorité de ce qui
+entre dans une pastille et dans une liste de réacteurs, pour une publication (`_postReactItems`, qui portait la règle
+en ligne depuis RV-39) comme pour un commentaire (`_cmtReactions`). Passent par `_cmtReactions` :
+- la pastille d'un commentaire comme d'une réponse (`_cmtReactChipHtml`) ;
+- son patch en place (`_patchCmtReact`), après un geste local ou un ajout reçu en direct ;
+- la liste des réacteurs (`openCommentReactors`) ;
+- le tri « Pertinents » (`_cmtRelevance`).
+
+Deux surfaces comptent les réactions emoji AVEC les réponses, sous « N réponses », et n'y passaient pas :
+- le panneau des commentaires d'une BOBINE (`loadReelComments`, app-05), qui les liste aussi ;
+- l'aperçu des deux commentaires d'une carte du FIL (`renderPostHTML`, app-02, « ▼ N réponses »). Celui-ci a été
+  trouvé par la contre-revue.
+
+Elles lisent `_reponsesComptees(replies)` (app-04) : une réaction n'y reste que si elle compte, et les réponses texte
+et les GIF y restent tels quels.
+
+Comme dans RV-39, le filtre est posé à l'AFFICHAGE, jamais à la lecture : un déblocage rend les réactions déjà lues,
+sans relecture. Pour que ce soit vrai aussi dans le FIL, la signature de `renderFeed` (`_domSig`) porte désormais la
+liste de blocage. Bloquer un compte qui n'est qu'un RÉACTEUR ne change aucune publication visible : le
+`renderFeed()` de `blockUser` / `unblockUser` était donc sauté, et la pastille d'une publication restait fausse
+jusqu'à la tranche suivante de 5 minutes. C'est préexistant depuis RV-39 (verrou ⑥).
+
+⚠️ **LA CONTRE-REVUE DU LOT (`audit-passio`, lecture seule ; audits, suites et mutations rejoués dans une copie du
+dépôt) : aucune régression, un P2 dans le périmètre, corrigé dans le lot.**
+- **P2, corrigé : un lecteur oublié.** L'aperçu de la carte du fil comptait les deux réactions des comptes bloqués
+  (« ▼ 4 réponses » au lieu de 2, mesuré au navigateur).
+- **P3, corrigé : un blocage ne repeignait pas le fil** (signature ci-dessus).
+- **P3, corrigé : les GIF et réponses n'étaient verrouillés par rien.** La fixture porte désormais un GIF et une
+  réponse texte de comptes non bloqués : ④ et ⑤ exigent qu'ils restent rendus et comptés.
+- **P4, corrigé : deux assertions creuses.**
+  - « Aucune relecture » comptait les lectures AVANT qu'elles ne partent : `then` est appelé dans une micro-tâche,
+    après le code synchrone. L'`evaluate` attend désormais un tour.
+  - L'ajout en direct d'un compte bloqué n'était vérifié qu'à l'écran, où le filtre l'écarte de toute façon : la
+    garde temps réel se vérifie désormais au MODÈLE.
+
+⚠️ **Ce que le lot ne fait pas, dit tel quel (hors lot, par décision).** Les sources sont indiquées entre parenthèses.
+- **La réponse TEXTE ou le GIF d'un compte bloqué**, sous le commentaire d'un compte non bloqué, reste rendu et
+  compté (mesuré au navigateur le 2026-11-06). Il est compté dans « Voir N réponses », `_cmtRelevance`,
+  `nbCommentairesPost`, l'aperçu du fil et le panneau des bobines. Le verrou n'exige PAS qu'il reste visible : c'est un
+  défaut consigné, pas un comportement à protéger.
+- **Le COMMENTAIRE de premier niveau d'un compte bloqué** n'est masqué que dans la discussion
+  (`_renderCommentsList`). Il reste affiché :
+  - dans le panneau des bobines (`loadReelComments`, mesuré au navigateur) ;
+  - dans l'aperçu d'une carte du fil (`renderPostHTML`, mesuré par la contre-revue sur faux serveur ; `fil_compteurs`
+    rend les deux plus récents sans filtre) ;
+  - dans l'aperçu d'une carte d'événement (`_evCommentsInlineHtml`, app-07, lu dans le code).
+- **L'aperçu d'une carte du fil compte les réactions emoji comme des « réponses »**, contrairement à la discussion
+  qu'il ouvre (« ▼ 3 réponses » sur la carte, « Voir 2 réponses » dans la discussion). C'est préexistant. L'aligner
+  effacerait la seule trace des réactions sur la carte, qui n'a pas de pastille par commentaire : c'est une décision
+  d'interface.
+- **« Qui a réagi » sur un ÉVÉNEMENT** ne filtre pas un compte bloqué, ni pour son nom (`_fillEventReactionDetail`) ni
+  pour son compte (`_evReactChipHtml`) (app-07, lu dans le code).
+- **Le j'aime d'un compte bloqué** compte dans le « ❤️ N » d'un commentaire (une ligne `like` relue = un j'aime),
+  comme dans le compteur d'une publication, qui est un compte serveur (lu dans le code).
+
+**Verrou.** `tests/e2e/reactions-commentaire-bloque.spec.js` : 6 cas, navigateur, vraie lecture de la discussion,
+vraie liaison temps réel, vrais `blockUser` et `unblockUser`, rien n'est écrit. Éprouvé par RÉINJECTION le
+2026-11-06 sur la version finale : sept mutations, chacune rouge sur l'assertion qui la vise.
+
+| Mutation | Cas rouges |
+|---|---|
+| `_cmtReactions` sans le filtre | ① ② ③ — les autres lisent `_reponsesComptees` |
+| le panneau des bobines sans le filtre | ④ |
+| l'aperçu de la carte du fil sans le filtre | ⑤ ⑥ |
+| la signature du fil sans la liste de blocage | ⑥ |
+| `_reactionEmojiComptee` sans `isBlocked` | ① à ⑥, et ⑥ de `reactions-mes-publications.spec.js`, qui lit le même prédicat |
+| la garde temps réel retirée (`_applyCommentInteractionEvent`) | ① |
+| une relecture de la discussion à chaque repeinte | ① |
