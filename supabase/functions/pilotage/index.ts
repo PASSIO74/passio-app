@@ -46,7 +46,7 @@ import {
   continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt,
 } from "../_shared/autonomie.js";
 // Parcours critiques, politique d'automatisation, battement (2026-11-06).
-import { bilanParcours, couverture as couvertureParcours } from "../_shared/parcours.js";
+import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesDesPannes } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
 
@@ -564,7 +564,7 @@ async function journaliserReglage(admin: Admin, cle: string, valeur: unknown) {
 type GhEtat = { issues?: { pr: boolean; labels: string[] }[]; runs?: { sentinelle?: { etat?: string; le?: string } | null }; pause?: boolean };
 // ⚠️ Le paramètre ne s'appelle PAS `gh` : il masquerait la fonction `gh()`
 // qui parle à GitHub, et le dispatch lèverait « gh is not a function ».
-type ParcoursVeille = { parcours?: { id: string; etat: string; comptesEchecIds?: string[] }[] } | null;
+type ParcoursVeille = { parcours?: { id: string; etat: string; panneConfirmee?: boolean; comptesEchecAnciens?: number }[] } | null;
 async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audience | null, pc: ParcoursVeille = null) {
   if (!JETON_GH) return { inactif: true };
   if (!etatGh || !Array.isArray(etatGh.issues)) return { illisible: true };
@@ -572,13 +572,14 @@ async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audie
   if (!pol.ok) return { raison: "politique:" + pol.raison };
   // Deux sources d'échecs, et la plus forte décide (2026-11-06) :
   //  · erreurs et refus comptés en BASE (pilotage_audience, comptes de > 24 h) ;
-  //  · un parcours en PANNE (_shared/parcours.js) — un refus en HTTP 200 n'est
-  //    ni une erreur JS ni un appel en échec : sans cette source, il ne
-  //    réveillait personne. Ses comptes sont des identités SERVEUR, et leur
-  //    ancienneté est relue ici (même règle que pilotage_audience : confirmés,
-  //    créés depuis plus de 24 h) — dix comptes neufs ne lancent rien.
-  const enPanne = pc && Array.isArray(pc.parcours) ? pc.parcours.filter((p) => p && p.etat === "panne") : [];
-  const comptesParcours = enPanne.length ? await comptesAnciens(admin, [...new Set(enPanne.flatMap((p) => p.comptesEchecIds || []))], REVEIL.ancienneteMinMs) : 0;
+  //  · un parcours en PANNE CONFIRMÉE (_shared/parcours.js, confirmerPannes dans
+  //    lireParcoursVeille) — un refus en HTTP 200 n'est ni une erreur JS ni un
+  //    appel en échec : sans cette source, il ne réveillait personne. Ses
+  //    comptes ont été relus dans l'authentification (même règle que
+  //    pilotage_audience : confirmés, créés depuis plus de 24 h) — dix comptes
+  //    neufs ne lancent rien.
+  const enPanne = pc && Array.isArray(pc.parcours) ? pc.parcours.filter((p) => p && p.etat === "panne" && p.panneConfirmee === true) : [];
+  const comptesParcours = enPanne.reduce((m, p) => Math.max(m, Number(p.comptesEchecAnciens) || 0), 0);
   const mesure = a && a.exact && a.echecs30 != null ? a.echecs30 : null;
   if (mesure == null && !comptesParcours) return { raison: "mesure_absente" };
   const d = doitReveillerSentinelle({ pause: !!etatGh.pause, enquetes: enquetesEnCours(etatGh.issues), dernierRun: (etatGh.runs && etatGh.runs.sentinelle) || null, comptesErreurs: Math.max(mesure || 0, comptesParcours) });
@@ -596,17 +597,17 @@ async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audie
   return { lance: true };
 }
 
-/** Combien de ces comptes sont confirmés et créés depuis au moins `ancienneteMs` ? Illisible = ne compte pas. */
-async function comptesAnciens(admin: Admin, uids: string[], ancienneteMs: number): Promise<number> {
-  let n = 0;
+/** Ceux de ces comptes qui sont confirmés et créés depuis au moins `ancienneteMs`. Illisible = pas ancien. */
+async function idsComptesAnciens(admin: Admin, uids: string[], ancienneteMs: number): Promise<Set<string>> {
+  const anciens = new Set<string>();
   for (const uid of uids.slice(0, 20)) {
     try {
       const { data, error } = await admin.auth.admin.getUserById(uid);
       const u = !error && data ? data.user : null;
-      if (u && u.email_confirmed_at && Date.now() - dateUtc(u.created_at) >= ancienneteMs) n++;
+      if (u && u.email_confirmed_at && Date.now() - dateUtc(u.created_at) >= ancienneteMs) anciens.add(uid);
     } catch { /* un compte illisible ne compte pas */ }
   }
-  return n;
+  return anciens;
 }
 
 // ─── Parcours critiques (2026-11-06, _shared/parcours.js) ───────────────────
@@ -633,16 +634,27 @@ async function lireLignesFlux(admin: Admin, fenetreMs: number) {
   }
   return { lignes, tronque: true };
 }
+// Une panne ne sonne que CONFIRMÉE (revue de sécurité du 2026-11-06) : ses
+// comptes en échec sont relus dans l'authentification (confirmés, > 24 h,
+// comme le réveil) ; sinon elle redescend en « dégradé ». `confirmerPannes`
+// retire ensuite les identités : rien de nominatif ne quitte la fonction.
+async function confirmer(admin: Admin, ...bilans: Record<string, unknown>[]) {
+  const uids = [...new Set(bilans.flatMap((b) => comptesDesPannes(b)))];
+  const anciens = uids.length ? await idsComptesAnciens(admin, uids, REVEIL.ancienneteMinMs) : new Set<string>();
+  return bilans.map((b) => confirmerPannes(b, anciens));
+}
 async function lireParcours(admin: Admin) {
   const { lignes, tronque } = await lireLignesFlux(admin, 864e5);
   const maintenant = Date.now();
-  const jour = bilanParcours(lignes, { maintenant, fenetreMs: 864e5 });
-  const recent = bilanParcours(lignes, { maintenant, fenetreMs: PARCOURS_VOYANT_MS, depuisMs: maintenant - PARCOURS_VOYANT_MS });
+  const [jour, recent] = await confirmer(admin,
+    bilanParcours(lignes, { maintenant, fenetreMs: 864e5, garderComptes: true }),
+    bilanParcours(lignes, { maintenant, fenetreMs: PARCOURS_VOYANT_MS, depuisMs: maintenant - PARCOURS_VOYANT_MS, garderComptes: true }));
   return { ...jour, tronque, couverture: couvertureParcours(jour), recent: { fenetreMs: PARCOURS_VOYANT_MS, parcours: recent.parcours } };
 }
 async function lireParcoursVeille(admin: Admin) {
   const { lignes, tronque } = await lireLignesFlux(admin, PARCOURS_VOYANT_MS);
-  return { ...bilanParcours(lignes, { maintenant: Date.now(), fenetreMs: PARCOURS_VOYANT_MS, garderComptes: true }), tronque };
+  const [b] = await confirmer(admin, bilanParcours(lignes, { maintenant: Date.now(), fenetreMs: PARCOURS_VOYANT_MS, garderComptes: true }));
+  return { ...b, tronque };
 }
 
 // ─── Battement de la veille (2026-11-06, _shared/battement.js) ──────────────

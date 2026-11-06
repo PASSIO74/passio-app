@@ -993,7 +993,7 @@ test("㉝ jeton GitHub expiré : première ligne, le bouton ouvre GitHub, le sec
 // L'état est construit par les VRAIES fonctions du serveur (bilanParcours,
 // resumerBattement, resumerPolitique), comme la liste « À faire ».
 function etatParcours({ battementAge = 5 * 60e3, codeHostile = false } = {}) {
-  const { bilanParcours, couverture } = require("../../supabase/functions/_shared/parcours.js");
+  const { bilanParcours, couverture, confirmerPannes } = require("../../supabase/functions/_shared/parcours.js");
   const { resumerBattement } = require("../../supabase/functions/_shared/battement.js");
   const { resumerPolitique } = require("../../supabase/functions/_shared/politique-autonomie.js");
   const t = Date.now(), ts = new Date(t - 10 * 60e3).toISOString();
@@ -1006,7 +1006,8 @@ function etatParcours({ battementAge = 5 * 60e3, codeHostile = false } = {}) {
   };
   ["u1", "u2", "u3"].forEach((u) => flux("send_message", u, false, codeHostile ? CHARGE : "42501"));
   flux("like_post", "u1", true);
-  const jour = bilanParcours(lignes, { maintenant: t });
+  // Confirmée comme le fait la fonction : les comptes en échec relus anciens.
+  const jour = confirmerPannes(bilanParcours(lignes, { maintenant: t, garderComptes: true }), new Set(["u1", "u2", "u3"]));
   const parcours = { ...jour, couverture: couverture(jour), recent: { parcours: jour.parcours } };
   const lect = { sante: "ok", signalements: "ok", github: "ok", parcours: "ok" };
   const battement = resumerBattement({ created_at: new Date(t - battementAge).toISOString(), properties: { lectures: lect, revision: "abc1234", gestes: { reveil: "fait" } } }, 95, t);

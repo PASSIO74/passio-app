@@ -3,6 +3,8 @@
 // Mutations éprouvées à la main avant livraison (chacune rougit au moins un test) :
 //   · `issueFlux` rend « reussi » quand aucun verdict n'est arrivé    → ④ rougit ;
 //   · la panne compte les lignes anonymes comme des comptes            → ⑦ rougit ;
+//   · le plafond par compte retiré des taux                            → ⑦ bis rougit ;
+//   · une panne non confirmée rendue rouge                              → ⑦ rougit ;
 //   · `juges` inclut les refus légitimes                               → ⑥ rougit ;
 //   · un état « sain » sous `minJuges`                                 → ⑧ rougit ;
 //   · la durée prise sur `received_at` au lieu de `client_ts`          → ⑨ rougit ;
@@ -11,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { CONTRATS, VERSION_CONTRATS, validerContrats, contratDe, contratsCritiques, PARCOURS_NON_INSTRUMENTES } from "../../supabase/functions/_shared/contrats-actions.js";
-import { regrouperFlux, issueFlux, bilanParcours, etatParcours, raisonsVerdict, parcoursARegler, couverture, centile, SEUILS } from "../../supabase/functions/_shared/parcours.js";
+import { regrouperFlux, issueFlux, bilanParcours, etatParcours, raisonsVerdict, parcoursARegler, couverture, centile, SEUILS, confirmerPannes, comptesDesPannes } from "../../supabase/functions/_shared/parcours.js";
 import { COUPURES_AUTORISEES } from "../../supabase/functions/_shared/reglages.js";
 
 const T0 = Date.parse("2026-11-06T12:00:00Z");
@@ -109,23 +111,49 @@ test("⑥ le dénominateur est dit : réussies + échouées + inconnues, jamais 
   assert.equal(p.tauxSucces, 50);
 });
 
-test("⑦ une panne exige des comptes SERVEUR distincts : un appareil anonyme ne fait pas sonner", () => {
+test("⑦ une panne exige des comptes SERVEUR distincts, et ne sonne que CONFIRMÉE par des comptes anciens", () => {
+  // Sans compte : dit, jamais pesé — ni un échec qui alarme, ni un succès qui dilue.
   const anonymes = Array.from({ length: 6 }, () => flux("send_message", { ok: false, rc: "42501", compte: null })).flat();
   const pa = parcoursDe(bilanDe(anonymes), "send_message");
-  assert.notEqual(pa.etat, "panne");
+  assert.equal(pa.anonymes, 6);
   assert.equal(pa.anonymesEchec, 6);
-  assert.equal(pa.etat, "degrade", "dit, en orange — jamais « sain »");
-  assert.deepEqual(raisonsVerdict(bilanDe(anonymes)).rouge, []);
+  assert.equal(pa.juges, 0);
+  assert.equal(pa.etat, "non_observe");
+  assert.deepEqual(raisonsVerdict(bilanDe(anonymes)), { rouge: [], orange: [] });
   const unSeul = Array.from({ length: 6 }, () => flux("send_message", { ok: false, rc: "42501", compte: "u1" })).flat();
   assert.notEqual(parcoursDe(bilanDe(unSeul), "send_message").etat, "panne", "un seul compte en boucle");
   const deux = [...unSeul, ...flux("send_message", { ok: false, rc: "42501", compte: "u2" })];
-  const pd = parcoursDe(bilanDe(deux), "send_message");
+  const b = bilanParcours(deux, { maintenant: T0, garderComptes: true });
+  const pd = parcoursDe(b, "send_message");
   assert.equal(pd.etat, "panne");
   assert.equal(pd.comptesEchec, 2);
   assert.deepEqual(pd.codes, [{ code: "42501", n: 7 }]);
-  const v = raisonsVerdict(bilanDe(deux));
-  assert.equal(v.rouge.length, 1, "parcours critique en panne : rouge");
+  assert.deepEqual(comptesDesPannes(b).sort(), ["u1", "u2"]);
+  // Non confirmée : jamais rouge.
+  assert.deepEqual(raisonsVerdict(b).rouge, []);
+  assert.match(raisonsVerdict(b).orange[0], /\(à confirmer\)/);
+  // Un seul compte ancien : rabattue en « dégradé », et dit.
+  const un = confirmerPannes(b, new Set(["u1"]));
+  assert.equal(parcoursDe(un, "send_message").etat, "degrade");
+  assert.match(parcoursDe(un, "send_message").raisons[0], /panne non confirmée : 1 compte\(s\) ancien\(s\)/);
+  // Deux comptes anciens : confirmée, rouge — et les identités ne sortent plus du bilan.
+  const ok = confirmerPannes(b, new Set(["u1", "u2"]));
+  assert.equal(parcoursDe(ok, "send_message").panneConfirmee, true);
+  assert.equal(parcoursDe(ok, "send_message").comptesEchecIds, undefined);
+  const v = raisonsVerdict(ok);
+  assert.equal(v.rouge.length, 1, "parcours critique en panne confirmée : rouge");
   assert.match(v.rouge[0], /Envoyer un message.*en panne/);
+});
+
+test("⑦ bis un compte qui rejoue cent faux succès ne fait pas passer une panne pour du calme", () => {
+  const echecs = ["a", "b", "c"].flatMap((u) => flux("comment_post", { ok: false, rc: "42501", compte: u }));
+  const diluant = Array.from({ length: 100 }, () => flux("comment_post", { compte: "diluant" })).flat();
+  const p = parcoursDe(bilanDe([...echecs, ...diluant]), "comment_post");
+  assert.equal(p.juges, 103, "les nombres affichés restent les vrais");
+  assert.equal(p.tauxSucces, 97.1);
+  assert.notEqual(p.etat, "sain", "sans plafond par compte : 3 % d'échecs, « sain » — la panne masquée");
+  assert.equal(p.etat, "degrade");
+  assert.ok(p.tauxEchecPondere > 0.3 && p.tauxEchecPondere < 0.4, "3 / (3 + 5)");
 });
 
 test("⑧ pas d'état sain sans volume ; non observé n'est pas sain non plus", () => {

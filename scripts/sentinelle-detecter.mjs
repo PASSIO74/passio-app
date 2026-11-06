@@ -389,6 +389,12 @@ export function classerApi(lignes = [], options = {}) {
 // action et par code fermé. Règles, une par piège :
 //  · identité SERVEUR seulement (`auth_uid`, posée par le trigger) — une
 //    ligne sans compte ou au format douteux est écartée et comptée ;
+//  · comptes ANCIENS seulement, comme les boutons (revue de sécurité du
+//    2026-11-06) : une enquête peut finir en PR fusionnée seule, et des
+//    comptes se créent en une minute. Deux passages : le premier désigne les
+//    comptes à vérifier (`comptesAnciens: "tous"`, `avecUids`), le second ne
+//    compte que ceux que `lireComptesAnciens` a relus. Sans cet ensemble, RIEN
+//    n'est retenu : l'absence de preuve n'est jamais une preuve ;
 //  · une action sans verdict n'est PAS un échec (télémétrie perdue possible) :
 //    elle se lit au pilotage (« sans verdict »), elle n'ouvre pas d'enquête ;
 //  · le titre ne porte que l'identifiant du contrat et le code assaini : rien
@@ -399,6 +405,7 @@ export function classerApi(lignes = [], options = {}) {
 // ═══════════════════════════════════════════════════════════════════════════
 export function classerParcours(lignes = [], options = {}) {
   const min = options.min ?? MIN_OCCURRENCES_API;
+  const anciens = options.comptesAnciens;
   const contrats = options.contrats || CONTRATS;
   const maintenant = Number.isFinite(options.maintenant) ? options.maintenant : Date.now();
   const { flux } = regrouperFlux(lignes, contrats);
@@ -410,6 +417,7 @@ export function classerParcours(lignes = [], options = {}) {
     if (f.synthetique) { ecartees++; continue; }
     if (issueFlux(f, contrat, maintenant) !== "echoue") continue;
     if (!RE_COMPTE.test(String(f.compte || ""))) { ecartees++; nonVerifiees++; continue; }
+    if (anciens !== "tous" && !(anciens instanceof Set && anciens.has(String(f.compte)))) { ecartees++; nonVerifiees++; continue; }
     const rc = f.rc || "sans_code";
     const cle = `parcours ${contrat.id} ${rc}`;
     if (!groupes.has(cle)) {
@@ -426,8 +434,11 @@ export function classerParcours(lignes = [], options = {}) {
   const candidates = [...groupes.values()].map((g) => {
     const comptes = g.comptes.size;
     const c = contrats[g.action];
+    const { comptes: ensemble, ...reste } = g;
     return {
-      ...g, comptes, occurrences: bornerOccurrences(g.occurrences),
+      ...reste, comptes, occurrences: bornerOccurrences(g.occurrences),
+      // Le premier passage seulement : les identités ne partent jamais dans le verdict (résumé PUBLIC).
+      ...(options.avecUids ? { _uids: [...ensemble] } : {}),
       // Le contexte que l'enquête n'aurait pas autrement : le contrat lui-même.
       exemple: {
         stack: [
@@ -1485,7 +1496,13 @@ async function principal() {
   try {
     const fl = await lirePagine({ url, cle, heures, chemin: CHEMIN_FLUX + FILTRE_PRODUCTION });
     parcoursSource = { lues: fl.lignes.length, complet: fl.complet };
-    if (fl.complet) parcours = classerParcours(fl.lignes);
+    if (fl.complet) {
+      // Deux passages, comme les boutons : seuls les comptes ANCIENS décident.
+      const premier = classerParcours(fl.lignes, { comptesAnciens: "tous", avecUids: true });
+      const uids = premier.candidates.flatMap((c) => c._uids || []);
+      const anciens = uids.length ? await lireComptesAnciens({ url, cle, uids }) : new Set();
+      parcours = classerParcours(fl.lignes, { comptesAnciens: anciens });
+    }
   } catch (e) {
     parcoursSource = { erreur: String(e.message || e).slice(0, 160) };
   }

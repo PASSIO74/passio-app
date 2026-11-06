@@ -491,7 +491,8 @@ export function aFaire(d, maintenant = Date.now()) {
       && String(i.titre || "").startsWith("[SENTINELLE] parcours " + p.id + " "));
     if (surLui) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle enquête sur ce parcours." });
     else if (analyseP) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle l'analyse." });
-    else ajoute({ ...base, prio: panne && p.criticite === "critique" ? 0 : 1, quoi: "La Sentinelle enquête sur ce parcours.", gestes: relancer("sentinelle") });
+    // Urgence (prio 0) : une panne CONFIRMÉE par des comptes anciens (confirmerPannes), jamais une autre.
+    else ajoute({ ...base, prio: panne && p.panneConfirmee === true && p.criticite === "critique" ? 0 : 1, quoi: "La Sentinelle enquête sur ce parcours.", gestes: relancer("sentinelle") });
   }
   // La veille elle-même (2026-11-06) : sans battement frais, le téléphone ne
   // sonnera plus. Rien ne peut la relancer d'ici : le bouton mène à sa planification.

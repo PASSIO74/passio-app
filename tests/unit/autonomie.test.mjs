@@ -236,10 +236,14 @@ test("⑫ les marques ont UNE orthographe, lue et écrite par les mêmes constan
   assert.match(s, /const mesure = a && a\.exact && a\.echecs30 != null \? a\.echecs30 : null;/, "la mesure en base n'est retenue qu'exacte");
   assert.match(s, /if \(mesure == null && !comptesParcours\) return \{ raison: "mesure_absente" \}/, "ni mesure en base ni parcours en panne chez des comptes anciens : pas de réveil");
   assert.match(s, /comptesErreurs: Math\.max\(mesure \|\| 0, comptesParcours\) \}/, "le réveil décide sur les comptes ANCIENS");
-  assert.match(s, /comptesAnciens\(admin, \[\.\.\.new Set\(enPanne\.flatMap\(\(p\) => p\.comptesEchecIds \|\| \[\]\)\)\], REVEIL\.ancienneteMinMs\)/, "les comptes d'un parcours sont relus, avec l'ancienneté du réveil");
-  const anciens = corpsDe("comptesAnciens");
+  assert.match(s, /p\.etat === "panne" && p\.panneConfirmee === true/, "seules les pannes CONFIRMÉES par des comptes anciens réveillent");
+  const conf = corpsDe("confirmer");
+  assert.match(conf, /idsComptesAnciens\(admin, uids, REVEIL\.ancienneteMinMs\)/, "les comptes d'un parcours sont relus, avec l'ancienneté du réveil");
+  const anciens = corpsDe("idsComptesAnciens");
   assert.match(anciens, /u && u\.email_confirmed_at && Date\.now\(\) - dateUtc\(u\.created_at\) >= ancienneteMs/, "confirmé ET assez ancien, sinon il ne compte pas");
   assert.match(anciens, /uids\.slice\(0, 20\)/, "lecture bornée");
+  assert.match(FN, /async function lireParcoursVeille[\s\S]{0,400}await confirmer\(admin,/, "la veille confirme avant de juger");
+  assert.match(FN, /async function lireParcours\(admin: Admin\)[\s\S]{0,600}await confirmer\(admin,/, "l'écran aussi");
   assert.equal(reveilsEpuises(11), false);
   assert.equal(reveilsEpuises(12), true);
   assert.equal(reveilsEpuises(NaN), true, "comptage illisible : on ne réveille pas");

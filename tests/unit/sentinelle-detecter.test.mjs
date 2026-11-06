@@ -1148,6 +1148,7 @@ test("bouton (contre-revue 2026-11-03, 2e passage) : chaque lecture de compte po
 import { classerParcours, CHEMIN_FLUX, zoneCible as zoneParcours, choisirCibles as choisirParcours } from "../../scripts/sentinelle-detecter.mjs";
 const UID_A = "11111111-1111-4111-8111-111111111111", UID_B = "22222222-2222-4222-8222-222222222222";
 const T_P = Date.parse("2026-11-06T12:00:00Z");
+const ANCIENS = new Set([UID_A, UID_B]);
 let nP = 0;
 function fluxP(action, { compte = UID_A, ok = false, rc = "42501", fin = true, synth = false } = {}) {
   const cid = "fl_sd" + (++nP).toString(36).padStart(6, "0");
@@ -1161,7 +1162,7 @@ function fluxP(action, { compte = UID_A, ok = false, rc = "42501", fin = true, s
 }
 
 test("㉚① un parcours refusé chez deux comptes serveur devient une enquête, au titre sans texte libre", () => {
-  const r = classerParcours([...fluxP("send_message"), ...fluxP("send_message", { compte: UID_B }), ...fluxP("send_message", { ok: true })], { maintenant: T_P });
+  const r = classerParcours([...fluxP("send_message"), ...fluxP("send_message", { compte: UID_B }), ...fluxP("send_message", { ok: true })], { maintenant: T_P, comptesAnciens: ANCIENS });
   assert.equal(r.candidates.length, 1);
   const c = r.candidates[0];
   assert.equal(c.famille, "parcours");
@@ -1176,7 +1177,7 @@ test("㉚① un parcours refusé chez deux comptes serveur devient une enquête,
 });
 
 test("㉚② une ligne sans compte serveur, ou au format douteux, est écartée et comptée", () => {
-  const r = classerParcours([...fluxP("send_message", { compte: null }), ...fluxP("send_message", { compte: "pas-un-uuid" }), ...fluxP("send_message", { compte: null })], { maintenant: T_P, min: 2 });
+  const r = classerParcours([...fluxP("send_message", { compte: null }), ...fluxP("send_message", { compte: "pas-un-uuid" }), ...fluxP("send_message", { compte: null })], { maintenant: T_P, min: 2, comptesAnciens: ANCIENS });
   assert.equal(r.candidates.length, 0);
   assert.equal(r.nonVerifiees, 3);
 });
@@ -1186,22 +1187,36 @@ test("㉚③ refus légitime, action sans verdict et sonde ne font pas d'enquêt
     ...fluxP("event_join", { rc: "complete" }), ...fluxP("event_join", { rc: "complete", compte: UID_B }),
     ...fluxP("send_message", { fin: false }), ...fluxP("send_message", { fin: false, compte: UID_B }),
     ...fluxP("report_content", { synth: true }), ...fluxP("report_content", { synth: true, compte: UID_B }),
-  ], { maintenant: T_P });
+  ], { maintenant: T_P, comptesAnciens: ANCIENS });
   assert.deepEqual(r.candidates, []);
 });
 
 test("㉚④ un code hostile est assaini ; deux codes du même parcours ne partent pas ensemble", () => {
-  const hostile = classerParcours([...fluxP("comment_post", { rc: "x'); rm -rf /" }), ...fluxP("comment_post", { rc: "x'); rm -rf /", compte: UID_B })], { maintenant: T_P });
+  const hostile = classerParcours([...fluxP("comment_post", { rc: "x'); rm -rf /" }), ...fluxP("comment_post", { rc: "x'); rm -rf /", compte: UID_B })], { maintenant: T_P, comptesAnciens: ANCIENS });
   assert.equal(hostile.candidates[0].cle, "parcours comment_post autre");
-  const deux = classerParcours([...fluxP("comment_post"), ...fluxP("comment_post", { compte: UID_B }), ...fluxP("comment_post", { rc: "23514" }), ...fluxP("comment_post", { rc: "23514", compte: UID_B })], { maintenant: T_P });
+  const deux = classerParcours([...fluxP("comment_post"), ...fluxP("comment_post", { compte: UID_B }), ...fluxP("comment_post", { rc: "23514" }), ...fluxP("comment_post", { rc: "23514", compte: UID_B })], { maintenant: T_P, comptesAnciens: ANCIENS });
   assert.equal(deux.candidates.length, 2);
   assert.equal(choisirParcours(deux.candidates, [], [], 3).length, 1, "une enquête par parcours à la fois");
 });
 
 test("㉚⑤ la consigne d'une enquête parcours cite le contrat et interdit de maquiller l'échec", () => {
-  const c = classerParcours([...fluxP("report_content"), ...fluxP("report_content", { compte: UID_B })], { maintenant: T_P }).candidates[0];
+  const c = classerParcours([...fluxP("report_content"), ...fluxP("report_content", { compte: UID_B })], { maintenant: T_P, comptesAnciens: ANCIENS }).candidates[0];
   const corps = corpsIssue({ fenetreHeures: 24 }, c, { date: "2026-11-06" });
   assert.match(corps, /contrats-actions\.js/);
   assert.match(corps, /Jamais transformer l’échec en succès/);
   assert.match(corps, /Signaler un contenu ou un compte/);
+});
+
+test("㉚⑥ comptes ANCIENS seulement : sans l'ensemble relu, rien n'est retenu ; un compte neuf ne compte pas", () => {
+  const l = [...fluxP("send_message"), ...fluxP("send_message", { compte: UID_B })];
+  assert.deepEqual(classerParcours(l, { maintenant: T_P }).candidates, [], "l'absence de preuve n'est jamais une preuve");
+  const premier = classerParcours(l, { maintenant: T_P, comptesAnciens: "tous", avecUids: true });
+  assert.deepEqual(premier.candidates[0]._uids.sort(), [UID_A, UID_B].sort(), "le premier passage désigne les comptes à relire");
+  const unNeuf = classerParcours(l, { maintenant: T_P, comptesAnciens: new Set([UID_A]) });
+  assert.deepEqual(unNeuf.candidates, [], "un seul compte ancien, deux échecs : sous le seuil");
+  assert.equal(unNeuf.nonVerifiees, 1);
+  const final = classerParcours(l, { maintenant: T_P, comptesAnciens: ANCIENS });
+  assert.equal(final.candidates[0]._uids, undefined, "le verdict (résumé public) ne porte aucune identité");
+  const src = fs.readFileSync("scripts/sentinelle-detecter.mjs", "utf8");
+  assert.match(src, /const premier = classerParcours\(fl\.lignes, \{ comptesAnciens: "tous", avecUids: true \}\);[\s\S]{0,300}parcours = classerParcours\(fl\.lignes, \{ comptesAnciens: anciens \}\);/);
 });

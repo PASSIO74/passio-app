@@ -1121,7 +1121,7 @@ test("㉛bis la fin du jeton se dit une semaine avant, et jamais sur une date ab
 // Mutations éprouvées à la main : retirer `raisonsParcours` du verdict → ㉿①
 // rougit ; mettre la purge des battements hors politique → ㉿④ rougit.
 import { parcoursDuVoyant, SOURCES_VERDICT } from "../../supabase/functions/_shared/pilotage.js";
-import { bilanParcours } from "../../supabase/functions/_shared/parcours.js";
+import { bilanParcours, confirmerPannes } from "../../supabase/functions/_shared/parcours.js";
 import { resumerBattement } from "../../supabase/functions/_shared/battement.js";
 
 const T6 = Date.parse("2026-11-06T12:00:00Z");
@@ -1134,7 +1134,9 @@ function fluxEchec(action, compte, i) {
     { event_id: cid + "c", correlation_id: cid, action: "end", status: "error", meta: { step: "done" }, auth_uid: compte, received_at: ts, client_ts: ts },
   ];
 }
-const panneMessages = () => bilanParcours([...fluxEchec("send_message", "u1", 1), ...fluxEchec("send_message", "u2", 2), ...fluxEchec("send_message", "u3", 3)], { maintenant: T6 });
+const panneBrute = () => bilanParcours([...fluxEchec("send_message", "u1", 1), ...fluxEchec("send_message", "u2", 2), ...fluxEchec("send_message", "u3", 3)], { maintenant: T6, garderComptes: true });
+// Confirmée comme le fait la fonction : les trois comptes relus anciens dans l'authentification.
+const panneMessages = () => confirmerPannes(panneBrute(), new Set(["u1", "u2", "u3"]));
 
 test("㉿① un parcours CRITIQUE en panne rend le voyant rouge ; l'écran juge l'heure écoulée", () => {
   const v = verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: panneMessages() });
@@ -1184,9 +1186,9 @@ test("㉿④ la fonction : chaque geste automatique passe par la politique, le b
   assert.ok(v.indexOf("battre(admin") > v.indexOf("emettreCanari()"), "le battement prouve que la veille est allée au bout");
   assert.ok(v.indexOf("decideAlerte(") < v.indexOf("battre(admin"), "l'alerte ne l'attend pas");
   // Ce qui sort du réveil : des identifiants de parcours, jamais d'identité de compte.
-  const r = fn.slice(fn.indexOf("async function reveillerSentinelle"), fn.indexOf("async function comptesAnciens"));
-  assert.match(r, /comptesAnciens\(admin, \[\.\.\.new Set\(enPanne\.flatMap\(\(p\) => p\.comptesEchecIds/);
-  assert.doesNotMatch(r, /properties: \{[^}]*comptesEchecIds/);
+  const r = fn.slice(fn.indexOf("async function reveillerSentinelle"), fn.indexOf("async function idsComptesAnciens"));
+  assert.match(r, /p\.etat === "panne" && p\.panneConfirmee === true/);
+  assert.doesNotMatch(r, /comptesEchecIds/, "le réveil ne voit plus aucune identité : confirmerPannes les a retirées");
   const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));
   assert.match(et, /parcours: lireParcours\(admin\), battement: lireBattement\(admin\)/);
   assert.match(et, /out\.politique = resumerPolitique\(\);/);
@@ -1200,4 +1202,15 @@ test("㉿⑤ une enquête VOISINE ne rend pas calme un parcours en panne ; une e
   const x = aFaire({ gestesGithub: true, github: { issues: [surLui], runs: {} }, parcours: panneMessages() }, T6).find((y) => y.id === "parcours:send_message");
   assert.equal(x.enCours, true);
   assert.equal(x.quoi, "La Sentinelle enquête sur ce parcours.");
+});
+
+test("㉿⑥ une panne NON confirmée (comptes neufs) n'est jamais rouge ni urgente : orange, prio 1", () => {
+  const brute = panneBrute();
+  const v = verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: brute });
+  assert.equal(v.couleur, "orange");
+  assert.match(v.raisons.join(" "), /\(à confirmer\)/);
+  assert.equal(aFaire({ gestesGithub: true, github: { issues: [], runs: {} }, parcours: brute }, T6).find((y) => y.id === "parcours:send_message").prio, 1);
+  const neufs = confirmerPannes(brute, new Set());
+  assert.equal(verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: neufs }).couleur, "orange");
+  assert.match(neufs.parcours.find((p) => p.id === "send_message").raisons[0], /panne non confirmée : 0 compte/);
 });

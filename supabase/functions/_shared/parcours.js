@@ -25,9 +25,17 @@
 //  · UNE PANNE SE PROUVE PAR DES IDENTITÉS SERVEUR. Le code de refus (`rc`) et
 //    tout le contenu d'une ligne sont écrits par un navigateur ; seul
 //    `auth_uid` est posé par le serveur (trigger `telemetry_pose_identite`).
-//    Une panne exige au moins `panneComptesMin` comptes distincts en échec ;
-//    une ligne anonyme ne fait jamais déclarer une panne, donc jamais sonner
-//    (elle peut dégrader : orange, dit, comme une erreur JS anonyme).
+//    Une ligne SANS compte ne pèse RIEN (ni succès qui dilue, ni échec qui
+//    alarme) : elle est comptée à part (`anonymes`), et dite.
+//  · UN COMPTE NE DILUE PAS LES AUTRES. Dans les TAUX qui décident de l'état,
+//    chaque compte pèse au plus `parCompteMax` actions : un compte qui rejoue
+//    cent faux succès ne masque pas les échecs de trois autres (revue de
+//    sécurité du 2026-11-06). Les nombres affichés restent les vrais.
+//  · UNE PANNE NE SONNE QUE CONFIRMÉE. `etatParcours` dit « panne » sur des
+//    identités serveur ; `confirmerPannes` exige en plus qu'au moins
+//    `panneComptesMin` d'entre elles soient des comptes ANCIENS et confirmés
+//    (relus dans l'authentification par la fonction). Sans confirmation, la
+//    panne redescend en « dégradé » : orange, jamais rouge, jamais un réveil.
 //  · DEUX HORLOGES NE SE SOUSTRAIENT PAS. Les durées viennent de `client_ts`
 //    (l'horloge de L'APPAREIL, début et fin sur la même) ; l'âge d'une action
 //    sans fin vient de `received_at` (l'horloge du SERVEUR) contre `maintenant`
@@ -50,6 +58,7 @@ export const SEUILS = Object.freeze({
   inconnusTaux: 0.5,       // …majoritaires : « dégradé » (non confirmé), jamais « panne »
   lenteurEchantillonsMin: 20, // un p95 au-dessus de l'objectif ne compte qu'avec assez de mesures
   dureeMaxMs: 3600e3,      // une durée au-delà est une horloge folle : écartée
+  parCompteMax: 5,         // poids maximal d'un compte dans les taux qui décident
 });
 
 // Les issues possibles d'une action, et leur libellé pour un humain.
@@ -144,9 +153,9 @@ export function centile(tries, p) {
 const vide = (c) => ({
   id: c.id, libelle: c.libelle, domaine: c.domaine, criticite: c.criticite, objectifP95Ms: c.objectifP95Ms,
   tentes: 0, reussis: 0, refuses: 0, attente: 0, echoues: 0, enCours: 0, inconnus: 0, juges: 0,
-  tauxSucces: null, comptes: 0, comptesEchec: 0, anonymesEchec: 0, sondes: 0, p50Ms: null, p95Ms: null, mesures: 0,
+  tauxSucces: null, comptes: 0, comptesEchec: 0, anonymes: 0, anonymesEchec: 0, sondes: 0, p50Ms: null, p95Ms: null, mesures: 0,
   codes: [], versionsEchec: [], dernier: null, etat: "non_observe", raisons: [],
-  _comptes: new Set(), _comptesEchec: new Set(), _durees: [], _codes: new Map(), _versions: new Map(),
+  _comptes: new Set(), _comptesEchec: new Set(), _durees: [], _codes: new Map(), _versions: new Map(), _parCompte: new Map(),
 });
 
 /**
@@ -175,8 +184,15 @@ export function bilanParcours(lignes, opts = {}) {
     if (f.synthetique) { b.sondes++; continue; }
     const contrat = contrats[f.action];
     const issue = issueFlux(f, contrat, maintenant);
+    // Sans identité serveur : dit, jamais pesé (revue de sécurité du 2026-11-06).
+    if (!f.compte) { b.anonymes++; if (issue === "echoue") b.anonymesEchec++; continue; }
     b.tentes++;
-    if (f.compte) b._comptes.add(f.compte);
+    b._comptes.add(f.compte);
+    if (issue === "reussi" || issue === "echoue" || issue === "inconnu") {
+      const pc = b._parCompte.get(f.compte) || { r: 0, e: 0, i: 0 };
+      pc[issue === "reussi" ? "r" : issue === "echoue" ? "e" : "i"]++;
+      b._parCompte.set(f.compte, pc);
+    }
     if (Number.isFinite(f.debutRecu) && !(f.debutRecu <= ms(b.dernier))) b.dernier = new Date(f.debutRecu).toISOString();
     if (issue === "reussi") {
       b.reussis++;
@@ -188,7 +204,7 @@ export function bilanParcours(lignes, opts = {}) {
     else if (issue === "inconnu") b.inconnus++;
     else if (issue === "echoue") {
       b.echoues++;
-      if (f.compte) b._comptesEchec.add(f.compte); else b.anonymesEchec++;
+      b._comptesEchec.add(f.compte);
       const k = f.rc || "sans_code";
       b._codes.set(k, (b._codes.get(k) || 0) + 1);
       if (f.version) b._versions.set(f.version, (b._versions.get(f.version) || 0) + 1);
@@ -207,8 +223,16 @@ export function bilanParcours(lignes, opts = {}) {
     b.p95Ms = centile(durees, 95);
     b.codes = [...b._codes.entries()].sort((x, y) => y[1] - x[1]).slice(0, 5).map(([c, n]) => ({ code: c, n }));
     b.versionsEchec = [...b._versions.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([v, n]) => ({ version: v, n }));
+    // Les taux qui DÉCIDENT : chaque compte pèse au plus `parCompteMax` actions jugées.
+    let pe = 0, pi = 0, pt = 0;
+    for (const { r, e, i } of b._parCompte.values()) {
+      const t = r + e + i, k = t > seuils.parCompteMax ? seuils.parCompteMax / t : 1;
+      pe += e * k; pi += i * k; pt += t * k;
+    }
+    b.tauxEchecPondere = pt ? pe / pt : 0;
+    b.tauxInconnuPondere = pt ? pi / pt : 0;
     Object.assign(b, etatParcours(b, seuils));
-    for (const k of ["_comptes", "_comptesEchec", "_durees", "_codes", "_versions"]) delete b[k];
+    for (const k of ["_comptes", "_comptesEchec", "_durees", "_codes", "_versions", "_parCompte"]) delete b[k];
     parcours.push(b);
   }
   return {
@@ -221,22 +245,46 @@ export function bilanParcours(lignes, opts = {}) {
 export function etatParcours(b, seuils = SEUILS) {
   const raisons = [];
   if (!b.tentes) return { etat: "non_observe", raisons: ["aucune action observée sur la fenêtre"] };
-  const tauxEchec = b.juges ? b.echoues / b.juges : 0;
-  const tauxInconnu = b.juges ? b.inconnus / b.juges : 0;
+  // Les taux pondérés (un compte ≤ parCompteMax actions) décident quand le bilan les porte.
+  const tauxEchec = Number.isFinite(b.tauxEchecPondere) ? b.tauxEchecPondere : (b.juges ? b.echoues / b.juges : 0);
+  const tauxInconnu = Number.isFinite(b.tauxInconnuPondere) ? b.tauxInconnuPondere : (b.juges ? b.inconnus / b.juges : 0);
   const sur = `${b.echoues} échec(s) sur ${b.juges} action(s) jugée(s)`;
   if (b.echoues >= seuils.panneEchecsMin && b.comptesEchec >= seuils.panneComptesMin && tauxEchec >= seuils.panneTaux) {
     return { etat: "panne", raisons: [`${sur}, chez ${b.comptesEchec} comptes`] };
   }
-  // Des échecs sans compte serveur ne prouvent pas une panne, mais ne sont pas
-  // un calme : ils DÉGRADENT (orange, qui ne sonne jamais), et se disent.
-  if (b.echoues >= seuils.degradeEchecsMin && tauxEchec >= seuils.degradeTaux) {
-    raisons.push(`${sur} (${b.comptesEchec} compte(s) identifié(s)${b.anonymesEchec ? `, ${b.anonymesEchec} sans compte` : ""})`);
-  }
+  if (b.echoues >= seuils.degradeEchecsMin && tauxEchec >= seuils.degradeTaux) raisons.push(`${sur} (${b.comptesEchec} compte(s))`);
   if (b.inconnus >= seuils.inconnusMin && tauxInconnu >= seuils.inconnusTaux) raisons.push(`${b.inconnus} action(s) sans verdict sur ${b.juges} : résultat non confirmé`);
   if (b.mesures >= seuils.lenteurEchantillonsMin && b.p95Ms != null && b.objectifP95Ms && b.p95Ms > b.objectifP95Ms) raisons.push(`lent : p95 ${Math.round(b.p95Ms)} ms pour un objectif de ${b.objectifP95Ms} ms (${b.mesures} mesures)`);
   if (raisons.length) return { etat: "degrade", raisons };
   if (b.juges < seuils.minJuges) return { etat: "insuffisant", raisons: [`${b.juges} action(s) jugée(s) : trop peu pour conclure (il en faut ${seuils.minJuges})`] };
   return { etat: "sain", raisons: [`${b.reussis} réussie(s) sur ${b.juges} jugée(s)`] };
+}
+
+/**
+ * Confirme ou rabat chaque panne : au moins `panneComptesMin` de ses comptes en
+ * échec doivent être ANCIENS et confirmés — `anciens` est l'ensemble que la
+ * fonction a relu dans l'authentification. Une panne non confirmée redescend en
+ * « dégradé » (orange) et le dit. Les identités sont ensuite RETIRÉES du bilan :
+ * il peut partir vers le téléphone. PUR : rend un nouveau bilan.
+ */
+export function confirmerPannes(bilan, anciens, seuils = SEUILS) {
+  if (!bilan || !Array.isArray(bilan.parcours)) return bilan;
+  const ok = anciens instanceof Set ? anciens : new Set();
+  const parcours = bilan.parcours.map((p) => {
+    const { comptesEchecIds, ...reste } = p;
+    if (p.etat !== "panne") return reste;
+    const n = (Array.isArray(comptesEchecIds) ? comptesEchecIds : []).filter((u) => ok.has(u)).length;
+    if (n >= seuils.panneComptesMin) return { ...reste, panneConfirmee: true, comptesEchecAnciens: n };
+    return { ...reste, etat: "degrade", panneConfirmee: false, comptesEchecAnciens: n,
+      raisons: [`panne non confirmée : ${n} compte(s) ancien(s) sur ${p.comptesEchec} en échec (il en faut ${seuils.panneComptesMin}) — ${p.raisons[0]}`] };
+  });
+  return { ...bilan, parcours };
+}
+
+/** Les identités des comptes en échec des parcours en panne (usage INTERNE à la fonction). */
+export function comptesDesPannes(bilan) {
+  if (!bilan || !Array.isArray(bilan.parcours)) return [];
+  return [...new Set(bilan.parcours.filter((p) => p.etat === "panne").flatMap((p) => p.comptesEchecIds || []))];
 }
 
 const nomParcours = (p) => "« " + p.libelle + " »";
@@ -252,7 +300,10 @@ export function raisonsVerdict(bilan) {
   if (!bilan || !Array.isArray(bilan.parcours)) return { rouge, orange };
   if (Array.isArray(bilan.contratsInvalides) && bilan.contratsInvalides.length) orange.push("contrats d'action invalides : les parcours ne sont pas jugés");
   for (const p of bilan.parcours) {
-    if (p.etat === "panne") (p.criticite === "critique" ? rouge : orange).push(`parcours ${nomParcours(p)} en panne : ${p.raisons[0]}`);
+    // Rouge = panne CONFIRMÉE d'un parcours critique (confirmerPannes). Une panne
+    // que personne n'a confirmée ne sonne jamais : orange, et elle le dit.
+    if (p.etat === "panne" && p.panneConfirmee === true && p.criticite === "critique") rouge.push(`parcours ${nomParcours(p)} en panne : ${p.raisons[0]}`);
+    else if (p.etat === "panne") orange.push(`parcours ${nomParcours(p)} en panne${p.panneConfirmee === true ? "" : " (à confirmer)"} : ${p.raisons[0]}`);
     else if (p.etat === "degrade") orange.push(`parcours ${nomParcours(p)} dégradé : ${p.raisons[0]}`);
   }
   return { rouge, orange };
