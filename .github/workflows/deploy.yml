@@ -832,8 +832,8 @@ jobs:
       # mourait sur « Could not get lock ». D'où les deux `pkill` — par NOM
       # d'exécutable, ils n'atteignent jamais `sudo` ni le shell de l'étape — puis
       # `dpkg --configure -a`, pour un dpkg coupé en plein dépaquetage (sans effet
-      # sinon). Ce qu'APT a déjà téléchargé reste dans son cache : le second essai
-      # repart de là (mesuré au banc, voir le journal).
+      # sinon). Les paquets qu'APT a déjà tirés EN ENTIER restent dans son cache :
+      # le second essai ne tire que le reste (mesuré au banc : 17,6 Mo sur 21,1).
       # `timeout-minutes` sur l'étape est le FILET : deux essais de 10 min et leur
       # grâce font 21 min, plus le `npm install` — 25 min ne coupe jamais un essai.
       #
@@ -887,7 +887,8 @@ jobs:
 
       # Même borne, même relance que dans `test-local` (commentaire complet là-bas).
       # WebKit tire bien plus de paquets APT que Chromium : c'est lui qui a mis
-      # 15,9 min le 04/11, et le second essai repart de ce qu'APT a déjà téléchargé.
+      # 15,9 min le 04/11. Coupé à 10 min, le second essai ne retire pas les paquets
+      # que le premier avait déjà tirés en entier.
       - name: Installer Playwright (WebKit)
         timeout-minutes: 25
         run: |
