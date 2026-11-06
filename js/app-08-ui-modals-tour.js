@@ -8013,7 +8013,11 @@ function _creerCanalDb(prive) {
         if (post) {
           const prof = await _profilAuteur(r.author_id);
           if (!post.comments) post.comments = [];
-          if (!post.comments.find(c => c.id === r.id)) {
+          const dejaLa = post.comments.find(c => c.id === r.id);
+          // L'épinglé lu à part (RV-38) qu'on reçoit en direct est un commentaire
+          // comme les autres : il ne quittera pas la liste avec l'épingle.
+          if (dejaLa && dejaLa._epingleGarde) { delete dejaLa._epingleGarde; delete dejaLa._aVerifier; }
+          if (!dejaLa) {
             post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true });
             // Le compte exact du fil (`commentsTotal`) est celui du dernier
             // chargement : ce commentaire est en base, il compte désormais.

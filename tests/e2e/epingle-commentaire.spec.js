@@ -138,10 +138,11 @@ async function preparer(page) {
             const v = typeof __verdictEcriture === "function" ? __verdictEcriture(ligne) : null;
             if (v && v.error) return Promise.resolve({ data: null, error: v.error }).then(ok, ko);
             // L'heure du SERVEUR (trg_rate_limit), qui avance d'une seconde par écriture.
+            // `v.perdue` : la ligne est VALIDÉE en base, mais la réponse se perd en route.
             const valider = () => {
               __horloge += 1000;
               if (table === "comment_interactions") __interactions.push(Object.assign(ligne, { created_at: new Date(__horloge).toISOString() }));
-              return { data: null, error: null };
+              return { data: null, error: (v && v.perdue) || null };
             };
             if (__delaiEcriture) return new Promise((r) => setTimeout(r, __delaiEcriture)).then(valider).then(ok, ko);
             return Promise.resolve(valider()).then(ok, ko);
@@ -150,7 +151,10 @@ async function preparer(page) {
           if (table === "profiles") return Promise.resolve({ data: __profils.filter((p) => (req.ins.id || []).includes(p.id)), error: null }).then(ok, ko);
           if (table === "post_comments") {
             const rep = { data: filtrer(__commentaires, req), error: null };
-            if (__delaiCommentaires) return new Promise((r) => setTimeout(r, __delaiCommentaires)).then(() => rep).then(ok, ko);
+            // Un délai propre à la lecture d'UN commentaire par son identifiant (`__delaiParId`).
+            const parId = (req.eqs.find(([c]) => c === "id") || [])[1];
+            const d = (parId && window.__delaiParId && __delaiParId[parId]) || __delaiCommentaires;
+            if (d) return new Promise((r) => setTimeout(r, d)).then(() => rep).then(ok, ko);
             return Promise.resolve(rep).then(ok, ko);
           }
           if (table === "comment_interactions") {
@@ -865,5 +869,111 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
     }, PA);
     expect(lues, "six retraits, une relecture").toBe(1);
     expect((await etat(page, PA)).badges).toEqual([]);
+  });
+
+  // ── Contre-vérification de d38d2fb (audit-passio) : P3-a, P3-b, P4-a, P4-b, P4-c ──
+  const fil35 = async (page, n) => page.evaluate(async ({ p, moi, alice, n }) => {
+    const base = Date.parse("2026-11-05T07:00:00Z");
+    __commentaires = [];
+    for (let i = 0; i < n; i++) __commentaires.push({ id: "c_p" + String(i).padStart(2, "0"), post_id: p, author_id: alice, content: "n°" + i, created_at: new Date(base + i * 60000).toISOString().replace("Z", "") });
+    __interactions.push(__ligne("ci_old", "c_p00", p, moi, "1", "2026-11-05T08:40:00+00:00"));
+    await __ouvrir(p);
+  }, { p: P, moi: MOI, alice: ALICE, n });
+  const dansLaListe = (page, id) => page.evaluate(([p, c]) => findPostAnywhere(p).comments.filter((x) => x.id === c).length, [P, id]);
+  const lusParId = (page, id) => page.evaluate((c) => __lectures.filter((l) => l.table === "post_comments" && l.eqs.some(([k, v]) => k === "id" && v === c)).length, id);
+
+  test("⑳ un commentaire RÉCENT épinglé (manqué par le direct : écrit de mon autre appareil) ne quitte pas la liste quand l'épingle le quitte", async ({ page }) => {
+    await preparer(page);
+    await fil35(page, 35);
+    await expect.poll(async () => (await etat(page, P)).premier).toBe("c_p00");
+    // Un commentaire PLUS RÉCENT que la page, que le direct n'a pas apporté ; mon autre appareil l'épingle…
+    await page.evaluate(({ p, alice, moi }) => {
+      __commentaires.push({ id: "c_recent", post_id: p, author_id: alice, content: "récent", created_at: "2026-11-05T09:30:00" });
+      __recevoir(__ligne("ci_r1", "c_recent", p, moi, "1", "2026-11-05T09:31:00+00:00"));
+    }, { p: P, alice: ALICE, moi: MOI });
+    await expect.poll(async () => (await etat(page, P)).premier, { message: "lu par son identifiant, montré en tête" }).toBe("c_recent");
+    // … puis le retire : le commentaire reste, à sa place (il est dans la fenêtre des pages).
+    await page.evaluate(({ p, moi }) => __recevoir(__ligne("ci_r2", "c_recent", p, moi, "0", "2026-11-05T09:32:00+00:00")), { p: P, moi: MOI });
+    await expect.poll(async () => (await etat(page, P)).epingles).toEqual([]);
+    expect(await dansLaListe(page, "c_recent"), "toujours dans la liste").toBe(1);
+    // Le même, mais son INSERT arrive en direct APRÈS l'épingle : pas de doublon, et il reste au retrait.
+    await page.evaluate(({ p, alice, moi }) => {
+      __commentaires.push({ id: "c_recent2", post_id: p, author_id: alice, content: "récent 2", created_at: "2026-11-05T09:40:00" });
+      __recevoir(__ligne("ci_r3", "c_recent2", p, moi, "1", "2026-11-05T09:41:00+00:00"));
+    }, { p: P, alice: ALICE, moi: MOI });
+    await expect.poll(async () => (await etat(page, P)).premier).toBe("c_recent2");
+    await page.evaluate(({ p, alice }) => {
+      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === "post_comments" && x.filtre.event === "INSERT");
+      return l.cb({ schema: "public", table: "post_comments", eventType: "INSERT", new: { id: "c_recent2", post_id: p, author_id: alice, content: "récent 2", created_at: "2026-11-05T09:40:00" }, old: {} });
+    }, { p: P, alice: ALICE });
+    await page.evaluate(({ p, moi }) => __recevoir(__ligne("ci_r4", "c_recent2", p, moi, "0", "2026-11-05T09:42:00+00:00")), { p: P, moi: MOI });
+    await expect.poll(async () => (await etat(page, P)).epingles).toEqual([]);
+    expect(await dansLaListe(page, "c_recent2"), "ni doublon, ni disparition").toBe(1);
+  });
+
+  test("㉑ discussion paginée PLUS LOIN (« précédents », puis réouverture) : l'épinglé lu à part se revérifie encore, et part s'il n'existe plus", async ({ page }) => {
+    await preparer(page);
+    await fil35(page, 65);
+    await expect.poll(() => lusParId(page, "c_p00")).toBe(1);
+    await page.evaluate((p) => _chargerCommentairesPrecedents(p), P);
+    expect(await page.evaluate((p) => findPostAnywhere(p).comments.length, P), "30 + 30 + l'épinglé").toBe(61);
+    await page.evaluate((p) => { closeModal(); window._cmtThreadLoadedAt = {}; return openComments(p); }, P);
+    await expect.poll(() => lusParId(page, "c_p00"), { message: "revérifié, même la discussion paginée plus loin" }).toBe(2);
+    // Supprimé en base (homonyme : sa ligne d'épingle reste) : la réouverture suivante l'enlève.
+    await page.evaluate((p) => { __commentaires = __commentaires.filter((c) => c.id !== "c_p00"); closeModal(); window._cmtThreadLoadedAt = {}; return openComments(p); }, P);
+    await expect.poll(() => dansLaListe(page, "c_p00"), { message: "absent en base : il part" }).toBe(0);
+  });
+
+  test("㉒ la réponse d'une écriture se PERD alors qu'elle a abouti : son écho le prouve, l'écran montre ce que dit la base", async ({ page }) => {
+    await preparer(page);
+    await page.evaluate((p) => __ouvrir(p), P);
+    await expect(page.locator('#commentsBox .comment[data-commentid="c_rv38_2"]')).toHaveCount(1);
+    await page.evaluate((p) => togglePinComment(p, "c_rv38_2"), P);
+    expect((await etat(page, P)).epingles).toEqual(["c_rv38_2"]);
+    await page.evaluate(async ({ p, moi }) => {
+      __verdictEcriture = (l) => (l.comment_id === "c_rv38_1" && l.payload === "1") ? { perdue: { code: "", message: "TypeError: Failed to fetch" } } : null;
+      __delaiEcriture = 300;
+      const geste = togglePinComment(p, "c_rv38_1");
+      await new Promise((r) => setTimeout(r, 50));
+      __recevoir(__ligne("ci_echo1", "c_rv38_1", p, moi, "1", "2026-11-05T23:50:00+00:00"));   // l'écho de MON écriture
+      await geste;
+      __delaiEcriture = 0; __verdictEcriture = null;
+    }, { p: P, moi: MOI });
+    await expect.poll(async () => (await etat(page, P)).epingles, { message: "la base a la nouvelle épingle : l'écran aussi" }).toEqual(["c_rv38_1"]);
+    expect(await page.evaluate(() => __toasts.slice(-1)[0]), "et il ne dit pas qu'elle a échoué").toBe("Commentaire épinglé");
+  });
+
+  test("㉓ l'absence lue de l'ANCIEN épinglé ne retire pas le nouveau, lu à part entre-temps", async ({ page }) => {
+    await preparer(page);
+    await fil35(page, 35);
+    await expect.poll(async () => (await etat(page, P)).premier).toBe("c_p00");
+    await page.evaluate(async ({ p, moi }) => {
+      __commentaires = __commentaires.filter((c) => c.id !== "c_p00");   // supprimé ; sa ligne d'épingle reste
+      window.__delaiParId = { c_p00: 600 };                              // sa revérification traîne
+      closeModal(); window._cmtThreadLoadedAt = {};
+      const ouverture = openComments(p);
+      await new Promise((r) => setTimeout(r, 150));
+      // Pendant ce temps, mon autre appareil épingle c_p01, lui aussi plus ancien que la page.
+      __recevoir(__ligne("ci_p01", "c_p01", p, moi, "1", "2026-11-05T23:55:00+00:00"));
+      await ouverture;
+      await new Promise((r) => setTimeout(r, 900));
+      window.__delaiParId = {};
+    }, { p: P, moi: MOI });
+    await expect.poll(async () => await etat(page, P), { message: "c_p01 reste, épinglé en tête" })
+      .toMatchObject({ epingles: ["c_p01"], premier: "c_p01", badges: ["c_p01"] });
+    expect(await dansLaListe(page, "c_p00")).toBe(0);
+  });
+
+  test("㉔ « précédents » atteint la DERNIÈRE page sans l'épinglé lu à part (supprimé) : il part, et ne compte pas", async ({ page }) => {
+    await preparer(page);
+    await fil35(page, 35);
+    await expect.poll(async () => (await etat(page, P)).premier).toBe("c_p00");
+    const r = await page.evaluate(async (p) => {
+      __commentaires = __commentaires.filter((c) => c.id !== "c_p00");
+      await _chargerCommentairesPrecedents(p);
+      const post = findPostAnywhere(p);
+      return { present: post.comments.some((c) => c.id === "c_p00"), total: post.commentsTotal, suite: !!post._commentsSuite };
+    }, P);
+    expect(r).toEqual({ present: false, total: 34, suite: false });
   });
 });

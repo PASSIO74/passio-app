@@ -849,7 +849,10 @@ function _fusionnerPageCommentaires(post, page) {
   var dejaPlusLoin = post._commentsPagine === true && !!page.suite && serveurAvant > page.length;
   var suite = dejaPlusLoin ? (post._commentsSuite || null) : (page.suite || null);
   var plancher = page.reduce(function (min, c) { var t = c && c.createdAt; return (typeof t === "number" && t < min) ? t : min; }, Infinity);
-  var anciennes = dejaPlusLoin ? (post.comments || []).filter(function (c) { return c && c.fromSupabase && !ids.has(c.id) && (c.createdAt || 0) < plancher; }) : [];
+  // L'épinglé lu à part n'est pas une page déjà chargée : il passe par `garde`, qui
+  // le fait revérifier (contre-vérification de d38d2fb, P3-b : repris ici, il ne
+  // l'était jamais).
+  var anciennes = dejaPlusLoin ? (post.comments || []).filter(function (c) { return c && c.fromSupabase && !c._epingleGarde && !ids.has(c.id) && (c.createdAt || 0) < plancher; }) : [];
   var connues = page.length + anciennes.length;
   if (Number.isSafeInteger(total)) {
     total = suite ? Math.max(total, connues) : connues;
@@ -920,6 +923,10 @@ async function _chargerCommentairesPrecedents(postId) {
     var liste = (post.comments || []).concat(nouveaux)
       .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     var suite = page.suite || null;
+    // Dernière page atteinte : la liste est ENTIÈRE. Un épinglé lu à part qu'aucune
+    // page n'a apporté n'existe plus dans ce fil : il part, et ne compte pas
+    // (contre-vérification de d38d2fb, P4-c).
+    if (!suite) liste = liste.filter(function (c) { return !(c && c._epingleGarde); });
     // Dernière page : la liste est entière, le total du fil (peut-être périmé à
     // la hausse — aucun événement DELETE n'est écouté) se recale dessus.
     var total = suite ? _totalConnu(postId, post) : liste.filter(function (c) { return c && c.fromSupabase; }).length;
@@ -2431,6 +2438,7 @@ var _epinglesFil = {};         // fil → { cid } : la vérité connue (cid null
 var _epinglesEnVol = {};       // fil → écritures d'épingle en cours
 var _epinglesRecuesEnVol = {}; // fil → une épingle du propriétaire est arrivée en direct PENDANT l'écriture
 var _epinglesEcrites = {};     // fil → « commentaire|charge » des écritures du geste en cours (leur écho n'est pas un autre appareil)
+var _epinglesEchoEnVol = {};   // fil → l'écho d'une de ces écritures est arrivé : elle a abouti, quoi que dise sa réponse
 var _epinglesGeneration = {};  // fil → +1 à chaque épingle posée ou reçue
 var _epinglesACharger = {};    // fil + commentaire → lecture de l'épinglé en cours
 // Seul un vrai compte écrit une ligne (`user_id` = `auth.uid()`) : le fil d'un
@@ -2493,18 +2501,34 @@ function _poserEpingleFil(fil, cid) {
 // que parce qu'il était épinglé. Appelé sur une vérité du SERVEUR seulement
 // (lecture, ligne reçue, écriture confirmée, absence lue) : un geste optimiste
 // refusé doit pouvoir revenir sans relecture. Rend vrai si quelque chose est parti.
-function _retirerEpinglesGardes(fil, sauf) {
+// `seul` : ne viser que ce commentaire-là (une absence lue ne retire QUE le
+// commentaire lu — contre-vérification de d38d2fb, P4-b). Un gardé que la fenêtre
+// des pages chargées couvre désormais n'est plus hors page : il reste, sans sa
+// marque (P3-a).
+function _retirerEpinglesGardes(fil, sauf, seul) {
   var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(fil) : null;
   if (!post) return false;
   var parti = false;
   _copiesDiscussion(fil, post).forEach(function (copie) {
     var arr = copie && copie.comments;
     if (!Array.isArray(arr)) return;
+    var plancher = _plancherPages(arr), suite = !!copie._commentsSuite;
     for (var i = arr.length - 1; i >= 0; i--) {
-      if (arr[i] && arr[i]._epingleGarde && arr[i].id !== sauf) { arr.splice(i, 1); parti = true; }
+      var c = arr[i];
+      if (!c || !c._epingleGarde || c.id === sauf || (seul && c.id !== seul)) continue;
+      if (suite && (c.createdAt || 0) >= plancher) { delete c._epingleGarde; delete c._aVerifier; continue; }
+      arr.splice(i, 1); parti = true;
     }
   });
   return parti;
+}
+// Le plus ancien commentaire qu'une PAGE a apporté (les gardés exclus) : en deçà,
+// un commentaire n'est à l'écran que parce qu'il est épinglé.
+function _plancherPages(commentaires) {
+  return (commentaires || []).reduce(function (min, c) {
+    var t = c && c.fromSupabase && !c._epingleGarde ? c.createdAt : null;
+    return (typeof t === "number" && t < min) ? t : min;
+  }, Infinity);
 }
 function _sauverEtRepeindreFil(fil) {
   var t = (typeof _findCommentThread === "function") ? _findCommentThread(fil) : null;
@@ -2630,19 +2654,25 @@ async function _assurerCommentaireEpingle(fil, cid) {
     if (deja) {
       if (c === false) {
         // La base dit qu'il n'existe plus (supprimé par son auteur, la modération) :
-        // il part. Une lecture en ÉCHEC ne prouve rien : il reste, à revérifier.
-        if (_retirerEpinglesGardes(fil, null)) _refreshCommentThreadUINow(fil);
+        // il part — LUI seul. Une lecture en ÉCHEC ne prouve rien : il reste, à revérifier.
+        if (_retirerEpinglesGardes(fil, null, cid)) _refreshCommentThreadUINow(fil);
       } else if (c) delete deja._aVerifier;
       return;
     }
     if (!c) return;
-    c._epingleGarde = true;   // lu à part : ni page ni « précédents » ne l'ont apporté
     var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(fil) : null;
     if (!post) return;
+    // « Gardé » seulement s'il est HORS des pages chargées (plus ancien que la plus
+    // ancienne, et il en reste) ; sinon c'est un commentaire comme les autres, rangé
+    // à sa place — écrit depuis mon autre appareil, ou arrivé après la page : il ne
+    // doit pas quitter la liste avec l'épingle (contre-vérification de d38d2fb, P3-a).
+    if (post._commentsSuite && (c.createdAt || 0) < _plancherPages(t.comments)) c._epingleGarde = true;
     // Sur TOUTES les copies (fil, `userPosts`, bobines) : une seule ne suffit pas.
     _copiesDiscussion(fil, post).forEach(function (copie) {
       if (!Array.isArray(copie.comments)) copie.comments = [];
-      if (!copie.comments.some(function (x) { return x && x.id === cid; })) copie.comments.push(c);
+      if (copie.comments.some(function (x) { return x && x.id === cid; })) return;
+      var i = copie.comments.findIndex(function (x) { return x && (x.createdAt || 0) < (c.createdAt || 0); });
+      if (i < 0) copie.comments.push(c); else copie.comments.splice(i, 0, c);
     });
     // Ses propres « j'aime » et réponses ; l'épingle, elle, est déjà connue.
     if (typeof hydrateCommentInteractions === "function") await hydrateCommentInteractions({ id: fil, comments: [c] }, { epingle: false });
@@ -2677,7 +2707,13 @@ function _epingleRecue(r) {
     // réimposer son propre état (contre-revue du delta, P4).
     // L'écho d'une de MES écritures en cours n'est pas un autre appareil : il ne
     // coûte pas de relecture (contre-vérification de 84cb6b3, D2).
-    if (_epinglesEnVol[fil] && (_epinglesEcrites[fil] || []).indexOf(r.comment_id + "|" + val) < 0) _epinglesRecuesEnVol[fil] = true;
+    // Mais il PROUVE que l'écriture a abouti : si sa réponse se perd (panne), la fin
+    // du geste relit le fil au lieu de remettre l'ancien épinglé (contre-vérification
+    // de d38d2fb, P4-a).
+    if (_epinglesEnVol[fil]) {
+      if ((_epinglesEcrites[fil] || []).indexOf(r.comment_id + "|" + val) < 0) _epinglesRecuesEnVol[fil] = true;
+      else _epinglesEchoEnVol[fil] = true;
+    }
     _poserEpingleFil(fil, cid);
     var parti = _retirerEpinglesGardes(fil, cid);
     if (cid === avant && !parti) return;   // l'écho de ce qu'on sait : rien à repeindre
@@ -2748,6 +2784,7 @@ async function togglePinComment(threadId, commentId) {
     if (!reel) { toast(willPin ? "Commentaire épinglé" : "Épingle retirée"); return; }   // aucune base : rien à partager
     _epinglesEnVol[threadId] = (_epinglesEnVol[threadId] || 0) + 1;
     delete _epinglesRecuesEnVol[threadId];
+    delete _epinglesEchoEnVol[threadId];
     _epinglesEcrites[threadId] = [commentId + "|" + (willPin ? "1" : "0")].concat(willPin && actuel ? [actuel + "|0"] : []);
     _epingleNouvelleGeneration(threadId);
     var res;
@@ -2772,7 +2809,9 @@ async function togglePinComment(threadId, commentId) {
     // appareils) : ni la confirmation ni le retour en arrière ne la réécrasent —
     // la base tranche, relue (contre-revue du delta, P4).
     var recue = !!_epinglesRecuesEnVol[threadId];
+    var echo = !!_epinglesEchoEnVol[threadId];
     delete _epinglesRecuesEnVol[threadId];
+    delete _epinglesEchoEnVol[threadId];
     if (res && res.ok) {
       // Les objets ont pu être reconstruits pendant l'écriture (une page relue) :
       // la vérité du fil se réapplique aux objets COURANTS.
@@ -2785,10 +2824,18 @@ async function togglePinComment(threadId, commentId) {
       toast(willPin ? "Commentaire épinglé" : "Épingle retirée");
       return;
     }
+    // L'écho de MON écriture est arrivé : elle a abouti, sa réponse s'est perdue en
+    // route. Rien à défaire : la base tranche, relue, et l'écran dit ce qui est.
+    if (echo) {
+      _lireEpingleFil(threadId);
+      toast(willPin ? "Commentaire épinglé" : "Épingle retirée");
+      return;
+    }
     // Refusée ou perdue : l'écran revient à l'état d'avant, et le DIT.
     _poserEpingleFil(threadId, connueAvant ? connueAvant.cid : actuel);
     if (!connueAvant) delete _epinglesFil[threadId];
     _sauverEtRepeindreFil(threadId);
+    // Un autre appareil a parlé pendant l'écriture : la base tranche, relue.
     if (recue) _lireEpingleFil(threadId);
     try { diagLog("epingle_refusee : " + ((res && (res.code || res.message)) || "inconnu")); } catch (_e) {}
     toast(_motRefusEpingle(res));
