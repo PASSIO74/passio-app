@@ -1389,7 +1389,9 @@ ce qu'a mesuré sa première exécution en CI (#727) ; présente, A épingle, B 
 application, la mesure au canal ① ; la ligne RV-38 ne se ferme qu'avec cette preuve.
 ## 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
 
-**Statut : préparé, pas appliqué.** `migrations/migration_discussions_activite_2026-11-06.sql` (sha256 `2d423d5f…`), banc
+**Statut : appliqué en production le 06/11 à 21:38:05 UTC** (verdict 17 × OK, `migrations_appliquees` id 33), mesuré au canal ①
+(corps `814ad66c…`, policy `ff0689d9…`, 11 dépendants tous des policies, 0 trace du décor ; § 9.8 de la livraison).
+`migrations/migration_discussions_activite_2026-11-06.sql` (sha256 `2d423d5f…`), banc
 `tests/sql/migration-discussions-activite.test.sh` 175/0, client `removeGroupMember` (app-05) et son verrou
 `tests/e2e/retrait-membre-groupe.spec.js` 24/24. Application, contrôles et retour arrière : § 9 de
 `.passio/audits/AUDIT_PASSIO_2026-11-02/04-LIVRAISON.md`. Revu le même jour, avant toute attestation, par trois agents
@@ -1512,6 +1514,16 @@ aléatoire), `is_blocked_with` reste interrogeable sur tout uid (R40) : hors lot
 le retrait d'un membre qui n'y est pas (la liste locale vient des inscrits, `_ensureLocalEventConv`) dit « pas confirmé »
 jusqu'au prochain rafraîchissement serveur, qui l'ôte ; `addGroupMember` ignore toujours le résultat de son INSERT
 (préexistant, hors lot).
+
+**Appliquer depuis un worktree détaché, JAMAIS depuis le dossier de travail (06/11, vécu).** Le premier bloc de C-02 (comme
+celui de C-04 le matin) faisait `git checkout main` puis `git pull --ff-only` DANS `Desktop\PASSIO` — que la procédure de
+`.passio/migrations/README.md` évite déjà. Ce dossier portait le travail non commité d'une autre session (sa branche, deux
+migrations ajoutées, `dashboard/`, `js/`, fonctions Edge) : le `checkout` l'a fait passer sur `main` (git garde les
+modifications non commitées, mais la session ne se trouve plus sur sa branche), et le `pull` a refusé d'écraser dix fichiers.
+Rien n'est parti ; le second bloc a d'abord RENDU le dossier (retour sur la branche, `attestations.json` remis depuis sa copie),
+puis attesté et appliqué dans `Desktop\PASSIO-wt\migration-c02` (worktree détaché d'`origin/main`), imprimé l'entrée
+d'attestation par `git diff`, et retiré le worktree. Un bloc d'application ne fait aucun `checkout`, aucun `pull`, aucun
+`git checkout -- <fichier>` dans le dossier de travail : il peut y avoir quelqu'un.
 
 **Ordre.** APRÈS C-04 (la ligne 10 refuse une base sans sa policy : le staging aujourd'hui — y appliquer C-04 d'abord, puis ce
 lot), et JAMAIS C-04 rejouée après ; indépendante du client, pas de `PREREQUIS-CLIENT` — le client ne dit que ce que le serveur
