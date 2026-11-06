@@ -48,7 +48,9 @@ Ce qui reste incertain, pourquoi, avec quel impact et quelle prochaine action. �
 ## Décisions produit — tranchées le 2026-11-03 (délégation de Benjamin)
 
 1. **C-04** — la liste suit le lien (sa ligne, organisation, venants `going` entre eux, abonnés mutuels, jamais un
-   blocage) ; le nombre reste public parmi les connectés ; notes en agrégat à partir de 3. Reste R18.
+   blocage) ; le nombre reste public parmi les connectés ; notes en agrégat à partir de 3. **Appliquée en production le
+   06/11 à 09:17 UTC et mesurée au canal ①** (`04-LIVRAISON.md` § 6.3). Restent R18, R27, R39, R40 (suite décidée :
+   `participants_visibilite` v2).
 2. **C-14** — dossier investisseurs sorti de l'arbre, ignoré ; vidéos en double retirées. Reste R17 (historique).
 3. **F-05 / F-06 / F-07** — doublon et index jamais lu retirés, index partiel du pilotage, une policy
    `realtime.messages` en initplan.
@@ -61,7 +63,7 @@ Les preuves de cet audit soutiennent une **poursuite de l'ouverture à l'échell
 comptes)** : aucun P0, les P1 traités, les frontières de confiance tenues par la base. Elles ne soutiennent **pas
 encore** une ouverture à des milliers d'actifs simultanés : il faut d'abord (a) le banc de charge R2 sur staging avec
 ses seuils d'arrêt, (b) la comparaison staging ↔ prod R1 outillée, (c) les migrations de ce lot appliquées et
-mesurées, (d) les migrations C-04 et des identifiants réservés appliquées et mesurées, et une décision sur R17 (historique du dépôt) avant d'accueillir des inconnus en nombre.
+mesurées, (d) ~~les migrations C-04 et des identifiants réservés appliquées et mesurées~~ (fait : identifiants réservés le 03/11, C-04 le 06/11), et une décision sur R17 (historique du dépôt) avant d'accueillir des inconnus en nombre.
 
 **R31, trouvé le 04/11 après l'audit, est une FUITE par nature** (P0 à l'échelle du registre : le contenu d'un compte privé
 lisible sans compte dès qu'une publication commentée est supprimée ; aucune fuite effective confirmée en production) : sa
