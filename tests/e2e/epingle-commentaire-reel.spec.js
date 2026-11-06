@@ -87,7 +87,8 @@ test("RV-38 : A épingle un commentaire de sa publication, B le voit après rech
     const n = ((post && post.comments) || []).find((x) => x.id === c) || {};
     const doms = Array.from(document.querySelectorAll("#commentsBox .comment[data-commentid]"));
     return {
-      epingle: !!n.pinned,
+      // La vérité du FIL (celle du rendu), pas le drapeau d'un objet qu'une page reconstruit.
+      epingle: _estEpingle(p, n),
       enTete: doms.length ? doms[0].getAttribute("data-commentid") === c : false,
       badge: !!document.querySelector('#commentsBox .comment[data-commentid="' + c + '"] .cmt-pinned-badge'),
     };
@@ -100,7 +101,7 @@ test("RV-38 : A épingle un commentaire de sa publication, B le voit après rech
     const n = findPostAnywhere(p).comments.find((x) => x.id === c) || {};
     // Les seuls toasts de l'épingle : une notification qui arrive au même moment
     // (un autre run partage le staging) ne doit pas faire rougir le cas.
-    return { epingle: !!n.pinned, toasts: window.__toasts.filter((t) => /pingl/i.test(t)) };
+    return { epingle: _estEpingle(p, n), toasts: window.__toasts.filter((t) => /pingl/i.test(t)) };
   }, [pid, cid]);
 
   try {

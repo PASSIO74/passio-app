@@ -5233,7 +5233,7 @@ async function supaCommentRemoveReactions(commentId) {
     await supa.from("comment_interactions").delete().eq("comment_id", commentId).eq("user_id", MY_UID).eq("kind", "emoji");
   } catch(e) {}
 }
-// Charge les interactions de plusieurs commentaires → { [cid]: {likes,likedBy,replies,emojis,epingles} }.
+// Charge les interactions de plusieurs commentaires → { [cid]: {likes,likedBy,replies,emojis} }.
 // ⚠️ `null` quand la lecture n'a pas eu lieu (pas de client réel) ou a ÉCHOUÉ :
 // rien n'est connu, et l'appelant ne doit rien en conclure. `{}` veut dire « lue,
 // et rien ». Une source illisible n'est pas une source calme : lue comme « aucune
@@ -5266,12 +5266,9 @@ async function supaLoadCommentInteractions(commentIds) {
       else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, ci: ci, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
       else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, ci: ci, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
       else if (r.kind === "gif" && r.payload) o.replies.push({ id: "sgif_" + r.created_at + "_" + r.user_id, ci: ci, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
-      // #11 épingle (RV-38) : TOUTES les lignes, dans l'ordre de lecture. C'est le
-      // lecteur (`_appliquerEpinglesLues`, app-04) qui ne retient que celles du
-      // PROPRIÉTAIRE du fil, écrites dans CE fil — la ligne d'un autre compte ne
-      // décide de rien, quoi que la base contienne.
-      else if (r.kind === "pin") (o.epingles || (o.epingles = [])).push({ id: ci, par: r.user_id || null, fil: r.post_id || null,
-        val: r.payload == null ? "" : String(r.payload), a: r.created_at });
+      // #11 épingle (RV-38) : les lignes « pin » ne se lisent pas ici, commentaire par
+      // commentaire, mais par FIL (`supaLireEpingleFil`) — une page de 30 n'en porte
+      // qu'une partie. Elles restent indexées ci-dessus (R37).
     });
     // Résoudre les profils des auteurs d'interactions inconnus localement, sinon
     // le renderer (userById) affiche « ? » comme pseudo sur les réponses/réactions
@@ -5286,16 +5283,64 @@ async function supaLoadCommentInteractions(commentIds) {
   }
   return out;
 }
+// #11 épingle (RV-38) : les lignes « pin » du PROPRIÉTAIRE du fil, DANS ce fil, de
+// la plus récente à la plus ancienne — la règle (`_epingleDesLignes`, app-04) ne
+// regarde que la tête. ⚠️ `null` quand la lecture n'a pas eu lieu ou a échoué :
+// rien n'est connu, et rien ne change à l'écran. Une ligne d'un autre compte ou
+// d'un autre fil n'est jamais demandée. Indexées (R37) : leur retrait (une purge)
+// est reconnu sans relecture.
+const EPINGLE_LIGNES_MAX = 50;
+async function supaLireEpingleFil(fil, proprio) {
+  if (!fil || !proprio || typeof supa === "undefined" || !supa || !window._supaReal) return null;
+  try {
+    var res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at")
+      .eq("post_id", fil).eq("kind", "pin").eq("user_id", proprio)
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(EPINGLE_LIGNES_MAX);
+    if (!res || res.error) {
+      try { diagLog("epingle_lecture : " + String((res && res.error && (res.error.code || res.error.message)) || "réponse vide")); } catch (_e) {}
+      return null;
+    }
+    var lignes = (typeof _ciSansTombees === "function") ? _ciSansTombees(res.data || []) : (res.data || []);
+    if (typeof _ciIndexer === "function") lignes.forEach(function (r) { _ciIndexer(r); });
+    return lignes;
+  } catch (e) {
+    try { diagLog("epingle_lecture : " + (e && e.message)); } catch (_e) {}
+    return null;
+  }
+}
+// Un commentaire de publication par son identifiant : l'épinglé, quand il est
+// plus ancien que la première page (RV-38). La forme de `supaLoadComments` ;
+// null s'il est absent (supprimé) ou si la lecture échoue.
+async function supaLireCommentaire(postId, commentId) {
+  if (!postId || !commentId || typeof supa === "undefined" || !supa || !window._supaReal) return null;
+  try {
+    const { data, error } = await supa.from("post_comments").select("id, post_id, author_id, content, created_at")
+      .eq("id", commentId).eq("post_id", postId).limit(1);
+    if (error) { try { diagLog("commentaire_lecture : " + (error.code || error.message)); } catch (_e) {} return null; }
+    const r = (data || [])[0];
+    if (!r) return null;
+    const profs = await _resolveProfilesByIds([r.author_id]);
+    const p = profs[r.author_id] || {};
+    return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨",
+      content: r.content, text: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true };
+  } catch (e) {
+    try { diagLog("commentaire_lecture : " + (e && e.message)); } catch (_e) {}
+    return null;
+  }
+}
 // Applique les interactions chargées sur les objets commentaires d'un fil.
 // `post` : une publication, ou `{ id: <identifiant du fil>, comments }` — l'`id`
-// est le FIL ; sans lui, aucune épingle n'est décidée (RV-38).
-async function hydrateCommentInteractions(post) {
+// est le FIL. `opts.epingle === false` : ne pas relire l'épingle du fil (une page
+// « précédents », l'épinglé chargé à part : elle vient d'être lue).
+async function hydrateCommentInteractions(post, opts) {
   try {
     if (!post || !Array.isArray(post.comments) || !post.comments.length) return;
     var ids = post.comments.map(function(c){ return c.id; });
-    // La génération des épingles du fil AVANT la lecture : une épingle posée ou
-    // reçue PENDANT la lecture est plus récente que sa réponse (comme D-06).
-    var genEpingle = (typeof _epingleGeneration === "function") ? _epingleGeneration(post.id) : 0;
+    // #11 épingle (RV-38) : un état du FIL, lu au niveau du fil, EN PARALLÈLE des
+    // interactions (aucune attente de plus). Pas pour une bobine : son panneau
+    // (`loadReelComments`) n'affiche pas d'épingle.
+    var lectureEpingle = (post.id && !post.isReel && !(opts && opts.epingle === false) && typeof _lireEpingleFil === "function")
+      ? _lireEpingleFil(post.id) : null;
     var map = await supaLoadCommentInteractions(ids);
     if (map) {
       post.comments.forEach(function(c){
@@ -5305,9 +5350,8 @@ async function hydrateCommentInteractions(post) {
         // Réponses serveur (texte + emoji_reaction + gif_reaction) — source de vérité.
         c.replies = (info.replies || []).slice();
       });
-      // #11 épingle (RV-38) : la vérité du serveur, du seul propriétaire du fil.
-      if (typeof _appliquerEpinglesLues === "function") _appliquerEpinglesLues(post, map, genEpingle);
     }
+    if (lectureEpingle) await lectureEpingle;
     // 2e passe : réactions emoji portées sur les RÉPONSES (comment_interactions dont
     // comment_id = id d'une réponse, ex. « srep_… » déterministe). Les réponses sont
     // reconstruites ci-dessus avec des ids stables → on peut leur rattacher leurs

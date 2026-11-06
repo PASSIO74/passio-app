@@ -1258,12 +1258,15 @@ choix chez n'importe qui, avec n'importe quelle charge, et l'ancien lecteur l'af
     épinglé revient) et le **dit** (`_motRefusEpingle` : 23514 « pas encore disponible », 42501 « refusée », réseau
     « pas de connexion »). La **cible** part d'abord, le « 0 » des anciens ensuite et seulement si elle passe. Un
     commentaire `_pending` (pas encore en base) n'est pas envoyé, et la raison est dite ;
-  - le lecteur (`_appliquerEpinglesLues`, appelé par `hydrateCommentInteractions`) ne retient que les lignes du
-    **propriétaire** du fil (`_proprietaireFil` : l'auteur, `organizerId` — la définition de la garde), écrites **dans
-    ce fil** ; la dernière ligne d'un commentaire décide ; **un seul épinglé par fil**, le plus récent (deux appareils du
-    propriétaire peuvent en poser deux) ;
-  - une épingle **reçue en direct** s'applique sous les mêmes règles (`_epingleRecue`, branche `pin` de
-    `_applyCommentInteractionEvent`) ;
+  - ⚠️ **l'épingle est un ÉTAT DU FIL, pas d'un commentaire** (contre-revue du lot, ci-dessous) : un seul épinglé par
+    fil, retenu par fil (`_epinglesFil`) et lu par le rendu (`_estEpingle`), jamais le drapeau `pinned` d'objets qu'une
+    page serveur reconstruit. Il se **lit au niveau du fil** (`supaLireEpingleFil`, en parallèle des interactions) : les
+    lignes `pin` du **propriétaire** (`_proprietaireFil` : l'auteur, `organizerId` — la définition de la garde), **dans ce
+    fil**, les plus récentes d'abord ; règle `_epingleDesLignes` : le « 1 » le plus récent l'emporte, sauf si un « 0 »
+    plus récent vise ce même commentaire. L'épinglé plus ancien que la première page (30) est **lu par son
+    identifiant** (`supaLireCommentaire`) et rangé en tête ; « précédents » ne le redouble pas ;
+  - une épingle **reçue en direct** s'applique sous les mêmes règles (`_epingleRecue`, en tête de
+    `_applyCommentInteractionEvent`), la mienne comprise (un autre de mes appareils), et elle est indexée (R37) ;
   - les trois appelants qui passaient `{ comments }` passent le fil (`{ id, comments }`) : sans `id`, rien n'est décidé.
 - **Migration** `migration_epingle_commentaire_2026-11-05.sql` (PR suivante, **préparée**, contre-revue humaine puis
   `appliquer-migration.mjs`) : `pin` admis par `ci_kind_check`, `ci_pin_payload_check` (« 0 » ou « 1 », jamais rien),
@@ -1283,8 +1286,18 @@ choix chez n'importe qui, avec n'importe quelle charge, et l'ancien lecteur l'af
   elle n'a pas eu lieu ou a échoué, `{}` quand elle a lu « rien ». Lue comme « aucune épingle », une panne retirait
   l'épingle de l'écran. Une lecture **réussie** sans ligne retire, elle, l'épingle restée locale d'avant RV-38 :
   personne d'autre ne la voyait.
-- ⚠️ **Une lecture partie AVANT un geste ne le défait pas en revenant** : une génération par fil
-  (`_epingleGeneration`), relevée avant la lecture, avancée par chaque épingle posée ou reçue (le principe de D-06).
+- ⚠️ **Commentaire par commentaire, l'épingle ressuscite.** La première version décidait par la dernière ligne de
+  chaque commentaire chargé : deux « 1 » en base (deux appareils, un « 0 » perdu), l'écran en montrait un ; le retirer
+  faisait reparaître l'autre, chez tous. Et une page de 30 ne porte qu'une partie des lignes : l'épinglé plus ancien
+  ne se voyait pas. D'où la lecture par FIL et sa règle.
+- ⚠️ **Une page serveur reconstruit les objets commentaires sans leur drapeau** (`_fusionnerPageCommentaires`,
+  `_setEventComments`) : un état porté par l'objet disparaît dès qu'une page est relue (pendant une écriture, ou
+  avant une lecture en échec). L'état vit donc par fil, semé du drapeau tant qu'aucune lecture n'a eu lieu
+  (`_semerEpingleFil`), et réappliqué aux objets COURANTS après une écriture confirmée.
+- ⚠️ **Une lecture partie AVANT ou PENDANT un geste ne le défait pas en revenant** : une génération par fil
+  (`_epingleGeneration`), relevée au départ de la lecture, avancée au DÉBUT et à la FIN de chaque écriture et à
+  chaque épingle reçue (le principe de D-06) — avancée seulement au début, une lecture partie pendant l'écriture
+  revenait après elle et défaisait l'épingle confirmée.
 - ⚠️ **L'ordre des écritures compte** : la cible d'abord. Les deux en parallèle, ou l'ancien d'abord, laissaient la base
   sans épinglé sur un refus de la cible, alors que l'écran avait remis l'ancien.
 - ⚠️ **L'ancien client** (jusqu'à son rechargement) lit la dernière ligne `pin` sans regarder son auteur : seule la garde
@@ -1292,12 +1305,25 @@ choix chez n'importe qui, avec n'importe quelle charge, et l'ancien lecteur l'af
 - Le client déployé AVANT la migration dit honnêtement « L'épingle n'est pas encore disponible » : la fonction ne
   marchait pas, elle le dit, au lieu de mentir.
 
-**Verrous.** `tests/e2e/epingle-commentaire.spec.js` (9 cas locaux, treize réinjections rouges : verdict ignoré, ordre
-des écritures, mot du refus, lecteur sans propriétaire ou sans fil, sans « un seul », lecture en échec prise pour vide,
-sans génération, sans branche directe, direct sans propriétaire, sans `_pending`, sans contrôle du propriétaire à
-l'écriture, ancien lecteur). `tests/e2e/epingle-commentaire-reel.spec.js` (deux comptes, staging, `SUITES_PROD`) : une
-sonde sans effet dit si la migration y est ; absente, le vrai refus 23514 est dit et défait ; présente, A épingle, B la
-voit après **rechargement**, B est refusé (42501 et l'indice), A retire.
+**Verrous.** `tests/e2e/epingle-commentaire.spec.js` (12 cas locaux, le simulateur honore filtres, ordre, limite et
+curseur ; quatorze réinjections, chacune rougit son cas : génération à la lecture et en fin d'écriture,
+règle sans retrait, lecture de tous les comptes, épinglé non chargé, sans semis, rendu et tri par le drapeau, direct
+avant le filtre de mon compte, direct sans propriétaire, « 0 » d'un autre, `ec_local_`, ancien d'abord, lecture en
+échec prise pour vide). `tests/e2e/epingle-commentaire-reel.spec.js` (deux comptes,
+staging, `SUITES_PROD`) : une sonde sans effet dit si la migration y est ; absente, le vrai refus 23514 est dit et
+défait — c'est ce qu'a mesuré sa première exécution en CI (#727, « migration RV-38 sur le staging : ABSENTE ») ;
+présente, A épingle, B la voit après **rechargement**, B est refusé (42501 et l'indice), A retire.
+
+**Contre-revue du client (`audit-passio`, 06/11, six reproductions).** Aucun P0/P1. Trois P2, tous corrigés dans le
+lot : retirer l'épinglé ressuscitait un « 1 » plus ancien (R2, R2b) ; l'épinglé hors de la première page était
+invisible à l'ouverture (R5) ; une lecture partie pendant l'écriture, ou une page relue pendant elle, défaisait
+l'épingle confirmée (R1, R3). P3 : une lecture en échec après une page relue ne montrait plus rien (R4) — corrigé ;
+une lecture tronquée prise pour complète — fermé pour l'épingle (lecture par fil, limite 50), préexistant et ouvert
+pour les « j'aime » et réponses d'une discussion de plus de 1 000 interactions. P4 corrigés : l'épingle reçue est
+indexée, l'optimiste d'activité (`ec_local_…`) n'est pas tenté, le mot du 42501 est neutre pour le propriétaire.
+Restés : la perte d'un « 0 » d'ancien n'a pas de trace distante (`diagLog` local), et ne trompe plus le lecteur ;
+le panneau des bobines n'affiche aucune épingle (préexistant). Les reproductions R1 à R4 rougissent désormais ; R5 ne
+le peut pas dans le simulateur du relecteur (il ne filtre que par `comment_id`) : son scénario est le cas ⑫.
 
 **Ce qui reste.** La contre-revue humaine de la PR de migration, son attestation (production ET staging), son
 application, la mesure au canal ① ; la ligne RV-38 ne se ferme qu'avec cette preuve.
