@@ -3049,7 +3049,12 @@ function loadReelComments(postId) {
     const timeStr = _ts ? fmtTime(_ts) : "Maintenant";
     const likesCount = c.likes || 0;
     const isLiked = (c.likedBy || []).includes(state.user?.id || "me");
-    const replies = c.replies || [];
+    // Ce panneau liste les réactions emoji d'un commentaire et les COMPTE dans
+    // « N réponses » : celle d'un compte BLOQUÉ n'y entre pas, même règle que la
+    // pastille du fil (`_reactionEmojiComptee`, app-04). Les réponses texte et
+    // les GIF sont des réponses, pas des réactions : ce filtre n'y touche pas.
+    const replies = (c.replies || []).filter(r => !r || r.type !== "emoji_reaction"
+      || typeof _reactionEmojiComptee !== "function" || _reactionEmojiComptee(r));
 
     let commentHTML = `
       <div class="reel-comment-item">

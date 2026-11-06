@@ -927,9 +927,25 @@ function _expandComments(threadId) {
 // commentaire sont agrégées en UN SEUL emoji (le plus fréquent) + le total ; un
 // clic ouvre la liste de QUI a réagi (et avec quoi). Identique partout.
 // ════════════════════════════════════════════════════════════════════════
+// Une réaction COMPTÉE : un emoji (un GIF est une réponse, rendue en image dans
+// la liste), et jamais celui d'un compte BLOQUÉ — son contenu est masqué, ses
+// interactions ignorées (`isBlocked`), comme ses commentaires. SEULE autorité de
+// ce qui entre dans une pastille « 😍 N » et dans la liste des réacteurs, d'une
+// PUBLICATION (`_postReactItems`) comme d'un COMMENTAIRE ou d'une réponse
+// (`_cmtReactions`). Filtré à l'AFFICHAGE, jamais à la lecture : la RLS laisse un
+// compte bloqué réagir sur une publication publique, ses lignes entrent dans
+// `comment.replies` (`supaLoadCommentInteractions`, app-08) comme dans
+// `post.reactions`, et un déblocage les rend sans relecture.
+// Verrou : `tests/e2e/reactions-commentaire-bloque.spec.js`.
+function _reactionEmojiComptee(r) {
+  return !!(r && r.type === "emoji_reaction" && !(typeof isBlocked === "function" && isBlocked(r.authorId)));
+}
 function _cmtReactions(comment) {
   // Emojis SEULEMENT dans la pastille — les GIF sont des réponses (image inline).
-  var arr = (comment && comment.replies || []).filter(function(r){ return r && r.type === "emoji_reaction"; });
+  // Un compte bloqué ne compte pas : la pastille, la liste des réacteurs
+  // (`openCommentReactors`) et le tri « Pertinents » (`_cmtRelevance`) lisent
+  // tous ici. Le temps réel ignorait déjà son AJOUT ; la lecture, non.
+  var arr = (comment && comment.replies || []).filter(_reactionEmojiComptee);
   return _dedupReactionsByAuthor(arr);
 }
 // Patch EN PLACE la pastille de réactions d'un commentaire/réponse (holder
@@ -1184,10 +1200,9 @@ function _postReactItems(postId) {
   // ignorées (`isBlocked`), comme ses commentaires. Filtré ICI, à l'affichage,
   // pour toutes les copies : depuis RV-39, ma copie `userPosts` reçoit aussi ce
   // que rend le serveur, et la RLS laisse un compte bloqué réagir à une
-  // publication publique (contre-revue du lot).
-  var reacts = arr.filter(function(r){
-    return r && r.type === "emoji_reaction" && !(typeof isBlocked === "function" && isBlocked(r.authorId));
-  });
+  // publication publique (contre-revue du lot). La règle est celle des
+  // commentaires, écrite UNE fois (`_reactionEmojiComptee`).
+  var reacts = arr.filter(_reactionEmojiComptee);
   return _dedupReactionsByAuthor(reacts).map(function(r){ return { authorId: r.authorId, text: r.text }; });
 }
 function _postReactChipHtml(postId) {
