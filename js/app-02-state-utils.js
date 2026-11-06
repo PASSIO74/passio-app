@@ -407,6 +407,55 @@ function _syncableState() {
   return s;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// UNE ÉCRITURE DÉJÀ FAITE N'EST PAS UN ÉCHEC (2026-11-06, consigne §16 ②)
+// ──────────────────────────────────────────────────────────────────────────
+// Un envoi part, la ligne est écrite, la RÉPONSE se perd (réseau coupé, page
+// en veille). La file renvoie le même identifiant : le serveur répond 23505.
+// Jusqu'ici le message (ou le commentaire) restait « ⚠️ non envoyé » et
+// repartait en file à chaque démarrage, POUR TOUJOURS — alors qu'il était en
+// base et lu par le destinataire. La règle : on ne conclut « déjà écrit » que
+// sur une PREUVE, en deux temps :
+//   ① le conflit porte sur la CLÉ PRIMAIRE de la table (le message PostgreSQL
+//      nomme `<table>_pkey`, ou son détail « Key (id)=… ») — jamais un
+//      « duplicate » vague, qu'une autre contrainte d'unicité produirait ;
+//   ② la ligne relue par son identifiant porte bien l'AUTEUR qui l'envoie.
+// Une relecture impossible ne prouve rien : l'appelant garde son échec.
+function _conflitClePrimaire(e, table) {
+  if (!e || String(e.code) !== "23505" || !table) return false;
+  var msg = String(e.message || ""), det = String(e.details || "");
+  var pk = new RegExp("\\b" + String(table).replace(/[^a-z0-9_]/gi, "") + "_pkey\\b", "i");
+  return pk.test(msg) || pk.test(det) || /Key\s*\(\s*id\s*\)/i.test(det);
+}
+async function _ligneDejaEnBase(table, id, colonneAuteur, auteur) {
+  if (typeof supa === "undefined" || !supa || !table || !id || !colonneAuteur || !auteur) return false;
+  try {
+    var r = await supa.from(table).select(colonneAuteur).eq("id", id).maybeSingle();
+    return !!(r && !r.error && r.data && String(r.data[colonneAuteur]) === String(auteur));
+  } catch (e) {
+    // Sûr (l'appelant garde son échec) mais jamais muet : une ReferenceError ou un
+    // changement du SDK éteindrait le rapprochement sans laisser de trace.
+    try { if (typeof diagLog === "function") diagLog("preuve_ecriture_illisible " + String((e && e.message) || e).slice(0, 80)); } catch (_) {}
+    return false;
+  }
+}
+
+// Le CODE FERMÉ d'un échec d'écriture, pour le flux d'action (contrats-actions.js) :
+//  · « reseau » : l'appareil n'a pas joint le serveur (estEchecReseau) — compté à
+//    part au pilotage, jamais comme un défaut du serveur ;
+//  · « limite » : le limiteur anti-abus du serveur (`rate_limit_insert`, P0001,
+//    sur presque toutes les tables d'écriture) — un refus LÉGITIME ;
+//  · null : garder le code de la base (42501, 23514…), qui nomme la cause.
+function _codeEchecEcriture(e) {
+  try {
+    if (!e) return null;
+    if (typeof estEchecReseau === "function" && estEchecReseau(e)) return "reseau";
+    if (String(e.code) === "P0001" && /rate limit/i.test(String(e.message || ""))) return "limite";
+  } catch (_) {}
+  return null;
+}
+
+
 // ---- VERDICT D'UNE ÉCRITURE SUPABASE ----
 // Deux pièges se cumulent et se ressemblent à l'œil nu :
 //  ① le SDK ne LÈVE PAS sur un refus RLS — il renvoie { error }. Un `await` dont

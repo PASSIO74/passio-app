@@ -24,6 +24,8 @@ L'atelier technique du PC (`dashboard/`) reste utile pour le détail ; il n'est 
 | Tout le détail technique | pour info (chantiers, résumés), chiffres clés, site, erreurs 7 j, activation, machines, jauges de capacité, coût, historique du voyant | Pause/Reprendre · Relancer · Fusionner ou refuser un chantier |
 | Réglages | protection automatique, retour arrière, appareils qui reçoivent les alertes, installation | Délestage · Coupures · Message à tous · Déconnexion |
 
+**Depuis le 2026-11-06** (`docs/AUTONOMIE_EXPLOITATION.md`) : « Tout le détail technique » commence par les **parcours critiques** (contrats d'action jugés sur le verdict de la base, avec leur dénominateur ; gris = trop peu pour conclure) et la **couverture** (ce qui n'est pas instrumenté est listé). « Machines » montre la **veille du pilotage** (son battement : ce qu'elle a lu et décidé) et la **politique d'automatisation** (ce que les machines font seules, ce qu'elles ne feront jamais). Un parcours critique en panne et une veille arrêtée ont chacun leur ligne « À faire ».
+
 **Tout geste part d'un seul toucher et s'annule pendant 5 s** (`armer`, `pilotage/pilotage.js`) : plus aucune boîte de confirmation du navigateur.
 
 **Alertes sur le téléphone** : `pg_cron` appelle la fonction toutes les 5 min (`action: "veille"`,

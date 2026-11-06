@@ -277,7 +277,7 @@ test("㉑ la veille délestage sans jamais tomber, et le pilote ne pose qu'une v
   assert.match(v, /const etape = async \(f:[^\n]*\n\s*try \{ return await f\(\); \} catch/, "chaque étape est isolée : une erreur ne casse pas la veille");
   assert.match(v, /await etape\(\(\) => delestageAuto\(admin, signaux\)\)/);
   // L'alerte voit l'aveuglement : la mesure de la veille entre dans le verdict, lue AVEC le reste.
-  assert.match(v, /Promise\.allSettled\(\[lireSante\(admin\),[^\n]*audience\(admin, 300\)\]\)/);
+  assert.match(v, /Promise\.allSettled\(\[lireSante\(admin\),[^\n]*audience\(admin, 300\), lireParcoursVeille\(admin\)\]\)/);
   assert.ok(v.indexOf("aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null") > 0
     && v.indexOf("aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null") < v.indexOf("const v = verdict(e);"), "le verdict de la veille reçoit la mesure d'aveuglement");
   const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));
@@ -360,7 +360,8 @@ test("㉓ tenirVerdict : une lecture incomplète ne fait jamais BAISSER le voyan
 test("㉔ la veille tient le voyant AVANT de décider l'alerte ; l'écran passe par verdictAffiche et aFaire", () => {
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
-  assert.match(v, /const incomplet = \[sante, signalements, github\]\.some\(\(r\) => r\.status === "rejected"\);/);
+  // Les parcours (2026-11-06) entrent dans le voyant : leur lecture manquée est une lecture incomplète.
+  assert.match(v, /const incomplet = \[sante, signalements, github, parc\]\.some\(\(r\) => r\.status === "rejected"\) \|\| !!\(parcoursVeille && parcoursVeille\.tronque\);/, "une lecture des parcours tronquée est une lecture incomplète");
   assert.match(v, /const vt = tenirVerdict\(prec, v, incomplet\);/);
   assert.match(v, /const actuel = \{ couleur: vt\.couleur, raisons: vt\.raisons,/);
   assert.ok(v.indexOf("tenirVerdict(") < v.indexOf("decideAlerte("), "le voyant est tenu avant que l'alerte ne décide");
@@ -1114,4 +1115,116 @@ test("㉛bis la fin du jeton se dit une semaine avant, et jamais sur une date ab
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   assert.match(fn.slice(fn.indexOf("async function lireGithub"), fn.indexOf("const sansJeton")), /github-authentication-token-expiration/);
   assert.match(fn, /statut === 401 \? " Le jeton du pilotage a expiré/);
+});
+
+// ─── Parcours critiques, battement, politique (2026-11-06) ────────────────────
+// Mutations éprouvées à la main : retirer `raisonsParcours` du verdict → ㉿①
+// rougit ; mettre la purge des battements hors politique → ㉿④ rougit.
+import { parcoursDuVoyant, SOURCES_VERDICT } from "../../supabase/functions/_shared/pilotage.js";
+import { bilanParcours, confirmerPannes } from "../../supabase/functions/_shared/parcours.js";
+import { resumerBattement } from "../../supabase/functions/_shared/battement.js";
+
+const T6 = Date.parse("2026-11-06T12:00:00Z");
+function fluxEchec(action, compte, i) {
+  const cid = "fl_v" + action.slice(0, 6) + i + "x" + compte;
+  const ts = new Date(T6 - 10 * 60e3).toISOString();
+  return [
+    { event_id: cid + "a", correlation_id: cid, action: "start", status: "ok", meta: { flow_action: action }, auth_uid: compte, received_at: ts, client_ts: ts },
+    { event_id: cid + "b", correlation_id: cid, action: "step", status: "error", meta: { step: "saved", rc: "42501" }, auth_uid: compte, received_at: ts, client_ts: ts },
+    { event_id: cid + "c", correlation_id: cid, action: "end", status: "error", meta: { step: "done" }, auth_uid: compte, received_at: ts, client_ts: ts },
+  ];
+}
+const panneBrute = () => bilanParcours([...fluxEchec("send_message", "u1", 1), ...fluxEchec("send_message", "u2", 2), ...fluxEchec("send_message", "u3", 3)], { maintenant: T6, garderComptes: true });
+// Confirmée comme le fait la fonction : les trois comptes relus anciens dans l'authentification.
+const panneMessages = () => confirmerPannes(panneBrute(), new Set(["u1", "u2", "u3"]));
+
+test("㉿① un parcours CRITIQUE en panne rend le voyant rouge ; l'écran juge l'heure écoulée", () => {
+  const v = verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: panneMessages() });
+  assert.equal(v.couleur, "rouge");
+  assert.match(v.raisons[0], /parcours « Envoyer un message » en panne/);
+  // L'écran lit la journée mais le voyant juge `recent` : une panne d'hier n'est pas rouge.
+  const vieux = { ...panneMessages(), recent: { parcours: bilanParcours([], { maintenant: T6 }).parcours } };
+  assert.equal(parcoursDuVoyant(vieux), vieux.recent);
+  assert.equal(verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: vieux }).couleur, "vert");
+  assert.ok(Object.keys(SOURCES_VERDICT).includes("parcours"), "parcours non lus : jamais de vert à l'écran");
+});
+
+test("㉿② le parcours en panne a sa ligne et son bouton ; la veille arrêtée est une urgence", () => {
+  const l = aFaire({ gestesGithub: true, github: { issues: [], runs: {} }, parcours: panneMessages() }, T6);
+  const x = l.find((y) => y.id === "parcours:send_message");
+  assert.ok(x, "ligne du parcours");
+  assert.equal(x.prio, 0);
+  assert.deepEqual(x.gestes.filter((g) => g.principal).map((g) => g.corps), [{ action: "relancer", cible: "sentinelle" }]);
+  assert.match(x.reference, /Codes : 42501 ×3/);
+  const bt = resumerBattement({ created_at: new Date(T6 - 3 * 3600e3).toISOString(), properties: {} }, 0, T6);
+  assert.equal(bt.etat, "arrete");
+  assert.equal(verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, battement: bt }).couleur, "rouge");
+  const lb = aFaire({ gestesGithub: true, github: { issues: [], runs: {} }, battement: bt }, T6);
+  const y = lb.find((z) => z.id === "veille:battement");
+  assert.equal(y.prio, 0);
+  assert.equal(y.gestes[0].ouvrir, PAGES_REGLAGE.cron);
+  assert.match(PAGES_REGLAGE.cron, /^https:\/\/supabase\.com\/dashboard\//, "lien autorisé par LIENS_SURS");
+});
+
+test("㉿③ sans jeton GitHub, la ligne du parcours dit ce qui manque au lieu de promettre", () => {
+  const l = aFaire({ gestesGithub: false, github: { issues: [], runs: {} }, parcours: panneMessages() }, T6);
+  const x = l.find((y) => y.id === "parcours:send_message");
+  assert.deepEqual(x.gestes, []);
+  assert.equal(x.quoi, "Il faut d'abord le jeton GitHub.");
+});
+
+test("㉿④ la fonction : chaque geste automatique passe par la politique, le battement part en dernier", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  for (const [f, id] of [["delestageAuto", "delestage_auto"], ["reveillerSentinelle", "reveil_sentinelle"], ["proposerRetour", "proposition_retour"]]) {
+    const corps = fn.slice(fn.indexOf("async function " + f), fn.indexOf("async function " + f) + 900);
+    assert.match(corps, new RegExp(`autoriser\\(POLITIQUE, "${id}"`), f + " consulte la politique");
+    assert.ok(corps.indexOf("autoriser(") < corps.indexOf("await ") || corps.indexOf("await ") < 0 || corps.indexOf("autoriser(") < corps.indexOf("admin."), f + " : la politique AVANT tout appel");
+  }
+  assert.match(fn, /morts\.length && autoriser\(POLITIQUE, "purge_abonnements_morts"\)\.ok/);
+  assert.match(fn, /autoriser\(POLITIQUE, "purge_battements"\)\.ok/);
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  assert.ok(v.indexOf("battre(admin") > v.indexOf("emettreCanari()"), "le battement prouve que la veille est allée au bout");
+  assert.ok(v.indexOf("decideAlerte(") < v.indexOf("battre(admin"), "l'alerte ne l'attend pas");
+  // Ce qui sort du réveil : des identifiants de parcours, jamais d'identité de compte.
+  const r = fn.slice(fn.indexOf("async function reveillerSentinelle"), fn.indexOf("async function estCompteAncien"));
+  assert.match(r, /p\.etat === "panne" && p\.panneConfirmee === true/);
+  assert.doesNotMatch(r, /comptesEchecIds/, "le réveil ne voit plus aucune identité : confirmerPannes les a retirées");
+  const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));
+  assert.match(et, /parcours: lireParcours\(admin\), battement: lireBattement\(admin\)/);
+  assert.match(et, /out\.politique = resumerPolitique\(\);/);
+});
+
+test("㉿⑤ une enquête VOISINE ne rend pas calme un parcours en panne ; une enquête sur LUI le prend en charge", () => {
+  const voisine = { numero: 7, titre: "[SENTINELLE] erreur sans rapport · 0000aaaa", labels: ["sentinelle"], pr: false, url: "https://github.com/x/y/issues/7" };
+  const l = aFaire({ gestesGithub: true, github: { issues: [voisine], runs: {} }, parcours: panneMessages() }, T6);
+  assert.equal(l.find((y) => y.id === "parcours:send_message").prio, 0);
+  const surLui = { numero: 8, titre: "[SENTINELLE] parcours send_message 42501 · 1234abcd", labels: ["sentinelle"], pr: false, url: "https://github.com/x/y/issues/8" };
+  const x = aFaire({ gestesGithub: true, github: { issues: [surLui], runs: {} }, parcours: panneMessages() }, T6).find((y) => y.id === "parcours:send_message");
+  assert.equal(x.enCours, true);
+  assert.equal(x.quoi, "La Sentinelle enquête sur ce parcours.");
+});
+
+test("㉿⑥ une panne NON confirmée (comptes neufs) n'est jamais rouge ni urgente : orange, prio 1", () => {
+  const brute = panneBrute();
+  const v = verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: brute });
+  assert.equal(v.couleur, "orange");
+  assert.match(v.raisons.join(" "), /\(à confirmer\)/);
+  assert.equal(aFaire({ gestesGithub: true, github: { issues: [], runs: {} }, parcours: brute }, T6).find((y) => y.id === "parcours:send_message").prio, 1);
+  const neufs = confirmerPannes(brute, new Set());
+  assert.equal(verdict({ sante: { erreursJs15: 0, api5xx15: 0 }, parcours: neufs }).couleur, "orange");
+  assert.match(neufs.parcours.find((p) => p.id === "send_message").raisons[0], /panne non confirmée : 0 compte/);
+});
+
+test("㉿⑦ chaque geste de la veille passe par la politique — les rappels aussi ; la réponse publique ne dit rien de l'état", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const r = fn.slice(fn.indexOf("async function rappels(admin: Admin)"), fn.indexOf("async function lireEtatMemorise"));
+  assert.match(r, /const pol = autoriser\(POLITIQUE, "rappels_activite"\);\s*if \(!pol\.ok\) return/);
+  assert.ok(r.indexOf("autoriser(") < r.indexOf("envoyerRappels("), "la politique AVANT l'envoi");
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  assert.match(v, /return json\(\{ ok: true \}\);/, "la veille s'appelle avec la clé anon : aucun oracle de l'état");
+  assert.doesNotMatch(v, /return json\(\{ ok: true, couleur/);
+  // La lecture des flux : à plat, sans lignes anonymes.
+  assert.match(fn, /\.not\("auth_uid", "is", null\)/);
+  assert.match(fn, /flow_action:meta->>flow_action,step:meta->>step,rc:meta->>rc/);
+  assert.doesNotMatch(fn.slice(fn.indexOf("async function lireLignesFlux"), fn.indexOf("async function lireLignesFlux") + 900), /,meta,/, "jamais `meta` entier");
 });

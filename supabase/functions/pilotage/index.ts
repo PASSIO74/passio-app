@@ -42,9 +42,13 @@ import {
   CLES_REGLAGES, COUPURES_AUTORISEES, normaliserReglage, normaliserMotif, decideDelestage, resumerReglages,
 } from "../_shared/reglages.js";
 import {
-  RETOUR, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
+  RETOUR, REVEIL, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
   continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt,
 } from "../_shared/autonomie.js";
+// Parcours critiques, politique d'automatisation, battement (2026-11-06).
+import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
+import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
+import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -119,7 +123,8 @@ async function veille(admin: Admin) {
   if (!plafond.ok) return json({ ok: true, ignore: "trop tôt" });
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
-  const [sante, signalements, github, dispo, rap, aud] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin), audience(admin, 300)]);
+  const t0 = Date.now();
+  const [sante, signalements, github, dispo, rap, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin), audience(admin, 300), lireParcoursVeille(admin)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
   // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
   // laisse une trace mesurable (analytics_events, user_id système).
@@ -128,7 +133,10 @@ async function veille(admin: Admin) {
     try { await admin.from("analytics_events").insert({ user_id: MARQUE_UID, event: "rappels_echec", properties: { message: m } }); } catch { /* */ }
   }
   const signaux: Audience | null = val(aud);
-  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null };
+  // Les parcours critiques (2026-11-06) entrent dans le voyant : un parcours
+  // CRITIQUE en panne (comptes serveur distincts, _shared/parcours.js) sonne.
+  const parcoursVeille = val(parc);
+  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null, parcours: parcoursVeille };
   // L'ALERTE D'ABORD : rien de ce qui suit (Netlify, GitHub, base) ne doit
   // pouvoir la retarder ni la faire taire.
   const v = verdict(e);
@@ -137,12 +145,14 @@ async function veille(admin: Admin) {
   // une lecture incomplète ne fait jamais BAISSER le voyant mémorisé — sinon
   // une lecture GitHub manquée sonne « Problème résolu », et la suivante
   // « Problème » de nouveau.
-  const incomplet = [sante, signalements, github].some((r) => r.status === "rejected");
+  // Une lecture des parcours TRONQUÉE (au-delà de 5 pages) ne prouve pas le calme :
+  // un flot de lignes peut pousser l'heure réelle hors de la lecture (revue adversariale).
+  const incomplet = [sante, signalements, github, parc].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque);
   // Une lecture incomplète laisse sa raison dans les journaux de la fonction : sans elle, rien ne disait
   // pourquoi le voyant mémorisé restait figé. Des codes et des délais, jamais une donnée.
   if (incomplet) {
     const raison = (r: PromiseSettledResult<unknown>) => (r.status === "rejected" ? String((r.reason && (r.reason as { message?: string }).message) || r.reason).slice(0, 120) : "ok");
-    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: raison(github) }));
+    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: raison(github), parcours: raison(parc) }));
   }
   const vt = tenirVerdict(prec, v, incomplet);
   const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, tenu: !!vt.tenu };
@@ -165,18 +175,30 @@ async function veille(admin: Admin) {
   const etape = async (f: () => Promise<Record<string, unknown>>) => {
     try { return await f(); } catch (err) { return { erreur: String((err as { message?: string })?.message || err).slice(0, 120) }; }
   };
+  // Chaque geste passe d'abord par la politique (_shared/politique-autonomie.js) :
+  // invalide, en observation ou en pause → aucun geste, l'observation continue.
   const delestage = await etape(() => delestageAuto(admin, signaux));
-  const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux));
+  const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux, parcoursVeille));
   const retour = await etape(() => proposerRetour(admin));
   const canari = await etape(() => emettreCanari());
+  // Le battement EN DERNIER : il prouve que la veille est allée au bout, et dit
+  // ce qu'elle a lu et décidé (_shared/battement.js). Son échec ne casse rien.
+  const pol = resumerPolitique();
+  const battement = await etape(() => battre(admin, contenuBattement({
+    lectures: { sante, signalements, github, parcours: parc, disponibilite: dispo, rappels: rap, audience: aud },
+    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, retour, canari }, politique: pol, parcours: parcoursVeille,
+    revision: REVISION, dureeMs: Date.now() - t0,
+  })));
   // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
   // appelable avec la seule clé anon (publique), et combien d'activités ont lieu
   // dans les 24 h ou combien de comptes sont abonnés ne regardent personne. Ils
   // se lisent dans `analytics_events` (marques `rappel_activite`, `rappels_echec`).
-  return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes,
-    delestage: delestage && "niveau" in delestage ? delestage.niveau : null,
-    sentinelleReveillee: !!(reveil && reveil.lance), retourPropose: !!(retour && retour.propose),
-    canari: !!(canari && canari.emis) });
+  // ⚠️ RÉPONSE PUBLIQUE MINIMALE (revue adversariale du 2026-11-06) : la veille
+  // s'appelle avec la clé anon. Le voyant et les décisions renvoyés servaient
+  // d'ORACLE pour régler une dilution des parcours. Tout se lit au pilotage, au
+  // battement (analytics_events) et dans les journaux de la fonction.
+  console.log("veille " + JSON.stringify({ couleur: actuel.couleur, sonne: d.sonner, envoyes, reveil: !!(reveil && reveil.lance), battement: !!(battement && battement.ecrit) }));
+  return json({ ok: true });
 }
 
 // Canari serveur (2026-10-31, VEILLE #627) : la veille ne s'éteint pas, le
@@ -192,6 +214,10 @@ async function emettreCanari(): Promise<Record<string, unknown>> {
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
 async function rappels(admin: Admin) {
+  // Un geste de la veille comme les autres : il pousse ET oublie les abonnements
+  // morts — sous la politique (revue adversariale du 2026-11-06).
+  const pol = autoriser(POLITIQUE, "rappels_activite");
+  if (!pol.ok) return { inactif: "politique:" + pol.raison };
   const pub = Deno.env.get("VAPID_PUBLIC_KEY"), priv = Deno.env.get("VAPID_PRIVATE_KEY");
   if (!pub || !priv) return { inactif: "VAPID absent" };
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
@@ -254,7 +280,8 @@ async function sonnerPilote(admin: Admin, titre: string, texte: string): Promise
     try { await webpush.sendNotification(s.subscription, payload, { TTL: 3600, urgency: "high" }); n++; }
     catch (e) { const c = (e as { statusCode?: number })?.statusCode; if (c === 404 || c === 410) morts.push(s.endpoint); }
   }));
-  if (morts.length) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch { /* */ } }
+  // Un refus PERMANENT (404/410) oublie l'abonnement — geste du catalogue (politique).
+  if (morts.length && autoriser(POLITIQUE, "purge_abonnements_morts").ok) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch { /* */ } }
   return n;
 }
 
@@ -265,6 +292,7 @@ async function etat(admin: Admin) {
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
     disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin), reglages: lireReglages(admin),
     historique: lireHistorique(admin), croissance: lireCroissance(admin),
+    parcours: lireParcours(admin), battement: lireBattement(admin),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
@@ -283,6 +311,8 @@ async function etat(admin: Admin) {
   // Ce qui agit seul, et pourquoi c'est éteint quand ça l'est (_shared/autonomie.js).
   out.autonomie = { reveilSentinelle: !!JETON_GH, retour: { mode: MODE_RETOUR, jeton: !!JETON_NETLIFY, proposition: await lireProposition(admin) } };
   out.gestesGithub = !!JETON_GH;
+  // La politique d'automatisation en vigueur (2026-11-06) : ce que les machines font seules.
+  out.politique = resumerPolitique();
   const maintenant = (out.utilisateurs as { maintenant?: Audience | null } | null)?.maintenant || null;
   out.aveugle = maintenant && maintenant.exact ? mesureAveugle(maintenant) : null;
   // Les tendances (2026-10-23) : chaque chiffre contre sa période précédente,
@@ -479,6 +509,8 @@ async function lireReglages(admin: Admin) {
 }
 
 async function delestageAuto(admin: Admin, a: Audience | null) {
+  const pol = autoriser(POLITIQUE, "delestage_auto");
+  if (!pol.ok) return { raison: "politique:" + pol.raison };
   const lignes = await lireLignesReglages(admin);
   if (!lignes) return { absente: true };
   const ligne = lignes.find((l) => l.cle === "delestage") || null;
@@ -540,11 +572,25 @@ async function journaliserReglage(admin: Admin, cle: string, valeur: unknown) {
 type GhEtat = { issues?: { pr: boolean; labels: string[] }[]; runs?: { sentinelle?: { etat?: string; le?: string } | null }; pause?: boolean };
 // ⚠️ Le paramètre ne s'appelle PAS `gh` : il masquerait la fonction `gh()`
 // qui parle à GitHub, et le dispatch lèverait « gh is not a function ».
-async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audience | null) {
+type ParcoursVeille = { parcours?: { id: string; etat: string; panneConfirmee?: boolean; comptesEchecAnciens?: number }[] } | null;
+async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audience | null, pc: ParcoursVeille = null) {
   if (!JETON_GH) return { inactif: true };
   if (!etatGh || !Array.isArray(etatGh.issues)) return { illisible: true };
-  if (!a || !a.exact || a.echecs30 == null) return { raison: "mesure_absente" };
-  const d = doitReveillerSentinelle({ pause: !!etatGh.pause, enquetes: enquetesEnCours(etatGh.issues), dernierRun: (etatGh.runs && etatGh.runs.sentinelle) || null, comptesErreurs: a.echecs30 });
+  const pol = autoriser(POLITIQUE, "reveil_sentinelle", { pause: !!etatGh.pause });
+  if (!pol.ok) return { raison: "politique:" + pol.raison };
+  // Deux sources d'échecs, et la plus forte décide (2026-11-06) :
+  //  · erreurs et refus comptés en BASE (pilotage_audience, comptes de > 24 h) ;
+  //  · un parcours en PANNE CONFIRMÉE (_shared/parcours.js, confirmerPannes dans
+  //    lireParcoursVeille) — un refus en HTTP 200 n'est ni une erreur JS ni un
+  //    appel en échec : sans cette source, il ne réveillait personne. Ses
+  //    comptes ont été relus dans l'authentification (même règle que
+  //    pilotage_audience : confirmés, créés depuis plus de 24 h) — dix comptes
+  //    neufs ne lancent rien.
+  const enPanne = pc && Array.isArray(pc.parcours) ? pc.parcours.filter((p) => p && p.etat === "panne" && p.panneConfirmee === true) : [];
+  const comptesParcours = enPanne.reduce((m, p) => Math.max(m, Number(p.comptesEchecAnciens) || 0), 0);
+  const mesure = a && a.exact && a.echecs30 != null ? a.echecs30 : null;
+  if (mesure == null && !comptesParcours) return { raison: "mesure_absente" };
+  const d = doitReveillerSentinelle({ pause: !!etatGh.pause, enquetes: enquetesEnCours(etatGh.issues), dernierRun: (etatGh.runs && etatGh.runs.sentinelle) || null, comptesErreurs: Math.max(mesure || 0, comptesParcours) });
   if (!d.reveiller) return { raison: d.raison };
   const plafond = await verifierPlafondEnBase(admin, "systeme:sentinelle-reveil", "sentinelle-reveil", { parMinute: 1, parHeure: 2 });
   if (!plafond.ok) return { raison: "plafond" };
@@ -554,8 +600,120 @@ async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audie
   const r = await gh(`/repos/${DEPOT}/actions/workflows/${RELANCES.sentinelle.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
   if (r.status !== 204) return { raison: "refus_github_" + r.status };
   cacheGh = null;
-  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.reveil, properties: { raison: d.raison } }); } catch { /* */ }
+  const parcoursEnPanne = comptesParcours >= REVEIL.comptesMin ? enPanne.map((p) => p.id).slice(0, 5) : [];
+  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.reveil, properties: { raison: d.raison, parcours: parcoursEnPanne } }); } catch { /* */ }
   return { lance: true };
+}
+
+/** Ce compte est-il confirmé et créé depuis au moins `ancienneteMs` ? Illisible = non. */
+async function estCompteAncien(admin: Admin, uid: string, ancienneteMs: number): Promise<boolean> {
+  try {
+    const { data, error } = await admin.auth.admin.getUserById(uid);
+    const u = !error && data ? data.user : null;
+    return !!(u && u.email_confirmed_at && Date.now() - dateUtc(u.created_at) >= ancienneteMs);
+  } catch { return false; }
+}
+
+// ─── Parcours critiques (2026-11-06, _shared/parcours.js) ───────────────────
+// Les lignes `flow` de la télémétrie, lues PAR PAGES (max-rows = 1 000) et
+// bornées : au-delà de PARCOURS_PAGES_MAX pages, le bilan porte sur les plus
+// récentes et le DIT (`tronque`). Le voyant juge l'heure écoulée ; l'écran
+// montre aussi la journée. Ce qui sort vers le téléphone : des NOMBRES et des
+// codes fermés — jamais une identité, jamais un texte écrit par un client.
+const PARCOURS_PAGES_MAX = 5;
+const PARCOURS_VOYANT_MS = 60 * 60e3;
+async function lireLignesFlux(admin: Admin, fenetreMs: number) {
+  const depuis = ilYa(fenetreMs);
+  const lignes: Record<string, unknown>[] = [];
+  for (let page = 0; page < PARCOURS_PAGES_MAX; page++) {
+    const { data, error } = await admin.from("telemetry_events")
+      // Les SEULES clés utiles de `meta`, à plat : un `meta` hostile peut peser des
+      // mégaoctets (revue adversariale). Et jamais une ligne sans identité serveur :
+      // elle ne pèse rien, et un flot anonyme repoussait l'heure réelle hors des pages.
+      .select("event_id,correlation_id,action,status,auth_uid,received_at,client_ts,app_version,flow_action:meta->>flow_action,step:meta->>step,rc:meta->>rc,synthetic:meta->>synthetic,trafic:meta->>trafic")
+      .eq("type", "flow").eq("env", "production").gte("received_at", depuis).not("auth_uid", "is", null)
+      .order("received_at", { ascending: false }).order("id", { ascending: false })
+      .range(page * MAX_LIGNES_POSTGREST, (page + 1) * MAX_LIGNES_POSTGREST - 1);
+    if (error) throw error;
+    const lot = (data || []) as Record<string, unknown>[];
+    lignes.push(...lot);
+    if (lot.length < MAX_LIGNES_POSTGREST) return { lignes, tronque: false };
+  }
+  return { lignes, tronque: true };
+}
+// Une panne ne sonne que CONFIRMÉE (revues du 2026-11-06). Pour chaque parcours
+// CANDIDAT (assez d'échecs chez assez de comptes, quel que soit son taux), on
+// relit dans l'authentification un échantillon TIRÉ AU HASARD (`melanger`) des
+// comptes en échec ET des comptes sans échec : la part des comptes ANCIENS
+// (confirmés, > 24 h, comme le réveil) se juge des deux côtés, et une nuée de
+// comptes neufs qui réussissent ne cache plus une panne (`confirmerPannes`).
+// Lectures par lots de 10, chacune bornée à 3 s, budget commun par passage ; un
+// compte que le budget n'a pas permis de relire est « non relu », jamais « neuf ».
+// `confirmerPannes` retire ensuite les identités : rien de nominatif ne sort.
+const RELECTURES_PAR_COTE = 20;
+const RELECTURES_PAR_PASSAGE = 120;
+const delaiBorne = <T,>(p: Promise<T>, ms: number, sinon: T) => Promise.race([p, new Promise<T>((r) => setTimeout(() => r(sinon), ms))]);
+async function confirmer(admin: Admin, ...bilans: Record<string, unknown>[]) {
+  const vus = new Map<string, boolean>();
+  const nonLus = new Set<string>();
+  let budget = RELECTURES_PAR_PASSAGE;
+  const aLire: string[] = [];
+  for (const b of bilans) {
+    for (const c of comptesAVerifier(b)) {
+      for (const cote of [c.F, c.N]) {
+        const tires = melanger(cote).filter((u: string) => !vus.has(u) && !aLire.includes(u));
+        for (const [i, uid] of tires.entries()) {
+          if (i < RELECTURES_PAR_COTE && budget > 0) { aLire.push(uid); budget--; } else nonLus.add(uid);
+        }
+      }
+    }
+  }
+  for (let i = 0; i < aLire.length; i += 10) {
+    const lot = aLire.slice(i, i + 10);
+    const r = await Promise.all(lot.map((uid) => delaiBorne(estCompteAncien(admin, uid, REVEIL.ancienneteMinMs), 3000, null as boolean | null)));
+    lot.forEach((uid, k) => { if (r[k] === null) nonLus.add(uid); else vus.set(uid, r[k] as boolean); });
+  }
+  const anciens = new Set([...vus].filter(([, ok]) => ok).map(([uid]) => uid));
+  const verifies = new Set(vus.keys());
+  return bilans.map((b) => confirmerPannes(b, { anciens, verifies, nonLus }));
+}
+async function lireParcours(admin: Admin) {
+  const { lignes, tronque } = await lireLignesFlux(admin, 864e5);
+  const maintenant = Date.now();
+  const [jour, recent] = await confirmer(admin,
+    bilanParcours(lignes, { maintenant, fenetreMs: 864e5, garderComptes: true }),
+    bilanParcours(lignes, { maintenant, fenetreMs: PARCOURS_VOYANT_MS, depuisMs: maintenant - PARCOURS_VOYANT_MS, garderComptes: true }));
+  return { ...jour, tronque, couverture: couvertureParcours(jour), recent: { fenetreMs: PARCOURS_VOYANT_MS, parcours: recent.parcours } };
+}
+async function lireParcoursVeille(admin: Admin) {
+  const { lignes, tronque } = await lireLignesFlux(admin, PARCOURS_VOYANT_MS);
+  const [b] = await confirmer(admin, bilanParcours(lignes, { maintenant: Date.now(), fenetreMs: PARCOURS_VOYANT_MS, garderComptes: true }));
+  return { ...b, tronque };
+}
+
+// ─── Battement de la veille (2026-11-06, _shared/battement.js) ──────────────
+async function battre(admin: Admin, contenu: Record<string, unknown>) {
+  const { data, error } = await admin.from("analytics_events").select("created_at").eq("event", BATTEMENT)
+    .eq("user_id", AUTEUR_BATTEMENT).order("created_at", { ascending: false }).limit(1);
+  if (error) return { ecrit: false, erreur: String(error.message || error).slice(0, 120) };
+  const dernier = data && data[0] ? dateUtc(data[0].created_at) : NaN;
+  if (Number.isFinite(dernier) && Date.now() - dernier < BATTEMENT_TOUTES_MS) return { ecrit: false, raison: "recent" };
+  const { error: ei } = await admin.from("analytics_events").insert({ user_id: AUTEUR_BATTEMENT, event: BATTEMENT, properties: contenu });
+  if (ei) return { ecrit: false, erreur: String(ei.message || ei).slice(0, 120) };
+  // Ses propres marques seulement : l'événement ET l'auteur système (runbook purge_battements).
+  if (autoriser(POLITIQUE, "purge_battements").ok) {
+    try { await admin.from("analytics_events").delete().eq("event", BATTEMENT).eq("user_id", AUTEUR_BATTEMENT).lt("created_at", ilYa(7 * 864e5)); } catch { /* */ }
+  }
+  return { ecrit: true };
+}
+async function lireBattement(admin: Admin) {
+  const [{ data, error }, n24] = await Promise.all([
+    admin.from("analytics_events").select("properties,created_at").eq("event", BATTEMENT).eq("user_id", AUTEUR_BATTEMENT)
+      .order("created_at", { ascending: false }).limit(1),
+    compter(admin.from("analytics_events").select("id", { count: "exact", head: true }).eq("event", BATTEMENT).eq("user_id", AUTEUR_BATTEMENT).gte("created_at", ilYa(864e5))),
+  ]);
+  if (error) throw error;
+  return resumerBattement(data && data[0] ? data[0] : null, n24);
 }
 // ─── fin réveil
 
@@ -672,6 +830,8 @@ async function remettrePrecedent(admin: Admin, cibleDemandee: string) {
   return { cible: p.cible.id, versionRemise: p.cible.commit, confirme };
 }
 async function proposerRetour(admin: Admin) {
+  const pol = autoriser(POLITIQUE, "proposition_retour");
+  if (!pol.ok) return { raison: "politique:" + pol.raison };
   if (MODE_RETOUR === "inactif") return { inactif: true };
   const rs = await netlify(`/sites/${SITE_NETLIFY}`);
   if (!rs.ok) return { raison: "netlify_" + rs.status };

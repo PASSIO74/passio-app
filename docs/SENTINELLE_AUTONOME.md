@@ -93,3 +93,7 @@ ouverte et `humain`, l'issue ne gêne rien.
 - `node --test tests/unit/sentinelle-taille-pr.test.mjs` (le snippet ASTRA-34 réel de
   deploy.yml, dont l'exclusion de la fiche) ;
 - `bash tests/ci/frontiere-confiance.sh` (les valeurs figées de claude-code.yml).
+
+## Quatrième famille : les parcours qui échouent (2026-11-06)
+
+`classerParcours` (`scripts/sentinelle-detecter.mjs`) lit les flux d'action (`type=flow`) et fait d'un parcours refusé — même en HTTP 200 — un candidat : contrat de `supabase/functions/_shared/contrats-actions.js`, identité serveur (`auth_uid`) obligatoire, refus légitimes et mises en file exclus, action « sans verdict » jamais retenue. Titre `[SENTINELLE] parcours <action> <code> · <condensé>` (aucun texte libre), une enquête par parcours (`zoneCible`). Confort comme les boutons : sa lecture qui échoue ne fait pas échouer la détection. La veille la réveille dès qu'un parcours est en panne chez ≥ 2 comptes anciens. Détail : `docs/AUTONOMIE_EXPLOITATION.md`.

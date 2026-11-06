@@ -3525,7 +3525,10 @@ async function setEventRsvp(id, rsvp) {
     try { if (typeof diagLog === "function") diagLog("rsvp KO " + id + " " + String(rsvp)); } catch (e) {}
     // Le refus serveur, avec son motif fermé (complete/annulee/passee) ou
     // « refus » — jamais le message affiché.
-    _rsvpRegle(false, (rsvp && window._irlRefusMotif) || "refus");
+    // Un refus sans motif fermé, pour un compte qui s'est DÉCLARÉ mineur, est la
+    // règle IRL (`irl_adult_only`) : « majorite », jamais une panne du parcours.
+    const _mineur = (() => { try { return typeof irlProposerEstMineur === "function" && irlProposerEstMineur() === true; } catch (e) { return false; } })();
+    _rsvpRegle(false, (rsvp && window._irlRefusMotif) || (rsvp && _mineur ? "majorite" : "refus"));
   };
   const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
   ev.attendees = strip(ev.attendees);

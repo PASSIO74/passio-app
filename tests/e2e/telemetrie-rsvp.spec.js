@@ -125,6 +125,17 @@ test.describe("Télémétrie — flow RSVP réglé au verdict", () => {
     expect(evs[1].meta.rc).toBe("refus");
   });
 
+  // 2026-11-06 : un compte qui s'est DÉCLARÉ mineur et que le serveur refuse sans
+  // motif nommé reçoit « majorite » — la règle IRL (irl_adult_only), jamais une panne.
+  test("③ bis refus d'un compte déclaré mineur : rc=majorite (refus de règle, contrats-actions.js)", async ({ page }) => {
+    await bootRsvp(page);
+    await page.evaluate(() => { state.user.isMinor = true; window.supaSetEventRsvp = async () => false; });
+    await page.evaluate(() => setEventRsvp("ev0", "maybe"));
+    const evs = chaine(await flow(page));
+    expect(evs[1].status).toBe("error");
+    expect(evs[1].meta.rc).toBe("majorite");
+  });
+
   // MUTATION : retirer `_rsvpRegle(true)` après `supaLeaveEvent` → start seul.
   test("④ désinscription : event_leave réglé ok ; refusée : saved error rc=refus", async ({ page }) => {
     await bootRsvp(page);
@@ -195,6 +206,6 @@ test.describe("Télémétrie — flow RSVP réglé au verdict", () => {
     expect(src).toMatch(/if \(window\._supaReal && window\.tel && tel\.flowStart\) _rsvpCid = tel\.flowStart\(/);
     // Les deux verdicts (inscription et désinscription) règlent le flow.
     expect((src.match(/_rsvpRegle\(true\)/g) || []).length).toBe(2);
-    expect(src).toMatch(/_rsvpRegle\(false, \(rsvp && window\._irlRefusMotif\) \|\| "refus"\)/);
+    expect(src).toMatch(/_rsvpRegle\(false, \(rsvp && window\._irlRefusMotif\) \|\| \(rsvp && _mineur \? "majorite" : "refus"\)\)/);
   });
 });

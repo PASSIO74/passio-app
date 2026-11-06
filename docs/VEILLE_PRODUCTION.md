@@ -106,3 +106,7 @@ Les titres de PR et d'issues sont neutralisés (`propre()` : une ligne, bornée,
 ## Retour arrière
 
 Supprimer les deux workflows retire entièrement ces canaux ; les scripts et leurs tests peuvent rester (aucune dépendance ailleurs, sauf `mesurerUsage` importé par le digest).
+
+## Neuvième signal : le battement de la veille du pilotage (2026-11-06)
+
+La veille Supabase (pg_cron, 5 min) écrit à la fin de chaque passage utile un battement (`analytics_events`, `pilotage_battement`) qui dit ce qu'elle a lu et décidé. Ce lecteur-ci, chez GitHub, en est le **chien de garde extérieur** : battement périmé (> 35 min) = ALERTE « le téléphone ne sonnera plus », avec le geste (job `pilotage_veille`, journaux de la fonction) ; absent ou incomplet = ATTENTION. Même règle que l'écran : `resumerBattement` (`supabase/functions/_shared/battement.js`).

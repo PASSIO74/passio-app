@@ -272,6 +272,8 @@
     rendreErreurs(d);
     rendreUtilisateurs(d);
     rendreMachines(d);
+    rendreParcours(d);
+    rendreVeille(d);
     rendreCapacite(d);
     rendreCroissance(d);
     rendreHistorique(d);
@@ -757,6 +759,88 @@
     const rl = vider("relances");
     if (!d.relancesPossibles || !d.relancesPossibles.length) rl.append(carte("Gestes indisponibles", "", "Pour agir depuis le téléphone (relancer, fusionner, fermer, pause), pose le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». La Sentinelle tourne quand même toute seule.", "gris"));
     (d.relancesPossibles || []).forEach((x) => { const c = carte(x.libelle, "", ""); bouton(c, "Lancer maintenant", { action: "relancer", cible: x.cle }); rl.append(c); });
+  }
+
+  // ─── Parcours critiques (2026-11-06) ──────────────────────────────────────
+  // Chaque contrat d'action (_shared/contrats-actions.js) avec son dénominateur,
+  // sa fenêtre et sa fraîcheur. L'état affiché est celui de la DERNIÈRE HEURE
+  // quand elle est en panne ou dégradée (c'est elle qui juge le voyant), sinon
+  // celui de la journée. Gris = trop peu pour conclure : jamais un vert par défaut.
+  const ETATS_PARCOURS = { panne: ["En panne", "rouge"], degrade: ["Dégradé", "orange"], sain: ["OK", "vert"], insuffisant: ["Trop peu", "gris"], non_observe: ["Pas vu", "gris"] };
+  const RANG_PARCOURS = { panne: 0, degrade: 1, sain: 2, insuffisant: 3, non_observe: 4 };
+  function rendreParcours(d) {
+    const z = vider("parcours"), cv = vider("couverture");
+    const p = d.parcours;
+    if (!p) { nonLu("parcours", "Parcours critiques", "parcours"); return; }
+    if (Array.isArray(p.contratsInvalides) && p.contratsInvalides.length) { z.append(carte("Contrats d'action invalides", "Non jugé", p.contratsInvalides.join(" · "), "orange")); return; }
+    const recent = new Map(((p.recent && p.recent.parcours) || []).map((x) => [x.id, x]));
+    const etatDe = (x) => { const r = recent.get(x.id); return r && (r.etat === "panne" || r.etat === "degrade") ? r.etat : x.etat; };
+    const liste = (Array.isArray(p.parcours) ? p.parcours : []).slice()
+      .sort((a, b) => (RANG_PARCOURS[etatDe(a)] - RANG_PARCOURS[etatDe(b)]) || ((a.criticite === "critique" ? 0 : 1) - (b.criticite === "critique" ? 0 : 1)));
+    for (const x of liste) {
+      const etat = etatDe(x), r = recent.get(x.id);
+      const [mot, coul] = ETATS_PARCOURS[etat] || ["?", "gris"];
+      const morceaux = [];
+      if (x.juges) morceaux.push(x.reussis + " réussie(s) sur " + x.juges + " jugée(s) en 24 h (" + String(x.tauxSucces).replace(".", ",") + " %)");
+      else morceaux.push(x.tentes ? x.tentes + " action(s) en 24 h, aucune encore jugée" : "aucune action en 24 h");
+      if (x.refuses) morceaux.push(x.refuses + " refus de règle (complet, annulée…)");
+      if (x.attente) morceaux.push(x.attente + " en file locale");
+      if (x.reseau) morceaux.push(x.reseau + " coupure(s) réseau de l'appareil");
+      if (x.anonymes) morceaux.push(x.anonymes + " sans compte (non comptées)");
+      if (x.inconnus) morceaux.push(x.inconnus + " sans verdict");
+      if (x.p95Ms != null) morceaux.push("p95 " + Math.round(x.p95Ms) + " ms pour " + x.objectifP95Ms + " ms visés (" + x.mesures + " mesures)");
+      const c = carte(x.libelle + (x.criticite === "critique" ? " ★" : ""), mot, morceaux.join(" · "), coul);
+      if (r && r !== x && (r.etat === "panne" || r.etat === "degrade")) c.append(el("p", "discret", "Dernière heure : " + ((r.raisons && r.raisons[0]) || "")));
+      else if (etat !== "sain" && x.raisons && x.raisons[0]) c.append(el("p", "discret", x.raisons[0]));
+      if (Array.isArray(x.codes) && x.codes.length) c.append(el("p", "discret", "Codes des échecs : " + x.codes.map((k) => k.code + " ×" + k.n).join(", ")));
+      if (x.dernier) c.append(el("p", "discret", "dernière action " + ilYA(x.dernier)));
+      z.append(c);
+    }
+    const notes = [];
+    if (p.tronque) notes.push("Lecture partielle : les étapes les plus récentes seulement.");
+    if (p.orphelins) notes.push(p.orphelins + " fin(s) sans début dans la fenêtre (non jugées).");
+    if (p.horsContrat) notes.push(p.horsContrat + " action(s) hors contrat (ancienne version de l'app).");
+    if (notes.length) z.append(el("p", "discret", notes.join(" ")));
+    const co = p.couverture;
+    if (co) {
+      const manque = Array.isArray(co.nonInstrumentes) ? co.nonInstrumentes : [];
+      const c = carte("Couverture de la surveillance", manque.length ? "Partielle" : "Complète",
+        co.sousContrat + " parcours sous contrat (" + co.critiques + " critiques), " + co.observes + " vu(s) en 24 h, " + co.jugeables + " jugeable(s). " + manque.length + " recensé(s) mais pas encore instrumenté(s) :", manque.length ? "orange" : "vert");
+      manque.forEach((m) => c.append(el("p", "discret", "• " + m.libelle + " — vu seulement par : " + m.vuPar)));
+      cv.append(c);
+    }
+  }
+
+  // ─── La veille et la politique (2026-11-06) ───────────────────────────────
+  // Le battement : la preuve que la veille de 5 min est allée au bout, et ce
+  // qu'elle a décidé. La politique : ce que les machines font seules, et ce
+  // qu'elles ne feront jamais.
+  const ETATS_BATTEMENT = { vivant: ["Elle tourne", "vert"], incomplet: ["Incomplète", "orange"], arrete: ["Arrêtée", "rouge"], jamais: ["Aucun battement", "orange"] };
+  function rendreVeille(d) {
+    const b = d.battement;
+    if (!b) nonLu("veilleBattement", "Veille du pilotage", "battement");
+    else {
+      const z = vider("veilleBattement");
+      const [mot, coul] = ETATS_BATTEMENT[b.etat] || ["?", "gris"];
+      const reg = b.battements24h != null ? b.battements24h + "/" + b.attendus24h + " battements en 24 h" : "";
+      const c = carte("Veille du pilotage (Supabase, toutes les 5 min)", mot, [(b.raisons || [])[0] || "", reg].filter(Boolean).join(" · "), coul);
+      if (b.le) c.append(el("p", "discret", "dernier battement " + ilYA(b.le) + (b.revision ? " · révision " + b.revision : "")));
+      const g = b.gestes && typeof b.gestes === "object" ? Object.entries(b.gestes) : [];
+      if (g.length) c.append(el("p", "discret", "Décisions : " + g.map(([k, v]) => k + " → " + v).join(" · ")));
+      z.append(c);
+    }
+    const zp = vider("politique");
+    const p = d.politique;
+    if (!p) return;
+    const circuits = p.circuits || {};
+    const c = carte("Politique d'automatisation v" + p.version, !p.valide ? "Invalide" : p.mode === "applique" ? "Appliquée" : "Observation",
+      (p.autonomes || 0) + " geste(s) faits seuls, bornés et vérifiés · " + (p.sensibles || 0) + " geste(s) sensibles jamais autonomes.", p.valide ? "vert" : "rouge");
+    const seuls = [...(circuits.A || []), ...(circuits.B || [])].map((x) => x.libelle);
+    if (seuls.length) c.append(el("p", "discret", "Faits seuls : " + seuls.join(" · ")));
+    if ((circuits.C || []).length) c.append(el("p", "discret", "Jamais seuls : " + circuits.C.map((x) => x.libelle).join(" · ")));
+    if (!p.valide && Array.isArray(p.erreurs) && p.erreurs.length) c.append(el("p", "discret", p.erreurs.join(" · ")));
+    if (p.pause) c.append(el("p", "discret", "Pause : " + p.pause));
+    zp.append(c);
   }
 
   function rendreCapacite(d) {

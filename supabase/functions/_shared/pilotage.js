@@ -9,6 +9,8 @@
 // tests/unit/pilotage.test.mjs, le même fichier que Deno déploie.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { raisonsVerdict as raisonsParcours, parcoursARegler } from "./parcours.js";
+
 /** Le compte de l'éditeur (même adresse que PASSIO_EDITEUR.email, js/legal-textes.js). */
 export const COMPTE_PILOTE = "passioadmin@gmail.com";
 
@@ -105,6 +107,19 @@ export function verdict(e) {
   if (s.api5xx15 >= 5) rouge.push(`${s.api5xx15} pannes serveur en 15 min`);
   else if (s.api5xx15 > 0) orange.push(`${s.api5xx15} panne(s) serveur en 15 min`);
   if (runs.deploy && runs.deploy.conclusion === "failure") rouge.push("dernier déploiement en échec");
+  // Les parcours critiques (2026-11-06, _shared/parcours.js) : jugés sur l'heure
+  // écoulée (`recent` à l'écran, la lecture d'une heure dans la veille). Un
+  // parcours CRITIQUE en panne — comptes serveur distincts — est rouge, donc
+  // sonne ; « insuffisant » et « non observé » ne colorent rien.
+  const pv = raisonsParcours(parcoursDuVoyant(e && e.parcours));
+  rouge.push(...pv.rouge); orange.push(...pv.orange);
+  // Une lecture des parcours tronquée ne prouve pas le calme : elle se dit.
+  if (e && e.parcours && e.parcours.tronque) orange.push("parcours : lecture partielle (trop d'étapes sur la fenêtre) — le calme n'est pas prouvé");
+  // La veille elle-même (le battement) : si elle ne tourne plus, le téléphone
+  // ne sonnera pas — c'est la seule panne que la veille ne peut pas annoncer.
+  const bt = e && e.battement;
+  if (bt && bt.etat === "arrete") rouge.push(bt.raisons && bt.raisons[0] ? bt.raisons[0] : "la veille ne tourne plus");
+  else if (bt && bt.etat === "jamais") orange.push("la veille n'a encore laissé aucun battement");
   // Télémétrie au plafond (2026-10-11) : les compteurs ci-dessus SOUS-ESTIMENT,
   // un vert ne prouverait plus rien — on le dit au lieu de le taire. Le mur
   // est celui que mesure la veille (`e.aveugle`, mesureAveugle) : sous
@@ -146,7 +161,13 @@ export function verdict(e) {
 /** Les sources dont dépend le voyant, et leur nom pour le pilote. */
 export const SOURCES_VERDICT = Object.freeze({
   sante: "erreurs de l'app", github: "GitHub (enquêtes, mises en ligne)", signalements: "signalements", disponibilite: "disponibilité du site",
+  parcours: "parcours critiques", battement: "battement de la veille",
 });
+
+/** Le bilan qui juge le voyant : l'heure écoulée (`recent`) quand l'écran a lu la journée. */
+export function parcoursDuVoyant(p) {
+  return p && p.recent && Array.isArray(p.recent.parcours) ? p.recent : p || null;
+}
 /** Parmi les parties non lues, celles qui comptent pour le voyant (noms lisibles). */
 export function sourcesManquantes(nonLus) {
   const l = Array.isArray(nonLus) ? nonLus : [];
@@ -254,6 +275,8 @@ export const PAGES_REGLAGE = Object.freeze({
   calcul: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/settings/compute-and-disk",
   netlify: "https://app.netlify.com/",
   brevo: "https://app.brevo.com/",
+  cron: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/integrations/cron/jobs",
+  logsPilotage: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/functions/pilotage/logs",
 });
 
 // ─── PALIERS DE CROISSANCE (2026-11-01) ─────────────────────────────────────
@@ -452,6 +475,38 @@ export function aFaire(d, maintenant = Date.now()) {
     else if (analyse) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle l'analyse." });
     else if (vue) ajoute({ ...base, prio: 2, quoi: "La Sentinelle l'a vue : rien à corriger." });
     else ajoute({ ...base, prio: recentes.some((x) => Number(x.n) >= 10) ? 0 : 1, quoi: "La Sentinelle s'en occupe.", gestes: relancer("sentinelle") });
+  }
+  // Les parcours critiques en échec (2026-11-06) : une ligne par parcours, du
+  // plus grave au moins grave. Le bouton lance la Sentinelle, qui lit désormais
+  // les fins de parcours en échec (famille « parcours », sentinelle-detecter.mjs).
+  const rsP = runs.sentinelle;
+  const analyseP = !!(rsP && rsP.etat && rsP.etat !== "completed");
+  for (const p of parcoursARegler(parcoursDuVoyant(d && d.parcours))) {
+    const panne = p.etat === "panne";
+    const codes = Array.isArray(p.codes) && p.codes.length ? " Codes : " + p.codes.map((c) => c.code + " ×" + c.n).join(", ") + "." : "";
+    const base = { id: "parcours:" + p.id, etiquette: panne ? "En panne" : "Dégradé",
+      titre: "« " + p.libelle + " » " + (panne ? "échoue" : "se dégrade"),
+      reference: borne(String((p.raisons && p.raisons[0]) || "") + " (dernière heure)." + codes, 300) };
+    // Seule une enquête sur CE parcours (titre `[SENTINELLE] parcours <id> …`,
+    // titreIssue) le prend en charge : une enquête voisine ne le rend pas calme.
+    const surLui = issues.some((i) => !i.pr && Array.isArray(i.labels) && i.labels.includes("sentinelle") && !i.labels.includes("humain")
+      && String(i.titre || "").startsWith("[SENTINELLE] parcours " + p.id + " "));
+    if (surLui) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle enquête sur ce parcours." });
+    else if (analyseP) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle l'analyse." });
+    // Urgence (prio 0) : une panne CONFIRMÉE par des comptes anciens (confirmerPannes), jamais une autre.
+    else ajoute({ ...base, prio: panne && p.panneConfirmee === true && p.criticite === "critique" ? 0 : 1, quoi: "La Sentinelle enquête sur ce parcours.", gestes: relancer("sentinelle") });
+  }
+  // La veille elle-même (2026-11-06) : sans battement frais, le téléphone ne
+  // sonnera plus. Rien ne peut la relancer d'ici : le bouton mène à sa planification.
+  const bt = d && d.battement;
+  if (bt && (bt.etat === "arrete" || bt.etat === "jamais")) {
+    ajoute({ id: "veille:battement", prio: bt.etat === "arrete" ? 0 : 1, etiquette: "Machines",
+      titre: bt.etat === "arrete" ? "La veille ne tourne plus : le téléphone ne sonnera pas" : "La veille n'a encore laissé aucun battement",
+      quoi: "Ouvre la planification de la veille dans Supabase.",
+      reference: borne(String((bt.raisons && bt.raisons[0]) || "") + ". Vérifie que le job pilotage_veille est actif (Integrations › Cron), puis les journaux de la fonction pilotage.", 300),
+      gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.cron }, { libelle: "Journaux de la fonction", ouvrir: PAGES_REGLAGE.logsPilotage }] });
+  } else if (bt && bt.etat === "incomplet") {
+    ajoute({ id: "veille:incomplete", prio: 2, etiquette: "Machines", titre: "La dernière veille n'a pas tout lu", detail: borne((bt.raisons || []).join(" · "), 300) });
   }
   // Les pannes du serveur : la veille les lit (la Sentinelle ne lit que les erreurs de l'app).
   const pannes = Number(d && d.sante && d.sante.api5xx15) || 0;
