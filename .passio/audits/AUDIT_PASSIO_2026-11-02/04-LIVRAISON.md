@@ -314,3 +314,222 @@ Verdict : rien n'a cassé sur les cinq tables dans les 24 h qui ont suivi R25. C
 **Ce qui n'est pas prouvé en production** : la réception par un vrai client. Une poussée écrite n'est pas une poussée reçue, et l'éprouver demanderait d'y écrire à deux comptes connectés. Le staging l'a prouvée avec le même fichier. Aucune mesure serveur ne verra la réception : en production, le premier signe viendra d'un compte réel, et aucune notification ni aucun message réel n'y avait été écrit depuis 72 h à 14:46.
 
 **Lu le 06/11** : `client_errors` sur les 24 h qui suivent la seconde couche (de 2026-11-04 14:25:07 à 2026-11-05 14:25:07) : 0 ligne, et 0 depuis (la dernière date du 03/11 à 20:46 — la table vit, 5 lignes sur 7 jours). Côté télémétrie, 4 erreurs sur la même fenêtre, d'un seul appareil du public : `admission (declare) : TypeError: Failed to fetch`, deux fois au chargement de `7368076b`, deux fois à celui de `38d24ad2` — une requête coupée au changement de version, sans rapport avec R25. Les journaux sont au § 8.6.
+
+## 9. C-02 et RV-44 — l'appartenance ne se lit plus sur autrui (2026-11-06)
+
+**Préparé, PAS appliqué.** La contre-vérification de l'état d'après C-04 (06/11, registre R41, RV-44) a trouvé une voie que
+C-04 ne ferme pas : `is_conv_member(_conv_id, _uid)` (C-02, `SECURITY DEFINER`, EXECUTE pour `authenticated`) répond pour
+N'IMPORTE QUEL `_uid`. Depuis le bloc ⑥ de C-04, la discussion `evgrp_<activité>` ne contient plus que les venants et
+l'organisation, et le client y inscrit d'office chaque « je viens » : un compte connecté reconstituait donc, profil par profil
+(`profiles` se lit par tous), qui vient à toute activité qui a une discussion — par `POST /rest/v1/rpc/is_conv_member`. Et la
+policy SELECT posée par C-04 cachait au CRÉATEUR de la discussion un membre bloqué avec lui ; un DELETE dont le WHERE lit des
+colonnes applique aussi les policies SELECT : « Suppression admin » touchait 0 ligne, le membre restait, et
+`removeGroupMember` annonçait « retiré·e du groupe ». Fiche : `docs/journal/serveur-securite-base.md` (« 🔐 C-02 / R41, RV-44 —
+L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI… »).
+
+**Revu le 06/11 avant toute attestation** par trois agents relecteurs Claude Code (sécurité, compatibilité, banc), chaque
+trouvaille grave contre-vérifiée par un sceptique : cinq défauts confirmés, tous corrigés — l'ordre des conjonctions
+d'`is_conv_member` (corrigé comme hygiène : le canal de temps qui reste est une propriété de la RLS, au résidu), un verdict qui
+n'était pas fermé sur l'échec de sa PROPRE mesure, et trois défauts du client (le chemin serveur pris pour ce que le serveur n'a
+jamais eu ; « 0 ligne » lu comme « toujours membre » ; le succès qui repeignait, après l'aller-retour, une modale fermée et le
+fil d'une autre conversation) — et treize mineurs, corrigés ci-dessous ou consignés (RV-49, RV-50, RV-51 ; R36 ; R42).
+**Contre-revu ensuite sur sa tête** (§ 9.7) : rien de bloquant ; les mineurs trouvés sont corrigés ou consignés (RV-52, RV-53,
+R18, R32). Le sha256 ci-dessous est celui du fichier d'après la contre-revue : l'attestation, pas encore posée, se fait sur LUI.
+
+### 9.1 Migration
+
+| Fichier | Objet | Banc | Quand |
+|---|---|---|---|
+| `migration_discussions_activite_2026-11-06.sql` (sha256 `2d423d5f8b0b50d6482e7bdc2b68e2c527b2645c32782bf15f35299b093026b4`) | ① `is_conv_member` : même signature, mêmes attributs (sql, STABLE, SECURITY DEFINER, `search_path` vide), mêmes droits (réaffirmés : postgres, authenticated, service_role) ; avec une session, l'appartenance n'est rendue QUE pour l'appelant — `(_uid = (auth.uid())::text or auth.uid() is null) and exists(…)` : l'appelant est contrôlé AVANT la lecture (sur autrui, conv_members n'est pas lu), et l'égalité vient en tête (les policies n'évaluent auth.uid() qu'une fois) ; sans session (postgres, service_role, déclencheurs hors requête cliente) : inchangée. ② `conv_members_select_member` : le texte de C-04, plus `or public.is_conversation_creator(conv_id)` dans la disjonction propre aux discussions d'activité — le créateur voit, donc retire, tous ses membres | `tests/sql/migration-discussions-activite.test.sh` **168/0** | APRÈS C-04 (appliquée le 06/11) ; indépendante du client ; pas de `PREREQUIS-CLIENT` |
+
+**Inventaire des appelants, mesuré au canal ① le 06/11 (10:15–10:25 UTC)** par trois chemins — `pg_depend`, le corps de
+toutes les fonctions de tous les schémas, les expressions de toutes les policies : 11 policies et 14 appels, TOUS avec
+`(( SELECT auth.uid() AS uid))::text` pour second argument (conv_members ×1, conv_messages ×3, conv_reads ×3, conversations ×1,
+realtime.messages ×2, storage.objects ×1) ; `storage_chemin_autorise` (SECURITY INVOKER), par les deux policies d'écriture de
+storage.objects, passe aussi l'appelant ; `trg_reports_preuve_message` passe `new.reporter_id`, que la WITH CHECK de
+`reports_insert` lie à l'appelant (évaluée avant les déclencheurs AFTER ; aucune fonction n'écrit dans `reports`). Aucune vue,
+aucun défaut, aucune contrainte ; aucun appel du client, d'une fonction Edge, du pilotage ni de netlify/. Agrégats : 2
+discussions d'activité, 2 membres (chacun son créateur), 0 blocage, 0 activité à venir — personne n'est exposé aujourd'hui.
+Relevé de nouveau vers 15:00 UTC (catalogue) : la production est toujours AVANT la migration (corps `da6bf4bb…`, policy
+`de15394b…`), `auth.uid()`, `is_conversation_creator` et `is_blocked_with` à l'empreinte du socle du banc, et les déclencheurs
+BEFORE de conv_messages (`trg_rate_limit`, barrière, identifiants figés) — que le banc modélise désormais.
+
+**Verdict, fermé sur échec jusqu'à sa propre mesure (17 lignes, TOUTES bloquantes)** : le COMPORTEMENT (1 à 9, 16, 17) sur un
+décor synthétique dans une sous-transaction ANNULÉE — trois profils inventés (`00000000-0000-4000-8000-00000000c2a1` à
+`…c2a3`), une discussion `evgrp_zz-verdict-c02-<aléa>`, un groupe ordinaire dont K n'est PAS membre, une conversation 1-à-1,
+deux blocages ; `set local role authenticated` et l'identité (`request.jwt.claim.sub` ET `request.jwt.claims`, puis
+`request.jwt.claims` seul, claim.sub vide et RELEVÉ) ; CHAQUE mesure dans son propre bloc (une erreur levée par le correctif —
+42P17, 54001 — s'écrit en SQLSTATE dans sa clé et fait rougir SA ligne) : l'oracle est fermé (A sur W, K, la 1-à-1, N : faux),
+sa propre appartenance se lit, sans session inchangée, le créateur voit et RETIRE le membre bloqué (DELETE … RETURNING), un autre
+membre ne le voit pas, aucune trace (message refusé et poussées `realtime.messages` compris), le TÉMOIN NÉGATIF (K hors du
+groupe : appartenance fausse, 0 conversation, 0 membre, son message refusé par la RLS), le créateur qui se retire ne voit plus
+rien ; la ligne 1 exige un décor construit (`decor = ok`), toutes les mesures, ni erreur ni rôle inattendu — et BLOQUE : un décor
+en panne fait relancer, jamais appliquer sans mesure. Le CATALOGUE (10 à 15) : l'état d'avant (corps `da6bf4bb…` ou déjà
+celui-ci, policy de C-04 `de15394b…` ou déjà celle-ci), corps et attributs (md5 `814ad66c9ba408db34f3435b2a559788`), ACL exacte,
+texte de la policy et empreintes des fonctions qu'elle appelle (`is_blocked_with`, `is_conversation_creator`, `auth.uid()`), les 11
+policies de `pg_depend` — et RIEN d'autre n'en dépend : le compte porte sur TOUS les dépendants (une vue, une fonction BEGIN
+ATOMIC, dont le `prosrc` est vide, ou un défaut y échappaient ; dérives D11 et D12 du banc) — et les deux fonctions qui la
+citent (corps de production), le déclencheur de `reports` et `reports_insert`. Une ligne en ECHEC lève 55000 et RIEN n'est appliqué. Le décor appelle `realtime.send`
+(`trg_diffuser_ajout_membre`) vers `user:<uuid inventé>` : annulé avec la sous-transaction, jamais décodé (prouvé sur un slot
+logique au banc, avec un témoin positif).
+
+**Verrous** (contre-revue du 06/11 au soir, banc § ⑩) : la policy prend l'ACCESS EXCLUSIVE de conv_members, tenu jusqu'au
+commit — 46 à 55 ms au banc. La migration attend au plus 3 s pour le PRENDRE ; une fois tenu, toute autre attente est bornée à
+200 ms — sans cette seconde borne, `realtime.send` (que le décor déclenche sept fois et qui AVALE 55P03) prolongeait la détention
+de 3 s par appel : 27 s mesurées, messagerie gelée, quand une autre session tenait `realtime.messages`. Une contention fait
+échouer la migration ENTIÈRE en 55P03, rien n'est appliqué ; pendant l'attente (au plus 3 s), la messagerie fait la queue.
+Ce n'est PAS le rechargement du cache de PostgREST qui la fait attendre : c'est lui qui attend la migration (RV-42, relu).
+
+**Coût** (banc jetable, PostgreSQL 16.15, 22 appartenances, `request.jwt.claims` seul avec la charge utile d'un jeton Supabase
+Auth de 578 octets, deux séries de 5 tours) : un appel sur soi 28 µs au corps de production, 85–87 µs au corps d'avant la revue,
+76–82 µs au corps final ; une lecture de 40 messages par un membre 1 286–1 309 µs, 1 912–1 921 µs (+46 %), 1 623–1 671 µs
+(+26 à +28 %). Lectures de conv_members pour 100 appels sur autrui : 100, 100, **0**.
+
+### 9.2 Client (servi au déploiement, sans geste)
+
+`removeGroupMember` (`js/app-05-config-profil.js`) ne dit que ce que le serveur lui a rendu, par trois chemins :
+- **ce que le serveur n'a jamais pu avoir → retrait LOCAL, comme avant, sans requête** : un visiteur (`_compteAuthReel()` faux —
+  `_supaReal` est vrai pour tout appareil dès que le SDK se charge), une ébauche de groupe restée locale (`conv_grp_…`), un membre
+  dont l'identifiant n'est pas un uuid (les personnages de démonstration que « Nouveau groupe » propose : la clé étrangère
+  `conv_members.user_id → profiles` les refuse) ;
+- **compte réel qui ne peut pas joindre le serveur → rien ne change, et l'écran le dit** : session expirée (« reconnecte-toi »),
+  SDK non chargé (« le service n'a pas pu se charger : recharge l'application » — le SDK ne revient pas seul avec le réseau) —
+  le membre est en base : un groupe créé SANS SDK reste une ébauche `conv_grp_`, car `supaCreateGroup` (app-08) rend désormais
+  null quand le SDK n'est pas chargé (le client de repli « acceptait » tout et donnait un `grp_…` fantôme, qu'aucun retrait ne
+  pouvait plus vider ; contre-revue du soir) ;
+- **sinon le serveur tranche** : DELETE en `.select("user_id")`, `{ error }` ET le nombre de lignes lus ; 1 ligne → le
+  comportement d'avant ; une erreur → « le serveur a refusé », sauf une réponse 5xx (« pas confirmé » : le DELETE a pu être
+  validé) et un 401 (« reconnecte-toi ») ; une panne réseau (levée, ou rendue par postgrest-js en `status: 0`) → « pas de
+  connexion : le retrait n'a pas été confirmé » ; **0 ligne n'est pas « toujours membre »** : une
+  relecture de sa ligne et de la mienne — lui présent → « toujours membre » (lu) ; lui absent, moi visible → il n'y est déjà
+  plus, retrait local idempotent ; dans une discussion d'activité (`evgrp_`, où C-04 cache le membre bloqué à tout membre NON
+  créateur, même après la migration — et au créateur tant qu'elle n'est pas appliquée ; le bouton « Retirer » s'affiche à
+  tous) et dans tout autre doute → « le retrait n'a pas été confirmé par le serveur ».
+Le succès arrivant APRÈS l'aller-retour, la modale (`#modalBackdrop` actif, `_grpConvId`, `#grpPanel_members`) et le fil
+(`_openedConvId`) ne sont repeints que s'ils montrent encore ce groupe, et la modale rendue garde l'onglet « Ajouter » et sa recherche s'ils
+étaient ouverts. Un double toucher n'envoie qu'un DELETE ; une trace
+`diagLog` sans donnée personnelle (la cause et le code). La fonction reste globale (onclick inline). Verrou :
+`tests/e2e/retrait-membre-groupe.spec.js` **24/24** ; réinjections (code d'avant le lot, première version du correctif, chacune
+des gardes ôtée une à une, la tête d'avant la contre-revue — 5 rouges : quatre cas neufs et ⑪ dont l'attendu a changé —, puis
+la tête suivante — ②f, ③quinquies, ⑮ renforcé) dans la fiche du journal. Une session morte (le DELETE part alors sous la clé
+anon, que « Suppression admin » TO public admet : 200 [] et relecture vide) dit « reconnecte-toi » et pose le mode « session
+expirée », comme la publication ; un 429 ou un statut 0 non réseau dit « pas confirmé » ; la trace garde le statut HTTP ; le
+rendu tardif ne rend pas le focus à un champ quitté et garde le défilement de la liste. Avant la migration, un créateur qui retire un membre que C-04 lui
+cache lit « le retrait n'a pas été confirmé » ; après, le retrait passe.
+
+### 9.3 Application depuis le poste
+
+| # | Geste | Preuve attendue |
+|---|---|---|
+| 1 | PR du lot ; CI verte (le banc tourne par `scripts/bancs-sql-restants.sh`, sans toucher `.github/`) ; « Déploiement production » vert | job vert, le `app.js` servi porte `_relireAppartenance` |
+| 2 | contre-revue de la PR par PASSIO74, ancrée sur la tête (ASTRA-61 bis : le mainteneur unique, sur SA PR, en état COMMENTED — GitHub interdit de s'approuver soi-même), portant le marqueur « Contre-revue technique indépendante », la phrase « revue de mainteneur unique : j'assume l'application de cette migration », le fichier, `cible: njkiyoklssvefstljemx`, et qui l'a produite ; puis, sur le poste, dans le clone à jour de `main` : `node scripts/attester-migration.mjs migrations/migration_discussions_activite_2026-11-06.sql --cible njkiyoklssvefstljemx --pr '#736' --commit <tête revue, 40 hex> --revue <id de la revue> --relecteur PASSIO74 --source '<url de la revue>'` — sous PowerShell, `'#736'` ENTRE APOSTROPHES (sans elles, `#` ouvre un commentaire et la fin de la ligne disparaît) | « ✅ attestation inscrite » ; entrée dans `.passio/migrations/attestations.json` (empreinte `2d423d5f…`), consignée par la PR suivante |
+| 3 | depuis le poste de Benjamin, jamais la CI, dans le même clone : `node scripts/appliquer-migration.mjs migrations/migration_discussions_activite_2026-11-06.sql --projet njkiyoklssvefstljemx` (`node` directement : sous PowerShell, le `--` de `npm run …` dépend des versions, `.passio/migrations/README.md`) ; puis rendre `.passio/migrations/attestations.json` à son état versionné (`git checkout -- …`), sinon le prochain `git pull` refuse | tableau : 17 × OK. Refus 55000 : RIEN n'est appliqué — ligne 1, le décor ou la mesure a échoué (lire la phase et le SQLSTATE) : diagnostiquer, relancer, jamais appliquer sans elle ; ligne 10, la base a bougé depuis le 06/11 ; 13, 14 ou 15, une policy, une fonction appelée ou un appelant a changé : refaire l'inventaire. `55P03` (`lock timeout`) : une autre transaction tenait conv_members plus de 3 s, ou une table du décor plus de 200 ms — rien n'est appliqué, relancer est sûr (RV-42) |
+| 4 | **mesure au canal ①** (§ 9.4), jamais le tableau | `execute_sql` en lecture seule |
+
+⚠️ **Ne JAMAIS rejouer `participants_visibilite` (C-04) en production après ce lot** : son bloc ⑥ réécrit
+`conv_members_select_member` avec son propre texte et son verdict ne contrôle la policy que par motifs LIKE — RV-44 reviendrait
+en silence. Le staging garde l'ancienne policy de `conv_members` (C-04 n'y est pas appliquée) : la ligne 10 y REFUSE cette
+migration. L'y appliquer demande d'abord C-04 au staging, PUIS ce lot, et une attestation qui nomme `fcksxofaelcdmmifnwjo`.
+
+### 9.4 Contrôles après application (canal ①, jamais le tableau de verdict)
+
+1. `pg_proc` d'`is_conv_member(text,text)` : `md5(replace(prosrc, chr(13)||chr(10), chr(10)))` = `814ad66c9ba408db34f3435b2a559788`,
+   `provolatile` `s`, `prosecdef`, `proconfig` `{search_path=""}`, `proparallel` `u` ; `aclexplode(proacl)` : EXECUTE pour
+   postgres, authenticated, service_role — ni anon, ni PUBLIC.
+2. `conv_members_select_member` : `md5(regexp_replace(pg_get_expr(polqual, polrelid), '\mpublic\.', '', 'g'))` =
+   `ff0689d95ce3bf5fe1a987763b088f32`, rôles `{authenticated}` ; conv_members porte toujours trois policies. **Ce contrôle se
+   refait après TOUT geste sur conv_members** (une migration rejouée, une policy reposée à la main) : c'est lui qui verrait
+   RV-44 revenir.
+3. `pg_depend` : 11 dépendants d'`is_conv_member` en TOUT, tous des policies (`classid` = `pg_policy`) ; la policy neuve dépend
+   aussi d'`is_conversation_creator`.
+4. aucune trace du décor : 0 profil `00000000-0000-4000-8000-00000000c2a%`, 0 conversation et 0 message `%zz-verdict-c02%`.
+5. journaux : `postgres_logs` sans erreur nouvelle sur conv_members, conv_messages, conv_reads, realtime.messages,
+   storage.objects ; `edge_logs` sans hausse de 403 sur ces chemins ; la « Barrière RLS de la production » (`authz-critical`)
+   du prochain run de `main` verte (un membre y lit les membres de sa conversation).
+6. ⚠️ le lecteur du canal ① n'a ni EXECUTE sur `is_conv_member` ni SET ROLE `authenticated` (mesuré le 06/11) : le
+   comportement en production n'est mesuré QUE par le verdict, dans la transaction de la migration — d'où sa ligne 1 bloquante.
+
+### 9.5 Retour arrière
+
+Le bloc `--|` de l'en-tête, en ôtant « --| » (`sed -n 's/^--| //p'`, comme le banc ; sous PowerShell :
+`(Select-String -Path migrations\migration_discussions_activite_2026-11-06.sql -Pattern '^--\|').Line -replace '^--\| ?',''`,
+puis coller la sortie dans l'éditeur SQL) : il rend À L'OCTET le corps de
+production d'`is_conv_member` (md5 `da6bf4bb1054d608cbb0f246d70ddb39`, 101 octets, une espace en tête et une en fin entre les
+`$function$`) et la policy telle que C-04 l'a laissée (déparsage `de15394b190609eb2ae3302f7710dd18`), et imprime deux lignes
+OK ; il rend AUSSI les deux défauts. Éditeur SQL (canal ③), ou l'outil avec un fichier attesté ; puis mesurer au canal ①
+(les deux md5). Code : rien à revenir. Le client ne lit que ce que le serveur rend : après un retour arrière, un créateur qui
+retire un membre que C-04 lui cache lit de nouveau « le retrait n'a pas été confirmé », et rien n'est annoncé à tort. Ne pas
+« revenir » en rejouant `participants_visibilite` : c'est le bloc `--|`, et lui seul.
+
+### 9.6 Ce qui n'est pas prouvé, et ce qui reste
+
+- La production est en PostgreSQL 17.6, le banc en 16 : le déparsage de la policy de C-04 y est identique (md5 `de15394b…`
+  mesuré des deux côtés), ce qui fonde l'attente du texte neuf ; que l'InitPlan d'un `exists` ne s'exécute qu'à son premier
+  usage et que le `and` de la liste de sortie s'arrête au premier terme faux reste vrai en 17.6 — c'est une analyse, pas une
+  mesure.
+- Ni PostgREST, ni Realtime, ni Storage au banc : leurs requêtes y sont simulées (rôle, `request.jwt.claims`,
+  `realtime.topic`) ; « rien n'est livré » est prouvé sur un slot `test_decoding`, pas sur le Realtime de Supabase.
+- Le fichier de définitions remis au lot n'était pas à l'octet pour trois corps (commentaires omis dans
+  `storage_chemin_autorise` et `trg_reports_preuve_message`, une espace de fin dans `auth.uid()`) : remesurés au canal ①
+  (`to_json(prosrc)`), le socle du banc contrôle 19 corps de fonctions et 24 policies contre leurs empreintes de production.
+- Le test client repose sur un faux `supa` : qu'un DELETE filtré par la RLS rende `200 []` vient du contrat de PostgREST et
+  du banc SQL (0 ligne par RETURNING), pas d'un PostgREST réel.
+- **Le temps de lecture** d'une ligne de conv_members sous RLS dit si cette ligne existe (`texteq` leakproof : la policy ne
+  s'évalue que si la ligne existe) : +41 à +43 µs au corps de production, +88 à +92 µs au corps final, bruit de 3 à 14 µs — un
+  canal caché de la RLS de PostgreSQL, antérieur au lot et indépendant de l'ordre des conjonctions. Rien n'a été mesuré à
+  travers PostgREST ni en production.
+- Hors de `conv_members`, une discussion d'activité montre encore à tout membre les membres bloqués avec lui (`conv_reads`,
+  pièces jointes, diffusion `typing:`) : résidu de C-04 (RV-49, R42). Le créateur d'une discussion d'activité qui n'organise
+  plus peut y revenir et voir tous les membres, bloqués compris, et en ajouter (RV-50). `notifier_mentions` dira l'appartenance
+  d'autrui à un ancien membre dès que R36 sera corrigé (RV-51). Une discussion d'activité dont la liste locale porte un
+  membre qui n'y est pas (`_ensureLocalEventConv` la remplit avec les inscrits) affiche « pas confirmé » au retrait de ce
+  fantôme jusqu'au prochain rafraîchissement serveur, qui l'ôte.
+- **Un ancien venant reste membre de la discussion** (passé « peut-être », « non », en liste d'attente, ligne supprimée) — et un
+  ancien co-organisateur : rien ne l'en retire, et il y lit les venants arrivés après son départ, jusqu'à la fin de l'activité
+  (R18 réécrit ; côté client, la sortie n'est pas vérifiée et un co-organisateur retiré n'en sort pas, RV-53). Préexistant
+  (C-04), inchangé par ce lot : R41 était la seule voie ouverte à tout compte SANS lien, pas la dernière voie vers la liste.
+  Remède, lot de suite : un déclencheur AFTER UPDATE OF rsvp OR DELETE sur `event_attendees`.
+- **Tout compte peut prendre l'identifiant `evgrp_<activité>`** avant l'organisateur et rendre la discussion de l'activité
+  impossible (RV-52, préexistant) — un blocage, pas une fuite : l'occupant n'y voit aucun venant.
+- La sonde par identifiant de notification (R32) est ouverte à tout compte connecté, pas au seul membre : elle dit qui a reçu
+  quelle notification de message — R32 réécrit.
+- Un groupe `grp_…` « créé » par l'ancien client SANS SDK (avant ce lot) n'existe pas en base : sur l'appareil qui le porte,
+  « Retirer » dit « recharge l'application » puis « pas confirmé », sans jamais le vider. Combien en vivent sur de vrais
+  appareils n'est pas mesurable (le stockage local des clients ne se lit pas ; 0 `grp_` en base).
+- Les chiffres de coût et de canal de temps (28 µs, 76–82 µs, +26 à +28 %, +41 à +92 µs) viennent de bancs jetables dont
+  les scripts ne sont pas dans le dépôt : ils ne se rejouent pas depuis lui.
+
+### 9.7 Contre-revue de la tête (06/11, soir)
+
+**Qui** : quatre agents relecteurs Claude Code, lancés par la session qui a orchestré le lot, SANS ses conclusions — une
+lentille chacun : la migration en production, la complétude des contrôles d'accès, le client, l'exactitude de ce qui est
+écrit — et deux sceptiques par trouvaille grave (reproduire ; impact réel). Ce n'est pas une revue humaine indépendante :
+c'est l'auto-revue tracée du mainteneur unique (ASTRA-61 bis), sur la consigne de Benjamin du 04/11 (« fait la contre revue
+toi meme avec un agent »). Une première passe a calé (un relecteur arrêté par les garde-fous de l'API, deux bloqués sur une
+autorisation de commande) ; la seconde, bornée, a rendu ses six résultats. Le second modèle (ChatGPT) n'a PAS été consulté :
+le canal n'existe pas dans cette session (ni `codex`, ni clé).
+
+**Verdict** : rien de bloquant pour appliquer ni pour fusionner. Ce qui compte pour appliquer est vrai, recalculé au canal ① :
+l'état d'avant, les empreintes, les 11 policies et 14 appels sur 14 qui passent l'appelant, les 2 fonctions qui la citent, le
+décor compatible (colonnes, clés étrangères, déclencheurs, droits, réplication sans slot), le déparsage de PostgreSQL 17.6
+(un appel de fonction nu dans un OU n'y est pas parenthésé : `… OR organise_activite(event_id)`), la ligne de journal de
+l'outil insérée après le vrai `begin;`, le retour arrière exact à l'octet.
+
+**Corrigé dans ce lot** (rejoué : banc 175/0, e2e 24/24) :
+- migration : la seconde borne de verrou (200 ms une fois conv_members tenu ; 27 s → moins de 2 s, banc § ⑩) ; la ligne 14
+  compte TOUS les dépendants de `pg_depend` (D11 vue, D12 BEGIN ATOMIC) ; l'en-tête — la cause d'un échec à 3 s, la session
+  sans `sub`, les pièces jointes et `typing:`, l'ancien venant, RV-50, RV-52, le REVOKE de colonne sans effet ;
+- client : `supaCreateGroup` rend null sans SDK (plus de `grp_` fantôme), « recharge l'application » au lieu de « réessaie
+  quand le réseau revient », un 5xx dit « pas confirmé » et un 401 « reconnecte-toi », l'onglet « Ajouter » et sa recherche
+  survivent au repeint tardif — quatre cas e2e neufs et ⑪ modifié, rouges sur la tête d'avant ; puis, à la relecture de ce
+  correctif par deux agents neufs (le relecteur de la migration a calé sur une autorisation de commande après ses mesures au
+  canal ① : 11 dépendants, partitions de `realtime.messages` créées d'avance, aucune tâche planifiée sur ces tables), la session
+  morte (« reconnecte-toi », mode posé), 429 et statut 0 (« pas confirmé »), le statut HTTP dans la trace, le focus et le
+  défilement préservés, et ⑮ qui verrouille le filtre — trois cas rouges sur `6bdf1ff6` ;
+- documents : RV-42 relu dans les journaux (c'est le cache qui attend la migration), RV-49 à RV-51, R18, R32, R36, R41, R42,
+  le § 9.3 exécutable sous PowerShell, C-01 « appliqué le 03/11 ».
+
+**Consigné, hors lot** : RV-52 (occupation d'`evgrp_`), RV-53 (sortie de discussion non vérifiée), R18 (ancien venant), R32.
+Infos non retenues : la ligne 16 du verdict accepte aussi le message que la barrière de suppression imite (inatteignable :
+aucun compte synthétique en suppression) ; le retour arrière n'est pas fermé sur échec (acceptable : il se mesure au canal ①) ;
+le faux `supa` de l'e2e accepte n'importe quel ordre de chaîne (la chaîne employée est valide pour le SDK auto-hébergé).

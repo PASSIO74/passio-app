@@ -6458,6 +6458,12 @@ async function supaCreateConversation(withUserId) {
 }
 
 async function supaCreateGroup(groupName, memberIds, passionId) {
+  // ⚠️ SDK NON CHARGÉ (revue du lot C-02, 06/11) : le client de repli rend
+  // `{ error: null }` à tout, donc un groupe « créé » ici aurait reçu un `grp_…`
+  // sans exister en base — et `removeGroupMember`, qui ne reconnaît une ébauche
+  // locale qu'à son préfixe `conv_grp_`, n'aurait plus jamais pu en retirer un
+  // membre. Sans SDK, rien n'est créé : l'appelant garde l'ébauche `conv_grp_…`.
+  if (!window._supaReal) return null;
   try {
     await supaEnsureProfileExists();
     const convId = "grp_" + uid();
