@@ -5322,7 +5322,8 @@ async function _loadEventComments(eventId) {
   // Interactions cross-compte (likes + réponses + emojis) via comment_interactions :
   // hydrate puis re-render avec le renderer riche unifié.
   if (typeof hydrateCommentInteractions === "function") {
-    hydrateCommentInteractions({ comments: _eventCommentsCache[eventId] }).then(function(){ _persistEventComments(); _renderEventComments(eventId); });
+    // `id` : le FIL (l'activité) — sans lui, aucune épingle n'est décidée (RV-38).
+    hydrateCommentInteractions({ id: eventId, comments: _eventCommentsCache[eventId] }).then(function(){ _persistEventComments(); _renderEventComments(eventId); });
   }
 }
 

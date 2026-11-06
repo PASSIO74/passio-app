@@ -27,6 +27,7 @@
 - 🛡️ QUI VA OÙ, QUI A ÉCRIT QUOI — les décisions produit de l'audit, et ce que trois contre-revues y ont trouvé (2026-11-03)
 - 🔕 LA PROMOTION NE NOMME PLUS LE PROMU À N'IMPORTE QUI, ET LES VUES PERDENT LEURS DROITS HORS RLS (R24, R26 — 2026-11-03, le soir)
 - 🗑️ UNE PUBLICATION SUPPRIMÉE N'OUVRE PLUS SES COMMENTAIRES À TOUS — ELLE LES EMPORTE (R31 — 2026-11-04)
+- 📌 RV-38 — L'ÉPINGLE D'UN COMMENTAIRE N'ATTEIGNAIT JAMAIS LA BASE ; SEUL LE PROPRIÉTAIRE DU FIL Y ÉPINGLERA (2026-11-05)
 
 ---
 
@@ -1221,3 +1222,82 @@ l'ordre de Benjamin ; empreinte `cbd9428a…`) :
   131 interactions lisibles, dont aucun sans cible, et aucune réaction à une réponse hors du public.
 - **Pas éprouvé** : une vraie suppression de publication ou de compte en production, depuis l'application. Le verdict la
   rejoue dans une sous-transaction annulée ; le staging l'a passée par `suppression-compte`. La revue red team n'a jamais été rendue.
+
+---
+
+## 📌 RV-38 — L'ÉPINGLE D'UN COMMENTAIRE N'ATTEIGNAIT JAMAIS LA BASE ; SEUL LE PROPRIÉTAIRE DU FIL Y ÉPINGLERA (2026-11-05)
+
+**Le défaut (registre RV-38, trouvé pendant le lot R37).** `togglePinComment` (app-04) écrivait l'épingle dans
+`comment_interactions` (`kind = 'pin'`, charge « 1 » / « 0 ») par `supaCommentInteract`, sans lire le résultat. La
+contrainte de production `ci_kind_check` n'admet que `like`, `reply`, `emoji`, `gif` : **chaque** épingle était refusée
+(23514), et l'écran disait « Commentaire épinglé ». L'épingle restait locale à l'appareil du propriétaire du fil ; la
+branche `pin` de `supaLoadCommentInteractions` n'a jamais rien eu à lire. Et ce lecteur prenait la dernière ligne `pin`
+d'un commentaire **de qui qu'elle soit, dans n'importe quel fil**.
+
+**Mesuré au canal ① (05/11).** 339 interactions (188 like, 77 reply, 72 emoji, 2 gif), **0 pin** ; 0 action `cint` de
+genre `pin` en télémétrie (3 jours), 0 erreur nommant `ci_kind_check` (24 h) : la fonction n'est pas utilisée, rien à
+reprendre. Policies : `ci_insert` = `user_id = auth.uid()` ET la barrière de suppression — **ni le fil ni son propriétaire**.
+Aucune policy UPDATE. 0 homonyme entre `post_comments` et `event_comments`, ni entre `posts` et `events` ; `organizer_id`
+= `author_id` pour les 10 activités.
+
+**La décision : garder l'épingle et la rendre vraie** (pas la retirer de l'interface). C'est une fonction voulue du lot
+« UX IG/FB » (#11), proposée au seul propriétaire du fil, et le correctif est borné.
+
+**⚠️ « Ajouter `pin` à `ci_kind_check` » ne suffit PAS : c'est ouvrir une porte.** La WITH CHECK de `ci_insert` ne
+connaît ni le fil ni son propriétaire : avec la seule contrainte, **n'importe quel compte** épingle le commentaire de son
+choix chez n'importe qui, avec n'importe quelle charge, et l'ancien lecteur l'affiche chez tous (le banc le rejoue :
+« correction naïve », ①). D'où la garde.
+
+**Deux PR, le client d'abord** (le précédent de RV-36) — la migration est un périmètre critique (contre-revue humaine,
+« Gouvernance critique »), le client non :
+
+- **Client (lot du 05/11)** :
+  - `supaEcrireInteraction` (app-08) rend le **verdict** (`{ ok }`, ou le code, le message, l'indice, la panne réseau
+    par `estEchecReseau`) ; `supaCommentInteract` en reste la forme booléenne ;
+  - `togglePinComment` : affichage optimiste, puis le verdict. Un refus **défait** l'écran à l'identique (l'ancien
+    épinglé revient) et le **dit** (`_motRefusEpingle` : 23514 « pas encore disponible », 42501 « refusée », réseau
+    « pas de connexion »). La **cible** part d'abord, le « 0 » des anciens ensuite et seulement si elle passe. Un
+    commentaire `_pending` (pas encore en base) n'est pas envoyé, et la raison est dite ;
+  - le lecteur (`_appliquerEpinglesLues`, appelé par `hydrateCommentInteractions`) ne retient que les lignes du
+    **propriétaire** du fil (`_proprietaireFil` : l'auteur, `organizerId` — la définition de la garde), écrites **dans
+    ce fil** ; la dernière ligne d'un commentaire décide ; **un seul épinglé par fil**, le plus récent (deux appareils du
+    propriétaire peuvent en poser deux) ;
+  - une épingle **reçue en direct** s'applique sous les mêmes règles (`_epingleRecue`, branche `pin` de
+    `_applyCommentInteractionEvent`) ;
+  - les trois appelants qui passaient `{ comments }` passent le fil (`{ id, comments }`) : sans `id`, rien n'est décidé.
+- **Migration** `migration_epingle_commentaire_2026-11-05.sql` (PR suivante, **préparée**, contre-revue humaine puis
+  `appliquer-migration.mjs`) : `pin` admis par `ci_kind_check`, `ci_pin_payload_check` (« 0 » ou « 1 », jamais rien),
+  et la garde `trg_ci_epingle_garde` (BEFORE INSERT OR UPDATE, `WHEN (new.kind = 'pin')`, SECURITY DEFINER, `search_path`
+  vide, aucun EXECUTE client) : seul le propriétaire du fil épingle, un commentaire de **ce** fil. Un refus unique (42501,
+  le message d'un refus RLS, un indice qui nomme l'épingle), quelle que soit la raison. L'administration n'est pas jugée.
+  Verdict de 20 lignes **fermé sur échec**. Banc `tests/sql/migration-epingle-commentaire.test.sh` : 61/0, dix mutations.
+
+**Les pièges du lot.**
+
+- ⚠️ **Le fil se lit dans la table du COMMENTAIRE, jamais dans `post_id` seul.** Publications, activités et commentaires
+  portent des identifiants **choisis** par le client. Résolu par « publication ou activité de ce nom », une activité créée
+  sous l'identifiant de la publication d'autrui donnait la propriété du fil à son auteur. Un commentaire présent dans les
+  **deux** tables (homonyme) n'a pas de fil sûr : la garde refuse, pour tous. Prix assumé : quiconque connaît
+  l'identifiant d'un commentaire peut le rendre non épinglable (rien d'autre ne s'ouvre).
+- ⚠️ **Une lecture en ÉCHEC n'est pas une lecture vide.** `supaLoadCommentInteractions` rend désormais `null` quand
+  elle n'a pas eu lieu ou a échoué, `{}` quand elle a lu « rien ». Lue comme « aucune épingle », une panne retirait
+  l'épingle de l'écran. Une lecture **réussie** sans ligne retire, elle, l'épingle restée locale d'avant RV-38 :
+  personne d'autre ne la voyait.
+- ⚠️ **Une lecture partie AVANT un geste ne le défait pas en revenant** : une génération par fil
+  (`_epingleGeneration`), relevée avant la lecture, avancée par chaque épingle posée ou reçue (le principe de D-06).
+- ⚠️ **L'ordre des écritures compte** : la cible d'abord. Les deux en parallèle, ou l'ancien d'abord, laissaient la base
+  sans épinglé sur un refus de la cible, alors que l'écran avait remis l'ancien.
+- ⚠️ **L'ancien client** (jusqu'à son rechargement) lit la dernière ligne `pin` sans regarder son auteur : seule la garde
+  du serveur le protège. C'est pourquoi la migration ne s'applique pas sans elle.
+- Le client déployé AVANT la migration dit honnêtement « L'épingle n'est pas encore disponible » : la fonction ne
+  marchait pas, elle le dit, au lieu de mentir.
+
+**Verrous.** `tests/e2e/epingle-commentaire.spec.js` (9 cas locaux, treize réinjections rouges : verdict ignoré, ordre
+des écritures, mot du refus, lecteur sans propriétaire ou sans fil, sans « un seul », lecture en échec prise pour vide,
+sans génération, sans branche directe, direct sans propriétaire, sans `_pending`, sans contrôle du propriétaire à
+l'écriture, ancien lecteur). `tests/e2e/epingle-commentaire-reel.spec.js` (deux comptes, staging, `SUITES_PROD`) : une
+sonde sans effet dit si la migration y est ; absente, le vrai refus 23514 est dit et défait ; présente, A épingle, B la
+voit après **rechargement**, B est refusé (42501 et l'indice), A retire.
+
+**Ce qui reste.** La contre-revue humaine de la PR de migration, son attestation (production ET staging), son
+application, la mesure au canal ① ; la ligne RV-38 ne se ferme qu'avec cette preuve.
