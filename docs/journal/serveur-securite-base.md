@@ -1391,7 +1391,7 @@ application, la mesure au canal ① ; la ligne RV-38 ne se ferme qu'avec cette p
 
 **Statut : préparé, pas appliqué.** `migrations/migration_discussions_activite_2026-11-06.sql` (sha256 `2d423d5f…`), banc
 `tests/sql/migration-discussions-activite.test.sh` 175/0, client `removeGroupMember` (app-05) et son verrou
-`tests/e2e/retrait-membre-groupe.spec.js` 22/22. Application, contrôles et retour arrière : § 9 de
+`tests/e2e/retrait-membre-groupe.spec.js` 24/24. Application, contrôles et retour arrière : § 9 de
 `.passio/audits/AUDIT_PASSIO_2026-11-02/04-LIVRAISON.md`. Revu le même jour, avant toute attestation, par trois agents
 relecteurs Claude Code, chaque trouvaille grave contre-vérifiée par un sceptique : cinq défauts confirmés et treize mineurs,
 corrigés ou consignés ci-dessous ; puis contre-revu sur sa tête le soir (fin de fiche, et § 9.7).
@@ -1490,7 +1490,11 @@ succès arrive après l'aller-retour : ne repeindre que ce qui montre encore ce 
   première version du correctif → 15 rouges (verts : ②, ④, ⑥) ; gardes d'écran ôtées → ⑫ ⑬ ; panne postgrest-js lue comme un
   refus → ③bis ; gardes « personnage » et « ébauche » ôtées → ⑧ ⑨ ; garde du compte réel ôtée → ⑦ ; garde de session ôtée →
   ⑩ ; relecture ôtée → ② ②b ⑤ ; garde `evgrp_` ôtée → ②c ; garde du SDK absent ôtée (retrait local) → ⑪ ; le code du lot,
-  servi de la même façon → 0 rouge.
+  servi de la même façon → 0 rouge. Contre-revue du soir (24 cas) : tête d'avant (`7320926a`) → ③ter ③quater ⑪ ⑭ ⑮ rouges,
+  quatre cas neufs et ⑪ dont seul l'attendu a changé ; une mutation à la fois — 5xx lu comme un refus → ③ter, 401 → ③quater,
+  garde SDK de `supaCreateGroup` ôtée → ⑭, onglet non restauré → ⑮ ; puis la relecture de ce correctif → `6bdf1ff6` →
+  ②f (session morte, DELETE parti sous la clé anon : 200 [] puis relecture vide) ③quinquies (429) ⑮ renforcé (filtre de la
+  liste rendu, focus non volé, défilement gardé) rouges, verts ensuite.
 
 **Ce qui reste, dit tel quel.** Dans `conv_members`, les membres d'une discussion se voient entre eux, sauf blocage (C-04 : un
 venant connaît la liste) ; HORS de conv_members, une discussion d'activité montre encore à tout membre les membres bloqués avec

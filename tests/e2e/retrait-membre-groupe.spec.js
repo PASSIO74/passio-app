@@ -30,12 +30,15 @@
 //      retrait local ; ②c même absence dans une discussion d'activité (`evgrp_`,
 //      où C-04 cache au créateur un membre bloqué tant que la migration n'est pas
 //      appliquée) → « pas confirmé », rien ne change ; ②d je ne me vois pas,
-//      ②e relecture en panne → « pas confirmé » ;
+//      ②e relecture en panne → « pas confirmé » ; ②f je ne me vois pas ET la
+//      session est morte (le DELETE est parti sous la clé anon : 200 []) →
+//      « reconnecte-toi », et le mode « session expirée » est posé ;
 //   ③ une PANNE réseau qui LÈVE, ③bis la panne telle que postgrest-js la REND
 //      (`status: 0`, `error.message` « TypeError: Failed to fetch », `code` vide)
 //      → « pas de connexion : … pas confirmé », rien ne change ; ③ter une réponse
 //      5xx → « pas confirmé » (le DELETE a pu être validé), ③quater un 401 →
-//      « reconnecte-toi » — jamais « le serveur a refusé » (contre-revue du 06/11) ;
+//      « reconnecte-toi », ③quinquies un 429 → « pas confirmé » — jamais « le
+//      serveur a refusé » (contre-revue du 06/11) ;
 //   ④ le SUCCÈS (une ligne rendue), modale des membres ouverte → le comportement
 //      d'avant : membre ôté, « a quitté le groupe », « retiré·e », modale rendue ;
 //   ⑤ les requêtes sont celles qu'il faut : DELETE filtré sur la conversation ET
@@ -54,7 +57,9 @@
 //      touchers : carte, bouton « Membres », « Retirer », croix, retour) ;
 //   ⑭ un groupe créé SANS SDK n'obtient pas d'identifiant serveur fantôme
 //      (`supaCreateGroup` rend null : l'ébauche garde `conv_grp_`, ⑨) ;
-//   ⑮ un succès arrivé tard garde l'onglet « Ajouter » et sa recherche.
+//   ⑮ un succès arrivé tard garde l'onglet « Ajouter », sa recherche ET son
+//      filtre, ne rend pas le focus à un champ quitté (pas de clavier sans geste)
+//      et garde la position de défilement de la liste.
 // RÉINJECTIONS (mesurées le 2026-11-06) : voir `docs/journal/serveur-securite-base.md`
 // (fiche C-02 / R41, RV-44) — le code d'avant le lot, puis la première version du
 // correctif, remis en place l'un après l'autre.
@@ -128,6 +133,10 @@ async function banc(page, { uid = MOI, conv = CONV, membre = LEA } = {}) {
     };
     Object.defineProperty(window.supa, "from", { configurable: true, writable: true, value: requete });
     window._supaReal = true;
+    // La session : VIVANTE par défaut (un compte réel du banc), sans toucher au SDK
+    // (d'autres modules lisent `supa.auth.getSession`) ; ②f rend la vraie lecture.
+    window.__sessionVivanteReelle = window._sessionVivante;
+    window._sessionVivante = () => Promise.resolve(true);
     window.__toasts = [];
     window.toast = (t, k) => { window.__toasts.push({ t: String(t), k: k || "" }); };
     if (!state.seed.users.some((u) => u.id === lea)) state.seed.users.push({ id: lea, name: "Léa", profileEmoji: "🌿", avatar: "#22c55e", distant: true });
@@ -258,6 +267,23 @@ test.describe("RV-44 — retirer un membre d'un groupe : l'écran ne dit que ce 
     await exigerEchec(page, o, /^Le retrait de Léa n'a pas été confirmé par le serveur\.$/);
   });
 
+  test("②f 0 ligne, relecture vide, SANS session (le DELETE est parti sous la clé anon) : « reconnecte-toi », et le mode « session expirée » est posé", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(([z, r]) => {
+      window.__delete = z;
+      window.__relecture = r;
+      // La VRAIE lecture de session, sur un SDK qui n'en a plus.
+      window._sessionVivante = window.__sessionVivanteReelle;
+      const auth = window.supa.auth || (window.supa.auth = {});
+      Object.defineProperty(auth, "getSession", { configurable: true, writable: true, value: async () => ({ data: { session: null }, error: null }) });
+    }, [ZERO_LIGNE, relu()]);
+    const rendu = await retirer(page);
+    const o = await observer(page);
+    expect(rendu).toBe(false);
+    await exigerEchec(page, o, /^Ta session a expiré — reconnecte-toi pour retirer Léa du groupe\.$/);
+    expect(await page.evaluate(() => window._sessionExpiree === true), "le mode « session expirée » est posé (comme la publication)").toBe(true);
+  });
+
   test("③ panne réseau (le fetch LÈVE) : « pas de connexion », le retrait n'est pas affirmé — rien ne change", async ({ page }) => {
     await banc(page);
     await page.evaluate(() => { window.__delete = { __lever: "Failed to fetch" }; });
@@ -292,6 +318,15 @@ test.describe("RV-44 — retirer un membre d'un groupe : l'écran ne dit que ce 
     const o = await observer(page);
     expect(rendu).toBe(false);
     await exigerEchec(page, o, /^Ta session a expiré — reconnecte-toi pour retirer Léa du groupe\.$/);
+  });
+
+  test("③quinquies réponse 429 (limiteur) : « pas confirmé », jamais « le serveur a refusé »", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => { window.__delete = { status: 429, data: null, error: { code: "", message: "Too Many Requests" } }; });
+    const rendu = await retirer(page);
+    const o = await observer(page);
+    expect(rendu).toBe(false);
+    await exigerEchec(page, o, /^Le retrait de Léa n'a pas été confirmé par le serveur\.$/);
   });
 
   test("④ succès (une ligne rendue), modale des membres ouverte : le comportement d'avant — membre ôté, message système, toast, modale rendue", async ({ page }) => {
@@ -425,17 +460,29 @@ test.describe("RV-44 — retirer un membre d'un groupe : l'écran ne dit que ce 
       const champ = document.getElementById("grpSearchInput");
       champ.value = "Au";
       filterGroupAddList("Au");
+      // La personne a quitté le champ, et fait défiler la liste.
+      champ.blur();
+      const liste = document.getElementById("grpAddList");
+      liste.style.maxHeight = "60px";
+      liste.scrollTop = 30;
+      const defilementAvant = liste.scrollTop;
       const p = removeGroupMember(conv, lea);
       liberer();
       const ok = await p;
       const ajout = document.getElementById("grpPanel_add");
       const membres = document.getElementById("grpPanel_members");
+      const liste2 = document.getElementById("grpAddList");
+      const noms = liste2 ? [...liste2.querySelectorAll("span")].map((s) => s.textContent || "") : [];
       return {
         ok,
         ajoutVisible: ajout ? ajout.style.display : null,
         membresVisible: membres ? membres.style.display : null,
         recherche: (document.getElementById("grpSearchInput") || {}).value,
         leaDansMembres: membres ? /Léa/.test(membres.textContent || "") : null,
+        noms,
+        focusDansLeChamp: document.activeElement === document.getElementById("grpSearchInput"),
+        defilementAvant,
+        defilementApres: liste2 ? liste2.scrollTop : null,
       };
     }, [LEA, CONV, SUCCES]);
     expect(vu.ok).toBe(true);
@@ -443,6 +490,11 @@ test.describe("RV-44 — retirer un membre d'un groupe : l'écran ne dit que ce 
     expect(vu.membresVisible, "…et l'onglet « Membres » reste masqué").toBe("none");
     expect(vu.recherche, "la recherche tapée est rendue").toBe("Au");
     expect(vu.leaDansMembres, "la liste des membres, repeinte, n'a plus Léa").toBe(false);
+    expect(vu.noms.length, "la liste « Ajouter » n'est pas vide").toBeGreaterThan(0);
+    expect(vu.noms.every((n) => /au/i.test(n)), "…et elle est FILTRÉE par la recherche rendue : " + vu.noms.join(", ")).toBe(true);
+    expect(vu.focusDansLeChamp, "le focus n'est pas rendu au champ qu'on avait quitté (pas de clavier sans geste)").toBe(false);
+    expect(vu.defilementAvant, "la prémisse : la liste défilait").toBeGreaterThan(0);
+    expect(vu.defilementApres, "la liste garde sa position").toBe(vu.defilementAvant);
   });
 });
 

@@ -2012,7 +2012,9 @@ function pickGroupPhoto(convId) {
   input.click();
 }
 
-function switchGroupTab(tab) {
+// `sansFocus` (facultatif) : basculer sur « Ajouter » SANS y donner le focus — un
+// rendu arrivé après un aller-retour réseau ne doit pas ouvrir le clavier sans geste.
+function switchGroupTab(tab, sansFocus) {
   var tabMembers = document.getElementById("grpTab_members");
   var tabAdd     = document.getElementById("grpTab_add");
   var panelMembers = document.getElementById("grpPanel_members");
@@ -2037,7 +2039,7 @@ function switchGroupTab(tab) {
     panelMembers.style.display = "none";
     panelAdd.style.display = "block";
     var inp = document.getElementById("grpSearchInput");
-    if (inp) inp.focus();
+    if (inp && !sansFocus) inp.focus();
   }
 }
 
@@ -2169,14 +2171,21 @@ function _retraitMembreLocal(c, convId, userId, name, apresAllerRetour) {
     var surAjout = !!(panAjout && panAjout.style.display !== "none");
     var champ = document.getElementById("grpSearchInput");
     var recherche = champ ? String(champ.value || "") : "";
+    // Le focus n'est rendu que s'il était dans le champ (pas de clavier ouvert sans
+    // geste), et la liste garde sa position de défilement.
+    var avaitFocus = !!(champ && document.activeElement === champ);
+    var liste = document.getElementById("grpAddList");
+    var defilement = liste ? liste.scrollTop : 0;
     _renderGroupMembersModal(convId);
     if (surAjout && typeof switchGroupTab === "function") {
-      switchGroupTab("add");
+      switchGroupTab("add", !avaitFocus);
       var champ2 = document.getElementById("grpSearchInput");
       if (champ2 && recherche) {
         champ2.value = recherche;
         if (typeof filterGroupAddList === "function") filterGroupAddList(recherche);
       }
+      var liste2 = document.getElementById("grpAddList");
+      if (liste2 && defilement) liste2.scrollTop = defilement;
     }
   }
   var fp2 = document.getElementById("conv-fullpage");
@@ -2202,6 +2211,18 @@ function _retraitMembreEchec(name, cause, raison) {
     }
   } catch (e) {}
   toast(textes[cause] || textes.non_confirme, "error");
+}
+// Une session vivante ? Sans moyen de le savoir, on le suppose : on n'affirme jamais
+// « reconnecte-toi » sans l'avoir lu.
+function _sessionVivante() {
+  try {
+    if (typeof supa === "undefined" || !supa || !supa.auth || typeof supa.auth.getSession !== "function") return Promise.resolve(true);
+    return Promise.resolve(supa.auth.getSession()).then(function(r) {
+      return !!(r && r.data && r.data.session);
+    }, function() { return true; });
+  } catch (e) {
+    return Promise.resolve(true);
+  }
 }
 // 0 ligne : le membre est-il encore là ? Sa ligne ET la mienne (témoin : si je ne
 // me vois pas, son absence ne prouve rien). Rend "present", "absent" ou "inconnu".
@@ -2260,19 +2281,37 @@ function removeGroupMember(convId, userId) {
     if (r && r.error) {
       // Une réponse 5xx (passerelle, délai) n'est pas un refus : le DELETE a pu être
       // validé — « pas confirmé » ; un 401 dit la session, pas la policy.
+      // 429 (limiteur) et un statut 0 que `estEchecReseau` ne reconnaît pas (abandon)
+      // ne sont pas des refus non plus : rien n'a été tranché.
       var statut = Number(r.status) || 0;
       var cause = (typeof estEchecReseau === "function" && estEchecReseau(r.error)) ? "reseau"
         : statut === 401 ? "session"
-        : statut >= 500 ? "non_confirme"
+        : (statut >= 500 || statut === 429 || statut === 0) ? "non_confirme"
         : "refus";
-      _retraitMembreEchec(name, cause, r.error);
+      // La trace garde le statut HTTP : l'objet d'erreur du SDK ne le porte pas.
+      _retraitMembreEchec(name, cause, { code: (r.error && r.error.code) || String(statut || "") });
       return false;
     }
     if (r && Array.isArray(r.data) && r.data.length >= 1) return retirerIci();
     return _relireAppartenance(convId, userId).then(function(etat) {
       if (etat === "absent") return retirerIci();
-      _retraitMembreEchec(name, etat === "present" ? "toujours_membre" : "non_confirme", { code: "0 ligne" });
-      return false;
+      if (etat === "present") {
+        _retraitMembreEchec(name, "toujours_membre", { code: "0 ligne" });
+        return false;
+      }
+      // « inconnu » — je ne me vois pas moi-même : la session a pu mourir. Le DELETE
+      // part alors sous la clé anon, que « Suppression admin » (TO public) admet :
+      // 200 [] sans erreur, et la relecture est vide. Sans session vivante, le dire
+      // et poser le mode « session expirée », comme la publication (app-08).
+      return _sessionVivante().then(function(vivante) {
+        if (!vivante) {
+          try { if (typeof poserSessionExpiree === "function") poserSessionExpiree("retrait_membre"); } catch (e) {}
+          _retraitMembreEchec(name, "session", { code: "sans session" });
+        } else {
+          _retraitMembreEchec(name, "non_confirme", { code: "0 ligne" });
+        }
+        return false;
+      });
     });
   }, function(e) {
     _retraitMembreEchec(name, typeof estEchecReseau === "function" && estEchecReseau(e) ? "reseau" : "non_confirme", e);

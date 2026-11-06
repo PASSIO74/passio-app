@@ -409,8 +409,12 @@ Le succès arrivant APRÈS l'aller-retour, la modale (`#modalBackdrop` actif, `_
 (`_openedConvId`) ne sont repeints que s'ils montrent encore ce groupe, et la modale rendue garde l'onglet « Ajouter » et sa recherche s'ils
 étaient ouverts. Un double toucher n'envoie qu'un DELETE ; une trace
 `diagLog` sans donnée personnelle (la cause et le code). La fonction reste globale (onclick inline). Verrou :
-`tests/e2e/retrait-membre-groupe.spec.js` **22/22** ; réinjections (code d'avant le lot, première version du correctif, chacune
-des gardes ôtée une à une, et la tête d'avant la contre-revue — 5 rouges sur les cinq cas neufs) dans la fiche du journal. Avant la migration, un créateur qui retire un membre que C-04 lui
+`tests/e2e/retrait-membre-groupe.spec.js` **24/24** ; réinjections (code d'avant le lot, première version du correctif, chacune
+des gardes ôtée une à une, la tête d'avant la contre-revue — 5 rouges : quatre cas neufs et ⑪ dont l'attendu a changé —, puis
+la tête suivante — ②f, ③quinquies, ⑮ renforcé) dans la fiche du journal. Une session morte (le DELETE part alors sous la clé
+anon, que « Suppression admin » TO public admet : 200 [] et relecture vide) dit « reconnecte-toi » et pose le mode « session
+expirée », comme la publication ; un 429 ou un statut 0 non réseau dit « pas confirmé » ; la trace garde le statut HTTP ; le
+rendu tardif ne rend pas le focus à un champ quitté et garde le défilement de la liste. Avant la migration, un créateur qui retire un membre que C-04 lui
 cache lit « le retrait n'a pas été confirmé » ; après, le retrait passe.
 
 ### 9.3 Application depuis le poste
@@ -511,13 +515,17 @@ décor compatible (colonnes, clés étrangères, déclencheurs, droits, réplica
 (un appel de fonction nu dans un OU n'y est pas parenthésé : `… OR organise_activite(event_id)`), la ligne de journal de
 l'outil insérée après le vrai `begin;`, le retour arrière exact à l'octet.
 
-**Corrigé dans ce lot** (une seule tête, rejouée : banc 175/0, e2e 22/22) :
+**Corrigé dans ce lot** (rejoué : banc 175/0, e2e 24/24) :
 - migration : la seconde borne de verrou (200 ms une fois conv_members tenu ; 27 s → moins de 2 s, banc § ⑩) ; la ligne 14
   compte TOUS les dépendants de `pg_depend` (D11 vue, D12 BEGIN ATOMIC) ; l'en-tête — la cause d'un échec à 3 s, la session
   sans `sub`, les pièces jointes et `typing:`, l'ancien venant, RV-50, RV-52, le REVOKE de colonne sans effet ;
 - client : `supaCreateGroup` rend null sans SDK (plus de `grp_` fantôme), « recharge l'application » au lieu de « réessaie
   quand le réseau revient », un 5xx dit « pas confirmé » et un 401 « reconnecte-toi », l'onglet « Ajouter » et sa recherche
-  survivent au repeint tardif — cinq cas e2e neufs, rouges sur la tête d'avant ;
+  survivent au repeint tardif — quatre cas e2e neufs et ⑪ modifié, rouges sur la tête d'avant ; puis, à la relecture de ce
+  correctif par deux agents neufs (le relecteur de la migration a calé sur une autorisation de commande après ses mesures au
+  canal ① : 11 dépendants, partitions de `realtime.messages` créées d'avance, aucune tâche planifiée sur ces tables), la session
+  morte (« reconnecte-toi », mode posé), 429 et statut 0 (« pas confirmé »), le statut HTTP dans la trace, le focus et le
+  défilement préservés, et ⑮ qui verrouille le filtre — trois cas rouges sur `6bdf1ff6` ;
 - documents : RV-42 relu dans les journaux (c'est le cache qui attend la migration), RV-49 à RV-51, R18, R32, R36, R41, R42,
   le § 9.3 exécutable sous PowerShell, C-01 « appliqué le 03/11 ».
 
