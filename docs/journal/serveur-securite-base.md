@@ -1296,9 +1296,14 @@ choix chez n'importe qui, et l'ancien lecteur l'affiche chez tous (le banc le re
   rechargée par le temps réel ne la relit pas quand elle est connue ; le panneau d'une bobine ne la lit pas (sa page
   détail, si).
 - L'**épinglé plus ancien que la première page** (30) est lu par son identifiant (`supaLireCommentaire`), rangé en tête
-  et marqué `_epingleGarde` : la page relue le garde (sans clignoter), mais il se **revérifie** à chaque page relue —
-  absent en base, il part ; quand l'épingle le quitte, il part aussi (`_retirerEpinglesGardes`, sur une vérité du
-  serveur seulement) ; apporté par « précédents », il n'est plus « gardé ». Il ne prend pas une des 30 places affichées.
+  et marqué `_epingleGarde` — seulement s'il est HORS des pages chargées : un épinglé récent (écrit de mon autre appareil,
+  manqué par le direct) est rangé à sa place, comme les autres. La page relue garde l'épinglé lu à part (sans clignoter),
+  mais il se **revérifie** à chaque page relue, même dans une discussion paginée plus loin — absent en base, il part, lui
+  seul ; quand l'épingle le quitte, il part aussi (`_retirerEpinglesGardes`, sur une vérité du serveur seulement) ;
+  apporté par « précédents » ou reçu en direct, il n'est plus « gardé » ; la dernière page atteinte sans lui l'enlève et
+  le décompte. Il ne prend pas une des 30 places affichées.
+- Une écriture dont la RÉPONSE se perd alors qu'elle a abouti : son écho le prouve, l'écran relit la base et dit
+  « Commentaire épinglé » au lieu d'annoncer un échec.
 - Le marqueur **`EPINGLE_DU_FIL`** (« comment_interactions:epingle-du-fil ») : la migration le déclare en
   `-- PREREQUIS-CLIENT`.
 
@@ -1346,9 +1351,10 @@ déclencheurs de production des quatre tables du décor (md5 au canal ①).
   spectateur (l'amplification que R37 avait écartée).
 - ⚠️ **L'ordre des écritures compte** : la cible d'abord.
 
-**Verrous.** `tests/e2e/epingle-commentaire.spec.js` (22 cas locaux ; le simulateur honore filtres, ordre, limite et
-curseur, et sépare la lecture de l'épingle de celle des interactions) : trente-neuf réinjections au fil des
-contre-revues, chacune rougit son cas. `tests/e2e/epingle-commentaire-reel.spec.js` (deux comptes, staging,
+**Verrous.** `tests/e2e/epingle-commentaire.spec.js` (27 cas locaux ; le simulateur honore filtres, ordre, limite et
+curseur, sépare la lecture de l'épingle de celle des interactions, sait perdre une réponse après validation et retarder
+la lecture d'un commentaire par son identifiant) : quarante-quatre réinjections au fil des contre-revues, chacune
+rougit son cas (l'épinglé récent porte deux défenses superposées : ⑳ rougit quand les deux tombent). `tests/e2e/epingle-commentaire-reel.spec.js` (deux comptes, staging,
 `SUITES_PROD`) : une sonde sans effet dit si la migration y est ; absente, le vrai refus 23514 est dit et défait — c'est
 ce qu'a mesuré sa première exécution en CI (#727) ; présente, A épingle, B la voit après **rechargement**, B est refusé
 (42501 et l'indice), A retire. Le banc SQL (76/0) et ses treize mutations.
@@ -1364,7 +1370,11 @@ ce qu'a mesuré sa première exécution en CI (#727) ; présente, A épingle, B 
   client, la migration révisée) ; ce qu'elle a vu en passant est au registre (RV-43 à RV-46) ;
 - `audit-passio`, deltas, 06/11 : 61fb36c → deux P2 (repeinte avant les « j'aime », `saveState` à chaque ouverture),
   deux P3, des P4 ; 3224fa0 → un P3 (une relecture par retrait), deux P4 ; 84cb6b3 → un P2 (l'épinglé gardé jamais
-  revérifié), trois P4 — tous corrigés (84cb6b3, d38d2fb).
+  revérifié), trois P4 ; d38d2fb → aucun P2, mais trois régressions (P3 : un commentaire RÉCENT lu par son identifiant
+  était « gardé » et quittait la liste avec l'épingle ; P4 : l'écho de mon écriture, seule preuve d'une écriture dont la
+  réponse s'est perdue, était jeté ; P4 : une absence lue retirait aussi le nouvel épinglé) et deux trous préexistants
+  (discussion paginée plus loin : jamais revérifié ; dernière page atteinte : l'épinglé supprimé restait et comptait) —
+  tous corrigés (84cb6b3, d38d2fb, e86c955).
 - Restés, dits tels quels : un ancien client non rechargé (la minute qui suit un déploiement) lit encore par
   `comment_id` ; « un seul épinglé par fil » n'est pas un invariant du serveur ; les lignes d'un commentaire d'ACTIVITÉ
   supprimé restent (R31), sans rien afficher.
