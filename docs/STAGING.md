@@ -14,6 +14,8 @@
 | réglages auth | confirmation d'e-mail, captcha, mot de passe 8 | défaut Supabase — le banc de comptes n'y passe pas (`generate_link` + `verifyOtp`) |
 | coût | plan Pro | second projet : calcul facturé ; `POST /v1/projects/<ref>/pause` le remet en pause |
 
+⚠️ **Le staging porte une tâche cron qui appelle la PRODUCTION** (`pilotage_veille`, installée par la restauration RES-14 du 2026-10-21, mesurée le 2026-11-06 : `pg_net/0.20.4` à chaque tick de 5 min). Inoffensive depuis le 2026-11-06 (la veille prend un créneau atomique), mais à retirer : `select cron.unschedule('pilotage_veille');` dans l'éditeur SQL du staging. Une nouvelle reprise ne la réinstalle plus (`scripts/schema-executable.js` ne recopie une tâche qui appelle un projet que sur ce projet).
+
 ## Comment le client vise un projet
 
 `js/app-08` lit **`window.PASSIO_SUPABASE_CIBLE = { url, anon }`** s'il est posé avant lui ; sinon, la production. Une cible partielle ou mal formée (URL qui n'est pas `https://<ref>.supabase.co`, clé absente) est **ignorée** : jamais une production à moitié détournée. Tout suit : SDK, REST direct, télémétrie (`window.PASSIO_SUPABASE`), jeton `sb-<ref>-auth-token` (dérivé de l'URL ; la purge de déconnexion cherche le jeton par motif, plus par nom de projet).

@@ -1228,3 +1228,14 @@ test("㉿⑦ chaque geste de la veille passe par la politique — les rappels au
   assert.match(fn, /flow_action:meta->>flow_action,step:meta->>step,rc:meta->>rc/);
   assert.doesNotMatch(fn.slice(fn.indexOf("async function lireLignesFlux"), fn.indexOf("async function lireLignesFlux") + 900), /,meta,/, "jamais `meta` entier");
 });
+
+test("㉿⑧ la veille prend un CRÉNEAU atomique d'abord — jamais le plafond « lire, puis écrire » (deux veilles en parallèle, 2026-10-21 → 11-06)", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  const garde = v.indexOf('const creneau = await prendreCreneau(admin, "systeme:pilotage-veille", "pilotage-veille", SECRET_GESTES);');
+  assert.ok(garde > 0, "le créneau atomique garde la veille");
+  assert.match(v.slice(garde), /^const creneau = [^\n]*\n\s*if \(!creneau\.ok\) \{/, "refusé (pris ou erreur) → rien ne tourne");
+  assert.ok(garde < v.indexOf("Promise.allSettled("), "AVANT toute lecture et tout geste");
+  assert.doesNotMatch(v, /verifierPlafondEnBase/, "le plafond lit puis écrit : deux appels simultanés passent tous deux");
+  assert.match(v.slice(garde, garde + 700), /return json\(\{ ok: true, ignore: "trop tôt" \}\);/, "la réponse publique ne dit pas pourquoi");
+});

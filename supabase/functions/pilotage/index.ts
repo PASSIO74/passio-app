@@ -43,7 +43,7 @@ import {
 } from "../_shared/reglages.js";
 import {
   RETOUR, REVEIL, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
-  continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt,
+  continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt, prendreCreneau,
 } from "../_shared/autonomie.js";
 // Parcours critiques, politique d'automatisation, battement (2026-11-06).
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
@@ -115,12 +115,21 @@ Deno.serve(async (req) => {
 
 // ─── ① Veille ───────────────────────────────────────────────────────────────
 // Appelable par n'importe qui (clé anon) : elle ne fait jamais rien de plus que
-// ce que ferait pg_cron, et au plus une fois par minute. Le plafond horaire
-// vaut 60 (une par minute) : à 20, vingt appels anonymes en début d'heure
-// affamaient la veille pendant les 40 minutes suivantes (contre-revue).
+// ce que ferait pg_cron, et jamais deux fois à moins d'une minute. Un appel
+// anonyme qui prend le créneau fait tourner la MÊME veille : il ne l'affame pas.
+// Le créneau est ATOMIQUE (`prendreCreneau`, clé primaire sous HMAC) : l'ancien plafond
+// « lire, puis écrire » laissait passer DEUX veilles en parallèle une fois sur
+// deux depuis que deux ordonnanceurs l'appellent à la même seconde (2026-10-21)
+// — rappel envoyé deux fois, voyant noté deux fois (mesuré le 2026-11-06).
 async function veille(admin: Admin) {
-  const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 60 });
-  if (!plafond.ok) return json({ ok: true, ignore: "trop tôt" });
+  const creneau = await prendreCreneau(admin, "systeme:pilotage-veille", "pilotage-veille", SECRET_GESTES);
+  if (!creneau.ok) {
+    // Pris : une autre veille tourne ou vient de tourner — rien à dire. Erreur :
+    // la veille ne tourne pas, et sans cette trace seul le battement périmé
+    // (35 min) le dirait, sans sa cause. La réponse publique, elle, ne change pas.
+    if (creneau.raison === "erreur") console.warn("veille : créneau refusé " + JSON.stringify({ code: (creneau as { code?: string }).code || "?" }));
+    return json({ ok: true, ignore: "trop tôt" });
+  }
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
   const t0 = Date.now();
@@ -157,16 +166,29 @@ async function veille(admin: Admin) {
   const vt = tenirVerdict(prec, v, incomplet);
   const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, tenu: !!vt.tenu };
   const d = decideAlerte(prec, actuel);
-  let envoyes = 0;
-  if (d.sonner) envoyes = await sonnerPilote(admin, d.titre!, d.texte || "");
   const change = !prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner;
+  // UNE transition par état mémorisé : son identifiant est un HMAC de l'état
+  // qu'elle remplace (`prec.le`). Deux veilles qui se chevauchent (le créneau
+  // espace les DÉPARTS, pas les durées : une veille de plus d'une minute, puis
+  // un appel suivant) lisent le même état ; la seconde se heurte à la clé
+  // primaire et ne sonne pas une seconde fois (revue adversariale du
+  // 2026-11-06). Toute AUTRE erreur d'écriture laisse sonner : l'alerte d'abord.
+  // Sans état LU, pas de clé déterministe : `lireEtatMemorise` rend null aussi
+  // quand sa lecture échoue, et une clé fixe (« initial ») aurait fait passer la
+  // deuxième lecture en échec pour un doublon — une vraie alerte tue. Sans état,
+  // un doublon reste possible, un silence jamais.
+  let dejaNotee = false;
   if (change) {
-    await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: "pilotage_etat", properties: {
+    const id = prec && prec.le ? await idGeste(`pilotage_etat:${prec.le}`, SECRET_GESTES).catch(() => null) : null;
+    const { error: ee } = await admin.from("analytics_events").insert({ ...(id ? { id } : {}), user_id: "systeme:pilotage", event: "pilotage_etat", properties: {
       couleur: actuel.couleur, dispo: actuel.dispo, raisons: (actuel.raisons || []).slice(0, 4),
       alerteLe: d.sonner ? new Date().toISOString() : (prec && prec.alerteLe) || null,
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
     } });
+    dejaNotee = !!ee && String((ee as { code?: string }).code || "") === "23505";
   }
+  let envoyes = 0;
+  if (d.sonner && !dejaNotee) envoyes = await sonnerPilote(admin, d.titre!, d.texte || "");
   // Puis ce qui agit seul (délestage 2026-10-11 ; réveil et proposition
   // 2026-10-12, _shared/autonomie.js). Chaque étape est isolée : une panne de
   // l'une ne casse ni les autres ni la veille. Les signaux ont été lus UNE fois,
@@ -222,7 +244,7 @@ async function rappels(admin: Admin) {
   if (!pub || !priv) return { inactif: "VAPID absent" };
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
   // deno-lint-ignore no-explicit-any
-  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts));
+  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts), Date.now(), SECRET_GESTES);
 }
 
 async function lireEtatMemorise(admin: Admin) {

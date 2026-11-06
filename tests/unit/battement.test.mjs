@@ -51,3 +51,12 @@ test("③ une horodate sans fuseau (timestamp) est lue en UTC ; illisible = arr�
   assert.equal(Math.round(r.ageMs / 60e3), 5);
   assert.equal(resumerBattement({ created_at: "n'importe quoi", properties: {} }, null, T).etat, "arrete");
 });
+
+test("④ des rappels en échec rendent la veille « incomplète » — ils dormaient dans rappels_echec, que rien ne lisait ; un battement d'avant, sans la clé, n'en dit rien", () => {
+  const ok = Object.fromEntries(LECTURES_BATTEMENT.map((k) => [k, "ok"]));
+  const ko = resumerBattement({ created_at: new Date(T - 5 * 60e3).toISOString(), properties: { lectures: { ...ok, rappels: "ko" } } }, 96, T);
+  assert.equal(ko.etat, "incomplet");
+  assert.ok(ko.raisons.some((r) => /rappels d'activité ont échoué/.test(r)));
+  assert.equal(resumerBattement({ created_at: new Date(T - 5 * 60e3).toISOString(), properties: { lectures: { ...ok, rappels: "ok" } } }, 96, T).etat, "vivant");
+  assert.equal(resumerBattement({ created_at: new Date(T - 5 * 60e3).toISOString(), properties: { lectures: ok } }, 96, T).etat, "vivant");
+});
