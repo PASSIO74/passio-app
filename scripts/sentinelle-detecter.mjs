@@ -21,7 +21,7 @@
 // La quatrième famille (2026-11-06) juge les parcours avec le MÊME registre et
 // la MÊME règle que le pilotage du nuage — jamais une copie.
 import { CONTRATS, contratDe } from "../supabase/functions/_shared/contrats-actions.js";
-import { regrouperFlux, issueFlux } from "../supabase/functions/_shared/parcours.js";
+import { regrouperFlux, issueFlux, melanger } from "../supabase/functions/_shared/parcours.js";
 
 // Messages qui ne portent AUCUNE information exploitable : les corriger est
 // impossible, les compter fait du bruit qui masque le vrai signal.
@@ -461,6 +461,35 @@ export function classerParcours(lignes = [], options = {}) {
     .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n))
     .filter((g) => g.n >= min || g.comptes >= 2);
   return { candidates, ecartees, nonVerifiees };
+}
+
+/**
+ * Quels comptes relire, et combien : PAR ACTION, au HASARD, sous un budget total.
+ * ⚠️ Jamais « les n premiers » d'une liste dont l'ordre est celui que les émetteurs
+ * choisissent : une nuée de comptes neufs y repousserait les anciens au-delà du
+ * plafond de lecture et tairait une vraie panne (revue de sécurité du 2026-11-06).
+ * Ce que le budget n'a pas permis de relire est COMPTÉ (`nonVerifies`), et dit.
+ * FONCTION PURE (`aleatoire` injectable pour les bancs).
+ */
+export const PARCOURS_VERIFICATION = Object.freeze({ parAction: 30, total: 150 });
+export function uidsAVerifier(candidats, { parAction = PARCOURS_VERIFICATION.parAction, total = PARCOURS_VERIFICATION.total, aleatoire = null } = {}) {
+  const parA = new Map();
+  for (const c of Array.isArray(candidats) ? candidats : []) {
+    if (!c || !c.action) continue;
+    const e = parA.get(c.action) || new Set();
+    for (const u of c._uids || []) e.add(u);
+    parA.set(c.action, e);
+  }
+  const lots = [];
+  let reste = total, nonVerifies = 0;
+  for (const [action, e] of parA) {
+    const tous = melanger([...e], aleatoire);
+    const n = Math.max(0, Math.min(parAction, reste, tous.length));
+    lots.push({ action, uids: tous.slice(0, n) });
+    nonVerifies += tous.length - n;
+    reste -= n;
+  }
+  return { lots, nonVerifies };
 }
 
 /** Les flux de la fenêtre : la seule colonne d'identité retenue est `auth_uid` (serveur). */
@@ -1499,9 +1528,11 @@ async function principal() {
     if (fl.complet) {
       // Deux passages, comme les boutons : seuls les comptes ANCIENS décident.
       const premier = classerParcours(fl.lignes, { comptesAnciens: "tous", avecUids: true });
-      const uids = premier.candidates.flatMap((c) => c._uids || []);
-      const anciens = uids.length ? await lireComptesAnciens({ url, cle, uids }) : new Set();
+      const choix = uidsAVerifier(premier.candidates);
+      const anciens = new Set();
+      for (const lot of choix.lots) for (const u of await lireComptesAnciens({ url, cle, uids: lot.uids })) anciens.add(u);
       parcours = classerParcours(fl.lignes, { comptesAnciens: anciens });
+      parcoursSource.verificationsIncompletes = choix.nonVerifies;
     }
   } catch (e) {
     parcoursSource = { erreur: String(e.message || e).slice(0, 160) };

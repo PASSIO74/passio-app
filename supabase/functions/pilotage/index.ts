@@ -46,7 +46,7 @@ import {
   continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt,
 } from "../_shared/autonomie.js";
 // Parcours critiques, politique d'automatisation, battement (2026-11-06).
-import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesDesPannes } from "../_shared/parcours.js";
+import { bilanParcours, couverture as couvertureParcours, confirmerPannes, melanger, SEUILS as SEUILS_PARCOURS } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
 
@@ -597,17 +597,13 @@ async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audie
   return { lance: true };
 }
 
-/** Ceux de ces comptes qui sont confirmés et créés depuis au moins `ancienneteMs`. Illisible = pas ancien. */
-async function idsComptesAnciens(admin: Admin, uids: string[], ancienneteMs: number): Promise<Set<string>> {
-  const anciens = new Set<string>();
-  for (const uid of uids.slice(0, 20)) {
-    try {
-      const { data, error } = await admin.auth.admin.getUserById(uid);
-      const u = !error && data ? data.user : null;
-      if (u && u.email_confirmed_at && Date.now() - dateUtc(u.created_at) >= ancienneteMs) anciens.add(uid);
-    } catch { /* un compte illisible ne compte pas */ }
-  }
-  return anciens;
+/** Ce compte est-il confirmé et créé depuis au moins `ancienneteMs` ? Illisible = non. */
+async function estCompteAncien(admin: Admin, uid: string, ancienneteMs: number): Promise<boolean> {
+  try {
+    const { data, error } = await admin.auth.admin.getUserById(uid);
+    const u = !error && data ? data.user : null;
+    return !!(u && u.email_confirmed_at && Date.now() - dateUtc(u.created_at) >= ancienneteMs);
+  } catch { return false; }
 }
 
 // ─── Parcours critiques (2026-11-06, _shared/parcours.js) ───────────────────
@@ -636,12 +632,36 @@ async function lireLignesFlux(admin: Admin, fenetreMs: number) {
 }
 // Une panne ne sonne que CONFIRMÉE (revue de sécurité du 2026-11-06) : ses
 // comptes en échec sont relus dans l'authentification (confirmés, > 24 h,
-// comme le réveil) ; sinon elle redescend en « dégradé ». `confirmerPannes`
-// retire ensuite les identités : rien de nominatif ne quitte la fonction.
+// comme le réveil) ; sinon elle redescend en « dégradé ». La lecture est
+// bornée, donc elle ne doit pas se borner sur un ordre qu'un émetteur choisit :
+// PAR PANNE, dans un ordre TIRÉ AU HASARD (`melanger`), arrêt dès que le seuil
+// est atteint, budget commun par passage ; un compte que le budget n'a pas
+// permis de relire est dit « non relu » (`verificationIncomplete`), jamais
+// « neuf ». `confirmerPannes` retire ensuite les identités : rien de nominatif
+// ne quitte la fonction.
+const RELECTURES_PAR_PANNE = 40;
+const RELECTURES_PAR_PASSAGE = 120;
 async function confirmer(admin: Admin, ...bilans: Record<string, unknown>[]) {
-  const uids = [...new Set(bilans.flatMap((b) => comptesDesPannes(b)))];
-  const anciens = uids.length ? await idsComptesAnciens(admin, uids, REVEIL.ancienneteMinMs) : new Set<string>();
-  return bilans.map((b) => confirmerPannes(b, anciens));
+  const vus = new Map<string, boolean>();
+  const nonLus = new Set<string>();
+  let budget = RELECTURES_PAR_PASSAGE;
+  for (const b of bilans) {
+    const liste = Array.isArray(b.parcours) ? b.parcours as { etat?: string; comptesEchecIds?: string[] }[] : [];
+    for (const p of liste.filter((x) => x && x.etat === "panne")) {
+      let anciens = 0, lus = 0;
+      for (const uid of melanger(p.comptesEchecIds || [])) {
+        if (anciens >= SEUILS_PARCOURS.panneComptesMin) break;
+        if (!vus.has(uid)) {
+          if (lus >= RELECTURES_PAR_PANNE || budget <= 0) { nonLus.add(uid); continue; }
+          lus++; budget--;
+          vus.set(uid, await estCompteAncien(admin, uid, REVEIL.ancienneteMinMs));
+        }
+        if (vus.get(uid)) anciens++;
+      }
+    }
+  }
+  const anciens = new Set([...vus].filter(([, ok]) => ok).map(([uid]) => uid));
+  return bilans.map((b) => confirmerPannes(b, { anciens, nonLus }));
 }
 async function lireParcours(admin: Admin) {
   const { lignes, tronque } = await lireLignesFlux(admin, 864e5);

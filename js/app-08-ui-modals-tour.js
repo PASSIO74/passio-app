@@ -5195,7 +5195,16 @@ async function supaAddComment(postId, content, commentId) {
   // (2026-11-06, contrats-actions.js). Chaque essai de la file est un flux.
   let _cmtCid = null;
   try { if (window.tel && tel.flowStart) _cmtCid = tel.flowStart("comment_post", { postId: postId }); } catch (e) {}
-  const _cmtRegle = (ok, err) => { try { if (_cmtCid && window.tel && tel.settle) tel.settle(_cmtCid, "saved", ok, err || null); } catch (e) {} _cmtCid = null; };
+  // La file des commentaires rejoue l'envoi : un réseau absent est une ATTENTE
+  // (« hors_ligne », contrat comment_post), le limiteur un refus légitime.
+  const _cmtRegle = (ok, err) => {
+    try {
+      const code = !ok && typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(err) : null;
+      if (_cmtCid && window.tel && code === "reseau") { tel.step(_cmtCid, "queued", "ok", { rc: "hors_ligne" }); tel.flowEnd(_cmtCid, "pending"); }
+      else if (_cmtCid && window.tel && tel.settle) tel.settle(_cmtCid, "saved", ok, code ? { code, message: code } : (err || null));
+    } catch (e) {}
+    _cmtCid = null;
+  };
   try {
     await supaEnsureProfileExists();
     const { error } = await supa.from("post_comments").insert({
@@ -5241,7 +5250,14 @@ async function supaEcrireInteraction(commentId, postId, kind, payload) {
   // gardé fait échouer la CI).
   let _cintCid = null;
   try { if (window.tel && tel.flowStart) _cintCid = tel.flowStart("cint", { commentId: commentId, postId: postId || null, ck: kind }); } catch (e) {}
-  const _cintRegle = (ok, err) => { try { if (_cintCid && window.tel && tel.settle) tel.settle(_cintCid, "saved", ok, err || null); } catch (e) {} _cintCid = null; };
+  // Un échec réseau ou un refus du limiteur porte son CODE FERMÉ (_codeEchecEcriture, app-02).
+  const _cintRegle = (ok, err) => {
+    try {
+      const code = !ok && typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(err) : null;
+      if (_cintCid && window.tel && tel.settle) tel.settle(_cintCid, "saved", ok, code ? { code, message: code } : (err || null));
+    } catch (e) {}
+    _cintCid = null;
+  };
   try {
     const { error } = await supa.from("comment_interactions").insert({
       id: "ci_" + uid(), comment_id: commentId, post_id: postId || null,
@@ -8354,9 +8370,17 @@ async function supaReport(targetType, targetId, reason) {
       reason: String(reason || "").slice(0, 500), created_at: new Date().toISOString(),
     });
     const v = _writeVerdict(res, { label: "signalement" });
-    _repRegle(v.ok, v.error);
+    // Signaler deux fois la même passion : l'index unique par personne répond
+    // 23505 — « le cas le plus fréquent » (app-04). C'est une règle, pas une panne.
+    const code = v.ok ? null : String(v.error && v.error.code) === "23505" ? "doublon" : (typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(v.error) : null);
+    _repRegle(v.ok, code ? { code, message: code } : v.error);
     return v.ok;
-  } catch(e) { console.warn("signalement :", e && e.message); _repRegle(false, e); return false; }
+  } catch(e) {
+    console.warn("signalement :", e && e.message);
+    const code = typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(e) : null;
+    _repRegle(false, code ? { code, message: code } : e);
+    return false;
+  }
 }
 
 // ---- STORIES : VUES SYNCHRONISÉES (cross-appareil) ----

@@ -1186,7 +1186,7 @@ test("㉿④ la fonction : chaque geste automatique passe par la politique, le b
   assert.ok(v.indexOf("battre(admin") > v.indexOf("emettreCanari()"), "le battement prouve que la veille est allée au bout");
   assert.ok(v.indexOf("decideAlerte(") < v.indexOf("battre(admin"), "l'alerte ne l'attend pas");
   // Ce qui sort du réveil : des identifiants de parcours, jamais d'identité de compte.
-  const r = fn.slice(fn.indexOf("async function reveillerSentinelle"), fn.indexOf("async function idsComptesAnciens"));
+  const r = fn.slice(fn.indexOf("async function reveillerSentinelle"), fn.indexOf("async function estCompteAncien"));
   assert.match(r, /p\.etat === "panne" && p\.panneConfirmee === true/);
   assert.doesNotMatch(r, /comptesEchecIds/, "le réveil ne voit plus aucune identité : confirmerPannes les a retirées");
   const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));

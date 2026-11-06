@@ -231,3 +231,56 @@ test.describe("Parcours critiques : les flux se ferment au verdict", () => {
     chaine(await flux(page), "report_content", "error");
   });
 });
+
+// ─── Audit du 2026-11-06 : codes fermés et garde « en vol » pendant la preuve ───
+test.describe("Parcours critiques : codes fermés et preuve en vol", () => {
+  test("⑩ un signalement en double est un refus de RÈGLE (« doublon »), jamais une panne", async ({ page }) => {
+    await preparer(page);
+    await page.evaluate(() => { window.__reponses.reports = { insert: { error: { code: "23505", message: 'duplicate key value violates unique constraint "reports_passion_unique_par_personne"' } } }; });
+    expect(await page.evaluate(() => supaReport("passion", "cuisine", ""))).toBe(false);
+    const saved = chaine(await flux(page), "report_content", "error");
+    expect(saved.meta.rc).toBe("doublon");
+  });
+
+  test("⑪ coupure réseau : « reseau » pour une réaction ; ATTENTE pour un commentaire, que la file rejouera", async ({ page }) => {
+    await preparer(page);
+    await page.evaluate(() => { window.__reponses.comment_interactions = { insert: { error: { message: "TypeError: Failed to fetch" } } }; });
+    await page.evaluate(() => supaEcrireInteraction("c_1", "p_1", "like", null));
+    const saved = chaine(await flux(page), "cint", "error");
+    expect(saved.meta.rc).toBe("reseau");
+    await page.evaluate(() => { window.__flow = []; window.__reponses.post_comments = { insert: { error: { message: "TypeError: Failed to fetch" } } }; });
+    expect(await page.evaluate(() => supaAddComment("p_1", "bravo", "c_r1"))).toBe(false);
+    const evs = await flux(page);
+    expect(evs.map((e) => e.etape)).toEqual(["start", "step", "end"]);
+    expect(evs[1]).toMatchObject({ key: "queued", meta: { rc: "hors_ligne" } });
+    expect(evs[2]).toMatchObject({ status: "pending" });
+  });
+
+  test("⑫ ROB-06 : pendant la relecture de la preuve, le message reste EN VOL — un second envoi ne part pas", async ({ page }) => {
+    await preparer(page);
+    const r = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      window.__poserConv("conv_v1", "msg_v1");
+      let relache;
+      const relecture = new Promise((res) => { relache = res; });
+      window.__reponses.conv_messages = {
+        insert: { status: 409, error: { code: "23505", message: 'duplicate key value violates unique constraint "conv_messages_pkey"' } },
+        select: () => relecture.then(() => ({ data: { from_id: MY_UID }, error: null })),
+      };
+      _sendTextToSupa("conv_v1", "msg_v1", "coucou");
+      await new Promise((res) => setTimeout(res, 40));
+      const enVolPendant = _msgEstEnVol("msg_v1");
+      _sendTextToSupa("conv_v1", "msg_v1", "coucou");   // un vidage concurrent (online, démarrage)
+      const envoisPendant = window.__envois.length;
+      relache();
+      await new Promise((res) => setTimeout(res, 60));
+      return { enVolPendant, envoisPendant, enVolApres: _msgEstEnVol("msg_v1"), statut: window.__statut("conv_v1", "msg_v1"), notifs: window.__notifs.length };
+    });
+    // RÉINJECTION : sans la garde pendant la preuve, 2 envois et 2 notifications.
+    expect(r.enVolPendant).toBe(true);
+    expect(r.envoisPendant).toBe(1);
+    expect(r.enVolApres).toBe(false);
+    expect(r.statut).toBe("sent");
+    expect(r.notifs).toBe(1);
+  });
+});

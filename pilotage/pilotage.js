@@ -785,6 +785,8 @@
       else morceaux.push(x.tentes ? x.tentes + " action(s) en 24 h, aucune encore jugée" : "aucune action en 24 h");
       if (x.refuses) morceaux.push(x.refuses + " refus de règle (complet, annulée…)");
       if (x.attente) morceaux.push(x.attente + " en file locale");
+      if (x.reseau) morceaux.push(x.reseau + " coupure(s) réseau de l'appareil");
+      if (x.anonymes) morceaux.push(x.anonymes + " sans compte (non comptées)");
       if (x.inconnus) morceaux.push(x.inconnus + " sans verdict");
       if (x.p95Ms != null) morceaux.push("p95 " + Math.round(x.p95Ms) + " ms pour " + x.objectifP95Ms + " ms visés (" + x.mesures + " mesures)");
       const c = carte(x.libelle + (x.criticite === "critique" ? " ★" : ""), mot, morceaux.join(" · "), coul);

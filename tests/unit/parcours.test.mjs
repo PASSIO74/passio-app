@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { CONTRATS, VERSION_CONTRATS, validerContrats, contratDe, contratsCritiques, PARCOURS_NON_INSTRUMENTES } from "../../supabase/functions/_shared/contrats-actions.js";
-import { regrouperFlux, issueFlux, bilanParcours, etatParcours, raisonsVerdict, parcoursARegler, couverture, centile, SEUILS, confirmerPannes, comptesDesPannes } from "../../supabase/functions/_shared/parcours.js";
+import { regrouperFlux, issueFlux, bilanParcours, etatParcours, raisonsVerdict, parcoursARegler, couverture, centile, SEUILS, confirmerPannes, comptesDesPannes, melanger } from "../../supabase/functions/_shared/parcours.js";
 import { COUPURES_AUTORISEES } from "../../supabase/functions/_shared/reglages.js";
 
 const T0 = Date.parse("2026-11-06T12:00:00Z");
@@ -224,4 +224,34 @@ test("⑭ chaque émetteur déclaré porte bien le flux de son contrat (même r�
     }
     for (const v of c.verrous) assert.ok(fs.existsSync(v), `verrou absent : ${v}`);
   }
+});
+
+test("⑮ codes communs : « limite » est un refus légitime partout, « reseau » se compte à part, le doublon de signalement est une règle", () => {
+  const l = [
+    ...flux("comment_post", { ok: false, rc: "limite" }),
+    ...flux("cint", { ok: false, rc: "reseau" }),
+    ...flux("report_content", { ok: false, rc: "doublon" }),
+    ...flux("report_content", { ok: false, rc: "23505", compte: "u9" }),
+  ];
+  const b = bilanDe(l);
+  assert.equal(parcoursDe(b, "comment_post").refuses, 1);
+  const cint = parcoursDe(b, "cint");
+  assert.equal(cint.reseau, 1);
+  assert.equal(cint.juges, 0, "une coupure réseau n'est ni un succès ni un échec du serveur");
+  const rep = parcoursDe(b, "report_content");
+  assert.equal(rep.refuses, 1, "doublon = règle");
+  assert.equal(rep.echoues, 1, "un 23505 que le client n'a pas traduit reste un échec");
+});
+
+test("⑯ vérification bornée : la panne non confirmée le DIT, et le tirage est une permutation", () => {
+  const ech = ["a", "b", "c"].flatMap((u) => flux("send_message", { ok: false, rc: "42501", compte: u }));
+  const b = bilanParcours(ech, { maintenant: T0, garderComptes: true });
+  const r = confirmerPannes(b, { anciens: new Set(["a"]), nonLus: new Set(["b", "c"]) });
+  const p = parcoursDe(r, "send_message");
+  assert.equal(p.etat, "degrade");
+  assert.equal(p.verificationIncomplete, true);
+  assert.match(p.raisons[0], /vérification incomplète : 2 compte\(s\) non relu\(s\)/);
+  const m = melanger([1, 2, 3, 4, 5]);
+  assert.deepEqual([...m].sort(), [1, 2, 3, 4, 5]);
+  assert.deepEqual(melanger([1, 2, 3], () => 0), [2, 3, 1], "tirage injectable : Fisher-Yates déterministe");
 });

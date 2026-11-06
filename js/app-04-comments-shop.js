@@ -7080,10 +7080,12 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
           // — c'est exactement ce qui a permis six jours de refus silencieux.
           try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
         } else {
-          // Rejoué par la file : un réseau absent est une ATTENTE ; un serveur
-          // qui répond en échec est un ÉCHEC de cet essai (le suivant aura le sien).
-          if (typeof estEchecReseau === "function" && estEchecReseau(res.error)) _flux.attente("hors_ligne");
-          else _flux.regle(false, res.error);
+          // Rejoué par la file : un réseau absent est une ATTENTE ; le limiteur
+          // anti-abus un refus légitime (« limite ») ; un serveur qui répond en
+          // échec, un ÉCHEC de cet essai (le suivant aura le sien).
+          var _code = typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(res.error) : null;
+          if (_code === "reseau") _flux.attente("hors_ligne");
+          else _flux.regle(false, _code ? { code: _code, message: _code } : res.error);
           _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
         }
       };
@@ -7097,12 +7099,19 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
         // (_conflitClePrimaire, _ligneDejaEnBase — app-02). Sinon, le refus suit
         // son cours ordinaire. Verrou : tests/e2e/parcours-flux.spec.js.
         if (typeof _conflitClePrimaire === "function" && _conflitClePrimaire(res.error, "conv_messages")) {
-          _ligneDejaEnBase("conv_messages", msgId, "from_id", moi).then(function (dejaLa) {
+          // ⚠️ LA PREUVE FAIT PARTIE DU VOL (ROB-06, audit du 2026-11-06). La garde
+          // venait d'être levée en tête de réponse : pendant la relecture, un
+          // `online` ou le vidage du démarrage renvoyait le même message, qui
+          // pouvait finir « réessayer » après avoir été prouvé en base. Et la
+          // promesse est RENDUE : une exception de `_envoye`/`_refuse` rejoint
+          // le `.catch` (échec + remise en file), elle ne s'échappe pas.
+          _msgEnVol[msgId] = true;
+          return _ligneDejaEnBase("conv_messages", msgId, "from_id", moi).then(function (dejaLa) {
+            delete _msgEnVol[msgId];
             var encoreMoi = gen === _outboxGenerationActuelle() && (typeof MY_UID !== "undefined" ? MY_UID : null) === moi;
             if (dejaLa && encoreMoi) { _flux.etape("deja_en_base"); _flux.regle(true); _envoye(); return; }
             _refuse();
-          }, _refuse);
-          return;
+          }, function () { delete _msgEnVol[msgId]; _refuse(); });
         }
         _refuse();
       }
@@ -7112,7 +7121,8 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
     // une panne réseau revenue après la purge ressuscitait la file.
     .catch(function(err) {
       delete _msgEnVol[msgId];
-      if (typeof estEchecReseau === "function" && estEchecReseau(err)) _flux.attente("hors_ligne"); else _flux.regle(false, err);
+      var _code = typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(err) : null;
+      if (_code === "reseau") _flux.attente("hors_ligne"); else _flux.regle(false, _code ? { code: _code, message: _code } : err);
       _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
     });
 }

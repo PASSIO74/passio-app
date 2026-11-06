@@ -1218,5 +1218,23 @@ test("㉚⑥ comptes ANCIENS seulement : sans l'ensemble relu, rien n'est retenu
   const final = classerParcours(l, { maintenant: T_P, comptesAnciens: ANCIENS });
   assert.equal(final.candidates[0]._uids, undefined, "le verdict (résumé public) ne porte aucune identité");
   const src = fs.readFileSync("scripts/sentinelle-detecter.mjs", "utf8");
-  assert.match(src, /const premier = classerParcours\(fl\.lignes, \{ comptesAnciens: "tous", avecUids: true \}\);[\s\S]{0,300}parcours = classerParcours\(fl\.lignes, \{ comptesAnciens: anciens \}\);/);
+  assert.match(src, /const premier = classerParcours\(fl\.lignes, \{ comptesAnciens: "tous", avecUids: true \}\);[\s\S]{0,400}const choix = uidsAVerifier\(premier\.candidates\);[\s\S]{0,400}parcours = classerParcours\(fl\.lignes, \{ comptesAnciens: anciens \}\);/);
+});
+
+import { uidsAVerifier } from "../../scripts/sentinelle-detecter.mjs";
+test("㉚⑦ la relecture des comptes se borne PAR ACTION et AU HASARD : une nuée de comptes neufs ne repousse pas les anciens hors du plafond", () => {
+  const neufs = Array.from({ length: 200 }, (_, i) => "neuf" + i);
+  const candidats = [{ action: "send_message", _uids: [...neufs, UID_A, UID_B] }, { action: "report_content", _uids: [UID_A] }];
+  const r = uidsAVerifier(candidats, { parAction: 30, total: 150 });
+  assert.equal(r.lots.length, 2, "chaque action a son lot : une action ne vide pas le budget de l'autre");
+  assert.equal(r.lots[0].uids.length, 30);
+  assert.deepEqual(r.lots[1].uids, [UID_A]);
+  assert.equal(r.nonVerifies, 172, "ce qui n'est pas relu est compté, et le verdict le dit");
+  // Le tirage n'est pas l'ordre des lignes : sur 200 tirages, les anciens (en fin de liste) sortent souvent.
+  let vus = 0;
+  for (let k = 0; k < 200; k++) if (uidsAVerifier(candidats, { parAction: 30, total: 150 }).lots[0].uids.includes(UID_A)) vus++;
+  assert.ok(vus > 10, "sans mélange, l'ancien en 201ᵉ position ne serait JAMAIS relu (" + vus + "/200)");
+  const fixe = uidsAVerifier([{ action: "x_y", _uids: ["a", "b", "c"] }], { aleatoire: () => 0 });
+  assert.deepEqual(fixe.lots[0].uids.sort(), ["a", "b", "c"]);
+  assert.equal(uidsAVerifier([], {}).nonVerifies, 0);
 });

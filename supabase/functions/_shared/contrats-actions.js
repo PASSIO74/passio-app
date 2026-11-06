@@ -9,10 +9,11 @@
 // sans verdict ne remontaient au téléphone que s'ils levaient aussi une erreur
 // JavaScript ou un appel réseau en échec.
 //
-// Ce registre est la SEULE définition, lue par :
+// Ce registre est la SEULE définition pour le NUAGE et la Sentinelle (l'atelier
+// du poste, dashboard/server/traces.js, garde ses contrats d'affichage), lue par :
 //   · la fonction `pilotage` (Deno) — bilan des parcours, voyant, « À faire » ;
 //   · la Sentinelle (`scripts/sentinelle-detecter.mjs`) — enquêtes « parcours » ;
-//   · la garde `scripts/audit-contrats-actions.js` (npm run verif) — un flux
+//   · la garde `scripts/audit-contrats-actions.mjs` (npm run verif) — un flux
 //     sans contrat, un flux ouvert jamais fermé, un contrat critique sans
 //     émetteur ou un verrou qui n'existe pas font échouer la CI.
 //
@@ -29,7 +30,8 @@
 // ⚠️ Les codes d'un refus (`meta.rc`) sont écrits par un NAVIGATEUR : ils ne
 // décident de rien seuls. `parcours.js` les assainit, et seules des identités
 // SERVEUR (`auth_uid`) comptent pour déclarer un parcours en panne.
-// Ce fichier ne fait AUCUN appel réseau ; tests/unit/contrats-actions.test.mjs.
+// Ce fichier ne fait AUCUN appel réseau ; tests/unit/parcours.test.mjs ①②⑭ et
+// tests/unit/audit-contrats-actions.test.mjs.
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const VERSION_CONTRATS = 1;
@@ -41,6 +43,13 @@ export const DOMAINES = Object.freeze(["messagerie", "publication", "interaction
 
 // Un code de refus, d'attente ou d'étape : court, fermé, sans texte libre.
 export const RE_CODE = /^[a-z0-9_]{1,40}$/;
+// Deux codes COMMUNS à tous les contrats (posés par `_codeEchecEcriture`, app-02) :
+//  · « limite » : le limiteur anti-abus du serveur (`rate_limit_insert`, P0001),
+//    posé sur presque toutes les tables d'écriture — un refus LÉGITIME partout ;
+//  · « reseau » : l'appareil n'a pas joint le serveur — ni un refus ni un défaut
+//    du serveur : compté à part (`reseau`), jamais dans les actions jugées.
+export const REFUS_COMMUNS = Object.freeze(["limite"]);
+export const CODE_RESEAU = "reseau";
 // Un identifiant d'action : celui que `tel.flowStart` reçoit.
 export const RE_ACTION = /^[a-z][a-z0-9_]{1,39}$/;
 
@@ -109,6 +118,7 @@ export const CONTRATS = Object.freeze({
     reaction: "le commentaire s'affiche « envoi… » puis confirmé, ou « non envoyé »",
     verite: "post_comments (ligne id = identifiant local)",
     finMs: 20e3, objectifP95Ms: 1000,
+    attente: ["hors_ligne"],
     reprise: "file_locale", sensibilite: "publique",
     emetteurs: ["js/app-08-ui-modals-tour.js"],
     verrous: ["tests/e2e/parcours-flux.spec.js"],
@@ -201,6 +211,7 @@ export const CONTRATS = Object.freeze({
     reaction: "« Signalement envoyé » seulement si la ligne est en base, sinon un refus dit",
     verite: "reports (ligne id, status ouvert)",
     finMs: 20e3, objectifP95Ms: 1500,
+    refusLegitimes: ["doublon"],     // index unique par personne et par passion
     reprise: "manuelle", sensibilite: "securite",
     emetteurs: ["js/app-08-ui-modals-tour.js"],
     verrous: ["tests/e2e/parcours-flux.spec.js", "tests/e2e/signaler-publication.spec.js", "tests/e2e/audit-2026-11-signaler-message.spec.js"],

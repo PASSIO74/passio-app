@@ -407,16 +407,6 @@ function _syncableState() {
   return s;
 }
 
-// ---- VERDICT D'UNE ÉCRITURE SUPABASE ----
-// Deux pièges se cumulent et se ressemblent à l'œil nu :
-//  ① le SDK ne LÈVE PAS sur un refus RLS — il renvoie { error }. Un `await` dont
-//    personne ne lit le retour rend l'échec invisible ;
-//  ② un UPDATE/DELETE que la policy filtre renvoie { data: [], error: null }.
-//    « Aucune erreur » n'est donc PAS « c'est fait » : la ligne peut exister et
-//    être restée intacte. Il faut demander `.select()` et COMPTER les lignes.
-// `expectRows` : mettre à true quand zéro ligne touchée signifie l'échec (on
-// modifie une ligne censée exister). `dupOk` : un 23505 signifie que l'état voulu
-// est déjà atteint — succès, sauf si l'intention portait sur le CONTENU de la ligne.
 // ══════════════════════════════════════════════════════════════════════════
 // UNE ÉCRITURE DÉJÀ FAITE N'EST PAS UN ÉCHEC (2026-11-06, consigne §16 ②)
 // ──────────────────────────────────────────────────────────────────────────
@@ -442,9 +432,40 @@ async function _ligneDejaEnBase(table, id, colonneAuteur, auteur) {
   try {
     var r = await supa.from(table).select(colonneAuteur).eq("id", id).maybeSingle();
     return !!(r && !r.error && r.data && String(r.data[colonneAuteur]) === String(auteur));
-  } catch (e) { return false; }
+  } catch (e) {
+    // Sûr (l'appelant garde son échec) mais jamais muet : une ReferenceError ou un
+    // changement du SDK éteindrait le rapprochement sans laisser de trace.
+    try { if (typeof diagLog === "function") diagLog("preuve_ecriture_illisible " + String((e && e.message) || e).slice(0, 80)); } catch (_) {}
+    return false;
+  }
 }
 
+// Le CODE FERMÉ d'un échec d'écriture, pour le flux d'action (contrats-actions.js) :
+//  · « reseau » : l'appareil n'a pas joint le serveur (estEchecReseau) — compté à
+//    part au pilotage, jamais comme un défaut du serveur ;
+//  · « limite » : le limiteur anti-abus du serveur (`rate_limit_insert`, P0001,
+//    sur presque toutes les tables d'écriture) — un refus LÉGITIME ;
+//  · null : garder le code de la base (42501, 23514…), qui nomme la cause.
+function _codeEchecEcriture(e) {
+  try {
+    if (!e) return null;
+    if (typeof estEchecReseau === "function" && estEchecReseau(e)) return "reseau";
+    if (String(e.code) === "P0001" && /rate limit/i.test(String(e.message || ""))) return "limite";
+  } catch (_) {}
+  return null;
+}
+
+
+// ---- VERDICT D'UNE ÉCRITURE SUPABASE ----
+// Deux pièges se cumulent et se ressemblent à l'œil nu :
+//  ① le SDK ne LÈVE PAS sur un refus RLS — il renvoie { error }. Un `await` dont
+//    personne ne lit le retour rend l'échec invisible ;
+//  ② un UPDATE/DELETE que la policy filtre renvoie { data: [], error: null }.
+//    « Aucune erreur » n'est donc PAS « c'est fait » : la ligne peut exister et
+//    être restée intacte. Il faut demander `.select()` et COMPTER les lignes.
+// `expectRows` : mettre à true quand zéro ligne touchée signifie l'échec (on
+// modifie une ligne censée exister). `dupOk` : un 23505 signifie que l'état voulu
+// est déjà atteint — succès, sauf si l'intention portait sur le CONTENU de la ligne.
 function _writeVerdict(res, opts) {
   opts = opts || {};
   const label = opts.label || "écriture";

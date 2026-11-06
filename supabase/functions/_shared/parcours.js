@@ -45,7 +45,7 @@
 // Ce fichier ne fait AUCUN appel réseau ; tests/unit/parcours.test.mjs.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { CONTRATS, VERSION_CONTRATS, RE_CODE, RE_ACTION, validerContrats, PARCOURS_NON_INSTRUMENTES } from "./contrats-actions.js";
+import { CONTRATS, VERSION_CONTRATS, RE_CODE, RE_ACTION, REFUS_COMMUNS, CODE_RESEAU, validerContrats, PARCOURS_NON_INSTRUMENTES } from "./contrats-actions.js";
 
 export const SEUILS = Object.freeze({
   minJuges: 5,             // en dessous : « insuffisant », jamais « sain »
@@ -64,7 +64,7 @@ export const SEUILS = Object.freeze({
 // Les issues possibles d'une action, et leur libellé pour un humain.
 export const ISSUES = Object.freeze({
   reussi: "réussie", refuse: "refusée (règle métier)", attente: "en file locale",
-  echoue: "échouée", en_cours: "en cours", inconnu: "sans verdict",
+  reseau: "coupure réseau de l'appareil", echoue: "échouée", en_cours: "en cours", inconnu: "sans verdict",
 });
 
 const ms = (v) => { const t = Date.parse(String(v || "")); return Number.isFinite(t) ? t : NaN; };
@@ -133,8 +133,9 @@ export function issueFlux(f, contrat, maintenant = Date.now()) {
   const verdict = f.confirmation || (f.statutFin === "ok" || f.statutFin === "error" ? f.statutFin : null);
   if (verdict === "ok") return "reussi";
   if (verdict === "error") {
-    if (f.rc && contrat.refusLegitimes.includes(f.rc)) return "refuse";
+    if (f.rc && (contrat.refusLegitimes.includes(f.rc) || REFUS_COMMUNS.includes(f.rc))) return "refuse";
     if (f.rc && contrat.attente.includes(f.rc)) return "attente";
+    if (f.rc === CODE_RESEAU) return "reseau";
     return "echoue";
   }
   if (f.statutFin === "pending") return "attente";
@@ -152,7 +153,7 @@ export function centile(tries, p) {
 
 const vide = (c) => ({
   id: c.id, libelle: c.libelle, domaine: c.domaine, criticite: c.criticite, objectifP95Ms: c.objectifP95Ms,
-  tentes: 0, reussis: 0, refuses: 0, attente: 0, echoues: 0, enCours: 0, inconnus: 0, juges: 0,
+  tentes: 0, reussis: 0, refuses: 0, attente: 0, reseau: 0, echoues: 0, enCours: 0, inconnus: 0, juges: 0,
   tauxSucces: null, comptes: 0, comptesEchec: 0, anonymes: 0, anonymesEchec: 0, sondes: 0, p50Ms: null, p95Ms: null, mesures: 0,
   codes: [], versionsEchec: [], dernier: null, etat: "non_observe", raisons: [],
   _comptes: new Set(), _comptesEchec: new Set(), _durees: [], _codes: new Map(), _versions: new Map(), _parCompte: new Map(),
@@ -200,6 +201,7 @@ export function bilanParcours(lignes, opts = {}) {
       if (Number.isFinite(d) && d >= 0 && d <= seuils.dureeMaxMs) b._durees.push(d);
     } else if (issue === "refuse") b.refuses++;
     else if (issue === "attente") b.attente++;
+    else if (issue === "reseau") b.reseau++;
     else if (issue === "en_cours") b.enCours++;
     else if (issue === "inconnu") b.inconnus++;
     else if (issue === "echoue") {
@@ -216,7 +218,10 @@ export function bilanParcours(lignes, opts = {}) {
     b.tauxSucces = b.juges ? Math.round((b.reussis / b.juges) * 1000) / 10 : null;
     b.comptes = b._comptes.size;
     b.comptesEchec = b._comptesEchec.size;
-    if (opts.garderComptes) b.comptesEchecIds = [...b._comptesEchec].slice(0, 50);
+    // TOUS les comptes, jamais les « n premiers » : l'ordre des lignes est celui
+    // qu'un émetteur choisit (revue de sécurité du 2026-11-06). C'est la
+    // vérification qui tire au hasard et se borne (`melanger`, la fonction).
+    if (opts.garderComptes) b.comptesEchecIds = [...b._comptesEchec];
     const durees = b._durees.sort((x, y) => x - y);
     b.mesures = durees.length;
     b.p50Ms = centile(durees, 50);
@@ -267,18 +272,43 @@ export function etatParcours(b, seuils = SEUILS) {
  * « dégradé » (orange) et le dit. Les identités sont ensuite RETIRÉES du bilan :
  * il peut partir vers le téléphone. PUR : rend un nouveau bilan.
  */
-export function confirmerPannes(bilan, anciens, seuils = SEUILS) {
+export function confirmerPannes(bilan, verification, seuils = SEUILS) {
   if (!bilan || !Array.isArray(bilan.parcours)) return bilan;
-  const ok = anciens instanceof Set ? anciens : new Set();
+  // `verification` : l'ensemble des comptes anciens, ou { anciens, nonLus } quand
+  // la lecture a été bornée — un compte NON LU n'est ni ancien ni neuf.
+  const v = verification instanceof Set ? { anciens: verification, nonLus: new Set() } : (verification || {});
+  const ok = v.anciens instanceof Set ? v.anciens : new Set();
+  const nonLus = v.nonLus instanceof Set ? v.nonLus : new Set();
   const parcours = bilan.parcours.map((p) => {
     const { comptesEchecIds, ...reste } = p;
     if (p.etat !== "panne") return reste;
-    const n = (Array.isArray(comptesEchecIds) ? comptesEchecIds : []).filter((u) => ok.has(u)).length;
+    const ids = Array.isArray(comptesEchecIds) ? comptesEchecIds : [];
+    const n = ids.filter((u) => ok.has(u)).length;
     if (n >= seuils.panneComptesMin) return { ...reste, panneConfirmee: true, comptesEchecAnciens: n };
-    return { ...reste, etat: "degrade", panneConfirmee: false, comptesEchecAnciens: n,
-      raisons: [`panne non confirmée : ${n} compte(s) ancien(s) sur ${p.comptesEchec} en échec (il en faut ${seuils.panneComptesMin}) — ${p.raisons[0]}`] };
+    // Lecture bornée atteinte : la panne n'est PAS déclarée non confirmée en
+    // silence — elle le dit (« vérification incomplète »), en orange.
+    const nl = ids.filter((u) => nonLus.has(u)).length;
+    const pourquoi = nl ? `vérification incomplète : ${nl} compte(s) non relu(s) (lecture bornée), ${n} ancien(s) trouvé(s)` : `${n} compte(s) ancien(s) sur ${p.comptesEchec} en échec (il en faut ${seuils.panneComptesMin})`;
+    return { ...reste, etat: "degrade", panneConfirmee: false, comptesEchecAnciens: n, verificationIncomplete: nl > 0,
+      raisons: [`panne non confirmée : ${pourquoi} — ${p.raisons[0]}`] };
   });
   return { ...bilan, parcours };
+}
+
+/**
+ * Mélange (Fisher-Yates) avec un tirage que l'émetteur des lignes ne choisit pas :
+ * la vérification des comptes se borne sur un échantillon AU HASARD, jamais sur
+ * l'ordre des lignes. `aleatoire(n)` rend un entier dans [0, n[ (injectable pour les bancs).
+ */
+export function melanger(liste, aleatoire = null) {
+  const a = Array.isArray(liste) ? liste.slice() : [];
+  const tirer = typeof aleatoire === "function" ? aleatoire : (n) => {
+    const c = globalThis.crypto;
+    if (c && typeof c.getRandomValues === "function") { const u = new Uint32Array(1); c.getRandomValues(u); return u[0] % n; }
+    return Math.floor(Math.random() * n);
+  };
+  for (let i = a.length - 1; i > 0; i--) { const j = tirer(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
 }
 
 /** Les identités des comptes en échec des parcours en panne (usage INTERNE à la fonction). */

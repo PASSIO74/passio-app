@@ -238,10 +238,13 @@ test("⑫ les marques ont UNE orthographe, lue et écrite par les mêmes constan
   assert.match(s, /comptesErreurs: Math\.max\(mesure \|\| 0, comptesParcours\) \}/, "le réveil décide sur les comptes ANCIENS");
   assert.match(s, /p\.etat === "panne" && p\.panneConfirmee === true/, "seules les pannes CONFIRMÉES par des comptes anciens réveillent");
   const conf = corpsDe("confirmer");
-  assert.match(conf, /idsComptesAnciens\(admin, uids, REVEIL\.ancienneteMinMs\)/, "les comptes d'un parcours sont relus, avec l'ancienneté du réveil");
-  const anciens = corpsDe("idsComptesAnciens");
+  assert.match(conf, /estCompteAncien\(admin, uid, REVEIL\.ancienneteMinMs\)/, "les comptes d'un parcours sont relus, avec l'ancienneté du réveil");
+  assert.match(conf, /for \(const uid of melanger\(p\.comptesEchecIds \|\| \[\]\)\)/, "ordre TIRÉ AU HASARD, jamais celui des lignes (revue de sécurité)");
+  assert.match(conf, /if \(anciens >= SEUILS_PARCOURS\.panneComptesMin\) break;/, "arrêt dès que le seuil est atteint");
+  assert.match(conf, /if \(lus >= RELECTURES_PAR_PANNE \|\| budget <= 0\) \{ nonLus\.add\(uid\); continue; \}/, "lecture bornée, et ce qui n'est pas relu est DIT");
+  assert.match(conf, /confirmerPannes\(b, \{ anciens, nonLus \}\)/);
+  const anciens = corpsDe("estCompteAncien");
   assert.match(anciens, /u && u\.email_confirmed_at && Date\.now\(\) - dateUtc\(u\.created_at\) >= ancienneteMs/, "confirmé ET assez ancien, sinon il ne compte pas");
-  assert.match(anciens, /uids\.slice\(0, 20\)/, "lecture bornée");
   assert.match(FN, /async function lireParcoursVeille[\s\S]{0,400}await confirmer\(admin,/, "la veille confirme avant de juger");
   assert.match(FN, /async function lireParcours\(admin: Admin\)[\s\S]{0,600}await confirmer\(admin,/, "l'écran aussi");
   assert.equal(reveilsEpuises(11), false);
