@@ -82,9 +82,13 @@
 --     l'appartenance n'est rendue QUE pour l'appelant connecté —
 --     `(_uid = (auth.uid())::text or auth.uid() is null) and exists(…)`. Pour un
 --     autre uid, la réponse est « faux », celle d'un non-membre : plus d'oracle
---     logique. Sans session (postgres, service_role, déclencheur hors requête
---     cliente, tâche planifiée) : inchangée. Chacun des appelants inventoriés lui
---     passe l'appelant (ou un uid égal à l'appelant) : leur résultat ne change pas.
+--     logique. Sans identité — `auth.uid()` NULL : postgres, service_role sans
+--     `sub`, déclencheur hors requête cliente, tâche planifiée — : inchangée (un
+--     jeton service_role qui porterait un `sub` serait traité comme ce compte ; un
+--     `sub` qui n'est pas un uuid lève 22P02 dans la fonction, comme déjà dans les
+--     policies — aucun appelant de production n'est dans l'un ou l'autre cas).
+--     Chacun des appelants inventoriés lui passe l'appelant (ou un uid égal à
+--     l'appelant) : leur résultat ne change pas.
 --     L'ORDRE est voulu, et c'est de l'hygiène, pas la fermeture d'un canal : la
 --     table de vérité est celle de `exists(…) and (auth.uid() is null or _uid = …)`
 --     (`exists` n'est jamais NULL ; `_uid` NULL rend faux dans les deux ordres),
@@ -122,13 +126,32 @@
 --    liste. HORS de conv_members, le masquage des blocages de C-04 ne vaut PAS : à
 --    un membre d'une discussion d'activité, `conv_reads` (reads_select :
 --    is_conv_member seul — l'accusé de lecture de chaque membre, user_id compris),
---    les pièces jointes (storage.objects, chemin `<uid de l'auteur>/<conversation>/…`,
---    passio_attachments_read_membre) et la diffusion `typing:` (identifiant de
---    l'émetteur) montrent encore les membres bloqués avec lui. Résidu de C-04,
---    préexistant, hors de ce lot (RV-49) : aligner reads_select sur la disjonction
---    de ② (`and (left(conv_id, 6) <> 'evgrp_' or user_id = (select auth.uid())::text
---    or not public.is_blocked_with(user_id) or public.is_conversation_creator(conv_id))`),
---    avec un banc sur postgres_changes (apply_rls) ;
+--    les pièces jointes (storage.objects, chemin `attachments/<conversation>/<fichier>` :
+--    il ne nomme pas l'auteur, mais l'objet reste listable et lisible par tout
+--    membre, contenu et nom d'origine compris — passio_attachments_read_membre) et
+--    la diffusion `typing:` (le NOM d'affichage de l'émetteur) montrent encore les
+--    membres bloqués avec lui. Résidu de C-04, préexistant, hors de ce lot (RV-49) :
+--    aligner reads_select sur la disjonction de ② (`and (left(conv_id, 6) <> 'evgrp_'
+--    or user_id = (select auth.uid())::text or not public.is_blocked_with(user_id)
+--    or public.is_conversation_creator(conv_id))`), avec un banc sur postgres_changes
+--    (apply_rls) ; les pièces jointes se masquent sur `owner`, jamais sur un segment
+--    du chemin ;
+--  · un ANCIEN venant (passé à declined, maybe ou en liste d'attente, ou dont la
+--    ligne d'event_attendees est supprimée) ou un ancien co-organisateur RESTE
+--    membre de la discussion : rien ne l'en retire (aucun déclencheur
+--    d'event_attendees ni d'events ne touche conv_members). Il y lit — conv_members,
+--    conv_messages, conv_reads, pièces jointes — les venants arrivés APRÈS son
+--    départ, sans limite de durée. Préexistant (C-04, R18) et inchangé par ce lot ;
+--    R41 n'était donc pas la dernière voie vers la liste. Remède, lot de suite : un
+--    déclencheur AFTER UPDATE OF rsvp OR DELETE sur event_attendees (SECURITY
+--    DEFINER, search_path vide) qui retire la ligne `evgrp_` de celui qui ne vient
+--    plus (hors organisation et créateur), et le même à la sortie de co_organizers ;
+--  · tout compte connecté peut CRÉER `evgrp_<activité d'autrui>` avant
+--    l'organisateur (conversations_insert_creator ne lit que created_by) : la
+--    discussion de l'activité devient alors impossible — l'organisateur reçoit
+--    23505, que le client tient pour un succès, puis n'y entre pas (42501), les
+--    venants non plus ; l'occupant n'y voit aucun venant (banc local de la
+--    contre-revue). Préexistant, hors de ce lot (RV-52) ;
 --  · le créateur d'une discussion d'activité, MÊME s'il n'organise plus
 --    (co-organisateur retiré de `co_organizers`), peut y revenir à tout moment
 --    (« Ecriture propre » admet le créateur, et is_blocked_with sur soi-même est
@@ -136,7 +159,11 @@
 --    qu'`event_attendees_select_lien` les lui cache —, en ajoute (tout compte non
 --    bloqué avec lui) et en retire (« Suppression admin »). Avant ce lot, il
 --    pouvait déjà y revenir, ajouter et retirer ; ce lot lui montre en plus les
---    membres bloqués. Remède préféré, HORS de ce lot (RV-50) : une branche qui suit
+--    membres bloqués. Et dès qu'il sort de co_organizers, can_join devient faux
+--    pour TOUS les venants : la discussion reste gelée avec la liste du moment
+--    (l'identifiant est pris, conversations n'a aucune policy UPDATE), que lisent
+--    aussi les comptes qu'il y ajoute. Remède préféré, HORS de ce lot (RV-50) — à
+--    porter aussi sur « Ecriture propre » et « Suppression admin » : une branche qui suit
 --    l'organisation plutôt que l'auteur de la ligne conversations —
 --    `or (public.is_conversation_creator(conv_id) and public.organise_activite(substr(conv_id, 7)))`
 --    —, qui rend exactement la visibilité d'event_attendees ; écartée ici parce que
@@ -171,9 +198,11 @@
 --    membre. MUET aujourd'hui : la fonction lève 42703 (`c.name`, R36) avant cette
 --    boucle. À la correction de R36 (`c.group_name`), exiger
 --    `public.is_conv_member(p_ref_id, moi)` dans la branche 'message' (appartenance
---    ACTUELLE, qui ne parle que de l'appelant) et figer created_at à l'UPDATE
---    (`identifiants_figes('conv_id', 'from_id', 'created_at')`, ou REVOKE UPDATE
---    (created_at)) ; son banc éprouve un ancien membre (RV-51) ;
+--    ACTUELLE, qui ne parle que de l'appelant : elle ferme à elle seule le cas de
+--    l'ancien membre) et, par hygiène, figer created_at à l'UPDATE
+--    (`identifiants_figes('conv_id', 'from_id', 'created_at')` — un REVOKE UPDATE
+--    (created_at) ne fige RIEN : authenticated a l'UPDATE de la TABLE) ; son banc
+--    éprouve un ancien membre (RV-51) ;
 --  · is_conv_member reste exécutable par authenticated — les policies
 --    s'évaluent sous le rôle de l'appelant et en ont besoin : la RPC ne répond
 --    plus qu'à « suis-je membre ? » ;
@@ -194,9 +223,24 @@
 -- — avant cette migration, un créateur qui retire un membre que C-04 lui cache lit
 -- « le retrait n'a pas été confirmé » ; après, le retrait passe. Pas de
 -- PREREQUIS-CLIENT.
--- `lock_timeout` de 3 s (RV-42) : la policy prend un verrou ACCESS EXCLUSIVE sur
--- conv_members ; si le rechargement du cache de PostgREST la tient, la migration
--- échoue EN ENTIER au bout de 3 s, sans rien appliquer : la relancer.
+-- VERROUS (RV-42 ; mesurés à la contre-revue du 06/11, banc § ⑩) : la policy prend
+-- un verrou ACCESS EXCLUSIVE sur conv_members, tenu jusqu'au commit — quelques
+-- dizaines de ms au banc (46 à 55 ms). Pour le PRENDRE, la migration attend au
+-- plus 3 s (`lock_timeout`) ; une fois pris, CHAQUE autre attente est bornée à
+-- 200 ms : sans cette seconde borne, realtime.send — que le décor déclenche sept
+-- fois et qui AVALE 55P03 (exception when others) — prolongeait la détention de
+-- 3 s par appel (27 s mesurées, messagerie gelée, quand realtime.messages était
+-- tenu par une autre session). Qui peut tenir conv_members : une transaction
+-- longue qui l'a lue, directement ou par is_conv_member (policies de
+-- conv_messages, conversations, conv_reads, realtime.messages, storage.objects) ;
+-- PAS le rechargement du cache de PostgREST que déclenchent les ALTER de
+-- préparation de l'outil : il ne prend sur conv_members qu'un verrou transitoire,
+-- et c'est LUI qui attend la migration (journaux du 05/11 : il a attendu 3,4 s le
+-- verrou de la migration R38 sur passion_requests ; du 06/11 : C-04 a pris ses
+-- verrous la première, aucune attente). Pendant l'attente (au plus 3 s), la
+-- messagerie, les pièces jointes et l'autorisation Realtime font la queue derrière
+-- la migration. Une contention fait échouer la migration ENTIÈRE en 55P03, sans
+-- rien appliquer : relancer est sûr, de préférence à une heure creuse.
 --
 -- FERMÉ SUR ÉCHEC, JUSQU'À SA PROPRE MESURE, sur le modèle de
 -- migration_passion_requests_recursion_2026-11-04.sql. Le tableau a 17 lignes,
@@ -331,6 +375,14 @@ create policy conv_members_select_member on public.conv_members
       or public.is_conversation_creator(conv_id)
     )
   );
+
+-- Le verrou ACCESS EXCLUSIVE de conv_members est TENU depuis le DROP POLICY :
+-- toute attente qui suit le prolongerait d'autant — et realtime.send, que le décor
+-- déclenche, AVALE 55P03 (sept attentes de 3 s : 27 s de messagerie gelée,
+-- mesurées à la contre-revue du 06/11). Désormais chaque attente est bornée à
+-- 200 ms ; une vraie contention fait échouer la migration ENTIÈRE, sans rien
+-- appliquer (banc § ⑩).
+set local lock_timeout = '200ms';
 
 -- ── ③ LE COMPORTEMENT, MESURÉ : un décor synthétique, une sous-transaction ANNULÉE ──
 -- Le décor s'écrit SANS session ; puis le rôle CLIENT, aux identités simulées,
@@ -572,7 +624,7 @@ union all select 3, 'oui', 'sa PROPRE appartenance se lit toujours : A, vrai sur
 union all select 4, 'oui', 'même réponse sous request.jwt.claims SEUL (claim.sub vide, la forme de PostgREST 12) : A sur lui-même vrai, sur W faux',
        (select case when j->'a2' = '[true, false]'::jsonb then 'OK'
                     else 'ECHEC — ' || coalesce((j->'a2')::text, 'mesure absente') end from v)
-union all select 5, 'oui', 'SANS session (le rôle de la migration : déclencheurs, service_role, administration) : inchangée — W membre de la discussion, du groupe et de la 1-à-1 vrai, N faux',
+union all select 5, 'oui', 'SANS identité (auth.uid() NULL : le rôle de la migration, les déclencheurs hors requête cliente, service_role sans sub, l''administration) : inchangée — W membre de la discussion, du groupe et de la 1-à-1 vrai, N faux',
        (select case when j->'sans_session' = '[true, true, true, false]'::jsonb then 'OK'
                     else 'ECHEC — ' || coalesce((j->'sans_session')::text, 'mesure absente') end from v)
 union all select 6, 'oui', 'RV-44 : le créateur K voit les trois membres de sa discussion d''activité, W — qu''il a bloqué — compris',
@@ -634,13 +686,16 @@ union all select 13, 'oui', 'conv_members_select_member : FOR SELECT TO authenti
              and (select md5(replace(p.prosrc, chr(13) || chr(10), chr(10))) from pg_catalog.pg_proc p
                    where p.oid = to_regprocedure('auth.uid()')) = 'cdef18c69c4f4cbbced2eaf81e628b49'
             then 'OK' else 'ECHEC' end
-union all select 14, 'oui', 'ses appelants lui passent l''appelant : les 11 policies qui dépendent d''is_conv_member (pg_depend) sont celles de production et ne lui donnent pour second argument que (select auth.uid())::text ; les deux seules fonctions qui la citent, storage_chemin_autorise et trg_reports_preuve_message, ont leur corps de production (md5)',
+union all select 14, 'oui', 'ses appelants lui passent l''appelant : les 11 policies qui dépendent d''is_conv_member (pg_depend) sont celles de production et ne lui donnent pour second argument que (select auth.uid())::text — et RIEN d''autre n''en dépend (ni vue, ni fonction BEGIN ATOMIC, ni défaut, ni déclencheur : 11 dépendants en tout) ; les deux seules fonctions qui la citent, storage_chemin_autorise et trg_reports_preuve_message, ont leur corps de production (md5)',
        case when (select string_agg(dep.nom, ',' order by dep.nom collate "C") from dep)
                  = 'public.conv_members·conv_members_select_member,public.conv_messages·Update propre,public.conv_messages·conv_messages_insert_member,public.conv_messages·conv_messages_select_member,public.conv_reads·reads_select,public.conv_reads·reads_update,public.conv_reads·reads_upsert,public.conversations·conversations_select_member,realtime.messages·passio_rt_emettre,realtime.messages·passio_rt_recevoir,storage.objects·passio_attachments_read_membre'
              and not exists (select 1 from dep
                               where regexp_replace(dep.expr,
                                       'is_conv_member\((conv_id|id|substr\(realtime\.topic\(\), [0-9]+\)|\(storage\.foldername\(name\)\)\[2\]), \(\( SELECT auth\.uid\(\) AS uid\)\)::text\)',
                                       '', 'g') ~ 'is_conv_member\(')
+             and (select count(*) from pg_catalog.pg_depend d
+                   where d.refclassid = 'pg_catalog.pg_proc'::regclass
+                     and d.refobjid = to_regprocedure('public.is_conv_member(text,text)')) = 11
              and (select count(*) from pg_catalog.pg_proc p where p.prosrc ilike '%is\_conv\_member%') = 2
              and (select md5(replace(p.prosrc, chr(13) || chr(10), chr(10))) from pg_catalog.pg_proc p
                    where p.oid = to_regprocedure('public.storage_chemin_autorise(text,text)')) = '0ab32680a710a7f4f04783459337386f'

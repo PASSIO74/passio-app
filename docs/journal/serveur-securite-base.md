@@ -1389,16 +1389,18 @@ ce qu'a mesuré sa première exécution en CI (#727) ; présente, A épingle, B 
 application, la mesure au canal ① ; la ligne RV-38 ne se ferme qu'avec cette preuve.
 ## 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
 
-**Statut : préparé, pas appliqué.** `migrations/migration_discussions_activite_2026-11-06.sql` (sha256 `6e7c7e28…`), banc
-`tests/sql/migration-discussions-activite.test.sh` 168/0, client `removeGroupMember` (app-05) et son verrou
-`tests/e2e/retrait-membre-groupe.spec.js` 18/18. Application, contrôles et retour arrière : § 9 de
-`.passio/audits/AUDIT_PASSIO_2026-11-02/04-LIVRAISON.md`. Revu le même jour, avant toute attestation, par cinq relecteurs
-contre-vérifiés chacun par un sceptique : quatre défauts confirmés et treize mineurs, corrigés ou consignés ci-dessous.
+**Statut : préparé, pas appliqué.** `migrations/migration_discussions_activite_2026-11-06.sql` (sha256 `2d423d5f…`), banc
+`tests/sql/migration-discussions-activite.test.sh` 175/0, client `removeGroupMember` (app-05) et son verrou
+`tests/e2e/retrait-membre-groupe.spec.js` 22/22. Application, contrôles et retour arrière : § 9 de
+`.passio/audits/AUDIT_PASSIO_2026-11-02/04-LIVRAISON.md`. Revu le même jour, avant toute attestation, par trois agents
+relecteurs Claude Code, chaque trouvaille grave contre-vérifiée par un sceptique : cinq défauts confirmés et treize mineurs,
+corrigés ou consignés ci-dessous ; puis contre-revu sur sa tête le soir (fin de fiche, et § 9.7).
 
 **Le défaut.** `is_conv_member(_conv_id, _uid)` (`SECURITY DEFINER`, EXECUTE pour `authenticated`) répondait pour n'importe
 quel `_uid` (C-02, au registre depuis le 02/11 comme « chantier transverse »). Sans incidence tant que la liste des
-participants se lisait en clair ; C-04 l'a fermée, et son bloc ⑥ a fait de la discussion `evgrp_<activité>` la RECOPIE de la
-liste des venants (le client y inscrit chaque « je viens ») : `rpc/is_conv_member`, profil par profil, la rendait (R41). Et
+participants se lisait en clair ; C-04 l'a fermée, et son bloc ⑥ a fait de la discussion `evgrp_<activité>` la liste des venants
+et de l'organisation — plus ceux qui y sont entrés et n'y sont plus venants, que rien n'en retire (R18) ; le client y inscrit
+chaque « je viens » : `rpc/is_conv_member`, profil par profil, la rendait (R41). Et
 RV-44, régression de C-04 : sa policy SELECT cachait au créateur de la discussion un membre bloqué avec lui, donc le DELETE de
 « Suppression admin » touchait 0 ligne — et `removeGroupMember` annonçait le retrait sans lire le résultat.
 
@@ -1492,13 +1494,15 @@ succès arrive après l'aller-retour : ne repeindre que ce qui montre encore ce 
 
 **Ce qui reste, dit tel quel.** Dans `conv_members`, les membres d'une discussion se voient entre eux, sauf blocage (C-04 : un
 venant connaît la liste) ; HORS de conv_members, une discussion d'activité montre encore à tout membre les membres bloqués avec
-lui — `conv_reads` (reads_select : is_conv_member seul), les pièces jointes (chemin `<uid>/<conversation>/…`) et la diffusion
-`typing:` : résidu de C-04, préexistant, hors lot (RV-49, R42). Le créateur d'une discussion d'activité qui n'organise plus
+lui — `conv_reads` (reads_select : is_conv_member seul), les pièces jointes (chemin `attachments/<conversation>/<fichier>`, sans
+l'auteur, mais listables et lisibles, contenu et nom d'origine compris) et la diffusion `typing:` (le nom d'affichage) : résidu
+de C-04, préexistant, hors lot (RV-49, R42 ; un remède des pièces jointes se cale sur `owner`, jamais sur le chemin). Le créateur d'une discussion d'activité qui n'organise plus
 (co-organisateur retiré) peut y revenir à tout moment, y voir tous les membres, bloqués compris, et en ajouter (RV-50 : une
 branche qui suit l'organisation, `is_conversation_creator(conv_id) and organise_activite(substr(conv_id, 7))`, écartée ici — son
 verdict devrait écrire une activité synthétique en production). Le temps de lecture sous RLS (ci-dessus). `notifier_mentions`
-dira l'appartenance d'autrui à un ancien membre dès que R36 sera corrigé (RV-51 : exiger `is_conv_member(p_ref_id, moi)` et
-figer `created_at`). Un rôle `authenticated` sans `sub` (Supabase Auth n'en émet pas) lirait encore toute appartenance par la
+dira l'appartenance d'autrui à un ancien membre dès que R36 sera corrigé (RV-51 : exiger `is_conv_member(p_ref_id, moi)` — qui ferme à
+lui seul le cas — et, par hygiène, figer `created_at` par `identifiants_figes` : un REVOKE UPDATE (created_at) ne fige rien,
+authenticated a l'UPDATE de la table). Un rôle `authenticated` sans `sub` (Supabase Auth n'en émet pas) lirait encore toute appartenance par la
 RPC. `conv_1a1_bloquee` dit si un compte BLOQUÉ avec l'appelant est membre d'une conversation 1-à-1 donnée (identifiant
 aléatoire), `is_blocked_with` reste interrogeable sur tout uid (R40) : hors lot. Côté client : dans une discussion d'activité,
 le retrait d'un membre qui n'y est pas (la liste locale vient des inscrits, `_ensureLocalEventConv`) dit « pas confirmé »
@@ -1509,3 +1513,28 @@ jusqu'au prochain rafraîchissement serveur, qui l'ôte ; `addGroupMember` ignor
 lot), et JAMAIS C-04 rejouée après ; indépendante du client, pas de `PREREQUIS-CLIENT` — le client ne dit que ce que le serveur
 lui rend : avant la migration, un créateur qui retire un membre que C-04 lui cache lit « le retrait n'a pas été confirmé » ;
 après, le retrait passe.
+
+**Contre-revue de la tête, le soir (06/11).** Quatre agents relecteurs Claude Code, lancés sans les conclusions de la session
+qui a orchestré le lot (la migration en production ; la complétude des contrôles d'accès ; le client ; l'exactitude de ce qui
+est écrit), deux sceptiques par trouvaille grave : rien de bloquant — la seule trouvaille « majeure » (l'ancien venant) ramenée
+à mineure par ses deux sceptiques, préexistante et déjà au registre (R18). Ce qu'il faut en retenir :
+- **`lock_timeout` borne CHAQUE attente, pas la détention.** Une fois l'ACCESS EXCLUSIVE pris, toute attente qui suit le
+  prolonge — et une fonction qui AVALE les erreurs (`realtime.send`, `exception when others`) avale aussi 55P03 : sept
+  attentes de 3 s, 27 s de messagerie gelée, mesurées quand une autre session tenait `realtime.messages`. D'où deux bornes :
+  3 s pour PRENDRE le verrou, puis `set local lock_timeout = '200ms'` juste après (banc § ⑩ : abandon en moins de 5 s, rien
+  d'appliqué ; seconde borne ôtée → plus de 9 s).
+- **Le rechargement du cache de PostgREST attend la migration, pas l'inverse** (RV-42 relu) : le 05/11, c'est un lecteur de
+  `passion_requests` qui a attendu 3,4 s le verrou de R38 ; le 06/11, C-04 a pris ses verrous la première. Qui peut faire
+  attendre une migration, c'est une transaction cliente longue.
+- **Un verdict qui compte les appelants d'une fonction compte TOUS ses dépendants** (`pg_depend`, `refobjid` = la fonction) :
+  une vue, ou une fonction SQL `BEGIN ATOMIC` — dont le `prosrc` est VIDE, le corps vivant dans `prosqlbody` —, échappent à
+  la fois à la recherche dans `prosrc` et à la liste des policies (dérives D11, D12).
+- **Un client de repli qui « accepte » tout fabrique des identifiants serveur fantômes** : sans SDK, `supaCreateGroup`
+  rendait `{ error: null }` et donc un `grp_…` qu'aucun retrait ne pouvait plus vider. Sans SDK, ne RIEN créer « côté
+  serveur » : l'ébauche garde son préfixe local (`conv_grp_`).
+- **Deux défauts préexistants, consignés** : tout compte peut prendre `evgrp_<activité>` avant l'organisateur et rendre la
+  discussion impossible (RV-52 ; `conversations_insert_creator` ne lit que `created_by`) ; un ancien venant ou co-organisateur
+  reste membre et lit les venants suivants, et côté client la sortie de discussion n'est pas vérifiée (R18, RV-53).
+- **Pour mener une contre-revue par agents** : une commande qui exige une autorisation (création d'utilisateur, `su`) BLOQUE
+  un agent non interactif indéfiniment, et un audit de droits trop « offensif » dans sa formulation peut être arrêté par les
+  garde-fous de l'API ; borner les commandes (scripts, jamais de privilèges en ligne) et formuler l'audit en défensif.

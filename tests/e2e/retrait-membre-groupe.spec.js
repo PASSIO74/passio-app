@@ -33,7 +33,9 @@
 //      ②e relecture en panne → « pas confirmé » ;
 //   ③ une PANNE réseau qui LÈVE, ③bis la panne telle que postgrest-js la REND
 //      (`status: 0`, `error.message` « TypeError: Failed to fetch », `code` vide)
-//      → « pas de connexion : … pas confirmé », rien ne change ;
+//      → « pas de connexion : … pas confirmé », rien ne change ; ③ter une réponse
+//      5xx → « pas confirmé » (le DELETE a pu être validé), ③quater un 401 →
+//      « reconnecte-toi » — jamais « le serveur a refusé » (contre-revue du 06/11) ;
 //   ④ le SUCCÈS (une ligne rendue), modale des membres ouverte → le comportement
 //      d'avant : membre ôté, « a quitté le groupe », « retiré·e », modale rendue ;
 //   ⑤ les requêtes sont celles qu'il faut : DELETE filtré sur la conversation ET
@@ -44,11 +46,15 @@
 //   ⑧ un personnage de démonstration (identifiant non uuid) dans un groupe
 //      serveur, compte réel → retrait local, aucun DELETE, aucun toast d'échec ;
 //   ⑨ une ébauche de groupe restée locale (`conv_grp_…`) → retrait local ;
-//   ⑩ session expirée, ⑪ SDK absent (`_supaReal` faux) — compte réel, membre en
-//      base → aucun DELETE, rien ne change, et l'écran le dit ;
+//   ⑩ session expirée, ⑪ SDK non chargé (`_supaReal` faux) — compte réel, membre
+//      en base → aucun DELETE, rien ne change, et l'écran le dit (« recharge
+//      l'application » : le SDK ne revient pas seul avec le réseau) ;
 //   ⑫ B : la modale fermée pendant l'aller-retour ne revient pas au succès ;
 //   ⑬ D : la conversation changée pendant l'aller-retour garde SON fil (de vrais
-//      touchers : carte, bouton « Membres », « Retirer », croix, retour).
+//      touchers : carte, bouton « Membres », « Retirer », croix, retour) ;
+//   ⑭ un groupe créé SANS SDK n'obtient pas d'identifiant serveur fantôme
+//      (`supaCreateGroup` rend null : l'ébauche garde `conv_grp_`, ⑨) ;
+//   ⑮ un succès arrivé tard garde l'onglet « Ajouter » et sa recherche.
 // RÉINJECTIONS (mesurées le 2026-11-06) : voir `docs/journal/serveur-securite-base.md`
 // (fiche C-02 / R41, RV-44) — le code d'avant le lot, puis la première version du
 // correctif, remis en place l'un après l'autre.
@@ -270,6 +276,24 @@ test.describe("RV-44 — retirer un membre d'un groupe : l'écran ne dit que ce 
     await exigerEchec(page, o, /^Pas de connexion : le retrait de Léa n'a pas été confirmé\. Réessaie quand le réseau revient\.$/);
   });
 
+  test("③ter réponse 5xx (passerelle, délai : le DELETE a pu être validé) : « pas confirmé », jamais « le serveur a refusé »", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => { window.__delete = { status: 504, data: null, error: { code: "", message: "upstream request timeout" } }; });
+    const rendu = await retirer(page);
+    const o = await observer(page);
+    expect(rendu).toBe(false);
+    await exigerEchec(page, o, /^Le retrait de Léa n'a pas été confirmé par le serveur\.$/);
+  });
+
+  test("③quater réponse 401 hors du mode « session expirée » : « reconnecte-toi », jamais « le serveur a refusé »", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => { window.__delete = { status: 401, data: null, error: { code: "PGRST301", message: "JWT expired" } }; });
+    const rendu = await retirer(page);
+    const o = await observer(page);
+    expect(rendu).toBe(false);
+    await exigerEchec(page, o, /^Ta session a expiré — reconnecte-toi pour retirer Léa du groupe\.$/);
+  });
+
   test("④ succès (une ligne rendue), modale des membres ouverte : le comportement d'avant — membre ôté, message système, toast, modale rendue", async ({ page }) => {
     await banc(page);
     await page.evaluate(([r, conv]) => { window.__delete = r; showGroupMembers(conv); }, [SUCCES, CONV]);
@@ -368,13 +392,57 @@ test.describe("RV-44 — retirer un membre d'un groupe : l'écran ne dit que ce 
     expect(o.toutes, "aucune requête").toBe(0);
   });
 
-  test("⑪ SDK absent (`_supaReal` faux), compte réel, membre en base : aucun DELETE, rien ne change, « pas de connexion »", async ({ page }) => {
+  test("⑪ SDK non chargé (`_supaReal` faux), compte réel, membre en base : aucun DELETE, rien ne change, « recharge l'application »", async ({ page }) => {
     await banc(page);
     await page.evaluate((r) => { window.__delete = r; window._supaReal = false; }, SUCCES);
     const rendu = await retirer(page);
     const o = await observer(page);
     expect(rendu).toBe(false);
-    await exigerEchec(page, o, /^Pas de connexion : le retrait de Léa n'a pas pu partir\. Réessaie quand le réseau revient\.$/, { requetes: 0 });
+    // Le SDK ne se recharge pas seul quand le réseau revient : « réessaie quand le
+    // réseau revient » ne menait à rien (revue du 06/11).
+    await exigerEchec(page, o, /^Le service n'a pas pu se charger : recharge l'application pour retirer Léa du groupe\.$/, { requetes: 0 });
+  });
+
+  test("⑭ un groupe créé SANS SDK n'a pas d'identifiant serveur : supaCreateGroup rend null sans rien envoyer — l'ébauche garde `conv_grp_` (⑨)", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async (lea) => {
+      window._supaReal = false;
+      const id = await supaCreateGroup("Rando sans SDK", [lea], null);
+      return { id, ops: window.__ops.length };
+    }, LEA);
+    expect(r.id, "aucun `grp_…` fantôme : le client de repli aurait tout « accepté »").toBe(null);
+    expect(r.ops, "aucune requête").toBe(0);
+  });
+
+  test("⑮ un succès arrivé tard, onglet « Ajouter » ouvert avec une recherche : l'onglet et la recherche restent", async ({ page }) => {
+    await banc(page);
+    const vu = await page.evaluate(async ([lea, conv, succes]) => {
+      let liberer;
+      window.__retenir = new Promise((res) => { liberer = res; });
+      window.__delete = succes;
+      showGroupMembers(conv);
+      switchGroupTab("add");
+      const champ = document.getElementById("grpSearchInput");
+      champ.value = "Au";
+      filterGroupAddList("Au");
+      const p = removeGroupMember(conv, lea);
+      liberer();
+      const ok = await p;
+      const ajout = document.getElementById("grpPanel_add");
+      const membres = document.getElementById("grpPanel_members");
+      return {
+        ok,
+        ajoutVisible: ajout ? ajout.style.display : null,
+        membresVisible: membres ? membres.style.display : null,
+        recherche: (document.getElementById("grpSearchInput") || {}).value,
+        leaDansMembres: membres ? /Léa/.test(membres.textContent || "") : null,
+      };
+    }, [LEA, CONV, SUCCES]);
+    expect(vu.ok).toBe(true);
+    expect(vu.ajoutVisible, "l'onglet « Ajouter » reste ouvert").not.toBe("none");
+    expect(vu.membresVisible, "…et l'onglet « Membres » reste masqué").toBe("none");
+    expect(vu.recherche, "la recherche tapée est rendue").toBe("Au");
+    expect(vu.leaDansMembres, "la liste des membres, repeinte, n'a plus Léa").toBe(false);
   });
 });
 

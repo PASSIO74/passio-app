@@ -2113,28 +2113,32 @@ function addGroupMember(convId, userId) {
 //     de démonstration que « Nouveau groupe » propose : la clé étrangère
 //     conv_members.user_id → profiles les refuse) ;
 //   · un compte réel qui ne peut pas joindre le serveur — session expirée
-//     (`sessionExpiree()`) ou SDK absent (`_supaReal` faux) : RIEN ne change, et
-//     l'écran le dit — le membre est en base, l'ôter localement serait le
-//     mensonge corrigé ici ;
+//     (`sessionExpiree()`) ou SDK non chargé (`_supaReal` faux) : RIEN ne change,
+//     et l'écran le dit — le membre est en base, l'ôter localement serait le
+//     mensonge corrigé ici (un groupe créé SANS SDK reste une ébauche `conv_grp_` :
+//     `supaCreateGroup` rend null quand le SDK n'est pas chargé, app-08) ;
 //   · sinon DELETE … RETURNING user_id (`.select("user_id")`), en lisant
 //     `{ error }` ET le nombre de lignes : 1 ligne → retiré, le comportement
-//     d'avant ; une erreur → « le serveur a refusé » ; une panne réseau → « pas
-//     de connexion : le retrait n'a pas été CONFIRMÉ » (la ligne a pu partir) ;
+//     d'avant ; une erreur → « le serveur a refusé », sauf une réponse 5xx
+//     (« pas confirmé » : la ligne a pu partir) et un 401 (« reconnecte-toi ») ;
+//     une panne réseau → « pas de connexion : le retrait n'a pas été CONFIRMÉ » ;
 //     0 ligne n'est PAS « toujours membre » : on relit sa ligne ET la mienne —
 //     lui présent → « toujours membre » (lu) ; lui absent et moi visible → il
 //     n'y est déjà plus (parti, retiré ailleurs, ajout refusé) : retrait local,
-//     idempotent — SAUF dans une discussion d'activité (`evgrp_`), où C-04 cache
-//     au créateur, tant que la migration n'est pas appliquée, le membre bloqué
-//     qui se relirait « absent » : là, et dans tout autre doute, « le retrait
-//     n'a pas été confirmé par le serveur ».
+//     idempotent — SAUF dans une discussion d'activité (`evgrp_`) : C-04 y cache
+//     à tout membre NON créateur, même après la migration, le membre bloqué qui
+//     se relirait « absent » (et au créateur aussi tant qu'elle n'est pas
+//     appliquée) ; le bouton « Retirer » s'affiche à tous. Là, et dans tout autre
+//     doute, « le retrait n'a pas été confirmé par le serveur ».
 // Le succès arrive APRÈS l'aller-retour : la modale et le fil ne sont repeints
 // que s'ils montrent ENCORE ce groupe — sinon la modale fermée revenait, et le
 // fil du groupe s'affichait dans le panneau d'une AUTRE conversation, dont le
 // bouton d'envoi restait lié à l'autre destinataire (`_openedConvId`, la règle
-// de tout rendu asynchrone du fil, app-04). Un double toucher pendant
-// l'aller-retour ne repart pas. Rend une promesse (true = retiré) sur le chemin
-// serveur, false quand rien n'a pu partir, rien sur le chemin local ; l'onclick
-// inline l'ignore. Verrou : tests/e2e/retrait-membre-groupe.spec.js.
+// de tout rendu asynchrone du fil, app-04) ; la modale rendue de nouveau garde
+// l'onglet « Ajouter » et sa recherche s'ils étaient ouverts. Un double toucher
+// pendant l'aller-retour ne repart pas. Rend une promesse (true = retiré) sur le
+// chemin serveur, false quand rien n'a pu partir, rien sur le chemin local ;
+// l'onclick inline l'ignore. Verrou : tests/e2e/retrait-membre-groupe.spec.js.
 // ══════════════════════════════════════════════════════════════════════════
 var _retraitsMembreEnVol = {};
 var _RE_UUID_MEMBRE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2159,7 +2163,21 @@ function _retraitMembreLocal(c, convId, userId, name, apresAllerRetour) {
   // L'écran a pu changer pendant l'aller-retour : ne repeindre que ce qui montre ENCORE ce groupe.
   var bd = document.getElementById("modalBackdrop");
   if (bd && bd.classList.contains("active") && window._grpConvId === convId && document.getElementById("grpPanel_members")) {
+    // La modale est refaite sur l'onglet « Membres » : l'onglet « Ajouter » et sa
+    // recherche, s'ils étaient ouverts, sont rendus tels quels (revue du 06/11).
+    var panAjout = document.getElementById("grpPanel_add");
+    var surAjout = !!(panAjout && panAjout.style.display !== "none");
+    var champ = document.getElementById("grpSearchInput");
+    var recherche = champ ? String(champ.value || "") : "";
     _renderGroupMembersModal(convId);
+    if (surAjout && typeof switchGroupTab === "function") {
+      switchGroupTab("add");
+      var champ2 = document.getElementById("grpSearchInput");
+      if (champ2 && recherche) {
+        champ2.value = recherche;
+        if (typeof filterGroupAddList === "function") filterGroupAddList(recherche);
+      }
+    }
   }
   var fp2 = document.getElementById("conv-fullpage");
   if (fp2 && fp2.classList.contains("active") && window._openedConvId === convId) renderConvFpThread(c, c.groupName || "Groupe");
@@ -2169,7 +2187,9 @@ function _retraitMembreLocal(c, convId, userId, name, apresAllerRetour) {
 function _retraitMembreEchec(name, cause, raison) {
   var textes = {
     reseau: "Pas de connexion : le retrait de " + name + " n'a pas été confirmé. Réessaie quand le réseau revient.",
-    hors_ligne: "Pas de connexion : le retrait de " + name + " n'a pas pu partir. Réessaie quand le réseau revient.",
+    // SDK non chargé : il ne se recharge pas tout seul quand le réseau revient
+    // (`ensureSupabase` garde sa promesse rejetée) — seul un rechargement le remet.
+    hors_ligne: "Le service n'a pas pu se charger : recharge l'application pour retirer " + name + " du groupe.",
     session: "Ta session a expiré — reconnecte-toi pour retirer " + name + " du groupe.",
     refus: "Le serveur a refusé le retrait de " + name + ".",
     toujours_membre: name + " est toujours membre du groupe : le serveur n'a pas accepté le retrait.",
@@ -2238,7 +2258,14 @@ function removeGroupMember(convId, userId) {
   };
   var suite = envoi.then(function(r) {
     if (r && r.error) {
-      _retraitMembreEchec(name, typeof estEchecReseau === "function" && estEchecReseau(r.error) ? "reseau" : "refus", r.error);
+      // Une réponse 5xx (passerelle, délai) n'est pas un refus : le DELETE a pu être
+      // validé — « pas confirmé » ; un 401 dit la session, pas la policy.
+      var statut = Number(r.status) || 0;
+      var cause = (typeof estEchecReseau === "function" && estEchecReseau(r.error)) ? "reseau"
+        : statut === 401 ? "session"
+        : statut >= 500 ? "non_confirme"
+        : "refus";
+      _retraitMembreEchec(name, cause, r.error);
       return false;
     }
     if (r && Array.isArray(r.data) && r.data.length >= 1) return retirerIci();

@@ -1100,6 +1100,10 @@ s_d="$(deriver bloque_invoker "alter function public.is_blocked_with(text) secur
 refusee_derive "D9 is_blocked_with passée SECURITY INVOKER (elle ne lirait plus que les blocages posés par l'appelant) — 13 (attributs des fonctions que la policy appelle), et le comportement le dit : A voit W, qui l'a bloqué (8)" bloque_invoker "$s_d" "8,13"
 s_d="$(deriver uid_change "create or replace function auth.uid() returns uuid language sql stable as \$f\$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid \$f\$;")"
 refusee_derive "D10 auth.uid() réécrite (claim.sub seul : la forme de PostgREST 12 n'aurait plus d'identité) — 13 (corps de production), et la mesure le dit : sous claims seuls, A n'est plus personne (1, 4)" uid_change "$s_d" "1,4,13"
+s_d="$(deriver vue_tiers "create view public.vue_tiers as select c.id from public.conversations c where public.is_conv_member(c.id, 'x');")"
+refusee_derive "D11 une VUE appelle is_conv_member (sur un uid qu'on ne connaît pas) : ni policy, ni prosrc — seul le compte de TOUS les dépendants de pg_depend la voit (contre-revue du 06/11)" vue_tiers "$s_d" 14
+s_d="$(deriver atomique "create function public.appel_atomique(_c text, _u text) returns boolean language sql stable begin atomic select public.is_conv_member(_c, _u); end;")"
+refusee_derive "D12 une fonction SQL BEGIN ATOMIC appelle is_conv_member : son prosrc est VIDE (le corps est en prosqlbody) — seul le compte de pg_depend la voit" atomique "$s_d" 14
 verifier "…et une base refusée reste dans son état d'avant : le défaut y est toujours (X relit les membres)" "B,K,W" "$(ORACLE d_fonction "$X" authenticated "$EVGRP")"
 
 echo "── ⑨ RÉINJECTIONS DANS LE FICHIER — le verdict doit LEVER et la base rester inchangée ──"
@@ -1278,6 +1282,55 @@ refusee "M13 « oracle laissé ouvert sur les conversations 1-à-1 » (identifia
 s_m="$(muter oracle_1a1_sg "empreinte,sans_gardefou" "$CLAUSE_UID" "$OUVERT_1A1")"
 verifier "…sans garde-fou, le tableau ne rougit QUE 2, et le banc la voit à l'œuvre : X relit la 1-à-1 de D et B" "$(vec_sauf 2)|B,D" \
   "$(vecteur "$s_m")|$(ORACLE m_oracle_1a1_sg "$X" authenticated "$UNA")"
+
+echo "── ⑩ VERROUS : PRENDRE conv_members attend au plus 3 s ; une fois tenu, toute attente est bornée à 200 ms ──"
+# Contre-revue du 06/11 : lock_timeout borne CHAQUE attente, pas la détention ;
+# realtime.send (déclenché sept fois par le décor) AVALE 55P03 — sans la seconde
+# borne, la migration tenait l'ACCESS EXCLUSIVE de conv_members 27 s quand une
+# autre session tenait realtime.messages. Une autre session tient ici le verrou
+# en arrière-plan ; la migration doit soit passer, soit abandonner VITE, et
+# n'appliquer RIEN quand elle abandonne.
+ms() { echo $(( $(date +%s%N) / 1000000 )); }
+tenir() {  # $1 base, $2 instruction de verrou, $3 secondes ; pid dans TENEUR
+  ( psql -h "$BASE" -p "$PORT" -U postgres -d "$1" -X -tA -q -c "begin; $2; select pg_sleep($3); commit;" ) >/dev/null 2>&1 &
+  TENEUR=$!
+}
+erreur_sql() { printf '%s\n' "$1" | grep -m1 -oE 'ERROR: +[0-9A-Z]{5}' | grep -oE '[0-9A-Z]{5}$' || true; }
+
+nouvelle_base v_libre
+t0=$(ms); s_v="$(APPLIQUER v_libre "$MIGRATION" || true)"; d=$(( $(ms) - t0 ))
+verifier "V1 sans contention : 17 OK, en moins de 5 s" "17/0|1" "$(compte_verdict "$s_v")|$(( d < 5000 ? 1 : 0 ))"
+
+nouvelle_base v_lecteur
+tenir v_lecteur "lock table public.conv_members in access share mode" 6; sleep 0.5
+t0=$(ms); s_v="$(APPLIQUER v_lecteur "$MIGRATION" || true)"; d=$(( $(ms) - t0 )); wait "$TENEUR" 2>/dev/null || true
+verifier "V2 une transaction tient conv_members 6 s : la migration abandonne en 55P03 au bout de ~3 s (2,5 à 4,5 s), RIEN n'est appliqué" \
+  "55P03|1|$INCHANGEE" "$(erreur_sql "$s_v")|$(( d >= 2500 && d <= 4500 ? 1 : 0 ))|$(ETAT v_lecteur)"
+
+nouvelle_base v_court
+tenir v_court "lock table public.conv_members in access share mode" 1.5; sleep 0.3
+t0=$(ms); s_v="$(APPLIQUER v_court "$MIGRATION" || true)"; d=$(( $(ms) - t0 )); wait "$TENEUR" 2>/dev/null || true
+verifier "V3 la même transaction tient 1,5 s : la migration attend, puis passe (17 OK)" "17/0|1" "$(compte_verdict "$s_v")|$(( d >= 800 && d <= 4000 ? 1 : 0 ))"
+
+nouvelle_base v_rt
+tenir v_rt "lock table realtime.messages in access exclusive mode" 12; sleep 0.5
+t0=$(ms); s_v="$(APPLIQUER v_rt "$MIGRATION" || true)"; d=$(( $(ms) - t0 )); wait "$TENEUR" 2>/dev/null || true
+verifier "V4 une session tient realtime.messages : la migration abandonne en 55P03 en moins de 5 s (chaque attente, une fois conv_members tenu, bornée à 200 ms), RIEN n'est appliqué" \
+  "55P03|1|$INCHANGEE" "$(erreur_sql "$s_v")|$(( d < 5000 ? 1 : 0 ))|$(ETAT v_rt)"
+
+python3 -I - "$MIGRATION" "$SQLDIR/sans_seconde_borne.sql" <<'PY'
+import sys
+s = open(sys.argv[1], encoding="utf-8").read()
+cible = "set local lock_timeout = '200ms';\n"
+assert s.count(cible) == 1, "seconde borne introuvable"
+open(sys.argv[2], "w", encoding="utf-8").write(s.replace(cible, ""))
+PY
+chmod 644 "$SQLDIR/sans_seconde_borne.sql"
+nouvelle_base v_rt_avant
+tenir v_rt_avant "lock table realtime.messages in access exclusive mode" 12; sleep 0.5
+t0=$(ms); s_v="$(APPLIQUER v_rt_avant "$SQLDIR/sans_seconde_borne.sql" || true)"; d=$(( $(ms) - t0 )); wait "$TENEUR" 2>/dev/null || true
+verifier "…réinjection, seconde borne ôtée : la migration TIENT conv_members tant que realtime.messages est tenu (plus de 9 s) — V4 n'est pas aveugle" "1" "$(( d > 9000 ? 1 : 0 ))"
+
 echo
 echo "RÉSULTAT : $ok ✅  $ko ❌"
 [ "$ko" -eq 0 ]
