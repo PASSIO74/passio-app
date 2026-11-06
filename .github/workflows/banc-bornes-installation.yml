@@ -1,0 +1,160 @@
+# BANC TEMPORAIRE (2026-11-06) — retiré avant la PR, résultats consignés dans
+# docs/journal/telemetrie-pilotage-sentinelle.md. Ne tourne que sur la branche de
+# travail, et seulement quand ce fichier change. Aucun secret, aucune écriture.
+#   ①②③④ : ce que GitHub fait d'une étape puis d'un job qui dépassent leur
+#             `timeout-minutes`, ce qu'en voient un agrégat `if: always()` (le
+#             modèle de `smoke`) et un job dépendant (le modèle de `deploy`) ;
+#             puis la relance « Re-run failed jobs » de ces jobs, par l'API.
+#   ⑤       : l'étape RÉELLE de deploy.yml, extraite par le lecteur du dépôt, avec
+#             un premier essai figé dans APT par construction (serveur qui accepte
+#             la connexion et ne répond jamais) : l'essai est-il tué, le verrou
+#             APT rendu, le second essai mené à bien ?
+#   ⑥       : APT reprend-il ce qu'un essai coupé a téléchargé ? (miroir ralenti à
+#             ~40 ko/s, le régime du 06/11 : 34 ko/s).
+name: Banc temporaire — bornes d'installation
+
+on:
+  push:
+    branches:
+      - claude/tender-wright-22wrvd
+    paths:
+      - .github/workflows/banc-bornes-installation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  etape-bornee:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Étape figée, bornée à 1 min
+        timeout-minutes: 1
+        run: sleep 150
+      - name: Étape suivante
+        run: echo "étape suivante exécutée"
+
+  job-borne:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Étape figée, job borné à 1 min
+        run: sleep 150
+
+  agregat:
+    if: always()
+    needs: [etape-bornee, job-borne]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lire needs.*.result
+        env:
+          R_ETAPE: ${{ needs.etape-bornee.result }}
+          R_JOB: ${{ needs.job-borne.result }}
+        run: echo "etape-bornee=${R_ETAPE} job-borne=${R_JOB}"
+
+  dependant:
+    needs: [etape-bornee, job-borne]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "ce job ne devrait pas tourner"
+
+  installation-figee:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Extraire l'étape réelle de test-local (essai ramené de 10 à 2 min)
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import { parse } from "./tests/unit/lib/yaml-mini.mjs";
+            const w = parse(fs.readFileSync(".github/workflows/deploy.yml", "utf8"));
+            const s = w.jobs["test-local"].steps.find((x) => x.name === "Installer Playwright");
+            const banc = s.run.replace("timeout --kill-after=30s 10m ", "timeout --kill-after=30s 2m ");
+            if (banc === s.run) { console.error("borne d essai introuvable"); process.exit(1); }
+            fs.writeFileSync(process.env.RUNNER_TEMP + "/installer.sh", banc);
+            console.log(banc);
+          '
+
+      - name: Piège APT (accepte la connexion, ne répond jamais), levé après 45 s
+        run: |
+          nohup node -e 'require("net").createServer(() => {}).listen(9999, "127.0.0.1")' >/dev/null 2>&1 &
+          sleep 1
+          printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:9999";' 'Acquire::https::Proxy "http://127.0.0.1:9999";' 'Acquire::http::Timeout "3600";' 'Acquire::https::Timeout "3600";' | sudo tee /etc/apt/apt.conf.d/99-banc-fige
+          nohup bash -c 'sleep 45; sudo rm -f /etc/apt/apt.conf.d/99-banc-fige' >/dev/null 2>&1 &
+
+      - name: Lancer l'étape réelle
+        timeout-minutes: 25
+        run: |
+          debut=$(date +%s)
+          bash -e "${RUNNER_TEMP}/installer.sh"
+          echo "BANC durée totale de l'étape : $(( $(date +%s) - debut )) s"
+
+      - name: Constats
+        if: always()
+        run: |
+          ls -d "${HOME}"/.cache/ms-playwright/chromium-* || echo "BANC aucun Chromium installé"
+          pgrep -a -x apt-get || echo "BANC aucun apt-get restant"
+          pgrep -af /usr/lib/apt/methods || echo "BANC aucune méthode APT restante"
+          sudo fuser -v /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock 2>&1 || echo "BANC aucun détenteur des verrous APT"
+          npx playwright --version
+
+  reprise-apres-coupure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Préparer (listes APT à jour, paquet Playwright)
+        run: |
+          npm install --no-save @playwright/test
+          sudo apt-get update -qq
+
+      - name: Miroir APT ralenti à ~40 ko/s (mandataire local)
+        run: |
+          cat > "${RUNNER_TEMP}/lent.mjs" <<'JS'
+          import http from "node:http";
+          const [port, debit] = process.argv.slice(2).map(Number);
+          const agent = new http.Agent({ keepAlive: true });
+          http.createServer((req, res) => {
+            let cible;
+            try { cible = new URL(req.url); } catch { res.writeHead(400); res.end(); return; }
+            const headers = { ...req.headers, host: cible.host };
+            delete headers["proxy-connection"];
+            const amont = http.request({ agent, host: cible.hostname, port: cible.port || 80, method: req.method,
+              path: cible.pathname + cible.search, headers }, (r) => {
+              res.writeHead(r.statusCode, r.headers);
+              r.on("data", (c) => { r.pause(); res.write(c); setTimeout(() => r.resume(), Math.ceil((c.length / debit) * 1000)); });
+              r.on("end", () => res.end());
+              r.on("error", () => res.destroy());
+            });
+            amont.on("error", () => res.destroy());
+            req.pipe(amont);
+          }).listen(port, "127.0.0.1", () => console.log("mandataire lent prêt", port, debit));
+          JS
+          nohup node "${RUNNER_TEMP}/lent.mjs" 8899 40000 > "${RUNNER_TEMP}/lent.log" 2>&1 &
+          sleep 1
+          cat "${RUNNER_TEMP}/lent.log"
+          echo 'Acquire::http::Proxy "http://127.0.0.1:8899";' | sudo tee /etc/apt/apt.conf.d/99-banc-lent
+
+      - name: Premier essai, coupé à 2 min par timeout (comme en production)
+        run: |
+          if timeout --kill-after=30s 2m npx playwright install --with-deps chromium; then echo "BANC fini avant la coupure"; else echo "BANC coupé, code $?"; fi
+          echo "BANC paquets complets :"; ls -la /var/cache/apt/archives/*.deb 2>/dev/null || echo "(aucun)"
+          echo "BANC paquets partiels :"; sudo ls -la /var/cache/apt/archives/partial/ || true
+
+      - name: Second essai, miroir rendu
+        run: |
+          sudo rm -f /etc/apt/apt.conf.d/99-banc-lent
+          npx playwright install --with-deps chromium 2>&1 | tee "${RUNNER_TEMP}/essai2.log"
+          echo "BANC ce que le second essai a dû télécharger :"
+          grep -E "Need to get|Fetched|Get:[0-9]+ http" "${RUNNER_TEMP}/essai2.log" || true
