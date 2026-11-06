@@ -4825,6 +4825,9 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     // la fonction n'est pas en base.
     const postIds = data.map(r => r.id);
     const likeReadTokens = new Map(postIds.map(id => [id, _postLikeReadToken(id)]));
+    // RV-39 : les réactions d'autrui déjà sur MES copies avant la lecture — les
+    // seules que sa réponse a le droit de retirer (`_recopierReactionsAutrui`, app-04).
+    const reactionsAvant = (typeof _reactionsAutruiAvantLecture === "function") ? _reactionsAutruiAvantLecture(postIds) : null;
     const complements = await _chargerComplementsFil(postIds);
     if (!lectureValide()) return [];
     // Résout les auteurs des aperçus en une requête (sans embed) — le cache ne
@@ -4941,7 +4944,10 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         // `ci` : l'identifiant de la ligne (R37). Le repli du fil le lit ;
         // `fil_compteurs` ne le rend pas, et la clé naturelle le retrouve si
         // cet appareil a déjà lu ou reçu la ligne (`_ciRetrouverId`, app-04).
-        reactions: cpl.reactions.map(x => ({ id: (x.kind === "emoji" ? "semoji_" : "sgif_") + x.created_at + "_" + x.user_id,
+        // Une réaction dont le retrait est arrivé PENDANT cette lecture ne revient
+        // pas : sa pierre tombale par clé l'écarte (RV-39, `_ciReactionPostTombee`).
+        reactions: cpl.reactions.filter(x => !(typeof _ciReactionPostTombee === "function" && _ciReactionPostTombee(r.id, x)))
+          .map(x => ({ id: (x.kind === "emoji" ? "semoji_" : "sgif_") + x.created_at + "_" + x.user_id,
             ci: x.id || (typeof _ciRetrouverId === "function"
               ? _ciRetrouverId({ comment_id: r.id, user_id: x.user_id, kind: x.kind, payload: x.payload, created_at: x.created_at })
               : null),
@@ -4974,6 +4980,13 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (Number.isSafeInteger(loadedPost.commentsTotal) && state.userPosts) {
         state.userPosts.forEach(function (u) { if (u && u.id === r.id) u.commentsTotal = loadedPost.commentsTotal; });
       }
+      // RV-39 : et les réactions d'AUTRUI, que la pastille y lit. Avant, elle
+      // ne montrait sur l'appareil qui a publié que ce qui était arrivé en
+      // direct. Seulement si cette lecture a vraiment LU les réactions : une
+      // liste vide d'échec n'est pas une absence. Mes entrées restent les miennes.
+      if (cpl.reactionsLues === true && typeof _recopierReactionsAutrui === "function") {
+        _recopierReactionsAutrui(r.id, loadedPost.reactions, reactionsAvant);
+      }
       return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
     });
   } catch(e) { return []; }
@@ -5004,8 +5017,10 @@ const FIL_COMPTEURS_ABSENTE_CLE = "passio_fil_compteurs_absente";
 // tenter pour la session. En mémoire seulement : la session suivante réessaie.
 const FIL_COMPTEURS_ECHECS_MAX = 3;
 let _filCompteursEchecs = 0;
+// `reactionsLues` (RV-39) : la liste `reactions` est-elle la réponse du serveur ?
+// Faux ici : une publication absente de la réponse n'a rien prouvé.
 function _complementFilVide() {
-  return { likes: 0, aime: false, commentaires: undefined, apercus: [], reactions: [] };
+  return { likes: 0, aime: false, commentaires: undefined, apercus: [], reactions: [], reactionsLues: false };
 }
 // ⚠️ `window.PASSIO_RELEASE` est un OBJET en production ({ schema, buildId,
 // commit… }) : `String()` en ferait « [object Object] », une clé identique
@@ -5065,6 +5080,9 @@ async function _chargerComplementsFil(postIds) {
             reactions: Array.isArray(row.reactions)
               ? row.reactions.filter(function (x) { return x && (x.kind === "emoji" || x.kind === "gif") && x.payload; })
               : [],
+            // Toutes les réactions de la publication (la fonction n'en borne
+            // pas le nombre) : une liste absente n'est pas une liste vide.
+            reactionsLues: Array.isArray(row.reactions),
           });
         });
         _filCompteursEchecs = 0;
@@ -5112,8 +5130,13 @@ function _discussionChargee(postId, apercus, profils) {
 // commentaires au plus pour toute la page (donc un compte FAUX au-delà — c'est
 // précisément ce que `fil_compteurs` corrige). Sans `commentsTotal` : l'affichage
 // compte la liste, comme avant.
+// Limite EXPLICITE de la lecture des réactions du repli, deux fois sous `max-rows`
+// (1 000) : une réponse qui l'atteint est peut-être tronquée, et une limite serveur
+// plus basse que prévu ne doit pas la faire passer pour complète (même règle que
+// la lecture des identifiants de R37).
+const FIL_REPLI_LIGNES_MAX = 500;
 async function _chargerComplementsFilLegacy(postIds, out) {
-  let likesData = [], commentsData = [], reactsData = [];
+  let likesData = [], commentsData = [], reactsData = [], reactionsLues = false;
   try {
     const [likesRes, commentsRes, reactsRes] = await Promise.all([
       supa.from("post_likes").select("post_id, user_id").in("post_id", postIds),
@@ -5123,12 +5146,16 @@ async function _chargerComplementsFilLegacy(postIds, out) {
       // Réactions emoji/GIF portées par les POSTS (convention comment_id === post_id
       // dans comment_interactions) → pastille « 😍 N » visible cross-compte.
       // `id`, `post_id` : l'index des retraits en direct (R37, `_ciIndexer`).
-      supa.from("comment_interactions").select("id, comment_id, post_id, user_id, kind, payload, created_at").in("comment_id", postIds),
+      supa.from("comment_interactions").select("id, comment_id, post_id, user_id, kind, payload, created_at").in("comment_id", postIds).limit(FIL_REPLI_LIGNES_MAX),
     ]);
     likesData = likesRes.data || [];
     commentsData = commentsRes.data || [];
     reactsData = (typeof _ciSansTombees === "function") ? _ciSansTombees(reactsRes.data || []) : (reactsRes.data || []);
     if (typeof _ciIndexer === "function") reactsData.forEach(function (x) { if (x && (x.kind === "emoji" || x.kind === "gif")) _ciIndexer(x); });
+    // RV-39 : une lecture en ÉCHEC rend `data: null` et ressemblait à « aucune
+    // réaction » ; une réponse à la borne ne prouve aucune absence. Dans les
+    // deux cas, `supaLoadPosts` ne recopie rien dans mes copies.
+    reactionsLues = !!reactsRes && !reactsRes.error && Array.isArray(reactsRes.data) && reactsRes.data.length < FIL_REPLI_LIGNES_MAX;
   } catch(e) {}
   const moi = typeof MY_UID !== "undefined" ? MY_UID : null;
   postIds.forEach(function (id) {
@@ -5139,6 +5166,7 @@ async function _chargerComplementsFilLegacy(postIds, out) {
       commentaires: undefined,
       apercus: commentsData.filter(c => c.post_id === id),
       reactions: reactsData.filter(x => x.comment_id === id && (x.kind === "emoji" || x.kind === "gif") && x.payload),
+      reactionsLues,
     });
   });
   out.source = "legacy";
