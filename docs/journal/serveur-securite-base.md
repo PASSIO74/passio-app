@@ -989,6 +989,12 @@ de l'audit). Le `git pull` qui suit la fusion SUPPRIME le dossier de son poste :
   (`going` → retrait, `declined` ou `maybe`).
 - **Un verdict qui ne contrôle que deux privilèges imprime OK sur un troisième.** Le verdict d'`anon` teste chaque
   privilège de table et de colonne, MAINTAIN à partir de PostgreSQL 17.
+- **Ce que PostgREST renvoie après une écriture, c'est ce que `select=` demande, plus la clé primaire** (mesuré dans les
+  `postgres_logs` de production le 06/11, texte des requêtes refusées) : une écriture de `user_state` en `.select("updated_at")` (app-02) part en
+  `RETURNING "user_state"."updated_at", "user_state"."user_id"`, une écriture sans `select` en `RETURNING 1`, un
+  `Prefer: return=representation` SANS `select=` en `RETURNING <table>.*`. Sous un SELECT par colonnes, une écriture
+  garde donc `.select("<colonnes accordées>")`, et la clé primaire doit rester lisible ; le helper `rest()`
+  d'`authz-critical`, qui pose `return=representation` par défaut, prend 42501 sur `event_attendees` (RV-40).
 - **Une nouvelle table de compte doit être VUE par la barrière** : `audit-tables-compte` ne reconnaissait pas
   `auteur_id`, la table des preuves (texte privé + auteur) lui échappait ; sa survie à la suppression du compte de
   l'auteur est maintenant une EXCEPTION écrite, comme `reports.reporter_id`.
@@ -1006,6 +1012,18 @@ réinjecté y rougit.
 **Ordre d'application** (après la contre-revue de la PR et le client servi) : `conv_members_reparation` →
 `oracles_et_privileges` (#681) → `participants_visibilite` → `notifications_identifiants_reserves` →
 `index_realtime` → `signalements_preuves` ; puis mesurer l'état en base (canal ①), jamais le tableau de verdict.
+
+**Application de `participants_visibilite` (06/11).** Partie à 09:17:12 UTC depuis le poste, 8 × OK, mesurée au canal ① :
+policy par lien seule en SELECT, `authenticated` ne lit plus que cinq colonnes, `anon` sans droit, les sept fonctions à
+l'octet du fichier, aucun membre retiré des discussions d'activité, aucune erreur ni attente de verrou dans les journaux.
+Avant elle : une contre-vérification de quatre agents (aucun bloquant ; R27 corrigé, R39, R40, RV-40 à RV-42), et la
+preuve, prise dans les `postgres_logs` de production, que PostgREST ne renvoie que les colonnes demandées (piège
+ci-dessus). Le détail est au § 6.3 de `04-LIVRAISON.md` (audit du 02/11).
+- **Un bloc qui atteste en local rend `attestations.json` après coup.** `attester-migration.mjs` écrit l'attestation dans
+  le clone ; consignée ensuite par une PR, elle laisse le fichier MODIFIÉ sur le poste, et le `git pull --ff-only`
+  suivant refuse (« would be overwritten by merge ») — premier essai de C-04 arrêté là, rien n'était parti. Le bloc du
+  staging de R25 le rendait (`git checkout -- .passio/migrations/attestations.json`), celui de R38 non : tout bloc qui
+  atteste finit par cette ligne, et un bloc qui tire `main` copie d'abord le fichier local avant de le rendre.
 
 ## 🔕 LA PROMOTION NE NOMME PLUS LE PROMU À N'IMPORTE QUI, ET LES VUES PERDENT LEURS DROITS HORS RLS (R24, R26 — 2026-11-03, le soir)
 
@@ -1085,6 +1103,11 @@ externe (ni pg_net, ni http, ni notify) ; les trois vues n'ont aucun lecteur. Tr
 (chacun demande sa décision ou sa revue) :
 - **R27** : un VENANT lit la file (C-04 : toute ligne hors « declined »), et un inconnu qui trouve une place libre s'inscrit,
   lit, repart. R24 ① ferme la voie de la RPC, pas celle de l'inscription. Proposition : branche « venant » limitée à « going ».
+  **Tranché le 06/11 : assumé**, C-04 part telle qu'attestée (0 ligne « peut-être » ni « attente » en production). La
+  contre-vérification du même jour a corrigé une des raisons : une place se libère aussi sans promotion (suppression de
+  compte, promotion en échec), et un inconnu devient venant d'une activité complète en entrant en file avec un
+  `created_at` ancien (R28). Suite décidée, et non plus conditionnelle : `participants_visibilite` v2, avec R39 et R40
+  (`05-RISQUES-RESIDUELS.md` de l'audit du 02/11).
 - **R28** : l'ordre de la file est `created_at`, que le client écrit — on passe devant la file.
 - **R29** : `organizer_id` se désigne sans le consentement de la personne désignée ; la policy UPDATE d'`events` garde sa
   propre lecture des co-organisateurs.
