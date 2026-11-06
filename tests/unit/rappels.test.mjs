@@ -9,7 +9,7 @@ import vm from "node:vm";
 import { idGeste } from "../../supabase/functions/_shared/autonomie.js";
 import {
   palierDu, rappelsDus, envoyerRappels, texteSur, jourRelatif, duree, dateUtc, cleRappel,
-  MARQUE_EVENEMENT, MAX_PAR_TOUR, marqueUid,
+  MARQUE_EVENEMENT, MAX_PAR_TOUR, MAX_PAR_COMPTE, marqueUid,
 } from "../../supabase/functions/_shared/rappels.js";
 
 const H = 3600e3;
@@ -122,6 +122,15 @@ test("⑧ bis une activité lue DEUX fois (ligne décalée entre deux pages) : u
   assert.deepEqual(dus.map((r) => r.cle), [cleRappel("ev_1", "h2", A)]);
 });
 
+test("⑧ ter au plus MAX_PAR_COMPTE rappels par destinataire et par tour — le reste attend le tour suivant", () => {
+  const evs = [];
+  for (let i = 0; i < MAX_PAR_COMPTE + 5; i++) evs.push(activite(T0 + H, { id: "ev_" + String(i).padStart(3, "0") }));
+  const dus = rappelsDus({ maintenant: T0, activites: evs, participants: [], dejaEnvoyes: [] });
+  assert.equal(dus.length, MAX_PAR_COMPTE);
+  assert.ok(dus.every((r) => r.uid === ORGA && r.debut === T0 + H), "chaque rappel dit son départ (il entre dans l'identifiant de la marque)");
+  assert.ok(MAX_PAR_COMPTE <= 120, "sous la limite de trg_rate_limit, avec de la marge");
+});
+
 /**
  * Faux client PostgREST : applique les filtres `in`/`eq` sur les colonnes que les
  * lignes portent, pagine par `range`, note chaque écriture dans l'ORDRE et chaque
@@ -134,7 +143,7 @@ test("⑧ bis une activité lue DEUX fois (ligne décalée entre deux pages) : u
  * jusqu'à ce que n tours les aient lues : l'entrelacement mesuré en production
  * (deux veilles qui lisent toutes deux « aucune marque » avant d'écrire).
  */
-function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refuserMarque = false, rendezVous = 0, idsPris = [] }) {
+function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refuserMarque = false, rendezVous = 0, idsPris = [], horloge = null }) {
   const journal = [];
   const lignes = { events, event_attendees: attendees, analytics_events: marques, push_subscriptions: subs };
   // `idsPris` : des marques écrites par un tour concurrent APRÈS notre lecture —
@@ -145,7 +154,11 @@ function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refus
   const table = (nom) => {
     const q = {
       _op: "select", _filtres: [], _range: null,
-      select() { return q; }, gte() { return q; }, lte() { return q; }, neq() { return q; },
+      select() { return q; }, lte() { return q; }, neq() { return q; },
+      // La fenêtre de lecture des marques (`created_at`, 3 jours) est APPLIQUÉE :
+      // sans elle, une marque ancienne passait pour lue (le report d'activité
+      // de la revue du 2026-11-06 passait ainsi au vert).
+      gte(col, v) { if (col === "created_at") q._depuis = v; return q; },
       order(col) { journal.push({ op: "order", nom, col }); return q; },
       eq(col, v) { q._filtres.push([col, [v]]); return q; },
       in(col, vals) { q._filtres.push([col, vals]); q._in = vals; return q; },
@@ -166,13 +179,15 @@ function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refus
             const neuves = q._rows.filter((r) => !(r.id && ids.has(r.id)));
             if (q._op === "insert" && neuves.length < q._rows.length) out = { error: { code: "23505", message: "duplicate key value violates unique constraint \"analytics_events_pkey\"" } };
             else {
-              for (const r of neuves) { if (r.id) ids.add(r.id); lignes.analytics_events.push(r); }
+              // `horloge` : l'heure que la base pose (`created_at default now()`).
+              for (const r of neuves) { if (r.id) ids.add(r.id); lignes.analytics_events.push(horloge ? { created_at: horloge(), ...r } : r); }
               if (q._op === "upsert") out = { data: ((q._options && q._options.ignoreDuplicates) ? neuves : q._rows).map((r) => ({ id: r.id })), error: null };
             }
           }
         } else if (q._op === "delete") { journal.push({ op: "delete", nom, valeurs: q._in }); out = { error: null }; }
         else {
           let l = (lignes[nom] || []).filter((r) => q._filtres.every(([c, vals]) => !(c in r) || vals.includes(r[c])));
+          if (q._depuis) l = l.filter((r) => !r.created_at || r.created_at >= q._depuis);
           if (q._range) l = l.slice(q._range[0], q._range[1] + 1);
           journal.push({ op: "select", nom });
           out = { data: l, error: null };
@@ -209,7 +224,7 @@ test("⑨ enveloppe : la marque est écrite AVANT l'envoi ; charge « rappel » 
   assert.deepEqual(marque.rows.map((x) => [x.user_id, x.event, x.properties.cle]).sort(),
     [[marqueUid(A), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", A)], [marqueUid(B), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", B)]].sort());
   assert.deepEqual(marque.options, { onConflict: "id", ignoreDuplicates: true }, "ON CONFLICT (id) DO NOTHING : seul le tour qui écrit la marque envoie");
-  for (const x of marque.rows) assert.equal(x.id, await idGeste("rappel:" + x.properties.cle, S), "l'identifiant de la marque est celui de sa CLÉ");
+  for (const x of marque.rows) assert.equal(x.id, await idGeste(`rappel:${x.properties.cle}:${T0 + H}`, S), "l'identifiant de la marque est celui de sa CLÉ et de son DÉPART");
   assert.deepEqual(admin.journal.find((j) => j.op === "delete"), { op: "delete", nom: "push_subscriptions", valeurs: ["https://push/a2"] });
 
   // Tour suivant : les marques existent → rien ne repart.
@@ -248,7 +263,7 @@ test("⑨ ter conflit PARTIEL : la marque de A vient d'être prise par un tour c
     { endpoint: "https://push/b", user_id: B, subscription: { endpoint: "https://push/b" } },
   ];
   const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs,
-    idsPris: [await idGeste("rappel:" + cleRappel("ev_1", "h2", A), S)] });
+    idsPris: [await idGeste(`rappel:${cleRappel("ev_1", "h2", A)}:${T0 + H}`, S)] });
   const envois = [];
   const r = await envoyerRappels(admin, async (s) => { envois.push(s.endpoint); }, T0, S);
   assert.deepEqual(envois, ["https://push/b"], "A a déjà son rappel, envoyé par l'autre tour");
@@ -262,6 +277,37 @@ test("⑩ enveloppe : marque refusée → on LÈVE et RIEN ne part ; aucune acti
   assert.equal(envoye, 0);
   const vide = fauxAdmin({});
   assert.deepEqual(await envoyerRappels(vide, async () => { throw new Error("jamais"); }, T0, S), { activites: 0, dus: 0, envoyes: 0 });
+});
+
+test("⑨ quater activité REPORTÉE d'une semaine : son rappel repart — la marque de l'ancienne date a 7 jours, la lecture n'en voit que 3, la clé primaire 13 mois", async () => {
+  // Deux VRAIS tours sur la même base : le premier à H-2 de la date d'origine,
+  // le second à H-2 de la date reportée. Réinjection éprouvée : un identifiant
+  // de marque sans le départ → la seconde push ne part pas.
+  let maintenant = T0;
+  const ev = activite(T0 + H, { author_id: null });
+  const subs = [{ endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } }];
+  const admin = fauxAdmin({ events: [ev], attendees: [inscrit(A, "going", T0 - 10 * 864e5)], subs, horloge: () => new Date(maintenant).toISOString() });
+  const envois = [];
+  const envoyer = async (s) => { envois.push(s.endpoint); };
+  assert.equal((await envoyerRappels(admin, envoyer, maintenant, S)).envoyes, 1, "le rappel de la date d'origine");
+  ev.date_at = naif(T0 + 7 * 864e5 + H);
+  maintenant = T0 + 7 * 864e5;
+  const r = await envoyerRappels(admin, envoyer, maintenant, S);
+  assert.deepEqual(envois, ["https://push/a", "https://push/a"], "la date reportée a son propre rappel");
+  assert.equal(r.dejaPris, 0);
+});
+
+test("⑩ quinquies un compte qui organise 121 activités à la même heure ne coupe PLUS les rappels de tout le monde (trg_rate_limit : 120 lignes par minute et par user_id)", async () => {
+  // Réinjection éprouvée : sans MAX_PAR_COMPTE, le lot de marques lève sur la
+  // limite et AUCUN rappel ne part — pour personne, à chaque tour.
+  const evs = [];
+  for (let i = 0; i < 121; i++) evs.push(activite(T0 + H, { id: "ev_" + String(i).padStart(3, "0") }));
+  const subs = [{ endpoint: "https://push/b", user_id: B, subscription: { endpoint: "https://push/b" } }];
+  const admin = fauxAdmin({ events: evs, attendees: [inscrit(B, "going", T0 - 3 * 864e5, "ev_000")], subs });
+  const envois = [];
+  const r = await envoyerRappels(admin, async (s) => { envois.push(s.endpoint); }, T0, S);
+  assert.deepEqual(envois, ["https://push/b"], "B reçoit son rappel malgré l'organisateur aux 121 activités");
+  assert.equal(r.dus, 1 + MAX_PAR_COMPTE, "l'organisateur en reçoit MAX_PAR_COMPTE ce tour-ci, le reste aux tours suivants");
 });
 
 test("⑩ quater sans le secret serveur, aucune marque et AUCUN envoi : un identifiant calculable d'avance laisserait un compte taire le rappel d'un autre", async () => {

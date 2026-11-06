@@ -1234,7 +1234,8 @@ test("㉿⑧ la veille prend un CRÉNEAU atomique d'abord — jamais le plafond 
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
   const garde = v.indexOf('const creneau = await prendreCreneau(admin, "systeme:pilotage-veille", "pilotage-veille", SECRET_GESTES);');
   assert.ok(garde > 0, "le créneau atomique garde la veille");
-  assert.match(v.slice(garde), /^const creneau = [^\n]*\n\s*if \(!creneau\.ok\) return json\(\{ ok: true, ignore: "trop tôt" \}\);/, "refusé (pris ou erreur) → rien ne tourne");
+  assert.match(v.slice(garde), /^const creneau = [^\n]*\n\s*if \(!creneau\.ok\) \{/, "refusé (pris ou erreur) → rien ne tourne");
   assert.ok(garde < v.indexOf("Promise.allSettled("), "AVANT toute lecture et tout geste");
   assert.doesNotMatch(v, /verifierPlafondEnBase/, "le plafond lit puis écrit : deux appels simultanés passent tous deux");
+  assert.match(v.slice(garde, garde + 700), /return json\(\{ ok: true, ignore: "trop tôt" \}\);/, "la réponse publique ne dit pas pourquoi");
 });

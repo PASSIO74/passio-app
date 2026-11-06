@@ -123,7 +123,13 @@ Deno.serve(async (req) => {
 // — rappel envoyé deux fois, voyant noté deux fois (mesuré le 2026-11-06).
 async function veille(admin: Admin) {
   const creneau = await prendreCreneau(admin, "systeme:pilotage-veille", "pilotage-veille", SECRET_GESTES);
-  if (!creneau.ok) return json({ ok: true, ignore: "trop tôt" });
+  if (!creneau.ok) {
+    // Pris : une autre veille tourne ou vient de tourner — rien à dire. Erreur :
+    // la veille ne tourne pas, et sans cette trace seul le battement périmé
+    // (35 min) le dirait, sans sa cause. La réponse publique, elle, ne change pas.
+    if (creneau.raison === "erreur") console.warn("veille : créneau refusé " + JSON.stringify({ code: (creneau as { code?: string }).code || "?" }));
+    return json({ ok: true, ignore: "trop tôt" });
+  }
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
   const t0 = Date.now();
@@ -160,16 +166,25 @@ async function veille(admin: Admin) {
   const vt = tenirVerdict(prec, v, incomplet);
   const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, tenu: !!vt.tenu };
   const d = decideAlerte(prec, actuel);
-  let envoyes = 0;
-  if (d.sonner) envoyes = await sonnerPilote(admin, d.titre!, d.texte || "");
   const change = !prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner;
+  // UNE transition par état mémorisé : son identifiant est un HMAC de l'état
+  // qu'elle remplace (`prec.le`). Deux veilles qui se chevauchent (le créneau
+  // espace les DÉPARTS, pas les durées : une veille de plus d'une minute, puis
+  // un appel suivant) lisent le même état ; la seconde se heurte à la clé
+  // primaire et ne sonne pas une seconde fois (revue adversariale du
+  // 2026-11-06). Toute AUTRE erreur d'écriture laisse sonner : l'alerte d'abord.
+  let dejaNotee = false;
   if (change) {
-    await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: "pilotage_etat", properties: {
+    const id = await idGeste(`pilotage_etat:${prec ? prec.le : "initial"}`, SECRET_GESTES).catch(() => null);
+    const { error: ee } = await admin.from("analytics_events").insert({ ...(id ? { id } : {}), user_id: "systeme:pilotage", event: "pilotage_etat", properties: {
       couleur: actuel.couleur, dispo: actuel.dispo, raisons: (actuel.raisons || []).slice(0, 4),
       alerteLe: d.sonner ? new Date().toISOString() : (prec && prec.alerteLe) || null,
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
     } });
+    dejaNotee = !!ee && String((ee as { code?: string }).code || "") === "23505";
   }
+  let envoyes = 0;
+  if (d.sonner && !dejaNotee) envoyes = await sonnerPilote(admin, d.titre!, d.texte || "");
   // Puis ce qui agit seul (délestage 2026-10-11 ; réveil et proposition
   // 2026-10-12, _shared/autonomie.js). Chaque étape est isolée : une panne de
   // l'une ne casse ni les autres ni la veille. Les signaux ont été lus UNE fois,

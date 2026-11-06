@@ -61,6 +61,15 @@ export const marqueUid = (uid) => MARQUE_UID + ":" + uid;
 export const RSVP_RAPPELES = ["going", "maybe"];
 /** Au plus tant de rappels par tour de veille : le reste part au tour suivant (5 min). */
 export const MAX_PAR_TOUR = 300;
+/**
+ * Au plus tant de rappels par DESTINATAIRE et par tour : le reste part au tour
+ * suivant. Toutes les marques d'un destinataire portent le même `user_id`
+ * (`systeme:rappels:<compte>`), et `trg_rate_limit` refuse la 121ᵉ ligne de la
+ * minute pour un même `user_id` — l'instruction entière tombe, donc TOUS les
+ * rappels du tour, pour tout le monde, et à chaque tour. Un compte qui crée
+ * 121 activités à la même heure suffisait (revue adversariale du 2026-11-06).
+ */
+export const MAX_PAR_COMPTE = 20;
 
 const HEURE = 3600e3;
 /** Du plus proche au plus lointain. `ouvreMs` : distance au départ où le palier s'ouvre. */
@@ -156,6 +165,7 @@ export function rappelsDus({ maintenant, activites, participants, dejaEnvoyes, m
   // Une clé par tour : une activité lue deux fois (une ligne décalée entre deux
   // pages) ne fait pas deux rappels — l'envoi « une fois » se tient par clé.
   const prises = new Set();
+  const parCompte = new Map();
   for (const a of activites || []) {
     if (!a || !ID_ACTIVITE_RE.test(String(a.id || ""))) continue;
     if (a.status === "cancelled") continue;
@@ -174,11 +184,14 @@ export function rappelsDus({ maintenant, activites, participants, dejaEnvoyes, m
       if (d.inscrit > ouverture) continue;
       const cle = cleRappel(a.id, palier.cle, d.uid);
       if (deja.has(cle) || prises.has(cle)) continue;
+      const n = parCompte.get(d.uid) || 0;
+      if (n >= MAX_PAR_COMPTE) continue;
+      parCompte.set(d.uid, n + 1);
       prises.add(cle);
       const { titre, texte } = textesRappel(a, debut, maintenant, palier.cle);
       const reste = debut - maintenant;
       dus.push({
-        cle, uid: d.uid, idActivite: a.id, palier: palier.cle, titre, texte,
+        cle, uid: d.uid, idActivite: a.id, palier: palier.cle, titre, texte, debut,
         // Le rappel de la veille n'a plus de sens une fois celui de H-2 dû.
         ttl: Math.max(60, Math.floor((palier.cle === "h2" ? reste : Math.min(reste - 2 * HEURE, 6 * HEURE)) / 1000)),
         urgence: palier.cle === "h2" ? "high" : "normal",
@@ -249,13 +262,17 @@ export async function envoyerRappels(admin, envoyer, maintenant = Date.now(), se
   if (!dus.length) return { activites: activites.length, dus: 0, envoyes: 0 };
 
   // ③ La marque AVANT l'envoi, et UNE FOIS : chaque marque porte l'identifiant
-  // déterministe de sa clé, posé en « ON CONFLICT DO NOTHING », et seules les
-  // marques ÉCRITES PAR CE TOUR partent. La lecture ci-dessus ne suffisait pas :
-  // deux tours concurrents la faisaient tous deux avant d'écrire — un rappel J-1
-  // envoyé deux fois au même compte le 30/10 (marques à 30 ms d'écart).
+  // déterministe de sa clé ET DU DÉPART, posé en « ON CONFLICT DO NOTHING », et
+  // seules les marques ÉCRITES PAR CE TOUR partent. La lecture ci-dessus ne
+  // suffisait pas : deux tours concurrents la faisaient tous deux avant d'écrire
+  // — un rappel J-1 envoyé deux fois au même compte le 30/10 (marques à 30 ms
+  // d'écart). Le départ est dans l'identifiant parce que la clé primaire vit
+  // 13 mois et la lecture 3 jours : sans lui, une activité REPORTÉE ne recevait
+  // plus jamais son rappel (revue adversariale du 2026-11-06). Deux tours
+  // concurrents lisent le même départ : la déduplication reste entière.
   // Refusée (ou secret serveur absent : `idGeste` lève) → on lève et RIEN ne part.
   const lignes = await Promise.all(dus.map(async (r) => ({
-    id: await idGeste("rappel:" + r.cle, secret),
+    id: await idGeste(`rappel:${r.cle}:${r.debut}`, secret),
     user_id: marqueUid(r.uid), event: MARQUE_EVENEMENT, properties: { cle: r.cle, palier: r.palier },
   })));
   const { data: posees, error: e4 } = await admin.from("analytics_events")

@@ -218,14 +218,18 @@ export async function idGeste(cle, secret) {
  * acceptés sont donc toujours à plus de 60 s l'un de l'autre, même de part et
  * d'autre d'une minute ronde. Le secret serveur rend les créneaux futurs
  * incalculables pour un client (sinon : les pré-occuper, et la veille se tait).
- * Toute autre erreur, secret absent compris, REFUSE (fail-closed).
+ * Toute autre erreur, secret absent compris, REFUSE (fail-closed) et rend son
+ * code, pour la trace. Un créneau déjà pris se LIT d'abord : l'appel refusé
+ * (un appel anonyme en rafale) n'écrit rien — l'insertion avortée coûtait une
+ * transaction, du journal et les deux déclencheurs. C'est l'insertion, et elle
+ * seule, qui tranche entre deux appels simultanés.
  *
  * @param {{ from: (t: string) => any }} admin  client service_role
  * @param {string} uid       identifiant système (« systeme:… »)
  * @param {string} fonction  ex. "pilotage-veille" → événement "edge_pilotage-veille"
  * @param {string} secret    secret serveur (clé service_role de la fonction)
  * @param {number} [maintenant]
- * @returns {Promise<{ ok: true } | { ok: false, raison: "pris" | "erreur" }>}
+ * @returns {Promise<{ ok: true } | { ok: false, raison: "pris" } | { ok: false, raison: "erreur", code: string }>}
  */
 export async function prendreCreneau(admin, uid, fonction, secret, maintenant = Date.now()) {
   const m = Math.floor(maintenant / 60_000);
@@ -235,10 +239,14 @@ export async function prendreCreneau(admin, uid, fonction, secret, maintenant = 
       id: await idGeste(`creneau:${fonction}:${uid}:${minute}`, secret),
       user_id: uid, event: "edge_" + fonction, properties: { minute },
     })));
-  } catch (_e) { return { ok: false, raison: "erreur" }; }
+  } catch (_e) { return { ok: false, raison: "erreur", code: "secret" }; }
+  const { data: pris, error: el } = await admin.from("analytics_events").select("id").in("id", lignes.map((l) => l.id)).limit(1);
+  if (el) return { ok: false, raison: "erreur", code: String(el.code || "lecture") };
+  if (pris && pris.length) return { ok: false, raison: "pris" };
   const { error } = await admin.from("analytics_events").insert(lignes);
   if (!error) return { ok: true };
-  return { ok: false, raison: String(error.code || "") === "23505" ? "pris" : "erreur" };
+  if (String(error.code || "") === "23505") return { ok: false, raison: "pris" };
+  return { ok: false, raison: "erreur", code: String(error.code || "ecriture") };
 }
 
 /** Un commit court et sûr à afficher ou à recopier (8 hex), sinon « ? ». */

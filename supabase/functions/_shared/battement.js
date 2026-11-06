@@ -97,6 +97,11 @@ export function resumerBattement(ligne, n24 = null, maintenant = Date.now()) {
   }
   const raisons = [];
   if (lecturesKo.length) raisons.push("la veille n'a pas pu lire : " + lecturesKo.join(", "));
+  // Les rappels ne font pas le voyant, mais un échec est un envoi PERDU pour des
+  // participants : il se voit (écran, chien de garde GitHub) au lieu de dormir
+  // dans `rappels_echec`, que rien ne lisait (revue adversariale du 2026-11-06).
+  // Un battement d'avant ce lot, sans la clé, n'en dit rien.
+  if (lectures.rappels === "ko") raisons.push("les rappels d'activité ont échoué : aucun n'est parti à ce passage (marque rappels_echec)");
   if (politiqueInvalide) raisons.push("politique d'automatisation invalide : aucun geste automatique");
   if (raisons.length) return { ...base, etat: "incomplet", frais: true, raisons };
   return { ...base, etat: "vivant", frais: true, raisons: [`battement il y a ${Math.round(ageMs / 60e3)} min, toutes les lectures abouties`] };
