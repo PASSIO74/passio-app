@@ -7,13 +7,14 @@
 // `_cmtReactions` (app-04) gardait toutes les `emoji_reaction` de
 // `comment.replies`. Le temps réel ignorait déjà l'AJOUT d'un compte bloqué
 // (`_applyCommentInteractionEvent`), mais la lecture de la discussion
-// (`supaLoadCommentInteractions`, app-08) ramène ses réactions — la RLS laisse un
-// compte bloqué lire et réagir sur une publication publique —, alors que ses
-// commentaires, eux, sont masqués à l'affichage (`_renderCommentsList`).
+// (`hydrateCommentInteractions` → `supaLoadCommentInteractions`, app-08) ramène
+// ses réactions — la RLS laisse un compte bloqué lire et réagir sur une
+// publication publique —, alors que ses commentaires, eux, sont masqués dans la
+// discussion (`_renderCommentsList`).
 //
 // CE QUE CETTE SUITE EXIGE (la vraie lecture de la discussion, la vraie liaison
-// temps réel de `_creerCanalDb` ; seul le « serveur » est simulé, rien n'est
-// écrit) :
+// temps réel de `_creerCanalDb`, les vrais `blockUser` / `unblockUser` ; seul le
+// « serveur » est simulé, rien n'est écrit) :
 //   ① la pastille d'un commentaire et la liste de ses réacteurs ne comptent ni
 //     ne nomment un compte bloqué relu par la lecture ; un compte non bloqué
 //     reste compté, y compris quand sa réaction arrive en direct (patch EN
@@ -21,13 +22,23 @@
 //   ② même règle pour la pastille d'une RÉPONSE et la liste de ses réacteurs ;
 //   ③ le tri « Pertinents » ne compte pas ses réactions ;
 //   ④ le panneau des commentaires d'une bobine, qui liste les réactions emoji et
-//     les compte dans « N réponses », ne les liste ni ne les compte ; les
-//     réponses texte n'y perdent rien.
+//     les compte dans « N réponses », ne les liste ni ne les compte ;
+//   ⑤ l'aperçu des commentaires d'une carte du fil, qui compte aussi les
+//     réactions emoji dans « ▼ N réponses », ne les compte pas ; et la règle ne
+//     touche ni une réponse texte ni un GIF, partout où ils sont comptés ;
+//   ⑥ bloquer ou débloquer un compte qui n'est qu'un RÉACTEUR repeint le fil :
+//     la pastille de la publication et l'aperçu des commentaires suivent.
+// ⚠️ Ce que la suite n'exige PAS, délibérément : que la réponse texte ou le GIF
+// d'un compte BLOQUÉ reste visible. C'est un défaut consigné hors lot (fiche),
+// pas un comportement à protéger.
 // Éprouvée par RÉINJECTION (2026-11-06) : `_cmtReactions` sans le filtre rougit
-// ① ② ③ ; le panneau des bobines sans le filtre rougit ④ ; le prédicat commun
-// (`_reactionEmojiComptee`) sans `isBlocked` rougit ① à ④ — et le cas ⑥ de
-// `reactions-mes-publications.spec.js`, qui lit le même prédicat.
-// Fiche : `docs/journal/capacite-perf-realtime.md`, « 🪞 RV-39 ».
+// ① ② ③ ; le panneau des bobines sans le filtre, ④ ; l'aperçu du fil sans le
+// filtre, ⑤ ⑥ ; la signature du fil sans la liste de blocage, ⑥ ; le prédicat
+// commun (`_reactionEmojiComptee`) sans `isBlocked`, ① à ⑥ — et le cas ⑥ de
+// `reactions-mes-publications.spec.js`, qui lit le même prédicat ; la garde
+// temps réel retirée, ① ; une relecture à chaque repeinte, ①.
+// Fiche : `docs/journal/capacite-perf-realtime.md`, « 🚫 UN COMPTE BLOQUÉ NE
+// COMPTE PAS NON PLUS SUR LA PASTILLE D'UN COMMENTAIRE ».
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -46,6 +57,7 @@ const C2 = "c_zoe";     // celui de Zoé, plus ancien
 // `srep_<created_at>`, et c'est sous cet identifiant que l'on réagit à une réponse.
 const T_REP = "2026-11-05T09:00:05.000000+00:00";
 const REP = "srep_" + T_REP;
+const GIF = "https://media.tenor.com/bloque/essai.gif";
 
 async function preparer(page) {
   await bootOnboarded(page);
@@ -72,18 +84,24 @@ async function preparer(page) {
     window.__lectures = [];
     // Dans l'ordre de `created_at` : c'est l'ordre que demande la lecture.
     window.__interactions = [
-      // Sur le commentaire d'Alice : deux comptes BLOQUÉS et Zoé réagissent ; Alice répond.
+      // Sur la PUBLICATION : un compte bloqué, puis Zoé.
+      { id: "ci_mal_p", comment_id: o.P, post_id: o.P, user_id: o.mal, kind: "emoji", payload: "🤬", created_at: "2026-11-05T08:50:00.000000+00:00" },
+      { id: "ci_zoe_p", comment_id: o.P, post_id: o.P, user_id: o.zoe, kind: "emoji", payload: "🎸", created_at: "2026-11-05T08:51:00.000000+00:00" },
+      // Sur le commentaire d'Alice : deux comptes BLOQUÉS et Zoé réagissent ; Zoé
+      // répond d'un GIF, Alice d'un texte.
       { id: "ci_mal_c1", comment_id: o.C1, post_id: o.P, user_id: o.mal, kind: "emoji", payload: "🤬", created_at: "2026-11-05T09:00:01.000000+00:00" },
       { id: "ci_mal2_c1", comment_id: o.C1, post_id: o.P, user_id: o.mal2, kind: "emoji", payload: "😡", created_at: "2026-11-05T09:00:02.000000+00:00" },
       { id: "ci_zoe_c1", comment_id: o.C1, post_id: o.P, user_id: o.zoe, kind: "emoji", payload: "🔥", created_at: "2026-11-05T09:00:03.000000+00:00" },
+      { id: "ci_gif_z", comment_id: o.C1, post_id: o.P, user_id: o.zoe, kind: "gif", payload: o.gif, created_at: "2026-11-05T09:00:04.000000+00:00" },
       { id: "ci_rep_a", comment_id: o.C1, post_id: o.P, user_id: o.alice, kind: "reply", payload: "Merci à vous !", created_at: o.tRep },
       // Sur la RÉPONSE d'Alice : un compte bloqué, puis Zoé.
       { id: "ci_mal_rep", comment_id: o.REP, post_id: o.P, user_id: o.mal, kind: "emoji", payload: "🤬", created_at: "2026-11-05T09:00:06.000000+00:00" },
       { id: "ci_zoe_rep", comment_id: o.REP, post_id: o.P, user_id: o.zoe, kind: "emoji", payload: "👏", created_at: "2026-11-05T09:00:07.000000+00:00" },
-      // Sur le commentaire de Zoé : trois j'aime de comptes non bloqués.
+      // Sur le commentaire de Zoé : quatre j'aime de comptes non bloqués.
       { id: "ci_like_a", comment_id: o.C2, post_id: o.P, user_id: o.alice, kind: "like", payload: null, created_at: "2026-11-05T09:00:08.000000+00:00" },
       { id: "ci_like_b", comment_id: o.C2, post_id: o.P, user_id: o.bob, kind: "like", payload: null, created_at: "2026-11-05T09:00:09.000000+00:00" },
       { id: "ci_like_c", comment_id: o.C2, post_id: o.P, user_id: o.carl, kind: "like", payload: null, created_at: "2026-11-05T09:00:10.000000+00:00" },
+      { id: "ci_like_m", comment_id: o.C2, post_id: o.P, user_id: o.moi, kind: "like", payload: null, created_at: "2026-11-05T09:00:11.000000+00:00" },
     ];
     window.__posts = [{
       id: o.P, author_id: o.alice, passion_id: "photo", mood: "all", content: "Publication d'Alice", created_at: "2026-11-05T08:00:00", media_url: null,
@@ -103,6 +121,8 @@ async function preparer(page) {
       { id: o.mal, username: "Malotru", emoji: "👺", color: "#990000", avatar_url: null, passion_id: "photo", passions: [], bio: "" },
       { id: o.mal2, username: "Malappris", emoji: "👹", color: "#660000", avatar_url: null, passion_id: "photo", passions: [], bio: "" },
     ];
+    // `fil_compteurs` rend les réactions de la publication SANS identifiant, et
+    // les deux aperçus de commentaires : c'est le fait de production.
     supa.rpc = (fn, args) => {
       __lectures.push({ table: "rpc:" + fn });
       if (fn !== "fil_compteurs") return Promise.resolve({ data: null, error: null });
@@ -111,7 +131,8 @@ async function preparer(page) {
         return {
           post_id: id, likes: 0, aime: false, commentaires: cs.length,
           apercus: cs.slice(0, 2).map((c) => ({ id: c.id, author_id: c.author_id, content: c.content, created_at: c.created_at })),
-          reactions: [],
+          reactions: __interactions.filter((i) => i.comment_id === id && (i.kind === "emoji" || i.kind === "gif") && i.payload != null)
+            .map((i) => ({ user_id: i.user_id, kind: i.kind, payload: i.payload, created_at: i.created_at })),
         };
       }), error: null });
     };
@@ -143,6 +164,10 @@ async function preparer(page) {
       };
       return q;
     };
+    // Les écritures du blocage : acceptées, jamais envoyées (cas ⑥).
+    window.supaBlockUser = async () => true;
+    window.supaUnblockUser = async () => true;
+    window.supaUnfollowUser = async () => true;
 
     // ── Le SDK temps réel simulé, qui RETIENT chaque liaison ──
     Object.defineProperty(window.supa, "channel", { configurable: true, writable: true, value: function (topic) {
@@ -164,7 +189,18 @@ async function preparer(page) {
     };
     window.__ordre = () => Array.from(document.querySelectorAll("#commentsBox .comment[data-commentid]")).map((n) => n.getAttribute("data-commentid"));
     window.__fermerReacteurs = () => { const d = document.getElementById("cmt-react-detail"); if (d) d.remove(); };
-  }, { moi: MOI, alice: ALICE, zoe: ZOE, bob: BOB, carl: CARL, mal: MAL, mal2: MAL2, P, C1, C2, REP, tRep: T_REP });
+    window.__repliesDe = (id) => findPostAnywhere(o.P).comments.find((x) => x.id === id).replies || [];
+    // Ce qu'une carte de la publication montre : sa pastille et « ▼ N réponses »
+    // sous le commentaire d'Alice. `racine` : le fil, ou la carte posée par le test.
+    window.__carte = (racine) => {
+      const r = document.querySelector(racine);
+      if (!r) return null;
+      const chip = r.querySelector('[data-postchip="' + CSS.escape(o.P) + '"]');
+      const cmt = r.querySelector('.comment[data-commentid="' + CSS.escape(o.C1) + '"]');
+      const compte = cmt && cmt.querySelector(".comment-reply-count");
+      return { pastille: chip ? chip.textContent.trim() : null, reponses: compte ? compte.textContent.trim() : null };
+    };
+  }, { moi: MOI, alice: ALICE, zoe: ZOE, bob: BOB, carl: CARL, mal: MAL, mal2: MAL2, P, C1, C2, REP, tRep: T_REP, gif: GIF });
 }
 
 // La vraie ouverture d'une discussion : lecture du fil, puis de la page de
@@ -193,12 +229,9 @@ test.describe("Un compte bloqué ne compte pas sur la pastille d'un commentaire"
     await preparer(page);
     await ouvrirDiscussion(page);
 
-    const lu = await page.evaluate((c) => {
-      const n = findPostAnywhere("post_cmt_bloque").comments.find((x) => x.id === c);
-      return (n.replies || []).filter((r) => r.type === "emoji_reaction").map((r) => r.text);
-    }, C1);
+    const lu = await page.evaluate((c) => __repliesDe(c).filter((r) => r.type === "emoji_reaction").map((r) => r.text), C1);
     expect(lu, "prémisse : la lecture ramène les réactions des comptes bloqués").toEqual(["🤬", "😡", "🔥"]);
-    expect(await page.evaluate((c) => __pastille(c), C1), "seule la réaction de Zoé compte").toBe("🔥 1");
+    expect(await page.evaluate((c) => __pastille(c), C1), "seule la réaction de Zoé compte (le GIF est une réponse)").toBe("🔥 1");
 
     const liste = await reacteurs(page, C1);
     expect(liste).toContain("Réactions · 1");
@@ -207,26 +240,33 @@ test.describe("Un compte bloqué ne compte pas sur la pastille d'un commentaire"
     expect(liste).not.toContain("Malappris");
 
     // En DIRECT : la réaction de Bob est patchée EN PLACE ; celle d'un compte
-    // bloqué n'ajoute rien (« un compte bloqué n'AJOUTE rien »).
+    // bloqué n'entre même pas dans le modèle (« un compte bloqué n'AJOUTE rien »).
     const direct = await page.evaluate(([c, p, bob, mal]) => {
       const inserer = __liaison("comment_interactions", "INSERT");
-      inserer({ eventType: "INSERT", old: {}, new: { id: "ci_bob_c1", comment_id: c, post_id: p, user_id: bob, kind: "emoji", payload: "👍", created_at: "2026-11-05 09:00:11+00" } });
+      inserer({ eventType: "INSERT", old: {}, new: { id: "ci_bob_c1", comment_id: c, post_id: p, user_id: bob, kind: "emoji", payload: "👍", created_at: "2026-11-05 09:00:12+00" } });
       const apresBob = __pastille(c);
-      inserer({ eventType: "INSERT", old: {}, new: { id: "ci_mal_c1_bis", comment_id: c, post_id: p, user_id: mal, kind: "emoji", payload: "👎", created_at: "2026-11-05 09:00:12+00" } });
-      return { apresBob, apresMal: __pastille(c) };
+      inserer({ eventType: "INSERT", old: {}, new: { id: "ci_mal_c1_bis", comment_id: c, post_id: p, user_id: mal, kind: "emoji", payload: "👎", created_at: "2026-11-05 09:00:13+00" } });
+      const lignes = __repliesDe(c).map((r) => r.ci).filter(Boolean);
+      return { apresBob, apresMal: __pastille(c), bobDansLeModele: lignes.includes("ci_bob_c1"), malDansLeModele: lignes.includes("ci_mal_c1_bis") };
     }, [C1, P, BOB, MAL]);
     expect(direct.apresBob, "Zoé et Bob comptent, les deux comptes bloqués relus non").toBe("🔥 2");
+    expect(direct.bobDansLeModele).toBe(true);
+    expect(direct.malDansLeModele, "la garde temps réel : l'ajout d'un compte bloqué n'entre pas dans le modèle").toBe(false);
     expect(direct.apresMal).toBe("🔥 2");
 
-    // Le filtre est à l'AFFICHAGE : débloquer rend les réactions déjà lues, sans relecture.
-    const deblocage = await page.evaluate(([mal, mal2]) => {
+    // Le filtre est à l'AFFICHAGE : débloquer rend les réactions déjà lues, sans
+    // relecture. Une lecture partirait APRÈS ce code synchrone (`then` est appelé
+    // dans une micro-tâche) : on laisse passer un tour avant de compter.
+    const deblocage = await page.evaluate(async ([mal, mal2]) => {
       const lecturesAvant = __lecturesCi();
       state.user.blocked = [];
       _refreshCommentThreadUINow("post_cmt_bloque");
       const debloque = __pastille("c_alice");
       state.user.blocked = [mal, mal2];
       _refreshCommentThreadUINow("post_cmt_bloque");
-      return { debloque, rebloque: __pastille("c_alice"), relectures: __lecturesCi() - lecturesAvant };
+      const rebloque = __pastille("c_alice");
+      await new Promise((ok) => setTimeout(ok, 100));
+      return { debloque, rebloque, relectures: __lecturesCi() - lecturesAvant };
     }, [MAL, MAL2]);
     expect(deblocage.debloque, "débloqués, leurs deux réactions comptent de nouveau").toBe("🤬 4");
     expect(deblocage.rebloque).toBe("🔥 2");
@@ -241,8 +281,7 @@ test.describe("Un compte bloqué ne compte pas sur la pastille d'un commentaire"
     await expect(page.locator('#commentsBox [data-replyid="' + REP + '"]')).toBeVisible();
 
     const r = await page.evaluate((id) => {
-      const p = findPostAnywhere("post_cmt_bloque");
-      const rep = p.comments.find((x) => x.id === "c_alice").replies.find((x) => x.id === id);
+      const rep = __repliesDe("c_alice").find((x) => x.id === id);
       return { lu: (rep.replies || []).map((x) => x.text), pastille: __pastille(id) };
     }, REP);
     expect(r.lu, "prémisse : la seconde passe de lecture ramène la réaction du compte bloqué sur la réponse").toEqual(["🤬", "👏"]);
@@ -260,17 +299,17 @@ test.describe("Un compte bloqué ne compte pas sur la pastille d'un commentaire"
     expect(await page.evaluate(() => __ordre()), "« Récents » : Alice d'abord").toEqual([C1, C2]);
 
     await page.locator("#commentsBox .cmt-sort", { hasText: "Pertinents" }).click();
-    // Zoé : 3 j'aime. Alice : 1 réaction comptée + 1 réponse = 2 (4 si les comptes
-    // bloqués comptaient, et elle passerait devant).
+    // Zoé : 4 j'aime. Alice : 1 réaction comptée + 2 réponses (texte, GIF) = 3 —
+    // 5 si les comptes bloqués comptaient, et elle passerait devant.
     await expect.poll(() => page.evaluate(() => __ordre())).toEqual([C2, C1]);
     const pertinence = await page.evaluate(() => {
       const p = findPostAnywhere("post_cmt_bloque");
       return p.comments.map((c) => [c.id, _cmtRelevance(c)]);
     });
-    expect(Object.fromEntries(pertinence)).toEqual({ [C1]: 2, [C2]: 3 });
+    expect(Object.fromEntries(pertinence)).toEqual({ [C1]: 3, [C2]: 4 });
   });
 
-  test("④ le panneau des commentaires d'une bobine ne liste ni ne compte la réaction d'un compte bloqué ; les réponses texte n'y perdent rien", async ({ page }) => {
+  test("④ le panneau des commentaires d'une bobine ne liste ni ne compte la réaction d'un compte bloqué ; réponse texte et GIF restent", async ({ page }) => {
     await preparer(page);
     await page.evaluate(async (p) => {
       state.supabasePosts = await supaLoadPosts();
@@ -288,17 +327,76 @@ test.describe("Un compte bloqué ne compte pas sur la pastille d'un commentaire"
       const liste = document.getElementById("reelCommentsList");
       const items = Array.from(liste.querySelectorAll(".reel-comment-item"));
       const alice = items.find((n) => n.textContent.indexOf("Commentaire d'Alice") !== -1);
-      const reponses = alice && alice.nextElementSibling && alice.nextElementSibling.classList.contains("reel-comment-replies")
-        ? alice.nextElementSibling.textContent : "";
+      const bloc = alice && alice.nextElementSibling && alice.nextElementSibling.classList.contains("reel-comment-replies")
+        ? alice.nextElementSibling : null;
       const compte = alice && alice.querySelector(".reel-comment-reply-count");
-      return { compte: compte ? compte.textContent.trim() : null, reponses, tout: liste.textContent };
+      return { compte: compte ? compte.textContent.trim() : null, reponses: bloc ? bloc.textContent : "",
+        gif: !!(bloc && bloc.querySelector('img[alt="GIF"]')), tout: liste.textContent };
     });
-    expect(panneau.compte, "la réaction de Zoé et la réponse d'Alice ; pas les deux comptes bloqués").toBe("2 réponses");
+    expect(panneau.compte, "la réaction de Zoé, son GIF et la réponse d'Alice ; pas les deux comptes bloqués").toBe("3 réponses");
     expect(panneau.reponses).toContain("Zoé");
     expect(panneau.reponses).toContain("🔥");
     expect(panneau.reponses, "la réponse texte n'est pas touchée").toContain("Merci à vous !");
+    expect(panneau.gif, "le GIF n'est pas touché").toBe(true);
     expect(panneau.tout).not.toContain("Malotru");
     expect(panneau.tout).not.toContain("Malappris");
     await page.evaluate(() => closeReelComments());
+  });
+
+  test("⑤ l'aperçu des commentaires d'une carte du fil ne compte pas la réaction d'un compte bloqué ; réponse texte et GIF restent comptés, comme dans la discussion", async ({ page }) => {
+    await preparer(page);
+    await ouvrirDiscussion(page);
+
+    // La discussion : « Voir N réponses » compte la réponse d'Alice et le GIF de
+    // Zoé, jamais une réaction ; le GIF y est rendu en image.
+    const discussion = await page.evaluate(() => {
+      const cmt = document.querySelector('#commentsBox .comment[data-commentid="c_alice"]');
+      return { compte: cmt.querySelector(".comment-reply-count").textContent.trim(), gif: !!cmt.querySelector('img[alt="GIF"]') };
+    });
+    expect(discussion).toEqual({ compte: "⌵ Voir 2 réponses", gif: true });
+
+    // La carte de la publication, telle que le fil la peint (`renderPostHTML`).
+    const carte = await page.evaluate(() => {
+      closeModal();
+      document.querySelectorAll("[data-cmt-bloque-carte]").forEach((n) => n.remove());
+      const div = document.createElement("div");
+      div.setAttribute("data-cmt-bloque-carte", "1");
+      div.innerHTML = renderPostHTML(findPostAnywhere("post_cmt_bloque"));
+      document.body.appendChild(div);
+      return __carte("[data-cmt-bloque-carte]");
+    });
+    // L'aperçu compte, depuis toujours, les réactions emoji AVEC les réponses :
+    // celle de Zoé, sa réponse GIF et la réponse d'Alice. Jamais les deux comptes bloqués.
+    expect(carte.reponses, "5 si les deux comptes bloqués comptaient").toBe("▼ 3 réponses");
+    expect(carte.pastille, "la pastille de la publication écarte aussi le compte bloqué (RV-39)").toBe("🎸 1");
+  });
+
+  test("⑥ bloquer ou débloquer un compte qui n'est qu'un réacteur repeint le fil : pastille de la publication et aperçu des commentaires suivent", async ({ page }) => {
+    await preparer(page);
+    await ouvrirDiscussion(page);
+    const avant = await page.evaluate((alice) => {
+      closeModal();
+      // La publication entre dans le fil par la source « Suivis ».
+      state.user.following = [alice];
+      state.feedFollowingOn = true;
+      renderFeed();
+      return __carte("#feedList");
+    }, ALICE);
+    expect(avant, "prémisse : la carte est dans le fil, les comptes bloqués écartés").toEqual({ pastille: "🎸 1", reponses: "▼ 3 réponses" });
+
+    // Les vrais gestes de modération : ils écrivent l'état puis appellent `renderFeed()`.
+    const debloques = await page.evaluate(async ([mal, mal2]) => {
+      await unblockUser(mal, "Malotru");
+      await unblockUser(mal2, "Malappris");
+      return { carte: __carte("#feedList"), bloques: state.user.blocked.slice() };
+    }, [MAL, MAL2]);
+    expect(debloques.bloques).toEqual([]);
+    expect(debloques.carte, "débloqués : leurs réactions déjà lues reviennent sur la carte, sans relecture").toEqual({ pastille: "🤬 2", reponses: "▼ 5 réponses" });
+
+    const rebloque = await page.evaluate(async (mal) => {
+      await blockUser(mal, "Malotru");
+      return __carte("#feedList");
+    }, MAL);
+    expect(rebloque, "rebloqué : il quitte la pastille et l'aperçu tout de suite").toEqual({ pastille: "🎸 1", reponses: "▼ 4 réponses" });
   });
 });

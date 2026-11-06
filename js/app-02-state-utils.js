@@ -9307,6 +9307,12 @@ function renderFeed() {
     (typeof feedIrlBridgeEnabled === "function" && feedIrlBridgeEnabled()) ? "irl1" : "irl0",
     // Le séparateur dépend de l'ordre ET du lot : le couper doit repeindre.
     _repereEx ? "ex:" + _repereEx.id + ":" + _repereEx.reels : (filReelDabordActif() ? "ex-" : "ex0"),
+    // La liste de BLOCAGE : bloquer un compte qui n'est qu'un RÉACTEUR ne change
+    // aucune publication visible, mais change ce que les cartes comptent (la
+    // pastille `_postReactItems`, « ▼ N réponses » des aperçus). Sans elle, le
+    // `renderFeed()` de `blockUser` / `unblockUser` était sauté, et le compte
+    // bloqué restait compté jusqu'à la tranche suivante de 5 minutes.
+    "bl:" + ((state.user && state.user.blocked) || []).join(","),
     visible.map(function(p) {
       return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
     }).join("|"),
@@ -9752,7 +9758,10 @@ function renderPostHTML(p) {
     const _cSelfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, state.user?.id, "me"].filter(Boolean);
     const cLiked = (c.likedBy || []).some(x => _cSelfIds.indexOf(x) > -1);
     const cLikes = c.likes || 0;
-    const cReplies = c.replies || [];
+    // « ▼ N réponses » compte aussi les réactions emoji de `c.replies` : celle
+    // d'un compte BLOQUÉ n'y entre pas, même règle que la pastille
+    // (`_reponsesComptees`, app-04). Réponses texte et GIF inchangés.
+    const cReplies = (typeof _reponsesComptees === "function") ? _reponsesComptees(c.replies) : (c.replies || []);
 
     return `<div class="comment" data-commentid="${escapeHtml(c.id)}">
       <div class="avatar sm" style="background:${avatarBg(cu)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(cu)}</div>

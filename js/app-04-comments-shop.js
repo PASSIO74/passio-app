@@ -940,6 +940,16 @@ function _expandComments(threadId) {
 function _reactionEmojiComptee(r) {
   return !!(r && r.type === "emoji_reaction" && !(typeof isBlocked === "function" && isBlocked(r.authorId)));
 }
+// `comment.replies` telle que la voit une surface qui LISTE ou COMPTE ses
+// réactions emoji AVEC ses réponses, sous « N réponses » : le panneau des
+// commentaires d'une bobine (`loadReelComments`, app-05) et l'aperçu des
+// commentaires d'une carte du fil (`renderPostHTML`, app-02). Une réaction n'y
+// reste que si elle compte (`_reactionEmojiComptee`) ; les réponses texte et les
+// GIF sont des réponses, rendues telles quelles (une entrée nulle aussi, comme
+// avant). La discussion, elle, ne compte aucune réaction comme une réponse.
+function _reponsesComptees(replies) {
+  return (replies || []).filter(function (r) { return !r || r.type !== "emoji_reaction" || _reactionEmojiComptee(r); });
+}
 function _cmtReactions(comment) {
   // Emojis SEULEMENT dans la pastille — les GIF sont des réponses (image inline).
   // Un compte bloqué ne compte pas : la pastille, la liste des réacteurs
