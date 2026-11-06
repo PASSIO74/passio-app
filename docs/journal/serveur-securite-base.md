@@ -1019,6 +1019,11 @@ l'octet du fichier, aucun membre retiré des discussions d'activité, aucune err
 Avant elle : une contre-vérification de quatre agents (aucun bloquant ; R27 corrigé, R39, R40, RV-40 à RV-42), et la
 preuve, prise dans les `postgres_logs` de production, que PostgREST ne renvoie que les colonnes demandées (piège
 ci-dessus). Le détail est au § 6.3 de `04-LIVRAISON.md` (audit du 02/11).
+La contre-vérification de l'état d'après (trois agents) n'a trouvé aucun bloquant, mais une voie que C-04 ne ferme pas :
+**`is_conv_member(_conv_id, _uid)` répond pour n'importe quel `_uid`** (C-02), et depuis le bloc ⑥ la discussion d'activité
+`evgrp_<id>` ne contient plus que les venants — elle est devenue la RECOPIE de la liste. C'est la règle de CLAUDE.md
+(« une liste fermée ressort par toute table qui la recopie ou RPC qui la renvoie ») appliquée une fois de plus : fermer
+une lecture, c'est chercher aussi les fonctions qui répondent SUR AUTRUI à propos d'une table qui la recopie (R41).
 - **Un bloc qui atteste en local rend `attestations.json` après coup.** `attester-migration.mjs` écrit l'attestation dans
   le clone ; consignée ensuite par une PR, elle laisse le fichier MODIFIÉ sur le poste, et le `git pull --ff-only`
   suivant refuse (« would be overwritten by merge ») — premier essai de C-04 arrêté là, rien n'était parti. Le bloc du
@@ -1367,7 +1372,7 @@ ce qu'a mesuré sa première exécution en CI (#727) ; présente, A épingle, B 
   prérequis client déclaré) ; P2 (le propriétaire d'une activité résolu par une publication homonyme, côté serveur ET
   client) ; P2 (un homonyme créé après l'épingle la verrouillait) ; P3 (`organizer_id` vide : garde et client divergeaient) ;
   P4 (oracle 23514/42501, verdict et socle du banc incomplets, retrait en direct ignoré) — tous corrigés (3224fa0 pour le
-  client, la migration révisée) ; ce qu'elle a vu en passant est au registre (RV-43 à RV-46) ;
+  client, la migration révisée) ; ce qu'elle a vu en passant est au registre (RV-45 à RV-48) ;
 - `audit-passio`, deltas, 06/11 : 61fb36c → deux P2 (repeinte avant les « j'aime », `saveState` à chaque ouverture),
   deux P3, des P4 ; 3224fa0 → un P3 (une relecture par retrait), deux P4 ; 84cb6b3 → un P2 (l'épinglé gardé jamais
   revérifié), trois P4 ; d38d2fb → aucun P2, mais trois régressions (P3 : un commentaire RÉCENT lu par son identifiant
