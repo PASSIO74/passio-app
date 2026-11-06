@@ -1018,6 +1018,11 @@ l'octet du fichier, aucun membre retiré des discussions d'activité, aucune err
 Avant elle : une contre-vérification de quatre agents (aucun bloquant ; R27 corrigé, R39, R40, RV-40 à RV-42), et la
 preuve, prise dans les `postgres_logs` de production, que PostgREST ne renvoie que les colonnes demandées (piège
 ci-dessus). Le détail est au § 6.3 de `04-LIVRAISON.md` (audit du 02/11).
+La contre-vérification de l'état d'après (trois agents) n'a trouvé aucun bloquant, mais une voie que C-04 ne ferme pas :
+**`is_conv_member(_conv_id, _uid)` répond pour n'importe quel `_uid`** (C-02), et depuis le bloc ⑥ la discussion d'activité
+`evgrp_<id>` ne contient plus que les venants — elle est devenue la RECOPIE de la liste. C'est la règle de CLAUDE.md
+(« une liste fermée ressort par toute table qui la recopie ou RPC qui la renvoie ») appliquée une fois de plus : fermer
+une lecture, c'est chercher aussi les fonctions qui répondent SUR AUTRUI à propos d'une table qui la recopie (R41).
 - **Un bloc qui atteste en local rend `attestations.json` après coup.** `attester-migration.mjs` écrit l'attestation dans
   le clone ; consignée ensuite par une PR, elle laisse le fichier MODIFIÉ sur le poste, et le `git pull --ff-only`
   suivant refuse (« would be overwritten by merge ») — premier essai de C-04 arrêté là, rien n'était parti. Le bloc du
