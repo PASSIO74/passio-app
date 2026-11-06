@@ -173,9 +173,13 @@ async function veille(admin: Admin) {
   // un appel suivant) lisent le même état ; la seconde se heurte à la clé
   // primaire et ne sonne pas une seconde fois (revue adversariale du
   // 2026-11-06). Toute AUTRE erreur d'écriture laisse sonner : l'alerte d'abord.
+  // Sans état LU, pas de clé déterministe : `lireEtatMemorise` rend null aussi
+  // quand sa lecture échoue, et une clé fixe (« initial ») aurait fait passer la
+  // deuxième lecture en échec pour un doublon — une vraie alerte tue. Sans état,
+  // un doublon reste possible, un silence jamais.
   let dejaNotee = false;
   if (change) {
-    const id = await idGeste(`pilotage_etat:${prec ? prec.le : "initial"}`, SECRET_GESTES).catch(() => null);
+    const id = prec && prec.le ? await idGeste(`pilotage_etat:${prec.le}`, SECRET_GESTES).catch(() => null) : null;
     const { error: ee } = await admin.from("analytics_events").insert({ ...(id ? { id } : {}), user_id: "systeme:pilotage", event: "pilotage_etat", properties: {
       couleur: actuel.couleur, dispo: actuel.dispo, raisons: (actuel.raisons || []).slice(0, 4),
       alerteLe: d.sonner ? new Date().toISOString() : (prec && prec.alerteLe) || null,

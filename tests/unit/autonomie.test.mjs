@@ -356,11 +356,16 @@ test("⑰ la veille prend son créneau sous le secret serveur, et les rappels au
   // Deux veilles qui se chevauchent lisent le même état : la seconde se heurte
   // à la clé primaire de la transition et ne sonne pas (mutation : sonner avant).
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
-  const note = v.indexOf("idGeste(`pilotage_etat:${prec ? prec.le : \"initial\"}`, SECRET_GESTES)");
+  const note = v.indexOf("const id = prec && prec.le ? await idGeste(`pilotage_etat:${prec.le}`, SECRET_GESTES).catch(() => null) : null;");
   const sonne = v.indexOf("if (d.sonner && !dejaNotee) envoyes = await sonnerPilote(");
   assert.ok(note > 0 && sonne > note, "la transition est notée (clé HMAC de l'état remplacé) AVANT de sonner");
   assert.match(v, /dejaNotee = !!ee && String\(\(ee as \{ code\?: string \}\)\.code \|\| ""\) === "23505";/, "seul le doublon prouvé tait l'alerte ; toute autre erreur laisse sonner");
   assert.equal(v.split("sonnerPilote(").length - 1, 1, "un seul appel à la sonnerie dans la veille");
+  // Une lecture de l'état EN ÉCHEC rend null, comme « aucun état » : une clé fixe
+  // ferait de la seconde lecture en échec un « doublon », et tairait l'alerte
+  // (revue de sécurité du 2026-11-06 ; mutation : clé « initial » sans état lu).
+  assert.doesNotMatch(v, /pilotage_etat:\$\{prec \?/, "jamais de clé déterministe sans état lu");
+  assert.doesNotMatch(v, /"initial"/);
 });
 
 test("⑱ un créneau déjà pris se LIT : l'appel refusé n'écrit rien (une rafale d'appels anonymes ne coûte plus une transaction chacun)", async () => {
