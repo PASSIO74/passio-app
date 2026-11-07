@@ -14,6 +14,8 @@ select banc.c4('Le visiteur lit le point arrondi', banc.val(null, $s$select lat:
 
 select banc.c4('Un compte ne lit plus l''adresse dans la table', banc.val(banc.id('M'), $s$select address from public.events where id = 'ev_lieu'$s$), 'err:42501');
 select banc.c4('Un compte ne lit plus le contact dans la table', banc.val(banc.id('M'), $s$select contact from public.events where id = 'ev_lieu'$s$), 'err:42501');
+select banc.c4('Un compte lit toujours le titre', banc.val(banc.id('M'), $s$select title from public.events where id = 'ev_lieu'$s$), 'Chez moi');
+select banc.c4('Un select étoile est refusé, le client n''en fait plus', banc.val(banc.id('M'), $s$select count(*) from (select * from public.events where id = 'ev_lieu') x$s$), 'err:42501');
 select banc.c4('L''organisation non plus, en direct', banc.val(banc.id('A'), $s$select address from public.events where id = 'ev_lieu'$s$), 'err:42501');
 select banc.c4('Un visiteur n''a pas la fonction', banc.val(null, $s$select count(*)::text from public.adresses_activites(array['ev_lieu'])$s$), 'err:42501');
 

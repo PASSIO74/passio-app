@@ -135,6 +135,9 @@ fi
 if [ -f "$LOT4" ]; then
   echo "══ ④ bis APRÈS le lot 4 (sur les lots 1, 2 et 3) ══"
   CAS4="$RACINE/tests/sql/fixtures/cas-securite-lot4-2026-11-07.sql"
+  # Le socle écrit colonne par colonne ce que la production tient sur la table : `authenticated=arwd` sur `events`. Un
+  # `revoke select (colonne)` y passait donc, et ne retirait rien en production. On pose ici le droit réel.
+  QD banc_apres "grant select on public.events to authenticated" >/dev/null
   sortie="$(FICHIER banc_apres "$LOT4")"; code=$?
   verifier "le lot 4 s'applique" "$code" "0"
   [ "$code" -ne 0 ] && printf '%s\n' "$sortie" | head -8
