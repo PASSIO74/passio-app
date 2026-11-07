@@ -16,16 +16,27 @@
 // ⚠️ Les routes sont posées APRÈS `bootOnboarded`, et c'est voulu : Playwright lit
 // les routes dans l'ordre INVERSE, et la route des médias de l'isolation laisse
 // partir les écritures vers le réseau (`route.continue()`). Toute écriture que ce
-// banc ne mesure pas est absorbée ici (201), jamais envoyée à la production.
+// banc ne mesure pas est absorbée ici (201), jamais envoyée à la production, et
+// toute LECTURE est servie ici aussi — sauf celles que l'isolation sert déjà (fil,
+// stories, événements, notifications, miroir des passions, pixel des médias).
+// ⚠️ LA CONVERSATION EST CONNUE DU SERVEUR, COMME EN PRODUCTION.
+// La première rédaction laissait `conversations` / `conv_members` revenir vides :
+// le démarrage gardait alors la copie locale, et les cas de redémarrage étaient
+// verts pour une mauvaise raison — en production, `_rafraichirConversationsServeur`
+// remplaçait la conversation et la bulle en attente disparaissait avec sa copie
+// (revue audit-passio du 2026-11-07, reproduite avant correctif).
 //
 // Réinjection (voir docs/journal/social-messagerie.md, fiche du 2026-11-07) : le
-// code d'avant rougit ①–⑨ ; chaque morceau du correctif retiré seul rougit le cas
-// qui le porte.
+// code d'avant rougit tous les cas ; chaque morceau du correctif retiré seul rougit
+// le cas qui le porte.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
 const UID_MOI = "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31";
 const UID_AUTRE = "8d1e2f3a-4b5c-4d6e-8f70-112233445566";
+const UID_LEA = "5b4c3d2e-1f0a-4b9c-8d7e-6f5a4b3c2d1e";
+// Ce que l'isolation de `bootOnboarded` sert elle-même : on la laisse faire.
+const LECTURES_ISOLATION = /\/rest\/v1\/(posts|stories|events|notifications|passions)\?|\/storage\/v1\/(object|render\/image)\/(public|sign|authenticated)\//;
 const CONV = "conv_pj_banc";
 const CIBLE = "conv_pj_cible";
 const PNG_1PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
@@ -33,11 +44,14 @@ const VOCAL = "data:audio/webm;base64," + Buffer.from("vocal-de-banc-0123456789"
 
 // Le réseau Supabase du banc. `mode(m)` règle la réponse du PROCHAIN dépôt :
 // « ok », « coupure » (la requête n'aboutit jamais : `Failed to fetch`), « refus »
-// (403 de la policy), « deja_la » (400 + statusCode 409, l'objet existe), « pendre »
-// (aucune réponse). `insertion(m)` : « ok » ou « pendre » pour `conv_messages`.
+// (403 de la policy), « refus_une_fois » (403, puis ok), « deja_la » (400 +
+// statusCode 409, l'objet existe), « pendre » / « tenir » (aucune réponse ; « tenir »
+// la garde pour `relacherDepot()`). `insertion(m)` : « ok » ou « pendre » pour
+// `conv_messages`.
 async function reseau(page) {
-  const etat = { mode: "ok", insertion: "ok" };
-  const journal = { depots: [], copies: [], messages: [] };
+  const etat = { mode: "ok", insertion: "ok", tenu: null, dejaEnBase: new Set() };
+  const journal = { depots: [], copies: [], messages: [], membres: [], suppressions: [] };
+  const ok = (route, corps, status = 200) => route.fulfill({ status, contentType: "application/json", body: typeof corps === "string" ? corps : JSON.stringify(corps) });
   await page.route(/supabase\.co\//, async (route) => {
     const req = route.request();
     const url = req.url();
@@ -46,38 +60,71 @@ async function reseau(page) {
       let corps = {};
       try { corps = JSON.parse(req.postData() || "{}"); } catch (e) {}
       journal.copies.push(corps);
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ Key: "attachments/" + (corps.destinationKey || "") }) });
+      return ok(route, { Key: "attachments/" + (corps.destinationKey || "") });
+    }
+    if (methode === "DELETE" && /\/storage\/v1\/object\/attachments/.test(url)) {
+      journal.suppressions.push(req.postData() || "");
+      return ok(route, []);
     }
     if (methode === "POST" && /\/storage\/v1\/object\/attachments\//.test(url)) {
       const chemin = decodeURIComponent(url.split("/storage/v1/object/attachments/")[1].split("?")[0]);
-      const mode = etat.mode;
+      let mode = etat.mode;
+      if (mode === "refus_une_fois") { etat.mode = "ok"; mode = "refus"; }
       journal.depots.push({ chemin, mode });
       // « pendre » : le dépôt ne répond jamais ; la navigation suivante emporte la requête.
       if (mode === "pendre") return;
+      if (mode === "tenir") { etat.tenu = { route, chemin }; return; }
       if (mode === "coupure") return route.abort("internetdisconnected");
-      if (mode === "refus") {
-        return route.fulfill({ status: 403, contentType: "application/json",
-          body: JSON.stringify({ statusCode: "403", error: "Unauthorized", message: "new row violates row-level security policy" }) });
-      }
-      if (mode === "deja_la") {
-        return route.fulfill({ status: 400, contentType: "application/json",
-          body: JSON.stringify({ statusCode: "409", error: "Duplicate", message: "The resource already exists" }) });
-      }
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ Key: "attachments/" + chemin, Id: "banc" }) });
+      if (mode === "refus") return ok(route, { statusCode: "403", error: "Unauthorized", message: "new row violates row-level security policy" }, 403);
+      if (mode === "deja_la") return ok(route, { statusCode: "409", error: "Duplicate", message: "The resource already exists" }, 400);
+      return ok(route, { Key: "attachments/" + chemin, Id: "banc" });
     }
     if (/\/rest\/v1\/conv_messages/.test(url)) {
       if (methode === "POST") {
-        journal.messages.push(req.postData() || "");
+        const corps = req.postData() || "";
+        journal.messages.push(corps);
         if (etat.insertion === "pendre") return;
-        return route.fulfill({ status: 201, contentType: "application/json", body: "[]" });
+        let id = null;
+        try { id = JSON.parse(corps).id; } catch (e) {}
+        // La ligne existe déjà (réponse perdue d'un premier envoi) : PostgREST dit 23505.
+        if (id && etat.dejaEnBase.has(id)) {
+          return ok(route, { code: "23505", details: "Key (id)=(" + id + ") already exists.", hint: null, message: 'duplicate key value violates unique constraint "conv_messages_pkey"' }, 409);
+        }
+        return ok(route, [], 201);
       }
-      return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      // La relecture de la preuve (`_ligneDejaEnBase`) : la ligne, avec son auteur.
+      const lu = /[?&]id=eq\.([^&]+)/.exec(url);
+      if (lu && etat.dejaEnBase.has(decodeURIComponent(lu[1]))) return ok(route, [{ from_id: UID_MOI }]);
+      return ok(route, []);
+    }
+    // La conversation telle que le serveur la rend (`supaLoadMyConversations`).
+    if (/\/rest\/v1\/conv_members/.test(url)) {
+      if (methode === "POST") { journal.membres.push(req.postData() || ""); return ok(route, [], 201); }
+      if (methode === "GET") {
+        return ok(route, [
+          { conv_id: CONV, user_id: UID_MOI, profiles: null },
+          { conv_id: CONV, user_id: UID_LEA, profiles: { username: "Léa", emoji: "🌿", color: "#22c55e", avatar_url: null } },
+        ]);
+      }
+    }
+    if (methode === "GET" && /\/rest\/v1\/conversations/.test(url)) {
+      return ok(route, [{ id: CONV, is_group: false, group_name: null, created_by: UID_MOI, created_at: new Date(Date.now() - 86400000).toISOString() }]);
     }
     // Toute autre ÉCRITURE (télémétrie, accusés de lecture, notification…) : absorbée.
-    if (methode !== "GET") return route.fulfill({ status: 201, contentType: "application/json", body: "[]" });
-    return route.fallback();
+    if (methode !== "GET") return ok(route, [], 201);
+    if (LECTURES_ISOLATION.test(url)) return route.fallback();
+    // Toute autre LECTURE : servie ici, vide — jamais la production.
+    if (/\/rest\/v1\//.test(url)) return ok(route, []);
+    return ok(route, {}, 404);
   });
-  return { journal, mode: (m) => { etat.mode = m; }, insertion: (m) => { etat.insertion = m; } };
+  return {
+    journal,
+    mode: (m) => { etat.mode = m; },
+    insertion: (m) => { etat.insertion = m; },
+    dejaEnBase: (id) => { etat.dejaEnBase.add(id); },
+    relacherDepot: () => { const t = etat.tenu; etat.tenu = null; return t.route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ Key: "attachments/" + t.chemin, Id: "banc" }) }); },
+    depotTenu: () => !!etat.tenu,
+  };
 }
 
 // Un compte RÉEL (uuid) : depuis AUTH-06, une entrée de file sans propriétaire
@@ -93,6 +140,8 @@ async function banc(page) {
     null, { timeout: 20000 },
   );
   const r = await reseau(page);
+  // Le vrai client est construit pendant le démarrage : on l'attend, on ne le suppose pas.
+  await page.waitForFunction(() => window._supaReal === true, null, { timeout: 20000 }).catch(() => {});
   const supaReel = await page.evaluate(({ uid, conv, cible }) => {
     MY_UID = uid; window.MY_UID = uid;
     try { localStorage.removeItem("passio_pj_outbox_v1"); localStorage.removeItem("passio_outbox_v1"); } catch (e) {}
@@ -163,7 +212,9 @@ test.describe("Pièce jointe — le dépôt Storage a un verdict, une file et un
     await statutSera(page, m.id, "failed");
     await page.waitForTimeout(300);
 
-    expect(r.journal.depots).toHaveLength(1);
+    // Un 403 répare l'appartenance UNE fois (comme le texte), redépose, puis le dit.
+    expect(r.journal.depots.map((d) => d.mode)).toEqual(["refus", "refus"]);
+    expect(r.journal.membres, "la réparation inscrit les deux membres").toHaveLength(2);
     // AVANT : la garde insérait « 📎 note.pdf (non synchronisé) » et le disait envoyé.
     expect(r.journal.messages, "un dépôt refusé n'insère RIEN — ni base64, ni étiquette").toEqual([]);
     // L'échec est À L'ÉCRAN, sur le message : « réessayer » sous la bulle, et un toast.
@@ -174,7 +225,7 @@ test.describe("Pièce jointe — le dépôt Storage a un verdict, une file et un
     const e = erreurs.find((x) => x.action === "piece_jointe_depot");
     expect(e, "erreurs : " + JSON.stringify(erreurs)).toBeTruthy();
     expect(e.severity).toBe("error");
-    expect(e.meta).toMatchObject({ rc: "refus", http: 403, kind: "doc", voie: "premier", essai: 1 });
+    expect(e.meta).toMatchObject({ rc: "refus", http: 403, kind: "doc", voie: "premier", essai: 2 });
     expect(JSON.stringify(e)).not.toContain("note.pdf");
     // Un refus ne se rejoue pas tout seul.
     expect(await filePj(page)).toEqual([]);
@@ -191,8 +242,8 @@ test.describe("Pièce jointe — le dépôt Storage a un verdict, une file et un
     await page.locator(`#convFpThread [data-msgst="${m.id}"] span`).click();
     await statutSera(page, m.id, "sent");
 
-    expect(r.journal.depots.map((d) => d.mode)).toEqual(["refus", "ok"]);
-    expect(r.journal.depots[1].chemin, "un renvoi ne fabrique pas un second objet").toBe(r.journal.depots[0].chemin);
+    expect(r.journal.depots.map((d) => d.mode)).toEqual(["refus", "refus", "ok"]);
+    expect(new Set(r.journal.depots.map((d) => d.chemin)).size, "un renvoi ne fabrique pas un second objet").toBe(1);
     expect(r.journal.messages).toHaveLength(1);
     expect(aucuneDataUrl(r.journal.messages)).toBe(true);
     const ligne = JSON.parse(r.journal.messages[0]);
@@ -387,7 +438,7 @@ test.describe("Pièce jointe — le dépôt Storage a un verdict, une file et un
       localStorage.setItem("passio_uid", uid);
     }, { conv: CONV, bulle: BULLE_TUEE, uid: UID_MOI });
     await page.reload();
-    await page.waitForFunction((c) => typeof getConversations === "function" && getConversations().some((x) => x.id === c), CONV, { timeout: 20000 });
+    await page.waitForFunction(() => window._supaInitTerminee === true, null, { timeout: 40000 });
   }
 
   test("⑫ application TUÉE en plein dépôt : à la réouverture, la bulle « envoi… » repart seule, au même chemin", async ({ page }) => {
@@ -415,7 +466,7 @@ test.describe("Pièce jointe — le dépôt Storage a un verdict, une file et un
     r.mode("ok");
     await page.evaluate((u) => { localStorage.setItem("passio_uid", u); saveConversationsNow(); }, UID_MOI);
     await page.reload();
-    await page.waitForFunction((c) => typeof getConversations === "function" && getConversations().some((x) => x.id === c), CONV, { timeout: 20000 });
+    await page.waitForFunction(() => window._supaInitTerminee === true, null, { timeout: 40000 });
     await expect.poll(() => statutDe(page, m.id), { timeout: 25000, message: "la bulle coupée repart au démarrage" }).toBe("sent");
     expect(r.journal.depots.map((d) => d.mode)).toEqual(["pendre", "ok"]);
     expect(r.journal.depots[1].chemin).toBe(r.journal.depots[0].chemin);
@@ -471,5 +522,191 @@ test.describe("Pièce jointe — le dépôt Storage a un verdict, une file et un
     expect(await statutDe(page, "m_filet")).toBe("failed");
     const { erreurs } = await lire(page);
     expect(erreurs.some((x) => x.action === "piece_jointe_data_url" && x.severity === "error"), "erreurs : " + JSON.stringify(erreurs)).toBe(true);
+  });
+
+  test("⑮ un 403 de dépôt RÉPARE l'appartenance une fois, comme le texte, puis redépose et envoie", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    r.mode("refus_une_fois");
+    const m = await joindreDocument(page, r);
+    await statutSera(page, m.id, "sent");
+    expect(r.journal.depots.map((d) => d.mode)).toEqual(["refus", "ok"]);
+    expect(new Set(r.journal.depots.map((d) => d.chemin)).size).toBe(1);
+    expect(r.journal.membres, "les deux membres réinscrits").toHaveLength(2);
+    expect(r.journal.messages).toHaveLength(1);
+  });
+
+  test("⑯ un dépôt EN VOL pendant le démarrage (conversation remplacée par le serveur) aboutit : rien n'est retiré, le message part", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    r.mode("tenir");
+    const m = await joindreDocument(page, r, "plan.pdf");
+    expect(await statutDe(page, m.id)).toBe("sending");
+    // Ce que fait `supaInit` au démarrage, sans `fusion` : la conversation locale est
+    // REMPLACÉE par celle du serveur, qui ne porte que son dernier message.
+    await page.evaluate(() => _rafraichirConversationsServeur());
+    expect(await statutDe(page, m.id), "la bulle en attente survit au remplacement").toBe("sending");
+    await r.relacherDepot();
+    await statutSera(page, m.id, "sent");
+    expect(r.journal.suppressions, "AVANT la revue : l'objet déposé était RETIRÉ").toEqual([]);
+    expect(r.journal.messages).toHaveLength(1);
+    expect(JSON.parse(JSON.parse(r.journal.messages[0]).content).url).toContain("/attachments/" + r.journal.depots[0].chemin);
+  });
+
+  test("⑰ une coupure persistante ne se signale qu'UNE fois au pilotage, pas à chaque rejeu", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    r.mode("coupure");
+    const m = await joindreDocument(page, r);
+    await statutSera(page, m.id, "failed");
+    for (let i = 0; i < 3; i++) {
+      const avant = r.journal.depots.length;
+      await page.evaluate(() => window.dispatchEvent(new Event("online")));
+      await expect.poll(() => r.journal.depots.length, { timeout: 10000 }).toBeGreaterThan(avant);
+      await statutSera(page, m.id, "failed");
+    }
+    const { erreurs } = await lire(page);
+    const pj = erreurs.filter((x) => x.action === "piece_jointe_depot");
+    // `sante.erreursJs15` compte les `warn` : rouge à 10 en 15 min.
+    expect(pj.map((x) => [x.severity, x.meta.voie]), "un téléphone instable ne rejoue pas dix avertissements").toEqual([["warn", "premier"]]);
+    expect((await filePj(page)).map((x) => x.essais)).toEqual([3]);
+  });
+
+  test("⑱ une conversation de DÉMONSTRATION n'envoie pas de pièce jointe : c'est dit, et rien ne part", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    const demo = await page.evaluate(() => {
+      const s = SEED_CONVERSATIONS[0];
+      const convs = getConversations();
+      if (!convs.some((c) => c.id === s.id)) convs.push(JSON.parse(JSON.stringify(s)));
+      saveConversationsNow();
+      return s.id;
+    });
+    await page.evaluate((c) => openConversation(c), demo);
+    await page.waitForFunction((c) => document.getElementById("conv-fullpage").getAttribute("data-conv-id") === c, demo, { timeout: 10000 });
+    const avant = await page.evaluate((c) => getConversations().find((x) => x.id === c).messages.length, demo);
+    await page.setInputFiles("#attachDocFile", { name: "demo.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 demo") });
+    await page.waitForTimeout(800);
+    // AVANT : la bulle partait vers un compte qui n'existe pas — 403, compté en erreur.
+    expect(r.journal.depots).toEqual([]);
+    expect(r.journal.messages).toEqual([]);
+    expect(await page.evaluate((c) => getConversations().find((x) => x.id === c).messages.length, demo)).toBe(avant);
+    const { toasts } = await lire(page);
+    expect(toasts.some((t) => /démonstration/i.test(t)), "toasts : " + JSON.stringify(toasts)).toBe(true);
+  });
+
+  test("⑲ une bulle que la file des MESSAGES porte déjà n'est pas reprise par la file des dépôts : une seule insertion", async ({ page }) => {
+    test.setTimeout(120000);
+    const r = await banc(page);
+    await page.evaluate(({ conv, uid }) => {
+      const chemin = "attachments/conv_pj_banc/1700000000001_zyxwvutsr_deja.pdf";
+      const url = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/attachments/" + chemin;
+      // Déposée, insertion en échec (la file des messages la porte), puis l'application
+      // tuée pendant son renvoi : la bulle dit encore « envoi… ».
+      getConversations().find((c) => c.id === conv).messages.push({
+        id: "m_deja", from: "me", text: "", status: "sending", de: uid, at: Date.now() - 60000,
+        docData: "data:application/pdf;base64," + btoa("%PDF-1.4 deja"), fileName: "deja.pdf",
+        pj: { kind: "doc", nom: "deja.pdf", type: "application/pdf", chemin: chemin, cache: "31536000", tentatives: 1, url: url },
+      });
+      saveConversationsNow();
+      const contenu = JSON.stringify({ type: "doc", filename: "deja.pdf", fileType: "application/pdf", url: url, text: "[DOC] deja.pdf" });
+      localStorage.setItem("passio_outbox_v1", JSON.stringify([{ convId: conv, msgId: "m_deja", content: contenu, at: Date.now() - 60000, essais: 1, owner: uid }]));
+      localStorage.setItem("passio_uid", uid);
+    }, { conv: CONV, uid: UID_MOI });
+    await page.reload();
+    await page.waitForFunction(() => window._supaInitTerminee === true, null, { timeout: 40000 });
+    await expect.poll(() => r.journal.messages.length, { timeout: 25000 }).toBeGreaterThan(0);
+    await page.waitForTimeout(1500);
+    // AVANT la revue : la reprise ET la file des messages renvoyaient la ligne (3 INSERT).
+    expect(r.journal.messages.filter((b) => JSON.parse(b).id === "m_deja"), "une seule insertion").toHaveLength(1);
+    expect(r.journal.depots, "l'objet est déjà déposé : aucun second dépôt").toEqual([]);
+  });
+
+  test("⑳ une bulle INTROUVABLE au verdict du dépôt, mais pas supprimée, est envoyée — l'objet n'est jamais retiré", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    r.mode("tenir");
+    const m = await joindreDocument(page, r);
+    // La conversation réécrite sans la bulle (aucune pierre tombale) : ni un « supprimé
+    // pour moi », ni un droit de retirer l'objet déposé.
+    await page.evaluate(({ conv, id }) => {
+      const c = getConversations().find((x) => x.id === conv);
+      c.messages = c.messages.filter((x) => x.id !== id);
+    }, { conv: CONV, id: m.id });
+    await r.relacherDepot();
+    await expect.poll(() => r.journal.messages.length, { timeout: 10000 }).toBe(1);
+    expect(JSON.parse(r.journal.messages[0]).id).toBe(m.id);
+    expect(r.journal.suppressions).toEqual([]);
+  });
+
+  test("㉑ « supprimé pour moi » PENDANT le dépôt : l'objet est retiré, rien n'est inséré", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    r.mode("tenir");
+    const m = await joindreDocument(page, r);
+    await page.evaluate(({ conv, id }) => _deleteMsgForMe(conv, id), { conv: CONV, id: m.id });
+    await r.relacherDepot();
+    await expect.poll(() => r.journal.suppressions.length, { timeout: 10000 }).toBe(1);
+    expect(r.journal.suppressions[0]).toContain(r.journal.depots[0].chemin);
+    await page.waitForTimeout(400);
+    expect(r.journal.messages).toEqual([]);
+  });
+
+  test("㉒ tuée APRÈS le dépôt, ligne déjà en base : la reprise renvoie la ligne seule, et le 23505 la prouve envoyée", async ({ page }) => {
+    test.setTimeout(120000);
+    const r = await banc(page);
+    r.dejaEnBase("m_livree");
+    await page.evaluate(({ conv, uid }) => {
+      const chemin = "attachments/conv_pj_banc/1700000000002_qponmlkji_livree.pdf";
+      getConversations().find((c) => c.id === conv).messages.push({
+        id: "m_livree", from: "me", text: "", status: "sending", de: uid, at: Date.now() - 60000,
+        docData: "data:application/pdf;base64," + btoa("%PDF-1.4 livree"), fileName: "livree.pdf",
+        pj: { kind: "doc", nom: "livree.pdf", type: "application/pdf", chemin: chemin, cache: "31536000", tentatives: 1,
+              url: "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/attachments/" + chemin },
+      });
+      saveConversationsNow();
+      localStorage.setItem("passio_uid", uid);
+    }, { conv: CONV, uid: UID_MOI });
+    await page.reload();
+    await page.waitForFunction(() => window._supaInitTerminee === true, null, { timeout: 40000 });
+    // AVANT la revue : `sendMessageToSupabase` renvoyait deux fois (avec puis sans
+    // from_id), lisait le 23505 comme un échec, et la bulle livrée passait « réessayer ».
+    await expect.poll(() => statutDe(page, "m_livree"), { timeout: 25000, message: "la ligne prouvée est dite envoyée" }).toBe("sent");
+    expect(r.journal.depots, "aucun second objet").toEqual([]);
+    expect(r.journal.messages.filter((b) => JSON.parse(b).id === "m_livree")).toHaveLength(1);
+  });
+
+  test("㉓ un compte REMPLACÉ pendant le dépôt d'un transfert : rien n'est inséré sous le nouveau compte (ASTRA-21)", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    r.mode("tenir");
+    await page.evaluate(({ conv, cible, png }) => {
+      getConversations().find((c) => c.id === conv).messages.push({ id: "m_local", from: "me", img: png, text: "", at: Date.now() });
+      saveConversationsNow();
+      window._forwardSrc = { convId: conv, msgId: "m_local" };
+      window.__transfert = _forwardTo(cible);
+    }, { conv: CONV, cible: CIBLE, png: PNG_1PX });
+    await expect.poll(() => r.depotTenu(), { timeout: 10000 }).toBe(true);
+    // Un autre compte prend la place SANS purge (retour OAuth, `onAuthStateChange`).
+    await page.evaluate((autre) => { MY_UID = autre; window.MY_UID = autre; }, UID_AUTRE);
+    await r.relacherDepot();
+    await page.evaluate(() => window.__transfert);
+    await page.waitForTimeout(300);
+    // AVANT la revue : l'auteur était lu APRÈS le dépôt — le média de A partait sous B.
+    expect(r.journal.messages, "aucune insertion sous un autre compte").toEqual([]);
+    expect(await page.evaluate((c) => getConversations().find((x) => x.id === c).messages.length, CIBLE)).toBe(0);
+  });
+
+  test("㉔ « supprimer pour tous » ma pièce jointe tout juste envoyée retire aussi son OBJET (MSG-03)", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    r.mode("ok");
+    const m = await joindreDocument(page, r, "retiree.pdf");
+    await statutSera(page, m.id, "sent");
+    const chemin = r.journal.depots[0].chemin;
+    await page.evaluate(({ conv, id }) => _deleteMsgForAll(conv, id), { conv: CONV, id: m.id });
+    // AVANT : la copie locale (data URL) cachait le chemin de l'objet, qui restait au seau.
+    await expect.poll(() => r.journal.suppressions.length, { timeout: 10000 }).toBe(1);
+    expect(r.journal.suppressions[0]).toContain(chemin);
   });
 });

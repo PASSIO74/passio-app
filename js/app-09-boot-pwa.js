@@ -886,11 +886,25 @@ function _pjFileAjouter(convId, msgId, owner, contexte) {
   return true;
 }
 
+// La bulle `msgId`, `null` si elle n'est pas (ou plus) dans les conversations, et
+// `undefined` si la lecture a levé : une erreur ne doit jamais se lire « message
+// disparu » — ce serait vider la file en silence.
 function _pjMessage(convId, msgId) {
   try {
     var c = (getConversations() || []).find(function (x) { return x.id === convId; });
     return c ? ((c.messages || []).find(function (x) { return x.id === msgId; }) || null) : null;
-  } catch (e) { return null; }
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("pj_lecture KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {}
+    return undefined;
+  }
+}
+// « Supprimé pour moi / pour tous » pose une PIERRE TOMBALE (`convTombAdd("msg", …)`,
+// app-04) : c'est elle, et elle seule, qui dit qu'une bulle absente a été VOULUE
+// absente. Une bulle simplement introuvable (conversation réécrite, cache perdu)
+// n'autorise ni à retirer un objet déposé ni à taire l'envoi.
+function _pjSupprimee(msgId) {
+  try { return typeof convTombHas === "function" && typeof convTombLoad === "function" && convTombHas(convTombLoad(), "msg", msgId); }
+  catch (e) { return false; }
 }
 function _pjEstDataUrl(v) { return typeof v === "string" && /^data:/i.test(v); }
 // La copie LOCALE du média, seule source d'un dépôt : champ et data URL, ou null.
@@ -936,6 +950,12 @@ function _pjCodeEchec(err, reseau) {
   if (st >= 500) return "serveur";
   return st ? "http_" + st : "sans_code";
 }
+// L'enveloppe `content` d'une pièce jointe DÉJÀ déposée — la même, au champ près,
+// que celle que construit `sendMessageToSupabase` (et `_withSenderMeta`).
+function _pjContenu(pj, url) {
+  var brut = JSON.stringify({ type: pj.kind, filename: pj.nom, fileType: pj.type, url: url, text: "[" + String(pj.kind || "").toUpperCase() + "] " + pj.nom });
+  return (typeof _withSenderMeta === "function") ? _withSenderMeta(brut) : brut;
+}
 // Au pilotage : une coupure ou une limite atteinte est un AVERTISSEMENT (l'appareil,
 // pas notre code) ; tout autre refus est une ERREUR. Aucun nom de fichier, aucun
 // libellé serveur : un code fermé, un statut, le type et la voie.
@@ -951,17 +971,22 @@ function _pjSignaler(o) {
   } catch (e) {}
 }
 // L'échec d'un dépôt : l'optimiste est défait (« réessayer »), la coupure part en
-// file, le refus se dit — et dans tous les cas le pilotage le sait.
+// file, le refus se dit — et le pilotage le sait.
 function _pjEchec(convId, msgId, o) {
   try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "failed"); } catch (e) {}
   var enFile = false;
   if (o.reseau) enFile = _pjFileAjouter(convId, msgId, o.proprietaire, o.contexte);
   else _pjFileRetirer(msgId);
   // L'entrée en file ne vaut que si la copie locale est écrite : tout de suite, pas
-  // dans 250 ms (`saveConversations` est différé) — un rechargement entre les deux
-  // laisserait une file qui désigne un message jamais enregistré.
+  // dans 250 ms (`saveConversations` est différé) — une coupure hors ligne conclut
+  // dans la même seconde que la bulle, et un rechargement entre les deux laisserait
+  // une file qui désigne un message jamais enregistré.
   if (enFile) { try { if (typeof saveConversationsNow === "function") saveConversationsNow(); } catch (e) {} }
-  _pjSignaler(o);
+  // ⚠️ Une coupure ne se signale qu'au PREMIER essai (ou à « réessayer »), jamais à
+  // chaque rejeu de la file : `sante.erreursJs15` compte les `warn` (rouge à 10 en
+  // 15 min), et un téléphone sur un réseau instable en rejouerait jusqu'à dix par
+  // pièce jointe (revue audit-passio du 2026-11-07).
+  if (!(o.reseau && o.voie === "rejeu")) _pjSignaler(o);
   try { if (typeof diagLog === "function") diagLog("pj_depot " + o.rc + (enFile ? " en_file" : "")); } catch (e) {}
   try {
     if (o.reseau && enFile) { if (o.interactif) toast("📶 Pas de réseau — la pièce jointe partira à la reconnexion"); }
@@ -979,24 +1004,37 @@ function _pjEchec(convId, msgId, o) {
 function _pjDeposer(convId, msgId, o) {
   o = o || {};
   var m = _pjMessage(convId, msgId);
-  // Message disparu (supprimé pour moi) : plus rien à envoyer, ni à rejouer.
-  if (!m || !m.pj) { _pjFileRetirer(msgId); return Promise.resolve(false); }
+  // Lecture en erreur : on ne conclut rien, l'entrée de file reste pour le tour suivant.
+  if (m === undefined) return Promise.resolve(false);
+  var voie = o.voie || "premier";
+  if (!m || !m.pj) {
+    _pjFileRetirer(msgId);
+    // Supprimée exprès (pierre tombale) : rien à envoyer. Sinon, la copie est PERDUE
+    // et l'envoi n'aura pas lieu : le pilotage doit le savoir.
+    if (!_pjSupprimee(msgId)) _pjSignaler({ rc: "copie_perdue", http: 0, kind: "", voie: voie, essai: 0, ko: 0 });
+    try { if (typeof diagLog === "function") diagLog("pj_bulle_absente " + String(msgId)); } catch (e) {}
+    return Promise.resolve(false);
+  }
   var pj = m.pj;
   var contexte = o.contexte || {
     generation: (typeof _outboxGenerationActuelle === "function") ? _outboxGenerationActuelle() : null,
     auteur: (typeof MY_UID !== "undefined") ? MY_UID : null,
   };
   var proprietaire = (o.proprietaire !== undefined) ? o.proprietaire : ((typeof _fileProprietaire === "function") ? _fileProprietaire() : null);
-  // Déjà déposée (l'insertion avait échoué, puis la file l'avait lâchée) : seul le
-  // message repart — jamais un second objet.
+  // Déjà déposée (l'insertion avait échoué, ou l'application a été tuée pendant
+  // elle) : seule la LIGNE repart, jamais un second objet. Par `_sendTextToSupa`,
+  // qui porte ce qu'il faut à un renvoi : un seul envoi en vol par message (ROB-06)
+  // et, sur 23505, la preuve que la ligne est déjà là (`_conflitClePrimaire`) —
+  // `sendMessageToSupabase` n'a ni l'un ni l'autre (revue audit-passio).
   if (pj.url) {
     _pjFileRetirer(msgId);
     try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "sending"); } catch (e) {}
-    sendMessageToSupabase(msgId, convId, pj.url, pj.type, pj.nom, pj.kind);
+    if (typeof _sendTextToSupa === "function") _sendTextToSupa(convId, msgId, _pjContenu(pj, pj.url), m.de || proprietaire || undefined);
+    else sendMessageToSupabase(msgId, convId, pj.url, pj.type, pj.nom, pj.kind);
     return Promise.resolve(true);
   }
   if (_pjEnVol[msgId]) return Promise.resolve(false);
-  var base = { kind: pj.kind, voie: o.voie || "premier", interactif: !!o.interactif, proprietaire: proprietaire, contexte: contexte, essai: Number(pj.tentatives) || 0, ko: 0 };
+  var base = { kind: pj.kind, voie: voie, interactif: !!o.interactif, proprietaire: proprietaire, contexte: contexte, essai: Number(pj.tentatives) || 0, ko: 0 };
   var copie = _pjCopieLocale(m);
   var blob = null;
   try { blob = copie ? _pjBlob(copie.donnees, pj.type) : null; } catch (e) { blob = null; }
@@ -1020,9 +1058,6 @@ function _pjDeposer(convId, msgId, o) {
   pj.tentatives = (Number(pj.tentatives) || 0) + 1;
   base.essai = pj.tentatives;
   try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "sending"); } catch (e) {}
-  // Écrit TOUT DE SUITE, pas dans 250 ms : c'est ce compteur qui fait lire un 409 au
-  // renvoi comme « déjà déposé », et une application tuée pendant le dépôt n'a que lui.
-  try { if (typeof saveConversationsNow === "function") saveConversationsNow(); } catch (e) {}
   function conclure(ok, err) {
     delete _pjEnVol[msgId];
     try {
@@ -1035,13 +1070,28 @@ function _pjDeposer(convId, msgId, o) {
       }
       if (!ok) {
         var reseau = (typeof estEchecReseau === "function") && estEchecReseau(err);
-        _pjEchec(convId, msgId, Object.assign(base, { reseau: reseau, rc: _pjCodeEchec(err, reseau), http: Number(err && err.status) || Number(err && err.statusCode) || 0 }));
+        var http = Number(err && err.status) || Number(err && err.statusCode) || 0;
+        var rc = _pjCodeEchec(err, reseau);
+        // Comme le chemin TEXTE (`_sendTextToSupa`) : la policy du seau exige d'être
+        // membre de la conversation (`storage_chemin_autorise`), et une conversation
+        // sans lignes `conv_members` se répare — UNE fois par conversation et par
+        // session (`_convReparationTentee`) —, puis le dépôt repart.
+        if (http === 403 && typeof _reparerAppartenanceConv === "function"
+            && window._convReparationTentee && !window._convReparationTentee[convId]) {
+          var refus = function () { _pjEchec(convId, msgId, Object.assign(base, { reseau: false, rc: rc, http: http })); };
+          Promise.resolve(_reparerAppartenanceConv(convId)).then(function (repare) {
+            if (repare) _pjDeposer(convId, msgId, { voie: voie, interactif: !!o.interactif, proprietaire: proprietaire, contexte: contexte });
+            else refus();
+          }, refus);
+          return false;
+        }
+        _pjEchec(convId, msgId, Object.assign(base, { reseau: reseau, rc: rc, http: http }));
         return false;
       }
       // Relu ICI, pas capturé au départ : la conversation a pu être réécrite.
       var mm = _pjMessage(convId, msgId);
-      if (!mm || !mm.pj) {
-        // Supprimé pendant le dépôt : l'objet ne doit pas rester sans message.
+      if (!mm && _pjSupprimee(msgId)) {
+        // Supprimée EXPRÈS pendant le dépôt : l'objet ne doit pas rester sans message.
         _pjFileRetirer(msgId);
         try { supa.storage.from("attachments").remove([pj.chemin]); } catch (e) {}
         return false;
@@ -1052,12 +1102,14 @@ function _pjDeposer(convId, msgId, o) {
       var brute = pub && pub.data && pub.data.publicUrl;
       var url = brute ? ((typeof cdnUrl === "function") ? cdnUrl(brute) : brute) : "";
       if (!url) { _pjEchec(convId, msgId, Object.assign(base, { reseau: false, rc: "url_absente", http: 0 })); return false; }
-      mm.pj.url = url;
+      pj.url = url;
+      if (mm && mm.pj && mm.pj !== pj) mm.pj.url = url;
       _pjFileRetirer(msgId);
-      // Écrit tout de suite : tuée pendant l'insertion, la reprise ne doit renvoyer
-      // que la ligne, jamais redéposer l'objet.
-      try { if (typeof saveConversationsNow === "function") saveConversationsNow(); else saveConversations(); } catch (e) {}
-      sendMessageToSupabase(msgId, convId, url, mm.pj.type, mm.pj.nom, mm.pj.kind);
+      try { saveConversations(); } catch (e) {}
+      // Bulle introuvable mais pas supprimée (conversation réécrite) : le message part
+      // QUAND MÊME — c'est le `pj` capturé au départ qui le décrit.
+      if (!mm) { try { if (typeof diagLog === "function") diagLog("pj_bulle_absente_envoyee " + String(msgId)); } catch (e) {} }
+      sendMessageToSupabase(msgId, convId, url, pj.type, pj.nom, pj.kind);
       return true;
     } finally { finEnvoi(); }
   }
@@ -1089,9 +1141,11 @@ function _pjRenvoyer(convId, msgId) {
 // bulle est restée « envoi… » (🕓), sans « réessayer », pour toujours. Au premier
 // vidage de la page, un message À MOI encore « sending » et né AVANT ce chargement
 // (rien de ce qui est en vol ici ne date d'avant) repart en file. Jamais ceux de
-// cette page : son insertion peut être en vol, et la doubler ferait passer un
-// message envoyé en « échec » sur le 23505 (ROB-06). Le dépôt est idempotent
-// (chemin fixé, 409 au renvoi) et l'insertion aussi (clé primaire).
+// cette page : son insertion peut être en vol, et la doubler finirait en 23505
+// puis « échec » sur un message livré (ROB-06). Le dépôt est idempotent (chemin
+// fixé, 409 au renvoi) ; l'insertion d'un média déjà déposé repart par
+// `_sendTextToSupa`, qui tient un seul envoi en vol par message — la file des
+// MESSAGES peut porter le même, elle s'efface devant lui — et prouve un 23505.
 var _PJ_CHARGEMENT = Date.now();
 function _pjReprendreInterrompus(moi) {
   if (window._pjInterrompusRepris || !moi) return;
@@ -1101,6 +1155,7 @@ function _pjReprendreInterrompus(moi) {
       (c.messages || []).forEach(function (m) {
         if (!m || m.from !== "me" || !m.pj || m.status !== "sending" || m.de !== moi) return;
         if (!(Number(m.at) < _PJ_CHARGEMENT)) return;
+        if (_pjEnVol[m.id] || (typeof _msgEstEnVol === "function" && _msgEstEnVol(m.id))) return;
         if (_pjFileAjouter(c.id, m.id, moi, null)) {
           try { if (typeof diagLog === "function") diagLog("pj_interrompue_reprise " + String(m.id)); } catch (e) {}
         }
@@ -1156,6 +1211,8 @@ function _pjFileVider() {
 // relecture du fil) : déposé dans le dossier de la cible. Rend l'URL canonique,
 // ou null — jamais la data URL.
 function _pjDeposerDataUrl(convId, dataUrl, nom, kind) {
+  var finEnvoi = null;
+  var fin = function (u) { try { if (finEnvoi) finEnvoi(); } catch (e) {} return u; };
   try {
     if (!_pjEstDataUrl(dataUrl) || typeof supa === "undefined" || !supa || !window._supaReal) return Promise.resolve(null);
     var blob = _pjBlob(dataUrl);
@@ -1164,7 +1221,7 @@ function _pjDeposerDataUrl(convId, dataUrl, nom, kind) {
     var nomFinal = String(nom || "transfert");
     if (!/\.[a-z0-9]{1,5}$/i.test(nomFinal)) nomFinal += "." + (_PASSIO_EXT_MEDIA[blob.type] || (blob.type.split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "bin");
     var chemin = _pjCheminNeuf(convId, nomFinal);
-    var finEnvoi = _envoiCommence();
+    finEnvoi = _envoiCommence();
     var refus = function (err) {
       var reseau = (typeof estEchecReseau === "function") && estEchecReseau(err);
       _pjSignaler({ rc: _pjCodeEchec(err, reseau), http: Number(err && err.status) || Number(err && err.statusCode) || 0, kind: kind || "", voie: "transfert", essai: 1, ko: Math.round(blob.size / 1024) });
@@ -1177,8 +1234,31 @@ function _pjDeposerDataUrl(convId, dataUrl, nom, kind) {
         var brute = pub && pub.data && pub.data.publicUrl;
         return brute ? ((typeof cdnUrl === "function") ? cdnUrl(brute) : brute) : null;
       }, refus)
-      .then(function (u) { finEnvoi(); return u; });
-  } catch (e) { return Promise.resolve(null); }
+      // La fin d'envoi est rendue sur TOUTE issue, levée comprise (revue audit-passio).
+      .then(fin, function (e) { fin(); try { if (typeof diagLog === "function") diagLog("pj_transfert KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {} return null; });
+  } catch (e) {
+    fin();
+    try { if (typeof diagLog === "function") diagLog("pj_transfert KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {}
+    return Promise.resolve(null);
+  }
+}
+
+// Mêmes portes que le TEXTE (`sendMessageFp`, app-04) : le mode invité explique
+// puis propose un compte, et une conversation de démonstration n'envoie rien
+// (UXO-03) — sans elles, un média joint à un exemple partait en 403, compté en
+// erreur au pilotage (revue audit-passio du 2026-11-07).
+function _pjEnvoiPermis() {
+  if (window.requireAuthentication && !requireAuthentication("message")) return false;
+  try {
+    var fp = document.getElementById("conv-fullpage");
+    var id = fp && fp.getAttribute("data-conv-id");
+    var c = id ? (getConversations() || []).find(function (x) { return x.id === id; }) : null;
+    if (typeof _estConvDemo === "function" && _estConvDemo(c)) {
+      toast("Conversation de démonstration — écris à un vrai membre depuis son profil");
+      return false;
+    }
+  } catch (e) {}
+  return true;
 }
 
 function handleAttachFile(input, kind) {
@@ -1187,6 +1267,7 @@ function handleAttachFile(input, kind) {
     _diag("handleAttachFile: Aucun fichier sélectionné");
     return;
   }
+  if (!_pjEnvoiPermis()) { input.value = ""; return; }
   _mediaEnPreparation();
   // Images : compresser AVANT envoi (toute taille acceptée → ~150-400 Ko),
   // puis traiter le fichier compressé. Évite les uploads énormes et les échecs.
@@ -1954,6 +2035,7 @@ window._isRecording = false;
 
 async function startVoiceRecord() {
   if (window._isRecording) return;
+  if (typeof _pjEnvoiPermis === "function" && !_pjEnvoiPermis()) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { toast("🎙️ Enregistrement non supporté sur cet appareil"); return; }
   try {
     // Micro TRAITÉ (anti-écho / anti-bruit / gain auto) + mono 48 kHz : voix

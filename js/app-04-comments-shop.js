@@ -6332,7 +6332,12 @@ function _copierPieceJointeVers(cheminSrc, targetConvId) {
 // Chemin d'objet (seau `attachments`) d'un message média, ou null.
 function _pieceJointeDuMessage(m) {
   if (!m || typeof pieceJointeChemin !== "function") return null;
-  return pieceJointeChemin(m.img || m.video || m.fileUrl || m.voiceData || null);
+  // ⚠️ MON média tout juste envoyé n'a ici que sa copie LOCALE (data URL) jusqu'à la
+  // relecture du fil : sans `m.pj.url` (posé au dépôt, app-09), « supprimer pour
+  // tous » laissait son objet dans le seau, et le transfert ne savait pas le copier
+  // (2026-11-07, MSG-03).
+  return pieceJointeChemin(m.img || m.video || m.fileUrl || m.voiceData || null)
+    || (m.pj && m.pj.url ? pieceJointeChemin(m.pj.url) : null);
 }
 function _purgerPieceJointeDe(m) {
   var chemin = _pieceJointeDuMessage(m);
@@ -6362,6 +6367,11 @@ function _forwardPick(convId, msgId) {
 
 async function _forwardTo(targetConvId) {
   closeModal();
+  // ⚠️ L'AUTEUR EST CAPTURÉ ICI, AVANT TOUT `await` (ASTRA-21, revue audit-passio du
+  // 2026-11-07) : la copie, et désormais le dépôt d'une copie locale, peuvent durer
+  // des minutes pour une vidéo ; un compte remplacé entre-temps ne doit jamais
+  // insérer le média de l'autre sous son nom.
+  var _ctxTransfert = { generation: _outboxGenerationActuelle(), auteur: (typeof MY_UID !== "undefined" ? MY_UID : null) };
   var src = window._forwardSrc; if (!src) return;
   var r = _msgById(src.convId, src.msgId); if (!r || !r.m) return;
   var m = r.m;
@@ -6382,21 +6392,22 @@ async function _forwardTo(targetConvId) {
     m = Object.assign({}, m);
     if (m.img) m.img = nouvelleUrl; else if (m.video) m.video = nouvelleUrl;
     else if (m.fileUrl) m.fileUrl = nouvelleUrl; else if (m.voiceData) m.voiceData = nouvelleUrl;
+    // Mon document tout juste envoyé n'a qu'une copie locale (`docData`) : il part
+    // comme document, avec l'URL de la copie — il partait en message VIDE.
+    else if (m.docData) { m.fileUrl = nouvelleUrl; delete m.docData; }
   }
   // ⚠️ UNE COPIE LOCALE NE PART JAMAIS EN BASE (2026-11-07). Ma propre photo, tout
   // juste envoyée, n'existe sur cet appareil qu'en data URL jusqu'à la prochaine
   // relecture du fil : le transfert l'insérait TELLE QUELLE dans `conv_messages` —
   // du base64 en base, par la seule porte que la garde de `sendMessageToSupabase`
-  // ne voyait pas. On copie l'objet déjà déposé (`m.pj.url`), sinon on dépose la
-  // copie dans le dossier de la cible ; un échec est un transfert refusé, dit —
-  // le même contrat que la copie juste au-dessus. Un document local (`docData`)
-  // part comme document : il partait en message VIDE.
+  // ne voyait pas. Déjà déposée (`m.pj.url`), elle est copiée juste au-dessus
+  // (`_pieceJointeDuMessage`) ; sinon on dépose la copie dans le dossier de la
+  // cible. Un échec est un transfert refusé, dit — le même contrat que la copie.
+  // Un document local (`docData`) part comme document : il partait en message VIDE.
   var _champLocal = !cheminSrc ? ["img", "video", "docData"].find(function (k) { return typeof m[k] === "string" && /^data:/i.test(m[k]); }) : null;
   if (_champLocal) {
     var _urlLocale = null;
-    var _cheminDepose = (m.pj && m.pj.url && typeof pieceJointeChemin === "function") ? pieceJointeChemin(m.pj.url) : null;
-    if (_cheminDepose && typeof supa !== "undefined" && supa && window._supaReal) _urlLocale = await _copierPieceJointeVers(_cheminDepose, targetConvId);
-    else if (typeof _pjDeposerDataUrl === "function") _urlLocale = await _pjDeposerDataUrl(targetConvId, m[_champLocal], "transfert" + (_champLocal === "docData" ? "_" + (m.fileName || "document") : ""), _champLocal);
+    if (typeof _pjDeposerDataUrl === "function") _urlLocale = await _pjDeposerDataUrl(targetConvId, m[_champLocal], "transfert" + (_champLocal === "docData" ? "_" + (m.fileName || "document") : ""), _champLocal);
     if (!_urlLocale) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
     m = Object.assign({}, m);
     if (_champLocal === "docData") { m.fileUrl = _urlLocale; delete m.docData; }
@@ -6412,6 +6423,9 @@ async function _forwardTo(targetConvId) {
   // Le filet, quelle que soit la forme du message source (GIF, fichier anciens) :
   // une data URL ne part pas vers `conv_messages`.
   if (content && typeof content.url === "string" && /^data:/i.test(content.url)) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
+  // Le compte a changé (ou la file a été purgée) pendant la copie ou le dépôt :
+  // rien ne part, ni en local ni en base.
+  if (_outboxContextePerime(_ctxTransfert)) { try { if (typeof diagLog === "function") diagLog("transfert_perime"); } catch (e) {} return; }
   if (!target.messages) target.messages = [];
   target.messages.push(localMsg);
   target.lastAt = Date.now();

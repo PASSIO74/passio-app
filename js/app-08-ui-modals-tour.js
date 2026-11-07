@@ -6947,6 +6947,24 @@ async function _rafraichirConversationsServeur(opts) {
     const localConvs = getConversations();
     const supaConvIds = new Set(supaConvs.map(c => c.id));
     const localOnly = localConvs.filter(c => !supaConvIds.has(c.id) && !SEED_CONVERSATIONS.find(s => s.id === c.id));
+    // ⚠️ UNE PIÈCE JOINTE EN ATTENTE N'EXISTE QUE DANS LA COPIE LOCALE (2026-11-07,
+    // revue audit-passio). Sans `fusion`, une conversation connue du serveur est
+    // REMPLACÉE par la sienne, dont `messages` ne porte que le dernier message
+    // (`supaLoadMyConversations`) : la bulle « envoi… » ou « réessayer » d'un média
+    // pas encore déposé disparaissait au démarrage avec sa copie, et la file des
+    // dépôts (`passio_pj_outbox_v1`, qui ne porte que des identifiants) ne trouvait
+    // plus rien à envoyer. Mesuré : 0 dépôt, 0 insertion, aucune trace — et un dépôt
+    // en vol à ce moment voyait son objet RETIRÉ. On reporte donc sur l'objet serveur
+    // MES bulles de pièce jointe pas encore envoyées (même objet, rien n'est copié).
+    supaConvs.forEach(function (sc) {
+      const lc = localConvs.find(function (x) { return x && x.id === sc.id; });
+      if (!lc || !Array.isArray(lc.messages)) return;
+      const enAttente = lc.messages.filter(function (m) { return m && m.from === "me" && m.pj && (m.status === "sending" || m.status === "failed"); });
+      if (!enAttente.length) return;
+      const connus = new Set((sc.messages || []).map(function (m) { return m && m.id; }));
+      sc.messages = (sc.messages || []).concat(enAttente.filter(function (m) { return !connus.has(m.id); }))
+        .sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+    });
     conversationsState = deduplicateConversations([...supaConvs, ...localOnly]);
   } else {
     conversationsState = deduplicateConversations(getConversations());

@@ -543,8 +543,28 @@ Reste listé au § 8 de `docs/AUTONOMIE_EXPLOITATION.md` (« lot pièce jointe �
 - **Télémétrie** : `tel.error`, action `piece_jointe_depot`, `meta` = `rc` (code fermé : `reseau`, `refus`, `trop_lourd`, `limite`, `serveur`, `illisible`, `url_absente`, `http_<n>`), `http`, `kind`, `voie` (`premier`, `rejeu`, `manuel`, `transfert`), `essai`, `ko`. Coupure, limite et fichier trop lourd sont des `warn` ; le reste des `error`. Jamais le libellé du serveur, qui peut porter la clé de l'objet donc le nom du fichier.
   - ⚠️ `sante.erreursJs15` compte tout `type = "error"`, `warn` compris (seuil rouge à 10 en 15 min). Une coupure n'émet qu'au premier essai interactif, jamais à chaque rejeu.
   - Le parcours reste dans `PARCOURS_NON_INSTRUMENTES` (`piece_jointe`). Mettre à jour son `vuPar` touche `supabase/functions/**`, donc redéploie les quatre fonctions : laissé au prochain lot qui y touche.
-- **Verrou** : `tests/e2e/piece-jointe-depot-echec.spec.js`, 15 cas. Vrai client Supabase et réseau tenu par `page.route`, posé APRÈS `bootOnboarded` : la route médias de l'isolation laisse partir les écritures vers la production. On mesure le corps des POST `conv_messages` et les chemins déposés.
+- **Verrou** : `tests/e2e/piece-jointe-depot-echec.spec.js`, 25 cas. Vrai client Supabase et réseau tenu par `page.route`, posé APRÈS `bootOnboarded` : la route médias de l'isolation laisse partir les écritures vers la production. On mesure le corps des POST `conv_messages` et les chemins déposés.
   - Les attentes ne lisent que ce qui existait avant le correctif. La première rédaction attendait `_pjDeposer` et `m.pj` : sur le code d'avant, les 11 cas rougissaient par EXPIRATION, sans rien mesurer. Ils rougissent désormais sur l'écart (« sent » au lieu de « failed », 1 POST au lieu de 0).
+- ⚠️ **LA REVUE `audit-passio` A TROUVÉ UN FAUX VERT, ET IL PORTAIT LA PROMESSE CENTRALE DU LOT.**
+  - Au démarrage, `supaInit` attend `_rafraichirConversationsServeur()` sans `fusion` (app-08). Il REMPLACE chaque conversation connue du serveur par la sienne, dont `messages` ne porte que le dernier message.
+  - La bulle en attente disparaissait donc avec sa copie, alors que la file des dépôts ne porte que des identifiants.
+  - Le banc servait `conversations` / `conv_members` vides : le démarrage gardait la copie locale, et ⑫, ⑫ bis et le « après redémarrage » de ③ étaient verts pour une mauvaise raison.
+  - Reproduit avant correctif (conversation connue du serveur) : 0 dépôt, 0 insertion, aucune trace.
+  - Pire, un dépôt EN VOL à ce moment lisait la bulle absente comme « supprimée » et RETIRAIT l'objet déposé. L'ancien code, lui, insérait.
+- **Correctifs de la revue** (sept constats, reproduits avant correction) :
+  - `_rafraichirConversationsServeur` reporte sur l'objet serveur MES bulles de pièce jointe pas encore envoyées.
+  - Une bulle introuvable n'est « supprimée » que sur PIERRE TOMBALE (`convTombAdd("msg", …)`) : sans elle, l'objet déposé est inséré quand même, et une copie perdue remonte en `copie_perdue`.
+  - Le renvoi d'un média déjà déposé passe par `_sendTextToSupa`, qui tient un seul envoi en vol par message et prouve un 23505. `sendMessageToSupabase` renvoyait avec puis sans `from_id` (3 INSERT mesurés), et un message livré pouvait finir « échec ».
+  - Une coupure ne se signale plus à chaque rejeu.
+  - `_forwardTo` capture l'auteur AVANT ses `await` (ASTRA-21).
+  - Un 403 de dépôt tente la réparation d'appartenance une fois, comme le texte (`_reparerAppartenanceConv`).
+  - Le mode invité et une conversation de démonstration bloquent la pièce jointe et le vocal comme le texte (`_pjEnvoiPermis`).
+  - « Supprimer pour tous » ma pièce jointe tout juste envoyée retire aussi son objet (MSG-03 : `_pieceJointeDuMessage` lit `m.pj.url`).
+  - La fin d'envoi de `_pjDeposerDataUrl` est rendue sur toute issue.
+  - Les deux `saveConversationsNow` du chemin nominal sont retirés (deux `JSON.stringify` complets, base64 compris, par envoi). Seul reste celui de la mise en file.
+  - Le banc sert désormais toutes ses lectures, la conversation connue du serveur comprise, et attend `_supaReal` et `_supaInitTerminee`.
+  - Nouveaux cas ⑮ à ㉔.
+  - ⚠️ Deux gardes ajoutées en première intention (« la file des messages porte déjà ce message ») ont été RETIRÉES : avec le renvoi par `_sendTextToSupa`, son « un envoi en vol » suffit, et une garde qu'aucun cas ne peut faire rougir est du poids mort (⑲ reste le verrou).
 - **Réinjection** : le code d'avant (HEAD `019896b`, worktree séparé) rougit les 11 cas. 11 mutations, 11 tuées :
 
   | Mutation | Cas rouges |
@@ -566,4 +586,3 @@ Reste listé au § 8 de `docs/AUTONOMIE_EXPLOITATION.md` (« lot pièce jointe �
   - transférer un VOCAL envoie toujours un message vide (`_forwardTo` n'a pas de branche `voiceData`) ;
   - aucune contrainte serveur n'interdit une data URL dans `conv_messages.content` : une migration, donc une contre-revue humaine ;
   - aucun plafond client pour un document ou un audio (le seau borne à 50 Mo, désormais dit par « trop lourd ») ;
-  - application tuée APRÈS le dépôt, pendant l'insertion : la reprise renvoie la ligne, le serveur répond 23505 et la bulle passe « échec » jusqu'au rejeu suivant de la file des messages, qui prouve la ligne (`_conflitClePrimaire`, `_ligneDejaEnBase`) et la dit envoyée. Elle converge, avec un détour.
