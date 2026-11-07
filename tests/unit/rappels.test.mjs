@@ -348,7 +348,7 @@ test("⑪ dateUtc lit la base comme supaTs : sans fuseau = UTC", () => {
 });
 
 /** Le service worker, exécuté pour de vrai dans une machine virtuelle. */
-function chargerSw({ fetch: fetchSw = () => {} } = {}) {
+function chargerSw({ fetch: fetchSw = () => {}, afficheEchoue = false } = {}) {
   const handlers = {};
   const notifs = [];
   const ouverts = [];
@@ -359,7 +359,11 @@ function chargerSw({ fetch: fetchSw = () => {} } = {}) {
     skipWaiting() {},
     // L'affichage se TERMINE plus tard, comme dans un navigateur : un accusé parti
     // avant la fin de l'affichage se voit (⑫ ter).
-    registration: { showNotification: (titre, opts) => new Promise((r) => setTimeout(() => { notifs.push({ titre, opts }); r(); }, 0)) },
+    // `afficheEchoue` : l'affichage est REFUSÉ (permission retirée, quota) — jamais un accusé derrière.
+    registration: { showNotification: (titre, opts) => new Promise((r, refuse) => setTimeout(() => {
+      if (afficheEchoue) { refuse(new TypeError("Notification refusée")); return; }
+      notifs.push({ titre, opts }); r();
+    }, 0)) },
     clients: {
       matchAll: () => Promise.resolve(fenetres),
       openWindow: (u) => { ouverts.push(u); return Promise.resolve(); },
@@ -560,6 +564,31 @@ test("⑫ sexies service worker : une notification SOCIALE mesurée s'affiche co
   await sw.clic({ tag: n.opts.tag, data: n.opts.data });
   assert.deepEqual(sw.ouverts, ["./"]);
   assert.ok(sw.ouverts.every((u) => !u.includes("?call=")));
+});
+
+// Revue du 2026-11-07 : rien n'éprouvait un affichage qui ÉCHOUE. Réinjection éprouvée :
+// `showNotification(...).catch(() => {}).then(() => accuser(...))` (un accusé sans
+// affichage) → ce test rougit, pour chacun des quatre genres.
+test("⑫ septies service worker : un affichage qui ÉCHOUE n'est jamais accusé — alerte, rappel, appel, notification sociale ; le même banc, affichage réussi, accuse les quatre", async () => {
+  const charges = [
+    { type: "pilotage", titre: "Problème", texte: "x" },
+    { type: "rappel", titre: "Rando", texte: "x", eventId: "ev_1" },
+    { type: "call", callId: "c1", kind: "voice", from: A, name: "Léa", emoji: "🎸" },
+    { type: "notif", text: "Léa a aimé ta publication", emoji: "❤️", kind: "like" },
+  ];
+  const appels = [];
+  const refuse = chargerSw({ fetch: (u, o) => { appels.push(o); return Promise.resolve({ status: 201 }); }, afficheEchoue: true });
+  for (const c of charges) {
+    let leve = false;
+    await refuse.push({ ...c, pid: PID1, ack: ACK }).catch(() => { leve = true; });
+    assert.ok(leve, "l'événement push porte l'échec de l'affichage : " + c.type);
+  }
+  assert.equal(refuse.notifs.length, 0);
+  assert.equal(appels.length, 0, "aucun accusé sans affichage");
+  const genres = [];
+  const reussit = chargerSw({ fetch: (u, o) => { genres.push(JSON.parse(o.body)[0].meta.genre); return Promise.resolve({ status: 201 }); } });
+  for (const c of charges) await reussit.push({ ...c, pid: PID1, ack: ACK });
+  assert.deepEqual(genres, ["pilotage", "rappel", "appel", "notif"], "contre-épreuve : le banc voit bien un accusé quand l'affichage réussit");
 });
 
 test("⑨ sexies l'accusé côté envoi : un pid ALÉATOIRE par rappel et l'adresse ; seuls les rappels ACCEPTÉS sont notés envoyés ; sans adresse, ni pid ni note", async () => {

@@ -323,7 +323,9 @@ test("⑰ un appel sur ECHANTILLON_APPELS est mesuré, sur un tirage de [0, 1) ;
   // Le plafond par appelant de notify-call (lu dans la fonction déployée) : au plus 20 notes par heure et par appelant.
   const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
   const parHeure = Number((/const PLAFOND = \{ parMinute: \d+, parHeure: (\d+) \};/.exec(src) || [])[1]);
-  assert.ok(parHeure > 0 && parHeure / ECHANTILLON_APPELS <= 20, "un appelant pèse au plus 20 notes par heure");
+  // 20 notes par heure EN MOYENNE (une moyenne n'est pas un plafond, revue du 2026-11-07) ; plus de 40, moins d'une heure sur 100 000.
+  assert.ok(parHeure > 0 && parHeure / ECHANTILLON_APPELS <= 20, "un appelant pèse 20 notes par heure en moyenne");
+  assert.ok(queueBinomiale(parHeure, 1 / ECHANTILLON_APPELS, 40) < 1e-5, "plus de 40 notes en une heure, moins d'une fois sur 100 000");
   assert.equal(NOTES_APPELS_MAX, 400);
 });
 
@@ -337,10 +339,12 @@ test("⑰ un appel sur ECHANTILLON_APPELS est mesuré, sur un tirage de [0, 1) ;
 // sur la plus RÉCENTE note, ou sur une note d'un autre genre → ⑱ rougit ; un taux
 // de 1 sur 10 → ⑲ rougit ; un plafond de lecture au-delà d'une page PostgREST →
 // ⑲ rougit.
-import { notifMesuree, GENRE_NOTIF, UID_NOTIFS, ECHANTILLON_NOTIFS, FENETRE_NOTIFS_MS, MIN_NOTIFS, NOTES_NOTIFS_MAX } from "../../supabase/functions/_shared/reception.js";
+import { notifMesuree, GENRE_NOTIF, UID_NOTIFS, ECHANTILLON_NOTIFS, FENETRE_NOTIFS_MS, MIN_NOTIFS, NOTES_NOTIFS_MAX, TTL_NOTIFS_MS, DELAI_JUGEMENT_NOTIFS_MS } from "../../supabase/functions/_shared/reception.js";
 
-test("⑱ notifications sociales : un taux à part, jugé APRÈS le délai même accusé, « trop peu » sous 5, « partiel » sur un paquet plein — et une lecture LIMITÉE par le volume dit depuis quand, sans se dire partielle", () => {
-  const pids = Array.from({ length: 10 }, (_, i) => `88888888-8888-4888-8888-${String(i).padStart(12, "0")}`);
+test("⑱ notifications sociales : un taux à part, jugé STRICTEMENT après le TTL et le délai d'accusé (70 min) — même accusée, une note plus jeune attend ; un affichage différé par la veille du téléphone n'est pas une perte ; « trop peu » sous 5, « partiel » sur un paquet plein — et une lecture LIMITÉE par le volume dit depuis quand, sans se dire partielle", () => {
+  assert.equal(TTL_NOTIFS_MS, 3600e3, "le TTL que pose notify-call");
+  assert.equal(DELAI_JUGEMENT_NOTIFS_MS, TTL_NOTIFS_MS + DELAI_ACCUSE_MS, "après le TTL, une push ne peut plus s'afficher ; plus le délai d'accusé");
+  const pids = Array.from({ length: 12 }, (_, i) => `88888888-8888-4888-8888-${String(i).padStart(12, "0")}`);
   /** Une note telle que pousserAppareils l'écrit : UN pid par notification, son genre d'une liste fermée. */
   const notif = (il_y_a, pid, kind = "like") => ({ created_at: iso(T - il_y_a), properties: { genre: GENRE_NOTIF, pids: [pid], acceptes: 2, kind } });
   const envois = [
@@ -348,14 +352,20 @@ test("⑱ notifications sociales : un taux à part, jugé APRÈS le délai même
     notif(2 * 60e3, pids[6], "message"),           // 2 min, DÉJÀ accusée : attend quand même (strict)
     notif(3 * 60e3, pids[7], "follow"),            // 3 min, pas d'accusé : attend
     notif(FENETRE_NOTIFS_MS + 60e3, pids[8]),     // hors des 24 h : pas comptée
+    notif(40 * 60e3, pids[10], "comment"),         // 40 min, accusée à 35 min (veille du téléphone) : attend
+    notif(50 * 60e3, pids[11]),                    // 50 min, pas encore d'accusé : PEUT encore s'afficher, attend
   ];
-  const accuses = [...pids.slice(0, 5).map((p) => accuse(p, 3 * 3600e3 - 2000)), accuse(pids[0], 3 * 3600e3 - 1000), accuse(pids[6], 60e3), accuse(pids[8], 60e3)];
+  const accuses = [...pids.slice(0, 5).map((p) => accuse(p, 3 * 3600e3 - 2000)), accuse(pids[0], 3 * 3600e3 - 1000), accuse(pids[6], 60e3), accuse(pids[8], 60e3), accuse(pids[10], 5 * 60e3)];
   const b = bilanReception({ envois, accuses, maintenant: T });
-  assert.deepEqual(b.notifs, { etat: "mesure", envoyes: 6, recus: 5, enAttente: 2, taux: 5 / 6, echantillon: ECHANTILLON_NOTIFS }, "l'accusé de 2 min ne compte pas encore : sur une fenêtre de quelques heures, compter les rapides et taire les lents gonflerait le taux");
+  assert.deepEqual(b.notifs, { etat: "mesure", envoyes: 6, recus: 5, enAttente: 4, taux: 5 / 6, echantillon: ECHANTILLON_NOTIFS, jugeApresMs: DELAI_JUGEMENT_NOTIFS_MS },
+    "rien de moins de 70 min n'est jugé : ni l'accusé de 2 min (il gonflerait le taux), ni le silence de 50 min (il le ferait chuter)");
   assert.equal(b.accusesIgnores, 0, "un accusé de notification sociale envoyée n'est pas ignoré");
-  // Le même motif sous le genre « appel » compte l'accusé rapide (règle d'avant, inchangée pour les appels).
+  // 31 min plus tard : l'accusé tardif compte « reçue », le silence de 81 min « non reçue ».
+  const apres = bilanReception({ envois, accuses, maintenant: T + 31 * 60e3 });
+  assert.deepEqual([apres.notifs.envoyes, apres.notifs.recus, apres.notifs.enAttente], [8, 6, 2]);
+  // Le même motif sous le genre « appel » (urgence haute, TTL 45 s) se juge à 10 min, accusé rapide compté : règle d'avant, inchangée.
   const commeAppels = bilanReception({ envois: envois.map((e) => ({ ...e, properties: { ...e.properties, genre: GENRE_APPEL } })), accuses, maintenant: T });
-  assert.deepEqual([commeAppels.appels.recus, commeAppels.appels.enAttente], [6, 1], "la règle des appels n'a pas bougé");
+  assert.deepEqual([commeAppels.appels.envoyes, commeAppels.appels.recus, commeAppels.appels.enAttente], [9, 7, 1], "la règle des appels n'a pas bougé");
   // Jamais mêlé : des notes sociales ne font ni rappels, ni appels, ni alerte — et l'inverse.
   assert.equal(b.rappels.envoyes, 0);
   assert.equal(b.appels.envoyes, 0);
@@ -364,11 +374,12 @@ test("⑱ notifications sociales : un taux à part, jugé APRÈS le délai même
   assert.equal(appelsSeuls.notifs.envoyes, 0);
   assert.equal(appelsSeuls.appels.recus, 6);
   // Trop peu : jamais un taux, et l'échantillon reste dit.
-  const peu = bilanReception({ envois: pids.slice(0, MIN_NOTIFS - 1).map((p) => notif(3600e3, p)), accuses: pids.slice(0, 4).map((p) => accuse(p, 3500e3)), maintenant: T });
+  const peu = bilanReception({ envois: pids.slice(0, MIN_NOTIFS - 1).map((p) => notif(2 * 3600e3, p)), accuses: pids.slice(0, 4).map((p) => accuse(p, 2 * 3600e3 - 60e3)), maintenant: T });
   assert.equal(peu.notifs.etat, "insuffisant");
   assert.equal(peu.notifs.taux, undefined);
   assert.equal(peu.notifs.echantillon, ECHANTILLON_NOTIFS);
-  assert.equal(bilanReception({ envois: pids.slice(0, MIN_NOTIFS).map((p) => notif(3600e3, p)), maintenant: T }).notifs.etat, "mesure", "dès MIN_NOTIFS jugeables, un taux — même nul");
+  assert.equal(bilanReception({ envois: pids.slice(0, MIN_NOTIFS).map((p) => notif(2 * 3600e3, p)), maintenant: T }).notifs.etat, "mesure", "dès MIN_NOTIFS jugeables, un taux — même nul");
+  assert.equal(bilanReception({ envois: pids.slice(0, MIN_NOTIFS).map((p) => notif(3600e3, p)), maintenant: T }).notifs.etat, "insuffisant", "à 60 min, rien n'est encore jugé");
   // Partiel : un paquet d'accusés plein (un pid noyé) — pas de taux ; ni l'alerte, ni les rappels, ni les appels n'en sont touchés.
   const rappels5 = { created_at: iso(T - 2 * 3600e3), properties: { genre: "rappel", pids: ["77777777-7777-4777-8777-000000000001", "77777777-7777-4777-8777-000000000002", "77777777-7777-4777-8777-000000000003", "77777777-7777-4777-8777-000000000004", "77777777-7777-4777-8777-000000000005"] } };
   const part = bilanReception({ envois: [alerte(30 * 60e3), rappels5, ...envois], accuses: [accuse(P1, 29 * 60e3), ...accuses], maintenant: T, tronqueNotifs: true });
@@ -389,9 +400,13 @@ test("⑱ notifications sociales : un taux à part, jugé APRÈS le délai même
   assert.equal(bilanReception({ maintenant: T }).notifs.etat, "insuffisant");
   assert.equal(bilanReception({ maintenant: T, notifsLimitees: true }).notifs.depuis, undefined, "aucune note : aucune heure inventée");
   assert.equal(bilanReception({ maintenant: T }).tronque, false);
+  // Le TTL vient de la même source que celui que notify-call pose : en changer un change l'autre.
+  const nc = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
+  assert.match(nc, /const ttl = type === "notif" \? TTL_NOTIFS_MS \/ 1000 : 45;/);
+  assert.match(nc, /import \{ adresseAccuse, TTL_NOTIFS_MS \} from "\.\.\/_shared\/reception\.js";/);
 });
 
-test("⑲ une notification sociale sur ECHANTILLON_NOTIFS : en loi binomiale, au haut de l'hypothèse 100 000 inscrits, aucune note refusée par le plafond de 120/min même à 1 500 pushes/min, 3 h de soirée dans la lecture ; un taux 9 jours sur 10 dès 158 pushes par jour", () => {
+test("⑲ une notification sociale sur ECHANTILLON_NOTIFS : en loi binomiale, au haut de l'hypothèse 100 000 inscrits, aucune note refusée par le plafond de 120/min même à 1 500 pushes/min, 3 h de soirée dans la lecture — et 20 est le plus PETIT dénominateur qui tient les deux ; un taux 9 jours sur 10 dès 167 pushes par jour", () => {
   assert.equal(GENRE_NOTIF, "notif");
   assert.equal(UID_NOTIFS, "systeme:notifs");
   assert.ok(!/^[0-9a-f]{8}-/.test(UID_NOTIFS), "jamais un uuid : aucun client n'écrit sous cet auteur");
@@ -411,22 +426,34 @@ test("⑲ une notification sociale sur ECHANTILLON_NOTIFS : en loi binomiale, au
   assert.ok(queueBinomiale(72000, p, NOTES_NOTIFS_MAX) > 0.99, "au haut, la lecture est LIMITÉE presque tous les jours : le bilan dit depuis quand");
   assert.ok(queueBinomiale(6000, p, NOTES_NOTIFS_MAX) < 1e-6, "au bas, les 24 h sont lues en entier");
   // …et un taux qui les tiendrait (1 sur 100) ne donnerait rien pendant le pilote.
-  assert.ok(queueBinomiale(790, 0.01, MIN_NOTIFS - 1) < 0.9, "1 sur 100 : pas de taux 9 jours sur 10 sous ~800 pushes par jour");
+  // (jugées après 70 min, comme les notifications réelles : ⑱)
+  assert.ok(queueBinomiale(Math.floor(830 * (FENETRE_NOTIFS_MS - DELAI_JUGEMENT_NOTIFS_MS) / FENETRE_NOTIFS_MS), 0.01, MIN_NOTIFS - 1) < 0.9, "1 sur 100 : pas de taux 9 jours sur 10 sous ~840 pushes par jour");
   // ② Le plafond qui ne se rattrape pas : `trg_rate_limit`, 120 notes par minute sous `systeme:notifs`.
-  //    Pointe extrême : 1 500 pushes sociales en une minute (5 000 connectés, § 4, une push toutes les 3 min chacun).
-  assert.ok(queueBinomiale(1500, p, 119) < 1e-6, "aucune note refusée, même en pointe extrême");
+  //    Pointe extrême : 1 000 pushes sociales en une minute (5 000 connectés, § 4, une push toutes les 5 min
+  //    chacun), tenue avec 50 % de marge : 1 500/min. (Le déclencheur compte une minute GLISSANTE : un peu
+  //    plus haut qu'une minute fixe, sans conséquence à plus de cinq écarts types.)
+  assert.ok(queueBinomiale(1000, p, 119) < 1e-12, "à la pointe extrême, jamais");
+  assert.ok(queueBinomiale(1500, p, 119) < 1e-6, "aucune note refusée, même 50 % au-dessus");
+  assert.ok(queueBinomiale(1500, 1 / 19, 119) > 1e-6, "1 sur 19 n'a plus cette marge : 20 est le plus petit dénominateur qui la tient");
   assert.ok(queueBinomiale(1000, 1 / 10, 119) > 0.01, "1 sur 10 perdrait des notes plus d'une minute de pointe sur cent");
   // ③ La fenêtre : au soir du haut de l'hypothèse (6 000 pushes par heure), les 999 dernières couvrent 3 h.
+  //    (Dont environ 2 h 10 jugées : la dernière heure et dix minutes attend son jugement, ⑱.)
   assert.ok(1 - queueBinomiale(18000, p, NOTES_NOTIFS_MAX) >= 0.999, "3 h de soirée dans la lecture");
-  assert.ok(1 - queueBinomiale(18000, 1 / 18, NOTES_NOTIFS_MAX) < 0.6, "1 sur 18 n'y tient plus qu'un soir sur deux : 20 est le plus petit dénominateur qui tient");
-  // ④ La contrepartie : « un taux » = au moins MIN_NOTIFS mesurées et jugeables dans la journée.
-  assert.ok(queueBinomiale(158, p, MIN_NOTIFS - 1) >= 0.9, "dès 158 pushes sociales par jour, un taux 9 jours sur 10");
-  assert.ok(queueBinomiale(157, p, MIN_NOTIFS - 1) < 0.9, "pas dès 157 : la doc dit 158, pas moins");
-  assert.ok(queueBinomiale(50, p, MIN_NOTIFS - 1) < 0.15, "à 50 par jour, presque jamais un taux : l'écran dit « trop peu »");
+  assert.ok(1 - queueBinomiale(18000, 1 / 19, NOTES_NOTIFS_MAX) < 0.999, "1 sur 19 ne les tient plus (0,96) : 20 est le plus petit dénominateur qui tient");
+  assert.ok(1 - queueBinomiale(18000, 1 / 18, NOTES_NOTIFS_MAX) < 0.6, "1 sur 18, un soir sur deux");
+  // ④ La contrepartie : « un taux » = au moins MIN_NOTIFS mesurées et JUGEABLES — les pushes de la journée
+  //    moins la dernière heure et dix minutes, qui attend (DELAI_JUGEMENT_NOTIFS_MS).
+  const jugeables = (v) => Math.floor(v * (FENETRE_NOTIFS_MS - DELAI_JUGEMENT_NOTIFS_MS) / FENETRE_NOTIFS_MS);
+  assert.ok(queueBinomiale(jugeables(167), p, MIN_NOTIFS - 1) >= 0.9, "dès 167 pushes sociales par jour, un taux 9 jours sur 10");
+  assert.ok(queueBinomiale(jugeables(166), p, MIN_NOTIFS - 1) < 0.9, "pas dès 166 : la doc dit 167, pas moins");
+  assert.ok(queueBinomiale(jugeables(50), p, MIN_NOTIFS - 1) < 0.15, "à 50 par jour, presque jamais un taux : l'écran dit « trop peu »");
   // ⑤ La première preuve : P(au moins une note en k pushes) = 1 − (1 − p)^k — 45 pushes pour 90 %.
   assert.ok(1 - (1 - p) ** 45 >= 0.9 && 1 - (1 - p) ** 44 < 0.9);
-  // ⑥ Le plafond par émetteur de notify-call (lu dans la fonction déployée) : au plus 10 notes par heure et par émetteur.
+  // ⑥ Le plafond par émetteur de notify-call (lu dans la fonction déployée) : 200 pushes par heure, donc
+  //    10 notes par heure EN MOYENNE — une moyenne n'est pas un plafond (Bin(200 ; 1/20) dépasse 10 quatre
+  //    heures sur dix) ; plus de 20, moins d'une heure sur 500.
   const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
   const parHeure = Number((/const PLAFOND = \{ parMinute: \d+, parHeure: (\d+) \};/.exec(src) || [])[1]);
-  assert.ok(parHeure > 0 && parHeure / ECHANTILLON_NOTIFS <= 10, "un émetteur pèse au plus 10 notes par heure");
+  assert.equal(parHeure, 200);
+  assert.ok(queueBinomiale(parHeure, p, 20) < 0.002, "un émetteur dépasse 20 notes en une heure moins d'une fois sur 500");
 });

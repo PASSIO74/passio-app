@@ -191,7 +191,7 @@ test("⑥ le tirage vient du SERVEUR (aléa cryptographique, dans [0, 1)) : un a
 
 test("⑦ câblage de notify-call : toute push par pousserAppareils, l'adresse par adresseAccuse, les refus d'avant intacts et AVANT l'envoi ; la réponse ne porte ni pid ni « mesuré »", () => {
   const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
-  assert.match(src, /import \{ adresseAccuse \} from "\.\.\/_shared\/reception\.js";/);
+  assert.match(src, /import \{ adresseAccuse, TTL_NOTIFS_MS \} from "\.\.\/_shared\/reception\.js";/);
   assert.match(src, /import \{ APPELS_ACTIFS, pousserAppareils \} from "\.\.\/_shared\/appels\.js";/);
   assert.match(src, /const ACCUSE = adresseAccuse\(\(n\) => Deno\.env\.get\(n\)\)\.accuse;/);
   const envoi = src.indexOf("await pousserAppareils({");

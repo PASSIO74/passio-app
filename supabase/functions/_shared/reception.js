@@ -117,14 +117,25 @@ export function appelMesure(tirage) {
 //     QUAND (`depuis`) : une lecture limitée par le volume n'est pas « partielle ».
 //   · Alors le taux est borné par ce qui ne se rattrape pas : le plafond de
 //     `trg_rate_limit` (120 notes par minute sous un même auteur) et la fenêtre
-//     que couvrent ces notes. UNE SUR 20 est le plus haut taux qui, au haut de
-//     l'hypothèse, garde 3 h de soirée dans la fenêtre (P = 0,9996) et n'atteint
-//     pas 120 notes en une minute même à 1 500 pushes/min (5·10⁻⁷). 1 sur 10 y
-//     perdrait des notes 2 % des minutes de pointe extrême (1 000/min) et ne
-//     garderait que 1 h 40 de soirée.
-//   · La contrepartie : un taux 9 jours sur 10 dès 158 pushes sociales par jour,
-//     « trop peu » en dessous ; la première note vient en moyenne après 20 pushes
-//     sociales (45 pour 90 %).
+//     que couvrent ces notes. Pointe extrême : 1 000 pushes en une minute (5 000
+//     connectés, une push toutes les 5 min chacun) ; on la tient avec 50 % de
+//     marge, à 1 500/min. UNE SUR 20 est le plus haut taux qui, au haut de
+//     l'hypothèse, n'atteint pas 120 notes en une minute à 1 500/min (5·10⁻⁷ ;
+//     1 sur 19 : 6·10⁻⁶) et garde 3 h de soirée dans la fenêtre (P = 0,9996 ;
+//     1 sur 19 : 0,96). 1 sur 10 perdrait des notes 2 % des minutes à 1 000/min
+//     et ne garderait que 1 h 40 de soirée.
+//   · JUGÉE APRÈS SON TTL (revue du même jour). Une push sociale part en urgence
+//     « normale », gardée 1 h par le service de notification (notify-call : TTL
+//     3 600 s) : en veille profonde (Doze), un téléphone l'affiche à la fenêtre
+//     de maintenance suivante, légitimement 10 à 60 min plus tard. Jugée à
+//     10 min, elle comptait « non reçue » à tort — un biais pessimiste fort sur
+//     une fenêtre de quelques heures. Elle se juge donc STRICTEMENT après
+//     DELAI_JUGEMENT_NOTIFS_MS (le TTL, plus le délai d'accusé) : au-delà, une
+//     push sans accusé ne peut plus s'afficher.
+//   · La contrepartie : un taux 9 jours sur 10 dès 167 pushes sociales par jour
+//     (158 jugeables : la dernière heure et dix minutes attend), « trop peu » en
+//     dessous ; la première note vient en moyenne après 20 pushes sociales (45
+//     pour 90 %).
 // Les bornes sont recalculées en loi binomiale par reception.test.mjs ⑲.
 export const GENRE_NOTIF = "notif";
 /** L'auteur des notes d'envoi des notifications sociales : hors d'atteinte d'un client (`analytics_insert_own`). */
@@ -137,6 +148,10 @@ export const FENETRE_NOTIFS_MS = 24 * 3600e3;
 export const MIN_NOTIFS = 5;
 /** Notes d'envoi SOCIALES lues au plus (une par push mesurée), les plus récentes : au-delà, la fenêtre se raccourcit et le dit. */
 export const NOTES_NOTIFS_MAX = 999;
+/** Durée de vie d'une push sociale chez le service de notification (le TTL que pose notify-call, en ms). */
+export const TTL_NOTIFS_MS = 3600e3;
+/** Une push sociale se juge après son TTL ET le délai d'accusé : avant, un accusé tardif reste possible. */
+export const DELAI_JUGEMENT_NOTIFS_MS = TTL_NOTIFS_MS + DELAI_ACCUSE_MS;
 
 /** La push sociale est-elle mesurée ? PUR. `tirage` ∈ [0, 1), tiré par le serveur (`tirer`, _shared/appels.js). */
 export function notifMesuree(tirage) {
@@ -307,17 +322,20 @@ const pidsDe = pidsEnvoi;
  * les autres attendent, hors du dénominateur. Sous `min` envois jugeables :
  * « trop peu ». Une lecture qui a touché un plafond : « partiel », jamais un taux
  * — un accusé réel a pu rester hors de la lecture (un pid noyé de faux accusés).
- * `strict` : un envoi de moins de DELAI_ACCUSE_MS attend MÊME accusé. Sans lui,
- * les accusés rapides comptent et les lents attendent — un biais nul sur 24 h,
- * mais pas sur une fenêtre de quelques heures (les notifications sociales).
+ * `strict` : un envoi de moins de `delaiMs` attend MÊME accusé. Sans lui, les
+ * accusés rapides comptent et les lents attendent — un biais nul sur 24 h, mais
+ * pas sur une fenêtre de quelques heures (les notifications sociales).
+ * `delaiMs` : l'âge à partir duquel un envoi sans accusé est jugé non reçu
+ * (DELAI_ACCUSE_MS par défaut ; une push gardée 1 h par le service ne se juge
+ * qu'après son TTL).
  */
-function tauxGenre({ envois, parPid, genre, fenetreMs, min, maintenant, tronque, strict = false }) {
+function tauxGenre({ envois, parPid, genre, fenetreMs, min, maintenant, tronque, strict = false, delaiMs = DELAI_ACCUSE_MS }) {
   let jugeables = 0, recus = 0, enAttente = 0;
   for (const e of envois) {
     if (!e || !e.properties || e.properties.genre !== genre) continue;
     const le = t(e.created_at);
     if (!Number.isFinite(le) || maintenant - le > fenetreMs) continue;
-    const recent = maintenant - le < DELAI_ACCUSE_MS;
+    const recent = maintenant - le < delaiMs;
     for (const p of pidsDe(e)) {
       if (strict && recent) enAttente++;
       else if (parPid.has(p)) { jugeables++; recus++; }
@@ -396,7 +414,10 @@ export function bilanReception({ envois = [], accuses = [], maintenant = Date.no
   // d'une page, la lecture prend les plus récentes : le taux porte sur elles, et
   // `depuis` dit l'heure de la plus ancienne — une fenêtre plus courte, pas une
   // lecture « partielle » (les accusés de CES notes sont tous lus). Jugées STRICTEMENT
-  // après le délai : sur quelques heures, les envois de moins de 10 min pèsent.
+  // après DELAI_JUGEMENT_NOTIFS_MS (leur TTL et le délai d'accusé) : sur quelques
+  // heures, compter les accusés rapides gonflerait le taux, et juger trop tôt un
+  // affichage différé par la veille du téléphone le ferait chuter. `jugeApresMs`
+  // le dit à l'écran.
   let depuis = NaN;
   if (notifsLimitees) {
     for (const e of envois) {
@@ -405,8 +426,8 @@ export function bilanReception({ envois = [], accuses = [], maintenant = Date.no
       if (Number.isFinite(le) && maintenant - le <= FENETRE_NOTIFS_MS && (!Number.isFinite(depuis) || le < depuis)) depuis = le;
     }
   }
-  const notifs = { ...tauxGenre({ envois, parPid, genre: GENRE_NOTIF, fenetreMs: FENETRE_NOTIFS_MS, min: MIN_NOTIFS, maintenant, tronque: tronqueNotifs, strict: true }),
-    echantillon: ECHANTILLON_NOTIFS, ...(Number.isFinite(depuis) ? { depuis: new Date(depuis).toISOString() } : {}) };
+  const notifs = { ...tauxGenre({ envois, parPid, genre: GENRE_NOTIF, fenetreMs: FENETRE_NOTIFS_MS, min: MIN_NOTIFS, maintenant, tronque: tronqueNotifs, strict: true, delaiMs: DELAI_JUGEMENT_NOTIFS_MS }),
+    echantillon: ECHANTILLON_NOTIFS, jugeApresMs: DELAI_JUGEMENT_NOTIFS_MS, ...(Number.isFinite(depuis) ? { depuis: new Date(depuis).toISOString() } : {}) };
 
   return { derniereAlerte, rappels, appels, notifs, accusesIgnores: ignores, tronque: !!(tronque || tronqueRappels || tronqueAppels || tronqueNotifs) };
 }

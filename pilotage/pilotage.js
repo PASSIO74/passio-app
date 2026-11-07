@@ -229,7 +229,10 @@
     const nf = r.notifs;
     const echN = Number(nf && nf.echantillon) > 1 ? " · une notification sur " + Number(nf.echantillon) + " est mesurée" : "";
     const fenN = nf && nf.depuis ? ilYA(nf.depuis).replace("il y a ", "depuis ") : "24 h";
-    const attN = nf && nf.enAttente ? " · " + nf.enAttente + " de moins de 10 min" : "";
+    // Une notification sociale se juge après son TTL (`jugeApresMs`, 70 min) : la carte
+    // dit l'âge d'attente que le bilan applique, jamais un délai écrit ici.
+    const jugN = Number(nf && nf.jugeApresMs) > 0 ? Math.round(Number(nf.jugeApresMs) / 60e3) : 0;
+    const attN = nf && nf.enAttente ? " · " + nf.enAttente + (jugN ? " de moins de " + jugN + " min" : " en attente") : "";
     if (nf && nf.etat === "mesure") zone.append(carte("Notifications sociales reçues (" + fenN + ")", Math.round(nf.taux * 100) + " %", nf.recus + " reçues sur " + nf.envoyes + " mesurées" + attN + echN
       + (nf.depuis ? " · le volume dépasse une lecture : les plus récentes seulement" : "")
       + (nf.taux < 0.8 ? " · un appareil qui n'a pas rouvert PASSIO depuis la mise à jour n'accuse pas encore" : ""), nf.taux >= 0.8 ? "vert" : "orange"));

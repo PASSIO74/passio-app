@@ -1307,13 +1307,13 @@ test("㊸ les notifications sociales : un taux qui se dit ÉCHANTILLON, sur 24 h
     accusesIgnores: 0, tronque: false, ...(notifs ? { notifs } : {}) });
   const titres = (page) => page.locator("#alertes .carte-titre", { hasText: /^Notifications sociales/ });
   // Mesuré, sur 24 h : le taux, l'attente, l'échantillon.
-  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "mesure", envoyes: 24, recus: 22, enAttente: 2, taux: 22 / 24, echantillon: 20 }) }));
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "mesure", envoyes: 24, recus: 22, enAttente: 2, taux: 22 / 24, echantillon: 20, jugeApresMs: 70 * 60e3 }) }));
   await page.goto("/pilotage/");
   await aller(page, "reglages");
   const mesure = page.locator("#alertes .carte", { hasText: "Notifications sociales reçues (24 h)" });
   await expect(mesure).toContainText("92 %");
   await expect(mesure).toContainText("22 reçues sur 24 mesurées");
-  await expect(mesure).toContainText("2 de moins de 10 min");
+  await expect(mesure).toContainText("2 de moins de 70 min", { timeout: 5000 }); // l'âge d'attente que le bilan applique (TTL + délai)
   await expect(mesure).toContainText("une notification sur 20 est mesurée");
   await expect(mesure).toHaveClass(/vert/);
   await expect(mesure).not.toContainText("plus récentes");
@@ -1340,15 +1340,21 @@ test("㊸ les notifications sociales : un taux qui se dit ÉCHANTILLON, sur 24 h
   await expect(page.locator("#accueil")).toBeVisible();
   await expect(page.locator("#afaire .ligne", { hasText: /notification/i })).toHaveCount(0);
   // Trop peu : aucun taux, la raison et l'échantillon dits.
-  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 3, recus: 3, enAttente: 1, echantillon: 20 }) }));
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 3, recus: 3, enAttente: 1, echantillon: 20, jugeApresMs: 70 * 60e3 }) }));
   await page.reload();
   await aller(page, "reglages");
   const peu = page.locator("#alertes .carte", { hasText: "Notifications sociales (24 h)" });
   await expect(peu).toContainText("Trop peu");
   await expect(peu).toContainText("3 notification(s) mesurée(s) jugeable(s) : il en faut 5 pour un taux");
-  await expect(peu).toContainText("1 de moins de 10 min");
+  await expect(peu).toContainText("1 de moins de 70 min");
   await expect(peu).toContainText("une notification sur 20 est mesurée");
   await expect(peu).not.toContainText("%");
+  // Sans `jugeApresMs`, la carte ne fabrique pas de délai : « en attente ».
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 1, recus: 1, enAttente: 2, echantillon: 20 }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Notifications sociales (24 h)" })).toContainText("2 en attente");
+  await expect(page.locator("#alertes .carte", { hasText: "Notifications sociales (24 h)" })).not.toContainText("de moins de");
   // Partiel (un paquet d'accusés plein) : jamais un taux.
   await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: { ...reception({ etat: "partiel", envoyes: 300, recus: 280, enAttente: 0, echantillon: 20 }), tronque: true } }));
   await page.reload();

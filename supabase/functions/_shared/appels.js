@@ -59,10 +59,11 @@ import { GENRES_PUSH } from "./lien-metier.js";
 // (`accuser(data, "notif")`), la note après l'envoi. La note porte en plus le
 // GENRE de la notification, d'une LISTE FERMÉE (`GENRES_PUSH`, les gabarits de
 // lien-metier.js ; « autre » sinon) : il vient de la ligne `notifications` que
-// le SERVEUR a relue (`autoriserPushNotif`), et il dit le mélange réel des pushes
-// mesurées — de quoi revoir le taux sur une mesure plutôt qu'une hypothèse. Ni le
-// texte de la notification, ni son émetteur, ni son destinataire, ni un genre
-// hors liste n'y entrent jamais.
+// le SERVEUR a relue (`autoriserPushNotif`), et il dit le mélange des pushes
+// mesurées — de quoi revoir le taux sur une mesure plutôt qu'une hypothèse
+// (« message » couvre aussi les messages de groupe : la ligne porte `message`,
+// seul le gabarit dit `message_groupe`). Ni le texte de la notification, ni son
+// émetteur, ni son destinataire, ni un genre hors liste n'y entrent jamais.
 /** Ce qui se mesure, par type de charge : le genre, l'auteur des notes, le tirage. */
 const MESURES = Object.freeze({
   call: Object.freeze({ genre: GENRE_APPEL, auteur: UID_APPELS, mesure: appelMesure }),
