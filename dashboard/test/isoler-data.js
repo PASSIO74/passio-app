@@ -27,6 +27,13 @@ import os from "node:os";
 import path from "node:path";
 
 const env = process.env;
+// Le vrai `.env` du poste n'est JAMAIS chargé (audit du 2026-11-06, F-20) : `dotenv/config` y lisait
+// `service_role` et `DASH_ALLOW_MUTATIONS=true`, et un test qui démarre le serveur en héritait.
+// Un chemin qui n'existe pas plutôt que des valeurs vides : `dotenv` n'écrase pas, mais une variable
+// oubliée dans une liste passerait.
+env.DOTENV_CONFIG_PATH = path.join(os.tmpdir(), "passio-test-pas-de-env-" + process.pid);
+for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ANON_KEY", "GITHUB_TOKEN", "GH_TOKEN", "GITHUB_READ_TOKEN", "ANTHROPIC_API_KEY"]) delete env[k];
+env.DASH_ALLOW_MUTATIONS = "false";
 if (!env.DASH_DATA_DIR) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "passio-test-data-"));
   env.DASH_DATA_DIR = tmp;

@@ -69,11 +69,11 @@ jobs:
 
       - name: Checkout
         if: steps.gate.outputs.active == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Node
         if: steps.gate.outputs.active == 'true'
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
           cache: npm
@@ -142,7 +142,7 @@ jobs:
           AUTHZ: ${{ steps.authz.outcome }}
         run: |
           title="[SENTINELLE DISTANTE] Santé rouge"
-          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search '"[SENTINELLE DISTANTE] Santé rouge" in:title' --json number --jq '.[0].number // empty')"
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --author "app/github-actions" --search '"[SENTINELLE DISTANTE] Santé rouge" in:title' --json number --jq '.[0].number // empty')"
           {
             echo "## Sentinelle distante"
             echo

@@ -21,9 +21,10 @@
 // ① GET/HEAD seulement, gardé ICI et non dans `config.method` : le manifeste
 //    Netlify n'accepte que GET, POST, PUT, PATCH, DELETE, OPTIONS — « HEAD »
 //    y faisait échouer le déploiement entier.
-// ② Seuls les deux seaux publics connus, garde `..` PAR SEGMENT : un test de
-//    sous-chaîne refusait `rapport..final.pdf`, un nom que l'app laisse passer.
-// ③ LISTE BLANCHE des types servis en ligne (image sauf SVG, vidéo, audio).
+// ② Seul le seau PUBLIC, garde `..` PAR SEGMENT : un test de sous-chaîne refusait
+//    `rapport..final.pdf`, un nom que l'app laisse passer. `attachments` est privé :
+//    une pièce jointe se lit par URL signée, jamais ici (retiré le 2026-11-06).
+// ③ LISTE BLANCHE des types servis en ligne (types médias connus, jamais SVG ni +xml).
 //    Tout le reste part en `application/octet-stream` + `attachment`. Sans
 //    cela, un SVG portant un <script> déposé dans `content` (aucune contrainte
 //    MIME sur les seaux, c'est délibéré) s'exécuterait SUR L'ORIGINE DE L'APP
@@ -53,7 +54,10 @@
 //    interne échoue, est l'origine avec `Range` relayé.
 // ⑦ Une erreur d'origine sort en `no-store` : jamais un 404 en cache.
 // ⑧ `Netlify-Vary: query=width|quality` : un `?utm=…` parasite ne fragmente
-//    pas le cache.
+//    pas le cache. ⚠️ La clé est la valeur BRUTE (audit 2026-11-06) : une valeur libre
+//    créait un objet par requête, donc une lecture d'origine par requête, sans compte.
+//    D'où la LISTE FERMÉE : hors liste, rien n'est lu (302 vers la forme canonique si
+//    c'est un nombre, 400 sinon). Une largeur nouvelle du client s'ajoute ici D'ABORD.
 // ⑨ `cache: "manual"` est OBLIGATOIRE : sans lui, Netlify ignore tout en-tête
 //    de cache posé par une Edge Function.
 //
@@ -70,17 +74,21 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 const SUPABASE = "https://njkiyoklssvefstljemx.supabase.co";
-const SEAUX = new Set(["content", "attachments"]);
+const SEAUX = new Set(["content"]);
+// Les largeurs de `passioThumb` / `avatarBg` (verrou : tests/unit/media-edge.test.mjs).
+const LARGEURS = [192, 352, 360, 400, 600, 700, 720, 880];
+const QUALITE = "75";
+const TYPES_EN_LIGNE = /^(image\/(jpeg|png|webp|gif|avif|heic|heif|bmp)|video\/(mp4|webm|quicktime|ogg|3gpp|x-m4v)|audio\/(mpeg|mp3|mp4|aac|ogg|webm|wav|x-wav|x-m4a|3gpp))$/;
 const TTL_IMAGE = 3600;      // ⑤ remplacées au même chemin → 1 h
 const TTL_MEDIA = 21600;     // ⑤ vidéo, audio : chemins uniques → 6 h
 const EN_TETE_INTERNE = "x-passio-cdn-interne";
 
 // ③ Ce qui peut être rendu EN LIGNE sur l'origine de l'app.
 function typeSur(ct) {
-  const t = (ct || "").split(";")[0].trim().toLowerCase();
-  if (!t) return false;
-  if (t === "image/svg+xml" || t.startsWith("image/svg")) return false;
-  return t.startsWith("image/") || t.startsWith("video/") || t.startsWith("audio/");
+  const brut = String(ct || "");
+  // Une liste à virgule : le navigateur peut retenir une autre valeur que la première.
+  if (brut.includes(",")) return false;
+  return TYPES_EN_LIGNE.test(brut.split(";")[0].trim().toLowerCase());
 }
 
 function enTetesSecurite(h) {
@@ -146,18 +154,32 @@ export default async (req) => {
     return reponseErreur(404, "Not Found");
   }
 
-  const width = url.searchParams.get("width") || "";
-  const quality = url.searchParams.get("quality") || "";
-  const miniature = /^\d{2,4}$/.test(width);
+  // ⑧ Liste fermée : aucune valeur hors liste n'atteint l'origine ni le cache.
+  const largeurBrute = url.searchParams.get("width");
+  const qualiteBrute = url.searchParams.get("quality");
+  if (largeurBrute === null ? qualiteBrute !== null : !/^\d{1,4}$/.test(largeurBrute)) {
+    return reponseErreur(400, "Paramètres non admis");
+  }
+  if (largeurBrute !== null) {
+    const voulue = Number(largeurBrute);
+    const canonique = LARGEURS.find((l) => l >= voulue) ?? LARGEURS[LARGEURS.length - 1];
+    if (String(canonique) !== largeurBrute || qualiteBrute !== QUALITE) {
+      const h = new Headers({ Location: `${url.pathname}?width=${canonique}&quality=${QUALITE}`, "Cache-Control": "no-store" });
+      enTetesSecurite(h);
+      return new Response(null, { status: 302, headers: h });
+    }
+  }
+  const miniature = largeurBrute !== null;
+  const width = largeurBrute, quality = QUALITE;
   const cible = miniature
-    ? `${SUPABASE}/storage/v1/render/image/public/${rel}?width=${width}&quality=${/^\d{1,3}$/.test(quality) ? quality : "75"}`
+    ? `${SUPABASE}/storage/v1/render/image/public/${rel}?width=${width}&quality=${quality}`
     : `${SUPABASE}/storage/v1/object/public/${rel}`;
 
   // ⑥ Requête par plage : on lit la copie ENTIÈRE via notre propre URL (cache
   // du bord), puis on découpe. Jamais depuis une requête déjà interne.
   const range = req.method === "GET" && !req.headers.get(EN_TETE_INTERNE) ? req.headers.get("range") : null;
   if (range) {
-    const urlInterne = new URL(url.pathname + (miniature ? `?width=${width}&quality=${quality || "75"}` : ""), url.origin);
+    const urlInterne = new URL(url.pathname + (miniature ? `?width=${width}&quality=${quality}` : ""), url.origin);
     let entier = null;
     try { entier = await fetch(urlInterne, { headers: { [EN_TETE_INTERNE]: "1" } }); } catch (e) { entier = null; }
     const total = entier && entier.ok ? Number(entier.headers.get("content-length") || 0) : 0;
@@ -215,6 +237,12 @@ export default async (req) => {
   if (!typeSur(ct)) {                                                         // ③
     h.set("Content-Type", "application/octet-stream");
     h.set("Content-Disposition", "attachment");
+  }
+  // Une réponse à HEAD n'a pas de corps : en cache, elle viderait le média pour tous.
+  if (req.method === "HEAD") {
+    h.set("Cache-Control", "no-store");
+    h.set("Accept-Ranges", "bytes");
+    return new Response(null, { status: 200, headers: h });
   }
   const ttl = /^(video|audio)\//i.test(ct) ? TTL_MEDIA : TTL_IMAGE;           // ⑤
   h.set("Cache-Control", `public, max-age=${ttl}`);

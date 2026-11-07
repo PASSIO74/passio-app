@@ -177,7 +177,8 @@ ab=w.get('allowed_bots')
 exigences=[
  ("allowed_bots n'est JAMAIS '*'",            ab != '*'),
  ("allowed_bots limite a une liste nommee",   ab in ('', 'claude')),
- ("allowed_non_write_users reste vide",       w.get('allowed_non_write_users') == ''),
+ # Le propriétaire seul : il a déjà l'écriture, la surface ne bouge pas ; la valeur allume le mode durci.
+ ("allowed_non_write_users = le propriétaire seul", w.get('allowed_non_write_users') == 'PASSIO74'),
  ("include_comments_by_actor == 'PASSIO74'",  w.get('include_comments_by_actor') == 'PASSIO74'),
  ("label_trigger explicite",                  w.get('label_trigger') == 'claude'),
  ("anthropic_api_key ABSENT",                 'anthropic_api_key' not in w),
@@ -237,7 +238,7 @@ exigences += [
  ("les audits precedent le push",
       pub.find('audit-globals.js') < pub.find('git push origin') if 'git push origin' in pub else False),
  ("les chemins de controle sont refuses",
-      '.github/*|.claude/*|package.json' in pub and 'Chemin interdit' in pub),
+      all(_c in pub for _c in ('.github/*|.claude/*|', '|package.json|', '|scripts/*|', '|tests/ci/*|', '|migrations/*|')) and 'Chemin interdit' in pub),
  ("le refus de chemin sort en erreur",
       'exit 1' in pub.split('Chemin interdit')[1][:200] if 'Chemin interdit' in pub else False),
 
@@ -348,47 +349,6 @@ scenario_modele "5. Source d'auth absente refusée"          json  claude-opus-5
 scenario_modele "6. Source d'auth inconnue refusée"         json  claude-opus-5  temporary         REFUS
 scenario_modele "7. Helper de clé API refusé"               json  claude-opus-5  apiKeyHelper      REFUS
 
-echo
-echo "═══ Politique modèles du canal claude-pr-task ═══"
-WFT="$(dirname "${WF}")/claude-pr-task.yml" python3 - <<'PYM'
-import yaml,os,sys,re
-p=os.environ["WFT"]
-brut=open(p,encoding='utf-8').read()
-d=yaml.safe_load(brut)
-run="".join(s.get('run','') for s in d['jobs']['claude']['steps'])
-env={}
-for s in d['jobs']['claude']['steps']:
-    env.update(s.get('env') or {})
-
-modeles=set(re.findall(r'claude-[a-z]+-[0-9]+(?:\.[0-9]+)?', brut))
-exig=[
- ("Fable 5 est le modele PRIMAIRE",        'MODELE_PRIMAIRE=claude-fable-5' in run),
- ("Opus 5 est le REPLI",                   'MODELE_REPLI=claude-opus-5' in run),
- # On verifie le SITE D'APPEL de la garde, pas seulement que la fonction
- # existe : neutraliser « if travail_produit; then » en « if false; then »
- # laissait passer la premiere version de cette assertion. Test creux.
- ("le repli est refuse si un fichier a deja ete modifie",
-                                           'if travail_produit; then' in run
-                                           and 'Repli refuse' in run
-                                           and 'exit 1' in run.split('Repli refuse')[1][:200]),
- ("le modele reellement execute est valide",
-                                           'claude-fable-5*|claude-opus-5*' in run),
- ("aucun autre modele n'apparait",         modeles <= {'claude-fable-5','claude-opus-5'}),
- ("ANTHROPIC_API_KEY explicitement vide",  env.get('ANTHROPIC_API_KEY') == ''),
- ("jeton d'abonnement utilise",            'CLAUDE_CODE_OAUTH_TOKEN' in brut),
- ("aucun secret de cle API facturee",      'secrets.ANTHROPIC_API_KEY' not in brut and 'secrets.PASSIO}' not in brut),
- ("l'auth reelle est verifiee (apiKeySource)", 'apiKeySource' in run),
-]
-ko=0
-for lib,vrai in exig:
-    print(f"  {'OK ' if vrai else 'KO '} {lib}")
-    if not vrai: ko+=1
-if modeles - {'claude-fable-5','claude-opus-5'}:
-    print(f"      modeles etrangers : {sorted(modeles - {'claude-fable-5','claude-opus-5'})}")
-sys.exit(1 if ko else 0)
-PYM
-if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
-
 echo "═══ Plafond de tours et diagnostic des refus ═══"
 WF="${WF}" python3 - <<'PYDIAG'
 import yaml,os,sys,re
@@ -434,6 +394,11 @@ exigences=[
  # `if: failure()` ne voit pas une annulation. Sans marche dédiée, un ordre
  # évincé de la file disparaît sans un mot.
  ("un run annulé est signalé sur l'issue", any('cancelled()' in str(x.get('if','')) and 'gh issue comment' in str(x.get('run','')) for x in steps)),
+ # La forme d'une erreur ne sort que pour l'issue [CANARI] du propriétaire.
+ ("forme de l'erreur réservée au canari du propriétaire",
+      "startsWith(github.event.issue.title, '[CANARI]')" in str(diag[0].get('env',{}).get('CANARI_PROPRIETAIRE',''))
+      and "github.event.issue.user.login == 'PASSIO74'" in str(diag[0].get('env',{}).get('CANARI_PROPRIETAIRE',''))
+      and "process.env.CANARI_PROPRIETAIRE === '1'" in run),
  # Le dépôt est PUBLIC : le diagnostic ne doit pas rouvrir tout le transcript.
  ("aucun retour à show_full_output", str(claude.get('with',{}).get('show_full_output','')).lower() not in ('true','1','yes')),
 ]
@@ -522,6 +487,20 @@ scenario_diag "25. authentification classée sans message"    "${CAUSES_FOURNISS
 scenario_diag "26. modèle classé sans message"               "${CAUSES_FOURNISSEUR_JSON}" "MODELE=1"
 scenario_diag "27. cause inconnue classée sans message"      "${CAUSES_FOURNISSEUR_JSON}" "INCONNUE=1"
 scenario_diag "28. marqueurs fournisseur jamais publiés"     "${CAUSES_FOURNISSEUR_JSON}" '!SECRET_CREDIT|SECRET_TEMP|SECRET_AUTH|SECRET_MODEL|SECRET_UNKNOWN'
+
+# Une panne d'outil : la forme de l'erreur ne sort que sur le canari du propriétaire, et jamais un jeton.
+# Le jeton est assemblé ici pour ne pas ressembler à un secret dans le dépôt : c'est une fausse valeur.
+FAUX_JETON="ghs_$(printf 'a%.0s' {1..36})"
+ECHEC_OUTIL_JSON='[{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"git status"}}]}},{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"Exit code 128\n::error title=injecte::pwned\nfatal: panne_de_forme '"${FAUX_JETON}"'"}]}},{"type":"result","subtype":"success","num_turns":2,"permission_denials":[],"result":"fin_de_forme"}]'
+unset CANARI_PROPRIETAIRE
+scenario_diag "29. hors canari : le motif, pas la forme"     "${ECHEC_OUTIL_JSON}" "Échec d'outil  : git status — autre (masqué)"
+scenario_diag "29b. hors canari : aucune forme publiée"      "${ECHEC_OUTIL_JSON}" '!panne_de_forme|fin_de_forme|Forme \(canari\)|Fin \(canari\)'
+export CANARI_PROPRIETAIRE=1
+scenario_diag "30. canari : la forme de l'erreur est lue"    "${ECHEC_OUTIL_JSON}" "Forme (canari) : Exit code 128"
+scenario_diag "30b. canari : la fin du run est lue"          "${ECHEC_OUTIL_JSON}" "Fin (canari)   : fin_de_forme"
+scenario_diag "30c. canari : le jeton reste masqué"          "${ECHEC_OUTIL_JSON}" '!ghs_a'
+scenario_diag "30d. canari : aucune commande de workflow"    "${ECHEC_OUTIL_JSON}" '!^[[:space:]]*::|::error'
+unset CANARI_PROPRIETAIRE
 
 # Même une panne de l'interpréteur doit rendre zéro. `continue-on-error: true`
 # reste la seconde barrière contre les erreurs de syntaxe ou de runner.

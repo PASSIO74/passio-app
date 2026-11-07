@@ -680,6 +680,12 @@ test.describe("Gate d'authentification", () => {
       await expect(page.locator("#modalContent")).toContainText("J'ai déjà un compte");
       await expect(page.locator("#modalContent")).toContainText("Continuer à explorer");
       await page.evaluate(() => closeModal());
+      // ⚠️ ATTENDRE QUE LE RETOUR DE FERMETURE AIT ATTERRI (2026-11-07). Rouvrir pendant
+      // que `history.back()` est en vol faisait sortir de l'application sur WebKit :
+      // « navigated to about:blank », 2 fois sur 24. Ce test mesure les textes du gate,
+      // pas l'historique ; le défaut, lui, est décrit et reproduit à coup sûr dans la
+      // fiche docs/journal/telemetrie-pilotage-sentinelle.md du 2026-11-07.
+      await page.waitForFunction(() => !(history.state && history.state.passioOverlay), null, { polling: 50 });
     }
   });
 

@@ -19,15 +19,23 @@ services:
     rootDir: dashboard
     plan: free
     region: frankfurt
-    buildCommand: npm install
+    buildCommand: npm ci --omit=dev
     startCommand: node server/index.js
     healthCheckPath: /api/health
-    autoDeploy: true
+    autoDeploy: false              # dépôt public : un commit ne s'exécute pas seul à côté de service_role
     envVars:
       - key: DASH_ENV
         value: production            # cookies Secure, mutations code désactivées
       - key: DASH_ADMIN_USER
-        value: benjamin
+        sync: false                  # à saisir dans Render : le nom du compte n'a rien à faire ici
+      - key: DASH_HOST
+        value: 0.0.0.0
+      - key: DASH_TRUST_PROXY
+        value: "1"
+      - key: DASH_ALLOWED_HOSTS
+        sync: false                  # le nom public du service, ex. passio-pilotage.onrender.com
+      - key: NODE_ENV
+        value: production
       - key: DASH_ADMIN_PASSWORD
         sync: false                  # à saisir dans Render (mets un mot de passe FORT)
       - key: DASH_SESSION_SECRET

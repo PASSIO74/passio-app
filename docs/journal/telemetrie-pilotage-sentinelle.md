@@ -43,6 +43,7 @@
 - 📞 LES APPELS S'ACCUSENT — UN SUR DIX, TIRÉ PAR LE SERVEUR, RIEN DE L'APPELANT (2026-11-07)
 
 ---
+- 🧪 QUATRE TESTS INTERMITTENTS ET UN `verif` ROUGE SOUS WINDOWS — TROIS VRAIS DÉFAUTS DU PRODUIT DERRIÈRE (2026-11-07)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -691,6 +692,14 @@ Attendre ne coûte rien en soi. Le vrai défaut de la file au niveau du run : ch
   - La limite des 100 places n'a pas été éprouvée, ni un run figé en tête de file : #162 n'était pas dans ce cas. Il ne bloquerait que son issue.
 - **Runs** (ils restent sous « banc-cc » dans Actions le temps de la contre-revue) : poussées `r-single`, B 41845387846 ; `r-max`, C 41845457967 ; `j-single`, C 41845457805 ; `j-max`, C 41845457792 ; événements `p-actuel-rmax` et `p-serre-jmax`. Les 52 runs de `p-actuel-rsingle` et `p-serre-rmax` sont supprimés, leurs chiffres sont dans le tableau.
 
+## Audit de sécurité du 2026-11-06 : règles à ne pas rouvrir sans relire
+
+- **Le pilotage local tient `service_role`.** Boucle locale par défaut (`DASH_HOST`), jamais `trust proxy: true`, barrière d'hôte et d'origine (`dashboard/server/barriere.js`), aucun secret aux processus enfants (`server/env-enfant.js`).
+- **Le worker IA est inactif par défaut.** `PASSIO_AI_WORKER=on` et un commit signé par une clé de `.passio/ai-worker/signataires` (`aiworker-garde.mjs`). L'agent n'a ni shell ni MCP, et `scripts/` lui est interdit : le worker exécute ensuite ces scripts depuis le worktree.
+- **Aucun jeton personnel dans le job qui exécute le travail de l'agent**, donc pas d'auto-fusion (`publier` de `claude-code.yml`, gate `audit-workflows`). Une enquête sur du texte libre exige 3 comptes de plus de 7 jours (`retenirPreuves`). Le jeton de la Sentinelle ne se régénère avec les droits PR qu'après relecture de ce point.
+- **`npx --yes`, `npm install --no-save`, `version: latest` et une action sans SHA sont refusés** par le gate : ces outils écrivent ce qui part en production, ou reçoivent une clé.
+- **Une erreur anonyme ne réveille aucun agent** : sans `user_id`, une alerte reste en `warn` (`alerts.js`), car `severity` est écrit par le client.
+
 ## 🧱 UNE INSTALLATION FIGÉE TENAIT LA CHAÎNE SIX HEURES — CHAQUE ESSAI A SA BORNE, CHAQUE JOB LA SIENNE (2026-11-06)
 
 Le 06/11 sur la PR #726 (run 42174403472), la tranche 1/6 de `test-local` est restée 52 min dans « Installer Playwright », avant son premier test : `apt-get update` (la partie `--with-deps`) n'a plus rien reçu de `azure.archive.ubuntu.com` après 06:26:49. Aucun des jobs de `deploy.yml` qui installent Playwright n'avait de borne, sauf `test-webkit` (25 min) : GitHub l'aurait laissée tourner 360 min, la PR et le déploiement de `main` avec. Il a fallu annuler le run, puis relancer les jobs annulés.
@@ -804,3 +813,54 @@ Suite de la fiche 📬, qui laissait « les appels (`notify-call`), à échantil
 ⚠️ **LE PID NE REVIENT JAMAIS À L'APPELANT.** `pousserAppareils` ne le rend pas, la réponse reste `{ ok, sent }` : un appelant qui le connaîtrait déposerait l'accusé d'un appel qui n'a pas sonné, et une livraison en panne passerait pour saine. ⚠️ **Le tirage vient du serveur** (`crypto.getRandomValues`), jamais de la requête : l'appelant ne choisit pas ses appels jugés. ⚠️ **Rien de l'appelant dans la note ni dans l'accusé** : ni identifiant d'appel (choisi par l'appelant), ni nom, ni emoji, ni type — des pid et des nombres. ⚠️ **Une notification sociale ne porte jamais d'accusé**, même tirée et avec une adresse : la mesure tient à `charge.type === "call"`, et la charge sociale reste identique à l'octet. ⚠️ **Les lectures restent à part** : un appelé qui noie SON pid ne rend « partiel » que le taux des appels.
 
 ⚠️ **EN PRODUCTION, LA MESURE EST INERTE** : `APPELS_ACTIFS = false` (ASTRA-60) répond 503 avant tout envoi. Aucune note `genre: "appel"` n'existera avant la réouverture des appels — décision produit, hors de ce lot. L'interrupteur vit désormais dans `_shared/appels.js`, lu par `notify-call` ET par le pilotage : la carte dit « Coupés », avec la raison, au lieu d'un « 0 appel mesuré » qui laisserait croire à des appels non mesurés. Requête de preuve au § 10. Verrous : `appels.test.mjs` ①–⑦, `reception.test.mjs` ⑯ ⑰, `rappels.test.mjs` ⑫ quinquies, `pilotage.test.mjs` ㉿⑨ ㉿⑲, `pilotage-nuage.spec.js` ㊷, `appels-desactives-pilote.spec.js` ⑥ ; 44 réinjections rouges.
+
+## 🧪 QUATRE TESTS INTERMITTENTS ET UN `verif` ROUGE SOUS WINDOWS — TROIS VRAIS DÉFAUTS DU PRODUIT DERRIÈRE (2026-11-07)
+
+Trouvés en vérifiant une fusion simulée pendant l'audit de sécurité du 06-07/11, mesurés sur `main` seul. En CI, `retries: 2` les absorbe : aucun n'avait jamais rougi un déploiement. Ce lot ne touche que des tests ; les défauts du produit qu'il a mis au jour restent ouverts, décrits plus bas.
+
+| Test | Avant (`--repeat-each=8 --workers=4`, 3 ordres) | Cause | Après |
+|---|---|---|---|
+| `ui-v6a0-activite` ② | 12 rouges sur 24 | le test : touche pressée avant que l'interception du sélecteur soit armée | 24 sur 24 à la mesure finale ; 1 rouge sur 216 au total, le défaut n° 2 ci-dessous |
+| `telemetrie-limitee` « 429 après un échec » | 8 rouges sur 24 | le test : le lot `start` recevait le 429 avant la coupure | 24 sur 24 |
+| `telemetrie-jeton-mort` ② | 2 rouges sur 24 | le test : le lot `start`, anonyme, passait pour le repli | 24 sur 24 |
+| `first-run` (WebKit) « le gate EXPLIQUE… » | 2 rouges sur 22 | **le produit** : l'historique des modales, déclenché par un test qui va plus vite qu'un humain | 48 sur 48 |
+| `npm run verif` | rouge sur ce poste Windows | trois conditions distinctes (ci-dessous) | vert depuis Git Bash ET PowerShell |
+
+⚠️ **`verif` sous Windows : trois pannes, pas une.** Depuis Git Bash, `execFileSync("/usr/bin/timeout")` : un chemin que Node ne sait pas lancer. Depuis PowerShell, c'est `bash` lui-même qui manque (Git pour Windows ne met que son dossier `cmd` sur le PATH), et `verif` s'arrêtait plus tôt, à `sentinelle-taille-pr`. `tests/unit/lib/bash-windows.mjs` ajoute le bash de Git, et le `usr/bin`, pas le `bin` : celui de `bin` est un lanceur qui remet `/usr/bin` en tête du PATH, le faux `sleep` d'un bac perdait contre le vrai et les suites attendaient de vrais `sleep 8` avant de rougir. Les suites collaient aussi leur bac au PATH avec `:`, qui n'est pas le séparateur de Windows. Enfin, sous charge : le banc de `bornes-ci` bornait à 0,3 s le faux `npx` entier, démarrage de bash compris. Six exécutions en parallèle : 18 rouges sur 18, jusqu'à un essai `ok` coupé. L'essai se compte désormais avant la borne, et seul `fige` est borné court : 0 sur 18, sans une seconde de plus.
+
+⚠️ **Sélecteur de fichiers : s'abonner, puis faire un aller-retour, puis la touche.** `Promise.all([page.waitForEvent("filechooser"), page.keyboard.press("Enter")])` : la touche et l'armement de l'interception prennent deux canaux différents jusqu'à la page. Le sélecteur s'ouvrait bel et bien (`input.click` sous activation à chaque essai), mais sans événement. Mesuré : même tour 8 rouges sur 12, avec un aller-retour 0 sur 12, abonné dès le début 0 sur 12. Un `.click()` n'y est pas exposé, il fait plusieurs allers-retours ; c'était le seul `waitForEvent("filechooser")` du dépôt.
+
+⚠️ **Un test de télémétrie règle son banc AVANT de charger la page.** Le lot `start` part tout seul, souvent avant que `getMyUserId` réponde (8 fois sur 16). Dans `telemetrie-limitee`, il recevait donc un 429, et `limiteJusqua` interdisait tout envoi pour une minute : l'envoi « couper » attendu n'arrivait jamais. Ce n'était pas l'horloge simulée, qui continue de tourner après `clock.install()`. Dans `telemetrie-jeton-mort`, ce même lot partait avant `window.MY_UID`, donc anonyme et désattribué, et satisfaisait l'attente du repli à la première lecture : **28 fois sur 32, le test concluait en ~1 s sans avoir vu la grâce ni le repli**, et une mutation qui jette le lot après la grâce restait verte (7 sur 8, le huitième étant ce même intermittent). Il exige maintenant un lot anonyme APRÈS un refus du jeton, et que les événements refusés repartent.
+
+⚠️ **`envois` compte l'arrivée à la route, jamais ce que la page en a fait.** Avant de sauter le temps sur un verdict que le 429 doit solder, attendre la trace `throttled` dans `passio_tel_backlog`.
+
+### Les défauts du produit trouvés au passage, NON corrigés ici
+
+1. **Une modale rouverte pendant qu'un retour de fermeture est en vol fait sortir de l'application, sur WebKit.** Ce n'est pas un défaut d'environnement Windows, contrairement à la première piste : reproduit à coup sûr (4 sur 4 sur WebKit à 2 workers, 0 sur 8 sur Chromium ; écart de 20 ms : 0 sur 4). `closeModal()` puis `openModal()` à ~2 ms : `history.back()` est parti, le `pushState` passe devant, et WebKit atterrit quand même sur l'entrée d'écran, en gardant `_navOverlayDepth = 1`. Le prochain `closeModal(); openModal()` (le remplacement courant) prend alors la branche `replaceState` de `pushOverlayHistory` et **réécrit l'entrée d'écran en entrée d'overlay** ; la fermeture suivante recule sur la page d'avant l'application. En test, `about:blank` ; chez un utilisateur, le site d'où il venait. La fenêtre est le temps d'atterrissage du retour, 25 à 90 ms ici. Portes du produit au plus près : `closeModal();setTimeout(…,200)` (`app-06`, lignes 1951, 3509, 3510), à portée d'un iPhone occupé. Non mesuré sur un vrai iPhone ni sur le WebKit Linux de la CI (aucun `flaky` sur les 5 derniers runs de `main`, à une seule répétition). `first-run.spec.js` attend désormais l'atterrissage du retour : il mesure les textes du gate, pas l'historique.
+2. **Le nom de la couverture peut rester « Ajouter une couverture » pour de bon.** `ui-v6a0-activite.js` relit l'état 60 ms après `previewEventCover`, alors que la lecture du fichier n'a pas fini : rien ne le relit ensuite. Lecture retardée de 100 ms : 4 sur 4. Photo de 4 Mo, processeur ralenti ×6 : 1 sur 4. Seul le nom accessible est faux, `v6a0-cover-pleine` ne porte aucun style. **C'est le dernier intermittent connu de `ui-v6a0-activite` ②** : 1 rouge sur 216 après correction, avec cette signature (« Ajouter une couverture » pendant les 5 s). Celui-là n'a pas été capturé avec relevé d'état ; les passes instrumentées font 0 sur 168. Le test dit vrai, on ne le maquille pas.
+3. **Une seule touche Entrée ouvre deux sélecteurs de fichiers** (12 sur 12) : l'écouteur de `ui-v6a0-activite.js` et le délégué `[role="button"]` d'`app-08` agissent tous les deux. C'est aussi pourquoi retirer le premier seul laisse le test vert.
+
+Observation, sans correctif : **la grâce du jeton refusé dure ~3 s au lieu des ~32 s annoncées pendant la première minute d'une page.** La boucle `waitCfg` de `telemetry.js` appelle `flush()` toutes les 500 ms tant que la file n'est pas vide, sans égard pour `retryTimer` : 7 refus en 2,5 s, puis désattribution. Le test n'en dépend pas, et il dure ~4 s.
+
+Non établi, mesuré et laissé tel quel : **sur WebKit Windows, environ un run sur deux reste bloqué 5 min après la fin des tests** (`worker-N process did not exit within 300000ms after stop, force-killed it`), et laisse un `WebKitNetworkProcess` listé alors qu'il est terminé (`HasExited=True`, `taskkill` répond qu'aucune instance n'existe). Le verdict n'en dépend pas : 8 sur 8 en 5 min 23 s, puis 8 sur 8 en 19 s, sur le même code. Ce n'est pas démontré comme défaut d'environnement : une page témoin sans code Passio ne bloque jamais (4 runs, 32 tests). Aucun `did not exit` sur le WebKit Linux des 5 derniers runs de `main`.
+
+**Mutations** (lanceur sans shell, source restaurée en `finally`), chacune rouge sur le bon motif :
+- `ui-v6a0-activite` ② : `role` retiré, nom figé, « Retirer » laissé dans la zone, Entrée inerte sur les deux chemins. Retirer la touche de `ui-v6a0` seul reste vert (défaut n° 3).
+- `telemetrie-limitee` : verdict non soldé par le 429, verdict soldé sans requalifier, plus de trace `throttled`.
+- `telemetrie-jeton-mort` ② : jeton jamais tenté, lot jeté après la grâce, pas de repli anonyme, lignes non désattribuées.
+- `first-run` (WebKit) : texte commun changé, pitch retiré.
+- `bornes-ci` : faux `timeout` en tête du PATH, délégué qui ne borne plus (4 rouges sur 4).
+
+**À savoir pour mesurer** : le `node_modules` à la racine du dépôt est partagé. Un worktree qui s'y relie par jonction subit le `npm install` d'une autre session : le 07/11, passage à Playwright 1.65 en pleine mesure, 25 puis 72 faux rouges (« Executable doesn't exist », révision 1254). `npm ci` dans le worktree isole la mesure.
+
+## 🧱 LE CANAL DE L'AGENT SOUS BAC À SABLE : TROIS PANNES FERMÉES AVANT UN PREMIER COMMIT (2026-11-07)
+
+`.github/workflows/claude-code.yml`, canari #769, PR #772, #773, #775. Depuis l'audit de sécurité du 06/11, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` retire les identifiants de l'environnement des commandes de l'agent, et il **impose** un bac à sable. Chaque panne a été fermée, au sens où rien ne sortait, mais la chaîne ne livrait plus rien.
+
+1. **Sans bubblewrap, le CLI refuse de démarrer.** Marche « Installer le bac à sable ».
+2. **Sans socat, il démarre et refuse chaque commande Bash**, `git` compris : l'agent écrit son fichier, ne peut pas le committer, et dit « Bash indisponible ».
+3. **Sous bac à sable, une règle `Read(...)` devient un masque du système de fichiers.** `Read(.git/config)` cachait le jeton que l'action écrivait dans l'URL de `origin` ; elle cachait aussi sa configuration à git (exit 128). On a sorti le jeton plutôt que rouvert le fichier : `allowed_non_write_users: 'PASSIO74'` allume le mode durci de l'action (assistant d'identification, `.git/config` sans jeton), sans élargir qui déclenche, puisque le propriétaire a déjà l'écriture. Plus `persist-credentials: false`.
+
+⚠️ **UN RUN À 0 REFUS ET 0 COMMIT NE DIT RIEN.** Les deux premiers canaris l'ont prouvé. Le diagnostic nomme désormais les outils, les verbes git et le motif de chaque échec, dans une liste fermée. Pour une issue `[CANARI]` écrite par PASSIO74 seulement, il imprime aussi la **forme** de l'erreur : liste blanche de caractères, suites longues masquées. C'est elle qui a nommé `socat` puis `.git/config`.
+
+**Acquis, mesuré au run 42417886840** : abonnement OAuth, `claude-opus-5`, un fichier, la ligne exacte demandée, PR ouverte par le workflow **sans auto-fusion** et sans CI automatique. Un refus d'outil, une variante de `git commit` hors liste. **Non mesuré** : le comportement de l'agent face à une injection.

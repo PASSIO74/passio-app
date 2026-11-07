@@ -224,9 +224,19 @@ test("R25 : la poussée sur user:<uid> arrive, à son seul destinataire", async 
       }, [cible.url, cible.anon]);
       expect(await C.page.evaluate(() => window.__visiteur.sansSession), "ce visiteur n'a aucune session").toBe(true);
 
+      // Le lot 3 de l'audit du 06/11 retire au visiteur l'entrée de `realtime:db` : plus de témoin à attendre,
+      // le refus du canal est une garantie plus forte que son silence. Sans ce lot, le témoin reste exigé.
+      await C.page.waitForFunction(() => window.__visiteur.temoin.statuts.length > 0, null, { timeout: 20000, polling: 100 });
+      const canalFerme = await C.page.evaluate(async () => {
+        await new Promise((r) => setTimeout(r, 3000));
+        return !window.__visiteur.temoin.statuts.includes("SUBSCRIBED");
+      });
+      noter("④ canal du visiteur " + (canalFerme ? "refusé" : "ouvert"));
+
       // Le témoin peut tarder à être branché : on rejoue un « j'aime » jusqu'à le voir
       // recevoir, sans quoi le silence des sondes ne dirait rien.
       const temoinRecoit = async (delai) => {
+        if (canalFerme) return true;
         const avant = await C.page.evaluate(() => window.__visiteur.temoin.evenements.length);
         for (let essai = 0; essai < 8; essai++) {
           const postId = "e2e_poussee_" + Date.now();

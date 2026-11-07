@@ -49,6 +49,7 @@ echo  OK - canal local active.
 echo  Claude Code standard : connecte
 echo  Codex : connecte
 echo  Worker : dashboard\aiworker.mjs
+echo  ATTENTION : inactif sans PASSIO_AI_WORKER=on dans dashboard\.env et une cle dans .passio\ai-worker\signataires.
 echo.
 echo  Tu peux maintenant donner les consignes dans ChatGPT.
 echo  Elles passeront par les deux agents avant resultat.

@@ -177,7 +177,7 @@ test("⑦ câblage de notify-call : toute push par pousserAppareils, l'adresse p
   const envoi = src.indexOf("await pousserAppareils({");
   assert.ok(envoi > 0, "l'envoi passe par le module éprouvé");
   assert.match(src.slice(envoi, envoi + 400), /admin, abonnements: subs, charge, options: \{ TTL: ttl, urgency \}, accuse: ACCUSE,/);
-  assert.match(src.slice(envoi, envoi + 400), /envoyer: \(s: any, c: string, o: any\) => webpush\.sendNotification\(s, c, o\),/);
+  assert.match(src.slice(envoi, envoi + 400), /envoyer: \(s: any, c: string, o: any\) => envoyerPushBorne\(\(a: any, b: string, d: any\) => webpush\.sendNotification\(a, b, d\), s, c, o\),/);
   assert.equal(src.split("webpush.sendNotification(").length - 1, 1, "aucun envoi direct ne contourne pousserAppareils");
   // Chaque refus d'avant reste un RETOUR, une seule fois, AVANT tout envoi : la porte
   // d'authentification, le plafond, le pilote (appels coupés), soi-même, le blocage, le
@@ -192,7 +192,7 @@ test("⑦ câblage de notify-call : toute push par pousserAppareils, l'adresse p
     'if (blocErr || (bloc && bloc.length)) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });',
     'if (!lien.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });',
     'if (!decision.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });',
-    'if (!subs || !subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });',
+    'if (!subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });',
   ];
   for (const r of refus) {
     assert.equal(src.split(r).length - 1, 1, "le refus existe, une fois : " + r);

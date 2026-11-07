@@ -70,8 +70,16 @@ test.describe("UI-6A0 — Créer une activité", () => {
     await expect(zone).toHaveAttribute("role", "button");
     await expect(zone).toHaveAttribute("tabindex", "0");
     await expect(zone).toHaveAttribute("aria-label", "Ajouter une couverture");
+    // ⚠️ S'ABONNER AVANT `focus()`, JAMAIS AU MÊME TOUR QUE LA TOUCHE (2026-11-07).
+    // `waitForEvent` n'arme l'interception du sélecteur de fichiers que par un
+    // message sans réponse attendue, et `keyboard.press` emprunte un autre canal
+    // jusqu'à la page : la touche arrivait parfois la première. Le sélecteur
+    // s'ouvrait, mais sans événement (8 échecs sur 12, 12 sur 24 sous `Promise.all`).
+    // `focus()` est l'aller-retour qui prouve l'interception en place : 0 sur 12.
+    const choixAttendu = page.waitForEvent("filechooser");
     await zone.focus();
-    const [choix] = await Promise.all([page.waitForEvent("filechooser"), page.keyboard.press("Enter")]);
+    await page.keyboard.press("Enter");
+    const choix = await choixAttendu;
     await choix.setFiles({ name: "couv.png", mimeType: "image/png", buffer: PNG_1PX });
     await expect(zone).toHaveAttribute("aria-label", "Changer la couverture");
     const retirer = page.locator("#evCoverRemoveBtn");
