@@ -58,8 +58,13 @@
 --| alter table public.comment_interactions drop constraint if exists ci_identifiants_forme;
 --| update storage.buckets set allowed_mime_types = null where id = 'content';
 --| -- puis recréer les 6 policies et les 6 fonctions depuis le socle (jamais is_conv_member : hors de ce lot), et rétablir les droits par défaut :
---| -- alter default privileges for role postgres in schema public grant all on tables to anon, authenticated; (idem sequences, execute)
+--| alter default privileges for role postgres in schema public grant all on tables to anon, authenticated;
+--| alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated;
+--| alter default privileges for role postgres in schema public grant execute on functions to anon, authenticated;
 --| commit;
+-- Après les fonctions et policies d'origine (lot 2, plus bas dans son en-tête) :
+--|| drop function if exists public.graphe_visible(text);
+--|| drop function if exists public.quota_stockage_ok();
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 begin;
 

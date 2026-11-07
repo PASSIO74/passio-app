@@ -40,9 +40,32 @@
 --| drop trigger if exists aa_profiles_figes on public.profiles;
 --| drop trigger if exists trg_rate_limit on public.event_attendees;
 --| drop trigger if exists trg_event_attendees_sortie_discussion on public.event_attendees;
---| -- les 9 bornes de taille, les 4 colonnes figées et les droits `cdv_*` : leurs instructions d'origine sont au socle.
---| -- puis : fonctions et policies d'origine depuis le socle ; `notifications.push_le` peut rester, inerte.
+--| alter table public.profiles drop constraint if exists profiles_bio_borne;
+--| alter table public.conv_messages drop constraint if exists conv_messages_content_borne;
+--| alter table public.posts drop constraint if exists posts_content_borne;
+--| alter table public.post_comments drop constraint if exists post_comments_content_borne;
+--| alter table public.event_comments drop constraint if exists event_comments_text_borne;
+--| alter table public.events drop constraint if exists events_textes_bornes;
+--| alter table public.conversations drop constraint if exists conversations_textes_bornes;
+--| alter table public.event_attendees drop constraint if exists event_attendees_feedback_borne;
+--| alter table public.user_state drop constraint if exists user_state_taille;
+--| drop trigger if exists trg_identifiants_figes on public.post_comments;
+--| create trigger trg_identifiants_figes before update on public.post_comments for each row execute function public.identifiants_figes('post_id', 'author_id');
+--| alter table public.notifications drop column if exists push_le;
 --| commit;
+-- Ensuite, fonctions, policies et droits d'origine : rejouer `node scripts/schema-executable.js`, lu sur la production.
+-- Ce retrait a été ÉPROUVÉ sur le staging le 2026-11-07 : empreintes revenues égales à la production. Enfin :
+--|| begin;
+--|| drop function if exists public.call_partie_prenante(text);
+--|| drop function if exists public.peut_voir_live(text);
+--|| drop function if exists public.debit_par_compte();
+--|| drop function if exists public.debit_compter(text, text, integer);
+--|| drop function if exists public.event_attendees_sortie_discussion();
+--|| drop function if exists public.profiles_figes();
+--|| drop function if exists public.video_lives_horodatage();
+--|| drop table if exists public.debit_ecritures;
+--|| drop table if exists public.pointage_essais;
+--|| commit;
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 begin;
 
