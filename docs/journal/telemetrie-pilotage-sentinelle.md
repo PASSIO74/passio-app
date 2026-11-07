@@ -41,6 +41,7 @@
 - 📬 UN ABONNEMENT N'EST PAS UNE RÉCEPTION — LES NOTIFICATIONS S'ACCUSENT (2026-11-06)
 - 👆 « RÉGLER » NE SE VOYAIT PAS — QUATRE GESTES, QUATRE ANALYSES RÉUSSIES, UNE LIGNE IDENTIQUE (2026-11-07)
 - 📞 LES APPELS S'ACCUSENT — UN SUR DIX, TIRÉ PAR LE SERVEUR, RIEN DE L'APPELANT (2026-11-07)
+- ⏳ LA BOUCLE DE DÉMARRAGE COURT-CIRCUITAIT LE BACKOFF — LA GRÂCE DU JETON DURAIT 5 S AU LIEU DE 33 (2026-11-07)
 
 ---
 
@@ -804,3 +805,48 @@ Suite de la fiche 📬, qui laissait « les appels (`notify-call`), à échantil
 ⚠️ **LE PID NE REVIENT JAMAIS À L'APPELANT.** `pousserAppareils` ne le rend pas, la réponse reste `{ ok, sent }` : un appelant qui le connaîtrait déposerait l'accusé d'un appel qui n'a pas sonné, et une livraison en panne passerait pour saine. ⚠️ **Le tirage vient du serveur** (`crypto.getRandomValues`), jamais de la requête : l'appelant ne choisit pas ses appels jugés. ⚠️ **Rien de l'appelant dans la note ni dans l'accusé** : ni identifiant d'appel (choisi par l'appelant), ni nom, ni emoji, ni type — des pid et des nombres. ⚠️ **Une notification sociale ne porte jamais d'accusé**, même tirée et avec une adresse : la mesure tient à `charge.type === "call"`, et la charge sociale reste identique à l'octet. ⚠️ **Les lectures restent à part** : un appelé qui noie SON pid ne rend « partiel » que le taux des appels.
 
 ⚠️ **EN PRODUCTION, LA MESURE EST INERTE** : `APPELS_ACTIFS = false` (ASTRA-60) répond 503 avant tout envoi. Aucune note `genre: "appel"` n'existera avant la réouverture des appels — décision produit, hors de ce lot. L'interrupteur vit désormais dans `_shared/appels.js`, lu par `notify-call` ET par le pilotage : la carte dit « Coupés », avec la raison, au lieu d'un « 0 appel mesuré » qui laisserait croire à des appels non mesurés. Requête de preuve au § 10. Verrous : `appels.test.mjs` ①–⑦, `reception.test.mjs` ⑯ ⑰, `rappels.test.mjs` ⑫ quinquies, `pilotage.test.mjs` ㉿⑨ ㉿⑲, `pilotage-nuage.spec.js` ㊷, `appels-desactives-pilote.spec.js` ⑥ ; 44 réinjections rouges.
+
+## ⏳ LA BOUCLE DE DÉMARRAGE COURT-CIRCUITAIT LE BACKOFF — LA GRÂCE DU JETON DURAIT 5 S AU LIEU DE 33 (2026-11-07)
+
+Suite de l'observation laissée sans correctif par la fiche 🧪 du même jour. `waitCfg` (`js/telemetry.js`) attend que `window.PASSIO_SUPABASE` soit posée. Elle appelait `flush()` toutes les 500 ms tant que la file n'était pas vide, jusqu'à 60 s, sans regarder `retryTimer` : ni le backoff d'`onAuthReject` (1,5 s → 9 s) ni celui d'`armerReessai` (3 s → 60 s) n'existaient pendant la première minute d'une page.
+
+**Ce que dit la production** (canal ①, du 01/11 au 07/11) :
+
+| Mesure | Valeur | Lecture |
+|---|---|---|
+| `auth_desattribue`, tous environnements, 7 j | **0** | le repli de la grâce n'a jamais été atteint |
+| POST `telemetry_events` en 401 (edge logs, 7 j) | 43, en 22 grappes | 10 d'un seul refus, 12 de 2 à 6 |
+| Écart entre deux refus d'une grappe | **726 ms au plus** | le premier réessai est annoncé à 1,5 s |
+| `POST /auth/v1/token` (edge logs, 24 h) | 14, tous en 200 | médiane 516 ms, p95 2,6 s, max 6,2 s |
+
+⚠️ **LA CONSÉQUENCE SUPPOSÉE N'A PAS EU LIEU.** Aucun compte n'a perdu l'attribution de ses événements par ce chemin en 7 jours, et le martèlement reste modeste (43 refus). Le défaut restait à corriger : un rafraîchissement sur 14 dépasse les ~3 s que la boucle laissait. Celui de 6,2 s (07/11, 09:45:14) n'a croisé aucun lot refusé ; le jour où il tombe sur un chargement de page, le compte perd l'attribution de ses premiers événements.
+⚠️ **Le 0 n'est pas un effet de la purge** : `auth_desattribue` porte `http_status` 401, et `purge_telemetrie_paliers` ne retire à 3 jours que les lignes sous 400. Fenêtre réelle : 7 jours. ⚠️ **L'autre porte du repli ne laisse pas de trace** : un SDK qui retire lui-même le jeton mort après un refus définitif. Aucun refus de rafraîchissement dans les logs, mais sur 24 h seulement (la limite d'une requête).
+
+**Ce qui, dans ces chiffres, n'est PAS ce défaut :**
+- Les deux grappes de 5 et 6 refus en moins d'une seconde (03/11 18:27:38, 04/11 07:59:28) portent des POST à quelques millisecondes d'écart. La boucle respecte `sending` et ne peut pas les produire : c'est le chemin `keepalive`, qui l'ignore, et `auth/v1/token` meurt en `http 0` à la même seconde. Ces refus entament `authRetries`, mais le compteur meurt avec la page.
+- 436 événements arrivent deux fois, sous la clé anon et sous un jeton. Dans 424 cas, la copie sous jeton arrive d'abord : c'est le rejeu du backlog au chargement suivant, déjà décrit dans la fiche 🧮. L'attribution n'est pas perdue. Le remède reste l'index unique sur `event_id`.
+- 176 lignes anonymes sans copie sous jeton suivent une ligne sous jeton, dans 10 sessions, 175 d'entre elles après la dernière ligne sous jeton de la session. 7 portent une déconnexion. Le reste n'est pas établi.
+
+**Correctif : deux défauts pour un.**
+1. `waitCfg` s'arrête dès qu'elle voit la configuration, et n'envoie qu'une fois, sauf si un réessai est déjà armé. Le rejeu du backlog n'y perd rien : un succès écoule le reste de la file, un refus ou une panne arment leur minuteur, et un envoi en vol prend le relais à sa réponse.
+2. **Le test a trouvé le second** : `enqueue` n'arme pas le minuteur de lot quand un réessai est armé, mais pendant qu'un envoi est EN VOL, le réessai ne l'est pas encore. Ce `flushTimer` partait donc au milieu du backoff : écarts `[3004, 20]` au lieu de `[3000, 6000]`, 5 fois sur 8. `flushDiffere` ne repart plus si un réessai est armé.
+
+| Mesuré en test | Avant | Après |
+|---|---|---|
+| Écarts entre refus du jeton | 397, 720, 280 ms | au moins 1,5 s, 3 s, 4,5 s |
+| Écarts après une panne réseau | 788, 215 ms | au moins 3 s, 6 s |
+| `telemetrie-jeton-mort` ② (grâce entière) | 3,7 à 6 s, 7 fois sur 8 ; 35 s, 1 fois | 33 à 37 s, 16 sur 16 |
+| Lots en 12 s sur un démarrage normal | 2 ou 3 | 2 ou 3 |
+
+Le cas à 35 s sans correctif : quand la boucle trouve la file vide, elle s'arrête d'elle-même, et le défaut ne se voit pas. Il n'était donc pas systématique.
+
+**Verrou** : `tests/e2e/telemetrie-backoff-demarrage.spec.js` (6), écarts mesurés à l'arrivée sur la route, en temps réel. 24 sur 24 à la mesure finale, 48 sur 48 avant la correction de ④. Réinjections, 3 répétitions chacune, toutes rouges sur le bon motif : boucle sans garde (③), boucle qui ne relance plus (⑤), succès qui n'écoule plus le reste (⑥), backoff d'auth à 200 ms (①), backoff de panne à 200 ms (②), minuteur de lot sans garde (④). L'ancienne boucle rétablie : 11 rouges sur 12.
+⚠️ **La première version de ④ restait verte sans la garde** : la tournée de la boucle à 500 ms passe par `flush`, qui annule le minuteur. L'événement doit être émis après elle.
+⚠️ **③ à ⑥ chargent `telemetry.js` SEUL**, dans une page servie par le test. Dans la vraie application, le minuteur d'un autre événement fait partir la file et masque le retrait de la boucle.
+
+**Régressions** : `telemetrie-limitee` et `telemetrie-doublons` verts, ainsi que les 24 autres suites qui interceptent `telemetry_events` (157 verts, 4 ignorés, aucun rouge). Un seul rouge sur `telemetrie-limitee` « un 429 garde le lot », à la première passe : 24 sur 24 ensuite, avec et sans correctif. Cause non établie.
+`telemetrie-jeton-mort.spec.js` reprend à l'identique le texte de la PR 759 : la version de `main` conclut sur le lot `start`, et rougissait 14 fois sur 24 sans ce correctif, 18 sur 24 avec (4 workers, même message). Ce n'est pas une régression du correctif, mais ce rouge aurait bloqué sa CI.
+
+**Laissé tel quel, délibérément** : les appelants directs de `flush()` (`tel.error`, `window.error`, `unhandledrejection`, `linkShare`, `linkSignup`, `link_open`, `online`, `release-guard`, `identity-transition`) partent encore pendant un backoff, et chaque refus entame la grâce. Ce sont des événements rares qu'on veut immédiats ; une rafale d'erreurs JS pendant un rafraîchissement lent peut encore atteindre le repli. Le retour au premier plan retire aussi le minuteur, c'est voulu.
+
+**À relire après la mise en ligne** : les POST `telemetry_events` en 401 dans les edge logs. Un écart sous 1,5 s ne doit plus venir que de POST parallèles d'une page qui se ferme ou d'un de ces appelants directs. Sur une version encore en cache, l'ancien comportement dure jusqu'au prochain démarrage complet.
