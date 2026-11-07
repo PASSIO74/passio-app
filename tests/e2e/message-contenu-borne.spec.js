@@ -235,6 +235,15 @@ test.describe("Contenu d'un message — les bornes de la base, tenues par le cli
     expect(r.toasts.join(" | ")).toMatch(/Transfert impossible/);
   });
 
+  test("⑤ bis un vocal encore local ne se TÉLÉVERSE pas : `_forwardTo` n'en fait aucune enveloppe — l'objet serait orphelin", async ({ page }) => {
+    await preparer(page);
+    // RÉINJECTION : avec `m.voiceData` parmi les champs téléversés (#751), un
+    // téléversement part ici, pour un transfert qui n'écrit aucune url.
+    const r = await transferer(page, { from: "me", text: "", voiceData: "data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYEC", voiceDuration: 3 });
+    expect(r.televersements, "aucun objet Storage sans enveloppe qui le porte").toHaveLength(0);
+    expect(r.envois.join(" "), "et jamais de data-URL en base").not.toMatch(/data:/i);
+  });
+
   test("⑥ dernier filet : une enveloppe dont l'url est une data-URL (un GIF d'une ancienne version) ne part pas", async ({ page }) => {
     await preparer(page);
     const r = await transferer(page, { from: "them", gif: "  DATA:image/gif;base64,R0lGODlhAQABAAAAACw=", text: "🎞 GIF" });
