@@ -274,7 +274,7 @@ test("⑬ la proposition se compte EN BASE, sa clé est HMAC, et rien du texte c
   assert.match(queue, /issue = !!\(ri && ri\.ok\)/, "une issue refusée (403, 422) n'est pas une issue ouverte");
   // Le texte va au PILOTE seulement : lu par lireProposition, derrière la porte (etat).
   assert.equal(FN.split("lireProposition(").length - 1, 2, "déclaration + etat()");
-  assert.ok(position(FN, 'case "etat": return json(await etat(admin));', "case etat") > position(FN, "if (!autorise(user, EXTRA))", "porte"));
+  assert.ok(position(FN, 'case "etat": return json(await etat(admin, corps.frais === true));', "case etat") > position(FN, "if (!autorise(user, EXTRA))", "porte"));
 });
 
 // ─── Créneau ATOMIQUE de la veille (2026-11-06) ─────────────────────────────

@@ -1297,3 +1297,192 @@ test("㉿⑪ l'essai des alertes : un geste du catalogue, lu sur la DERNIÈRE no
   assert.ok(v.indexOf("const essai = await etape(") < v.indexOf("const battement = await etape("), "avant le battement, qui le dit");
   assert.match(v, /gestes: \{ delestage, reveil, retour, canari, essai \}/);
 });
+
+// ─── Le rouge exige des comptes serveur (2026-11-07) ─────────────────────────
+// Mutations éprouvées à la main : ignorer le compte → ㉿⑫ rougit ; un compte
+// absent qui rendrait orange (le doute qui tait l'alerte) → ㉿⑫ rougit.
+import { COMPTES_ROUGE_MIN } from "../../supabase/functions/_shared/pilotage.js";
+test("㉿⑫ dix erreurs ou cinq 5xx ne sonnent ROUGE que derrière 2 comptes serveur ; en dessous, orange « à confirmer » ; un compte absent laisse le rouge", () => {
+  const recent = new Date(Date.now() - 60e3).toISOString();
+  const base = { github: { issues: [], runs: { sentinelle: { le: recent } } }, signalements: { ouverts: 0 } };
+  const v = (sante) => verdict({ ...base, sante: { erreursJs15: 0, api5xx15: 0, ...sante } });
+  assert.equal(COMPTES_ROUGE_MIN, 2);
+  // Erreurs JS : la clé anon est publique, dix lignes forgées ne paginent plus.
+  assert.equal(v({ erreursJs15: 40, comptesErreurs15: 0 }).couleur, "orange");
+  assert.equal(v({ erreursJs15: 40, comptesErreurs15: 1 }).couleur, "orange");
+  assert.ok(v({ erreursJs15: 40, comptesErreurs15: 1 }).raisons.some((r) => /à confirmer/.test(r)));
+  assert.equal(v({ erreursJs15: 40, comptesErreurs15: 2 }).couleur, "rouge");
+  assert.equal(v({ erreursJs15: 12 }).couleur, "rouge", "compte absent (lecture en échec) : dans le doute, on alerte");
+  // 5xx : la même règle.
+  assert.equal(v({ api5xx15: 9, comptes5xx15: 1 }).couleur, "orange");
+  assert.equal(v({ api5xx15: 9, comptes5xx15: 3 }).couleur, "rouge");
+  assert.equal(v({ api5xx15: 9 }).couleur, "rouge");
+  // La lecture : seules les lignes à identité SERVEUR, dans la fenêtre de 15 min.
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const l = fn.slice(fn.indexOf("async function lireSante"), fn.indexOf("async function lireErreurs7j"));
+  assert.match(l, /\.eq\("type", type\)\.gte\("received_at", depuis\)\.not\("auth_uid", "is", null\)/);
+  assert.match(l, /return ec \|\| \(l \|\| \[\]\)\.length >= MAX_LIGNES_POSTGREST \? null :/, "une lecture en échec OU tronquée rend null — jamais un nombre, qui tairait le rouge");
+  assert.match(l, /comptesErreurs15, comptesAvert15, comptes5xx15/);
+});
+
+// ─── Les avertissements ne colorent plus seuls (2026-11-07) ──────────────────
+// Mesuré le 07/11 à 07:53 : deux « admission (declare) : TypeError: Failed to
+// fetch » (severity warn, statut reseau) à l'ouverture de l'app sur UN poste
+// passaient l'écran à l'orange ; le filet proposait « Régler », qui relançait
+// une Sentinelle sans rien à corriger. Mutations éprouvées à la main : compter
+// les avertissements comme des erreurs → ㉿⑬ rougit ; un nombre de comptes
+// absent qui tairait l'orange → ㉿⑬ rougit ; sans le plafond `min(erreurs)` → ㉿⑬ rougit.
+test("㉿⑬ des avertissements (coupures réseau, replis) d'UN compte ne colorent rien ; de plusieurs comptes, ou mêlés à une vraie erreur, ou en nombre, l'orange revient", () => {
+  const recent = new Date(Date.now() - 60e3).toISOString();
+  const base = { github: { issues: [], runs: { sentinelle: { le: recent } } }, signalements: { ouverts: 0 } };
+  const v = (sante) => verdict({ ...base, sante: { erreursJs15: 0, api5xx15: 0, ...sante } });
+  assert.equal(v({}).couleur, "vert", "le banc part du vert");
+  // Le 07/11 : deux coupures d'un seul compte (et une ligne anonyme).
+  assert.equal(v({ erreursJs15: 2, avertJs15: 2, comptesErreurs15: 1, comptesAvert15: 1 }).couleur, "vert");
+  // Chez deux comptes : on regarde.
+  const deux = v({ erreursJs15: 2, avertJs15: 2, comptesErreurs15: 2, comptesAvert15: 2 });
+  assert.equal(deux.couleur, "orange"); assert.ok(deux.raisons.some((r) => /avertissement\(s\)/.test(r)));
+  // Un nombre de comptes absent (lecture en échec, tronquée) : dans le doute, orange.
+  assert.equal(v({ erreursJs15: 2, avertJs15: 2 }).couleur, "orange");
+  // Une vraie erreur parmi eux : orange, et elle se compte avec eux.
+  const mele = v({ erreursJs15: 3, avertJs15: 2, comptesAvert15: 1 });
+  assert.equal(mele.couleur, "orange"); assert.ok(mele.raisons.some((r) => /^3 erreur\(s\)/.test(r)));
+  // L'état d'avant (pas de compte d'avertissements) : tout est erreur, comme avant.
+  assert.equal(v({ erreursJs15: 2 }).couleur, "orange");
+  // En nombre : le rouge et l'orange « à confirmer » les comptent toujours.
+  assert.equal(v({ erreursJs15: 12, avertJs15: 12, comptesErreurs15: 1, comptesAvert15: 1 }).couleur, "orange");
+  assert.equal(v({ erreursJs15: 12, avertJs15: 12, comptesErreurs15: 2, comptesAvert15: 2 }).couleur, "rouge");
+  // Deux lectures à quelques millisecondes d'écart : plus d'avertissements que d'erreurs ne fabrique rien.
+  assert.equal(v({ erreursJs15: 1, avertJs15: 5, comptesAvert15: 1 }).couleur, "vert");
+  assert.ok(v({ erreursJs15: 1, avertJs15: 5, comptesAvert15: 2 }).raisons.some((r) => /^1 avertissement\(s\)/.test(r)), "jamais plus d'avertissements annoncés que d'erreurs comptées");
+  // La lecture : les avertissements sont ceux que l'app a classés `warn`, comptés en base.
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const l = fn.slice(fn.indexOf("async function lireSante"), fn.indexOf("async function lireErreurs7j"));
+  assert.match(l, /compter\(prod\(\)\.eq\("type", "error"\)\.eq\("severity", "warn"\)\)/);
+  assert.match(l, /comptesAvert15 = distincts\(lErreurs, \(x\) => x\.severity === "warn"\)/);
+  // Le client classe bien la coupure en `warn` (la source de la mesure du 07/11).
+  const app07 = fs.readFileSync("js/app-07-ia-explore-irl.js", "utf8");
+  assert.match(app07, /severity: reseau \? "warn" : "error",\s*meta: admissionMeta\(reseau \? "reseau" : "erreur", ou\)/);
+});
+
+// ─── « Régler » se voit (2026-11-07) ─────────────────────────────────────────
+// Mesuré le 07/11 entre 07:53:40 et 07:54:49 : quatre « Régler », quatre runs de
+// la Sentinelle réussis en 20 à 35 s, et une ligne identique après chacun.
+// Mutations éprouvées à la main : la dérive d'horloge à 0 → ㉿⑭ rougit ; `le`
+// au lieu de `cree` → ㉿⑭ rougit ; la relance oubliée du filet → ㉿⑮ rougit ;
+// l'orange vérifié laissé en prio 1 → ㉿⑮ rougit ; le rouge relégué → ㉿⑮ rougit.
+import { suiviRelance, RELANCE_SUIVIE_MS, RELANCE_DEMARRAGE_MS, EVT_GESTE, heureMinute } from "../../supabase/functions/_shared/pilotage.js";
+test("㉿⑭ suiviRelance : attente, analyse, faite ou échec, perdue — reconnue au DÉPART du run, à 5 s près", () => {
+  const T = Date.parse("2026-11-07T07:53:40Z");
+  const iso = (ms) => new Date(ms).toISOString();
+  const run = (creeMs, etat, conclusion = null, leMs = creeMs) => ({ etat, conclusion, cree: iso(creeMs), le: iso(leMs) });
+  const ancien = run(T - 6 * 3600e3, "completed", "success");
+  assert.equal(suiviRelance(null, ancien, T), null);
+  assert.equal(suiviRelance("pas une date", ancien, T), null);
+  assert.equal(suiviRelance(iso(T - RELANCE_SUIVIE_MS - 1), ancien, T), null, "au-delà de la fenêtre, oubliée");
+  assert.equal(suiviRelance(iso(T + 60e3), ancien, T), null, "une date à venir ne se suit pas");
+  assert.deepEqual(suiviRelance(iso(T - 2e3), ancien, T), { etat: "attente", le: iso(T - 2e3) }, "GitHub ne liste pas encore le run");
+  assert.equal(suiviRelance(iso(T - RELANCE_DEMARRAGE_MS - 1), ancien, T).etat, "perdue");
+  assert.equal(suiviRelance(iso(T - 10e3), run(T - 9e3, "queued"), T).etat, "analyse");
+  assert.equal(suiviRelance(iso(T - 10e3), run(T - 9e3, "in_progress"), T).etat, "analyse");
+  const faite = suiviRelance(iso(T - 40e3), run(T - 39e3, "completed", "success", T - 15e3), T);
+  assert.deepEqual(faite, { etat: "faite", le: iso(T - 40e3), fini: iso(T - 15e3) });
+  assert.equal(suiviRelance(iso(T - 40e3), run(T - 39e3, "completed", "failure", T - 15e3), T).etat, "echec");
+  // L'horloge de GitHub et celle de la fonction : 3 s d'avance comptent, 10 s non.
+  assert.equal(suiviRelance(iso(T - 20e3), run(T - 23e3, "in_progress"), T).etat, "analyse");
+  assert.equal(suiviRelance(iso(T - 20e3), run(T - 30e3, "completed", "success", T - 1e3), T).etat, "attente", "un run parti AVANT le geste n'est pas le sien, même fini après");
+  assert.equal(EVT_GESTE, "pilotage_geste");
+  assert.equal(heureMinute("2026-11-07T07:54:00Z"), "08:54", "heure de Paris");
+  assert.equal(heureMinute("2026-07-07T07:54:00Z"), "09:54", "heure d'été");
+  assert.equal(heureMinute(null), "?");
+});
+
+test("㉿⑮ le 07/11 rejoué : le filet orange suit SA relance — « démarre », « analyse », puis « vérifié à 08:54 » rangé dans Détails ; le rouge garde sa place ; une relance perdue le dit", () => {
+  const T = Date.parse("2026-11-07T07:53:40Z");
+  const iso = (ms) => new Date(ms).toISOString();
+  const ancien = { etat: "completed", conclusion: "success", cree: "2026-11-07T02:02:27Z", le: "2026-11-07T02:02:47Z" };
+  const etatDe = (sentinelle, relances, couleur = "orange", maintenant = T) => aFaire({ gestesGithub: true, relances,
+    verdict: { couleur, titre: "À surveiller", raisons: ["2 erreur(s) dans l'app en 15 min"] },
+    github: { issues: [], runs: { sentinelle }, aReparer: [] } }, maintenant);
+  const filet = (...a) => etatDe(...a).find((x) => x.id === "voyant");
+  // Avant le geste : la ligne et son bouton.
+  const avant = filet(ancien, {});
+  assert.equal(avant.prio, 1); assert.deepEqual(avant.gestes[0].corps, { action: "relancer", cible: "sentinelle" });
+  // Juste après : GitHub ne liste pas encore le run, la relance est notée — « démarre », sans bouton.
+  const juste = filet(ancien, { sentinelle: iso(T - 1e3) });
+  assert.equal(juste.enCours, true); assert.deepEqual(juste.gestes, []);
+  assert.equal(juste.quoi, "La Sentinelle démarre (lancée à 08:53).");
+  // Le run est parti.
+  const pendant = filet({ etat: "in_progress", conclusion: null, cree: iso(T + 1e3), le: iso(T + 5e3) }, { sentinelle: iso(T) }, "orange", T + 10e3);
+  assert.equal(pendant.enCours, true); assert.match(pendant.quoi, /^La Sentinelle analyse \(lancée à 08:53\)\.$/);
+  // Fini sans rien trouver : l'orange ne redemande plus un geste inutile.
+  const fin = filet({ etat: "completed", conclusion: "success", cree: iso(T + 1e3), le: iso(T + 20e3) }, { sentinelle: iso(T) }, "orange", T + 30e3);
+  assert.equal(fin.prio, 2); assert.equal(fin.enCours, false);
+  assert.match(fin.quoi, /^La Sentinelle a vérifié à 08:54 : rien qu'elle puisse corriger\./);
+  assert.ok(!fin.gestes.some((g) => g.principal), "plus de « Régler » principal");
+  assert.deepEqual(fin.gestes.map((g) => g.corps), [{ action: "relancer", cible: "sentinelle" }], "relancer reste possible, rangé");
+  // Le rouge vérifié garde sa place et son bouton.
+  const rouge = filet({ etat: "completed", conclusion: "success", cree: iso(T + 1e3), le: iso(T + 20e3) }, { sentinelle: iso(T) }, "rouge", T + 30e3);
+  assert.equal(rouge.prio, 0); assert.ok(rouge.gestes[0].principal); assert.match(rouge.quoi, /sans rien trouver à corriger/);
+  // Échouée, ou jamais partie : la ligne le dit et rend son bouton.
+  const echec = filet({ etat: "completed", conclusion: "failure", cree: iso(T + 1e3), le: iso(T + 20e3) }, { sentinelle: iso(T) }, "orange", T + 30e3);
+  assert.equal(echec.prio, 1); assert.match(echec.quoi, /^L'analyse lancée à 08:53 a échoué/); assert.ok(echec.gestes[0].principal);
+  const perdue = filet(ancien, { sentinelle: iso(T) }, "orange", T + RELANCE_DEMARRAGE_MS + 1e3);
+  assert.match(perdue.quoi, /^La relance de 08:53 n'est pas partie/); assert.ok(perdue.gestes[0].principal);
+  // Oubliée au-delà de la fenêtre : la ligne redevient ce qu'elle était.
+  assert.deepEqual(filet(ancien, { sentinelle: iso(T) }, "orange", T + RELANCE_SUIVIE_MS + 1e3), avant);
+  // Une relance de la VEILLE ne fait pas « démarrer » la Sentinelle.
+  assert.equal(filet(ancien, { veille: iso(T - 1e3) }).enCours, false);
+});
+
+test("㉿⑯ les autres lignes qui relancent suivent aussi leur relance : erreurs, parcours (l'urgence garde sa place), pannes du serveur, Sentinelle muette", () => {
+  const T = Date.parse("2026-11-07T07:53:40Z");
+  const iso = (ms) => new Date(ms).toISOString();
+  const ancien = { etat: "completed", conclusion: "success", cree: "2026-11-07T02:02:27Z", le: "2026-11-07T02:02:47Z" };
+  const fini = { etat: "completed", conclusion: "success", cree: iso(T + 1e3), le: iso(T + 20e3) };
+  // Les erreurs (client_errors) : « démarre » tout de suite, puis « vue à 08:54 ».
+  const det = [{ message: "A", n: 3, comptes: 1, dernier: iso(T - 60e3) }];
+  const erreurs = (sentinelle, relances, m = T) => aFaire({ gestesGithub: true, relances, erreurs: { details: det }, github: { issues: [], runs: { sentinelle }, aReparer: [] } }, m).find((x) => x.id === "erreurs");
+  assert.equal(erreurs(ancien, { sentinelle: iso(T - 1e3) }).enCours, true);
+  assert.match(erreurs(ancien, { sentinelle: iso(T - 1e3) }).quoi, /démarre \(lancée à 08:53\)/);
+  const vue = erreurs(fini, { sentinelle: iso(T) }, T + 30e3);
+  assert.equal(vue.prio, 2); assert.equal(vue.quoi, "La Sentinelle l'a vue à 08:54 : rien à corriger.");
+  // Les parcours : un dégradé analysé sans enquête se range ; une panne URGENTE garde sa place.
+  const parcours = (p, relances, sentinelle, m) => aFaire({ gestesGithub: true, relances, parcours: { recent: { parcours: [p] } }, github: { issues: [], runs: { sentinelle }, aReparer: [] } }, m).find((x) => x.id === "parcours:" + p.id);
+  const degrade = { id: "message", libelle: "Envoyer un message", etat: "degrade", criticite: "critique", raisons: ["3 échecs"], codes: [] };
+  const urgent = { ...degrade, etat: "panne", panneConfirmee: true };
+  const dg = parcours(degrade, { sentinelle: iso(T) }, fini, T + 30e3);
+  assert.equal(dg.prio, 2); assert.match(dg.quoi, /^Analysé à 08:54 : rien d'assez sûr/); assert.ok(!dg.gestes.some((g) => g.principal));
+  assert.equal(parcours(degrade, {}, fini, T + 30e3).prio, 1, "sans relance, le dégradé garde sa ligne et son bouton");
+  const ur = parcours(urgent, { sentinelle: iso(T) }, fini, T + 30e3);
+  assert.equal(ur.prio, 0); assert.ok(ur.gestes[0].principal); assert.match(ur.quoi, /^Analysé à 08:54 sans enquête ouverte/);
+  // Les pannes du serveur relancent la VEILLE, et suivent la sienne.
+  const serveur = (veille, relances) => aFaire({ gestesGithub: true, relances, sante: { api5xx15: 2 }, github: { issues: [], runs: { veille }, aReparer: [] } }, T).find((x) => x.id === "serveur");
+  const sv = serveur({ etat: "completed", conclusion: "success", cree: "2026-11-07T06:00:00Z", le: "2026-11-07T06:01:00Z" }, { veille: iso(T - 2e3) });
+  assert.equal(sv.enCours, true); assert.match(sv.quoi, /^La surveillance démarre/);
+  // La Sentinelle muette : relancée, elle « démarre » au lieu de redemander le geste.
+  const muette = aFaire({ gestesGithub: true, relances: { sentinelle: iso(T - 2e3) }, github: { issues: [], runs: { sentinelle: { etat: "completed", conclusion: "success", cree: "2026-11-06T20:00:00Z", le: "2026-11-06T20:01:00Z" } }, aReparer: [] } }, T).find((x) => x.id === "sentinelle:muette");
+  assert.equal(muette.enCours, true); assert.deepEqual(muette.gestes, []);
+});
+
+test("㉿⑰ la fonction NOTE la relance après l'envoi accepté, sous l'auteur système, sans la défaire si la note échoue ; l'état la relit, et se relit au frais après un geste", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const r = fn.slice(fn.indexOf("async function relancer("), fn.indexOf("async function lireRelances("));
+  assert.ok(r.indexOf("const demande = new Date().toISOString();") < r.indexOf("/dispatches"), "l'heure d'AVANT l'envoi");
+  assert.ok(r.indexOf("if (res.status !== 204)") < r.indexOf("EVT_GESTE"), "rien n'est noté pour un envoi refusé");
+  assert.match(r, /insert\(\{ user_id: "systeme:pilotage", event: EVT_GESTE, properties: \{ geste: "relancer", cible, demande \} \}\)/);
+  assert.match(r, /if \(error\) \{ suivie = false; console\.warn\(/, "le { error } est LU");
+  assert.match(r, /return json\(\{ ok: true, suivie,/);
+  const l = fn.slice(fn.indexOf("async function lireRelances("), fn.indexOf("async function lireRelances(") + 1200);
+  assert.match(l, /\.eq\("event", EVT_GESTE\)\.eq\("user_id", "systeme:pilotage"\)\s*\.gte\("created_at", ilYa\(RELANCE_SUIVIE_MS\)\)/);
+  assert.match(l, /if \(error\) throw error;/);
+  assert.match(l, /Object\.hasOwn\(RELANCES, p\.cible\)/, "liste blanche des cibles");
+  assert.match(fn, /relances: lireRelances\(admin\),/);
+  assert.match(fn, /case "etat": return json\(await etat\(admin, corps\.frais === true\)\);/);
+  assert.match(fn, /async function etat\(admin: Admin, frais = false\) \{\s*if \(frais && JETON_GH\) cacheGh = null;/);
+  assert.match(fn, /case "relancer": return relancer\(admin, String\(corps\.cible \|\| ""\)\);/);
+  // L'écran : relu au frais après un geste, puis suivi.
+  const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
+  assert.match(page, /b\.textContent = "Lancé ✓";\s*await actualiser\(true\);\s*if \(corps && corps\.action === "relancer"\) suivreRelance\(\);/);
+  assert.match(page, /appeler\(fraiche \? \{ action: "etat", frais: true \} : \{ action: "etat" \}\)/);
+});
