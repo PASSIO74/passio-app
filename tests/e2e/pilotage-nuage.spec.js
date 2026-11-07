@@ -1294,3 +1294,79 @@ test("㊷ les appels : un taux sur 24 h qui se dit ÉCHANTILLON, « trop peu » 
   await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte reçue" })).toBeVisible();
   await expect(titres(page)).toHaveCount(0);
 });
+
+// Les NOTIFICATIONS SOCIALES (2026-11-07, une sur vingt). Réinjections éprouvées :
+// la carte retirée → rougit ; l'échantillon tu → rougit ; la fenêtre limitée dite
+// « 24 h » → rougit ; un taux affiché sur « partiel » → rougit ; une carte (« 0 % »)
+// pour une fonction d'avant ce lot → rougit.
+test("㊸ les notifications sociales : un taux qui se dit ÉCHANTILLON, sur 24 h ou DEPUIS l'heure de la plus ancienne note lue quand le volume dépasse une lecture ; « trop peu » sous 5, « partiel » sans taux ; une fonction d'avant ce lot n'affiche aucune carte, jamais un faux zéro", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 3600e3).toISOString();
+  const reception = (notifs) => ({ derniereAlerte: { etat: "recue", le, acceptes: 1, recus: 1, delaiMs: 2000 },
+    rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, appels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0, echantillon: 10, actifs: false },
+    accusesIgnores: 0, tronque: false, ...(notifs ? { notifs } : {}) });
+  const titres = (page) => page.locator("#alertes .carte-titre", { hasText: /^Notifications sociales/ });
+  // Mesuré, sur 24 h : le taux, l'attente, l'échantillon.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "mesure", envoyes: 24, recus: 22, enAttente: 2, taux: 22 / 24, echantillon: 20 }) }));
+  await page.goto("/pilotage/");
+  await aller(page, "reglages");
+  const mesure = page.locator("#alertes .carte", { hasText: "Notifications sociales reçues (24 h)" });
+  await expect(mesure).toContainText("92 %");
+  await expect(mesure).toContainText("22 reçues sur 24 mesurées");
+  await expect(mesure).toContainText("2 de moins de 10 min");
+  await expect(mesure).toContainText("une notification sur 20 est mesurée");
+  await expect(mesure).toHaveClass(/vert/);
+  await expect(mesure).not.toContainText("plus récentes");
+  await expect(titres(page)).toHaveCount(1);
+  // Le volume dépasse une lecture : le taux porte sur les plus récentes, et le titre dit DEPUIS QUAND — jamais « 24 h ».
+  const depuis = new Date(Date.now() - 3 * 3600e3).toISOString();
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "mesure", envoyes: 950, recus: 760, enAttente: 49, taux: 0.8, echantillon: 20, depuis }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  const limitee = page.locator("#alertes .carte", { hasText: "Notifications sociales reçues (depuis 3 h)" });
+  await expect(limitee).toContainText("80 %");
+  await expect(limitee).toContainText("760 reçues sur 950 mesurées");
+  await expect(limitee).toContainText("le volume dépasse une lecture : les plus récentes seulement");
+  await expect(limitee).not.toContainText("Partiel");
+  await expect(page.locator("#alertes .carte-titre", { hasText: "Notifications sociales reçues (24 h)" })).toHaveCount(0);
+  // Un taux bas se colore, et dit la cause bénigne connue ; aucune ligne « À faire » (comme les rappels et les appels).
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "mesure", envoyes: 10, recus: 5, enAttente: 0, taux: 0.5, echantillon: 20 }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  const bas = page.locator("#alertes .carte", { hasText: "Notifications sociales reçues (24 h)" });
+  await expect(bas).toHaveClass(/orange/);
+  await expect(bas).toContainText("un appareil qui n'a pas rouvert PASSIO depuis la mise à jour n'accuse pas encore");
+  await page.locator("#retour").click();
+  await expect(page.locator("#accueil")).toBeVisible();
+  await expect(page.locator("#afaire .ligne", { hasText: /notification/i })).toHaveCount(0);
+  // Trop peu : aucun taux, la raison et l'échantillon dits.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 3, recus: 3, enAttente: 1, echantillon: 20 }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  const peu = page.locator("#alertes .carte", { hasText: "Notifications sociales (24 h)" });
+  await expect(peu).toContainText("Trop peu");
+  await expect(peu).toContainText("3 notification(s) mesurée(s) jugeable(s) : il en faut 5 pour un taux");
+  await expect(peu).toContainText("1 de moins de 10 min");
+  await expect(peu).toContainText("une notification sur 20 est mesurée");
+  await expect(peu).not.toContainText("%");
+  // Partiel (un paquet d'accusés plein) : jamais un taux.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: { ...reception({ etat: "partiel", envoyes: 300, recus: 280, enAttente: 0, echantillon: 20 }), tronque: true } }));
+  await page.reload();
+  await aller(page, "reglages");
+  const partiel = page.locator("#alertes .carte", { hasText: "Notifications sociales (24 h)" });
+  await expect(partiel).toContainText("Partiel");
+  await expect(partiel).toContainText("pas de taux, au moins 280 reçues sur 300 mesurées");
+  await expect(partiel).not.toContainText("%");
+  // Un texte hostile dans un champ ne devient jamais du HTML (la carte est faite de nombres, rendue en texte).
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: CHARGE, recus: 0, enAttente: 0, echantillon: 20 }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Notifications sociales (24 h)" })).toContainText(CHARGE);
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  // Une fonction d'avant ce lot ne rend pas `notifs` : aucune carte, jamais un faux zéro.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception(null) }));
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte reçue" })).toBeVisible();
+  await expect(titres(page)).toHaveCount(0);
+});

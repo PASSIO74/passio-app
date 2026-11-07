@@ -37,7 +37,13 @@
 // l'affichage, et la note `push_envoye` (genre « appel », pids, appareils
 // acceptés) se pose sous `systeme:appels` — sans rien de l'appelant. Le pid
 // n'est JAMAIS rendu à l'appelant : il pourrait forger l'accusé d'un appel qui
-// n'a pas sonné. Une notification sociale ne porte jamais d'accusé.
+// n'a pas sonné.
+// ⚠️ ET DES NOTIFICATIONS SOCIALES (même jour) : une push « notif » sur VINGT,
+// tirée par le serveur, porte de même un pid et l'adresse ; le service worker
+// l'accuse « notif », et la note se pose sous `systeme:notifs` avec le genre de
+// la notification d'une liste fermée (celui que `autoriserPushNotif` a relu en
+// base) — ni son texte, ni l'émetteur, ni le destinataire. Le pid ne revient pas
+// davantage à l'émetteur : il forgerait la réception de SA notification.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import webpush from "npm:web-push@3.6.7";
@@ -169,8 +175,9 @@ Deno.serve(async (req) => {
   const ttl = type === "notif" ? 3600 : 45;
   const urgency = type === "notif" ? "normal" : "high";
 
-  // 4. Envoyer à chaque appareil (_shared/appels.js : un appel sur dix porte un
-  // accusé, noté après l'envoi) ; nettoyer les abonnements morts (410/404).
+  // 4. Envoyer à chaque appareil (_shared/appels.js : un appel sur dix, une
+  // notification sociale sur vingt portent un accusé, noté après l'envoi) ;
+  // nettoyer les abonnements morts (410/404).
   const { sent, morts } = await pousserAppareils({
     admin, abonnements: subs, charge, options: { TTL: ttl, urgency }, accuse: ACCUSE,
     // deno-lint-ignore no-explicit-any

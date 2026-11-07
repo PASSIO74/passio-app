@@ -112,6 +112,13 @@ const GABARITS_PUSH = {
   event_invite: "{nom} t'invite à une activité",
   live_video: "{nom} est en direct",
 };
+/**
+ * Les genres qu'une push « notif » peut porter : ceux qui ont un gabarit, et
+ * AUCUN autre (autoriserPushNotif refuse le reste). Une LISTE FERMÉE : la note
+ * d'envoi d'une push sociale mesurée (_shared/appels.js) n'enregistre son genre
+ * que s'il en fait partie — jamais un texte venu d'une ligne qu'un client écrit.
+ */
+export const GENRES_PUSH = Object.freeze(Object.keys(GABARITS_PUSH));
 export function textePush(kind, nom, options) {
   const g = GABARITS_PUSH[String(kind || "")];
   if (!g) return null;

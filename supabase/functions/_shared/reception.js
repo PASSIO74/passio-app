@@ -47,8 +47,14 @@
 // d'APPEL, par `_shared/appels.js` : un appel sur ECHANTILLON_APPELS (leur
 // volume suit l'audience), tiré par le serveur, un pid partagé par les
 // appareils du destinataire, la note `push_envoye` sous `systeme:appels`
-// (genre, pids, appareils acceptés — rien de l'appelant). Les notifications
-// sociales que la même fonction envoie ne sont PAS mesurées.
+// (genre, pids, appareils acceptés — rien de l'appelant).
+//
+// LES NOTIFICATIONS SOCIALES (même jour). Les pushes « notif » de la même
+// fonction (j'aime, abonnement, commentaire, message…) — les seules qu'elle
+// envoie vraiment pendant le pilote — se mesurent de même, à leur propre taux
+// (ECHANTILLON_NOTIFS), sous leur propre auteur (`systeme:notifs`), avec leur
+// genre d'une LISTE FERMÉE ; et l'écran lit les plus récentes quand le volume
+// dépasse une page, au lieu de se dire « partiel » (voir ④ de bilanReception).
 //
 // Ce fichier est PUR (sauf `pidNeuf`) : Deno l'importe tel quel dans les
 // fonctions `pilotage` et `notify-call`, et `node --test
@@ -95,6 +101,46 @@ export const NOTES_APPELS_MAX = 400;
 /** L'appel est-il mesuré ? PUR. `tirage` ∈ [0, 1), tiré par le serveur (`tirer`, _shared/appels.js). */
 export function appelMesure(tirage) {
   return typeof tirage === "number" && tirage >= 0 && tirage * ECHANTILLON_APPELS < 1;
+}
+
+// LES NOTIFICATIONS SOCIALES (notify-call, 2026-11-07). Une push « notif » MESURÉE
+// porte un accusé comme un appel : un pid ALÉATOIRE partagé par les appareils du
+// destinataire, tiré par le SERVEUR. C'est le plus gros volume — à peu près une
+// push par j'aime, abonnement, commentaire ou message (un message ne sonne qu'une
+// fois par conversation et par 5 min : anti-spam du client) : à l'hypothèse de
+// 100 000 inscrits, 6 000 à 72 000 pushes sociales par jour, 6 à 24 fois les
+// appels (docs/AUTONOMIE_EXPLOITATION.md § 3.8).
+//   · À ce volume, aucun taux utile pendant le pilote ne tient 24 h dans une page
+//     de lecture (999 notes) : 1 sur 100 la tiendrait, mais ne donnerait un taux
+//     qu'à partir de ~800 pushes par jour, et sa première note après ~230 pushes
+//     (90 %). L'écran lit donc les NOTES_NOTIFS_MAX plus récentes et dit DEPUIS
+//     QUAND (`depuis`) : une lecture limitée par le volume n'est pas « partielle ».
+//   · Alors le taux est borné par ce qui ne se rattrape pas : le plafond de
+//     `trg_rate_limit` (120 notes par minute sous un même auteur) et la fenêtre
+//     que couvrent ces notes. UNE SUR 20 est le plus haut taux qui, au haut de
+//     l'hypothèse, garde 3 h de soirée dans la fenêtre (P = 0,9996) et n'atteint
+//     pas 120 notes en une minute même à 1 500 pushes/min (5·10⁻⁷). 1 sur 10 y
+//     perdrait des notes 2 % des minutes de pointe extrême (1 000/min) et ne
+//     garderait que 1 h 40 de soirée.
+//   · La contrepartie : un taux 9 jours sur 10 dès 158 pushes sociales par jour,
+//     « trop peu » en dessous ; la première note vient en moyenne après 20 pushes
+//     sociales (45 pour 90 %).
+// Les bornes sont recalculées en loi binomiale par reception.test.mjs ⑲.
+export const GENRE_NOTIF = "notif";
+/** L'auteur des notes d'envoi des notifications sociales : hors d'atteinte d'un client (`analytics_insert_own`). */
+export const UID_NOTIFS = "systeme:notifs";
+/** Une push sociale sur tant porte un accusé. */
+export const ECHANTILLON_NOTIFS = 20;
+/** Fenêtre du taux de réception des notifications sociales (la plus longue lue). */
+export const FENETRE_NOTIFS_MS = 24 * 3600e3;
+/** Sous ce nombre de pushes sociales mesurées et jugeables, pas de taux : « trop peu ». */
+export const MIN_NOTIFS = 5;
+/** Notes d'envoi SOCIALES lues au plus (une par push mesurée), les plus récentes : au-delà, la fenêtre se raccourcit et le dit. */
+export const NOTES_NOTIFS_MAX = 999;
+
+/** La push sociale est-elle mesurée ? PUR. `tirage` ∈ [0, 1), tiré par le serveur (`tirer`, _shared/appels.js). */
+export function notifMesuree(tirage) {
+  return typeof tirage === "number" && tirage >= 0 && tirage * ECHANTILLON_NOTIFS < 1;
 }
 
 // L'ESSAI DES ALERTES (2026-11-07). Sans panne, aucune alerte ne part, et rien
@@ -256,21 +302,26 @@ export function pidsEnvoi(e) {
 const pidsDe = pidsEnvoi;
 
 /**
- * Le taux de réception d'un GENRE (rappels, appels) sur sa fenêtre, PUR. Seuls
- * les envois dont le délai d'accusé est passé sont jugés ; les autres attendent,
- * hors du dénominateur. Sous `min` envois jugeables : « trop peu ». Une lecture
- * qui a touché un plafond : « partiel », jamais un taux — un accusé réel a pu
- * rester hors de la lecture (un pid noyé de faux accusés).
+ * Le taux de réception d'un GENRE (rappels, appels, notifications sociales) sur
+ * sa fenêtre, PUR. Seuls les envois dont le délai d'accusé est passé sont jugés ;
+ * les autres attendent, hors du dénominateur. Sous `min` envois jugeables :
+ * « trop peu ». Une lecture qui a touché un plafond : « partiel », jamais un taux
+ * — un accusé réel a pu rester hors de la lecture (un pid noyé de faux accusés).
+ * `strict` : un envoi de moins de DELAI_ACCUSE_MS attend MÊME accusé. Sans lui,
+ * les accusés rapides comptent et les lents attendent — un biais nul sur 24 h,
+ * mais pas sur une fenêtre de quelques heures (les notifications sociales).
  */
-function tauxGenre({ envois, parPid, genre, fenetreMs, min, maintenant, tronque }) {
+function tauxGenre({ envois, parPid, genre, fenetreMs, min, maintenant, tronque, strict = false }) {
   let jugeables = 0, recus = 0, enAttente = 0;
   for (const e of envois) {
     if (!e || !e.properties || e.properties.genre !== genre) continue;
     const le = t(e.created_at);
     if (!Number.isFinite(le) || maintenant - le > fenetreMs) continue;
+    const recent = maintenant - le < DELAI_ACCUSE_MS;
     for (const p of pidsDe(e)) {
-      if (parPid.has(p)) { jugeables++; recus++; }
-      else if (maintenant - le < DELAI_ACCUSE_MS) enAttente++;
+      if (strict && recent) enAttente++;
+      else if (parPid.has(p)) { jugeables++; recus++; }
+      else if (recent) enAttente++;
       else jugeables++;
     }
   }
@@ -284,9 +335,13 @@ function tauxGenre({ envois, parPid, genre, fenetreMs, min, maintenant, tronque 
  * @param {{ envois?: Array<{ created_at: string, properties: { genre: string, pid?: string, pids?: string[], acceptes?: number } }>,
  *           accuses?: Array<{ pid: string, received_at: string }>,
  *           maintenant?: number, tronque?: boolean, tronqueRappels?: boolean, tronqueAppels?: boolean,
- *           appelsActifs?: boolean }} e  `appelsActifs` : l'interrupteur serveur des appels (_shared/appels.js).
+ *           appelsActifs?: boolean, tronqueNotifs?: boolean, notifsLimitees?: boolean }} e
+ *   `appelsActifs` : l'interrupteur serveur des appels (_shared/appels.js).
+ *   `tronqueNotifs` : un paquet d'accusés sociaux plein (un pid noyé) — « partiel ».
+ *   `notifsLimitees` : plus de notes sociales que la lecture n'en prend — le taux
+ *   porte sur les plus récentes, et le bilan dit DEPUIS QUAND.
  */
-export function bilanReception({ envois = [], accuses = [], maintenant = Date.now(), tronque = false, tronqueRappels = false, tronqueAppels = false, appelsActifs = true } = {}) {
+export function bilanReception({ envois = [], accuses = [], maintenant = Date.now(), tronque = false, tronqueRappels = false, tronqueAppels = false, appelsActifs = true, tronqueNotifs = false, notifsLimitees = false } = {}) {
   // Les accusés par pid, horodatés par le SERVEUR (received_at) ; un pid
   // inconnu de nos envois ne compte pour rien.
   const envoyes = new Set();
@@ -337,8 +392,23 @@ export function bilanReception({ envois = [], accuses = [], maintenant = Date.no
   // sans cela, « 0 appel mesuré » ne disait pas pourquoi (revue du 2026-11-07).
   const appels = { ...tauxGenre({ envois, parPid, genre: GENRE_APPEL, fenetreMs: FENETRE_APPELS_MS, min: MIN_APPELS, maintenant, tronque: tronqueAppels }),
     echantillon: ECHANTILLON_APPELS, actifs: appelsActifs !== false };
+  // ④ Les notifications sociales (notify-call), une sur ECHANTILLON_NOTIFS. Au-delà
+  // d'une page, la lecture prend les plus récentes : le taux porte sur elles, et
+  // `depuis` dit l'heure de la plus ancienne — une fenêtre plus courte, pas une
+  // lecture « partielle » (les accusés de CES notes sont tous lus). Jugées STRICTEMENT
+  // après le délai : sur quelques heures, les envois de moins de 10 min pèsent.
+  let depuis = NaN;
+  if (notifsLimitees) {
+    for (const e of envois) {
+      if (!e || proprietes(e).genre !== GENRE_NOTIF) continue;
+      const le = t(e.created_at);
+      if (Number.isFinite(le) && maintenant - le <= FENETRE_NOTIFS_MS && (!Number.isFinite(depuis) || le < depuis)) depuis = le;
+    }
+  }
+  const notifs = { ...tauxGenre({ envois, parPid, genre: GENRE_NOTIF, fenetreMs: FENETRE_NOTIFS_MS, min: MIN_NOTIFS, maintenant, tronque: tronqueNotifs, strict: true }),
+    echantillon: ECHANTILLON_NOTIFS, ...(Number.isFinite(depuis) ? { depuis: new Date(depuis).toISOString() } : {}) };
 
-  return { derniereAlerte, rappels, appels, accusesIgnores: ignores, tronque: !!(tronque || tronqueRappels || tronqueAppels) };
+  return { derniereAlerte, rappels, appels, notifs, accusesIgnores: ignores, tronque: !!(tronque || tronqueRappels || tronqueAppels || tronqueNotifs) };
 }
 
 /**

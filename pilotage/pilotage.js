@@ -222,6 +222,19 @@
     else if (ap && ap.etat === "mesure") zone.append(carte("Appels reçus (24 h)", Math.round(ap.taux * 100) + " %", ap.recus + " reçus sur " + ap.envoyes + " appels mesurés" + (ap.enAttente ? " · " + ap.enAttente + " en attente" : "") + ech, ap.taux >= 0.8 ? "vert" : "orange"));
     else if (ap && ap.etat === "partiel") zone.append(carte("Appels (24 h)", "Partiel", "La lecture des accusés a touché son plafond : pas de taux, au moins " + ap.recus + " reçus sur " + ap.envoyes + " appels mesurés" + ech + ".", "gris"));
     else if (ap) zone.append(carte("Appels (24 h)", "Trop peu", ap.envoyes + " appel(s) mesuré(s) jugeable(s) : il en faut 5 pour un taux" + (ap.enAttente ? " · " + ap.enAttente + " en attente" : "") + ech + ".", "gris"));
+    // Les notifications sociales (notify-call, 2026-11-07) : une sur N porte un accusé,
+    // l'écran le dit. Au-delà d'une page de notes, le taux porte sur les plus récentes
+    // et le titre dit DEPUIS QUAND (`depuis`) — une fenêtre plus courte, jamais « partiel ».
+    // Une fonction d'avant ce lot ne rend pas `notifs` : aucune carte, jamais un faux zéro.
+    const nf = r.notifs;
+    const echN = Number(nf && nf.echantillon) > 1 ? " · une notification sur " + Number(nf.echantillon) + " est mesurée" : "";
+    const fenN = nf && nf.depuis ? ilYA(nf.depuis).replace("il y a ", "depuis ") : "24 h";
+    const attN = nf && nf.enAttente ? " · " + nf.enAttente + " de moins de 10 min" : "";
+    if (nf && nf.etat === "mesure") zone.append(carte("Notifications sociales reçues (" + fenN + ")", Math.round(nf.taux * 100) + " %", nf.recus + " reçues sur " + nf.envoyes + " mesurées" + attN + echN
+      + (nf.depuis ? " · le volume dépasse une lecture : les plus récentes seulement" : "")
+      + (nf.taux < 0.8 ? " · un appareil qui n'a pas rouvert PASSIO depuis la mise à jour n'accuse pas encore" : ""), nf.taux >= 0.8 ? "vert" : "orange"));
+    else if (nf && nf.etat === "partiel") zone.append(carte("Notifications sociales (" + fenN + ")", "Partiel", "La lecture des accusés a touché son plafond : pas de taux, au moins " + nf.recus + " reçues sur " + nf.envoyes + " mesurées" + echN + ".", "gris"));
+    else if (nf) zone.append(carte("Notifications sociales (" + fenN + ")", "Trop peu", nf.envoyes + " notification(s) mesurée(s) jugeable(s) : il en faut 5 pour un taux" + attN + echN + ".", "gris"));
     if (r.tronque) zone.append(carte("Réception : lecture partielle", "Partielle", "Les accusés dépassent ce que la lecture parcourt : les nombres sont des minimums.", "gris"));
   }
   function nonLu(id, titre, partie) {

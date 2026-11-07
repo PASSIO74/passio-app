@@ -50,7 +50,7 @@ import {
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
-import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, DELAI_ACCUSE_MS, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, FENETRE_APPELS_MS, UID_APPELS, NOTES_RAPPELS_MAX, NOTES_APPELS_MAX, PAQUET_RAPPELS, PLAFOND_PAQUET, adresseAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
+import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, DELAI_ACCUSE_MS, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, FENETRE_APPELS_MS, UID_APPELS, NOTES_RAPPELS_MAX, NOTES_APPELS_MAX, FENETRE_NOTIFS_MS, UID_NOTIFS, NOTES_NOTIFS_MAX, PAQUET_RAPPELS, PLAFOND_PAQUET, adresseAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
 import { APPELS_ACTIFS } from "../_shared/appels.js";
 
 const corsHeaders = {
@@ -310,7 +310,11 @@ async function essaiManuel(admin: Admin) {
  *   ② les rappels des 24 h se lisent par paquets de PAQUET_RAPPELS pid ; un
  *      paquet plein, ou une liste de notes au plafond, rend le taux « partiel » ;
  *   ③ les appels mesurés (2026-11-07, un sur dix) de même, à part : un appelé
- *      qui noie SON pid ne rend « partiel » que le taux des appels.
+ *      qui noie SON pid ne rend « partiel » que le taux des appels ;
+ *   ④ les notifications sociales mesurées (même jour, une sur vingt) de même, à
+ *      part — mais leurs notes au-delà de NOTES_NOTIFS_MAX ne rendent PAS le taux
+ *      « partiel » : la lecture prend les plus récentes et le bilan dit depuis
+ *      quand (`notifsLimitees`) ; seul un paquet d'accusés plein le fait.
  * L'index (type, received_at) de telemetry_events borne chaque lecture aux
  * lignes `push` (un index sur le pid serait une migration : § 8).
  */
@@ -350,9 +354,14 @@ async function lireReception(admin: Admin) {
   // accusé ; ses notes sous `systeme:appels`, que seule la fonction écrit.
   const { data: appels, error: e3 } = await lireNotes(UID_APPELS, FENETRE_APPELS_MS, NOTES_APPELS_MAX);
   if (e3) throw e3;
+  // Les notifications sociales (même jour) : une sur vingt porte un accusé ; ses
+  // notes sous `systeme:notifs`, que seule notify-call écrit.
+  const { data: notifs, error: e4 } = await lireNotes(UID_NOTIFS, FENETRE_NOTIFS_MS, NOTES_NOTIFS_MAX);
+  if (e4) throw e4;
   const notesRappels = ((rappels || []) as Note[]).slice(0, NOTES_RAPPELS_MAX);
   const notesAppels = ((appels || []) as Note[]).slice(0, NOTES_APPELS_MAX);
-  const envois = [...(alertes || []), ...notesRappels, ...notesAppels] as Note[];
+  const notesNotifs = ((notifs || []) as Note[]).slice(0, NOTES_NOTIFS_MAX);
+  const envois = [...(alertes || []), ...notesRappels, ...notesAppels, ...notesNotifs] as Note[];
   let accuses: Accuse[] = [];
   const derniere = (alertes || [])[0] as Note | undefined;
   if (derniere) {
@@ -368,13 +377,17 @@ async function lireReception(admin: Admin) {
       accuses = accuses.concat((data || []) as Accuse[]);
     }
   }
-  const [r, a] = await Promise.all([parPaquets(pidsDes(notesRappels)), parPaquets(pidsDes(notesAppels))]);
-  accuses = accuses.concat(r.lus, a.lus);
+  const [r, a, n] = await Promise.all([parPaquets(pidsDes(notesRappels)), parPaquets(pidsDes(notesAppels)), parPaquets(pidsDes(notesNotifs))]);
+  accuses = accuses.concat(r.lus, a.lus, n.lus);
   // Plus de notes que le plafond, ou un paquet plein : « partiel », genre par genre.
   const tronqueRappels = (rappels || []).length > NOTES_RAPPELS_MAX || r.plein;
   const tronqueAppels = (appels || []).length > NOTES_APPELS_MAX || a.plein;
+  // Les notifications sociales : seul un paquet plein rend « partiel » ; plus de
+  // notes que la lecture n'en prend raccourcit la fenêtre, et le bilan le dit.
+  const tronqueNotifs = n.plein;
+  const notifsLimitees = (notifs || []).length > NOTES_NOTIFS_MAX;
   // `appelsActifs` : appels coupés (pilote), l'écran le dit au lieu de « 0 appel mesuré ».
-  return bilanReception({ envois, accuses, maintenant, tronqueRappels, tronqueAppels, appelsActifs: APPELS_ACTIFS });
+  return bilanReception({ envois, accuses, maintenant, tronqueRappels, tronqueAppels, appelsActifs: APPELS_ACTIFS, tronqueNotifs, notifsLimitees });
 }
 
 async function lireEtatMemorise(admin: Admin) {
