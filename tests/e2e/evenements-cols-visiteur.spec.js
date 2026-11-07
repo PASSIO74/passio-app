@@ -150,6 +150,10 @@ async function banc(page, { compte, plan }) {
       return q;
     };
     window.supa.from = (table) => requete(table);
+    // L'adresse et le contact ne viennent plus de la table : la RPC les rend à qui y a droit (lot 4 de l'audit du 06/11).
+    window.supa.rpc = (nom, args) => Promise.resolve(window.__plan.adressesRefusees ? { data: null, error: { code: "42501", message: "refus" } } : nom === "adresses_activites"
+      ? { data: (args.p_event_ids || []).map((id) => ({ event_id: id, address: "12 rue du Banc", contact: "0600000000" })), error: null }
+      : { data: [], error: null });
   }, plan);
   // Un chargement de démarrage encore EN VOL compterait dans le relevé (le bloc
   // « 3. Les autres requêtes » de `supaInit` part à +2 s) : on laisse la poussière
@@ -228,7 +232,7 @@ test.describe("events : les colonnes privées ne partent qu'avec un compte", () 
   test("④ compte réel dont la session est morte — un repli, puis plus jamais", async ({ page }) => {
     await banc(page, {
       compte: true,
-      plan: { events: [{ error: REFUS_401 }, { data: [EV] }] },
+      plan: { adressesRefusees: true, events: [{ error: REFUS_401 }, { data: [EV] }] },
     });
     const evs = await page.evaluate(() => supaLoadEvents());
     let cols = await lecturesEvents(page);
