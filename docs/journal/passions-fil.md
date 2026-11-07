@@ -79,11 +79,11 @@ rien faire est pire qu'un refus.
 ⚠️ **CE DROIT N'EST PAS CELUI DE CRÉER DES PASSIONS, ET AUCUN DRAPEAU CLIENT NE PEUT L'ÊTRE** : le
 plafond des créations (3 à vie) est tenu par `creer_passion` + `public.passion_quotas`. Mesuré le
 2026-09-18 (canal ① d'ADR-012) : la table porte **UNE seule ligne**, `creations_max = NULL`
-(illimité) — et c'est celle de **`contact@ladamemetallerie.com`** (`20762060-…`), **pas** celle de
+(illimité) — et c'est celle de **`[adresse retirée]`** (`20762060-…`), **pas** celle de
 `passioadmin@gmail.com` (`812aee2b-…`), qui n'a **aucune ligne**, donc le défaut de 3. Déplacer ce
 droit est un geste d'**exploitation**, hors dépôt (canal ②, jamais depuis la CI) :
-`npm run passions:moderation quota --uid 812aee2b-214f-4949-931e-842599b6d68b --max illimite` puis
-`--uid 20762060-78c4-40b9-ad2a-ee7c1cb19857 --max defaut`. ⚠️ « Pas de ligne » et « ligne à NULL »
+`npm run passions:moderation quota --uid <compte-réel> --max illimite` puis
+`--uid <compte-réel> --max defaut`. ⚠️ « Pas de ligne » et « ligne à NULL »
 sont DEUX états (la fonction tranche sur `found`) : **l'état de la base ne se lit pas dans un fichier
 du dépôt, il se mesure.**
 

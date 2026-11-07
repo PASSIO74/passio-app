@@ -14,9 +14,8 @@ Netlify sert les vues suivantes depuis le bord, et Supabase n'est plus sollicit�
 Netlify gratuit porte **100 Go/mois**, vingt fois plus. La fonction ne tourne qu'au premier
 passage d'un fichier par nœud du CDN ; les vues suivantes ne l'invoquent pas.
 
-Ce montage remplace le Worker Cloudflare décrit dans `docs/CDN_CLOUDFLARE.md`, qui exigeait
-un compte Cloudflare de plus. Le Worker reste dans `cloudflare/` comme solution de secours :
-même contrat d'URL (`<base>/<seau>/<chemin>`), il suffirait de changer `PASSIO_CDN_BASE`.
+Ce montage a remplacé un ancien Worker Cloudflare, retiré du dépôt le 2026-11-06 (audit de sécurité, D-19) : il
+contredisait ce document et personne ne le déployait. À vérifier une fois : aucun Worker restant sur un compte Cloudflare.
 
 > ⚠️ **Les pièces jointes de messagerie NE PASSENT PLUS par le CDN depuis le 2026-09-11.**
 > Le seau `attachments` est privé (migration `migration_ouverture_publique_2026-09-11.sql`,
