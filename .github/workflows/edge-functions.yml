@@ -69,6 +69,8 @@ jobs:
           node --test tests/unit/activation.test.mjs
           node --test tests/unit/reglages.test.mjs
           node --test tests/unit/rappels.test.mjs
+          node --test tests/unit/reception.test.mjs
+          node --test tests/unit/appels.test.mjs
           node --test tests/unit/autonomie.test.mjs
           node --test tests/unit/autonomie-seuils-sql.test.mjs
 
