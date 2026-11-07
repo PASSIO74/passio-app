@@ -24,7 +24,7 @@
 -- RETOUR ARRIÈRE (éditeur SQL). Les coordonnées arrondies ne reviennent pas : les exactes sont dans la
 -- sauvegarde du 2026-11-07.
 --| begin;
---| grant select (address, contact) on public.events to authenticated;
+--| grant select on public.events to authenticated;
 --| drop trigger if exists aa_events_coordonnees on public.events;
 --| drop function if exists public.events_coordonnees_arrondies();
 --| drop function if exists public.adresses_activites(text[]);
@@ -66,7 +66,19 @@ $fn$;
 revoke all on function public.adresses_activites(text[]) from public, anon;
 grant execute on function public.adresses_activites(text[]) to authenticated, service_role;
 
-revoke select (address, contact) on public.events from authenticated;
+-- ⚠️ `authenticated` tient SELECT sur la TABLE : un `revoke select (address, contact)` n'y retire rien, sans la moindre
+-- erreur. On retire le droit de table, puis on rend chaque colonne, sauf ces deux-là. Vu au tableau de verdict du staging
+-- le 07/11 : le banc écrivait ces droits colonne par colonne, et passait.
+revoke select on public.events from authenticated;
+do $do$
+declare colonnes text;
+begin
+  select string_agg(format('%I', a.attname), ', ' order by a.attnum) into strict colonnes
+    from pg_catalog.pg_attribute a
+   where a.attrelid = 'public.events'::regclass and a.attnum > 0 and not a.attisdropped
+     and a.attname not in ('address', 'contact');
+  execute format('grant select (%s) on public.events to authenticated', colonnes);
+end $do$;
 
 -- ── TABLEAU DE VERDICT ───────────────────────────────────────────────────────────────────────────
 select 'coordonnées : arrondies à l''écriture, aucune ligne au mètre' as controle,
@@ -78,6 +90,12 @@ union all select 'adresse et contact : plus de lecture directe',
              and not has_column_privilege('authenticated', 'public.events', 'contact', 'select')
              and not has_column_privilege('anon', 'public.events', 'address', 'select')
              and not has_column_privilege('anon', 'public.events', 'contact', 'select') then 'OK' else 'ECHEC' end
+union all select 'les autres colonnes : toujours lisibles par un compte',
+       case when not exists (select 1 from pg_catalog.pg_attribute a
+                              where a.attrelid = 'public.events'::regclass and a.attnum > 0 and not a.attisdropped
+                                and a.attname not in ('address', 'contact')
+                                and not has_column_privilege('authenticated', 'public.events', a.attname, 'select'))
+            then 'OK' else 'ECHEC' end
 union all select 'adresse et contact : écriture de l''organisation conservée',
        case when has_column_privilege('authenticated', 'public.events', 'address', 'update')
              and has_column_privilege('authenticated', 'public.events', 'contact', 'update') then 'OK' else 'ECHEC' end
