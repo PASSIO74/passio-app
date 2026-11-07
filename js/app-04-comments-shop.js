@@ -6343,12 +6343,9 @@ function _estUrlDonnees(u) {
 
 // La data-URL d'un message média dont le fichier n'est encore QUE sur cet
 // appareil, ou null. Même ordre que `_pieceJointeDuMessage` : c'est ce champ-là
-// que `_forwardTo` remplace. ⚠️ SEULEMENT les champs dont `_forwardTo` fait une
-// enveloppe (photo, vidéo, document) : un VOCAL n'y a pas de branche — le
-// téléverser laissait un objet orphelin dans Storage pour un transfert qui part
-// en texte vide (défaut introduit par #751, corrigé avant la migration).
+// que `_forwardTo` remplace.
 function _urlLocaleDuMessage(m) {
-  var u = m ? (m.img || m.video || m.fileUrl || null) : null;
+  var u = m ? (m.img || m.video || m.fileUrl || m.voiceData || null) : null;
   return _estUrlDonnees(u) ? u : null;
 }
 

@@ -1631,10 +1631,11 @@ l'écrivait entière dans la ligne. Et le champ de texte n'avait AUCUNE limite. 
 `MSG_TEXTE_MAX` = 5 000 (le texte reste dans le champ), 23514 définitif (`_refusDefinitif`) et dit (`_motRefusContenu`), et la
 chaîne `CONTENU_MESSAGE_BORNE` que la migration exige dans le client servi (`-- PREREQUIS-CLIENT:`). Verrou :
 `tests/e2e/message-contenu-borne.spec.js` (9 ; sans le téléversement et sans le 23514, 5 rougissent). **Défaut de #751,
-corrigé dans la PR de la migration** : `_urlLocaleDuMessage` retenait aussi `voiceData`, or `_forwardTo` ne fait AUCUNE
-enveloppe d'un vocal (il part en texte vide, préexistant) — transférer son propre vocal téléversait un objet orphelin.
-Seuls la photo, la vidéo et le document sont téléversés (verrou ⑤ bis, réinjection rouge). Transférer un vocal ou un
-document qu'on vient d'envoyer reste un trou PRÉEXISTANT (texte vide), hors de ce lot.
+signalé au lot qui retouche `_forwardTo` (#747, autre session — un seul écrivain par fonction)** : `_urlLocaleDuMessage`
+retient aussi `voiceData`, or `_forwardTo` ne fait AUCUNE enveloppe d'un vocal (il part en texte vide, préexistant) —
+transférer son propre vocal téléverse un objet orphelin dans Storage. Le remède (ne téléverser que ce dont le transfert fait
+une enveloppe, ou donner au vocal son enveloppe `audio` « Message vocal (Ns) ») et son verrou sont confiés à ce lot ; la
+migration n'en dépend pas : aucune data-URL n'en part.
 
 **La décision : deux contraintes CHECK.**
 - `conv_messages_content_len_check` — 20 000 caractères au plus (36 × le plus long message mesuré ; la PIRE enveloppe de texte
