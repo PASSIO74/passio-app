@@ -821,12 +821,417 @@ function _passioDataUrlToFile(durl, name) {
   return new File([u8], base + "." + ext, { type: mime });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PIÈCE JOINTE — LE DÉPÔT A UN VERDICT, UNE FILE ET UN « RÉESSAYER » (2026-11-07)
+// ───────────────────────────────────────────────────────────────────────────
+// ⚠️ LE REPLI SUR LA DATA URL ÉTAIT UN ÉCHEC SILENCIEUX, ET IL DÉTRUISAIT LE MÉDIA.
+// `_processAttach` et `_sendVoiceMessage` appelaient, sur un dépôt Storage en échec
+// (refus OU coupure), `sendMessageToSupabase(…, dataUrl, …)`. La garde de cette
+// dernière retirait bien le base64 (mesuré en production le 2026-11-07 : 0 ligne
+// `conv_messages` porte une data URL sur 88), mais insérait à la place « 📎 … (non
+// synchronisé) » et marquait le message ENVOYÉ. Trois conséquences, aucune visible :
+//   · le destinataire ne recevait qu'une étiquette, jamais le média ;
+//   · chez l'auteur, la relecture du fil à la prochaine ouverture REMPLACE la copie
+//     locale par la ligne du serveur (`_fusionnerMessagesServeur`) : la photo de
+//     l'auteur devenait l'étiquette — le média était perdu pour tout le monde ;
+//   · hors ligne, l'étiquette partait en file (`_outboxAdd`) et c'est ELLE que le
+//     retour du réseau envoyait : une coupure n'était jamais rattrapée.
+// Rien n'en remontait au pilotage : `_diag` n'écrit qu'en mode debug.
+//
+// LA RÈGLE, désormais, pour toute pièce jointe (photo, vidéo, document, audio, vocal) :
+//   · le message porte `status: "sending"` dès la bulle (🕓), `de` (le compte RÉEL
+//     qui l'a écrit, AUTH-06) et `pj` — de quoi le redéposer depuis SA copie locale ;
+//   · coupure réseau (`estEchecReseau`, seule autorité) → échec affiché ET file
+//     `passio_pj_outbox_v1`, rejouée par `_flushOutbox` (démarrage, retour du
+//     réseau) ; le chemin de l'objet est FIXÉ au premier essai : un renvoi après une
+//     réponse perdue retrouve l'objet déjà là (409) au lieu d'en déposer un second ;
+//   · refus réel → échec affiché, toast, aucun rejeu automatique ; « réessayer »
+//     (`_retryMsg`) redépose depuis la copie locale ;
+//   · toute issue manquée remonte (`tel.error`, action `piece_jointe_depot`) ;
+//   · jamais de base64 vers `conv_messages`, sous aucune forme.
+// La file est À PART de `passio_outbox_v1`, délibérément : une entrée sans contenu
+// y serait insérée telle quelle par un client plus ancien (retour arrière Netlify).
+// Verrou : tests/e2e/piece-jointe-depot-echec.spec.js.
+var PJ_OUTBOX_KEY = "passio_pj_outbox_v1";
+// Un dépôt de `msgId` à la fois (même raison que `_msgEnVol`, ROB-06) : le
+// démarrage, le retour du réseau et « réessayer » peuvent se croiser.
+var _pjEnVol = {};
+
+function _pjFileLire() {
+  try { var a = JSON.parse(localStorage.getItem(PJ_OUTBOX_KEY) || "[]"); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function _pjFileEcrire(a) { try { localStorage.setItem(PJ_OUTBOX_KEY, JSON.stringify(a)); } catch (e) {} }
+function _pjFileRetirer(msgId) {
+  var a = _pjFileLire();
+  var reste = a.filter(function (x) { return x && x.msgId !== msgId; });
+  if (reste.length !== a.length) _pjFileEcrire(reste);
+}
+// `owner` est le compte RÉEL capturé À L'ORIGINE de l'envoi, jamais relu ici
+// (ASTRA-21) ; `contexte` ({ generation, auteur }) périme une réponse revenue après
+// une purge ou un changement de compte (ASTRA-43). Sans propriétaire, RIEN n'est
+// écrit : une entrée qui ne sait pas à qui elle appartient ne se rejoue pas.
+function _pjFileAjouter(convId, msgId, owner, contexte) {
+  if (!owner) return false;
+  if (typeof _outboxContextePerime === "function" && _outboxContextePerime(contexte)) {
+    try { if (typeof diagLog === "function") diagLog("pj_file_perimee " + String(msgId)); } catch (e) {}
+    return false;
+  }
+  var tous = _pjFileLire();
+  // Le compteur d'essais SURVIT à la remise en file, sinon le plafond ne borne rien.
+  var ancienne = tous.find(function (x) { return x && x.msgId === msgId; });
+  var a = tous.filter(function (x) { return x && x.msgId !== msgId; });
+  a.push({ convId: convId, msgId: msgId, owner: owner, at: Date.now(), essais: Number((ancienne && ancienne.essais) || 0) });
+  _pjFileEcrire(a);
+  return true;
+}
+
+// La bulle `msgId`, `null` si elle n'est pas (ou plus) dans les conversations, et
+// `undefined` si la lecture a levé : une erreur ne doit jamais se lire « message
+// disparu » — ce serait vider la file en silence.
+function _pjMessage(convId, msgId) {
+  try {
+    var c = (getConversations() || []).find(function (x) { return x.id === convId; });
+    return c ? ((c.messages || []).find(function (x) { return x.id === msgId; }) || null) : null;
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("pj_lecture KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {}
+    return undefined;
+  }
+}
+// « Supprimé pour moi / pour tous » pose une PIERRE TOMBALE (`convTombAdd("msg", …)`,
+// app-04) : c'est elle, et elle seule, qui dit qu'une bulle absente a été VOULUE
+// absente. Une bulle simplement introuvable (conversation réécrite, cache perdu)
+// n'autorise ni à retirer un objet déposé ni à taire l'envoi.
+function _pjSupprimee(msgId) {
+  try { return typeof convTombHas === "function" && typeof convTombLoad === "function" && convTombHas(convTombLoad(), "msg", msgId); }
+  catch (e) { return false; }
+}
+function _pjEstDataUrl(v) { return typeof v === "string" && /^data:/i.test(v); }
+// La copie LOCALE du média, seule source d'un dépôt : champ et data URL, ou null.
+function _pjCopieLocale(m) {
+  if (!m) return null;
+  var champs = ["img", "video", "voiceData", "docData"];
+  for (var i = 0; i < champs.length; i++) if (_pjEstDataUrl(m[champs[i]])) return { champ: champs[i], donnees: m[champs[i]] };
+  return null;
+}
+// data URL → Blob. Coupé sur « ;base64, », jamais sur la première virgule : un mime
+// « video/webm;codecs=vp8,opus » en porte une (même piège qu'app-08).
+function _pjBlob(dataUrl, type) {
+  var s = String(dataUrl || "");
+  var i = s.indexOf(";base64,");
+  if (i === -1) return null;
+  var mime = type || (/^data:([^;,]+)/i.exec(s) || [])[1] || "application/octet-stream";
+  var bstr = atob(s.slice(i + 8));
+  var u8 = new Uint8Array(bstr.length);
+  for (var k = 0; k < bstr.length; k++) u8[k] = bstr.charCodeAt(k);
+  return new Blob([u8], { type: mime });
+}
+// Chemin d'objet : `attachments/<conv>/<horodatage>_<aléa>_<nom>` — la policy
+// d'écriture lit le 2ᵉ segment (`storage_chemin_autorise`, membre de la conv).
+// L'aléa rend le chemin PROPRE à ce message : c'est ce qui permet de lire un 409
+// au renvoi comme « déjà déposé par moi ».
+function _pjCheminNeuf(convId, nom) {
+  return "attachments/" + convId + "/" + Date.now() + "_" + Math.random().toString(36).substr(2, 9) + "_" +
+    String(nom || "fichier").replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+function _pjDejaDeposee(err) {
+  if (!err) return false;
+  var st = Number(err.status) || Number(err.statusCode) || 0;
+  return st === 409 || String(err.statusCode || "") === "409" ||
+    /already exists|duplicate/i.test(String(err.error || "") + " " + String(err.message || ""));
+}
+// Code FERMÉ de l'échec (jamais le libellé du serveur : il peut porter le nom du fichier).
+function _pjCodeEchec(err, reseau) {
+  if (reseau) return "reseau";
+  var st = Number(err && err.status) || Number(err && err.statusCode) || 0;
+  if (st === 413 || /too large|maximum allowed size/i.test(String((err && err.message) || ""))) return "trop_lourd";
+  if (st === 429) return "limite";
+  if (st === 401 || st === 403) return "refus";
+  if (st >= 500) return "serveur";
+  return st ? "http_" + st : "sans_code";
+}
+// L'enveloppe `content` d'une pièce jointe DÉJÀ déposée — la même, au champ près,
+// que celle que construit `sendMessageToSupabase` (et `_withSenderMeta`).
+function _pjContenu(pj, url) {
+  var brut = JSON.stringify({ type: pj.kind, filename: pj.nom, fileType: pj.type, url: url, text: "[" + String(pj.kind || "").toUpperCase() + "] " + pj.nom });
+  return (typeof _withSenderMeta === "function") ? _withSenderMeta(brut) : brut;
+}
+// Au pilotage : une coupure ou une limite atteinte est un AVERTISSEMENT (l'appareil,
+// pas notre code) ; tout autre refus est une ERREUR. Aucun nom de fichier, aucun
+// libellé serveur : un code fermé, un statut, le type et la voie.
+function _pjSignaler(o) {
+  try {
+    if (!window.tel || !tel.error) return;
+    var rc = o.rc || "sans_code";
+    tel.error(new Error("piece_jointe_depot " + rc), {
+      action: "piece_jointe_depot",
+      severity: (rc === "reseau" || rc === "limite" || rc === "trop_lourd") ? "warn" : "error",
+      meta: { rc: rc, http: Number(o.http) || 0, kind: String(o.kind || ""), voie: String(o.voie || "premier"), essai: Number(o.essai) || 0, ko: Number(o.ko) || 0 },
+    });
+  } catch (e) {}
+}
+// L'échec d'un dépôt : l'optimiste est défait (« réessayer »), la coupure part en
+// file, le refus se dit — et le pilotage le sait.
+function _pjEchec(convId, msgId, o) {
+  try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "failed"); } catch (e) {}
+  var enFile = false;
+  if (o.reseau) enFile = _pjFileAjouter(convId, msgId, o.proprietaire, o.contexte);
+  else _pjFileRetirer(msgId);
+  // L'entrée en file ne vaut que si la copie locale est écrite : tout de suite, pas
+  // dans 250 ms (`saveConversations` est différé) — une coupure hors ligne conclut
+  // dans la même seconde que la bulle, et un rechargement entre les deux laisserait
+  // une file qui désigne un message jamais enregistré.
+  if (enFile) { try { if (typeof saveConversationsNow === "function") saveConversationsNow(); } catch (e) {} }
+  // ⚠️ Une coupure ne se signale qu'au PREMIER essai (ou à « réessayer »), jamais à
+  // chaque rejeu de la file : `sante.erreursJs15` compte les `warn` (rouge à 10 en
+  // 15 min), et un téléphone sur un réseau instable en rejouerait jusqu'à dix par
+  // pièce jointe (revue audit-passio du 2026-11-07).
+  if (!(o.reseau && o.voie === "rejeu")) _pjSignaler(o);
+  try { if (typeof diagLog === "function") diagLog("pj_depot " + o.rc + (enFile ? " en_file" : "")); } catch (e) {}
+  try {
+    if (o.reseau && enFile) { if (o.interactif) toast("📶 Pas de réseau — la pièce jointe partira à la reconnexion"); }
+    else if (o.rc === "trop_lourd") toast("⚠️ Fichier trop lourd pour être envoyé (50 Mo max)");
+    else if (o.rc === "illisible") toast("⚠️ Pièce jointe introuvable sur cet appareil — joins-la de nouveau");
+    else if (o.interactif || !o.reseau) toast("⚠️ Pièce jointe non envoyée — touche « réessayer »");
+  } catch (e) {}
+}
+
+// Dépose le média du message `msgId` depuis sa copie locale, puis insère le message
+// (`sendMessageToSupabase`, qui a son propre verdict et sa propre file).
+// `o.voie` : « premier », « rejeu » (file), « manuel » (« réessayer ») ;
+// `o.interactif` : la personne vient d'agir ; `o.proprietaire` / `o.contexte` :
+// capturés à l'ORIGINE (ASTRA-21/43). Rend une promesse réglée au verdict.
+function _pjDeposer(convId, msgId, o) {
+  o = o || {};
+  var m = _pjMessage(convId, msgId);
+  // Lecture en erreur : on ne conclut rien, l'entrée de file reste pour le tour suivant.
+  if (m === undefined) return Promise.resolve(false);
+  var voie = o.voie || "premier";
+  if (!m || !m.pj) {
+    _pjFileRetirer(msgId);
+    // Supprimée exprès (pierre tombale) : rien à envoyer. Sinon, la copie est PERDUE
+    // et l'envoi n'aura pas lieu : le pilotage doit le savoir.
+    if (!_pjSupprimee(msgId)) _pjSignaler({ rc: "copie_perdue", http: 0, kind: "", voie: voie, essai: 0, ko: 0 });
+    try { if (typeof diagLog === "function") diagLog("pj_bulle_absente " + String(msgId)); } catch (e) {}
+    return Promise.resolve(false);
+  }
+  var pj = m.pj;
+  var contexte = o.contexte || {
+    generation: (typeof _outboxGenerationActuelle === "function") ? _outboxGenerationActuelle() : null,
+    auteur: (typeof MY_UID !== "undefined") ? MY_UID : null,
+  };
+  var proprietaire = (o.proprietaire !== undefined) ? o.proprietaire : ((typeof _fileProprietaire === "function") ? _fileProprietaire() : null);
+  // Déjà déposée (l'insertion avait échoué, ou l'application a été tuée pendant
+  // elle) : seule la LIGNE repart, jamais un second objet. Par `_sendTextToSupa`,
+  // qui porte ce qu'il faut à un renvoi : un seul envoi en vol par message (ROB-06)
+  // et, sur 23505, la preuve que la ligne est déjà là (`_conflitClePrimaire`) —
+  // `sendMessageToSupabase` n'a ni l'un ni l'autre (revue audit-passio).
+  if (pj.url) {
+    _pjFileRetirer(msgId);
+    try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "sending"); } catch (e) {}
+    if (typeof _sendTextToSupa === "function") _sendTextToSupa(convId, msgId, _pjContenu(pj, pj.url), m.de || proprietaire || undefined);
+    else sendMessageToSupabase(msgId, convId, pj.url, pj.type, pj.nom, pj.kind);
+    return Promise.resolve(true);
+  }
+  if (_pjEnVol[msgId]) return Promise.resolve(false);
+  var base = { kind: pj.kind, voie: voie, interactif: !!o.interactif, proprietaire: proprietaire, contexte: contexte, essai: Number(pj.tentatives) || 0, ko: 0 };
+  var copie = _pjCopieLocale(m);
+  var blob = null;
+  try { blob = copie ? _pjBlob(copie.donnees, pj.type) : null; } catch (e) { blob = null; }
+  if (!blob) {
+    // La copie locale manque ou ne se lit plus : rien à déposer, rien à rejouer.
+    _pjEchec(convId, msgId, Object.assign(base, { reseau: false, rc: "illisible", http: 0 }));
+    return Promise.resolve(false);
+  }
+  base.ko = Math.round(blob.size / 1024);
+  // Sans client réel (SDK pas chargé) ou sans réseau, l'appareil ne joindra pas le
+  // serveur : c'est une coupure, pas un refus — en file.
+  var horsLigne = (typeof navigator !== "undefined" && navigator && navigator.onLine === false);
+  if (typeof supa === "undefined" || !supa || !window._supaReal || horsLigne) {
+    _pjEchec(convId, msgId, Object.assign(base, { reseau: true, rc: "reseau", http: 0 }));
+    return Promise.resolve(false);
+  }
+  _pjEnVol[msgId] = true;
+  // Une mise à jour attend ce dépôt (pwa-detect.js) : la copie n'est sûre qu'une
+  // fois l'objet chez Storage ou l'entrée en file.
+  var finEnvoi = _envoiCommence();
+  pj.tentatives = (Number(pj.tentatives) || 0) + 1;
+  base.essai = pj.tentatives;
+  try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "sending"); } catch (e) {}
+  function conclure(ok, err) {
+    delete _pjEnVol[msgId];
+    try {
+      // ⚠️ La réponse d'un dépôt parti sous A ne s'écrit jamais sous B, ni après une
+      // purge : ni message inséré, ni file repeuplée (ASTRA-21/43).
+      if (typeof _outboxContextePerime === "function" && _outboxContextePerime(contexte)) {
+        try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "failed"); } catch (e) {}
+        try { if (typeof diagLog === "function") diagLog("pj_reponse_perimee " + String(msgId)); } catch (e) {}
+        return false;
+      }
+      if (!ok) {
+        var reseau = (typeof estEchecReseau === "function") && estEchecReseau(err);
+        var http = Number(err && err.status) || Number(err && err.statusCode) || 0;
+        var rc = _pjCodeEchec(err, reseau);
+        // Comme le chemin TEXTE (`_sendTextToSupa`) : la policy du seau exige d'être
+        // membre de la conversation (`storage_chemin_autorise`), et une conversation
+        // sans lignes `conv_members` se répare — UNE fois par conversation et par
+        // session (`_convReparationTentee`) —, puis le dépôt repart.
+        if (http === 403 && typeof _reparerAppartenanceConv === "function"
+            && window._convReparationTentee && !window._convReparationTentee[convId]) {
+          var refus = function () { _pjEchec(convId, msgId, Object.assign(base, { reseau: false, rc: rc, http: http })); };
+          Promise.resolve(_reparerAppartenanceConv(convId)).then(function (repare) {
+            if (repare) _pjDeposer(convId, msgId, { voie: voie, interactif: !!o.interactif, proprietaire: proprietaire, contexte: contexte });
+            else refus();
+          }, refus);
+          return false;
+        }
+        _pjEchec(convId, msgId, Object.assign(base, { reseau: reseau, rc: rc, http: http }));
+        return false;
+      }
+      // Relu ICI, pas capturé au départ : la conversation a pu être réécrite.
+      var mm = _pjMessage(convId, msgId);
+      if (!mm && _pjSupprimee(msgId)) {
+        // Supprimée EXPRÈS pendant le dépôt : l'objet ne doit pas rester sans message.
+        _pjFileRetirer(msgId);
+        try { supa.storage.from("attachments").remove([pj.chemin]); } catch (e) {}
+        return false;
+      }
+      // L'URL CANONIQUE (`/object/public/attachments/…`) : `cdnUrl` la laisse intacte
+      // pour ce seau privé, et `urlPieceJointeSignee` (app-02) la signe à l'affichage.
+      var pub = supa.storage.from("attachments").getPublicUrl(pj.chemin);
+      var brute = pub && pub.data && pub.data.publicUrl;
+      var url = brute ? ((typeof cdnUrl === "function") ? cdnUrl(brute) : brute) : "";
+      if (!url) { _pjEchec(convId, msgId, Object.assign(base, { reseau: false, rc: "url_absente", http: 0 })); return false; }
+      pj.url = url;
+      if (mm && mm.pj && mm.pj !== pj) mm.pj.url = url;
+      _pjFileRetirer(msgId);
+      try { saveConversations(); } catch (e) {}
+      // Bulle introuvable mais pas supprimée (conversation réécrite) : le message part
+      // QUAND MÊME — c'est le `pj` capturé au départ qui le décrit.
+      if (!mm) { try { if (typeof diagLog === "function") diagLog("pj_bulle_absente_envoyee " + String(msgId)); } catch (e) {} }
+      sendMessageToSupabase(msgId, convId, url, pj.type, pj.nom, pj.kind);
+      return true;
+    } finally { finEnvoi(); }
+  }
+  var envoi;
+  try {
+    envoi = Promise.resolve(supa.storage.from("attachments").upload(pj.chemin, blob, {
+      cacheControl: pj.cache || "31536000", // pièce jointe immuable → cache, soulage l'egress
+      upsert: false,
+      contentType: blob.type,
+    }));
+  } catch (e) { envoi = Promise.reject(e); }
+  return envoi.then(function (res) {
+    var err = res && res.error;
+    if (!err) return conclure(true);
+    // Renvoi après une réponse perdue : l'objet est DÉJÀ là, sous un chemin qui
+    // n'appartient qu'à ce message — c'est la preuve qu'il a été déposé.
+    if (_pjDejaDeposee(err) && pj.tentatives > 1) return conclure(true);
+    return conclure(false, err);
+  }, function (err) { return conclure(false, err); });
+}
+
+// « réessayer » sur une pièce jointe (`_retryMsg`, app-04, qui a déjà confronté
+// l'auteur `de` au compte courant).
+function _pjRenvoyer(convId, msgId) {
+  return _pjDeposer(convId, msgId, { voie: "manuel", interactif: true });
+}
+
+// ⚠️ UN DÉPÔT COUPÉ PAR LA FERMETURE DE L'APPLICATION N'A NI VERDICT NI FILE : la
+// bulle est restée « envoi… » (🕓), sans « réessayer », pour toujours. Au premier
+// vidage de la page, un message À MOI encore « sending » et né AVANT ce chargement
+// (rien de ce qui est en vol ici ne date d'avant) repart en file. Jamais ceux de
+// cette page : son insertion peut être en vol, et la doubler finirait en 23505
+// puis « échec » sur un message livré (ROB-06). Le dépôt est idempotent (chemin
+// fixé, 409 au renvoi) ; l'insertion d'un média déjà déposé repart par
+// `_sendTextToSupa`, qui tient un seul envoi en vol par message — la file des
+// MESSAGES peut porter le même, elle s'efface devant lui — et prouve un 23505.
+var _PJ_CHARGEMENT = Date.now();
+function _pjReprendreInterrompus(moi) {
+  if (window._pjInterrompusRepris || !moi) return;
+  window._pjInterrompusRepris = true;
+  try {
+    (getConversations() || []).forEach(function (c) {
+      (c.messages || []).forEach(function (m) {
+        if (!m || m.from !== "me" || !m.pj || m.status !== "sending" || m.de !== moi) return;
+        if (!(Number(m.at) < _PJ_CHARGEMENT)) return;
+        if (_pjEnVol[m.id] || (typeof _msgEstEnVol === "function" && _msgEstEnVol(m.id))) return;
+        if (_pjFileAjouter(c.id, m.id, moi, null)) {
+          try { if (typeof diagLog === "function") diagLog("pj_interrompue_reprise " + String(m.id)); } catch (e) {}
+        }
+      });
+    });
+  } catch (e) { try { if (typeof diagLog === "function") diagLog("pj_reprise KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {} }
+}
+
+// Rejoue les dépôts en attente — appelé par `_flushOutbox` (démarrage, retour du
+// réseau). Mêmes règles que la file des messages : compte d'abord (une entrée d'un
+// autre compte est jetée), un seul envoi en vol, plafond `MSG_ESSAIS_MAX`.
+function _pjFileVider() {
+  if (typeof sessionExpiree === "function" && sessionExpiree()) return;
+  if (typeof navigator !== "undefined" && navigator && navigator.onLine === false) return;
+  if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+  var moi = (typeof _fileProprietaire === "function") ? _fileProprietaire() : null;
+  _pjReprendreInterrompus(moi);
+  var a = _pjFileLire();
+  if (!a.length) return;
+  var contexte = {
+    generation: (typeof _outboxGenerationActuelle === "function") ? _outboxGenerationActuelle() : null,
+    auteur: (typeof MY_UID !== "undefined") ? MY_UID : null,
+  };
+  var plafond = (typeof MSG_ESSAIS_MAX === "number") ? MSG_ESSAIS_MAX : 10;
+  var restants = [], aLancer = [];
+  a.forEach(function (item) {
+    if (!item || !item.msgId) return;
+    if (!item.owner || item.owner !== moi) {
+      try { if (typeof diagLog === "function") diagLog("pj_file_autre_compte"); } catch (e) {}
+      return;
+    }
+    if (_pjEnVol[item.msgId]) { restants.push(item); return; }
+    var essais = Number(item.essais || 0) + 1;
+    if (essais > plafond) {
+      // Plus de renvoi automatique ; le message reste là, en échec, « réessayer ».
+      try { if (typeof _setMsgStatus === "function") _setMsgStatus(item.convId, item.msgId, "failed"); } catch (e) {}
+      try { if (typeof diagLog === "function") diagLog("pj_file_plafond " + essais); } catch (e) {}
+      return;
+    }
+    item.essais = essais;
+    restants.push(item);
+    aLancer.push(item);
+  });
+  // La file est réécrite AVANT les envois : un dépôt qui conclut d'emblée (copie
+  // illisible, coupure) la corrige par-dessus, jamais l'inverse.
+  _pjFileEcrire(restants);
+  aLancer.forEach(function (item) {
+    _pjDeposer(item.convId, item.msgId, { voie: "rejeu", proprietaire: item.owner, contexte: contexte });
+  });
+}
+
+// Mêmes portes que le TEXTE (`sendMessageFp`, app-04) : le mode invité explique
+// puis propose un compte, et une conversation de démonstration n'envoie rien
+// (UXO-03) — sans elles, un média joint à un exemple partait en 403, compté en
+// erreur au pilotage (revue audit-passio du 2026-11-07).
+function _pjEnvoiPermis() {
+  if (window.requireAuthentication && !requireAuthentication("message")) return false;
+  try {
+    var fp = document.getElementById("conv-fullpage");
+    var id = fp && fp.getAttribute("data-conv-id");
+    var c = id ? (getConversations() || []).find(function (x) { return x.id === id; }) : null;
+    if (typeof _estConvDemo === "function" && _estConvDemo(c)) {
+      toast("Conversation de démonstration — écris à un vrai membre depuis son profil");
+      return false;
+    }
+  } catch (e) {}
+  return true;
+}
+
 function handleAttachFile(input, kind) {
   var file = input.files && input.files[0];
   if (!file) {
     _diag("handleAttachFile: Aucun fichier sélectionné");
     return;
   }
+  if (!_pjEnvoiPermis()) { input.value = ""; return; }
   _mediaEnPreparation();
   // Images : compresser AVANT envoi (toute taille acceptée → ~150-400 Ko),
   // puis traiter le fichier compressé. Évite les uploads énormes et les échecs.
@@ -892,7 +1297,9 @@ function _processAttach(input, kind, file) {
   // message restait affiché chez son auteur et ne partait jamais, sans erreur ni file.
   var _finEnvoi = _envoiCommence();
   var reader = new FileReader();
-  reader.onerror = _finEnvoi;
+  // Une lecture impossible se DIT (un refus montre toujours sa sortie) : sans ce
+  // toast, choisir le fichier ne produisait rien, sans un mot.
+  reader.onerror = function () { _finEnvoi(); input.value = ""; toast("Impossible de lire ce fichier."); };
   reader.onload = function(e) {
     var dataUrl = e.target.result;
     _diag("handleAttachFile: FileReader completed - taille=" + dataUrl.length);
@@ -906,7 +1313,13 @@ function _processAttach(input, kind, file) {
     }
 
     var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
-    var msg = {id: msgId, from: "me", text: "", at: Date.now()};
+    // « envoi… » dès la bulle : rien n'est envoyé tant que le dépôt ET l'insertion
+    // n'ont pas répondu (l'ancienne bulle n'avait AUCUN statut — envoyée d'office).
+    // `de` : le compte RÉEL qui l'écrit (AUTH-06), seul autorisé à « réessayer ».
+    // `pj` : de quoi la redéposer depuis la copie locale — le chemin est fixé ICI.
+    var msg = {id: msgId, from: "me", text: "", at: Date.now(), status: "sending",
+      de: (typeof _fileProprietaire === "function") ? _fileProprietaire() : null,
+      pj: { kind: kind, nom: file.name, type: file.type, chemin: _pjCheminNeuf(convId, file.name), cache: "31536000", tentatives: 0 }};
 
     // Affichage local avec le data URL
     if(kind === 'media') {
@@ -940,48 +1353,38 @@ function _processAttach(input, kind, file) {
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
 
-    // Upload à Supabase Storage pour la synchronisation
+    // Dépôt Storage PUIS insertion, avec leur verdict (`_pjDeposer`, plus haut) :
+    // ⛔ plus de repli sur la data URL — il annonçait envoyé un message sans média.
+    // L'auteur et la génération de la file sont capturés ICI (ASTRA-21/43).
     _diag("handleAttachFile: Upload Supabase Storage...");
-
-    var fileName = Date.now() + "_" + Math.random().toString(36).substr(2, 9) + "_" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    var storagePath = "attachments/" + convId + "/" + fileName;
-
-    // Convertir le data URL en blob pour l'upload
-    var byteString = atob(dataUrl.split(',')[1]);
-    var ab = new ArrayBuffer(byteString.length);
-    var ia = new Uint8Array(ab);
-    for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-    var blob = new Blob([ab], { type: file.type });
-
-    // Upload le fichier à Supabase Storage
-    supa.storage.from("attachments").upload(storagePath, blob, {
-      cacheControl: "31536000", // 1 an : pièce jointe immuable → cache, soulage l'egress
-      upsert: false
-    }).then(function(storageRes) {
-      if (storageRes.error) {
-        _diag("handleAttachFile: ❌ Storage upload failed - " + storageRes.error.message + " (fallback sur data URL)");
-        sendMessageToSupabase(msgId, convId, dataUrl, file.type, file.name, kind);
-      } else {
-        // L'URL CANONIQUE de l'objet (`/object/public/attachments/…`). ⚠️ `cdnUrl`
-        // la laisse INTACTE pour ce seau depuis le 2026-09-11 : une pièce jointe
-        // privée ne passe pas par un cache public, et c'est `urlPieceJointeSignee`
-        // (app-02) qui la rend lisible à l'affichage, membre par membre.
-        var storageUrl = (typeof cdnUrl === "function" ? cdnUrl(supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl) : supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl);
-        _diag("handleAttachFile: ✅ Storage URL: " + storageUrl);
-        sendMessageToSupabase(msgId, convId, storageUrl, file.type, file.name, kind);
-      }
-    }).catch(function(err) {
-      _diag("handleAttachFile: Storage exception - " + err.message + " (fallback)");
-      sendMessageToSupabase(msgId, convId, dataUrl, file.type, file.name, kind);
-    }).then(_finEnvoi, _finEnvoi);
-
-    _diag("handleAttachFile: ✅ Sauvegarde locale OK");
+    _pjDeposer(convId, msgId, {
+      voie: "premier", interactif: true, proprietaire: msg.de,
+      contexte: { generation: (typeof _outboxGenerationActuelle === "function") ? _outboxGenerationActuelle() : null, auteur: (typeof MY_UID !== "undefined") ? MY_UID : null },
+    });
+    // Le dépôt tient son propre envoi dès son départ : la page reste retenue sans trou.
+    _finEnvoi();
     input.value = "";
   };
   reader.readAsDataURL(file);
 }
 
 function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind) {
+  // ⛔ JAMAIS DE BASE64 EN BASE — ET JAMAIS UN FAUX « ENVOYÉ » À LA PLACE (2026-11-07).
+  // Un seul message de 5 Mo avait fait gonfler conv_messages à 24 Mo en beta. La
+  // garde d'avant retirait la data URL puis insérait « 📎 … (non synchronisé) » en
+  // annonçant le message ENVOYÉ : le destinataire n'avait qu'une étiquette, et la
+  // relecture du fil remplaçait ensuite la copie locale de l'auteur par elle — le
+  // média était perdu pour tous, sans un mot. Plus aucun appelant ne passe de data
+  // URL (le dépôt a son verdict, `_pjDeposer`) ; si l'un d'eux le refaisait, RIEN ne
+  // part : le message passe en échec, « réessayer » redépose depuis la copie locale,
+  // et le pilotage le sait (c'est un défaut de NOTRE code, pas de l'appareil).
+  if (typeof fileUrl === "string" && /^data:/i.test(fileUrl)) {
+    _diag("sendMessageToSupabase: ⛔ data URL refusée (" + fileUrl.length + " octets) — rien n'est inséré");
+    try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "failed"); } catch (e) {}
+    try { if (window.tel && tel.error) tel.error(new Error("piece_jointe_data_url"), { action: "piece_jointe_data_url", severity: "error", meta: { kind: String(kind || "") } }); } catch (e) {}
+    try { toast("⚠️ Pièce jointe non envoyée — touche « réessayer »"); } catch (e) {}
+    return;
+  }
   try { window.tel && tel.action("send_message", { kind: kind || "text", hasFile: !!fileUrl, convId: convId }); } catch (e) {}
   // Traçage bout-en-bout : chaîne de validation « handler → requête → enregistré ».
   // L'étape « requête » est auto-taguée par le hook fetch ; on consigne ici le
@@ -1008,25 +1411,13 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
       _flowCid = null;
     } catch (e) {}
   }
-  // ⛔ NE JAMAIS stocker de base64 en DB (data: URL = média non uploadé sur
-  // Storage). Un seul message de 5 Mo a fait gonfler conv_messages à 24 Mo en
-  // beta. Si l'upload Storage a échoué, on insère uniquement les métadonnées
-  // (filename/type) sans le payload : le destinataire voit « média non
-  // synchronisé », l'expéditeur garde sa copie locale, et la DB reste légère.
-  var _expired = (typeof fileUrl === "string" && fileUrl.indexOf("data:") === 0);
-  if (_expired) {
-    _diag("sendMessageToSupabase: ⚠️ upload Storage échoué → base64 NON stocké en DB (" + (fileUrl.length) + " octets ignorés)");
-    fileUrl = "";
-  }
-
-  // Encoder dans le content en JSON
+  // Encoder dans le content en JSON (la data URL est refusée en tête de fonction).
   var contentData = {
     type: kind,
     filename: fileName,
     fileType: fileType,
     url: fileUrl,
-    expired: _expired || undefined,
-    text: _expired ? "📎 " + (fileName || "Média") + " (non synchronisé)" : "[" + kind.toUpperCase() + "] " + fileName
+    text: "[" + kind.toUpperCase() + "] " + fileName
   };
   var contentJson = JSON.stringify(contentData);
 
@@ -1608,6 +1999,7 @@ window._isRecording = false;
 
 async function startVoiceRecord() {
   if (window._isRecording) return;
+  if (typeof _pjEnvoiPermis === "function" && !_pjEnvoiPermis()) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { toast("🎙️ Enregistrement non supporté sur cet appareil"); return; }
   try {
     // Micro TRAITÉ (anti-écho / anti-bruit / gain auto) + mono 48 kHz : voix
@@ -1703,46 +2095,34 @@ function _sendVoiceMessage(dataUrl, duration) {
     if (!c) return;
     if (!c.messages) c.messages = [];
     var msgId = "msg_" + uid();
-    c.messages.push({ id: msgId, from: "me", text: "", voiceData: dataUrl, voiceDuration: duration, at: Date.now() });
+    // ⚠️ NE PAS coder le conteneur en dur. `startVoiceRecord` négocie déjà le
+    // meilleur encodeur de l'appareil : webm/opus sur Android, `audio/mp4` sur
+    // Safari/iOS (qui ne sait PAS produire de webm). Écrire « audio/webm » ici
+    // envoyait donc un fichier mp4 nommé `.webm` et servi par Storage avec un
+    // Content-Type mensonger : injouable pour TOUT LE MONDE, y compris pour le
+    // destinataire Android. Le type réel est porté par la data-URL elle-même.
+    var _vt = (String(dataUrl).match(/^data:([^;,]+)/) || [])[1] || "audio/webm";
+    var _vext = _vt.indexOf("mp4") >= 0 ? "m4a" : (_vt.indexOf("ogg") >= 0 ? "ogg" : "webm");
+    // Même pipeline que la pièce jointe (`_pjDeposer`) : « envoi… » dès la bulle,
+    // dépôt puis insertion avec leur verdict, coupure en file, refus dit. ⛔ Le
+    // vocal partait sinon par le même repli sur la data URL — même défaut, même
+    // perte (2026-11-07). Un vocal perdu ne se refait pas.
+    var _de = (typeof _fileProprietaire === "function") ? _fileProprietaire() : null;
+    c.messages.push({ id: msgId, from: "me", text: "", voiceData: dataUrl, voiceDuration: duration, at: Date.now(),
+      status: "sending", de: _de,
+      pj: { kind: "audio", nom: "Message vocal (" + duration + "s)", type: _vt, chemin: _pjCheminNeuf(convId, "voice." + _vext), cache: "3600", tentatives: 0 } });
     c.lastAt = Date.now();
     saveConversations();
     if (typeof renderConvFpThread === "function") renderConvFpThread(c, displayName);
     if (typeof renderMessages === "function") renderMessages();
 
-    // Sync Supabase : upload Storage puis message (même pipeline que les pièces jointes)
-    if (typeof supa === "undefined" || !supa) return;
-    // ⚠️ UNE MISE À JOUR ATTEND CET ENVOI (pwa-detect.js), comme pour une pièce jointe.
-    var _finEnvoi = _envoiCommence();
-    try {
-      var byteString = atob(dataUrl.split(",")[1]);
-      var ia = new Uint8Array(byteString.length);
-      for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-      // ⚠️ NE PAS coder le conteneur en dur. `startVoiceRecord` négocie déjà le
-      // meilleur encodeur de l'appareil : webm/opus sur Android, `audio/mp4` sur
-      // Safari/iOS (qui ne sait PAS produire de webm). Écrire « audio/webm » ici
-      // envoyait donc un fichier mp4 nommé `.webm` et servi par Storage avec un
-      // Content-Type mensonger : injouable pour TOUT LE MONDE, y compris pour le
-      // destinataire Android. Le type réel est porté par la data-URL elle-même.
-      var _vt = (dataUrl.match(/^data:([^;,]+)/) || [])[1] || "audio/webm";
-      var _vext = _vt.indexOf("mp4") >= 0 ? "m4a" : (_vt.indexOf("ogg") >= 0 ? "ogg" : "webm");
-      var blob = new Blob([ia.buffer], { type: _vt });
-      var storagePath = "attachments/" + convId + "/" + Date.now() + "_voice." + _vext;
-      supa.storage.from("attachments").upload(storagePath, blob, { cacheControl: "3600", upsert: false, contentType: _vt }).then(function (res) {
-        var _pub = supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl;
-        // Même chemin que la pièce jointe (l. ~886) : `cdnUrl` rend l'URL canonique
-        // pour le seau `attachments` (privé depuis le 2026-09-11 — aucun cache public),
-        // et le lecteur signe l'URL au moment de lire (`_playVoiceById`, app-04).
-        var url = res.error ? dataUrl : (typeof cdnUrl === "function" ? cdnUrl(_pub) : _pub);
-        sendMessageToSupabase(msgId, convId, url, _vt, "Message vocal (" + duration + "s)", "audio");
-      }).catch(function () {
-        // ⚠️ `_vt`, PAS « audio/webm » en dur : ce chemin d'échec sert quand
-        // l'envoi vers Storage n'a pas abouti et que le vocal part en base64.
-        // Y réannoncer webm rendait de nouveau injouable un enregistrement
-        // iPhone (mp4) — le défaut corrigé sur le chemin de succès, survivant
-        // sur celui de l'échec.
-        sendMessageToSupabase(msgId, convId, dataUrl, _vt, "Message vocal (" + duration + "s)", "audio");
-      }).then(_finEnvoi, _finEnvoi);
-    } catch (e) { _finEnvoi(); console.warn("_sendVoiceMessage sync:", e); }
+    // Le dépôt retient lui-même la page pendant l'envoi (pwa-detect.js), comme
+    // pour une pièce jointe ; l'URL canonique passe par `cdnUrl`, et le lecteur la
+    // signe au moment de lire (`_playVoiceById`, app-04).
+    _pjDeposer(convId, msgId, {
+      voie: "premier", interactif: true, proprietaire: _de,
+      contexte: { generation: (typeof _outboxGenerationActuelle === "function") ? _outboxGenerationActuelle() : null, auteur: (typeof MY_UID !== "undefined") ? MY_UID : null },
+    });
   } catch (e) { console.error("_sendVoiceMessage:", e); }
 }
 // ═══ fin wrappers messagerie ═══ (audit 2026-06-10)

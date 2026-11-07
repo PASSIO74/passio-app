@@ -66,6 +66,22 @@ export function verdictDepuisComptes(comptes, plafond, maintenant = Date.now()) 
  * @returns {Promise<{ ok: true } | { ok: false, retryAfterS: number }>}
  */
 export async function verifierPlafondEnBase(admin, uid, fonction, plafond, maintenant = Date.now()) {
+  // ⚠️ ATOMIQUE D'ABORD (audit 2026-11-06). Lire puis écrire en deux requêtes laisse passer
+  // tous les appels simultanés : mesuré en production, 1 653 passes de la veille à moins de
+  // 60 s sur 12 762, pour un plafond de 1 par minute, et un rappel réellement parti en double.
+  // Une salve anonyme remplissait aussi l'heure et faisait taire la veille.
+  // `plafond_consommer` compte et écrit sous un verrou de transaction. Échec = refus.
+  if (typeof admin.rpc === "function") {
+    const { data, error } = await admin.rpc("plafond_consommer", {
+      p_uid: uid, p_fonction: fonction, p_par_minute: plafond.parMinute, p_par_heure: plafond.parHeure,
+    });
+    if (!error) {
+      if (!data || typeof data.ok !== "boolean") return { ok: false, retryAfterS: 60, panne: true };
+      return data.ok ? { ok: true } : { ok: false, retryAfterS: Number(data.retry_after_s) || 60 };
+    }
+    // Seule l'ABSENCE de la fonction (migration pas encore appliquée) rend l'ancien chemin.
+    if (error.code !== "PGRST202" && error.code !== "42883") return { ok: false, retryAfterS: 60, panne: true };
+  }
   const evenement = "edge_" + fonction;
   const depuis = new Date(maintenant - UNE_HEURE_MS).toISOString();
   const { data, error } = await admin
@@ -76,7 +92,8 @@ export async function verifierPlafondEnBase(admin, uid, fonction, plafond, maint
     .gt("created_at", depuis)
     .order("created_at", { ascending: true })
     .limit(Math.max(plafond.parHeure, plafond.parMinute) + 1);
-  if (error) return { ok: false, retryAfterS: 60 };
+  // `panne` : le refus reste juste pour un plafond, mais la veille doit dire que la base est tombée (H-06).
+  if (error) return { ok: false, retryAfterS: 60, panne: true };
 
   const lignes = (data || []).map((l) => Date.parse(l.created_at)).filter((t) => Number.isFinite(t));
   const dansLaMinute = lignes.filter((t) => maintenant - t < UNE_MINUTE_MS);
@@ -91,7 +108,7 @@ export async function verifierPlafondEnBase(admin, uid, fonction, plafond, maint
   const { error: errInsert } = await admin
     .from("analytics_events")
     .insert({ user_id: uid, event: evenement, properties: {} });
-  if (errInsert) return { ok: false, retryAfterS: 60 };
+  if (errInsert) return { ok: false, retryAfterS: 60, panne: true };
   return { ok: true };
 }
 

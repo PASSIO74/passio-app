@@ -34,7 +34,7 @@ Claude workflow. They are left in place, unused, rather than deleted.
 7. The PR is merged only after checks are acceptable.
 
 No Windows PC is involved once the token is installed. The local worker
-(`dashboard/aiworker.mjs`, branches `ai/request/*`) is a separate, optional path
+(`dashboard/aiworker.mjs`, branches `ai/request/*`, inactive by default since the 2026-11-06 security audit: `PASSIO_AI_WORKER=on` and a signed commit) is a separate, optional path
 that requires a machine to be awake; it is not the primary channel.
 
 ## Triggering

@@ -310,7 +310,10 @@ self.addEventListener("fetch", e => {
           // caches.open ; res part vers le navigateur en parallèle).
           if (res && res.ok) {
             const copy = res.clone();
-            caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+            // La clé de cache est l'adresse SANS requête ni fragment (audit 2026-11-06) :
+            // une navigation depuis un lien de connexion porte des jetons dans son URL, et
+            // `Cache.put` conserverait la requête telle quelle sur l'appareil.
+            caches.open(CACHE).then(c => c.put(new Request(url.origin + url.pathname), copy)).catch(() => {});
           }
           return res;
         })
@@ -319,7 +322,7 @@ self.addEventListener("fetch", e => {
         // donc TOUJOURS une Response réelle en dernier recours.
         .catch(() =>
           caches.match("./index.html")
-            .then(cached => cached || caches.match(e.request))
+            .then(cached => cached || caches.match(e.request, { ignoreSearch: true }))
             .then(cached => cached || new Response(
               "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>" +
               "<title>PASSIO</title><body style='font-family:system-ui;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center;padding:2rem;color:#333'>" +

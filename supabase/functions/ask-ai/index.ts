@@ -25,6 +25,8 @@ import { REVISION } from "../_shared/revision.js";
 // 8 questions par minute, 60 par heure et par compte : large pour un humain
 // (une question toutes les 7 s), fermé pour une boucle.
 const PLAFOND = { parMinute: 8, parHeure: 60 };
+// Pour tout le service : une somme de comptes ne dépasse pas ceci (≈ 35 $/jour au pire).
+const PLAFOND_GLOBAL = { parMinute: 30, parHeure: 300 };
 
 const corsHeaders = {
   // La révision servie, sur toute réponse (dossier de livraison §6) — lisible par le client et par curl.
@@ -72,9 +74,14 @@ Deno.serve(async (req) => {
   // 1 bis. Plafond par compte — AVANT de lire le corps et AVANT d'appeler
   // Anthropic : un appel refusé ne coûte rien. Le compte vit en base
   // (analytics_events, écrite en service_role), pas dans l'isolat.
+  // Aucun écran n'appelle cette fonction aujourd'hui (audit 2026-11-06) : éteinte par défaut,
+  // elle ne reste pas une dépense ouverte à tout compte. ASK_AI_ACTIF=1 pour la rallumer.
+  if (Deno.env.get("ASK_AI_ACTIF") !== "1") return json({ error: "Assistant indisponible" }, 503);
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const verdict = await verifierPlafondEnBase(admin, userData.user.id, "ask-ai", PLAFOND);
   if (!verdict.ok) return reponsePlafond(verdict, corsHeaders);
+  const global = await verifierPlafondEnBase(admin, "systeme:ask-ai", "ask-ai-global", PLAFOND_GLOBAL);
+  if (!global.ok) return reponsePlafond(global, corsHeaders);
 
   // 2. Lire la question.
   let body: { query?: string };
@@ -89,6 +96,8 @@ Deno.serve(async (req) => {
   // 4. Appel Claude (Messages API).
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      // Une question abandonnée par le client ne reste pas facturée sans fin.
+      signal: AbortSignal.any([req.signal, AbortSignal.timeout(15_000)]),
       method: "POST",
       headers: {
         "content-type": "application/json",

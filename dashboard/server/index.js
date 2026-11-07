@@ -6,6 +6,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config, supabaseReady } from "./config.js";
+import { barriereOrigine, entetesSecurite } from "./barriere.js";
 import { store } from "./store.js";
 import { startIngest, ingestState } from "./ingest.js";
 import { addClient, clientCount } from "./sse.js";
@@ -68,8 +69,13 @@ import * as orchestrator from "./orchestrator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-app.set("trust proxy", true);
-app.use(express.json({ limit: "1mb" }));
+app.disable("x-powered-by");
+app.set("trust proxy", config.trustProxy);
+app.use(entetesSecurite);
+app.use(barriereOrigine(config));
+// `inflate: false` : un navigateur n'envoie jamais de corps compressé, et c'est par là que
+// passe l'avis de sécurité de body-parser sur les octets superflus.
+app.use(express.json({ limit: "1mb", inflate: false }));
 
 app.use((req, res, next) => {
   res.cookie = (name, val, opts = {}) => {
@@ -87,8 +93,14 @@ app.use((req, res, next) => {
 app.use(auth.sessionMiddleware);
 
 const api = express.Router();
-const asyncH = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
-  res.status(e.code || 500).json({ error: e.message || "Erreur serveur" });
+// `e.code` porte selon les cas un statut HTTP, un code de sortie ou un code d'erreur Node.
+// `res.status("ERR_…")` levait dans ce `.catch`, et le rejet non traité arrêtait le serveur (F-09).
+const statutDe = (c) => (Number.isInteger(c) && c >= 400 && c <= 599 ? c : 500);
+const asyncH = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch((e) => {
+  if (res.headersSent) return next(e);
+  const s = statutDe(e.code);
+  if (s === 500) console.error("[api]", req.method, req.path, e && e.message);
+  res.status(s).json({ error: s === 500 ? "Erreur serveur" : e.message });
 });
 
 api.get("/health", (req, res) => res.json({ ok: true, env: config.dashEnv, supabase: supabaseReady }));
@@ -105,6 +117,10 @@ api.get("/stream", auth.requireAuth, (req, res) => {
   // Le rôle de la session voyage avec la connexion : `broadcast` ne lui écrit
   // que ce que ses routes lui rendraient (sse.js, CAPACITE_PAR_TYPE).
   addClient(res, req.session.role);
+  // Un flux ouvert ne survit pas à sa session (F-11) : il se ferme à l'expiration du jeton.
+  const fin = setTimeout(() => { try { res.end(); } catch {} }, Math.min(Math.max(0, req.session.exp - Date.now()), 2 ** 31 - 1));
+  fin.unref?.();
+  req.on("close", () => clearTimeout(fin));
 });
 
 // `supervise` : compteurs transmis par supervise.mjs (relances depuis le logon) —
@@ -199,7 +215,7 @@ api.get("/kpi", auth.requireAuth, asyncH(async (req, res) => res.json(await kpi(
 api.get("/retention", auth.requireAuth, asyncH(async (req, res) => res.json(await retention())));
 api.get("/names", auth.requireAuth, (req, res) => res.json(store.clientNames()));
 api.get("/signups", auth.requireAuth, asyncH(async (req, res) => res.json(await signups())));
-api.get("/accounts", auth.requireAuth, asyncH(async (req, res) => res.json(await accounts())));
+api.get("/accounts", auth.requireCap("db"), asyncH(async (req, res) => res.json(await accounts())));
 api.get("/devices", auth.requireAuth, (req, res) => res.json(store.deviceList()));
 api.get("/visitors", auth.requireAuth, (req, res) => res.json({ funnel: store.visitorFunnel(), visitors: store.visitorList() }));
 api.get("/activity-sessions", auth.requireAuth, (req, res) => res.json(store.sessionList()));
@@ -214,7 +230,8 @@ api.get("/bugs/:id", auth.requireAuth, (req, res) => {
 api.patch("/bugs/:id", auth.requireCap("sessions"), (req, res) => {
   const b = store.updateBug(req.params.id, req.body || {});
   if (!b) return res.status(404).json({ error: "Bug introuvable" });
-  audit("bug_update", { id: req.params.id, patch: req.body }, req.session.u);
+  // Le corps peut peser 1 Mo et il est écrit par un rôle faible : le journal n'en garde que les clés.
+  audit("bug_update", { id: String(req.params.id).slice(0, 80), champs: Object.keys(req.body || {}).slice(0, 8).map((k) => k.slice(0, 40)) }, req.session.u);
   res.json(b);
 });
 
@@ -349,9 +366,19 @@ const publicDir = path.join(__dirname, "..", "public");
 app.use(express.static(publicDir));
 app.get("*", (req, res) => res.sendFile(path.join(publicDir, "index.html")));
 
-app.listen(config.port, () => {
+// Sans ce gestionnaire, Express répond par sa page d'erreur avec la pile et les chemins du poste
+// tant que NODE_ENV n'est pas `production`, et aucun lanceur ne le pose (F-14).
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  console.error("[http]", err && err.message);
+  const s = Number.isInteger(err && err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
+  res.status(s).json({ error: s === 500 ? "Erreur serveur" : "Requête invalide" });
+});
+process.on("unhandledRejection", (e) => console.error("[rejet non traité]", e && e.message ? e.message : e));
+
+app.listen(config.port, config.host, () => {
   console.log(`\n  PASSIO — Centre de pilotage`);
-  console.log(`  ▸ http://localhost:${config.port}`);
+  console.log(`  ▸ http://localhost:${config.port} (écoute : ${config.host})`);
   // Le pilote mobile du PC est retiré (2026-10-23) : le téléphone ouvre le
   // pilotage EN LIGNE, joignable partout, PC éteint compris.
   console.log(`  ▸ Pilotage (téléphone, partout) : https://passio-app.netlify.app/pilotage/`);

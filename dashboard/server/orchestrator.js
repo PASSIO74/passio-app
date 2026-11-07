@@ -30,7 +30,7 @@ function tail(file, lines = 30) {
 function filteredEnv() {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
-    if (/^(?:SUPABASE_|DASH_PASSWORD|DASH_SESSION_SECRET|ANTHROPIC_API_KEY$|OPENAI_API_KEY$|GITHUB_TOKEN$|GH_TOKEN$)/i.test(key)) delete env[key];
+    if (/^(?:SUPABASE_|DASH_|ANTHROPIC_API_KEY$|OPENAI_API_KEY$|GITHUB_TOKEN$|GH_TOKEN$)/i.test(key)) delete env[key];
   }
   return env;
 }

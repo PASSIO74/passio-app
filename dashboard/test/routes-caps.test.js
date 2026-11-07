@@ -77,7 +77,7 @@ const ATTENDU = [
   ["GET", "/retention", "@auth"],
   ["GET", "/names", "@auth"],
   ["GET", "/signups", "@auth"],
-  ["GET", "/accounts", "@auth"],
+  ["GET", "/accounts", "db"],
   ["GET", "/devices", "@auth"],
   ["GET", "/visitors", "@auth"],
   ["GET", "/activity-sessions", "@auth"],

@@ -1,0 +1,28 @@
+# Audit de sécurité du 2026-11-06 : fait monter les SHA des actions et signale les avis, sans mise à jour
+# massive. npm : mises à jour de sécurité seulement (`open-pull-requests-limit: 0` coupe les autres).
+# Aucune auto-fusion : ces PR passent la CI, un humain fusionne.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Une version publiée depuis moins de 7 jours n'est pas proposée : laisse le temps de retirer un paquet compromis.
+    cooldown:
+      default-days: 7
+  - package-ecosystem: npm
+    directory: /dashboard
+    schedule:
+      interval: weekly
+    # Une version publiée depuis moins de 7 jours n'est pas proposée : laisse le temps de retirer un paquet compromis.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 0
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Une version publiée depuis moins de 7 jours n'est pas proposée : laisse le temps de retirer un paquet compromis.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 0

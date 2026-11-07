@@ -5,9 +5,9 @@
 // côté client, comparaison en temps constant.
 // ═══════════════════════════════════════════════════════════════════════════
 import crypto from "node:crypto";
-import os from "node:os";
 import { config } from "./config.js";
 import { audit } from "./audit.js";
+import { JsonDb } from "./jsondb.js";
 import { liveFixAvailable, claudeCliState } from "./claudecli.js";
 
 // ─── Utilisateurs (env) ──────────────────────────────────────────────────────
@@ -31,20 +31,49 @@ function b64url(buf) { return Buffer.from(buf).toString("base64url"); }
 function sign(payloadStr) {
   return crypto.createHmac("sha256", config.sessionSecret).update(payloadStr).digest("base64url");
 }
+// Empreinte du compte dans le jeton (F-11) : changer le mot de passe ou le rôle, ou retirer le
+// compte, invalide ses sessions. Avant, seul un changement de DASH_SESSION_SECRET le faisait.
+function empreinte(u) {
+  return crypto.createHmac("sha256", config.sessionSecret).update(`${u.user}|${u.role}|${u.password}`).digest("base64url").slice(0, 16);
+}
+
+// Déconnexion effective : un cookie rejoué après `logout` est refusé. Signature → expiration,
+// sur disque pour survivre à un redémarrage, purgé à chaque ajout.
+const revoquees = new JsonDb("sessions-revoquees", { items: {} });
+function revoquer(sig, exp) {
+  revoquees.update((d) => {
+    const now = Date.now();
+    for (const [k, v] of Object.entries(d.items)) if (v < now) delete d.items[k];
+    d.items[sig] = exp;
+  });
+}
+function jetonDuCookie(req) {
+  const m = (req.headers.cookie || "").match(/(?:^|;\s*)dash_session=([^;]+)/);
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch { return null; }
+}
+
 export function createToken(user, role, hours = config.sessionHours) {
-  const payload = { u: user, role, exp: Date.now() + hours * 3600_000 };
+  const compte = USERS.get(user);
+  const payload = { u: user, role, sv: compte ? empreinte(compte) : null, exp: Date.now() + hours * 3600_000 };
   const body = b64url(JSON.stringify(payload));
   return body + "." + sign(body);
 }
 export function verifyToken(token) {
   if (!token || typeof token !== "string" || !token.includes(".")) return null;
   const [body, sig] = token.split(".");
-  const expected = sign(body);
-  if (sig.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  // Longueurs comparées en OCTETS : une signature multioctet de même longueur en caractères
+  // faisait lever timingSafeEqual, donc une erreur 500 avec sa pile (F-14).
+  const attendu = Buffer.from(sign(body));
+  const recu = Buffer.from(String(sig));
+  if (recu.length !== attendu.length) return null;
+  if (!crypto.timingSafeEqual(recu, attendu)) return null;
   try {
     const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
     if (!payload.exp || payload.exp < Date.now()) return null;
+    const compte = USERS.get(payload.u);
+    if (!compte || compte.role !== payload.role || payload.sv !== empreinte(compte)) return null;
+    if (Object.hasOwn(revoquees.get().items, sig)) return null;
     return payload;
   } catch { return null; }
 }
@@ -62,6 +91,11 @@ function noteFail(ip) {
   attempts.set(ip, a);
 }
 function noteSuccess(ip) { attempts.delete(ip); }
+function purgerTentatives() {
+  if (attempts.size <= 10_000) return;
+  const now = Date.now();
+  for (const [k, a] of attempts) if (a.until < now) attempts.delete(k);
+}
 
 function timingSafeEqualStr(a, b) {
   const ba = Buffer.from(String(a)), bb = Buffer.from(String(b));
@@ -71,16 +105,21 @@ function timingSafeEqualStr(a, b) {
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 export function login(req, res) {
-  const ip = req.ip || req.socket.remoteAddress || "?";
+  // Valeurs bornées (F-13) : le nom d'utilisateur et l'adresse finissent dans un journal
+  // réécrit en entier à chaque entrée, et un corps de requête peut peser 1 Mo.
+  const ip = String(req.ip || req.socket.remoteAddress || "?").slice(0, 64);
+  purgerTentatives();
   if (rateLimited(ip)) { audit("login_blocked", { ip }, null); return res.status(429).json({ error: "Trop de tentatives, réessaie dans 5 minutes." }); }
   const { user, password } = req.body || {};
   const u = USERS.get(user);
-  const ok = u && timingSafeEqualStr(u.password, password || "");
-  if (!ok) { noteFail(ip); audit("login_failed", { user, ip }, null); return res.status(401).json({ error: "Identifiants invalides." }); }
+  // Un mot de passe non textuel faisait lever String() et rendait 500 pour un compte existant,
+  // 401 sinon : un oracle de nom d'utilisateur, hors du compteur d'échecs (F-14).
+  const ok = u && typeof password === "string" && timingSafeEqualStr(u.password, password);
+  if (!ok) { noteFail(ip); audit("login_failed", { user: String(user ?? "").slice(0, 80), ip }, null); return res.status(401).json({ error: "Identifiants invalides." }); }
   noteSuccess(ip);
   const hours = dureeSessionHeures(req.body && req.body.remember);
   const token = createToken(u.user, u.role, hours);
-  res.cookie("dash_session", token, { httpOnly: true, sameSite: "lax", secure: config.isProd, maxAge: hours * 3600_000 });
+  res.cookie("dash_session", token, { httpOnly: true, sameSite: "strict", secure: config.isProd, maxAge: hours * 3600_000 });
   audit("login", { user: u.user, role: u.role, ip }, u.user);
   res.json({ user: u.user, role: u.role, caps: capsFor(u.role) });
 }
@@ -97,39 +136,23 @@ export function dureeSessionHeures(remember) {
 }
 
 export function logout(req, res) {
-  if (req.session) audit("logout", {}, req.session.u);
+  if (req.session) {
+    audit("logout", {}, req.session.u);
+    const sig = String(jetonDuCookie(req) || "").split(".")[1];
+    if (sig) revoquer(sig, req.session.exp);
+  }
   res.clearCookie("dash_session");
   res.json({ ok: true });
 }
 
 export function me(req, res) {
   if (!req.session) return res.status(401).json({ error: "non authentifié" });
-  res.json({ user: req.session.u, role: req.session.role, caps: capsFor(req.session.role), expiresAt: req.session.exp || null, rememberDays: config.rememberDays, adressesTelephone: adressesTelephone(), env: config.dashEnv, allowMutations: config.allowMutations, claudeLive: liveFixAvailable(), claudeVia: config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel", claudeInstalled: claudeCliState().installed });
-}
-
-/**
- * Adresses du poste joignables depuis un téléphone du même réseau (IPv4 privées
- * seulement : une adresse publique ou de lien local n'a rien à faire sur l'écran).
- * Réservé à une session authentifiée (servi par /me), jamais par /health.
- */
-export function adressesTelephone(interfaces = os.networkInterfaces(), port = config.port) {
-  const out = [];
-  for (const liste of Object.values(interfaces || {})) {
-    for (const i of liste || []) {
-      const fam = i && (i.family === "IPv4" || i.family === 4);
-      if (!fam || i.internal) continue;
-      if (!/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(i.address)) continue;
-      out.push(`http://${i.address}:${port}/mobile.html`);
-    }
-  }
-  return [...new Set(out)];
+  res.json({ user: req.session.u, role: req.session.role, caps: capsFor(req.session.role), expiresAt: req.session.exp || null, rememberDays: config.rememberDays, env: config.dashEnv, allowMutations: config.allowMutations, claudeLive: liveFixAvailable(), claudeVia: config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel", claudeInstalled: claudeCliState().installed });
 }
 
 // Middleware : injecte req.session si cookie valide.
 export function sessionMiddleware(req, res, next) {
-  const cookie = req.headers.cookie || "";
-  const m = cookie.match(/(?:^|;\s*)dash_session=([^;]+)/);
-  req.session = m ? verifyToken(decodeURIComponent(m[1])) : null;
+  req.session = verifyToken(jetonDuCookie(req));
   next();
 }
 export function requireAuth(req, res, next) {
