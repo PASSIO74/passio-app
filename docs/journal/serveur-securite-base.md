@@ -1256,8 +1256,9 @@ l'ordre de Benjamin ; empreinte `cbd9428a…`) :
 
 ## 📌 RV-38 — L'ÉPINGLE D'UN COMMENTAIRE N'ATTEIGNAIT JAMAIS LA BASE ; SEUL LE PROPRIÉTAIRE DU FIL Y ÉPINGLERA (2026-11-05)
 
-**Statut : appliqué au staging puis en production le 07/11** (production à 08:33:11 UTC, `migrations_appliquees` id 34, verdict
-21 × OK et l'information à 0), mesuré au canal ① (« Application et mesure », en fin de fiche). Client : #727 (156dd85) ;
+**Statut : corrigé — appliqué au staging puis en production le 07/11** (production à 08:33:11 UTC, `migrations_appliquees`
+id 34, verdict 21 × OK et l'information à 0), mesuré au canal ①, prouvé à deux comptes sur le staging migré (« Application
+et mesure », en fin de fiche). Client : #727 (156dd85) ;
 migration : #734 (019896b), `migrations/migration_epingle_commentaire_2026-11-05.sql` (sha256 `be2f5942…`).
 
 **Le défaut (registre RV-38, trouvé pendant le lot R37).** `togglePinComment` (app-04) écrivait l'épingle dans
@@ -1415,9 +1416,15 @@ aucune ligne de journal) :
   sur `profiles` (180 de 08:30 à 08:40, le premier à 08:30:28 ; de 181 à 347 par heure le 06/11 au soir),
   coupures de connexion de réplication (une à cinq par heure).
 
-**Ce qui reste.** La preuve à deux comptes sur le staging migré (`epingle-commentaire-reel.spec.js` : A épingle, B voit
-après rechargement), lue dans la CI de la PR de fermeture ; la ligne RV-38 ne se ferme qu'avec elle. Hors lot :
-RV-45 à RV-48 (registre), et les restes dits ci-dessus.
+**Preuve à deux comptes (07/11).** `epingle-commentaire-reel.spec.js`, CI de #743 (run 42356513820, job « Suites
+production (comptes réels) », sur le staging, 08:44:21 → 08:48:11 UTC) : « migration RV-38 sur le staging : PRÉSENTE (la
+garde refuse l'inconnu) » ; 21 réussis, 3 sautés, 0 échec, aucun instable. Une fois la présence lue, le test n'a plus de
+chemin de saut : ses quatre étapes ont passé — A épingle le commentaire de B (accepté, une ligne « 1 » en base, en tête à
+l'écran) ; B, après RECHARGEMENT, voit l'épingle en tête avec « Épinglé » ; B ne peut pas épingler chez A (42501, l'indice
+de la garde, rien d'écrit) ; A retire l'épingle et B, rechargé, ne la voit plus. Le run de `main` de la fusion de #734 ne
+pouvait pas le dire : son job à comptes réels s'est terminé à 08:31:57, avant l'application au staging.
+
+**Ce qui reste.** Hors lot : RV-45 à RV-48 (registre), et les restes dits ci-dessus.
 ## 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
 
 **Statut : appliqué en production le 06/11 à 21:38:05 UTC** (verdict 17 × OK, `migrations_appliquees` id 33), mesuré au canal ①
