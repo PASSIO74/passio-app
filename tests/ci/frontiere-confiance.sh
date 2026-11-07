@@ -237,7 +237,7 @@ exigences += [
  ("les audits precedent le push",
       pub.find('audit-globals.js') < pub.find('git push origin') if 'git push origin' in pub else False),
  ("les chemins de controle sont refuses",
-      '.github/*|.claude/*|package.json' in pub and 'Chemin interdit' in pub),
+      all(_c in pub for _c in ('.github/*|.claude/*|', '|package.json|', '|scripts/*|', '|tests/ci/*|', '|migrations/*|')) and 'Chemin interdit' in pub),
  ("le refus de chemin sort en erreur",
       'exit 1' in pub.split('Chemin interdit')[1][:200] if 'Chemin interdit' in pub else False),
 
@@ -347,47 +347,6 @@ scenario_modele "4. JSONL compatible + Fable 5 + OAuth"     jsonl claude-fable-5
 scenario_modele "5. Source d'auth absente refusée"          json  claude-opus-5  ''                REFUS
 scenario_modele "6. Source d'auth inconnue refusée"         json  claude-opus-5  temporary         REFUS
 scenario_modele "7. Helper de clé API refusé"               json  claude-opus-5  apiKeyHelper      REFUS
-
-echo
-echo "═══ Politique modèles du canal claude-pr-task ═══"
-WFT="$(dirname "${WF}")/claude-pr-task.yml" python3 - <<'PYM'
-import yaml,os,sys,re
-p=os.environ["WFT"]
-brut=open(p,encoding='utf-8').read()
-d=yaml.safe_load(brut)
-run="".join(s.get('run','') for s in d['jobs']['claude']['steps'])
-env={}
-for s in d['jobs']['claude']['steps']:
-    env.update(s.get('env') or {})
-
-modeles=set(re.findall(r'claude-[a-z]+-[0-9]+(?:\.[0-9]+)?', brut))
-exig=[
- ("Fable 5 est le modele PRIMAIRE",        'MODELE_PRIMAIRE=claude-fable-5' in run),
- ("Opus 5 est le REPLI",                   'MODELE_REPLI=claude-opus-5' in run),
- # On verifie le SITE D'APPEL de la garde, pas seulement que la fonction
- # existe : neutraliser « if travail_produit; then » en « if false; then »
- # laissait passer la premiere version de cette assertion. Test creux.
- ("le repli est refuse si un fichier a deja ete modifie",
-                                           'if travail_produit; then' in run
-                                           and 'Repli refuse' in run
-                                           and 'exit 1' in run.split('Repli refuse')[1][:200]),
- ("le modele reellement execute est valide",
-                                           'claude-fable-5*|claude-opus-5*' in run),
- ("aucun autre modele n'apparait",         modeles <= {'claude-fable-5','claude-opus-5'}),
- ("ANTHROPIC_API_KEY explicitement vide",  env.get('ANTHROPIC_API_KEY') == ''),
- ("jeton d'abonnement utilise",            'CLAUDE_CODE_OAUTH_TOKEN' in brut),
- ("aucun secret de cle API facturee",      'secrets.ANTHROPIC_API_KEY' not in brut and 'secrets.PASSIO}' not in brut),
- ("l'auth reelle est verifiee (apiKeySource)", 'apiKeySource' in run),
-]
-ko=0
-for lib,vrai in exig:
-    print(f"  {'OK ' if vrai else 'KO '} {lib}")
-    if not vrai: ko+=1
-if modeles - {'claude-fable-5','claude-opus-5'}:
-    print(f"      modeles etrangers : {sorted(modeles - {'claude-fable-5','claude-opus-5'})}")
-sys.exit(1 if ko else 0)
-PYM
-if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
 
 echo "═══ Plafond de tours et diagnostic des refus ═══"
 WF="${WF}" python3 - <<'PYDIAG'

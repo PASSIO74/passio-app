@@ -175,7 +175,7 @@ test("③ un essai qui réussit termine l'étape : un seul appel, la borne réel
   const r = jouer(etapeReelle(DEPLOY, "test-local").run, "ok");
   assert.equal(r.code, 0, r.sortie);
   assert.deepEqual(r.lignes, [
-    "npm install --no-save @playwright/test",
+    "npm ci --ignore-scripts",
     "timeout --kill-after=30s 10m npx playwright install --with-deps chromium",
     "npx playwright install --with-deps chromium :: essai 1 :: ok",
   ]);

@@ -245,7 +245,9 @@ function shareBeta() {
   $("#devPanel").classList.remove("active");
   // Lien beta SUIVI : c'est LE lien envoyé aux testeurs → on le tague (?plk) pour
   // apparier l'envoi à une ouverture réellement confirmée dans le centre de pilotage.
-  const rawLink = window.location.href;
+  // `origin + pathname` : ni fragment ni requête (audit 2026-11-06). Une page ouverte
+  // depuis un lien de connexion porte des jetons dans son fragment.
+  const rawLink = window.location.origin + window.location.pathname;
   const link = (window.tel && tel.linkCreate) ? tel.tagUrl(rawLink, tel.linkCreate("beta", "invite")) : rawLink;
   openModal(`
     <div class="modal-handle"></div>
@@ -629,7 +631,9 @@ function _storyBubbleInner(g) {
     const fallback = `https://picsum.photos/seed/${withPhoto.id}/160/160`;
     return `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(g.name)}" onerror="this.onerror=null;this.src='${escapeJsArg(fallback)}'"/>`;
   }
-  return g.emoji || "✨";
+  // `profiles.emoji` est un champ libre d'un autre compte (aucune contrainte en base) :
+  // ce retour part tel quel dans le HTML du rail (audit 2026-11-06).
+  return escapeHtml(g.emoji || "✨");
 }
 
 function renderStories() {
@@ -650,7 +654,7 @@ function renderStories() {
   const myAvatar = (state.user && state.user.general && state.user.general.avatarPhoto) || me.avatarPhoto || "";
   const myAvatarHtml = myAvatar
     ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(myAvatar)}" alt="Moi" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'"/>`
-    : myEmoji;
+    : escapeHtml(myEmoji);
 
   let html;
   if (myGroup && myGroup.stories.length) {
@@ -2767,6 +2771,7 @@ function signalerInscriptionViaLien(session) {
 }
 
 async function boot() {
+  try { _surveillerAutresOnglets(); } catch (e) {}
   // Charge le SDK Supabase à la demande (lazy, hors page verrouillée) PUIS
   // construit le vrai client, avant le moindre appel `supa.*` ci-dessous.
   try { if (typeof ensureSupabase === "function") await ensureSupabase(); } catch(e) { console.warn("Supabase SDK load failed:", e); }
@@ -3487,6 +3492,27 @@ supa = _buildNoopSupa();
 // dans client_errors. (Corrigé le 2026-06-19.) Réaffecté par _initRealSupa().
 window.supa = supa;
 
+// Un réseau qui ne répond pas laissait des promesses jamais réglées, donc des écrans figés sans message
+// (audit du 2026-11-06, H-19). Un dépôt ou une purge de compte a le droit d'être long. `AbortSignal.any`
+// manque avant iOS 17.4 : on garde alors le signal de l'appelant, sans délai plutôt que sans annulation.
+function _delaiFetch(url, o) {
+  // Un dépôt peut peser 25 Mo sur un réseau lent : `js/pwa-detect.js` lui accorde 13 minutes, et le couper
+  // ici renverrait le fichier en base64 dans le message.
+  if (o && o.body && typeof o.body !== "string") return 900000;
+  return /\/(?:storage|functions)\/v1\//.test(String(url)) ? 120000 : 30000;
+}
+function _fetchBorne(url, o, delai) {
+  o = o || {};
+  if (typeof AbortSignal === "undefined" || typeof AbortSignal.timeout !== "function") return fetch(url, o);
+  var t = AbortSignal.timeout(delai || _delaiFetch(url, o));
+  var signal = !o.signal ? t : (typeof AbortSignal.any === "function" ? AbortSignal.any([o.signal, t]) : o.signal);
+  return fetch(url, Object.assign({}, o, { signal: signal })).catch(function (e) {
+    // Le SDK rejoue trois fois une TimeoutError, jamais une AbortError : un GET bloqué tenait 127 s, pas 30.
+    if (e && e.name === "TimeoutError") { var a = new Error(e.message || "signal timed out"); a.name = "AbortError"; throw a; }
+    throw e;
+  });
+}
+
 // Construit le VRAI client une fois le SDK chargé. Idempotent. Appelé en tête de
 // boot() après `await ensureSupabase()`. Retourne false si le SDK est absent
 // (réseau coupé) → on reste sur le stub noop, l'app fonctionne en local.
@@ -3494,7 +3520,7 @@ function _initRealSupa() {
   if (window._supaReal) return true;
   if (typeof supabase === "undefined") return false;
   try {
-    supa = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    supa = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { global: { fetch: _fetchBorne } });
     window.supa = supa;
     window._supaReal = true;
     // Référentiel des passions (ADR-010) : chargé UNE fois, en arrière-plan.
@@ -4030,7 +4056,10 @@ function _reconcilierVitrinePassions(essai) {
   essai = essai || 0;
   try {
     if (!window._supaReal || !(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return;
+    // Récupération sur un navigateur déjà occupé (audit 2026-11-06) : l'adoption est
+    // différée, l'état local peut être celui d'un AUTRE compte. Même garde que `user_state`.
     if (!window._etatCompteCharge) { if (essai < 6) setTimeout(function () { _reconcilierVitrinePassions(essai + 1); }, 5000); return; }
+    if (typeof _peutPousserEtat === "function" && !_peutPousserEtat()) return;
     var cle = "passio_vitrine_publiee_v1";
     var attendue = _empreinteVitrine();
     var publiee = null;
@@ -4086,6 +4115,7 @@ function supaSavePassionState() {
 
 async function _supaSavePassionStateMaintenant() {
   try {
+    if (typeof _peutPousserEtat === "function" && !_peutPousserEtat()) return false;
     const charge = _chargeProfilComplete();
     if (!charge) return false;
     // ⚠️ PRO-04 (contre-revue Astra, 2026-09-15) : l'empreinte mémorisée après
@@ -9204,6 +9234,8 @@ function _analyticsSessionUtilisable(uid) {
 function supaTrack(event, properties) {
   try {
     if (!window._supaReal) return;
+    // L'opposition à la mesure d'usage vaut aussi pour `analytics_events` (audit 2026-11-06).
+    if (typeof _mesureUsageActive === "function" && !_mesureUsageActive()) return;
     if (window._analyticsMuetJusqua && Date.now() < window._analyticsMuetJusqua) return;
     var uid = (typeof MY_UID === "string" && MY_UID) ? MY_UID : "";
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) return;

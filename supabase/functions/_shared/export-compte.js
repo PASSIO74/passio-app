@@ -16,6 +16,7 @@
 // intérêt de portabilité). Les MÉDIAS sont listés par chemin, avec l'URL
 // publique pour le seau `content` — pas d'octets dans le JSON.
 // ═══════════════════════════════════════════════════════════════════════════
+import { listerObjetsDuCompte } from "./purge-compte.js";
 import { TABLES_COMPTE, DOSSIERS_CONTENU } from "./purge-compte.js";
 
 /** Couples (table, colonne) à ÉCARTER : données d'autrui ou traces techniques. */
@@ -224,6 +225,13 @@ export async function exporterCompte(admin, uid, identite) {
       try { url = admin.storage.from("content").getPublicUrl(chemin).data.publicUrl; } catch (e) {}
       medias.push({ seau: "content", chemin, url });
     }
+  }
+  // Les pièces jointes ne sont dans aucun dossier connu : on les relève PAR PROPRIÉTÉ, comme la purge
+  // (audit du 2026-11-06, D-14). Sans URL : le seau est privé, l'export n'y ouvre aucun accès durable.
+  const proprietes = await listerObjetsDuCompte(admin, uid);
+  if (proprietes.erreur) erreurs.push("objets du compte : " + proprietes.erreur);
+  for (const o of proprietes.objets || []) {
+    if (o.bucket_id !== "content") medias.push({ seau: o.bucket_id, chemin: o.name, url: null });
   }
   // Le BILAN, en tête : complet ou non, et pourquoi. Le client l'affiche.
   const bilan = {

@@ -83,7 +83,7 @@ export async function lienNotification(admin, fromUid, toUserId, maintenantMs, f
     if (r.error) return { ok: false, raison: "lecture notifications" };
     const ligne = (r.data || [])[0];
     if (!ligne) return { ok: false, raison: "aucune notification récente" };
-    return { ok: true, raison: "", texte: borneTexte(decoderEntites(ligne.content), 200), kind: borneTexte(ligne.kind, 32), refId: ligne.ref_id == null ? "" : String(ligne.ref_id),
+    return { ok: true, raison: "", id: ligne.id, texte: borneTexte(decoderEntites(ligne.content), 200), kind: borneTexte(ligne.kind, 32), refId: ligne.ref_id == null ? "" : String(ligne.ref_id),
       origine: ligne.origine === "serveur" ? "serveur" : "client" };
   } catch (_e) { return { ok: false, raison: "exception" }; }
 }
@@ -146,7 +146,36 @@ export async function autoriserPushNotif(admin, fromUid, toUserId, maintenantMs)
   }
   const texte = textePush(genre, idn.name);
   if (!texte) return { ok: false, raison: "genre sans gabarit : " + lien.kind };
-  return { ok: true, raison: "", texte, kind: lien.kind };
+  return { ok: true, raison: "", id: lien.id, texte, kind: lien.kind };
+}
+
+/**
+ * Une push par notification, 30 par heure et par destinataire (audit 2026-11-06). La même ligne
+ * se rejouait 40 fois dans sa fenêtre, et rien ne bornait ce qu'une personne reçoit : un blocage
+ * ne ferme qu'un compte à la fois. La réservation est atomique (`push_le is null`).
+ * Échec de lecture ou d'écriture = pas de push. Seule l'ABSENCE de la colonne (migration pas
+ * encore appliquée) laisse passer, comme avant.
+ */
+export async function reserverPush(admin, idNotification, toUserId, maxParHeure = 30, maintenantMs = Date.now(), fromId = null) {
+  const absente = (e) => !!e && (e.code === "42703" || e.code === "PGRST204");
+  if (!idNotification) return false;
+  const depuis = new Date(maintenantMs - 3600e3).toISOString();
+  const { count, error } = await admin.from("notifications").select("id", { count: "exact", head: true })
+    .eq("user_id", toUserId).gte("push_le", depuis).lte("push_le", new Date(maintenantMs).toISOString());
+  if (absente(error)) return true;
+  if (error || (count || 0) >= maxParHeure) return false;
+  // Un seul compte ne consomme pas tout le budget d'une cible : sinon 30 notifications ordinaires la coupaient
+  // de toutes ses push pendant une heure. `fromId` est lu sur la ligne, jamais sur la requête.
+  if (fromId) {
+    const couple = await admin.from("notifications").select("id", { count: "exact", head: true })
+      .eq("user_id", toUserId).eq("from_id", fromId).gte("push_le", depuis).lte("push_le", new Date(maintenantMs).toISOString());
+    if (couple.error || (couple.count || 0) >= Math.ceil(maxParHeure / 3)) return false;
+  }
+  const { data, error: e2 } = await admin.from("notifications")
+    .update({ push_le: new Date(maintenantMs).toISOString() })
+    .eq("id", idNotification).is("push_le", null).select("id");
+  if (absente(e2)) return true;
+  return !e2 && !!(data && data.length);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

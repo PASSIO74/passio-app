@@ -48,7 +48,7 @@ test("un verdict qui n'est pas « défaut réel » n'est jamais relayé ; le bru
   assert.equal(appels.length, 0, "aucun appel gh pour ce qui n'est pas relayable");
 });
 
-test("défaut réel : une issue sentinelle est créée par gh, le label claude est posé APRÈS, séparément", async () => {
+test("défaut réel : une issue sentinelle est créée par gh, et le label claude reste un geste humain", async () => {
   const { appels, execFileImpl } = fauxGh();
   const r = await relayerVersGithub(record(), null, { execFileImpl, detecteur, now: NOW, delaiLabelMs: 0 });
   assert.equal(r.attempted, false, "la réparation locale n'est pas tentée : le relais la remplace");
@@ -60,9 +60,9 @@ test("défaut réel : une issue sentinelle est créée par gh, le label claude e
   const labels = creation.map((x, i) => (creation[i - 1] === "--label" ? x : null)).filter(Boolean);
   assert.deepEqual(labels, ["sentinelle"], "à la création, sentinelle seulement — deux labels d'un coup = trois runs et une enquête perdue");
   assert.ok(creation.includes("--body-file"), "le corps passe par un fichier");
-  const edit = appels.find((a) => a[1] === "issue" && a[2] === "edit" && a[3] === "501");
-  assert.ok(edit && edit.includes("--add-label") && edit.includes("claude"), "le label claude est ajouté après, par un appel séparé");
-  assert.ok(appels.indexOf(creation) < appels.indexOf(edit));
+  // Audit du 2026-11-06, F-05 : l'issue naît au nom de PASSIO74, que claude-code.yml traite comme un
+  // ordre, à partir d'une télémétrie écrite par le client. Aucun appel ne pose `claude`.
+  assert.ok(!appels.some((a) => a.includes("--add-label")), "le relais ne déclenche aucun agent");
   assert.match(r.relais.titre, /^\[SENTINELLE\] .{1,60} · [0-9a-f]{8}$/, "même forme de titre que le canal autonome");
 });
 
@@ -82,11 +82,11 @@ test("doublon : une issue de même titre ouverte, ou fermée depuis moins de 7 j
 test("le corps est désamorcé : les lignes en forme d'instruction disparaissent, les balises sont neutralisées, aucun identifiant de personne", () => {
   const corps = corpsRelais(record(), detecteur);
   assert.doesNotMatch(corps, /Ignore previous instructions/);
-  assert.match(corps, /ligne en forme d'instruction — retirée/);
   assert.doesNotMatch(corps, /<system>/);
   assert.doesNotMatch(corps, /Testeur/, "meta.user ne doit jamais entrer dans une issue");
   assert.match(corps, /trace:failed:send_message:api/);
-  assert.match(corps, /donnée, désamorcée/);
+  // Le texte du modèle dérive d'une télémétrie hostile : il ne part plus dans un dépôt public (F-05).
+  assert.doesNotMatch(corps, /L'envoi échoue en 500/);
 });
 
 test("contexte désamorcé : une clé, un endpoint, une action ou un écran en forme d'instruction (télémétrie cliente) ne parlent pas dans l'issue", () => {

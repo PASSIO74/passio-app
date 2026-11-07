@@ -96,7 +96,10 @@ Garde-fous techniques :
 - **Désactivées en production** (`DASH_ENV=production` force `allowMutations=false`).
 - Un patch n'est **jamais** appliqué sur `main`/`master`/`prod` : une branche
   dédiée est créée d'abord. Validation `git apply --check` avant application.
-- **Aucun `git push`** n'est jamais effectué par le dashboard.
+- **`git push` : trois chemins, tous à interrupteur.** Soumission d'une demande `ai/request/*`
+  (`orchestrator.js`, `allowMutations`), publication d'un correctif `sentinelle/*`
+  (`sentinel-production.js`, `DASH_SENTINEL_PRODUCTION`), résultat du worker IA (`aiworker.mjs`,
+  `PASSIO_AI_WORKER`). L'ancienne phrase « aucun push » était fausse (audit du 2026-11-06, F-16).
 - Confirmation explicite (`confirm:true`) requise côté API et case à cocher côté UI.
 - Chaque création de branche / application de patch / revert est **auditée**.
 
@@ -194,9 +197,12 @@ elle est donc bornée sur quatre axes.
 
 ## 7. Surface réseau
 
-- Le backend écoute en local (usage laptop pendant les tests). Pour une exposition
-  distante : placer derrière un reverse-proxy TLS, garder `DASH_ENV=production`
-  (mutations off), et restreindre l'accès (VPN / IP allowlist).
+- Le backend n'écoute que la boucle locale par défaut (`DASH_HOST`, audit du 2026-11-06, F-02). Il
+  écoutait toutes les interfaces, et la règle de pare-feu de Node l'ouvrait au Wi-Fi. Pour une
+  exposition distante : reverse-proxy TLS, `DASH_ENV=production` (mutations off),
+  `DASH_TRUST_PROXY=1`, `DASH_ALLOWED_HOSTS`, et accès restreint (VPN / IP allowlist).
+- Un Host hors de la liste est refusé (421), une mutation d'une autre origine aussi (403) :
+  `server/barriere.js`. « localhost » n'est pas une frontière (rebinding DNS, autres ports locaux).
 - SSE + REST portent le cookie de session `same-origin`. Les mutations passent par
   POST/PATCH authentifiés.
 

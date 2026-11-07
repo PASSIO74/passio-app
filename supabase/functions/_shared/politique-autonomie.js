@@ -137,7 +137,7 @@ export const POLITIQUE = Object.freeze({
       action: "Claude écrit le correctif dans une branche, la CI complète tourne, l'auto-fusion n'est armée que si le périmètre et la taille sont tenus",
       preconditions: ["label `sentinelle`, auteur OWNER/MEMBER, titre [SENTINELLE]", "fichiers dans le périmètre", "CI entièrement verte", "pas de récidive après 2 correctifs déployés"],
       limites: { fichiersMax: 2, lignesMax: 60, enquetesMax: 3, recidiveApres: 2 },
-      perimetre: Object.freeze(["js/*.js", "styles.css", "index.html", "sw.js", "tests/e2e/*.spec.js", "docs/sentinelle/*.md"]),
+      perimetre: Object.freeze(["js/*.js", "styles.css", "index.html", "tests/e2e/sentinelle-*.spec.js", "docs/sentinelle/*.md"]),
       verification: "le job « retour-issue » commente « déployé » ou ROUVRE l'issue avec `humain`", retour: "rollback Netlify (geste humain) ; la PR suivante corrige",
       escalade: "périmètre ou taille dépassés : refus écrit sur l'issue, label `humain`", appliquePar: ".github/workflows/deploy.yml (Gouvernance critique, ASTRA-34)",
     }),

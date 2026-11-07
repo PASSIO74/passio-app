@@ -67,6 +67,7 @@ test("② le job installe WebKit, pose la variable et lance le seul projet webki
   assert.ok(j, "job test-webkit absent de deploy.yml");
   assert.equal(j.name, "Suites WebKit (iPhone)");
   const runs = j.steps.map((s) => String(s.run || "")).join("\n");
+  assert.match(runs, /npm ci --ignore-scripts/, "le lockfile, jamais la dernière version (E-07)");
   assert.match(runs, /npx playwright install --with-deps webkit/);
   assert.doesNotMatch(runs, /install --with-deps chromium/);
   const lancer = j.steps.find((s) => /playwright test/.test(String(s.run || "")));

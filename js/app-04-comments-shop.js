@@ -289,42 +289,52 @@ function _cmtKnownNames() {
 // sur d'anciens Safari iOS) : à chaque « @ » en début de mot, on matche le plus
 // long pseudo CONNU (multi-mots « @Nina Costa »), sinon un seul mot. Opère sur du
 // texte DÉJÀ échappé ; le pseudo affiché est ré-échappé (anti-XSS).
-function _linkifyMentions(safe) {
+// La mention qui commence à safe[i] (« @ »), ou null. Le nom le plus connu d'abord,
+// sinon le mot qui suit. Rend le HTML de la mention et le nombre de caractères lus.
+function _mentionEn(safe, i) {
   var names = _cmtKnownNames();
-  var boundary = /[\s.,;!?()\[\]]/;
-  var out = "", i = 0;
+  var after = safe.slice(i + 1), matched = null;
+  for (var k = 0; k < names.length; k++) {
+    var esc = escapeHtml(names[k]);
+    if (esc && after.toLowerCase().indexOf(esc.toLowerCase()) === 0) { matched = { raw: names[k], esc: esc }; break; }
+  }
+  if (!matched) { var tk = (after.match(/^[A-Za-zÀ-ÿ0-9_'’-]+/) || [""])[0]; if (tk) matched = { raw: tk, esc: tk }; }
+  if (!matched) return null;
+  return {
+    html: '<span class="cmt-mention" onclick="return _openMentionProfile(\'' + escapeJsArg(matched.raw) + '\', event)">@' + matched.esc + '</span>',
+    lus: 1 + matched.esc.length,
+  };
+}
+// Mentions, mots-dièse et liens d'un texte DÉJÀ échappé.
+// ⚠️ UN SEUL PASSAGE, de gauche à droite (audit 2026-11-06) : ces trois réécritures
+// se faisaient l'une après l'autre sur le résultat de la précédente, donc aussi sur le
+// HTML déjà généré. Un nom de compte contenant une URL ou un « #mot » se retrouvait
+// réécrit DANS l'attribut onclick de sa mention, dont il refermait les guillemets.
+// Le morceau reconnu est ajouté à la sortie et n'est jamais relu.
+function _linkifyText(safe) {
+  if (!safe) return "";
+  var bordMot = /[\s.,;!?()\[\]]/;
+  var bordLien = /[\s(]/;
+  var dieze = /^#[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9_'-]{1,30}/;
+  var adresse = /^https?:\/\/[^\s<]+/;
+  var out = "", i = 0, m;
   while (i < safe.length) {
-    var ch = safe[i];
-    if (ch === "@" && (i === 0 || boundary.test(safe[i - 1]))) {
-      var after = safe.slice(i + 1), matched = null;
-      for (var k = 0; k < names.length; k++) {
-        var esc = escapeHtml(names[k]);
-        if (esc && after.toLowerCase().indexOf(esc.toLowerCase()) === 0) { matched = { raw: names[k], esc: esc }; break; }
-      }
-      if (!matched) { var tk = (after.match(/^[A-Za-zÀ-ÿ0-9_'’-]+/) || [""])[0]; if (tk) matched = { raw: tk, esc: tk }; }
-      if (matched) {
-        out += '<span class="cmt-mention" onclick="return _openMentionProfile(\'' + escapeJsArg(matched.raw) + '\', event)">@' + matched.esc + '</span>';
-        i += 1 + matched.esc.length; continue;
-      }
+    var ch = safe[i], avant = i > 0 ? safe[i - 1] : "";
+    if (ch === "@" && (i === 0 || bordMot.test(avant))) {
+      var men = _mentionEn(safe, i);
+      if (men) { out += men.html; i += men.lus; continue; }
+    } else if (ch === "#" && (i === 0 || bordMot.test(avant)) && (m = dieze.exec(safe.slice(i, i + 40)))) {
+      var tag = m[0].slice(1);
+      out += '<span class="cmt-hashtag" onclick="return _openHashtag(\'' + escapeJsArg(tag) + '\', event)">#' + tag + '</span>';
+      i += m[0].length; continue;
+    } else if (ch === "h" && (i === 0 || bordLien.test(avant)) && (m = adresse.exec(safe.slice(i)))) {
+      var clean = m[0].replace(/[.,;!?)]+$/, ""); // ponctuation finale hors du lien
+      out += '<a href="' + clean + '" target="_blank" rel="noopener noreferrer nofollow" class="cmt-link">' + clean + '</a>';
+      i += clean.length; continue;
     }
     out += ch; i++;
   }
   return out;
-}
-function _linkifyText(safe) {
-  if (!safe) return "";
-  safe = _linkifyMentions(safe);
-  // #hashtags
-  safe = safe.replace(/(^|[\s.,;!?()\[\]])#([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9_'-]{1,30})/g, function (m, pre, tag) {
-    return pre + '<span class="cmt-hashtag" onclick="return _openHashtag(\'' + tag.replace(/'/g, "\\'") + '\', event)">#' + tag + '</span>';
-  });
-  // URLs (en dernier : ne consomme pas les <span> déjà posés car s'arrête à « < »)
-  safe = safe.replace(/(^|[\s(])((?:https?:\/\/)[^\s<]+)/g, function (m, pre, url) {
-    var clean = url.replace(/[.,;!?)]+$/, ""); // ponctuation finale hors du lien
-    var tail = url.slice(clean.length);
-    return pre + '<a href="' + clean + '" target="_blank" rel="noopener noreferrer nofollow" class="cmt-link">' + clean + '</a>' + tail;
-  });
-  return safe;
 }
 function _commentBodyHtml(txt) {
   return _looksLikeMediaUrl(txt)
@@ -739,7 +749,7 @@ function _renderCommentsList(allComments, postId) {
           <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(c.id)}">${cReactChip}</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${escapeJsArg(c.id)}', event);">${cRepOpen ? "▲ Masquer les réponses" : ("⌵ Voir " + cReplies.length + " réponse" + (cReplies.length > 1 ? "s" : ""))}</span>` : ""}
         </div>
-        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => {
+        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${escapeHtml(c.id)}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
           const rSrc = r.authorId === "me" ? "me" : "seed";
 
@@ -4439,8 +4449,11 @@ async function openUserProfile(authorId, source) {
   // 🖼️ En-tête : MÊME visuel que le profil principal (couverture 3:2 + avatar
   // chevauchant + pseudo + bio + réseaux + stats), via les classes existantes
   // .main-profile-* — sans les contrôles d'édition, évidemment.
-  var coverStyle = user.coverUrl
-    ? 'background:url(' + safeUrlAttr(passioThumb(user.coverUrl, 880)) + ') center/cover;'
+  // `_cssUrl` et non `safeUrlAttr` (audit 2026-11-06) : l'attribut est décodé AVANT le
+  // CSS, une URL échappée pour le HTML ressortait donc de son `url(` non cité.
+  var _coverSure = user.coverUrl ? _cssUrl(passioThumb(user.coverUrl, 880)) : null;
+  var coverStyle = _coverSure
+    ? "background:url('" + _coverSure + "') center/cover;"
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
   var html = '\

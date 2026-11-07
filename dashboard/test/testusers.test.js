@@ -45,12 +45,12 @@ function faireAdmin(comptes) {
 
 const REELS = [
   { id: "u_ben", email: "passioadmin@gmail.com" },
-  { id: "u_lea", email: "lea@gmail.com" },
+  { id: "u_lea", email: "lea@exemple.fr" },
   // Pièges : ces adresses CONTIENNENT le motif sans être des comptes jetables.
-  { id: "u_piege1", email: "ben+passio-e2e@gmail.com" },
+  { id: "u_piege1", email: "ben+passio-e2e@exemple.fr" },
   { id: "u_piege2", email: "x@passio-e2e.test.evil.com" },
   { id: "u_piege3", email: "x@sub.passio-e2e.test" },
-  { id: "u_piege4", email: "passio-e2e.test@gmail.com" },
+  { id: "u_piege4", email: "passio-e2e.test@exemple.fr" },
 ];
 const JETABLES = [
   { id: "u_e2e1", email: "alpha@passio-e2e.test" },

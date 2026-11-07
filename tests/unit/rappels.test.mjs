@@ -4,6 +4,7 @@
 // machine virtuelle, et le câblage à la source.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { DELAI_PUSH_MS } from "../../supabase/functions/_shared/push-sur.js";
 import fs from "node:fs";
 import vm from "node:vm";
 import { idGeste } from "../../supabase/functions/_shared/autonomie.js";
@@ -206,26 +207,26 @@ function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refus
 
 test("⑨ enveloppe : la marque est écrite AVANT l'envoi ; charge « rappel » ; abonnement expiré retiré ; rejouer ne renvoie rien", async () => {
   const subs = [
-    { endpoint: "https://push/a1", user_id: A, subscription: { endpoint: "https://push/a1" } },
-    { endpoint: "https://push/a2", user_id: A, subscription: { endpoint: "https://push/a2" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/a1", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a1" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/a2", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a2" } },
   ];
   const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs });
   const envois = [];
   const envoyer = async (sub, charge, opts) => {
     envois.push({ sub, charge: JSON.parse(charge), opts, marqueDeja: admin.journal.some((j) => j.op === "insert") });
-    if (sub.endpoint === "https://push/a2") { const e = new Error("parti"); e.statusCode = 410; throw e; }
+    if (sub.endpoint === "https://fcm.googleapis.com/fcm/send/a2") { const e = new Error("parti"); e.statusCode = 410; throw e; }
   };
   const r = await envoyerRappels(admin, envoyer, T0, S);
   assert.deepEqual(r, { activites: 1, dus: 2, envoyes: 1, sansAppareil: 1, expires: 1, dejaPris: 0 }, "B n'a aucun appareil");
   assert.ok(envois.length === 2 && envois.every((e) => e.marqueDeja), "aucune push ne part avant la marque");
   assert.deepEqual(envois[0].charge, { type: "rappel", titre: "Rando au Salève", texte: "Ça commence dans 1 h (à 15:00) · Annecy", eventId: "ev_1" });
-  assert.deepEqual(envois[0].opts, { TTL: 3600, urgency: "high" });
+  assert.deepEqual(envois[0].opts, { TTL: 3600, urgency: "high", timeout: DELAI_PUSH_MS }, "un envoi porte toujours son délai");
   const marque = admin.journal.find((j) => j.op === "insert");
   assert.deepEqual(marque.rows.map((x) => [x.user_id, x.event, x.properties.cle]).sort(),
     [[marqueUid(A), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", A)], [marqueUid(B), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", B)]].sort());
   assert.deepEqual(marque.options, { onConflict: "id", ignoreDuplicates: true }, "ON CONFLICT (id) DO NOTHING : seul le tour qui écrit la marque envoie");
   for (const x of marque.rows) assert.equal(x.id, await idGeste(`rappel:${x.properties.cle}:${T0 + H}`, S), "l'identifiant de la marque est celui de sa CLÉ et de son DÉPART");
-  assert.deepEqual(admin.journal.find((j) => j.op === "delete"), { op: "delete", nom: "push_subscriptions", valeurs: ["https://push/a2"] });
+  assert.deepEqual(admin.journal.find((j) => j.op === "delete"), { op: "delete", nom: "push_subscriptions", valeurs: ["https://fcm.googleapis.com/fcm/send/a2"] });
 
   // Tour suivant : les marques existent → rien ne repart.
   const admin2 = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs,
@@ -239,8 +240,8 @@ test("⑨ bis deux tours EN PARALLÈLE (deux veilles dans la même seconde, mesu
   // Réinjection éprouvée : l'ancien `insert` sans identifiant → 4 pushes ; un
   // upsert sans `ignoreDuplicates` (fusion) → 4 pushes ; ce test rougit.
   const subs = [
-    { endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } },
-    { endpoint: "https://push/b", user_id: B, subscription: { endpoint: "https://push/b" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/a", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/b", user_id: B, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/b" } },
   ];
   const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs, rendezVous: 2 });
   const envois = [];
@@ -248,7 +249,7 @@ test("⑨ bis deux tours EN PARALLÈLE (deux veilles dans la même seconde, mesu
     envoyerRappels(admin, async (s) => { envois.push(s.endpoint); }, T0, S),
     envoyerRappels(admin, async (s) => { envois.push(s.endpoint); }, T0 + 30, S),
   ]);
-  assert.deepEqual(envois.sort(), ["https://push/a", "https://push/b"], "une push par compte, pas deux");
+  assert.deepEqual(envois.sort(), ["https://fcm.googleapis.com/fcm/send/a", "https://fcm.googleapis.com/fcm/send/b"], "une push par compte, pas deux");
   assert.equal(r1.dus + r2.dus, 2);
   assert.deepEqual([r1.dejaPris, r2.dejaPris].sort(), [0, 2], "le second tour a trouvé ses marques déjà prises — il n'envoie rien");
   // Et le tour suivant lit les marques écrites : rien ne repart.
@@ -259,14 +260,14 @@ test("⑨ bis deux tours EN PARALLÈLE (deux veilles dans la même seconde, mesu
 
 test("⑨ ter conflit PARTIEL : la marque de A vient d'être prise par un tour concurrent — seul B part", async () => {
   const subs = [
-    { endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } },
-    { endpoint: "https://push/b", user_id: B, subscription: { endpoint: "https://push/b" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/a", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/b", user_id: B, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/b" } },
   ];
   const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs,
     idsPris: [await idGeste(`rappel:${cleRappel("ev_1", "h2", A)}:${T0 + H}`, S)] });
   const envois = [];
   const r = await envoyerRappels(admin, async (s) => { envois.push(s.endpoint); }, T0, S);
-  assert.deepEqual(envois, ["https://push/b"], "A a déjà son rappel, envoyé par l'autre tour");
+  assert.deepEqual(envois, ["https://fcm.googleapis.com/fcm/send/b"], "A a déjà son rappel, envoyé par l'autre tour");
   assert.deepEqual(r, { activites: 1, dus: 1, envoyes: 1, sansAppareil: 0, expires: 0, dejaPris: 1 });
 });
 
@@ -285,7 +286,7 @@ test("⑨ quater activité REPORTÉE d'une semaine : son rappel repart — la ma
   // de marque sans le départ → la seconde push ne part pas.
   let maintenant = T0;
   const ev = activite(T0 + H, { author_id: null });
-  const subs = [{ endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } }];
+  const subs = [{ endpoint: "https://fcm.googleapis.com/fcm/send/a", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a" } }];
   const admin = fauxAdmin({ events: [ev], attendees: [inscrit(A, "going", T0 - 10 * 864e5)], subs, horloge: () => new Date(maintenant).toISOString() });
   const envois = [];
   const envoyer = async (s) => { envois.push(s.endpoint); };
@@ -293,7 +294,7 @@ test("⑨ quater activité REPORTÉE d'une semaine : son rappel repart — la ma
   ev.date_at = naif(T0 + 7 * 864e5 + H);
   maintenant = T0 + 7 * 864e5;
   const r = await envoyerRappels(admin, envoyer, maintenant, S);
-  assert.deepEqual(envois, ["https://push/a", "https://push/a"], "la date reportée a son propre rappel");
+  assert.deepEqual(envois, ["https://fcm.googleapis.com/fcm/send/a", "https://fcm.googleapis.com/fcm/send/a"], "la date reportée a son propre rappel");
   assert.equal(r.dejaPris, 0);
 });
 
@@ -302,11 +303,11 @@ test("⑩ quinquies un compte qui organise 121 activités à la même heure ne c
   // limite et AUCUN rappel ne part — pour personne, à chaque tour.
   const evs = [];
   for (let i = 0; i < 121; i++) evs.push(activite(T0 + H, { id: "ev_" + String(i).padStart(3, "0") }));
-  const subs = [{ endpoint: "https://push/b", user_id: B, subscription: { endpoint: "https://push/b" } }];
+  const subs = [{ endpoint: "https://fcm.googleapis.com/fcm/send/b", user_id: B, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/b" } }];
   const admin = fauxAdmin({ events: evs, attendees: [inscrit(B, "going", T0 - 3 * 864e5, "ev_000")], subs });
   const envois = [];
   const r = await envoyerRappels(admin, async (s) => { envois.push(s.endpoint); }, T0, S);
-  assert.deepEqual(envois, ["https://push/b"], "B reçoit son rappel malgré l'organisateur aux 121 activités");
+  assert.deepEqual(envois, ["https://fcm.googleapis.com/fcm/send/b"], "B reçoit son rappel malgré l'organisateur aux 121 activités");
   assert.equal(r.dus, 1 + MAX_PAR_COMPTE, "l'organisateur en reçoit MAX_PAR_COMPTE ce tour-ci, le reste aux tours suivants");
 });
 
@@ -513,14 +514,14 @@ test("⑫ quinquies service worker : un APPEL mesuré s'affiche comme avant (« 
 
 test("⑨ sexies l'accusé côté envoi : un pid ALÉATOIRE par rappel et l'adresse ; seuls les rappels ACCEPTÉS sont notés envoyés ; sans adresse, ni pid ni note", async () => {
   const subs = [
-    { endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } },
-    { endpoint: "https://push/b", user_id: B, subscription: { endpoint: "https://push/b" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/a", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/b", user_id: B, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/b" } },
   ];
   const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs });
   const charges = [];
   const envoyer = async (s, charge) => {
     charges.push({ fin: s.endpoint, c: JSON.parse(charge) });
-    if (s.endpoint === "https://push/b") { const e = new Error("refus"); e.statusCode = 500; throw e; }
+    if (s.endpoint === "https://fcm.googleapis.com/fcm/send/b") { const e = new Error("refus"); e.statusCode = 500; throw e; }
   };
   await envoyerRappels(admin, envoyer, T0, S, ACK);
   assert.equal(charges.length, 2);
@@ -534,7 +535,7 @@ test("⑨ sexies l'accusé côté envoi : un pid ALÉATOIRE par rappel et l'adre
   assert.equal(notes.length, 1, "UNE note par tour");
   const ligne = premiere(notes[0]);
   assert.equal(ligne.user_id, MARQUE_UID);
-  assert.deepEqual(ligne.properties, { genre: "rappel", pids: [charges.find((x) => x.fin === "https://push/a").c.pid], acceptes: 1 }, "B : refus du service de notification → pas noté envoyé");
+  assert.deepEqual(ligne.properties, { genre: "rappel", pids: [charges.find((x) => x.fin === "https://fcm.googleapis.com/fcm/send/a").c.pid], acceptes: 1 }, "B : refus du service de notification → pas noté envoyé");
   assert.ok(!JSON.stringify(ligne).includes("Rando"), "aucun texte dans la note");
 
   // Sans adresse d'accusé : la charge d'avant, et aucune note.
@@ -594,4 +595,22 @@ test("⑬ câblage : la veille lance les rappels sans pouvoir tomber avec eux ; 
   for (const o of ["column:public.events.date_at", "column:public.event_attendees.rsvp", "table:public.push_subscriptions"]) {
     assert.ok(prereq.fonctions.pilotage.objets.includes(o), o);
   }
+});
+
+test("audit 2026-11-06 : un abonnement hors des services push connus n'est pas contacté, et sa ligne reste", async () => {
+  const subs = [
+    { endpoint: "https://collecteur.exemple.test/a", user_id: A, subscription: { endpoint: "https://collecteur.exemple.test/a" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/a2", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a2" } },
+  ];
+  const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A)], subs });
+  const contactes = [];
+  const r = await envoyerRappels(admin, async (sub) => { contactes.push(sub.endpoint); }, T0, S);
+  assert.deepEqual(contactes, ["https://fcm.googleapis.com/fcm/send/a2"]);
+  assert.equal(r.envoyes, 1);
+  assert.equal(admin.journal.some((j) => j.op === "delete"), false);
+});
+
+test("audit 2026-11-06 : le préfixe des marques est le même des deux côtés, sinon la purge ne les trouve plus", async () => {
+  const { MARQUE_RAPPELS } = await import("../../supabase/functions/_shared/purge-compte.js");
+  assert.equal(marqueUid("abc"), MARQUE_RAPPELS + "abc");
 });

@@ -43,7 +43,7 @@ const lignesDeCode = (texte) => texte.split("\n")
 
 /**
  * Tous les entrants du verrou, et ce qui ne va pas chez chacun.
- * ⚠️ Un fichier que le lecteur refuse (`claude-pr-task.yml` et son scalaire plié)
+ * ⚠️ Un fichier que le lecteur refuse (scalaire plié)
  * n'est toléré que s'il ne nomme ni le verrou ni le marqueur : on ne conclut jamais
  * « aucun entrant » de ce qu'on n'a pas su lire.
  */
