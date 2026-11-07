@@ -24,6 +24,7 @@
 - 📞 UNE MISE À JOUR SILENCIEUSE COUPAIT L'APPEL, LE LIVE ET LA SAISIE — le rechargement attend (2026-11-04)
 - 🎙️ UNE MISE À JOUR SILENCIEUSE PERDAIT LE VOCAL, LA CAPTURE ET L'ENVOI — le rechargement attend aussi (2026-11-04)
 - 📎 UNE PIÈCE JOINTE EN ÉCHEC PARTAIT EN ÉTIQUETTE « NON SYNCHRONISÉ », ANNONCÉE ENVOYÉE — le dépôt a désormais un verdict, une file et un « réessayer » (2026-11-07)
+- ↪️ TRANSFÉRER UN VOCAL ENVOYAIT UN MESSAGE VIDE — il part en vocal, son objet copié ou déposé dans la cible (2026-11-07)
 
 ---
 
@@ -612,3 +613,47 @@ Reste listé au § 8 de `docs/AUTONOMIE_EXPLOITATION.md` (« lot pièce jointe �
   - transférer un VOCAL envoie toujours un message vide (`_forwardTo` n'a pas de branche `voiceData`) : PASSIO74/passio-app#750, empilée sur ce lot, le règle ;
   - aucune contrainte serveur n'interdit une data URL dans `conv_messages.content` : PASSIO74/passio-app#754 la propose (deux CHECK), en attente de sa contre-revue humaine ;
   - aucun plafond client pour un document ou un audio (le seau borne à 50 Mo, désormais dit par « trop lourd ») ;
+
+## ↪️ TRANSFÉRER UN VOCAL ENVOYAIT UN MESSAGE VIDE — il part en vocal, son objet copié ou déposé dans la cible (2026-11-07)
+
+Constaté le jour même par le lot pièce jointe (fiche précédente, « hors champ ») et confié comme ordre séparé.
+
+- **Le défaut.** `_forwardTo` (app-04) reconstruit l'enveloppe selon le type du message : photo ou vidéo, GIF, document, position — sinon du texte. Aucune branche ne lisait `voiceData`. Mesuré sur le code d'avant (HEAD `603ebdb`, corps des POST `conv_messages` relevés par le banc) :
+  - mon vocal tout juste enregistré (`text: ""`) partait en `{"type":"text","text":""}` : un message **vide**, et une bulle vide dans la cible ;
+  - un vocal **reçu** partait en texte « [AUDIO] Message vocal (7s) » (son `content.text` d'origine), APRÈS que son objet eut été copié dans le dossier de la cible : `_copierPieceJointeVers` savait déjà copier un `voiceData`, c'est l'enveloppe qui manquait — un objet orphelin à chaque transfert ;
+  - un fichier audio joint (`voiceData` + `isFile`, `_processAttach`) partait vide de même ;
+  - le menu du message (`_openMsgActions`) offre « Transférer » pour tout message : le geste était proposé, vocal compris.
+  - Toujours vrai après le téléversement de la copie locale (PASSIO74/passio-app#751, fusionné dans le lot précédent, `ce3d477`) : mon vocal y était bien DÉPOSÉ dans la cible, puis parti en message vide — l'objet, lui, orphelin.
+- **Correctif** (app-04, `_forwardTo`) :
+  - **Un vocal part en vocal** : `{ type: "audio", filename: "Message vocal (Ns)", fileType: <conteneur réel>, url, text: "🎙 Message vocal" }`. Le destinataire le reconnaît au **nom** (`applyMsgContentData`), lecteur intégré et durée compris. « 🎙 Message vocal » figurait déjà dans `_LIBELLES_ENVELOPPE`, sans aucun producteur.
+  - **L'objet suit le contrat des photos** : déjà dans le seau → **copié** dans le dossier de la cible ; copie locale seulement → l'objet déjà déposé (`m.pj.url`, que `_pieceJointeDuMessage` lit depuis la revue du lot précédent) est copié, sinon la copie est **déposée** (`_televerserPieceJointeVers`, le mécanisme unique du lot précédent, sous `transfert.<sous-type>`). Copie ou dépôt refusé = transfert refusé, dit ; jamais une data URL vers `conv_messages`. Ce lot n'ajoute aucun mécanisme de dépôt : il ajoute l'ENVELOPPE qui manquait derrière.
+  - **Le conteneur réel** (`_conteneurAudioDuMessage`) : le mime de la copie locale, sinon l'extension de l'objet — `_sendVoiceMessage` nomme tout vocal `voice.<ext>` d'après son conteneur, une copie garde ce nom, et le dépôt d'un transfert s'appelle `transfert.<sous-type>` (mp4, webm, ogg). ⚠️ Un vocal REÇU ne garde pas `d.fileType` (`applyMsgContentData` ne recopie que l'URL et la durée) : sans l'extension, un vocal d'iPhone repartirait étiqueté `audio/webm`. Le conteneur est lu **avant** que l'URL de la copie ne remplace la data URL.
+  - **La bulle locale de la cible** porte l'URL de la copie : le lecteur y est peint (signé au premier toucher, `_playVoiceById`), et « supprimer pour tous » purge la copie (`_purgerPieceJointeDe`).
+  - **Un fichier audio joint part en fichier** (`type: "doc"`), comme le transfert d'un fichier audio reçu le faisait déjà. Parti en `audio`, la règle « `audio/webm` = vocal » d'`applyMsgContentData` aurait fait avaler un `.webm` par le lecteur de vocaux du destinataire.
+  - **Filet** : rien à transférer (aucun média lu, texte vide) = refusé et dit (« Ce message ne peut pas être transféré »), jamais inséré. Ni copie ni dépôt ne peut précéder ce refus : ils ne visent que des médias que l'enveloppe sait lire.
+  - ⚠️ **L'auteur avant la copie ou le dépôt** (ASTRA-21/43). `auteurTransfert` et `genTransfert` étaient relus APRÈS les `await` : un compte connecté pendant la copie — et un vocal est le dépôt le plus lent — signait le transfert. Mesuré sur le code d'avant (⑨, HEAD `603ebdb`) : la ligne partait sous `from_id` du compte SUIVANT, avec le message écrit par le précédent. Le trou existait depuis la copie d'ASTRA-01, pour tout type. Les deux revues `audit-passio` l'ont trouvé le même jour : la garde vit dans la revue du lot précédent (`_ctxTransfert` capturé à l'entrée, annulation muette — `diagLog("transfert_perime")` — avant la bulle et l'insertion), et ⑨ la verrouille sur la copie d'un vocal reçu. L'objet déjà copié reste alors orphelin : le compte courant ne peut pas le supprimer (la policy DELETE exige l'auteur).
+- « Transférer » reste offert pour un vocal : le geste fonctionne désormais. Le retirer était le repli de l'ordre, pas sa cible.
+- **Verrou** : `tests/e2e/transfert-vocal.spec.js`, 9 cas, même montage que `piece-jointe-depot-echec` (vrai client Supabase, réseau tenu par `page.route` posé APRÈS `bootOnboarded`). Mesurés : le corps des POST `conv_messages`, les copies (`sourceKey` / `destinationKey`), les dépôts et le type de leur partie multipart, ce que le destinataire en décode, la bulle peinte dans la cible ; ⑨ retient la copie le temps de la purge réelle (`purgeAccountScopedData`) et d'une nouvelle identité. Le banc attend `_supaReal` ET `_supaInitTerminee` avant de poser ses conversations : un démarrage encore en cours passerait dessus.
+- **Réinjection** : le code d'avant rougit sur l'écart (« text » au lieu de « audio », aucune copie, un message vide inséré, une ligne sous l'autre compte) — ① ② ③ ⑤ ⑥ ⑦ ⑧ ⑨ sur `603ebdb` ; ① ② ③ ⑥ ⑦ ⑧ sur la tête du lot précédent (`ce3d477`), qui tient déjà ④ (copie refusée), ⑤ (dépôt refusé, #751) et ⑨ (garde ASTRA-21) — ils restent ici en non-régression. 10 mutations, 10 tuées (sur `ce3d477` + ce lot) :
+
+  | Mutation | Cas rouges |
+  |---|---|
+  | branche vocal retirée | ① ② ③ ⑥ |
+  | `voiceData` retiré de `_urlLocaleDuMessage` (#751) | ③ ⑤ ⑦ (② passe par la copie de `m.pj.url`) |
+  | conteneur codé en dur `audio/webm` | ① ② ⑥ |
+  | extension de l'objet ignorée | ① ⑥ |
+  | filet du message vide retiré | ⑧ |
+  | fichier audio lu comme un vocal | ⑦ |
+  | bulle locale sans le vocal | ① ② |
+  | nom sans « Message vocal » | ① ② ③ ⑥ |
+  | garde ASTRA-21 retirée (`_outboxContextePerime(_ctxTransfert)`) | ⑨ |
+  | auteur capturé APRÈS les attentes | ⑨ |
+
+- **Non-régression** : `npm run verif` vert, `node scripts/build.js` OK. Sur `ce3d477` + ce lot : 69/69 — `transfert-vocal` 9/9, `piece-jointe-depot-echec` 26/26, `message-contenu-borne` 9/9 (#751), `file-messages-par-compte` 15/15, `message-media-echec` 4/4, `pieces-jointes-cycle` 4/4, `transfert-message` 2/2. Plus tôt (sur `603ebdb`), 22 suites de la messagerie, des pièces jointes et de la PWA, 172/173 — `piece-jointe-depot-echec` 15/15, `pieces-jointes-cycle` 4/4, `transfert-message` 2/2, `file-messages-par-compte` 15/15, `notification-message` 13/13, `parcours-flux` 13/13, `identite-expediteur-serveur` 6/6, `audit-2026-11-xss` 5/5… Le seul rouge, `pwa-maj-pendant-appel` ㉒ (une bobine, sans rapport), attendait `SW_UPDATED` sous charge — un build et une sonde tournaient à côté — et passe 3/3 seul.
+- **Hors champ, constaté** :
+  - la bulle de l'AUTEUR d'un fichier audio joint est VIDE jusqu'à la relecture du fil (sondé : `<div class="conv-bubble me"></div>` et l'heure seule) — `renderConvFpThread` n'a aucune branche pour `voiceData` + `isFile` ; après la relecture, la ligne serveur la rend en fichier (`fileUrl`) ;
+  - un fichier audio REÇU, transféré, part en document : `applyMsgContentData` remplace son `fileType` par « audio », le mime d'origine est perdu (🎵 chez moi, 📄 chez le destinataire) ;
+  - un transfert RÉUSSI ne notifie jamais le destinataire, quel que soit son type : la branche de succès de `_forwardTo` n'appelle pas `_notifierMessage` (seuls `_sendTextToSupa` — donc le rejeu de la file — et `sendMessageToSupabase` le font) ;
+  - aucun signe pendant la copie ou le dépôt : la fenêtre se ferme, la bulle n'apparaît qu'après l'attente — qui refait le transfert, faute de rien voir, double le dépôt et le message ;
+  - un objet copié ou déposé reste orphelin si l'insertion est ensuite refusée pour de bon (compte bloqué, plus membre), ou si l'application est tuée entre les deux — pour tout média transféré ;
+  - la bulle transférée ne porte pas `de` : si la file perd son entrée (refus définitif, plafond), « réessayer » refuse avec « écrit avec un autre compte », au lieu de reconstruire depuis un texte vide — sûr, mais trompeur.

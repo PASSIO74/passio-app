@@ -6443,6 +6443,26 @@ function _forwardPick(convId, msgId) {
     '<div style="max-height:340px;overflow-y:auto;margin-top:8px;">' + (rows || '<div style="padding:20px;text-align:center;color:var(--muted);">Aucune conversation</div>') + '</div>');
 }
 
+// Le conteneur RÉEL d'un enregistrement audio (vocal ou fichier joint). La copie
+// locale le porte (`data:audio/mp4;…` sur iPhone, `data:audio/webm;codecs=opus;…`
+// sur Android) ; un vocal REÇU ne garde que son URL, et c'est l'extension de son
+// objet qui le dit : `_sendVoiceMessage` (app-09) nomme tout vocal `voice.<ext>`
+// d'après son conteneur (m4a, ogg, webm), une copie garde ce nom, et un vocal
+// transféré depuis sa copie locale est déposé en `transfert.<sous-type>` (mp4,
+// webm, ogg — `_televerserPieceJointeVers`). Jamais « audio/webm » d'office pour
+// un enregistrement iPhone — c'est l'étiquette mensongère qui rendait ses
+// vocaux injouables.
+function _conteneurAudioDuMessage(m) {
+  var v = (m && typeof m.voiceData === "string") ? m.voiceData : "";
+  var duData = /^data:(audio\/[a-z0-9.+-]+)/i.exec(v);
+  if (duData) return duData[1].toLowerCase();
+  var chemin = ((typeof pieceJointeChemin === "function") && pieceJointeChemin(v)) || v.split(/[?#]/)[0];
+  var ext = ((/\.([a-z0-9]{2,4})$/i.exec(chemin) || [])[1] || "").toLowerCase();
+  if (ext === "m4a" || ext === "mp4") return "audio/mp4";
+  if (ext === "ogg" || ext === "oga" || ext === "opus") return "audio/ogg";
+  return "audio/webm";
+}
+
 async function _forwardTo(targetConvId) {
   closeModal();
   // ⚠️ L'AUTEUR EST CAPTURÉ ICI, AVANT TOUT `await` (ASTRA-21, revue audit-passio du
@@ -6455,6 +6475,9 @@ async function _forwardTo(targetConvId) {
   var m = r.m;
   var convs = getConversations();
   var target = convs.find(function(x){ return x.id === targetConvId; }); if (!target) return;
+  // Lu AVANT que la copie ne remplace l'URL : seule la copie locale porte le
+  // conteneur dans son mime.
+  var _conteneurAudio = m.voiceData ? _conteneurAudioDuMessage(m) : null;
   // ⚠️ UNE PIÈCE JOINTE TRANSFÉRÉE CHANGE DE DOSSIER (ASTRA-01, 2026-09-14).
   // Le transfert réutilisait l'URL d'origine, `attachments/<conv source>/…` ;
   // or le seau est privé et la lecture exige d'être membre de la conversation
@@ -6502,7 +6525,31 @@ async function _forwardTo(targetConvId) {
   else if (m.gif) { content = { type: "gif", url: m.gif, text: "🎞 GIF" }; localMsg.gif = m.gif; }
   else if (m.fileUrl) { content = { type: "doc", url: m.fileUrl, filename: m.fileName || "Fichier", text: "📄 " + (m.fileName||"Fichier") }; localMsg.fileUrl = m.fileUrl; localMsg.fileName = m.fileName; localMsg.fileType = m.fileType; }
   else if (m.location) { content = { type: "location", lat: m.location.lat, lng: m.location.lng, url: m.location.url, text: "📍 Position" }; localMsg.location = m.location; }
+  else if (m.voiceData && m.isFile) {
+    // Un FICHIER audio joint (`_processAttach`, kind « audio ») n'est pas un vocal :
+    // il part en fichier téléchargeable, comme le transfert d'un fichier audio reçu
+    // — jamais avalé par le lecteur de vocaux du destinataire.
+    content = { type: "doc", url: m.voiceData, filename: m.fileName || "Audio", text: "📄 " + (m.fileName || "Audio") };
+    localMsg.fileUrl = m.voiceData; localMsg.fileName = m.fileName || "Audio"; localMsg.fileType = "audio";
+  }
+  else if (m.voiceData) {
+    // ⚠️ UN VOCAL PART EN VOCAL (2026-11-07). Aucune branche ne lisait `voiceData` :
+    // il tombait dans la branche texte — message VIDE pour mon vocal, « [AUDIO]
+    // Message vocal (7s) » pour un vocal reçu, dont l'objet venait d'être copié pour
+    // rien. Le destinataire reconnaît un vocal à son NOM « Message vocal (Ns) »
+    // (`applyMsgContentData`), quel que soit le conteneur ; `fileType` dit le
+    // conteneur réel, lu plus haut. La bulle locale porte l'URL de la COPIE : c'est
+    // elle que « supprimer pour tous » purgera (`_purgerPieceJointeDe`).
+    var _duree = Math.max(0, Math.round(Number(m.voiceDuration) || 0));
+    content = { type: "audio", url: m.voiceData, fileType: _conteneurAudio, filename: "Message vocal (" + _duree + "s)", text: "🎙 Message vocal" };
+    localMsg.voiceData = m.voiceData; localMsg.voiceDuration = _duree;
+  }
   else { localMsg.text = m.text || ""; }
+  // ⚠️ RIEN À TRANSFÉRER N'EST PAS UN MESSAGE VIDE (2026-11-07). Tout ce que les
+  // branches ci-dessus ne savent pas lire tombait dans la branche texte et partait
+  // VIDE — c'était le vocal. Refusé et dit, jamais inséré. Aucune copie ni aucun
+  // dépôt ne peut précéder ce refus : ils ne visent que des médias lus plus haut.
+  if (!content && !String(localMsg.text || "").trim()) { toast("⚠️ Ce message ne peut pas être transféré"); return; }
   // Les deux bornes du serveur, AVANT toute trace locale : une enveloppe dont
   // l'`url` est une data-URL (un GIF ou une position d'une ancienne version) et
   // un texte plus long que ce que ce client envoie lui-même (MSG_TEXTE_MAX).
