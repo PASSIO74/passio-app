@@ -40,7 +40,7 @@ pas de TURN dédié (appels retirés), pas de quota IA relevé.
   non rendus, `startCall` refuse et prévient, sonnerie non abonnée, invitation d'un **ancien client
   en cache** ignorée et tracée (`call_ignore_pilote`), `notify-call` refuse `type:"call"` (503
   `appels_desactives`). Aucune policy rouverte, aucun canal public. Réactivation : deux constantes
-  (`PASSIO_APPELS_ACTIFS`, app-05 ; `APPELS_ACTIFS`, notify-call) après correction bornée — RES-13.
+  (`PASSIO_APPELS_ACTIFS`, app-05 ; `APPELS_ACTIFS`, `supabase/functions/_shared/appels.js` depuis le 2026-11-07, lu par notify-call et le pilotage) après correction bornée — RES-13.
   Les suites d'appels s'arment elles-mêmes (`passio_appels_actifs`) et restent vertes (21/21).
 - Rien d'autre n'est désactivé. Les fonctions dont la migration n'est pas appliquée se **dégradent
   honnêtement** (export partiel dit, mentions silencieuses tracées, suppression 503) — jamais un

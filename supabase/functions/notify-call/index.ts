@@ -31,14 +31,29 @@
 //      et l'emoji de l'appelant viennent de `profiles`. `fromName`, `fromEmoji`
 //      et `text` du corps sont IGNORÉS (acceptés pour les anciens clients).
 //      Lien absent → même réponse qu'un blocage.
+// ⚠️ ACCUSÉ DE RÉCEPTION DES APPELS (2026-11-07, _shared/appels.js) : toute push
+// part par `pousserAppareils`. Un APPEL sur dix, tiré au sort par le serveur,
+// porte un pid aléatoire et l'adresse d'accusé ; le service worker accuse après
+// l'affichage, et la note `push_envoye` (genre « appel », pids, appareils
+// acceptés) se pose sous `systeme:appels` — sans rien de l'appelant. Le pid
+// n'est JAMAIS rendu à l'appelant : il pourrait forger l'accusé d'un appel qui
+// n'a pas sonné. Une notification sociale ne porte jamais d'accusé.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { identiteAppelant, lienAppel, autoriserPushNotif } from "../_shared/lien-metier.js";
+import { adresseAccuse } from "../_shared/reception.js";
+import { APPELS_ACTIFS, pousserAppareils } from "../_shared/appels.js";
 import { REVISION } from "../_shared/revision.js";
-/** Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client (`PASSIO_APPELS_ACTIFS`, app-05). */
-const APPELS_ACTIFS = false;
+// Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client
+// (`PASSIO_APPELS_ACTIFS`, app-05). `APPELS_ACTIFS` vit dans _shared/appels.js
+// depuis le 2026-11-07, pour que le pilotage dise « appels coupés » au lieu de
+// « 0 appel mesuré » : une seule source, lue par les deux fonctions.
+// L'adresse d'accusé (_shared/reception.js) : l'URL du projet et sa clé PUBLIQUE
+// (l'ancienne anon, sinon la publiable). Absente ou hors forme → les appels
+// partent sans accusé, comme avant ; jamais une adresse inventée.
+const ACCUSE = adresseAccuse((n) => Deno.env.get(n)).accuse;
 
 // Par appelant : 20 pushes par minute, 200 par heure. Le client n'émet qu'une
 // push par conversation et par 5 min (anti-spam de _notifierMessage) plus les
@@ -147,27 +162,23 @@ Deno.serve(async (req) => {
   const { data: subs } = await admin.from("push_subscriptions").select("endpoint, subscription").eq("user_id", toUserId);
   if (!subs || !subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
 
-  const payload = type === "notif"
-    ? JSON.stringify({ type: "notif", text: texteServeur || "Nouvelle notification", emoji: emoji || "🔔", kind: kindServeur || kind })
-    : JSON.stringify({ type: "call", callId, kind: kind || "voice", from: fromUid, name: idn.name, emoji: idn.emoji });
+  const charge = type === "notif"
+    ? { type: "notif", text: texteServeur || "Nouvelle notification", emoji: emoji || "🔔", kind: kindServeur || kind }
+    : { type: "call", callId, kind: kind || "voice", from: fromUid, name: idn.name, emoji: idn.emoji };
 
   const ttl = type === "notif" ? 3600 : 45;
   const urgency = type === "notif" ? "normal" : "high";
 
-  // 4. Envoyer à chaque appareil ; nettoyer les abonnements morts (410/404).
-  let sent = 0;
-  const dead: string[] = [];
-  await Promise.all((subs || []).map(async (row) => {
-    try {
-      await webpush.sendNotification(row.subscription, payload, { TTL: ttl, urgency });
-      sent++;
-    } catch (e) {
-      const code = (e as { statusCode?: number })?.statusCode;
-      if (code === 404 || code === 410) dead.push(row.endpoint);
-    }
-  }));
-  if (dead.length) { try { await admin.from("push_subscriptions").delete().in("endpoint", dead); } catch (_e) { /* */ } }
+  // 4. Envoyer à chaque appareil (_shared/appels.js : un appel sur dix porte un
+  // accusé, noté après l'envoi) ; nettoyer les abonnements morts (410/404).
+  const { sent, morts } = await pousserAppareils({
+    admin, abonnements: subs, charge, options: { TTL: ttl, urgency }, accuse: ACCUSE,
+    // deno-lint-ignore no-explicit-any
+    envoyer: (s: any, c: string, o: any) => webpush.sendNotification(s, c, o),
+  });
+  if (morts.length) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch (_e) { /* */ } }
 
+  // Ni le pid ni « mesuré » ne sortent vers l'appelant (voir l'en-tête).
   return json({ ok: true, sent });
 });
 
