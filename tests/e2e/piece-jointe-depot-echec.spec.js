@@ -709,4 +709,25 @@ test.describe("Pièce jointe — le dépôt Storage a un verdict, une file et un
     await expect.poll(() => r.journal.suppressions.length, { timeout: 10000 }).toBe(1);
     expect(r.journal.suppressions[0]).toContain(chemin);
   });
+
+  test("㉕ une entrée de file dont la bulle a DISPARU sans pierre tombale remonte « copie perdue » ; supprimée exprès, elle part en silence", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    await page.evaluate(({ conv, uid }) => {
+      // Deux entrées sans bulle : l'une supprimée EXPRÈS (pierre tombale), l'autre non.
+      convTombAdd("msg", "m_supprimee");
+      localStorage.setItem("passio_pj_outbox_v1", JSON.stringify([
+        { convId: conv, msgId: "m_perdue", owner: uid, at: Date.now() - 60000, essais: 0 },
+        { convId: conv, msgId: "m_supprimee", owner: uid, at: Date.now() - 60000, essais: 0 },
+      ]));
+      window.dispatchEvent(new Event("online"));
+    }, { conv: CONV, uid: UID_MOI });
+    await page.waitForTimeout(800);
+    expect(await filePj(page), "les deux sortent de la file").toEqual([]);
+    expect(r.journal.depots).toEqual([]);
+    const { erreurs } = await lire(page);
+    const perdues = erreurs.filter((x) => x.action === "piece_jointe_depot" && x.meta.rc === "copie_perdue");
+    expect(perdues, "une seule : celle qui n'a pas été supprimée exprès").toHaveLength(1);
+    expect(perdues[0].severity).toBe("error");
+  });
 });
