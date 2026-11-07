@@ -25,11 +25,6 @@
 -- RETOUR ARRIÈRE (éditeur SQL). Corps et policies d'origine : tests/sql/fixtures/socle-production-2026-11-06.sql.
 --| begin;
 
-do $g$ begin
-  if to_regprocedure('public.plafond_consommer(uuid,text,integer,integer)') is null and to_regprocedure('public.quota_stockage_ok()') is null then
-    raise exception 'lot 1 requis avant le lot 2';
-  end if;
-end $g$;
 --| select cron.unschedule('purge_debit_ecritures');
 --| drop trigger if exists trg_debit_compte on public.conv_members;
 --| drop trigger if exists trg_debit_compte on public.post_likes;
@@ -50,6 +45,12 @@ end $g$;
 --| commit;
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 begin;
+
+do $g$ begin
+  if to_regprocedure('public.plafond_consommer(uuid,text,integer,integer)') is null and to_regprocedure('public.quota_stockage_ok()') is null then
+    raise exception 'lot 1 requis avant le lot 2';
+  end if;
+end $g$;
 
 -- ── ① Un compteur que l'attaquant ne peut pas effacer ────────────────────────────────────────
 create table if not exists public.debit_ecritures (
