@@ -1062,13 +1062,29 @@ export function titreReparation(c) {
  * Claude dès son ouverture (claude-code.yml : issue de PASSIO74 dont le corps
  * contient `@claude`), sans label ni commentaire — deux gestes que GitHub refuse
  * au jeton du pilotage sans « Issues: write » (#653, #657).
+ *
+ * ⚠️ CET ORDRE NE DEMANDE QUE CE QUE L'AGENT A LE DROIT DE FAIRE (2026-11-07).
+ * Il partait avec deux consignes que la liste `--allowedTools` de
+ * claude-code.yml REFUSE : « lance `npm run verif` » (aucun motif `npm`, et la
+ * spécification écrite par ce même workflow dit à l'agent que les audits sont du
+ * ressort du workflow) et, pour une exécution, « lis son journal
+ * (gh run view --log-failed) » (aucun motif `gh run`, ni `gh api`). Mesuré sur
+ * la réparation du run 42371046028 (issue #757) : chaque appel est revenu « This
+ * command requires approval » — en CI personne ne peut cliquer —, l'agent n'a
+ * jamais pu lire l'étape en échec, et la seule issue honnête était « cause non
+ * établie ». Un ordre qu'aucun droit ne rend exécutable n'est pas un ordre : il
+ * pousse à la cause SUPPOSÉE. On n'injecte pas pour autant le journal dans le
+ * corps — « aucun texte externe » (test ⑫) est la frontière anti-injection de ce
+ * prompt. Verrou : tests/unit/pilotage.test.mjs (« ㊴ »), qui relit la liste
+ * `--allowedTools` réelle.
  */
 export function corpsReparation(c, depot) {
   const consigne = [
     "",
-    "Établis la cause racine en lisant le code réel, corrige-la, ajoute ou adapte le verrou qui l'aurait attrapée, lance `npm run verif` et les tests concernés, puis ouvre une PR.",
+    "Établis la cause racine en lisant le code réel, corrige-la, ajoute ou adapte le verrou qui l'aurait attrapée, puis ouvre une PR. Ne lance ni audit ni test toi-même : le workflow les exécute sur ton travail avant de le publier.",
     "Ne fusionne rien et ne ferme aucune issue toi-même : Benjamin relit et fusionne depuis le pilotage.",
     "Si la cause n'est pas dans le code (réglage externe, panne d'un fournisseur, faux positif de la veille), ne modifie rien : explique-le en commentaire, avec le geste à faire.",
+    "Si la preuve te manque pour trancher, écris « cause non établie » et ne corrige rien : une cause supposée n'est pas une cause.",
     "",
     "_Demandé depuis le pilotage (bouton « Régler »)._",
   ];
@@ -1080,7 +1096,8 @@ export function corpsReparation(c, depot) {
     const r = RUNS_REPARABLES[c.cle];
     const url = /^https:\/\/github\.com\//.test(String(c.url || "")) ? c.url : `https://github.com/${depot}/actions/workflows/${r.fichier}`;
     return [COMMENTAIRE_CONFIER, "", `La dernière exécution de \`${r.fichier}\` (${r.libelle}) sur \`main\` a échoué : ${url}`, "",
-      "Lis son journal (`gh run view --log-failed`) pour trouver l'étape en échec.", ...consigne].join("\n");
+      "Le journal de ce run n'est PAS dans tes droits d'outils : ne le demande pas. Cherche l'étape en échec dans le workflow et dans le code qu'il exécute, en partant de ce que le dernier commit de `main` a changé.",
+      "Un job vert sur la pull request et rouge sur `main` sur le MÊME code désigne d'abord ce qui n'existe que sur `main` (déploiement, retour sur l'issue), l'index « commit → PR » de la gouvernance, ou une ressource partagée (quota d'inscriptions Supabase, purge des comptes e2e, paquet npm amont) : aucune de ces causes n'est dans le code, et le geste est alors de relancer les jobs échoués.", ...consigne].join("\n");
   }
   return null;
 }

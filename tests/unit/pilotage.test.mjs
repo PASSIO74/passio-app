@@ -1550,3 +1550,46 @@ test("㉿⑱ la ligne des alertes : « Régler » envoie un essai (hors « Tout 
   assert.match(page, /if \(ad && ad\.mesurable === false\) al\.append\(carte\("Accusés de réception impossibles"/);
 });
 
+// ─── L'ordre ne demande que ce que l'agent a le DROIT de faire (2026-11-07) ──
+// Mesuré sur la réparation du run 42371046028 (issue #757). `corpsReparation`
+// ordonnait « lis son journal (gh run view --log-failed) » et « lance npm run
+// verif » ; la liste `--allowedTools` de claude-code.yml n'accorde ni `gh run`,
+// ni `gh api`, ni `npm`. En CI, un appel hors liste revient « This command
+// requires approval » — personne ne peut cliquer — donc l'agent n'a jamais pu
+// lire l'étape en échec. Un ordre qu'aucun droit ne rend exécutable pousse à la
+// cause SUPPOSÉE, exactement ce que la consigne lui interdit par ailleurs.
+// Ce banc lit la liste RÉELLE du workflow, jamais une copie : remettre une
+// commande hors droits dans le corps le fait rougir.
+// MUTATIONS : réécrire « lance `npm run verif` » ou « `gh run view --log-failed` »
+// dans `corpsReparation` → rouge ; retirer `gh issue comment` de la liste du
+// workflow → rouge (la consigne demande d'expliquer en commentaire).
+test("㊴ les commandes citées par l'ordre de réparation sont toutes couvertes par --allowedTools", () => {
+  const wf = fs.readFileSync(".github/workflows/claude-code.yml", "utf8");
+  const liste = wf.match(/--allowedTools\s+"([^"]+)"/);
+  assert.ok(liste, "--allowedTools introuvable dans claude-code.yml : sans liste, CHAQUE appel Bash est refusé");
+  const motifs = [...liste[1].matchAll(/Bash\(([^)]*)\)/g)].map((m) => m[1]);
+  assert.ok(motifs.length > 5, "liste de motifs Bash suspecte : le banc ne mesurerait rien");
+  // Un motif `X:*` couvre toute commande qui commence par X ; sans `:*`, l'égalité stricte.
+  const couvre = (cmd) => motifs.some((m) => (m.endsWith(":*") ? cmd.startsWith(m.slice(0, -2)) : cmd === m));
+  const SHELL = /^(npm|npx|node|yarn|pnpm|gh|git|bash|sh|curl|wget|python3?|pip3?)\b/;
+  // `couvre` tranche dans les deux sens — sinon le banc ne mesurerait rien.
+  assert.equal(couvre("gh issue comment 1 --body-file x"), true, "la consigne « explique-le en commentaire » doit rester exécutable");
+  assert.equal(couvre("git add tests/unit/pilotage.test.mjs"), true);
+  assert.equal(couvre("gh run view --log-failed"), false, "le journal d'un run est hors des droits de l'agent");
+  assert.equal(couvre("gh api repos/x/y/actions/runs/1/jobs"), false);
+  assert.equal(couvre("npm run verif"), false, "les audits sont du ressort du workflow, pas de l'agent");
+  assert.equal(couvre("git push origin main"), false, "l'agent n'a jamais le droit de pousser");
+
+  const cibles = [{ cible: "issue", numero: 627 }, ...Object.keys(RUNS_REPARABLES).map((cle) => ({ cible: "run", cle }))];
+  for (const c of cibles) {
+    const corps = corpsReparation(c, "P/p");
+    assert.ok(corps, JSON.stringify(c));
+    for (const [, brut] of corps.matchAll(/`([^`\n]+)`/g)) {
+      const cmd = brut.trim();
+      if (!SHELL.test(cmd)) continue;                  // `deploy.yml`, `main` : ce ne sont pas des commandes
+      assert.ok(couvre(cmd), `l'ordre demande « ${cmd} », qu'aucun motif de --allowedTools n'accorde`);
+    }
+  }
+});
+
+
