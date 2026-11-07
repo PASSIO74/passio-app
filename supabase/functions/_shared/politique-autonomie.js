@@ -9,8 +9,9 @@
 // « voici la liste fermée des gestes autonomes, et voici ceux qui ne le seront
 // jamais ». Ce fichier est ce catalogue — et il ne décrit QUE ce que le code
 // applique vraiment : `tests/unit/politique-autonomie.test.mjs` compare chaque
-// valeur à la constante, ou à la ligne de workflow, qui l'impose. Une politique
-// qui dirait 60 lignes quand deploy.yml en applique 80 rougit la CI.
+// valeur à la constante qui l'impose, `politique-autonomie-executants.test.mjs`
+// à la ligne de workflow, de script ou du client. Une politique qui dirait
+// 60 lignes quand deploy.yml en applique 80 rougit la CI.
 //
 // Trois circuits (consigne §15) :
 //   A — reprise opérationnelle CONNUE : bornée, idempotente ou récupérable,

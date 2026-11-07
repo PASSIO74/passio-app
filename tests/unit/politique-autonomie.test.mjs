@@ -1,8 +1,14 @@
 // Politique d'automatisation (2026-11-06). Deux familles de verrous :
 //   · la politique est VALIDÉE et `autoriser` échoue FERMÉ ;
 //   · la politique DIT CE QUE LE CODE FAIT : chaque borne est comparée à la
-//     constante, ou à la ligne de workflow, qui l'impose. Une politique qui
-//     dériverait de l'exécutant serait un document, pas une politique.
+//     constante, ou à la ligne de la fonction déployée, qui l'impose. Une
+//     politique qui dériverait de l'exécutant serait un document, pas une politique.
+// ⚠️ Ce fichier tourne AVANT `supabase functions deploy` (edge-functions.yml) :
+// il n'éprouve que ce que la fonction emporte (les modules de `_shared/` et
+// `pilotage/index.ts`). Les bornes appliquées par d'AUTRES exécutants — deploy.yml,
+// sentinelle-autonome.yml, scripts/sentinelle-detecter.mjs, le client — sont dans
+// politique-autonomie-executants.test.mjs (séparé le 2026-11-07) : ici, elles
+// auraient retenu le déploiement d'une fonction pour une dérive de ces fichiers.
 // Mutations éprouvées à la main avant livraison : passer `retour_arriere_automatique`
 // à autonome:true → ② rougit ; `autoriser` sans test de validité → ③ rougit ;
 // porter `correctifLignesMax` à 80 → ⑥ rougit.
@@ -12,7 +18,6 @@ import fs from "node:fs";
 import { POLITIQUE, validerPolitique, autoriser, resumerPolitique, CIRCUITS } from "../../supabase/functions/_shared/politique-autonomie.js";
 import { REVEIL, RETOUR, modeRetour } from "../../supabase/functions/_shared/autonomie.js";
 import { SEUILS_DELESTAGE } from "../../supabase/functions/_shared/reglages.js";
-import { MAX_ENQUETES, RECIDIVE_SEUIL } from "../../scripts/sentinelle-detecter.mjs";
 
 const R = POLITIQUE.runbooks;
 const avec = (patch) => ({ ...POLITIQUE, ...patch });
@@ -81,40 +86,20 @@ test("⑤ le délestage : la politique dit ce que reglages.js applique", () => {
   assert.equal(d.tenueMin * 60e3, SEUILS_DELESTAGE.tenueMs);
 });
 
-test("⑥ le correctif autonome : la politique dit ce que deploy.yml et la Sentinelle appliquent", () => {
-  const y = fs.readFileSync(".github/workflows/deploy.yml", "utf8");
+// ⑥ ⑦ ⑧ : la part du module. Ce que deploy.yml, sentinelle-autonome.yml, la
+// Sentinelle et le client appliquent, et l'existence de chaque « appliquePar » :
+// politique-autonomie-executants.test.mjs.
+test("⑥ le correctif autonome : les limites générales répètent celles du runbook", () => {
   const c = R.correctif_sentinelle;
-  const borne = /if \[ "\$\{nb_fichiers\}" -gt (\d+) \] \|\| \[ "\$\{nb_lignes\}" -gt (\d+) \]; then/.exec(y);
-  assert.ok(borne, "bornes ASTRA-34 introuvables dans deploy.yml");
-  assert.equal(Number(borne[1]), c.limites.fichiersMax);
-  assert.equal(Number(borne[2]), c.limites.lignesMax);
   assert.equal(POLITIQUE.limites.correctifFichiersMax, c.limites.fichiersMax);
   assert.equal(POLITIQUE.limites.correctifLignesMax, c.limites.lignesMax);
-  const cas = /\n\s+(js\/\*\.js\|[^)]+)\) ;;/.exec(y);
-  assert.ok(cas, "périmètre de la Sentinelle introuvable dans deploy.yml");
-  assert.deepEqual(cas[1].split("|"), [...c.perimetre]);
-  assert.equal(c.limites.enquetesMax, MAX_ENQUETES);
-  assert.equal(POLITIQUE.limites.enquetesSimultanees, MAX_ENQUETES);
-  assert.equal(c.limites.recidiveApres, RECIDIVE_SEUIL);
-  assert.equal(POLITIQUE.limites.recidiveVersHumainApres, RECIDIVE_SEUIL);
+  assert.equal(POLITIQUE.limites.enquetesSimultanees, c.limites.enquetesMax);
+  assert.equal(POLITIQUE.limites.recidiveVersHumainApres, c.limites.recidiveApres);
 });
 
-test("⑦ la relance d'enquête et la file des messages : les bornes sont celles du code", () => {
-  const w = fs.readFileSync(".github/workflows/sentinelle-autonome.yml", "utf8");
-  const r = R.relance_enquete.limites;
-  assert.match(w, new RegExp(`\\[ "\\$\\{age\\}" -gt ${r.attenteMin * 60} \\] && \\[ "\\$\\{prs\\}" -eq 0 \\]`), "relance après 20 min");
-  assert.match(w, new RegExp(`\\[ "\\$\\{age\\}" -gt ${r.versHumainH * 3600} \\]`), "humain après 6 h");
-  const app04 = fs.readFileSync("js/app-04-comments-shop.js", "utf8");
-  assert.match(app04, new RegExp(`var MSG_ESSAIS_MAX = ${R.reprise_file_messages.limites.essaisMax};`));
+test("⑦ la purge des abonnements : la fonction déployée n'oublie un abonnement que sur 404/410", () => {
   const idx = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   assert.match(idx, /c === 404 \|\| c === 410\) morts\.push/, "purge des abonnements : 404/410 seulement");
-});
-
-test("⑧ chaque « appliquePar » désigne un fichier qui existe", () => {
-  for (const [id, r] of Object.entries(R)) {
-    const f = r.appliquePar.split(" ")[0];
-    assert.ok(fs.existsSync(f), `${id} : ${f} n'existe pas`);
-  }
 });
 
 // L'essai des alertes (2026-11-07) : ses bornes déclarées SONT celles du code.

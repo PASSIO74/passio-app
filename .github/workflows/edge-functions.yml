@@ -50,13 +50,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 22 (2026-11-07) : la version du job `audits` de deploy.yml, qui
+      # éprouve toutes les suites de tests/unit sans node_modules, comme ici. En
+      # Node 20, une suite verte à la fusion pouvait rougir ici (une API absente)
+      # et retenir le déploiement, ou l'inverse. Le banc ci-dessous exige que les
+      # deux versions majeures restent les mêmes.
       - name: Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       # Les modules partagés (_shared/*.js) sont éprouvés en Node AVANT de
-      # déployer : un plafond, une purge ou un export cassé ne part pas.
+      # déployer : un plafond, une purge ou un export cassé ne part pas. Ce
+      # workflow part EN PARALLÈLE de la CI de `main` et n'attend pas son
+      # verdict : ces suites sont les seuls verrous de ce chemin.
+      # ⚠️ LA LISTE SE DÉDUIT DES IMPORTS, et tests/unit/edge-functions-verrous.test.mjs
+      # (npm run verif, et la CI) la tient (2026-11-07). Chaque module qu'une
+      # fonction emporte (clôture des imports de supabase/functions/*/index.ts)
+      # a ici une suite qui l'importe. Chaque suite de tests/unit qui importe un
+      # tel module est ici, ou son écart est déclaré dans le banc, avec sa raison.
+      # Une ligne retirée ou une suite oubliée rougit le banc (#745, #748).
       - name: Verrous unitaires des modules partagés
         run: |
           node --test tests/unit/plafond.test.mjs
@@ -73,6 +86,10 @@ jobs:
           node --test tests/unit/appels.test.mjs
           node --test tests/unit/autonomie.test.mjs
           node --test tests/unit/autonomie-seuils-sql.test.mjs
+          node --test tests/unit/croissance.test.mjs
+          node --test tests/unit/parcours.test.mjs
+          node --test tests/unit/politique-autonomie.test.mjs
+          node --test tests/unit/battement.test.mjs
 
       - uses: supabase/setup-cli@v1
         with:
