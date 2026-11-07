@@ -31,6 +31,8 @@
 // Ce qui reste hors de portée : la fusion vers `main` et le déploiement. Ce sont
 // des gestes d'un clic dans le dashboard, pas des effets de bord d'une alerte.
 // ═══════════════════════════════════════════════════════════════════════════
+import { envSansSecrets } from "./env-enfant.js";
+import { sanitizeObserved, dataBlock } from "./donnees-observees.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -78,13 +80,13 @@ export function repairState() {
 // ─── Utilitaires git (sans dépendance) ───────────────────────────────────────
 function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
-    const shell = process.platform === "win32";
+    const shell = process.platform === "win32" && opts.shell !== false;
     // Avec `shell: true`, les arguments sont concaténés sans échappement : un
     // exécutable dont le chemin contient une espace (`C:\Program Files\nodejs\
     // node.exe`, le cas normal sous Windows) est coupé en deux et la commande
     // échoue avec « 'C:\Program' n'est pas reconnu ». On guillemette.
     const exe = shell && /\s/.test(cmd) && !cmd.startsWith('"') ? `"${cmd}"` : cmd;
-    const p = spawn(exe, args, { cwd: opts.cwd || config.repoPath, shell, windowsHide: true, env: { ...process.env, ...(opts.env || {}) } });
+    const p = spawn(exe, args, { cwd: opts.cwd || config.repoPath, shell, windowsHide: true, env: envSansSecrets(opts.env || {}) });
     let out = "", err = "";
     p.stdout.on("data", (d) => { if (out.length < 200_000) out += d; });
     p.stderr.on("data", (d) => { if (err.length < 60_000) err += d; });
@@ -93,7 +95,8 @@ function run(cmd, args, opts = {}) {
     p.on("error", (e) => { clearTimeout(timer); resolve({ code: -1, out, err: e.message }); });
   });
 }
-const git = (args, opts) => run("git", args, opts);
+// git est un .exe : jamais de shell, qui chercherait d'abord un `git.cmd` dans le worktree (F-04).
+const git = (args, opts) => run("git", args, { ...opts, shell: false });
 
 // ─── Extraction et validation du patch ───────────────────────────────────────
 
@@ -143,7 +146,11 @@ export function validatePatch(patch) {
   }
   // Nouveau fichier, suppression, renommage, changement de droits : un correctif
   // automatique modifie du code existant, il ne réorganise pas le dépôt.
-  if (/^(new file mode|deleted file mode|rename from|old mode)/m.test(patch)) {
+  // `rename old`, `copy to`, en-tête entre guillemets et `/dev/null` sont autant de façons d'écrire
+  // ailleurs que là où le patch le dit : tout cela passait (F-04). La lecture faisant foi reste
+  // celle de `git apply` lui-même, juste avant l'application.
+  if (/^(new file mode|deleted file mode|rename |copy |old mode|new mode|similarity |dissimilarity |GIT binary patch|Binary files )/m.test(patch)
+      || /^diff --git "/m.test(patch) || /^(?:---|\+\+\+) \/dev\/null/m.test(patch)) {
     return { ok: false, raison: "création, suppression ou renommage de fichier — hors périmètre automatique" };
   }
   const lines = (patch.match(/^[+-](?![+-])/gm) || []).length;
@@ -189,8 +196,8 @@ export function buildPatchPrompt(diagnosis, fichiers) {
   L.push("• Toujours lire `{ error }` d'une écriture Supabase : le SDK ne lève pas sur un refus RLS.");
   L.push("• Garder les gardes `if (!el) return;`.");
   L.push("");
-  L.push("## Diagnostic");
-  L.push(String(diagnosis.analysis || "").slice(0, 12_000));
+  // L'analyse dérive d'un texte de télémétrie : elle entre comme une donnée, jamais comme une consigne (F-05).
+  L.push(dataBlock("Diagnostic produit à partir de données observées", sanitizeObserved(diagnosis.analysis, 12_000)));
   L.push("");
   for (const f of fichiers) {
     L.push(`## Fichier actuel — ${f.rel}`);
@@ -231,15 +238,19 @@ async function createWorktree(branch) {
   fs.rmSync(dir, { recursive: true, force: true });
   const r = await git(["worktree", "add", "-b", branch, dir, "HEAD"]);
   if (r.code !== 0) throw new Error("worktree: " + (r.err || r.out).slice(0, 300));
-  // `node_modules` par jonction : les tests doivent tourner sans réinstaller
-  // (et sans dupliquer 300 Mo à chaque réparation).
+  return dir;
+}
+
+// `node_modules` par jonction : les tests doivent tourner sans réinstaller (et sans dupliquer
+// 300 Mo à chaque réparation). Posée APRÈS les gardes du correctif : un patch écrivait à travers
+// la jonction, dans le vrai `node_modules`, et le fichier survivait au retrait du worktree (F-04).
+async function lierNodeModules(dir) {
   const src = path.join(config.repoPath, "node_modules");
   const dst = path.join(dir, "node_modules");
   if (fs.existsSync(src) && !fs.existsSync(dst)) {
     if (process.platform === "win32") await run("cmd", ["/c", "mklink", "/J", `"${dst}"`, `"${src}"`], { cwd: dir });
     else { try { fs.symlinkSync(src, dst, "dir"); } catch {} }
   }
-  return dir;
 }
 
 async function removeWorktree(dir, branch, { keepBranch }) {
@@ -305,6 +316,16 @@ export async function attemptRepair(diagnosis, analyzer) {
     dir = await createWorktree(branch);
     const tmpPatch = path.join(dir, ".sentinelle.patch");
     fs.writeFileSync(tmpPatch, patch);
+    // Le seul analyseur qui ne peut pas diverger de `git apply`, c'est `git apply` : il dit ce
+    // qu'il créerait, copierait ou renommerait, et quels chemins il écrirait réellement.
+    const structure = await git(["apply", "--summary", ".sentinelle.patch"], { cwd: dir });
+    const chemins = await git(["apply", "--numstat", "-z", ".sentinelle.patch"], { cwd: dir });
+    const reels = chemins.out.split("\0").filter(Boolean).map((l) => l.split("\t").pop());
+    if (structure.code !== 0 || structure.out.trim() || chemins.code !== 0 || reels.some((f) => !ALLOWED.some((re) => re.test(f)))) {
+      rapport.raison = "correctif refusé : création, copie, renommage ou chemin hors liste, lu par git apply";
+      rapport.steps.push({ key: "apply", ok: false, detail: rapport.raison });
+      return finish(rapport, dir, branch);
+    }
     const check = await git(["apply", "--check", ".sentinelle.patch"], { cwd: dir });
     if (check.code !== 0) {
       rapport.raison = "le correctif ne s'applique pas au code actuel";
@@ -318,7 +339,8 @@ export async function attemptRepair(diagnosis, analyzer) {
     // en-têtes annoncent (audit du 2026-11-02 : `git apply` suit les lignes
     // ---/+++, l'étiquette `diff --git` peut dire autre chose). Un fichier écrit
     // hors de la liste blanche, ou un fichier créé, et tout s'arrête ici.
-    const touche = (await git(["status", "--porcelain", "--untracked-files=all"], { cwd: dir })).out
+    // `--ignored` : un fichier couvert par .gitignore était invisible à cette garde (F-04).
+    const touche = (await git(["status", "--porcelain", "--untracked-files=all", "--ignored"], { cwd: dir })).out
       .split(/\r?\n/).map((l) => l.slice(3).trim()).filter(Boolean)
       .map((f) => (f.includes(" -> ") ? f.split(" -> ").pop() : f).replace(/^"|"$/g, ""));
     const horsListe = touche.filter((f) => !ALLOWED.some((re) => re.test(f)) || !v.files.includes(f));
@@ -328,10 +350,11 @@ export async function attemptRepair(diagnosis, analyzer) {
       return finish(rapport, dir, branch);
     }
     rapport.steps.push({ key: "apply", ok: true });
+    await lierNodeModules(dir);
 
     // 3. Vérifier. Syntaxe d'abord (instantané), puis les suites déclarées.
     for (const rel of v.files.filter((f) => f.endsWith(".js"))) {
-      const c = await run(process.execPath, ["--check", rel], { cwd: dir, timeoutMs: 30_000 });
+      const c = await run(process.execPath, ["--check", rel], { cwd: dir, timeoutMs: 30_000, shell: false });
       if (c.code !== 0) {
         rapport.raison = `syntaxe invalide dans ${rel}`;
         rapport.detail = (c.err || c.out).slice(0, 600);
@@ -402,6 +425,7 @@ function finish(rapport, dir, branch, { keepBranch = false } = {}) {
  * une décision distincte, prise en connaissance de cause).
  */
 export async function mergeRepair(branch, actor) {
+  if (!config.allowMutations) { const e = new Error("Mutations désactivées."); e.code = 403; throw e; }
   if (!/^sentinelle\/[\w.\-/]+$/.test(branch)) { const e = new Error("Branche hors périmètre."); e.code = 400; throw e; }
   const st = await git(["status", "--porcelain"]);
   if (st.out.trim()) { const e = new Error("Dépôt non propre : committe ou range tes modifications d'abord."); e.code = 409; throw e; }

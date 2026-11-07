@@ -80,7 +80,10 @@ const SANDBOX = ["--safe-mode", "--strict-mcp-config", "--no-session-persistence
 // propres identifiants) et on retire nommément ce qui nous appartient.
 const SECRET_ENV = [
   "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ANON_KEY", "SUPABASE_URL",
-  "DASH_SESSION_SECRET", "DASH_ADMIN_PASSWORD", "DASH_EXTRA_USERS",
+  "DASH_SESSION_SECRET", "DASH_ADMIN_PASSWORD", "DASH_EXTRA_USERS", "DASH_NOTIFY_WEBHOOK",
+  // Jetons GitHub et clés API (audit du 2026-11-06, F-17) : le CLI s'authentifie par son
+  // abonnement, et ces jetons n'avaient aucune raison de suivre un texte hostile.
+  "GITHUB_TOKEN", "GH_TOKEN", "GITHUB_READ_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
 ];
 // Le CLI lancé par le pilotage hérite parfois d'une session Claude Code parente
 // (le pilotage a été démarré depuis un terminal de Claude Code) : ces variables

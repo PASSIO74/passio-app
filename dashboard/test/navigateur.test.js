@@ -183,6 +183,24 @@ test("INJECTION : une gravité fabriquée n'ouvre pas d'attribut", async (t) => 
   await ctx.close();
 });
 
+test("INJECTION : un écran fabriqué par un visiteur ne s'exécute pas sur la page d'accueil (audit du 2026-11-06, F-01)", async (t) => {
+  if (sauter(t)) return;
+  const { ctx, page, soucis } = await pageConnectee();
+  // N'importe quel visiteur écrit `screen` avec la clé anon. Aucun clic : l'accueil rend les derniers événements.
+  const ev = { id: "e_hostile", ts: Date.now(), type: "nav", action: "ouvrir", status: "ok", severity: "info", platform: "web", browser: "chrome",
+    app_version: "1", env: "production", session_id: "s", device_id: "d", meta: {}, duration_ms: null, http_status: null,
+    screen: "<img src=x onerror=window.__preuve=1>" };
+  await page.route("**/api/events*", (r) => r.fulfill({ json: [ev] }));
+  await page.goto("/#overview");
+  await page.reload();
+  await page.waitForSelector("#nav a", { timeout: 20_000 });
+  await page.waitForTimeout(1500);
+  assert.equal(await page.evaluate(() => window.__preuve), undefined, "la charge s'est exécutée");
+  assert.equal(await page.$$eval("#view img[src='x']", (n) => n.length), 0, "la balise a été créée");
+  assert.deepEqual(soucis.filter((s) => s.startsWith("DIALOGUE")), []);
+  await ctx.close();
+});
+
 test("quitter un onglet pendant son rafraîchissement ne lève rien", async (t) => {
   if (sauter(t)) return;
   const { ctx, page, soucis } = await pageConnectee();

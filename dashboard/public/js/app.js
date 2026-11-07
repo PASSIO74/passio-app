@@ -761,7 +761,7 @@ function feedRow(ev) {
   return `<div class="feed-row" onclick='window.__evDetail(${escJsArg(ev.id)})'>
     <span class="fr-time">${hhmmss(ev.ts)}</span>
     <span class="fr-dot" style="background:${dotColor(ev)}"></span>
-    <span class="fr-main"><b>${esc(actionLabel(ev))}</b> <span class="muted">· ${who(ev)} · ${esc(ev.platform)}/${esc(ev.browser)}</span><div class="fr-meta">${meta || ""}</div></span>
+    <span class="fr-main"><b>${esc(actionLabel(ev))}</b> <span class="muted">· ${who(ev)} · ${esc(ev.platform)}/${esc(ev.browser)}</span><div class="fr-meta">${esc(meta)}</div></span>
     <span class="fr-right">${fix}<span class="pill ${ev.type === "error" ? "error" : esc(ev.status)}">${esc(Object.hasOwn(TYPE_FR, ev.type) ? TYPE_FR[ev.type] : ev.type)}</span></span></div>`;
 }
 window.__evDetail = (id) => {
@@ -864,7 +864,7 @@ VIEWS.devices = async () => {
 function deviceCard(d) {
   const sess = S.buffer.filter((e) => e.device_id === d.deviceId).slice(-6).reverse();
   return `<div class="card device-card"><div class="dc-head"><div class="dc-os">${esc((d.platform || "?").slice(0, 3).toUpperCase())}</div><div><strong>${nameFor(d.userId, d.userLabel)}</strong><div class="muted" style="font-size:12px">${esc(d.platform)} · ${esc(d.browser)} · v${esc(d.appVersion || "?")}</div></div><span class="pill ${d.online ? "ok" : "info"}" style="margin-left:auto">${d.online ? "en ligne" : ago(d.lastSeen)}</span></div>
-    <div class="detail-grid" style="margin:8px 0">${detail("Écran", esc(d.screen || "—"))}${detail("Taille", esc(d.screenSize || "—"))}${detail("Connexion", esc(d.connection || "—"))}${detail("Erreurs", d.errorCount || 0)}${detail("Environnement", d.env)}</div>
+    <div class="detail-grid" style="margin:8px 0">${detail("Écran", esc(d.screen || "—"))}${detail("Taille", esc(d.screenSize || "—"))}${detail("Connexion", esc(d.connection || "—"))}${detail("Erreurs", d.errorCount || 0)}${detail("Environnement", esc(d.env))}</div>
     <div class="section-title" style="margin:10px 0 6px">Activité récente</div>${sess.map(feedRow).join("") || '<div class="muted" style="font-size:12px">—</div>'}</div>`;
 }
 
@@ -926,7 +926,7 @@ const LINK_STATUS = {
   unknown:      { pill: "info",  label: "inconnu",              desc: "" },
 };
 const LINK_KIND_FR = { reel: "Bobine", profile: "Profil", post: "Publication", event: "Événement", carnet: "Carnet", app: "Application" };
-const shortLink = (id) => "#" + String(id || "").replace(/^lk_/, "").slice(0, 8);
+const shortLink = (id) => esc("#" + String(id || "").replace(/^lk_/, "").slice(0, 8));
 const linkKind = (l) => LINK_KIND_FR[l.kind] || l.kind || "Lien";
 // Ligne de timeline au format demandé : « HH:MM:SS — Lien #abc — Événement ».
 function linkTimelineRow(ev) {
@@ -1085,7 +1085,7 @@ const TRAFIC_FR = {
   equipe: ["équipe", "Appareil marqué par ?equipe=1 — retiré par ?equipe=0"],
 };
 const traficPill = (t) => (TRAFIC_FR[t] ? ` <span class="pill warn" style="font-size:10px" title="${esc(TRAFIC_FR[t][1])} — hors chiffres">${esc(TRAFIC_FR[t][0])}</span>` : "");
-const shortDev = (id) => "#" + String(id || "").replace(/^dev_/, "").slice(-6);
+const shortDev = (id) => esc("#" + String(id || "").replace(/^dev_/, "").slice(-6));
 // Un visiteur = un appareil. Registre live joint aux comptes (profiles) créés.
 VIEWS.visitors = async () => {
   mount(`<h2 class="page-title">Visiteurs &amp; ouvertures</h2>
@@ -1723,7 +1723,7 @@ VIEWS.bugs = async () => {
     <div class="table-wrap"><table><thead><tr><th>Gravité</th><th>Problème</th><th>Fois</th><th>Users</th><th>Statut</th><th>Vu</th><th>Réparer</th></tr></thead><tbody id="bugRows"></tbody></table></div>`);
   async function refresh() {
     const bugs = await api.get("/bugs");
-    setHtml("#bugRows", bugs.map((b) => `<tr onclick='window.__bug(${escJsArg(b.id)})'><td><span class="pill ${esc(b.severity)}">${esc(b.severity)}</span></td><td><strong>${esc(b.title)}</strong><div class="muted" style="font-size:11px">${esc(b.codeRef ? b.codeRef.file + (b.codeRef.line ? ":" + b.codeRef.line : "") : b.action || "")}</div></td><td>${b.count}</td><td>${b.users}</td><td><span class="pill ${b.status}">${b.status.replace(/_/g, " ")}</span></td><td class="muted">${ago(b.lastSeen)}</td><td>${hasCap("claude") ? `<button class="fix-btn big" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixBug(${escJsArg(b.id)})'>${icon("wrench")}</button>` : "—"}</td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun problème détecté. 🎉</td></tr>');
+    setHtml("#bugRows", bugs.map((b) => `<tr onclick='window.__bug(${escJsArg(b.id)})'><td><span class="pill ${esc(b.severity)}">${esc(b.severity)}</span></td><td><strong>${esc(b.title)}</strong><div class="muted" style="font-size:11px">${esc(b.codeRef ? b.codeRef.file + (b.codeRef.line ? ":" + b.codeRef.line : "") : b.action || "")}</div></td><td>${b.count}</td><td>${b.users}</td><td><span class="pill ${esc(b.status)}">${esc(String(b.status).replace(/_/g, " "))}</span></td><td class="muted">${ago(b.lastSeen)}</td><td>${hasCap("claude") ? `<button class="fix-btn big" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixBug(${escJsArg(b.id)})'>${icon("wrench")}</button>` : "—"}</td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun problème détecté. 🎉</td></tr>');
     const open = bugs.filter((b) => b.status !== "corrige" && b.status !== "ignore").length;
     const nb = $("#navBugs"); if (nb) { nb.hidden = !open; nb.textContent = open; }
   }
@@ -1739,8 +1739,8 @@ window.__bug = async (id) => {
       <div class="detail-grid">
         ${detail("Occurrences", b.count)}${detail("Utilisateurs touchés", b.users)}
         ${detail("Appareils", b.devices)}${detail("Première apparition", new Date(b.firstSeen).toLocaleString("fr-FR"))}
-        ${detail("Dernière apparition", new Date(b.lastSeen).toLocaleString("fr-FR"))}${detail("Versions", (b.versions || []).join(", ") || "—")}
-        ${detail("Écrans", (b.screens || []).join(", ") || "—")}${b.endpoint ? detail("Endpoint", `<span class="mono">${esc(b.endpoint)} (${b.httpStatus || "?"})</span>`) : ""}
+        ${detail("Dernière apparition", new Date(b.lastSeen).toLocaleString("fr-FR"))}${detail("Versions", esc((b.versions || []).join(", ")) || "—")}
+        ${detail("Écrans", esc((b.screens || []).join(", ")) || "—")}${b.endpoint ? detail("Endpoint", `<span class="mono">${esc(b.endpoint)} (${b.httpStatus || "?"})</span>`) : ""}
       </div>
       <div class="section-title">Statut</div>
       <select class="select" id="bugStatus" style="width:100%">${BUG_STATUS.map((s) => `<option value="${s}" ${s === b.status ? "selected" : ""}>${s.replace(/_/g, " ")}</option>`).join("")}</select>
@@ -1910,7 +1910,7 @@ VIEWS.checklist = async () => {
   mount(`<h2 class="page-title">Tests fonctionnels</h2><p class="page-sub">Checklist des fonctions de Passio. Clique un statut pour le changer.</p><div id="chk"></div>`);
   const items = await api.get("/checklist");
   const byCat = {}; items.forEach((i) => (byCat[i.category] = byCat[i.category] || []).push(i));
-  setHtml("#chk", Object.entries(byCat).map(([cat, its]) => `<div class="section-title">${esc(cat)}</div><div class="table-wrap"><table><thead><tr><th>Fonction</th><th>Statut</th><th>Testeur</th><th>Notes</th></tr></thead><tbody>${its.map((i) => `<tr><td>${esc(i.name)}</td><td>${hasCap("sessions") ? `<select class="select" data-chk="${i.id}">${CHK_STATUS.map((s) => `<option value="${s}" ${s === i.status ? "selected" : ""}>${s.replace(/_/g, " ")}</option>`).join("")}</select>` : `<span class="pill ${i.status}">${i.status}</span>`}</td><td>${esc(i.tester || "—")}</td><td class="muted">${esc(i.notes || "—")}</td></tr>`).join("")}</tbody></table></div>`).join(""));
+  setHtml("#chk", Object.entries(byCat).map(([cat, its]) => `<div class="section-title">${esc(cat)}</div><div class="table-wrap"><table><thead><tr><th>Fonction</th><th>Statut</th><th>Testeur</th><th>Notes</th></tr></thead><tbody>${its.map((i) => `<tr><td>${esc(i.name)}</td><td>${hasCap("sessions") ? `<select class="select" data-chk="${i.id}">${CHK_STATUS.map((s) => `<option value="${s}" ${s === i.status ? "selected" : ""}>${s.replace(/_/g, " ")}</option>`).join("")}</select>` : `<span class="pill ${esc(i.status)}">${esc(i.status)}</span>`}</td><td>${esc(i.tester || "—")}</td><td class="muted">${esc(i.notes || "—")}</td></tr>`).join("")}</tbody></table></div>`).join(""));
   $$("[data-chk]").forEach((sel) => sel.onchange = async () => { await api.patch("/checklist/" + sel.dataset.chk, { status: sel.value, tester: S.me.user }); toast("Statut mis à jour"); });
 };
 
@@ -2000,7 +2000,7 @@ VIEWS.alerts = async () => {
 function alertItem(a) {
   const fix = hasCap("claude") && (a.level === "critical" || a.level === "high")
     ? `<button class="fix-btn" title="Réparer avec Claude" onclick='window.__fixAlert(${escJsArg(a.id)})'>${icon("wrench")}</button>` : "";
-  return `<div class="alert-item ${a.level} ${a.acknowledged ? "ack" : ""}"><div class="a-row"><div class="a-title">${esc(a.title)}</div>${fix}</div><div class="a-msg">${esc(a.message || "")}</div><div class="a-time">${new Date(a.ts).toLocaleString("fr-FR")}${a.acknowledged ? " · vu" : hasCap("alerts") ? ` · <a href="#" onclick='window.__ackAlert(${escJsArg(a.id)});return false'>marquer comme vu</a>` : ""}</div></div>`;
+  return `<div class="alert-item ${esc(a.level)} ${a.acknowledged ? "ack" : ""}"><div class="a-row"><div class="a-title">${esc(a.title)}</div>${fix}</div><div class="a-msg">${esc(a.message || "")}</div><div class="a-time">${new Date(a.ts).toLocaleString("fr-FR")}${a.acknowledged ? " · vu" : hasCap("alerts") ? ` · <a href="#" onclick='window.__ackAlert(${escJsArg(a.id)});return false'>marquer comme vu</a>` : ""}</div></div>`;
 }
 window.__ackAlert = async (id) => { await api.post(`/alerts/${id}/ack`, {}); const a = S.alerts.find((x) => x.id === id); if (a) a.acknowledged = true; if (S.currentView === "alerts") VIEWS.alerts($("#view")); updateAlertBadges(); };
 
@@ -2130,7 +2130,7 @@ function sentItem(d) {
   // de gestionnaire, le HTML décode `&#39;` AVANT que JS ne parse, donc escapeHtml
   // seul n'y suffit pas (piège maison connu). L'id est serveur, mais on ne laisse
   // pas traîner le motif.
-  return `<div class="sent-item ${d.level}" data-sent-id="${esc(d.id)}">
+  return `<div class="sent-item ${esc(d.level)}" data-sent-id="${esc(d.id)}">
       <div class="a-row">
         <div class="a-title">${esc(d.title)}</div>
         ${v ? `<span class="pill ${v.cls}">${v.label}</span>` : d.error ? '<span class="pill error">Analyse en échec</span>' : ""}

@@ -32,7 +32,7 @@ test("le défaut existe bien : l'accès direct rend une valeur pour ces clés", 
 
 test("entree() ne rend QUE des propriétés propres", () => {
   for (const k of HERITEES) assert.equal(entree(TEST_SUITES, k), undefined, `clé héritée acceptée : ${k}`);
-  assert.equal(entree(TEST_SUITES, "smoke")?.cmd, "npm", "une vraie entrée doit passer");
+  assert.equal(entree(TEST_SUITES, "smoke")?.cmd, "npx", "une vraie entrée doit passer");
   // Formes hostiles : rien ne doit lever.
   assert.equal(entree(TEST_SUITES, ""), undefined);
   assert.equal(entree(TEST_SUITES, null), undefined);
