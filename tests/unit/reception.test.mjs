@@ -243,8 +243,9 @@ test("⑮ une alerte non mesurée dit POURQUOI, en formes connues seulement ; le
 // compté sur le genre « rappel » → ⑯ rougit ; l'attente comptée au dénominateur →
 // ⑯ rougit ; `tronqueAppels` ignoré → ⑯ rougit ; le plafond des appels qui rend les
 // rappels partiels → ⑯ rougit ; un échantillon de 1 sur 4 → ⑰ rougit ; un tirage
-// accepté hors de [0, 1) → ⑰ rougit.
-import { appelMesure, GENRE_APPEL, UID_APPELS, ECHANTILLON_APPELS, FENETRE_APPELS_MS, MIN_APPELS, NOTES_MAX } from "../../supabase/functions/_shared/reception.js";
+// accepté hors de [0, 1) → ⑰ rougit ; le plafond de 300 notes du premier jet → ⑰
+// rougit ; l'interrupteur des appels ignoré → ⑯ rougit.
+import { appelMesure, GENRE_APPEL, UID_APPELS, ECHANTILLON_APPELS, FENETRE_APPELS_MS, MIN_APPELS, NOTES_APPELS_MAX, NOTES_RAPPELS_MAX } from "../../supabase/functions/_shared/reception.js";
 
 test("⑯ appels : un taux sur 24 h qui se DIT échantillon, l'attente hors du dénominateur, « trop peu » sous 5, « partiel » sur une lecture plafonnée — jamais mêlé aux rappels ni à l'alerte", () => {
   const pids = Array.from({ length: 8 }, (_, i) => `66666666-6666-4666-8666-${String(i).padStart(12, "0")}`);
@@ -258,7 +259,7 @@ test("⑯ appels : un taux sur 24 h qui se DIT échantillon, l'attente hors du d
   // 5 des 6 appels jugeables accusés — le premier par ses DEUX appareils : un appel, un reçu.
   const accuses = [...pids.slice(0, 5).map((p) => accuse(p, 3 * 3600e3 - 3000)), accuse(pids[0], 3 * 3600e3 - 1000), accuse(pids[7], 60e3)];
   const b = bilanReception({ envois, accuses, maintenant: T });
-  assert.deepEqual(b.appels, { etat: "mesure", envoyes: 6, recus: 5, enAttente: 1, taux: 5 / 6, echantillon: ECHANTILLON_APPELS });
+  assert.deepEqual(b.appels, { etat: "mesure", envoyes: 6, recus: 5, enAttente: 1, taux: 5 / 6, echantillon: ECHANTILLON_APPELS, actifs: true });
   assert.equal(b.rappels.envoyes, 0, "un appel n'est pas un rappel");
   assert.equal(b.derniereAlerte.etat, "aucune", "ni une alerte");
   // Un genre ne compte jamais pour l'autre : des rappels accusés ne font aucun appel reçu.
@@ -281,9 +282,22 @@ test("⑯ appels : un taux sur 24 h qui se DIT échantillon, l'attente hors du d
   assert.equal(part.rappels.etat, "mesure", "le plafond des appels ne rend pas les rappels partiels");
   assert.equal(bilanReception({ maintenant: T }).appels.etat, "insuffisant");
   assert.equal(bilanReception({ maintenant: T }).tronque, false);
+  // Appels COUPÉS (pilote) : le bilan le dit, pour que l'écran ne montre pas « 0 appel mesuré » sans raison.
+  assert.equal(bilanReception({ maintenant: T, appelsActifs: false }).appels.actifs, false);
+  assert.equal(bilanReception({ maintenant: T }).appels.actifs, true);
 });
 
-test("⑰ un appel sur ECHANTILLON_APPELS est mesuré, sur un tirage de [0, 1) ; le taux choisi tient sous la lecture au haut de l'hypothèse 100 000 inscrits, et mesure dès 50 appels par jour", () => {
+/** P(X > k) pour X ~ Binomiale(n, p) : somme exacte, en logarithmes. */
+function queueBinomiale(n, p, k) {
+  let logC = 0, s = 0;
+  for (let i = 0; i <= n; i++) {
+    if (i > 0) logC += Math.log((n - i + 1) / i);
+    if (i > k) s += Math.exp(logC + i * Math.log(p) + (n - i) * Math.log(1 - p));
+  }
+  return s;
+}
+
+test("⑰ un appel sur ECHANTILLON_APPELS est mesuré, sur un tirage de [0, 1) ; en loi binomiale, la lecture ne tronque presque jamais au haut de l'hypothèse 100 000 inscrits, et un taux existe 9 jours sur 10 dès 80 appels par jour", () => {
   assert.equal(GENRE_APPEL, "appel");
   assert.equal(UID_APPELS, "systeme:appels");
   assert.ok(!/^[0-9a-f]{8}-/.test(UID_APPELS), "jamais un uuid : aucun client n'écrit sous cet auteur (analytics_insert_own : user_id = auth.uid())");
@@ -295,12 +309,20 @@ test("⑰ un appel sur ECHANTILLON_APPELS est mesuré, sur un tirage de [0, 1) ;
   // Les chiffres du § 3.7 (docs/AUTONOMIE_EXPLOITATION.md) : à 100 000 inscrits, 20 000 à
   // 30 000 actifs par jour (PASSIO_100K_AUTONOMIE.md § 4) ; un appel par jour pour 5 à
   // 10 % d'entre eux → 1 000 à 3 000 appels par jour.
-  const HAUT = 3000, BAS_MESURABLE = 50;
-  assert.ok(HAUT / ECHANTILLON_APPELS <= NOTES_MAX, "au haut de l'hypothèse, les notes d'un jour tiennent dans la lecture : jamais « partiel » d'office");
-  assert.ok(BAS_MESURABLE / ECHANTILLON_APPELS >= MIN_APPELS, "à 50 appels par jour, le taux existe");
+  // Le nombre d'appels mesurés d'un jour suit une loi binomiale : une MOYENNE au
+  // plafond le dépasse un jour sur deux (premier jet : 300 notes lues, 300 attendues
+  // à 3 000 appels — « partiel » 49 % des jours ; revue du 2026-11-07).
+  const p = 1 / ECHANTILLON_APPELS;
+  assert.ok(queueBinomiale(3000, p, NOTES_APPELS_MAX) < 1e-6, "à 3 000 appels par jour, la lecture n'est presque jamais partielle");
+  assert.ok(queueBinomiale(3600, p, NOTES_APPELS_MAX) < 0.02, "à 3 600 (20 % au-dessus), moins de 2 jours sur 100");
+  assert.ok(queueBinomiale(3000, p, 300) > 0.4, "le banc voit le défaut du premier jet : 300 notes ne suffisaient pas");
+  // « Un taux » = au moins MIN_APPELS appels mesurés et jugeables.
+  assert.ok(queueBinomiale(80, p, MIN_APPELS - 1) >= 0.9, "à 80 appels par jour, un taux 9 jours sur 10");
+  assert.ok(queueBinomiale(50, p, MIN_APPELS - 1) < 0.6, "à 50 par jour, à peine plus d'un jour sur deux : la doc ne promet pas « dès 50 »");
+  assert.equal(NOTES_RAPPELS_MAX, 300, "la lecture des rappels ne bouge pas");
   // Le plafond par appelant de notify-call (lu dans la fonction déployée) : au plus 20 notes par heure et par appelant.
   const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
   const parHeure = Number((/const PLAFOND = \{ parMinute: \d+, parHeure: (\d+) \};/.exec(src) || [])[1]);
   assert.ok(parHeure > 0 && parHeure / ECHANTILLON_APPELS <= 20, "un appelant pèse au plus 20 notes par heure");
-  assert.equal(NOTES_MAX, 300);
+  assert.equal(NOTES_APPELS_MAX, 400);
 });

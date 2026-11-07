@@ -44,10 +44,12 @@ import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { identiteAppelant, lienAppel, autoriserPushNotif } from "../_shared/lien-metier.js";
 import { adresseAccuse } from "../_shared/reception.js";
-import { pousserAppareils } from "../_shared/appels.js";
+import { APPELS_ACTIFS, pousserAppareils } from "../_shared/appels.js";
 import { REVISION } from "../_shared/revision.js";
-/** Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client (`PASSIO_APPELS_ACTIFS`, app-05). */
-const APPELS_ACTIFS = false;
+// Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client
+// (`PASSIO_APPELS_ACTIFS`, app-05). `APPELS_ACTIFS` vit dans _shared/appels.js
+// depuis le 2026-11-07, pour que le pilotage dise « appels coupés » au lieu de
+// « 0 appel mesuré » : une seule source, lue par les deux fonctions.
 // L'adresse d'accusé (_shared/reception.js) : l'URL du projet et sa clé PUBLIQUE
 // (l'ancienne anon, sinon la publiable). Absente ou hors forme → les appels
 // partent sans accusé, comme avant ; jamais une adresse inventée.

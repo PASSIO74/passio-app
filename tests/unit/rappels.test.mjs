@@ -461,7 +461,8 @@ test("⑫ quater service worker : une clé PUBLIABLE accuse en `apikey` seulemen
 // Les APPELS (2026-11-07, _shared/appels.js) : un appel sur dix porte un pid.
 // Réinjections éprouvées : accuser l'appel AVANT l'affichage → l'ordre rougit ;
 // l'accuser sous le genre « rappel » → rougit ; ne plus l'accuser
-// → rougit ; glisser le pid dans les données du tap → rougit.
+// → rougit ; glisser le pid dans les données du tap → rougit ; glisser le nom de
+// l'appelant dans l'accusé → rougit.
 test("⑫ quinquies service worker : un APPEL mesuré s'affiche comme avant (« t'appelle », Répondre / Refuser, sonnerie persistante, données du tap), PUIS s'accuse « appel », sans rien de l'appelant ; sans pid, aucun accusé ; « Répondre » ouvre l'appel comme avant", async () => {
   const appels = [];
   let sw;
@@ -483,7 +484,13 @@ test("⑫ quinquies service worker : un APPEL mesuré s'affiche comme avant (« 
   assert.equal(appels[0].u, ACK.u + "/rest/v1/telemetry_events");
   const corps = JSON.parse(appels[0].o.body);
   assert.deepEqual({ type: corps[0].type, action: corps[0].action, meta: corps[0].meta }, { type: "push", action: "recu", meta: { pid: PID1, genre: "appel" } });
-  assert.ok(!/Léa|🎸|c1|video|1111/.test(appels[0].o.body), "rien de l'appelant dans l'accusé");
+  // Jugé SANS ses champs aléatoires : `event_id` (16 hexadécimaux) contient « c1 »
+  // une fois sur 16 — la première version de ce test échouait au hasard (revue du 2026-11-07).
+  const { event_id: idAccuse, client_ts: _ts, ...stable } = corps[0];
+  assert.match(idAccuse, /^[0-9a-f]{16}$/);
+  assert.deepEqual(Object.keys(stable).sort(), ["action", "meta", "status", "type"], "rien d'autre ne part");
+  assert.ok(!/Léa|🎸|c1|video|1111/.test(JSON.stringify(stable)), "rien de l'appelant dans l'accusé");
+  assert.ok(!/Léa|🎸|video/.test(appels[0].o.body), "ni nulle part dans le corps envoyé");
   assert.equal(corps[0].user_id, undefined, "aucune identité");
   // La clé publiable accuse en `apikey` seulement, comme pour les autres genres.
   await sw.push({ ...appel, callId: "c2", pid: PID2, ack: { u: ACK.u, k: "sb_publishable_Abc123_def-456XYZ" } });

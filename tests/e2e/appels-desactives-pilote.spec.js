@@ -106,7 +106,12 @@ test.describe("ASTRA-60 — les appels sont désactivés pour le pilote", () => 
   test("⑥ le serveur refuse une push d'appel : `notify-call` répond 503 appels_desactives (lecture du source, verrou statique)", async () => {
     const fs = require("fs"), path = require("path");
     const src = fs.readFileSync(path.join(__dirname, "..", "..", "supabase", "functions", "notify-call", "index.ts"), "utf8");
-    expect(src).toMatch(/const APPELS_ACTIFS = false;/);
+    // L'interrupteur vit dans _shared/appels.js depuis le 2026-11-07 (le pilotage le
+    // lit pour dire « appels coupés ») : une seule source, que notify-call importe.
+    const partage = fs.readFileSync(path.join(__dirname, "..", "..", "supabase", "functions", "_shared", "appels.js"), "utf8");
+    expect(partage).toMatch(/^export const APPELS_ACTIFS = false;$/m);
+    expect(src).toMatch(/import \{ APPELS_ACTIFS, pousserAppareils \} from "\.\.\/_shared\/appels\.js";/);
+    expect(src).not.toMatch(/const APPELS_ACTIFS\s*=/);
     expect(src).toMatch(/type === "call" && !APPELS_ACTIFS\) return json\(\{ ok: false, code: "appels_desactives"/);
     const app05 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-05-config-profil.js"), "utf8");
     expect(app05).toMatch(/const PASSIO_APPELS_ACTIFS = false;/);

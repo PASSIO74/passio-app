@@ -1236,7 +1236,7 @@ test("㊶ les alertes s'essaient d'un toucher : « Envoyer un essai maintenant �
 // ─── Les APPELS mesurés (notify-call, 2026-11-07) ────────────────────────────
 // Un appel sur dix porte un accusé (_shared/appels.js) : la carte dit le taux
 // des 24 h comme celle des rappels — et qu'il s'agit d'un échantillon.
-test("㊷ les appels : un taux sur 24 h qui se dit ÉCHANTILLON, « trop peu » sous 5, « partiel » sans taux ; une fonction d'avant ce lot n'affiche aucune carte d'appels, jamais un faux zéro", async ({ page }) => {
+test("㊷ les appels : un taux sur 24 h qui se dit ÉCHANTILLON, « trop peu » sous 5, « partiel » sans taux, « coupés » quand ils le sont ; une fonction d'avant ce lot n'affiche aucune carte d'appels, jamais un faux zéro", async ({ page }) => {
   await poserSession(page);
   const le = new Date(Date.now() - 3600e3).toISOString();
   const reception = (appels) => ({ derniereAlerte: { etat: "recue", le, acceptes: 1, recus: 1, delaiMs: 2000 },
@@ -1272,6 +1272,21 @@ test("㊷ les appels : un taux sur 24 h qui se dit ÉCHANTILLON, « trop peu » 
   const partiel = page.locator("#alertes .carte", { hasText: "Appels (24 h)" });
   await expect(partiel).toContainText("pas de taux, au moins 250 reçus sur 290 appels mesurés");
   await expect(partiel).not.toContainText("%");
+  // Appels COUPÉS (pilote) et rien dans la fenêtre : « Coupés », la raison dite — jamais « 0 appel mesuré ».
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0, echantillon: 10, actifs: false }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  const coupes = page.locator("#alertes .carte", { hasText: "Appels (24 h)" });
+  await expect(coupes).toContainText("Coupés");
+  await expect(coupes).toContainText("Les appels sont coupés pendant le pilote : aucune push d'appel ne part");
+  await expect(coupes).toContainText("un appel sur 10 est mesuré");
+  await expect(coupes).not.toContainText("appel(s) mesuré(s)");
+  await expect(titres(page)).toHaveCount(1);
+  // Coupés depuis peu, mais des appels mesurés dans la fenêtre : on montre ce qu'ils disent.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 3, recus: 3, enAttente: 0, echantillon: 10, actifs: false }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Appels (24 h)" })).toContainText("3 appel(s) mesuré(s) jugeable(s)");
   // Une fonction d'avant ce lot ne rend pas `appels` : aucune carte d'appels.
   await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception(null) }));
   await page.reload();

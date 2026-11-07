@@ -46,6 +46,15 @@
 
 import { EVT_ENVOI, GENRE_APPEL, UID_APPELS, appelMesure, avecAccuse, pidNeuf } from "./reception.js";
 
+/**
+ * Pilote : les appels sont COUPÉS (ASTRA-60, 2026-09-16) — l'interrupteur serveur,
+ * jumeau du client (`PASSIO_APPELS_ACTIFS`, app-05) : `notify-call` refuse toute
+ * push d'appel (503 `appels_desactives`) tant qu'il vaut false. Il vit ICI depuis
+ * le 2026-11-07 pour que le pilotage le LISE : sans lui, l'écran disait « 0 appel
+ * mesuré » sans dire que c'est parce qu'aucun appel ne part. Une seule source.
+ */
+export const APPELS_ACTIFS = false;
+
 /** Un tirage dans [0, 1), du SERVEUR — aléa cryptographique, jamais dérivé de la requête. */
 export function tirer() {
   const a = new Uint32Array(1);

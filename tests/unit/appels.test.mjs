@@ -8,7 +8,9 @@
 // une notification sociale → ③ ; rendre le pid à l'appelant → ① et ⑦ ; un
 // envoi direct qui contourne pousserAppareils → ⑦ ; un aléa prévisible
 // (Math.random) → ⑥ ; l'adresse jamais passée par notify-call → ⑦ ; la garde des
-// appels coupés retirée → ⑦.
+// appels coupés retirée → ⑦. Revue du 2026-11-07 (verrous renforcés) : le refus du
+// blocage retiré, le plafond déplacé après l'envoi, le refus du lien métier retiré,
+// un tirage pris dans la requête, l'interrupteur des appels ouvert → ⑦.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -170,19 +172,38 @@ test("⑥ le tirage vient du SERVEUR (aléa cryptographique, dans [0, 1)) : un a
 test("⑦ câblage de notify-call : toute push par pousserAppareils, l'adresse par adresseAccuse, les refus d'avant intacts et AVANT l'envoi ; la réponse ne porte ni pid ni « mesuré »", () => {
   const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
   assert.match(src, /import \{ adresseAccuse \} from "\.\.\/_shared\/reception\.js";/);
-  assert.match(src, /import \{ pousserAppareils \} from "\.\.\/_shared\/appels\.js";/);
+  assert.match(src, /import \{ APPELS_ACTIFS, pousserAppareils \} from "\.\.\/_shared\/appels\.js";/);
   assert.match(src, /const ACCUSE = adresseAccuse\(\(n\) => Deno\.env\.get\(n\)\)\.accuse;/);
   const envoi = src.indexOf("await pousserAppareils({");
   assert.ok(envoi > 0, "l'envoi passe par le module éprouvé");
   assert.match(src.slice(envoi, envoi + 400), /admin, abonnements: subs, charge, options: \{ TTL: ttl, urgency \}, accuse: ACCUSE,/);
   assert.match(src.slice(envoi, envoi + 400), /envoyer: \(s: any, c: string, o: any\) => webpush\.sendNotification\(s, c, o\),/);
   assert.equal(src.split("webpush.sendNotification(").length - 1, 1, "aucun envoi direct ne contourne pousserAppareils");
-  // Les gardes d'avant restent AVANT tout envoi : pilote (appels coupés), blocage, lien métier.
-  for (const garde of ['if (type === "call" && !APPELS_ACTIFS) return json({ ok: false, code: "appels_desactives"', '.from("blocks")', "await lienAppel(admin, fromUid, toUserId)", "await autoriserPushNotif(admin, fromUid, toUserId)"]) {
-    const i = src.indexOf(garde);
-    assert.ok(i > 0 && i < envoi, "garde avant l'envoi : " + garde);
+  // Chaque refus d'avant reste un RETOUR, une seule fois, AVANT tout envoi : la porte
+  // d'authentification, le plafond, le pilote (appels coupés), soi-même, le blocage, le
+  // lien métier, l'absence d'appareil. (Épingler le `return` lui-même : la première
+  // version ne regardait que la position d'un mot, et retirer le refus du blocage en
+  // gardant sa lecture passait au vert — revue du 2026-11-07.)
+  const refus = [
+    'if (userErr || !userData?.user) return json({ error: "Non authentifié" }, 401);',
+    "if (!verdict.ok) return reponsePlafond(verdict, corsHeaders);",
+    'if (type === "call" && !APPELS_ACTIFS) return json({ ok: false, code: "appels_desactives"',
+    'if (toUserId === fromUid) return json({ ok: true, sent: 0, note: "soi-même" });',
+    'if (blocErr || (bloc && bloc.length)) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });',
+    'if (!lien.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });',
+    'if (!decision.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });',
+    'if (!subs || !subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });',
+  ];
+  for (const r of refus) {
+    assert.equal(src.split(r).length - 1, 1, "le refus existe, une fois : " + r);
+    assert.ok(src.indexOf(r) < envoi, "refus avant l'envoi : " + r);
   }
-  assert.match(src, /const APPELS_ACTIFS = false;/, "le pilote reste sans appels : ce lot n'en rouvre aucun");
+  // L'appel ne passe AUCUN tirage : celui du serveur (`tirer`) s'applique, jamais un champ de la requête.
+  const bloc = src.slice(envoi, src.indexOf("});", envoi));
+  assert.doesNotMatch(bloc, /tirage/);
+  // Le pilote reste sans appels : l'interrupteur, une seule source (_shared/appels.js), toujours false.
+  assert.match(fs.readFileSync("supabase/functions/_shared/appels.js", "utf8"), /^export const APPELS_ACTIFS = false;$/m, "ce lot ne rouvre aucun appel");
+  assert.doesNotMatch(src, /const APPELS_ACTIFS\s*=/, "notify-call ne redéfinit pas l'interrupteur : une seule source");
   // La réponse : `sent` seulement.
   assert.match(src, /const \{ sent, morts \} = await pousserAppareils\(\{/);
   assert.match(src.slice(envoi), /return json\(\{ ok: true, sent \}\);/);

@@ -66,8 +66,8 @@ export const JUGEMENT_MAX_MS = 48 * 3600e3;
 export const FENETRE_RAPPELS_MS = 24 * 3600e3;
 /** Sous ce nombre d'envois jugeables, pas de taux : « trop peu ». */
 export const MIN_RAPPELS = 5;
-/** Notes d'envoi lues au plus par genre sur sa fenêtre (rappels, appels) : au-delà, le taux est « partiel ». */
-export const NOTES_MAX = 300;
+/** Notes d'envoi des RAPPELS lues au plus sur 24 h (une par tour de veille qui a envoyé) : au-delà, le taux est « partiel ». */
+export const NOTES_RAPPELS_MAX = 300;
 
 // LES APPELS (notify-call, 2026-11-07). Un appel MESURÉ porte un accusé comme un
 // rappel : un pid ALÉATOIRE partagé par les appareils du destinataire — la
@@ -75,9 +75,11 @@ export const NOTES_MAX = 300;
 // suit l'audience : UN APPEL SUR ECHANTILLON_APPELS, tiré au sort par le SERVEUR
 // (jamais dérivé de la requête : l'appelant ne choisit pas lesquels de ses appels
 // sont jugés). Pourquoi 1 sur 10, chiffré : docs/AUTONOMIE_EXPLOITATION.md § 3.7 —
-// à l'hypothèse de 100 000 inscrits, 100 à 300 appels mesurés par jour, sous la
-// lecture de NOTES_MAX notes et au-dessus de MIN_APPELS ; la contrepartie, un
-// écran « trop peu » tant que moins de 50 appels par jour sont passés.
+// à l'hypothèse de 100 000 inscrits (1 000 à 3 000 appels par jour), 100 à 300
+// appels mesurés par jour, loin sous la lecture de NOTES_APPELS_MAX notes (« partiel »
+// 2·10⁻⁹ des jours au haut de l'hypothèse) ; la contrepartie, un écran « trop peu »
+// tant que moins de ~80 appels par jour sont passés (un taux 9 jours sur 10 dès 78).
+// Les deux bornes sont recalculées en loi binomiale par reception.test.mjs ⑰.
 export const GENRE_APPEL = "appel";
 /** L'auteur des notes d'envoi des appels : hors d'atteinte d'un client (`analytics_insert_own` : user_id = auth.uid()). */
 export const UID_APPELS = "systeme:appels";
@@ -87,6 +89,8 @@ export const ECHANTILLON_APPELS = 10;
 export const FENETRE_APPELS_MS = 24 * 3600e3;
 /** Sous ce nombre d'appels mesurés et jugeables, pas de taux : « trop peu ». */
 export const MIN_APPELS = 5;
+/** Notes d'envoi des APPELS lues au plus sur 24 h (une par appel mesuré) : au-delà, le taux est « partiel ». */
+export const NOTES_APPELS_MAX = 400;
 
 /** L'appel est-il mesuré ? PUR. `tirage` ∈ [0, 1), tiré par le serveur (`tirer`, _shared/appels.js). */
 export function appelMesure(tirage) {
@@ -279,9 +283,10 @@ function tauxGenre({ envois, parPid, genre, fenetreMs, min, maintenant, tronque 
  * Le bilan, PUR.
  * @param {{ envois?: Array<{ created_at: string, properties: { genre: string, pid?: string, pids?: string[], acceptes?: number } }>,
  *           accuses?: Array<{ pid: string, received_at: string }>,
- *           maintenant?: number, tronque?: boolean, tronqueRappels?: boolean, tronqueAppels?: boolean }} e
+ *           maintenant?: number, tronque?: boolean, tronqueRappels?: boolean, tronqueAppels?: boolean,
+ *           appelsActifs?: boolean }} e  `appelsActifs` : l'interrupteur serveur des appels (_shared/appels.js).
  */
-export function bilanReception({ envois = [], accuses = [], maintenant = Date.now(), tronque = false, tronqueRappels = false, tronqueAppels = false } = {}) {
+export function bilanReception({ envois = [], accuses = [], maintenant = Date.now(), tronque = false, tronqueRappels = false, tronqueAppels = false, appelsActifs = true } = {}) {
   // Les accusés par pid, horodatés par le SERVEUR (received_at) ; un pid
   // inconnu de nos envois ne compte pour rien.
   const envoyes = new Set();
@@ -328,8 +333,10 @@ export function bilanReception({ envois = [], accuses = [], maintenant = Date.no
   // ② Les rappels d'activité, sur 24 h.
   const rappels = tauxGenre({ envois, parPid, genre: "rappel", fenetreMs: FENETRE_RAPPELS_MS, min: MIN_RAPPELS, maintenant, tronque: tronqueRappels });
   // ③ Les appels (notify-call), sur 24 h, même règle — et l'écran dit que c'est
-  // un échantillon (un appel sur ECHANTILLON_APPELS).
-  const appels = { ...tauxGenre({ envois, parPid, genre: GENRE_APPEL, fenetreMs: FENETRE_APPELS_MS, min: MIN_APPELS, maintenant, tronque: tronqueAppels }), echantillon: ECHANTILLON_APPELS };
+  // un échantillon (un appel sur ECHANTILLON_APPELS), et si les appels sont COUPÉS :
+  // sans cela, « 0 appel mesuré » ne disait pas pourquoi (revue du 2026-11-07).
+  const appels = { ...tauxGenre({ envois, parPid, genre: GENRE_APPEL, fenetreMs: FENETRE_APPELS_MS, min: MIN_APPELS, maintenant, tronque: tronqueAppels }),
+    echantillon: ECHANTILLON_APPELS, actifs: appelsActifs !== false };
 
   return { derniereAlerte, rappels, appels, accusesIgnores: ignores, tronque: !!(tronque || tronqueRappels || tronqueAppels) };
 }

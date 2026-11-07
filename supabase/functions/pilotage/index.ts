@@ -50,7 +50,8 @@ import {
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
-import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, FENETRE_APPELS_MS, UID_APPELS, NOTES_MAX, PAQUET_RAPPELS, PLAFOND_PAQUET, adresseAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
+import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, DELAI_ACCUSE_MS, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, FENETRE_APPELS_MS, UID_APPELS, NOTES_RAPPELS_MAX, NOTES_APPELS_MAX, PAQUET_RAPPELS, PLAFOND_PAQUET, adresseAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
+import { APPELS_ACTIFS } from "../_shared/appels.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -318,10 +319,11 @@ async function lireReception(admin: Admin) {
   const depuis = new Date(maintenant - JUGEMENT_MAX_MS).toISOString();
   const lirePush = (pids: string[], apres: string, plafond: number) => admin.from("telemetry_events").select("pid:meta->>pid,received_at")
     .eq("type", TYPE_ACCUSE).eq("action", ACTION_ACCUSE).gte("received_at", apres).in("meta->>pid", pids).limit(plafond);
-  // Les notes d'un genre sur sa fenêtre, les plus récentes d'abord, au plus NOTES_MAX.
-  const lireNotes = (auteur: string, fenetreMs: number) => admin.from("analytics_events").select("created_at,properties")
+  // Les notes d'un genre sur sa fenêtre, les plus récentes d'abord : `plafond`, et
+  // UNE de plus — 300 notes lues ne disent pas s'il y en avait 301 (revue du 2026-11-07).
+  const lireNotes = (auteur: string, fenetreMs: number, plafond: number) => admin.from("analytics_events").select("created_at,properties")
     .eq("event", EVT_ENVOI).eq("user_id", auteur).gte("created_at", new Date(maintenant - fenetreMs).toISOString())
-    .order("created_at", { ascending: false }).limit(NOTES_MAX);
+    .order("created_at", { ascending: false }).limit(plafond + 1);
   // Les accusés d'une liste de pid, par paquets de PAQUET_RAPPELS : un paquet
   // plein (un pid noyé de faux accusés) rend la mesure « partielle », jamais fausse.
   const parPaquets = async (pids: string[]) => {
@@ -340,31 +342,37 @@ async function lireReception(admin: Admin) {
     .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").gte("created_at", depuis)
     .order("created_at", { ascending: false }).limit(1);
   if (e1) throw e1;
-  const { data: rappels, error: e2 } = await lireNotes(MARQUE_UID, FENETRE_RAPPELS_MS);
+  const { data: rappels, error: e2 } = await lireNotes(MARQUE_UID, FENETRE_RAPPELS_MS, NOTES_RAPPELS_MAX);
   if (e2) throw e2;
   // Les appels (notify-call, 2026-11-07, _shared/appels.js) : un sur dix porte un
   // accusé ; ses notes sous `systeme:appels`, que seule la fonction écrit.
-  const { data: appels, error: e3 } = await lireNotes(UID_APPELS, FENETRE_APPELS_MS);
+  const { data: appels, error: e3 } = await lireNotes(UID_APPELS, FENETRE_APPELS_MS, NOTES_APPELS_MAX);
   if (e3) throw e3;
-  const notesRappels = (rappels || []) as Note[];
-  const notesAppels = (appels || []) as Note[];
+  const notesRappels = ((rappels || []) as Note[]).slice(0, NOTES_RAPPELS_MAX);
+  const notesAppels = ((appels || []) as Note[]).slice(0, NOTES_APPELS_MAX);
   const envois = [...(alertes || []), ...notesRappels, ...notesAppels] as Note[];
   let accuses: Accuse[] = [];
   const derniere = (alertes || [])[0] as Note | undefined;
   if (derniere) {
     const pids = pidsEnvoi(derniere);
     if (pids.length) {
-      const { data, error } = await lirePush(pids, derniere.created_at, 200);
+      // La note est écrite APRÈS tous les envois : un appareil rapide accuse avant
+      // elle. La borne basse recule donc du délai d'accusé — ces pid ne sont connus
+      // que des appareils du pilote, aucun flot ne s'y glisse (revue du 2026-11-07).
+      const le = Date.parse(derniere.created_at);
+      const apres = Number.isFinite(le) ? new Date(le - DELAI_ACCUSE_MS).toISOString() : depuis;
+      const { data, error } = await lirePush(pids, apres, 200);
       if (error) throw error;
       accuses = accuses.concat((data || []) as Accuse[]);
     }
   }
   const [r, a] = await Promise.all([parPaquets(pidsDes(notesRappels)), parPaquets(pidsDes(notesAppels))]);
   accuses = accuses.concat(r.lus, a.lus);
-  // Une liste de notes au plafond, ou un paquet plein : « partiel », genre par genre.
-  const tronqueRappels = notesRappels.length >= NOTES_MAX || r.plein;
-  const tronqueAppels = notesAppels.length >= NOTES_MAX || a.plein;
-  return bilanReception({ envois, accuses, maintenant, tronqueRappels, tronqueAppels });
+  // Plus de notes que le plafond, ou un paquet plein : « partiel », genre par genre.
+  const tronqueRappels = (rappels || []).length > NOTES_RAPPELS_MAX || r.plein;
+  const tronqueAppels = (appels || []).length > NOTES_APPELS_MAX || a.plein;
+  // `appelsActifs` : appels coupés (pilote), l'écran le dit au lieu de « 0 appel mesuré ».
+  return bilanReception({ envois, accuses, maintenant, tronqueRappels, tronqueAppels, appelsActifs: APPELS_ACTIFS });
 }
 
 async function lireEtatMemorise(admin: Admin) {

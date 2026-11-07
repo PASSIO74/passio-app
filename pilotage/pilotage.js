@@ -215,7 +215,11 @@
     // d'avant ce lot ne rend pas `appels` : aucune carte, jamais un faux zéro.
     const ap = r.appels;
     const ech = Number(ap && ap.echantillon) > 1 ? " · un appel sur " + Number(ap.echantillon) + " est mesuré" : "";
-    if (ap && ap.etat === "mesure") zone.append(carte("Appels reçus (24 h)", Math.round(ap.taux * 100) + " %", ap.recus + " reçus sur " + ap.envoyes + " appels mesurés" + (ap.enAttente ? " · " + ap.enAttente + " en attente" : "") + ech, ap.taux >= 0.8 ? "vert" : "orange"));
+    // Appels COUPÉS (pilote, `APPELS_ACTIFS`) et rien dans la fenêtre : on dit pourquoi
+    // il n'y a rien à mesurer, au lieu d'un « 0 appel mesuré » qui laisserait croire
+    // que des appels passent sans être mesurés.
+    if (ap && ap.actifs === false && !ap.envoyes && !ap.enAttente) zone.append(carte("Appels (24 h)", "Coupés", "Les appels sont coupés pendant le pilote : aucune push d'appel ne part, il n'y a rien à mesurer. La mesure démarre avec eux" + (ech ? " (" + ech.slice(3) + ")" : "") + ".", "gris"));
+    else if (ap && ap.etat === "mesure") zone.append(carte("Appels reçus (24 h)", Math.round(ap.taux * 100) + " %", ap.recus + " reçus sur " + ap.envoyes + " appels mesurés" + (ap.enAttente ? " · " + ap.enAttente + " en attente" : "") + ech, ap.taux >= 0.8 ? "vert" : "orange"));
     else if (ap && ap.etat === "partiel") zone.append(carte("Appels (24 h)", "Partiel", "La lecture des accusés a touché son plafond : pas de taux, au moins " + ap.recus + " reçus sur " + ap.envoyes + " appels mesurés" + ech + ".", "gris"));
     else if (ap) zone.append(carte("Appels (24 h)", "Trop peu", ap.envoyes + " appel(s) mesuré(s) jugeable(s) : il en faut 5 pour un taux" + (ap.enAttente ? " · " + ap.enAttente + " en attente" : "") + ech + ".", "gris"));
     if (r.tronque) zone.append(carte("Réception : lecture partielle", "Partielle", "Les accusés dépassent ce que la lecture parcourt : les nombres sont des minimums.", "gris"));
