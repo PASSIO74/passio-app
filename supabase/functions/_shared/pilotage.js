@@ -594,10 +594,12 @@ export function aFaire(d, maintenant = Date.now()) {
   // service worker 10 min après l'envoi, la ligne le dit (_shared/reception.js).
   const lr = ligneReception(d && d.reception);
   if (lr) {
+    // « Régler » ENVOIE un essai (2026-11-07) : il prouve, ou non, que le téléphone
+    // reçoit. Il ouvrait une page, et la ligne ne bougeait pas — rien ne remesurait.
     ajoute({ id: "alertes:reception", prio: 1, etiquette: "Alertes", titre: lr.titre,
-      quoi: "Ouvre PASSIO sur ton téléphone : la mise à jour lui apprend à accuser, et vérifie que les notifications y sont autorisées.",
+      quoi: "Envoie un essai à tes appareils. Ouvre d'abord PASSIO sur chacun (la mise à jour lui apprend à accuser), avec les notifications autorisées.",
       reference: borne(lr.reference, 400),
-      gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.app }] });
+      gestes: [regler({ action: "essai" }, false), { libelle: "Ouvrir PASSIO", ouvrir: PAGES_REGLAGE.app }] });
   }
   // Les pannes du serveur : la veille les lit (la Sentinelle ne lit que les erreurs de l'app).
   const pannes = Number(d && d.sante && d.sante.api5xx15) || 0;

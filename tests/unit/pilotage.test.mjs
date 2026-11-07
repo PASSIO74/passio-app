@@ -1248,14 +1248,14 @@ import { PAGES_REGLAGE as PAGES } from "../../supabase/functions/_shared/pilotag
 test("㉿⑨ l'alerte part avec un pid aléatoire PAR APPAREIL, se note TOUJOURS après l'envoi (mesure dite) — sans le texte ; l'alerte se lit SEULE par ses pid, les rappels par petits paquets", () => {
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const s = fn.slice(fn.indexOf("async function sonnerPilote"), fn.indexOf("// ─── ② État complet"));
-  assert.match(fn, /const ACCUSE = descripteurAccuse\(Deno\.env\.get\("SUPABASE_URL"\) \|\| "", Deno\.env\.get\("SUPABASE_ANON_KEY"\) \|\| ""\);/);
+  assert.match(fn, /const ADRESSE = adresseAccuse\(\(n\) => Deno\.env\.get\(n\)\);\s*const ACCUSE = ADRESSE\.accuse;/);
   assert.match(s, /const app = \{ pid: ACCUSE \? pidNeuf\(\) : null, service: serviceDe\(s\.endpoint\), accepte: false \};/, "un pid par abonnement");
   assert.match(s, /JSON\.stringify\(avecAccuse\(\{ type: "pilotage", titre, texte \}, app\.pid, ACCUSE\)\)/);
   const envoi = s.indexOf("webpush.sendNotification(");
   const note = s.indexOf("event: EVT_ENVOI");
   assert.ok(envoi > 0 && note > envoi, "la note suit l'envoi : elle ne retarde jamais l'alerte");
   assert.match(s, /const mesure = es \? "abonnements_illisibles" : ACCUSE \? "ok" : "sans_adresse";/, "une mesure impossible se dit");
-  assert.match(s, /properties: \{ genre: "pilotage", mesure, acceptes: n, appareils, \.\.\.\(opts\.essai \? \{ essai: true \} : \{\}\) \}/, "des pid, des familles de service, des nombres, la marque d'essai — jamais le titre ni le texte");
+  assert.match(s, /properties: \{ genre: "pilotage", mesure, acceptes: n, appareils, revision: REVISION,\s*\.\.\.\(mesure === "sans_adresse" \? \{ adresse: ADRESSE\.diag \} : \{\}\), \.\.\.\(opts\.essai \? \{ essai: true \} : \{\}\), \.\.\.\(opts\.manuel \? \{ manuel: true \} : \{\}\) \}/, "des pid, des familles de service, des nombres, la révision, la marque d'essai, les FORMES de l'adresse — jamais le titre, le texte ni une clé");
   assert.doesNotMatch(s.slice(note - 300, note + 200), /if \(pid\)|if \(ACCUSE\)/, "la note n'est pas conditionnée à la mesure : sans adresse, elle dit « non mesurée »");
   const l = fn.slice(fn.indexOf("async function lireReception"), fn.indexOf("async function lireEtatMemorise"));
   assert.match(l, /\.eq\("type", TYPE_ACCUSE\)\.eq\("action", ACTION_ACCUSE\)\.gte\("received_at", apres\)\.in\("meta->>pid", pids\)\.limit\(plafond\)/);
@@ -1272,7 +1272,9 @@ test("㉿⑩ « À faire » : une alerte NON reçue a sa ligne et son bouton ver
   const l = non.find((x) => x.id === "alertes:reception");
   assert.ok(l, "la ligne existe");
   assert.equal(l.prio, 1, "jamais une urgence : une cause bénigne est connue");
-  assert.equal(l.gestes[0].ouvrir, PAGES.app);
+  // « Régler » envoie un essai (2026-11-07) ; l'application s'ouvre à côté.
+  assert.deepEqual(l.gestes[0].corps, { action: "essai" });
+  assert.equal(l.gestes[1].ouvrir, PAGES.app);
   assert.match(l.reference, /ne sait pas encore accuser/);
   for (const etat of ["recue", "en_attente", "ancienne", "aucune"]) {
     assert.equal(aFaire({ reception: { derniereAlerte: { etat, le: "2026-11-06T20:00:00.000Z", acceptes: 1, recus: 1 } } }, T6).some((x) => x.id === "alertes:reception"), false, etat);
@@ -1290,7 +1292,7 @@ test("㉿⑪ l'essai des alertes : un geste du catalogue, lu sur la DERNIÈRE no
   assert.match(e, /const pol = autoriser\(POLITIQUE, "essai_alertes"\);\s*if \(!pol\.ok\) return/, "sous la politique, refus fermé");
   assert.match(e, /\.eq\("event", EVT_ENVOI\)\.eq\("user_id", "systeme:pilotage"\)\.order\("created_at", \{ ascending: false \}\)\.limit\(1\)/);
   assert.match(e, /if \(error\) throw error;/, "une lecture en échec n'envoie pas d'essai à l'aveugle");
-  assert.match(e, /if \(!essaiDu\(\{ derniereNote: \(data \|\| \[\]\)\[0\] \|\| null, maintenant: Date\.now\(\) \}\)\) return/);
+  assert.match(e, /if \(!essaiDu\(\{ derniereNote: \(data \|\| \[\]\)\[0\] \|\| null, maintenant: Date\.now\(\), revision: REVISION \}\)\) return/);
   assert.match(e, /sonnerPilote\(admin, "Essai de tes alertes", "[^"]+", \{ essai: true \}\)/);
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
   assert.ok(v.indexOf("const canari = await etape(") < v.indexOf("const essai = await etape(() => essayerAlertes(admin));"), "après les gestes de la veille");
@@ -1483,6 +1485,34 @@ test("㉿⑰ la fonction NOTE la relance après l'envoi accepté, sous l'auteur 
   assert.match(fn, /case "relancer": return relancer\(admin, String\(corps\.cible \|\| ""\)\);/);
   // L'écran : relu au frais après un geste, puis suivi.
   const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
-  assert.match(page, /b\.textContent = "Lancé ✓";\s*await actualiser\(true\);\s*if \(corps && corps\.action === "relancer"\) suivreRelance\(\);/);
+  assert.match(page, /b\.textContent = "Lancé ✓";\s*await actualiser\(true\);[\s\S]{0,120}if \(corps && \(corps\.action === "relancer" \|\| corps\.action === "essai"\)\) suivreRelance\(\);/);
   assert.match(page, /appeler\(fraiche \? \{ action: "etat", frais: true \} : \{ action: "etat" \}\)/);
 });
+
+// ─── « Régler » des alertes ENVOIE un essai (2026-11-07) ─────────────────────
+// Il ouvrait l'application, et la ligne ne bougeait pas : rien ne remesurait.
+// Mutations éprouvées à la main : l'essai sans borne de 10 min → ㉿⑱ rougit ; une
+// lecture en échec qui enverrait quand même → ㉿⑱ rougit.
+test("㉿⑱ la ligne des alertes : « Régler » envoie un essai (hors « Tout régler »), « Ouvrir PASSIO » reste à côté ; l'essai manuel est borné à un envoi par 10 min et ne part pas à l'aveugle", () => {
+  const l = aFaire({ gestesGithub: false, reception: { derniereAlerte: { etat: "non_recue", essai: true, le: "2026-11-07T08:10:05Z", acceptes: 2 } } }, Date.parse("2026-11-07T08:30:00Z")).find((x) => x.id === "alertes:reception");
+  assert.ok(l, "la ligne existe, même sans jeton GitHub : l'essai n'en a pas besoin");
+  assert.deepEqual(l.gestes[0], { libelle: "Régler", principal: true, corps: { action: "essai" } });
+  assert.equal(l.gestes[0].tout, undefined, "un essai ne part pas avec « Tout régler »");
+  assert.equal(l.gestes[1].libelle, "Ouvrir PASSIO");
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.match(fn, /case "essai": return essaiManuel\(admin\);/);
+  const e = fn.slice(fn.indexOf("async function essaiManuel("), fn.indexOf("async function essaiManuel(") + 1600);
+  assert.match(e, /if \(error\) return json\(\{ error: "Lecture impossible : aucun essai n'est parti\." \}, 503\);/);
+  assert.match(e, /Date\.now\(\) - dernier < ESSAI_MANUEL_MIN_MS\) \{/);
+  assert.match(fn, /const ESSAI_MANUEL_MIN_MS = 10 \* 60e3;/);
+  assert.match(e, /sonnerPilote\(admin, "Essai de tes alertes", "[^"]+", \{ essai: true, manuel: true \}\)/);
+  // La note porte la révision (réessai après déploiement) et, sans adresse, son diagnostic en formes.
+  assert.match(fn, /properties: \{ genre: "pilotage", mesure, acceptes: n, appareils, revision: REVISION,\s*\.\.\.\(mesure === "sans_adresse" \? \{ adresse: ADRESSE\.diag \} : \{\}\)/);
+  assert.match(fn, /const ADRESSE = adresseAccuse\(\(n\) => Deno\.env\.get\(n\)\);\s*const ACCUSE = ADRESSE\.accuse;/);
+  assert.match(fn, /essaiDu\(\{ derniereNote: \(data \|\| \[\]\)\[0\] \|\| null, maintenant: Date\.now\(\), revision: REVISION \}\)/);
+  // L'écran : le bouton d'essai et l'adresse absente dite en formes.
+  const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
+  assert.match(page, /bouton\(ce, "Envoyer un essai maintenant", \{ action: "essai" \}\);/);
+  assert.match(page, /if \(ad && ad\.mesurable === false\) al\.append\(carte\("Accusés de réception impossibles"/);
+});
+

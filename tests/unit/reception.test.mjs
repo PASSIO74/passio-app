@@ -119,7 +119,7 @@ test("⑨ « non mesurée » : une alerte partie sans adresse d'accusé, ou sans
     assert.deepEqual(b.derniereAlerte, { le: iso(T - DELAI_ACCUSE_MS - 1000), etat: "non_mesuree", raison });
     const l = ligneReception(b);
     assert.match(l.titre, /n'a pas pu être mesurée/);
-    assert.match(l.reference, raison === "sans_adresse" ? /SUPABASE_ANON_KEY/ : /abonnements/);
+    assert.match(l.reference, raison === "sans_adresse" ? /pas d'adresse d'accusé utilisable/ : /abonnements/);
   }
 });
 
@@ -168,3 +168,70 @@ test("⑫ un essai se juge comme une alerte, et le dit : « l'essai de tes alert
   assert.equal(ligneReception(recu), null);
   assert.equal(bilanReception({ envois: [alerte(60e3)], maintenant: T }).derniereAlerte.essai, undefined, "une vraie alerte n'est pas un essai");
 });
+
+// ─── L'adresse d'accusé avec les NOUVELLES clés (2026-11-07) ─────────────────
+// Mesuré : le premier essai (08:10) est parti « sans_adresse » vers deux appareils
+// qui l'ont accepté — aucun ne pouvait l'accuser. Réinjections éprouvées : la
+// publiable refusée → ⑬ rougit ; la publiable préférée au JWT (les service workers
+// d'avant ne l'acceptent pas) → ⑬ rougit ; sans révision → ⑭ rougit (aucun
+// réessai) ; réessai à chaque passage → ⑭ rougit ; une forme inconnue relue → ⑮ rougit.
+import { adresseAccuse, formeCle, diagAdresse } from "../../supabase/functions/_shared/reception.js";
+test("⑬ adresseAccuse : l'ancienne clé (JWT) d'abord, sinon la publiable (JSON par nom, ou SUPABASE_ANON_KEY) ; l'URL lue ou déduite du projet ; un diagnostic en FORMES", () => {
+  const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.c2ln";
+  const PUB = "sb_publishable_Abc123_def-456XYZ";
+  const URL0 = "https://njkiyoklssvefstljemx.supabase.co";
+  const avec = (env) => adresseAccuse((n) => env[n]);
+  // L'ancienne forme : comme avant.
+  assert.deepEqual(avec({ SUPABASE_URL: URL0, SUPABASE_ANON_KEY: JWT }), { accuse: { u: URL0, k: JWT }, diag: { url: "ok", anon: "jwt", publiables: "absente", cle: "jwt" } });
+  // La fonction reçoit la publiable dans SUPABASE_ANON_KEY : elle sert.
+  assert.deepEqual(avec({ SUPABASE_URL: URL0, SUPABASE_ANON_KEY: PUB }).accuse, { u: URL0, k: PUB });
+  // …ou par SUPABASE_PUBLISHABLE_KEYS, `default` d'abord, sinon un autre nom.
+  assert.equal(avec({ SUPABASE_URL: URL0, SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ web: "x", default: PUB }) }).accuse.k, PUB);
+  assert.equal(avec({ SUPABASE_URL: URL0, SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ web: PUB }) }).accuse.k, PUB);
+  // Les deux : le JWT d'abord — les service workers d'avant ce lot ne connaissent que lui.
+  assert.equal(avec({ SUPABASE_URL: URL0, SUPABASE_ANON_KEY: JWT, SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB }) }).accuse.k, JWT);
+  // L'URL déduite du projet (DENO_DEPLOYMENT_ID = <ref>_<fonction>_<version>).
+  const deduite = avec({ DENO_DEPLOYMENT_ID: "njkiyoklssvefstljemx_6847b773-0504-48bc-b532-1e14f8f540c0_30", SUPABASE_ANON_KEY: JWT });
+  assert.equal(deduite.accuse.u, URL0); assert.equal(deduite.diag.url, "deduite");
+  assert.equal(avec({ SUPABASE_URL: "http://kong:8000", SUPABASE_ANON_KEY: JWT }).accuse, null, "une URL interne n'est jamais une adresse d'accusé");
+  // Rien d'utilisable : null, et le diagnostic dit quoi.
+  const rien = avec({ SUPABASE_ANON_KEY: "sb_secret_Abc123_def-456XYZ", SUPABASE_PUBLISHABLE_KEYS: "pas du json" });
+  assert.equal(rien.accuse, null);
+  assert.deepEqual(rien.diag, { url: "absente", anon: "forme", publiables: "forme", cle: "absente" });
+  assert.equal(adresseAccuse(() => { throw new Error("env"); }).accuse, null, "un environnement illisible n'est pas une adresse");
+  // Jamais une valeur dans le diagnostic.
+  for (const env of [{ SUPABASE_URL: URL0, SUPABASE_ANON_KEY: JWT }, { SUPABASE_URL: URL0, SUPABASE_ANON_KEY: PUB }]) {
+    const t = JSON.stringify(avec(env).diag);
+    assert.ok(!t.includes(JWT) && !t.includes(PUB) && !t.includes("supabase.co"), t);
+  }
+  assert.equal(formeCle(JWT), "jwt"); assert.equal(formeCle(PUB), "publiable"); assert.equal(formeCle(""), "absente"); assert.equal(formeCle("sb_secret_x"), "forme");
+  // descripteurAccuse admet désormais la publiable, jamais une clé secrète.
+  assert.deepEqual(descripteurAccuse(URL0, PUB), { u: URL0, k: PUB });
+  assert.equal(descripteurAccuse(URL0, "sb_secret_Abc123_def-456XYZ"), null);
+});
+
+test("⑭ essaiDu : une mesure IMPOSSIBLE se réessaie UNE fois par révision servie — de jour, jamais en boucle ; une mesure faite attend 7 jours", () => {
+  const MIDI = Date.parse("2026-11-07T11:00:00Z"); // 12 h à Paris
+  const NUIT = Date.parse("2026-11-07T01:00:00Z");
+  const note = (mesure, revision, il) => ({ created_at: new Date(MIDI - il).toISOString(), properties: { genre: "pilotage", mesure, ...(revision ? { revision } : {}) } });
+  assert.equal(essaiDu({ derniereNote: note("sans_adresse", null, 3600e3), maintenant: MIDI, revision: "411cddd6f9" }), true, "la note d'avant ne porte pas de révision : l'essai repart");
+  assert.equal(essaiDu({ derniereNote: note("sans_adresse", "411cddd6f9", 3600e3), maintenant: MIDI, revision: "411cddd6f9" }), false, "même révision : pas de boucle");
+  assert.equal(essaiDu({ derniereNote: note("sans_adresse", "411cddd6f9", 3600e3), maintenant: MIDI, revision: "be5dc76aaa" }), true, "nouvelle révision : UN essai");
+  assert.equal(essaiDu({ derniereNote: note("ok", "411cddd6f9", 3600e3), maintenant: MIDI, revision: "be5dc76aaa" }), false, "mesurée : 7 jours");
+  assert.equal(essaiDu({ derniereNote: note("sans_adresse", null, 3600e3), maintenant: MIDI, revision: null }), false, "révision inconnue : jamais de réessai");
+  assert.equal(essaiDu({ derniereNote: note("sans_adresse", null, 3600e3), maintenant: NUIT, revision: "be5dc76aaa" }), false, "la nuit, jamais");
+});
+
+test("⑮ une alerte non mesurée dit POURQUOI, en formes connues seulement ; le texte hostile d'une note ne passe pas", () => {
+  const T = Date.parse("2026-11-07T08:30:00Z");
+  const env = { created_at: "2026-11-07T08:10:05Z", properties: { genre: "pilotage", essai: true, mesure: "sans_adresse", acceptes: 2,
+    adresse: { url: "ok", anon: "publiable", publiables: "absente", cle: "<img src=x>", autre: "eyJ.secret.x" } } };
+  const b = bilanReception({ envois: [env], maintenant: T });
+  assert.equal(b.derniereAlerte.etat, "non_mesuree");
+  assert.deepEqual(b.derniereAlerte.adresse, { url: "ok", anon: "publiable", publiables: "absente" });
+  const l = ligneReception(b);
+  assert.match(l.reference, /clé anon : publiable/);
+  assert.ok(!/img|secret/.test(l.reference));
+  assert.equal(diagAdresse(null), null); assert.equal(diagAdresse({ x: "y" }), null);
+});
+

@@ -50,7 +50,7 @@ import {
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
-import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, PAQUET_RAPPELS, PLAFOND_PAQUET, descripteurAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
+import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, PAQUET_RAPPELS, PLAFOND_PAQUET, adresseAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -75,7 +75,11 @@ const SITE_NETLIFY = Deno.env.get("PILOTAGE_NETLIFY_SITE") || "eee53fe0-9fb2-41f
 const SECRET_GESTES = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 // L'adresse des accusés de réception (_shared/reception.js) : l'URL du projet et
 // sa clé anon, PUBLIQUE. Absente ou mal formée → les notifications partent sans.
-const ACCUSE = descripteurAccuse(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_ANON_KEY") || "");
+// L'adresse d'accusé (2026-11-07, adresseAccuse) : l'ancienne clé anon OU la
+// publiable, l'URL lue ou déduite du projet. Mesuré : le premier essai est parti
+// « sans_adresse » — la fonction ne recevait pas la clé sous la forme attendue.
+const ADRESSE = adresseAccuse((n) => Deno.env.get(n));
+const ACCUSE = ADRESSE.accuse;
 type Admin = ReturnType<typeof createClient>;
 
 Deno.serve(async (req) => {
@@ -105,6 +109,7 @@ Deno.serve(async (req) => {
     // cache de GitHub d'un AUTRE isolat, qui ne l'a pas vidé (lireGithub).
     case "etat": return json(await etat(admin, corps.frais === true));
     case "relancer": return relancer(admin, String(corps.cible || ""));
+    case "essai": return essaiManuel(admin);
     case "fusionner": return fusionner(Number(corps.numero));
     case "fermer": return fermer(Number(corps.numero));
     case "pause": return pause(true);
@@ -266,12 +271,31 @@ async function rappels(admin: Admin) {
 async function essayerAlertes(admin: Admin) {
   const pol = autoriser(POLITIQUE, "essai_alertes");
   if (!pol.ok) return { inactif: "politique:" + pol.raison };
-  const { data, error } = await admin.from("analytics_events").select("created_at")
+  const { data, error } = await admin.from("analytics_events").select("created_at,properties")
     .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").order("created_at", { ascending: false }).limit(1);
   if (error) throw error;
-  if (!essaiDu({ derniereNote: (data || [])[0] || null, maintenant: Date.now() })) return { essai: "pas_du" };
+  if (!essaiDu({ derniereNote: (data || [])[0] || null, maintenant: Date.now(), revision: REVISION })) return { essai: "pas_du" };
   const n = await sonnerPilote(admin, "Essai de tes alertes", "Rien à faire : sans alerte depuis 7 jours, PASSIO vérifie que ses alertes t'arrivent bien.", { essai: true });
   return { essai: "envoye", appareils: n };
+}
+
+// Un essai À LA DEMANDE (2026-11-07) : le « Régler » de la ligne des alertes. Il
+// PROUVE, ou non, que le téléphone reçoit — au lieu d'ouvrir une page qui ne
+// changeait rien à la ligne. Borné : un envoi au pilote toutes les 10 min au plus,
+// essai ou alerte ; une lecture en échec n'envoie rien.
+const ESSAI_MANUEL_MIN_MS = 10 * 60e3;
+async function essaiManuel(admin: Admin) {
+  const { data, error } = await admin.from("analytics_events").select("created_at")
+    .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").order("created_at", { ascending: false }).limit(1);
+  if (error) return json({ error: "Lecture impossible : aucun essai n'est parti." }, 503);
+  const dernier = dateUtc(data && data[0] ? data[0].created_at : null);
+  if (Number.isFinite(dernier) && Date.now() - dernier < ESSAI_MANUEL_MIN_MS) {
+    const reste = Math.max(1, Math.ceil((ESSAI_MANUEL_MIN_MS - (Date.now() - dernier)) / 60e3));
+    return json({ error: "Un envoi est parti il y a moins de 10 min : attends son accusé (encore " + reste + " min)." }, 409);
+  }
+  const n = await sonnerPilote(admin, "Essai de tes alertes", "Tu l'as demandé depuis le pilotage : si tu lis ceci, tes alertes t'arrivent.", { essai: true, manuel: true });
+  if (!n) return json({ error: "Aucun appareil n'a accepté l'essai : ouvre PASSIO avec le compte éditeur et autorise les notifications." }, 409);
+  return json({ ok: true, message: "Essai envoyé à " + n + " appareil(s)" + (ACCUSE ? " : son accusé s'affiche dans Réglages › Alertes dans la minute." : ", sans adresse d'accusé : sa réception ne peut pas être mesurée.") });
 }
 
 /**
@@ -362,7 +386,7 @@ async function uidsPilotes(admin: Admin): Promise<string[]> {
 }
 
 /** Notification sur les appareils de l'éditeur où PASSIO a les notifications activées. */
-async function sonnerPilote(admin: Admin, titre: string, texte: string, opts: { essai?: boolean } = {}): Promise<number> {
+async function sonnerPilote(admin: Admin, titre: string, texte: string, opts: { essai?: boolean; manuel?: boolean } = {}): Promise<number> {
   const pub = Deno.env.get("VAPID_PUBLIC_KEY"), priv = Deno.env.get("VAPID_PRIVATE_KEY");
   if (!pub || !priv) return 0;
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
@@ -386,7 +410,10 @@ async function sonnerPilote(admin: Admin, titre: string, texte: string, opts: { 
   // l'alerte : elle est partie. Ni le titre ni le texte n'y entrent.
   const mesure = es ? "abonnements_illisibles" : ACCUSE ? "ok" : "sans_adresse";
   try {
-    const { error: en } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_ENVOI, properties: { genre: "pilotage", mesure, acceptes: n, appareils, ...(opts.essai ? { essai: true } : {}) } });
+    // `revision` : une mesure impossible se réessaie après le déploiement suivant
+    // (essaiDu) ; `adresse` : pourquoi, en FORMES (jamais une clé).
+    const { error: en } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_ENVOI, properties: { genre: "pilotage", mesure, acceptes: n, appareils, revision: REVISION,
+      ...(mesure === "sans_adresse" ? { adresse: ADRESSE.diag } : {}), ...(opts.essai ? { essai: true } : {}), ...(opts.manuel ? { manuel: true } : {}) } });
     if (en) console.warn("pilotage : note d'envoi refusée " + String((en as { code?: string }).code || ""));
   } catch { console.warn("pilotage : note d'envoi injoignable"); }
   // Un refus PERMANENT (404/410) oublie l'abonnement — geste du catalogue (politique).
@@ -1228,7 +1255,8 @@ async function lireAlertes(admin: Admin) {
   const uids = await uidsPilotes(admin);
   if (!uids.length) return { appareils: 0 };
   const n = await compter(admin.from("push_subscriptions").select("endpoint", { count: "exact", head: true }).in("user_id", uids));
-  return { appareils: n, vapid: !!Deno.env.get("VAPID_PUBLIC_KEY") };
+  // `accuse` : l'adresse d'accusé est-elle là, et sous quelle FORME (jamais une valeur).
+  return { appareils: n, vapid: !!Deno.env.get("VAPID_PUBLIC_KEY"), accuse: { mesurable: !!ACCUSE, ...ADRESSE.diag } };
 }
 
 // ─── GitHub ─────────────────────────────────────────────────────────────────

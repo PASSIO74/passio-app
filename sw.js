@@ -75,13 +75,18 @@ const ID_ACTIVITE_RE = /^[\w-]{1,64}$/;
 // de l'accusé, et une adresse qui n'a pas sa forme n'est jamais appelée.
 const RE_PID_PUSH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const RE_BASE_ACCUSE = /^https:\/\/[a-z0-9]{20}\.supabase\.co$/;
+// La clé : l'ancienne anon (un JWT) ou la nouvelle, publiable (2026-11-07). La
+// publiable ne part QU'EN `apikey` : en Bearer, la plateforme la lit comme un JWT
+// et refuse la requête (« Invalid JWT »).
 const RE_CLE_ACCUSE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+const RE_PUBLIABLE_ACCUSE = /^sb_publishable_[A-Za-z0-9_-]{8,200}$/;
 function accuser(data, genre) {
   try {
     const a = data && data.ack;
     if (!data || !RE_PID_PUSH.test(String(data.pid || "")) || !a || typeof a !== "object") return Promise.resolve();
     const u = String(a.u || ""), k = String(a.k || "");
-    if (!RE_BASE_ACCUSE.test(u) || !RE_CLE_ACCUSE.test(k) || k.length >= 2000) return Promise.resolve();
+    const publiable = RE_PUBLIABLE_ACCUSE.test(k);
+    if (!RE_BASE_ACCUSE.test(u) || !(RE_CLE_ACCUSE.test(k) || publiable) || k.length >= 2000) return Promise.resolve();
     const octets = new Uint8Array(8);
     crypto.getRandomValues(octets);
     const corps = [{
@@ -91,7 +96,8 @@ function accuser(data, genre) {
     }];
     const envoyer = () => fetch(u + "/rest/v1/telemetry_events", {
       method: "POST",
-      headers: { "Content-Type": "application/json", apikey: k, Authorization: "Bearer " + k, Prefer: "return=minimal" },
+      headers: publiable ? { "Content-Type": "application/json", apikey: k, Prefer: "return=minimal" }
+        : { "Content-Type": "application/json", apikey: k, Authorization: "Bearer " + k, Prefer: "return=minimal" },
       body: JSON.stringify(corps),
     });
     // Un refus de débit (429 : le réservoir des envois anonymes est commun) ou une

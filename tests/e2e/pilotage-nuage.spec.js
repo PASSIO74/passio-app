@@ -1073,7 +1073,7 @@ test("㊱ réception : l'écran dit « abonné », puis ce que l'accusé prouve,
   await expect(z.locator(".carte", { hasText: "Rappels d'activité reçus (24 h)" })).toContainText("1 en attente");
 });
 
-test("㊲ une alerte NON reçue : la ligne « À faire » mène à l'application, la carte le dit ; une lecture manquée dit « Non lu », jamais « calme »", async ({ page }) => {
+test("㊲ une alerte NON reçue : la ligne « À faire » envoie un essai et mène à l'application, la carte le dit ; une lecture manquée dit « Non lu », jamais « calme »", async ({ page }) => {
   await poserSession(page);
   const le = new Date(Date.now() - 3600e3).toISOString();
   await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true },
@@ -1083,7 +1083,10 @@ test("㊲ une alerte NON reçue : la ligne « À faire » mène à l'application
   await page.locator("#afaireSuite").click();
   const ligne = page.locator("#afaire .ligne", { hasText: "Ta dernière alerte n'est arrivée sur aucun appareil" });
   await expect(ligne).toBeVisible();
-  await expect(ligne.locator("a", { hasText: "Régler" })).toHaveAttribute("href", "https://passio-app.netlify.app/?equipe=1");
+  // « Régler » ENVOIE un essai (2026-11-07) ; l'application s'ouvre à côté, rangée sous le texte.
+  await expect(ligne.locator("button.btn-regler")).toHaveText("Régler");
+  if (!(await ligne.locator("details").evaluate((d) => d.open))) await ligne.locator("summary").click();
+  await expect(ligne.locator("a", { hasText: "Ouvrir PASSIO" })).toHaveAttribute("href", "https://passio-app.netlify.app/?equipe=1");
   await aller(page, "reglages");
   await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte non reçue" })).toBeVisible();
   await expect(page.locator("#alertes .carte", { hasText: "Rappels d'activité (24 h)" })).toContainText("il en faut 5");
@@ -1200,4 +1203,32 @@ test("㊵ « Régler » se voit : « Lancé ✓ », relu AU FRAIS, la ligne pass
   await expect(rangee).toBeVisible();
   await expect(rangee.locator(".btn-regler")).toHaveCount(0);
   expect(envois.filter((c) => c.action === "etat" && c.frais === true).length).toBeGreaterThanOrEqual(2);
+});
+
+// Le 07/11 à 08:10 : le premier essai est parti « sans_adresse » vers deux appareils
+// qui l'ont accepté — aucun ne pouvait l'accuser, et « Régler » sur la ligne des
+// alertes n'ouvrait qu'une page. Désormais l'essai se demande d'un toucher, et une
+// adresse d'accusé absente se dit, en formes.
+test("㊶ les alertes s'essaient d'un toucher : « Envoyer un essai maintenant » envoie { action: essai }, la ligne « À faire » aussi ; une adresse d'accusé absente se dit, en formes", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  const reception = { derniereAlerte: { etat: "non_mesuree", essai: true, raison: "sans_adresse", le: new Date(Date.now() - 20 * 60e3).toISOString(), adresse: { url: "ok", anon: "publiable", publiables: "absente" } },
+    rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false };
+  await routerFonction(page, envois, etat({ alertes: { appareils: 2, vapid: true, accuse: { mesurable: false, url: "ok", anon: "publiable", publiables: "absente", cle: "absente" } }, reception }),
+    { essai: { ok: true, message: "Essai envoyé à 2 appareil(s) (banc)." } });
+  await page.goto("/pilotage/");
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Accusés de réception impossibles" })).toContainText("clé anon : publiable");
+  await page.locator("#alertes button", { hasText: "Envoyer un essai maintenant" }).click();
+  await expect.poll(() => gestes(envois).map((e) => e.corps)).toEqual([{ action: "essai" }]);
+  await expect(page.locator("#bandeauOk")).toContainText("Essai envoyé à 2 appareil(s)");
+  // La ligne « À faire » : son « Régler » envoie l'essai, « Ouvrir PASSIO » reste à côté.
+  await accueil(page);
+  if (await page.locator("#afaireSuite").isVisible()) await page.locator("#afaireSuite").click();
+  const ligne = page.locator("#afaire .ligne", { hasText: "La réception de ta dernière alerte n'a pas pu être mesurée" });
+  await expect(ligne).toBeVisible();
+  await expect(ligne).toContainText("clé anon : publiable");
+  await ligne.locator(".btn-regler").click();
+  await expect.poll(() => gestes(envois).length).toBe(2);
+  expect(gestes(envois)[1].corps).toEqual({ action: "essai" });
 });

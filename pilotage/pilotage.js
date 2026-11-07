@@ -96,7 +96,8 @@
       // Ce qui est parti se VOIT sur le bouton, jusqu'à la relecture qui repeint la ligne.
       b.textContent = "Lancé ✓";
       await actualiser(true);
-      if (corps && corps.action === "relancer") suivreRelance();
+      // Une relance ou un essai se SUIVENT : leur résultat arrive dans la minute.
+      if (corps && (corps.action === "relancer" || corps.action === "essai")) suivreRelance();
     } catch (e) { erreur("Refusé : " + e.message); b.disabled = false; b.textContent = libelle; }
   }
   // Une relance se SUIT (2026-11-07) : mesuré, quatre « Régler » en 70 s, quatre
@@ -1042,6 +1043,16 @@
         ? carte(a.appareils + " appareil(s) abonné(s) aux alertes", "Abonné", "Tu es prévenu quand le voyant passe au rouge, quand le site ne répond plus, et quand c'est réglé.", "vert")
         : carte("Aucun appareil abonné aux alertes", "Inactif", "Ouvre PASSIO avec le compte éditeur et active les notifications quand elles sont proposées.", "orange"));
       rendreReception(al, d.reception);
+      // L'adresse d'accusé (2026-11-07) : sans elle, rien ne se mesure — dit en FORMES.
+      const ad = a.accuse;
+      if (ad && ad.mesurable === false) al.append(carte("Accusés de réception impossibles", "Sans adresse",
+        "La fonction n'a pas d'adresse d'accusé utilisable (URL : " + (ad.url || "?") + ", clé anon : " + (ad.anon || "?") + ", clés publiables : " + (ad.publiables || "?") + ").", "orange"));
+      // Un essai À LA DEMANDE : la preuve, maintenant, que les alertes arrivent.
+      if (a.appareils) {
+        const ce = carte("Essayer les alertes", "", "Envoie une notification d'essai à tes appareils ; son accusé s'affiche ci-dessus dans la minute.");
+        bouton(ce, "Envoyer un essai maintenant", { action: "essai" });
+        al.append(ce);
+      }
       const dispo = d.disponibilite;
       al.append(carte("Veille automatique", dispo && dispo.veilleLe ? "Active" : "Pas encore",
         dispo && dispo.veilleLe ? "dernier changement noté " + ilYA(dispo.veilleLe) + " · vérifie toutes les 5 min" : "Elle démarre quand la migration « pilotage_veille » est appliquée.",
