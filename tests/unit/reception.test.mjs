@@ -6,8 +6,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  bilanReception, ligneReception, descripteurAccuse, avecAccuse, pidValide, pidNeuf, serviceDe, pidsEnvoi,
-  DELAI_ACCUSE_MS, JUGEMENT_MAX_MS, MIN_RAPPELS, EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, SERVICES, PAQUET_RAPPELS,
+  bilanReception, ligneReception, descripteurAccuse, avecAccuse, pidValide, pidNeuf, serviceDe, pidsEnvoi, essaiDu, heureParis,
+  DELAI_ACCUSE_MS, JUGEMENT_MAX_MS, MIN_RAPPELS, EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, SERVICES, PAQUET_RAPPELS, ESSAI_INTERVALLE_MS, FENETRE_ESSAI,
 } from "../../supabase/functions/_shared/reception.js";
 
 const T = Date.parse("2026-11-06T21:00:00Z");
@@ -133,4 +133,38 @@ test("⑩ la famille du service d'un abonnement, lue dans l'hôte de son adresse
   // Les pid d'une note : un par appareil ACCEPTÉ ou non (tous attendus pour la lecture), un par rappel.
   assert.deepEqual(pidsEnvoi(alerte(0, [[P1, "chrome", true], [P2, "edge", false]])), [P1, P2]);
   assert.deepEqual(pidsEnvoi({ properties: { genre: "rappel", pids: [P1, "x", P2] } }), [P1, P2]);
+});
+
+// ─── L'essai des alertes (2026-11-07) ───────────────────────────────────────
+// Mutations éprouvées à la main : l'heure UTC au lieu de Paris → ⑪ rougit ;
+// un intervalle de 6 jours → ⑪ rougit ; la fenêtre ouverte la nuit → ⑪ rougit.
+test("⑪ l'essai est dû de JOUR à Paris (hiver comme été), seulement sans note d'envoi depuis 7 jours", () => {
+  assert.equal(heureParis(Date.parse("2026-11-07T08:01:00Z")), 9, "hiver : UTC+1");
+  assert.equal(heureParis(Date.parse("2026-07-07T07:30:00Z")), 9, "été : UTC+2");
+  assert.equal(heureParis(Date.parse("2026-11-07T23:30:00Z")), 0, "minuit vaut 0, jamais 24");
+  const jour = Date.parse("2026-11-07T10:00:00Z");   // 11 h à Paris
+  assert.equal(essaiDu({ maintenant: jour }), true, "jamais d'alerte notée : un essai");
+  assert.equal(essaiDu({ maintenant: jour, derniereNote: { created_at: new Date(jour - ESSAI_INTERVALLE_MS + 60e3).toISOString() } }), false, "une note de moins de 7 jours : rien");
+  assert.equal(essaiDu({ maintenant: jour, derniereNote: { created_at: new Date(jour - ESSAI_INTERVALLE_MS).toISOString() } }), true, "7 jours sans note : un essai");
+  assert.equal(essaiDu({ maintenant: jour, derniereNote: { created_at: "illisible" } }), true, "une date illisible ne fait pas taire l'essai");
+  for (const iso of ["2026-11-07T07:59:00Z", "2026-11-07T19:00:00Z", "2026-11-07T23:30:00Z", "2026-07-07T06:59:00Z", "2026-07-07T18:00:00Z"]) {
+    assert.equal(essaiDu({ maintenant: Date.parse(iso) }), false, "la nuit, jamais : " + iso);
+  }
+  assert.equal(essaiDu({ maintenant: Date.parse("2026-11-07T18:59:00Z") }), true, "19 h 59 à Paris : encore le jour");
+  assert.deepEqual(FENETRE_ESSAI, { debut: 9, fin: 20 });
+});
+
+test("⑫ un essai se juge comme une alerte, et le dit : « l'essai de tes alertes n'est arrivé sur aucun appareil »", () => {
+  const essai = { ...alerte(DELAI_ACCUSE_MS + 1000), properties: { ...alerte(DELAI_ACCUSE_MS + 1000).properties, essai: true } };
+  const b = bilanReception({ envois: [essai], maintenant: T });
+  assert.equal(b.derniereAlerte.etat, "non_recue");
+  assert.equal(b.derniereAlerte.essai, true);
+  const l = ligneReception(b);
+  assert.match(l.titre, /^L'essai de tes alertes n'est arrivé sur aucun appareil/);
+  assert.match(l.reference, /une vraie alerte ne te parviendrait pas non plus/);
+  const recu = bilanReception({ envois: [essai], accuses: [accuse(P1, DELAI_ACCUSE_MS)], maintenant: T });
+  assert.equal(recu.derniereAlerte.etat, "recue");
+  assert.equal(recu.derniereAlerte.essai, true);
+  assert.equal(ligneReception(recu), null);
+  assert.equal(bilanReception({ envois: [alerte(60e3)], maintenant: T }).derniereAlerte.essai, undefined, "une vraie alerte n'est pas un essai");
 });

@@ -1128,3 +1128,26 @@ test("㊳ alerte reçue sur un seul de deux appareils : la carte dit LEQUEL s'es
   await aller(page, "reglages");
   await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte non mesurée" })).toContainText("adresse d'accusé absente");
 });
+
+test("㊴ l'essai des alertes se dit ESSAI : « Dernier essai des alertes reçu », et un essai non reçu a sa ligne « À faire »", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 2 * 3600e3).toISOString();
+  await routerFonction(page, [], etat({ alertes: { appareils: 2, vapid: true },
+    reception: { derniereAlerte: { etat: "recue", essai: true, le, acceptes: 2, recus: 2, delaiMs: 2000, appareils: [{ service: "chrome", recu: true, delaiMs: 2000 }, { service: "edge", recu: true, delaiMs: 5000 }] },
+      rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false } }));
+  await page.goto("/pilotage/");
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernier essai des alertes reçu" })).toContainText("2 appareil(s) sur 2");
+  await expect(page.locator("#alertes")).not.toContainText("Dernière alerte reçue");
+
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true },
+    reception: { derniereAlerte: { etat: "non_recue", essai: true, le, acceptes: 1, recus: 0, appareils: [{ service: "chrome", recu: false, delaiMs: null }] },
+      rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false } }));
+  await page.reload();
+  await accueil(page);
+  await expect(page.locator("#afaire .ligne").first()).toBeVisible();
+  if (await page.locator("#afaireSuite").isVisible()) await page.locator("#afaireSuite").click();
+  await expect(page.locator("#afaire .ligne", { hasText: "L'essai de tes alertes n'est arrivé sur aucun appareil" })).toBeVisible();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernier essai non reçu" })).toBeVisible();
+});

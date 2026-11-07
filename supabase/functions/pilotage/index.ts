@@ -49,7 +49,7 @@ import {
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
-import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, PAQUET_RAPPELS, PLAFOND_PAQUET, descripteurAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi } from "../_shared/reception.js";
+import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, PAQUET_RAPPELS, PLAFOND_PAQUET, descripteurAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -207,12 +207,15 @@ async function veille(admin: Admin) {
   const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux, parcoursVeille));
   const retour = await etape(() => proposerRetour(admin));
   const canari = await etape(() => emettreCanari());
+  // L'essai des alertes (2026-11-07) : sans note d'envoi depuis 7 jours, rien ne
+  // prouve que le téléphone sonnerait ; un essai part, de jour, et s'accuse.
+  const essai = await etape(() => essayerAlertes(admin));
   // Le battement EN DERNIER : il prouve que la veille est allée au bout, et dit
   // ce qu'elle a lu et décidé (_shared/battement.js). Son échec ne casse rien.
   const pol = resumerPolitique();
   const battement = await etape(() => battre(admin, contenuBattement({
     lectures: { sante, signalements, github, parcours: parc, disponibilite: dispo, rappels: rap, audience: aud },
-    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, retour, canari }, politique: pol, parcours: parcoursVeille,
+    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
     revision: REVISION, dureeMs: Date.now() - t0,
   })));
   // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
@@ -249,6 +252,23 @@ async function rappels(admin: Admin) {
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
   // deno-lint-ignore no-explicit-any
   return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts), Date.now(), SECRET_GESTES, ACCUSE);
+}
+
+/**
+ * L'essai des alertes (_shared/reception.js, `essaiDu`) : un geste du catalogue
+ * (`essai_alertes`), borné à une fois par 7 jours sans AUCUNE note d'envoi du
+ * pilote, de jour à Paris. La note qu'il laisse (essai: true) le rend jugeable
+ * comme une alerte : « reçu sur N appareils », ou sa ligne « À faire ».
+ */
+async function essayerAlertes(admin: Admin) {
+  const pol = autoriser(POLITIQUE, "essai_alertes");
+  if (!pol.ok) return { inactif: "politique:" + pol.raison };
+  const { data, error } = await admin.from("analytics_events").select("created_at")
+    .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").order("created_at", { ascending: false }).limit(1);
+  if (error) throw error;
+  if (!essaiDu({ derniereNote: (data || [])[0] || null, maintenant: Date.now() })) return { essai: "pas_du" };
+  const n = await sonnerPilote(admin, "Essai de tes alertes", "Rien à faire : sans alerte depuis 7 jours, PASSIO vérifie que ses alertes t'arrivent bien.", { essai: true });
+  return { essai: "envoye", appareils: n };
 }
 
 /**
@@ -339,7 +359,7 @@ async function uidsPilotes(admin: Admin): Promise<string[]> {
 }
 
 /** Notification sur les appareils de l'éditeur où PASSIO a les notifications activées. */
-async function sonnerPilote(admin: Admin, titre: string, texte: string): Promise<number> {
+async function sonnerPilote(admin: Admin, titre: string, texte: string, opts: { essai?: boolean } = {}): Promise<number> {
   const pub = Deno.env.get("VAPID_PUBLIC_KEY"), priv = Deno.env.get("VAPID_PRIVATE_KEY");
   if (!pub || !priv) return 0;
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
@@ -363,7 +383,7 @@ async function sonnerPilote(admin: Admin, titre: string, texte: string): Promise
   // l'alerte : elle est partie. Ni le titre ni le texte n'y entrent.
   const mesure = es ? "abonnements_illisibles" : ACCUSE ? "ok" : "sans_adresse";
   try {
-    const { error: en } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_ENVOI, properties: { genre: "pilotage", mesure, acceptes: n, appareils } });
+    const { error: en } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_ENVOI, properties: { genre: "pilotage", mesure, acceptes: n, appareils, ...(opts.essai ? { essai: true } : {}) } });
     if (en) console.warn("pilotage : note d'envoi refusée " + String((en as { code?: string }).code || ""));
   } catch { console.warn("pilotage : note d'envoi injoignable"); }
   // Un refus PERMANENT (404/410) oublie l'abonnement — geste du catalogue (politique).

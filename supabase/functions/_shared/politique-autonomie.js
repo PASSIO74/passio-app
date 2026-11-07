@@ -113,6 +113,15 @@ export const POLITIQUE = Object.freeze({
       verification: "la marque `rappel_activite` existe ; un second tour ne renvoie rien", retour: "aucun nécessaire : un rappel ne modifie aucune donnée de l'utilisateur",
       escalade: "panne : marque `rappels_echec` (analytics_events)", appliquePar: "supabase/functions/_shared/rappels.js (envoyerRappels)",
     }),
+    essai_alertes: rb({
+      libelle: "Essayer les alertes du pilote quand rien ne les a prouvées depuis 7 jours", circuit: "A", autonome: true,
+      symptome: "aucune note d'envoi du pilote depuis 7 jours : rien ne prouve que le téléphone sonnerait",
+      action: "UNE notification d'essai aux appareils du pilote, de jour (heure de Paris), notée comme une alerte (essai) et accusée par appareil",
+      preconditions: ["aucune note `push_envoye` du pilote depuis 7 jours", "heure de Paris dans la fenêtre de jour"],
+      limites: { intervalleJours: 7, heureDebut: 9, heureFin: 20 },
+      verification: "la carte « Dernier essai » dit sur quels appareils il est arrivé", retour: "aucun nécessaire : une notification, aucune donnée modifiée",
+      escalade: "essai sans accusé en 10 min : ligne « À faire » (alertes:reception)", appliquePar: "supabase/functions/pilotage/index.ts (essayerAlertes)",
+    }),
     purge_battements: rb({
       libelle: "Effacer les battements de la veille de plus de 7 jours", circuit: "A", autonome: true,
       symptome: "battements accumulés dans analytics_events", action: "delete des SEULES lignes `pilotage_battement` de `systeme:pilotage` de plus de 7 jours",
