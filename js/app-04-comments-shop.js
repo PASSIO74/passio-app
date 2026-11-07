@@ -6339,6 +6339,71 @@ function _pieceJointeDuMessage(m) {
   return pieceJointeChemin(m.img || m.video || m.fileUrl || m.voiceData || null)
     || (m.pj && m.pj.url ? pieceJointeChemin(m.pj.url) : null);
 }
+
+// Une URL `data:` — un fichier ENTIER, encodé dans l'URL — avec ce que le
+// navigateur ignore devant un schéma (blancs et caractères de contrôle).
+function _estUrlDonnees(u) {
+  return typeof u === "string" && /^[\s\u0000-\u001f]*data:/i.test(u);
+}
+
+// La data-URL d'un message média dont le fichier n'est encore QUE sur cet
+// appareil, ou null. Même ordre que `_pieceJointeDuMessage` : c'est ce champ-là
+// que `_forwardTo` remplace.
+function _urlLocaleDuMessage(m) {
+  // `docData` : la copie locale d'un DOCUMENT que je viens d'envoyer (app-09) —
+  // en dernier, comme dans la branche de copie de `_forwardTo`.
+  var u = m ? (m.img || m.video || m.fileUrl || m.voiceData || m.docData || null) : null;
+  return _estUrlDonnees(u) ? u : null;
+}
+
+// Téléverse une pièce jointe encore LOCALE (data-URL en base64) dans le dossier
+// d'une conversation et rend l'URL PUBLIQUE de l'objet (celle que l'app stocke
+// et signe ensuite), ou null si l'envoi est refusé. Même seau, même forme de
+// chemin et même cache que l'envoi d'une pièce jointe (app-09, `_processAttach`) :
+// la policy d'insertion du seau exige d'être membre de la conversation du chemin.
+function _televerserPieceJointeVers(dataUrl, targetConvId) {
+  try {
+    var s = String(dataUrl);
+    var tete = /^[\s\u0000-\u001f]*data:([^;,]*)(?:;[^;,]*)*;base64,/i.exec(s);
+    if (!tete) return Promise.resolve(null);   // pas du base64 : rien de sûr à téléverser
+    var type = (tete[1] || "application/octet-stream").toLowerCase();
+    var octets = atob(s.slice(tete[0].length));
+    var ia = new Uint8Array(octets.length);
+    for (var i = 0; i < octets.length; i++) ia[i] = octets.charCodeAt(i);
+    var ext = (type.split("/")[1] || "").replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+    var chemin = "attachments/" + targetConvId + "/" + Date.now() + "_" + Math.random().toString(36).slice(2, 11) + "_transfert." + ext;
+    // Une mise à jour attend ce dépôt (pwa-detect.js), comme tout dépôt de pièce
+    // jointe ; la fin est rendue sur TOUTE issue.
+    var fin = (typeof _envoiCommence === "function") ? _envoiCommence() : function () {};
+    // Un refus remonte au pilotage, comme le dépôt d'une pièce jointe (app-09) :
+    // code fermé, jamais le libellé du serveur (il peut porter le nom du fichier).
+    var refus = function (err) {
+      try { if (typeof diagLog === "function") diagLog("pj_televersement KO " + String((err && err.message) || err).slice(0, 80)); } catch (e) {}
+      try {
+        if (typeof _pjSignaler === "function" && typeof _pjCodeEchec === "function") {
+          var reseau = (typeof estEchecReseau === "function") && estEchecReseau(err);
+          _pjSignaler({ rc: _pjCodeEchec(err, reseau), http: Number(err && err.status) || Number(err && err.statusCode) || 0, kind: "transfert", voie: "transfert", essai: 1, ko: Math.round(ia.length / 1024) });
+        }
+      } catch (e) {}
+      return null;
+    };
+    return Promise.resolve(supa.storage.from("attachments").upload(chemin, new Blob([ia], { type: type }), {
+      cacheControl: "31536000", // pièce jointe immuable, comme à l'envoi
+      upsert: false,
+      contentType: type,
+    })).then(function (res) {
+      if (res && res.error) return refus(res.error);
+      var pub = supa.storage.from("attachments").getPublicUrl(chemin);
+      var url = pub && pub.data && pub.data.publicUrl;
+      return url ? ((typeof cdnUrl === "function") ? cdnUrl(url) : url) : null;
+    }, refus).then(function (u) { fin(); return u; }, function () { fin(); return null; });
+  } catch (e) {
+    // `fin` est hissé (`var`) : posé si la levée vient de l'envoi lui-même.
+    try { if (typeof fin === "function") fin(); } catch (_) {}
+    try { if (typeof diagLog === "function") diagLog("pj_televersement KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {}
+    return Promise.resolve(null);
+  }
+}
 function _purgerPieceJointeDe(m) {
   var chemin = _pieceJointeDuMessage(m);
   if (!chemin || typeof supa === "undefined" || !supa || !window._supaReal) return Promise.resolve(false);
@@ -6396,22 +6461,27 @@ async function _forwardTo(targetConvId) {
     // comme document, avec l'URL de la copie — il partait en message VIDE.
     else if (m.docData) { m.fileUrl = nouvelleUrl; delete m.docData; }
   }
-  // ⚠️ UNE COPIE LOCALE NE PART JAMAIS EN BASE (2026-11-07). Ma propre photo, tout
-  // juste envoyée, n'existe sur cet appareil qu'en data URL jusqu'à la prochaine
-  // relecture du fil : le transfert l'insérait TELLE QUELLE dans `conv_messages` —
-  // du base64 en base, par la seule porte que la garde de `sendMessageToSupabase`
-  // ne voyait pas. Déjà déposée (`m.pj.url`), elle est copiée juste au-dessus
-  // (`_pieceJointeDuMessage`) ; sinon on dépose la copie dans le dossier de la
-  // cible. Un échec est un transfert refusé, dit — le même contrat que la copie.
-  // Un document local (`docData`) part comme document : il partait en message VIDE.
-  var _champLocal = !cheminSrc ? ["img", "video", "docData"].find(function (k) { return typeof m[k] === "string" && /^data:/i.test(m[k]); }) : null;
-  if (_champLocal) {
-    var _urlLocale = null;
-    if (typeof _pjDeposerDataUrl === "function") _urlLocale = await _pjDeposerDataUrl(targetConvId, m[_champLocal], "transfert" + (_champLocal === "docData" ? "_" + (m.fileName || "document") : ""), _champLocal);
-    if (!_urlLocale) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
-    m = Object.assign({}, m);
-    if (_champLocal === "docData") { m.fileUrl = _urlLocale; delete m.docData; }
-    else m[_champLocal] = _urlLocale;
+  // ⚠️ UN MÉDIA ENCORE LOCAL NE PART JAMAIS EN BASE64 (2026-11-07). La copie de
+  // l'AUTEUR d'une photo, d'une vidéo ou d'un vocal qu'il vient d'envoyer garde
+  // sa data-URL (app-09, `_processAttach`, `_sendVoiceMessage`) : transférée
+  // telle quelle, elle s'écrivait ENTIÈRE dans `conv_messages.content` — un
+  // fichier de plusieurs Mo dans une ligne, diffusé en direct à chaque membre.
+  // L'invariant « jamais de base64 en base », que seul le client tenait, rompu
+  // par le client lui-même. Le fichier est TÉLÉVERSÉ dans le dossier de la cible,
+  // comme à l'envoi ; refusé = transfert refusé, dit. La base refuse désormais
+  // une telle enveloppe (CONTENU_MESSAGE_BORNE, plus bas).
+  else {
+    var urlLocale = _urlLocaleDuMessage(m);
+    if (urlLocale) {
+      var televersee = (typeof supa !== "undefined" && supa && window._supaReal) ? await _televerserPieceJointeVers(urlLocale, targetConvId) : null;
+      if (!televersee) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
+      m = Object.assign({}, m);
+      if (m.img) m.img = televersee; else if (m.video) m.video = televersee;
+      else if (m.fileUrl) m.fileUrl = televersee; else if (m.voiceData) m.voiceData = televersee;
+      // Mon document tout juste envoyé n'a qu'une copie locale (`docData`) : il part
+      // comme document — il partait en message VIDE.
+      else if (m.docData) { m.fileUrl = televersee; delete m.docData; }
+    }
   }
   // Reconstruit un envelope de contenu selon le type, puis insère localement + Supabase.
   var content = null, localMsg = { id: "msg_" + uid(), from: "me", at: Date.now() };
@@ -6420,11 +6490,14 @@ async function _forwardTo(targetConvId) {
   else if (m.fileUrl) { content = { type: "doc", url: m.fileUrl, filename: m.fileName || "Fichier", text: "📄 " + (m.fileName||"Fichier") }; localMsg.fileUrl = m.fileUrl; localMsg.fileName = m.fileName; localMsg.fileType = m.fileType; }
   else if (m.location) { content = { type: "location", lat: m.location.lat, lng: m.location.lng, url: m.location.url, text: "📍 Position" }; localMsg.location = m.location; }
   else { localMsg.text = m.text || ""; }
-  // Le filet, quelle que soit la forme du message source (GIF, fichier anciens) :
-  // une data URL ne part pas vers `conv_messages`.
-  if (content && typeof content.url === "string" && /^data:/i.test(content.url)) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
+  // Les deux bornes du serveur, AVANT toute trace locale : une enveloppe dont
+  // l'`url` est une data-URL (un GIF ou une position d'une ancienne version) et
+  // un texte plus long que ce que ce client envoie lui-même (MSG_TEXTE_MAX).
+  // Sinon le transfert resterait affiché ici, et la base le refuserait (23514).
+  if (content && _estUrlDonnees(content.url)) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
+  if (!content && localMsg.text.length > MSG_TEXTE_MAX) { toast("✋ Message trop long pour être transféré : " + MSG_TEXTE_MAX.toLocaleString("fr-FR") + " caractères au plus"); return; }
   // Le compte a changé (ou la file a été purgée) pendant la copie ou le dépôt :
-  // rien ne part, ni en local ni en base.
+  // rien ne part, ni en local ni en base (ASTRA-21).
   if (_outboxContextePerime(_ctxTransfert)) { try { if (typeof diagLog === "function") diagLog("transfert_perime"); } catch (e) {} return; }
   if (!target.messages) target.messages = [];
   target.messages.push(localMsg);
@@ -6736,6 +6809,15 @@ function sendMessageFp(convId, displayName) {
   if (!inp) { console.error("sendMessageFp: input not found"); return; }
   var txt = (inp.value || "").trim();
   if (!txt) return;
+  // La borne du serveur (CONTENU_MESSAGE_BORNE) : au-delà de MSG_TEXTE_MAX, le
+  // message ne part pas et le texte RESTE dans le champ — on ne vide rien avant
+  // d'avoir dit pourquoi. 5 000 caractères : le plus long texte envoyé en
+  // production en fait 68 (07/11) ; son enveloppe (profil d'envoi, réponse), même
+  // entièrement échappée, reste sous 11 000 — loin des 20 000 de la base.
+  if (txt.length > MSG_TEXTE_MAX) {
+    toast("✋ Message trop long : " + MSG_TEXTE_MAX.toLocaleString("fr-FR") + " caractères au plus (il en fait " + txt.length.toLocaleString("fr-FR") + ")");
+    return;
+  }
 
   // 2. Vider le champ
   inp.value = "";
@@ -6962,10 +7044,45 @@ async function _reparerAppartenanceConv(convId) {
   } catch (e) { return false; }
 }
 
+// ⚠️ LE CONTENU D'UN MESSAGE EST BORNÉ PAR LE SERVEUR (2026-11-07).
+// L'invariant « jamais de base64 en base (→ Storage) » n'était tenu que par le
+// client : `conv_messages.content` est un `text` sans contrainte, et tout compte
+// connecté (une ancienne version, une requête forgée) pouvait y écrire un
+// fichier entier. La migration `migration_conv_messages_contenu_borne_2026-11-07.sql`
+// pose deux contraintes CHECK :
+//   · `conv_messages_content_len_check` — 20 000 caractères au plus (le plus long
+//     message de production mesuré le 07/11 en fait 551) ;
+//   · `conv_messages_content_url_data_check` — l'`url` d'une enveloppe n'est
+//     jamais une data-URL.
+// Ce client se tient sous ces bornes : un texte de plus de MSG_TEXTE_MAX
+// caractères ne part pas (`sendMessageFp`, `_forwardTo`), un média encore local
+// passe par Storage avant d'être transféré (`_forwardTo`), et un refus 23514 est
+// DÉFINITIF (`_refusDefinitif`). `CONTENU_MESSAGE_BORNE` est la chaîne que la
+// migration exige dans le client SERVI avant de s'appliquer (`-- PREREQUIS-CLIENT:`,
+// règle ④ de scripts/lib/barriere-migration.js).
+var CONTENU_MESSAGE_BORNE = "conv_messages:contenu-borne";
+var MSG_TEXTE_MAX = 5000;
+
+// Ce qu'on DIT d'un refus de contenu par la base (23514), ou null pour un autre
+// refus. Le message de PostgREST porte le nom de la contrainte.
+function _motRefusContenu(err) {
+  if (!err || String(err.code || "") !== "23514") return null;
+  var m = String(err.message || "");
+  try { if (typeof diagLog === "function") diagLog(CONTENU_MESSAGE_BORNE + " refus " + ((m.match(/conv_messages_content_\w+/) || ["?"])[0])); } catch (e) {}
+  if (m.indexOf("conv_messages_content_url_data_check") >= 0) return "⚠️ Message non envoyé : sa pièce jointe n'a pas été téléversée";
+  if (m.indexOf("conv_messages_content_len_check") >= 0) return "⚠️ Message non envoyé : il est trop long";
+  return "⚠️ Message non envoyé : son contenu est refusé";
+}
+
 function _refusDefinitif(error, statut) {
   var code = String((error && error.code) || "");
   // 42501 = refus d'écriture par une policy PostgreSQL. Rien à rejouer.
   if (code === "42501") return true;
+  // 23514 = une contrainte CHECK refuse la LIGNE elle-même (CONTENU_MESSAGE_BORNE :
+  // trop long, pièce jointe en base64). Renvoyée telle quelle, elle sera refusée
+  // pareil. PostgREST la rend en 400, que rien ici ne reconnaissait : la file
+  // l'aurait rejouée à chaque démarrage, jusqu'à MSG_ESSAIS_MAX.
+  if (code === "23514") return true;
   var st = Number(statut || (error && error.status) || 0);
   // ⚠️ 401 ET 403 sont DEUX causes distinctes qu'on traite pareil ICI, et
   // seulement ici : 401 = jeton absent ou expiré, 403 = la règle dit non. Dans
@@ -7126,6 +7243,10 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
           // Le refus doit laisser une trace : sans elle, il redevient invisible
           // — c'est exactement ce qui a permis six jours de refus silencieux.
           try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
+          // Un refus de CONTENU (23514) se DIT : réessayer n'y changera rien, il
+          // faut raccourcir le texte ou renvoyer le fichier.
+          var _motContenu = _motRefusContenu(res.error);
+          if (_motContenu) { try { toast(_motContenu); } catch (e) {} }
         } else {
           // Rejoué par la file : un réseau absent est une ATTENTE ; le limiteur
           // anti-abus un refus légitime (« limite ») ; un serveur qui répond en

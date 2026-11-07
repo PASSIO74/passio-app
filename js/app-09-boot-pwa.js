@@ -1207,42 +1207,6 @@ function _pjFileVider() {
   });
 }
 
-// Transfert d'un média dont on n'a que la copie LOCALE (mon envoi, avant la
-// relecture du fil) : déposé dans le dossier de la cible. Rend l'URL canonique,
-// ou null — jamais la data URL.
-function _pjDeposerDataUrl(convId, dataUrl, nom, kind) {
-  var finEnvoi = null;
-  var fin = function (u) { try { if (finEnvoi) finEnvoi(); } catch (e) {} return u; };
-  try {
-    if (!_pjEstDataUrl(dataUrl) || typeof supa === "undefined" || !supa || !window._supaReal) return Promise.resolve(null);
-    var blob = _pjBlob(dataUrl);
-    if (!blob) return Promise.resolve(null);
-    // Extension fidèle au contenu (iOS se fie aussi à l'URL pour lire une vidéo).
-    var nomFinal = String(nom || "transfert");
-    if (!/\.[a-z0-9]{1,5}$/i.test(nomFinal)) nomFinal += "." + (_PASSIO_EXT_MEDIA[blob.type] || (blob.type.split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "bin");
-    var chemin = _pjCheminNeuf(convId, nomFinal);
-    finEnvoi = _envoiCommence();
-    var refus = function (err) {
-      var reseau = (typeof estEchecReseau === "function") && estEchecReseau(err);
-      _pjSignaler({ rc: _pjCodeEchec(err, reseau), http: Number(err && err.status) || Number(err && err.statusCode) || 0, kind: kind || "", voie: "transfert", essai: 1, ko: Math.round(blob.size / 1024) });
-      return null;
-    };
-    return Promise.resolve(supa.storage.from("attachments").upload(chemin, blob, { cacheControl: "31536000", upsert: false, contentType: blob.type }))
-      .then(function (res) {
-        if (res && res.error) return refus(res.error);
-        var pub = supa.storage.from("attachments").getPublicUrl(chemin);
-        var brute = pub && pub.data && pub.data.publicUrl;
-        return brute ? ((typeof cdnUrl === "function") ? cdnUrl(brute) : brute) : null;
-      }, refus)
-      // La fin d'envoi est rendue sur TOUTE issue, levée comprise (revue audit-passio).
-      .then(fin, function (e) { fin(); try { if (typeof diagLog === "function") diagLog("pj_transfert KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {} return null; });
-  } catch (e) {
-    fin();
-    try { if (typeof diagLog === "function") diagLog("pj_transfert KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {}
-    return Promise.resolve(null);
-  }
-}
-
 // Mêmes portes que le TEXTE (`sendMessageFp`, app-04) : le mode invité explique
 // puis propose un compte, et une conversation de démonstration n'envoie rien
 // (UXO-03) — sans elles, un média joint à un exemple partait en 403, compté en
