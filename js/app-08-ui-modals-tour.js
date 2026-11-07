@@ -5695,6 +5695,9 @@ function _eventRow(event) {
     recurrence: event.recurrence || "none",
     conv_id: event.convId || null,
   };
+  // Une adresse qu'on n'a pas pu lire n'est pas une adresse vide : l'envoyer l'effacerait en base.
+  if (event._adresseInconnue && !event.address) delete _row.address;
+  if (event._adresseInconnue && !event.contact) delete _row.contact;
   return _row;
 }
 
@@ -5834,13 +5837,42 @@ const _EVENT_COLS_PUBLIC = [
 // rencontre sans aucun compte — la porte fermée le 08/09 sur `event_attendees`,
 // rouverte par une autre table. Un visiteur ne peut de toute façon pas
 // rejoindre une conversation ; il n'a rien à en connaître.
-const _EVENT_COLS_PRIVE = _EVENT_COLS_PUBLIC + ",address,contact,conv_id";
+// ⚠️ `address` et `contact` n'en font plus partie (audit du 06/11, G-07) : tout compte les lisait sans
+// s'inscrire. Ils passent par `supaLireAdresses`, pour l'organisation et pour qui vient.
+const _EVENT_COLS_PRIVE = _EVENT_COLS_PUBLIC + ",conv_id";
 // Mémorisé pour la session : une fois qu'on sait que le rôle courant n'a pas
 // droit aux colonnes privées, inutile de repayer un aller-retour refusé à
 // chaque chargement du fil.
 let _eventColsPubliquesSeulement = false;
 // Un refus qui tient au DROIT, pas à la disponibilité : c'est lui seul qui
 // justifie de ne plus redemander les colonnes privées (ASTRA-10).
+// L'adresse et le contact des activités, par `adresses_activites`. La base rend ce à quoi ce compte a droit.
+// `lu` à faux : on ne sait pas. L'écran montre alors moins, et une édition n'écrase rien (`_eventRow`).
+// Repli sur les colonnes tant que la base n'a pas le lot 4 (PGRST202) : le client part en ligne d'abord.
+let _adressesParColonnes = false;
+async function supaLireAdresses(ids) {
+  const adresses = {};
+  if (!Array.isArray(ids) || !ids.length || !_compteAuthReel()) return { adresses, lu: false };
+  const noter = (lignes, cle) => (lignes || []).forEach((l) => { adresses[l[cle]] = { address: l.address || "", contact: l.contact || "" }; });
+  try {
+    if (!_adressesParColonnes) {
+      const r = await supa.rpc("adresses_activites", { p_event_ids: ids.slice(0, 200) });
+      if (!r.error) { noter(r.data, "event_id"); return { adresses, lu: true }; }
+      if (String(r.error.code || "") !== "PGRST202") {
+        console.warn("supaLireAdresses:", r.error.code || r.error.message);
+        return { adresses, lu: false };
+      }
+      _adressesParColonnes = true;
+    }
+    const c = await supa.from("events").select("id,address,contact").in("id", ids.slice(0, 200));
+    if (c.error) { _adressesParColonnes = false; console.warn("supaLireAdresses (repli):", c.error.code || c.error.message); return { adresses, lu: false }; }
+    noter(c.data, "id");
+    return { adresses, lu: true };
+  } catch (e) {
+    console.warn("supaLireAdresses:", e && e.message);
+    return { adresses, lu: false };
+  }
+}
 function _refusDeDroit(error) {
   if (!error) return false;
   const code = String(error.code || "");
@@ -6107,6 +6139,7 @@ async function supaLoadEvents(authorId) {
     }
     if (error) { console.warn("supaLoadEvents:", error.message); return []; }
     const rows = data || [];
+    const { adresses, lu: adressesLues } = await supaLireAdresses(rows.map(r => r.id));
     const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));
     // Charger les vrais participants (compteurs/avatars cross-compte). Sans ça,
     // supaLoadEvents renvoyait attendees:[] → tout événement affichait "0 inscrit"
@@ -6129,11 +6162,12 @@ async function supaLoadEvents(authorId) {
       date: r.date_at ? supaTs(r.date_at) : Date.now(),
       desc: r.description || "",
       venue: r.venue || "",
-      address: r.address || "",
+      address: (adresses[r.id] || {}).address || "",
+      _adresseInconnue: !adressesLues,
       postalCode: r.postal_code || "",
       price: r.price || 0,
       maxAttendees: r.max_attendees || null,
-      contact: r.contact || "",
+      contact: (adresses[r.id] || {}).contact || "",
       externalLink: r.external_link || "",
       eventType: r.event_type || "Autre",
       coverUrl: r.cover_url || null,

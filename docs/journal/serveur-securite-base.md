@@ -1614,3 +1614,15 @@ est écrit), deux sceptiques par trouvaille grave : rien de bloquant — la seul
 ⚠️ **UN RETOUR ARRIÈRE NON ÉPROUVÉ EST UNE HYPOTHÈSE.** Les lignes `--|` laissaient 9 contraintes, 2 tables, 9 fonctions et un déclencheur modifié. Elles sont complétées (`--||` : après avoir rendu fonctions et policies), et le retrait réel a ramené le staging aux empreintes de la production.
 
 **Effets produit.** Une proposition de rencontre exige désormais une réponse de l'autre personne dans la conversation (`irl_interaction_allowed`). Un visiteur n'entre plus dans `realtime:db`. Toute migration suivante déclare ses droits : les privilèges par défaut de `postgres` ne donnent plus rien à `anon` ni `authenticated`, un oubli se voit en 403.
+
+## 📍 LE LIEU D'UNE ACTIVITÉ : UN POINT À 1 KM, L'ADRESSE À QUI VIENT (LOT 4, 2026-11-07)
+
+`migrations/migration_securite_lot4_2026-11-07.sql`, `supaLireAdresses` (app-08), `tests/e2e/rencontres-adresse.spec.js`, banc `cas-securite-lot4`. Choix protecteur pris sur l'ordre de Benjamin : revenir en arrière est une ligne (`grant select (address, contact)`), sauf les coordonnées déjà arrondies.
+
+⚠️ **RETIRER UNE COLONNE NE PROTÈGE PAS CE QU'UNE AUTRE DIT AUSSI.** `address` était fermée à `anon` depuis le 08/09, mais `lat` et `lng` donnaient le même domicile, au mètre, avec la date. Le point est désormais arrondi **à l'écriture** : ce qui n'est pas stocké ne fuit par aucune table, aucune vue, aucune archive.
+
+⚠️ **UNE LECTURE RATÉE N'EST PAS UNE VALEUR VIDE.** `_eventRow` envoie `address: event.address || null` : si la RPC échoue chez l'organisation, éditer sa fiche aurait effacé l'adresse en base. `_adresseInconnue` retire ces deux champs de l'écriture tant qu'on ne les a pas lus, sauf saisie.
+
+**Effet produit.** « Peut-être » et la liste d'attente ne donnent ni l'adresse ni le contact : la place n'est pas tenue. S'inscrire reste possible à tout compte majeur : c'est une trace pour l'organisation, pas une barrière.
+
+**Le premier passage du lot 4 n'a rien retiré (2026-11-07).** `authenticated` tient SELECT sur la TABLE `events` (`authenticated=arwd`) : un `revoke select (address, contact)` y passe sans erreur et ne retire rien. La règle existait déjà dans `CLAUDE.md`, et le banc l'a laissé passer, parce que son socle écrit colonne par colonne ce que la production tient sur la table. C'est le tableau de verdict du staging qui l'a vu, avant la production. Le lot retire désormais le droit de table et rend chaque colonne sauf ces deux-là ; le banc pose le droit réel avant de le jouer, et l'ancienne version y rend 4 écarts. Conséquence à connaître : `select *` sur `events` est refusé à un compte comme à un visiteur, et une colonne ajoutée à `events` doit recevoir son `grant select` pour les deux rôles.

@@ -159,6 +159,8 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 1
+          # Aucun jeton laissé dans .git/ : l'agent lit ce dossier, et l'action pose sa propre identification.
+          persist-credentials: false
 
       # Avant toute dépense de jeton : prouver que l'auth est bien l'abonnement.
       - name: Contrôle d'authentification (subscription-only)
@@ -307,16 +309,18 @@ jobs:
             echo "::notice title=Commentaires tiers écartés::${ecartes} commentaire(s) d'autres comptes n'entrent PAS dans la spécification donnée à Claude."
           fi
 
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB exige bubblewrap : sans lui, le CLI refuse de démarrer. Vu au canari du
-      # 2026-11-07 : aucune session ne tournait, l'échec était fermé. Ubuntu 24.04 restreint par défaut les espaces
-      # de noms d'utilisateur qu'il utilise, d'où le réglage ; le runner est jetable.
-      - name: Installer bubblewrap
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB exige un bac à sable : sans bubblewrap, le CLI refuse de démarrer ; sans socat,
+      # il démarre mais refuse chaque commande Bash (« Sandbox dependencies not available: socat not installed »). Vus aux
+      # canaris du 2026-11-07, échecs fermés dans les deux cas. Ubuntu 24.04 restreint par défaut les espaces de noms
+      # d'utilisateur qu'il utilise, d'où le réglage ; le runner est jetable.
+      - name: Installer le bac à sable (bubblewrap, socat)
         timeout-minutes: 5
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends bubblewrap
+          sudo apt-get install -y -qq --no-install-recommends bubblewrap socat
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --version
+          command -v socat
 
       - name: Run Claude Code
         id: claude
@@ -360,7 +364,7 @@ jobs:
               "permissions": {
                 "defaultMode": "default",
                 "disableBypassPermissionsMode": "disable",
-                "deny": ["Read(//proc/**)", "Read(.git/config)", "Read(~/.claude/**)", "Bash(git remote:*)", "Edit(.git/**)", "Write(.git/**)"]
+                "deny": ["Read(//proc/**)", "Read(~/.claude/**)", "Bash(git remote:*)", "Edit(.git/**)", "Write(.git/**)"]
               }
             }
 
@@ -378,9 +382,15 @@ jobs:
           include_comments_by_actor: 'PASSIO74'
           exclude_comments_by_actor: ''
 
-          # Aucun élargissement de la surface de déclenchement. Explicite pour
-          # qu'un défaut d'upstream ne puisse pas l'ouvrir en silence.
-          allowed_non_write_users: ''
+          # LE PROPRIÉTAIRE SEUL, ET IL A DÉJÀ L'ÉCRITURE : la surface de déclenchement ne bouge pas (le
+          # contournement de `checkWritePermissions` ne vaut que pour un acteur nommé ici, et le `if:` du job
+          # filtre en amont). Ce que la valeur non vide allume, c'est le mode durci de l'action v1.0.198 :
+          # `.git/config` sans jeton (assistant d'identification qui lit `GH_TOKEN` au moment voulu, retiré
+          # des sous-processus par le filtrage), dépendances du bac à sable, PATH assaini avant et après.
+          # Avant, le jeton était dans l'URL de `origin` : on interdisait donc `Read(.git/config)`, et sous
+          # bac à sable cette règle masquait le fichier à git lui-même (canari du 2026-11-07, exit 128).
+          # Jamais `*`, jamais un autre compte : `tests/ci/frontiere-confiance.sh` l'exige.
+          allowed_non_write_users: 'PASSIO74'
 
           # ── DÉROGATION NOMMÉE, autorisée par Benjamin le 2026-08-21 ────────
           # `claude` est autorisé NOMMÉMENT. Jamais `*`.
@@ -561,6 +571,8 @@ jobs:
         continue-on-error: true
         env:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          # Réservé à une issue [CANARI] écrite par le propriétaire : sa tâche est connue d'avance et le run n'a rien lu d'un tiers.
+          CANARI_PROPRIETAIRE: ${{ github.event_name == 'issues' && startsWith(github.event.issue.title, '[CANARI]') && github.event.issue.user.login == 'PASSIO74' && '1' || '' }}
         run: |
           # La barrière YAML protège le job. Le script termine aussi à zéro,
           # même si Node ou la lecture de la trace échoue.
@@ -682,6 +694,11 @@ jobs:
 
           // Ce que l'agent a fait, sans aucun argument : un run à 0 refus et 0 commit ne disait rien (canari du 2026-11-07).
           const MOTIFS_ECHEC = [
+            ['bac à sable', /\bbwrap\b|bubblewrap|sandbox/i],
+            ['appel voisin en échec', /sibling tool call/i],
+            ['pas un dépôt git', /not a git repository/i],
+            ['référence git', /cannot lock ref|already exists|unable to create/i],
+            ['délai dépassé', /timed out|timeout/i],
             ['système de fichiers en lecture seule', /read-only file system/i],
             ['droits du fichier', /permission denied|operation not permitted/i],
             ['propriété du dépôt', /dubious ownership/i],
@@ -692,6 +709,19 @@ jobs:
             ['hors du dossier de travail', /outside (?:of )?the |not in the working directory|allowed working/i],
             ['fichier absent', /no such file|does not exist/i],
           ];
+          // Sur un canari du propriétaire seulement : la forme de l'erreur, qu'un motif de la liste ne dit pas toujours.
+          // Le canari du 2026-11-07 a échoué sur git trois fois sous « autre (masqué) », sans rien de plus à lire.
+          // Liste blanche de caractères, suites longues masquées, jamais en tête de ligne, 200 caractères : rien d'autre ne sort.
+          const CANARI = process.env.CANARI_PROPRIETAIRE === '1';
+          function formeCanari(valeur, borne) {
+            return String(valeur)
+              .replace(/[A-Za-z0-9_+=-]{24,}/g, '[masqué]')
+              .replace(/[^A-Za-z0-9 .,;:'()\/_<>=[\]éèêàùçÉ-]/g, ' ')
+              .replace(/:{2,}/g, ' : ')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .slice(0, borne);
+          }
           const usages = new Map();
           const parId = new Map();
           for (const e of events) {
@@ -709,10 +739,12 @@ jobs:
                 const texte = typeof c.content === 'string' ? c.content : JSON.stringify(c.content || '');
                 const motif = MOTIFS_ECHEC.find(([, re]) => re.test(texte));
                 console.log('Échec d\'outil  : ' + (parId.get(c.tool_use_id) || 'inconnu') + ' — ' + (motif ? motif[0] : 'autre (masqué)'));
+                if (CANARI) console.log('Forme (canari) : ' + formeCanari(texte, 200));
               }
             }
           }
           for (const [cle, n] of usages) console.log('Outil utilisé  : ' + cle + ' × ' + n);
+          if (CANARI && typeof resultat.result === 'string') console.log('Fin (canari)   : ' + formeCanari(resultat.result, 400));
 
           // Les quatre sous-types d'échec du CLI, pas seulement celui du jour.
           const PANNES = {

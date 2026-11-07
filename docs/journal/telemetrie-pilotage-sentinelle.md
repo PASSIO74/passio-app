@@ -854,6 +854,18 @@ Non établi, mesuré et laissé tel quel : **sur WebKit Windows, environ un run 
 
 **À savoir pour mesurer** : le `node_modules` à la racine du dépôt est partagé. Un worktree qui s'y relie par jonction subit le `npm install` d'une autre session : le 07/11, passage à Playwright 1.65 en pleine mesure, 25 puis 72 faux rouges (« Executable doesn't exist », révision 1254). `npm ci` dans le worktree isole la mesure.
 
+## 🧱 LE CANAL DE L'AGENT SOUS BAC À SABLE : TROIS PANNES FERMÉES AVANT UN PREMIER COMMIT (2026-11-07)
+
+`.github/workflows/claude-code.yml`, canari #769, PR #772, #773, #775. Depuis l'audit de sécurité du 06/11, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` retire les identifiants de l'environnement des commandes de l'agent, et il **impose** un bac à sable. Chaque panne a été fermée, au sens où rien ne sortait, mais la chaîne ne livrait plus rien.
+
+1. **Sans bubblewrap, le CLI refuse de démarrer.** Marche « Installer le bac à sable ».
+2. **Sans socat, il démarre et refuse chaque commande Bash**, `git` compris : l'agent écrit son fichier, ne peut pas le committer, et dit « Bash indisponible ».
+3. **Sous bac à sable, une règle `Read(...)` devient un masque du système de fichiers.** `Read(.git/config)` cachait le jeton que l'action écrivait dans l'URL de `origin` ; elle cachait aussi sa configuration à git (exit 128). On a sorti le jeton plutôt que rouvert le fichier : `allowed_non_write_users: 'PASSIO74'` allume le mode durci de l'action (assistant d'identification, `.git/config` sans jeton), sans élargir qui déclenche, puisque le propriétaire a déjà l'écriture. Plus `persist-credentials: false`.
+
+⚠️ **UN RUN À 0 REFUS ET 0 COMMIT NE DIT RIEN.** Les deux premiers canaris l'ont prouvé. Le diagnostic nomme désormais les outils, les verbes git et le motif de chaque échec, dans une liste fermée. Pour une issue `[CANARI]` écrite par PASSIO74 seulement, il imprime aussi la **forme** de l'erreur : liste blanche de caractères, suites longues masquées. C'est elle qui a nommé `socat` puis `.git/config`.
+
+**Acquis, mesuré au run 42417886840** : abonnement OAuth, `claude-opus-5`, un fichier, la ligne exacte demandée, PR ouverte par le workflow **sans auto-fusion** et sans CI automatique. Un refus d'outil, une variante de `git commit` hors liste. **Non mesuré** : le comportement de l'agent face à une injection.
+
 ## ⏳ LA BOUCLE DE DÉMARRAGE COURT-CIRCUITAIT LE BACKOFF — LA GRÂCE DU JETON DURAIT 5 S AU LIEU DE 33 (2026-11-07)
 
 Suite de l'observation laissée sans correctif par la fiche 🧪 du même jour. `waitCfg` (`js/telemetry.js`) attend que `window.PASSIO_SUPABASE` soit posée. Elle appelait `flush()` toutes les 500 ms tant que la file n'était pas vide, jusqu'à 60 s, sans regarder `retryTimer` : ni le backoff d'`onAuthReject` (1,5 s → 9 s) ni celui d'`armerReessai` (3 s → 60 s) n'existaient pendant la première minute d'une page.

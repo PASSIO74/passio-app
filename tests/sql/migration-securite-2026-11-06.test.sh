@@ -20,6 +20,7 @@ CAS="$RACINE/tests/sql/fixtures/cas-securite-2026-11-06.sql"
 LOT1="$RACINE/migrations/migration_securite_lot1_2026-11-06.sql"
 LOT2="$RACINE/migrations/migration_securite_lot2_2026-11-06.sql"
 LOT3="$RACINE/migrations/migration_securite_lot3_2026-11-06.sql"
+LOT4="$RACINE/migrations/migration_securite_lot4_2026-11-07.sql"
 PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1 || true)"
 [ -n "$PGBIN" ] && PATH="$PGBIN:$PATH"
 command -v initdb >/dev/null || { echo "❌ binaires serveur PostgreSQL introuvables"; exit 1; }
@@ -128,6 +129,27 @@ if [ -f "$LOT3" ]; then
       verifier "après le lot 3 : $total cas, 0 écart" "$ecarts" "0"
       [ "$ecarts" != "0" ] && QD banc_apres "select '     · ' || cas || ' — attendu ' || attendu || ', obtenu ' || coalesce(obtenu, 'nul') from banc.resultats_lot3 where not ok order by n"
     fi
+  fi
+fi
+
+if [ -f "$LOT4" ]; then
+  echo "══ ④ bis APRÈS le lot 4 (sur les lots 1, 2 et 3) ══"
+  CAS4="$RACINE/tests/sql/fixtures/cas-securite-lot4-2026-11-07.sql"
+  # Le socle écrit colonne par colonne ce que la production tient sur la table : `authenticated=arwd` sur `events`. Un
+  # `revoke select (colonne)` y passait donc, et ne retirait rien en production. On pose ici le droit réel.
+  QD banc_apres "grant select on public.events to authenticated" >/dev/null
+  sortie="$(FICHIER banc_apres "$LOT4")"; code=$?
+  verifier "le lot 4 s'applique" "$code" "0"
+  [ "$code" -ne 0 ] && printf '%s\n' "$sortie" | head -8
+  verifier "le lot 4 : aucun ÉCHEC au tableau de verdict" "$(printf '%s\n' "$sortie" | grep -c '§ECHEC' || true)" "0"
+  sortie2="$(FICHIER banc_apres "$LOT4")"; code2=$?
+  verifier "le lot 4 se rejoue" "$code2" "0"
+  [ "$code2" -ne 0 ] && printf '%s\n' "$sortie2" | head -8
+  if ! sortie="$(FICHIER banc_apres "$CAS4")"; then echo "❌ cas lot 4 : $sortie" | head -8; ko=$((ko+1)); else
+    total="$(QD banc_apres "select count(*) from banc.resultats_lot4")"
+    ecarts="$(QD banc_apres "select count(*) from banc.resultats_lot4 where not ok")"
+    verifier "après le lot 4 : $total cas, 0 écart" "$ecarts" "0"
+    [ "$ecarts" != "0" ] && QD banc_apres "select '     · ' || cas || ' — attendu ' || attendu || ', obtenu ' || coalesce(obtenu, 'nul') from banc.resultats_lot4 where not ok"
   fi
 fi
 
