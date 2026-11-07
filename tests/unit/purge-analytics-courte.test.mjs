@@ -138,44 +138,92 @@ test("⑤ essaiDu : une dernière note plus vieille que le plancher, ou AUCUNE n
     "à 6 j 23 h, la note retient l'essai : une purge sous 7 jours le ferait partir trop tôt");
 });
 
-test("⑥ aucun autre lecteur : seuls plafond.js et autonomie.js nomment `edge_` ; seule la fonction pilotage LIT les notes, toujours bornée — une fenêtre FENETRE_*_MS ou JUGEMENT_MAX_MS, ou la seule dernière note", () => {
-  const racines = ["supabase/functions", "scripts", "dashboard/server", "dashboard/public", "pilotage", "js", "netlify", ".github/workflows"];
+test("⑥ aucun autre lecteur (une HEURISTIQUE, dite comme telle : elle attrape les formes qu'elle connaît) — hors des fichiers connus, nul ne nomme `edge_`, `push_envoye` ni `EVT_ENVOI` ; dans les fichiers connus, chaque mention est classée", () => {
+  // Revue `passio-red-team` du 07/11 : la première version ne reconnaissait que
+  // `.eq("event", EVT_ENVOI)` hors de pilotage/index.ts ; `.filter(…)`, `.match({…})`,
+  // `.in("event", […])` ou un nouveau fichier passaient, et `migrations/` n'était pas
+  // balayé. Désormais toute MENTION compte, et chaque fichier qui en porte une a sa
+  // raison ci-dessous. Ce qui lui échappe encore, dit tel quel : un alias d'import, ou
+  // une vue SQL qui lirait ces lignes sans les nommer.
+  const racines = ["supabase/functions", "scripts", "dashboard/server", "dashboard/public", "pilotage", "js", "netlify", ".github/workflows", "migrations"];
   const fichiers = [];
   const parcourir = (d) => {
     if (!fs.existsSync(d)) return;
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
-      if (e.isDirectory()) { if (e.name !== "node_modules") parcourir(p); }
+      if (e.isDirectory()) { if (e.name !== "node_modules" && e.name !== "parties") parcourir(p); }
       else if (/\.(m?js|ts|ya?ml|sh|sql)$/.test(e.name)) fichiers.push(p);
     }
   };
   racines.forEach(parcourir);
   assert.ok(fichiers.length > 50, "le balayage a trouvé le code");
-  const code = (f) => fs.readFileSync(f, "utf8").split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*|#|--)/.test(l)).join("\n");
-  const nommentEdge = [], nommentNote = [], lisentNote = [];
+  const rel = (f) => f.split(path.sep).join("/");
+  // Le code seul : une ligne de commentaire (//, *, /*, #, --) ne lit rien.
+  const lignesCode = (f) => fs.readFileSync(f, "utf8").split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*|#|--)/.test(l));
+  const EDGE = {
+    "supabase/functions/_shared/plafond.js": "le plafond : écrit, et relit la dernière heure (②)",
+    "supabase/functions/_shared/autonomie.js": "les créneaux de la veille : relus par identifiant (③)",
+    "migrations/migration_purge_analytics_courte_2026-11-07.sql": "la purge elle-même",
+    // PR #753 (ouverte le 07/11) : le plafond passe en SQL, `plafond_consommer` — sa fenêtre est vérifiée ci-dessous.
+    "migrations/migration_securite_lot1_2026-11-06.sql": "plafond_consommer : relit la dernière heure",
+  };
+  const NOTE = {
+    "supabase/functions/_shared/reception.js": "la définition de EVT_ENVOI",
+    "supabase/functions/pilotage/index.ts": "le seul lecteur : chaque mention est classée ci-dessous",
+    "supabase/functions/_shared/rappels.js": "écrit les notes des rappels",
+    "supabase/functions/_shared/appels.js": "écrit les notes des appels (et des notifications sociales, #749)",
+    "supabase/functions/_shared/politique-autonomie.js": "le TEXTE du catalogue (précondition d'essai_alertes), pas une requête",
+    "migrations/migration_purge_analytics_courte_2026-11-07.sql": "la purge elle-même",
+  };
+  const nommentEdge = [], nommentNote = [];
   for (const f of fichiers) {
-    const c = code(f);
-    if (/["'`]edge_/.test(c)) nommentEdge.push(f);
-    // Un LITTÉRAL, comme une requête l'écrirait (`.eq("event", "push_envoye")`, `'push_envoye'` en SQL) ;
-    // un texte qui le cite entre accents graves (le catalogue de la politique) n'est pas un lecteur.
-    if (/(["'])push_envoye\1/.test(c)) nommentNote.push(f);
-    if (/\.eq\(\s*["']event["']\s*,\s*EVT_ENVOI\s*\)/.test(c)) lisentNote.push(f);
+    const code = lignesCode(f).join("\n");
+    if (/edge_/.test(code)) nommentEdge.push(rel(f));
+    if (/\bpush_envoye\b|\bEVT_ENVOI\b/.test(code)) nommentNote.push(rel(f));
   }
-  const rel = (l) => l.map((f) => f.split(path.sep).join("/")).sort();
-  assert.deepEqual(rel(nommentEdge), ["supabase/functions/_shared/autonomie.js", "supabase/functions/_shared/plafond.js"],
-    "un nouveau lecteur ou écrivain de lignes edge_* : vérifier sa fenêtre contre la rétention de la purge (2 h)");
-  assert.deepEqual(rel(nommentNote), ["supabase/functions/_shared/reception.js"], "`push_envoye` ne s'écrit qu'à travers EVT_ENVOI");
-  assert.deepEqual(rel(lisentNote), ["supabase/functions/pilotage/index.ts"], "un nouveau lecteur des notes : vérifier sa fenêtre contre la rétention (8 jours)");
+  for (const f of nommentEdge) assert.ok(EDGE[f], f + " nomme `edge_` : un nouveau lecteur ou écrivain de ces lignes — vérifier sa fenêtre contre la rétention de la purge (2 h), puis l'inscrire ici avec sa raison");
+  for (const f of nommentNote) assert.ok(NOTE[f], f + " nomme `push_envoye` / EVT_ENVOI : un nouveau lecteur des notes — vérifier sa fenêtre contre la rétention (8 jours), puis l'inscrire ici avec sa raison");
+  for (const f of ["supabase/functions/_shared/plafond.js", "supabase/functions/_shared/autonomie.js"]) assert.ok(nommentEdge.includes(f), f + " ne nomme plus `edge_` : relire ce verrou");
+  assert.ok(nommentNote.includes("supabase/functions/pilotage/index.ts"));
 
-  // Chaque lecture des notes du pilotage : une fenêtre, ou la seule dernière note.
-  const lectures = [...PILOTAGE.matchAll(/\.eq\("event", EVT_ENVOI\)[^;]*;/g)].map((m) => m[0]);
+  // Les écrivains n'écrivent que : chaque mention est l'import, ou `event: EVT_ENVOI` dans un `.insert(`.
+  for (const f of ["supabase/functions/_shared/rappels.js", "supabase/functions/_shared/appels.js"]) {
+    for (const l of lignesCode(f).filter((x) => /\bEVT_ENVOI\b/.test(x))) {
+      assert.ok(/^\s*import\b/.test(l) || (/\bevent:\s*EVT_ENVOI\b/.test(l) && /\.insert\(/.test(l)), f + " : une mention qui n'est ni l'import ni une écriture : " + l.trim().slice(0, 140));
+    }
+  }
+  // Le lecteur : l'import, une écriture (sonnerPilote), ou une lecture `.eq("event", EVT_ENVOI)` — aucune autre forme.
+  const lignesPilotage = lignesCode("supabase/functions/pilotage/index.ts").filter((x) => /\bEVT_ENVOI\b/.test(x));
+  for (const l of lignesPilotage) {
+    assert.ok(/^\s*import\b/.test(l) || (/\bevent:\s*EVT_ENVOI\b/.test(l) && /\.insert\(/.test(l)) || /\.eq\(\s*["']event["']\s*,\s*EVT_ENVOI\s*\)/.test(l),
+      "pilotage : une forme de lecture des notes que ce verrou ne sait pas juger : " + l.trim().slice(0, 140));
+  }
+  // Chaque lecture des notes : une fenêtre, ou la seule dernière note — et la dernière note
+  // ne décide que dans les deux fonctions dont ④ et ⑤ jugent la fenêtre.
+  const lectures = [...PILOTAGE.matchAll(/\.eq\(\s*["']event["']\s*,\s*EVT_ENVOI\s*\)[^;]*;/g)];
   assert.ok(lectures.length >= 4);
-  for (const l of lectures) {
-    assert.ok(/\.gte\("created_at", /.test(l) || /\.order\("created_at", \{ ascending: false \}\)\.limit\(1\)/.test(l), "lecture des notes sans borne : " + l.slice(0, 160));
+  for (const m of lectures) {
+    const l = m[0];
+    const fonctions = [...PILOTAGE.slice(0, m.index).matchAll(/async function (\w+)\(/g)];
+    const dans = fonctions.length ? fonctions[fonctions.length - 1][1] : "?";
+    if (/\.gte\("created_at", /.test(l)) continue;
+    assert.ok(/\.order\("created_at", \{ ascending: false \}\)\.limit\(1\)/.test(l), "lecture des notes sans borne : " + l.slice(0, 160));
+    assert.ok(["essayerAlertes", "essaiManuel"].includes(dans), "la dernière note du pilote lue par " + dans + " : une décision que ce verrou ne juge pas — vérifier qu'elle ne distingue rien au-delà de 7 jours");
   }
   // Les fenêtres employées sont celles du ④ : `lireNotes(…, FENETRE_*_MS, …)` et la dernière alerte sur JUGEMENT_MAX_MS.
   const appelsLireNotes = [...PILOTAGE.matchAll(/lireNotes\(\s*[A-Z_]+\s*,\s*([A-Za-z_]+)\s*,/g)].map((m) => m[1]);
   assert.ok(appelsLireNotes.length >= 2);
   for (const f of appelsLireNotes) assert.match(f, /^FENETRE_[A-Z_]+_MS$/, "lireNotes lit sur une fenêtre de reception.js");
   assert.match(PILOTAGE, /const depuis = new Date\(maintenant - JUGEMENT_MAX_MS\)\.toISOString\(\);/);
+
+  // Le plafond en SQL de #753, s'il est là : aucune de ses fenêtres ne dépasse le plancher des lignes edge_*.
+  const lot1 = "migrations/migration_securite_lot1_2026-11-06.sql";
+  if (fs.existsSync(lot1)) {
+    const sql = fs.readFileSync(lot1, "utf8");
+    const corps = sql.match(/create or replace function public\.plafond_consommer\([\s\S]*?\$fn\$;/);
+    assert.ok(corps, lot1 + " nomme `edge_` hors de plafond_consommer : relire ce verrou");
+    const fenetres = [...corps[0].matchAll(/interval '([^']+)'/g)].map((m) => dureeMs(m[1]));
+    assert.ok(fenetres.length >= 2);
+    for (const ms of fenetres) assert.ok(ms <= PLANCHER_EDGE, "plafond_consommer lit " + ms + " ms en arrière, plus que le plancher des lignes edge_*");
+  }
 });

@@ -5,23 +5,27 @@
 # Ce qu'il protège :
 #   ① la tâche `purge_analytics_courte` est planifiée UNE fois, chaque heure à
 #     :23, active, avec la commande exacte, sous le rôle qui l'a posée ; le
-#     verdict rend 10 lignes, et ses 8 contrôles disent OK ;
+#     verdict rend 11 lignes, et ses 9 contrôles disent OK ;
 #   ② la première purge (la commande planifiée, exécutée par la migration)
 #     efface EXACTEMENT les lignes edge_* de plus de 2 h et les notes
 #     push_envoye de plus de 8 jours, quel que soit leur auteur — et rien
-#     d'autre : ni les récentes (1 h 55, 1 min ; 7 j 23 h, 2 j, 10 min), ni
+#     d'autre : ni les récentes (1 h 50, 1 min ; 7 j 23 h, 2 j, 10 min), ni
 #     `edgeX_…`, `edge`, `EDGE_…`, `x_edge_…`, `push_envoye_test`, ni
-#     screen_view, battement, rappel_activite, ni une ligne edge_* sans date ;
+#     screen_view, battement, rappel_activite ;
 #   ③ rejouée comme pg_cron le fera (la commande LUE dans cron.job), elle tient
 #     ses bornes à deux minutes près : 2 h 02 part, 1 h 58 reste ; 8 j 0 h 02
-#     part, 7 j 23 h 58 reste — et elle rend ce qu'elle a effacé ;
+#     part, 7 j 23 h 58 reste — et elle rend ce qu'elle a effacé. Ces lignes
+#     sont retirées aussitôt : aucun contrôle suivant ne dépend d'une marge de
+#     deux minutes (un exécuteur lent ne fait pas rougir le banc à tort) ;
 #   ④ les planchers refusent (22023) sous 1 h, sous 7 jours, et NULL, sans rien
 #     effacer ; ni anon, ni authenticated, ni un rôle quelconque (PUBLIC)
 #     n'exécutent la fonction ; service_role oui (droits par défaut de Supabase) ;
 #   ⑤ l'index partiel sert la purge (EXPLAIN, parcours séquentiel interdit) ;
-#   ⑥ rejouable ; la purge des 13 mois n'est pas touchée ; le retour arrière
-#     (les lignes « --| » de l'en-tête) retire tâche, fonction et index, sans
-#     toucher aux lignes, et la migration se réapplique ensuite ;
+#   ⑥ rejouable ; la purge des 13 mois n'est pas touchée ; le VERROU SHARE
+#     précède toute lecture ou écriture de la table dans la migration (l'ordre
+#     inverse a interbloqué, revue du 07/11) ; le retour arrière (les lignes
+#     « --| ») retire tâche, fonction et index, sans toucher aux lignes, se
+#     rejoue, et la migration se réapplique ensuite ;
 #   ⑦ FERMÉ SUR ÉCHEC : chaque mutant fait LEVER le verdict en nommant SES
 #     lignes, et RIEN n'est appliqué (ni fonction, ni tâche, ni index, ni ligne
 #     effacée) — rétention raccourcie, notes sous le plancher, planchers retirés,
@@ -30,13 +34,22 @@
 #     récentes effacées, corps modifié sans son empreinte — et le PIÈGE RLS : un
 #     rôle propriétaire sous RLS FORCÉE efface 0 ligne SANS ERREUR (mesuré
 #     d'abord), et ne lit rien non plus : seule la ligne 3 peut le voir ;
-#   ⑧ ce que le verdict ne peut PAS voir, le banc le voit : un motif élargi
-#     (`like 'edge_%'`, où `_` est un joker) dont l'empreinte a été remise à jour
-#     passe le verdict — c'est ② qui rougit (`edgeX_…` effacée).
-# pg_cron n'existe pas dans un PostgreSQL nu : un schéma `cron` minimal le
-# remplace (job avec username et database comme pg_cron 1.6, schedule,
-# unschedule par identifiant et par nom) — la commande planifiée est exécutée
-# telle quelle par le banc, comme pg_cron le ferait.
+#   ⑧ un motif élargi (`like 'edge_%'`, où `_` est un joker) dont l'empreinte a
+#     été remise à jour : la ligne 8 (« rien d'autre n'a bougé ») le refuse ;
+#   ⑨ COMME EN PRODUCTION (revue du 07/11) : base en collation ICU en-US, rôle
+#     NON superutilisateur, BYPASSRLS et propriétaire de la table (le `postgres`
+#     de Supabase), fichier envoyé en UNE chaîne (l'API de gestion ne découpe
+#     pas) avec la ligne de journal injectée par le VRAI `sqlAvecJournal` de
+#     l'outil d'application, dans la table créée par SON `sqlCreation` ;
+#   ⑩ un écrivain en cours (un DELETE tenant ses verrous) : la migration attend
+#     son verrou, puis passe — aucun interblocage, verdict OK.
+# Ce que le banc ne rejoue PAS de la production, dit tel quel : le déclencheur
+# `trg_rate_limit` (il pose `created_at := now()` à l'insertion : des lignes
+# datées n'existent en production que vieillies, ici elles sont posées) ; le vrai
+# pg_cron, en C — un schéma `cron` minimal le remplace (job avec username et
+# database comme pg_cron 1.6, schedule, unschedule par identifiant et par nom), et
+# la commande planifiée est exécutée telle quelle par le banc, comme pg_cron le
+# ferait ; PostgreSQL 17 (le banc tourne sur la version installée).
 # ═══════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -46,6 +59,7 @@ PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1 || true
 [ -n "$PGBIN" ] && PATH="$PGBIN:$PATH"
 command -v initdb >/dev/null || { echo "❌ binaires serveur PostgreSQL introuvables"; exit 1; }
 command -v python3 >/dev/null || { echo "❌ python3 introuvable (fabrique des mutants)"; exit 1; }
+command -v node >/dev/null || { echo "❌ node introuvable (la ligne de journal de l'outil d'application, ⑨)"; exit 1; }
 [ -f "$MIGRATION" ] || { echo "❌ migration introuvable"; exit 1; }
 
 PORT=$(( 7010 + RANDOM % 60 ))
@@ -74,15 +88,17 @@ RETOUR_ARRIERE() { sed -n -e 's/^--| //p' -e 's/^--|$//p' "$MIGRATION"; }
 ok=0; ko=0
 verif() { if [ "$2" = "$3" ]; then echo "  ✅ $1"; ok=$((ok+1)); else echo "  ❌ $1 — attendu « $3 », obtenu « $2 »"; ko=$((ko+1)); fi; }
 
-# Rôles de Supabase (communs à toutes les bases de la grappe), plus deux du banc :
-# `quelquun` (aucun droit : ce que PUBLIC peut) et `migrateur` (le piège RLS).
+# Rôles de Supabase (communs à toutes les bases de la grappe), plus trois du banc :
+# `quelquun` (aucun droit : ce que PUBLIC peut), `migrateur` (le piège RLS) et
+# `proprio` (le `postgres` de Supabase : ni superutilisateur, BYPASSRLS, propriétaire).
 psql -h "$BASE" -p "$PORT" -U postgres -q -v ON_ERROR_STOP=1 -c "
 create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
-create role quelquun nologin; create role migrateur nologin;" >/dev/null
+create role quelquun nologin; create role migrateur nologin; create role proprio nologin bypassrls;" >/dev/null
 
 # Décor : droits par défaut de Supabase, pg_cron minimal, la table telle que la
-# production la porte (colonnes, index, RLS sans policy DELETE), la purge des 13
-# mois déjà planifiée, et vingt lignes de part et d'autre de chaque borne.
+# production la porte (colonnes, created_at NOT NULL, index, RLS sans policy
+# DELETE), la purge des 13 mois déjà planifiée, et dix-neuf lignes de part et
+# d'autre de chaque borne.
 DECOR="
 grant usage on schema public to anon, authenticated, service_role;
 alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
@@ -97,7 +113,7 @@ create function cron.unschedule(p_id bigint) returns boolean language sql as \$\
 create function cron.unschedule(p_nom text) returns boolean language sql as \$\$ delete from cron.job where jobname = p_nom returning true \$\$;
 create table public.analytics_events (
   id uuid primary key default gen_random_uuid(),
-  user_id text, event text, properties jsonb default '{}'::jsonb, created_at timestamptz default now());
+  user_id text, event text, properties jsonb default '{}'::jsonb, created_at timestamptz not null default now());
 create index idx_analytics_user_id on public.analytics_events (user_id);
 create index idx_analytics_event on public.analytics_events (event);
 create index idx_analytics_created_at on public.analytics_events (created_at desc);
@@ -110,7 +126,7 @@ insert into public.analytics_events (user_id, event, properties, created_at) val
  ('u1', 'edge_notify-call', '{\"cas\":\"A1_edge_2h05\"}', now() - interval '2 hours 5 minutes'),
  ('systeme:pilotage-veille', 'edge_pilotage-veille', '{\"cas\":\"A2_creneau_3j\"}', now() - interval '3 days'),
  ('u2', 'edge_ask-ai', '{\"cas\":\"A3_edge_400j\"}', now() - interval '400 days'),
- ('u1', 'edge_notify-call', '{\"cas\":\"B1_edge_1h55\"}', now() - interval '1 hour 55 minutes'),
+ ('u1', 'edge_notify-call', '{\"cas\":\"B1_edge_1h50\"}', now() - interval '1 hour 50 minutes'),
  ('systeme:pilotage-veille', 'edge_pilotage-veille', '{\"cas\":\"B2_creneau_1min\"}', now() - interval '1 minute'),
  ('systeme:pilotage', 'push_envoye', '{\"cas\":\"C1_note_pilote_8j1h\"}', now() - interval '8 days 1 hour'),
  ('systeme:notifs', 'push_envoye', '{\"cas\":\"C2_note_sociale_30j\"}', now() - interval '30 days'),
@@ -125,17 +141,16 @@ insert into public.analytics_events (user_id, event, properties, created_at) val
  ('u1', 'x_edge_foo', '{\"cas\":\"E5_x_edge_10j\"}', now() - interval '10 days'),
  ('systeme:pilotage', 'push_envoye_test', '{\"cas\":\"E6_push_prefixe_30j\"}', now() - interval '30 days'),
  ('systeme:pilotage', 'pilotage_battement', '{\"cas\":\"E7_battement_6j\"}', now() - interval '6 days'),
- ('systeme:rappels:u1', 'rappel_activite', '{\"cas\":\"E8_rappel_100j\"}', now() - interval '100 days'),
- ('u1', 'edge_notify-call', '{\"cas\":\"E9_edge_sans_date\"}', null);
+ ('systeme:rappels:u1', 'rappel_activite', '{\"cas\":\"E8_rappel_100j\"}', now() - interval '100 days');
 "
-nouvelle_base() {
+nouvelle_base() {   # $1 = nom, $2 = options de création (facultatif)
   DB="$1"
   PGOPTIONS='-c client_min_messages=warning' psql -h "$BASE" -p "$PORT" -U postgres -q -v ON_ERROR_STOP=1 \
-    -c "drop database if exists $DB" -c "create database $DB" >/dev/null
+    -c "drop database if exists $DB" -c "create database $DB ${2:-}" >/dev/null
   Q "$DECOR" >/dev/null
 }
 RESTANTES() { Q "select string_agg(properties->>'cas', ',' order by properties->>'cas' collate \"C\") from public.analytics_events"; }
-ATTENDUES="B1_edge_1h55,B2_creneau_1min,D1_note_pilote_7j23h,D2_note_rappel_2j,D3_note_appel_10min,E1_screen_300j,E2_edgeX_10j,E3_edge_seul_10j,E4_EDGE_10j,E5_x_edge_10j,E6_push_prefixe_30j,E7_battement_6j,E8_rappel_100j,E9_edge_sans_date"
+ATTENDUES="B1_edge_1h50,B2_creneau_1min,D1_note_pilote_7j23h,D2_note_rappel_2j,D3_note_appel_10min,E1_screen_300j,E2_edgeX_10j,E3_edge_seul_10j,E4_EDGE_10j,E5_x_edge_10j,E6_push_prefixe_30j,E7_battement_6j,E8_rappel_100j"
 CMD_ATTENDUE="select public.purger_analytics_courte(interval '2 hours', interval '8 days')"
 COMMANDE_13_MOIS=" delete from public.analytics_events where created_at < now() - interval '13 months' "
 
@@ -176,30 +191,33 @@ muter() {
   chmod a+r "$MUTANT"
 }
 rien_applique() {   # $1 = libellé
-  verif "$1 : rien d'appliqué (fonction, tâche, index absents ; les 20 lignes intactes)" \
+  verif "$1 : rien d'appliqué (fonction, tâche, index absents ; les 19 lignes intactes)" \
     "$(Q "select (to_regprocedure('public.purger_analytics_courte(interval,interval)') is null)::text || ' ' ||
                  (select count(*) from cron.job where jobname = 'purge_analytics_courte') || ' ' ||
                  (to_regclass('public.idx_analytics_edge_created') is null)::text || ' ' ||
-                 (select count(*) from public.analytics_events)")" "true 0 true 20"
+                 (select count(*) from public.analytics_events)")" "true 0 true 19"
 }
 leve() {   # $1 = libellé, $2 = lignes attendues en échec, $3 = sortie
   verif "$1 : le verdict LÈVE en nommant les lignes $2" \
     "$(printf '%s' "$3" | grep -c "RIEN n'est appliqué. Lignes en échec : $2\$")" "1"
 }
+verdict_ok() {   # $1 = libellé, $2 = sortie ; 11 lignes, 9 contrôles OK — la sortie s'imprime sinon
+  verif "$1 : le verdict rend 11 lignes, ses 9 contrôles disent OK" \
+    "$(printf '%s\n' "$2" | grep -c '|') $(printf '%s\n' "$2" | grep -c '|OK$')" "11 9"
+  [ "$(printf '%s\n' "$2" | grep -c '|OK$')" = "9" ] || printf '     sortie de la migration :\n%s\n' "$2" | head -20
+}
 
 echo "── ① à ⑥ : la migration telle qu'elle est ──"
 nouvelle_base purge_courte
-verif "décor : 20 lignes, la purge des 13 mois planifiée" "$(Q "select count(*) || ' ' || (select count(*) from cron.job) from public.analytics_events")" "20 1"
+verif "décor : 19 lignes, la purge des 13 mois planifiée" "$(Q "select count(*) || ' ' || (select count(*) from cron.job) from public.analytics_events")" "19 1"
 
 # `|| true` partout où la migration est jouée : une migration qui LÈVE ne coupe
 # pas le banc en silence (set -e) — ses contrôles disent ce qui rougit, et la
 # sortie est imprimée.
 sortie="$(FICHIER "$MIGRATION" || true)"
-verif "① le verdict rend 10 lignes" "$(printf '%s\n' "$sortie" | grep -c '|')" "10"
-verif "① ses 8 contrôles disent OK" "$(printf '%s\n' "$sortie" | grep -c '|OK$')" "8"
-[ "$(printf '%s\n' "$sortie" | grep -c '|OK$')" = "8" ] || printf '     sortie de la migration :\n%s\n' "$sortie" | head -20
-verif "① information : 3 lignes edge_* et 3 notes effacées, 14 restent" \
-  "$(printf '%s\n' "$sortie" | grep -c '|edge_\* : 3 · notes : 3 · restent 14 lignes (')" "1"
+verdict_ok "①" "$sortie"
+verif "① information : 3 lignes edge_* et 3 notes effacées, 13 restent" \
+  "$(printf '%s\n' "$sortie" | grep -c '|edge_\* : 3 · notes : 3 · restent 13 lignes (')" "1"
 verif "① information : la purge des 13 mois, présente" "$(printf '%s\n' "$sortie" | grep -c "|présente : 30 4 \* \* \* · delete from public.analytics_events where created_at < now() - interval '13 months'$")" "1"
 verif "① une tâche, chaque heure à :23, active, dans cette base, sous le rôle qui l'a posée" \
   "$(Q "select count(*) || ' ' || max(schedule) || ' ' || bool_and(active) || ' ' || max(username) || ' ' || bool_and(database = current_database()) from cron.job where jobname = 'purge_analytics_courte'")" \
@@ -222,6 +240,8 @@ verif "③ bornes à deux minutes près : 2 h 02 et 8 j 0 h 02 partent, 1 h 58 e
   "$(Q "select string_agg(properties->>'cas', ',' order by properties->>'cas' collate \"C\") from public.analytics_events where properties->>'cas' like 'F%'")" \
   "F2_edge_1h58,F4_note_7j23h58"
 verif "③ rejouée aussitôt, elle n'efface plus rien" "$(Q "$CMD")" '{"edge": 0, "notes": 0}'
+# Les lignes à deux minutes de leur borne sortent du décor : la suite n'en dépend pas.
+Q "delete from public.analytics_events where properties->>'cas' like 'F%'" >/dev/null
 
 # ④ planchers et droits
 avant="$(Q "select count(*) from public.analytics_events")"
@@ -240,11 +260,15 @@ plan="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -v ON_ERROR_STOP=
   -c "explain (costs off) delete from public.analytics_events where starts_with(event, 'edge_') and created_at < now() - interval '2 hours'" 2>&1)"
 verif "⑤ la purge des edge_* emprunte idx_analytics_edge_created" "$(printf '%s\n' "$plan" | grep -c 'idx_analytics_edge_created')" "1"
 
-# ⑥ rejouable, 13 mois intacte, retour arrière, réapplication
+# ⑥ rejouable, verrou en tête, 13 mois intacte, retour arrière, réapplication
 sortie="$(FICHIER "$MIGRATION" || true)"
-verif "⑥ rejouée : 8 contrôles OK" "$(printf '%s\n' "$sortie" | grep -c '|OK$')" "8"
-verif "⑥ rejouée : toujours UNE tâche, rien de plus effacé" "$(Q "select count(*) from cron.job where jobname = 'purge_analytics_courte'") $(RESTANTES)" "1 $ATTENDUES,F2_edge_1h58,F4_note_7j23h58"
+verdict_ok "⑥ rejouée" "$sortie"
+verif "⑥ rejouée : toujours UNE tâche, rien de plus effacé" "$(Q "select count(*) from cron.job where jobname = 'purge_analytics_courte'") $(RESTANTES)" "1 $ATTENDUES"
 verif "⑥ la purge des 13 mois n'est pas touchée" "$(Q "select count(*) || '|' || max(schedule) || '|' || max(command) from cron.job where jobname = 'passio_purge_analytics'")" "1|30 4 * * *|$COMMANDE_13_MOIS"
+# Le verrou SHARE est la PREMIÈRE instruction de la transaction qui nomme la table :
+# pris avant tout verrou de ligne, il ne peut pas interbloquer (revue du 07/11).
+premiere="$(awk 'f && !/^[[:space:]]*--/ && /analytics_events/ { print; exit } /^begin;$/ { f = 1 }' "$MIGRATION")"
+verif "⑥ le verrou SHARE précède toute lecture ou écriture de la table" "$premiere" "lock table public.analytics_events in share mode;"
 RETOUR_ARRIERE > "$BASE/retour.sql"; chmod a+r "$BASE/retour.sql"
 verif "⑥ le retour arrière est un bloc begin; … commit;" "$(head -1 "$BASE/retour.sql")|$(tail -1 "$BASE/retour.sql")" "begin;|commit;"
 FICHIER "$BASE/retour.sql" >/dev/null || true
@@ -253,10 +277,10 @@ verif "⑥ retour arrière : tâche, fonction et index retirés ; la purge des 1
                (to_regprocedure('public.purger_analytics_courte(interval,interval)') is null)::text || ' ' ||
                (to_regclass('public.idx_analytics_edge_created') is null)::text || ' ' ||
                (select count(*) from cron.job where jobname = 'passio_purge_analytics') || ' ' ||
-               (select count(*) from public.analytics_events)")" "0 true true 1 16"
+               (select count(*) from public.analytics_events)")" "0 true true 1 13"
 verif "⑥ le retour arrière se rejoue sans erreur (tâche déjà absente)" "$(FICHIER "$BASE/retour.sql" 2>&1 | grep -c 'ERROR' || true) $(Q "select count(*) from cron.job where jobname = 'purge_analytics_courte'")" "0 0"
 sortie="$(FICHIER "$MIGRATION" || true)"
-verif "⑥ réappliquée après le retour arrière : 8 contrôles OK" "$(printf '%s\n' "$sortie" | grep -c '|OK$')" "8"
+verdict_ok "⑥ réappliquée après le retour arrière" "$sortie"
 
 echo "── ⑦ fermé sur échec : chaque mutant lève, et rien n'est appliqué ──"
 CMD_SRC="\$q\$select public.purger_analytics_courte(interval '2 hours', interval '8 days')\$q\$"
@@ -310,7 +334,7 @@ leve "⑦ tâche désactivée" "1" "$sortie"; rien_applique "⑦ tâche désacti
 nouvelle_base m_index
 muter 0 "  where starts_with(event, 'edge_');" "  where event like 'edge%';"
 sortie="$(FICHIER "$MUTANT" || true)"
-leve "⑦ motif de l'index changé" "8" "$sortie"; rien_applique "⑦ motif de l'index changé"
+leve "⑦ motif de l'index changé" "9" "$sortie"; rien_applique "⑦ motif de l'index changé"
 
 nouvelle_base m_famille
 muter 1 "   where event = 'push_envoye' and created_at < pg_catalog.now() - p_notes;" "   where event = 'push_envoyé' and created_at < pg_catalog.now() - p_notes;"
@@ -323,8 +347,8 @@ sortie="$(FICHIER "$MUTANT" || true)"
 leve "⑦ notes récentes effacées (le pilote, les rappels, les appels)" "7" "$sortie"; rien_applique "⑦ notes récentes effacées"
 
 # Le PIÈGE RLS. La table n'a aucune policy DELETE : un rôle que la RLS arrête
-# efface 0 ligne SANS ERREUR — et ne LIT rien non plus, si bien que les lignes 6 et
-# 7 du verdict, aveugles avec lui, disent OK. Seule la ligne 3 (le catalogue) le
+# efface 0 ligne SANS ERREUR — et ne LIT rien non plus, si bien que les lignes 6 à
+# 8 du verdict, aveugles avec lui, disent OK. Seule la ligne 3 (le catalogue) le
 # voit. En production, `postgres` est propriétaire ET BYPASSRLS (mesuré le 07/11).
 nouvelle_base m_rls
 Q "alter table public.analytics_events owner to migrateur;
@@ -334,16 +358,64 @@ Q "alter table public.analytics_events owner to migrateur;
    grant select, insert, update, delete on cron.job to migrateur;
    grant usage on sequence cron.job_jobid_seq to migrateur;" >/dev/null
 verif "⑦ piège RLS, mesuré D'ABORD : le rôle propriétaire sous RLS forcée efface 0 ligne, sans erreur" \
-  "$(R migrateur "delete from public.analytics_events where starts_with(event, 'edge_') returning 1" | grep -c . || true) $(Q "select count(*) from public.analytics_events where starts_with(event, 'edge_')")" "0 6"
+  "$(R migrateur "delete from public.analytics_events where starts_with(event, 'edge_') returning 1" | grep -c . || true) $(Q "select count(*) from public.analytics_events where starts_with(event, 'edge_')")" "0 5"
 sortie="$(FICHIER_EN migrateur "$MIGRATION" || true)"
 leve "⑦ piège RLS : la ligne 3 refuse un rôle que la RLS arrête" "3" "$sortie"; rien_applique "⑦ piège RLS"
 
-echo "── ⑧ ce que le verdict ne voit pas, le banc le voit ──"
+echo "── ⑧ un motif élargi dont l'empreinte a été remise à jour : la ligne 8 le voit ──"
 nouvelle_base m_motif
 muter 1 "   where starts_with(event, 'edge_') and created_at < pg_catalog.now() - p_edge;" "   where event like 'edge_%' and created_at < pg_catalog.now() - p_edge;"
 sortie="$(FICHIER "$MUTANT" || true)"
-verif "⑧ motif élargi, empreinte remise à jour : le verdict passe (8 OK)…" "$(printf '%s\n' "$sortie" | grep -c '|OK$')" "8"
-verif "⑧ … mais « edgeX_… » est effacée : ② rougirait" "$( [ "$(RESTANTES)" = "$ATTENDUES" ] && echo identique || echo différent) $(Q "select count(*) from public.analytics_events where event = 'edgeX_notify'")" "différent 0"
+leve "⑧ motif élargi (« edgeX_… » serait effacée)" "8" "$sortie"; rien_applique "⑧ motif élargi"
+
+echo "── ⑨ comme en production : ICU, rôle non superutilisateur BYPASSRLS propriétaire, une seule chaîne, la ligne de journal de l'outil ──"
+nouvelle_base prod_like "locale_provider icu icu_locale 'en-US' template template0"
+verif "⑨ base en collation ICU" "$(Q "select datlocprovider from pg_database where datname = current_database()")" "i"
+Q "alter table public.analytics_events owner to proprio;
+   grant create on schema public to proprio;
+   grant usage on schema cron to proprio;
+   grant select, insert, update, delete on cron.job to proprio;
+   grant usage on sequence cron.job_jobid_seq to proprio;" >/dev/null
+# Le journal de l'outil, créé par SON sqlCreation (comme au premier envoi), et la
+# migration telle que SON sqlAvecJournal l'envoie : la ligne de journal injectée
+# après le PREMIER `begin;` réel — pas après `--| begin;` du retour arrière.
+( cd "$RACINE" && node -e '
+const fs = require("fs");
+const J = require("./scripts/lib/journal-migrations.js");
+const B = require("./scripts/lib/barriere-migration.js");
+const [dossier, rel] = process.argv.slice(1);
+const sql = fs.readFileSync(rel, "utf8");
+fs.writeFileSync(dossier + "/journal.sql", J.sqlCreation() + "\n" + B.sqlColonnesJournal() + "\n");
+fs.writeFileSync(dossier + "/envoye.sql", B.sqlAvecJournal(sql, { fichier: rel, cible: "bancbancbancbancbanc", attestation: null, outil: "appliquer-migration.mjs" }));
+' "$BASE" "migrations/migration_purge_analytics_courte_2026-11-07.sql" )
+chmod a+r "$BASE/journal.sql" "$BASE/envoye.sql"
+FICHIER "$BASE/journal.sql" >/dev/null
+Q "grant select, insert, update on public.migrations_appliquees to proprio" >/dev/null
+sortie="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -F '|' -q -v ON_ERROR_STOP=1 -c "set role proprio" -c "$(cat "$BASE/envoye.sql")" 2>&1 || true)"
+verdict_ok "⑨ envoyée en une chaîne, sous le rôle propriétaire BYPASSRLS" "$sortie"
+verif "⑨ la ligne de journal de l'outil est écrite DANS la transaction" "$(Q "select fichier || ' · ' || statut || ' · ' || outil from public.migrations_appliquees")" "migrations/migration_purge_analytics_courte_2026-11-07.sql · applique · appliquer-migration.mjs"
+verif "⑨ la tâche tourne sous ce rôle, et la purge a effacé exactement ce qu'elle devait" "$(Q "select max(username) from cron.job where jobname = 'purge_analytics_courte'") $(RESTANTES)" "proprio $ATTENDUES"
+plan="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -v ON_ERROR_STOP=1 -c "set enable_seqscan = off" \
+  -c "explain (costs off) delete from public.analytics_events where starts_with(event, 'edge_') and created_at < now() - interval '2 hours'" 2>&1)"
+verif "⑨ sous ICU, la purge emprunte l'index partiel" "$(printf '%s\n' "$plan" | grep -c 'idx_analytics_edge_created')" "1"
+
+echo "── ⑩ un écrivain en cours : la migration attend son verrou, puis passe ──"
+nouvelle_base m_concurrence
+# Un DELETE qui tient ses verrous 1,5 s (purge-compte, par exemple) : la migration
+# demande SHARE, attend sa fin, puis s'applique — sans interblocage.
+psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 \
+  -c "begin; delete from public.analytics_events where properties->>'cas' = 'A1_edge_2h05'; select pg_sleep(1.5); commit;" >/dev/null 2>&1 &
+ecrivain=$!
+sleep 0.4
+t0="$(date +%s%N)"
+sortie="$(FICHIER "$MIGRATION" || true)"
+t1="$(date +%s%N)"
+if wait "$ecrivain"; then code=0; else code=$?; fi
+verif "⑩ l'écrivain concurrent a fini sans erreur (aucun interblocage)" "$code" "0"
+verdict_ok "⑩ la migration, après l'écrivain" "$sortie"
+verif "⑩ elle a ATTENDU le verrou (≥ 0,8 s)" "$(( (t1 - t0) / 1000000 >= 800 ))" "1"
+verif "⑩ … et purgé ce qui restait : 2 lignes edge_* (la 3ᵉ, effacée par l'écrivain), 3 notes" \
+  "$(printf '%s\n' "$sortie" | grep -c '|edge_\* : 2 · notes : 3 · restent 13 lignes (')" "1"
 
 echo "Banc purge-analytics-courte : $ok OK, $ko échec(s)"
 [ "$ko" -eq 0 ]
