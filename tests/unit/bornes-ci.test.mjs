@@ -35,6 +35,7 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parse } from "./lib/yaml-mini.mjs";
+import "./lib/bash-windows.mjs";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8").split("\r\n").join("\n");
@@ -160,7 +161,7 @@ function jouer(script, scenario) {
 const compte = (lignes, motif) => lignes.filter((l) => motif.test(l)).length;
 
 test("③ bac : le timeout délégué est celui de GNU coreutils", () => {
-  assert.match(execFileSync(VRAI_TIMEOUT, ["--version"], { encoding: "utf8" }), /coreutils/);
+  assert.match(execFileSync("bash", ["-c", "timeout --version"], { encoding: "utf8" }), /coreutils/);
 });
 
 test("③ un essai qui réussit termine l'étape : un seul appel, la borne réelle passée à timeout", () => {
