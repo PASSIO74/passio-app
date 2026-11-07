@@ -282,17 +282,19 @@ async function essayerAlertes(admin: Admin) {
 
 // Un essai À LA DEMANDE (2026-11-07) : le « Régler » de la ligne des alertes. Il
 // PROUVE, ou non, que le téléphone reçoit — au lieu d'ouvrir une page qui ne
-// changeait rien à la ligne. Borné : un envoi au pilote toutes les 10 min au plus,
-// essai ou alerte ; une lecture en échec n'envoie rien.
-const ESSAI_MANUEL_MIN_MS = 10 * 60e3;
+// changeait rien à la ligne. Borné : un envoi au pilote toutes les 2 min au plus,
+// essai ou alerte ; une lecture en échec n'envoie rien. 10 min d'abord : mesuré le
+// 07/11, quatre touchers refusés en cinq minutes, juste après avoir mis à jour
+// l'appareil qui devait accuser — le pilote est le seul destinataire.
+const ESSAI_MANUEL_MIN_MS = 2 * 60e3;
 async function essaiManuel(admin: Admin) {
   const { data, error } = await admin.from("analytics_events").select("created_at")
     .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").order("created_at", { ascending: false }).limit(1);
   if (error) return json({ error: "Lecture impossible : aucun essai n'est parti." }, 503);
   const dernier = dateUtc(data && data[0] ? data[0].created_at : null);
   if (Number.isFinite(dernier) && Date.now() - dernier < ESSAI_MANUEL_MIN_MS) {
-    const reste = Math.max(1, Math.ceil((ESSAI_MANUEL_MIN_MS - (Date.now() - dernier)) / 60e3));
-    return json({ error: "Un envoi est parti il y a moins de 10 min : attends son accusé (encore " + reste + " min)." }, 409);
+    const reste = Math.max(1, Math.ceil((ESSAI_MANUEL_MIN_MS - (Date.now() - dernier)) / 1000));
+    return json({ error: "Un envoi vient de partir : le suivant est possible dans " + reste + " s." }, 409);
   }
   const n = await sonnerPilote(admin, "Essai de tes alertes", "Tu l'as demandé depuis le pilotage : si tu lis ceci, tes alertes t'arrivent.", { essai: true, manuel: true });
   if (!n) return json({ error: "Aucun appareil n'a accepté l'essai : ouvre PASSIO avec le compte éditeur et autorise les notifications." }, 409);
