@@ -237,7 +237,7 @@ exigences += [
  ("les audits precedent le push",
       pub.find('audit-globals.js') < pub.find('git push origin') if 'git push origin' in pub else False),
  ("les chemins de controle sont refuses",
-      '.github/*|.claude/*|package.json' in pub and 'Chemin interdit' in pub),
+      all(_c in pub for _c in ('.github/*|.claude/*|', '|package.json|', '|scripts/*|', '|tests/ci/*|', '|migrations/*|')) and 'Chemin interdit' in pub),
  ("le refus de chemin sort en erreur",
       'exit 1' in pub.split('Chemin interdit')[1][:200] if 'Chemin interdit' in pub else False),
 
