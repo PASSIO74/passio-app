@@ -7,13 +7,22 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Une version publiée depuis moins de 7 jours n'est pas proposée : laisse le temps de retirer un paquet compromis.
+    cooldown:
+      default-days: 7
   - package-ecosystem: npm
     directory: /dashboard
     schedule:
       interval: weekly
+    # Une version publiée depuis moins de 7 jours n'est pas proposée : laisse le temps de retirer un paquet compromis.
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 0
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    # Une version publiée depuis moins de 7 jours n'est pas proposée : laisse le temps de retirer un paquet compromis.
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 0
