@@ -8730,6 +8730,14 @@ function feedWindowSync(list) {
         var el = entry.target;
         if (el.id === "feedWindowSentinel") {
           if (entry.isIntersecting) feedWindowLoadNextBatch();
+          // Sortie de la marge : le prochain passage sera un vrai défilement,
+          // le frein d'un lot stérile (cf. feedWindowLoadNextBatch) se lève.
+          // ⚠️ Seulement pour une sentinelle encore DANS la page : un repeint
+          // complet détache l'ancienne, et l'observateur rend pour elle une
+          // dernière entrée « hors marge » qui n'est le geste de personne — elle
+          // levait le frein juste avant que la nouvelle sentinelle, ramenée en
+          // bas par l'ancrage, ne relance la boucle (35 lots en 1,5 s, mesuré).
+          else if (el.isConnected) window._feedWindowFrein = null;
           return;
         }
         if (entry.isIntersecting) feedWindowHydrate(el);
@@ -8756,9 +8764,34 @@ function feedWindowSync(list) {
 
 // Chargement progressif : appelé quand la sentinelle de fin de liste entre dans
 // la marge. Réutilise EXACTEMENT le chemin de pagination historique.
+//
+// ⚠️ UN LOT STÉRILE NE SE RELANCE PAS TOUT SEUL (2026-11-07). Un lot qui n'a
+// ajouté AUCUNE carte (page serveur entièrement filtrée par les passions du fil)
+// repeint quand même le fil en entier : `renderLimit` a bougé, et il n'y a rien à
+// ajouter en queue. Sous Chromium 158, l'ancrage de défilement ramène alors la
+// page tout en bas une fois la liste regonflée : la NOUVELLE sentinelle est
+// aussitôt dans la marge, un autre lot part, et ainsi de suite — mesuré : 45
+// pages serveur en 1,5 s, sans un geste (`feed-window.spec.js`, « ne se relance
+// pas tout seul »). Sous Chromium 153, la même reconstruction renvoyait le
+// lecteur vers la 11ᵉ carte, et c'est ce saut qui servait de frein, par accident.
+// Le frein est désormais explicite : après un lot stérile, plus rien ne part avant
+// que la sentinelle soit sortie de la marge (un vrai défilement), ou que le nombre
+// de cartes peintes ait changé (temps réel, autre chargement).
+function _feedWindowFreinActif() {
+  return window._feedWindowFrein != null && window._feedWindowFrein === window._feedWindowVisibles;
+}
+
+// Tenu par `renderFeed` : le nombre de cartes de la fenêtre peinte. Un frein posé
+// pour un autre nombre ne vaut plus rien.
+function _feedWindowNoterVisibles(n) {
+  window._feedWindowVisibles = n;
+  if (window._feedWindowFrein != null && window._feedWindowFrein !== n) window._feedWindowFrein = null;
+}
+
 function feedWindowLoadNextBatch() {
   if (!feedWindowEnabled()) return;
   if (window._feedWindowLoading) return;
+  if (_feedWindowFreinActif()) return;
   var feedEl = document.getElementById("screen-feed");
   if (!feedEl || !feedEl.classList.contains("active")) return;
   window._feedWindowLoading = true;
@@ -8770,7 +8803,13 @@ function feedWindowLoadNextBatch() {
       });
     }
   } catch (e) {}
-  var done = function () { window._feedWindowLoading = false; };
+  var avant = window._feedWindowVisibles;
+  var done = function () {
+    window._feedWindowLoading = false;
+    // `loadMoreFeedPosts` a repeint (ou renoncé) AVANT de rendre la main : le
+    // compte relu ici est celui du lot. Inchangé = lot stérile = frein.
+    if (window._feedWindowVisibles === avant) window._feedWindowFrein = avant;
+  };
   if (typeof loadMoreFeedPosts !== "function") { done(); return; }
   try {
     var r = loadMoreFeedPosts();
@@ -8805,11 +8844,21 @@ function feedWindowPaintIncremental(list, visible, hasMore, moreBtnHtml) {
 
 // Pied de liste : bouton historique + sentinelle de chargement progressif.
 // Le bouton reste, seul et inchangé, quand le drapeau est coupé.
+//
+// ⚠️ LA SENTINELLE N'EXISTE QUE S'IL RESTE QUELQUE CHOSE À CHARGER (2026-11-07),
+// exactement comme le bouton dont elle est le jumeau automatique. Toujours posée,
+// elle déclenchait en fin de liste un lot sur RIEN : `loadMoreFeedPosts` élargissait
+// la fenêtre, `renderFeed` n'avait aucune carte à ajouter (60 montées pour 60
+// visibles) et repeignait tout — saut vers la 11ᵉ carte sous Chromium 153, boucle
+// sans fin sous Chromium 158 (une reconstruction toutes les deux trames, limite
+// 80 → 400 en une demi-seconde). C'était le rouge intermittent de
+// `feed-window.spec.js` ② en CI (« Received: 12 »).
 function feedWindowTailHtml(hasMore, moreBtnHtml) {
   if (!feedWindowEnabled()) return hasMore ? moreBtnHtml : "";
   return '<div id="feedWindowTail">'
-       + (hasMore ? moreBtnHtml : "")
-       + '<div id="feedWindowSentinel" aria-hidden="true" style="height:1px;"></div>'
+       + (hasMore
+          ? moreBtnHtml + '<div id="feedWindowSentinel" aria-hidden="true" style="height:1px;"></div>'
+          : "")
        + '</div>';
 }
 
@@ -8979,6 +9028,8 @@ function feedWindowTeardown() {
   }
   window._feedWindowObserver = null;
   window._feedWindowRoot = null;
+  // Revenir sur le fil est un geste : le frein d'un lot stérile ne lui survit pas.
+  window._feedWindowFrein = null;
   var list = document.getElementById("feedList");
   if (list) {
     list.querySelectorAll('.post[data-fw="off"]').forEach(feedWindowHydrate);
@@ -9002,6 +9053,7 @@ function feedWindowStats() {
     observers: window._feedWindowObserver ? 1 : 0,
     observersCreated: window._feedWindowObserverCount || 0,
     loading: !!window._feedWindowLoading,
+    frein: _feedWindowFreinActif(),
   };
 }
 window.feedWindowStats = feedWindowStats;
@@ -9217,6 +9269,7 @@ function renderFeed() {
 
   const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
   if (posts.length === 0) {
+    _feedWindowNoterVisibles(0);   // aucune carte : aucun frein de fenêtre ne tient
     // ── §7 : REPLI EXPLORATION plutôt qu'un cul-de-sac.
     // Déclenché quand les intérêts de l'utilisateur ne donnent rien À AFFICHER —
     // soit qu'aucun contenu n'existe, soit qu'il n'en existe que d'inaffichable
@@ -9331,6 +9384,7 @@ function renderFeed() {
   const renderLimit = window._feedRenderLimit || 20;
   const visible = sortedPosts.slice(0, renderLimit);
   const hasMore = sortedPosts.length > renderLimit || window._feedServerMayHaveMore;
+  _feedWindowNoterVisibles(visible.length);
   // Premier exemple de la fenêtre peinte → séparateur « Exemples PASSIO ».
   const _repereEx = repereExemplesFil(visible);
   // Des exemples sont à l'écran alors que le serveur a peut-être encore des

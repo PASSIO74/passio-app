@@ -204,6 +204,125 @@ test.describe("Fil fenêtré — cartes montées bornées et lots progressifs", 
     expect(marques).toBe(avant.length); // aucune carte d'origine reconstruite
     expect((await ids(page)).length).toBeGreaterThan(avant.length);
   });
+
+  // ⚠️ LA BOUCLE DU BAS DU FIL (2026-11-07). Le test ② ci-dessus échouait une fois
+  // sur deux en CI (« Received: 12 ») depuis que la CI installe Playwright 1.65
+  // (Chromium 158). Cause mesurée : arrivée en fin de liste, la sentinelle
+  // demandait quand même un lot ; `loadMoreFeedPosts` élargissait la fenêtre sur
+  // RIEN, `renderFeed` ne pouvait rien ajouter (60 cartes montées pour 60
+  // visibles) et repeignait TOUT (12 cartes, puis le complément différé). Sous
+  // Chromium 158, l'ancrage de défilement ramène la page tout en bas une fois la
+  // liste regonflée : la nouvelle sentinelle est aussitôt visible, un autre lot
+  // part… une reconstruction complète toutes les deux trames, sans fin (limite
+  // 80 → 400 en une demi-seconde). Sous Chromium 153, la même reconstruction
+  // renvoyait le lecteur vers la 11ᵉ carte. Rien à charger = rien à guetter.
+  test("en fin de liste, la sentinelle se tait : ni lot fantôme, ni repeint, ni saut", async ({ page }) => {
+    await bootOnboarded(page);
+    // Rien d'autre que le geste ne doit pouvoir repeindre le fil pendant la
+    // mesure : chaîne de démarrage finie, filet de rafraîchissement coupé.
+    await page.waitForFunction(() => window._supaInitTerminee === true || !window._supaReal, null, { timeout: 15000 }).catch(() => {});
+    await page.evaluate(() => stopFeedRefreshLoop());
+    // 20 publications pour une fenêtre de 20 : tout est peint d'emblée, et
+    // `seedFeed` pose `_feedServerMayHaveMore = false` — il n'y a rien d'autre.
+    await seedFeed(page, { windowOn: true, n: 20 });
+    expect((await ids(page)).length).toBe(20);
+    expect(await page.locator("#feedWindowSentinel").count()).toBe(0);
+
+    await page.evaluate(() => {
+      window.__lots = 0;
+      window.__limite = window._feedRenderLimit;
+      const orig = window.loadMoreFeedPosts;
+      window.loadMoreFeedPosts = function () { window.__lots++; return orig.apply(this, arguments); };
+      // Les cartes en place sont marquées : un repeint complet les remplacerait.
+      document.querySelectorAll("#feedList .post[data-postid]").forEach((e, i) => (e.dataset.marque = "m" + i));
+    });
+    // Un pouce qui insiste en bas du fil.
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => {
+        const m = document.querySelector(".app-main");
+        m.scrollTo(0, m.scrollHeight);
+      });
+      await page.waitForTimeout(400);
+    }
+
+    expect(await page.evaluate(() => window.__lots)).toBe(0);
+    expect(await page.evaluate(() => window._feedRenderLimit)).toBe(await page.evaluate(() => window.__limite));
+    expect(await page.$$eval("#feedList .post[data-marque]", (els) => els.length)).toBe(20);
+    expect((await ids(page)).length).toBe(20);
+    // Toujours en bas : la page n'a pas sauté vers le début du fil.
+    const ecart = await page.evaluate(() => {
+      const m = document.querySelector(".app-main");
+      return m.scrollHeight - m.clientHeight - m.scrollTop;
+    });
+    expect(ecart).toBeLessThanOrEqual(2);
+  });
+
+  // Même mécanique quand le serveur a PEUT-ÊTRE encore des pages, mais qu'elles
+  // ne contiennent rien que ce fil affiche (un compte aux passions étroites, au
+  // bas d'un fil réseau) : sous Chromium 158, chaque page vide de cartes
+  // réarmait la sentinelle, et le fil parcourait la table `posts` page après
+  // page sans le moindre geste. Un lot qui n'ajoute aucune carte attend
+  // désormais que la sentinelle soit sortie de la marge — c'est-à-dire un vrai
+  // défilement — avant d'en demander un autre.
+  test("un lot qui n'ajoute aucune carte ne se relance pas tout seul", async ({ page }) => {
+    await bootOnboarded(page);
+    // Ce cas tient sur `_feedServerMayHaveMore = true` : un `supaLoadPosts` de
+    // démarrage tardif (en CI, Supabase répond) le remettrait à false sous le
+    // test. Même garde que les suites `capacite-*` : la chaîne de démarrage a
+    // fini de lire, et le filet de rafraîchissement est coupé.
+    await page.waitForFunction(() => window._supaInitTerminee === true || !window._supaReal, null, { timeout: 15000 }).catch(() => {});
+    await page.evaluate(() => stopFeedRefreshLoop());
+    await seedFeed(page, { windowOn: true, n: 20 });
+    await page.evaluate(() => {
+      window.__pages = 0;
+      window.__lots = 0;
+      // Une « page serveur » de 20 publications d'une passion que ce fil ne
+      // suit pas : le stock grandit, la fenêtre peinte non.
+      window._chargerPageServeurSuivante = async function () {
+        const k = ++window.__pages;
+        const ailleurs = [];
+        for (let i = 0; i < 20; i++) {
+          ailleurs.push({
+            id: "ailleurs_" + k + "_" + i, authorId: "ailleurs", authorName: "Ailleurs",
+            passion: "cuisine", mood: "all", type: "text", text: "Ailleurs " + i,
+            createdAt: 50000 - k * 100 - i, likes: 0, comments: [], reactions: [],
+          });
+        }
+        state.supabasePosts = (state.supabasePosts || []).concat(ailleurs);
+        return ailleurs.length;
+      };
+      const orig = window.loadMoreFeedPosts;
+      window.loadMoreFeedPosts = function () { window.__lots++; return orig.apply(this, arguments); };
+      window._feedServerMayHaveMore = true;
+      window._feedDomSig = null;
+      renderFeed();
+    });
+    await page.waitForTimeout(400); // complément idle : la queue et sa sentinelle
+    // La prémisse : le serveur « a encore », donc la sentinelle est armée.
+    expect(await page.locator("#feedWindowSentinel").count()).toBe(1);
+
+    await page.evaluate(() => {
+      const m = document.querySelector(".app-main");
+      m.scrollTo(0, m.scrollHeight);
+    });
+    await page.waitForFunction(() => window.__lots >= 1);
+    // Le pouce ne bouge plus : rien ne doit repartir de lui-même.
+    await page.waitForTimeout(1500);
+    expect(await page.evaluate(() => window.__lots)).toBe(1);
+    expect(await page.evaluate(() => window.__pages)).toBe(1);
+    expect((await ids(page)).length).toBe(20);
+
+    // Un vrai geste — remonter, puis redescendre — relance bien un lot : la
+    // sentinelle est freinée, pas morte.
+    await page.evaluate(() => document.querySelector(".app-main").scrollTo(0, 0));
+    await page.waitForFunction(() => feedWindowStats().frein === false);
+    await page.evaluate(() => {
+      const m = document.querySelector(".app-main");
+      m.scrollTo(0, m.scrollHeight);
+    });
+    await page.waitForFunction(() => window.__lots >= 2);
+    expect(await page.evaluate(() => window.__pages)).toBe(2);
+  });
 });
 
 test.describe("Fil fenêtré — ancre de scroll sous 2 px", () => {

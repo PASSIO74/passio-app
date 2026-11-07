@@ -23,6 +23,7 @@
 - 🚀 LANCEMENT GRATUIT : LE MUR DES TROIS PASSIONS EST LEVÉ POUR TOUS (2026-11-01)
 - 🧱 LE RÉEL D'ABORD, LES EXEMPLES ENSUITE — ET DES EXEMPLES CRÉDIBLES (2026-11-01)
 - 🔁 « INFINITE RECURSION » SUR `passion_requests` — PLUS UNE DEMANDE NE PASSAIT, ET LA CORRECTION NAÏVE ROUVRAIT UN ORACLE (2026-11-04) — migration à appliquer APRÈS le client
+- 🌀 LA BOUCLE DU BAS DU FIL — LE ROUGE CI « Received: 12 » ÉTAIT UN DÉFAUT DU FENÊTRAGE, RÉVÉLÉ PAR CHROMIUM 158 (2026-11-07)
 
 ---
 
@@ -934,3 +935,71 @@ Retour arrière : le bloc `--|` de l'en-tête — il rend aussi le défaut.
   - le verrou exclusif dure quelques secondes ;
   - le prérequis client ne tient, dans la page minifiée, que par l'appel `journal(…)`.
 Aucun ne justifiait de retoucher un fichier contre-revu et attesté.
+
+---
+
+## 🌀 LA BOUCLE DU BAS DU FIL — LE ROUGE CI « Received: 12 » ÉTAIT UN DÉFAUT DU FENÊTRAGE, RÉVÉLÉ PAR CHROMIUM 158 (2026-11-07)
+
+**Symptôme.** `feed-window.spec.js:166` (« le premier lot puis les suivants arrivent en scrollant, sans doublon »)
+rouge sur des PR sans rapport avec le fil : 3 essais sur 3 dans le shard 3/6 de #749 (run 42366429993) et de #747
+(job 128376839792), « flaky » sur `main` à 2d56426 (deux échecs puis un vert), un échec encore sur la relance de
+#749. Toujours le même chiffre : 12 cartes au lieu de plus de 20 — `FAST`, la peinture rapide de `renderFeed`.
+
+**Ce qui avait changé : le navigateur, pas le code.** La CI installe Playwright SANS version
+(`npm install --no-save @playwright/test`, `deploy.yml`) : Playwright 1.65.0, publié le 2026-11-05 à 18:30 UTC,
+a amené Chrome for Testing 158.0.8127.18 (révision chromium 1254) ; le shard 3/6 du 05/11 à 09:35 tournait
+encore sur 156.0.8078.4 (1248), sans échec. Reproduit sur le poste avec le binaire même de la CI
+(`chrome-headless-shell` 158.0.8127.18, de `storage.googleapis.com/chrome-for-testing-public`, lancé par
+`PASSIO_CHROMIUM=…`) : **4 échecs sur 8**. Même test, même Playwright 1.65.0, même machine, Chromium 153
+(révision 1243 de l'image) : **8 sur 8 verts**. Les essais d'un même job tombaient ensemble parce que la cause
+était le navigateur du job, pas un aléa de charge.
+
+**Le mécanisme, instrumenté** (`renderFeed`, `feedWindowPaintIncremental`, la sentinelle, `requestIdleCallback`).
+60 publications, fenêtre de 20 : 20 → 40 → 60, en incrémental. Au 3ᵉ défilement la liste est épuisée, mais
+`feedWindowTailHtml` posait la sentinelle QUOI QU'IL ARRIVE : `loadMoreFeedPosts` passait la limite à 80,
+`feedWindowPaintIncremental` refusait (`n=60 >= visible=60` — rien à ajouter), et le rendu complet repartait
+(12 cartes, `_fwSigs` à null, complément différé 12 ms plus tard).
+- Chromium 153 : la liste ramenée à 12 cartes ramène le défilement à 3 917 px au lieu de 22 097 — **le lecteur
+  arrivé en bas du fil était renvoyé vers la 11ᵉ carte** — et la nouvelle sentinelle est loin : un lot fantôme
+  par arrivée en bas, puis plus rien. Défaut réel, jamais signalé (le drapeau est coupé par défaut).
+- Chromium 158 : une fois la liste regonflée par le complément, l'ancrage de défilement remet la page à
+  22 097 px ; la nouvelle sentinelle est aussitôt dans la marge, un autre lot part — **limite 80 → 400 en une
+  demi-seconde, une reconstruction complète toutes les deux trames**, et un `feed_window_batch` de télémétrie
+  à chaque tour. Le test lisait la liste au hasard du cycle : 12 cartes, ou 60. Preuve que c'est l'ancrage :
+  avec `overflow-anchor: none`, Chromium 158 reste à 3 912 px et le test passe 3 sur 3.
+
+**La même boucle, côté réseau — la plus coûteuse.** Quand le serveur « a peut-être encore »
+(`_feedServerMayHaveMore`, posé sur la taille BRUTE de la page) mais que ses pages ne contiennent rien que le fil
+affiche (un compte aux passions étroites), chaque page sans carte repeignait tout et, sous Chromium 158, la
+sentinelle repartait aussitôt : **45 pages serveur en 1,5 s sans un geste** — le fil parcourait la table `posts`,
+quatre requêtes par page.
+
+**Correctif** (app-02, drapeau `feed_window_v1` seulement ; le rendu historique est inchangé) :
+1. `feedWindowTailHtml` ne pose la sentinelle que si `hasMore`, comme le bouton « Charger plus » dont elle est le
+   jumeau automatique. Rien à charger, rien à guetter.
+2. **Frein** `_feedWindowFrein` : un lot qui n'a pas changé le nombre de cartes peintes (`_feedWindowVisibles`,
+   tenu par `renderFeed` via `_feedWindowNoterVisibles`) empêche le suivant de partir tant que la sentinelle n'est
+   pas sortie de la marge (un vrai défilement) ou que ce nombre n'a pas changé (temps réel, autre chargement).
+   Levé aussi par `feedWindowTeardown` ; lisible dans `feedWindowStats().frein`.
+3. ⚠️ **Seule une sentinelle ENCORE dans la page lève le frein** (`el.isConnected`). Un repeint complet détache
+   l'ancienne, et l'observateur rend pour elle une dernière entrée « hors marge » qui n'est le geste de personne :
+   sans cette garde, le frein tombait juste avant que la nouvelle sentinelle, ramenée en bas par l'ancrage, ne
+   relance la boucle — **35 lots en 1,5 s, frein en place**. Un test vert sous Chromium 153 ne l'aurait jamais vu.
+
+**Ce qui reste, connu.** Un lot serveur qui n'apporte aucune carte visible repeint encore le fil en entier, une
+fois (`renderLimit` est dans `_domSig`, et il n'y a rien à ajouter en queue) : sous Chromium ≤ 157 le lecteur est
+encore renvoyé vers la 11ᵉ carte dans CE cas. Le frein en borne le coût à un lot par geste. Supprimer ce repeint
+demande de séparer, dans la signature, ce qui change les cartes de ce qui ne change que la queue — sans perdre le
+rafraîchissement des temps relatifs (tranche de 5 min), du pont IRL ni de la liste de blocage, qui passent tous par
+ce repeint ; et sans laisser le bouton « Charger plus » figé sur « Chargement… » (drapeau coupé, c'est le repeint
+qui le rétablit). À faire avec la levée du drapeau `feed_window_v1`, pas avant.
+**La CI change de navigateur sans commit** : devant un rouge soudain sur des PR sans rapport, comparer d'abord la
+ligne « Downloading Chrome for Testing … » d'un job vert et d'un job rouge.
+
+**Verrous** (`feed-window.spec.js`) : ② est inchangé, assertions comprises, et devient déterministe ; « en fin de
+liste, la sentinelle se tait : ni lot fantôme, ni repeint, ni saut » (rouge sur l'ancien code sous les DEUX
+navigateurs) ; « un lot qui n'ajoute aucune carte ne se relance pas tout seul » (rouge sous Chromium 158 : 45
+lots ; il attend la fin de la chaîne de démarrage et coupe le filet de rafraîchissement, comme les suites
+`capacite-*`, sans quoi un `supaLoadPosts` tardif remettrait `_feedServerMayHaveMore` à false sous lui).
+Réinjections une à une, sous Chromium 158 : sentinelle toujours posée → « fin de liste » rouge ; frein désactivé
+→ 44 et 45 lots ; garde `isConnected` retirée → 44 et 45 lots.
