@@ -177,7 +177,8 @@ ab=w.get('allowed_bots')
 exigences=[
  ("allowed_bots n'est JAMAIS '*'",            ab != '*'),
  ("allowed_bots limite a une liste nommee",   ab in ('', 'claude')),
- ("allowed_non_write_users reste vide",       w.get('allowed_non_write_users') == ''),
+ # Le propriétaire seul : il a déjà l'écriture, la surface ne bouge pas ; la valeur allume le mode durci.
+ ("allowed_non_write_users = le propriétaire seul", w.get('allowed_non_write_users') == 'PASSIO74'),
  ("include_comments_by_actor == 'PASSIO74'",  w.get('include_comments_by_actor') == 'PASSIO74'),
  ("label_trigger explicite",                  w.get('label_trigger') == 'claude'),
  ("anthropic_api_key ABSENT",                 'anthropic_api_key' not in w),
