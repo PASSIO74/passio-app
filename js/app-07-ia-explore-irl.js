@@ -3552,6 +3552,7 @@ async function setEventRsvp(id, rsvp) {
       const parti = await supaLeaveEvent(id);
       if (!parti) { annuler("⚠️ Désinscription non enregistrée — réessaie"); return; }
       _rsvpRegle(true);
+      _majAdresseActivite(ev);
     }
     toast("Désinscrit");
     // Une place se libère → on promeut le premier de la file (et on le prévient).
@@ -3579,7 +3580,7 @@ async function setEventRsvp(id, rsvp) {
       : "⚠️ Inscription non enregistrée — réessaie");
     return;
   }
-  if (rsvpOk === true) _rsvpRegle(true);
+  if (rsvpOk === true) { _rsvpRegle(true); _majAdresseActivite(ev); }
   // ⚠️ TOUTE SORTIE DE « je viens » LIBÈRE UNE PLACE, pas seulement le retrait
   // (revue du 2026-11-03). Seule la branche « retirer ma réponse » promouvait :
   // passer de « je viens » à « je ne viens pas » ou à « peut-être » rendait la
@@ -3621,6 +3622,19 @@ async function setEventRsvp(id, rsvp) {
 // libère. Fait par le client qui QUITTE « je viens » — retrait, « je ne viens
 // pas » ou « peut-être » (`setEventRsvp`) : c'est le seul moment où l'on sait,
 // sans serveur, qu'une place vient de s'ouvrir.
+// L'adresse et le contact suivent l'inscription : la base dit ce que ce compte peut voir maintenant.
+async function _majAdresseActivite(ev) {
+  if (!window._supaReal || !ev || !ev.fromSupabase || typeof supaLireAdresses !== "function") return;
+  const { adresses, lu } = await supaLireAdresses([ev.id]);
+  if (!lu) return;
+  const a = adresses[ev.id] || {};
+  ev.address = a.address || "";
+  ev.contact = a.contact || "";
+  ev._adresseInconnue = false;
+  saveState();
+  _refreshEventDetailIfOpen(ev.id);
+}
+
 async function _promoteNextWaitlisted(ev) {
   if (!ev || !ev.maxAttendees) return;
   let next = (ev.waitlist || [])[0] || null;
@@ -4362,6 +4376,8 @@ function openEventDetails(id) {
     infoRow("Date & heure", `${dateStr} à ${timeStr}`),
     addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : ""),
     ev.venue ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
+    // Une activité du serveur sans adresse lisible : elle existe peut-être, réservée à qui vient.
+    (ev.fromSupabase && !ev.address && myRsvp(ev.id) !== "going") ? infoRow("Adresse exacte", "Communiquée une fois inscrit·e") : "",
     infoRow("Prix", priceStr),
     // ⚠️ LE LIEN `tel:` ÉTAIT POSÉ SUR N'IMPORTE QUEL CONTACT (2026-09-10), y
     // compris une adresse e-mail : toucher « Contact » lançait alors un appel
