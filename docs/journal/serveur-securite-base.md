@@ -1563,6 +1563,14 @@ puis attesté et appliqué dans `Desktop\PASSIO-wt\migration-c02` (worktree dét
 d'attestation par `git diff`, et retiré le worktree. Un bloc d'application ne fait aucun `checkout`, aucun `pull`, aucun
 `git checkout -- <fichier>` dans le dossier de travail : il peut y avoir quelqu'un.
 
+**Lire `postgres_logs` : la gravité est `log_attributes['parsed.error_severity']`, le code `parsed.sql_state_code`
+(07/11, vécu).** Une requête sur `log_attributes['error_severity']` (sans `parsed.`) rend un ensemble VIDE — lu deux fois comme
+« aucune erreur Postgres » (C-04, 06/11 09:10–09:25 ; C-02, 21:30–21:42), corrigé au § 6.3 et au § 9.8 de la livraison. C'est la
+règle de la veille appliquée aux journaux : une source illisible n'est pas une source calme. Une conclusion d'absence porte donc
+son témoin : le nombre de lignes lues ET les valeurs distinctes de la clé filtrée (`groupUniqArray(10)(log_attributes['…'])`) —
+une seule valeur vide, c'est la clé qui manque, pas l'erreur. Les clés d'`edge_logs` sont plates (`request.path`,
+`response.status_code`, `request.headers.referer`).
+
 **Ordre.** APRÈS C-04 (la ligne 10 refuse une base sans sa policy : le staging aujourd'hui — y appliquer C-04 d'abord, puis ce
 lot), et JAMAIS C-04 rejouée après ; indépendante du client, pas de `PREREQUIS-CLIENT` — le client ne dit que ce que le serveur
 lui rend : avant la migration, un créateur qui retire un membre que C-04 lui cache lit « le retrait n'a pas été confirmé » ;
