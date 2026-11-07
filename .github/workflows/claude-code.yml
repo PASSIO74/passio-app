@@ -159,6 +159,8 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 1
+          # Aucun jeton laissé dans .git/ : l'agent lit ce dossier, et l'action pose sa propre identification.
+          persist-credentials: false
 
       # Avant toute dépense de jeton : prouver que l'auth est bien l'abonnement.
       - name: Contrôle d'authentification (subscription-only)
@@ -362,7 +364,7 @@ jobs:
               "permissions": {
                 "defaultMode": "default",
                 "disableBypassPermissionsMode": "disable",
-                "deny": ["Read(//proc/**)", "Read(.git/config)", "Read(~/.claude/**)", "Bash(git remote:*)", "Edit(.git/**)", "Write(.git/**)"]
+                "deny": ["Read(//proc/**)", "Read(~/.claude/**)", "Bash(git remote:*)", "Edit(.git/**)", "Write(.git/**)"]
               }
             }
 
@@ -380,9 +382,15 @@ jobs:
           include_comments_by_actor: 'PASSIO74'
           exclude_comments_by_actor: ''
 
-          # Aucun élargissement de la surface de déclenchement. Explicite pour
-          # qu'un défaut d'upstream ne puisse pas l'ouvrir en silence.
-          allowed_non_write_users: ''
+          # LE PROPRIÉTAIRE SEUL, ET IL A DÉJÀ L'ÉCRITURE : la surface de déclenchement ne bouge pas (le
+          # contournement de `checkWritePermissions` ne vaut que pour un acteur nommé ici, et le `if:` du job
+          # filtre en amont). Ce que la valeur non vide allume, c'est le mode durci de l'action v1.0.198 :
+          # `.git/config` sans jeton (assistant d'identification qui lit `GH_TOKEN` au moment voulu, retiré
+          # des sous-processus par le filtrage), dépendances du bac à sable, PATH assaini avant et après.
+          # Avant, le jeton était dans l'URL de `origin` : on interdisait donc `Read(.git/config)`, et sous
+          # bac à sable cette règle masquait le fichier à git lui-même (canari du 2026-11-07, exit 128).
+          # Jamais `*`, jamais un autre compte : `tests/ci/frontiere-confiance.sh` l'exige.
+          allowed_non_write_users: 'PASSIO74'
 
           # ── DÉROGATION NOMMÉE, autorisée par Benjamin le 2026-08-21 ────────
           # `claude` est autorisé NOMMÉMENT. Jamais `*`.
