@@ -79,12 +79,17 @@ export const heureParis = (ms) => {
  * L'essai est-il dû ? PUR. `derniereNote` = la note d'envoi la plus récente du
  * pilote (essai ou vraie alerte), ou null. Hors de la fenêtre de jour : jamais.
  */
-export function essaiDu({ derniereNote = null, maintenant = Date.now() } = {}) {
+export function essaiDu({ derniereNote = null, maintenant = Date.now(), revision = null } = {}) {
   const h = heureParis(maintenant);
   if (!(h >= FENETRE_ESSAI.debut && h < FENETRE_ESSAI.fin)) return false;
   if (!derniereNote) return true;
   const le = Date.parse(derniereNote.created_at);
-  return !Number.isFinite(le) || maintenant - le >= ESSAI_INTERVALLE_MS;
+  if (!Number.isFinite(le) || maintenant - le >= ESSAI_INTERVALLE_MS) return true;
+  // Une mesure IMPOSSIBLE (2026-11-07 : le premier essai est parti « sans_adresse »)
+  // ne prouve rien pendant 7 jours : l'essai repart UNE fois par révision servie,
+  // c'est-à-dire après le déploiement qui a pu la réparer — jamais en boucle.
+  const p = derniereNote.properties && typeof derniereNote.properties === "object" ? derniereNote.properties : {};
+  return !!revision && p.mesure !== "ok" && p.revision !== revision;
 }
 
 /** Paquets de pid de rappels lus ensemble : un pid noyé n'aveugle que les siens. */
@@ -114,7 +119,14 @@ export function serviceDe(endpoint) {
 
 const RE_PID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const RE_BASE = /^https:\/\/[a-z0-9]{20}\.supabase\.co$/;
-const RE_CLE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+// La clé anon : l'ancienne forme (un JWT, envoyée en `apikey` ET en `Authorization`)
+// ou la nouvelle, publiable (`sb_publishable_…`, en `apikey` SEULEMENT — en Bearer,
+// la plateforme la lit comme un JWT et refuse). Mesuré le 07/11 : le premier essai
+// est parti « sans_adresse » — la fonction ne recevait pas un JWT (sw.js suit).
+const RE_JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+const RE_PUBLIABLE = /^sb_publishable_[A-Za-z0-9_-]{8,200}$/;
+const RE_CLE = { test: (k) => RE_JWT.test(k) || RE_PUBLIABLE.test(k) };
+const RE_REF = /^[a-z0-9]{20}$/;
 
 export const pidValide = (p) => typeof p === "string" && RE_PID.test(p);
 
@@ -127,6 +139,53 @@ export function pidNeuf() { return crypto.randomUUID(); }
  * @param {string} url      SUPABASE_URL de la fonction
  * @param {string} cleAnon  SUPABASE_ANON_KEY (publique)
  */
+// Le diagnostic d'adresse relu d'une note : des formes connues, rien d'autre ne passe.
+const FORMES_ADRESSE = Object.freeze({ url: ["ok", "deduite", "forme", "absente"], anon: ["jwt", "publiable", "absente", "forme"], publiables: ["ok", "forme", "absente"], cle: ["jwt", "publiable", "absente", "forme"] });
+export function diagAdresse(d) {
+  if (!d || typeof d !== "object") return null;
+  const out = {};
+  for (const [k, ok] of Object.entries(FORMES_ADRESSE)) if (ok.includes(d[k])) out[k] = d[k];
+  return Object.keys(out).length ? out : null;
+}
+
+/** La forme d'une clé, jamais sa valeur : « jwt », « publiable », « absente », « forme ». */
+export function formeCle(k) {
+  const v = String(k || "");
+  return !v ? "absente" : RE_JWT.test(v) && v.length < 2000 ? "jwt" : RE_PUBLIABLE.test(v) ? "publiable" : "forme";
+}
+
+/**
+ * L'adresse d'accusé depuis l'environnement de la fonction (2026-11-07), et son
+ * diagnostic — des FORMES, jamais une valeur. L'URL : SUPABASE_URL, sinon le
+ * projet lu dans DENO_DEPLOYMENT_ID (`<ref>_<fonction>_<version>`, documenté pour
+ * l'hébergé). La clé : l'ancienne anon (JWT) si la fonction l'a — les service
+ * workers d'avant ce lot ne savent accuser qu'avec elle —, sinon la publiable
+ * (`SUPABASE_PUBLISHABLE_KEYS`, JSON par nom, `default` d'abord), sinon
+ * SUPABASE_ANON_KEY si c'est elle qui porte la publiable.
+ * @param {(nom: string) => string | undefined} lire  Deno.env.get, ou un banc
+ */
+export function adresseAccuse(lire) {
+  const env = (n) => { try { return String(lire(n) || "").trim(); } catch (_e) { return ""; } };
+  const brute = env("SUPABASE_URL").replace(/\/+$/, "");
+  const ref = env("DENO_DEPLOYMENT_ID").split("_")[0];
+  const u = RE_BASE.test(brute) ? brute : RE_REF.test(ref) ? "https://" + ref + ".supabase.co" : "";
+  const anon = env("SUPABASE_ANON_KEY");
+  let publiables = [];
+  try {
+    const j = JSON.parse(env("SUPABASE_PUBLISHABLE_KEYS") || "{}");
+    if (j && typeof j === "object") publiables = [j.default, ...Object.values(j)].map((x) => String(x || ""));
+  } catch (_e) { /* illisible : la forme le dit */ }
+  const publiable = publiables.find((x) => RE_PUBLIABLE.test(x)) || "";
+  const k = formeCle(anon) === "jwt" ? anon : publiable || (formeCle(anon) === "publiable" ? anon : "");
+  const diag = {
+    url: RE_BASE.test(brute) ? "ok" : u ? "deduite" : brute ? "forme" : "absente",
+    anon: formeCle(anon),
+    publiables: env("SUPABASE_PUBLISHABLE_KEYS") ? (publiable ? "ok" : "forme") : "absente",
+    cle: formeCle(k),
+  };
+  return { accuse: descripteurAccuse(u, k), diag };
+}
+
 export function descripteurAccuse(url, cleAnon) {
   const u = String(url || "").replace(/\/+$/, "");
   const k = String(cleAnon || "");
@@ -190,7 +249,7 @@ export function bilanReception({ envois = [], accuses = [], maintenant = Date.no
     const base = { le: new Date(le).toISOString(), ...(p.essai === true ? { essai: true } : {}) };
     if (p.mesure && p.mesure !== "ok") {
       // Une alerte partie sans mesure possible n'est ni reçue ni perdue : on le dit.
-      derniereAlerte = { ...base, etat: "non_mesuree", raison: String(p.mesure).slice(0, 40) };
+      derniereAlerte = { ...base, etat: "non_mesuree", raison: String(p.mesure).slice(0, 40), ...(diagAdresse(p.adresse) ? { adresse: diagAdresse(p.adresse) } : {}) };
     } else {
       const acceptes = appareilsDe(e).filter((a) => a.accepte);
       const appareils = acceptes.map((a) => {
@@ -254,8 +313,9 @@ export function ligneReception(b) {
       reference: "Aucun abonnement aux notifications n'a répondu : ouvre PASSIO avec le compte éditeur et active les notifications quand elles sont proposées." };
   }
   if (a.etat === "non_mesuree") {
+    const ad = a.adresse ? " — URL : " + (a.adresse.url || "?") + ", clé anon : " + (a.adresse.anon || "?") + ", clés publiables : " + (a.adresse.publiables || "?") : "";
     const pourquoi = a.raison === "sans_adresse"
-      ? "la fonction pilotage n'a pas d'adresse d'accusé (SUPABASE_URL ou SUPABASE_ANON_KEY absente ou mal formée)"
+      ? "la fonction pilotage n'avait pas d'adresse d'accusé utilisable" + ad + " ; la version du 07/11 lit aussi la clé publiable, et un essai repart après chaque mise en ligne tant que la mesure est impossible"
       : a.raison === "abonnements_illisibles" ? "les abonnements aux notifications n'ont pas pu être lus au moment de l'alerte" : "la mesure n'a pas pu être faite";
     return { titre: "La réception de ta dernière alerte n'a pas pu être mesurée", reference: `Envoyée le ${String(a.le || "").slice(0, 16).replace("T", " ")} UTC : ${pourquoi}. On ne sait donc pas si elle est arrivée.` };
   }

@@ -87,12 +87,52 @@ export function resumerRun(r) {
   return {
     etat: r.status || null, conclusion: r.conclusion || null,
     le: r.updated_at || r.created_at || null,
+    // Le DÉPART du run (2026-11-07) : c'est lui qui dit si un run est celui qu'un
+    // « Régler » a lancé (suiviRelance), `le` bougeant à chaque étape.
+    cree: r.created_at || null,
     url: /^https:\/\/github\.com\//.test(String(r.html_url)) ? r.html_url : null,
   };
 }
 
 /** Au-delà, la Sentinelle est dite muette : orange au voyant, et une ligne à régler. */
 export const SENTINELLE_MUETTE_MS = 8 * 3600e3;
+/** Comptes serveur distincts qu'il faut derrière des erreurs ou des 5xx pour sonner rouge. */
+export const COMPTES_ROUGE_MIN = 2;
+// ─── Ce que « Régler » a lancé (2026-11-07) ──────────────────────────────────
+// Mesuré le 07/11 : quatre « Régler » en 70 s, quatre analyses de la Sentinelle
+// réussies… et une ligne IDENTIQUE après chacun. GitHub ne liste un run que
+// quelques secondes après son envoi, et chaque isolat garde sa lecture de GitHub
+// 2 min : l'écran relu juste après le geste disait encore « Régler ». La relance
+// est désormais NOTÉE en base au moment du geste (`EVT_GESTE`, fonction
+// pilotage), et chaque ligne qui relance suit SA relance jusqu'au résultat.
+export const EVT_GESTE = "pilotage_geste";
+/** Au-delà, une relance est oubliée : la ligne redevient ce qu'elle était. */
+export const RELANCE_SUIVIE_MS = 10 * 60e3;
+/** Aucun run parti dans ce délai : la relance est perdue, la ligne le dit et rend son bouton. */
+export const RELANCE_DEMARRAGE_MS = 3 * 60e3;
+/** Écart toléré entre l'horloge de la fonction et celle de GitHub. */
+const DERIVE_HORLOGE_MS = 5e3;
+
+/**
+ * Où en est la relance demandée à `demandeLe`, vue du DERNIER run du workflow
+ * (`resumerRun`) ? null : aucune relance récente (ou une date illisible, ou à
+ * venir). « attente » (aucun run parti depuis), « analyse » (parti, pas fini),
+ * « faite » ou « echec » (fini) ; « perdue » : aucun run parti en
+ * RELANCE_DEMARRAGE_MS. Un run programmé parti après le geste compte : il fait
+ * le même travail.
+ */
+export function suiviRelance(demandeLe, run, maintenant = Date.now()) {
+  const t = dateUtc(demandeLe);
+  if (!Number.isFinite(t) || t > maintenant + DERIVE_HORLOGE_MS || maintenant - t > RELANCE_SUIVIE_MS) return null;
+  const le = new Date(t).toISOString();
+  const cree = dateUtc(run && run.cree);
+  if (!(Number.isFinite(cree) && cree >= t - DERIVE_HORLOGE_MS)) return { etat: maintenant - t > RELANCE_DEMARRAGE_MS ? "perdue" : "attente", le };
+  if (run.etat !== "completed") return { etat: "analyse", le };
+  return { etat: run.conclusion === "success" ? "faite" : "echec", le, fini: run.le || null };
+}
+const fmtHeureMinute = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+/** « 08:54 », heure de Paris ; « ? » pour une date illisible. */
+export const heureMinute = (v) => { const t = dateUtc(v); return Number.isFinite(t) ? fmtHeureMinute.format(new Date(t)) : "?"; };
 /**
  * Le verdict en une phrase et une couleur. Seuils volontairement simples :
  * ils se lisent, se contestent et se changent ici, pas dans l'écran.
@@ -103,9 +143,28 @@ export function verdict(e) {
   const gh = (e && e.github) || {};
   const issues = Array.isArray(gh.issues) ? gh.issues : [];
   const runs = gh.runs || {};
-  if (s.erreursJs15 >= 10) rouge.push(`${s.erreursJs15} erreurs dans l'app en 15 min`);
-  else if (s.erreursJs15 > 0) orange.push(`${s.erreursJs15} erreur(s) dans l'app en 15 min`);
-  if (s.api5xx15 >= 5) rouge.push(`${s.api5xx15} pannes serveur en 15 min`);
+  // Une erreur et une panne 5xx se REMONTENT avec la clé anon, publique : dix
+  // lignes forgées faisaient sonner rouge (revue adversariale du 2026-11-06,
+  // décision de Benjamin le 2026-11-07). Le rouge exige au moins 2 COMPTES
+  // serveur distincts derrière ces lignes ; en dessous, orange, « à confirmer ».
+  // Un compte absent (lecture en échec, état d'avant) laisse le rouge jouer :
+  // dans le doute, on alerte.
+  const assez = (n) => !Number.isFinite(n) || n >= COMPTES_ROUGE_MIN;
+  // Les AVERTISSEMENTS (2026-11-07) : ce que l'app elle-même a classé `warn` — une
+  // coupure réseau (estEchecReseau), un repli. Mesuré le 07/11 : deux coupures à
+  // l'ouverture de l'app sur UN poste passaient l'écran à l'orange, avec un
+  // « Régler » qui ne pouvait rien régler. Seuls, sous COMPTES_ROUGE_MIN comptes
+  // et sous 10 lignes, ils ne colorent plus rien ; ils restent comptés (le rouge
+  // et l'orange « à confirmer » les comptent) et montrés. Un nombre absent (état d'avant, lecture en
+  // échec) : tout est erreur, comme avant.
+  const erreurs = Number(s.erreursJs15) || 0;
+  const avert = Math.min(erreurs, Math.max(0, Number(s.avertJs15) || 0));
+  if (erreurs >= 10 && assez(s.comptesErreurs15)) rouge.push(`${erreurs} erreurs dans l'app en 15 min`);
+  else if (erreurs >= 10) orange.push(`${erreurs} erreurs dans l'app en 15 min, de moins de ${COMPTES_ROUGE_MIN} comptes : à confirmer`);
+  else if (erreurs - avert > 0) orange.push(`${erreurs} erreur(s) dans l'app en 15 min`);
+  else if (avert > 0 && assez(s.comptesAvert15)) orange.push(`${avert} avertissement(s) dans l'app en 15 min (coupures réseau, replis), chez plusieurs comptes`);
+  if (s.api5xx15 >= 5 && assez(s.comptes5xx15)) rouge.push(`${s.api5xx15} pannes serveur en 15 min`);
+  else if (s.api5xx15 >= 5) orange.push(`${s.api5xx15} pannes serveur en 15 min, vues par moins de ${COMPTES_ROUGE_MIN} comptes : à confirmer`);
   else if (s.api5xx15 > 0) orange.push(`${s.api5xx15} panne(s) serveur en 15 min`);
   if (runs.deploy && runs.deploy.conclusion === "failure") rouge.push("dernier déploiement en échec");
   // Les parcours critiques (2026-11-06, _shared/parcours.js) : jugés sur l'heure
@@ -330,6 +389,14 @@ export function aFaire(d, maintenant = Date.now()) {
   const issues = gh && Array.isArray(gh.issues) ? gh.issues : [];
   const reparables = gh && Array.isArray(gh.aReparer) ? gh.aReparer : [];
   const runs = (gh && gh.runs) || {};
+  // Ce que « Régler » a lancé (suiviRelance) : la ligne le montre dès le geste,
+  // puis son résultat ; perdue ou en échec, elle le dit et rend son bouton.
+  const relances = (d && d.relances) || {};
+  const suivi = (cible) => suiviRelance(relances[cible], runs[cible], maintenant);
+  const enVol = (sr) => !!sr && (sr.etat === "attente" || sr.etat === "analyse");
+  const quoiVol = (sr, qui) => qui + (sr.etat === "attente" ? " démarre" : " analyse") + " (lancée à " + heureMinute(sr.le) + ").";
+  const quoiRate = (sr, sinon) => (!sr ? sinon : sr.etat === "perdue" ? "La relance de " + heureMinute(sr.le) + " n'est pas partie : relance-la."
+    : sr.etat === "echec" ? "L'analyse lancée à " + heureMinute(sr.le) + " a échoué : relance-la." : sinon);
   const sg = d && d.signalements;
   const signalements = sg && Array.isArray(sg.liste) ? sg.liste : [];
   const reparation = new Map(reparables.map((x) => [x.cible === "issue" ? "issue:" + x.numero : "run:" + x.cle, x]));
@@ -471,22 +538,24 @@ export function aFaire(d, maintenant = Date.now()) {
     const pire = recentes.reduce((a, x) => ((Number(x.n) || 0) > (Number(a.n) || 0) ? x : a));
     const derniere = Math.max(...recentes.map((x) => dateUtc(x.dernier)));
     const rs = runs.sentinelle;
-    const analyse = !!(rs && rs.etat && rs.etat !== "completed");
+    const sr = suivi("sentinelle");
+    const analyse = !!(rs && rs.etat && rs.etat !== "completed") || enVol(sr);
     const vue = !!(rs && rs.conclusion === "success" && dateUtc(rs.le) > derniere);
     const base = { id: "erreurs", depuis: pire.dernier, etiquette: fois + " fois",
       titre: (recentes.length === 1 ? "Une erreur : " : recentes.length + " erreurs : ") + fois + " fois en 24 h",
       reference: pire.message + (Number(pire.comptes) ? " (" + pire.comptes + " compte(s) touché(s))" : "") };
     // Une enquête ouverte a déjà sa ligne « en cours » : celle-ci ne la redirait pas.
     if (enquete) ajoute({ ...base, prio: 2, quoi: "La Sentinelle enquête." });
-    else if (analyse) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle l'analyse." });
-    else if (vue) ajoute({ ...base, prio: 2, quoi: "La Sentinelle l'a vue : rien à corriger." });
-    else ajoute({ ...base, prio: recentes.some((x) => Number(x.n) >= 10) ? 0 : 1, quoi: "La Sentinelle s'en occupe.", gestes: relancer("sentinelle") });
+    else if (analyse) ajoute({ ...base, prio: 1, enCours: true, quoi: enVol(sr) ? quoiVol(sr, "La Sentinelle") : "La Sentinelle l'analyse." });
+    else if (vue) ajoute({ ...base, prio: 2, quoi: "La Sentinelle l'a vue" + (sr && sr.etat === "faite" ? " à " + heureMinute(sr.fini) : "") + " : rien à corriger." });
+    else ajoute({ ...base, prio: recentes.some((x) => Number(x.n) >= 10) ? 0 : 1, quoi: quoiRate(sr, "La Sentinelle s'en occupe."), gestes: relancer("sentinelle") });
   }
   // Les parcours critiques en échec (2026-11-06) : une ligne par parcours, du
   // plus grave au moins grave. Le bouton lance la Sentinelle, qui lit désormais
   // les fins de parcours en échec (famille « parcours », sentinelle-detecter.mjs).
   const rsP = runs.sentinelle;
-  const analyseP = !!(rsP && rsP.etat && rsP.etat !== "completed");
+  const srP = suivi("sentinelle");
+  const analyseP = !!(rsP && rsP.etat && rsP.etat !== "completed") || enVol(srP);
   for (const p of parcoursARegler(parcoursDuVoyant(d && d.parcours))) {
     const panne = p.etat === "panne";
     const codes = Array.isArray(p.codes) && p.codes.length ? " Codes : " + p.codes.map((c) => c.code + " ×" + c.n).join(", ") + "." : "";
@@ -497,10 +566,17 @@ export function aFaire(d, maintenant = Date.now()) {
     // titreIssue) le prend en charge : une enquête voisine ne le rend pas calme.
     const surLui = issues.some((i) => !i.pr && Array.isArray(i.labels) && i.labels.includes("sentinelle") && !i.labels.includes("humain")
       && String(i.titre || "").startsWith("[SENTINELLE] parcours " + p.id + " "));
-    if (surLui) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle enquête sur ce parcours." });
-    else if (analyseP) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle l'analyse." });
     // Urgence (prio 0) : une panne CONFIRMÉE par des comptes anciens (confirmerPannes), jamais une autre.
-    else ajoute({ ...base, prio: panne && p.panneConfirmee === true && p.criticite === "critique" ? 0 : 1, quoi: "La Sentinelle enquête sur ce parcours.", gestes: relancer("sentinelle") });
+    const urgent = panne && p.panneConfirmee === true && p.criticite === "critique";
+    if (surLui) ajoute({ ...base, prio: 1, enCours: true, quoi: "La Sentinelle enquête sur ce parcours." });
+    else if (analyseP) ajoute({ ...base, prio: 1, enCours: true, quoi: enVol(srP) ? quoiVol(srP, "La Sentinelle") : "La Sentinelle l'analyse." });
+    // Analysé à la demande sans enquête ouverte : un « Régler » de plus n'y changerait
+    // rien. Rangé dans Détails jusqu'à l'oubli de la relance (RELANCE_SUIVIE_MS), sauf
+    // une panne urgente, qui garde sa place et son bouton.
+    else if (srP && srP.etat === "faite" && !urgent) ajoute({ ...base, prio: 2, quoi: "Analysé à " + heureMinute(srP.fini) + " : rien d'assez sûr pour ouvrir une enquête.",
+      gestes: gestesGh ? [{ libelle: "Relancer l'analyse", corps: { action: "relancer", cible: "sentinelle" } }] : [] });
+    else ajoute({ ...base, prio: urgent ? 0 : 1, quoi: srP && srP.etat === "faite" ? "Analysé à " + heureMinute(srP.fini) + " sans enquête ouverte : relance, ou ouvre les détails."
+      : quoiRate(srP, "La Sentinelle enquête sur ce parcours."), gestes: relancer("sentinelle") });
   }
   // La veille elle-même (2026-11-06) : sans battement frais, le téléphone ne
   // sonnera plus. Rien ne peut la relancer d'ici : le bouton mène à sa planification.
@@ -518,26 +594,31 @@ export function aFaire(d, maintenant = Date.now()) {
   // service worker 10 min après l'envoi, la ligne le dit (_shared/reception.js).
   const lr = ligneReception(d && d.reception);
   if (lr) {
+    // « Régler » ENVOIE un essai (2026-11-07) : il prouve, ou non, que le téléphone
+    // reçoit. Il ouvrait une page, et la ligne ne bougeait pas — rien ne remesurait.
     ajoute({ id: "alertes:reception", prio: 1, etiquette: "Alertes", titre: lr.titre,
-      quoi: "Ouvre PASSIO sur ton téléphone : la mise à jour lui apprend à accuser, et vérifie que les notifications y sont autorisées.",
+      quoi: "Envoie un essai à tes appareils. Ouvre d'abord PASSIO sur chacun (la mise à jour lui apprend à accuser), avec les notifications autorisées.",
       reference: borne(lr.reference, 400),
-      gestes: [{ libelle: REGLER, principal: true, ouvrir: PAGES_REGLAGE.app }] });
+      gestes: [regler({ action: "essai" }, false), { libelle: "Ouvrir PASSIO", ouvrir: PAGES_REGLAGE.app }] });
   }
   // Les pannes du serveur : la veille les lit (la Sentinelle ne lit que les erreurs de l'app).
   const pannes = Number(d && d.sante && d.sante.api5xx15) || 0;
   if (pannes > 0) {
     const rv = runs.veille;
+    const srV = suivi("veille");
     const verifiee = !!(rv && rv.conclusion === "success" && maintenant - dateUtc(rv.le) < 15 * 60e3);
-    const encours = !!(rv && rv.etat && rv.etat !== "completed");
+    const encours = !!(rv && rv.etat && rv.etat !== "completed") || enVol(srV);
     const base = { id: "serveur", etiquette: pannes + " fois", titre: "Le serveur a échoué " + pannes + " fois en 15 min" };
-    if (encours) ajoute({ ...base, prio: 1, enCours: true, quoi: "La surveillance vérifie." });
+    if (encours) ajoute({ ...base, prio: 1, enCours: true, quoi: enVol(srV) ? quoiVol(srV, "La surveillance") : "La surveillance vérifie." });
     else if (verifiee) ajoute({ ...base, prio: 2, quoi: "La surveillance vient de vérifier." });
-    else ajoute({ ...base, prio: pannes >= 5 ? 0 : 1, quoi: "La surveillance vérifie tout.", gestes: relancer("veille") });
+    else ajoute({ ...base, prio: pannes >= 5 ? 0 : 1, quoi: quoiRate(srV, "La surveillance vérifie tout."), gestes: relancer("veille") });
   }
   // La Sentinelle muette (les crons de GitHub ne sont pas une garantie). Pas si le pilote l'a mise en pause.
   const rs0 = runs.sentinelle;
   if (rs0 && rs0.le && !(gh && gh.pause) && maintenant - dateUtc(rs0.le) > SENTINELLE_MUETTE_MS) {
-    ajoute({ id: "sentinelle:muette", prio: 1, etiquette: "Machines", titre: "La Sentinelle n'a pas tourné depuis plus de 8 h", quoi: "La relance maintenant.", gestes: relancer("sentinelle") });
+    const srM = suivi("sentinelle");
+    if (enVol(srM)) ajoute({ id: "sentinelle:muette", prio: 1, enCours: true, etiquette: "Machines", titre: "La Sentinelle n'a pas tourné depuis plus de 8 h", quoi: quoiVol(srM, "La Sentinelle") });
+    else ajoute({ id: "sentinelle:muette", prio: 1, etiquette: "Machines", titre: "La Sentinelle n'a pas tourné depuis plus de 8 h", quoi: quoiRate(srM, "La relance maintenant."), gestes: relancer("sentinelle") });
   }
   // La capacité : une jauge en zone rouge est urgente, orange se prépare. Ce qui
   // s'achète se règle sur la page du fournisseur : le bouton y mène. La télémétrie,
@@ -599,8 +680,18 @@ export function aFaire(d, maintenant = Date.now()) {
   if (v && (v.couleur === "rouge" || v.couleur === "orange") && !out.some((x) => x.prio <= 1 || x.enCours)) {
     const raisons = Array.isArray(v.raisons) ? v.raisons : [];
     const premiere = String(raisons[0] || v.titre || "");
-    ajoute({ id: "voyant", prio: v.couleur === "rouge" ? 0 : 1, etiquette: "À vérifier", titre: premiere.charAt(0).toUpperCase() + premiere.slice(1), reference: raisons.slice(1).join(" · "),
-      quoi: "La Sentinelle analyse tout.", gestes: relancer("sentinelle") });
+    const base = { id: "voyant", etiquette: "À vérifier", titre: premiere.charAt(0).toUpperCase() + premiere.slice(1), reference: raisons.slice(1).join(" · ") };
+    const prio = v.couleur === "rouge" ? 0 : 1;
+    // Le bouton relance la Sentinelle, qui ne peut pas tout régler (une coupure, une
+    // lecture partielle) : vérifié sans rien trouver, l'orange ne redemande plus un
+    // geste inutile — rangé dans Détails, l'heure de la vérification dite. Le rouge
+    // garde sa place et son bouton.
+    const srF = suivi("sentinelle");
+    if (enVol(srF)) ajoute({ ...base, prio, enCours: true, quoi: quoiVol(srF, "La Sentinelle") });
+    else if (srF && srF.etat === "faite" && prio === 1) ajoute({ ...base, prio: 2, quoi: "La Sentinelle a vérifié à " + heureMinute(srF.fini) + " : rien qu'elle puisse corriger. Le voyant se recalcule toutes les 5 min.",
+      gestes: gestesGh ? [{ libelle: "Relancer l'analyse", corps: { action: "relancer", cible: "sentinelle" } }] : [] });
+    else ajoute({ ...base, prio, quoi: srF && srF.etat === "faite" ? "La Sentinelle a vérifié à " + heureMinute(srF.fini) + " sans rien trouver à corriger : ouvre les détails."
+      : quoiRate(srF, "La Sentinelle analyse tout."), gestes: relancer("sentinelle") });
   }
   // Sans jeton, ce que le bouton ferait ne peut pas se faire : la ligne le dit, au lieu de promettre.
   if (d && (d.gestesGithub === false || jetonExpire)) for (const x of out) if (x.prio <= 1 && !x.enCours && !x.gestes.length) x.quoi = "Il faut d'abord le jeton GitHub.";

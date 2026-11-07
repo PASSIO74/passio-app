@@ -439,6 +439,25 @@ test("⑫ ter service worker : APRÈS l'affichage, un accusé SANS CONTENU à l'
   assert.equal(ok.length, 1, "un accusé accepté ne repart pas");
 });
 
+// La clé PUBLIABLE (2026-11-07) : mesuré, le premier essai est parti « sans_adresse ».
+// Elle ne part qu'en `apikey` — en Bearer, la plateforme la lit comme un JWT et refuse.
+// Réinjection éprouvée : la publiable en Bearer → ce test rougit.
+test("⑫ quater service worker : une clé PUBLIABLE accuse en `apikey` seulement ; un JWT, en `apikey` et en `Authorization`", async () => {
+  const appels = [];
+  const sw = chargerSw({ fetch: (u, o) => { appels.push(o); return Promise.resolve({ status: 201 }); } });
+  const PUB = { u: ACK.u, k: "sb_publishable_Abc123_def-456XYZ" };
+  await sw.push({ type: "pilotage", titre: "Essai", pid: PID1, ack: PUB });
+  assert.equal(appels.length, 1);
+  assert.equal(appels[0].headers.apikey, PUB.k);
+  assert.equal(appels[0].headers.Authorization, undefined, "jamais la publiable en Bearer");
+  await sw.push({ type: "pilotage", titre: "Essai", pid: PID1, ack: ACK });
+  assert.equal(appels[1].headers.Authorization, "Bearer " + ACK.k);
+  // Une publiable hors forme n'est jamais appelée.
+  for (const k of ["sb_publishable_", "sb_publishable_court", "sb_secret_Abc123_def-456XYZ", "sb_publishable_Abc123 espace"]) await sw.push({ type: "pilotage", titre: "x", pid: PID1, ack: { u: ACK.u, k } });
+  assert.equal(appels.length, 2);
+  assert.equal(sw.notifs.length, 6, "l'affichage ne dépend jamais de l'accusé");
+});
+
 test("⑨ sexies l'accusé côté envoi : un pid ALÉATOIRE par rappel et l'adresse ; seuls les rappels ACCEPTÉS sont notés envoyés ; sans adresse, ni pid ni note", async () => {
   const subs = [
     { endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } },

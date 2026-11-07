@@ -93,8 +93,24 @@
     try {
       const r = await appeler(corps);
       succes((r && r.message) || "Fait.");
-      await actualiser();
+      // Ce qui est parti se VOIT sur le bouton, jusqu'à la relecture qui repeint la ligne.
+      b.textContent = "Lancé ✓";
+      await actualiser(true);
+      // Une relance ou un essai se SUIVENT : leur résultat arrive dans la minute.
+      if (corps && (corps.action === "relancer" || corps.action === "essai")) suivreRelance();
     } catch (e) { erreur("Refusé : " + e.message); b.disabled = false; b.textContent = libelle; }
+  }
+  // Une relance se SUIT (2026-11-07) : mesuré, quatre « Régler » en 70 s, quatre
+  // analyses réussies, et une ligne identique après chacun — GitHub ne liste le
+  // run que quelques secondes après l'envoi, l'analyse dure une demi-minute. Trois
+  // relectures FRAÎCHES montrent « démarre », « analyse », puis le résultat, sans
+  // rien toucher ; un nouveau geste repart de zéro.
+  const SUIVI_RELANCE_MS = [12e3, 35e3, 70e3];
+  let suiviMinuteurs = [];
+  function suivreRelance() {
+    suiviMinuteurs.forEach(clearTimeout);
+    const pas = Array.isArray(window.PILOTAGE_SUIVI_RELANCE_MS) ? window.PILOTAGE_SUIVI_RELANCE_MS : SUIVI_RELANCE_MS;
+    suiviMinuteurs = pas.map((ms) => setTimeout(() => { if (!$("app").hidden && document.visibilityState === "visible") actualiser(true); }, ms));
   }
   function boutonGeste(texte, corps, classe) {
     const b = el("button", "btn" + (classe ? " " + classe : ""), texte); b.type = "button";
@@ -344,7 +360,7 @@
     if (g.special === "retour") return boutonRetourNu(g.libelle, zone, "btn-regler");
     if (g.special === "relire") {
       const b = el("button", "btn btn-regler", g.libelle); b.type = "button";
-      b.addEventListener("click", () => actualiser());
+      b.addEventListener("click", () => actualiser(true));
       return b;
     }
     if (!g.corps || typeof g.corps !== "object" || typeof g.corps.action !== "string") return null;
@@ -442,15 +458,16 @@
   toucher($("toutRegler"), () => (aRegler.length ? aRegler.slice() : null), async (file) => {
     const b = $("toutRegler");
     b.disabled = true;
-    let faits = 0;
+    let faits = 0, relance = false;
     const refus = [];
     for (let i = 0; i < file.length; i++) {
       b.textContent = "Réglage " + (i + 1) + " sur " + file.length + "…";
-      try { await appeler(file[i]); faits++; } catch (e) { refus.push(e.message); }
+      try { await appeler(file[i]); faits++; if (file[i].action === "relancer") relance = true; } catch (e) { refus.push(e.message); }
     }
     b.disabled = false;
     // Après la relecture, qui efface le bandeau d'erreur en réussissant.
-    await actualiser();
+    await actualiser(true);
+    if (relance) suivreRelance();
     if (faits) succes(faits === 1 ? "1 problème pris en main." : faits + " problèmes pris en main.");
     if (refus.length) erreur(refus.length + " refusé" + (refus.length > 1 ? "s" : "") + " : " + refus.join(" "));
   });
@@ -1026,6 +1043,16 @@
         ? carte(a.appareils + " appareil(s) abonné(s) aux alertes", "Abonné", "Tu es prévenu quand le voyant passe au rouge, quand le site ne répond plus, et quand c'est réglé.", "vert")
         : carte("Aucun appareil abonné aux alertes", "Inactif", "Ouvre PASSIO avec le compte éditeur et active les notifications quand elles sont proposées.", "orange"));
       rendreReception(al, d.reception);
+      // L'adresse d'accusé (2026-11-07) : sans elle, rien ne se mesure — dit en FORMES.
+      const ad = a.accuse;
+      if (ad && ad.mesurable === false) al.append(carte("Accusés de réception impossibles", "Sans adresse",
+        "La fonction n'a pas d'adresse d'accusé utilisable (URL : " + (ad.url || "?") + ", clé anon : " + (ad.anon || "?") + ", clés publiables : " + (ad.publiables || "?") + ").", "orange"));
+      // Un essai À LA DEMANDE : la preuve, maintenant, que les alertes arrivent.
+      if (a.appareils) {
+        const ce = carte("Essayer les alertes", "", "Envoie une notification d'essai à tes appareils ; son accusé s'affiche ci-dessus dans la minute.");
+        bouton(ce, "Envoyer un essai maintenant", { action: "essai" });
+        al.append(ce);
+      }
       const dispo = d.disponibilite;
       al.append(carte("Veille automatique", dispo && dispo.veilleLe ? "Active" : "Pas encore",
         dispo && dispo.veilleLe ? "dernier changement noté " + ilYA(dispo.veilleLe) + " · vérifie toutes les 5 min" : "Elle démarre quand la migration « pilotage_veille » est appliquée.",
@@ -1088,13 +1115,15 @@
   // l'état d'avant : la lecture en cours finit, puis une seconde part. Et une
   // relecture ne repeint jamais sous un geste armé : son bouton « Annuler »
   // disparaîtrait ; elle attend qu'il soit parti ou annulé.
-  let aRelire = false, derniereLecture = null;
-  function relireSiAttendu() { if (aRelire && !armes.size && !enCours) { aRelire = false; actualiser(); } }
-  async function actualiser() {
-    if (enCours || armes.size) { aRelire = true; return; }
+  // `frais` : relu juste après un geste, sans le cache de GitHub de la fonction (2 min par isolat).
+  let aRelire = false, aRelireFrais = false, derniereLecture = null;
+  function relireSiAttendu() { if (aRelire && !armes.size && !enCours) { const f = aRelireFrais; aRelire = false; aRelireFrais = false; actualiser(f); } }
+  async function actualiser(frais) {
+    const fraiche = frais === true;
+    if (enCours || armes.size) { aRelire = true; aRelireFrais = aRelireFrais || fraiche; return; }
     enCours = true; $("actualiser").classList.add("tourne");
     try {
-      const d = await appeler({ action: "etat" });
+      const d = await appeler(fraiche ? { action: "etat", frais: true } : { action: "etat" });
       derniere = Date.now(); derniereLecture = d;
       if (armes.size) aRelire = true;
       else rendre(d);
@@ -1108,7 +1137,8 @@
       relireSiAttendu();
     }
   }
-  $("actualiser").addEventListener("click", actualiser);
+  // Le bouton « Actualiser » relit au frais : c'est ce que veut celui qui le touche.
+  $("actualiser").addEventListener("click", () => actualiser(true));
   // Quitter la page fait partir ce qui était armé (voir `armer`).
   function partirTout() { pageQuittee = true; [...armes].forEach((a) => a.partir()); }
   window.addEventListener("pagehide", partirTout);
