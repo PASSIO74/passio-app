@@ -9,12 +9,18 @@
 #
 # ⚠️ LE DÉPÔT EST PUBLIC, L'ARCHIVE PORTE DES DONNÉES PERSONNELLES (comptes,
 # e-mails, messages). Elle est donc CHIFFRÉE avant d'être déposée
-# (AES-256-CBC, PBKDF2 200 000 itérations). La phrase de passe est le secret
-# `SAUVEGARDE_PASSPHRASE` s'il existe ; sinon le SHA-256 hexadécimal de la clé
-# `service_role` — quelqu'un qui détient cette clé détient déjà la base entière,
-# donc ce repli n'affaiblit rien, et il n'exige aucun geste de plus.
+# Sur un dépôt public, tout compte GitHub peut TÉLÉCHARGER l'artefact : tout repose sur la clé.
 #
-# Déchiffrer (en local, jamais dans la CI) :
+# ⚠️ CIBLE (audit de sécurité du 2026-11-06, E-08, H-12) : chiffrement par CLÉ PUBLIQUE `age`, variable
+# `SAUVEGARDE_AGE_PUBLIC`. La CI sait chiffrer et personne en CI ne sait déchiffrer ; la clé privée
+# reste hors ligne, deux copies. Déchiffrer : `age -d -i cle.txt <archive>.age | tar xzf -`.
+#
+# ⚠️ REPLI, tant que la variable n'est pas posée : AES-256-CBC avec `SAUVEGARDE_PASSPHRASE`, sinon le
+# SHA-256 de `service_role`. Ce repli AFFAIBLIT : la clé d'aujourd'hui ouvre 30 jours d'archives déjà
+# publiques, données effacées comprises, et remplacer la clé rend ces archives illisibles si
+# l'ancienne n'est pas conservée. Le run le signale par un avertissement.
+#
+# Déchiffrer le repli (en local, jamais dans la CI) :
 #   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in passio-sauvegarde-<date>.tar.gz.enc \
 #     -pass pass:"$(printf %s "$SUPABASE_SERVICE_ROLE_KEY" | sha256sum | cut -d' ' -f1)" | tar xzf -
 #   node scripts/sauvegarde-donnees.js --verifier <dossier>
@@ -46,11 +52,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with: { fetch-depth: 1 }
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with: { node-version: '22' }
 
       - name: Exporter (données + comptes ; médias le dimanche)
@@ -106,10 +112,23 @@ jobs:
 
       - name: Chiffrer
         env:
+          DESTINATAIRE: ${{ vars.SAUVEGARDE_AGE_PUBLIC }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SAUVEGARDE_PASSPHRASE: ${{ secrets.SAUVEGARDE_PASSPHRASE }}
         run: |
           set -euo pipefail
+          if [ -n "${DESTINATAIRE:-}" ]; then
+            sudo apt-get install -y -qq age
+            nom="passio-sauvegarde-$(date -u +%F).tar.gz.age"
+            tar czf - sauvegarde | age -r "${DESTINATAIRE}" -o "${nom}"
+            rm -rf sauvegarde
+            ls -la "${nom}"
+            # La CI ne sait pas déchiffrer : la relecture se fait à la main, chaque mois, hors CI.
+            echo "nom=${nom}" >> "${GITHUB_ENV}"
+            echo "Archive chiffrée par clé publique : ${nom}" >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+          echo "::warning title=Sauvegarde sous cle symetrique::Poser la variable SAUVEGARDE_AGE_PUBLIC : voir l'en-tete du workflow."
           if [ -n "${SAUVEGARDE_PASSPHRASE:-}" ]; then
             PASS="${SAUVEGARDE_PASSPHRASE}"; echo "Phrase de passe : secret SAUVEGARDE_PASSPHRASE" >> "${GITHUB_STEP_SUMMARY}"
           else
@@ -130,7 +149,7 @@ jobs:
           echo "Archive chiffrée : ${nom} — déchiffrée et relue avec succès" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Déposer l'artefact (30 jours)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ env.nom }}
           path: ${{ env.nom }}

@@ -205,7 +205,7 @@ export function classer(lignes = [], options = {}) {
   }
 
   const candidates = [...groupes.values()]
-    .map((g) => ({ ...g, comptes: g.comptes.size, occurrences: bornerOccurrences(g.occurrences) }))
+    .map((g) => ({ ...g, comptes: g.comptes.size, _uids: [...g.comptes], occurrences: bornerOccurrences(g.occurrences) }))
     // ⚠️ LE TRI EST PAR NOMBRE DE COMPTES D'ABORD. Une erreur vue 200 fois par
     // UNE personne est souvent un appareil ou une extension ; vue 3 fois par
     // 3 personnes, c'est le produit. Trier par volume brut ferait travailler la
@@ -266,6 +266,22 @@ export function estDuBruitApi(ligne) {
   const e = String(ligne?.endpoint || "");
   if (/\/auth\/v1\/token/.test(e) && code >= 400 && code < 500) return true;
   return false;
+}
+
+/**
+ * Une cause en TEXTE LIBRE (erreur JS, appel refusé) n'ouvre une enquête confiée à un agent que
+ * chez au moins `min` comptes ANCIENS et distincts, comme les boutons morts. Audit de sécurité du
+ * 2026-11-06 (E-01) : trois lignes d'un compte créé pour l'occasion suffisaient à écrire la
+ * spécification d'un agent, au nom de PASSIO74. FONCTION PURE. `_uids` ne sort jamais d'ici.
+ */
+export function retenirPreuves(candidats, anciens, min = BOUTON_MORT.comptesMin) {
+  const retenus = [];
+  let sousLeSeuil = 0;
+  for (const { _uids, ...c } of candidats) {
+    const nb = (_uids || []).filter((u) => anciens.has(u)).length;
+    if (nb >= min) retenus.push(c); else sousLeSeuil++;
+  }
+  return { retenus, sousLeSeuil };
 }
 
 /** `meta` est un jsonb : PostgREST rend un objet, mais on tolère une chaîne. */
@@ -346,7 +362,7 @@ export function classerApi(lignes = [], options = {}) {
   const candidates = [...groupes.values()].map((g) => {
     const comptes = g.comptes.size;
     return {
-      ...g, comptes, occurrences: bornerOccurrences(g.occurrences),
+      ...g, comptes, _uids: [...g.comptes], occurrences: bornerOccurrences(g.occurrences),
       // Ce texte remplace la pile d'appel : c'est le seul contexte dont
       // disposera l'enquête, puisqu'aucune erreur JS n'a été levée.
       exemple: {
@@ -1117,7 +1133,7 @@ export function corpsIssue(v, c, options = {}) {
     L.push("");
   }
   L.push("1. Établir la CAUSE dans le code. Sans cause établie, ne rien corriger : commenter ce qui manque et s’arrêter.");
-  L.push("2. Corriger UNIQUEMENT dans `js/*.js`, `styles.css`, `index.html`, `sw.js` ; le verrou du point 3 UNIQUEMENT dans `tests/e2e/*.spec.js` ; la fiche du point 6 UNIQUEMENT dans `docs/sentinelle/`. Jamais `.github/`, `migrations/`, `scripts/`, `dashboard/`, ni le reste de `tests/`. La gouvernance de `deploy.yml` REFUSE la PR au-delà (ASTRA-05).");
+  L.push("2. Corriger UNIQUEMENT dans `js/*.js` (hors `js/vendor/`), `styles.css`, `index.html` ; le verrou du point 3 UNIQUEMENT dans `tests/e2e/sentinelle-*.spec.js` ; la fiche du point 6 UNIQUEMENT dans `docs/sentinelle/`. Jamais `.github/`, `migrations/`, `scripts/`, `dashboard/`, ni le reste de `tests/`. La gouvernance de `deploy.yml` REFUSE la PR au-delà (ASTRA-05).");
   L.push("3. Ajouter un verrou qui ÉCHOUE sur le défaut et passe après (réinjection).");
   L.push("4. `npm run verif` vert, suites e2e concernées vertes, avant toute PR.");
   L.push("5. Au-delà de ~60 lignes ou 2 fichiers de code (verrou et fiche non comptés), ce n’est plus une réparation : décrire la cause et laisser la main.");
@@ -1394,7 +1410,11 @@ async function principal() {
   // principe : une erreur JavaScript n'est pas plus grave qu'un envoi de
   // message refusé 798 fois. C'est ce que subissent les gens qui tranche.
   // Les boutons morts (2026-11-01) entrent dans la MÊME concurrence.
-  const candidates = [...js.candidates, ...api.candidates, ...morts.candidates]
+  const libres = [...js.candidates, ...api.candidates];
+  const uidsLibres = libres.flatMap((c) => c._uids || []);
+  const anciens = uidsLibres.length ? await lireComptesAnciens({ url, cle, uids: uidsLibres }) : new Set();
+  const preuves = retenirPreuves(libres, anciens);
+  const candidates = [...preuves.retenus, ...morts.candidates]
     .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n));
   const verdict = {
     fenetreHeures: heures,
@@ -1402,6 +1422,8 @@ async function principal() {
     ecartees: js.ecartees + api.ecartees + fusion.doublons + fusion.plafonnees,
     retenues: candidates.length,
     parFamille: { js: js.candidates.length, api: api.candidates.length, bouton: morts.candidates.length },
+    // Écartées faute de comptes anciens : un humain les voit au résumé, aucun agent ne les reçoit.
+    sousLeSeuil: preuves.sousLeSeuil,
     // Ce que chaque source a fourni : un zéro durable sur l'une d'elles se lit
     // ici, pas dans le silence du verdict (les champs existants ne changent pas).
     sources: {

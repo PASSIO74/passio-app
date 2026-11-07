@@ -318,8 +318,17 @@ const ETAPES = [
 
   { titre: "Tâches cron",
     sql: `select jobname, schedule, command from cron.job order by jobname`,
-    rendu: (r) => r.map((x) => `do $$ begin if not exists (select 1 from cron.job where jobname=${litt(x.jobname)}) then perform cron.schedule(${litt(x.jobname)}, ${litt(x.schedule)}, ${litt(x.command)}); end if; end $$;`) },
+    rendu: (r) => rendreTachesCron(r, litt) },
 ];
+
+// Une tâche qui appelle le réseau porte une URL de production en dur : recopiée telle quelle, une base
+// restaurée continuait d'agir sur la production (86 doublons de veille par 24 h mesurés, audit du
+// 2026-11-06, D-04). Elle est écartée, et DITE : sur une vraie reprise, on la repose à la main.
+function rendreTachesCron(lignes, litt) {
+  return lignes.map((x) => (/\bnet\.http_/.test(String(x.command))
+    ? `-- ÉCARTÉE : la tâche ${String(x.jobname).replace(/[^\w.-]/g, "_")} appelle le réseau (net.http_*). À reposer à la main sur une reprise, avec l'URL de la cible.`
+    : `do $$ begin if not exists (select 1 from cron.job where jobname=${litt(x.jobname)}) then perform cron.schedule(${litt(x.jobname)}, ${litt(x.schedule)}, ${litt(x.command)}); end if; end $$;`));
+}
 
 async function main() {
   const jeton = lireJeton();

@@ -149,7 +149,7 @@ test("⑥ le workflow ne contient plus l'agrégat PAR PAGE, et le périmètre ga
   assert.match(ligneTaille, /\.\[\] \| select/, "elle doit émettre une ligne par fichier");
   // `files` (périmètre) émet DÉJÀ une ligne par fichier : c'est pourquoi lui
   // n'a jamais été trompé. Le verrou l'exige, pour qu'il ne dérive pas.
-  assert.match(y, /files="\$\(gh api --paginate .*--jq '\.\[\]\.filename'\)"/, "le périmètre doit rester en une ligne par fichier");
+  assert.match(y, /files="\$\(gh api --paginate .*--jq '\.\[\] \| \.filename, \(\.previous_filename \/\/ empty\)'\)"/, "le périmètre doit rester en une ligne par fichier, chemin d'origine d'un renommage compris");
 });
 
 test("⑧ la FICHE docs/sentinelle/*.md ne compte ni en fichiers ni en lignes ; un autre doc compte", () => {

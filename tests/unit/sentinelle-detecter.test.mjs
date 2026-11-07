@@ -4,7 +4,7 @@
 import test from "node:test";
 import fs from "node:fs";
 import assert from "node:assert/strict";
-import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, estSansCompte, choisirCible, libelleApi, classerBoutons, desamorcer, dejaCorrige, titreIssue, condense, lireApi, lirePagine, CHEMINS_BOUTONS, FILTRE_PRODUCTION, estVivante, escaladeRecidive, corpsIssue, nomFiche, fichesProches, lireFiches, lireErreurs, lireErreursTelemetrie, fusionnerErreursJs, CHEMIN_ERREURS_TELEMETRIE, etatDeploiement, ATTENTE_DEPLOIEMENT_MS } from "../../scripts/sentinelle-detecter.mjs";
+import { retenirPreuves, classer, empreinte, estDuBruit, classerApi, estDuBruitApi, estSansCompte, choisirCible, libelleApi, classerBoutons, desamorcer, dejaCorrige, titreIssue, condense, lireApi, lirePagine, CHEMINS_BOUTONS, FILTRE_PRODUCTION, estVivante, escaladeRecidive, corpsIssue, nomFiche, fichesProches, lireFiches, lireErreurs, lireErreursTelemetrie, fusionnerErreursJs, CHEMIN_ERREURS_TELEMETRIE, etatDeploiement, ATTENTE_DEPLOIEMENT_MS } from "../../scripts/sentinelle-detecter.mjs";
 import os from "node:os";
 import path from "node:path";
 
@@ -1140,4 +1140,18 @@ test("bouton (contre-revue 2026-11-03, 2e passage) : chaque lecture de compte po
   globalThis.fetch = async (url, init) => { signal = init.signal; return { ok: false, json: async () => ({}) }; };
   try { await SD.lireComptesAnciens({ url: "https://x.supabase.co", cle: "k", uids: [U(1)] }); } finally { globalThis.fetch = avant; }
   assert.ok(signal && typeof signal.aborted === "boolean", "un AbortSignal est passé à fetch");
+});
+
+// ═══ Audit de sécurité du 2026-11-06, E-01 : un compte jetable n'écrit plus la spécification d'un agent ═══
+test("trois lignes d'un compte neuf ne font pas une enquête ; trois comptes anciens, oui ; et `_uids` ne sort pas", () => {
+  const { candidates } = classer([1, 2, 3].map((i) => ({ message: "TypeError: x is not a function", uid: "neuf", created_at: `2026-11-06T10:0${i}:00Z` })));
+  assert.equal(candidates.length, 1, "le classement le retient");
+  assert.deepEqual(candidates[0]._uids, ["neuf"]);
+  const r = retenirPreuves(candidates, new Set());
+  assert.deepEqual(r, { retenus: [], sousLeSeuil: 1 });
+  const trois = classer(["a", "b", "c"].map((u) => ({ message: "TypeError: y is not a function", uid: u, created_at: "2026-11-06T10:00:00Z" }))).candidates;
+  assert.equal(retenirPreuves(trois, new Set(["a", "b"])).retenus.length, 0, "deux anciens ne suffisent pas");
+  const ok = retenirPreuves(trois, new Set(["a", "b", "c"]));
+  assert.equal(ok.retenus.length, 1);
+  assert.ok(!("_uids" in ok.retenus[0]), "les identifiants ne partent ni dans le verdict ni dans le résumé public");
 });

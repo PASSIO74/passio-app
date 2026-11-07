@@ -153,7 +153,8 @@ jobs:
           # 2026-09-09 sur la PR #290 (470 fichiers). L'API « List pull request
           # files » n'a pas ce plafond : elle pagine, et c'est ce que le message
           # d'erreur de GitHub recommande lui-meme.
-          files="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/files" --jq '.[].filename')"
+          # Un renommage : le chemin d'ORIGINE compte autant que le chemin d'arrivée (E-15).
+          files="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/files" --jq '.[] | .filename, (.previous_filename // empty)')"
           if [ -z "${files}" ]; then
             echo "::error title=Perimetre illisible::La liste des fichiers de la PR #${pr} est vide ou n'a pas pu etre lue. La garde refuse plutot que de supposer un perimetre non critique."
             exit 1
@@ -209,13 +210,17 @@ jobs:
                 # Un sous-dossier de docs/sentinelle/ n'est pas une fiche : hors périmètre,
                 # comme il est hors exclusion du comptage plus bas (les deux vont ensemble).
                 docs/sentinelle/*/*) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
-                js/*.js|styles.css|index.html|sw.js|tests/e2e/*.spec.js|docs/sentinelle/*.md) ;;
+                # `js/*.js` matcherait aussi js/vendor/x.js : `*` traverse les / dans un `case`.
+                js/vendor/*) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
+                # Le verrou se limite au nommage `sentinelle-*` : `authz-critical` et ses aides reçoivent la
+                # clé de production au push, et une réparation automatique ne les touche pas (E-04).
+                js/*.js|styles.css|index.html|tests/e2e/sentinelle-*.spec.js|docs/sentinelle/*.md) ;;
                 *) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
               esac
             done <<< "${files}"
             if [ -n "${hors_perimetre}" ]; then
-              echo "::error title=Perimetre de la sentinelle depasse::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche des fichiers hors du perimetre autorise (js/*.js, styles.css, index.html, sw.js, tests/e2e/*.spec.js, docs/sentinelle/*.md) : "$'\n'"${hors_perimetre}Elle ne sera ni deployee ni fusionnee automatiquement."
-              refuser_sentinelle "Périmètre dépassé : la PR touche des fichiers hors de js/*.js, styles.css, index.html, sw.js, tests/e2e/*.spec.js, docs/sentinelle/*.md :"$'\n\n'"${hors_perimetre}"
+              echo "::error title=Perimetre de la sentinelle depasse::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche des fichiers hors du perimetre autorise (js/*.js hors js/vendor, styles.css, index.html, tests/e2e/sentinelle-*.spec.js, docs/sentinelle/*.md) : "$'\n'"${hors_perimetre}Elle ne sera ni deployee ni fusionnee automatiquement."
+              refuser_sentinelle "Périmètre dépassé : la PR touche des fichiers hors de js/*.js, styles.css, index.html, tests/e2e/sentinelle-*.spec.js, docs/sentinelle/*.md :"$'\n\n'"${hors_perimetre}"
               exit 1
             fi
             # ⚠️ ASTRA-05, second étage (2026-09-15) : l'issue dit aussi « au-delà
@@ -262,7 +267,8 @@ jobs:
           critical=false
           while IFS= read -r file; do
             case "${file}" in
-              .github/*|migrations/*|dashboard/server/auth.js|dashboard/server/config.js|dashboard/server/repair.js|dashboard/server/sentinel.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js)
+              # Tout ce qui s'exécute avec un secret, écrit ce qui part en production ou juge la PR (E-05).
+              .github/*|.claude/*|CLAUDE.md|AGENTS.md|migrations/*|supabase/*|netlify/*|netlify.toml|_headers|sw.js|js/vendor/*|package.json|package-lock.json|dashboard/package.json|dashboard/package-lock.json|dashboard/server/*|playwright.config.js|tests/ci/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|scripts/audit-*.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js|scripts/schema-executable.js|scripts/sentinelle-detecter.mjs|scripts/veille-production.mjs|scripts/digest.mjs|scripts/moderation-alerte.mjs|scripts/mesure-passions.js|scripts/controle-realtime.mjs|scripts/purge-e2e-rest.js|scripts/verifier-prerequis-fonctions.mjs|scripts/build.js)
                 critical=true ;;
             esac
           done <<< "${files}"
@@ -342,9 +348,9 @@ jobs:
     # Aucun secret, aucun accès à la prod, aucun navigateur : ~40 s. Ce job n'a
     # aucune raison d'attendre quoi que ce soit, ni d'être attendu par les tests.
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
@@ -626,6 +632,8 @@ jobs:
   test-prod:
     name: Suites production (comptes réels)
     runs-on: ubuntu-latest
+    # 360 min par défaut : un run figé tenait le verrou global et bloquait tout déploiement (E-20).
+    timeout-minutes: 45
     # ⚠️ LE VERROU DE LA PROD SUPABASE, ET IL EST GLOBAL AU DÉPÔT.
     # Ce job — et lui seul — crée de vrais comptes sur la prod, et son
     # `global-teardown` purge TOUS les comptes `%@passio-e2e.test`. Deux
@@ -665,16 +673,17 @@ jobs:
       # verrou : ailleurs, elle effacerait les comptes de celui-ci en plein vol.
       PASSIO_E2E_PROD: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
       - name: Installer Playwright
         run: |
-          npm install --no-save @playwright/test
-          npx playwright install --with-deps chromium
+          # Le lockfile, pas « la dernière » : ce code reçoit la clé de production (E-07).
+          npm ci --ignore-scripts
+          npx --no-install playwright install --with-deps chromium
 
       # ⚠️ LE SECRET EST PORTÉ PAR LES SEULES ÉTAPES QUI S'EN SERVENT, JAMAIS PAR
       # LE JOB. Corrigé le 2026-08-30 (audit de la PR #222) : posé au niveau du
@@ -762,16 +771,17 @@ jobs:
         # écrivent pas (piège documenté dans CLAUDE.md à propos d'interactions.spec).
         shard: [1, 2, 3, 4, 5, 6]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
       - name: Installer Playwright
         run: |
-          npm install --no-save @playwright/test
-          npx playwright install --with-deps chromium
+          # Le lockfile, pas « la dernière » : ce code reçoit la clé de production (E-07).
+          npm ci --ignore-scripts
+          npx --no-install playwright install --with-deps chromium
 
       - name: Lancer les tests
         run: npx playwright test --project=local --shard=${{ matrix.shard }}/6
@@ -789,16 +799,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
       - name: Installer Playwright (WebKit)
         run: |
-          npm install --no-save @playwright/test
-          npx playwright install --with-deps webkit
+          npm ci --ignore-scripts
+          npx --no-install playwright install --with-deps webkit
 
       - name: Lancer les suites WebKit
         env:
@@ -814,16 +824,17 @@ jobs:
     # le drain télémétrique et le contexte passionnel future-only réellement
     # concaténé dans le bundle de production.
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
       - name: Installer Playwright
         run: |
-          npm install --no-save @playwright/test
-          npx playwright install --with-deps chromium
+          # Le lockfile, pas « la dernière » : ce code reçoit la clé de production (E-07).
+          npm ci --ignore-scripts
+          npx --no-install playwright install --with-deps chromium
 
       - name: Gates artefact production
         env:
@@ -893,11 +904,11 @@ jobs:
     needs: [governance, audits, test-prod, test-local, gates-artefact, test-webkit]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Même runtime que les tests : un artefact validé sous Node 22 ne doit pas
       # être reconstruit sous une version implicite différente au déploiement.
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
@@ -909,9 +920,14 @@ jobs:
           # sw.js et release.json sont générés par build.js — ne pas les recopier
           cp manifest.json _headers icon-192.png icon-512.png dist/
 
+      # Ces trois outils écrivent ce qui part en production, et aucun test ne passe après eux : leurs
+      # versions viennent du lockfile, jamais de « la dernière » publiée (E-07).
+      - name: Outils de minification figés par le lockfile
+        run: npm ci --ignore-scripts
+
       - name: Minify index.html (fallback sur le fichier brut en cas d'erreur)
         run: |
-          npx --yes html-minifier-terser \
+          npx --no-install html-minifier-terser \
             --collapse-whitespace \
             --remove-comments \
             --minify-css true \
@@ -922,20 +938,17 @@ jobs:
 
       - name: Minify app.js (fallback sur le fichier brut en cas d'erreur)
         run: |
-          npx --yes terser dist/app.js -o dist/app.min.js --compress --mangle \
+          npx --no-install terser dist/app.js -o dist/app.min.js --compress --mangle \
           && mv dist/app.min.js dist/app.js \
           || echo "Minification app.js échouée, déploiement du fichier brut"
 
       - name: Minify styles.css (fallback sur le fichier brut en cas d'erreur)
         run: |
-          npx --yes clean-css-cli -o dist/styles.min.css dist/styles.css \
+          npx --no-install clean-css-cli -o dist/styles.min.css dist/styles.css \
           && mv dist/styles.min.css dist/styles.css \
           || echo "Minification styles.css échouée, déploiement du fichier brut"
 
-      - name: Deploy to Netlify
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
+      - name: Installer netlify-cli (sans le jeton dans l'environnement)
         run: |
           # ⚠️ NE PAS REVENIR À `npx --yes netlify-cli@…` (2026-09-09).
           # Le 2026-09-09 vers 15 h, `@netlify/build@36.4.8` a été publié en
@@ -959,9 +972,17 @@ jobs:
           { "name": "passio-netlify-runner", "private": true, "overrides": { "@netlify/build": "36.4.7" } }
           JSON
           npm install --prefix "$RUNNER_NETLIFY" --no-audit --no-fund netlify-cli@27.1.2
-          NETLIFY_BIN="$RUNNER_NETLIFY/node_modules/.bin/netlify"
+
+      - name: Deploy to Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
+        run: |
+          set -euo pipefail
+          NETLIFY_BIN="${RUNNER_TEMP:-/tmp}/netlify-cli/node_modules/.bin/netlify"
           "$NETLIFY_BIN" --version
-          "$NETLIFY_BIN" deploy --prod --dir "$GITHUB_WORKSPACE/dist" --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
+          # La CLI lit NETLIFY_AUTH_TOKEN : le jeton ne passe plus sur une ligne de commande.
+          "$NETLIFY_BIN" deploy --prod --dir "$GITHUB_WORKSPACE/dist" --site "$NETLIFY_SITE_ID"
 
   # ⚠️ RETOUR SUR L'ISSUE AU DÉPLOIEMENT (A7, 2026-09-18). `Closes #n` ferme
   # l'issue à la FUSION — c'est ce qui débloque « une enquête à la fois », on le
@@ -1077,9 +1098,9 @@ jobs:
     needs: [governance, audits]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
 
@@ -1091,10 +1112,7 @@ jobs:
           # sw.js et release.json sont générés par build.js — ne pas les recopier
           cp manifest.json _headers icon-192.png icon-512.png dist/
 
-      - name: Deploy preview Netlify
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
+      - name: Installer netlify-cli (sans le jeton dans l'environnement)
         run: |
           # ⚠️ NE PAS REVENIR À `npx --yes netlify-cli@…` (2026-09-09).
           # Le 2026-09-09 vers 15 h, `@netlify/build@36.4.8` a été publié en
@@ -1118,6 +1136,14 @@ jobs:
           { "name": "passio-netlify-runner", "private": true, "overrides": { "@netlify/build": "36.4.7" } }
           JSON
           npm install --prefix "$RUNNER_NETLIFY" --no-audit --no-fund netlify-cli@27.1.2
-          NETLIFY_BIN="$RUNNER_NETLIFY/node_modules/.bin/netlify"
+
+      - name: Deploy preview Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
+        run: |
+          set -euo pipefail
+          NETLIFY_BIN="${RUNNER_TEMP:-/tmp}/netlify-cli/node_modules/.bin/netlify"
           "$NETLIFY_BIN" --version
-          "$NETLIFY_BIN" deploy --dir "$GITHUB_WORKSPACE/dist" --alias "pr-${{ github.event.number }}" --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
+          # La CLI lit NETLIFY_AUTH_TOKEN : le jeton ne passe plus sur une ligne de commande.
+          "$NETLIFY_BIN" deploy --dir "$GITHUB_WORKSPACE/dist" --alias "pr-${{ github.event.number }}" --site "$NETLIFY_SITE_ID"
