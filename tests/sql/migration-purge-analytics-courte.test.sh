@@ -404,17 +404,24 @@ nouvelle_base m_concurrence
 # Un DELETE qui tient ses verrous 1,5 s (purge-compte, par exemple) : la migration
 # demande SHARE, attend sa fin, puis s'applique — sans interblocage.
 psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 \
-  -c "begin; delete from public.analytics_events where properties->>'cas' = 'A1_edge_2h05'; select pg_sleep(1.5); commit;" >/dev/null 2>&1 &
+  -c "begin; delete from public.analytics_events where properties->>'cas' = 'A1_edge_2h05'; select pg_sleep(2); commit;" >/dev/null 2>&1 &
 ecrivain=$!
-sleep 0.4
-t0="$(date +%s%N)"
+# On ne devine pas avec un `sleep` : on attend de VOIR le verrou de l'écrivain
+# (un exécuteur lent ferait sinon passer la migration la première, à tort).
+tient=0
+for _ in $(seq 1 100); do
+  if [ "$(Q "select count(*) from pg_locks l join pg_class c on c.oid = l.relation
+             where c.relname = 'analytics_events' and l.mode = 'RowExclusiveLock' and l.granted and l.pid <> pg_backend_pid()")" != "0" ]; then tient=1; break; fi
+  sleep 0.05
+done
+verif "⑩ l'écrivain tient ses verrous quand la migration part" "$tient" "1"
 sortie="$(FICHIER "$MIGRATION" || true)"
-t1="$(date +%s%N)"
 if wait "$ecrivain"; then code=0; else code=$?; fi
 verif "⑩ l'écrivain concurrent a fini sans erreur (aucun interblocage)" "$code" "0"
 verdict_ok "⑩ la migration, après l'écrivain" "$sortie"
-verif "⑩ elle a ATTENDU le verrou (≥ 0,8 s)" "$(( (t1 - t0) / 1000000 >= 800 ))" "1"
-verif "⑩ … et purgé ce qui restait : 2 lignes edge_* (la 3ᵉ, effacée par l'écrivain), 3 notes" \
+# L'ordre se PROUVE par ce que la migration a lu : la ligne que l'écrivain a
+# effacée n'était plus là — elle a donc attendu son COMMIT (pas une mesure de temps).
+verif "⑩ elle a attendu l'écrivain, puis purgé ce qui restait : 2 lignes edge_* (la 3ᵉ, effacée par lui), 3 notes" \
   "$(printf '%s\n' "$sortie" | grep -c '|edge_\* : 2 · notes : 3 · restent 13 lignes (')" "1"
 
 echo "Banc purge-analytics-courte : $ok OK, $ko échec(s)"
