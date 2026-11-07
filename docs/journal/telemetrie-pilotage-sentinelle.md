@@ -692,6 +692,14 @@ Attendre ne coûte rien en soi. Le vrai défaut de la file au niveau du run : ch
   - La limite des 100 places n'a pas été éprouvée, ni un run figé en tête de file : #162 n'était pas dans ce cas. Il ne bloquerait que son issue.
 - **Runs** (ils restent sous « banc-cc » dans Actions le temps de la contre-revue) : poussées `r-single`, B 41845387846 ; `r-max`, C 41845457967 ; `j-single`, C 41845457805 ; `j-max`, C 41845457792 ; événements `p-actuel-rmax` et `p-serre-jmax`. Les 52 runs de `p-actuel-rsingle` et `p-serre-rmax` sont supprimés, leurs chiffres sont dans le tableau.
 
+## Audit de sécurité du 2026-11-06 : règles à ne pas rouvrir sans relire
+
+- **Le pilotage local tient `service_role`.** Boucle locale par défaut (`DASH_HOST`), jamais `trust proxy: true`, barrière d'hôte et d'origine (`dashboard/server/barriere.js`), aucun secret aux processus enfants (`server/env-enfant.js`).
+- **Le worker IA est inactif par défaut.** `PASSIO_AI_WORKER=on` et un commit signé par une clé de `.passio/ai-worker/signataires` (`aiworker-garde.mjs`). L'agent n'a ni shell ni MCP, et `scripts/` lui est interdit : le worker exécute ensuite ces scripts depuis le worktree.
+- **Aucun jeton personnel dans le job qui exécute le travail de l'agent**, donc pas d'auto-fusion (`publier` de `claude-code.yml`, gate `audit-workflows`). Une enquête sur du texte libre exige 3 comptes de plus de 7 jours (`retenirPreuves`). Le jeton de la Sentinelle ne se régénère avec les droits PR qu'après relecture de ce point.
+- **`npx --yes`, `npm install --no-save`, `version: latest` et une action sans SHA sont refusés** par le gate : ces outils écrivent ce qui part en production, ou reçoivent une clé.
+- **Une erreur anonyme ne réveille aucun agent** : sans `user_id`, une alerte reste en `warn` (`alerts.js`), car `severity` est écrit par le client.
+
 ## 🧱 UNE INSTALLATION FIGÉE TENAIT LA CHAÎNE SIX HEURES — CHAQUE ESSAI A SA BORNE, CHAQUE JOB LA SIENNE (2026-11-06)
 
 Le 06/11 sur la PR #726 (run 42174403472), la tranche 1/6 de `test-local` est restée 52 min dans « Installer Playwright », avant son premier test : `apt-get update` (la partie `--with-deps`) n'a plus rien reçu de `azure.archive.ubuntu.com` après 06:26:49. Aucun des jobs de `deploy.yml` qui installent Playwright n'avait de borne, sauf `test-webkit` (25 min) : GitHub l'aurait laissée tourner 360 min, la PR et le déploiement de `main` avec. Il a fallu annuler le run, puis relancer les jobs annulés.
@@ -844,11 +852,3 @@ Non établi, mesuré et laissé tel quel : **sur WebKit Windows, environ un run 
 - `bornes-ci` : faux `timeout` en tête du PATH, délégué qui ne borne plus (4 rouges sur 4).
 
 **À savoir pour mesurer** : le `node_modules` à la racine du dépôt est partagé. Un worktree qui s'y relie par jonction subit le `npm install` d'une autre session : le 07/11, passage à Playwright 1.65 en pleine mesure, 25 puis 72 faux rouges (« Executable doesn't exist », révision 1254). `npm ci` dans le worktree isole la mesure.
-
-## Audit de sécurité du 2026-11-06 : règles à ne pas rouvrir sans relire
-
-- **Le pilotage local tient `service_role`.** Boucle locale par défaut (`DASH_HOST`), jamais `trust proxy: true`, barrière d'hôte et d'origine (`dashboard/server/barriere.js`), aucun secret aux processus enfants (`server/env-enfant.js`).
-- **Le worker IA est inactif par défaut.** `PASSIO_AI_WORKER=on` et un commit signé par une clé de `.passio/ai-worker/signataires` (`aiworker-garde.mjs`). L'agent n'a ni shell ni MCP, et `scripts/` lui est interdit : le worker exécute ensuite ces scripts depuis le worktree.
-- **Aucun jeton personnel dans le job qui exécute le travail de l'agent**, donc pas d'auto-fusion (`publier` de `claude-code.yml`, gate `audit-workflows`). Une enquête sur du texte libre exige 3 comptes de plus de 7 jours (`retenirPreuves`). Le jeton de la Sentinelle ne se régénère avec les droits PR qu'après relecture de ce point.
-- **`npx --yes`, `npm install --no-save`, `version: latest` et une action sans SHA sont refusés** par le gate : ces outils écrivent ce qui part en production, ou reçoivent une clé.
-- **Une erreur anonyme ne réveille aucun agent** : sans `user_id`, une alerte reste en `warn` (`alerts.js`), car `severity` est écrit par le client.
