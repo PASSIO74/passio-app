@@ -124,15 +124,22 @@ const faux = {
   // Le délai entre les `pkill` et la réparation est journalisé, pas attendu.
   sleep: 'echo "sleep $*" >> "$LOG"\nexit 0',
   // Le faux timeout journalise SES arguments (la borne réelle), puis délègue au VRAI
-  // timeout avec une borne de 0,3 s : c'est le vrai qui coupe l'essai figé.
-  timeout: 'echo "timeout $*" >> "$LOG"\nshift 2\nexec "$VRAI_TIMEOUT" --kill-after=1s 0.3s "$@"',
+  // timeout : c'est le vrai qui coupe l'essai figé, avec une borne de 0,3 s.
   // SCENARIO="fige,ok" : comportement du n-ième appel. `fige` ne rend jamais la main.
-  npx: [
+  // ⚠️ L'ESSAI SE COMPTE ICI, ET SEUL `fige` EST BORNÉ COURT (2026-11-07). Tout se
+  // faisait dans le faux `npx`, donc sous les 0,3 s : sur Windows, démarrer un bash
+  // sous charge les dépasse. Six exécutions en parallèle : 18 rouges sur 18, jusqu'à
+  // un essai `ok` coupé, ou un essai tué avant d'avoir été compté.
+  timeout: [
+    'echo "timeout $*" >> "$LOG"',
+    'shift 2',
     'n=$(( $(cat "$COMPTEUR" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$COMPTEUR"',
-    'IFS=, read -ra plan <<< "$SCENARIO"; quoi="${plan[$((n-1))]:-ok}"',
-    'echo "npx $* :: essai $n :: $quoi" >> "$LOG"',
-    'case "$quoi" in ok) exit 0 ;; echec) exit 1 ;; fige) exec "$VRAI_SLEEP" 30 ;; esac',
+    'IFS=, read -ra plan <<< "$SCENARIO"; export QUOI="${plan[$((n-1))]:-ok}"',
+    'echo "$* :: essai $n :: $QUOI" >> "$LOG"',
+    'if [ "$QUOI" = fige ]; then borne=0.3s; else borne=20s; fi',
+    'exec "$VRAI_TIMEOUT" --kill-after=1s "$borne" "$@"',
   ].join("\n"),
+  npx: 'case "$QUOI" in ok) exit 0 ;; echec) exit 1 ;; fige) exec "$VRAI_SLEEP" 30 ;; esac',
 };
 for (const [nom, corps] of Object.entries(faux)) {
   fs.writeFileSync(path.join(BAC, "bin", nom), "#!/usr/bin/env bash\n" + corps + "\n");
