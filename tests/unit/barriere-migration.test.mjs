@@ -412,3 +412,17 @@ test("④ la migration R25 déclare ses deux prérequis, et le client du dépôt
   const app08 = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
   for (const m of motifs) assert.ok(app08.includes('event: "' + m + '"'), "le client ne lie pas « " + m + " »");
 });
+test("④ la migration RV-38 (épingle) déclare son prérequis, et le client du dépôt le porte (app-04, dans app.js)", () => {
+  const sql = readFileSync(new URL("../../migrations/migration_epingle_commentaire_2026-11-05.sql", import.meta.url), "utf8");
+  const motifs = B.prerequisClient(sql);
+  assert.deepEqual(motifs, ["comment_interactions:epingle-du-fil"]);
+  // Le client lecteur PAR FIL et par propriétaire : l'ancien appliquait une épingle par son
+  // seul `comment_id` — la migration ne doit pas s'appliquer tant qu'il est servi.
+  const app04 = readFileSync(new URL("../../js/app-04-comments-shop.js", import.meta.url), "utf8");
+  assert.ok(app04.includes('"' + motifs[0] + '"'), "app-04 ne porte plus le littéral « " + motifs[0] + " »");
+  // app-04 est dans le bloc BUILD:APP : le motif se lit dans app.js, le bundle servi.
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  const debut = html.indexOf("<!-- BUILD:APP-START"), fin = html.indexOf("<!-- BUILD:APP-END -->");
+  const balise = html.indexOf('<script src="js/app-04-comments-shop.js"></script>');
+  assert.ok(debut > 0 && fin > debut && balise > debut && balise < fin, "app-04 n'est plus dans le bloc app : le motif ne serait plus dans app.js");
+});
