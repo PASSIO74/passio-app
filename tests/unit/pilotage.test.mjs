@@ -1289,15 +1289,44 @@ test("㉿⑲ les appels mesurés : leurs notes sous systeme:appels, au plus NOTE
   assert.match(l, /const \{ data: appels, error: e3 \} = await lireNotes\(UID_APPELS, FENETRE_APPELS_MS, NOTES_APPELS_MAX\);\s*if \(e3\) throw e3;/, "une lecture en échec lève : la réception devient « non lue », jamais calme");
   assert.match(l, /const notesRappels = \(\(rappels \|\| \[\]\) as Note\[\]\)\.slice\(0, NOTES_RAPPELS_MAX\);/);
   assert.match(l, /const notesAppels = \(\(appels \|\| \[\]\) as Note\[\]\)\.slice\(0, NOTES_APPELS_MAX\);/);
-  assert.match(l, /const envois = \[\.\.\.\(alertes \|\| \[\]\), \.\.\.notesRappels, \.\.\.notesAppels\] as Note\[\];/);
-  assert.match(l, /const \[r, a\] = await Promise\.all\(\[parPaquets\(pidsDes\(notesRappels\)\), parPaquets\(pidsDes\(notesAppels\)\)\]\)/, "deux lectures À PART, chacune à son taux : un appelé qui noie SON pid ne rend pas les rappels partiels");
+  // (2026-11-07 : les notifications sociales s'y ajoutent, à part — ㉿⑳.)
+  assert.match(l, /const envois = \[\.\.\.\(alertes \|\| \[\]\), \.\.\.notesRappels, \.\.\.notesAppels, \.\.\.notesNotifs\] as Note\[\];/);
+  assert.match(l, /const \[r, a, n\] = await Promise\.all\(\[parPaquets\(pidsDes\(notesRappels\)\), parPaquets\(pidsDes\(notesAppels\)\), parPaquets\(pidsDes\(notesNotifs\)\)\]\)/, "des lectures À PART, chacune à son taux : un appelé qui noie SON pid ne rend pas les rappels partiels");
   assert.match(l, /if \(error\) throw error;\s*if \(\(data \|\| \[\]\)\.length >= PLAFOND_PAQUET\) plein = true;/);
   assert.match(l, /const tronqueAppels = \(appels \|\| \[\]\)\.length > NOTES_APPELS_MAX \|\| a\.plein;/);
-  assert.match(l, /return bilanReception\(\{ envois, accuses, maintenant, tronqueRappels, tronqueAppels, appelsActifs: APPELS_ACTIFS \}\);/, "appels coupés : l'écran le dit, au lieu de « 0 appel mesuré »");
+  assert.match(l, /return bilanReception\(\{ envois, accuses, maintenant, tronqueRappels, tronqueAppels, appelsActifs: APPELS_ACTIFS, tronqueNotifs, notifsLimitees \}\);/, "appels coupés : l'écran le dit, au lieu de « 0 appel mesuré »");
   assert.match(fn, /import \{[^}]*\bFENETRE_APPELS_MS, UID_APPELS, NOTES_RAPPELS_MAX, NOTES_APPELS_MAX\b[^}]*\} from "\.\.\/_shared\/reception\.js";/);
   assert.match(fn, /import \{ APPELS_ACTIFS \} from "\.\.\/_shared\/appels\.js";/, "l'interrupteur lu là où notify-call le lit : une seule source");
-  // L'auteur lu est celui qu'écrit notify-call : une seule constante, jamais deux noms.
-  assert.match(fs.readFileSync("supabase/functions/_shared/appels.js", "utf8"), /\.insert\(\{ user_id: UID_APPELS, event: EVT_ENVOI, properties: \{ genre: GENRE_APPEL, pids: \[pid\], acceptes: sent \} \}\)/);
+  // L'auteur lu est celui qu'écrit notify-call : une seule constante, jamais deux noms
+  // (2026-11-07 : une table `MESURES`, un auteur par type mesuré — ㉿⑳ pour les notifications).
+  const ap = fs.readFileSync("supabase/functions/_shared/appels.js", "utf8");
+  assert.match(ap, /call: Object\.freeze\(\{ genre: GENRE_APPEL, auteur: UID_APPELS, mesure: appelMesure \}\),/);
+  assert.match(ap, /: \{ genre: GENRE_APPEL, pids: \[pid\], acceptes: sent \};/);
+  assert.match(ap, /\.insert\(\{ user_id: m\.auteur, event: EVT_ENVOI, properties \}\)/);
+});
+
+// Les NOTIFICATIONS SOCIALES mesurées (2026-11-07, une sur vingt). Réinjections
+// éprouvées : lire leurs notes sans plafond → ㉿⑳ rougit ; mêler leurs pid aux
+// paquets des appels → ㉿⑳ rougit ; rendre « partiel » une lecture limitée par le
+// volume → ㉿⑳ rougit ; oublier `notifsLimitees` → ㉿⑳ rougit ; avaler l'erreur de
+// lecture → ㉿⑳ rougit ; un autre auteur que celui qu'écrit notify-call → ㉿⑳ rougit.
+test("㉿⑳ les notifications sociales mesurées : leurs notes sous systeme:notifs, les NOTES_NOTIFS_MAX plus récentes (et une de plus pour le savoir), leurs accusés par paquets À PART — au-delà, la fenêtre se raccourcit et le dit (jamais « partiel ») ; seul un paquet plein rend le taux partiel ; une lecture en échec n'est jamais calme", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const l = fn.slice(fn.indexOf("async function lireReception"), fn.indexOf("async function lireEtatMemorise"));
+  assert.match(l, /const \{ data: notifs, error: e4 \} = await lireNotes\(UID_NOTIFS, FENETRE_NOTIFS_MS, NOTES_NOTIFS_MAX\);\s*if \(e4\) throw e4;/, "une lecture en échec lève : la réception devient « non lue », jamais calme");
+  assert.match(l, /const notesNotifs = \(\(notifs \|\| \[\]\) as Note\[\]\)\.slice\(0, NOTES_NOTIFS_MAX\);/, "les plus récentes (la lecture est triée par date décroissante), jamais plus que le plafond");
+  assert.match(l, /const envois = \[\.\.\.\(alertes \|\| \[\]\), \.\.\.notesRappels, \.\.\.notesAppels, \.\.\.notesNotifs\] as Note\[\];/);
+  assert.match(l, /const \[r, a, n\] = await Promise\.all\(\[parPaquets\(pidsDes\(notesRappels\)\), parPaquets\(pidsDes\(notesAppels\)\), parPaquets\(pidsDes\(notesNotifs\)\)\]\)/, "trois lectures À PART : un destinataire qui noie SON pid ne rend partiel que son genre");
+  assert.match(l, /accuses = accuses\.concat\(r\.lus, a\.lus, n\.lus\);/);
+  assert.match(l, /const tronqueNotifs = n\.plein;/, "seul un paquet plein rend le taux partiel");
+  assert.doesNotMatch(l, /tronqueNotifs = \(notifs/, "le volume ne rend pas « partiel » : il raccourcit la fenêtre");
+  assert.match(l, /const notifsLimitees = \(notifs \|\| \[\]\)\.length > NOTES_NOTIFS_MAX;/, "une note de plus que le plafond : la fenêtre est limitée, et le bilan dit depuis quand");
+  assert.match(l, /return bilanReception\(\{ envois, accuses, maintenant, tronqueRappels, tronqueAppels, appelsActifs: APPELS_ACTIFS, tronqueNotifs, notifsLimitees \}\);/);
+  assert.match(fn, /import \{[^}]*\bFENETRE_NOTIFS_MS, UID_NOTIFS, NOTES_NOTIFS_MAX\b[^}]*\} from "\.\.\/_shared\/reception\.js";/);
+  // L'auteur lu est celui qu'écrit notify-call (_shared/appels.js) : une seule constante.
+  const ap = fs.readFileSync("supabase/functions/_shared/appels.js", "utf8");
+  assert.match(ap, /notif: Object\.freeze\(\{ genre: GENRE_NOTIF, auteur: UID_NOTIFS, mesure: notifMesuree \}\),/);
+  assert.match(ap, /\? \{ genre: GENRE_NOTIF, pids: \[pid\], acceptes: sent, kind: genreNoteNotif\(charge\.kind\) \}/);
 });
 
 test("㉿⑩ « À faire » : une alerte NON reçue a sa ligne et son bouton vers l'application ; une alerte reçue, aucune", () => {

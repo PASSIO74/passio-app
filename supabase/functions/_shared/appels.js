@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // LES PUSHES DE `notify-call`, ET L'ACCUSÉ DE RÉCEPTION DES APPELS (2026-11-07)
+// ET DES NOTIFICATIONS SOCIALES (même jour, voir plus bas : `MESURES`)
 //
 // LE DÉFAUT. Un appel réveille le destinataire par une push « Appel entrant »
 // (sw.js). Le service de notification qui ACCEPTE la push ne prouve pas qu'elle
@@ -12,13 +13,15 @@
 // LE CHEMIN. `notify-call` passe TOUTES ses pushes par `pousserAppareils` :
 //   ① un APPEL tiré au sort (un sur ECHANTILLON_APPELS, `appelMesure`) porte un
 //      pid ALÉATOIRE, partagé par les appareils du destinataire, et l'adresse
-//      d'accusé (`adresseAccuse`) — une notification sociale, JAMAIS ;
-//   ② le service worker accuse APRÈS l'affichage (`accuser(data, "appel")`),
-//      sans contenu ;
+//      d'accusé (`adresseAccuse`) ; une NOTIFICATION SOCIALE de même, à son taux
+//      (une sur ECHANTILLON_NOTIFS, `notifMesuree`) ;
+//   ② le service worker accuse APRÈS l'affichage (`accuser(data, "appel")`,
+//      `accuser(data, "notif")`), sans contenu ;
 //   ③ après l'envoi, si au moins un service de notification a accepté la push,
-//      la note `push_envoye` (genre « appel », pids, appareils acceptés) est
-//      écrite sous `systeme:appels` et son `{ error }` lu. La note ne retarde ni
-//      ne casse l'appel : la push est partie.
+//      la note `push_envoye` (genre, pids, appareils acceptés ; pour une
+//      notification sociale, son genre d'une liste fermée) est écrite sous
+//      `systeme:appels` ou `systeme:notifs` et son `{ error }` lu. La note ne
+//      retarde ni ne casse la push : elle est partie.
 //
 // CE QUI NE SORT JAMAIS.
 //   · Le pid ne quitte pas cette fonction : `notify-call` ne le rend pas à
@@ -31,20 +34,43 @@
 //   · Le tirage est fait par le SERVEUR (`tirer`, aléa cryptographique), jamais
 //     dérivé de la requête : un appelant ne choisit pas lesquels de ses appels
 //     sont jugés.
+//   · Pour une notification sociale, de même : ni son texte, ni son émetteur, ni
+//     son destinataire ; son genre seulement s'il est de la liste fermée.
 //
-// LE VOLUME. Un appel mesuré coûte une note (`analytics_events`, purgée à
+// LE VOLUME. Une push mesurée coûte une note (`analytics_events`, purgée à
 // 13 mois) et un accusé anonyme par appareil qui l'affiche (`telemetry_events`,
-// 3 jours). Un sur dix : chiffré au § 3.7. Bornes qui tiennent sans ce fichier :
-// le plafond par appelant de `notify-call` (20/min, 200/h) et `trg_rate_limit`
-// (120 notes/min sous `systeme:appels` ; au-delà la note est refusée et le dit,
-// l'appel part quand même).
+// 3 jours). Un appel sur dix : chiffré au § 3.7 ; une notification sociale sur
+// vingt : § 3.8. Bornes qui tiennent sans ce fichier : le plafond par émetteur de
+// `notify-call` (20/min, 200/h) et `trg_rate_limit` (120 notes/min sous chaque
+// auteur ; au-delà la note est refusée et le dit, la push part quand même).
 //
 // Les dépendances sont injectées (`admin` = client service_role, `envoyer` =
 // web-push) : `node --test tests/unit/appels.test.mjs` éprouve CE fichier, celui
 // que Deno déploie.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { EVT_ENVOI, GENRE_APPEL, UID_APPELS, appelMesure, avecAccuse, pidNeuf } from "./reception.js";
+import { EVT_ENVOI, GENRE_APPEL, UID_APPELS, GENRE_NOTIF, UID_NOTIFS, appelMesure, notifMesuree, avecAccuse, pidNeuf } from "./reception.js";
+import { GENRES_PUSH } from "./lien-metier.js";
+
+// LES NOTIFICATIONS SOCIALES (même jour). Une push « notif » (j'aime, abonnement,
+// commentaire, message…) se mesure comme un appel, à SON taux (une sur
+// ECHANTILLON_NOTIFS, `notifMesuree`), sous SON auteur (`systeme:notifs`) : un
+// pid partagé par les appareils du destinataire, accusé par le service worker
+// (`accuser(data, "notif")`), la note après l'envoi. La note porte en plus le
+// GENRE de la notification, d'une LISTE FERMÉE (`GENRES_PUSH`, les gabarits de
+// lien-metier.js ; « autre » sinon) : il vient de la ligne `notifications` que
+// le SERVEUR a relue (`autoriserPushNotif`), et il dit le mélange des pushes
+// mesurées — de quoi revoir le taux sur une mesure plutôt qu'une hypothèse
+// (« message » couvre aussi les messages de groupe : la ligne porte `message`,
+// seul le gabarit dit `message_groupe`). Ni le texte de la notification, ni son
+// émetteur, ni son destinataire, ni un genre hors liste n'y entrent jamais.
+/** Ce qui se mesure, par type de charge : le genre, l'auteur des notes, le tirage. */
+const MESURES = Object.freeze({
+  call: Object.freeze({ genre: GENRE_APPEL, auteur: UID_APPELS, mesure: appelMesure }),
+  notif: Object.freeze({ genre: GENRE_NOTIF, auteur: UID_NOTIFS, mesure: notifMesuree }),
+});
+/** Le genre d'une notification sociale pour sa note : une valeur de la liste fermée, sinon « autre ». */
+export const genreNoteNotif = (kind) => (typeof kind === "string" && GENRES_PUSH.includes(kind) ? kind : "autre");
 
 /**
  * Pilote : les appels sont COUPÉS (ASTRA-60, 2026-09-16) — l'interrupteur serveur,
@@ -73,9 +99,10 @@ export function tirer() {
  * @returns {Promise<{ sent: number, morts: string[] }>} — jamais le pid.
  */
 export async function pousserAppareils({ admin, envoyer, abonnements = [], charge, options, accuse = null, tirage = tirer(), journal = (m) => console.warn(m) }) {
-  // Seule une charge d'APPEL se mesure : une notification sociale ne part jamais
-  // avec un pid, quelle que soit l'adresse reçue.
-  const pid = charge && charge.type === "call" && accuse && appelMesure(tirage) ? pidNeuf() : null;
+  // Une charge d'APPEL ou de NOTIFICATION SOCIALE se mesure, chacune à son taux ;
+  // tout autre type part sans pid, quelle que soit l'adresse reçue.
+  const m = charge && typeof charge.type === "string" && Object.hasOwn(MESURES, charge.type) ? MESURES[charge.type] : null;
+  const pid = m && accuse && m.mesure(tirage) ? pidNeuf() : null;
   const corps = JSON.stringify(avecAccuse(charge, pid, accuse));
   let sent = 0;
   const morts = [];
@@ -88,12 +115,14 @@ export async function pousserAppareils({ admin, envoyer, abonnements = [], charg
       if (code === 404 || code === 410) morts.push(row.endpoint);
     }
   }));
-  // La note APRÈS l'envoi, et seulement pour un appel qu'un service de
-  // notification a accepté : un refus n'est pas une question de réception.
+  // La note APRÈS l'envoi, et seulement pour une push qu'un service de
+  // notification a acceptée : un refus n'est pas une question de réception.
   if (pid && sent) {
+    const properties = m.genre === GENRE_NOTIF
+      ? { genre: GENRE_NOTIF, pids: [pid], acceptes: sent, kind: genreNoteNotif(charge.kind) }
+      : { genre: GENRE_APPEL, pids: [pid], acceptes: sent };
     try {
-      const { error } = await admin.from("analytics_events")
-        .insert({ user_id: UID_APPELS, event: EVT_ENVOI, properties: { genre: GENRE_APPEL, pids: [pid], acceptes: sent } });
+      const { error } = await admin.from("analytics_events").insert({ user_id: m.auteur, event: EVT_ENVOI, properties });
       if (error) journal("notify-call : note d'envoi refusée " + String(error.code || ""));
     } catch (_e) { journal("notify-call : note d'envoi injoignable"); }
   }

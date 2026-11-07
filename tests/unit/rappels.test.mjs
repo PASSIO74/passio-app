@@ -349,7 +349,7 @@ test("⑪ dateUtc lit la base comme supaTs : sans fuseau = UTC", () => {
 });
 
 /** Le service worker, exécuté pour de vrai dans une machine virtuelle. */
-function chargerSw({ fetch: fetchSw = () => {} } = {}) {
+function chargerSw({ fetch: fetchSw = () => {}, afficheEchoue = false } = {}) {
   const handlers = {};
   const notifs = [];
   const ouverts = [];
@@ -360,7 +360,11 @@ function chargerSw({ fetch: fetchSw = () => {} } = {}) {
     skipWaiting() {},
     // L'affichage se TERMINE plus tard, comme dans un navigateur : un accusé parti
     // avant la fin de l'affichage se voit (⑫ ter).
-    registration: { showNotification: (titre, opts) => new Promise((r) => setTimeout(() => { notifs.push({ titre, opts }); r(); }, 0)) },
+    // `afficheEchoue` : l'affichage est REFUSÉ (permission retirée, quota) — jamais un accusé derrière.
+    registration: { showNotification: (titre, opts) => new Promise((r, refuse) => setTimeout(() => {
+      if (afficheEchoue) { refuse(new TypeError("Notification refusée")); return; }
+      notifs.push({ titre, opts }); r();
+    }, 0)) },
     clients: {
       matchAll: () => Promise.resolve(fenetres),
       openWindow: (u) => { ouverts.push(u); return Promise.resolve(); },
@@ -510,6 +514,82 @@ test("⑫ quinquies service worker : un APPEL mesuré s'affiche comme avant (« 
   assert.deepEqual(sw.ouverts, ["./?call=c1&from=" + A + "&kind=video&cname=L%C3%A9a&cemoji=" + encodeURIComponent("🎸")]);
   await sw.clic({ tag: "passio-call-c1", data: n.opts.data }, "decline");
   assert.equal(sw.ouverts.length, 1);
+});
+
+// Les NOTIFICATIONS SOCIALES (2026-11-07, _shared/appels.js) : une sur vingt porte
+// un pid. Réinjections éprouvées : accuser AVANT l'affichage → l'ordre rougit ;
+// l'accuser sous le genre « appel » → rougit ; ne plus l'accuser → rougit ; glisser
+// le pid dans les données du tap → rougit ; glisser le genre ou le texte dans
+// l'accusé → rougit.
+test("⑫ sexies service worker : une notification SOCIALE mesurée s'affiche comme avant (titre, texte, étiquette par genre, données du tap), PUIS s'accuse « notif », sans son texte ni son genre ; sans pid, aucun accusé ; le tap ouvre l'application comme avant", async () => {
+  const appels = [];
+  let sw;
+  sw = chargerSw({ fetch: (u, o) => { appels.push({ u, o, affichees: sw.notifs.length }); return Promise.resolve({ status: 201 }); } });
+  const sociale = { type: "notif", text: "Léa a aimé ta publication", emoji: "❤️", kind: "like" };
+  await sw.push({ ...sociale, pid: PID1, ack: ACK });
+  assert.equal(sw.notifs.length, 1);
+  const n = sw.notifs[0];
+  assert.equal(n.titre, "❤️ PASSIO");
+  assert.equal(n.opts.body, "Léa a aimé ta publication");
+  assert.equal(n.opts.tag, "passio-notif-like", "une étiquette par genre, comme avant");
+  assert.equal(n.opts.renotify, true);
+  // (Objets nés dans la machine virtuelle : autre royaume, on compare leur JSON.)
+  assert.deepEqual(JSON.parse(JSON.stringify(n.opts.data)), { url: "./" }, "le tap ne porte ni pid ni adresse");
+  assert.equal(appels.length, 1);
+  assert.equal(appels[0].affichees, 1, "la notification est affichée AVANT l'accusé");
+  assert.equal(appels[0].u, ACK.u + "/rest/v1/telemetry_events");
+  const corps = JSON.parse(appels[0].o.body);
+  assert.deepEqual({ type: corps[0].type, action: corps[0].action, meta: corps[0].meta }, { type: "push", action: "recu", meta: { pid: PID1, genre: "notif" } });
+  // Jugé SANS ses champs aléatoires (event_id, client_ts) : un hexadécimal peut contenir n'importe quoi.
+  const { event_id: idAccuse, client_ts: _ts, ...stable } = corps[0];
+  assert.match(idAccuse, /^[0-9a-f]{16}$/);
+  assert.deepEqual(Object.keys(stable).sort(), ["action", "meta", "status", "type"], "rien d'autre ne part");
+  assert.ok(!/Léa|aimé|publication|❤️|like/.test(JSON.stringify(stable)), "ni le texte, ni l'emoji, ni le genre de la notification dans l'accusé");
+  assert.ok(!/Léa|aimé|❤️/.test(appels[0].o.body), "ni nulle part dans le corps envoyé");
+  assert.equal(corps[0].user_id, undefined, "aucune identité");
+  // La clé publiable accuse en `apikey` seulement, comme pour les autres genres.
+  await sw.push({ ...sociale, kind: "message", pid: PID2, ack: { u: ACK.u, k: "sb_publishable_Abc123_def-456XYZ" } });
+  assert.equal(appels[1].o.headers.Authorization, undefined);
+  assert.equal(JSON.parse(appels[1].o.body)[0].meta.genre, "notif");
+  assert.equal(sw.notifs[1].opts.tag, "passio-notif-message");
+  // Une notification NON tirée (sans pid), ou une adresse hors forme : l'affichage, et rien d'autre.
+  await sw.push(sociale);
+  await sw.push({ ...sociale, pid: PID1, ack: { ...ACK, u: "https://evil.example" } });
+  assert.equal(sw.notifs.length, 4);
+  assert.equal(appels.length, 2, "une notification non mesurée ne dépose rien");
+  // Un réseau en panne ne retire pas la notification.
+  const enPanne = chargerSw({ fetch: () => Promise.reject(new Error("hors ligne")) });
+  await enPanne.push({ ...sociale, pid: PID1, ack: ACK });
+  assert.equal(enPanne.notifs.length, 1);
+  // Le tap, application fermée : l'accueil s'ouvre, comme avant — jamais un appel.
+  await sw.clic({ tag: n.opts.tag, data: n.opts.data });
+  assert.deepEqual(sw.ouverts, ["./"]);
+  assert.ok(sw.ouverts.every((u) => !u.includes("?call=")));
+});
+
+// Revue du 2026-11-07 : rien n'éprouvait un affichage qui ÉCHOUE. Réinjection éprouvée :
+// `showNotification(...).catch(() => {}).then(() => accuser(...))` (un accusé sans
+// affichage) → ce test rougit, pour chacun des quatre genres.
+test("⑫ septies service worker : un affichage qui ÉCHOUE n'est jamais accusé — alerte, rappel, appel, notification sociale ; le même banc, affichage réussi, accuse les quatre", async () => {
+  const charges = [
+    { type: "pilotage", titre: "Problème", texte: "x" },
+    { type: "rappel", titre: "Rando", texte: "x", eventId: "ev_1" },
+    { type: "call", callId: "c1", kind: "voice", from: A, name: "Léa", emoji: "🎸" },
+    { type: "notif", text: "Léa a aimé ta publication", emoji: "❤️", kind: "like" },
+  ];
+  const appels = [];
+  const refuse = chargerSw({ fetch: (u, o) => { appels.push(o); return Promise.resolve({ status: 201 }); }, afficheEchoue: true });
+  for (const c of charges) {
+    let leve = false;
+    await refuse.push({ ...c, pid: PID1, ack: ACK }).catch(() => { leve = true; });
+    assert.ok(leve, "l'événement push porte l'échec de l'affichage : " + c.type);
+  }
+  assert.equal(refuse.notifs.length, 0);
+  assert.equal(appels.length, 0, "aucun accusé sans affichage");
+  const genres = [];
+  const reussit = chargerSw({ fetch: (u, o) => { genres.push(JSON.parse(o.body)[0].meta.genre); return Promise.resolve({ status: 201 }); } });
+  for (const c of charges) await reussit.push({ ...c, pid: PID1, ack: ACK });
+  assert.deepEqual(genres, ["pilotage", "rappel", "appel", "notif"], "contre-épreuve : le banc voit bien un accusé quand l'affichage réussit");
 });
 
 test("⑨ sexies l'accusé côté envoi : un pid ALÉATOIRE par rappel et l'adresse ; seuls les rappels ACCEPTÉS sont notés envoyés ; sans adresse, ni pid ni note", async () => {
