@@ -1255,7 +1255,7 @@ test("㉿⑨ l'alerte part avec un pid aléatoire PAR APPAREIL, se note TOUJOURS
   const note = s.indexOf("event: EVT_ENVOI");
   assert.ok(envoi > 0 && note > envoi, "la note suit l'envoi : elle ne retarde jamais l'alerte");
   assert.match(s, /const mesure = es \? "abonnements_illisibles" : ACCUSE \? "ok" : "sans_adresse";/, "une mesure impossible se dit");
-  assert.match(s, /properties: \{ genre: "pilotage", mesure, acceptes: n, appareils \}/, "des pid, des familles de service, des nombres — jamais le titre ni le texte");
+  assert.match(s, /properties: \{ genre: "pilotage", mesure, acceptes: n, appareils, \.\.\.\(opts\.essai \? \{ essai: true \} : \{\}\) \}/, "des pid, des familles de service, des nombres, la marque d'essai — jamais le titre ni le texte");
   assert.doesNotMatch(s.slice(note - 300, note + 200), /if \(pid\)|if \(ACCUSE\)/, "la note n'est pas conditionnée à la mesure : sans adresse, elle dit « non mesurée »");
   const l = fn.slice(fn.indexOf("async function lireReception"), fn.indexOf("async function lireEtatMemorise"));
   assert.match(l, /\.eq\("type", TYPE_ACCUSE\)\.eq\("action", ACTION_ACCUSE\)\.gte\("received_at", apres\)\.in\("meta->>pid", pids\)\.limit\(plafond\)/);
@@ -1282,4 +1282,18 @@ test("㉿⑩ « À faire » : une alerte NON reçue a sa ligne et son bouton ver
   assert.match(nm.titre, /n'a pas pu être mesurée/);
   assert.equal(SOURCES_VERDICT.reception, "réception des alertes", "la source compte pour le voyant de l'écran : non lue, il n'est jamais vert");
   assert.ok(sourcesManquantes(["reception"]).includes("réception des alertes"));
+});
+
+test("㉿⑪ l'essai des alertes : un geste du catalogue, lu sur la DERNIÈRE note du pilote, envoyé par la même sonnerie, marqué essai ; il passe après les vrais gestes et entre au battement", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const e = fn.slice(fn.indexOf("async function essayerAlertes"), fn.indexOf("/**\n * Les accusés de réception"));
+  assert.match(e, /const pol = autoriser\(POLITIQUE, "essai_alertes"\);\s*if \(!pol\.ok\) return/, "sous la politique, refus fermé");
+  assert.match(e, /\.eq\("event", EVT_ENVOI\)\.eq\("user_id", "systeme:pilotage"\)\.order\("created_at", \{ ascending: false \}\)\.limit\(1\)/);
+  assert.match(e, /if \(error\) throw error;/, "une lecture en échec n'envoie pas d'essai à l'aveugle");
+  assert.match(e, /if \(!essaiDu\(\{ derniereNote: \(data \|\| \[\]\)\[0\] \|\| null, maintenant: Date\.now\(\) \}\)\) return/);
+  assert.match(e, /sonnerPilote\(admin, "Essai de tes alertes", "[^"]+", \{ essai: true \}\)/);
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  assert.ok(v.indexOf("const canari = await etape(") < v.indexOf("const essai = await etape(() => essayerAlertes(admin));"), "après les gestes de la veille");
+  assert.ok(v.indexOf("const essai = await etape(") < v.indexOf("const battement = await etape("), "avant le battement, qui le dit");
+  assert.match(v, /gestes: \{ delestage, reveil, retour, canari, essai \}/);
 });

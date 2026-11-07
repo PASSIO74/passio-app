@@ -59,6 +59,34 @@ export const FENETRE_RAPPELS_MS = 24 * 3600e3;
 /** Sous ce nombre d'envois jugeables, pas de taux : « trop peu ». */
 export const MIN_RAPPELS = 5;
 
+// L'ESSAI DES ALERTES (2026-11-07). Sans panne, aucune alerte ne part, et rien
+// ne prouve que le téléphone sonnerait le jour où il le faudrait : la mesure
+// attendait l'incident. Quand le pilote n'a reçu AUCUNE note d'envoi depuis
+// 7 jours, la veille lui envoie UNE notification d'essai, de jour (heure de
+// Paris), notée comme une alerte (`essai: true`) et accusée par appareil.
+// Borné au catalogue de la politique (`essai_alertes`, circuit A).
+export const ESSAI_INTERVALLE_MS = 7 * 864e5;
+/** Heures de Paris où un essai peut partir : [debut, fin). */
+export const FENETRE_ESSAI = Object.freeze({ debut: 9, fin: 20 });
+const fmtHeureParis = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", hourCycle: "h23" });
+/** L'heure de Paris (0–23) d'un instant — la seule partie « heure » : en français, le format complet dit « 08 h ». */
+export const heureParis = (ms) => {
+  const h = fmtHeureParis.formatToParts(new Date(ms)).find((x) => x.type === "hour");
+  return h ? Number(h.value) : NaN;
+};
+
+/**
+ * L'essai est-il dû ? PUR. `derniereNote` = la note d'envoi la plus récente du
+ * pilote (essai ou vraie alerte), ou null. Hors de la fenêtre de jour : jamais.
+ */
+export function essaiDu({ derniereNote = null, maintenant = Date.now() } = {}) {
+  const h = heureParis(maintenant);
+  if (!(h >= FENETRE_ESSAI.debut && h < FENETRE_ESSAI.fin)) return false;
+  if (!derniereNote) return true;
+  const le = Date.parse(derniereNote.created_at);
+  return !Number.isFinite(le) || maintenant - le >= ESSAI_INTERVALLE_MS;
+}
+
 /** Paquets de pid de rappels lus ensemble : un pid noyé n'aveugle que les siens. */
 export const PAQUET_RAPPELS = 20;
 /** Lignes lues au plus par paquet de rappels : au-delà, le taux est « partiel ». */
@@ -159,7 +187,7 @@ export function bilanReception({ envois = [], accuses = [], maintenant = Date.no
     const p = proprietes(e);
     const le = t(e.created_at);
     const age = maintenant - le;
-    const base = { le: new Date(le).toISOString() };
+    const base = { le: new Date(le).toISOString(), ...(p.essai === true ? { essai: true } : {}) };
     if (p.mesure && p.mesure !== "ok") {
       // Une alerte partie sans mesure possible n'est ni reçue ni perdue : on le dit.
       derniereAlerte = { ...base, etat: "non_mesuree", raison: String(p.mesure).slice(0, 40) };
@@ -213,6 +241,10 @@ export function bilanReception({ envois = [], accuses = [], maintenant = Date.no
 export function ligneReception(b) {
   const a = b && b.derniereAlerte;
   if (!a) return null;
+  if (a.etat === "non_recue" && a.essai) {
+    return { titre: "L'essai de tes alertes n'est arrivé sur aucun appareil",
+      reference: `Essai envoyé le ${a.le.slice(0, 16).replace("T", " ")} UTC, accepté par le service de notification pour ${a.acceptes} appareil(s), aucun accusé en ${Math.round(DELAI_ACCUSE_MS / 60e3)} min : une vraie alerte ne te parviendrait pas non plus. Ouvre PASSIO sur ton téléphone (la mise à jour lui apprend à accuser) et vérifie que les notifications y sont autorisées.` };
+  }
   if (a.etat === "non_recue") {
     return { titre: "Ta dernière alerte n'est arrivée sur aucun appareil",
       reference: `Envoyée le ${a.le.slice(0, 16).replace("T", " ")} UTC, acceptée par le service de notification pour ${a.acceptes} appareil(s), aucun accusé en ${Math.round(DELAI_ACCUSE_MS / 60e3)} min. Un appareil dont PASSIO n'a pas été rouvert depuis la mise à jour du 6 novembre ne sait pas encore accuser : ouvre PASSIO dessus, et vérifie que les notifications y sont autorisées.` };

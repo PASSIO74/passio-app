@@ -116,3 +116,17 @@ test("⑧ chaque « appliquePar » désigne un fichier qui existe", () => {
     assert.ok(fs.existsSync(f), `${id} : ${f} n'existe pas`);
   }
 });
+
+// L'essai des alertes (2026-11-07) : ses bornes déclarées SONT celles du code.
+import { ESSAI_INTERVALLE_MS, FENETRE_ESSAI } from "../../supabase/functions/_shared/reception.js";
+test("⑨ essai des alertes : intervalle et fenêtre de jour déclarés = ceux que le code applique ; un geste autonome de circuit A, appliqué par la fonction", () => {
+  const r = POLITIQUE.runbooks.essai_alertes;
+  assert.ok(r, "au catalogue");
+  assert.equal(r.circuit, "A");
+  assert.equal(r.autonome, true);
+  assert.equal(r.limites.intervalleJours * 864e5, ESSAI_INTERVALLE_MS);
+  assert.equal(r.limites.heureDebut, FENETRE_ESSAI.debut);
+  assert.equal(r.limites.heureFin, FENETRE_ESSAI.fin);
+  assert.match(r.appliquePar, /essayerAlertes/);
+  assert.equal(autoriser(POLITIQUE, "essai_alertes").ok, true);
+});
