@@ -33,6 +33,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parse } from "./lib/yaml-mini.mjs";
 import { evaluer, decide } from "./lib/expression-github.mjs";
+import "./lib/bash-windows.mjs";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 // ⚠️ Le faux `jq` du bac (alignement LF, plus bas) rappelle `"$JQ_BIN"` : ce chemin DOIT
@@ -151,7 +152,7 @@ function jouer(script, env = {}) {
       env: {
         ...process.env,
         // Sous Git Bash, `C:/x` sur le PATH devient `/c/x` ; sous Linux, rien à convertir.
-        PATH: BAC.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase()) + "/bin:" + process.env.PATH,
+        PATH: BAC.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase()) + "/bin" + path.delimiter + process.env.PATH,
         JQ_BIN: JQ, FX, LOG, FAUX_GH_JS: BAC + "/bin/faux-gh.mjs",
         GITHUB_REPOSITORY: "o/r", GITHUB_SERVER_URL: "https://github.com", GITHUB_RUN_ID: "1", GITHUB_SHA: "a".repeat(40),
         GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: summ, RUNNER_TEMP: BAC, ...env,
@@ -767,7 +768,7 @@ case "$*" in
 esac
 `);
   fs.chmodSync(dir + "/node", 0o755);
-  return { PATH: posix(dir) + ":" + posix(BAC) + "/bin:" + process.env.PATH, VRAI_NODE: process.execPath.split("\\").join("/") };
+  return { PATH: posix(dir) + path.delimiter + posix(BAC) + "/bin" + path.delimiter + process.env.PATH, VRAI_NODE: process.execPath.split("\\").join("/") };
 }
 
 test("digest.yml : Composer — code 3 (digest à émettre) rend emettre=oui et le résumé ; code 0 → non ; code 2 = panne VISIBLE", () => {
