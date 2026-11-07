@@ -131,6 +131,17 @@ if [ -f "$LOT3" ]; then
   fi
 fi
 
+echo "══ ⑤ Fins de ligne Windows sur les fonctions réécrites, comme en production ══"
+# Le socle normalise les fins de ligne ; la production, elle, porte des CRLF : le lot 1 s'y est arrêté le 07/11 sur un
+# motif de deux lignes, alors qu'il passait partout ailleurs.
+preparer banc_crlf apres
+sortie="$(FICHIER banc_crlf "$RACINE/tests/sql/fixtures/fonctions-crlf.sql")"; verifier "les fonctions passent en CRLF" "$?" "0"
+for lot in "$LOT1" "$LOT2" "$LOT3"; do
+  sortie="$(FICHIER banc_crlf "$lot")"; code=$?
+  verifier "$(basename "$lot") s'applique sur des fonctions en CRLF" "$code" "0"
+  [ "$code" -ne 0 ] && printf '%s\n' "$sortie" | tail -3
+done
+
 echo
 echo "Bilan : $ok vert(s), $ko rouge(s)"
 [ "$ko" -eq 0 ]

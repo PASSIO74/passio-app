@@ -307,6 +307,17 @@ jobs:
             echo "::notice title=Commentaires tiers écartés::${ecartes} commentaire(s) d'autres comptes n'entrent PAS dans la spécification donnée à Claude."
           fi
 
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB exige bubblewrap : sans lui, le CLI refuse de démarrer. Vu au canari du
+      # 2026-11-07 : aucune session ne tournait, l'échec était fermé. Ubuntu 24.04 restreint par défaut les espaces
+      # de noms d'utilisateur qu'il utilise, d'où le réglage ; le runner est jetable.
+      - name: Installer bubblewrap
+        timeout-minutes: 5
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --version
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@3f854a8fb5146b39d5cbf8b57f70d80810e1366f # v1.0.198
