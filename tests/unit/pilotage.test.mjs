@@ -209,23 +209,31 @@ test("⑬ aReparer : issues réparables + exécutions en échec, et la réparati
 // ─── Audience du téléphone : le public seulement (2026-10-05) ───────────────
 // Mesuré du 28/09 au 04/10 : 15 des 19 appareils sans compte étaient nos propres
 // vérifications. MUTATIONS : retirer le saut des appareils écartés de
-// compterAudience → ⑯ rougit ; revenir au `select("user_id,device_id")` sans
-// compterAudience dans la fonction → ⑰ rougit.
+// compterAudience → ⑯ rougit ; retirer une valeur de TRAFICS_HORS_PUBLIC
+// (« emulation » ne se voyait pas : la ligne d'émulation ci-dessous passait par
+// le rattrapage iOS, contre-revue du 2026-11-07) → ⑯ rougit ; revenir au
+// `select("user_id,device_id")` sans compterAudience dans la fonction → ⑰ rougit.
+// ⑯ tourne avant le déploiement de `pilotage` (edge-functions.yml) : c'est lui
+// qui garde ce que la fonction compte, trafic-hors-public.test.mjs l'accord des
+// quatre lecteurs.
 test("⑯ compterAudience : robots, émulations et équipe sortent des comptes ET des appareils", () => {
   const lignes = [
     { user_id: "u-lea", device_id: "d-lea", platform: "android", connection: "4g" },
     { user_id: null, device_id: "d-lea", platform: "android", connection: "4g" },
     { user_id: null, device_id: "d-robot", platform: "windows", connection: "4g", trafic: "robot" },
     { user_id: null, device_id: "d-emul", platform: "ios", connection: "4g", trafic: null },     // ligne d'avant ce lot
+    { user_id: "u-emu", device_id: "d-emu", platform: "android", connection: "wifi", trafic: "emulation" }, // marquée par le client
     { user_id: "u-ben", device_id: "d-ben", platform: "ios", connection: "", trafic: "equipe" },
     // Même téléphone de l'équipe, ligne d'un ancien client en cache, sans marque :
     { user_id: "u-ben", device_id: "d-ben", platform: "ios", connection: "", trafic: null },
     { user_id: "u-sam", device_id: "d-sam", platform: "ios", connection: "" },                 // vrai iPhone
   ];
-  assert.deepEqual(compterAudience(lignes), { comptes: 2, appareils: 2, horsPublic: 3 });
+  assert.deepEqual(compterAudience(lignes), { comptes: 2, appareils: 2, horsPublic: 4 });
   assert.deepEqual(compterAudience([]), { comptes: 0, appareils: 0, horsPublic: 0 });
   assert.deepEqual(compterAudience(null), { comptes: 0, appareils: 0, horsPublic: 0 });
-  assert.equal(traficHorsPublic({ meta: { trafic: "robot" } }), "robot");
+  for (const t of ["robot", "emulation", "equipe"]) {
+    assert.equal(traficHorsPublic({ meta: { trafic: t }, platform: "android", connection: "wifi" }), t, t + " doit sortir du public");
+  }
   assert.equal(traficHorsPublic({ trafic: "pirate" }), null, "valeur inconnue = public");
 });
 

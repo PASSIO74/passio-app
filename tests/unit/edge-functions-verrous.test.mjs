@@ -22,22 +22,31 @@
 //   ① chaque module emporté est importé par au moins une suite listée ;
 //   ② chaque suite de tests/unit qui importe un module emporté est listée : une
 //     ligne ne se retire pas en silence, une suite neuve ne s'oublie pas ;
+//     ②' une suite qui charge par un chemin CALCULÉ et nomme `supabase/` ou
+//     `_shared` est listée aussi, ou déclarée : le banc ne peut dire quoi ;
 //   ③ chaque suite listée existe, une seule fois, et importe un module emporté ;
-//   ④ l'étape précède « Déployer », sans `if:`, sans `continue-on-error`, dans le
-//     shell par défaut (`bash -e`), et ne lance que des `node --test <suite>` ;
-//     « Déployer » n'a pas d'`if:` qui passerait outre un échec ;
+//     ce banc est listé, en tête : sur un push direct, que la CI parallèle ne
+//     retient pas, une ligne retirée rougit quand même avant « Déployer » ;
+//   ④ l'étape précède CHAQUE étape qui déploie, sans `if:`, sans
+//     `continue-on-error`, dans le shell par défaut (`bash -e`, `defaults:` du
+//     job et du workflow compris), sans variable NODE_* dans aucun `env:` qui
+//     l'atteint ni écriture de $GITHUB_ENV avant elle, et ne lance que des
+//     `node --test <suite>` ; aucune étape qui déploie n'a de fonction d'état
+//     (always, failure, cancelled, success) dans son `if:` ;
 //   ⑤ le Node installé avant les verrous a la version majeure du job de
-//     deploy.yml qui éprouve tests/unit/*.test.mjs (sans node_modules, comme ici).
-// « Importer », c'est un import statique, un `import("…")` ou un `require("…")`
-// LITTÉRAL écrit dans la suite elle-même. Une suite qui n'atteint un module qu'à
-// travers un script éprouve le script. Un écart VOLONTAIRE (module sans suite,
-// suite non listée) se déclare dans ECARTS avec sa raison ; un écart qui n'a plus
-// d'objet rougit.
+//     deploy.yml qui éprouve tests/unit/*.test.mjs (sans node_modules, comme ici) ;
+//     une version illisible de ce côté-là rougit aussi.
+// « Importer », c'est un import statique, un `import()` ou un `require()` dont le
+// chemin s'écrit, dans la suite ou dans une aide de tests/unit qu'elle importe.
+// Une suite qui n'atteint un module qu'à travers un script éprouve le script. Un
+// écart VOLONTAIRE (module sans suite, suite non listée) se déclare dans ECARTS
+// avec sa raison ; un écart qui n'a plus d'objet rougit.
 //
 // ⑥ joue le bloc `run:` réel sous `bash -e` contre un faux `node`. ⑦ rejoue les
 // mutations sur le texte réel : retirer n'importe quelle ligne, ajouter un import
-// `_shared` sans suite, déplacer l'étape, changer Node… Chacune rougit, et le
-// remède (la suite listée) redevient vert.
+// `_shared` sans suite (accentué, derrière un commentaire de bloc, anti-cache…),
+// déplacer l'étape, changer Node, contourner par `if:`, `defaults:` ou `env:`…
+// Chacune rougit, et le remède (la suite listée) redevient vert.
 // ═══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -64,6 +73,13 @@ const CE_BANC = SUITES + "/edge-functions-verrous.test.mjs";
 // pour une dérive qu'il ne touche pas. Toutes tournent dans deploy.yml
 // (tests/unit/*.test.mjs, à chaque PR et sur main) ; ⑤ rougit si cette
 // étape-là disparaît.
+// ⚠️ Une raison se PROUVE, elle ne se lit pas (contre-revue du 2026-11-07).
+// « Le module est éprouvé avant « Déployer » par X » veut dire que la mutation
+// du module qu'attrape la suite écartée rougit aussi une suite LISTÉE. Deux
+// raisons ne tenaient pas : retirer "emulation" de TRAFICS_HORS_PUBLIC, ou
+// `|e[0-9]+` d'EXPRESSION_EXEMPLE (la purge), passait les dix-huit verrous.
+// pilotage ⑯ éprouve désormais les trois valeurs, et identifiants-exemple.test.mjs
+// (ce que la purge tient pour un exemple, contre la base) est listée.
 const ECARTS = Object.freeze({
   "supabase/functions/_shared/revision.js":
     "écrit par l'étape « Révision » de ce workflow juste avant « Déployer » (une ligne : le SHA déployé) ; la fumée relit ce qu'il sert sur chaque fonction (X-Passio-Revision)",
@@ -71,46 +87,161 @@ const ECARTS = Object.freeze({
     "éprouve la garde scripts/audit-contrats-actions.mjs et l'accord du client (js/*.js, package.json) avec le registre ; contrats-actions.js est éprouvé avant « Déployer » par parcours.test.mjs (validerContrats, contratDe, contratsCritiques)",
   "tests/unit/audit-tables-compte.test.mjs":
     "éprouve la gate scripts/audit-tables-compte.js (migrations et référentiel du schéma contre TABLES_COMPTE) ; la purge et l'export sont éprouvés avant « Déployer » par purge-compte, suppression-compte, suppression-entrelacement et export-compte",
-  "tests/unit/identifiants-exemple.test.mjs":
-    "éprouve la migration R31 contre les générateurs du client (app-01 exécuté en bac, app-02 à app-08 relus) ; EXPRESSION_EXEMPLE y est comparée au texte de la migration, et son effet sur la purge est éprouvé avant « Déployer » par purge-compte.test.mjs (R31 ⑨)",
   "tests/unit/politique-autonomie-executants.test.mjs":
-    "éprouve deploy.yml, sentinelle-autonome.yml, scripts/sentinelle-detecter.mjs et js/app-04 contre la politique, et l'existence de chaque « appliquePar » ; le module est éprouvé avant « Déployer » par politique-autonomie.test.mjs",
+    "éprouve deploy.yml, sentinelle-autonome.yml, scripts/sentinelle-detecter.mjs et js/app-04 contre la politique, et l'existence de chaque « appliquePar » ; la fonction ne décide que par autoriser() (circuit, autonome, mode, pause : politique-autonomie.test.mjs ③, avant « Déployer ») et n'affiche aucune borne (resumerPolitique) — une borne qui diverge de son exécutant ne change rien à ce qui part, la CI de main la rougit",
   "tests/unit/sentinelle-detecter.test.mjs":
     "éprouve scripts/sentinelle-detecter.mjs, que la Sentinelle exécute chez GitHub ; REVEIL n'y est qu'une référence croisée (MAX_ENQUETES) — autonomie.js est éprouvé avant « Déployer » par autonomie et autonomie-seuils-sql",
   "tests/unit/trafic-hors-public.test.mjs":
-    "éprouve l'accord de trois lecteurs (dashboard/server/trafic.js, scripts/veille-production.mjs, js/telemetry.js) avec pilotage.js ; compterAudience et traficHorsPublic sont éprouvés avant « Déployer » par pilotage.test.mjs (⑯)",
+    "éprouve l'accord de trois lecteurs (dashboard/server/trafic.js, scripts/veille-production.mjs, js/telemetry.js) avec pilotage.js, et la syntaxe du client pour un vieux Safari ; ce que la fonction compte (les trois valeurs de TRAFICS_HORS_PUBLIC, traficHorsPublic, compterAudience) est éprouvé avant « Déployer » par pilotage.test.mjs (⑯)",
 });
 const RAISON_MIN = 40;
 
-/** Ce que le banc lit : tout supabase/functions, toutes les suites de tests/unit. */
+/** Ce que le banc lit : tout supabase/functions, tout tests/unit (suites et aides de tests/unit/lib). */
 function depot() {
   const fichiers = {};
-  (function parcourir(dir) {
+  const parcourir = (dir) => {
     for (const e of fs.readdirSync(path.join(RACINE, dir), { withFileTypes: true })) {
       const p = dir + "/" + e.name;
       if (e.isDirectory()) parcourir(p);
       else if (/\.(ts|js|mjs)$/.test(e.name)) fichiers[p] = lire(p);
     }
-  })(FONCTIONS);
-  for (const f of fs.readdirSync(path.join(RACINE, SUITES))) if (/\.test\.mjs$/.test(f)) fichiers[SUITES + "/" + f] = lire(SUITES + "/" + f);
+  };
+  parcourir(FONCTIONS);
+  parcourir(SUITES);
   return { workflow: lire(WORKFLOW), reference: lire(REFERENCE), fichiers };
 }
 
 // ── Les imports d'un fichier ────────────────────────────────────────────────
-// Un import cité dans une ligne de commentaire n'en est pas un : ces lignes sont
-// blanchies. `import … from "x"`, `import "x"`, `export … from "x"`, sur
-// plusieurs lignes, commentaire de fin de ligne compris dans les accolades.
-const LIGNE_COMMENTAIRE = /^\s*(\/\/|\/\*|\*)/;
-const STATIQUE = /(?:^|[\n;])[ \t]*(?:import|export)\s+(?:type\s+)?(?:(?:[\w$*{},\s]|\/\/[^\n]*|\/\*[\s\S]*?\*\/)+?\s*from\s*)?(["'])([^"'\n]+)\1/g;
-const LITTERAL = /\b(?:import|require)\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g;
-const IMPORT_LITTERAL = /\bimport\s*\(\s*(["'])[^"'\n]+\1\s*\)/g;
-const IMPORT_APPEL = /\bimport\s*\(/g;
+// Un LEXEUR, pas une expression régulière (contre-revue du 2026-11-07 : la
+// première version, ligne à ligne, ratait `import { a as vérifier } from …` —
+// classe de caractères ASCII — et `/* … */ import …`, et comptait un import
+// écrit dans un bloc de commentaire ou un gabarit). Commentaires de ligne et de
+// bloc, chaînes, gabarits et leurs `${…}`, expressions régulières : un import
+// n'est lu que dans le CODE, et un identifiant peut être accentué.
+// Rend `specs` (les chemins lus), `calcules` (les `import()`/`require()` dont le
+// chemin ne se lit pas) et `nomme` (une chaîne du fichier nomme `supabase/` ou
+// `_shared`). Un chemin se lit : en littéral (chaîne, gabarit sans `${}`), suivi
+// d'un calcul après `?` ou `#` (anti-cache : `"…/m.js?t=" + Date.now()`), ou en
+// `new URL("…", import.meta.url)`.
+const ESPACE = /\s+/y;
+const IDENT = /[\p{ID_Start}$_][\p{ID_Continue}$‌‍]*/uy;
+const NOMBRE = /\.?[0-9][0-9A-Za-z_.]*/y;
+const AVANT_REGEX = new Set(["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"]);
 
+function lexer(src) {
+  const flux = [];                  // le code, puis chaque `${…}` de gabarit : lus chacun pour lui-même
+  const n = src.length;
+  let i = 0;
+  const colle = (re) => { re.lastIndex = i; const m = re.exec(src); return m ? m[0].length : 0; };
+  function chaine(q) {              // i sur le guillemet ouvrant
+    let v = "";
+    for (i++; i < n && src[i] !== q && src[i] !== "\n"; i++) {
+      if (src[i] === "\\") i++;
+      v += src[i] ?? "";
+    }
+    i++;
+    return v;
+  }
+  function regex() {                // i sur « / » ; rend la fin, ou -1 (ce n'était pas une expression)
+    let classe = false;
+    for (let j = i + 1; j < n && src[j] !== "\n"; j++) {
+      if (src[j] === "\\") { j++; continue; }
+      if (classe) { if (src[j] === "]") classe = false; } else if (src[j] === "[") classe = true;
+      else if (src[j] === "/") { j++; while (j < n && /[A-Za-z]/.test(src[j])) j++; return j; }
+    }
+    return -1;
+  }
+  function gabarit() {              // i sur l'accent grave ouvrant
+    let q = "", premier = null, tout = "";
+    for (i++; i < n && src[i] !== "`";) {
+      if (src[i] === "\\") { q += src[i + 1] ?? ""; i += 2; continue; }
+      if (src[i] === "$" && src[i + 1] === "{") { if (premier === null) premier = q; tout += q; q = ""; i += 2; lire(true); continue; }
+      q += src[i++];
+    }
+    i++;
+    return { k: "tpl", v: premier === null ? q : premier, sub: premier !== null, tout: tout + q };
+  }
+  function lire(dansGabarit) {
+    const t = [];
+    flux.push(t);
+    let prof = 0;
+    const regexPermise = () => {
+      const d = t[t.length - 1];
+      if (!d) return true;
+      if (d.k === "id") return AVANT_REGEX.has(d.v);
+      return d.k === "p" && d.v !== ")" && d.v !== "]";
+    };
+    while (i < n) {
+      const c = src[i];
+      let l;
+      if ((l = colle(ESPACE))) { i += l; continue; }
+      if (c === "/" && src[i + 1] === "/") { const j = src.indexOf("\n", i); i = j < 0 ? n : j; continue; }
+      if (c === "/" && src[i + 1] === "*") { const j = src.indexOf("*/", i + 2); i = j < 0 ? n : j + 2; continue; }
+      if (c === "'" || c === '"') { t.push({ k: "str", v: chaine(c) }); continue; }
+      if (c === "`") { t.push(gabarit()); continue; }
+      if (c === "/" && regexPermise()) { const j = regex(); if (j > 0) { t.push({ k: "re" }); i = j; continue; } }
+      if ((l = colle(IDENT))) { t.push({ k: "id", v: src.slice(i, i + l) }); i += l; continue; }
+      if ((l = colle(NOMBRE))) { t.push({ k: "num" }); i += l; continue; }
+      if (dansGabarit && c === "}" && prof === 0) { i++; return; }
+      if (dansGabarit && c === "{") prof++;
+      if (dansGabarit && c === "}") prof--;
+      t.push({ k: "p", v: c });
+      i++;
+    }
+  }
+  lire(false);
+  return flux;
+}
+
+const est = (j, k, v) => !!j && j.k === k && (v === undefined || j.v === v);
+/** Le chemin d'un `import(…)`/`require(…)` dont l'argument commence au jeton p ; `null` s'il ne se lit pas. */
+function chemin(t, p) {
+  const a = t[p], b = t[p + 1];
+  if (est(a, "str") || (est(a, "tpl") && !a.sub)) {
+    if (est(b, "p", ")") || est(b, "p", ",")) return a.v;
+    if (/[?#]/.test(a.v) && est(b, "p", "+")) return a.v;
+  }
+  if (est(a, "tpl") && a.sub && /[?#]/.test(a.v)) return a.v;
+  const url = ["new", "URL", "(", null, ",", "import", ".", "meta", ".", "url", ")"];
+  if (url.every((v, k) => (v === null ? est(t[p + k], "str") : !!t[p + k] && t[p + k].v === v))) return t[p + 3].v;
+  return null;
+}
+const CLAUSE = new Set(["{", "}", ",", "*"]);
+
+// Chaque mutation ne change qu'un fichier ou deux : les autres sont relus du cache.
+const DEJA_LUS = new Map();
 function imports(src) {
-  const code = String(src).split("\n").map((l) => (LIGNE_COMMENTAIRE.test(l) ? "" : l)).join("\n");
-  const specs = [...code.matchAll(STATIQUE), ...code.matchAll(LITTERAL)].map((m) => m[2]);
-  const nonLitteraux = [...code.matchAll(IMPORT_APPEL)].length - [...code.matchAll(IMPORT_LITTERAL)].length;
-  return { specs, nonLitteraux };
+  const texte = String(src);
+  if (!DEJA_LUS.has(texte)) DEJA_LUS.set(texte, lireImports(texte));
+  return DEJA_LUS.get(texte);
+}
+function lireImports(src) {
+  const specs = [];
+  let calcules = 0, nomme = false;
+  for (const t of lexer(src)) {
+    for (let k = 0; k < t.length; k++) {
+      const j = t[k];
+      if ((j.k === "str" && /supabase\/|_shared/.test(j.v)) || (j.k === "tpl" && /supabase\/|_shared/.test(j.tout))) nomme = true;
+      if (j.k !== "id" || !["import", "export", "require"].includes(j.v)) continue;
+      const avant = t[k - 1], suiv = t[k + 1];
+      if (est(avant, "p", ".") || est(avant, "id", "function")) continue;   // une propriété, une déclaration
+      if (j.v !== "export" && est(suiv, "p", "(")) {
+        const s = chemin(t, k + 2);
+        if (s === null) calcules++; else specs.push(s);
+        continue;
+      }
+      if (j.v === "require") continue;
+      if (j.v === "import" && est(suiv, "str")) { specs.push(suiv.v); continue; }   // import "x"
+      if (j.v === "import" && est(suiv, "p", ".")) continue;                         // import.meta
+      if (j.v === "export" && !(est(suiv, "p", "*") || est(suiv, "p", "{") || est(suiv, "id", "type"))) continue;
+      for (let m = k + 1; m < t.length; m++) {                                       // … from "x"
+        const x = t[m];
+        if (est(x, "id", "from") && est(t[m + 1], "str")) { specs.push(t[m + 1].v); break; }
+        if (!(x.k === "id" || x.k === "str" || (x.k === "p" && CLAUSE.has(x.v)))) break;
+      }
+    }
+  }
+  return { specs, calcules, nomme };
 }
 
 /** Un chemin relatif résolu dans le dépôt ; `null` pour une URL, `npm:`, `node:` ou un nom nu. */
@@ -124,7 +255,11 @@ const DEPLOIE = /\bsupabase functions deploy\b/;
 const LANCE_TESTS = /\bnode --test\b/;
 const LIGNE_SUITES = /^node --test((?: tests\/unit\/[A-Za-z0-9._-]+\.test\.mjs)+)$/;
 const LIGNE_SET = /^set -(?:e|eo pipefail|euo pipefail)$/;
-const PASSE_OUTRE = /\b(?:always|failure|cancelled)\s*\(/;
+// Une fonction d'état dans un `if:` RETIRE le `success()` implicite (documentation
+// GitHub, « status check functions ») : `success() || github.event_name == …`
+// part aussi derrière un verrou rouge.
+const FONCTION_ETAT = /\b(?:always|failure|cancelled|success)\s*\(/;
+const ECRIT_ENV = /\bGITHUB_(?:ENV|PATH)\b/;
 const UNITAIRES_CI = /node --test "?tests\/unit\/\*\.test\.mjs"?|node scripts\/tests-unit\.mjs|npm run test:unit/;
 
 const nomEtape = (s, i) => s.name || s.uses || `étape ${i + 1}`;
@@ -135,18 +270,40 @@ function versionNode(etape) {
   return m ? m[1] : "";
 }
 const majeure = (v) => (/\d+/.exec(String(v)) || [String(v)])[0];
+/** Les noms d'un bloc `env:` (objet, ou `{ … }` rendu tel quel par le lecteur). */
+const nomsEnv = (env) => (env && typeof env === "object" ? Object.keys(env) : [...String(env || "").matchAll(/([A-Za-z_]\w*)\s*:/g)].map((m) => m[1]));
+/** Le `shell` d'un bloc `defaults:` (objets, ou `{ … }` rendu tel quel). */
+function shellDefaut(d) {
+  const run = d && typeof d === "object" ? d.run : d;
+  if (run && typeof run === "object") return run.shell;
+  const m = /shell\s*:\s*([^,}\n]+)/.exec(String(run || ""));
+  return m ? m[1].trim() : undefined;
+}
 
 function lireEtape(texte, defauts) {
   let doc;
   try { doc = parse(texte); } catch (e) { defauts.push(`${WORKFLOW} illisible : ${e.message}`); return null; }
   const jobs = Object.entries((doc && doc.jobs) || {}).filter(([, j]) => (j.steps || []).some((s) => DEPLOIE.test(String(s.run || ""))));
   if (jobs.length !== 1) { defauts.push(`${jobs.length} job(s) lancent « supabase functions deploy » : le banc en attend exactement un`); return null; }
-  const etapes = jobs[0][1].steps;
-  const iDeploie = etapes.findIndex((s) => DEPLOIE.test(String(s.run || "")));
+  const job = jobs[0][1];
+  const etapes = job.steps;
+  // CHAQUE étape qui déploie, pas seulement la première : un « nouvel essai »
+  // en `if: failure()` partirait justement quand un verrou a rougi.
+  const deploiements = etapes.map((s, i) => [s, i]).filter(([s]) => DEPLOIE.test(String(s.run || "")));
+  const iDeploie = deploiements[0][1];
   const deploie = `« ${nomEtape(etapes[iDeploie], iDeploie)} »`;
-  if (etapes[iDeploie].if !== undefined && PASSE_OUTRE.test(String(etapes[iDeploie].if))) {
-    defauts.push(`${deploie} : if: ${etapes[iDeploie].if} — passe outre l'échec d'un verrou`);
+  for (const [s, i] of deploiements) {
+    if (s.if !== undefined && FONCTION_ETAT.test(String(s.if))) {
+      defauts.push(`« ${nomEtape(s, i)} » : if: ${s.if} — une fonction d'état retire le success() implicite : le déploiement partirait derrière un verrou rouge`);
+    }
   }
+  // Ce qui atteint l'étape sans y être écrit : le shell par défaut, et les
+  // variables que `node --test` lit (NODE_OPTIONS=--test-only ou
+  // --test-skip-pattern : sortie 0 sur une suite rouge, mesuré sous Node 22).
+  for (const [niveau, env] of [["du workflow", doc.env], ["du job", job.env]]) {
+    for (const k of nomsEnv(env)) if (/^NODE_/.test(k)) defauts.push(`${k} dans l'env ${niveau} — node --test y lit ses options : --test-only ou --test-skip-pattern le font sortir en 0 sur une suite rouge`);
+  }
+  const shellJob = shellDefaut(job.defaults), shellWf = shellDefaut(doc.defaults);
   const listees = [];
   const verrous = [];
   etapes.forEach((s, i) => {
@@ -159,9 +316,12 @@ function lireEtape(texte, defauts) {
     if (s["continue-on-error"] !== undefined && String(s["continue-on-error"]) !== "false") {
       defauts.push(`${ou} : continue-on-error — une suite rouge ne retiendrait pas le déploiement`);
     }
-    if (s.shell !== undefined && String(s.shell) !== "bash") {
-      defauts.push(`${ou} : shell: ${s.shell} — seul le shell par défaut (bash -e) ou « bash » arrête l'étape à la première suite rouge`);
+    const shell = s.shell ?? shellJob ?? shellWf;
+    if (shell !== undefined && String(shell) !== "bash") {
+      const d = s.shell !== undefined ? "" : shellJob !== undefined ? " (defaults du job)" : " (defaults du workflow)";
+      defauts.push(`${ou} : shell: ${shell}${d} — seul le shell par défaut (bash -e) ou « bash » arrête l'étape à la première suite rouge`);
     }
+    for (const k of nomsEnv(s.env)) if (/^NODE_/.test(k)) defauts.push(`${ou} : ${k} dans son env — node --test y lit ses options : --test-only ou --test-skip-pattern le font sortir en 0 sur une suite rouge`);
     for (const brute of run.split("\n")) {
       const l = brute.trim();
       if (!l || l.startsWith("#") || LIGNE_SET.test(l)) continue;
@@ -172,6 +332,9 @@ function lireEtape(texte, defauts) {
   });
   if (!verrous.length) defauts.push(`aucune étape ne lance « node --test » avant ${deploie}`);
   const premier = verrous.length ? verrous[0].i : iDeploie;
+  etapes.slice(0, premier).forEach((s, i) => {
+    if (ECRIT_ENV.test(String(s.run || ""))) defauts.push(`« ${nomEtape(s, i)} » : écrit dans $GITHUB_ENV ou $GITHUB_PATH avant les verrous — une option de Node ou un autre « node » leur parviendraient`);
+  });
   const node = etapes.slice(0, premier).filter((s) => /^actions\/setup-node@/.test(String(s.uses || ""))).pop();
   return { listees, verrous, version: versionNode(node), deploie };
 }
@@ -185,7 +348,9 @@ function lireReference(texte, defauts) {
     const k = etapes.findIndex((s) => UNITAIRES_CI.test(String(s.run || "")));
     if (k < 0) continue;
     const node = etapes.slice(0, k).filter((s) => /^actions\/setup-node@/.test(String(s.uses || ""))).pop();
-    return { job, version: versionNode(node) };
+    const version = versionNode(node);
+    if (!version) defauts.push(`${REFERENCE} (job ${job}) : aucune version de Node lisible avant tests/unit/*.test.mjs (pas d'actions/setup-node, ou node-version-file) — ⑤ ne prouverait plus rien`);
+    return { job, version };
   }
   defauts.push(`deploy.yml : aucun job n'y lance tests/unit/*.test.mjs — ni la version de référence ni la CI des écarts ne sont plus prouvées`);
   return null;
@@ -206,8 +371,8 @@ function auditer({ workflow, reference, fichiers }, ecarts = ECARTS) {
     const [f, fn] = pile.pop();
     if (vus.has(f + "\u0000" + fn)) continue;
     vus.add(f + "\u0000" + fn);
-    const { specs, nonLitteraux } = imports(fichiers[f]);
-    if (nonLitteraux > 0) defauts.push(`${f} : import() non littéral — ce qu'emporte ${fn} devient incalculable`);
+    const { specs, calcules } = imports(fichiers[f]);
+    if (calcules > 0) defauts.push(`${f} : import() ou require() au chemin calculé — ce qu'emporte ${fn} devient incalculable`);
     for (const spec of specs) {
       const cible = resoudre(f, spec);
       if (cible === null) continue;
@@ -218,12 +383,28 @@ function auditer({ workflow, reference, fichiers }, ecarts = ECARTS) {
     }
   }
 
-  // Les suites, et les modules emportés qu'elles importent elles-mêmes.
+  // Les suites, et les modules emportés qu'elles importent : elles-mêmes, ou par
+  // une aide de tests/unit (lib/faux-admin-purge.mjs importe purge-compte.js) —
+  // une aide fait partie du test ; un script, lui, est ce que la suite éprouve.
   const importsDe = new Map();
+  const aveugles = new Set();   // un chemin calculé, dans un fichier qui nomme supabase/ ou _shared
   for (const s of Object.keys(fichiers).filter((f) => /^tests\/unit\/[^/]+\.test\.mjs$/.test(f)).sort()) {
     const mods = new Set();
-    for (const spec of imports(fichiers[s]).specs) { const c = resoudre(s, spec); if (c && emportes.has(c)) mods.add(c); }
+    let calcules = 0, nomme = false;
+    const lus = new Set([s]);
+    for (const file = [s]; file.length;) {
+      const f = file.pop();
+      const r = imports(fichiers[f]);
+      calcules += r.calcules;
+      nomme = nomme || r.nomme;
+      for (const spec of r.specs) {
+        const c = resoudre(f, spec);
+        if (c && emportes.has(c)) mods.add(c);
+        else if (c && c.startsWith(SUITES + "/") && c in fichiers && !lus.has(c)) { lus.add(c); file.push(c); }
+      }
+    }
     if (mods.size) importsDe.set(s, [...mods].sort());
+    if (calcules && nomme) aveugles.add(s);
   }
   const listees = new Set();
   for (const s of etape.listees) { if (listees.has(s)) defauts.push(`${s} : listée deux fois`); listees.add(s); }
@@ -244,17 +425,25 @@ function auditer({ workflow, reference, fichiers }, ecarts = ECARTS) {
     if (listees.has(s) || s in ecarts) continue;
     defauts.push(`${s} : importe ${ms.join(", ")} (emportés) et ne tourne pas avant « Déployer » — la lister dans l'étape, ou déclarer l'écart avec sa raison`);
   }
-  // ③ chaque suite listée existe et garde quelque chose.
+  // ②' ce que le banc ne sait pas lire se dit : un chemin calculé, là où un module des fonctions est nommé.
+  for (const s of [...aveugles].sort()) {
+    if (listees.has(s) || s in ecarts || importsDe.has(s)) continue;
+    defauts.push(`${s} : charge un module par un chemin calculé (import()/require()) et nomme supabase/ ou _shared — le banc ne peut dire lequel : écrire le chemin en littéral, la lister, ou déclarer l'écart`);
+  }
+  // ③ chaque suite listée existe et garde quelque chose ; ce banc y tourne (il
+  // n'importe aucun module : il vérifie la liste elle-même, avant « Déployer »,
+  // y compris sur un push direct que la CI parallèle ne retient pas).
   for (const s of listees) {
     if (!(s in fichiers)) defauts.push(`${s} : listée, introuvable — « node --test » sortirait en 1 et retiendrait tout déploiement`);
-    else if (!importsDe.has(s)) defauts.push(`${s} : listée, n'importe aucun module emporté — elle ne garde rien ici`);
+    else if (!importsDe.has(s) && s !== CE_BANC) defauts.push(`${s} : listée, n'importe aucun module emporté — elle ne garde rien ici`);
   }
+  if (!listees.has(CE_BANC)) defauts.push(`${CE_BANC} : absent de l'étape — la liste ne se vérifie plus avant « Déployer », seulement dans la CI qui tourne en parallèle`);
   // Les écarts : une raison, et un objet.
   for (const [cible, raison] of Object.entries(ecarts)) {
     if (typeof raison !== "string" || raison.trim().length < RAISON_MIN) defauts.push(`écart ${cible} : sans raison (${RAISON_MIN} caractères au moins)`);
     if (cible.startsWith(SUITES + "/")) {
       if (!(cible in fichiers)) defauts.push(`écart ${cible} : sans objet — la suite n'existe pas`);
-      else if (!importsDe.has(cible)) defauts.push(`écart ${cible} : sans objet — elle n'importe aucun module emporté`);
+      else if (!importsDe.has(cible) && !aveugles.has(cible)) defauts.push(`écart ${cible} : sans objet — elle n'importe aucun module emporté`);
       else if (listees.has(cible)) defauts.push(`écart ${cible} : sans objet — elle est listée`);
     } else if (cible.startsWith(FONCTIONS + "/")) {
       const utile = emportes.has(cible) ? !couvert(cible) : cible.startsWith(SHARED) && cible in fichiers;
@@ -293,10 +482,40 @@ test("le lecteur voit ce que la CLI emporte : tout _shared, l'import de dix lign
   assert.deepEqual([...AUDIT.emportes.get(S("purge-compte.js"))].sort(), ["delete-account", "export-account"]);
   // Une suite qui importe par createRequire() est vue.
   assert.deepEqual(AUDIT.importsDe.get(SUITES + "/audit-tables-compte.test.mjs"), [S("export-compte.js"), S("purge-compte.js")]);
-  // Ce banc n'importe aucun module : ses textes de mutation ne le font pas passer pour une suite.
+  // …et par une aide de tests/unit/lib : la purge n'arrive ici que par faux-admin-purge.mjs.
+  assert.ok(!REEL.fichiers[SUITES + "/suppression-entrelacement.test.mjs"].includes("_shared/purge-compte.js"), "prémisse : pas d'import direct");
+  assert.ok(AUDIT.importsDe.get(SUITES + "/suppression-entrelacement.test.mjs").includes(S("purge-compte.js")));
+  // Ce banc n'importe aucun module : ses textes de mutation sont des chaînes.
   assert.equal(AUDIT.importsDe.has(CE_BANC), false);
+  assert.ok(AUDIT.listees.has(CE_BANC), "ce banc tourne dans l'étape");
   assert.ok(AUDIT.listees.size >= 10 && AUDIT.verrous.length === 1, "prémisse : l'étape est lue");
   assert.equal(majeure(AUDIT.version), majeure(AUDIT.reference.version));
+});
+
+test("le lexeur : un import ne se lit que dans le CODE — accents, commentaires de bloc, chaînes, gabarits, expressions régulières", () => {
+  const lit = (src) => imports(src).specs;
+  assert.deepEqual(lit('import { a as vérifier } from "./m.js";'), ["./m.js"]);
+  assert.deepEqual(lit('import {\n  règle, // la règle\n  /* une autre */ autre,\n} from "./m.js";'), ["./m.js"]);
+  assert.deepEqual(lit('/* x */ import a from "./m.js";'), ["./m.js"]);
+  assert.deepEqual(lit('/*\nimport a from "./m.js";\n*/'), []);
+  assert.deepEqual(lit('const t = `\nimport a from "./m.js";\n`;'), []);
+  assert.deepEqual(lit("const s = \"import a from './m.js'\";"), []);
+  assert.deepEqual(lit('const r = /import a from "x"/; import b from "./m.js";'), ["./m.js"]);
+  assert.deepEqual(lit('const q = a / b; import c from "./m.js"; const d = e / f;'), ["./m.js"]);
+  assert.deepEqual(lit('const u = `${await import("./m.js")}`;'), ["./m.js"]);
+  assert.deepEqual(lit('export * as n from "./m.js"; export { x } from "./n.js"; export const y = 1;'), ["./m.js", "./n.js"]);
+  assert.deepEqual(lit('import "./m.js"; import.meta.url; x.import("./faux.js");'), ["./m.js"]);
+  assert.deepEqual(lit('import type { T } from "./t.ts"; import x = require("./r.js");'), ["./t.ts", "./r.js"]);
+  // Les chemins qui se lisent encore : anti-cache, gabarit sans ${}, new URL, attributs d'import.
+  assert.deepEqual(lit('await import("./m.js?t=" + Date.now());'), ["./m.js?t="]);
+  assert.deepEqual(lit("await import(`./m.js`); await import(`./n.js?v=${v}`);"), ["./m.js", "./n.js?v="]);
+  assert.deepEqual(lit('await import(new URL("./m.js", import.meta.url).href);'), ["./m.js"]);
+  assert.deepEqual(lit('await import("./m.json", { with: { type: "json" } });'), ["./m.json"]);
+  // …et ceux qui ne se lisent pas, comptés.
+  assert.equal(imports('await import(dossier + "m.js"); require(nom); await import(`${d}m.js`);').calcules, 3);
+  assert.equal(imports('import { a } from "./m.js";').calcules, 0);
+  assert.equal(imports('const d = "../../supabase/functions/_shared/";').nomme, true);
+  assert.equal(imports('// "../../supabase/functions/_shared/"').nomme, false, "un commentaire ne nomme rien");
 });
 
 // ── ⑥ Le bloc réel, joué par bash comme sur le runner, contre un faux `node` ─────
@@ -352,9 +571,10 @@ test("⑥ le bloc run: réel sous bash -e : chaque suite listée tourne, dans l'
 });
 
 // ── ⑦ Mutations rejouées sur le texte réel ─────────────────────────────────────
-// ⚠️ Les textes de mutation qui importent un module emporté sont ASSEMBLÉS
-// (VERS_SHARED) : écrits en clair, ils feraient de ce banc une suite qui importe
-// un module emporté, et ② le réclamerait dans l'étape.
+// Les textes de mutation sont des chaînes : le lexeur ne les lit pas comme des
+// imports de ce banc. Le premier lecteur, ligne à ligne, s'y laissait prendre
+// (il y voyait « ./neuf.js » et quatre import() calculés) ; l'assemblage de
+// VERS_SHARED en garde la trace, il ne coûte rien.
 const VERS_SHARED = "../../supabase/" + "functions/_shared/";
 const INDENT = " ".repeat(10);
 const LIGNE_PLAFOND = "node --test tests/unit/plafond.test.mjs\n";
@@ -379,22 +599,36 @@ test("⑦ retirer N'IMPORTE QUELLE ligne de l'étape rougit, en nommant sa suite
   assert.ok(lignes.length >= 10);
   for (const l of lignes) {
     const sans = muter(REEL.workflow, "\n" + INDENT + l + "\n", "\n");
-    for (const s of l.split(" ").slice(2)) rougit(avec({ workflow: sans }), new RegExp("^" + echapper(s) + " : importe .* ne tourne pas avant « Déployer »"));
+    for (const s of l.split(" ").slice(2)) {
+      rougit(avec({ workflow: sans }), s === CE_BANC
+        ? new RegExp("^" + echapper(CE_BANC) + " : absent de l'étape")
+        : new RegExp("^" + echapper(s) + " : importe .* ne tourne pas avant « Déployer »"));
+    }
   }
 });
 
-test("⑦ un import _shared sans suite rougit : dans une fonction, sur plusieurs lignes, dans un module emporté, en import() ; listée, sa suite remet au vert", () => {
+test("⑦ un import _shared sans suite rougit : dans une fonction, sur plusieurs lignes, accentué, derrière un commentaire de bloc, dans un module emporté, en import() ; listée, sa suite remet au vert", () => {
   const ancre = 'import { REVISION } from "../_shared/revision.js";\n';
   const neuf = { [S("neuf.js")]: "export const neuf = 1;\n" };
   const motif = /^supabase\/functions\/_shared\/neuf\.js : emporté par pilotage, aucune suite listée ne l'importe — aucune suite ne l'importe$/;
-  const direct = muter(REEL.fichiers[INDEX_PILOTAGE], ancre, ancre + 'import { neuf } from "../_shared/neuf.js";\n');
+  const index = (ligne) => muter(REEL.fichiers[INDEX_PILOTAGE], ancre, ancre + ligne);
+  const direct = index('import { neuf } from "../_shared/neuf.js";\n');
   rougit(avec({ fichiers: { ...neuf, [INDEX_PILOTAGE]: direct } }), motif);
-  rougit(avec({ fichiers: { ...neuf, [INDEX_PILOTAGE]: muter(REEL.fichiers[INDEX_PILOTAGE], ancre, ancre + 'import {\n  neuf, // le geste neuf\n} from "../_shared/neuf.js";\n') } }), motif);
+  rougit(avec({ fichiers: { ...neuf, [INDEX_PILOTAGE]: index('import {\n  neuf, // le geste neuf\n} from "../_shared/neuf.js";\n') } }), motif);
+  rougit(avec({ fichiers: { ...neuf, [INDEX_PILOTAGE]: index('import { neuf as règleNeuve } from "../_shared/neuf.js";\n') } }), motif);
+  rougit(avec({ fichiers: { ...neuf, [INDEX_PILOTAGE]: index('/* le geste neuf */ import { neuf } from "../_shared/neuf.js";\n') } }), motif);
   rougit(avec({ fichiers: { ...neuf, [S("parcours.js")]: 'import { neuf } from "./neuf.js";\n' + REEL.fichiers[S("parcours.js")] } }), motif);
   rougit(avec({ fichiers: { ...neuf, [S("battement.js")]: REEL.fichiers[S("battement.js")] + 'export const charger = () => import("./neuf.js");\n' } }), motif);
+  // Hors de _shared, ⓪ ne dit rien : seul ① voit le module local, s'il lit l'import.
+  rougit(avec({ fichiers: { [FONCTIONS + "/pilotage/regles.js"]: "export const règle = 1;\n", [INDEX_PILOTAGE]: index('import { règle } from "./regles.js";\n') } }),
+    /^supabase\/functions\/pilotage\/regles\.js : emporté par pilotage, aucune suite listée ne l'importe/);
+  // Un import cité dans un bloc de commentaire ou un gabarit d'une suite LISTÉE ne couvre rien.
+  const B = SUITES + "/battement.test.mjs";
+  rougit(avec({ fichiers: { ...neuf, [INDEX_PILOTAGE]: direct, [B]: REEL.fichiers[B] + `/*\nimport { neuf } from "${VERS_SHARED}neuf.js";\n*/\n` } }), motif);
+  rougit(avec({ fichiers: { ...neuf, [INDEX_PILOTAGE]: direct, [B]: REEL.fichiers[B] + "const exemple = `\nimport { neuf } from \"" + VERS_SHARED + "neuf.js\";\n`;\n" } }), motif);
   // Ce qu'on ne sait pas suivre se dit : un chemin calculé, un fichier absent.
   rougit(avec({ fichiers: { [S("battement.js")]: REEL.fichiers[S("battement.js")] + 'export const charger = (n) => import("./" + n + ".js");\n' } }),
-    /^supabase\/functions\/_shared\/battement\.js : import\(\) non littéral — ce qu'emporte pilotage devient incalculable$/);
+    /^supabase\/functions\/_shared\/battement\.js : import\(\) ou require\(\) au chemin calculé — ce qu'emporte pilotage devient incalculable$/);
   rougit(avec({ fichiers: { [INDEX_PILOTAGE]: muter(REEL.fichiers[INDEX_PILOTAGE], ancre, ancre + 'import { x } from "../_shared/absent.js";\n') } }),
     /^supabase\/functions\/pilotage\/index\.ts : importe « \.\.\/_shared\/absent\.js », introuvable$/);
   // Le remède : la suite du module neuf, listée.
@@ -405,15 +639,35 @@ test("⑦ un import _shared sans suite rougit : dans une fonction, sur plusieurs
   assert.deepEqual(auditer(remede).defauts, []);
 });
 
-test("⑦ une suite neuve qui importe un module emporté rougit tant qu'elle n'est pas listée ; un import cité en commentaire ne compte pas", () => {
+test("⑦ une suite neuve qui importe un module emporté rougit tant qu'elle n'est pas listée — quelle que soit la forme de l'import ; un import cité en commentaire ou en gabarit ne compte pas", () => {
   const neuve = SUITES + "/neuve.test.mjs";
   const motif = /^tests\/unit\/neuve\.test\.mjs : importe supabase\/functions\/_shared\/plafond\.js \(emportés\) et ne tourne pas avant « Déployer »/;
-  rougit(avec({ fichiers: { [neuve]: `import { verdictDepuisComptes } from "${VERS_SHARED}plafond.js";\n` } }), motif);
-  rougit(avec({ fichiers: { [neuve]: `const { verdictDepuisComptes } = require("${VERS_SHARED}plafond.js");\n` } }), motif);
-  rougit(avec({ fichiers: { [neuve]: `const m = await import("${VERS_SHARED}plafond.js");\n` } }), motif);
-  assert.deepEqual(auditer(avec({ fichiers: { [neuve]: `// import { verdictDepuisComptes } from "${VERS_SHARED}plafond.js";\n` } })).defauts, []);
+  const P = VERS_SHARED + "plafond.js";
+  for (const src of [
+    `import { verdictDepuisComptes } from "${P}";\n`,
+    `import { verdictDepuisComptes as vérifier } from "${P}";\n`,
+    `/* le plafond */ import { verdictDepuisComptes } from "${P}";\n`,
+    `const { verdictDepuisComptes } = require("${P}");\n`,
+    `const m = await import("${P}");\n`,
+    `const m = await import("${P}?t=" + Date.now());\n`,
+    "const m = await import(`" + P + "`);\n",
+    "const m = await import(`" + P + "?t=${Date.now()}`);\n",
+    `const m = await import(new URL("${P}", import.meta.url));\n`,
+  ]) rougit(avec({ fichiers: { [neuve]: src } }), motif);
+  // Par une aide de tests/unit/lib : l'aide fait partie du test.
+  const aide = SUITES + "/lib/aide-neuve.mjs";
+  rougit(avec({ fichiers: { [aide]: `export { verdictDepuisComptes } from "../${P}";\n`, [neuve]: 'import { verdictDepuisComptes } from "./lib/aide-neuve.mjs";\n' } }), motif);
+  // Un chemin calculé, là où un module des fonctions est nommé : le banc ne peut dire lequel.
+  const calcule = `const V = "${VERS_SHARED}";\nconst m = await import(V + "plafond.js");\n`;
+  rougit(avec({ fichiers: { [neuve]: calcule } }), /^tests\/unit\/neuve\.test\.mjs : charge un module par un chemin calculé \(import\(\)\/require\(\)\) et nomme supabase\/ ou _shared/);
+  assert.deepEqual(auditer(avec({ fichiers: { [neuve]: calcule } }), { ...ECARTS, [neuve]: "charge un module de démonstration par un chemin calculé, sans rien éprouver des fonctions" }).defauts, []);
+  // …et n'importe où ailleurs, rien : build-id.test.mjs charge `require(nom)`.
+  assert.deepEqual(auditer(avec({ fichiers: { [neuve]: 'const m = require(nom);\n' } })).defauts, []);
+  for (const cite of [`// import { verdictDepuisComptes } from "${P}";\n`, `/*\nimport { verdictDepuisComptes } from "${P}";\n*/\n`, "const t = `\nimport { verdictDepuisComptes } from \"" + P + "\";\n`;\n"]) {
+    assert.deepEqual(auditer(avec({ fichiers: { [neuve]: cite } })).defauts, [], cite);
+  }
   const listee = muter(REEL.workflow, LIGNE_PLAFOND, "node --test tests/unit/plafond.test.mjs tests/unit/neuve.test.mjs\n");
-  assert.deepEqual(auditer(avec({ workflow: listee, fichiers: { [neuve]: `import { verdictDepuisComptes } from "${VERS_SHARED}plafond.js";\n` } })).defauts, []);
+  assert.deepEqual(auditer(avec({ workflow: listee, fichiers: { [neuve]: `import { verdictDepuisComptes } from "${P}";\n` } })).defauts, []);
 });
 
 test("⑦ les écarts : retiré, il rougit ; sans objet, sans raison ou hors cible, aussi", () => {
@@ -431,7 +685,41 @@ test("⑦ les écarts : retiré, il rougit ; sans objet, sans raison ou hors cib
   rougit(REEL, /^écart docs\/x\.md : ni une suite de tests\/unit, ni un fichier de supabase\/functions$/, { ...ECARTS, "docs/x.md": raison });
 });
 
-test("⑦ ④ la forme de l'étape : après « Déployer », || true, motif, filtre, set +e, continue-on-error, if, shell — et if: always() sur « Déployer »", () => {
+test("⑦ ④ ce qui contourne l'étape sans y toucher : une fonction d'état sur un déploiement, un second déploiement, defaults:, env: NODE_*, $GITHUB_ENV", () => {
+  const W = REEL.workflow;
+  const NOM = "      - name: Verrous unitaires des modules partagés\n";
+  const DEP = "      - name: Déployer\n";
+  const JOB = "    timeout-minutes: 15\n";
+  const etat = /— une fonction d'état retire le success\(\) implicite : le déploiement partirait derrière un verrou rouge$/;
+  rougit(avec({ workflow: muter(W, DEP, DEP + "        if: always()\n") }), new RegExp("^« Déployer » : if: always\\(\\) " + etat.source));
+  rougit(avec({ workflow: muter(W, DEP, DEP + "        if: success() || github.event_name == 'workflow_dispatch'\n") }), new RegExp("^« Déployer » : if: success\\(\\) \\|\\| github\\.event_name == 'workflow_dispatch' " + etat.source));
+  rougit(avec({ workflow: muter(W, DEP, DEP + "        if: ${{ !cancelled() }}\n") }), etat);
+  // Un « nouvel essai » qui ne part QUE sur un échec : précisément derrière un verrou rouge.
+  const FUMEE = "      - name: Test de fumée (CORS, porte d'authentification)\n";
+  const essai = [
+    "      - name: Déployer — nouvel essai",
+    "        if: failure()",
+    "        run: |",
+    '          supabase functions deploy pilotage --project-ref "$PROJECT_REF" --yes',
+    "",
+  ].join("\n") + "\n";
+  rougit(avec({ workflow: muter(W, FUMEE, essai + FUMEE) }), new RegExp("^« Déployer — nouvel essai » : if: failure\\(\\) " + etat.source));
+  // Un `if:` sans fonction d'état garde le success() implicite : il ne passe outre rien.
+  assert.deepEqual(auditer(avec({ workflow: muter(W, DEP, DEP + "        if: github.repository == 'PASSIO74/passio-app'\n") })).defauts, []);
+  // Le shell par défaut, posé plus haut que l'étape : sans -e, une suite rouge en tête passe (⑥).
+  rougit(avec({ workflow: muter(W, JOB, JOB + "    defaults:\n      run:\n        shell: bash {0}\n") }), /^« Verrous unitaires des modules partagés » : shell: bash \{0\} \(defaults du job\)/);
+  rougit(avec({ workflow: muter(W, "\njobs:\n", "\ndefaults:\n  run:\n    shell: bash {0}\n\njobs:\n") }), /^« Verrous unitaires des modules partagés » : shell: bash \{0\} \(defaults du workflow\)/);
+  assert.deepEqual(auditer(avec({ workflow: muter(W, JOB, JOB + "    defaults:\n      run:\n        shell: bash\n") })).defauts, [], "« bash » nommé : -eo pipefail");
+  // Les options que `node --test` lit dans l'environnement, à chaque niveau.
+  rougit(avec({ workflow: muter(W, NOM, NOM + "        env:\n          NODE_OPTIONS: --test-skip-pattern=.\n") }), /^« Verrous unitaires des modules partagés » : NODE_OPTIONS dans son env/);
+  rougit(avec({ workflow: muter(W, NOM, NOM + "        env: { NODE_OPTIONS: --test-only }\n") }), /^« Verrous unitaires des modules partagés » : NODE_OPTIONS dans son env/);
+  rougit(avec({ workflow: muter(W, JOB, JOB + "    env:\n      NODE_OPTIONS: --test-only\n") }), /^NODE_OPTIONS dans l'env du job/);
+  rougit(avec({ workflow: muter(W, "\nenv:\n", "\nenv:\n  NODE_OPTIONS: --test-only\n") }), /^NODE_OPTIONS dans l'env du workflow/);
+  // …ou qu'une étape d'avant pose pour elles.
+  rougit(avec({ workflow: muter(W, NOM, '      - name: Préparer\n        run: echo "NODE_OPTIONS=--test-only" >> "$GITHUB_ENV"\n\n' + NOM) }), /^« Préparer » : écrit dans \$GITHUB_ENV ou \$GITHUB_PATH avant les verrous/);
+});
+
+test("⑦ ④ la forme de l'étape : après « Déployer », || true, motif, filtre, set +e, continue-on-error, if, shell", () => {
   const W = REEL.workflow;
   rougit(avec({ workflow: muter(W, LIGNE_PLAFOND, "node --test tests/unit/plafond.test.mjs || true\n") }), /ligne non reconnue « node --test tests\/unit\/plafond\.test\.mjs \|\| true »/);
   rougit(avec({ workflow: muter(W, LIGNE_PLAFOND, 'node --test "tests/unit/*.test.mjs"\n') }), /ligne non reconnue « node --test "tests\/unit\/\*\.test\.mjs" »/);
@@ -440,9 +728,7 @@ test("⑦ ④ la forme de l'étape : après « Déployer », || true, motif, fil
   const NOM = "      - name: Verrous unitaires des modules partagés\n";
   rougit(avec({ workflow: muter(W, NOM, NOM + "        continue-on-error: true\n") }), /^« Verrous unitaires des modules partagés » : continue-on-error/);
   rougit(avec({ workflow: muter(W, NOM, NOM + "        if: github.event_name == 'workflow_dispatch'\n") }), /^« Verrous unitaires des modules partagés » : if: .* un verrou conditionnel/);
-  rougit(avec({ workflow: muter(W, NOM, NOM + "        shell: bash {0}\n") }), /^« Verrous unitaires des modules partagés » : shell: bash \{0\}/);
-  const DEP = "      - name: Déployer\n";
-  rougit(avec({ workflow: muter(W, DEP, DEP + "        if: always()\n") }), /^« Déployer » : if: always\(\) — passe outre l'échec d'un verrou$/);
+  rougit(avec({ workflow: muter(W, NOM, NOM + "        shell: bash {0}\n") }), /^« Verrous unitaires des modules partagés » : shell: bash \{0\} — /);
   // L'étape déplacée APRÈS « Déployer » : ses suites ne retiennent plus rien.
   const debut = W.indexOf(NOM);
   const fin = W.indexOf("      - uses: supabase/setup-cli@v1\n");
@@ -469,13 +755,18 @@ test("⑦ ⓪ un fichier de _shared qu'aucune fonction n'emporte rougit — et c
   rougit(avec({ fichiers: { [INDEX_PILOTAGE]: aveugle } }), /^supabase\/functions\/_shared\/pilotage\.js : aucune fonction ne l'emporte/);
 });
 
-test("⑦ ⑤ Node : un autre majeur que deploy.yml rougit ; une installation absente, une référence disparue aussi", () => {
+test("⑦ ⑤ Node : un autre majeur que deploy.yml rougit ; une installation absente, une référence disparue ou illisible aussi", () => {
   const ref = AUDIT.reference;
   const autre = String(Number(majeure(ref.version)) - 2);
-  rougit(avec({ workflow: muter(REEL.workflow, `node-version: ${AUDIT.version}\n`, `node-version: ${autre}\n`) }),
-    new RegExp(`^Node ${autre} avant les verrous, Node ${ref.version} dans deploy\\.yml \\(job ${ref.job}\\)`));
+  const ici = (v) => muter(REEL.workflow, `node-version: ${AUDIT.version}\n`, `node-version: ${v}\n`);
+  rougit(avec({ workflow: ici(autre) }), new RegExp(`^Node ${autre} avant les verrous, Node ${ref.version} dans deploy\\.yml \\(job ${ref.job}\\)`));
   rougit(avec({ workflow: muter(REEL.workflow, "        uses: actions/setup-node@v4\n", "        uses: actions/cache@v4\n") }), /^aucune installation de Node \(actions\/setup-node\) avant les verrous$/);
   rougit(avec({ reference: muter(REEL.reference, 'run: node --test "tests/unit/*.test.mjs"\n', "run: echo rien\n") }), /^deploy\.yml : aucun job n'y lance tests\/unit\/\*\.test\.mjs/);
+  // Une référence qu'on ne lit plus ne vaut pas accord : ici repassé sous un autre Node, elle rougit encore.
+  const INSTALLE = `      - uses: actions/setup-node@v5\n        with:\n          node-version: ${ref.version}\n\n      - name: Audits statiques (collisions de globals)`;
+  const illisible = new RegExp(`^\\.github\\/workflows\\/deploy\\.yml \\(job ${ref.job}\\) : aucune version de Node lisible avant tests\\/unit\\/\\*\\.test\\.mjs`);
+  rougit(avec({ workflow: ici(autre), reference: muter(REEL.reference, INSTALLE, "      - name: Audits statiques (collisions de globals)") }), illisible);
+  rougit(avec({ workflow: ici(autre), reference: muter(REEL.reference, INSTALLE, INSTALLE.replace(`node-version: ${ref.version}`, "node-version-file: .nvmrc")) }), illisible);
 });
 
 test("⑧ npm run verif porte ce banc", () => {
