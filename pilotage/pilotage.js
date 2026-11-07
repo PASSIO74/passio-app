@@ -210,6 +210,14 @@
     if (rp && rp.etat === "mesure") zone.append(carte("Rappels d'activité reçus (24 h)", Math.round(rp.taux * 100) + " %", rp.recus + " reçus sur " + rp.envoyes + " envoyés" + (rp.enAttente ? " · " + rp.enAttente + " en attente" : ""), rp.taux >= 0.8 ? "vert" : "orange"));
     else if (rp && rp.etat === "partiel") zone.append(carte("Rappels d'activité (24 h)", "Partiel", "La lecture des accusés a touché son plafond : pas de taux, au moins " + rp.recus + " reçus sur " + rp.envoyes + ".", "gris"));
     else if (rp) zone.append(carte("Rappels d'activité (24 h)", "Trop peu", rp.envoyes + " envoi(s) jugeable(s) : il en faut 5 pour un taux" + (rp.enAttente ? " · " + rp.enAttente + " en attente" : "") + ".", "gris"));
+    // Les appels (notify-call, 2026-11-07) : même règle que les rappels, sur un
+    // ÉCHANTILLON (un appel sur N porte un accusé) — l'écran le dit. Une fonction
+    // d'avant ce lot ne rend pas `appels` : aucune carte, jamais un faux zéro.
+    const ap = r.appels;
+    const ech = Number(ap && ap.echantillon) > 1 ? " · un appel sur " + Number(ap.echantillon) + " est mesuré" : "";
+    if (ap && ap.etat === "mesure") zone.append(carte("Appels reçus (24 h)", Math.round(ap.taux * 100) + " %", ap.recus + " reçus sur " + ap.envoyes + " appels mesurés" + (ap.enAttente ? " · " + ap.enAttente + " en attente" : "") + ech, ap.taux >= 0.8 ? "vert" : "orange"));
+    else if (ap && ap.etat === "partiel") zone.append(carte("Appels (24 h)", "Partiel", "La lecture des accusés a touché son plafond : pas de taux, au moins " + ap.recus + " reçus sur " + ap.envoyes + " appels mesurés" + ech + ".", "gris"));
+    else if (ap) zone.append(carte("Appels (24 h)", "Trop peu", ap.envoyes + " appel(s) mesuré(s) jugeable(s) : il en faut 5 pour un taux" + (ap.enAttente ? " · " + ap.enAttente + " en attente" : "") + ech + ".", "gris"));
     if (r.tronque) zone.append(carte("Réception : lecture partielle", "Partielle", "Les accusés dépassent ce que la lecture parcourt : les nombres sont des minimums.", "gris"));
   }
   function nonLu(id, titre, partie) {

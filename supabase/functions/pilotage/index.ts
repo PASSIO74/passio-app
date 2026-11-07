@@ -50,7 +50,7 @@ import {
 import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
 import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
 import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
-import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, PAQUET_RAPPELS, PLAFOND_PAQUET, adresseAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
+import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, FENETRE_APPELS_MS, UID_APPELS, NOTES_MAX, PAQUET_RAPPELS, PLAFOND_PAQUET, adresseAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -305,43 +305,66 @@ async function essaiManuel(admin: Admin) {
  *   ① la DERNIÈRE alerte se lit seule (sa note), et ses accusés par SES pid —
  *      inconnus de tout autre que les appareils du pilote : aucun flot ne la noie ;
  *   ② les rappels des 24 h se lisent par paquets de PAQUET_RAPPELS pid ; un
- *      paquet plein, ou une liste de notes au plafond, rend le taux « partiel ».
+ *      paquet plein, ou une liste de notes au plafond, rend le taux « partiel » ;
+ *   ③ les appels mesurés (2026-11-07, un sur dix) de même, à part : un appelé
+ *      qui noie SON pid ne rend « partiel » que le taux des appels.
  * L'index (type, received_at) de telemetry_events borne chaque lecture aux
  * lignes `push` (un index sur le pid serait une migration : § 8).
  */
 async function lireReception(admin: Admin) {
+  type Note = { created_at: string; properties: Record<string, unknown> };
+  type Accuse = { pid: string; received_at: string };
   const maintenant = Date.now();
   const depuis = new Date(maintenant - JUGEMENT_MAX_MS).toISOString();
   const lirePush = (pids: string[], apres: string, plafond: number) => admin.from("telemetry_events").select("pid:meta->>pid,received_at")
     .eq("type", TYPE_ACCUSE).eq("action", ACTION_ACCUSE).gte("received_at", apres).in("meta->>pid", pids).limit(plafond);
+  // Les notes d'un genre sur sa fenêtre, les plus récentes d'abord, au plus NOTES_MAX.
+  const lireNotes = (auteur: string, fenetreMs: number) => admin.from("analytics_events").select("created_at,properties")
+    .eq("event", EVT_ENVOI).eq("user_id", auteur).gte("created_at", new Date(maintenant - fenetreMs).toISOString())
+    .order("created_at", { ascending: false }).limit(NOTES_MAX);
+  // Les accusés d'une liste de pid, par paquets de PAQUET_RAPPELS : un paquet
+  // plein (un pid noyé de faux accusés) rend la mesure « partielle », jamais fausse.
+  const parPaquets = async (pids: string[]) => {
+    let lus: Accuse[] = [];
+    let plein = false;
+    for (let i = 0; i < pids.length; i += PAQUET_RAPPELS) {
+      const { data, error } = await lirePush(pids.slice(i, i + PAQUET_RAPPELS), depuis, PLAFOND_PAQUET);
+      if (error) throw error;
+      if ((data || []).length >= PLAFOND_PAQUET) plein = true;
+      lus = lus.concat((data || []) as Accuse[]);
+    }
+    return { lus, plein };
+  };
+  const pidsDes = (notes: Note[]) => [...new Set(notes.flatMap((e) => pidsEnvoi(e)))];
   const { data: alertes, error: e1 } = await admin.from("analytics_events").select("created_at,properties")
     .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").gte("created_at", depuis)
     .order("created_at", { ascending: false }).limit(1);
   if (e1) throw e1;
-  const { data: rappels, error: e2 } = await admin.from("analytics_events").select("created_at,properties")
-    .eq("event", EVT_ENVOI).eq("user_id", MARQUE_UID).gte("created_at", new Date(maintenant - FENETRE_RAPPELS_MS).toISOString())
-    .order("created_at", { ascending: false }).limit(300);
+  const { data: rappels, error: e2 } = await lireNotes(MARQUE_UID, FENETRE_RAPPELS_MS);
   if (e2) throw e2;
-  const envois = [...(alertes || []), ...(rappels || [])] as { created_at: string; properties: Record<string, unknown> }[];
-  const accuses: { pid: string; received_at: string }[] = [];
-  const derniere = (alertes || [])[0] as { created_at: string; properties: Record<string, unknown> } | undefined;
+  // Les appels (notify-call, 2026-11-07, _shared/appels.js) : un sur dix porte un
+  // accusé ; ses notes sous `systeme:appels`, que seule la fonction écrit.
+  const { data: appels, error: e3 } = await lireNotes(UID_APPELS, FENETRE_APPELS_MS);
+  if (e3) throw e3;
+  const notesRappels = (rappels || []) as Note[];
+  const notesAppels = (appels || []) as Note[];
+  const envois = [...(alertes || []), ...notesRappels, ...notesAppels] as Note[];
+  let accuses: Accuse[] = [];
+  const derniere = (alertes || [])[0] as Note | undefined;
   if (derniere) {
     const pids = pidsEnvoi(derniere);
     if (pids.length) {
       const { data, error } = await lirePush(pids, derniere.created_at, 200);
       if (error) throw error;
-      accuses.push(...((data || []) as { pid: string; received_at: string }[]));
+      accuses = accuses.concat((data || []) as Accuse[]);
     }
   }
-  let tronqueRappels = (rappels || []).length >= 300;
-  const pidsRappels = [...new Set(((rappels || []) as { created_at: string; properties: Record<string, unknown> }[]).flatMap((e) => pidsEnvoi(e)))];
-  for (let i = 0; i < pidsRappels.length; i += PAQUET_RAPPELS) {
-    const { data, error } = await lirePush(pidsRappels.slice(i, i + PAQUET_RAPPELS), depuis, PLAFOND_PAQUET);
-    if (error) throw error;
-    if ((data || []).length >= PLAFOND_PAQUET) tronqueRappels = true;
-    accuses.push(...((data || []) as { pid: string; received_at: string }[]));
-  }
-  return bilanReception({ envois, accuses, maintenant, tronqueRappels });
+  const [r, a] = await Promise.all([parPaquets(pidsDes(notesRappels)), parPaquets(pidsDes(notesAppels))]);
+  accuses = accuses.concat(r.lus, a.lus);
+  // Une liste de notes au plafond, ou un paquet plein : « partiel », genre par genre.
+  const tronqueRappels = notesRappels.length >= NOTES_MAX || r.plein;
+  const tronqueAppels = notesAppels.length >= NOTES_MAX || a.plein;
+  return bilanReception({ envois, accuses, maintenant, tronqueRappels, tronqueAppels });
 }
 
 async function lireEtatMemorise(admin: Admin) {

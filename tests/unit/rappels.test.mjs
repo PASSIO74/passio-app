@@ -458,6 +458,52 @@ test("⑫ quater service worker : une clé PUBLIABLE accuse en `apikey` seulemen
   assert.equal(sw.notifs.length, 6, "l'affichage ne dépend jamais de l'accusé");
 });
 
+// Les APPELS (2026-11-07, _shared/appels.js) : un appel sur dix porte un pid.
+// Réinjections éprouvées : accuser l'appel AVANT l'affichage → l'ordre rougit ;
+// l'accuser sous le genre « rappel » → rougit ; ne plus l'accuser
+// → rougit ; glisser le pid dans les données du tap → rougit.
+test("⑫ quinquies service worker : un APPEL mesuré s'affiche comme avant (« t'appelle », Répondre / Refuser, sonnerie persistante, données du tap), PUIS s'accuse « appel », sans rien de l'appelant ; sans pid, aucun accusé ; « Répondre » ouvre l'appel comme avant", async () => {
+  const appels = [];
+  let sw;
+  sw = chargerSw({ fetch: (u, o) => { appels.push({ u, o, affichees: sw.notifs.length }); return Promise.resolve({ status: 201 }); } });
+  const appel = { type: "call", callId: "c1", kind: "video", from: A, name: "Léa", emoji: "🎸" };
+  await sw.push({ ...appel, pid: PID1, ack: ACK });
+  assert.equal(sw.notifs.length, 1);
+  const n = sw.notifs[0];
+  assert.equal(n.titre, "🎸 Léa t'appelle");
+  assert.equal(n.opts.body, "Appel vidéo entrant — touche pour répondre");
+  assert.equal(n.opts.tag, "passio-call-c1");
+  assert.equal(n.opts.requireInteraction, true, "la sonnerie reste à l'écran");
+  assert.equal(n.opts.renotify, true);
+  // (Objets nés dans la machine virtuelle : autre royaume, on compare leur JSON.)
+  assert.deepEqual(JSON.parse(JSON.stringify(n.opts.actions)), [{ action: "answer", title: "✅ Répondre" }, { action: "decline", title: "📵 Refuser" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(n.opts.data)), { callId: "c1", from: A, kind: "video", name: "Léa", emoji: "🎸" }, "le tap ne porte ni pid ni adresse");
+  assert.equal(appels.length, 1);
+  assert.equal(appels[0].affichees, 1, "la sonnerie est affichée AVANT l'accusé");
+  assert.equal(appels[0].u, ACK.u + "/rest/v1/telemetry_events");
+  const corps = JSON.parse(appels[0].o.body);
+  assert.deepEqual({ type: corps[0].type, action: corps[0].action, meta: corps[0].meta }, { type: "push", action: "recu", meta: { pid: PID1, genre: "appel" } });
+  assert.ok(!/Léa|🎸|c1|video|1111/.test(appels[0].o.body), "rien de l'appelant dans l'accusé");
+  assert.equal(corps[0].user_id, undefined, "aucune identité");
+  // La clé publiable accuse en `apikey` seulement, comme pour les autres genres.
+  await sw.push({ ...appel, callId: "c2", pid: PID2, ack: { u: ACK.u, k: "sb_publishable_Abc123_def-456XYZ" } });
+  assert.equal(appels[1].o.headers.Authorization, undefined);
+  assert.equal(JSON.parse(appels[1].o.body)[0].meta.genre, "appel");
+  // Un appel NON tiré (sans pid) : la sonnerie, et rien d'autre.
+  await sw.push(appel);
+  assert.equal(sw.notifs.length, 3);
+  assert.equal(appels.length, 2, "un appel non mesuré ne dépose rien");
+  // Un réseau en panne ne retire pas la sonnerie.
+  const enPanne = chargerSw({ fetch: () => Promise.reject(new Error("hors ligne")) });
+  await enPanne.push({ ...appel, pid: PID1, ack: ACK });
+  assert.equal(enPanne.notifs.length, 1);
+  // « Répondre », application fermée : l'écran d'appel s'ouvre, comme avant ; « Refuser » n'ouvre rien.
+  await sw.clic({ tag: "passio-call-c1", data: n.opts.data }, "answer");
+  assert.deepEqual(sw.ouverts, ["./?call=c1&from=" + A + "&kind=video&cname=L%C3%A9a&cemoji=" + encodeURIComponent("🎸")]);
+  await sw.clic({ tag: "passio-call-c1", data: n.opts.data }, "decline");
+  assert.equal(sw.ouverts.length, 1);
+});
+
 test("⑨ sexies l'accusé côté envoi : un pid ALÉATOIRE par rappel et l'adresse ; seuls les rappels ACCEPTÉS sont notés envoyés ; sans adresse, ni pid ni note", async () => {
   const subs = [
     { endpoint: "https://push/a", user_id: A, subscription: { endpoint: "https://push/a" } },

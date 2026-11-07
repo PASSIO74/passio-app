@@ -73,6 +73,8 @@ const ID_ACTIVITE_RE = /^[\w-]{1,64}$/;
 // anon, publique). Le pid est aléatoire et ne voyage que dans la notification :
 // le serveur ne compte que les pid qu'il a envoyés. L'affichage ne dépend JAMAIS
 // de l'accusé, et une adresse qui n'a pas sa forme n'est jamais appelée.
+// Genres accusés : `pilotage`, `rappel`, et `appel` (2026-11-07, un appel sur dix
+// en porte un : supabase/functions/_shared/appels.js).
 const RE_PID_PUSH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const RE_BASE_ACCUSE = /^https:\/\/[a-z0-9]{20}\.supabase\.co$/;
 // La clé : l'ancienne anon (un JWT) ou la nouvelle, publiable (2026-11-07). La
@@ -179,7 +181,10 @@ self.addEventListener("push", e => {
       { action: "decline", title: "📵 Refuser" },
     ],
   };
-  e.waitUntil(self.registration.showNotification(title, opts));
+  // L'accusé APRÈS l'affichage (2026-11-07) : un appel tiré au sort par
+  // `notify-call` porte un pid ; sans pid, rien ne part. L'interface d'appel
+  // (titre, boutons, `data` du tap) n'en sait rien.
+  e.waitUntil(self.registration.showNotification(title, opts).then(() => accuser(data, "appel")));
 });
 
 // Tap sur la notification (ou un de ses boutons) → ouvre/focus l'app avec les

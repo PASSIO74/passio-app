@@ -1232,3 +1232,50 @@ test("㊶ les alertes s'essaient d'un toucher : « Envoyer un essai maintenant �
   await expect.poll(() => gestes(envois).length).toBe(2);
   expect(gestes(envois)[1].corps).toEqual({ action: "essai" });
 });
+
+// ─── Les APPELS mesurés (notify-call, 2026-11-07) ────────────────────────────
+// Un appel sur dix porte un accusé (_shared/appels.js) : la carte dit le taux
+// des 24 h comme celle des rappels — et qu'il s'agit d'un échantillon.
+test("㊷ les appels : un taux sur 24 h qui se dit ÉCHANTILLON, « trop peu » sous 5, « partiel » sans taux ; une fonction d'avant ce lot n'affiche aucune carte d'appels, jamais un faux zéro", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 3600e3).toISOString();
+  const reception = (appels) => ({ derniereAlerte: { etat: "recue", le, acceptes: 1, recus: 1, delaiMs: 2000 },
+    rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false, ...(appels ? { appels } : {}) });
+  const titres = (page) => page.locator("#alertes .carte-titre", { hasText: /^Appels/ });
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "mesure", envoyes: 13, recus: 12, enAttente: 1, taux: 12 / 13, echantillon: 10 }) }));
+  await page.goto("/pilotage/");
+  await aller(page, "reglages");
+  const mesure = page.locator("#alertes .carte", { hasText: "Appels reçus (24 h)" });
+  await expect(mesure).toContainText("92 %");
+  await expect(mesure).toContainText("12 reçus sur 13 appels mesurés");
+  await expect(mesure).toContainText("1 en attente");
+  await expect(mesure).toContainText("un appel sur 10 est mesuré");
+  await expect(mesure).toHaveClass(/vert/);
+  // Un taux bas se colore ; il ne déclenche aucune ligne « À faire » (comme les rappels).
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "mesure", envoyes: 10, recus: 6, enAttente: 0, taux: 0.6, echantillon: 10 }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Appels reçus (24 h)" })).toHaveClass(/orange/);
+  // Trop peu : aucun taux, la raison et l'échantillon dits.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 2, recus: 2, enAttente: 1, echantillon: 10 }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  const peu = page.locator("#alertes .carte", { hasText: "Appels (24 h)" });
+  await expect(peu).toContainText("Trop peu");
+  await expect(peu).toContainText("2 appel(s) mesuré(s) jugeable(s) : il en faut 5 pour un taux");
+  await expect(peu).toContainText("un appel sur 10 est mesuré");
+  await expect(peu).not.toContainText("%");
+  // Partiel : jamais un taux sur une lecture plafonnée.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: { ...reception({ etat: "partiel", envoyes: 290, recus: 250, enAttente: 0, echantillon: 10 }), tronque: true } }));
+  await page.reload();
+  await aller(page, "reglages");
+  const partiel = page.locator("#alertes .carte", { hasText: "Appels (24 h)" });
+  await expect(partiel).toContainText("pas de taux, au moins 250 reçus sur 290 appels mesurés");
+  await expect(partiel).not.toContainText("%");
+  // Une fonction d'avant ce lot ne rend pas `appels` : aucune carte d'appels.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception(null) }));
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte reçue" })).toBeVisible();
+  await expect(titres(page)).toHaveCount(0);
+});

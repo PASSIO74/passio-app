@@ -1261,10 +1261,33 @@ test("㉿⑨ l'alerte part avec un pid aléatoire PAR APPAREIL, se note TOUJOURS
   assert.match(l, /\.eq\("type", TYPE_ACCUSE\)\.eq\("action", ACTION_ACCUSE\)\.gte\("received_at", apres\)\.in\("meta->>pid", pids\)\.limit\(plafond\)/);
   assert.match(l, /\.eq\("user_id", "systeme:pilotage"\)[^;]*\.limit\(1\)/, "la DERNIÈRE alerte se lit seule : 300 notes de rappels ne la poussent pas hors de la lecture");
   assert.match(l, /const pids = pidsEnvoi\(derniere\);[\s\S]*?lirePush\(pids, derniere\.created_at, 200\)/, "ses accusés par SES pid : un flot sur le pid d'un rappel ne la noie pas");
-  assert.match(l, /pidsRappels\.slice\(i, i \+ PAQUET_RAPPELS\)/);
-  assert.match(l, /if \(\(data \|\| \[\]\)\.length >= PLAFOND_PAQUET\) tronqueRappels = true;/, "un paquet plein rend le taux « partiel »");
+  // Les rappels (et les appels, ㉿⑲) par paquets de PAQUET_RAPPELS pid (2026-11-07 : lecture factorisée).
+  assert.match(l, /lirePush\(pids\.slice\(i, i \+ PAQUET_RAPPELS\), depuis, PLAFOND_PAQUET\)/);
+  assert.match(l, /parPaquets\(pidsDes\(notesRappels\)\)/);
+  assert.match(l, /if \(\(data \|\| \[\]\)\.length >= PLAFOND_PAQUET\) plein = true;/, "un paquet plein…");
+  assert.match(l, /const tronqueRappels = notesRappels\.length >= NOTES_MAX \|\| r\.plein;/, "…ou des notes au plafond rendent le taux « partiel »");
   assert.match(l, /select\("pid:meta->>pid,received_at"\)/, "jamais `meta` entier");
   assert.match(fn, /reception: lireReception\(admin\)/);
+});
+
+// Les APPELS mesurés (2026-11-07, notify-call → _shared/appels.js). Réinjections
+// éprouvées : lire les notes d'appels sans plafond → ㉿⑲ rougit ; mêler les pid
+// d'appels au paquet des rappels → ㉿⑲ rougit ; oublier `tronqueAppels` → ㉿⑲
+// rougit ; avaler l'erreur de lecture → ㉿⑲ rougit.
+test("㉿⑲ les appels mesurés : leurs notes sous systeme:appels, au plus NOTES_MAX, leurs accusés par paquets À PART — des notes au plafond ou un paquet plein rendent « partiel » le seul taux des appels ; une lecture en échec n'est jamais calme", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const l = fn.slice(fn.indexOf("async function lireReception"), fn.indexOf("async function lireEtatMemorise"));
+  assert.match(l, /const lireNotes = \(auteur: string, fenetreMs: number\) => admin\.from\("analytics_events"\)\.select\("created_at,properties"\)\s*\.eq\("event", EVT_ENVOI\)\.eq\("user_id", auteur\)\.gte\("created_at", new Date\(maintenant - fenetreMs\)\.toISOString\(\)\)\s*\.order\("created_at", \{ ascending: false \}\)\.limit\(NOTES_MAX\);/, "les notes les plus récentes, bornées");
+  assert.match(l, /const \{ data: rappels, error: e2 \} = await lireNotes\(MARQUE_UID, FENETRE_RAPPELS_MS\);\s*if \(e2\) throw e2;/);
+  assert.match(l, /const \{ data: appels, error: e3 \} = await lireNotes\(UID_APPELS, FENETRE_APPELS_MS\);\s*if \(e3\) throw e3;/, "une lecture en échec lève : la réception devient « non lue », jamais calme");
+  assert.match(l, /const envois = \[\.\.\.\(alertes \|\| \[\]\), \.\.\.notesRappels, \.\.\.notesAppels\] as Note\[\];/);
+  assert.match(l, /await Promise\.all\(\[parPaquets\(pidsDes\(notesRappels\)\), parPaquets\(pidsDes\(notesAppels\)\)\]\)/, "deux lectures À PART : un appelé qui noie SON pid ne rend pas les rappels partiels");
+  assert.match(l, /if \(error\) throw error;\s*if \(\(data \|\| \[\]\)\.length >= PLAFOND_PAQUET\) plein = true;/);
+  assert.match(l, /const tronqueAppels = notesAppels\.length >= NOTES_MAX \|\| a\.plein;/);
+  assert.match(l, /return bilanReception\(\{ envois, accuses, maintenant, tronqueRappels, tronqueAppels \}\);/);
+  assert.match(fn, /import \{[^}]*\bFENETRE_APPELS_MS, UID_APPELS, NOTES_MAX\b[^}]*\} from "\.\.\/_shared\/reception\.js";/);
+  // L'auteur lu est celui qu'écrit notify-call : une seule constante, jamais deux noms.
+  assert.match(fs.readFileSync("supabase/functions/_shared/appels.js", "utf8"), /\.insert\(\{ user_id: UID_APPELS, event: EVT_ENVOI, properties: \{ genre: GENRE_APPEL, pids: \[pid\], acceptes: sent \} \}\)/);
 });
 
 test("㉿⑩ « À faire » : une alerte NON reçue a sa ligne et son bouton vers l'application ; une alerte reçue, aucune", () => {

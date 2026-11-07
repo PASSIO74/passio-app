@@ -40,6 +40,7 @@
 - 🧭 LES PARCOURS JUGÉS DANS LE NUAGE, LA VEILLE QUI PROUVE SON TRAVAIL, LA POLITIQUE QUI DIT CE QUE FAIT LE CODE (2026-11-06)
 - 📬 UN ABONNEMENT N'EST PAS UNE RÉCEPTION — LES NOTIFICATIONS S'ACCUSENT (2026-11-06)
 - 👆 « RÉGLER » NE SE VOYAIT PAS — QUATRE GESTES, QUATRE ANALYSES RÉUSSIES, UNE LIGNE IDENTIQUE (2026-11-07)
+- 📞 LES APPELS S'ACCUSENT — UN SUR DIX, TIRÉ PAR LE SERVEUR, RIEN DE L'APPELANT (2026-11-07)
 
 ---
 
@@ -792,3 +793,12 @@ Benjamin : « quand je clique sur Régler dans le centre de pilotage, je n'ai pa
 
 ⚠️ **LE PREMIER ESSAI A PROUVÉ QUE RIEN NE S'ACCUSAIT (même jour, 08:10).** Envoyé par la veille, accepté pour les deux appareils du pilote… noté `sans_adresse` : l'adresse d'accusé n'admettait que l'ancienne clé anon (un JWT), et la fonction ne la recevait pas sous cette forme — depuis #739, AUCUNE alerte ne pouvait être accusée, et l'écran l'aurait dit « non mesurée » à la première vraie panne. L'essai a fait son travail : il a trouvé le défaut un jour calme. Désormais l'adresse vient de l'une ou l'autre clé (`adresseAccuse` ; la publiable en `apikey` seulement, en Bearer la plateforme la lit comme un JWT et refuse), la note dit POURQUOI en formes, une mesure impossible se réessaie une fois par révision servie, et « Régler » sur la ligne des alertes envoie un essai au lieu d'ouvrir une page. Verrous : `reception.test.mjs` ⑬–⑮, `rappels.test.mjs` ⑫ quater, `pilotage.test.mjs` ㉿⑱, `pilotage-nuage.spec.js` ㊲ ㊶.
 
+## 📞 LES APPELS S'ACCUSENT — UN SUR DIX, TIRÉ PAR LE SERVEUR, RIEN DE L'APPELANT (2026-11-07)
+
+Suite de la fiche 📬, qui laissait « les appels (`notify-call`), à échantillonner ». `notify-call` passe désormais TOUTES ses pushes par `pousserAppareils` (`supabase/functions/_shared/appels.js`) : un appel tiré au sort porte un pid aléatoire partagé par les appareils du destinataire et l'adresse d'accusé ; le service worker accuse après l'affichage (`accuser(data, "appel")`), l'interface d'appel inchangée ; la note `push_envoye` (`genre: "appel"`, pids, appareils acceptés) se pose sous `systeme:appels` après l'envoi, `{ error }` lu. Réglages › Alertes : « Appels reçus (24 h) », « trop peu » sous 5, « partiel » sur une lecture plafonnée, « un appel sur 10 est mesuré ».
+
+⚠️ **UN SUR DIX, ET POURQUOI** (`ECHANTILLON_APPELS`, chiffré au § 3.7 d'`AUTONOMIE_EXPLOITATION.md`). Aucun volume d'appels n'est mesurable (coupés depuis le 16/09) : l'hypothèse 100 000 inscrits (20 000 à 30 000 actifs par jour, un appel par jour pour 5 à 10 % d'entre eux) donne 1 000 à 3 000 appels par jour ; un sur dix fait 100 à 300 mesures, sous la lecture des 300 notes de l'écran — 1 sur 4 la dépasse au haut de l'hypothèse et rendrait le taux « partiel » chaque jour. Contrepartie : « trop peu » sous ~50 appels par jour. `reception.test.mjs` ⑰ refait le calcul.
+
+⚠️ **LE PID NE REVIENT JAMAIS À L'APPELANT.** `pousserAppareils` ne le rend pas, la réponse reste `{ ok, sent }` : un appelant qui le connaîtrait déposerait l'accusé d'un appel qui n'a pas sonné, et une livraison en panne passerait pour saine. ⚠️ **Le tirage vient du serveur** (`crypto.getRandomValues`), jamais de la requête : l'appelant ne choisit pas ses appels jugés. ⚠️ **Rien de l'appelant dans la note ni dans l'accusé** : ni identifiant d'appel (choisi par l'appelant), ni nom, ni emoji, ni type — des pid et des nombres. ⚠️ **Une notification sociale ne porte jamais d'accusé**, même tirée et avec une adresse : la mesure tient à `charge.type === "call"`, et la charge sociale reste identique à l'octet. ⚠️ **Les lectures restent à part** : un appelé qui noie SON pid ne rend « partiel » que le taux des appels.
+
+⚠️ **EN PRODUCTION, LA MESURE EST INERTE** : `APPELS_ACTIFS = false` (ASTRA-60) répond 503 avant tout envoi. Aucune note `genre: "appel"` n'existera avant la réouverture des appels — décision produit, hors de ce lot ; la carte dit « trop peu ». Requête de preuve au § 10. Verrous : `appels.test.mjs` ①–⑦, `reception.test.mjs` ⑯ ⑰, `rappels.test.mjs` ⑫ quinquies, `pilotage.test.mjs` ㉿⑲, `pilotage-nuage.spec.js` ㊷ ; 31 réinjections rouges.
