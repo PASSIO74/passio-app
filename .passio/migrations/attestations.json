@@ -460,5 +460,68 @@
       "fournisseur": "github",
       "auto_revue_mainteneur_unique": true
     }
+  },
+  {
+    "fichier": "migrations/migration_discussions_activite_2026-11-06.sql",
+    "empreinte": "2d423d5f8b0b50d6482e7bdc2b68e2c527b2645c32782bf15f35299b093026b4",
+    "cibles": [
+      "njkiyoklssvefstljemx"
+    ],
+    "pr": "#736",
+    "commit": "0a558bc4d61fe3de2a7ae7368d36d84a4aa1690b",
+    "revue_id": 5806677467,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-06",
+    "consigne_le": "2026-11-06",
+    "source": "https://github.com/PASSIO74/passio-app/pull/736#pullrequestreview-5806677467",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-06T20:39:15Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_epingle_commentaire_2026-11-05.sql",
+    "empreinte": "be2f59425fce7e10fa13e1a388bc65fb071f1493baf5d05bb0c2a4af050cb7c6",
+    "cibles": [
+      "fcksxofaelcdmmifnwjo"
+    ],
+    "pr": "#734",
+    "commit": "3bde757302a6d25fc5a6c7782188f6a69bc0373e",
+    "revue_id": 5811045261,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-07",
+    "consigne_le": "2026-11-07",
+    "source": "https://github.com/PASSIO74/passio-app/pull/734#pullrequestreview-5811045261",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-07T08:23:59Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_epingle_commentaire_2026-11-05.sql",
+    "empreinte": "be2f59425fce7e10fa13e1a388bc65fb071f1493baf5d05bb0c2a4af050cb7c6",
+    "cibles": [
+      "njkiyoklssvefstljemx"
+    ],
+    "pr": "#734",
+    "commit": "3bde757302a6d25fc5a6c7782188f6a69bc0373e",
+    "revue_id": 5811045261,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-07",
+    "consigne_le": "2026-11-07",
+    "source": "https://github.com/PASSIO74/passio-app/pull/734#pullrequestreview-5811045261",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-07T08:23:59Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
   }
 ]

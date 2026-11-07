@@ -37,6 +37,7 @@
 // L'activation des nouveaux comptes (2026-10-06) : UNE définition, partagée avec
 // la fonction `pilotage` — la requête est GÉNÉRÉE depuis la même liste de gestes.
 import { sqlActivation, activationDepuisLignes } from "../supabase/functions/_shared/pilotage.js";
+import { resumerBattement, BATTEMENT, AUTEUR_BATTEMENT } from "../supabase/functions/_shared/battement.js";
 
 // ── Constantes de calibrage (mesures de la carte mesures-prod, 2026-09-18) ──
 // Heures actives réelles du trafic humain : 09h–21h Paris (F10). Rien n'est
@@ -409,6 +410,27 @@ export function signalJetons(m) {
   return { etat, texte: lignes.join(" ; "), geste: gestes.length ? gestes.join(" ; ") : undefined };
 }
 
+/**
+ * La veille du pilotage elle-même (2026-11-06) — c'est ICI le chien de garde
+ * EXTÉRIEUR : la veille Supabase (pg_cron) écrit un battement à la fin de
+ * chaque passage utile (_shared/battement.js) ; ce lecteur-ci tourne chez
+ * GitHub, autre fournisseur, autre ordonnanceur, autre canal d'alerte. Un
+ * battement absent ou périmé, base lisible, veut dire : plus personne ne fait
+ * sonner le téléphone. Même règle que l'écran du pilotage (`resumerBattement`).
+ * @param {{ligne:{properties:object,created_at:string}|null, n24:number}} m
+ */
+export function signalBattement(m, now) {
+  const ko = inconnu(m, "battement");
+  if (ko) return ko;
+  const b = resumerBattement(m.ligne || null, Number.isFinite(m.n24) ? m.n24 : null, now);
+  const regularite = Number.isFinite(b.battements24h) ? ` (${b.battements24h}/${b.attendus24h} battements en 24 h)` : "";
+  const geste = "Supabase › Integrations › Cron : le job `pilotage_veille` est-il actif ? Puis Edge Functions › pilotage › Logs. Tant qu'il ne bat pas, le téléphone ne sonne plus (secours : `.github/workflows/pilotage-veille.yml`, relançable à la main).";
+  if (b.etat === "arrete") return { etat: "alert", texte: b.raisons[0] + regularite, geste };
+  if (b.etat === "jamais") return { etat: "warn", texte: b.raisons[0], geste };
+  if (b.etat === "incomplet") return { etat: "warn", texte: b.raisons.join(" ; ") + regularite };
+  return { etat: "ok", texte: b.raisons[0] + regularite };
+}
+
 const SYMBOLE = { alert: "[ALERTE]", warn: "[ATTENTION]", ok: "[ok]", unknown: "[?]" };
 
 /**
@@ -427,6 +449,7 @@ export function verdictVeille(mesures, now) {
     { cle: "crons", ...signalCrons(m.crons, t) },
     { cle: "base", ...signalBase(m.base) },
     { cle: "jetons", ...signalJetons(m.jetons) },
+    { cle: "battement", ...signalBattement(m.battement, t) },
   ];
   const enAlerte = signaux.filter((s) => s.etat === "alert");
   const alerte = enAlerte.length > 0;
@@ -555,6 +578,9 @@ export const SQL = {
       + (select count(*) from client_errors where created_at > now() - interval '24 hours')::int as "erreurs24h"`,  // Comptes confirmés des 30 derniers jours (hors e2e et éditeur) et le premier
   // geste social de chacun, par table — la décision est `activationDepuisLignes`.
   activation: sqlActivation(),
+  // Le battement de la veille du pilotage (2026-11-06) : le dernier, et leur nombre sur 24 h.
+  battement: `select properties, created_at from analytics_events where event = '${BATTEMENT}' and user_id = '${AUTEUR_BATTEMENT}' order by created_at desc limit 1`,
+  battements24h: `select count(*)::int as n from analytics_events where event = '${BATTEMENT}' and user_id = '${AUTEUR_BATTEMENT}' and created_at > now() - interval '24 hours'`,
 };
 
 for (const [k, q] of Object.entries(SQL)) if (!estSelectSeul(q)) throw new Error(`SQL.${k} n'est pas un SELECT seul`);
@@ -594,6 +620,11 @@ export async function mesurerErreurs(env) {
   return { heures, derniereHeure: d.derniereHeure, appareils: d.appareils };
 }
 export async function mesurerApi(env) { return (await lireSql(env, SQL.api))[0]; }
+export async function mesurerBattement(env) {
+  const l = await lireSql(env, SQL.battement);
+  const n = await lireSql(env, SQL.battements24h);
+  return { ligne: Array.isArray(l) && l[0] ? l[0] : null, n24: Number(n && n[0] && n[0].n) };
+}
 
 /**
  * Le run le plus récent d'une liste, selon SA date — jamais selon l'ordre servi.
@@ -700,6 +731,7 @@ export async function mesurer(env) {
     crons: await mesure(() => mesurerCrons(env)),
     base: await mesure(() => mesurerBase(env)),
     jetons: await mesure(() => mesurerJetons(env)),
+    battement: await mesure(() => mesurerBattement(env)),
   };
 }
 

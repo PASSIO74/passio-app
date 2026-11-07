@@ -632,8 +632,6 @@ jobs:
   test-prod:
     name: Suites production (comptes réels)
     runs-on: ubuntu-latest
-    # 360 min par défaut : un run figé tenait le verrou global et bloquait tout déploiement (E-20).
-    timeout-minutes: 45
     # ⚠️ LE VERROU DE LA PROD SUPABASE, ET IL EST GLOBAL AU DÉPÔT.
     # Ce job — et lui seul — crée de vrais comptes sur la prod, et son
     # `global-teardown` purge TOUS les comptes `%@passio-e2e.test`. Deux
@@ -668,6 +666,17 @@ jobs:
       group: passio-e2e-prod
       cancel-in-progress: false
       queue: max
+    # ⚠️ BORNE (2026-11-06) — ELLE COMPTE DOUBLE ICI. Ce job tient le verrou GLOBAL
+    # ci-dessus : figé, il ne tenait pas qu'un run, il bloquait la suite de tous les
+    # autres, donc tous les déploiements, jusqu'aux 360 min du défaut de GitHub.
+    # Mesuré sur les 35 runs verts de `main` cités dans `test-local` : médiane
+    # 5,1 min, pire 6,9 ; hors installation, pire 6,2 min (barrière authz et mesure
+    # comprises : ce sont des runs de `main`). Au pire sain : 21 min d'installation
+    # (deux essais, voir `test-local`) + 6,2 = 27 min. Borne : 30 min. L'attente du
+    # verrou n'y entre pas (mesuré le 2026-11-04). Une suite coupée laisse ses
+    # comptes jetables derrière elle : la purge PAR MOTIF du passage suivant
+    # (`global-teardown`, `%@passio-e2e.test`) les emporte.
+    timeout-minutes: 30
     env:
       # Autorise la purge du teardown. À NE POSER QUE sur le job qui tient le
       # verrou : ailleurs, elle effacerait les comptes de celui-ci en plein vol.
@@ -679,11 +688,23 @@ jobs:
         with:
           node-version: 22
 
+      # Même borne, même relance que dans `test-local` (commentaire complet là-bas).
+      # Aucun compte n'est encore créé à ce stade : couper un essai ne laisse rien.
       - name: Installer Playwright
+        timeout-minutes: 25
         run: |
           # Le lockfile, pas « la dernière » : ce code reçoit la clé de production (E-07).
           npm ci --ignore-scripts
-          npx --no-install playwright install --with-deps chromium
+          for essai in 1 2; do
+            if timeout --kill-after=30s 10m npx playwright install --with-deps chromium; then exit 0; fi
+            echo "::warning title=Installation Playwright::essai ${essai}/2 en échec ou figé au-delà de 10 min (miroir APT ou CDN Playwright)"
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -x dpkg || true
+            sleep 2
+            sudo dpkg --configure -a || true
+          done
+          echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
+          exit 1
 
       # ⚠️ LE SECRET EST PORTÉ PAR LES SEULES ÉTAPES QUI S'EN SERVENT, JAMAIS PAR
       # LE JOB. Corrigé le 2026-08-30 (audit de la PR #222) : posé au niveau du
@@ -755,6 +776,28 @@ jobs:
     # AUCUN verrou, AUCUN secret, AUCUNE écriture en base : ces suites servent un
     # serveur statique local et pilotent un navigateur. C'est tout l'intérêt du
     # découpage — elles n'attendent plus la prod, et elles se répartissent.
+    #
+    # ⚠️ UNE TRANCHE FIGÉE POUVAIT TENIR LA CHAÎNE SIX HEURES (2026-11-06). Sur la
+    # PR #726 (run 42174403472), la tranche 1/6 est restée 52 min dans « Installer
+    # Playwright », avant le premier test : `apt-get update` (la partie
+    # `--with-deps`) n'a plus rien reçu du miroir `azure.archive.ubuntu.com` après
+    # 06:26:49. Ce job n'avait AUCUNE borne : GitHub l'aurait laissé tourner 360 min,
+    # la PR et le déploiement de `main` avec lui. Il a fallu annuler à la main.
+    #
+    # LA BORNE VIENT D'UN CALCUL, COMME LE NOMBRE DE TRANCHES CI-DESSOUS. Mesuré par
+    # l'API Actions sur les 35 derniers runs verts de `main` (03/11 18:43 → 06/11
+    # 08:30 UTC), 210 tranches :
+    #     durée d'une tranche   médiane 11,4 min · p95 13,4 · pire 19,3
+    #                           (run 41876989570, dont 7,8 min d'installation)
+    #     hors installation     pire 13,8 min
+    # Une tranche SAINE dure au pire : son installation au pire (deux essais de
+    # 10 min et leur grâce de 30 s, soit 21 min — voir l'étape) + 13,8 min de tests
+    # = 35 min. Borne : 40 min, soit 2× la pire tranche mesurée et 5 min de marge
+    # au-dessus de ce pire cumulé. Si la suite grossit au point d'en approcher,
+    # c'est le nombre de tranches qu'il faut revoir, pas cette borne.
+    # L'attente d'un verrou de concurrence n'entre pas dans `timeout-minutes`
+    # (mesuré le 2026-11-04, docs/journal/telemetrie-pilotage-sentinelle.md).
+    timeout-minutes: 40
     strategy:
       # Un shard rouge ne doit pas annuler les cinq autres : on veut la liste
       # COMPLÈTE des échecs en une passe, pas le premier trouvé.
@@ -777,11 +820,49 @@ jobs:
         with:
           node-version: 22
 
+      # ⚠️ L'INSTALLATION A SA BORNE ET SA RELANCE (2026-11-06). La MÊME étape, mot
+      # pour mot, est dans `test-prod`, `gates-artefact` et `test-webkit` (verrou :
+      # tests/unit/bornes-ci.test.mjs). Deux régimes vus le même matin, sur le même
+      # miroir APT :
+      #   LENT  — tranche 6/6 : 15,8 Mo de polices à 34 kB/s, 7 min 41 s, réussie ;
+      #   FIGÉ  — tranche 1/6 : plus un octet pendant 52 min.
+      # Sur les 315 installations des 35 runs mesurés : médiane 0,4 min, p95 1,0 ;
+      # mais une fenêtre lente le 04/11 (16:34 → 17:53 UTC) a donné 8,8 min
+      # (Chromium) et 15,9 min (WebKit), toutes RÉUSSIES. Une borne de 5 ou 10 min
+      # sans relance aurait donc rendu rouges des runs sains.
+      #
+      # D'où : chaque ESSAI est borné à 10 min par `timeout` (toute installation
+      # Chromium mesurée tient dans un essai), puis relancé UNE fois, sur des
+      # connexions neuves.
+      # ⚠️ `timeout` NE JOINT PAS CE QUE `sudo` A LANCÉ (mesuré au banc, 06/11) :
+      # coupé, l'essai laissait `apt-get` vivant, verrou APT en main, et le second
+      # mourait sur « Could not get lock ». D'où les deux `pkill` — par NOM
+      # d'exécutable, ils n'atteignent jamais `sudo` ni le shell de l'étape — puis
+      # `dpkg --configure -a`, pour un dpkg coupé en plein dépaquetage (sans effet
+      # sinon). Les paquets qu'APT a déjà tirés EN ENTIER restent dans son cache :
+      # le second essai ne tire que le reste (mesuré au banc : 17,6 Mo sur 21,1).
+      # `timeout-minutes` sur l'étape est le FILET : deux essais de 10 min et leur
+      # grâce font 21 min, plus le `npm install` — 25 min ne coupe jamais un essai.
+      #
+      # Deux essais en échec : l'étape est rouge, le job s'arrête là, aucun test
+      # n'a tourné. Le geste est de RELANCER le job, jamais de toucher au code :
+      # « Re-run failed jobs » (`gh run rerun <id> --failed`), il repart sur une
+      # machine neuve. docs/RUNBOOK_MOIS_DE_TEST.md.
       - name: Installer Playwright
+        timeout-minutes: 25
         run: |
           # Le lockfile, pas « la dernière » : ce code reçoit la clé de production (E-07).
           npm ci --ignore-scripts
-          npx --no-install playwright install --with-deps chromium
+          for essai in 1 2; do
+            if timeout --kill-after=30s 10m npx playwright install --with-deps chromium; then exit 0; fi
+            echo "::warning title=Installation Playwright::essai ${essai}/2 en échec ou figé au-delà de 10 min (miroir APT ou CDN Playwright)"
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -x dpkg || true
+            sleep 2
+            sudo dpkg --configure -a || true
+          done
+          echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
+          exit 1
 
       - name: Lancer les tests
         run: npx playwright test --project=local --shard=${{ matrix.shard }}/6
@@ -797,7 +878,14 @@ jobs:
   test-webkit:
     name: Suites WebKit (iPhone)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # ⚠️ 25 → 35 MIN (2026-11-06), ET CE N'EST PAS UN RELÂCHEMENT. Mesuré sur les 35
+    # runs verts de `main` cités dans `test-local` : médiane 6,0 min, mais pire
+    # 21,3 min (run 41869170343) — 15,9 min d'installation dans la fenêtre lente du
+    # 04/11, et un job à 3,7 min de son ancienne borne, alors qu'il était sain. Une
+    # installation figée, elle, est désormais coupée par sa propre borne (voir
+    # `test-local`), plus par celle du job. Au pire sain : 21 min d'installation
+    # (deux essais) + 7,9 min hors installation (pire mesuré) = 29 min. Borne : 35.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -805,10 +893,25 @@ jobs:
         with:
           node-version: 22
 
+      # Même borne, même relance que dans `test-local` (commentaire complet là-bas).
+      # WebKit tire bien plus de paquets APT que Chromium : c'est lui qui a mis
+      # 15,9 min le 04/11. Coupé à 10 min, le second essai ne retire pas les paquets
+      # que le premier avait déjà tirés en entier.
       - name: Installer Playwright (WebKit)
+        timeout-minutes: 25
         run: |
+          # Le lockfile, pas « la dernière » : ce code reçoit la clé de production (E-07).
           npm ci --ignore-scripts
-          npx --no-install playwright install --with-deps webkit
+          for essai in 1 2; do
+            if timeout --kill-after=30s 10m npx playwright install --with-deps webkit; then exit 0; fi
+            echo "::warning title=Installation Playwright::essai ${essai}/2 en échec ou figé au-delà de 10 min (miroir APT ou CDN Playwright)"
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -x dpkg || true
+            sleep 2
+            sudo dpkg --configure -a || true
+          done
+          echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
+          exit 1
 
       - name: Lancer les suites WebKit
         env:
@@ -823,6 +926,13 @@ jobs:
     # gardes navigateur portent la même identité de release. Elle vérifie aussi
     # le drain télémétrique et le contexte passionnel future-only réellement
     # concaténé dans le bundle de production.
+    #
+    # BORNE (2026-11-06) : mesuré sur les 35 runs verts de `main` cités dans
+    # `test-local` : médiane 0,7 min, pire 7,1 — dont 6,8 min d'installation, la
+    # vérification elle-même ne dépassant jamais 0,8 min. Au pire sain : 21 min
+    # d'installation (deux essais) + 0,8 = 22 min. Borne : 30 min, au-dessus de
+    # celle de l'étape (25) pour que ce soit elle, plus précise, qui parle.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -830,11 +940,22 @@ jobs:
         with:
           node-version: 22
 
+      # Même borne, même relance que dans `test-local` (commentaire complet là-bas).
       - name: Installer Playwright
+        timeout-minutes: 25
         run: |
           # Le lockfile, pas « la dernière » : ce code reçoit la clé de production (E-07).
           npm ci --ignore-scripts
-          npx --no-install playwright install --with-deps chromium
+          for essai in 1 2; do
+            if timeout --kill-after=30s 10m npx playwright install --with-deps chromium; then exit 0; fi
+            echo "::warning title=Installation Playwright::essai ${essai}/2 en échec ou figé au-delà de 10 min (miroir APT ou CDN Playwright)"
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -x dpkg || true
+            sleep 2
+            sudo dpkg --configure -a || true
+          done
+          echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
+          exit 1
 
       - name: Gates artefact production
         env:

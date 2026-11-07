@@ -988,11 +988,23 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
   // résultat métier réel (enregistrement en base) + le verdict final.
   var _flowCid = null;
   try { if (window.tel && tel.flowStart) _flowCid = tel.flowStart("send_message", { convId: convId, kind: kind || "text" }); } catch (e) {}
-  function _flowSaved(ok, detail) {
+  function _flowSaved(ok, detail, err) {
     try {
       if (!_flowCid || !window.tel) return;
-      tel.step(_flowCid, "saved", ok ? "ok" : "error", detail ? { detail: String(detail).slice(0, 120) } : null);
-      tel.flowEnd(_flowCid, ok ? "ok" : "error");
+      // Le média en échec part en FILE (`_outboxAdd`) : un réseau absent est une
+      // ATTENTE, comme au chemin texte ; sinon le code fermé, ou celui de la base
+      // (2026-11-06 : la raison n'était que dans `detail`, « sans_code » au pilotage).
+      var code = !ok && typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(err) : null;
+      if (!ok && code === "reseau") {
+        tel.step(_flowCid, "queued", "ok", { rc: "hors_ligne" });
+        tel.flowEnd(_flowCid, "pending");
+      } else {
+        var meta = detail ? { detail: String(detail).slice(0, 120) } : null;
+        var rc = code || (err && typeof err.code === "string" && err.code ? err.code : null);
+        if (!ok && rc) { meta = meta || {}; meta.rc = String(rc).slice(0, 40); }
+        tel.step(_flowCid, "saved", ok ? "ok" : "error", meta);
+        tel.flowEnd(_flowCid, ok ? "ok" : "error");
+      }
       _flowCid = null;
     } catch (e) {}
   }
@@ -1048,11 +1060,11 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
   // Une mise à jour attend le verdict (pwa-detect.js) : ce chemin n'écrit dans la file
   // qu'à l'échec, et une insertion coupée par un rechargement n'en rendrait aucun.
   var _finEnvoi = _envoiCommence();
-  function _echec(raison) {
+  function _echec(raison, err) {
     _diag("handleAttachFile: ❌ Échec définitif - " + raison);
     try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "failed"); } catch (e) {}
     try { if (typeof _outboxAdd === "function") _outboxAdd(convId, msgId, _charge, _proprietaireMedia, { generation: _generationMedia, auteur: _auteurMedia }); } catch (e) {}
-    _flowSaved(false, raison);
+    _flowSaved(false, raison, err);
     _finEnvoi();
   }
   function _succes(voie) {
@@ -1084,14 +1096,14 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
         created_at: new Date().toISOString()
       }).then(function(res2) {
         if (!res2.error) _succes("fallback sans from_id");
-        else _echec(res2.error.message);
-      }).catch(function(e2) { _echec((e2 && e2.message) || "exception"); });
+        else _echec(res2.error.message, res2.error);
+      }).catch(function(e2) { _echec((e2 && e2.message) || "exception", e2); });
     } else {
       _succes("avec from_id");
     }
   }).catch(function(err) {
     _diag("handleAttachFile: Catch - " + err.message);
-    _echec((err && err.message) || "exception");
+    _echec((err && err.message) || "exception", err);
   });
 }
 

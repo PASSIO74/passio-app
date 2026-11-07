@@ -308,6 +308,7 @@ test("verdictVeille : des ATTENTION seules n'ouvrent pas d'issue ; une ALERTE do
     crons: Object.fromEntries(Object.keys(SEUILS_CRONS).map((k) => [k, { state: "active", dernierRunFin: new Date(now - H).toISOString() }])),
     base: { anonStatus: 200, octets: 1024 ** 3, purgePlanifiee: true },
     jetons: { github: { statut: 200, joursRestants: 70 }, supabase: { statut: 200 }, netlify: { statut: 200 } },
+    battement: { ligne: { created_at: new Date(now - 5 * 60e3).toISOString(), properties: { lectures: { sante: "ok", signalements: "ok", github: "ok", parcours: "ok" } } }, n24: 96 },
   };
   const vert = verdictVeille(base, now);
   assert.equal(vert.alerte, false);
@@ -327,7 +328,8 @@ test("verdictVeille : des ATTENTION seules n'ouvrent pas d'issue ; une ALERTE do
   assert.match(rouge.corps, /status\.supabase\.com/);
   assert.match(rouge.corps, /NETLIFY_AUTH_TOKEN/);
   assert.match(rouge.corps, /\[ok\] \*\*flux\*\*/);
-  assert.equal(rouge.signaux.length, 8);
+  // Neuf signaux depuis le 2026-11-06 : le battement de la veille du pilotage.
+  assert.equal(rouge.signaux.length, 9);
 });
 
 test("verdictVeille : une mesure en échec rend `unknown` avec sa raison (bornée), jamais « ok »", () => {
@@ -426,4 +428,28 @@ test("runPlusRecent : le plus récent selon sa date, quel que soit l'ordre servi
   assert.equal(runPlusRecent(runs).id, "encours");
   assert.equal(runPlusRecent([]), null);
   assert.equal(runPlusRecent(undefined), null);
+});
+
+// ─── Le chien de garde extérieur : le battement de la veille du pilotage (2026-11-06) ───
+// Mutation éprouvée à la main : `signalBattement` qui rend « ok » sur un battement
+// périmé → ce test rougit.
+import { signalBattement, SQL as SQL_VEILLE } from "../../scripts/veille-production.mjs";
+test("SQL du battement : SELECT seuls, sur la marque système uniquement", () => {
+  assert.match(SQL_VEILLE.battement, /event = 'pilotage_battement' and user_id = 'systeme:pilotage'/);
+  assert.match(SQL_VEILLE.battements24h, /interval '24 hours'/);
+});
+test("signalBattement : périmé = ALERTE avec le geste ; absent = attention ; lecture en échec = inconnu", () => {
+  const now = Date.parse("2026-11-06T12:00:00Z");
+  const lectures = { sante: "ok", signalements: "ok", github: "ok", parcours: "ok" };
+  const perime = signalBattement({ ligne: { created_at: new Date(now - 3 * 3600e3).toISOString(), properties: { lectures } }, n24: 60 }, now);
+  assert.equal(perime.etat, "alert");
+  assert.match(perime.texte, /la veille ne tourne plus/);
+  assert.match(perime.geste, /pilotage_veille/);
+  assert.equal(signalBattement({ ligne: null, n24: 0 }, now).etat, "warn");
+  assert.equal(signalBattement({ ligne: { created_at: new Date(now - 5 * 60e3).toISOString(), properties: { lectures: { ...lectures, github: "ko" } } }, n24: 96 }, now).etat, "warn");
+  const vivant = signalBattement({ ligne: { created_at: new Date(now - 5 * 60e3).toISOString(), properties: { lectures } }, n24: 96 }, now);
+  assert.equal(vivant.etat, "ok");
+  assert.match(vivant.texte, /96\/96 battements/);
+  assert.equal(signalBattement({ erreur: "HTTP 500" }, now).etat, "unknown");
+  assert.equal(signalBattement(undefined, now).etat, "unknown");
 });

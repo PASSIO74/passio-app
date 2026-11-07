@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import {
   REVEIL, RETOUR, EVT, enquetesEnCours, doitReveillerSentinelle, empreinte, decideRetour, deploiementsProduction,
   choisirPrecedent, continuerPagination, reveilsEpuises, idGeste, commitCourt, modeRetour, corpsProposition, TITRE_PROPOSITION,
+  prendreCreneau,
 } from "../../supabase/functions/_shared/autonomie.js";
 import { filtrerProduction, precedentDe, continuerPagination as continuerReference } from "../../scripts/rollback-selection.mjs";
 
@@ -194,7 +195,7 @@ test("⑩ le geste : verrou de 10 min, cible de l'APERÇU, marque HMAC AVANT la 
   assert.match(g, /const id = await idGeste\(`\$\{EVT\.manuel\}:\$\{p\.courant\.id\}:\$\{Math\.floor\(Date\.now\(\) \/ 3600e3\)\}`, SECRET_GESTES\);/, "clé HMAC, une par heure et par version servie");
   // Le secret est la clé service_role (posée sur toute fonction, jamais côté client) ; la clé anon, publique, ne vaut rien.
   assert.match(FN, /const SECRET_GESTES = Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\) \|\| "";/);
-  assert.equal(FN.split("SECRET_GESTES").length - 1, 3, "déclaration + deux clés de geste, aucun autre usage");
+  assert.equal(FN.split("SECRET_GESTES").length - 1, 6, "déclaration + deux clés de geste + le créneau de la veille + les marques de rappel + la transition d'état (⑰), aucun autre usage");
   assert.doesNotMatch(FN, /idGeste\([^)]*ANON/, "jamais la clé anon comme secret");
   assert.match(g, /code === "23505" \? "retour_en_cours" : "journal_refuse"/);
   assert.match(g, /de_deploy: p\.courant\.id/, "la version retirée est notée : elle ne reviendra pas par ce bouton");
@@ -231,8 +232,23 @@ test("⑫ les marques ont UNE orthographe, lue et écrite par les mêmes constan
   assert.match(s, /\.eq\("event", EVT\.reveil\)/);
   assert.match(s, /event: EVT\.reveil/);
   assert.match(s, /verifierPlafondEnBase\(admin, "systeme:sentinelle-reveil", "sentinelle-reveil", \{ parMinute: 1, parHeure: 2 \}\)/);
-  assert.match(s, /if \(!a \|\| !a\.exact \|\| a\.echecs30 == null\) return \{ raison: "mesure_absente" \}/, "pas de mesure en base, pas de réveil");
-  assert.match(s, /comptesErreurs: a\.echecs30 \}/, "le réveil décide sur les comptes ANCIENS comptés en base");
+  // Deux sources depuis le 2026-11-06 (parcours en panne) — la même exigence pour les deux :
+  // seuls des comptes ANCIENS décident, comptés en base OU relus dans l'authentification.
+  assert.match(s, /const mesure = a && a\.exact && a\.echecs30 != null \? a\.echecs30 : null;/, "la mesure en base n'est retenue qu'exacte");
+  assert.match(s, /if \(mesure == null && !comptesParcours\) return \{ raison: "mesure_absente" \}/, "ni mesure en base ni parcours en panne chez des comptes anciens : pas de réveil");
+  assert.match(s, /comptesErreurs: Math\.max\(mesure \|\| 0, comptesParcours\) \}/, "le réveil décide sur les comptes ANCIENS");
+  assert.match(s, /p\.etat === "panne" && p\.panneConfirmee === true/, "seules les pannes CONFIRMÉES par des comptes anciens réveillent");
+  const conf = corpsDe("confirmer");
+  assert.match(conf, /delaiBorne\(estCompteAncien\(admin, uid, REVEIL\.ancienneteMinMs\), 3000, null/, "relu avec l'ancienneté du réveil, chaque lecture bornée dans le temps");
+  assert.match(conf, /for \(const c of comptesAVerifier\(b\)\)/, "chaque parcours CANDIDAT, quel que soit son taux");
+  assert.match(conf, /for \(const cote of \[c\.F, c\.N\]\)/, "les deux côtés : comptes en échec ET comptes sans échec");
+  assert.match(conf, /const tires = melanger\(cote\)/, "ordre TIRÉ AU HASARD, jamais celui des lignes (revue de sécurité)");
+  assert.match(conf, /if \(i < RELECTURES_PAR_COTE && budget > 0\) \{ aLire\.push\(uid\); budget--; \} else nonLus\.add\(uid\);/, "lecture bornée, et ce qui n'est pas relu est DIT");
+  assert.match(conf, /confirmerPannes\(b, \{ anciens, verifies, nonLus \}\)/);
+  const anciens = corpsDe("estCompteAncien");
+  assert.match(anciens, /u && u\.email_confirmed_at && Date\.now\(\) - dateUtc\(u\.created_at\) >= ancienneteMs/, "confirmé ET assez ancien, sinon il ne compte pas");
+  assert.match(FN, /async function lireParcoursVeille[\s\S]{0,400}await confirmer\(admin,/, "la veille confirme avant de juger");
+  assert.match(FN, /async function lireParcours\(admin: Admin\)[\s\S]{0,600}await confirmer\(admin,/, "l'écran aussi");
   assert.equal(reveilsEpuises(11), false);
   assert.equal(reveilsEpuises(12), true);
   assert.equal(reveilsEpuises(NaN), true, "comptage illisible : on ne réveille pas");
@@ -258,5 +274,105 @@ test("⑬ la proposition se compte EN BASE, sa clé est HMAC, et rien du texte c
   assert.match(queue, /issue = !!\(ri && ri\.ok\)/, "une issue refusée (403, 422) n'est pas une issue ouverte");
   // Le texte va au PILOTE seulement : lu par lireProposition, derrière la porte (etat).
   assert.equal(FN.split("lireProposition(").length - 1, 2, "déclaration + etat()");
-  assert.ok(position(FN, 'case "etat": return json(await etat(admin));', "case etat") > position(FN, "if (!autorise(user, EXTRA))", "porte"));
+  assert.ok(position(FN, 'case "etat": return json(await etat(admin, corps.frais === true));', "case etat") > position(FN, "if (!autorise(user, EXTRA))", "porte"));
+});
+
+// ─── Créneau ATOMIQUE de la veille (2026-11-06) ─────────────────────────────
+// Mesuré en production : depuis le 2026-10-21, deux ordonnanceurs pg_net
+// appellent la veille à la même seconde, et le plafond « lire, puis écrire »
+// laissait passer les DEUX une fois sur deux (rappel J-1 envoyé deux fois le
+// 30/10, voyant noté deux fois). Mutations éprouvées à la main : un seul
+// créneau (`[m]`) → ⑮ rougit ; un identifiant aléatoire → ⑭ rougit ; un
+// identifiant sans la minute → ⑮ rougit ; une panne lue comme un succès → ⑯.
+
+/**
+ * Faux `analytics_events` : une CLÉ PRIMAIRE (Set des id) et une INSERT
+ * multi-lignes ATOMIQUE (une ligne en conflit → 23505, rien d'écrit), comme
+ * PostgREST. Un tour de boucle avant d'écrire : deux appels lancés ensemble
+ * s'entrelacent là, comme deux requêtes HTTP dans la même milliseconde.
+ */
+function fausseTable({ panne = false } = {}) {
+  const ids = new Set();
+  const ecrits = [];
+  const essais = { lectures: 0, insertions: 0 };
+  const client = { from: () => ({
+    // La lecture préalable : `select("id").in("id", […]).limit(1)`.
+    select: () => ({ in: (_col, liste) => ({ limit: async () => {
+      essais.lectures++;
+      await null;
+      if (panne) return { data: null, error: { code: "08006", message: "connexion perdue" } };
+      return { data: liste.filter((id) => ids.has(id)).slice(0, 1).map((id) => ({ id })), error: null };
+    } }) }),
+    insert: async (lignes) => {
+      essais.insertions++;
+      await null;
+      if (panne) return { error: { code: "08006", message: "connexion perdue" } };
+      const l = Array.isArray(lignes) ? lignes : [lignes];
+      if (l.some((x) => ids.has(x.id))) return { error: { code: "23505", message: 'duplicate key value violates unique constraint "analytics_events_pkey"' } };
+      for (const x of l) { ids.add(x.id); ecrits.push(x); }
+      return { error: null };
+    },
+  }) };
+  return { client, ids, ecrits, essais };
+}
+const SC = "secret-serveur-de-test-0123456789";
+const M0 = Date.parse("2026-11-06T18:45:00Z");
+const creneau = (t, ms, secret = SC) => prendreCreneau(t.client, "systeme:pilotage-veille", "pilotage-veille", secret, ms);
+
+test("⑭ deux veilles dans la MÊME milliseconde (deux ordonnanceurs) : une seule prend le créneau", async () => {
+  const t = fausseTable();
+  const [a, b] = await Promise.all([creneau(t, M0 + 959), creneau(t, M0 + 993)]);
+  assert.deepEqual([a, b].map((x) => x.ok).sort(), [false, true], "jamais les deux");
+  assert.deepEqual([a, b].find((x) => !x.ok), { ok: false, raison: "pris" });
+  assert.equal(t.ecrits.length, 2, "le gagnant tient sa minute ET la suivante, en une instruction");
+  assert.ok(t.ecrits.every((x) => x.user_id === "systeme:pilotage-veille" && x.event === "edge_pilotage-veille"));
+  assert.equal(t.ecrits[0].id, await idGeste("creneau:pilotage-veille:systeme:pilotage-veille:" + Math.floor(M0 / 60e3), SC), "l'identifiant est un HMAC sous le secret serveur");
+});
+
+test("⑮ deux passages acceptés sont toujours à plus de 60 s — même de part et d'autre d'une minute ronde", async () => {
+  const t = fausseTable();
+  assert.equal((await creneau(t, M0 - 10)).ok, true, "18:44:59.990");
+  assert.equal((await creneau(t, M0 + 10)).ok, false, "18:45:00.010 : 20 ms plus tard, de l'autre côté de la minute — refusé");
+  assert.equal((await creneau(t, M0 + 59e3)).ok, false, "18:45:59 : la minute suivante est tenue");
+  assert.equal((await creneau(t, M0 + 60e3)).ok, true, "18:46:00.000 : 60,01 s après — la veille suivante passe");
+  assert.equal((await creneau(t, M0 + 61e3)).ok, false);
+  assert.equal((await creneau(t, M0 + 5 * 60e3)).ok, true, "le cron de 5 min n'est jamais gêné");
+});
+
+test("⑯ panne de la base ou secret serveur absent : le créneau est REFUSÉ (fail-closed), rien n'est écrit", async () => {
+  const t = fausseTable({ panne: true });
+  assert.deepEqual(await creneau(t, M0), { ok: false, raison: "erreur", code: "08006" }, "le code part dans la trace de la veille");
+  assert.equal(t.ecrits.length, 0);
+  const u = fausseTable();
+  assert.deepEqual(await creneau(u, M0, ""), { ok: false, raison: "erreur", code: "secret" }, "sans secret, un créneau calculable d'avance serait préemptable par un client");
+  assert.equal(u.ecrits.length, 0);
+});
+
+test("⑰ la veille prend son créneau sous le secret serveur, et les rappels aussi ; une transition d'état se note UNE fois, avant de sonner", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.match(fn, /await prendreCreneau\(admin, "systeme:pilotage-veille", "pilotage-veille", SECRET_GESTES\);/);
+  assert.match(fn, /if \(creneau\.raison === "erreur"\) console\.warn\("veille : créneau refusé "/, "un créneau en erreur laisse sa trace");
+  assert.match(fn, /return envoyerRappels\(admin, \([^)]*\) => webpush\.sendNotification\(sub, charge, opts\), Date\.now\(\), SECRET_GESTES, ACCUSE\);/, "le secret des marques ET l'adresse des accusés");
+  // Deux veilles qui se chevauchent lisent le même état : la seconde se heurte
+  // à la clé primaire de la transition et ne sonne pas (mutation : sonner avant).
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  const note = v.indexOf("const id = prec && prec.le ? await idGeste(`pilotage_etat:${prec.le}`, SECRET_GESTES).catch(() => null) : null;");
+  const sonne = v.indexOf("if (d.sonner && !dejaNotee) envoyes = await sonnerPilote(");
+  assert.ok(note > 0 && sonne > note, "la transition est notée (clé HMAC de l'état remplacé) AVANT de sonner");
+  assert.match(v, /dejaNotee = !!ee && String\(\(ee as \{ code\?: string \}\)\.code \|\| ""\) === "23505";/, "seul le doublon prouvé tait l'alerte ; toute autre erreur laisse sonner");
+  assert.equal(v.split("sonnerPilote(").length - 1, 1, "un seul appel à la sonnerie dans la veille");
+  // Une lecture de l'état EN ÉCHEC rend null, comme « aucun état » : une clé fixe
+  // ferait de la seconde lecture en échec un « doublon », et tairait l'alerte
+  // (revue de sécurité du 2026-11-06 ; mutation : clé « initial » sans état lu).
+  assert.doesNotMatch(v, /pilotage_etat:\$\{prec \?/, "jamais de clé déterministe sans état lu");
+  assert.doesNotMatch(v, /"initial"/);
+});
+
+test("⑱ un créneau déjà pris se LIT : l'appel refusé n'écrit rien (une rafale d'appels anonymes ne coûte plus une transaction chacun)", async () => {
+  const t = fausseTable();
+  assert.equal((await creneau(t, M0)).ok, true);
+  const avant = t.essais.insertions;
+  for (let i = 0; i < 20; i++) assert.deepEqual(await creneau(t, M0 + 1000 + i), { ok: false, raison: "pris" });
+  assert.equal(t.essais.insertions, avant, "vingt refus, zéro insertion");
+  assert.equal(t.essais.lectures, 21);
 });

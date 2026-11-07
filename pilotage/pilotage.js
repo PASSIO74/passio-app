@@ -19,7 +19,7 @@
   // et l'écran montrerait sinon un vieux vert comme s'il était d'aujourd'hui.
   const PERIME_MS = 3 * 60e3;
   // Les seules adresses qu'un bouton « Régler » peut ouvrir (PAGES_REGLAGE, _shared/pilotage.js).
-  const LIENS_SURS = /^https:\/\/(github\.com|supabase\.com\/dashboard|app\.netlify\.com|app\.brevo\.com)\//;
+  const LIENS_SURS = /^https:\/\/(github\.com|supabase\.com\/dashboard|app\.netlify\.com|app\.brevo\.com|passio-app\.netlify\.app)\//;
   let derniere = 0, enCours = false, compte = null, gestesGithub = false, erreursLecture = {};
 
   // ─── Nœuds ────────────────────────────────────────────────────────────────
@@ -93,8 +93,24 @@
     try {
       const r = await appeler(corps);
       succes((r && r.message) || "Fait.");
-      await actualiser();
+      // Ce qui est parti se VOIT sur le bouton, jusqu'à la relecture qui repeint la ligne.
+      b.textContent = "Lancé ✓";
+      await actualiser(true);
+      // Une relance ou un essai se SUIVENT : leur résultat arrive dans la minute.
+      if (corps && (corps.action === "relancer" || corps.action === "essai")) suivreRelance();
     } catch (e) { erreur("Refusé : " + e.message); b.disabled = false; b.textContent = libelle; }
+  }
+  // Une relance se SUIT (2026-11-07) : mesuré, quatre « Régler » en 70 s, quatre
+  // analyses réussies, et une ligne identique après chacun — GitHub ne liste le
+  // run que quelques secondes après l'envoi, l'analyse dure une demi-minute. Trois
+  // relectures FRAÎCHES montrent « démarre », « analyse », puis le résultat, sans
+  // rien toucher ; un nouveau geste repart de zéro.
+  const SUIVI_RELANCE_MS = [12e3, 35e3, 70e3];
+  let suiviMinuteurs = [];
+  function suivreRelance() {
+    suiviMinuteurs.forEach(clearTimeout);
+    const pas = Array.isArray(window.PILOTAGE_SUIVI_RELANCE_MS) ? window.PILOTAGE_SUIVI_RELANCE_MS : SUIVI_RELANCE_MS;
+    suiviMinuteurs = pas.map((ms) => setTimeout(() => { if (!$("app").hidden && document.visibilityState === "visible") actualiser(true); }, ms));
   }
   function boutonGeste(texte, corps, classe) {
     const b = el("button", "btn" + (classe ? " " + classe : ""), texte); b.type = "button";
@@ -164,6 +180,50 @@
   }
   // « Non lu », avec la raison quand la fonction la connaît : un bloc vide ou un
   // zéro passerait pour une mesure.
+  // La réception des notifications (accusés du service worker, _shared/reception.js).
+  // « Reçue » = affichée par l'appareil, jamais « lue » ; sans accusé, « en
+  // attente » pendant 10 min, puis « non reçue ».
+  function rendreReception(zone, r) {
+    if (!r) {
+      const raison = erreursLecture.reception;
+      zone.append(carte("Réception des alertes", "Non lu", "Cette partie n'a pas pu être lue" + (raison ? " (" + raison + ")" : "") + ".", "gris"));
+      return;
+    }
+    const a = r.derniereAlerte || { etat: "aucune" };
+    const sur = (x) => x.recus + " appareil(s) sur " + x.acceptes;
+    // Lequel s'est tu : la famille du navigateur (le service de notification), jamais qui.
+    const NOMS_SERVICES = { chrome: "Chrome", edge: "Edge (Windows)", apple: "Safari (Apple)", firefox: "Firefox", autre: "autre navigateur" };
+    const muets = (Array.isArray(a.appareils) ? a.appareils : []).filter((x) => x && !x.recu).map((x) => NOMS_SERVICES[x.service] || "autre navigateur");
+    // Un ESSAI (2026-11-07 : sans alerte depuis 7 jours, la veille en envoie un, de
+    // jour) se dit essai, jamais alerte.
+    const T = a.essai
+      ? { recue: "Dernier essai des alertes reçu", nonMesuree: "Dernier essai non mesuré", envoyee: "Dernier essai envoyé", nonRecue: "Dernier essai non reçu", personne: "Dernier essai : aucun appareil", ancienne: "Dernier essai des alertes" }
+      : { recue: "Dernière alerte reçue", nonMesuree: "Dernière alerte non mesurée", envoyee: "Dernière alerte envoyée", nonRecue: "Dernière alerte non reçue", personne: "Dernière alerte : aucun appareil", ancienne: "Dernière alerte" };
+    if (a.etat === "recue") zone.append(carte(T.recue, "Reçue", sur(a) + (Number.isFinite(a.delaiMs) ? ", " + Math.max(1, Math.round(a.delaiMs / 1000)) + " s après l'envoi" : "") + " · " + ilYA(a.le) + (muets.length ? " · pas d'accusé de : " + muets.join(", ") : ""), muets.length ? "orange" : "vert"));
+    else if (a.etat === "non_mesuree") zone.append(carte(T.nonMesuree, "Non mesurée", "Envoyée " + ilYA(a.le) + " : la réception n'a pas pu être mesurée (" + (a.raison === "sans_adresse" ? "adresse d'accusé absente" : a.raison === "abonnements_illisibles" ? "abonnements illisibles" : "mesure impossible") + ").", "orange"));
+    else if (a.etat === "en_attente") zone.append(carte(T.envoyee, "En attente", ilYA(a.le) + " : pas encore d'accusé de l'appareil.", "gris"));
+    else if (a.etat === "non_recue") zone.append(carte(T.nonRecue, "Aucun accusé", "Envoyé" + (a.essai ? "" : "e") + " " + ilYA(a.le) + " à " + a.acceptes + " appareil(s), aucun n'a accusé. Rouvre PASSIO sur ton téléphone et vérifie les notifications.", "orange"));
+    else if (a.etat === "aucun_appareil") zone.append(carte(T.personne, "Personne", "Le service de notification ne l'a accepté" + (a.essai ? "" : "e") + " pour aucun appareil.", "orange"));
+    else if (a.etat === "ancienne") zone.append(carte(T.ancienne, "Ancienne", ilYA(a.le) + " : trop ancienne pour être jugée (les accusés vivent 3 jours).", "gris"));
+    else zone.append(carte("Aucune alerte depuis 48 h", "Calme", "Un essai part de jour quand rien n'a sonné depuis 7 jours : la réception se mesure alors sans attendre une panne.", "gris"));
+    const rp = r.rappels;
+    if (rp && rp.etat === "mesure") zone.append(carte("Rappels d'activité reçus (24 h)", Math.round(rp.taux * 100) + " %", rp.recus + " reçus sur " + rp.envoyes + " envoyés" + (rp.enAttente ? " · " + rp.enAttente + " en attente" : ""), rp.taux >= 0.8 ? "vert" : "orange"));
+    else if (rp && rp.etat === "partiel") zone.append(carte("Rappels d'activité (24 h)", "Partiel", "La lecture des accusés a touché son plafond : pas de taux, au moins " + rp.recus + " reçus sur " + rp.envoyes + ".", "gris"));
+    else if (rp) zone.append(carte("Rappels d'activité (24 h)", "Trop peu", rp.envoyes + " envoi(s) jugeable(s) : il en faut 5 pour un taux" + (rp.enAttente ? " · " + rp.enAttente + " en attente" : "") + ".", "gris"));
+    // Les appels (notify-call, 2026-11-07) : même règle que les rappels, sur un
+    // ÉCHANTILLON (un appel sur N porte un accusé) — l'écran le dit. Une fonction
+    // d'avant ce lot ne rend pas `appels` : aucune carte, jamais un faux zéro.
+    const ap = r.appels;
+    const ech = Number(ap && ap.echantillon) > 1 ? " · un appel sur " + Number(ap.echantillon) + " est mesuré" : "";
+    // Appels COUPÉS (pilote, `APPELS_ACTIFS`) et rien dans la fenêtre : on dit pourquoi
+    // il n'y a rien à mesurer, au lieu d'un « 0 appel mesuré » qui laisserait croire
+    // que des appels passent sans être mesurés.
+    if (ap && ap.actifs === false && !ap.envoyes && !ap.enAttente) zone.append(carte("Appels (24 h)", "Coupés", "Les appels sont coupés pendant le pilote : aucune push d'appel ne part, il n'y a rien à mesurer. La mesure démarre avec eux" + (ech ? " (" + ech.slice(3) + ")" : "") + ".", "gris"));
+    else if (ap && ap.etat === "mesure") zone.append(carte("Appels reçus (24 h)", Math.round(ap.taux * 100) + " %", ap.recus + " reçus sur " + ap.envoyes + " appels mesurés" + (ap.enAttente ? " · " + ap.enAttente + " en attente" : "") + ech, ap.taux >= 0.8 ? "vert" : "orange"));
+    else if (ap && ap.etat === "partiel") zone.append(carte("Appels (24 h)", "Partiel", "La lecture des accusés a touché son plafond : pas de taux, au moins " + ap.recus + " reçus sur " + ap.envoyes + " appels mesurés" + ech + ".", "gris"));
+    else if (ap) zone.append(carte("Appels (24 h)", "Trop peu", ap.envoyes + " appel(s) mesuré(s) jugeable(s) : il en faut 5 pour un taux" + (ap.enAttente ? " · " + ap.enAttente + " en attente" : "") + ech + ".", "gris"));
+    if (r.tronque) zone.append(carte("Réception : lecture partielle", "Partielle", "Les accusés dépassent ce que la lecture parcourt : les nombres sont des minimums.", "gris"));
+  }
   function nonLu(id, titre, partie) {
     const raison = erreursLecture[partie || id];
     vider(id).append(carte(titre, "Non lu", "Cette partie n'a pas pu être lue" + (raison ? " (" + raison + ")" : "") + ".", "gris"));
@@ -272,6 +332,8 @@
     rendreErreurs(d);
     rendreUtilisateurs(d);
     rendreMachines(d);
+    rendreParcours(d);
+    rendreVeille(d);
     rendreCapacite(d);
     rendreCroissance(d);
     rendreHistorique(d);
@@ -310,7 +372,7 @@
     if (g.special === "retour") return boutonRetourNu(g.libelle, zone, "btn-regler");
     if (g.special === "relire") {
       const b = el("button", "btn btn-regler", g.libelle); b.type = "button";
-      b.addEventListener("click", () => actualiser());
+      b.addEventListener("click", () => actualiser(true));
       return b;
     }
     if (!g.corps || typeof g.corps !== "object" || typeof g.corps.action !== "string") return null;
@@ -408,15 +470,16 @@
   toucher($("toutRegler"), () => (aRegler.length ? aRegler.slice() : null), async (file) => {
     const b = $("toutRegler");
     b.disabled = true;
-    let faits = 0;
+    let faits = 0, relance = false;
     const refus = [];
     for (let i = 0; i < file.length; i++) {
       b.textContent = "Réglage " + (i + 1) + " sur " + file.length + "…";
-      try { await appeler(file[i]); faits++; } catch (e) { refus.push(e.message); }
+      try { await appeler(file[i]); faits++; if (file[i].action === "relancer") relance = true; } catch (e) { refus.push(e.message); }
     }
     b.disabled = false;
     // Après la relecture, qui efface le bandeau d'erreur en réussissant.
-    await actualiser();
+    await actualiser(true);
+    if (relance) suivreRelance();
     if (faits) succes(faits === 1 ? "1 problème pris en main." : faits + " problèmes pris en main.");
     if (refus.length) erreur(refus.length + " refusé" + (refus.length > 1 ? "s" : "") + " : " + refus.join(" "));
   });
@@ -759,6 +822,88 @@
     (d.relancesPossibles || []).forEach((x) => { const c = carte(x.libelle, "", ""); bouton(c, "Lancer maintenant", { action: "relancer", cible: x.cle }); rl.append(c); });
   }
 
+  // ─── Parcours critiques (2026-11-06) ──────────────────────────────────────
+  // Chaque contrat d'action (_shared/contrats-actions.js) avec son dénominateur,
+  // sa fenêtre et sa fraîcheur. L'état affiché est celui de la DERNIÈRE HEURE
+  // quand elle est en panne ou dégradée (c'est elle qui juge le voyant), sinon
+  // celui de la journée. Gris = trop peu pour conclure : jamais un vert par défaut.
+  const ETATS_PARCOURS = { panne: ["En panne", "rouge"], degrade: ["Dégradé", "orange"], sain: ["OK", "vert"], insuffisant: ["Trop peu", "gris"], non_observe: ["Pas vu", "gris"] };
+  const RANG_PARCOURS = { panne: 0, degrade: 1, sain: 2, insuffisant: 3, non_observe: 4 };
+  function rendreParcours(d) {
+    const z = vider("parcours"), cv = vider("couverture");
+    const p = d.parcours;
+    if (!p) { nonLu("parcours", "Parcours critiques", "parcours"); return; }
+    if (Array.isArray(p.contratsInvalides) && p.contratsInvalides.length) { z.append(carte("Contrats d'action invalides", "Non jugé", p.contratsInvalides.join(" · "), "orange")); return; }
+    const recent = new Map(((p.recent && p.recent.parcours) || []).map((x) => [x.id, x]));
+    const etatDe = (x) => { const r = recent.get(x.id); return r && (r.etat === "panne" || r.etat === "degrade") ? r.etat : x.etat; };
+    const liste = (Array.isArray(p.parcours) ? p.parcours : []).slice()
+      .sort((a, b) => (RANG_PARCOURS[etatDe(a)] - RANG_PARCOURS[etatDe(b)]) || ((a.criticite === "critique" ? 0 : 1) - (b.criticite === "critique" ? 0 : 1)));
+    for (const x of liste) {
+      const etat = etatDe(x), r = recent.get(x.id);
+      const [mot, coul] = ETATS_PARCOURS[etat] || ["?", "gris"];
+      const morceaux = [];
+      if (x.juges) morceaux.push(x.reussis + " réussie(s) sur " + x.juges + " jugée(s) en 24 h (" + String(x.tauxSucces).replace(".", ",") + " %)");
+      else morceaux.push(x.tentes ? x.tentes + " action(s) en 24 h, aucune encore jugée" : "aucune action en 24 h");
+      if (x.refuses) morceaux.push(x.refuses + " refus de règle (complet, annulée…)");
+      if (x.attente) morceaux.push(x.attente + " en file locale");
+      if (x.reseau) morceaux.push(x.reseau + " coupure(s) réseau de l'appareil");
+      if (x.anonymes) morceaux.push(x.anonymes + " sans compte (non comptées)");
+      if (x.inconnus) morceaux.push(x.inconnus + " sans verdict");
+      if (x.p95Ms != null) morceaux.push("p95 " + Math.round(x.p95Ms) + " ms pour " + x.objectifP95Ms + " ms visés (" + x.mesures + " mesures)");
+      const c = carte(x.libelle + (x.criticite === "critique" ? " ★" : ""), mot, morceaux.join(" · "), coul);
+      if (r && r !== x && (r.etat === "panne" || r.etat === "degrade")) c.append(el("p", "discret", "Dernière heure : " + ((r.raisons && r.raisons[0]) || "")));
+      else if (etat !== "sain" && x.raisons && x.raisons[0]) c.append(el("p", "discret", x.raisons[0]));
+      if (Array.isArray(x.codes) && x.codes.length) c.append(el("p", "discret", "Codes des échecs : " + x.codes.map((k) => k.code + " ×" + k.n).join(", ")));
+      if (x.dernier) c.append(el("p", "discret", "dernière action " + ilYA(x.dernier)));
+      z.append(c);
+    }
+    const notes = [];
+    if (p.tronque) notes.push("Lecture partielle : les étapes les plus récentes seulement.");
+    if (p.orphelins) notes.push(p.orphelins + " fin(s) sans début dans la fenêtre (non jugées).");
+    if (p.horsContrat) notes.push(p.horsContrat + " action(s) hors contrat (ancienne version de l'app).");
+    if (notes.length) z.append(el("p", "discret", notes.join(" ")));
+    const co = p.couverture;
+    if (co) {
+      const manque = Array.isArray(co.nonInstrumentes) ? co.nonInstrumentes : [];
+      const c = carte("Couverture de la surveillance", manque.length ? "Partielle" : "Complète",
+        co.sousContrat + " parcours sous contrat (" + co.critiques + " critiques), " + co.observes + " vu(s) en 24 h, " + co.jugeables + " jugeable(s). " + manque.length + " recensé(s) mais pas encore instrumenté(s) :", manque.length ? "orange" : "vert");
+      manque.forEach((m) => c.append(el("p", "discret", "• " + m.libelle + " — vu seulement par : " + m.vuPar)));
+      cv.append(c);
+    }
+  }
+
+  // ─── La veille et la politique (2026-11-06) ───────────────────────────────
+  // Le battement : la preuve que la veille de 5 min est allée au bout, et ce
+  // qu'elle a décidé. La politique : ce que les machines font seules, et ce
+  // qu'elles ne feront jamais.
+  const ETATS_BATTEMENT = { vivant: ["Elle tourne", "vert"], incomplet: ["Incomplète", "orange"], arrete: ["Arrêtée", "rouge"], jamais: ["Aucun battement", "orange"] };
+  function rendreVeille(d) {
+    const b = d.battement;
+    if (!b) nonLu("veilleBattement", "Veille du pilotage", "battement");
+    else {
+      const z = vider("veilleBattement");
+      const [mot, coul] = ETATS_BATTEMENT[b.etat] || ["?", "gris"];
+      const reg = b.battements24h != null ? b.battements24h + "/" + b.attendus24h + " battements en 24 h" : "";
+      const c = carte("Veille du pilotage (Supabase, toutes les 5 min)", mot, [(b.raisons || [])[0] || "", reg].filter(Boolean).join(" · "), coul);
+      if (b.le) c.append(el("p", "discret", "dernier battement " + ilYA(b.le) + (b.revision ? " · révision " + b.revision : "")));
+      const g = b.gestes && typeof b.gestes === "object" ? Object.entries(b.gestes) : [];
+      if (g.length) c.append(el("p", "discret", "Décisions : " + g.map(([k, v]) => k + " → " + v).join(" · ")));
+      z.append(c);
+    }
+    const zp = vider("politique");
+    const p = d.politique;
+    if (!p) return;
+    const circuits = p.circuits || {};
+    const c = carte("Politique d'automatisation v" + p.version, !p.valide ? "Invalide" : p.mode === "applique" ? "Appliquée" : "Observation",
+      (p.autonomes || 0) + " geste(s) faits seuls, bornés et vérifiés · " + (p.sensibles || 0) + " geste(s) sensibles jamais autonomes.", p.valide ? "vert" : "rouge");
+    const seuls = [...(circuits.A || []), ...(circuits.B || [])].map((x) => x.libelle);
+    if (seuls.length) c.append(el("p", "discret", "Faits seuls : " + seuls.join(" · ")));
+    if ((circuits.C || []).length) c.append(el("p", "discret", "Jamais seuls : " + circuits.C.map((x) => x.libelle).join(" · ")));
+    if (!p.valide && Array.isArray(p.erreurs) && p.erreurs.length) c.append(el("p", "discret", p.erreurs.join(" · ")));
+    if (p.pause) c.append(el("p", "discret", "Pause : " + p.pause));
+    zp.append(c);
+  }
+
   function rendreCapacite(d) {
     const ja = vider("jauges");
     if (!d.capacite) { nonLu("jauges", "Capacité", "capacite"); return; }
@@ -904,9 +1049,22 @@
     const a = d.alertes;
     if (!a) nonLu("alertes", "Alertes");
     else {
+      // Un ABONNEMENT n'est pas une réception (2026-11-06) : la carte dit combien
+      // d'appareils sont abonnés ; la suivante, ce que leurs accusés prouvent.
       al.append(a.appareils
-        ? carte(a.appareils + " appareil(s) recevront les alertes", "Actif", "Tu es prévenu quand le voyant passe au rouge, quand le site ne répond plus, et quand c'est réglé.", "vert")
-        : carte("Aucun appareil ne reçoit les alertes", "Inactif", "Ouvre PASSIO avec le compte éditeur et active les notifications quand elles sont proposées.", "orange"));
+        ? carte(a.appareils + " appareil(s) abonné(s) aux alertes", "Abonné", "Tu es prévenu quand le voyant passe au rouge, quand le site ne répond plus, et quand c'est réglé.", "vert")
+        : carte("Aucun appareil abonné aux alertes", "Inactif", "Ouvre PASSIO avec le compte éditeur et active les notifications quand elles sont proposées.", "orange"));
+      rendreReception(al, d.reception);
+      // L'adresse d'accusé (2026-11-07) : sans elle, rien ne se mesure — dit en FORMES.
+      const ad = a.accuse;
+      if (ad && ad.mesurable === false) al.append(carte("Accusés de réception impossibles", "Sans adresse",
+        "La fonction n'a pas d'adresse d'accusé utilisable (URL : " + (ad.url || "?") + ", clé anon : " + (ad.anon || "?") + ", clés publiables : " + (ad.publiables || "?") + ").", "orange"));
+      // Un essai À LA DEMANDE : la preuve, maintenant, que les alertes arrivent.
+      if (a.appareils) {
+        const ce = carte("Essayer les alertes", "", "Envoie une notification d'essai à tes appareils ; son accusé s'affiche ci-dessus dans la minute.");
+        bouton(ce, "Envoyer un essai maintenant", { action: "essai" });
+        al.append(ce);
+      }
       const dispo = d.disponibilite;
       al.append(carte("Veille automatique", dispo && dispo.veilleLe ? "Active" : "Pas encore",
         dispo && dispo.veilleLe ? "dernier changement noté " + ilYA(dispo.veilleLe) + " · vérifie toutes les 5 min" : "Elle démarre quand la migration « pilotage_veille » est appliquée.",
@@ -969,13 +1127,15 @@
   // l'état d'avant : la lecture en cours finit, puis une seconde part. Et une
   // relecture ne repeint jamais sous un geste armé : son bouton « Annuler »
   // disparaîtrait ; elle attend qu'il soit parti ou annulé.
-  let aRelire = false, derniereLecture = null;
-  function relireSiAttendu() { if (aRelire && !armes.size && !enCours) { aRelire = false; actualiser(); } }
-  async function actualiser() {
-    if (enCours || armes.size) { aRelire = true; return; }
+  // `frais` : relu juste après un geste, sans le cache de GitHub de la fonction (2 min par isolat).
+  let aRelire = false, aRelireFrais = false, derniereLecture = null;
+  function relireSiAttendu() { if (aRelire && !armes.size && !enCours) { const f = aRelireFrais; aRelire = false; aRelireFrais = false; actualiser(f); } }
+  async function actualiser(frais) {
+    const fraiche = frais === true;
+    if (enCours || armes.size) { aRelire = true; aRelireFrais = aRelireFrais || fraiche; return; }
     enCours = true; $("actualiser").classList.add("tourne");
     try {
-      const d = await appeler({ action: "etat" });
+      const d = await appeler(fraiche ? { action: "etat", frais: true } : { action: "etat" });
       derniere = Date.now(); derniereLecture = d;
       if (armes.size) aRelire = true;
       else rendre(d);
@@ -989,7 +1149,8 @@
       relireSiAttendu();
     }
   }
-  $("actualiser").addEventListener("click", actualiser);
+  // Le bouton « Actualiser » relit au frais : c'est ce que veut celui qui le touche.
+  $("actualiser").addEventListener("click", () => actualiser(true));
   // Quitter la page fait partir ce qui était armé (voir `armer`).
   function partirTout() { pageQuittee = true; [...armes].forEach((a) => a.partir()); }
   window.addEventListener("pagehide", partirTout);

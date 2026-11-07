@@ -387,14 +387,23 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       if (ev.status < 300) {
         const rsvpA = await rest(A.token, "event_attendees", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ event_id: evId, user_id: A.uid, rsvp: "waitlist" }) });
         if (rsvpA.status < 300) {
-          const promo = await rest(B.token, `event_attendees?event_id=eq.${evId}&user_id=eq.${A.uid}`, { method: "PATCH", body: JSON.stringify({ rsvp: "going" }) });
+          // `select=event_id` : sans lui, `return=representation` part en `RETURNING *`. Depuis
+          // C-04 (SELECT par colonnes : `rating`, `feedback`, `rated_at` retirés au rôle), le
+          // privilège de colonne refuserait la requête (42501) AVANT la policy UPDATE, et
+          // « 0 ligne » passerait même avec une policy ouverte (RV-40). Le statut 2xx prouve
+          // que c'est bien la POLICY qui a filtré la ligne d'A.
+          const promo = await rest(B.token, `event_attendees?event_id=eq.${evId}&user_id=eq.${A.uid}&select=event_id`, { method: "PATCH", body: JSON.stringify({ rsvp: "going" }) });
+          expect(promo.status, "le PATCH de B passe la porte de PostgREST (ni refus de droit ni erreur) : c'est la policy qui doit filtrer").toBeLessThan(300);
           expect(Array.isArray(promo.body) ? promo.body.length : 0, "B change le RSVP d'A (= promotion cross-compte, B-02) → doit toucher 0 ligne").toBe(0);
           const relu = await rest(A.token, `event_attendees?event_id=eq.${evId}&user_id=eq.${A.uid}&select=rsvp`);
           expect(Array.isArray(relu.body) && relu.body[0] && relu.body[0].rsvp, "le RSVP d'A est intact").toBe("waitlist");
           log("RSVP d'autrui : 0 ligne touchée (la liste d'attente n'a donc pas de sortie côté client — B-02)");
         } else log(`12c sauté : RSVP d'A refusé (HTTP ${rsvpA.status}, admission 18+ non déclarée pour un compte e2e)`);
       } else log(`12c sauté : création d'événement refusée (HTTP ${ev.status}, admission 18+ non déclarée pour un compte e2e)`);
-      await rest(A.token, `event_attendees?event_id=eq.${evId}`, { method: "DELETE" }).catch(() => {});
+      // `return=minimal` : en `return=representation` sans `select=`, ce DELETE part en
+      // `RETURNING *`, refusé (42501) depuis C-04 (RV-40) ; la cascade d'`events` nettoyait
+      // à sa place, sans que personne le voie.
+      await rest(A.token, `event_attendees?event_id=eq.${evId}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }).catch(() => {});
       await rest(A.token, `events?id=eq.${evId}`, { method: "DELETE" }).catch(() => {});
       await rest(A.token, `conv_members?conv_id=eq.${convId}`, { method: "DELETE" }).catch(() => {});
       await rest(A.token, `conversations?id=eq.${convId}`, { method: "DELETE" }).catch(() => {});

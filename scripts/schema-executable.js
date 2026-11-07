@@ -316,18 +316,33 @@ const ETAPES = [
     sql: `select id, name, public, file_size_limit from storage.buckets order by name`,
     rendu: (r) => r.map((x) => `insert into storage.buckets (id, name, public, file_size_limit)\n  values (${litt(x.id)}, ${litt(x.name)}, ${x.public}, ${x.file_size_limit === null ? "null" : x.file_size_limit})\n  on conflict (id) do update set public=excluded.public, file_size_limit=excluded.file_size_limit;`) },
 
-  { titre: "Tâches cron",
+  { titre: "Tâches cron — une tâche qui APPELLE un projet n'est recopiée que sur lui",
     sql: `select jobname, schedule, command from cron.job order by jobname`,
-    rendu: (r) => rendreTachesCron(r, litt) },
+    rendu: (r) => r.map(rendreTacheCron) },
 ];
 
-// Une tâche qui appelle le réseau porte une URL de production en dur : recopiée telle quelle, une base
-// restaurée continuait d'agir sur la production (86 doublons de veille par 24 h mesurés, audit du
-// 2026-11-06, D-04). Elle est écartée, et DITE : sur une vraie reprise, on la repose à la main.
-function rendreTachesCron(lignes, litt) {
-  return lignes.map((x) => (/\bnet\.http_/.test(String(x.command))
-    ? `-- ÉCARTÉE : la tâche ${String(x.jobname).replace(/[^\w.-]/g, "_")} appelle le réseau (net.http_*). À reposer à la main sur une reprise, avec l'URL de la cible.`
-    : `do $$ begin if not exists (select 1 from cron.job where jobname=${litt(x.jobname)}) then perform cron.schedule(${litt(x.jobname)}, ${litt(x.schedule)}, ${litt(x.command)}); end if; end $$;`));
+// Une tâche cron qui appelle un projet Supabase (`https://<ref>.supabase.co`,
+// par pg_net) n'est recopiée que sur CE projet, déclaré par `passio.projet`
+// (`select set_config('passio.projet', '<ref>', true);` en tête de la
+// transaction). Sans cette garde, la restauration du 2026-10-21 (RES-14) a
+// installé sur le staging la veille du pilotage AVEC l'URL de la production :
+// deux veilles par tick pendant seize jours, un rappel d'activité envoyé deux
+// fois au même compte (mesuré le 2026-11-06). Une reprise vers un autre projet
+// la SAUTE et le dit (notice) : la recréer avec l'URL de la cible est un geste
+// délibéré. Les autres tâches (purges en SQL) sont recopiées comme avant.
+const RE_PROJET_APPELE = /https:\/\/([a-z0-9]{20})\.supabase\.co/g;
+function projetsAppeles(commande) {
+  return [...new Set([...String(commande || "").matchAll(RE_PROJET_APPELE)].map((m) => m[1]))];
+}
+function rendreTacheCron(x) {
+  const deja = `exists (select 1 from cron.job where jobname=${litt(x.jobname)})`;
+  const planifier = `perform cron.schedule(${litt(x.jobname)}, ${litt(x.schedule)}, ${litt(x.command)});`;
+  const refs = projetsAppeles(x.command);
+  if (!refs.length) return `do $cron$ begin if not ${deja} then ${planifier} end if; end $cron$;`;
+  const ici = "coalesce(current_setting('passio.projet', true), '')";
+  const surCeProjet = refs.map((ref) => `${ici} = ${litt(ref)}`).join(" and ");
+  const avis = litt(`tâche cron ${x.jobname} NON recopiée : elle appelle le projet ${refs.join(" et ")}, et ce projet se déclare « % » (passio.projet). La recréer avec l'URL de la cible.`);
+  return `do $cron$ begin if not (${surCeProjet}) then raise notice ${avis}, ${ici}; elsif not ${deja} then ${planifier} end if; end $cron$;`;
 }
 
 async function main() {
@@ -359,4 +374,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error("ÉCHEC :", e.message); process.exit(1); });
-module.exports = { ETAPES, requete, PAUSES };
+module.exports = { ETAPES, requete, PAUSES, projetsAppeles, rendreTacheCron };

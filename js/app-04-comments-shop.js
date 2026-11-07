@@ -651,9 +651,12 @@ function _renderCommentsList(allComments, postId) {
       return d !== 0 ? d : ((b.createdAt || b.at || 0) - (a.createdAt || a.at || 0));
     });
   }
-  // Commentaire(s) épinglé(s) toujours en tête (tri stable → ordre relatif gardé).
-  if (_visible.some(function (c) { return c.pinned; })) {
-    _visible = _visible.slice().sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0); });
+  // L'épinglé du fil toujours en tête (tri stable → ordre relatif gardé). La vérité
+  // du FIL décide (`_estEpingle`, RV-38), pas le drapeau d'objets qu'une page
+  // serveur reconstruit ; elle se sème du drapeau tant qu'aucune lecture n'a eu lieu.
+  _semerEpingleFil(postId, allComments);
+  if (_visible.some(function (c) { return _estEpingle(postId, c); })) {
+    _visible = _visible.slice().sort(function (a, b) { return (_estEpingle(postId, b) ? 1 : 0) - (_estEpingle(postId, a) ? 1 : 0); });
   }
   var _sortBar = _visible.length >= 2
     ? '<div class="cmt-sortbar">'
@@ -670,7 +673,10 @@ function _renderCommentsList(allComments, postId) {
   // fils quel que soit le contexte (fil/IRL/CDV).
   var _LIMIT = 30;
   window._cmtShown = window._cmtShown || {};
-  var _shown = window._cmtShown[postId] || _LIMIT;
+  // L'épinglé lu à part (RV-38, hors des pages chargées) s'ajoute à ce qui est
+  // montré, il n'y prend pas la place du 30ᵉ (contre-revue du delta, P4).
+  var _aPart = _visible.filter(function (c) { return c && c._epingleGarde; }).length;
+  var _shown = (window._cmtShown[postId] || _LIMIT) + _aPart;
   var _olderBtn = "";
   if (_visible.length > _shown) {
     var _remaining = _visible.length - _shown;
@@ -724,11 +730,12 @@ function _renderCommentsList(allComments, postId) {
     const cRepOpen = !!window._repliesExpanded[c.id];
 
     const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
-    return `<div class="comment${c.pinned ? " pinned" : ""}" data-commentid="${escapeHtml(c.id)}">
+    const cEpingle = _estEpingle(postId, c);
+    return `<div class="comment${cEpingle ? " pinned" : ""}" data-commentid="${escapeHtml(c.id)}">
       <div class="avatar sm" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(_cAv)}</div>
       <button class="comment-menu-btn" title="Options" onclick="event.stopPropagation();return openCommentOptions('${escapeJsArg(postId)}','${escapeJsArg(c.id)}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
       <div class="comment-body">
-        ${c.pinned ? '<div class="cmt-pinned-badge">Épinglé</div>' : ""}
+        ${cEpingle ? '<div class="cmt-pinned-badge">Épinglé</div>' : ""}
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(name)}</div>
         ${identitePassionsHTML(_cAv, "ident-passions-sm")}
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
@@ -852,7 +859,10 @@ function _fusionnerPageCommentaires(post, page) {
   var dejaPlusLoin = post._commentsPagine === true && !!page.suite && serveurAvant > page.length;
   var suite = dejaPlusLoin ? (post._commentsSuite || null) : (page.suite || null);
   var plancher = page.reduce(function (min, c) { var t = c && c.createdAt; return (typeof t === "number" && t < min) ? t : min; }, Infinity);
-  var anciennes = dejaPlusLoin ? (post.comments || []).filter(function (c) { return c && c.fromSupabase && !ids.has(c.id) && (c.createdAt || 0) < plancher; }) : [];
+  // L'épinglé lu à part n'est pas une page déjà chargée : il passe par `garde`, qui
+  // le fait revérifier (contre-vérification de d38d2fb, P3-b : repris ici, il ne
+  // l'était jamais).
+  var anciennes = dejaPlusLoin ? (post.comments || []).filter(function (c) { return c && c.fromSupabase && !c._epingleGarde && !ids.has(c.id) && (c.createdAt || 0) < plancher; }) : [];
   var connues = page.length + anciennes.length;
   if (Number.isSafeInteger(total)) {
     total = suite ? Math.max(total, connues) : connues;
@@ -862,8 +872,22 @@ function _fusionnerPageCommentaires(post, page) {
   // Ce qui est à moi et en attente d'envoi ; une ligne sans drapeau ni
   // `fromSupabase` (liste persistée par l'ancien client) est périmée : la page fait foi.
   var locaux = (post.comments || []).filter(function (c) { return c && !ids.has(c.id) && commentaireEnAttente(c); });
+  // L'ÉPINGLÉ lu à part (RV-38), plus ancien que la page, quand la page annonce une
+  // suite : il reste — sinon chaque réouverture le relisait par son identifiant
+  // (contre-revue du delta, P3-B). Sans suite, la page est la liste entière, et
+  // l'épinglé qui n'y est pas a été supprimé.
+  // Gardé, il reste À VÉRIFIER : sa présence en base se revérifie à chaque page
+  // relue (`_assurerCommentaireEpingle`) — supprimé, il ne doit pas rester en tête
+  // (contre-vérification de 84cb6b3, D1).
+  var epingle = (typeof _epingleConnue === "function") ? _epingleConnue(post.id) : undefined;
+  var garde = (epingle && epingle.cid && page.suite && !ids.has(epingle.cid))
+    ? (post.comments || []).filter(function (c) {
+        return c && c._epingleGarde && c.id === epingle.cid && c.fromSupabase && (c.createdAt || 0) < plancher && anciennes.indexOf(c) < 0;
+      })
+    : [];
+  garde.forEach(function (c) { c._aVerifier = true; });
   var liste = page.map(function (c) { return Object.assign({}, c, { text: c.content || c.text || "" }); })
-    .concat(anciennes, locaux)
+    .concat(anciennes, garde, locaux)
     .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
   copies.forEach(function (c) {
     c.comments = liste;
@@ -875,7 +899,8 @@ function _fusionnerPageCommentaires(post, page) {
 function _commentairesSuiteHtml(postId) {
   var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
   if (!post || !post._commentsSuite) return "";
-  var charges = (post.comments || []).filter(function (c) { return c && c.fromSupabase; }).length;
+  // L'épinglé lu à part (RV-38) n'est pas une page chargée : il ne réduit pas ce qui reste.
+  var charges = (post.comments || []).filter(function (c) { return c && c.fromSupabase && !c._epingleGarde; }).length;
   var total = _totalConnu(postId, post);
   var restants = Number.isSafeInteger(total) ? Math.max(0, total - charges) : 0;
   if (_commentairesEnCours.has(postId)) {
@@ -897,11 +922,21 @@ async function _chargerCommentairesPrecedents(postId) {
     // est en état MAINTENANT, et sur toutes ses copies.
     post = findPostAnywhere(postId) || post;
     var connus = new Set((post.comments || []).map(function (c) { return c.id; }));
+    // L'épinglé lu à part que cette page apporte est désormais chargé comme les
+    // autres : il n'est plus « gardé » (RV-38).
+    var dansLaPage = new Set(page.map(function (c) { return c.id; }));
+    (post.comments || []).forEach(function (c) {
+      if (c && c._epingleGarde && dansLaPage.has(c.id)) { delete c._epingleGarde; delete c._aVerifier; }
+    });
     var nouveaux = page.filter(function (c) { return !connus.has(c.id); })
       .map(function (c) { return Object.assign({}, c, { text: c.content || c.text || "" }); });
     var liste = (post.comments || []).concat(nouveaux)
       .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     var suite = page.suite || null;
+    // Dernière page atteinte : la liste est ENTIÈRE. Un épinglé lu à part qu'aucune
+    // page n'a apporté n'existe plus dans ce fil : il part, et ne compte pas
+    // (contre-vérification de d38d2fb, P4-c).
+    if (!suite) liste = liste.filter(function (c) { return !(c && c._epingleGarde); });
     // Dernière page : la liste est entière, le total du fil (peut-être périmé à
     // la hausse — aucun événement DELETE n'est écouté) se recale dessus.
     var total = suite ? _totalConnu(postId, post) : liste.filter(function (c) { return c && c.fromSupabase; }).length;
@@ -910,7 +945,8 @@ async function _chargerCommentairesPrecedents(postId) {
       if (Number.isSafeInteger(total)) c.commentsTotal = total;
     });
     if (nouveaux.length && typeof hydrateCommentInteractions === "function") {
-      try { await hydrateCommentInteractions({ comments: nouveaux }); } catch (e) {}
+      // `id` : le FIL — sans lui, aucune épingle n'est décidée (RV-38).
+      try { await hydrateCommentInteractions({ id: postId, comments: nouveaux }, { epingle: false }); } catch (e) {}
     }
     // Ce qu'on vient de charger se voit : la pagination d'affichage suit.
     window._cmtShown = window._cmtShown || {};
@@ -937,9 +973,35 @@ function _expandComments(threadId) {
 // commentaire sont agrégées en UN SEUL emoji (le plus fréquent) + le total ; un
 // clic ouvre la liste de QUI a réagi (et avec quoi). Identique partout.
 // ════════════════════════════════════════════════════════════════════════
+// Une réaction COMPTÉE : un emoji (un GIF est une réponse, rendue en image dans
+// la liste), et jamais celui d'un compte BLOQUÉ — son contenu est masqué, ses
+// interactions ignorées (`isBlocked`), comme ses commentaires. SEULE autorité de
+// ce qui entre dans une pastille « 😍 N » et dans la liste des réacteurs, d'une
+// PUBLICATION (`_postReactItems`) comme d'un COMMENTAIRE ou d'une réponse
+// (`_cmtReactions`). Filtré à l'AFFICHAGE, jamais à la lecture : la RLS laisse un
+// compte bloqué réagir sur une publication publique, ses lignes entrent dans
+// `comment.replies` (`supaLoadCommentInteractions`, app-08) comme dans
+// `post.reactions`, et un déblocage les rend sans relecture.
+// Verrou : `tests/e2e/reactions-commentaire-bloque.spec.js`.
+function _reactionEmojiComptee(r) {
+  return !!(r && r.type === "emoji_reaction" && !(typeof isBlocked === "function" && isBlocked(r.authorId)));
+}
+// `comment.replies` telle que la voit une surface qui LISTE ou COMPTE ses
+// réactions emoji AVEC ses réponses, sous « N réponses » : le panneau des
+// commentaires d'une bobine (`loadReelComments`, app-05) et l'aperçu des
+// commentaires d'une carte du fil (`renderPostHTML`, app-02). Une réaction n'y
+// reste que si elle compte (`_reactionEmojiComptee`) ; les réponses texte et les
+// GIF sont des réponses, rendues telles quelles (une entrée nulle aussi, comme
+// avant). La discussion, elle, ne compte aucune réaction comme une réponse.
+function _reponsesComptees(replies) {
+  return (replies || []).filter(function (r) { return !r || r.type !== "emoji_reaction" || _reactionEmojiComptee(r); });
+}
 function _cmtReactions(comment) {
   // Emojis SEULEMENT dans la pastille — les GIF sont des réponses (image inline).
-  var arr = (comment && comment.replies || []).filter(function(r){ return r && r.type === "emoji_reaction"; });
+  // Un compte bloqué ne compte pas : la pastille, la liste des réacteurs
+  // (`openCommentReactors`) et le tri « Pertinents » (`_cmtRelevance`) lisent
+  // tous ici. Le temps réel ignorait déjà son AJOUT ; la lecture, non.
+  var arr = (comment && comment.replies || []).filter(_reactionEmojiComptee);
   return _dedupReactionsByAuthor(arr);
 }
 // Patch EN PLACE la pastille de réactions d'un commentaire/réponse (holder
@@ -1194,10 +1256,9 @@ function _postReactItems(postId) {
   // ignorées (`isBlocked`), comme ses commentaires. Filtré ICI, à l'affichage,
   // pour toutes les copies : depuis RV-39, ma copie `userPosts` reçoit aussi ce
   // que rend le serveur, et la RLS laisse un compte bloqué réagir à une
-  // publication publique (contre-revue du lot).
-  var reacts = arr.filter(function(r){
-    return r && r.type === "emoji_reaction" && !(typeof isBlocked === "function" && isBlocked(r.authorId));
-  });
+  // publication publique (contre-revue du lot). La règle est celle des
+  // commentaires, écrite UNE fois (`_reactionEmojiComptee`).
+  var reacts = arr.filter(_reactionEmojiComptee);
   return _dedupReactionsByAuthor(reacts).map(function(r){ return { authorId: r.authorId, text: r.text }; });
 }
 function _postReactChipHtml(postId) {
@@ -1314,7 +1375,10 @@ function submitComment(postId) {
   let post = findPostAnywhere(postId);
   if (!post) return;
   try { window.tel && tel.action("comment_post", { postId: postId, len: text.length }); } catch (e) {}
-  try { window.tel && tel.flowStart && tel.flowStart("comment_post", { postId: postId }); } catch (e) {}
+  // Le flux « comment_post » s'ouvre et se ferme dans `supaAddComment`, au
+  // moment de l'écriture réelle (la file des commentaires peut l'envoyer plus
+  // tard, hors ligne). Ouvert ICI, son identifiant était jeté et aucun verdict
+  // ne le fermait (2026-11-06, contrats-actions.js).
   if (!post.comments) post.comments = [];
   const realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const p = currentProfile();
@@ -1970,6 +2034,12 @@ function _recopierReactionsAutrui(postId, serveur, avant) {
 function _applyCommentInteractionEvent(r, op) {
   try {
     if (!r || !r.comment_id) return;
+    // #11 épingle (RV-38) : un état du FIL, ni « j'aime » ni réponse — seule la ligne
+    // du PROPRIÉTAIRE du fil fait foi (`_epingleRecue`), la mienne comprise : elle
+    // vient peut-être d'un autre de mes appareils. Indexée (R37) : son retrait — une
+    // purge, avec le commentaire ou la publication, ou le retour arrière de la
+    // migration — se reconnaît, et la vérité du fil se RELIT (`_epingleRetiree`).
+    if (r.kind === "pin") { if (op === "add") { _ciIndexer(r); _epingleRecue(r); } else _epingleRetiree(r); return; }
     if (typeof MY_UID !== "undefined" && r.user_id === MY_UID) return; // déjà appliqué localement
     // Un compte bloqué n'AJOUTE rien ; ce qu'il retire part quand même (retirer
     // ne montre rien de lui, et sa ligne a pu être comptée par une lecture).
@@ -2241,9 +2311,10 @@ function openCommentOptions(threadId, commentId, mine, event) {
     + _cmtRow("🎬", "Réagir avec un GIF", "gif")
     + _cmtRow("📋", "Copier le texte", "copy");
   window._cmtSheetCtx.owner = (typeof _isThreadOwner === "function") ? _isThreadOwner(threadId) : false;
-  // Épingler : réservé au propriétaire du fil (auteur du post/événement/live).
-  if (window._cmtSheetCtx.owner) {
-    rows += _cmtRow(c.pinned ? "📌" : "📌", c.pinned ? "Retirer l'épingle" : "Épingler en haut", "pin");
+  // Épingler : réservé au propriétaire du fil (auteur du post/événement/live) — et
+  // jamais dans un fil homonyme, que la garde du serveur refuse (`_filAmbigu`).
+  if (window._cmtSheetCtx.owner && !_filAmbigu(threadId)) {
+    rows += _cmtRow("📌", _estEpingle(threadId, c) ? "Retirer l'épingle" : "Épingler en haut", "pin");
   }
   if (isMine) {
     if (!_looksLikeMediaUrl(c.text || c.content || "")) rows += _cmtRow("✏️", "Modifier", "edit");
@@ -2379,21 +2450,436 @@ async function _supaUpdateCommentRow(commentId, text) {
     if (r && r.error) { try { toast("Modification refusée"); } catch (e) {} }
   } catch (e) {}
 }
-// ── #11 ÉPINGLER un commentaire (l'auteur du fil le remonte en tête) ──
-// Un seul épinglé par fil. Persisté localement + sync via comment_interactions
-// (kind "pin", payload = "1"/"0") pour que les autres comptes le voient.
-function togglePinComment(threadId, commentId) {
-  var thread = _findCommentThread(threadId);
-  if (!thread) return;
-  var target = thread.comments.find(function (c) { return c.id === commentId; });
-  if (!target) return;
-  var willPin = !target.pinned;
-  thread.comments.forEach(function (c) { if (c.pinned) { c.pinned = false; if (c.id !== commentId && typeof supaCommentInteract === "function") { try { supaCommentInteract(c.id, threadId, "pin", "0"); } catch (e) {} } } });
-  target.pinned = willPin;
-  if (typeof thread.save === "function") thread.save();
-  if (typeof supaCommentInteract === "function") { try { supaCommentInteract(commentId, threadId, "pin", willPin ? "1" : "0"); } catch (e) {} }
-  _refreshCommentThreadUINow(threadId);
-  toast(willPin ? "Commentaire épinglé" : "Épingle retirée");
+// ── #11 ÉPINGLER un commentaire (le propriétaire du fil le remonte en tête) ──
+// Un seul épinglé par fil. Écrit dans comment_interactions (kind « pin », charge
+// « 1 » / « 0 ») pour que les autres comptes le voient.
+// ⚠️ RV-38 (2026-11-05) : JAMAIS une épingle n'avait atteint la base — la
+// contrainte `ci_kind_check` refusait « pin » (23514) et le refus était avalé :
+// l'épingle restait locale à l'appareil du propriétaire, « Commentaire épinglé »
+// à l'écran. Désormais l'affichage est OPTIMISTE et suit le VERDICT de
+// l'écriture : un refus le DÉFAIT et se DIT. Côté serveur (migration RV-38), la
+// garde `trg_ci_epingle_garde` n'admet que le propriétaire du fil, sur un
+// commentaire de ce fil. Fiche : docs/journal/serveur-securite-base.md.
+// ⚠️ L'ÉPINGLE EST UN ÉTAT DU FIL, PAS D'UN COMMENTAIRE (contre-revue du lot) :
+//   · elle se LIT au niveau du fil (`supaLireEpingleFil`, app-08 : les lignes du
+//     propriétaire, dans ce fil, les plus récentes d'abord) — jamais par les seules
+//     lignes des commentaires chargés : une page de 30 n'en porte qu'une partie, et
+//     l'épinglé peut être plus ancien (il est alors lu par son identifiant) ;
+//   · règle : le « 1 » le plus récent du fil l'emporte, sauf si un « 0 » plus
+//     récent vise ce même commentaire (`_epingleDesLignes`). Commentaire par
+//     commentaire, retirer l'épinglé faisait reparaître un « 1 » plus ancien ;
+//   · elle se RETIENT par fil (`_epinglesFil`) et le rendu la lit (`_estEpingle`) :
+//     une page serveur reconstruit les objets commentaires sans leur drapeau
+//     (`_fusionnerPageCommentaires`, `_setEventComments`), et une lecture en échec
+//     ne doit pas faire disparaître ce qu'on savait.
+var _epinglesFil = {};         // fil → { cid } : la vérité connue (cid null : aucun épinglé)
+var _epinglesEnVol = {};       // fil → écritures d'épingle en cours
+var _epinglesRecuesEnVol = {}; // fil → une épingle du propriétaire est arrivée en direct PENDANT l'écriture
+var _epinglesEcrites = {};     // fil → « commentaire|charge » des écritures du geste en cours (leur écho n'est pas un autre appareil)
+var _epinglesEchoEnVol = {};   // fil → l'écho d'une de ces écritures est arrivé : elle a abouti, quoi que dise sa réponse
+var _epinglesGeneration = {};  // fil → +1 à chaque épingle posée ou reçue
+var _epinglesACharger = {};    // fil + commentaire → lecture de l'épinglé en cours
+// Seul un vrai compte écrit une ligne (`user_id` = `auth.uid()`) : le fil d'un
+// exemple (`u_…`) ou d'un visiteur ne se lit pas (contre-revue du delta, P4).
+var COMPTE_EPINGLE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// ⚠️ PRÉREQUIS CLIENT de la migration RV-38
+// (`-- PREREQUIS-CLIENT: comment_interactions:epingle-du-fil`) :
+// `scripts/appliquer-migration.mjs` refuse d'écrire en production tant que le
+// client SERVI ne porte pas cette chaîne. L'ancien lecteur appliquait une ligne
+// « pin » par son seul `comment_id`, de qui qu'elle soit, dans n'importe quel fil :
+// un identifiant de commentaire réutilisé APRÈS l'épingle (dans l'autre table de
+// commentaires, ou par un commentaire renommé) faisait paraître l'épingle d'un
+// compte dans le fil d'autrui — la garde du serveur juge l'écriture, pas ce qu'un
+// identifiant désignera plus tard (red team, P1). Ce client lit l'épingle par fil
+// et par propriétaire, et n'en voit aucune dans un fil homonyme. La renommer,
+// c'est renommer la ligne de la migration (verrou :
+// tests/unit/barriere-migration.test.mjs).
+var EPINGLE_DU_FIL = "comment_interactions:epingle-du-fil";
+function _epingleGeneration(fil) { return (fil && _epinglesGeneration[fil]) || 0; }
+function _epingleNouvelleGeneration(fil) { if (fil) _epinglesGeneration[fil] = _epingleGeneration(fil) + 1; }
+function _epingleConnue(fil) {
+  return (fil && Object.prototype.hasOwnProperty.call(_epinglesFil, fil)) ? _epinglesFil[fil] : undefined;
+}
+// L'épinglé du fil tel qu'on le connaît : sa vérité si elle est connue, sinon le
+// drapeau local (avant toute lecture, hors ligne).
+function _idEpingleFil(fil, commentaires) {
+  var e = _epingleConnue(fil);
+  if (e) return e.cid || null;
+  var c = (commentaires || []).find(function (x) { return x && x.pinned; });
+  return c ? c.id : null;
+}
+function _estEpingle(fil, c) {
+  if (!c) return false;
+  var e = _epingleConnue(fil);
+  return e ? (!!e.cid && e.cid === c.id) : !!c.pinned;
+}
+// Avant toute lecture, la vérité du fil se sème du drapeau local, tant que les
+// objets qui le portent existent encore : la page serveur qui suit les
+// reconstruit sans lui (contre-revue : une lecture en échec après une page relue
+// ne montrait plus rien). Une lecture réussie la remplace.
+function _semerEpingleFil(fil, commentaires) {
+  if (!fil || _epingleConnue(fil)) return;
+  var c = (commentaires || []).find(function (x) { return x && x.pinned; });
+  if (c) _epinglesFil[fil] = { cid: c.id };
+}
+// Pose la vérité du fil et aligne le drapeau des objets COURANTS — ceux qu'une
+// page serveur a pu reconstruire entre-temps compris — pour qui le lit encore.
+function _poserEpingleFil(fil, cid) {
+  if (!fil) return;
+  _epinglesFil[fil] = { cid: cid || null };
+  var t = (typeof _findCommentThread === "function") ? _findCommentThread(fil) : null;
+  (t && Array.isArray(t.comments) ? t.comments : []).forEach(function (c) {
+    if (!c) return;
+    if (cid && c.id === cid) c.pinned = true;
+    else if (c.pinned) c.pinned = false;
+  });
+}
+// Retire de toutes les copies de la discussion l'épinglé lu À PART (`_epingleGarde`)
+// qui n'est plus l'épinglé `sauf` (null : tous) — hors de sa page, il n'était là
+// que parce qu'il était épinglé. Appelé sur une vérité du SERVEUR seulement
+// (lecture, ligne reçue, écriture confirmée, absence lue) : un geste optimiste
+// refusé doit pouvoir revenir sans relecture. Rend vrai si quelque chose est parti.
+// `seul` : ne viser que ce commentaire-là (une absence lue ne retire QUE le
+// commentaire lu — contre-vérification de d38d2fb, P4-b). Un gardé que la fenêtre
+// des pages chargées couvre désormais n'est plus hors page : il reste, sans sa
+// marque (P3-a).
+function _retirerEpinglesGardes(fil, sauf, seul) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(fil) : null;
+  if (!post) return false;
+  var parti = false;
+  _copiesDiscussion(fil, post).forEach(function (copie) {
+    var arr = copie && copie.comments;
+    if (!Array.isArray(arr)) return;
+    var plancher = _plancherPages(arr), suite = !!copie._commentsSuite;
+    for (var i = arr.length - 1; i >= 0; i--) {
+      var c = arr[i];
+      if (!c || !c._epingleGarde || c.id === sauf || (seul && c.id !== seul)) continue;
+      if (suite && (c.createdAt || 0) >= plancher) { delete c._epingleGarde; delete c._aVerifier; continue; }
+      arr.splice(i, 1); parti = true;
+    }
+  });
+  return parti;
+}
+// Le plus ancien commentaire qu'une PAGE a apporté (les gardés exclus) : en deçà,
+// un commentaire n'est à l'écran que parce qu'il est épinglé.
+function _plancherPages(commentaires) {
+  return (commentaires || []).reduce(function (min, c) {
+    var t = c && c.fromSupabase && !c._epingleGarde ? c.createdAt : null;
+    return (typeof t === "number" && t < min) ? t : min;
+  }, Infinity);
+}
+function _sauverEtRepeindreFil(fil) {
+  var t = (typeof _findCommentThread === "function") ? _findCommentThread(fil) : null;
+  try { if (t && typeof t.save === "function") t.save(); else saveState(); } catch (e) {}
+  _refreshCommentThreadUINow(fil);
+}
+// Un identifiant de fil connu ICI à la fois comme PUBLICATION et comme ACTIVITÉ
+// n'a pas de propriétaire sûr (red team RV-38, P2). Les identifiants sont choisis
+// par le client : un compte peut publier sous l'identifiant de l'activité d'autrui,
+// et `_findCommentThread` cherchant d'abord une publication, l'auteur de la
+// publication homonyme passait pour le propriétaire de l'activité — ses épingles
+// s'affichaient sur elle. La garde du serveur refuse d'épingler dans un fil
+// ambigu ; ici, il n'a ni épingle lue, ni reçue, ni posée. Une lecture
+// impossible des activités vaut ambiguïté : sans propriétaire sûr, aucune épingle.
+function _filAmbigu(fil) {
+  if (!fil || typeof findPostAnywhere !== "function" || !findPostAnywhere(fil)) return false;
+  try {
+    return typeof allEvents === "function" && allEvents().some(function (e) { return e && e.id === fil; });
+  } catch (e) {
+    try { diagLog("epingle_fil_ambigu : " + (e && e.message)); } catch (_e) {}
+    return true;
+  }
+}
+// Le PROPRIÉTAIRE du fil : l'auteur de la publication, l'organisateur de
+// l'activité — la définition même de la garde du serveur (`posts.author_id`,
+// `coalesce(nullif(organizer_id, ''), author_id)`, que `organizerId` reprend :
+// `organizer_id || author_id`). Inconnu ici, ou fil homonyme : null, et rien
+// ne se décide.
+function _proprietaireFil(fil) {
+  if (!fil || _filAmbigu(fil)) return null;
+  var t = (typeof _findCommentThread === "function") ? _findCommentThread(fil) : null;
+  var p = t ? t.targetUserId : null;
+  if (p === "me") p = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null;
+  return (typeof p === "string" && p) ? p : null;
+}
+// La règle de lecture, PURE. `lignes` : les lignes « pin » du propriétaire, dans
+// le fil, de la plus RÉCENTE à la plus ancienne. Le « 1 » le plus récent
+// l'emporte, sauf si un « 0 » plus récent vise ce même commentaire. Rend
+// l'identifiant épinglé, ou null.
+function _epingleDesLignes(lignes) {
+  var retires = new Set();
+  for (var i = 0; i < (lignes || []).length; i++) {
+    var l = lignes[i];
+    if (!l || !l.comment_id) continue;
+    var val = l.payload == null ? "" : String(l.payload);
+    if (val === "1") return retires.has(l.comment_id) ? null : l.comment_id;
+    if (val === "0") retires.add(l.comment_id);
+  }
+  return null;
+}
+// La discussion de ce fil est-elle À L'ÉCRAN (modale, feuille, page détail d'une
+// publication ou d'une activité) ? Ni `_openCommentsPostId` ni les conteneurs
+// ne le disent seuls : `closeModal` ne remet pas le premier à zéro, et les pages
+// détail restent dans le DOM, cachées, après fermeture (contre-revue du delta,
+// P4 : une modale fermée lisait encore l'épinglé).
+function _discussionAffichee(fil) {
+  try {
+    var bd = document.getElementById("modalBackdrop");
+    var modale = !!(bd && bd.classList.contains("active"));
+    var sel = '[data-thread="' + CSS.escape(String(fil)) + '"]';
+    if (modale && window._openCommentsPostId === fil && document.getElementById("commentsBox")) return true;
+    if (modale && document.querySelector("#cmtThreadList" + sel)) return true;
+    var visible = function (el) { return !!(el && el.getClientRects().length); };
+    if (visible(document.querySelector("#postDetailComments" + sel))) return true;
+    return window._openEventDetailId === fil && visible(document.getElementById("eventCommentsList"));
+  } catch (e) { return false; }
+}
+// Lit la vérité du fil (`hydrateCommentInteractions`, à l'ouverture d'une
+// discussion) et l'applique, si rien de plus récent ne l'a dépassée pendant la
+// lecture : une épingle posée PENDANT l'écriture ou reçue en direct avance la
+// génération, et une réponse partie avant elle est périmée (contre-revue : R1).
+// `apres` : une promesse à attendre avant d'appliquer — les interactions de
+// l'hydratation (P2-A). Ni sauvegarde ni repeinte quand l'épinglé ne change pas
+// (contre-revue du delta, P2-B : chaque ouverture envoyait `user_state` en entier).
+async function _lireEpingleFil(fil, apres) {
+  try {
+    if (!fil || typeof supaLireEpingleFil !== "function") return;
+    var gen = _epingleGeneration(fil);
+    var proprio = _proprietaireFil(fil);
+    if (!proprio || !COMPTE_EPINGLE_RE.test(proprio)) {
+      // Devenu HOMONYME depuis la dernière lecture : ce qu'on en savait ne vaut plus
+      // (contre-revue de 3224fa0, B3 — la clé de `_epinglesFil` est partagée par la
+      // publication et l'activité de même identifiant).
+      if (_filAmbigu(fil)) {
+        var t0 = _findCommentThread(fil);
+        var avant0 = _idEpingleFil(fil, t0 && t0.comments);
+        _poserEpingleFil(fil, null);
+        if (avant0) _refreshCommentThreadUINow(fil);
+      }
+      return;
+    }
+    var lignes = await supaLireEpingleFil(fil, proprio);
+    if (apres) { try { await apres; } catch (_e) {} }
+    if (!lignes) return;                      // une lecture en échec ne décide de rien
+    if (_epinglesEnVol[fil] || _epingleGeneration(fil) !== gen) return;
+    var t = _findCommentThread(fil);
+    var avant = _idEpingleFil(fil, t && t.comments);
+    var cid = _epingleDesLignes(lignes);
+    _poserEpingleFil(fil, cid);
+    var parti = _retirerEpinglesGardes(fil, cid);
+    if (cid !== avant || parti) _sauverEtRepeindreFil(fil);
+    if (cid) await _assurerCommentaireEpingle(fil, cid);
+  } catch (e) { try { diagLog(EPINGLE_DU_FIL + " : " + (e && e.message)); } catch (_e) {} }
+}
+// L'épinglé doit être à l'écran même hors de la première page (les 30 plus
+// récents) : il est lu par son identifiant et rangé dans la discussion — le
+// rendu le met en tête, « précédents » ne le redouble pas (dédoublonné par id).
+// Une publication seulement (les commentaires d'une activité sont lus en entier),
+// et seulement si sa discussion est à l'écran.
+async function _assurerCommentaireEpingle(fil, cid) {
+  var cle = fil + "\u0001" + cid;
+  try {
+    var t = _findCommentThread(fil);
+    if (!t || t.kind !== "post" || !Array.isArray(t.comments)) return;
+    var deja = t.comments.find(function (c) { return c && c.id === cid; });
+    // Apporté par une page : rien à faire. GARDÉ par la fusion (lu à part, plus
+    // ancien que la page) : sa présence en base se revérifie, une fois par page
+    // relue, sans quitter l'écran pendant ce temps (contre-vérification de 84cb6b3, D1).
+    if (deja && !(deja._epingleGarde && deja._aVerifier)) return;
+    if (!_discussionAffichee(fil) || typeof supaLireCommentaire !== "function" || _epinglesACharger[cle]) return;
+    _epinglesACharger[cle] = true;
+    var c = await supaLireCommentaire(fil, cid);
+    if (deja) {
+      if (c === false) {
+        // La base dit qu'il n'existe plus (supprimé par son auteur, la modération) :
+        // il part — LUI seul. Une lecture en ÉCHEC ne prouve rien : il reste, à revérifier.
+        if (_retirerEpinglesGardes(fil, null, cid)) _refreshCommentThreadUINow(fil);
+      } else if (c) delete deja._aVerifier;
+      return;
+    }
+    if (!c) return;
+    var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(fil) : null;
+    if (!post) return;
+    // « Gardé » seulement s'il est HORS des pages chargées (plus ancien que la plus
+    // ancienne, et il en reste) ; sinon c'est un commentaire comme les autres, rangé
+    // à sa place — écrit depuis mon autre appareil, ou arrivé après la page : il ne
+    // doit pas quitter la liste avec l'épingle (contre-vérification de d38d2fb, P3-a).
+    if (post._commentsSuite && (c.createdAt || 0) < _plancherPages(t.comments)) c._epingleGarde = true;
+    // Sur TOUTES les copies (fil, `userPosts`, bobines) : une seule ne suffit pas.
+    _copiesDiscussion(fil, post).forEach(function (copie) {
+      if (!Array.isArray(copie.comments)) copie.comments = [];
+      if (copie.comments.some(function (x) { return x && x.id === cid; })) return;
+      var i = copie.comments.findIndex(function (x) { return x && (x.createdAt || 0) < (c.createdAt || 0); });
+      if (i < 0) copie.comments.push(c); else copie.comments.splice(i, 0, c);
+    });
+    // Ses propres « j'aime » et réponses ; l'épingle, elle, est déjà connue.
+    if (typeof hydrateCommentInteractions === "function") await hydrateCommentInteractions({ id: fil, comments: [c] }, { epingle: false });
+    var e = _epingleConnue(fil);
+    if (e && e.cid === cid) _poserEpingleFil(fil, cid);
+    // Repeint, sans sauvegarde : la page suivante le garde (`_fusionnerPageCommentaires`),
+    // et rien de ce fil ne part dans `user_state` (P2-B).
+    _refreshCommentThreadUINow(fil);
+  } catch (err) {
+    try { diagLog("epingle_charger : " + (err && err.message)); } catch (_e) {}
+  } finally { delete _epinglesACharger[cle]; }
+}
+// Une épingle REÇUE en direct (`_applyCommentInteractionEvent`) : seule celle du
+// propriétaire du fil compte — y compris la mienne venue d'un autre de mes
+// appareils. Un « 0 » ne retire que l'épinglé qu'il vise.
+function _epingleRecue(r) {
+  try {
+    var fil = r && r.post_id;
+    if (!fil || !r.comment_id) return;
+    var t = _findCommentThread(fil);
+    if (!t || !Array.isArray(t.comments)) return;
+    var proprio = _proprietaireFil(fil);
+    if (!proprio || r.user_id !== proprio) return;
+    var val = r.payload == null ? "" : String(r.payload);
+    if (val !== "1" && val !== "0") return;
+    var avant = _idEpingleFil(fil, t.comments);
+    var cid = val === "1" ? r.comment_id : (avant === r.comment_id ? null : avant);
+    // Une lecture partie avant cette ligne est périmée, même quand rien ne change.
+    _epingleNouvelleGeneration(fil);
+    // Reçue PENDANT une écriture de ce fil (un autre appareil du propriétaire, ou
+    // l'écho de la mienne) : la fin de l'écriture relira le fil au lieu de
+    // réimposer son propre état (contre-revue du delta, P4).
+    // L'écho d'une de MES écritures en cours n'est pas un autre appareil : il ne
+    // coûte pas de relecture (contre-vérification de 84cb6b3, D2).
+    // Mais il PROUVE que l'écriture a abouti : si sa réponse se perd (panne), la fin
+    // du geste relit le fil au lieu de remettre l'ancien épinglé (contre-vérification
+    // de d38d2fb, P4-a).
+    if (_epinglesEnVol[fil]) {
+      if ((_epinglesEcrites[fil] || []).indexOf(r.comment_id + "|" + val) < 0) _epinglesRecuesEnVol[fil] = true;
+      else _epinglesEchoEnVol[fil] = true;
+    }
+    _poserEpingleFil(fil, cid);
+    var parti = _retirerEpinglesGardes(fil, cid);
+    if (cid === avant && !parti) return;   // l'écho de ce qu'on sait : rien à repeindre
+    // Repeinte SANS sauvegarde : la vérité vit en base et se relit à chaque
+    // ouverture ; sauver ici envoyait `user_state` en entier à chaque spectateur,
+    // pour chaque épingle reçue — un coût que le propriétaire pouvait provoquer
+    // (contre-revue du delta, P2-B ; de 3224fa0, B1).
+    _refreshCommentThreadUINow(fil);
+    if (cid) _assurerCommentaireEpingle(fil, cid);
+  } catch (e) { try { diagLog("epingle_recue : " + (e && e.message)); } catch (_e) {} }
+}
+// Une ligne d'épingle RETIRÉE en direct (la ligne vient de l'index R37) : une
+// purge — le commentaire, la publication — ou le retour arrière de la migration.
+// La vérité du fil se RELIT : elle ne se déduit pas d'une ligne qui n'est plus
+// (red team RV-38 : l'épingle restait affichée jusqu'à la lecture suivante). Une
+// discussion fermée se relit à sa prochaine ouverture. UNE relecture par rafale :
+// une purge retire beaucoup de lignes d'un coup, et chacune coûtait une lecture
+// à chaque spectateur (contre-revue de 3224fa0, B1 — l'amplification que R37
+// avait écartée).
+var EPINGLE_RELECTURE_MS = 300;
+var _epinglesARelire = {};     // fil → minuterie de la relecture qui suit une rafale de retraits
+function _epingleRetiree(r) {
+  try {
+    var fil = r && r.post_id;
+    if (!fil || !_discussionAffichee(fil)) return;
+    _epingleNouvelleGeneration(fil);   // une lecture partie avant le retrait est périmée
+    clearTimeout(_epinglesARelire[fil]);
+    _epinglesARelire[fil] = setTimeout(function () {
+      delete _epinglesARelire[fil];
+      if (_discussionAffichee(fil)) _lireEpingleFil(fil);
+    }, EPINGLE_RELECTURE_MS);
+  } catch (e) { try { diagLog("epingle_retiree : " + (e && e.message)); } catch (_e) {} }
+}
+// Ce que dit un refus, selon sa nature. 23514 : la contrainte de la base n'admet
+// pas (encore) l'épingle ; 42501 : la garde ou la RLS la refuse — au propriétaire
+// lui-même (seul à voir ce geste) : un commentaire que la base ne rattache pas à
+// ce fil, ou un compte en cours de suppression.
+function _motRefusEpingle(res) {
+  if (res && res.reseau) return "Pas de connexion : l'épingle n'a pas été enregistrée";
+  if (res && res.code === "23514") return "L'épingle n'est pas encore disponible : rien n'a été enregistré";
+  if (res && res.code === "42501") return "Épingle refusée : ce commentaire ne peut pas être épinglé";
+  return "L'épingle n'a pas été enregistrée";
+}
+async function togglePinComment(threadId, commentId) {
+  try {
+    var thread = _findCommentThread(threadId);
+    if (!thread) return;
+    var target = thread.comments.find(function (c) { return c.id === commentId; });
+    if (!target) return;
+    if (!_isThreadOwner(threadId)) { toast("Seul l'auteur du fil peut épingler un commentaire"); return; }
+    // Un fil homonyme (une publication et une activité sous le même identifiant) :
+    // la garde du serveur refuse d'y épingler, ce client n'y lit aucune épingle.
+    if (_filAmbigu(threadId)) { toast("Épingle indisponible sur ce fil"); return; }
+    // Pas encore en base (publication : `_pending` ; activité : `ec_local_…`) : la garde
+    // le refuserait, et le refus dirait autre chose que la vraie raison.
+    if (target._pending || /^ec_local_/.test(String(target.id))) {
+      toast("Ce commentaire n'est pas encore envoyé : épingle-le dans un instant");
+      return;
+    }
+    if (_epinglesEnVol[threadId]) return;   // un geste à la fois par fil
+    var connueAvant = _epingleConnue(threadId);
+    var actuel = _idEpingleFil(threadId, thread.comments);
+    var willPin = actuel !== commentId;
+    _poserEpingleFil(threadId, willPin ? commentId : null);
+    _sauverEtRepeindreFil(threadId);
+    var reel = window._supaReal && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID
+      && typeof supaEcrireInteraction === "function";
+    if (!reel) { toast(willPin ? "Commentaire épinglé" : "Épingle retirée"); return; }   // aucune base : rien à partager
+    _epinglesEnVol[threadId] = (_epinglesEnVol[threadId] || 0) + 1;
+    delete _epinglesRecuesEnVol[threadId];
+    delete _epinglesEchoEnVol[threadId];
+    _epinglesEcrites[threadId] = [commentId + "|" + (willPin ? "1" : "0")].concat(willPin && actuel ? [actuel + "|0"] : []);
+    _epingleNouvelleGeneration(threadId);
+    var res;
+    try {
+      // La CIBLE d'abord : refusée, rien n'a été écrit, et l'écran revient
+      // exactement à l'état d'avant. Le « 0 » de l'ancien ensuite, et seulement
+      // si elle passe : le lecteur de ce client n'en a pas besoin (le « 1 » le
+      // plus récent l'emporte) ; celui d'avant RV-38, qui lit commentaire par
+      // commentaire, si.
+      res = await supaEcrireInteraction(commentId, threadId, "pin", willPin ? "1" : "0");
+      if (res.ok && willPin && actuel) {
+        var r0 = await supaEcrireInteraction(actuel, threadId, "pin", "0");
+        if (!r0.ok) { try { diagLog("epingle_ancienne : " + (r0.code || r0.message || "refus")); } catch (_e) {} }
+      }
+    } finally {
+      _epinglesEnVol[threadId]--;
+      if (!_epinglesEnVol[threadId]) { delete _epinglesEnVol[threadId]; delete _epinglesEcrites[threadId]; }
+      // Une lecture partie PENDANT l'écriture est périmée elle aussi.
+      _epingleNouvelleGeneration(threadId);
+    }
+    // Une épingle du propriétaire reçue PENDANT l'écriture (un autre de ses
+    // appareils) : ni la confirmation ni le retour en arrière ne la réécrasent —
+    // la base tranche, relue (contre-revue du delta, P4).
+    var recue = !!_epinglesRecuesEnVol[threadId];
+    var echo = !!_epinglesEchoEnVol[threadId];
+    delete _epinglesRecuesEnVol[threadId];
+    delete _epinglesEchoEnVol[threadId];
+    if (res && res.ok) {
+      // Les objets ont pu être reconstruits pendant l'écriture (une page relue) :
+      // la vérité du fil se réapplique aux objets COURANTS.
+      if (recue) _lireEpingleFil(threadId);
+      else {
+        _poserEpingleFil(threadId, willPin ? commentId : null);
+        _retirerEpinglesGardes(threadId, willPin ? commentId : null);
+        _sauverEtRepeindreFil(threadId);
+      }
+      toast(willPin ? "Commentaire épinglé" : "Épingle retirée");
+      return;
+    }
+    // L'écho de MON écriture est arrivé : elle a abouti, sa réponse s'est perdue en
+    // route. Rien à défaire : la base tranche, relue, et l'écran dit ce qui est.
+    if (echo) {
+      _lireEpingleFil(threadId);
+      toast(willPin ? "Commentaire épinglé" : "Épingle retirée");
+      return;
+    }
+    // Refusée ou perdue : l'écran revient à l'état d'avant, et le DIT.
+    _poserEpingleFil(threadId, connueAvant ? connueAvant.cid : actuel);
+    if (!connueAvant) delete _epinglesFil[threadId];
+    _sauverEtRepeindreFil(threadId);
+    // Un autre appareil a parlé pendant l'écriture : la base tranche, relue.
+    if (recue) _lireEpingleFil(threadId);
+    try { diagLog("epingle_refusee : " + ((res && (res.code || res.message)) || "inconnu")); } catch (_e) {}
+    toast(_motRefusEpingle(res));
+  } catch (e) {
+    try { diagLog("epingle : " + (e && e.message)); } catch (_e) {}
+  }
 }
 
 // Signale un commentaire (modération) → table reports via supaReport.
@@ -2447,7 +2933,7 @@ function openCommentSheet(threadId, title) {
   if (thread.kind === "event" && typeof _loadEventComments === "function") {
     _loadEventComments(threadId); // écrit dans #cmtThreadList (cf. _renderEventComments)
   } else if (thread.comments.length && typeof hydrateCommentInteractions === "function") {
-    hydrateCommentInteractions({ comments: thread.comments }).then(function(){
+    hydrateCommentInteractions({ id: threadId, comments: thread.comments }).then(function(){
       var b = document.getElementById("cmtThreadList");
       if (b && b.getAttribute("data-thread") === threadId) _setThreadHtml(b, _renderCommentsList(thread.comments, threadId));
     });
@@ -6495,6 +6981,27 @@ function _estCompteReel(uid) {
   try { return typeof uid === "string" && typeof RE_UID_COMPTE !== "undefined" && RE_UID_COMPTE.test(uid); }
   catch (e) { return false; }
 }
+// ───────── Flux « send_message » du chemin TEXTE (2026-11-06) ─────────
+// Le chemin média (sendMessageToSupabase, app-09) portait son flux ; le chemin
+// TEXTE — l'immense majorité des messages — n'en avait AUCUN : un message refusé
+// n'existait au pilotage que s'il levait aussi un appel réseau en échec, et un
+// message enregistré n'était jamais confirmé. Contrat :
+// supabase/functions/_shared/contrats-actions.js (send_message). Ouvert à
+// l'écriture RÉELLE, fermé au verdict de la base ; une mise en file locale se
+// déclare « pending » (attente annoncée, pas un échec), un refus porte son code.
+function _fluxEnvoiMessage(convId) {
+  var cid = null;
+  try { if (window.tel && tel.flowStart) cid = tel.flowStart("send_message", { convId: convId, kind: "text" }); } catch (e) {}
+  return {
+    etape: function (cle) { try { if (cid && window.tel) tel.step(cid, cle, "ok"); } catch (e) {} },
+    regle: function (ok, err) { try { if (cid && window.tel && tel.settle) tel.settle(cid, "saved", ok, err || null); } catch (e) {} cid = null; },
+    attente: function (motif) {
+      try { if (cid && window.tel) { tel.step(cid, "queued", "ok", { rc: motif || "hors_ligne" }); tel.flowEnd(cid, "pending"); } } catch (e) {}
+      cid = null;
+    },
+  };
+}
+
 function _sendTextToSupa(convId, msgId, content, auteur, generation) {
   var moi = auteur || (typeof MY_UID !== "undefined" ? MY_UID : null);
   var gen = generation || _outboxGenerationActuelle();
@@ -6518,10 +7025,13 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
     _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); return;
   }
   if (navigator && navigator.onLine === false) {
-    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); return;
+    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null);
+    _fluxEnvoiMessage(convId).attente("hors_ligne");
+    return;
   }
   if (_msgEstEnVol(msgId)) return;
   _msgEnVol[msgId] = true;
+  var _flux = _fluxEnvoiMessage(convId);
   // `from_id: moi` et non `MY_UID` : même si la garde ci-dessus était un jour
   // contournée, l'insertion ne peut pas partir sous une autre identité que
   // celle qui a écrit le texte.
@@ -6533,38 +7043,13 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
       // 503 revenu après une déconnexion remettait le texte en file — c'est le
       // « la réponse tardive repeuple la file purgée » d'ASTRA-21.
       if (gen !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== moi) {
+        // Le flux dit le verdict de la BASE, quoi que l'écran en fasse ensuite.
+        _flux.regle(!(res && res.error), res && res.error);
         _setMsgStatus(convId, msgId, "failed");
         try { if (typeof diagLog === "function") diagLog("msg_reponse_perimee " + String(msgId)); } catch (e) {}
         return;
       }
-      if (res && res.error) {
-        _setMsgStatus(convId, msgId, "failed");
-        // ⚠️ 403 SEULEMENT, JAMAIS 401 : un jeton absent ou expiré ne se répare
-        // pas en ajoutant un membre, et tenter l'écriture sous une identité
-        // qui n'existe pas consommerait la tentative unique pour rien.
-        var estRefusAcces = Number(res.status) === 403 || String(res.error && res.error.code) === "42501";
-        if (estRefusAcces && !window._convReparationTentee[convId]) {
-          // ⚠️ LA RÉCURSION PORTE L'AUTEUR (ASTRA-21). Sans lui, elle relisait
-          // `MY_UID` : si le compte avait changé pendant la réparation, le texte
-          // de A repartait sous B — et sans passer par la file, donc hors de
-          // portée de la garde d'AUTH-06.
-          _reparerAppartenanceConv(convId).then(function (repare) {
-            if (repare) { _sendTextToSupa(convId, msgId, content, moi, gen); return; }
-            _setMsgStatus(convId, msgId, "failed"); _outboxRemove(msgId);
-          });
-          return;
-        }
-        if (_refusDefinitif(res.error, res.status)) {
-          // Sortie de la file : plus AUCUN renvoi automatique pour celui-ci.
-          _outboxRemove(msgId);
-          // Le refus doit laisser une trace : sans elle, il redevient invisible
-          // — c'est exactement ce qui a permis six jours de refus silencieux.
-          try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
-        } else {
-          _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
-        }
-      }
-      else {
+      var _envoye = function () {
         _setMsgStatus(convId, msgId, "sent"); _outboxRemove(msgId);
         // ⚠️ LA NOTIFICATION ÉTAIT BRANCHÉE SUR UNE FONCTION MORTE (2026-09-10).
         // `_notifierMessage` n'était appelée que par `supaSendMessage`, qui n'a
@@ -6576,14 +7061,94 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
         // C'est ICI qu'il faut notifier : dans la branche de SUCCÈS, jamais avant
         // — annoncer un message que la base a refusé annoncerait un message qui
         // n'existe pas. Fire-and-forget : l'envoi n'attend pas la cloche.
+        // (Identifiant déterministe `n_<msgId>_…` : un renvoi ne la double pas.)
         try { if (typeof _notifierMessage === "function") _notifierMessage(convId, msgId); } catch (e) {}
         // ASTRA-24 : les mentions du message, maintenant qu'il existe en base.
         try { if (typeof _mentionnerApresEnvoi === "function") _mentionnerApresEnvoi(msgId); } catch (e) {}
+      };
+      // Le code fermé d'un refus de RÈGLE (revue adversariale du 2026-11-06) : une
+      // conversation avec un compte que J'AI bloqué (`isBlocked`) refuse en 42501 —
+      // c'est la règle, pas une panne du parcours.
+      var _codeRefus = function () {
+        try {
+          var refusRls = Number(res.status) === 403 || String(res.error && res.error.code) === "42501";
+          var c = refusRls ? getConversations().find(function (x) { return x.id === convId; }) : null;
+          if (c && c.userId && typeof isBlocked === "function" && isBlocked(c.userId)) return { code: "bloque", message: "bloque" };
+        } catch (e) {}
+        return res.error;
+      };
+      var _refuse = function () {
+        _setMsgStatus(convId, msgId, "failed");
+        // ⚠️ 403 SEULEMENT, JAMAIS 401 : un jeton absent ou expiré ne se répare
+        // pas en ajoutant un membre, et tenter l'écriture sous une identité
+        // qui n'existe pas consommerait la tentative unique pour rien.
+        var estRefusAcces = Number(res.status) === 403 || String(res.error && res.error.code) === "42501";
+        if (estRefusAcces && !window._convReparationTentee[convId]) {
+          // ⚠️ LA RÉCURSION PORTE L'AUTEUR (ASTRA-21). Sans lui, elle relisait
+          // `MY_UID` : si le compte avait changé pendant la réparation, le texte
+          // de A repartait sous B — et sans passer par la file, donc hors de
+          // portée de la garde d'AUTH-06.
+          _reparerAppartenanceConv(convId).then(function (repare) {
+            // Réparé : ce flux attend le suivant (le renvoi ouvre le sien).
+            if (repare) { _flux.attente("reparation"); _sendTextToSupa(convId, msgId, content, moi, gen); return; }
+            _flux.regle(false, _codeRefus());
+            _setMsgStatus(convId, msgId, "failed"); _outboxRemove(msgId);
+          });
+          return;
+        }
+        if (_refusDefinitif(res.error, res.status)) {
+          _flux.regle(false, _codeRefus());
+          // Sortie de la file : plus AUCUN renvoi automatique pour celui-ci.
+          _outboxRemove(msgId);
+          // Le refus doit laisser une trace : sans elle, il redevient invisible
+          // — c'est exactement ce qui a permis six jours de refus silencieux.
+          try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
+        } else {
+          // Rejoué par la file : un réseau absent est une ATTENTE ; le limiteur
+          // anti-abus un refus légitime (« limite ») ; un serveur qui répond en
+          // échec, un ÉCHEC de cet essai (le suivant aura le sien).
+          var _code = typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(res.error) : null;
+          if (_code === "reseau") _flux.attente("hors_ligne");
+          else _flux.regle(false, _code ? { code: _code, message: _code } : res.error);
+          _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
+        }
+      };
+      if (res && res.error) {
+        // ② RÉPONSE PERDUE PUIS RENVOI (2026-11-06). Le premier envoi a écrit la
+        // ligne, sa réponse s'est perdue ; ce renvoi du MÊME identifiant reçoit
+        // 23505. Sans ce rapprochement, le message restait « ⚠️ non envoyé » et
+        // repartait en file à chaque démarrage, pour toujours, alors que le
+        // destinataire le lisait. On ne le dit envoyé que sur PREUVE : conflit
+        // sur `conv_messages_pkey`, et la ligne relue porte `from_id = moi`
+        // (_conflitClePrimaire, _ligneDejaEnBase — app-02). Sinon, le refus suit
+        // son cours ordinaire. Verrou : tests/e2e/parcours-flux.spec.js.
+        if (typeof _conflitClePrimaire === "function" && _conflitClePrimaire(res.error, "conv_messages")) {
+          // ⚠️ LA PREUVE FAIT PARTIE DU VOL (ROB-06, audit du 2026-11-06). La garde
+          // venait d'être levée en tête de réponse : pendant la relecture, un
+          // `online` ou le vidage du démarrage renvoyait le même message, qui
+          // pouvait finir « réessayer » après avoir été prouvé en base. Et la
+          // promesse est RENDUE : une exception de `_envoye`/`_refuse` rejoint
+          // le `.catch` (échec + remise en file), elle ne s'échappe pas.
+          _msgEnVol[msgId] = true;
+          return _ligneDejaEnBase("conv_messages", msgId, "from_id", moi).then(function (dejaLa) {
+            delete _msgEnVol[msgId];
+            var encoreMoi = gen === _outboxGenerationActuelle() && (typeof MY_UID !== "undefined" ? MY_UID : null) === moi;
+            if (dejaLa && encoreMoi) { _flux.etape("deja_en_base"); _flux.regle(true); _envoye(); return; }
+            _refuse();
+          }, function () { delete _msgEnVol[msgId]; _refuse(); });
+        }
+        _refuse();
       }
+      else { _flux.regle(true); _envoye(); }
     })
     // ⚠️ ASTRA-43 : le REJET porte le même contexte que la résolution — sans lui,
     // une panne réseau revenue après la purge ressuscitait la file.
-    .catch(function() { delete _msgEnVol[msgId]; _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi }); });
+    .catch(function(err) {
+      delete _msgEnVol[msgId];
+      var _code = typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(err) : null;
+      if (_code === "reseau") _flux.attente("hors_ligne"); else _flux.regle(false, _code ? { code: _code, message: _code } : err);
+      _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
+    });
 }
 
 // Renvoi manuel d'un message en échec.

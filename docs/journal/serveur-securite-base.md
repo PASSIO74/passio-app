@@ -27,6 +27,8 @@
 - 🛡️ QUI VA OÙ, QUI A ÉCRIT QUOI — les décisions produit de l'audit, et ce que trois contre-revues y ont trouvé (2026-11-03)
 - 🔕 LA PROMOTION NE NOMME PLUS LE PROMU À N'IMPORTE QUI, ET LES VUES PERDENT LEURS DROITS HORS RLS (R24, R26 — 2026-11-03, le soir)
 - 🗑️ UNE PUBLICATION SUPPRIMÉE N'OUVRE PLUS SES COMMENTAIRES À TOUS — ELLE LES EMPORTE (R31 — 2026-11-04)
+- 📌 RV-38 — L'ÉPINGLE D'UN COMMENTAIRE N'ATTEIGNAIT JAMAIS LA BASE ; SEUL LE PROPRIÉTAIRE DU FIL Y ÉPINGLERA (2026-11-05)
+- 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
 
 ---
 
@@ -1012,6 +1014,23 @@ réinjecté y rougit.
 `oracles_et_privileges` (#681) → `participants_visibilite` → `notifications_identifiants_reserves` →
 `index_realtime` → `signalements_preuves` ; puis mesurer l'état en base (canal ①), jamais le tableau de verdict.
 
+**Application de `participants_visibilite` (06/11).** Partie à 09:17:12 UTC depuis le poste, 8 × OK, mesurée au canal ① :
+policy par lien seule en SELECT, `authenticated` ne lit plus que cinq colonnes, `anon` sans droit, les sept fonctions à
+l'octet du fichier, aucun membre retiré des discussions d'activité, aucune erreur ni attente de verrou dans les journaux.
+Avant elle : une contre-vérification de quatre agents (aucun bloquant ; R27 corrigé, R39, R40, RV-40 à RV-42), et la
+preuve, prise dans les `postgres_logs` de production, que PostgREST ne renvoie que les colonnes demandées (piège
+ci-dessus). Le détail est au § 6.3 de `04-LIVRAISON.md` (audit du 02/11).
+La contre-vérification de l'état d'après (trois agents) n'a trouvé aucun bloquant, mais une voie que C-04 ne ferme pas :
+**`is_conv_member(_conv_id, _uid)` répond pour n'importe quel `_uid`** (C-02), et depuis le bloc ⑥ la discussion d'activité
+`evgrp_<id>` ne contient plus que les venants — elle est devenue la RECOPIE de la liste. C'est la règle de CLAUDE.md
+(« une liste fermée ressort par toute table qui la recopie ou RPC qui la renvoie ») appliquée une fois de plus : fermer
+une lecture, c'est chercher aussi les fonctions qui répondent SUR AUTRUI à propos d'une table qui la recopie (R41).
+- **Un bloc qui atteste en local rend `attestations.json` après coup.** `attester-migration.mjs` écrit l'attestation dans
+  le clone ; consignée ensuite par une PR, elle laisse le fichier MODIFIÉ sur le poste, et le `git pull --ff-only`
+  suivant refuse (« would be overwritten by merge ») — premier essai de C-04 arrêté là, rien n'était parti. Le bloc du
+  staging de R25 le rendait (`git checkout -- .passio/migrations/attestations.json`), celui de R38 non : tout bloc qui
+  atteste finit par cette ligne, et un bloc qui tire `main` copie d'abord le fichier local avant de le rendre.
+
 ## 🔕 LA PROMOTION NE NOMME PLUS LE PROMU À N'IMPORTE QUI, ET LES VUES PERDENT LEURS DROITS HORS RLS (R24, R26 — 2026-11-03, le soir)
 
 Deux risques résiduels de l'audit du 2026-11-02 (`05-RISQUES-RESIDUELS.md`), fermés par
@@ -1232,3 +1251,352 @@ l'ordre de Benjamin ; empreinte `cbd9428a…`) :
   131 interactions lisibles, dont aucun sans cible, et aucune réaction à une réponse hors du public.
 - **Pas éprouvé** : une vraie suppression de publication ou de compte en production, depuis l'application. Le verdict la
   rejoue dans une sous-transaction annulée ; le staging l'a passée par `suppression-compte`. La revue red team n'a jamais été rendue.
+
+---
+
+## 📌 RV-38 — L'ÉPINGLE D'UN COMMENTAIRE N'ATTEIGNAIT JAMAIS LA BASE ; SEUL LE PROPRIÉTAIRE DU FIL Y ÉPINGLERA (2026-11-05)
+
+**Statut : corrigé — appliqué au staging puis en production le 07/11** (production à 08:33:11 UTC, `migrations_appliquees`
+id 34, verdict 21 × OK et l'information à 0), mesuré au canal ①, prouvé à deux comptes sur le staging migré (« Application
+et mesure », en fin de fiche). Client : #727 (156dd85) ;
+migration : #734 (019896b), `migrations/migration_epingle_commentaire_2026-11-05.sql` (sha256 `be2f5942…`).
+
+**Le défaut (registre RV-38, trouvé pendant le lot R37).** `togglePinComment` (app-04) écrivait l'épingle dans
+`comment_interactions` (`kind = 'pin'`, charge « 1 » / « 0 ») par `supaCommentInteract`, sans lire le résultat. La
+contrainte de production `ci_kind_check` n'admet que `like`, `reply`, `emoji`, `gif` : **chaque** épingle était refusée
+(23514), et l'écran disait « Commentaire épinglé ». L'épingle restait locale à l'appareil du propriétaire du fil ; la
+branche `pin` de `supaLoadCommentInteractions` n'a jamais rien eu à lire. Et ce lecteur prenait la dernière ligne `pin`
+d'un commentaire **de qui qu'elle soit, dans n'importe quel fil**.
+
+**Mesuré au canal ① (05/11, 06/11).** 339 interactions (188 like, 77 reply, 72 emoji, 2 gif), **0 pin** ; 0 action
+`cint` de genre `pin` en télémétrie (3 jours), 0 erreur nommant `ci_kind_check` (24 h) : rien à reprendre. Policies :
+`ci_insert` = `user_id = auth.uid()` ET la barrière de suppression — **ni le fil ni son propriétaire**. Aucune policy
+UPDATE. 0 homonyme entre `post_comments` et `event_comments`, ni entre `posts` et `events` (leurs identifiants ont
+pourtant le même format : un homonyme ne vient que d'un geste délibéré) ; `organizer_id` = `author_id` pour toutes les
+activités.
+
+**La décision : garder l'épingle et la rendre vraie** (pas la retirer de l'interface). C'est une fonction voulue du lot
+« UX IG/FB » (#11), proposée au seul propriétaire du fil, et le correctif est borné.
+
+**⚠️ « Ajouter `pin` à `ci_kind_check` » ne suffit PAS : c'est ouvrir une porte.** La WITH CHECK de `ci_insert` ne
+connaît ni le fil ni son propriétaire : avec la seule contrainte, **n'importe quel compte** épingle le commentaire de son
+choix chez n'importe qui, et l'ancien lecteur l'affiche chez tous (le banc le rejoue : « correction naïve », ①).
+
+**Deux PR, le client d'abord** (le précédent de RV-36) — la migration est un périmètre critique (contre-revue humaine,
+« Gouvernance critique »), le client non.
+
+**Le client (#727).**
+- `supaEcrireInteraction` (app-08) rend le **verdict** (`{ ok }`, ou le code, le message, l'indice, la panne réseau
+  par `estEchecReseau`) ; `supaCommentInteract` en reste la forme booléenne.
+- `togglePinComment` : affichage optimiste, puis le verdict. Un refus **défait** l'écran à l'identique (l'ancien
+  épinglé revient) et le **dit** (`_motRefusEpingle` : 23514 « pas encore disponible », 42501 « refusée », réseau
+  « pas de connexion »). La **cible** part d'abord, le « 0 » de l'ancien ensuite et seulement si elle passe. Un
+  commentaire pas encore en base (`_pending`, `ec_local_…`) n'est pas tenté, et la raison est dite.
+- ⚠️ **L'épingle est un ÉTAT DU FIL, pas d'un commentaire** : un seul épinglé par fil, retenu par fil
+  (`_epinglesFil`) et lu par le rendu (`_estEpingle`), jamais le drapeau `pinned` d'objets qu'une page serveur
+  reconstruit. Elle se **lit au niveau du fil** (`supaLireEpingleFil` : les lignes `pin` du **propriétaire**, dans
+  **ce** fil, les plus récentes d'abord ; `_epingleDesLignes` : le « 1 » le plus récent l'emporte, sauf si un « 0 » plus
+  récent vise ce même commentaire). Une épingle **reçue en direct** suit les mêmes règles (`_epingleRecue`), la mienne
+  comprise ; une ligne **retirée** en direct fait relire le fil affiché, une fois par rafale (`_epingleRetiree`).
+- Le **propriétaire** du fil (`_proprietaireFil`) : l'auteur de la publication, l'organisateur de l'activité
+  (`organizer_id || author_id`) — la définition de la garde. Un fil **homonyme** (connu ici comme publication ET comme
+  activité, `_filAmbigu`) n'en a pas : ni épingle lue, ni reçue, ni proposée, ni posée, et ce qu'on en savait s'efface.
+  Le fil d'un exemple ou d'un visiteur (propriétaire sans compte réel) ne se lit pas.
+- **Ce qu'elle ne coûte pas** : l'épingle s'applique APRÈS les « j'aime » de l'hydratation et ne les fait pas attendre ;
+  elle ne repeint et ne sauve que si l'épinglé change (une épingle reçue repeint sans jamais sauver) ; une activité
+  rechargée par le temps réel ne la relit pas quand elle est connue ; le panneau d'une bobine ne la lit pas (sa page
+  détail, si).
+- L'**épinglé plus ancien que la première page** (30) est lu par son identifiant (`supaLireCommentaire`), rangé en tête
+  et marqué `_epingleGarde` — seulement s'il est HORS des pages chargées : un épinglé récent (écrit de mon autre appareil,
+  manqué par le direct) est rangé à sa place, comme les autres. La page relue garde l'épinglé lu à part (sans clignoter),
+  mais il se **revérifie** à chaque page relue, même dans une discussion paginée plus loin — absent en base, il part, lui
+  seul ; quand l'épingle le quitte, il part aussi (`_retirerEpinglesGardes`, sur une vérité du serveur seulement) ;
+  apporté par « précédents » ou reçu en direct, il n'est plus « gardé » ; la dernière page atteinte sans lui l'enlève et
+  le décompte. Il ne prend pas une des 30 places affichées.
+- Une écriture dont la RÉPONSE se perd alors qu'elle a abouti : son écho le prouve, l'écran relit la base et dit
+  « Commentaire épinglé » au lieu d'annoncer un échec.
+- Le marqueur **`EPINGLE_DU_FIL`** (« comment_interactions:epingle-du-fil ») : la migration le déclare en
+  `-- PREREQUIS-CLIENT`.
+
+**La migration** `migration_epingle_commentaire_2026-11-05.sql` (PR suivante ; contre-revue humaine, attestation,
+`appliquer-migration.mjs`) : `pin` admis par `ci_kind_check`, `ci_pin_payload_check` (« 0 » ou « 1 », jamais rien), et la
+garde `trg_ci_epingle_garde` (BEFORE INSERT OR UPDATE, `WHEN (new.kind = 'pin')`, SECURITY DEFINER, `search_path` vide,
+aucun EXECUTE client). Pour un rôle client : son identité, à son nom, un fil annoncé, la charge « 0 »/« 1 » (jugée par la
+garde, AVANT la contrainte) ; le **genre** du fil lu dans `post_id` ; le commentaire de CE fil, dans la table de CE genre ;
+l'appelant en est le propriétaire (`posts.author_id`, `coalesce(nullif(organizer_id, ''), author_id)`) ; **aucun « 1 »
+dans un fil homonyme**, mais le « 0 » du propriétaire y passe. Un refus unique (42501, le message d'un refus RLS, un
+indice qui nomme l'épingle). L'administration n'est pas jugée. Verdict de 22 lignes **fermé sur échec**. Banc
+`tests/sql/migration-epingle-commentaire.test.sh` : 76/0, treize mutations, socle élargi aux corps, policies et
+déclencheurs de production des quatre tables du décor (md5 au canal ①).
+
+**Les pièges du lot.**
+
+- ⚠️ **Le genre du fil se lit dans `post_id`, et un fil homonyme n'a pas de propriétaire.** Publications, activités et
+  commentaires portent des identifiants **choisis** par le client. La première version de la garde lisait le fil dans la
+  table du COMMENTAIRE : un compte publiait sous l'identifiant de l'activité d'autrui, y commentait, épinglait — admis,
+  propriétaire de « sa » publication — et tout client qui résolvait le propriétaire par l'identifiant (`_findCommentThread`
+  cherche d'abord une publication) affichait son épingle sur l'activité (red team, P2). Désormais : aucun « 1 » dans un
+  fil homonyme, côté serveur ; aucun propriétaire, côté client.
+- ⚠️ **Une garde juge l'écriture, pas ce qu'un identifiant désignera plus tard** : une épingle posée dans son propre fil,
+  puis un commentaire du même identifiant écrit (ou RENOMMÉ — `identifiants_figes` ne fige pas `id`) dans le fil d'autrui,
+  et l'**ancien** lecteur (par `comment_id`, de qui que ce soit) l'affichait chez autrui (red team, P1). Seul un lecteur
+  borné au fil et au propriétaire s'en garde : la migration **exige** ce client (`-- PREREQUIS-CLIENT`), et
+  `appliquer-migration.mjs` refuse tant que le client servi ne porte pas le marqueur.
+- ⚠️ **Un « 0 » ne se refuse pas pour un homonyme** : il n'affiche rien, et un homonyme créé APRÈS une épingle la
+  verrouillait (red team, P2).
+- ⚠️ **Une charge invalide est un refus comme les autres**, jugée par la garde : laissée à la contrainte, un 23514
+  disait que la garde avait admis le reste (red team, P4).
+- ⚠️ **Une lecture en ÉCHEC n'est pas une lecture vide** (`null` ≠ `{}`, et `supaLireCommentaire` : `false` = absence
+  lue, `null` = on ne sait pas). Lue comme « aucune épingle », une panne retirait l'épingle de l'écran ; une lecture
+  **réussie** sans ligne retire, elle, l'épingle restée locale d'avant RV-38.
+- ⚠️ **Commentaire par commentaire, l'épingle ressuscite** ; une page de 30 cache l'épinglé plus ancien. D'où la lecture
+  par FIL et sa règle.
+- ⚠️ **Une page serveur reconstruit les objets commentaires sans leur drapeau** (`_fusionnerPageCommentaires`,
+  `_setEventComments`) : l'état vit par fil, semé du drapeau tant qu'aucune lecture n'a eu lieu (`_semerEpingleFil`).
+- ⚠️ **Une lecture partie AVANT ou PENDANT un geste ne le défait pas en revenant** : une génération par fil, avancée au
+  DÉBUT et à la FIN de chaque écriture, à chaque épingle reçue et à chaque retrait. Une épingle du propriétaire reçue
+  PENDANT l'écriture (son autre appareil) n'est pas réécrasée : la base tranche, relue ; l'écho de ma propre écriture
+  n'en est pas une (`_epinglesEcrites`).
+- ⚠️ **Ne rien repeindre, ne rien sauver qui n'ait changé** : chaque ouverture repeignait la discussion avant les
+  « j'aime » (« 🤍 0 ») et envoyait `user_state` en entier ; une purge coûtait une relecture par ligne à chaque
+  spectateur (l'amplification que R37 avait écartée).
+- ⚠️ **L'ordre des écritures compte** : la cible d'abord.
+
+**Verrous.** `tests/e2e/epingle-commentaire.spec.js` (27 cas locaux ; le simulateur honore filtres, ordre, limite et
+curseur, sépare la lecture de l'épingle de celle des interactions, sait perdre une réponse après validation et retarder
+la lecture d'un commentaire par son identifiant) : quarante-quatre réinjections au fil des contre-revues, chacune
+rougit son cas (l'épinglé récent porte deux défenses superposées : ⑳ rougit quand les deux tombent). `tests/e2e/epingle-commentaire-reel.spec.js` (deux comptes, staging,
+`SUITES_PROD`) : une sonde sans effet dit si la migration y est ; absente, le vrai refus 23514 est dit et défait — c'est
+ce qu'a mesuré sa première exécution en CI (#727) ; présente, A épingle, B la voit après **rechargement**, B est refusé
+(42501 et l'indice), A retire. Le banc SQL (76/0) et ses treize mutations.
+
+**Les contre-revues** (toutes en lecture seule ; leurs reproductions rougissent désormais) :
+- `audit-passio`, client, 06/11 : trois P2 (retirer l'épinglé ressuscitait un « 1 » plus ancien ; l'épinglé hors de la
+  première page invisible ; une lecture ou une page relue pendant l'écriture défaisait l'épingle confirmée), un P3, trois
+  P4 — corrigés (61fb36c) ;
+- `passio-red-team`, migration, 06/11 : P1 (l'ancien lecteur et l'identifiant réutilisé après l'épingle ; aucun
+  prérequis client déclaré) ; P2 (le propriétaire d'une activité résolu par une publication homonyme, côté serveur ET
+  client) ; P2 (un homonyme créé après l'épingle la verrouillait) ; P3 (`organizer_id` vide : garde et client divergeaient) ;
+  P4 (oracle 23514/42501, verdict et socle du banc incomplets, retrait en direct ignoré) — tous corrigés (3224fa0 pour le
+  client, la migration révisée) ; ce qu'elle a vu en passant est au registre (RV-45 à RV-48) ;
+- `audit-passio`, deltas, 06/11 : 61fb36c → deux P2 (repeinte avant les « j'aime », `saveState` à chaque ouverture),
+  deux P3, des P4 ; 3224fa0 → un P3 (une relecture par retrait), deux P4 ; 84cb6b3 → un P2 (l'épinglé gardé jamais
+  revérifié), trois P4 ; d38d2fb → aucun P2, mais trois régressions (P3 : un commentaire RÉCENT lu par son identifiant
+  était « gardé » et quittait la liste avec l'épingle ; P4 : l'écho de mon écriture, seule preuve d'une écriture dont la
+  réponse s'est perdue, était jeté ; P4 : une absence lue retirait aussi le nouvel épinglé) et deux trous préexistants
+  (discussion paginée plus loin : jamais revérifié ; dernière page atteinte : l'épinglé supprimé restait et comptait) —
+  tous corrigés (84cb6b3, d38d2fb, e86c955).
+- Restés, dits tels quels : un ancien client non rechargé (la minute qui suit un déploiement) lit encore par
+  `comment_id` ; « un seul épinglé par fil » n'est pas un invariant du serveur ; les lignes d'un commentaire d'ACTIVITÉ
+  supprimé restent (R31), sans rien afficher.
+
+**Application et mesure (07/11).** Contre-revue : la revue n°5811045261 de PASSIO74 sur `3bde757`, auto-revue de
+mainteneur unique (ASTRA-61 bis), rédigée par une session Claude Code à la demande de Benjamin ; elle nomme les deux
+cibles. Avant l'attestation, le contrôle de preuve d'`attester-migration.mjs` a été rejoué hors ligne sur la vraie revue,
+pour les deux cibles (témoin : une revue qui ne nomme pas une cible est refusée), et la phrase d'assomption lue à l'octet dans l'appel qui
+l'a publiée : la CI ne contrôle que le marqueur, une espace insécable devant « : » l'aurait fait refuser. Depuis le poste,
+dans un worktree détaché de `main` (019896b) : une attestation par cible, consignées ici à l'identique (blob
+`64ee539a`, celui du `git diff` imprimé) ; le staging d'abord (prérequis « non exigé ici » : aucun client servi connu
+pour cette cible), puis la production après `--verifier` (la barrière a lu le marqueur dans le client servi,
+`app.js?v=a0fa987522`) ; les deux verdicts : 21 × OK, l'information à 0.
+
+Mesuré au canal ① à 08:35:50 UTC, jamais le tableau (état de référence relevé à 08:32:45 : quatre genres, aucune garde,
+aucune ligne de journal) :
+- `ci_kind_check` à cinq genres (`like`, `reply`, `emoji`, `gif`, `pin`) et `ci_pin_payload_check`, toutes deux validées ;
+- `trg_ci_epingle_garde` = `BEFORE INSERT OR UPDATE … FOR EACH ROW WHEN ((new.kind = 'pin'::text)) EXECUTE FUNCTION
+  ci_epingle_garde()`, actif, premier des trois déclencheurs BEFORE (`trg_ci_epingle_garde`, `trg_rate_limit`,
+  `zz_barriere_suppression`) ;
+- corps `9078992e4fdd194a5b9e9afae4ada3e6` (brut et normalisé), SECURITY DEFINER, `search_path=""`, ACL
+  `{postgres=X, service_role=X}` : ni `anon` ni `authenticated` ne l'exécutent ; RLS active ;
+- les trois policies de `comment_interactions` inchangées à l'octet (`4fc9fe8f…`, `100a0f66…`, `72198d79…`) ;
+- 0 épingle ; 0 trace du décor (`zz_rv38_%` dans les cinq tables, les comptes `…3801` à `…3805`, leurs notifications,
+  les secrets de pointage) ;
+- journal d'application : id 34, `applique_le` 08:33:11 UTC, l'attestation identique à l'entrée de production consignée ;
+- journaux Postgres de 08:30 à 08:40 : rien qui touche la migration. Le fond y est le même que la veille : refus RLS
+  sur `profiles` (180 de 08:30 à 08:40, le premier à 08:30:28 ; de 181 à 347 par heure le 06/11 au soir),
+  coupures de connexion de réplication (une à cinq par heure).
+
+**Preuve à deux comptes (07/11).** `epingle-commentaire-reel.spec.js`, CI de #743 (run 42356513820, job « Suites
+production (comptes réels) », sur le staging, 08:44:21 → 08:48:11 UTC) : « migration RV-38 sur le staging : PRÉSENTE (la
+garde refuse l'inconnu) » ; 21 réussis, 3 sautés, 0 échec, aucun instable. Une fois la présence lue, le test n'a plus de
+chemin de saut : ses quatre étapes ont passé — A épingle le commentaire de B (accepté, une ligne « 1 » en base, en tête à
+l'écran) ; B, après RECHARGEMENT, voit l'épingle en tête avec « Épinglé » ; B ne peut pas épingler chez A (42501, l'indice
+de la garde, rien d'écrit) ; A retire l'épingle et B, rechargé, ne la voit plus. Le run de `main` de la fusion de #734 ne
+pouvait pas le dire : son job à comptes réels s'est terminé à 08:31:57, avant l'application au staging.
+
+**Ce qui reste.** Hors lot : RV-45 à RV-48 (registre), et les restes dits ci-dessus.
+## 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
+
+**Statut : appliqué en production le 06/11 à 21:38:05 UTC** (verdict 17 × OK, `migrations_appliquees` id 33), mesuré au canal ①
+(corps `814ad66c…`, policy `ff0689d9…`, 11 dépendants tous des policies, 0 trace du décor ; § 9.8 de la livraison).
+`migrations/migration_discussions_activite_2026-11-06.sql` (sha256 `2d423d5f…`), banc
+`tests/sql/migration-discussions-activite.test.sh` 175/0, client `removeGroupMember` (app-05) et son verrou
+`tests/e2e/retrait-membre-groupe.spec.js` 24/24. Application, contrôles et retour arrière : § 9 de
+`.passio/audits/AUDIT_PASSIO_2026-11-02/04-LIVRAISON.md`. Revu le même jour, avant toute attestation, par trois agents
+relecteurs Claude Code, chaque trouvaille grave contre-vérifiée par un sceptique : cinq défauts confirmés et treize mineurs,
+corrigés ou consignés ci-dessous ; puis contre-revu sur sa tête le soir (fin de fiche, et § 9.7).
+
+**Le défaut.** `is_conv_member(_conv_id, _uid)` (`SECURITY DEFINER`, EXECUTE pour `authenticated`) répondait pour n'importe
+quel `_uid` (C-02, au registre depuis le 02/11 comme « chantier transverse »). Sans incidence tant que la liste des
+participants se lisait en clair ; C-04 l'a fermée, et son bloc ⑥ a fait de la discussion `evgrp_<activité>` la liste des venants
+et de l'organisation — plus ceux qui y sont entrés et n'y sont plus venants, que rien n'en retire (R18) ; le client y inscrit
+chaque « je viens » : `rpc/is_conv_member`, profil par profil, la rendait (R41). Et
+RV-44, régression de C-04 : sa policy SELECT cachait au créateur de la discussion un membre bloqué avec lui, donc le DELETE de
+« Suppression admin » touchait 0 ligne — et `removeGroupMember` annonçait le retrait sans lire le résultat.
+
+**Le choix : fermer la fonction, pas ses appelants.** Inventaire de production (canal ①, 06/11) : les 11 policies qui
+l'appellent lui passent toutes `(select auth.uid())::text`, `storage_chemin_autorise` aussi, `trg_reports_preuve_message`
+passe `new.reporter_id` que `reports_insert` lie à l'appelant ; aucun client, aucune fonction Edge. Un corps qui ne répond
+QUE sur l'appelant connecté — `(_uid = (auth.uid())::text or auth.uid() is null) and exists(…)` — ne change donc rien pour
+eux, et le verdict REFUSE la base si l'inventaire a bougé (lignes 13 à 15). Sans session : inchangée (déclencheurs,
+service_role). L'ordre est voulu : l'appelant est contrôlé avant la lecture (sur autrui, conv_members n'est pas lu : 0 lecture
+sur 100 appels, 100 avec l'ordre inverse) et l'égalité vient en tête (les policies n'évaluent auth.uid() qu'une fois : +26 à
++28 % sur une lecture de 40 messages au lieu de +46 %). Le créateur d'une discussion voit tous ses membres
+(`or is_conversation_creator(conv_id)`), comme l'organisation voit toute la liste dans `event_attendees_select_lien` : il peut
+les retirer, ce que la policy DELETE lui accordait déjà.
+
+**Le client : l'écran ne dit que ce que le serveur a rendu.** Retrait LOCAL, sans requête, pour ce que le serveur n'a jamais pu
+avoir (visiteur — `_compteAuthReel()`, pas `_supaReal`, vrai pour tout appareil dès que le SDK se charge —, ébauche
+`conv_grp_…`, identifiant non uuid : les personnages de démonstration que « Nouveau groupe » propose, que la clé étrangère
+refuse) ; rien ne change, et l'écran le dit, pour un compte réel qui ne joint pas le serveur (session expirée, SDK absent) ;
+sinon DELETE … RETURNING, `{ error }` et le nombre de lignes, et sur 0 ligne une RELECTURE de sa ligne et de la mienne. Le
+succès arrive après l'aller-retour : ne repeindre que ce qui montre encore ce groupe.
+
+**Pièges du lot.**
+- **pg_depend ne voit pas tous les appelants.** Une policy y figure ; une fonction plpgsql, ou SQL sans `BEGIN ATOMIC`, non :
+  `storage_chemin_autorise` et `trg_reports_preuve_message` n'apparaissent qu'en cherchant `is_conv_member` dans le `prosrc`
+  de TOUTES les fonctions de TOUS les schémas. Fermer un oracle, c'est faire les deux recherches, plus le dépôt.
+- **Un DELETE dont le WHERE lit des colonnes applique AUSSI les policies SELECT.** Cacher une ligne à la lecture, c'est
+  empêcher qu'on la retire : toute policy SELECT qui masque doit laisser voir à qui a le droit de supprimer.
+- **Un retrait ne s'annonce qu'après la ligne rendue — et « 0 ligne » n'est pas « toujours membre ».** Le SDK ne lève pas sur
+  un refus RLS, et un DELETE filtré rend 0 ligne SANS erreur : `.select("user_id")` sur le DELETE, compter `data`. Mais 0 ligne
+  dit seulement que rien n'a été ôté ICI : le membre a pu partir de lui-même, être retiré ailleurs, ou n'avoir jamais été en
+  base (ajout refusé — un personnage de démonstration ne l'est jamais). Relire avant de conclure, avec sa propre ligne pour
+  témoin, et ne pas conclure là où la lecture elle-même est masquée (`evgrp_` avant la migration). Ne prendre le chemin serveur
+  que pour ce que le serveur a pu avoir, et ne jamais « retirer localement » ce que le serveur garde (session expirée, SDK
+  absent) : c'est le mensonge même qu'on corrige. La première version de ce correctif avait les deux défauts (retrait devenu
+  impossible pour tout groupe dont un membre est un personnage, c'est-à-dire tout groupe créé par « Nouveau groupe »).
+- **Un succès asynchrone ne repeint que ce qui montre ENCORE sa cible.** Le code d'avant était synchrone avec le clic ; attendre
+  le serveur a fait tourner `_renderGroupMembersModal` (qui finit par `openModal`) et `renderConvFpThread` après l'aller-retour :
+  la modale fermée revenait, et le fil du groupe s'affichait dans le panneau d'une autre conversation — dont le bouton d'envoi
+  restait lié à l'autre destinataire. Gardes : `#modalBackdrop` actif ET `_grpConvId` ET `#grpPanel_members` ; `_openedConvId`.
+- **Un verdict n'est fermé sur échec que si sa MESURE l'est aussi.** La première version prenait toute erreur levée sous
+  authenticated, celle du correctif comprise, pour une « panne du décor » non bloquante : une branche créateur récursive (42P17)
+  passait — mesuré, APPLIQUÉE, et plus aucun compte ne lisait conv_members. Désormais : un bloc par mesure (son SQLSTATE dans sa
+  clé, sa ligne en ECHEC), `decor = ok`, la phase, et la ligne 1 BLOQUANTE (le canal ① ne mesure pas le comportement : un décor
+  en panne fait relancer, jamais appliquer à l'aveugle).
+- **Un verdict sans témoin négatif ne voit pas « tout le monde est membre de tout ».** Mesuré sur le verdict d'avant :
+  `coalesce(_uid = auth.uid(), false) or (auth.uid() is null and exists…)` passait 15/15 ; de même un oracle laissé ouvert sur
+  les 1-à-1 (aucune au décor) et une forme « claims seuls » qui n'était plus éprouvée (claim.sub jamais relevé). Il faut un compte
+  qui n'est PAS membre, une conversation de chaque forme, et relever l'identité qu'on croit poser.
+- **L'ordre des conjonctions est de l'hygiène, pas la fermeture d'un canal.** Le temps de lecture d'une ligne de conv_members sous
+  RLS dit si elle existe (`texteq` leakproof : la policy ne s'évalue que si la ligne existe ; +41 µs au corps de production, +88 à
+  +92 µs au corps neuf) : un canal caché de la RLS, antérieur au lot, qu'aucun ordre ne ferme. Le dire, ne pas le présenter
+  comme corrigé.
+- **Une migration « rejouable » peut défaire la suivante.** Rejouer `participants_visibilite` réécrirait
+  conv_members_select_member avec le texte de C-04, et son verdict ne regarde la policy que par motifs LIKE : RV-44 reviendrait
+  en silence. Après tout geste sur conv_members, mesurer le déparsage (md5 `ff0689d9…`).
+- **Un décor de verdict qui écrit dans une table PUBLIÉE ne livre rien s'il est annulé.** `conv_members` exige des profils
+  (clé étrangère), et `profiles` est publiée ; `trg_diffuser_ajout_membre` appelle `realtime.send`. Le décodage logique
+  écarte une sous-transaction annulée : le banc le prouve sur un slot `test_decoding`, et un témoin positif (décor NON annulé)
+  montre que le même slot décode bien ces insertions — sans témoin, un contrôle « 0 ligne décodée » serait aveugle.
+- **Une fonction SECURITY INVOKER rappelée par la policy de la table qu'elle lit tourne sans fin** (54001) dès que l'appelant y
+  a sa ligne : mesurée clé par clé, la mutation « invoker » rougit tout ce qui lit sa propre appartenance (3, 4, 6, 7, 8, 17),
+  pas l'oracle sur autrui (l'appelant est contrôlé avant la lecture) ni le témoin négatif (sans ligne, la récursion s'arrête).
+- **`pg_get_expr` ouvre la table qu'il déparse** (RV-20) : le verdict ne déparse que conv_members, reports et les policies que
+  `pg_depend` rattache à la fonction, jamais tout le catalogue.
+- **Une définition recopiée à la main n'est pas une définition de production.** Le relevé remis au lot avait perdu deux
+  blocs de commentaires et une espace de fin : `md5(prosrc)` l'a dit au banc ⓪, `to_json(prosrc)` au canal ① a montré
+  l'écart. Le socle se contrôle par empreinte, fonction par fonction et policy par policy.
+- **Le canal ① ne mesure pas le comportement d'une fonction réservée à `authenticated`** : le lecteur n'a ni EXECUTE ni SET
+  ROLE. Seul le verdict, dans la transaction de la migration, la mesure en production ; après coup, le catalogue.
+
+**Réinjections (mesurées le 06/11).**
+- **Migration, banc § ⑨, sur le fichier corrigé — toutes REFUSÉES (55000), base inchangée** : clause `_uid` retirée → lignes
+  2, 4 (2, 4, 11 sans empreinte recalculée) ; branche créateur retirée → 6, 7 (6, 7, 13) ; branche créateur RÉCURSIVE (R3) →
+  6, 7, 8, 16, 17 ; EXECUTE rendu à anon ou à PUBLIC → 12 ; « sans session » fermée → 5 ; SECURITY INVOKER → 3, 4, 6, 7, 8,
+  11, 17 ; policy TO public → 13 ; décor non annulé → 9 ; décor cassé → 1 à 8, 16, 17 ; décor hors rôle client → 1, 8, 16,
+  17 ; « tout connecté membre de tout » → 16, 17 ; forme claims seuls non éprouvée → 1 ; oracle ouvert sur les 1-à-1 → 2 ; et
+  dix dérives de la base (D1 à D10). L'ordre d'AVANT, empreinte recalculée, passe le verdict 17/0 : seul le compteur du banc
+  le voit (100 lectures de conv_members au lieu de 0).
+- **Contre le verdict d'AVANT la revue (15 lignes)** : « tout connecté membre de tout », claims seuls non éprouvés et oracle
+  ouvert sur les 1-à-1 passaient 15/0 ; R3 était APPLIQUÉE (vecteur EEEEOEEEOOOOOOO, ligne 1 « ECHEC — 42P17 », non bloquante).
+- **Dans le fichier corrigé** : l'ordre d'avant réinjecté rougit les deux comptages de lectures du § ③ (0 → 100 ; 0|0 →
+  100|50) et rien d'autre ; le garde-fou d'avant (ligne 1 jamais bloquante, comportement bloquant seulement si la ligne 1 est
+  OK) réinjecté rend APPLIQUÉES les mutations « décor cassé », « décor hors rôle client » et « claims non éprouvés » (et D10 ne
+  rougit plus que 13) — R3 reste refusée, par ses blocs de mesure.
+- **Client** (`tests/e2e/retrait-membre-groupe.spec.js`, 18 cas ; chaque variante d'app-05 servie par `page.route`, le
+  worktree intact) : code d'avant le lot → 16 rouges (tous sauf ⑫ ⑬ : il était synchrone, l'écran ne pouvait pas dériver) ;
+  première version du correctif → 15 rouges (verts : ②, ④, ⑥) ; gardes d'écran ôtées → ⑫ ⑬ ; panne postgrest-js lue comme un
+  refus → ③bis ; gardes « personnage » et « ébauche » ôtées → ⑧ ⑨ ; garde du compte réel ôtée → ⑦ ; garde de session ôtée →
+  ⑩ ; relecture ôtée → ② ②b ⑤ ; garde `evgrp_` ôtée → ②c ; garde du SDK absent ôtée (retrait local) → ⑪ ; le code du lot,
+  servi de la même façon → 0 rouge. Contre-revue du soir (24 cas) : tête d'avant (`7320926a`) → ③ter ③quater ⑪ ⑭ ⑮ rouges,
+  quatre cas neufs et ⑪ dont seul l'attendu a changé ; une mutation à la fois — 5xx lu comme un refus → ③ter, 401 → ③quater,
+  garde SDK de `supaCreateGroup` ôtée → ⑭, onglet non restauré → ⑮ ; puis la relecture de ce correctif → `6bdf1ff6` →
+  ②f (session morte, DELETE parti sous la clé anon : 200 [] puis relecture vide) ③quinquies (429) ⑮ renforcé (filtre de la
+  liste rendu, focus non volé, défilement gardé) rouges, verts ensuite.
+
+**Ce qui reste, dit tel quel.** Dans `conv_members`, les membres d'une discussion se voient entre eux, sauf blocage (C-04 : un
+venant connaît la liste) ; HORS de conv_members, une discussion d'activité montre encore à tout membre les membres bloqués avec
+lui — `conv_reads` (reads_select : is_conv_member seul), les pièces jointes (chemin `attachments/<conversation>/<fichier>`, sans
+l'auteur, mais listables et lisibles, contenu et nom d'origine compris) et la diffusion `typing:` (le nom d'affichage) : résidu
+de C-04, préexistant, hors lot (RV-49, R42 ; un remède des pièces jointes se cale sur `owner`, jamais sur le chemin). Le créateur d'une discussion d'activité qui n'organise plus
+(co-organisateur retiré) peut y revenir à tout moment, y voir tous les membres, bloqués compris, et en ajouter (RV-50 : une
+branche qui suit l'organisation, `is_conversation_creator(conv_id) and organise_activite(substr(conv_id, 7))`, écartée ici — son
+verdict devrait écrire une activité synthétique en production). Le temps de lecture sous RLS (ci-dessus). `notifier_mentions`
+dira l'appartenance d'autrui à un ancien membre dès que R36 sera corrigé (RV-51 : exiger `is_conv_member(p_ref_id, moi)` — qui ferme à
+lui seul le cas — et, par hygiène, figer `created_at` par `identifiants_figes` : un REVOKE UPDATE (created_at) ne fige rien,
+authenticated a l'UPDATE de la table). Un rôle `authenticated` sans `sub` (Supabase Auth n'en émet pas) lirait encore toute appartenance par la
+RPC. `conv_1a1_bloquee` dit si un compte BLOQUÉ avec l'appelant est membre d'une conversation 1-à-1 donnée (identifiant
+aléatoire), `is_blocked_with` reste interrogeable sur tout uid (R40) : hors lot. Côté client : dans une discussion d'activité,
+le retrait d'un membre qui n'y est pas (la liste locale vient des inscrits, `_ensureLocalEventConv`) dit « pas confirmé »
+jusqu'au prochain rafraîchissement serveur, qui l'ôte ; `addGroupMember` ignore toujours le résultat de son INSERT
+(préexistant, hors lot).
+
+**Appliquer depuis un worktree détaché, JAMAIS depuis le dossier de travail (06/11, vécu).** Le premier bloc de C-02 (comme
+celui de C-04 le matin) faisait `git checkout main` puis `git pull --ff-only` DANS `Desktop\PASSIO` — que la procédure de
+`.passio/migrations/README.md` évite déjà. Ce dossier portait le travail non commité d'une autre session (sa branche, deux
+migrations ajoutées, `dashboard/`, `js/`, fonctions Edge) : le `checkout` l'a fait passer sur `main` (git garde les
+modifications non commitées, mais la session ne se trouve plus sur sa branche), et le `pull` a refusé d'écraser dix fichiers.
+Rien n'est parti ; le second bloc a d'abord RENDU le dossier (retour sur la branche, `attestations.json` remis depuis sa copie),
+puis attesté et appliqué dans `Desktop\PASSIO-wt\migration-c02` (worktree détaché d'`origin/main`), imprimé l'entrée
+d'attestation par `git diff`, et retiré le worktree. Un bloc d'application ne fait aucun `checkout`, aucun `pull`, aucun
+`git checkout -- <fichier>` dans le dossier de travail : il peut y avoir quelqu'un.
+
+**Lire `postgres_logs` : la gravité est `log_attributes['parsed.error_severity']`, le code `parsed.sql_state_code`
+(07/11, vécu).** Une requête sur `log_attributes['error_severity']` (sans `parsed.`) rend un ensemble VIDE — lu deux fois comme
+« aucune erreur Postgres » (C-04, 06/11 09:10–09:25 ; C-02, 21:30–21:42), corrigé au § 6.3 et au § 9.8 de la livraison. C'est la
+règle de la veille appliquée aux journaux : une source illisible n'est pas une source calme. Une conclusion d'absence porte donc
+son témoin : le nombre de lignes lues ET les valeurs distinctes de la clé filtrée (`groupUniqArray(10)(log_attributes['…'])`) —
+une seule valeur vide, c'est la clé qui manque, pas l'erreur. Les clés d'`edge_logs` sont plates (`request.path`,
+`response.status_code`, `request.headers.referer`).
+
+**Ordre.** APRÈS C-04 (la ligne 10 refuse une base sans sa policy : le staging aujourd'hui — y appliquer C-04 d'abord, puis ce
+lot), et JAMAIS C-04 rejouée après ; indépendante du client, pas de `PREREQUIS-CLIENT` — le client ne dit que ce que le serveur
+lui rend : avant la migration, un créateur qui retire un membre que C-04 lui cache lit « le retrait n'a pas été confirmé » ;
+après, le retrait passe.
+
+**Contre-revue de la tête, le soir (06/11).** Quatre agents relecteurs Claude Code, lancés sans les conclusions de la session
+qui a orchestré le lot (la migration en production ; la complétude des contrôles d'accès ; le client ; l'exactitude de ce qui
+est écrit), deux sceptiques par trouvaille grave : rien de bloquant — la seule trouvaille « majeure » (l'ancien venant) ramenée
+à mineure par ses deux sceptiques, préexistante et déjà au registre (R18). Ce qu'il faut en retenir :
+- **`lock_timeout` borne CHAQUE attente, pas la détention.** Une fois l'ACCESS EXCLUSIVE pris, toute attente qui suit le
+  prolonge — et une fonction qui AVALE les erreurs (`realtime.send`, `exception when others`) avale aussi 55P03 : sept
+  attentes de 3 s, 27 s de messagerie gelée, mesurées quand une autre session tenait `realtime.messages`. D'où deux bornes :
+  3 s pour PRENDRE le verrou, puis `set local lock_timeout = '200ms'` juste après (banc § ⑩ : abandon en moins de 5 s, rien
+  d'appliqué ; seconde borne ôtée → plus de 9 s).
+- **Le rechargement du cache de PostgREST attend la migration, pas l'inverse** (RV-42 relu) : le 05/11, c'est un lecteur de
+  `passion_requests` qui a attendu 3,4 s le verrou de R38 ; le 06/11, C-04 a pris ses verrous la première. Qui peut faire
+  attendre une migration, c'est une transaction cliente longue.
+- **Un verdict qui compte les appelants d'une fonction compte TOUS ses dépendants** (`pg_depend`, `refobjid` = la fonction) :
+  une vue, ou une fonction SQL `BEGIN ATOMIC` — dont le `prosrc` est VIDE, le corps vivant dans `prosqlbody` —, échappent à
+  la fois à la recherche dans `prosrc` et à la liste des policies (dérives D11, D12).
+- **Un client de repli qui « accepte » tout fabrique des identifiants serveur fantômes** : sans SDK, `supaCreateGroup`
+  rendait `{ error: null }` et donc un `grp_…` qu'aucun retrait ne pouvait plus vider. Sans SDK, ne RIEN créer « côté
+  serveur » : l'ébauche garde son préfixe local (`conv_grp_`).
+- **Deux défauts préexistants, consignés** : tout compte peut prendre `evgrp_<activité>` avant l'organisateur et rendre la
+  discussion impossible (RV-52 ; `conversations_insert_creator` ne lit que `created_by`) ; un ancien venant ou co-organisateur
+  reste membre et lit les venants suivants, et côté client la sortie de discussion n'est pas vérifiée (R18, RV-53).
+- **Pour mener une contre-revue par agents** : une commande qui exige une autorisation (création d'utilisateur, `su`) BLOQUE
+  un agent non interactif indéfiniment, et un audit de droits trop « offensif » dans sa formulation peut être arrêté par les
+  garde-fous de l'API ; borner les commandes (scripts, jamais de privilèges en ligne) et formuler l'audit en défensif.

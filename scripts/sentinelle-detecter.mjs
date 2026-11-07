@@ -18,6 +18,11 @@
 // machine. Le silence de ce script n'est jamais une preuve de santé.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// La quatrième famille (2026-11-06) juge les parcours avec le MÊME registre et
+// la MÊME règle que le pilotage du nuage — jamais une copie.
+import { CONTRATS, contratDe } from "../supabase/functions/_shared/contrats-actions.js";
+import { regrouperFlux, issueFlux, melanger } from "../supabase/functions/_shared/parcours.js";
+
 // Messages qui ne portent AUCUNE information exploitable : les corriger est
 // impossible, les compter fait du bruit qui masque le vrai signal.
 //   · « Script error. » = erreur d'un script d'une autre origine, le navigateur
@@ -388,6 +393,133 @@ export function classerApi(lignes = [], options = {}) {
 
   return { candidates, ecartees, nonVerifiees };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUATRIÈME FAMILLE — LES PARCOURS QUI ÉCHOUENT (2026-11-06)
+//
+// C'est l'angle mort écrit en tête de ce fichier : « un résultat faux en HTTP
+// 200 » ne lève aucune erreur JS et aucun appel en échec. Les flux d'action
+// (`tel.flowStart` → `step "saved"`) disent, eux, si la SOURCE DE VÉRITÉ a
+// accepté. Une action dont la confirmation est un échec (hors refus légitime
+// et hors file locale, contrats-actions.js) devient un candidat, groupé par
+// action et par code fermé. Règles, une par piège :
+//  · identité SERVEUR seulement (`auth_uid`, posée par le trigger) — une
+//    ligne sans compte ou au format douteux est écartée et comptée ;
+//  · comptes ANCIENS seulement, comme les boutons (revue de sécurité du
+//    2026-11-06) : une enquête peut finir en PR fusionnée seule, et des
+//    comptes se créent en une minute. Deux passages : le premier désigne les
+//    comptes à vérifier (`comptesAnciens: "tous"`, `avecUids`), le second ne
+//    compte que ceux que `lireComptesAnciens` a relus. Sans cet ensemble, RIEN
+//    n'est retenu : l'absence de preuve n'est jamais une preuve ;
+//  · une action sans verdict n'est PAS un échec (télémétrie perdue possible) :
+//    elle se lit au pilotage (« sans verdict »), elle n'ouvre pas d'enquête ;
+//  · le titre ne porte QUE l'identifiant du contrat (revue adversariale du
+//    2026-11-06) : un code de refus dans le titre laissait un navigateur choisir
+//    des mots, et chaque nouveau code contournait la dédup (titre neuf). Un
+//    candidat par ACTION ; les codes, FERMÉS (`codeFerme`), vont dans le corps ;
+//  · au moins DEUX comptes anciens distincts — jamais « assez d'occurrences »
+//    d'un seul compte ;
+//  · UNE zone pour toute la famille (`zoneCible`), comme les boutons : un flot
+//    de parcours forgés ne prend jamais les places d'un défaut réel.
+// Cette famille est un CONFORT comme les boutons : sa lecture qui échoue ne
+// fait jamais échouer la détection.
+// ═══════════════════════════════════════════════════════════════════════════
+export function classerParcours(lignes = [], options = {}) {
+  const anciens = options.comptesAnciens;
+  const contrats = options.contrats || CONTRATS;
+  const maintenant = Number.isFinite(options.maintenant) ? options.maintenant : Date.now();
+  const { flux } = regrouperFlux(lignes, contrats);
+  const groupes = new Map();
+  let ecartees = 0, nonVerifiees = 0;
+  for (const f of flux.values()) {
+    const contrat = f.action ? contratDe(f.action, contrats) : null;
+    if (!contrat) continue;
+    if (f.synthetique) { ecartees++; continue; }
+    if (issueFlux(f, contrat, maintenant) !== "echoue") continue;
+    if (!RE_COMPTE.test(String(f.compte || ""))) { ecartees++; nonVerifiees++; continue; }
+    if (anciens !== "tous" && !(anciens instanceof Set && anciens.has(String(f.compte)))) { ecartees++; nonVerifiees++; continue; }
+    const rc = f.rc || "sans_code";
+    const cle = `parcours ${contrat.id}`;
+    if (!groupes.has(cle)) {
+      groupes.set(cle, { cle, famille: "parcours", action: contrat.id, message: `Parcours « ${contrat.libelle} » : refus de la source de vérité`,
+        n: 0, comptes: new Set(), codes: new Map(), dernier: null, exemple: null, versions: {}, occurrences: [] });
+    }
+    const g = groupes.get(cle);
+    g.n++;
+    g.comptes.add(String(f.compte));
+    g.codes.set(rc, (g.codes.get(rc) || 0) + 1);
+    const at = Number.isFinite(f.debutRecu) ? new Date(f.debutRecu).toISOString() : "";
+    if (at && (!g.dernier || at > g.dernier)) g.dernier = at;
+    noterOccurrence(g, at, f.version);
+  }
+  const candidates = [...groupes.values()].map((g) => {
+    const comptes = g.comptes.size;
+    const c = contrats[g.action];
+    const { comptes: ensemble, codes: lesCodes, ...reste } = g;
+    const codes = [...lesCodes.entries()].sort((x, y) => y[1] - x[1]).slice(0, 5);
+    return {
+      ...reste, comptes, codes: codes.map(([code, n]) => ({ code, n })), occurrences: bornerOccurrences(g.occurrences),
+      // Le premier passage seulement : les identités ne partent jamais dans le verdict (résumé PUBLIC).
+      ...(options.avecUids ? { _uids: [...ensemble] } : {}),
+      // Le contexte que l'enquête n'aurait pas autrement : le contrat lui-même.
+      exemple: {
+        stack: [
+          `Contrat ${c.id} (supabase/functions/_shared/contrats-actions.js) — ${c.libelle}`,
+          `Source de vérité : ${c.verite}`,
+          `Confirmation attendue : étape « ${c.confirmation} » au verdict de l'écriture.`,
+          `Codes des refus (fermés : SQLSTATE, PostgREST ou codes de l'app) : ${codes.map(([c, n]) => c + " ×" + n).join(", ")} — ${g.n} échec(s), ${comptes} compte(s) ancien(s).`,
+          `Émetteur(s) : ${c.emetteurs.join(", ")} ; verrou(x) : ${c.verrous.join(", ")}.`,
+          "",
+          "Aucune erreur JavaScript n'a pu être levée : l'écriture a rendu un refus que",
+          "l'app a LU et rapporté. Établir pourquoi la source de vérité refuse (code",
+          "PostgreSQL ou PostgREST) et si l'app envoie ce qu'elle doit. Un refus qui",
+          "vient d'une règle d'accès (RLS) ou d'une migration est HORS du périmètre",
+          "autorisé : décrire la cause et laisser la main.",
+        ].join("\n"),
+        source: null, line: null, url: null,
+      },
+    };
+  })
+    .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n))
+    // Deux comptes ANCIENS distincts au moins : jamais un seul compte, même en boucle.
+    .filter((g) => g.comptes >= 2);
+  return { candidates, ecartees, nonVerifiees };
+}
+
+/**
+ * Quels comptes relire, et combien : PAR ACTION, au HASARD, sous un budget total.
+ * ⚠️ Jamais « les n premiers » d'une liste dont l'ordre est celui que les émetteurs
+ * choisissent : une nuée de comptes neufs y repousserait les anciens au-delà du
+ * plafond de lecture et tairait une vraie panne (revue de sécurité du 2026-11-06).
+ * Ce que le budget n'a pas permis de relire est COMPTÉ (`nonVerifies`), et dit.
+ * FONCTION PURE (`aleatoire` injectable pour les bancs).
+ */
+export const PARCOURS_VERIFICATION = Object.freeze({ parAction: 30, total: 150 });
+export function uidsAVerifier(candidats, { parAction = PARCOURS_VERIFICATION.parAction, total = PARCOURS_VERIFICATION.total, aleatoire = null } = {}) {
+  const parA = new Map();
+  for (const c of Array.isArray(candidats) ? candidats : []) {
+    if (!c || !c.action) continue;
+    const e = parA.get(c.action) || new Set();
+    for (const u of c._uids || []) e.add(u);
+    parA.set(c.action, e);
+  }
+  const lots = [];
+  let reste = total, nonVerifies = 0;
+  for (const [action, e] of parA) {
+    const tous = melanger([...e], aleatoire);
+    const n = Math.max(0, Math.min(parAction, reste, tous.length));
+    lots.push({ action, uids: tous.slice(0, n) });
+    nonVerifies += tous.length - n;
+    reste -= n;
+  }
+  return { lots, nonVerifies };
+}
+
+/** Les flux de la fenêtre : la seule colonne d'identité retenue est `auth_uid` (serveur). */
+// Les SEULES clés utiles de `meta`, à plat (un `meta` hostile peut peser des
+// mégaoctets), et jamais une ligne sans identité serveur (elle ne pèse rien, et
+// un flot anonyme poussait les vraies lignes hors des pages : « incomplet »).
+export const CHEMIN_FLUX = "telemetry_events?select=event_id,correlation_id,action,status,auth_uid,received_at,client_ts,app_version,flow_action:meta->>flow_action,step:meta->>step,rc:meta->>rc,synthetic:meta->>synthetic,trafic:meta->>trafic&type=eq.flow&auth_uid=not.is.null";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TROISIÈME FAMILLE — LES BOUTONS QUI N'ONT AUCUN EFFET MESURÉ (2026-09-10)
@@ -920,6 +1052,9 @@ export function zoneCible(c) {
   // Boutons : UNE zone pour toute la famille — une seule enquête bouton à la fois
   // (contre-revue du 2026-11-03 : un flot de boutons ne prend jamais les places d'un défaut réel).
   if (c && c.famille === "bouton") return "bouton";
+  // Parcours : UNE zone pour toute la famille, comme les boutons (revue adversariale
+  // du 2026-11-06) — trois parcours forgés prenaient les trois places de MAX_ENQUETES.
+  if (c && c.famille === "parcours") return "parcours";
   // Erreurs JS : le FICHIER source — deux PR auto-fusionnées sur le même fichier
   // ne sont jamais testées ensemble (`main` n'exige pas une branche à jour).
   const source = c && c.exemple && c.exemple.source;
@@ -944,6 +1079,7 @@ export function choisirCibles(candidats, fermees, ouvertes, places = 1) {
   // remise à un humain (label `humain`), elle ne gèle plus la famille (contre-revue du 2026-11-03).
   const nomsLabels = (o) => (Array.isArray(o?.labels) ? o.labels : []).map((l) => String(l?.name ?? l));
   if (liste.some((o) => String(o?.title || "").startsWith("[SENTINELLE] bouton ") && !nomsLabels(o).includes("humain"))) zones.add("bouton");
+  if (liste.some((o) => String(o?.title || "").startsWith("[SENTINELLE] parcours ") && !nomsLabels(o).includes("humain"))) zones.add("parcours");
   const choisies = [];
   for (const c of candidats || []) {
     if (choisies.length >= n) break;
@@ -1130,6 +1266,11 @@ export function corpsIssue(v, c, options = {}) {
   if (c?.famille === "bouton") {
     L.push(`> Bouton sans effet : ${Number(c.clics) || 0} clics, ${Number(c.tauxEffet) || 0} % suivis d’un effet mesuré en 3 s, ${Number(c.rageurs) || 0} compte(s) l’ont retapé sans résultat. Le libellé est un texte du code : le retrouver par \`grep\` dans \`index.html\` et \`js/\`.`);
     L.push("> Deux causes possibles, à départager AVANT d’écrire : (a) le handler est cassé, absent, masqué par un autre élément ou bloqué par une garde — corriger pour que le geste aboutisse ; (b) le geste aboutit mais n’émet aucun événement mesurable — ne PAS toucher au comportement, ajouter seulement `Telemetry.action(...)` sans donnée personnelle. Jamais retirer le bouton pour faire taire la mesure.");
+    L.push("");
+  }
+  if (c?.famille === "parcours") {
+    L.push("> Parcours en échec : l’app a LU un refus de la source de vérité et l’a rapporté (étape « saved » en erreur). Le contrat du parcours, ses émetteurs et ses verrous sont dans `supabase/functions/_shared/contrats-actions.js`.");
+    L.push("> Deux causes possibles, à départager AVANT d’écrire : (a) l’app envoie une écriture invalide (colonne, identifiant, garde absente) — corriger l’émetteur ; (b) la règle serveur refuse à raison ou par défaut de migration — HORS périmètre : décrire et laisser la main. Jamais transformer l’échec en succès, jamais retirer l’étape « saved » pour faire taire la mesure.");
     L.push("");
   }
   L.push("1. Établir la CAUSE dans le code. Sans cause établie, ne rien corriger : commenter ce qui manque et s’arrêter.");
@@ -1403,6 +1544,26 @@ async function principal() {
   } catch (e) {
     boutonsSuspects = { erreur: String(e.message || e) };
   }
+  // Quatrième famille (2026-11-06) : les parcours en échec. Un confort, comme
+  // les boutons — sa lecture qui échoue ou se tronque ne fait rien échouer et
+  // ne désigne rien (une page manquante pourrait porter la confirmation).
+  let parcours = { candidates: [], ecartees: 0, nonVerifiees: 0 };
+  let parcoursSource = null;
+  try {
+    const fl = await lirePagine({ url, cle, heures, chemin: CHEMIN_FLUX + FILTRE_PRODUCTION });
+    parcoursSource = { lues: fl.lignes.length, complet: fl.complet };
+    if (fl.complet) {
+      // Deux passages, comme les boutons : seuls les comptes ANCIENS décident.
+      const premier = classerParcours(fl.lignes, { comptesAnciens: "tous", avecUids: true });
+      const choix = uidsAVerifier(premier.candidates);
+      const anciens = new Set();
+      for (const lot of choix.lots) for (const u of await lireComptesAnciens({ url, cle, uids: lot.uids })) anciens.add(u);
+      parcours = classerParcours(fl.lignes, { comptesAnciens: anciens });
+      parcoursSource.verificationsIncompletes = choix.nonVerifies;
+    }
+  } catch (e) {
+    parcoursSource = { erreur: String(e.message || e).slice(0, 160) };
+  }
   const js = classer(lignes);
   const api = classerApi(appels);
   // ⚠️ LES DEUX FAMILLES SONT MISES EN CONCURRENCE SUR LA MÊME RÈGLE — comptes
@@ -1414,16 +1575,16 @@ async function principal() {
   const uidsLibres = libres.flatMap((c) => c._uids || []);
   const anciens = uidsLibres.length ? await lireComptesAnciens({ url, cle, uids: uidsLibres }) : new Set();
   const preuves = retenirPreuves(libres, anciens);
-  const candidates = [...preuves.retenus, ...morts.candidates]
+  const candidates = [...preuves.retenus, ...morts.candidates, ...parcours.candidates]
     .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n));
   const verdict = {
     fenetreHeures: heures,
     lues: erreursClient.length + erreursTelemetrie.length + appels.length,
-    ecartees: js.ecartees + api.ecartees + fusion.doublons + fusion.plafonnees,
+    ecartees: js.ecartees + api.ecartees + fusion.doublons + fusion.plafonnees + parcours.ecartees,
     retenues: candidates.length,
-    parFamille: { js: js.candidates.length, api: api.candidates.length, bouton: morts.candidates.length },
-    // Écartées faute de comptes anciens : un humain les voit au résumé, aucun agent ne les reçoit.
-    sousLeSeuil: preuves.sousLeSeuil,
+      parFamille: { js: js.candidates.length, api: api.candidates.length, bouton: morts.candidates.length, parcours: parcours.candidates.length },
+      // Écartées faute de comptes anciens : un humain les voit au résumé, aucun agent ne les reçoit.
+      sousLeSeuil: preuves.sousLeSeuil,
     // Ce que chaque source a fourni : un zéro durable sur l'une d'elles se lit
     // ici, pas dans le silence du verdict (les champs existants ne changent pas).
     sources: {
@@ -1432,6 +1593,7 @@ async function principal() {
       api: appels.length,
       doublonsJs: fusion.doublons,
       plafonneesJs: fusion.plafonnees,
+      parcours: parcoursSource,
     },
     // ⚠️ HORS `cible`, DÉLIBÉRÉMENT : ce classement-ci n'ouvre aucune issue — un
     // taux bas seul peut être un bouton mort comme un effet non instrumenté.
@@ -1444,7 +1606,7 @@ async function principal() {
     // ⚠️ ASTRA-08 (2026-09-15) : TOUS les candidats, pas cinq — cinq déjà fermés
     // masquaient le sixième, actif. La liste reste bornée par le classement lui-même.
     candidats: candidates.slice(),
-    identitesNonVerifiees: (js.nonVerifiees || 0) + (api.nonVerifiees || 0) + (morts.nonVerifiees || 0),
+    identitesNonVerifiees: (js.nonVerifiees || 0) + (api.nonVerifiees || 0) + (morts.nonVerifiees || 0) + (parcours.nonVerifiees || 0),
   };
   console.log(JSON.stringify(verdict, null, 2));
 }

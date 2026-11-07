@@ -67,6 +67,51 @@ self.addEventListener("activate", e => {
 // (même forme que le routeur `#irl-event-` d'app-07 et que _shared/rappels.js).
 const ID_ACTIVITE_RE = /^[\w-]{1,64}$/;
 
+// Accusé de réception (2026-11-06, supabase/functions/_shared/reception.js) :
+// APRÈS l'affichage, un dépôt SANS CONTENU — { pid, genre } — dans
+// telemetry_events, à l'adresse que porte la notification (URL du projet et clé
+// anon, publique). Le pid est aléatoire et ne voyage que dans la notification :
+// le serveur ne compte que les pid qu'il a envoyés. L'affichage ne dépend JAMAIS
+// de l'accusé, et une adresse qui n'a pas sa forme n'est jamais appelée.
+// Genres accusés : `pilotage`, `rappel`, et `appel` (2026-11-07, un appel sur dix
+// en porte un : supabase/functions/_shared/appels.js).
+const RE_PID_PUSH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const RE_BASE_ACCUSE = /^https:\/\/[a-z0-9]{20}\.supabase\.co$/;
+// La clé : l'ancienne anon (un JWT) ou la nouvelle, publiable (2026-11-07). La
+// publiable ne part QU'EN `apikey` : en Bearer, la plateforme la lit comme un JWT
+// et refuse la requête (« Invalid JWT »).
+const RE_CLE_ACCUSE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+const RE_PUBLIABLE_ACCUSE = /^sb_publishable_[A-Za-z0-9_-]{8,200}$/;
+function accuser(data, genre) {
+  try {
+    const a = data && data.ack;
+    if (!data || !RE_PID_PUSH.test(String(data.pid || "")) || !a || typeof a !== "object") return Promise.resolve();
+    const u = String(a.u || ""), k = String(a.k || "");
+    const publiable = RE_PUBLIABLE_ACCUSE.test(k);
+    if (!RE_BASE_ACCUSE.test(u) || !(RE_CLE_ACCUSE.test(k) || publiable) || k.length >= 2000) return Promise.resolve();
+    const octets = new Uint8Array(8);
+    crypto.getRandomValues(octets);
+    const corps = [{
+      event_id: Array.from(octets, (o) => o.toString(16).padStart(2, "0")).join(""),
+      client_ts: new Date().toISOString(), type: "push", action: "recu", status: "ok",
+      meta: { pid: data.pid, genre: String(genre || "").slice(0, 16) },
+    }];
+    const envoyer = () => fetch(u + "/rest/v1/telemetry_events", {
+      method: "POST",
+      headers: publiable ? { "Content-Type": "application/json", apikey: k, Prefer: "return=minimal" }
+        : { "Content-Type": "application/json", apikey: k, Authorization: "Bearer " + k, Prefer: "return=minimal" },
+      body: JSON.stringify(corps),
+    });
+    // Un refus de débit (429 : le réservoir des envois anonymes est commun) ou une
+    // coupure : UN second essai après 5 s, jamais plus — l'événement push ne vit
+    // que le temps de son waitUntil.
+    const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+    return envoyer()
+      .then((r) => (r && r.status === 429 ? pause(5000).then(envoyer) : r), () => pause(5000).then(envoyer))
+      .then(() => {}, () => {});
+  } catch (_e) { return Promise.resolve(); }
+}
+
 // Réception d'une push : affiche une notification « Appel entrant » persistante
 // avec un bouton Répondre. Le tap ouvre l'app sur l'écran d'appel.
 self.addEventListener("push", e => {
@@ -85,7 +130,7 @@ self.addEventListener("push", e => {
       icon: "./pilotage/icons/pilot-192.png",
       badge: "./icon-192.png",
       data: { url: "./pilotage/" },
-    }));
+    }).then(() => accuser(data, "pilotage")));
     return;
   }
 
@@ -102,7 +147,7 @@ self.addEventListener("push", e => {
       icon: "./icon-192.png",
       badge: "./icon-192.png",
       data: { url: id ? "./#irl-event-" + id : "./" },
-    }));
+    }).then(() => accuser(data, "rappel")));
     return;
   }
 
@@ -136,7 +181,10 @@ self.addEventListener("push", e => {
       { action: "decline", title: "📵 Refuser" },
     ],
   };
-  e.waitUntil(self.registration.showNotification(title, opts));
+  // L'accusé APRÈS l'affichage (2026-11-07) : un appel tiré au sort par
+  // `notify-call` porte un pid ; sans pid, rien ne part. L'interface d'appel
+  // (titre, boutons, `data` du tap) n'en sait rien.
+  e.waitUntil(self.registration.showNotification(title, opts).then(() => accuser(data, "appel")));
 });
 
 // Tap sur la notification (ou un de ses boutons) → ouvre/focus l'app avec les

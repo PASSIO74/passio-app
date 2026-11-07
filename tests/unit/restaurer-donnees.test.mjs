@@ -281,6 +281,22 @@ test("⑦ une table partitionnée ou étrangère : le DDL de reprise LÈVE en t�
   assert.ok(!/--/.test(lignes[0]), "aucun « -- » dans le DDL rendu (contrôle begin;/commit; de la reprise)");
 });
 
+test("⑦ ter une tâche cron qui APPELLE un projet n'est recopiée que sur lui (la restauration du 21/10 a installé sur le staging une veille qui appelait la production)", () => {
+  const { ETAPES, projetsAppeles, rendreTacheCron } = require("../../scripts/schema-executable.js");
+  const etape = ETAPES.find((e) => /^Tâches cron/.test(e.titre));
+  assert.ok(etape && typeof etape.rendu === "function", "l'étape des tâches cron existe");
+  const veille = { jobname: "pilotage_veille", schedule: "*/5 * * * *", command: "select net.http_post(url := 'https://njkiyoklssvefstljemx.supabase.co/functions/v1/pilotage')" };
+  const purge = { jobname: "purge_client_errors", schedule: "0 3 * * *", command: "DELETE FROM public.client_errors WHERE created_at < now() - interval '30 days'" };
+  assert.deepEqual(projetsAppeles(veille.command), ["njkiyoklssvefstljemx"]);
+  assert.deepEqual(projetsAppeles(purge.command), []);
+  const [v, p] = etape.rendu([veille, purge]);
+  assert.equal(v, rendreTacheCron(veille));
+  assert.match(v, /if not \(coalesce\(current_setting\('passio\.projet', true\), ''\) = 'njkiyoklssvefstljemx'\) then raise notice /, "SAUTÉE hors du projet qu'elle appelle, et dite");
+  assert.ok(v.indexOf("raise notice") < v.indexOf("perform cron.schedule"), "la garde AVANT la planification");
+  assert.doesNotMatch(p, /passio\.projet/, "une purge en SQL est recopiée comme avant");
+  for (const l of [v, p]) assert.ok(!/--/.test(l), "aucun « -- » dans le DDL rendu (contrôle begin;/commit; de la reprise)");
+});
+
 test("⑦ bis la comparaison voit une différence rangée sous une clé « __proto__ » (préexistant : elle la perdait)", () => {
   const a = [JSON.parse('{"id":"a","d":{"__proto__":{"x":1}}}')];
   const b = [JSON.parse('{"id":"a","d":{"__proto__":{"x":2}}}')];

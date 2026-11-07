@@ -2012,7 +2012,9 @@ function pickGroupPhoto(convId) {
   input.click();
 }
 
-function switchGroupTab(tab) {
+// `sansFocus` (facultatif) : basculer sur « Ajouter » SANS y donner le focus — un
+// rendu arrivé après un aller-retour réseau ne doit pas ouvrir le clavier sans geste.
+function switchGroupTab(tab, sansFocus) {
   var tabMembers = document.getElementById("grpTab_members");
   var tabAdd     = document.getElementById("grpTab_add");
   var panelMembers = document.getElementById("grpPanel_members");
@@ -2037,7 +2039,7 @@ function switchGroupTab(tab) {
     panelMembers.style.display = "none";
     panelAdd.style.display = "block";
     var inp = document.getElementById("grpSearchInput");
-    if (inp) inp.focus();
+    if (inp && !sansFocus) inp.focus();
   }
 }
 
@@ -2094,23 +2096,236 @@ function addGroupMember(convId, userId) {
   if (fp && fp.classList.contains("active")) renderConvFpThread(c, c.groupName || "Groupe");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// RETIRER UN MEMBRE D'UN GROUPE — L'ÉCRAN NE DIT QUE CE QUE LE SERVEUR A RENDU
+// (RV-44, 2026-11-06 ; corrigé après la revue du même jour)
+// ──────────────────────────────────────────────────────────────────────────
+// Le retrait partait à l'aveugle : DELETE envoyé, résultat ignoré, membre ôté de
+// l'état local et « retiré·e du groupe » annoncé quoi qu'il arrive. Or le SDK ne
+// LÈVE PAS sur un refus RLS, et un DELETE que la RLS filtre touche 0 ligne SANS
+// erreur : depuis C-04, la policy de lecture de conv_members cachait au CRÉATEUR
+// d'une discussion d'activité le membre qu'il avait bloqué — « Suppression admin »
+// touchait 0 ligne, le membre restait (il lisait et écrivait), et l'écran disait
+// le contraire. Côté base : migration_discussions_activite_2026-11-06.sql.
+// TROIS CHEMINS :
+//   · ce que le serveur n'a JAMAIS pu avoir → retrait LOCAL, comme avant, sans
+//     requête : un visiteur (pas de compte réel, `_compteAuthReel`), une ébauche
+//     de groupe restée locale (`conv_grp_…` : `supaCreateGroup` a échoué), un
+//     membre qui ne peut pas être en base (identifiant non uuid — les personnages
+//     de démonstration que « Nouveau groupe » propose : la clé étrangère
+//     conv_members.user_id → profiles les refuse) ;
+//   · un compte réel qui ne peut pas joindre le serveur — session expirée
+//     (`sessionExpiree()`) ou SDK non chargé (`_supaReal` faux) : RIEN ne change,
+//     et l'écran le dit — le membre est en base, l'ôter localement serait le
+//     mensonge corrigé ici (un groupe créé SANS SDK reste une ébauche `conv_grp_` :
+//     `supaCreateGroup` rend null quand le SDK n'est pas chargé, app-08) ;
+//   · sinon DELETE … RETURNING user_id (`.select("user_id")`), en lisant
+//     `{ error }` ET le nombre de lignes : 1 ligne → retiré, le comportement
+//     d'avant ; une erreur → « le serveur a refusé », sauf une réponse 5xx
+//     (« pas confirmé » : la ligne a pu partir) et un 401 (« reconnecte-toi ») ;
+//     une panne réseau → « pas de connexion : le retrait n'a pas été CONFIRMÉ » ;
+//     0 ligne n'est PAS « toujours membre » : on relit sa ligne ET la mienne —
+//     lui présent → « toujours membre » (lu) ; lui absent et moi visible → il
+//     n'y est déjà plus (parti, retiré ailleurs, ajout refusé) : retrait local,
+//     idempotent — SAUF dans une discussion d'activité (`evgrp_`) : C-04 y cache
+//     à tout membre NON créateur, même après la migration, le membre bloqué qui
+//     se relirait « absent » (et au créateur aussi tant qu'elle n'est pas
+//     appliquée) ; le bouton « Retirer » s'affiche à tous. Là, et dans tout autre
+//     doute, « le retrait n'a pas été confirmé par le serveur ».
+// Le succès arrive APRÈS l'aller-retour : la modale et le fil ne sont repeints
+// que s'ils montrent ENCORE ce groupe — sinon la modale fermée revenait, et le
+// fil du groupe s'affichait dans le panneau d'une AUTRE conversation, dont le
+// bouton d'envoi restait lié à l'autre destinataire (`_openedConvId`, la règle
+// de tout rendu asynchrone du fil, app-04) ; la modale rendue de nouveau garde
+// l'onglet « Ajouter » et sa recherche s'ils étaient ouverts. Un double toucher
+// pendant l'aller-retour ne repart pas. Rend une promesse (true = retiré) sur le
+// chemin serveur, false quand rien n'a pu partir, rien sur le chemin local ;
+// l'onclick inline l'ignore. Verrou : tests/e2e/retrait-membre-groupe.spec.js.
+// ══════════════════════════════════════════════════════════════════════════
+var _retraitsMembreEnVol = {};
+var _RE_UUID_MEMBRE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Le serveur a-t-il pu avoir cette appartenance ? Sinon : retrait local, comme avant.
+function _retraitMembreViseLeServeur(convId, userId) {
+  if (typeof _compteAuthReel !== "function" || !_compteAuthReel()) return false;
+  if (/^conv_grp_/.test(String(convId || ""))) return false;
+  return _RE_UUID_MEMBRE.test(String(userId || ""));
+}
+function _retraitMembreLocal(c, convId, userId, name, apresAllerRetour) {
+  c.userIds = (c.userIds || []).filter(function(id) { return id !== userId; });
+  c.messages.push({ id: "msg_" + uid(), from: "me", text: "👋 " + name + " a quitté le groupe.", at: Date.now(), fromName: "Passio" });
+  c.lastAt = Date.now();
+  saveConversations();
+  toast("🗑 " + name + " retiré·e du groupe");
+  if (!apresAllerRetour) {
+    _renderGroupMembersModal(convId);
+    var fp = document.getElementById("conv-fullpage");
+    if (fp && fp.classList.contains("active")) renderConvFpThread(c, c.groupName || "Groupe");
+    return;
+  }
+  // L'écran a pu changer pendant l'aller-retour : ne repeindre que ce qui montre ENCORE ce groupe.
+  var bd = document.getElementById("modalBackdrop");
+  if (bd && bd.classList.contains("active") && window._grpConvId === convId && document.getElementById("grpPanel_members")) {
+    // La modale est refaite sur l'onglet « Membres » : l'onglet « Ajouter » et sa
+    // recherche, s'ils étaient ouverts, sont rendus tels quels (revue du 06/11).
+    var panAjout = document.getElementById("grpPanel_add");
+    var surAjout = !!(panAjout && panAjout.style.display !== "none");
+    var champ = document.getElementById("grpSearchInput");
+    var recherche = champ ? String(champ.value || "") : "";
+    // Le focus n'est rendu que s'il était dans le champ (pas de clavier ouvert sans
+    // geste), et la liste garde sa position de défilement.
+    var avaitFocus = !!(champ && document.activeElement === champ);
+    var liste = document.getElementById("grpAddList");
+    var defilement = liste ? liste.scrollTop : 0;
+    _renderGroupMembersModal(convId);
+    if (surAjout && typeof switchGroupTab === "function") {
+      switchGroupTab("add", !avaitFocus);
+      var champ2 = document.getElementById("grpSearchInput");
+      if (champ2 && recherche) {
+        champ2.value = recherche;
+        if (typeof filterGroupAddList === "function") filterGroupAddList(recherche);
+      }
+      var liste2 = document.getElementById("grpAddList");
+      if (liste2 && defilement) liste2.scrollTop = defilement;
+    }
+  }
+  var fp2 = document.getElementById("conv-fullpage");
+  if (fp2 && fp2.classList.contains("active") && window._openedConvId === convId) renderConvFpThread(c, c.groupName || "Groupe");
+}
+// L'échec, dit sans affirmer plus que ce qui a été lu. Trace sans donnée
+// personnelle : ni nom, ni identifiant — la cause et le code seuls.
+function _retraitMembreEchec(name, cause, raison) {
+  var textes = {
+    reseau: "Pas de connexion : le retrait de " + name + " n'a pas été confirmé. Réessaie quand le réseau revient.",
+    // SDK non chargé : il ne se recharge pas tout seul quand le réseau revient
+    // (`ensureSupabase` garde sa promesse rejetée) — seul un rechargement le remet.
+    hors_ligne: "Le service n'a pas pu se charger : recharge l'application pour retirer " + name + " du groupe.",
+    session: "Ta session a expiré — reconnecte-toi pour retirer " + name + " du groupe.",
+    refus: "Le serveur a refusé le retrait de " + name + ".",
+    toujours_membre: name + " est toujours membre du groupe : le serveur n'a pas accepté le retrait.",
+    non_confirme: "Le retrait de " + name + " n'a pas été confirmé par le serveur.",
+  };
+  try {
+    if (typeof diagLog === "function") {
+      var code = raison && typeof raison === "object" ? (raison.code || raison.status || "") : "";
+      diagLog("conv_members retrait non confirmé", cause, String(code).slice(0, 12));
+    }
+  } catch (e) {}
+  toast(textes[cause] || textes.non_confirme, "error");
+}
+// Une session vivante ? Sans moyen de le savoir, on le suppose : on n'affirme jamais
+// « reconnecte-toi » sans l'avoir lu.
+function _sessionVivante() {
+  try {
+    if (typeof supa === "undefined" || !supa || !supa.auth || typeof supa.auth.getSession !== "function") return Promise.resolve(true);
+    return Promise.resolve(supa.auth.getSession()).then(function(r) {
+      return !!(r && r.data && r.data.session);
+    }, function() { return true; });
+  } catch (e) {
+    return Promise.resolve(true);
+  }
+}
+// 0 ligne : le membre est-il encore là ? Sa ligne ET la mienne (témoin : si je ne
+// me vois pas, son absence ne prouve rien). Rend "present", "absent" ou "inconnu".
+function _relireAppartenance(convId, userId) {
+  var moi = typeof MY_UID !== "undefined" && MY_UID ? MY_UID : "";
+  var lecture;
+  try {
+    lecture = Promise.resolve(supa.from("conv_members").select("user_id").eq("conv_id", convId).in("user_id", [moi, userId]));
+  } catch (e) {
+    lecture = Promise.reject(e);
+  }
+  return lecture.then(function(r) {
+    if (!r || r.error || !Array.isArray(r.data)) return "inconnu";
+    var ids = r.data.map(function(x) { return x && x.user_id; });
+    if (ids.indexOf(userId) >= 0) return "present";
+    if (ids.indexOf(moi) < 0) return "inconnu";
+    // C-04 cache, dans une discussion d'activité, un membre bloqué avec moi — même
+    // à son créateur avant la migration : là, « absent » n'est pas une preuve.
+    if (/^evgrp_/.test(String(convId || ""))) return "inconnu";
+    return "absent";
+  }, function() { return "inconnu"; });
+}
 function removeGroupMember(convId, userId) {
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) return;
   var name = _groupMemberName(userId);
-  c.userIds = (c.userIds || []).filter(function(id) { return id !== userId; });
-  c.messages.push({ id: "msg_" + uid(), from: "me", text: "👋 " + name + " a quitté le groupe.", at: Date.now(), fromName: "Passio" });
-  c.lastAt = Date.now();
-  saveConversations();
-  // Sync Supabase : retire le membre (autorisé au créateur via policy « Suppression admin »).
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal) {
-    try { supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", userId).then(function(){}, function(){}); } catch(e) {}
+  if (!_retraitMembreViseLeServeur(convId, userId)) {
+    _retraitMembreLocal(c, convId, userId, name);
+    return;
   }
-  toast("🗑 " + name + " retiré·e du groupe");
-  _renderGroupMembersModal(convId);
-  var fp = document.getElementById("conv-fullpage");
-  if (fp && fp.classList.contains("active")) renderConvFpThread(c, c.groupName || "Groupe");
+  if (typeof sessionExpiree === "function" && sessionExpiree()) {
+    _retraitMembreEchec(name, "session");
+    return false;
+  }
+  if (!(typeof supa !== "undefined" && supa && window._supaReal)) {
+    _retraitMembreEchec(name, "hors_ligne");
+    return false;
+  }
+  var cle = convId + "\u0000" + userId;
+  if (_retraitsMembreEnVol[cle]) return _retraitsMembreEnVol[cle];
+  var envoi;
+  // Supabase : retire le membre (autorisé au créateur via la policy « Suppression admin »).
+  try {
+    envoi = Promise.resolve(supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", userId).select("user_id"));
+  } catch (e) {
+    envoi = Promise.reject(e);
+  }
+  var retirerIci = function() {
+    // L'état a pu être relu pendant l'aller-retour : on retire sur la conversation COURANTE.
+    var courante = getConversations().find(function(x) { return x.id === convId; }) || c;
+    _retraitMembreLocal(courante, convId, userId, name, true);
+    return true;
+  };
+  var suite = envoi.then(function(r) {
+    if (r && r.error) {
+      // Une réponse 5xx (passerelle, délai) n'est pas un refus : le DELETE a pu être
+      // validé — « pas confirmé » ; un 401 dit la session, pas la policy.
+      // 429 (limiteur) et un statut 0 que `estEchecReseau` ne reconnaît pas (abandon)
+      // ne sont pas des refus non plus : rien n'a été tranché.
+      var statut = Number(r.status) || 0;
+      var cause = (typeof estEchecReseau === "function" && estEchecReseau(r.error)) ? "reseau"
+        : statut === 401 ? "session"
+        : (statut >= 500 || statut === 429 || statut === 0) ? "non_confirme"
+        : "refus";
+      // La trace garde le statut HTTP : l'objet d'erreur du SDK ne le porte pas.
+      _retraitMembreEchec(name, cause, { code: (r.error && r.error.code) || String(statut || "") });
+      return false;
+    }
+    if (r && Array.isArray(r.data) && r.data.length >= 1) return retirerIci();
+    return _relireAppartenance(convId, userId).then(function(etat) {
+      if (etat === "absent") return retirerIci();
+      if (etat === "present") {
+        _retraitMembreEchec(name, "toujours_membre", { code: "0 ligne" });
+        return false;
+      }
+      // « inconnu » — je ne me vois pas moi-même : la session a pu mourir. Le DELETE
+      // part alors sous la clé anon, que « Suppression admin » (TO public) admet :
+      // 200 [] sans erreur, et la relecture est vide. Sans session vivante, le dire
+      // et poser le mode « session expirée », comme la publication (app-08).
+      return _sessionVivante().then(function(vivante) {
+        if (!vivante) {
+          try { if (typeof poserSessionExpiree === "function") poserSessionExpiree("retrait_membre"); } catch (e) {}
+          _retraitMembreEchec(name, "session", { code: "sans session" });
+        } else {
+          _retraitMembreEchec(name, "non_confirme", { code: "0 ligne" });
+        }
+        return false;
+      });
+    });
+  }, function(e) {
+    _retraitMembreEchec(name, typeof estEchecReseau === "function" && estEchecReseau(e) ? "reseau" : "non_confirme", e);
+    return false;
+  }).then(function(ok) {
+    delete _retraitsMembreEnVol[cle];
+    return ok;
+  }, function(e) {
+    delete _retraitsMembreEnVol[cle];
+    try { console.warn("[groupe] retrait d'un membre :", e && e.message); } catch (_e) {}
+    return false;
+  });
+  _retraitsMembreEnVol[cle] = suite;
+  return suite;
 }
 
 // Quitter un groupe : retire MA propre adhésion (RLS « Suppression propre ») et
@@ -3012,7 +3227,9 @@ async function _chargerDiscussionBobine(postId) {
     _fusionnerPageCommentaires(findPostAnywhere(postId) || reel, page);
     // Les index d'une réponse en cours ne survivent pas à un re-tri.
     window.replyingToCommentIdx = null;
-    if (typeof hydrateCommentInteractions === "function") { try { await hydrateCommentInteractions(reel); } catch (e) {} }
+    // Sans l'épingle (RV-38) : ce panneau ne l'affiche pas. La page détail d'une
+    // bobine, elle, la lit (`_loadPostDetailComments`).
+    if (typeof hydrateCommentInteractions === "function") { try { await hydrateCommentInteractions(reel, { epingle: false }); } catch (e) {} }
     window._cmtThreadLoadedAt[postId] = Date.now();
     if (window.currentReelCommentPostId === postId) loadReelComments(postId);
   } catch (e) { try { diagLog("bobine_commentaires", e && e.message); } catch (_e) {} }
@@ -3049,7 +3266,11 @@ function loadReelComments(postId) {
     const timeStr = _ts ? fmtTime(_ts) : "Maintenant";
     const likesCount = c.likes || 0;
     const isLiked = (c.likedBy || []).includes(state.user?.id || "me");
-    const replies = c.replies || [];
+    // Ce panneau liste les réactions emoji d'un commentaire et les COMPTE dans
+    // « N réponses » : celle d'un compte BLOQUÉ n'y entre pas, même règle que la
+    // pastille du fil (`_reponsesComptees`, app-04). Les réponses texte et les
+    // GIF sont des réponses, pas des réactions : ce filtre n'y touche pas.
+    const replies = (typeof _reponsesComptees === "function") ? _reponsesComptees(c.replies) : (c.replies || []);
 
     let commentHTML = `
       <div class="reel-comment-item">

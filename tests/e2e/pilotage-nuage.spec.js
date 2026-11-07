@@ -988,3 +988,309 @@ test("㉝ jeton GitHub expiré : première ligne, le bouton ouvre GitHub, le sec
   await expect(erreur.locator(".btn-regler")).toHaveCount(0);
   await expect(page.locator("#toutRegler")).toBeHidden();
 });
+
+// ─── Parcours critiques, veille, politique (2026-11-06) ────────────────────────
+// L'état est construit par les VRAIES fonctions du serveur (bilanParcours,
+// resumerBattement, resumerPolitique), comme la liste « À faire ».
+function etatParcours({ battementAge = 5 * 60e3, codeHostile = false } = {}) {
+  const { bilanParcours, couverture, confirmerPannes } = require("../../supabase/functions/_shared/parcours.js");
+  const { resumerBattement } = require("../../supabase/functions/_shared/battement.js");
+  const { resumerPolitique } = require("../../supabase/functions/_shared/politique-autonomie.js");
+  const t = Date.now(), ts = new Date(t - 10 * 60e3).toISOString();
+  const lignes = [];
+  const flux = (action, compte, ok, rc) => {
+    const cid = "fl_e2e" + (lignes.length + 1000);
+    lignes.push({ event_id: cid + "a", correlation_id: cid, action: "start", status: "ok", meta: { flow_action: action }, auth_uid: compte, received_at: ts, client_ts: ts });
+    lignes.push({ event_id: cid + "b", correlation_id: cid, action: "step", status: ok ? "ok" : "error", meta: { step: "saved", ...(rc ? { rc } : {}) }, auth_uid: compte, received_at: ts, client_ts: ts });
+    lignes.push({ event_id: cid + "c", correlation_id: cid, action: "end", status: ok ? "ok" : "error", meta: {}, auth_uid: compte, received_at: ts, client_ts: ts });
+  };
+  ["u1", "u2", "u3"].forEach((u) => flux("send_message", u, false, codeHostile ? CHARGE : "42501"));
+  flux("like_post", "u1", true);
+  // Confirmée comme le fait la fonction : les comptes en échec relus anciens.
+  const jour = confirmerPannes(bilanParcours(lignes, { maintenant: t, garderComptes: true }), new Set(["u1", "u2", "u3"]));
+  const parcours = { ...jour, couverture: couverture(jour), recent: { parcours: jour.parcours } };
+  const lect = { sante: "ok", signalements: "ok", github: "ok", parcours: "ok" };
+  const battement = resumerBattement({ created_at: new Date(t - battementAge).toISOString(), properties: { lectures: lect, revision: "abc1234", gestes: { reveil: "fait" } } }, 95, t);
+  return etat({ parcours, battement, politique: resumerPolitique() });
+}
+
+test("㉞ parcours en panne : une ligne sur l'accueil et son bouton ; le détail dit le dénominateur, le gris et la couverture", async ({ page }) => {
+  const envois = [];
+  await poserSession(page);
+  await routerFonction(page, envois, etatParcours());
+  await page.goto("/pilotage/");
+  const ligne = page.locator("#afaire .ligne", { hasText: "« Envoyer un message » échoue" });
+  await expect(ligne).toBeVisible();
+  await ligne.locator("button", { hasText: "Régler" }).click();
+  await expect.poll(() => gestes(envois).map((e) => e.corps)).toEqual([{ action: "relancer", cible: "sentinelle" }]);
+  await aller(page, "details");
+  const msg = page.locator("#parcours .carte", { hasText: "Envoyer un message ★" });
+  await expect(msg).toContainText("En panne");
+  await expect(msg).toContainText("0 réussie(s) sur 3 jugée(s) en 24 h");
+  await expect(msg).toContainText("Codes des échecs : 42501 ×3");
+  // Une seule action réussie : « Trop peu », gris — jamais « OK » par défaut.
+  await expect(page.locator("#parcours .carte", { hasText: "Aimer une publication" })).toContainText("Trop peu");
+  await expect(page.locator("#parcours .carte", { hasText: "Signaler un contenu" })).toContainText("Pas vu");
+  await expect(page.locator("#couverture")).toContainText("pas encore instrumenté");
+  await expect(page.locator("#couverture")).toContainText("Se connecter");
+  await expect(page.locator("#veilleBattement")).toContainText("Elle tourne");
+  await expect(page.locator("#veilleBattement")).toContainText("95/96 battements en 24 h");
+  await expect(page.locator("#politique")).toContainText("Appliquée");
+  await expect(page.locator("#politique")).toContainText("Jamais seuls : Retirer seule une mise en ligne");
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+});
+
+test("㉟ veille arrêtée : urgence en tête, le bouton ouvre sa planification ; un code hostile reste du texte", async ({ page }) => {
+  await poserSession(page);
+  await routerFonction(page, [], etatParcours({ battementAge: 3 * 3600e3, codeHostile: true }));
+  await page.goto("/pilotage/");
+  const ligne = page.locator("#afaire .ligne", { hasText: "La veille ne tourne plus" });
+  await expect(ligne).toBeVisible();
+  await expect(ligne.locator("a", { hasText: "Régler" })).toHaveAttribute("href", /supabase\.com\/dashboard\/project\/njkiyoklssvefstljemx\/integrations\/cron/);
+  await aller(page, "details");
+  await expect(page.locator("#veilleBattement")).toContainText("Arrêtée");
+  // Le code écrit par un navigateur arrive assaini par le serveur, et rendu en texte.
+  await expect(page.locator("#parcours .carte", { hasText: "Envoyer un message ★" })).toContainText("Codes des échecs : autre ×3");
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+});
+
+// ─── Accusés de réception des notifications (2026-11-06) ─────────────────────
+// « Abonné » n'est pas « reçue » : la carte des abonnements ne promet plus rien,
+// la réception se dit par les accusés du service worker (_shared/reception.js).
+test("㊱ réception : l'écran dit « abonné », puis ce que l'accusé prouve, et le taux des rappels ; aucune ligne pour une alerte reçue", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 2 * 3600e3).toISOString();
+  await routerFonction(page, [], etat({ alertes: { appareils: 2, vapid: true },
+    reception: { derniereAlerte: { etat: "recue", le, acceptes: 2, recus: 1, delaiMs: 4000 }, rappels: { etat: "mesure", envoyes: 10, recus: 9, enAttente: 1, taux: 0.9 }, accusesIgnores: 0, tronque: false } }));
+  await page.goto("/pilotage/");
+  await expect(page.locator("#afaire .ligne", { hasText: "aucun appareil" })).toHaveCount(0);
+  await aller(page, "reglages");
+  const z = page.locator("#alertes");
+  await expect(z).toContainText("2 appareil(s) abonné(s) aux alertes");
+  await expect(z).not.toContainText("recevront");
+  await expect(z.locator(".carte", { hasText: "Dernière alerte reçue" })).toContainText("1 appareil(s) sur 2, 4 s après l'envoi");
+  await expect(z.locator(".carte", { hasText: "Rappels d'activité reçus (24 h)" })).toContainText("90 %");
+  await expect(z.locator(".carte", { hasText: "Rappels d'activité reçus (24 h)" })).toContainText("1 en attente");
+});
+
+test("㊲ une alerte NON reçue : la ligne « À faire » envoie un essai et mène à l'application, la carte le dit ; une lecture manquée dit « Non lu », jamais « calme »", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 3600e3).toISOString();
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true },
+    reception: { derniereAlerte: { etat: "non_recue", le, acceptes: 1, recus: 0 }, rappels: { etat: "insuffisant", envoyes: 2, recus: 1, enAttente: 0 }, accusesIgnores: 3, tronque: false } }));
+  await page.goto("/pilotage/");
+  // Une ligne de priorité 1 vient après les urgences de l'état de base : la liste se déplie.
+  await page.locator("#afaireSuite").click();
+  const ligne = page.locator("#afaire .ligne", { hasText: "Ta dernière alerte n'est arrivée sur aucun appareil" });
+  await expect(ligne).toBeVisible();
+  // « Régler » ENVOIE un essai (2026-11-07) ; l'application s'ouvre à côté, rangée sous le texte.
+  await expect(ligne.locator("button.btn-regler")).toHaveText("Régler");
+  if (!(await ligne.locator("details").evaluate((d) => d.open))) await ligne.locator("summary").click();
+  await expect(ligne.locator("a", { hasText: "Ouvrir PASSIO" })).toHaveAttribute("href", "https://passio-app.netlify.app/?equipe=1");
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte non reçue" })).toBeVisible();
+  await expect(page.locator("#alertes .carte", { hasText: "Rappels d'activité (24 h)" })).toContainText("il en faut 5");
+
+  // La lecture des accusés a échoué : l'ACCUEIL ne dit pas « Rien à régler » (le
+  // voyant de l'écran vient de verdictAffiche, où « reception » est une source), et
+  // la carte le dit.
+  const { verdictAffiche } = require("../../supabase/functions/_shared/pilotage.js");
+  const sans = etat({ alertes: { appareils: 1, vapid: true }, erreursLecture: { reception: "délai dépassé" }, nonLus: ["reception"],
+    verdict: verdictAffiche({ couleur: "vert", titre: "Tout va bien", raisons: [] }, ["reception"]), aFaire: [] });
+  delete sans.reception;
+  await routerFonction(page, [], sans);
+  await page.reload();
+  await expect(page.locator("#verdictDetail")).toContainText("non lu : réception des alertes");
+  await expect(page.locator("#verdictDetail")).not.toContainText("Rien à régler");
+  await expect(page.locator("#verdictTitre")).not.toHaveText("Tout va bien");
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Réception des alertes" })).toContainText("Non lu");
+  await expect(page.locator("#alertes .carte", { hasText: "Réception des alertes" })).toContainText("délai dépassé");
+});
+
+test("㊳ alerte reçue sur un seul de deux appareils : la carte dit LEQUEL s'est tu ; une mesure impossible et un taux partiel se disent", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 3600e3).toISOString();
+  await routerFonction(page, [], etat({ alertes: { appareils: 2, vapid: true },
+    reception: { derniereAlerte: { etat: "recue", le, acceptes: 2, recus: 1, delaiMs: 3000, appareils: [{ service: "chrome", recu: false, delaiMs: null }, { service: "edge", recu: true, delaiMs: 3000 }] },
+      rappels: { etat: "partiel", envoyes: 12, recus: 9, enAttente: 0 }, accusesIgnores: 0, tronque: true } }));
+  await page.goto("/pilotage/");
+  await aller(page, "reglages");
+  const recue = page.locator("#alertes .carte", { hasText: "Dernière alerte reçue" });
+  await expect(recue).toContainText("pas d'accusé de : Chrome");
+  await expect(page.locator("#alertes .carte", { hasText: "Rappels d'activité (24 h)" })).toContainText("pas de taux");
+  await expect(page.locator("#alertes .carte", { hasText: "Rappels d'activité (24 h)" })).not.toContainText("%");
+
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true },
+    reception: { derniereAlerte: { etat: "non_mesuree", le, raison: "sans_adresse" }, rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false } }));
+  await page.reload();
+  await accueil(page);
+  await expect(page.locator("#afaire .ligne").first()).toBeVisible();
+  if (await page.locator("#afaireSuite").isVisible()) await page.locator("#afaireSuite").click();
+  await expect(page.locator("#afaire .ligne", { hasText: "n'a pas pu être mesurée" })).toBeVisible();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte non mesurée" })).toContainText("adresse d'accusé absente");
+});
+
+test("㊴ l'essai des alertes se dit ESSAI : « Dernier essai des alertes reçu », et un essai non reçu a sa ligne « À faire »", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 2 * 3600e3).toISOString();
+  await routerFonction(page, [], etat({ alertes: { appareils: 2, vapid: true },
+    reception: { derniereAlerte: { etat: "recue", essai: true, le, acceptes: 2, recus: 2, delaiMs: 2000, appareils: [{ service: "chrome", recu: true, delaiMs: 2000 }, { service: "edge", recu: true, delaiMs: 5000 }] },
+      rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false } }));
+  await page.goto("/pilotage/");
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernier essai des alertes reçu" })).toContainText("2 appareil(s) sur 2");
+  await expect(page.locator("#alertes")).not.toContainText("Dernière alerte reçue");
+
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true },
+    reception: { derniereAlerte: { etat: "non_recue", essai: true, le, acceptes: 1, recus: 0, appareils: [{ service: "chrome", recu: false, delaiMs: null }] },
+      rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false } }));
+  await page.reload();
+  await accueil(page);
+  await expect(page.locator("#afaire .ligne").first()).toBeVisible();
+  if (await page.locator("#afaireSuite").isVisible()) await page.locator("#afaireSuite").click();
+  await expect(page.locator("#afaire .ligne", { hasText: "L'essai de tes alertes n'est arrivé sur aucun appareil" })).toBeVisible();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernier essai non reçu" })).toBeVisible();
+});
+
+// Le 07/11 à 07:53 : quatre « Régler » en 70 s sur le filet orange, quatre analyses
+// de la Sentinelle réussies, et une ligne identique après chacun — Benjamin : « je
+// n'ai pas l'impression qu'il s'applique ». La fonction note la relance, l'écran se
+// relit au frais puis se relit SEUL : le geste se voit, son résultat aussi.
+test("㊵ « Régler » se voit : « Lancé ✓ », relu AU FRAIS, la ligne passe « en cours », puis le suivi la relit seul — vérifiée, rangée dans Pour info", async ({ page }) => {
+  await poserSession(page);
+  await page.addInitScript(() => { window.PILOTAGE_SUIVI_RELANCE_MS = [400, 900]; });
+  const T0 = Date.now();
+  const ancien = { etat: "completed", conclusion: "success", cree: new Date(T0 - 6 * 3600e3).toISOString(), le: new Date(T0 - 6 * 3600e3 + 20e3).toISOString(), url: null };
+  const orange = { couleur: "orange", titre: "À surveiller", raisons: ["2 erreur(s) dans l'app en 15 min"] };
+  const calme = { signalements: { ouverts: 0, liste: [] }, erreurs: { ...BASE.erreurs, details: [] }, capacite: { mesuresServeur: true, jauges: [] }, verdict: orange };
+  const gh = (sentinelle) => ({ ...GH, issues: [], aReparer: [], runs: { ...GH.runs, sentinelle } });
+  let relanceLe = null, relectures = 0;
+  const envois = [];
+  await page.route(FONCTION, async (r) => {
+    const corps = r.request().postDataJSON();
+    envois.push(corps);
+    if (corps.action === "relancer") { relanceLe = new Date().toISOString(); await r.fulfill({ json: { ok: true, suivie: true, message: "Lancé : Sentinelle (banc)." } }); return; }
+    // Après le geste, la première relecture ne voit pas encore le run (GitHub tarde à le
+    // lister) ; la suivante le voit fini, sans rien ouvert.
+    let e;
+    if (!relanceLe) e = etat({ ...calme, github: gh(ancien) });
+    else if (relectures++ === 0) e = etat({ ...calme, github: gh(ancien), relances: { sentinelle: relanceLe } });
+    else {
+      const t = Date.parse(relanceLe);
+      e = etat({ ...calme, github: gh({ etat: "completed", conclusion: "success", cree: new Date(t + 1000).toISOString(), le: new Date(t + 1500).toISOString(), url: null }), relances: { sentinelle: relanceLe } });
+    }
+    await r.fulfill({ json: e });
+  });
+  await page.goto("/pilotage/");
+  const ligne = page.locator("#afaire .ligne", { hasText: "2 erreur(s) dans l'app en 15 min" });
+  await expect(ligne).toBeVisible();
+  await ligne.locator(".btn-regler").click();
+  // Parti : la demande exacte, puis une relecture FRAÎCHE (le cache de GitHub d'un autre isolat ne la fige plus).
+  await expect.poll(() => envois.filter((c) => c.action === "relancer")).toEqual([{ action: "relancer", cible: "sentinelle" }]);
+  await expect.poll(() => envois.some((c) => c.action === "etat" && c.frais === true)).toBe(true);
+  // En cours : la ligne quitte « À faire » et dit l'heure du geste.
+  await expect(page.locator("#enCours .ligne", { hasText: /La Sentinelle démarre \(lancée à \d\d:\d\d\)/ })).toBeVisible();
+  // Le suivi relit SEUL, au frais : vérifiée, la ligne se range dans Pour info, sans « Régler ».
+  await expect(page.locator("#afaire .ligne")).toHaveCount(0);
+  await expect(page.locator("#enCours .ligne")).toHaveCount(0);
+  await expect(page.locator("#verdictDetail")).toContainText("2 erreur(s) dans l'app en 15 min");
+  await aller(page, "details");
+  await page.click("#pourInfoTitre");
+  const rangee = page.locator("#pourInfo .ligne", { hasText: /La Sentinelle a vérifié à \d\d:\d\d : rien qu'elle puisse corriger/ });
+  await expect(rangee).toBeVisible();
+  await expect(rangee.locator(".btn-regler")).toHaveCount(0);
+  expect(envois.filter((c) => c.action === "etat" && c.frais === true).length).toBeGreaterThanOrEqual(2);
+});
+
+// Le 07/11 à 08:10 : le premier essai est parti « sans_adresse » vers deux appareils
+// qui l'ont accepté — aucun ne pouvait l'accuser, et « Régler » sur la ligne des
+// alertes n'ouvrait qu'une page. Désormais l'essai se demande d'un toucher, et une
+// adresse d'accusé absente se dit, en formes.
+test("㊶ les alertes s'essaient d'un toucher : « Envoyer un essai maintenant » envoie { action: essai }, la ligne « À faire » aussi ; une adresse d'accusé absente se dit, en formes", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  const reception = { derniereAlerte: { etat: "non_mesuree", essai: true, raison: "sans_adresse", le: new Date(Date.now() - 20 * 60e3).toISOString(), adresse: { url: "ok", anon: "publiable", publiables: "absente" } },
+    rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false };
+  await routerFonction(page, envois, etat({ alertes: { appareils: 2, vapid: true, accuse: { mesurable: false, url: "ok", anon: "publiable", publiables: "absente", cle: "absente" } }, reception }),
+    { essai: { ok: true, message: "Essai envoyé à 2 appareil(s) (banc)." } });
+  await page.goto("/pilotage/");
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Accusés de réception impossibles" })).toContainText("clé anon : publiable");
+  await page.locator("#alertes button", { hasText: "Envoyer un essai maintenant" }).click();
+  await expect.poll(() => gestes(envois).map((e) => e.corps)).toEqual([{ action: "essai" }]);
+  await expect(page.locator("#bandeauOk")).toContainText("Essai envoyé à 2 appareil(s)");
+  // La ligne « À faire » : son « Régler » envoie l'essai, « Ouvrir PASSIO » reste à côté.
+  await accueil(page);
+  if (await page.locator("#afaireSuite").isVisible()) await page.locator("#afaireSuite").click();
+  const ligne = page.locator("#afaire .ligne", { hasText: "La réception de ta dernière alerte n'a pas pu être mesurée" });
+  await expect(ligne).toBeVisible();
+  await expect(ligne).toContainText("clé anon : publiable");
+  await ligne.locator(".btn-regler").click();
+  await expect.poll(() => gestes(envois).length).toBe(2);
+  expect(gestes(envois)[1].corps).toEqual({ action: "essai" });
+});
+
+// ─── Les APPELS mesurés (notify-call, 2026-11-07) ────────────────────────────
+// Un appel sur dix porte un accusé (_shared/appels.js) : la carte dit le taux
+// des 24 h comme celle des rappels — et qu'il s'agit d'un échantillon.
+test("㊷ les appels : un taux sur 24 h qui se dit ÉCHANTILLON, « trop peu » sous 5, « partiel » sans taux, « coupés » quand ils le sont ; une fonction d'avant ce lot n'affiche aucune carte d'appels, jamais un faux zéro", async ({ page }) => {
+  await poserSession(page);
+  const le = new Date(Date.now() - 3600e3).toISOString();
+  const reception = (appels) => ({ derniereAlerte: { etat: "recue", le, acceptes: 1, recus: 1, delaiMs: 2000 },
+    rappels: { etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0 }, accusesIgnores: 0, tronque: false, ...(appels ? { appels } : {}) });
+  const titres = (page) => page.locator("#alertes .carte-titre", { hasText: /^Appels/ });
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "mesure", envoyes: 13, recus: 12, enAttente: 1, taux: 12 / 13, echantillon: 10 }) }));
+  await page.goto("/pilotage/");
+  await aller(page, "reglages");
+  const mesure = page.locator("#alertes .carte", { hasText: "Appels reçus (24 h)" });
+  await expect(mesure).toContainText("92 %");
+  await expect(mesure).toContainText("12 reçus sur 13 appels mesurés");
+  await expect(mesure).toContainText("1 en attente");
+  await expect(mesure).toContainText("un appel sur 10 est mesuré");
+  await expect(mesure).toHaveClass(/vert/);
+  // Un taux bas se colore ; il ne déclenche aucune ligne « À faire » (comme les rappels).
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "mesure", envoyes: 10, recus: 6, enAttente: 0, taux: 0.6, echantillon: 10 }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Appels reçus (24 h)" })).toHaveClass(/orange/);
+  // Trop peu : aucun taux, la raison et l'échantillon dits.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 2, recus: 2, enAttente: 1, echantillon: 10 }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  const peu = page.locator("#alertes .carte", { hasText: "Appels (24 h)" });
+  await expect(peu).toContainText("Trop peu");
+  await expect(peu).toContainText("2 appel(s) mesuré(s) jugeable(s) : il en faut 5 pour un taux");
+  await expect(peu).toContainText("un appel sur 10 est mesuré");
+  await expect(peu).not.toContainText("%");
+  // Partiel : jamais un taux sur une lecture plafonnée.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: { ...reception({ etat: "partiel", envoyes: 290, recus: 250, enAttente: 0, echantillon: 10 }), tronque: true } }));
+  await page.reload();
+  await aller(page, "reglages");
+  const partiel = page.locator("#alertes .carte", { hasText: "Appels (24 h)" });
+  await expect(partiel).toContainText("pas de taux, au moins 250 reçus sur 290 appels mesurés");
+  await expect(partiel).not.toContainText("%");
+  // Appels COUPÉS (pilote) et rien dans la fenêtre : « Coupés », la raison dite — jamais « 0 appel mesuré ».
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 0, recus: 0, enAttente: 0, echantillon: 10, actifs: false }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  const coupes = page.locator("#alertes .carte", { hasText: "Appels (24 h)" });
+  await expect(coupes).toContainText("Coupés");
+  await expect(coupes).toContainText("Les appels sont coupés pendant le pilote : aucune push d'appel ne part");
+  await expect(coupes).toContainText("un appel sur 10 est mesuré");
+  await expect(coupes).not.toContainText("appel(s) mesuré(s)");
+  await expect(titres(page)).toHaveCount(1);
+  // Coupés depuis peu, mais des appels mesurés dans la fenêtre : on montre ce qu'ils disent.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception({ etat: "insuffisant", envoyes: 3, recus: 3, enAttente: 0, echantillon: 10, actifs: false }) }));
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Appels (24 h)" })).toContainText("3 appel(s) mesuré(s) jugeable(s)");
+  // Une fonction d'avant ce lot ne rend pas `appels` : aucune carte d'appels.
+  await routerFonction(page, [], etat({ alertes: { appareils: 1, vapid: true }, reception: reception(null) }));
+  await page.reload();
+  await aller(page, "reglages");
+  await expect(page.locator("#alertes .carte", { hasText: "Dernière alerte reçue" })).toBeVisible();
+  await expect(titres(page)).toHaveCount(0);
+});

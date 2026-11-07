@@ -3525,7 +3525,10 @@ async function setEventRsvp(id, rsvp) {
     try { if (typeof diagLog === "function") diagLog("rsvp KO " + id + " " + String(rsvp)); } catch (e) {}
     // Le refus serveur, avec son motif fermé (complete/annulee/passee) ou
     // « refus » — jamais le message affiché.
-    _rsvpRegle(false, (rsvp && window._irlRefusMotif) || "refus");
+    // Un refus sans motif fermé, pour un compte qui s'est DÉCLARÉ mineur, est la
+    // règle IRL (`irl_adult_only`) : « majorite », jamais une panne du parcours.
+    const _mineur = (() => { try { return typeof irlProposerEstMineur === "function" && irlProposerEstMineur() === true; } catch (e) { return false; } })();
+    _rsvpRegle(false, (rsvp && window._irlRefusMotif) || (rsvp && _mineur ? "majorite" : "refus"));
   };
   const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
   ev.attendees = strip(ev.attendees);
@@ -5314,7 +5317,9 @@ function _setEventComments(eventId, serverList) {
   return arr;
 }
 
-async function _loadEventComments(eventId) {
+// `opts.epingle === false` : ne pas relire l'épingle (un rechargement déclenché
+// par le temps réel : le direct la tient déjà — RV-38, contre-revue du delta P3-B).
+async function _loadEventComments(eventId, opts) {
   // Cible : la page détail (#eventCommentsList) OU la feuille inline ouverte depuis
   // une carte (#cmtThreadList). Sans ce 2ᵉ cas, commenter un événement depuis sa
   // carte n'affichait jamais les commentaires distants (early-return → "Chargement…").
@@ -5333,7 +5338,8 @@ async function _loadEventComments(eventId) {
   // Interactions cross-compte (likes + réponses + emojis) via comment_interactions :
   // hydrate puis re-render avec le renderer riche unifié.
   if (typeof hydrateCommentInteractions === "function") {
-    hydrateCommentInteractions({ comments: _eventCommentsCache[eventId] }).then(function(){ _persistEventComments(); _renderEventComments(eventId); });
+    // `id` : le FIL (l'activité) — sans lui, aucune épingle n'est décidée (RV-38).
+    hydrateCommentInteractions({ id: eventId, comments: _eventCommentsCache[eventId] }, opts).then(function(){ _persistEventComments(); _renderEventComments(eventId); });
   }
 }
 

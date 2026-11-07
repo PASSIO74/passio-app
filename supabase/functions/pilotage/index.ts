@@ -37,6 +37,7 @@ import {
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
   pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
+  EVT_GESTE, RELANCE_SUIVIE_MS,
 } from "../_shared/pilotage.js";
 import { croissance } from "../_shared/croissance.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
@@ -44,9 +45,15 @@ import {
   CLES_REGLAGES, COUPURES_AUTORISEES, normaliserReglage, normaliserMotif, decideDelestage, resumerReglages,
 } from "../_shared/reglages.js";
 import {
-  RETOUR, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
-  continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt,
+  RETOUR, REVEIL, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
+  continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt, prendreCreneau,
 } from "../_shared/autonomie.js";
+// Parcours critiques, politique d'automatisation, battement (2026-11-06).
+import { bilanParcours, couverture as couvertureParcours, confirmerPannes, comptesAVerifier, melanger } from "../_shared/parcours.js";
+import { POLITIQUE, autoriser, resumerPolitique } from "../_shared/politique-autonomie.js";
+import { BATTEMENT, AUTEUR_BATTEMENT, BATTEMENT_TOUTES_MS, contenuBattement, resumerBattement } from "../_shared/battement.js";
+import { EVT_ENVOI, TYPE_ACCUSE, ACTION_ACCUSE, DELAI_ACCUSE_MS, JUGEMENT_MAX_MS, FENETRE_RAPPELS_MS, FENETRE_APPELS_MS, UID_APPELS, NOTES_RAPPELS_MAX, NOTES_APPELS_MAX, PAQUET_RAPPELS, PLAFOND_PAQUET, adresseAccuse, pidNeuf, avecAccuse, bilanReception, serviceDe, pidsEnvoi, essaiDu } from "../_shared/reception.js";
+import { APPELS_ACTIFS } from "../_shared/appels.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -69,6 +76,13 @@ const SITE_NETLIFY = Deno.env.get("PILOTAGE_NETLIFY_SITE") || "eee53fe0-9fb2-41f
 // fonction connaît. La clé service_role est posée sur toute fonction et ne
 // sort jamais ; un HMAC ne la révèle pas.
 const SECRET_GESTES = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+// L'adresse des accusés de réception (_shared/reception.js) : l'URL du projet et
+// sa clé anon, PUBLIQUE. Absente ou mal formée → les notifications partent sans.
+// L'adresse d'accusé (2026-11-07, adresseAccuse) : l'ancienne clé anon OU la
+// publiable, l'URL lue ou déduite du projet. Mesuré : le premier essai est parti
+// « sans_adresse » — la fonction ne recevait pas la clé sous la forme attendue.
+const ADRESSE = adresseAccuse((n) => Deno.env.get(n));
+const ACCUSE = ADRESSE.accuse;
 type Admin = ReturnType<typeof createClient>;
 
 Deno.serve(async (req) => {
@@ -82,12 +96,12 @@ Deno.serve(async (req) => {
 
   if (action === "veille") {
     // Le secret, une fois posé (PILOTAGE_VEILLE_SECRET), ferme le déclencheur anonyme.
-    // Sans lui, rien ne change pour pg_cron, mais le détail ne sort plus (audit 2026-11-06).
+    // Sans lui, rien ne change pour pg_cron (audit 2026-11-06).
     const secret = Deno.env.get("PILOTAGE_VEILLE_SECRET") || "";
     const presente = req.headers.get("x-passio-veille") || "";
     const reconnu = !!secret && egaliteConstante(presente, secret);
     if (secret && !reconnu) return json({ error: "Non authentifié" }, 401);
-    return veille(admin, reconnu);
+    return veille(admin);
   }
 
   const authHeader = req.headers.get("Authorization") ?? "";
@@ -104,8 +118,11 @@ Deno.serve(async (req) => {
   if (!plafond.ok) return reponsePlafond(plafond, corsHeaders);
 
   switch (action) {
-    case "etat": return json(await etat(admin));
-    case "relancer": return relancer(String(corps.cible || ""));
+    // `frais` (2026-11-07) : relu juste après un geste, l'écran ne doit pas sortir du
+    // cache de GitHub d'un AUTRE isolat, qui ne l'a pas vidé (lireGithub).
+    case "etat": return json(await etat(admin, corps.frais === true));
+    case "relancer": return relancer(admin, String(corps.cible || ""));
+    case "essai": return essaiManuel(admin);
     case "fusionner": return fusionner(Number(corps.numero));
     case "fermer": return fermer(Number(corps.numero));
     case "pause": return pause(true);
@@ -123,16 +140,25 @@ Deno.serve(async (req) => {
 
 // ─── ① Veille ───────────────────────────────────────────────────────────────
 // Appelable par n'importe qui (clé anon) : elle ne fait jamais rien de plus que
-// ce que ferait pg_cron, et au plus une fois par minute. Le plafond horaire
-// vaut 60 (une par minute) : à 20, vingt appels anonymes en début d'heure
-// affamaient la veille pendant les 40 minutes suivantes (contre-revue).
-async function veille(admin: Admin, detail = false) {
-  const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 60 });
-  // Base injoignable : le 200 « trop tôt » rendait le déclencheur vert pendant une panne (H-06).
-  if (!plafond.ok) return plafond.panne ? json({ ok: false, error: "base injoignable" }, 503) : json({ ok: true, ignore: "trop tôt" });
+// ce que ferait pg_cron, et jamais deux fois à moins d'une minute. Un appel
+// anonyme qui prend le créneau fait tourner la MÊME veille : il ne l'affame pas.
+// Le créneau est ATOMIQUE (`prendreCreneau`, clé primaire sous HMAC) : l'ancien plafond
+// « lire, puis écrire » laissait passer DEUX veilles en parallèle une fois sur
+// deux depuis que deux ordonnanceurs l'appellent à la même seconde (2026-10-21)
+// — rappel envoyé deux fois, voyant noté deux fois (mesuré le 2026-11-06).
+async function veille(admin: Admin) {
+  const creneau = await prendreCreneau(admin, "systeme:pilotage-veille", "pilotage-veille", SECRET_GESTES);
+  if (!creneau.ok) {
+    // Pris : une autre veille tourne ou vient de tourner — rien à dire. Erreur :
+    // la veille ne tourne pas, et sans cette trace seul le battement périmé
+    // (35 min) le dirait, sans sa cause. La réponse publique, elle, ne change pas.
+    if (creneau.raison === "erreur") console.warn("veille : créneau refusé " + JSON.stringify({ code: (creneau as { code?: string }).code || "?" }));
+    return json({ ok: true, ignore: "trop tôt" });
+  }
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
-  const [sante, signalements, github, dispo, rap, aud] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), audience(admin, 300)]);
+  const t0 = Date.now();
+  const [sante, signalements, github, dispo, rap, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), audience(admin, 300), lireParcoursVeille(admin)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
   // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
   // laisse une trace mesurable (analytics_events, user_id système).
@@ -141,7 +167,10 @@ async function veille(admin: Admin, detail = false) {
     try { await admin.from("analytics_events").insert({ user_id: MARQUE_UID, event: "rappels_echec", properties: { message: m } }); } catch { /* */ }
   }
   const signaux: Audience | null = val(aud);
-  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null };
+  // Les parcours critiques (2026-11-06) entrent dans le voyant : un parcours
+  // CRITIQUE en panne (comptes serveur distincts, _shared/parcours.js) sonne.
+  const parcoursVeille = val(parc);
+  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null, parcours: parcoursVeille };
   // L'ALERTE D'ABORD : rien de ce qui suit (Netlify, GitHub, base) ne doit
   // pouvoir la retarder ni la faire taire.
   const v = verdict(e);
@@ -150,26 +179,41 @@ async function veille(admin: Admin, detail = false) {
   // une lecture incomplète ne fait jamais BAISSER le voyant mémorisé — sinon
   // une lecture GitHub manquée sonne « Problème résolu », et la suivante
   // « Problème » de nouveau.
-  const incomplet = [sante, signalements, github].some((r) => r.status === "rejected");
+  // Une lecture des parcours TRONQUÉE (au-delà de 5 pages) ne prouve pas le calme :
+  // un flot de lignes peut pousser l'heure réelle hors de la lecture (revue adversariale).
+  const incomplet = [sante, signalements, github, parc].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque);
   // Une lecture incomplète laisse sa raison dans les journaux de la fonction : sans elle, rien ne disait
   // pourquoi le voyant mémorisé restait figé. Des codes et des délais, jamais une donnée.
   if (incomplet) {
     const raison = (r: PromiseSettledResult<unknown>) => (r.status === "rejected" ? String((r.reason && (r.reason as { message?: string }).message) || r.reason).slice(0, 120) : "ok");
-    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: raison(github) }));
+    console.warn("veille : lecture incomplète " + JSON.stringify({ sante: raison(sante), signalements: raison(signalements), github: raison(github), parcours: raison(parc) }));
   }
   const vt = tenirVerdict(prec, v, incomplet);
   const actuel = { couleur: vt.couleur, raisons: vt.raisons, dispo: val(dispo) !== false, tenu: !!vt.tenu };
   const d = decideAlerte(prec, actuel);
-  let envoyes = 0;
-  if (d.sonner) envoyes = await sonnerPilote(admin, d.titre!, d.texte || "");
   const change = !prec || prec.couleur !== actuel.couleur || prec.dispo !== actuel.dispo || d.sonner;
+  // UNE transition par état mémorisé : son identifiant est un HMAC de l'état
+  // qu'elle remplace (`prec.le`). Deux veilles qui se chevauchent (le créneau
+  // espace les DÉPARTS, pas les durées : une veille de plus d'une minute, puis
+  // un appel suivant) lisent le même état ; la seconde se heurte à la clé
+  // primaire et ne sonne pas une seconde fois (revue adversariale du
+  // 2026-11-06). Toute AUTRE erreur d'écriture laisse sonner : l'alerte d'abord.
+  // Sans état LU, pas de clé déterministe : `lireEtatMemorise` rend null aussi
+  // quand sa lecture échoue, et une clé fixe (« initial ») aurait fait passer la
+  // deuxième lecture en échec pour un doublon — une vraie alerte tue. Sans état,
+  // un doublon reste possible, un silence jamais.
+  let dejaNotee = false;
   if (change) {
-    await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: "pilotage_etat", properties: {
+    const id = prec && prec.le ? await idGeste(`pilotage_etat:${prec.le}`, SECRET_GESTES).catch(() => null) : null;
+    const { error: ee } = await admin.from("analytics_events").insert({ ...(id ? { id } : {}), user_id: "systeme:pilotage", event: "pilotage_etat", properties: {
       couleur: actuel.couleur, dispo: actuel.dispo, raisons: (actuel.raisons || []).slice(0, 4),
       alerteLe: d.sonner ? new Date().toISOString() : (prec && prec.alerteLe) || null,
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
     } });
+    dejaNotee = !!ee && String((ee as { code?: string }).code || "") === "23505";
   }
+  let envoyes = 0;
+  if (d.sonner && !dejaNotee) envoyes = await sonnerPilote(admin, d.titre!, d.texte || "");
   // Puis ce qui agit seul (délestage 2026-10-11 ; réveil et proposition
   // 2026-10-12, _shared/autonomie.js). Chaque étape est isolée : une panne de
   // l'une ne casse ni les autres ni la veille. Les signaux ont été lus UNE fois,
@@ -178,21 +222,33 @@ async function veille(admin: Admin, detail = false) {
   const etape = async (f: () => Promise<Record<string, unknown>>) => {
     try { return await f(); } catch (err) { return { erreur: String((err as { message?: string })?.message || err).slice(0, 120) }; }
   };
+  // Chaque geste passe d'abord par la politique (_shared/politique-autonomie.js) :
+  // invalide, en observation ou en pause → aucun geste, l'observation continue.
   const delestage = await etape(() => delestageAuto(admin, signaux));
-  const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux));
+  const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux, parcoursVeille));
   const retour = await etape(() => proposerRetour(admin));
   const canari = await etape(() => emettreCanari());
+  // L'essai des alertes (2026-11-07) : sans note d'envoi depuis 7 jours, rien ne
+  // prouve que le téléphone sonnerait ; un essai part, de jour, et s'accuse.
+  const essai = await etape(() => essayerAlertes(admin));
+  // Le battement EN DERNIER : il prouve que la veille est allée au bout, et dit
+  // ce qu'elle a lu et décidé (_shared/battement.js). Son échec ne casse rien.
+  const pol = resumerPolitique();
+  const battement = await etape(() => battre(admin, contenuBattement({
+    lectures: { sante, signalements, github, parcours: parc, disponibilite: dispo, rappels: rap, audience: aud },
+    verdict: vt, sonne: d.sonner, gestes: { delestage, reveil, retour, canari, essai }, politique: pol, parcours: parcoursVeille,
+    revision: REVISION, dureeMs: Date.now() - t0,
+  })));
   // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
   // appelable avec la seule clé anon (publique), et combien d'activités ont lieu
   // dans les 24 h ou combien de comptes sont abonnés ne regardent personne. Ils
   // se lisent dans `analytics_events` (marques `rappel_activite`, `rappels_echec`).
-  // La clé anon suffit à appeler ce chemin tant que le secret n'est pas posé : l'état de santé
-  // ne se publie plus (et la réponse est recopiée dans les journaux publics d'Actions).
-  if (!detail) return json({ ok: true });
-  return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes,
-    delestage: delestage && "niveau" in delestage ? delestage.niveau : null,
-    sentinelleReveillee: !!(reveil && reveil.lance), retourPropose: !!(retour && retour.propose),
-    canari: !!(canari && canari.emis) });
+  // ⚠️ RÉPONSE PUBLIQUE MINIMALE (revue adversariale du 2026-11-06) : la veille
+  // s'appelle avec la clé anon. Le voyant et les décisions renvoyés servaient
+  // d'ORACLE pour régler une dilution des parcours. Tout se lit au pilotage, au
+  // battement (analytics_events) et dans les journaux de la fonction.
+  console.log("veille " + JSON.stringify({ couleur: actuel.couleur, sonne: d.sonner, envoyes, reveil: !!(reveil && reveil.lance), battement: !!(battement && battement.ecrit) }));
+  return json({ ok: true });
 }
 
 // Canari serveur (2026-10-31, VEILLE #627) : la veille ne s'éteint pas, le
@@ -208,11 +264,129 @@ async function emettreCanari(): Promise<Record<string, unknown>> {
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
 async function rappels(admin: Admin) {
+  // Un geste de la veille comme les autres : il pousse ET oublie les abonnements
+  // morts — sous la politique (revue adversariale du 2026-11-06).
+  const pol = autoriser(POLITIQUE, "rappels_activite");
+  if (!pol.ok) return { inactif: "politique:" + pol.raison };
   const pub = Deno.env.get("VAPID_PUBLIC_KEY"), priv = Deno.env.get("VAPID_PRIVATE_KEY");
   if (!pub || !priv) return { inactif: "VAPID absent" };
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
   // deno-lint-ignore no-explicit-any
-  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts));
+  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts), Date.now(), SECRET_GESTES, ACCUSE);
+}
+
+/**
+ * L'essai des alertes (_shared/reception.js, `essaiDu`) : un geste du catalogue
+ * (`essai_alertes`), borné à une fois par 7 jours sans AUCUNE note d'envoi du
+ * pilote, de jour à Paris. La note qu'il laisse (essai: true) le rend jugeable
+ * comme une alerte : « reçu sur N appareils », ou sa ligne « À faire ».
+ */
+async function essayerAlertes(admin: Admin) {
+  const pol = autoriser(POLITIQUE, "essai_alertes");
+  if (!pol.ok) return { inactif: "politique:" + pol.raison };
+  const { data, error } = await admin.from("analytics_events").select("created_at,properties")
+    .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").order("created_at", { ascending: false }).limit(1);
+  if (error) throw error;
+  if (!essaiDu({ derniereNote: (data || [])[0] || null, maintenant: Date.now(), revision: REVISION })) return { essai: "pas_du" };
+  const n = await sonnerPilote(admin, "Essai de tes alertes", "Rien à faire : sans alerte depuis 7 jours, PASSIO vérifie que ses alertes t'arrivent bien.", { essai: true });
+  return { essai: "envoye", appareils: n };
+}
+
+// Un essai À LA DEMANDE (2026-11-07) : le « Régler » de la ligne des alertes. Il
+// PROUVE, ou non, que le téléphone reçoit — au lieu d'ouvrir une page qui ne
+// changeait rien à la ligne. Borné : un envoi au pilote toutes les 2 min au plus,
+// essai ou alerte ; une lecture en échec n'envoie rien. 10 min d'abord : mesuré le
+// 07/11, quatre touchers refusés en cinq minutes, juste après avoir mis à jour
+// l'appareil qui devait accuser — le pilote est le seul destinataire.
+const ESSAI_MANUEL_MIN_MS = 2 * 60e3;
+async function essaiManuel(admin: Admin) {
+  const { data, error } = await admin.from("analytics_events").select("created_at")
+    .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").order("created_at", { ascending: false }).limit(1);
+  if (error) return json({ error: "Lecture impossible : aucun essai n'est parti." }, 503);
+  const dernier = dateUtc(data && data[0] ? data[0].created_at : null);
+  if (Number.isFinite(dernier) && Date.now() - dernier < ESSAI_MANUEL_MIN_MS) {
+    const reste = Math.max(1, Math.ceil((ESSAI_MANUEL_MIN_MS - (Date.now() - dernier)) / 1000));
+    return json({ error: "Un envoi vient de partir : le suivant est possible dans " + reste + " s." }, 409);
+  }
+  const n = await sonnerPilote(admin, "Essai de tes alertes", "Tu l'as demandé depuis le pilotage : si tu lis ceci, tes alertes t'arrivent.", { essai: true, manuel: true });
+  if (!n) return json({ error: "Aucun appareil n'a accepté l'essai : ouvre PASSIO avec le compte éditeur et autorise les notifications." }, 409);
+  return json({ ok: true, message: "Essai envoyé à " + n + " appareil(s)" + (ACCUSE ? " : son accusé s'affiche dans Réglages › Alertes dans la minute." : ", sans adresse d'accusé : sa réception ne peut pas être mesurée.") });
+}
+
+/**
+ * Les accusés de réception (_shared/reception.js). Revue adversariale du
+ * 2026-11-06 : un compte qui reçoit SON rappel connaît SON pid et peut en
+ * déposer des milliers d'accusés anonymes. Donc :
+ *   ① la DERNIÈRE alerte se lit seule (sa note), et ses accusés par SES pid —
+ *      inconnus de tout autre que les appareils du pilote : aucun flot ne la noie ;
+ *   ② les rappels des 24 h se lisent par paquets de PAQUET_RAPPELS pid ; un
+ *      paquet plein, ou une liste de notes au plafond, rend le taux « partiel » ;
+ *   ③ les appels mesurés (2026-11-07, un sur dix) de même, à part : un appelé
+ *      qui noie SON pid ne rend « partiel » que le taux des appels.
+ * L'index (type, received_at) de telemetry_events borne chaque lecture aux
+ * lignes `push` (un index sur le pid serait une migration : § 8).
+ */
+async function lireReception(admin: Admin) {
+  type Note = { created_at: string; properties: Record<string, unknown> };
+  type Accuse = { pid: string; received_at: string };
+  const maintenant = Date.now();
+  const depuis = new Date(maintenant - JUGEMENT_MAX_MS).toISOString();
+  const lirePush = (pids: string[], apres: string, plafond: number) => admin.from("telemetry_events").select("pid:meta->>pid,received_at")
+    .eq("type", TYPE_ACCUSE).eq("action", ACTION_ACCUSE).gte("received_at", apres).in("meta->>pid", pids).limit(plafond);
+  // Les notes d'un genre sur sa fenêtre, les plus récentes d'abord : `plafond`, et
+  // UNE de plus — 300 notes lues ne disent pas s'il y en avait 301 (revue du 2026-11-07).
+  const lireNotes = (auteur: string, fenetreMs: number, plafond: number) => admin.from("analytics_events").select("created_at,properties")
+    .eq("event", EVT_ENVOI).eq("user_id", auteur).gte("created_at", new Date(maintenant - fenetreMs).toISOString())
+    .order("created_at", { ascending: false }).limit(plafond + 1);
+  // Les accusés d'une liste de pid, par paquets de PAQUET_RAPPELS : un paquet
+  // plein (un pid noyé de faux accusés) rend la mesure « partielle », jamais fausse.
+  const parPaquets = async (pids: string[]) => {
+    let lus: Accuse[] = [];
+    let plein = false;
+    for (let i = 0; i < pids.length; i += PAQUET_RAPPELS) {
+      const { data, error } = await lirePush(pids.slice(i, i + PAQUET_RAPPELS), depuis, PLAFOND_PAQUET);
+      if (error) throw error;
+      if ((data || []).length >= PLAFOND_PAQUET) plein = true;
+      lus = lus.concat((data || []) as Accuse[]);
+    }
+    return { lus, plein };
+  };
+  const pidsDes = (notes: Note[]) => [...new Set(notes.flatMap((e) => pidsEnvoi(e)))];
+  const { data: alertes, error: e1 } = await admin.from("analytics_events").select("created_at,properties")
+    .eq("event", EVT_ENVOI).eq("user_id", "systeme:pilotage").gte("created_at", depuis)
+    .order("created_at", { ascending: false }).limit(1);
+  if (e1) throw e1;
+  const { data: rappels, error: e2 } = await lireNotes(MARQUE_UID, FENETRE_RAPPELS_MS, NOTES_RAPPELS_MAX);
+  if (e2) throw e2;
+  // Les appels (notify-call, 2026-11-07, _shared/appels.js) : un sur dix porte un
+  // accusé ; ses notes sous `systeme:appels`, que seule la fonction écrit.
+  const { data: appels, error: e3 } = await lireNotes(UID_APPELS, FENETRE_APPELS_MS, NOTES_APPELS_MAX);
+  if (e3) throw e3;
+  const notesRappels = ((rappels || []) as Note[]).slice(0, NOTES_RAPPELS_MAX);
+  const notesAppels = ((appels || []) as Note[]).slice(0, NOTES_APPELS_MAX);
+  const envois = [...(alertes || []), ...notesRappels, ...notesAppels] as Note[];
+  let accuses: Accuse[] = [];
+  const derniere = (alertes || [])[0] as Note | undefined;
+  if (derniere) {
+    const pids = pidsEnvoi(derniere);
+    if (pids.length) {
+      // La note est écrite APRÈS tous les envois : un appareil rapide accuse avant
+      // elle. La borne basse recule donc du délai d'accusé — ces pid ne sont connus
+      // que des appareils du pilote, aucun flot ne s'y glisse (revue du 2026-11-07).
+      const le = Date.parse(derniere.created_at);
+      const apres = Number.isFinite(le) ? new Date(le - DELAI_ACCUSE_MS).toISOString() : depuis;
+      const { data, error } = await lirePush(pids, apres, 200);
+      if (error) throw error;
+      accuses = accuses.concat((data || []) as Accuse[]);
+    }
+  }
+  const [r, a] = await Promise.all([parPaquets(pidsDes(notesRappels)), parPaquets(pidsDes(notesAppels))]);
+  accuses = accuses.concat(r.lus, a.lus);
+  // Plus de notes que le plafond, ou un paquet plein : « partiel », genre par genre.
+  const tronqueRappels = (rappels || []).length > NOTES_RAPPELS_MAX || r.plein;
+  const tronqueAppels = (appels || []).length > NOTES_APPELS_MAX || a.plein;
+  // `appelsActifs` : appels coupés (pilote), l'écran le dit au lieu de « 0 appel mesuré ».
+  return bilanReception({ envois, accuses, maintenant, tronqueRappels, tronqueAppels, appelsActifs: APPELS_ACTIFS });
 }
 
 async function lireEtatMemorise(admin: Admin) {
@@ -257,31 +431,52 @@ async function uidsPilotes(admin: Admin): Promise<string[]> {
 }
 
 /** Notification sur les appareils de l'éditeur où PASSIO a les notifications activées. */
-async function sonnerPilote(admin: Admin, titre: string, texte: string): Promise<number> {
+async function sonnerPilote(admin: Admin, titre: string, texte: string, opts: { essai?: boolean; manuel?: boolean } = {}): Promise<number> {
   const pub = Deno.env.get("VAPID_PUBLIC_KEY"), priv = Deno.env.get("VAPID_PRIVATE_KEY");
   if (!pub || !priv) return 0;
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
   const uids = await uidsPilotes(admin);
   if (!uids.length) return 0;
-  const { data: toutes } = await admin.from("push_subscriptions").select("endpoint, subscription").in("user_id", uids).limit(MAX_ABONNEMENTS_LUS);
+  const { data: toutes, error: es } = await admin.from("push_subscriptions").select("endpoint, subscription").in("user_id", uids).limit(MAX_ABONNEMENTS_LUS);
+  if (es) console.warn("pilotage : abonnements illisibles " + String((es as { code?: string }).code || ""));
   const subs = (toutes || []).filter((l) => endpointPushSur(l.subscription));
-  const payload = JSON.stringify({ type: "pilotage", titre, texte });
+  // Un pid ALÉATOIRE PAR APPAREIL : le service worker l'accuse après l'affichage
+  // (_shared/reception.js) ; l'écran dit lequel a reçu, pas « envoyée ».
+  const appareils: { pid: string | null; service: string; accepte: boolean }[] = [];
   let n = 0; const morts: string[] = [];
-  await Promise.all((subs || []).map(async (s) => {
-    try { await envoyerPushBorne((a: unknown, b: unknown, c: unknown) => webpush.sendNotification(a as never, b as never, c as never), s.subscription, payload, { TTL: 3600, urgency: "high" }); n++; }
+  await Promise.all(subs.map(async (s) => {
+    const app = { pid: ACCUSE ? pidNeuf() : null, service: serviceDe(s.endpoint), accepte: false };
+    appareils.push(app);
+    const payload = JSON.stringify(avecAccuse({ type: "pilotage", titre, texte }, app.pid, ACCUSE));
+    try { await envoyerPushBorne((a: unknown, b: unknown, c: unknown) => webpush.sendNotification(a as never, b as never, c as never), s.subscription, payload, { TTL: 3600, urgency: "high" }); n++; app.accepte = true; }
     catch (e) { const c = (e as { statusCode?: number })?.statusCode; if (c === 404 || c === 410) morts.push(s.endpoint); }
   }));
-  if (morts.length) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch { /* */ } }
+  // La note d'envoi part TOUJOURS — une mesure impossible se dit (« non
+  // mesurée »), elle ne laisse pas l'écran « calme ». Elle ne retarde ni ne casse
+  // l'alerte : elle est partie. Ni le titre ni le texte n'y entrent.
+  const mesure = es ? "abonnements_illisibles" : ACCUSE ? "ok" : "sans_adresse";
+  try {
+    // `revision` : une mesure impossible se réessaie après le déploiement suivant
+    // (essaiDu) ; `adresse` : pourquoi, en FORMES (jamais une clé).
+    const { error: en } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_ENVOI, properties: { genre: "pilotage", mesure, acceptes: n, appareils, revision: REVISION,
+      ...(mesure === "sans_adresse" ? { adresse: ADRESSE.diag } : {}), ...(opts.essai ? { essai: true } : {}), ...(opts.manuel ? { manuel: true } : {}) } });
+    if (en) console.warn("pilotage : note d'envoi refusée " + String((en as { code?: string }).code || ""));
+  } catch { console.warn("pilotage : note d'envoi injoignable"); }
+  // Un refus PERMANENT (404/410) oublie l'abonnement — geste du catalogue (politique).
+  if (morts.length && autoriser(POLITIQUE, "purge_abonnements_morts").ok) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch { /* */ } }
   return n;
 }
 
 // ─── ② État complet pour le téléphone ───────────────────────────────────────
-async function etat(admin: Admin) {
+async function etat(admin: Admin, frais = false) {
+  if (frais && JETON_GH) cacheGh = null;
   const parts = {
     sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), activation: lireActivation(admin), signalements: lireSignalements(admin),
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
     disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin), reglages: lireReglages(admin),
     historique: lireHistorique(admin), croissance: lireCroissance(admin),
+    parcours: lireParcours(admin), battement: lireBattement(admin), reception: lireReception(admin),
+    relances: lireRelances(admin),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
@@ -300,6 +495,8 @@ async function etat(admin: Admin) {
   // Ce qui agit seul, et pourquoi c'est éteint quand ça l'est (_shared/autonomie.js).
   out.autonomie = { reveilSentinelle: !!JETON_GH, retour: { mode: MODE_RETOUR, jeton: !!JETON_NETLIFY, proposition: await lireProposition(admin) } };
   out.gestesGithub = !!JETON_GH;
+  // La politique d'automatisation en vigueur (2026-11-06) : ce que les machines font seules.
+  out.politique = resumerPolitique();
   const maintenant = (out.utilisateurs as { maintenant?: Audience | null } | null)?.maintenant || null;
   out.aveugle = maintenant && maintenant.exact ? mesureAveugle(maintenant) : null;
   // Les tendances (2026-10-23) : chaque chiffre contre sa période précédente,
@@ -363,7 +560,24 @@ async function lireSante(admin: Admin) {
     compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24)),
   ]);
   if (error) throw error;
-  return { evenements15, erreursJs15, api5xx15, telemetrieMinute, erreurs24h, principales: erreursFrequentes(data || []) };
+  // Les COMPTES serveur derrière ces lignes (2026-11-07) : une erreur et une
+  // panne 5xx se remontent avec la clé anon, publique — dix lignes forgées
+  // faisaient sonner rouge. Seule l'identité posée par le serveur (`auth_uid`)
+  // compte ; une lecture en échec laisse le compte absent, et le rouge jouer.
+  // Une liste TRONQUÉE ne prouve pas qu'il y a peu de comptes : inconnu, et l'alerte joue.
+  type LigneCompte = { auth_uid: string; severity: string | null };
+  const lignes = async (type: string, cinqCents: boolean): Promise<LigneCompte[] | null> => {
+    let q = admin.from("telemetry_events").select("auth_uid,severity").eq("env", "production").eq("type", type).gte("received_at", depuis).not("auth_uid", "is", null);
+    if (cinqCents) q = q.gte("http_status", 500);
+    const { data: l, error: ec } = await q.limit(MAX_LIGNES_POSTGREST);
+    return ec || (l || []).length >= MAX_LIGNES_POSTGREST ? null : (l || []) as LigneCompte[];
+  };
+  const distincts = (l: LigneCompte[] | null, garder: (x: LigneCompte) => boolean = () => true) => (l === null ? null : new Set(l.filter(garder).map((x) => x.auth_uid)).size);
+  // Les AVERTISSEMENTS (2026-11-07) : ce que l'app a classé `warn` elle-même (une
+  // coupure réseau, un repli) ; seuls et d'un seul compte, ils ne colorent plus l'écran (verdict).
+  const [lErreurs, l5xx, avertJs15] = await Promise.all([lignes("error", false), lignes("api", true), compter(prod().eq("type", "error").eq("severity", "warn"))]);
+  const comptesErreurs15 = distincts(lErreurs), comptes5xx15 = distincts(l5xx), comptesAvert15 = distincts(lErreurs, (x) => x.severity === "warn");
+  return { evenements15, erreursJs15, avertJs15, api5xx15, comptesErreurs15, comptesAvert15, comptes5xx15, telemetrieMinute, erreurs24h, principales: erreursFrequentes(data || []) };
 }
 
 async function lireErreurs7j(admin: Admin) {
@@ -498,6 +712,8 @@ async function lireReglages(admin: Admin) {
 }
 
 async function delestageAuto(admin: Admin, a: Audience | null) {
+  const pol = autoriser(POLITIQUE, "delestage_auto");
+  if (!pol.ok) return { raison: "politique:" + pol.raison };
   const lignes = await lireLignesReglages(admin);
   if (!lignes) return { absente: true };
   const ligne = lignes.find((l) => l.cle === "delestage") || null;
@@ -559,11 +775,25 @@ async function journaliserReglage(admin: Admin, cle: string, valeur: unknown) {
 type GhEtat = { issues?: { pr: boolean; labels: string[] }[]; runs?: { sentinelle?: { etat?: string; le?: string } | null }; pause?: boolean };
 // ⚠️ Le paramètre ne s'appelle PAS `gh` : il masquerait la fonction `gh()`
 // qui parle à GitHub, et le dispatch lèverait « gh is not a function ».
-async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audience | null) {
+type ParcoursVeille = { parcours?: { id: string; etat: string; panneConfirmee?: boolean; comptesEchecAnciens?: number }[] } | null;
+async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audience | null, pc: ParcoursVeille = null) {
   if (!JETON_GH) return { inactif: true };
   if (!etatGh || !Array.isArray(etatGh.issues)) return { illisible: true };
-  if (!a || !a.exact || a.echecs30 == null) return { raison: "mesure_absente" };
-  const d = doitReveillerSentinelle({ pause: !!etatGh.pause, enquetes: enquetesEnCours(etatGh.issues), dernierRun: (etatGh.runs && etatGh.runs.sentinelle) || null, comptesErreurs: a.echecs30 });
+  const pol = autoriser(POLITIQUE, "reveil_sentinelle", { pause: !!etatGh.pause });
+  if (!pol.ok) return { raison: "politique:" + pol.raison };
+  // Deux sources d'échecs, et la plus forte décide (2026-11-06) :
+  //  · erreurs et refus comptés en BASE (pilotage_audience, comptes de > 24 h) ;
+  //  · un parcours en PANNE CONFIRMÉE (_shared/parcours.js, confirmerPannes dans
+  //    lireParcoursVeille) — un refus en HTTP 200 n'est ni une erreur JS ni un
+  //    appel en échec : sans cette source, il ne réveillait personne. Ses
+  //    comptes ont été relus dans l'authentification (même règle que
+  //    pilotage_audience : confirmés, créés depuis plus de 24 h) — dix comptes
+  //    neufs ne lancent rien.
+  const enPanne = pc && Array.isArray(pc.parcours) ? pc.parcours.filter((p) => p && p.etat === "panne" && p.panneConfirmee === true) : [];
+  const comptesParcours = enPanne.reduce((m, p) => Math.max(m, Number(p.comptesEchecAnciens) || 0), 0);
+  const mesure = a && a.exact && a.echecs30 != null ? a.echecs30 : null;
+  if (mesure == null && !comptesParcours) return { raison: "mesure_absente" };
+  const d = doitReveillerSentinelle({ pause: !!etatGh.pause, enquetes: enquetesEnCours(etatGh.issues), dernierRun: (etatGh.runs && etatGh.runs.sentinelle) || null, comptesErreurs: Math.max(mesure || 0, comptesParcours) });
   if (!d.reveiller) return { raison: d.raison };
   const plafond = await verifierPlafondEnBase(admin, "systeme:sentinelle-reveil", "sentinelle-reveil", { parMinute: 1, parHeure: 2 });
   if (!plafond.ok) return { raison: "plafond" };
@@ -573,8 +803,120 @@ async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audie
   const r = await gh(`/repos/${DEPOT}/actions/workflows/${RELANCES.sentinelle.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
   if (r.status !== 204) return { raison: "refus_github_" + r.status };
   cacheGh = null;
-  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.reveil, properties: { raison: d.raison } }); } catch { /* */ }
+  const parcoursEnPanne = comptesParcours >= REVEIL.comptesMin ? enPanne.map((p) => p.id).slice(0, 5) : [];
+  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.reveil, properties: { raison: d.raison, parcours: parcoursEnPanne } }); } catch { /* */ }
   return { lance: true };
+}
+
+/** Ce compte est-il confirmé et créé depuis au moins `ancienneteMs` ? Illisible = non. */
+async function estCompteAncien(admin: Admin, uid: string, ancienneteMs: number): Promise<boolean> {
+  try {
+    const { data, error } = await admin.auth.admin.getUserById(uid);
+    const u = !error && data ? data.user : null;
+    return !!(u && u.email_confirmed_at && Date.now() - dateUtc(u.created_at) >= ancienneteMs);
+  } catch { return false; }
+}
+
+// ─── Parcours critiques (2026-11-06, _shared/parcours.js) ───────────────────
+// Les lignes `flow` de la télémétrie, lues PAR PAGES (max-rows = 1 000) et
+// bornées : au-delà de PARCOURS_PAGES_MAX pages, le bilan porte sur les plus
+// récentes et le DIT (`tronque`). Le voyant juge l'heure écoulée ; l'écran
+// montre aussi la journée. Ce qui sort vers le téléphone : des NOMBRES et des
+// codes fermés — jamais une identité, jamais un texte écrit par un client.
+const PARCOURS_PAGES_MAX = 5;
+const PARCOURS_VOYANT_MS = 60 * 60e3;
+async function lireLignesFlux(admin: Admin, fenetreMs: number) {
+  const depuis = ilYa(fenetreMs);
+  const lignes: Record<string, unknown>[] = [];
+  for (let page = 0; page < PARCOURS_PAGES_MAX; page++) {
+    const { data, error } = await admin.from("telemetry_events")
+      // Les SEULES clés utiles de `meta`, à plat : un `meta` hostile peut peser des
+      // mégaoctets (revue adversariale). Et jamais une ligne sans identité serveur :
+      // elle ne pèse rien, et un flot anonyme repoussait l'heure réelle hors des pages.
+      .select("event_id,correlation_id,action,status,auth_uid,received_at,client_ts,app_version,flow_action:meta->>flow_action,step:meta->>step,rc:meta->>rc,synthetic:meta->>synthetic,trafic:meta->>trafic")
+      .eq("type", "flow").eq("env", "production").gte("received_at", depuis).not("auth_uid", "is", null)
+      .order("received_at", { ascending: false }).order("id", { ascending: false })
+      .range(page * MAX_LIGNES_POSTGREST, (page + 1) * MAX_LIGNES_POSTGREST - 1);
+    if (error) throw error;
+    const lot = (data || []) as Record<string, unknown>[];
+    lignes.push(...lot);
+    if (lot.length < MAX_LIGNES_POSTGREST) return { lignes, tronque: false };
+  }
+  return { lignes, tronque: true };
+}
+// Une panne ne sonne que CONFIRMÉE (revues du 2026-11-06). Pour chaque parcours
+// CANDIDAT (assez d'échecs chez assez de comptes, quel que soit son taux), on
+// relit dans l'authentification un échantillon TIRÉ AU HASARD (`melanger`) des
+// comptes en échec ET des comptes sans échec : la part des comptes ANCIENS
+// (confirmés, > 24 h, comme le réveil) se juge des deux côtés, et une nuée de
+// comptes neufs qui réussissent ne cache plus une panne (`confirmerPannes`).
+// Lectures par lots de 10, chacune bornée à 3 s, budget commun par passage ; un
+// compte que le budget n'a pas permis de relire est « non relu », jamais « neuf ».
+// `confirmerPannes` retire ensuite les identités : rien de nominatif ne sort.
+const RELECTURES_PAR_COTE = 20;
+const RELECTURES_PAR_PASSAGE = 120;
+const delaiBorne = <T,>(p: Promise<T>, ms: number, sinon: T) => Promise.race([p, new Promise<T>((r) => setTimeout(() => r(sinon), ms))]);
+async function confirmer(admin: Admin, ...bilans: Record<string, unknown>[]) {
+  const vus = new Map<string, boolean>();
+  const nonLus = new Set<string>();
+  let budget = RELECTURES_PAR_PASSAGE;
+  const aLire: string[] = [];
+  for (const b of bilans) {
+    for (const c of comptesAVerifier(b)) {
+      for (const cote of [c.F, c.N]) {
+        const tires = melanger(cote).filter((u: string) => !vus.has(u) && !aLire.includes(u));
+        for (const [i, uid] of tires.entries()) {
+          if (i < RELECTURES_PAR_COTE && budget > 0) { aLire.push(uid); budget--; } else nonLus.add(uid);
+        }
+      }
+    }
+  }
+  for (let i = 0; i < aLire.length; i += 10) {
+    const lot = aLire.slice(i, i + 10);
+    const r = await Promise.all(lot.map((uid) => delaiBorne(estCompteAncien(admin, uid, REVEIL.ancienneteMinMs), 3000, null as boolean | null)));
+    lot.forEach((uid, k) => { if (r[k] === null) nonLus.add(uid); else vus.set(uid, r[k] as boolean); });
+  }
+  const anciens = new Set([...vus].filter(([, ok]) => ok).map(([uid]) => uid));
+  const verifies = new Set(vus.keys());
+  return bilans.map((b) => confirmerPannes(b, { anciens, verifies, nonLus }));
+}
+async function lireParcours(admin: Admin) {
+  const { lignes, tronque } = await lireLignesFlux(admin, 864e5);
+  const maintenant = Date.now();
+  const [jour, recent] = await confirmer(admin,
+    bilanParcours(lignes, { maintenant, fenetreMs: 864e5, garderComptes: true }),
+    bilanParcours(lignes, { maintenant, fenetreMs: PARCOURS_VOYANT_MS, depuisMs: maintenant - PARCOURS_VOYANT_MS, garderComptes: true }));
+  return { ...jour, tronque, couverture: couvertureParcours(jour), recent: { fenetreMs: PARCOURS_VOYANT_MS, parcours: recent.parcours } };
+}
+async function lireParcoursVeille(admin: Admin) {
+  const { lignes, tronque } = await lireLignesFlux(admin, PARCOURS_VOYANT_MS);
+  const [b] = await confirmer(admin, bilanParcours(lignes, { maintenant: Date.now(), fenetreMs: PARCOURS_VOYANT_MS, garderComptes: true }));
+  return { ...b, tronque };
+}
+
+// ─── Battement de la veille (2026-11-06, _shared/battement.js) ──────────────
+async function battre(admin: Admin, contenu: Record<string, unknown>) {
+  const { data, error } = await admin.from("analytics_events").select("created_at").eq("event", BATTEMENT)
+    .eq("user_id", AUTEUR_BATTEMENT).order("created_at", { ascending: false }).limit(1);
+  if (error) return { ecrit: false, erreur: String(error.message || error).slice(0, 120) };
+  const dernier = data && data[0] ? dateUtc(data[0].created_at) : NaN;
+  if (Number.isFinite(dernier) && Date.now() - dernier < BATTEMENT_TOUTES_MS) return { ecrit: false, raison: "recent" };
+  const { error: ei } = await admin.from("analytics_events").insert({ user_id: AUTEUR_BATTEMENT, event: BATTEMENT, properties: contenu });
+  if (ei) return { ecrit: false, erreur: String(ei.message || ei).slice(0, 120) };
+  // Ses propres marques seulement : l'événement ET l'auteur système (runbook purge_battements).
+  if (autoriser(POLITIQUE, "purge_battements").ok) {
+    try { await admin.from("analytics_events").delete().eq("event", BATTEMENT).eq("user_id", AUTEUR_BATTEMENT).lt("created_at", ilYa(7 * 864e5)); } catch { /* */ }
+  }
+  return { ecrit: true };
+}
+async function lireBattement(admin: Admin) {
+  const [{ data, error }, n24] = await Promise.all([
+    admin.from("analytics_events").select("properties,created_at").eq("event", BATTEMENT).eq("user_id", AUTEUR_BATTEMENT)
+      .order("created_at", { ascending: false }).limit(1),
+    compter(admin.from("analytics_events").select("id", { count: "exact", head: true }).eq("event", BATTEMENT).eq("user_id", AUTEUR_BATTEMENT).gte("created_at", ilYa(864e5))),
+  ]);
+  if (error) throw error;
+  return resumerBattement(data && data[0] ? data[0] : null, n24);
 }
 // ─── fin réveil
 
@@ -691,6 +1033,8 @@ async function remettrePrecedent(admin: Admin, cibleDemandee: string) {
   return { cible: p.cible.id, versionRemise: p.cible.commit, confirme };
 }
 async function proposerRetour(admin: Admin) {
+  const pol = autoriser(POLITIQUE, "proposition_retour");
+  if (!pol.ok) return { raison: "politique:" + pol.raison };
   if (MODE_RETOUR === "inactif") return { inactif: true };
   const rs = await netlify(`/sites/${SITE_NETLIFY}`);
   if (!rs.ok) return { raison: "netlify_" + rs.status };
@@ -959,7 +1303,8 @@ async function lireAlertes(admin: Admin) {
   const uids = await uidsPilotes(admin);
   if (!uids.length) return { appareils: 0 };
   const n = await compter(admin.from("push_subscriptions").select("endpoint", { count: "exact", head: true }).in("user_id", uids));
-  return { appareils: n, vapid: !!Deno.env.get("VAPID_PUBLIC_KEY") };
+  // `accuse` : l'adresse d'accusé est-elle là, et sous quelle FORME (jamais une valeur).
+  return { appareils: n, vapid: !!Deno.env.get("VAPID_PUBLIC_KEY"), accuse: { mesurable: !!ACCUSE, ...ADRESSE.diag } };
 }
 
 // ─── GitHub ─────────────────────────────────────────────────────────────────
@@ -1020,14 +1365,41 @@ const sansJeton = () => json({ error: "Geste indisponible : le secret PILOTAGE_G
 const refusDroit = (statut: number, droit: string) => (statut === 401 ? " Le jeton du pilotage a expiré : renouvelle-le sur GitHub, puis dans les secrets de la fonction." : statut === 403 ? ` Le jeton du pilotage n'a pas ce droit : donne-lui « ${droit} » en lecture et écriture (page du jeton sur GitHub, Edit).` : "");
 const numeroValide = (n: number) => Number.isInteger(n) && n > 0 && n < 1e7;
 
-async function relancer(cible: string) {
+async function relancer(admin: Admin, cible: string) {
   const r = Object.hasOwn(RELANCES, cible) ? RELANCES[cible as keyof typeof RELANCES] : null;
   if (!r) return json({ error: "Relance inconnue." }, 400);
   if (!JETON_GH) return sansJeton();
+  // L'heure AVANT l'envoi : le run que GitHub crée ensuite part après elle (suiviRelance).
+  const demande = new Date().toISOString();
   const res = await gh(`/repos/${DEPOT}/actions/workflows/${r.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
   if (res.status !== 204) return json({ error: `GitHub a refusé la relance (HTTP ${res.status}).` + refusDroit(res.status, "Actions") }, 502);
   cacheGh = null; // pour que l'écran voie l'exécution partir, sans attendre le cache de 2 min
-  return json({ ok: true, message: "Lancé : " + r.libelle });
+  // La relance est NOTÉE (2026-11-07) : chaque ligne qui relance la suit jusqu'au
+  // résultat, quel que soit l'isolat qui sert l'écran. Le geste est parti même si
+  // la note échoue : on le dit, sans le défaire.
+  let suivie = true;
+  try {
+    const { error } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_GESTE, properties: { geste: "relancer", cible, demande } });
+    if (error) { suivie = false; console.warn("pilotage : relance non notée " + String((error as { code?: string }).code || "")); }
+  } catch { suivie = false; console.warn("pilotage : relance non notée (base injoignable)"); }
+  return json({ ok: true, suivie, message: "Lancé : " + r.libelle + (suivie ? ". Le résultat s'affiche sur sa ligne dans la minute." : ". Le suivi n'a pas pu être noté : relis dans une minute.") });
+}
+
+// Les relances demandées depuis le téléphone (2026-11-07) : la plus récente par
+// cible, sur la fenêtre où l'écran la suit. Seule la fonction écrit sous
+// « systeme:pilotage » (analytics_insert_own : user_id = auth.uid()) ; l'heure est
+// celle d'AVANT l'envoi, sinon celle de la note.
+async function lireRelances(admin: Admin) {
+  const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", EVT_GESTE).eq("user_id", "systeme:pilotage")
+    .gte("created_at", ilYa(RELANCE_SUIVIE_MS)).order("created_at", { ascending: false }).limit(20);
+  if (error) throw error;
+  const out: Record<string, string> = {};
+  for (const l of (data || []) as { properties: { geste?: unknown; cible?: unknown; demande?: unknown } | null; created_at: string }[]) {
+    const p = l.properties || {};
+    if (p.geste !== "relancer" || typeof p.cible !== "string" || !Object.hasOwn(RELANCES, p.cible) || out[p.cible]) continue;
+    out[p.cible] = Number.isFinite(dateUtc(p.demande)) ? String(p.demande) : String(l.created_at);
+  }
+  return out;
 }
 
 async function fusionner(n: number) {

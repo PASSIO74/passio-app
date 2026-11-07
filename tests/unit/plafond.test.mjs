@@ -161,12 +161,13 @@ test("audit 2026-11-06 : tant que la migration n'est pas appliquée, l'ancien ch
 });
 
 // Audit du 2026-11-06, H-06 : une panne n'est pas une cadence.
-test("une base injoignable est dite `panne`, et la veille ne répond plus 200 « trop tôt »", async () => {
+test("une base injoignable est dite `panne`, et la veille la journalise", async () => {
   const { verifierPlafondEnBase } = await import("../../supabase/functions/_shared/plafond.js");
   const panne = { rpc: () => Promise.resolve({ data: null, error: { code: "57P01", message: "x" } }) };
   const v = await verifierPlafondEnBase(panne, "u", "veille", { parMinute: 1, parHeure: 1 });
   assert.equal(v.ok, false);
   assert.equal(v.panne, true);
   const src = (await import("node:fs")).readFileSync("supabase/functions/pilotage/index.ts", "utf8");
-  assert.match(src, /plafond\.panne \? json\(\{ ok: false, error: "base injoignable" \}, 503\)/);
+  // La veille tient son créneau de main : sa réponse publique ne dit pas pourquoi, la panne se lit au journal et au battement.
+  assert.match(src, /creneau\.raison === "erreur"\) console\.warn\("veille : créneau refusé/);
 });

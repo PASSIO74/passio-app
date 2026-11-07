@@ -5221,6 +5221,24 @@ async function supaGetLikeCount(postId) {
 // backend pas encore prêt) → permet à la file d'attente (#14) de réessayer.
 async function supaAddComment(postId, content, commentId) {
   if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return false;
+  // Flux « comment_post » : ouvert à l'écriture RÉELLE, fermé à son verdict
+  // (2026-11-06, contrats-actions.js). Chaque essai de la file est un flux.
+  let _cmtCid = null;
+  try { if (window.tel && tel.flowStart) _cmtCid = tel.flowStart("comment_post", { postId: postId }); } catch (e) {}
+  // La file des commentaires rejoue l'envoi : un réseau absent est une ATTENTE
+  // (« hors_ligne », contrat comment_post), le limiteur un refus légitime.
+  const _cmtRegle = (ok, err) => {
+    try {
+      let code = !ok && typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(err) : null;
+      if (!ok && !code && err && String(err.code) === "42501") {
+        const auteur = typeof findPostAnywhere === "function" ? (findPostAnywhere(postId) || {}).authorId : null;
+        if (auteur && typeof isBlocked === "function" && isBlocked(auteur)) code = "bloque";
+      }
+      if (_cmtCid && window.tel && code === "reseau") { tel.step(_cmtCid, "queued", "ok", { rc: "hors_ligne" }); tel.flowEnd(_cmtCid, "pending"); }
+      else if (_cmtCid && window.tel && tel.settle) tel.settle(_cmtCid, "saved", ok, code ? { code, message: code } : (err || null));
+    } catch (e) {}
+    _cmtCid = null;
+  };
   try {
     await supaEnsureProfileExists();
     const { error } = await supa.from("post_comments").insert({
@@ -5229,21 +5247,51 @@ async function supaAddComment(postId, content, commentId) {
       id: commentId || ("c_" + uid()), post_id: postId, author_id: MY_UID, content,
       created_at: new Date().toISOString(),
     });
-    if (error) { console.warn("Comment error:", error.message); return false; }
+    if (error) {
+      // Réponse perdue puis renvoi : la ligne est déjà là, et c'est la mienne
+      // (_conflitClePrimaire + _ligneDejaEnBase, app-02). Les mentions ne
+      // partent qu'APRÈS une réponse positive : l'essai dont la réponse s'est
+      // perdue ne les a donc pas envoyées — elles partent maintenant, une fois.
+      const dejaLa = !!commentId && _conflitClePrimaire(error, "post_comments") && await _ligneDejaEnBase("post_comments", commentId, "author_id", MY_UID);
+      if (!dejaLa) { console.warn("Comment error:", error.message); _cmtRegle(false, error); return false; }
+      try { if (window.tel && _cmtCid) tel.step(_cmtCid, "deja_en_base", "ok"); } catch (e) {}
+    }
+    _cmtRegle(true);
     // ASTRA-24 : les mentions, maintenant que le commentaire existe en base.
     try { if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, content); } catch (e) {}
     return true;
-  } catch(e) { console.warn("Comment error:", e); return false; }
+  } catch(e) { console.warn("Comment error:", e); _cmtRegle(false, e); return false; }
 }
 
 // ───────── Interactions sur les commentaires (like / réponse / emoji) ─────────
 // Stockées dans comment_interactions (RLS owner) → propagées à tous les comptes.
-async function supaCommentInteract(commentId, postId, kind, payload) {
-  if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return false;
+// L'écriture AVEC son verdict : { ok } ou { ok: false, code, message, indice,
+// reseau }, ou { ok: false, horsLigne: true } quand rien n'est parti (pas de
+// client réel). Le SDK ne LÈVE PAS sur un refus (RLS, contrainte, garde) : son
+// `error` se LIT, sinon le geste reste « réussi » à l'écran et disparaît au
+// rechargement — c'était RV-38 : chaque épingle refusée en 23514, en silence.
+async function supaEcrireInteraction(commentId, postId, kind, payload) {
+  if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return { ok: false, horsLigne: true };
   // Émission d'une interaction de commentaire (like/réponse/emoji) — sur un POST,
   // comment_id === post_id. Apparié à recv_cint (autre appareil) par le pilotage.
   try { window.tel && tel.action("cint", { commentId: commentId, postId: postId || null, ck: kind }); } catch (e) {}
-  try { window.tel && tel.flowStart && tel.flowStart("cint", { commentId: commentId, postId: postId || null }); } catch (e) {}
+  // ⚠️ LE FLUX SE FERME AU VERDICT (2026-11-06). Son identifiant était JETÉ :
+  // chaque réaction ouvrait un flux sans fin, que le pilotage aurait lu
+  // « sans verdict » pour toujours — mesuré en production le 2026-11-03, une
+  // réaction enregistrée en base, son flux réduit à son début. Contrat :
+  // supabase/functions/_shared/contrats-actions.js (cint) ; garde :
+  // scripts/audit-contrats-actions.mjs (un `flowStart` dont le retour n'est pas
+  // gardé fait échouer la CI).
+  let _cintCid = null;
+  try { if (window.tel && tel.flowStart) _cintCid = tel.flowStart("cint", { commentId: commentId, postId: postId || null, ck: kind }); } catch (e) {}
+  // Un échec réseau ou un refus du limiteur porte son CODE FERMÉ (_codeEchecEcriture, app-02).
+  const _cintRegle = (ok, err) => {
+    try {
+      const code = !ok && typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(err) : null;
+      if (_cintCid && window.tel && tel.settle) tel.settle(_cintCid, "saved", ok, code ? { code, message: code } : (err || null));
+    } catch (e) {}
+    _cintCid = null;
+  };
   try {
     const { error } = await supa.from("comment_interactions").insert({
       id: "ci_" + uid(), comment_id: commentId, post_id: postId || null,
@@ -5255,9 +5303,22 @@ async function supaCommentInteract(commentId, postId, kind, payload) {
       user_id: MY_UID, kind: kind, payload: payload ? _truncU16Safe(String(payload), 500) : null,
       created_at: new Date().toISOString(),
     });
-    if (error) return false;
-    return true;
-  } catch(e) { return false; }
+    if (error) {
+      _cintRegle(false, error);
+      return { ok: false, code: typeof error.code === "string" ? error.code : null, message: String(error.message || ""),
+        indice: String(error.hint || ""), reseau: typeof estEchecReseau === "function" && estEchecReseau(error) };
+    }
+    _cintRegle(true);
+    return { ok: true };
+  } catch (e) {
+    _cintRegle(false, e);
+    return { ok: false, code: null, message: String((e && e.message) || e || ""), indice: "",
+      reseau: typeof estEchecReseau === "function" && estEchecReseau(e) };
+  }
+}
+// La forme historique (un booléen), pour les appelants qui ne lisent pas le verdict.
+async function supaCommentInteract(commentId, postId, kind, payload) {
+  return (await supaEcrireInteraction(commentId, postId, kind, payload)).ok === true;
 }
 async function supaCommentRemoveLike(commentId) {
   try {
@@ -5277,16 +5338,27 @@ async function supaCommentRemoveReactions(commentId) {
   } catch(e) {}
 }
 // Charge les interactions de plusieurs commentaires → { [cid]: {likes,likedBy,replies,emojis} }.
+// ⚠️ `null` quand la lecture n'a pas eu lieu (pas de client réel) ou a ÉCHOUÉ :
+// rien n'est connu, et l'appelant ne doit rien en conclure. `{}` veut dire « lue,
+// et rien ». Une source illisible n'est pas une source calme : lue comme « aucune
+// épingle », une panne retirait l'épingle de l'écran (RV-38).
 async function supaLoadCommentInteractions(commentIds) {
   var out = {};
+  var lu = false;
   try {
     var uniq = [...new Set((commentIds || []).filter(Boolean))];
-    if (!uniq.length || typeof supa === "undefined" || !supa || !window._supaReal) return out;
+    if (!uniq.length) return out;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return null;
     // `id` et `post_id` (R37, 2026-11-05) : un DELETE temps réel n'apporte que
     // l'identifiant de la ligne ; c'est cette lecture qui permet de savoir ce
     // qu'il retire (`_ciIndexer`, app-04). Sans eux, aucun retrait d'un autre
     // compte ne se voit avant la réouverture de la discussion.
     var res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
+    if (!res || res.error) {
+      try { diagLog("ci_lecture : " + String((res && res.error && (res.error.code || res.error.message)) || "réponse vide")); } catch (_e) {}
+      return null;
+    }
+    lu = true;
     // Une ligne dont le DELETE est déjà arrivé (pendant cette lecture) est morte,
     // même si l'instantané de la réponse la porte encore (contre-revue R37).
     var lignesCi = (typeof _ciSansTombees === "function") ? _ciSansTombees(res.data || []) : (res.data || []);
@@ -5298,7 +5370,9 @@ async function supaLoadCommentInteractions(commentIds) {
       else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, ci: ci, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
       else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, ci: ci, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
       else if (r.kind === "gif" && r.payload) o.replies.push({ id: "sgif_" + r.created_at + "_" + r.user_id, ci: ci, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
-      else if (r.kind === "pin") { if (!o._pinAt || r.created_at > o._pinAt) { o._pinAt = r.created_at; o.pinned = (r.payload === "1" || r.payload === 1 || r.payload === true); } } // #11 épingle
+      // #11 épingle (RV-38) : les lignes « pin » ne se lisent pas ici, commentaire par
+      // commentaire, mais par FIL (`supaLireEpingleFil`) — une page de 30 n'en porte
+      // qu'une partie. Elles restent indexées ci-dessus (R37).
     });
     // Résoudre les profils des auteurs d'interactions inconnus localement, sinon
     // le renderer (userById) affiche « ? » comme pseudo sur les réponses/réactions
@@ -5307,23 +5381,89 @@ async function supaLoadCommentInteractions(commentIds) {
     var unknownIds = [...new Set((res.data || []).map(function(r){ return r.user_id; }))]
       .filter(function(id){ return id && id !== MY_UID && !(typeof userById === "function" && userById(id)); });
     if (unknownIds.length) await _resolveProfilesByIds(unknownIds);
-  } catch(e) {}
+  } catch(e) {
+    try { diagLog("ci_lecture : " + (e && e.message)); } catch (_e) {}
+    if (!lu) return null;
+  }
   return out;
 }
-// Applique les interactions chargées sur les objets commentaires d'un post.
-async function hydrateCommentInteractions(post) {
+// #11 épingle (RV-38) : les lignes « pin » du PROPRIÉTAIRE du fil, DANS ce fil, de
+// la plus récente à la plus ancienne — la règle (`_epingleDesLignes`, app-04) ne
+// regarde que la tête. ⚠️ `null` quand la lecture n'a pas eu lieu ou a échoué :
+// rien n'est connu, et rien ne change à l'écran. Une ligne d'un autre compte ou
+// d'un autre fil n'est jamais demandée. Indexées (R37) : leur retrait (une purge)
+// est reconnu sans relecture.
+const EPINGLE_LIGNES_MAX = 50;
+async function supaLireEpingleFil(fil, proprio) {
+  if (!fil || !proprio || typeof supa === "undefined" || !supa || !window._supaReal) return null;
+  try {
+    var res = await supa.from("comment_interactions").select("id,comment_id,post_id,user_id,kind,payload,created_at")
+      .eq("post_id", fil).eq("kind", "pin").eq("user_id", proprio)
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(EPINGLE_LIGNES_MAX);
+    if (!res || res.error) {
+      try { diagLog("epingle_lecture : " + String((res && res.error && (res.error.code || res.error.message)) || "réponse vide")); } catch (_e) {}
+      return null;
+    }
+    var lignes = (typeof _ciSansTombees === "function") ? _ciSansTombees(res.data || []) : (res.data || []);
+    if (typeof _ciIndexer === "function") lignes.forEach(function (r) { _ciIndexer(r); });
+    return lignes;
+  } catch (e) {
+    try { diagLog("epingle_lecture : " + (e && e.message)); } catch (_e) {}
+    return null;
+  }
+}
+// Un commentaire de publication par son identifiant : l'épinglé, quand il est
+// plus ancien que la première page (RV-38). La forme de `supaLoadComments` ;
+// null s'il est absent (supprimé) ou si la lecture échoue.
+// Rend le commentaire, `false` quand la base dit qu'il N'EXISTE PAS (lecture
+// réussie, aucune ligne), `null` quand on ne sait pas (pas de base, échec) : une
+// lecture en échec n'est pas une preuve d'absence (RV-38, l'épinglé gardé).
+async function supaLireCommentaire(postId, commentId) {
+  if (!postId || !commentId || typeof supa === "undefined" || !supa || !window._supaReal) return null;
+  try {
+    const { data, error } = await supa.from("post_comments").select("id, post_id, author_id, content, created_at")
+      .eq("id", commentId).eq("post_id", postId).limit(1);
+    if (error) { try { diagLog("commentaire_lecture : " + (error.code || error.message)); } catch (_e) {} return null; }
+    const r = (data || [])[0];
+    if (!r) return false;
+    const profs = await _resolveProfilesByIds([r.author_id]);
+    const p = profs[r.author_id] || {};
+    return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨",
+      content: r.content, text: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true };
+  } catch (e) {
+    try { diagLog("commentaire_lecture : " + (e && e.message)); } catch (_e) {}
+    return null;
+  }
+}
+// Applique les interactions chargées sur les objets commentaires d'un fil.
+// `post` : une publication, ou `{ id: <identifiant du fil>, comments }` — l'`id`
+// est le FIL. `opts.epingle === false` : ne pas relire l'épingle du fil (une page
+// « précédents », l'épinglé chargé à part, le panneau d'une bobine, une activité
+// rechargée par le temps réel : elle vient d'être lue, ou le direct la tient).
+async function hydrateCommentInteractions(post, opts) {
+  // #11 épingle (RV-38) : un état du FIL, lu au niveau du fil, EN PARALLÈLE des
+  // interactions. Ni l'une ni l'autre n'attend (contre-revue du delta, P3-A : les
+  // « j'aime » attendaient la chaîne de l'épingle) ; l'épingle ne s'APPLIQUE
+  // qu'après les interactions (P2-A : repeinte avant elles, la discussion qu'une
+  // page venait de reconstruire montrait « 🤍 0 »), et ne repeint que si elle change.
+  var finInteractions = null;
   try {
     if (!post || !Array.isArray(post.comments) || !post.comments.length) return;
     var ids = post.comments.map(function(c){ return c.id; });
+    if (post.id && !(opts && opts.epingle === false) && typeof _lireEpingleFil === "function") {
+      var apresInteractions = new Promise(function (r) { finInteractions = r; });
+      _lireEpingleFil(post.id, apresInteractions);
+    }
     var map = await supaLoadCommentInteractions(ids);
-    post.comments.forEach(function(c){
-      var info = map[c.id]; if (!info) return;
-      c.likes = info.likes || 0;
-      c.likedBy = info.likedBy || [];
-      if (typeof info.pinned !== "undefined") c.pinned = info.pinned; // #11 épingle
-      // Réponses serveur (texte + emoji_reaction + gif_reaction) — source de vérité.
-      c.replies = (info.replies || []).slice();
-    });
+    if (map) {
+      post.comments.forEach(function(c){
+        var info = map[c.id]; if (!info) return;
+        c.likes = info.likes || 0;
+        c.likedBy = info.likedBy || [];
+        // Réponses serveur (texte + emoji_reaction + gif_reaction) — source de vérité.
+        c.replies = (info.replies || []).slice();
+      });
+    }
     // 2e passe : réactions emoji portées sur les RÉPONSES (comment_interactions dont
     // comment_id = id d'une réponse, ex. « srep_… » déterministe). Les réponses sont
     // reconstruites ci-dessus avec des ids stables → on peut leur rattacher leurs
@@ -5332,7 +5472,7 @@ async function hydrateCommentInteractions(post) {
     post.comments.forEach(function(c){ (c.replies || []).forEach(function(r){ if (r && r.id) replyIds.push(r.id); }); });
     if (replyIds.length) {
       var rmap = await supaLoadCommentInteractions(replyIds);
-      post.comments.forEach(function(c){
+      if (rmap) post.comments.forEach(function(c){
         (c.replies || []).forEach(function(r){
           var ri = rmap[r.id]; if (!ri) return;
           r.likes = ri.likes || 0;
@@ -5341,7 +5481,14 @@ async function hydrateCommentInteractions(post) {
         });
       });
     }
-  } catch(e) {}
+  } catch(e) {
+    // Une exception ici (une fonction absente comprise) était indiscernable de
+    // « rien à appliquer » (règle du catch large).
+    try { diagLog("ci_hydrate : " + (e && e.message)); } catch (_e) {}
+  } finally {
+    // Les interactions sont appliquées (ou ont échoué) : l'épingle peut l'être.
+    if (finInteractions) finInteractions();
+  }
 }
 
 // Résout des profils (username/emoji/color) par ids en UNE requête, SANS embed
@@ -6341,6 +6488,12 @@ async function supaCreateConversation(withUserId) {
 }
 
 async function supaCreateGroup(groupName, memberIds, passionId) {
+  // ⚠️ SDK NON CHARGÉ (revue du lot C-02, 06/11) : le client de repli rend
+  // `{ error: null }` à tout, donc un groupe « créé » ici aurait reçu un `grp_…`
+  // sans exister en base — et `removeGroupMember`, qui ne reconnaît une ébauche
+  // locale qu'à son préfixe `conv_grp_`, n'aurait plus jamais pu en retirer un
+  // membre. Sans SDK, rien n'est créé : l'appelant garde l'ébauche `conv_grp_…`.
+  if (!window._supaReal) return null;
   try {
     await supaEnsureProfileExists();
     const convId = "grp_" + uid();
@@ -7942,7 +8095,11 @@ function _creerCanalDb(prive) {
         if (post) {
           const prof = await _profilAuteur(r.author_id);
           if (!post.comments) post.comments = [];
-          if (!post.comments.find(c => c.id === r.id)) {
+          const dejaLa = post.comments.find(c => c.id === r.id);
+          // L'épinglé lu à part (RV-38) qu'on reçoit en direct est un commentaire
+          // comme les autres : il ne quittera pas la liste avec l'épingle.
+          if (dejaLa && dejaLa._epingleGarde) { delete dejaLa._epingleGarde; delete dejaLa._aVerifier; }
+          if (!dejaLa) {
             post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true });
             // Le compte exact du fil (`commentsTotal`) est celui du dernier
             // chargement : ce commentaire est en base, il compte désormais.
@@ -7972,7 +8129,11 @@ function _creerCanalDb(prive) {
         const page = document.getElementById("eventDetailPage");
         const open = page && page.style.display !== "none" && document.getElementById("eventCommentsList");
         if (open && typeof _loadEventComments === "function" && window._openEventDetailId === r.event_id) {
-          _loadEventComments(r.event_id);
+          // Sans relire l'épingle quand elle est CONNUE : le direct la tient (RV-38)
+          // — sinon chaque commentaire reçu coûtait une lecture à chaque spectateur.
+          // Inconnue (la lecture d'ouverture a échoué), elle se relit.
+          const connue = typeof _epingleConnue === "function" && _epingleConnue(r.event_id);
+          _loadEventComments(r.event_id, connue ? { epingle: false } : undefined);
         }
       } catch(e) {}
     });
@@ -8234,15 +8395,32 @@ async function supaLoadBlocks() {
 // Renvoie true seulement si le signalement est réellement en base. Sans ce verdict,
 // une policy INSERT absente ou cassée faisait disparaître le signalement sans le
 // moindre signal — l'utilisateur croyait avoir alerté, personne ne recevait rien.
+// Flux « report_content » (2026-11-06, contrats-actions.js) : un signalement
+// perdu est un défaut de SÉCURITÉ, pas d'ergonomie — il est désormais jugé au
+// pilotage comme un message ou une publication. Ni le motif ni la cible ne
+// partent dans la télémétrie : leur nature seule (`cible`), jamais le texte.
 async function supaReport(targetType, targetId, reason) {
+  let _repCid = null;
+  try { if (window.tel && tel.flowStart) _repCid = tel.flowStart("report_content", { cible: String(targetType || "").slice(0, 20) }); } catch (e) {}
+  const _repRegle = (ok, err) => { try { if (_repCid && window.tel && tel.settle) tel.settle(_repCid, "saved", ok, err || null); } catch (e) {} _repCid = null; };
   try {
     const res = await supa.from("reports").insert({
       id: "r_" + uid(), reporter_id: MY_UID || null,
       target_type: targetType, target_id: String(targetId || ""),
       reason: String(reason || "").slice(0, 500), created_at: new Date().toISOString(),
     });
-    return _writeVerdict(res, { label: "signalement" }).ok;
-  } catch(e) { console.warn("signalement :", e && e.message); return false; }
+    const v = _writeVerdict(res, { label: "signalement" });
+    // Signaler deux fois la même passion : l'index unique par personne répond
+    // 23505 — « le cas le plus fréquent » (app-04). C'est une règle, pas une panne.
+    const code = v.ok ? null : String(v.error && v.error.code) === "23505" ? "doublon" : (typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(v.error) : null);
+    _repRegle(v.ok, code ? { code, message: code } : v.error);
+    return v.ok;
+  } catch(e) {
+    console.warn("signalement :", e && e.message);
+    const code = typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(e) : null;
+    _repRegle(false, code ? { code, message: code } : e);
+    return false;
+  }
 }
 
 // ---- STORIES : VUES SYNCHRONISÉES (cross-appareil) ----

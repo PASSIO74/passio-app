@@ -195,6 +195,16 @@ vide en cours) — ou sur un projet jetable dédié — et ressemer le staging a
 
 Preuves (hors git, contenu utilisateur réel) : `.passio/sauvegardes/2026-10-21-res14-preuves/`.
 
+⚠️ **Ce que l'exercice a laissé derrière lui (trouvé le 2026-11-06)** : `schema-executable.js` recopiait
+chaque tâche cron TELLE QUELLE. La veille du pilotage (`pilotage_veille`, un `net.http_post` vers
+`https://njkiyoklssvefstljemx.supabase.co/functions/v1/pilotage`) a donc été planifiée sur le staging :
+dès 18 h 55, deux veilles frappaient la production à chaque tick, et le plafond « lire, puis écrire »
+en laissait passer deux une fois sur deux (un rappel d'activité envoyé deux fois le 30/10). Le
+générateur ne recopie plus une tâche qui APPELLE un projet que sur ce projet (déclaré par
+`select set_config('passio.projet', '<ref>', true);` en tête de transaction) ; ailleurs, il la saute et
+le dit par un avis. Banc : `tests/sql/cron-projet-cible.test.sh`. La tâche déjà installée sur le
+staging se retire à la main (`docs/AUTONOMIE_EXPLOITATION.md` § 8).
+
 ## La revue du 2026-11-03 (R25) : la structure qu'une reprise ne rendait pas
 
 Revue indépendante du 2026-11-03, reproduite au banc puis corrigée le 2026-11-04. Le DDL de reprise
