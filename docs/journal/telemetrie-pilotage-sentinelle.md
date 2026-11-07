@@ -41,6 +41,7 @@
 - 📬 UN ABONNEMENT N'EST PAS UNE RÉCEPTION — LES NOTIFICATIONS S'ACCUSENT (2026-11-06)
 - 👆 « RÉGLER » NE SE VOYAIT PAS — QUATRE GESTES, QUATRE ANALYSES RÉUSSIES, UNE LIGNE IDENTIQUE (2026-11-07)
 - 📞 LES APPELS S'ACCUSENT — UN SUR DIX, TIRÉ PAR LE SERVEUR, RIEN DE L'APPELANT (2026-11-07)
+- 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
 
 ---
 
@@ -804,3 +805,26 @@ Suite de la fiche 📬, qui laissait « les appels (`notify-call`), à échantil
 ⚠️ **LE PID NE REVIENT JAMAIS À L'APPELANT.** `pousserAppareils` ne le rend pas, la réponse reste `{ ok, sent }` : un appelant qui le connaîtrait déposerait l'accusé d'un appel qui n'a pas sonné, et une livraison en panne passerait pour saine. ⚠️ **Le tirage vient du serveur** (`crypto.getRandomValues`), jamais de la requête : l'appelant ne choisit pas ses appels jugés. ⚠️ **Rien de l'appelant dans la note ni dans l'accusé** : ni identifiant d'appel (choisi par l'appelant), ni nom, ni emoji, ni type — des pid et des nombres. ⚠️ **Une notification sociale ne porte jamais d'accusé**, même tirée et avec une adresse : la mesure tient à `charge.type === "call"`, et la charge sociale reste identique à l'octet. ⚠️ **Les lectures restent à part** : un appelé qui noie SON pid ne rend « partiel » que le taux des appels.
 
 ⚠️ **EN PRODUCTION, LA MESURE EST INERTE** : `APPELS_ACTIFS = false` (ASTRA-60) répond 503 avant tout envoi. Aucune note `genre: "appel"` n'existera avant la réouverture des appels — décision produit, hors de ce lot. L'interrupteur vit désormais dans `_shared/appels.js`, lu par `notify-call` ET par le pilotage : la carte dit « Coupés », avec la raison, au lieu d'un « 0 appel mesuré » qui laisserait croire à des appels non mesurés. Requête de preuve au § 10. Verrous : `appels.test.mjs` ①–⑦, `reception.test.mjs` ⑯ ⑰, `rappels.test.mjs` ⑫ quinquies, `pilotage.test.mjs` ㉿⑨ ㉿⑲, `pilotage-nuage.spec.js` ㊷, `appels-desactives-pilote.spec.js` ⑥ ; 44 réinjections rouges.
+
+## 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
+
+`edge-functions.yml` déploie les fonctions en parallèle de la CI de `main`, sans attendre son verdict : son étape « Verrous unitaires des modules partagés » est le seul contrôle unitaire de ce chemin. Tenue à la main, la liste dérivait :
+- `appels.js` et `reception.js` avaient été oubliés par #745 (corrigé par #748) ;
+- `battement`, `parcours`, `croissance`, `contrats-actions` et `politique-autonomie` partaient sans leur suite ;
+- le job installait Node 20, quand tous les autres installent Node 22.
+
+Désormais `tests/unit/edge-functions-verrous.test.mjs` (dans `npm run verif`) calcule la clôture des imports des `index.ts` et exige :
+- une suite listée par module emporté ;
+- que chaque suite qui en importe un soit listée, ou que son écart soit déclaré avec sa raison ;
+- l'étape avant « Déployer » ;
+- le même Node que le job `audits` de `deploy.yml`.
+
+Rejoué sur `main` d'avant #748, le banc nomme `appels.js` et `reception.js`. Détail : `docs/AUTONOMIE_EXPLOITATION.md` § 3.8.
+
+⚠️ **IMPORTER, C'EST DIRECTEMENT.** `reception.js` était atteint par `rappels.test.mjs` (à travers `rappels.js`) et par `pilotage.test.mjs` (à travers `pilotage.js`), et n'avait pourtant aucun verrou avant le déploiement. Une suite qui traverse un module n'en éprouve pas le comportement : le banc ne compte que l'import écrit dans la suite.
+
+⚠️ **UNE SUITE QUI ÉPROUVE AUTRE CHOSE NE SE LISTE PAS : ELLE SE DÉCLARE.** Six suites importent un module emporté pour éprouver une gate, un script, le client ou un workflow. Les lister aurait retenu un correctif de fonction pour la dérive d'un fichier qu'il ne touche pas. Pour la même raison, `politique-autonomie.test.mjs` a été coupé en deux. Ce qui compare la politique à `deploy.yml`, à `sentinelle-autonome.yml`, à la Sentinelle et à `app-04` est dans `politique-autonomie-executants.test.mjs`.
+
+⚠️ **UN BANC QUI LIT `tests/unit` SE LIT AUSSI.** Ses textes de mutation qui importent un module emporté sont assemblés (`VERS_SHARED`). Écrits en clair, ils feraient du banc une suite qu'il faudrait lister. Un verrou le vérifie.
+
+⚠️ **UNE CONSTANTE EMPLOYÉE N'EST PAS UNE CONSTANTE ÉPINGLÉE.** `battement.test.mjs` calcule ses âges à partir de `BATTEMENT_PERIME_MS` : passer cette constante de 35 à 60 min ne rougit aucune suite. Pour éprouver la ligne `battement`, la réinjection retenue est donc celle que seule sa suite voit : une erreur multi-lignes recopiée dans le battement. La réinjection documentée dans la suite (`resumerBattement` qui ignore l'âge) rougissait déjà `pilotage.test.mjs`.
