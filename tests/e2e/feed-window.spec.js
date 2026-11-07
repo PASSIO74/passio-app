@@ -226,6 +226,8 @@ test.describe("Fil fenêtré — cartes montées bornées et lots progressifs", 
     // `seedFeed` pose `_feedServerMayHaveMore = false` — il n'y a rien d'autre.
     await seedFeed(page, { windowOn: true, n: 20 });
     expect((await ids(page)).length).toBe(20);
+    // La queue est bien posée (complément différé passé)… mais sans sentinelle.
+    expect(await page.locator("#feedWindowTail").count()).toBe(1);
     expect(await page.locator("#feedWindowSentinel").count()).toBe(0);
 
     await page.evaluate(() => {
@@ -264,7 +266,11 @@ test.describe("Fil fenêtré — cartes montées bornées et lots progressifs", 
   // page sans le moindre geste. Un lot qui n'ajoute aucune carte attend
   // désormais que la sentinelle soit sortie de la marge — c'est-à-dire un vrai
   // défilement — avant d'en demander un autre.
-  test("un lot qui n'ajoute aucune carte ne se relance pas tout seul", async ({ page }) => {
+  //
+  // `n` publications de la passion suivie, puis des « pages serveur » de 20
+  // publications d'une passion que ce fil ne suit pas : le stock grandit, la
+  // fenêtre peinte non. `delaiPage` simule une page lente.
+  async function preparerPagesSteriles(page, { n, delaiPage = 0 }) {
     await bootOnboarded(page);
     // Ce cas tient sur `_feedServerMayHaveMore = true` : un `supaLoadPosts` de
     // démarrage tardif (en CI, Supabase répond) le remettrait à false sous le
@@ -272,14 +278,13 @@ test.describe("Fil fenêtré — cartes montées bornées et lots progressifs", 
     // fini de lire, et le filet de rafraîchissement est coupé.
     await page.waitForFunction(() => window._supaInitTerminee === true || !window._supaReal, null, { timeout: 15000 }).catch(() => {});
     await page.evaluate(() => stopFeedRefreshLoop());
-    await seedFeed(page, { windowOn: true, n: 20 });
-    await page.evaluate(() => {
+    await seedFeed(page, { windowOn: true, n });
+    await page.evaluate((delai) => {
       window.__pages = 0;
       window.__lots = 0;
-      // Une « page serveur » de 20 publications d'une passion que ce fil ne
-      // suit pas : le stock grandit, la fenêtre peinte non.
       window._chargerPageServeurSuivante = async function () {
         const k = ++window.__pages;
+        if (delai) await new Promise((r) => setTimeout(r, delai));
         const ailleurs = [];
         for (let i = 0; i < 20; i++) {
           ailleurs.push({
@@ -296,32 +301,85 @@ test.describe("Fil fenêtré — cartes montées bornées et lots progressifs", 
       window._feedServerMayHaveMore = true;
       window._feedDomSig = null;
       renderFeed();
-    });
+    }, delaiPage);
     await page.waitForTimeout(400); // complément idle : la queue et sa sentinelle
     // La prémisse : le serveur « a encore », donc la sentinelle est armée.
     expect(await page.locator("#feedWindowSentinel").count()).toBe(1);
+  }
+  const enBas = (page) => page.evaluate(() => {
+    const m = document.querySelector(".app-main");
+    m.scrollTo(0, m.scrollHeight);
+  });
+  const enHaut = (page) => page.evaluate(() => document.querySelector(".app-main").scrollTo(0, 0));
 
-    await page.evaluate(() => {
-      const m = document.querySelector(".app-main");
-      m.scrollTo(0, m.scrollHeight);
+  // Deux tailles, deux chemins de repeint. Jusqu'à 12 cartes, la queue est posée
+  // dans la peinture rapide : la liste ne rétrécit jamais, aucun moteur ne la fait
+  // sauter, et le cas éprouve le frein PARTOUT. Au-delà, elle passe par le
+  // complément différé : sous Chromium ≤ 157 le saut vers la 11ᵉ carte lève le
+  // frein de lui-même, et seul Chromium ≥ 158 (la CI) l'éprouve vraiment.
+  for (const n of [8, 20]) {
+    test(`un lot qui n'ajoute aucune carte ne se relance pas tout seul (${n} cartes)`, async ({ page }) => {
+      await preparerPagesSteriles(page, { n });
+      await enBas(page);
+      await page.waitForFunction(() => window.__lots >= 1);
+      // Le pouce ne bouge plus : rien ne doit repartir de lui-même.
+      await page.waitForTimeout(1500);
+      expect(await page.evaluate(() => window.__lots)).toBe(1);
+      expect(await page.evaluate(() => window.__pages)).toBe(1);
+      expect((await ids(page)).length).toBe(n);
+
+      // Un vrai geste — remonter, puis redescendre — relance bien un lot : la
+      // sentinelle est freinée, pas morte.
+      await enHaut(page);
+      await page.waitForFunction(() => feedWindowStats().frein === false, null, { timeout: 5000 });
+      await enBas(page);
+      await page.waitForFunction(() => window.__lots >= 2, null, { timeout: 5000 });
+      expect(await page.evaluate(() => window.__pages)).toBe(2);
     });
+  }
+
+  // Relevé par audit-passio : le frein se posait sur des entrées de la sentinelle
+  // déjà consommées. Un rendu pendant l'attente du serveur (temps réel,
+  // rafraîchissement) peint la limite que le lot vient de relever ; le repeint du
+  // lot n'est plus qu'un no-op, qui ne pose aucune sentinelle neuve. Un lecteur
+  // remonté PENDANT la lecture avait donc déjà « quitté la marge » avant que le
+  // frein n'existe : en redescendant, plus rien ne partait.
+  test("un geste fait pendant un lot lent n'est pas perdu", async ({ page }) => {
+    await preparerPagesSteriles(page, { n: 20, delaiPage: 900 });
+    await enBas(page);
     await page.waitForFunction(() => window.__lots >= 1);
-    // Le pouce ne bouge plus : rien ne doit repartir de lui-même.
-    await page.waitForTimeout(1500);
-    expect(await page.evaluate(() => window.__lots)).toBe(1);
-    expect(await page.evaluate(() => window.__pages)).toBe(1);
-    expect((await ids(page)).length).toBe(20);
+    await page.evaluate(() => renderFeed());   // le rendu intermédiaire
+    await enHaut(page);                          // le lecteur remonte avant la page…
+    await page.waitForFunction(() => window.__pages >= 1 && !feedWindowStats().loading, null, { timeout: 5000 });
+    // …la page arrive, stérile : le frein, posé, tombe aussitôt — la sentinelle
+    // est hors de la marge.
+    await page.waitForFunction(() => feedWindowStats().frein === false, null, { timeout: 5000 });
+    await enBas(page);                           // …et redescendre est un geste.
+    await page.waitForFunction(() => window.__lots >= 2, null, { timeout: 5000 });
+  });
 
-    // Un vrai geste — remonter, puis redescendre — relance bien un lot : la
-    // sentinelle est freinée, pas morte.
-    await page.evaluate(() => document.querySelector(".app-main").scrollTo(0, 0));
-    await page.waitForFunction(() => feedWindowStats().frein === false);
+  // Relevé par audit-passio, défaut antérieur à ce lot : un rendu VIDE (passion
+  // décochée, état vide, repli d'exploration) ne périmait pas le complément
+  // différé du rendu complet qui le précédait. 300 ms plus tard, huit cartes
+  // périmées s'ajoutaient sous l'état vide, avec un second #feedLoadMoreBtn et,
+  // fil fenêtré, une sentinelle de plus qui relançait un lot.
+  test("un rendu vide annule le complément différé du rendu précédent", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.waitForFunction(() => window._supaInitTerminee === true || !window._supaReal, null, { timeout: 15000 }).catch(() => {});
+    await page.evaluate(() => stopFeedRefreshLoop());
+    await seedFeed(page, { windowOn: true, n: 20 });
     await page.evaluate(() => {
-      const m = document.querySelector(".app-main");
-      m.scrollTo(0, m.scrollHeight);
+      window._feedServerMayHaveMore = true;  // la queue périmée porterait bouton ET sentinelle
+      window._feedDomSig = null;
+      renderFeed();                          // 12 cartes, complément différé en attente
+      _activeFeedPassions = new Set();       // plus aucune source…
+      renderFeed();                          // …fil vide, dans la même tâche
     });
-    await page.waitForFunction(() => window.__lots >= 2);
-    expect(await page.evaluate(() => window.__pages)).toBe(2);
+    await page.waitForTimeout(600);          // bien au-delà des 300 ms du complément
+    await expect(page.locator("#feedEmpty")).toBeVisible();
+    expect(await page.locator("#feedList .post[data-postid]").count()).toBe(0);
+    expect(await page.locator("#feedWindowSentinel").count()).toBe(0);
+    expect(await page.locator("#feedLoadMoreBtn").count()).toBe(1);
   });
 });
 

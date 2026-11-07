@@ -8772,11 +8772,13 @@ function feedWindowSync(list) {
 // page tout en bas une fois la liste regonflée : la NOUVELLE sentinelle est
 // aussitôt dans la marge, un autre lot part, et ainsi de suite — mesuré : 45
 // pages serveur en 1,5 s, sans un geste (`feed-window.spec.js`, « ne se relance
-// pas tout seul »). Sous Chromium 153, la même reconstruction renvoyait le
-// lecteur vers la 11ᵉ carte, et c'est ce saut qui servait de frein, par accident.
+// pas tout seul »). Sous Chromium ≤ 157, la même reconstruction renvoie le lecteur
+// vers la 11ᵉ carte — c'est TOUJOURS le cas pour un lot serveur stérile, seule la
+// boucle est corrigée ici — et ce saut servait de frein, par accident.
 // Le frein est désormais explicite : après un lot stérile, plus rien ne part avant
 // que la sentinelle soit sortie de la marge (un vrai défilement), ou que le nombre
-// de cartes peintes ait changé (temps réel, autre chargement).
+// de cartes peintes ait changé (temps réel, autre chargement) ; `feedWindowTeardown`
+// le lève aussi.
 function _feedWindowFreinActif() {
   return window._feedWindowFrein != null && window._feedWindowFrein === window._feedWindowVisibles;
 }
@@ -8808,14 +8810,33 @@ function feedWindowLoadNextBatch() {
     window._feedWindowLoading = false;
     // `loadMoreFeedPosts` a repeint (ou renoncé) AVANT de rendre la main : le
     // compte relu ici est celui du lot. Inchangé = lot stérile = frein.
-    if (window._feedWindowVisibles === avant) window._feedWindowFrein = avant;
+    if (window._feedWindowVisibles !== avant) return;
+    window._feedWindowFrein = avant;
+    // ⚠️ Le frein part de la position ACTUELLE de la sentinelle. Ses entrées ont
+    // pu être consommées AVANT qu'il existe : un rendu intermédiaire pendant
+    // l'attente du serveur (temps réel, `completerFilAvecLeReel`) peint déjà la
+    // limite relevée, le repeint du lot n'est plus qu'un no-op qui ne pose aucune
+    // sentinelle neuve — et un lecteur remonté pendant la lecture voyait son
+    // geste perdu (relevé par audit-passio, mesuré sous Chromium 153 et 158). On
+    // la fait réobserver : hors de la marge, le frein tombe aussitôt.
+    var s = document.getElementById("feedWindowSentinel"), o = window._feedWindowObserver;
+    if (s && o) {
+      try { o.unobserve(s); o.observe(s); }
+      catch (e) { try { diagLog("feedWindow.frein", e && e.message); } catch (_) {} }
+    }
+  };
+  // Jamais muet : un lot qui lève (une ReferenceError dans `renderFeed`…)
+  // poserait EN PLUS le frein, en silence.
+  var echec = function (e) {
+    try { diagLog("feedWindow.lot", e && e.message ? e.message : String(e)); } catch (_) {}
+    done();
   };
   if (typeof loadMoreFeedPosts !== "function") { done(); return; }
   try {
     var r = loadMoreFeedPosts();
-    if (r && typeof r.then === "function") r.then(done, done);
+    if (r && typeof r.then === "function") r.then(done, echec);
     else done();
-  } catch (e) { done(); }
+  } catch (e) { echec(e); }
 }
 
 // Repeint INCRÉMENTAL : n'ajoute que la queue manquante, sans toucher aux
@@ -9270,6 +9291,11 @@ function renderFeed() {
   const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
   if (posts.length === 0) {
     _feedWindowNoterVisibles(0);   // aucune carte : aucun frein de fenêtre ne tient
+    // Ce rendu périme AUSSI le complément différé d'un rendu complet précédent :
+    // sans ce jeton, il s'ajoutait 300 ms plus tard sous l'état vide ou le repli
+    // — 8 cartes périmées, un second #feedLoadMoreBtn et, fil fenêtré, une
+    // sentinelle de plus qui relançait un lot (relevé par audit-passio).
+    window._feedRenderToken = (window._feedRenderToken || 0) + 1;
     // ── §7 : REPLI EXPLORATION plutôt qu'un cul-de-sac.
     // Déclenché quand les intérêts de l'utilisateur ne donnent rien À AFFICHER —
     // soit qu'aucun contenu n'existe, soit qu'il n'en existe que d'inaffichable

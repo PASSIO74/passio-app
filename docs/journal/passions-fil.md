@@ -974,32 +974,50 @@ affiche (un compte aux passions étroites), chaque page sans carte repeignait to
 sentinelle repartait aussitôt : **45 pages serveur en 1,5 s sans un geste** — le fil parcourait la table `posts`,
 quatre requêtes par page.
 
-**Correctif** (app-02, drapeau `feed_window_v1` seulement ; le rendu historique est inchangé) :
+**Correctif** (app-02, drapeau `feed_window_v1` seulement ; le rendu historique est inchangé, sauf ⑤) :
 1. `feedWindowTailHtml` ne pose la sentinelle que si `hasMore`, comme le bouton « Charger plus » dont elle est le
    jumeau automatique. Rien à charger, rien à guetter.
 2. **Frein** `_feedWindowFrein` : un lot qui n'a pas changé le nombre de cartes peintes (`_feedWindowVisibles`,
-   tenu par `renderFeed` via `_feedWindowNoterVisibles`) empêche le suivant de partir tant que la sentinelle n'est
-   pas sortie de la marge (un vrai défilement) ou que ce nombre n'a pas changé (temps réel, autre chargement).
-   Levé aussi par `feedWindowTeardown` ; lisible dans `feedWindowStats().frein`.
+   tenu par `renderFeed` via `_feedWindowNoterVisibles`) empêche le suivant de partir avant que la sentinelle soit
+   sortie de la marge (un vrai défilement) ou que ce nombre ait changé (temps réel, autre chargement). Levé aussi
+   par `feedWindowTeardown` ; lisible dans `feedWindowStats().frein`.
 3. ⚠️ **Seule une sentinelle ENCORE dans la page lève le frein** (`el.isConnected`). Un repeint complet détache
    l'ancienne, et l'observateur rend pour elle une dernière entrée « hors marge » qui n'est le geste de personne :
    sans cette garde, le frein tombait juste avant que la nouvelle sentinelle, ramenée en bas par l'ancrage, ne
    relance la boucle — **35 lots en 1,5 s, frein en place**. Un test vert sous Chromium 153 ne l'aurait jamais vu.
+4. ⚠️ **Le frein part de la position ACTUELLE de la sentinelle** : il la fait réobserver en se posant. Relevé par
+   `audit-passio` et mesuré sous les deux moteurs : un rendu pendant l'attente du serveur (temps réel,
+   `completerFilAvecLeReel`) peint déjà la limite que le lot vient de relever ; le repeint du lot n'est plus qu'un
+   no-op, sans sentinelle neuve, et un lecteur remonté PENDANT la lecture avait déjà « quitté la marge » avant que
+   le frein n'existe — en redescendant, plus rien ne partait (1 lot au lieu de 2).
+5. **Un rendu vide périme le complément différé** (`_feedRenderToken` incrémenté dans la branche « aucune
+   publication »). Défaut ANTÉRIEUR, drapeau coupé compris, relevé par la même revue : le complément d'un rendu
+   complet de plus de 12 cartes s'ajoutait 300 ms plus tard sous l'état vide ou le repli — 8 cartes périmées, un
+   second `#feedLoadMoreBtn` et, fil fenêtré, une sentinelle de plus qui relançait un lot.
+6. Un lot qui lève n'est plus avalé en silence (`diagLog("feedWindow.lot", …)`) : il pose maintenant le frein.
 
-**Ce qui reste, connu.** Un lot serveur qui n'apporte aucune carte visible repeint encore le fil en entier, une
-fois (`renderLimit` est dans `_domSig`, et il n'y a rien à ajouter en queue) : sous Chromium ≤ 157 le lecteur est
-encore renvoyé vers la 11ᵉ carte dans CE cas. Le frein en borne le coût à un lot par geste. Supprimer ce repeint
-demande de séparer, dans la signature, ce qui change les cartes de ce qui ne change que la queue — sans perdre le
-rafraîchissement des temps relatifs (tranche de 5 min), du pont IRL ni de la liste de blocage, qui passent tous par
-ce repeint ; et sans laisser le bouton « Charger plus » figé sur « Chargement… » (drapeau coupé, c'est le repeint
-qui le rétablit). À faire avec la levée du drapeau `feed_window_v1`, pas avant.
+**Ce qui reste, connu — préalable à la levée du drapeau.** Un lot serveur qui n'apporte aucune carte visible
+repeint encore le fil en entier, une fois (`renderLimit` est dans `_domSig`, et il n'y a rien à ajouter en queue) :
+sous Chromium ≤ 157 (mesuré : 2 992 px du bas après le lot, puis 3 917 px de défilement sur 60 cartes) — et
+probablement sous WebKit, la cible de PERF-IOS (non mesuré : aucun WebKit sur le poste) — le lecteur est ENCORE
+renvoyé vers la 11ᵉ carte, et ce saut lève le frein. Le frein en borne le coût à un lot par geste. Supprimer ce
+repeint demande de séparer, dans la signature, ce qui change les cartes de ce qui ne change que la queue — sans
+perdre le rafraîchissement des temps relatifs (tranche de 5 min), du pont IRL ni de la liste de blocage, qui passent
+tous par ce repeint ; et sans laisser le bouton « Charger plus » figé sur « Chargement… » (drapeau coupé, c'est le
+repeint qui le rétablit). Fil court (moins haut que l'écran plus la marge de 1 400 px) : la sentinelle ne sort
+jamais de la marge, donc après un lot stérile plus rien ne part tout seul — le bouton, visible, prend le relais ;
+avant, ce cas bouclait sous les deux moteurs.
 **La CI change de navigateur sans commit** : devant un rouge soudain sur des PR sans rapport, comparer d'abord la
 ligne « Downloading Chrome for Testing … » d'un job vert et d'un job rouge.
 
 **Verrous** (`feed-window.spec.js`) : ② est inchangé, assertions comprises, et devient déterministe ; « en fin de
 liste, la sentinelle se tait : ni lot fantôme, ni repeint, ni saut » (rouge sur l'ancien code sous les DEUX
-navigateurs) ; « un lot qui n'ajoute aucune carte ne se relance pas tout seul » (rouge sous Chromium 158 : 45
-lots ; il attend la fin de la chaîne de démarrage et coupe le filet de rafraîchissement, comme les suites
-`capacite-*`, sans quoi un `supaLoadPosts` tardif remettrait `_feedServerMayHaveMore` à false sous lui).
-Réinjections une à une, sous Chromium 158 : sentinelle toujours posée → « fin de liste » rouge ; frein désactivé
-→ 44 et 45 lots ; garde `isConnected` retirée → 44 et 45 lots.
+moteurs) ; « un lot qui n'ajoute aucune carte ne se relance pas tout seul », à 8 cartes (queue posée dans la
+peinture rapide : la liste ne rétrécit pas, le cas éprouve le frein sous TOUS les moteurs) et à 20 cartes (complément
+différé : seul Chromium ≥ 158 l'éprouve, le saut levant le frein ailleurs) ; « un geste fait pendant un lot lent
+n'est pas perdu » ; « un rendu vide annule le complément différé du rendu précédent ». Les suites qui tiennent sur
+`_feedServerMayHaveMore = true` attendent la fin de la chaîne de démarrage et coupent le filet de rafraîchissement,
+comme les suites `capacite-*` : sans quoi un `supaLoadPosts` tardif le remettrait à false sous elles.
+Réinjections une à une, sous les deux moteurs : sentinelle toujours posée → « fin de liste » rouge ; frein désactivé
+→ 92 et 91 lots (8 cartes), 45 sous 158 (20 cartes) ; garde `isConnected` retirée → 92 et 47 lots (8 cartes) ;
+réobservation retirée → « geste pendant un lot lent » rouge ; jeton du rendu vide retiré → 8 cartes périmées.

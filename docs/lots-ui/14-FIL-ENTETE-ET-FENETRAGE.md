@@ -82,11 +82,17 @@
   regonflée, la nouvelle sentinelle repart aussitôt — une reconstruction toutes les deux
   trames, sans fin. Deux gardes : `feedWindowTailHtml` ne pose la sentinelle que si
   `hasMore` (comme le bouton « Charger plus ») ; et un lot qui n'ajoute aucune carte
-  (page serveur entièrement filtrée) pose `_feedWindowFrein`, que seule lève une
-  sentinelle ENCORE dans la page qui sort de la marge (un repeint complet détache
-  l'ancienne, et l'observateur rend pour elle une dernière entrée « hors marge » qui
-  n'est le geste de personne). Mesures, enquête CI et mutations : fiche « 🌀 LA BOUCLE
-  DU BAS DU FIL » de `docs/journal/passions-fil.md`. Verrous : `feed-window.spec.js`,
-  « en fin de liste, la sentinelle se tait » et « un lot qui n'ajoute aucune carte ne se
-  relance pas tout seul ».
+  (page serveur entièrement filtrée) pose `_feedWindowFrein`. Le frein part de la
+  position ACTUELLE de la sentinelle (réobservée quand il se pose) et tombe quand une
+  sentinelle ENCORE dans la page sort de la marge, quand le nombre de cartes peintes
+  change, ou au démontage (`feedWindowTeardown`). Une sentinelle détachée par un repeint
+  complet ne compte pas : l'observateur rend pour elle une dernière entrée « hors marge »
+  qui n'est le geste de personne.
+  ⚠️ **Reste, et c'est un préalable à la levée du drapeau** : un lot serveur stérile
+  repeint encore tout le fil une fois — sous Chromium ≤ 157 (mesuré), et probablement
+  sous WebKit (non mesuré), le lecteur est encore renvoyé vers la 11ᵉ carte, et ce saut
+  lève le frein. Mesures, enquête CI et mutations : fiche « 🌀 LA BOUCLE DU BAS DU FIL »
+  de `docs/journal/passions-fil.md`. Verrous : `feed-window.spec.js` — « en fin de liste,
+  la sentinelle se tait », « un lot qui n'ajoute aucune carte ne se relance pas tout
+  seul » (8 et 20 cartes), « un geste fait pendant un lot lent n'est pas perdu ».
 
