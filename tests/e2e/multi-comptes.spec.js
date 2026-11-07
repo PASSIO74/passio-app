@@ -1171,8 +1171,11 @@ test.describe("messagerie entre 2 comptes réels", () => {
         const ev = evs.find((e) => e.id === eid);
         const canon = _findCanonicalEvent(eid) || (state.userEvents.push(ev), ev);
         Object.assign(canon, { attendees: ev.attendees, maybes: ev.maybes, waitlist: ev.waitlist, maxAttendees: 1, fromSupabase: true });
+        // A s'est inscrite par `supaJoinEvent`, sans l'état local : sans cette ligne, `myRsvp` est nul, égal à
+        // la demande, et `setEventRsvp` rentre sans rien écrire. Le test n'avait jamais été exigé : la RPC manquait au staging.
+        _setMyRsvpLocal(eid, "going");
         await setEventRsvp(eid, null);
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 3000));
       }, eventId);
 
       // LE CONTRAT : la ligne de B est passée `going` EN BASE (lue par B, propriétaire).
