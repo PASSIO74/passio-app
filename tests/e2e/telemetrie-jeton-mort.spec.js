@@ -97,13 +97,23 @@ test.describe("Télémétrie — jeton de session mort", () => {
     // ⚠️ Le SDK peut aussi RETIRER lui-même le jeton mort en cours de route
     // (rafraîchissement définitivement refusé) : le repli arrive alors plus tôt,
     // par « pas de session persistée » — les deux chemins doivent converger.
-    await expect.poll(() => envois.some((e) => e.viaAnon && e.userIds.length === 1 && e.userIds[0] === null),
-      { timeout: 90000, intervals: [1000] }).toBe(true);
+    // ⚠️ SEUL COMPTE UN LOT ANONYME APRÈS UN REFUS DU JETON (2026-11-07). Le lot
+    // `start` part AVANT que `window.MY_UID` soit posé : anonyme et désattribué lui
+    // aussi, il satisfaisait l'ancienne attente dès la première lecture. Le test
+    // concluait alors en ~1 s, sans avoir vu la grâce ni le repli (28 fois sur 32),
+    // et rougissait quand le premier lot sous jeton n'était pas encore arrivé.
+    const repliApresRefus = () => {
+      const i = envois.findIndex((e) => !e.viaAnon);
+      return i >= 0 && envois.slice(i + 1).some((e) => e.viaAnon && e.userIds.length === 1 && e.userIds[0] === null);
+    };
+    await expect.poll(repliApresRefus, { message: "un lot sous le jeton mort, puis un lot désattribué sous la clé anon", timeout: 90000, intervals: [1000] }).toBe(true);
     const refuses = envois.filter((e) => !e.viaAnon);
     const acceptes = envois.filter((e) => e.viaAnon);
     // Le jeton mort a bien été tenté (le scénario est exercé), avec l'identité du compte.
-    expect(refuses.length, "le jeton mort est tenté au moins une fois").toBeGreaterThanOrEqual(1);
-    expect(refuses.some((e) => e.userIds.includes(UID))).toBe(true);
+    expect(refuses.some((e) => e.userIds.includes(UID)), "le jeton mort est tenté sous l'identité du compte").toBe(true);
+    // « Jamais perdu » : tout ce que le jeton n'a pas fait passer repart sous la clé anon.
+    const parties = acceptes.flatMap((e) => e.actions);
+    expect(refuses[0].actions.filter((a) => !parties.includes(a)), "le lot refusé n'est pas jeté").toEqual([]);
     // INVARIANT : sous la clé anon, jamais un uuid — sinon la RLS refuse le lot entier.
     for (const e of acceptes) expect(e.userIds, "clé anon ⇒ lignes désattribuées").toEqual([null]);
     // Rien n'est jeté : aucun `server_reject`, et le repli après la grâce est
