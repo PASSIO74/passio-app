@@ -561,6 +561,8 @@ jobs:
         continue-on-error: true
         env:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          # Réservé à une issue [CANARI] écrite par le propriétaire : sa tâche est connue d'avance et le run n'a rien lu d'un tiers.
+          CANARI_PROPRIETAIRE: ${{ github.event_name == 'issues' && startsWith(github.event.issue.title, '[CANARI]') && github.event.issue.user.login == 'PASSIO74' && '1' || '' }}
         run: |
           # La barrière YAML protège le job. Le script termine aussi à zéro,
           # même si Node ou la lecture de la trace échoue.
@@ -682,6 +684,11 @@ jobs:
 
           // Ce que l'agent a fait, sans aucun argument : un run à 0 refus et 0 commit ne disait rien (canari du 2026-11-07).
           const MOTIFS_ECHEC = [
+            ['bac à sable', /\bbwrap\b|bubblewrap|sandbox/i],
+            ['appel voisin en échec', /sibling tool call/i],
+            ['pas un dépôt git', /not a git repository/i],
+            ['référence git', /cannot lock ref|already exists|unable to create/i],
+            ['délai dépassé', /timed out|timeout/i],
             ['système de fichiers en lecture seule', /read-only file system/i],
             ['droits du fichier', /permission denied|operation not permitted/i],
             ['propriété du dépôt', /dubious ownership/i],
@@ -692,6 +699,19 @@ jobs:
             ['hors du dossier de travail', /outside (?:of )?the |not in the working directory|allowed working/i],
             ['fichier absent', /no such file|does not exist/i],
           ];
+          // Sur un canari du propriétaire seulement : la forme de l'erreur, qu'un motif de la liste ne dit pas toujours.
+          // Le canari du 2026-11-07 a échoué sur git trois fois sous « autre (masqué) », sans rien de plus à lire.
+          // Liste blanche de caractères, suites longues masquées, jamais en tête de ligne, 200 caractères : rien d'autre ne sort.
+          const CANARI = process.env.CANARI_PROPRIETAIRE === '1';
+          function formeCanari(valeur, borne) {
+            return String(valeur)
+              .replace(/[A-Za-z0-9_+=-]{24,}/g, '[masqué]')
+              .replace(/[^A-Za-z0-9 .,;:'()\/_<>=[\]éèêàùçÉ-]/g, ' ')
+              .replace(/:{2,}/g, ' : ')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .slice(0, borne);
+          }
           const usages = new Map();
           const parId = new Map();
           for (const e of events) {
@@ -709,10 +729,12 @@ jobs:
                 const texte = typeof c.content === 'string' ? c.content : JSON.stringify(c.content || '');
                 const motif = MOTIFS_ECHEC.find(([, re]) => re.test(texte));
                 console.log('Échec d\'outil  : ' + (parId.get(c.tool_use_id) || 'inconnu') + ' — ' + (motif ? motif[0] : 'autre (masqué)'));
+                if (CANARI) console.log('Forme (canari) : ' + formeCanari(texte, 200));
               }
             }
           }
           for (const [cle, n] of usages) console.log('Outil utilisé  : ' + cle + ' × ' + n);
+          if (CANARI && typeof resultat.result === 'string') console.log('Fin (canari)   : ' + formeCanari(resultat.result, 400));
 
           // Les quatre sous-types d'échec du CLI, pas seulement celui du jour.
           const PANNES = {
