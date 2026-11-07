@@ -730,4 +730,28 @@ test.describe("Pièce jointe — le dépôt Storage a un verdict, une file et un
     expect(perdues, "une seule : celle qui n'a pas été supprimée exprès").toHaveLength(1);
     expect(perdues[0].severity).toBe("error");
   });
+
+  test("㉖ TRANSFERT d'un document qui n'existe que sur l'appareil : téléversé dans la cible et transféré COMME DOCUMENT", async ({ page }) => {
+    test.setTimeout(90000);
+    const r = await banc(page);
+    await page.evaluate(({ conv }) => {
+      // Un document envoyé avant ce lot : sa seule copie est locale (`docData`), sans `pj`.
+      getConversations().find((c) => c.id === conv).messages.push({
+        id: "m_doc_local", from: "me", text: "", at: Date.now(),
+        docData: "data:application/pdf;base64," + btoa("%PDF-1.4 doc local"), fileName: "local.pdf", fileSize: "1 KB", fileType: "PDF",
+      });
+      saveConversationsNow();
+    }, { conv: CONV });
+    await page.evaluate(async ({ conv, cible }) => { window._forwardSrc = { convId: conv, msgId: "m_doc_local" }; await _forwardTo(cible); }, { conv: CONV, cible: CIBLE });
+    await page.waitForFunction(() => window.__toasts.some((t) => /Transféré|Transfert impossible/.test(t)), null, { timeout: 10000 });
+    await page.waitForTimeout(300);
+    // AVANT : aucune branche ne le reconnaissait, il partait en message VIDE.
+    expect(r.journal.depots).toHaveLength(1);
+    expect(r.journal.depots[0].chemin).toMatch(/^attachments\/conv_pj_cible\//);
+    expect(r.journal.messages).toHaveLength(1);
+    expect(aucuneDataUrl(r.journal.messages)).toBe(true);
+    const contenu = JSON.parse(JSON.parse(r.journal.messages[0]).content);
+    expect(contenu).toMatchObject({ type: "doc", filename: "local.pdf" });
+    expect(contenu.url).toContain("/attachments/" + r.journal.depots[0].chemin);
+  });
 });

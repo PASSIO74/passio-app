@@ -543,7 +543,7 @@ Reste listé au § 8 de `docs/AUTONOMIE_EXPLOITATION.md` (« lot pièce jointe �
 - **Télémétrie** : `tel.error`, action `piece_jointe_depot`, `meta` = `rc` (code fermé : `reseau`, `refus`, `trop_lourd`, `limite`, `serveur`, `illisible`, `url_absente`, `http_<n>`), `http`, `kind`, `voie` (`premier`, `rejeu`, `manuel`, `transfert`), `essai`, `ko`. Coupure, limite et fichier trop lourd sont des `warn` ; le reste des `error`. Jamais le libellé du serveur, qui peut porter la clé de l'objet donc le nom du fichier.
   - ⚠️ `sante.erreursJs15` compte tout `type = "error"`, `warn` compris (seuil rouge à 10 en 15 min). Une coupure n'émet qu'au premier essai interactif, jamais à chaque rejeu.
   - Le parcours reste dans `PARCOURS_NON_INSTRUMENTES` (`piece_jointe`). Mettre à jour son `vuPar` touche `supabase/functions/**`, donc redéploie les quatre fonctions : laissé au prochain lot qui y touche.
-- **Verrou** : `tests/e2e/piece-jointe-depot-echec.spec.js`, 25 cas. Vrai client Supabase et réseau tenu par `page.route`, posé APRÈS `bootOnboarded` : la route médias de l'isolation laisse partir les écritures vers la production. On mesure le corps des POST `conv_messages` et les chemins déposés.
+- **Verrou** : `tests/e2e/piece-jointe-depot-echec.spec.js`, 27 cas. Vrai client Supabase et réseau tenu par `page.route`, posé APRÈS `bootOnboarded` : la route médias de l'isolation laisse partir les écritures vers la production. On mesure le corps des POST `conv_messages` et les chemins déposés.
   - Les attentes ne lisent que ce qui existait avant le correctif. La première rédaction attendait `_pjDeposer` et `m.pj` : sur le code d'avant, les 11 cas rougissaient par EXPIRATION, sans rien mesurer. Ils rougissent désormais sur l'écart (« sent » au lieu de « failed », 1 POST au lieu de 0).
 - ⚠️ **LA REVUE `audit-passio` A TROUVÉ UN FAUX VERT, ET IL PORTAIT LA PROMESSE CENTRALE DU LOT.**
   - Au démarrage, `supaInit` attend `_rafraichirConversationsServeur()` sans `fusion` (app-08). Il REMPLACE chaque conversation connue du serveur par la sienne, dont `messages` ne porte que le dernier message.
@@ -563,25 +563,51 @@ Reste listé au § 8 de `docs/AUTONOMIE_EXPLOITATION.md` (« lot pièce jointe �
   - La fin d'envoi du téléversement d'un transfert est rendue sur toute issue, levée synchrone comprise.
   - Les deux `saveConversationsNow` du chemin nominal sont retirés (deux `JSON.stringify` complets, base64 compris, par envoi). Seul reste celui de la mise en file.
   - Le banc sert désormais toutes ses lectures, la conversation connue du serveur comprise, et attend `_supaReal` et `_supaInitTerminee`.
-  - Nouveaux cas ⑮ à ㉔.
+  - Nouveaux cas ⑮ à ㉖ (㉕ : une copie perdue remonte ; ㉖ : un document local transféré part comme document).
   - ⚠️ Deux gardes ajoutées en première intention (« la file des messages porte déjà ce message ») ont été RETIRÉES : avec le renvoi par `_sendTextToSupa`, son « un envoi en vol » suffit, et une garde qu'aucun cas ne peut faire rougir est du poids mort (⑲ reste le verrou).
-- **Réinjection** : le code d'avant (HEAD `019896b`, worktree séparé) rougit les 11 cas. 11 mutations, 11 tuées :
+- **Réinjection, sur le code final** (fusion de `main` comprise) :
+  - Le code d'avant (`019896b`, worktree séparé) rougit 25 des 27 cas.
+  - ⑲ et ⑳ y sont verts, et c'est attendu : ils gardent deux défauts que la PREMIÈRE version de ce lot avait introduits (double insertion à la reprise, objet retiré quand la bulle manque), pas le défaut d'origine. Leur mutation les rougit.
+  - 24 mutations, une à la fois, 24 tuées :
 
   | Mutation | Cas rouges |
   |---|---|
-  | ancien repli data URL de `_processAttach` | ① ② ③ ④ ⑦ ⑩ |
-  | garde revenue à l'étiquette | ⑪ |
-  | transfert de la copie brute | ⑧ ⑨ ⑩ |
+  | ancien repli data URL de `_processAttach` | ① ② ③ ④ ⑦ ⑩ ⑫ bis ⑮ ⑰ ㉑ ㉔ |
+  | garde revenue à l'étiquette « non synchronisé » | ⑪ |
+  | transfert sans téléversement de la copie locale | ⑧ ㉓ |
   | 409 accepté dès le 1er essai | ⑤ |
   | file rejouée sans vérifier le compte | ⑦ |
   | ancien repli du vocal | ⑥ |
-  | `_flushOutbox` sans la file des dépôts | ③ ④ ⑥ ⑦ |
-  | chemin neuf à chaque essai | ② ③ ④ ⑥ ⑩ |
-  | toute panne lue comme un refus | ③ ④ ⑥ ⑦ |
-  | aucune télémétrie | ① ③ |
+  | `_flushOutbox` sans la file des dépôts | ③ ④ ⑥ ⑦ ⑫ ⑫ bis ⑭ ⑰ ㉒ ㉕ |
+  | chemin d'objet neuf à chaque essai | ② ③ ④ ⑥ ⑫ ⑫ bis ⑮ |
+  | toute panne lue comme un refus | ③ ④ ⑥ ⑦ ⑰ |
+  | aucune télémétrie de l'échec | ① ③ ⑰ ㉕ |
   | « réessayer » reconstruit en texte | ② |
+  | pas de reprise des bulles interrompues | ⑫ ⑭ ㉒ |
+  | reprise des bulles de CETTE page | ⑬ |
+  | reprise à chaque vidage | ⑭ |
+  | démarrage : bulles en attente non reportées | ⑫ ⑫ bis ⑭ ⑯ ㉒ |
+  | bulle absente lue « supprimée » (objet retiré) | ⑳ |
+  | renvoi d'un média déposé par `sendMessageToSupabase` | ⑲ ㉒ |
+  | coupure signalée à chaque rejeu | ⑰ |
+  | 403 sans réparation d'appartenance | ① ② ⑮ |
+  | ni mode invité ni démonstration bloqués | ⑱ |
+  | transfert : auteur relu après les `await` | ㉓ |
+  | « supprimer pour tous » sans `m.pj.url` | ⑩ ㉔ |
+  | copie perdue muette | ㉕ |
+  | transfert : document local ignoré | ㉖ |
 
-- **Non-régression** : `pwa-maj-pendant-appel.spec.js` 31/31 (⑭ vocal, ⑳ vidéo, ㉕ photo, ㉚ insertion refusée), et 99/99 sur quinze suites de la messagerie (`message-media-echec`, `pieces-jointes-cycle`, `transfert-message`, `file-messages-par-compte`, `parcours-flux`…). Chromium seulement : le socle WebKit n'accueille une suite qu'après un passage vert en CI (`playwright.config.js`).
+  - ⚠️ **Le banc de mutations a menti deux fois, et c'était lui.** En série, « ancien repli » (la première de la série) et « document local ignoré » sont sortis « AUCUN cas rouge ».
+    - La seconde : la lecture des cas s'arrêtait à ㉕, donc un échec de ㉖ ne se lisait pas.
+    - La première : rejouée seule, elle rougit 11 cas (table ci-dessus).
+    - Une mutation « survivante » se rejoue seule, sortie brute sous les yeux, avant d'être crue.
+    - Dans la même série, ⑩ a rougi une fois sous « file sans compte », puis jamais (4 passages seul, une relance de la mutation) : un raté du banc, pas une dépendance.
+
+- **Non-régression** : `pwa-maj-pendant-appel.spec.js` 31/31 (⑭ vocal, ⑳ vidéo, ㉕ photo, ㉚ insertion refusée), 99/99 sur quinze suites de la messagerie (`message-media-echec`, `pieces-jointes-cycle`, `transfert-message`, `file-messages-par-compte`, `parcours-flux`…), et après la fusion de `main` : `message-contenu-borne` 9/9 (#751) avec les suites du transfert. CI entière verte sur 0a9c3dac et b6e466b0, socle WebKit compris. Chromium seulement pour la nouvelle suite : le socle WebKit n'accueille une suite qu'après un passage vert en CI (`playwright.config.js`).
+- **Deux rouges de CI sans lien avec ce diff, analysés et relancés une fois** (commentaires sur PASSIO74/passio-app#747) :
+  - `feed-window.spec.js:166`, 12 cartes au lieu de plus de 20, sur 603ebdb et ce3d4770, vert à la relance de ce3d4770, sur 0a9c3dac, b6e466b0 et le même code dans #750. Jamais reproduit en local. Cause non trouvée : la liste est REPEINTE avec moins de publications pendant le défilement.
+  - Les suites à comptes réels : « Request rate limit reached » de l'authentification du staging.
+
 - **Hors champ, constaté** :
   - transférer un VOCAL envoie toujours un message vide (`_forwardTo` n'a pas de branche `voiceData`) ;
   - aucune contrainte serveur n'interdit une data URL dans `conv_messages.content` : une migration, donc une contre-revue humaine ;
