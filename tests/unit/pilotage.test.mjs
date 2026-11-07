@@ -1504,7 +1504,8 @@ test("㉿⑱ la ligne des alertes : « Régler » envoie un essai (hors « Tout 
   const e = fn.slice(fn.indexOf("async function essaiManuel("), fn.indexOf("async function essaiManuel(") + 1600);
   assert.match(e, /if \(error\) return json\(\{ error: "Lecture impossible : aucun essai n'est parti\." \}, 503\);/);
   assert.match(e, /Date\.now\(\) - dernier < ESSAI_MANUEL_MIN_MS\) \{/);
-  assert.match(fn, /const ESSAI_MANUEL_MIN_MS = 10 \* 60e3;/);
+  assert.match(fn, /const ESSAI_MANUEL_MIN_MS = 2 \* 60e3;/, "2 min : le pilote est le seul destinataire (10 min refusaient quatre touchers en cinq minutes, 07/11)");
+  assert.match(e, /le suivant est possible dans " \+ reste \+ " s\./, "le refus dit QUAND réessayer");
   assert.match(e, /sonnerPilote\(admin, "Essai de tes alertes", "[^"]+", \{ essai: true, manuel: true \}\)/);
   // La note porte la révision (réessai après déploiement) et, sans adresse, son diagnostic en formes.
   assert.match(fn, /properties: \{ genre: "pilotage", mesure, acceptes: n, appareils, revision: REVISION,\s*\.\.\.\(mesure === "sans_adresse" \? \{ adresse: ADRESSE\.diag \} : \{\}\)/);
