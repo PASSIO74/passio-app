@@ -1606,7 +1606,7 @@ est écrit), deux sceptiques par trouvaille grave : rien de bloquant — la seul
 
 **Statut : client EN PRODUCTION (#751, 620aa87) ; migration PRÊTE, NON appliquée** —
 `migrations/migration_conv_messages_contenu_borne_2026-11-07.sql`, banc
-`tests/sql/migration-conv-messages-contenu-borne.test.sh` (69 vérifications). Périmètre critique : contre-revue de PASSIO74
+`tests/sql/migration-conv-messages-contenu-borne.test.sh` (68 vérifications). Périmètre critique : contre-revue de PASSIO74
 (« Gouvernance critique »), attestation, puis application depuis le poste (canal ③). Rien n'a été écrit en base par ce lot.
 
 **Le défaut.** L'invariant « jamais de base64 en base (→ Storage) » n'était tenu QUE par le client. `conv_messages.content` est
@@ -1669,7 +1669,7 @@ document qu'on vient d'envoyer reste un trou PRÉEXISTANT (texte vide), hors de 
 - **Le verrou PRIS, toute attente qui suit le prolonge** (leçon de C-02, appliquée ici d'emblée) : le verdict écrit dans
   profiles, conversations, conv_members et — par les poussées — realtime.messages pendant que conv_messages est fermée, et
   `realtime.send` avale 55P03. `lock_timeout` 5 s pour PRENDRE le verrou, puis 200 ms. Banc ⑥ : realtime.messages tenue par une
-  autre session, la migration passe (17 OK) en moins de 6 s ; sans la seconde borne, plus de 12 s. Le décor n'a qu'un membre :
+  autre session, la migration passe (17 OK) en 4 s (borne du banc : 10 s) ; sans la seconde borne, plus de 12 s. Le décor n'a qu'un membre :
   un second doublerait les poussées, donc les attentes possibles.
 - **Une restauration d'une sauvegarde qui contiendrait un ancien message en base64 échouera sur la contrainte** (banc ⑤ :
   l'ajout de la contrainte échoue aussi, « is violated by some row », si une telle ligne existe — rien n'est appliqué). En

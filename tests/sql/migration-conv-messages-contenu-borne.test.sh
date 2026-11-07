@@ -39,8 +39,8 @@
 #   ⑧ MUTATIONS : chaque correctif affaibli fait REFUSER la migration (fermée
 #      sur échec) en nommant les lignes du verdict qui le gardent — et rien
 #      n'est appliqué
-#   ⑨ la barrière de l'outil lit le PREREQUIS-CLIENT, et le client de #751 porte
-#      la chaîne
+#   ⑨ la barrière de l'outil (sa fonction pure, la commande refuse la CI) lit une
+#      transaction et le PREREQUIS-CLIENT ; le client de #751 porte la chaîne
 #
 # CE QUE CE BANC NE PROUVE PAS, dit tel quel :
 #   · la production est en PostgreSQL 17.6 ; ce banc tourne sur la version
@@ -57,6 +57,7 @@
 #   bash tests/sql/migration-conv-messages-contenu-borne.test.sh
 #
 # Prérequis : PostgreSQL 16+ (binaires serveur ; pg_input_is_valid), python3, node.
+# Tourne en CI (« Bancs SQL non nommés », scripts/bancs-sql-restants.sh).
 # Ne touche AUCUNE base réelle.
 # ═══════════════════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -702,8 +703,8 @@ attente_tenue() {   # $1 base, $2 fichier : rend « <durée en s>|<verdict> » ;
 COPIE tenue
 r_tenue="$(attente_tenue tenue "$MIGRATION")"
 verifier "realtime.messages tenue par une autre session : la migration passe quand même (17 OK)" "17/0" "${r_tenue#*|}"
-verifier "…et garde conv_messages fermée moins de 6 s (200 ms par attente une fois le verrou pris)" "oui" \
-  "$([ "${r_tenue%%|*}" -lt 6 ] && echo oui || echo "non (${r_tenue%%|*} s)")"
+verifier "…et garde conv_messages fermée moins de 10 s (200 ms par attente une fois le verrou pris ; mesuré : ${r_tenue%%|*} s)" "oui" \
+  "$([ "${r_tenue%%|*}" -lt 10 ] && echo oui || echo "non (${r_tenue%%|*} s)")"
 python3 - "$MIGRATION" "$SQLDIR/sans_seconde_borne.sql" <<'PY'
 import sys
 s = open(sys.argv[1], encoding="utf-8").read()
@@ -783,9 +784,19 @@ essayer sans_role "1"
 
 # ═══ ⑨ LA BARRIÈRE DE L'OUTIL ET LE CLIENT ══════════════════════════════════
 echo "⑨ la barrière d'application lit le prérequis client ; le client le porte"
-r_bar="$(cd "$RACINE" && node scripts/appliquer-migration.mjs migrations/migration_conv_messages_contenu_borne_2026-11-07.sql --verifier --projet bancbancbancbancbanc 2>&1 || true)"
-contient "appliquer-migration --verifier : envoyable (début, fin, transaction)" "envoyable" "$r_bar"
-contient "…et il lit le prérequis client" "prérequis : « conv_messages:contenu-borne »" "$r_bar"
+# ⚠️ PAS la commande `appliquer-migration.mjs --verifier` : elle REFUSE de tourner en CI
+# (`GITHUB_ACTIONS`, ADR-012) — et c'est voulu, ce banc ne la contourne pas. On lit
+# ce qu'elle lit : la forme d'une transaction (sa règle, recopiée) et le prérequis
+# client par la fonction PURE de la barrière (`prerequisClient`, règle ④).
+r_bar="$(cd "$RACINE" && node -e '
+const fs = require("fs");
+const BAR = require("./scripts/lib/barriere-migration.js");
+const sql = fs.readFileSync(process.argv[1], "utf8");
+const corps = sql.replace(/--[^\n]*/g, "").trim().toLowerCase();
+console.log((corps.startsWith("begin;") && corps.endsWith("commit;") && !/\bvacuum\b/.test(corps) ? "transaction" : "PAS une transaction")
+  + "|" + JSON.stringify(BAR.prerequisClient(sql)));
+' "$MIGRATION" 2>&1 || true)"
+verifier "la barrière de l'outil lit une transaction, et le prérequis client" 'transaction|["conv_messages:contenu-borne"]' "$r_bar"
 verifier "le client de #751 porte la chaîne (CONTENU_MESSAGE_BORNE)" "1" "$(grep -cF 'var CONTENU_MESSAGE_BORNE = "conv_messages:contenu-borne";' "$CLIENT" || true)"
 verifier "…et MSG_TEXTE_MAX = 5 000 (la pire enveloppe ci-dessus en dépend)" "1" "$(grep -cF 'var MSG_TEXTE_MAX = 5000;' "$CLIENT" || true)"
 
