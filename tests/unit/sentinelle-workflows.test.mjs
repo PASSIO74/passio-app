@@ -80,6 +80,7 @@ corps=""
 case "$tout" in
   "issue list"*"--label disponibilite"*) corps="$(cat "$FX/issues-dispo.json")" ;;
   "issue list"*"--author PASSIO74"*) corps="$(cat "$FX/issues-author.json")" ;;
+  "issue list"*"--state all"*) corps="$(cat "$FX/issues-recentes.json" 2>/dev/null || echo "[]")" ;;
   "issue list"*"--state closed"*) corps="$(cat "$FX/issues-closed.json")" ;;
   "issue list"*"--label sentinelle --label humain"*) corps="$(cat "$FX/issues-open-humain.json")" ;;
   # Les tableaux (lot F) : AVANT la forme générique --state open, qui l'avalerait.
@@ -272,6 +273,18 @@ test("veilleur (contre-revue 2026-11-03) : en parallèle, le run d'une AUTRE enq
 });
 
 // ═══ Une enquête à la fois / Coupe-circuit ═══════════════════════════════
+test("budget : six enquêtes ouvertes en 24 h, aucune nouvelle, même avec des places libres (audit du 2026-11-06, E-10)", () => {
+  const recent = new Date(Date.now() - 3_600_000).toISOString();
+  const ancien = new Date(Date.now() - 3 * 864e5).toISOString();
+  const recentes = (n) => Array.from({ length: n }, () => ({ createdAt: recent }));
+  fixtures({ "issues-open": [], "issues-open-humain": [], "issues-recentes": recentes(6) });
+  const plein = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.ok(plein.out.includes("libre=false") && plein.out.includes("places=0"), plein.out);
+  fixtures({ "issues-open": [], "issues-open-humain": [], "issues-recentes": [...recentes(5), ...Array.from({ length: 9 }, () => ({ createdAt: ancien }))] });
+  const ok = jouer(etape(SA, "detecter", "Enquêtes en parallèle").run);
+  assert.ok(ok.out.includes("libre=true"), "les plus anciennes ne comptent pas : " + ok.out);
+});
+
 test("enquêtes en parallèle : comptées par LABEL et sans `humain`, plafond 3 ; le coupe-circuit lit par auteur + filtre local", () => {
   // Mutation W6 : le jq des enquêtes en cours → `length` → rougit (deux humain bloqueraient le canal).
   // Mutation : `--author PASSIO74` → `--search '"[SENTINELLE PAUSE]" in:title'` → rougit (forme inconnue du faux gh : l'index en retard).
@@ -572,11 +585,27 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
   fixtures({
     "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
     "issue-700": { labels: [{ name: "sentinelle" }] },
-    "pr-files": [{ filename: "js/app-03-posts.js", additions: 30, deletions: 0 }, { filename: "docs/sentinelle/2026-09-18-abc.md", additions: 40, deletions: 0 }, { filename: "tests/e2e/v.spec.js", additions: 50, deletions: 0 }],
+    "pr-files": [{ filename: "js/app-03-posts.js", additions: 30, deletions: 0 }, { filename: "docs/sentinelle/2026-09-18-abc.md", additions: 40, deletions: 0 }, { filename: "tests/e2e/sentinelle-v.spec.js", additions: 50, deletions: 0 }],
   });
   const g2 = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74" });
   assert.equal(g2.code, 0, g2.sortie);
   assert.ok(g2.summary.includes("1 fichier(s) de code, 30 ligne(s)"), "fiche et verrou hors comptage\n" + g2.summary);
+  for (const interdit of ["tests/e2e/authz-critical.spec.js", "tests/e2e/x.spec.js", "js/vendor/maplibre-gl-4.7.1.js", "sw.js"]) {
+    fixtures({
+      "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
+      "issue-700": { labels: [{ name: "sentinelle" }] },
+      "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }, { filename: interdit, additions: 1, deletions: 0 }],
+    });
+    const r = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", GH_TOKEN: "integre" });
+    assert.notEqual(r.code, 0, `une réparation automatique ne touche pas ${interdit} (audit du 2026-11-06, E-04)`);
+  }
+  fixtures({
+    "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
+    "issue-700": { labels: [{ name: "sentinelle" }] },
+    "pr-files": [{ filename: "js/renomme.js", previous_filename: "scripts/audit-globals.js", additions: 1, deletions: 0 }],
+  });
+  const renomme = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", GH_TOKEN: "integre" });
+  assert.notEqual(renomme.code, 0, "un renommage compte aussi par son chemin d'origine (E-15)");
   fixtures({
     "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
     "issue-700": { labels: [{ name: "sentinelle" }] },

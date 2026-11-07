@@ -23,6 +23,7 @@
 - 🚩 SIGNALER UN MESSAGE — et ce qu'un identifiant forgé, un × et un `del` d'autrui faisaient autour (2026-11-03)
 - 📞 UNE MISE À JOUR SILENCIEUSE COUPAIT L'APPEL, LE LIVE ET LA SAISIE — le rechargement attend (2026-11-04)
 - 🎙️ UNE MISE À JOUR SILENCIEUSE PERDAIT LE VOCAL, LA CAPTURE ET L'ENVOI — le rechargement attend aussi (2026-11-04)
+- 📎 UNE PIÈCE JOINTE EN ÉCHEC PARTAIT EN ÉTIQUETTE « NON SYNCHRONISÉ », ANNONCÉE ENVOYÉE — le dépôt a désormais un verdict, une file et un « réessayer » (2026-11-07)
 
 ---
 
@@ -518,3 +519,96 @@ Suite de la fiche précédente. La question : une mise à jour silencieuse inter
 - **Artefact minifié comme en CI** (`html-minifier-terser`, `terser --compress --mangle`), contrôle ponctuel hors suite : ①, ⑭, ⑮, ⑯, ⑱, ㉑, ㉓, ㉕ et ㉖ verts sous Chromium et WebKit. `meCam` et `_voiceStartAt` sont des `var` de premier niveau, donc des propriétés de `window`, et sans `--toplevel` le minifieur ne les renomme pas.
 - **Non vérifié** : aucun iPhone réel, et sous WebKit l'enregistreur est un double : seuls les gestionnaires y sont éprouvés. Pas de cas pour `reader.onerror` et pour une conversation disparue à la lecture du fichier : si leur fin d'envoi manquait, seule la borne rendrait la main.
 - **Hors champ** : le report ne protège que d'une mise à jour. Une application fermée pendant un dépôt coupe le même code, sans mesure à ce jour : vocal ou pièce jointe affichés sans jamais partir, bobine sans vidéo. Les autres dépôts (photo de profil, couverture d'événement) n'ont pas été mesurés. Un média laissé au Studio puis l'écran quitté part au rechargement, comme un texte.
+
+## 📎 UNE PIÈCE JOINTE EN ÉCHEC PARTAIT EN ÉTIQUETTE « NON SYNCHRONISÉ », ANNONCÉE ENVOYÉE — le dépôt a désormais un verdict, une file et un « réessayer » (2026-11-07)
+
+Reste listé au § 8 de `docs/AUTONOMIE_EXPLOITATION.md` (« lot pièce jointe »). L'ordre décrivait un repli qui écrivait le fichier en base64 dans `conv_messages`. **La mesure a corrigé la prémisse avant le code** : ce n'était pas le défaut de ce chemin-là, c'en était un autre, et pire.
+
+- **Mesuré en production, en lecture seule (canal ①)** : 88 lignes `conv_messages`, **0** data URL, **0** étiquette `"expired":true`, la plus longue 551 caractères. La garde de `sendMessageToSupabase` retirait bien le base64 depuis la beta.
+- **Le vrai défaut était le repli lui-même.** Sur un dépôt Storage en échec, refus OU coupure, `_processAttach` (photo, vidéo, document, audio) et `_sendVoiceMessage` appelaient `sendMessageToSupabase(…, dataUrl, …)`. La garde insérait alors `{"url":"","expired":true,"text":"📎 … (non synchronisé)"}` et le message passait **envoyé**. Trois effets, aucun visible :
+  - le destinataire ne recevait qu'une étiquette ;
+  - chez l'auteur, la relecture du fil à l'ouverture suivante **remplace** la copie locale par la ligne serveur (`_fusionnerMessagesServeur`). La photo de l'auteur devenait l'étiquette : le média était perdu pour tout le monde ;
+  - hors ligne, c'est l'étiquette qui partait en file (`_outboxAdd`) puis au retour du réseau. Une coupure n'était jamais rattrapée.
+  - Et rien au pilotage : `_diag` n'écrit qu'en mode debug.
+- **La vraie porte du base64 était le TRANSFERT.** Ma propre photo, tout juste envoyée, n'existe sur l'appareil qu'en data URL jusqu'à la relecture du fil. `_forwardTo` l'insérait telle quelle dans `conv_messages`, sans passer par la garde. Mesuré sur le code d'avant : `"url":"data:image/png;base64,iVBOR…"` dans le POST (⑨). Pas encore vu en production (0 ligne), parce que personne n'avait transféré dans la fenêtre.
+- **Correctif** (app-09, `_pjDeposer`, avec `_flushOutbox` et `_retryMsg` en app-04) :
+  - **Statut dès la bulle.** Toute pièce jointe et tout vocal porte `status: "sending"`, `de` (le compte réel, AUTH-06) et `pj` (type, nom, chemin d'objet **fixé au premier essai**). L'ancienne bulle n'avait aucun statut, donc passait pour envoyée d'office.
+  - **Coupure → file.** Une coupure (`estEchecReseau`, seule autorité ; SDK pas chargé ou `navigator.onLine === false` aussi) affiche l'échec, écrit la file `passio_pj_outbox_v1` sous le propriétaire capturé à l'origine (ASTRA-21/43) et enregistre la copie locale **tout de suite** (`saveConversationsNow`). `_flushOutbox` la rejoue au démarrage et au retour du réseau : compte d'abord, un dépôt en vol à la fois, plafond `MSG_ESSAIS_MAX`.
+  - **Refus → visible.** Un refus réel (403, 413, 5xx…) affiche l'échec et un toast, sans rejeu automatique. « réessayer » redépose depuis la copie locale. Avant ce lot, un renvoi de média reconstruit depuis le texte partait en message **vide**.
+  - **Réponse perdue → 409.** Au renvoi, l'objet déjà présent sous NOTRE chemin (409 « already exists ») prouve le dépôt. Seulement à partir du 2ᵉ essai (⑤) : le chemin porte un aléa propre au message.
+  - **Garde = refus.** La garde de `sendMessageToSupabase` ne fabrique plus d'étiquette : une data URL n'insère rien, le message passe en échec, et une erreur `piece_jointe_data_url` est levée. C'est un défaut de notre code, puisque plus aucun appelant n'en passe.
+  - **Transfert.** Le transfert copie l'objet déjà déposé (`m.pj.url`, lu par `_pieceJointeDuMessage`). Sinon il téléverse la copie dans le dossier de la cible par `_televerserPieceJointeVers` : la fonction de PASSIO74/passio-app#751, arrivée sur `main` le même jour pour la même porte (bornes de contenu de la base, `CONTENU_MESSAGE_BORNE`). Ce lot ne garde qu'UN mécanisme (le mien, `_pjDeposerDataUrl`, est retiré) et lui ajoute : le document local (`docData`, qui partait en message vide), l'attente de la page pendant le dépôt (`_envoiCommence`, fin rendue sur toute issue) et le signal au pilotage (`voie: "transfert"`). Un échec est un transfert refusé, et c'est dit.
+  - **Fermeture en plein dépôt → reprise.** Une application TUÉE pendant un dépôt laisse la bulle « envoi… », sans file : aucun gestionnaire n'a tourné. Au premier vidage de la page suivante (`_pjReprendreInterrompus`, une fois par page), une bulle à moi encore « sending » et née AVANT ce chargement repart en file. Jamais une bulle de la page en cours : son insertion peut être en vol, et la doubler finirait en 23505 puis « échec » sur un message livré (ROB-06). Un simple RECHARGEMENT, lui, laisse le navigateur régler la requête coupée : elle passe par la file des coupures (⑫ bis).
+- ⚠️ **La file est à part de `passio_outbox_v1`, délibérément.** Une entrée sans `content` serait insérée telle quelle par un client plus ancien après un retour arrière Netlify. Elle est dans `ACCOUNT_SCOPED_KEYS`.
+- **Télémétrie** : `tel.error`, action `piece_jointe_depot`, `meta` = `rc` (code fermé : `reseau`, `refus`, `trop_lourd`, `limite`, `serveur`, `illisible`, `url_absente`, `copie_perdue`, `http_<n>`, `sans_code`), `http`, `kind`, `voie` (`premier`, `rejeu`, `manuel`, `transfert`), `essai`, `ko`. Coupure, limite et fichier trop lourd sont des `warn` ; le reste des `error`. Jamais le libellé du serveur, qui peut porter la clé de l'objet donc le nom du fichier.
+  - ⚠️ `sante.erreursJs15` compte tout `type = "error"`, `warn` compris (seuil rouge à 10 en 15 min). Une coupure n'émet qu'au premier essai interactif, jamais à chaque rejeu.
+  - Le parcours reste dans `PARCOURS_NON_INSTRUMENTES` (`piece_jointe`). Mettre à jour son `vuPar` touche `supabase/functions/**`, donc redéploie les quatre fonctions : laissé au prochain lot qui y touche.
+- **Verrou** : `tests/e2e/piece-jointe-depot-echec.spec.js`, 27 cas. Vrai client Supabase et réseau tenu par `page.route`, posé APRÈS `bootOnboarded` : la route médias de l'isolation laisse partir les écritures vers la production. On mesure le corps des POST `conv_messages` et les chemins déposés.
+  - Les attentes ne lisent que ce qui existait avant le correctif. La première rédaction attendait `_pjDeposer` et `m.pj` : sur le code d'avant, les 11 cas rougissaient par EXPIRATION, sans rien mesurer. Ils rougissent désormais sur l'écart (« sent » au lieu de « failed », 1 POST au lieu de 0).
+- ⚠️ **LA REVUE `audit-passio` A TROUVÉ UN FAUX VERT, ET IL PORTAIT LA PROMESSE CENTRALE DU LOT.**
+  - Au démarrage, `supaInit` attend `_rafraichirConversationsServeur()` sans `fusion` (app-08). Il REMPLACE chaque conversation connue du serveur par la sienne, dont `messages` ne porte que le dernier message.
+  - La bulle en attente disparaissait donc avec sa copie, alors que la file des dépôts ne porte que des identifiants.
+  - Le banc servait `conversations` / `conv_members` vides : le démarrage gardait la copie locale, et ⑫, ⑫ bis et le « après redémarrage » de ③ étaient verts pour une mauvaise raison.
+  - Reproduit avant correctif (conversation connue du serveur) : 0 dépôt, 0 insertion, aucune trace.
+  - Pire, un dépôt EN VOL à ce moment lisait la bulle absente comme « supprimée » et RETIRAIT l'objet déposé. L'ancien code, lui, insérait.
+- **Correctifs de la revue** (sept constats, reproduits avant correction) :
+  - `_rafraichirConversationsServeur` reporte sur l'objet serveur MES bulles de pièce jointe pas encore envoyées.
+  - Une bulle introuvable n'est « supprimée » que sur PIERRE TOMBALE (`convTombAdd("msg", …)`) : sans elle, l'objet déposé est inséré quand même, et une copie perdue remonte en `copie_perdue`.
+  - Le renvoi d'un média déjà déposé passe par `_sendTextToSupa`, qui tient un seul envoi en vol par message et prouve un 23505. `sendMessageToSupabase` renvoyait avec puis sans `from_id` (3 INSERT mesurés), et un message livré pouvait finir « échec ».
+  - Une coupure ne se signale plus à chaque rejeu.
+  - `_forwardTo` capture l'auteur AVANT ses `await` (ASTRA-21).
+  - Un 403 de dépôt tente la réparation d'appartenance une fois, comme le texte (`_reparerAppartenanceConv`).
+  - Le mode invité et une conversation de démonstration bloquent la pièce jointe et le vocal comme le texte (`_pjEnvoiPermis`).
+  - « Supprimer pour tous » ma pièce jointe tout juste envoyée retire aussi son objet (MSG-03 : `_pieceJointeDuMessage` lit `m.pj.url`).
+  - La fin d'envoi du téléversement d'un transfert est rendue sur toute issue, levée synchrone comprise.
+  - Les deux `saveConversationsNow` du chemin nominal sont retirés (deux `JSON.stringify` complets, base64 compris, par envoi). Seul reste celui de la mise en file.
+  - Le banc sert désormais toutes ses lectures, la conversation connue du serveur comprise, et attend `_supaReal` et `_supaInitTerminee`.
+  - Nouveaux cas ⑮ à ㉖ (㉕ : une copie perdue remonte ; ㉖ : un document local transféré part comme document).
+  - ⚠️ Deux gardes ajoutées en première intention (« la file des messages porte déjà ce message ») ont été RETIRÉES : avec le renvoi par `_sendTextToSupa`, son « un envoi en vol » suffit, et une garde qu'aucun cas ne peut faire rougir est du poids mort (⑲ reste le verrou).
+- **Réinjection, sur le code final** (fusion de `main` comprise) :
+  - Le code d'avant (`019896b`, worktree séparé) rougit 25 des 27 cas.
+  - ⑲ et ⑳ y sont verts, et c'est attendu : ils gardent deux défauts que la PREMIÈRE version de ce lot avait introduits (double insertion à la reprise, objet retiré quand la bulle manque), pas le défaut d'origine. Leur mutation les rougit.
+  - 24 mutations, une à la fois, 24 tuées :
+
+  | Mutation | Cas rouges |
+  |---|---|
+  | ancien repli data URL de `_processAttach` | ① ② ③ ④ ⑦ ⑩ ⑫ bis ⑮ ⑰ ㉑ ㉔ |
+  | garde revenue à l'étiquette « non synchronisé » | ⑪ |
+  | transfert sans téléversement de la copie locale | ⑧ ㉓ |
+  | 409 accepté dès le 1er essai | ⑤ |
+  | file rejouée sans vérifier le compte | ⑦ |
+  | ancien repli du vocal | ⑥ |
+  | `_flushOutbox` sans la file des dépôts | ③ ④ ⑥ ⑦ ⑫ ⑫ bis ⑭ ⑰ ㉒ ㉕ |
+  | chemin d'objet neuf à chaque essai | ② ③ ④ ⑥ ⑫ ⑫ bis ⑮ |
+  | toute panne lue comme un refus | ③ ④ ⑥ ⑦ ⑰ |
+  | aucune télémétrie de l'échec | ① ③ ⑰ ㉕ |
+  | « réessayer » reconstruit en texte | ② |
+  | pas de reprise des bulles interrompues | ⑫ ⑭ ㉒ |
+  | reprise des bulles de CETTE page | ⑬ |
+  | reprise à chaque vidage | ⑭ |
+  | démarrage : bulles en attente non reportées | ⑫ ⑫ bis ⑭ ⑯ ㉒ |
+  | bulle absente lue « supprimée » (objet retiré) | ⑳ |
+  | renvoi d'un média déposé par `sendMessageToSupabase` | ⑲ ㉒ |
+  | coupure signalée à chaque rejeu | ⑰ |
+  | 403 sans réparation d'appartenance | ① ② ⑮ |
+  | ni mode invité ni démonstration bloqués | ⑱ |
+  | transfert : auteur relu après les `await` | ㉓ |
+  | « supprimer pour tous » sans `m.pj.url` | ⑩ ㉔ |
+  | copie perdue muette | ㉕ |
+  | transfert : document local ignoré | ㉖ |
+
+  - ⚠️ **Le banc de mutations a menti deux fois, et c'était lui.** En série, « ancien repli » (la première de la série) et « document local ignoré » sont sortis « AUCUN cas rouge ».
+    - La seconde : la lecture des cas s'arrêtait à ㉕, donc un échec de ㉖ ne se lisait pas.
+    - La première : rejouée seule, elle rougit 11 cas (table ci-dessus).
+    - Une mutation « survivante » se rejoue seule, sortie brute sous les yeux, avant d'être crue.
+    - Dans la même série, ⑩ a rougi une fois sous « file sans compte », puis jamais (4 passages seul, une relance de la mutation) : un raté du banc, pas une dépendance.
+
+- **Non-régression** : `pwa-maj-pendant-appel.spec.js` 31/31 (⑭ vocal, ⑳ vidéo, ㉕ photo, ㉚ insertion refusée), 99/99 sur quinze suites de la messagerie (`message-media-echec`, `pieces-jointes-cycle`, `transfert-message`, `file-messages-par-compte`, `parcours-flux`…), et après la fusion de `main` : `message-contenu-borne` 9/9 (#751) avec les suites du transfert. CI entière verte sur 0a9c3dac et b6e466b0, socle WebKit compris. Chromium seulement pour la nouvelle suite : le socle WebKit n'accueille une suite qu'après un passage vert en CI (`playwright.config.js`).
+- **Deux rouges de CI sans lien avec ce diff, analysés et relancés une fois** (commentaires sur PASSIO74/passio-app#747) :
+  - `feed-window.spec.js:166`, 12 cartes au lieu de plus de 20, sur 603ebdb et ce3d4770, vert à la relance de ce3d4770, sur 0a9c3dac, b6e466b0 et le même code dans #750. Jamais reproduit en local. Cause non trouvée : la liste est REPEINTE avec moins de publications pendant le défilement.
+  - Les suites à comptes réels : « Request rate limit reached » de l'authentification du staging.
+
+- **Hors champ, constaté** :
+  - transférer un VOCAL envoie toujours un message vide (`_forwardTo` n'a pas de branche `voiceData`) : PASSIO74/passio-app#750, empilée sur ce lot, le règle ;
+  - aucune contrainte serveur n'interdit une data URL dans `conv_messages.content` : PASSIO74/passio-app#754 la propose (deux CHECK), en attente de sa contre-revue humaine ;
+  - aucun plafond client pour un document ou un audio (le seau borne à 50 Mo, désormais dit par « trop lourd ») ;

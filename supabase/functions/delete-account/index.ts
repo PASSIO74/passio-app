@@ -17,6 +17,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import { traiterSuppression } from "../_shared/suppression-compte.js";
+import { connexionRecente, REPONSE_REAUTH } from "../_shared/connexion-recente.js";
 import { REVISION } from "../_shared/revision.js";
 
 const corsHeaders = {
@@ -48,6 +49,9 @@ Deno.serve(async (req) => {
     return json({ error: "Non authentifié" }, 401);
   }
   const uid = userData.user.id;
+
+  // Geste sans retour : il exige une authentification de moins de 15 minutes (audit 2026-11-06).
+  if (!connexionRecente(authHeader, 15 * 60)) return json(REPONSE_REAUTH, 403);
 
   // 2. Client admin (service_role) — injecté automatiquement par Supabase.
   const admin = createClient(

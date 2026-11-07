@@ -84,7 +84,7 @@ seul le passage en privé le fait. Verrou : `tests/e2e/mot-de-passe-minimum.spec
 
 ## 🔑 CHOISIR SON MOT DE PASSE — ON AIDE, ON N'EXIGE PAS PLUS (2026-09-16)
 
-Capture d'un essai réel : quelqu'un tape « Emma0207@ » et lit « Ce mot de passe apparaît dans des
+Capture d'un essai réel : quelqu'un tape « [valeur retirée] » et lit « Ce mot de passe apparaît dans des
 fuites de données connues. Choisis-en un autre, plus original. » — message posé EN HAUT du
 formulaire, à quatre champs du mot de passe, donc hors de l'écran d'un téléphone quand on regarde le
 champ, et qui ne dit NI ce qui est attendu, NI quoi faire ensuite. Demande de Benjamin : « ne

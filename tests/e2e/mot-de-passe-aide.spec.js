@@ -128,18 +128,18 @@ test("③ bis le tirage est ALÉATOIRE et toujours conforme (200 tirages)", asyn
       vus.add(m);
       if (!motDePasseAccepte(m)) tousOk = false;
       const bouts = m.split("-");
-      if (bouts[0] === bouts[1]) motRepete = true;
+      if (new Set(bouts.slice(0, 3)).size !== 3) motRepete = true;
     }
     return { distincts: vus.size, tousOk, motRepete, exemple: motDePasseSuggere() };
   });
   expect(r.tousOk).toBe(true);
   // Un générateur qui rendrait deux fois la même chose serait un mot de passe
-  // partagé par deux comptes. 200 tirages dans ~9 000 000 de combinaisons :
+  // partagé par deux comptes. 200 tirages dans environ 10^12 combinaisons (audit du 2026-11-06, A-16) :
   // les collisions doivent rester exceptionnelles.
   expect(r.distincts).toBeGreaterThan(195);
   // « vent-vent-1234 » se lit comme un bug, et coûte de l'entropie.
   expect(r.motRepete).toBe(false);
-  expect(r.exemple).toMatch(/^[a-z]+-[a-z]+-\d{4}$/);
+  expect(r.exemple).toMatch(/^[a-z]+-[a-z]+-[a-z]+-\d{6}$/);
 });
 
 test("④ un refus du SERVEUR se prononce aussi SOUS le champ, avec la sortie", async ({ page }) => {

@@ -73,33 +73,48 @@ export function poidsEvenement(ev) {
   return Number.isFinite(p) && p >= 1 && p <= 1000 ? p : 1;
 }
 
+// Tout champ de télémétrie est écrit par n'importe quel visiteur, sans plafond d'octets en base
+// (audit du 2026-11-06, F-01, F-07) : borné avant d'entrer en mémoire, dans les alertes et sur l'écran.
+const court = (v, n) => (v == null ? null : String(v).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, n));
+const texte = (v, n) => (v == null ? null : String(v).slice(0, n));
+function metaBornee(m) {
+  if (!m || typeof m !== "object") return {};
+  try { return JSON.stringify(m).length <= 8000 ? m : { tronque: true }; } catch { return {}; }
+}
+// Une carte alimentée par des identifiants inventés ne grossit pas sans fin : on oublie les plus anciens.
+function borner(carte, max = 20_000) {
+  while (carte.size > max) carte.delete(carte.keys().next().value);
+}
+
+const STATUTS_BUG = new Set(["nouveau", "a_analyser", "en_cours", "correctif_propose", "en_test", "corrige", "rouvert", "ignore"]);
+
 export function normalize(row) {
   const ts = row.received_at ? Date.parse(row.received_at) : Date.now();
   return {
     id: row.id || row.event_id || crypto.randomUUID(),
     event_id: row.event_id || null,
-    type: row.type || "action",
-    action: row.action || null,
-    severity: row.severity || "info",
-    status: row.status || "ok",
+    type: court(row.type, 40) || "action",
+    action: court(row.action, 200),
+    severity: court(row.severity, 20) || "info",
+    status: court(row.status, 20) || "ok",
     duration_ms: row.duration_ms ?? null,
     user_id: row.user_id || null,
-    user_label: row.user_label || null,
-    session_id: row.session_id || null,
-    device_id: row.device_id || null,
-    platform: row.platform || "other",
-    browser: row.browser || "other",
-    app_version: row.app_version || "?",
-    env: row.env || "production",
-    connection: row.connection || null,
-    screen_size: row.screen_size || null,
-    screen: row.screen || null,
-    endpoint: row.endpoint || null,
+    user_label: court(row.user_label, 80),
+    session_id: court(row.session_id, 120),
+    device_id: court(row.device_id, 120),
+    platform: court(row.platform, 40) || "other",
+    browser: court(row.browser, 40) || "other",
+    app_version: court(row.app_version, 40) || "?",
+    env: court(row.env, 20) || "production",
+    connection: court(row.connection, 40),
+    screen_size: court(row.screen_size, 40),
+    screen: court(row.screen, 80),
+    endpoint: court(row.endpoint, 300),
     http_status: row.http_status ?? null,
-    correlation_id: row.correlation_id || null,
-    message: row.message || null,
-    stack: row.stack || null,
-    meta: row.meta || {},
+    correlation_id: court(row.correlation_id, 120),
+    message: texte(row.message, 4000),
+    stack: texte(row.stack, 8000),
+    meta: metaBornee(row.meta),
     ts,
     client_ts: row.client_ts ? Date.parse(row.client_ts) : ts,
   };
@@ -303,7 +318,7 @@ class Store {
   _touchDevice(ev) {
     if (!ev.device_id) return;
     let d = this.devices.get(ev.device_id);
-    if (!d) { d = { deviceId: ev.device_id, firstSeen: ev.ts, errorCount: 0 }; this.devices.set(ev.device_id, d); }
+    if (!d) { d = { deviceId: ev.device_id, firstSeen: ev.ts, errorCount: 0 }; this.devices.set(ev.device_id, d); borner(this.devices); }
     d.lastSeen = ev.ts;
     d.platform = ev.platform; d.browser = ev.browser; d.appVersion = ev.app_version;
     d.env = ev.env;
@@ -330,7 +345,7 @@ class Store {
   _touchSession(ev) {
     if (!ev.session_id) return;
     let s = this.sessions.get(ev.session_id);
-    if (!s) { s = { sessionId: ev.session_id, deviceId: ev.device_id, start: ev.ts, screens: [], eventCount: 0, errorCount: 0 }; this.sessions.set(ev.session_id, s); }
+    if (!s) { s = { sessionId: ev.session_id, deviceId: ev.device_id, start: ev.ts, screens: [], eventCount: 0, errorCount: 0 }; this.sessions.set(ev.session_id, s); borner(this.sessions); }
     s.last = ev.ts; s.eventCount++;
     s.userId = ev.user_id || s.userId; s.userLabel = ev.user_label || s.userLabel;
     s.platform = ev.platform; s.browser = ev.browser; s.appVersion = ev.app_version; s.env = ev.env;
@@ -344,7 +359,7 @@ class Store {
   _touchUser(ev) {
     if (!ev.user_id) return;
     let u = this.users.get(ev.user_id);
-    if (!u) { u = { userId: ev.user_id, devices: new Set(), firstSeen: ev.ts }; this.users.set(ev.user_id, u); }
+    if (!u) { u = { userId: ev.user_id, devices: new Set(), firstSeen: ev.ts }; this.users.set(ev.user_id, u); borner(this.users); }
     u.lastSeen = ev.ts; u.label = ev.user_label || u.label;
     if (ev.device_id) u.devices.add(ev.device_id);
   }
@@ -371,6 +386,7 @@ class Store {
         opensHorsPublic: 0, signupsHorsPublic: 0,
       };
       this.links.set(id, l);
+      borner(this.links);
       // Borne la carte (les liens les plus anciens sont évincés).
       if (this.links.size > 8000) { const first = this.links.keys().next().value; this.links.delete(first); }
     }
@@ -505,6 +521,7 @@ class Store {
         codeRef: extractCodeRef(ev.stack), samples: [],
       };
       this.bugs.set(fp, b);
+      borner(this.bugs, 5_000);
     }
     b.lastSeen = ev.ts; b.count++;
     if (ev.user_id) b.users.add(ev.user_id);
@@ -827,7 +844,12 @@ class Store {
 
   updateBug(id, patch) {
     if (!this.bugs.has(id)) return null;
-    this.bugMeta.update((m) => { m[id] = { ...(m[id] || {}), ...patch, updatedAt: Date.now() }; });
+    // Liste de champs (F-10) : le corps venait tel quel d'un rôle faible, et `status` finit dans la page.
+    const propre = {};
+    if (STATUTS_BUG.has(patch.status)) propre.status = patch.status;
+    if (typeof patch.assignee === "string") propre.assignee = patch.assignee.slice(0, 80);
+    if (typeof patch.notes === "string") propre.notes = patch.notes.slice(0, 2000);
+    this.bugMeta.update((m) => { m[id] = { ...(m[id] || {}), ...propre, updatedAt: Date.now() }; });
     return this.bug(id);
   }
 

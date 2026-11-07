@@ -24,6 +24,7 @@
 // Les deux exécuteurs (execFile, fetch) sont injectables : aucun test ne lance
 // `gh` ni ne sort sur le réseau.
 // ═══════════════════════════════════════════════════════════════════════════
+import { envSansSecrets } from "./env-enfant.js";
 import { execFile as execFileNode } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -69,7 +70,7 @@ export function composerCorpsPoste(cles, now = Date.now()) {
 function promesseExec(execFileImpl) {
   return (args, timeoutMs = 30_000) => new Promise((resolve) => {
     try {
-      execFileImpl("gh", args, { windowsHide: true, timeout: timeoutMs, maxBuffer: 1_000_000 }, (err, stdout, stderr) => {
+      execFileImpl("gh", args, { windowsHide: true, timeout: timeoutMs, maxBuffer: 1_000_000, env: envSansSecrets({}, { garderGithub: true }) }, (err, stdout, stderr) => {
         resolve({ code: err ? (err.code ?? 1) : 0, out: String(stdout || ""), err: String(stderr || err?.message || "") });
       });
     } catch (e) { resolve({ code: -1, out: "", err: e && e.message ? e.message : String(e) }); }

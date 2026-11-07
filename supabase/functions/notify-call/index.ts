@@ -47,8 +47,9 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import webpush from "npm:web-push@3.6.7";
+import { endpointPushSur, envoyerPushBorne, MAX_ABONNEMENTS_LUS } from "../_shared/push-sur.js";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
-import { identiteAppelant, lienAppel, autoriserPushNotif } from "../_shared/lien-metier.js";
+import { identiteAppelant, lienAppel, autoriserPushNotif, reserverPush } from "../_shared/lien-metier.js";
 import { adresseAccuse, TTL_NOTIFS_MS } from "../_shared/reception.js";
 import { APPELS_ACTIFS, pousserAppareils } from "../_shared/appels.js";
 import { REVISION } from "../_shared/revision.js";
@@ -159,14 +160,17 @@ Deno.serve(async (req) => {
     // `autoriserPushNotif` (lien-metier.js), testée par Node.
     const decision = await autoriserPushNotif(admin, fromUid, toUserId);
     if (!decision.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+    if (!(await reserverPush(admin, decision.id, toUserId, 30, Date.now(), uid))) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
     texteServeur = decision.texte;
     kindServeur = decision.kind || "";
   }
   const idn = await identiteAppelant(admin, fromUid);
 
   // 3. Charger les abonnements du destinataire (service_role → contourne la RLS).
-  const { data: subs } = await admin.from("push_subscriptions").select("endpoint, subscription").eq("user_id", toUserId);
-  if (!subs || !subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+  // Lignes écrites par le client (audit 2026-11-06) : services push connus seulement, en nombre borné.
+  const { data: toutes } = await admin.from("push_subscriptions").select("endpoint, subscription").eq("user_id", toUserId).limit(MAX_ABONNEMENTS_LUS);
+  const subs = (toutes || []).filter((l) => endpointPushSur(l.subscription));
+  if (!subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
 
   const charge = type === "notif"
     ? { type: "notif", text: texteServeur || "Nouvelle notification", emoji: emoji || "🔔", kind: kindServeur || kind }
@@ -183,7 +187,8 @@ Deno.serve(async (req) => {
   const { sent, morts } = await pousserAppareils({
     admin, abonnements: subs, charge, options: { TTL: ttl, urgency }, accuse: ACCUSE,
     // deno-lint-ignore no-explicit-any
-    envoyer: (s: any, c: string, o: any) => webpush.sendNotification(s, c, o),
+    // Borné : un abonnement qui ne répond pas ne fige plus la fonction (audit 2026-11-06, D-02).
+    envoyer: (s: any, c: string, o: any) => envoyerPushBorne((a: any, b: string, d: any) => webpush.sendNotification(a, b, d), s, c, o),
   });
   if (morts.length) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch (_e) { /* */ } }
 

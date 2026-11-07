@@ -143,6 +143,8 @@ pile d'un `ENOSPC` tenait dans ce qu'on coupait). `Arreter-Pilotage.cmd` tue
 désormais **tous** les superviseurs de ce dossier par leur ligne de commande,
 filtre le port strictement, et vérifie à la fin que rien ne survit.
 
+⚠️ **Le worker IA est inactif par défaut depuis l'audit de sécurité du 2026-11-06** : une écriture sur `ai/request/*` d'un dépôt public lançait un agent sur le poste. `PASSIO_AI_WORKER=on` dans `.env` l'active, avec un commit signé par une clé de `.passio/ai-worker/signataires` ; l'agent n'a plus ni shell ni MCP (`aiworker-garde.mjs`). `sans-signature` lève le verrou de signature, en connaissance de cause.
+
 Le worker IA (`aiworker.mjs`, 2026-09-13) : une demande en échec n'est plus
 rejouée toutes les 20 s à l'infini — **5 essais** (`PASSIO_AI_MAX_ATTEMPTS`) avec
 recul 5, 10, 20, 40, 80 min, puis abandon annoncé ; une demande figée en

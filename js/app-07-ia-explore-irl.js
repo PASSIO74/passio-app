@@ -1731,7 +1731,7 @@ function updateIrlMapMarkers() {
     const userMarker = L.marker([refLoc.lat, refLoc.lng], { icon: userIcon }).addTo(irlMarkersLayer);
     userMarker.bindPopup(`
       <div style="min-width:240px;padding:10px;">
-        <div style="font-weight:600;text-align:center;margin-bottom:8px;font-size:13px;line-height:1.4;">${locLabel}</div>
+        <div style="font-weight:600;text-align:center;margin-bottom:8px;font-size:13px;line-height:1.4;">${escapeHtml(locLabel)}</div>
         <button onclick="resetToUserLocation()" style="width:100%;padding:4px 8px;border:none;background:transparent;color:#7c3aed;font-size:11px;text-decoration:underline;cursor:pointer;margin-bottom:12px;">
           ← Ma position actuelle
         </button>
@@ -4264,11 +4264,22 @@ function openEventDetails(id) {
   const coverEl = document.getElementById("eventDetailCover");
   if (!coverEl) return;
   if (ev.coverUrl) {
-    // ⚠️ `emoji` est un champ LIBRE d'un autre compte, et il atterrissait brut dans
-    // une chaîne JS simple-quotée à l'intérieur d'un onerror : une apostrophe
-    // suffisait à en sortir. C'est le contexte d'escapeJsArg, pas d'escapeHtml.
-    const coverFb = escapeJsArg(ev.emoji || passion.emoji || "✨");
-    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(ev.coverUrl)}" onerror="this.parentElement.innerHTML='<div class=\\'event-detail-cover-placeholder\\'>${coverFb}</div>'" alt=""/>`;
+    // ⚠️ `emoji` est un champ LIBRE d'un autre compte. Un `onerror` qui repose du HTML
+    // cumule trois contextes (attribut, chaîne JS, innerHTML) : `escapeJsArg` protégeait
+    // les deux premiers, et le décodage de l'attribut rendait la balise au troisième
+    // (audit 2026-11-06). Le repli passe donc par le DOM, en texte.
+    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(ev.coverUrl)}" alt=""/>`;
+    const coverImg = coverEl.querySelector("img");
+    if (coverImg) {
+      const coverFb = ev.emoji || passion.emoji || "✨";
+      coverImg.addEventListener("error", function () {
+        const repli = document.createElement("div");
+        repli.className = "event-detail-cover-placeholder";
+        repli.textContent = coverFb;
+        coverEl.textContent = "";
+        coverEl.appendChild(repli);
+      }, { once: true });
+    }
   } else {
     coverEl.innerHTML = `<div class="event-detail-cover-placeholder">${escapeHtml(ev.emoji || passion.emoji)}</div>`;
   }
@@ -8075,6 +8086,7 @@ async function _pointerParCodeServeur(ev, code) {
   }
   var messages = {
     code_incorrect: "Code incorrect — vérifie avec l'organisateur",
+    trop_d_essais: "Trop d'essais : attends une minute avant de réessayer",
     hors_fenetre: "Le pointage n'est ouvert que de 1 h avant le début jusqu'à la fin",
     annulee: "Cette activité a été annulée",
     non_inscrit: "Inscris-toi à l'activité avant de pointer",

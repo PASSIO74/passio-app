@@ -24,6 +24,8 @@ function fauxAdmin(donnees, erreurs = {}, opts = {}) {
   return {
     appels,
     rpc(nom, args) {
+      // Les objets du compte, par propriété (audit du 2026-11-06, D-14).
+      if (nom === "objets_stockage_du_compte") return { range: async () => (opts.objetsErreur ? { data: null, error: { message: opts.objetsErreur } } : { data: opts.objets || [], error: null }) };
       return {
         then(res) {
           appels.push("rpc:" + nom + "=" + (args && args.p_uid));
@@ -273,4 +275,15 @@ test("ASTRA-44 ④ COUVERTURE : la liste de la fonction SQL est EXACTEMENT table
   assert.deepEqual(paires.filter((p) => !attendues.includes(p)), [], "dans la fonction mais pas dans tablesExport()");
   assert.deepEqual(attendues.filter((p) => !paires.includes(p)), [], "dans tablesExport() mais pas dans la fonction");
   assert.equal(paires.length, attendues.length);
+});
+
+// Audit de sécurité du 2026-11-06, D-14 : le dossier annoncé complet oubliait les pièces jointes.
+test("D-14 les pièces jointes du compte sont listées, sans URL ; un relevé illisible retire « complet »", async () => {
+  const objets = [{ bucket_id: "attachments", name: "attachments/c1/f.jpg" }, { bucket_id: "content", name: "photos/moi/a.jpg" }];
+  const d = await exporterCompte(fauxAdmin({}, {}, { objets }), "moi", { id: "moi" });
+  const pj = d.medias.filter((m) => m.seau === "attachments");
+  assert.deepEqual(pj, [{ seau: "attachments", chemin: "attachments/c1/f.jpg", url: null }]);
+  assert.equal(d.bilan.complet, true);
+  const k = await exporterCompte(fauxAdmin({}, {}, { objetsErreur: "rpc" }), "moi", { id: "moi" });
+  assert.equal(k.bilan.complet, false);
 });

@@ -274,6 +274,37 @@ function _writeStateNow() {
 // timer déjà armé — il ne pouvait rien contre une NOUVELLE écriture, ni contre le
 // beacon d'état ajouté depuis. Une fois ce verrou posé, plus rien ne s'écrit.
 let _accountPurged = false;
+// Ce verrou est propre à l'onglet (audit du 2026-11-06, A-07). Une déconnexion dans l'onglet 1 laissait
+// l'onglet 2 réécrire l'état et les conversations du compte quitté, y compris sous le compte suivant, puis
+// les pousser dans SON `user_state`. `storage` ne se déclenche que dans les AUTRES onglets. Le verrou
+// d'abord, le rechargement ensuite : un onglet gelé peut écrire à son réveil.
+function _surveillerAutresOnglets() {
+  if (window._autresOngletsSurveilles) return;
+  window._autresOngletsSurveilles = true;
+  function couper() {
+    _accountPurged = true;
+    try { discardPendingStateSave(); } catch (err) {}
+    // Le lien de récupération est à usage unique et son fragment est consommé : recharger ici perdrait le
+    // formulaire. Le verrou reste posé, et ce parcours recharge lui-même après le changement.
+    if (window._recuperationMotDePasse === true) return;
+    try { annoncerRechargement(); } catch (err) {}
+    setTimeout(function () { location.reload(); }, 0);
+  }
+  window.addEventListener("storage", function (e) {
+    try { if (e.storageArea && e.storageArea !== localStorage) return; } catch (err) { return; }
+    var sortie = e.key === null || (e.key === STATE_KEY && e.newValue === null);
+    var autre = e.key === "passio_uid" && !!e.newValue && !!MY_UID && e.newValue !== MY_UID;
+    if (sortie || autre) couper();
+  });
+  // Un onglet restauré du cache de navigation a manqué l'événement `storage`.
+  window.addEventListener("pageshow", function (e) {
+    if (!e.persisted) return;
+    try {
+      var u = localStorage.getItem("passio_uid");
+      if (MY_UID && u && u !== MY_UID) couper();
+    } catch (err) {}
+  });
+}
 
 // ⚠️ « LA PAGE VA ÊTRE RECHARGÉE » SE DIT AVANT LE MOINDRE APPEL RÉSEAU (2026-09-18).
 // Mesuré en production : bouton « Se reconnecter » du bandeau « Session expirée »
@@ -932,7 +963,7 @@ function _sondeServeurReponse(status, url) {
 // attempting to fetch resource », iOS « The network connection was lost ».
 // postgrest-js préfixe les siens par « FetchError: » — d'où la recherche EN
 // SOUS-CHAÎNE, jamais une égalité.
-const _RE_ECHEC_RESEAU = /failed to fetch|fetcherror|networkerror|network request failed|load failed|network connection was lost|connection appears to be offline/i;
+const _RE_ECHEC_RESEAU = /failed to fetch|fetcherror|networkerror|network request failed|load failed|network connection was lost|connection appears to be offline|signal timed out|operation timed out|operation was aborted|signal is aborted|aborterror|timeouterror/i;
 
 // Vrai UNIQUEMENT si la requête n'a jamais eu de réponse. Un refus du serveur en
 // est exclu par deux chemins indépendants : le code PostgREST/PostgreSQL
@@ -2853,16 +2884,22 @@ function _cssUrl(u) {
   // la forme exacte, sinon on refuse (un « data:image/x;… » libre serait un vecteur).
   if (/^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/i.test(s)) return s;
   if (!/^(https?:\/\/|blob:)/i.test(s)) return null;
+  // ⚠️ `&#` aussi (audit 2026-11-06) : dans un attribut, le parseur HTML décode une
+  // référence numérique SANS point-virgule (`&#39` donne `'`, `&#59` donne `;`) AVANT le
+  // CSS, et la valeur ressortait de son `url(` pour poser d'autres déclarations.
+  // L'esperluette d'une requête (`?width=…&quality=…`) n'est jamais suivie de `#`.
   return s.replace(/[()'"\\<>;\s]/g, function (c) {
     return "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0");
-  });
+  }).replace(/&#/g, "%26%23");
 }
 // Couleur/dégradé posé dans un attribut style. Même origine, même exigence : on
 // refuse tout ce qui permettrait de sortir de la déclaration ou d'aller chercher
 // une ressource externe.
 function _cssColor(c) {
   const s = String(c || "").trim();
-  if (!s || /["'<>;{}]|url\s*\(|expression\s*\(|@import/i.test(s)) return "#8b5cf6";
+  // `&` et `\\` (audit 2026-11-06) : une référence `&#59` redevient `;` au décodage de
+  // l'attribut, un échappement CSS `\\3b` au parsage du style. Aucune couleur n'en a besoin.
+  if (!s || /["'<>;{}&\\]|url\s*\(|expression\s*\(|@import/i.test(s)) return "#8b5cf6";
   return s;
 }
 // Style `background:` d'un avatar : la photo si dispo, sinon la couleur.
@@ -3692,19 +3729,14 @@ function saveNotifSettings() {
 
 function openPrivacySettings() {
   var cfg = getCurrentConfig();
-  var priv = cfg.privacy || { profilePublic: true, showOnline: true, allowMessages: "everyone", showActivity: true };
+  // ⚠️ Quatre réglages retirés (audit 2026-11-06) : « Profil public », « Afficher en ligne »,
+  // « Afficher mon activité », « Qui peut m'écrire ? » s'enregistraient et rien ne les lisait.
+  // Une personne inquiète après une rencontre croyait avoir fermé sa messagerie.
+  // Un réglage de confidentialité ne revient qu'avec sa garde serveur.
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Confidentialité</div>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Profil public</span><input type="checkbox" id="privPublic" ' + (priv.profilePublic ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher en ligne</span><input type="checkbox" id="privOnline" ' + (priv.showOnline ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher mon activité</span><input type="checkbox" id="privActivity" ' + (priv.showActivity ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <div style="padding:12px 0;"><span style="font-size:13px;">Qui peut m\'écrire ?</span>\
-      <select id="privMessages" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:16px;">\
-        <option value="everyone" ' + (priv.allowMessages === "everyone" ? "selected" : "") + '>Tout le monde</option>\
-        <option value="followers" ' + (priv.allowMessages === "followers" ? "selected" : "") + '>Mes abonnés</option>\
-        <option value="nobody" ' + (priv.allowMessages === "nobody" ? "selected" : "") + '>Personne</option>\
-      </select></div>\
+    <p style="font-size:13px;line-height:1.5;margin:4px 0 12px;">Pour limiter qui te voit et qui te contacte : passe en compte privé depuis ton profil, ou bloque un compte depuis son profil.</p>\
     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border);"><span style="font-size:13px;">Mesure d\'usage<br><span style="font-size:11.5px;color:var(--muted);">Écrans ouverts, erreurs, identifiant d\'appareil. Jamais le contenu de ce que tu écris.</span></span><input type="checkbox" id="privTelemetry" ' + (_mesureUsageActive() ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);"></label>\
     <button class="btn primary block" onclick="savePrivacySettings()" style="margin-top:14px;">Sauvegarder</button>\
     <button type="button" class="btn ghost block" id="privExporter" onclick="exporterMesDonnees()" style="margin-top:8px;">📦 Exporter mes données (JSON)</button>\
@@ -3728,6 +3760,7 @@ async function exporterMesDonnees() {
   var verdict = null;
   try { verdict = await supa.functions.invoke("export-account"); } catch (e) { verdict = { error: e }; }
   if (btn) { btn.disabled = false; btn.textContent = "📦 Exporter mes données (JSON)"; }
+  if (await _demandeReconnexion(verdict)) return false;
   if (!verdict || verdict.error || !verdict.data || verdict.data.format !== "passio-export/1") {
     var msg = (verdict && verdict.error && verdict.error.message) || "";
     toast(/429|Trop/.test(msg) ? "Export déjà demandé : réessaie dans une minute." : "⚠️ Export impossible pour le moment — réessaie, ou écris à " + PASSIO_EDITEUR.email, "warning");
@@ -3755,6 +3788,19 @@ async function exporterMesDonnees() {
   try { if (!complet && typeof diagLog === "function") diagLog("export_compte incomplet " + manques.join(" | ")); } catch (e) {}
   return true;
 }
+// Le serveur exige une connexion récente pour les gestes sans retour (audit 2026-11-06). Sur une
+// réponse non-2xx le SDK rend `error.context`, une Response dont on ne lit le corps qu'UNE fois :
+// d'où un clone. Rien n'a été purgé ni exporté : la personne se reconnecte et recommence.
+async function _demandeReconnexion(verdict) {
+  var ctx = verdict && verdict.error && verdict.error.context;
+  if (!ctx || ctx.status !== 403 || typeof ctx.clone !== "function") return false;
+  var corps = null;
+  try { corps = await ctx.clone().json(); } catch (e) { return false; }
+  if (!corps || corps.code !== "reauth_requise") return false;
+  toast("🔒 " + (corps.message || "Par sécurité, reconnecte-toi, puis recommence."), "warning");
+  setTimeout(function () { try { doLogout("signin"); } catch (e) {} }, 1800);
+  return true;
+}
 function _telechargerJson(objet, nom) {
   try {
     var blob = new Blob([JSON.stringify(objet, null, 2)], { type: "application/json" });
@@ -3780,7 +3826,7 @@ function _mesureUsageActive() {
 
 function savePrivacySettings() {
   var cfg = getCurrentConfig();
-  cfg.privacy = { profilePublic: document.getElementById("privPublic").checked, showOnline: document.getElementById("privOnline").checked, showActivity: document.getElementById("privActivity").checked, allowMessages: document.getElementById("privMessages").value };
+  // `cfg.privacy` : plus aucun champ à écrire (voir openPrivacySettings).
   // La mesure d'usage n'entre PAS dans `cfg.privacy` : ce blob part dans
   // `user_state` et suivrait le compte d'un appareil à l'autre, alors que le
   // refus est celui de CET appareil. `setEnabled` écrit la clé et coupe la
@@ -4332,12 +4378,22 @@ var ACCOUNT_SCOPED_KEYS = [
   // la première ceinture, le filtre au rejeu la seconde.
   "passio_outbox_v1",        // file des messages en attente d'envoi
   "passio_cmt_outbox_v1",    // file des commentaires en attente d'envoi
+  // Ajoutée le 2026-11-07 : les pièces jointes dont le DÉPÔT attend le réseau
+  // (app-09, `_pjFileVider`). Elle ne porte que des identifiants et son `owner`,
+  // mais elle désigne des messages du compte, dont la copie locale part avec lui.
+  "passio_pj_outbox_v1",     // file des dépôts de pièces jointes en attente
   // Ajoutée le 2026-10-06 : la semaine où le récap a été traité POUR CE COMPTE
   // (js/recap-semaine.js). Un autre compte sur l'appareil a droit à son récap.
   "passio_recap_semaine_v1",
   // Ajoutée le 2026-10-23 : les dernières villes choisies dans « Rencontrer »
   // (app-07, `irlVillesRecentes`). Une donnée de LIEU de la personne.
   "passio_irl_villes_recentes_v1",
+  // Ajoutées le 2026-11-06 (audit) : encore des lieux cherchés et des choix de la
+  // personne, restés lisibles sur l'appareil après la déconnexion.
+  "passio_geo_cache_v1",        // adresses géocodées (app-07)
+  "passio_passions_demandes",   // passions demandées (passions-flat)
+  "passio_passions_recentes",   // passions récemment choisies (passions-flat)
+  "passio_rappels_proposes_v1", // rappels déjà proposés (app-07)
   //   passio_post_delete_outbox_v1 — PAS ici, délibérément : elle ne porte que
   //     des identifiants (aucun texte), porte déjà le compte (`uid`, filtré au
   //     rejeu), et son rôle est de finir une suppression pour les AUTRES comptes
@@ -4568,10 +4624,40 @@ function purgerJetonAuthLocal() {
 }
 window.purgerJetonAuthLocal = purgerJetonAuthLocal;
 
+// L'abonnement push de CET appareil quitte le compte avec la session (audit 2026-11-06).
+// Sinon la ligne de `push_subscriptions` survit et les notifications du compte quitté
+// (nom du correspondant, titre d'une activité) s'affichent sur l'écran verrouillé, y
+// compris sous le compte suivant. Le navigateur se désabonne même si le serveur est
+// injoignable : la ligne restante se nettoie alors au premier envoi (réponse 410).
+// Borné : une déconnexion n'attend jamais le service worker ni le réseau.
+async function _retirerAbonnementPush(opts) {
+  opts = opts || {};
+  var travail = (async function () {
+    if (!("serviceWorker" in navigator)) return;
+    var reg = await navigator.serviceWorker.getRegistration();
+    var sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+    if (!sub) return;
+    // En parallèle : un DELETE qui traîne ne doit pas empêcher le désabonnement avant le rechargement. Le SDK
+    // ne lève pas sur un refus RLS : on lit `{ error }`.
+    var taches = [sub.unsubscribe()];
+    if (!opts.navigateurSeul && window._supaReal && typeof supa !== "undefined" && supa && supa.from) {
+      taches.push(Promise.resolve(supa.from("push_subscriptions").delete().eq("endpoint", sub.endpoint)).then(function (r) {
+        if (r && r.error && typeof diagLog === "function") diagLog("push_retrait serveur " + r.error.message);
+      }));
+    }
+    var bilan = await Promise.allSettled(taches);
+    bilan.forEach(function (x) { if (x.status === "rejected" && typeof diagLog === "function") diagLog("push_retrait " + (x.reason && x.reason.message)); });
+  })().catch(function (e) { if (typeof diagLog === "function") diagLog("push_retrait " + (e && e.message)); });
+  return Promise.race([travail, new Promise(function (ok) { setTimeout(ok, 2500); })]);
+}
+window._retirerAbonnementPush = _retirerAbonnementPush;
+
 async function doLogout(intention) {
   // ⚠️ AVANT `supaSaveUserState` et `signOut` : ce sont des appels réseau, et le
   // rechargement qui suit coupe ce qui est encore en vol (voir `annoncerRechargement`).
   annoncerRechargement();
+  // Le DELETE a besoin du jeton : avant `signOut`.
+  await _retirerAbonnementPush();
   // Flush immédiat : pousse les changements en attente (debounce 2500ms non encore
   // déclenché) vers Supabase AVANT la déconnexion. Sans ça, toute modification faite
   // dans les 2,5 s précédant le logout est perdue à la reconnexion.
@@ -4818,6 +4904,11 @@ async function doDeleteAccount() {
     try { if (window.tel && tel.flowStart) _delCid = tel.flowStart("delete_account"); } catch (e) {}
     var verdict = null;
     try { verdict = await supa.functions.invoke("delete-account"); } catch (e) { verdict = { error: e }; }
+    if (await _demandeReconnexion(verdict)) {
+      try { if (_delCid && window.tel && tel.settle) tel.settle(_delCid, "saved", false, { message: "reauth_requise", code: "reauth_requise" }); } catch (e) {}
+      window._suppressionEnCours = false;
+      return false;
+    }
     // ⚠️ ASTRA-42 (2026-09-15) : « Compte supprimé » N'EST ANNONCÉ QUE SUR UN SUCCÈS
     // DÉFINITIF — `ok: true` ET `garantie: "barriere"`. La fonction distingue
     // désormais ses arrêts par un `code` (infrastructure absente, suppression
@@ -4876,6 +4967,13 @@ async function doDeleteAccount() {
     try { await supa.auth.signOut(); } catch (e) {}
   }
   // Purge locale complète
+  // ⚠️ `purgeAccountScopedData` D'ABORD (audit 2026-11-06) : elle seule baisse le verrou
+  // `_accountPurged`. Sans lui, le `beforeunload` du rechargement annoncé plus bas
+  // réécrivait les conversations (localStorage ET IndexedDB) du compte supprimé, lisibles
+  // ensuite depuis l'onglet Messages par quiconque utilise le navigateur.
+  try { await purgeAccountScopedData(); } catch (e) {}
+  // La ligne serveur est déjà partie avec la purge du compte : reste le navigateur.
+  await _retirerAbonnementPush({ navigateurSeul: true });
   discardPendingStateSave();
   try {
     Object.keys(localStorage)
@@ -5606,6 +5704,7 @@ async function refuserConsentementRequis() {
 // ── Récupération de mot de passe : UI minimale affichée quand Supabase émet
 // l'événement PASSWORD_RECOVERY (retour depuis le lien e-mail). ──
 function _showPasswordRecoveryUI() {
+  window._recuperationMotDePasse = true;
   if (document.getElementById("pwdRecoveryOverlay")) return;
   const ov = document.createElement("div");
   ov.id = "pwdRecoveryOverlay";
@@ -5770,18 +5869,20 @@ function _aleaEntier(max) {
   return Math.floor(Math.random() * n);
 }
 
-// Un mot de passe PRONONÇABLE, jamais une bouillie de symboles : deux mots
-// tirés au sort et quatre chiffres — « lavande-colibri-4917 ». Il satisfait les
-// trois règles par construction, et il ne peut pas figurer dans une fuite
-// (il vient d'être tiré). ⚠️ Deux mots DIFFÉRENTS : « vent-vent-1234 » se lit
-// comme un bug, et coûte de l'entropie.
+// Un mot de passe PRONONÇABLE, jamais une bouillie de symboles : trois mots
+// tirés au sort et six chiffres — « lavande-colibri-saule-491723 », soit environ
+// 40 bits (104 × 103 × 102 × 900 000). Deux mots et quatre chiffres n'en valaient
+// que 26,5, ce qui tombe vite hors ligne après une fuite de la base (audit du
+// 2026-11-06, A-16). Il satisfait les trois règles par construction, et il ne peut
+// pas figurer dans une fuite (il vient d'être tiré). ⚠️ Des mots DIFFÉRENTS :
+// « vent-vent-1234 » se lit comme un bug, et coûte de l'entropie.
 function motDePasseSuggere() {
   const mots = [];
-  while (mots.length < 2 && mots.length < MOTS_MDP.length) {
+  while (mots.length < 3 && mots.length < MOTS_MDP.length) {
     const m = MOTS_MDP[_aleaEntier(MOTS_MDP.length)];
     if (mots.indexOf(m) < 0) mots.push(m);
   }
-  return mots.join("-") + "-" + String(1000 + _aleaEntier(9000));
+  return mots.join("-") + "-" + String(100000 + _aleaEntier(900000));
 }
 
 // Peint l'aide sous le champ : l'état des trois règles, et — s'il y en a un —
@@ -5841,11 +5942,19 @@ function authProposerMotDePasse() {
   try { if (window.tel && tel.action) tel.action("mdp_propose", { screen: "auth" }); } catch (e) {}
 }
 
+// Même liste que la contrainte `profiles_username_forme` du serveur (audit de sécurité du 2026-11-06) : sans ce
+// contrôle, le compte se créait sans ligne `profiles`, avec un simple avertissement en console. Le tiret bas compte
+// dans le mot, comme `\m…\M` côté PostgreSQL.
+function nomCompteReserve(v) {
+  var plie = String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /(^|[^a-z0-9_])(passio|moderation|moderateur|administrateur|admin|support|securite)($|[^a-z0-9_])/.test(plie);
+}
 function nomCompteValide(v) {
   // Les blancs ne font pas une identité : « Ben   jamin » et «  Benjamin  »
   // ne doivent pas donner deux pseudos différents dans `profiles.username`.
   const s = String(v == null ? "" : v).replace(/\s+/g, " ").trim();
-  return (s.length >= NOM_COMPTE_MIN && s.length <= NOM_COMPTE_MAX) ? s : "";
+  if (s.length < NOM_COMPTE_MIN || s.length > NOM_COMPTE_MAX || nomCompteReserve(s)) return "";
+  return s;
 }
 
 // ⚠️ LE NOM DOIT SURVIVRE À UN CHANGEMENT D'APPAREIL. On crée son compte sur le
@@ -5895,7 +6004,9 @@ async function onbDoAuth() {
   // Le nom est le PREMIER champ de l'écran : son refus se prononce en premier,
   // sinon on renvoie quelqu'un vers le bas du formulaire pour un défaut du haut.
   if (_authMode === "signup" && !nom) {
-    _showAuthMsg("Choisis un nom d'utilisateur (" + NOM_COMPTE_MIN + " \u00e0 " + NOM_COMPTE_MAX + " caract\u00e8res).", "error");
+    _showAuthMsg(nomCompteReserve(document.getElementById("authName")?.value || "")
+      ? "Ce nom d'utilisateur est réservé : choisis-en un autre."
+      : "Choisis un nom d'utilisateur (" + NOM_COMPTE_MIN + " \u00e0 " + NOM_COMPTE_MAX + " caract\u00e8res).", "error");
     return;
   }
   // ⚠️ L'ANNÉE DE NAISSANCE EST DEMANDÉE À LA CRÉATION (2026-11-01). Le parcours
@@ -8729,9 +8840,15 @@ function feedWindowSync(list) {
       entries.forEach(function (entry) {
         var el = entry.target;
         if (el.id === "feedWindowSentinel") {
-          // Une sentinelle RETIRÉE (queue reconstruite) peut encore livrer une entrée
-          // en attente : elle ne charge plus rien (2026-11-07, voir feedWindowTailHtml).
-          if (entry.isIntersecting && el.isConnected) feedWindowLoadNextBatch();
+          if (entry.isIntersecting) feedWindowLoadNextBatch();
+          // Sortie de la marge : le prochain passage sera un vrai défilement,
+          // le frein d'un lot stérile (cf. feedWindowLoadNextBatch) se lève.
+          // ⚠️ Seulement pour une sentinelle encore DANS la page : un repeint
+          // complet détache l'ancienne, et l'observateur rend pour elle une
+          // dernière entrée « hors marge » qui n'est le geste de personne — elle
+          // levait le frein juste avant que la nouvelle sentinelle, ramenée en
+          // bas par l'ancrage, ne relance la boucle (35 lots en 1,5 s, mesuré).
+          else if (el.isConnected) window._feedWindowFrein = null;
           return;
         }
         if (entry.isIntersecting) feedWindowHydrate(el);
@@ -8758,9 +8875,36 @@ function feedWindowSync(list) {
 
 // Chargement progressif : appelé quand la sentinelle de fin de liste entre dans
 // la marge. Réutilise EXACTEMENT le chemin de pagination historique.
+//
+// ⚠️ UN LOT STÉRILE NE SE RELANCE PAS TOUT SEUL (2026-11-07). Un lot qui n'a
+// ajouté AUCUNE carte (page serveur entièrement filtrée par les passions du fil)
+// repeint quand même le fil en entier : `renderLimit` a bougé, et il n'y a rien à
+// ajouter en queue. Sous Chromium 158, l'ancrage de défilement ramène alors la
+// page tout en bas une fois la liste regonflée : la NOUVELLE sentinelle est
+// aussitôt dans la marge, un autre lot part, et ainsi de suite — mesuré : 45
+// pages serveur en 1,5 s, sans un geste (`feed-window.spec.js`, « ne se relance
+// pas tout seul »). Sous Chromium ≤ 157, la même reconstruction renvoie le lecteur
+// vers la 11ᵉ carte — c'est TOUJOURS le cas pour un lot serveur stérile, seule la
+// boucle est corrigée ici — et ce saut servait de frein, par accident.
+// Le frein est désormais explicite : après un lot stérile, plus rien ne part avant
+// que la sentinelle soit sortie de la marge (un vrai défilement), ou que le nombre
+// de cartes peintes ait changé (temps réel, autre chargement) ; `feedWindowTeardown`
+// le lève aussi.
+function _feedWindowFreinActif() {
+  return window._feedWindowFrein != null && window._feedWindowFrein === window._feedWindowVisibles;
+}
+
+// Tenu par `renderFeed` : le nombre de cartes de la fenêtre peinte. Un frein posé
+// pour un autre nombre ne vaut plus rien.
+function _feedWindowNoterVisibles(n) {
+  window._feedWindowVisibles = n;
+  if (window._feedWindowFrein != null && window._feedWindowFrein !== n) window._feedWindowFrein = null;
+}
+
 function feedWindowLoadNextBatch() {
   if (!feedWindowEnabled()) return;
   if (window._feedWindowLoading) return;
+  if (_feedWindowFreinActif()) return;
   var feedEl = document.getElementById("screen-feed");
   if (!feedEl || !feedEl.classList.contains("active")) return;
   window._feedWindowLoading = true;
@@ -8772,13 +8916,38 @@ function feedWindowLoadNextBatch() {
       });
     }
   } catch (e) {}
-  var done = function () { window._feedWindowLoading = false; };
+  var avant = window._feedWindowVisibles;
+  var done = function () {
+    window._feedWindowLoading = false;
+    // `loadMoreFeedPosts` a repeint (ou renoncé) AVANT de rendre la main : le
+    // compte relu ici est celui du lot. Inchangé = lot stérile = frein.
+    if (window._feedWindowVisibles !== avant) return;
+    window._feedWindowFrein = avant;
+    // ⚠️ Le frein part de la position ACTUELLE de la sentinelle. Ses entrées ont
+    // pu être consommées AVANT qu'il existe : un rendu intermédiaire pendant
+    // l'attente du serveur (temps réel, `completerFilAvecLeReel`) peint déjà la
+    // limite relevée, le repeint du lot n'est plus qu'un no-op qui ne pose aucune
+    // sentinelle neuve — et un lecteur remonté pendant la lecture voyait son
+    // geste perdu (relevé par audit-passio, mesuré sous Chromium 153 et 158). On
+    // la fait réobserver : hors de la marge, le frein tombe aussitôt.
+    var s = document.getElementById("feedWindowSentinel"), o = window._feedWindowObserver;
+    if (s && o) {
+      try { o.unobserve(s); o.observe(s); }
+      catch (e) { try { diagLog("feedWindow.frein", e && e.message); } catch (_) {} }
+    }
+  };
+  // Jamais muet : un lot qui lève (une ReferenceError dans `renderFeed`…)
+  // poserait EN PLUS le frein, en silence.
+  var echec = function (e) {
+    try { diagLog("feedWindow.lot", e && e.message ? e.message : String(e)); } catch (_) {}
+    done();
+  };
   if (typeof loadMoreFeedPosts !== "function") { done(); return; }
   try {
     var r = loadMoreFeedPosts();
-    if (r && typeof r.then === "function") r.then(done, done);
+    if (r && typeof r.then === "function") r.then(done, echec);
     else done();
-  } catch (e) { done(); }
+  } catch (e) { echec(e); }
 }
 
 // Repeint INCRÉMENTAL : n'ajoute que la queue manquante, sans toucher aux
@@ -8789,13 +8958,7 @@ function feedWindowPaintIncremental(list, visible, hasMore, moreBtnHtml) {
   if (!feedWindowEnabled()) return false;
   var mounted = list.querySelectorAll(".post[data-postid]");
   var n = mounted.length;
-  // ⚠️ `n === visible.length` N'EST PAS UNE DIVERGENCE (2026-11-07). Au bout d'un fil
-  // épuisé, un chargement de plus élargit `_feedRenderLimit` sans rien apporter : la
-  // signature change, mais les cartes montées SONT déjà toutes celles à afficher.
-  // Refuser ici repeignait le fil ENTIER (12 cartes, le reste au repos : ancre perdue,
-  // images re-décodées) — et `feed-window.spec.js` lisait ce fil à moitié repeint sur
-  // une machine chargée. Même vérification carte par carte ; seule la queue suit.
-  if (n === 0 || n > visible.length) return false;
+  if (n === 0 || n >= visible.length) return false;
   var sigs = list._fwSigs;
   if (!sigs || sigs.length !== n) return false;
   for (var i = 0; i < n; i++) {
@@ -8813,14 +8976,21 @@ function feedWindowPaintIncremental(list, visible, hasMore, moreBtnHtml) {
 
 // Pied de liste : bouton historique + sentinelle de chargement progressif.
 // Le bouton reste, seul et inchangé, quand le drapeau est coupé.
-// ⚠️ La sentinelle ne se pose que s'il reste quelque chose à charger (2026-11-07) :
-// posée au bout d'un fil épuisé, chaque passage dessus relançait loadMoreFeedPosts
-// pour rien — et, la queue reconstruite à l'identique, la nouvelle sentinelle, encore
-// sous les yeux, l'aurait relancé en boucle.
+//
+// ⚠️ LA SENTINELLE N'EXISTE QUE S'IL RESTE QUELQUE CHOSE À CHARGER (2026-11-07),
+// exactement comme le bouton dont elle est le jumeau automatique. Toujours posée,
+// elle déclenchait en fin de liste un lot sur RIEN : `loadMoreFeedPosts` élargissait
+// la fenêtre, `renderFeed` n'avait aucune carte à ajouter (60 montées pour 60
+// visibles) et repeignait tout — saut vers la 11ᵉ carte sous Chromium 153, boucle
+// sans fin sous Chromium 158 (une reconstruction toutes les deux trames, limite
+// 80 → 400 en une demi-seconde). C'était le rouge intermittent de
+// `feed-window.spec.js` ② en CI (« Received: 12 »).
 function feedWindowTailHtml(hasMore, moreBtnHtml) {
   if (!feedWindowEnabled()) return hasMore ? moreBtnHtml : "";
   return '<div id="feedWindowTail">'
-       + (hasMore ? moreBtnHtml + '<div id="feedWindowSentinel" aria-hidden="true" style="height:1px;"></div>' : "")
+       + (hasMore
+          ? moreBtnHtml + '<div id="feedWindowSentinel" aria-hidden="true" style="height:1px;"></div>'
+          : "")
        + '</div>';
 }
 
@@ -8990,6 +9160,8 @@ function feedWindowTeardown() {
   }
   window._feedWindowObserver = null;
   window._feedWindowRoot = null;
+  // Revenir sur le fil est un geste : le frein d'un lot stérile ne lui survit pas.
+  window._feedWindowFrein = null;
   var list = document.getElementById("feedList");
   if (list) {
     list.querySelectorAll('.post[data-fw="off"]').forEach(feedWindowHydrate);
@@ -9013,6 +9185,7 @@ function feedWindowStats() {
     observers: window._feedWindowObserver ? 1 : 0,
     observersCreated: window._feedWindowObserverCount || 0,
     loading: !!window._feedWindowLoading,
+    frein: _feedWindowFreinActif(),
   };
 }
 window.feedWindowStats = feedWindowStats;
@@ -9228,6 +9401,12 @@ function renderFeed() {
 
   const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
   if (posts.length === 0) {
+    _feedWindowNoterVisibles(0);   // aucune carte : aucun frein de fenêtre ne tient
+    // Ce rendu périme AUSSI le complément différé d'un rendu complet précédent :
+    // sans ce jeton, il s'ajoutait 300 ms plus tard sous l'état vide ou le repli
+    // — 8 cartes périmées, un second #feedLoadMoreBtn et, fil fenêtré, une
+    // sentinelle de plus qui relançait un lot (relevé par audit-passio).
+    window._feedRenderToken = (window._feedRenderToken || 0) + 1;
     // ── §7 : REPLI EXPLORATION plutôt qu'un cul-de-sac.
     // Déclenché quand les intérêts de l'utilisateur ne donnent rien À AFFICHER —
     // soit qu'aucun contenu n'existe, soit qu'il n'en existe que d'inaffichable
@@ -9342,6 +9521,7 @@ function renderFeed() {
   const renderLimit = window._feedRenderLimit || 20;
   const visible = sortedPosts.slice(0, renderLimit);
   const hasMore = sortedPosts.length > renderLimit || window._feedServerMayHaveMore;
+  _feedWindowNoterVisibles(visible.length);
   // Premier exemple de la fenêtre peinte → séparateur « Exemples PASSIO ».
   const _repereEx = repereExemplesFil(visible);
   // Des exemples sont à l'écran alors que le serveur a peut-être encore des

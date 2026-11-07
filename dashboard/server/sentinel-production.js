@@ -38,6 +38,7 @@
 //   peut pas y toucher, mais la barrière existe en double.
 // • Aucun `--admin`, aucun contournement de protection, aucune fusion forcée.
 // ═══════════════════════════════════════════════════════════════════════════
+import { envSansSecrets } from "./env-enfant.js";
 import { spawn } from "node:child_process";
 import { config } from "./config.js";
 import { audit } from "./audit.js";
@@ -88,7 +89,7 @@ export function productionState() {
 
 function run(cmd, args, timeoutMs = 120_000) {
   return new Promise((resolve) => {
-    const p = spawn(cmd, args, { cwd: config.repoPath, shell: process.platform === "win32", windowsHide: true });
+    const p = spawn(cmd, args, { cwd: config.repoPath, shell: process.platform === "win32" && cmd !== "git", windowsHide: true, env: envSansSecrets({}, { garderGithub: true }) });
     let out = "", err = "";
     p.stdout.on("data", (d) => { if (out.length < 100_000) out += d; });
     p.stderr.on("data", (d) => { if (err.length < 60_000) err += d; });

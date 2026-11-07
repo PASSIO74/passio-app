@@ -335,7 +335,7 @@ test("intégration : une erreur critique réelle déclenche seule un diagnostic"
   alerts.onEvent({
     type: "error", severity: "critical",
     action: "publish_post", message: "TypeError: findPostAnywhere is not a function",
-    screen: "feed", user_label: "Alice", ts: Date.now(),
+    screen: "feed", user_label: "Alice", user_id: "compte-reel", ts: Date.now(),
   });
 
   await settle(600);

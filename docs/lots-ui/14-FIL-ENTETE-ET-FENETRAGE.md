@@ -72,9 +72,27 @@
   « une restauration est en cours » et un test vérifie qu'il est bien relâché, ce qui
   prouve que la restauration se termine et ne fuit pas. Ne pas le retirer sans retirer
   aussi cette assertion.
-  ⚠️ **Au bout d'un fil épuisé, rien ne doit plus rien reconstruire (2026-11-07).** La sentinelle
-  ne se pose que si `hasMore` ; une sentinelle retirée ne charge plus (`el.isConnected`) ; une
-  liste dont les cartes montées sont EXACTEMENT celles à afficher n'est pas une divergence pour
-  `feedWindowPaintIncremental` (seule la queue suit). Avant, chaque passage sur la sentinelle
-  repeignait le fil entier (12 cartes, le reste au repos) — fiche 🪟 de `docs/journal/passions-fil.md`.
+
+  **⚠️ La sentinelle ne guette que ce qui peut arriver (2026-11-07).** Toujours posée,
+  `#feedWindowSentinel` demandait en fin de liste un lot sur RIEN : `loadMoreFeedPosts`
+  élargissait la fenêtre, `feedWindowPaintIncremental` n'avait aucune carte à ajouter
+  (`n >= visible.length`) et `renderFeed` reconstruisait tout le fil (12 cartes, puis le
+  complément différé). Sous Chromium 153 le lecteur était renvoyé vers la 11ᵉ carte ;
+  sous Chromium 158, l'ancrage de défilement ramène la page en bas une fois la liste
+  regonflée, la nouvelle sentinelle repart aussitôt — une reconstruction toutes les deux
+  trames, sans fin. Deux gardes : `feedWindowTailHtml` ne pose la sentinelle que si
+  `hasMore` (comme le bouton « Charger plus ») ; et un lot qui n'ajoute aucune carte
+  (page serveur entièrement filtrée) pose `_feedWindowFrein`. Le frein part de la
+  position ACTUELLE de la sentinelle (réobservée quand il se pose) et tombe quand une
+  sentinelle ENCORE dans la page sort de la marge, quand le nombre de cartes peintes
+  change, ou au démontage (`feedWindowTeardown`). Une sentinelle détachée par un repeint
+  complet ne compte pas : l'observateur rend pour elle une dernière entrée « hors marge »
+  qui n'est le geste de personne.
+  ⚠️ **Reste, et c'est un préalable à la levée du drapeau** : un lot serveur stérile
+  repeint encore tout le fil une fois — sous Chromium ≤ 157 (mesuré), et probablement
+  sous WebKit (non mesuré), le lecteur est encore renvoyé vers la 11ᵉ carte, et ce saut
+  lève le frein. Mesures, enquête CI et mutations : fiche « 🌀 LA BOUCLE DU BAS DU FIL »
+  de `docs/journal/passions-fil.md`. Verrous : `feed-window.spec.js` — « en fin de liste,
+  la sentinelle se tait », « un lot qui n'ajoute aucune carte ne se relance pas tout
+  seul » (8 et 20 cartes), « un geste fait pendant un lot lent n'est pas perdu ».
 
