@@ -23,10 +23,12 @@
 // transmis à un agent (une erreur se confie en relançant la Sentinelle, qui
 // applique ses propres désamorçages).
 // ═══════════════════════════════════════════════════════════════════════════
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import webpush from "npm:web-push@3.6.7";
+import { avecDelai, endpointPushSur, envoyerPushBorne, MAX_ABONNEMENTS_LUS } from "../_shared/push-sur.js";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { REVISION } from "../_shared/revision.js";
+import { aalDuJeton, egaliteConstante, fusionAutorisee } from "../_shared/pilotage.js";
 import {
   autorise, RELANCES, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPauseDuPilote, estReparationDuPilote, reparationConfiee, issueSuivie,
   erreursFrequentes, detailsErreurs, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
@@ -78,7 +80,15 @@ Deno.serve(async (req) => {
   const action = String(corps.action || "etat");
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  if (action === "veille") return veille(admin);
+  if (action === "veille") {
+    // Le secret, une fois posé (PILOTAGE_VEILLE_SECRET), ferme le déclencheur anonyme.
+    // Sans lui, rien ne change pour pg_cron, mais le détail ne sort plus (audit 2026-11-06).
+    const secret = Deno.env.get("PILOTAGE_VEILLE_SECRET") || "";
+    const presente = req.headers.get("x-passio-veille") || "";
+    const reconnu = !!secret && egaliteConstante(presente, secret);
+    if (secret && !reconnu) return json({ error: "Non authentifié" }, 401);
+    return veille(admin, reconnu);
+  }
 
   const authHeader = req.headers.get("Authorization") ?? "";
   const userClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -87,6 +97,8 @@ Deno.serve(async (req) => {
   if (userErr || !userData?.user) return json({ error: "Non authentifié" }, 401);
   const user = userData.user;
   if (!autorise(user, EXTRA)) return json({ error: "Réservé au compte de l'éditeur." }, 403);
+  // À poser (PILOTAGE_EXIGER_AAL2=1) APRÈS l'inscription d'un facteur TOTP, sinon le cockpit se ferme.
+  if (Deno.env.get("PILOTAGE_EXIGER_AAL2") === "1" && aalDuJeton(authHeader) !== "aal2") return json({ error: "Second facteur requis." }, 403);
 
   const plafond = await verifierPlafondEnBase(admin, user.id, "pilotage", { parMinute: 30, parHeure: 600 });
   if (!plafond.ok) return reponsePlafond(plafond, corsHeaders);
@@ -114,12 +126,13 @@ Deno.serve(async (req) => {
 // ce que ferait pg_cron, et au plus une fois par minute. Le plafond horaire
 // vaut 60 (une par minute) : à 20, vingt appels anonymes en début d'heure
 // affamaient la veille pendant les 40 minutes suivantes (contre-revue).
-async function veille(admin: Admin) {
+async function veille(admin: Admin, detail = false) {
   const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 60 });
-  if (!plafond.ok) return json({ ok: true, ignore: "trop tôt" });
+  // Base injoignable : le 200 « trop tôt » rendait le déclencheur vert pendant une panne (H-06).
+  if (!plafond.ok) return plafond.panne ? json({ ok: false, error: "base injoignable" }, 503) : json({ ok: true, ignore: "trop tôt" });
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
-  const [sante, signalements, github, dispo, rap, aud] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin), audience(admin, 300)]);
+  const [sante, signalements, github, dispo, rap, aud] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), audience(admin, 300)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
   // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
   // laisse une trace mesurable (analytics_events, user_id système).
@@ -173,6 +186,9 @@ async function veille(admin: Admin) {
   // appelable avec la seule clé anon (publique), et combien d'activités ont lieu
   // dans les 24 h ou combien de comptes sont abonnés ne regardent personne. Ils
   // se lisent dans `analytics_events` (marques `rappel_activite`, `rappels_echec`).
+  // La clé anon suffit à appeler ce chemin tant que le secret n'est pas posé : l'état de santé
+  // ne se publie plus (et la réponse est recopiée dans les journaux publics d'Actions).
+  if (!detail) return json({ ok: true });
   return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes,
     delestage: delestage && "niveau" in delestage ? delestage.niveau : null,
     sentinelleReveillee: !!(reveil && reveil.lance), retourPropose: !!(retour && retour.propose),
@@ -247,11 +263,12 @@ async function sonnerPilote(admin: Admin, titre: string, texte: string): Promise
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
   const uids = await uidsPilotes(admin);
   if (!uids.length) return 0;
-  const { data: subs } = await admin.from("push_subscriptions").select("endpoint, subscription").in("user_id", uids);
+  const { data: toutes } = await admin.from("push_subscriptions").select("endpoint, subscription").in("user_id", uids).limit(MAX_ABONNEMENTS_LUS);
+  const subs = (toutes || []).filter((l) => endpointPushSur(l.subscription));
   const payload = JSON.stringify({ type: "pilotage", titre, texte });
   let n = 0; const morts: string[] = [];
   await Promise.all((subs || []).map(async (s) => {
-    try { await webpush.sendNotification(s.subscription, payload, { TTL: 3600, urgency: "high" }); n++; }
+    try { await envoyerPushBorne((a: unknown, b: unknown, c: unknown) => webpush.sendNotification(a as never, b as never, c as never), s.subscription, payload, { TTL: 3600, urgency: "high" }); n++; }
     catch (e) { const c = (e as { statusCode?: number })?.statusCode; if (c === 404 || c === 410) morts.push(s.endpoint); }
   }));
   if (morts.length) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch { /* */ } }
@@ -328,7 +345,9 @@ async function lireSante(admin: Admin) {
   const depuis = ilYa(15 * 60e3);
   const prod = () => admin.from("telemetry_events").select("id", { count: "exact", head: true }).eq("env", "production").gte("received_at", depuis);
   const [evenements15, erreursJs15, api5xx15, telemetrieMinute] = await Promise.all([
-    compter(prod()), compter(prod().eq("type", "error")), compter(prod().eq("type", "api").gte("http_status", 500)),
+    // Le voyant et sa sourdine ne se pilotent plus avec des lignes écrites sans compte (audit 2026-11-06) :
+    // `auth_uid` est posé par le serveur. Les erreurs d'un visiteur restent lisibles dans le pilotage et la Sentinelle.
+    compter(prod()), compter(prod().eq("type", "error").not("auth_uid", "is", null)), compter(prod().eq("type", "api").gte("http_status", 500).not("auth_uid", "is", null)),
     // Toutes origines confondues : sous `trg_debit_global` (3 000 lignes/min),
     // au-delà, les lots sont REFUSÉS et chaque compteur ci-dessus sous-estime
     // la réalité. Sous `trg_debit_lot`, c'est un repère de charge ; ce qui rend
@@ -956,7 +975,9 @@ async function lireGithub() {
   // Sans jeton, GitHub accorde 60 lectures/heure par adresse : réponse gardée
   // 2 min dans l'isolat (un bonus quand il survit, jamais une garantie).
   if (cacheGh && Date.now() - cacheGh.at < 120e3) return cacheGh.val;
-  const res = await gh(`/repos/${DEPOT}/issues?state=open&per_page=50`);
+  // N'importe quel compte GitHub peut ouvrir des issues : les 50 plus récentes ne suffisaient pas à
+  // voir `humain` ni la pause (D-18). Jusqu'à cinq pages de 100.
+  const res = await gh(`/repos/${DEPOT}/issues?state=open&per_page=100`);
   // La raison d'un refus est dite au pilote (erreursLecture) : sans jeton,
   // GitHub accorde 60 lectures par heure à une adresse PARTAGÉE avec d'autres
   // projets — c'est ce qui rendait la veille aveugle par moments.
@@ -964,6 +985,11 @@ async function lireGithub() {
   // La fin du jeton, annoncée par GitHub à chaque réponse : dite une semaine avant (aFaire).
   const finJeton = Date.parse(res.headers.get("github-authentication-token-expiration") || "");
   const brut = await res.json();
+  for (let page = 2; page <= 5 && brut.length === 100 * (page - 1); page++) {
+    const suite = await gh(`/repos/${DEPOT}/issues?state=open&per_page=100&page=${page}`);
+    if (!suite.ok) throw new Error("GitHub HTTP " + suite.status);
+    brut.push(...await suite.json());
+  }
   // Seule une pause ouverte par le PILOTE compte (sentinelle-autonome.yml :
   // `--author PASSIO74`) : le dépôt est public, n'importe qui ouvre une issue.
   // Une réparation du PILOTE reste suivie SANS label : un jeton sans « Issues:
@@ -1011,7 +1037,10 @@ async function fusionner(n: number) {
   if (!pr.ok) return json({ error: "PR introuvable." }, 404);
   const p = await pr.json();
   if (p.state !== "open" || p.draft) return json({ error: "Cette PR n'est pas ouverte, ou elle est en brouillon." }, 409);
-  const r = await gh(`/repos/${DEPOT}/pulls/${n}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "merge" }) });
+  // La règle d'écran (« une PR de fork ne se fusionne pas d'ici ») devient une règle serveur (audit 2026-11-06),
+  // et le SHA relu est celui qu'on fusionne : un commit poussé entre-temps fait échouer le geste.
+  if (!fusionAutorisee(p, DEPOT)) return json({ error: "Cette PR ne se fusionne pas d'ici (dépôt tiers)." }, 403);
+  const r = await gh(`/repos/${DEPOT}/pulls/${n}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "merge", sha: p.head.sha }) });
   cacheGh = null;
   if (r.ok) return json({ ok: true, message: "C'est parti : la mise en ligne suit toute seule." });
   const j = await r.json().catch(() => ({}));

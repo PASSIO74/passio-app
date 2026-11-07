@@ -77,13 +77,15 @@
       function report(message, source, line, col, stackText) {
         try {
           if (!MONITORING_ACTIF) return;
+          // La case « Mesure d'usage » annonce « écrans ouverts, erreurs » : un refus couvre ce chemin (audit 2026-11-06).
+          try { if (localStorage.getItem("passio_telemetry") === "0") return; } catch (e) {}
           if (sent >= 5) return; // max 5 erreurs par session (anti-spam)
           sent++;
           var payload = {
             message: String(message).slice(0, 500),
-            source: String(source || "").slice(0, 200),
+            source: String(source || "").replace(/[?#].*$/, "").slice(0, 200),
             line: line || null,
-            stack: String(stackText || "").slice(0, 1500),
+            stack: String(stackText || "").replace(/([?#&](?:access_token|refresh_token|token|code)=)[^\s&#)]+/gi, "$1[retiré]").slice(0, 1500),
             url: location.pathname,
             ua: navigator.userAgent.slice(0, 200),
             uid: window.MY_UID || null,

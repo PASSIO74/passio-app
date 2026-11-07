@@ -84,7 +84,18 @@
         touchZoomRotate: true,
       });
       try { this._map.touchZoomRotate.disableRotation(); } catch (e) {}
-      this._map.addControl(new ml.AttributionControl({ compact: true, customAttribution: ATTRIBUTION }));
+      // ⚠️ Pas d'`AttributionControl` (audit du 2026-11-06, E-13) : la 4.7.1 écrit `source.attribution`, texte
+      // d'un style TIERS lu à l'exécution, dans `innerHTML` sans filtre (GHSA-jrc7-96c5-q579, corrigé en 6.4.1).
+      // Un contrôle maison, avec notre texte constant, tient l'obligation ODbL sans lire ce style.
+      this._map.addControl({
+        onAdd: function () {
+          var d = document.createElement("div");
+          d.className = "maplibregl-ctrl maplibregl-ctrl-attrib";
+          d.innerHTML = ATTRIBUTION;
+          return d;
+        },
+        onRemove: function () {},
+      }, "bottom-right");
       if (opts.zoomControl !== false) {
         this._map.addControl(new ml.NavigationControl({ showCompass: false }), "top-left");
       }

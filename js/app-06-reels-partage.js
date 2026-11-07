@@ -1029,7 +1029,7 @@ function renderMainProfile() {
     var _ini = _profileInitials(g.username || state.user.name);
     avatarEl.innerHTML = (_ini
         ? '<span style="font-weight:800;font-size:40px;color:#fff;letter-spacing:.02em;">' + escapeHtml(_ini) + '</span>'
-        : (g.emoji || (cur ? cur.emoji : "✨")))
+        : escapeHtml(g.emoji || (cur ? cur.emoji : "✨")))
       + '<div class="main-profile-avatar-badge" aria-hidden="true">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
   }
 
@@ -1903,7 +1903,7 @@ function openEditMainProfile() {
     <div class="field">
       <span>Photo de couverture</span>
       <div style="display:flex;gap:8px;align-items:center;">
-        <div id="editCoverPreview" style="flex:1;height:64px;border-radius:12px;border:1px solid var(--border);background:${g.coverPhoto ? "url(" + safeUrlAttr(passioThumb(g.coverPhoto, 880)) + ") center/cover" : "linear-gradient(135deg,#8b5cf6,#6d28d9)"};"></div>
+        <div id="editCoverPreview" style="flex:1;height:64px;border-radius:12px;border:1px solid var(--border);background:${g.coverPhoto && _cssUrl(passioThumb(g.coverPhoto, 880)) ? "url('" + _cssUrl(passioThumb(g.coverPhoto, 880)) + "') center/cover" : "linear-gradient(135deg,#8b5cf6,#6d28d9)"};"></div>
         <button class="btn ghost" style="white-space:nowrap;" onclick="editCoverFromModal()">Changer</button>
       </div>
     </div>
@@ -3229,13 +3229,15 @@ function renderProfilesScreen() {
     list.innerHTML = passionsVivantes().filter(function (p) { return !_estRemplissagePassion(p); }).map(function (p) {
       var et = _passionEtiquette(p);
       var _pPhoto = p.photoUrl || p.photo || null;
-      var avatarStyle = _pPhoto
-        ? "background:url(" + safeUrlAttr(passioThumb(_pPhoto, 192)) + ") center/cover;"
+      var _pPhotoSure = _pPhoto ? _cssUrl(passioThumb(_pPhoto, 192)) : null;
+      var avatarStyle = _pPhotoSure
+        ? "background:url('" + _pPhotoSure + "') center/cover;"
         : "background:" + _couleurSure(p.color) + ";";
       var avatarContent = _pPhoto ? "" : escapeHtml(et.emoji);
       var _pCover = p.coverUrl || p.coverPhoto || null;
-      var coverStyle = _pCover
-        ? "background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(" + safeUrlAttr(_pCover) + ") center/cover;"
+      var _pCoverSure = _pCover ? _cssUrl(_pCover) : null;
+      var coverStyle = _pCoverSure
+        ? "background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url('" + _pCoverSure + "') center/cover;"
         : "";
 
       var nbPosts = (state.userPosts || []).filter(function (x) { return _postDeLaPassion(x, p); }).length;
@@ -3286,16 +3288,18 @@ function renderProfilesScreen() {
       const isSelected = window.profilesFilterSelection.has(p.id);
       const _pPhoto = p.photoUrl || p.photo || null;
       const hasPhoto   = !!_pPhoto;
-      const avatarStyle = hasPhoto
-        ? `background:url(${safeUrlAttr(passioThumb(_pPhoto, 192))}) center/cover;`
-        : `background:${p.color};`;
-      const avatarContent = hasPhoto ? "" : p.emoji;
+      const _pPhotoSure = hasPhoto ? _cssUrl(passioThumb(_pPhoto, 192)) : null;
+      const avatarStyle = _pPhotoSure
+        ? `background:url('${_pPhotoSure}') center/cover;`
+        : `background:${_cssColor(p.color)};`;
+      const avatarContent = hasPhoto ? "" : escapeHtml(p.emoji);
 
       // Photo de fond du profil passion (facultative) : voile sombre par-dessus
       // pour que le nom et la bio restent lisibles.
       const _pCover = p.coverUrl || p.coverPhoto || null;
-      const coverStyle = _pCover
-        ? `background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(${safeUrlAttr(_pCover)}) center/cover;`
+      const _pCoverSure = _pCover ? _cssUrl(_pCover) : null;
+      const coverStyle = _pCoverSure
+        ? `background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url('${_pCoverSure}') center/cover;`
         : "";
 
       return `<div class="profile-card ${isSelected?"selected":""} ${_pCover?"has-cover":""}" style="${coverStyle}${isSelected ? "border:2px solid var(--accent);" : ""}" onclick="toggleProfileSelect('${escapeJsArg(p.id)}')">
@@ -3481,7 +3485,7 @@ function openEditPassionProfile(profileId) {
     <div class="field">
       <span>Photo de la passion</span>
       <div style="display:flex;gap:10px;align-items:center;">
-        <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;${photo ? "background:url(" + safeUrlAttr(passioThumb(photo, 192)) + ") center/cover;" : "background:" + escapeHtml(p.color || "var(--accent)") + ";display:flex;align-items:center;justify-content:center;font-size:24px;"}">${photo ? "" : escapeHtml(p.emoji || "")}</div>
+        <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;${photo && _cssUrl(passioThumb(photo, 192)) ? "background:url('" + _cssUrl(passioThumb(photo, 192)) + "') center/cover;" : "background:" + _cssColor(p.color || "var(--accent)") + ";display:flex;align-items:center;justify-content:center;font-size:24px;"}">${photo ? "" : escapeHtml(p.emoji || "")}</div>
         <button class="btn ghost" onclick="_editPassionPhotoFromModal('${escapeJsArg(p.id)}')">Changer</button>
       </div>
     </div>
@@ -3489,7 +3493,7 @@ function openEditPassionProfile(profileId) {
     <div class="field">
       <span>Photo de fond</span>
       <div style="display:flex;gap:10px;align-items:center;">
-        <div style="flex:1;height:60px;border-radius:12px;border:1px solid var(--border);${cover ? "background:url(" + safeUrlAttr(passioThumb(cover, 880)) + ") center/cover;" : "background:var(--bg-deep);"}"></div>
+        <div style="flex:1;height:60px;border-radius:12px;border:1px solid var(--border);${cover && _cssUrl(passioThumb(cover, 880)) ? "background:url('" + _cssUrl(passioThumb(cover, 880)) + "') center/cover;" : "background:var(--bg-deep);"}"></div>
         <button class="btn ghost" style="white-space:nowrap;" onclick="_editPassionCoverFromModal('${escapeJsArg(p.id)}')">Changer</button>
       </div>
       ${cover ? `<button class="btn ghost" style="margin-top:6px;font-size:12px;padding:8px;color:var(--muted);" onclick="removePassionCover('${escapeJsArg(p.id)}')">Retirer la photo de fond</button>` : ""}

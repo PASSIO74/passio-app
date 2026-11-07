@@ -116,3 +116,57 @@ test("⑩ RÉINJECTION — une boucle de 1 000 appels d'ask-ai n'en fait passer 
   assert.equal(passes, 8);
   assert.equal(ecrits.length, 8);
 });
+
+// ── Audit 2026-11-06 : le compteur atomique en base ───────────────────────
+const parRpc = (reponse) => {
+  const appels = [];
+  return {
+    appels,
+    rpc: async (nom, args) => { appels.push({ nom, args }); return reponse; },
+    from: () => { throw new Error("l'ancien chemin ne doit pas servir"); },
+  };
+};
+
+test("audit 2026-11-06 : la fonction atomique décide, avec le compte et les bornes de l'appelant", async () => {
+  const c = parRpc({ data: { ok: true }, error: null });
+  const v = await verifierPlafondEnBase(c, "u1", "ask-ai", P, T0);
+  assert.deepEqual(v, { ok: true });
+  assert.deepEqual(c.appels, [{ nom: "plafond_consommer", args: { p_uid: "u1", p_fonction: "ask-ai", p_par_minute: 3, p_par_heure: 5 } }]);
+});
+
+test("audit 2026-11-06 : un refus rend le délai annoncé par la base", async () => {
+  const c = parRpc({ data: { ok: false, retry_after_s: 42 }, error: null });
+  assert.deepEqual(await verifierPlafondEnBase(c, "u1", "ask-ai", P, T0), { ok: false, retryAfterS: 42 });
+});
+
+test("audit 2026-11-06 : panne ou réponse illisible = REFUS, jamais l'ancien chemin", async () => {
+  for (const reponse of [
+    { data: null, error: { code: "57014", message: "délai" } },
+    { data: null, error: null },
+    { data: { ok: "oui" }, error: null },
+  ]) {
+    const v = await verifierPlafondEnBase(parRpc(reponse), "u1", "ask-ai", P, T0);
+    assert.equal(v.ok, false);
+    assert.equal(v.retryAfterS, 60);
+  }
+});
+
+test("audit 2026-11-06 : tant que la migration n'est pas appliquée, l'ancien chemin reste en service", async () => {
+  for (const code of ["PGRST202", "42883"]) {
+    const { client, ecrits } = fauxAdmin({ lignes: [] });
+    client.rpc = async () => ({ data: null, error: { code } });
+    assert.deepEqual(await verifierPlafondEnBase(client, "u1", "ask-ai", P, T0), { ok: true });
+    assert.equal(ecrits.length, 1);
+  }
+});
+
+// Audit du 2026-11-06, H-06 : une panne n'est pas une cadence.
+test("une base injoignable est dite `panne`, et la veille ne répond plus 200 « trop tôt »", async () => {
+  const { verifierPlafondEnBase } = await import("../../supabase/functions/_shared/plafond.js");
+  const panne = { rpc: () => Promise.resolve({ data: null, error: { code: "57P01", message: "x" } }) };
+  const v = await verifierPlafondEnBase(panne, "u", "veille", { parMinute: 1, parHeure: 1 });
+  assert.equal(v.ok, false);
+  assert.equal(v.panne, true);
+  const src = (await import("node:fs")).readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.match(src, /plafond\.panne \? json\(\{ ok: false, error: "base injoignable" \}, 503\)/);
+});

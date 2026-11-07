@@ -45,6 +45,8 @@
 //      reprise en retard ne dit jamais « dans 2 h » à 30 minutes du départ.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { envoyerPushBorne } from "./push-sur.js";
+
 export const FUSEAU = "Europe/Paris";
 export const MARQUE_EVENEMENT = "rappel_activite";
 /** Les échecs de la veille (`rappels_echec`) : une ligne par tour au plus. */
@@ -261,7 +263,8 @@ export async function envoyerRappels(admin, envoyer, maintenant = Date.now()) {
     if (!subs.length) { sansAppareil++; return; }
     const charge = JSON.stringify({ type: "rappel", titre: r.titre, texte: r.texte, eventId: r.idActivite });
     await Promise.all(subs.map(async (s) => {
-      try { await envoyer(s.subscription, charge, { TTL: r.ttl, urgency: r.urgence }); envoyes++; }
+      // Borné : un abonnement qui ne répond pas ne fige plus le tour de veille (audit 2026-11-06).
+      try { await envoyerPushBorne(envoyer, s.subscription, charge, { TTL: r.ttl, urgency: r.urgence }); envoyes++; }
       catch (e) {
         const c = e && e.statusCode;
         if (c === 404 || c === 410) morts.push(s.endpoint);

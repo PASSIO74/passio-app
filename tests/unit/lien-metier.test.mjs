@@ -339,3 +339,51 @@ test("ASTRA-24 ⑤ transition : sans colonne `origine` (migration non appliquée
   const d = await autoriserPushNotif(fauxAdmin(sansColonne), A, C, T0);
   assert.equal(d.ok, true, d.raison); assert.equal(d.texte, "Alex a aimé ta publication");
 });
+
+// ── Audit 2026-11-06 : une push par notification ──────────────────────────
+import { reserverPush } from "../../supabase/functions/_shared/lien-metier.js";
+
+function adminPush({ compte = 0, compteCouple = 0, erreurCompte = null, lignes = [{ id: "n1" }], erreurMaj = null } = {}) {
+  const maj = [];
+  return {
+    maj,
+    from() {
+      const q = {
+        select(_c, o) { q.head = !!(o && o.head); return q; },
+        eq(c, v) { if (c === "from_id") q.couple = v; return q; }, gte() { return q; }, lte() { return q; }, is(c, v) { maj.push([c, v]); return q; },
+        update(v) { maj.push(v); q.estMaj = true; return q; },
+        then(ok) {
+          if (q.head) return Promise.resolve({ count: q.couple ? compteCouple : compte, error: erreurCompte }).then(ok);
+          return Promise.resolve({ data: lignes, error: erreurMaj }).then(ok);
+        },
+      };
+      return q;
+    },
+  };
+}
+
+test("audit 2026-11-06 : la première push d'une notification passe, en posant la marque sous condition", async () => {
+  const a = adminPush();
+  assert.equal(await reserverPush(a, "n1", "u"), true);
+  assert.ok(a.maj.some((x) => Array.isArray(x) && x[0] === "push_le" && x[1] === null), "la réservation ne prend qu'une ligne sans marque");
+});
+
+test("audit 2026-11-06 : la même notification rejouée ne repousse pas", async () => {
+  assert.equal(await reserverPush(adminPush({ lignes: [] }), "n1", "u"), false);
+});
+
+test("audit 2026-11-06 : au-delà de 30 pushes par heure, la personne n'en reçoit plus", async () => {
+  assert.equal(await reserverPush(adminPush({ compte: 30 }), "n1", "u"), false);
+  assert.equal(await reserverPush(adminPush({ compte: 29 }), "n1", "u"), true);
+  // Un émetteur seul n'épuise pas le budget de la cible.
+  assert.equal(await reserverPush(adminPush({ compte: 12, compteCouple: 10 }), "n1", "u", 30, Date.now(), "attaquant"), false);
+  assert.equal(await reserverPush(adminPush({ compte: 12, compteCouple: 9 }), "n1", "u", 30, Date.now(), "autre"), true);
+});
+
+test("audit 2026-11-06 : une panne n'envoie rien ; seule l'absence de la colonne laisse passer", async () => {
+  assert.equal(await reserverPush(adminPush({ erreurCompte: { code: "57014" } }), "n1", "u"), false);
+  assert.equal(await reserverPush(adminPush({ erreurMaj: { code: "57014" } }), "n1", "u"), false);
+  assert.equal(await reserverPush(adminPush(), null, "u"), false, "sans ligne, rien à réserver");
+  assert.equal(await reserverPush(adminPush({ erreurCompte: { code: "42703" } }), "n1", "u"), true);
+  assert.equal(await reserverPush(adminPush({ erreurMaj: { code: "PGRST204" } }), "n1", "u"), true);
+});

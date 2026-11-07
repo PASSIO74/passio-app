@@ -34,8 +34,9 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import webpush from "npm:web-push@3.6.7";
+import { endpointPushSur, envoyerPushBorne, MAX_ABONNEMENTS_LUS } from "../_shared/push-sur.js";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
-import { identiteAppelant, lienAppel, autoriserPushNotif } from "../_shared/lien-metier.js";
+import { identiteAppelant, lienAppel, autoriserPushNotif, reserverPush } from "../_shared/lien-metier.js";
 import { REVISION } from "../_shared/revision.js";
 /** Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client (`PASSIO_APPELS_ACTIFS`, app-05). */
 const APPELS_ACTIFS = false;
@@ -138,14 +139,17 @@ Deno.serve(async (req) => {
     // `autoriserPushNotif` (lien-metier.js), testée par Node.
     const decision = await autoriserPushNotif(admin, fromUid, toUserId);
     if (!decision.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+    if (!(await reserverPush(admin, decision.id, toUserId, 30, Date.now(), uid))) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
     texteServeur = decision.texte;
     kindServeur = decision.kind || "";
   }
   const idn = await identiteAppelant(admin, fromUid);
 
   // 3. Charger les abonnements du destinataire (service_role → contourne la RLS).
-  const { data: subs } = await admin.from("push_subscriptions").select("endpoint, subscription").eq("user_id", toUserId);
-  if (!subs || !subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+  // Lignes écrites par le client (audit 2026-11-06) : services push connus seulement, en nombre borné.
+  const { data: toutes } = await admin.from("push_subscriptions").select("endpoint, subscription").eq("user_id", toUserId).limit(MAX_ABONNEMENTS_LUS);
+  const subs = (toutes || []).filter((l) => endpointPushSur(l.subscription));
+  if (!subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
 
   const payload = type === "notif"
     ? JSON.stringify({ type: "notif", text: texteServeur || "Nouvelle notification", emoji: emoji || "🔔", kind: kindServeur || kind })
@@ -159,7 +163,7 @@ Deno.serve(async (req) => {
   const dead: string[] = [];
   await Promise.all((subs || []).map(async (row) => {
     try {
-      await webpush.sendNotification(row.subscription, payload, { TTL: ttl, urgency });
+      await envoyerPushBorne((s, c, o) => webpush.sendNotification(s, c, o), row.subscription, payload, { TTL: ttl, urgency });
       sent++;
     } catch (e) {
       const code = (e as { statusCode?: number })?.statusCode;

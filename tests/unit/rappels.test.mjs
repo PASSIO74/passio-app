@@ -4,6 +4,7 @@
 // machine virtuelle, et le câblage à la source.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { DELAI_PUSH_MS } from "../../supabase/functions/_shared/push-sur.js";
 import fs from "node:fs";
 import vm from "node:vm";
 import {
@@ -159,24 +160,24 @@ function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refus
 
 test("⑨ enveloppe : la marque est écrite AVANT l'envoi ; charge « rappel » ; abonnement expiré retiré ; rejouer ne renvoie rien", async () => {
   const subs = [
-    { endpoint: "https://push/a1", user_id: A, subscription: { endpoint: "https://push/a1" } },
-    { endpoint: "https://push/a2", user_id: A, subscription: { endpoint: "https://push/a2" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/a1", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a1" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/a2", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a2" } },
   ];
   const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs });
   const envois = [];
   const envoyer = async (sub, charge, opts) => {
     envois.push({ sub, charge: JSON.parse(charge), opts, marqueDeja: admin.journal.some((j) => j.op === "insert") });
-    if (sub.endpoint === "https://push/a2") { const e = new Error("parti"); e.statusCode = 410; throw e; }
+    if (sub.endpoint === "https://fcm.googleapis.com/fcm/send/a2") { const e = new Error("parti"); e.statusCode = 410; throw e; }
   };
   const r = await envoyerRappels(admin, envoyer, T0);
   assert.deepEqual(r, { activites: 1, dus: 2, envoyes: 1, sansAppareil: 1, expires: 1 }, "B n'a aucun appareil");
   assert.ok(envois.length === 2 && envois.every((e) => e.marqueDeja), "aucune push ne part avant la marque");
   assert.deepEqual(envois[0].charge, { type: "rappel", titre: "Rando au Salève", texte: "Ça commence dans 1 h (à 15:00) · Annecy", eventId: "ev_1" });
-  assert.deepEqual(envois[0].opts, { TTL: 3600, urgency: "high" });
+  assert.deepEqual(envois[0].opts, { TTL: 3600, urgency: "high", timeout: DELAI_PUSH_MS }, "un envoi porte toujours son délai");
   const marque = admin.journal.find((j) => j.op === "insert");
   assert.deepEqual(marque.rows.map((x) => [x.user_id, x.event, x.properties.cle]).sort(),
     [[marqueUid(A), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", A)], [marqueUid(B), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", B)]].sort());
-  assert.deepEqual(admin.journal.find((j) => j.op === "delete"), { op: "delete", nom: "push_subscriptions", valeurs: ["https://push/a2"] });
+  assert.deepEqual(admin.journal.find((j) => j.op === "delete"), { op: "delete", nom: "push_subscriptions", valeurs: ["https://fcm.googleapis.com/fcm/send/a2"] });
 
   // Tour suivant : les marques existent → rien ne repart.
   const admin2 = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs,
@@ -300,4 +301,22 @@ test("⑬ câblage : la veille lance les rappels sans pouvoir tomber avec eux ; 
   for (const o of ["column:public.events.date_at", "column:public.event_attendees.rsvp", "table:public.push_subscriptions"]) {
     assert.ok(prereq.fonctions.pilotage.objets.includes(o), o);
   }
+});
+
+test("audit 2026-11-06 : un abonnement hors des services push connus n'est pas contacté, et sa ligne reste", async () => {
+  const subs = [
+    { endpoint: "https://collecteur.exemple.test/a", user_id: A, subscription: { endpoint: "https://collecteur.exemple.test/a" } },
+    { endpoint: "https://fcm.googleapis.com/fcm/send/a2", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a2" } },
+  ];
+  const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A)], subs });
+  const contactes = [];
+  const r = await envoyerRappels(admin, async (sub) => { contactes.push(sub.endpoint); }, T0);
+  assert.deepEqual(contactes, ["https://fcm.googleapis.com/fcm/send/a2"]);
+  assert.equal(r.envoyes, 1);
+  assert.equal(admin.journal.some((j) => j.op === "delete"), false);
+});
+
+test("audit 2026-11-06 : le préfixe des marques est le même des deux côtés, sinon la purge ne les trouve plus", async () => {
+  const { MARQUE_RAPPELS } = await import("../../supabase/functions/_shared/purge-compte.js");
+  assert.equal(marqueUid("abc"), MARQUE_RAPPELS + "abc");
 });

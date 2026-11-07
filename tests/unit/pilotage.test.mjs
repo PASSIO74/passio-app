@@ -1115,3 +1115,33 @@ test("㉛bis la fin du jeton se dit une semaine avant, et jamais sur une date ab
   assert.match(fn.slice(fn.indexOf("async function lireGithub"), fn.indexOf("const sansJeton")), /github-authentication-token-expiration/);
   assert.match(fn, /statut === 401 \? " Le jeton du pilotage a expiré/);
 });
+
+// ── Audit 2026-11-06 ──────────────────────────────────────────────────────
+import { fusionAutorisee, aalDuJeton, egaliteConstante } from "../../supabase/functions/_shared/pilotage.js";
+
+test("audit 2026-11-06 : seule une PR ouverte de CE dépôt se fusionne depuis le téléphone", () => {
+  const D = "PASSIO74/passio-app";
+  const pr = (o) => ({ state: "open", draft: false, head: { sha: "abc", repo: { full_name: D } }, ...o });
+  assert.equal(fusionAutorisee(pr({}), D), true);
+  assert.equal(fusionAutorisee(pr({ head: { sha: "abc", repo: { full_name: "tiers/passio-app" } } }), D), false, "fork");
+  assert.equal(fusionAutorisee(pr({ head: { sha: "abc", repo: null } }), D), false, "dépôt source supprimé");
+  assert.equal(fusionAutorisee(pr({ state: "closed" }), D), false);
+  assert.equal(fusionAutorisee(pr({ draft: true }), D), false);
+  assert.equal(fusionAutorisee(null, D), false);
+});
+
+test("audit 2026-11-06 : le niveau d'authentification se lit dans le jeton, illisible = aucun", () => {
+  const jeton = (o) => "Bearer " + ["e30", Buffer.from(JSON.stringify(o)).toString("base64url"), "sig"].join(".");
+  assert.equal(aalDuJeton(jeton({ aal: "aal2" })), "aal2");
+  assert.equal(aalDuJeton(jeton({ aal: "aal1" })), "aal1");
+  assert.equal(aalDuJeton(jeton({})), null);
+  for (const v of ["", "Bearer", "Bearer a.b", null, undefined]) assert.equal(aalDuJeton(v), null);
+});
+
+test("audit 2026-11-06 : la comparaison du secret ne se satisfait de rien d'approchant", () => {
+  assert.equal(egaliteConstante("secret-long", "secret-long"), true);
+  assert.equal(egaliteConstante("secret-lonG", "secret-long"), false);
+  assert.equal(egaliteConstante("secret", "secret-long"), false);
+  assert.equal(egaliteConstante("secret-long-et-plus", "secret-long"), false);
+  assert.equal(egaliteConstante("", ""), false, "un secret vide n'authentifie personne");
+});

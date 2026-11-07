@@ -347,12 +347,13 @@ test("la création de passion personnalisée est indisponible, et le dit", async
   expect(champ).toBe(false);
 });
 
-test("l'outil de diagnostic utilise une passion canonique", async ({ page }) => {
+test("aucun outil de diagnostic n'écrit en base depuis la production", async ({ page }) => {
   await boot(page);
   const src = await page.evaluate(async () => (await (await fetch("/js/emoji-misc.js")).text()));
   // C'était `passion_id: "test"` — un id hors référentiel, donc un 23503
   // systématique depuis la pose des FK : l'outil concluait à une panne de la base.
   expect(src).not.toContain('passion_id: "test"');
-  // Et il nettoie désormais ce qu'il écrit.
-  expect(src).toContain('.delete().eq("id", testPost.id)');
+  // Les fonctions de test ne sont plus livrées (audit de sécurité du 2026-11-06, C-08).
+  expect(src).not.toContain("window.testSupabaseInsert");
+  expect(src).not.toContain("window.testSupabaseRead");
 });
