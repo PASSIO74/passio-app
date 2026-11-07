@@ -9,6 +9,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import { exporterCompte } from "../_shared/export-compte.js";
+import { connexionRecente, REPONSE_REAUTH } from "../_shared/connexion-recente.js";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { REVISION } from "../_shared/revision.js";
 
@@ -30,6 +31,9 @@ Deno.serve(async (req) => {
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   if (userErr || !userData?.user) return json({ error: "Non authentifié" }, 401);
   const user = userData.user;
+
+  // Tout le dossier d'une personne sort ici : un jeton volé ne doit pas suffire (audit 2026-11-06).
+  if (!connexionRecente(authHeader, 60 * 60)) return json(REPONSE_REAUTH, 403);
 
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 

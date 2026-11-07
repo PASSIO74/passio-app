@@ -2,12 +2,20 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { CHEMIN_INTERDIT, argsClaude, modeWorker } from "./aiworker-garde.mjs";
+import { lireCle } from "./scripts/connecter-claude.mjs";
+
+// cmd.exe ne cherche plus d'exécutable dans le répertoire courant (ici, le worktree).
+process.env.NoDefaultCurrentDirectoryInExePath = "1";
 
 const DASH = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(DASH, "..");
 const LOCAL = path.join(REPO, ".passio", "ai-worker");
 const STATE_FILE = path.join(LOCAL, "state.json");
 const LOG_FILE = path.join(LOCAL, "worker.log");
+const SIGNATAIRES = path.join(LOCAL, "signataires");
+function lireEnvLocal() { try { return fs.readFileSync(path.join(DASH, ".env"), "utf8"); } catch { return ""; } }
+const MODE = modeWorker(process.env.PASSIO_AI_WORKER || lireCle(lireEnvLocal(), "PASSIO_AI_WORKER"));
 const REQUEST_PREFIX = "ai/request/";
 const RESULT_PREFIX = "ai/result/";
 const PROTOCOL = "passio-ai-v1";
@@ -137,6 +145,11 @@ async function remoteBranchExists(branch) {
 async function fetchRequest(branch) {
   const r = await git(["fetch", "--force", "origin", `refs/heads/${branch}:refs/remotes/origin/${branch}`], { timeoutMs: 120_000 });
   if (r.code !== 0) throw new Error(`git fetch ${branch}: ${(r.err || r.out).slice(-800)}`);
+  if (MODE === "on") {
+    if (!fs.existsSync(SIGNATAIRES)) throw new Error(`demande refusée : aucune clé autorisée (${SIGNATAIRES} absent)`);
+    const sig = await git(["-c", "gpg.format=ssh", "-c", `gpg.ssh.allowedSignersFile=${SIGNATAIRES}`, "verify-commit", `origin/${branch}`], { timeoutMs: 30_000 });
+    if (sig.code !== 0) throw new Error("demande refusée : commit non signé par une clé autorisée");
+  }
   const f = await git(["show", `origin/${branch}:.passio-request.json`], { timeoutMs: 30_000 });
   if (f.code !== 0) throw new Error(".passio-request.json absent de la branche de demande");
   let task;
@@ -163,24 +176,13 @@ async function createWorktree(task) {
   const r = await git(["worktree", "add", "-b", resultBranch, dir, "origin/main"], { timeoutMs: 120_000 });
   if (r.code !== 0) throw new Error(`git worktree add: ${(r.err || r.out).slice(-800)}`);
 
-  const mainModules = path.join(REPO, "node_modules");
-  const workModules = path.join(dir, "node_modules");
-  if (fs.existsSync(mainModules) && !fs.existsSync(workModules)) {
-    if (process.platform === "win32") {
-      const j = await run("cmd", ["/d", "/s", "/c", "mklink", "/J", workModules, mainModules], { cwd: dir, timeoutMs: 30_000 });
-      if (j.code !== 0) log(`jonction node_modules non créée: ${(j.err || j.out).trim().slice(-300)}`);
-    } else {
-      try { fs.symlinkSync(mainModules, workModules, "dir"); } catch {}
-    }
-  }
+  // Plus de jonction vers `node_modules` : l'agent n'a pas de shell pour s'en servir, et Write
+  // écrirait à travers elle, hors du worktree, dans les paquets exécutés ensuite par le poste.
   return { dir, resultBranch, alreadyDone: false };
 }
 
 async function runClaude(prompt, cwd, maxTurns = 120) {
-  const args = [
-    "-p", "--output-format", "json", "--model", CLAUDE_MODEL,
-    "--max-turns", String(maxTurns), "--no-session-persistence",
-  ];
+  const args = argsClaude(CLAUDE_MODEL, maxTurns);
   const r = await run("claude", args, {
     cwd,
     shell: process.platform === "win32",
@@ -204,8 +206,13 @@ async function stageAndValidate(cwd) {
   const files = r.out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   if (!files.length) throw new Error("Claude n'a produit aucune modification");
   if (files.length > MAX_FILES) throw new Error(`${files.length} fichiers modifiés (maximum ${MAX_FILES})`);
-  const forbidden = files.filter((f) => /(^|\/)(?:\.env(?:\.|$)|settings\.local\.json$)|^\.passio\/|^node_modules\//i.test(f));
+  const forbidden = files.filter((f) => CHEMIN_INTERDIT.test(f));
   if (forbidden.length) throw new Error(`fichiers sensibles interdits: ${forbidden.join(", ")}`);
+  // Un fichier couvert par .gitignore échappe à `git add`, pas à `require` : `scripts/node_modules/…`
+  // serait chargé par les scripts de revue. Rien d'ignoré ne doit apparaître dans le worktree.
+  const ignores = await git(["status", "--porcelain", "--ignored", "--untracked-files=all"], { cwd, timeoutMs: 30_000 });
+  const caches = ignores.out.split(/\r?\n/).filter((l) => l.startsWith("!! ")).map((l) => l.slice(3)).filter((f) => !f.startsWith(".passio/"));
+  if (caches.length) throw new Error(`fichiers ignorés créés dans le worktree, refusés: ${caches.slice(0, 5).join(", ")}`);
 
   const diff = await git(["diff", "--cached", "--numstat", "origin/main", "--"], { cwd, timeoutMs: 30_000 });
   let changedLines = 0;
@@ -373,10 +380,11 @@ async function processRequest(req, state) {
       "",
       "Tu travailles dans un WORKTREE isolé du vrai dépôt PASSIO. Tu es le Claude Code standard local de Benjamin.",
       "Lis CLAUDE.md et les pièges/skills pertinents. Analyse puis implémente complètement la demande dans ce worktree.",
-      "Tu peux modifier le code et les tests nécessaires et lancer les vérifications pertinentes.",
+      "Tu peux modifier le code et les tests nécessaires. Tu n'as AUCUN outil shell : tu ne peux lancer ni test ni commande.",
+      "N'annonce donc aucune vérification comme exécutée. Ne touche ni à scripts/, ni à .github/, ni à supabase/, ni à migrations/.",
       "EXCEPTION D'ORCHESTRATION: ne fais NI commit NI push et ne touche pas à main; le worker local gère Git après revue croisée.",
       "Ne lis jamais .env, dashboard/.env ou .claude/settings.local.json. Ne modifie rien hors de ce worktree.",
-      "À la fin, résume les changements et les vérifications réellement exécutées.",
+      "À la fin, résume les changements et ce qui reste à vérifier par un humain.",
     ].join("\n");
     const claudeInitial = await runClaude(initialPrompt, cwd, 120);
     await stageAndValidate(cwd);
@@ -395,7 +403,7 @@ async function processRequest(req, state) {
       "--- FIN CODEX REVIEW ---",
       "",
       "Vérifie CHAQUE remarque contre le vrai code. Corrige uniquement ce qui est fondé; ne suis jamais aveuglément Codex.",
-      "Complète les tests/vérifications utiles. Ne committe et ne pousse rien; reste dans ce worktree et ne lis aucun secret.",
+      "Complète les tests utiles, sans pouvoir les lancer. Ne committe et ne pousse rien; reste dans ce worktree et ne lis aucun secret.",
       "À la fin, résume ce que tu as accepté/refusé de la revue et pourquoi.",
     ].join("\n");
     const claudeReconcile = await runClaude(reconcilePrompt, cwd, 100);
@@ -466,6 +474,13 @@ process.on("SIGINT", () => stop("SIGINT"));
 process.on("SIGTERM", () => stop("SIGTERM"));
 
 log(`worker Claude+Codex actif — dépôt ${REPO}, sondage ${Math.round(POLL_MS / 1000)} s, ${MAX_ATTEMPTS} essais max par demande${process.env.CLAUDE_CONFIG_DIR ? `, identifiants Claude isolés (${process.env.CLAUDE_CONFIG_DIR})` : ""}`);
-try { libererRunningOrphelins(loadState()); } catch (e) { log(`état initial illisible : ${e.message}`); }
-await poll();
-setInterval(poll, POLL_MS);
+if (MODE === "off") {
+  // Inactif, mais vivant : un superviseur déjà en mémoire le relancerait en boucle s'il sortait.
+  log("worker IA INACTIF : aucune demande traitée. Pour l'activer, PASSIO_AI_WORKER=on dans dashboard/.env et une clé dans .passio/ai-worker/signataires (audit de sécurité du 2026-11-06).");
+  setInterval(() => {}, 3_600_000);
+} else {
+  log(`mode ${MODE}${MODE === "sans-signature" ? " : toute écriture sur ai/request/* lance un agent sur ce poste" : ""}`);
+  try { libererRunningOrphelins(loadState()); } catch (e) { log(`état initial illisible : ${e.message}`); }
+  await poll();
+  setInterval(poll, POLL_MS);
+}

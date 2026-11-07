@@ -50,6 +50,7 @@
 //      reprise en retard ne dit jamais « dans 2 h » à 30 minutes du départ.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { envoyerPushBorne } from "./push-sur.js";
 import { idGeste } from "./autonomie.js";
 import { pidNeuf, avecAccuse, EVT_ENVOI } from "./reception.js";
 
@@ -308,7 +309,8 @@ export async function envoyerRappels(admin, envoyer, maintenant = Date.now(), se
     const charge = JSON.stringify(avecAccuse({ type: "rappel", titre: r.titre, texte: r.texte, eventId: r.idActivite }, pid, accuse));
     let accepte = false;
     await Promise.all(subs.map(async (s) => {
-      try { await envoyer(s.subscription, charge, { TTL: r.ttl, urgency: r.urgence }); envoyes++; accepte = true; }
+      // Borné : un abonnement qui ne répond pas ne fige plus le tour de veille (audit 2026-11-06).
+      try { await envoyerPushBorne(envoyer, s.subscription, charge, { TTL: r.ttl, urgency: r.urgence }); envoyes++; accepte = true; }
       catch (e) {
         const c = e && e.statusCode;
         if (c === 404 || c === 410) morts.push(s.endpoint);

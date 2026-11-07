@@ -3,6 +3,11 @@ import "dotenv/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Sous Windows, `cmd.exe` cherche d'abord un exécutable dans le répertoire courant : un
+// `git.cmd` déposé par un correctif dans un worktree s'exécutait à la place de git (audit
+// de sécurité du 2026-11-06, F-04). Posé une fois, pour le serveur et tous ses enfants.
+process.env.NoDefaultCurrentDirectoryInExePath = "1";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 
@@ -28,6 +33,14 @@ const env = process.env;
 export const config = {
   root: ROOT,
   port: Number(env.PORT || 4610),
+  // Boucle locale par défaut (F-02) : le serveur tient `service_role` et une écoute sur toutes
+  // les interfaces l'offrait à tout le Wi-Fi. Derrière un proxy unique : DASH_HOST=0.0.0.0,
+  // DASH_TRUST_PROXY=1 et DASH_ALLOWED_HOSTS=<nom public>.
+  host: env.DASH_HOST || "127.0.0.1",
+  // Jamais `true` : Express prendrait alors la valeur la plus à gauche de X-Forwarded-For,
+  // que le client écrit lui-même, et la limitation des tentatives ne limitait plus rien.
+  trustProxy: Number(env.DASH_TRUST_PROXY) > 0 ? Number(env.DASH_TRUST_PROXY) : false,
+  allowedHosts: (env.DASH_ALLOWED_HOSTS || "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean),
   dashEnv: env.DASH_ENV || "development",
   isProd: (env.DASH_ENV || "development") === "production",
 
@@ -37,7 +50,9 @@ export const config = {
   // explicitement depuis le téléphone, où retaper le mot de passe deux fois par
   // jour rend l'outil impraticable. Bornée à 90 j ; 0 désactive l'option (le
   // serveur retombe alors sur `sessionHours`, quoi que la page demande).
-  rememberDays: Math.min(90, Math.max(0, Number(env.DASH_REMEMBER_DAYS ?? 30) || 0)),
+  // Coupée par défaut depuis le retrait du pilote mobile (F-11) : aucun écran ne la propose
+  // plus, et un jeton volé valait jusqu'à 30 jours.
+  rememberDays: Math.min(90, Math.max(0, Number(env.DASH_REMEMBER_DAYS ?? 0) || 0)),
   adminUser: env.DASH_ADMIN_USER || "admin",
   adminPassword: env.DASH_ADMIN_PASSWORD || "admin",
   extraUsers: parseExtraUsers(env.DASH_EXTRA_USERS),
@@ -88,16 +103,22 @@ export const DEFAUTS_INTERDITS = {
   adminUser: "admin",
   adminPassword: "admin",
 };
+// Les valeurs d'exemple sont publiques (dépôt public, `.env.example`) : leur longueur ne les
+// rend pas secrètes. Avec le secret d'exemple, n'importe qui forge un cookie admin (F-12).
+const EXEMPLES_PUBLICS = new Set(["remplace-par-une-chaine-aleatoire-longue", "change-me-please"]);
+const HOTES_LOCAUX = new Set(["127.0.0.1", "::1", "localhost"]);
 export function verifierSecrets(cfg = config) {
   const fautes = [];
-  if (cfg.sessionSecret === DEFAUTS_INTERDITS.sessionSecret || String(cfg.sessionSecret || "").length < 32) fautes.push("DASH_SESSION_SECRET absent ou trop court (32 caractères minimum)");
-  if (cfg.adminPassword === DEFAUTS_INTERDITS.adminPassword || String(cfg.adminPassword || "").length < 12) fautes.push("DASH_ADMIN_PASSWORD absent, par défaut ou trop court (12 caractères minimum)");
+  if (cfg.sessionSecret === DEFAUTS_INTERDITS.sessionSecret || EXEMPLES_PUBLICS.has(cfg.sessionSecret) || String(cfg.sessionSecret || "").length < 32) fautes.push("DASH_SESSION_SECRET absent ou trop court (32 caractères minimum)");
+  if (cfg.adminPassword === DEFAUTS_INTERDITS.adminPassword || EXEMPLES_PUBLICS.has(cfg.adminPassword) || String(cfg.adminPassword || "").length < 12) fautes.push("DASH_ADMIN_PASSWORD absent, par défaut ou trop court (12 caractères minimum)");
   if (cfg.adminUser === DEFAUTS_INTERDITS.adminUser) fautes.push("DASH_ADMIN_USER laissé à « admin »");
+  for (const u of cfg.extraUsers || []) if (String(u.password).length < 12) fautes.push(`mot de passe de ${u.user} trop court (12 caractères minimum)`);
   return fautes;
 }
 {
   const fautes = verifierSecrets(config);
-  if (fautes.length && config.isProd) {
+  // Hors boucle locale, les défauts sont refusés comme en production : le serveur est joignable.
+  if (fautes.length && (config.isProd || !HOTES_LOCAUX.has(config.host))) {
     throw new Error("Pilotage refusé en production — identifiants par défaut : " + fautes.join(" ; ") + ". Poser DASH_SESSION_SECRET, DASH_ADMIN_USER et DASH_ADMIN_PASSWORD dans dashboard/.env.");
   }
   if (fautes.length && !process.env.DASH_SILENCE_SECRETS) {

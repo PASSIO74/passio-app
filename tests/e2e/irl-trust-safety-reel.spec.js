@@ -88,6 +88,18 @@ test.describe("Trust & Safety IRL — règle serveur, comptes réels", () => {
 
       // ④ Deux majeurs déclarés, sans blocage : permis, dans les deux sens.
       expect(await declarer(C, 1988), "C se déclare né en 1988").toBe(true);
+      // Un échange prouvé : la réponse de l'autre dans leur conversation (lot 2 de l'audit du 06/11, qui ferme
+      // l'oracle de majorité). Sans ce lot, ces lignes ne changent rien au verdict.
+      const convId = "conv_ts_" + Date.now();
+      const ecrire = async (qui, table, ligne) => {
+        const r = await rest(qui.token, table, { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(ligne) });
+        expect(r.status, `${table} : écriture de ${qui === A ? "A" : "C"} (${r.status})`).toBeLessThan(300);
+      };
+      await ecrire(A, "conversations", { id: convId, is_group: false, created_by: A.uid });
+      await ecrire(A, "conv_members", { conv_id: convId, user_id: A.uid });
+      await ecrire(A, "conv_members", { conv_id: convId, user_id: C.uid });
+      await ecrire(A, "conv_messages", { id: "m_ts_a_" + Date.now(), conv_id: convId, from_id: A.uid, content: "bonjour" });
+      await ecrire(C, "conv_messages", { id: "m_ts_c_" + Date.now(), conv_id: convId, from_id: C.uid, content: "bonjour" });
       expect(await permis(A, C), "④ A et C majeurs → permis").toBe(true);
       expect(await permis(C, A), "④ sens inverse → permis").toBe(true);
       log("précondition : A ↔ C permis avant blocage");

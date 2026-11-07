@@ -89,11 +89,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with: { fetch-depth: 1 }
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with: { node-version: '22' }
 
       # Sur une PR qui modifie ce fichier, on ne fait QUE valider le détecteur :
@@ -314,6 +314,15 @@ jobs:
           h="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label sentinelle --label humain --limit 100 \
                 --json number --jq 'length')"
           places=$(( max - n )); [ "${places}" -ge 0 ] || places=0
+          # Un plafond d'enquêtes OUVERTES ne borne que l'instantané : au bout de 6 h, le label `humain` rend la
+          # place, et chaque enquête consomme l'abonnement et publie au nom de PASSIO74 (E-10). Six par 24 h.
+          depuis="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+          recentes="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state all --label sentinelle --limit 100 \
+                --json createdAt --jq "[.[] | select(.createdAt >= \"${depuis}\")] | length")"
+          if [ "${recentes:-0}" -ge 6 ]; then
+            places=0
+            echo "Budget atteint : ${recentes} enquêtes ouvertes en 24 h, aucune nouvelle." >> "${GITHUB_STEP_SUMMARY}"
+          fi
           echo "places=${places}" >> "${GITHUB_OUTPUT}"
           echo "libre=$([ "${places}" -gt 0 ] && echo true || echo false)" >> "${GITHUB_OUTPUT}"
           echo "Enquêtes confiées à la machine : ${n}/${max} — ${places} place(s) libre(s)." >> "${GITHUB_STEP_SUMMARY}"
@@ -333,8 +342,9 @@ jobs:
           # plusieurs centaines de Ko) : le verdict complet reste dans /tmp.
           node -e "
             const v = JSON.parse(require('fs').readFileSync('/tmp/verdict.json', 'utf8'));
-            for (const c of [v.cible, ...(v.candidats || [])]) if (c) delete c.occurrences;
-            process.stdout.write('## Verdict\n\n\`\`\`json\n' + JSON.stringify(v, null, 2) + '\n\`\`\`\n');
+            // Le résumé d'un run est PUBLIC : ni message, ni pile, ni source (E-10). Le détail reste dans /tmp.
+            const r = (c) => c && { famille: c.famille, n: c.n, comptes: c.comptes, cle: require('crypto').createHash('sha256').update(String(c.cle)).digest('hex').slice(0, 8) };
+            process.stdout.write('## Verdict\n\n\`\`\`json\n' + JSON.stringify({ fenetreHeures: v.fenetreHeures, lues: v.lues, ecartees: v.ecartees, retenues: v.retenues, sousLeSeuil: v.sousLeSeuil, parFamille: v.parFamille, sources: v.sources, boutonsSuspects: v.boutonsSuspects, identitesNonVerifiees: v.identitesNonVerifiees, cible: r(v.cible), candidats: (v.candidats || []).map(r) }, null, 2) + '\n\`\`\`\n');
           " >> "${GITHUB_STEP_SUMMARY}"
           cible="$(node -e "const v=require('/tmp/verdict.json');process.stdout.write(v.cible?'oui':'non')")"
           echo "cible=${cible}" >> "${GITHUB_OUTPUT}"

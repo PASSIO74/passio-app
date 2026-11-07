@@ -8,10 +8,13 @@ import { config } from "./config.js";
 import { broadcast } from "./sse.js";
 import { audit } from "./audit.js";
 import { entree } from "./liste-blanche.js";
+import { envSansSecrets } from "./env-enfant.js";
 
 export const TEST_SUITES = {
   authz:      { label: "Autorisation — séparation entre comptes (AUTHZ-CRITICAL)", cmd: "npx", args: ["playwright", "test", "tests/e2e/authz-critical.spec.js"] },
-  smoke:      { label: "Smoke + access-gate (E2E)", cmd: "npm", args: ["test"] },
+  // `npm test` lance aussi le projet `prod`, qui crée de vrais comptes en production. Une réparation
+  // automatique ne doit pas pouvoir le déclencher sans humain (F-16).
+  smoke:      { label: "Smoke + access-gate (E2E, local)", cmd: "npx", args: ["playwright", "test", "--project=local"] },
   handlers:   { label: "Audit des handlers onclick", cmd: "npm", args: ["run", "audit:handlers"] },
   globals:    { label: "Audit des collisions de globals", cmd: "npm", args: ["run", "audit:globals"] },
   irl:        { label: "E2E IRL", cmd: "npx", args: ["playwright", "test", "tests/e2e/irl.spec.js"] },
@@ -75,9 +78,10 @@ export function runSuite(id, actor) {
   if (running) { const e = new Error("Un test est déjà en cours."); e.code = 409; throw e; }
   const suite = entree(TEST_SUITES, id);
   if (!suite) { const e = new Error("Suite inconnue (hors liste blanche)."); e.code = 400; throw e; }
+  if (!config.allowMutations) { const e = new Error("Mutations désactivées."); e.code = 403; throw e; }
   audit("run_tests", { id, cmd: suite.cmd + " " + suite.args.join(" ") }, actor);
 
-  const proc = spawn(suite.cmd, suite.args, { cwd: config.repoPath, shell: process.platform === "win32", env: { ...process.env, CI: "1", FORCE_COLOR: "0" } });
+  const proc = spawn(suite.cmd, suite.args, { cwd: config.repoPath, shell: process.platform === "win32", env: envSansSecrets({ CI: "1", FORCE_COLOR: "0" }) });
   const run = { id, proc, startedAt: Date.now(), output: [] };
   running = run;
   broadcast("test", { phase: "start", id, label: suite.label });
@@ -112,7 +116,7 @@ export function runSuiteAwait(id, cwd, actor, timeoutMs = 900_000) {
     const suite = entree(TEST_SUITES, id);
     if (!suite) { const e = new Error("Suite inconnue (hors liste blanche)."); e.code = 400; return reject(e); }
     audit("run_tests_auto", { id, cwd }, actor);
-    const proc = spawn(suite.cmd, suite.args, { cwd: cwd || config.repoPath, shell: process.platform === "win32", env: { ...process.env, CI: "1", FORCE_COLOR: "0" } });
+    const proc = spawn(suite.cmd, suite.args, { cwd: cwd || config.repoPath, shell: process.platform === "win32", env: envSansSecrets({ CI: "1", FORCE_COLOR: "0" }) });
     const run = { id, proc, startedAt: Date.now(), output: [] };
     running = run;
     broadcast("test", { phase: "start", id, label: suite.label + " (vérification automatique)" });

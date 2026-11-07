@@ -19,7 +19,9 @@
 //     (`meta.x`) passerait : mesuré avec `assert.equal` sur la valeur reçue. Une
 //     amélioration du filtre fera rougir ⑥ — il faudra alors le mettre à jour.
 //   · `action`, `screen`, `endpoint` ne passent que par `String().slice()` :
-//     seul le code du dépôt les écrit (jamais une saisie) ; mesuré en ⑨.
+//     seul le code du dépôt les écrit (jamais une saisie) ; mesuré en ⑨. Exception
+//     fermée le 2026-11-06 : le libellé d'un CLIC peut venir du texte affiché, il passe
+//     par `_libelleClic` (cas en fin de fichier).
 //   · Une URL complète posée comme VALEUR de `meta` (clé neutre `url`) part
 //     entière, bornée à 160 : mesuré en ④.
 // Les minuteurs du module (battement de cœur, hooks) sont neutralisés : sans ça
@@ -210,4 +212,72 @@ test("⑨ LIMITE DITE : `action`, `screen`, `endpoint` ne sont que bornés (80 /
   assert.equal(ev.action, "contact:" + EMAIL, "LIMITE CONNUE : `action` n'est pas redactée");
   assert.equal(ev.screen, EMAIL, "LIMITE CONNUE : `screen` n'est pas redacté");
   assert.equal(ev.endpoint, "https://x/" + EMAIL, "LIMITE CONNUE : `endpoint` n'est pas redacté");
+});
+
+// ── Audit 2026-11-06 : le libellé d'un clic et l'opposition ───────────────
+const elementFictif = (attrs, texte = "") => ({
+  getAttribute: (k) => (k in attrs ? attrs[k] : null), id: attrs.id || "", textContent: texte, tagName: "BUTTON",
+});
+
+test("audit 2026-11-06 : un libellé fixé par le code passe tel quel, le texte affiché passe au filtre", () => {
+  const b = demarrer();
+  const l = b.tel._libelleClic;
+  assert.equal(l(elementFictif({ "data-tel": "nav_fil" }, "peu importe")), "nav_fil");
+  assert.equal(l(elementFictif({ "data-screen": "explore" })), "explore");
+  assert.equal(l(elementFictif({ id: "btnPublier" }, "Publier")), "#btnPublier");
+  assert.equal(l(elementFictif({}, "Publier")), "Publier");
+  assert.equal(l(elementFictif({})), "button");
+  assert.equal(l(elementFictif({}, "Écrire à " + EMAIL)).includes(EMAIL), false, "adresse");
+  assert.equal(l(elementFictif({}, "Appeler " + TEL)).includes("12 34 56"), false, "numéro");
+  assert.equal(l(elementFictif({ "aria-label": "Contact " + EMAIL })).includes(EMAIL), false, "aria-label");
+});
+
+test("audit 2026-11-06 : le nom d'un compte connu ne part pas dans le libellé d'un clic", () => {
+  const b = demarrer();
+  b.ctx.state = { user: { name: "Moi Même" }, seed: { users: [{ name: "Camille Durand" }, { name: "Al" }] } };
+  const l = b.tel._libelleClic;
+  assert.equal(l(elementFictif({}, "Bloquer Camille Durand")), "[nom]");
+  assert.equal(l(elementFictif({ "aria-label": "Profil de camille durand" })), "[nom]");
+  assert.equal(l(elementFictif({}, "Voir le profil de Moi Même")), "[nom]");
+  // Limite de mot : « Bob » ne masque pas « Bobines », et la Sentinelle retrouve le libellé dans le code.
+  b.ctx.state.seed.users.push({ name: "Bob" });
+  assert.equal(l(elementFictif({}, "Bobines")), "Bobines");
+  assert.equal(l(elementFictif({}, "Profil de Bob")), "[nom]");
+  // Un nom de deux lettres ne masque pas tous les boutons de l'application.
+  assert.equal(l(elementFictif({}, "Alerter")), "Alerter");
+});
+
+test("audit 2026-11-06 : l'opposition vide ce qui attend d'être envoyé, file en mémoire et stock local", async () => {
+  const b = demarrer();
+  b.tel.action("avant_refus", { n: 1 });
+  b.ctx.localStorage.setItem("passio_tel_backlog", "[]");
+  b.tel.setEnabled(false);
+  assert.equal(b.ctx.localStorage.getItem("passio_tel_backlog"), null);
+  const corps = await corpsEnvoyes(b);
+  assert.equal(corps.includes("avant_refus"), false, "aucun événement ne part après le refus");
+});
+
+test("audit 2026-11-06 : un lien ?telemetry=1 ne relève pas un refus enregistré", () => {
+  const b = demarrer({ search: "?telemetry=1" });
+  assert.equal(b.ctx.localStorage.getItem("passio_telemetry"), "1", "sans refus, le lien reste le moyen de déboguer");
+  const memoire = new Map([["passio_telemetry", "0"]]);
+  const stockage = { getItem: (k) => (memoire.has(k) ? memoire.get(k) : null), setItem: (k, v) => memoire.set(k, String(v)), removeItem: (k) => memoire.delete(k) };
+  const ctx = {
+    navigator: { userAgent: "x", language: "fr" },
+    location: { search: "?telemetry=1", hostname: "passio-app.netlify.app", pathname: "/", hash: "", href: "https://passio-app.netlify.app/?telemetry=1", origin: "https://passio-app.netlify.app" },
+    localStorage: stockage, sessionStorage: stockage,
+    history: { state: null, replaceState() {} },
+    document: { referrer: "", hidden: false, visibilityState: "visible", addEventListener() {}, querySelector: () => null, getElementById: () => null },
+    screen: { width: 390, height: 844 }, matchMedia: () => ({ matches: false }), addEventListener() {},
+    performance: { now: () => Date.now(), getEntriesByType: () => [] },
+    requestAnimationFrame: (f) => setTimeout(f, 0).unref(),
+    fetch: () => Promise.resolve({ ok: true, status: 200 }),
+    PASSIO_SUPABASE: { url: "https://njkiyoklssvefstljemx.supabase.co", anon: "anon-key-de-banc" },
+    setTimeout: (f, ms) => { const h = setTimeout(f, ms); h.unref(); return h; }, clearTimeout,
+    setInterval: () => ({ inerte: true }), clearInterval() {},
+    URL, URLSearchParams, console, JSON, Math, Date, Object, Array, String, Number, Boolean, RegExp, Error, Promise,
+  };
+  ctx.window = ctx;
+  vm.runInNewContext(SOURCE, ctx, { filename: "telemetry.js" });
+  assert.equal(memoire.get("passio_telemetry"), "0");
 });

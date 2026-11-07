@@ -47,8 +47,9 @@ const CHEMIN_SOCLE = path.join(__dirname, "echappement-socle.json");
  * positifs, et un rapport bruyant finit ignoré : les deux erreurs coûtent cher.
  */
 const DESINFECTANTS = {
-  // Pourcent-encode tout ce qui est structurel : sûr partout.
-  encodeURIComponent: ["url", "onclick", "style", "attr", "texte"],
+  // `encodeURIComponent` laisse passer l apostrophe : sûr dans une URL, un attribut à guillemets doubles ou du
+  // texte, jamais dans `onclick` ni `style` (audit du 2026-11-06, url('…') et f('…') s y referment).
+  encodeURIComponent: ["url", "attr", "texte"],
   // Rendent un NOMBRE (ou NaN) : aucune quote ne peut en sortir, nulle part.
   Number: ["url", "onclick", "style", "attr", "texte"],
   parseInt: ["url", "onclick", "style", "attr", "texte"],

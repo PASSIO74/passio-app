@@ -46,6 +46,7 @@ const COLONNES_COMPTE = /^(user_id|author_id|auteur_id|from_id|to_id|owner_id|ui
 // décisions déjà écrites dans `purge-compte.js` — les répéter ici serait les
 // faire diverger, alors elles y RENVOIENT.
 const EXCEPTIONS = {
+  "pointage_essais.user_id": "compteur technique d'essais de code (lot 2 de l'audit du 2026-11-06) : effacé sous 24 h par la tâche purge_debit_ecritures, aucun contenu à exporter",
   "reports.reporter_id": "trace de modération d'un tiers : ne disparaît pas avec le signaleur (purge-compte.js) — à confirmer côté juridique",
   "reports.target_id": "idem : la cible d'un signalement traité reste dans la trace",
   "reports.handled_by": "identité de l'opérateur de modération, pas une donnée du compte visé",
