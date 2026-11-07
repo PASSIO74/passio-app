@@ -6383,6 +6383,25 @@ async function _forwardTo(targetConvId) {
     if (m.img) m.img = nouvelleUrl; else if (m.video) m.video = nouvelleUrl;
     else if (m.fileUrl) m.fileUrl = nouvelleUrl; else if (m.voiceData) m.voiceData = nouvelleUrl;
   }
+  // ⚠️ UNE COPIE LOCALE NE PART JAMAIS EN BASE (2026-11-07). Ma propre photo, tout
+  // juste envoyée, n'existe sur cet appareil qu'en data URL jusqu'à la prochaine
+  // relecture du fil : le transfert l'insérait TELLE QUELLE dans `conv_messages` —
+  // du base64 en base, par la seule porte que la garde de `sendMessageToSupabase`
+  // ne voyait pas. On copie l'objet déjà déposé (`m.pj.url`), sinon on dépose la
+  // copie dans le dossier de la cible ; un échec est un transfert refusé, dit —
+  // le même contrat que la copie juste au-dessus. Un document local (`docData`)
+  // part comme document : il partait en message VIDE.
+  var _champLocal = !cheminSrc ? ["img", "video", "docData"].find(function (k) { return typeof m[k] === "string" && /^data:/i.test(m[k]); }) : null;
+  if (_champLocal) {
+    var _urlLocale = null;
+    var _cheminDepose = (m.pj && m.pj.url && typeof pieceJointeChemin === "function") ? pieceJointeChemin(m.pj.url) : null;
+    if (_cheminDepose && typeof supa !== "undefined" && supa && window._supaReal) _urlLocale = await _copierPieceJointeVers(_cheminDepose, targetConvId);
+    else if (typeof _pjDeposerDataUrl === "function") _urlLocale = await _pjDeposerDataUrl(targetConvId, m[_champLocal], "transfert" + (_champLocal === "docData" ? "_" + (m.fileName || "document") : ""), _champLocal);
+    if (!_urlLocale) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
+    m = Object.assign({}, m);
+    if (_champLocal === "docData") { m.fileUrl = _urlLocale; delete m.docData; }
+    else m[_champLocal] = _urlLocale;
+  }
   // Reconstruit un envelope de contenu selon le type, puis insère localement + Supabase.
   var content = null, localMsg = { id: "msg_" + uid(), from: "me", at: Date.now() };
   if (m.img || m.video) { content = { type: "media", url: m.img || m.video, fileType: m.video ? "video/mp4" : "image/jpeg", filename: "média", text: m.video ? "🎬 Vidéo" : "📷 Photo" }; if (m.video) localMsg.video = m.video; else localMsg.img = m.img; }
@@ -6390,6 +6409,9 @@ async function _forwardTo(targetConvId) {
   else if (m.fileUrl) { content = { type: "doc", url: m.fileUrl, filename: m.fileName || "Fichier", text: "📄 " + (m.fileName||"Fichier") }; localMsg.fileUrl = m.fileUrl; localMsg.fileName = m.fileName; localMsg.fileType = m.fileType; }
   else if (m.location) { content = { type: "location", lat: m.location.lat, lng: m.location.lng, url: m.location.url, text: "📍 Position" }; localMsg.location = m.location; }
   else { localMsg.text = m.text || ""; }
+  // Le filet, quelle que soit la forme du message source (GIF, fichier anciens) :
+  // une data URL ne part pas vers `conv_messages`.
+  if (content && typeof content.url === "string" && /^data:/i.test(content.url)) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
   if (!target.messages) target.messages = [];
   target.messages.push(localMsg);
   target.lastAt = Date.now();
@@ -7165,6 +7187,10 @@ function _retryMsg(convId, msgId) {
     toast("Ce message a été écrit avec un autre compte ou une ancienne version — recopie-le pour l'envoyer.");
     return;
   }
+  // Une PIÈCE JOINTE se renvoie depuis SA copie locale (`_pjRenvoyer`, app-09) —
+  // jamais reconstruite en texte : `m.text` y est vide, et le renvoi serait parti en
+  // message vide (2026-11-07). L'auteur vient d'être confronté au compte courant.
+  if (m.pj && typeof _pjRenvoyer === "function") { _pjRenvoyer(convId, msgId); return; }
   _setMsgStatus(convId, msgId, "sending");
   // Reconstruit depuis le texte : l'auteur est `m.de`, celui inscrit à
   // l'écriture — et il vient d'être confronté au compte courant ci-dessus.
@@ -7173,6 +7199,11 @@ function _retryMsg(convId, msgId) {
 
 // Vide la file d'attente (à la reconnexion ou au boot).
 function _flushOutbox() {
+  // Les pièces jointes dont le DÉPÔT attend le réseau ont leur file à part
+  // (`passio_pj_outbox_v1`, `_pjFileVider`, app-09) et les mêmes déclencheurs :
+  // démarrage et retour du réseau. Un échec ici ne doit pas taire le reste.
+  try { if (typeof _pjFileVider === "function") _pjFileVider(); }
+  catch (e) { try { if (typeof diagLog === "function") diagLog("pj_file_vider KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {} }
   var a = _outboxLoad();
   if (!a.length) return;
   // Session expirée (UXO-02) : on ne rejoue RIEN — sans compte joignable,

@@ -3387,8 +3387,8 @@ function _buildNoopSupa() {
   // `.not()`, `.or()`, `.update()`, `supa.storage` et `supa.functions` étaient
   // absents — `getEventRatings` et l'annuaire des profils cassaient hors ligne
   // (« supa.from(...).select(...).not is not a function »), et un envoi de
-  // pièce jointe levait sur `supa.storage` undefined au lieu de retomber sur la
-  // data URL. `scripts/audit-supa-stub.js` (CI) empêche la prochaine omission.
+  // pièce jointe levait sur `supa.storage` undefined au lieu de garder sa copie
+  // locale. `scripts/audit-supa-stub.js` (CI) empêche la prochaine omission.
   // `error: null` = on garde la sémantique historique côté BASE : hors ligne
   // l'app continue en local, elle ne crie pas à l'échec sur chaque écriture.
   // ⚠️ `data: []` n'est PAS neutre pour autant : `_writeVerdict` (app-02) lit
@@ -3400,8 +3400,9 @@ function _buildNoopSupa() {
   // l'ancien comportement en croyant corriger une régression.
   const _res = (data) => ({ data: data === undefined ? [] : data, error: null, count: 0, status: 200, statusText: "OK" });
   // Erreur explicite pour tout ce qui SORT de l'appareil (upload, fonction
-  // edge) : là, un faux succès serait pire qu'un échec — l'appelant retombe sur
-  // sa data URL locale au lieu de publier une URL distante qui n'existe pas.
+  // edge) : là, un faux succès serait pire qu'un échec — l'appelant garde sa
+  // copie locale (la publication la garde en local, la messagerie la met en file,
+  // jamais en base) au lieu de publier une URL distante qui n'existe pas.
   const _ko = () => Promise.resolve({ data: null, error: { message: "Supabase non disponible" } });
   function _noopQ() {
     const q = {
@@ -3453,8 +3454,8 @@ function _buildNoopSupa() {
         // (app-09 fait `.getPublicUrl(p).data.publicUrl`) : rendre la forme
         // exacte, sinon la coupure réseau lève au lieu de dégrader.
         // ⚠️ L'URL VIDE n'est sans danger que parce que `upload` échoue juste
-        // au-dessus : tous les appelants testent `error` d'abord et retombent
-        // sur leur data URL. Rendre `upload` « réussi » ferait partir cette
+        // au-dessus : tous les appelants testent `error` d'abord et gardent leur
+        // copie locale. Rendre `upload` « réussi » ferait partir cette
         // chaîne vide comme `file_url` en base — une pièce jointe morte. Les
         // deux valeurs se tiennent : ne pas en changer une seule.
         getPublicUrl: () => ({ data: { publicUrl: "" } }),
