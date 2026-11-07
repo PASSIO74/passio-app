@@ -1633,9 +1633,9 @@ chaîne `CONTENU_MESSAGE_BORNE` que la migration exige dans le client servi (`--
 `tests/e2e/message-contenu-borne.spec.js` (9 ; sans le téléversement et sans le 23514, 5 rougissent). **Défaut de #751,
 signalé au lot qui retouche `_forwardTo` (#747, autre session — un seul écrivain par fonction)** : `_urlLocaleDuMessage`
 retient aussi `voiceData`, or `_forwardTo` ne fait AUCUNE enveloppe d'un vocal (il part en texte vide, préexistant) —
-transférer son propre vocal téléverse un objet orphelin dans Storage. Le remède (ne téléverser que ce dont le transfert fait
-une enveloppe, ou donner au vocal son enveloppe `audio` « Message vocal (Ns) ») et son verrou sont confiés à ce lot ; la
-migration n'en dépend pas : aucune data-URL n'en part.
+transférer son propre vocal téléverse un objet orphelin dans Storage. Le remède retenu par ce lot : donner au vocal son
+enveloppe `audio` « Message vocal (Ns) » (#750, empilée sur #747, verrou `transfert-vocal.spec.js`) ; le défaut reste
+ouvert sur `main` jusqu'à sa fusion. La migration n'en dépend pas : aucune data-URL n'en part.
 
 **La décision : deux contraintes CHECK.**
 - `conv_messages_content_len_check` — 20 000 caractères au plus (36 × le plus long message mesuré ; la PIRE enveloppe de texte
