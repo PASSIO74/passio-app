@@ -1256,6 +1256,11 @@ l'ordre de Benjamin ; empreinte `cbd9428a…`) :
 
 ## 📌 RV-38 — L'ÉPINGLE D'UN COMMENTAIRE N'ATTEIGNAIT JAMAIS LA BASE ; SEUL LE PROPRIÉTAIRE DU FIL Y ÉPINGLERA (2026-11-05)
 
+**Statut : corrigé — appliqué au staging puis en production le 07/11** (production à 08:33:11 UTC, `migrations_appliquees`
+id 34, verdict 21 × OK et l'information à 0), mesuré au canal ①, prouvé à deux comptes sur le staging migré (« Application
+et mesure », en fin de fiche). Client : #727 (156dd85) ;
+migration : #734 (019896b), `migrations/migration_epingle_commentaire_2026-11-05.sql` (sha256 `be2f5942…`).
+
 **Le défaut (registre RV-38, trouvé pendant le lot R37).** `togglePinComment` (app-04) écrivait l'épingle dans
 `comment_interactions` (`kind = 'pin'`, charge « 1 » / « 0 ») par `supaCommentInteract`, sans lire le résultat. La
 contrainte de production `ci_kind_check` n'admet que `like`, `reply`, `emoji`, `gif` : **chaque** épingle était refusée
@@ -1385,8 +1390,41 @@ ce qu'a mesuré sa première exécution en CI (#727) ; présente, A épingle, B 
   `comment_id` ; « un seul épinglé par fil » n'est pas un invariant du serveur ; les lignes d'un commentaire d'ACTIVITÉ
   supprimé restent (R31), sans rien afficher.
 
-**Ce qui reste.** La contre-revue humaine de la PR de migration, son attestation (production ET staging), son
-application, la mesure au canal ① ; la ligne RV-38 ne se ferme qu'avec cette preuve.
+**Application et mesure (07/11).** Contre-revue : la revue n°5811045261 de PASSIO74 sur `3bde757`, auto-revue de
+mainteneur unique (ASTRA-61 bis), rédigée par une session Claude Code à la demande de Benjamin ; elle nomme les deux
+cibles. Avant l'attestation, le contrôle de preuve d'`attester-migration.mjs` a été rejoué hors ligne sur la vraie revue,
+pour les deux cibles (témoin : une revue qui ne nomme pas une cible est refusée), et la phrase d'assomption lue à l'octet dans l'appel qui
+l'a publiée : la CI ne contrôle que le marqueur, une espace insécable devant « : » l'aurait fait refuser. Depuis le poste,
+dans un worktree détaché de `main` (019896b) : une attestation par cible, consignées ici à l'identique (blob
+`64ee539a`, celui du `git diff` imprimé) ; le staging d'abord (prérequis « non exigé ici » : aucun client servi connu
+pour cette cible), puis la production après `--verifier` (la barrière a lu le marqueur dans le client servi,
+`app.js?v=a0fa987522`) ; les deux verdicts : 21 × OK, l'information à 0.
+
+Mesuré au canal ① à 08:35:50 UTC, jamais le tableau (état de référence relevé à 08:32:45 : quatre genres, aucune garde,
+aucune ligne de journal) :
+- `ci_kind_check` à cinq genres (`like`, `reply`, `emoji`, `gif`, `pin`) et `ci_pin_payload_check`, toutes deux validées ;
+- `trg_ci_epingle_garde` = `BEFORE INSERT OR UPDATE … FOR EACH ROW WHEN ((new.kind = 'pin'::text)) EXECUTE FUNCTION
+  ci_epingle_garde()`, actif, premier des trois déclencheurs BEFORE (`trg_ci_epingle_garde`, `trg_rate_limit`,
+  `zz_barriere_suppression`) ;
+- corps `9078992e4fdd194a5b9e9afae4ada3e6` (brut et normalisé), SECURITY DEFINER, `search_path=""`, ACL
+  `{postgres=X, service_role=X}` : ni `anon` ni `authenticated` ne l'exécutent ; RLS active ;
+- les trois policies de `comment_interactions` inchangées à l'octet (`4fc9fe8f…`, `100a0f66…`, `72198d79…`) ;
+- 0 épingle ; 0 trace du décor (`zz_rv38_%` dans les cinq tables, les comptes `…3801` à `…3805`, leurs notifications,
+  les secrets de pointage) ;
+- journal d'application : id 34, `applique_le` 08:33:11 UTC, l'attestation identique à l'entrée de production consignée ;
+- journaux Postgres de 08:30 à 08:40 : rien qui touche la migration. Le fond y est le même que la veille : refus RLS
+  sur `profiles` (180 de 08:30 à 08:40, le premier à 08:30:28 ; de 181 à 347 par heure le 06/11 au soir),
+  coupures de connexion de réplication (une à cinq par heure).
+
+**Preuve à deux comptes (07/11).** `epingle-commentaire-reel.spec.js`, CI de #743 (run 42356513820, job « Suites
+production (comptes réels) », sur le staging, 08:44:21 → 08:48:11 UTC) : « migration RV-38 sur le staging : PRÉSENTE (la
+garde refuse l'inconnu) » ; 21 réussis, 3 sautés, 0 échec, aucun instable. Une fois la présence lue, le test n'a plus de
+chemin de saut : ses quatre étapes ont passé — A épingle le commentaire de B (accepté, une ligne « 1 » en base, en tête à
+l'écran) ; B, après RECHARGEMENT, voit l'épingle en tête avec « Épinglé » ; B ne peut pas épingler chez A (42501, l'indice
+de la garde, rien d'écrit) ; A retire l'épingle et B, rechargé, ne la voit plus. Le run de `main` de la fusion de #734 ne
+pouvait pas le dire : son job à comptes réels s'est terminé à 08:31:57, avant l'application au staging.
+
+**Ce qui reste.** Hors lot : RV-45 à RV-48 (registre), et les restes dits ci-dessus.
 ## 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
 
 **Statut : appliqué en production le 06/11 à 21:38:05 UTC** (verdict 17 × OK, `migrations_appliquees` id 33), mesuré au canal ①
