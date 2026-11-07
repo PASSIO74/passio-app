@@ -72,4 +72,9 @@
   « une restauration est en cours » et un test vérifie qu'il est bien relâché, ce qui
   prouve que la restauration se termine et ne fuit pas. Ne pas le retirer sans retirer
   aussi cette assertion.
+  ⚠️ **Au bout d'un fil épuisé, rien ne doit plus rien reconstruire (2026-11-07).** La sentinelle
+  ne se pose que si `hasMore` ; une sentinelle retirée ne charge plus (`el.isConnected`) ; une
+  liste dont les cartes montées sont EXACTEMENT celles à afficher n'est pas une divergence pour
+  `feedWindowPaintIncremental` (seule la queue suit). Avant, chaque passage sur la sentinelle
+  repeignait le fil entier (12 cartes, le reste au repos) — fiche 🪟 de `docs/journal/passions-fil.md`.
 

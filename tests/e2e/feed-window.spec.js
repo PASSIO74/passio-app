@@ -204,6 +204,44 @@ test.describe("Fil fenêtré — cartes montées bornées et lots progressifs", 
     expect(marques).toBe(avant.length); // aucune carte d'origine reconstruite
     expect((await ids(page)).length).toBeGreaterThan(avant.length);
   });
+
+  // ⚠️ AU BOUT D'UN FIL ÉPUISÉ (2026-11-07). La sentinelle restait posée sous la
+  // dernière carte : chaque passage dessus relançait loadMoreFeedPosts, qui élargit
+  // `_feedRenderLimit` sans rien apporter — et le repeint incrémental refusait une
+  // liste inchangée (`n >= visible.length`) : le fil ENTIER était reconstruit, 12
+  // cartes d'abord, le reste au repos. Mesuré : juste après, 12 cartes, 0 des 60
+  // marquées survivantes. C'est ce que lisait, sur une machine CI chargée, « le premier
+  // lot puis les suivants » ci-dessus (12 au lieu de 60, trois essais sur trois).
+  // Ce test le juge SANS minuterie : juste après le rendu, avant tout complément au repos.
+  // Réinjections éprouvées : remettre `n >= visible.length` → rougit ; reposer la
+  // sentinelle sur un fil épuisé → rougit.
+  test("au bout du fil, un chargement de plus ne reconstruit rien, et aucune sentinelle ne relance le chargement", async ({ page }) => {
+    await bootOnboarded(page);
+    await seedFeed(page, { windowOn: true });
+    // Monter les trois lots (60 cartes), par le chemin réel de la sentinelle.
+    await expect.poll(async () => {
+      await page.evaluate(() => { const m = document.querySelector(".app-main"); m.scrollTo(0, m.scrollHeight); });
+      return (await ids(page)).length;
+    }, { timeout: 15000 }).toBe(60);
+    // Fil épuisé : plus de sentinelle, rien ne peut plus demander un lot.
+    await expect(page.locator("#feedWindowSentinel")).toHaveCount(0);
+    await page.evaluate(() =>
+      document.querySelectorAll("#feedList .post").forEach((e, i) => (e.dataset.marque = "m" + i))
+    );
+    const r = await page.evaluate(async () => {
+      window._feedServerMayHaveMore = false;
+      await loadMoreFeedPosts();   // un appel de trop, comme une sentinelle en retard ou le bouton
+      return {
+        cartes: document.querySelectorAll("#feedList .post[data-postid]").length,
+        marquees: document.querySelectorAll("#feedList .post[data-marque]").length,
+        sentinelles: document.querySelectorAll("#feedWindowSentinel").length,
+      };
+    });
+    expect(r).toEqual({ cartes: 60, marquees: 60, sentinelles: 0 });
+    // Et un fil qui peut encore grandir garde sa sentinelle (le chargement progressif vit).
+    await seedFeed(page, { windowOn: true });
+    await expect(page.locator("#feedWindowSentinel")).toHaveCount(1);
+  });
 });
 
 test.describe("Fil fenêtré — ancre de scroll sous 2 px", () => {

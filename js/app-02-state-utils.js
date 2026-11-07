@@ -8729,7 +8729,9 @@ function feedWindowSync(list) {
       entries.forEach(function (entry) {
         var el = entry.target;
         if (el.id === "feedWindowSentinel") {
-          if (entry.isIntersecting) feedWindowLoadNextBatch();
+          // Une sentinelle RETIRÉE (queue reconstruite) peut encore livrer une entrée
+          // en attente : elle ne charge plus rien (2026-11-07, voir feedWindowTailHtml).
+          if (entry.isIntersecting && el.isConnected) feedWindowLoadNextBatch();
           return;
         }
         if (entry.isIntersecting) feedWindowHydrate(el);
@@ -8787,7 +8789,13 @@ function feedWindowPaintIncremental(list, visible, hasMore, moreBtnHtml) {
   if (!feedWindowEnabled()) return false;
   var mounted = list.querySelectorAll(".post[data-postid]");
   var n = mounted.length;
-  if (n === 0 || n >= visible.length) return false;
+  // ⚠️ `n === visible.length` N'EST PAS UNE DIVERGENCE (2026-11-07). Au bout d'un fil
+  // épuisé, un chargement de plus élargit `_feedRenderLimit` sans rien apporter : la
+  // signature change, mais les cartes montées SONT déjà toutes celles à afficher.
+  // Refuser ici repeignait le fil ENTIER (12 cartes, le reste au repos : ancre perdue,
+  // images re-décodées) — et `feed-window.spec.js` lisait ce fil à moitié repeint sur
+  // une machine chargée. Même vérification carte par carte ; seule la queue suit.
+  if (n === 0 || n > visible.length) return false;
   var sigs = list._fwSigs;
   if (!sigs || sigs.length !== n) return false;
   for (var i = 0; i < n; i++) {
@@ -8805,11 +8813,14 @@ function feedWindowPaintIncremental(list, visible, hasMore, moreBtnHtml) {
 
 // Pied de liste : bouton historique + sentinelle de chargement progressif.
 // Le bouton reste, seul et inchangé, quand le drapeau est coupé.
+// ⚠️ La sentinelle ne se pose que s'il reste quelque chose à charger (2026-11-07) :
+// posée au bout d'un fil épuisé, chaque passage dessus relançait loadMoreFeedPosts
+// pour rien — et, la queue reconstruite à l'identique, la nouvelle sentinelle, encore
+// sous les yeux, l'aurait relancé en boucle.
 function feedWindowTailHtml(hasMore, moreBtnHtml) {
   if (!feedWindowEnabled()) return hasMore ? moreBtnHtml : "";
   return '<div id="feedWindowTail">'
-       + (hasMore ? moreBtnHtml : "")
-       + '<div id="feedWindowSentinel" aria-hidden="true" style="height:1px;"></div>'
+       + (hasMore ? moreBtnHtml + '<div id="feedWindowSentinel" aria-hidden="true" style="height:1px;"></div>' : "")
        + '</div>';
 }
 

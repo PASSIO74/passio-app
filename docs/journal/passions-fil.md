@@ -23,6 +23,7 @@
 - 🚀 LANCEMENT GRATUIT : LE MUR DES TROIS PASSIONS EST LEVÉ POUR TOUS (2026-11-01)
 - 🧱 LE RÉEL D'ABORD, LES EXEMPLES ENSUITE — ET DES EXEMPLES CRÉDIBLES (2026-11-01)
 - 🔁 « INFINITE RECURSION » SUR `passion_requests` — PLUS UNE DEMANDE NE PASSAIT, ET LA CORRECTION NAÏVE ROUVRAIT UN ORACLE (2026-11-04) — migration à appliquer APRÈS le client
+- 🪟 FIL FENÊTRÉ — AU BOUT DU FIL, LA SENTINELLE REPEIGNAIT TOUT (2026-11-07)
 
 ---
 
@@ -934,3 +935,11 @@ Retour arrière : le bloc `--|` de l'en-tête — il rend aussi le défaut.
   - le verrou exclusif dure quelques secondes ;
   - le prérequis client ne tient, dans la page minifiée, que par l'appel `journal(…)`.
 Aucun ne justifiait de retoucher un fichier contre-revu et attesté.
+
+## 🪟 FIL FENÊTRÉ — AU BOUT DU FIL, LA SENTINELLE REPEIGNAIT TOUT (2026-11-07)
+
+Trouvé par la CI, pas par un utilisateur (`feed_window_v1` est coupé par défaut). `feed-window.spec.js` « le premier lot puis les suivants arrivent en scrollant » lisait **12 cartes au lieu de 60**, trois essais sur trois, sur deux PR sans rapport avec le fil (#747, #749), puis vert à la relance, puis rouge de nouveau. Une fiche « instable » n'aurait rien expliqué : 12, c'est `FAST`, la peinture rapide d'un rendu COMPLET de `renderFeed`, le reste au repos (`requestIdleCallback`).
+
+La cause, prouvée sans minuterie : la sentinelle de chargement progressif restait posée sous la dernière carte d'un fil ÉPUISÉ. Chaque passage dessus relançait `loadMoreFeedPosts`, qui élargit `_feedRenderLimit` sans rien apporter ; la signature du rendu changeait, et `feedWindowPaintIncremental` refusait une liste inchangée (`n >= visible.length`). Le fil entier était donc reconstruit : juste après, 12 cartes, 0 des 60 marquées survivantes — ancre perdue, images re-décodées. Sur une machine chargée, le complément au repos arrivait après la lecture du test. Reproduit à l'identique en retardant ce complément de 3 s : 12 sur le code d'avant, 60 avec le correctif.
+
+⚠️ **Une liste inchangée n'est pas une divergence.** `n === visible.length`, cartes et signatures identiques : seule la queue (bouton, sentinelle) suit `hasMore`. ⚠️ **La sentinelle ne se pose que s'il reste quelque chose à charger** — sinon la queue reconstruite à l'identique remettait une sentinelle sous les yeux, qui relançait en boucle. ⚠️ **Une sentinelle retirée ne charge plus** (`el.isConnected`) : une entrée d'observateur en attente pour l'ancienne queue relançait le chargement. Verrou : `feed-window.spec.js` « au bout du fil, un chargement de plus ne reconstruit rien… » (60 cartes, 60 marquées, 0 sentinelle, jugé juste après le rendu) ; trois réinjections rouges. **Règle : un test qui lit un rendu « au repos » sur une minuterie fixe rougit le jour où la machine est lente — avant d'y ajouter de l'attente, chercher pourquoi un rendu complet a eu lieu.**
