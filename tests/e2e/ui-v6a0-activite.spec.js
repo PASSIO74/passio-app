@@ -7,9 +7,12 @@
 //      Combien — puis « Plus d'options » (récurrence, contact, lien) ;
 //   ② la couverture est un vrai contrôle : rôle, tabulation, Entrée ouvre le
 //      sélecteur, nom qui suit l'état, « Retirer » hors de la zone ;
+//   ② bis un geste ouvre UN sélecteur, jamais deux ;
+//   ② ter le nom et l'aperçu suivent l'image RÉELLEMENT posée, pas un délai ;
 //   ③ l'aperçu reprend la saisie, en TEXTE (aucun HTML interprété) ;
 //   ④ deux clics sur « Publier l'activité » = un seul envoi ;
-//   ⑤ coupé (`passio_ui_6a0="0"`), la modale d'avant revient, sans garde ;
+//   ⑤ coupé (`passio_ui_6a0="0"`), la modale d'avant revient, sans garde, et
+//      le module ne touche plus à la couverture ;
 //   ⑥ captures 320 / 390 / 430 pour la validation visuelle.
 // ═══════════════════════════════════════════════════════════
 const path = require("path");
@@ -25,6 +28,30 @@ async function boot(page, opts = {}) {
 async function ouvrir(page) {
   await page.evaluate(() => openCreateEvent());
   await page.waitForSelector("#modalContent #evTitle");
+}
+const FICHIER_COUV = { name: "couv.png", mimeType: "image/png", buffer: PNG_1PX };
+// L'image est posée par un FileReader : une photo lourde sur un téléphone chargé
+// met le temps qu'elle veut. Le retard reproduit ça sans dépendre de la machine.
+async function retarderLecture(page, ms) {
+  await page.evaluate((retard) => {
+    const lire = FileReader.prototype.readAsDataURL;
+    FileReader.prototype.readAsDataURL = function (f) { setTimeout(() => lire.call(this, f), retard); };
+  }, ms);
+}
+// Compte les sélecteurs ouverts par `geste`. Un second se prouve par son absence :
+// d'où l'attente après le premier. ⚠️ `page.on("filechooser")` n'arme l'interception
+// que par un message sans réponse attendue : créer le compteur AVANT `zone.focus()`,
+// jamais au même tour que la touche (voir ②).
+function compteurSelecteurs(page) {
+  let ouverts = 0;
+  page.on("filechooser", () => { ouverts++; });
+  return async (nom, geste) => {
+    ouverts = 0;
+    await geste();
+    await expect.poll(() => ouverts, `${nom} ouvre le sélecteur`).toBeGreaterThan(0);
+    await page.waitForTimeout(500);
+    expect(ouverts, `${nom} : un seul sélecteur`).toBe(1);
+  };
 }
 // Compte les passages dans le moteur : `submitEvent` appelle `requireAdmission`
 // (global) avant toute écriture ; on le ralentit et on refuse, rien n'est écrit.
@@ -70,8 +97,16 @@ test.describe("UI-6A0 — Créer une activité", () => {
     await expect(zone).toHaveAttribute("role", "button");
     await expect(zone).toHaveAttribute("tabindex", "0");
     await expect(zone).toHaveAttribute("aria-label", "Ajouter une couverture");
+    // ⚠️ S'ABONNER AVANT `focus()`, JAMAIS AU MÊME TOUR QUE LA TOUCHE (2026-11-07).
+    // `waitForEvent` n'arme l'interception du sélecteur de fichiers que par un
+    // message sans réponse attendue, et `keyboard.press` emprunte un autre canal
+    // jusqu'à la page : la touche arrivait parfois la première. Le sélecteur
+    // s'ouvrait, mais sans événement (8 échecs sur 12, 12 sur 24 sous `Promise.all`).
+    // `focus()` est l'aller-retour qui prouve l'interception en place : 0 sur 12.
+    const choixAttendu = page.waitForEvent("filechooser");
     await zone.focus();
-    const [choix] = await Promise.all([page.waitForEvent("filechooser"), page.keyboard.press("Enter")]);
+    await page.keyboard.press("Enter");
+    const choix = await choixAttendu;
     await choix.setFiles({ name: "couv.png", mimeType: "image/png", buffer: PNG_1PX });
     await expect(zone).toHaveAttribute("aria-label", "Changer la couverture");
     const retirer = page.locator("#evCoverRemoveBtn");
@@ -80,6 +115,57 @@ test.describe("UI-6A0 — Créer une activité", () => {
     await retirer.click();
     await expect(zone).toHaveAttribute("aria-label", "Ajouter une couverture");
     await expect(page.locator("#evCoverData")).toHaveValue("");
+  });
+
+  test("② bis un geste, un seul sélecteur de fichiers : Entrée, Espace, le clic", async ({ page }) => {
+    await boot(page);
+    await ouvrir(page);
+    const zone = page.locator("#evCoverPreviewWrap");
+    const compter = compteurSelecteurs(page);
+    await zone.focus();
+    await compter("Entrée", () => page.keyboard.press("Enter"));
+    await compter("Espace", () => page.keyboard.press("Space"));
+    await compter("le clic", () => zone.click());
+  });
+
+  // 1 000 ms : allonger le délai d'une relecture ne doit pas passer pour un correctif.
+  for (const retard of [100, 1000]) {
+    test(`② ter lecture du fichier retardée de ${retard} ms : le nom suit l'image posée`, async ({ page }) => {
+      await boot(page);
+      await ouvrir(page);
+      const zone = page.locator("#evCoverPreviewWrap");
+      await retarderLecture(page, retard);
+      await page.setInputFiles("#evCoverFile", FICHIER_COUV);
+      await expect(zone).toHaveAttribute("aria-label", "Changer la couverture");
+      await expect(page.locator(".v6a0-cover-titre")).toHaveText("Changer la couverture");
+    });
+  }
+
+  test("② ter l'aperçu déjà ouvert reçoit la photo quand elle arrive, et la perd au retrait", async ({ page }) => {
+    await boot(page);
+    await ouvrir(page);
+    await page.click("#modalContent .v6a0-btn-apercu");
+    const visuel = page.locator("#v6a0Apercu .v6a0-apercu-visuel img");
+    await expect(visuel).toHaveCount(0);
+    await retarderLecture(page, 100);
+    await page.setInputFiles("#evCoverFile", FICHIER_COUV);
+    await expect(visuel).toHaveCount(1);
+    await page.locator("#evCoverRemoveBtn").click();
+    await expect(visuel).toHaveCount(0);
+  });
+
+  test("② ter en modification, la couverture existante donne « Changer la couverture »", async ({ page }) => {
+    await boot(page);
+    const png = "data:image/png;base64," + PNG_1PX.toString("base64");
+    await page.evaluate((coverUrl) => {
+      const ev = state.seed.events[0];
+      ev.coverUrl = coverUrl;
+      openCreateEvent(ev.id);
+    }, png);
+    await page.waitForSelector("#modalContent #evTitle");
+    await expect(page.locator("#modalContent .modal-title")).toHaveText("Modifier l'activité");
+    await expect(page.locator("#evCoverPreviewWrap")).toHaveAttribute("aria-label", "Changer la couverture");
+    await expect(page.locator("#evCoverRemoveBtn")).toBeVisible();
   });
 
   test("③ l'aperçu reprend la saisie, en texte", async ({ page }) => {
@@ -114,6 +200,21 @@ test.describe("UI-6A0 — Créer une activité", () => {
     await page.evaluate(() => { submitEvent(); submitEvent(); });
     await page.waitForTimeout(600);
     expect(await page.evaluate(() => window.__envois), "sans le module, le moteur n'a pas de garde").toBe(2);
+  });
+
+  test("⑤ bis coupé, le module ne touche plus à la couverture, et Entrée y ouvre toujours un sélecteur", async ({ page }) => {
+    await boot(page, { coupe: true });
+    await ouvrir(page);
+    const zone = page.locator("#evCoverPreviewWrap");
+    const compter = compteurSelecteurs(page);
+    await zone.focus();
+    await compter("Entrée", () => page.keyboard.press("Enter"));
+    await page.setInputFiles("#evCoverFile", FICHIER_COUV);
+    await expect(page.locator("#evCoverData")).toHaveValue(/^data:image\/png/);
+    await page.waitForTimeout(200);
+    expect(await zone.getAttribute("aria-label"), "aucun nom posé par le module").toBeNull();
+    expect(await zone.getAttribute("data-v6a0"), "zone non décorée").toBeNull();
+    expect(await zone.evaluate((z) => z.classList.contains("v6a0-cover-pleine")), "aucune classe du module").toBe(false);
   });
 
   for (const largeur of [320, 390, 430]) {
