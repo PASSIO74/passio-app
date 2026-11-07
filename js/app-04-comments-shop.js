@@ -6332,7 +6332,12 @@ function _copierPieceJointeVers(cheminSrc, targetConvId) {
 // Chemin d'objet (seau `attachments`) d'un message média, ou null.
 function _pieceJointeDuMessage(m) {
   if (!m || typeof pieceJointeChemin !== "function") return null;
-  return pieceJointeChemin(m.img || m.video || m.fileUrl || m.voiceData || null);
+  // ⚠️ MON média tout juste envoyé n'a ici que sa copie LOCALE (data URL) jusqu'à la
+  // relecture du fil : sans `m.pj.url` (posé au dépôt, app-09), « supprimer pour
+  // tous » laissait son objet dans le seau, et le transfert ne savait pas le copier
+  // (2026-11-07, MSG-03).
+  return pieceJointeChemin(m.img || m.video || m.fileUrl || m.voiceData || null)
+    || (m.pj && m.pj.url ? pieceJointeChemin(m.pj.url) : null);
 }
 
 // Une URL `data:` — un fichier ENTIER, encodé dans l'URL — avec ce que le
@@ -6345,7 +6350,9 @@ function _estUrlDonnees(u) {
 // appareil, ou null. Même ordre que `_pieceJointeDuMessage` : c'est ce champ-là
 // que `_forwardTo` remplace.
 function _urlLocaleDuMessage(m) {
-  var u = m ? (m.img || m.video || m.fileUrl || m.voiceData || null) : null;
+  // `docData` : la copie locale d'un DOCUMENT que je viens d'envoyer (app-09) —
+  // en dernier, comme dans la branche de copie de `_forwardTo`.
+  var u = m ? (m.img || m.video || m.fileUrl || m.voiceData || m.docData || null) : null;
   return _estUrlDonnees(u) ? u : null;
 }
 
@@ -6365,20 +6372,37 @@ function _televerserPieceJointeVers(dataUrl, targetConvId) {
     for (var i = 0; i < octets.length; i++) ia[i] = octets.charCodeAt(i);
     var ext = (type.split("/")[1] || "").replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
     var chemin = "attachments/" + targetConvId + "/" + Date.now() + "_" + Math.random().toString(36).slice(2, 11) + "_transfert." + ext;
+    // Une mise à jour attend ce dépôt (pwa-detect.js), comme tout dépôt de pièce
+    // jointe ; la fin est rendue sur TOUTE issue.
+    var fin = (typeof _envoiCommence === "function") ? _envoiCommence() : function () {};
+    // Un refus remonte au pilotage, comme le dépôt d'une pièce jointe (app-09) :
+    // code fermé, jamais le libellé du serveur (il peut porter le nom du fichier).
+    var refus = function (err) {
+      try { if (typeof diagLog === "function") diagLog("pj_televersement KO " + String((err && err.message) || err).slice(0, 80)); } catch (e) {}
+      try {
+        if (typeof _pjSignaler === "function" && typeof _pjCodeEchec === "function") {
+          var reseau = (typeof estEchecReseau === "function") && estEchecReseau(err);
+          _pjSignaler({ rc: _pjCodeEchec(err, reseau), http: Number(err && err.status) || Number(err && err.statusCode) || 0, kind: "transfert", voie: "transfert", essai: 1, ko: Math.round(ia.length / 1024) });
+        }
+      } catch (e) {}
+      return null;
+    };
     return Promise.resolve(supa.storage.from("attachments").upload(chemin, new Blob([ia], { type: type }), {
       cacheControl: "31536000", // pièce jointe immuable, comme à l'envoi
       upsert: false,
       contentType: type,
     })).then(function (res) {
-      if (res && res.error) {
-        try { if (typeof diagLog === "function") diagLog("pj_televersement KO " + String(res.error.message)); } catch (e) {}
-        return null;
-      }
+      if (res && res.error) return refus(res.error);
       var pub = supa.storage.from("attachments").getPublicUrl(chemin);
       var url = pub && pub.data && pub.data.publicUrl;
       return url ? ((typeof cdnUrl === "function") ? cdnUrl(url) : url) : null;
-    }, function () { return null; });
-  } catch (e) { return Promise.resolve(null); }
+    }, refus).then(function (u) { fin(); return u; }, function () { fin(); return null; });
+  } catch (e) {
+    // `fin` est hissé (`var`) : posé si la levée vient de l'envoi lui-même.
+    try { if (typeof fin === "function") fin(); } catch (_) {}
+    try { if (typeof diagLog === "function") diagLog("pj_televersement KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {}
+    return Promise.resolve(null);
+  }
 }
 function _purgerPieceJointeDe(m) {
   var chemin = _pieceJointeDuMessage(m);
@@ -6408,6 +6432,11 @@ function _forwardPick(convId, msgId) {
 
 async function _forwardTo(targetConvId) {
   closeModal();
+  // ⚠️ L'AUTEUR EST CAPTURÉ ICI, AVANT TOUT `await` (ASTRA-21, revue audit-passio du
+  // 2026-11-07) : la copie, et désormais le dépôt d'une copie locale, peuvent durer
+  // des minutes pour une vidéo ; un compte remplacé entre-temps ne doit jamais
+  // insérer le média de l'autre sous son nom.
+  var _ctxTransfert = { generation: _outboxGenerationActuelle(), auteur: (typeof MY_UID !== "undefined" ? MY_UID : null) };
   var src = window._forwardSrc; if (!src) return;
   var r = _msgById(src.convId, src.msgId); if (!r || !r.m) return;
   var m = r.m;
@@ -6428,6 +6457,9 @@ async function _forwardTo(targetConvId) {
     m = Object.assign({}, m);
     if (m.img) m.img = nouvelleUrl; else if (m.video) m.video = nouvelleUrl;
     else if (m.fileUrl) m.fileUrl = nouvelleUrl; else if (m.voiceData) m.voiceData = nouvelleUrl;
+    // Mon document tout juste envoyé n'a qu'une copie locale (`docData`) : il part
+    // comme document, avec l'URL de la copie — il partait en message VIDE.
+    else if (m.docData) { m.fileUrl = nouvelleUrl; delete m.docData; }
   }
   // ⚠️ UN MÉDIA ENCORE LOCAL NE PART JAMAIS EN BASE64 (2026-11-07). La copie de
   // l'AUTEUR d'une photo, d'une vidéo ou d'un vocal qu'il vient d'envoyer garde
@@ -6446,6 +6478,9 @@ async function _forwardTo(targetConvId) {
       m = Object.assign({}, m);
       if (m.img) m.img = televersee; else if (m.video) m.video = televersee;
       else if (m.fileUrl) m.fileUrl = televersee; else if (m.voiceData) m.voiceData = televersee;
+      // Mon document tout juste envoyé n'a qu'une copie locale (`docData`) : il part
+      // comme document — il partait en message VIDE.
+      else if (m.docData) { m.fileUrl = televersee; delete m.docData; }
     }
   }
   // Reconstruit un envelope de contenu selon le type, puis insère localement + Supabase.
@@ -6461,6 +6496,9 @@ async function _forwardTo(targetConvId) {
   // Sinon le transfert resterait affiché ici, et la base le refuserait (23514).
   if (content && _estUrlDonnees(content.url)) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
   if (!content && localMsg.text.length > MSG_TEXTE_MAX) { toast("✋ Message trop long pour être transféré : " + MSG_TEXTE_MAX.toLocaleString("fr-FR") + " caractères au plus"); return; }
+  // Le compte a changé (ou la file a été purgée) pendant la copie ou le dépôt :
+  // rien ne part, ni en local ni en base (ASTRA-21).
+  if (_outboxContextePerime(_ctxTransfert)) { try { if (typeof diagLog === "function") diagLog("transfert_perime"); } catch (e) {} return; }
   if (!target.messages) target.messages = [];
   target.messages.push(localMsg);
   target.lastAt = Date.now();
@@ -7284,6 +7322,10 @@ function _retryMsg(convId, msgId) {
     toast("Ce message a été écrit avec un autre compte ou une ancienne version — recopie-le pour l'envoyer.");
     return;
   }
+  // Une PIÈCE JOINTE se renvoie depuis SA copie locale (`_pjRenvoyer`, app-09) —
+  // jamais reconstruite en texte : `m.text` y est vide, et le renvoi serait parti en
+  // message vide (2026-11-07). L'auteur vient d'être confronté au compte courant.
+  if (m.pj && typeof _pjRenvoyer === "function") { _pjRenvoyer(convId, msgId); return; }
   _setMsgStatus(convId, msgId, "sending");
   // Reconstruit depuis le texte : l'auteur est `m.de`, celui inscrit à
   // l'écriture — et il vient d'être confronté au compte courant ci-dessus.
@@ -7292,6 +7334,11 @@ function _retryMsg(convId, msgId) {
 
 // Vide la file d'attente (à la reconnexion ou au boot).
 function _flushOutbox() {
+  // Les pièces jointes dont le DÉPÔT attend le réseau ont leur file à part
+  // (`passio_pj_outbox_v1`, `_pjFileVider`, app-09) et les mêmes déclencheurs :
+  // démarrage et retour du réseau. Un échec ici ne doit pas taire le reste.
+  try { if (typeof _pjFileVider === "function") _pjFileVider(); }
+  catch (e) { try { if (typeof diagLog === "function") diagLog("pj_file_vider KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {} }
   var a = _outboxLoad();
   if (!a.length) return;
   // Session expirée (UXO-02) : on ne rejoue RIEN — sans compte joignable,

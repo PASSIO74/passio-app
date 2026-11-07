@@ -4332,6 +4332,10 @@ var ACCOUNT_SCOPED_KEYS = [
   // la première ceinture, le filtre au rejeu la seconde.
   "passio_outbox_v1",        // file des messages en attente d'envoi
   "passio_cmt_outbox_v1",    // file des commentaires en attente d'envoi
+  // Ajoutée le 2026-11-07 : les pièces jointes dont le DÉPÔT attend le réseau
+  // (app-09, `_pjFileVider`). Elle ne porte que des identifiants et son `owner`,
+  // mais elle désigne des messages du compte, dont la copie locale part avec lui.
+  "passio_pj_outbox_v1",     // file des dépôts de pièces jointes en attente
   // Ajoutée le 2026-10-06 : la semaine où le récap a été traité POUR CE COMPTE
   // (js/recap-semaine.js). Un autre compte sur l'appareil a droit à son récap.
   "passio_recap_semaine_v1",

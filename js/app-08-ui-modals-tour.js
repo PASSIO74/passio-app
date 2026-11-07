@@ -3387,8 +3387,8 @@ function _buildNoopSupa() {
   // `.not()`, `.or()`, `.update()`, `supa.storage` et `supa.functions` étaient
   // absents — `getEventRatings` et l'annuaire des profils cassaient hors ligne
   // (« supa.from(...).select(...).not is not a function »), et un envoi de
-  // pièce jointe levait sur `supa.storage` undefined au lieu de retomber sur la
-  // data URL. `scripts/audit-supa-stub.js` (CI) empêche la prochaine omission.
+  // pièce jointe levait sur `supa.storage` undefined au lieu de garder sa copie
+  // locale. `scripts/audit-supa-stub.js` (CI) empêche la prochaine omission.
   // `error: null` = on garde la sémantique historique côté BASE : hors ligne
   // l'app continue en local, elle ne crie pas à l'échec sur chaque écriture.
   // ⚠️ `data: []` n'est PAS neutre pour autant : `_writeVerdict` (app-02) lit
@@ -3400,8 +3400,9 @@ function _buildNoopSupa() {
   // l'ancien comportement en croyant corriger une régression.
   const _res = (data) => ({ data: data === undefined ? [] : data, error: null, count: 0, status: 200, statusText: "OK" });
   // Erreur explicite pour tout ce qui SORT de l'appareil (upload, fonction
-  // edge) : là, un faux succès serait pire qu'un échec — l'appelant retombe sur
-  // sa data URL locale au lieu de publier une URL distante qui n'existe pas.
+  // edge) : là, un faux succès serait pire qu'un échec — l'appelant garde sa
+  // copie locale (la publication la garde en local, la messagerie la met en file,
+  // jamais en base) au lieu de publier une URL distante qui n'existe pas.
   const _ko = () => Promise.resolve({ data: null, error: { message: "Supabase non disponible" } });
   function _noopQ() {
     const q = {
@@ -3453,8 +3454,8 @@ function _buildNoopSupa() {
         // (app-09 fait `.getPublicUrl(p).data.publicUrl`) : rendre la forme
         // exacte, sinon la coupure réseau lève au lieu de dégrader.
         // ⚠️ L'URL VIDE n'est sans danger que parce que `upload` échoue juste
-        // au-dessus : tous les appelants testent `error` d'abord et retombent
-        // sur leur data URL. Rendre `upload` « réussi » ferait partir cette
+        // au-dessus : tous les appelants testent `error` d'abord et gardent leur
+        // copie locale. Rendre `upload` « réussi » ferait partir cette
         // chaîne vide comme `file_url` en base — une pièce jointe morte. Les
         // deux valeurs se tiennent : ne pas en changer une seule.
         getPublicUrl: () => ({ data: { publicUrl: "" } }),
@@ -6946,6 +6947,24 @@ async function _rafraichirConversationsServeur(opts) {
     const localConvs = getConversations();
     const supaConvIds = new Set(supaConvs.map(c => c.id));
     const localOnly = localConvs.filter(c => !supaConvIds.has(c.id) && !SEED_CONVERSATIONS.find(s => s.id === c.id));
+    // ⚠️ UNE PIÈCE JOINTE EN ATTENTE N'EXISTE QUE DANS LA COPIE LOCALE (2026-11-07,
+    // revue audit-passio). Sans `fusion`, une conversation connue du serveur est
+    // REMPLACÉE par la sienne, dont `messages` ne porte que le dernier message
+    // (`supaLoadMyConversations`) : la bulle « envoi… » ou « réessayer » d'un média
+    // pas encore déposé disparaissait au démarrage avec sa copie, et la file des
+    // dépôts (`passio_pj_outbox_v1`, qui ne porte que des identifiants) ne trouvait
+    // plus rien à envoyer. Mesuré : 0 dépôt, 0 insertion, aucune trace — et un dépôt
+    // en vol à ce moment voyait son objet RETIRÉ. On reporte donc sur l'objet serveur
+    // MES bulles de pièce jointe pas encore envoyées (même objet, rien n'est copié).
+    supaConvs.forEach(function (sc) {
+      const lc = localConvs.find(function (x) { return x && x.id === sc.id; });
+      if (!lc || !Array.isArray(lc.messages)) return;
+      const enAttente = lc.messages.filter(function (m) { return m && m.from === "me" && m.pj && (m.status === "sending" || m.status === "failed"); });
+      if (!enAttente.length) return;
+      const connus = new Set((sc.messages || []).map(function (m) { return m && m.id; }));
+      sc.messages = (sc.messages || []).concat(enAttente.filter(function (m) { return !connus.has(m.id); }))
+        .sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+    });
     conversationsState = deduplicateConversations([...supaConvs, ...localOnly]);
   } else {
     conversationsState = deduplicateConversations(getConversations());
