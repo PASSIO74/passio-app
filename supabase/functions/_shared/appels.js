@@ -37,12 +37,14 @@
 //   · Pour une notification sociale, de même : ni son texte, ni son émetteur, ni
 //     son destinataire ; son genre seulement s'il est de la liste fermée.
 //
-// LE VOLUME. Une push mesurée coûte une note (`analytics_events`, purgée à
-// 13 mois) et un accusé anonyme par appareil qui l'affiche (`telemetry_events`,
-// 3 jours). Un appel sur dix : chiffré au § 3.7 ; une notification sociale sur
-// vingt : § 3.8. Bornes qui tiennent sans ce fichier : le plafond par émetteur de
-// `notify-call` (20/min, 200/h) et `trg_rate_limit` (120 notes/min sous chaque
-// auteur ; au-delà la note est refusée et le dit, la push part quand même).
+// LE VOLUME. Une push mesurée coûte une note (`analytics_events`, purgée après
+// 8 jours par la tâche `purge_analytics_courte` depuis le 08/11/2026 ; le
+// pilotage ne la relit que sur 24 à 48 h, `reception.js`) et un accusé anonyme
+// par appareil qui l'affiche (`telemetry_events`, 3 jours). Un appel sur dix :
+// chiffré au § 3.7 ; une notification sociale sur vingt : § 3.8. Bornes qui
+// tiennent sans ce fichier : le plafond par émetteur de `notify-call` (20/min,
+// 200/h) et `trg_rate_limit` (120 notes/min sous chaque auteur ; au-delà la
+// note est refusée et le dit, la push part quand même).
 //
 // Les dépendances sont injectées (`admin` = client service_role, `envoyer` =
 // web-push) : `node --test tests/unit/appels.test.mjs` éprouve CE fichier, celui
