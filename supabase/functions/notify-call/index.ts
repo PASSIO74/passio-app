@@ -37,14 +37,20 @@
 // l'affichage, et la note `push_envoye` (genre « appel », pids, appareils
 // acceptés) se pose sous `systeme:appels` — sans rien de l'appelant. Le pid
 // n'est JAMAIS rendu à l'appelant : il pourrait forger l'accusé d'un appel qui
-// n'a pas sonné. Une notification sociale ne porte jamais d'accusé.
+// n'a pas sonné.
+// ⚠️ ET DES NOTIFICATIONS SOCIALES (même jour) : une push « notif » sur VINGT,
+// tirée par le serveur, porte de même un pid et l'adresse ; le service worker
+// l'accuse « notif », et la note se pose sous `systeme:notifs` avec le genre de
+// la notification d'une liste fermée (celui que `autoriserPushNotif` a relu en
+// base) — ni son texte, ni l'émetteur, ni le destinataire. Le pid ne revient pas
+// davantage à l'émetteur : il forgerait la réception de SA notification.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import webpush from "npm:web-push@3.6.7";
 import { endpointPushSur, envoyerPushBorne, MAX_ABONNEMENTS_LUS } from "../_shared/push-sur.js";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { identiteAppelant, lienAppel, autoriserPushNotif, reserverPush } from "../_shared/lien-metier.js";
-import { adresseAccuse } from "../_shared/reception.js";
+import { adresseAccuse, TTL_NOTIFS_MS } from "../_shared/reception.js";
 import { APPELS_ACTIFS, pousserAppareils } from "../_shared/appels.js";
 import { REVISION } from "../_shared/revision.js";
 // Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client
@@ -170,11 +176,14 @@ Deno.serve(async (req) => {
     ? { type: "notif", text: texteServeur || "Nouvelle notification", emoji: emoji || "🔔", kind: kindServeur || kind }
     : { type: "call", callId, kind: kind || "voice", from: fromUid, name: idn.name, emoji: idn.emoji };
 
-  const ttl = type === "notif" ? 3600 : 45;
+  // Le TTL d'une notification sociale vient de _shared/reception.js : sa réception
+  // se juge après lui (DELAI_JUGEMENT_NOTIFS_MS), une seule source pour les deux.
+  const ttl = type === "notif" ? TTL_NOTIFS_MS / 1000 : 45;
   const urgency = type === "notif" ? "normal" : "high";
 
-  // 4. Envoyer à chaque appareil (_shared/appels.js : un appel sur dix porte un
-  // accusé, noté après l'envoi) ; nettoyer les abonnements morts (410/404).
+  // 4. Envoyer à chaque appareil (_shared/appels.js : un appel sur dix, une
+  // notification sociale sur vingt portent un accusé, noté après l'envoi) ;
+  // nettoyer les abonnements morts (410/404).
   const { sent, morts } = await pousserAppareils({
     admin, abonnements: subs, charge, options: { TTL: ttl, urgency }, accuse: ACCUSE,
     // deno-lint-ignore no-explicit-any
@@ -183,7 +192,9 @@ Deno.serve(async (req) => {
   });
   if (morts.length) { try { await admin.from("push_subscriptions").delete().in("endpoint", morts); } catch (_e) { /* */ } }
 
-  // Ni le pid ni « mesuré » ne sortent vers l'appelant (voir l'en-tête).
+  // Ni le pid ni « mesuré » ne sortent dans la réponse (voir l'en-tête). Le temps de
+  // réponse, lui, peut trahir « mesurée » (une écriture de plus, revue du 2026-11-07) :
+  // sans le pid, l'émetteur n'a rien à forger.
   return json({ ok: true, sent });
 });
 

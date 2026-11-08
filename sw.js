@@ -73,8 +73,9 @@ const ID_ACTIVITE_RE = /^[\w-]{1,64}$/;
 // anon, publique). Le pid est aléatoire et ne voyage que dans la notification :
 // le serveur ne compte que les pid qu'il a envoyés. L'affichage ne dépend JAMAIS
 // de l'accusé, et une adresse qui n'a pas sa forme n'est jamais appelée.
-// Genres accusés : `pilotage`, `rappel`, et `appel` (2026-11-07, un appel sur dix
-// en porte un : supabase/functions/_shared/appels.js).
+// Genres accusés : `pilotage`, `rappel`, `appel` (2026-11-07, un appel sur dix
+// en porte un : supabase/functions/_shared/appels.js) et `notif` (même jour, une
+// notification sociale sur vingt).
 const RE_PID_PUSH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const RE_BASE_ACCUSE = /^https:\/\/[a-z0-9]{20}\.supabase\.co$/;
 // La clé : l'ancienne anon (un JWT) ou la nouvelle, publiable (2026-11-07). La
@@ -152,6 +153,9 @@ self.addEventListener("push", e => {
   }
 
   // Notif sociale (like, follow, commentaire, message…) — app fermée ou en arrière-plan.
+  // L'accusé APRÈS l'affichage (2026-11-07) : une notification sur vingt, tirée par
+  // `notify-call`, porte un pid ; sans pid, rien ne part. Ni le texte, ni le genre,
+  // ni l'emoji n'entrent dans l'accusé, et le tap n'en sait rien.
   if (data.type === "notif") {
     const opts = {
       body: data.text || "Nouvelle notification",
@@ -161,7 +165,7 @@ self.addEventListener("push", e => {
       badge: "./icon-192.png",
       data: { url: "./" },
     };
-    e.waitUntil(self.registration.showNotification((data.emoji || "🔔") + " PASSIO", opts));
+    e.waitUntil(self.registration.showNotification((data.emoji || "🔔") + " PASSIO", opts).then(() => accuser(data, "notif")));
     return;
   }
 
