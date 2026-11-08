@@ -51,6 +51,10 @@ a { color: var(--accent); }
 .ecran-plein p { color: var(--discret); margin: 0; }
 .logo { border-radius: 18px; }
 .erreur { color: var(--rouge); font-weight: 600; }
+/* Second facteur : 16 px au moins, sinon iOS zoome sur le champ. */
+.champ-code { font: inherit; font-size: 22px; letter-spacing: .3em; text-align: center; width: 100%; box-sizing: border-box; padding: 12px; border-radius: 12px; border: 1px solid var(--ligne); background: var(--carte2); color: var(--texte); }
+.qr-code { display: block; width: 200px; height: 200px; margin: 10px auto; background: #fff; border-radius: 8px; padding: 8px; }
+.cle-totp { font-family: ui-monospace, "SF Mono", monospace; font-size: 15px; word-break: break-all; user-select: all; }
 
 /* ─── Boutons ──────────────────────────────────────────────────────── */
 .btn { font: inherit; font-weight: 700; border-radius: 12px; border: 1px solid var(--ligne); background: var(--carte2); color: var(--texte);

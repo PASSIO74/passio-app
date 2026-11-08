@@ -177,7 +177,7 @@ test("une légère est servie telle quelle : aucune transformation, la grande se
   expect(app07).toContain('safeUrlAttr(passioThumb(p.image, 400))');
   // La grille « Photos » d'un profil VISITÉ (app-04), oubliée par le lot : vignette, jamais la grande.
   const app04 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-04-comments-shop.js"), "utf8");
-  expect(app04).toContain('var src = p.image ? passioThumb(p.image, 360) : "https://picsum.photos/seed/" + p.id + "/300/300";');
+  expect(app04).toContain('var src = p.image ? passioThumb(p.image, 360) : "";');
 });
 
 test("supprimer une publication emporte la grande avec la légère ; une story refusée aussi ; les médias d'avant, un seul objet", async ({ page }) => {

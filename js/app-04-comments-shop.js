@@ -4743,7 +4743,8 @@ function _renderVisitedContent() {
           // Cellule d'un tiers d'écran (≤ 180 px) : la vignette, jamais la grande
           // (≤ 2 048 px) — la grille du profil VISITÉ avait été oubliée par le lot
           // images légères (contre-revue du 21/09). Une légère passe telle quelle.
-          var src = p.image ? passioThumb(p.image, 360) : "https://picsum.photos/seed/" + p.id + "/300/300";
+          var src = p.image ? passioThumb(p.image, 360) : "";
+          if (!src) return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';
           return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';
         }).join("") + '</div>'
       : _vEmpty("Aucune photo");

@@ -2398,7 +2398,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_cuisine_1",
     video: "https://videos.pexels.com/video-files/3195394/3195394-sd_640_360_25fps.mp4",
-    poster: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1556909114-f6e7ad7d3136", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
     userId: "u_theo", passion: "cuisine", mood: "creation",
     text: "Tarte aux fruits du marché. La pâte sablée maison, beurre demi-sel breton. 🍰",
@@ -2413,7 +2413,7 @@ const SEED_REEL_VIDEOS = [
     // `contenu-passion-mood.spec.js` ② quater.
     eventId: "e11",
     video: "https://videos.pexels.com/video-files/5765270/5765270-sd_640_360_24fps.mp4",
-    poster: "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1543364195-077a52659557", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     userId: "u_theo", passion: "sport", mood: "irl",
     text: "📍 Bordeaux, skatepark des Chartrons — 📅 dimanche 14h\nSkate jam ouvert : on tourne, on filme, personne ne note personne. Je bosse mon kickflip depuis trois mois et aujourd'hui ça commence à venir, donc venez rire.\nPas de niveau, prêt de planche possible. Dis-moi en commentaire si tu passes.",
@@ -2423,7 +2423,7 @@ const SEED_REEL_VIDEOS = [
     id: "reel_seed_musique_1",
     eventId: "e1",   // lot UI-5 : la bobine EST la prochaine jam de Léa
     video: "https://videos.pexels.com/video-files/5765163/5765163-sd_640_360_24fps.mp4",
-    poster: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1510915361894-db8b60106cb1", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
     userId: "u_lea", passion: "musique", mood: "irl",
     text: "📍 Lyon, Café des Arts — 📅 jeudi 18h30\nCe que vous entendez, c'est l'impro de ce matin — c'est exactement ce qu'on fera jeudi à la jam, en moins seul.\nGuitaristes débutants bienvenus, il reste 4 places. Instrument sur place si tu n'as pas le tien.",
@@ -2432,7 +2432,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_voyage_1",
     video: "https://videos.pexels.com/video-files/3571264/3571264-sd_640_360_30fps.mp4",
-    poster: "https://images.unsplash.com/photo-1530841377377-3ff06c0ca713?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1530841377377-3ff06c0ca713", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
     userId: "u_nina", passion: "voyage", mood: "all",
     text: "Réveil à 6 h 10 sur la côte, sans alarme, juste le volet en tôle qui claque.\nTrois jours que le téléphone dort éteint au fond du sac. J'ai posé la caméra sur le muret, je l'ai laissée tourner les douze minutes que le soleil a mis à passer la pointe, et je n'y ai plus touché.\nQuatre lignes dans le carnet, puis je suis retournée me coucher.",
@@ -2441,7 +2441,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_photo_1",
     video: "https://videos.pexels.com/video-files/3209243/3209243-sd_640_360_25fps.mp4",
-    poster: "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1502920917128-1aa500764cbd", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     userId: "u_karim", passion: "photo", mood: "learn",
     text: "Comment je règle mon argentique avant une sortie street. 📸",
@@ -2450,7 +2450,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_cuisine_2",
     video: "https://videos.pexels.com/video-files/4253587/4253587-sd_640_360_25fps.mp4",
-    poster: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1565299624946-b28f40a0ae38", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     userId: "u_theo", passion: "cuisine", mood: "learn",
     text: "Le geste du pli pour la pâte feuilletée. 80% patience, 20% beurre froid. 🧈",
@@ -2459,7 +2459,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_litterature_1",
     video: "https://videos.pexels.com/video-files/6981411/6981411-sd_640_360_25fps.mp4",
-    poster: "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1456513080510-7bf3a84b82f8", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
     userId: "u_sofia", passion: "litterature", mood: "irl",
     text: "📍 Bordeaux, café de la place Saint-Michel, table du fond — 📅 dimanche 15 h\nOn lit Les Années d'Annie Ernaux. Chacun vient avec son exemplaire et une page cornée, on parle une heure et demie de ce qui nous a arrêtés dans la lecture, et personne n'est obligé de parler.\nDouze places, la table ne tient pas plus.\nSi vous venez, dites-moi la page que vous voulez lire à voix haute, je fais la liste avant dimanche.",
@@ -2468,7 +2468,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_musique_2",
     video: "https://videos.pexels.com/video-files/4488162/4488162-sd_640_360_24fps.mp4",
-    poster: "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1514320291840-2e0a9bf2a9ae", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
     userId: "u_lea", passion: "musique", mood: "irl",
     text: "📍 Lyon, une cave voûtée de la Croix-Rousse — 📅 vendredi 20 h 30\nTrois guitares et une voix, deux lampes posées au sol, rien d'amplifié : la pièce fait sept mètres sur quatre, ça porte tout seul.\nTrente personnes assises par terre, pas une de plus, sinon on n'entend plus les cordes frotter.\nLaissez-moi un mot si vous voulez une place, j'envoie l'adresse exacte et le code de la porte la veille.",
@@ -2477,7 +2477,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_voyage_2",
     video: "https://videos.pexels.com/video-files/1721294/1721294-sd_640_360_24fps.mp4",
-    poster: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1502602898657-3e91760cbb34", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4",
     userId: "u_nina", passion: "voyage", mood: "irl",
     text: "📍 Marrakech, place des Ferblantiers — 📅 samedi 7h15\nOn traverse le souk avant l'ouverture des boutiques : à cette heure il n'y a que les livreurs, les chats et l'odeur du bois mouillé. Deux heures de marche lente, on s'arrête autant qu'on veut pour photographier, et on termine autour d'un thé.\nSix places, pas plus : les ruelles sont étroites et je ne veux gêner personne. Dites-moi si vous venez, je donne le point de rendez-vous exact la veille.",
@@ -2486,7 +2486,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_photo_2",
     video: "https://videos.pexels.com/video-files/4065906/4065906-sd_640_360_24fps.mp4",
-    poster: "https://images.unsplash.com/photo-1452587925148-ce544e77e70d?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1452587925148-ce544e77e70d", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
     userId: "u_karim", passion: "photo", mood: "creation",
     text: "Atelier tirage argentique. L'image apparaît dans le révélateur. 🖤",
@@ -2495,7 +2495,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_sport_2",
     video: "https://videos.pexels.com/video-files/4761437/4761437-sd_640_360_25fps.mp4",
-    poster: "https://images.unsplash.com/photo-1517649763962-0c623066013b?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1517649763962-0c623066013b", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
     userId: "u_theo", passion: "sport", mood: "learn",
     text: "Échauffement du matin. 15 min de mobilité, ça change tout. 💪",
@@ -2504,7 +2504,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_cuisine_3",
     video: "https://videos.pexels.com/video-files/4253586/4253586-sd_640_360_25fps.mp4",
-    poster: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1495474472287-4d71bcdd2085", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/VolkswagenGTIReview.mp4",
     userId: "u_theo", passion: "cuisine", mood: "irl",
     text: "📍 Marseille, cours Julien, devant le kiosque — 📅 dimanche 9h\nJ'apporte ma cafetière à piston, six mugs en grès d'un potier de la Belle de Mai, du pain de la veille grillé au beurre demi-sel et un pot de confiture d'abricot faite mardi. On tient une heure et demie, pas plus : j'enchaîne sur une prestation à midi.\nSix mugs, donc six places, je bois dans mon thermos. Dites-moi avant samedi soir si vous en prenez une.",
@@ -2514,7 +2514,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_art_1",
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    poster: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1513364776144-60967b0f800f", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     userId: "u_lou", passion: "art", mood: "creation",
     text: "Émaillage d'une série de six bols. La couleur ne se révèle qu'à la sortie du four : on travaille en aveugle. 🏺",
@@ -2523,7 +2523,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_danse_1",
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    poster: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1508700115892-45ecd05ae2ad", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     userId: "u_amira", passion: "danse", mood: "creation",
     text: "Trente secondes de la routine sur laquelle je bosse depuis deux semaines. Le transfert de poids au sol, toujours pas propre. 💃",
@@ -2532,7 +2532,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_mode_1",
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-    poster: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1483985988355-763728e1935b", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     userId: "u_zoe", passion: "mode", mood: "creation",
     text: "Une veste de costume des années 80 devient une veste courte. Deux heures, zéro tissu acheté. 🧵",
@@ -2541,7 +2541,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_jardinage_1",
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
-    poster: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1416879595882-3373a0480b5b", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     userId: "u_lucie", passion: "jardinage", mood: "learn",
     text: "Le compost sans retournement, en trois étapes, tel que je le monte depuis quatre ans à Angers.\n1. Dix centimètres de branchages grossiers au fond, pour que l'air passe par-dessous.\n2. Un seau de déchets de cuisine pour trois seaux de feuilles mortes ou de carton brun : c'est ce ratio qui évite l'odeur.\n3. On couvre d'un vieux tapis et on n'y touche plus pendant six mois.\nCelui que j'ai monté en mars est prêt ce matin, tamisé à la main en vingt minutes.",
@@ -2550,7 +2550,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_moto_1",
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4",
-    poster: "https://images.unsplash.com/photo-1558980664-10e7ec7b39cb?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1558980664-10e7ec7b39cb", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     userId: "u_greg", passion: "moto", mood: "irl",
     text: "Col du Béal au petit matin, personne sur la route. C'est pour ces quarante minutes-là qu'on se lève à 5h. 🏍",
@@ -2559,7 +2559,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_animaux_1",
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
-    poster: "https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1450778869180-41d0601e046e", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     userId: "u_maya", passion: "animaux", mood: "learn",
     text: "Rappel au sifflet, séance 4. On travaille à dix mètres, en extérieur, sans distraction. La progression se fait en semaines, pas en jours. 🐾",
@@ -2568,7 +2568,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_tech_1",
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
-    poster: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1518770660439-4636190af475", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     userId: "u_yanis", passion: "tech", mood: "learn",
     text: "Mon petit outil de tri des notes, écrit un dimanche. Il fait une seule chose et il la fait bien. 💻",
@@ -2577,7 +2577,7 @@ const SEED_REEL_VIDEOS = [
   {
     id: "reel_seed_litterature_2",
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
-    poster: "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=720&h=1280&fit=crop&auto=format&q=80",
+    poster: imageDemo("photo-1521587760476-6c12a4b040da", "portrait"),
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     userId: "u_anaïs", passion: "litterature", mood: "creation",
     text: "Neuvième version du même poème, treize vers, et je bute toujours au même endroit : le passage du huitième au neuvième vers.\nJe l'ai lu à voix haute six fois hier soir, minuté à 1 min 40 — chaque fois ma voix accélère juste là, signe que le vers ne tient pas.\nCe soir j'essaie de couper les deux vers de liaison pour voir si le trou se referme tout seul. Si ça ne marche pas, je repars de la version 6.",
@@ -2869,13 +2869,13 @@ function reelMediaHTML(post) {
     return `<div class="reel-media" style="background: linear-gradient(135deg, ${COLORS_PASSION_BG[post.passion] || "#4c1d95"}, #7c3aed);"></div>`;
   }
   const vignette = (typeof passioThumb === 'function') ? passioThumb(src, 720) : src;
-  return `<img class="reel-media" src="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='https://picsum.photos/seed/' + Math.random() + '/720/1280';"/>`;
+  return `<img class="reel-media" src="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.style.visibility='hidden';"/>`;
 }
 
 function resolveCoverUrl(cover) {
   if (!cover) return null;
   if (typeof COVER_PHOTOS !== "undefined" && COVER_PHOTOS[cover]) {
-    return `https://images.unsplash.com/${COVER_PHOTOS[cover]}?w=720&h=1280&fit=crop&auto=format&q=80`;
+    return imageDemo(COVER_PHOTOS[cover], "portrait");
   }
   return null;
 }

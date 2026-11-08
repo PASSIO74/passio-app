@@ -6934,10 +6934,11 @@ function ecrireRailCoulissant(rail, html) {
 // Unsplash), et son repli. Le Fil et le Profil en avaient deux copies.
 function passionPhotoUrl(passionMeta) {
   var id = passionMeta && passionMeta.photo;
-  return id ? "https://images.unsplash.com/" + id + "?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" : null;
+  return id ? imageDemo(id, "avatar") : null;
 }
+// Plus de photo de repli chez un tiers (picsum) : une photo qui ne charge pas laisse l'emoji de la tuile.
 function passionPhotoFallback(passionId) {
-  return "https://picsum.photos/seed/" + encodeURIComponent(String(passionId || "passion")) + "/200/200";
+  return null;
 }
 
 function feedFollowingSelected() {
@@ -9753,21 +9754,17 @@ function renderPostCover(p, passion) {
   const passionLabel = passion.label || "";
   const passionEmoji = passion.emoji || "✨";
 
-  if (photoId) {
-    const primary = `https://images.unsplash.com/${photoId}?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80`;
-    // Picsum fallback, always serves a real photograph, seeded by cover key for consistency.
-    const seed = encodeURIComponent(coverKey + "-" + (p.id || ""));
-    const fallback1 = `https://picsum.photos/seed/${seed}/900/560`;
-    const fallback2 = `https://loremflickr.com/900/560/${encodeURIComponent(coverKey.replace(/_/g, ','))}`;
+  const primary = photoId ? imageDemo(photoId, "couverture") : null;
+  if (primary) {
     const pc = passion.color || "#8b5cf6";
-    // Double onerror chain: unsplash → picsum (always works) → loremflickr (themed) → gradient
-    const onerr = `this.onerror=function(){this.onerror=function(){this.style.display='none';};this.src='${escapeJsArg(fallback2)}';};this.src='${escapeJsArg(fallback1)}';`;
+    // Plus de repli chez des tiers (picsum, loremflickr) : une photo qui ne charge pas laisse le dégradé.
+    const onerr = "this.style.display='none'";
     return `<div class="post-media post-cover-photo" style="
       background:
         radial-gradient(circle at 30% 30%, ${pc}55, transparent 55%),
         linear-gradient(135deg, ${pc}33 0%, #2a2450 60%, #1c1938 100%);
     ">
-      <img class="post-cover-img" src="${primary}" alt="${escapeHtml(passionLabel)}" loading="lazy" onload="if(this.src.indexOf('images.unsplash.com')>-1)this.parentNode.classList.add('cover-ok');" onerror="${onerr}" />
+      <img class="post-cover-img" src="${safeUrlAttr(primary)}" alt="${escapeHtml(passionLabel)}" loading="lazy" onload="if(this.src.indexOf('/demo/u/')>-1)this.parentNode.classList.add('cover-ok');" onerror="${onerr}" />
       <div class="post-cover-overlay"></div>
       <div class="post-cover-caption">${passionEmoji} ${escapeHtml(passionLabel)}</div>
     </div>`;

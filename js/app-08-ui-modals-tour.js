@@ -627,9 +627,9 @@ function _storyBubbleInner(g) {
   }
   const withPhoto = g.stories.slice().reverse().find(s => s.photo);
   if (withPhoto) {
-    const photoUrl = `https://images.unsplash.com/${withPhoto.photo}?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75`;
-    const fallback = `https://picsum.photos/seed/${withPhoto.id}/160/160`;
-    return `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(g.name)}" onerror="this.onerror=null;this.src='${escapeJsArg(fallback)}'"/>`;
+    // `photo` est un identifiant d'exemple : hors de la liste servie par PASSIO, `imageDemo` rend null et l'emoji reste.
+    const photoUrl = imageDemo(withPhoto.photo, "mini");
+    if (photoUrl) return `<img loading="lazy" decoding="async" src="${safeUrlAttr(photoUrl)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
   }
   // `profiles.emoji` est un champ libre d'un autre compte (aucune contrainte en base) :
   // ce retour part tel quel dans le HTML du rail (audit 2026-11-06).

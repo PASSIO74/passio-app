@@ -73,10 +73,6 @@
   <!-- Connexion anticipée (DNS+TLS) vers le backend. Le SDK, lui, est servi par
        notre origine depuis le 2026-09-11 (js/vendor/, plus aucun CDN de scripts). -->
   <link rel="preconnect" href="https://njkiyoklssvefstljemx.supabase.co" />
-  <!-- Perf : les tuiles passions + couvertures seed chargent depuis Unsplash dès
-       le premier paint du fil — la connexion TLS est ouverte en avance. -->
-  <link rel="preconnect" href="https://images.unsplash.com" />
-  <link rel="dns-prefetch" href="https://picsum.photos" />
 
   <!-- Supabase SDK : chargé À LA DEMANDE en tête de boot() (après le code d'accès,
        gain FCP + JS inutilisé sur la page verrouillée) — voir supabase-loader.js -->
@@ -85,16 +81,11 @@
   <!-- MapLibre GL + OpenFreeMap : chargés à la demande quand une carte s'ouvre -->
   <script src="js/map-loader.js"></script>
 
-  <!-- §5 de la direction : titres et appels à l'action en Manrope 700-800.
-       `display=swap` : le texte s'affiche IMMÉDIATEMENT dans la pile système
-       et bascule quand la police arrive — jamais de texte invisible. Le texte
-       courant reste en police système (la direction l'autorise : « Inter ou
-       police système équivalente »), pour ne pas payer deux familles.
-       Autorisé par la CSP de production : style-src … fonts.googleapis.com,
-       font-src … fonts.gstatic.com (netlify.toml). -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap" />
+  <!-- §5 de la direction : titres et appels à l'action en Manrope 600-800, SERVIE PAR PASSIO
+       (fonts/, @font-face en fin de styles.css, licence OFL dans fonts/OFL.txt) depuis le
+       2026-11-08 : plus de Google Fonts à chaque ouverture, donc plus d'adresse IP chez Google
+       sans choix du visiteur (audit de sécurité du 06/11, G-03). `font-display: swap` : le texte
+       s'affiche tout de suite dans la pile système, puis bascule. -->
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>

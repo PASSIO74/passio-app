@@ -1430,7 +1430,7 @@ function renderProfileContent() {
 
   if (tab==="photos") {
     var photos = mine.filter(function(p){return !p.isReel && (p.type==="photo"||p.image);});
-    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image?passioThumb(p.image, 360):"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+safeUrlAttr(src)+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
+    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image?passioThumb(p.image, 360):"";if(!src)return '<div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(28,25,56,.9));"></div>';return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+safeUrlAttr(src)+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
   } else if (tab==="videos") {
     // Vidéos « classiques » : on exclut les bobines (elles ont leur propre onglet).
     var videos = mine.filter(function(p){return p.type==="video" && !p.isReel;});
@@ -3746,8 +3746,7 @@ function renderProfileStrip() {
   var followingTile = passionTileHTML({
     emoji: "👥",
     label: "Suivis",
-    photoUrl: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
-    fallbackUrl: "https://picsum.photos/seed/community/200/200",
+    photoUrl: imageDemo("photo-1529156069898-49953e39b3ac", "avatar"),
     avatarStyle: "background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));",
     count: followingPostCount,
     selected: enSuivis,

@@ -570,3 +570,19 @@ Retirer le bouton de la barre du haut (fiche ➖) reposait sur « il y est déj�
 ⚠️ **« J'ai déjà un compte — me connecter » DEVIENT « J'ai déjà un compte » sur la carte** : le libellé long ne tenait pas sur la rangée. Mesuré à 375 px : 110 + 20 + 127 = 257 px dans une rangée de 280 px, sur une ligne, sans que la carte grandisse ; à 320 px les deux liens s'empilent. C'est la paire de mots du gate d'action engageante ; l'entrée des Paramètres garde le libellé long.
 ⚠️ **UN `PASSIO_PORT` CHOISI À LA MAIN N'EST PAS UN PORT LIBRE.** Une autre session servait son propre worktree sur 8097 : `reuseExistingServer` a fait mesurer à cette suite SES fichiers, soit quatre rouges identiques avec et sans le lien. Lire ce que sert le port (`curl …/js/first-run.js`) avant de croire un résultat, surtout un résultat qui ne change pas entre deux variantes.
 Verrous : `tests/e2e/creer-compte-accueil.spec.js` (① bis, le geste complet jusqu'au formulaire ; ① quater, les deux états de la carte à 320 et 390 px) et `tests/e2e/first-run.spec.js` (« une seule action principale… »). **Réinjection** : lien retiré → 4 rouges ; lien changé en bouton → 2 rouges ; le témoin « elle s'affiche… » reste vert.
+
+
+## 🔒 LA PREMIÈRE VISITE NE PARLE PLUS QU'À PASSIO — police et images d'illustration servies par nous (2026-11-08)
+
+`index.html`, `styles.css` (fin), `fonts/`, `netlify/edge-functions/demo.js`, `imageDemo` (app-01), `js/legal-textes.js` §6. Audit de sécurité du 06/11, G-03 : une première visite sans compte contactait Google Fonts et Unsplash avant tout choix, et des replis picsum.photos et loremflickr.com que la politique ne nommait pas.
+
+- **Manrope** est servie par PASSIO : deux sous-ensembles woff2 (latin, latin étendu), police variable 600 à 800, licence OFL dans `fonts/OFL.txt`. Copiée par `scripts/build.js` (étape 8 bis). Google Fonts ne reste qu'une police **choisie dans l'éditeur de texte** (app-04) : la CSP le garde, la politique le dit ainsi.
+- **Images d'illustration** : `/demo/u/<identifiant>/<format>`, une Edge Function qui va chercher l'image chez Unsplash **sans rien relayer du visiteur**. Un simple relais Netlify transmet l'adresse IP dans `X-Forwarded-For` : il ne réglait rien.
+- **Replis tiers retirés** : une photo qui ne charge pas laisse le dégradé ou l'emoji, plus jamais une photo au hasard chez un tiers.
+- **Vidéos d'exemple** : toujours chez Pexels, nommé au §6. Les servir demande les requêtes par plage d'iOS (voir `media.js`) : non fait.
+
+⚠️ **LA LISTE DES IMAGES EST FERMÉE.** Un identifiant Unsplash ajouté au code doit l'être aussi dans `IDS` de `demo.js`, sinon l'image ne s'affiche pas (404, sans lecture d'origine). Le banc `tests/unit/demo-edge.test.mjs` ⑧ échoue dans les deux sens.
+
+⚠️ **EN LOCAL, `/demo/*` N'EXISTE PAS** : `npm run serve` ne lance pas les Edge Functions. Les exemples y montrent le dégradé ; c'est normal.
+
+Version de la politique : 2026-11-08. Verrous : `politique-tiers-appeles.spec.js` ①bis, `demo-edge.test.mjs`.

@@ -910,3 +910,14 @@ Le cas à 35 s sans correctif : quand la boucle trouve la file vide, elle s'arr�
 **Laissé tel quel, délibérément** : les appelants directs de `flush()` (`tel.error`, `window.error`, `unhandledrejection`, `linkShare`, `linkSignup`, `link_open`, `online`, `release-guard`, `identity-transition`) partent encore pendant un backoff, et chaque refus entame la grâce. Ce sont des événements rares qu'on veut immédiats ; une rafale d'erreurs JS pendant un rafraîchissement lent peut encore atteindre le repli. Le retour au premier plan retire aussi le minuteur, c'est voulu.
 
 **À relire après la mise en ligne** : les POST `telemetry_events` en 401 dans les edge logs. Un écart sous 1,5 s ne doit plus venir que de POST parallèles d'une page qui se ferme ou d'un de ces appelants directs. Sur une version encore en cache, l'ancien comportement dure jusqu'au prochain démarrage complet.
+
+
+## 🔐 LE PILOTAGE INSCRIT ET DEMANDE SON SECOND FACTEUR (2026-11-08)
+
+`pilotage/pilotage.js` (§ Second facteur), `pilotage/index.html` (`#ecranSecondFacteur`, `#secondFacteur`), `tests/e2e/pilotage-second-facteur.spec.js`. Audit de sécurité du 06/11, A-01 : la fonction `pilotage` savait exiger un second facteur (`PILOTAGE_EXIGER_AAL2`), mais **rien ne permettait d'en inscrire un**. La condition du GO était hors d'atteinte du responsable.
+
+- **Inscription** dans Réglages : code QR, clé à saisir à la main, code à 6 chiffres vérifié. Une inscription abandonnée est retirée avant la suivante.
+- **À chaque ouverture**, dès qu'un facteur est vérifié et que la session est en `aal1` : le code d'abord, l'application ensuite.
+- **Un refus « Second facteur requis »** n'ouvre jamais l'écran de refus, qui fermerait aussi les Réglages où le facteur s'inscrit.
+
+⚠️ **ORDRE : INSCRIRE, PUIS POSER `PILOTAGE_EXIGER_AAL2=1`.** Dans l'autre ordre, le pilotage se ferme à son propre éditeur. Se vérifie au canal ① : `select count(*) from auth.mfa_factors where status = 'verified'` pour le compte éditeur.
