@@ -1631,11 +1631,15 @@ est écrit), deux sceptiques par trouvaille grave : rien de bloquant — la seul
 ## 🧱 « JAMAIS DE BASE64 EN BASE » DEVIENT UNE RÈGLE DU SERVEUR : `conv_messages.content` BORNÉ (2026-11-07)
 
 **Statut : client EN PRODUCTION (#751, 620aa87 — déployé avec 6634029 le 08/11 à 07:05 UTC, après le rouge du staging
-corrigé par #755) ; migration PRÊTE, NON appliquée, reprise le 08/11 sur le socle des lots de sécurité 1 à 3** (contre-revue
-n° 5816974908, « Reprise du 08/11 » plus bas) — `migrations/migration_conv_messages_contenu_borne_2026-11-07.sql`, banc
-`tests/sql/migration-conv-messages-contenu-borne.test.sh` (83 vérifications). Périmètre critique : contre-revue de PASSIO74
-(« Gouvernance critique »), attestation, puis application depuis le poste (canal ③), le staging d'abord. Rien n'a été écrit
-en base par ce lot.
+corrigé par #755) ; migration APPLIQUÉE EN PRODUCTION le 08/11 à 07:45:07 UTC** (reprise du 08/11 sur le socle des lots de
+sécurité 1 à 3, fusionnée par #754 en `85f082f2`) — `migrations/migration_conv_messages_contenu_borne_2026-11-07.sql`, banc
+`tests/sql/migration-conv-messages-contenu-borne.test.sh` (83 vérifications). Contre-revue n° 5817042152 sur `f3a04e55`
+(auto-revue de mainteneur unique, ASTRA-61 bis ; la n° 5816974908 l'avait bloquée sur l'ancien socle), attestation consignée,
+application depuis le poste (canal ③, worktree d'`origin/main`) : verdict 17 × OK, « 88 ; 551 ; 0 ». **Mesuré au canal ①** :
+quatre CHECK `convalidated`, policies `8bf26134…` et déclencheurs `fc9c5e60…` inchangés, 88 messages, 0 au-delà de la borne,
+0 trace du décor, journal `applique` citant la revue. **Le staging n'a PAS reçu la migration** : la revue ne nomme que la
+production (une attestation vaut pour les seules cibles que sa revue nomme). **Reste** : les journaux des 24 h
+(`postgres_logs`, 23514 sur conv_messages ; `client_errors`), au plus tôt le 09/11 à 07:45 UTC.
 
 **Le défaut.** L'invariant « jamais de base64 en base (→ Storage) » n'était tenu QUE par le client. `conv_messages.content` est
 un `text` nullable sans contrainte CHECK ; la policy d'insertion (`conv_messages_insert_member` — pas seulement
