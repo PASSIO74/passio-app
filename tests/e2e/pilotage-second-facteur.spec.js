@@ -87,6 +87,8 @@ test("inscription depuis les Réglages : code QR, clé, code vérifié, facteur 
   await page.click("#sfAjouter");
   await expect(zone.locator("img.qr-code")).toHaveAttribute("src", /^data:image\/svg\+xml;/);
   await expect(zone.locator(".cle-totp")).toHaveText("JBSWY3DPEHPK3PXP");
+  // Sur le même téléphone : le bouton ouvre l'application d'authentification, compte prérempli.
+  await expect(page.locator("#sfOuvrirAppli")).toHaveAttribute("href", /^otpauth:\/\/totp\//);
   expect(etat.inscriptions).toBe(1);
   // Un code mal formé ne part pas.
   await page.fill("#sfInscriptionCode", "12");
