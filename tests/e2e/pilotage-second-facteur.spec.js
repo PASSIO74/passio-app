@@ -3,9 +3,12 @@
 // La fonction `pilotage` sait exiger un second facteur (PILOTAGE_EXIGER_AAL2),
 // mais rien ne permettait d'en inscrire un : la condition du GO était hors
 // d'atteinte. On mesure : l'inscription depuis les Réglages (code QR, clé, code
-// vérifié), le code demandé à l'ouverture AVANT l'application dès qu'un facteur
-// est vérifié, et un refus « Second facteur requis » qui ne ferme jamais les
+// vérifié), et un refus « Second facteur requis » qui ne ferme jamais les
 // Réglages où il s'inscrit. Auth et fonction SIMULÉES : rien ne part en production.
+// SUSPENDU le 08/11 (« on le remettra plus tard ») : le code n'est plus demandé à
+// l'ouverture (SECOND_FACTEUR_A_L_OUVERTURE), il ne l'est plus que si la
+// fonction l'exige. Pour le remettre, rétablir aussi le test « le code est
+// demandé à l'ouverture, avant l'application » (historique git, #789).
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { sansDonneesDistantes } = require("./app-helper");
@@ -99,15 +102,32 @@ test("inscription depuis les Réglages : code QR, clé, code vérifié, facteur 
   await page.fill("#sfInscriptionCode", "000000");
   await page.click("#sfActiver");
   await expect(zone.locator(".erreur")).toContainText("Code refusé");
-  // Le bon code active le facteur et élève la session.
+  // Le bon code active le facteur et élève la session ; la carte dit que le code est suspendu.
   await page.fill("#sfInscriptionCode", "123 456");
   await page.click("#sfActiver");
-  await expect(zone).toContainText("Actif");
+  await expect(zone).toContainText("Suspendu");
+  await expect(zone).toContainText("n'est plus demandé pour l'instant");
   await expect(zone).toContainText("Cette session est vérifiée.");
   expect(etat.verifications.at(-1)).toEqual({ facteur: "f-neuf", code: "123456", defi: "defi-f-neuf" });
 });
 
-test("un facteur vérifié : le code est demandé à l'ouverture, avant l'application", async ({ page }) => {
+test("suspendu : un facteur vérifié n'arrête plus l'ouverture, l'application s'ouvre sans code", async ({ page }) => {
+  const etat = { facteurs: [FACTEUR], inscriptions: 0, verifications: [], bonCode: "654321" };
+  const appels = [];
+  await poserSession(page, [FACTEUR]);
+  await routerAuth(page, etat);
+  await routerFonction(page, appels, () => ({ status: 503, body: { error: "indisponible" } }));
+  await page.goto("/pilotage/");
+  await expect(page.locator("#app")).toBeVisible();
+  await expect(page.locator("#ecranSecondFacteur")).toBeHidden();
+  await expect.poll(() => appels.length).toBeGreaterThan(0);
+  expect(appels.every((a) => a === "aal1"), "la lecture part avec la session de connexion, sans code").toBe(true);
+  expect(etat.verifications, "aucun code demandé").toHaveLength(0);
+  await page.click('[data-tab="reglages"]');
+  await expect(page.locator("#secondFacteur")).toContainText("Suspendu");
+});
+
+test("suspendu, mais la fonction l'exige encore : le code est demandé, jamais l'écran de refus", async ({ page }) => {
   const etat = { facteurs: [FACTEUR], inscriptions: 0, verifications: [], bonCode: "654321" };
   const appels = [];
   await poserSession(page, [FACTEUR]);
@@ -115,8 +135,9 @@ test("un facteur vérifié : le code est demandé à l'ouverture, avant l'applic
   await routerFonction(page, appels, (aal) => (aal === "aal2" ? { status: 503, body: { error: "indisponible" } } : { status: 403, body: { error: "Second facteur requis." } }));
   await page.goto("/pilotage/");
   await expect(page.locator("#ecranSecondFacteur")).toBeVisible();
-  await expect(page.locator("#app")).toBeHidden();
-  expect(appels, "aucune lecture du pilotage avant le code").toHaveLength(0);
+  await expect(page.locator("#sfErreur")).toContainText("Le pilotage demande ton second facteur.");
+  await expect(page.locator("#ecranRefus")).toBeHidden();
+  const avantCode = appels.length;
   await page.fill("#sfCode", "111111");
   await page.click("#sfValider");
   await expect(page.locator("#sfErreur")).toContainText("Code refusé");
@@ -125,8 +146,8 @@ test("un facteur vérifié : le code est demandé à l'ouverture, avant l'applic
   await page.press("#sfCode", "Enter");
   await expect(page.locator("#app")).toBeVisible();
   await expect(page.locator("#ecranSecondFacteur")).toBeHidden();
-  await expect.poll(() => appels.length).toBeGreaterThan(0);
-  expect(appels.every((a) => a === "aal2"), "chaque appel part avec la session élevée").toBe(true);
+  await expect.poll(() => appels.length).toBeGreaterThan(avantCode);
+  expect(appels.slice(avantCode).every((a) => a === "aal2"), "après le code, chaque appel part avec la session élevée").toBe(true);
 });
 
 test("« Second facteur requis » sans facteur inscrit : les Réglages restent ouverts, avec la marche à suivre", async ({ page }) => {
