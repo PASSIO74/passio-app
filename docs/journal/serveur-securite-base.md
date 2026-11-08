@@ -1737,15 +1737,35 @@ post_comments, event_comments…) ne sont bornées que par les lots de sécurit�
    bundle de https://passio-app.netlify.app) et refuse sinon.
 2. Contre-revue de la PR par PASSIO74 (marqueur « Contre-revue technique indépendante », fichier, `cible: njkiyoklssvefstljemx`),
    puis l'attestation dans `.passio/migrations/attestations.json` (empreinte du fichier revu).
-3. Depuis un **worktree détaché d'`origin/main`** (jamais le dossier de travail — fiche C-02), **le staging d'abord** (ses
-   empreintes comparées à celles de la production avant d'en croire le verdict — fiche des lots de sécurité), puis la
-   production :
-   `npm run migration:appliquer -- migrations/migration_conv_messages_contenu_borne_2026-11-07.sql --projet fcksxofaelcdmmifnwjo`,
-   puis `--projet njkiyoklssvefstljemx`. Verdict attendu : 17 × OK, et l'information « 88 ; 551 ; 0 » (ou le compte du jour).
+3. Depuis un **worktree détaché d'`origin/main`** (jamais le dossier de travail — fiche C-02), **après avoir relu le journal**
+   (`node scripts/appliquer-migration.mjs --journal --projet njkiyoklssvefstljemx`, ou `migrations_appliquees` au canal ①) :
+   `node scripts/appliquer-migration.mjs migrations/migration_conv_messages_contenu_borne_2026-11-07.sql --projet njkiyoklssvefstljemx`
+   — `node` directement : sous PowerShell, le `--` de `npm run` se perd (`.passio/migrations/README.md`). Verdict attendu :
+   17 × OK, et l'information « 88 ; 551 ; 0 » (ou le compte du jour). **Le staging n'en est pas** : la revue n° 5817042152 ne
+   nomme que la production, et la barrière refuse une cible que la revue ne nomme pas (`preuve_divergente` ;
+   `attester-migration.mjs` aussi). L'y porter demande une revue qui écrit `cible: fcksxofaelcdmmifnwjo`, son attestation,
+   puis le même envoi `--projet fcksxofaelcdmmifnwjo` — en sachant qu'une migration à prérequis client, au staging, fait
+   rougir toute PR dont la base précède ce client (`.passio/migrations/README.md`).
 4. **Mesurer au canal ①**, jamais le tableau : quatre `conname` en `contype = 'c'` (les deux d'ici, `convalidated`, et les
    deux du lot de sécurité, inchangées) ; policies et déclencheurs aux empreintes 8bf26134… / fc9c5e60… ; 0 profil `00000000-0000-4000-8000-00000000cb01`, 0
    message `zz_cmb_%` ; puis les journaux des 24 h : `postgres_logs` sur `parsed.sql_state_code = '23514'` pour
    conv_messages (un refus réel = un client qui n'est pas à jour, ou une requête forgée — à lire), `client_errors`.
+
+**Application du 08/11 : DEUX envois, à dix minutes d'écart.** `migrations_appliquees` porte deux lignes pour ce fichier en
+production, même empreinte (`cda5b403…`), même attestation, même verdict (17 × OK, « 88 ; 551 ; 0 ») : n° 41 à 07:45:07 UTC
+(l'envoi que consigne #783, attestation et statut) et n° 42 à 07:55:29 UTC (Benjamin à la main, sur la consigne de la session
+qui avait écrit la migration — elle n'avait relu ni le journal ni les PR ouvertes). Le second envoi
+n'a rien changé : la migration est rejouable (banc ③), et remesuré au canal ① à 07:56:47 UTC, l'état est celui qu'attend
+l'en-tête — quatre CHECK `convalidated` (les deux d'ici à leur définition exacte, `conv_messages_content_borne` et
+`conv_messages_id_forme` intactes), policies `8bf26134…` et déclencheurs `fc9c5e60…` inchangés, 88 messages, 551 caractères
+au plus, 0 data-URL, 0 au-delà de 20 000, et 0 trace du décor (profil `…cb01`, `zz_cmb_%` dans conversations, membres,
+messages et `realtime.messages`, compteurs de `debit_ecritures`). **Mais rien ne l'empêchait** : la barrière vérifie la
+revue, le contenu et la cible, jamais qu'un fichier est déjà parti. D'où la relecture du journal en tête de l'étape 3.
+
+**L'en-tête du fichier garde deux états** : le bloc mesuré le 07/11 (« AUCUNE CHECK », « Update propre ») est HISTORIQUE ;
+l'état de référence est le bloc « REMESURÉ le 08/11 » qui le suit. Le fichier n'est pas retouché pour autant : il reste, à
+l'octet, celui qui a été revu, attesté et envoyé (`cda5b403…`) — une retouche invaliderait l'attestation (remarque 2 de la
+contre-revue 5817042152 ; la remarque 1, les titres du banc encore datés du 07/11, est reprise dans le banc).
 
 **Retour arrière** : le bloc « --| » de l'en-tête (deux `drop constraint if exists`, rien d'effacé ; les CHECK du lot de
 sécurité restent) ; le banc ⑦ prouve le

@@ -221,7 +221,7 @@ alter role postgres set search_path to "$user", public, extensions;
 create database socle owner postgres;
 SQL
 
-# ── LE SOCLE : la production du 2026-11-07, bâtie par `postgres` ────────────
+# ── LE SOCLE : la production du 2026-11-08 (après les lots de sécurité 1 à 3), bâtie par `postgres` ──
 # (`client_min_messages` : la publication avertit que `wal_level` n'est pas
 # logique — ce banc ne décode pas le WAL, l'avertissement n'apprend rien.)
 PGOPTIONS='-c client_min_messages=error' psql -h "$BASE" -p "$PORT" -U postgres -d socle -X -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
@@ -250,7 +250,7 @@ AS $function$
 $function$;
 grant execute on function auth.uid() to anon, authenticated, service_role;
 
--- ── Tables (colonnes de production, 2026-11-07) ──
+-- ── Tables (colonnes de production, 2026-11-08 ; comptes_en_suppression réduite aux colonnes lues) ──
 create table public.profiles (id text primary key, username text not null, emoji text default '✨', color text default '#8b5cf6',
   passion_id text, bio text, created_at timestamp default now(), avatar_url text, cover_url text, passions jsonb default '[]'::jsonb,
   is_private boolean not null default false, rs_links jsonb);
@@ -273,7 +273,7 @@ create table realtime.messages (id uuid primary key default gen_random_uuid(), t
 -- Ce que la base a POUSSÉ (realtime.send factice) : une ligne par poussée.
 create table banc.poussees (topic text, event text, quand timestamptz default clock_timestamp());
 
--- Droits de table (relacl de production, 2026-11-07).
+-- Droits de table (relacl de production, 2026-11-08).
 revoke all on public.profiles, public.conversations, public.conv_members, public.conv_messages, public.blocks,
   public.comptes_en_suppression from anon, authenticated, service_role;
 grant select, insert, update, delete on public.profiles, public.blocks to anon, authenticated;
@@ -294,7 +294,7 @@ alter table public.comptes_en_suppression enable row level security;
 alter table public.debit_ecritures enable row level security;
 alter table realtime.messages enable row level security;
 
--- ── Fonctions : définitions de PRODUCTION (pg_get_functiondef, 2026-11-07 ; CRLF → LF) ──
+-- ── Fonctions : définitions de PRODUCTION (pg_get_functiondef ; empreintes du 2026-11-08 ; CRLF → LF) ──
 -- realtime.send FACTICE : la forme de production (topic posé en local, ligne dans
 -- realtime.messages, une panne n'est qu'un avertissement), et la poussée consignée.
 create function realtime.send(payload jsonb, event text, topic text, private boolean default true) returns void language plpgsql as $fn$
@@ -652,7 +652,7 @@ BEGIN
 END;
 $function$;
 
--- Les droits d'EXÉCUTION mesurés (proacl, 2026-11-07).
+-- Les droits d'EXÉCUTION mesurés (proacl, 2026-11-08).
 revoke all on function public.is_conv_member(text, text), public.is_blocked_with(text), public.conv_1a1_bloquee(text) from public, anon;
 revoke all on function public.blocage_entre(text, text), public.broadcast_conv_message_to_users(), public.diffuser_ajout_membre(),
   public.rid_opaque_garde(), public.refuser_ecriture_compte_en_suppression(), public.rate_limit_insert(),
@@ -662,7 +662,7 @@ revoke all on function public.debit_compter(text, text, integer), public.debit_o
   public.conv_members_garde(), public.profiles_figes(), public.ligne_bornee() from public, anon, authenticated;
 revoke all on function public.passion_plier(text) from public, anon;
 
--- ── Policies de conv_messages : textes de PRODUCTION (pg_policies, 2026-11-07) ──
+-- ── Policies de conv_messages : textes de PRODUCTION (pg_policies, 2026-11-08 : « Update propre » retirée par le lot 2) ──
 create policy "Suppression propre" on public.conv_messages for delete
   using (from_id = ((select auth.uid()))::text);
 create policy conv_messages_insert_member on public.conv_messages for insert to authenticated
@@ -671,7 +671,7 @@ create policy conv_messages_insert_member on public.conv_messages for insert to 
 create policy conv_messages_select_member on public.conv_messages for select to authenticated
   using (public.is_conv_member(conv_id, ((select auth.uid()))::text) and (not public.is_blocked_with(from_id)));
 
--- ── Déclencheurs (pg_get_triggerdef, 2026-11-07) ──
+-- ── Déclencheurs (pg_get_triggerdef, 2026-11-08 : ab_debit_octets ajouté par le lot 3) ──
 create trigger broadcast_conv_message_users_trigger after insert on public.conv_messages
   for each row execute function public.broadcast_conv_message_to_users();
 create trigger trg_identifiants_figes before update on public.conv_messages
@@ -734,7 +734,7 @@ insert into public.conv_messages (id, conv_id, from_id, content) values
 COPIE() { QA postgres "create database $1 template socle owner postgres;" >/dev/null; }
 
 # ═══ ⓪ LE SOCLE EST LA PRODUCTION ═══════════════════════════════════════════
-echo "⓪ le socle est la production du 2026-11-07 (empreintes)"
+echo "⓪ le socle est la production du 2026-11-08, après les lots de sécurité 1 à 3 (empreintes)"
 for f in "${!MD5_PROD[@]}"; do
   verifier "corps de $f" "${MD5_PROD[$f]}" \
     "$(QD socle "select coalesce((select md5(replace(prosrc, chr(13) || chr(10), chr(10))) from pg_proc where oid = to_regprocedure('$f')), 'absente');")"
@@ -753,7 +753,7 @@ QD socle "delete from public.conv_messages where id = 'msg_banc_0'; delete from 
 CATALOGUE_AVANT="$(CATALOGUE socle)"
 
 # ═══ ① AVANT : LE DÉFAUT ═════════════════════════════════════════════════════
-echo "① AVANT (le défaut) : rien ne borne le contenu"
+echo "① AVANT (le défaut) : seule la borne du lot 2 (1 Mio) ; rien ne juge l'url d'une enveloppe"
 COPIE avant
 PHOTO="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
 verifier "un membre écrit une enveloppe média à data-URL — ACCEPTÉE" "1" \
