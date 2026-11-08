@@ -10,9 +10,11 @@
 --
 -- LE DÉFAUT. L'invariant « jamais de base64 en base (→ Storage) » n'était tenu
 -- QUE par le client. `conv_messages.content` est un `text` NULLABLE, sans
--- contrainte CHECK ; la policy d'insertion (`conv_messages_insert_member`) juge
+-- contrainte CHECK jusqu'au lot 2 de sécurité (07/11 : 1 Mio en octets, qui
+-- laisse passer une photo en base64) ; la policy d'insertion (`conv_messages_insert_member`) juge
 -- l'auteur, l'appartenance, le blocage et la suppression du compte — jamais le
--- contenu ; « Update propre » laisse l'auteur RÉÉCRIRE le sien. Tout compte
+-- contenu ; « Update propre » laissait l'auteur RÉÉCRIRE le sien (retirée par le
+-- lot 2 de sécurité le 07/11). Tout compte
 -- connecté — une ancienne version de l'app, une requête forgée à la clé
 -- publique — écrit donc un fichier entier en base64 dans un message. C'est ce
 -- qu'a fait la bêta (« un seul message de 5 Mo a fait gonfler conv_messages à
@@ -47,6 +49,22 @@
 --   · RLS active, identité de réplication DEFAULT, table publiée
 --     (supabase_realtime) ; PostgreSQL 17.6.
 --
+-- REMESURÉ le 08/11, après les lots de sécurité 1 à 3 (#753, appliqués en
+-- production le 07/11 à 16:49 UTC — contre-revue de cette PR, n° 5816974908) :
+--   · deux CHECK posées par ces lots : `conv_messages_id_forme` (lot 1,
+--     `id ~ '^[A-Za-z0-9_-]{1,120}$'` — R21 fermé) et `conv_messages_content_borne`
+--     (lot 2, `octet_length(content) <= 1048576`) ;
+--   · trois policies : « Update propre » est retirée (lot 2) — le client
+--     n'écrit plus aucun UPDATE ; empreinte 8bf26134… ;
+--   · cinq déclencheurs : `ab_debit_octets` (lot 3, BEFORE INSERT OR UPDATE,
+--     `debit_octets_par_compte('4194304')` : 4 Mio par minute et par compte,
+--     sous session seulement) s'ajoute ; empreinte fc9c5e60… ;
+--     `trg_rate_limit` compte désormais dans `debit_ecritures`
+--     (`debit_compter`, lot 2) ; `suppression_de_mon_compte` lit aussi
+--     `auth.users.banned_until` ;
+--   · données inchangées : 88 messages, 551 caractères au plus, 0 data-URL,
+--     0 au-delà de 20 000 caractères.
+--
 -- CE QUE LE CLIENT ÉCRIT, chemin par chemin (audit du 07/11 ; js/app-02,
 -- app-04, app-05, app-09) — la borne la plus large de chacun :
 --   · texte (`sendMessageFp`, `_sendTextToSupa`, file de renvoi) : 5 000
@@ -64,7 +82,12 @@
 --     data-URL partait entière.
 --
 -- CE QUI CHANGE (et rien d'autre) — deux contraintes CHECK, qui valent pour
--- TOUS les chemins : client, administration, service_role, restauration :
+-- TOUS les chemins : client, administration, service_role, restauration. Elles
+-- s'ajoutent à `conv_messages_content_borne` (lot 2, 1 Mio en octets) sans la
+-- remplacer : c'est la borne générique du lot de sécurité, elle a son propre
+-- retour arrière ; celle d'ici est plus serrée (20 000 caractères, 80 Ko au plus
+-- en octets), et la règle de l'`url` n'existe nulle part ailleurs — la borne du
+-- lot 2 laisse passer une photo d'environ 750 Ko en base64 :
 --  ① `conv_messages_content_len_check` : `content` NULL, ou 20 000 caractères
 --     au plus (`char_length` : des points de code). 36 fois le plus long message
 --     mesuré, près de deux fois la pire enveloppe que le client écrit. Une
@@ -76,7 +99,7 @@
 --     jamais une data-URL :
 --       · lue par jsonb quand PostgreSQL sait lire le contenu
 --         (`pg_input_is_valid`, PostgreSQL 16+) : les échappements JSON
---         (`data:`), les blancs et caractères de contrôle en tête, la
+--         (`\u0064ata:`), les blancs et caractères de contrôle en tête, la
 --         casse et la clé en double (la dernière l'emporte, comme pour le
 --         client) sont résolus comme le client les résout ;
 --       · ET reconnue dans le texte brut (« "url" : "data: », casse du schéma
@@ -94,15 +117,17 @@
 --     contourne (un déclencheur se désactive, et `session_replication_role =
 --     replica` — celui d'une restauration — le saute) : l'invariant porte sur
 --     ce qui est EN BASE, pas sur qui l'écrit ;
---   · une WITH CHECK ne couvrirait ni l'administration, ni un UPDATE futur hors
---     de « Update propre » ;
+--   · une WITH CHECK ne couvrirait ni l'administration, ni un UPDATE futur (la
+--     policy d'UPDATE retirée le 07/11 peut revenir : la contrainte vaut déjà
+--     pour elle) ;
 --   · aucune fonction nouvelle : rien d'exposé à `/rest/v1/rpc`, et le rôle
 --     client n'a besoin d'aucun droit de plus (une fonction appelée par une
 --     CHECK s'exécute avec les droits de l'écrivain).
 --
 -- CE QUE VOIT LE CLIENT. Un refus est un 23514 que PostgREST rend en 400, avec
 -- le nom de la contrainte dans `message` (les CHECK se jugent par ordre
--- alphabétique de nom : une photo en base64 est donc refusée par la longueur
+-- alphabétique de nom : au-delà de 1 Mio, `conv_messages_content_borne` du lot 2
+-- refuse la première ; en deçà, une photo en base64 est refusée par la longueur
 -- avant de l'être par l'`url`) et SANS la ligne refusée (table sous RLS : pas
 -- de « Failing row contains » — le banc le vérifie). Le client de cette garde le tient
 -- pour DÉFINITIF (`_refusDefinitif`, plus de renvoi automatique) et le DIT
@@ -119,20 +144,22 @@
 --
 -- CE QUI N'EST PAS FERMÉ ICI, dit tel quel :
 --   · un JSON que jsonb refuse ET dont l'`url` écrit « data: » par échappements
---     (`data:`) passe la seconde contrainte — la première le borne à
+--     (`\u0064ata:`) passe la seconde contrainte — la première le borne à
 --     20 000 caractères (moins de 15 Ko décodés) ;
 --   · du base64 hors d'une `url` (dans un texte) n'est borné que par la
 --     longueur ; le destinataire ne l'affiche jamais comme média ;
---   · le DÉBIT reste celui de trg_rate_limit (60 messages par minute et par
---     compte) : la borne est par ligne, pas par compte ;
---   · `conv_messages.id` n'a toujours pas de contrainte de forme (registre R21) ;
+--   · le DÉBIT est celui des lots de sécurité (60 messages et 4 Mio par minute
+--     et par compte) : la borne d'ici est par ligne, pas par compte ;
 --   · les autres colonnes de texte libre (posts, post_comments, event_comments…)
 --     ne sont pas bornées ici.
 --
--- ORDRE : APRÈS le client de #751 (PREREQUIS-CLIENT ci-dessus) ; sinon
--- indépendante. Elle ne touche ni l'identité de réplication (R25), ni les
--- policies, ni la publication : une contrainte ne change pas la forme des
--- lignes décodées.
+-- ORDRE : APRÈS le client de #751 (PREREQUIS-CLIENT ci-dessus) ET APRÈS les
+-- lots de sécurité 1 à 3 (le verdict exige leurs deux CHECK et leurs
+-- empreintes, lignes 16 et 17). Le staging d'abord — ses empreintes comparées à
+-- celles de la production avant d'en croire le verdict —, la production
+-- ensuite. Elle ne touche ni l'identité de réplication (R25), ni les policies,
+-- ni la publication : une contrainte ne change pas la forme des lignes
+-- décodées. Elle ne crée aucun objet : aucun droit à déclarer.
 --
 -- VERDICT : chaque affirmation est MESURÉE. Le comportement par un décor
 -- SYNTHÉTIQUE (compte `00000000-0000-4000-8000-00000000cb01`, identifiants
@@ -145,11 +172,13 @@
 --
 -- Rejouable ; banc : tests/sql/migration-conv-messages-contenu-borne.test.sh.
 -- RETOUR ARRIÈRE — exécutable tel quel en ôtant « --| » (le banc le rejoue). Il
--- rend l'état exact d'avant CETTE migration : aucune contrainte CHECK sur
--- conv_messages. Rien n'est effacé (une contrainte ne réécrit aucune ligne). Il
--- se joue à l'éditeur SQL (canal ③), puis se MESURE au canal ① :
--- `select conname from pg_constraint where conrelid = 'public.conv_messages'::regclass
--- and contype = 'c'` ne rend plus rien.
+-- rend l'état exact d'avant CETTE migration : seules ses deux contraintes
+-- partent, celles du lot de sécurité (`conv_messages_content_borne`,
+-- `conv_messages_id_forme`) restent. Rien n'est effacé (une contrainte ne
+-- réécrit aucune ligne). Il se joue à l'éditeur SQL (canal ③), puis se MESURE
+-- au canal ① : `select conname from pg_constraint where conrelid =
+-- 'public.conv_messages'::regclass and contype = 'c'` ne rend plus que
+-- conv_messages_content_borne et conv_messages_id_forme.
 --| begin;
 --| set local lock_timeout = '5s';
 --| alter table public.conv_messages
@@ -253,7 +282,7 @@ begin
           '{"type":"media","filename":"photo.png","fileType":"image/png","url":"data:image/png;base64,' || photo || '","text":"[MEDIA] photo.png"}'),
         jsonb_build_object('cle', 'data_espaces', 'qui', 'a', 'contenu', '{"type":"media", "url" : "  data:image/png;base64,AAAA"}'),
         jsonb_build_object('cle', 'data_casse',   'qui', 'a', 'contenu', '{"type":"media","url":"DATA:image/png;base64,AAAA"}'),
-        jsonb_build_object('cle', 'data_echappe', 'qui', 'a', 'contenu', '{"type":"media","url":"data:image/png;base64,AAAA"}'),
+        jsonb_build_object('cle', 'data_echappe', 'qui', 'a', 'contenu', '{"type":"media","url":"\u0064ata:image/png;base64,AAAA"}'),
         jsonb_build_object('cle', 'data_controle','qui', 'a', 'contenu', '{"type":"media","url":"\u0001data:image/png;base64,AAAA"}'),
         jsonb_build_object('cle', 'data_doublon', 'qui', 'a', 'contenu', '{"type":"media","url":"https://exemple.test/a.png","url":"data:image/png;base64,AAAA"}'),
         jsonb_build_object('cle', 'data_invalide','qui', 'a', 'contenu', '{"type":"media","url":"data:image/png;base64,AAAA","t":"\ud83d"}'),
@@ -290,13 +319,30 @@ begin
       perform set_config('request.jwt.claims', '', true);
     end loop;
 
-    -- b. L'UPDATE de l'auteur (« Update propre ») sur SON message accepté :
-    --    vers une data-URL, vers 20 001 caractères, vers un texte ordinaire.
+    -- b. L'UPDATE. Le client n'en a plus : « Update propre » est retirée (lot 2
+    --    de sécurité, 07/11) — sous le rôle de l'auteur, sur SON message, 0 ligne.
+    --    L'administration (purge, reprise, service_role) en garde le droit, et
+    --    les contraintes la lient : vers une data-URL, vers 20 001 caractères,
+    --    REFUSÉ ; vers un texte ordinaire, accepté (une ligne).
     id_maj := 'zz_cmb_texte_' || sfx;
     execute 'set local role authenticated';
     perform set_config('request.jwt.claim.sub', a, true);
     perform set_config('request.jwt.claims', jsonb_build_object('sub', a, 'role', 'authenticated')::text, true);
     roles := roles || jsonb_build_object('maj', jsonb_build_array(current_user::text, (auth.uid())::text));
+    begin
+      execute 'update public.conv_messages set content = $1 where id = $2'
+        using '{"type":"media","url":"data:image/png;base64,' || photo || '"}', id_maj;
+      get diagnostics n_maj = row_count;
+      etat := 'ok:' || n_maj;
+    exception when others then
+      get stacked diagnostics cn = constraint_name;
+      etat := sqlstate || coalesce(':' || nullif(cn, ''), '');
+    end;
+    mes := mes || jsonb_build_object('maj_client', etat);
+    execute 'reset role';
+    perform set_config('request.jwt.claim.sub', '', true);
+    perform set_config('request.jwt.claims', '', true);
+    roles := roles || jsonb_build_object('maj_admin', jsonb_build_array(current_user::text, (auth.uid())::text));
     for t in
       select x.* from jsonb_to_recordset(jsonb_build_array(
         jsonb_build_object('cle', 'maj_data', 'contenu', '{"type":"media","url":"data:image/png;base64,' || photo || '"}'),
@@ -314,9 +360,6 @@ begin
       end;
       mes := mes || jsonb_build_object(t.cle, etat);
     end loop;
-    execute 'reset role';
-    perform set_config('request.jwt.claim.sub', '', true);
-    perform set_config('request.jwt.claims', '', true);
 
     -- c. Ce que les cas MESURENT vraiment : la longueur de la pire enveloppe, et
     --    deux contenus que jsonb ne sait pas lire (le client, lui, les lit).
@@ -342,8 +385,13 @@ begin
   mes := mes || jsonb_build_object('roles', roles);
   -- Après l'annulation : rien ne doit rester du décor — ni ses lignes, ni les
   -- poussées que broadcast_conv_message_to_users et trg_diffuser_ajout_membre
-  -- ont écrites dans realtime.messages.
+  -- ont écrites dans realtime.messages, ni les compteurs que les déclencheurs de
+  -- débit des lots de sécurité ont posés pour A (`debit_ecritures`).
   begin
+    if to_regclass('public.debit_ecritures') is not null then
+      execute 'select count(*) from public.debit_ecritures d where d.source = $1' into n_maj using a;
+      mes := mes || jsonb_build_object('restes_debit', n_maj);
+    end if;
     mes := mes || jsonb_build_object('restes',
         (select count(*) from public.profiles p where p.id = a)
       + (select count(*) from public.conversations c where c.id = conv)
@@ -388,7 +436,7 @@ union all select 6, true, '20 000 caractères sont acceptés ; 20 001 sont REFUS
                          and j->>'trop_long' = '23514:' || (select len from l) then 'OK' else 'ECHEC' end from v)
 union all select 7, true, 'REFUSÉ — l''enveloppe média que transférait l''ancien client, url en data: (23514, conv_messages_content_url_data_check)',
        (select case when j->>'data_media' = '23514:' || (select url from l) then 'OK' else 'ECHEC' end from v)
-union all select 8, true, 'REFUSÉ — les variantes : blancs, casse, échappement JSON (data:), caractère de contrôle en tête, clé en double (la dernière l''emporte, comme pour le client)',
+union all select 8, true, 'REFUSÉ — les variantes : blancs, casse, échappement JSON (\u0064ata:), caractère de contrôle en tête, clé en double (la dernière l''emporte, comme pour le client)',
        (select case when (j->>'data_espaces', j->>'data_casse', j->>'data_echappe', j->>'data_controle', j->>'data_doublon')
                          = ('23514:' || (select url from l), '23514:' || (select url from l), '23514:' || (select url from l),
                             '23514:' || (select url from l), '23514:' || (select url from l)) then 'OK' else 'ECHEC' end from v)
@@ -396,15 +444,18 @@ union all select 9, true, 'REFUSÉ — un JSON que jsonb ne sait pas lire (pg_in
        (select case when j->>'data_invalide' = '23514:' || (select url from l) and j->>'jsonb_data_invalide' = 'false' then 'OK' else 'ECHEC' end from v)
 union all select 10, true, 'REFUSÉ — une photo en base64 (150 000 caractères) : 23514',
        (select case when j->>'data_photo' in ('23514:' || (select len from l), '23514:' || (select url from l)) then 'OK' else 'ECHEC' end from v)
-union all select 11, true, 'UPDATE par l''auteur de SON message (« Update propre ») : vers une data-URL REFUSÉ, vers 20 001 caractères REFUSÉ (23514) ; vers un texte ordinaire accepté, une ligne',
-       (select case when (j->>'maj_data', j->>'maj_long', j->>'maj_ok')
-                         = ('23514:' || (select url from l), '23514:' || (select len from l), 'ok:1') then 'OK' else 'ECHEC' end from v)
+union all select 11, true, 'UPDATE : le client n''en a plus (aucune policy d''UPDATE depuis le lot 2 : sous le rôle de l''auteur, sur SON message, 0 ligne) ; l''administration est liée : vers une data-URL REFUSÉ, vers 20 001 caractères REFUSÉ (23514), vers un texte ordinaire accepté, une ligne',
+       (select case when (j->>'maj_client', j->>'maj_data', j->>'maj_long', j->>'maj_ok')
+                         = ('ok:0', '23514:' || (select url from l), '23514:' || (select len from l), 'ok:1')
+                         and j->'roles'->'maj_admin'->>1 is null
+                         and j->'roles'->'maj_admin'->>0 not in ('anon', 'authenticated', 'service_role') then 'OK' else 'ECHEC' end from v)
 union all select 12, true, 'les contraintes LIENT AUSSI L''ADMINISTRATION : rôle de la migration et service_role REFUSÉS (23514) sur une data-URL et sur 20 001 caractères ; une écriture ordinaire de l''administration passe',
        (select case when (j->>'admin_ok', j->>'admin_data', j->>'admin_long', j->>'service_data', j->>'service_long')
                          = ('ok', '23514:' || (select url from l), '23514:' || (select len from l),
                             '23514:' || (select url from l), '23514:' || (select len from l)) then 'OK' else 'ECHEC' end from v)
-union all select 13, true, 'aucune trace du décor : profils, conversation, membres, messages, poussées dans realtime.messages',
-       (select case when j->>'restes' = '0' then 'OK' else 'ECHEC — ' || coalesce(j->>'restes', 'absent') end from v)
+union all select 13, true, 'aucune trace du décor : profils, conversation, membres, messages, poussées dans realtime.messages, compteurs de débit',
+       (select case when j->>'restes' = '0' and coalesce(j->>'restes_debit', '0') = '0' then 'OK'
+                    else 'ECHEC — ' || coalesce(j->>'restes', 'absent') || ' / ' || coalesce(j->>'restes_debit', '-') end from v)
 union all select 14, true, 'conv_messages_content_len_check : CHECK validée, définition exacte (blancs ramenés à un seul)',
        case when exists (select 1 from pg_catalog.pg_constraint c
                           where c.conrelid = 'public.conv_messages'::regclass and c.conname = 'conv_messages_content_len_check'
@@ -417,22 +468,28 @@ union all select 15, true, 'conv_messages_content_url_data_check : CHECK validé
                             and c.contype = 'c' and c.convalidated
                             and regexp_replace(pg_catalog.pg_get_constraintdef(c.oid), '[[:space:]]+', ' ', 'g')
                                 = 'CHECK (((content IS NULL) OR ((content !~ ''"url"[[:space:]]*:[[:space:]]*"[[:space:][:cntrl:]]*[Dd][Aa][Tt][Aa]:''::text) AND CASE WHEN pg_input_is_valid(content, ''jsonb''::text) THEN COALESCE((((content)::jsonb ->> ''url''::text) !~* ''^[[:space:][:cntrl:]]*data:''::text), true) ELSE true END)))') then 'OK' else 'ECHEC' end
-union all select 16, true, 'conv_messages porte exactement ces deux CHECK ; content reste un text qui admet NULL ; RLS active ; identité DEFAULT ; toujours publiée (supabase_realtime)',
+union all select 16, true, 'conv_messages porte exactement quatre CHECK : ces deux-ci et les deux du lot de sécurité, intactes (conv_messages_content_borne : 1 Mio en octets ; conv_messages_id_forme) ; content reste un text qui admet NULL ; RLS active ; identité DEFAULT ; toujours publiée (supabase_realtime)',
        case when (select string_agg(c.conname, ',' order by c.conname) from pg_catalog.pg_constraint c
                    where c.conrelid = 'public.conv_messages'::regclass and c.contype = 'c')
-                 = 'conv_messages_content_len_check,conv_messages_content_url_data_check'
+                 = 'conv_messages_content_borne,conv_messages_content_len_check,conv_messages_content_url_data_check,conv_messages_id_forme'
+             and (select pg_catalog.pg_get_constraintdef(c.oid) from pg_catalog.pg_constraint c
+                   where c.conrelid = 'public.conv_messages'::regclass and c.conname = 'conv_messages_content_borne')
+                 = 'CHECK ((octet_length(content) <= 1048576))'
+             and (select pg_catalog.pg_get_constraintdef(c.oid) from pg_catalog.pg_constraint c
+                   where c.conrelid = 'public.conv_messages'::regclass and c.conname = 'conv_messages_id_forme')
+                 = 'CHECK ((id ~ ''^[A-Za-z0-9_-]{1,120}$''::text))'
              and exists (select 1 from pg_catalog.pg_attribute t
                           where t.attrelid = 'public.conv_messages'::regclass and t.attname = 'content'
                             and t.atttypid = 'text'::regtype and not t.attnotnull and not t.attisdropped)
              and (select c.relrowsecurity and c.relreplident = 'd' from pg_catalog.pg_class c where c.oid = 'public.conv_messages'::regclass)
              and exists (select 1 from pg_catalog.pg_publication_tables p
                           where p.pubname = 'supabase_realtime' and p.schemaname = 'public' and p.tablename = 'conv_messages') then 'OK' else 'ECHEC' end
-union all select 17, true, 'policies et déclencheurs de conv_messages : ceux mesurés le 07/11 (empreintes a39887ce…, dca9578b…, `public.` ôté) — rien d''autre ne change',
+union all select 17, true, 'policies et déclencheurs de conv_messages : ceux mesurés le 08/11, après les lots de sécurité (empreintes 8bf26134…, fc9c5e60…, `public.` ôté) — rien d''autre ne change',
        case when (select md5(string_agg(p.policyname || '|' || p.cmd || '|' || p.permissive || '|' || array_to_string(p.roles, ',') || '|'
                                         || replace(coalesce(p.qual, ''), 'public.', '') || '|' || replace(coalesce(p.with_check, ''), 'public.', ''), '#' order by p.policyname))
-                    from pg_catalog.pg_policies p where p.schemaname = 'public' and p.tablename = 'conv_messages') = 'a39887ce85dbf5c03c475e6674213cb1'
+                    from pg_catalog.pg_policies p where p.schemaname = 'public' and p.tablename = 'conv_messages') = '8bf26134d964e77fbb026cb835a55a36'
              and (select md5(string_agg(replace(pg_catalog.pg_get_triggerdef(t.oid), 'public.', '') || '|' || t.tgenabled::text, '#' order by t.tgname))
-                    from pg_catalog.pg_trigger t where t.tgrelid = 'public.conv_messages'::regclass and not t.tgisinternal) = 'dca9578b3402fdea4b8191792fc5b2f6'
+                    from pg_catalog.pg_trigger t where t.tgrelid = 'public.conv_messages'::regclass and not t.tgisinternal) = 'fc9c5e6003124899df79751fe836488e'
             then 'OK' else 'ECHEC' end
 union all select 18, false, 'information — messages en base ; le plus long (caractères) ; enveloppes à data-URL (0 attendu : sinon l''ajout de la contrainte aurait échoué)',
        (select count(*) || ' ; ' || coalesce(max(char_length(m.content)), 0) || ' ; '

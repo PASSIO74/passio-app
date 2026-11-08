@@ -5,7 +5,8 @@
 # au plus dans conv_messages.content, et jamais une data-URL dans l'`url` d'une
 # enveloppe)
 #
-# PostgreSQL jetable. Socle = la PRODUCTION du 2026-11-07 (canal ① :
+# PostgreSQL jetable. Socle = la PRODUCTION du 2026-11-08, après les lots de
+# sécurité 1 à 3 de #753 (canal ① :
 # pg_get_functiondef, pg_policies, pg_get_triggerdef, relacl, proacl ; fins de
 # ligne CRLF ramenées à LF), CONTRÔLÉE PAR EMPREINTE en ⓪ — corps des fonctions
 # du chemin d'écriture de conv_messages (md5 de prosrc) et empreintes des
@@ -17,7 +18,9 @@
 #
 #   ⓪ le socle est la production (empreintes)
 #   ① AVANT (le défaut, ROUGE) : un membre écrit une enveloppe à data-URL, 300 000
-#      caractères, et réécrit son message en data-URL — tout passe
+#      caractères, une photo de 700 Ko en base64 — tout passe la borne du lot 2
+#      (1 Mio), qui ne refuse qu'au-delà ; et il ne réécrit plus rien (la policy
+#      d'UPDATE est retirée depuis le lot 2)
 #   ② le verdict de la migration, réinjecté sur cet état, ROUGIT — et le
 #      garde-fou refuse (55000) sans rien laisser
 #   ③ l'application : fichier ; requête unique (le chemin de l'API de gestion,
@@ -27,7 +30,8 @@
 #      la PIRE enveloppe de texte du client, recalculée comme `JSON.stringify` la
 #      construit, passe ; le message d'erreur nomme la contrainte (ce que lit
 #      `_motRefusContenu`) ; un refus ne renvoie pas la ligne (RLS) ; un autre
-#      membre lit toujours ; service_role refusé ; la marge dite telle quelle
+#      membre lit toujours ; service_role refusé, à l'insertion comme à l'UPDATE ;
+#      la marge dite telle quelle
 #   ⑤ une ligne déjà hors borne en base : la migration échoue (23514), rien
 #      n'est appliqué
 #   ⑥ VERROU : une transaction qui tient conv_messages fait échouer la migration
@@ -52,7 +56,14 @@
 #     realtime.messages et consigne la poussée) ;
 #   · profiles, conversations, conv_members et blocks n'ont pas leurs policies
 #     (le décor est posé sans session, et seules les fonctions SECURITY DEFINER
-#     les lisent) ; conversations n'a pas sa clé étrangère vers passions.
+#     les lisent) ; conversations n'a pas sa clé étrangère vers passions ;
+#   · des gardes des lots de sécurité sur ces tables, le banc rejoue celles que
+#     le décor traverse (aa_conv_members_garde, trg_debit_compte,
+#     trg_rate_limit de conversations, aa_ligne_bornee, aa_profiles_figes,
+#     ab_debit_octets, les CHECK d'identifiant, de textes et de nom de compte) ;
+#     pas trg_debit_maj ni trg_propager_identite (UPDATE de profils, que rien ici
+#     ne fait), ni profiles_color_forme et profiles_emoji_forme (colonnes que le
+#     décor laisse à leur défaut).
 #
 #   bash tests/sql/migration-conv-messages-contenu-borne.test.sh
 #
@@ -73,7 +84,10 @@ command -v python3 >/dev/null || { echo "❌ python3 introuvable (mutations et e
 command -v node >/dev/null || { echo "❌ node introuvable (barrière de l'outil d'application)"; exit 1; }
 [ -f "$MIGRATION" ] || { echo "❌ migration introuvable : $MIGRATION"; exit 1; }
 
-# ── Empreintes mesurées en production le 2026-11-07 (canal ①) ──────────────
+# ── Empreintes mesurées en production le 2026-11-08 (canal ①), APRÈS les lots ──
+# de sécurité 1 à 3 (#753, appliqués le 07/11 à 16:49 UTC) : rate_limit_insert,
+# suppression_de_mon_compte ont changé ; debit_compter, debit_octets_par_compte et
+# les gardes des tables du décor sont nouveaux.
 # Fonctions : md5(prosrc), CRLF → LF.
 declare -A MD5_PROD=(
   ["auth.uid()"]=cdef18c69c4f4cbbced2eaf81e628b49
@@ -84,14 +98,22 @@ declare -A MD5_PROD=(
   ["public.identifiants_figes()"]=283686cca23a670e2a00145a50561ce7
   ["public.is_blocked_with(text)"]=25b7ca8e81031951cb241316f7cfdd64
   ["public.is_conv_member(text,text)"]=814ad66c9ba408db34f3435b2a559788
-  ["public.rate_limit_insert()"]=fb1b26118dee1c38bfd66c9c106809e2
+  ["public.rate_limit_insert()"]=bde1063b111dde81f500a1c33d2a0aed
+  ["public.debit_compter(text,text,integer)"]=a583c8701d380effbb9d94d2b9e20f31
+  ["public.debit_octets_par_compte()"]=96bfbe987d9b7f8c81812b6e42600421
+  ["public.debit_par_compte()"]=d4097ac615be8d08972ac2d2dc9fd8fd
+  ["public.conv_members_garde()"]=4c505e05ccda0de4b4890a20c264271e
+  ["public.profiles_figes()"]=58ac52a49dfc3e241404cf9571cd3003
+  ["public.ligne_bornee()"]=d53795ba5c21bfb25f1f0ba571c03bee
+  ["public.passion_plier(text)"]=2fa9a319ffd002fc0338e0e708cf54cb
+  ["public.unaccent_immutable(text)"]=53459bf193d871ebce6ffdd86e3acbe5
   ["public.refuser_ecriture_compte_en_suppression()"]=8ea40f715280c2867524dab576ab32b8
   ["public.rid_opaque_garde()"]=4bf585c53ddb2b44e4b70a46e8b780cc
-  ["public.suppression_de_mon_compte()"]=60aa519cc72bc4ebfd95d7f7bea17553
+  ["public.suppression_de_mon_compte()"]=18b5fa41cbcdd4ee61c95766e4bc2957
 )
 # Policies et déclencheurs de conv_messages, `public.` ôté (la ligne 17 du verdict).
-MD5_POLICIES_PROD=a39887ce85dbf5c03c475e6674213cb1
-MD5_DECLENCHEURS_PROD=dca9578b3402fdea4b8191792fc5b2f6
+MD5_POLICIES_PROD=8bf26134d964e77fbb026cb835a55a36
+MD5_DECLENCHEURS_PROD=fc9c5e6003124899df79751fe836488e
 
 PORT=$(( 6300 + RANDOM % 120 ))
 if [ "$(id -u)" -eq 0 ]; then
@@ -165,7 +187,8 @@ contient_tous() {  # « oui » si chaque numéro de $2 (séparés par des virgul
 }
 RETOUR_ARRIERE() { sed -n -e 's/^--| //p' -e 's/^--|$//p' "$MIGRATION"; }
 VERDICT_SEUL() { awk '/^-- ── ③ LE COMPORTEMENT/{p=1} /^commit;$/{p=0} p' "$MIGRATION"; }
-CHECKS() { QD "$1" "select count(*) from pg_constraint where conrelid = 'public.conv_messages'::regclass and contype = 'c';"; }
+# Les contraintes de CETTE migration, et elles seules (les deux du lot de sécurité sont là avant, et restent).
+CHECKS() { QD "$1" "select count(*) from pg_constraint where conrelid = 'public.conv_messages'::regclass and contype = 'c' and conname in ('conv_messages_content_len_check', 'conv_messages_content_url_data_check');"; }
 # Le catalogue de conv_messages : colonnes, contraintes, policies, déclencheurs, droits, RLS, identité.
 CATALOGUE() {
   QD "$1" "select md5(
@@ -240,6 +263,11 @@ create table public.conv_messages (id text not null primary key, conv_id text re
   content text, created_at timestamp default now());
 create table public.blocks (blocker_id text not null, blocked_id text not null, created_at timestamptz default now(), primary key (blocker_id, blocked_id));
 create table public.comptes_en_suppression (user_id text primary key, statut text not null default 'en_cours');
+-- Lue par suppression_de_mon_compte (lots de sécurité : compte suspendu).
+create table auth.users (id uuid primary key, banned_until timestamptz);
+-- Les compteurs de débit des lots de sécurité (debit_compter, debit_octets_par_compte).
+create table public.debit_ecritures (minute timestamptz not null, table_nom text not null, source text not null, n integer not null,
+  primary key (minute, table_nom, source));
 create table realtime.messages (id uuid primary key default gen_random_uuid(), topic text not null, extension text not null default 'broadcast',
   payload jsonb, event text, private boolean default false, inserted_at timestamp not null default now());
 -- Ce que la base a POUSSÉ (realtime.send factice) : une ligne par poussée.
@@ -253,6 +281,8 @@ grant select, update, delete on public.conversations, public.conv_members, publi
 grant select, insert, update, delete on public.conversations, public.conv_members, public.conv_messages to authenticated;
 grant all on public.profiles, public.conversations, public.conv_members, public.conv_messages, public.blocks to service_role;
 grant select on public.comptes_en_suppression to service_role;
+revoke all on public.debit_ecritures from anon, authenticated, service_role;
+grant all on public.debit_ecritures to service_role;
 grant select, insert, update on realtime.messages to anon, authenticated, service_role;
 
 alter table public.profiles enable row level security;
@@ -261,6 +291,7 @@ alter table public.conv_members enable row level security;
 alter table public.conv_messages enable row level security;
 alter table public.blocks enable row level security;
 alter table public.comptes_en_suppression enable row level security;
+alter table public.debit_ecritures enable row level security;
 alter table realtime.messages enable row level security;
 
 -- ── Fonctions : définitions de PRODUCTION (pg_get_functiondef, 2026-11-07 ; CRLF → LF) ──
@@ -372,10 +403,11 @@ CREATE OR REPLACE FUNCTION public.suppression_de_mon_compte()
  SET search_path TO ''
 AS $function$
   select case
-    when auth.uid() is null then false          -- postgres, service_role, purge, restauration
+    when auth.uid() is null then false
     else exists (select 1 from public.comptes_en_suppression c
-                  where c.user_id = (auth.uid())::text
-                    and c.statut in ('en_cours', 'purgee', 'supprimee'))
+                  where c.user_id = (auth.uid())::text and c.statut in ('en_cours','purgee','supprimee'))
+      or exists (select 1 from auth.users u
+                  where u.id = auth.uid() and u.banned_until is not null and u.banned_until > now())
   end
 $function$;
 CREATE OR REPLACE FUNCTION public.refuser_ecriture_compte_en_suppression()
@@ -455,25 +487,133 @@ CREATE OR REPLACE FUNCTION public.rate_limit_insert()
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
-DECLARE
-  user_col    text := TG_ARGV[0];
-  max_per_min int  := TG_ARGV[1]::int;
-  uid         text;
-  cnt         int;
-BEGIN
+declare user_col text := TG_ARGV[0]; max_per_min int := TG_ARGV[1]::int; uid text;
+begin
   NEW.created_at := now();
-  EXECUTE format('SELECT ($1).%I', user_col) INTO uid USING NEW;
-  IF uid IS NULL THEN RETURN NEW; END IF;
-  EXECUTE format(
-    'SELECT count(*) FROM %I.%I WHERE %I = $1 AND created_at > now() - interval ''1 minute''',
-    TG_TABLE_SCHEMA, TG_TABLE_NAME, user_col
-  ) INTO cnt USING uid;
-  IF cnt >= max_per_min THEN
-    RAISE EXCEPTION 'rate limit: max % insertions/minute sur %', max_per_min, TG_TABLE_NAME
-      USING ERRCODE = 'P0001';
-  END IF;
-  RETURN NEW;
-END $function$;
+  execute format('select ($1).%I', user_col) into uid using NEW;
+  if uid is null then return NEW; end if;
+  perform public.debit_compter(TG_TABLE_NAME, uid, max_per_min);
+  return NEW;
+end $function$;
+CREATE OR REPLACE FUNCTION public.debit_compter(p_table text, p_source text, p_plafond integer)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare v integer;
+begin
+  insert into public.debit_ecritures as d (minute, table_nom, source, n)
+  values (date_trunc('minute', now()), p_table, p_source, 1)
+  on conflict (minute, table_nom, source) do update set n = d.n + 1
+  returning d.n into v;
+  if v > p_plafond then
+    raise exception 'rate limit: max % insertions/minute sur %', p_plafond, p_table using errcode = 'P0001';
+  end if;
+end $function$;
+CREATE OR REPLACE FUNCTION public.debit_octets_par_compte()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare moi text := (auth.uid())::text; v integer;
+begin
+  if moi is null then return new; end if;
+  insert into public.debit_ecritures as d (minute, table_nom, source, n)
+  values (pg_catalog.date_trunc('minute', pg_catalog.now()), 'octets', moi, pg_catalog.octet_length(pg_catalog.to_jsonb(new)::text))
+  on conflict (minute, table_nom, source) do update set n = d.n + excluded.n
+  returning d.n into v;
+  if v > tg_argv[0]::integer then
+    raise exception 'trop de données écrites en une minute' using errcode = 'P0001';
+  end if;
+  return new;
+end $function$;
+CREATE OR REPLACE FUNCTION public.debit_par_compte()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare moi text := (auth.uid())::text;
+begin
+  if moi is null then return new; end if;
+  perform public.debit_compter(tg_table_name, moi, tg_argv[0]::int);
+  return new;
+end $function$;
+CREATE OR REPLACE FUNCTION public.conv_members_garde()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare moi text := (auth.uid())::text; c record; autres integer;
+begin
+  if moi is null then return new; end if;              -- service_role, purge, restauration
+  select id, is_group, created_by into c from public.conversations where id = new.conv_id;
+  if not found or c.created_by is distinct from moi then return new; end if;  -- FK et RLS tranchent
+  perform 1 from public.conversations where id = new.conv_id for update;      -- ajouts concurrents
+  select count(*) into autres from public.conv_members m
+   where m.conv_id = new.conv_id and m.user_id <> new.user_id;
+  if coalesce(c.is_group, false) then
+    if left(c.id, 6) <> 'evgrp_' and autres >= 256 then
+      raise exception 'new row violates row-level security policy for table "conv_members"'
+        using errcode = '42501', hint = 'groupe complet';
+    end if;
+    return new;
+  end if;
+  if autres >= 2 or (new.user_id <> moi and not exists (
+        select 1 from public.conv_members m where m.conv_id = new.conv_id and m.user_id = moi)) then
+    raise exception 'new row violates row-level security policy for table "conv_members"'
+      using errcode = '42501', hint = 'conversation privée : deux membres, créateur compris';
+  end if;
+  return new;
+end $function$;
+CREATE OR REPLACE FUNCTION public.profiles_figes()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+  if auth.uid() is null then return new; end if;
+  if tg_op = 'INSERT' then new.created_at := now();
+  else new.created_at := old.created_at; new.id := old.id;
+  end if;
+  return new;
+end $function$;
+CREATE OR REPLACE FUNCTION public.ligne_bornee()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+  if pg_catalog.current_setting('role', true) in ('anon', 'authenticated')
+     and pg_catalog.octet_length(pg_catalog.to_jsonb(new)::text) > tg_argv[0]::integer then
+    raise exception 'ligne trop volumineuse sur %', tg_table_name using errcode = '22001';
+  end if;
+  return new;
+end $function$;
+CREATE OR REPLACE FUNCTION public.unaccent_immutable(txt text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE STRICT
+ SET search_path TO ''
+AS $function$
+  select translate(
+    lower(txt),
+    'àáâãäåçèéêëìíîïñòóôõöùúûüýÿœæ',
+    'aaaaaaceeeeiiiinooooouuuuyyoa'
+  );
+$function$;
+CREATE OR REPLACE FUNCTION public.passion_plier(p_texte text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'public'
+AS $function$
+  select btrim(regexp_replace(
+    public.unaccent_immutable(coalesce(p_texte, '')), '[^a-z0-9]+', ' ', 'g'));
+$function$;
 CREATE OR REPLACE FUNCTION public.identifiants_figes()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -518,14 +658,13 @@ revoke all on function public.blocage_entre(text, text), public.broadcast_conv_m
   public.rid_opaque_garde(), public.refuser_ecriture_compte_en_suppression(), public.rate_limit_insert(),
   public.identifiants_figes() from public, anon, authenticated;
 revoke all on function public.suppression_de_mon_compte() from public;
+revoke all on function public.debit_compter(text, text, integer), public.debit_octets_par_compte(), public.debit_par_compte(),
+  public.conv_members_garde(), public.profiles_figes(), public.ligne_bornee() from public, anon, authenticated;
+revoke all on function public.passion_plier(text) from public, anon;
 
 -- ── Policies de conv_messages : textes de PRODUCTION (pg_policies, 2026-11-07) ──
 create policy "Suppression propre" on public.conv_messages for delete
   using (from_id = ((select auth.uid()))::text);
-create policy "Update propre" on public.conv_messages for update to authenticated
-  using (from_id = ((select auth.uid()))::text)
-  with check ((from_id = ((select auth.uid()))::text) and public.is_conv_member(conv_id, ((select auth.uid()))::text)
-              and (not public.conv_1a1_bloquee(conv_id)) and (not public.suppression_de_mon_compte()));
 create policy conv_messages_insert_member on public.conv_messages for insert to authenticated
   with check ((from_id = ((select auth.uid()))::text) and public.is_conv_member(conv_id, ((select auth.uid()))::text)
               and (not public.conv_1a1_bloquee(conv_id)) and (not public.suppression_de_mon_compte()));
@@ -549,6 +688,34 @@ create trigger zz_barriere_suppression before insert or update on public.conv_me
   for each row execute function public.refuser_ecriture_compte_en_suppression('user_id');
 create trigger zz_barriere_suppression before insert or update on public.profiles
   for each row execute function public.refuser_ecriture_compte_en_suppression('id');
+-- Lots de sécurité 1 à 3 (canal ①, 08/11).
+create trigger ab_debit_octets before insert or update on public.conv_messages
+  for each row execute function public.debit_octets_par_compte('4194304');
+create trigger aa_conv_members_garde before insert on public.conv_members
+  for each row execute function public.conv_members_garde();
+create trigger trg_debit_compte before insert on public.conv_members
+  for each row execute function public.debit_par_compte('60');
+create trigger trg_rate_limit before insert on public.conversations
+  for each row execute function public.rate_limit_insert('created_by', '10');
+create trigger aa_ligne_bornee before insert or update on public.profiles
+  for each row execute function public.ligne_bornee('262144');
+create trigger aa_profiles_figes before insert or update on public.profiles
+  for each row execute function public.profiles_figes();
+create trigger ab_debit_octets before insert or update on public.profiles
+  for each row execute function public.debit_octets_par_compte('4194304');
+alter table public.conv_messages
+  add constraint conv_messages_id_forme check (id ~ '^[A-Za-z0-9_-]{1,120}$'::text),
+  add constraint conv_messages_content_borne check (octet_length(content) <= 1048576);
+alter table public.conversations
+  add constraint conversations_id_forme check (id ~ '^[A-Za-z0-9_-]{1,120}$'::text),
+  add constraint conversations_textes_bornes check ((char_length(group_name) <= 200) and (char_length(description) <= 2000));
+alter table public.profiles
+  add constraint profiles_bio_borne check (char_length(bio) <= 1000),
+  add constraint profiles_urls_forme check (((avatar_url is null) or (avatar_url ~ '^(https://|data:image/)'::text))
+                                            and ((cover_url is null) or (cover_url ~ '^(https://|data:image/)'::text))),
+  add constraint profiles_username_forme check (((char_length(username) >= 1) and (char_length(username) <= 40))
+      and (username !~ '[[:cntrl:]]'::text)
+      and (public.passion_plier(username) !~ '\m(passio|moderation|moderateur|administrateur|admin|support|securite)\M'::text));
 
 create publication supabase_realtime for table public.conv_messages;
 SQL
@@ -576,7 +743,10 @@ verifier "policies de conv_messages (pg_policies, \`public.\` ôté)" "$MD5_POLI
   "$(QD socle "select md5(string_agg(policyname || '|' || cmd || '|' || permissive || '|' || array_to_string(roles, ',') || '|' || replace(coalesce(qual, ''), 'public.', '') || '|' || replace(coalesce(with_check, ''), 'public.', ''), '#' order by policyname)) from pg_policies where schemaname = 'public' and tablename = 'conv_messages';")"
 verifier "déclencheurs de conv_messages (pg_get_triggerdef, \`public.\` ôté)" "$MD5_DECLENCHEURS_PROD" \
   "$(QD socle "select md5(string_agg(replace(pg_get_triggerdef(t.oid), 'public.', '') || '|' || t.tgenabled::text, '#' order by t.tgname)) from pg_trigger t where t.tgrelid = 'public.conv_messages'::regclass and not t.tgisinternal;")"
-verifier "aucune contrainte CHECK sur conv_messages (l'état mesuré)" "0" "$(CHECKS socle)"
+verifier "aucune contrainte de cette migration sur conv_messages (l'état mesuré)" "0" "$(CHECKS socle)"
+verifier "…mais les deux du lot de sécurité, à la définition de la production" \
+  "conv_messages_content_borne:CHECK ((octet_length(content) <= 1048576))|conv_messages_id_forme:CHECK ((id ~ '^[A-Za-z0-9_-]{1,120}\$'::text))" \
+  "$(QD socle "select string_agg(conname || ':' || pg_get_constraintdef(oid), '|' order by conname) from pg_constraint where conrelid = 'public.conv_messages'::regclass and contype = 'c';")"
 verifier "le décor du banc : un membre écrit un message ordinaire sous son rôle" "1" \
   "$(AUTH socle "$A" "insert into public.conv_messages (id, conv_id, from_id, content) values ('msg_banc_0', '$C1', '$A', '{\"type\":\"text\",\"text\":\"ok\"}') returning 1;")"
 QD socle "delete from public.conv_messages where id = 'msg_banc_0'; delete from realtime.messages; delete from banc.poussees;" >/dev/null
@@ -590,8 +760,12 @@ verifier "un membre écrit une enveloppe média à data-URL — ACCEPTÉE" "1" \
   "$(AUTH avant "$A" "insert into public.conv_messages (id, conv_id, from_id, content) values ('msg_av_d', '$C1', '$A', '{\"type\":\"media\",\"url\":\"data:image/png;base64,$PHOTO\",\"text\":\"[MEDIA] p.png\"}') returning 1;")"
 verifier "…300 000 caractères — ACCEPTÉS" "1" \
   "$(AUTH avant "$A" "insert into public.conv_messages (id, conv_id, from_id, content) values ('msg_av_l', '$C1', '$A', repeat('A', 300000)) returning 1;")"
-verifier "…et réécrit son message en data-URL (« Update propre ») — ACCEPTÉ" "1" \
-  "$(AUTH avant "$A" "update public.conv_messages set content = '{\"type\":\"media\",\"url\":\"data:image/png;base64,$PHOTO\"}' where id = 'msg_av_l' returning 1;")"
+verifier "…et une photo d'environ 700 Ko en base64 : la borne du lot 2 (1 Mio en octets) la laisse passer — ACCEPTÉE" "1" \
+  "$(AUTH avant "$A" "insert into public.conv_messages (id, conv_id, from_id, content) values ('msg_av_p', '$C1', '$A', '{\"type\":\"media\",\"url\":\"data:image/jpeg;base64,' || repeat('A', 700000) || '\"}') returning 1;")"
+verifier "…au-delà de 1 Mio, le lot 2 refuse (23514, conv_messages_content_borne)" "ERREUR|23514|conv_messages_content_borne" \
+  "$(AUTH avant "$A" "insert into public.conv_messages (id, conv_id, from_id, content) values ('msg_av_g', '$C1', '$A', repeat('A', 1048577)) returning 1;" | cut -d'|' -f1-3)"
+verifier "…et l'auteur ne réécrit plus son message : aucune policy d'UPDATE depuis le lot 2 (0 ligne)" "" \
+  "$(AUTH avant "$A" "update public.conv_messages set content = '{\"type\":\"text\",\"text\":\"x\"}' where id = 'msg_av_l' returning 1;")"
 
 # ═══ ② LE VERDICT RÉINJECTÉ SUR L'ÉTAT D'AVANT ═════════════════════════════
 echo "② le verdict, sans les contraintes, rougit — et le garde-fou refuse"
@@ -659,10 +833,23 @@ verifier "une enveloppe à data-URL : 23514, et le MESSAGE nomme la contrainte (
 r_l="$(AUTH apres "$A" "insert into public.conv_messages (id, conv_id, from_id, content) values ('msg_ap_l', '$C1', '$A', repeat('A', 300000)) returning 1;")"
 verifier "300 000 caractères : 23514, conv_messages_content_len_check — sans renvoyer la ligne (RLS : pas de « Failing row contains »)" \
   "ERREUR|23514|conv_messages_content_len_check|new row for relation \"conv_messages\" violates check constraint \"conv_messages_content_len_check\"" "$r_l"
-verifier "la réécriture de son message en data-URL : 23514" "ERREUR|23514|conv_messages_content_url_data_check" \
-  "$(AUTH apres "$A" "update public.conv_messages set content = '{\"type\":\"media\",\"url\":\"data:image/png;base64,$PHOTO\"}' where id = 'msg_ap_pire' returning 1;" | cut -d'|' -f1-3)"
+verifier "l'auteur ne réécrit rien (aucune policy d'UPDATE) : 0 ligne" "" \
+  "$(AUTH apres "$A" "update public.conv_messages set content = '{\"type\":\"media\",\"url\":\"data:image/png;base64,$PHOTO\"}' where id = 'msg_ap_pire' returning 1;")"
+verifier "service_role, qui garde l'UPDATE : réécrire en data-URL, 23514" "ERREUR|23514|conv_messages_content_url_data_check" \
+  "$(SERVICE apres "update public.conv_messages set content = '{\"type\":\"media\",\"url\":\"data:image/png;base64,$PHOTO\"}' where id = 'msg_ap_pire' returning 1;" | cut -d'|' -f1-3)"
 verifier "service_role (scripts, purge, restauration) : 23514 aussi" "ERREUR|23514|conv_messages_content_url_data_check" \
   "$(SERVICE apres "insert into public.conv_messages (id, conv_id, from_id, content) values ('msg_ap_s', '$C1', '$A', '{\"type\":\"media\",\"url\":\"data:image/png;base64,$PHOTO\"}') returning 1;" | cut -d'|' -f1-3)"
+# La forme échappée : le motif brut ne la voit pas, la lecture jsonb, si. Écrite par
+# python (chr(92)), jamais par un outil qui décode les échappements « \uXXXX » en
+# écrivant : vécu le 07/11, le cas du verdict était devenu un « data: » en clair, et
+# rien n'avait rougi.
+ECHAPPE_SQL="'{\"type\":\"media\",\"url\":\"\\u0064ata:image/png;base64,AAAA\"}'"
+verifier "la forme échappée porte bien sa barre oblique inverse (« \u0064ata: »)" "t" \
+  "$(QD apres "select position(chr(92) || 'u0064ata:' in $ECHAPPE_SQL) > 0;")"
+verifier "…le motif brut ne la voit pas ; la lecture jsonb, si (c'est elle qui refuse)" "false|true" \
+  "$(QD apres "select ($ECHAPPE_SQL ~ '\"url\"[[:space:]]*:[[:space:]]*\"[[:space:][:cntrl:]]*[Dd][Aa][Tt][Aa]:')::text || '|' || (((($ECHAPPE_SQL)::jsonb) ->> 'url') ~* '^[[:space:][:cntrl:]]*data:')::text;")"
+verifier "…et l'écriture est refusée (23514, conv_messages_content_url_data_check)" "ERREUR|23514|conv_messages_content_url_data_check" \
+  "$(AUTH apres "$A" "insert into public.conv_messages (id, conv_id, from_id, content) values ('msg_ap_e', '$C1', '$A', $ECHAPPE_SQL) returning 1;" | cut -d'|' -f1-3)"
 verifier "l'autre membre lit toujours la conversation (la lecture n'est pas touchée)" "1" \
   "$(AUTH apres "$B" "select count(*) from public.conv_messages where conv_id = '$C1';")"
 

@@ -1630,15 +1630,17 @@ est écrit), deux sceptiques par trouvaille grave : rien de bloquant — la seul
 
 ## 🧱 « JAMAIS DE BASE64 EN BASE » DEVIENT UNE RÈGLE DU SERVEUR : `conv_messages.content` BORNÉ (2026-11-07)
 
-**Statut : client EN PRODUCTION (#751, 620aa87) ; migration PRÊTE, NON appliquée** —
-`migrations/migration_conv_messages_contenu_borne_2026-11-07.sql`, banc
-`tests/sql/migration-conv-messages-contenu-borne.test.sh` (68 vérifications). Périmètre critique : contre-revue de PASSIO74
-(« Gouvernance critique »), attestation, puis application depuis le poste (canal ③). Rien n'a été écrit en base par ce lot.
+**Statut : client EN PRODUCTION (#751, 620aa87 — déployé avec 6634029 le 08/11 à 07:05 UTC, après le rouge du staging
+corrigé par #755) ; migration PRÊTE, NON appliquée, reprise le 08/11 sur le socle des lots de sécurité 1 à 3** (contre-revue
+n° 5816974908, « Reprise du 08/11 » plus bas) — `migrations/migration_conv_messages_contenu_borne_2026-11-07.sql`, banc
+`tests/sql/migration-conv-messages-contenu-borne.test.sh` (83 vérifications). Périmètre critique : contre-revue de PASSIO74
+(« Gouvernance critique »), attestation, puis application depuis le poste (canal ③), le staging d'abord. Rien n'a été écrit
+en base par ce lot.
 
 **Le défaut.** L'invariant « jamais de base64 en base (→ Storage) » n'était tenu QUE par le client. `conv_messages.content` est
 un `text` nullable sans contrainte CHECK ; la policy d'insertion (`conv_messages_insert_member` — pas seulement
 `from_id = auth.uid()`, comme le dit encore la photographie du 17/08 : appartenance, blocage et suppression du compte y sont)
-ne juge jamais le contenu, et « Update propre » laisse l'auteur réécrire le sien. Une ancienne version de l'app ou une requête
+ne juge jamais le contenu, et « Update propre » laissait l'auteur réécrire le sien (retirée par le lot 2 de sécurité, 07/11). Une ancienne version de l'app ou une requête
 forgée à la clé publique écrit donc un fichier entier dans un message — la bêta l'a fait (« un message de 5 Mo, conv_messages
 à 24 Mo »), et chaque ligne part ENTIÈRE en direct à chaque membre (`broadcast_conv_message_to_users` → `realtime.broadcast_changes`,
 qui porte `NEW`).
@@ -1680,14 +1682,15 @@ ouvert sur `main` jusqu'à sa fusion. La migration n'en dépend pas : aucune dat
   (mutation « cast_nu » du banc : lignes 2 et 5). Règle : une lecture jsonb dans une CHECK passe par
   `case when pg_input_is_valid(content, 'jsonb') then … else true end` (PostgreSQL 16+ ; la production est en 17.6) — jamais
   un `AND`, dont l'ordre d'évaluation n'est pas promis.
-- **Ni la forme brute seule, ni jsonb seul.** Un motif brut se contourne par un échappement JSON (`data:`) ; jsonb seul,
+- **Ni la forme brute seule, ni jsonb seul.** Un motif brut se contourne par un échappement JSON (`\u0064ata:`) ; jsonb seul,
   par un JSON qu'il refuse mais que le client lit (ajouter un `\u0000` n'importe où). Les deux ensemble (mutations
   « sans_jsonb » et « sans_brut » : lignes 8 et 9). **Reste ouvert, dit tel quel** : un JSON que jsonb refuse ET dont l'`url`
   écrit « data: » par échappements — la longueur le borne à 20 000 caractères.
 - **Un texte qui CITE « "url":"data: » passe** : dans une chaîne JSON, le guillemet est échappé ; le motif brut ne voit
   qu'une vraie clé `url` (ligne 4).
-- **Les CHECK se jugent par ordre alphabétique de nom** : une photo en base64 est refusée par `…_len_check` avant
-  `…_url_data_check`. Le client sait dire les deux.
+- **Les CHECK se jugent par ordre alphabétique de nom** : au-delà de 1 Mio, `conv_messages_content_borne` (lot 2) refuse la
+  première ; en deçà, une photo en base64 est refusée par `…_len_check` avant `…_url_data_check`. Le client dit les deux
+  siennes, et un refus générique pour l'autre.
 - **Sous RLS, un refus ne renvoie pas la ligne** (pas de « Failing row contains ») : le 400 de PostgREST reste petit, même
   pour 300 000 caractères refusés (banc ④).
 - **23514, c'est un 400 pour PostgREST** — que l'ancien client rejouait jusqu'à `MSG_ESSAIS_MAX` (10). Le client de #751 le
@@ -1703,22 +1706,47 @@ ouvert sur `main` jusqu'à sa fusion. La migration n'en dépend pas : aucune dat
   production : 0 le 07/11, et aucun message ne date d'avant le 23/06. Si cela arrive : retirer la charge de la ligne (garder
   le message, vider son `url`), jamais désactiver la contrainte.
 
-**Ce que la migration ne ferme pas** : le base64 hors d'une `url` (un texte) n'est borné que par la longueur ; le débit reste
-celui de `trg_rate_limit` (60 par minute et par compte) ; `conv_messages.id` sans contrainte de forme (R21) ; les autres
-colonnes de texte libre (posts, post_comments, event_comments…) ne sont pas bornées.
+**Reprise du 08/11 (contre-revue bloquante n° 5816974908 : la production avait changé sous la migration).** Les lots de
+sécurité 1 à 3 (#753), appliqués le 07/11 à 16:49 UTC, ont touché `conv_messages` : deux CHECK (`conv_messages_id_forme` —
+R21 fermé — et `conv_messages_content_borne`, 1 Mio en octets), « Update propre » retirée, `ab_debit_octets` ajouté (4 Mio
+par minute et par compte, sous session seulement), `trg_rate_limit` compté dans `debit_ecritures`. Telle quelle, la
+migration se serait refusée (lignes 11, 16 et 17 : 55000, rien d'appliqué). Remesuré au canal ① le 08/11, puis :
+- **la borne du lot 2 reste** : c'est la borne générique du lot de sécurité, avec son propre retour arrière ; celle d'ici est
+  plus serrée (20 000 caractères) et la règle de l'`url` n'existe nulle part ailleurs (la borne du lot 2 laisse passer une
+  photo d'environ 700 Ko en base64 — banc ①). Le retour arrière de cette migration ne retire que ses deux contraintes ;
+- **ligne 11** : le client n'a plus d'UPDATE (0 ligne sous le rôle de l'auteur) ; c'est l'administration, qui en garde le
+  droit, que la contrainte lie (data-URL et 20 001 caractères refusés, texte ordinaire accepté) ;
+- **ligne 16** : quatre CHECK, celles du lot à leur définition ; **ligne 17** : empreintes 8bf26134… et fc9c5e60… ;
+  **ligne 13** : les compteurs de `debit_ecritures` posés par le décor disparaissent avec lui ;
+- **le banc** rejoue le socle du 08/11 — 21 corps de fonctions à l'empreinte de la production, dont les gardes des tables du
+  décor (`conv_members_garde`, `debit_par_compte`, `profiles_figes`, `ligne_bornee`, `passion_plier`) ; le décor les traverse
+  toutes sans session, elles rendent la main.
+
+**Piège vécu en écrivant la migration : un outil d'écriture qui DÉCODE `\uXXXX`.** Le cas « échappement JSON » du verdict
+avait été écrit `\u0064ata:` ; l'outil d'édition l'a enregistré comme un `d` en clair — le cas testait un « data: » ordinaire,
+la forme brute le refusait, et RIEN n'a rougi (la mutation « sans_jsonb » restait rouge grâce à un autre cas). Trouvé à la
+relecture du 08/11. Une barre oblique inverse s'écrit désormais par un script (`chr(92)`), et le banc vérifie qu'elle est là
+avant de juger le cas (④ : présente, motif brut faux, lecture jsonb vraie, écriture refusée).
+
+**Ce que la migration ne ferme pas** : le base64 hors d'une `url` (un texte) n'est borné que par la longueur ; le débit est
+celui des lots de sécurité (60 messages et 4 Mio par minute et par compte) ; les autres colonnes de texte libre (posts,
+post_comments, event_comments…) ne sont bornées que par les lots de sécurité.
 
 **Appliquer (canal ③), dans cet ordre :**
 1. Le client de #751 est servi : `appliquer-migration.mjs` le vérifie seul (règle ④, `conv_messages:contenu-borne` dans le
    bundle de https://passio-app.netlify.app) et refuse sinon.
 2. Contre-revue de la PR par PASSIO74 (marqueur « Contre-revue technique indépendante », fichier, `cible: njkiyoklssvefstljemx`),
    puis l'attestation dans `.passio/migrations/attestations.json` (empreinte du fichier revu).
-3. Depuis un **worktree détaché d'`origin/main`** (jamais le dossier de travail — fiche C-02) :
-   `npm run migration:appliquer -- migrations/migration_conv_messages_contenu_borne_2026-11-07.sql --projet njkiyoklssvefstljemx`.
-   Verdict attendu : 17 × OK, et l'information « 88 ; 551 ; 0 » (ou le compte du jour).
-4. **Mesurer au canal ①**, jamais le tableau : les deux `conname` en `contype = 'c'`, `convalidated`, leurs définitions ;
-   policies et déclencheurs aux empreintes a39887ce… / dca9578b… ; 0 profil `00000000-0000-4000-8000-00000000cb01`, 0
+3. Depuis un **worktree détaché d'`origin/main`** (jamais le dossier de travail — fiche C-02), **le staging d'abord** (ses
+   empreintes comparées à celles de la production avant d'en croire le verdict — fiche des lots de sécurité), puis la
+   production :
+   `npm run migration:appliquer -- migrations/migration_conv_messages_contenu_borne_2026-11-07.sql --projet fcksxofaelcdmmifnwjo`,
+   puis `--projet njkiyoklssvefstljemx`. Verdict attendu : 17 × OK, et l'information « 88 ; 551 ; 0 » (ou le compte du jour).
+4. **Mesurer au canal ①**, jamais le tableau : quatre `conname` en `contype = 'c'` (les deux d'ici, `convalidated`, et les
+   deux du lot de sécurité, inchangées) ; policies et déclencheurs aux empreintes 8bf26134… / fc9c5e60… ; 0 profil `00000000-0000-4000-8000-00000000cb01`, 0
    message `zz_cmb_%` ; puis les journaux des 24 h : `postgres_logs` sur `parsed.sql_state_code = '23514'` pour
    conv_messages (un refus réel = un client qui n'est pas à jour, ou une requête forgée — à lire), `client_errors`.
 
-**Retour arrière** : le bloc « --| » de l'en-tête (deux `drop constraint if exists`, rien d'effacé) ; le banc ⑦ prouve le
+**Retour arrière** : le bloc « --| » de l'en-tête (deux `drop constraint if exists`, rien d'effacé ; les CHECK du lot de
+sécurité restent) ; le banc ⑦ prouve le
 catalogue de conv_messages revenu À L'IDENTIQUE.
