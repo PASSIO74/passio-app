@@ -18,7 +18,9 @@ const PROTECTED = new Set(["main", "master", "prod", "production"]);
 function git(args, opts = {}) {
   return exec("git", args, { cwd: config.repoPath, maxBuffer: 8 * 1024 * 1024, ...opts });
 }
-function validBranch(name) { return /^[\w./-]{1,80}$/.test(name) && !PROTECTED.has(name); }
+// Premier caractère imposé (F-21) : `--force` passait pour un nom, et le repli lançait
+// `git checkout --force`, qui écrasait les modifications locales.
+export function validBranch(name) { return /^[A-Za-z0-9_][\w./-]{0,79}$/.test(name) && !PROTECTED.has(name); }
 
 export async function status() {
   const [{ stdout: branch }, { stdout: porcelain }, { stdout: ahead }] = await Promise.all([
@@ -66,6 +68,7 @@ export async function commitsSince(sinceMs, max = 40) {
 }
 
 export async function diff(file) {
+  if (file != null && (typeof file !== "string" || file.includes("\0"))) { const e = new Error("Chemin invalide."); e.code = 400; throw e; }
   const args = ["diff", "--no-color"]; if (file) args.push("--", file);
   const { stdout } = await git(args);
   return stdout;

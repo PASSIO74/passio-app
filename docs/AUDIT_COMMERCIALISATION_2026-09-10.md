@@ -46,7 +46,7 @@ du clic, jamais sa persistance.
 
 **Preuve.** SQL prod : `select count(*) total, count(*) filter (where data->'user'->'cgu' is not null)
 avec_cgu from public.user_state;` → {total: 85, avec_cgu: 0}. Le compte
-leane.bouvier13@icloud.com (auth.users created_at 2026-09-09 11:07:19) est postérieur au
+[adresse retirée] (auth.users created_at 2026-09-09 11:07:19) est postérieur au
 commit b127ca5 « CGU, mentions légales et consentement explicite » (2026-09-08 20:11,
 ancêtre de HEAD) ; sa ligne user_state existe (updated_at 2026-09-09 12:45:44) et son cgu
 est null. Aucune colonne ni table de consentement en base : `select ... from
@@ -110,7 +110,7 @@ APRÈS `adopterCompteConnecte`.
 > rapport). Il n'y a donc aucun autre endroit où chercher. - `select count(*) filter
 > (where data->'user' ? 'cgu') from public.user_state` = 0 sur 85 lignes. - Le seul compte
 > réel créé depuis la mise en ligne du dispositif (commit b127ca5, 2026-09-08 20:11, sur
-> main) est `1bc40aff-…` (leane.bouvier13@icloud.com, `auth.users.created_at` = 2026-09-09
+> main) est `1bc40aff-…` ([adresse retirée], `auth.users.created_at` = 2026-09-09
 > 11:07). Sa ligne `user_state` EXISTE et a bien été poussée au serveur (`updated_at` =
 > 2026-09-09 12:45, `data->'user'->>'name'` = « Léane », `onboarded` = true) — et
 > `data->'user' ? 'cgu'` y vaut **false**. La trace n'a donc pas été perdue faute de
@@ -1605,8 +1605,8 @@ qui livre les conv_id nécessaires au constat suivant.
 **Preuve.** pg_policies : public.conv_reads, policy « reads_select », cmd=SELECT, roles={public},
 qual="true" ; aclexplode(pg_class.relacl) : conv_reads / anon / SELECT présent. Contenu réel
 mesuré : 37 lignes, 24 user_id distincts, 21 conv_id distincts. Extrait :
-conv_id=conv_xxngtx4jkmqr26wkk partagé par 6902826f-521a-4c83-afbf-11344de43f13,
-20762060-78c4-40b9-ad2a-ee7c1cb19857 et d59aaaa3-3da1-4c52-8423-69c448b3b637, dernière
+conv_id=conv_xxngtx4jkmqr26wkk partagé par <compte-réel>,
+<compte-réel> et <compte-réel>, dernière
 lecture 2026-09-10 11:54:43+00. À comparer avec conv_messages / conv_members /
 conversations, qui sont eux gardés par is_conv_member(...).
 
@@ -2192,7 +2192,7 @@ modale et le passer en 3ᵉ argument — `supaReport` le tronque déjà à 500 c
 > vérifié les droits par `has_table_privilege` : `anon` ET `authenticated` détiennent
 > INSERT sur `public.reports` (`relacl` = arwdDxtm pour les deux). Pour un compte
 > CONNECTÉ, `MY_UID` est l'uuid Supabase, le `WITH CHECK` est satisfait et l'écriture
-> PASSE — la ligne de production `reporter_id = 683bbbd0-7167-4d0c-88f3-6ebd10fde902`
+> PASSE — la ligne de production `reporter_id = <compte-réel>`
 > (2026-08-19) le prouve de bout en bout. Les testeurs de la beta ont un compte : leurs
 > signalements sont bel et bien enregistrés. Le mensonge ne se déclenche que pour un
 > visiteur sans compte, au-delà de 10 signalements/minute, ou sur une panne réseau. C'est
@@ -2222,7 +2222,7 @@ modale et le passer en 3ᵉ argument — `supaReport` le tronque déjà à 500 c
 > beta. Preuve : pg_class.relacl sur public.reports = anon/authenticated=arwdDxtm,
 > has_table_privilege('authenticated','public.reports','INSERT')=true, policy unique
 > reports_insert WITH CHECK (reporter_id = auth.uid()::text), et la ligne
-> r_xhmapceexmt0ge5pr (2026-08-19) porte reporter_id=683bbbd0-7167-4d0c-88f3-6ebd10fde902,
+> r_xhmapceexmt0ge5pr (2026-08-19) porte reporter_id=<compte-réel>,
 > un vrai uuid. Le sous-cas « visiteur » est réel (openEventDetails n'a AUCUNE garde
 > d'auth, vérifié ligne à ligne, et le bouton s'affiche dès que `mine` est faux) mais
 > c'est le cas MARGINAL, pas le cœur.  3) DEUX défauts plus lourds, de la même famille,
@@ -2575,7 +2575,7 @@ qu'une session existe) · js/app-01-diag-seed.js:125 (32 personas), :162 (683 po
 (36 événements, avec `address` et `contact` fictifs). MESURÉ EN PRODUCTION : `select
 follower_id, following_id from public.follows` → 3 des 8 abonnements visent des personas de
 démonstration (`u_liam`, `u_amira`, `u_nina`), tous par le compte réel
-`6902826f-521a-4c83-afbf-11344de43f13`. Et `select count(*) filter (where event_id ~
+`<compte-réel>`. Et `select count(*) filter (where event_id ~
 '^e[0-9]+$') from public.event_attendees` → **14 lignes sur 25 (56 %) sont des inscriptions
 à un événement de DÉMONSTRATION** (`e1`, `e2`, `e3`, `e6`, `e17`, `e23`, `e30`, `e35`,
 `e41`, `e46`, `e47`) — aucune contrainte FK sur `event_attendees.event_id`
@@ -2652,7 +2652,7 @@ soit il disparaît pour les comptes réels (`allFeedPosts` filtre `_source === "
 > `<a href="tel:...">` (app-07:3793). Les 7 numéros du seed (06 12 34 56 78, 06 33 77 91
 > 45, 06 55 28 44 12, 06 72 45 18 33, 06 88 12 54 76, 06 88 77 55 44, 07 61 42 18 05) sont
 > TOUS dans des plages ARCEP attribuables — AUCUN dans la plage fiction 06 39 98 xx xx —
-> et un contact est un vrai gmail (galerielapetite@gmail.com, pas un @passio.app). Un tap
+> et un contact est un vrai gmail ([adresse retirée], pas un @passio.app). Un tap
 > = appel à un abonné potentiellement réel. ③ Rien d'intime n'est exposé, personne n'est
 > blessé, aucune sanction encourue en beta gratuite.  PROBABILITÉ RÉELLE : faible, et
 > surtout MESURÉE. Le défaut est vivant depuis juin. Sur 4 testeurs extérieurs réels
@@ -2815,7 +2815,7 @@ Brevo** et **DMARC est absent** » · .passio/context/KNOWN_RISKS.md, ligne R11 
 le tableau des risques OUVERTS (Prob. Élevée / Impact Élevé / Détect. Difficile) · `grep -rn
 "DKIM|DMARC" .` ne rend aucun enregistrement DNS ni aucune trace d'application. MESURÉ EN
 PRODUCTION : `select id, created_at, email_confirmed_at, confirmation_sent_at,
-last_sign_in_at from auth.users` → `6b0a8694-61db-409c-b2ea-b26b9fb959ef`, créé le
+last_sign_in_at from auth.users` → `<compte-réel>`, créé le
 **2026-09-07 12:48:18**, `confirmation_sent_at` = 12:48:18, `email_confirmed_at` = **NULL**,
 `last_sign_in_at` = **NULL** — trois jours plus tard, adresse **gmail.com**, aucun renvoi de
 lien demandé. L'autre compte de la période (`1bc40aff`, 2026-09-09) a confirmé en 21 s. Et
@@ -4490,7 +4490,7 @@ _outboxRemove(msgId); }`, aucun appel à `_notifierMessage`. Chemin média : js/
 pwa.js:901 `sendMessageToSupabase`, idem. PRODUCTION : `select count(*) from notifications
 where kind='message'` → 0 ; et le seul message envoyé depuis le déploiement du correctif
 (commit 69a2ed6 du 2026-09-09 12:02) est `msg_x1izp5x3nmtv9g00a`, 2026-09-10 08:23:32, par
-6902826f (benjamin.ladame@gmail.com, connecté à 08:23:02), conversation à 1 destinataire →
+6902826f ([adresse retirée], connecté à 08:23:02), conversation à 1 destinataire →
 `select count(*) from notifications n where n.kind='message' and
 n.ref_id='conv_xwrrk2rr0mtv9fwoi'` → 0.
 
@@ -5048,7 +5048,7 @@ démonstration » s'éteignent dès qu'un compte existe.
 
 **Preuve.** js/app-01-diag-seed.js:1951 contact: "06 72 45 18 33" (puis :1971, :1998, :2006, :2043,
 :2065, :2093…), :2016-2019 venue "Galerie La Petite", address "42 rue Pargaminières",
-contact "galerielapetite@gmail.com", externalLink "https://galerielapetite.fr" (ce domaine
+contact "[adresse retirée]", externalLink "https://galerielapetite.fr" (ce domaine
 ne résout pas : socket.gethostbyname → Name or service not known). js/app-07-ia-explore-
 irl.js:3793 : infoRow("Contact", `<a href="tel:${escapeHtml(ev.contact)}">…`) — le lien tel:
 est posé même quand le contact est une adresse e-mail. js/app-07-ia-explore-irl.js:688-697 :

@@ -1,16 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createToken, verifyToken, can, capsFor } from "../server/auth.js";
+import { config } from "../server/config.js";
+
+// Le jeton porte une empreinte du compte (audit du 2026-11-06, F-11) : il faut un compte existant.
+const COMPTE = config.adminUser;
 
 test("token signé : aller-retour valide", () => {
-  const t = createToken("benjamin", "admin");
+  const t = createToken(COMPTE, "admin");
   const p = verifyToken(t);
-  assert.equal(p.u, "benjamin");
+  assert.equal(p.u, COMPTE);
   assert.equal(p.role, "admin");
 });
 
 test("token falsifié : rejeté", () => {
-  const t = createToken("benjamin", "admin");
+  const t = createToken(COMPTE, "admin");
   const tampered = t.slice(0, -3) + "aaa";
   assert.equal(verifyToken(tampered), null);
 });

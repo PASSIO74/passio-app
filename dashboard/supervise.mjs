@@ -20,7 +20,8 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { envCli } from "./scripts/connecter-claude.mjs";
+import { envCli, lireCle } from "./scripts/connecter-claude.mjs";
+import { modeWorker } from "./aiworker-garde.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const LOG = path.join(ROOT, "data", "supervise.log");
@@ -166,4 +167,12 @@ process.on("SIGTERM", () => arreter("SIGTERM"));
 
 log(`superviseur en route — pilotage + worker Claude/Codex maintenus actifs · identifiants Claude ${ENV_ENFANTS.CLAUDE_CONFIG_DIR ? `ISOLÉS dans ${ENV_ENFANTS.CLAUDE_CONFIG_DIR}` : "partagés (~/.claude)"}`);
 lancer("serveur", path.join("server", "start.js"), { DASH_SUPERVISED: "1" });
-lancer("ai-worker", "aiworker.mjs", { PASSIO_AI_SUPERVISED: "1" });
+// Adhésion explicite (audit de sécurité du 2026-11-06, F-03) : le worker exécute des instructions
+// venues d'une branche d'un dépôt public.
+{
+  let texteEnv = "";
+  try { texteEnv = fs.readFileSync(path.join(ROOT, ".env"), "utf8"); } catch {}
+  const mode = modeWorker(process.env.PASSIO_AI_WORKER || lireCle(texteEnv, "PASSIO_AI_WORKER"));
+  if (mode === "off") log("worker IA non lancé : PASSIO_AI_WORKER absent de dashboard/.env");
+  else lancer("ai-worker", "aiworker.mjs", { PASSIO_AI_SUPERVISED: "1" });
+}

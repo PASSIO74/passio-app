@@ -40,6 +40,9 @@
 // qui ne peut pas prouver qu'elle a fini n'a pas fini.
 
 /** Tables qui portent l'identifiant du compte, et la colonne qui le porte. */
+/** Préfixe des marques de rappels (même valeur que `MARQUE_UID` de rappels.js, relu par un verrou). */
+export const MARQUE_RAPPELS = "systeme:rappels:";
+
 export const TABLES_COMPTE = [
   ["posts", "author_id"], ["post_likes", "user_id"], ["post_comments", "author_id"],
   ["post_collaborators", "user_id"], ["post_collaborators", "added_by"],
@@ -524,6 +527,13 @@ export async function purgerCompte(admin, uid, options) {
   const objets = releve.objets || [];
   base.objets = objets.length;
 
+  // Son identifiant dans les activités des autres : `events.co_organizers` est un jsonb, invisible d'une
+  // purge par colonne (audit du 2026-11-06, A-15). Fonction absente (lot 3 non appliqué) : on continue.
+  try {
+    const co = await admin.rpc("retirer_co_organisateur", { p_uid: uid });
+    if (co && co.error && co.error.code !== "PGRST202" && co.error.code !== "42883") echecs.push(`events:co_organizers (${co.error.message || co.error.code})`);
+  } catch (e) { echecs.push(`events:co_organizers (${(e && e.message) || "exception"})`); }
+
   // ①bis R31 — ce que les AUTRES ont écrit sur ses publications et sur ses commentaires.
   //    Relevé AVANT ② : une fois ses publications effacées, plus rien ne dit lesquelles
   //    étaient les siennes. Une liste illisible est un échec nommé, jamais « rien à faire ».
@@ -550,6 +560,11 @@ export async function purgerCompte(admin, uid, options) {
     echecs.push(`${table}:${col} (${err})`);
   }
 
+  // Les marques des rappels (`systeme:rappels:<compte>`, rappels.js) portent le compte dans une
+  // valeur composée : ni `TABLES_COMPTE` ni la gate ne les voient (audit 2026-11-06).
+  const errMarques = await supprimerLignes(admin, "analytics_events", "user_id", MARQUE_RAPPELS + uid);
+  if (errMarques && !errMarques.absente) echecs.push(`analytics_events:marques (${errMarques})`);
+
   // ③ Médias : les objets relevés (par seau, par lots), puis les huit dossiers
   //    du seau public en second filet.
   const parSeau = new Map();
@@ -567,6 +582,10 @@ export async function purgerCompte(admin, uid, options) {
   }
 
   // ④ Relecture : ce qui reste est nommé. Illisible compte comme un reste.
+  {
+    const n = await compterRestes(admin, "analytics_events", "user_id", MARQUE_RAPPELS + uid);
+    if (n) restes.push(`analytics_events:marques=${n < 0 ? "illisible" : n}`);
+  }
   if (!releve.erreur) {
     const relu = await listerObjetsDuCompte(admin, uid);
     if (relu.erreur) restes.push("objets=illisible");

@@ -5,6 +5,7 @@
 // seulement fusionner une branche `sentinelle/*` dans la branche locale cible,
 // puis prouver le résultat. Au premier test rouge, elle revient exactement au
 // SHA d'avant promotion et enregistre l'échec dans la mémoire d'apprentissage.
+import { envSansSecrets } from "./env-enfant.js";
 import { spawn } from "node:child_process";
 import { config } from "./config.js";
 import { audit } from "./audit.js";
@@ -22,9 +23,9 @@ function runGit(args, cwd = config.repoPath, timeoutMs = 120_000) {
   return new Promise((resolve) => {
     const proc = spawn("git", args, {
       cwd,
-      shell: process.platform === "win32",
+      shell: false,
       windowsHide: true,
-      env: { ...process.env, FORCE_COLOR: "0" },
+      env: envSansSecrets({ FORCE_COLOR: "0" }, { garderGithub: true }),
     });
     let out = "", err = "";
     const cap = (current, chunk, max) => (current + chunk.toString()).slice(-max);

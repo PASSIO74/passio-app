@@ -102,7 +102,9 @@ const CONTRACTS = {
   },
 };
 
-function contractFor(action) { return CONTRACTS[action] || CONTRACTS._default; }
+// `action` vient de la télémétrie : `flow_action=constructor` traversait la chaîne de prototypes
+// et aveuglait tout le traçage (F-08).
+function contractFor(action) { return entree(CONTRACTS, action) || CONTRACTS._default; }
 
 // Cible métier d'un flow (pour dédup + appariement de livraison), selon l'action.
 function targetOf(meta, action) {
@@ -422,7 +424,10 @@ class TraceTracker {
     for (const cid of this.order) {
       const flow = this.flows.get(cid);
       if (!flow || flow.reported) continue;
-      const { final } = this._chain(flow, now);
+      // Un flux illisible est consommé seul : il ne fait plus perdre les verdicts déjà calculés.
+      let final;
+      try { ({ final } = this._chain(flow, now)); }
+      catch (e) { flow.reported = true; continue; }
       if (final === "running") continue;      // pas encore figé : on repassera
       flow.reported = true;                   // consommé, quel que soit le verdict
       // « unconfirmed » n'est PAS une alerte : le plus souvent l'onglet s'est

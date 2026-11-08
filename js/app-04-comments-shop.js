@@ -289,42 +289,52 @@ function _cmtKnownNames() {
 // sur d'anciens Safari iOS) : à chaque « @ » en début de mot, on matche le plus
 // long pseudo CONNU (multi-mots « @Nina Costa »), sinon un seul mot. Opère sur du
 // texte DÉJÀ échappé ; le pseudo affiché est ré-échappé (anti-XSS).
-function _linkifyMentions(safe) {
+// La mention qui commence à safe[i] (« @ »), ou null. Le nom le plus connu d'abord,
+// sinon le mot qui suit. Rend le HTML de la mention et le nombre de caractères lus.
+function _mentionEn(safe, i) {
   var names = _cmtKnownNames();
-  var boundary = /[\s.,;!?()\[\]]/;
-  var out = "", i = 0;
+  var after = safe.slice(i + 1), matched = null;
+  for (var k = 0; k < names.length; k++) {
+    var esc = escapeHtml(names[k]);
+    if (esc && after.toLowerCase().indexOf(esc.toLowerCase()) === 0) { matched = { raw: names[k], esc: esc }; break; }
+  }
+  if (!matched) { var tk = (after.match(/^[A-Za-zÀ-ÿ0-9_'’-]+/) || [""])[0]; if (tk) matched = { raw: tk, esc: tk }; }
+  if (!matched) return null;
+  return {
+    html: '<span class="cmt-mention" onclick="return _openMentionProfile(\'' + escapeJsArg(matched.raw) + '\', event)">@' + matched.esc + '</span>',
+    lus: 1 + matched.esc.length,
+  };
+}
+// Mentions, mots-dièse et liens d'un texte DÉJÀ échappé.
+// ⚠️ UN SEUL PASSAGE, de gauche à droite (audit 2026-11-06) : ces trois réécritures
+// se faisaient l'une après l'autre sur le résultat de la précédente, donc aussi sur le
+// HTML déjà généré. Un nom de compte contenant une URL ou un « #mot » se retrouvait
+// réécrit DANS l'attribut onclick de sa mention, dont il refermait les guillemets.
+// Le morceau reconnu est ajouté à la sortie et n'est jamais relu.
+function _linkifyText(safe) {
+  if (!safe) return "";
+  var bordMot = /[\s.,;!?()\[\]]/;
+  var bordLien = /[\s(]/;
+  var dieze = /^#[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9_'-]{1,30}/;
+  var adresse = /^https?:\/\/[^\s<]+/;
+  var out = "", i = 0, m;
   while (i < safe.length) {
-    var ch = safe[i];
-    if (ch === "@" && (i === 0 || boundary.test(safe[i - 1]))) {
-      var after = safe.slice(i + 1), matched = null;
-      for (var k = 0; k < names.length; k++) {
-        var esc = escapeHtml(names[k]);
-        if (esc && after.toLowerCase().indexOf(esc.toLowerCase()) === 0) { matched = { raw: names[k], esc: esc }; break; }
-      }
-      if (!matched) { var tk = (after.match(/^[A-Za-zÀ-ÿ0-9_'’-]+/) || [""])[0]; if (tk) matched = { raw: tk, esc: tk }; }
-      if (matched) {
-        out += '<span class="cmt-mention" onclick="return _openMentionProfile(\'' + escapeJsArg(matched.raw) + '\', event)">@' + matched.esc + '</span>';
-        i += 1 + matched.esc.length; continue;
-      }
+    var ch = safe[i], avant = i > 0 ? safe[i - 1] : "";
+    if (ch === "@" && (i === 0 || bordMot.test(avant))) {
+      var men = _mentionEn(safe, i);
+      if (men) { out += men.html; i += men.lus; continue; }
+    } else if (ch === "#" && (i === 0 || bordMot.test(avant)) && (m = dieze.exec(safe.slice(i, i + 40)))) {
+      var tag = m[0].slice(1);
+      out += '<span class="cmt-hashtag" onclick="return _openHashtag(\'' + escapeJsArg(tag) + '\', event)">#' + tag + '</span>';
+      i += m[0].length; continue;
+    } else if (ch === "h" && (i === 0 || bordLien.test(avant)) && (m = adresse.exec(safe.slice(i)))) {
+      var clean = m[0].replace(/[.,;!?)]+$/, ""); // ponctuation finale hors du lien
+      out += '<a href="' + clean + '" target="_blank" rel="noopener noreferrer nofollow" class="cmt-link">' + clean + '</a>';
+      i += clean.length; continue;
     }
     out += ch; i++;
   }
   return out;
-}
-function _linkifyText(safe) {
-  if (!safe) return "";
-  safe = _linkifyMentions(safe);
-  // #hashtags
-  safe = safe.replace(/(^|[\s.,;!?()\[\]])#([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9_'-]{1,30})/g, function (m, pre, tag) {
-    return pre + '<span class="cmt-hashtag" onclick="return _openHashtag(\'' + tag.replace(/'/g, "\\'") + '\', event)">#' + tag + '</span>';
-  });
-  // URLs (en dernier : ne consomme pas les <span> déjà posés car s'arrête à « < »)
-  safe = safe.replace(/(^|[\s(])((?:https?:\/\/)[^\s<]+)/g, function (m, pre, url) {
-    var clean = url.replace(/[.,;!?)]+$/, ""); // ponctuation finale hors du lien
-    var tail = url.slice(clean.length);
-    return pre + '<a href="' + clean + '" target="_blank" rel="noopener noreferrer nofollow" class="cmt-link">' + clean + '</a>' + tail;
-  });
-  return safe;
 }
 function _commentBodyHtml(txt) {
   return _looksLikeMediaUrl(txt)
@@ -739,7 +749,7 @@ function _renderCommentsList(allComments, postId) {
           <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(c.id)}">${cReactChip}</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${escapeJsArg(c.id)}', event);">${cRepOpen ? "▲ Masquer les réponses" : ("⌵ Voir " + cReplies.length + " réponse" + (cReplies.length > 1 ? "s" : ""))}</span>` : ""}
         </div>
-        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => {
+        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${escapeHtml(c.id)}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
           const rSrc = r.authorId === "me" ? "me" : "seed";
 
@@ -4439,8 +4449,11 @@ async function openUserProfile(authorId, source) {
   // 🖼️ En-tête : MÊME visuel que le profil principal (couverture 3:2 + avatar
   // chevauchant + pseudo + bio + réseaux + stats), via les classes existantes
   // .main-profile-* — sans les contrôles d'édition, évidemment.
-  var coverStyle = user.coverUrl
-    ? 'background:url(' + safeUrlAttr(passioThumb(user.coverUrl, 880)) + ') center/cover;'
+  // `_cssUrl` et non `safeUrlAttr` (audit 2026-11-06) : l'attribut est décodé AVANT le
+  // CSS, une URL échappée pour le HTML ressortait donc de son `url(` non cité.
+  var _coverSure = user.coverUrl ? _cssUrl(passioThumb(user.coverUrl, 880)) : null;
+  var coverStyle = _coverSure
+    ? "background:url('" + _coverSure + "') center/cover;"
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
   var html = '\
@@ -6332,7 +6345,12 @@ function _copierPieceJointeVers(cheminSrc, targetConvId) {
 // Chemin d'objet (seau `attachments`) d'un message média, ou null.
 function _pieceJointeDuMessage(m) {
   if (!m || typeof pieceJointeChemin !== "function") return null;
-  return pieceJointeChemin(m.img || m.video || m.fileUrl || m.voiceData || null);
+  // ⚠️ MON média tout juste envoyé n'a ici que sa copie LOCALE (data URL) jusqu'à la
+  // relecture du fil : sans `m.pj.url` (posé au dépôt, app-09), « supprimer pour
+  // tous » laissait son objet dans le seau, et le transfert ne savait pas le copier
+  // (2026-11-07, MSG-03).
+  return pieceJointeChemin(m.img || m.video || m.fileUrl || m.voiceData || null)
+    || (m.pj && m.pj.url ? pieceJointeChemin(m.pj.url) : null);
 }
 
 // Une URL `data:` — un fichier ENTIER, encodé dans l'URL — avec ce que le
@@ -6345,7 +6363,9 @@ function _estUrlDonnees(u) {
 // appareil, ou null. Même ordre que `_pieceJointeDuMessage` : c'est ce champ-là
 // que `_forwardTo` remplace.
 function _urlLocaleDuMessage(m) {
-  var u = m ? (m.img || m.video || m.fileUrl || m.voiceData || null) : null;
+  // `docData` : la copie locale d'un DOCUMENT que je viens d'envoyer (app-09) —
+  // en dernier, comme dans la branche de copie de `_forwardTo`.
+  var u = m ? (m.img || m.video || m.fileUrl || m.voiceData || m.docData || null) : null;
   return _estUrlDonnees(u) ? u : null;
 }
 
@@ -6365,20 +6385,37 @@ function _televerserPieceJointeVers(dataUrl, targetConvId) {
     for (var i = 0; i < octets.length; i++) ia[i] = octets.charCodeAt(i);
     var ext = (type.split("/")[1] || "").replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
     var chemin = "attachments/" + targetConvId + "/" + Date.now() + "_" + Math.random().toString(36).slice(2, 11) + "_transfert." + ext;
+    // Une mise à jour attend ce dépôt (pwa-detect.js), comme tout dépôt de pièce
+    // jointe ; la fin est rendue sur TOUTE issue.
+    var fin = (typeof _envoiCommence === "function") ? _envoiCommence() : function () {};
+    // Un refus remonte au pilotage, comme le dépôt d'une pièce jointe (app-09) :
+    // code fermé, jamais le libellé du serveur (il peut porter le nom du fichier).
+    var refus = function (err) {
+      try { if (typeof diagLog === "function") diagLog("pj_televersement KO " + String((err && err.message) || err).slice(0, 80)); } catch (e) {}
+      try {
+        if (typeof _pjSignaler === "function" && typeof _pjCodeEchec === "function") {
+          var reseau = (typeof estEchecReseau === "function") && estEchecReseau(err);
+          _pjSignaler({ rc: _pjCodeEchec(err, reseau), http: Number(err && err.status) || Number(err && err.statusCode) || 0, kind: "transfert", voie: "transfert", essai: 1, ko: Math.round(ia.length / 1024) });
+        }
+      } catch (e) {}
+      return null;
+    };
     return Promise.resolve(supa.storage.from("attachments").upload(chemin, new Blob([ia], { type: type }), {
       cacheControl: "31536000", // pièce jointe immuable, comme à l'envoi
       upsert: false,
       contentType: type,
     })).then(function (res) {
-      if (res && res.error) {
-        try { if (typeof diagLog === "function") diagLog("pj_televersement KO " + String(res.error.message)); } catch (e) {}
-        return null;
-      }
+      if (res && res.error) return refus(res.error);
       var pub = supa.storage.from("attachments").getPublicUrl(chemin);
       var url = pub && pub.data && pub.data.publicUrl;
       return url ? ((typeof cdnUrl === "function") ? cdnUrl(url) : url) : null;
-    }, function () { return null; });
-  } catch (e) { return Promise.resolve(null); }
+    }, refus).then(function (u) { fin(); return u; }, function () { fin(); return null; });
+  } catch (e) {
+    // `fin` est hissé (`var`) : posé si la levée vient de l'envoi lui-même.
+    try { if (typeof fin === "function") fin(); } catch (_) {}
+    try { if (typeof diagLog === "function") diagLog("pj_televersement KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {}
+    return Promise.resolve(null);
+  }
 }
 function _purgerPieceJointeDe(m) {
   var chemin = _pieceJointeDuMessage(m);
@@ -6406,13 +6443,41 @@ function _forwardPick(convId, msgId) {
     '<div style="max-height:340px;overflow-y:auto;margin-top:8px;">' + (rows || '<div style="padding:20px;text-align:center;color:var(--muted);">Aucune conversation</div>') + '</div>');
 }
 
+// Le conteneur RÉEL d'un enregistrement audio (vocal ou fichier joint). La copie
+// locale le porte (`data:audio/mp4;…` sur iPhone, `data:audio/webm;codecs=opus;…`
+// sur Android) ; un vocal REÇU ne garde que son URL, et c'est l'extension de son
+// objet qui le dit : `_sendVoiceMessage` (app-09) nomme tout vocal `voice.<ext>`
+// d'après son conteneur (m4a, ogg, webm), une copie garde ce nom, et un vocal
+// transféré depuis sa copie locale est déposé en `transfert.<sous-type>` (mp4,
+// webm, ogg — `_televerserPieceJointeVers`). Jamais « audio/webm » d'office pour
+// un enregistrement iPhone — c'est l'étiquette mensongère qui rendait ses
+// vocaux injouables.
+function _conteneurAudioDuMessage(m) {
+  var v = (m && typeof m.voiceData === "string") ? m.voiceData : "";
+  var duData = /^data:(audio\/[a-z0-9.+-]+)/i.exec(v);
+  if (duData) return duData[1].toLowerCase();
+  var chemin = ((typeof pieceJointeChemin === "function") && pieceJointeChemin(v)) || v.split(/[?#]/)[0];
+  var ext = ((/\.([a-z0-9]{2,4})$/i.exec(chemin) || [])[1] || "").toLowerCase();
+  if (ext === "m4a" || ext === "mp4") return "audio/mp4";
+  if (ext === "ogg" || ext === "oga" || ext === "opus") return "audio/ogg";
+  return "audio/webm";
+}
+
 async function _forwardTo(targetConvId) {
   closeModal();
+  // ⚠️ L'AUTEUR EST CAPTURÉ ICI, AVANT TOUT `await` (ASTRA-21, revue audit-passio du
+  // 2026-11-07) : la copie, et désormais le dépôt d'une copie locale, peuvent durer
+  // des minutes pour une vidéo ; un compte remplacé entre-temps ne doit jamais
+  // insérer le média de l'autre sous son nom.
+  var _ctxTransfert = { generation: _outboxGenerationActuelle(), auteur: (typeof MY_UID !== "undefined" ? MY_UID : null) };
   var src = window._forwardSrc; if (!src) return;
   var r = _msgById(src.convId, src.msgId); if (!r || !r.m) return;
   var m = r.m;
   var convs = getConversations();
   var target = convs.find(function(x){ return x.id === targetConvId; }); if (!target) return;
+  // Lu AVANT que la copie ne remplace l'URL : seule la copie locale porte le
+  // conteneur dans son mime.
+  var _conteneurAudio = m.voiceData ? _conteneurAudioDuMessage(m) : null;
   // ⚠️ UNE PIÈCE JOINTE TRANSFÉRÉE CHANGE DE DOSSIER (ASTRA-01, 2026-09-14).
   // Le transfert réutilisait l'URL d'origine, `attachments/<conv source>/…` ;
   // or le seau est privé et la lecture exige d'être membre de la conversation
@@ -6428,6 +6493,9 @@ async function _forwardTo(targetConvId) {
     m = Object.assign({}, m);
     if (m.img) m.img = nouvelleUrl; else if (m.video) m.video = nouvelleUrl;
     else if (m.fileUrl) m.fileUrl = nouvelleUrl; else if (m.voiceData) m.voiceData = nouvelleUrl;
+    // Mon document tout juste envoyé n'a qu'une copie locale (`docData`) : il part
+    // comme document, avec l'URL de la copie — il partait en message VIDE.
+    else if (m.docData) { m.fileUrl = nouvelleUrl; delete m.docData; }
   }
   // ⚠️ UN MÉDIA ENCORE LOCAL NE PART JAMAIS EN BASE64 (2026-11-07). La copie de
   // l'AUTEUR d'une photo, d'une vidéo ou d'un vocal qu'il vient d'envoyer garde
@@ -6446,6 +6514,9 @@ async function _forwardTo(targetConvId) {
       m = Object.assign({}, m);
       if (m.img) m.img = televersee; else if (m.video) m.video = televersee;
       else if (m.fileUrl) m.fileUrl = televersee; else if (m.voiceData) m.voiceData = televersee;
+      // Mon document tout juste envoyé n'a qu'une copie locale (`docData`) : il part
+      // comme document — il partait en message VIDE.
+      else if (m.docData) { m.fileUrl = televersee; delete m.docData; }
     }
   }
   // Reconstruit un envelope de contenu selon le type, puis insère localement + Supabase.
@@ -6454,13 +6525,40 @@ async function _forwardTo(targetConvId) {
   else if (m.gif) { content = { type: "gif", url: m.gif, text: "🎞 GIF" }; localMsg.gif = m.gif; }
   else if (m.fileUrl) { content = { type: "doc", url: m.fileUrl, filename: m.fileName || "Fichier", text: "📄 " + (m.fileName||"Fichier") }; localMsg.fileUrl = m.fileUrl; localMsg.fileName = m.fileName; localMsg.fileType = m.fileType; }
   else if (m.location) { content = { type: "location", lat: m.location.lat, lng: m.location.lng, url: m.location.url, text: "📍 Position" }; localMsg.location = m.location; }
+  else if (m.voiceData && m.isFile) {
+    // Un FICHIER audio joint (`_processAttach`, kind « audio ») n'est pas un vocal :
+    // il part en fichier téléchargeable, comme le transfert d'un fichier audio reçu
+    // — jamais avalé par le lecteur de vocaux du destinataire.
+    content = { type: "doc", url: m.voiceData, filename: m.fileName || "Audio", text: "📄 " + (m.fileName || "Audio") };
+    localMsg.fileUrl = m.voiceData; localMsg.fileName = m.fileName || "Audio"; localMsg.fileType = "audio";
+  }
+  else if (m.voiceData) {
+    // ⚠️ UN VOCAL PART EN VOCAL (2026-11-07). Aucune branche ne lisait `voiceData` :
+    // il tombait dans la branche texte — message VIDE pour mon vocal, « [AUDIO]
+    // Message vocal (7s) » pour un vocal reçu, dont l'objet venait d'être copié pour
+    // rien. Le destinataire reconnaît un vocal à son NOM « Message vocal (Ns) »
+    // (`applyMsgContentData`), quel que soit le conteneur ; `fileType` dit le
+    // conteneur réel, lu plus haut. La bulle locale porte l'URL de la COPIE : c'est
+    // elle que « supprimer pour tous » purgera (`_purgerPieceJointeDe`).
+    var _duree = Math.max(0, Math.round(Number(m.voiceDuration) || 0));
+    content = { type: "audio", url: m.voiceData, fileType: _conteneurAudio, filename: "Message vocal (" + _duree + "s)", text: "🎙 Message vocal" };
+    localMsg.voiceData = m.voiceData; localMsg.voiceDuration = _duree;
+  }
   else { localMsg.text = m.text || ""; }
+  // ⚠️ RIEN À TRANSFÉRER N'EST PAS UN MESSAGE VIDE (2026-11-07). Tout ce que les
+  // branches ci-dessus ne savent pas lire tombait dans la branche texte et partait
+  // VIDE — c'était le vocal. Refusé et dit, jamais inséré. Aucune copie ni aucun
+  // dépôt ne peut précéder ce refus : ils ne visent que des médias lus plus haut.
+  if (!content && !String(localMsg.text || "").trim()) { toast("⚠️ Ce message ne peut pas être transféré"); return; }
   // Les deux bornes du serveur, AVANT toute trace locale : une enveloppe dont
   // l'`url` est une data-URL (un GIF ou une position d'une ancienne version) et
   // un texte plus long que ce que ce client envoie lui-même (MSG_TEXTE_MAX).
   // Sinon le transfert resterait affiché ici, et la base le refuserait (23514).
   if (content && _estUrlDonnees(content.url)) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée"); return; }
   if (!content && localMsg.text.length > MSG_TEXTE_MAX) { toast("✋ Message trop long pour être transféré : " + MSG_TEXTE_MAX.toLocaleString("fr-FR") + " caractères au plus"); return; }
+  // Le compte a changé (ou la file a été purgée) pendant la copie ou le dépôt :
+  // rien ne part, ni en local ni en base (ASTRA-21).
+  if (_outboxContextePerime(_ctxTransfert)) { try { if (typeof diagLog === "function") diagLog("transfert_perime"); } catch (e) {} return; }
   if (!target.messages) target.messages = [];
   target.messages.push(localMsg);
   target.lastAt = Date.now();
@@ -7284,6 +7382,10 @@ function _retryMsg(convId, msgId) {
     toast("Ce message a été écrit avec un autre compte ou une ancienne version — recopie-le pour l'envoyer.");
     return;
   }
+  // Une PIÈCE JOINTE se renvoie depuis SA copie locale (`_pjRenvoyer`, app-09) —
+  // jamais reconstruite en texte : `m.text` y est vide, et le renvoi serait parti en
+  // message vide (2026-11-07). L'auteur vient d'être confronté au compte courant.
+  if (m.pj && typeof _pjRenvoyer === "function") { _pjRenvoyer(convId, msgId); return; }
   _setMsgStatus(convId, msgId, "sending");
   // Reconstruit depuis le texte : l'auteur est `m.de`, celui inscrit à
   // l'écriture — et il vient d'être confronté au compte courant ci-dessus.
@@ -7292,6 +7394,11 @@ function _retryMsg(convId, msgId) {
 
 // Vide la file d'attente (à la reconnexion ou au boot).
 function _flushOutbox() {
+  // Les pièces jointes dont le DÉPÔT attend le réseau ont leur file à part
+  // (`passio_pj_outbox_v1`, `_pjFileVider`, app-09) et les mêmes déclencheurs :
+  // démarrage et retour du réseau. Un échec ici ne doit pas taire le reste.
+  try { if (typeof _pjFileVider === "function") _pjFileVider(); }
+  catch (e) { try { if (typeof diagLog === "function") diagLog("pj_file_vider KO " + String((e && e.message) || e).slice(0, 80)); } catch (_) {} }
   var a = _outboxLoad();
   if (!a.length) return;
   // Session expirée (UXO-02) : on ne rejoue RIEN — sans compte joignable,

@@ -245,7 +245,9 @@ function shareBeta() {
   $("#devPanel").classList.remove("active");
   // Lien beta SUIVI : c'est LE lien envoyé aux testeurs → on le tague (?plk) pour
   // apparier l'envoi à une ouverture réellement confirmée dans le centre de pilotage.
-  const rawLink = window.location.href;
+  // `origin + pathname` : ni fragment ni requête (audit 2026-11-06). Une page ouverte
+  // depuis un lien de connexion porte des jetons dans son fragment.
+  const rawLink = window.location.origin + window.location.pathname;
   const link = (window.tel && tel.linkCreate) ? tel.tagUrl(rawLink, tel.linkCreate("beta", "invite")) : rawLink;
   openModal(`
     <div class="modal-handle"></div>
@@ -629,7 +631,9 @@ function _storyBubbleInner(g) {
     const fallback = `https://picsum.photos/seed/${withPhoto.id}/160/160`;
     return `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(g.name)}" onerror="this.onerror=null;this.src='${escapeJsArg(fallback)}'"/>`;
   }
-  return g.emoji || "✨";
+  // `profiles.emoji` est un champ libre d'un autre compte (aucune contrainte en base) :
+  // ce retour part tel quel dans le HTML du rail (audit 2026-11-06).
+  return escapeHtml(g.emoji || "✨");
 }
 
 function renderStories() {
@@ -650,7 +654,7 @@ function renderStories() {
   const myAvatar = (state.user && state.user.general && state.user.general.avatarPhoto) || me.avatarPhoto || "";
   const myAvatarHtml = myAvatar
     ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(myAvatar)}" alt="Moi" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'"/>`
-    : myEmoji;
+    : escapeHtml(myEmoji);
 
   let html;
   if (myGroup && myGroup.stories.length) {
@@ -2767,6 +2771,7 @@ function signalerInscriptionViaLien(session) {
 }
 
 async function boot() {
+  try { _surveillerAutresOnglets(); } catch (e) {}
   // Charge le SDK Supabase à la demande (lazy, hors page verrouillée) PUIS
   // construit le vrai client, avant le moindre appel `supa.*` ci-dessous.
   try { if (typeof ensureSupabase === "function") await ensureSupabase(); } catch(e) { console.warn("Supabase SDK load failed:", e); }
@@ -3387,8 +3392,8 @@ function _buildNoopSupa() {
   // `.not()`, `.or()`, `.update()`, `supa.storage` et `supa.functions` étaient
   // absents — `getEventRatings` et l'annuaire des profils cassaient hors ligne
   // (« supa.from(...).select(...).not is not a function »), et un envoi de
-  // pièce jointe levait sur `supa.storage` undefined au lieu de retomber sur la
-  // data URL. `scripts/audit-supa-stub.js` (CI) empêche la prochaine omission.
+  // pièce jointe levait sur `supa.storage` undefined au lieu de garder sa copie
+  // locale. `scripts/audit-supa-stub.js` (CI) empêche la prochaine omission.
   // `error: null` = on garde la sémantique historique côté BASE : hors ligne
   // l'app continue en local, elle ne crie pas à l'échec sur chaque écriture.
   // ⚠️ `data: []` n'est PAS neutre pour autant : `_writeVerdict` (app-02) lit
@@ -3400,8 +3405,9 @@ function _buildNoopSupa() {
   // l'ancien comportement en croyant corriger une régression.
   const _res = (data) => ({ data: data === undefined ? [] : data, error: null, count: 0, status: 200, statusText: "OK" });
   // Erreur explicite pour tout ce qui SORT de l'appareil (upload, fonction
-  // edge) : là, un faux succès serait pire qu'un échec — l'appelant retombe sur
-  // sa data URL locale au lieu de publier une URL distante qui n'existe pas.
+  // edge) : là, un faux succès serait pire qu'un échec — l'appelant garde sa
+  // copie locale (la publication la garde en local, la messagerie la met en file,
+  // jamais en base) au lieu de publier une URL distante qui n'existe pas.
   const _ko = () => Promise.resolve({ data: null, error: { message: "Supabase non disponible" } });
   function _noopQ() {
     const q = {
@@ -3453,8 +3459,8 @@ function _buildNoopSupa() {
         // (app-09 fait `.getPublicUrl(p).data.publicUrl`) : rendre la forme
         // exacte, sinon la coupure réseau lève au lieu de dégrader.
         // ⚠️ L'URL VIDE n'est sans danger que parce que `upload` échoue juste
-        // au-dessus : tous les appelants testent `error` d'abord et retombent
-        // sur leur data URL. Rendre `upload` « réussi » ferait partir cette
+        // au-dessus : tous les appelants testent `error` d'abord et gardent leur
+        // copie locale. Rendre `upload` « réussi » ferait partir cette
         // chaîne vide comme `file_url` en base — une pièce jointe morte. Les
         // deux valeurs se tiennent : ne pas en changer une seule.
         getPublicUrl: () => ({ data: { publicUrl: "" } }),
@@ -3486,6 +3492,27 @@ supa = _buildNoopSupa();
 // dans client_errors. (Corrigé le 2026-06-19.) Réaffecté par _initRealSupa().
 window.supa = supa;
 
+// Un réseau qui ne répond pas laissait des promesses jamais réglées, donc des écrans figés sans message
+// (audit du 2026-11-06, H-19). Un dépôt ou une purge de compte a le droit d'être long. `AbortSignal.any`
+// manque avant iOS 17.4 : on garde alors le signal de l'appelant, sans délai plutôt que sans annulation.
+function _delaiFetch(url, o) {
+  // Un dépôt peut peser 25 Mo sur un réseau lent : `js/pwa-detect.js` lui accorde 13 minutes, et le couper
+  // ici renverrait le fichier en base64 dans le message.
+  if (o && o.body && typeof o.body !== "string") return 900000;
+  return /\/(?:storage|functions)\/v1\//.test(String(url)) ? 120000 : 30000;
+}
+function _fetchBorne(url, o, delai) {
+  o = o || {};
+  if (typeof AbortSignal === "undefined" || typeof AbortSignal.timeout !== "function") return fetch(url, o);
+  var t = AbortSignal.timeout(delai || _delaiFetch(url, o));
+  var signal = !o.signal ? t : (typeof AbortSignal.any === "function" ? AbortSignal.any([o.signal, t]) : o.signal);
+  return fetch(url, Object.assign({}, o, { signal: signal })).catch(function (e) {
+    // Le SDK rejoue trois fois une TimeoutError, jamais une AbortError : un GET bloqué tenait 127 s, pas 30.
+    if (e && e.name === "TimeoutError") { var a = new Error(e.message || "signal timed out"); a.name = "AbortError"; throw a; }
+    throw e;
+  });
+}
+
 // Construit le VRAI client une fois le SDK chargé. Idempotent. Appelé en tête de
 // boot() après `await ensureSupabase()`. Retourne false si le SDK est absent
 // (réseau coupé) → on reste sur le stub noop, l'app fonctionne en local.
@@ -3493,7 +3520,7 @@ function _initRealSupa() {
   if (window._supaReal) return true;
   if (typeof supabase === "undefined") return false;
   try {
-    supa = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    supa = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { global: { fetch: _fetchBorne } });
     window.supa = supa;
     window._supaReal = true;
     // Référentiel des passions (ADR-010) : chargé UNE fois, en arrière-plan.
@@ -4029,7 +4056,10 @@ function _reconcilierVitrinePassions(essai) {
   essai = essai || 0;
   try {
     if (!window._supaReal || !(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return;
+    // Récupération sur un navigateur déjà occupé (audit 2026-11-06) : l'adoption est
+    // différée, l'état local peut être celui d'un AUTRE compte. Même garde que `user_state`.
     if (!window._etatCompteCharge) { if (essai < 6) setTimeout(function () { _reconcilierVitrinePassions(essai + 1); }, 5000); return; }
+    if (typeof _peutPousserEtat === "function" && !_peutPousserEtat()) return;
     var cle = "passio_vitrine_publiee_v1";
     var attendue = _empreinteVitrine();
     var publiee = null;
@@ -4085,6 +4115,7 @@ function supaSavePassionState() {
 
 async function _supaSavePassionStateMaintenant() {
   try {
+    if (typeof _peutPousserEtat === "function" && !_peutPousserEtat()) return false;
     const charge = _chargeProfilComplete();
     if (!charge) return false;
     // ⚠️ PRO-04 (contre-revue Astra, 2026-09-15) : l'empreinte mémorisée après
@@ -5664,6 +5695,9 @@ function _eventRow(event) {
     recurrence: event.recurrence || "none",
     conv_id: event.convId || null,
   };
+  // Une adresse qu'on n'a pas pu lire n'est pas une adresse vide : l'envoyer l'effacerait en base.
+  if (event._adresseInconnue && !event.address) delete _row.address;
+  if (event._adresseInconnue && !event.contact) delete _row.contact;
   return _row;
 }
 
@@ -5803,13 +5837,42 @@ const _EVENT_COLS_PUBLIC = [
 // rencontre sans aucun compte — la porte fermée le 08/09 sur `event_attendees`,
 // rouverte par une autre table. Un visiteur ne peut de toute façon pas
 // rejoindre une conversation ; il n'a rien à en connaître.
-const _EVENT_COLS_PRIVE = _EVENT_COLS_PUBLIC + ",address,contact,conv_id";
+// ⚠️ `address` et `contact` n'en font plus partie (audit du 06/11, G-07) : tout compte les lisait sans
+// s'inscrire. Ils passent par `supaLireAdresses`, pour l'organisation et pour qui vient.
+const _EVENT_COLS_PRIVE = _EVENT_COLS_PUBLIC + ",conv_id";
 // Mémorisé pour la session : une fois qu'on sait que le rôle courant n'a pas
 // droit aux colonnes privées, inutile de repayer un aller-retour refusé à
 // chaque chargement du fil.
 let _eventColsPubliquesSeulement = false;
 // Un refus qui tient au DROIT, pas à la disponibilité : c'est lui seul qui
 // justifie de ne plus redemander les colonnes privées (ASTRA-10).
+// L'adresse et le contact des activités, par `adresses_activites`. La base rend ce à quoi ce compte a droit.
+// `lu` à faux : on ne sait pas. L'écran montre alors moins, et une édition n'écrase rien (`_eventRow`).
+// Repli sur les colonnes tant que la base n'a pas le lot 4 (PGRST202) : le client part en ligne d'abord.
+let _adressesParColonnes = false;
+async function supaLireAdresses(ids) {
+  const adresses = {};
+  if (!Array.isArray(ids) || !ids.length || !_compteAuthReel()) return { adresses, lu: false };
+  const noter = (lignes, cle) => (lignes || []).forEach((l) => { adresses[l[cle]] = { address: l.address || "", contact: l.contact || "" }; });
+  try {
+    if (!_adressesParColonnes) {
+      const r = await supa.rpc("adresses_activites", { p_event_ids: ids.slice(0, 200) });
+      if (!r.error) { noter(r.data, "event_id"); return { adresses, lu: true }; }
+      if (String(r.error.code || "") !== "PGRST202") {
+        console.warn("supaLireAdresses:", r.error.code || r.error.message);
+        return { adresses, lu: false };
+      }
+      _adressesParColonnes = true;
+    }
+    const c = await supa.from("events").select("id,address,contact").in("id", ids.slice(0, 200));
+    if (c.error) { _adressesParColonnes = false; console.warn("supaLireAdresses (repli):", c.error.code || c.error.message); return { adresses, lu: false }; }
+    noter(c.data, "id");
+    return { adresses, lu: true };
+  } catch (e) {
+    console.warn("supaLireAdresses:", e && e.message);
+    return { adresses, lu: false };
+  }
+}
 function _refusDeDroit(error) {
   if (!error) return false;
   const code = String(error.code || "");
@@ -6076,6 +6139,7 @@ async function supaLoadEvents(authorId) {
     }
     if (error) { console.warn("supaLoadEvents:", error.message); return []; }
     const rows = data || [];
+    const { adresses, lu: adressesLues } = await supaLireAdresses(rows.map(r => r.id));
     const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));
     // Charger les vrais participants (compteurs/avatars cross-compte). Sans ça,
     // supaLoadEvents renvoyait attendees:[] → tout événement affichait "0 inscrit"
@@ -6098,11 +6162,12 @@ async function supaLoadEvents(authorId) {
       date: r.date_at ? supaTs(r.date_at) : Date.now(),
       desc: r.description || "",
       venue: r.venue || "",
-      address: r.address || "",
+      address: (adresses[r.id] || {}).address || "",
+      _adresseInconnue: !adressesLues,
       postalCode: r.postal_code || "",
       price: r.price || 0,
       maxAttendees: r.max_attendees || null,
-      contact: r.contact || "",
+      contact: (adresses[r.id] || {}).contact || "",
       externalLink: r.external_link || "",
       eventType: r.event_type || "Autre",
       coverUrl: r.cover_url || null,
@@ -6946,6 +7011,24 @@ async function _rafraichirConversationsServeur(opts) {
     const localConvs = getConversations();
     const supaConvIds = new Set(supaConvs.map(c => c.id));
     const localOnly = localConvs.filter(c => !supaConvIds.has(c.id) && !SEED_CONVERSATIONS.find(s => s.id === c.id));
+    // ⚠️ UNE PIÈCE JOINTE EN ATTENTE N'EXISTE QUE DANS LA COPIE LOCALE (2026-11-07,
+    // revue audit-passio). Sans `fusion`, une conversation connue du serveur est
+    // REMPLACÉE par la sienne, dont `messages` ne porte que le dernier message
+    // (`supaLoadMyConversations`) : la bulle « envoi… » ou « réessayer » d'un média
+    // pas encore déposé disparaissait au démarrage avec sa copie, et la file des
+    // dépôts (`passio_pj_outbox_v1`, qui ne porte que des identifiants) ne trouvait
+    // plus rien à envoyer. Mesuré : 0 dépôt, 0 insertion, aucune trace — et un dépôt
+    // en vol à ce moment voyait son objet RETIRÉ. On reporte donc sur l'objet serveur
+    // MES bulles de pièce jointe pas encore envoyées (même objet, rien n'est copié).
+    supaConvs.forEach(function (sc) {
+      const lc = localConvs.find(function (x) { return x && x.id === sc.id; });
+      if (!lc || !Array.isArray(lc.messages)) return;
+      const enAttente = lc.messages.filter(function (m) { return m && m.from === "me" && m.pj && (m.status === "sending" || m.status === "failed"); });
+      if (!enAttente.length) return;
+      const connus = new Set((sc.messages || []).map(function (m) { return m && m.id; }));
+      sc.messages = (sc.messages || []).concat(enAttente.filter(function (m) { return !connus.has(m.id); }))
+        .sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+    });
     conversationsState = deduplicateConversations([...supaConvs, ...localOnly]);
   } else {
     conversationsState = deduplicateConversations(getConversations());
@@ -9185,6 +9268,8 @@ function _analyticsSessionUtilisable(uid) {
 function supaTrack(event, properties) {
   try {
     if (!window._supaReal) return;
+    // L'opposition à la mesure d'usage vaut aussi pour `analytics_events` (audit 2026-11-06).
+    if (typeof _mesureUsageActive === "function" && !_mesureUsageActive()) return;
     if (window._analyticsMuetJusqua && Date.now() < window._analyticsMuetJusqua) return;
     var uid = (typeof MY_UID === "string" && MY_UID) ? MY_UID : "";
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) return;

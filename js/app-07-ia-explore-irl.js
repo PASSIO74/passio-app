@@ -1731,7 +1731,7 @@ function updateIrlMapMarkers() {
     const userMarker = L.marker([refLoc.lat, refLoc.lng], { icon: userIcon }).addTo(irlMarkersLayer);
     userMarker.bindPopup(`
       <div style="min-width:240px;padding:10px;">
-        <div style="font-weight:600;text-align:center;margin-bottom:8px;font-size:13px;line-height:1.4;">${locLabel}</div>
+        <div style="font-weight:600;text-align:center;margin-bottom:8px;font-size:13px;line-height:1.4;">${escapeHtml(locLabel)}</div>
         <button onclick="resetToUserLocation()" style="width:100%;padding:4px 8px;border:none;background:transparent;color:#7c3aed;font-size:11px;text-decoration:underline;cursor:pointer;margin-bottom:12px;">
           ← Ma position actuelle
         </button>
@@ -3552,6 +3552,7 @@ async function setEventRsvp(id, rsvp) {
       const parti = await supaLeaveEvent(id);
       if (!parti) { annuler("⚠️ Désinscription non enregistrée — réessaie"); return; }
       _rsvpRegle(true);
+      _majAdresseActivite(ev);
     }
     toast("Désinscrit");
     // Une place se libère → on promeut le premier de la file (et on le prévient).
@@ -3579,7 +3580,7 @@ async function setEventRsvp(id, rsvp) {
       : "⚠️ Inscription non enregistrée — réessaie");
     return;
   }
-  if (rsvpOk === true) _rsvpRegle(true);
+  if (rsvpOk === true) { _rsvpRegle(true); _majAdresseActivite(ev); }
   // ⚠️ TOUTE SORTIE DE « je viens » LIBÈRE UNE PLACE, pas seulement le retrait
   // (revue du 2026-11-03). Seule la branche « retirer ma réponse » promouvait :
   // passer de « je viens » à « je ne viens pas » ou à « peut-être » rendait la
@@ -3621,6 +3622,19 @@ async function setEventRsvp(id, rsvp) {
 // libère. Fait par le client qui QUITTE « je viens » — retrait, « je ne viens
 // pas » ou « peut-être » (`setEventRsvp`) : c'est le seul moment où l'on sait,
 // sans serveur, qu'une place vient de s'ouvrir.
+// L'adresse et le contact suivent l'inscription : la base dit ce que ce compte peut voir maintenant.
+async function _majAdresseActivite(ev) {
+  if (!window._supaReal || !ev || !ev.fromSupabase || typeof supaLireAdresses !== "function") return;
+  const { adresses, lu } = await supaLireAdresses([ev.id]);
+  if (!lu) return;
+  const a = adresses[ev.id] || {};
+  ev.address = a.address || "";
+  ev.contact = a.contact || "";
+  ev._adresseInconnue = false;
+  saveState();
+  _refreshEventDetailIfOpen(ev.id);
+}
+
 async function _promoteNextWaitlisted(ev) {
   if (!ev || !ev.maxAttendees) return;
   let next = (ev.waitlist || [])[0] || null;
@@ -4264,11 +4278,22 @@ function openEventDetails(id) {
   const coverEl = document.getElementById("eventDetailCover");
   if (!coverEl) return;
   if (ev.coverUrl) {
-    // ⚠️ `emoji` est un champ LIBRE d'un autre compte, et il atterrissait brut dans
-    // une chaîne JS simple-quotée à l'intérieur d'un onerror : une apostrophe
-    // suffisait à en sortir. C'est le contexte d'escapeJsArg, pas d'escapeHtml.
-    const coverFb = escapeJsArg(ev.emoji || passion.emoji || "✨");
-    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(ev.coverUrl)}" onerror="this.parentElement.innerHTML='<div class=\\'event-detail-cover-placeholder\\'>${coverFb}</div>'" alt=""/>`;
+    // ⚠️ `emoji` est un champ LIBRE d'un autre compte. Un `onerror` qui repose du HTML
+    // cumule trois contextes (attribut, chaîne JS, innerHTML) : `escapeJsArg` protégeait
+    // les deux premiers, et le décodage de l'attribut rendait la balise au troisième
+    // (audit 2026-11-06). Le repli passe donc par le DOM, en texte.
+    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(ev.coverUrl)}" alt=""/>`;
+    const coverImg = coverEl.querySelector("img");
+    if (coverImg) {
+      const coverFb = ev.emoji || passion.emoji || "✨";
+      coverImg.addEventListener("error", function () {
+        const repli = document.createElement("div");
+        repli.className = "event-detail-cover-placeholder";
+        repli.textContent = coverFb;
+        coverEl.textContent = "";
+        coverEl.appendChild(repli);
+      }, { once: true });
+    }
   } else {
     coverEl.innerHTML = `<div class="event-detail-cover-placeholder">${escapeHtml(ev.emoji || passion.emoji)}</div>`;
   }
@@ -4351,6 +4376,8 @@ function openEventDetails(id) {
     infoRow("Date & heure", `${dateStr} à ${timeStr}`),
     addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : ""),
     ev.venue ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
+    // Une activité du serveur sans adresse lisible : elle existe peut-être, réservée à qui vient.
+    (ev.fromSupabase && !ev.address && myRsvp(ev.id) !== "going") ? infoRow("Adresse exacte", "Communiquée une fois inscrit·e") : "",
     infoRow("Prix", priceStr),
     // ⚠️ LE LIEN `tel:` ÉTAIT POSÉ SUR N'IMPORTE QUEL CONTACT (2026-09-10), y
     // compris une adresse e-mail : toucher « Contact » lançait alors un appel
@@ -8075,6 +8102,7 @@ async function _pointerParCodeServeur(ev, code) {
   }
   var messages = {
     code_incorrect: "Code incorrect — vérifie avec l'organisateur",
+    trop_d_essais: "Trop d'essais : attends une minute avant de réessayer",
     hors_fenetre: "Le pointage n'est ouvert que de 1 h avant le début jusqu'à la fin",
     annulee: "Cette activité a été annulée",
     non_inscrit: "Inscris-toi à l'activité avant de pointer",

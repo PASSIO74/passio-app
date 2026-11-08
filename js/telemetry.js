@@ -76,7 +76,9 @@
   function readEnabled() {
     try {
       var q = new URLSearchParams(location.search);
-      if (q.get("telemetry") === "1") { localStorage.setItem("passio_telemetry", "1"); return true; } // capture complète forcée
+      // Un refus enregistré l'emporte sur un lien (audit 2026-11-06) : `?telemetry=1` dans une
+      // adresse reçue ne doit pas défaire le choix de la personne. La reprise passe par les réglages.
+      if (q.get("telemetry") === "1" && localStorage.getItem("passio_telemetry") !== "0") { localStorage.setItem("passio_telemetry", "1"); return true; } // capture complète forcée
       if (q.get("telemetry") === "0") { localStorage.setItem("passio_telemetry", "0"); return false; } // opt-out durable
       var stored = localStorage.getItem("passio_telemetry");
       if (stored === "1") return true;
@@ -260,6 +262,43 @@
     if (s.length > 4000) s = s.slice(0, 4000);
     s = s.replace(JWT_RE, "[jwt]").replace(EMAIL_RE, "[email]").replace(LONGHEX_RE, "[hex]");
     return s.length > 500 ? s.slice(0, 500) + "…" : s;
+  }
+  // Le libellé d'un clic vient d'un attribut ou du TEXTE AFFICHÉ, et un bouton peut porter le nom
+  // d'une personne (« Bloquer Prénom Nom »), une adresse, un numéro (audit 2026-11-06 : 1 libellé
+  // sur 42 en production contenait un pseudo). `action` ne passait par aucun filtre.
+  var TEL_RE = /\+?\d[\d\s().-]{6,}\d/g;
+  function _nomConnuDans(s) {
+    try {
+      var noms = [];
+      if (typeof state !== "undefined" && state) {
+        if (state.user && state.user.name) noms.push(state.user.name);
+        var us = state.seed && state.seed.users;
+        if (us) for (var i = 0; i < us.length && i < 5000; i++) if (us[i] && us[i].name) noms.push(us[i].name);
+      }
+      var bas = s.toLowerCase();
+      for (var j = 0; j < noms.length; j++) {
+        var n = String(noms[j]).trim().toLowerCase();
+        if (n.length < 3 || bas.indexOf(n) === -1) continue;
+        // Limite de mot : sans elle, un compte nommé « Bob » masquait « Bobines », et la Sentinelle ne
+        // retrouvait plus le libellé dans le code.
+        var motif = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp("(^|[^\\p{L}\\p{N}])" + motif + "($|[^\\p{L}\\p{N}])", "u").test(bas)) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function _texteLibre(s) {
+    var v = redactString(s).replace(TEL_RE, "[num]");
+    return _nomConnuDans(v) ? "[nom]" : v;
+  }
+  function _libelleClic(t) {
+    var fixe = t.getAttribute("data-tel") || t.getAttribute("data-screen");
+    if (fixe) return fixe;
+    var aria = t.getAttribute("aria-label");
+    if (aria) return _texteLibre(aria);
+    if (t.id) return "#" + t.id;
+    var texte = (t.textContent || "").trim().slice(0, 40);
+    return texte ? _texteLibre(texte) : t.tagName.toLowerCase();
   }
   function scrubMeta(obj) {
     var out = {};
@@ -489,7 +528,15 @@
     // donc gravité « error », sur un appareil parfaitement en ligne).
     if (retryTimer) return;
     if (queue.length >= 12) flush();
-    else if (!flushTimer) flushTimer = setTimeout(flush, 3000);
+    else if (!flushTimer) flushTimer = setTimeout(flushDiffere, 3000);
+  }
+  // Le minuteur de lot a pu s'armer pendant qu'un envoi était EN VOL, donc avant
+  // que son échec arme le réessai : sans cette garde, il repartait au milieu du
+  // backoff (mesuré : 3 s puis 20 ms au lieu de 3 s puis 6 s, 5 fois sur 8). Le
+  // réessai emporte la file, rien n'est perdu.
+  function flushDiffere() {
+    flushTimer = null;
+    if (!retryTimer) flush();
   }
 
   // Config d'envoi (URL + clé anon) exposée par app-08 ; runtime, pas au load.
@@ -930,14 +977,26 @@
   // d'envoi est prête (app-08 pose window.PASSIO_SUPABASE en différé).
   // Respecte l'opt-out : si la télémétrie est désactivée, on purge le backlog
   // au lieu de le rejouer.
+  // ⚠️ CETTE BOUCLE N'ATTEND QUE LA CONFIGURATION (2026-11-07). Elle rappelait
+  // `flush()` toutes les 500 ms tant que la file n'était pas vide, jusqu'à 60 s,
+  // sans égard pour `retryTimer` : le backoff d'`onAuthReject` (1,5 s → 9 s) et
+  // celui d'`armerReessai` (3 s → 60 s) n'existaient pas pendant la première
+  // minute d'une page. Mesuré : 7 refus du jeton en 2,5 s au lieu de ~32 s, puis
+  // désattribution ; en production, aucun écart au-dessus de 726 ms entre deux
+  // refus sur 7 jours. Le premier envoi suffit : un succès écoule le reste, un
+  // refus ou une panne arment leur minuteur. Et un réessai déjà armé garde la main.
   if (ENABLED) {
     loadBacklog();
     (function waitCfg() {
       var tries = 0;
       var iv = setInterval(function () {
         tries++;
-        if (supaCfg()) flush();
-        if ((supaCfg() && !queue.length) || tries > 120) clearInterval(iv);
+        if (supaCfg()) {
+          clearInterval(iv);
+          if (!retryTimer) flush();
+          return;
+        }
+        if (tries > 120) clearInterval(iv);
       }, 500);
     })();
   } else {
@@ -1177,6 +1236,7 @@
     // d'activité existant ; le centre de pilotage l'apparie à l'émission par cible.
     recv: function (name, meta) { track("rt_recv", name, { meta: meta }); },
     click: function (label, meta) { track("click", label, { meta: meta }); },
+    _libelleClic: _libelleClic,
     perf: function (name, ms, meta) { track("perf", name, { duration_ms: ms, status: ms > 2000 ? "slow" : "ok", meta: meta }); },
     api: function (f) { track("api", f && f.action || "request", f); },
     // ── Fenêtres de MESURE, pour les bancs uniquement ───────────────────────
@@ -1308,7 +1368,13 @@
       // Persiste le choix : "1" = capture, "0" = opt-out durable (respecté aux prochains chargements).
       try { localStorage.setItem("passio_telemetry", on ? "1" : "0"); } catch (e) {}
       // AUTH-04 : l'opposition emporte l'identifiant d'appareil ; la reprise en pose un NEUF.
-      if (!on) { _oublierDeviceId(); DEVICE_ID = "dev_opposition"; }
+      if (!on) {
+        _oublierDeviceId(); DEVICE_ID = "dev_opposition";
+        // Le refus vaut aussi pour ce qui attend d'être envoyé (audit 2026-11-06).
+        queue = [];
+        if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+        try { localStorage.removeItem(BACKLOG_KEY); } catch (e) {}
+      }
       else DEVICE_ID = _deviceIdRaw(true);
     },
     flush: flush,
@@ -1458,12 +1524,7 @@
         ? e.target.closest("[data-tel],.nav-item,button,[role=button],.btn,a[href^='#']")
         : null;
       if (!t) return;
-      var label = t.getAttribute("data-tel")
-        || t.getAttribute("data-screen")
-        || t.getAttribute("aria-label")
-        || (t.id ? "#" + t.id : "")
-        || (t.textContent || "").trim().slice(0, 40)
-        || t.tagName.toLowerCase();
+      var label = _libelleClic(t);
 
       // ─── Latence perçue : du tap à la première image peinte ────────────────
       // On est en phase de CAPTURE : `t0` précède tout handler applicatif. Deux

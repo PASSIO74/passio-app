@@ -75,10 +75,10 @@ test("un 429 garde le lot, attend la minute suivante, et ne déclare ni rejet ni
 });
 
 // Les deux tests ci-dessous : contre-revue du 2026-10-19.
-async function preparerLimitee(page, { heure } = {}) {
+async function preparerLimitee(page, { heure, modeInitial = "refuser" } = {}) {
   await sansDonneesDistantes(page);
   const envois = [];
-  const etat = { mode: "refuser" };   // "couper" (échec réseau) | "refuser" (429) | "accepter"
+  const etat = { mode: modeInitial };   // "couper" (échec réseau) | "refuser" (429) | "accepter"
   await page.route("**/rest/v1/telemetry_events*", async (route) => {
     const req = route.request();
     if (req.method() !== "POST") return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
@@ -121,13 +121,21 @@ test("l'indice du serveur l'emporte quand il demande d'attendre plus longtemps q
 
 test("un 429 après un échec réseau solde le verdict : ni « peut-être hors ligne » ni « rétabli »", async ({ page }) => {
   test.setTimeout(60000);
-  const { envois, etat } = await preparerLimitee(page);
-  etat.mode = "couper";
+  // ⚠️ LA COUPURE EST POSÉE AVANT LE CHARGEMENT (2026-11-07). Le lot `start` part
+  // tout seul, parfois avant que l'identité soit prête (8 fois sur 16) : posée
+  // après, la coupure le laissait recevoir un 429, donc une minute d'attente
+  // pendant laquelle plus rien ne part, et jamais d'envoi « couper » à observer.
+  // Ici, le premier lot est coupé, quel qu'il soit.
+  const { envois, etat } = await preparerLimitee(page, { modeInitial: "couper" });
   await page.evaluate(() => { window.tel.action("banc_coupure", {}); window.tel.flush(); });
   await expect.poll(() => envois.filter((e) => e.mode === "couper").length, { timeout: 10000 }).toBe(1);
   // Le réessai (3 s) arrive avant le verdict différé, et reçoit un 429.
   await page.clock.fastForward(3500);
   await expect.poll(() => envois.filter((e) => e.mode === "refuser").length, { timeout: 10000 }).toBeGreaterThanOrEqual(1);
+  // `envois` compte l'ARRIVÉE à la route. Sauter le temps avant que la page ait lu
+  // le 429 ferait tomber le verdict qu'il doit solder : la trace `throttled` prouve
+  // que `onThrottle` a tourné.
+  await expect.poll(() => page.evaluate(() => (localStorage.getItem("passio_tel_backlog") || "").includes('"throttled"')), { timeout: 10000 }).toBe(true);
   await page.clock.fastForward(10000);
   etat.mode = "accepter";
   await page.clock.fastForward(75000);

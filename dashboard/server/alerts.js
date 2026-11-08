@@ -81,13 +81,37 @@ function meriteUnPaquet(alert, now) {
   return Boolean(prec && now - prec < PAQUET_2E_OCCURRENCE_MS);
 }
 
+// Plafond de clés NOUVELLES par minute (F-07) : l'anti-rafale s'appuie sur la clé, et la clé
+// d'une alerte de télémétrie est choisie par le client. Sans lui, un flot de clés distinctes
+// réécrivait alerts.json à chaque ligne et remplaçait les 500 dernières vraies alertes.
+const FLOT_MAX_PAR_MINUTE = 30;
+let flot = { debut: 0, n: 0, signale: false };
+function depasseFlot(now) {
+  if (now - flot.debut > 60_000 || now < flot.debut) flot = { debut: now, n: 0, signale: false };
+  flot.n++;
+  return flot.n > FLOT_MAX_PAR_MINUTE;
+}
+function purgerCartes(now) {
+  if (cooldown.size > 5_000) for (const [k, t] of cooldown) if (now - t > 3_600_000) cooldown.delete(k);
+  if (premieres.size > 5_000) for (const [k, t] of premieres) if (now - t > PAQUET_2E_OCCURRENCE_MS) premieres.delete(k);
+}
+
 let seq = 0;
 function emit(alert, now = Date.now()) {
   const key = alert.key || alert.title;
+  // Seules les alertes nées de la télémétrie passent par ce plafond : celles du serveur
+  // (`raise`, `raiseManual`) ne dépendent d'aucune donnée cliente.
+  if (alert.deTelemetrie && !cooldown.has(key) && depasseFlot(now)) {
+    if (flot.signale) return null;
+    flot.signale = true;
+    return emit({ level: "warn", key: "flot:alertes", title: "Flot d'alertes écarté", cooldownMs: 60_000,
+      message: `Plus de ${FLOT_MAX_PAR_MINUTE} clés d'alerte nouvelles en une minute : les suivantes sont écartées jusqu'à la minute prochaine.` }, now);
+  }
+  purgerCartes(now);
   const cd = Number.isFinite(alert.cooldownMs) ? Math.max(0, alert.cooldownMs) : COOLDOWN_MS;
   if (cd > 0 && cooldown.get(key) && now - cooldown.get(key) < cd) return null;
   cooldown.set(key, now);
-  const { cooldownMs, ...reste } = alert;
+  const { cooldownMs, deTelemetrie, ...reste } = alert;
   const base = { id: "al_" + now.toString(36) + (seq++ % 1296).toString(36).padStart(2, "0"), ts: now, acknowledged: false, ...reste, key };
   // Chaque alerte exploitable produit d'abord un dossier de preuves déterministe.
   // Claude peut être indisponible : le dossier reste utile, consultable et prêt
@@ -197,7 +221,7 @@ function observerAppel(ev, now) {
   const v = evaluerLenteur(liste);
   if (!v.alerte) return null;
   return emit({
-    level: "warn", key: "apislow:" + endpoint, title: "API très lente", cooldownMs: SLOW_COOLDOWN_MS,
+    deTelemetrie: true, level: "warn", key: "apislow:" + endpoint, title: "API très lente", cooldownMs: SLOW_COOLDOWN_MS,
     message: `${endpoint} — ${v.n} appels lents en 15 min, p50 ${Math.round(v.p50 / 100) / 10} s, ${v.devices} appareil(s)`,
     meta: { endpoint, n: v.n, p50: v.p50, p90: v.p90, devices: v.devices, screens: v.screens, kind: "reseau" },
   }, now);
@@ -217,7 +241,7 @@ function alerterConnexion(ev, now) {
   const device = deviceDe(ev);
   const who = ev.user_label || "Un testeur";
   const r = emit({
-    level: "warn", key: "conn:" + device, cooldownMs: CONN_COOLDOWN_MS,
+    deTelemetrie: true, level: "warn", key: "conn:" + device, cooldownMs: CONN_COOLDOWN_MS,
     title: "Problème de connexion d'un testeur",
     message: `${who} — ${ev.message || ev.action}`,
     meta: { user: ev.user_label, device: ev.device_id, screen: ev.screen, action: ev.action, kind: "reseau" },
@@ -257,13 +281,16 @@ export function onEvent(ev, now = Date.now()) {
   if (ev.type === "error" && ev.severity !== "warn") {
     const bug = store.bug(bugIdOf(ev));
     // Erreur critique isolée
+    // La gravité est un champ écrit par le client, et la policy d'insertion accepte un `user_id`
+    // nul de n'importe qui. Sans compte, l'alerte reste visible mais ne réveille aucun agent :
+    // la sentinelle ne prend que `critical` et `high` (F-05).
     if (ev.severity === "critical") {
-      emit({ level: "critical", key: "crit:" + (ev.action || ev.message), title: "Erreur critique",
+      emit({ deTelemetrie: true, level: ev.user_id ? "critical" : "warn", key: "crit:" + bugIdOf(ev), title: "Erreur critique",
         message: ev.message || ev.action, meta: { bug: bug?.id, screen: ev.screen, user: ev.user_label } }, now);
     }
     // Même bug touchant plusieurs utilisateurs
     if (bug && bug.users >= 2) {
-      emit({ level: "high", key: "multi:" + bug.id, title: "Bug touchant plusieurs utilisateurs",
+      emit({ deTelemetrie: true, level: "high", key: "multi:" + bug.id, title: "Bug touchant plusieurs utilisateurs",
         message: `${bug.title} — ${bug.users} utilisateurs, ${bug.count} occurrences`, meta: { bug: bug.id } }, now);
     }
     // Pic d'erreurs (>= 6 en 60 s)
@@ -299,11 +326,11 @@ export function onEvent(ev, now = Date.now()) {
   if (ev.type === "link") {
     const linkId = ev.correlation_id || (ev.meta && ev.meta.link_id) || "?";
     if (ev.action === "link_open" && ev.status !== "error") {
-      emit({ level: "info", key: "linkopen:" + linkId, title: "Lien ouvert",
+      emit({ deTelemetrie: true, level: "info", key: "linkopen:" + linkId, title: "Lien ouvert",
         message: `Un lien partagé vient d'être ouvert${ev.platform ? " (" + ev.platform + (ev.browser ? " · " + ev.browser : "") + ")" : ""}.`,
         meta: { link: linkId, platform: ev.platform, browser: ev.browser } }, now);
     } else if (ev.action === "link_load_error" || (ev.action === "link_open" && ev.status === "error")) {
-      emit({ level: "warn", key: "linkerr:" + linkId, title: "Échec d'ouverture d'un lien",
+      emit({ deTelemetrie: true, level: "warn", key: "linkerr:" + linkId, title: "Échec d'ouverture d'un lien",
         message: ev.message || "Un lien n'a pas pu se charger correctement.", meta: { link: linkId } }, now);
     }
   }
@@ -311,7 +338,7 @@ export function onEvent(ev, now = Date.now()) {
   // API en échec (5xx) / API lente (agrégée par endpoint, hors échecs)
   if (ev.type === "api") {
     if (ev.status === "error" && ev.http_status >= 500) {
-      emit({ level: "high", key: "api5xx:" + ev.endpoint, title: "Erreur serveur API", message: `${ev.endpoint} → ${ev.http_status}`, meta: { endpoint: ev.endpoint } }, now);
+      emit({ deTelemetrie: true, level: ev.user_id ? "high" : "warn", key: "api5xx:" + ev.endpoint, title: "Erreur serveur API", message: `${ev.endpoint} → ${ev.http_status}`, meta: { endpoint: ev.endpoint } }, now);
     } else if (ev.status !== "error" && !echecExpliqueParLeClient(ev)) {
       observerAppel(ev, now);
     }
@@ -386,7 +413,9 @@ export function sweepTraces() {
       || (v.steps || []).find((s) => s.status === "missing");
     const stepLabel = failStep ? failStep.label : v.final;
     emit({
-      level: spec.level,
+      deTelemetrie: true,
+      // Un flux sans compte ne réveille pas d'agent, pour la même raison qu'une erreur critique anonyme.
+      level: v.user ? spec.level : "warn",
       // Clé = action + étape : 50 échecs du même envoi de message = 1 alerte,
       // mais un échec d'étape DIFFÉRENTE reste distingué.
       key: `trace:${v.final}:${v.action}:${failStep ? failStep.key : "-"}`,
@@ -399,7 +428,7 @@ export function sweepTraces() {
   // Un doublon est un signal distinct : l'action a pu ABOUTIR deux fois.
   for (const v of verdicts) {
     if (!v.duplicate) continue;
-    emit({ level: "warn", key: `tracedup:${v.action}`,
+    emit({ deTelemetrie: true, level: "warn", key: `tracedup:${v.action}`,
       title: `Doublon — ${v.actionLabel}`,
       message: "Une même intention a produit plusieurs exécutions (double clic, relance ou bouton non désactivé).",
       meta: { cid: v.cid, action: v.action, view: "traces" } });
@@ -480,7 +509,8 @@ export function acknowledge(id) {
   db.update((d) => { const a = d.items.find((x) => x.id === id); if (a) a.acknowledged = true; });
   return true;
 }
-export function raiseManual(alert) { return emit({ level: alert.level || "info", key: "manual:" + Date.now(), title: alert.title || "Alerte manuelle", message: alert.message || "", manual: true }); }
+const NIVEAUX_MANUELS = new Set(["info", "warn", "high", "critical"]);
+export function raiseManual(alert) { return emit({ level: NIVEAUX_MANUELS.has(alert.level) ? alert.level : "info", key: "manual:" + Date.now(), title: alert.title || "Alerte manuelle", message: alert.message || "", manual: true }); }
 
 /**
  * Alerte levée par un MODULE du serveur (la sentinelle, pas un humain) : la clé

@@ -12,9 +12,10 @@
 // Ce module ne réécrit RIEN du moteur. Il RANGE la modale déjà rendue :
 //   ① titre « Créer une activité » ;
 //   ② couverture dominante (16:9), devenue un vrai contrôle : rôle bouton,
-//      tabulation, Entrée/Espace, nom « Ajouter / Changer la couverture » ;
-//      le « Retirer » sort de la zone (un bouton dans un bouton n'est pas
-//      atteignable au clavier) ; fallback Passio si aucune photo ;
+//      tabulation, Entrée/Espace (délégué d'app-08), nom « Ajouter / Changer la
+//      couverture » qui suit l'image posée ; le « Retirer » sort de la zone (un
+//      bouton dans un bouton n'est pas atteignable au clavier) ; fallback Passio
+//      si aucune photo ;
 //   ③ Titre · Passion · Description (guidée en une phrase) remontés ensemble ;
 //   ④ Date · Heure · Durée, puis le lieu, puis places et prix ;
 //   ⑤ récurrence, contact et lien dans « Plus d'options » (rien n'est retiré) ;
@@ -77,16 +78,33 @@
     var t = ph && ph.querySelector(".v6a0-cover-titre");
     if (t) t.textContent = nom;
   }
+  // Le moteur pose et retire l'image lui-même : `previewEventCover` dans le
+  // `onload` d'un FileReader, l'édition à 20 ms, `removeEventCover`. On relit
+  // quand l'image CHANGE, jamais après un délai : une photo lourde sur un
+  // téléphone chargé dépassait les 60 ms d'une ancienne relecture, et rien ne
+  // relisait ensuite (nom bloqué sur « Ajouter une couverture »). Observer sert
+  // aussi la coupure : rien n'est branché tant que `ranger` n'a pas tourné.
+  function suivreImage() {
+    var img = el("evCoverPreviewImg");
+    if (!img) return;
+    new MutationObserver(function () {
+      try {
+        libelleCouverture();
+        var a = el("v6a0Apercu");
+        if (a && !a.hidden) rendreApercu();
+      } catch (e) { fail("relire", e); }
+    }).observe(img, { attributes: true, attributeFilter: ["src", "style"] });
+  }
   function couverture() {
     var zone = el("evCoverPreviewWrap");
     if (!zone || zone.getAttribute("data-v6a0")) return;
     zone.setAttribute("data-v6a0", "1");
     zone.classList.add("v6a0-cover");
+    // Entrée et Espace : le délégué `[role="button"]` d'app-08 appelle `click()`
+    // sur la zone. Aucun `keydown` ici : un second écouteur ouvrait deux
+    // sélecteurs de fichiers à chaque touche.
     zone.setAttribute("role", "button");
     zone.setAttribute("tabindex", "0");
-    zone.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); var f = el("evCoverFile"); if (f) f.click(); }
-    });
     var ph = el("evCoverPreviewPlaceholder");
     if (ph) {
       ph.textContent = "";
@@ -105,6 +123,7 @@
       zone.parentNode.insertBefore(retirer, zone.nextSibling);
       // Le moteur bascule `style.display` de ce bouton : on l'aligne sur l'image.
     }
+    suivreImage();
     libelleCouverture();
   }
 
@@ -209,8 +228,6 @@
     r.insertBefore(actions, publier);
     actions.appendChild(bApercu);
     actions.appendChild(publier);
-
-    setTimeout(libelleCouverture, 40);                    // couverture d'édition posée à 20 ms
   }
 
   // ── Branchements ─────────────────────────────────────────────────────────
@@ -229,16 +246,6 @@
         if (actif()) { try { ranger(editId); } catch (e) { fail("ranger", e); } }
         return r;
       };
-    });
-    ["previewEventCover", "removeEventCover"].forEach(function (nom) {
-      envelopper(nom, function (origine) {
-        return function () {
-          var r = origine.apply(this, arguments);
-          // previewEventCover pose l'image dans un FileReader : on relit après.
-          setTimeout(function () { try { libelleCouverture(); var a = el("v6a0Apercu"); if (a && !a.hidden) rendreApercu(); } catch (e) {} }, 60);
-          return r;
-        };
-      });
     });
     // ⑦ Un seul envoi à la fois : sous la garde, un second clic pendant l'envoi
     // ne crée pas une seconde activité. Coupé, `submitEvent` reste l'original.

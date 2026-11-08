@@ -123,8 +123,9 @@ test.describe("③ colonnes des rencontres", () => {
     expect(r.pub).not.toContain("address");
     expect(r.pub).not.toContain("contact");
     expect(r.prive).toContain("conv_id");
-    expect(r.prive).toContain("address");
-    expect(r.prive).toContain("contact");
+    // Depuis le lot 4 de l'audit du 06/11 : ni l'un ni l'autre, y compris pour un compte (`supaLireAdresses`).
+    expect(r.prive).not.toContain("address");
+    expect(r.prive).not.toContain("contact");
     expect(r.pub).toContain("title");
     expect(r.pub).toContain("lat");
   });

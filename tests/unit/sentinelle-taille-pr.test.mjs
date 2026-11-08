@@ -16,7 +16,8 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdtempSync, chmodSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
+import "./lib/bash-windows.mjs";
 
 const WORKFLOW = ".github/workflows/deploy.yml";
 
@@ -77,7 +78,7 @@ function executer(pages) {
   ].join("\n");
   const out = execFileSync("bash", ["-c", script], {
     encoding: "utf8",
-    env: { ...process.env, PATH: join(dir, "bin") + ":" + process.env.PATH, PAGES: join(dir, "pages.json"), JQ_BIN: JQ },
+    env: { ...process.env, PATH: join(dir, "bin") + delimiter + process.env.PATH, PAGES: join(dir, "pages.json"), JQ_BIN: JQ },
   });
   const [nbFichiers, nbLignes] = out.trim().split(/\s+/).map(Number);
   return { nbFichiers, nbLignes };
@@ -149,7 +150,7 @@ test("⑥ le workflow ne contient plus l'agrégat PAR PAGE, et le périmètre ga
   assert.match(ligneTaille, /\.\[\] \| select/, "elle doit émettre une ligne par fichier");
   // `files` (périmètre) émet DÉJÀ une ligne par fichier : c'est pourquoi lui
   // n'a jamais été trompé. Le verrou l'exige, pour qu'il ne dérive pas.
-  assert.match(y, /files="\$\(gh api --paginate .*--jq '\.\[\]\.filename'\)"/, "le périmètre doit rester en une ligne par fichier");
+  assert.match(y, /files="\$\(gh api --paginate .*--jq '\.\[\] \| \.filename, \(\.previous_filename \/\/ empty\)'\)"/, "le périmètre doit rester en une ligne par fichier, chemin d'origine d'un renommage compris");
 });
 
 test("⑧ la FICHE docs/sentinelle/*.md ne compte ni en fichiers ni en lignes ; un autre doc compte", () => {
@@ -174,7 +175,7 @@ test("⑦ un échec de l'API ne compte pas zéro — il refuse", () => {
   chmodSync(join(dir, "bin", "gh"), 0o755);
   const script = ["set -euo pipefail", "GITHUB_REPOSITORY=o/r; pr=1", snippet(), 'echo "$nb_fichiers $nb_lignes"'].join("\n");
   let code = 0, sortie = "";
-  try { sortie = execFileSync("bash", ["-c", script], { encoding: "utf8", env: { ...process.env, PATH: join(dir, "bin") + ":" + process.env.PATH }, stdio: ["ignore", "pipe", "pipe"] }); }
+  try { sortie = execFileSync("bash", ["-c", script], { encoding: "utf8", env: { ...process.env, PATH: join(dir, "bin") + delimiter + process.env.PATH }, stdio: ["ignore", "pipe", "pipe"] }); }
   catch (e) { code = e.status; sortie = String(e.stdout || "") + String(e.stderr || ""); }
   assert.notEqual(code, 0, "une API illisible doit faire échouer la garde");
   assert.match(sortie, /non mesurable/i, "et le dire en clair");

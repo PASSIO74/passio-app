@@ -373,7 +373,37 @@ export function signalBase(m) {
   } else { lignes.push("taille non mesurée"); if (etat === "ok") etat = "unknown"; }
   if (m.purgePlanifiee === false) { if (etat === "ok" || etat === "unknown") etat = "warn"; lignes.push("aucune purge telemetry planifiée dans cron.job"); }
   else if (m.purgePlanifiee === true) lignes.push("purge planifiée");
+  const pc = signalPurgeCourte(m.purgeCourte);
+  if (pc) {
+    lignes.push(pc.texte);
+    if (pc.etat === "warn" && (etat === "ok" || etat === "unknown")) etat = "warn";
+    geste = geste || pc.geste;
+  }
   return { etat, texte: lignes.join(" ; "), geste };
+}
+
+/** Sans exécution depuis plus longtemps, la purge horaire est en panne : deux passages manqués. */
+export const PURGE_COURTE_MAX_S = 3 * 3600;
+
+/**
+ * La purge courte d'analytics_events (migrations/migration_purge_analytics_courte_2026-11-07.sql,
+ * tâche `purge_analytics_courte`, chaque heure) : pg_cron ne dit rien d'une tâche qui échoue, et
+ * une tâche cassée laisserait la table repartir vers 13 mois de lignes `edge_*` en silence (revue
+ * adversariale du 07/11). PUR. `m` = { taches, statut, ageS } ou null (non mesuré : aucune ligne,
+ * le reste de la base parle). Absente : pas encore appliquée — une information, jamais une alerte.
+ * @param {{taches:number, statut:string|null, ageS:number|null}|null|undefined} m
+ * @returns {{etat:"ok"|"warn", texte:string, geste?:string}|null}
+ */
+export function signalPurgeCourte(m) {
+  if (!m || !Number.isFinite(m.taches)) return null;
+  if (m.taches === 0) return { etat: "ok", texte: "purge courte d'analytics_events non installée" };
+  const geste = "Supabase > Integrations > Cron > purge_analytics_courte : lire l'erreur, puis `select public.purger_analytics_courte(interval '2 hours', interval '8 days')` à l'éditeur SQL.";
+  // Le statut vient de pg_cron (liste fermée) ; rien d'autre ne part dans le texte.
+  const statut = typeof m.statut === "string" && /^[a-z]+$/.test(m.statut) ? m.statut : null;
+  if (statut === "failed") return { etat: "warn", texte: "purge courte d'analytics_events : dernière exécution en échec", geste };
+  if (!Number.isFinite(m.ageS)) return { etat: "ok", texte: "purge courte planifiée, pas encore exécutée" };
+  if (m.ageS > PURGE_COURTE_MAX_S) return { etat: "warn", texte: `purge courte d'analytics_events : aucune exécution depuis ${Math.floor(m.ageS / 3600)} h`, geste };
+  return { etat: "ok", texte: "purge courte : à jour" };
 }
 
 /**
@@ -573,6 +603,12 @@ export const SQL = {
   // (ATTENTION permanente, mesurée sur le [TABLEAU] du 02/11) sur une base qui en avait une.
   // `purge_telemetrie_debit` (compteurs de débit, 1 h) n'est PAS une purge de la télémétrie.
   purgePlanifiee: `select exists(select 1 from cron.job where (jobname like 'purge_telemetry%' or jobname like 'purge_telemetrie_paliers%') and active) as purge`,
+  // La purge courte d'analytics_events (07/11) : installée ? sa dernière exécution, et son âge.
+  purgeCourte: `select (select count(*) from cron.job where jobname = 'purge_analytics_courte' and active)::int as "taches",
+      (select d.status from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+        where j.jobname = 'purge_analytics_courte' order by d.start_time desc limit 1) as "statut",
+      (select extract(epoch from now() - max(d.start_time))::int from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+        where j.jobname = 'purge_analytics_courte') as "ageS"`,
   usage7j: `select count(distinct device_id)::int as "appareils7j" from telemetry_events where ${filtreHumain()} and ${filtrePublic()} and received_at > now() - interval '7 days'`,
   erreurs24h: `select (select count(*) from telemetry_events where env = 'production' and type = 'error' and (meta->>'synthetic') is null and received_at > now() - interval '24 hours')::int
       + (select count(*) from client_errors where created_at > now() - interval '24 hours')::int as "erreurs24h"`,  // Comptes confirmés des 30 derniers jours (hors e2e et éditeur) et le premier
@@ -681,10 +717,13 @@ export async function mesurerBase(env) {
   } catch { anonStatus = 0; }
   const taille = await mesure(() => lireSql(env, SQL.tailleBase));
   const purge = await mesure(() => lireSql(env, SQL.purgePlanifiee));
+  const courte = await mesure(() => lireSql(env, SQL.purgeCourte));
+  const c0 = Array.isArray(courte) && courte[0] ? courte[0] : null;
   return {
     anonStatus,
     octets: Array.isArray(taille) && taille[0] ? Number(taille[0].octets) : null,
     purgePlanifiee: Array.isArray(purge) && purge[0] ? purge[0].purge === true : null,
+    purgeCourte: c0 ? { taches: Number(c0.taches), statut: c0.statut ?? null, ageS: c0.ageS == null ? null : Number(c0.ageS) } : null,
   };
 }
 
