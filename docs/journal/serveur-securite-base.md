@@ -1787,8 +1787,9 @@ deux CHECK du lot à leur définition exacte, policies `8bf26134…` et déclenc
 `authenticated` avec UPDATE de table sans policy UPDATE, 0 message, 0 trace du décor, aucune ligne de journal. Verdict :
 17 × OK, « 0 ; 0 ; 0 ». **Mesuré APRÈS**, de la même façon : quatre CHECK `convalidated`, empreinte des quatre définitions
 `79764a53…` = celle de la production au canal ① le même soir, policies et déclencheurs inchangés, 0 trace du décor
-(profil `…cb01`, `zz_cmb_%` dans conversations et messages), ligne de journal du 08/11 à 18:53:46. Aucune PR n'était ouverte :
-aucune base antérieure à #751 ne joue ses suites à comptes réels contre le staging migré.
+(profil `…cb01`, `zz_cmb_%` dans conversations et messages), ligne de journal du 08/11 à 18:53:46. Une seule PR était
+ouverte, #793 (17 s avant l'envoi, d'une autre session), et sa base `ad5820c4` porte #751 : aucune base antérieure au client
+ne joue ses suites à comptes réels contre le staging migré.
 
 **L'en-tête du fichier garde deux états** : le bloc mesuré le 07/11 (« AUCUNE CHECK », « Update propre ») est HISTORIQUE ;
 l'état de référence est le bloc « REMESURÉ le 08/11 » qui le suit. Le fichier n'est pas retouché pour autant : il reste, à
