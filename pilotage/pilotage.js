@@ -1281,7 +1281,7 @@
       }
       const { data: d, error } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Pilotage " + new Date().toISOString().slice(0, 10) });
       if (error) throw error;
-      sfInscription = { id: d.id, qr: d.totp && d.totp.qr_code, secret: d.totp && d.totp.secret };
+      sfInscription = { id: d.id, qr: d.totp && d.totp.qr_code, secret: d.totp && d.totp.secret, uri: d.totp && d.totp.uri };
     } catch (e) {
       sfInscription = null;
       erreur("Inscription impossible : " + ((e && e.message) || "erreur") + ".");
@@ -1290,13 +1290,22 @@
   }
   function carteInscription() {
     const c = carte("Scanne ce code", "En cours",
-      "Dans ton application d'authentification, ajoute un compte et scanne ce code. Saisis ensuite les 6 chiffres affichés.", "orange");
+      "Sur ce téléphone : touche le bouton, ton application d'authentification ajoute le compte. Depuis un autre appareil : scanne le code. Saisis ensuite les 6 chiffres affichés.", "orange");
+    // Le pilotage s'ouvre surtout sur le téléphone même qui porte l'application : un code QR ne s'y scanne pas.
+    // Le lien `otpauth://` ouvre Google Authenticator, Microsoft Authenticator, 1Password… avec le compte prérempli,
+    // sans que la clé passe par une note ou un message (vécu le 08/11 : clé recopiée dans une note, puis en capture).
+    // Seule exception aux liens de LIENS_SURS : ce schéma n'ouvre qu'une application du téléphone, et l'adresse vient de l'Auth.
+    if (typeof sfInscription.uri === "string" && /^otpauth:\/\/totp\/[^\s"'<>]+$/.test(sfInscription.uri)) {
+      const appli = el("a", "btn btn-plein btn-lien", "Ajouter à mon application d'authentification");
+      appli.href = sfInscription.uri; appli.id = "sfOuvrirAppli";
+      c.append(appli);
+    }
     if (typeof sfInscription.qr === "string" && /^data:image\/svg\+xml[;,]/.test(sfInscription.qr)) {
       const img = el("img", "qr-code"); img.src = sfInscription.qr; img.alt = "Code QR à scanner"; img.width = 200; img.height = 200;
       c.append(img);
     }
     if (sfInscription.secret) {
-      c.append(el("p", "discret", "Ou saisis cette clé à la main :"));
+      c.append(el("p", "discret", "Ou saisis cette clé à la main dans l'application, et nulle part ailleurs : ni note, ni message, ni capture."));
       c.append(el("p", "cle-totp", sfInscription.secret));
     }
     const champ = el("input", "champ-code"); champ.id = "sfInscriptionCode"; champ.type = "text";
