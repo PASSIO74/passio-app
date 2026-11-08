@@ -12,9 +12,14 @@
 // niveau du module : mesuré en production le 2026-09-12, 23 appels consécutifs
 // sont TOUS passés — le runtime Supabase ne garantit aucune mémoire entre deux
 // requêtes, et une garde qui n'existe que dans un isolat froid n'existe pas.
-// Le compte s'écrit donc dans `analytics_events` (table existante, purgée à
-// 13 mois, index sur user_id/event/created_at, écrite ici par service_role),
-// un événement `edge_<fonction>` par appel ACCEPTÉ. Aucun DDL à coller.
+// Le compte s'écrit donc dans `analytics_events` (table existante, index sur
+// user_id/event/created_at, écrite ici par service_role), un événement
+// `edge_<fonction>` par appel ACCEPTÉ. Aucun DDL à coller. Ces lignes ne
+// servent qu'une heure : la tâche pg_cron `purge_analytics_courte` les efface
+// après 2 h (migration_purge_analytics_courte_2026-11-07.sql, appliquée le
+// 08/11/2026 ; plancher 1 h) — la purge générale de la table reste à 13 mois.
+// Relire plus loin que la dernière heure exige de revoir cette purge
+// (tests/unit/purge-analytics-courte.test.mjs rougit).
 //
 // Un appel REFUSÉ n'écrit rien : sinon un client qui insiste repousserait
 // lui-même sa fenêtre indéfiniment. Deux requêtes parallèles peuvent dépasser

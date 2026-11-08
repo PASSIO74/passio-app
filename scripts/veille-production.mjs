@@ -390,14 +390,17 @@ export const PURGE_COURTE_MAX_S = 3 * 3600;
  * tâche `purge_analytics_courte`, chaque heure) : pg_cron ne dit rien d'une tâche qui échoue, et
  * une tâche cassée laisserait la table repartir vers 13 mois de lignes `edge_*` en silence (revue
  * adversariale du 07/11). PUR. `m` = { taches, statut, ageS } ou null (non mesuré : aucune ligne,
- * le reste de la base parle). Absente : pas encore appliquée — une information, jamais une alerte.
+ * le reste de la base parle).
+ * Absente (ou désactivée : seules les tâches actives comptent) : ATTENTION depuis le 08/11. La migration est appliquée en production ce jour-là
+ * (journal n° 40, 07:06 UTC) : une tâche disparue est une purge retirée ou cassée, et la table
+ * repart vers 13 mois. Avant l'application, ce n'était qu'une information.
  * @param {{taches:number, statut:string|null, ageS:number|null}|null|undefined} m
  * @returns {{etat:"ok"|"warn", texte:string, geste?:string}|null}
  */
 export function signalPurgeCourte(m) {
   if (!m || !Number.isFinite(m.taches)) return null;
-  if (m.taches === 0) return { etat: "ok", texte: "purge courte d'analytics_events non installée" };
   const geste = "Supabase > Integrations > Cron > purge_analytics_courte : lire l'erreur, puis `select public.purger_analytics_courte(interval '2 hours', interval '8 days')` à l'éditeur SQL.";
+  if (m.taches === 0) return { etat: "warn", texte: "purge courte d'analytics_events absente ou désactivée dans cron.job (appliquée le 08/11)", geste: "Rejouer migrations/migration_purge_analytics_courte_2026-11-07.sql (canal ③, rejouable) — ou, si elle a été retirée exprès, retirer aussi cette surveillance." };
   // Le statut vient de pg_cron (liste fermée) ; rien d'autre ne part dans le texte.
   const statut = typeof m.statut === "string" && /^[a-z]+$/.test(m.statut) ? m.statut : null;
   if (statut === "failed") return { etat: "warn", texte: "purge courte d'analytics_events : dernière exécution en échec", geste };

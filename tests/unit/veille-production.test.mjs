@@ -419,14 +419,17 @@ test("purgePlanifiee reconnaît les DEUX noms de la purge (purge_telemetry_7j, p
 // 2026-11-07 (revue adversariale de la purge courte) : pg_cron ne dit rien d'une tâche
 // qui échoue. Une `purge_analytics_courte` cassée laisserait analytics_events repartir vers
 // 13 mois de lignes `edge_*` en silence. La veille lit sa dernière exécution.
-// Mutations éprouvées : ignorer `failed` → ③ rougit ; ignorer l'âge → ④ rougit ; faire
-// d'une tâche absente une ATTENTION → ① rougit (la veille sonnerait avant l'application).
-test("purge courte : absente = information ; échec ou plus de 3 h sans exécution = ATTENTION ; jamais une alerte", () => {
+// Mutations éprouvées : ignorer `failed` → ③ rougit ; ignorer l'âge → ④ rougit ; laisser une
+// tâche absente en information → ① rougit (depuis le 08/11, la migration est appliquée en
+// production : une tâche disparue est une purge retirée ou cassée).
+test("purge courte : absente, en échec ou plus de 3 h sans exécution = ATTENTION ; jamais une alerte", () => {
   const Go = 1024 ** 3;
   const base = (purgeCourte) => signalBase({ anonStatus: 200, octets: 1 * Go, purgePlanifiee: true, purgeCourte });
-  // ① pas encore appliquée : une information, l'état reste vert.
-  assert.equal(base({ taches: 0, statut: null, ageS: null }).etat, "ok");
-  assert.match(base({ taches: 0, statut: null, ageS: null }).texte, /purge courte d'analytics_events non installée/);
+  // ① appliquée le 08/11 : une tâche absente est une ATTENTION, et le geste dit comment la rétablir.
+  const absente = base({ taches: 0, statut: null, ageS: null });
+  assert.equal(absente.etat, "warn");
+  assert.match(absente.texte, /purge courte d'analytics_events absente ou désactivée dans cron\.job/);
+  assert.match(absente.geste, /migration_purge_analytics_courte_2026-11-07\.sql/);
   // ② installée, à jour ; ou planifiée, pas encore exécutée (juste après l'application).
   assert.equal(base({ taches: 1, statut: "succeeded", ageS: 600 }).etat, "ok");
   assert.match(base({ taches: 1, statut: "succeeded", ageS: 600 }).texte, /purge courte : à jour/);
