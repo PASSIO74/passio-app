@@ -54,29 +54,53 @@ jobs:
         with:
           persist-credentials: false
 
+      # Node 22 (#753) : la version du job `audits` de deploy.yml, qui éprouve
+      # toutes les suites de tests/unit sans node_modules, comme ici. En Node 20,
+      # une suite verte à la fusion pouvait rougir ici (une API absente) et
+      # retenir le déploiement, ou l'inverse. Le banc des verrous exige que les
+      # deux versions majeures restent les mêmes (2026-11-07).
       - name: Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
       # Les modules partagés (_shared/*.js) sont éprouvés en Node AVANT de
-      # déployer : un plafond, une purge ou un export cassé ne part pas.
+      # déployer : un plafond, une purge ou un export cassé ne part pas. Ce
+      # workflow part EN PARALLÈLE de la CI de `main` et n'attend pas son
+      # verdict : ces suites sont les seuls verrous de ce chemin.
+      # ⚠️ LA LISTE SE DÉDUIT DES IMPORTS, et tests/unit/edge-functions-verrous.test.mjs
+      # la tient (2026-11-07) : ici en PREMIER, dans npm run verif, et dans la CI.
+      # Chaque module qu'une fonction emporte (clôture des imports de
+      # supabase/functions/*/index.ts) a ici une suite qui l'importe. Chaque
+      # suite de tests/unit qui importe un tel module est ici, ou son écart est
+      # déclaré dans le banc, avec sa raison. Une ligne retirée ou une suite
+      # oubliée rougit le banc — ici même, avant « Déployer », y compris sur un
+      # push direct que la CI parallèle ne retient pas (#745, #748).
       - name: Verrous unitaires des modules partagés
         run: |
+          node --test tests/unit/edge-functions-verrous.test.mjs
           node --test tests/unit/plafond.test.mjs
           node --test tests/unit/lien-metier.test.mjs
           node --test tests/unit/purge-compte.test.mjs
+          node --test tests/unit/identifiants-exemple.test.mjs
           node --test tests/unit/suppression-compte.test.mjs
           node --test tests/unit/suppression-entrelacement.test.mjs
           node --test tests/unit/export-compte.test.mjs
+          node --test tests/unit/connexion-recente.test.mjs
           node --test tests/unit/pilotage.test.mjs
           node --test tests/unit/activation.test.mjs
           node --test tests/unit/reglages.test.mjs
           node --test tests/unit/rappels.test.mjs
           node --test tests/unit/reception.test.mjs
           node --test tests/unit/appels.test.mjs
+          node --test tests/unit/push-sur.test.mjs
           node --test tests/unit/autonomie.test.mjs
           node --test tests/unit/autonomie-seuils-sql.test.mjs
+          node --test tests/unit/purge-analytics-courte.test.mjs
+          node --test tests/unit/croissance.test.mjs
+          node --test tests/unit/parcours.test.mjs
+          node --test tests/unit/politique-autonomie.test.mjs
+          node --test tests/unit/battement.test.mjs
 
       - uses: supabase/setup-cli@d239d1052f6f024a8d746d7e5aeddead63b9cb53 # v3.1.0
         with:

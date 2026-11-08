@@ -44,6 +44,7 @@
 - 🔔 LES NOTIFICATIONS SOCIALES S'ACCUSENT — UNE SUR VINGT, ET UNE LECTURE QUI DIT DEPUIS QUAND (2026-11-07)
 - 🧪 QUATRE TESTS INTERMITTENTS ET UN `verif` ROUGE SOUS WINDOWS — TROIS VRAIS DÉFAUTS DU PRODUIT DERRIÈRE (2026-11-07)
 - ⏳ LA BOUCLE DE DÉMARRAGE COURT-CIRCUITAIT LE BACKOFF — LA GRÂCE DU JETON DURAIT 5 S AU LIEU DE 33 (2026-11-07)
+- 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
 
 ---
 
@@ -942,3 +943,34 @@ Le cas à 35 s sans correctif : quand la boucle trouve la file vide, elle s'arr�
 - **Un refus « Second facteur requis »** n'ouvre jamais l'écran de refus, qui fermerait aussi les Réglages où le facteur s'inscrit.
 
 ⚠️ **ORDRE : INSCRIRE, PUIS POSER `PILOTAGE_EXIGER_AAL2=1`.** Dans l'autre ordre, le pilotage se ferme à son propre éditeur. Se vérifie au canal ① : `select count(*) from auth.mfa_factors where status = 'verified'` pour le compte éditeur.
+
+## 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
+
+`edge-functions.yml` déploie les fonctions en parallèle de la CI de `main`, sans attendre son verdict : son étape « Verrous unitaires des modules partagés » est le seul contrôle unitaire de ce chemin. Tenue à la main, la liste dérivait :
+- `appels.js` et `reception.js` avaient été oubliés par #745 (corrigé par #748) ;
+- `battement`, `parcours`, `croissance`, `contrats-actions` et `politique-autonomie` partaient sans leur suite ;
+- le job installait Node 20, quand tous les autres installent Node 22.
+
+Désormais `tests/unit/edge-functions-verrous.test.mjs` calcule la clôture des imports des `index.ts`. Il tourne en tête de l'étape, dans `npm run verif` et dans la CI, et exige :
+- une suite listée par module emporté ;
+- que chaque suite qui en importe un soit listée, ou que son écart soit déclaré avec sa raison ;
+- l'étape avant CHAQUE étape qui déploie, sans rien qui la contourne : `if:` à fonction d'état sur un déploiement, `defaults:` sans `-e`, `NODE_OPTIONS`, `$GITHUB_ENV` ;
+- le même Node que le job `audits` de `deploy.yml`.
+
+Rejoué sur `main` d'avant #748, le banc nomme `appels.js` et `reception.js`. Détail : `docs/AUTONOMIE_EXPLOITATION.md` § 3.9.
+
+⚠️ **UNE LISTE TENUE À LA MAIN DÉRIVE EN UNE NUIT.** Entre l'écriture du banc et son rebase sur `main` (2026-11-08), 27 commits ont ajouté deux modules partagés et trois suites qui éprouvent des modules déployés. Aucune n'est entrée dans l'étape. Le banc les a nommées au premier passage : `connexion-recente` (la preuve d'une connexion fraîche, emportée par `delete-account` et `export-account` sans aucune suite listée), `push-sur` et `purge-analytics-courte`. Rejouée sur la liste de `main`, une connexion ancienne admise avant une suppression de compte passait tous les verrous.
+
+⚠️ **IMPORTER, C'EST DIRECTEMENT.** `reception.js` était atteint par `rappels.test.mjs` (à travers `rappels.js`) et par `pilotage.test.mjs` (à travers `pilotage.js`), et n'avait pourtant aucun verrou avant le déploiement. Une suite qui traverse un module n'en éprouve pas le comportement : le banc ne compte que l'import écrit dans la suite.
+
+⚠️ **UNE SUITE QUI ÉPROUVE AUTRE CHOSE NE SE LISTE PAS : ELLE SE DÉCLARE.** Cinq suites importent un module emporté pour éprouver une gate, un script, le client ou un workflow. Les lister aurait retenu un correctif de fonction pour la dérive d'un fichier qu'il ne touche pas. Pour la même raison, `politique-autonomie.test.mjs` a été coupé en deux. Ce qui compare la politique à `deploy.yml`, à `sentinelle-autonome.yml`, à la Sentinelle et à `app-04` est dans `politique-autonomie-executants.test.mjs`.
+
+⚠️ **UNE RAISON D'ÉCART SE PROUVE PAR MUTATION, PAS PAR LECTURE.** Deux raisons disaient « le module est éprouvé par une suite listée », et c'était vrai à la lecture : la suite listée importait bien le module. Mais retirer `"emulation"` de `TRAFICS_HORS_PUBLIC`, ou `|e[0-9]+` d'`EXPRESSION_EXEMPLE` (ce que la purge tient pour un exemple), passait les 18 verrous ; seules les suites écartées rougissaient. La ligne d'émulation de pilotage ⑯ était rattrapée par la règle iOS, pas par la liste. pilotage ⑯ éprouve désormais les trois valeurs, et `identifiants-exemple` est listée. Une raison d'écart se rejoue : la mutation qu'attrape la suite écartée doit rougir une suite listée.
+
+⚠️ **UN LECTEUR LIGNE À LIGNE N'EST PAS UN LECTEUR.** La première version lisait les imports avec des expressions régulières, ligne à ligne. Sa classe de caractères ASCII ratait `import { a as vérifier } from …` ; elle ratait aussi `/* … */ import …`, et comptait un import écrit dans un bloc de commentaire ou un gabarit. Elle prenait même les textes de mutation du banc pour des imports, d'où leur assemblage (`VERS_SHARED`). C'est désormais un lexeur (commentaires, chaînes, gabarits, expressions régulières). Sur les 88 fichiers lus, il voit tout ce que voit l'analyseur de V8.
+
+⚠️ **UNE FONCTION D'ÉTAT RETIRE LE SUCCÈS IMPLICITE.** `if: success() || github.event_name == 'workflow_dispatch'` sur « Déployer » part derrière un verrou rouge ; un « nouvel essai » en `if: failure()` part justement dans ce cas. Le banc refuse toute fonction d'état dans le `if:` d'une étape qui déploie, et lit les `defaults:` et les `env:` qui atteignent l'étape : sous Node 22, `NODE_OPTIONS=--test-only` fait sortir une suite rouge en 0.
+
+⚠️ **UN VERROU QUI NE TOURNE QUE DANS LA CI PARALLÈLE NE RETIENT RIEN.** Ce workflow n'attend pas la CI de `main` : un push direct qui retire une ligne de l'étape déployait avec la liste affaiblie, et le banc ne rougissait qu'en parallèle. Le banc tourne donc en tête de l'étape. Rejoué : une ligne retirée, ou un import `_shared` neuf sans suite dans `notify-call`, arrêtent l'étape à sa première ligne.
+
+⚠️ **UNE CONSTANTE EMPLOYÉE N'EST PAS UNE CONSTANTE ÉPINGLÉE.** `battement.test.mjs` calcule ses âges à partir de `BATTEMENT_PERIME_MS` : passer cette constante de 35 à 60 min ne rougit aucune suite. Pour éprouver la ligne `battement`, la réinjection retenue est donc celle que seule sa suite voit : une erreur multi-lignes recopiée dans le battement. La réinjection documentée dans la suite (`resumerBattement` qui ignore l'âge) rougissait déjà `pilotage.test.mjs`.
