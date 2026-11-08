@@ -528,7 +528,15 @@
     // donc gravité « error », sur un appareil parfaitement en ligne).
     if (retryTimer) return;
     if (queue.length >= 12) flush();
-    else if (!flushTimer) flushTimer = setTimeout(flush, 3000);
+    else if (!flushTimer) flushTimer = setTimeout(flushDiffere, 3000);
+  }
+  // Le minuteur de lot a pu s'armer pendant qu'un envoi était EN VOL, donc avant
+  // que son échec arme le réessai : sans cette garde, il repartait au milieu du
+  // backoff (mesuré : 3 s puis 20 ms au lieu de 3 s puis 6 s, 5 fois sur 8). Le
+  // réessai emporte la file, rien n'est perdu.
+  function flushDiffere() {
+    flushTimer = null;
+    if (!retryTimer) flush();
   }
 
   // Config d'envoi (URL + clé anon) exposée par app-08 ; runtime, pas au load.
@@ -969,14 +977,26 @@
   // d'envoi est prête (app-08 pose window.PASSIO_SUPABASE en différé).
   // Respecte l'opt-out : si la télémétrie est désactivée, on purge le backlog
   // au lieu de le rejouer.
+  // ⚠️ CETTE BOUCLE N'ATTEND QUE LA CONFIGURATION (2026-11-07). Elle rappelait
+  // `flush()` toutes les 500 ms tant que la file n'était pas vide, jusqu'à 60 s,
+  // sans égard pour `retryTimer` : le backoff d'`onAuthReject` (1,5 s → 9 s) et
+  // celui d'`armerReessai` (3 s → 60 s) n'existaient pas pendant la première
+  // minute d'une page. Mesuré : 7 refus du jeton en 2,5 s au lieu de ~32 s, puis
+  // désattribution ; en production, aucun écart au-dessus de 726 ms entre deux
+  // refus sur 7 jours. Le premier envoi suffit : un succès écoule le reste, un
+  // refus ou une panne arment leur minuteur. Et un réessai déjà armé garde la main.
   if (ENABLED) {
     loadBacklog();
     (function waitCfg() {
       var tries = 0;
       var iv = setInterval(function () {
         tries++;
-        if (supaCfg()) flush();
-        if ((supaCfg() && !queue.length) || tries > 120) clearInterval(iv);
+        if (supaCfg()) {
+          clearInterval(iv);
+          if (!retryTimer) flush();
+          return;
+        }
+        if (tries > 120) clearInterval(iv);
       }, 500);
     })();
   } else {
