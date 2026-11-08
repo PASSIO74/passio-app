@@ -1252,6 +1252,18 @@ l'ordre de Benjamin ; empreinte `cbd9428a…`) :
   131 interactions lisibles, dont aucun sans cible, et aucune réaction à une réponse hors du public.
 - **Pas éprouvé** : une vraie suppression de publication ou de compte en production, depuis l'application. Le verdict la
   rejoue dans une sous-transaction annulée ; le staging l'a passée par `suppression-compte`. La revue red team n'a jamais été rendue.
+- **Journaux des 24 h — ✅ rien d'anormal** (de 2026-11-04 18:37:49 à 2026-11-05 18:37:49 UTC, relus le 08/11 : la tâche
+  planifiée du 05/11 n'avait pas tourné, limite hebdomadaire atteinte). `postgres_logs` complet (chaque heure présente) :
+  aucune erreur ne nomme `purger_cibles`, `est_identifiant_exemple`, `comment_target_visible`, `post_is_visible` ni l'identité
+  de réplication ; 42501 × 2 623 (24 h avant R25 : 13 646), 42P17 × 6 toutes sur `passion_requests` avant R38 (0 après le
+  05/11 07:23:32), 23505 × 4, 42725 × 3, 42804 × 1. `edge_logs` des neuf tables : mêmes familles et mêmes rythmes que la
+  référence (2026-11-03 18:37:49 → 2026-11-04 12:45:52) ; seuls 5xx : `passion_requests` POST 500 × 6 (avant R38) et un PATCH
+  502 sur `notifications` (passerelle, déjà vu après R25) ; les 18 DELETE 200 sur `posts` et tous les 5xx viennent des pages de
+  test (`127.0.0.1:8080`) ou d'un script sans origine, aucun de `passio-app.netlify.app`. Base, le 08/11 : deux déclencheurs à
+  `O`, `conv_members` et `notifications` hors de `supabase_realtime`, 0 orphelin au format réel, 0 ligne de `client_errors`
+  depuis R25. `post_is_visible` vaut désormais `08d910fb…` : réécrite par le lot de sécurité 3 (journal n° 38, 07/11 16:49 UTC,
+  masquage `post_masque`), elle garde la règle de R31 (`est_identifiant_exemple`, test d'existence de la cible). Toujours pas
+  éprouvé : une vraie suppression depuis l'application (aucune n'est venue du public dans la fenêtre).
 
 ---
 
@@ -1637,9 +1649,10 @@ sécurité 1 à 3, fusionnée par #754 en `85f082f2`) — `migrations/migration_
 (auto-revue de mainteneur unique, ASTRA-61 bis ; la n° 5816974908 l'avait bloquée sur l'ancien socle), attestation consignée,
 application depuis le poste (canal ③, worktree d'`origin/main`) : verdict 17 × OK, « 88 ; 551 ; 0 ». **Mesuré au canal ①** :
 quatre CHECK `convalidated`, policies `8bf26134…` et déclencheurs `fc9c5e60…` inchangés, 88 messages, 0 au-delà de la borne,
-0 trace du décor, journal `applique` citant la revue. **Le staging n'a PAS reçu la migration** : la revue ne nomme que la
-production (une attestation vaut pour les seules cibles que sa revue nomme). **Reste** : les journaux des 24 h
-(`postgres_logs`, 23514 sur conv_messages ; `client_errors`), au plus tôt le 09/11 à 07:45 UTC.
+0 trace du décor, journal `applique` citant la revue. **Staging : appliquée le 08/11 à 18:53:46 UTC**, sur une seconde
+contre-revue qui le nomme (n° 5819166983, même SHA, même empreinte ; « Application au staging », plus bas). **Reste** : les
+journaux des 24 h (`postgres_logs`, 23514 sur conv_messages ; `client_errors`), au plus tôt le 09/11 à 07:45 UTC — tâche
+planifiée `passio-relecture-24h-754` (poste de Benjamin, le 09/11 à 07:50 UTC, lecture seule, rapport sans écriture).
 
 **Le défaut.** L'invariant « jamais de base64 en base (→ Storage) » n'était tenu QUE par le client. `conv_messages.content` est
 un `text` nullable sans contrainte CHECK ; la policy d'insertion (`conv_messages_insert_member` — pas seulement
@@ -1765,6 +1778,17 @@ l'en-tête — quatre CHECK `convalidated` (les deux d'ici à leur définition e
 au plus, 0 data-URL, 0 au-delà de 20 000, et 0 trace du décor (profil `…cb01`, `zz_cmb_%` dans conversations, membres,
 messages et `realtime.messages`, compteurs de `debit_ecritures`). **Mais rien ne l'empêchait** : la barrière vérifie la
 revue, le contenu et la cible, jamais qu'un fichier est déjà parti. D'où la relecture du journal en tête de l'étape 3.
+
+**Application au staging (08/11, 18:53:46 UTC).** Contre-revue n° 5819166983 sur `f3a04e55` (`cible: fcksxofaelcdmmifnwjo`,
+auto-revue de mainteneur unique postée par Claude Code sur le « Oui, vas-y » de Benjamin), attestation pour le staging,
+envoi depuis un worktree d'`origin/main` (`ad5820c4`) après relecture de son journal (lots de sécurité 1 à 4, RV-38, R31, R25 ;
+pas encore #760). **Mesuré AVANT**, par l'API de gestion dans une transaction `read only` (relevée dans la même requête) : les
+deux CHECK du lot à leur définition exacte, policies `8bf26134…` et déclencheurs `fc9c5e60…` (ceux de la production),
+`authenticated` avec UPDATE de table sans policy UPDATE, 0 message, 0 trace du décor, aucune ligne de journal. Verdict :
+17 × OK, « 0 ; 0 ; 0 ». **Mesuré APRÈS**, de la même façon : quatre CHECK `convalidated`, empreinte des quatre définitions
+`79764a53…` = celle de la production au canal ① le même soir, policies et déclencheurs inchangés, 0 trace du décor
+(profil `…cb01`, `zz_cmb_%` dans conversations et messages), ligne de journal du 08/11 à 18:53:46. Aucune PR n'était ouverte :
+aucune base antérieure à #751 ne joue ses suites à comptes réels contre le staging migré.
 
 **L'en-tête du fichier garde deux états** : le bloc mesuré le 07/11 (« AUCUNE CHECK », « Update propre ») est HISTORIQUE ;
 l'état de référence est le bloc « REMESURÉ le 08/11 » qui le suit. Le fichier n'est pas retouché pour autant : il reste, à
