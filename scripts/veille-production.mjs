@@ -391,7 +391,11 @@ export const PURGE_COURTE_MAX_S = 3 * 3600;
  * une tâche cassée laisserait la table repartir vers 13 mois de lignes `edge_*` en silence (revue
  * adversariale du 07/11). PUR. `m` = { taches, statut, ageS } ou null (non mesuré : aucune ligne,
  * le reste de la base parle).
- * Absente (ou désactivée : seules les tâches actives comptent) : ATTENTION depuis le 08/11. La migration est appliquée en production ce jour-là
+ * Le TEXTE dit où agir : la veille n'affiche un `geste` que pour une ALERTE (corps de l'issue),
+ * jamais pour une ATTENTION — le geste ne sert qu'au détail.
+ * Absente (ou désactivée : seules les tâches actives comptent) : ATTENTION depuis le 08/11 —
+ * sur la production seulement : une veille locale qui viserait le staging, où la tâche n'est pas
+ * installée, sonnerait à tort (la CI fixe SUPABASE_PROJECT_REF sur la production). La migration est appliquée en production ce jour-là
  * (journal n° 40, 07:06 UTC) : une tâche disparue est une purge retirée ou cassée, et la table
  * repart vers 13 mois. Avant l'application, ce n'était qu'une information.
  * @param {{taches:number, statut:string|null, ageS:number|null}|null|undefined} m
@@ -400,12 +404,12 @@ export const PURGE_COURTE_MAX_S = 3 * 3600;
 export function signalPurgeCourte(m) {
   if (!m || !Number.isFinite(m.taches)) return null;
   const geste = "Supabase > Integrations > Cron > purge_analytics_courte : lire l'erreur, puis `select public.purger_analytics_courte(interval '2 hours', interval '8 days')` à l'éditeur SQL.";
-  if (m.taches === 0) return { etat: "warn", texte: "purge courte d'analytics_events absente ou désactivée dans cron.job (appliquée le 08/11)", geste: "Rejouer migrations/migration_purge_analytics_courte_2026-11-07.sql (canal ③, rejouable) — ou, si elle a été retirée exprès, retirer aussi cette surveillance." };
+  if (m.taches === 0) return { etat: "warn", texte: "purge courte d'analytics_events absente ou désactivée dans cron.job — rejouer migration_purge_analytics_courte_2026-11-07.sql (canal ③)", geste: "Rejouer migrations/migration_purge_analytics_courte_2026-11-07.sql (canal ③, rejouable) — ou, si elle a été retirée exprès, retirer aussi cette surveillance." };
   // Le statut vient de pg_cron (liste fermée) ; rien d'autre ne part dans le texte.
   const statut = typeof m.statut === "string" && /^[a-z]+$/.test(m.statut) ? m.statut : null;
-  if (statut === "failed") return { etat: "warn", texte: "purge courte d'analytics_events : dernière exécution en échec", geste };
+  if (statut === "failed") return { etat: "warn", texte: "purge courte d'analytics_events : dernière exécution en échec — Integrations › Cron › purge_analytics_courte", geste };
   if (!Number.isFinite(m.ageS)) return { etat: "ok", texte: "purge courte planifiée, pas encore exécutée" };
-  if (m.ageS > PURGE_COURTE_MAX_S) return { etat: "warn", texte: `purge courte d'analytics_events : aucune exécution depuis ${Math.floor(m.ageS / 3600)} h`, geste };
+  if (m.ageS > PURGE_COURTE_MAX_S) return { etat: "warn", texte: `purge courte d'analytics_events : aucune exécution depuis ${Math.floor(m.ageS / 3600)} h — Integrations › Cron › purge_analytics_courte`, geste };
   return { etat: "ok", texte: "purge courte : à jour" };
 }
 

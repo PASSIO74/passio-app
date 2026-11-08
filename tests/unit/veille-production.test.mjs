@@ -430,6 +430,12 @@ test("purge courte : absente, en échec ou plus de 3 h sans exécution = ATTENTI
   assert.equal(absente.etat, "warn");
   assert.match(absente.texte, /purge courte d'analytics_events absente ou désactivée dans cron\.job/);
   assert.match(absente.geste, /migration_purge_analytics_courte_2026-11-07\.sql/);
+  // Le TEXTE porte la migration à rejouer : une ATTENTION n'affiche jamais son geste
+  // (seul le corps d'une issue d'ALERTE le fait).
+  assert.match(absente.texte, /migration_purge_analytics_courte_2026-11-07\.sql/);
+  // « Désactivée » compte comme absente : la mesure ne compte que les tâches ACTIVES
+  // (contre-revue de #782, N2 — sans ce verrou, seule la règle des 3 h la rattrapait).
+  assert.match(SQL.purgeCourte, /jobname = 'purge_analytics_courte' and active\)/);
   // ② installée, à jour ; ou planifiée, pas encore exécutée (juste après l'application).
   assert.equal(base({ taches: 1, statut: "succeeded", ageS: 600 }).etat, "ok");
   assert.match(base({ taches: 1, statut: "succeeded", ageS: 600 }).texte, /purge courte : à jour/);
@@ -437,11 +443,11 @@ test("purge courte : absente, en échec ou plus de 3 h sans exécution = ATTENTI
   // ③ la dernière exécution a échoué : ATTENTION, et le geste dit où lire l'erreur.
   const echec = base({ taches: 1, statut: "failed", ageS: 300 });
   assert.equal(echec.etat, "warn");
-  assert.match(echec.texte, /dernière exécution en échec/);
+  assert.match(echec.texte, /dernière exécution en échec — Integrations › Cron › purge_analytics_courte/);
   assert.match(echec.geste, /purge_analytics_courte/);
   // ④ deux passages manqués : ATTENTION ; à la limite, pas encore.
   assert.equal(base({ taches: 1, statut: "succeeded", ageS: PURGE_COURTE_MAX_S + 60 }).etat, "warn");
-  assert.match(base({ taches: 1, statut: "succeeded", ageS: 4 * 3600 }).texte, /aucune exécution depuis 4 h/);
+  assert.match(base({ taches: 1, statut: "succeeded", ageS: 4 * 3600 }).texte, /aucune exécution depuis 4 h — Integrations › Cron › purge_analytics_courte/);
   assert.equal(base({ taches: 1, statut: "succeeded", ageS: PURGE_COURTE_MAX_S }).etat, "ok");
   assert.equal(PURGE_COURTE_MAX_S, 3 * 3600, "horaire : deux passages manqués");
   // ⑤ une ATTENTION de la purge ne masque pas une ALERTE de la base, et n'en crée jamais.
