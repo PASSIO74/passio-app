@@ -22,7 +22,9 @@ const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8");
 // mesurée dans les SOURCES (index.html, app-05, app-07…) ; celle de droite
 // dans le texte rendu.
 const TIERS = [
-  { hote: "fonts.googleapis.com", source: "index.html", nom: /Google Fonts/ },
+  // Depuis le 2026-11-08, la police des titres est servie par PASSIO : Google Fonts ne reste
+  // appelé que pour une police choisie dans l'éditeur de texte (app-04).
+  { hote: "fonts.googleapis.com", source: "js/app-04-comments-shop.js", nom: /Google Fonts/ },
   { hote: "openrelay.metered.ca", source: "js/app-05-config-profil.js", nom: /Open Relay/ },
   { hote: "stun.l.google.com", source: "js/app-05-config-profil.js", nom: /STUN de Google/ },
   { hote: "tiles.openfreemap.org", source: "netlify.toml", nom: /OpenFreeMap/ },
@@ -41,6 +43,17 @@ test.describe("politique de confidentialité — les tiers appelés sont nommés
       expect(lire(t.source), `${t.hote} n'est plus dans ${t.source} : retirer la mention, ou corriger la liste du test`).toContain(t.hote);
       expect(txt, `${t.hote} est appelé mais la politique ne le nomme pas`).toMatch(t.nom);
     }
+  });
+
+  test("①bis ce que la première visite n'appelle plus n'est plus annoncé comme tel", async ({ page }) => {
+    await page.route(/supabase\.co/, (route) => route.abort());
+    await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true });
+    const txt = await page.evaluate(() => passioTextePolitique().replace(/<[^>]+>/g, " "));
+    // Police des titres et images d'illustration : servies par PASSIO (fonts/, Edge Function demo).
+    expect(lire("index.html")).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
+    expect(txt).not.toMatch(/à chaque ouverture/);
+    expect(txt).not.toMatch(/Unsplash/);
+    expect(txt).toMatch(/une police choisie dans l'éditeur de texte \(Google Fonts/);
   });
 
   test("② le §6 dit QUAND le relais d'appel est sollicité, et que ni le compte ni le nom ne partent", async ({ page }) => {

@@ -270,6 +270,7 @@
   function ecran(nom) {
     $("ecranConnexion").hidden = nom !== "connexion";
     $("ecranRefus").hidden = nom !== "refus";
+    $("ecranSecondFacteur").hidden = nom !== "second";
     $("app").hidden = nom !== "app";
     if (nom === "app") dessinerMarche();
   }
@@ -299,6 +300,7 @@
     window.scrollTo(0, 0);
     if (id === "accueil") dessinerMarche();
     if (id === "inscrits" && !inscritsCharges.length) chargerInscrits();
+    if (id === "reglages") rendreSecondFacteur();
   }
   function aller(id) { history.pushState({ vue: id, depuisPage: true }, "", "#" + id); afficher(id); }
   const vueDuLien = () => {
@@ -1158,6 +1160,13 @@
       erreur("");
     } catch (e) {
       if (e.status === 401) { ecran("connexion"); return; }
+      if (e.status === 403 && /second facteur/i.test(e.message)) {
+        // Exigé par la fonction (PILOTAGE_EXIGER_AAL2) : on demande le code, ou l'on montre où l'ajouter.
+        // Jamais l'écran de refus, qui fermerait aussi les Réglages où s'inscrit le facteur.
+        if (await facteurTotpVerifie()) { demanderSecondFacteur("Le pilotage demande ton second facteur."); return; }
+        erreur("Le pilotage exige un second facteur : ajoute-le dans Réglages, rubrique « Second facteur ».");
+        return;
+      }
       if (e.status === 403) { ecran("refus"); $("refusTexte").textContent = "Le compte " + (compte || "") + " n'a pas accès au pilotage. Connecte-toi avec le compte de l'éditeur."; return; }
       erreur(e.status === 404 ? "La fonction « pilotage » n'est pas encore déployée." : "Lecture impossible : " + e.message + ". Dernières données conservées.");
     } finally {
@@ -1184,6 +1193,140 @@
   toucher($("deconnexion"), null, deconnecter);
   $("refusDeco").addEventListener("click", deconnecter);
 
+  // ─── Second facteur (TOTP) ──────────────────────────────────────
+  // La fonction `pilotage` sait exiger un second facteur (PILOTAGE_EXIGER_AAL2), mais rien ne permettait
+  // d'en inscrire un (audit de sécurité du 06/11, A-01 : condition du GO). L'inscription vit dans les
+  // Réglages ; une fois un facteur vérifié, son code est demandé à chaque ouverture, avant l'application.
+  // Les valeurs reçues de l'Auth s'affichent en texte ; le code QR est une image `data:image/svg+xml`.
+  let sfInscription = null, sfEnCours = false;
+  function codeValide(v) { return /^\d{6}$/.test(String(v || "").replace(/\s+/g, "")); }
+  async function niveauSession() {
+    try {
+      const { data, error } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+      return error ? null : data;
+    } catch (_e) { return null; }
+  }
+  async function facteurTotpVerifie() {
+    try {
+      const { data, error } = await sb.auth.mfa.listFactors();
+      if (error || !data) return null;
+      const f = (data.totp || []).find((x) => x.status === "verified");
+      return f ? f.id : null;
+    } catch (_e) { return null; }
+  }
+  async function verifierCode(factorId, code) {
+    const { error } = await sb.auth.mfa.challengeAndVerify({ factorId, code: String(code).replace(/\s+/g, "") });
+    if (error) throw error;
+  }
+  function demanderSecondFacteur(message) {
+    ecran("second");
+    $("sfErreur").hidden = !message; $("sfErreur").textContent = message || "";
+    $("sfCode").value = "";
+    try { $("sfCode").focus(); } catch (_e) { /* sans focus, le champ reste utilisable */ }
+  }
+  async function validerSecondFacteur() {
+    if (sfEnCours) return;
+    if (!codeValide($("sfCode").value)) { $("sfErreur").hidden = false; $("sfErreur").textContent = "Le code fait 6 chiffres."; return; }
+    sfEnCours = true; $("sfValider").disabled = true;
+    try {
+      const id = await facteurTotpVerifie();
+      if (!id) throw new Error("aucun facteur vérifié sur ce compte");
+      await verifierCode(id, $("sfCode").value);
+      $("sfErreur").hidden = true;
+      await demarrer();
+    } catch (e) {
+      $("sfErreur").hidden = false;
+      $("sfErreur").textContent = "Code refusé : " + ((e && e.message) || "réessaie avec le code suivant") + ".";
+    } finally { sfEnCours = false; $("sfValider").disabled = false; }
+  }
+  $("sfValider").addEventListener("click", validerSecondFacteur);
+  $("sfCode").addEventListener("keydown", (e) => { if (e.key === "Enter") validerSecondFacteur(); });
+  $("sfDeco").addEventListener("click", deconnecter);
+
+  async function rendreSecondFacteur() {
+    const zone = vider("secondFacteur");
+    let facteurs, niveau;
+    try {
+      const { data, error } = await sb.auth.mfa.listFactors();
+      if (error) throw error;
+      facteurs = data || {};
+      niveau = await niveauSession();
+    } catch (e) {
+      zone.append(carte("Second facteur", "Non lu", "État illisible : " + ((e && e.message) || "erreur") + ".", "gris"));
+      return;
+    }
+    vider("secondFacteur");
+    if ((facteurs.totp || []).some((f) => f.status === "verified")) {
+      zone.append(carte("Application d'authentification", "Actif",
+        "Un code est demandé à chaque ouverture du pilotage. "
+        + (niveau && niveau.currentLevel === "aal2" ? "Cette session est vérifiée." : "Cette session n'est pas encore vérifiée."), "vert"));
+      return;
+    }
+    if (sfInscription) { zone.append(carteInscription()); return; }
+    const c = carte("Aucun second facteur", "À faire",
+      "Ajoute une application d'authentification (Google Authenticator, 1Password, Authy…). Le pilotage pourra ensuite l'exiger.", "orange");
+    const b = el("button", "btn btn-plein", "Ajouter un second facteur"); b.type = "button"; b.id = "sfAjouter";
+    b.addEventListener("click", commencerInscription);
+    actions(c).append(b);
+    zone.append(c);
+  }
+  async function commencerInscription() {
+    try {
+      // Une inscription abandonnée laisse un facteur « non vérifié » qui gênerait la suivante : on le retire.
+      const { data } = await sb.auth.mfa.listFactors();
+      for (const f of (data && data.all) || []) {
+        if (f.factor_type === "totp" && f.status !== "verified") {
+          try { await sb.auth.mfa.unenroll({ factorId: f.id }); } catch (_e) { /* l'inscription dira ce qui bloque */ }
+        }
+      }
+      const { data: d, error } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Pilotage " + new Date().toISOString().slice(0, 10) });
+      if (error) throw error;
+      sfInscription = { id: d.id, qr: d.totp && d.totp.qr_code, secret: d.totp && d.totp.secret };
+    } catch (e) {
+      sfInscription = null;
+      erreur("Inscription impossible : " + ((e && e.message) || "erreur") + ".");
+    }
+    rendreSecondFacteur();
+  }
+  function carteInscription() {
+    const c = carte("Scanne ce code", "En cours",
+      "Dans ton application d'authentification, ajoute un compte et scanne ce code. Saisis ensuite les 6 chiffres affichés.", "orange");
+    if (typeof sfInscription.qr === "string" && /^data:image\/svg\+xml[;,]/.test(sfInscription.qr)) {
+      const img = el("img", "qr-code"); img.src = sfInscription.qr; img.alt = "Code QR à scanner"; img.width = 200; img.height = 200;
+      c.append(img);
+    }
+    if (sfInscription.secret) {
+      c.append(el("p", "discret", "Ou saisis cette clé à la main :"));
+      c.append(el("p", "cle-totp", sfInscription.secret));
+    }
+    const champ = el("input", "champ-code"); champ.id = "sfInscriptionCode"; champ.type = "text";
+    champ.inputMode = "numeric"; champ.autocomplete = "one-time-code"; champ.maxLength = 7; champ.setAttribute("aria-label", "Code à 6 chiffres");
+    const err = el("p", "erreur"); err.hidden = true; err.setAttribute("role", "alert");
+    c.append(champ, err);
+    const ok = el("button", "btn btn-plein", "Vérifier et activer"); ok.type = "button"; ok.id = "sfActiver";
+    const non = el("button", "btn", "Annuler"); non.type = "button";
+    ok.addEventListener("click", async () => {
+      if (!codeValide(champ.value)) { err.hidden = false; err.textContent = "Le code fait 6 chiffres."; return; }
+      ok.disabled = true;
+      try {
+        await verifierCode(sfInscription.id, champ.value);
+        sfInscription = null;
+        succes("Second facteur activé.");
+        rendreSecondFacteur();
+      } catch (e) {
+        err.hidden = false; err.textContent = "Code refusé : " + ((e && e.message) || "réessaie avec le code suivant") + ".";
+      } finally { ok.disabled = false; }
+    });
+    non.addEventListener("click", async () => {
+      const id = sfInscription && sfInscription.id;
+      sfInscription = null;
+      if (id) { try { await sb.auth.mfa.unenroll({ factorId: id }); } catch (_e) { /* retiré à la prochaine inscription */ } }
+      rendreSecondFacteur();
+    });
+    actions(c).append(ok, non);
+    return c;
+  }
+
   // ─── Installation ─────────────────────────────────────────────────────────
   let invitation = null;
   window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); invitation = e; majInstall(); });
@@ -1205,6 +1348,9 @@
     const session = data && data.session;
     if (!session) { ecran("connexion"); return; }
     compte = session.user && session.user.email;
+    // Un facteur vérifié et une session encore en aal1 : le code d'abord, l'application ensuite.
+    const niveau = await niveauSession();
+    if (niveau && niveau.nextLevel === "aal2" && niveau.currentLevel !== "aal2") { demanderSecondFacteur(""); return; }
     ecran("app");
     vider("compte").append(carte(compte || "Compte", "Connecté", "Session partagée avec PASSIO sur ce téléphone."));
     majInstall();

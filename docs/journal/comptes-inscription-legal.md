@@ -583,3 +583,18 @@ Verrous : `tests/e2e/creer-compte-accueil.spec.js` (① bis, le geste complet ju
 ⚠️ **Ouvert puis refermé pendant le même vol = rien.** Les deux gestes reportés s'annulent au lieu de coûter une écriture et un retour de plus.
 
 Verrous : `tests/e2e/historique-retour-en-vol.spec.js` (13 cas, dans `SUITES_WEBKIT`) — son journal rejoue la suite du geste JUSTE APRÈS le `history.back()` (`apresRetour`), donc en vol à coup sûr sur les deux moteurs. Le contournement posé dans `first-run.spec.js` (« attendre que le retour de fermeture ait atterri ») est retiré : le test du gate ne dépend plus de l'historique.
+
+## 🔒 LA PREMIÈRE VISITE NE PARLE PLUS QU'À PASSIO — police et images d'illustration servies par nous (2026-11-08)
+
+`index.html`, `styles.css` (fin), `fonts/`, `netlify/edge-functions/demo.js`, `imageDemo` (app-01), `js/legal-textes.js` §6. Audit de sécurité du 06/11, G-03 : une première visite sans compte contactait Google Fonts et Unsplash avant tout choix, et des replis picsum.photos et loremflickr.com que la politique ne nommait pas.
+
+- **Manrope** est servie par PASSIO : deux sous-ensembles woff2 (latin, latin étendu), police variable 600 à 800, licence OFL dans `fonts/OFL.txt`. Copiée par `scripts/build.js` (étape 8 bis). Google Fonts ne reste qu'une police **choisie dans l'éditeur de texte** (app-04) : la CSP le garde, la politique le dit ainsi.
+- **Images d'illustration** : `/demo/u/<identifiant>/<format>`, une Edge Function qui va chercher l'image chez Unsplash **sans rien relayer du visiteur**. Un simple relais Netlify transmet l'adresse IP dans `X-Forwarded-For` : il ne réglait rien.
+- **Replis tiers retirés** : une photo qui ne charge pas laisse le dégradé ou l'emoji, plus jamais une photo au hasard chez un tiers.
+- **Vidéos d'exemple** : toujours chez Pexels, nommé au §6. Les servir demande les requêtes par plage d'iOS (voir `media.js`) : non fait.
+
+⚠️ **LA LISTE DES IMAGES EST FERMÉE.** Un identifiant Unsplash ajouté au code doit l'être aussi dans `IDS` de `demo.js`, sinon l'image ne s'affiche pas (404, sans lecture d'origine). Le banc `tests/unit/demo-edge.test.mjs` ⑧ échoue dans les deux sens.
+
+⚠️ **EN LOCAL, `/demo/*` N'EXISTE PAS** : `npm run serve` ne lance pas les Edge Functions. Les exemples y montrent le dégradé ; c'est normal.
+
+Version de la politique : 2026-11-08. Verrous : `politique-tiers-appeles.spec.js` ①bis, `demo-edge.test.mjs`.

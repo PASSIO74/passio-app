@@ -190,6 +190,20 @@ if (fs.existsSync(vendorDir)) {
   }
   console.log("  + js/vendor/ :", nVendor, "fichier(s) copié(s)");
 }
+// 8 bis. La POLICE des titres (fonts/) — servie par PASSIO depuis le 2026-11-08, au lieu de Google
+//    Fonts à chaque ouverture (audit de sécurité du 06/11, G-03). Même règle que data/ : copiée ICI.
+const fontsDir = path.join(root, "fonts");
+if (fs.existsSync(fontsDir)) {
+  const cible = path.join(path.dirname(outPath), "fonts");
+  fs.mkdirSync(cible, { recursive: true });
+  let nFonts = 0;
+  for (const f of fs.readdirSync(fontsDir)) {
+    if (!/\.(woff2|txt)$/.test(f)) continue;
+    fs.copyFileSync(path.join(fontsDir, f), path.join(cible, f));
+    nFonts++;
+  }
+  console.log("  + fonts/ :", nFonts, "fichier(s) copié(s)");
+}
 // 9. Le PILOTAGE NUAGE (pilotage/) — page téléphone autonome, hors du monolithe
 //    (ses scripts ne doivent jamais être inlinés dans l'app). Copié tel quel,
 //    même règle que data/ et js/vendor/ : un asset qui n'existe qu'en CI est un

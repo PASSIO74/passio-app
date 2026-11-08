@@ -26,6 +26,17 @@
     <p id="cxErreur" class="erreur" role="alert" hidden></p>
   </section>
 
+  <!-- Second facteur : demandé à chaque ouverture dès qu'un facteur TOTP est inscrit. -->
+  <section id="ecranSecondFacteur" class="ecran-plein" hidden>
+    <img src="/pilotage/icons/pilot-192.png" alt="" class="logo" width="72" height="72" />
+    <h1>Second facteur</h1>
+    <p>Saisis le code à 6 chiffres de ton application d'authentification.</p>
+    <input id="sfCode" class="champ-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" aria-label="Code à 6 chiffres" />
+    <button id="sfValider" class="btn btn-plein" type="button">Valider</button>
+    <p id="sfErreur" class="erreur" role="alert" hidden></p>
+    <button id="sfDeco" class="btn" type="button">Changer de compte</button>
+  </section>
+
   <!-- Refus -->
   <section id="ecranRefus" class="ecran-plein" hidden>
     <img src="/pilotage/icons/pilot-192.png" alt="" class="logo" width="72" height="72" />
@@ -170,6 +181,8 @@
           <p id="installTexte" class="discret"></p>
           <button id="installer" class="btn btn-plein" type="button" hidden>Installer l'application</button>
         </div>
+        <h2>Second facteur</h2>
+        <div id="secondFacteur" class="pile"></div>
         <h2>Compte</h2>
         <div id="compte" class="pile"></div>
         <h2>Liens</h2>
