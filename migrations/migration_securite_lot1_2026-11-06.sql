@@ -260,6 +260,7 @@ do $m$
 declare src text; ligne text := 'if public.is_blocked_with(cible) then continue; end if;';
 begin
   select pg_get_functiondef('public.notifier_mentions(text,text,text[])'::regprocedure) into src;
+  src := replace(src, E'\r\n', E'\n');
   -- Rejouable : déjà réécrite, on ne repasse pas.
   if position('btrim(c.group_name)' in src) > 0 and position('position(''@''' in src) > 0 then return; end if;
   if position('btrim(c.name)' in src) = 0 or position(ligne in src) = 0 then
@@ -283,6 +284,8 @@ declare src text; ligne text := 'raise exception ''auth_requise'' using errcode 
   end if;';
 begin
   select pg_get_functiondef('public.creer_passion(text,text,text[])'::regprocedure) into src;
+  -- La production porte cette fonction en fins de ligne Windows : un motif sur deux lignes ne s'y retrouvait pas.
+  src := replace(src, E'\r\n', E'\n');
   if position('suppression_de_mon_compte' in src) > 0 then return; end if;
   if position(ligne in src) = 0 then raise exception 'creer_passion : la forme attendue a changé, relire la fonction'; end if;
   src := replace(src, ligne, ligne || $add$

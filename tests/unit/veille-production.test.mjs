@@ -5,9 +5,11 @@
 // Chaque verrou nomme la MUTATION qui le fait rougir (éprouvée à la main).
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   verdictVeille, signalFlux, signalInscriptions, signalErreurs, signalApi, signalDeploiement,
   signalCrons, signalBase, signalJetons, heureParis, mediane, estSelectSeul, tousInconnus, SQL,
+  signalPurgeCourte, PURGE_COURTE_MAX_S,
   SILENCE_WARN_H, SILENCE_WARN_WEEKEND_H, SILENCE_ALERT_H, SEUILS_CRONS, runPlusRecent,
 } from "../../scripts/veille-production.mjs";
 
@@ -412,6 +414,47 @@ test("purgePlanifiee reconnaît les DEUX noms de la purge (purge_telemetry_7j, p
   assert.equal(planifiee(["purge_telemetrie_debit", "purge_client_errors", "passio_purge_analytics"]), false, "③ la purge des COMPTEURS de débit n'est pas une purge de la télémétrie");
   assert.equal(planifiee([]), false, "④ aucun job → aucune purge");
   assert.equal(estSelectSeul(SQL.purgePlanifiee), true);
+});
+
+// 2026-11-07 (revue adversariale de la purge courte) : pg_cron ne dit rien d'une tâche
+// qui échoue. Une `purge_analytics_courte` cassée laisserait analytics_events repartir vers
+// 13 mois de lignes `edge_*` en silence. La veille lit sa dernière exécution.
+// Mutations éprouvées : ignorer `failed` → ③ rougit ; ignorer l'âge → ④ rougit ; faire
+// d'une tâche absente une ATTENTION → ① rougit (la veille sonnerait avant l'application).
+test("purge courte : absente = information ; échec ou plus de 3 h sans exécution = ATTENTION ; jamais une alerte", () => {
+  const Go = 1024 ** 3;
+  const base = (purgeCourte) => signalBase({ anonStatus: 200, octets: 1 * Go, purgePlanifiee: true, purgeCourte });
+  // ① pas encore appliquée : une information, l'état reste vert.
+  assert.equal(base({ taches: 0, statut: null, ageS: null }).etat, "ok");
+  assert.match(base({ taches: 0, statut: null, ageS: null }).texte, /purge courte d'analytics_events non installée/);
+  // ② installée, à jour ; ou planifiée, pas encore exécutée (juste après l'application).
+  assert.equal(base({ taches: 1, statut: "succeeded", ageS: 600 }).etat, "ok");
+  assert.match(base({ taches: 1, statut: "succeeded", ageS: 600 }).texte, /purge courte : à jour/);
+  assert.match(base({ taches: 1, statut: null, ageS: null }).texte, /pas encore exécutée/);
+  // ③ la dernière exécution a échoué : ATTENTION, et le geste dit où lire l'erreur.
+  const echec = base({ taches: 1, statut: "failed", ageS: 300 });
+  assert.equal(echec.etat, "warn");
+  assert.match(echec.texte, /dernière exécution en échec/);
+  assert.match(echec.geste, /purge_analytics_courte/);
+  // ④ deux passages manqués : ATTENTION ; à la limite, pas encore.
+  assert.equal(base({ taches: 1, statut: "succeeded", ageS: PURGE_COURTE_MAX_S + 60 }).etat, "warn");
+  assert.match(base({ taches: 1, statut: "succeeded", ageS: 4 * 3600 }).texte, /aucune exécution depuis 4 h/);
+  assert.equal(base({ taches: 1, statut: "succeeded", ageS: PURGE_COURTE_MAX_S }).etat, "ok");
+  assert.equal(PURGE_COURTE_MAX_S, 3 * 3600, "horaire : deux passages manqués");
+  // ⑤ une ATTENTION de la purge ne masque pas une ALERTE de la base, et n'en crée jamais.
+  assert.equal(signalBase({ anonStatus: 503, octets: 1 * Go, purgePlanifiee: true, purgeCourte: { taches: 1, statut: "failed", ageS: 1 } }).etat, "alert");
+  for (const m of [{ taches: 1, statut: "failed", ageS: 1 }, { taches: 1, statut: "succeeded", ageS: 99 * 3600 }]) assert.notEqual(signalPurgeCourte(m).etat, "alert");
+  // ⑥ non mesurée (lecture en échec) ou d'une forme inattendue : rien n'est dit sur elle, le reste parle.
+  assert.equal(signalPurgeCourte(null), null);
+  assert.equal(signalPurgeCourte({ taches: NaN }), null);
+  assert.equal(base(null).etat, "ok");
+  // ⑦ un statut hors de la liste de pg_cron ne part pas dans le texte.
+  assert.doesNotMatch(signalPurgeCourte({ taches: 1, statut: "<b>x</b>", ageS: 60 }).texte, /<b>/);
+  // ⑧ la requête : un SELECT seul, sur le nom de la tâche que la migration pose.
+  assert.equal(estSelectSeul(SQL.purgeCourte), true);
+  assert.equal((SQL.purgeCourte.match(/jobname = 'purge_analytics_courte'/g) || []).length, 3);
+  const migration = fs.readFileSync("migrations/migration_purge_analytics_courte_2026-11-07.sql", "utf8");
+  assert.match(migration, /cron\.schedule\('purge_analytics_courte', '23 \* \* \* \*',/, "le nom et l'horaire que la veille surveille");
 });
 
 // 2026-10-05 : la veille a vu sentinelle-distante « sans run depuis 58,8 h »

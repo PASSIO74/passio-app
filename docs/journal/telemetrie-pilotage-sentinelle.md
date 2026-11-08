@@ -42,9 +42,10 @@
 - 👆 « RÉGLER » NE SE VOYAIT PAS — QUATRE GESTES, QUATRE ANALYSES RÉUSSIES, UNE LIGNE IDENTIQUE (2026-11-07)
 - 📞 LES APPELS S'ACCUSENT — UN SUR DIX, TIRÉ PAR LE SERVEUR, RIEN DE L'APPELANT (2026-11-07)
 - 🔔 LES NOTIFICATIONS SOCIALES S'ACCUSENT — UNE SUR VINGT, ET UNE LECTURE QUI DIT DEPUIS QUAND (2026-11-07)
+- 🧪 QUATRE TESTS INTERMITTENTS ET UN `verif` ROUGE SOUS WINDOWS — TROIS VRAIS DÉFAUTS DU PRODUIT DERRIÈRE (2026-11-07)
+- ⏳ LA BOUCLE DE DÉMARRAGE COURT-CIRCUITAIT LE BACKOFF — LA GRÂCE DU JETON DURAIT 5 S AU LIEU DE 33 (2026-11-07)
 
 ---
-- 🧪 QUATRE TESTS INTERMITTENTS ET UN `verif` ROUGE SOUS WINDOWS — TROIS VRAIS DÉFAUTS DU PRODUIT DERRIÈRE (2026-11-07)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -861,7 +862,7 @@ Trouvés en vérifiant une fusion simulée pendant l'audit de sécurité du 06-0
 2. **Le nom de la couverture peut rester « Ajouter une couverture » pour de bon.** `ui-v6a0-activite.js` relit l'état 60 ms après `previewEventCover`, alors que la lecture du fichier n'a pas fini : rien ne le relit ensuite. Lecture retardée de 100 ms : 4 sur 4. Photo de 4 Mo, processeur ralenti ×6 : 1 sur 4. Seul le nom accessible est faux, `v6a0-cover-pleine` ne porte aucun style. **C'est le dernier intermittent connu de `ui-v6a0-activite` ②** : 1 rouge sur 216 après correction, avec cette signature (« Ajouter une couverture » pendant les 5 s). Celui-là n'a pas été capturé avec relevé d'état ; les passes instrumentées font 0 sur 168. Le test dit vrai, on ne le maquille pas.
 3. **Une seule touche Entrée ouvre deux sélecteurs de fichiers** (12 sur 12) : l'écouteur de `ui-v6a0-activite.js` et le délégué `[role="button"]` d'`app-08` agissent tous les deux. C'est aussi pourquoi retirer le premier seul laisse le test vert.
 
-Observation, sans correctif : **la grâce du jeton refusé dure ~3 s au lieu des ~32 s annoncées pendant la première minute d'une page.** La boucle `waitCfg` de `telemetry.js` appelle `flush()` toutes les 500 ms tant que la file n'est pas vide, sans égard pour `retryTimer` : 7 refus en 2,5 s, puis désattribution. Le test n'en dépend pas, et il dure ~4 s.
+Observation, sans correctif : **la grâce du jeton refusé dure ~3 s au lieu des ~32 s annoncées pendant la première minute d'une page.** La boucle `waitCfg` de `telemetry.js` appelle `flush()` toutes les 500 ms tant que la file n'est pas vide, sans égard pour `retryTimer` : 7 refus en 2,5 s, puis désattribution. Le test n'en dépend pas, et il dure ~4 s. **Corrigé le même jour : fiche ⏳ ci-dessous**, et ce test dure désormais ~33 s.
 
 Non établi, mesuré et laissé tel quel : **sur WebKit Windows, environ un run sur deux reste bloqué 5 min après la fin des tests** (`worker-N process did not exit within 300000ms after stop, force-killed it`), et laisse un `WebKitNetworkProcess` listé alors qu'il est terminé (`HasExited=True`, `taskkill` répond qu'aucune instance n'existe). Le verdict n'en dépend pas : 8 sur 8 en 5 min 23 s, puis 8 sur 8 en 19 s, sur le même code. Ce n'est pas démontré comme défaut d'environnement : une page témoin sans code Passio ne bloque jamais (4 runs, 32 tests). Aucun `did not exit` sur le WebKit Linux des 5 derniers runs de `main`.
 
@@ -873,3 +874,60 @@ Non établi, mesuré et laissé tel quel : **sur WebKit Windows, environ un run 
 - `bornes-ci` : faux `timeout` en tête du PATH, délégué qui ne borne plus (4 rouges sur 4).
 
 **À savoir pour mesurer** : le `node_modules` à la racine du dépôt est partagé. Un worktree qui s'y relie par jonction subit le `npm install` d'une autre session : le 07/11, passage à Playwright 1.65 en pleine mesure, 25 puis 72 faux rouges (« Executable doesn't exist », révision 1254). `npm ci` dans le worktree isole la mesure.
+
+## 🧱 LE CANAL DE L'AGENT SOUS BAC À SABLE : TROIS PANNES FERMÉES AVANT UN PREMIER COMMIT (2026-11-07)
+
+`.github/workflows/claude-code.yml`, canari #769, PR #772, #773, #775. Depuis l'audit de sécurité du 06/11, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` retire les identifiants de l'environnement des commandes de l'agent, et il **impose** un bac à sable. Chaque panne a été fermée, au sens où rien ne sortait, mais la chaîne ne livrait plus rien.
+
+1. **Sans bubblewrap, le CLI refuse de démarrer.** Marche « Installer le bac à sable ».
+2. **Sans socat, il démarre et refuse chaque commande Bash**, `git` compris : l'agent écrit son fichier, ne peut pas le committer, et dit « Bash indisponible ».
+3. **Sous bac à sable, une règle `Read(...)` devient un masque du système de fichiers.** `Read(.git/config)` cachait le jeton que l'action écrivait dans l'URL de `origin` ; elle cachait aussi sa configuration à git (exit 128). On a sorti le jeton plutôt que rouvert le fichier : `allowed_non_write_users: 'PASSIO74'` allume le mode durci de l'action (assistant d'identification, `.git/config` sans jeton), sans élargir qui déclenche, puisque le propriétaire a déjà l'écriture. Plus `persist-credentials: false`.
+
+⚠️ **UN RUN À 0 REFUS ET 0 COMMIT NE DIT RIEN.** Les deux premiers canaris l'ont prouvé. Le diagnostic nomme désormais les outils, les verbes git et le motif de chaque échec, dans une liste fermée. Pour une issue `[CANARI]` écrite par PASSIO74 seulement, il imprime aussi la **forme** de l'erreur : liste blanche de caractères, suites longues masquées. C'est elle qui a nommé `socat` puis `.git/config`.
+
+**Acquis, mesuré au run 42417886840** : abonnement OAuth, `claude-opus-5`, un fichier, la ligne exacte demandée, PR ouverte par le workflow **sans auto-fusion** et sans CI automatique. Un refus d'outil, une variante de `git commit` hors liste. **Non mesuré** : le comportement de l'agent face à une injection.
+
+## ⏳ LA BOUCLE DE DÉMARRAGE COURT-CIRCUITAIT LE BACKOFF — LA GRÂCE DU JETON DURAIT 5 S AU LIEU DE 33 (2026-11-07)
+
+Suite de l'observation laissée sans correctif par la fiche 🧪 du même jour. `waitCfg` (`js/telemetry.js`) attend que `window.PASSIO_SUPABASE` soit posée. Elle appelait `flush()` toutes les 500 ms tant que la file n'était pas vide, jusqu'à 60 s, sans regarder `retryTimer` : ni le backoff d'`onAuthReject` (1,5 s → 9 s) ni celui d'`armerReessai` (3 s → 60 s) n'existaient pendant la première minute d'une page.
+
+**Ce que dit la production** (canal ①, du 01/11 au 07/11) :
+
+| Mesure | Valeur | Lecture |
+|---|---|---|
+| `auth_desattribue`, tous environnements, 7 j | **0** | le repli de la grâce n'a jamais été atteint |
+| POST `telemetry_events` en 401 (edge logs, 7 j) | 43, en 22 grappes | 10 d'un seul refus, 12 de 2 à 6 |
+| Écart entre deux refus d'une grappe | **726 ms au plus** | le premier réessai est annoncé à 1,5 s |
+| `POST /auth/v1/token` (edge logs, 24 h) | 14, tous en 200 | médiane 516 ms, p95 2,6 s, max 6,2 s |
+
+⚠️ **LA CONSÉQUENCE SUPPOSÉE N'A PAS EU LIEU.** Aucun compte n'a perdu l'attribution de ses événements par ce chemin en 7 jours, et le martèlement reste modeste (43 refus). Le défaut restait à corriger : un rafraîchissement sur 14 dépasse les ~3 s que la boucle laissait. Celui de 6,2 s (07/11, 09:45:14) n'a croisé aucun lot refusé ; le jour où il tombe sur un chargement de page, le compte perd l'attribution de ses premiers événements.
+⚠️ **Le 0 n'est pas un effet de la purge** : `auth_desattribue` porte `http_status` 401, et `purge_telemetrie_paliers` ne retire à 3 jours que les lignes sous 400. Fenêtre réelle : 7 jours. ⚠️ **L'autre porte du repli ne laisse pas de trace** : un SDK qui retire lui-même le jeton mort après un refus définitif. Aucun refus de rafraîchissement dans les logs, mais sur 24 h seulement (la limite d'une requête).
+
+**Ce qui, dans ces chiffres, n'est PAS ce défaut :**
+- Les deux grappes de 5 et 6 refus en moins d'une seconde (03/11 18:27:38, 04/11 07:59:28) portent des POST à quelques millisecondes d'écart. La boucle respecte `sending` et ne peut pas les produire : c'est le chemin `keepalive`, qui l'ignore, et `auth/v1/token` meurt en `http 0` à la même seconde. Ces refus entament `authRetries`, mais le compteur meurt avec la page.
+- 436 événements arrivent deux fois, sous la clé anon et sous un jeton. Dans 424 cas, la copie sous jeton arrive d'abord : c'est le rejeu du backlog au chargement suivant, déjà décrit dans la fiche 🧮. L'attribution n'est pas perdue. Le remède reste l'index unique sur `event_id`.
+- 176 lignes anonymes sans copie sous jeton suivent une ligne sous jeton, dans 10 sessions, 175 d'entre elles après la dernière ligne sous jeton de la session. 7 portent une déconnexion. Le reste n'est pas établi.
+
+**Correctif : deux défauts pour un.**
+1. `waitCfg` s'arrête dès qu'elle voit la configuration, et n'envoie qu'une fois, sauf si un réessai est déjà armé. Le rejeu du backlog n'y perd rien : un succès écoule le reste de la file, un refus ou une panne arment leur minuteur, et un envoi en vol prend le relais à sa réponse.
+2. **Le test a trouvé le second** : `enqueue` n'arme pas le minuteur de lot quand un réessai est armé, mais pendant qu'un envoi est EN VOL, le réessai ne l'est pas encore. Ce `flushTimer` partait donc au milieu du backoff : écarts `[3004, 20]` au lieu de `[3000, 6000]`, 5 fois sur 8. `flushDiffere` ne repart plus si un réessai est armé.
+
+| Mesuré en test | Avant | Après |
+|---|---|---|
+| Écarts entre refus du jeton | 397, 720, 280 ms | au moins 1,5 s, 3 s, 4,5 s |
+| Écarts après une panne réseau | 788, 215 ms | au moins 3 s, 6 s |
+| `telemetrie-jeton-mort` ② (grâce entière) | 3,7 à 6 s, 7 fois sur 8 ; 35 s, 1 fois | 33 à 37 s, 16 sur 16 |
+| Lots en 12 s sur un démarrage normal | 2 ou 3 | 2 ou 3 |
+
+Le cas à 35 s sans correctif : quand la boucle trouve la file vide, elle s'arrête d'elle-même, et le défaut ne se voit pas. Il n'était donc pas systématique.
+
+**Verrou** : `tests/e2e/telemetrie-backoff-demarrage.spec.js` (6), écarts mesurés à l'arrivée sur la route, en temps réel. 24 sur 24 à la mesure finale, 48 sur 48 avant la correction de ④. Réinjections, 3 répétitions chacune, toutes rouges sur le bon motif : boucle sans garde (③), boucle qui ne relance plus (⑤), succès qui n'écoule plus le reste (⑥), backoff d'auth à 200 ms (①), backoff de panne à 200 ms (②), minuteur de lot sans garde (④). L'ancienne boucle rétablie : 11 rouges sur 12.
+⚠️ **La première version de ④ restait verte sans la garde** : la tournée de la boucle à 500 ms passe par `flush`, qui annule le minuteur. L'événement doit être émis après elle.
+⚠️ **③ à ⑥ chargent `telemetry.js` SEUL**, dans une page servie par le test. Dans la vraie application, le minuteur d'un autre événement fait partir la file et masque le retrait de la boucle.
+
+**Régressions** : `telemetrie-limitee` et `telemetrie-doublons` verts, ainsi que les 24 autres suites qui interceptent `telemetry_events` (157 verts, 4 ignorés, aucun rouge). Un seul rouge sur `telemetrie-limitee` « un 429 garde le lot », à la première passe : 24 sur 24 ensuite, avec et sans correctif. Cause non établie.
+`telemetrie-jeton-mort.spec.js` reprend à l'identique le texte de la PR 759 : la version de `main` conclut sur le lot `start`, et rougissait 14 fois sur 24 sans ce correctif, 18 sur 24 avec (4 workers, même message). Ce n'est pas une régression du correctif, mais ce rouge aurait bloqué sa CI.
+
+**Laissé tel quel, délibérément** : les appelants directs de `flush()` (`tel.error`, `window.error`, `unhandledrejection`, `linkShare`, `linkSignup`, `link_open`, `online`, `release-guard`, `identity-transition`) partent encore pendant un backoff, et chaque refus entame la grâce. Ce sont des événements rares qu'on veut immédiats ; une rafale d'erreurs JS pendant un rafraîchissement lent peut encore atteindre le repli. Le retour au premier plan retire aussi le minuteur, c'est voulu.
+
+**À relire après la mise en ligne** : les POST `telemetry_events` en 401 dans les edge logs. Un écart sous 1,5 s ne doit plus venir que de POST parallèles d'une page qui se ferme ou d'un de ces appelants directs. Sur une version encore en cache, l'ancien comportement dure jusqu'au prochain démarrage complet.
