@@ -45,6 +45,7 @@
 - 🧪 QUATRE TESTS INTERMITTENTS ET UN `verif` ROUGE SOUS WINDOWS — TROIS VRAIS DÉFAUTS DU PRODUIT DERRIÈRE (2026-11-07)
 - ⏳ LA BOUCLE DE DÉMARRAGE COURT-CIRCUITAIT LE BACKOFF — LA GRÂCE DU JETON DURAIT 5 S AU LIEU DE 33 (2026-11-07)
 - 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
+- 🫀 LE SEUIL DU BATTEMENT SE DÉDUIT DE LA CADENCE DE LA VEILLE — 35 MIN N'ÉTAIT TENU PAR RIEN (2026-11-08)
 
 ---
 
@@ -973,4 +974,39 @@ Rejoué sur `main` d'avant #748, le banc nomme `appels.js` et `reception.js`. D�
 
 ⚠️ **UN VERROU QUI NE TOURNE QUE DANS LA CI PARALLÈLE NE RETIENT RIEN.** Ce workflow n'attend pas la CI de `main` : un push direct qui retire une ligne de l'étape déployait avec la liste affaiblie, et le banc ne rougissait qu'en parallèle. Le banc tourne donc en tête de l'étape. Rejoué : une ligne retirée, ou un import `_shared` neuf sans suite dans `notify-call`, arrêtent l'étape à sa première ligne.
 
-⚠️ **UNE CONSTANTE EMPLOYÉE N'EST PAS UNE CONSTANTE ÉPINGLÉE.** `battement.test.mjs` calcule ses âges à partir de `BATTEMENT_PERIME_MS` : passer cette constante de 35 à 60 min ne rougit aucune suite. Pour éprouver la ligne `battement`, la réinjection retenue est donc celle que seule sa suite voit : une erreur multi-lignes recopiée dans le battement. La réinjection documentée dans la suite (`resumerBattement` qui ignore l'âge) rougissait déjà `pilotage.test.mjs`.
+⚠️ **UNE CONSTANTE EMPLOYÉE N'EST PAS UNE CONSTANTE ÉPINGLÉE.** `battement.test.mjs` calcule ses âges à partir de `BATTEMENT_PERIME_MS` : passer cette constante de 35 à 60 min ne rougit aucune suite. Pour éprouver la ligne `battement`, la réinjection retenue est donc celle que seule sa suite voit : une erreur multi-lignes recopiée dans le battement. La réinjection documentée dans la suite (`resumerBattement` qui ignore l'âge) rougissait déjà `pilotage.test.mjs`. **Fermé le 2026-11-08** : `battement.test.mjs` ⑤ ⑥ déduit le seuil de la cadence de la veille, et la mutation 35 → 60 rougit désormais l'étape (fiche suivante).
+
+## 🫀 LE SEUIL DU BATTEMENT SE DÉDUIT DE LA CADENCE DE LA VEILLE — 35 MIN N'ÉTAIT TENU PAR RIEN (2026-11-08)
+
+Constat de la fiche précédente, rejoué le 08/11 dans un worktree propre : passée de 35 à 60 min, `BATTEMENT_PERIME_MS` laissait verts les 973 tests de `tests/unit`. `battement.test.mjs` calculait ses âges à partir de la constante. Deux voisines avaient le même trou :
+- la porte `BATTEMENT_TOUTES_MS`, passée de 14 à 20 min, restait verte partout ;
+- `BATTEMENTS_ATTENDUS_24H` (96 → 100) ne rougissait que `veille-production.test.mjs`, par un littéral « 96/96 ». Cette suite ne tourne pas avant le déploiement des fonctions.
+
+**D'où viennent les 35 min.**
+- La cadence : `pg_cron`, tâche `pilotage_veille`, `*/5 * * * *` (`migration_pilotage_veille_2026-09-28.sql`). Lue en production au canal ① le 08/11 : la même, active.
+- La porte : `battre` (`pilotage/index.ts`), appelé en fin de veille, n'écrit rien tant que le dernier battement a moins de 14 min.
+- La période : le premier passage après la porte, soit 15 min. Mesurée au canal ① : 187 battements du 06/11 18:35 au 08/11 16:35, 96 sur les dernières 24 h. Les 184 écarts vont de 14 min 33 s à 15 min 28 s, aucun au-delà. Deux doublons à 8 et 9 ms, le 06/11 à 19:20 et 19:35 : deux veilles parallèles, le défaut que ferme le créneau atomique (`prendreCreneau`, fiche du 06/11) ; aucun depuis.
+- La règle « deux battements manqués et une marge » : 2 × 15 min, plus un passage de 5 min, soit 35 min. Le passage de marge absorbe la gigue d'une veille. Il absorbe aussi un battement écrit hors des passages de pg_cron (secours GitHub, appel anonyme), qui décale la série de moins d'un passage.
+
+**Le verrou.** `battement.test.mjs` ⑤ refait ce calcul depuis les fichiers, sans recopier 35 ni 5 :
+- il lit la planification `pilotage_veille` la plus récente de `migrations/`, hors commentaires, et vérifie qu'elle appelle la fonction `pilotage`, action `veille` ;
+- il lit dans `pilotage/index.ts` que `veille` appelle `battre`, et que `battre` a `BATTEMENT_TOUTES_MS` pour porte ;
+- il exige `BATTEMENT_PERIME_MS` = 2 × période + un passage, et `BATTEMENTS_ATTENDUS_24H` = 24 h ÷ période.
+
+⑥ éprouve la frontière au seuil DÉDUIT, pas à la constante : 1 ms avant, `vivant` ; 1 ms après, `arrete`.
+
+**Réinjections, dans un worktree jetable :**
+- 35 → 60 min : ⑤ et ⑥ rougissent, et aucun autre des 975 tests ; 35 → 34 min : ⑤ et ⑥ ;
+- pg_cron en `*/10` sans revoir le seuil, une migration plus récente en `*/10`, une planification sans date en `*/10` : ⑤ et ⑥ ;
+- la porte à 20 min, à 15 min (sur un passage) ou écrite en littéral dans `battre` : ⑤ et ⑥ ; 100 battements attendus : ⑤ ;
+- le lecteur qui arrondit l'âge à la minute : ⑥ seul ;
+- la tâche qui n'appelle plus `pilotage`, la veille qui n'appelle plus `battre` : ⑤ et ⑥ ;
+- deux cas restent verts, comme il se doit : une reprogrammation en `*/10` écrite en commentaire (un RETOUR ARRIÈRE ne planifie rien), et une migration plus récente qui replanifie la veille à la même cadence (pour changer ses en-têtes, par exemple).
+
+⚠️ **UNE BORNE SE DÉDUIT DE CE QUI L'IMPOSE, JAMAIS D'ELLE-MÊME.** Un test qui calcule ses cas à partir de la constante suit la constante partout où elle va : il éprouve le lecteur, pas la valeur. Pour épingler une valeur, la recalculer depuis sa cause (ici la cadence et la porte), et placer le cas limite sur ce calcul.
+
+⚠️ **LE SECOURS N'EST PAS UNE CADENCE.** `pilotage-veille.yml` (`*/10`, 41 % des créneaux servis, mesuré le 09/09) ne fait pas le seuil : seul pg_cron tient la minute. La vérité de production reste `cron.job` (canal ①) ; le banc lit ce que le dépôt déclare, et rougit dès que la déclaration et le seuil divergent.
+
+⚠️ **LA PORTE TOMBE ENTRE DEUX PASSAGES.** 14 min, pas 15 : posée sur un passage, une veille un peu plus rapide que la précédente le sauterait, et la période vaudrait 15 ou 20 min au gré de la gigue (28 s au plus de part et d'autre des 15 min, mesurées ci-dessus). ⑤ refuse une porte multiple de la cadence.
+
+Détail : `docs/AUTONOMIE_EXPLOITATION.md` § 3.4 et § 3.9.
