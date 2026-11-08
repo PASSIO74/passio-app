@@ -945,6 +945,15 @@ Le cas à 35 s sans correctif : quand la boucle trouve la file vide, elle s'arr�
 
 ⚠️ **ORDRE : INSCRIRE, PUIS POSER `PILOTAGE_EXIGER_AAL2=1`.** Dans l'autre ordre, le pilotage se ferme à son propre éditeur. Se vérifie au canal ① : `select count(*) from auth.mfa_factors where status = 'verified'` pour le compte éditeur.
 
+### ⏸ SUSPENDU LE 08/11 AU SOIR (« on le remettra plus tard »)
+
+À la demande de Benjamin, le second facteur ne s'applique plus au pilotage :
+- le secret `PILOTAGE_EXIGER_AAL2` est **retiré** de la fonction (`supabase secrets unset`) : la fonction ne refuse plus une session `aal1` ;
+- la page ne demande plus le code à l'ouverture (`SECOND_FACTEUR_A_L_OUVERTURE = false`, `pilotage/pilotage.js`) ; la carte des Réglages dit « Suspendu » ;
+- **le facteur inscrit reste inscrit**, et le filet reste en place : si la fonction l'exige de nouveau, le code est demandé, jamais l'écran de refus.
+
+**Pour le remettre** : `SECOND_FACTEUR_A_L_OUVERTURE = true`, rétablir le test « le code est demandé à l'ouverture, avant l'application » (#789), puis `npx supabase secrets set PILOTAGE_EXIGER_AAL2=1 --project-ref njkiyoklssvefstljemx`. Tant que c'est suspendu, l'audit du 06/11 (A-01) redevient **ouvert**.
+
 ## 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
 
 `edge-functions.yml` déploie les fonctions en parallèle de la CI de `main`, sans attendre son verdict : son étape « Verrous unitaires des modules partagés » est le seul contrôle unitaire de ce chemin. Tenue à la main, la liste dérivait :

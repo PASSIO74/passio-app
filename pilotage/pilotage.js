@@ -1198,6 +1198,13 @@
   // d'en inscrire un (audit de sécurité du 06/11, A-01 : condition du GO). L'inscription vit dans les
   // Réglages ; une fois un facteur vérifié, son code est demandé à chaque ouverture, avant l'application.
   // Les valeurs reçues de l'Auth s'affichent en texte ; le code QR est une image `data:image/svg+xml`.
+  //
+  // ⏸ SUSPENDU le 08/11 à la demande de Benjamin (« on le remettra plus tard ») : le code n'est plus
+  // demandé à l'ouverture, et le secret PILOTAGE_EXIGER_AAL2 est retiré de la fonction. Le facteur
+  // inscrit reste inscrit. Si la fonction l'exige de nouveau, le code est quand même demandé (voir
+  // `actualiser`) : le pilotage ne se ferme jamais à son éditeur. POUR LE REMETTRE : `true` ici, puis
+  // `supabase secrets set PILOTAGE_EXIGER_AAL2=1`.
+  const SECOND_FACTEUR_A_L_OUVERTURE = false;
   let sfInscription = null, sfEnCours = false;
   function codeValide(v) { return /^\d{6}$/.test(String(v || "").replace(/\s+/g, "")); }
   async function niveauSession() {
@@ -1257,9 +1264,11 @@
     }
     vider("secondFacteur");
     if ((facteurs.totp || []).some((f) => f.status === "verified")) {
-      zone.append(carte("Application d'authentification", "Actif",
-        "Un code est demandé à chaque ouverture du pilotage. "
-        + (niveau && niveau.currentLevel === "aal2" ? "Cette session est vérifiée." : "Cette session n'est pas encore vérifiée."), "vert"));
+      zone.append(carte("Application d'authentification", SECOND_FACTEUR_A_L_OUVERTURE ? "Actif" : "Suspendu",
+        (SECOND_FACTEUR_A_L_OUVERTURE ? "Un code est demandé à chaque ouverture du pilotage. "
+          : "Inscrite, mais son code n'est plus demandé pour l'instant. ")
+        + (niveau && niveau.currentLevel === "aal2" ? "Cette session est vérifiée." : "Cette session n'est pas encore vérifiée."),
+        SECOND_FACTEUR_A_L_OUVERTURE ? "vert" : "gris"));
       return;
     }
     if (sfInscription) { zone.append(carteInscription()); return; }
@@ -1358,7 +1367,8 @@
     if (!session) { ecran("connexion"); return; }
     compte = session.user && session.user.email;
     // Un facteur vérifié et une session encore en aal1 : le code d'abord, l'application ensuite.
-    const niveau = await niveauSession();
+    // Suspendu (SECOND_FACTEUR_A_L_OUVERTURE) : l'application directement.
+    const niveau = SECOND_FACTEUR_A_L_OUVERTURE ? await niveauSession() : null;
     if (niveau && niveau.nextLevel === "aal2" && niveau.currentLevel !== "aal2") { demanderSecondFacteur(""); return; }
     ecran("app");
     vider("compte").append(carte(compte || "Compte", "Connecté", "Session partagée avec PASSIO sur ce téléphone."));
