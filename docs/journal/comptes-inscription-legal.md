@@ -34,6 +34,7 @@
 - ➖ LE BOUTON « CRÉER UN COMPTE » QUITTE LA BARRE DU HAUT (2026-11-04)
 - 🔔 UXO-11 — « MISE À JOUR DISPONIBLE » AU TOUT PREMIER ÉCRAN : le worker annonçait sa première installation (2026-11-04)
 - 🔗 LE NOUVEAU VENU RETROUVE UNE PORTE D'INSCRIPTION — un lien sur la carte (2026-11-04)
+- ↩️ ROUVRIR UNE MODALE PENDANT LE RETOUR DE FERMETURE NE SORT PLUS DE L'APPLICATION — un seul geste d'historique à la fois (2026-11-08)
 
 ---
 
@@ -570,3 +571,15 @@ Retirer le bouton de la barre du haut (fiche ➖) reposait sur « il y est déj�
 ⚠️ **« J'ai déjà un compte — me connecter » DEVIENT « J'ai déjà un compte » sur la carte** : le libellé long ne tenait pas sur la rangée. Mesuré à 375 px : 110 + 20 + 127 = 257 px dans une rangée de 280 px, sur une ligne, sans que la carte grandisse ; à 320 px les deux liens s'empilent. C'est la paire de mots du gate d'action engageante ; l'entrée des Paramètres garde le libellé long.
 ⚠️ **UN `PASSIO_PORT` CHOISI À LA MAIN N'EST PAS UN PORT LIBRE.** Une autre session servait son propre worktree sur 8097 : `reuseExistingServer` a fait mesurer à cette suite SES fichiers, soit quatre rouges identiques avec et sans le lien. Lire ce que sert le port (`curl …/js/first-run.js`) avant de croire un résultat, surtout un résultat qui ne change pas entre deux variantes.
 Verrous : `tests/e2e/creer-compte-accueil.spec.js` (① bis, le geste complet jusqu'au formulaire ; ① quater, les deux états de la carte à 320 et 390 px) et `tests/e2e/first-run.spec.js` (« une seule action principale… »). **Réinjection** : lien retiré → 4 rouges ; lien changé en bouton → 2 rouges ; le témoin « elle s'affiche… » reste vert.
+
+## ↩️ ROUVRIR UNE MODALE PENDANT LE RETOUR DE FERMETURE NE SORT PLUS DE L'APPLICATION — un seul geste d'historique à la fois (2026-11-08)
+
+**Le défaut** (trouvé par #759, consigné « NON corrigé » au n° 1 de la fiche 🧪 de `docs/journal/telemetrie-pilotage-sentinelle.md`) : `closeModal()` reprend l'entrée de la modale par un `history.back()` ASYNCHRONE. Une écriture faite avant qu'il atterrisse ne l'arrête pas : le moteur atterrit quand même sur l'entrée d'écran, sous la modale rouverte entre-temps, avec `_navOverlayDepth` à 1. Le `closeModal(); openModal()` suivant (le remplacement courant, `openModal` n'empile pas) prenait la branche `replaceState` et **réécrivait l'entrée d'ÉCRAN** ; la fermeture d'après reculait hors de l'application — `about:blank` en test, le site d'origine pour un utilisateur. Fenêtre : ~2 ms sur Chromium, **30 à 90 ms sur WebKit**, donc à portée d'un `closeModal(); setTimeout(…, 200)` sur un iPhone occupé.
+
+**La règle : UN SEUL GESTE D'HISTORIQUE À LA FOIS** (`js/app-02-state-utils.js`, en-tête ③ du bloc historique). Pendant qu'un retour lancé par nous est en vol (`_navExpectingBack`, 0 ou 1), toute écriture — ouverture d'overlay (`pushOverlayHistory`, `pushOverlayToHistory`), fermeture (`releaseOverlayHistory`), entrée d'écran de `goTo` — est REPORTÉE (`_navReporterSiEnVol`) et rejouée à l'atterrissage, sur l'état réel de la pile. **Seul l'affichage n'attend pas** : la modale s'ouvre tout de suite, seule son entrée d'historique attend.
+
+⚠️ **Le filet appartient à SON retour.** L'ancien filet (400 ms, jamais annulé) désarmait le retour SUIVANT : son `popstate` passait pour un geste de la personne et refermait ce qui était ouvert. Le filet est désormais posé par retour (`_navFiletRetour`, 1 500 ms, large exprès) et annulé à l'atterrissage (`_navRetourAtterri`).
+⚠️ **Le compte ne suffit jamais pour réécrire.** `pushOverlayHistory` ne remplace l'entrée courante que si elle est À NOUS (`_sommetEstOverlay()`, `history.state.passioOverlay`) ; sinon il remet le compte à zéro et pousse. Un compte faux ne peut plus coûter l'entrée d'écran.
+⚠️ **Ouvert puis refermé pendant le même vol = rien.** Les deux gestes reportés s'annulent au lieu de coûter une écriture et un retour de plus.
+
+Verrous : `tests/e2e/historique-retour-en-vol.spec.js` (13 cas, dans `SUITES_WEBKIT`) — son journal rejoue la suite du geste JUSTE APRÈS le `history.back()` (`apresRetour`), donc en vol à coup sûr sur les deux moteurs. Le contournement posé dans `first-run.spec.js` (« attendre que le retour de fermeture ait atterri ») est retiré : le test du gate ne dépend plus de l'historique.
