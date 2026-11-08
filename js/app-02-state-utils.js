@@ -3150,6 +3150,16 @@ let isNavigatingBack = false;
 //    iPhone le geste de retour depuis le bord est le chemin principal, d'où
 //    « les retours de page ne fonctionnent pas ». `releaseOverlayHistory()`
 //    consomme l'entrée quand l'overlay est fermé autrement que par un retour.
+//
+// ③ `history.back()` est ASYNCHRONE, et une écriture faite avant qu'il atterrisse
+//    ne l'arrête pas (2026-11-07). Le moteur atterrit quand même sur l'entrée
+//    d'écran, sous une modale rouverte entre-temps, avec un compte qui dit 1 : le
+//    remplacement suivant réécrivait alors l'entrée d'ÉCRAN, et la fermeture d'après
+//    sortait de l'application. Fenêtre : ~2 ms sur Chromium, 30 à 90 ms sur WebKit,
+//    donc à portée d'un `closeModal();setTimeout(…,200)` sur un iPhone occupé.
+//    RÈGLE : UN SEUL GESTE D'HISTORIQUE À LA FOIS. Pendant le vol, tout geste
+//    attend l'atterrissage (`_navReporterSiEnVol`) ; seul l'AFFICHAGE n'attend pas.
+//    Récit : docs/journal/comptes-inscription-legal.md.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Horodatages des écritures d'historique récentes (fenêtre glissante de 30 s).
@@ -3200,12 +3210,53 @@ function replaceHistorySafe(stateObj, hash) {
 // ─── Entrées d'historique posées par les overlays ──────────────────────────
 let _navOverlayDepth = 0;       // combien d'entrées d'overlay sont à nous
 let _navClosingFromPop = false; // vrai pendant le traitement d'un popstate
-let _navExpectingBack = 0;      // retours que NOUS avons déclenchés
+let _navExpectingBack = 0;      // retour lancé par NOUS, pas encore atterri (0 ou 1)
+let _navFiletRetour = null;     // le filet de CE retour-là, jamais d'un autre
+let _navApresRetour = [];       // gestes reportés à l'atterrissage, dans l'ordre
 let _releasePending = false;    // une reprise d'entrée est programmée
 let _releaseTimer = null;
+// Un retour dont le `popstate` n'arrive jamais (navigateur qui étouffe la navigation) ne
+// doit pas retenir l'historique pour de bon. Large exprès : un filet parti trop tôt rouvre
+// la course, et fait prendre l'atterrissage tardif pour un geste de la personne, alors
+// qu'attendre ne retarde rien d'affiché.
+const _NAV_FILET_RETOUR_MS = 1500;
+
+// Pendant un vol, reporte le geste et renvoie true : à l'atterrissage, il est rejoué tel
+// quel, donc décidé sur l'état RÉEL de la pile et sur un compte que rien n'anticipe.
+// `estOuverture` : une fermeture pendant le même vol l'annule (releaseOverlayHistory).
+function _navReporterSiEnVol(geste, estOuverture) {
+  if (_navExpectingBack <= 0) return false;
+  geste.ouverture = !!estOuverture;
+  _navApresRetour.push(geste);
+  return true;
+}
+
+// Le retour a atterri (ou le filet y renonce) : il n'y a plus rien en vol.
+function _navRetourAtterri() {
+  clearTimeout(_navFiletRetour);
+  _navFiletRetour = null;
+  _navExpectingBack = 0;
+  const gestes = _navApresRetour;
+  _navApresRetour = [];
+  gestes.forEach(function (geste) {
+    try { geste(); } catch (e) {
+      try { console.warn("[nav] geste d'historique reporté:", e); } catch (e2) {}
+    }
+  });
+}
+
+// L'entrée courante est-elle à nous ? Le compte ne suffit jamais pour réécrire ou
+// reculer : c'est sur lui seul que l'entrée d'écran avait été réécrite.
+function _sommetEstOverlay() {
+  try {
+    const st = window.history.state;
+    return !!(st && st.passioOverlay);
+  } catch (e) { return false; }
+}
 
 // Ouverture d'un overlay : une entrée, marquée comme nôtre.
 function pushOverlayHistory(kind, hash) {
+  if (_navReporterSiEnVol(function () { pushOverlayHistory(kind, hash); }, true)) return;
   const url = hash || ("#" + kind);
   // ⚠️ Cas « une modale en remplace une autre » (openModal n'empile pas, cf.
   // CLAUDE.md) : le code fait `closeModal(); openModal(...)`. La reprise de
@@ -3214,9 +3265,15 @@ function pushOverlayHistory(kind, hash) {
   // une modale laissait une entrée orpheline, donc un appui « retour » mort.
   // ⚠️ `_navOverlayDepth > 0` est indispensable : sans lui, une reprise armée
   // puis rendue caduque par une navigation ferait RÉÉCRIRE l'entrée d'écran.
+  // ⚠️ `_sommetEstOverlay()` aussi : on ne réécrit QUE ce qui est à nous. Un compte faux
+  // ne doit jamais pouvoir coûter l'entrée d'écran, donc la sortie de l'application.
   if (_releasePending && _navOverlayDepth > 0) {
     cancelOverlayRelease();
-    if (replaceHistorySafe({ overlay: kind, passioOverlay: true }, url)) return;
+    if (_sommetEstOverlay()) {
+      if (replaceHistorySafe({ overlay: kind, passioOverlay: true }, url)) return;
+    } else {
+      _navOverlayDepth = 0;
+    }
   }
   cancelOverlayRelease();
   if (pushHistorySafe({ overlay: kind, passioOverlay: true }, url)) _navOverlayDepth++;
@@ -3239,6 +3296,11 @@ function releaseOverlayHistory() {
   // Fermeture DÉCLENCHÉE par un popstate : l'entrée vient déjà d'être retirée
   // par le navigateur, la reprendre ferait reculer d'un cran de trop.
   if (_navClosingFromPop) return;
+  // Ouvert puis refermé pendant le même vol : rien n'a été écrit, rien à reprendre. Rejouer
+  // les deux coûterait une écriture et un retour de plus pour revenir au même point.
+  const dernierGeste = _navApresRetour[_navApresRetour.length - 1];
+  if (dernierGeste && dernierGeste.ouverture) { _navApresRetour.pop(); return; }
+  if (_navReporterSiEnVol(releaseOverlayHistory)) return;
   if (_navOverlayDepth <= 0) return;
   _releasePending = true;
   clearTimeout(_releaseTimer);
@@ -3253,17 +3315,15 @@ function _flushOverlayRelease() {
   // L'entrée n'est à reprendre que si elle est encore AU SOMMET. Si autre chose
   // a poussé par-dessus entre-temps (une navigation, un autre overlay), reculer
   // ferait quitter l'écran courant : on abandonne la comptabilité, sans risque.
-  let st = null;
-  try { st = window.history.state; } catch (e) {}
-  if (!st || !st.passioOverlay) { _navOverlayDepth = 0; return; }
+  if (!_sommetEstOverlay()) { _navOverlayDepth = 0; return; }
   _navOverlayDepth--;
-  _navExpectingBack++;
+  _navExpectingBack = 1;
+  // Annulé à l'atterrissage : un filet resté armé désarmait le retour SUIVANT, dont le
+  // `popstate` passait alors pour un geste de la personne et refermait ce qui était ouvert.
+  _navFiletRetour = setTimeout(_navRetourAtterri, _NAV_FILET_RETOUR_MS);
   try {
     window.history.back();
-    // Filet : si aucun popstate n'arrive, on relâche le compteur plutôt que de
-    // laisser un retour coincé pour le reste de la session.
-    setTimeout(function () { if (_navExpectingBack > 0) _navExpectingBack--; }, 400);
-  } catch (e) { _navExpectingBack--; }
+  } catch (e) { _navRetourAtterri(); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3346,6 +3406,7 @@ function partagerOuCopier(data, msgCopie) {
 
 // Ajouter un overlay/modal à l'historique de navigation
 function pushOverlayToHistory(overlayType, overlayId = "") {
+  if (_navReporterSiEnVol(function () { pushOverlayToHistory(overlayType, overlayId); }, true)) return;
   const state = { overlay: overlayType, id: overlayId, passioOverlay: true };
   const hash = overlayId ? `#${overlayType}-${overlayId}` : `#${overlayType}`;
   if (pushHistorySafe(state, hash)) _navOverlayDepth++;
@@ -3377,15 +3438,18 @@ function goTo(screen) {
     // ⚠️ JAMAIS d'appel nu ici : sur iPhone, passé le plafond WebKit, `pushState`
     // LÈVE — et tout ce qui suit (bascule d'écran, rendu) était sauté, laissant
     // l'écran figé. `pushHistorySafe` absorbe le refus et laisse `goTo` finir.
-    pushHistorySafe({ screen }, "#" + screen);
-    // On change d'écran : les entrées d'overlay encore comptées sont derrière
-    // nous, plus au sommet. Les oublier évite qu'une fermeture ultérieure ne
-    // fasse reculer hors de l'écran courant. ⚠️ Et il faut aussi DÉSARMER une
-    // reprise déjà programmée : sans cela, une modale ouverte dans la foulée
-    // (`goTo(...); openModal(...)`, cas des liens profonds) la prendrait pour
-    // un remplacement et ÉCRASERAIT l'entrée d'écran qu'on vient de poser.
-    _navOverlayDepth = 0;
-    cancelOverlayRelease();
+    const poserEntreeEcran = function () {
+      pushHistorySafe({ screen }, "#" + screen);
+      // On change d'écran : les entrées d'overlay encore comptées sont derrière
+      // nous, plus au sommet. Les oublier évite qu'une fermeture ultérieure ne
+      // fasse reculer hors de l'écran courant. ⚠️ Et il faut aussi DÉSARMER une
+      // reprise déjà programmée : sans cela, une modale ouverte dans la foulée
+      // (`goTo(...); openModal(...)`, cas des liens profonds) la prendrait pour
+      // un remplacement et ÉCRASERAIT l'entrée d'écran qu'on vient de poser.
+      _navOverlayDepth = 0;
+      cancelOverlayRelease();
+    };
+    if (!_navReporterSiEnVol(poserEntreeEcran)) poserEntreeEcran();
   }
 
   $$(".nav-item").forEach(n => {
@@ -3585,7 +3649,8 @@ window.addEventListener("popstate", (e) => {
   // ① Retour que NOUS avons déclenché en refermant un overlay au doigt : son
   //    entrée vient d'être consommée, il n'y a plus rien à faire. Sans ce
   //    garde, on enchaînerait sur un `goTo` inutile qui re-rendrait l'écran.
-  if (_navExpectingBack > 0) { _navExpectingBack--; return; }
+  //    Les gestes arrivés pendant le vol partent maintenant, et pas avant.
+  if (_navExpectingBack > 0) { _navRetourAtterri(); return; }
 
   // ② D'abord, essayer de fermer un overlay ouvert.
   _navClosingFromPop = true;

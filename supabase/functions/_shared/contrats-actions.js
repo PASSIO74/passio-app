@@ -258,7 +258,7 @@ export const PARCOURS_NON_INSTRUMENTES = Object.freeze([
   Object.freeze({ id: "inscription", libelle: "Créer un compte", vuPar: "taux de confirmation (veille de production), télémétrie d'inscription" }),
   Object.freeze({ id: "profil", libelle: "Enregistrer son profil et ses passions", vuPar: "appels réseau refusés" }),
   Object.freeze({ id: "piece_jointe", libelle: "Envoyer le fichier d'une pièce jointe (Storage)", vuPar: "appels réseau refusés ; le message lui-même est sous contrat" }),
-  Object.freeze({ id: "notification_push", libelle: "Recevoir une notification sur l'appareil", vuPar: "accusé du service worker pour les alertes du pilote, les rappels d'activité et un appel sur dix (_shared/reception.js, _shared/appels.js) ; rien encore pour les notifications sociales" }),
+  Object.freeze({ id: "notification_push", libelle: "Recevoir une notification sur l'appareil", vuPar: "accusé du service worker pour les alertes du pilote, les rappels d'activité, un appel sur dix et une notification sociale sur vingt (_shared/reception.js, _shared/appels.js)" }),
   Object.freeze({ id: "appel", libelle: "Passer un appel", vuPar: "erreurs JS ; la sonnerie (push) d'un appel sur dix s'accuse (_shared/appels.js), le parcours de l'appel lui-même n'est pas instrumenté" }),
   Object.freeze({ id: "creer_rencontre", libelle: "Créer une rencontre", vuPar: "appels réseau refusés" }),
 ]);
