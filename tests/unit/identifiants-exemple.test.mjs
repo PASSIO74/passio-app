@@ -67,7 +67,13 @@ function bobinesExemple() {
   assert.ok(debut > 0, "SEED_REEL_VIDEOS introuvable dans app-05");
   const ouvert = src.indexOf("[", debut);
   const fin = src.indexOf("\n];", ouvert);
-  return vm.runInNewContext("(" + src.slice(ouvert, fin + 2) + ")", { Date });
+  // Les affiches passent par `imageDemo` (app-01, 2026-11-08) : prise à la SOURCE, comme `uid()`.
+  const a01 = fs.readFileSync("js/app-01-diag-seed.js", "utf8");
+  const m = a01.match(/function imageDemo\([\s\S]*?\n\}\n/);
+  assert.ok(m, "function imageDemo introuvable dans app-01");
+  const ctx = vm.createContext({ Date, location: { origin: "https://passio-app.netlify.app" } });
+  vm.runInContext(m[0], ctx);
+  return vm.runInContext("(" + src.slice(ouvert, fin + 2) + ")", ctx);
 }
 /** `uid()` d'app-02, prise à la SOURCE (si elle change, ce test la suit). */
 function uidDuClient() {
