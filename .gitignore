@@ -53,6 +53,8 @@ dashboard/.claude/
 # tout cela ne doit entrer dans un dépôt, a fortiori public. Le script est
 # versionné, ses sorties jamais.
 .passio/sauvegardes/
+# Les mêmes sauvegardes, chiffrées par la clé publique age (audit de sécurité du 06/11, H-13) : jamais dans un dépôt public.
+.passio/sauvegardes-chiffrees/
 
 # Netlify cache
 .netlify/
