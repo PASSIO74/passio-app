@@ -5204,7 +5204,7 @@ async function doDeleteAccount() {
 //
 // ⚠️ LES TEXTES ET L'IDENTITÉ DE L'ÉDITEUR NE VIVENT PLUS ICI (2026-09-11) :
 // ils sont dans `js/legal-textes.js`, chargé en <head> AVANT l'application.
-// Raison : en production, ce bloc (dist/app.js) n'est injecté qu'APRÈS le code
+// Raison : en production, ce bloc (dist/app/, 9 scripts) n'est injecté qu'APRÈS le code
 // d'accès, et la LCEN (art. 1-1) impose des mentions légales lisibles par le
 // PUBLIC — donc aussi par un visiteur sans code. L'écran du gate et ces trois
 // modales rendent le MÊME corps de texte (`passioTexteMentionsLegales`,

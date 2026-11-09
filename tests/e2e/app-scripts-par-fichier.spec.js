@@ -18,6 +18,8 @@
 //   ② un script qui ne se charge pas est RETENTÉ : l'application démarre quand même ;
 //   ③ un script introuvable ARRÊTE le chargement : rien ne s'exécute après lui —
 //     app-09 ne démarre jamais une application à laquelle il manque un fichier ;
+//   ⑤ comme l'ancien app.js unique, rien ne s'exécute avant que le DERNIER soit
+//     arrivé (les minuteurs de démarrage d'app-04 partent avec ceux d'app-08) ;
 //   ④ LE BUT, avec le vrai worker : la première visite télécharge chaque script UNE
 //     fois (le preload sert l'exécution), une réouverture n'en télécharge AUCUN, et
 //     une version qui ne change qu'un fichier ne retélécharge QUE LUI — alors même
@@ -107,7 +109,8 @@ function servir() {
       return;
     }
     let corps = fs.readFileSync(f);
-    if (nom) corps = Buffer.concat([corps, Buffer.from("\n;(window.__ordre = window.__ordre || []).push(" + JSON.stringify(nom) + ");\n")]);
+    // La sonde note aussi l'heure du PREMIER script exécuté (⑤).
+    if (nom) corps = Buffer.concat([corps, Buffer.from("\n;window.__debut = window.__debut || Date.now(); (window.__ordre = window.__ordre || []).push(" + JSON.stringify(nom) + ");\n")]);
     const envoyer = () => {
       if (nom) etat.liberes[nom] = Date.now();
       res.writeHead(200, {
@@ -197,6 +200,22 @@ test.describe("sans worker : l'ordre, le parallélisme, la reprise, l'arrêt", (
     expect(etat.essais[SOURCE_MODIFIEE], "deux refus, puis le script : il a fallu le redemander").toBeGreaterThanOrEqual(3);
     expect(await page.evaluate(() => typeof boot)).toBe("function");
     await page.waitForSelector("#screen-feed.active", { state: "attached", timeout: 30000 });
+    expect(referencesManquantes()).toEqual([]);
+  });
+
+  // ⑤ Comme l'ancien app.js unique : rien ne s'exécute avant que TOUT soit arrivé.
+  // Sinon un minuteur de démarrage armé par app-04 (files de rejeu, 4 s) courrait
+  // pendant qu'app-08 se télécharge encore, et rendrait la main sans se réarmer
+  // (relecture de la PR #801). Mutation : partir dès le premier script reçu → rouge.
+  test("⑤ rien ne s'exécute avant l'arrivée du DERNIER script, puis les 9 s'enchaînent", async ({ page }) => {
+    const dernier = nomsA()[nomsA().length - 1];
+    etat.fautes = { [dernier]: { retard: 1500 } };
+    await page.goto(adresse());
+    await page.waitForFunction(() => window.__appPrete === true, null, { polling: 50, timeout: 30000 });
+    expect(await page.evaluate(() => window.__ordre)).toEqual([...nomsA(), "ready"]);
+    const debut = await page.evaluate(() => window.__debut);
+    expect(etat.liberes[dernier], "prémisse : le dernier script a bien été retenu").toBeTruthy();
+    expect(debut, "le premier script ne s'exécute qu'une fois le dernier arrivé").toBeGreaterThanOrEqual(etat.liberes[dernier]);
     expect(referencesManquantes()).toEqual([]);
   });
 

@@ -1883,7 +1883,10 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
 | Pièce | Fichier | Verrou |
 |---|---|---|
 | 9 scripts `app/<nom de la source>.js?v=<empreinte de SON contenu>` ; `emoji-misc.js` et `passion-context.js` ferment le 9ᵉ, comme ils fermaient `app.js` ; `appHash` reste l'empreinte du texte d'ensemble (identique à l'ancien `app.js`, octet pour octet) | `scripts/build.js` (étape 1) | `tests/unit/build-id.test.mjs` ⑦ (modifier UN fichier ne change que l'empreinte de SON script ; mutation : une empreinte d'ensemble → rouge) |
-| Chargeur : preload des 9 en parallèle, exécution UN PAR UN au `load` du précédent, deux reprises (1 s, 2 s) puis ARRÊT, `passio:app-ready` une fois après le 9ᵉ | `scripts/build.js` | `tests/e2e/app-scripts-par-fichier.spec.js` ①②③ (Chromium et WebKit) |
+| Chargeur : preload des 9 en parallèle ; comme `app.js`, RIEN ne s'exécute avant que TOUS soient arrivés (filet : sans preload, ou au bout de 10 s, on part quand même) ; puis exécution UN PAR UN au `load` du précédent, deux reprises (1 s, 2 s) puis ARRÊT, `passio:app-ready` une fois après le 9ᵉ | `scripts/build.js` | `tests/e2e/app-scripts-par-fichier.spec.js` ①②③⑤ (Chromium et WebKit ; mutation : partir au premier reçu → ⑤ rouge) |
+| `passioCompressImage` n'est plus définie qu'UNE fois (app-06, celle que la production exécute depuis juin) : la `function` d'app-09 est retirée | `js/app-09-boot-pwa.js` | `scripts/audit-globals.js` (rouge avant le retrait, vert après) |
+| Garde : une affectation `window.X =` face à une `function X` d'un AUTRE fichier du bloc app est refusée | `scripts/audit-globals.js` | `npm run verif`, CI |
+| Budget de démarrage : le bloc app compte pour UN poste, comme l'ancien `app.js` | `tests/e2e/audit-2026-11-perf-dist.spec.js` | — |
 | `/app/*` immutable, plus de règle `/app.js` | `_headers` | `tests/unit/entetes-coherence.test.mjs` ③, `version-skew.spec.js` |
 | Le worker reçoit la liste des fichiers versionnés de la version — les 9 scripts et `styles.css` (`FICHIERS_VERSION`, écrite par le build) : à l'installation il RECOPIE de l'ancien cache les inchangés, ne télécharge que les autres ; un fichier versionné est servi du cache, SANS revalidation ; n'entre au cache que du script ou du CSS (`contenuVersionne`) | `sw.js`, `scripts/build.js` (étape 6) | `app-scripts-par-fichier.spec.js` ④ (vrai worker, deux artefacts, deux moteurs ; mutations : sans recopie → rouge, sans cache d'abord → rouge sous WebKit) |
 | Minification fichier par fichier, et refus de déployer si `dist/app/` n'a pas 9 scripts | `.github/workflows/deploy.yml` | — (CI) |
@@ -1891,6 +1894,23 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
 | Le serveur d'artefact et les suites qui lisaient `dist/app.js` | `scripts/servir-dist.js`, `dist-build`, `version-skew`, `pwa-maj-pendant-appel`, `audit-2026-11-perf-dist` | — |
 
 **Les pièges, chacun payé ce jour-là.**
+- ⚠️ **LE MONOLITHE HISSAIT TOUTES SES DÉCLARATIONS EN TÊTE — 9 SCRIPTS NON** (trouvé par la relecture
+  `audit-passio`, invisible à toutes les suites : elles tournent sur la sémantique du développement,
+  où les 9 fichiers sont déjà 9 balises). `passioCompressImage` était AFFECTÉE par app-06
+  (`window.… =`, WebP, 1600 px, 0,82) et DÉCLARÉE par app-09 (`function`, JPEG, 1280 px, 0,72, ajoutée
+  le 2026-06-24 en la croyant « fantôme »). Dans `app.js`, la déclaration hissée était écrasée par
+  l'affectation : la production a toujours tourné sur app-06, le développement sur app-09. À 9 scripts,
+  app-09 aurait gagné en production aussi : photos du Studio, éditeur média et pièces jointes passés en
+  JPEG plus lourd, sans un signal — mesuré en construisant les deux artefacts. Le doublon est retiré,
+  et `audit-globals.js` refuse désormais ce cas (il ne comparait que des déclarations entre elles).
+  Balayage de l'agent : 1 341 affectations, c'était le seul. Les enveloppes posées à l'exécution par
+  des scripts HORS du bloc (`goTo`, `doLogout`, `renderIRL`…) sont voulues et hors de la règle.
+- ⚠️ **LES MINUTEURS DE DÉMARRAGE COMPTAIENT DEPUIS L'EXÉCUTION DU BLOC ENTIER** : app-04 arme ses files
+  de rejeu à 4 s, app-08 le rejeu des publications à 6 s, gardés par `window._supaReal` et SANS se
+  réarmer s'ils arrivent trop tôt. Exécuté dès réception, app-04 (en cache) aurait couru pendant
+  qu'app-08 (modifié par la version) se téléchargeait encore sur un réseau lent. D'où le chargeur qui
+  attend les 9, comme le monolithe attendait tout `app.js` ; le même choix referme la fenêtre où un
+  geste pendant le chargement appellerait un fichier pas encore exécuté.
 - ⚠️ **SOUS WEBKIT, LE `fetch` DU WORKER NE VOIT PAS LE CACHE OÙ LA PAGE A RANGÉ SES SCRIPTS** (Playwright
   WebKit 2388) : premier chargement contrôlé = 9 requêtes, et avec le worker d'avant ce lot, une
   version qui ne changeait QU'UN fichier faisait repartir les 9 — l'activation vide le cache du worker,
@@ -1930,3 +1950,13 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
   `page.goto` ni `sansDonneesDistantes`. `Can.t` dans la regex.
 - ⚠️ **`^` DANS UN `execSync` SOUS WINDOWS** est l'échappement de cmd.exe (`sha^1` → `sha1`) : `~1`.
 - ⚠️ **CLAUDE.md EST À 39 991 / 40 000** : ce lot y retire 5 caractères, il n'en ajoute aucun.
+
+**Vérifié en plus de la CI.** Dix suites fonctionnelles (démarrage, fil, première visite, conversation,
+rideau, invitation, cadrage, interactions, fil fenêtré, historique) contre l'ARTEFACT construit
+(`PASSIO_CIBLE=dist`, donc le vrai chargeur) : 168/169. Le seul rouge, `feed-premier-rendu` §7, lit
+`fetch("/js/telemetry.js")`, un fichier que le build n'a JAMAIS recopié dans `dist/` (il est inliné) :
+préexistant, propre à ce mode, que la CI n'exécute pas pour cette suite.
+
+**Ce qui reste.** Mesurer sur un vrai iPhone (session persistante) ce que son worker retrouve dans le
+cache réseau — le lot n'en dépend plus. Et la première installation sous WebKit (ci-dessus) : la page
+pourrait confier ses scripts au worker plutôt que de le laisser les redemander.

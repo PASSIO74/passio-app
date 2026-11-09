@@ -1045,7 +1045,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build dist (assemblage monolithique + assets publics)
+      - name: Build dist (page assemblée, bloc app en 9 scripts, assets publics)
         env:
           COMMIT_REF: ${{ github.sha }}
         run: |

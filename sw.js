@@ -50,14 +50,17 @@ self.addEventListener("install", e => {
         // modifié ; la feuille de style, à chaque version). Un fichier inchangé
         // garde son adresse : on le recopie de l'ancien cache, encore là pendant
         // l'installation ; seuls les fichiers modifiés partent sur le réseau, une
-        // fois, ici. Ce qui est en cache y est entré vérifié (`contenuVersionne`) ;
-        // ce qui vient du réseau l'est ici. Verrou :
+        // fois, ici. Ce qu'on recopie est revérifié comme ce qui arrive du réseau
+        // (`contenuVersionne`) : un worker d'avant ce lot rangeait `styles.css?v=`
+        // sur un simple `ok`. Verrou :
         // tests/e2e/app-scripts-par-fichier.spec.js ④ (Chromium et WebKit).
-        ...FICHIERS_VERSION.map(adresse =>
-          caches.match(adresse)
-            .then(r => r || fetch(adresse).then(res => (contenuVersionne(new URL(adresse, self.location.href), res) ? res : null)))
+        ...FICHIERS_VERSION.map(adresse => {
+          const u = new URL(adresse, self.location.href);
+          return caches.match(adresse)
+            .then(r => (contenuVersionne(u, r) ? r : fetch(adresse).then(res => (contenuVersionne(u, res) ? res : null))))
             .then(r => r && c.put(adresse, r))
-            .catch(() => {})),
+            .catch(() => {});
+        }),
       ])
     )
   );

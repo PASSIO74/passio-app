@@ -44,7 +44,7 @@
    IIFE `"use strict"` : n'expose que `window.PassioFirstRun` et
    `window.requireAuthentication` (aucun global de haut niveau → `audit:globals`
    reste vert). Chargé HORS du bloc BUILD:APP, donc inliné et exécuté AVANT
-   `app.js` en production : à l'évaluation, ni `state`, ni `boot`, ni
+   le bloc app (`app/`, 9 scripts) en production : à l'évaluation, ni `state`, ni `boot`, ni
    `renderFeed` n'existent. Toute reprise passe donc par `passio:app-ready`
    avec compteurs remis à zéro, et par des `setTimeout` bornés — JAMAIS par
    `requestAnimationFrame` (il ne part pas sur une page qui ne compose pas de
@@ -2593,7 +2593,7 @@
 
   // ── Reprise ───────────────────────────────────────────────────────────────
   //
-  // ⚠️ En production, ce fichier est INLINÉ et s'exécute avant `app.js` : au
+  // ⚠️ En production, ce fichier est INLINÉ et s'exécute avant le bloc app (`app/`) : au
   // moment où il est évalué, ni `state` ni `boot` n'existent. `entreeDirecte()`
   // est appelée par `boot()` lui-même, donc rien à attendre pour l'entrée. Il
   // reste deux cas à rattraper : la migration d'un retour de confirmation

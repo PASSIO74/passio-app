@@ -83,10 +83,13 @@ test.describe("AUDIT F — budget de l'artefact servi (dist)", () => {
         premierEcranRequetes: r.avant.map((x) => x.url), differe: r.apres.map((x) => x.url), ecranIrlOuvert: r.ecranIrlOuvert,
         decodeKo: Object.fromEntries(r.ressources.filter((x) => x.decode).map((x) => [x.n.split("?")[0], Math.round(x.decode / 1024)])),
         scriptsAvant: r.avant.filter((x) => x.type === "script" && !blocApp(x.url)).length,
+        blocAppAvant: r.avant.some((x) => x.type === "script" && blocApp(x.url)),
         scriptsApp: scriptsApp.length, blocAppKo: Math.round(blocAppOctets / 1024) };
       ecrire(profil, releve);
       expect(toutes.filter((n) => /passions-v1\.json/.test(n))).toEqual([]);
-      expect(releve.scriptsAvant).toBeLessThanOrEqual(3);
+      // Le bloc app compte pour UN poste, comme l'ancien `app.js` : l'exclure sans le
+      // recompter aurait libéré une place pour un script de plus (relecture de #801).
+      expect(releve.scriptsAvant + (releve.blocAppAvant ? 1 : 0)).toBeLessThanOrEqual(3);
       expect(releve.scriptsApp, "les 9 scripts du bloc app sont chargés au démarrage").toBe(9);
       expect(blocAppOctets).toBeLessThan(3.5 * 1024 * 1024);
     });

@@ -915,7 +915,7 @@
     refresh: majFiche,
   };
 
-  // ⚠️ En PRODUCTION, le bloc app sort dans `app.js`, injecté seulement une fois
+  // ⚠️ En PRODUCTION, le bloc app sort dans `app/` (9 scripts), injecté une fois
   // le code d'accès franchi. Ce module, lui, est inliné et s'exécute tout de
   // suite : son premier `boot()` tombe donc dans un monde où ni `state` ni
   // `openEventDetails` n'existent, et le budget de relance de la démonstration

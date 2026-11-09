@@ -740,35 +740,16 @@ function triggerAttach(type) {
   }
 }
 
-// Compresse/redimensionne une image (File) en JPEG via canvas avant l'envoi.
-// Évite d'uploader des photos de plusieurs Mo (quota + egress Storage). Renvoie
-// une Promise<dataURL>. Référencée par handleAttachFile (était fantôme → la
-// compression ne s'exécutait jamais).
-function passioCompressImage(file, maxDim, quality) {
-  maxDim = maxDim || 1280; quality = quality || 0.72;
-  return new Promise(function (resolve, reject) {
-    try {
-      var url = URL.createObjectURL(file);
-      var img = new Image();
-      img.onload = function () {
-        try {
-          var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
-          var scale = Math.min(1, maxDim / Math.max(w, h));
-          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
-          var canvas = document.createElement("canvas");
-          canvas.width = cw; canvas.height = ch;
-          canvas.getContext("2d").drawImage(img, 0, 0, cw, ch);
-          var durl = canvas.toDataURL("image/jpeg", quality);
-          URL.revokeObjectURL(url);
-          // Si la compression échoue à réduire (petite image déjà légère), on garde.
-          resolve(durl);
-        } catch (e) { URL.revokeObjectURL(url); reject(e); }
-      };
-      img.onerror = function (e) { URL.revokeObjectURL(url); reject(e); };
-      img.src = url;
-    } catch (e) { reject(e); }
-  });
-}
+// ⚠️ `passioCompressImage` N'EST DÉFINIE QU'UNE FOIS : `window.passioCompressImage`,
+// dans app-06 (WebP si le navigateur sait l'encoder, sinon JPEG ; 1600 px, 0,82).
+// Une seconde définition vivait ici depuis le 2026-06-24 (`function`, JPEG seul,
+// 1280 px, 0,72 — ajoutée en croyant la fonction « fantôme »). Avec l'ancien
+// monolithe `app.js`, la déclaration était hissée en tête puis ÉCRASÉE par
+// l'affectation d'app-06 : la production a toujours tourné sur celle d'app-06, le
+// développement (9 balises) sur celle-ci. Le bloc app sortant désormais en 9 scripts
+// (2026-11-09, PR #801), celle-ci aurait gagné en production aussi — des photos plus
+// lourdes, sans un signal. Retirée ; `scripts/audit-globals.js` refuse désormais une
+// affectation `window.X =` face à une `function X` d'un autre fichier du bloc.
 
 // Reconnaît une vidéo par son type MIME, et à défaut par l'extension du nom :
 // certains sélecteurs Android rendent un `type` vide. Seule autorité des portes

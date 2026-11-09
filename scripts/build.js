@@ -30,7 +30,10 @@ const hash10 = (texte) => crypto.createHash("sha1").update(texte).digest("hex").
 //    app-01 et app-09 : NE PAS réordonner). Le chargeur ci-dessous télécharge les 9
 //    EN PARALLÈLE (preload) et les exécute UN PAR UN, chacun au `load` du
 //    précédent : c'est la sémantique du développement, où les 9 fichiers sont déjà
-//    9 balises — la preuve que le découpage tient. Un script qui ne se charge pas
+//    9 balises — la preuve que le découpage tient. Et comme l'ancien app.js, il
+//    n'exécute RIEN avant d'avoir TOUT reçu : un minuteur de démarrage armé par
+//    app-04 (files de rejeu, 4 s) ne part pas pendant qu'app-08 se télécharge
+//    encore (relecture de la PR #801). Un script qui ne se charge pas
 //    est retenté deux fois, puis le chargeur S'ARRÊTE : il ne lance jamais la suite
 //    sans lui, sinon app-09 démarrerait une application à laquelle il manque un
 //    fichier (le monolithe, lui, ne pouvait manquer qu'en entier).
@@ -67,12 +70,16 @@ const appHash = hash10(appJs);
 const loader = ""
   + "<script>\n"
   + "/* Bloc app externalisé : 9 scripts (scripts/build.js, étape 1), parsés et\n"
-  + "   exécutés SEULEMENT après le gate. Téléchargés en parallèle, exécutés un par\n"
-  + "   un dans l'ordre du bloc ; un échec de chargement est retenté deux fois, puis\n"
-  + "   on s'arrête plutôt que de lancer la suite sans lui. Pas de preload statique\n"
-  + "   (il concurrençait le HTML/CSS critiques sur mobile et polluait les métriques\n"
-  + "   LCP) : prefetch basse priorité à la PREMIÈRE frappe dans le champ code — les\n"
-  + "   fichiers sont en cache HTTP quand le 4e chiffre déverrouille. */\n"
+  + "   exécutés SEULEMENT après le gate. Téléchargés en parallèle ; comme l'ancien\n"
+  + "   app.js unique, RIEN ne s'exécute avant que tout soit arrivé — les minuteurs\n"
+  + "   de démarrage d'app-04 partent avec ceux d'app-08 —, puis les 9 s'enchaînent\n"
+  + "   dans l'ordre du bloc. Filet : sans preload, ou au bout de 10 s, on part quand\n"
+  + "   même (l'ordre reste tenu par `suivant`). Un échec de chargement est retenté\n"
+  + "   deux fois, puis on s'arrête plutôt que de lancer la suite sans lui. Pas de\n"
+  + "   preload statique (il concurrençait le HTML/CSS critiques sur mobile et\n"
+  + "   polluait les métriques LCP) : prefetch basse priorité à la PREMIÈRE frappe\n"
+  + "   dans le champ code — les fichiers sont en cache HTTP quand le 4e chiffre\n"
+  + "   déverrouille. */\n"
   + "(function () {\n"
   + "  var scripts = [\n"
   + appScripts.map(s => "    " + JSON.stringify(s.ref)).join(",\n") + "\n"
@@ -81,11 +88,11 @@ const loader = ""
   + '    var l = document.createElement("link");\n'
   + '    l.rel = rel; l.as = "script"; l.href = href;\n'
   + "    document.head.appendChild(l);\n"
+  + "    return l;\n"
   + "  }\n"
   + "  (window.__gateReady || Promise.resolve()).then(function () {\n"
-  + '    scripts.forEach(function (src) { lier("preload", src); });\n'
-  + "    var i = 0, essais = 0;\n"
-  + "    (function suivant() {\n"
+  + "    var i = 0, essais = 0, restants = scripts.length, parti = false;\n"
+  + "    function suivant() {\n"
   + "      if (i === scripts.length) {\n"
   + '        window.dispatchEvent(new Event("passio:app-ready"));\n'
   + "        return;\n"
@@ -99,7 +106,15 @@ const loader = ""
   + '        else if (window.console) console.error("PASSIO : " + scripts[i] + " ne se charge pas, l\'application ne démarre pas.");\n'
   + "      };\n"
   + "      document.body.appendChild(s);\n"
-  + "    })();\n"
+  + "    }\n"
+  + "    function partir() { if (!parti) { parti = true; suivant(); } }\n"
+  + '    var rl = document.createElement("link").relList;\n'
+  + '    if (!rl || !rl.supports || !rl.supports("preload")) partir();\n'
+  + "    scripts.forEach(function (src) {\n"
+  + '      var l = lier("preload", src);\n'
+  + "      l.onload = l.onerror = function () { if (--restants === 0) partir(); };\n"
+  + "    });\n"
+  + "    setTimeout(partir, 10000);\n"
   + "  });\n"
   + '  if (document.documentElement.classList.contains("passio-locked")) {\n'
   + '    document.addEventListener("input", function () {\n'

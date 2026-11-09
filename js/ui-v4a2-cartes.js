@@ -756,7 +756,7 @@
     return true;
   }
 
-  // ⚠️ En PRODUCTION, le bloc app sort dans `app.js`, injecté seulement une fois
+  // ⚠️ En PRODUCTION, le bloc app sort dans `app/` (9 scripts), injecté une fois
   // le code d'accès franchi : au premier `boot()`, ni `allEvents` ni
   // `safeUrlAttr` n'existent, et `#eventList` est vide. On repasse donc à
   // `passio:app-ready`, avec une reprise bornée par `setTimeout` en secours
