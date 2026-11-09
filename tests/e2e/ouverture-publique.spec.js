@@ -451,7 +451,9 @@ test.describe("⑧ la politique dit ce que la base fait", () => {
     // 2026-11-04 : §2 compte l'année de naissance parmi les données d'inscription. La version suit.
     // 2026-11-08 : §6, la police des titres et les images d'illustration sont servies par PASSIO ;
     // Google Fonts ne reste qu'une police choisie dans l'éditeur. La version suit.
-    expect(r.version).toBe("2026-11-08");
+    // 2026-11-09 : §6, le relais des appels et des lives est Cloudflare (quand il est
+    // activé) ; Open Relay, neutralisé par son opérateur, n'est plus nommé. La version suit.
+    expect(r.version).toBe("2026-11-09");
     // Les textes légaux vivent dans js/legal-textes.js depuis #334 (lisibles sans code).
     const legal = lire("js/legal-textes.js");
     expect(legal).toMatch(/13 mois au maximum<\/strong> — en pratique la mesure d\\'usage détaillée est effacée après <strong[^>]*>7 jours<\/strong> et les rapports d\\'erreur après <strong[^>]*>30 jours/);

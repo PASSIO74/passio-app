@@ -13,17 +13,36 @@ window._PASSIO_EMOJI_LIST = [
 ];
 
 // ════════════════════════════════════════════════════════════════
-// API GIF (backlog #5) — Tenor v2 ou Giphy, avec fallback hors-ligne.
-// 👉 POUR ACTIVER : coller la clé ci-dessous (une seule ligne à changer).
-//    Tenor : console.cloud.google.com → activer « Tenor API » → Identifiants → Clé API
-//    Giphy : developers.giphy.com → Create an API Key
-// Sans clé (ou si l'API échoue), l'app retombe sur les listes locales — rien ne casse.
-// ⚠️ CSP : tenor.googleapis.com et api.giphy.com doivent rester autorisés dans
-//    connect-src (netlify.toml + _headers).
+// API GIF — KLIPY depuis le 2026-11-09, Giphy en réserve, liste locale hors ligne.
+// Pourquoi : Tenor a fermé son API le 2026-06-30 ; la clé Giphy « beta » plafonne
+// à 100 appels par heure pour TOUTE l'app, et sa clé de production est devenue
+// payante. KLIPY reprend l'API de Tenor à l'identique (mêmes chemins /v2/search et
+// /v2/featured, mêmes `media_formats`) ; sa clé de test plafonne aussi à 100 appels
+// par heure, sa clé de production est gratuite, sur demande (partner.klipy.com).
+// Les clés sont PUBLIQUES (côté client, comme la clé anon Supabase) : KLIPY exige
+// d'ailleurs que l'appel parte du navigateur, jamais d'un serveur relais.
+// Exigences de KLIPY (docs.klipy.com/integration-requirements) : le champ de
+// recherche affiche « Search KLIPY » (`passioGifPlaceholder`) ; les URL des médias
+// restent telles que l'API les rend ; les résultats gardent leur ordre et ne sont
+// jamais mêlés à ceux d'un autre fournisseur dans une même grille (la liste locale
+// ne sert que quand l'API ne rend RIEN).
+// Sans clé, ou si l'API échoue, l'app retombe sur la liste locale — rien ne casse.
+// ⚠️ CSP : api.klipy.com (et api.giphy.com, la réserve) dans connect-src
+//    (netlify.toml + _headers).
 window.PASSIO_GIF_API = {
-  provider: "giphy", // "tenor" ou "giphy"
-  key: "u28ANom3fQTKp1KmOtVXhJcjRTRTXkBE" // clé Web Giphy (publique, côté client — comme la clé anon Supabase)
+  provider: "klipy", // "klipy" ou "giphy" (la réserve)
+  key: "YB8zOMaLbuuI8hTooVfBViUvkC864dT0rNh1XKzKCdwGe9v4Qbncs7nhc0sMOh12", // clé Web KLIPY « PASSIO-WEB » (publique) gitleaks:allow
 };
+// Clé Web Giphy (publique), gardée pour repasser en réserve d'un mot :
+// { provider: "giphy", key: PASSIO_GIF_CLE_GIPHY }.
+var PASSIO_GIF_CLE_GIPHY = "u28ANom3fQTKp1KmOtVXhJcjRTRTXkBE";
+
+// Le texte d'appel du champ de recherche — « Search KLIPY » est une exigence de KLIPY.
+function passioGifPlaceholder() {
+  var cfg = window.PASSIO_GIF_API || {};
+  return cfg.provider === "klipy" && cfg.key ? "Rechercher sur KLIPY" : "Rechercher un GIF…";
+}
+window.passioGifPlaceholder = passioGifPlaceholder;
 
 // Liste de secours (les 26 GIFs historiques dédupliqués) — utilisée sans clé ou hors-ligne.
 var PASSIO_DEFAULT_GIFS = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif","https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif","https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif","https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif","https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif","https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif","https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif","https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif","https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif","https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif","https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif"];
@@ -31,6 +50,12 @@ var PASSIO_DEFAULT_GIFS = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/gip
 // Recherche de GIFs (tendances si query vide) → Promise<string[]> d'URLs.
 // Cache mémoire 10 min par requête pour économiser le quota.
 var _gifCache = {};
+// Quota épuisé (429 — la clé de test KLIPY donne 100 appels par heure à TOUTE
+// l'app) ou panne réseau : plus d'appel pendant une minute (le cache reste servi).
+// Sans cette pause, chaque frappe dans le champ de recherche rappelait l'API pour
+// un refus de plus.
+var GIF_PAUSE_QUOTA_MS = 60 * 1000;
+var _gifPauseJusqua = 0;
 function passioFetchGifs(query, limit) {
   limit = limit || 24;
   var q = (query || "").trim();
@@ -39,18 +64,30 @@ function passioFetchGifs(query, limit) {
   var cacheKey = cfg.provider + ":" + q.toLowerCase() + ":" + limit;
   var hit = _gifCache[cacheKey];
   if (hit && Date.now() - hit.at < 600000) return Promise.resolve(hit.urls);
+  // La pause APRÈS le cache : des résultats déjà reçus restent servis pendant la minute.
+  if (Date.now() < _gifPauseJusqua) return Promise.resolve(PASSIO_DEFAULT_GIFS.slice(0, limit));
   var url;
   if (cfg.provider === "giphy") {
     url = q
       ? "https://api.giphy.com/v1/gifs/search?api_key=" + encodeURIComponent(cfg.key) + "&q=" + encodeURIComponent(q) + "&limit=" + limit + "&rating=pg-13&lang=fr"
       : "https://api.giphy.com/v1/gifs/trending?api_key=" + encodeURIComponent(cfg.key) + "&limit=" + limit + "&rating=pg-13";
   } else {
+    // KLIPY : l'API de Tenor, à l'identique, sur api.klipy.com.
+    var commun = "key=" + encodeURIComponent(cfg.key) + "&limit=" + limit + "&media_filter=tinygif,gif&locale=fr_FR&country=FR&contentfilter=medium";
     url = q
-      ? "https://tenor.googleapis.com/v2/search?key=" + encodeURIComponent(cfg.key) + "&q=" + encodeURIComponent(q) + "&limit=" + limit + "&media_filter=tinygif,gif&locale=fr_FR&contentfilter=medium"
-      : "https://tenor.googleapis.com/v2/featured?key=" + encodeURIComponent(cfg.key) + "&limit=" + limit + "&media_filter=tinygif,gif&locale=fr_FR&contentfilter=medium";
+      ? "https://api.klipy.com/v2/search?" + commun + "&q=" + encodeURIComponent(q)
+      : "https://api.klipy.com/v2/featured?" + commun;
   }
   return fetch(url)
-    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    // Un 429 SANS en-tête CORS ne se lit pas : le navigateur le rend comme une panne
+    // réseau. Une panne réseau arme donc la même pause (une minute de liste locale
+    // hors ligne ne coûte rien).
+    .catch(function (e) { _gifPauseJusqua = Date.now() + GIF_PAUSE_QUOTA_MS; throw e; })
+    .then(function (r) {
+      if (r.status === 429) _gifPauseJusqua = Date.now() + GIF_PAUSE_QUOTA_MS;
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
     .then(function (data) {
       var urls;
       if (cfg.provider === "giphy") {
@@ -68,7 +105,10 @@ function passioFetchGifs(query, limit) {
       _gifCache[cacheKey] = { at: Date.now(), urls: urls };
       return urls;
     })
-    .catch(function () { return PASSIO_DEFAULT_GIFS.slice(0, limit); });
+    .catch(function (e) {
+      try { if (typeof diagLog === "function") diagLog("GIF " + cfg.provider + " indisponible : " + (e && e.message)); } catch (_e) {}
+      return PASSIO_DEFAULT_GIFS.slice(0, limit);
+    });
 }
 window.passioFetchGifs = passioFetchGifs;
 
@@ -78,13 +118,20 @@ function passioGifPanel(opts) {
   var old = document.getElementById(opts.id);
   if (old) { old.remove(); return null; } // toggle : 2e clic = fermer
   var cols = opts.cols || 4, cell = opts.cell || 90;
+  // Le panneau tient dans l'écran. Quatre colonnes de 90 px font 406 px avec les
+  // marges : sur un téléphone de 390 px, la première colonne et le début de
+  // « Rechercher sur KLIPY » sortaient de l'écran par la gauche (mesuré le
+  // 2026-11-09). Moins de colonnes quand l'écran est étroit ; la position est
+  // ramenée dans l'écran après l'ajout (plus bas).
+  var largeurVue = window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 390;
+  cols = Math.max(2, Math.min(cols, Math.floor((largeurVue - 2 * 8 - 22 + 8) / (cell + 8))));
   var panel = document.createElement("div");
   panel.id = opts.id;
   var _z = opts.z || 10000; // surclassable : un composeur ouvert depuis un modal (10001) doit passer au-dessus
   panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px;z-index:" + _z + ";box-shadow:0 4px 16px rgba(0,0,0,0.25);" + (opts.position || "bottom:120px;right:20px;");
   var search = document.createElement("input");
   search.type = "search";
-  search.placeholder = "Rechercher un GIF…";
+  search.placeholder = passioGifPlaceholder();
   search.setAttribute("aria-label", "Rechercher un GIF");
   search.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;";
   var grid = document.createElement("div");
@@ -132,6 +179,7 @@ function passioGifPanel(opts) {
   search.onclick = function (e) { e.stopPropagation(); };
 
   document.body.appendChild(panel);
+  _ramenerDansLEcran(panel);
   setTimeout(function () {
     var closeListener = function (e) {
       if (!panel.contains(e.target) && (!opts.keepOpenFor || e.target.id !== opts.keepOpenFor)) {
@@ -144,6 +192,30 @@ function passioGifPanel(opts) {
   return panel;
 }
 window.passioGifPanel = passioGifPanel;
+
+// Garde-fou de position : quelle que soit la position demandée (`right:20px`, un
+// `left` calculé depuis un bouton, un centrage par `translateX(-50%)`), un panneau
+// flottant reste à 8 px des bords. Le panneau des commentaires calculait sa gauche
+// avec `innerWidth - 420` : négative sur tout téléphone.
+function _ramenerDansLEcran(panel) {
+  try {
+    var r = panel.getBoundingClientRect();
+    var marge = 8;
+    var vw = window.innerWidth || document.documentElement.clientWidth;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    if (r.left < marge || r.right > vw - marge) {
+      panel.style.left = Math.max(marge, Math.min(r.left, vw - marge - r.width)) + "px";
+      panel.style.right = "auto";
+      panel.style.transform = "none";
+    }
+    if (r.top < marge || r.bottom > vh - marge) {
+      panel.style.top = Math.max(marge, Math.min(r.top, vh - marge - r.height)) + "px";
+      panel.style.bottom = "auto";
+    }
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("✗ panneau GIF hors écran : " + (e && e.message)); } catch (_e) {}
+  }
+}
 // ════════════════════════════════════════════════════════════════
 
 window.toggleEmojiPanel = function() {
@@ -153,6 +225,8 @@ window.toggleEmojiPanel = function() {
   // Remplissage (lazy) de la grille GIF à la première ouverture — via l'API si clé.
   if (p.classList.contains("open") && !p._gifFilled) {
     p._gifFilled = true;
+    var champ = document.getElementById("gifSearchInput");
+    if (champ) champ.placeholder = passioGifPlaceholder();
     if (window._fillEmojiGifGrid) window._fillEmojiGifGrid("");
   }
 };

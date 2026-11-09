@@ -83,6 +83,52 @@ export const genreNoteNotif = (kind) => (typeof kind === "string" && GENRES_PUSH
  */
 export const APPELS_ACTIFS = false;
 
+// ── Identifiants TURN des appels et des lives (2026-11-09) ─────────────────
+// Le TURN public « Open Relay » est MORT (`openrelay.metered.ca` résout vers
+// 192.0.2.1 / 100::1, mesuré le 2026-11-09) : sans relais, un appel ou un live
+// entre deux réseaux à NAT strict (CGNAT 4G, entreprise) échoue. Cloudflare
+// Realtime offre 1 000 Go/mois gratuits, mais ses identifiants se FABRIQUENT
+// côté serveur avec un jeton secret (`TURN_CF_KEY_ID`, `TURN_CF_API_TOKEN`,
+// secrets de la fonction) — d'où ce geste `{ type: "ice" }` de `notify-call`.
+// Secrets absents : la fonction rend une liste vide et l'app reste en STUN seul,
+// comme avant. Durée des identifiants : 6 h. Assez pour un live ou un appel (le
+// client les renouvelle quand il en reste moins de 3 h, au départ de chacun), assez
+// court pour qu'un identifiant sorti d'un navigateur ne serve pas de relais gratuit
+// une journée entière : la facture Cloudflare n'a pas de plafond au-delà de 1 000 Go.
+export const TTL_ICE_S = 6 * 3600;
+export const ICE_MAX_SERVEURS = 4;
+export const ICE_MAX_URLS = 8;
+// Une adresse ICE admise : stun/turn/turns, un hôte, un port facultatif, un
+// transport facultatif — rien d'autre ne part vers le navigateur.
+const RE_URL_ICE = /^(stun|turns?):[A-Za-z0-9.-]{1,253}(:\d{1,5})?(\?transport=(udp|tcp))?$/;
+/**
+ * Lit la réponse de `…/credentials/generate-ice-servers` et rend une liste d'ICE
+ * servers SÛRE à passer à `RTCPeerConnection`, ou [] si la forme ne tient pas.
+ * Le port 53 est écarté : Cloudflare prévient qu'il expire souvent dans un
+ * navigateur. Identifiants bornés (chaînes, 512 caractères au plus).
+ * @param {unknown} reponse
+ * @returns {Array<{ urls: string[], username?: string, credential?: string }>}
+ */
+export function serveursIceDepuisCloudflare(reponse) {
+  const brut = reponse && typeof reponse === "object" && Array.isArray(reponse.iceServers) ? reponse.iceServers : [];
+  const sortie = [];
+  for (const s of brut.slice(0, ICE_MAX_SERVEURS)) {
+    if (!s || typeof s !== "object") continue;
+    const liste = (Array.isArray(s.urls) ? s.urls : [s.urls]).filter((u) => typeof u === "string");
+    const urls = liste.filter((u) => RE_URL_ICE.test(u) && !/:53(\?|$)/.test(u)).slice(0, ICE_MAX_URLS);
+    if (!urls.length) continue;
+    const relais = urls.some((u) => u.startsWith("turn"));
+    if (relais) {
+      if (typeof s.username !== "string" || typeof s.credential !== "string") continue;
+      if (!s.username || !s.credential || s.username.length > 512 || s.credential.length > 512) continue;
+      sortie.push({ urls, username: s.username, credential: s.credential });
+    } else {
+      sortie.push({ urls });
+    }
+  }
+  return sortie;
+}
+
 /** Un tirage dans [0, 1), du SERVEUR — aléa cryptographique, jamais dérivé de la requête. */
 export function tirer() {
   const a = new Uint32Array(1);

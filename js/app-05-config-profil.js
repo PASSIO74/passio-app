@@ -480,15 +480,105 @@ const PASSIO_CALL_TURN = null; // ← ta config TURN dédiée, ou null : STUN se
 // rendait ses `srflx`. Ses trois entrées ne relayaient donc plus RIEN : un appel
 // entre deux réseaux à NAT strict (4G derrière un CGNAT, réseau d'entreprise)
 // échoue, avec ou sans elles. L'ICE part en trickle : elles ne retardaient pas
-// l'appel, elles promettaient seulement un filet qui n'existait plus. Le remède
-// est un TURN DÉDIÉ dans `PASSIO_CALL_TURN` (une offre gratuite avec compte
-// existe chez Metered ou Cloudflare) — journal capacite-perf-realtime, 2026-11-09.
+// l'appel, elles promettaient seulement un filet qui n'existait plus. Le remède :
+// le relais Cloudflare que fabrique `notify-call` (section suivante) — journal
+// social-messagerie, 2026-11-09. `PASSIO_CALL_TURN` ne sert plus qu'à un TURN à
+// identifiants FIXES, qui seraient alors publics.
 const CALL_ICE_SERVERS = [
   ...(PASSIO_CALL_TURN ? (Array.isArray(PASSIO_CALL_TURN) ? PASSIO_CALL_TURN : [PASSIO_CALL_TURN]) : []),
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
 ];
+
+// ── Relais TURN Cloudflare, fabriqué par le serveur (2026-11-09) ────────────
+// `notify-call` rend, sur `{ type: "ice" }`, des identifiants Cloudflare de 6 h
+// (secrets `TURN_CF_KEY_ID` / `TURN_CF_API_TOKEN` de la fonction : jamais dans ce
+// fichier, le dépôt est public). Ils s'AJOUTENT au tableau ci-dessus, que lisent
+// les cinq `new RTCPeerConnection` des appels et des lives : rien d'autre à
+// changer. Secrets absents, réseau coupé, réponse hors forme : le tableau reste en
+// STUN seul, comme avant — jamais un appel ou un live retardé de plus de 2,5 s.
+//   · renouvelés quand il leur reste moins de 3 h : un live ou un appel part
+//     toujours avec au moins 3 h de validité (une connexion relayée ne survit pas
+//     à l'expiration de ses identifiants) ;
+//   · relais coupé (`configure: false`) : les identifiants déjà posés sont RETIRÉS,
+//     et la fonction n'est pas redemandée avant une heure ;
+//   · panne (refus, Cloudflare, réseau, attente dépassée) : pas de nouvelle demande
+//     avant 5 min — sinon chaque entrée dans un live attendrait 2,5 s de plus ;
+//   · expirés : retirés, même quand le renouvellement échoue.
+const ICE_ATTENTE_MAX_MS = 2500;
+const ICE_MARGE_MS = 3 * 3600 * 1000;
+const ICE_PAUSE_ECHEC_MS = 5 * 60 * 1000;
+const ICE_PAUSE_COUPE_MS = 3600 * 1000;
+const _iceRelais = { serveurs: [], jusqua: 0, expire: 0, enCours: null };
+function _iceRetirerRelais() {
+  _iceRelais.serveurs.forEach(function (s) { var i = CALL_ICE_SERVERS.indexOf(s); if (i !== -1) CALL_ICE_SERVERS.splice(i, 1); });
+  _iceRelais.serveurs = [];
+  _iceRelais.expire = 0;
+}
+function _iceServeursSurs(liste) {
+  if (!Array.isArray(liste)) return [];
+  return liste.slice(0, 4).filter(function (s) {
+    if (!s || typeof s !== "object") return false;
+    var urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+    if (!urls.length || !urls.every(function (u) { return typeof u === "string" && /^(stun|turns?):[A-Za-z0-9.-]{1,253}(:\d{1,5})?(\?transport=(udp|tcp))?$/.test(u); })) return false;
+    var relais = urls.some(function (u) { return u.indexOf("turn") === 0; });
+    return !relais || (typeof s.username === "string" && !!s.username && typeof s.credential === "string" && !!s.credential);
+  });
+}
+function assurerServeursIce() {
+  try {
+    if (_iceRelais.serveurs.length && Date.now() >= _iceRelais.expire) _iceRetirerRelais();
+    if (Date.now() < _iceRelais.jusqua) return Promise.resolve(_iceRelais.serveurs.length);
+    if (_iceRelais.enCours) return _iceRelais.enCours;
+    var compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
+    if (typeof supa === "undefined" || !supa || !window._supaReal || !supa.functions || !compteReel) return Promise.resolve(0);
+    var echec = function (raison) {
+      try { if (typeof diagLog === "function") diagLog("ice relais " + raison); } catch (_e) {}
+      return -1;
+    };
+    var requete = Promise.resolve(supa.functions.invoke("notify-call", { body: { type: "ice" } }))
+      .then(function (r) {
+        // Un refus du serveur (429 du plafond…) ne LÈVE pas : il arrive dans `error`.
+        if (r && r.error) return echec("refusé : " + (r.error.message || r.error));
+        var d = r && r.data;
+        if (d && d.configure === false) {
+          _iceRetirerRelais();
+          _iceRelais.jusqua = Date.now() + ICE_PAUSE_COUPE_MS;
+          return 0;
+        }
+        var surs = _iceServeursSurs(d && d.iceServers);
+        if (!surs.length) return echec("indisponible : " + ((d && d.code) || "réponse hors forme"));
+        // On retire les identifiants précédents AVANT d'ajouter les neufs : le
+        // tableau ne grossit pas d'un renouvellement à l'autre.
+        _iceRetirerRelais();
+        surs.forEach(function (s) { CALL_ICE_SERVERS.push(s); });
+        _iceRelais.serveurs = surs;
+        var ttlMs = ((d && Number(d.ttl) > 0) ? Number(d.ttl) : 6 * 3600) * 1000;
+        _iceRelais.expire = Date.now() + ttlMs;
+        _iceRelais.jusqua = Date.now() + Math.max(10 * 60 * 1000, ttlMs - ICE_MARGE_MS);
+        return surs.length;
+      })
+      .catch(function (e) { return echec("indisponible : " + (e && e.message)); });
+    var borne = new Promise(function (ok) { setTimeout(function () { ok(-2); }, ICE_ATTENTE_MAX_MS); });
+    _iceRelais.enCours = Promise.race([requete, borne]).then(function (n) {
+      _iceRelais.enCours = null;
+      if (n === -2) echec("muet au-delà de " + ICE_ATTENTE_MAX_MS + " ms");
+      if (n < 0) {
+        // Pas de nouvelle demande avant 5 min ; ce qui est encore valide reste. Une
+        // réponse tardive qui réussit pose quand même ses identifiants et son délai.
+        if (_iceRelais.jusqua < Date.now() + ICE_PAUSE_ECHEC_MS) _iceRelais.jusqua = Date.now() + ICE_PAUSE_ECHEC_MS;
+        return _iceRelais.serveurs.length;
+      }
+      return n;
+    });
+    return _iceRelais.enCours;
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("✗ ice relais : " + (e && e.message)); } catch (_e) {}
+    return Promise.resolve(0);
+  }
+}
+window.assurerServeursIce = assurerServeursIce;
 
 // État global d'un appel en cours (un seul à la fois).
 window._call = window._call || null;
@@ -571,6 +661,9 @@ async function startCall(convId, kind) {
     return;
   }
   if (window._call) { toast("Un appel est déjà en cours"); return; }
+  // Un départ est déjà en cours (double toucher pendant la caméra ou le relais) :
+  // le second aurait écrasé `window._call` sans jamais couper le premier flux.
+  if (window._callDepart) return;
   if (typeof RTCPeerConnection === "undefined") { toast("Ton navigateur ne gère pas les appels"); return; }
   const peer = _callResolvePeer(convId);
   if (!peer) { toast("Appel disponible uniquement en conversation privée"); return; }
@@ -584,14 +677,28 @@ async function startCall(convId, kind) {
     toast("Connecte-toi pour passer un appel"); return;
   }
   if (!peer.id || /^u_/.test(peer.id)) { toast("Ce contact de démo n'est pas joignable"); return; }
+  // Le relais TURN se demande pendant la permission caméra/micro, et on l'ATTEND
+  // (2,5 s au plus) avant de créer la connexion : `new RTCPeerConnection` copie la
+  // liste des serveurs à sa création — sans relais à ce moment, l'appel entre deux
+  // réseaux à NAT strict échoue (audit du 2026-11-09).
+  const _relais = assurerServeursIce();
+  const depart = {};
+  window._callDepart = depart;
 
   let stream;
   _appelEnPreparation();
   try {
     stream = await _callGetMedia(kind);
   } catch (e) {
+    if (window._callDepart === depart) window._callDepart = null;
     toast("Caméra/micro indisponible ou refusé"); return;
   }
+  try { await _relais; } catch (e) {}
+  // Pendant l'attente, un autre appel a pu commencer (un appel entrant accepté) :
+  // ce départ s'efface, et la caméra et le micro qu'il a obtenus sont coupés.
+  const departValide = window._callDepart === depart && !window._call;
+  if (window._callDepart === depart) window._callDepart = null;
+  if (!departValide) { try { (stream.getTracks() || []).forEach((t) => t.stop()); } catch (e) {} return; }
 
   // ⚠️ Non DEVINABLE : `call:<id>` est lisible par tout compte (policy
   // `passio_rt_recevoir`), et l'ancien `<uid>_<horodatage>` se reconstituait —
@@ -1143,10 +1250,28 @@ async function acceptIncomingCall() {
   if (!inv) return;
   window._callIncoming = null;
   if (typeof RTCPeerConnection === "undefined") { toast("Appels non supportés"); return; }
+  // ⚠️ L'acceptation est EN COURS jusqu'à la connexion : « Refuser » pendant la
+  // caméra ou le relais (jusqu'à 2,5 s sans rien qui bouge) l'annule. Sans ce jeton,
+  // `declineIncomingCall` trouvait `_callIncoming` vide, fermait l'écran… puis
+  // l'acceptation reprenait et l'appel se CONNECTAIT, caméra et micro ouverts,
+  // après un refus (relecture du 2026-11-09).
+  window._callAcceptation = inv;
   let stream;
   _appelEnPreparation();
+  // Le relais TURN se demande pendant la permission caméra/micro, et on l'attend
+  // (2,5 s au plus) avant de créer la connexion — même raison que `startCall`.
+  const _relais = assurerServeursIce();
   try { stream = await _callGetMedia(inv.kind); }
-  catch (e) { toast("Caméra/micro refusé"); _callDeclineSilent(inv); _callCloseUI(); return; }
+  catch (e) {
+    if (window._callAcceptation === inv) window._callAcceptation = null;
+    toast("Caméra/micro refusé"); _callDeclineSilent(inv); _callCloseUI(); return;
+  }
+  try { await _relais; } catch (e) {}
+  // Refusée entre-temps, remplacée par une autre acceptation, ou un autre appel a
+  // commencé : on s'efface, et la caméra et le micro obtenus sont coupés.
+  const acceptationValide = window._callAcceptation === inv && !window._call;
+  if (window._callAcceptation === inv) window._callAcceptation = null;
+  if (!acceptationValide) { try { (stream.getTracks() || []).forEach((t) => t.stop()); } catch (e) {} return; }
 
   const idn = inv.identite || _callIdentiteServeur(inv.from);
   window._call = {
@@ -1184,8 +1309,11 @@ const CALL_READY_REPETITION_MS = 1000;
 const CALL_READY_TIMEOUT_MS = 60000;
 
 function declineIncomingCall() {
-  const inv = window._callIncoming;
+  // Une acceptation en cours (caméra, relais) se refuse aussi : son jeton tombe, et
+  // `acceptIncomingCall` s'efface à la reprise au lieu de connecter l'appel.
+  const inv = window._callIncoming || window._callAcceptation;
   window._callIncoming = null;
+  window._callAcceptation = null;
   if (inv) _callDeclineSilent(inv);
   _callCloseUI();
 }
@@ -3579,7 +3707,7 @@ function showGifPickerForReelComment(postId, commentIdx) {
 
   openModal(`
     <div class="modal-title">GIF de réaction</div>
-    <input type="search" placeholder="Rechercher un GIF…" aria-label="Rechercher un GIF"
+    <input type="search" placeholder="${escapeHtml(typeof passioGifPlaceholder === "function" ? passioGifPlaceholder() : "Rechercher un GIF…")}" aria-label="Rechercher un GIF"
       oninput="_reelGifSearch('${escapeJsArg(postId)}', ${commentIdx}, this.value)"
       style="width:100%;box-sizing:border-box;margin:10px 0 4px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;" />
     <div id="reelGifGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;max-height:300px;overflow-y:auto;">
@@ -4158,6 +4286,13 @@ async function startVideoLive() {
   if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour lancer un live"); return; }
 
   _appelEnPreparation();
+  // Le relais TURN se demande PENDANT le titre et la caméra, et on l'attend (2,5 s
+  // au plus — le plus souvent déjà là) AVANT d'ouvrir le live : la connexion de
+  // chaque spectateur se crée ensuite sans attente (`_vliveHostAddViewer` doit
+  // rester SYNCHRONE jusqu'à `H.pcs[vid]` — `_vliveHostAssign` décide doublon et
+  // capacité sur cette table ; une attente là faisait répondre « complet » à des
+  // spectateurs groupés alors que des relais étaient libres, relecture du 2026-11-09).
+  const _relais = assurerServeursIce();
   const title = await _vlivePromptTitle();
   if (title === null) return;  // annulé
 
@@ -4168,6 +4303,7 @@ async function startVideoLive() {
       video: Object.assign({ facingMode: "user" }, VLIVE_VIDEO_QUALITY),
     });
   } catch (e) { toast("Caméra/micro indisponible ou refusé"); return; }
+  try { await _relais; } catch (e) {}
 
   const id = "vl_" + String(MY_UID).slice(0, 8) + "_" + Date.now().toString(36);
   const me = (typeof currentProfile === "function" && currentProfile()) || {};
@@ -4292,6 +4428,10 @@ async function _vliveHostAddViewer(vid) {
   if (!H) return;
   if (H.pcs[vid]) { try { H.pcs[vid].pc.close(); } catch (e) {} delete H.pcs[vid]; }
   if (Object.keys(H.pcs).length >= VLIVE_MAX_VIEWERS) { _vliveSend("full", { to: vid }); return; }
+  // SANS attente (voir `startVideoLive`, qui attend le relais avant d'ouvrir le live) :
+  // l'appel retire tout de suite des identifiants expirés et relance le renouvellement
+  // en arrière-plan ; ceux qui restent ont au moins 3 h par construction.
+  assurerServeursIce();
   const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
   const entry = { pc: pc, pendingIce: [] };
   H.pcs[vid] = entry;
@@ -4442,28 +4582,46 @@ async function joinVideoLive(liveId) {
   // condition qui ne l'était pas (capacité, 2026-09-20).
   const compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
   if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour rejoindre un live"); return; }
-
-  _appelEnPreparation();
-  // Vérifie que le live est encore vivant (statut + heartbeat récent).
-  let row = (window._videoLives || []).find(r => r.id === liveId) || null;
+  // ⚠️ DOUBLE ENTRÉE : `_vliveView` n'est posé qu'après les attentes (état du live,
+  // relais TURN — jusqu'à 2,5 s sans rien à l'écran). Un second toucher pendant ce
+  // temps passait toutes les gardes ; le SDK rendant le MÊME canal pour le même
+  // topic, chaque gestionnaire était attaché deux fois : tout le chat, toutes les
+  // réactions en double, chaque offre traitée deux fois (audit du 2026-11-09).
+  if (window._vliveEntree === liveId) return;
+  window._vliveEntree = liveId;
   try {
-    const { data } = await supa.from("video_lives").select("*").eq("id", liveId).maybeSingle();
-    if (data) row = data;
-  } catch (e) {}
-  if (!row || row.status !== "live" || supaTs(row.last_seen) < Date.now() - VLIVE_STALE_MS) {
-    toast("Ce live est terminé"); supaRefreshVideoLives(); return;
+    _appelEnPreparation();
+    // Le relais TURN se demande EN MÊME TEMPS que l'état du live, et on l'attend
+    // (2,5 s au plus) avant d'entrer : l'offre de l'hôte peut arriver tout de suite.
+    const _relais = assurerServeursIce();
+    // Vérifie que le live est encore vivant (statut + heartbeat récent).
+    let row = (window._videoLives || []).find(r => r.id === liveId) || null;
+    try {
+      const { data } = await supa.from("video_lives").select("*").eq("id", liveId).maybeSingle();
+      if (data) row = data;
+    } catch (e) {}
+    try { await _relais; } catch (e) {}
+    // Entre-temps, un appel ou un autre direct a pu commencer — ou un toucher sur un
+    // AUTRE live a pris la main (`_vliveEntree` est alors le sien) : le dernier gagne,
+    // et une entrée remplacée se tait (pas de « Ce live est terminé » pour l'ancien).
+    if (window._vliveEntree !== liveId || window._call || window._vliveHost || window._vliveView) return;
+    if (!row || row.status !== "live" || supaTs(row.last_seen) < Date.now() - VLIVE_STALE_MS) {
+      toast("Ce live est terminé"); supaRefreshVideoLives(); return;
+    }
+
+    window._vliveView = { id: liveId, row: row, chan: null, pc: null, pendingIce: [] };
+    _vliveRenderUI("viewer", row);
+
+    const chan = supa.channel("vlive:" + liveId, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID }, private: window._rtPriveIndisponible !== true } });
+    window._vliveView.chan = chan;
+    _vliveBindViewer(chan);
+    chan.subscribe((st) => {
+      if (st === "SUBSCRIBED") { try { chan.track({ uid: MY_UID, role: "viewer", name: _callMyName() }); } catch (e) {} }
+    });
+    _vliveStartTimer(supaTs(row.started_at) || Date.now());
+  } finally {
+    if (window._vliveEntree === liveId) window._vliveEntree = null;
   }
-
-  window._vliveView = { id: liveId, row: row, chan: null, pc: null, pendingIce: [] };
-  _vliveRenderUI("viewer", row);
-
-  const chan = supa.channel("vlive:" + liveId, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID }, private: window._rtPriveIndisponible !== true } });
-  window._vliveView.chan = chan;
-  _vliveBindViewer(chan);
-  chan.subscribe((st) => {
-    if (st === "SUBSCRIBED") { try { chan.track({ uid: MY_UID, role: "viewer", name: _callMyName() }); } catch (e) {} }
-  });
-  _vliveStartTimer(supaTs(row.started_at) || Date.now());
 }
 window.joinVideoLive = joinVideoLive;
 
@@ -4486,6 +4644,7 @@ function _vliveBindViewer(chan) {
     if (!V || d.to !== MY_UID || !d.sdp || !_vliveDeLHote(d)) return;
     try {
       if (V.pc) { try { V.pc.close(); } catch (e) {} }
+      assurerServeursIce(); // sans attente : retire des identifiants expirés, relance le renouvellement
       const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
       V.pc = pc; V.pendingIce = V.pendingIce || []; V.servedBy = "host";
       pc.ontrack = (e) => {
@@ -4582,6 +4741,7 @@ function _vliveBindViewer(chan) {
     if (!V) return;
     try {
       if (V.pc) { try { V.pc.close(); } catch (e) {} }
+      assurerServeursIce(); // sans attente : retire des identifiants expirés, relance le renouvellement
       const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
       V.pc = pc; V.pendingIce = V.pendingIce || []; V.servedBy = d.srv;
       pc.ontrack = (e) => {
@@ -4651,6 +4811,7 @@ function _vliveRelayServe(child) {
   if (!V.remoteStream) { V.pendingKids = V.pendingKids || []; if (V.pendingKids.indexOf(child) < 0) V.pendingKids.push(child); return; }
   V.kids = V.kids || {};
   if (V.kids[child]) { try { V.kids[child].pc.close(); } catch (e) {} delete V.kids[child]; }
+  assurerServeursIce(); // sans attente : retire des identifiants expirés, relance le renouvellement
   const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
   const entry = { pc: pc, pendingIce: [] };
   V.kids[child] = entry;

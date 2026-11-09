@@ -76,7 +76,8 @@ test.describe("ASTRA-09 — responsable du traitement à la collecte", () => {
   test("④ la version de la politique suit le texte", async ({ page }) => {
     await bootOnboarded(page);
     const r = await page.evaluate(() => ({ version: PASSIO_CONFIDENTIALITE_VERSION, texte: passioTextePolitique() }));
-    expect(r.version).toBe("2026-11-08");
+    // 2026-11-09 : §6 nomme le relais Cloudflare à la place d'Open Relay.
+    expect(r.version).toBe("2026-11-09");
     expect(r.texte).toContain(r.version);
   });
 });
