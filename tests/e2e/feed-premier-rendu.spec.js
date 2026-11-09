@@ -32,7 +32,10 @@
 // historique, et le repli exploration explicitement étiqueté.
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
-const { sansDonneesDistantes } = require("./app-helper");
+const { sansDonneesDistantes, serviceWorkersHorsWebkit } = require("./app-helper");
+
+// WebKit : le service worker soustrait la page aux routes (voir app-helper.js).
+test.use({ serviceWorkers: serviceWorkersHorsWebkit });
 
 async function bootVierge(page, { v2 = true, uiV2 = true, etat = null } = {}) {
   // ⚠️ CE HELPER FAIT SON PROPRE `goto`, donc l'isolation posée par défaut dans

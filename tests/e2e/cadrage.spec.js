@@ -8,7 +8,10 @@
 // impose une hauteur mesurée en JS (`--app-vh`, app-09) et porte l'inset de
 // safe-area sur `.app-nav` (min-height + padding-bottom).
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, serviceWorkersHorsWebkit } = require("./app-helper");
+
+// WebKit : le service worker soustrait la page aux routes (voir app-helper.js).
+test.use({ serviceWorkers: serviceWorkersHorsWebkit });
 
 const VIEWPORTS = [
   { name: "iPhone SE", width: 375, height: 667 },

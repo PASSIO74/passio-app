@@ -280,6 +280,32 @@ test("⑤ toute suite LOCALE qui navigue elle-même pose le projet vide — ou f
     "ou inscrire la suite dans scripts/tests-isolation-socle.json avec la RAISON.\n  · " + exposees.join("\n  · "));
 });
 
+test("⑦ WebKit : une suite du socle iPhone qui démarre l'application bloque le service worker — sauf si le worker est son sujet", () => {
+  // ⚠️ SOUS WEBKIT, UNE PAGE QUE LE SERVICE WORKER CONTRÔLE ÉCHAPPE À `page.route`
+  // ET À `context.route` : la sonde du 2026-11-09 a vu 86 requêtes par course
+  // partir en production depuis quatre suites isolées sur Chromium. Le remède
+  // (`serviceWorkersHorsWebkit`, ou `"block"` comme `pilotage-nuage`) doit
+  // accompagner toute suite du socle WebKit qui pose les routes d'isolation.
+  const debut = config.indexOf("const SUITES_WEBKIT");
+  const SUITES_WEBKIT = [...config.slice(debut, config.indexOf("];", debut)).matchAll(/"([^"]+\.spec\.js)"/g)].map((m) => m[1]);
+  assert.ok(SUITES_WEBKIT.length >= 5, "SUITES_WEBKIT n'a pas été lue dans playwright.config.js");
+  // Le VRAI worker est le sujet de ces suites : le bloquer les viderait de sens.
+  const WORKER_SUJET = new Set(["pwa-maj-pendant-appel.spec.js", "sw-page-revalidee.spec.js"]);
+  const ROUTES_APP = /\b(bootOnboarded|sansDonneesDistantes|projetSupabaseVide)\s*\(/;
+  // Jugé sur la SOURCE (l'épurateur vide les chaînes : `"block"` y deviendrait
+  // `""`), ligne de commentaire exclue — un réglage commenté n'est pas un réglage.
+  const BLOQUE = /^(?![ \t]*\/\/).*serviceWorkers\s*:\s*(serviceWorkersHorsWebkit\b|["']block["'])/m;
+  const fautives = SUITES_WEBKIT.filter((f) => {
+    if (WORKER_SUJET.has(f)) return false;
+    const src = readFileSync(path.join(E2E, f), "utf8");
+    return ROUTES_APP.test(codeDe(f)) && !BLOQUE.test(src);
+  });
+  assert.deepEqual(fautives, [],
+    "Ces suites du socle WebKit posent les routes d'isolation SANS bloquer le service worker : sous WebKit, " +
+    "ses requêtes partent en production dès que le worker contrôle la page. " +
+    "`test.use({ serviceWorkers: serviceWorkersHorsWebkit })` (app-helper.js).\n  · " + fautives.join("\n  · "));
+});
+
 test("⑥ `sansProjetVide` et `cheminsReels` ne sont permis qu'à une suite inscrite au socle, et toute entrée a sa raison", () => {
   for (const [f, raison] of Object.entries(socle)) {
     if (f.startsWith("_")) continue;

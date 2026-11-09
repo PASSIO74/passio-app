@@ -103,7 +103,15 @@ async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
   // coupe TOUT `*.supabase.co` par `route.abort()` — sa requête `posts` serait
   // devenue un `fulfill []`, donc une simulation différente de celle qu'elle
   // mesure.
+  // ⚠️ MAIS LE CANAL TEMPS RÉEL RESTE AVALÉ (2026-11-09) : ces suites coupent le
+  // HTTP de Supabase par `page.route`, qui ne voit PAS les WebSocket — six
+  // d'entre elles ouvraient donc une vraie connexion temps réel en production à
+  // chaque exécution (la sonde : 12 par course, soit les ~160 connexions
+  // quotidiennes de la CI). `canalTempsReelAvale` pose au niveau du CONTEXTE :
+  // une route de WebSocket que la suite pose elle-même (le faux serveur) garde
+  // la main.
   if (!opts.sansIsolationDesDonnees) await sansDonneesDistantes(page, opts);
+  else await canalTempsReelAvale(page);
 
   if (errors) {
     page.on("pageerror", (e) => errors.js.push("pageerror: " + e.message));
@@ -690,6 +698,24 @@ async function projetSupabaseVide(page, opts = {}) {
   // Le canal temps réel, au même niveau : une page qui n'a pas sa propre route
   // de WebSocket (celle de `sansDonneesDistantes` est une route de PAGE, donc
   // prioritaire) ne se connecte pas non plus au vrai projet.
+  await canalTempsReelAvale(page);
+  return true;
+}
+
+const _contextesCanalAvale = new WeakSet();
+
+/**
+ * Avale le WebSocket temps réel de Supabase sur le CONTEXTE de la page : la
+ * page croit parler à un serveur, aucune connexion ne part. Idempotent par
+ * contexte ; sans effet pour le projet `prod`. Posé par `projetSupabaseVide`,
+ * et par `bootOnboarded` pour les suites `sansIsolationDesDonnees` (qui
+ * coupent le HTTP elles-mêmes, jamais le WebSocket).
+ */
+async function canalTempsReelAvale(page) {
+  if (projetPlaywright() === "prod") return false;
+  const ctx = page.context();
+  if (_contextesCanalAvale.has(ctx)) return true;
+  _contextesCanalAvale.add(ctx);
   await ctx.routeWebSocket(MOTIF_CANAL_TEMPS_REEL, () => {});
   return true;
 }
@@ -761,8 +787,35 @@ async function armerPlafondPassions(page) {
   await page.addInitScript(() => { window.PASSIO_PLAFOND_PASSIONS = true; });
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// WEBKIT : UNE PAGE QUE LE SERVICE WORKER CONTRÔLE ÉCHAPPE À TOUTES LES ROUTES
+// (2026-11-09)
+// ──────────────────────────────────────────────────────────────────────────
+// Mesuré par la sonde (`scripts/trafic-supabase-tests.cjs`) sur le projet
+// `webkit-iphone` : 86 requêtes parties en PRODUCTION par course, depuis
+// `first-run`, `conv-ouverture-fil`, `cadrage` et `feed-premier-rendu` — malgré
+// `bootOnboarded`, malgré le projet vide, malgré la coupure TOTALE de
+// `couperReseauSupabase`. Dans `cadrage`, le référentiel (premier chargement) est
+// bien servi par le miroir… puis le fil, `fil_compteurs` et les profils partent
+// au réseau : `sw.js` prend le contrôle de la page dès la première visite
+// (`skipWaiting` + `clients.claim()`), et sous WebKit une requête qui traverse
+// un service worker — même un qui ne répond pas, comme `sw.js` pour une autre
+// origine — n'est plus vue par `page.route` ni `context.route`. Pire pour
+// `first-run` : à la seconde visite, le worker ressert le SDK depuis SON cache,
+// la coupure du SDK ne joue plus, et un VRAI client se construit.
+// ⚠️ LE REMÈDE DE PLAYWRIGHT EST `serviceWorkers: "block"`, ET SUR WEBKIT
+// SEULEMENT : sur Chromium les routes voient ces requêtes, et le worker reste
+// éprouvé par les mêmes suites dans le projet `local`. À poser par
+// `test.use({ serviceWorkers: serviceWorkersHorsWebkit })` dans une suite du socle
+// WebKit dont le worker n'est PAS le sujet — jamais dans `pwa-maj-pendant-appel`
+// ni `sw-page-revalidee`, qui éprouvent le VRAI worker.
+async function serviceWorkersHorsWebkit({ browserName }, use) {
+  await use(browserName === "webkit" ? "block" : "allow");
+}
+
 module.exports = {
   onboardedState, bootOnboarded, sansDonneesDistantes, projetSupabaseVide, miroirPassions, PASSIONS, armerPlafondPassions,
+  serviceWorkersHorsWebkit,
   // Exposé pour le banc unitaire (`tests/unit/isolation-projet-supabase.test.mjs`) :
   // la matrice des réponses s'y éprouve sans navigateur.
   repondreProjetVide,

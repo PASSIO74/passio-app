@@ -32,6 +32,7 @@
 - 📴 LE CONTENU PUBLIC SORT DE LA RÉPLICATION CDC — `realtime.list_changes` PESAIT 60 % DE LA BASE (2026-11-09)
 - 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE QUOTA DE MESSAGES TEMPS RÉEL, AVANT ET APRÈS #802 (2026-11-09, la suite)
 - 🧩 LE BLOC APP EN 9 SCRIPTS : UNE VERSION NE RETÉLÉCHARGE QUE CE QUI A CHANGÉ — ET SOUS WEBKIT, IL A FALLU LE WORKER (2026-11-09)
+- 🧪 LA CI NE PARLE PLUS AU PROJET DE PRODUCTION : UN PROJET SUPABASE VIDE POUR LES SUITES LOCALES (2026-11-09)
 
 ---
 
@@ -2161,3 +2162,184 @@ cache réseau — le lot n'en dépend plus. La première installation sous WebKi
 pourrait confier ses scripts au worker plutôt que de le laisser les redemander. Et le résidu des
 minuteurs de démarrage : les réarmer sur `passio:app-ready` (app-04 ×2, app-08), après avoir vérifié
 que deux rejeux rapprochés d'une même file ne doublent rien.
+
+## 🧪 LA CI NE PARLE PLUS AU PROJET DE PRODUCTION : UN PROJET SUPABASE VIDE POUR LES SUITES LOCALES (2026-11-09)
+
+Demande du 2026-11-09 (« fais tout, optimise au maximum », usage massif sans dépenser) : les ~70 % de
+requêtes venus de la CI, notés en fin de la fiche 📦 du même jour. PR #799, puis sa PR de suite.
+
+**AVANT — mesuré, pas estimé.** Journaux de la passerelle (`query_logs`, source `edge_logs`, fenêtre du
+08/11 12:00 au 09/11 12:00 UTC, connecteur en lecture seule) : **54 563 requêtes reçues par la
+production, dont 37 159 (68,1 %) du réseau des runners GitHub** (`request.cf.asOrganization` :
+Microsoft Corporation, Microsoft Limited, Microsoft Deutschland MCIO), **34 318 d'un navigateur
+headless**. Treize runs « CI & Deploy » dans la fenêtre : **≈ 2 860 requêtes de production par run**.
+⚠️ **LE BON DISCRIMINANT EST L'ASN, PAS LE MOT « headless »** : le reste du trafic Azure vient AUSSI
+des suites — le projet WebKit (agent « iPhone OS 15_0 » de `devices['iPhone 13']`, 2 036 requêtes),
+les agents simulés de `telemetrie-trafic` — et de scripts Node (424). Compter les seuls « headless »
+sous-estimerait la CI.
+Par famille, côté Azure : `video_lives` GET **7 873** (l'annuaire des lives, au démarrage puis chaque
+minute) · `follows` HEAD **6 505** (compteurs d'abonnés, 2 493 identifiants inventés différents) ·
+`passions` GET 4 264 + OPTIONS 1 918 (les suites qui ne passent pas par le helper) · `profiles` GET
+2 633 · `conv_reads` 1 533, `conv_messages` 1 431, `conv_members` 655 · `user_state` GET 1 234,
+**POST 1 122 refusés en 401**, PATCH 589 (zéro ligne) · `profiles` POST 1 101 (401) et PATCH 487 ·
+**`telemetry_events` POST 1 005 ACCEPTÉS** (201 : de vraies lignes écrites dans la table de
+production) · `auth/v1/user` 549 (403, jetons fictifs) · 160 connexions temps réel.
+⚠️ **AUCUNE DE CES LECTURES NE SERVAIT UN TEST.** Une suite locale n'a pas de vraie session (pas de
+jeton, ou un jeton FICTIF que la production rejette) et ses identifiants (`u_lea`, `conv_lea`, des UUID
+inventés) n'existent pas en base : la production rendait des listes VIDES, en payant la sortie, la CPU
+et les connexions de ses vrais utilisateurs. Ce qui ne revenait pas vide — les douze profils de
+`discoverPeople`, un live en cours, un avatar réel — faisait dépendre le verdict du contenu de la base.
+
+**L'ATTRIBUTION, SUITE PAR SUITE.** `scripts/trafic-supabase-tests.cjs` se précharge dans les processus
+du lanceur (`NODE_OPTIONS=--require`, AUCUN fichier de test modifié : l'écoute passe par
+l'instrumentation que Playwright offre à ses propres enregistreurs) et journalise toute requête vers
+`*.supabase.co` avec son verdict : **arrivée au réseau** (`serverAddr()` non nul) ou servie / coupée
+par une route ; `scripts/trafic-supabase-rapport.mjs <dossier>` en fait le rapport. Course de référence
+sur `main` (projet `local`, interrompue près de la fin) : 13 549 requêtes Supabase émises par les
+navigateurs, **1 704 arrivées en production, par 104 suites**, dont 197 ÉCRITURES (`user_state`,
+`profiles`, `conv_reads`, `conversations`, `telemetry_events`). En tête : `creation-passion` (317),
+`audit-2026-11-perf-derives` (165), `audit-2026-11-fluidite` (107) — toutes trois par `bootOnboarded`,
+dont l'isolation ne couvrait que quatre tables, le référentiel et les médias.
+
+**LE REMÈDE : `projetSupabaseVide(page, opts)` (`tests/e2e/app-helper.js`).** Posé par
+`sansDonneesDistantes`, donc par `bootOnboarded`, et directement par les suites qui naviguent seules.
+Il répond À LA PLACE du projet ce qu'un projet VIDE répond à un visiteur SANS session :
+lecture → `[]` (HEAD : compte 0, `content-range` EXPOSÉ, sinon le SDK lit `count: null` en silence) ;
+`.single()` → 406 PGRST116 ; table sans lecture pour `anon` → 401 42501 ; insertion → refus de la RLS,
+sauf `client_errors` et `telemetry_events` sans compte (201, comme la production, rien d'écrit) ;
+mise à jour / suppression → zéro ligne ; RPC → `[]` pour les deux qu'`anon` exécute
+(`fil_compteurs`, `rechercher_passions`), 401 sinon ; jeton d'utilisateur → 401 PGRST301 sur le REST,
+403 `bad_jwt` sur `/auth/v1/user` ; inscription, lien magique, code, renvoi, OAuth → refusés : **aucun
+compte (MAU) ni courriel ne peut naître d'une suite locale** ; le référentiel `passions` → le MIROIR
+(`servirPassions`), jamais `[]`.
+⚠️ **AU NIVEAU DU CONTEXTE, ET C'EST TOUT LE CHOIX.** Playwright consulte les routes de PAGE avant
+celles du CONTEXTE, quel que soit l'ordre d'enregistrement : toute route posée par une suite garde la
+main, avant comme après `bootOnboarded`. Un filet de PAGE aurait écrasé les routes posées avant lui —
+le piège de `sansMiroirPassions`, rejoué à l'échelle du projet.
+⚠️ **`route.fallback()`, PLUS `route.continue()`**, dans les routes existantes : `continue` envoie au
+RÉSEAU en sautant le contexte — les écritures auraient filé en production sous le filet.
+⚠️ **LE PROJET `prod` EN EST EXEMPT** (`test.info().project.name`) : ses suites créent de vrais comptes
+et mesurent la vraie RLS (`irl-trust-safety-reel` passe par `sansDonneesDistantes` et a besoin de ses
+RPC réelles). `opts.sansIsolationDesDonnees` (faux serveurs, coupures maison) l'écarte aussi.
+⚠️ **LES PRIVILÈGES D'`anon` SONT UN RELEVÉ DATÉ, PAS UNE SOURCE** (`has_table_privilege`,
+`has_any_column_privilege`, `has_function_privilege`, `pg_policies`, canal ①, 2026-11-09) : 22 tables
+sans lecture, `events` et `reglages_distants` par colonne, insertion acceptée sur deux tables
+seulement. Une migration qui change un GRANT ne le met pas à jour ; une table absente du relevé est
+traitée comme la majorité (lisible sous RLS, donc vide).
+⚠️ **UN CHEMIN RÉEL SE DÉSIGNE, IL NE S'OUVRE PAS EN GROS** : `opts.cheminsReels` (RegExp) laisse au
+vrai projet les seules requêtes désignées. Un seul usage : `telemetrie-preauth` ①, dont le sujet est la
+policy RÉELLE d'insertion de `telemetry_events` (un ou deux lots par exécution). Toute suite qui s'en
+sert, ou qui passe `sansProjetVide`, figure au socle (`scripts/tests-isolation-socle.json`) avec sa raison.
+⚠️ **`events` EN LECTURE N'ATTEINT PAS LE PROJET VIDE** : la route de page des quatre tables du
+2026-09-02 la sert `[]` avant lui. Le verrou éprouve la règle « par colonne » sur `reglages_distants`.
+
+**LES 17 SUITES QUI NAVIGUAIENT SANS AUCUNE ISOLATION** (le vieil audit les exemptait : « ne touche pas
+l'application ») posent le projet vide — `smoke` (le référentiel chargé depuis la production à chaque
+cas), `access-gate`, `dist-build`, les quatre suites qui forçaient la télémétrie SANS route (leurs lots
+s'écrivaient en production), `captcha-turnstile`, `confirmation-email`… `gate-sans-app`, inscrit au socle
+avec « aucune donnée distante à isoler », lisait en production le fil, les rencontres, les profils, le
+référentiel et un avatar réel : il isole désormais ses données. `sw-page-revalidee` entre au socle (sa
+page de banc ne charge pas l'application, et une route désactiverait le cache HTTP qu'il mesure).
+⚠️ **LA SONDE, PAS LA RÈGLE STATIQUE, A TROUVÉ LES DERNIERS TROUS** : `captcha-turnstile` appelait le
+filet dans `ouvrirAuth`… et ses cas ⑪ ⑫ passaient par un second helper, `ouvrirAuthSansOverride`
+(douze lectures du référentiel parties en production pendant la course APRÈS) ; le cas ㉖ de
+`passions-plates` navigue lui-même, quand tout le reste du fichier passe par `bootOnboarded`. Une
+règle qui juge le FICHIER ne voit pas l'APPEL — « la portée est l'appel, pas le fichier » (fiche du
+2026-09-03), encore. Remède : un `beforeEach` au niveau du fichier pour le premier (il couvre tout
+chemin, présent et à venir), l'isolation avant le `goto` pour le second. **Repasser la sonde après
+tout lot qui ajoute une navigation** : c'est elle qui juge l'appel.
+
+**APRÈS, EN LOCAL — même poste, même suite, même sonde.** Course complète du projet `local` sur la
+branche de #799 (2 511 cas) : **24 798 requêtes Supabase émises par les navigateurs, 21 arrivées en
+production** — contre 1 704 — dont 12 de `captcha-turnstile` et 8 du cas ㉖ de `passions-plates`
+(deux chemins que le filet ne couvrait pas, corrigés dans la PR de suite), et la seule requête
+voulue, le contrat réel de `telemetrie-preauth`. S'y ajoutaient **12 WebSocket temps réel** ouverts en
+production par six suites `sansIsolationDesDonnees`, qui coupaient le HTTP mais pas le WebSocket
+(`page.route` ne le voit pas) — `bootOnboarded` avale désormais le canal pour elles aussi
+(`canalTempsReelAvale`, verrou ⑫). Après ces corrections, la sonde sur les suites concernées :
+**1 requête partie (la voulue), 0 WebSocket**. Soit, par course de la suite locale, **1 704 requêtes
+de production → 1**.
+⚠️ **11 CAS ROUGES DANS CETTE COURSE, TOUS DE CHARGE** (six workers sur un poste partagé avec deux autres
+sessions) : les six suites rejouées seules passent (59/59), et la CI de #799 — la référence — est
+verte sur les mêmes cas.
+⚠️ **UN ÉCHEC N'EST PAS UN DÉPART** : la première version de la sonde comptait comme parties les
+coupures SIMULÉES par `piece-jointe-depot-echec` (`route.abort("internetdisconnected")`). Seule une
+adresse de serveur prouve un départ ; le rapport range les échecs à part, par code.
+
+**APRÈS LA FUSION DE #799 — mêmes journaux, lus PAR RUNNER.** #799 fusionnée le 2026-11-09 à
+18:41 UTC. Premier relevé, 18:42 → 18:59 : un run complet de `main` (84c70d8b, vert, déploiement
+compris) et deux runs de PR partiels — tous avec le nouveau filet, puisqu'un run de PR teste le
+commit de FUSION avec `main`. **605 requêtes Azure en 17 minutes**, à comparer aux **≈ 2 860 PAR RUN**
+d'avant. Lu runner par runner (une adresse de runner = un job), le run de `main` pèse **≈ 370
+requêtes** : le job à comptes réels (≈ 216 — `authz-critical` sur la production, navigateur + Node
+service role, par construction), les gates `dist` (≈ 14, voulues), les six shards locaux (≈ 40 en
+tout : les WebSocket des suites `sansIsolationDesDonnees` et les deux trous de la PR de suite)… et
+**le job WebKit (≈ 100), qui démarrait l'application SANS isolation, avant comme après** : voir
+ci-dessous.
+**Relevé plus large, 18:42 → 20:05 : DIX runs « CI & Deploy » terminés** (trois sur `main`, sept de
+PR, tous avec le filet de #799) → **2 117 requêtes Azure, soit ≈ 212 PAR RUN contre ≈ 2 860 :
+−93 %**. Ce qui reste, sur les dix runs : le job WebKit 985 (≈ 98 par run), le référentiel 505 et
+les profils 317 (WebKit et gates `dist` pour l'essentiel), les scripts Node du job à comptes réels
+136, la messagerie 131, le temps réel 121 (≈ 12 par run, les WebSocket des suites
+`sansIsolationDesDonnees`), la télémétrie 81, `video_lives` 44 (contre 7 873 en 24 h avant).
+**Avec la PR de suite** (WebKit, WebSocket, deux trous) : ≈ 100 par run attendus, **≈ −96 %** — il ne
+restera que `authz-critical`, les gates `dist` et le contrat de télémétrie désigné.
+⚠️ **LA PART EN POURCENTAGE TROMPE SUR UNE COURTE FENÊTRE** : 45,9 % dans ce relevé (68,1 % avant),
+parce que le reste du trafic n'est pas constant (veilles, sessions qui testent en local sur d'anciennes
+branches). Le bon indicateur est **par run**, rapporté au nombre de runs de `gh run list`.
+⚠️ **WEBKIT : UNE PAGE QUE LE SERVICE WORKER CONTRÔLE ÉCHAPPE À TOUTES LES ROUTES.** La sonde sur le
+projet `webkit-iphone` (180 cas) : 86 requêtes parties en production depuis `first-run` (38),
+`conv-ouverture-fil` (28), `cadrage` (15) et `feed-premier-rendu` (5). Dans `cadrage`, le référentiel
+(premier chargement) est servi par le miroir… puis le fil, `fil_compteurs` et les profils partent au
+réseau : `sw.js` prend le contrôle dès la première visite (`skipWaiting` + `clients.claim()`), et sous
+WebKit une requête qui traverse un service worker — même un qui ne lui répond pas, comme `sw.js` pour
+une autre origine — n'est plus vue par `page.route` ni `context.route`. Pire pour `first-run` : à la
+seconde visite, le worker ressert le SDK depuis SON cache, la coupure de `couperReseauSupabase` ne joue
+plus, et un vrai client lit la production. Même cause que `pilotage-nuage` le 2026-11-04 (« un geste
+n'envoie rien ») — trouvée là par hasard, ici par la sonde. Remède (Playwright le documente) :
+`test.use({ serviceWorkers: serviceWorkersHorsWebkit })` (app-helper.js) — `block` sur WebKit,
+`allow` sur Chromium, où le worker reste éprouvé par les mêmes suites ; jamais dans
+`pwa-maj-pendant-appel` ni `sw-page-revalidee`, dont le VRAI worker est le sujet. Après : 180/180,
+**0 requête partie**. Banc unitaire ⑦ : toute suite du socle WebKit qui pose les routes d'isolation
+bloque le worker (réinjection faite sur `cadrage`).
+⚠️ **À REMESURER SUR 24 H PLEINES** après la fusion de la PR de suite, avec la même requête
+(`edge_logs`, `request.cf.asOrganization` préfixé « Microsoft », groupé par famille et par
+`request.headers.cf_connecting_ip`), et le nombre de runs « CI & Deploy » de la fenêtre.
+
+**LES SUITES À COMPTES RÉELS, AU STRICT NÉCESSAIRE.** Une seule vise encore la production :
+`authz-critical` (la barrière RLS de la production ; le reste du projet `prod` tourne sur le staging) —
+2 comptes par run, **12 créations et 12 connexions en 24 h** (`auth/v1/admin/users`, `auth/v1/verify`).
+Purge vérifiée en base le 2026-11-09 : **0 compte `@passio-e2e.test` restant** (14 comptes au total).
+⚠️ **LA PURGE N'EFFACE PAS UN MAU** : un compte connecté dans le mois compte, même supprimé ensuite —
+~12 MAU par jour à ce rythme, ~360 par mois. Deux comptes PERMANENTS réutilisés à chaque run (le job
+`prod` est déjà sérialisé) ramèneraient ce poste à 2 par mois — mais `authz-critical`, `compte-e2e.js`
+et `global-teardown.js` sont des chemins protégés : à faire sous contre-revue.
+
+**PIÈGES DU LOT.**
+⚠️ **NE JAMAIS MODIFIER UN FICHIER CHARGÉ PAR UNE COURSE PLAYWRIGHT EN COURS** : un worker relancé (après
+un échec) relit les modules — la course de référence a tourné deux minutes avec le nouveau helper avant
+restauration. Écrire à côté (fichier neuf, scratchpad), poser après.
+⚠️ **SOUS GIT BASH, `$PWD` VAUT `/c/Users/…`** : passé à `NODE_OPTIONS=--require`, Node pour Windows ne
+le trouve pas et `npx` meurt sur « Could not determine Node.js install directory » — sans lancer un
+seul test. Prendre `$(pwd -W)`.
+⚠️ **LE JOB « Audits statiques et bancs serveur » N'INSTALLE PAS `node_modules`** : un banc unitaire qui
+résout `@playwright/test` y tombe au chargement (premier passage CI de #799). On intercepte la DEMANDE
+(`Module._load`), on ne résout rien.
+⚠️ **`audit-2026-11-participants-compte` EST INSTABLE SUR `main`** (cas « c. » et « h6. » en flaky au
+run 42653481806) et a rougi le shard 1 des deux premiers passages de #799. Son faux serveur passe
+`sansIsolationDesDonnees` : le projet vide ne s'y pose pas, ce n'est pas lui. À traiter à part.
+⚠️ **CE QUI PARLE ENCORE AU VRAI PROJET, PAR CONSTRUCTION** : les gates `dist` (`release-integrity`,
+`passion-context`, au socle : l'artefact déployé et sa télémétrie réelle sont leur sujet),
+`authz-critical` (la barrière RLS de la production), le contrat de `telemetrie-preauth`, et les scripts
+Node des jobs (service role : purge, mesures). Le WebSocket temps réel des suites
+`sansIsolationDesDonnees` est avalé depuis la PR de suite, côté banc seulement — le code temps réel de
+l'application n'est pas touché (un autre lot y travaille).
+
+Verrous : `tests/e2e/isolation-projet-supabase.spec.js` (12 cas, par le VRAI SDK, « arrivée au réseau »
+jugée par `serverAddr()` ; ①, ⑤, ⑩ et ⑫ éprouvés par RÉINJECTION — sans le filet, ⑩ liste les
+requêtes parties en production, et ⑫ voit la production refuser la poignée de main) ;
+`tests/unit/isolation-projet-supabase.test.mjs` (matrice des réponses, exemption `prod`, toute suite
+LOCALE qui navigue pose le projet vide, chemins réels au socle seulement — il tourne sans
+`node_modules`, comme le job d'audits).
+Remesurer : la sonde sur `--project=local` (chemin Windows : `$(pwd -W)`), puis la requête
+`edge_logs` groupée par `request.cf.asOrganization` (préfixe « Microsoft »), par famille de chemin.

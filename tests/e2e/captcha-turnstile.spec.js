@@ -20,10 +20,18 @@ const { projetSupabaseVide } = require("./app-helper");
 const RACINE = path.resolve(__dirname, "..", "..");
 const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8");
 
-async function ouvrirAuth(page, { sitekey = "", fauxWidget = true, erreur = null } = {}) {
-  // Le projet Supabase VIDE (2026-11-09) : l'écran d'auth démarre l'application
-  // entière, dont les lectures partaient jusqu'ici à la production.
+// Le projet Supabase VIDE (2026-11-09) : l'écran d'auth démarre l'application
+// entière, dont les lectures partaient jusqu'ici à la production.
+// ⚠️ AU NIVEAU DU FICHIER, PAS DANS `ouvrirAuth` : la première pose ne couvrait
+// que ce helper, et les cas ⑪ ⑫ passent par `ouvrirAuthSansOverride` — la sonde
+// `scripts/trafic-supabase-tests.cjs` les a vus charger le référentiel des
+// passions depuis la production (douze requêtes par exécution). Un `beforeEach`
+// couvre tout chemin, présent et à venir.
+test.beforeEach(async ({ page }) => {
   await projetSupabaseVide(page);
+});
+
+async function ouvrirAuth(page, { sitekey = "", fauxWidget = true, erreur = null } = {}) {
   const demandesCloudflare = [];
   await page.route("https://challenges.cloudflare.com/**", (route) => { demandesCloudflare.push(route.request().url()); route.abort(); });
   await page.addInitScript(([k, t, sk, faux]) => {

@@ -3,7 +3,12 @@
 // Drapeau `first_run_experience_v1`. Couvre les 16 points de vérification du lot.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { armerPlafondPassions } = require("./app-helper");
+const { armerPlafondPassions, serviceWorkersHorsWebkit } = require("./app-helper");
+
+// WebKit : le service worker soustrait la page aux routes (voir app-helper.js) —
+// et, à la seconde visite, ressert le SDK depuis son cache : la coupure de
+// `couperReseauSupabase` ne jouait plus, un VRAI client lisait la production.
+test.use({ serviceWorkers: serviceWorkersHorsWebkit });
 // LANCEMENT GRATUIT (2026-11-01) : le plafond de passions est LEVÉ par défaut
 // (`PLAFOND_PASSIONS_EN_VIGUEUR`, app-06). Cette suite éprouve le plafond : elle
 // l'ARME donc elle-même, à chaque test. Le défaut levé a son propre verrou :

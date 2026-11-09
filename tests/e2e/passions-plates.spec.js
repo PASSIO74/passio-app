@@ -759,6 +759,11 @@ const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 
 test.describe("l'onboarding sous le lot", () => {
   test("㉖ la grille de 19 tuiles est remplacée par une recherche, et la copie le dit", async ({ page }) => {
+    // ⚠️ CE CAS NAVIGUE LUI-MÊME : l'isolation que le reste du fichier tient de
+    // `bootOnboarded` ne le couvrait pas. La sonde du 2026-11-09 l'a vu lire en
+    // production le fil, les rencontres, les profils, `fil_compteurs` et le
+    // référentiel. Posée AVANT le `goto`, comme toute route.
+    await sansDonneesDistantes(page);
     await page.addInitScript(([k, t]) => {
       sessionStorage.setItem(k, t);
       sessionStorage.setItem("passio_pwa_dismissed", "1");
