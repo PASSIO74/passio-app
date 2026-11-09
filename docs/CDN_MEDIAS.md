@@ -1,4 +1,53 @@
-# Cache CDN des médias — Edge Function Netlify sur `/media/*` (2026-09-11)
+# CDN des médias — en direct du CDN Supabase depuis le 2026-11-09
+
+## État actuel (2026-11-09)
+
+**Les médias sont servis EN DIRECT par le CDN de Supabase.** `PASSIO_CDN_BASE = ""`
+(js/app-08) : `cdnUrl()` rend l'URL publique Supabase telle quelle, et c'est elle qui est
+écrite en base. Le relais `/media/*` décrit plus bas (2026-09-11) n'est plus qu'un
+**renvoi** des URL déjà écrites ou gardées sur les appareils.
+
+**Pourquoi — mesuré le 2026-11-09 sur la production :**
+
+| Constat | Mesure |
+|---|---|
+| Le cache du relais ne servait **rien** | 9 requêtes identiques d'affilée sur `/media/content/…` : 9 `Cache-Status: "Netlify Edge"; fwd=miss` (ce document annonçait un `hit` dès la 2ᵉ) |
+| Chaque vue coûtait donc trois fois | une invocation d'Edge Function (1 M/mois gratuits), la bande passante Netlify (100 Go/mois, **ceux de l'application**) et la sortie Supabase |
+| Le navigateur ne gardait l'image qu'**une heure** | `Cache-Control: public,max-age=3600` (images) |
+| Les deux prémisses du relais étaient tombées | Supabase (Pro) répond `Cache-Control: public, max-age=31536000`, `CF-Cache-Status: HIT`, `x-smart-cdn: true` ; le forfait inclut 250 Go de sortie **et** 250 Go servis depuis son cache (relevé de la page Usage, 20/09) — contre « 5 Go » et « `no-cache` » le 11/09 |
+
+**Les pièces, aujourd'hui :**
+
+| Pièce | Rôle |
+|---|---|
+| `cdnUrl()` (app-08) | Point UNIQUE de tout envoi, identité tant que `PASSIO_CDN_BASE` est vide. Un futur CDN (Cloudflare R2 : sortie gratuite, mais un nom de domaine, ~10 €/an) n'y sera qu'une valeur à poser. |
+| `urlMediaDirecte()` (app-02) | Lit une ancienne URL du relais à sa SOURCE (seau `content` seulement ; une pièce jointe garde sa forme pour le résolveur signé). Appelée par `passioThumb`, `_reelVideoSrc`, les couvertures d'activité et de passion, les cartes ; `og:image` des aperçus est rendue sous la forme directe (`netlify/lib/apercu-coeur.js`). |
+| `passioThumb()` (app-02) | **Ne demande plus AUCUNE transformation d'image** : rend l'objet (sa légère, ou l'ancien tel quel). La transformation compte 100 images d'origine/mois en Pro et son URL est publique — un quota que n'importe qui pouvait épuiser. Elle peut être éteinte chez Supabase sans rien casser. |
+| `netlify/edge-functions/media.js` | `/media/content/<chemin>` → **301** vers `…/storage/v1/object/public/content/<chemin>` ; `?width=W&quality=75` (liste fermée) → 301 vers `…/storage/v1/render/image/public/…`. Aucune lecture d'origine, renvoi gardé un jour par le navigateur. Verrou : `tests/unit/media-edge.test.mjs`. |
+| Version légère à l'envoi | `supaUploadMedia(…, { legere: true })` pour les publications, et depuis le 2026-11-09 l'avatar et la photo de passion (352 px), la couverture, le fond de passion, la couverture d'activité et de bobine (720 px) : sans elle, `passioThumb` demandait une **transformation d'image**, plafonnée à 100 images d'origine par mois en Pro (19/100 avec dix comptes le 20/09 — un mur vers 50 profils avec photo). Verrou : `tests/e2e/capacite-images-legeres.spec.js`. |
+| `{ cache: "3600" }` | Un chemin RÉÉCRIT à l'identique (`upsert` d'une photo de passion, couverture d'une activité modifiée) se garde une heure ; tout le reste un an. Supabase purge son CDN à la réécriture, le navigateur non. |
+
+**Ce qui ne bouge pas :** le seau `attachments` reste privé et se lit par URL signée ;
+`sw.js` n'intercepte toujours ni `/media/*` ni une autre origine ; aucune ligne de la base
+n'a été réécrite (les URL du relais en base se lisent à la source ou suivent le renvoi).
+
+**Vérifier en production :**
+```
+curl -s -o /dev/null -D - https://passio-app.netlify.app/media/content/<chemin>
+# → HTTP/1.1 301, Location: https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/<chemin>
+curl -s -o /dev/null -D - https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/<chemin>
+# → Cache-Control: public, max-age=31536000 ; CF-Cache-Status: HIT à la 2ᵉ requête
+```
+
+**Le mur suivant, dit tel quel :** à ~2 Mo d'images par session (hypothèse, à mesurer),
+les 250 Go de sortie en cache de Supabase couvrent de l'ordre de 1 400 utilisateurs actifs
+par jour. Au-delà, la voie la moins chère est Cloudflare R2 derrière un nom de domaine —
+grâce à `cdnUrl()`, un changement de configuration. Fiche du lot :
+`docs/journal/capacite-perf-realtime.md` (2026-11-09).
+
+---
+
+## Historique — le relais Netlify du 2026-09-11 (n'est plus en service)
 
 **Le problème.** Le forfait Supabase gratuit donne **5 Go de sortie par mois**, et
 Supabase Storage répond `Cache-Control: no-cache` sur les objets publics (mesuré le

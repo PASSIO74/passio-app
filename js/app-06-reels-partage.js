@@ -1317,7 +1317,7 @@ function _myProfileEventsHTML() {
       if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍";
     } catch (x) {}
     var vignette = e.coverUrl
-      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(e.coverUrl) + '" alt="" '
+      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" '
         + 'style="width:100%;height:100%;object-fit:cover;display:block;" '
         + 'onerror="this.style.display=\'none\'"/>'
       : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
@@ -1481,7 +1481,9 @@ async function _syncProfilePhoto(field, folder, dataUrl) {
   try {
     if (typeof supaUploadMedia === "function" && typeof MY_UID !== "undefined" && MY_UID) {
       const key = field + "_" + MY_UID + "_" + Date.now();
-      const url = await supaUploadMedia(key, folder, dataUrl, "photo");
+      // Version légère (2026-11-09) : l'avatar et la couverture s'affichent sans
+      // transformation d'image — quota de 100 images d'origine/mois en Pro.
+      const url = await supaUploadMedia(key, folder, dataUrl, "photo", { legere: true });
       if (url && /^https?:\/\//.test(url)) {
         state.user.general[field] = url; // remplace le base64 par l'URL partageable
         saveState();
@@ -1689,7 +1691,9 @@ function changePassionPhoto(event, profileId) {
         // ⚠️ Signature `(postId, folder, base64, type)` — l'ancien appel
         // `(base64, folder, "photo")` visait une définition supprimée et
         // renvoyait la chaîne "photo" en guise d'URL (photoUrl corrompue).
-        const url = await supaUploadMedia(profileId, "passion_photos", base64, "photo");
+        // Légère (sans transformation d'image) et cache d'une heure : le chemin
+        // est RÉÉCRIT à chaque changement de photo (`upsert`, même clé).
+        const url = await supaUploadMedia(profileId, "passion_photos", base64, "photo", { legere: true, cache: "3600" });
         // On ne stocke QUE une vraie URL http : le fallback base64 ne doit pas
         // partir dans user_state (payload ~1 Mo max, et _syncableState ne
         // strippe que prof.photo, pas photoUrl).
@@ -1726,7 +1730,7 @@ function changePassionCoverPhoto(event, profileId) {
       _reopenEditPassionAfterPhoto();
       if (typeof supaUploadMedia === "function" && window._supaReal) {
         try {
-          const url = await supaUploadMedia(profileId + "_cover", "passion_covers", base64, "photo");
+          const url = await supaUploadMedia(profileId + "_cover", "passion_covers", base64, "photo", { legere: true, cache: "3600" });
           if (url && url.indexOf("http") === 0) { prof.coverUrl = url; saveState(); }
         } catch(_e) {}
       }
@@ -3235,7 +3239,7 @@ function renderProfilesScreen() {
         : "background:" + _couleurSure(p.color) + ";";
       var avatarContent = _pPhoto ? "" : escapeHtml(et.emoji);
       var _pCover = p.coverUrl || p.coverPhoto || null;
-      var _pCoverSure = _pCover ? _cssUrl(_pCover) : null;
+      var _pCoverSure = _pCover ? _cssUrl(urlMediaDirecte(_pCover)) : null;
       var coverStyle = _pCoverSure
         ? "background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url('" + _pCoverSure + "') center/cover;"
         : "";
@@ -3297,7 +3301,7 @@ function renderProfilesScreen() {
       // Photo de fond du profil passion (facultative) : voile sombre par-dessus
       // pour que le nom et la bio restent lisibles.
       const _pCover = p.coverUrl || p.coverPhoto || null;
-      const _pCoverSure = _pCover ? _cssUrl(_pCover) : null;
+      const _pCoverSure = _pCover ? _cssUrl(urlMediaDirecte(_pCover)) : null;
       const coverStyle = _pCoverSure
         ? `background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url('${_pCoverSure}') center/cover;`
         : "";

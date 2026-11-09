@@ -1,12 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// CACHE CDN DES MÉDIAS (2026-09-11) — les URLs passent par /media/* (Netlify Edge)
+// CDN DES MÉDIAS — du relais /media/* (2026-09-11) au CDN Supabase en direct (2026-11-09)
 //
-// Ce que ces cas verrouillent : ① `cdnUrl` réécrit une URL publique Supabase
-// vers le CDN et laisse TOUT le reste intact (data:, externes) ; ② `passioThumb`
-// sait demander une miniature à une URL CDN (sinon la miniature repartirait vers
-// Supabase en direct, hors cache, et tout le gain disparaîtrait en silence) ;
+// Ce que ces cas verrouillent : ① `cdnUrl` reste le point unique de tout envoi —
+// identité depuis le 2026-11-09 (`PASSIO_CDN_BASE = ""`), réécriture vers la base
+// si on en pose une — et laisse TOUT le reste intact (data:, externes) ;
+// ② `passioThumb` demande sa miniature au bon endroit dans les deux états ;
 // ③ `_cheminsMediaPost` retrouve le chemin Storage sous les DEUX formes, sinon
-// chaque média publié via le CDN resterait orphelin à la suppression.
+// chaque média publié via le relais resterait orphelin à la suppression ;
+// ④ une URL du relais déjà en base se lit à la SOURCE (`urlMediaDirecte`) : son
+// cache ne servait rien (neuf `fwd=miss` d'affilée, mesuré le 2026-11-09) et
+// chaque vue coûtait la bande passante de Netlify ET la sortie de Supabase.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
@@ -37,27 +40,30 @@ test("① cdnUrl : une URL publique Supabase part vers le CDN, le reste ne bouge
   expect(r.nul).toBeNull();
 });
 
-test("② passioThumb : une URL CDN reçoit sa largeur, une URL Supabase garde la transformation", async ({ page }) => {
+test("② passioThumb ne demande AUCUNE transformation d'image : l'objet lui-même, au CDN Supabase", async ({ page }) => {
+  // Depuis le 2026-11-09 : la transformation compte 100 images d'origine par mois
+  // en Pro, et son URL est publique — n'importe qui pouvait épuiser le quota et
+  // éteindre les vignettes de tous (relevé par `passio-red-team`). Toute image
+  // envoyée a sa version légère ; une ancienne est servie telle quelle.
   await sansDonneesDistantes(page);
   await bootOnboarded(page);
   const r = await page.evaluate((supa) => ({
-    viaCdn: passioThumb(cdnUrl(supa), 700),
-    viaCdnDejaParam: passioThumb(cdnUrl(supa) + "?width=100&quality=50", 700),
     direct: passioThumb(supa, 700),
+    legere: passioThumb(supa + ".v720.webp", 192),
+    relais: passioThumb("https://passio-app.netlify.app/media/content/photos/u1/x.jpg", 352),
     externe: passioThumb("https://exemple.org/photo.jpg", 700),
+    data: passioThumb("data:image/png;base64,AAAA", 700),
+    avatar: avatarBg({ photoUrl: supa, color: "#7c3aed" }, 192),
   }), SUPA);
-  const base = await page.evaluate(() => window.PASSIO_CDN_BASE);
-  if (base) {
-    expect(r.viaCdn).toBe(base + "/content/photos/u1/x.jpg?width=700&quality=75");
-    // Une largeur déjà posée est REMPLACÉE, jamais empilée (deux `?` = URL invalide).
-    expect(r.viaCdnDejaParam).toBe(base + "/content/photos/u1/x.jpg?width=700&quality=75");
-  } else {
-    // Kill switch : cdnUrl est l'identité, la miniature suit le chemin Supabase.
-    expect(r.viaCdn).toContain("/storage/v1/render/image/public/");
-  }
-  expect(r.direct).toContain("/storage/v1/render/image/public/");
-  expect(r.direct).not.toContain("passio-app.netlify.app");
+  expect(r.direct).toBe(SUPA);
+  expect(r.legere).toBe(SUPA + ".v720.webp");
+  expect(r.relais).toBe(SUPA);
   expect(r.externe).toBe("https://exemple.org/photo.jpg");
+  expect(r.data).toBe("data:image/png;base64,AAAA");
+  for (const [cle, v] of Object.entries(r)) {
+    expect(v, cle).not.toContain("render/image");
+    expect(v, cle).not.toContain("width=");
+  }
 });
 
 test("③ _cheminsMediaPost : le chemin Storage est retrouvé sous les deux formes d URL", async ({ page }) => {
@@ -70,4 +76,33 @@ test("③ _cheminsMediaPost : le chemin Storage est retrouvé sous les deux form
     audio: null,
   }), SUPA);
   expect(r).toEqual(["photos/u1/x.jpg", "videos/u1/v.mp4"]);
+});
+
+test("④ urlMediaDirecte : une URL du relais se lit au CDN Supabase, le seau privé et le reste ne bougent pas", async ({ page }) => {
+  await sansDonneesDistantes(page);
+  await bootOnboarded(page);
+  const RELAIS = "https://passio-app.netlify.app/media/";
+  const r = await page.evaluate((relais) => ({
+    objet: urlMediaDirecte(relais + "content/photos/u1/x.jpg"),
+    avecParametres: urlMediaDirecte(relais + "content/photos/u1/x.jpg?width=700&quality=75#f"),
+    prive: urlMediaDirecte(relais + "attachments/attachments/c1/f.jpg"),
+    supabase: urlMediaDirecte("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/a.jpg"),
+    autreHote: urlMediaDirecte("https://evil.example/media/content/a.jpg"),
+    nul: urlMediaDirecte(null),
+    vignetteRelais: passioThumb(relais + "content/photos/u1/x.jpg", 352),
+    vignetteLegereRelais: passioThumb(relais + "content/photos/u1/x.jpg.v720.webp", 352),
+  }), RELAIS);
+  const DIRECT = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/u1/x.jpg";
+  expect(r.objet).toBe(DIRECT);
+  // Les paramètres du relais tombent : la miniature se redemande par `passioThumb`.
+  expect(r.avecParametres).toBe(DIRECT);
+  // Une pièce jointe (seau privé) garde sa forme : seul le résolveur signé la lit.
+  expect(r.prive).toBe(RELAIS + "attachments/attachments/c1/f.jpg");
+  expect(r.supabase).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/a.jpg");
+  expect(r.autreHote).toBe("https://evil.example/media/content/a.jpg");
+  expect(r.nul).toBeNull();
+  // La vignette d'une ancienne URL part en direct vers l'OBJET (aucune
+  // transformation, voir ②) — jamais vers le relais.
+  expect(r.vignetteRelais).toBe(DIRECT);
+  expect(r.vignetteLegereRelais).toBe(DIRECT + ".v720.webp");
 });

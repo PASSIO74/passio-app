@@ -12,8 +12,14 @@ const { bootOnboarded } = require("./app-helper");
 //   · l'envoi pose la grande PUIS la légère à `<chemin complet>.v720.<ext>`
 //     (le nom de la grande, extension comprise, reste dans celui de la légère),
 //     et rend l'URL de la légère ; si la légère échoue, l'URL de la grande ;
-//   · avatars, couvertures, stories, GIF, vidéos : aucun second objet — seule
-//     la publication demande la légère (`{ legere: true }`) ;
+//   · la légère se demande par l'APPELANT (`{ legere: true }`) : la publication,
+//     et depuis le 2026-11-09 l'avatar, la couverture, la photo et le fond de
+//     passion, la couverture d'activité et de bobine — sans légère, chacun
+//     coûtait une transformation d'image (100 images d'origine/mois en Pro) ;
+//     jamais la story, le GIF ni la vidéo ; un chemin réécrit (`upsert`) se
+//     garde une heure (`{ cache: "3600" }`), le reste un an ;
+//   · les URL rendues sont celles du CDN Supabase, plus celles du relais
+//     `/media/*` (2026-11-09) ; une ancienne URL du relais se lit à la source ;
 //   · `passioThumb` sert une légère telle quelle (aucune transformation), la
 //     grille du profil et l'album d'une activité ne demandent plus la grande,
 //     `imageGrande` retrouve l'original (et ne DEVINE jamais : une légère de
@@ -109,16 +115,18 @@ test("l'envoi pose la grande puis la légère, et rend l'URL de la légère ; sa
   expect(r.envois.map(e => e.chemin)).toEqual(["photos/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg", "photos/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg.v720.webp"]);
   expect(r.envois.map(e => e.type)).toEqual(["image/jpeg", "image/webp"]);
   expect(r.envois[1].octets).toBeLessThan(r.envois[0].octets);
-  expect(r.url).toBe("https://passio-app.netlify.app/media/content/photos/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg.v720.webp");
+  // L'URL du CDN Supabase, plus celle du relais `/media/*` (2026-11-09).
+  expect(r.url).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/812aee2b-214f-4949-931e-842599b6d68b/post_x.jpg.v720.webp");
+  expect(r.envois.map(e => e.cache)).toEqual(["31536000", "31536000"]);
   // Légère refusée : la grande vit seule, sans marqueur — le chemin d'avant.
   expect(r.envoisRefus.map(e => e.chemin)).toEqual(["photos/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg", "photos/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg.v720.webp"]);
-  expect(r.urlSansLegere).toBe("https://passio-app.netlify.app/media/content/photos/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg");
+  expect(r.urlSansLegere).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/812aee2b-214f-4949-931e-842599b6d68b/post_y.jpg");
   expect(r.mesures.map(m => m.meta.issue)).toEqual(["legere", "envoi_legere_refuse"]);
   expect(r.mesures[0].meta.grande_octets).toBeGreaterThan(r.mesures[0].meta.legere_octets);
   expect(Object.keys(r.mesures[0].meta).sort()).toEqual(["format", "grande_octets", "issue", "largeur", "legere_octets"]);
 });
 
-test("avatars, couvertures, stories, couvertures de bobine, GIF et vidéos ne reçoivent aucun second objet", async ({ page }) => {
+test("sans `legere`, aucun second objet ; un GIF ou un dossier hors liste n'en reçoit jamais", async ({ page }) => {
   await preparer(page);
   const r = await page.evaluate(async () => {
     const img = __image(1600, 1200, "jpeg");
@@ -127,13 +135,11 @@ test("avatars, couvertures, stories, couvertures de bobine, GIF et vidéos ne re
     await supaUploadMedia("ev_x", "events", img, "photo");
     await supaUploadMedia("post_g", "photos", "data:image/gif;base64,R0lGODlhAQABAAAAACw=", "image", { legere: true });
     // Une story photo va dans le MÊME dossier que les publications (app-08,
-    // supaPublishStory) : le dossier ne suffit pas, seule la publication demande la légère.
+    // supaPublishStory) : le dossier ne suffit pas, c'est l'appelant qui demande.
     await supaUploadMedia("story_x", "photos", img, "photo");
-    await supaUploadMedia("reelcover_x", "photos", img, "image");
-    // Le vrai appel de la story, mesuré à la source : sans `legere`.
-    const src = await (await fetch("js/app-08-ui-modals-tour.js")).text();
-    const story = src.slice(src.indexOf("async function supaPublishStory("), src.indexOf("async function supaPublishStory(") + 4000);
-    return { chemins: __envois.map(e => e.chemin), appelStory: (story.match(/supaUploadMedia\([^)]*\)/) || [])[0], mesures: __mesures.filter(m => m.nom === "image_legere").length };
+    // Un dossier hors de la liste ne reçoit jamais de légère, même demandée.
+    await supaUploadMedia("autre_x", "documents", img, "photo", { legere: true });
+    return { chemins: __envois.map(e => e.chemin), mesures: __mesures.filter(m => m.nom === "image_legere").length };
   });
   expect(r.chemins).toEqual([
     "avatars/812aee2b-214f-4949-931e-842599b6d68b/avatarPhoto_x.jpg",
@@ -141,10 +147,55 @@ test("avatars, couvertures, stories, couvertures de bobine, GIF et vidéos ne re
     "events/812aee2b-214f-4949-931e-842599b6d68b/ev_x.jpg",
     "photos/812aee2b-214f-4949-931e-842599b6d68b/post_g.gif",
     "photos/812aee2b-214f-4949-931e-842599b6d68b/story_x.jpg",
-    "photos/812aee2b-214f-4949-931e-842599b6d68b/reelcover_x.jpg",
+    "documents/812aee2b-214f-4949-931e-842599b6d68b/autre_x.jpg",
   ]);
-  expect(r.appelStory).toBe('supaUploadMedia(story.id, folder, story.media, mediaType || "photo")');
-  expect(r.mesures).toBe(0); // la mesure `image_legere` ne compte que des photos de publication
+  expect(r.mesures).toBe(0);
+});
+
+test("avatar et photo de passion : la légère est posée et rendue ; un chemin réécrit se garde une heure", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    const img = __image(1600, 1200, "jpeg");
+    const avatar = await supaUploadMedia("avatarPhoto_x", "avatars", img, "photo", { legere: true });
+    const envoisAvatar = __envois.slice(); __envois.length = 0;
+    const passion = await supaUploadMedia("prof_1", "passion_photos", img, "photo", { legere: true, cache: "3600" });
+    const envoisPassion = __envois.slice(); __envois.length = 0;
+    // Une durée qui n'est pas un nombre de secondes ne passe pas : un an, comme avant.
+    await supaUploadMedia("prof_2", "passion_covers", img, "photo", { legere: true, cache: "3600; evil" });
+    const envoisInvalide = __envois.slice();
+    const largeurs = __mesures.filter(m => m.nom === "image_legere").map(m => m.meta.largeur);
+    return { avatar, envoisAvatar, passion, envoisPassion, envoisInvalide, largeurs,
+      vignette: passioThumb(avatar, 192), estLegere: estImageLegere(avatar) };
+  });
+  // Un avatar (compte, passion) a une légère de 352 px, une couverture de 720 px.
+  expect(r.largeurs).toEqual([352, 352, 720]);
+  expect(r.envoisAvatar.map(e => e.chemin)).toEqual([
+    "avatars/812aee2b-214f-4949-931e-842599b6d68b/avatarPhoto_x.jpg",
+    "avatars/812aee2b-214f-4949-931e-842599b6d68b/avatarPhoto_x.jpg.v720.webp",
+  ]);
+  expect(r.avatar).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/avatars/812aee2b-214f-4949-931e-842599b6d68b/avatarPhoto_x.jpg.v720.webp");
+  // La vignette de l'avatar ne demande AUCUNE transformation d'image.
+  expect(r.estLegere).toBe(true);
+  expect(r.vignette).toBe(r.avatar);
+  expect(r.envoisAvatar.map(e => e.cache)).toEqual(["31536000", "31536000"]);
+  expect(r.passion).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/passion_photos/812aee2b-214f-4949-931e-842599b6d68b/prof_1.jpg.v720.webp");
+  expect(r.envoisPassion.map(e => e.cache)).toEqual(["3600", "3600"]);
+  expect(r.envoisInvalide.map(e => e.cache)).toEqual(["31536000", "31536000"]);
+});
+
+test("les vrais appels : avatars, couvertures, passions, activités et bobines demandent la légère, la story non", async () => {
+  const fs = require("fs"), path = require("path");
+  const lire = (f) => fs.readFileSync(path.join(__dirname, "..", "..", "js", f), "utf8");
+  const app06 = lire("app-06-reels-partage.js"), app07 = lire("app-07-ia-explore-irl.js");
+  const app08 = lire("app-08-ui-modals-tour.js"), uiV7 = lire("ui-v7-lot.js");
+  expect(app06).toContain('supaUploadMedia(key, folder, dataUrl, "photo", { legere: true })');
+  expect(app06).toContain('supaUploadMedia(profileId, "passion_photos", base64, "photo", { legere: true, cache: "3600" })');
+  expect(app06).toContain('supaUploadMedia(profileId + "_cover", "passion_covers", base64, "photo", { legere: true, cache: "3600" })');
+  expect(app07).toContain('supaUploadMedia(ev.id, "events", coverUrl, "photo", { legere: true, cache: "3600" })');
+  expect(uiV7).toContain('supaUploadMedia(cle, "photos", dataUrl, "image", { legere: true })');
+  const debut = app08.indexOf("async function supaPublishStory(");
+  const story = app08.slice(debut, debut + 4000);
+  expect((story.match(/supaUploadMedia\([^)]*\)/) || [])[0]).toBe('supaUploadMedia(story.id, folder, story.media, mediaType || "photo")');
 });
 
 test("une légère est servie telle quelle : aucune transformation, la grande se retrouve, les grilles ne demandent plus la grande", async ({ page }) => {
@@ -162,13 +213,15 @@ test("une légère est servie telle quelle : aucune transformation, la grande se
   });
   const ancienne = "https://passio-app.netlify.app/media/content/photos/u/p.jpg", premiereForme = "https://passio-app.netlify.app/media/content/photos/u/q.v720.webp";
   expect(r.estLegere).toEqual([true, false, true, true, true]);
-  expect(r.thumbLegere).toBe("https://passio-app.netlify.app/media/content/photos/u/p.jpg.v720.webp");
-  expect(r.thumbAncienne).toBe("https://passio-app.netlify.app/media/content/photos/u/p.jpg?width=700&quality=75");
+  // Une URL de l'ancien relais `/media/*` se lit à la source, le CDN Supabase (2026-11-09).
+  expect(r.thumbLegere).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/u/p.jpg.v720.webp");
+  // Une ancienne image sans légère est servie TELLE QUELLE : plus aucune transformation (quota, 2026-11-09).
+  expect(r.thumbAncienne).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/u/p.jpg");
   expect(r.grande).toBe("https://passio-app.netlify.app/media/content/photos/u/p.jpg");
   expect(r.grandePng).toBe("photos/u/p.png?x=1");
   expect(r.grandeAncienne).toBe(ancienne);
   expect(r.grandePremiereForme).toBe(premiereForme); // jamais une URL devinée
-  expect(r.src).toBe("https://passio-app.netlify.app/media/content/photos/u/p.jpg.v720.webp");
+  expect(r.src).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/u/p.jpg.v720.webp");
   // Mesuré à la SOURCE : la grille du profil et l'album d'une activité passent par passioThumb.
   const fs = require("fs"), path = require("path");
   const app06 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-06-reels-partage.js"), "utf8");

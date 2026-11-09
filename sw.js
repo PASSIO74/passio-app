@@ -265,6 +265,41 @@ self.addEventListener("notificationclick", e => {
   );
 });
 
+// ── Revalidation de la page (2026-11-09) ─────────────────────────────────────
+// Au-delà de cet âge, la copie gardée n'est plus revalidée : la page repart
+// entière. ⚠️ UN 304 N'APPORTE PAS LES EN-TÊTES DE SÉCURITÉ (mesuré sur Netlify :
+// ni CSP ni Permissions-Policy dans le 304) — une copie servie sur 304 garde ceux
+// de son propre téléchargement. Une CSP modifiée sans que la page change
+// s'applique donc au plus tard au bout de ce délai, jamais « jamais ».
+const PAGE_REVALIDATION_MAX_MS = 24 * 3600 * 1000;
+
+// La copie gardée de la page : celle de l'adresse, sinon celle pré-cachée à
+// l'installation. Ne rejette jamais (Safari, navigation privée : `caches.match`
+// peut rejeter) — rend null. Une copie qui ne serait pas la bonne ne coûte rien :
+// l'ETag est l'empreinte du CONTENU, Netlify ne répond 304 qu'à l'identique.
+function chercherCopiePage(cle) {
+  return caches.match(cle)
+    .then(c => c || caches.match("./index.html"))
+    .then(c => c || null)
+    .catch(() => null);
+}
+
+// L'ETag à renvoyer en `If-None-Match`, ou null pour tout retélécharger : pas de
+// copie, pas d'ETag, pas de date lisible, copie trop ancienne. ⚠️ L'âge se lit en
+// VALEUR ABSOLUE : la date est celle du serveur, l'horloge celle du téléphone, et
+// un téléphone en retard de quelques secondes rendait un âge négatif — refuser
+// le négatif l'aurait privé de toute revalidation, pour toujours.
+function etagRevalidable(copie) {
+  try {
+    if (!copie || copie.status !== 200) return null;
+    const etag = copie.headers.get("ETag");
+    const date = Date.parse(copie.headers.get("Date") || "");
+    if (!etag || !Number.isFinite(date)) return null;
+    if (Math.abs(Date.now() - date) > PAGE_REVALIDATION_MAX_MS) return null;
+    return etag;
+  } catch (e) { return null; }
+}
+
 // Fetch : network-first pour index.html, cache-first pour le reste
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
@@ -301,31 +336,57 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  // index.html → toujours réseau d'abord pour avoir la dernière version
+  // index.html → toujours réseau d'abord pour avoir la dernière version — mais
+  // une requête CONDITIONNELLE (2026-11-09, capacité sans investir).
+  //
+  // ⚠️ LA PAGE ENTIÈRE (106 Ko compressés) PARTAIT À CHAQUE OUVERTURE. Netlify la
+  // sert en `no-store` (`_headers`) et ce worker la redemandait en `no-store` : jamais
+  // de 304, alors que Netlify en rend un sur `If-None-Match` (mesuré le 2026-11-09).
+  // À 25 000 appareils ouvrant l'app trois fois par jour, ~240 Go/mois — plus que
+  // les 100 Go du forfait Netlify à eux seuls, pour une page qui ne change qu'au
+  // déploiement. On renvoie donc l'ETag de la copie gardée ici : un 304 (quelques
+  // centaines d'octets) fait servir cette copie, un 200 la remplace.
+  // Le cache HTTP du navigateur reste en `no-store` : rien n'y est écrit, ni la page
+  // ni une adresse portant des jetons de connexion (audit 2026-11-06).
+  // `/`, `/index.html` et `/?…` portent le MÊME ETag (mesuré) : la copie pré-cachée
+  // à l'installation (`./index.html`) vaut pour la première navigation qui suit un
+  // déploiement — sans elle, la page partait deux fois par mise en ligne.
   if (
     url.pathname === "/" ||
     url.pathname.endsWith("/") ||
     url.pathname.endsWith("index.html")
   ) {
+    // La clé de cache est l'adresse SANS requête ni fragment (audit 2026-11-06) :
+    // une navigation depuis un lien de connexion porte des jetons dans son URL, et
+    // `Cache.put` conserverait la requête telle quelle sur l'appareil.
+    const cle = new Request(url.origin + url.pathname);
     e.respondWith(
-      fetch(e.request, { cache: "no-store" })
-        .then(res => {
-          // Cloner AVANT que le body soit lu (le clone est asynchrone via
-          // caches.open ; res part vers le navigateur en parallèle).
-          if (res && res.ok) {
-            const copy = res.clone();
-            // La clé de cache est l'adresse SANS requête ni fragment (audit 2026-11-06) :
-            // une navigation depuis un lien de connexion porte des jetons dans son URL, et
-            // `Cache.put` conserverait la requête telle quelle sur l'appareil.
-            caches.open(CACHE).then(c => c.put(new Request(url.origin + url.pathname), copy)).catch(() => {});
-          }
-          return res;
+      chercherCopiePage(cle)
+        .then(copie => {
+          const etag = etagRevalidable(copie);
+          // `redirect: "manual"` comme la navigation elle-même : une réponse
+          // REDIRIGÉE rendue à une navigation est refusée par le navigateur.
+          const requete = etag
+            ? new Request(e.request.url, { headers: { "If-None-Match": etag }, cache: "no-store", credentials: "same-origin", redirect: "manual" })
+            : e.request;
+          return fetch(requete, { cache: "no-store" }).then(res => {
+            if (res && res.status === 304 && copie) return copie;
+            // Cloner AVANT que le body soit lu (le clone est asynchrone via
+            // caches.open ; res part vers le navigateur en parallèle).
+            if (res && res.ok) {
+              const copy = res.clone();
+              caches.open(CACHE).then(c => c.put(cle, copy)).catch(() => {});
+            }
+            return res;
+          });
         })
         // ⚠️ respondWith NE DOIT JAMAIS résoudre sur undefined/null : Safari
         // affiche « Returned response is null » et refuse la page. On garantit
         // donc TOUJOURS une Response réelle en dernier recours.
+        // Hors ligne : la copie la plus récente d'abord (celle de l'adresse, gardée
+        // au dernier 200), puis celle de l'installation.
         .catch(() =>
-          caches.match("./index.html")
+          chercherCopiePage(cle)
             .then(cached => cached || caches.match(e.request, { ignoreSearch: true }))
             .then(cached => cached || new Response(
               "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>" +

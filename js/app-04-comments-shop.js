@@ -4637,7 +4637,7 @@ function _renderVisitedEvents() {
     var emoji = e.emoji || "📍";
     try { if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍"; } catch (x) {}
     var vignette = e.coverUrl
-      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(e.coverUrl) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\'"/>'
+      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\'"/>'
       : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
     var quand = "";
     try { quand = new Date(e.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); } catch (x) {}

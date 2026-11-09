@@ -89,6 +89,7 @@ const SUITES_WEBKIT = [
   "pilotage-nuage.spec.js",      // le centre de pilotage, ses gestes d'un toucher
   "pwa-maj-pendant-appel.spec.js", // le vrai worker : une mise à jour ne coupe ni un appel, ni un Live, ni une saisie
   "historique-retour-en-vol.spec.js", // rouvrir une modale pendant le retour de fermeture ne sort pas de l'application
+  "sw-page-revalidee.spec.js",   // le vrai worker : la page se revalide en 304 (Safari, PWA iPhone)
 ];
 const PROJET_WEBKIT = {
   name: "webkit-iphone",

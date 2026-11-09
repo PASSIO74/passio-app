@@ -28,6 +28,7 @@
 - 🪞 RV-39 — MES PUBLICATIONS ONT DEUX COPIES : CE QUE LE SERVEUR REND S'ÉCRIT SUR CELLE QUE LA PASTILLE LIT (2026-11-05)
 - 🚫 UN COMPTE BLOQUÉ NE COMPTE PAS NON PLUS SUR LA PASTILLE D'UN COMMENTAIRE (2026-11-06)
 - 🗑️ analytics_events : CE QUI NE SERT QU'UNE HEURE NE VIT PLUS 13 MOIS — ET LE PREMIER POSTE ÉTAIT LA VEILLE, PAS LE PLAFOND (2026-11-07)
+- 📦 BANDE PASSANTE ET QUOTAS SANS INVESTIR : LA PAGE EN 304, LES MÉDIAS EN DIRECT, LES MINIATURES SANS TRANSFORMATION, LA LISTE DES PASSIONS GARDÉE (2026-11-09)
 
 ---
 
@@ -1728,3 +1729,120 @@ Le verrou unitaire passe aussi sur les arbres fusionnés avec #749 et avec #753.
 - ③ ~~Les commentaires « purgée à 13 mois »~~ : `_shared/plafond.js` et `_shared/appels.js` corrigés à la fermeture (#782), le second après la fusion de #749, qui réécrivait sa ligne ; § 3.7 et § 3.8 de `docs/AUTONOMIE_EXPLOITATION.md` aussi.
 - ④ `screen_view` : décision produit.
 - ⑤ `cron.job_run_details` : 13 Mo, jamais purgée (vue par la revue), § 8 — hors de cette migration.
+
+## 📦 BANDE PASSANTE ET QUOTAS SANS INVESTIR : LA PAGE EN 304, LES MÉDIAS EN DIRECT, LES MINIATURES SANS TRANSFORMATION, LA LISTE DES PASSIONS GARDÉE (2026-11-09)
+
+Demande de Benjamin : « que peut-on faire maintenant pour préparer Passio à une utilisation massive, sans
+injecter d'argent ? », puis « fais tout, prends la main ». Point de départ : `9c8eb416` (#794). Mesuré
+ce jour-là sur la production : 14 comptes, 1 connecté sur 7 jours — la base, le temps réel et la
+télémétrie étaient déjà durcis (lots de septembre et d'octobre) ; **les murs gratuits qui restaient
+étaient ceux des images et de la bande passante, et le pilotage ne les voyait pas.**
+
+**Les mesures (production, 2026-11-09).**
+- `index.html` : 106 Ko compressés, **retéléchargé ENTIER à chaque ouverture** : `_headers` le sert en
+  `no-store` et `sw.js` le redemandait en `cache: "no-store"` — jamais de 304, alors que Netlify en rend
+  un sur `If-None-Match` (essayé). `/`, `/index.html` et `/?…` portent le MÊME ETag.
+  À 25 000 appareils × 3 ouvertures/jour : ~240 Go/mois, plus que les 100 Go du forfait Netlify.
+- `/media/*` : **neuf requêtes identiques d'affilée, neuf `fwd=miss`**. Le cache du relais ne servait
+  rien : chaque vue = une invocation + la bande passante Netlify + la sortie Supabase, et 1 h de cache
+  navigateur. Supabase (Pro) sert le même objet avec `max-age=31536000`, `CF-Cache-Status: HIT`,
+  `x-smart-cdn: true`. Les prémisses du relais (« 5 Go », « `no-cache` », 11/09) étaient tombées.
+- Transformations d'image : 6 avatars + 5 couvertures en base, **aucun en version légère** — chacun
+  passe par `render/image`, plafonné à 100 images d'origine/mois en Pro (19/100 le 20/09 avec dix
+  comptes). Un mur vers ~50 profils avec photo, spend cap actif, et aucune jauge ne le suivait.
+- `chargerReferentielPassions` : **6 requêtes et 36 Ko à chaque démarrage**, visiteurs compris
+  (3 074 223 appels cumulés, 3ᵉ requête de la base) pour 5 006 identifiants dont UN créé en 30 jours.
+- Jauge « bande passante » du pilotage : appareils × 40 versions × 0,75 Mo — ni la page à chaque
+  ouverture, ni un seul média. Avec ~2 Mo d'images par session (hypothèse), le vrai mur Netlify tombait
+  vers 500 actifs/jour quand la jauge l'annonçait vers 3 400.
+- Qualité WebP de la version légère : cinq photos de production ré-encodées à 720 px (sharp, libwebp —
+  l'encodeur du canvas) : 0,80 → 0,75 = −15 % ; 0,72 = −17 % ; 0,70 = −19 % : le gain plafonne.
+
+**Ce qui est livré.**
+
+| Pièce | Fichier | Verrou |
+|---|---|---|
+| Page revalidée en 304 : l'ETag de la copie gardée (`/`, sinon celle pré-cachée à l'installation) part en `If-None-Match` ; 304 → la copie, 200 → gardée | `sw.js` (`chercherCopiePage`, `etagRevalidable`) | `tests/e2e/sw-page-revalidee.spec.js` (5, vrai worker, serveur de banc qui compte ; rouge sur l'ancien `sw.js`) |
+| Médias en direct du CDN Supabase (`PASSIO_CDN_BASE = ""`), anciennes URL lues à la source (`urlMediaDirecte`) | app-08, app-02 | `tests/e2e/cdn-medias.spec.js` ④ |
+| `/media/*` devient un renvoi 301 (aucune lecture d'origine, liste fermée des largeurs gardée) | `netlify/edge-functions/media.js` | `tests/unit/media-edge.test.mjs` (10) |
+| Version légère pour avatars (352 px), couvertures, photos (352 px) et fonds de passion, couvertures d'activité et de bobine ; `{ cache: "3600" }` pour les chemins réécrits | app-06, app-07, app-08, ui-v7-lot.js | `tests/e2e/capacite-images-legeres.spec.js` (vrais appels mesurés à la source) |
+| **Plus AUCUNE transformation d'image** : `passioThumb` rend l'objet (sa légère, ou l'ancien tel quel) | app-02 | `cdn-medias` ②, `avatars-et-ia-referentiel` ① |
+| Anciennes URL du relais lues à la source aussi hors `passioThumb` (vidéos de bobines, couvertures d'activité et de passion, cartes) ; `og:image` des aperçus en direct | app-04, app-05, app-06, app-07, ui-v4a2-cartes.js, `netlify/lib/apercu-coeur.js` | `tests/unit/apercu-liens.test.mjs` ⑤ |
+| Qualité WebP 0,80 → 0,75 | app-08 | — (mesure ci-dessus) |
+| Liste blanche des passions gardée 24 h (IndexedDB), complément en UNE requête : créées depuis (ajoutées), archivées (retirées) ; rejoué après coupure ; lecture IndexedDB bornée à 3 s | app-02, `js/idb-store.js` | `tests/e2e/capacite-referentiel-garde.spec.js` (9 ; ①②③ rouges sur l'ancien chargeur) |
+| Jauge : une page par jour et par appareil en plus des versions ; les médias n'y comptent plus, à raison | `supabase/functions/_shared/pilotage.js` | `tests/unit/croissance.test.mjs` ⑤ |
+| Les trois entrées du TURN public mort retirées des serveurs ICE des appels | app-05 (`CALL_ICE_SERVERS`) | — (mesure DNS + banc ICE, ci-dessous) |
+
+**Les pièges, chacun payé ce jour-là.**
+- ⚠️ **UN 304 N'APPORTE PAS LES EN-TÊTES DE SÉCURITÉ.** Celui de Netlify ne porte ni CSP ni
+  Permissions-Policy : une copie servie sur 304 garde ceux de SON téléchargement. Une CSP modifiée sans
+  que la page change ne s'appliquerait jamais — d'où la borne : une copie de plus de 24 h repart entière
+  (`PAGE_REVALIDATION_MAX_MS`). L'âge se lit en VALEUR ABSOLUE : date du serveur contre horloge du
+  téléphone, un téléphone en retard rendait un âge négatif (cas ⑤ du banc).
+- ⚠️ **LA REQUÊTE CONDITIONNELLE GARDE `redirect: "manual"`** : une réponse redirigée rendue à une
+  navigation est refusée par le navigateur. Et le cache HTTP reste en `no-store` : rien n'y est écrit, ni
+  la page, ni une adresse portant des jetons de connexion (audit du 2026-11-06).
+- ⚠️ **HORS LIGNE, LA COPIE LA PLUS RÉCENTE D'ABORD.** Le repli servait `./index.html` (copie de
+  l'installation) avant celle de l'adresse ; le banc ③ l'a montré en servant une page plus ancienne.
+- ⚠️ **UN CONTRAT DE SOURCE COMPTAIT UN SEUL `_referentielComplet = true`** (`reprise-lectures-boot`
+  ⑫). La liste gardée en ajoute un second, légitime parce qu'elle n'a qu'UNE porte d'écriture : la
+  sortie propre de la pagination. Le contrat compte désormais deux déclarations ET une seule porte.
+- ⚠️ **LA LISTE GARDÉE N'EXISTE QU'EN ARTEFACT** (même règle que le référentiel d'affichage) : sans
+  `PASSIO_RELEASE`, ni lecture ni écriture — les 897 suites locales mesurent le comportement d'avant,
+  et le banc pose la release lui-même.
+- ⚠️ **UN CHEMIN RÉÉCRIT NE SE GARDE PAS UN AN.** Avec le relais, toute image se gardait une heure ; en
+  direct, l'objet porte le `cacheControl` de son envoi (un an) : une photo de passion changée resterait
+  l'ancienne dans le navigateur. D'où `{ cache: "3600" }` sur les trois envois à clé fixe.
+- Instabilité PRÉEXISTANTE vue en route, pas causée par ce lot (mesuré : 1 échec sur 136 sur le code
+  d'origine) : `capacite-sans-investir.spec.js` ⑤ et ⑤ bis, quand le service worker prend la page avant
+  `PassioPassions.charger()` — ses requêtes échappent alors à `page.route`.
+- ⚠️ **LA LISTE FERMÉE DES LARGEURS NE PROTÉGEAIT PAS LE QUOTA** (`passio-red-team`) : l'URL
+  `render/image` de Supabase est publique ; ~80 images déposées puis demandées en miniature éteignaient
+  les vignettes de tous jusqu'au cycle suivant. Le remède n'est pas une garde de plus, c'est de ne plus
+  DÉPENDRE du quota : `passioThumb` ne demande plus aucune transformation.
+- ⚠️ **SUPABASE-JS NE REJETTE PAS SUR UNE COUPURE, IL REND `{ error }`** (`audit-passio`) : le
+  complément revenait sur un `return` muet, la session restait sans les passions du jour. Il s'inscrit
+  désormais à la reprise (`passions_complement`), comme la pagination.
+- ⚠️ **RETIRER UNE PASSION ARCHIVÉE N'EST PAS LA FAUTE DU 2026-08-31** : celle-là prenait une réponse
+  PARTIELLE pour un retrait ; le complément rend chaque ligne AVEC son statut. Sans ce retrait, la liste
+  gardée aurait prolongé jusqu'à 24 h la publication dans une passion archivée — le serveur, lui, ne
+  la refuse pas (clé étrangère seule, aucun déclencheur : vérifié en base).
+
+**Ce qui reste — gestes humains, gratuits, hors de portée du code.**
+- Vérifier sur developers.giphy.com que la clé de `js/emoji-misc.js` est en « Production » : une clé
+  Beta est plafonnée (de l'ordre de 100 appels/heure) **pour toute l'application**, et la recherche
+  retombe alors en silence sur les 26 GIF locaux.
+- **Un TURN pour les appels.** Le relais public `openrelay.metered.ca` est MORT : il résout vers
+  192.0.2.1 et 100::1 (adresses réservées, non routables — mesuré le 09/11 ; il résolvait encore le
+  10/09), et un banc Chromium n'en obtient aucun candidat `relay` quand le STUN de Google rend ses
+  `srflx`. Ses trois entrées sont retirées d'`CALL_ICE_SERVERS` (app-05) : elles ne relayaient plus
+  rien. Un appel entre deux réseaux à NAT strict (CGNAT 4G, entreprise) échoue donc aujourd'hui. Le
+  remède demande un compte (offre gratuite chez Metered ou Cloudflare) dont on colle les identifiants
+  dans `PASSIO_CALL_TURN`.
+- Supabase › Auth › Rate Limits : relever la limite d'inscriptions par IP (une soirée IRL, c'est tout le
+  monde sur le même Wi-Fi ; Turnstile protège déjà) ; passer la connexion d'Auth en pourcentage
+  (avis du linter, utile seulement le jour d'un changement de calcul).
+- Supabase › Storage › Settings : **éteindre la transformation d'image**. PASSIO n'en demande plus
+  aucune ; l'URL `render/image` reste publique tant qu'elle est allumée.
+
+**Ce qui reste — serveur, relevé par `passio-red-team` (antérieur à ce lot, dit ici pour être suivi).**
+- Un déclencheur `BEFORE INSERT OR UPDATE OF passion_id` sur `posts` qui refuse une passion non
+  active : aujourd'hui seule la clé étrangère contrôle `passion_id` (migration, contre-revue).
+- Un média masqué par la modération reste servi (l'objet n'est pas retiré du seau) : le retirer au
+  masquage (`cheminsImageStorage`), ou le déplacer vers un seau privé.
+- La pagination de la liste blanche (`range` sans curseur) peut sauter une passion si une autre est
+  archivée PENDANT la lecture (~1 s) ; la liste gardée le retiendrait 24 h. Un `order by` ne suffit pas
+  (le décalage reste) : une pagination par curseur (`id > dernier`) le réglerait.
+- Une couverture d'activité envoyée AVANT ce lot (métadonnée d'un an) puis réécrite au même chemin peut
+  rester l'ancienne dans un navigateur qui l'a affichée après ce déploiement (une seule en base).
+
+**Ce qui reste — code, pour un lot suivant.**
+- `postgres_changes` : **60 % du temps de calcul cumulé de la base** (`realtime.list_changes`, 7,5 M
+  d'appels) avec un seul compte actif ; neuf tables publiées dont `posts`, `post_likes`,
+  `post_comments`, `profiles`. Les filets adaptatifs couvrent déjà le fil : migrer le public vers eux
+  (ou vers un broadcast), garder la socket pour messagerie, appels et lives. À mesurer au staging.
+- `app.js` (417 Ko compressés) retéléchargé à chaque version qui touche un `app-*.js` (38 sur 136
+  commits de `main` en 30 jours, ~2 fichiers sur 9 chacun) : un découpage par fichier, hash par
+  fichier, diviserait ce poste par ~3.
+- ~70 % des requêtes reçues par Supabase en 24 h viennent des runners de la CI (réseau Microsoft,
+  navigateurs headless) : mêmes quotas plafonnés que les futurs utilisateurs.

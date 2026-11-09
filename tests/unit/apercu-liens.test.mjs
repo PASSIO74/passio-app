@@ -36,6 +36,8 @@ const UA_APPLEBOT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit
 const UUID = "14c697ac-7958-41ea-8e23-8c00b4784a47";
 const CDN = "https://passio-app.netlify.app/media/content/";
 const SUPA_PUB = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/";
+// La forme RENDUE depuis le 2026-11-09 : Supabase direct (le relais `/media/*` ne fait plus que renvoyer).
+const DIRECT = SUPA_PUB + "content/";
 
 // ── Faux PostgREST ────────────────────────────────────────────────────────
 function fauxReseau(tables, { panne = false } = {}) {
@@ -143,9 +145,10 @@ test("④ un texte est borné en points de code, sans contrôle ni marque bidire
 });
 
 test("⑤ une image n'est publiée que depuis le seau PUBLIC `content`, en format image", () => {
-  assert.equal(imageSure(CDN + "photos/u/a.jpg.v720.webp"), CDN + "photos/u/a.jpg.v720.webp");
-  // La forme Supabase directe repasse par le CDN (cache du bord).
-  assert.equal(imageSure(SUPA_PUB + "content/avatars/a.png"), CDN + "avatars/a.png");
+  // L'ancienne forme du relais est ACCEPTÉE mais rendue sous la forme directe : le
+  // relais ne fait plus que renvoyer (301) depuis le 2026-11-09, son cache ne servait rien.
+  assert.equal(imageSure(CDN + "photos/u/a.jpg.v720.webp"), SUPA_PUB + "content/photos/u/a.jpg.v720.webp");
+  assert.equal(imageSure(SUPA_PUB + "content/avatars/a.png"), SUPA_PUB + "content/avatars/a.png");
   for (const non of [
     SUPA_PUB + "attachments/conv/a.jpg", CDN.replace("content", "attachments") + "a.jpg",
     "javascript:alert(1)", "data:image/png;base64,AAAA", "http://passio-app.netlify.app/media/content/a.jpg",
@@ -164,7 +167,7 @@ test("⑥ un carnet, un auteur privé ou une ligne absente n'ont que l'aperçu g
   assert.equal(apercuPublication({ content: "x", vlog: null }, null).titre, TITRE_GENERIQUE);
   assert.equal(apercuPublication(null).titre, TITRE_GENERIQUE);
   const ok = apercuPublication({ content: "Bonjour", vlog: null, media_url: CDN + "p/a.jpg" }, auteur, "Vélo");
-  assert.deepEqual(ok, { titre: "Léa · Vélo", description: "Bonjour", image: CDN + "p/a.jpg" });
+  assert.deepEqual(ok, { titre: "Léa · Vélo", description: "Bonjour", image: DIRECT + "p/a.jpg" });
 });
 
 test("⑦ un compte privé ne livre ni biographie ni photo", () => {
@@ -172,7 +175,7 @@ test("⑦ un compte privé ne livre ni biographie ni photo", () => {
   assert.equal(p.image, null);
   assert.ok(!p.description.includes("secrète"));
   const pub = apercuProfil({ username: "Léa", bio: "Cycliste", avatar_url: CDN + "a.jpg", is_private: false });
-  assert.deepEqual(pub, { titre: "Léa sur PASSIO", description: "Cycliste", image: CDN + "a.jpg" });
+  assert.deepEqual(pub, { titre: "Léa sur PASSIO", description: "Cycliste", image: DIRECT + "a.jpg" });
 });
 
 test("⑧ une activité dit sa date à l'heure de Paris, et une activité non active se tait", () => {
@@ -207,7 +210,7 @@ test("⑩ un robot reçoit l'aperçu du contenu, lu sous la clé ANON, avec une 
   assert.equal(r.headers.get("x-robots-tag"), "noindex");
   assert.ok(corps.includes('<meta property="og:title" content="Léa · Vélo et cyclisme">'));
   assert.ok(corps.includes('<meta property="og:description" content="Sortie vélo au lever du soleil 🚴">'));
-  assert.ok(corps.includes('<meta property="og:image" content="' + CDN + 'photos/u/pa1.jpg.v720.webp">'));
+  assert.ok(corps.includes('<meta property="og:image" content="' + DIRECT + 'photos/u/pa1.jpg.v720.webp">'));
   assert.ok(corps.includes('<meta property="og:url" content="https://passio-app.netlify.app/p/pa1">'));
   assert.ok(corps.includes('<a href="https://passio-app.netlify.app/#post-pa1">'));
   assert.ok(!/<script/i.test(corps));
@@ -317,6 +320,6 @@ test("⑮ ter imageSure refuse une URL du bon hôte dont le chemin porte un guil
   assert.equal(imageSure(CDN + "photos/u/x.jpg#\"><img src=x>"), null);
   assert.equal(imageSure(CDN + "photos/u/x.jpg?\"><img src=x>"), null);
   // Les formes LÉGITIMES tiennent toujours : la garde ne coupe pas le service.
-  assert.equal(imageSure(CDN + "photos/u/x.jpg"), CDN + "photos/u/x.jpg");
-  assert.equal(imageSure(SUPA_PUB + "content/avatars/u/a.webp"), CDN + "avatars/u/a.webp");
+  assert.equal(imageSure(CDN + "photos/u/x.jpg"), DIRECT + "photos/u/x.jpg");
+  assert.equal(imageSure(SUPA_PUB + "content/avatars/u/a.webp"), DIRECT + "avatars/u/a.webp");
 });

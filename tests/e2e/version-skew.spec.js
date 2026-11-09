@@ -87,8 +87,20 @@ test.describe("Version skew — cohérence des versions servies", () => {
     // Un basculement en cache-first sur index.html ré-introduirait exactement
     // le défaut corrigé auparavant : le SW servant l'ancien manifeste, donc
     // l'ancien code, au premier chargement.
-    const bloc = /url\.pathname === "\/"[\s\S]{0,400}?fetch\(e\.request, \{ cache: "no-store" \}\)/;
-    expect(sw, "index.html doit être servi network-first (cache: no-store)").toMatch(bloc);
+    // ⚠️ Depuis le 2026-11-09 la requête est CONDITIONNELLE (If-None-Match) : la
+    // copie gardée n'est servie que sur un 304, c'est-à-dire quand LE SERVEUR dit
+    // qu'elle est la version courante — le réseau décide toujours, il ne renvoie
+    // simplement plus 106 Ko pour le dire (tests/e2e/sw-page-revalidee.spec.js).
+    const debut = sw.indexOf('url.pathname === "/"');
+    expect(debut, "la branche de navigation est introuvable").toBeGreaterThan(-1);
+    const branche = sw.slice(debut, sw.indexOf("return;", debut));
+    expect(branche, "index.html doit toujours partir au réseau, sans le cache HTTP")
+      .toMatch(/return fetch\(requete, \{ cache: "no-store" \}\)\.then\(res => \{/);
+    expect(branche, "la requête conditionnelle ne passe pas non plus par le cache HTTP")
+      .toMatch(/headers: \{ "If-None-Match": etag \}, cache: "no-store"/);
+    // La copie n'est rendue en ligne QUE sur un 304 ; hors ligne, par le repli.
+    expect(branche.match(/return copie;/g) || [], "une seule sortie vers la copie, celle du 304").toHaveLength(1);
+    expect(branche).toMatch(/if \(res && res\.status === 304 && copie\) return copie;/);
   });
 
   test("le cache du service worker change à chaque build", async () => {

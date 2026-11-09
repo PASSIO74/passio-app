@@ -637,8 +637,14 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
     expect(bloc("async function supaLoadUserState()")).toMatch(/_noterRepriseUserState\(\)/);
     expect(bloc("function chargerReferentielPassions()")).toMatch(/_noterReprisePassions\(\)/);
     // Le référentiel ne se déclare COMPLET que sur la sortie propre de la
-    // boucle : un seul `_referentielComplet = true` dans tout le fichier.
-    expect((src.match(/_referentielComplet = true/g) || []).length).toBe(1);
+    // boucle — ou, depuis le 2026-11-09, sur une liste GARDÉE, qui n'a pu être
+    // écrite QUE par cette même sortie propre (`idbReferentielSave`, une seule
+    // porte) : deux `_referentielComplet = true` dans tout le fichier, pas un de
+    // plus, et la seconde porte d'écriture n'existe pas.
+    expect((src.match(/_referentielComplet = true/g) || []).length).toBe(2);
+    expect((src.match(/idbReferentielSave\(/g) || []).length, "la liste gardée n'a qu'UNE porte d'écriture").toBe(1);
+    const sortiePropre = bloc("function chargerReferentielPassions()");
+    expect(sortiePropre).toMatch(/if \(r\.data\.length < PAS\) \{[\s\S]{0,600}?idbReferentielSave\(Array\.from\(vus\)\)/);
     // Les deux déclencheurs de rejeu sont branchés.
     expect(src).toMatch(/addEventListener\("online", function \(\) \{ repriseLecturesBoot/);
     expect(src).toMatch(/visibilityState === "visible"\) repriseLecturesBoot/);

@@ -5,6 +5,7 @@
 > soient auto-réparés — je veux lancer sans trop gérer la partie technique ».
 > Ce document distingue ce qui est **mesuré**, ce qui est **estimé** (et le dit), et ce qui est **livré**.
 > **Suite du 2026-11-06** : parcours jugés dans le nuage, battement de la veille lu par un chien de garde extérieur, politique d'automatisation sous forme de code, matrice des 48 cas — `docs/AUTONOMIE_EXPLOITATION.md`.
+> **Suite du 2026-11-09 (bande passante, §4)** : la page se revalide en 304 au lieu de repartir entière à chaque ouverture, les médias sont servis en direct par le CDN Supabase (le cache du relais `/media/*` ne servait rien), avatars et couvertures ont leur version légère (fin du mur des 100 transformations d'image), la liste des passions est gardée 24 h sur l'appareil — `docs/journal/capacite-perf-realtime.md` (2026-11-09), `docs/CDN_MEDIAS.md`.
 
 ## En une page
 

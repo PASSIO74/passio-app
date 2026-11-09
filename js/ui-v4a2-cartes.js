@@ -404,6 +404,9 @@
     if (!s) return "";
     try {
       if (typeof safeUrlAttr !== "function") return "";
+      // Une couverture publiée via l'ancien relais `/media/*` se lit à sa source
+      // Supabase (2026-11-09) : le relais ne fait plus que renvoyer.
+      if (typeof urlMediaDirecte === "function") s = urlMediaDirecte(s);
       return safeUrlAttr(s) === "#" ? "" : s;
     } catch (e) { fail("url", e); return ""; }
   }

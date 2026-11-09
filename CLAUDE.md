@@ -201,6 +201,6 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Une page `position: fixed` ne vit JAMAIS dans `#appMain` (WebKit la fait défiler avec le conteneur) ; une zone tactile se mesure par `elementFromPoint`, jamais par `getComputedStyle(::after)`.
 - `studioType` est la SEULE source de vérité de ce qui est publié ; il n'existe AUCUNE passion principale (ADR-011) ; les VALEURS de mood (`creation`, `learn`, `irl`, `all`) ne changent jamais, seuls leurs libellés.
 - Le lecteur de bobines est en `z-index: 9999` : le FERMER avant toute sortie.
-- Un nouveau point d'upload passe par `cdnUrl()` (médias servis par `/media/*`, `docs/CDN_MEDIAS.md`).
+- Un nouveau point d'upload passe par `cdnUrl()` (médias en direct du CDN Supabase, `docs/CDN_MEDIAS.md`).
 
 Autres références : `.passio/adr/ADR-011-refonte-multi-passion.md` (refonte multi-passion) · `docs/PASSIONS_REFERENTIEL_PLAT_2026-09-01.md` · première visite : `js/first-run.js`, actif par défaut (coupure `passio_first_run_experience_v1="0"`), fiche dans `docs/journal/comptes-inscription-legal.md` · `docs/PIEGES_CONNUS.md` (59 fiches) · `docs/HISTORIQUE_PROJET.md` · `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`. Skills projet : `/ship`, `/migration`, `/e2e-multi` ; subagents : `audit-passio`, `migration-checker`.

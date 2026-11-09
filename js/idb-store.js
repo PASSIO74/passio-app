@@ -178,6 +178,35 @@
     return idbPut("passions_v1", { release: rel, paquet: safe });
   };
   window.idbPassionsClear = function () { return idbPut("passions_v1", null); };
+
+  // ─── LISTE BLANCHE DES PASSIONS PUBLIABLES (2026-11-09) ────────────────────
+  // `chargerReferentielPassions` (app-02) relisait à CHAQUE démarrage, visiteurs
+  // compris, les 5 006 identifiants actifs de `passions` : six requêtes, 36 Ko
+  // sur le fil (mesuré), troisième requête la plus coûteuse de la base — pour une
+  // liste qui gagne une passion par mois. Elle est gardée ici avec sa date de
+  // lecture : l'appelant la reprend telle quelle pendant 24 h et ne demande au
+  // serveur que les passions CRÉÉES depuis (une requête, quelques octets).
+  // ⚠️ MÊME RÈGLE QUE LE RÉFÉRENTIEL D'AFFICHAGE : HORS ARTEFACT, RIEN. Sans
+  // release (`npm run serve`, bancs), ni lecture ni écriture : le comportement
+  // d'avant tient à l'octet près là où l'optimisation est inactive.
+  // ⚠️ ON NE RANGE QU'UNE LISTE COMPLÈTE : l'appelant n'appelle cette écriture
+  // qu'à la sortie PROPRE de sa pagination — jamais sur une coupure, un plafond
+  // ou un repli (la faute du 2026-09-10 : une liste tronquée installée pour
+  // toute la session, ici elle le serait pour toutes les suivantes).
+  window.idbReferentielLoad = function () {
+    if (!releaseCourante()) return Promise.resolve(null);
+    return idbGet("referentiel_publiable_v1").then(function (rec) {
+      if (!rec || !Array.isArray(rec.ids) || !rec.ids.length || typeof rec.at !== "number" || !isFinite(rec.at)) return null;
+      return rec;
+    }).catch(function () { return null; });
+  };
+  window.idbReferentielSave = function (ids) {
+    if (!releaseCourante() || !Array.isArray(ids) || !ids.length) return Promise.resolve(false);
+    var propres = ids.filter(function (x) { return typeof x === "string" && x; });
+    if (!propres.length) return Promise.resolve(false);
+    return idbPut("referentiel_publiable_v1", { at: Date.now(), ids: propres });
+  };
+  window.idbReferentielClear = function () { return idbPut("referentiel_publiable_v1", null); };
 })();
 
 // ⚠️ LE BLOC « CDV, FONCTIONNALITÉ SECONDAIRE DE LA PASSION VOYAGE » A ÉTÉ

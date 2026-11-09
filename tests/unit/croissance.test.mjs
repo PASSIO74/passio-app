@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { croissance, retentionCohorte, parValeur, libelleSource } from "../../supabase/functions/_shared/croissance.js";
-import { jauges, coutMensuel, bandePassanteEstimee, OCTETS_PAR_VERSION, VERSIONS_PAR_MOIS, aFaire, PLAFONDS } from "../../supabase/functions/_shared/pilotage.js";
+import { jauges, coutMensuel, bandePassanteEstimee, OCTETS_PAR_VERSION, VERSIONS_PAR_MOIS, OCTETS_PAGE, JOURS_PAR_MOIS, aFaire, PLAFONDS } from "../../supabase/functions/_shared/pilotage.js";
 
 const J = (s) => Date.parse(s + "T12:00:00Z");
 
@@ -64,10 +64,13 @@ test("⑤ jauges : chaque jauge porte son geste et son prix ; la bande passante 
   assert.equal(co.couleur, "orange"); assert.match(co.geste, /spend cap/); assert.equal(co.prix, PLAFONDS.connexions.prix);
   assert.equal(js.find((j) => j.cle === "base").geste, PLAFONDS.base.geste, "même non mesurée, le geste est connu");
   assert.equal(js.some((j) => j.cle === "bandePassante"), false, "sans appareils lus, pas de jauge inventée");
-  assert.equal(bandePassanteEstimee(1000), Math.round(1000 * VERSIONS_PAR_MOIS * OCTETS_PAR_VERSION));
+  // Versions ET une page par jour (2026-11-09) : la page n'était pas comptée.
+  assert.equal(bandePassanteEstimee(1000), Math.round(1000 * (VERSIONS_PAR_MOIS * OCTETS_PAR_VERSION + JOURS_PAR_MOIS * OCTETS_PAGE)));
+  assert.ok(bandePassanteEstimee(1000) > Math.round(1000 * VERSIONS_PAR_MOIS * OCTETS_PAR_VERSION), "la page compte");
+  assert.equal(OCTETS_PAGE, 106 * 1024);
   assert.equal(bandePassanteEstimee(null), null); assert.equal(bandePassanteEstimee(-1), null);
-  // 3 000 appareils/jour × 40 versions × 0,75 Mo ≈ 88 Go : orange sur 100 Go.
-  const bp = jauges({ bandePassante: bandePassanteEstimee(3000) }).find((j) => j.cle === "bandePassante");
+  // 2 500 appareils/jour × (40 × 0,75 Mo + 30 × 106 Ko) ≈ 81 Go : orange sur 100 Go.
+  const bp = jauges({ bandePassante: bandePassanteEstimee(2500) }).find((j) => j.cle === "bandePassante");
   assert.equal(bp.couleur, "orange"); assert.equal(bp.estimation, true);
 });
 

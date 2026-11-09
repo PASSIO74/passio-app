@@ -3340,11 +3340,15 @@ const SUPABASE_KEY = (_cibleSupabase() || {}).anon || "eyJhbGciOiJIUzI1NiIsInR5c
 // réseau perd ses événements (queue en mémoire vidée à la fermeture) → ses
 // problèmes de connexion n'apparaissaient JAMAIS dans le centre de pilotage.
 window.PASSIO_SUPABASE = { url: SUPABASE_URL, anon: SUPABASE_KEY };
-// CDN devant Supabase Storage : les médias passent par l'Edge Function Netlify
-// `netlify/edge-functions/media.js` (cache au bord, 100 Go/mois gratuits) au
-// lieu de taper Supabase en direct (5 Go/mois, et `no-cache` sur les objets).
-// VIDE = désactivé (URL Supabase directe). Sans slash final. Même origine que
-// l'app, donc rien à ajouter dans la CSP. Voir docs/CDN_MEDIAS.md.
+// Base du CDN des médias, appliquée par `cdnUrl()` à chaque envoi. VIDE depuis le
+// 2026-11-09 : les médias sont servis EN DIRECT par le CDN de Supabase (forfait
+// Pro : cache d'un an, `x-smart-cdn`, 250 Go de sortie + 250 Go servis depuis son
+// cache), et non plus par le relais Netlify `/media/*` — dont le cache, mesuré,
+// ne servait rien, et dont les 100 Go/mois sont ceux de l'application elle-même.
+// `cdnUrl()` reste le POINT UNIQUE de tout envoi : un futur CDN (Cloudflare R2,
+// sortie gratuite) n'y sera qu'une valeur à poser. Les anciennes URL `/media/…`
+// se lisent à la source (`urlMediaDirecte`, app-02) ou sont renvoyées par la
+// fonction (301). Sans slash final. Voir docs/CDN_MEDIAS.md.
 // Sitekey PUBLIQUE du widget Cloudflare Turnstile (anti-robots à l'inscription,
 // SEC-06). VIDE = captcha inactif côté client : aucun script chargé, aucun jeton
 // envoyé. ⚠️ À renseigner et DÉPLOYER AVANT d'allumer « Enable Captcha
@@ -3361,7 +3365,7 @@ const PASSIO_TURNSTILE_SITEKEY = "0x4AAAAAAE1sSuozcaZqYV3T";
 // déclaré ici, le même que chez Cloudflare (sous-domaines compris). Un banc
 // qui pose `window.PASSIO_TURNSTILE_SITEKEY` reste maître, hôte ou pas.
 const PASSIO_TURNSTILE_HOTES = ["passio-app.netlify.app"];
-const PASSIO_CDN_BASE = "https://passio-app.netlify.app/media";
+const PASSIO_CDN_BASE = "";
 function cdnUrl(url) {
   if (!PASSIO_CDN_BASE || typeof url !== "string" || url.indexOf("data:") === 0) return url;
   const marker = "/storage/v1/object/public/";
@@ -4547,14 +4551,26 @@ function _downscaleImageForUpload(dataUrl) {
 // ⚠️ Une image DÉJÀ ≤ 720 px n'est pas exclue : mesuré sur la production, une
 // story 720×720 JPEG pèse 46 à 74 Ko là où son ré-encodage en pèse ~15 — la
 // largeur n'est qu'une des deux raisons d'être lourd, le format est l'autre.
-const IMAGE_LEGERE_QUALITE_WEBP = 0.8;
+// 0,8 → 0,75 le 2026-11-09 : mesuré sur cinq photos de la production ré-encodées
+// à 720 px (libwebp, le même encodeur que le canvas), −15 % d'octets ; au-delà
+// (0,72 : −17 %, 0,70 : −19 %) le gain plafonne. L'image est la première
+// dépense de sortie d'un réseau social.
+const IMAGE_LEGERE_QUALITE_WEBP = 0.75;
 const IMAGE_LEGERE_QUALITE_JPEG = 0.82;
 const IMAGE_LEGERE_GAIN_MIN = 0.15;
-function _imageLegerePourFil(dataUrl) {
+// Un AVATAR (le compte, une passion) ne s'affiche jamais à plus de 176 px CSS :
+// sa légère fait 352 px (2×), pas 720 — elle se charge à chaque publication et à
+// chaque commentaire de son auteur. Le marqueur du nom reste `.v720` : il dit
+// « version d'affichage », c'est lui que reconnaissent `estImageLegere`,
+// `imageGrande` et `cheminsImageStorage`.
+const IMAGE_LEGERE_LARGEUR_AVATAR = 352;
+const DOSSIERS_AVATAR = ["avatars", "passion_photos"];
+function _imageLegerePourFil(dataUrl, largeurMax) {
   return new Promise(function (resolve) {
     try {
       if (!/^data:image\/(jpeg|jpg|png|webp)/i.test(dataUrl)) { resolve(null); return; }
-      var largeurCible = (typeof IMAGE_LEGERE_LARGEUR === "number") ? IMAGE_LEGERE_LARGEUR : 720;
+      var largeurCible = (typeof largeurMax === "number" && largeurMax > 0) ? largeurMax
+        : ((typeof IMAGE_LEGERE_LARGEUR === "number") ? IMAGE_LEGERE_LARGEUR : 720);
       var img = new Image();
       img.onload = function () {
         try {
@@ -4604,10 +4620,19 @@ function _blobDepuisDataUrl(dataUrl) {
 }
 
 // Fonction d'upload média vers Supabase Storage (avec fallback)
-// `opts.legere` : produire la version légère à côté de la grande — réservé aux
-// photos de PUBLICATION (app-08, supaPublishPost). Une story (plein écran,
-// object-fit: cover), une couverture de bobine ou d'activité ne la demandent
-// pas : elles gardent leur chemin d'avant.
+// `opts.legere` : produire la version légère à côté de la grande, et rendre
+// SON URL. Demandée par les photos de publication (2026-09-21) et, depuis le
+// 2026-11-09, par les avatars, couvertures, photos et fonds de passion,
+// couvertures d'activité et de bobine. ⚠️ CE N'EST PAS QU'UNE AFFAIRE D'OCTETS :
+// sans légère, `passioThumb` demande une TRANSFORMATION d'image à Supabase, et le
+// forfait Pro n'en compte que 100 images d'origine par mois (relevé 19/100 avec
+// dix comptes le 20/09) — un mur vers 50 profils avec photo, spend cap actif.
+// Une story (plein écran, object-fit: cover) ne la demande pas.
+// `opts.cache` : durée de cache (s) quand le chemin est RÉÉCRIT à l'identique
+// (`upsert` d'une photo de passion, d'une couverture d'activité modifiée) — le
+// navigateur garderait sinon l'ancienne image un an. Supabase purge son CDN
+// lui-même à la réécriture ; le navigateur, lui, ne le sait pas.
+const DOSSIERS_IMAGE_LEGERE = ["photos", "avatars", "covers", "passion_photos", "passion_covers", "events"];
 async function supaUploadMedia(postId, folder, base64Data, mediaType, opts) {
   console.log(`📤 [UPLOAD] Début upload ${folder}/${postId}`);
 
@@ -4629,14 +4654,15 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType, opts) {
     if (_estImage) {
       try { base64Data = await _downscaleImageForUpload(base64Data); } catch (e) {}
     }
-    // Photos de PUBLICATION seulement (le fil et ses vignettes) : une version
-    // légère à côté de la grande. Avatars, couvertures et stories gardent leur
-    // chemin (transformation à la demande, plein écran), hors de ce lot. Le
+    // Une version légère à côté de la grande, quand l'APPELANT la demande : le
     // dossier ne suffit pas à le dire (les stories photo vont aussi dans
-    // `photos`) : c'est l'appelant qui le demande.
-    var _legere = null, _legereDemandee = !!(opts && opts.legere) && _estImage && folder === "photos";
+    // `photos`, et gardent leur image plein écran). La liste des dossiers reste
+    // une seconde garde : une légère ne naît jamais hors d'un dossier d'images.
+    var _legere = null, _legereDemandee = !!(opts && opts.legere) && _estImage && DOSSIERS_IMAGE_LEGERE.indexOf(folder) !== -1;
+    var _cache = (opts && /^\d{1,8}$/.test(String(opts.cache || ""))) ? String(opts.cache) : "31536000";
     if (_legereDemandee) {
-      try { _legere = await _imageLegerePourFil(base64Data); } catch (e) { _legere = null; }
+      var _largeurLegere = DOSSIERS_AVATAR.indexOf(folder) !== -1 ? IMAGE_LEGERE_LARGEUR_AVATAR : undefined;
+      try { _legere = await _imageLegerePourFil(base64Data, _largeurLegere); } catch (e) { _legere = null; }
     }
 
     // Convertir base64 en Blob — découpe sur « ;base64, » (PAS la première
@@ -4679,7 +4705,7 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType, opts) {
     const filePath = `${folder}/${MY_UID}/${postId}${ext}`;
 
     const { error } = await supa.storage.from("content").upload(filePath, blob, {
-      cacheControl: "31536000",
+      cacheControl: _cache,
       upsert: true,
     });
 
@@ -4701,7 +4727,7 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType, opts) {
       var _issue = "legere";
       try {
         var _cheminLeger = _cheminImageLegere(filePath, _legere.format);
-        var _resLeger = await supa.storage.from("content").upload(_cheminLeger, _blobDepuisDataUrl(_legere.dataUrl), { cacheControl: "31536000", upsert: true });
+        var _resLeger = await supa.storage.from("content").upload(_cheminLeger, _blobDepuisDataUrl(_legere.dataUrl), { cacheControl: _cache, upsert: true });
         if (!_resLeger.error) {
           const { data: _urlLegere } = supa.storage.from("content").getPublicUrl(_cheminLeger);
           if (_urlLegere?.publicUrl) _obtenue = cdnUrl(_urlLegere.publicUrl); else _issue = "url_legere_absente";
