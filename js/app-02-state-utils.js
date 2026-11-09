@@ -1977,8 +1977,31 @@ window.estImageLegere = estImageLegere;
 window.imageGrande = imageGrande;
 window.cheminsImageStorage = cheminsImageStorage;
 
+// ── Médias servis en DIRECT par le CDN Supabase (2026-11-09) ────────────────
+// Du 2026-09-11 au 2026-11-09, les médias passaient par le relais Netlify
+// `/media/*` (netlify/edge-functions/media.js). Mesuré le 2026-11-09 : son cache
+// ne servait RIEN (neuf requêtes identiques, neuf `fwd=miss`), chaque vue coûtait
+// une invocation, la bande passante Netlify ET la sortie Supabase, et le
+// navigateur ne gardait l'image qu'une heure. Supabase (Pro) sert le même objet
+// avec un cache d'un an et son propre CDN (`x-smart-cdn: true`). Les URL déjà
+// écrites en base gardent la forme du relais : on les lit ici à leur source, sans
+// le détour. Seul le seau PUBLIC `content` : une pièce jointe (`attachments`,
+// privé) se résout par URL signée (`urlPieceJointeSignee`), jamais ici.
+// L'hôte est celui de la PRODUCTION, en dur, comme dans le relais lui-même : une
+// URL du relais n'a jamais désigné un autre projet.
+const MEDIA_RELAIS_HISTORIQUE = "https://passio-app.netlify.app/media/";
+const MEDIA_SUPABASE_PUBLIC = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/";
+function urlMediaDirecte(url) {
+  if (typeof url !== "string" || url.indexOf(MEDIA_RELAIS_HISTORIQUE) !== 0) return url;
+  var rel = url.slice(MEDIA_RELAIS_HISTORIQUE.length).split("#")[0].split("?")[0];
+  if (rel.indexOf("content/") !== 0) return url;
+  return MEDIA_SUPABASE_PUBLIC + rel;
+}
+window.urlMediaDirecte = urlMediaDirecte;
+
 function passioThumb(url, width) {
   if (!url || typeof url !== "string") return url;
+  url = urlMediaDirecte(url);
   // Déjà taillée pour l'écran : pas de transformation d'image (ni son quota,
   // ni la lecture d'origine qu'elle déclenche), pas de paramètre de cache.
   if (estImageLegere(url)) return url;
@@ -2401,6 +2424,21 @@ let _referentielComplet = false;
 let _referentielEnCours = false;
 let _referentielEnCoursDepuis = 0;
 const REFERENTIEL_VOL_MAX_MS = 60000;
+// ── Liste blanche GARDÉE SUR L'APPAREIL (2026-11-09) ──────────────────────
+// Chaque démarrage, visiteurs compris, relisait les 5 006 identifiants actifs :
+// six requêtes, 36 Ko sur le fil (mesuré), 3 M d'appels cumulés — la troisième
+// requête la plus coûteuse de la base, pour une liste qui gagne UNE passion par
+// mois. La liste complète est gardée (IndexedDB, `idbReferentielLoad`, inactive
+// hors artefact) et reprise telle quelle pendant 24 h ; seules les passions
+// CRÉÉES depuis sont demandées au serveur (`_completerReferentielDepuis`).
+const REFERENTIEL_CACHE_TTL_MS = 24 * 3600 * 1000;
+// On remonte 36 h AVANT la date de la liste gardée : cette date est celle du
+// téléphone, le filtre est celui du serveur — une horloge en retard ne doit pas
+// faire manquer une passion créée entre-temps.
+const REFERENTIEL_DELTA_MARGE_MS = 36 * 3600 * 1000;
+// En deçà, une liste gardée n'est pas crue complète (le référentiel en compte 5 000).
+const REFERENTIEL_CACHE_MIN = 1000;
+let _referentielCacheConsulte = false;
 
 // Chargement en arrière-plan. N'est JAMAIS attendu par le démarrage : tant qu'il
 // n'a pas répondu, `estPassionCanonique` utilise le repli local.
@@ -2444,6 +2482,35 @@ function chargerReferentielPassions() {
       fini(); return _promesse;
     }
     if (typeof supa === "undefined" || !supa || !window._supaReal) { fini(); return _promesse; }
+    // ⚠️ LA LISTE GARDÉE D'ABORD, UNE FOIS PAR SESSION (2026-11-09). Fraîche (moins
+    // de 24 h) et entière, elle est publiée COMPLÈTE sans un seul aller-retour, et
+    // les passions créées depuis arrivent en arrière-plan. Absente, périmée,
+    // illisible ou trop courte : on relit tout, comme avant — et c'est cette
+    // relecture-là, seulement si elle aboutit proprement, qui la remplace.
+    if (!_referentielCacheConsulte && typeof window.idbReferentielLoad === "function") {
+      _referentielCacheConsulte = true;
+      _referentielEnCours = true;
+      _referentielEnCoursDepuis = Date.now();
+      var _relireTout = function () {
+        _referentielEnCours = false;
+        Promise.resolve(chargerReferentielPassions()).then(fini, fini);
+      };
+      Promise.resolve(window.idbReferentielLoad()).then(function (rec) {
+        var frais = !!rec && Array.isArray(rec.ids) && rec.ids.length >= REFERENTIEL_CACHE_MIN
+          && typeof rec.at === "number" && Math.abs(Date.now() - rec.at) < REFERENTIEL_CACHE_TTL_MS;
+        if (!frais) { _relireTout(); return; }
+        // Même règle que le rejeu : on AMORCE sur l'existant, on ne retranche rien.
+        var garde = new Set(_referentielPassions || []);
+        rec.ids.forEach(function (id) { if (typeof id === "string" && id) garde.add(id); });
+        _referentielPassions = garde;
+        _referentielComplet = true;
+        _referentielEnCours = false;
+        try { acquitterLecture("passions"); } catch (_e) {}
+        fini();
+        _completerReferentielDepuis(rec.at);
+      }, _relireTout);
+      return _promesse;
+    }
     // ⚠️ `status = 'active'` N'EST PAS UN DÉTAIL : sans lui, ARCHIVER UNE PASSION
     // NE L'EMPÊCHE PAS D'ÊTRE PUBLIÉE. Le retrait de modération (2026-09-09) se
     // fait par `status = 'archived'` — la ligne reste, pour ne rien détruire et
@@ -2533,6 +2600,9 @@ function chargerReferentielPassions() {
               _referentielComplet = true;
               _referentielEnCours = false;
               acquitterLecture("passions");
+              // La SEULE porte d'écriture de la liste gardée : la sortie propre de
+              // la pagination. Jamais une coupure, un plafond ni un repli.
+              try { if (typeof window.idbReferentielSave === "function") window.idbReferentielSave(Array.from(vus)); } catch (_e) {}
               fini();
               return;
             }
@@ -2567,6 +2637,35 @@ function chargerReferentielPassions() {
     _referentielEnCours = false;
     fini();
     return _promesse;
+  }
+}
+
+// Les passions CRÉÉES depuis la lecture gardée (2026-11-09) : une requête,
+// d'ordinaire vide. Elle AJOUTE seulement — le référentiel serveur ajoute, il ne
+// retranche pas : une passion archivée depuis reste publiable jusqu'à
+// l'expiration de la liste gardée (24 h), et la clé étrangère de
+// `posts.passion_id` tient toujours. Un échec ne retire rien : la liste gardée
+// vaut mieux que le socle de 19. Une réponse PLEINE ne prouve pas qu'on a tout :
+// la liste gardée est alors effacée, la session suivante relit tout.
+const REFERENTIEL_DELTA_MAX = 1000;
+function _completerReferentielDepuis(at) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal || typeof at !== "number") return;
+    var depuis = new Date(at - REFERENTIEL_DELTA_MARGE_MS).toISOString();
+    supa.from("passions").select("id").eq("status", "active").gt("created_at", depuis).limit(REFERENTIEL_DELTA_MAX)
+      .then(function (r) {
+        if (!r || r.error || !Array.isArray(r.data)) return;
+        if (!_referentielPassions) _referentielPassions = new Set();
+        r.data.forEach(function (x) { if (x && typeof x.id === "string" && x.id) _referentielPassions.add(x.id); });
+        if (r.data.length >= REFERENTIEL_DELTA_MAX) {
+          try { if (typeof window.idbReferentielClear === "function") window.idbReferentielClear(); } catch (_e) {}
+        }
+      })
+      .catch(function (e) {
+        try { if (typeof diagLog === "function") diagLog("referentiel passions : complément illisible (" + (e && e.message) + ")"); } catch (_e) {}
+      });
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("✗ referentiel passions, complément : " + (e && e.message)); } catch (_e) {}
   }
 }
 

@@ -906,12 +906,24 @@ export const PLAFONDS = {
 export const OCTETS_PAR_VERSION = 0.75 * 1024 ** 2;
 /** Mises en ligne par mois retenues pour l'estimation (≈ 50 mesurées en octobre). */
 export const VERSIONS_PAR_MOIS = 40;
-/** La bande passante du mois, estimée : appareils actifs sur 24 h × versions × poids. */
+/** La page (index.html, 106 Ko compressés, mesuré le 2026-11-09). Elle repartait
+ *  ENTIÈRE à chaque ouverture — ce que cette estimation ignorait ; depuis la
+ *  revalidation du service worker (sw.js, 2026-11-09) elle se revalide en 304 et
+ *  ne repart entière qu'une fois par jour au plus et par appareil. */
+export const OCTETS_PAGE = 106 * 1024;
+export const JOURS_PAR_MOIS = 30;
+/**
+ * La bande passante Netlify du mois, estimée : appareils actifs sur 24 h ×
+ * (versions × poids d'une version + une page par jour). Les médias n'y figurent
+ * pas, et c'est désormais exact : ils sont servis par le CDN Supabase depuis le
+ * 2026-11-09 (sortie Supabase), plus par le relais `/media/*` — qui les comptait
+ * sur ces 100 Go sans que cette estimation les voie.
+ */
 export function bandePassanteEstimee(appareils24h, versions = VERSIONS_PAR_MOIS) {
   if (appareils24h == null || appareils24h === "") return null;
   const a = Number(appareils24h);
   if (!Number.isFinite(a) || a < 0) return null;
-  return Math.round(a * versions * OCTETS_PAR_VERSION);
+  return Math.round(a * (versions * OCTETS_PAR_VERSION + JOURS_PAR_MOIS * OCTETS_PAGE));
 }
 
 /** Forfaits payés aujourd'hui (2026-11-01), en euros par mois. */

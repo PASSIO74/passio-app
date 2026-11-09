@@ -7049,7 +7049,9 @@ async function submitEvent(editId) {
   // en base, rechargés à chaque supaLoadEvents pour TOUS les comptes.
   if (coverUrl && coverUrl.indexOf("data:") === 0 && typeof supaUploadMedia === "function" && window._supaReal) {
     try {
-      const up = await supaUploadMedia(ev.id, "events", coverUrl, "photo");
+      // Légère et cache d'une heure (2026-11-09) : une activité modifiée RÉÉCRIT
+      // sa couverture au même chemin (`upsert`, clé = identifiant de l'activité).
+      const up = await supaUploadMedia(ev.id, "events", coverUrl, "photo", { legere: true, cache: "3600" });
       ev.coverUrl = (up && up.indexOf("http") === 0) ? up : null;
     } catch (e) { ev.coverUrl = null; }
   }

@@ -624,7 +624,7 @@
     }
     var cle = "reelcover_" + Date.now();
     return Promise.race([
-      supaUploadMedia(cle, "photos", dataUrl, "image"),
+      supaUploadMedia(cle, "photos", dataUrl, "image", { legere: true }),
       new Promise(function (r) { setTimeout(function () { r(null); }, 20000); }),
     ]).then(function (u) {
       return (u && String(u).indexOf("http") === 0) ? u : dataUrl;

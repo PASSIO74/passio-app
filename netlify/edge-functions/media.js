@@ -1,76 +1,44 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// PASSIO · CACHE CDN DES MÉDIAS — Netlify Edge Function, gratuite, sur /media/*
+// PASSIO · /media/* — RENVOI DES ANCIENNES URL VERS LE CDN SUPABASE (2026-11-09)
 //
-// Pourquoi. Le forfait Supabase gratuit donne 5 Go de sortie par mois, et
-// Supabase Storage répond `Cache-Control: no-cache` sur les objets publics
-// (mesuré le 2026-09-11) : une vidéo de 10 Mo vue 50 fois consomme 0,5 Go, et
-// un simple proxy Netlify ne mettrait RIEN en cache puisqu'il respecte
-// l'origine. Cette fonction va chercher le fichier une fois, puis IMPOSE ses
-// propres en-têtes : le CDN Netlify sert les vues suivantes depuis le bord,
-// Supabase n'est plus sollicité. Le forfait Netlify gratuit porte 100 Go/mois.
+// Du 2026-09-11 au 2026-11-09, cette fonction était un RELAIS : elle allait
+// chercher chaque média chez Supabase pour le garder au bord de Netlify. Elle
+// était née de deux constats du 2026-09-11 — « 5 Go de sortie par mois » et
+// « Supabase répond `no-cache` » — qui ne tiennent plus. Mesuré le 2026-11-09 :
+//   · Supabase (forfait Pro) sert l'objet avec `Cache-Control: public,
+//     max-age=31536000`, `CF-Cache-Status: HIT` et `x-smart-cdn: true` ; le
+//     forfait inclut 250 Go de sortie et 250 Go servis depuis son cache ;
+//   · le cache du bord Netlify ne servait RIEN : neuf requêtes identiques
+//     d'affilée, neuf `fwd=miss`. Chaque vue invoquait donc la fonction, sortait
+//     de Supabase ET consommait les 100 Go/mois de Netlify — ceux de l'app ;
+//   · le navigateur ne gardait l'image qu'une heure.
+// Les nouveaux médias portent l'URL Supabase directe (`PASSIO_CDN_BASE = ""`,
+// js/app-08) et `passioThumb` lit les anciennes à la source (`urlMediaDirecte`,
+// js/app-02). Il ne reste ici que les URL du relais déjà écrites en base ou
+// gardées sur les appareils : un RENVOI (301) de quelques centaines d'octets,
+// sans aucune lecture d'origine, que le navigateur garde un jour.
 //
-// Deux formes d'URL, un seul point d'entrée :
-//   /media/<seau>/<chemin>                      → objet public tel quel
-//   /media/<seau>/<chemin>?width=700&quality=75 → miniature (transformation
-//                                                   d'image Supabase, déjà
-//                                                   utilisée par le fil)
-//
-// ⚠️ LES NEUF RÈGLES DE CE FICHIER, chacune payée par un défaut trouvé en
-// revue adversariale le 2026-09-11 (trois relecteurs, contre-expertise) :
-//
+// Ce qui reste des règles du relais (revue adversariale du 2026-09-11) :
 // ① GET/HEAD seulement, gardé ICI et non dans `config.method` : le manifeste
-//    Netlify n'accepte que GET, POST, PUT, PATCH, DELETE, OPTIONS — « HEAD »
-//    y faisait échouer le déploiement entier.
-// ② Seul le seau PUBLIC, garde `..` PAR SEGMENT : un test de sous-chaîne refusait
-//    `rapport..final.pdf`, un nom que l'app laisse passer. `attachments` est privé :
-//    une pièce jointe se lit par URL signée, jamais ici (retiré le 2026-11-06).
-// ③ LISTE BLANCHE des types servis en ligne (types médias connus, jamais SVG ni +xml).
-//    Tout le reste part en `application/octet-stream` + `attachment`. Sans
-//    cela, un SVG portant un <script> déposé dans `content` (aucune contrainte
-//    MIME sur les seaux, c'est délibéré) s'exécuterait SUR L'ORIGINE DE L'APP
-//    et lirait le jeton de session dans localStorage. Chez Supabase il vivait
-//    sur une autre origine : c'est ce lot qui le rapprochait de la session.
-//    En plus, sur TOUTES les réponses : `Content-Security-Policy: sandbox;
-//    default-src 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options:
-//    DENY` — le bloc [[headers]] de netlify.toml ne s'applique PAS aux réponses
-//    d'une Edge Function (limitation documentée Netlify).
-// ④ `Accept` n'est JAMAIS relayé à la transformation d'image : Supabase choisit
-//    le format selon lui, et la clé de cache ne varie que sur width|quality —
-//    le premier demandeur aurait figé le format pour tous pendant la durée du
-//    cache. On envoie un Accept FIXE (WebP, lu par tout navigateur depuis 2020).
-// ⑤ Cache COURT, pas un an : 1 h pour les images (ce sont elles qu'on
-//    remplace au même chemin — photo et fond de passion, couverture
-//    d'événement modifié, `upsert: true`), 6 h pour vidéo et audio (chemins
-//    uniques, jamais réécrits). Un média retiré par son auteur ou par la
-//    modération disparaît donc en une heure ou en six, pas dans un an. Le
-//    coût : chaque fichier est retiré de Supabase une fois par heure ou par
-//    six heures et par nœud, s'il est encore demandé — négligeable.
-// ⑥ Les requêtes `Range` sont SERVIES en 206 : iOS (Safari, Chrome iOS, PWA,
-//    tous WebKit/AVFoundation) exige les requêtes par plage pour lire une
-//    vidéo ou un audio, et refuse un 200 intégral. Mais un 206 ne se cache
-//    pas comme un objet entier : la fonction tire donc la copie ENTIÈRE via
-//    sa propre URL (donc depuis le cache du bord, sans nouvelle sortie
-//    Supabase) et DÉCOUPE le flux à la volée. Le repli, si cette lecture
-//    interne échoue, est l'origine avec `Range` relayé.
-// ⑦ Une erreur d'origine sort en `no-store` : jamais un 404 en cache.
-// ⑧ `Netlify-Vary: query=width|quality` : un `?utm=…` parasite ne fragmente
-//    pas le cache. ⚠️ La clé est la valeur BRUTE (audit 2026-11-06) : une valeur libre
-//    créait un objet par requête, donc une lecture d'origine par requête, sans compte.
-//    D'où la LISTE FERMÉE : hors liste, rien n'est lu (302 vers la forme canonique si
-//    c'est un nombre, 400 sinon). Une largeur nouvelle du client s'ajoute ici D'ABORD.
-// ⑨ `cache: "manual"` est OBLIGATOIRE : sans lui, Netlify ignore tout en-tête
-//    de cache posé par une Edge Function.
+//    Netlify n'accepte pas « HEAD » et faisait échouer le déploiement entier.
+// ② Seul le seau PUBLIC `content`, garde `..` PAR SEGMENT. `attachments` est
+//    privé : une pièce jointe se lit par URL signée, jamais ici (404).
+// ③ (levée) La liste blanche des types servis EN LIGNE n'a plus d'objet : plus
+//    rien n'est servi depuis l'ORIGINE DE L'APP. Le média vit sur celle de
+//    Supabase, où un SVG piégé ne lit pas la session de PASSIO.
+// ⑧ LISTE FERMÉE des largeurs (audit 2026-11-06) : hors liste, 302 vers la forme
+//    canonique, sans rien renvoyer d'autre ; une valeur non numérique, 400. La
+//    transformation d'image est facturée par image d'origine, et le renvoi ne
+//    doit jamais fabriquer une demande que le client ne fait pas.
+// ⑨ `cache: "manual"` : le renvoi lui-même peut se garder au bord
+//    (`Netlify-CDN-Cache-Control`), clé bornée à width|quality (`Netlify-Vary`).
+// Toute réponse porte le bac à sable (`enTetesSecurite`) : le bloc [[headers]]
+// de netlify.toml ne s'applique pas aux réponses d'une Edge Function.
 //
-// Côté app : le service worker (sw.js) N'INTERCEPTE PAS /media/* — sinon
-// chaque vidéo vue irait dans le Cache Storage de l'appareil, sans borne.
-//
-// Vérifier en production (GET, pas HEAD) :
+// Vérifier en production :
 //   curl -s -o /dev/null -D - https://passio-app.netlify.app/media/content/…
-//   → 1ʳᵉ fois `Cache-Status: "Netlify Edge"; fwd=miss`, ensuite `hit`
-//   curl -s -o /dev/null -D - -r 0-1 …/media/content/videos/…/x.mp4
-//   → `HTTP/1.1 206`, `Content-Range: bytes 0-1/<total>`
-// Revenir en arrière : `PASSIO_CDN_BASE = ""` dans js/app-08 (les nouveaux
-// médias reprennent l'URL Supabase directe) — cette fonction peut rester.
+//   → `HTTP/1.1 301`, `Location: https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/…`
+// Fiche : docs/CDN_MEDIAS.md et docs/journal/capacite-perf-realtime.md (2026-11-09).
 // ═══════════════════════════════════════════════════════════════════════════
 
 const SUPABASE = "https://njkiyoklssvefstljemx.supabase.co";
@@ -78,18 +46,8 @@ const SEAUX = new Set(["content"]);
 // Les largeurs de `passioThumb` / `avatarBg` (verrou : tests/unit/media-edge.test.mjs).
 const LARGEURS = [192, 352, 360, 400, 600, 700, 720, 880];
 const QUALITE = "75";
-const TYPES_EN_LIGNE = /^(image\/(jpeg|png|webp|gif|avif|heic|heif|bmp)|video\/(mp4|webm|quicktime|ogg|3gpp|x-m4v)|audio\/(mpeg|mp3|mp4|aac|ogg|webm|wav|x-wav|x-m4a|3gpp))$/;
-const TTL_IMAGE = 3600;      // ⑤ remplacées au même chemin → 1 h
-const TTL_MEDIA = 21600;     // ⑤ vidéo, audio : chemins uniques → 6 h
-const EN_TETE_INTERNE = "x-passio-cdn-interne";
-
-// ③ Ce qui peut être rendu EN LIGNE sur l'origine de l'app.
-function typeSur(ct) {
-  const brut = String(ct || "");
-  // Une liste à virgule : le navigateur peut retenir une autre valeur que la première.
-  if (brut.includes(",")) return false;
-  return TYPES_EN_LIGNE.test(brut.split(";")[0].trim().toLowerCase());
-}
+const TTL_RENVOI = 86400;          // le navigateur garde le renvoi un jour
+const TTL_RENVOI_BORD = 2592000;   // le bord Netlify, trente jours
 
 function enTetesSecurite(h) {
   h.set("Content-Security-Policy", "sandbox; default-src 'none'");
@@ -103,40 +61,6 @@ function reponseErreur(status, texte) {
   const h = new Headers({ "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
   enTetesSecurite(h);
   return new Response(texte, { status, headers: h });
-}
-
-// ⑥ Analyse d'un en-tête Range simple (une seule plage, la seule que les
-// lecteurs média émettent). Rend null si absent ou illisible.
-function analyserRange(valeur, total) {
-  const m = /^bytes=(\d*)-(\d*)$/.exec((valeur || "").trim());
-  if (!m || (m[1] === "" && m[2] === "")) return null;
-  let debut, fin;
-  if (m[1] === "") {            // bytes=-N : les N derniers octets
-    const n = Number(m[2]);
-    if (n === 0) return { insatisfiable: true };
-    debut = Math.max(0, total - n); fin = total - 1;
-  } else {
-    debut = Number(m[1]);
-    fin = m[2] === "" ? total - 1 : Math.min(Number(m[2]), total - 1);
-  }
-  if (debut >= total || debut > fin) return { insatisfiable: true };
-  return { debut, fin };
-}
-
-// ⑥ Découpe un flux d'octets en [debut, fin] sans le charger en mémoire.
-function decouper(corps, debut, fin) {
-  let position = 0;
-  return corps.pipeThrough(new TransformStream({
-    transform(morceau, ctrl) {
-      const a = position, b = position + morceau.length;   // [a, b)
-      position = b;
-      if (b <= debut) return;
-      if (a > fin) { ctrl.terminate(); return; }
-      const de = Math.max(debut, a) - a, jusqua = Math.min(fin + 1, b) - a;
-      ctrl.enqueue(de === 0 && jusqua === morceau.length ? morceau : morceau.subarray(de, jusqua));
-      if (b > fin) ctrl.terminate();
-    },
-  }));
 }
 
 export default async (req) => {
@@ -154,7 +78,7 @@ export default async (req) => {
     return reponseErreur(404, "Not Found");
   }
 
-  // ⑧ Liste fermée : aucune valeur hors liste n'atteint l'origine ni le cache.
+  // ⑧ Liste fermée : aucune valeur hors liste n'est renvoyée telle quelle.
   const largeurBrute = url.searchParams.get("width");
   const qualiteBrute = url.searchParams.get("quality");
   if (largeurBrute === null ? qualiteBrute !== null : !/^\d{1,4}$/.test(largeurBrute)) {
@@ -170,86 +94,16 @@ export default async (req) => {
     }
   }
   const miniature = largeurBrute !== null;
-  const width = largeurBrute, quality = QUALITE;
   const cible = miniature
-    ? `${SUPABASE}/storage/v1/render/image/public/${rel}?width=${width}&quality=${quality}`
+    ? `${SUPABASE}/storage/v1/render/image/public/${rel}?width=${largeurBrute}&quality=${QUALITE}`
     : `${SUPABASE}/storage/v1/object/public/${rel}`;
 
-  // ⑥ Requête par plage : on lit la copie ENTIÈRE via notre propre URL (cache
-  // du bord), puis on découpe. Jamais depuis une requête déjà interne.
-  const range = req.method === "GET" && !req.headers.get(EN_TETE_INTERNE) ? req.headers.get("range") : null;
-  if (range) {
-    const urlInterne = new URL(url.pathname + (miniature ? `?width=${width}&quality=${quality}` : ""), url.origin);
-    let entier = null;
-    try { entier = await fetch(urlInterne, { headers: { [EN_TETE_INTERNE]: "1" } }); } catch (e) { entier = null; }
-    const total = entier && entier.ok ? Number(entier.headers.get("content-length") || 0) : 0;
-    if (!entier || !entier.ok || !total || !entier.body) {
-      // Repli : l'origine sait répondre en 206 elle-même, sans cache.
-      if (entier && entier.body) { try { await entier.body.cancel(); } catch (e) {} }
-      const direct = await fetch(cible, { headers: { Range: range, Accept: miniature ? "image/webp,image/*" : "*/*" } });
-      const h = new Headers();
-      for (const k of ["content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified"]) {
-        const v = direct.headers.get(k); if (v) h.set(k, v);
-      }
-      if (!typeSur(h.get("content-type"))) { h.set("Content-Type", "application/octet-stream"); h.set("Content-Disposition", "attachment"); }
-      h.set("Cache-Control", "no-store"); enTetesSecurite(h); h.set("X-Passio-Cdn", "plage-origine");
-      return new Response(direct.body, { status: direct.status, headers: h });
-    }
-    const plage = analyserRange(range, total);
-    const h = new Headers();
-    for (const k of ["content-type", "etag", "last-modified", "content-disposition"]) {
-      const v = entier.headers.get(k); if (v) h.set(k, v);
-    }
-    h.set("Cache-Control", "no-store"); enTetesSecurite(h); h.set("Accept-Ranges", "bytes"); h.set("X-Passio-Cdn", "plage");
-    if (!plage) {                       // Range illisible : le fichier entier, comme sans Range
-      h.set("Content-Length", String(total));
-      return new Response(entier.body, { status: 200, headers: h });
-    }
-    if (plage.insatisfiable) {
-      try { await entier.body.cancel(); } catch (e) {}
-      h.set("Content-Range", `bytes */${total}`);
-      return new Response(null, { status: 416, headers: h });
-    }
-    h.set("Content-Range", `bytes ${plage.debut}-${plage.fin}/${total}`);
-    h.set("Content-Length", String(plage.fin - plage.debut + 1));
-    return new Response(decouper(entier.body, plage.debut, plage.fin), { status: 206, headers: h });
-  }
-
-  const origine = await fetch(cible, {
-    method: req.method === "HEAD" ? "HEAD" : "GET",
-    headers: { Accept: miniature ? "image/webp,image/*" : "*/*" },           // ④
-  });
-
-  const h = new Headers();
-  for (const k of ["content-type", "content-length", "etag", "last-modified"]) {
-    const v = origine.headers.get(k);
-    if (v) h.set(k, v);
-  }
+  const h = new Headers({ Location: cible, "Cache-Control": `public, max-age=${TTL_RENVOI}` });
+  h.set("Netlify-CDN-Cache-Control", `public, s-maxage=${TTL_RENVOI_BORD}`);
+  h.set("Netlify-Vary", "query=width|quality");                               // ⑧ ⑨
   enTetesSecurite(h);
-  h.set("X-Passio-Cdn", miniature ? "miniature" : "objet");
-
-  if (!origine.ok) {                                                          // ⑦
-    h.set("Cache-Control", "no-store");
-    return new Response(origine.body, { status: origine.status, headers: h });
-  }
-
-  const ct = h.get("content-type") || "";
-  if (!typeSur(ct)) {                                                         // ③
-    h.set("Content-Type", "application/octet-stream");
-    h.set("Content-Disposition", "attachment");
-  }
-  // Une réponse à HEAD n'a pas de corps : en cache, elle viderait le média pour tous.
-  if (req.method === "HEAD") {
-    h.set("Cache-Control", "no-store");
-    h.set("Accept-Ranges", "bytes");
-    return new Response(null, { status: 200, headers: h });
-  }
-  const ttl = /^(video|audio)\//i.test(ct) ? TTL_MEDIA : TTL_IMAGE;           // ⑤
-  h.set("Cache-Control", `public, max-age=${ttl}`);
-  h.set("Netlify-CDN-Cache-Control", `public, s-maxage=${ttl}`);
-  h.set("Netlify-Vary", "query=width|quality");                               // ⑧
-  h.set("Accept-Ranges", "bytes");                                            // ⑥
-  return new Response(origine.body, { status: 200, headers: h });
+  h.set("X-Passio-Cdn", miniature ? "renvoi-miniature" : "renvoi");
+  return new Response(null, { status: 301, headers: h });
 };
 
 export const config = {
