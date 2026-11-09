@@ -42,6 +42,23 @@ const hash10 = (texte) => crypto.createHash("sha1").update(texte).digest("hex").
 //    est retenté deux fois, puis le chargeur S'ARRÊTE : il ne lance jamais la suite
 //    sans lui, sinon app-09 démarrerait une application à laquelle il manque un
 //    fichier (le monolithe, lui, ne pouvait manquer qu'en entier).
+//    ⚠️ CHAQUE REPRISE REDEMANDE D'ABORD L'ADRESSE AU RÉSEAU, en
+//    `fetch(adresse, { cache: "reload" })` (2026-11-09). Netlify applique la règle
+//    `/app/*` de `_headers` aux 404 AUSSI : une adresse du lot demandée pendant un
+//    retour arrière vers un déploiement d'avant ce découpage (aucun `app/`) revient
+//    en 404 `public,max-age=31536000,immutable` (mesuré en production). Quand un
+//    redéploiement la rétablit à l'identique (fichier inchangé, même empreinte), le
+//    navigateur relirait ce 404 pendant un an — la reprise aussi : l'application ne
+//    démarrerait plus sur cet appareil. `cache: "reload"` va au réseau sans lire le
+//    cache HTTP et y RANGE la réponse ; le script réinséré relit alors ce qui vient
+//    d'arriver. Le worker ne range jamais un 404 (sw.js, `contenuVersionne`) et
+//    transmet le mode `reload` à son propre `fetch(e.request)` (branche
+//    `estVersionne`). Le corps est lu jusqu'au bout avant la réinsertion : le
+//    script relit alors l'entrée que la redemande vient d'écrire, au lieu de
+//    repartir au réseau pendant qu'elle s'écrit encore. Verrou :
+//    app-scripts-par-fichier.spec.js ⑥ (profil persistant, deux moteurs : la seconde
+//    visite relit le 404 en cache, et c'est la redemande qui démarre l'application ;
+//    mutations : sans redemande, ou redemande sans `cache: "reload"` → rouge).
 //    emoji-misc.js (qui doit garder son ordre APRÈS le bloc app) et
 //    passion-context.js (il observe la persona active, donc APRÈS la définition
 //    de state/currentProfile) ferment le 9ᵉ script, comme ils fermaient app.js :
@@ -80,10 +97,12 @@ const loader = ""
   + "   un dans l'ordre du bloc, chacun inséré dès que le précédent a tourné : un\n"
   + "   script inséré retarde l'événement `load` de la page, l'application tourne donc\n"
   + "   avant lui, comme avec l'ancien app.js. Un échec de chargement est retenté deux\n"
-  + "   fois, puis on s'arrête plutôt que de lancer la suite sans lui. Pas de preload\n"
-  + "   statique (il concurrençait le HTML/CSS critiques sur mobile et polluait les\n"
-  + "   métriques LCP) : prefetch basse priorité à la PREMIÈRE frappe dans le champ\n"
-  + "   code — les fichiers sont en cache HTTP quand le 4e chiffre déverrouille. */\n"
+  + "   fois, l'adresse d'abord redemandée au réseau (un 404 « immutable » resterait\n"
+  + "   sinon un an dans le cache HTTP), puis on s'arrête plutôt que de lancer la suite\n"
+  + "   sans lui. Pas de preload statique (il concurrençait le HTML/CSS critiques sur\n"
+  + "   mobile et polluait les métriques LCP) : prefetch basse priorité à la PREMIÈRE\n"
+  + "   frappe dans le champ code — les fichiers sont en cache HTTP quand le 4e\n"
+  + "   chiffre déverrouille. */\n"
   + "(function () {\n"
   + "  var scripts = [\n"
   + appScripts.map(s => "    " + JSON.stringify(s.ref)).join(",\n") + "\n"
@@ -106,7 +125,13 @@ const loader = ""
   + "      s.onload = function () { i++; essais = 0; suivant(); };\n"
   + "      s.onerror = function () {\n"
   + "        if (s.parentNode) s.parentNode.removeChild(s);\n"
-  + "        if (++essais <= 2) setTimeout(suivant, 1000 * essais);\n"
+  + "        if (++essais <= 2) setTimeout(function () {\n"
+  + "          var reprendre = function () { suivant(); };\n"
+  + '          if (typeof fetch !== "function") return reprendre();\n'
+  + '          fetch(scripts[i], { cache: "reload" })\n'
+  + "            .then(function (r) { return r.arrayBuffer(); })\n"
+  + "            .then(reprendre, reprendre);\n"
+  + "        }, 1000 * essais);\n"
   + '        else if (window.console) console.error("PASSIO : " + scripts[i] + " ne se charge pas, l\'application ne démarre pas.");\n'
   + "      };\n"
   + "      document.body.appendChild(s);\n"
