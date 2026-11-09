@@ -47,6 +47,7 @@
 - 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
 - 🫀 LE SEUIL DU BATTEMENT SE DÉDUIT DE LA CADENCE DE LA VEILLE — 35 MIN N'ÉTAIT TENU PAR RIEN (2026-11-08)
 - 🏃 LES FONCTIONS S'EXÉCUTENT AVANT D'ÊTRE DÉPLOYÉES — UNE VARIABLE NON DÉCLARÉE NE PART PLUS (2026-11-09)
+- 🙈 « RÉPARER UN RUN » DEMANDE UN JOURNAL QUE L'AGENT N'A PAS LE DROIT DE LIRE (2026-11-09)
 
 ---
 
@@ -1055,3 +1056,21 @@ L'étape lance désormais 27 suites, 409 tests, en 3,1 s sur le poste.
 ⚠️ **UN BANC SANS IMPORT N'ÉTAIT PAS UN BANC POUR LA GATE.** La gate de #787 mesurait ce que garde une suite à ses imports de modules emportés. Le banc qui exécute le site d'appel n'en a aucun, exprès : ses modules sont des doublures. Sans cette extension, le lister rougissait ③, et ne pas le lister laissait un push direct déployer le défaut.
 
 Détail : `docs/AUTONOMIE_EXPLOITATION.md` § 3.9.
+
+---
+
+## 🙈 « RÉPARER UN RUN » DEMANDE UN JOURNAL QUE L'AGENT N'A PAS LE DROIT DE LIRE (2026-11-09)
+
+**Le défaut.** `corpsReparation` (`supabase/functions/_shared/pilotage.js`, cible `run`) écrit en toutes lettres : « Lis son journal (`gh run view --log-failed`) pour trouver l'étape en échec. » Or `claude-code.yml` donne à l'agent une liste BLANCHE d'outils qui ne contient **aucun** `gh`, aucun outil réseau, et pas davantage `npm` / `node` — alors que la même consigne demande ensuite de « lancer `npm run verif` et les tests concernés ». Un ordre « Régler » posé sur un run en échec est donc **inexécutable par construction** : le tout premier geste qu'il réclame est refusé par la permission, l'agent n'a jamais l'étape en échec sous les yeux, et il ne peut rapporter qu'une absence de diagnostic.
+
+**Mesuré.** Issue #807, « [RÉPARER] Déploiement en échec » (run `deploy.yml` 42700583850 sur `main`). `gh run view … --log-failed` et `gh run view … --json` : refusés tous les deux. La cause racine du déploiement rouge n'a **pas** été établie, et aucun code n'a été modifié pour elle — conformément à la consigne « si la cause n'est pas dans le code, ne modifie rien ».
+
+⚠️ **UN ORDRE QU'AUCUN DROIT N'HONORE N'EST PAS UN ORDRE, C'EST UN VŒU** — la même leçon qu'ASTRA-05 (« une consigne qu'aucune garde n'impose n'est qu'un vœu »), vue par l'autre bout : ici c'est la consigne qui demande plus que les droits accordés. Le symptôme est une PR sans correctif, pas une erreur : indiscernable d'un « il n'y avait rien à réparer ».
+
+⚠️ **ET LE DIAGNOSTIC NE SE DEVINE PAS DEPUIS L'ARBRE.** `deploy.yml` porte sept jobs et une centaine d'étapes, dont trois ne tournent QUE sur `push` (contre-revue de gouvernance, barrière RLS de production, déploiement Netlify) : elles sont invisibles du run de la PR, donc un `main` rouge après une PR verte ne se réduit pas à un audit statique qu'on rejouerait de tête. Choisir une cause sans le journal, c'est écrire un correctif au hasard dans le périmètre le plus sensible du dépôt.
+
+**Les deux gestes qui ferment la boucle** (hors du périmètre d'écriture d'un agent de réparation, qui ne touche ni `.github/` ni `scripts/`) :
+1. ajouter à `--allowedTools` de `claude-code.yml` la seule lecture dont l'ordre a besoin — `Bash(gh run view:*)`, en lecture seule, sur le journal d'un dépôt public ;
+2. ou, si ce droit n'est pas voulu, retirer la phrase de `corpsReparation` et faire porter le journal **dans** l'issue : le pilotage, lui, a déjà le jeton qui lit les runs (`RUNS_REPARABLES`), et il peut recopier l'étape en échec dans le corps — de la donnée, comme le titre et le corps recopiés d'une issue cible.
+
+Le second est le plus sûr : il n'élargit aucun droit, et il met sous les yeux de l'agent exactement ce qu'il doit lire.
