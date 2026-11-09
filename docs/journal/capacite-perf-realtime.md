@@ -2275,8 +2275,18 @@ requêtes** : le job à comptes réels (≈ 216 — `authz-critical` sur la prod
 service role, par construction), les gates `dist` (≈ 14, voulues), les six shards locaux (≈ 40 en
 tout : les WebSocket des suites `sansIsolationDesDonnees` et les deux trous de la PR de suite)… et
 **le job WebKit (≈ 100), qui démarrait l'application SANS isolation, avant comme après** : voir
-ci-dessous. Soit **−87 % par run dès #799, ≈ −92 % attendus avec la PR de suite** (il ne restera que
-`authz-critical`, les gates `dist` et le contrat de télémétrie désigné).
+ci-dessous.
+**Relevé plus large, 18:42 → 20:05 : DIX runs « CI & Deploy » terminés** (trois sur `main`, sept de
+PR, tous avec le filet de #799) → **2 117 requêtes Azure, soit ≈ 212 PAR RUN contre ≈ 2 860 :
+−93 %**. Ce qui reste, sur les dix runs : le job WebKit 985 (≈ 98 par run), le référentiel 505 et
+les profils 317 (WebKit et gates `dist` pour l'essentiel), les scripts Node du job à comptes réels
+136, la messagerie 131, le temps réel 121 (≈ 12 par run, les WebSocket des suites
+`sansIsolationDesDonnees`), la télémétrie 81, `video_lives` 44 (contre 7 873 en 24 h avant).
+**Avec la PR de suite** (WebKit, WebSocket, deux trous) : ≈ 100 par run attendus, **≈ −96 %** — il ne
+restera que `authz-critical`, les gates `dist` et le contrat de télémétrie désigné.
+⚠️ **LA PART EN POURCENTAGE TROMPE SUR UNE COURTE FENÊTRE** : 45,9 % dans ce relevé (68,1 % avant),
+parce que le reste du trafic n'est pas constant (veilles, sessions qui testent en local sur d'anciennes
+branches). Le bon indicateur est **par run**, rapporté au nombre de runs de `gh run list`.
 ⚠️ **WEBKIT : UNE PAGE QUE LE SERVICE WORKER CONTRÔLE ÉCHAPPE À TOUTES LES ROUTES.** La sonde sur le
 projet `webkit-iphone` (180 cas) : 86 requêtes parties en production depuis `first-run` (38),
 `conv-ouverture-fil` (28), `cadrage` (15) et `feed-premier-rendu` (5). Dans `cadrage`, le référentiel
