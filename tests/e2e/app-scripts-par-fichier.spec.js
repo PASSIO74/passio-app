@@ -18,8 +18,8 @@
 //   ② un script qui ne se charge pas est RETENTÉ : l'application démarre quand même ;
 //   ③ un script introuvable ARRÊTE le chargement : rien ne s'exécute après lui —
 //     app-09 ne démarre jamais une application à laquelle il manque un fichier ;
-//   ⑤ comme l'ancien app.js unique, rien ne s'exécute avant que le DERNIER soit
-//     arrivé (les minuteurs de démarrage d'app-04 partent avec ceux d'app-08) ;
+//   ⑤ comme avec l'ancien app.js unique, l'application s'exécute AVANT l'événement
+//     `load` de la page, même quand le dernier script tarde ;
 //   ④ LE BUT, avec le vrai worker : la première visite télécharge chaque script UNE
 //     fois (le preload sert l'exécution), une réouverture n'en télécharge AUCUN, et
 //     une version qui ne change qu'un fichier ne retélécharge QUE LUI — alors même
@@ -109,8 +109,8 @@ function servir() {
       return;
     }
     let corps = fs.readFileSync(f);
-    // La sonde note aussi l'heure du PREMIER script exécuté (⑤).
-    if (nom) corps = Buffer.concat([corps, Buffer.from("\n;window.__debut = window.__debut || Date.now(); (window.__ordre = window.__ordre || []).push(" + JSON.stringify(nom) + ");\n")]);
+    // La sonde note aussi l'état du document au PREMIER script exécuté (⑤).
+    if (nom) corps = Buffer.concat([corps, Buffer.from("\n;window.__etatAuDebut = window.__etatAuDebut || document.readyState; (window.__ordre = window.__ordre || []).push(" + JSON.stringify(nom) + ");\n")]);
     const envoyer = () => {
       if (nom) etat.liberes[nom] = Date.now();
       res.writeHead(200, {
@@ -203,19 +203,25 @@ test.describe("sans worker : l'ordre, le parallélisme, la reprise, l'arrêt", (
     expect(referencesManquantes()).toEqual([]);
   });
 
-  // ⑤ Comme l'ancien app.js unique : rien ne s'exécute avant que TOUT soit arrivé.
-  // Sinon un minuteur de démarrage armé par app-04 (files de rejeu, 4 s) courrait
-  // pendant qu'app-08 se télécharge encore, et rendrait la main sans se réarmer
-  // (relecture de la PR #801). Mutation : partir dès le premier script reçu → rouge.
-  test("⑤ rien ne s'exécute avant l'arrivée du DERNIER script, puis les 9 s'enchaînent", async ({ page }) => {
+  // ⑤ Comme avec l'ancien app.js unique, l'application s'exécute AVANT l'événement
+  // `load` de la page — même quand le dernier script tarde. Un `<script>` inséré
+  // retarde `load`, un `<link rel=preload>` non : un chargeur qui attendait l'arrivée
+  // des 9 avant d'insérer quoi que ce soit (essayé le 2026-11-09) laissait la page
+  // déclarer `load` à 100 ms, l'application après — et tout ce qui se fie à `load`
+  // (l'enregistrement du worker, les bancs qui attendent `goto`) partait trop tôt.
+  // Mutation : ce chargeur-là → rouge (mesuré sous Chromium et WebKit).
+  test("⑤ l'application s'exécute avant l'événement load de la page, même quand le dernier script tarde", async ({ page }) => {
     const dernier = nomsA()[nomsA().length - 1];
     etat.fautes = { [dernier]: { retard: 1500 } };
+    await page.addInitScript(() => {
+      window.addEventListener("load", () => { window.__appAuLoad = window.__appPrete === true; });
+    });
     await page.goto(adresse());
-    await page.waitForFunction(() => window.__appPrete === true, null, { polling: 50, timeout: 30000 });
-    expect(await page.evaluate(() => window.__ordre)).toEqual([...nomsA(), "ready"]);
-    const debut = await page.evaluate(() => window.__debut);
+    await page.waitForFunction(() => window.__appPrete === true && "__appAuLoad" in window, null, { polling: 50, timeout: 30000 });
     expect(etat.liberes[dernier], "prémisse : le dernier script a bien été retenu").toBeTruthy();
-    expect(debut, "le premier script ne s'exécute qu'une fois le dernier arrivé").toBeGreaterThanOrEqual(etat.liberes[dernier]);
+    expect(await page.evaluate(() => window.__ordre)).toEqual([...nomsA(), "ready"]);
+    expect(await page.evaluate(() => [window.__etatAuDebut, window.__appAuLoad]), "premier script avant `load`, application prête quand `load` part")
+      .toEqual(["interactive", true]);
     expect(referencesManquantes()).toEqual([]);
   });
 

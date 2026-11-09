@@ -1883,7 +1883,7 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
 | Pièce | Fichier | Verrou |
 |---|---|---|
 | 9 scripts `app/<nom de la source>.js?v=<empreinte de SON contenu>` ; `emoji-misc.js` et `passion-context.js` ferment le 9ᵉ, comme ils fermaient `app.js` ; `appHash` reste l'empreinte du texte d'ensemble (identique à l'ancien `app.js`, octet pour octet) | `scripts/build.js` (étape 1) | `tests/unit/build-id.test.mjs` ⑦ (modifier UN fichier ne change que l'empreinte de SON script ; mutation : une empreinte d'ensemble → rouge) |
-| Chargeur : preload des 9 en parallèle ; comme `app.js`, RIEN ne s'exécute avant que TOUS soient arrivés (filet : sans preload, ou au bout de 10 s, on part quand même) ; puis exécution UN PAR UN au `load` du précédent, deux reprises (1 s, 2 s) puis ARRÊT, `passio:app-ready` une fois après le 9ᵉ | `scripts/build.js` | `tests/e2e/app-scripts-par-fichier.spec.js` ①②③⑤ (Chromium et WebKit ; mutation : partir au premier reçu → ⑤ rouge) |
+| Chargeur : preload des 9 en parallèle, exécution UN PAR UN, chacun inséré au `load` du précédent (un script inséré retarde l'événement `load` de la page : l'application tourne avant lui, comme avec `app.js`), deux reprises (1 s, 2 s) puis ARRÊT, `passio:app-ready` une fois après le 9ᵉ | `scripts/build.js` | `tests/e2e/app-scripts-par-fichier.spec.js` ①②③⑤ (Chromium et WebKit ; mutation : n'insérer qu'après l'arrivée des 9 → ⑤ rouge) |
 | `passioCompressImage` n'est plus définie qu'UNE fois (app-06, celle que la production exécute depuis juin) : la `function` d'app-09 est retirée | `js/app-09-boot-pwa.js` | `scripts/audit-globals.js` (rouge avant le retrait, vert après) |
 | Garde : une affectation `window.X =` face à une `function X` d'un AUTRE fichier du bloc app est refusée | `scripts/audit-globals.js` | `npm run verif`, CI |
 | Budget de démarrage : le bloc app compte pour UN poste, comme l'ancien `app.js` | `tests/e2e/audit-2026-11-perf-dist.spec.js` | — |
@@ -1905,12 +1905,20 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
   et `audit-globals.js` refuse désormais ce cas (il ne comparait que des déclarations entre elles).
   Balayage de l'agent : 1 341 affectations, c'était le seul. Les enveloppes posées à l'exécution par
   des scripts HORS du bloc (`goTo`, `doLogout`, `renderIRL`…) sont voulues et hors de la règle.
-- ⚠️ **LES MINUTEURS DE DÉMARRAGE COMPTAIENT DEPUIS L'EXÉCUTION DU BLOC ENTIER** : app-04 arme ses files
-  de rejeu à 4 s, app-08 le rejeu des publications à 6 s, gardés par `window._supaReal` et SANS se
-  réarmer s'ils arrivent trop tôt. Exécuté dès réception, app-04 (en cache) aurait couru pendant
-  qu'app-08 (modifié par la version) se téléchargeait encore sur un réseau lent. D'où le chargeur qui
-  attend les 9, comme le monolithe attendait tout `app.js` ; le même choix referme la fenêtre où un
-  geste pendant le chargement appellerait un fichier pas encore exécuté.
+- ⚠️ **UN `<link rel=preload>` NE RETARDE PAS L'ÉVÉNEMENT `load` DE LA PAGE, UN `<script>` INSÉRÉ SI.**
+  La relecture relevait que les minuteurs de démarrage comptent désormais depuis LEUR fichier
+  (app-04 arme ses files de rejeu à 4 s, app-08 le rejeu des publications à 6 s, gardés par
+  `window._supaReal`, sans se réarmer s'ils arrivent trop tôt). Premier remède essayé : n'exécuter
+  qu'une fois les 9 arrivés, comme le monolithe. Rejeté sur mesure : les 9 ne sont alors que des
+  preloads, et la page déclarait `load` AVANT que l'application tourne (dernier script retenu 1,5 s :
+  `load` à ~100 ms, l'application à ~1,6 s, Chromium et WebKit) ; trois cas de `feed-premier-rendu`
+  joués contre l'artefact ont rougi (le banc attend `goto`, puis lit `state` encore nul). Avec
+  `app.js` comme avec la chaîne retenue, l'application tourne avant `load` (verrou ⑤). Le décalage
+  des minuteurs reste donc, en résidu : il ne joue que si les derniers scripts arrivent plus de 4 s
+  après app-04 (réseau lent, version qui les a modifiés), avec des actions hors ligne en attente ;
+  le rejeu est alors REPORTÉ (retour en ligne, action suivante, lancement suivant), jamais perdu.
+  Même famille, même ordre de grandeur : un geste fait pendant ce chargement peut appeler un
+  fichier pas encore exécuté (`ReferenceError` remontée, sans autre effet).
 - ⚠️ **SOUS WEBKIT, LE `fetch` DU WORKER NE VOIT PAS LE CACHE OÙ LA PAGE A RANGÉ SES SCRIPTS** (Playwright
   WebKit 2388) : premier chargement contrôlé = 9 requêtes, et avec le worker d'avant ce lot, une
   version qui ne changeait QU'UN fichier faisait repartir les 9 — l'activation vide le cache du worker,
@@ -1958,5 +1966,7 @@ rideau, invitation, cadrage, interactions, fil fenêtré, historique) contre l'A
 préexistant, propre à ce mode, que la CI n'exécute pas pour cette suite.
 
 **Ce qui reste.** Mesurer sur un vrai iPhone (session persistante) ce que son worker retrouve dans le
-cache réseau — le lot n'en dépend plus. Et la première installation sous WebKit (ci-dessus) : la page
-pourrait confier ses scripts au worker plutôt que de le laisser les redemander.
+cache réseau — le lot n'en dépend plus. La première installation sous WebKit (ci-dessus) : la page
+pourrait confier ses scripts au worker plutôt que de le laisser les redemander. Et le résidu des
+minuteurs de démarrage : les réarmer sur `passio:app-ready` (app-04 ×2, app-08), après avoir vérifié
+que deux rejeux rapprochés d'une même file ne doublent rien.
