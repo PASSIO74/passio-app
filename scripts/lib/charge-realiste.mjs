@@ -10,10 +10,11 @@ export function emailCapacite(campagne, index) {
 }
 export const LIMITES = Object.freeze({ octets: 180_000_000, octetsNettoyage: 20_000_000,
   messagesRealtime: 150_000, requetes: 20_000, dureeCampagneMs: 45 * 60_000 });
-// ⚠️ Le nom est un IDENTIFIANT de CLI (`--profil-realtime`), pas un compte : depuis R25
-// (2026-11-03) ce profil porte HUIT liaisons, `legacy12` DIX — `conv_members` et
-// `notifications` sont sorties de la publication et poussées sur `user:<uid>`.
-export const PROFIL_REALTIME = "likes-visibles10";
+// ⚠️ Le nom est un IDENTIFIANT de CLI (`--profil-realtime`), pas un compte : depuis le
+// 2026-11-09 (« 📴 ») ce profil porte les CINQ liaisons de transition, `legacy12` DIX —
+// `conv_members` et `notifications` sont sorties de la publication (R25), puis profils,
+// publications et lives ne sont plus écoutés.
+export const PROFIL_REALTIME = "transition5";
 export const LIKES_VISIBLES = Object.freeze({ maximum: 3, fraicheurMs: 15000, jitterMs: 1500,
   initialJitterMs: 15000, minimumDepartMs: 200, plafondMs: 60000 });
 // Cadences que le banc sait modéliser : `fixe` = le produit d'avant le
@@ -77,6 +78,12 @@ export function abonnements(uid, profil = PROFIL_REALTIME) {
   // `conv_members` ni `notifications` : hors publication, une seule liaison vers
   // elles ferait échouer TOUTES celles du canal (Realtime les crée en une
   // transaction) ; leurs INSERT arrivent par broadcast sur user:<uuid>.
+  // ⚠️ 2026-11-09 (contenu public hors de postgres_changes) : le canal de l'app
+  // ne garde que les CINQ liaisons de TRANSITION — accusés de lecture,
+  // interactions (ajout, retrait), commentaires, commentaires d'activité —
+  // jusqu'à la migration qui vide la publication. `profiles`, `posts` et
+  // `video_lives` ne sont plus écoutées par personne ; `legacy12` garde la
+  // liste d'avant pour comparer, hors ligne seulement.
   const postgres_changes = [
     { event: "*", schema: "public", table: "conv_reads" },
     { event: "INSERT", schema: "public", table: "comment_interactions" },
@@ -89,7 +96,8 @@ export function abonnements(uid, profil = PROFIL_REALTIME) {
     { event: "INSERT", schema: "public", table: "event_comments" },
     { event: "*", schema: "public", table: "video_lives" },
   ];
-  return profil === "legacy12" ? postgres_changes : postgres_changes.filter(a => a.table !== "post_likes");
+  const transition = ["conv_reads", "comment_interactions", "post_comments", "event_comments"];
+  return profil === "legacy12" ? postgres_changes : postgres_changes.filter(a => transition.includes(a.table));
 }
 
 export function compteurHead(status, contentRange) {

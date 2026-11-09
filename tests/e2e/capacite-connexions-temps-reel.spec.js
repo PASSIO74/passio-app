@@ -206,6 +206,8 @@ test.describe("Capacité — la connexion temps réel est réservée aux comptes
     "app-08-ui-modals-tour.js:_subscribePrivateConv": "appelée par _supaConvSpecificChannel (gardée) et par un gestionnaire de canal déjà gardé",
     "app-08-ui-modals-tour.js:_subscribeUserTopic": "appelée par supaSubscribe (gardée) et par onAuthStateChange (compte réel)",
     "app-08-ui-modals-tour.js:_creerCanalDb": "fabrique appelée par supaSubscribe, GARDÉE",
+    // 2026-11-09 (« 📴 ») : le sujet privé d'une discussion à l'écran.
+    "app-08-ui-modals-tour.js:_creerCanalFil": "fabrique appelée par _filRejoindre, sous _filsRtPossible (même autorité que supaSubscribe, socket ouvert et éveillé)",
   };
 
   test("⑤ bis L'INVENTAIRE DES PORTES est complet — une porte neuve doit se justifier", () => {
@@ -259,6 +261,8 @@ test.describe("Capacité — la connexion temps réel est réservée aux comptes
       ["js/app-05-config-profil.js", "async function startVideoLive()"],
       ["js/app-05-config-profil.js", "function handlePushIncomingCall(d)"],
       ["js/app-08-ui-modals-tour.js", "function supaSubscribe()"],
+      // 2026-11-09 : la porte des sujets `fil:<id>` (discussions à l'écran).
+      ["js/app-08-ui-modals-tour.js", "function _filsRtPossible()"],
     ];
     for (const [f, fn] of gardees) {
       const corps = sansCommentaires(corpsDeFonction(lire(f), fn));

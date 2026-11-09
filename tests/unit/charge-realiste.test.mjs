@@ -98,13 +98,15 @@ test("les partenaires de messagerie sont distincts et connectés même au palier
   assert.equal(partenaire(24, 25), 0);
 });
 
-test("les huit handlers V3 retirent les deux likes ; R25 : plus aucune liaison vers conv_members ni notifications", () => {
+test("les cinq liaisons de transition (2026-11-09) ; R25 : plus aucune liaison vers conv_members ni notifications", () => {
   const subscriptions = abonnements("compte-test");
-  assert.equal(subscriptions.length, 8);
-  assert.equal(new Set(subscriptions.map(s => s.table)).size, 7);
+  assert.equal(subscriptions.length, 5);
+  assert.equal(new Set(subscriptions.map(s => s.table)).size, 4);
   const legacy = abonnements("compte-test", "legacy12");
   assert.equal(legacy.length, 10);
-  assert.deepEqual(subscriptions, legacy.filter(s => s.table !== "post_likes"));
+  // Le contenu poussé à TOUS les connectés est sorti : profils, publications, lives (et les likes, dès le 2026-09-20).
+  assert.deepEqual(subscriptions, legacy.filter(s => !["post_likes", "profiles", "posts", "video_lives"].includes(s.table)));
+  assert.equal(subscriptions.some(s => ["profiles", "posts", "video_lives", "post_likes"].includes(s.table)), false);
   assert.equal(subscriptions.some(s => ["conv_messages", "telemetry_events"].includes(s.table)), false);
   // ⚠️ R25 (2026-11-03) : ces deux tables sont HORS publication. Une liaison vers
   // elles ferait échouer le join ENTIER du canal (Realtime crée ses liaisons en une
@@ -198,7 +200,7 @@ test("les deux phx_reply ne donnent pas CDC prêt ; system peut précéder ou su
     assert.equal(etat.observer(ordre[0]), false);
     assert.equal(etat.observer(ordre[1]), false);
     assert.equal(etat.observer(ordre[2]), true);
-    assert.equal(etat.systemes.ok, 1); assert.equal(etat.handlers, 8); // R25 : conv_members et notifications sont parties
+    assert.equal(etat.systemes.ok, 1); assert.equal(etat.handlers, 5); // R25 puis 2026-11-09 : les cinq liaisons de transition
   }
 });
 
@@ -228,7 +230,8 @@ test("le contrat du banc correspond aux bindings V3 réellement créés et aux c
   const debut = source.indexOf("function _creerCanalDb(prive)"), fin = source.indexOf("// ---- FOLLOW / UNFOLLOW ----", debut);
   assert.ok(debut >= 0 && fin > debut);
   const observes = [];
-  const channel = { on(type, binding) { assert.equal(type, "postgres_changes"); observes.push(JSON.parse(JSON.stringify(binding))); return this; }, subscribe() { return this; } };
+  // La liaison `system` (2026-11-09) rend le canal au refus du CDC : elle n'est pas une table.
+  const channel = { on(type, binding) { if (type === "system") return this; assert.equal(type, "postgres_changes"); observes.push(JSON.parse(JSON.stringify(binding))); return this; }, subscribe() { return this; } };
   const ctx = { MY_UID: "contrat-uid", window: { PASSIO_REALTIME_V3: true }, supa: { channel: () => channel } };
   const creer = runInNewContext(source.slice(debut, fin) + "\n_creerCanalDb;", ctx);
   creer(true);
@@ -250,7 +253,7 @@ test("legacy12 reste consultable hors ligne mais aucune exécution ne peut le ch
   assert.throws(() => optionsBanc([...cible, "--profil-realtime", "9"]), /PROFIL_REALTIME_INVALIDE/);
   const legacy = new DisponibiliteRealtime(uidReady, "legacy12");
   for (const message of [joinDB, joinUser, systemReady]) legacy.observer(message);
-  assert.equal(legacy.pret, false, "les huit bindings du profil courant ne suffisent pas pour le contrat legacy (dix)");
+  assert.equal(legacy.pret, false, "les cinq bindings du profil courant ne suffisent pas pour le contrat legacy (dix)");
   const actuel = new DisponibiliteRealtime(uidReady);
   const trop = structuredClone(joinDB);
   trop.payload.response.postgres_changes = abonnements(uidReady, "legacy12").map((a, id) => ({ ...a, id }));

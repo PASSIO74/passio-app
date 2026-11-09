@@ -4520,6 +4520,8 @@ function openEventDetails(id) {
   const page = document.getElementById("eventDetailPage");
   page.style.display = "flex";
   page.scrollTop = 0;
+  // Le sujet privé de la discussion de l'activité (`fil:<id>`, app-08).
+  try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
 }
 
@@ -5346,7 +5348,21 @@ async function _loadEventComments(eventId, opts) {
   if (!box) return;
   var list = [];
   if (typeof supaLoadEventComments === "function" && window._supaReal) {
-    try { list = await supaLoadEventComments(eventId); } catch (e) {}
+    try { list = await supaLoadEventComments(eventId); } catch (e) { list = null; }
+    // ⚠️ UNE LECTURE EN ÉCHEC N'EST PAS UNE DISCUSSION VIDE (2026-11-09) : on
+    // garde ce que l'écran montre, on ne date pas la lecture, et l'appelant le
+    // sait (`false`) — la relecture de repli du sujet `fil:` garde alors sa
+    // cadence vive au lieu de croire la discussion calme.
+    if (list === null) {
+      try { diagLog("commentaires_activite : lecture impossible, liste conservée"); } catch (_e) {}
+      // Peindre ce qu'on tient (cache, optimistes) : jamais « Chargement… » pour toujours.
+      _renderEventComments(eventId);
+      return false;
+    }
+    // L'instant de la dernière lecture RÉUSSIE : le sujet `fil:<id>` (app-08)
+    // n'en refait pas une si celle-ci finit après son abonnement.
+    window._eventCommentsLuA = window._eventCommentsLuA || {};
+    window._eventCommentsLuA[eventId] = Date.now();
   }
   // Vérité serveur appliquée EN PLACE + optimistes locaux conservés + persistance.
   _setEventComments(eventId, list);
@@ -5357,6 +5373,7 @@ async function _loadEventComments(eventId, opts) {
     // `id` : le FIL (l'activité) — sans lui, aucune épingle n'est décidée (RV-38).
     hydrateCommentInteractions({ id: eventId, comments: _eventCommentsCache[eventId] }, opts).then(function(){ _persistEventComments(); _renderEventComments(eventId); });
   }
+  return true;
 }
 
 // Aligne un commentaire IRL/CDV (author/at) sur la forme « post » attendue par le
