@@ -2229,17 +2229,45 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
 - ⚠️ **`^` DANS UN `execSync` SOUS WINDOWS** est l'échappement de cmd.exe (`sha^1` → `sha1`) : `~1`.
 - ⚠️ **CLAUDE.md EST À 39 991 / 40 000** : ce lot y retire 5 caractères, il n'en ajoute aucun.
 
-**Vérifié en plus de la CI.** Dix suites fonctionnelles (démarrage, fil, première visite, conversation,
-rideau, invitation, cadrage, interactions, fil fenêtré, historique) contre l'ARTEFACT construit
-(`PASSIO_CIBLE=dist`, donc le vrai chargeur) : 168/169. Le seul rouge, `feed-premier-rendu` §7, lit
-`fetch("/js/telemetry.js")`, un fichier que le build n'a JAMAIS recopié dans `dist/` (il est inliné) :
-préexistant, propre à ce mode, que la CI n'exécute pas pour cette suite.
+**Vérifié en plus de la CI.** Contre l'ARTEFACT de la tête fusionnée (`PASSIO_CIBLE=dist`, donc le vrai
+chargeur), 67 fichiers — dix suites larges, les portes, messagerie, commentaires, publication, profil,
+IRL, notifications, bobines, partage, suppression : 566/580. Les 14 rouges sont PRÉEXISTANTS : les
+mêmes 13 tombent à l'identique sur l'artefact de `main` avec l'ancien `app.js` (mesuré dans un
+worktree de `origin/main`), plus `feed-premier-rendu` §7, qui lit `fetch("/js/telemetry.js")`, un
+fichier que le build n'a JAMAIS recopié dans `dist/` (il est inliné). Ce mode, la CI ne l'exécute pas
+pour ces suites.
 
-**Ce qui reste.** Mesurer sur un vrai iPhone (session persistante) ce que son worker retrouve dans le
-cache réseau — le lot n'en dépend plus. La première installation sous WebKit (ci-dessus) : la page
-pourrait confier ses scripts au worker plutôt que de le laisser les redemander. Et le résidu des
-minuteurs de démarrage : les réarmer sur `passio:app-ready` (app-04 ×2, app-08), après avoir vérifié
-que deux rejeux rapprochés d'une même file ne doublent rien.
+**Mesuré en production après le déploiement (`0362664c`, run `42689959360` entièrement vert).**
+- `release.json` : `buildId` `f7e94f576421`, `appHash` `a151c7aa5e` — identiques au build local du même
+  arbre. `sw.js` : cache `passio-vf7e94f576421`, `FICHIERS_VERSION` à 10 fichiers.
+- La barrière des migrations (`urlsBundlesServis`) lit les 9 adresses dans la page MINIFIÉE servie,
+  identiques au build local : la forme écrite à la main de son test était la bonne.
+- Les 9 scripts : 200, brotli, `immutable`, `application/javascript`. **Transférés : 430 222 octets
+  en brotli** (app-01 103 Ko · app-07 57 · app-08 56 · app-02 53 · app-04 52 · app-05 40 · app-06 37 ·
+  app-09 26 · app-03 6) et 453 615 en gzip. Netlify compresse les fichiers moyens MIEUX que le monolithe
+  (app-01 : 103 227 servis contre 106 876 en brotli q4 local) : la première visite coûte ~+2 %
+  (~421 → 430 Ko), pas les +8,8 % estimés.
+- **Bilan avec ces tailles servies**, 41 versions de `main` sur 30 jours (celle-ci comprise) :
+  ~421 → **~135 Ko par version qui touche le bloc (−68 %)**, 17,3 → 5,5 Mo par appareil actif.
+- L'ancien `/app.js` : 404 en `max-age=0` — aucune règle ne le fige.
+- ⚠️ **NETLIFY APPLIQUE `/app/*` AUX 404 AUSSI** : une adresse absente sous `/app/` revient en 404
+  `public,max-age=31536000,immutable` (mesuré). Un onglet qui demanderait une adresse du lot pendant un
+  RETOUR ARRIÈRE vers un déploiement d'avant ce lot (aucun `app/`), puis un redéploiement qui la rétablit
+  à l'identique (fichier inchangé, même empreinte) : ce 404 resterait en cache, et la reprise du
+  chargeur le relirait. Fenêtre étroite, effet lourd (l'application ne démarre plus sur cet appareil).
+  Remède à poser : à l'échec, redemander l'adresse en `fetch(…, { cache: "reload" })` avant de
+  réinsérer le script (le cache HTTP est rafraîchi, le worker n'a pas rangé le 404).
+
+**Ce qui reste.** Le remède du 404 ci-dessus (chemin critique : `scripts/build.js`). Mesurer sur un
+vrai iPhone (session persistante) ce que son worker retrouve dans le cache réseau — le lot n'en dépend
+plus. La première installation sous WebKit (ci-dessus) : la page pourrait confier ses scripts au worker
+plutôt que de le laisser les redemander. Le résidu des minuteurs de démarrage : les réarmer sur
+`passio:app-ready` (app-04 ×2, app-08), après avoir vérifié que deux rejeux rapprochés d'une même file
+ne doublent rien. Et, trouvé en route, ANTÉRIEUR à ce lot : `js/ui-v6a0-activite.js` n'enveloppe
+`openCreateEvent` et `submitEvent` que tout de suite ou à `DOMContentLoaded` — en production le bloc app
+n'est pas encore là, et le module n'écoute pas `passio:app-ready` : ni le titre « Créer une activité »
+ni la garde du double envoi ne s'appliquent en production (`ui-v6a0-activite` ×9 et `irl-trust-safety`
+rouges sur l'artefact de `main` comme sur celui-ci).
 
 ## 🧪 LA CI NE PARLE PLUS AU PROJET DE PRODUCTION : UN PROJET SUPABASE VIDE POUR LES SUITES LOCALES (2026-11-09)
 
