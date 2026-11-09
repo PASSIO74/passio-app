@@ -316,4 +316,39 @@ test.describe("Isolation — le projet Supabase vide des suites locales", () => 
     await espion.calme();
     expect(espion.partis).toEqual([]);
   });
+
+  test("⑫ une suite qui gère son réseau (`sansIsolationDesDonnees`) n'ouvre pas le temps réel de production", async ({
+    page,
+  }) => {
+    // ⚠️ `page.route` NE VOIT PAS LES WEBSOCKET : six suites qui coupaient tout le
+    // HTTP de Supabase ouvraient quand même une vraie connexion temps réel
+    // (12 par course, les ~160 connexions quotidiennes de la CI). Le canal est
+    // désormais avalé au niveau du contexte.
+    // ⚠️ LE DISCRIMINANT, VALABLE AVEC ET SANS RÉSEAU : le socket S'OUVRE (le
+    // canal avalé l'accepte) mais PERSONNE ne répond au `phx_join`. Le vrai
+    // serveur, lui, REFUSE la poignée de main (clé fictive) ou répond
+    // `phx_reply` ; sans réseau, le socket ne s'ouvre jamais. RÉINJECTION faite
+    // (avalement retiré de `bootOnboarded`) : rouge sur `ouvert`, la production
+    // ayant refusé la connexion — la tentative était donc bien partie.
+    await page.route(/supabase\.co\//, (route) => route.abort());
+    await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true });
+    const r = await page.evaluate(
+      (url) =>
+        new Promise((res) => {
+          const etat = { ouvert: false, reponses: 0, erreur: false };
+          let ws;
+          try { ws = new WebSocket(url); } catch (e) { res({ ...etat, erreur: true }); return; }
+          ws.onopen = () => {
+            etat.ouvert = true;
+            ws.send(JSON.stringify({ topic: "realtime:banc", event: "phx_join", payload: {}, ref: "1" }));
+          };
+          ws.onmessage = () => { etat.reponses++; };
+          ws.onerror = () => { etat.erreur = true; };
+          setTimeout(() => { try { ws.close(); } catch (e) {} res(etat); }, 3000);
+        }),
+      "wss://njkiyoklssvefstljemx.supabase.co/realtime/v1/websocket?apikey=banc&vsn=1.0.0",
+    );
+    expect(r.ouvert, "le canal avalé accepte le socket").toBe(true);
+    expect(r.reponses, "un vrai serveur temps réel a répondu").toBe(0);
+  });
 });

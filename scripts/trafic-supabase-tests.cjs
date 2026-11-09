@@ -64,9 +64,14 @@ if (DIR) {
     ctx.on("requestfailed", (req) => {
       if (!SUPABASE.test(req.url())) return;
       const echec = (req.failure() || {}).errorText || "";
-      // `ERR_FAILED` / `ERR_ABORTED` : abandonnée par une route ou par la page ;
-      // tout autre échec est allé jusqu'au DNS ou au proxy — une requête PARTIE.
-      ecrire({ ...cas(), m: req.method(), ...decrire(req.url()), echec, net: !/ERR_FAILED|ERR_ABORTED/.test(echec) });
+      // ⚠️ UN ÉCHEC NE PROUVE PAS UN DÉPART. `route.abort("internetdisconnected")`
+      // — une coupure SIMULÉE par la suite elle-même — rend le même libellé
+      // qu'une vraie panne : la première version de cette sonde comptait donc
+      // comme « parties » les coupures de `piece-jointe-depot-echec` (huit par
+      // course). Seule une adresse de serveur prouve un départ ; un échec est
+      // rangé à part, avec son code, et le rapport signale ceux qui ressemblent
+      // à une vraie tentative (DNS, tunnel du proxy).
+      ecrire({ ...cas(), m: req.method(), ...decrire(req.url()), echec, net: false });
     });
     ctx.on("page", (page) => {
       page.on("websocket", (ws) => {

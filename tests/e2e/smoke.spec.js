@@ -2,7 +2,12 @@
 // Aucune écriture en base : on ne crée ni compte ni post.
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
-const { projetSupabaseVide } = require("./app-helper");
+const { projetSupabaseVide, serviceWorkersHorsWebkit } = require("./app-helper");
+
+// WebKit : le service worker soustrait la page aux routes (voir app-helper.js).
+// Le cas « le manifest PWA et le service worker sont servis » lit les fichiers
+// par `request`, sans page : il n'en dépend pas.
+test.use({ serviceWorkers: serviceWorkersHorsWebkit });
 
 let pageErrors;
 

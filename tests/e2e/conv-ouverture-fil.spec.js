@@ -22,7 +22,10 @@
 // l'ordre est décidé. Éprouvé par mutation : remettre `.active` avant le rendu
 // fait rougir les deux cas.
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, serviceWorkersHorsWebkit } = require("./app-helper");
+
+// WebKit : le service worker soustrait la page aux routes (voir app-helper.js).
+test.use({ serviceWorkers: serviceWorkersHorsWebkit });
 
 // Pose une sonde qui capture l'état du fil À L'INSTANT où `.active` est ajouté.
 async function sonderOrdre(page) {
