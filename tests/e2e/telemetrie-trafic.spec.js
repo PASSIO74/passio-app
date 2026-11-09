@@ -16,6 +16,7 @@
 // équipe (⑥) ; retirer le `replaceState` de `?equipe=` (④).
 const { test, expect } = require("@playwright/test");
 const { poserGateSansPremiereVisite } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 const UA_BUREAU = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 const UA_IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.0.0 Mobile/15E148 Safari/604.1";
@@ -42,6 +43,9 @@ async function capturerEnvois(page) {
 }
 
 async function ouvrir(page, requete) {
+  // Le projet Supabase VIDE (2026-11-09) : seule la télémétrie est capturée ici ;
+  // le reste du démarrage ne part plus en production.
+  await projetSupabaseVide(page);
   await poserGateSansPremiereVisite(page);
   await page.goto("/index.html?telemetry=1" + (requete || ""));
   await page.waitForSelector("#landing.active", { timeout: 30000 });

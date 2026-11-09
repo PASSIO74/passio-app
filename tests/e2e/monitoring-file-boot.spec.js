@@ -17,9 +17,13 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 /** Compte les POST vers client_errors, et les empêche d'aboutir. */
 async function compteurRemontees(page) {
+  // Le projet Supabase VIDE (2026-11-09) : la route de page ci-dessous garde la
+  // main sur `client_errors` ; tout le reste ne part plus en production.
+  await projetSupabaseVide(page);
   const envois = [];
   await page.route("**/rest/v1/client_errors*", async (route) => {
     if (route.request().method() === "POST") {

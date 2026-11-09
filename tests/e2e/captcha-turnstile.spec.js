@@ -15,11 +15,15 @@ const { test, expect } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 const RACINE = path.resolve(__dirname, "..", "..");
 const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8");
 
 async function ouvrirAuth(page, { sitekey = "", fauxWidget = true, erreur = null } = {}) {
+  // Le projet Supabase VIDE (2026-11-09) : l'écran d'auth démarre l'application
+  // entière, dont les lectures partaient jusqu'ici à la production.
+  await projetSupabaseVide(page);
   const demandesCloudflare = [];
   await page.route("https://challenges.cloudflare.com/**", (route) => { demandesCloudflare.push(route.request().url()); route.abort(); });
   await page.addInitScript(([k, t, sk, faux]) => {

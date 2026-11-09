@@ -15,11 +15,19 @@
 // gate, et vérifie que rien ne casse ni ne s'emballe pendant cette fenêtre.
 const { test, expect } = require("@playwright/test");
 const { GATE_KEY, GATE_TOKEN, GATE_CODE } = require("./gate-helper");
+const { sansDonneesDistantes } = require("./app-helper");
 
 // ⚠️ Le rideau est LEVÉ par défaut depuis l'ouverture publique du 2026-09-11 :
 // cette suite mesure précisément la fenêtre « gate affiché », elle l'ARME donc
 // elle-même (`passio_gate_actif = "1"`), comme access-gate.spec.js.
+// ⚠️ ET ELLE ISOLE SES DONNÉES DISTANTES DEPUIS LE 2026-11-09. Le socle la disait
+// sans « aucune donnée distante à isoler » ; la sonde du jour
+// (`scripts/trafic-supabase-tests.cjs`) l'a vue lire en PRODUCTION le fil, les
+// rencontres, les profils, le référentiel, `fil_compteurs` et un avatar réel —
+// treize requêtes par exécution, une fois le code saisi. L'isolation ne touche ni
+// au gate ni au jeton : elle ne remplace que ce que la production répondait.
 test.beforeEach(async ({ page }) => {
+  await sansDonneesDistantes(page);
   await page.addInitScript(() => localStorage.setItem("passio_gate_actif", "1"));
 });
 
