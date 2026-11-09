@@ -2009,9 +2009,42 @@ client. **La contre-revue est le seul contrôle humain de cette PR** : rien de c
   une relecture partie avant un « je viens » écrase son compteur optimiste (une minute au plus), et le
   démarrage relit DEUX fois stories, activités et notifications.
 
-**Ce qui reste.** La mesure APRÈS se lit au canal ① une fois la migration appliquée en production et les
-anciens clients rechargés : le compte des appels de `list_changes` doit cesser de croître pendant une
-période où des comptes sont connectés — consignée ci-dessous à ce moment-là.
+**Appliquée le 2026-11-09, sur l'ordre de Benjamin** (« Fait la contre revue toi même »). Les deux
+contre-revues sont des auto-revues du mainteneur unique : la revue 5832416134 sur `648e2a58`, puis la revue
+5832598515 sur `aaa10e15`, dont le delta est un fichier de banc. Les attestations des deux cibles portent
+l'empreinte `699b0ae2…`. Le staging a été migré à 20:44 UTC (10 OK, 0 ECHEC, 6 SANS OBJET : base purgée),
+puis les suites à comptes réels sont passées sur la base migrée. La production a été migrée à 20:56 UTC :
+**16 OK sur 16**, dont 7 sondes réelles annulées. Ensuite #803 a été fusionnée (`33469218`), et le job
+« Déploiement production » est passé au vert à la seconde tentative : la première avait rougi sur
+`irl-trust-safety-reel`, instable et hors lot. Le client servi ne porte plus ni `"realtime:db"` ni
+`conv_specific:` (lu sur la page et ses 9 scripts).
+
+⚠️ **LE STAGING MIGRÉ AVANT LA FUSION A FAIT ROUGIR `main` PENDANT 30 MINUTES**, comme prévu par
+« staging migré avant le client » : le run de #804 (21:05 UTC) portait encore l'ancien
+`retrait-interactions-reel`, qui attendait `realtime:db`. La fusion de #803 l'a réglé. Pour réduire cette
+fenêtre, enchaîner staging, production et fusion sans pause.
+
+**Mesure APRÈS — premier relevé (canal ①, production).**
+
+| UTC (2026-11-09) | Appels de `list_changes` | Contexte |
+|---|---|---|
+| 12:40 | 7 486 911 | référence (60,31 % du temps d'exécution cumulé) |
+| 18:41 | 7 492 816 | +5 905 en 6 h, avant #802 |
+| 20:27 | 7 498 024 | +5 208 en 1 h 46, #802 en ligne (5 liaisons de transition) |
+| 20:55 | 7 498 024 | juste avant la migration |
+| 21:48 | 7 498 024 | migration + client sans CDC en ligne : 0 abonnement CDC |
+
+- Avant la migration, le compteur avançait de 0,3 à 0,8 appel/s dès qu'un compte était connecté.
+- Depuis, il ne bouge plus. À 21:48, un client tenait pourtant le socket : le slot
+  `supabase_realtime_messages_replication_slot_…` (pgoutput, la diffusion depuis la base qui porte
+  `user:` et `fil:`) était actif depuis 21:45. Ce slot est un FLUX, pas un relevé, et n'apparaît pas dans
+  `list_changes`.
+- Les poussées ont repris dès la migration (`user:` × `conv_members:INSERT` et `notifications:INSERT`).
+
+**Ce qui reste.** Ce relevé a été pris un soir calme : il prouve le mécanisme, pas encore le volume.
+Relever à nouveau le compteur après une journée d'activité (canal ①) : il doit rester à 7 498 024. Lire
+aussi Supabase › Usage › Realtime Messages : #800 estime le mur mensuel déplacé d'environ 1 300 à environ
+14 000 actifs par jour, à un facteur 2 près.
 
 ## 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE QUOTA DE MESSAGES TEMPS RÉEL, AVANT ET APRÈS #802 (2026-11-09, la suite)
 
