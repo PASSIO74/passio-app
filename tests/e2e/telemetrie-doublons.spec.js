@@ -33,6 +33,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { poserGateSansPremiereVisite } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 const MOTIF_TEL = "**/rest/v1/telemetry_events*";
 
@@ -40,6 +41,9 @@ const MOTIF_TEL = "**/rest/v1/telemetry_events*";
 // EN VOL jusqu'à ce que le banc la règle, « annule » la coupe comme le fait le
 // navigateur au déchargement. Chaque lot est journalisé avec son mode.
 async function intercepter(page) {
+  // Le projet Supabase VIDE (2026-11-09) : la télémétrie reste jugée par la
+  // route de page ci-dessous ; le reste du démarrage ne part plus en production.
+  await projetSupabaseVide(page);
   const etat = { mode: "ok", lots: [], retenus: [] };
   await page.route(MOTIF_TEL, (route) => {
     let rows = [];

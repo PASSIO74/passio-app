@@ -7,8 +7,12 @@
 // d'avant, « User is banned » s'affiche) ; ② un autre refus reste ce qu'il était.
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 async function ouvrirConnexion(page, erreur) {
+  // La coupure de PAGE ci-dessous garde la main (elle passe avant le projet vide
+  // du contexte) ; le projet vide est le filet commun de toute suite locale.
+  await projetSupabaseVide(page);
   await page.route(/supabase\.co/, (route) => route.abort());
   await page.addInitScript(([k, t]) => {
     sessionStorage.setItem(k, t);

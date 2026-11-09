@@ -20,6 +20,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 /**
  * Capture les lignes POSTées vers telemetry_events — et les ARRÊTE avant la base.
@@ -35,6 +36,9 @@ const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-he
  * envoyé, jamais de sa persistance.
  */
 async function interceptePayloads(page) {
+  // Le projet Supabase VIDE (2026-11-09) : la télémétrie reste interceptée par
+  // la route de page ci-dessous ; le reste du démarrage ne part plus en production.
+  await projetSupabaseVide(page);
   const lignes = [];
   // `page.route` est asynchrone : ne pas l'attendre laisserait `goto` partir
   // avant que l'interception soit posée, et les premiers lots fileraient en base.

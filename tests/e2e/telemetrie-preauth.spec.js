@@ -19,6 +19,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 test.describe("Télémétrie — fenêtre pré-authentification", () => {
   test("aucun événement ne part sous une identité fabriquée", async ({ browser }) => {
@@ -28,6 +29,11 @@ test.describe("Télémétrie — fenêtre pré-authentification", () => {
     // Contexte NEUF : ni passio_uid, ni session Supabase, ni backlog.
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
+    // ⚠️ UN SEUL CHEMIN RÉEL, ET C'EST LE SUJET (2026-11-09) : « aucun lot n'est
+    // refusé » se juge sur la policy d'insertion RÉELLE de `telemetry_events` et
+    // ses déclencheurs, pas sur une recopie. Tout le reste du démarrage est servi
+    // par le projet vide. Inscrit au socle (scripts/tests-isolation-socle.json).
+    await projetSupabaseVide(page, { cheminsReels: [/\/rest\/v1\/telemetry_events(\?|$)/] });
 
     // On intercepte les POST vers telemetry_events pour lire le payload RÉEL
     // (et non ce que le code a l'intention d'envoyer).
@@ -106,6 +112,9 @@ test.describe("Télémétrie — fenêtre pré-authentification", () => {
     // premier qui rétablirait le défaut « actif en local ».
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
+    // Le projet vide : `page.on("request")` voit toujours la moindre tentative
+    // d'envoi (l'écoute précède les routes) ; rien d'autre ne part en production.
+    await projetSupabaseVide(page);
 
     const envois = [];
     page.on("request", (req) => {

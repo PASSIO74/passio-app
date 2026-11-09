@@ -84,13 +84,17 @@ async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
   //     `bootOnboarded` ferait donc entrer les vraies publications par le
   //     stockage, où aucune route ne peut plus rien. Aucun test ne le fait
   //     aujourd'hui ; la chausse-trappe est réelle.
-  //   · la table `profiles`, LAISSÉE DEHORS EXPRÈS. `supaEnsureProfileExists`
-  //     appelle `_insertProfilMinimalSiAbsent` : une lecture rendue vide lui
-  //     ferait conclure « ce profil n'existe pas » et tenter une ÉCRITURE en
-  //     production. Rendre un test déterministe ne vaut pas ce risque-là. Les
-  //     lectures de `profiles` restent donc réelles (profil visité,
-  //     `discoverPeople`) — exposition connue, et bien moindre : elles ne
-  //     remplacent aucun contenu de démonstration.
+  //   · la table `profiles`, LAISSÉE DEHORS EXPRÈS de la route de PAGE.
+  //     `supaEnsureProfileExists` appelle `_insertProfilMinimalSiAbsent` : une
+  //     lecture rendue vide lui ferait conclure « ce profil n'existe pas » et
+  //     tenter une ÉCRITURE en production. Rendre un test déterministe ne valait
+  //     pas ce risque-là.
+  //     ⚠️ DEPUIS LE 2026-11-09, LE RISQUE N'EXISTE PLUS POUR UNE SUITE LOCALE :
+  //     le projet vide du CONTEXTE (`projetSupabaseVide`, plus bas) répond à
+  //     `profiles` en lecture (`[]`) ET en écriture (refus de la RLS, comme la
+  //     production refusait déjà ces 1 101 insertions quotidiennes sans
+  //     session). Rien ne part plus. Seul le projet `prod`, qui en est exempt,
+  //     lit encore les vrais profils — c'est son objet.
   //
   // ⚠️ `opts.sansIsolationDesDonnees` est pour l'appelant qui gère le
   // réseau LUI-MÊME. Playwright évalue les routes dans l'ORDRE INVERSE de leur
@@ -184,9 +188,12 @@ async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
 // posé sur `window` serait de toute façon écrasé par la déclaration
 // `function supaLoadPosts` d'app-08 au chargement du script.
 //
-// ⚠️ SEULES LES LECTURES SONT COURT-CIRCUITÉES. Les écritures (POST, PATCH,
+// ⚠️ SEULES LES LECTURES SONT COURT-CIRCUITÉES ICI. Les écritures (POST, PATCH,
 // DELETE) passent, pour qu'une suite qui exerce un vrai chemin de publication
 // continue de le faire — d'où le test de méthode plutôt qu'un `abort()` global.
+// Depuis le 2026-11-09 elles « passent » par `route.fallback()` : jusqu'au projet
+// vide du contexte pour une suite locale (jugées, jamais envoyées), jusqu'au
+// réseau pour le projet `prod`.
 //
 // ⚠️ LE MOTIF EXIGE LE `?` DE LA CHAÎNE DE REQUÊTE, ce qui le rend étroit par
 // construction : `post_likes?`, `post_comments?`, `event_attendees?`,
@@ -201,7 +208,9 @@ async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
 //
 // ⚠️ `profiles` N'EST PAS DE LA LISTE, et c'est délibéré : une lecture rendue
 // vide ferait conclure à `supaEnsureProfileExists` que le profil n'existe pas,
-// et tenter une ÉCRITURE en production. Voir le bloc de `bootOnboarded`.
+// et tenter une ÉCRITURE en production. Voir le bloc de `bootOnboarded` — et
+// `projetSupabaseVide` plus bas, qui la couvre désormais pour les suites
+// locales, écriture comprise.
 const TABLES_DISTANTES = ["posts", "stories", "events", "notifications"];
 const MOTIF_TABLES_DISTANTES = new RegExp(
   "/rest/v1/(" + TABLES_DISTANTES.join("|") + ")\\?",
@@ -305,8 +314,9 @@ function miroirPassions() {
 
 function servirPassions(route) {
   const req = route.request();
-  // Les ÉCRITURES passent, comme pour les tables et les médias.
-  if (req.method() !== "GET") return route.continue();
+  // Les ÉCRITURES passent, comme pour les tables et les médias (`fallback` :
+  // vers le projet vide du contexte pour une suite locale).
+  if (req.method() !== "GET") return route.fallback();
 
   let lignes;
   try {
@@ -318,12 +328,15 @@ function servirPassions(route) {
     // cas. C'est le cas ⑧ de `isolation-referentiel-passions.spec.js`, qui lit
     // le miroir SANS filet et lève donc si le fichier est illisible. Le warn
     // sert à nommer la cause quand on regarde, pas à donner l'alerte.
+    // ⚠️ DEPUIS LE 2026-11-09, `fallback` : une suite LOCALE retombe sur le
+    // projet vide (référentiel vide, donc plancher du socle — rouge au cas ⑧),
+    // plus jamais sur la production ; seul le projet `prod` repart au réseau.
     if (!_miroirPassionsDit) {
       _miroirPassionsDit = true;
       console.warn("[app-helper] miroir des passions illisible (" + (e && e.message) +
-                   ") — les tests repartent sur la production");
+                   ") — repli sur la route suivante (projet vide en local)");
     }
-    return route.continue();
+    return route.fallback();
   }
 
   const params = new URL(req.url()).searchParams;
@@ -399,9 +412,295 @@ function servirPassions(route) {
   });
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LE PROJET SUPABASE TOUT ENTIER — UN PROJET VIDE, AU NIVEAU DU CONTEXTE
+// (2026-11-09)
+// ──────────────────────────────────────────────────────────────────────────
+// CE QUE ÇA COÛTAIT. Mesuré le 2026-11-09 dans les journaux de la passerelle
+// Supabase (`edge_logs`, du 08/11 12:00 au 09/11 12:00 UTC) : sur 54 563
+// requêtes reçues par la production, 37 159 — 68 % — venaient du réseau des
+// runners GitHub (Azure). La CI. Les routes de ce fichier ne couvraient que
+// quatre tables, le référentiel et les médias ; tout le reste partait en
+// production : l'annuaire des lives (`video_lives`, 7 873 — un balayage au
+// démarrage puis chaque minute), les compteurs d'abonnés (`follows` en HEAD,
+// 6 505), le référentiel des suites qui ne passent pas par ce fichier (6 182
+// avec les pré-requêtes CORS), les profils (2 758), la messagerie (`conv_*`,
+// 3 619), l'état de compte (`user_state`, 2 945 — dont 1 112 ÉCRITURES
+// refusées en 401)… Le même projet, la même sortie (250 Go), le même plafond
+// de connexions que les vrais utilisateurs.
+//
+// ⚠️ CES LECTURES NE SERVAIENT AUCUN TEST. Une suite locale n'a pas de vraie
+// session (pas de jeton, ou un jeton FICTIF que la production rejette en 401)
+// et ses identifiants (`u_lea`, `conv_lea`, des UUID inventés) n'existent pas en
+// base : la production lui rendait donc des listes VIDES, en payant la sortie et
+// la CPU de ses vrais utilisateurs. Et ce qui ne revenait pas vide — les douze
+// profils de `discoverPeople`, un live en cours — faisait dépendre le verdict du
+// CONTENU de la base : la maladie que ce fichier soigne depuis le 2026-09-01.
+//
+// LE REMÈDE. Un dernier recours qui répond À LA PLACE du projet ce qu'un projet
+// VIDE répondrait à un visiteur SANS session — c'est-à-dire, pour ces suites, ce
+// que la production répondait déjà, au contenu près :
+//   · lire une table → `[]` (HEAD : compte 0) ; `.single()` → 406 PGRST116 ;
+//     une table que le rôle `anon` ne peut pas lire → 401 42501 ;
+//   · insérer → refus de la RLS (401 42501), sauf `client_errors` et
+//     `telemetry_events` sans compte, que la production accepte d'un visiteur ;
+//     modifier / supprimer → zéro ligne touchée (ou 401 sans le privilège) ;
+//   · une RPC → `[]` pour les deux seules qu'`anon` peut exécuter, 401 sinon ;
+//   · un jeton d'utilisateur (forcément fictif ici) → 401 PGRST301 sur tout le
+//     REST, 403 `bad_jwt` sur `/auth/v1/user` : ce que la production répond à un
+//     jeton qu'elle ne sait pas vérifier ;
+//   · inscription, connexion, courriel → refusés : RIEN, depuis une suite locale,
+//     ne crée un compte (MAU) ni n'envoie un message.
+//
+// ⚠️ AU NIVEAU DU CONTEXTE, ET C'EST TOUT LE CHOIX. Playwright consulte les
+// routes de la PAGE avant celles du CONTEXTE, quel que soit l'ordre
+// d'enregistrement : toute route posée par une suite — avant comme après
+// `bootOnboarded` — garde la main, et ce recours ne répond qu'à ce que personne
+// n'a servi. Une route de PAGE aurait au contraire écrasé celles qu'une suite
+// pose avant `bootOnboarded` (le piège de `sansMiroirPassions`, plus bas).
+// ⚠️ D'OÙ `route.fallback()`, ET PLUS `route.continue()`, DANS LES ROUTES DE
+// `sansDonneesDistantes` : `continue` envoie au RÉSEAU en sautant le contexte —
+// une écriture aurait filé en production sous ce filet.
+//
+// ⚠️ LE PROJET `prod` EN EST EXEMPT, et c'est sa définition : ses suites créent
+// de VRAIS comptes et mesurent la VRAIE RLS (`irl-trust-safety-reel` passe par
+// `sansDonneesDistantes` et a besoin de ses RPC réelles). Une suite LOCALE dont
+// le SUJET est le contrat d'un chemin avec le vrai serveur le désigne, et lui
+// seul, par `opts.cheminsReels` ; `opts.sansProjetVide` rend tout le projet.
+// L'une ou l'autre s'inscrit au socle (`scripts/tests-isolation-socle.json`)
+// avec sa raison — le banc `tests/unit/isolation-projet-supabase.test.mjs`
+// l'exige.
+//
+// ⚠️ CE QUE CE PROJET VIDE NE SAIT PAS FAIRE, et qu'il ne faut pas lui prêter :
+// la RLS réelle (il ne sert JAMAIS une ligne), les privilèges à jour (le relevé
+// ci-dessous est daté), le temps réel (le canal est seulement avalé, comme dans
+// `sansDonneesDistantes`). Une suite qui a besoin de lignes les sert elle-même
+// par une route de page, ou par `audit-2026-11-parcours-faux-serveur.js`.
+// Verrou : `tests/e2e/isolation-projet-supabase.spec.js`.
+const MOTIF_PROJET_SUPABASE = /^https:\/\/[a-z0-9]{20}\.supabase\.co\//;
+const MOTIF_CANAL_TEMPS_REEL = /\/realtime\/v1\/websocket/;
+
+// Privilèges du rôle `anon` EN PRODUCTION, relevés le 2026-11-09 (canal ①
+// d'ADR-012, lecture seule) par `has_table_privilege('anon', …)`,
+// `has_any_column_privilege('anon', …)` et `has_function_privilege('anon', …)`
+// sur le schéma `public`, puis `pg_policies` pour les insertions sans compte.
+// ⚠️ C'EST UN RELEVÉ, PAS UNE SOURCE : une migration qui change un GRANT ne le
+// met pas à jour. Une table absente d'ici est traitée comme la majorité —
+// lisible sous RLS, donc VIDE pour un visiteur sans session, ce qui reste le
+// cas le plus fréquent et le moins surprenant.
+const ANON_SANS_LECTURE = new Set([
+  "access_policies", "activite_jour", "call_invites", "cdv_live_collaborators", "cdv_live_comments",
+  "cdv_live_followers", "cdv_live_reactions", "cdv_live_steps", "cdv_lives", "comptes_en_suppression",
+  "contenus_masques", "croissance_jour", "debit_ecritures", "event_attendees", "event_checkin_secrets",
+  "migrations_appliquees", "moderation_actions", "pointage_essais", "signalements_preuves",
+  "step_interactions", "telemetrie_debit", "user_safety",
+]);
+// Lisibles COLONNE PAR COLONNE seulement : `select=*` est refusé en entier
+// (PostgREST lève 42501 dès qu'UNE colonne manque au rôle — `_EVENT_COLS_PUBLIC`).
+const ANON_LECTURE_PAR_COLONNE = new Set(["events", "reglages_distants"]);
+const ANON_SANS_INSERTION = new Set([
+  ...ANON_SANS_LECTURE, ...ANON_LECTURE_PAR_COLONNE,
+  "conv_members", "conv_messages", "conversations", "notifications",
+]);
+const ANON_SANS_MODIFICATION = new Set([...ANON_SANS_LECTURE, "notifications", "reglages_distants"]);
+// Les deux seules tables qu'un visiteur ALIMENTE : leur policy d'insertion ne
+// demande pas `auth.uid()` (`client_errors` : `true` ; `telemetry_events` :
+// `user_id IS NULL`). Accepter ici, c'est ne rien écrire — mais répondre ce que
+// la production répond, pour que la file de télémétrie se vide comme en vrai.
+const ANON_INSERTION_ACCEPTEE = {
+  client_errors: () => true,
+  telemetry_events: (ligne) => !ligne || ligne.user_id == null,
+};
+// Les deux seules RPC exécutables par `anon` ; toutes deux rendent des LIGNES.
+const ANON_RPC_EXECUTABLES = new Set(["fil_compteurs", "rechercher_passions"]);
+
+const ENTETES_PROJET_VIDE = {
+  "access-control-allow-origin": "*",
+  // ⚠️ Comme pour le miroir des passions : sans cette liste, un appelant d'une
+  // autre origine lit `content-range` à `null` et tout `count` du SDK se tait.
+  "access-control-expose-headers": "content-range, range-unit, content-location, location, preference-applied",
+};
+
+function repondreJson(route, status, corps, entetes) {
+  return route.fulfill({
+    status,
+    contentType: "application/json; charset=utf-8",
+    headers: { ...ENTETES_PROJET_VIDE, ...(entetes || {}) },
+    body: corps === undefined ? "" : JSON.stringify(corps),
+  });
+}
+function repondreSansCorps(route, status, entetes) {
+  return route.fulfill({ status, headers: { ...ENTETES_PROJET_VIDE, ...(entetes || {}) }, body: "" });
+}
+function refusPrivilege(route, message) {
+  // PostgREST rend 42501 en 401 pour le rôle anonyme, en 403 pour un connecté.
+  return repondreJson(route, 401, { code: "42501", details: null, hint: null, message });
+}
+const ZERO_LIGNE = { code: "PGRST116", details: "The result contains 0 rows", hint: null, message: "Cannot coerce the result to a single JSON object" };
+
+function repondreRestVide(route, req, url, jetonFictif) {
+  // Un jeton d'utilisateur, dans une suite LOCALE, ne peut être que fictif :
+  // aucune n'obtient de vraie session (le projet vide refuse toute connexion).
+  if (jetonFictif) return repondreJson(route, 401, { code: "PGRST301", details: null, hint: null, message: "JWSError JWSInvalidSignature" });
+  const m = req.method();
+  const h = req.headers();
+  const segments = url.pathname.slice("/rest/v1/".length).split("/");
+  if (segments[0] === "rpc") {
+    const fn = segments[1] || "";
+    if (!ANON_RPC_EXECUTABLES.has(fn)) return refusPrivilege(route, "permission denied for function " + fn);
+    return repondreJson(route, 200, []);
+  }
+  const table = segments[0];
+  if (!table) return repondreJson(route, 200, {});
+  const objet = /vnd\.pgrst\.object/.test(h.accept || "");
+  const representation = /return=representation/.test(h.prefer || "");
+  if (m === "GET" || m === "HEAD") {
+    const select = url.searchParams.get("select");
+    const toutesColonnes = !select || select.split(",").some((c) => c.trim() === "*");
+    if (ANON_SANS_LECTURE.has(table) || (ANON_LECTURE_PAR_COLONNE.has(table) && toutesColonnes)) {
+      return refusPrivilege(route, "permission denied for table " + table);
+    }
+    if (objet) return repondreJson(route, 406, ZERO_LIGNE);
+    if (m === "HEAD") return repondreSansCorps(route, 200, { "content-range": "*/0" });
+    return repondreJson(route, 200, [], { "content-range": "*/0" });
+  }
+  if (m === "POST" || m === "PUT") {
+    if (ANON_SANS_INSERTION.has(table)) return refusPrivilege(route, "permission denied for table " + table);
+    let corps = null;
+    try { corps = JSON.parse(req.postData() || "null"); } catch (e) {}
+    const lignes = Array.isArray(corps) ? corps : [corps];
+    const accepte = ANON_INSERTION_ACCEPTEE[table];
+    if (accepte && lignes.every(accepte)) {
+      if (!representation) return repondreSansCorps(route, 201);
+      return repondreJson(route, 201, objet ? lignes[0] : lignes);
+    }
+    return refusPrivilege(route, 'new row violates row-level security policy for table "' + table + '"');
+  }
+  if (m === "PATCH" || m === "DELETE") {
+    if (ANON_SANS_MODIFICATION.has(table)) return refusPrivilege(route, "permission denied for table " + table);
+    if (objet) return repondreJson(route, 406, ZERO_LIGNE);
+    // La RLS filtre : la requête réussit et ne touche AUCUNE ligne.
+    if (representation) return repondreJson(route, 200, [], { "content-range": "*/0" });
+    return repondreSansCorps(route, 204, { "content-range": "*/0" });
+  }
+  return repondreJson(route, 405, { code: "PGRST117", details: null, hint: null, message: "Unsupported HTTP method: " + m });
+}
+
+function repondreAuthVide(route, req, url) {
+  const p = url.pathname.slice("/auth/v1/".length);
+  const m = req.method();
+  if (p === "user" && m === "GET") {
+    return repondreJson(route, 403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT: unable to parse or verify signature, token signature is invalid" });
+  }
+  if (p === "token") {
+    if (url.searchParams.get("grant_type") === "refresh_token") {
+      return repondreJson(route, 400, { code: 400, error_code: "refresh_token_not_found", msg: "Invalid Refresh Token: Refresh Token Not Found" });
+    }
+    return repondreJson(route, 400, { code: 400, error_code: "invalid_credentials", msg: "Invalid login credentials" });
+  }
+  if (p === "logout") return repondreSansCorps(route, 204);
+  if (p === "settings" || p === "health") return repondreJson(route, 200, {});
+  // Inscription, lien magique, code, renvoi, récupération, OAuth, facteurs… :
+  // en production, chacun CRÉE un compte ou ENVOIE un courriel. Jamais d'ici.
+  return repondreJson(route, 422, { code: 422, error_code: "banc_projet_vide", msg: "Projet vide du banc local : ni inscription, ni connexion, ni courriel." });
+}
+
+function repondreStorageVide(route, req) {
+  const m = req.method();
+  if (m === "GET" || m === "HEAD") {
+    // Même règle que la route des médias : une image valide (la mise en page
+    // reste celle d'une image chargée), rien pour le reste.
+    if (req.resourceType() === "image") return route.fulfill({ status: 200, contentType: "image/png", body: PIXEL_PNG });
+    return repondreJson(route, 400, { statusCode: "404", error: "not_found", message: "Object not found" });
+  }
+  return repondreJson(route, 400, { statusCode: "403", error: "Unauthorized", message: "new row violates row-level security policy" });
+}
+
+function repondreProjetVide(route) {
+  const req = route.request();
+  let url;
+  try { url = new URL(req.url()); } catch (e) { return route.abort(); }
+  const h = req.headers();
+  if (req.method() === "OPTIONS") {
+    return route.fulfill({
+      status: 204,
+      headers: {
+        ...ENTETES_PROJET_VIDE,
+        "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS",
+        "access-control-allow-headers": h["access-control-request-headers"] || "*",
+        "access-control-max-age": "600",
+      },
+      body: "",
+    });
+  }
+  const jeton = String(h.authorization || "").replace(/^Bearer\s+/i, "").trim();
+  const jetonFictif = !!jeton && jeton !== String(h.apikey || "").trim();
+  const p = url.pathname;
+  // ⚠️ LE RÉFÉRENTIEL DES PASSIONS : LE MIROIR, PAS `[]`. Une suite qui ne pose
+  // que ce projet vide (sans la route de page de `sansDonneesDistantes`) lisait
+  // le VRAI référentiel avant ce lot ; lui rendre une table vide la ferait
+  // tomber au plancher des 19 passions du socle — exactement ce que
+  // `servirPassions` refuse de faire, pour les raisons écrites plus haut.
+  if (req.method() === "GET" && MOTIF_PASSIONS_DISTANTES.test(req.url())) {
+    let miroir = null;
+    try { miroir = miroirPassions(); } catch (e) {}
+    if (miroir) return servirPassions(route);
+  }
+  if (p.startsWith("/rest/v1/")) return repondreRestVide(route, req, url, jetonFictif);
+  if (p.startsWith("/auth/v1/")) return repondreAuthVide(route, req, url);
+  if (p.startsWith("/storage/v1/")) return repondreStorageVide(route, req);
+  if (p.startsWith("/functions/v1/")) {
+    return repondreJson(route, 401, jetonFictif ? { code: 401, message: "Invalid JWT" } : { error: "Non authentifié" });
+  }
+  // Diffusion REST du temps réel (`/realtime/v1/api/broadcast`) : acceptée et
+  // jetée, comme le canal lui-même est avalé.
+  if (p.startsWith("/realtime/v1/")) return repondreSansCorps(route, 202);
+  return repondreJson(route, 404, { message: "no Route matched with those values" });
+}
+
+function projetPlaywright() {
+  try { return require("@playwright/test").test.info().project.name; } catch (e) { return null; }
+}
+
+const _contextesProjetVide = new WeakSet();
+
+/**
+ * Pose le projet Supabase VIDE sur le CONTEXTE de la page (voir le bloc
+ * ci-dessus). Idempotent par contexte (le premier appel fixe les options).
+ * Rend `true` si le filet est posé, `false` pour le projet `prod` ou sur
+ * `opts.sansProjetVide`.
+ * `opts.cheminsReels` (tableau de RegExp sur l'URL) : les SEULES requêtes
+ * laissées au vrai projet — le contrat d'un chemin avec le VRAI serveur, quand
+ * il est le sujet du test. Tout le reste reste vide. Comme `sansProjetVide`,
+ * une suite qui s'en sert figure au socle avec sa raison.
+ * ⚠️ À appeler AVANT la première navigation, comme `sansDonneesDistantes` (qui
+ * l'appelle elle-même) : une requête partie avant la route est partie.
+ */
+async function projetSupabaseVide(page, opts = {}) {
+  if (opts.sansProjetVide || opts.sansIsolationDesDonnees) return false;
+  if (projetPlaywright() === "prod") return false;
+  const ctx = page.context();
+  if (_contextesProjetVide.has(ctx)) return true;
+  _contextesProjetVide.add(ctx);
+  const reels = Array.isArray(opts.cheminsReels) ? opts.cheminsReels.filter((m) => m instanceof RegExp) : [];
+  await ctx.route(MOTIF_PROJET_SUPABASE, (route) => {
+    if (reels.length && reels.some((m) => m.test(route.request().url()))) return route.continue();
+    return repondreProjetVide(route);
+  });
+  // Le canal temps réel, au même niveau : une page qui n'a pas sa propre route
+  // de WebSocket (celle de `sansDonneesDistantes` est une route de PAGE, donc
+  // prioritaire) ne se connecte pas non plus au vrai projet.
+  await ctx.routeWebSocket(MOTIF_CANAL_TEMPS_REEL, () => {});
+  return true;
+}
+
 async function sansDonneesDistantes(page, opts = {}) {
+  await projetSupabaseVide(page, opts);
+
   await page.route(MOTIF_TABLES_DISTANTES, (route) => {
-    if (route.request().method() !== "GET") return route.continue();
+    // ⚠️ `fallback`, pas `continue` : l'écriture doit rejoindre les routes
+    // d'avant puis le projet vide du CONTEXTE, pas le réseau (voir plus haut).
+    if (route.request().method() !== "GET") return route.fallback();
     return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
   });
 
@@ -420,8 +719,9 @@ async function sansDonneesDistantes(page, opts = {}) {
 
   await page.route(MOTIF_MEDIAS_DISTANTS, (route) => {
     // Les ÉCRITURES passent, comme pour les tables : une suite qui exerce un
-    // vrai dépôt de fichier doit continuer de le faire.
-    if (route.request().method() !== "GET") return route.continue();
+    // vrai dépôt de fichier doit continuer de le faire — jusqu'au projet vide
+    // du contexte pour une suite locale, jusqu'au réseau pour le projet `prod`.
+    if (route.request().method() !== "GET") return route.fallback();
     if (route.request().resourceType() !== "image") return route.abort();
     return route.fulfill({ status: 200, contentType: "image/png", body: PIXEL_PNG });
   });
@@ -460,4 +760,9 @@ async function armerPlafondPassions(page) {
   await page.addInitScript(() => { window.PASSIO_PLAFOND_PASSIONS = true; });
 }
 
-module.exports = { onboardedState, bootOnboarded, sansDonneesDistantes, miroirPassions, PASSIONS, armerPlafondPassions };
+module.exports = {
+  onboardedState, bootOnboarded, sansDonneesDistantes, projetSupabaseVide, miroirPassions, PASSIONS, armerPlafondPassions,
+  // Exposé pour le banc unitaire (`tests/unit/isolation-projet-supabase.test.mjs`) :
+  // la matrice des réponses s'y éprouve sans navigateur.
+  repondreProjetVide,
+};

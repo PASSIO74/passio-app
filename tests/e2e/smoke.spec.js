@@ -2,10 +2,15 @@
 // Aucune écriture en base : on ne crée ni compte ni post.
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 let pageErrors;
 
 test.beforeEach(async ({ page }) => {
+  // ⚠️ Le projet Supabase VIDE d'abord (2026-11-09) : chaque cas démarre
+  // l'application, qui chargeait le référentiel des passions DEPUIS LA
+  // PRODUCTION — six requêtes par cas, mesurées par la sonde du jour.
+  await projetSupabaseVide(page);
   pageErrors = [];
   page.on("pageerror", (err) => pageErrors.push(err.message));
   // Déverrouille l'Access Gate pour tester l'app elle-même
