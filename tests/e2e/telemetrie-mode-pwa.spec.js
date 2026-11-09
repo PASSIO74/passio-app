@@ -10,6 +10,16 @@
 // ③ `PassioPlatform` est là, figé, avec ses clés.
 const { test, expect } = require("@playwright/test");
 const { poserGateSansPremiereVisite } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
+
+// ⚠️ LE PROJET SUPABASE VIDE (2026-11-09). Cette suite force la télémétrie
+// (`?telemetry=1`) SANS route : ses lots partaient ÉCRIRE dans la table de
+// PRODUCTION, à chaque exécution. Le projet vide les accepte (201, comme la
+// production d'un visiteur) sans rien écrire ; `page.on("request")` lit
+// toujours le contenu ENVOYÉ, seul sujet de ces cas.
+test.beforeEach(async ({ page }) => {
+  await projetSupabaseVide(page);
+});
 
 async function envoisTelemetrie(page, standalone) {
   const lignes = [];

@@ -2,6 +2,7 @@
 // Vérifie : blocage total, rejet d'un mauvais code, déverrouillage, persistance session.
 const { test, expect } = require("@playwright/test");
 const { GATE_CODE, GATE_KEY, GATE_TOKEN, CLE_PREMIERE_VISITE } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 // ⚠️ Cette suite teste le GATE, pas ce qu'il y a derrière — mais deux de ses cas
 // vérifient qu'après le bon code on arrive bien sur la landing. Depuis le
@@ -13,6 +14,9 @@ const { GATE_CODE, GATE_KEY, GATE_TOKEN, CLE_PREMIERE_VISITE } = require("./gate
 // sont pas affectés : la coupure vit dans `localStorage`, le jeton du gate dans
 // `sessionStorage`, les deux ne se croisent pas.
 test.beforeEach(async ({ page }) => {
+  // Derrière le rideau, l'application démarre et parle à Supabase : au projet
+  // VIDE du banc, jamais à la production (2026-11-09).
+  await projetSupabaseVide(page);
   // ⚠️ Le rideau est LEVÉ par défaut depuis l'ouverture publique (2026-09-11) :
   // cette suite l'ARME explicitement pour continuer d'éprouver le mécanisme.
   await page.addInitScript((cle) => {

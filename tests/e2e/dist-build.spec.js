@@ -9,6 +9,7 @@ const { execSync } = require("child_process");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY, GATE_CODE, CLE_PREMIERE_VISITE, poserGateSansPremiereVisite } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 test.describe("build prod (dist) — app.js externalisé derrière le gate", () => {
   // ⚠️ La coupure de la « première visite » vaut pour les TROIS cas, pas
@@ -22,6 +23,9 @@ test.describe("build prod (dist) — app.js externalisé derrière le gate", () 
   // cette suite mesure l'architecture « app.js derrière le gate », elle ARME donc
   // le gate elle-même (`passio_gate_actif = "1"`), comme access-gate.spec.js.
   test.beforeEach(async ({ page }) => {
+    // L'artefact démarre l'application entière derrière le gate : au projet
+    // Supabase VIDE du banc, jamais à la production (2026-11-09).
+    await projetSupabaseVide(page);
     await page.addInitScript((cle) => {
       localStorage.setItem(cle, "0");
       localStorage.setItem("passio_gate_actif", "1");
