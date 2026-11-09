@@ -76,6 +76,11 @@ jobs:
       # déclaré dans le banc, avec sa raison. Une ligne retirée ou une suite
       # oubliée rougit le banc — ici même, avant « Déployer », y compris sur un
       # push direct que la CI parallèle ne retient pas (#745, #748).
+      # Et chaque suite qui LIT le code d'une fonction — son index.ts, que
+      # notify-call-chemins.test.mjs EXÉCUTE (2026-11-09) : de #753 au 09/11,
+      # `uid`, jamais déclaré, rendait 500 à toute push sociale, et aucune suite
+      # d'un module partagé ne pouvait le voir. Une variable non déclarée dans le
+      # gestionnaire ne part plus.
       - name: Verrous unitaires des modules partagés
         run: |
           node --test tests/unit/edge-functions-verrous.test.mjs
@@ -93,6 +98,10 @@ jobs:
           node --test tests/unit/rappels.test.mjs
           node --test tests/unit/reception.test.mjs
           node --test tests/unit/appels.test.mjs
+          node --test tests/unit/notify-call-chemins.test.mjs
+          node --test tests/unit/ask-ai-chemins.test.mjs
+          node --test tests/unit/delete-account-chemins.test.mjs
+          node --test tests/unit/export-account-chemins.test.mjs
           node --test tests/unit/push-sur.test.mjs
           node --test tests/unit/autonomie.test.mjs
           node --test tests/unit/autonomie-seuils-sql.test.mjs
