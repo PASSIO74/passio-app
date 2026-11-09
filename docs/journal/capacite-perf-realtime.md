@@ -2153,7 +2153,7 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
 | Pièce | Fichier | Verrou |
 |---|---|---|
 | 9 scripts `app/<nom de la source>.js?v=<empreinte de SON contenu>` ; `emoji-misc.js` et `passion-context.js` ferment le 9ᵉ, comme ils fermaient `app.js` ; `appHash` reste l'empreinte du texte d'ensemble (identique à l'ancien `app.js`, octet pour octet) | `scripts/build.js` (étape 1) | `tests/unit/build-id.test.mjs` ⑦ (modifier UN fichier ne change que l'empreinte de SON script ; mutation : une empreinte d'ensemble → rouge) |
-| Chargeur : preload des 9 en parallèle, exécution UN PAR UN, chacun inséré au `load` du précédent (un script inséré retarde l'événement `load` de la page : l'application tourne avant lui, comme avec `app.js`), deux reprises (1 s, 2 s) puis ARRÊT, `passio:app-ready` une fois après le 9ᵉ | `scripts/build.js` | `tests/e2e/app-scripts-par-fichier.spec.js` ①②③⑤ (Chromium et WebKit ; mutation : n'insérer qu'après l'arrivée des 9 → ⑤ rouge) |
+| Chargeur : preload des 9 en parallèle, exécution UN PAR UN, chacun inséré au `load` du précédent (un script inséré retarde l'événement `load` de la page : l'application tourne avant lui, comme avec `app.js`), deux reprises (1 s, 2 s) — chacune précédée, depuis le soir même, d'une redemande au réseau en `cache: "reload"` (un 404 immutable resté en cache, ci-dessous) — puis ARRÊT, `passio:app-ready` une fois après le 9ᵉ | `scripts/build.js` | `tests/e2e/app-scripts-par-fichier.spec.js` ①②③⑤⑥ (Chromium et WebKit ; mutations : n'insérer qu'après l'arrivée des 9 → ⑤ rouge ; reprise sans redemande, ou sans `cache: "reload"` → ⑥ rouge) |
 | `passioCompressImage` n'est plus définie qu'UNE fois (app-06, celle que la production exécute depuis juin) : la `function` d'app-09 est retirée | `js/app-09-boot-pwa.js` | `scripts/audit-globals.js` (rouge avant le retrait, vert après) |
 | Garde : une affectation `window.X =` face à une `function X` d'un AUTRE fichier du bloc app est refusée | `scripts/audit-globals.js` | `npm run verif`, CI |
 | Budget de démarrage : le bloc app compte pour UN poste, comme l'ancien `app.js` | `tests/e2e/audit-2026-11-perf-dist.spec.js` | — |
@@ -2255,12 +2255,34 @@ pour ces suites.
   RETOUR ARRIÈRE vers un déploiement d'avant ce lot (aucun `app/`), puis un redéploiement qui la rétablit
   à l'identique (fichier inchangé, même empreinte) : ce 404 resterait en cache, et la reprise du
   chargeur le relirait. Fenêtre étroite, effet lourd (l'application ne démarre plus sur cet appareil).
-  Remède à poser : à l'échec, redemander l'adresse en `fetch(…, { cache: "reload" })` avant de
-  réinsérer le script (le cache HTTP est rafraîchi, le worker n'a pas rangé le 404).
+  **Remède posé le 2026-11-09 (PR de suite)** : à chaque reprise, le chargeur redemande l'adresse en
+  `fetch(adresse, { cache: "reload" })` et lit le corps jusqu'au bout AVANT de réinsérer le script.
+  `reload` va au réseau sans lire le cache HTTP et y RANGE la réponse ; le script réinséré relit ce qui
+  vient d'arriver. Le worker ne range jamais un 404 (`contenuVersionne`) et transmet le mode `reload` à
+  son `fetch(e.request)` (branche `estVersionne`). Adresses toujours littérales (`urlsBundlesServis`),
+  insertion toujours en chaîne (⑤). Verrou : `app-scripts-par-fichier.spec.js` ⑥, Chromium et WebKit —
+  une première visite pendant le « retour arrière » reçoit le 404 de production (en-têtes et page de
+  ~3,7 Ko recopiés de la mesure), une seconde sur l'adresse rétablie doit démarrer. Mutations (sans
+  redemande ; redemande sans `cache: "reload"`) : rouge sur les deux moteurs, « le chargeur abandonne »
+  sans qu'une seule demande atteigne le serveur — le scénario de production, reproduit. Littéral à
+  chercher dans la page minifiée servie : `cache:"reload"`.
+  - ⚠️ **LE CONTEXTE ÉPHÉMÈRE DE WEBKIT SOUS PLAYWRIGHT NE RELIT PAS LE 404** (WebKit 2388) : la seconde
+    visite y redemandait le script au serveur, et ⑥ passait sans le remède — sa prémisse l'a dit. ⑥
+    tourne donc dans un PROFIL PERSISTANT (`launchPersistentContext`), comme un vrai Safari : là, WebKit
+    garde le 404 et le relit (mesuré), le scénario vaut donc aussi pour l'iPhone. Chromium le relit dans
+    les deux modes.
+  - ⚠️ **LA PRÉMISSE EST ASSERTÉE** : la seconde visite n'envoie AUCUNE demande ordinaire du script (ni
+    preload ni `<script>`) ; seule la redemande, que le navigateur marque `no-cache` (Fetch :
+    `Cache-Control` et `Pragma`), atteint le serveur. Un moteur qui ne garderait pas le 404 rougirait sur la prémisse au lieu de
+    passer sans rien prouver.
 
-**Ce qui reste.** Le remède du 404 ci-dessus (chemin critique : `scripts/build.js`). Mesurer sur un
-vrai iPhone (session persistante) ce que son worker retrouve dans le cache réseau — le lot n'en dépend
-plus. La première installation sous WebKit (ci-dessus) : la page pourrait confier ses scripts au worker
+**Ce qui reste.** Mesurer sur un vrai iPhone (session persistante) ce que son worker retrouve dans le
+cache réseau — le lot n'en dépend plus ; un profil WebKit persistant (`launchPersistentContext`, comme
+⑥) en donne déjà une approximation d'ici. Le même retour arrière entre deux versions d'APRÈS ce lot :
+Netlify ignorant `?v=`, l'ancien déploiement sert l'ANCIEN contenu d'un fichier modifié sous sa NOUVELLE
+empreinte, en 200 immutable — rien n'échoue, le remède du 404 ne le voit pas ; un attribut `integrity`
+(l'empreinte du contenu est déjà calculée) le ferait échouer, donc reprendre. La première installation
+sous WebKit (ci-dessus) : la page pourrait confier ses scripts au worker
 plutôt que de le laisser les redemander. Le résidu des minuteurs de démarrage : les réarmer sur
 `passio:app-ready` (app-04 ×2, app-08), après avoir vérifié que deux rejeux rapprochés d'une même file
 ne doublent rien. Et, trouvé en route, ANTÉRIEUR à ce lot : `js/ui-v6a0-activite.js` n'enveloppe
