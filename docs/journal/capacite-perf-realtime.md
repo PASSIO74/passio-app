@@ -1977,19 +1977,20 @@ coûte. Point de départ : `6e4cbce3` (#797).
 - `app.js?v=55a530d4a1` servi : 1 549 218 octets minifiés — **exactement** la sortie de terser sur le
   poste (même version, figée par le lockfile) ; transféré en **419 229 octets en brotli** (≈ un brotli
   q4 local + 1,9 % : Netlify compresse à la volée) et 444 628 en gzip (≈ niveau 6).
-- 30 jours : 137 commits sur `main`, **40 touchent le bloc** ; scripts touchés par version : 1 → 12 fois,
-  2 → 10, 3 → 9, 4 → 4, 5 → 2, 6 → 3. Le plus remué : app-08 (24), app-02 (19), app-04 (17).
-- Un script seul, minifié et compressé (brotli calibré) : app-01 109 Ko · app-07 61 · app-08 58 ·
+- 30 jours (rejoué sur la tête qui intègre #802) : 138 commits sur `main`, **40 touchent le bloc** ;
+  scripts touchés par version : 1 → 11 fois, 2 → 10, 3 → 9, 4 → 4, 5 → 3, 6 → 3. Le plus remué :
+  app-08, app-02, app-04.
+- Un script seul, minifié et compressé (brotli calibré) : app-01 109 Ko · app-07 61 · app-08 60 ·
   app-02 57 · app-04 55 · app-05 43 · app-06 40 · app-09 (+ queue) 28 · app-03 6.
 
-**Le bilan.**
+**Le bilan** (même tête ; le monolithe y pèse 1 558 410 octets minifiés, ~421 Ko servis).
 
 | Poste (par appareil, brotli calibré sur le servi) | Avant (`app.js`) | Après (9 scripts) |
 |---|---|---|
-| Première visite | 419 Ko | ~456 Ko (**+37 Ko, +8,8 %** ; gzip 444 → 451 Ko, +1,5 %) |
-| Une version qui touche le bloc (moyenne des 40) | 419 Ko | **~138 Ko (−67 %)** |
-| Une version qui ne touche qu'app-02 ou app-08 | 419 Ko | 57 ou 58 Ko |
-| 30 jours de `main` (40 versions) | 16,8 Mo | 5,5 Mo |
+| Première visite | 421 Ko | ~458 Ko (**+37 Ko, +8,8 %** ; gzip 447 → 453 Ko, +1,5 %) |
+| Une version qui touche le bloc (moyenne des 40) | 421 Ko | **~145 Ko (−66 %)** |
+| Une version qui ne touche qu'app-02 ou app-08 | 421 Ko | 57 ou 60 Ko |
+| 30 jours de `main` (40 versions) | 16,8 Mo | 5,8 Mo |
 
 Le surcoût de la première visite (le brotli perd le contexte commun entre fichiers) est remboursé dès
 la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
