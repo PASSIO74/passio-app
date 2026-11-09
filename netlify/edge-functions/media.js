@@ -27,16 +27,23 @@
 //    rien n'est servi depuis l'ORIGINE DE L'APP. Le média vit sur celle de
 //    Supabase, où un SVG piégé ne lit pas la session de PASSIO.
 // ⑧ LISTE FERMÉE des largeurs (audit 2026-11-06) : hors liste, 302 vers la forme
-//    canonique, sans rien renvoyer d'autre ; une valeur non numérique, 400. Le
-//    renvoi ne fabrique jamais une demande que le client ne fait pas. ⚠️ CE N'EST
-//    PAS UNE PROTECTION DU QUOTA (relevé par `passio-red-team`) : l'URL
-//    `render/image` de Supabase est publique, n'importe qui peut la demander
-//    directement. La vraie protection est ailleurs : depuis le 2026-11-09,
-//    PASSIO ne demande plus AUCUNE transformation (`passioThumb`, app-02) — la
-//    transformation d'image peut être éteinte chez Supabase sans rien casser.
-//    Seules d'anciennes URL `/media/…?width=` arrivent encore ici.
+//    canonique, sans rien renvoyer d'autre ; une valeur non numérique, 400. Elle
+//    ne borne plus que la clé de cache du bord (`Netlify-Vary`). ⚠️ CE N'EST PAS
+//    UNE PROTECTION DU QUOTA (relevé par `passio-red-team`) : l'URL `render/image`
+//    de Supabase est publique, n'importe qui peut la demander directement. La
+//    seule protection est de l'ÉTEINDRE chez Supabase (Storage › Settings).
 // ⑨ `cache: "manual"` : le renvoi lui-même peut se garder au bord
 //    (`Netlify-CDN-Cache-Control`), clé bornée à width|quality (`Netlify-Vary`).
+// ⑩ AUCUNE TRANSFORMATION, MÊME POUR UNE ANCIENNE MINIATURE (2026-11-09, la
+//    suite) : PASSIO n'en demande plus aucune (`passioThumb`, app-02), mais les
+//    URL `/media/…?width=` d'un appareil pas encore à jour repartaient ICI vers
+//    `render/image` — éteindre la transformation les aurait cassées. Elles
+//    reçoivent désormais l'OBJET que l'URL désigne, exactement ce que rend
+//    `passioThumb`. La transformation pourra s'éteindre chez Supabase sans rien
+//    casser, mais PAS le jour même : un navigateur garde un jour l'ancien renvoi
+//    vers `render/image` (TTL_RENVOI), et un onglet resté sur un build d'avant #795
+//    la demande directement — précondition écrite dans docs/CDN_MEDIAS.md.
+//    Verrou : tests/unit/media-edge.test.mjs ⑪ (ni ici, ni dans le client).
 // Toute réponse porte le bac à sable (`enTetesSecurite`) : le bloc [[headers]]
 // de netlify.toml ne s'applique pas aux réponses d'une Edge Function.
 //
@@ -99,9 +106,8 @@ export default async (req) => {
     }
   }
   const miniature = largeurBrute !== null;
-  const cible = miniature
-    ? `${SUPABASE}/storage/v1/render/image/public/${rel}?width=${largeurBrute}&quality=${QUALITE}`
-    : `${SUPABASE}/storage/v1/object/public/${rel}`;
+  // ⑩ Toujours l'OBJET : la largeur ne choisit plus que la clé de cache du bord.
+  const cible = `${SUPABASE}/storage/v1/object/public/${rel}`;
 
   const h = new Headers({ Location: cible, "Cache-Control": `public, max-age=${TTL_RENVOI}` });
   h.set("Netlify-CDN-Cache-Control", `public, s-maxage=${TTL_RENVOI_BORD}`);

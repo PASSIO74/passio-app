@@ -30,6 +30,7 @@
 - 🗑️ analytics_events : CE QUI NE SERT QU'UNE HEURE NE VIT PLUS 13 MOIS — ET LE PREMIER POSTE ÉTAIT LA VEILLE, PAS LE PLAFOND (2026-11-07)
 - 📦 BANDE PASSANTE ET QUOTAS SANS INVESTIR : LA PAGE EN 304, LES MÉDIAS EN DIRECT, LES MINIATURES SANS TRANSFORMATION, LA LISTE DES PASSIONS GARDÉE (2026-11-09)
 - 📴 LE CONTENU PUBLIC SORT DE LA RÉPLICATION CDC — `realtime.list_changes` PESAIT 60 % DE LA BASE (2026-11-09)
+- 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE QUOTA DE MESSAGES TEMPS RÉEL, AVANT ET APRÈS #802 (2026-11-09, la suite)
 
 ---
 
@@ -1824,7 +1825,9 @@ télémétrie étaient déjà durcis (lots de septembre et d'octobre) ; **les mu
   monde sur le même Wi-Fi ; Turnstile protège déjà) ; passer la connexion d'Auth en pourcentage
   (avis du linter, utile seulement le jour d'un changement de calcul).
 - Supabase › Storage › Settings : **éteindre la transformation d'image**. PASSIO n'en demande plus
-  aucune ; l'URL `render/image` reste publique tant qu'elle est allumée.
+  aucune ; l'URL `render/image` reste publique tant qu'elle est allumée. ⚠️ Vrai pour `passioThumb`
+  seulement : le renvoi `/media/…?width=` la demandait encore — fermé par #800, avec la précondition
+  d'extinction (fiche suivante).
 
 **Ce qui reste — serveur, relevé par `passio-red-team` (antérieur à ce lot, dit ici pour être suivi).**
 - Un déclencheur `BEFORE INSERT OR UPDATE OF passion_id` sur `posts` qui refuse une passion non
@@ -1962,3 +1965,74 @@ contre-revue. Le pilotage local compte encore `publish` comme livraison vérifia
 (`dashboard/server/interactions.js`) alors que plus rien ne la signale : chemin critique, même PR. La
 mesure APRÈS se lit au canal ① une fois la migration appliquée et l'ancien client parti — consignée
 ci-dessous à ce moment-là.
+
+## 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE QUOTA DE MESSAGES TEMPS RÉEL, AVANT ET APRÈS #802 (2026-11-09, la suite)
+
+Demande de Benjamin : « combien d'utilisateurs peuvent utiliser l'app maintenant ? total ? en même
+temps ? », puis « oui, fais-le » (lever le mur des avatars).
+
+⚠️ **LE CALCUL A D'ABORD ÉTÉ FAIT SUR UNE COPIE PÉRIMÉE, ET IL NOMMAIT UN MUR DÉJÀ LEVÉ.** La copie de
+travail était sur une branche partie de #792 (la veille) : `passioThumb` y demandait encore
+`render/image`, et le premier rapport a désigné les transformations d'image comme le mur n° 1
+(« ~50 profils avec photo ») alors que #795, fusionné et SERVI le matin même, l'avait levé. **Avant de
+chiffrer une capacité, lire `origin/main` et le `release.json` servi, jamais la copie locale**
+(`git fetch`, puis `git show origin/main:<fichier>`).
+
+⚠️ **CE QUI RESTAIT VRAIMENT : LE RENVOI DES ANCIENNES MINIATURES.** `media.js` renvoyait encore
+`/media/…?width=` vers `render/image` — les URL d'un appareil pas encore passé à #795. Éteindre la
+transformation chez Supabase, le geste que #795 recommande, aurait donc cassé ces vignettes-là. Elles
+reçoivent désormais l'OBJET, exactement ce que rend `passioThumb` ; la liste fermée des largeurs ne
+borne plus que la clé de cache du bord. Verrou : `tests/unit/media-edge.test.mjs` ⑪ — aucune forme de
+requête n'est renvoyée vers la transformation, et rien de ce que Netlify sert ou exécute (`js/` hors
+`vendor/`, `pilotage/`, `data/`, `netlify/`, `supabase/functions/`, `sw.js`, `index.html`,
+`styles.css`, `netlify.toml`, `_headers`) ne la demande — ni en clair (`render/`), ni par l'option
+`transform` du SDK (`getPublicUrl`, `createSignedUrl(s)`, `download` avec options), qui fabrique
+`render/image` lui-même. ⑫ éprouve l'effaceur de commentaires qui sert ⑪ : un « // » dans une URL n'est
+pas un commentaire, du code après un « /* … */ » reste du code, un gabarit imbriqué reste du texte.
+Éprouvé par RÉINJECTION : renvoi rendu à `render/image` (①, ⑦, ⑪ rouges) ; miniature transformée
+ajoutée au client, option `transform` ajoutée à app-08, URL transformée derrière un commentaire de
+bloc dans le pilotage (⑪ rouge chaque fois, la ligne fautive nommée).
+⚠️ **ÉTEINDRE LA TRANSFORMATION N'EST PAS SANS RISQUE LE JOUR MÊME** (contre-revue `audit-passio` de
+#800, P2-1) : un navigateur garde UN JOUR le renvoi de #795 vers `render/image` (`TTL_RENVOI`), et un
+onglet resté sur un build d'avant #795 la demande directement chez Supabase (`js/release-guard.js` ne
+force jamais de rechargement). **Le geste humain, gratuit : Supabase › Storage › Settings → éteindre
+« Enable Image Transformations », au moins 24 h après la mise en ligne de #800, une fois constatés
+zéro `/render/image/` sur 24 h dans les journaux Storage (ou Usage › Image Transformations à plat) et
+plus aucun `release/version_skew` d'un build antérieur à #795** (`docs/CDN_MEDIAS.md`). Allumée,
+`render/image` reste une URL publique : n'importe qui peut épuiser les 100 images d'origine du mois,
+et au-delà, spend cap actif, s'applique la politique d'usage équitable de Supabase (avertissement,
+puis restrictions possibles du projet entier).
+Laissé pour un lot suivant, antérieur à #800 : ⑩ (« la liste couvre chaque largeur du client ») n'a
+plus d'objet depuis que `passioThumb` ignore la largeur — retirer ces arguments morts le ferait
+rougir ; ce sont désormais les largeurs FIGÉES des builds d'avant #795 qu'il faut couvrir.
+
+**Capacité au 2026-11-09 au soir — mesuré :** 16 comptes (15 confirmés), 2 connexions en 24 h,
+7 appareils du public en 3 jours ; base 120 Mo / 8 Go, médias 30 Mo / 100 Go ; calcul Micro
+(60 connexions Postgres, 28 ouvertes). **Les murs, estimés :**
+
+| Mur | Limite (Pro, spend cap actif) | Atteint vers… |
+|---|---|---|
+| E-mails d'inscription | 30/h (défaut Supabase en SMTP perso), 300/j (Brevo gratuit) | un pic de lancement ; Google n'y est pas soumis |
+| **Messages temps réel** | **5 M/mois** | **avant la migration de #802 : ~1 300 actifs/jour (800 à 2 000) ; après : ~14 000** |
+| Messages temps réel par seconde | 500/s (au-delà, déconnexions `tenant_events`) | avant la migration : ~430 comptes connectés ensemble ; après : les 500 connexions passent devant |
+| Connexions temps réel | 500 | 500 sockets — un onglet ou appareil connecté chacun (un visiteur n'en ouvre pas ; `test:prod` et le tableau de bord comptent aussi) |
+| Sortie en cache Supabase (médias) | 250 Go/mois | ~1 400 actifs/jour (fiche précédente : ~2 Mo par session, ~3 sessions par jour et par actif) |
+| Bande passante Netlify (l'app seule) | 100 Go/mois | ~3 000 appareils/jour |
+| Base Micro | ~400 req/s (banc du 14/09) | 2 000 à 4 000 personnes actives ensemble |
+
+⚠️ **LE QUOTA MENSUEL DE MESSAGES ÉTAIT UN MUR EN (ACTIFS)² — #802, FUSIONNÉE LE MÊME SOIR, EN RETIRE
+L'ESSENTIEL — ET AUCUNE JAUGE NE LE SUIT.** Supabase compte un message par client abonné et par
+changement. Jusqu'à #802, chaque publication, commentaire, réaction à un commentaire, modification de
+profil et battement de live (25 s) partait à TOUS les comptes connectés (les « j'aime » n'y passaient
+déjà plus) : messages/mois ≈ 30 × 1,5 × e × (T / 1 440) × D², avec D actifs/jour, e ≈ 5 écritures
+publiques par actif et par jour, T ≈ 25 min de socket par jour, 1,5 pour la pointe — ≈ 3,9 × D², les
+5 M vers D ≈ 1 100, et 5 000 actifs/jour auraient fait ~100 M de messages (~230 $/mois sans spend cap) ;
+par seconde ≈ e / (60 × T) × C², les 500/s vers C ≈ 390 connectés. **Depuis #802 (client), publications,
+profils et lives ne partent plus vers personne** ; restent, jusqu'à sa migration, les cinq liaisons de
+transition (commentaires, interactions ×2, commentaires d'activité, accusés) qui livrent encore à tous :
+e ≈ 4, ≈ 3,1 × D², les 5 M vers D ≈ 1 300, les 500/s vers C ≈ 430. **Après la migration, plus rien ne part
+« à tous »** : un changement ne va qu'à ceux qui regardent la discussion, à l'auteur et aux membres —
+≈ 30 × e × k × D avec k ≈ 3 destinataires, les 5 M vers ~14 000 actifs/jour, et c'est la limite des 500
+connexions, pas les messages, qui borne la simultanéité. **Ce sont des estimations, à un facteur 2
+près** : le chiffre réel se lit dans Supabase › Usage › Realtime Messages, que rien dans le pilotage ne
+suit encore.
