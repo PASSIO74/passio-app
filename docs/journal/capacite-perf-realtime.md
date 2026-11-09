@@ -1960,13 +1960,58 @@ suites ajustées : `capacite-amplification` (⑦ ⑧ ⑩), `capacite-connexions-
 `realtime-diffusion-privee`, `tests/unit/charge-realiste.test.mjs` ; `capacite-realtime-cible.spec.js`
 est parti avec la liaison `profiles` qu'il gardait.
 
-**Ce qui reste, et où.** La migration, son banc (`tests/sql/migration-realtime-public-hors-cdc.test.sh`)
-et le nettoyage du client (plus aucune liaison CDC, soupape v1 sur `user:`, bancs de charge sans
-`realtime:db`, `audit:realtime` à publication vide) partent ensemble dans la PR suivante, derrière la
-contre-revue. Le pilotage local compte encore `publish` comme livraison vérifiable
-(`dashboard/server/interactions.js`) alors que plus rien ne la signale : chemin critique, même PR. La
-mesure APRÈS se lit au canal ① une fois la migration appliquée et l'ancien client parti — consignée
-ci-dessous à ce moment-là.
+**La première PR — le client de transition — est en production** (PASSIO74/passio-app#802, fusionnée le
+2026-11-09). Mesure de référence prise juste avant, au canal ① : 7 492 816 appels de `list_changes` à
+18:41 UTC, soit +5 905 depuis 12:40 (~10 minutes de relevé continu sur six heures calmes).
+
+**La seconde PR — la migration et le client sans CDC.** `migration_realtime_public_hors_cdc_2026-11-09.sql`
+(triggers `realtime.send` vers `fil:<id>` et `user:<uid>`, policy `passio_rt_recevoir_fil`, publication
+VIDÉE — toutes ses tables, quelle que soit la liste du projet, et un éventuel schéma entier), son banc
+`tests/sql/migration-realtime-public-hors-cdc.test.sh` (verdict 16/0/0, retour arrière rejoué), et le client
+qui n'a plus AUCUNE liaison CDC : `_creerCanalDb` et le canal `conv_specific:` de la soupape v1 sont partis,
+la soupape v1 lit ses messages sur `user:` comme v3 ; `scripts/realtime-publication.json` à publication
+vide ; les bancs de charge passent au profil `sans-cdc` (et la mesure « temps réel (insert → reçu) » de
+`scripts/charge.mjs`, qui écoutait `posts`, est retirée plutôt que comptée en échec) ; le pilotage ne
+compte plus une publication comme livraison vérifiable (plus aucun `rt_recv post`). Ordre : client #802 en
+ligne → contre-revue de PASSIO74 → migration (staging, suites à comptes réels, production) → fusion de ce
+client. **La contre-revue est le seul contrôle humain de cette PR** : rien de ce qui suit ne part sans elle.
+
+**Ses pièges.**
+- ⚠️ **LA GATE DU SCHÉMA RÉSULTANT REFUSAIT LA MIGRATION** : `… drop tables in schema x` (le retrait d'un
+  schéma ENTIER d'une publication) passait son motif d'exception (`table\b`), puis le brut `drop\s+table`
+  l'attrapait dans « drop tables » — un faux positif de plus de la famille du 2026-09-20. Corrigé dans
+  `scripts/lib/schema-resultant.js`, avec un cas à la forme EXACTE de la migration (les deux boucles dans le
+  même bloc : c'est la première, `drop table %s`, qui fait inspecter le bloc), éprouvé par réinjection.
+- ⚠️ **`audit:realtime` LIT AUSSI LES COMMENTAIRES.** Les profils `transition5` et `legacy12` du banc
+  réaliste ne joignent plus jamais (gardes `*_HORS_LIGNE`) : leur tableau est une ARCHIVE, renommée
+  `liaisonsArchivees`, et le commentaire qui l'explique n'écrit pas le marqueur en toutes lettres — la
+  fenêtre de la gate aurait attrapé les tables du tableau qui suit.
+- ⚠️ **UN TÉMOIN QUI NE PEUT PLUS RIEN RECEVOIR N'EST PLUS UN TÉMOIN** : la sonde du visiteur de R25
+  (`realtime-poussee-reelle` ④) prouvait son canal par une suppression de `post_likes` ; la publication est
+  vide, et le canal du visiteur est refusé depuis le lot 3 du 06/11. Le témoin est parti, le silence des
+  sondes reste exigé, et les deux garanties se mesurent au verdict de la migration et à la gate.
+- ⚠️ **UN RETRAIT N'EST PLUS `{ id }`** : `retrait-interactions-reel` ① exigeait la charge CDC d'un DELETE
+  sous RLS (la clé seule, R37) ; il exige désormais la ligne entière, sur `fil:<publication>`. Le chemin
+  `{ id }` → index reste dans le client et dans les bancs locaux, qui l'exercent par `user:<moi>`.
+- ⚠️ **TROIS BANCS ANCIENS COMPARAIENT LEUR ÉTAT AU MANIFESTE** (`migration-realtime-publication`,
+  `-telemetry`, `-diffusion-privee`) : rouges à la première CI. La règle existait déjà — le banc de la
+  migration de publication la plus RÉCENTE compare l'état final au manifeste, les plus anciens rendent à
+  leur attendu ce qui a été retiré depuis — ; le relais passe au banc de ce lot.
+- ⚠️ **UN DÉMARRAGE PLUS COURT A FAIT ROUGIR UNE COURSE DU BANC** : `audit-2026-11-participants-compte`
+  (« a bis », « c », « h0 bis ») rougissait en CI à chaque essai. Le bloc différé de `supaInit`
+  (`rafraichirEvenements(true)`, à 2 s) tombait au milieu du scénario et remplaçait l'activité par une
+  lecture d'avant le geste. La course existait (1 rouge sur 27 en local sur cette PR, 0 sur la première) ;
+  le banc attend désormais ces blocs (`demarrageTermine` : les lectures de stories, qu'ils lancent seuls).
+  ⚠️ **Il y en a DEUX** : `supaInit` tourne au démarrage puis sur `onAuthStateChange`, et chaque passage
+  programme son bloc — deux lectures de stories à ~0,5 s d'écart dans le journal du faux serveur.
+  Attendre la première seulement déplaçait la course (« c » rougissait alors sur le compteur) ; le banc
+  attend que leur nombre ne bouge plus pendant 1,5 s. Deux défauts PRODUIT, révélés et non traités ici :
+  une relecture partie avant un « je viens » écrase son compteur optimiste (une minute au plus), et le
+  démarrage relit DEUX fois stories, activités et notifications.
+
+**Ce qui reste.** La mesure APRÈS se lit au canal ① une fois la migration appliquée en production et les
+anciens clients rechargés : le compte des appels de `list_changes` doit cesser de croître pendant une
+période où des comptes sont connectés — consignée ci-dessous à ce moment-là.
 
 ## 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE QUOTA DE MESSAGES TEMPS RÉEL, AVANT ET APRÈS #802 (2026-11-09, la suite)
 

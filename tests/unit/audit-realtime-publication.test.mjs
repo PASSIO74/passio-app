@@ -31,7 +31,13 @@ const RACINE = fileURLToPath(new URL("../..", import.meta.url));
 // un no-op présenté comme un ajustement de racine : du code mort trompeur.)
 // ⚠️ Les sondes du vrai dépôt nomment un fichier qui n'existe pas ici : un dépôt fabriqué
 // ne porte que celles qu'on lui donne.
-function surDepotFabrique(fichiers, sondes = {}) {
+// ⚠️ LES TABLES PUBLIÉES D'UN DÉPÔT FABRIQUÉ SONT FABRIQUÉES AUSSI (2026-11-09).
+// La liste réelle est VIDE depuis la migration « 📴 » : les cas qui mesurent la
+// LECTURE de la gate (un bloc lu en entier, une table refusée en fin de bloc,
+// une sonde) n'en dépendent plus — ils portent une liste dont on connaît la
+// réponse, de la taille d'avant (neuf).
+const TABLES_FABRIQUEES = ["fab_un", "fab_deux", "fab_trois", "fab_quatre", "fab_cinq", "fab_six", "fab_sept", "fab_huit", "fab_neuf"];
+function surDepotFabrique(fichiers, sondes = {}, publiees = TABLES_FABRIQUEES) {
   const dossier = mkdtempSync(join(tmpdir(), "gate-rt-"));
   try {
     for (const d of ["js", "dashboard", "scripts", "supabase/functions", "tests/e2e"]) {
@@ -44,7 +50,7 @@ function surDepotFabrique(fichiers, sondes = {}) {
     const declare = JSON.parse(readFileSync(join(RACINE, "scripts/realtime-publication.json"), "utf8"));
     writeFileSync(
       join(dossier, "scripts", "realtime-publication.json"),
-      JSON.stringify({ ...declare, sondesHorsPublication: sondes }),
+      JSON.stringify({ ...declare, publiees, publieesSansAbonne: {}, sondesHorsPublication: sondes }),
     );
     for (const [chemin, contenu] of Object.entries(fichiers)) {
       writeFileSync(join(dossier, chemin), contenu);
@@ -75,28 +81,17 @@ test("① le dépôt est sain, et la gate le dit avec un COMPTE — pas un simpl
   assert.equal(r.code, 0, r.sortie);
   const m = /(\d+) souscriptions scannées/.exec(r.sortie);
   assert.ok(m, "la gate ne dit plus combien elle a scanné : " + r.sortie);
-  // ⚠️ LE NOMBRE EST L'ASSERTION — « OK » seul resterait vrai le jour où la gate
-  // cesserait de lire la moitié du dépôt, le défaut du 2026-09-20.
-  // ⚠️ MAIS LE PLANCHER NE DOIT PAS ROUGIR SUR UN INNOCENT. Le compte du jour
-  // est 28, dont UN FANTÔME : `js/app-08-ui-modals-tour.js:6264` est un
-  // COMMENTAIRE qui contient le marqueur, et sa fenêtre de 400 caractères
-  // attrape la table de la ligne 6267. Reformuler ce commentaire ferait tomber
-  // le compte à 27 sans qu'aucune souscription n'ait bougé — et un verrou qui
-  // rougit sur un innocent finit par être désarmé.
-  // ⚠️ LE PLANCHER EST UN GARDE-FOU DE VOLUME, PAS LE VERROU DÉCISIF — c'est le
-  // cas ② qui mesure exactement, sur un dépôt fabriqué. Ici on veut seulement
-  // qu'un effondrement se voie, SANS rougir sur un innocent : le compte du jour
-  // est 27, dont UN FANTÔME (`app-08:6264` est un commentaire qui contient le
-  // marqueur et dont la fenêtre attrape la table de la ligne 6267), donc 26
-  // réelles ; et il bouge à chaque souscription ajoutée ou retirée du produit —
-  // `telemetry_events` vient d'en retirer une le 2026-09-20.
-  // ⚠️ LE PLANCHER EST À 25, PAS À 20 : à 20 la gate cessait de rougir sur une
-  // régression PARTIELLE (perte de 5 ou 6 souscriptions), ce qui vidait le
-  // garde-fou de son seul emploi. 25 garde deux crans de marge sous le compte du
-  // jour (27, dont un fantôme) et reste très au-dessus de ce que laisserait la
-  // régression totale : si la branche « bloc » cassait, `charge.mjs` retomberait
-  // de 12 liaisons à 1 et le total à ~16.
-  assert.ok(Number(m[1]) >= 25, `seulement ${m[1]} souscriptions scannées (attendu ≥ 25)`);
+  // ⚠️ DEPUIS LE 2026-11-09 (« 📴 »), LE COMPTE QUI COMPTE EST ZÉRO. La
+  // publication `supabase_realtime` est VIDE et le produit n'a plus AUCUNE
+  // liaison `postgres_changes` : la gate doit le dire en toutes lettres. Une
+  // liaison du produit qui reviendrait vers une table non republiée la ferait
+  // rougir (cas ③) ; une table republiée sans abonné aussi.
+  // L'ancien plancher (« ≥ 25 souscriptions scannées ») gardait le VOLUME de la
+  // lecture ; il n'a plus d'objet — c'est le cas ② qui mesure la lecture d'un
+  // bloc, sur un dépôt fabriqué dont on connaît la réponse.
+  assert.match(r.sortie, /: 0 tables publiées, 0 écoutées,/, "la publication est vide et le produit n'écoute plus aucune table");
+  // Restent les sondes VOULUES du verrou de R25 (cas ⑦) : la gate les a lues.
+  assert.ok(Number(m[1]) >= 2, `seulement ${m[1]} souscriptions scannées (attendu : au moins les deux sondes de R25)`);
 });
 
 test("② la forme TABLEAU est lue en ENTIER — le compte est EXACTEMENT la taille du bloc", () => {
@@ -106,11 +101,7 @@ test("② la forme TABLEAU est lue en ENTIER — le compte est EXACTEMENT la tai
   // On mesure donc le compte sur un dépôt FABRIQUÉ dont on connaît la réponse :
   // un seul fichier, un seul bloc, toutes les tables publiées. Si la gate ne
   // lisait que la première entrée, elle en annoncerait 1 au lieu de N.
-  const publiees = JSON.parse(
-    readFileSync(join(RACINE, "scripts/realtime-publication.json"), "utf8"),
-  );
-  const tables = publiees.publiees.filter((x) => typeof x === "string");
-  assert.ok(tables.length >= 5, "liste des tables publiées illisible : " + JSON.stringify(publiees).slice(0, 200));
+  const tables = TABLES_FABRIQUEES;
 
   const bloc =
     "const postgres_changes = [\n" +
@@ -132,9 +123,7 @@ test("③ une liaison vers une table NON PUBLIÉE est REFUSÉE, même au milieu 
   // qu'une serait verte au cas ② et parfaitement inutile. On pose donc la table
   // inexistante en DERNIÈRE position du bloc — celle qu'une lecture
   // « première entrée seulement » ne verrait jamais.
-  const publiees = JSON.parse(
-    readFileSync(join(RACINE, "scripts/realtime-publication.json"), "utf8"),
-  ).publiees;
+  const publiees = TABLES_FABRIQUEES;
   const bloc =
     "const postgres_changes = [\n" +
     publiees.map((t) => `  { event: "INSERT", schema: "public", table: "${t}" },`).join("\n") +
@@ -145,7 +134,7 @@ test("③ une liaison vers une table NON PUBLIÉE est REFUSÉE, même au milieu 
 });
 
 // ── Une sonde : une souscription VOULUE vers une table retirée (R25, cas ④) ─────
-const toutesPubliees = () => JSON.parse(readFileSync(join(RACINE, "scripts/realtime-publication.json"), "utf8")).publiees;
+const toutesPubliees = () => TABLES_FABRIQUEES;
 const blocDesPubliees = () =>
   "const postgres_changes = [\n" +
   toutesPubliees().map((t) => `  { event: "INSERT", schema: "public", table: "${t}" },`).join("\n") +

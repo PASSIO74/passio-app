@@ -275,15 +275,17 @@ test("le compte tient sans recharger : commentaire local, commentaire reçu en d
     // 1. Mon commentaire, pas encore en base : compte tout de suite.
     p.comments.unshift({ id: "c_local", authorId: MY_UID, text: "Moi", content: "Moi", createdAt: Date.now(), _pending: true });
     out.local = nbCommentairesPost(p);
-    // 2. Un commentaire d'un autre, reçu par le canal temps réel.
+    // 2. Un commentaire d'un autre, reçu par le canal temps réel : le sujet de
+    // la discussion (`fil:<id>`, `_creerCanalFil`) depuis le 2026-11-09 (« 📴 »).
     const bindings = [];
     supa.channel = () => { const ch = { on(type, cfg, cb) { bindings.push({ cfg, cb }); return ch; }, subscribe() { return ch; } }; return ch; };
-    _creerCanalDb(true);
-    const b = bindings.find((x) => x.cfg.table === "post_comments" && x.cfg.event === "INSERT");
-    await b.cb({ new: { id: "c_direct", post_id: "fil_01", author_id: "dominique", content: "En direct", created_at: "2026-09-21T13:00:00" } });
+    _creerCanalFil("fil_01", true);
+    const b = bindings.find((x) => x.cfg.event === "post_comments:INSERT");
+    const ligne = { id: "c_direct", post_id: "fil_01", author_id: "dominique", content: "En direct", created_at: "2026-09-21T13:00:00" };
+    await b.cb({ payload: { table: "post_comments", operation: "INSERT", record: ligne } });
     out.direct = { total: p.commentsTotal, affiche: nbCommentairesPost(p), tete: p.comments[0].id };
     // Le même événement rejoué ne compte pas deux fois.
-    await b.cb({ new: { id: "c_direct", post_id: "fil_01", author_id: "dominique", content: "En direct", created_at: "2026-09-21T13:00:00" } });
+    await b.cb({ payload: { table: "post_comments", operation: "INSERT", record: ligne } });
     out.rejeu = nbCommentairesPost(p);
     // 3. Suppression d'un commentaire serveur, puis d'un local.
     window.supaLoadComments = async () => [];

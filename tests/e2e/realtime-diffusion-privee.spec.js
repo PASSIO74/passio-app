@@ -11,11 +11,12 @@
 // avec le `apply_rls` de production : tests/sql/migration-realtime-diffusion-privee.test.sh.
 //
 // LE REMÈDE CÔTÉ CLIENT, ce que cette suite exige du VRAI câblage
-// (`supaSubscribe`, `_subscribeUserTopic`, `_creerCanalDb`, app-08) :
-//   ① v3 : `user:<moi>` porte trois liaisons ; `realtime:db` n'écoute plus ces
-//      deux tables, et chaque table qu'il écoute À L'EXÉCUTION est publiée ;
-//   ② soupapes v1/v2 : le topic est QUAND MÊME ouvert (ajouts, notifications),
-//      sans la liaison des messages qui les doublerait ;
+// (`supaSubscribe`, `_subscribeUserTopic`, app-08) :
+//   ① v3 : `user:<moi>` porte ses liaisons ; et depuis le 2026-11-09 (« 📴 »,
+//      publication vide) plus AUCUN canal ne pose de liaison `postgres_changes`
+//      — `realtime:db` lui-même est parti ;
+//   ② soupapes v1/v2 : le topic est QUAND MÊME ouvert (ajouts, notifications) ;
+//      les messages y sont lus hors v2 (v1 n'a plus de canal global) ;
 //   ③ une notification poussée entre dans la cloche, neutralisée, toast compris,
 //      une seule fois ; celle d'un autre compte est ignorée ;
 //   ④ un ajout poussé fait apparaître la conversation, sans message fantôme ;
@@ -44,7 +45,7 @@ async function preparer(page, opts = {}) {
     try { stopPostLikeRefresh(); } catch (e) {}
     MY_UID = opts.uid; window.MY_UID = MY_UID;
     window._supaReal = true;
-    window._supaSubscribed = false; window._userTopicChan = null; window._callRingChan = null; window._dbChan = null;
+    window._supaSubscribed = false; window._userTopicChan = null; window._callRingChan = null;
     window._privateConvChans = {};
     // `arme: true` : `_rtReposArmer` sort aussitôt (ni écouteurs ni minuteur pendant le cas).
     window._rtRepos = { endormi: false, masqueeDepuis: 0, dernierGeste: 0, endormiDepuis: 0, raison: null, cycles: 0, reveils: 0, timer: null, arme: true };
@@ -76,52 +77,50 @@ async function preparer(page, opts = {}) {
 }
 
 test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
-  test("① v3 : user:<moi> porte ses liaisons (R25, puis 2026-11-09) ; realtime:db n'écoute plus ces deux tables, et ce qu'il écoute est publié", async ({ page }) => {
+  test("① v3 : user:<moi> porte ses liaisons (R25, puis 2026-11-09) ; plus aucune liaison postgres_changes, et la publication est vide", async ({ page }) => {
     await preparer(page);
     const publiees = JSON.parse(fs.readFileSync(path.join(RACINE, "scripts/realtime-publication.json"), "utf8")).publiees;
     const r = await page.evaluate(() => {
       window.PASSIO_REALTIME_V3 = true; window.PASSIO_REALTIME_V2 = false;
       supaSubscribe();
       const user = window.__canaux.find((c) => c.topic === "user:" + MY_UID);
-      const db = window.__canaux.find((c) => c.topic === "realtime:db");
       return {
         user: user && { prive: user.prive, liaisons: user.liaisons.map((l) => l.type + "|" + l.filtre.event) },
-        tablesDb: db.liaisons.filter((l) => l.type === "postgres_changes").map((l) => l.filtre.table),
-        filtres: db.liaisons.filter((l) => l.filtre && l.filtre.filter).length,
+        sujets: window.__canaux.map((c) => c.topic),
+        cdc: window.__canaux.flatMap((c) => c.liaisons).filter((l) => l.type === "postgres_changes").length,
       };
     });
     expect(r.user).toEqual({ prive: true, liaisons: ["broadcast|INSERT", "broadcast|conv_members:INSERT", "broadcast|notifications:INSERT",
       "broadcast|conv_reads:UPSERT", "broadcast|post_comments:INSERT", "broadcast|comment_interactions:INSERT", "broadcast|comment_interactions:DELETE"] });
-    expect(r.tablesDb, "plus aucune liaison vers les deux tables sorties de la publication").not.toContain("conv_members");
-    expect(r.tablesDb).not.toContain("notifications");
-    expect(r.filtres, "les deux seules liaisons filtrées étaient celles de R25").toBe(0);
-    // ⚠️ LE PENDANT VIVANT DE LA GATE `audit:realtime`. Elle lit le texte et ne
-    // voit pas qu'une liaison est conditionnelle ; ici on compte ce que l'app
-    // POSE. Une seule table hors publication ferait échouer TOUT le canal
-    // (Realtime crée ses liaisons en une transaction).
-    expect(r.tablesDb.length).toBeGreaterThan(0);
-    for (const t of r.tablesDb) expect(publiees, `« ${t} » est écoutée mais pas publiée`).toContain(t);
+    // ⚠️ LE PENDANT VIVANT DE LA GATE `audit:realtime`. Elle lit le texte ; ici on
+    // compte ce que l'app POSE. Depuis la migration du 2026-11-09 (« 📴 ») la
+    // publication est VIDE : une seule liaison `postgres_changes` ne recevrait
+    // rien, et le serveur la réessaierait toutes les 5 à 10 s, canal ouvert.
+    expect(publiees, "la publication déclarée est vide").toEqual([]);
+    expect(r.cdc, "plus aucune liaison postgres_changes").toBe(0);
+    expect(r.sujets, "`realtime:db` est parti").not.toContain("realtime:db");
   });
 
-  test("② soupapes v1/v2 : user:<moi> est QUAND MÊME ouvert pour les ajouts et les notifications, sans la liaison des messages", async ({ page }) => {
+  test("② soupapes v1/v2 : user:<moi> est QUAND MÊME ouvert pour les ajouts et les notifications ; les messages y sont lus hors v2", async ({ page }) => {
     await preparer(page);
     const r = await page.evaluate(() => {
       const essai = (v3, v2) => {
         window.__canaux.length = 0;
-        window._supaSubscribed = false; window._userTopicChan = null; window._dbChan = null; window._privateConvChans = {};
+        window._supaSubscribed = false; window._userTopicChan = null; window._privateConvChans = {};
         window.PASSIO_REALTIME_V3 = v3; window.PASSIO_REALTIME_V2 = v2;
         supaSubscribe();
         const user = window.__canaux.find((c) => c.topic === "user:" + MY_UID);
-        const db = window.__canaux.find((c) => c.topic === "realtime:db");
         return { user: user ? user.liaisons.map((l) => l.filtre.event) : null,
-                 messagesParCdc: db.liaisons.some((l) => l.filtre && l.filtre.table === "conv_messages") };
+                 cdc: window.__canaux.flatMap((c) => c.liaisons).filter((l) => l.type === "postgres_changes").length };
       };
       return { v1: essai(false, false), v2: essai(false, true), v3: essai(true, false) };
     });
-    // v1 : les messages arrivent par la table, les lire AUSSI sur le topic les doublerait.
-    expect(r.v1).toEqual({ user: ["conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"], messagesParCdc: true });
-    expect(r.v2).toEqual({ user: ["conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"], messagesParCdc: false });
-    expect(r.v3).toEqual({ user: ["INSERT", "conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"], messagesParCdc: false });
+    // v1 : son canal global `postgres_changes` est parti avec la publication (2026-11-09) ;
+    // ses messages arrivent désormais par le topic, comme en v3.
+    expect(r.v1).toEqual({ user: ["INSERT", "conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"], cdc: 0 });
+    // v2 : les messages arrivent par `conv:<id>` ; les lire AUSSI sur le topic les doublerait.
+    expect(r.v2).toEqual({ user: ["conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"], cdc: 0 });
+    expect(r.v3).toEqual({ user: ["INSERT", "conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"], cdc: 0 });
   });
 
   test("③ une notification poussée entre dans la cloche, neutralisée, toast compris, UNE fois ; celle d'un autre compte est ignorée", async ({ page }) => {
@@ -335,10 +334,17 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
         if (String(topic).startsWith("user:")) throw new Error("refus simulé");
         return canal.call(this, topic, cfg);
       } });
-      supaSubscribe();
-      return window.__canaux.map((c) => c.topic);
+      // Depuis le 2026-11-09 (« 📴 »), « le reste » n'est plus `realtime:db` (parti
+      // avec la publication) : c'est l'armement du repos et les sujets des
+      // discussions à l'écran, posés APRÈS le topic. On les observe tous deux.
+      const appels = [];
+      const reposArmer = window._rtReposArmer, reconcilier = window._filsRtReconcilier;
+      window._rtReposArmer = function () { appels.push("repos"); return reposArmer.apply(this, arguments); };
+      window._filsRtReconcilier = function () { appels.push("fils"); return reconcilier.apply(this, arguments); };
+      try { supaSubscribe(); } finally { window._rtReposArmer = reposArmer; window._filsRtReconcilier = reconcilier; }
+      return { appels, abonne: window._supaSubscribed === true };
     });
-    expect(r, "realtime:db doit exister même si user: a levé").toContain("realtime:db");
+    expect(r, "le repos s'arme et les sujets des discussions se rejoignent même si user: a levé").toEqual({ appels: ["repos", "fils"], abonne: true });
   });
 
   test("⑦ un visiteur n'ouvre aucun topic user:", async ({ page }) => {

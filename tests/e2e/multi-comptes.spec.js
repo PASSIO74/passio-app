@@ -261,7 +261,9 @@ test.describe("messagerie entre 2 comptes réels", () => {
       log("B a réagi 😍 + posté un GIF (commentaire) sur le post");
 
       // ── A voit la réaction 😍 (comment_interactions) ET le commentaire GIF
-      //    (post_comments) SANS recharger — les deux via le canal realtime:db ──
+      //    (post_comments) SANS recharger — les deux par `user:<A>`, l'auteur de la
+      //    publication (poussée du serveur depuis le 2026-11-09, « 📴 » ; par le
+      //    canal realtime:db avant) ──
       await pageA.waitForFunction(
         ([pid, buid, gif]) => {
           const p = findPostAnywhere(pid);

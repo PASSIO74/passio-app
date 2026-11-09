@@ -27,7 +27,8 @@
 //   ⑦ une lecture en ÉCHEC — après une page relue, qui reconstruit les objets
 //     sans leur drapeau — ne retire rien ; une lecture RÉUSSIE retire l'épingle
 //     restée locale d'avant RV-38 (personne d'autre ne la voyait) ;
-//   ⑧ EN DIRECT (la vraie liaison de `_creerCanalDb`) : l'épingle du
+//   ⑧ EN DIRECT (la vraie liaison de `user:<moi>`, `_subscribeUserTopic` —
+//     `_creerCanalDb` jusqu'au 2026-11-09) : l'épingle du
 //     propriétaire s'applique — la mienne aussi, venue d'un autre de mes
 //     appareils —, celle d'un autre compte non, « 0 » la retire ;
 //   ⑨ une lecture partie AVANT ou PENDANT une épingle ne l'efface pas en revenant ;
@@ -177,12 +178,21 @@ async function preparer(page) {
       window.__canaux.push(ch);
       return ch;
     } });
-    window.__canalDb = _creerCanalDb(true);
-    window.__recevoir = (ligne) => {
-      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === "comment_interactions" && x.filtre.event === "INSERT");
-      if (!l) throw new Error("aucune liaison INSERT sur comment_interactions");
-      l.cb({ schema: "public", table: "comment_interactions", eventType: "INSERT", commit_timestamp: ligne.created_at, errors: null, new: ligne, old: {} });
+    // 📴 (2026-11-09) : plus de `realtime:db`. Le serveur pousse chaque ligne sur
+    // `user:<moi>` (mes publications) et sur `fil:<id>` (une discussion à
+    // l'écran), aux MÊMES gestionnaires : ce banc exerce la vraie liaison de
+    // `user:` (`_subscribeUserTopic`), et celle d'un `fil:` pour une activité.
+    window._userTopicChan = null;
+    _subscribeUserTopic();
+    window.__pousser = (evenement, ligne, sujet) => {
+      const nom = sujet || "user:" + MY_UID;
+      const canal = window.__canaux.find((c) => c.topic === nom);
+      const l = canal && canal.liaisons.find((x) => x.type === "broadcast" && x.filtre.event === evenement);
+      if (!l) throw new Error("aucune liaison " + evenement + " sur " + nom);
+      const [table, operation] = evenement.split(":");
+      return l.cb({ payload: { table, operation, record: ligne } });
     };
+    window.__recevoir = (ligne) => __pousser("comment_interactions:INSERT", ligne);
     window.__ligne = (id, cid, fil, qui, charge, heure) => ({ id, comment_id: cid, post_id: fil, user_id: qui, kind: "pin", payload: charge, created_at: heure });
     window.__ouvrir = async (fil) => { window._cmtThreadLoadedAt = {}; await openComments(fil); };
     // L'état VU : la vérité du fil (celle du rendu), et ce que l'écran montre.
@@ -671,8 +681,8 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
     // Un épinglé que la page ne porte pas, reçu en direct, puis le retrait d'une ligne indexée.
     await page.evaluate(({ p, moi }) => {
       __recevoir(__ligne("ci_f1", "c_rv38_hors_page", p, moi, "1", "2026-11-05T09:50:00+00:00"));
-      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === "comment_interactions" && x.filtre.event === "DELETE");
-      l.cb({ schema: "public", table: "comment_interactions", eventType: "DELETE", commit_timestamp: "2026-11-05T10:00:00Z", errors: null, new: {}, old: { id: "ci_f1" } });
+      // La clé seule (la charge de l'ancien CDC, R37) : toujours retrouvée dans l'index.
+      __pousser("comment_interactions:DELETE", { id: "ci_f1" });
     }, { p: P, moi: MOI });
     await page.waitForTimeout(300);
     // Les deux lectures en jeu : l'épinglé par son identifiant, la relecture de l'épingle du fil.
@@ -750,13 +760,14 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
       fiche.style.display = "block";
       window._eventCommentsCache = window._eventCommentsCache || {};
       window.supaLoadEventComments = async () => [{ id: "ec_rv38_d1", authorId: zoe, author: "Zoé", text: "d1", at: Date.now() - 500 }];
-      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === "event_comments" && x.filtre.event === "INSERT");
-      if (!l) throw new Error("aucune liaison INSERT sur event_comments");
       const lues = (e, depuis) => __lectures.slice(depuis).filter((x) => x.table === "comment_interactions"
         && x.eqs.some(([c, v]) => c === "post_id" && v === e) && x.eqs.some(([c]) => c === "kind")).length;
+      // Un commentaire d'activité arrive par le sujet de la discussion de
+      // l'activité (`fil:<activité>`, `_creerCanalFil`) — la vraie liaison.
       const recevoir = async (e) => {
+        if (!window.__canaux.some((c) => c.topic === "fil:" + e)) _creerCanalFil(e, true);
         const avant = __lectures.length;
-        l.cb({ schema: "public", table: "event_comments", eventType: "INSERT", new: { id: "ec_rv38_x_" + e, event_id: e, author_id: zoe, text: "x", created_at: "2026-11-05T10:00:00+00:00" }, old: {} });
+        __pousser("event_comments:INSERT", { id: "ec_rv38_x_" + e, event_id: e, author_id: zoe, created_at: "2026-11-05T10:00:00+00:00" }, "fil:" + e);
         await new Promise((res) => setTimeout(res, 400));
         return lues(e, avant);
       };
@@ -841,12 +852,11 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
     await page.evaluate(({ pa, alice }) => { __interactions.push(__ligne("ci_x1", "c_rv38_a1", pa, alice, "1", "2026-11-05T08:40:00+00:00")); }, { pa: PA, alice: ALICE });
     await page.evaluate((pa) => __ouvrir(pa), PA);
     await expect.poll(async () => (await etat(page, PA)).badges).toEqual(["c_rv38_a1"]);
-    // Le serveur purge la ligne ; le temps réel n'en livre que la clé primaire (R37).
+    // Le serveur purge la ligne ; le temps réel n'en livre que la clé primaire
+    // (la charge de l'ancien CDC, R37 — le client la sait toujours lire).
     await page.evaluate(() => {
       window.__interactions = window.__interactions.filter((i) => i.id !== "ci_x1");
-      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === "comment_interactions" && x.filtre.event === "DELETE");
-      if (!l) throw new Error("aucune liaison DELETE sur comment_interactions");
-      l.cb({ schema: "public", table: "comment_interactions", eventType: "DELETE", commit_timestamp: "2026-11-05T10:00:00Z", errors: null, new: {}, old: { id: "ci_x1" } });
+      __pousser("comment_interactions:DELETE", { id: "ci_x1" });
     });
     await expect.poll(async () => { const e = await etat(page, PA); return [e.epingles, e.badges]; },
       { message: "relue : plus rien d'épinglé" }).toEqual([[], []]);
@@ -862,8 +872,7 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
     const lues = await page.evaluate(async (pa) => {
       const avant = __lectures.length;
       window.__interactions = window.__interactions.filter((i) => !/^ci_b/.test(i.id));
-      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === "comment_interactions" && x.filtre.event === "DELETE");
-      for (let i = 0; i < 6; i++) l.cb({ schema: "public", table: "comment_interactions", eventType: "DELETE", commit_timestamp: "2026-11-05T10:00:00Z", errors: null, new: {}, old: { id: "ci_b" + i } });
+      for (let i = 0; i < 6; i++) __pousser("comment_interactions:DELETE", { id: "ci_b" + i });
       await new Promise((res) => setTimeout(res, 800));
       return __lectures.slice(avant).filter((x) => x.table === "comment_interactions" && x.eqs.some(([c, v]) => c === "post_id" && v === pa) && x.eqs.some(([c]) => c === "kind")).length;
     }, PA);
@@ -902,10 +911,8 @@ test.describe("RV-38 — l'épingle d'un commentaire : verdict lu, refus dit, un
       __recevoir(__ligne("ci_r3", "c_recent2", p, moi, "1", "2026-11-05T09:41:00+00:00"));
     }, { p: P, alice: ALICE, moi: MOI });
     await expect.poll(async () => (await etat(page, P)).premier).toBe("c_recent2");
-    await page.evaluate(({ p, alice }) => {
-      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === "post_comments" && x.filtre.event === "INSERT");
-      return l.cb({ schema: "public", table: "post_comments", eventType: "INSERT", new: { id: "c_recent2", post_id: p, author_id: alice, content: "récent 2", created_at: "2026-11-05T09:40:00" }, old: {} });
-    }, { p: P, alice: ALICE });
+    await page.evaluate(({ p, alice }) => __pousser("post_comments:INSERT",
+      { id: "c_recent2", post_id: p, author_id: alice, content: "récent 2", created_at: "2026-11-05T09:40:00" }), { p: P, alice: ALICE });
     await page.evaluate(({ p, moi }) => __recevoir(__ligne("ci_r4", "c_recent2", p, moi, "0", "2026-11-05T09:42:00+00:00")), { p: P, moi: MOI });
     await expect.poll(async () => (await etat(page, P)).epingles).toEqual([]);
     expect(await dansLaListe(page, "c_recent2"), "ni doublon, ni disparition").toBe(1);

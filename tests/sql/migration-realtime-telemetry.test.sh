@@ -101,10 +101,11 @@ echo "── ⑤ L'état final EST la source que lit la gate CI ──"
 # ⚠️ Comparer l'état d'une migration ANCIENNE au fichier d'aujourd'hui
 # reviendrait à lui reprocher de ne pas contenir l'avenir (même règle que le
 # banc du 2026-09-19, ⑦) : on rend à l'attendu ce que R25 (2026-11-03) a
-# retiré depuis. L'état FINAL est comparé au JSON par le banc de la migration
-# la plus récente, `migration-realtime-diffusion-privee.test.sh`.
-attendu=$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');const l=d.publiees.slice();for(const t of ['conv_members','notifications'])if(!l.includes(t))l.push(t);console.log(l.sort().join(' '))")
-verifier "⑤ la liste en base = scripts/realtime-publication.json + conv_members, notifications (retirées le 2026-11-03)" "$attendu" "$(liste)"
+# retiré depuis, et ce que la migration « 📴 » du 2026-11-09 a retiré ensuite
+# (les neuf tables). L'état FINAL est comparé au JSON par le banc de la
+# migration la plus récente, `migration-realtime-public-hors-cdc.test.sh`.
+attendu=$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');const l=d.publiees.slice();for(const t of ['conv_members','notifications','comment_interactions','conv_messages','conv_reads','event_comments','post_comments','post_likes','posts','profiles','video_lives'])if(!l.includes(t))l.push(t);console.log(l.sort().join(' '))")
+verifier "⑤ la liste en base = scripts/realtime-publication.json + conv_members, notifications (retirées le 2026-11-03) + les neuf tables retirées le 2026-11-09" "$attendu" "$(liste)"
 
 echo "── ⑥ REJOUABLE : un second passage ne casse rien et ne change rien ──"
 sortie2="$(FICHIER "$MIGRATION" || true)"

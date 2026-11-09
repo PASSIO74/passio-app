@@ -9,8 +9,10 @@
 //
 // CE QUE CETTE SUITE EXIGE DU CLIENT (aucune requête ne part : `supa.channel`,
 // `supa.from` et `supa.rpc` sont simulés) :
-//   ① le canal `realtime:db` ne garde que les CINQ liaisons de TRANSITION —
-//     plus de profils, de publications, de « j'aime » ni de lives ;
+//   ① plus AUCUNE liaison CDC (la publication est vide depuis la migration) :
+//     `realtime:db` n'est plus créé, ni ses cinq liaisons de TRANSITION d'entre
+//     les deux PR — et jamais plus de profils, de publications, de « j'aime »
+//     ni de lives ;
 //   ② le sujet `user:<moi>` reçoit les accusés de lecture et, pour MES
 //     publications, commentaires et interactions — sous des noms d'événement
 //     distincts de « INSERT » ;
@@ -30,7 +32,10 @@
 //   ⑬ le filet du fil est le seul chemin de quiconque regarde le fil ; ⑭ celui des
 //     lives relit tout de suite au retour, sans jamais doubler sa chaîne ;
 //   ⑮ à la SOURCE : aucun gestionnaire n'interroge `profiles`, la coalescence des
-//     lives et le tri des profils sont partis avec leurs liaisons.
+//     lives et le tri des profils sont partis avec leurs liaisons ;
+//   ⑯ la soupape v1 lit ses messages sur `user:<moi>` (son canal global est parti
+//     avec la publication), v2 non ; ⑰ à ㉓ : un cas par correction de la
+//     relecture adversariale du lot.
 // Fiche : `docs/journal/capacite-perf-realtime.md`, « 📴 ».
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
@@ -123,20 +128,18 @@ async function figer(page) {
   }
 }
 
-test("① le canal `realtime:db` ne garde que les CINQ liaisons de TRANSITION", async ({ page }) => {
+test("① plus aucune liaison CDC : `realtime:db` n'est plus créé (la publication est vide)", async ({ page }) => {
   await preparer(page);
-  const liaisons = await page.evaluate((cdc) => _creerCanalDb(true).liaisons.filter((l) => l.type === cdc)
-    .map((l) => l.type + "|" + l.filtre.table + "|" + l.filtre.event), CDC);
-  expect(liaisons).toEqual([
-    CDC + "|conv_reads|*",
-    CDC + "|comment_interactions|INSERT",
-    CDC + "|comment_interactions|DELETE",
-    CDC + "|post_comments|INSERT",
-    CDC + "|event_comments|INSERT",
-  ]);
-  for (const partie of ["profiles", "posts", "post_likes", "video_lives"]) {
-    expect(liaisons.some((l) => l.split("|")[1] === partie), `« ${partie} » n'est plus écoutée par personne`).toBe(false);
-  }
+  const r = await page.evaluate((cdc) => {
+    window._supaSubscribed = false; window._userTopicChan = null;
+    window.appelsDisponibles = () => false; window._pushAbonnementTente = true;
+    window._rtRepos.arme = true;
+    supaSubscribe();
+    return { db: __canal("realtime:db").length, user: __canal("user:").length,
+      cdc: __canal("").flatMap((c) => c.liaisons).filter((l) => l.type === cdc).length,
+      fabrique: typeof window._creerCanalDb };
+  }, CDC);
+  expect(r, "user:<moi> seul ; ni realtime:db, ni liaison CDC, ni sa fabrique").toEqual({ db: 0, user: 1, cdc: 0, fabrique: "undefined" });
 });
 
 test("② `user:<moi>` reçoit accusés de lecture, commentaires et interactions de MES publications — sous des noms distincts", async ({ page }) => {
@@ -417,7 +420,7 @@ test("⑭ le filet des lives relit tout de suite au retour, et un tour EN VOL ne
 test("⑮ à la SOURCE : aucun gestionnaire n'interroge `profiles` ; la coalescence des lives et le tri des profils sont partis", () => {
   const app08 = lire("js/app-08-ui-modals-tour.js");
   const corps = (entete) => { const i = app08.indexOf(entete); expect(i, entete).toBeGreaterThan(0); return app08.slice(i, app08.indexOf("\n}\n", i)); };
-  for (const f of ["function _creerCanalDb(", "function _creerCanalFil(", "async function _rtCommentaireRecu(", "function _rtInteractionAjoutee(", "function _rtLectureRecue("]) {
+  for (const f of ["function _creerCanalFil(", "function _subscribeUserTopic(", "async function _rtCommentaireRecu(", "function _rtInteractionAjoutee(", "function _rtLectureRecue("]) {
     expect(corps(f), f + " n'interroge pas `profiles` : la ligne est poussée, la lecture coûterait N requêtes").not.toMatch(/from\(["']profiles["']\)/);
   }
   expect(corps("async function _rtCommentaireRecu("), "le profil de l'auteur passe par l'autorité unique").toContain("_profilAuteur(");
@@ -429,28 +432,24 @@ test("⑮ à la SOURCE : aucun gestionnaire n'interroge `profiles` ; la coalesce
 
 // ── La contre-revue du lot (audit-passio, 2026-11-09) : un cas par correction ──
 
-test("⑯ après la migration, le refus du CDC rend `realtime:db` — et le réveil ne le recrée pas", async ({ page }) => {
+test("⑯ la soupape v1 lit ses messages sur user:<moi> (son canal global est parti) ; v2 non, il les lit sur conv:<id>", async ({ page }) => {
   await preparer(page);
   const r = await page.evaluate(() => {
-    window._supaSubscribed = false; window._dbChan = null; window._cdcRetire = false;
-    window.appelsDisponibles = () => false; window._pushAbonnementTente = true;
-    window._rtRepos.arme = true;
-    supaSubscribe();
-    const db = __canal("realtime:db")[0];
-    const systeme = db.liaisons.find((l) => l.type === "system").cb;
-    systeme({ extension: "postgres_changes", status: "ok", message: "Subscribed to PostgreSQL" });
-    const apresOk = { rendu: db.rendu, retire: !!window._cdcRetire };
-    systeme({ extension: "postgres_changes", status: "error", message: "Unable to subscribe to changes with given parameters" });
-    const apresRefus = { rendu: db.rendu, retire: !!window._cdcRetire, dbChan: window._dbChan };
-    const avant = __canal("realtime:db").length;
-    window._supaSubscribed = false; window._userTopicChan = null;
-    supaSubscribe();
-    return { apresOk, apresRefus, recrees: __canal("realtime:db").length - avant, user: __canal("user:").length };
+    const essai = (v3, v2) => {
+      window._supaSubscribed = false; window._userTopicChan = null; window._privateConvChans = {};
+      window.appelsDisponibles = () => false; window._pushAbonnementTente = true;
+      window._rtRepos.arme = true;
+      window.PASSIO_REALTIME_V3 = v3; window.PASSIO_REALTIME_V2 = v2;
+      const avant = __canal("user:").length;
+      supaSubscribe();
+      const user = __canal("user:").slice(avant)[0];
+      return !!(user && user.liaisons.some((l) => l.type === "broadcast" && l.filtre.event === "INSERT"));
+    };
+    const out = { v1: essai(false, false), v2: essai(false, true), v3: essai(true, false) };
+    window.PASSIO_REALTIME_V3 = true; window.PASSIO_REALTIME_V2 = false;
+    return out;
   });
-  expect(r.apresOk, "un « ok » ne retire rien").toEqual({ rendu: false, retire: false });
-  expect(r.apresRefus, "le refus rend le canal et le dit").toEqual({ rendu: true, retire: true, dbChan: null });
-  expect(r.recrees, "le réveil ne rouvre pas un canal que le serveur refuse").toBe(0);
-  expect(r.user, "user:<moi> revient, lui").toBe(2);
+  expect(r, "les messages sur user:<moi> : v1 et v3 oui, v2 non (il les doublerait)").toEqual({ v1: true, v2: false, v3: true });
 });
 
 test("⑰ une lecture d'activité en ÉCHEC garde la discussion, et la relecture le sait (cadence vive)", async ({ page }) => {

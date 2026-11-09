@@ -47,11 +47,11 @@
 
 // toutes les ~8 s par compte : `trg_rate_limit` borne à 10/min), aimer, envoyer
 
-// un média dans `content/posts/<uid>/`, et ÉCOUTER le temps réel (canal privé
+// un média dans `content/posts/<uid>/`. (Ils ÉCOUTAIENT aussi le temps réel —
 
-// `realtime:db`, `postgres_changes` sur leurs propres publications) — la
+// `realtime:db`, `postgres_changes` sur leurs publications — pour mesurer la latence
 
-// latence insert → événement reçu est mesurée par publication. Le mode anon
+// insert → reçu : mesure retirée le 2026-11-09, voir `MESURE_TEMPS_REEL`.) Le mode anon
 
 // (défaut) reste ce qu'il était : un visiteur qui lit.
 // ⚠️ Les données semées portent le préfixe `charge_` : `--purger` ne retire que
@@ -330,15 +330,22 @@ function liaisonsApp(uid) {
   // migration qui vide la publication. `profiles`, `posts`, `post_likes` et
   // `video_lives` ne sont plus écoutées par personne — les recopier ici ferait
   // mesurer au banc une charge que l'app ne produit plus.
-  const postgres_changes = [
-    { event: "*", schema: "public", table: "conv_reads" },
-    { event: "INSERT", schema: "public", table: "comment_interactions" },
-    { event: "DELETE", schema: "public", table: "comment_interactions" },
-    { event: "INSERT", schema: "public", table: "post_comments" },
-    { event: "INSERT", schema: "public", table: "event_comments" },
-  ];
+  // ⚠️ ET LA MIGRATION EST PASSÉE : `supabase_realtime` est VIDE, l'app n'a plus
+  // AUCUNE liaison (`_creerCanalDb` est partie). Le tableau est vide, et la
+  // mesure qui s'en servait est retirée (`MESURE_TEMPS_REEL`, plus bas).
+  const postgres_changes = [];
   return postgres_changes;
 }
+
+// ⚠️ LA MESURE « temps réel (insert → reçu) » EST RETIRÉE (2026-11-09, « 📴 »).
+// Elle écoutait `posts` par `postgres_changes` sur `realtime:db` : plus aucun
+// client ne reçoit une publication en direct (le fil la relit), et la
+// publication `supabase_realtime` est vide. Gardée, elle compterait chaque
+// publication comme une livraison perdue. La refaire sur un chemin qui existe
+// (un commentaire poussé à l'auteur sur `user:<uid>`, `post_comments:INSERT`)
+// est un chantier à part ; d'ici là le banc ne la compte NI comme une réussite
+// NI comme un échec, et le rapport ne porte plus sa ligne.
+const MESURE_TEMPS_REEL = false;
 // ⚠️ ASTRA-37 (contre-revue du 15/09) — LE BANC PERDAIT LES ÉVÉNEMENTS REÇUS
 // TROP TÔT. L'attente était enregistrée APRÈS la réponse HTTP, et tout
 // événement sans attente était jeté EN SILENCE (`if (a) { … }`, sans `else`).
@@ -399,15 +406,16 @@ const CADENCE_PUBLICATION_MS = 8000;   // 7,5/min < trg_rate_limit (10/min)
 const CADENCE_ENVOI_MS = 20000;
 
 async function palierMixte(vus, comptes, cibles) {
-  const familles = ["fil (auth)", "rencontres (auth)", "notifications (auth)", "publier", "aimer", "retirer un j'aime", "envoyer un média", "temps réel (insert → reçu)"];
+  const familles = ["fil (auth)", "rencontres (auth)", "notifications (auth)", "publier", "aimer", "retirer un j'aime", "envoyer un média"]
+    .concat(MESURE_TEMPS_REEL ? ["temps réel (insert → reçu)"] : []);
   const mesures = new Map(familles.map((f) => [f, []]));
   const fin = Date.now() + duree * 1000;
   const vu = async (k) => {
     const c = comptes[k % comptes.length];
     const H = { apikey: ANON, Authorization: `Bearer ${c.jwt}`, "Content-Type": "application/json" };
-    const ecoute = ecouter(c);
-    const rt = await ecoute.pret;
-    if (!rt) mesures.get("temps réel (insert → reçu)").push({ ok: false, motif: "canal non joint", ms: 0 });
+    const ecoute = MESURE_TEMPS_REEL ? ecouter(c) : null;
+    const rt = ecoute ? await ecoute.pret : false;
+    if (ecoute && !rt) mesures.get("temps réel (insert → reçu)").push({ ok: false, motif: "canal non joint", ms: 0 });
     let prochainePub = Date.now() + (k * 300) % CADENCE_PUBLICATION_MS, prochainEnvoi = Date.now() + 2000 + (k * 700) % CADENCE_ENVOI_MS, i = k;
     while (Date.now() < fin) {
       const maintenant = Date.now();
@@ -453,7 +461,7 @@ async function palierMixte(vus, comptes, cibles) {
         if (m.ok) mesures.get("retirer un j'aime").push(await mesurer("retirer un j'aime", vus, `${URL}/rest/v1/post_likes?post_id=eq.${encodeURIComponent(cible)}&user_id=eq.${c.uid}`, { method: "DELETE", headers: H }, { aucunContenu: true }));
       }
     }
-    const bilanRt = ecoute.fermer();
+    const bilanRt = ecoute ? ecoute.fermer() : null;
     // Le bilan du canal est CONSERVÉ : armés, reçus, précoces, expirés,
     // orphelins, doublons. Sans lui, « p95 des reçus » passerait pour « p95 de
     // livraison » — ce que la contre-revue reproche précisément aux runs d'avant.

@@ -85,8 +85,10 @@ const CONTRACTS = {
   // Publication : upload(s) média + insert `posts` = plusieurs requêtes ; on
   // s'appuie sur un « saved » explicite (émis par supaPublishPostWithRetry) plutôt
   // que sur l'auto-tag réseau, trop imprécis ici.
-  publish_post: { label: "Publication", feature: "feed", steps: [S_HANDLER, { key: "saved", label: "Publication enregistrée", role: "confirm" }, S_DELIVER] },
-  publish_reel: { label: "Bobine publiée", feature: "feed", steps: [S_HANDLER, { key: "saved", label: "Bobine enregistrée", role: "confirm" }, S_DELIVER] },
+  // ⚠️ Plus d'étape de livraison (2026-11-09, « 📴 ») : aucun client ne reçoit une
+  // publication en direct (le fil la relit) ; l'étape resterait « non confirmée ».
+  publish_post: { label: "Publication", feature: "feed", steps: [S_HANDLER, { key: "saved", label: "Publication enregistrée", role: "confirm" }] },
+  publish_reel: { label: "Bobine publiée", feature: "feed", steps: [S_HANDLER, { key: "saved", label: "Bobine enregistrée", role: "confirm" }] },
   share_post:   { label: "Partage de publication", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
   // Actions à confirmation EXPLICITE : plusieurs requêtes en jeu (upsert profil,
   // upload, notification) → l'auto-tag réseau désignerait la mauvaise.
@@ -121,7 +123,7 @@ const RECV_MAP = {
   like:    { actions: ["like_post"], field: "postId" },
   comment: { actions: ["comment_post"], field: "postId" },
   cint:    { actions: ["cint"], field: "commentId" },
-  post:    { actions: ["publish_post", "publish_reel"], field: "postId" },
+  // `post` est parti le 2026-11-09 (« 📴 ») : plus aucune publication n'est reçue en direct.
 };
 
 class TraceTracker {

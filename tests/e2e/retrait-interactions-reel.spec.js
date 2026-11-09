@@ -7,8 +7,11 @@
 // clé primaire, et le client cherchait `comment_id` dedans. Aucune suite ne
 // couvrait le retrait : `multi-comptes` ne teste que l'ajout. Ici, sur le STAGING,
 // avec le vrai client et le vrai serveur Realtime :
-//   ① la charge réelle d'un DELETE est `{ id }`, et rien d'autre (le fait qui
-//     motive le correctif, mesuré sur la trame) ;
+//   ① la charge réelle d'un retrait : jusqu'au 2026-11-09, `{ id }` et rien
+//     d'autre (le DELETE `postgres_changes` sous RLS, le fait qui motivait R37) ;
+//     depuis la migration « 📴 » qui vide la publication, la LIGNE ENTIÈRE,
+//     poussée par le serveur sur le sujet de la discussion (`fil:<publication>`)
+//     — mesurée sur la trame ;
 //   ② A retire son like et son emoji d'un commentaire : la discussion ouverte
 //     chez B les perd EN DIRECT, ses relectures de ces interactions BLOQUÉES (la
 //     preuve que c'est l'index, pas une relecture) ;
@@ -36,14 +39,52 @@ const decoder = (f) => (typeof f.payload === "string" ? f.payload : Buffer.from(
 // protocole (objet JSON ou tableau du sérialiseur 2.0.0) : `{ type, table, old_record }`,
 // ou null. On ne nomme pas l'événement : cette suite ne s'abonne à rien, elle LIT
 // les trames que reçoit l'application (la gate `audit:realtime` compte les abonnés).
+// ⚠️ DEUX FORMES DEPUIS LE 2026-11-09 (« 📴 ») : la trame d'un changement CDC
+// (`data.type`, `data.old_record`) d'avant la migration, et la poussée du serveur
+// sur un sujet privé (`broadcast`, événement `<table>:<OPÉRATION>`, `payload.record`)
+// d'après. Les deux se lisent ici sous la même forme normalisée.
 function changement(texte) {
   try {
     const m = JSON.parse(texte);
+    const evenement = Array.isArray(m) ? m[3] : m && m.event;
     const charge = Array.isArray(m) ? m[4] : m && m.payload;
+    if (evenement === "broadcast" && charge && typeof charge.event === "string" && charge.event.indexOf(":") > 0) {
+      const [table, type] = charge.event.split(":");
+      const rec = charge.payload && charge.payload.record;
+      return { type, table, old_record: type === "DELETE" ? (rec || null) : null, sujet: Array.isArray(m) ? m[2] : m.topic };
+    }
     const d = charge && charge.data;
     if (!d || typeof d.table !== "string" || typeof d.type !== "string") return null;
     return { type: d.type, table: d.table, old_record: d.old_record || null };
-  } catch (e) { return null; }
+  } catch (e) { return diffusionBinaire(texte); }
+}
+// ⚠️ LA DIFFUSION D'UN SUJET ARRIVE EN BINAIRE (mesuré sur le staging migré,
+// 2026-11-09 : « aucune trame de changement décodée »). Le sérialiseur 2.0.0 de
+// realtime-js encode une diffusion en un en-tête binaire — le genre, puis les
+// LONGUEURS du sujet, du nom d'événement (et, pour une diffusion d'utilisateur,
+// des métadonnées et l'encodage) — suivi du sujet, du nom, des métadonnées et de
+// la charge JSON, sans séparateur : un motif sur le texte collait le sujet au nom
+// (« …post_xcomment_interactions:DELETE »). On lit donc les longueurs. Elles
+// tiennent sous 0x80 : le décodage UTF-8 de `decoder` les garde à l'identique.
+function diffusionBinaire(texte) {
+  const genre = texte.charCodeAt(0);
+  let pos, sujet, nom;
+  if (genre === 4) {          // diffusion d'utilisateur : genre, sujet, nom, métadonnées, encodage
+    const t = texte.charCodeAt(1), e = texte.charCodeAt(2), m = texte.charCodeAt(3);
+    pos = 5; sujet = texte.substr(pos, t); pos += t; nom = texte.substr(pos, e); pos += e + m;
+  } else if (genre === 2) {   // diffusion : genre, sujet, nom
+    const t = texte.charCodeAt(1), e = texte.charCodeAt(2);
+    pos = 3; sujet = texte.substr(pos, t); pos += t; nom = texte.substr(pos, e); pos += e;
+  } else return null;
+  let charge = null;
+  try { charge = JSON.parse(texte.slice(pos)); } catch (e) { return null; }
+  // Le genre 2 peut porter l'enveloppe `broadcast` : le vrai nom est dedans.
+  if (nom === "broadcast" && charge && typeof charge.event === "string") { nom = charge.event; charge = charge.payload; }
+  const ev = /^([a-z_]+):(INSERT|DELETE|UPSERT)$/.exec(nom || "");
+  if (!ev) return null;
+  const rec = charge && (charge.record || (charge.payload && charge.payload.record));
+  if (!rec) return null;
+  return { type: ev[2], table: ev[1], old_record: ev[2] === "DELETE" ? rec : null, sujet };
 }
 
 test("R37 : le retrait d'une interaction par un autre compte se voit en direct", async ({ browser }, testInfo) => {
@@ -177,8 +218,11 @@ test("R37 : le retrait d'une interaction par un autre compte se voit en direct",
     expect(await etatB(), "B voit le like, l'emoji et la réaction de A").toMatchObject({
       likes: 1, likeAlice: true, emojiAlice: true, boutonLike: "🤍 1", pastilleCommentaire: "🔥 1", reactionPostAlice: ["😍"],
     });
-    await B.page.waitForFunction(() => window._dbChan && window._dbChan.state === "joined", null, { timeout: 45000 });
-    noter("B a ouvert la discussion, realtime:db rejoint");
+    // Depuis le 2026-11-09 (« 📴 ») : B écoute le sujet de la discussion ouverte,
+    // `fil:<publication>` — le SDK le nomme « realtime:fil:<id> » — et plus `realtime:db`.
+    await B.page.waitForFunction((pid) => (supa.getChannels() || []).some((c) => c.topic === "realtime:fil:" + pid && c.state === "joined"),
+      P, { timeout: 45000 });
+    noter("B a ouvert la discussion, fil:" + P + " rejoint");
     mesure.bloquerCommentaire = true;
     mesure.compterFil = true;
 
@@ -199,7 +243,12 @@ test("R37 : le retrait d'une interaction par un autre compte se voit en direct",
       const recues = suppressionsRecues(B).slice(avant).filter((c) => c.old_record && publication.idsCommentaire.includes(c.old_record.id));
       expect(recues.map((c) => c.old_record.id).sort(), "les deux DELETE de A sont arrivés par le temps réel").toEqual(publication.idsCommentaire.slice().sort());
       for (const c of recues) {
-        expect(Object.keys(c.old_record), "① la charge d'un DELETE sous RLS : la clé primaire, rien d'autre").toEqual(["id"]);
+        // ① Depuis la migration : la ligne ENTIÈRE, sur le sujet de la discussion
+        // (seuls ceux qui pouvaient la lire la reçoivent — c'est la policy du sujet).
+        expect(c.sujet, "① le retrait arrive sur le sujet de la discussion").toMatch(new RegExp("fil:" + P + "$"));
+        expect(Object.keys(c.old_record).sort(), "① la charge d'un retrait : la ligne entière")
+          .toEqual(["comment_id", "created_at", "id", "kind", "payload", "post_id", "user_id"]);
+        expect(c.old_record.user_id, "le retrait dit qui retire").toBe(A.uid);
       }
     });
 
@@ -212,9 +261,12 @@ test("R37 : le retrait d'une interaction par un autre compte se voit en direct",
       for (const t of e.pastillePost) expect(t, "la pastille est vide").toBe("");
       noter(`③ retirée chez B en ${Date.now() - debut} ms ; lectures d'identifiants : ${lectures.publication}, tours du fil : ${lectures.fil}`);
       expect(lectures.fil, "aucun tour du fil : c'est le temps réel qui l'a retirée").toBe(0);
-      if (lue.reactions.every((x) => !x.ci)) {
-        expect(lectures.publication, "réaction lue sans identifiant : UNE lecture des identifiants, pas plus").toBe(1);
-      }
+      // ⚠️ DEPUIS LA MIGRATION « 📴 » (2026-11-09), LE RETRAIT ARRIVE AVEC LA LIGNE
+      // ENTIÈRE sur `fil:<publication>` : même une réaction lue SANS identifiant
+      // (`fil_compteurs`) se retire sans rien relire. Avant, la charge CDC d'un
+      // DELETE ne portait que `{ id }`, et il fallait UNE lecture des identifiants
+      // pour la retrouver (R37) — mesuré sur le staging migré : 0 lecture, ~200 ms.
+      expect(lectures.publication, "la ligne entière suffit : aucune lecture des identifiants").toBe(0);
     });
 
     await test.step("④ A réagit puis retire : B voit arriver puis partir, sans relire", async () => {
