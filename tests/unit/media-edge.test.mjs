@@ -91,9 +91,12 @@ test("⑦ le renvoi ne sort jamais du stockage de PASSIO (pas de renvoi ouvert)"
   for (const c of ["/media/content/a.jpg", "/media/content/%2F%2Fevil.example/x.jpg", "/media/content/a.jpg?width=192&quality=75&next=https://evil.example"]) {
     const r = await get(c);
     const loc = r.headers.get("location");
-    assert.ok(loc && new URL(loc).origin === SUPABASE, c + " → " + loc);
-    assert.ok(new URL(loc).pathname.startsWith("/storage/v1/"), c);
-    assert.ok(!loc.includes("evil.example") || new URL(loc).origin === SUPABASE, c);
+    assert.ok(loc, c);
+    const u = new URL(loc);
+    assert.equal(u.origin, SUPABASE, c + " → " + loc);
+    assert.ok(/^\/storage\/v1\/(object|render\/image)\/public\/content\//.test(u.pathname), c + " → " + u.pathname);
+    // Un paramètre étranger n'est jamais recopié dans le renvoi.
+    assert.equal(u.searchParams.get("next"), null, c);
   }
 });
 

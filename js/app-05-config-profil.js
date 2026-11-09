@@ -464,25 +464,30 @@ if (typeof document !== "undefined") {
 // STUN (découverte d'IP publique) + TURN (relais quand le P2P direct échoue ou
 // passe par un mauvais chemin NAT → c'est ce qui dégrade la qualité même avec
 // une « bonne connexion » : sans relais, ICE peut retomber sur un lien pourri).
-// TURN public Open Relay (metered) en repli — UDP/TCP/TLS pour traverser les
-// pare-feux. Idéalement à remplacer par un TURN dédié pour la prod.
-// ⭐ TURN DÉDIÉ (production) — UN SEUL endroit à remplir. Open Relay ci-dessous
-// est un TURN PUBLIC gratuit (rate-limité, non garanti à l'échelle) ; pour la
-// prod, colle ici les credentials de TON serveur TURN (metered.ca payant, coturn
-// auto-hébergé, Twilio…). Il sera essayé EN PREMIER, l'Open Relay restant en
-// filet. ⚠️ Ajoute AUSSI le domaine à `connect-src` de la CSP (netlify.toml
-// ET _headers), sinon Chrome filtre le serveur ICE (l'appel retombe sur STUN).
+// ⭐ TURN DÉDIÉ (production) — UN SEUL endroit à remplir : colle ici les
+// identifiants de TON serveur TURN (offre gratuite avec compte chez Metered ou
+// Cloudflare, coturn auto-hébergé, Twilio…). Il est essayé EN PREMIER. Il n'y a
+// plus de filet public (voir plus bas). ⚠️ Ajoute AUSSI le domaine à
+// `connect-src` de la CSP (netlify.toml ET _headers), par prudence.
 // Ex. : { urls: "turn:turn.mondomaine.com:3478", username: "u", credential: "p" }
-const PASSIO_CALL_TURN = null; // ← ta config TURN dédiée, ou null pour n'utiliser que le repli public
+const PASSIO_CALL_TURN = null; // ← ta config TURN dédiée, ou null : STUN seul, aucun relais
 
+// ⚠️ LE TURN PUBLIC « OPEN RELAY » EST MORT — retiré le 2026-11-09. Mesuré ce
+// jour-là : `openrelay.metered.ca` résout vers 192.0.2.1 et 100::1, deux adresses
+// RÉSERVÉES et non routables (RFC 5737, RFC 6666) — l'opérateur l'a neutralisé
+// (le 2026-09-10 il résolvait encore, docs/AUDIT_COMMERCIALISATION_2026-09-10.md),
+// et un banc Chromium n'en obtenait aucun candidat `relay` quand le STUN de Google
+// rendait ses `srflx`. Ses trois entrées ne relayaient donc plus RIEN : un appel
+// entre deux réseaux à NAT strict (4G derrière un CGNAT, réseau d'entreprise)
+// échoue, avec ou sans elles. L'ICE part en trickle : elles ne retardaient pas
+// l'appel, elles promettaient seulement un filet qui n'existait plus. Le remède
+// est un TURN DÉDIÉ dans `PASSIO_CALL_TURN` (une offre gratuite avec compte
+// existe chez Metered ou Cloudflare) — journal capacite-perf-realtime, 2026-11-09.
 const CALL_ICE_SERVERS = [
   ...(PASSIO_CALL_TURN ? (Array.isArray(PASSIO_CALL_TURN) ? PASSIO_CALL_TURN : [PASSIO_CALL_TURN]) : []),
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
-  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
 
 // État global d'un appel en cours (un seul à la fois).
@@ -2809,7 +2814,10 @@ function _reelVideoSrc(post) {
       try { URL.revokeObjectURL(window._reelBlobUrls[post.id]); } catch (e) {}
       delete window._reelBlobUrls[post.id];
     }
-    return v;
+    // Une vidéo publiée via l'ancien relais `/media/*` (2026-09-11 → 2026-11-09) est
+    // lue à sa source Supabase : le relais ne fait plus que renvoyer (301), et une
+    // vidéo est le média où ce détour coûte le plus avant la première image.
+    return (typeof urlMediaDirecte === "function") ? urlMediaDirecte(v) : v;
   }
   if (window._reelBlobUrls[post.id]) return window._reelBlobUrls[post.id];
   try {

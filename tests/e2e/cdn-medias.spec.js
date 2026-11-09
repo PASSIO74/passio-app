@@ -40,27 +40,30 @@ test("① cdnUrl : une URL publique Supabase part vers le CDN, le reste ne bouge
   expect(r.nul).toBeNull();
 });
 
-test("② passioThumb : une URL CDN reçoit sa largeur, une URL Supabase garde la transformation", async ({ page }) => {
+test("② passioThumb ne demande AUCUNE transformation d'image : l'objet lui-même, au CDN Supabase", async ({ page }) => {
+  // Depuis le 2026-11-09 : la transformation compte 100 images d'origine par mois
+  // en Pro, et son URL est publique — n'importe qui pouvait épuiser le quota et
+  // éteindre les vignettes de tous (relevé par `passio-red-team`). Toute image
+  // envoyée a sa version légère ; une ancienne est servie telle quelle.
   await sansDonneesDistantes(page);
   await bootOnboarded(page);
   const r = await page.evaluate((supa) => ({
-    viaCdn: passioThumb(cdnUrl(supa), 700),
-    viaCdnDejaParam: passioThumb(cdnUrl(supa) + "?width=100&quality=50", 700),
     direct: passioThumb(supa, 700),
+    legere: passioThumb(supa + ".v720.webp", 192),
+    relais: passioThumb("https://passio-app.netlify.app/media/content/photos/u1/x.jpg", 352),
     externe: passioThumb("https://exemple.org/photo.jpg", 700),
+    data: passioThumb("data:image/png;base64,AAAA", 700),
+    avatar: avatarBg({ photoUrl: supa, color: "#7c3aed" }, 192),
   }), SUPA);
-  const base = await page.evaluate(() => window.PASSIO_CDN_BASE);
-  if (base) {
-    expect(r.viaCdn).toBe(base + "/content/photos/u1/x.jpg?width=700&quality=75");
-    // Une largeur déjà posée est REMPLACÉE, jamais empilée (deux `?` = URL invalide).
-    expect(r.viaCdnDejaParam).toBe(base + "/content/photos/u1/x.jpg?width=700&quality=75");
-  } else {
-    // Kill switch : cdnUrl est l'identité, la miniature suit le chemin Supabase.
-    expect(r.viaCdn).toContain("/storage/v1/render/image/public/");
-  }
-  expect(r.direct).toContain("/storage/v1/render/image/public/");
-  expect(r.direct).not.toContain("passio-app.netlify.app");
+  expect(r.direct).toBe(SUPA);
+  expect(r.legere).toBe(SUPA + ".v720.webp");
+  expect(r.relais).toBe(SUPA);
   expect(r.externe).toBe("https://exemple.org/photo.jpg");
+  expect(r.data).toBe("data:image/png;base64,AAAA");
+  for (const [cle, v] of Object.entries(r)) {
+    expect(v, cle).not.toContain("render/image");
+    expect(v, cle).not.toContain("width=");
+  }
 });
 
 test("③ _cheminsMediaPost : le chemin Storage est retrouvé sous les deux formes d URL", async ({ page }) => {
@@ -98,8 +101,8 @@ test("④ urlMediaDirecte : une URL du relais se lit au CDN Supabase, le seau pr
   expect(r.supabase).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/a.jpg");
   expect(r.autreHote).toBe("https://evil.example/media/content/a.jpg");
   expect(r.nul).toBeNull();
-  // La vignette d'une ancienne URL part en direct vers la transformation Supabase,
-  // celle d'une légère vers l'objet lui-même — jamais vers le relais.
-  expect(r.vignetteRelais).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/render/image/public/content/photos/u1/x.jpg?width=352&quality=75");
+  // La vignette d'une ancienne URL part en direct vers l'OBJET (aucune
+  // transformation, voir ②) — jamais vers le relais.
+  expect(r.vignetteRelais).toBe(DIRECT);
   expect(r.vignetteLegereRelais).toBe(DIRECT + ".v720.webp");
 });

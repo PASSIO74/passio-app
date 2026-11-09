@@ -154,7 +154,8 @@ export function echapper(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-// ⑤ Seau PUBLIC `content`, deux formes d'URL (CDN, Supabase directe), images.
+// ⑤ Seau PUBLIC `content`, deux formes d'URL acceptées (ancien relais, Supabase
+// directe), images ; toujours RENDUE sous la forme directe.
 const CHEMIN_SUR_RE = /^[A-Za-z0-9._%-]+(?:\/[A-Za-z0-9._%-]+)*$/;
 const EXT_IMAGE_RE = /\.(?:jpe?g|png|webp|gif)$/i;
 
@@ -178,7 +179,10 @@ export function imageSure(url) {
   if (!chemin || !CHEMIN_SUR_RE.test(chemin)) return null;
   if (chemin.split("/").some((s) => s === "." || s === ".." || /%2e|%2f|%5c/i.test(s))) return null;
   if (!EXT_IMAGE_RE.test(chemin)) return null;
-  return ORIGINE_CANONIQUE + "/media/content/" + chemin;
+  // Rendue sous la forme Supabase DIRECTE depuis le 2026-11-09 : le relais `/media/*`
+  // ne fait plus que renvoyer (301), et son cache ne servait rien — chaque aperçu
+  // y coûtait une invocation et un aller-retour (docs/CDN_MEDIAS.md).
+  return "https://" + SUPABASE_PROJET + ".supabase.co/storage/v1/object/public/content/" + chemin;
 }
 
 // Une date `timestamp without time zone` est écrite en UTC par le client (supaTs).

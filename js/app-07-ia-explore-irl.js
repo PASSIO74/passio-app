@@ -4282,7 +4282,7 @@ function openEventDetails(id) {
     // cumule trois contextes (attribut, chaîne JS, innerHTML) : `escapeJsArg` protégeait
     // les deux premiers, et le décodage de l'attribut rendait la balise au troisième
     // (audit 2026-11-06). Le repli passe donc par le DOM, en texte.
-    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(ev.coverUrl)}" alt=""/>`;
+    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(urlMediaDirecte(ev.coverUrl))}" alt=""/>`;
     const coverImg = coverEl.querySelector("img");
     if (coverImg) {
       const coverFb = ev.emoji || passion.emoji || "✨";

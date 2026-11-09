@@ -1999,19 +1999,21 @@ function urlMediaDirecte(url) {
 }
 window.urlMediaDirecte = urlMediaDirecte;
 
+// ⚠️ PLUS AUCUNE TRANSFORMATION D'IMAGE (2026-11-09). Avant, une image sans
+// version légère partait vers `render/image` (`?width=&quality=75`). Or ce service
+// compte les images d'ORIGINE distinctes, 100 par mois en Pro, spend cap actif :
+// un mur vers 50 profils avec photo — et, relevé par `passio-red-team`, un mur
+// que N'IMPORTE QUI peut atteindre, l'URL `render/image` étant publique : quatre-
+// vingts images déposées puis demandées en miniature suffisaient à éteindre les
+// vignettes de tous, jusqu'au cycle suivant. Toute image envoyée a désormais sa
+// version légère (`supaUploadMedia`, `{ legere: true }`) ; celles d'avant (deux
+// publications, onze avatars et couvertures, mesuré le 09/11) sont servies telles
+// quelles. Plus rien dans PASSIO ne dépend de ce quota : on peut éteindre la
+// transformation d'image chez Supabase sans rien casser. `width` reste dans la
+// signature (vingt appelants directs, et `avatarBg`), il ne décide plus rien.
 function passioThumb(url, width) {
   if (!url || typeof url !== "string") return url;
-  url = urlMediaDirecte(url);
-  // Déjà taillée pour l'écran : pas de transformation d'image (ni son quota,
-  // ni la lecture d'origine qu'elle déclenche), pas de paramètre de cache.
-  if (estImageLegere(url)) return url;
-  // URL déjà servie par le CDN (app-08, `cdnUrl`) : la miniature passe par la
-  // même Edge Function, qui relaie `?width=` vers la transformation Supabase.
-  // Sinon la miniature repartirait vers Supabase en direct, hors cache.
-  var cdn = window.PASSIO_CDN_BASE;
-  if (cdn && url.indexOf(cdn + "/") === 0) return url.split("?")[0] + "?width=" + (width || 600) + "&quality=75";
-  if (url.indexOf("/storage/v1/object/public/") === -1) return url;
-  return url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/") + "?width=" + (width || 600) + "&quality=75";
+  return urlMediaDirecte(url);
 }
 
 // ======== UTILS ========
@@ -2438,6 +2440,11 @@ const REFERENTIEL_CACHE_TTL_MS = 24 * 3600 * 1000;
 const REFERENTIEL_DELTA_MARGE_MS = 36 * 3600 * 1000;
 // En deçà, une liste gardée n'est pas crue complète (le référentiel en compte 5 000).
 const REFERENTIEL_CACHE_MIN = 1000;
+// ⚠️ LA LECTURE D'INDEXEDDB EST BORNÉE, elle aussi (relevé par `audit-passio`) :
+// `idb-store.js` borne l'OUVERTURE de la base, pas le `get`. Un `get` qui ne se
+// règle jamais laissait la promesse du chargeur pendante et `_referentielEnCours`
+// vrai jusqu'à la péremption « en vol » (60 s) — sans une page relue entre-temps.
+const REFERENTIEL_CACHE_ATTENTE_MS = 3000;
 let _referentielCacheConsulte = false;
 
 // Chargement en arrière-plan. N'est JAMAIS attendu par le démarrage : tant qu'il
@@ -2495,7 +2502,10 @@ function chargerReferentielPassions() {
         _referentielEnCours = false;
         Promise.resolve(chargerReferentielPassions()).then(fini, fini);
       };
-      Promise.resolve(window.idbReferentielLoad()).then(function (rec) {
+      Promise.race([
+        Promise.resolve(window.idbReferentielLoad()),
+        new Promise(function (r) { setTimeout(function () { r(null); }, REFERENTIEL_CACHE_ATTENTE_MS); }),
+      ]).then(function (rec) {
         var frais = !!rec && Array.isArray(rec.ids) && rec.ids.length >= REFERENTIEL_CACHE_MIN
           && typeof rec.at === "number" && Math.abs(Date.now() - rec.at) < REFERENTIEL_CACHE_TTL_MS;
         if (!frais) { _relireTout(); return; }
@@ -2640,32 +2650,59 @@ function chargerReferentielPassions() {
   }
 }
 
-// Les passions CRÉÉES depuis la lecture gardée (2026-11-09) : une requête,
-// d'ordinaire vide. Elle AJOUTE seulement — le référentiel serveur ajoute, il ne
-// retranche pas : une passion archivée depuis reste publiable jusqu'à
-// l'expiration de la liste gardée (24 h), et la clé étrangère de
-// `posts.passion_id` tient toujours. Un échec ne retire rien : la liste gardée
-// vaut mieux que le socle de 19. Une réponse PLEINE ne prouve pas qu'on a tout :
-// la liste gardée est alors effacée, la session suivante relit tout.
+// Le complément de la liste gardée (2026-11-09) : UNE requête, qui rend les
+// passions CRÉÉES depuis (ajoutées) et toutes celles qui ne sont plus ACTIVES
+// (retirées) — quelques lignes. ⚠️ Retirer ici n'est pas la faute du
+// 2026-08-31 (« le référentiel serveur ajoute, il ne retranche pas ») : celle-là
+// prenait une réponse PARTIELLE pour un retrait ; ici chaque ligne DIT son statut.
+// Sans ce retrait (relevé par `passio-red-team`), archiver une passion ne
+// l'aurait plus retirée des publications d'un client honnête avant l'expiration
+// de la liste gardée — le serveur, lui, ne refuse pas une passion archivée (clé
+// étrangère seule). Une réponse PLEINE ne prouve pas qu'on a tout : la liste
+// gardée est alors effacée, la session suivante relit tout.
+// ⚠️ UNE COUPURE SE REJOUE (relevé par `audit-passio`) : supabase-js ne REJETTE
+// pas sur une panne réseau, il rend `{ error }` — un `return` muet laissait donc
+// la session entière sans les passions du jour (la liste gardée est déjà publiée
+// COMPLÈTE, rien ne la relit), et une story ou un groupe dans l'une d'elles
+// partait avec `passion_id: null`. Même partage que la pagination : une coupure
+// s'inscrit à la reprise, un refus du serveur non. Rend une promesse qui ne
+// rejette jamais — le pilote de reprise l'attend.
 const REFERENTIEL_DELTA_MAX = 1000;
+const NOM_REPRISE_COMPLEMENT = "passions_complement";
 function _completerReferentielDepuis(at) {
+  var noter = function (quoi, e) {
+    try { if (typeof diagLog === "function") diagLog("referentiel passions : complément " + quoi + " (" + (e && (e.message || e.code) || "?") + ")"); } catch (_e) {}
+  };
+  var rejouer = function () { return _completerReferentielDepuis(at); };
   try {
-    if (typeof supa === "undefined" || !supa || !window._supaReal || typeof at !== "number") return;
+    if (typeof supa === "undefined" || !supa || !window._supaReal || typeof at !== "number") return Promise.resolve();
     var depuis = new Date(at - REFERENTIEL_DELTA_MARGE_MS).toISOString();
-    supa.from("passions").select("id").eq("status", "active").gt("created_at", depuis).limit(REFERENTIEL_DELTA_MAX)
+    // Valeur entre guillemets : `.` et `:` sont réservés dans un `or` PostgREST.
+    return Promise.resolve(supa.from("passions").select("id,status")
+      .or('created_at.gt."' + depuis + '",status.neq.active').limit(REFERENTIEL_DELTA_MAX))
       .then(function (r) {
-        if (!r || r.error || !Array.isArray(r.data)) return;
+        if (!r || r.error || !Array.isArray(r.data)) {
+          noter(r && r.error ? "refusé" : "illisible", r && r.error);
+          if (!r || estEchecReseau(r.error)) noterLectureAReprendre(NOM_REPRISE_COMPLEMENT, rejouer);
+          return;
+        }
         if (!_referentielPassions) _referentielPassions = new Set();
-        r.data.forEach(function (x) { if (x && typeof x.id === "string" && x.id) _referentielPassions.add(x.id); });
+        r.data.forEach(function (x) {
+          if (!x || typeof x.id !== "string" || !x.id) return;
+          if (x.status === "active") _referentielPassions.add(x.id);
+          else _referentielPassions.delete(x.id);
+        });
+        acquitterLecture(NOM_REPRISE_COMPLEMENT);
         if (r.data.length >= REFERENTIEL_DELTA_MAX) {
           try { if (typeof window.idbReferentielClear === "function") window.idbReferentielClear(); } catch (_e) {}
         }
-      })
-      .catch(function (e) {
-        try { if (typeof diagLog === "function") diagLog("referentiel passions : complément illisible (" + (e && e.message) + ")"); } catch (_e) {}
+      }, function (e) {
+        noter("en échec", e);
+        if (estEchecReseau(e)) noterLectureAReprendre(NOM_REPRISE_COMPLEMENT, rejouer);
       });
   } catch (e) {
-    try { if (typeof diagLog === "function") diagLog("✗ referentiel passions, complément : " + (e && e.message)); } catch (_e) {}
+    noter("interrompu", e);
+    return Promise.resolve();
   }
 }
 
@@ -3037,8 +3074,9 @@ function _cssColor(c) {
 // la photo manque, ce qui est exactement son rôle.
 function avatarBg(u, largeur) {
   const ph = _userPhoto(u);
-  // Miniature AVANT l'échappement CSS : `passioThumb` ajoute `?width=&quality=`,
-  // que `_cssUrl` laisse intacts (il ne neutralise que de quoi refermer l'url()).
+  // Vignette AVANT l'échappement CSS (`_cssUrl` ne neutralise que de quoi refermer
+  // l'url()). Depuis le 2026-11-09, `passioThumb` ne demande plus de transformation :
+  // un avatar envoyé a sa version légère de 352 px, un ancien est servi tel quel.
   const vignette = ph ? passioThumb(ph, largeur || 192) : null;
   const safe = vignette ? _cssUrl(vignette) : null;
   const couleur = _cssColor((u && (u.avatar || u.color)) || "#8b5cf6");

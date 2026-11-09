@@ -108,7 +108,9 @@ test.describe("Isolation des médias de production", () => {
   test("③ la forme TRANSFORMÉE de l'URL est couverte, pas seulement la forme brute", async ({
     page,
   }) => {
-    // `passioThumb` (app-02) réécrit `/object/public/` en `/render/image/public/`.
+    // `passioThumb` (app-02) réécrivait `/object/public/` en `/render/image/public/`
+    // jusqu'au 2026-11-09 ; il ne le fait plus, mais une URL transformée peut encore
+    // venir d'ailleurs (cache d'un appareil, contenu d'avant) : le motif la couvre.
     // Un motif qui n'aurait connu que la première forme aurait laissé passer
     // toutes les images de publication — soit l'essentiel du poids.
     await poserGate(page);

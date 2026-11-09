@@ -27,9 +27,14 @@
 //    rien n'est servi depuis l'ORIGINE DE L'APP. Le média vit sur celle de
 //    Supabase, où un SVG piégé ne lit pas la session de PASSIO.
 // ⑧ LISTE FERMÉE des largeurs (audit 2026-11-06) : hors liste, 302 vers la forme
-//    canonique, sans rien renvoyer d'autre ; une valeur non numérique, 400. La
-//    transformation d'image est facturée par image d'origine, et le renvoi ne
-//    doit jamais fabriquer une demande que le client ne fait pas.
+//    canonique, sans rien renvoyer d'autre ; une valeur non numérique, 400. Le
+//    renvoi ne fabrique jamais une demande que le client ne fait pas. ⚠️ CE N'EST
+//    PAS UNE PROTECTION DU QUOTA (relevé par `passio-red-team`) : l'URL
+//    `render/image` de Supabase est publique, n'importe qui peut la demander
+//    directement. La vraie protection est ailleurs : depuis le 2026-11-09,
+//    PASSIO ne demande plus AUCUNE transformation (`passioThumb`, app-02) — la
+//    transformation d'image peut être éteinte chez Supabase sans rien casser.
+//    Seules d'anciennes URL `/media/…?width=` arrivent encore ici.
 // ⑨ `cache: "manual"` : le renvoi lui-même peut se garder au bord
 //    (`Netlify-CDN-Cache-Control`), clé bornée à width|quality (`Netlify-Vary`).
 // Toute réponse porte le bac à sable (`enTetesSecurite`) : le bloc [[headers]]

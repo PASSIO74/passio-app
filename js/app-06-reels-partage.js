@@ -1317,7 +1317,7 @@ function _myProfileEventsHTML() {
       if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍";
     } catch (x) {}
     var vignette = e.coverUrl
-      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(e.coverUrl) + '" alt="" '
+      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(urlMediaDirecte(e.coverUrl)) + '" alt="" '
         + 'style="width:100%;height:100%;object-fit:cover;display:block;" '
         + 'onerror="this.style.display=\'none\'"/>'
       : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
@@ -3239,7 +3239,7 @@ function renderProfilesScreen() {
         : "background:" + _couleurSure(p.color) + ";";
       var avatarContent = _pPhoto ? "" : escapeHtml(et.emoji);
       var _pCover = p.coverUrl || p.coverPhoto || null;
-      var _pCoverSure = _pCover ? _cssUrl(_pCover) : null;
+      var _pCoverSure = _pCover ? _cssUrl(urlMediaDirecte(_pCover)) : null;
       var coverStyle = _pCoverSure
         ? "background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url('" + _pCoverSure + "') center/cover;"
         : "";
@@ -3301,7 +3301,7 @@ function renderProfilesScreen() {
       // Photo de fond du profil passion (facultative) : voile sombre par-dessus
       // pour que le nom et la bio restent lisibles.
       const _pCover = p.coverUrl || p.coverPhoto || null;
-      const _pCoverSure = _pCover ? _cssUrl(_pCover) : null;
+      const _pCoverSure = _pCover ? _cssUrl(urlMediaDirecte(_pCover)) : null;
       const coverStyle = _pCoverSure
         ? `background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url('${_pCoverSure}') center/cover;`
         : "";

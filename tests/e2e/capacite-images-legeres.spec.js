@@ -163,9 +163,12 @@ test("avatar et photo de passion : la légère est posée et rendue ; un chemin 
     // Une durée qui n'est pas un nombre de secondes ne passe pas : un an, comme avant.
     await supaUploadMedia("prof_2", "passion_covers", img, "photo", { legere: true, cache: "3600; evil" });
     const envoisInvalide = __envois.slice();
-    return { avatar, envoisAvatar, passion, envoisPassion, envoisInvalide,
+    const largeurs = __mesures.filter(m => m.nom === "image_legere").map(m => m.meta.largeur);
+    return { avatar, envoisAvatar, passion, envoisPassion, envoisInvalide, largeurs,
       vignette: passioThumb(avatar, 192), estLegere: estImageLegere(avatar) };
   });
+  // Un avatar (compte, passion) a une légère de 352 px, une couverture de 720 px.
+  expect(r.largeurs).toEqual([352, 352, 720]);
   expect(r.envoisAvatar.map(e => e.chemin)).toEqual([
     "avatars/812aee2b-214f-4949-931e-842599b6d68b/avatarPhoto_x.jpg",
     "avatars/812aee2b-214f-4949-931e-842599b6d68b/avatarPhoto_x.jpg.v720.webp",
@@ -212,7 +215,8 @@ test("une légère est servie telle quelle : aucune transformation, la grande se
   expect(r.estLegere).toEqual([true, false, true, true, true]);
   // Une URL de l'ancien relais `/media/*` se lit à la source, le CDN Supabase (2026-11-09).
   expect(r.thumbLegere).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/u/p.jpg.v720.webp");
-  expect(r.thumbAncienne).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/render/image/public/content/photos/u/p.jpg?width=700&quality=75");
+  // Une ancienne image sans légère est servie TELLE QUELLE : plus aucune transformation (quota, 2026-11-09).
+  expect(r.thumbAncienne).toBe("https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/photos/u/p.jpg");
   expect(r.grande).toBe("https://passio-app.netlify.app/media/content/photos/u/p.jpg");
   expect(r.grandePng).toBe("photos/u/p.png?x=1");
   expect(r.grandeAncienne).toBe(ancienne);

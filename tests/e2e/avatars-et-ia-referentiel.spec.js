@@ -51,12 +51,24 @@ test("⓪ prémisse : la passion d'essai est bien ABSENTE du socle embarqué", a
   sansErreurJs(err);
 });
 
-test("① un avatar photo est demandé en MINIATURE, pas en pleine résolution", async ({ page }) => {
+test("① un avatar photo n'est JAMAIS demandé à la transformation d'image : sa légère, ou l'objet", async ({ page }) => {
+  // Jusqu'au 2026-11-09, un avatar partait en MINIATURE par `render/image`. Ce
+  // service compte 100 images d'origine par mois en Pro, et son URL est publique :
+  // un mur vers 50 profils avec photo, et un quota que n'importe qui pouvait
+  // épuiser (relevé par `passio-red-team`). Un avatar envoyé a désormais sa
+  // version légère de 352 px (app-08) ; un ancien est servi tel quel.
   const err = bacs();
   await bootOnboarded(page, err);
-  const bg = await page.evaluate((url) => avatarBg({ photoUrl: url, color: "#7c3aed" }), PHOTO);
-  expect(bg, "l'avatar part encore en pleine résolution").toContain("width=");
-  expect(bg).toContain("render/image/public");
+  const r = await page.evaluate((url) => ({
+    ancien: avatarBg({ photoUrl: url, color: "#7c3aed" }),
+    leger: avatarBg({ photoUrl: url + ".v720.webp", color: "#7c3aed" }),
+  }), PHOTO);
+  expect(r.ancien).toContain(PHOTO);
+  expect(r.leger).toContain(PHOTO + ".v720.webp");
+  for (const bg of [r.ancien, r.leger]) {
+    expect(bg).not.toContain("render/image");
+    expect(bg).not.toContain("width=");
+  }
   sansErreurJs(err);
 });
 

@@ -4558,11 +4558,19 @@ function _downscaleImageForUpload(dataUrl) {
 const IMAGE_LEGERE_QUALITE_WEBP = 0.75;
 const IMAGE_LEGERE_QUALITE_JPEG = 0.82;
 const IMAGE_LEGERE_GAIN_MIN = 0.15;
-function _imageLegerePourFil(dataUrl) {
+// Un AVATAR (le compte, une passion) ne s'affiche jamais à plus de 176 px CSS :
+// sa légère fait 352 px (2×), pas 720 — elle se charge à chaque publication et à
+// chaque commentaire de son auteur. Le marqueur du nom reste `.v720` : il dit
+// « version d'affichage », c'est lui que reconnaissent `estImageLegere`,
+// `imageGrande` et `cheminsImageStorage`.
+const IMAGE_LEGERE_LARGEUR_AVATAR = 352;
+const DOSSIERS_AVATAR = ["avatars", "passion_photos"];
+function _imageLegerePourFil(dataUrl, largeurMax) {
   return new Promise(function (resolve) {
     try {
       if (!/^data:image\/(jpeg|jpg|png|webp)/i.test(dataUrl)) { resolve(null); return; }
-      var largeurCible = (typeof IMAGE_LEGERE_LARGEUR === "number") ? IMAGE_LEGERE_LARGEUR : 720;
+      var largeurCible = (typeof largeurMax === "number" && largeurMax > 0) ? largeurMax
+        : ((typeof IMAGE_LEGERE_LARGEUR === "number") ? IMAGE_LEGERE_LARGEUR : 720);
       var img = new Image();
       img.onload = function () {
         try {
@@ -4653,7 +4661,8 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType, opts) {
     var _legere = null, _legereDemandee = !!(opts && opts.legere) && _estImage && DOSSIERS_IMAGE_LEGERE.indexOf(folder) !== -1;
     var _cache = (opts && /^\d{1,8}$/.test(String(opts.cache || ""))) ? String(opts.cache) : "31536000";
     if (_legereDemandee) {
-      try { _legere = await _imageLegerePourFil(base64Data); } catch (e) { _legere = null; }
+      var _largeurLegere = DOSSIERS_AVATAR.indexOf(folder) !== -1 ? IMAGE_LEGERE_LARGEUR_AVATAR : undefined;
+      try { _legere = await _imageLegerePourFil(base64Data, _largeurLegere); } catch (e) { _legere = null; }
     }
 
     // Convertir base64 en Blob — découpe sur « ;base64, » (PAS la première
