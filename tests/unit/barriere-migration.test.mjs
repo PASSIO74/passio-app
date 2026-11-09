@@ -6,10 +6,15 @@
 // trois lignes) et EXIGE qu'il diverge de la barrière. Un test qui ne mesurerait
 // que le nouveau code resterait vert le jour où on le retirerait.
 // ═══════════════════════════════════════════════════════════════════════════
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const B = require("../../scripts/lib/barriere-migration.js");
 
@@ -354,16 +359,57 @@ test("④ prérequis client : lecture des lignes déclarées (casse exacte, doub
   assert.deepEqual(B.prerequisClient("begin; select 1; commit;"), []);
 });
 
-test("④ prérequis client : le bundle se trouve dans le CHARGEUR du build, pas dans une balise", () => {
-  assert.equal(B.urlBundleServi(PAGE_BUILD, "https://passio-app.netlify.app"), "https://passio-app.netlify.app/app.js?v=464ac2e0bc");
-  assert.equal(B.urlBundleServi('<script src="/app.js?v=abc123"></script>', "https://passio-app.netlify.app"), "https://passio-app.netlify.app/app.js?v=abc123");
-  for (const illisible of [null, "", "<html>maintenance</html>", '<script src="app.js"></script>']) {
-    assert.equal(B.urlBundleServi(illisible, "https://passio-app.netlify.app"), null, String(illisible));
+// ⚠️ DEPUIS LE 2026-11-09, LE BLOC APP SORT EN 9 SCRIPTS (scripts/build.js, étape 1).
+// La forme à un script (`PAGE_BUILD`, ci-dessus) reste lue : un poste à jour doit
+// encore savoir lire une production qui ne l'est pas. La nouvelle forme se mesure
+// sur le VRAI build — la première version de cette règle, éprouvée sur un HTML
+// fabriqué, était aveugle sur le vrai.
+const ORIGINE = "https://passio-app.netlify.app";
+let vraiBuild = null;
+function construireVraiBuild() {
+  if (vraiBuild) return vraiBuild;
+  const dossier = mkdtempSync(path.join(os.tmpdir(), "passio-barriere-"));
+  const env = { ...process.env };
+  for (const k of ["COMMIT_REF", "GITHUB_SHA", "PASSIO_BUILD_TIME", "PASSIO_SUPABASE_URL", "PASSIO_SUPABASE_ANON"]) delete env[k];
+  execFileSync(process.execPath, [fileURLToPath(new URL("../../scripts/build.js", import.meta.url)), path.join(dossier, "index.html")], { env, stdio: "pipe", timeout: 120000 });
+  vraiBuild = { dossier, page: readFileSync(path.join(dossier, "index.html"), "utf8") };
+  return vraiBuild;
+}
+after(() => { if (vraiBuild) rmSync(vraiBuild.dossier, { recursive: true, force: true }); });
+
+test("④ prérequis client : les 9 scripts se lisent dans le CHARGEUR du vrai build, dans l'ordre du bloc", () => {
+  const { dossier, page } = construireVraiBuild();
+  const urls = B.urlsBundlesServis(page, ORIGINE);
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  const bloc = html.slice(html.indexOf("<!-- BUILD:APP-START"), html.indexOf("<!-- BUILD:APP-END -->"));
+  const sources = [...bloc.matchAll(/<script src="js\/(app-[^"]+)"><\/script>/g)].map((m) => "/app/" + m[1]);
+  assert.equal(sources.length, 9, "prémisse : 9 fichiers dans le bloc BUILD:APP");
+  assert.deepEqual(urls.map((u) => new URL(u).pathname), sources);
+  // Chaque adresse désigne un fichier de l'artefact, sous l'empreinte de SON contenu.
+  for (const u of urls) {
+    const { pathname, searchParams } = new URL(u);
+    const contenu = readFileSync(path.join(dossier, pathname));
+    assert.equal(searchParams.get("v"), createHash("sha1").update(contenu).digest("hex").slice(0, 10), pathname);
   }
 });
 
+test("④ prérequis client : ancienne forme (un seul app.js), forme minifiée, pages illisibles", () => {
+  assert.deepEqual(B.urlsBundlesServis(PAGE_BUILD, ORIGINE), [ORIGINE + "/app.js?v=464ac2e0bc"]);
+  assert.deepEqual(B.urlsBundlesServis('<script src="/app.js?v=abc123"></script>', ORIGINE), [ORIGINE + "/app.js?v=abc123"]);
+  // Le chargeur tel que le minifieur le rend : littéraux intacts, plus d'espaces.
+  const mini = '<script>!function(){var e=["app/app-01-diag-seed.js?v=0123456789",\'app/app-09-boot-pwa.js?v=abcdef0123\'];e.forEach(function(e){})}()</script>';
+  assert.deepEqual(B.urlsBundlesServis(mini, ORIGINE),
+    [ORIGINE + "/app/app-01-diag-seed.js?v=0123456789", ORIGINE + "/app/app-09-boot-pwa.js?v=abcdef0123"]);
+  // Une même adresse citée deux fois (preload, puis script) ne se lit qu'une fois.
+  assert.equal(B.urlsBundlesServis(mini + mini, ORIGINE).length, 2);
+  for (const illisible of [null, "", "<html>maintenance</html>", '<script src="app.js"></script>', '"app/app-01-diag-seed.js"', '"app/vendor.js?v=abc"']) {
+    assert.deepEqual(B.urlsBundlesServis(illisible, ORIGINE), [], String(illisible));
+  }
+  assert.deepEqual(B.urlsBundlesServis(PAGE_BUILD, null), [], "sans origine : rien");
+});
+
 test("④ prérequis client : refus si absent ou illisible, jamais une supposition", () => {
-  const origine = "https://passio-app.netlify.app";
+  const origine = ORIGINE;
   const motifs = ["conv_members:INSERT", "notifications:INSERT"];
   assert.deepEqual(B.verifierPrerequisClient({ motifs: [], origine, html: null, bundle: null }), { exige: false });
   assert.equal(B.verifierPrerequisClient({ motifs, origine: null }).exige, false, "cible sans client servi (staging) : rien d'exigé");
@@ -371,20 +417,38 @@ test("④ prérequis client : refus si absent ou illisible, jamais une suppositi
   refus({ motifs, origine, html: null, bundle: "x" }, "prerequis_client_illisible");
   refus({ motifs, origine, html: PAGE_BUILD, bundle: null }, "prerequis_client_illisible");
   refus({ motifs, origine, html: PAGE_BUILD, bundle: "" }, "prerequis_client_illisible");
+  refus({ motifs, origine, html: PAGE_BUILD }, "prerequis_client_illisible");
   refus({ motifs, origine, html: PAGE_BUILD, bundle: 'ch.on("broadcast",{event:"INSERT"})' }, "prerequis_client_absent");
   refus({ motifs, origine, html: PAGE_BUILD, bundle: '{event:"conv_members:INSERT"}' }, "prerequis_client_absent");
   const ok = B.verifierPrerequisClient({ motifs, origine, html: PAGE_BUILD, bundle: '{event:"conv_members:INSERT"},{event:"notifications:INSERT"}' });
-  assert.deepEqual(ok, { exige: true, url: origine + "/app.js?v=464ac2e0bc", motifs });
+  assert.deepEqual(ok, { exige: true, urls: [origine + "/app.js?v=464ac2e0bc"], motifs });
   assert.equal(B.ORIGINES_CLIENT.njkiyoklssvefstljemx, origine, "la production a un client servi");
   assert.equal(B.ORIGINES_CLIENT.fcksxofaelcdmmifnwjo, undefined, "le staging n'en a pas (la CI y joue le client de la PR)");
 });
 
+test("④ neuf scripts : un motif se lit dans N'IMPORTE LEQUEL, et un seul script illisible suffit à refuser", () => {
+  const { page } = construireVraiBuild();
+  const urls = B.urlsBundlesServis(page, ORIGINE);
+  const motifs = ["comment_interactions:epingle-du-fil"];
+  const textes = urls.map(() => "var a=1;");
+  const refus = (args, code) => assert.throws(() => B.verifierPrerequisClient(args), (e) => e instanceof B.RefusBarriere && e.code === code);
+  refus({ motifs, origine: ORIGINE, html: page, bundles: textes }, "prerequis_client_absent");
+  // Le motif ne vit que dans le 4ᵉ script (app-04, comme la migration RV-38) : lu.
+  // Mutation : ne lire que le premier script → ce cas rougit.
+  const avecMotif = textes.map((t, i) => (i === 3 ? 't="' + motifs[0] + '";' : t));
+  assert.deepEqual(B.verifierPrerequisClient({ motifs, origine: ORIGINE, html: page, bundles: avecMotif }), { exige: true, urls, motifs });
+  // Un script sur neuf n'a pas pu être lu : refus, même si le motif est ailleurs.
+  // Mutation : sauter les scripts illisibles → ce cas passe vert à tort.
+  refus({ motifs, origine: ORIGINE, html: page, bundles: avecMotif.map((t, i) => (i === 7 ? null : t)) }, "prerequis_client_illisible");
+  refus({ motifs, origine: ORIGINE, html: page, bundles: avecMotif.slice(0, 8) }, "prerequis_client_illisible");
+});
+
 test("④ un motif porté par un script INLINÉ dans la page (hors bloc app) se lit dans la page servie", () => {
-  const origine = "https://passio-app.netlify.app";
+  const origine = ORIGINE;
   const motifs = ["passion_requests:reponse-lue"];
   const page = PAGE_BUILD.replace("</body>", '<script>!function(){var e="passion_requests:reponse-lue";window.x=e}();</script></body>');
   const ok = B.verifierPrerequisClient({ motifs, origine, html: page, bundle: "var a=1;" });
-  assert.deepEqual(ok, { exige: true, url: origine + "/app.js?v=464ac2e0bc", motifs });
+  assert.deepEqual(ok, { exige: true, urls: [origine + "/app.js?v=464ac2e0bc"], motifs });
   // Ni dans la page, ni dans le bundle : refus, comme avant.
   assert.throws(() => B.verifierPrerequisClient({ motifs, origine, html: PAGE_BUILD, bundle: "var a=1;" }),
     (e) => e instanceof B.RefusBarriere && e.code === "prerequis_client_absent");
@@ -397,12 +461,12 @@ test("④ la migration passion_requests déclare son prérequis, et c'est la PAG
   const flat = readFileSync(new URL("../../js/passions-flat.js", import.meta.url), "utf8");
   assert.ok(flat.includes('"' + motifs[0] + '"'), "passions-flat.js ne porte plus le littéral « " + motifs[0] + " »");
   // ⚠️ Le fichier vit HORS du bloc BUILD:APP : `scripts/build.js` l'inline dans
-  // la page, il n'entre jamais dans app.js — d'où la lecture de la page par ④.
+  // la page, il n'entre jamais dans les scripts du bloc app — d'où la lecture de la page par ④.
   const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
   const debut = html.indexOf("<!-- BUILD:APP-START"), fin = html.indexOf("<!-- BUILD:APP-END -->");
   const balise = html.indexOf('<script src="js/passions-flat.js"></script>');
   assert.ok(debut > 0 && fin > debut && balise > 0, "balises introuvables dans index.html");
-  assert.ok(balise < debut || balise > fin, "passions-flat.js est entré dans le bloc app : le motif se lirait dans app.js");
+  assert.ok(balise < debut || balise > fin, "passions-flat.js est entré dans le bloc app : le motif se lirait dans un script du bloc app");
 });
 
 test("④ la migration R25 déclare ses deux prérequis, et le client du dépôt les porte", () => {
@@ -412,7 +476,7 @@ test("④ la migration R25 déclare ses deux prérequis, et le client du dépôt
   const app08 = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
   for (const m of motifs) assert.ok(app08.includes('event: "' + m + '"'), "le client ne lie pas « " + m + " »");
 });
-test("④ la migration RV-38 (épingle) déclare son prérequis, et le client du dépôt le porte (app-04, dans app.js)", () => {
+test("④ la migration RV-38 (épingle) déclare son prérequis, et le client du dépôt le porte (app-04, dans le bloc app)", () => {
   const sql = readFileSync(new URL("../../migrations/migration_epingle_commentaire_2026-11-05.sql", import.meta.url), "utf8");
   const motifs = B.prerequisClient(sql);
   assert.deepEqual(motifs, ["comment_interactions:epingle-du-fil"]);
@@ -420,9 +484,9 @@ test("④ la migration RV-38 (épingle) déclare son prérequis, et le client du
   // seul `comment_id` — la migration ne doit pas s'appliquer tant qu'il est servi.
   const app04 = readFileSync(new URL("../../js/app-04-comments-shop.js", import.meta.url), "utf8");
   assert.ok(app04.includes('"' + motifs[0] + '"'), "app-04 ne porte plus le littéral « " + motifs[0] + " »");
-  // app-04 est dans le bloc BUILD:APP : le motif se lit dans app.js, le bundle servi.
+  // app-04 est dans le bloc BUILD:APP : le motif se lit dans app/app-04-…js, un des 9 scripts servis.
   const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
   const debut = html.indexOf("<!-- BUILD:APP-START"), fin = html.indexOf("<!-- BUILD:APP-END -->");
   const balise = html.indexOf('<script src="js/app-04-comments-shop.js"></script>');
-  assert.ok(debut > 0 && fin > debut && balise > debut && balise < fin, "app-04 n'est plus dans le bloc app : le motif ne serait plus dans app.js");
+  assert.ok(debut > 0 && fin > debut && balise > debut && balise < fin, "app-04 n'est plus dans le bloc app : le motif ne serait plus dans les scripts servis");
 });

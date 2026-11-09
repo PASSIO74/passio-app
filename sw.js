@@ -1,8 +1,27 @@
 // Version du cache. En PROD, scripts/build.js réécrit cette ligne avec le buildId
-// (HTML et scripts inlinés, app.js, CSS) → réinstallation auto du SW à chaque vraie
-// modif (plus de bump manuel). En DEV (sw.js servi tel quel, sans build), Date.now()
-// suffit.
+// (HTML et scripts inlinés, les 9 scripts app/, CSS) → réinstallation auto du SW à
+// chaque vraie modif (plus de bump manuel). En DEV (sw.js servi tel quel, sans
+// build), Date.now() suffit.
 const CACHE = "passio-v" + Date.now();
+
+// Les fichiers VERSIONNÉS de CETTE version (2026-11-09) : les 9 scripts du bloc app
+// et la feuille de style. En PROD, scripts/build.js réécrit cette ligne avec leurs
+// adresses (`./app/<nom>.js?v=<hash>`, `./styles.css?v=<hash>`), comme CACHE.
+// En DEV (sw.js servi tel quel), aucune : les js/app-*.js partent au réseau.
+const FICHIERS_VERSION = [];
+
+// Un fichier VERSIONNÉ : son adresse porte l'empreinte de son contenu (scripts/build.js :
+// `app/<nom>.js?v=<hash>`, `styles.css?v=<hash>`) — il ne change jamais sous elle.
+function estVersionne(url) {
+  return /^\?v=[0-9a-f]{6,40}$/.test(url.search) && /\.(js|css)$/.test(url.pathname);
+}
+// Ce qu'on accepte d'en garder sans jamais le revalider : une réponse complète du
+// site, du type attendu. Une page de portail captif (200, text/html) n'est pas un script.
+function contenuVersionne(url, res) {
+  if (!res || !res.ok || res.type !== "basic") return false;
+  const type = String(res.headers.get("Content-Type") || "");
+  return url.pathname.endsWith(".css") ? /text\/css/i.test(type) : /javascript|ecmascript/i.test(type);
+}
 
 // Répond au message SKIP_WAITING
 self.addEventListener("message", e => {
@@ -16,12 +35,30 @@ self.addEventListener("install", e => {
     caches.open(CACHE).then(c =>
       // Chaque fichier est ajouté individuellement : un échec n'empêche pas les autres
       Promise.allSettled([
-        "./index.html",
-        "./styles.css",
-        "./manifest.json",
-        "./icon-192.png",
-        "./icon-512.png",
-      ].map(url => c.add(url).catch(() => {})))
+        ...[
+          "./index.html",
+          "./styles.css",
+          "./manifest.json",
+          "./icon-192.png",
+          "./icon-512.png",
+        ].map(url => c.add(url).catch(() => {})),
+        // ⚠️ LES FICHIERS DE LA VERSION, ET D'ABORD CEUX QU'ON A DÉJÀ (2026-11-09).
+        // L'activation VIDE l'ancien cache : sans ceci, chaque script repartait au
+        // réseau au premier chargement qui suit une mise à jour — sauf à le trouver
+        // dans le cache HTTP du navigateur, que le `fetch` d'un worker WebKit ne
+        // voit pas (mesuré sous WebKit : les 9 retéléchargés pour UN fichier
+        // modifié ; la feuille de style, à chaque version). Un fichier inchangé
+        // garde son adresse : on le recopie de l'ancien cache, encore là pendant
+        // l'installation ; seuls les fichiers modifiés partent sur le réseau, une
+        // fois, ici. Ce qui est en cache y est entré vérifié (`contenuVersionne`) ;
+        // ce qui vient du réseau l'est ici. Verrou :
+        // tests/e2e/app-scripts-par-fichier.spec.js ④ (Chromium et WebKit).
+        ...FICHIERS_VERSION.map(adresse =>
+          caches.match(adresse)
+            .then(r => r || fetch(adresse).then(res => (contenuVersionne(new URL(adresse, self.location.href), res) ? res : null)))
+            .then(r => r && c.put(adresse, r))
+            .catch(() => {})),
+      ])
     )
   );
 });
@@ -402,12 +439,13 @@ self.addEventListener("fetch", e => {
   }
 
   // Scripts SANS chaîne de version → réseau d'abord.
-  // En prod, app.js et styles.css portent un hash de contenu (`?v=93f3893599`) :
-  // leur URL change à chaque déploiement, le cache manque naturellement, et le
-  // stale-while-revalidate ci-dessous reste à la fois sûr et utile hors-ligne.
-  // Sans hash — c'est le cas des js/app-*.js servis tels quels en dev — cette même
-  // stratégie renvoie indéfiniment l'ANCIEN script au premier chargement, et ne
-  // rafraîchit que pour la fois d'après. Le 2026-08-14, ça a produit trois faux
+  // En prod, les 9 scripts app/ et styles.css portent chacun le hash de LEUR
+  // contenu (`app/app-04-comments-shop.js?v=93f3893599`) : l'URL d'un fichier ne
+  // change que si lui change. Ils ont leur propre branche, plus bas (le cache
+  // d'abord, sans revalidation : `estVersionne`).
+  // Sans hash — c'est le cas des js/app-*.js servis tels quels en dev — un cache
+  // servi d'abord renverrait indéfiniment l'ANCIEN script au premier chargement, et
+  // ne rafraîchirait que pour la fois d'après. Le 2026-08-14, ça a produit trois faux
   // échecs de débogage d'affilée : les correctifs étaient bons, c'est du code
   // périmé qui était testé. Un piège qui coûte des heures et ne se voit pas.
   // ⚠️ La protection de la prod vient donc du HASH, pas de ce worker : si les
@@ -424,6 +462,34 @@ self.addEventListener("fetch", e => {
           return res;
         })
         .catch(() => caches.match(e.request).then(c => c || new Response("", { status: 503 })))
+    );
+    return;
+  }
+
+  // ⚠️ UN FICHIER VERSIONNÉ NE CHANGE JAMAIS SOUS SON ADRESSE (2026-11-09) → le
+  // cache d'abord, le réseau seulement s'il manque, et AUCUNE revalidation. Les 9
+  // scripts app/ et styles.css portent l'empreinte de leur contenu : une nouvelle
+  // version, c'est une nouvelle adresse. Les revalider en arrière-plan (le
+  // stale-while-revalidate ci-dessous, leur sort jusque-là) ne pouvait rien
+  // apprendre, et coûtait sous WebKit une requête par script à CHAQUE ouverture
+  // (mesuré : 9) — le cache HTTP que consulte le `fetch` d'un worker WebKit n'a pas
+  // ce que l'installation a rangé. Verrou : tests/e2e/app-scripts-par-fichier.spec.js ④.
+  // ⚠️ SEUL CE QUI EST BIEN UN SCRIPT (ou une feuille de style) ENTRE AU CACHE
+  // (`contenuVersionne`) : sans revalidation, une page de portail captif (200,
+  // text/html) rangée sous l'adresse d'un script y resterait jusqu'à ce que ce
+  // fichier change — et l'installation la recopierait de version en version.
+  if (estVersionne(url)) {
+    e.respondWith(
+      caches.match(e.request)
+        .catch(() => null) // Safari, navigation privée : `caches.match` peut rejeter
+        .then(cached => cached || fetch(e.request).then(res => {
+          if (contenuVersionne(url, res)) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+          }
+          return res;
+        }))
+        .catch(() => new Response("", { status: 503 }))
     );
     return;
   }

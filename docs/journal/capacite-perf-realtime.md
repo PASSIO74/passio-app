@@ -29,6 +29,7 @@
 - 🚫 UN COMPTE BLOQUÉ NE COMPTE PAS NON PLUS SUR LA PASTILLE D'UN COMMENTAIRE (2026-11-06)
 - 🗑️ analytics_events : CE QUI NE SERT QU'UNE HEURE NE VIT PLUS 13 MOIS — ET LE PREMIER POSTE ÉTAIT LA VEILLE, PAS LE PLAFOND (2026-11-07)
 - 📦 BANDE PASSANTE ET QUOTAS SANS INVESTIR : LA PAGE EN 304, LES MÉDIAS EN DIRECT, LES MINIATURES SANS TRANSFORMATION, LA LISTE DES PASSIONS GARDÉE (2026-11-09)
+- 🧩 LE BLOC APP EN 9 SCRIPTS : UNE VERSION NE RETÉLÉCHARGE QUE CE QUI A CHANGÉ — ET SOUS WEBKIT, IL A FALLU LE WORKER (2026-11-09)
 
 ---
 
@@ -1846,3 +1847,86 @@ télémétrie étaient déjà durcis (lots de septembre et d'octobre) ; **les mu
   fichier, diviserait ce poste par ~3.
 - ~70 % des requêtes reçues par Supabase en 24 h viennent des runners de la CI (réseau Microsoft,
   navigateurs headless) : mêmes quotas plafonnés que les futurs utilisateurs.
+
+---
+
+## 🧩 LE BLOC APP EN 9 SCRIPTS : UNE VERSION NE RETÉLÉCHARGE QUE CE QUI A CHANGÉ — ET SOUS WEBKIT, IL A FALLU LE WORKER (2026-11-09)
+
+Suite directe du lot précédent (« ce qui reste — code ») : `scripts/build.js` concaténait les 9
+`js/app-0*.js` (+ `emoji-misc.js`, `passion-context.js`) en UN `dist/app.js`. Benjamin veut ses
+modifications en ligne aussitôt : on ne regroupe pas les mises en ligne, on réduit ce que chacune
+coûte. Point de départ : `6e4cbce3` (#797).
+
+**Les mesures (production et historique de `main`, 2026-11-09).**
+- `app.js?v=55a530d4a1` servi : 1 549 218 octets minifiés — **exactement** la sortie de terser sur le
+  poste (même version, figée par le lockfile) ; transféré en **419 229 octets en brotli** (≈ un brotli
+  q4 local + 1,9 % : Netlify compresse à la volée) et 444 628 en gzip (≈ niveau 6).
+- 30 jours : 137 commits sur `main`, **40 touchent le bloc** ; scripts touchés par version : 1 → 12 fois,
+  2 → 10, 3 → 9, 4 → 4, 5 → 2, 6 → 3. Le plus remué : app-08 (24), app-02 (19), app-04 (17).
+- Un script seul, minifié et compressé (brotli calibré) : app-01 109 Ko · app-07 61 · app-08 58 ·
+  app-02 57 · app-04 55 · app-05 43 · app-06 40 · app-09 (+ queue) 28 · app-03 6.
+
+**Le bilan.**
+
+| Poste (par appareil, brotli calibré sur le servi) | Avant (`app.js`) | Après (9 scripts) |
+|---|---|---|
+| Première visite | 419 Ko | ~456 Ko (**+37 Ko, +8,8 %** ; gzip 444 → 451 Ko, +1,5 %) |
+| Une version qui touche le bloc (moyenne des 40) | 419 Ko | **~138 Ko (−67 %)** |
+| Une version qui ne touche qu'app-02 ou app-08 | 419 Ko | 57 ou 58 Ko |
+| 30 jours de `main` (40 versions) | 16,8 Mo | 5,5 Mo |
+
+Le surcoût de la première visite (le brotli perd le contexte commun entre fichiers) est remboursé dès
+la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
+
+**Ce qui est livré.**
+
+| Pièce | Fichier | Verrou |
+|---|---|---|
+| 9 scripts `app/<nom de la source>.js?v=<empreinte de SON contenu>` ; `emoji-misc.js` et `passion-context.js` ferment le 9ᵉ, comme ils fermaient `app.js` ; `appHash` reste l'empreinte du texte d'ensemble (identique à l'ancien `app.js`, octet pour octet) | `scripts/build.js` (étape 1) | `tests/unit/build-id.test.mjs` ⑦ (modifier UN fichier ne change que l'empreinte de SON script ; mutation : une empreinte d'ensemble → rouge) |
+| Chargeur : preload des 9 en parallèle, exécution UN PAR UN au `load` du précédent, deux reprises (1 s, 2 s) puis ARRÊT, `passio:app-ready` une fois après le 9ᵉ | `scripts/build.js` | `tests/e2e/app-scripts-par-fichier.spec.js` ①②③ (Chromium et WebKit) |
+| `/app/*` immutable, plus de règle `/app.js` | `_headers` | `tests/unit/entetes-coherence.test.mjs` ③, `version-skew.spec.js` |
+| Le worker reçoit la liste des fichiers versionnés de la version — les 9 scripts et `styles.css` (`FICHIERS_VERSION`, écrite par le build) : à l'installation il RECOPIE de l'ancien cache les inchangés, ne télécharge que les autres ; un fichier versionné est servi du cache, SANS revalidation ; n'entre au cache que du script ou du CSS (`contenuVersionne`) | `sw.js`, `scripts/build.js` (étape 6) | `app-scripts-par-fichier.spec.js` ④ (vrai worker, deux artefacts, deux moteurs ; mutations : sans recopie → rouge, sans cache d'abord → rouge sous WebKit) |
+| Minification fichier par fichier, et refus de déployer si `dist/app/` n'a pas 9 scripts | `.github/workflows/deploy.yml` | — (CI) |
+| La barrière des migrations lit les 9 scripts servis (un motif peut vivre dans n'importe lequel ; un seul illisible = refus) ; l'ancienne forme reste lue | `scripts/lib/barriere-migration.js` (`urlsBundlesServis`), `scripts/appliquer-migration.mjs` | `tests/unit/barriere-migration.test.mjs` ④ (sur le VRAI build ; deux mutations) |
+| Le serveur d'artefact et les suites qui lisaient `dist/app.js` | `scripts/servir-dist.js`, `dist-build`, `version-skew`, `pwa-maj-pendant-appel`, `audit-2026-11-perf-dist` | — |
+
+**Les pièges, chacun payé ce jour-là.**
+- ⚠️ **SOUS WEBKIT, LE `fetch` DU WORKER NE VOIT PAS LE CACHE OÙ LA PAGE A RANGÉ SES SCRIPTS** (Playwright
+  WebKit 2388) : premier chargement contrôlé = 9 requêtes, et avec le worker d'avant ce lot, une
+  version qui ne changeait QU'UN fichier faisait repartir les 9 — l'activation vide le cache du worker,
+  et WebKit ne retrouvait rien ailleurs. Le gain aurait été nul sur iPhone. D'où la recopie à
+  l'installation (l'ancien cache n'est vidé qu'à l'activation) : le résultat ne dépend plus d'aucun
+  cache HTTP. Chromium, lui, rendait déjà les inchangés par son cache HTTP (0 requête). Ce qu'un
+  VRAI iPhone (session persistante) fait de son cache réseau n'a pas pu être mesuré d'ici : le lot
+  n'en dépend plus. Même mécanisme, même remède pour `styles.css?v=` : sous WebKit elle repartait à
+  CHAQUE version, CSS inchangé compris — elle est dans la liste recopiée (`FICHIERS_VERSION`).
+  Revers mesuré : à la toute PREMIÈRE installation, le worker WebKit retélécharge ce que la page vient
+  de charger (avant ce lot, c'était la deuxième visite qui le faisait, pour `app.js`) ; Chromium non.
+- ⚠️ **LE STALE-WHILE-REVALIDATE REVALIDAIT CE QUI NE PEUT PAS CHANGER** : sous WebKit, 9 requêtes à
+  chaque ouverture, scripts pourtant en cache. Un `?v=<empreinte>` ne change jamais sous son adresse :
+  `estVersionne` le sert du cache, sans revalidation.
+- ⚠️ **SANS REVALIDATION, UNE RÉPONSE FAUSSE NE SE RÉPARE PLUS** — et la recopie la reporterait de
+  version en version. Une page de portail captif (200, `text/html`) sous l'adresse d'un script :
+  `contenuVersionne` n'admet que `javascript`/`ecmascript` (ou `text/css`), réponse `basic` et `ok`.
+- ⚠️ **PLAYWRIGHT COUPE LE CACHE HTTP DÈS QU'UNE ROUTE EST POSÉE** : le premier ④ voyait les 9 scripts
+  repartir à chaque réouverture sous Chromium, et ce n'était pas l'application (`sansDonneesDistantes`
+  pose des `page.route`). Un cas qui MESURE un cache ne route rien ; son isolation vient de la cible
+  Supabase fictive de l'artefact et du proxy mort.
+- ⚠️ **L'ORDRE D'ARRIVÉE N'EST PAS L'ORDRE D'EXÉCUTION** (hoisting entre app-01 et app-09) : chacun
+  n'entre qu'au `load` du précédent ; le preload garde le téléchargement parallèle (① retient le premier
+  1,5 s : les 8 autres sont demandés avant qu'il arrive, l'ordre d'exécution reste celui du bloc).
+- ⚠️ **UN SCRIPT MANQUANT ARRÊTE TOUT** : le monolithe ne pouvait manquer qu'en entier ; à 9, lancer la
+  suite sans lui démarrerait app-09 sur une application incomplète (`ReferenceError` en série, et une
+  page à moitié vivante). Deux reprises, puis arrêt et `console.error` (③).
+- ⚠️ **LA QUEUE DU BLOC RESTE DANS LE 9ᵉ SCRIPT** : app-09 lance `boot()` en microtâche ; séparés,
+  `emoji-misc.js` et `passion-context.js` auraient tourné APRÈS le début du boot, au lieu d'avant.
+- ⚠️ **TERSER FICHIER PAR FICHIER EST SÛR PARCE QUE `--toplevel` N'EST PAS POSÉ** : aucun nom de premier
+  niveau n'est renommé ni retiré, et c'est par eux que les 9 scripts classiques se parlent.
+- ⚠️ **NETLIFY IGNORE LE `?v=`** (antérieur au lot, désormais par fichier) : une page périmée qui
+  demande l'ancien `?v=` d'un fichier MODIFIÉ reçoit le nouveau contenu. Fenêtre de quelques
+  millisecondes depuis la levée du rideau ; des noms de fichier hachés en feraient un 404 (non retenu ici).
+- ⚠️ **L'ÉPURATEUR DES GARDES (`sansCommentairesNiChaines`) PREND L'APOSTROPHE D'UNE REGEX POUR UNE
+  CHAÎNE** (`/Can't find variable/`) et avale la suite du fichier : les deux gardes ne voyaient plus ni
+  `page.goto` ni `sansDonneesDistantes`. `Can.t` dans la regex.
+- ⚠️ **`^` DANS UN `execSync` SOUS WINDOWS** est l'échappement de cmd.exe (`sha^1` → `sha1`) : `~1`.
+- ⚠️ **CLAUDE.md EST À 39 991 / 40 000** : ce lot y retire 5 caractères, il n'en ajoute aucun.

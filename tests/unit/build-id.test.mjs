@@ -24,7 +24,9 @@
 //   ⑤ la page, `release.json` et le worker désignent le même build, et le contrat
 //     reste posé juste avant `telemetry.js`, qui le lit à son initialisation ;
 //   ⑥ TÉMOIN DU BANC : un vrai build, sur le disque, rend le même buildId. Sans lui,
-//     un `fs` en mémoire qui ne ressemblerait plus au vrai rendrait les autres verts.
+//     un `fs` en mémoire qui ne ressemblerait plus au vrai rendrait les autres verts ;
+//   ⑦ (2026-11-09) le bloc app sort en 9 scripts : modifier UN fichier ne change
+//     que l'empreinte de SON script — le but du découpage.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -76,9 +78,16 @@ function construire({ muter = null, variables = {} } = {}) {
   assert.ok(cache, "dist/sw.js doit porter son nom de cache");
   const embarque = /window\.PASSIO_RELEASE=(\{.*?\});<\/script>/.exec(page);
   assert.ok(embarque, "dist/index.html doit porter le contrat de release");
+  // Les 9 scripts du bloc app (dist/app/, depuis le 2026-11-09), dans l'ordre où
+  // le chargeur de la page les cite — l'ordre d'exécution.
+  const scripts = [...page.matchAll(/"app\/(app-0\d[\w-]*\.js)\?v=([0-9a-f]+)"/g)]
+    .map((m) => ({ nom: m[1], v: m[2], contenu: ecrits.get(m[1]) }));
+  assert.equal(scripts.length, 9, "le chargeur de dist/index.html doit citer les 9 scripts du bloc app");
+  for (const s of scripts) assert.equal(typeof s.contenu, "string", "dist/app/" + s.nom + " doit être écrit");
   return {
     page,
-    app: ecrits.get("app.js"),
+    app: scripts.map((s) => s.contenu).join(""),
+    scripts,
     contrat: JSON.parse(ecrits.get("release.json")),
     embarque: JSON.parse(embarque[1]),
     cache: cache[1],
@@ -170,9 +179,34 @@ test("⑥ témoin du banc : un vrai build, sur le disque, rend le même buildId 
     const contrat = JSON.parse(fs.readFileSync(path.join(sortie, "release.json"), "utf8"));
     assert.equal(contrat.buildId, temoin.contrat.buildId);
     assert.equal(fs.readFileSync(path.join(sortie, "index.html"), "utf8"), temoin.page);
-    assert.equal(fs.readFileSync(path.join(sortie, "app.js"), "utf8"), temoin.app);
+    for (const s of temoin.scripts) assert.equal(fs.readFileSync(path.join(sortie, "app", s.nom), "utf8"), s.contenu, s.nom);
+    assert.equal(fs.existsSync(path.join(sortie, "app.js")), false, "plus de monolithe app.js");
     assert.equal(/const CACHE = "passio-v([a-f0-9]+)"/.exec(fs.readFileSync(path.join(sortie, "sw.js"), "utf8"))[1], contrat.buildId);
   } finally {
     fs.rmSync(sortie, { recursive: true, force: true });
   }
+});
+
+// ⑦ LE BUT DU DÉCOUPAGE (2026-11-09) : une version qui ne touche qu'UN fichier du
+//   bloc app ne fait retélécharger que LUI. Chaque source modifiée change
+//   l'empreinte d'UN script — le sien ; emoji-misc.js et passion-context.js ferment
+//   le 9ᵉ — et aucune autre : les 8 autres URL restent celles que le navigateur a
+//   en cache (immutable). Un fichier HORS du bloc (inliné dans la page) n'en touche
+//   aucune. Mutation : hacher le texte de tout le bloc pour chaque script (l'ancien
+//   `app.js?v=`) → chaque cas rougit.
+test("⑦ modifier UN fichier du bloc app ne change que l'empreinte de SON script", () => {
+  const avant = new Map(temoin.scripts.map((s) => [s.nom, s.v]));
+  const cas = [
+    ...temoin.scripts.map((s) => ["js/" + s.nom, s.nom]),
+    ["js/emoji-misc.js", "app-09-boot-pwa.js"],
+    ["js/passion-context.js", "app-09-boot-pwa.js"],
+  ];
+  for (const [source, attendu] of cas) {
+    const mute = construire({ muter: source });
+    assert.deepEqual(mute.scripts.filter((s) => avant.get(s.nom) !== s.v).map((s) => s.nom), [attendu], source);
+    assert.notEqual(mute.contrat.appHash, temoin.contrat.appHash, source + " : appHash");
+  }
+  const horsBloc = construire({ muter: "js/telemetry.js" });
+  assert.deepEqual(horsBloc.scripts.map((s) => s.v), temoin.scripts.map((s) => s.v), "telemetry.js (inliné dans la page)");
+  assert.notEqual(horsBloc.contrat.buildId, temoin.contrat.buildId, "…mais il change bien le buildId");
 });

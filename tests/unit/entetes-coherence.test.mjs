@@ -4,14 +4,14 @@
 // (copié dans dist/ par deploy.yml, ce que Netlify sert) et `netlify.toml`
 // ([[headers]]). Netlify fusionne les deux ; une modification faite dans un seul
 // fichier passe inaperçue, et les deux ont déjà divergé sur les règles de cache
-// (`release.json`, `index.html`, `app.js` immutable ne sont que dans `_headers`).
+// (`release.json`, `index.html`, `app/*` immutable ne sont que dans `_headers`).
 // Ce banc exige :
 //   ① la CSP de `_headers` (/*) et celle de `netlify.toml` (/*) sont IDENTIQUES ;
 //   ② `sw.js`, `manifest.json`, `release.json` et `index.html` ne sont jamais
 //      mis en cache (sinon le release-guard rend un faux vert et une PWA garde
 //      un vieux worker) ;
-//   ③ `app.js` et `styles.css` sont `immutable` (leur URL porte un hash de
-//      contenu — `scripts/build.js`) ;
+//   ③ les 9 scripts `app/` et `styles.css` sont `immutable` (l'URL de chacun
+//      porte le hash de son contenu — `scripts/build.js`) ;
 //   ④ la CSP ne laisse entrer AUCUN hôte de script tiers autre que le captcha :
 //      les bibliothèques sont auto-hébergées depuis le 2026-09-11.
 import { test } from "node:test";
@@ -63,15 +63,21 @@ test("② sw.js, manifest.json, release.json et index.html ne sont jamais mis en
   }
 });
 
-test("③ app.js et styles.css sont immutables (URL hachée par le build)", () => {
-  for (const chemin of ["/app.js", "/styles.css"]) {
+test("③ les scripts app/ et styles.css sont immutables (URL hachée par le build)", () => {
+  // Depuis le 2026-11-09, le bloc app sort en 9 scripts sous /app/ (un /app.js avant).
+  for (const chemin of ["/app/*", "/styles.css"]) {
     const cc = regles[chemin] && regles[chemin]["Cache-Control"];
     assert.ok(cc, chemin + " : pas de Cache-Control");
     assert.match(cc, /immutable/, chemin + " : " + cc);
   }
-  // Le build pose bien le hash : sans lui, `immutable` servirait un vieux script à vie.
+  // Plus de règle pour l'ancien /app.js : un onglet périmé qui le redemanderait
+  // recevrait un 404, qu'un `immutable` garderait un an — même après un retour
+  // arrière qui le ferait revenir.
+  assert.equal(regles["/app.js"], undefined, "/app.js : règle orpheline");
+  // Le build pose bien le hash de CHAQUE script : sans lui, `immutable` servirait un
+  // vieux script à vie.
   const build = fs.readFileSync(path.join(RACINE, "scripts", "build.js"), "utf8");
-  assert.match(build, /"app\.js\?v=" \+ appHash/);
+  assert.match(build, /ref: "app\/" \+ nom \+ "\?v=" \+ hash10\(contenu\)/);
   assert.match(build, /"styles\.css\?v=" \+ cssHash/);
 });
 
