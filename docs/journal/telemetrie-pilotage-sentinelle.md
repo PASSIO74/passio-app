@@ -46,6 +46,7 @@
 - ⏳ LA BOUCLE DE DÉMARRAGE COURT-CIRCUITAIT LE BACKOFF — LA GRÂCE DU JETON DURAIT 5 S AU LIEU DE 33 (2026-11-07)
 - 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
 - 🫀 LE SEUIL DU BATTEMENT SE DÉDUIT DE LA CADENCE DE LA VEILLE — 35 MIN N'ÉTAIT TENU PAR RIEN (2026-11-08)
+- 🏃 LES FONCTIONS S'EXÉCUTENT AVANT D'ÊTRE DÉPLOYÉES — UNE VARIABLE NON DÉCLARÉE NE PART PLUS (2026-11-09)
 
 ---
 
@@ -1019,3 +1020,38 @@ Constat de la fiche précédente, rejoué le 08/11 dans un worktree propre : pas
 ⚠️ **LA PORTE TOMBE ENTRE DEUX PASSAGES.** 14 min, pas 15 : posée sur un passage, une veille un peu plus rapide que la précédente le sauterait, et la période vaudrait 15 ou 20 min au gré de la gigue (28 s au plus de part et d'autre des 15 min, mesurées ci-dessus). ⑤ refuse une porte multiple de la cadence.
 
 Détail : `docs/AUTONOMIE_EXPLOITATION.md` § 3.4 et § 3.9.
+
+## 🏃 LES FONCTIONS S'EXÉCUTENT AVANT D'ÊTRE DÉPLOYÉES — UNE VARIABLE NON DÉCLARÉE NE PART PLUS (2026-11-09)
+
+`edge-functions.yml` déploie à chaque push de `main` sans attendre la CI. Son étape de verrous ne lançait que les suites des modules partagés. De #753 (07/11) au 09/11, `notify-call` lisait `uid`, jamais déclaré : un 500 pour toute push sociale (fiche du 09/11 dans `social-messagerie.md`). #796 l'a corrigé et a écrit `notify-call-chemins.test.mjs`, qui EXÉCUTE le vrai gestionnaire. Mais la gate `edge-functions-verrous` refusait de lister un banc qui n'importe aucun module emporté (③ : « elle ne garde rien ici »). Un push direct qui réintroduisait la variable partait donc encore.
+
+- **La gate voit les LECTURES de code.** C'est un `readFileSync(…)` ou un `readFile(…)` dont le chemin s'écrit, dans la suite ou dans une aide de `tests/unit/lib`, et désigne `supabase/functions/<nom>/index.ts`. Trois formes se lisent : le littéral (relatif à la racine, d'où l'étape lance `node --test`), `new URL("…", import.meta.url)` et `path.join(RACINE, "…")`.
+  - Une suite qui lit ce code garde quelque chose (③). Comme une suite qui importe, elle est listée ou déclarée (②).
+  - Une suite qui NOMME un `index.ts` sans lecture visible se dit (②') : une aide qui lit le chemin qu'on lui passe, une constante. Listée, elle ne passe pas ③, et le message dit d'écrire la lecture en littéral.
+- **⑨ chaque fonction est EXÉCUTÉE.** Relire ne suffit pas : `uid` est passé sous les deux suites listées qui relisaient `notify-call` (`appels`, `reception`). Une suite listée exécute une fonction si elle lit son `index.ts` et charge du code (`stripTypeScriptTypes`, dans la suite ou dans une aide). Une fonction qu'aucune suite listée n'exécute rougit, sauf écart déclaré.
+- **Le gabarit, pour trois fonctions de plus.** L'aide `tests/unit/lib/executer-fonction.mjs` retire les types et remplace chaque import par sa doublure : un import sans doublure, ou une doublure sans import, rougit. Elle fournit `Deno`, puis exécute le code en mode strict dans une fonction asynchrone. Trois bancs l'emploient :
+  - `ask-ai-chemins`, 11 chemins : méthode, session, interrupteur, plafond du compte et plafond global, corps, clé, réponse, erreur, réponse vide, panne ;
+  - `delete-account-chemins`, 5 chemins ;
+  - `export-account-chemins`, 6 chemins.
+
+  Les modules partagés restent des doublures : ils ont leurs suites.
+- **L'écart de pilotage.** 1 559 lignes, la veille et quatorze actions. Huit suites listées relisent son code, aucune ne l'exécute. L'écart est déclaré avec sa raison, et rougira le jour où un banc l'exécutera. **Reste à faire** : `pilotage-chemins`.
+
+L'étape lance désormais 27 suites, 409 tests, en 3,1 s sur le poste.
+
+**Réinjections.**
+- Dans le code des fonctions : une variable non déclarée par chemin, 17 en tout. 9 dans `ask-ai`, dont un import sans doublure, 4 dans `delete-account`, 4 dans `export-account`. Chacune rougit le banc de sa fonction ; fichiers restaurés.
+- Dans la gate, 15 mutations de sa logique. Chacune rougit au moins un test :
+  - les lectures oubliées par ③ ou par ② ;
+  - `new URL` ou `path.join` non lus, `new URL` résolu depuis la racine ;
+  - les lectures et le chargement d'une aide ignorés ;
+  - un module partagé lu comme du texte, compté comme le code d'une fonction ;
+  - ⑨ muet, ou satisfait d'une relecture ;
+  - l'écart d'une fonction exécutée, gardé.
+- Le banc de `notify-call` retiré de l'étape rougit (②, ⑨). Listé sans lire le code d'une fonction, il rougit (③). Cinq formes l'éprouvent : une source écrite à la main, un module partagé lu comme du texte, une fonction qui n'existe pas, un chemin calculé, une lecture en commentaire.
+
+⚠️ **RELIRE N'EST PAS EXÉCUTER.** Une relecture vérifie ce qu'on a pensé à chercher : l'ordre des refus, les imports, la forme de l'envoi. Une exécution rencontre aussi ce qu'on n'a pas pensé à chercher. ⑨ exige l'exécution, et compte une relecture pour ce qu'elle est.
+
+⚠️ **UN BANC SANS IMPORT N'ÉTAIT PAS UN BANC POUR LA GATE.** La gate de #787 mesurait ce que garde une suite à ses imports de modules emportés. Le banc qui exécute le site d'appel n'en a aucun, exprès : ses modules sont des doublures. Sans cette extension, le lister rougissait ③, et ne pas le lister laissait un push direct déployer le défaut.
+
+Détail : `docs/AUTONOMIE_EXPLOITATION.md` § 3.9.

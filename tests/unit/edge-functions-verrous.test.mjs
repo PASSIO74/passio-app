@@ -20,13 +20,16 @@
 //     du code mort, ou un import que ce lecteur n'a pas su lire — les deux se
 //     disent, aucun ne passe pour un vert) ;
 //   ① chaque module emporté est importé par au moins une suite listée ;
-//   ② chaque suite de tests/unit qui importe un module emporté est listée : une
-//     ligne ne se retire pas en silence, une suite neuve ne s'oublie pas ;
+//   ② chaque suite de tests/unit qui importe un module emporté, ou qui LIT le
+//     code d'une fonction (son index.ts), est listée : une ligne ne se retire
+//     pas en silence, une suite neuve ne s'oublie pas ;
 //     ②' une suite qui charge par un chemin CALCULÉ et nomme `supabase/` ou
-//     `_shared` est listée aussi, ou déclarée : le banc ne peut dire quoi ;
-//   ③ chaque suite listée existe, une seule fois, et importe un module emporté ;
-//     ce banc est listé, en tête : sur un push direct, que la CI parallèle ne
-//     retient pas, une ligne retirée rougit quand même avant « Déployer » ;
+//     `_shared`, ou qui NOMME l'index.ts d'une fonction sans que sa lecture se
+//     voie, est listée aussi, ou déclarée : le banc ne peut dire quoi ;
+//   ③ chaque suite listée existe, une seule fois, et importe un module emporté
+//     ou lit le code d'une fonction ; ce banc est listé, en tête : sur un push
+//     direct, que la CI parallèle ne retient pas, une ligne retirée rougit quand
+//     même avant « Déployer » ;
 //   ④ l'étape précède CHAQUE étape qui déploie, sans `if:`, sans
 //     `continue-on-error`, dans le shell par défaut (`bash -e`, `defaults:` du
 //     job et du workflow compris), sans variable NODE_* dans aucun `env:` qui
@@ -35,12 +38,24 @@
 //     (always, failure, cancelled, success) dans son `if:` ;
 //   ⑤ le Node installé avant les verrous a la version majeure du job de
 //     deploy.yml qui éprouve tests/unit/*.test.mjs (sans node_modules, comme ici) ;
-//     une version illisible de ce côté-là rougit aussi.
+//     une version illisible de ce côté-là rougit aussi ;
+//   ⑨ chaque fonction est EXÉCUTÉE par une suite listée — elle lit son index.ts
+//     et le charge (`stripTypeScriptTypes`, dans la suite ou une aide de
+//     tests/unit : le gabarit de notify-call-chemins, lib/executer-fonction.mjs) —,
+//     ou son écart est déclaré : une fonction neuve sans banc qui l'exécute rougit.
 // « Importer », c'est un import statique, un `import()` ou un `require()` dont le
 // chemin s'écrit, dans la suite ou dans une aide de tests/unit qu'elle importe.
 // Une suite qui n'atteint un module qu'à travers un script éprouve le script. Un
 // écart VOLONTAIRE (module sans suite, suite non listée) se déclare dans ECARTS
 // avec sa raison ; un écart qui n'a plus d'objet rougit.
+// « Lire le code d'une fonction » (2026-11-09), c'est un `readFileSync(…)` ou un
+// `readFile(…)` dont le chemin s'écrit — littéral, relatif à la racine (l'étape
+// lance `node --test` depuis la racine du dépôt) ; `new URL("…", import.meta.url)` ;
+// `path.join(RACINE, "…")` — et désigne `supabase/functions/<nom>/index.ts`. C'est
+// ainsi qu'un banc EXÉCUTE le vrai gestionnaire (notify-call-chemins.test.mjs) :
+// de #753 au 09/11, `uid`, jamais déclaré, rendait 500 à toute push sociale, et
+// aucune suite d'un module partagé ne pouvait le voir — seul un banc qui exécute
+// le site d'appel le voit. Sans import, la règle ③ le refusait (« ne garde rien »).
 //
 // ⑥ joue le bloc `run:` réel sous `bash -e` contre un faux `node`. ⑦ rejoue les
 // mutations sur le texte réel : retirer n'importe quelle ligne, ajouter un import
@@ -81,6 +96,10 @@ const CE_BANC = SUITES + "/edge-functions-verrous.test.mjs";
 // pilotage ⑯ éprouve désormais les trois valeurs, et identifiants-exemple.test.mjs
 // (ce que la purge tient pour un exemple, contre la base) est listée.
 const ECARTS = Object.freeze({
+  // ⑨ — la seule fonction qu'aucun banc n'exécute encore (2026-11-09). Ses
+  // chemins sont RELUS par des suites listées, aucun n'est exécuté.
+  "supabase/functions/pilotage/index.ts":
+    "1 559 lignes : la veille et quatorze actions derrière l'authentification ; pilotage, autonomie, battement, croissance, rappels… (listées) relisent son code, aucune ne l'exécute — une variable jamais déclarée dans une action partirait encore ; son banc pilotage-chemins reste à écrire, et cet écart rougira le jour où il tournera",
   "supabase/functions/_shared/revision.js":
     "écrit par l'étape « Révision » de ce workflow juste avant « Déployer » (une ligne : le SHA déployé) ; la fumée relit ce qu'il sert sur chaque fonction (X-Passio-Revision)",
   "tests/unit/audit-contrats-actions.test.mjs":
@@ -123,6 +142,10 @@ function depot() {
 // `_shared`). Un chemin se lit : en littéral (chaîne, gabarit sans `${}`), suivi
 // d'un calcul après `?` ou `#` (anti-cache : `"…/m.js?t=" + Date.now()`), ou en
 // `new URL("…", import.meta.url)`.
+// Et (2026-11-09) `lectures` : les `readFileSync(…)`/`readFile(…)` dont le chemin
+// se lit (`cheminLu`), avec sa base — la racine, ou le fichier pour `new URL` ;
+// `noms` : les chaînes du CODE qui désignent un `index.ts`/`index.js` ; `charge` :
+// le code appelle ou importe `stripTypeScriptTypes` (il EXÉCUTE ce qu'il lit).
 const ESPACE = /\s+/y;
 const IDENT = /[\p{ID_Start}$_][\p{ID_Continue}$‌‍]*/uy;
 const NOMBRE = /\.?[0-9][0-9A-Za-z_.]*/y;
@@ -194,18 +217,38 @@ function lexer(src) {
 }
 
 const est = (j, k, v) => !!j && j.k === k && (v === undefined || j.v === v);
+const litteral = (j) => est(j, "str") || (est(j, "tpl") && !j.sub);
+/** `new URL("…", import.meta.url)` à partir du jeton p : le chemin, ou `null`. */
+const NEW_URL = ["new", "URL", "(", null, ",", "import", ".", "meta", ".", "url", ")"];
+const newUrl = (t, p) => (NEW_URL.every((v, k) => (v === null ? est(t[p + k], "str") : !!t[p + k] && t[p + k].v === v)) ? t[p + 3].v : null);
 /** Le chemin d'un `import(…)`/`require(…)` dont l'argument commence au jeton p ; `null` s'il ne se lit pas. */
 function chemin(t, p) {
   const a = t[p], b = t[p + 1];
-  if (est(a, "str") || (est(a, "tpl") && !a.sub)) {
+  if (litteral(a)) {
     if (est(b, "p", ")") || est(b, "p", ",")) return a.v;
     if (/[?#]/.test(a.v) && est(b, "p", "+")) return a.v;
   }
   if (est(a, "tpl") && a.sub && /[?#]/.test(a.v)) return a.v;
-  const url = ["new", "URL", "(", null, ",", "import", ".", "meta", ".", "url", ")"];
-  if (url.every((v, k) => (v === null ? est(t[p + k], "str") : !!t[p + k] && t[p + k].v === v))) return t[p + 3].v;
+  return newUrl(t, p);
+}
+/**
+ * Le chemin d'un `readFileSync(…)`/`readFile(…)` dont l'argument commence au jeton p,
+ * et ce contre quoi il se résout ; `null` s'il ne se lit pas. Un littéral se lit
+ * depuis le répertoire courant — la racine : l'étape et la CI lancent `node --test`
+ * depuis la racine du dépôt ; `new URL` depuis le fichier ; `path.join(X, "…")` et
+ * `path.resolve(X, "…")` depuis X, la racine du dépôt par convention (RACINE).
+ */
+function cheminLu(t, p) {
+  if (litteral(t[p]) && (est(t[p + 1], "p", ")") || est(t[p + 1], "p", ","))) return { v: t[p].v, base: "racine" };
+  const url = newUrl(t, p);
+  if (url !== null) return { v: url, base: "fichier" };
+  const q = est(t[p], "id") && est(t[p + 1], "p", ".") ? p + 2 : p;
+  if ((est(t[q], "id", "join") || est(t[q], "id", "resolve")) && est(t[q + 1], "p", "(") && est(t[q + 2], "id") && est(t[q + 3], "p", ",")
+    && litteral(t[q + 4]) && est(t[q + 5], "p", ")") && (est(t[q + 6], "p", ")") || est(t[q + 6], "p", ","))) return { v: t[q + 4].v, base: "racine" };
   return null;
 }
+const LECTURE = new Set(["readFileSync", "readFile"]);
+const NOM_ENTREE = /(?:^|\/)index\.(?:ts|js)$/;
 const CLAUSE = new Set(["{", "}", ",", "*"]);
 
 // Chaque mutation ne change qu'un fichier ou deux : les autres sont relus du cache.
@@ -216,12 +259,20 @@ function imports(src) {
   return DEJA_LUS.get(texte);
 }
 function lireImports(src) {
-  const specs = [];
-  let calcules = 0, nomme = false;
+  const specs = [], lectures = [], noms = [];
+  let calcules = 0, nomme = false, charge = false;
   for (const t of lexer(src)) {
     for (let k = 0; k < t.length; k++) {
       const j = t[k];
       if ((j.k === "str" && /supabase\/|_shared/.test(j.v)) || (j.k === "tpl" && /supabase\/|_shared/.test(j.tout))) nomme = true;
+      if (litteral(j) && NOM_ENTREE.test(j.v)) noms.push(j.v);
+      if (est(j, "id", "stripTypeScriptTypes")) charge = true;   // ⑨ : le code lu est chargé, pas seulement relu
+      // `fs.readFileSync(…)`, `readFile(…)` : une lecture (une déclaration n'a pas de chemin écrit en argument).
+      if (j.k === "id" && LECTURE.has(j.v) && est(t[k + 1], "p", "(")) {
+        const l = cheminLu(t, k + 2);
+        if (l) lectures.push(l);
+        continue;
+      }
       if (j.k !== "id" || !["import", "export", "require"].includes(j.v)) continue;
       const avant = t[k - 1], suiv = t[k + 1];
       if (est(avant, "p", ".") || est(avant, "id", "function")) continue;   // une propriété, une déclaration
@@ -241,7 +292,7 @@ function lireImports(src) {
       }
     }
   }
-  return { specs, calcules, nomme };
+  return { specs, calcules, nomme, lectures, noms, charge };
 }
 
 /** Un chemin relatif résolu dans le dépôt ; `null` pour une URL, `npm:`, `node:` ou un nom nu. */
@@ -383,32 +434,56 @@ function auditer({ workflow, reference, fichiers }, ecarts = ECARTS) {
     }
   }
 
+  // Le code d'une fonction : le chemin d'une lecture, ou une chaîne, qui désigne
+  // l'index.ts d'une fonction déployée — `null` sinon (un module partagé lu comme
+  // du texte n'est pas le code d'une fonction : il s'éprouve en l'important).
+  const ENTREES = new Set(entrees);
+  const entreeDe = (f, v, base) => {
+    const brut = String(v).split(/[?#]/)[0];
+    if (brut.startsWith("/")) return null;
+    const c = path.posix.normalize(base === "fichier" ? path.posix.join(path.posix.dirname(f), brut) : brut);
+    return ENTREES.has(c) ? c : null;
+  };
+
   // Les suites, et les modules emportés qu'elles importent : elles-mêmes, ou par
   // une aide de tests/unit (lib/faux-admin-purge.mjs importe purge-compte.js) —
   // une aide fait partie du test ; un script, lui, est ce que la suite éprouve.
+  // Même parcours pour le code des fonctions qu'elles LISENT.
   const importsDe = new Map();
+  const lecturesDe = new Map();    // suite → index.ts qu'elle lit (readFileSync d'un chemin écrit)
+  const executionsDe = new Map();  // suite → index.ts qu'elle lit ET charge (stripTypeScriptTypes)
+  const nommeesSeules = new Map(); // suite → index.ts qu'elle nomme, sans lecture que le banc voie
   const aveugles = new Set();   // un chemin calculé, dans un fichier qui nomme supabase/ ou _shared
   for (const s of Object.keys(fichiers).filter((f) => /^tests\/unit\/[^/]+\.test\.mjs$/.test(f)).sort()) {
-    const mods = new Set();
-    let calcules = 0, nomme = false;
+    const mods = new Set(), lit = new Set(), nommees = new Set();
+    let calcules = 0, nomme = false, charge = false;
     const lus = new Set([s]);
     for (const file = [s]; file.length;) {
       const f = file.pop();
       const r = imports(fichiers[f]);
       calcules += r.calcules;
       nomme = nomme || r.nomme;
+      charge = charge || r.charge;
       for (const spec of r.specs) {
         const c = resoudre(f, spec);
         if (c && emportes.has(c)) mods.add(c);
         else if (c && c.startsWith(SUITES + "/") && c in fichiers && !lus.has(c)) { lus.add(c); file.push(c); }
       }
+      for (const l of r.lectures) { const c = entreeDe(f, l.v, l.base); if (c) lit.add(c); }
+      for (const v of r.noms) { const c = entreeDe(f, v, "racine") || (/^\.\.?\//.test(v) ? entreeDe(f, v, "fichier") : null); if (c) nommees.add(c); }
     }
     if (mods.size) importsDe.set(s, [...mods].sort());
+    if (lit.size) lecturesDe.set(s, [...lit].sort());
+    if (lit.size && charge) executionsDe.set(s, [...lit].sort());
+    const seules = [...nommees].filter((c) => !lit.has(c)).sort();
+    if (seules.length) nommeesSeules.set(s, seules);
     if (calcules && nomme) aveugles.add(s);
   }
+  const garde = (s) => importsDe.has(s) || lecturesDe.has(s);
   const listees = new Set();
   for (const s of etape.listees) { if (listees.has(s)) defauts.push(`${s} : listée deux fois`); listees.add(s); }
   const couvert = (m) => [...listees].some((s) => (importsDe.get(s) || []).includes(m));
+  const executee = (e) => [...listees].some((s) => (executionsDe.get(s) || []).includes(e));
 
   // ⓪ chaque fichier de _shared est emporté.
   for (const f of Object.keys(fichiers).filter((x) => x.startsWith(SHARED)).sort()) {
@@ -420,22 +495,34 @@ function auditer({ workflow, reference, fichiers }, ecarts = ECARTS) {
     const l = [...importsDe].filter(([, ms]) => ms.includes(m)).map(([s]) => s);
     defauts.push(`${m} : emporté par ${[...fns].sort().join(", ")}, aucune suite listée ne l'importe — ${l.length ? "l'importent : " + l.join(", ") : "aucune suite ne l'importe"}`);
   }
-  // ② chaque suite qui importe un module emporté est listée.
-  for (const [s, ms] of importsDe) {
+  // ② chaque suite qui importe un module emporté, ou lit le code d'une fonction, est listée.
+  for (const s of [...new Set([...importsDe.keys(), ...lecturesDe.keys()])].sort()) {
     if (listees.has(s) || s in ecarts) continue;
-    defauts.push(`${s} : importe ${ms.join(", ")} (emportés) et ne tourne pas avant « Déployer » — la lister dans l'étape, ou déclarer l'écart avec sa raison`);
+    const quoi = [
+      importsDe.has(s) ? `importe ${importsDe.get(s).join(", ")} (emportés)` : "",
+      lecturesDe.has(s) ? `lit ${lecturesDe.get(s).join(", ")} (le code d'une fonction déployée)` : "",
+    ].filter(Boolean).join(", ");
+    defauts.push(`${s} : ${quoi} et ne tourne pas avant « Déployer » — la lister dans l'étape, ou déclarer l'écart avec sa raison`);
   }
-  // ②' ce que le banc ne sait pas lire se dit : un chemin calculé, là où un module des fonctions est nommé.
+  // ②' ce que le banc ne sait pas lire se dit : un chemin calculé, là où un module des fonctions est nommé ;
+  // le code d'une fonction nommé sans lecture visible (une aide qui lit un chemin reçu, un chemin dans une constante).
   for (const s of [...aveugles].sort()) {
-    if (listees.has(s) || s in ecarts || importsDe.has(s)) continue;
+    if (listees.has(s) || s in ecarts || garde(s)) continue;
     defauts.push(`${s} : charge un module par un chemin calculé (import()/require()) et nomme supabase/ ou _shared — le banc ne peut dire lequel : écrire le chemin en littéral, la lister, ou déclarer l'écart`);
+  }
+  for (const [s, cs] of nommeesSeules) {
+    if (listees.has(s) || s in ecarts || garde(s) || aveugles.has(s)) continue;
+    defauts.push(`${s} : nomme ${cs.join(", ")} sans que le banc en voie la lecture — l'écrire en readFileSync("…"), la lister, ou déclarer l'écart`);
   }
   // ③ chaque suite listée existe et garde quelque chose ; ce banc y tourne (il
   // n'importe aucun module : il vérifie la liste elle-même, avant « Déployer »,
   // y compris sur un push direct que la CI parallèle ne retient pas).
   for (const s of listees) {
     if (!(s in fichiers)) defauts.push(`${s} : listée, introuvable — « node --test » sortirait en 1 et retiendrait tout déploiement`);
-    else if (!importsDe.has(s) && s !== CE_BANC) defauts.push(`${s} : listée, n'importe aucun module emporté — elle ne garde rien ici`);
+    else if (!garde(s) && s !== CE_BANC) {
+      const indice = nommeesSeules.has(s) ? ` (elle nomme ${nommeesSeules.get(s).join(", ")} : en écrire la lecture en readFileSync("…"))` : "";
+      defauts.push(`${s} : listée, n'importe aucun module emporté ni ne lit le code d'une fonction — elle ne garde rien ici${indice}`);
+    }
   }
   if (!listees.has(CE_BANC)) defauts.push(`${CE_BANC} : absent de l'étape — la liste ne se vérifie plus avant « Déployer », seulement dans la CI qui tourne en parallèle`);
   // Les écarts : une raison, et un objet.
@@ -443,8 +530,10 @@ function auditer({ workflow, reference, fichiers }, ecarts = ECARTS) {
     if (typeof raison !== "string" || raison.trim().length < RAISON_MIN) defauts.push(`écart ${cible} : sans raison (${RAISON_MIN} caractères au moins)`);
     if (cible.startsWith(SUITES + "/")) {
       if (!(cible in fichiers)) defauts.push(`écart ${cible} : sans objet — la suite n'existe pas`);
-      else if (!importsDe.has(cible) && !aveugles.has(cible)) defauts.push(`écart ${cible} : sans objet — elle n'importe aucun module emporté`);
+      else if (!garde(cible) && !aveugles.has(cible) && !nommeesSeules.has(cible)) defauts.push(`écart ${cible} : sans objet — elle n'importe aucun module emporté ni ne lit le code d'une fonction`);
       else if (listees.has(cible)) defauts.push(`écart ${cible} : sans objet — elle est listée`);
+    } else if (ENTREES.has(cible)) {
+      if (executee(cible)) defauts.push(`écart ${cible} : sans objet — une suite listée l'exécute`);
     } else if (cible.startsWith(FONCTIONS + "/")) {
       const utile = emportes.has(cible) ? !couvert(cible) : cible.startsWith(SHARED) && cible in fichiers;
       if (!utile) defauts.push(`écart ${cible} : sans objet — ${!(cible in fichiers) ? "le fichier n'existe pas" : emportes.has(cible) ? "une suite listée l'importe" : "ce n'est pas un module"}`);
@@ -455,13 +544,21 @@ function auditer({ workflow, reference, fichiers }, ecarts = ECARTS) {
   else if (ref && ref.version && majeure(etape.version) !== majeure(ref.version)) {
     defauts.push(`Node ${etape.version} avant les verrous, Node ${ref.version} dans deploy.yml (job ${ref.job}), qui éprouve tests/unit/*.test.mjs : une suite verte à la fusion peut rougir ici et retenir le déploiement, ou l'inverse`);
   }
-  return { defauts, emportes, importsDe, listees, version: etape.version, reference: ref, verrous: etape.verrous };
+  // ⑨ chaque fonction est exécutée avant « Déployer » — relire son code ne suffit pas :
+  // `uid`, jamais déclaré, passait toutes les relectures de notify-call (#753).
+  for (const e of entrees) {
+    if (executee(e) || e in ecarts) continue;
+    defauts.push(`${e} : aucune suite listée ne l'exécute — une variable jamais déclarée dans son gestionnaire partirait en production (#753) : lui écrire son banc (tests/unit/lib/executer-fonction.mjs), ou déclarer l'écart avec sa raison`);
+  }
+  return { defauts, emportes, importsDe, lecturesDe, executionsDe, nommeesSeules, listees, version: etape.version, reference: ref, verrous: etape.verrous };
 }
 
 const REEL = depot();
 const AUDIT = auditer(REEL);
 const S = (nom) => SHARED + nom;
 const INDEX_PILOTAGE = FONCTIONS + "/pilotage/index.ts";
+const INDEX_NOTIFY = FONCTIONS + "/notify-call/index.ts";
+const NOTIFY_CHEMINS = SUITES + "/notify-call-chemins.test.mjs";
 
 test("⓪ ① ② ③ ④ ⑤ le dépôt tel qu'il est : chaque module emporté a sa suite avant « Déployer », chaque suite d'un module emporté y tourne ou son écart est dit", () => {
   assert.deepEqual(AUDIT.defauts, []);
@@ -487,6 +584,26 @@ test("le lecteur voit ce que la CLI emporte : tout _shared, l'import de dix lign
   assert.ok(AUDIT.importsDe.get(SUITES + "/suppression-entrelacement.test.mjs").includes(S("purge-compte.js")));
   // Ce banc n'importe aucun module : ses textes de mutation sont des chaînes.
   assert.equal(AUDIT.importsDe.has(CE_BANC), false);
+  // …et ne lit le code d'aucune fonction (ses chemins se composent) ; il n'en nomme
+  // qu'un, par la clé de son écart ⑨.
+  assert.equal(AUDIT.lecturesDe.has(CE_BANC), false);
+  assert.deepEqual(AUDIT.nommeesSeules.get(CE_BANC), [INDEX_PILOTAGE]);
+  // Les LECTURES du code des fonctions (2026-11-09) : le banc qui exécute notify-call,
+  // les deux gestionnaires relus par connexion-recente, et la forme
+  // `(await import("node:fs")).readFileSync(…)` de plafond.test.mjs.
+  assert.deepEqual(AUDIT.lecturesDe.get(NOTIFY_CHEMINS), [INDEX_NOTIFY]);
+  assert.deepEqual(AUDIT.lecturesDe.get(SUITES + "/connexion-recente.test.mjs"), [FONCTIONS + "/delete-account/index.ts", FONCTIONS + "/export-account/index.ts"]);
+  assert.deepEqual(AUDIT.lecturesDe.get(SUITES + "/plafond.test.mjs"), [INDEX_PILOTAGE]);
+  // Une lecture par une aide locale (`lire("…")`) ne se voit pas : le chemin, nommé, se dit.
+  assert.deepEqual(AUDIT.nommeesSeules.get(SUITES + "/battement.test.mjs"), [INDEX_PILOTAGE]);
+  // ⑨ EXÉCUTER, ce n'est pas relire : appels.test.mjs relit notify-call, notify-call-chemins
+  // l'exécute (son propre chargeur) ; les trois autres bancs, par l'aide lib/executer-fonction.mjs.
+  assert.ok(AUDIT.lecturesDe.get(SUITES + "/appels.test.mjs").includes(INDEX_NOTIFY) && !AUDIT.executionsDe.has(SUITES + "/appels.test.mjs"));
+  assert.deepEqual(AUDIT.executionsDe.get(NOTIFY_CHEMINS), [INDEX_NOTIFY]);
+  for (const fn of ["ask-ai", "delete-account", "export-account"]) {
+    assert.deepEqual(AUDIT.executionsDe.get(`${SUITES}/${fn}-chemins.test.mjs`), [`${FONCTIONS}/${fn}/index.ts`], fn);
+  }
+  assert.ok(![...AUDIT.executionsDe.values()].flat().includes(INDEX_PILOTAGE), "prémisse de l'écart : aucun banc n'exécute pilotage");
   assert.ok(AUDIT.listees.has(CE_BANC), "ce banc tourne dans l'étape");
   assert.ok(AUDIT.listees.size >= 10 && AUDIT.verrous.length === 1, "prémisse : l'étape est lue");
   assert.equal(majeure(AUDIT.version), majeure(AUDIT.reference.version));
@@ -516,6 +633,23 @@ test("le lexeur : un import ne se lit que dans le CODE — accents, commentaires
   assert.equal(imports('import { a } from "./m.js";').calcules, 0);
   assert.equal(imports('const d = "../../supabase/functions/_shared/";').nomme, true);
   assert.equal(imports('// "../../supabase/functions/_shared/"').nomme, false, "un commentaire ne nomme rien");
+});
+
+test("le lexeur : une LECTURE de code ne se lit que dans le CODE, par un chemin écrit — littéral, new URL, path.join ; le reste est nommé, ou rien", () => {
+  const lu = (src) => imports(src).lectures;
+  const E = "supabase/functions/x/index.ts";   // une fonction qui n'existe pas : ce banc ne nomme aucune entrée réelle
+  assert.deepEqual(lu(`const s = fs.readFileSync("${E}", "utf8");`), [{ v: E, base: "racine" }]);
+  assert.deepEqual(lu(`const s = readFileSync(\`./${E}\`);`), [{ v: "./" + E, base: "racine" }]);
+  assert.deepEqual(lu(`const s = fs.readFileSync(new URL("../../${E}", import.meta.url), "utf8");`), [{ v: "../../" + E, base: "fichier" }]);
+  assert.deepEqual(lu(`const s = fs.readFileSync(path.join(RACINE, "${E}"), "utf8");`), [{ v: E, base: "racine" }]);
+  assert.deepEqual(lu(`const s = await fsp.readFile(resolve(racine, "${E}"));`), [{ v: E, base: "racine" }]);
+  assert.deepEqual(lu(`const s = (await import("node:fs")).readFileSync("${E}", "utf8");`), [{ v: E, base: "racine" }]);
+  // Ce qui ne se lit pas : un chemin calculé, une lecture citée en commentaire, en chaîne ou en gabarit, une déclaration.
+  assert.deepEqual(lu('fs.readFileSync(chemin, "utf8"); fs.readFileSync(D + "/index.ts"); fs.readFileSync(path.join(R, "a", "index.ts"));'), []);
+  assert.deepEqual(lu(`// fs.readFileSync("${E}")\n/* readFileSync("${E}") */\nconst c = 'fs.readFileSync("${E}")';\nconst g = \`readFileSync("${E}")\`;`), []);
+  assert.deepEqual(lu("function readFileSync(p) { return p; }"), []);
+  // Nommés : les chaînes du code qui désignent un index.ts — pas un message, pas un commentaire.
+  assert.deepEqual(imports(`charger("${E}"); const m = "x/index.ts : introuvable"; // "${E}"`).noms, [E]);
 });
 
 // ── ⑥ Le bloc réel, joué par bash comme sur le runner, contre un faux `node` ─────
@@ -602,7 +736,7 @@ test("⑦ retirer N'IMPORTE QUELLE ligne de l'étape rougit, en nommant sa suite
     for (const s of l.split(" ").slice(2)) {
       rougit(avec({ workflow: sans }), s === CE_BANC
         ? new RegExp("^" + echapper(CE_BANC) + " : absent de l'étape")
-        : new RegExp("^" + echapper(s) + " : importe .* ne tourne pas avant « Déployer »"));
+        : new RegExp("^" + echapper(s) + " : (?:importe|lit) .* ne tourne pas avant « Déployer »"));
     }
   }
 });
@@ -678,9 +812,11 @@ test("⑦ les écarts : retiré, il rougit ; sans objet, sans raison ou hors cib
   const listee = muter(REEL.workflow, LIGNE_PLAFOND, "node --test tests/unit/plafond.test.mjs tests/unit/sentinelle-detecter.test.mjs\n");
   rougit(avec({ workflow: listee }), /^écart tests\/unit\/sentinelle-detecter\.test\.mjs : sans objet — elle est listée$/);
   rougit(REEL, /^écart tests\/unit\/fantome\.test\.mjs : sans objet — la suite n'existe pas$/, { ...ECARTS, [SUITES + "/fantome.test.mjs"]: raison });
-  rougit(REEL, /^écart tests\/unit\/bornes-ci\.test\.mjs : sans objet — elle n'importe aucun module emporté$/, { ...ECARTS, [SUITES + "/bornes-ci.test.mjs"]: raison });
+  rougit(REEL, /^écart tests\/unit\/bornes-ci\.test\.mjs : sans objet — elle n'importe aucun module emporté ni ne lit le code d'une fonction$/, { ...ECARTS, [SUITES + "/bornes-ci.test.mjs"]: raison });
   rougit(REEL, /^écart supabase\/functions\/_shared\/plafond\.js : sans objet — une suite listée l'importe$/, { ...ECARTS, [S("plafond.js")]: raison });
-  rougit(REEL, /^écart supabase\/functions\/pilotage\/index\.ts : sans objet — ce n'est pas un module$/, { ...ECARTS, [INDEX_PILOTAGE]: raison });
+  rougit(REEL, /^écart supabase\/functions\/notify-call\/index\.ts : sans objet — une suite listée l'exécute$/, { ...ECARTS, [INDEX_NOTIFY]: raison });
+  const aide = FONCTIONS + "/pilotage/aide.ts";
+  rougit(avec({ fichiers: { [aide]: "export const a = 1;\n" } }), /^écart supabase\/functions\/pilotage\/aide\.ts : sans objet — ce n'est pas un module$/, { ...ECARTS, [aide]: raison });
   rougit(REEL, /^écart tests\/unit\/sentinelle-detecter\.test\.mjs : sans raison/, { ...ECARTS, [SUITES + "/sentinelle-detecter.test.mjs"]: "parce que" });
   rougit(REEL, /^écart docs\/x\.md : ni une suite de tests\/unit, ni un fichier de supabase\/functions$/, { ...ECARTS, "docs/x.md": raison });
 });
@@ -745,6 +881,89 @@ test("⑦ ③ une suite listée absente, sans module emporté, ou deux fois : ch
   rougit({ ...REEL, fichiers: sans }, /^tests\/unit\/battement\.test\.mjs : listée, introuvable/);
   rougit(avec({ workflow: muter(REEL.workflow, LIGNE_PLAFOND, LIGNE_PLAFOND + INDENT + "node --test tests/unit/bornes-ci.test.mjs\n") }), /^tests\/unit\/bornes-ci\.test\.mjs : listée, n'importe aucun module emporté/);
   rougit(avec({ workflow: muter(REEL.workflow, LIGNE_PLAFOND, LIGNE_PLAFOND + INDENT + LIGNE_PLAFOND) }), /^tests\/unit\/plafond\.test\.mjs : listée deux fois$/);
+});
+
+test("⑦ ② ③ le banc qui EXÉCUTE notify-call : retiré de l'étape, il rougit ; listé sans lire le code d'une fonction, il rougit encore — le remède est une lecture écrite", () => {
+  const src = REEL.fichiers[NOTIFY_CHEMINS];
+  assert.equal(AUDIT.importsDe.has(NOTIFY_CHEMINS), false, "prémisse : il n'importe aucun module emporté — seule sa lecture le garde");
+  assert.ok(AUDIT.listees.has(NOTIFY_CHEMINS), "prémisse : il tourne dans l'étape");
+  // Retiré de l'étape : il rougit, en nommant le code qu'il lit.
+  const sans = muter(REEL.workflow, "\n" + INDENT + "node --test " + NOTIFY_CHEMINS + "\n", "\n");
+  const absent = new RegExp("^" + echapper(NOTIFY_CHEMINS) + " : lit " + echapper(INDEX_NOTIFY) + " \\(le code d'une fonction déployée\\) et ne tourne pas avant « Déployer »");
+  rougit(avec({ workflow: sans }), absent);
+  // Listé, sans lire le code d'une fonction : il ne garde rien.
+  const LECTURE = 'fs.readFileSync("' + INDEX_NOTIFY + '", "utf8")';
+  const rien = new RegExp("^" + echapper(NOTIFY_CHEMINS) + " : listée, n'importe aucun module emporté ni ne lit le code d'une fonction — elle ne garde rien ici");
+  const lisant = (lecture, avant = "") => avec({ fichiers: { [NOTIFY_CHEMINS]: avant + muter(src, LECTURE, lecture) } });
+  for (const autre of [
+    '"Deno.serve(async () => new Response(null));"',                                 // une source écrite à la main
+    'fs.readFileSync("' + S("appels.js") + '", "utf8")',                              // un module partagé, lu comme du texte
+    'fs.readFileSync("' + FONCTIONS + '/fantome/index.ts", "utf8")',                 // une fonction qui n'existe pas
+    'fs.readFileSync(["supabase", "functions", "notify-call", "index.ts"].join("/"), "utf8")',   // un chemin calculé
+    '"" /* fs.readFileSync("' + INDEX_NOTIFY + '", "utf8") */',                       // une lecture citée en commentaire
+  ]) rougit(lisant(autre), rien);
+  // Le chemin dans une constante : nommé, pas lu. Listé, le message dit quoi écrire ; retiré, ②' le dit.
+  const constante = lisant('fs.readFileSync(CHEMIN, "utf8")', 'const CHEMIN = "' + INDEX_NOTIFY + '";\n');
+  rougit(constante, new RegExp(rien.source + " \\(elle nomme " + echapper(INDEX_NOTIFY) + " : en écrire la lecture"));
+  rougit({ ...constante, workflow: sans }, new RegExp("^" + echapper(NOTIFY_CHEMINS) + " : nomme " + echapper(INDEX_NOTIFY) + " sans que le banc en voie la lecture"));
+  // Le remède, sous chaque forme écrite — et par une aide de tests/unit/lib, que le banc suit.
+  for (const forme of [
+    'fs.readFileSync(new URL("../../' + INDEX_NOTIFY + '", import.meta.url), "utf8")',
+    'fs.readFileSync(path.join(RACINE, "' + INDEX_NOTIFY + '"), "utf8")',
+  ]) assert.deepEqual(auditer(lisant(forme)).defauts, [], forme);
+  const aide = SUITES + "/lib/source-notify.mjs";
+  const parAide = {
+    [aide]: 'import fs from "node:fs";\nexport const SOURCE = ' + LECTURE + ";\n",
+    [NOTIFY_CHEMINS]: 'import { SOURCE } from "./lib/source-notify.mjs";\n' + muter(src, "const SOURCE = " + LECTURE + ";\n", ""),
+  };
+  assert.deepEqual(auditer(avec({ fichiers: parAide })).defauts, []);
+  rougit(avec({ workflow: sans, fichiers: parAide }), absent);
+});
+
+test("⑦ ⑨ chaque fonction est EXÉCUTÉE avant « Déployer » : un banc retiré, un banc qui ne fait plus que relire, une fonction neuve sans banc, l'écart de pilotage retiré — chacun rougit", () => {
+  const sauf = (cle) => Object.fromEntries(Object.entries(ECARTS).filter(([k]) => k !== cle));
+  const ASK = FONCTIONS + "/ask-ai/index.ts";
+  const nonExecutee = (e) => new RegExp("^" + echapper(e) + " : aucune suite listée ne l'exécute — une variable jamais déclarée");
+  const bancDe = (cible) => 'import fs from "node:fs";\nimport { chargerFonction } from "./lib/executer-fonction.mjs";\n'
+    + 'const SOURCE = fs.readFileSync("' + cible + '", "utf8");\nawait chargerFonction(SOURCE, { modules: {}, env: () => undefined });\n';
+  const listant = (suite) => muter(REEL.workflow, LIGNE_PLAFOND, LIGNE_PLAFOND + INDENT + "node --test " + suite + "\n");
+  // Le banc d'ask-ai retiré de l'étape : ② le nomme, ⑨ dit ce qui n'est plus exécuté.
+  rougit(avec({ workflow: muter(REEL.workflow, "\n" + INDENT + "node --test " + SUITES + "/ask-ai-chemins.test.mjs\n", "\n") }), nonExecutee(ASK));
+  // notify-call, relu par trois suites listées, n'est exécuté que par une : qu'elle cesse de charger, il rougit.
+  const relue = REEL.fichiers[NOTIFY_CHEMINS].split("stripTypeScriptTypes").join("retirerLesTypes");
+  rougit(avec({ fichiers: { [NOTIFY_CHEMINS]: relue } }), nonExecutee(INDEX_NOTIFY));
+  // …de même par l'aide partagée : les trois bancs qui la chargent cessent d'exécuter.
+  const AIDE = SUITES + "/lib/executer-fonction.mjs";
+  const d = rougit(avec({ fichiers: { [AIDE]: REEL.fichiers[AIDE].split("stripTypeScriptTypes").join("retirerLesTypes") } }), nonExecutee(ASK));
+  for (const fn of ["delete-account", "export-account"]) assert.ok(d.some((x) => nonExecutee(FONCTIONS + "/" + fn + "/index.ts").test(x)), fn);
+  // Une fonction neuve, sans banc : elle rougit ; son banc, listé, la remet au vert.
+  const NEUVE = FONCTIONS + "/neuve/index.ts";
+  const neuve = { [NEUVE]: 'import { REVISION } from "../_shared/revision.js";\nDeno.serve(() => new Response(REVISION));\n' };
+  rougit(avec({ fichiers: neuve }), nonExecutee(NEUVE));
+  const bancNeuf = SUITES + "/neuve-chemins.test.mjs";
+  assert.deepEqual(auditer(avec({ workflow: listant(bancNeuf), fichiers: { ...neuve, [bancNeuf]: bancDe(NEUVE) } })).defauts, []);
+  // L'écart de pilotage : retiré, pilotage rougit ; le jour où un banc l'exécute, c'est l'écart qui rougit.
+  rougit(REEL, nonExecutee(INDEX_PILOTAGE), sauf(INDEX_PILOTAGE));
+  const bancPilotage = SUITES + "/pilotage-chemins.test.mjs";
+  rougit(avec({ workflow: listant(bancPilotage), fichiers: { [bancPilotage]: bancDe(INDEX_PILOTAGE) } }),
+    /^écart supabase\/functions\/pilotage\/index\.ts : sans objet — une suite listée l'exécute$/);
+});
+
+test("⑦ ② une suite NEUVE qui lit le code d'une fonction rougit tant qu'elle n'est pas listée ; nommé par une aide qui reçoit le chemin, ②' le dit", () => {
+  const neuve = SUITES + "/neuve.test.mjs";
+  const ASK = FONCTIONS + "/ask-ai/index.ts";
+  const avecNeuve = (w) => muter(w, LIGNE_PLAFOND, LIGNE_PLAFOND + INDENT + "node --test " + neuve + "\n");
+  const lit = { [neuve]: 'import fs from "node:fs";\nconst SOURCE = fs.readFileSync("' + ASK + '", "utf8");\n' };
+  rougit(avec({ fichiers: lit }), new RegExp("^" + echapper(neuve) + " : lit " + echapper(ASK) + " \\(le code d'une fonction déployée\\) et ne tourne pas avant « Déployer »"));
+  assert.deepEqual(auditer(avec({ workflow: avecNeuve(REEL.workflow), fichiers: lit })).defauts, []);
+  // Une aide qui lit le chemin qu'on lui passe : le banc ne voit qu'un nom.
+  const nommee = {
+    [SUITES + "/lib/charger.mjs"]: 'import fs from "node:fs";\nexport const charger = (c) => fs.readFileSync(c, "utf8");\n',
+    [neuve]: 'import { charger } from "./lib/charger.mjs";\nconst SOURCE = charger("' + ASK + '");\n',
+  };
+  rougit(avec({ fichiers: nommee }), new RegExp("^" + echapper(neuve) + " : nomme " + echapper(ASK) + " sans que le banc en voie la lecture"));
+  rougit(avec({ workflow: avecNeuve(REEL.workflow), fichiers: nommee }), new RegExp("^" + echapper(neuve) + " : listée, n'importe aucun module emporté ni ne lit le code d'une fonction — elle ne garde rien ici \\(elle nomme " + echapper(ASK)));
+  assert.deepEqual(auditer(avec({ fichiers: nommee }), { ...ECARTS, [neuve]: "une raison écrite, assez longue pour passer le seuil du banc" }).defauts, []);
 });
 
 test("⑦ ⓪ un fichier de _shared qu'aucune fonction n'emporte rougit — et c'est ce qui trahirait un import mal lu", () => {
