@@ -113,6 +113,9 @@ test("④ API en échec ou vide : la liste locale ; un échec n'est pas gardé e
   expect(r.refus).toEqual(r.locale);
   mode = "coupe";
   expect(await page.evaluate(() => passioFetchGifs("coupe", 5))).toEqual(r.locale);
+  // Une panne réseau arme la pause d'une minute (un 429 sans en-tête CORS s'y lit pareil).
+  expect(await page.evaluate(() => _gifPauseJusqua - Date.now())).toBeGreaterThan(55 * 1000);
+  await page.evaluate(() => { _gifPauseJusqua = 0; });
   mode = "vide";
   expect(await page.evaluate(() => passioFetchGifs("vide", 5))).toEqual(r.locale);
   // La même recherche que le refus, l'API revenue : elle repart, et rend KLIPY.
@@ -122,29 +125,38 @@ test("④ API en échec ou vide : la liste locale ; un échec n'est pas gardé e
   expect(demandes.filter((d) => d.includes("q=refus")).length).toBe(2);
 });
 
-test("④ bis quota épuisé (429) : plus d'appel pendant une minute — la liste locale, sans requête ; ensuite, ça repart", async ({ page }) => {
+test("④ bis quota épuisé (429) : plus d'appel pendant une minute — la liste locale, sans requête, mais le cache reste servi ; ensuite, ça repart", async ({ page }) => {
   await bootOnboarded(page);
-  let quota = true;
+  let quota = false;
   const demandes = await brancher(page, (route) => quota
     ? route.fulfill({ status: 429, json: { error: "rate limit" } })
     : route.fulfill({ json: reponse(1, "rendu") }));
   const r = await page.evaluate(async () => {
     const locale = PASSIO_DEFAULT_GIFS.slice(0, 4);
+    const enCache = await passioFetchGifs("chat", 4); // reçu avant le quota : en cache
+    return { locale, enCache };
+  });
+  expect(r.enCache).toEqual(["https://static.klipy.com/ii/rendu0/petit.gif"]);
+  quota = true;
+  const p = await page.evaluate(async () => {
     const premier = await passioFetchGifs("quota", 4);
     // Chaque frappe suivante, pendant la pause : rien ne part.
     const pendant = [await passioFetchGifs("quotas", 4), await passioFetchGifs("quota d", 4), await passioFetchGifs("", 4)];
-    return { locale, premier, pendant, pause: _gifPauseJusqua - Date.now() };
+    // Ce qui est déjà en cache reste servi : la pause ne remplace pas KLIPY par la liste locale.
+    const cache = await passioFetchGifs("chat", 4);
+    return { premier, pendant, cache, pause: _gifPauseJusqua - Date.now() };
   });
-  expect(r.premier).toEqual(r.locale);
-  for (const p of r.pendant) expect(p).toEqual(r.locale);
-  expect(demandes.length).toBe(1);
-  expect(r.pause).toBeGreaterThan(55 * 1000);
-  expect(r.pause).toBeLessThanOrEqual(60 * 1000);
+  expect(p.premier).toEqual(r.locale);
+  for (const x of p.pendant) expect(x).toEqual(r.locale);
+  expect(p.cache).toEqual(r.enCache);
+  expect(demandes.length).toBe(2);
+  expect(p.pause).toBeGreaterThan(55 * 1000);
+  expect(p.pause).toBeLessThanOrEqual(60 * 1000);
   // La minute passée (simulée), l'API est rappelée.
   quota = false;
   const apres = await page.evaluate(() => { _gifPauseJusqua = 0; return passioFetchGifs("quota", 4); });
   expect(apres).toEqual(["https://static.klipy.com/ii/rendu0/petit.gif"]);
-  expect(demandes.length).toBe(2);
+  expect(demandes.length).toBe(3);
 });
 
 test("⑤ le champ de recherche dit « Rechercher sur KLIPY » — le panneau générique, celui de la messagerie, et partout dans le code", async ({ page }) => {

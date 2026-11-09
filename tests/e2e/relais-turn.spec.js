@@ -4,7 +4,7 @@
 // Le TURN public « Open Relay » est mort (`openrelay.metered.ca` → 192.0.2.1 /
 // 100::1, mesuré le 2026-11-09) : sans relais, un live ou un appel entre deux
 // réseaux à NAT strict échoue. `notify-call` fabrique, sur `{ type: "ice" }`, des
-// identifiants Cloudflare de 24 h ; `assurerServeursIce` (app-05) les AJOUTE au
+// identifiants Cloudflare de 6 h ; `assurerServeursIce` (app-05) les AJOUTE au
 // tableau que lisent les cinq `new RTCPeerConnection`. Le vrai code client, un
 // faux `supa.functions.invoke` qui COMPTE les demandes.
 //
@@ -189,14 +189,27 @@ test("⑧ câblage : les lives et les appels ATTENDENT le relais avant de créer
   };
   const ATTENTE = "try { await _relais; } catch (e) {}";
   const hote = corps("async function startVideoLive()");
-  expect(hote.indexOf("assurerServeursIce();")).toBeGreaterThan(hote.indexOf("_appelEnPreparation();"));
-  expect(hote.indexOf("assurerServeursIce();")).toBeLessThan(hote.indexOf("await _vlivePromptTitle()"));
-  // Chaque spectateur : la connexion de l'hôte se crée APRÈS le relais (un spectateur
-  // peut arriver avant la réponse), puis on revérifie que le live existe toujours.
+  expect(hote.indexOf("const _relais = assurerServeursIce();")).toBeGreaterThan(hote.indexOf("_appelEnPreparation();"));
+  expect(hote.indexOf("const _relais = assurerServeursIce();")).toBeLessThan(hote.indexOf("await _vlivePromptTitle()"));
+  // Attendu UNE fois, après la caméra et AVANT d'ouvrir le live : la connexion de
+  // chaque spectateur se crée ensuite sans attente.
+  expect(hote.indexOf(ATTENTE)).toBeGreaterThan(hote.indexOf("getUserMedia("));
+  expect(hote.indexOf(ATTENTE)).toBeLessThan(hote.indexOf('supa.channel("vlive:"'));
+  // Chaque spectateur : SYNCHRONE jusqu'à `H.pcs[vid]` — `_vliveHostAssign` décide
+  // doublon et capacité sur cette table. Une attente là (première correction de
+  // l'audit) faisait répondre « complet » à des spectateurs arrivés ensemble.
   const ajout = corps("async function _vliveHostAddViewer(vid)");
-  expect(ajout.indexOf("try { await assurerServeursIce(); } catch (e) {}")).toBeGreaterThan(-1);
-  expect(ajout.indexOf("try { await assurerServeursIce(); } catch (e) {}")).toBeLessThan(ajout.indexOf("const H = window._vliveHost;"));
-  expect(ajout.indexOf("const H = window._vliveHost;")).toBeLessThan(ajout.indexOf("new RTCPeerConnection"));
+  const pose = ajout.indexOf("H.pcs[vid] = entry;");
+  expect(pose).toBeGreaterThan(-1);
+  expect(ajout.slice(0, pose)).not.toMatch(/\bawait\b/);
+  expect(ajout.indexOf("assurerServeursIce();")).toBeGreaterThan(ajout.indexOf("VLIVE_MAX_VIEWERS"));
+  expect(ajout.indexOf("assurerServeursIce();")).toBeLessThan(ajout.indexOf("new RTCPeerConnection"));
+  // Toute autre connexion (spectateur, relais vers un enfant) relance le relais juste
+  // avant : les identifiants expirés tombent, le renouvellement part.
+  for (const m of src.matchAll(/new RTCPeerConnection\(\{ iceServers: CALL_ICE_SERVERS \}\)/g)) {
+    const avant = src.slice(Math.max(0, m.index - 260), m.index);
+    expect(/assurerServeursIce\(\);[^\n]*\n\s*(const pc = )?$/.test(avant) || /function _callSetupPeerConnection\(\) \{\n  const cs = window\._call;\n  const pc = $/.test(avant), avant.slice(-120)).toBe(true);
+  }
   const spectateur = corps("async function joinVideoLive(liveId)");
   expect(spectateur).toContain("const _relais = assurerServeursIce();");
   // Attendu AVANT d'entrer dans le canal du live : l'offre de l'hôte peut arriver tout de suite.
@@ -208,6 +221,11 @@ test("⑧ câblage : les lives et les appels ATTENDENT le relais avant de créer
   expect(appel.indexOf("const _relais = assurerServeursIce();")).toBeGreaterThan(appel.indexOf("Ce contact de démo n'est pas joignable"));
   expect(appel.indexOf(ATTENTE)).toBeGreaterThan(appel.indexOf("await _callGetMedia(kind)"));
   expect(appel.indexOf(ATTENTE)).toBeLessThan(appel.indexOf("_callSetupPeerConnection();"));
+  // Un double toucher pendant l'attente n'écrase pas l'appel ; un départ devenu sans
+  // objet coupe la caméra et le micro qu'il a obtenus.
+  expect(appel.indexOf("if (window._callDepart) return;")).toBeLessThan(appel.indexOf("await _callGetMedia(kind)"));
+  expect(appel.indexOf("const departValide = window._callDepart === depart && !window._call;")).toBeGreaterThan(appel.indexOf(ATTENTE));
+  expect(appel.indexOf("if (!departValide) { try { (stream.getTracks() || []).forEach((t) => t.stop()); } catch (e) {} return; }")).toBeLessThan(appel.indexOf("_callSetupPeerConnection();"));
   const reponse = corps("async function acceptIncomingCall()");
   expect(reponse.indexOf("const _relais = assurerServeursIce();")).toBeLessThan(reponse.indexOf("await _callGetMedia(inv.kind)"));
   expect(reponse.indexOf(ATTENTE)).toBeGreaterThan(reponse.indexOf("await _callGetMedia(inv.kind)"));
@@ -291,6 +309,57 @@ test("⑩ une entrée dans un live ne se double pas pendant l'attente du relais 
   expect(r.lectures).toBe(1);
   expect(r.vue).toBe("live_banc");
   expect(r.entree).toBe(null);
+});
+
+// Les appels sont coupés pendant le pilote : l'armement de test les rallume, et
+// `supabase.co` est coupé (rien ne part vers la production).
+async function bancAppel(page) {
+  await page.route(/supabase\.co/, (route) => route.abort());
+  await page.addInitScript(() => localStorage.setItem("passio_appels_actifs", "1"));
+  await preparer(page);
+  await page.evaluate(() => {
+    window.__muet = true; // le relais tarde 2,5 s : la fenêtre où l'on peut retoucher
+    window.__arrets = 0; window.__connexions = 0; window.__refus = []; window.__medias = 0;
+    navigator.mediaDevices.getUserMedia = () => {
+      window.__medias++;
+      const piste = { stop() { window.__arrets++; } };
+      return Promise.resolve({ getTracks: () => [piste], getAudioTracks: () => [piste], getVideoTracks: () => [] });
+    };
+    _callSetupPeerConnection = () => { window.__connexions++; };
+    _callRenderActiveUI = () => {};
+    _callDeclineSilent = (inv) => { window.__refus.push(inv.callId); };
+  });
+}
+
+test("⑪ appel entrant : « Refuser » pendant l'attente du relais ANNULE l'acceptation — aucune connexion, caméra et micro coupés", async ({ page }) => {
+  await bancAppel(page);
+  const r = await page.evaluate(async () => {
+    window._callIncoming = { callId: "c_banc", from: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "voice", identite: { name: "Léa", emoji: "🌿", color: "#22c55e" } };
+    const acceptation = acceptIncomingCall();
+    await new Promise((res) => setTimeout(res, 300));
+    declineIncomingCall(); // rien ne bougeait encore à l'écran : on refuse
+    await acceptation;
+    return { appel: !!window._call, connexions: window.__connexions, medias: window.__medias, arrets: window.__arrets, refus: window.__refus, jeton: window._callAcceptation };
+  });
+  expect(r.medias).toBe(1);
+  expect(r.appel).toBe(false);
+  expect(r.connexions).toBe(0);
+  expect(r.arrets, "la caméra et le micro obtenus sont coupés").toBe(1);
+  expect(r.refus).toEqual(["c_banc"]);
+  expect(r.jeton).toBe(null);
+});
+
+test("⑪ bis appel entrant accepté sans refus : il se connecte, une seule fois", async ({ page }) => {
+  await bancAppel(page);
+  const r = await page.evaluate(async () => {
+    window._callIncoming = { callId: "c_banc", from: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", kind: "voice", identite: { name: "Léa", emoji: "🌿", color: "#22c55e" } };
+    await acceptIncomingCall();
+    return { appel: window._call && window._call.id, connexions: window.__connexions, arrets: window.__arrets, jeton: window._callAcceptation };
+  });
+  expect(r.appel).toBe("c_banc");
+  expect(r.connexions).toBe(1);
+  expect(r.arrets).toBe(0);
+  expect(r.jeton).toBe(null);
 });
 
 test("⑩ bis deux lives touchés coup sur coup : le DERNIER gagne, le premier n'ouvre aucun canal", async ({ page }) => {

@@ -51,8 +51,9 @@ var PASSIO_DEFAULT_GIFS = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/gip
 // Cache mémoire 10 min par requête pour économiser le quota.
 var _gifCache = {};
 // Quota épuisé (429 — la clé de test KLIPY donne 100 appels par heure à TOUTE
-// l'app) : plus d'appel pendant une minute. Sans cette pause, chaque frappe dans
-// le champ de recherche rappelait l'API pour un refus de plus.
+// l'app) ou panne réseau : plus d'appel pendant une minute (le cache reste servi).
+// Sans cette pause, chaque frappe dans le champ de recherche rappelait l'API pour
+// un refus de plus.
 var GIF_PAUSE_QUOTA_MS = 60 * 1000;
 var _gifPauseJusqua = 0;
 function passioFetchGifs(query, limit) {
@@ -60,10 +61,11 @@ function passioFetchGifs(query, limit) {
   var q = (query || "").trim();
   var cfg = window.PASSIO_GIF_API || {};
   if (!cfg.key) return Promise.resolve(PASSIO_DEFAULT_GIFS.slice(0, limit));
-  if (Date.now() < _gifPauseJusqua) return Promise.resolve(PASSIO_DEFAULT_GIFS.slice(0, limit));
   var cacheKey = cfg.provider + ":" + q.toLowerCase() + ":" + limit;
   var hit = _gifCache[cacheKey];
   if (hit && Date.now() - hit.at < 600000) return Promise.resolve(hit.urls);
+  // La pause APRÈS le cache : des résultats déjà reçus restent servis pendant la minute.
+  if (Date.now() < _gifPauseJusqua) return Promise.resolve(PASSIO_DEFAULT_GIFS.slice(0, limit));
   var url;
   if (cfg.provider === "giphy") {
     url = q
@@ -77,6 +79,10 @@ function passioFetchGifs(query, limit) {
       : "https://api.klipy.com/v2/featured?" + commun;
   }
   return fetch(url)
+    // Un 429 SANS en-tête CORS ne se lit pas : le navigateur le rend comme une panne
+    // réseau. Une panne réseau arme donc la même pause (une minute de liste locale
+    // hors ligne ne coûte rien).
+    .catch(function (e) { _gifPauseJusqua = Date.now() + GIF_PAUSE_QUOTA_MS; throw e; })
     .then(function (r) {
       if (r.status === 429) _gifPauseJusqua = Date.now() + GIF_PAUSE_QUOTA_MS;
       if (!r.ok) throw new Error("HTTP " + r.status);

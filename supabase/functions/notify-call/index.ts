@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
   // 1 ter. IDENTIFIANTS TURN (2026-11-09, `_shared/appels.js`) — `{ type: "ice" }`.
   // Servis aux appels ET aux lives : AVANT l'interrupteur des appels (un live en a
   // besoin même quand les appels sont coupés), APRÈS l'authentification et le
-  // plafond (un compte réel, 20 par minute). Jamais en cache : un secret de 24 h.
+  // plafond (un compte réel, 20 par minute). Jamais en cache : un secret de 6 h.
   if (body.type === "ice") return await identifiantsIce(userData.user);
   const toUserId = borne(body.toUserId, 64);
   const callId = borne(body.callId, 80);
