@@ -32,7 +32,10 @@
 //   ⑬ le filet du fil est le seul chemin de quiconque regarde le fil ; ⑭ celui des
 //     lives relit tout de suite au retour, sans jamais doubler sa chaîne ;
 //   ⑮ à la SOURCE : aucun gestionnaire n'interroge `profiles`, la coalescence des
-//     lives et le tri des profils sont partis avec leurs liaisons.
+//     lives et le tri des profils sont partis avec leurs liaisons ;
+//   ⑯ la soupape v1 lit ses messages sur `user:<moi>` (son canal global est parti
+//     avec la publication), v2 non ; ⑰ à ㉓ : un cas par correction de la
+//     relecture adversariale du lot.
 // Fiche : `docs/journal/capacite-perf-realtime.md`, « 📴 ».
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
