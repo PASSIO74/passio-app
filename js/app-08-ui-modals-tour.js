@@ -7322,7 +7322,9 @@ window.PASSIO_REALTIME_V2 = (function(){
 // Pas de course (topic stable), chaque client ne reçoit que ses messages.
 // Validé par test 2 comptes (PASSIO_E2E_RT=v3, vert). Quand v3 est ON, il a
 // priorité sur v2/v1. Soupape par device : localStorage.passio_realtime_v3="0"
-// → revient à v1 (canal global). v2 reste accessible via passio_realtime_v2="1".
+// revenait à v1 (le canal global `postgres_changes`) ; ce canal n'existe plus
+// depuis le 2026-11-09 (« 📴 ») et v1 lit ses messages sur `user:<moi>` comme
+// v3. v2 reste accessible via passio_realtime_v2="1".
 window.PASSIO_REALTIME_V3 = (function(){
   if (typeof window.PASSIO_REALTIME_V3 === "boolean") return window.PASSIO_REALTIME_V3;
   try {
@@ -7714,8 +7716,10 @@ window._texteBrutNotif = _texteBrutNotif;
 
 // S'abonne UNE fois au topic privé de l'utilisateur (`user:<MY_UID>`).
 // Idempotent. Les liaisons, la première selon le mode :
-//   · `INSERT` — un MESSAGE (v3 seulement : en v1/v2 les messages arrivent par
-//     `postgres_changes` ou `conv:<id>`, les lire ici aussi les doublerait) ;
+//   · `INSERT` — un MESSAGE, sauf en v2 (les messages y arrivent par
+//     `conv:<id>`, les lire ici aussi les doublerait). Depuis le 2026-11-09, la
+//     soupape v1 (`passio_realtime_v3="0"`) les lit ici aussi : le canal global
+//     `postgres_changes` qui les lui apportait n'existe plus (« 📴 ») ;
 //   · `conv_members:INSERT` — on m'ajoute à une conversation (tous modes) ;
 //   · `notifications:INSERT` — une notification (tous modes) ;
 //   · depuis le 2026-11-09 (contenu public hors de `postgres_changes`, voir
@@ -7733,7 +7737,7 @@ function _subscribeUserTopic() {
   if (typeof connexionTempsReelAutorisee === "function" && !connexionTempsReelAutorisee()) return;
 
   var ch = supa.channel("user:" + MY_UID, { config: { private: true } });
-  if (window.PASSIO_REALTIME_V3) {
+  if (window.PASSIO_REALTIME_V3 || !window.PASSIO_REALTIME_V2) {
     ch.on("broadcast", { event: "INSERT" }, function(msg) {
       var p = msg && msg.payload;
       // Le trigger des messages pose `table: "conv_messages"` : une autre table
@@ -7822,11 +7826,11 @@ function supaSubscribe() {
   }
   // ── Topic privé `user:<moi>` : DANS TOUS LES MODES depuis R25 (2026-11-03) ──
   // Il porte les ajouts à une conversation et les notifications, poussés par
-  // le serveur ; les MESSAGES n'y sont lus qu'en v3 (design définitif : un
-  // canal par utilisateur, aucune course — `_subscribeUserTopic`).
+  // le serveur ; les MESSAGES y sont lus hors v2 (design définitif : un canal
+  // par utilisateur, aucune course — `_subscribeUserTopic`).
   // ⚠️ GARDÉ : `_supaSubscribed` est déjà posé — une exception ici, non
-  // rattrapée, priverait la session de TOUT son temps réel (`realtime:db` plus
-  // bas ne serait jamais créé).
+  // rattrapée, priverait la session de TOUT son temps réel (l'armement du
+  // repos et les sujets des discussions, plus bas, ne seraient jamais posés).
   try { _subscribeUserTopic(); }
   catch (e) { try { diagLog("rt_user_topic : " + (e && e.message)); } catch (_e) {} }
   if (!window.PASSIO_REALTIME_V3 && window.PASSIO_REALTIME_V2) {
@@ -7835,19 +7839,20 @@ function supaSubscribe() {
     (getConversations() || []).forEach(function(c) { if (c && c.id) _subscribePrivateConv(c.id); });
   }
 
-  // ── UN SEUL canal pour TOUS les postgres_changes (consolidation 2026-07-15) ──
-  // Avant : 9 canaux séparés = 9 joins realtime PAR CLIENT (ça compte dans le
-  // quota Supabase de canaux concurrents et multiplie les rejoins réseau). Les
-  // bindings multiples sur un même canal étaient déjà le pattern du canal CDV
-  // (5 tables). Chaque handler est INCHANGÉ — seule la plomberie canal change.
-  // Au repos un COMPTE n'a plus que 3 canaux : user:<uid> (messages en v3 ;
-  // ajouts à une conversation et notifications dans tous les modes, R25),
-  // ring:<uid> (appels) et realtime:db (celui-ci). ⚠️ Un visiteur en ouvrait
-  // DEUX, pas trois — `ring:` est gardé par `admissionCompteReel` depuis la
-  // sonde du 2026-09-11 ; il n'en ouvre plus aucun (garde en tête de fonction).
-  // ⚠️ Plus de `realtime:db` une fois le CDC retiré par le serveur (voir
-  // `_creerCanalDb`) : ses liaisons ne trouveraient plus leurs tables.
-  window._dbChan = window._cdcRetire === true ? null : _creerCanalDb(window._rtPriveIndisponible !== true);
+  // ── PLUS AUCUN canal `postgres_changes` (2026-11-09, « 📴 ») ──
+  // Le canal `realtime:db` portait toutes les liaisons `postgres_changes` de la
+  // session (consolidées le 2026-07-15). La migration
+  // `migration_realtime_public_hors_cdc_2026-11-09.sql` a VIDÉ la publication
+  // `supabase_realtime` : une liaison n'y recevrait plus rien, et le serveur
+  // réessaierait sa création toutes les 5 à 10 s, canal ouvert. Au repos un
+  // COMPTE n'a donc plus que 2 canaux : `user:<uid>` (messages, ajouts à une
+  // conversation, notifications, accusés de lecture, commentaires et réactions
+  // de MES publications) et `ring:<uid>` (appels) ; plus un sujet `fil:<id>`
+  // par discussion À L'ÉCRAN. ⚠️ Un visiteur n'en ouvre aucun (garde en tête
+  // de fonction). Ne JAMAIS rajouter de liaison `postgres_changes` : il
+  // faudrait republier sa table, et rallumer pour tous le relevé du WAL
+  // (`npm run audit:realtime` refuse la liaison tant que la table n'est pas
+  // inscrite comme publiée).
   try { _rtReposArmer(); } catch (e) {}
   // Une discussion déjà à l'écran (ouverte avant le socket, ou au réveil)
   // rejoint son sujet `fil:<id>` maintenant.
@@ -7926,11 +7931,9 @@ function _rtEndormir(raison) {
   // pour que le réveil les recrée (leurs gardes d'idempotence lisent ces
   // variables). `removeAllChannels` couvre aussi un canal qu'on ne nommerait pas.
   try { if (typeof _typingChannel !== "undefined") _typingChannel = null; } catch (e) {}
-  try { if (typeof _supaConvChannel !== "undefined") _supaConvChannel = null; } catch (e) {}
   window._privateConvChans = {};
   window._userTopicChan = null;
   window._callRingChan = null;
-  window._dbChan = null;
   window._supaSubscribed = false;
   // Les sujets des discussions AVANT `removeAllChannels` : leurs canaux se
   // ferment à sa suite, et une fermeture ne doit pas passer pour une panne.
@@ -7990,15 +7993,10 @@ function _rtRattraper(raison) {
 window._rtEndormir = _rtEndormir;
 window._rtReveiller = _rtReveiller;
 window._rtReposTick = _rtReposTick;
-// ⚠️ PRIVÉ depuis le 2026-09-11 : quand le tableau de bord Supabase interdit les
-// canaux publics (« Allow public access » OFF — le geste qui rend les policies
-// Realtime opposables), un canal public est REFUSÉ. Celui-ci porte les accusés
-// de lecture et les interactions en direct (l'arrivée dans une conversation
-// est passée sur `user:<moi>` avec R25, le 2026-11-03) : il
-// serait mort sans erreur visible. Policy : `realtime.topic() = 'realtime:db'`
-// (anon ET authenticated — les tables gardent leur propre RLS, le canal n'ouvre
-// rien). Repli public si la souscription privée est refusée PAR POLICY (migration
-// pas encore collée), comme la sonnerie — jamais sur une coupure réseau.
+// ⚠️ `realtime:db`, le canal `postgres_changes` de la session (privé depuis le
+// 2026-09-11), n'existe plus depuis le 2026-11-09 (« 📴 », plus bas). Sa policy
+// (`realtime.topic() = 'realtime:db'`) reste en base : `scripts/controle-realtime.mjs`
+// s'en sert de TÉMOIN — un canal privé, sans aucune liaison, qui doit s'ouvrir.
 // ══════════════════════════════════════════════════════════════════════════
 // ⑦ UN ÉVÉNEMENT REÇU NE DOIT PAS DÉCLENCHER UNE REQUÊTE (2026-09-20)
 // ──────────────────────────────────────────────────────────────────────────
@@ -8112,12 +8110,12 @@ function _profilAuteur(uid) {
 //   · publications, profils et lives ne sont plus poussés à personne : les
 //     filets les relisent, bornés à ce qui est à l'écran.
 //
-// ⚠️ CLIENT D'ABORD : ce code tourne AVANT la migration
-// (`migrations/migration_realtime_public_hors_cdc_2026-11-09.sql`) comme
-// après. Avant, le serveur refuse `fil:` (aucune policy) et les liaisons de
-// TRANSITION de `realtime:db` livrent comme hier ; après, ces tables sont
-// sorties de la publication et ce sont les sujets privés qui livrent. Les
-// deux chemins appellent les MÊMES gestionnaires, idempotents.
+// ⚠️ LA SÉQUENCE, POUR L'HISTOIRE : un premier client a tourné AVANT la
+// migration (`migrations/migration_realtime_public_hors_cdc_2026-11-09.sql`)
+// comme après — cinq liaisons de TRANSITION sur `realtime:db`, rendues au
+// premier refus du serveur. La migration a vidé la publication ; ce client-ci
+// n'a plus que les sujets privés. Une même ligne peut toujours arriver par
+// deux sujets (`fil:` et `user:`) : les gestionnaires restent idempotents.
 // Fiche : `docs/journal/capacite-perf-realtime.md`, « 📴 ».
 // ════════════════════════════════════════════════════════════════════════
 
@@ -8180,9 +8178,9 @@ function _rtInteractionAjoutee(r) {
 }
 window._rtInteractionAjoutee = _rtInteractionAjoutee;
 
-// Une interaction retirée. Par `postgres_changes`, la charge ne vaut que
-// `{ id }` (R37) ; par un sujet privé, la ligne entière. `_commentInteractionRetiree`
-// (app-04) sait faire avec les deux.
+// Une interaction retirée : par un sujet privé, la ligne ENTIÈRE. Le chemin
+// `{ id }` seul (l'ancienne charge `postgres_changes`, R37) reste lisible :
+// `_commentInteractionRetiree` (app-04) retrouve alors la ligne dans l'index.
 function _rtInteractionRetiree(old) {
   try {
     if (old && old.id && _rtDejaTraite("ci-:" + old.id)) return;
@@ -8255,9 +8253,12 @@ window._rtCommentaireActiviteRecu = _rtCommentaireActiviteRecu;
 // fermeture : c'est la fraîcheur du cache d'ouverture (`openComments`,
 // `_cmtThreadLoadedAt`) — rouvrir dans les 20 s reste instantané ET juste,
 // puisque le sujet a continué d'écouter.
-// ⚠️ UN REFUS DE POLICY N'EST PAS UNE PANNE : avant la migration, le serveur
-// refuse tout `fil:` (les liaisons de transition livrent), et après, il ne
-// refuse que ce que je ne peux pas lire. Dans les deux cas, rien à rattraper.
+// ⚠️ UN REFUS DE POLICY N'EST PAS UNE PANNE : le serveur ne refuse que ce que
+// je ne peux pas lire (`fil_temps_reel_visible` : une publication que
+// `post_is_visible` me cache, un fil qui n'existe pas) — rien à rattraper.
+// (Avant la migration, il refusait tout `fil:` et les liaisons de transition
+// de `realtime:db` livraient ; un retour arrière de la migration se fait donc
+// AVEC celui du client, voir l'en-tête de la migration.)
 // Une PANNE (délai dépassé, canal fermé sous nos pieds) fait relire la
 // discussion à cadence adaptative (`discussionRelectureProchainPas`, app-02)
 // jusqu'au retour du sujet : « en quelques secondes », même sans direct.
@@ -8541,135 +8542,13 @@ function _filsRtOublier() {
 }
 window._filsRtOublier = _filsRtOublier;
 
-function _creerCanalDb(prive) {
-  const dbChan = supa.channel("realtime:db", { config: { private: prive } });
-
-  // ⚠️ LES LIAISONS CI-DESSOUS SONT DE TRANSITION (2026-11-09, « 📴 ») : elles
-  // livrent tant que leurs tables sont publiées. La migration
-  // `migration_realtime_public_hors_cdc_2026-11-09.sql` vide la publication ; le
-  // serveur répond alors au join par un message `system` en ERREUR (« Unable to
-  // subscribe to changes… ») et RÉESSAIE toutes les 5 à 10 s, pour chaque
-  // compte, tant que le canal reste ouvert — chaque essai réveillant la
-  // réplication CDC qu'on vient d'éteindre. On rend donc le canal au premier
-  // refus et on ne le recrée plus de la session (`_cdcRetire`, lu par
-  // `supaSubscribe`) : les mêmes lignes arrivent par `fil:<id>` et `user:<moi>`.
-  dbChan.on("system", {}, function (msg) {
-    try {
-      var p = (msg && msg.payload) || msg || {};
-      if (p.extension !== "postgres_changes" || p.status !== "error") return;
-      if (window._dbChan !== dbChan) return;
-      window._cdcRetire = true;
-      window._dbChan = null;
-      try { diagLog("rt_cdc_retire : " + String(p.message || "").slice(0, 120)); } catch (_e) {}
-      Promise.resolve(supa.removeChannel(dbChan)).catch(function () {});
-    } catch (e) { try { diagLog("rt_cdc_system : " + (e && e.message)); } catch (_e) {} }
-  });
-
-  // v1 (si v2/v3 désactivés) : messages entrants via postgres_changes global,
-  // filtrage d'appartenance côté client (_handleIncomingConvMessage).
-  if (!window.PASSIO_REALTIME_V3 && !window.PASSIO_REALTIME_V2) {
-    dbChan.on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_messages" }, function(payload) {
-      _handleIncomingConvMessage(payload.new);
-    });
-  }
-
-  // ── Accusés de lecture : un autre membre a lu → met à jour le ✓✓ en direct ──
-  // TRANSITION (2026-11-09) : la même ligne arrive aussi, après la migration,
-  // par `user:<moi>` (`conv_reads:UPSERT`) ; les deux chemins appellent le même
-  // gestionnaire (voir plus haut le retrait du canal au refus du serveur).
-  dbChan
-    .on("postgres_changes", { event: "*", schema: "public", table: "conv_reads" }, function(payload) {
-      // RV-31 : un DELETE n'est pas un accusé de lecture. Depuis R25 sa charge
-      // est vide (`new` = `old` = {}), et `undefined === undefined` aurait pu
-      // rattacher un « lu » à une conversation sans correspondant.
-      if (!payload || payload.eventType === "DELETE") return;
-      _rtLectureRecue(payload.new);
-    });
-
-  // ── Interactions de commentaires en temps réel (like / réponse / emoji) ──
-  // TRANSITION (2026-11-09) : après la migration, elles arrivent par
-  // `fil:<discussion>` (la discussion ouverte) et `user:<auteur>` (l'auteur de
-  // la publication), avec la ligne ENTIÈRE, y compris pour un retrait.
-  dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "comment_interactions" }, function(payload) {
-      _rtInteractionAjoutee(payload && payload.new);
-    })
-    // ⚠️ `payload.old` vaut `{ id }` et rien d'autre (`apply_rls` réduit un
-    // DELETE sous RLS à la clé primaire) : le passer tel quel à
-    // `_applyCommentInteractionEvent` ne retirait jamais rien (R37). La ligne
-    // est retrouvée dans l'index de ce qu'on a lu ou reçu (app-04).
-    .on("postgres_changes", { event: "DELETE", schema: "public", table: "comment_interactions" }, function(payload) {
-      _rtInteractionRetiree(payload && payload.old);
-    });
-
-  // ── Ajout à une conversation : PLUS ICI depuis R25 (2026-11-03) ──
-  // `conv_members` est sortie de la publication (ses DELETE livraient
-  // `(conversation, compte)` à tout abonné, sans RLS) : le serveur pousse
-  // l'ajout sur `user:<moi>` (`conv_members:INSERT`), reçu par
-  // `_rtAjoutConversationRecu`. Une liaison `postgres_changes` sur une table
-  // hors publication ferait échouer TOUTES celles de ce canal.
-
-  // ── Profils, publications et lives : PLUS DE DIRECT depuis le 2026-11-09 ──
-  // Ces trois liaisons étaient poussées à TOUS les connectés, quoi qu'ils
-  // regardent : chaque changement coûtait un tour de `realtime.apply_rls` par
-  // abonné, et la boucle `realtime.list_changes` qui les relève pesait 60 % du
-  // temps de calcul cumulé de la base (mesuré le 2026-11-09, 7,5 M d'appels).
-  // Leur fraîcheur vient désormais des LECTURES, bornées par ce qui est à
-  // l'écran : le filet du fil (60 s tant que le fil est affiché, pour tout le
-  // monde — `filetEstLeSeulChemin`), le filet des lives (même borne) et la
-  // résolution des profils (`_resolveProfilesByIds`, fraîcheur de 2 min).
-  // Le battement de cœur d'un live (un UPDATE toutes les 25 s) ne part plus vers
-  // personne : il ne servait qu'à être filtré chez chaque connecté.
-  // Fiche : `docs/journal/capacite-perf-realtime.md`, « 📴 ».
-
-  // Les compteurs de likes visibles sont relus par startPostLikeRefresh (HEAD ciblés).
-
-  // ── Notifications entrantes : PLUS ICI depuis R25 (2026-11-03) ──
-  // Même raison que `conv_members` : le serveur pousse chaque notification
-  // sur `user:<moi>` (`notifications:INSERT`), reçue par `_rtNotificationRecue`.
-
-  // Commentaires en temps reel — TRANSITION (2026-11-09) : après la migration,
-  // ils arrivent par `fil:<publication>` et `user:<auteur>`.
-  dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_comments" }, payload => {
-      return _rtCommentaireRecu(payload && payload.new); // supabase-js ignore le retour ; un banc l'attend
-    });
-
-  // Commentaires d'événements IRL en temps réel : si la fiche de l'événement
-  // concerné est ouverte, on recharge le fil. Léger (1 reload ciblé).
-  // TRANSITION (2026-11-09) : après la migration, ils arrivent par `fil:<activité>`.
-  dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_comments" }, payload => {
-      _rtCommentaireActiviteRecu(payload && payload.new);
-    });
-
-  // ⚠️ LES ABONNEMENTS TEMPS RÉEL DU CARNET DE VOYAGE ONT ÉTÉ RETIRÉS (§6).
-  // Neuf abonnements y passaient : les cinq tables `cdv_live_*` et les deux
-  // événements de `step_interactions`. Ils n'ont plus AUCUNE surface à
-  // rafraîchir — l'écran, le viewer et leurs listes n'existent plus — mais ils
-  // continuaient de coûter un canal et du trafic à chaque session.
-  //
-  // ⚠️ AUCUNE table n'est supprimée ni vidée : `cdv_lives`, `cdv_live_steps`,
-  // `cdv_live_comments`, `cdv_live_reactions`, `cdv_live_followers` et
-  // `step_interactions` gardent leurs lignes et restent dans la publication
-  // realtime. On cesse seulement de les écouter.
-
-  // Lives VIDÉO : plus de liaison ici depuis le 2026-11-09 (voir plus haut) —
-  // les bulles 🔴 suivent le filet des lives (app-05, `_vliveFiletTour`).
-
-  // Un SEUL join pour l'ensemble des bindings ci-dessus.
-  dbChan.subscribe(function (st, err) {
-    if (!prive || st !== "CHANNEL_ERROR" || window._dbChan !== dbChan) return;
-    if (typeof _rtRefusDePolicy === "function" && !_rtRefusDePolicy(err)) return;
-    // `removeChannel` est asynchrone et `supa.channel(topic)` rend le canal
-    // existant tant qu'il n'est pas parti : on recrée APRÈS le départ.
-    Promise.resolve(supa.removeChannel(dbChan)).catch(function () {}).then(function () {
-      if (window._dbChan !== dbChan) return;
-      window._dbChan = _creerCanalDb(false);
-    });
-  });
-  return dbChan;
-}
+// ⚠️ `_creerCanalDb` N'EXISTE PLUS (2026-11-09, « 📴 »). Elle créait `realtime:db`,
+// le canal de toutes les liaisons `postgres_changes` de la session — en dernier
+// lieu cinq liaisons de TRANSITION (accusés de lecture, interactions ajoutées et
+// retirées, commentaires de publication et d'activité), plus les messages de la
+// soupape v1. La migration `migration_realtime_public_hors_cdc_2026-11-09.sql` a
+// vidé la publication : ces lignes arrivent par `fil:<id>` (`_creerCanalFil`) et
+// `user:<moi>` (`_subscribeUserTopic`), aux MÊMES gestionnaires.
 // ---- FOLLOW / UNFOLLOW ----
 // Traçage : plusieurs requêtes en jeu (upsert profil, insert, notif) → l'étape
 // réseau auto-taguée désignerait la mauvaise ; on confirme donc explicitement,

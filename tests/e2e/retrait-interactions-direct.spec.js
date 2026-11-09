@@ -11,7 +11,9 @@
 // discussion. Et seule la branche « like » savait retirer quoi que ce soit.
 //
 // CE QUE CETTE SUITE EXIGE DU VRAI CÂBLAGE (la liaison posée par `_creerCanalDb`,
-// nourrie de la charge EXACTE du serveur) :
+// nourrie de la charge EXACTE du serveur — et, depuis que la publication est
+// vide (2026-11-09, « 📴 »), celle de `user:<moi>`, qui reçoit la ligne entière ;
+// la clé seule d'avant y reste lue par l'index, c'est ce que la suite garde) :
 //   ① une discussion lue (`supaLoadCommentInteractions`, `id` compris) : le
 //     retrait d'un like, d'un emoji, d'un GIF et d'une réponse se voit, ZÉRO
 //     requête, et seulement la ligne visée (le like d'un tiers reste) ;
@@ -157,11 +159,24 @@ async function preparer(page, opts = {}) {
       window.__canaux.push(ch);
       return ch;
     } });
-    window.__canalDb = _creerCanalDb(true);
+    // 📴 (2026-11-09) : plus de `realtime:db` ni de `postgres_changes`. Les MÊMES
+    // gestionnaires reçoivent leurs lignes par `user:<moi>` (`_subscribeUserTopic`)
+    // — c'est la vraie liaison que ce banc exerce désormais. Les scénarios gardent
+    // leurs charges au format d'avant (`new` / `old`) : l'adaptateur en tire la
+    // ligne poussée. Un retrait y vaut la ligne entière ; `{ id }` seul (la charge
+    // de l'ancien CDC, R37) y reste accepté et retrouvé dans l'index.
+    window._userTopicChan = null;
+    _subscribeUserTopic();
+    window.__canalUser = window.__canaux.find((c) => c.topic === "user:" + MY_UID);
+    if (!window.__canalUser) throw new Error("user:<moi> n'a pas été rejoint");
     window.__liaison = (table, evenement) => {
-      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === table && x.filtre.event === evenement);
-      if (!l) throw new Error("aucune liaison " + evenement + " sur " + table);
-      return l.cb;
+      const nom = table === "conv_reads" ? "conv_reads:UPSERT" : table + ":" + evenement;
+      const l = window.__canalUser.liaisons.find((x) => x.type === "broadcast" && x.filtre.event === nom);
+      if (!l) throw new Error("aucune liaison " + nom + " sur user:<moi>");
+      return (p) => {
+        const operation = (p && p.eventType) || evenement;
+        return l.cb({ payload: { table: table, operation, record: operation === "DELETE" ? (p && p.old) : (p && p.new) } });
+      };
     };
     // La charge EXACTE d'un DELETE sous RLS : la clé primaire, rien d'autre.
     window.__supprimer = (id) => {

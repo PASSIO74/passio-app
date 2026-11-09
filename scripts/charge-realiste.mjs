@@ -243,7 +243,8 @@ export async function executer(options) {
       const echouer = code => { trace.erreur ||= code; trace.erreurLe ||= new Date().toISOString(); clearTimeout(timer); rejeter(new Error(code)); if (pret && !ws.fermetureBanc && !fermetureVoulue && !arret) stop(code); };
       ws.addEventListener("open", () => {
         try {
-          env("realtime:realtime:db", "phx_join", { config: { broadcast: { self: false }, presence: { key: "" }, private: true,
+          // `sans-cdc` (le client d'après le 2026-11-09) ne rejoint pas `realtime:db`.
+          if (disponibilite.rejointDb) env("realtime:realtime:db", "phx_join", { config: { broadcast: { self: false }, presence: { key: "" }, private: true,
             postgres_changes: abonnements(compte.id, o.profilRealtime) }, access_token: compte.jwt }, "1");
           env(`realtime:user:${compte.id}`, "phx_join", { config: { broadcast: { self: false }, presence: { key: "" }, private: true }, access_token: compte.jwt }, "2");
           heartbeat = setInterval(() => { try { env("phoenix", "heartbeat", {}, "hb"); } catch (e) { echouer(motifSur(e)); } }, 25000);
@@ -528,7 +529,7 @@ export async function executer(options) {
         attendus: taille, termine: !arret && dureeMs >= o.duree * 1000, fatal: arret, scenario: o.scenario,
         dureeAttendueMs: o.duree * 1000, dureeMs, dureeMuraleMs }, httpCompteurs, parcoursCompteurs);
       const resultat = { taille, comptesDistincts: new Set(selection.map(c => c.id)).size, page, empreinte,
-        connectes, handlersParSocket: abonnements(selection[0].id, o.profilRealtime).length, canauxParSocket: 2,
+        connectes, handlersParSocket: abonnements(selection[0].id, o.profilRealtime).length, canauxParSocket: abonnements(selection[0].id, o.profilRealtime).length ? 2 : 1,
         profilRealtime: o.profilRealtime, connexionMs: Math.round(debutChauffe - debutConnexion), echauffementMs: chauffeMs, comptesEchauffement: Math.min(4, taille),
         dureeMs, dureeMuraleMs, validiteMesure: verdict.validiteMesure,
         http, parcours, httpPrincipal, httpCompteurs, parcoursPrincipaux, parcoursCompteurs, realtime, messages, publications,

@@ -727,9 +727,9 @@ async function sansDonneesDistantes(page, opts = {}) {
   });
 
   // ── LE CANAL TEMPS RÉEL, QUE LA ROUTE REST NE POUVAIT PAS ATTEINDRE ────────
-  // `app-08` ouvre des canaux temps réel (`user:<moi>`, les sujets `fil:<id>`
-  // des discussions à l'écran, et jusqu'à la migration « 📴 » du 2026-11-09 les
-  // liaisons de transition de `realtime:db`) ; jusqu'au 2026-11-09, une
+  // `app-08` ouvre des canaux temps réel (`user:<moi>` et les sujets `fil:<id>`
+  // des discussions à l'écran ; `realtime:db` et ses liaisons sont partis avec la
+  // migration « 📴 » du 2026-11-09) ; jusqu'à ce jour-là, une
   // publication d'un AUTRE auteur y arrivait aussi et s'injectait dans le fil
   // (`feedAddRealtimePost`). C'est du WebSocket, donc `page.route` — qui ne voit
   // que HTTP — le laissait passer : une vraie ligne tombant pendant la fenêtre

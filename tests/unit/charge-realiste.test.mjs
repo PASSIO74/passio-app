@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { createHash } from "node:crypto";
 import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Budget, comptesPourPalier, abonnements,
@@ -98,8 +98,10 @@ test("les partenaires de messagerie sont distincts et connectés même au palier
   assert.equal(partenaire(24, 25), 0);
 });
 
-test("les cinq liaisons de transition (2026-11-09) ; R25 : plus aucune liaison vers conv_members ni notifications", () => {
-  const subscriptions = abonnements("compte-test");
+test("sans-cdc (défaut depuis la migration du 2026-11-09) : AUCUNE liaison ; transition5 : cinq ; R25 : jamais conv_members ni notifications", () => {
+  assert.equal(PROFIL_REALTIME, "sans-cdc");
+  assert.deepEqual(abonnements("compte-test"), [], "le client d'après la migration ne rejoint plus realtime:db");
+  const subscriptions = abonnements("compte-test", "transition5");
   assert.equal(subscriptions.length, 5);
   assert.equal(new Set(subscriptions.map(s => s.table)).size, 4);
   const legacy = abonnements("compte-test", "legacy12");
@@ -188,15 +190,28 @@ test("un broadcast absent expire et reste une erreur, sans faux succès HTTP", a
 });
 
 const uidReady = "user-ready";
+// Les cas CDC ci-dessous exercent le profil `transition5` (le seul, avec
+// `legacy12`, qui rejoint encore `realtime:db`) : le banc sait toujours LIRE un
+// canal CDC, pour comparer hors ligne.
 const joinDB = { topic: "realtime:realtime:db", event: "phx_reply", ref: "1", payload: { status: "ok", response: {
-  postgres_changes: abonnements(uidReady).map((a, id) => ({ ...a, id })),
+  postgres_changes: abonnements(uidReady, "transition5").map((a, id) => ({ ...a, id })),
 } } };
 const joinUser = { topic: `realtime:user:${uidReady}`, event: "phx_reply", ref: "2", payload: { status: "ok" } };
 const systemReady = { topic: "realtime:realtime:db", event: "system", payload: { extension: "postgres_changes", status: "ok" } };
 
+test("sans-cdc : prêt dès que user:<uuid> est rejoint, sans attendre de canal CDC ni de message system", () => {
+  const etat = new DisponibiliteRealtime(uidReady);
+  assert.equal(etat.rejointDb, false, "le banc n'envoie pas le join de realtime:db");
+  assert.equal(etat.observer(joinUser), true);
+  assert.equal(etat.handlers, 0);
+  const muet = new DisponibiliteRealtime(uidReady);
+  assert.equal(muet.expirer(), "REALTIME_JOIN_TIMEOUT", "sans join de user:, c'est un délai, pas un CDC en retard");
+  assert.equal(new DisponibiliteRealtime(uidReady, "transition5").rejointDb, true);
+});
+
 test("les deux phx_reply ne donnent pas CDC prêt ; system peut précéder ou suivre les réponses", () => {
   for (const ordre of [[joinDB, joinUser, systemReady], [systemReady, joinDB, joinUser], [joinUser, systemReady, joinDB]]) {
-    const etat = new DisponibiliteRealtime(uidReady);
+    const etat = new DisponibiliteRealtime(uidReady, "transition5");
     assert.equal(etat.observer(ordre[0]), false);
     assert.equal(etat.observer(ordre[1]), false);
     assert.equal(etat.observer(ordre[2]), true);
@@ -205,7 +220,7 @@ test("les deux phx_reply ne donnent pas CDC prêt ; system peut précéder ou su
 });
 
 test("un signal d'un autre topic ou d'une ancienne socket ne valide pas la nouvelle connexion", () => {
-  const ancien = new DisponibiliteRealtime(uidReady), nouveau = new DisponibiliteRealtime(uidReady);
+  const ancien = new DisponibiliteRealtime(uidReady, "transition5"), nouveau = new DisponibiliteRealtime(uidReady, "transition5");
   for (const m of [joinDB, joinUser, systemReady]) ancien.observer(m);
   nouveau.observer(joinDB); nouveau.observer(joinUser);
   nouveau.observer({ ...systemReady, topic: joinUser.topic });
@@ -215,27 +230,29 @@ test("un signal d'un autre topic ou d'une ancienne socket ne valide pas la nouve
 });
 
 test("system error invalide le CDC même si le canal reste ouvert et tous les bindings doivent correspondre", () => {
-  const etat = new DisponibiliteRealtime(uidReady);
+  const etat = new DisponibiliteRealtime(uidReady, "transition5");
   for (const m of [joinDB, joinUser, systemReady]) etat.observer(m);
   etat.observer({ ...systemReady, payload: { extension: "postgres_changes", status: "error" } });
   assert.equal(etat.pret, false); assert.equal(etat.erreur, "REALTIME_CDC_ERREUR");
   assert.equal(etat.systemes.error, 1);
   const faux = structuredClone(joinDB); faux.payload.response.postgres_changes[0].table = "table_fausse";
-  const invalide = new DisponibiliteRealtime(uidReady); invalide.observer(faux);
+  const invalide = new DisponibiliteRealtime(uidReady, "transition5"); invalide.observer(faux);
   assert.equal(invalide.erreur, "REALTIME_HANDLERS_NON_CONFIRMES");
 });
 
-test("le contrat du banc correspond aux bindings V3 réellement créés et aux constantes du produit", () => {
-  const source = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
-  const debut = source.indexOf("function _creerCanalDb(prive)"), fin = source.indexOf("// ---- FOLLOW / UNFOLLOW ----", debut);
-  assert.ok(debut >= 0 && fin > debut);
-  const observes = [];
-  // La liaison `system` (2026-11-09) rend le canal au refus du CDC : elle n'est pas une table.
-  const channel = { on(type, binding) { if (type === "system") return this; assert.equal(type, "postgres_changes"); observes.push(JSON.parse(JSON.stringify(binding))); return this; }, subscribe() { return this; } };
-  const ctx = { MY_UID: "contrat-uid", window: { PASSIO_REALTIME_V3: true }, supa: { channel: () => channel } };
-  const creer = runInNewContext(source.slice(debut, fin) + "\n_creerCanalDb;", ctx);
-  creer(true);
-  assert.deepEqual(observes, abonnements("contrat-uid"), "le banc doit échouer si son profil diverge du vrai canal produit");
+test("le contrat du banc correspond au vrai client (aucune liaison CDC) et aux constantes du produit", () => {
+  // Depuis la migration du 2026-11-09 (« 📴 »), le client n'a PLUS de canal
+  // `postgres_changes` : `_creerCanalDb` est partie, et aucun script de l'app ne
+  // pose plus de liaison `postgres_changes`. Le profil par défaut du banc doit
+  // en dire autant — sinon il mesurerait un client qui n'existe plus.
+  const app = readdirSync(new URL("../../js/", import.meta.url)).filter((f) => /^app-0\d.*\.js$/.test(f));
+  assert.ok(app.length === 9, "les neuf fichiers de l'app : " + app.join(", "));
+  for (const f of app) {
+    const source = readFileSync(new URL("../../js/" + f, import.meta.url), "utf8");
+    assert.equal(/function _creerCanalDb\s*\(/.test(source), false, f + " : `_creerCanalDb` est revenue");
+    assert.equal(/\.on\(\s*["']postgres_changes["']/.test(source), false, f + " : une liaison `postgres_changes` est revenue");
+  }
+  assert.deepEqual(abonnements("contrat-uid"), [], "le banc doit échouer si son profil diverge du vrai client");
   const likes = readFileSync(new URL("../../js/app-03-posts-vlogs.js", import.meta.url), "utf8");
   for (const [nom, valeur] of [["POST_LIKE_REFRESH_MS", LIKES_VISIBLES.fraicheurMs],
     ["POST_LIKE_REFRESH_JITTER_MS", LIKES_VISIBLES.jitterMs], ["POST_LIKE_REFRESH_MAX_POSTS", LIKES_VISIBLES.maximum],
@@ -245,16 +262,19 @@ test("le contrat du banc correspond aux bindings V3 réellement créés et aux c
   }
 });
 
-test("legacy12 reste consultable hors ligne mais aucune exécution ne peut le choisir", async () => {
+test("legacy12 et transition5 restent consultables hors ligne mais aucune exécution ne peut les choisir", async () => {
   assert.equal(optionsBanc(cible).profilRealtime, PROFIL_REALTIME);
   const plan = await executer(optionsBanc([...cible, "--profil-realtime", "legacy12"]));
   assert.equal(plan.plan, true); assert.equal(plan.profilRealtime, "legacy12");
   assert.throws(() => optionsBanc([...cible, "--profil-realtime", "legacy12", "--executer", "--sortie", "interdit.json"]), /LEGACY12_HORS_LIGNE/);
+  // Contre la base migrée, le join CDC de `transition5` serait refusé : le banc le
+  // prendrait pour une panne de capacité.
+  assert.throws(() => optionsBanc([...cible, "--profil-realtime", "transition5", "--executer", "--sortie", "interdit.json"]), /TRANSITION5_HORS_LIGNE/);
   assert.throws(() => optionsBanc([...cible, "--profil-realtime", "9"]), /PROFIL_REALTIME_INVALIDE/);
   const legacy = new DisponibiliteRealtime(uidReady, "legacy12");
   for (const message of [joinDB, joinUser, systemReady]) legacy.observer(message);
-  assert.equal(legacy.pret, false, "les cinq bindings du profil courant ne suffisent pas pour le contrat legacy (dix)");
-  const actuel = new DisponibiliteRealtime(uidReady);
+  assert.equal(legacy.pret, false, "les cinq bindings de transition ne suffisent pas pour le contrat legacy (dix)");
+  const actuel = new DisponibiliteRealtime(uidReady, "transition5");
   const trop = structuredClone(joinDB);
   trop.payload.response.postgres_changes = abonnements(uidReady, "legacy12").map((a, id) => ({ ...a, id }));
   actuel.observer(trop); assert.equal(actuel.erreur, "REALTIME_HANDLERS_NON_CONFIRMES");

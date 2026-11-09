@@ -68,7 +68,6 @@ async function canauxOuvertsSous(page, uid) {
     window._supaSubscribed = false;
     window._callRingChan = null;
     window._userTopicChan = null;
-    window._dbChan = null;
     MY_UID = identite;
     window.MY_UID = identite;
     try { supaSubscribe(); } catch (e) { return { erreur: String(e && e.message) }; }
@@ -114,7 +113,10 @@ test.describe("Capacité — la connexion temps réel est réservée aux comptes
     }, UID_COMPTE);
     expect(compte.erreur).toBeFalsy();
     expect(compte.topics.length).toBeGreaterThan(0);
-    expect(compte.topics).toContain("realtime:db");
+    // Le premier canal d'un compte est `user:<moi>` — `realtime:db` n'existe plus
+    // depuis le 2026-11-09 (« 📴 », publication vide) : il ne doit pas revenir.
+    expect(compte.topics).toContain("user:" + UID_COMPTE);
+    expect(compte.topics).not.toContain("realtime:db");
   });
 
   test("④ les DEUX filets NE RECULENT PAS quand ils sont le seul chemin", () => {
@@ -194,7 +196,6 @@ test.describe("Capacité — la connexion temps réel est réservée aux comptes
   // (aucun grep ne le peut) : il force à la dire.
   const PORTES = {
     "app-04-comments-shop.js:_creerCanalTyping": "fabrique appelée par _subscribeTyping, GARDÉE",
-    "app-04-comments-shop.js:_creerCanalConvSpecifique": "fabrique appelée par _supaConvSpecificChannel, GARDÉE",
     "app-05-config-profil.js:_callChannel": "fabrique de canaux d'appel — pas une porte, ses appelants le sont",
     "app-05-config-profil.js:startCall": "GARDÉE (et le pair de démo est écarté juste après)",
     "app-05-config-profil.js:_callOnInvite": "deux entrées : le canal `ring:` (compte réel seul) et handlePushIncomingCall, GARDÉE",
@@ -205,7 +206,6 @@ test.describe("Capacité — la connexion temps réel est réservée aux comptes
     "app-05-config-profil.js:joinVideoLive": "GARDÉE",
     "app-08-ui-modals-tour.js:_subscribePrivateConv": "appelée par _supaConvSpecificChannel (gardée) et par un gestionnaire de canal déjà gardé",
     "app-08-ui-modals-tour.js:_subscribeUserTopic": "appelée par supaSubscribe (gardée) et par onAuthStateChange (compte réel)",
-    "app-08-ui-modals-tour.js:_creerCanalDb": "fabrique appelée par supaSubscribe, GARDÉE",
     // 2026-11-09 (« 📴 ») : le sujet privé d'une discussion à l'écran.
     "app-08-ui-modals-tour.js:_creerCanalFil": "fabrique appelée par _filRejoindre, sous _filsRtPossible (même autorité que supaSubscribe, socket ouvert et éveillé)",
   };

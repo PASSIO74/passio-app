@@ -165,6 +165,25 @@ test("⑧ `alter publication … drop table` n'est PAS du DDL de table — sinon
   assert.equal(pub.dynamiques.length, 0, "une publication n'est pas une table");
   assert.equal(pub.indeterminees.length, 0, "rien d'indéterminé : aucune colonne n'a bougé");
 
+  // La forme PAR SCHÉMA (2026-11-09) : la migration qui vide `supabase_realtime`
+  // retire ses tables puis un éventuel schéma entier, dans le MÊME bloc — c'est
+  // le `drop table` de la première boucle qui fait inspecter le bloc, et le brut
+  // `drop\s+table` attrapait alors « drop tables » dans la seconde. Ce cas a la
+  // forme exacte de la migration. « drop tables in schema » n'est pas plus du
+  // DDL de table que « drop table » d'une publication.
+  const parSchema = A.tablesDeclarees(migrations(
+    "do $$ declare t record; begin\n" +
+    "  for t in select 'public.posts'::regclass as rel loop\n" +
+    "    execute format('alter publication supabase_realtime drop table %s', t.rel);\n" +
+    "  end loop;\n" +
+    "  for t in select 'public' as nspname loop\n" +
+    "    execute format('alter publication supabase_realtime drop tables in schema %I', t.nspname);\n" +
+    "  end loop;\n" +
+    "end $$;",
+  ));
+  assert.equal(parSchema.dynamiques.length, 0, "une publication par schéma n'est pas une table");
+  assert.equal(parSchema.indeterminees.length, 0, "rien d'indéterminé : aucune table n'a bougé");
+
   // ⚠️ ET LA GARDE RESTE ENTIÈRE SUR LE VRAI DDL : on n'a pas élargi une
   // exception, on a retiré une forme qui n'a jamais été du DDL de table.
   const vrai = A.tablesDeclarees(migrations(

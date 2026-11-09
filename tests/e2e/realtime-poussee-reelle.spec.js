@@ -14,8 +14,10 @@
 //   ③ un tiers C ne rejoint pas `user:<A>`, n'y reçoit rien, n'y émet rien (A, lui,
 //     reçoit : c'est le témoin), et une poussée qui vise un autre compte n'est pas
 //     appliquée par le client ;
-//   ④ un visiteur sans compte reste muet sur ces deux tables, alors qu'il reçoit
-//     (témoin) la suppression de `post_likes`, sans la clé.
+//   ④ un visiteur sans compte reste muet sur ces deux tables. (Son témoin — la
+//     suppression de `post_likes`, reçue sans la clé — est parti le 2026-11-09 :
+//     la publication `supabase_realtime` est VIDE, plus rien ne s'y livre, et le
+//     canal `realtime:db` est refusé au visiteur depuis le lot 3 du 06/11.)
 //
 // ⚠️ UN SEUL TEST, QUATRE ÉTAPES : les comptes coûtent cher, et un essai rejoué en CI
 // doit repartir de comptes neufs. Mesuré au staging le 2026-11-04 : 268 ms pour la
@@ -198,22 +200,16 @@ test("R25 : la poussée sur user:<uid> arrive, à son seul destinataire", async 
     });
 
     // ── ④ Un visiteur sans compte ──
-    await test.step("④ un visiteur sans compte est muet sur ces deux tables, et son témoin reçoit", async () => {
+    await test.step("④ un visiteur sans compte est muet sur ces deux tables", async () => {
       await C.page.evaluate(async ([url, anon]) => {
         const client = (nom) => window.supabase.createClient(url, anon, {
           auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "poussee_visiteur_" + nom },
         });
-        window.__visiteur = { temoin: { statuts: [], evenements: [] }, sondes: { statuts: [], evenements: [] } };
-        const temoin = client("temoin");
+        window.__visiteur = { sondes: { statuts: [], evenements: [] } };
         const sondeAjouts = client("sonde_ajouts");
         const sondeNotifications = client("sonde_notifications");
-        const session = await temoin.auth.getSession();
+        const session = await sondeAjouts.auth.getSession();
         window.__visiteur.sansSession = !(session.data && session.data.session);
-        temoin.channel("realtime:db", { config: { private: true } })
-          .on("postgres_changes", { event: "DELETE", schema: "public", table: "post_likes" }, (p) => window.__visiteur.temoin.evenements.push({
-            post: (p.old || {}).post_id || null, compte: (p.old || {}).user_id || null,
-          }))
-          .subscribe((s) => window.__visiteur.temoin.statuts.push(s));
         sondeAjouts.channel("realtime:db", { config: { private: true } })
           .on("postgres_changes", { event: "*", schema: "public", table: "conv_members" }, () => window.__visiteur.sondes.evenements.push("conv_members"))
           .subscribe((s) => window.__visiteur.sondes.statuts.push(s));
@@ -224,36 +220,20 @@ test("R25 : la poussée sur user:<uid> arrive, à son seul destinataire", async 
       }, [cible.url, cible.anon]);
       expect(await C.page.evaluate(() => window.__visiteur.sansSession), "ce visiteur n'a aucune session").toBe(true);
 
-      // Le lot 3 de l'audit du 06/11 retire au visiteur l'entrée de `realtime:db` : plus de témoin à attendre,
-      // le refus du canal est une garantie plus forte que son silence. Sans ce lot, le témoin reste exigé.
-      await C.page.waitForFunction(() => window.__visiteur.temoin.statuts.length > 0, null, { timeout: 20000, polling: 100 });
+      // ⚠️ PLUS DE TÉMOIN (2026-11-09, « 📴 »). Il prouvait que le canal du visiteur
+      // LIVRAIT (une suppression de `post_likes`), pour que le silence des sondes
+      // veuille dire quelque chose. La publication `supabase_realtime` est VIDE
+      // depuis la migration `migration_realtime_public_hors_cdc_2026-11-09.sql` :
+      // plus aucune suppression ne part à personne par ce chemin, et le lot 3 de
+      // l'audit du 06/11 refuse déjà `realtime:db` au visiteur. Les deux garanties
+      // se mesurent ailleurs (le verdict de la migration, la gate `audit:realtime`) ;
+      // ici, on note le refus du canal et on exige le silence des sondes.
+      await C.page.waitForFunction(() => window.__visiteur.sondes.statuts.length > 0, null, { timeout: 20000, polling: 100 });
       const canalFerme = await C.page.evaluate(async () => {
         await new Promise((r) => setTimeout(r, 3000));
-        return !window.__visiteur.temoin.statuts.includes("SUBSCRIBED");
+        return !window.__visiteur.sondes.statuts.includes("SUBSCRIBED");
       });
       noter("④ canal du visiteur " + (canalFerme ? "refusé" : "ouvert"));
-
-      // Le témoin peut tarder à être branché : on rejoue un « j'aime » jusqu'à le voir
-      // recevoir, sans quoi le silence des sondes ne dirait rien.
-      const temoinRecoit = async (delai) => {
-        if (canalFerme) return true;
-        const avant = await C.page.evaluate(() => window.__visiteur.temoin.evenements.length);
-        for (let essai = 0; essai < 8; essai++) {
-          const postId = "e2e_poussee_" + Date.now();
-          aNettoyer.like = postId;
-          const like = await B.page.evaluate(async (p) => {
-            const i = await supa.from("post_likes").insert({ post_id: p, user_id: MY_UID });
-            await new Promise((r) => setTimeout(r, 800));
-            const d = await supa.from("post_likes").delete().eq("post_id", p).eq("user_id", MY_UID).select();
-            return { insertion: i.error && i.error.message, supprimees: (d.data || []).length, suppression: d.error && d.error.message };
-          }, postId);
-          expect(like, "le « j'aime » du témoin s'écrit et s'efface").toEqual({ insertion: null, supprimees: 1, suppression: null });
-          await C.page.waitForTimeout(delai);
-          if (await C.page.evaluate(() => window.__visiteur.temoin.evenements.length) > avant) return true;
-        }
-        return false;
-      };
-      expect(await temoinRecoit(3000), "le témoin du visiteur reçoit la suppression de post_likes").toBe(true);
 
       // A efface ses lignes : ce sont les DELETE qu'une table publiée livrerait à tous.
       const efface = await A.page.evaluate(async ([conv, ids]) => {
@@ -263,15 +243,10 @@ test("R25 : la poussée sur user:<uid> arrive, à son seul destinataire", async 
       }, [convId, [notificationPremiere.id, notificationSeconde.id]]);
       expect(efface, "A efface ses deux notifications et sa place").toEqual({ notifications: 2, membres: 1, erreur: null });
 
-      // Un second passage du témoin borne la livraison : les effacements de A sont partis avant lui.
-      expect(await temoinRecoit(3000), "le témoin reçoit encore après les effacements de A").toBe(true);
-      await C.page.waitForTimeout(3000);
+      await C.page.waitForTimeout(6000);
       const vu = await C.page.evaluate(() => window.__visiteur);
-      noter("④ " + JSON.stringify({ temoin: vu.temoin.statuts, sondes: vu.sondes.statuts, evenements: vu.temoin.evenements.length }));
+      noter("④ " + JSON.stringify({ sondes: vu.sondes.statuts, canalFerme }));
       expect(vu.sondes.evenements, "aucune suppression de ces deux tables n'atteint un visiteur").toEqual([]);
-      for (const e of vu.temoin.evenements) {
-        expect(e, "la suppression reçue par le témoin ne porte ni la publication ni le compte").toEqual({ post: null, compte: null });
-      }
     });
   } finally {
     // Nettoyage ciblé : mes lignes et mes comptes. Le teardown de la CI purge par motif,

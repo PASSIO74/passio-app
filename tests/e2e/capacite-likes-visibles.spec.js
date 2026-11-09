@@ -481,45 +481,44 @@ test("stop/start pendant HEAD : ancienne réponse écartée et nouveau cycle viv
   expect(await page.evaluate(() => state.supabasePosts[0].likes)).toBe(7);
 });
 
-test("cinq bindings CDC de transition : messages privés, notifications (poussées sur user:) et commentaires continuent de répondre", async ({ page }) => {
-  // ⚠️ R25 (2026-11-03) : `conv_members` et `notifications` ne sont plus des
-  // liaisons `postgres_changes` (tables hors publication : leurs DELETE
-  // livraient la clé primaire à tout abonné, sans RLS). Le serveur les pousse
-  // sur `user:<moi>` sous `conv_members:INSERT` / `notifications:INSERT`.
-  // ⚠️ 2026-11-09 (« 📴 ») : publications, profils et lives ne sont plus écoutés
-  // du tout — le filet du fil fait arriver les publications. Restent CINQ
-  // liaisons de TRANSITION jusqu'à la migration qui vide la publication ; leurs
-  // lignes arrivent aussi, après elle, par `fil:<id>` et `user:<moi>`.
+test("aucune liaison CDC : messages privés, notifications et commentaires de mes publications arrivent par user:", async ({ page }) => {
+  // ⚠️ R25 (2026-11-03) : `conv_members` et `notifications` sont poussées sur
+  // `user:<moi>` sous `conv_members:INSERT` / `notifications:INSERT`.
+  // ⚠️ 2026-11-09 (« 📴 ») : la publication `supabase_realtime` est VIDE et
+  // `realtime:db` n'existe plus (`_creerCanalDb` est partie avec ses cinq
+  // liaisons de transition). Ce qui reste en direct arrive par `user:<moi>` —
+  // ce cas — et, pour une discussion à l'écran, par `fil:<id>`.
   await preparer(page);
   const result = await page.evaluate(async () => {
     stopPostLikeRefresh();
-    const bindings = [], broadcasts = [];
+    const cdc = [], broadcasts = [], sujets = [];
     supa.channel = topic => {
-      const channel = { on(type, config, callback) { (type === "postgres_changes" ? bindings : broadcasts).push({ topic, config, callback }); return channel; }, subscribe() { return channel; } };
+      sujets.push(topic);
+      const channel = { on(type, config, callback) { (type === "broadcast" ? broadcasts : cdc).push({ topic, type, config, callback }); return channel; }, subscribe() { return channel; } };
       return channel;
     };
     window.PASSIO_REALTIME_V3 = true;
     window._userTopicChan = null;
+    window._supaSubscribed = false;
     const received = [];
     window._handleIncomingConvMessage = row => received.push(row.id);
     window.mergeSupaNotifs = rows => received.push(rows[0].id);
     window._profilAuteur = async () => ({ username: "Visible" });
-    _subscribeUserTopic();
-    _creerCanalDb(true);
+    window.appelsDisponibles = () => false; window._pushAbonnementTente = true;
+    supaSubscribe();
     const surUser = evt => broadcasts.find(b => b.topic === "user:" + MY_UID && b.config.event === evt);
     surUser("INSERT").callback({ payload: { id: "message-prive", conv_id: "conversation" } });
     surUser("notifications:INSERT").callback({ payload: { table: "notifications", operation: "INSERT",
       record: { id: "notification-privee", user_id: MY_UID, kind: "like", created_at: "2026-09-20T12:00:00" } } });
     const cible = state.supabasePosts[0];
-    await bindings.find(b => b.config.table === "post_comments").callback({ new: { id: "commentaire-recu", post_id: cible.id, author_id: "autre", content: "Nouveau", created_at: "2026-09-20T12:00:00Z" } });
-    return { count: bindings.length, tables: bindings.map(b => b.config.table), received,
+    await surUser("post_comments:INSERT").callback({ payload: { table: "post_comments", operation: "INSERT",
+      record: { id: "commentaire-recu", post_id: cible.id, author_id: "autre", content: "Nouveau", created_at: "2026-09-20T12:00:00Z" } } });
+    return { cdc: cdc.length, realtimeDb: sujets.filter(t => t === "realtime:db").length, received,
       commentairePresent: (findPostAnywhere(cible.id).comments || []).some(c => c.id === "commentaire-recu"),
-      prives: bindings.filter(b => ["conv_members", "notifications"].includes(b.config.table)).length,
-      filtres: bindings.filter(b => b.config.filter).length,
       evenementsUser: broadcasts.filter(b => b.topic === "user:" + MY_UID).map(b => b.config.event) };
   });
-  expect(result).toEqual({ count: 5, tables: ["conv_reads", "comment_interactions", "comment_interactions", "post_comments", "event_comments"],
-    received: ["message-prive", "notification-privee"], commentairePresent: true, prives: 0, filtres: 0,
+  expect(result).toEqual({ cdc: 0, realtimeDb: 0,
+    received: ["message-prive", "notification-privee"], commentairePresent: true,
     evenementsUser: ["INSERT", "conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT",
       "comment_interactions:INSERT", "comment_interactions:DELETE"] });
 });
