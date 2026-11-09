@@ -508,7 +508,7 @@
     finally { enApply = false; }
   }
 
-  // ⚠️ En PRODUCTION, le bloc app sort dans `app.js`, injecté seulement une fois
+  // ⚠️ En PRODUCTION, le bloc app sort dans `app/` (9 scripts), injecté une fois
   // le code d'accès franchi : au premier `boot()`, ni `renderIRL` ni les
   // accesseurs du moteur n'existent. On repasse donc à `passio:app-ready`, avec
   // une reprise bornée par `setTimeout` en secours (jamais de boucle infinie,

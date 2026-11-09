@@ -90,6 +90,7 @@ const SUITES_WEBKIT = [
   "pwa-maj-pendant-appel.spec.js", // le vrai worker : une mise à jour ne coupe ni un appel, ni un Live, ni une saisie
   "historique-retour-en-vol.spec.js", // rouvrir une modale pendant le retour de fermeture ne sort pas de l'application
   "sw-page-revalidee.spec.js",   // le vrai worker : la page se revalide en 304 (Safari, PWA iPhone)
+  "app-scripts-par-fichier.spec.js", // le bloc app en 9 scripts : ordre, reprise, et une version ne retélécharge que ce qui a changé
 ];
 const PROJET_WEBKIT = {
   name: "webkit-iphone",

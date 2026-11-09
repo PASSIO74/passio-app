@@ -194,15 +194,16 @@ if (motifsClient.length) {
     } catch (e) { return null; }
     finally { clearTimeout(minuteur); }
   }
-  let html = null, bundle = null;
+  let html = null, bundles = [];
   if (origine) {
     html = await lireTexte(origine + "/?prerequis=" + Date.now());
-    const url = BAR.urlBundleServi(html, origine);
-    if (url) bundle = await lireTexte(url);
+    // Les 9 scripts du bloc app (depuis le 2026-11-09 ; un seul app.js avant) : un
+    // motif peut vivre dans n'importe lequel, on les lit tous.
+    bundles = await Promise.all(BAR.urlsBundlesServis(html, origine).map(lireTexte));
   }
   let p;
-  try { p = BAR.verifierPrerequisClient({ motifs: motifsClient, origine, html, bundle }); } catch (e) { echec(e.message); }
-  if (p.exige) console.log("prérequis : le client servi (" + p.url + ") porte " + p.motifs.map((m) => "« " + m + " »").join(", "));
+  try { p = BAR.verifierPrerequisClient({ motifs: motifsClient, origine, html, bundles }); } catch (e) { echec(e.message); }
+  if (p.exige) console.log("prérequis : le client servi (la page et ses " + p.urls.length + " script(s) du bloc app) porte " + p.motifs.map((m) => "« " + m + " »").join(", "));
   else console.log("prérequis : " + motifsClient.map((m) => "« " + m + " »").join(", ") + " — non exigé ici (" + (p.raison || "cible sans client servi") + ")");
 }
 

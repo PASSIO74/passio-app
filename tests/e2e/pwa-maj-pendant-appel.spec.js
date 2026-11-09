@@ -9,7 +9,7 @@
 //
 // ⚠️ DEUX VRAIS ARTEFACTS, LE VRAI WORKER. `scripts/build.js` tourne deux fois sur
 // une copie de l'arbre, la seconde avec un script modifié : `buildId`, `sw.js`,
-// `app.js?v=` changent comme dans un vrai déploiement. Le serveur de cette suite
+// `app/app-09-….js?v=` changent comme dans un vrai déploiement. Le serveur de cette suite
 // bascule de A à B. Un faux conteneur (pwa-maj-silencieuse.spec.js) ne mesurerait
 // ni `activate`, ni `clients.claim`, ni `controllerchange`.
 //
@@ -102,8 +102,10 @@ function servir() {
     const chemin = decodeURIComponent(new URL(req.url, "http://x").pathname);
     const rel = chemin === "/" ? "index.html" : chemin.replace(/^\/+/, "");
     const f = path.join(etat.dossier, rel);
-    if ((etat.sansApp && rel === "app.js") || !f.startsWith(etat.dossier) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
-      res.writeHead(rel === "app.js" ? 503 : 404);
+    // Le bloc app : les 9 scripts de dist/app/ (un seul app.js avant le 2026-11-09).
+    const scriptApp = rel.startsWith("app/");
+    if ((etat.sansApp && scriptApp) || !f.startsWith(etat.dossier) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
+      res.writeHead(scriptApp ? 503 : 404);
       res.end();
       return;
     }

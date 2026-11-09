@@ -11,8 +11,10 @@
 //
 //   1. `index.html` en `no-store` + network-first dans le SW → on récupère
 //      toujours le manifeste de la dernière version ;
-//   2. `app.js` / `styles.css` en `immutable` (un an) → zéro requête inutile ;
-//   3. leur URL porte un HASH DE CONTENU → un nouveau build = une nouvelle URL.
+//   2. les 9 scripts `app/` / `styles.css` en `immutable` (un an) → zéro requête
+//      inutile ;
+//   3. l'URL de CHACUN porte le HASH DE SON CONTENU → un fichier modifié = une
+//      nouvelle URL (et seulement la sienne : 2026-11-09, un `app.js` unique avant).
 //
 // Le point 2 n'est sûr QUE grâce au point 3. Si un hash devenait figé ou
 // disparaissait, `immutable` cesserait d'être une optimisation pour devenir un
@@ -37,17 +39,21 @@ test.describe("Version skew — cohérence des versions servies", () => {
   test("le hash de chaque asset vient RÉELLEMENT de son contenu", async () => {
     const html = lire("dist/index.html");
 
-    for (const [fichier, motif] of [
-      ["dist/app.js", /app\.js\?v=([a-f0-9]+)/],
-      ["dist/styles.css", /styles\.css\?v=([a-f0-9]+)/],
-    ]) {
-      const m = motif.exec(html);
-      expect(m, `${fichier} doit être référencé avec un ?v=<hash> dans index.html`).toBeTruthy();
+    // Les 9 scripts du bloc app, lus dans le chargeur (scripts/build.js, étape 1).
+    const scripts = [...html.matchAll(/"(app\/app-0\d[\w-]*\.js)\?v=([a-f0-9]+)"/g)];
+    expect(scripts.length, "le chargeur de dist/index.html doit citer les 9 scripts du bloc app").toBe(9);
+    expect(fs.existsSync(path.join(racine, "dist/app.js")), "plus de monolithe dist/app.js").toBe(false);
+    const references = [
+      ...scripts.map((m) => ["dist/" + m[1], m[2]]),
+      ["dist/styles.css", (/styles\.css\?v=([a-f0-9]+)/.exec(html) || [])[1]],
+    ];
+    for (const [fichier, hash] of references) {
+      expect(hash, `${fichier} doit être référencé avec un ?v=<hash> dans index.html`).toBeTruthy();
 
       const attendu = hash10(fs.readFileSync(path.join(racine, fichier)));
       expect(
-        m[1],
-        `Le hash de ${fichier} dans index.html (${m[1]}) ne correspond pas à son contenu ` +
+        hash,
+        `Le hash de ${fichier} dans index.html (${hash}) ne correspond pas à son contenu ` +
         `(${attendu}). Or ce fichier est servi en « immutable » pendant un an : un hash ` +
         `qui ne suit pas le contenu bloque les clients sur du code périmé, sans rattrapage.`,
       ).toBe(attendu);
@@ -57,8 +63,9 @@ test.describe("Version skew — cohérence des versions servies", () => {
   test("deux contenus différents produisent deux URL différentes", async () => {
     // Le vrai test du cache-busting : ce n'est pas qu'un hash EXISTE, c'est
     // qu'il CHANGE. On le prouve sur le mécanisme lui-même plutôt qu'en
-    // modifiant une source (qu'un test interrompu laisserait salie).
-    const app = fs.readFileSync(path.join(racine, "dist/app.js"));
+    // modifiant une source (qu'un test interrompu laisserait salie). Que la
+    // modification d'UN fichier ne change QUE son URL : tests/unit/build-id.test.mjs ⑦.
+    const app = fs.readFileSync(path.join(racine, "dist/app/app-04-comments-shop.js"));
     const modifie = Buffer.concat([app, Buffer.from("\n// octet de plus\n")]);
     expect(hash10(modifie), "un contenu modifié doit produire un hash différent")
       .not.toBe(hash10(app));
@@ -66,6 +73,10 @@ test.describe("Version skew — cohérence des versions servies", () => {
 
   test("index.html n'est jamais mis en cache, les assets hachés le sont", async () => {
     const headers = lire("_headers");
+    // Les assets hachés : un an, immutable (le point 2 de l'équilibre ci-dessus).
+    expect(headers, "/app/* (les 9 scripts du bloc app) doit rester immutable").toMatch(
+      /\n\/app\/\*\s*\n\s*Cache-Control:[^\n]*immutable/,
+    );
 
     // Si index.html devenait cacheable, un nouveau déploiement n'atteindrait
     // plus jamais les clients existants : le manifeste resterait figé, donc
@@ -113,7 +124,7 @@ test.describe("Version skew — cohérence des versions servies", () => {
       .toBeGreaterThanOrEqual(8);
 
     // Et il doit dériver du contenu réellement déployé : le build le calcule sur la
-    // page et ses scripts inlinés, app.js et le CSS. La preuve par mutation est dans
+    // page et ses scripts inlinés, les 9 scripts app/ et le CSS. La preuve par mutation est dans
     // tests/unit/build-id.test.mjs ; ici, seul le câblage du source est vérifié.
     const source = lire("sw.js");
     expect(source, "le source doit laisser le build injecter l'identifiant")

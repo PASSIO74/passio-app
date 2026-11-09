@@ -4,7 +4,7 @@
    ⚠️ POURQUOI CE FICHIER VIT EN <head>, AVANT L'APPLICATION (2026-09-11).
    La LCEN (art. 1-1) impose de tenir les mentions légales à la disposition du
    PUBLIC. Or le rideau du code d'accès (js/access-gate.js) masque tout, et en
-   production le bloc applicatif (dist/app.js, où vivaient ces textes) n'est
+   production le bloc applicatif (dist/app/, où vivaient ces textes) n'est
    injecté QU'APRÈS le déverrouillage : un visiteur sans code ne pouvait lire
    ni qui édite le service, ni qui l'héberge, ni comment le joindre. Le jour
    de l'ouverture au public, c'était une mention légale INACCESSIBLE.

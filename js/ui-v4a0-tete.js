@@ -426,7 +426,7 @@
   }
 
   // ⚠️ En PRODUCTION, le bloc app n'est pas dans la page : `scripts/build.js` le
-  // sort dans `app.js`, injecté seulement une fois le code d'accès franchi. Ce
+  // sort dans `app/` (9 scripts), injecté seulement une fois le code d'accès franchi. Ce
   // module, lui, est inliné et s'exécute tout de suite : au premier `boot()`,
   // `renderIRL` n'existe pas encore et l'enveloppe anti-GPS ne peut pas être
   // posée. On repasse donc à l'événement `passio:app-ready` émis par le loader,

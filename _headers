@@ -22,13 +22,18 @@
 /
   Cache-Control: no-store, no-cache, must-revalidate
 
-# app.js : cache long — l'URL change à chaque build (app.js?v=<hash de contenu>,
-# généré par scripts/build.js), donc immutable est sûr.
-/app.js
+# app/ : les 9 scripts du bloc app (scripts/build.js, étape 1, depuis le
+# 2026-11-09 — avant, un seul /app.js). Cache long : l'URL de CHACUN change avec
+# SON contenu (app/app-04-comments-shop.js?v=<hash de contenu>), donc immutable
+# est sûr, et une version qui ne touche qu'un fichier ne fait retélécharger que lui.
+# ⚠️ Plus de règle pour /app.js : un ancien onglet qui le redemanderait recevrait
+# un 404, et un 404 marqué immutable resterait un an dans le navigateur — même
+# après un retour arrière qui le ferait revenir.
+/app/*
   Cache-Control: public, max-age=31536000, immutable
 
-# styles.css : même mécanique que app.js (externalisé du HTML le 2026-07-15,
-# référencé styles.css?v=<hash de contenu> par scripts/build.js).
+# styles.css : même mécanique que les scripts app/ (externalisé du HTML le
+# 2026-07-15, référencé styles.css?v=<hash de contenu> par scripts/build.js).
 /styles.css
   Cache-Control: public, max-age=31536000, immutable
 
