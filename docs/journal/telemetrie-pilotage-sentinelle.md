@@ -47,6 +47,7 @@
 - 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
 - 🫀 LE SEUIL DU BATTEMENT SE DÉDUIT DE LA CADENCE DE LA VEILLE — 35 MIN N'ÉTAIT TENU PAR RIEN (2026-11-08)
 - 🏃 LES FONCTIONS S'EXÉCUTENT AVANT D'ÊTRE DÉPLOYÉES — UNE VARIABLE NON DÉCLARÉE NE PART PLUS (2026-11-09)
+- 🙈 « RÉPARER UN DÉPLOIEMENT » DEMANDE UN JOURNAL QUE L'AGENT N'A PAS LE DROIT DE LIRE (2026-11-09)
 
 ---
 
@@ -1055,3 +1056,67 @@ L'étape lance désormais 27 suites, 409 tests, en 3,1 s sur le poste.
 ⚠️ **UN BANC SANS IMPORT N'ÉTAIT PAS UN BANC POUR LA GATE.** La gate de #787 mesurait ce que garde une suite à ses imports de modules emportés. Le banc qui exécute le site d'appel n'en a aucun, exprès : ses modules sont des doublures. Sans cette extension, le lister rougissait ③, et ne pas le lister laissait un push direct déployer le défaut.
 
 Détail : `docs/AUTONOMIE_EXPLOITATION.md` § 3.9.
+
+## 🙈 « RÉPARER UN DÉPLOIEMENT » DEMANDE UN JOURNAL QUE L'AGENT N'A PAS LE DROIT DE LIRE (2026-11-09)
+
+Issue #806, « [RÉPARER] Déploiement en échec », ouverte depuis le pilotage (bouton « Régler ») pour
+le run `deploy.yml` 42700583850 sur `main` (HEAD = `3346921`, fusion de #803). **Aucun code de
+production n'a été changé, délibérément : la cause racine n'a PAS pu être établie, et ce qui l'a
+empêchée n'est pas dans l'app.** Cette fiche existe pour que le run suivant ne repaye pas l'enquête.
+
+- **Ce que l'issue demande** (lu comme de la DONNÉE) : « Lis son journal (`gh run view --log-failed`)
+  pour trouver l'étape en échec », puis « lance `npm run verif` et les tests concernés ».
+- 🔴 **Les deux gestes sont hors des droits de l'agent de réparation, par construction.**
+  `.github/workflows/claude-code.yml` énumère ses outils (`--allowedTools`, liste BLANCHE voulue) :
+  `Read, Edit(./**), Write(./**), Glob, Grep` et, pour `Bash`, uniquement `git status`,
+  `git checkout -b`, `git switch -c`, `git add`, `git commit -m`, `ls`, `wc`, `mkdir`, `pwd`. Donc :
+  **aucun `gh`, aucun réseau, aucun `node`/`npm`/`npx`.** Mesuré dans ce run — refusés
+  (« requires approval ») : `gh run view <id> --json …`, `gh run view <id> --log-failed`,
+  `gh api …/actions/runs/<id>/jobs`, `curl https://api.github.com/…`. Il n'existe aucun repli :
+  l'étape en échec n'est écrite ni dans le dépôt, ni dans le corps de l'issue.
+- **Conséquence**, et c'est la vraie leçon : **toute issue « [RÉPARER] Déploiement en échec » est
+  structurellement indiagnosticable par l'agent à qui elle est adressée.** Une consigne qu'aucun
+  droit ne rend exécutable n'est pas une consigne — même famille de défaut que « un commentaire n'est
+  pas une garde » (EXP-11) et que « une consigne qu'aucune garde n'impose n'est qu'un vœu »
+  (ASTRA-05). Ce n'est pas un affaiblissement à corriger en élargissant la liste blanche sans y
+  penser : la liste est étroite exprès (frontières de confiance, `tests/ci/frontiere-confiance.sh`).
+- **Les deux correctifs possibles, et aucun n'est applicable depuis un run de réparation**
+  (`.github/` et `scripts/` sont hors de ce qu'il peut écrire — c'est voulu, ce sont les fichiers qui
+  le contrôlent) :
+  ① **le pilotage écrit le journal dans l'issue.** Il tient déjà un jeton *Actions* et sait lire les
+  runs (`scripts/veille-production.mjs`) : le corps de l'issue « Régler » devrait porter **le nom du
+  job, le nom de l'étape en échec et l'extrait de journal**, au lieu de demander une commande.
+  C'est le plus solide : l'agent n'obtient aucun droit de plus, et la preuve voyage avec l'ordre.
+  ② **accorder `Bash(gh run view:*)` en lecture seule** à `claude-code.yml`. Plus direct, mais c'est
+  un élargissement de la frontière de confiance : à peser, pas à faire au passage.
+  ⚠️ ① reste préférable aussi parce qu'un journal de run **expire** (90 j) alors que l'issue, elle,
+  est la mémoire de la chaîne.
+- **Ce que la lecture statique du dépôt a quand même tranché** (aucune commande de vérification
+  lancée : l'agent n'en a plus le droit, et c'est le workflow qui joue les audits avant publication) :
+  - les gates de `deploy.yml` sont les MÊMES sur `pull_request` et sur `push` ; un rouge déterministe
+    du commit aurait donc déjà rougi la PR #803. Ce qui ne tourne QUE sur `push` est court et il faut
+    y chercher d'abord : la résolution « commit → PR » de `governance`, la « Barrière RLS de la
+    production (authz-critical seule) », le job `deploy` (build `dist/`, minification, Netlify) et
+    `retour-issue` — ce dernier relit `commits/<sha>/pulls` **sans la boucle de 6 × 10 s** de
+    `governance`, et son `set -euo pipefail` le rend rouge tout seul, déploiement vert compris ;
+  - le lot « 📴 » de #803 est cohérent dans le dépôt : plus aucune liaison `postgres_changes` dans le
+    produit, manifeste `scripts/realtime-publication.json` à `publiees: []`, les deux seules sondes
+    déclarées (`conv_members`, `notifications`) toujours présentes dans
+    `tests/e2e/realtime-poussee-reelle.spec.js` — donc `audit-realtime-publication` et son banc
+    (`tests/unit/audit-realtime-publication.test.mjs`, cas ① et ⑦) se lisent comme verts ;
+  - `audit-claude-md` est vert, **de 9 caractères** : voir le point suivant.
+- 🟠 **Mesure à retenir — `CLAUDE.md` est à 39 991 caractères sur un plafond de 40 000.**
+  41 139 octets, 39 983 points de code (`wc -m -c`), 8 caractères du plan astral (les emoji de
+  titres), et `verifier()` compte la longueur JavaScript : 39 983 + 8 = **39 991 / 40 000**. La règle
+  tient en CI par `tests/unit/audit-claude-md.test.mjs` (cas ①), lancé avec tous les tests unitaires.
+  **La prochaine ligne ajoutée à `CLAUDE.md` rend la CI rouge** — c'est pour cela que cette fiche n'y
+  ajoute rien, et que la règle qu'elle porte vit ici seulement. Geste : alléger `CLAUDE.md` (une
+  règle condensée, une fiche renvoyée au journal) avant d'y écrire quoi que ce soit.
+- **Geste humain, dans l'ordre** : ① ouvrir le run 42700583850 et lire l'étape en échec ; ② si c'est
+  « Push direct sur main » de `governance`, c'est la course de l'index documentée le 2026-11-03 —
+  `gh run rerun --failed`, jamais un contournement ; ③ si c'est un échec d'installation Playwright,
+  de Netlify ou du graphe npm, relancer le job (causes externes déjà vécues, documentées dans
+  `deploy.yml` lui-même) ; ④ sinon, rouvrir une issue de réparation **en y collant le nom de l'étape
+  et l'extrait de journal** — avec cela, l'agent peut travailler.
+- **Non vérifié, et il faut le dire** : l'étape réellement en échec. Tout ce qui précède est une
+  lecture du dépôt, pas une lecture du run.
