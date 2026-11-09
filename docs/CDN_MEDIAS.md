@@ -23,7 +23,7 @@
 | `cdnUrl()` (app-08) | Point UNIQUE de tout envoi, identité tant que `PASSIO_CDN_BASE` est vide. Un futur CDN (Cloudflare R2 : sortie gratuite, mais un nom de domaine, ~10 €/an) n'y sera qu'une valeur à poser. |
 | `urlMediaDirecte()` (app-02) | Lit une ancienne URL du relais à sa SOURCE (seau `content` seulement ; une pièce jointe garde sa forme pour le résolveur signé). Appelée par `passioThumb`, `_reelVideoSrc`, les couvertures d'activité et de passion, les cartes ; `og:image` des aperçus est rendue sous la forme directe (`netlify/lib/apercu-coeur.js`). |
 | `passioThumb()` (app-02) | **Ne demande plus AUCUNE transformation d'image** : rend l'objet (sa légère, ou l'ancien tel quel). La transformation compte 100 images d'origine/mois en Pro et son URL est publique — un quota que n'importe qui pouvait épuiser. Elle peut être éteinte chez Supabase sans rien casser. |
-| `netlify/edge-functions/media.js` | `/media/content/<chemin>` → **301** vers `…/storage/v1/object/public/content/<chemin>` ; `?width=W&quality=75` (liste fermée) → 301 vers `…/storage/v1/render/image/public/…`. Aucune lecture d'origine, renvoi gardé un jour par le navigateur. Verrou : `tests/unit/media-edge.test.mjs`. |
+| `netlify/edge-functions/media.js` | `/media/content/<chemin>` → **301** vers `…/storage/v1/object/public/content/<chemin>`, **avec ou sans** `?width=W&quality=75` : depuis la suite du 2026-11-09, une ancienne miniature reçoit l'OBJET, jamais `render/image` (la liste fermée ne borne plus que la clé de cache du bord). Aucune lecture d'origine, renvoi gardé un jour par le navigateur. Verrou : `tests/unit/media-edge.test.mjs` (⑪ : ni renvoi ni ligne de code servi vers la transformation). |
 | Version légère à l'envoi | `supaUploadMedia(…, { legere: true })` pour les publications, et depuis le 2026-11-09 l'avatar et la photo de passion (352 px), la couverture, le fond de passion, la couverture d'activité et de bobine (720 px) : sans elle, `passioThumb` demandait une **transformation d'image**, plafonnée à 100 images d'origine par mois en Pro (19/100 avec dix comptes le 20/09 — un mur vers 50 profils avec photo). Verrou : `tests/e2e/capacite-images-legeres.spec.js`. |
 | `{ cache: "3600" }` | Un chemin RÉÉCRIT à l'identique (`upsert` d'une photo de passion, couverture d'une activité modifiée) se garde une heure ; tout le reste un an. Supabase purge son CDN à la réécriture, le navigateur non. |
 
@@ -35,6 +35,8 @@ n'a été réécrite (les URL du relais en base se lisent à la source ou suiven
 ```
 curl -s -o /dev/null -D - https://passio-app.netlify.app/media/content/<chemin>
 # → HTTP/1.1 301, Location: https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/<chemin>
+curl -s -o /dev/null -D - "https://passio-app.netlify.app/media/content/<chemin>?width=192&quality=75"
+# → HTTP/1.1 301, Location: …/storage/v1/object/public/content/<chemin> — jamais render/image
 curl -s -o /dev/null -D - https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/<chemin>
 # → Cache-Control: public, max-age=31536000 ; CF-Cache-Status: HIT à la 2ᵉ requête
 ```

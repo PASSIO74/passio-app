@@ -8,9 +8,11 @@
 // (Pro) sert désormais l'objet avec un cache d'un an : le relais devient un renvoi.
 //
 // Gardé de l'audit du 2026-11-06 : `Netlify-Vary: query=width|quality` fait de la
-// valeur BRUTE de ces paramètres une clé de cache, d'où la LISTE FERMÉE — hors
-// liste, aucun renvoi n'est fabriqué vers la transformation d'image (facturée par
-// image d'origine, spend cap : un mur pour tous).
+// valeur BRUTE de ces paramètres une clé de cache, d'où la LISTE FERMÉE.
+// Depuis la suite du 2026-11-09 (⑪), PLUS AUCUN renvoi ne va vers la
+// transformation d'image (100 images d'origine/mois en Pro, spend cap : un mur
+// pour tous) : une ancienne miniature reçoit l'objet, comme `passioThumb`. La
+// transformation peut être éteinte chez Supabase sans rien casser.
 // ══════════════════════════════════════════
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -30,11 +32,11 @@ beforeEach(() => {
 
 const get = (chemin, init) => media(new Request(HOTE + chemin, init));
 
-test("① une largeur du client, en qualité 75 : renvoyée vers la transformation Supabase", async () => {
+test("① une ancienne miniature, en qualité 75 : renvoyée vers l'OBJET, sans transformation", async () => {
   for (const w of [192, 352, 360, 400, 600, 700, 720, 880]) {
     const r = await get(`/media/content/a.jpg?width=${w}&quality=75`);
     assert.equal(r.status, 301, "largeur " + w);
-    assert.equal(r.headers.get("location"), `${SUPABASE}/storage/v1/render/image/public/content/a.jpg?width=${w}&quality=75`);
+    assert.equal(r.headers.get("location"), `${SUPABASE}/storage/v1/object/public/content/a.jpg`);
     assert.match(r.headers.get("cache-control"), /^public, max-age=\d+$/);
     assert.equal(r.headers.get("netlify-vary"), "query=width|quality");
     assert.equal(r.headers.get("x-passio-cdn"), "renvoi-miniature");
@@ -94,7 +96,7 @@ test("⑦ le renvoi ne sort jamais du stockage de PASSIO (pas de renvoi ouvert)"
     assert.ok(loc, c);
     const u = new URL(loc);
     assert.equal(u.origin, SUPABASE, c + " → " + loc);
-    assert.ok(/^\/storage\/v1\/(object|render\/image)\/public\/content\//.test(u.pathname), c + " → " + u.pathname);
+    assert.ok(/^\/storage\/v1\/object\/public\/content\//.test(u.pathname), c + " → " + u.pathname);
     // Un paramètre étranger n'est jamais recopié dans le renvoi.
     assert.equal(u.searchParams.get("next"), null, c);
   }
@@ -134,4 +136,49 @@ test("⑩ la liste couvre CHAQUE largeur demandée par le client (verrou contre 
   }
   assert.ok(trouvees.size >= 5, "le verrou doit trouver les largeurs du client");
   for (const w of trouvees) assert.ok(admises.has(w), "largeur du client absente de LARGEURS : " + w);
+});
+
+test("⑪ plus AUCUNE transformation d'image : ni dans un renvoi, ni dans le code servi", async () => {
+  // a) Aucune forme de requête, ancienne miniature comprise, n'est renvoyée vers `render/image`.
+  const formes = [
+    "/media/content/a.jpg",
+    "/media/content/photos/u1/p.jpg.v720.webp",
+    ...[192, 352, 360, 400, 600, 700, 720, 880].map((w) => `/media/content/a.jpg?width=${w}&quality=75`),
+  ];
+  for (const c of formes) {
+    for (const method of ["GET", "HEAD"]) {
+      const r = await get(c, { method });
+      assert.equal(r.status, 301, method + " " + c);
+      const loc = r.headers.get("location");
+      assert.doesNotMatch(loc, /render\/image|[?&](width|quality)=/, method + " " + c + " → " + loc);
+    }
+  }
+  assert.equal(appels.length, 0);
+
+  // b) Le code servi ne la demande plus nulle part : seul un COMMENTAIRE peut la nommer.
+  //    C'est ce qui permet d'éteindre la transformation chez Supabase sans rien casser.
+  const racine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const fichiers = [];
+  const parcourir = (dossier) => {
+    for (const e of fs.readdirSync(dossier, { withFileTypes: true })) {
+      if (e.name === "vendor" || e.name === "node_modules") continue;   // le SDK nomme l'API, il ne l'appelle pas
+      const p = path.join(dossier, e.name);
+      if (e.isDirectory()) parcourir(p);
+      else if (/\.(m?js|ts|html)$/.test(e.name)) fichiers.push(p);
+    }
+  };
+  for (const d of ["js", "netlify", "supabase/functions"]) parcourir(path.join(racine, d));
+  for (const f of ["sw.js", "index.html"]) fichiers.push(path.join(racine, f));
+  let commentaires = 0;
+  const fautes = [];
+  for (const f of fichiers) {
+    fs.readFileSync(f, "utf8").split("\n").forEach((ligne, i) => {
+      if (!ligne.includes("render/image")) return;
+      if (/^\s*(\/\/|\*|\/\*|<!--)/.test(ligne)) commentaires++;
+      else fautes.push(path.relative(racine, f) + ":" + (i + 1) + "  " + ligne.trim().slice(0, 120));
+    });
+  }
+  assert.ok(fichiers.length > 50, "le verrou doit parcourir le code servi (" + fichiers.length + " fichiers)");
+  assert.ok(commentaires >= 1, "le verrou doit au moins voir le commentaire de passioThumb (app-02)");
+  assert.deepEqual(fautes, [], "transformation d'image demandée par le code :\n" + fautes.join("\n"));
 });
