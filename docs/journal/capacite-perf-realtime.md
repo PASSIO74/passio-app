@@ -29,7 +29,8 @@
 - 🚫 UN COMPTE BLOQUÉ NE COMPTE PAS NON PLUS SUR LA PASTILLE D'UN COMMENTAIRE (2026-11-06)
 - 🗑️ analytics_events : CE QUI NE SERT QU'UNE HEURE NE VIT PLUS 13 MOIS — ET LE PREMIER POSTE ÉTAIT LA VEILLE, PAS LE PLAFOND (2026-11-07)
 - 📦 BANDE PASSANTE ET QUOTAS SANS INVESTIR : LA PAGE EN 304, LES MÉDIAS EN DIRECT, LES MINIATURES SANS TRANSFORMATION, LA LISTE DES PASSIONS GARDÉE (2026-11-09)
-- 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE MUR SUIVANT EST LE NOMBRE DE MESSAGES TEMPS RÉEL (2026-11-09, la suite)
+- 📴 LE CONTENU PUBLIC SORT DE LA RÉPLICATION CDC — `realtime.list_changes` PESAIT 60 % DE LA BASE (2026-11-09)
+- 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE QUOTA DE MESSAGES TEMPS RÉEL, AVANT ET APRÈS #802 (2026-11-09, la suite)
 
 ---
 
@@ -1850,7 +1851,122 @@ télémétrie étaient déjà durcis (lots de septembre et d'octobre) ; **les mu
 - ~70 % des requêtes reçues par Supabase en 24 h viennent des runners de la CI (réseau Microsoft,
   navigateurs headless) : mêmes quotas plafonnés que les futurs utilisateurs.
 
-## 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE MUR SUIVANT EST LE NOMBRE DE MESSAGES TEMPS RÉEL (2026-11-09, la suite)
+## 📴 LE CONTENU PUBLIC SORT DE LA RÉPLICATION CDC — `realtime.list_changes` PESAIT 60 % DE LA BASE (2026-11-09)
+
+Suite du lot « bande passante et quotas » du même jour, sur l'ordre de Benjamin (« fais tout, prends la
+main, optimise au maximum »). C'était le premier poste de « ce qui reste — code » de la fiche précédente.
+
+**Les mesures (production, canal ①, 2026-11-09 12:40 UTC).**
+- `extensions.pg_stat_statements` (remis à zéro le 2026-05-13) : la requête de `realtime.list_changes`
+  — le relevé du WAL que le serveur Realtime refait toutes les 100 ms dès qu'UN client tient une liaison
+  `postgres_changes` — compte **7 486 911 appels, 53 283 s, 7,1 ms en moyenne : 60,31 % du temps
+  d'exécution cumulé de TOUTE la base**, plus une seconde forme (354 568 appels, 2,37 %). Un seul compte
+  avait été actif dans la semaine : le relevé tourne dès qu'un onglet de compte est ouvert, quoi qu'il
+  regarde.
+- Aucune ligne dans `realtime.subscription` ni dans `pg_replication_slots` au moment de la mesure : le
+  relevé ne tourne QUE pendant qu'un client tient une liaison — c'est ce qui en fait un levier entier.
+- La publication `supabase_realtime` : 9 tables en production, **23 au staging** (des `cdv_*`,
+  `telemetry_events`… jamais retirées là-bas — le staging n'est pas un miroir, encore une fois).
+- Policies de `realtime.messages` identiques des deux côtés ; plus de policy visiteur sur `realtime:db`
+  (lot 3 de l'audit du 06/11).
+
+**Pourquoi pas « un broadcast à tous » à la place.** Le quota `Realtime Messages` (5 M/mois, plafonné)
+compte chaque message LIVRÉ : pousser chaque publication, chaque changement de profil ou chaque
+battement de live à tous les connectés coûte O(écritures × connectés) messages — à l'échelle visée, le
+quota tombe avant la base. Seuls survivent les envois CIBLÉS (ceux qui regardent une discussion, les
+membres d'une conversation, l'auteur d'une publication) ; tout ce qui vaut « pour tout le monde » est
+RELU par les filets, dont le coût suit les onglets à l'écran, jamais le débit des écritures.
+
+**Ce qui le remplace.**
+- Une discussion À L'ÉCRAN (modale, feuille, détail d'une publication, fiche d'activité, panneau des
+  Bobines) rejoint un sujet privé `fil:<id>`, lâché 20 s après la fermeture (la fraîcheur du cache
+  d'ouverture). Le serveur y poussera commentaires, interactions (ajout ET retrait, la ligne entière) et
+  commentaires d'activité.
+- L'auteur d'une publication reçoit les mêmes lignes sur `user:<lui>` : la pastille et le compte de SES
+  cartes bougent comme avant, sans rien ouvrir. Un accusé de lecture part aux autres membres, sur
+  `user:<membre>`.
+- Publications, profils et lives : plus de direct. Le filet du fil reste à 60 s tant que le fil est à
+  l'écran, pour tout le monde (`filetEstLeSeulChemin` n'a plus de terme d'identité) ; celui des lives
+  aussi, et relit tout de suite au retour au fil ou au premier plan (sur le fil seulement) ; un profil
+  changé se voit à la prochaine résolution (`_resolveProfilesByIds`, 2 min) ou au rechargement. Le
+  battement de cœur d'un live (un UPDATE toutes les 25 s) ne part plus vers personne.
+- Un sujet en PANNE (délai, canal fermé, adhésion sans réponse 15 s) fait relire la discussion à
+  cadence adaptative (`discussionRelectureProchainPas`, 5 s → ×1,5 → 30 s) ; un REFUS de policy n'est
+  pas une panne (avant la migration le serveur refuse tout `fil:`, après il ne refuse que l'illisible).
+
+**La séquence — client d'abord, et un client valable dans les DEUX états.** La migration
+(`migration_realtime_public_hors_cdc_2026-11-09.sql` : triggers `realtime.send`, policy
+`passio_rt_recevoir_fil`, publication vidée) exige la contre-revue de PASSIO74 avant d'atteindre le
+staging comme la production (`attester-migration.mjs`). Le client part donc SEUL d'abord : il garde
+cinq liaisons CDC « de transition » (accusés, interactions ×2, commentaires, commentaires d'activité)
+qui livrent comme hier tant que les tables sont publiées, et il écoute déjà `fil:` et `user:` — les
+mêmes gestionnaires, idempotents (`_rtDejaTraite`). Après la migration, le premier refus du serveur
+(message `system` en erreur) rend `realtime:db` pour la session (`_cdcRetire`).
+
+**Les pièges, chacun payé ce jour-là.**
+- ⚠️ **APRÈS LA MIGRATION, UNE LIAISON CDC N'EST PAS MUETTE : ELLE EST RÉESSAYÉE** (relecture
+  `audit-passio`). Une table hors publication fait refuser au serveur la création des liaisons du canal,
+  qu'il retente toutes les 5 à 10 s tant que le canal reste ouvert — pour chaque compte, en réveillant
+  chaque fois le relevé qu'on vient d'éteindre. Le premier jet écrivait « la table sortie fait taire
+  celui-ci » : c'était faux, et le `PREREQUIS-CLIENT` ne l'aurait pas vu (ce client porte les deux
+  noms d'événement). D'où l'écoute du message `system`.
+- ⚠️ **LE SOCKET QUI S'ENDORT SE COUPE AVANT DE RENDRE SES CANAUX** (défaut du 2026-09-21, lu dans le
+  SDK 2.116) : un départ de canal ne se résout tout de suite que si le socket ne peut plus pousser.
+  Dans l'ordre d'avant (`removeAllChannels` puis `disconnect`), chaque départ attendait 10 s une
+  réponse perdue ; le canal restait dans `getChannels()` — et `supa.channel(sujet)` RENDAIT cette
+  instance mourante à un réveil (adhésion jamais faite) —, puis `removeAllChannels` finissait par un
+  `disconnect()` qui coupait le socket rouvert entre-temps. Le gestionnaire des sujets attend en plus le
+  départ d'un canal du même sujet (`attente`).
+- ⚠️ **UNE LECTURE EN ÉCHEC N'EST PAS UNE DISCUSSION VIDE** : `supaLoadEventComments` rendait `[]` sur
+  une erreur, et `_loadEventComments` effaçait la discussion d'une activité (écran ET cache). Préexistant,
+  mais la relecture de repli — qui tourne quand le réseau va mal — l'aurait refait toutes les 5 s.
+  Désormais `null`, liste gardée, lecture non datée, cadence vive.
+- ⚠️ **UNE RELECTURE EST UN INSTANTANÉ** : un commentaire arrivé par le sujet PENDANT la lecture était
+  écrasé par la page (et la déduplication empêchait sa seconde copie de le remettre) ; une hydratation
+  en échec repeignait « 🤍 0 ». `_relireDiscussionPublication` garde l'arrivé et reporte les interactions
+  connues quand `hydrateCommentInteractions` (qui le rend désormais) n'a rien lu.
+- ⚠️ **`pageshow` PART AUSSI AU PREMIER CHARGEMENT** : relire les lives sur lui doublait la lecture de
+  `supaInit` — et une réponse 2xx de plus efface le compte des échecs de `_sondeServeurReponse`.
+  `audit-2026-11-etats-degrades.spec.js:330` (bandeau après trois 500) passait de 3 rouges sur 5 sur
+  `main` (instabilité préexistante, hors lot) à 5 sur 5. Seul un retour du cache de navigation relit.
+- ⚠️ **UNE CINQUIÈME SURFACE** : le panneau des Bobines affiche une discussion que `_discussionAffichee`
+  ignore à dessein (elle sert à l'épingle, qu'il n'affiche pas). Sans la relecture adversariale, son
+  spectateur perdait tout direct après la migration.
+- ⚠️ **UNE ACTIVITÉ CRÉÉE DANS LA SESSION N'A PAS `fromSupabase`** : l'exemple se reconnaît à sa forme
+  (`e<n>`, celle d'`est_identifiant_exemple`), pas au drapeau — même piège que `_ciEstExemple`.
+- ⚠️ **`clock.fastForward` NE DÉCLENCHE CHAQUE MINUTERIE QU'UNE FOIS** sur l'intervalle sauté : une veille
+  de 3 s ne passe pas dix fois en 30 s. `runFor` pour une cadence.
+- ⚠️ **`capacite-likes-visibles:300` ÉTAIT UNE COURSE DU BANC** : `clock.install()` laisse couler le
+  temps, le premier relevé part 200 ms après le démarrage du cycle, et le clic de Playwright en prend
+  55 à 280 (mesuré des deux côtés ; 4 rouges sur 34 sur la branche, 0 sur 34 sur `main` — un écart non
+  significatif, la course est des deux côtés). L'horloge est figée avant le premier clic.
+- ⚠️ **Sur ce poste, un heredoc mange les barres obliques inverses** (déjà en mémoire) : un correctif de
+  test écrit ainsi a produit des chaînes cassées et des expressions régulières vidées. Write, puis node.
+
+**Ce qui change pour l'utilisateur, dit tel quel.** Une publication d'un autre arrive en 60 s au plus
+sur le fil à l'écran (avant : ~1 s pour un compte) ; les compteurs de commentaires et les réactions
+d'une carte qui n'est pas à moi suivent le même filet (les « j'aime » le faisaient déjà, 15–60 s) ; une
+nouvelle photo de profil se voit en 2 min ou au rechargement ; une bulle « 🔴 LIVE » apparaît et
+disparaît en 60 s au plus sous les yeux. Inchangés : les messages, les notifications, les appels, une
+discussion ouverte (en quelques centaines de ms par le sujet, en 5 s au pire par la relecture), les
+cartes de MES publications. Un visiteur : rien de changé (il n'avait pas de direct).
+
+**Verrous.** `tests/e2e/realtime-public-hors-cdc.spec.js` (25 cas, rien n'est écrit : `supa.channel`,
+`supa.from` et `supa.rpc` simulés), dont un cas par correction de la relecture adversariale ;
+suites ajustées : `capacite-amplification` (⑦ ⑧ ⑩), `capacite-connexions-temps-reel` (porte
+`_creerCanalFil`, garde `_filsRtPossible`), `capacite-socket-au-repos`, `capacite-likes-visibles`,
+`realtime-diffusion-privee`, `tests/unit/charge-realiste.test.mjs` ; `capacite-realtime-cible.spec.js`
+est parti avec la liaison `profiles` qu'il gardait.
+
+**Ce qui reste, et où.** La migration, son banc (`tests/sql/migration-realtime-public-hors-cdc.test.sh`)
+et le nettoyage du client (plus aucune liaison CDC, soupape v1 sur `user:`, bancs de charge sans
+`realtime:db`, `audit:realtime` à publication vide) partent ensemble dans la PR suivante, derrière la
+contre-revue. Le pilotage local compte encore `publish` comme livraison vérifiable
+(`dashboard/server/interactions.js`) alors que plus rien ne la signale : chemin critique, même PR. La
+mesure APRÈS se lit au canal ① une fois la migration appliquée et l'ancien client parti — consignée
+ci-dessous à ce moment-là.
+
+## 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE QUOTA DE MESSAGES TEMPS RÉEL, AVANT ET APRÈS #802 (2026-11-09, la suite)
 
 Demande de Benjamin : « combien d'utilisateurs peuvent utiliser l'app maintenant ? total ? en même
 temps ? », puis « oui, fais-le » (lever le mur des avatars).
@@ -1897,22 +2013,26 @@ rougir ; ce sont désormais les largeurs FIGÉES des builds d'avant #795 qu'il f
 | Mur | Limite (Pro, spend cap actif) | Atteint vers… |
 |---|---|---|
 | E-mails d'inscription | 30/h (défaut Supabase en SMTP perso), 300/j (Brevo gratuit) | un pic de lancement ; Google n'y est pas soumis |
-| **Messages temps réel** | **5 M/mois** | **~1 000 actifs/jour (600 à 2 000)** |
-| Messages temps réel par seconde | 500/s (au-delà, déconnexions `tenant_events`) | 300 à 500 comptes connectés ensemble |
+| **Messages temps réel** | **5 M/mois** | **avant la migration de #802 : ~1 300 actifs/jour (800 à 2 000) ; après : ~14 000** |
+| Messages temps réel par seconde | 500/s (au-delà, déconnexions `tenant_events`) | avant la migration : ~430 comptes connectés ensemble ; après : les 500 connexions passent devant |
 | Connexions temps réel | 500 | 500 sockets — un onglet ou appareil connecté chacun (un visiteur n'en ouvre pas ; `test:prod` et le tableau de bord comptent aussi) |
 | Sortie en cache Supabase (médias) | 250 Go/mois | ~1 400 actifs/jour (fiche précédente : ~2 Mo par session, ~3 sessions par jour et par actif) |
 | Bande passante Netlify (l'app seule) | 100 Go/mois | ~3 000 appareils/jour |
 | Base Micro | ~400 req/s (banc du 14/09) | 2 000 à 4 000 personnes actives ensemble |
 
-⚠️ **LE QUOTA MENSUEL DE MESSAGES EST UN MUR EN (ACTIFS)², ET AUCUNE JAUGE NE LE SUIT.** Supabase compte
-un message par client abonné et par changement : chaque publication, commentaire, réaction à un
-commentaire, modification de profil et battement de live (25 s) part à TOUS les comptes connectés
-(`posts`, `post_comments`, `event_comments`, `comment_interactions`, `profiles`, `video_lives` ; les
-« j'aime » n'y passent plus, relus par les compteurs). Messages/mois ≈ 30 × 1,5 × e × (T / 1 440) × D²,
-avec D actifs/jour, e ≈ 5 écritures publiques par actif et par jour, T ≈ 25 min de socket par jour,
-1,5 pour la pointe : ≈ 3,9 × D² — les 5 M tombent vers D ≈ 1 100, et 5 000 actifs/jour feraient
-~100 M de messages (~230 $/mois sans spend cap). Même forme par seconde : ≈ e / (60 × T) × C², soit
-500/s vers C ≈ 390 connectés. **Ce sont des estimations, à un facteur 2 près** : le chiffre réel se lit
-dans Supabase › Usage › Realtime Messages. Conclusion identique à la fiche précédente
-(`postgres_changes`, 60 % du calcul de la base) : passer le public sur les filets ou sur un broadcast
-par écran, et garder la socket pour la messagerie, les appels et les lives.
+⚠️ **LE QUOTA MENSUEL DE MESSAGES ÉTAIT UN MUR EN (ACTIFS)² — #802, FUSIONNÉE LE MÊME SOIR, EN RETIRE
+L'ESSENTIEL — ET AUCUNE JAUGE NE LE SUIT.** Supabase compte un message par client abonné et par
+changement. Jusqu'à #802, chaque publication, commentaire, réaction à un commentaire, modification de
+profil et battement de live (25 s) partait à TOUS les comptes connectés (les « j'aime » n'y passaient
+déjà plus) : messages/mois ≈ 30 × 1,5 × e × (T / 1 440) × D², avec D actifs/jour, e ≈ 5 écritures
+publiques par actif et par jour, T ≈ 25 min de socket par jour, 1,5 pour la pointe — ≈ 3,9 × D², les
+5 M vers D ≈ 1 100, et 5 000 actifs/jour auraient fait ~100 M de messages (~230 $/mois sans spend cap) ;
+par seconde ≈ e / (60 × T) × C², les 500/s vers C ≈ 390 connectés. **Depuis #802 (client), publications,
+profils et lives ne partent plus vers personne** ; restent, jusqu'à sa migration, les cinq liaisons de
+transition (commentaires, interactions ×2, commentaires d'activité, accusés) qui livrent encore à tous :
+e ≈ 4, ≈ 3,1 × D², les 5 M vers D ≈ 1 300, les 500/s vers C ≈ 430. **Après la migration, plus rien ne part
+« à tous »** : un changement ne va qu'à ceux qui regardent la discussion, à l'auteur et aux membres —
+≈ 30 × e × k × D avec k ≈ 3 destinataires, les 5 M vers ~14 000 actifs/jour, et c'est la limite des 500
+connexions, pas les messages, qui borne la simultanéité. **Ce sont des estimations, à un facteur 2
+près** : le chiffre réel se lit dans Supabase › Usage › Realtime Messages, que rien dans le pilotage ne
+suit encore.

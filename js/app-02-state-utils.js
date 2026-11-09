@@ -660,6 +660,10 @@ window._uidEstUnCompte = _uidEstUnCompte;
 // contre 97,9 % d'un quota de 500 » — exactement la latence qu'un compte subit
 // déjà quand son canal décroche. Sans ce couplage, le lot aurait « réussi » en
 // figeant le fil cinq minutes chez presque tout le monde.
+// ⚠️ DEPUIS LE 2026-11-09, CE MARCHÉ VAUT POUR TOUT LE MONDE : `posts`,
+// `profiles` et `video_lives` ne sont plus poussés à personne, comptes compris
+// (`postgres_changes` hors du contenu public, app-08 « 📴 ») — le filet est le
+// seul chemin du fil pour chacun, d'où `filetEstLeSeulChemin` ci-dessous.
 //
 // ⚠️ CE N'EST PAS UN PROBLÈME DE NOMBRE DE CANAUX, et s'en prendre aux canaux
 // n'aurait rien donné : les canaux d'un client partagent la MÊME connexion. Le
@@ -675,10 +679,10 @@ window._uidEstUnCompte = _uidEstUnCompte;
 // de l'échec, il RECEVRA ses messages dès que le jeton se rafraîchit, et il
 // n'est pas la masse qu'on cherche à écarter.
 //
-// ⚠️ SEULE AUTORITÉ, et elle a DEUX lecteurs qui ne posent pas la même
-// question : `supaSubscribe` (« dois-je ouvrir la connexion ? ») et le filet du
-// fil (« suis-je le seul chemin ? »). Les laisser diverger rouvrirait très
-// exactement le défaut que ce lot ferme, par le second.
+// ⚠️ SEULE AUTORITÉ de « dois-je ouvrir la connexion ? » (`supaSubscribe`, les
+// portes de canal, `_filsRtPossible`). Le filet du fil la lisait aussi (« suis-je
+// le seul chemin ? ») jusqu'au 2026-11-09 : sans contenu public en temps réel,
+// il est le seul chemin de tout le monde (`filetEstLeSeulChemin`).
 //
 // ⚠️ ELLE ÉCHOUE **OUVERT**, comme ses deux appelants. Ils la lisent par
 // `typeof … === "function" && !connexionTempsReelAutorisee()` : autorité
@@ -721,24 +725,37 @@ window.connexionTempsReelAutorisee = connexionTempsReelAutorisee;
 // (app-05) — dont les bulles « 🔴 LIVE » vivent dans la barre de stories DU
 // FIL, donc la même condition. Deux copies d'une même politique finissent
 // toujours par diverger sur celle qu'on oublie.
-// ⚠️ LE SENS DE L'ÉCHEC SUIT CELUI DES APPELANTS : autorité illisible = on
-// considère le temps réel OUVERT, donc le filet n'est PAS le seul chemin et
-// recule comme avant. C'est le comportement d'avant ce lot, à l'octet près.
+// ⚠️ DEPUIS LE 2026-11-09, PLUS AUCUN TERME DE TEMPS RÉEL : les publications et
+// les lives ne sont plus poussés à personne (app-08 « 📴 »), un compte comme un
+// visiteur. Les deux termes d'avant — « pas de compte » et « socket au repos »
+// (2026-09-21) — disaient « pas de temps réel POUR LUI » ; il n'y en a plus pour
+// personne, donc le filet est le seul chemin de quiconque REGARDE le fil, et
+// seulement de lui. La borne « fil à l'écran » reste le cœur du marché.
 function filetEstLeSeulChemin() {
-  // ⚠️ DEUX TERMES depuis le socket au repos (2026-09-21) : un compte AUTORISÉ
-  // dont le socket dort (visible, immobile 15 min, sur le fil) n'a plus que le
-  // filet pour voir arriver quelque chose — comme un visiteur. Sans ce terme, le
-  // filet reculait à 5 min pendant le repos (contre-revue).
-  const socketAuRepos = !!(window._rtRepos && window._rtRepos.endormi);
-  const tempsReelOuvert = (typeof connexionTempsReelAutorisee !== "function"
-    || connexionTempsReelAutorisee()) && !socketAuRepos;
-  if (tempsReelOuvert) return false;
   try {
     const feed = document.getElementById("screen-feed");
     return !!(feed && feed.classList.contains("active"));
   } catch (e) { return false; }
 }
 window.filetEstLeSeulChemin = filetEstLeSeulChemin;
+
+// LA CADENCE DE RELECTURE D'UNE DISCUSSION À L'ÉCRAN (2026-11-09) — PURE, même
+// forme que `filetProchainPas`. Une discussion ouverte écoute son sujet privé
+// `fil:<id>` (app-08) ; quand ce sujet est EN PANNE (délai dépassé, canal
+// fermé), elle se relit : 5 s tant qu'elle bouge — « un commentaire d'autrui
+// apparaît en quelques secondes » —, ×1,5 à chaque tour sans changement,
+// plafond 30 s. `vivant` (un changement, une erreur) rend la cadence vive.
+// Bornée à la discussion affichée et à une page visible (app-08) : le coût
+// suit ceux qui regardent une discussion, jamais le nombre de connectés.
+const DISCUSSION_RELECTURE_MIN_MS = 5000;
+const DISCUSSION_RELECTURE_MAX_MS = 30000;
+function discussionRelectureProchainPas(pasActuel, vivant) {
+  var pas = Number(pasActuel);
+  if (!isFinite(pas) || pas < DISCUSSION_RELECTURE_MIN_MS) pas = DISCUSSION_RELECTURE_MIN_MS;
+  if (vivant) return DISCUSSION_RELECTURE_MIN_MS;
+  return Math.min(DISCUSSION_RELECTURE_MAX_MS, Math.round(pas * 1.5));
+}
+window.discussionRelectureProchainPas = discussionRelectureProchainPas;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UXO-02 — MODE « SESSION EXPIRÉE » : le compte est là, la session ne l'est pas
@@ -3639,7 +3656,7 @@ function goTo(screen) {
   // et on aurait borné le coût en servant du périmé.
   if (screen === "feed") {
     try { if (typeof feedFiletReveiller === "function") feedFiletReveiller(_retourAuFil); } catch (e) {}
-    try { if (typeof vliveFiletReveiller === "function") vliveFiletReveiller(); } catch (e) {}
+    try { if (typeof vliveFiletReveiller === "function") vliveFiletReveiller(_retourAuFil); } catch (e) {}
   }
 
   // Première visite : le module pose ses indications contextuelles au bon moment
@@ -10386,6 +10403,8 @@ async function openPost(id) {
   if (page.style.display === "none" || !page.style.display) pushOverlayHistory("post", "#post");
   page.style.display = "flex";
   page.scrollTop = 0;
+  // Le sujet privé de cette discussion (`fil:<id>`, app-08), avant la lecture.
+  try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
   // Rafraîchit les commentaires depuis Supabase EN ARRIÈRE-PLAN (n'ayant plus
   // bloqué l'affichage) puis patche #postDetailComments sans jank (scroll préservé,

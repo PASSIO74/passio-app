@@ -156,29 +156,29 @@ test("⑥ ter le plancher se prend sur la frappe NORMALISÉE, pas sur le texte b
 test("⑦ les gestionnaires temps réel passent par `_profilAuteur` — à la SOURCE", () => {
   const src = lire("js/app-08-ui-modals-tour.js");
   // ⚠️ MESURÉ À LA SOURCE, et c'est délibéré : le chemin vivant est un
-  // gestionnaire `postgres_changes`, qu'un banc local ne déclenche pas (aucun
-  // WAL, aucun canal). Un cas qui appellerait `_profilAuteur` à la main
-  // resterait vert le jour où les gestionnaires cesseraient de l'appeler —
-  // exactement le défaut `_notifierMessage`.
-  // ⚠️ LA TRANCHE SE BORNE À LA FONCTION, et la première rédaction l'a oublié :
-  // elle allait jusqu'à la fin du fichier et attrapait le `from("profiles")` de
-  // `supaInit` — un chemin de DÉMARRAGE, appelé une fois par session, qui n'a
-  // rien à voir avec l'amplification. Un verrou qui rougit sur un innocent finit
-  // par être désarmé.
-  const debut = src.indexOf("function _creerCanalDb(");
-  expect(debut, "la fonction doit exister").toBeGreaterThan(0);
-  const fin = src.indexOf("\nfunction ", debut + 10);
-  const canal = src.slice(debut, fin > debut ? fin : undefined);
-  expect(canal.length, "le corps du canal doit être trouvé").toBeGreaterThan(1000);
-  expect(canal, "la tranche doit s'arrêter avant supaInit").not.toContain("PROFIL STABLE PAR COMPTE");
-  expect(
-    canal.match(/from\(["']profiles["']\)/g),
-    "AUCUN gestionnaire du canal temps réel ne doit interroger `profiles` : l'événement est poussé à TOUS les connectés, donc une écriture coûterait N requêtes"
-  ).toBeNull();
-  expect(
-    (canal.match(/_profilAuteur\(/g) || []).length,
-    "les deux gestionnaires (posts, post_comments) doivent passer par l'autorité unique"
-  ).toBeGreaterThanOrEqual(2);
+  // gestionnaire de canal, qu'un banc local ne déclenche pas (aucun WAL, aucun
+  // canal). Un cas qui appellerait `_profilAuteur` à la main resterait vert le
+  // jour où les gestionnaires cesseraient de l'appeler — exactement le défaut
+  // `_notifierMessage`.
+  // ⚠️ 2026-11-09 (« 📴 ») : la liaison des publications est partie (elles
+  // arrivent par le filet du fil), et le gestionnaire des commentaires est
+  // NOMMÉ — `_rtCommentaireRecu`, appelé par la liaison de transition de
+  // `realtime:db`, par le sujet `fil:<id>` et par `user:<moi>`. On mesure SON
+  // corps, et celui des trois fabriques qui le branchent : aucune n'interroge
+  // `profiles` (une ligne poussée à N personnes coûterait N requêtes).
+  const corps = (entete) => {
+    const i = src.indexOf(entete);
+    expect(i, entete + " doit exister").toBeGreaterThan(0);
+    return src.slice(i, src.indexOf("\n}\n", i));
+  };
+  for (const f of ["function _creerCanalDb(", "function _creerCanalFil(", "function _subscribeUserTopic(", "async function _rtCommentaireRecu("]) {
+    expect(corps(f).match(/from\(["']profiles["']\)/g), f + " n'interroge pas `profiles`").toBeNull();
+  }
+  expect((corps("async function _rtCommentaireRecu(").match(/_profilAuteur\(/g) || []).length,
+    "le gestionnaire des commentaires passe par l'autorité unique").toBeGreaterThanOrEqual(1);
+  for (const f of ["function _creerCanalDb(", "function _creerCanalFil(", "function _subscribeUserTopic("]) {
+    expect(corps(f), f + " branche le gestionnaire nommé").toContain("_rtCommentaireRecu(");
+  }
 });
 
 test("⑦ bis `_profilAuteur` sert le cache sans réseau, et n'interroge qu'au manque", async ({ page }) => {
@@ -211,103 +211,55 @@ test("⑦ bis `_profilAuteur` sert le cache sans réseau, et n'interroge qu'au m
   expect(r.c.username).toBe("Venue du réseau");
 });
 
-// ── ⑧ LE BATTEMENT DE CŒUR D'UN LIVE NE RECHARGE PLUS RIEN ─────────────────
+// ── ⑧ LE BATTEMENT DE CŒUR D'UN LIVE NE PART PLUS VERS PERSONNE (2026-11-09) ─
+// Jusqu'au 2026-11-09, la liaison temps réel des lives livrait à TOUS les
+// connectés l'UPDATE `last_seen` que l'hôte envoie toutes les 25 s, filtré
+// ensuite chez chacun (`vliveRefreshCoalesce`, 2026-09-20). La liaison est
+// partie avec le reste du contenu public (« 📴 ») : il n'y a plus de battement à
+// filtrer, et les bulles « 🔴 LIVE » suivent le filet, qui relit tout de suite
+// au retour à l'écran.
 
-test("⑧ le battement de cœur d'un live ne déclenche AUCUN rechargement", async ({ page }) => {
-  await bootOnboarded(page);
-  // ⚠️ C'EST LE CAS QUE LA PRODUCTION PRODUIT VRAIMENT, et la première version
-  // de ce verrou ne le mesurait pas : elle envoyait douze appels dans le même
-  // tick, une rafale que la donnée mesurée ne montre nulle part. L'hôte d'un
-  // live envoie un UPDATE `last_seen` toutes les 25 SECONDES — aucun débounce
-  // de 250 ms ne le coalesce. Un verrou qui exerce une forme de charge que la
-  // production n'a pas est vert sans rien prouver.
-  await compteurVliveAuCalme(page);
-  const r = await page.evaluate(async () => {
-    window._videoLives = [{ id: "vl1", status: "live", author_id: "u_x", last_seen: "2026-09-20T06:00:00Z" }];
-    // Six battements, espacés comme en production (le débounce a le temps
-    // d'expirer entre deux) : rien ne doit partir.
-    for (let i = 0; i < 6; i++) {
-      window.vliveRefreshCoalesce({ eventType: "UPDATE", new: { id: "vl1", status: "live", last_seen: "2026-09-20T06:0" + i + ":00Z" } });
-      await new Promise((r2) => setTimeout(r2, 300));
-    }
-    const battements = window.__vliveAppels;
-    // Un changement de STATUT, lui, doit recharger.
-    window.vliveRefreshCoalesce({ eventType: "UPDATE", new: { id: "vl1", status: "ended" } });
-    await new Promise((r2) => setTimeout(r2, 400));
-    const apresStatut = window.__vliveAppels;
-    // Un live INCONNU aussi : un événement qu'on ne sait pas lire est honoré.
-    window.vliveRefreshCoalesce({ eventType: "INSERT", new: { id: "vl2", status: "live" } });
-    await new Promise((r2) => setTimeout(r2, 400));
-    return { battements, apresStatut, total: window.__vliveAppels };
-  });
-  expect(r.battements, "six battements de cœur : AUCUN rechargement").toBe(0);
-  expect(r.apresStatut, "un changement de statut recharge").toBe(1);
-  expect(r.total, "un identifiant inconnu recharge aussi").toBe(2);
+test("⑧ aucune liaison des lives : la coalescence est partie avec elle ; le retour relit tout de suite — à la SOURCE", () => {
+  // ⚠️ Ce cas ne NOMME pas le marqueur CDC : la gate `audit:realtime` lit le
+  // texte des suites (son propre piège du fantôme).
+  const app08 = lire("js/app-08-ui-modals-tour.js");
+  expect(app08, "plus aucune liaison vers video_lives").not.toContain('table: "video_lives"');
+  const app05 = lire("js/app-05-config-profil.js");
+  expect(app05, "la coalescence est partie avec la liaison qu'elle servait").not.toContain("function vliveRefreshCoalesce(");
+  expect(app05).not.toContain("function vliveEvenementSansEffet(");
+  expect(app05, "le retour au premier plan relit tout de suite, si le fil est à l'écran").toMatch(/visibilitychange[\s\S]{0,200}vliveFiletReveiller\(typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin\(\)\)/);
+  // `pageshow` : seulement au retour du cache de navigation (iOS revient du
+  // bfcache sans visibilitychange) — au premier chargement, `supaInit` vient de lire.
+  expect(app05, "pageshow aussi, s'il vient du cache de navigation").toMatch(/pageshow[\s\S]{0,120}vliveFiletReveiller\(!!\(e && e\.persisted\) && /);
+  expect(lire("js/app-02-state-utils.js"), "le retour au fil aussi").toMatch(/vliveFiletReveiller\(_retourAuFil\)/);
 });
 
-test("⑧ bis un appel sans payload recharge — on n'honore jamais un événement qu'on ne sait pas lire", async ({ page }) => {
+test("⑧ bis page masquée : le filet des lives ne lit rien ; le retour à l'écran et `pageshow` relisent tout de suite", async ({ page }) => {
   await bootOnboarded(page);
   await compteurVliveAuCalme(page);
   const r = await page.evaluate(async () => {
-    window._videoLives = [{ id: "vl1", status: "live" }];
-    window.vliveRefreshCoalesce();                                       // aucun payload
-    window.vliveRefreshCoalesce({ eventType: "DELETE", old: { id: "vl1" } });
-    await new Promise((r2) => setTimeout(r2, 400));
-    return window.__vliveAppels;
-  });
-  expect(r, "sans payload lisible, on recharge (et la rafale reste coalescée en un seul appel)").toBe(1);
-});
-
-test("⑧ ter page masquée : rien ne part, et le retour à l'écran RATTRAPE", async ({ page }) => {
-  await bootOnboarded(page);
-  await compteurVliveAuCalme(page);
-  const r = await page.evaluate(async () => {
-    window._videoLives = [];
+    window._supaReal = true;                       // en local le SDK n'est pas réel : le filet ne lirait rien
     Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    for (let i = 0; i < 5; i++) window.vliveRefreshCoalesce({ eventType: "INSERT", new: { id: "vl9", status: "live" } });
-    await new Promise((r2) => setTimeout(r2, 400));
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise((r2) => setTimeout(r2, 300));
     const masquee = window.__vliveAppels;
-    // ⚠️ Le rendez-vous est REPORTÉ, jamais annulé : un live ouvert pendant que
-    // le téléphone est en poche doit apparaître au retour, sinon on aurait
-    // remplacé « trop de requêtes » par « une bulle éteinte ».
     Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
     document.dispatchEvent(new Event("visibilitychange"));
-    await new Promise((r2) => setTimeout(r2, 500));
-    return { masquee, apresRetour: window.__vliveAppels };
-  });
-  expect(r.masquee, "une page masquée ne demande rien : la réponse ne peut rien peindre").toBe(0);
-  expect(r.apresRetour, "le retour à l'écran rattrape ce qui a été reporté").toBe(1);
-});
-
-test("⑧ quater `pageshow` rattrape aussi — iOS revient du bfcache sans `visibilitychange`", async ({ page }) => {
-  await bootOnboarded(page);
-  // ⚠️ La première rédaction NOMMAIT `pageshow` dans son commentaire sans
-  // jamais l'écouter. Un commentaire qui promet une couverture qu'il n'a pas
-  // est pire qu'un trou : on croit le cas traité.
-  await compteurVliveAuCalme(page);
-  const r = await page.evaluate(async () => {
-    window._videoLives = [];
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    window.vliveRefreshCoalesce({ eventType: "INSERT", new: { id: "vlA", status: "live" } });
     await new Promise((r2) => setTimeout(r2, 300));
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
-    window.dispatchEvent(new Event("pageshow"));
-    await new Promise((r2) => setTimeout(r2, 500));
-    return window.__vliveAppels;
+    const apresRetour = window.__vliveAppels;
+    // Un `pageshow` de premier chargement ne relit pas (`supaInit` vient de le
+    // faire) ; un retour du cache de navigation, si.
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: false }));
+    await new Promise((r2) => setTimeout(r2, 300));
+    const apresChargement = window.__vliveAppels;
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    await new Promise((r2) => setTimeout(r2, 300));
+    return { masquee, apresRetour, apresChargement, apresPageshow: window.__vliveAppels };
   });
-  expect(r, "`pageshow` seul doit rattraper le report").toBe(1);
-});
-
-test("⑧ quinquies le gestionnaire temps réel TRANSMET le payload — à la SOURCE", () => {
-  const src = lire("js/app-08-ui-modals-tour.js");
-  const i = src.indexOf('table: "video_lives"');
-  expect(i, "le binding video_lives doit exister").toBeGreaterThan(0);
-  const bloc = src.slice(i, i + 900);
-  // Sans l'argument, la garde ne peut RIEN décider et chaque battement repaie
-  // une requête chez chaque connecté : le câblage est tout le lot.
-  expect(bloc, "le payload doit être reçu").toMatch(/function\s*\(\s*payload\s*\)/);
-  expect(bloc, "et transmis à la coalescence").toContain("vliveRefreshCoalesce(payload)");
-  expect(bloc, "le repli direct reste").toContain("supaRefreshVideoLives");
+  expect(r.masquee, "une page masquée ne demande rien").toBe(0);
+  expect(r.apresRetour, "le retour à l'écran relit tout de suite").toBe(1);
+  expect(r.apresChargement, "le `pageshow` du premier chargement ne double pas la lecture du démarrage").toBe(1);
+  expect(r.apresPageshow, "un retour du cache de navigation relit").toBe(2);
 });
 
 // ── ⑨ conv_members : O(N) → O(1), puis R25 : le SERVEUR pousse ─────────────
@@ -412,15 +364,14 @@ test("⑩ ter le filet du fil est une CHAÎNE qui se ré-arme, même masqué", (
   expect(src, "et `stopFeedRefreshLoop` annule un timeout, plus un interval").toMatch(/stopFeedRefreshLoop[\s\S]{0,200}clearTimeout/);
 });
 
-test("⑩ quater un événement temps réel et le retour à l'écran réveillent le filet — à la SOURCE", () => {
+test("⑩ quater un commentaire reçu et le retour à l'écran réveillent le filet — à la SOURCE", () => {
   const src = lire("js/app-08-ui-modals-tour.js");
-  const debut = src.indexOf("function _creerCanalDb(");
-  const fin = src.indexOf("\nfunction ", debut + 10);
-  const canal = src.slice(debut, fin > debut ? fin : undefined);
-  expect(
-    (canal.match(/feedFiletReveiller\(\)/g) || []).length,
-    "les gestionnaires posts et post_comments doivent réveiller le filet ; les likes sont relus sur les cartes visibles"
-  ).toBeGreaterThanOrEqual(2);
+  // 2026-11-09 (« 📴 ») : la liaison des publications est partie ; le
+  // gestionnaire NOMMÉ des commentaires (`_rtCommentaireRecu`) garde le réveil.
+  const i = src.indexOf("async function _rtCommentaireRecu(");
+  expect(i).toBeGreaterThan(0);
+  const corps = src.slice(i, src.indexOf("\n}\n", i));
+  expect(corps, "un commentaire reçu réveille le filet").toMatch(/feedFiletReveiller\(\)/);
   expect(src, "le retour de l'onglet à l'écran aussi").toMatch(/visibilitychange[\s\S]{0,400}feedFiletReveiller/);
 });
 

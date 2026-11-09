@@ -76,7 +76,7 @@ async function preparer(page, opts = {}) {
 }
 
 test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
-  test("① v3 : user:<moi> porte trois liaisons ; realtime:db n'écoute plus ces deux tables, et ce qu'il écoute est publié", async ({ page }) => {
+  test("① v3 : user:<moi> porte ses liaisons (R25, puis 2026-11-09) ; realtime:db n'écoute plus ces deux tables, et ce qu'il écoute est publié", async ({ page }) => {
     await preparer(page);
     const publiees = JSON.parse(fs.readFileSync(path.join(RACINE, "scripts/realtime-publication.json"), "utf8")).publiees;
     const r = await page.evaluate(() => {
@@ -90,7 +90,8 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
         filtres: db.liaisons.filter((l) => l.filtre && l.filtre.filter).length,
       };
     });
-    expect(r.user).toEqual({ prive: true, liaisons: ["broadcast|INSERT", "broadcast|conv_members:INSERT", "broadcast|notifications:INSERT"] });
+    expect(r.user).toEqual({ prive: true, liaisons: ["broadcast|INSERT", "broadcast|conv_members:INSERT", "broadcast|notifications:INSERT",
+      "broadcast|conv_reads:UPSERT", "broadcast|post_comments:INSERT", "broadcast|comment_interactions:INSERT", "broadcast|comment_interactions:DELETE"] });
     expect(r.tablesDb, "plus aucune liaison vers les deux tables sorties de la publication").not.toContain("conv_members");
     expect(r.tablesDb).not.toContain("notifications");
     expect(r.filtres, "les deux seules liaisons filtrées étaient celles de R25").toBe(0);
@@ -118,9 +119,9 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
       return { v1: essai(false, false), v2: essai(false, true), v3: essai(true, false) };
     });
     // v1 : les messages arrivent par la table, les lire AUSSI sur le topic les doublerait.
-    expect(r.v1).toEqual({ user: ["conv_members:INSERT", "notifications:INSERT"], messagesParCdc: true });
-    expect(r.v2).toEqual({ user: ["conv_members:INSERT", "notifications:INSERT"], messagesParCdc: false });
-    expect(r.v3).toEqual({ user: ["INSERT", "conv_members:INSERT", "notifications:INSERT"], messagesParCdc: false });
+    expect(r.v1).toEqual({ user: ["conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"], messagesParCdc: true });
+    expect(r.v2).toEqual({ user: ["conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"], messagesParCdc: false });
+    expect(r.v3).toEqual({ user: ["INSERT", "conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"], messagesParCdc: false });
   });
 
   test("③ une notification poussée entre dans la cloche, neutralisée, toast compris, UNE fois ; celle d'un autre compte est ignorée", async ({ page }) => {
@@ -346,7 +347,7 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
     expect(topics).toEqual([]);
   });
 
-  test("⑧ socket au repos puis réveil : user:<moi> revient avec ses trois liaisons, et la cloche est relue", async ({ page }) => {
+  test("⑧ socket au repos puis réveil : user:<moi> revient avec TOUTES ses liaisons, et la cloche est relue", async ({ page }) => {
     await preparer(page);
     // ⚠️ LE BLOC DIFFÉRÉ DU DÉMARRAGE D'ABORD (même piège que
     // `capacite-socket-au-repos`) : `supaInit` relit les notifications ~2 s après
@@ -371,7 +372,7 @@ test.describe("R25 — ajouts et notifications poussés sur user:<moi>", () => {
     });
     expect(r.endormi).toEqual({ topics: 0, chan: null });
     expect(r.rouverts).toBe(1);
-    expect(r.liaisons).toEqual(["INSERT", "conv_members:INSERT", "notifications:INSERT"]);
+    expect(r.liaisons).toEqual(["INSERT", "conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT", "comment_interactions:INSERT", "comment_interactions:DELETE"]);
     // Ce qui est arrivé pendant le repos n'est pas rejoué par Realtime : on le RELIT.
     await expect.poll(() => page.evaluate(() => window.__relectures)).toBe(1);
   });

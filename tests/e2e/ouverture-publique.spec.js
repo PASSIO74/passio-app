@@ -605,7 +605,9 @@ test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () =>
   test("à la SOURCE : `realtime:db` et `conv_specific:` sont PRIVÉS, avec repli public sur refus de policy", async () => {
     const app08 = lire("js/app-08-ui-modals-tour.js");
     const app04 = lire("js/app-04-comments-shop.js");
-    expect(app08).toMatch(/window\._dbChan = _creerCanalDb\(window\._rtPriveIndisponible !== true\)/);
+    // 2026-11-09 (« 📴 ») : un serveur qui a refusé le CDC (`_cdcRetire`) ne se
+    // voit pas rouvrir `realtime:db` ; sinon, la même création privée qu'avant.
+    expect(app08).toMatch(/window\._dbChan = window\._cdcRetire === true \? null : _creerCanalDb\(window\._rtPriveIndisponible !== true\)/);
     expect(app08).toMatch(/supa\.channel\("realtime:db", \{ config: \{ private: prive \} \}\)/);
     const db = app08.slice(app08.indexOf("function _creerCanalDb"), app08.indexOf("// ---- FOLLOW / UNFOLLOW ----"));
     expect(db).toMatch(/_rtRefusDePolicy\(err\)/);

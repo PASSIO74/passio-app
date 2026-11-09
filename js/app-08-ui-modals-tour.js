@@ -5474,14 +5474,19 @@ async function hydrateCommentInteractions(post, opts) {
   // qu'après les interactions (P2-A : repeinte avant elles, la discussion qu'une
   // page venait de reconstruire montrait « 🤍 0 »), et ne repeint que si elle change.
   var finInteractions = null;
+  var lues = false;
   try {
-    if (!post || !Array.isArray(post.comments) || !post.comments.length) return;
+    if (!post || !Array.isArray(post.comments) || !post.comments.length) return false;
     var ids = post.comments.map(function(c){ return c.id; });
     if (post.id && !(opts && opts.epingle === false) && typeof _lireEpingleFil === "function") {
       var apresInteractions = new Promise(function (r) { finInteractions = r; });
       _lireEpingleFil(post.id, apresInteractions);
     }
     var map = await supaLoadCommentInteractions(ids);
+    // Rendu à l'appelant (2026-11-09) : `true` seulement si les interactions ont
+    // été LUES — une relecture qui échoue garde ce qu'elle avait
+    // (`_relireDiscussionPublication`, app-04). Les autres appelants l'ignorent.
+    lues = !!map;
     if (map) {
       post.comments.forEach(function(c){
         var info = map[c.id]; if (!info) return;
@@ -5516,6 +5521,7 @@ async function hydrateCommentInteractions(post, opts) {
     // Les interactions sont appliquées (ou ont échoué) : l'épingle peut l'être.
     if (finInteractions) finInteractions();
   }
+  return lues;
 }
 
 // Résout des profils (username/emoji/color) par ids en UNE requête, SANS embed
@@ -6380,13 +6386,18 @@ async function supaAddEventComment(eventId, text) {
     return id;
   } catch(e) { console.warn("event comment:", e); return null; }
 }
+// ⚠️ `null` sur un ÉCHEC, `[]` pour une discussion VIDE (2026-11-09) : rendre
+// `[]` sur une coupure faisait appliquer une liste vide — la discussion d'une
+// activité disparaissait de l'écran et du cache, et la relecture de repli du
+// sujet `fil:` (app-08), qui tourne justement quand le réseau va mal, l'aurait
+// effacée toutes les 5 s. `_loadEventComments` garde la liste sur `null`.
 async function supaLoadEventComments(eventId) {
   if (!eventId) return [];
   try {
     const { data, error } = await supa.from("event_comments").select("*").eq("event_id", eventId).order("created_at", { ascending: true });
-    if (error) { console.warn("load event comments:", error.message); return []; }
+    if (error) { console.warn("load event comments:", error.message); return null; }
     return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at) }));
-  } catch(e) { console.warn("load event comments:", e); return []; }
+  } catch(e) { console.warn("load event comments:", e); return null; }
 }
 // ── Likes cross-compte sur les commentaires (table comment_likes) ──
 // ⚠️ Le doublon de clé n'arrive PAS dans le catch : le SDK ne lève pas, il renvoie
@@ -7702,11 +7713,18 @@ function _texteBrutNotif(s) {
 window._texteBrutNotif = _texteBrutNotif;
 
 // S'abonne UNE fois au topic privé de l'utilisateur (`user:<MY_UID>`).
-// Idempotent. Trois liaisons, la première selon le mode :
+// Idempotent. Les liaisons, la première selon le mode :
 //   · `INSERT` — un MESSAGE (v3 seulement : en v1/v2 les messages arrivent par
 //     `postgres_changes` ou `conv:<id>`, les lire ici aussi les doublerait) ;
 //   · `conv_members:INSERT` — on m'ajoute à une conversation (tous modes) ;
-//   · `notifications:INSERT` — une notification (tous modes).
+//   · `notifications:INSERT` — une notification (tous modes) ;
+//   · depuis le 2026-11-09 (contenu public hors de `postgres_changes`, voir
+//     `_creerCanalFil`) : `conv_reads:UPSERT` — un autre membre a lu une de mes
+//     conversations (le ✓✓) ; `post_comments:INSERT` et
+//     `comment_interactions:INSERT|DELETE` — un commentaire ou une réaction sur
+//     une de MES publications, que je la regarde ou non (la pastille et le
+//     compte de la carte bougent comme avant). Le serveur ne les pousse qu'au
+//     destinataire : le membre, l'auteur de la publication.
 function _subscribeUserTopic() {
   if (typeof supa === "undefined" || !supa || !MY_UID || window._userTopicChan) return;
   if (window._rtRepos && window._rtRepos.endormi) return; // socket au repos : le réveil rejoint
@@ -7733,6 +7751,24 @@ function _subscribeUserTopic() {
     var p = msg && msg.payload;
     _rtNotificationRecue(p && p.record);
   });
+  // ⚠️ Des noms d'événement DISTINCTS de « INSERT », comme ceux de R25 : sous
+  // ce nom, la liaison des messages prendrait la ligne pour un message.
+  ch.on("broadcast", { event: "conv_reads:UPSERT" }, function(msg) {
+    var p = msg && msg.payload;
+    _rtLectureRecue(p && p.record);
+  });
+  ch.on("broadcast", { event: "post_comments:INSERT" }, function(msg) {
+    var p = msg && msg.payload;
+    return _rtCommentaireRecu(p && p.record); // supabase-js ignore le retour ; un banc l'attend
+  });
+  ch.on("broadcast", { event: "comment_interactions:INSERT" }, function(msg) {
+    var p = msg && msg.payload;
+    _rtInteractionAjoutee(p && p.record);
+  });
+  ch.on("broadcast", { event: "comment_interactions:DELETE" }, function(msg) {
+    var p = msg && msg.payload;
+    _rtInteractionRetiree(p && p.record);
+  });
   window._userTopicChan = ch.subscribe();
 }
 window._subscribeUserTopic = _subscribeUserTopic;
@@ -7743,13 +7779,13 @@ function supaSubscribe() {
   // `Realtime Concurrent Peak Connections` (500 sur le forfait Pro) compte des
   // CLIENTS, pas des canaux : les canaux d'un client partagent un seul
   // WebSocket. Or 97,9 % des sessions de production n'ont pas de compte.
-  // ⚠️ Ce qu'un visiteur PERD est réel — les liaisons de CONTENU PUBLIC de
-  // `realtime:db` (posts, commentaires, réactions, lives, profils ; huit en
-  // tout en v3 depuis R25, 2026-11-03) — et ce qui le
-  // compense est le couplage `seulChemin` du filet, 30 lignes plus bas ici et
-  // dans `_vliveFiletTour` (app-05) : 60 s au lieu de 5 min. Mesure, détail du
-  // marché et de ses deux termes : `connexionTempsReelAutorisee` (app-02),
-  // seule autorité.
+  // ⚠️ Ce qu'un visiteur PERD : le direct d'une discussion ouverte (un sujet
+  // `fil:<id>` exige un compte). Rien d'autre depuis le 2026-11-09 —
+  // publications, profils et lives ne sont plus poussés à personne (« 📴 »,
+  // plus bas), et le couplage `seulChemin` du filet (60 s tant que le fil est
+  // à l'écran) vaut pour tous.
+  // Mesure et détail du marché : `connexionTempsReelAutorisee` (app-02),
+  // seule autorité de la connexion, et `filetEstLeSeulChemin` pour le filet.
   //
   // ⚠️ LE DRAPEAU SE POSE APRÈS LA GARDE, JAMAIS AVANT : `supaInit` est rappelé
   // par `onAuthStateChange`, donc un visiteur qui se connecte doit encore
@@ -7809,8 +7845,13 @@ function supaSubscribe() {
   // ring:<uid> (appels) et realtime:db (celui-ci). ⚠️ Un visiteur en ouvrait
   // DEUX, pas trois — `ring:` est gardé par `admissionCompteReel` depuis la
   // sonde du 2026-09-11 ; il n'en ouvre plus aucun (garde en tête de fonction).
-  window._dbChan = _creerCanalDb(window._rtPriveIndisponible !== true);
+  // ⚠️ Plus de `realtime:db` une fois le CDC retiré par le serveur (voir
+  // `_creerCanalDb`) : ses liaisons ne trouveraient plus leurs tables.
+  window._dbChan = window._cdcRetire === true ? null : _creerCanalDb(window._rtPriveIndisponible !== true);
   try { _rtReposArmer(); } catch (e) {}
+  // Une discussion déjà à l'écran (ouverte avant le socket, ou au réveil)
+  // rejoint son sujet `fil:<id>` maintenant.
+  try { _filsRtReconcilier(); } catch (e) {}
 }
 
 // ═══ SOCKET AU REPOS (2026-09-21) — câblage de `socketTempsReelAuRepos` (app-02) ═══
@@ -7891,8 +7932,19 @@ function _rtEndormir(raison) {
   window._callRingChan = null;
   window._dbChan = null;
   window._supaSubscribed = false;
-  try { Promise.resolve(supa.removeAllChannels()).catch(function () {}); } catch (e) {}
+  // Les sujets des discussions AVANT `removeAllChannels` : leurs canaux se
+  // ferment à sa suite, et une fermeture ne doit pas passer pour une panne.
+  try { _filsRtOublier(); } catch (e) {}
+  // ⚠️ LE SOCKET D'ABORD, LES CANAUX ENSUITE (2026-11-09, lu dans le SDK
+  // 2.116) : un départ de canal ne se résout tout de suite que si le socket ne
+  // peut plus pousser (`leave` → `canPush()` faux → « ok »). Dans l'ordre
+  // inverse, chaque départ attendait sa réponse — perdue, le socket étant coupé
+  // juste après — jusqu'au délai de 10 s ; pendant ce temps le canal restait
+  // dans `getChannels()` (et `supa.channel(sujet)` rendait cette instance
+  // mourante à un réveil), puis `removeAllChannels` finissait par un
+  // `disconnect()` qui coupait le socket ROUVERT par un réveil survenu entre-temps.
   try { if (supa.realtime && typeof supa.realtime.disconnect === "function") supa.realtime.disconnect(); } catch (e) {}
+  try { Promise.resolve(supa.removeAllChannels()).catch(function () {}); } catch (e) {}
   try { diagLog("rt_repos : socket fermé (" + raison + ")"); } catch (e) {}
 }
 function _rtReveiller(raison) {
@@ -7928,8 +7980,12 @@ function _rtRattraper(raison) {
   try { if (typeof supaLoadNotifications === "function") supaLoadNotifications().then(function (ns) { if (ns && ns.length && typeof mergeSupaNotifs === "function") mergeSupaNotifs(ns); }).catch(function () {}); } catch (e) {}
   // Les lives sont déjà relus par le `visibilitychange` d'app-05 au retour.
   try { if (!retourVisible && typeof supaRefreshVideoLives === "function") supaRefreshVideoLives(); } catch (e) {}
-  // La fiche d'une activité ouverte relit ses commentaires (le canal l'aurait fait).
-  try { if (window._openEventDetailId && typeof _loadEventComments === "function") _loadEventComments(window._openEventDetailId); } catch (e) {}
+  // Les discussions À L'ÉCRAN — fiche d'activité, mais aussi la modale, la
+  // feuille et le détail d'une publication (2026-11-09 : avant, seule la fiche
+  // d'activité était rattrapée) — se relisent, épingle comprise : le canal
+  // l'aurait fait. Le sujet `fil:` rejoint par `supaSubscribe` ne refait pas
+  // cette lecture (elle finit après lui).
+  try { _filsAffichesMaintenant().filter(_filEstReel).forEach(function (f) { Promise.resolve(_filRelire(f, { epingle: true })).catch(function () {}); }); } catch (e) {}
 }
 window._rtEndormir = _rtEndormir;
 window._rtReveiller = _rtReveiller;
@@ -7986,35 +8042,23 @@ window._rtReposTick = _rtReposTick;
 // messagerie repaierait la requête pour la même personne. Repli sur la requête
 // directe seulement si app-04 n'est pas chargé.
 //
-// ⚠️ LA FRAÎCHEUR NE BAISSE PAS **TANT QUE LE CANAL EST JOINT** : l'abonnement
-// `profiles` UPDATE du même canal rafraîchit ce cache en direct. La nuance
-// compte — `postgres_changes` ne rejoue rien après une coupure, et le canal est
-// rejoint APRÈS le premier `supaLoadPosts()` : un renommage tombé dans cet
-// intervalle ne sera pas vu de la session. `state.seed` n'étant pas persisté
-// (`_leanState`), la casse est bornée à la session.
+// ⚠️ LA FRAÎCHEUR D'UN PROFIL VIENT DES LECTURES DEPUIS LE 2026-11-09 : la
+// liaison `profiles` UPDATE, qui poussait chaque changement de profil à TOUS
+// les connectés, est retirée (`postgres_changes` hors du contenu public). Un
+// renommage ou une nouvelle photo se voit à la prochaine résolution
+// (`_resolveProfilesByIds` redemande un profil de plus de 2 min) ou au
+// prochain démarrage — `state.seed` n'étant pas persisté (`_leanState`).
 //
 // ⚠️ ON NE PEUT PAS CONFONDRE AVEC UN COMPTE DE DÉMONSTRATION : les comptes
 // fabriqués par `buildSeed` vivent dans le même tableau (piège déjà payé par
 // `_estConvDemo` le 2026-09-15) mais sont tous en `u_<slug>`, alors que
 // l'identifiant vient ici d'une ligne Supabase. Et la branche « moi » de
-// `userById` est inatteignable : les deux gestionnaires sortent sur
-// `r.author_id === MY_UID` AVANT d'appeler.
+// `userById` est inatteignable : le gestionnaire sort sur
+// `r.author_id === MY_UID` AVANT d'appeler (`_rtCommentaireRecu` ; celui des
+// publications est parti le 2026-11-09).
 //
 // Rend une promesse dans les DEUX cas, pour que l'appelant ne change pas de
 // forme selon qu'il a touché le réseau ou non.
-// Un profil est « connu » quand une surface de cet écran peut le montrer : le
-// cache d'identité partagé (`state.seed.users`, alimenté par le fil, les
-// commentaires, les événements) ou le cache de messagerie (`_profileCache`).
-// Lue par le gestionnaire temps réel `profiles` UPDATE — jamais par un chemin
-// de sécurité : c'est un tri d'affichage, pas une frontière.
-function profilConnuLocalement(uid) {
-  try {
-    if (!uid) return false;
-    if (typeof userById === "function" && userById(uid)) return true;
-    if (typeof _profileCache !== "undefined" && _profileCache && _profileCache.has(uid)) return true;
-  } catch (e) {}
-  return false;
-}
 function _profilAuteur(uid) {
   try {
     if (!uid) return Promise.resolve(null);
@@ -8044,8 +8088,482 @@ function _profilAuteur(uid) {
     .catch(function (e) { try { diagLog("profil_auteur_reseau", e && e.message); } catch (_e) {} return null; });
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// 📴 LE CONTENU PUBLIC HORS DE `postgres_changes` (2026-11-09)
+// ────────────────────────────────────────────────────────────────────────
+// Mesuré en production le 2026-11-09 (canal ①, `pg_stat_statements`) : la
+// boucle `realtime.list_changes` — le relevé du WAL que le serveur Realtime
+// refait toutes les 100 ms dès qu'UN client tient une liaison
+// `postgres_changes` — pesait 60 % du temps de calcul cumulé de la base
+// (7,5 M d'appels, 7 ms chacun) alors qu'un seul compte avait été actif dans
+// la semaine. Et chaque changement d'une table publiée coûtait en plus un tour
+// de `realtime.apply_rls` PAR ABONNÉ : O(changements × connectés), la forme
+// qui borne le nombre de connectés.
+//
+// Ce qui le remplace, et le coût suit alors ceux qui REGARDENT :
+//   · une discussion À L'ÉCRAN (modale, feuille, détail d'une publication,
+//     fiche d'une activité) écoute son sujet privé `fil:<id>` ; le serveur y
+//     pousse par déclencheur chaque commentaire et chaque interaction (ajout
+//     ET retrait, la ligne entière). La policy du sujet ne l'ouvre qu'à qui
+//     peut lire la discussion (`fil_temps_reel_visible`) ;
+//   · l'AUTEUR d'une publication reçoit les mêmes lignes sur `user:<lui>` :
+//     la pastille et le compte de SES cartes bougent sans qu'il ouvre rien ;
+//   · un accusé de lecture part aux AUTRES membres, sur `user:<membre>` ;
+//   · publications, profils et lives ne sont plus poussés à personne : les
+//     filets les relisent, bornés à ce qui est à l'écran.
+//
+// ⚠️ CLIENT D'ABORD : ce code tourne AVANT la migration
+// (`migrations/migration_realtime_public_hors_cdc_2026-11-09.sql`) comme
+// après. Avant, le serveur refuse `fil:` (aucune policy) et les liaisons de
+// TRANSITION de `realtime:db` livrent comme hier ; après, ces tables sont
+// sorties de la publication et ce sont les sujets privés qui livrent. Les
+// deux chemins appellent les MÊMES gestionnaires, idempotents.
+// Fiche : `docs/journal/capacite-perf-realtime.md`, « 📴 ».
+// ════════════════════════════════════════════════════════════════════════
+
+// Une même ligne peut arriver par deux chemins (le sujet de la discussion ET
+// celui de l'auteur, qui la regarde) : elle n'est traitée qu'une fois. Borné
+// en nombre et en âge, comme les pierres tombales de R37.
+const RT_VUS_MAX = 500;
+const RT_VUS_TTL_MS = 120000;
+const _rtVus = new Map();
+function _rtDejaTraite(cle) {
+  if (!cle) return false;
+  var maintenant = Date.now();
+  var t = _rtVus.get(cle);
+  if (t != null && maintenant - t < RT_VUS_TTL_MS) return true;
+  _rtVus.delete(cle);
+  _rtVus.set(cle, maintenant);
+  for (var it = _rtVus.entries(), e = it.next(); !e.done; e = it.next()) {
+    if (_rtVus.size <= RT_VUS_MAX && maintenant - e.value[1] < RT_VUS_TTL_MS) break;
+    _rtVus.delete(e.value[0]);
+  }
+  return false;
+}
+
+// Un autre membre a lu une conversation : le ✓✓ de mes messages.
+// `r` = la ligne `conv_reads` (conv_id, user_id, last_read_at).
+function _rtLectureRecue(r) {
+  try {
+    // RV-31 : sans compte ni conversation, ce n'est pas un accusé de lecture
+    // (la charge d'un DELETE est vide, et `undefined === undefined`…).
+    if (!r || !r.conv_id || !r.user_id || r.user_id === MY_UID) return;
+    if (_rtDejaTraite("lu:" + r.conv_id + ":" + r.user_id + ":" + r.last_read_at)) return;
+    // L'identifiant EXACT d'abord ; « le DM de cette personne » seulement à
+    // défaut (entrée locale dont l'id diffère du serveur). Un seul `find` aux
+    // deux critères rendait le DM de B dans le panneau d'un GROUPE ouvert où B
+    // venait de lire, si le DM précédait le groupe dans la liste (contre-revue
+    // du 2026-10-19).
+    var _cs = getConversations();
+    var c = _cs.find(function(x){ return x.id === r.conv_id; }) || _cs.find(function(x){ return !x.isGroup && x.userId === r.user_id; });
+    if (!c) return;
+    var t = supaTs(r.last_read_at);
+    if (t > (c._otherReadAt || 0)) {
+      c._otherReadAt = t; c._otherRead = true;
+      if (window._openedConvId === c.id || window._openedConvId === r.conv_id) {
+        // Un accusé de lecture ne ramène pas en bas quelqu'un qui relit l'historique.
+        try { var fp = document.getElementById("conv-fullpage"); _rerendreFilSansArracher(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
+      }
+    }
+  } catch (e) { try { diagLog("rt_lecture : " + (e && e.message)); } catch (_e) {} }
+}
+window._rtLectureRecue = _rtLectureRecue;
+
+// Une interaction (like, réponse, emoji, GIF, épingle) ajoutée.
+function _rtInteractionAjoutee(r) {
+  try {
+    if (!r || !r.comment_id) return;
+    if (r.id && _rtDejaTraite("ci+:" + r.id)) return;
+    try { if (r.user_id !== MY_UID) tel && tel.recv("cint", { commentId: r.comment_id }); } catch(e) {}
+    if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(r, "add");
+  } catch (e) { try { diagLog("rt_ci_ajout : " + (e && e.message)); } catch (_e) {} }
+}
+window._rtInteractionAjoutee = _rtInteractionAjoutee;
+
+// Une interaction retirée. Par `postgres_changes`, la charge ne vaut que
+// `{ id }` (R37) ; par un sujet privé, la ligne entière. `_commentInteractionRetiree`
+// (app-04) sait faire avec les deux.
+function _rtInteractionRetiree(old) {
+  try {
+    if (old && old.id && _rtDejaTraite("ci-:" + old.id)) return;
+    if (typeof _commentInteractionRetiree === "function") _commentInteractionRetiree(old);
+  } catch (e) { try { diagLog("rt_ci_delete : " + (e && e.message)); } catch (_e) {} }
+}
+window._rtInteractionRetiree = _rtInteractionRetiree;
+
+// Un commentaire de publication. Rend une promesse (un banc l'attend).
+async function _rtCommentaireRecu(r) {
+  if (!r || !r.post_id) return;
+  if (r.id && _rtDejaTraite("pc:" + r.id)) return;
+  try { feedFiletReveiller(); } catch (e) {}
+  if (r.author_id === MY_UID) return;
+  try { tel && tel.recv("comment", { postId: r.post_id, commentId: r.id }); } catch(e) {}
+  try {
+    const post = findPostAnywhere(r.post_id);
+    if (post) {
+      const prof = await _profilAuteur(r.author_id);
+      if (!post.comments) post.comments = [];
+      const dejaLa = post.comments.find(c => c.id === r.id);
+      // L'épinglé lu à part (RV-38) qu'on reçoit en direct est un commentaire
+      // comme les autres : il ne quittera pas la liste avec l'épingle.
+      if (dejaLa && dejaLa._epingleGarde) { delete dejaLa._epingleGarde; delete dejaLa._aVerifier; }
+      if (!dejaLa) {
+        post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true });
+        // Le compte exact du fil (`commentsTotal`) est celui du dernier
+        // chargement : ce commentaire est en base, il compte désormais.
+        if (Number.isSafeInteger(post.commentsTotal)) post.commentsTotal++;
+      }
+      try { scheduleFeedRender(); } catch(e) {}
+      // Si la modale commentaires de ce post est ouverte → l'actualiser en direct.
+      try {
+        if (window._openCommentsPostId === r.post_id && document.getElementById("commentsBox") && typeof _renderCommentsList === "function") {
+          document.getElementById("commentsBox").innerHTML = _renderCommentsList(post.comments, r.post_id);
+          var _t = document.querySelector(".modal-title"); if (_t) _t.textContent = "Discussion (" + (typeof nbCommentairesPost === "function" ? nbCommentairesPost(post) : post.comments.length) + ")";
+        }
+      } catch(e) {}
+      // Page détail (#postDetailComments) + autres surfaces via le refresh unifié.
+      try { if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id); } catch(e) {}
+      try { if (typeof _patchPostCommentCount === "function") _patchPostCommentCount(r.post_id); } catch(e) {}
+    }
+  } catch(e) { try { diagLog("rt_commentaire : " + (e && e.message)); } catch (_e) {} }
+}
+window._rtCommentaireRecu = _rtCommentaireRecu;
+
+// Un commentaire d'activité : si sa discussion est À L'ÉCRAN (la fiche ou la
+// feuille ouverte depuis une carte), on la recharge. Léger : 1 lecture ciblée,
+// chez ceux-là seulement.
+function _rtCommentaireActiviteRecu(r) {
+  try {
+    if (!r || !r.event_id || r.author_id === MY_UID) return;
+    if (r.id && _rtDejaTraite("ec:" + r.id)) return;
+    if (typeof _loadEventComments !== "function") return;
+    const affichee = typeof _discussionAffichee === "function"
+      ? _discussionAffichee(r.event_id)
+      : (window._openEventDetailId === r.event_id && !!document.getElementById("eventCommentsList"));
+    if (!affichee) return;
+    // Sans relire l'épingle quand elle est CONNUE : le direct la tient (RV-38)
+    // — sinon chaque commentaire reçu coûtait une lecture à chaque spectateur.
+    // Inconnue (la lecture d'ouverture a échoué), elle se relit.
+    const connue = typeof _epingleConnue === "function" && _epingleConnue(r.event_id);
+    _loadEventComments(r.event_id, connue ? { epingle: false } : undefined);
+  } catch (e) { try { diagLog("rt_commentaire_activite : " + (e && e.message)); } catch (_e) {} }
+}
+window._rtCommentaireActiviteRecu = _rtCommentaireActiviteRecu;
+
+// ── LES SUJETS DES DISCUSSIONS À L'ÉCRAN (`fil:<id>`) ─────────────────────
+// Un sujet par discussion affichée, rejoint à l'ouverture, LÂCHÉ 20 s après la
+// fermeture : c'est la fraîcheur du cache d'ouverture (`openComments`,
+// `_cmtThreadLoadedAt`) — rouvrir dans les 20 s reste instantané ET juste,
+// puisque le sujet a continué d'écouter.
+// ⚠️ UN REFUS DE POLICY N'EST PAS UNE PANNE : avant la migration, le serveur
+// refuse tout `fil:` (les liaisons de transition livrent), et après, il ne
+// refuse que ce que je ne peux pas lire. Dans les deux cas, rien à rattraper.
+// Une PANNE (délai dépassé, canal fermé sous nos pieds) fait relire la
+// discussion à cadence adaptative (`discussionRelectureProchainPas`, app-02)
+// jusqu'au retour du sujet : « en quelques secondes », même sans direct.
+// ⚠️ Un visiteur n'en ouvre aucun (même autorité que `supaSubscribe`), ni un
+// compte dont le socket dort (le réveil rejoint et rattrape).
+const FIL_RT_GRACE_MS = 20000;
+const FIL_RT_VEILLE_MS = 3000;
+const FIL_RT_MAX = 4;
+const FIL_RT_RATTRAPAGE_MS = 1500;
+const FIL_RT_ADHESION_MAX_MS = 15000;
+window._filsRt = new Map();   // fil → { chan, etat, depuis, lacherA, relecture }
+var _filsRtVeilleMinuteur = null;
+var _filsRtRelectures = {};   // fil → la relecture EN VOL (une seule à la fois)
+
+function _creerCanalFil(fil, prive) {
+  var ch = supa.channel("fil:" + fil, { config: { private: prive } });
+  // ⚠️ LA CHARGE EST LIÉE AU SUJET : une ligne d'un AUTRE fil n'est pas
+  // appliquée ici. Aucune policy ne laisse un client émettre sur `fil:` — ce
+  // qui y arrive vient du serveur —, mais un canal est un transport, jamais
+  // une frontière.
+  var duFil = function (rec, cle) { return !!(rec && String(rec[cle]) === String(fil)); };
+  ch.on("broadcast", { event: "post_comments:INSERT" }, function (msg) {
+    var rec = msg && msg.payload && msg.payload.record;
+    if (duFil(rec, "post_id")) return _rtCommentaireRecu(rec);
+  });
+  ch.on("broadcast", { event: "comment_interactions:INSERT" }, function (msg) {
+    var rec = msg && msg.payload && msg.payload.record;
+    if (duFil(rec, "post_id")) _rtInteractionAjoutee(rec);
+  });
+  ch.on("broadcast", { event: "comment_interactions:DELETE" }, function (msg) {
+    var rec = msg && msg.payload && msg.payload.record;
+    if (duFil(rec, "post_id")) _rtInteractionRetiree(rec);
+  });
+  ch.on("broadcast", { event: "event_comments:INSERT" }, function (msg) {
+    var rec = msg && msg.payload && msg.payload.record;
+    if (duFil(rec, "event_id")) _rtCommentaireActiviteRecu(rec);
+  });
+  return ch;
+}
+window._creerCanalFil = _creerCanalFil;
+
+// Le socket est-il là pour écouter ? Même autorité que `supaSubscribe`.
+function _filsRtPossible() {
+  try {
+    if (typeof supa === "undefined" || !supa || window._supaReal !== true) return false;
+    if (!window._supaSubscribed || (window._rtRepos && window._rtRepos.endormi)) return false;
+    return typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
+  } catch (e) { return false; }
+}
+// Les discussions À L'ÉCRAN — `_discussionAffichee` (app-04) est l'autorité :
+// ni `_openCommentsPostId` ni les conteneurs ne le disent seuls. Plus le
+// panneau de commentaires des Bobines (app-05), que `_discussionAffichee`
+// ignore à dessein (elle sert aussi à l'épingle, que ce panneau n'affiche pas).
+function _filsAffichesMaintenant() {
+  var out = [];
+  try {
+    if (typeof _discussionAffichee !== "function") return out;
+    var candidats = [window._openCommentsPostId, window._openEventDetailId];
+    ["cmtThreadList", "postDetailComments"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) candidats.push(el.getAttribute("data-thread"));
+    });
+    candidats.forEach(function (f) { if (f && out.indexOf(f) < 0 && _discussionAffichee(f)) out.push(f); });
+    var bobine = window.currentReelCommentPostId;
+    var panneau = document.getElementById("reelCommentsPanel");
+    if (bobine && out.indexOf(bobine) < 0 && panneau && panneau.classList.contains("open")) out.push(bobine);
+  } catch (e) { try { diagLog("fil_rt_affiches : " + (e && e.message)); } catch (_e) {} }
+  return out;
+}
+// Un fil qui peut avoir des lignes en base : une publication qui n'est pas un
+// exemple, une activité qui n'en est pas une. Les exemples n'ont rien à écouter.
+// ⚠️ PAS `fromSupabase` POUR UNE ACTIVITÉ : celle que je viens de créer vit dans
+// `state.userEvents` sans ce drapeau jusqu'à la relecture suivante (même piège
+// que `_ciEstExemple` pour mes publications). Une activité d'EXEMPLE se reconnaît
+// à sa forme, `e<n>` — celle d'`est_identifiant_exemple` côté serveur.
+function _filEstReel(fil) {
+  try {
+    var p = typeof findPostAnywhere === "function" ? findPostAnywhere(fil) : null;
+    if (p) return typeof _ciEstExemple === "function" ? !_ciEstExemple(p) : !!p.fromSupabase;
+    var ev = typeof allEvents === "function" ? (allEvents() || []).find(function (e) { return e && e.id === fil; }) : null;
+    return !!ev && !/^e[0-9]+$/.test(String(fil));
+  } catch (e) { return false; }
+}
+// L'instant de la dernière lecture COMPLÈTE d'une discussion (publication ou activité).
+function _filLuA(fil) {
+  var a = (window._cmtThreadLoadedAt || {})[fil] || 0;
+  var b = (window._eventCommentsLuA || {})[fil] || 0;
+  return Math.max(a, b);
+}
+// La signature de ce que la discussion montre : ce qui changerait l'écran.
+function _filSignature(fil) {
+  try {
+    var t = typeof _findCommentThread === "function" ? _findCommentThread(fil) : null;
+    if (!t) return "";
+    return (t.comments || []).map(function (c) {
+      return c.id + ":" + (c.likes || 0) + ":" + ((c.replies || []).length);
+    }).join("|");
+  } catch (e) { return "err" + Date.now(); }
+}
+// Relit UNE discussion (une seule lecture en vol par fil). `opts.epingle` :
+// relire aussi l'épingle (le réveil du socket ; la relecture de repli ne le
+// fait pas, le direct ou la réouverture la tiennent).
+function _filRelire(fil, opts) {
+  if (_filsRtRelectures[fil]) return _filsRtRelectures[fil];
+  // ⚠️ JAMAIS UN EXEMPLE : sa discussion n'a aucune ligne en base, et une page
+  // serveur vide remplacerait ses commentaires de démonstration.
+  if (!_filEstReel(fil)) return Promise.resolve();
+  var avecEpingle = !!(opts && opts.epingle);
+  var p = (async function () {
+    try {
+      var t = typeof _findCommentThread === "function" ? _findCommentThread(fil) : null;
+      if (!t) return;
+      if (t.kind === "event") {
+        // `false` : la lecture a échoué, la liste affichée est gardée telle quelle
+        // — et une panne n'est pas un calme : on la fait remonter à la cadence.
+        if (typeof _loadEventComments === "function"
+            && (await _loadEventComments(fil, avecEpingle ? undefined : { epingle: false })) === false) {
+          throw new Error("commentaires d'activite illisibles");
+        }
+      } else if (typeof _relireDiscussionPublication === "function") {
+        await _relireDiscussionPublication(fil, avecEpingle ? undefined : { epingle: false });
+      }
+    } finally { delete _filsRtRelectures[fil]; }
+  })();
+  _filsRtRelectures[fil] = p;
+  return p;
+}
+window._filRelire = _filRelire;
+function _filRelectureArreter(e) {
+  if (e && e.relecture) { clearTimeout(e.relecture.minuteur); e.relecture = null; }
+}
+// Le repli d'un sujet EN PANNE : relire la discussion, vite tant qu'elle
+// bouge, de moins en moins sinon. Jamais depuis une page masquée.
+function _filRelectureArmer(fil) {
+  var e = window._filsRt.get(fil);
+  if (!e || e.relecture) return;
+  // ⚠️ UNE CHAÎNE PAR ARMEMENT : chaque tour vérifie que SA relecture est encore
+  // celle de l'entrée. Arrêtée puis réarmée pendant une lecture en vol, l'ancienne
+  // chaîne se serait réarmée à côté de la nouvelle (deux minuteurs, deux lectures).
+  var rel = e.relecture = { pas: discussionRelectureProchainPas(0, true), minuteur: null, sig: _filSignature(fil) };
+  var vivante = function () { return window._filsRt.get(fil) === e && e.relecture === rel && e.etat !== "suivi"; };
+  var tour = function () {
+    if (!vivante()) return;
+    var rearmer = function (vivant) {
+      if (!vivante()) return;
+      rel.pas = discussionRelectureProchainPas(rel.pas, vivant);
+      rel.minuteur = setTimeout(tour, delaiDeleste(rel.pas));
+    };
+    // Masquée : rien à peindre — on attend au même pas (aucun recul).
+    if (document.hidden) { rel.minuteur = setTimeout(tour, delaiDeleste(rel.pas)); return; }
+    window._filRtStats.relectures++;
+    Promise.resolve(_filRelire(fil)).then(function () {
+      var sig = _filSignature(fil);
+      var vivant = sig !== rel.sig;
+      rel.sig = sig;
+      rearmer(vivant);
+    }, function (err) {
+      // Une panne n'est pas un calme : la cadence reste vive.
+      try { diagLog("fil_rt_relecture : " + (err && err.message)); } catch (_e) {}
+      rearmer(true);
+    });
+  };
+  rel.minuteur = setTimeout(tour, delaiDeleste(rel.pas));
+}
+window._filRtStats = { rejoints: 0, suivis: 0, refus: 0, pannes: 0, lacher: 0, relectures: 0, rattrapages: 0 };
+function _filLacher(fil) {
+  var e = window._filsRt.get(fil);
+  if (!e) return;
+  window._filsRt.delete(fil);
+  _filRelectureArreter(e);
+  window._filRtStats.lacher++;
+  if (e.chan) { try { Promise.resolve(supa.removeChannel(e.chan)).catch(function () {}); } catch (err) {} }
+}
+function _filRejoindre(fil) {
+  // ⚠️ LE SDK RÉUTILISE UN CANAL DU MÊME SUJET tant qu'il est dans
+  // `getChannels()` — un départ encore en cours, par exemple : `subscribe` n'y
+  // fait alors rien, et le sujet resterait « rejoint » sans jamais rien recevoir.
+  // On attend son départ (la veille repasse toutes les 3 s).
+  try {
+    var enCours = (typeof supa.getChannels === "function" ? supa.getChannels() : [])
+      .some(function (c) { return c && c.topic === "realtime:fil:" + fil; });
+    if (enCours) { window._filsRt.set(fil, { chan: null, etat: "attente", depuis: 0, lacherA: 0, relecture: null, demande: Date.now() }); return; }
+  } catch (err) {}
+  var e = { chan: null, etat: "rejoint", depuis: 0, lacherA: 0, relecture: null, demande: Date.now() };
+  window._filsRt.set(fil, e);
+  window._filRtStats.rejoints++;
+  try { e.chan = _creerCanalFil(fil, true); }
+  catch (err) {
+    e.etat = "panne"; window._filRtStats.pannes++;
+    try { diagLog("fil_rt_creation : " + (err && err.message)); } catch (_e) {}
+    _filRelectureArmer(fil);
+    return;
+  }
+  e.chan.subscribe(function (st, err) {
+    if (window._filsRt.get(fil) !== e) return;   // lâché entre-temps
+    if (st === "SUBSCRIBED") {
+      e.etat = "suivi"; e.depuis = Date.now();
+      window._filRtStats.suivis++;
+      _filRelectureArreter(e);
+      // Ce qui a pu tomber entre la dernière lecture et l'abonnement : un
+      // rattrapage, sauf si une lecture finit APRÈS l'abonnement (le cas de
+      // l'ouverture : elle part avec la demande d'adhésion et arrive après).
+      // ⚠️ C'EST UN COMPROMIS, PAS UNE PREUVE : l'instantané d'une lecture finie
+      // après l'abonnement peut le précéder de quelques centaines de ms. Exiger
+      // une lecture PARTIE après lui doublerait la lecture de CHAQUE ouverture ;
+      // une ligne tombée dans cette fenêtre attend la relecture suivante (le
+      // réveil, la réouverture).
+      setTimeout(function () {
+        if (window._filsRt.get(fil) !== e || e.etat !== "suivi") return;
+        if (_filLuA(fil) >= e.depuis || !_discussionAffichee(fil)) return;
+        window._filRtStats.rattrapages++;
+        Promise.resolve(_filRelire(fil)).catch(function (er) { try { diagLog("fil_rt_rattrapage : " + (er && er.message)); } catch (_e) {} });
+      }, FIL_RT_RATTRAPAGE_MS);
+      return;
+    }
+    if (st === "CHANNEL_ERROR" && typeof _rtRefusDePolicy === "function" && _rtRefusDePolicy(err)) {
+      // Refus de policy : on garde l'entrée (pas de nouvelle demande tant que
+      // la discussion reste affichée) et on rend le canal, qui sinon
+      // redemanderait l'adhésion en boucle.
+      e.etat = "refuse"; window._filRtStats.refus++;
+      var ch = e.chan; e.chan = null;
+      _filRelectureArreter(e);
+      try { Promise.resolve(supa.removeChannel(ch)).catch(function () {}); } catch (er) {}
+      return;
+    }
+    // Le canal rendu après un refus se ferme : ce n'est pas une panne.
+    if (e.etat === "refuse") return;
+    if (st === "CHANNEL_ERROR" || st === "TIMED_OUT" || st === "CLOSED") {
+      if (e.etat !== "panne") { e.etat = "panne"; window._filRtStats.pannes++; }
+      try { diagLog("fil_rt_panne : " + st + " " + String((err && err.message) || "")); } catch (_e) {}
+      if (_discussionAffichee(fil)) _filRelectureArmer(fil);
+    }
+  });
+}
+// Ce qui est à l'écran est écouté, ce qui ne l'est plus est lâché après la
+// grâce. Appelée à l'ouverture des quatre surfaces, au réveil du socket, et
+// toutes les 3 s tant qu'un sujet est tenu (une fermeture ne prévient pas :
+// `closeModal` ne remet pas `_openCommentsPostId` à zéro).
+function _filsRtReconcilier() {
+  try {
+    var possible = _filsRtPossible();
+    var voulus = possible ? _filsAffichesMaintenant().filter(_filEstReel) : [];
+    var maintenant = Date.now();
+    voulus.forEach(function (fil) {
+      var e = window._filsRt.get(fil);
+      if (!e || e.etat === "attente") { _filRejoindre(fil); return; }
+      e.lacherA = 0;
+      // Une adhésion sans réponse depuis 15 s : une panne, relue en attendant.
+      if (e.etat === "rejoint" && e.demande && maintenant - e.demande > FIL_RT_ADHESION_MAX_MS) {
+        e.etat = "panne"; window._filRtStats.pannes++;
+        try { diagLog("fil_rt_panne : adhesion sans reponse"); } catch (_e) {}
+      }
+      if (e.etat === "panne" && !e.relecture) _filRelectureArmer(fil);
+    });
+    window._filsRt.forEach(function (e, fil) {
+      if (voulus.indexOf(fil) >= 0) return;
+      _filRelectureArreter(e);
+      if (!possible) { _filLacher(fil); return; }
+      if (!e.lacherA) e.lacherA = maintenant + FIL_RT_GRACE_MS;
+      else if (maintenant >= e.lacherA) _filLacher(fil);
+    });
+    // Plafond : les plus anciens hors écran partent d'abord.
+    if (window._filsRt.size > FIL_RT_MAX) {
+      Array.from(window._filsRt.keys()).filter(function (f) { return voulus.indexOf(f) < 0; })
+        .slice(0, window._filsRt.size - FIL_RT_MAX).forEach(_filLacher);
+    }
+  } catch (err) { try { diagLog("fil_rt_reconcilier : " + (err && err.message)); } catch (_e) {} }
+  // La veille ne tourne que tant qu'un sujet est tenu : aucune requête, du DOM.
+  clearTimeout(_filsRtVeilleMinuteur);
+  _filsRtVeilleMinuteur = window._filsRt.size ? setTimeout(_filsRtReconcilier, FIL_RT_VEILLE_MS) : null;
+}
+window._filsRtReconcilier = _filsRtReconcilier;
+// Le socket s'endort : tous les sujets partent avec lui (`removeAllChannels`
+// les rend), et leurs relectures s'arrêtent. (Un changement de compte recharge
+// la page : rien à oublier ici.)
+function _filsRtOublier() {
+  window._filsRt.forEach(function (e) { _filRelectureArreter(e); });
+  window._filsRt.clear();
+  clearTimeout(_filsRtVeilleMinuteur);
+  _filsRtVeilleMinuteur = null;
+}
+window._filsRtOublier = _filsRtOublier;
+
 function _creerCanalDb(prive) {
   const dbChan = supa.channel("realtime:db", { config: { private: prive } });
+
+  // ⚠️ LES LIAISONS CI-DESSOUS SONT DE TRANSITION (2026-11-09, « 📴 ») : elles
+  // livrent tant que leurs tables sont publiées. La migration
+  // `migration_realtime_public_hors_cdc_2026-11-09.sql` vide la publication ; le
+  // serveur répond alors au join par un message `system` en ERREUR (« Unable to
+  // subscribe to changes… ») et RÉESSAIE toutes les 5 à 10 s, pour chaque
+  // compte, tant que le canal reste ouvert — chaque essai réveillant la
+  // réplication CDC qu'on vient d'éteindre. On rend donc le canal au premier
+  // refus et on ne le recrée plus de la session (`_cdcRetire`, lu par
+  // `supaSubscribe`) : les mêmes lignes arrivent par `fil:<id>` et `user:<moi>`.
+  dbChan.on("system", {}, function (msg) {
+    try {
+      var p = (msg && msg.payload) || msg || {};
+      if (p.extension !== "postgres_changes" || p.status !== "error") return;
+      if (window._dbChan !== dbChan) return;
+      window._cdcRetire = true;
+      window._dbChan = null;
+      try { diagLog("rt_cdc_retire : " + String(p.message || "").slice(0, 120)); } catch (_e) {}
+      Promise.resolve(supa.removeChannel(dbChan)).catch(function () {});
+    } catch (e) { try { diagLog("rt_cdc_system : " + (e && e.message)); } catch (_e) {} }
+  });
 
   // v1 (si v2/v3 désactivés) : messages entrants via postgres_changes global,
   // filtrage d'appartenance côté client (_handleIncomingConvMessage).
@@ -8056,44 +8574,32 @@ function _creerCanalDb(prive) {
   }
 
   // ── Accusés de lecture : un autre membre a lu → met à jour le ✓✓ en direct ──
+  // TRANSITION (2026-11-09) : la même ligne arrive aussi, après la migration,
+  // par `user:<moi>` (`conv_reads:UPSERT`) ; les deux chemins appellent le même
+  // gestionnaire (voir plus haut le retrait du canal au refus du serveur).
   dbChan
     .on("postgres_changes", { event: "*", schema: "public", table: "conv_reads" }, function(payload) {
       // RV-31 : un DELETE n'est pas un accusé de lecture. Depuis R25 sa charge
       // est vide (`new` = `old` = {}), et `undefined === undefined` aurait pu
       // rattacher un « lu » à une conversation sans correspondant.
       if (!payload || payload.eventType === "DELETE") return;
-      var r = payload.new; if (!r || r.user_id === MY_UID) return;
-      // L'identifiant EXACT d'abord ; « le DM de cette personne » seulement à
-      // défaut (entrée locale dont l'id diffère du serveur). Un seul `find` aux
-      // deux critères rendait le DM de B dans le panneau d'un GROUPE ouvert où B
-      // venait de lire, si le DM précédait le groupe dans la liste (contre-revue
-      // du 2026-10-19).
-      var _cs = getConversations();
-      var c = _cs.find(function(x){ return x.id === r.conv_id; }) || _cs.find(function(x){ return !x.isGroup && x.userId === r.user_id; });
-      if (!c) return;
-      var t = supaTs(r.last_read_at);
-      if (t > (c._otherReadAt || 0)) {
-        c._otherReadAt = t; c._otherRead = true;
-        if (window._openedConvId === c.id || window._openedConvId === r.conv_id) {
-          // Un accusé de lecture ne ramène pas en bas quelqu'un qui relit l'historique.
-          try { var fp = document.getElementById("conv-fullpage"); _rerendreFilSansArracher(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
-        }
-      }
+      _rtLectureRecue(payload.new);
     });
 
   // ── Interactions de commentaires en temps réel (like / réponse / emoji) ──
+  // TRANSITION (2026-11-09) : après la migration, elles arrivent par
+  // `fil:<discussion>` (la discussion ouverte) et `user:<auteur>` (l'auteur de
+  // la publication), avec la ligne ENTIÈRE, y compris pour un retrait.
   dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "comment_interactions" }, function(payload) {
-      try { if (payload.new && payload.new.user_id !== MY_UID) tel && tel.recv("cint", { commentId: payload.new.comment_id }); } catch(e) {}
-      try { if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(payload.new, "add"); } catch(e) {}
+      _rtInteractionAjoutee(payload && payload.new);
     })
     // ⚠️ `payload.old` vaut `{ id }` et rien d'autre (`apply_rls` réduit un
     // DELETE sous RLS à la clé primaire) : le passer tel quel à
     // `_applyCommentInteractionEvent` ne retirait jamais rien (R37). La ligne
     // est retrouvée dans l'index de ce qu'on a lu ou reçu (app-04).
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "comment_interactions" }, function(payload) {
-      try { if (typeof _commentInteractionRetiree === "function") _commentInteractionRetiree(payload && payload.old); }
-      catch (e) { try { diagLog("rt_ci_delete : " + (e && e.message)); } catch (_e) {} }
+      _rtInteractionRetiree(payload && payload.old);
     });
 
   // ── Ajout à une conversation : PLUS ICI depuis R25 (2026-11-03) ──
@@ -8103,58 +8609,18 @@ function _creerCanalDb(prive) {
   // `_rtAjoutConversationRecu`. Une liaison `postgres_changes` sur une table
   // hors publication ferait échouer TOUTES celles de ce canal.
 
-  // ── Mises à jour de profil en temps réel (photo/pseudo/emoji/couleur) ──
-  // Quand un utilisateur change sa photo de profil ou son pseudo, on rafraîchit
-  // le cache local (state.seed.users) → son avatar se met à jour PARTOUT à
-  // l'écran (fil, commentaires, messages) sans rechargement.
-  // ⚠️ SEULEMENT S'IL EST QUELQU'UN POUR CET ÉCRAN (2026-09-21). L'événement
-  // est poussé à TOUS les connectés (`profiles` est publique, le filtre ne peut
-  // rien retenir), et `profiles` est la table la plus modifiée de la base
-  // (20 795 changements sur 129 jours, dont 4 537 UPDATE — la CI crée et
-  // retouche ses comptes à chaque run). Avant, chaque UPDATE de n'importe qui
-  // faisait chez chaque connecté : une entrée de plus dans `state.seed.users`
-  // (en mémoire seulement : `_leanState` pose `seed = null` avant d'écrire le
-  // localStorage), un `renderFeed` coalescé et un `renderMessages` — pour un
-  // profil que l'écran ne montre nulle part.
-  // Un profil INCONNU localement n'est affiché nulle part : rien à rafraîchir,
-  // et s'il apparaît plus tard, `_resolveProfilesByIds` le demandera. Un
-  // profil CONNU (auteur du fil, d'un commentaire, correspondant) suit le
-  // chemin d'avant, à l'identique. Autorité : `profilConnuLocalement`.
-  dbChan
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, payload => {
-      try {
-        const p = payload.new;
-        if (!p || !p.id || p.id === MY_UID) return;
-        if (!profilConnuLocalement(p.id)) { window._rtProfilsIgnores = (window._rtProfilsIgnores || 0) + 1; return; }
-        cacheRemoteProfile(p);
-        // Re-rendre le fil s'il est visible (différé/coalescé : un changement de
-        // profil n'a pas besoin d'un rebuild synchrone, et ça évite un renderFeed
-        // par mise à jour de profil reçue).
-        try { if (typeof scheduleFeedRender === "function") scheduleFeedRender(); } catch(e) {}
-        try { if (typeof renderMessages === "function") renderMessages(); } catch(e) {}
-      } catch(e) {}
-    });
-
-  // Nouveaux posts en temps reel
-  dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
-      const r = payload.new;
-      // ⚠️ LE RÉVEIL EST POSÉ AVANT LA SORTIE « c'est moi » : ma propre
-      // publication prouve autant que celle d'un autre qu'il se passe quelque
-      // chose, et le filet doit reprendre sa cadence vive dans les deux cas.
-      try { feedFiletReveiller(); } catch (e) {}
-      if (r.author_id === MY_UID) return;
-      // `auteur`, PAS `authorId` : « user » est dans DENY_KEY, la clé était jetée.
-      try { tel && tel.recv("post", { postId: r.id, auteur: r.author_id }); } catch(e) {}
-      try {
-        const prof = await _profilAuteur(r.author_id);
-        const _mu = (r.media_url || "").toLowerCase();
-        const _isVid = _mu.includes(".mp4") || _mu.includes("videos/");
-        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || null, mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: supaTs(r.created_at), likes: 0, liked: false, comments: [], fromSupabase: true };
-        // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
-        if (feedAddRealtimePost(newPost)) { try { scheduleFeedRender(); } catch(e) {} }
-      } catch(e) {}
-    });
+  // ── Profils, publications et lives : PLUS DE DIRECT depuis le 2026-11-09 ──
+  // Ces trois liaisons étaient poussées à TOUS les connectés, quoi qu'ils
+  // regardent : chaque changement coûtait un tour de `realtime.apply_rls` par
+  // abonné, et la boucle `realtime.list_changes` qui les relève pesait 60 % du
+  // temps de calcul cumulé de la base (mesuré le 2026-11-09, 7,5 M d'appels).
+  // Leur fraîcheur vient désormais des LECTURES, bornées par ce qui est à
+  // l'écran : le filet du fil (60 s tant que le fil est affiché, pour tout le
+  // monde — `filetEstLeSeulChemin`), le filet des lives (même borne) et la
+  // résolution des profils (`_resolveProfilesByIds`, fraîcheur de 2 min).
+  // Le battement de cœur d'un live (un UPDATE toutes les 25 s) ne part plus vers
+  // personne : il ne servait qu'à être filtré chez chaque connecté.
+  // Fiche : `docs/journal/capacite-perf-realtime.md`, « 📴 ».
 
   // Les compteurs de likes visibles sont relus par startPostLikeRefresh (HEAD ciblés).
 
@@ -8162,59 +8628,19 @@ function _creerCanalDb(prive) {
   // Même raison que `conv_members` : le serveur pousse chaque notification
   // sur `user:<moi>` (`notifications:INSERT`), reçue par `_rtNotificationRecue`.
 
-  // Commentaires en temps reel
+  // Commentaires en temps reel — TRANSITION (2026-11-09) : après la migration,
+  // ils arrivent par `fil:<publication>` et `user:<auteur>`.
   dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_comments" }, async payload => {
-      const r = payload.new;
-      try { feedFiletReveiller(); } catch (e) {}
-      if (r.author_id === MY_UID) return;
-      try { tel && tel.recv("comment", { postId: r.post_id, commentId: r.id }); } catch(e) {}
-      try {
-        const post = findPostAnywhere(r.post_id);
-        if (post) {
-          const prof = await _profilAuteur(r.author_id);
-          if (!post.comments) post.comments = [];
-          const dejaLa = post.comments.find(c => c.id === r.id);
-          // L'épinglé lu à part (RV-38) qu'on reçoit en direct est un commentaire
-          // comme les autres : il ne quittera pas la liste avec l'épingle.
-          if (dejaLa && dejaLa._epingleGarde) { delete dejaLa._epingleGarde; delete dejaLa._aVerifier; }
-          if (!dejaLa) {
-            post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true });
-            // Le compte exact du fil (`commentsTotal`) est celui du dernier
-            // chargement : ce commentaire est en base, il compte désormais.
-            if (Number.isSafeInteger(post.commentsTotal)) post.commentsTotal++;
-          }
-          try { scheduleFeedRender(); } catch(e) {}
-          // Si la modale commentaires de ce post est ouverte → l'actualiser en direct.
-          try {
-            if (window._openCommentsPostId === r.post_id && document.getElementById("commentsBox") && typeof _renderCommentsList === "function") {
-              document.getElementById("commentsBox").innerHTML = _renderCommentsList(post.comments, r.post_id);
-              var _t = document.querySelector(".modal-title"); if (_t) _t.textContent = "Discussion (" + (typeof nbCommentairesPost === "function" ? nbCommentairesPost(post) : post.comments.length) + ")";
-            }
-          } catch(e) {}
-          // Page détail (#postDetailComments) + autres surfaces via le refresh unifié.
-          try { if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id); } catch(e) {}
-        }
-      } catch(e) {}
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_comments" }, payload => {
+      return _rtCommentaireRecu(payload && payload.new); // supabase-js ignore le retour ; un banc l'attend
     });
 
   // Commentaires d'événements IRL en temps réel : si la fiche de l'événement
   // concerné est ouverte, on recharge le fil. Léger (1 reload ciblé).
+  // TRANSITION (2026-11-09) : après la migration, ils arrivent par `fil:<activité>`.
   dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_comments" }, payload => {
-      const r = payload.new;
-      if (!r || r.author_id === MY_UID) return;
-      try {
-        const page = document.getElementById("eventDetailPage");
-        const open = page && page.style.display !== "none" && document.getElementById("eventCommentsList");
-        if (open && typeof _loadEventComments === "function" && window._openEventDetailId === r.event_id) {
-          // Sans relire l'épingle quand elle est CONNUE : le direct la tient (RV-38)
-          // — sinon chaque commentaire reçu coûtait une lecture à chaque spectateur.
-          // Inconnue (la lecture d'ouverture a échoué), elle se relit.
-          const connue = typeof _epingleConnue === "function" && _epingleConnue(r.event_id);
-          _loadEventComments(r.event_id, connue ? { epingle: false } : undefined);
-        }
-      } catch(e) {}
+      _rtCommentaireActiviteRecu(payload && payload.new);
     });
 
   // ⚠️ LES ABONNEMENTS TEMPS RÉEL DU CARNET DE VOYAGE ONT ÉTÉ RETIRÉS (§6).
@@ -8228,21 +8654,8 @@ function _creerCanalDb(prive) {
   // `step_interactions` gardent leurs lignes et restent dans la publication
   // realtime. On cesse seulement de les écouter.
 
-  // Lives VIDÉO : apparition/fin d'un direct → rafraîchit les bulles 🔴.
-  dbChan
-    .on("postgres_changes", { event: "*", schema: "public", table: "video_lives" }, function(payload) {
-      // ⚠️ LE PAYLOAD EST TRANSMIS (⑧, app-05) : c'est lui qui permet de
-      // reconnaître le battement de cœur de l'hôte (un UPDATE `last_seen`
-      // toutes les 25 s) et de ne RIEN redemander pour lui. Sans l'argument,
-      // la garde ne peut rien décider et chaque battement repaie une requête
-      // chez chaque connecté. Repli sur l'appel direct si app-05 n'est pas
-      // chargé — un lot de capacité ne doit pas pouvoir éteindre les bulles
-      // « 🔴 LIVE ».
-      try {
-        if (typeof vliveRefreshCoalesce === "function") vliveRefreshCoalesce(payload);
-        else if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives();
-      } catch(e) {}
-    });
+  // Lives VIDÉO : plus de liaison ici depuis le 2026-11-09 (voir plus haut) —
+  // les bulles 🔴 suivent le filet des lives (app-05, `_vliveFiletTour`).
 
   // Un SEUL join pour l'ensemble des bindings ci-dessus.
   dbChan.subscribe(function (st, err) {
@@ -8879,6 +9292,11 @@ window._feedRenderLimit = 20;
 window._feedExtraPosts = [];
 
 // Insère un post reçu en TEMPS RÉEL. Renvoie true s'il a été ajouté.
+// ⚠️ PLUS AUCUN APPELANT TEMPS RÉEL DEPUIS LE 2026-11-09 (« 📴 ») : la liaison
+// `posts` INSERT est retirée, les publications arrivent par le filet du fil.
+// Gardée comme la porte d'insertion qui SURVIT au rafraîchissement du filet
+// (les suites du fil s'en servent pour poser une publication), et pour un
+// direct ciblé futur ; elle ne doit pas redevenir un abonnement à TOUS.
 //
 // Il ne suffit PAS de l'ajouter à `state.supabasePosts` : `startFeedRefreshLoop`
 // fait `state.supabasePosts = posts.concat(extra)`, où `posts` est un instantané
@@ -9051,10 +9469,11 @@ function _feedPostsSig(posts) {
 // au banc de charge du 14/09. **Un tiers de la capacité mesurée serait
 // consommé avant que quiconque ait fait quoi que ce soit.**
 //
-// ⚠️ ET CE N'EST PAS LE CHEMIN PRINCIPAL : les nouvelles publications arrivent
-// par l'abonnement temps réel `posts` INSERT. Ce minuteur est un FILET, pour ce
-// que le temps réel a manqué (canal coupé, événement perdu). Un filet a le
-// droit d'être lent quand il ne trouve rien.
+// ⚠️ C'EST DEVENU LE CHEMIN PRINCIPAL (2026-11-09) : l'abonnement `posts`
+// INSERT est retiré (app-08 « 📴 ») — il poussait chaque publication à TOUS les
+// connectés. Tant que le fil est à l'écran, ce minuteur reste donc à 60 s pour
+// tout le monde (`filetEstLeSeulChemin`) ; ailleurs il recule, et le retour au
+// fil le réveille (`goTo`).
 //
 // Le pas part de 60 s et s'allonge d'un facteur 1,5 à chaque tour où la
 // signature du fil N'A PAS bougé, plafonné à 5 minutes. Il retombe à 60 s dès
@@ -9133,16 +9552,15 @@ function startFeedRefreshLoop() {
       } else if (_feedRefreshInterval !== null && generation === _feedRefreshGeneration) {
         // ⚠️ SANS TEMPS RÉEL, CE FILET N'EST PLUS UN FILET : C'EST LE SEUL
         // CHEMIN. Le recul jusqu'à 5 min (2026-09-20) était justifié par « les
-        // publications arrivent par le temps réel » — vrai pour un compte,
-        // FAUX pour un visiteur depuis que `supaSubscribe` ne lui ouvre plus
-        // de connexion. Le laisser reculer échangerait la capacité contre un
-        // fil figé cinq minutes chez 98 % des gens, ce qui coûterait plus que
-        // le gain. On réutilise le contrat existant — « un signe de vie rend la
-        // cadence vive » — plutôt que d'inventer une seconde politique : les
-        // bornes restent dans `filetProchainPas`, qui n'est pas touchée.
-        // ⚠️ BORNÉ AU FIL À L'ÉCRAN : `filetEstLeSeulChemin` (app-02) compte
-        // les DEUX termes du marché — voir son commentaire. Pinné partout, ce
-        // filet coûtait 4 req/min par onglet visiteur, ×5 du régime d'avant.
+        // publications arrivent par le temps réel » — faux pour un visiteur
+        // depuis le 2026-09-20, faux pour TOUT LE MONDE depuis le 2026-11-09
+        // (plus de liaison `posts` INSERT). Le laisser reculer figerait le fil
+        // cinq minutes. On réutilise le contrat existant — « un signe de vie
+        // rend la cadence vive » — plutôt que d'inventer une seconde politique :
+        // les bornes restent dans `filetProchainPas`, qui n'est pas touchée.
+        // ⚠️ BORNÉ AU FIL À L'ÉCRAN : `filetEstLeSeulChemin` (app-02) — voir
+        // son commentaire. Pinné partout, ce filet coûtait 4 req/min par onglet
+        // visiteur, ×5 du régime d'avant.
         const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
         _feedFiletPas = filetProchainPas(_feedFiletPas, vivant || seulChemin, document.hidden);
         _feedRefreshInterval = setTimeout(tour, delaiDeleste(_feedFiletPas));

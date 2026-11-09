@@ -3320,6 +3320,9 @@ function openReelComments(postId) {
     // première page serveur — le fil ne porte plus que DEUX aperçus (2026-09-21).
     loadReelComments(postId);
     _chargerDiscussionBobine(postId);
+    // Le sujet privé de cette discussion (`fil:<id>`, app-08) : le panneau des
+    // Bobines est une discussion à l'écran comme la modale (2026-11-09).
+    try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
     // Focus sur l'input
     setTimeout(() => {
@@ -3345,6 +3348,7 @@ function closeReelComments() {
       reelsViewer.classList.remove("comments-open");
     }
     window.currentReelCommentPostId = null;
+    try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
   }
 }
 
@@ -4032,104 +4036,25 @@ async function supaRefreshVideoLives() {
 window.supaRefreshVideoLives = supaRefreshVideoLives;
 
 // ══════════════════════════════════════════════════════════════════════════
-// ⑧ LE BATTEMENT DE CŒUR D'UN LIVE NE DOIT RIEN RECHARGER (2026-09-20)
+// ⑧ LE BATTEMENT DE CŒUR D'UN LIVE NE PART PLUS VERS PERSONNE (2026-11-09)
 // ──────────────────────────────────────────────────────────────────────────
-// ⚠️ MESURÉ : `video_lives` porte 223 315 balayages séquentiels pour une table
-// de VINGT-ET-UNE lignes (canal ① d'ADR-012, 129 jours). L'abonnement temps
-// réel `*` appelait `supaRefreshVideoLives()` — donc une VRAIE requête — à
-// chaque événement reçu, chez chaque personne connectée.
-//
-// ⚠️ ET LA PREMIÈRE RÉDACTION DE CE LOT S'EST TROMPÉE DE REMÈDE, relevée par
-// `audit-passio` : elle posait un débounce de 250 ms en disant « un seul live
-// produit plusieurs événements d'affilée ». C'est FAUX, et les chiffres cités
-// le démentaient déjà — 2 089 INSERT, 2 414 UPDATE, 2 068 DELETE, soit ~1,16
-// UPDATE par live : des événements ESPACÉS par la durée du live, jamais une
-// rafale. Surtout, l'hôte d'un live envoie un UPDATE `last_seen` **toutes les
-// 25 secondes** (le battement de cœur, plus bas dans ce fichier) : 25 000 ms
-// ≫ 250 ms, donc AUCUN de ces événements n'était coalescé. Un live d'une heure
-// = 144 battements × N connectés = 144 × N requêtes, avant comme après.
-// **Un débounce ne coalesce que ce qui arrive groupé ; il faut regarder ce que
-// la production produit VRAIMENT avant de choisir la forme du remède.**
-//
-// ⚠️ LE VRAI GESTE EST DONC DE NE PAS RECHARGER POUR UN ÉVÉNEMENT QUI NE
-// CHANGE RIEN À L'ÉCRAN. `supaRefreshVideoLives` calcule déjà sa signature de
-// visibilité — `id + status` — mais APRÈS avoir payé la requête. On la prend
-// AVANT : une mise à jour dont l'identifiant est déjà connu avec le même
-// statut est un battement de cœur, et il n'y a rien à redemander.
-// ⚠️ ON NE SAUTE QUE CE CAS-LÀ, et c'est volontaire : une insertion, une
-// suppression, un identifiant inconnu ou un statut différent repassent par la
-// requête. Prudence délibérée — un événement qu'on ne sait pas lire est un
-// événement qu'on honore.
-// ⚠️ ET LA SIGNATURE EST EXACTEMENT CELLE QUE L'APPLICATION UTILISE DÉJÀ pour
-// décider de repeindre : si `id + status` ne bouge pas, l'écran ne bouge pas
-// non plus. Copier une AUTRE signature ici ferait diverger les deux.
-// ⚠️ Un live qui cesse de battre disparaît toujours : `supaLoadVideoLives`
-// filtre sur `last_seen`, et le filet périodique de 60 s ci-dessous le purge.
-// Sauter le battement ne prolonge donc aucune bulle morte.
-//
-// La coalescence (débounce de FIN) reste par-dessus, pour les cas qui, eux,
-// arrivent groupés : plusieurs lives qui démarrent ensemble, ou la reprise
-// après un retour à l'écran.
-//
-// ⚠️ `supaRefreshVideoLives` RESTE APPELABLE DIRECTEMENT et n'a pas changé d'un
-// caractère : le filet de 60 s et les appels explicites la gardent.
-var _vliveRefreshMinuteur = null;
-var _vliveRefreshEnAttente = false;
-var VLIVE_COALESCE_MS = 250;
-
-// Vrai UNIQUEMENT pour le battement de cœur : une mise à jour d'un live déjà
-// connu, au même statut. Tout le reste rend `false` et sera rechargé.
-function vliveEvenementSansEffet(payload) {
-  try {
-    if (!payload || payload.eventType !== "UPDATE") return false;
-    var n = payload.new;
-    if (!n || !n.id) return false;
-    var connus = window._videoLives || [];
-    for (var i = 0; i < connus.length; i++) {
-      if (connus[i] && connus[i].id === n.id) return connus[i].status === n.status;
-    }
-    return false;                               // identifiant inconnu : on recharge
-  } catch (e) { return false; }
-}
-window.vliveEvenementSansEffet = vliveEvenementSansEffet;
-
-function vliveRefreshCoalesce(payload) {
-  try {
-    if (vliveEvenementSansEffet(payload)) return;
-    // Un événement qui compte rend sa cadence vive au filet périodique : il se
-    // passe quelque chose, il peut s'en passer une autre.
-    try { if (typeof vliveFiletReveiller === "function") vliveFiletReveiller(); } catch (e) {}
-    // ⚠️ ON NE DEMANDE RIEN DEPUIS UNE PAGE MASQUÉE : la réponse ne peut rien
-    // peindre, et WebKit coupe de toute façon les requêtes en vol au passage en
-    // arrière-plan (fiche « Failed to fetch »). Le rendez-vous est REPORTÉ, pas
-    // annulé.
-    if (document.hidden) { _vliveRefreshEnAttente = true; return; }
-    if (_vliveRefreshMinuteur) return;              // une rafale, un seul rendez-vous
-    _vliveRefreshMinuteur = setTimeout(function () {
-      _vliveRefreshMinuteur = null;
-      _vliveRefreshEnAttente = false;
-      try { supaRefreshVideoLives(); } catch (e) { try { diagLog("vlive_coalesce", e && e.message); } catch (_e) {} }
-    }, VLIVE_COALESCE_MS);
-  } catch (e) { try { diagLog("vlive_coalesce_arm", e && e.message); } catch (_e) {} }
-}
-window.vliveRefreshCoalesce = vliveRefreshCoalesce;
-
-// Le rattrapage du retour à l'écran : ce qui est arrivé pendant que la page
-// était masquée n'est pas perdu, il est simplement servi au retour.
-// ⚠️ LES DEUX ÉVÉNEMENTS SONT NÉCESSAIRES, et la première rédaction NOMMAIT
-// `pageshow` sans jamais l'écouter (relevé par `audit-passio` — un commentaire
-// qui promet une couverture qu'il n'a pas est pire qu'un trou, on croit le
-// cas traité). Sur iOS, un retour depuis le bfcache émet `pageshow` sans
-// forcément émettre `visibilitychange`.
-function _vliveRattraper() { if (!document.hidden && _vliveRefreshEnAttente) vliveRefreshCoalesce(); }
-document.addEventListener("visibilitychange", _vliveRattraper);
-window.addEventListener("pageshow", _vliveRattraper);
+// Jusqu'au 2026-11-09, l'abonnement `postgres_changes` `video_lives` `*` livrait
+// chaque changement à TOUS les connectés — dont l'UPDATE `last_seen` que l'hôte
+// d'un live envoie toutes les 25 s, filtré ensuite ici chez chacun
+// (`vliveEvenementSansEffet`, `vliveRefreshCoalesce`, 2026-09-20). La liaison
+// est retirée avec le reste du contenu public (app-08 « 📴 ») : les bulles
+// « 🔴 LIVE » suivent le filet ci-dessous, qui ne recule pas tant que le fil
+// est à l'écran (`filetEstLeSeulChemin`) ni tant qu'un live est connu, et que
+// le retour au fil ou au premier plan relance tout de suite
+// (`vliveFiletReveiller(true)`). Un live qui démarre apparaît donc en 60 s au
+// plus sous les yeux, et un live terminé disparaît dans le même délai.
 
 // ══════════════════════════════════════════════════════════════════════════
 // ⑪ LE FILET DES LIVES RECULE QUAND IL N'Y A RIEN À SURVEILLER (2026-09-20)
 // ──────────────────────────────────────────────────────────────────────────
-// Filet : re-check périodique (les bindings realtime couvrent l'instantané,
-// ceci rattrape les lives morts sans événement `ended` — crash, batterie…).
+// Filet : re-check périodique. Depuis le 2026-11-09 c'est le SEUL chemin des
+// bulles « 🔴 LIVE » (plus de liaison temps réel `video_lives`, voir ⑧) ; il
+// rattrape aussi les lives morts sans événement `ended` — crash, batterie…
 //
 // ⚠️ IL TOURNAIT TOUTES LES 60 s CHEZ CHAQUE CONNECTÉ, MÊME SANS AUCUN LIVE.
 // Mesuré en production (canal ①, 129 jours) : **234 949 appels** — c'est le
@@ -4157,14 +4082,26 @@ window.addEventListener("pageshow", _vliveRattraper);
 // compte, donc l'événement `ended` d'un live ne lui parvient JAMAIS : le
 // reculer jusqu'à 5 min lui laisserait une bulle « 🔴 LIVE » allumée cinq
 // minutes après la fin du direct — chez 97,9 % des sessions. Même couplage que
-// le filet du fil (app-08), même autorité (`connexionTempsReelAutorisee`).
+// le filet du fil (app-08). ⚠️ DEPUIS LE 2026-11-09, C'EST LE SEUL CHEMIN DE
+// TOUT LE MONDE (plus de liaison `video_lives`) : la borne est le fil à
+// l'écran (`filetEstLeSeulChemin`), plus l'identité.
 // Les bornes et la règle de recul vivent dans `filetProchainPas` (app-02),
 // autorité PARTAGÉE avec le filet du fil.
 let _vliveFiletPas = 60000;
 let _vliveFiletMinuteur = null;
+// Un tour EN VOL (la lecture n'a pas répondu) : un réveil immédiat ne lance pas
+// un second tour — sa fin réarmerait une seconde chaîne de minuteurs.
+let _vliveFiletEnVol = false;
 
-function vliveFiletReveiller() {
+// `immediat` (retour au fil, retour au premier plan) : le tour part tout de
+// suite au lieu d'attendre un rendez-vous pris au pas reculé — sans temps réel,
+// c'est ce qui rend une bulle « 🔴 LIVE » juste dès qu'on regarde.
+function vliveFiletReveiller(immediat) {
   _vliveFiletPas = filetProchainPas(0, true, false);
+  if (immediat === true && !document.hidden && window._supaReal && _vliveFiletMinuteur !== null && !_vliveFiletEnVol) {
+    clearTimeout(_vliveFiletMinuteur);
+    _vliveFiletMinuteur = setTimeout(_vliveFiletTour, 0);
+  }
 }
 window.vliveFiletReveiller = vliveFiletReveiller;
 
@@ -4172,23 +4109,25 @@ function _vliveFiletTour() {
   let vivant = false;
   const avantVide = !(window._videoLives || []).length;
   const suite = () => {
+    _vliveFiletEnVol = false;
     const apresVide = !(window._videoLives || []).length;
     // « Vivant » ici, c'est : un changement trouvé, OU un live connu — avant ou
     // après le tour. Un live qui EXISTE garde la cadence vive quoi qu'il
     // arrive : c'est exactement ce que ce filet doit rattraper, et le ralentir
     // laisserait une bulle « 🔴 LIVE » allumée jusqu'à cinq minutes après la
     // fin du direct.
-    // ⚠️ `seulChemin` : sans connexion temps réel, aucun événement de live
-    // n'arrive jamais — le filet est la seule source, il ne recule pas. BORNÉ
-    // au fil à l'écran (les bulles « 🔴 LIVE » vivent dans sa barre de
-    // stories) : `filetEstLeSeulChemin` (app-02), MÊME autorité que le filet du
-    // fil, et c'est elle qui porte le compte des DEUX termes du marché.
+    // ⚠️ `seulChemin` : aucun événement de live n'arrive plus en temps réel
+    // (2026-11-09, plus de liaison `video_lives`) — le filet est la seule
+    // source, il ne recule pas. BORNÉ au fil à l'écran (les bulles « 🔴 LIVE »
+    // vivent dans sa barre de stories) : `filetEstLeSeulChemin` (app-02), MÊME
+    // autorité que le filet du fil.
     const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
     _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || seulChemin || !apresVide || !avantVide, document.hidden);
     _vliveFiletMinuteur = setTimeout(_vliveFiletTour, delaiDeleste(_vliveFiletPas));
   };
   try {
     if (document.hidden || !window._supaReal) { suite(); return; }
+    _vliveFiletEnVol = true;
     const p = supaRefreshVideoLives();
     if (p && typeof p.then === "function") {
       p.then(function (c) { vivant = !!c; }, function () { vivant = true; }).then(suite);
@@ -4203,12 +4142,20 @@ function _vliveFiletTour() {
 }
 _vliveFiletMinuteur = setTimeout(_vliveFiletTour, delaiDeleste(_vliveFiletPas));
 
-// Le retour à l'écran rend sa cadence vive au filet.
+// Le retour à l'écran rend sa cadence vive au filet, et relit tout de suite.
+// ⚠️ SEULEMENT SI LE FIL EST À L'ÉCRAN : les bulles n'existent que là, et un
+// retour sur un autre écran n'a rien à repeindre (le retour au fil, lui, relit
+// — `goTo`). Sinon, une lecture `video_lives` à chaque retour au premier plan.
 document.addEventListener("visibilitychange", function () {
   if (document.hidden) return;
-  vliveFiletReveiller();
+  vliveFiletReveiller(typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin());
 });
-window.addEventListener("pageshow", vliveFiletReveiller);
+// ⚠️ `pageshow` part AUSSI au premier chargement : là, `supaInit` lit déjà les
+// lives une fois — relire en plus doublait la lecture du démarrage (et une
+// réponse 2xx de plus efface le compte des échecs de `_sondeServeurReponse`).
+// Seul un retour du cache de navigation (`persisted`, iOS sans
+// `visibilitychange`) relit tout de suite.
+window.addEventListener("pageshow", function (e) { vliveFiletReveiller(!!(e && e.persisted) && typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin()); });
 
 // Bulles « 🔴 LIVE » injectées en tête de la barre des stories (renderStories).
 function _vliveChipsHtml() {

@@ -18,6 +18,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 // Intercepte les lots de télémétrie AVANT la base : il n'existe qu'une seule
 // base Supabase, et `?telemetry=1` y déposerait sinon des lignes de test.
@@ -36,6 +37,9 @@ async function interceptePayloads(page) {
 
 test.describe("PERF-IOS — instrumentation phase 1", () => {
   test.beforeEach(async ({ page }) => {
+    // Le projet Supabase VIDE (2026-11-09) : seule la télémétrie est routée
+    // ici ; le reste du démarrage partait en production.
+    await projetSupabaseVide(page);
     await poserGateSansPremiereVisite(page);
   });
 

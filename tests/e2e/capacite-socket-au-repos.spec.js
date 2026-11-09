@@ -128,7 +128,8 @@ test("masqué 3 min : canaux relâchés, socket fermé, gardes relâchées ; ret
   // Le fil et les lives sont relus par les gestionnaires `visibilitychange` du
   // produit ; le réveil du socket ne les double pas. Mesuré EXACTEMENT : deux
   // gestionnaires d'app-08 pour le fil (badge et filet), zéro pour les lives
-  // (le stub remplace `supaRefreshVideoLives`, app-05 passe par `vliveRefreshCoalesce`).
+  // (le retour arme dans app-05 un tour IMMÉDIAT du filet des lives — une minuterie à
+  // 0 ms, que l'horloge figée du banc ne fait pas partir avant la mesure : 2026-11-09).
   expect(s.rattrapages.fil).toBe(etalon.fil);
   expect(s.rattrapages.lives).toBe(etalon.lives);
   expect([s.rattrapages.conversations, s.rattrapages.conversation_ouverte, s.rattrapages.notifications]).toEqual([1, 1, 1]);
@@ -164,7 +165,7 @@ test("visible sans geste 15 min : au repos ; le premier geste rouvre ; une conve
   expect(s.endormi).toBe(false); expect(s.rattrapages["typing:conv_x"]).toBe(1);
 });
 
-test("pendant le repos, un rafraîchissement de jeton ne rouvre rien ; le filet du fil sait que le socket dort", async ({ page }) => {
+test("pendant le repos, un rafraîchissement de jeton ne rouvre rien ; le filet du fil reste le seul chemin, socket endormi ou non", async ({ page }) => {
   await preparer(page);
   await masquer(page, true); await passer(page, 4 * 60000);
   expect((await etat(page)).endormi).toBe(true);
@@ -176,14 +177,19 @@ test("pendant le repos, un rafraîchissement de jeton ne rouvre rien ; le filet 
   expect(r).toEqual({ canauxCrees: 0, abonne: false, endormi: true });
   await passer(page, 60000);
   expect((await etat(page)).endormi).toBe(true);
-  // Visible et immobile 15 min sur le fil : le filet devient le seul chemin, comme pour un visiteur.
+  // ⚠️ DEPUIS LE 2026-11-09 (« 📴 »), le filet du fil est le seul chemin de quiconque
+  // regarde le fil — les publications ne sont plus poussées à personne. Le socket
+  // qui s'endort ou se réveille n'y change rien (avant : « seul chemin » pendant
+  // le repos seulement).
   await masquer(page, false);
   await page.evaluate(() => { goTo("feed"); });
-  expect(await page.evaluate(() => filetEstLeSeulChemin())).toBe(false);
+  expect(await page.evaluate(() => filetEstLeSeulChemin())).toBe(true);
   await passer(page, 16 * 60000);
   expect(await page.evaluate(() => [_rtRepos.endormi, filetEstLeSeulChemin()])).toEqual([true, true]);
   await page.evaluate(() => document.dispatchEvent(new Event("pointerdown", { bubbles: true })));
-  expect(await page.evaluate(() => [_rtRepos.endormi, filetEstLeSeulChemin()])).toEqual([false, false]);
+  expect(await page.evaluate(() => [_rtRepos.endormi, filetEstLeSeulChemin()])).toEqual([false, true]);
+  await page.evaluate(() => { goTo("messages"); });
+  expect(await page.evaluate(() => filetEstLeSeulChemin()), "ailleurs que sur le fil : jamais").toBe(false);
 });
 
 test("un appel (même sonnant) ou un live en cours n'est jamais coupé ; un visiteur n'a rien à endormir", async ({ page }) => {

@@ -19,12 +19,16 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 // Ouvre l'écran d'auth réel (landing → « Créer un compte ») puis instrumente
 // `supa.auth`. ⚠️ `supa` est un `let` de portée script : on mute l'objet
 // existant, on ne le remplace pas — `window.supa = …` ne toucherait pas le
 // binding que l'app utilise.
 async function ouvrirAuth(page, doubles = {}) {
+  // Le projet Supabase VIDE (2026-11-09) : les doubles de `supa.auth` ne
+  // couvrent que l'authentification ; le reste du démarrage partait en production.
+  await projetSupabaseVide(page);
   await page.addInitScript(([k, t]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");

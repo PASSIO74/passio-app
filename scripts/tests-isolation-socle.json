@@ -1,5 +1,5 @@
 {
-  "_lisez_moi": "Liste BLANCHE et MOTIVÉE des suites qui naviguent elles-mêmes SANS isolation des données distantes, parce que cette exposition est VOULUE. On n'entre pas ici pour faire taire scripts/audit-tests-isolation.js : on y entre parce que le test a besoin du réseau réel, et on écrit pourquoi. Une entrée devenue inutile (le fichier pose son isolation) est signalée par le banc.",
+  "_lisez_moi": "Liste BLANCHE et MOTIVÉE des suites qui naviguent elles-mêmes SANS isolation des données distantes, parce que cette exposition est VOULUE. On n'entre pas ici pour faire taire scripts/audit-tests-isolation.js : on y entre parce que le test a besoin du réseau réel, et on écrit pourquoi. Une entrée devenue inutile (le fichier pose son isolation) est signalée par le banc. Depuis le 2026-11-09, la liste vaut aussi pour tests/unit/isolation-projet-supabase.test.mjs : une suite LOCALE qui navigue sans le projet Supabase vide, ou qui en rouvre un chemin réel (`cheminsReels`, `sansProjetVide`), y figure avec sa raison.",
 
   "multi-comptes.spec.js": "Projet `prod` : crée de VRAIS comptes Supabase et éprouve la livraison entre eux. Isoler les lectures distantes retirerait précisément ce que cette suite existe pour mesurer.",
 
@@ -7,5 +7,9 @@
 
   "passion-context.spec.js": "Ne tourne que sous PASSIO_CIBLE=dist. Mesure ce que le bundle de production émet réellement en télémétrie au changement de passion : l'émission réelle EST le sujet.",
 
-  "gate-sans-app.spec.js": "Éprouve la fenêtre « gate affiché, application absente » — le seul banc qui couvre les causes d'aperçu invisible du 2026-08-28. Il coupe l'application exprès ; il n'y a aucune donnée distante à isoler."
+  "telemetrie-preauth.spec.js": "Cas ① : « aucun lot n'est refusé » se juge sur la policy d'insertion RÉELLE de `telemetry_events` (`user_id IS NULL OR = auth.uid()`) et ses déclencheurs (débit par lot, identité serveur) — une recopie dans le projet vide ne prouverait que la recopie. Seul ce chemin part au vrai projet (`cheminsReels`) ; tout le reste du démarrage est servi vide. Coût : un ou deux lots par exécution, marqués `trafic = robot` (2026-11-09).",
+
+  "isolation-projet-supabase.spec.js": "Verrou du projet Supabase vide. Son cas ⑪ navigue avec `projetSupabaseVide` SEUL, sans `sansDonneesDistantes`, parce qu'il prouve précisément que ce filet couvre à lui seul les suites qui naviguent elles-mêmes — l'audit historique ne reconnaît que `sansDonneesDistantes`. Rien n'y est exposé : chaque cas exige ZÉRO requête arrivée au réseau.",
+
+  "sw-page-revalidee.spec.js":"Banc du VRAI service worker sur un serveur de banc à port éphémère : la page qu'il sert ne charge PAS l'application, aucune requête Supabase n'en part (vérifié par la sonde du 2026-11-09). Aucune route n'y est posée exprès : une route Playwright désactive le cache HTTP du navigateur, et c'est la revalidation (If-None-Match → 304) que ce banc mesure."
 }
