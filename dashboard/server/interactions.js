@@ -48,8 +48,12 @@ export const KIND_LABEL = {
 const KIND_ICON = { like: "❤️", unlike: "💔", comment: "💬", cint: "😊", message: "✉️", publish: "📝", rsvp: "📅" };
 
 // Types réellement vérifiables cross-device (ils ont un chemin de réception realtime).
-const VERIFIABLE = new Set(["like", "unlike", "comment", "cint", "message", "publish"]);
-// Types appariés par identifiant de cible (fiable). Les autres (publish) le sont
+// ⚠️ `publish` N'EN EST PLUS (2026-11-09, « 📴 ») : plus aucun client ne reçoit une
+// publication en direct — le fil la relit (filet de 60 s) — et le client n'émet plus
+// `rt_recv post`. Gardée vérifiable, chaque publication passerait « non confirmée » :
+// un faux incident. Elle est désormais « émise seulement ».
+const VERIFIABLE = new Set(["like", "unlike", "comment", "cint", "message"]);
+// Types appariés par identifiant de cible (fiable). `publish` l'était
 // heuristiquement par proximité temporelle (les ids d'émission/réception diffèrent).
 const ID_CORRELATED = new Set(["like", "unlike", "comment", "cint", "message"]);
 

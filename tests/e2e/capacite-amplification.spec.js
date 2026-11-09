@@ -52,6 +52,8 @@ async function compteurVliveAuCalme(page) {
   // soit l'appel de démarrage a été OBSERVÉ, soit `supaSubscribe` a pris sa
   // décision (canal posé, ou refus tracé — il suit immédiatement l'appel).
   //
+  // ⚠️ (`_dbChan` jusqu'au 2026-11-09 ; `realtime:db` n'existe plus, le canal
+  // que `supaSubscribe` pose en premier est `user:<moi>`.)
   // ⚠️ `_dbChan` SEUL N'A JAMAIS ÉTÉ SATISFAIT AU BANC, ET CE N'EST PAS LA FAUTE
   // DU LOT DU 2026-09-20 (j'ai d'abord écrit le contraire). Mesuré : `supaInit`
   // n'atteint pas `supaSubscribe` sous l'isolation de `bootOnboarded`, donc la
@@ -66,7 +68,7 @@ async function compteurVliveAuCalme(page) {
   // ⚠️ Ni tolérance à « +1 », ni `setTimeout` de complaisance : les deux masquent
   // un vrai appel ou rouvrent la course sur un runner plus lent.
   await page
-    .waitForFunction(() => !window._supaReal || !!window._dbChan || window.__vliveAppels > 0
+    .waitForFunction(() => !window._supaReal || !!window._userTopicChan || window.__vliveAppels > 0
       || (window._diagLogs || []).some((l) => String(l).includes("rt_visiteur")), null, { timeout: 6000 })
     .catch(() => {});
   // Second filet : on n'accepte le calme qu'après DEUX observations identiques
@@ -162,21 +164,22 @@ test("⑦ les gestionnaires temps réel passent par `_profilAuteur` — à la SO
   // `_notifierMessage`.
   // ⚠️ 2026-11-09 (« 📴 ») : la liaison des publications est partie (elles
   // arrivent par le filet du fil), et le gestionnaire des commentaires est
-  // NOMMÉ — `_rtCommentaireRecu`, appelé par la liaison de transition de
-  // `realtime:db`, par le sujet `fil:<id>` et par `user:<moi>`. On mesure SON
-  // corps, et celui des trois fabriques qui le branchent : aucune n'interroge
+  // NOMMÉ — `_rtCommentaireRecu`, appelé par le sujet `fil:<id>` et par
+  // `user:<moi>` (la liaison de transition de `realtime:db` est partie avec la
+  // publication, le même jour). On mesure SON corps, et celui des deux fabriques
+  // qui le branchent : aucune n'interroge
   // `profiles` (une ligne poussée à N personnes coûterait N requêtes).
   const corps = (entete) => {
     const i = src.indexOf(entete);
     expect(i, entete + " doit exister").toBeGreaterThan(0);
     return src.slice(i, src.indexOf("\n}\n", i));
   };
-  for (const f of ["function _creerCanalDb(", "function _creerCanalFil(", "function _subscribeUserTopic(", "async function _rtCommentaireRecu("]) {
+  for (const f of ["function _creerCanalFil(", "function _subscribeUserTopic(", "async function _rtCommentaireRecu("]) {
     expect(corps(f).match(/from\(["']profiles["']\)/g), f + " n'interroge pas `profiles`").toBeNull();
   }
   expect((corps("async function _rtCommentaireRecu(").match(/_profilAuteur\(/g) || []).length,
     "le gestionnaire des commentaires passe par l'autorité unique").toBeGreaterThanOrEqual(1);
-  for (const f of ["function _creerCanalDb(", "function _creerCanalFil(", "function _subscribeUserTopic("]) {
+  for (const f of ["function _creerCanalFil(", "function _subscribeUserTopic("]) {
     expect(corps(f), f + " branche le gestionnaire nommé").toContain("_rtCommentaireRecu(");
   }
 });

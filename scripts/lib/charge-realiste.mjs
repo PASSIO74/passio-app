@@ -10,11 +10,15 @@ export function emailCapacite(campagne, index) {
 }
 export const LIMITES = Object.freeze({ octets: 180_000_000, octetsNettoyage: 20_000_000,
   messagesRealtime: 150_000, requetes: 20_000, dureeCampagneMs: 45 * 60_000 });
-// ⚠️ Le nom est un IDENTIFIANT de CLI (`--profil-realtime`), pas un compte : depuis le
-// 2026-11-09 (« 📴 ») ce profil porte les CINQ liaisons de transition, `legacy12` DIX —
-// `conv_members` et `notifications` sont sorties de la publication (R25), puis profils,
-// publications et lives ne sont plus écoutés.
-export const PROFIL_REALTIME = "transition5";
+// ⚠️ Le nom est un IDENTIFIANT de CLI (`--profil-realtime`), pas un compte. Depuis la
+// migration du 2026-11-09 (« 📴 ») qui VIDE la publication, le client de l'app ne
+// rejoint plus `realtime:db` du tout : le profil par défaut, `sans-cdc`, ne porte AUCUNE
+// liaison `postgres_changes` et ne rejoint que `user:<uuid>`. `transition5` (le client
+// d'entre les deux PR, cinq liaisons) et `legacy12` (dix : `conv_members` et
+// `notifications` sorties à R25, profils, publications et lives écoutés) restent pour
+// COMPARER, hors ligne seulement — contre la base migrée, leur join serait refusé.
+export const PROFIL_REALTIME = "sans-cdc";
+export const PROFILS_REALTIME = Object.freeze([PROFIL_REALTIME, "transition5", "legacy12"]);
 export const LIKES_VISIBLES = Object.freeze({ maximum: 3, fraicheurMs: 15000, jitterMs: 1500,
   initialJitterMs: 15000, minimumDepartMs: 200, plafondMs: 60000 });
 // Cadences que le banc sait modéliser : `fixe` = le produit d'avant le
@@ -59,8 +63,9 @@ export function optionsBanc(args) {
   const pagesTexte = values["--pages"] || "60,20";
   if (!["20", "60,20"].includes(pagesTexte)) throw new Error("PAGES_INVALIDES");
   const profilRealtime = values["--profil-realtime"] || PROFIL_REALTIME;
-  if (![PROFIL_REALTIME, "legacy12"].includes(profilRealtime)) throw new Error("PROFIL_REALTIME_INVALIDE");
+  if (!PROFILS_REALTIME.includes(profilRealtime)) throw new Error("PROFIL_REALTIME_INVALIDE");
   if (values["--executer"] && profilRealtime === "legacy12") throw new Error("LEGACY12_HORS_LIGNE_SEULEMENT");
+  if (values["--executer"] && profilRealtime === "transition5") throw new Error("TRANSITION5_HORS_LIGNE_SEULEMENT");
   if (values["--executer"] && !values["--sortie"]) throw new Error("SORTIE_REQUISE");
   const compteursCadence = values["--compteurs-cadence"] || CADENCE_COMPTEURS;
   if (!CADENCES_COMPTEURS.includes(compteursCadence)) throw new Error("CADENCE_COMPTEURS_INVALIDE");
@@ -71,7 +76,10 @@ export function optionsBanc(args) {
 }
 
 export function abonnements(uid, profil = PROFIL_REALTIME) {
-  if (![PROFIL_REALTIME, "legacy12"].includes(profil)) throw new Error("PROFIL_REALTIME_INVALIDE");
+  if (!PROFILS_REALTIME.includes(profil)) throw new Error("PROFIL_REALTIME_INVALIDE");
+  // `sans-cdc` (le client d'après la migration du 2026-11-09) : AUCUNE liaison —
+  // et donc aucun join de `realtime:db` (voir `DisponibiliteRealtime`).
+  if (profil === PROFIL_REALTIME) return [];
   // Même tableau littéral que le chemin Realtime V3 de l'app. Le canal privé
   // user:<uuid> s'ajoute sur la même socket ; conv_messages n'est pas écoutée
   // en postgres_changes lorsque V3 est actif. Depuis R25 (2026-11-03), ni
@@ -84,7 +92,18 @@ export function abonnements(uid, profil = PROFIL_REALTIME) {
   // jusqu'à la migration qui vide la publication. `profiles`, `posts` et
   // `video_lives` ne sont plus écoutées par personne ; `legacy12` garde la
   // liste d'avant pour comparer, hors ligne seulement.
-  const postgres_changes = [
+  // ⚠️ CE TABLEAU N'EST PLUS UNE SOUSCRIPTION, C'EST UNE ARCHIVE (2026-11-09).
+  // Depuis la migration qui vide la publication, ces deux profils ne joignent
+  // plus JAMAIS (gardes `TRANSITION5_HORS_LIGNE` / `LEGACY12_HORS_LIGNE` de
+  // `optionsBanc`) : ils décrivent ce que les clients d'AVANT écoutaient, pour
+  // comparer un plan. D'où son nom, qui n'est plus le marqueur que la gate
+  // `audit:realtime` lit pour une souscription : elle refuserait à juste titre
+  // un abonné du produit vers ces tables, et ce n'en est pas un. Le jour où un
+  // profil d'ici rejoindrait à nouveau `realtime:db`, il devrait reprendre le
+  // nom de l'option de souscription — et passer la gate. (Ce commentaire ne
+  // l'écrit pas en toutes lettres : la gate lit aussi les commentaires, et sa
+  // fenêtre attraperait les tables du tableau qui suit.)
+  const liaisonsArchivees = [
     { event: "*", schema: "public", table: "conv_reads" },
     { event: "INSERT", schema: "public", table: "comment_interactions" },
     { event: "DELETE", schema: "public", table: "comment_interactions" },
@@ -97,7 +116,7 @@ export function abonnements(uid, profil = PROFIL_REALTIME) {
     { event: "*", schema: "public", table: "video_lives" },
   ];
   const transition = ["conv_reads", "comment_interactions", "post_comments", "event_comments"];
-  return profil === "legacy12" ? postgres_changes : postgres_changes.filter(a => transition.includes(a.table));
+  return profil === "legacy12" ? liaisonsArchivees : liaisonsArchivees.filter(a => transition.includes(a.table));
 }
 
 export function compteurHead(status, contentRange) {
@@ -171,9 +190,15 @@ export function delaiFixture(table, methode, connexions) {
 export class DisponibiliteRealtime {
   constructor(uid, profil = PROFIL_REALTIME) {
     this.uid = uid; this.attendus = abonnements(uid, profil); this.db = false; this.user = false; this.cdc = false;
+    // `sans-cdc` : le client ne rejoint pas `realtime:db` (aucune liaison) — prêt
+    // dès que `user:<uuid>` est rejoint ; un message de `realtime:db` serait alors
+    // une anomalie du banc, pas un retard.
+    this.sansCdc = this.attendus.length === 0;
     this.erreur = null; this.handlers = 0; this.systemes = { ok: 0, error: 0, autres: 0 };
   }
-  get pret() { return !this.erreur && this.db && this.user && this.cdc; }
+  get pret() { return !this.erreur && this.user && (this.sansCdc || (this.db && this.cdc)); }
+  // Le client rejoint-il `realtime:db` ? (Le banc n'envoie ce join que si oui.)
+  get rejointDb() { return !this.sansCdc; }
   observer(m) {
     const topicDB = "realtime:realtime:db", topicUser = `realtime:user:${this.uid}`;
     if (m.event === "phx_reply" && ((String(m.ref) === "1" && m.topic === topicDB) || (String(m.ref) === "2" && m.topic === topicUser))) {
@@ -196,7 +221,7 @@ export class DisponibiliteRealtime {
     return this.pret;
   }
   expirer() {
-    this.erreur ||= this.db && this.user ? "REALTIME_CDC_NON_PRET" : "REALTIME_JOIN_TIMEOUT";
+    this.erreur ||= !this.sansCdc && this.db && this.user ? "REALTIME_CDC_NON_PRET" : "REALTIME_JOIN_TIMEOUT";
     return this.erreur;
   }
 }

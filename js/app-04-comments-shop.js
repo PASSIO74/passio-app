@@ -1322,11 +1322,11 @@ async function openComments(postId) {
   // y a moins de 20 s : rouvrir la même discussion est alors INSTANTANÉ, sans
   // re-fetch réseau (~300-700 ms) ni re-render. C'est le correctif « ouverture
   // fluide ». Pendant ces 20 s, le temps réel tient la discussion à jour : un
-  // AJOUT par sa charge, un RETRAIT par la ligne (ou, par `postgres_changes`,
-  // par l'index des lignes lues ou reçues — R37). Depuis le 2026-11-09, c'est le
-  // sujet privé `fil:<id>` de la discussion qui écoute, et il reste joint 20 s
-  // après la fermeture : le cache et lui ont la même durée. Un événement tombé
-  // pendant que le socket dormait est relu au réveil (`_rtRattraper`).
+  // AJOUT par sa charge, un RETRAIT par la ligne entière. Depuis le 2026-11-09,
+  // c'est le sujet privé `fil:<id>` de la discussion qui écoute, et il reste
+  // joint 20 s après la fermeture : le cache et lui ont la même durée. Un
+  // événement tombé pendant que le socket dormait est relu au réveil
+  // (`_rtRattraper`) ; un sujet en panne fait relire la discussion.
   if (_willLoad) {
     try {
       // Première page (les plus récents) ; « précédents » charge la suite.
@@ -1751,10 +1751,11 @@ function _ciBalayerEcranPlusTard() {
 }
 
 // Gestionnaire DELETE de `comment_interactions` (app-08, `_rtInteractionRetiree`).
-// Par la liaison de TRANSITION `postgres_changes`, `old` vaut `{ id }` : la
-// ligne est retrouvée dans l'index. Par un sujet privé (`fil:<id>`,
-// `user:<auteur>`, 2026-11-09), le serveur pousse la LIGNE ENTIÈRE : à défaut
-// d'index, c'est elle qui décide — sans lecture des identifiants.
+// Par un sujet privé (`fil:<id>`, `user:<auteur>`, 2026-11-09), le serveur
+// pousse la LIGNE ENTIÈRE : à défaut d'index, c'est elle qui décide — sans
+// lecture des identifiants. `{ id }` seul (l'ancienne charge `postgres_changes`,
+// R37, retirée avec la publication) reste accepté : la ligne est retrouvée dans
+// l'index.
 function _commentInteractionRetiree(old) {
   try {
     var id = old && typeof old.id === "string" ? old.id : null;
@@ -7694,8 +7695,15 @@ function _creerCanalTyping(convId, prive) {
   return chan;
 }
 
-// Canal Supabase filtré par conv_id (réception instantanée sans aller-retour JS)
-let _supaConvChannel = null;
+// À l'ouverture d'une conversation : rien à rejoindre hors v2.
+// ⚠️ PLUS DE CANAL `conv_specific:<id>` (2026-11-09, « 📴 »). La soupape v1
+// (`passio_realtime_v3="0"`) y écoutait `conv_messages` par `postgres_changes`,
+// filtré sur la conversation ouverte ; la migration
+// `migration_realtime_public_hors_cdc_2026-11-09.sql` a vidé la publication, et
+// la liaison n'aurait plus rien reçu (le serveur réessayant sa création toutes
+// les 5 à 10 s, canal ouvert). Les messages arrivent à TOUS les modes sauf v2
+// par `user:<moi>` (`_subscribeUserTopic`), poussés par le serveur à chaque
+// membre.
 function _supaConvSpecificChannel(convId, displayName) {
   if (typeof supa === "undefined" || !supa) return;
   // ⚠️ AUCUNE CONNEXION TEMPS RÉEL SANS COMPTE (capacité, 2026-09-20). Un
@@ -7704,65 +7712,18 @@ function _supaConvSpecificChannel(convId, displayName) {
   // et il coûterait une place sur les 500 du quota. Autorité unique :
   // `connexionTempsReelAutorisee` (app-02).
   if (typeof connexionTempsReelAutorisee === "function" && !connexionTempsReelAutorisee()) return;
-  // v3 : le topic privé par utilisateur (abonné une fois au boot) couvre déjà
-  // cette conv → rien à faire à l'ouverture.
-  if (window.PASSIO_REALTIME_V3) return;
   // v2 : la réception passe par le canal PRIVÉ de la conv (abonné au boot / à
   // la création). On s'assure juste qu'il existe — pas de postgres_changes.
-  if (window.PASSIO_REALTIME_V2) {
+  if (!window.PASSIO_REALTIME_V3 && window.PASSIO_REALTIME_V2) {
     if (window._subscribePrivateConv) window._subscribePrivateConv(convId);
-    return;
   }
-  if (_supaConvChannel) { try { supa.removeChannel(_supaConvChannel); } catch(e) {} _supaConvChannel = null; }
-  _supaConvChannel = _creerCanalConvSpecifique(convId, displayName, window._rtPriveIndisponible !== true);
-}
-// PRIVÉ (policy `passio_rt_recevoir`, membres seulement) — repli public pour
-// CETTE conversation si la souscription privée est refusée par policy (migration
-// pas encore collée, ou conversation créée à l'instant dont la ligne serveur
-// n'existe pas encore), comme `_creerCanalTyping`. Sans repli, quand le tableau
-// de bord interdira les canaux publics, un canal resté public serait mort sans
-// erreur — et avec un canal privé sans policy, c'est l'inverse.
-function _creerCanalConvSpecifique(convId, displayName, prive) {
-  var chan = supa.channel("conv_specific:" + convId, { config: { private: prive } })
-    .on("postgres_changes", {
-      event: "INSERT", schema: "public", table: "conv_messages",
-      filter: "conv_id=eq." + convId   // filtre côté Supabase → seuls les messages de CETTE conv arrivent
-    }, async function(payload) {
-      const r = payload.new;
-      if (!r || r.from_id === MY_UID) return; // ignorer nos propres messages (déjà ajoutés en local)
-      if (window._openedConvId !== convId) return; // race condition guard
-
-      // Profil depuis cache (0 requête si déjà connu)
-      const prof = await _fetchProfile(r.from_id);
-      const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: supaTs(r.created_at) };
-
-      const convs = getConversations();
-      const c = convs.find(x => x.id === convId);
-      if (!c) return;
-      if (!c.messages) c.messages = [];
-      if (c.messages.find(m => m.id === r.id)) return; // déjà présent
-      c.messages.push(newMsg);
-      c.lastAt = newMsg.at;
-      c._otherRead = true; // la conv est ouverte → l'utilisateur a lu
-      saveConversations();
-      if (window._openedConvId === convId) renderConvFpThread(c, displayName);
-      renderMessages();
-    });
-  chan.subscribe(function (st, err) {
-    if (!prive || st !== "CHANNEL_ERROR" || _supaConvChannel !== chan) return;
-    if (typeof _rtRefusDePolicy === "function" && !_rtRefusDePolicy(err)) return;
-    Promise.resolve(supa.removeChannel(chan)).catch(function () {}).then(function () {
-      if (_supaConvChannel !== chan || window._openedConvId !== convId) return;
-      _supaConvChannel = _creerCanalConvSpecifique(convId, displayName, false);
-    });
-  });
-  return chan;
+  // Sinon (v3, et la soupape v1) : le topic privé par utilisateur, abonné une
+  // fois au boot, couvre déjà cette conversation.
 }
 
 function closeConversation() {
   window._openedConvId = null;
   if (_typingChannel) { try { supa.removeChannel(_typingChannel); } catch(e) {} _typingChannel = null; }
-  if (_supaConvChannel) { try { supa.removeChannel(_supaConvChannel); } catch(e) {} _supaConvChannel = null; }
   clearTimeout(_typingTimeout);
   saveConversationsNow(); // sauvegarde immédiate en quittant
   const bar = document.getElementById("convTypingBar");

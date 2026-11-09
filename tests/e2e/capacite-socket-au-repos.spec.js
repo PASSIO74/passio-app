@@ -36,7 +36,7 @@ async function preparer(page, opts = {}) {
     MY_UID = opts.visiteur ? "u_visiteur_123" : "812aee2b-214f-4949-931e-842599b6d68b"; window.MY_UID = MY_UID;
     window._supaReal = true;
     window._rechargementImminent = false;
-    window._supaSubscribed = false; window._userTopicChan = null; window._callRingChan = null; window._dbChan = null; window._call = null;
+    window._supaSubscribed = false; window._userTopicChan = null; window._callRingChan = null; window._call = null;
     window._vliveHost = null; window._vliveView = null; window._openedConvId = null;
     window._rtRepos = { endormi: false, masqueeDepuis: 0, dernierGeste: 0, endormiDepuis: 0, raison: null, cycles: 0, reveils: 0, timer: null, arme: false };
     window.__canaux = []; window.__fermes = 0; window.__deconnexions = 0; window.__rattrapages = {}; window.__mesures = [];
@@ -100,7 +100,7 @@ test("la politique est pure et bornée : 3 min masqué, 15 min sans geste sauf c
 test("masqué 3 min : canaux relâchés, socket fermé, gardes relâchées ; retour : mêmes canaux rejoints et rattrapage mesuré", async ({ page }) => {
   await preparer(page);
   let s = await etat(page);
-  expect(s.ouverts).toEqual(["realtime", "ring", "user"]);
+  expect(s.ouverts).toEqual(["ring", "user"]); // plus de `realtime:db` depuis le 2026-11-09 (« 📴 »)
   expect(s.abonne).toBe(true);
   // Étalon : ce que les gestionnaires `visibilitychange` du PRODUIT relancent
   // à eux seuls sur un retour SANS repos (masqué 10 s) — le réveil du socket ne
@@ -117,14 +117,14 @@ test("masqué 3 min : canaux relâchés, socket fermé, gardes relâchées ; ret
   expect(s.endormi).toBe(true); expect(s.raison).toBe("masque");
   expect(s.abonne).toBe(false); expect(s.fermes).toBe(1); expect(s.deconnexions).toBe(1);
   expect(s.ouverts).toEqual([]);
-  expect(await page.evaluate(() => [window._dbChan, window._userTopicChan, window._callRingChan])).toEqual([null, null, null]);
+  expect(await page.evaluate(() => [window._userTopicChan, window._callRingChan])).toEqual([null, null]);
   await passer(page, 600000); // 10 min de plus : rien ne se rouvre tout seul
   s = await etat(page);
-  expect(s.deconnexions).toBe(1); expect(s.canaux).toBe(3);
+  expect(s.deconnexions).toBe(1); expect(s.canaux).toBe(2);
   await masquer(page, false);
   s = await etat(page);
   expect(s.endormi).toBe(false); expect(s.abonne).toBe(true);
-  expect(s.ouverts).toEqual(["realtime", "user"]); expect(s.canaux).toBe(5); // ring: relâché et non recréé (appels désactivés)
+  expect(s.ouverts).toEqual(["user"]); expect(s.canaux).toBe(3); // ring: relâché et non recréé (appels désactivés)
   // Le fil et les lives sont relus par les gestionnaires `visibilitychange` du
   // produit ; le réveil du socket ne les double pas. Mesuré EXACTEMENT : deux
   // gestionnaires d'app-08 pour le fil (badge et filet), zéro pour les lives
@@ -149,7 +149,7 @@ test("visible sans geste 15 min : au repos ; le premier geste rouvre ; une conve
   expect(s.endormi).toBe(true); expect(s.raison).toBe("inactif"); expect(s.deconnexions).toBe(1);
   await page.evaluate(() => document.dispatchEvent(new Event("pointerdown", { bubbles: true })));
   s = await etat(page);
-  expect(s.endormi).toBe(false); expect(s.ouverts).toEqual(["realtime", "user"]);
+  expect(s.endormi).toBe(false); expect(s.ouverts).toEqual(["user"]);
   expect(s.mesures[0].meta.reveil).toBe("geste");
   expect(s.rattrapages.fil).toBe(1); expect(s.rattrapages.lives).toBe(1); // par geste, seul le réveil du socket relance fil et lives
   // Conversation ouverte et visible : jamais par inactivité…

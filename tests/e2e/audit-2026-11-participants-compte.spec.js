@@ -81,6 +81,32 @@ function peupler(srv) {
 }
 
 // V connecté, écran « Rencontrer » ouvert, lecture du démarrage terminée.
+// ⚠️ LE BLOC DIFFÉRÉ DU DÉMARRAGE D'ABORD (2026-11-09). `supaInit` programme, à
+// 2 s, une relecture FORCÉE des activités (`rafraichirEvenements(true)`, app-08).
+// Partie avant un geste et revenue après, elle REMPLACE l'activité par une
+// lecture d'avant lui : le compteur mémorisé (« a bis »), les listes que le
+// compte lit parce qu'il vient (« c »), la place donnée (« h0 bis »). La course
+// existait ; elle est devenue rouge en CI, à chaque essai, le jour où le
+// démarrage s'est allégé (plus de canal `realtime:db`, « 📴 ») — le créneau de
+// 2 s tombait alors au milieu du scénario. Signal sans ambiguïté : la lecture des
+// stories, que ce bloc seul lance (app-08) ; `_evenementsLectureEnVol` est posé
+// dans le même tour, on attend qu'il retombe.
+// ⚠️ ET IL Y EN A DEUX : `supaInit` tourne au démarrage PUIS sur
+// `onAuthStateChange`, chaque passage programme son bloc — mesuré au journal de
+// ce faux serveur : deux lectures de stories à ~0,5 s d'écart. Attendre la
+// première seulement déplaçait la course (« c » rougissait alors sur le
+// compteur). On attend donc que leur nombre ne bouge plus pendant 1,5 s.
+async function demarrageTermine(page, srv, uid) {
+  const lectures = () => srv.requetes((e) => e.table === "stories" && e.m === "GET" && e.me === uid).length;
+  await expect.poll(lectures, { message: "le bloc différé du démarrage est passé", timeout: 20000 }).toBeGreaterThan(0);
+  let vu = lectures(), depuis = Date.now();
+  while (Date.now() - depuis < 1500) {
+    await page.waitForTimeout(250);
+    if (lectures() !== vu) { vu = lectures(); depuis = Date.now(); }
+  }
+  await page.waitForFunction(() => !_evenementsLectureEnVol, null, { timeout: 15000 });
+}
+
 async function ouvrirV(browser, srv) {
   const ctx = await browser.newContext();
   const v = await ouvrirCompte(ctx, srv, V, { nom: "vic_c04" });
@@ -88,6 +114,7 @@ async function ouvrirV(browser, srv) {
   expect(v.identite.reel, "prémisse : SDK réel").toBe(true);
   await v.page.evaluate(() => goTo("irl"));
   await v.page.waitForFunction(() => { const s = document.getElementById("screen-irl"); return !!s && s.classList.contains("active") && !_evenementsLectureEnVol; }, null, { timeout: 15000 });
+  await demarrageTermine(v.page, srv, V);
   return { ctx, page: v.page };
 }
 
@@ -870,6 +897,7 @@ test.describe("Audit 2026-11 — C-04 : nombre public, liste par lien (client co
       const o = await ouvrirCompte(ctx, srv, ORG2, { nom: "orga_designe" });
       await o.page.evaluate(() => goTo("irl"));
       await o.page.waitForFunction(() => { const s = document.getElementById("screen-irl"); return !!s && s.classList.contains("active") && !_evenementsLectureEnVol; }, null, { timeout: 15000 });
+      await demarrageTermine(o.page, srv, ORG2);
       const lu = await charger(o.page);
       expect(lu[E8].waitlist, "prémisse : l'organisateur désigné lit la file").toEqual([W1]);
       expect(await o.page.evaluate((id) => _canManageEvent(_findCanonicalEvent(id)), E8), "prémisse : le client lui ouvre la gestion").toBe(true);

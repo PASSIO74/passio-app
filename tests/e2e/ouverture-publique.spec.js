@@ -26,7 +26,8 @@
 //      d'une sonnerie est échappé (XSS par invitation, éprouvé par RÉINJECTION),
 //      les invitations sont bornées en cadence, les ordres d'hôte d'un live ne
 //      sont acceptés que de l'hôte, l'identifiant d'appel n'est plus devinable,
-//      `realtime:db` et `conv_specific:` sont privés avec repli, une URL signée ne
+//      `realtime:db` et `conv_specific:` étaient privés avec repli (partis le
+//      2026-11-09 avec la publication, « 📴 »), une URL signée ne
 //      vaut plus qu'une heure, et la notification d'abonnement vient du serveur.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
@@ -602,21 +603,19 @@ test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () =>
     expect(lire("js/app-05-config-profil.js")).not.toMatch(/MY_UID \+ "_" \+ Date\.now\(\)\.toString\(36\)/);
   });
 
-  test("à la SOURCE : `realtime:db` et `conv_specific:` sont PRIVÉS, avec repli public sur refus de policy", async () => {
+  test("à la SOURCE : `realtime:db` et `conv_specific:` n'existent plus (2026-11-09) ; tout canal restant est PRIVÉ", async () => {
     const app08 = lire("js/app-08-ui-modals-tour.js");
     const app04 = lire("js/app-04-comments-shop.js");
-    // 2026-11-09 (« 📴 ») : un serveur qui a refusé le CDC (`_cdcRetire`) ne se
-    // voit pas rouvrir `realtime:db` ; sinon, la même création privée qu'avant.
-    expect(app08).toMatch(/window\._dbChan = window\._cdcRetire === true \? null : _creerCanalDb\(window\._rtPriveIndisponible !== true\)/);
-    expect(app08).toMatch(/supa\.channel\("realtime:db", \{ config: \{ private: prive \} \}\)/);
-    const db = app08.slice(app08.indexOf("function _creerCanalDb"), app08.indexOf("// ---- FOLLOW / UNFOLLOW ----"));
-    expect(db).toMatch(/_rtRefusDePolicy\(err\)/);
-    expect(db).toMatch(/window\._dbChan = _creerCanalDb\(false\)/);
-    expect(db, "recréé APRÈS le départ effectif du canal (removeChannel est asynchrone)").toMatch(/Promise\.resolve\(supa\.removeChannel\(dbChan\)\)/);
-    expect((app08.match(/supa\.channel\("realtime:db"/g) || []).length, "un seul point de création").toBe(1);
-    expect(app04).toMatch(/_supaConvChannel = _creerCanalConvSpecifique\(convId, displayName, window\._rtPriveIndisponible !== true\)/);
-    expect(app04).toMatch(/supa\.channel\("conv_specific:" \+ convId, \{ config: \{ private: prive \} \}\)/);
-    expect(app04).toMatch(/_supaConvChannel = _creerCanalConvSpecifique\(convId, displayName, false\)/);
+    // 2026-11-09 (« 📴 ») : la publication `supabase_realtime` est VIDE. Les deux
+    // canaux à liaison CDC du client — `realtime:db` (la session) et
+    // `conv_specific:<id>` (la conversation ouverte, soupape v1) — sont partis :
+    // revenus, ils ne recevraient rien, et le serveur réessaierait leurs liaisons
+    // toutes les 5 à 10 s, canal ouvert. (Jusqu'à ce jour, ce cas exigeait qu'ils
+    // soient privés, avec repli public sur un refus de policy.)
+    expect(app08).not.toMatch(/supa\.channel\("realtime:db"/);
+    expect(app08).not.toMatch(/function _creerCanalDb\s*\(/);
+    expect(app04).not.toMatch(/supa\.channel\("conv_specific:"/);
+    expect(app04).not.toMatch(/function _creerCanalConvSpecifique\s*\(/);
     // Plus AUCUN canal public inconditionnel : le geste « Allow public access OFF » ne tuera rien.
     // ⚠️ Élargi le 2026-09-13 : le motif `supa\.channel\(` ne voyait pas
     // `admin.channel("dash:telemetry")` du centre de pilotage, resté public et

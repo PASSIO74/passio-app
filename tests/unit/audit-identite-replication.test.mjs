@@ -31,7 +31,15 @@ const RACINE = fileURLToPath(new URL("../..", import.meta.url));
 const require = createRequire(import.meta.url);
 const gate = require("../../scripts/audit-identite-replication.js");
 const R25 = readFileSync(join(RACINE, gate.MIGRATION_R25), "utf8");
-const PUBLIEES = new Set(JSON.parse(readFileSync(join(RACINE, "scripts/realtime-publication.json"), "utf8")).publiees);
+// ⚠️ LA PUBLICATION RÉELLE EST VIDE DEPUIS LE 2026-11-09 (« 📴 »,
+// `migration_realtime_public_hors_cdc_2026-11-09.sql`). Les cas qui éprouvent le
+// raisonnement de la gate sur une table PUBLIÉE (FULL, `using index`, identité
+// calculée) le font sur la publication d'avant — les neuf tables qu'elle portait
+// —, qui peut revenir : la gate doit toujours savoir la lire. Le dépôt réel, lui,
+// est jugé sur le manifeste réel (cas ①, `surDepotFabrique`).
+const PUBLIEES_AVANT_2026_11_09 = ["comment_interactions", "conv_messages", "conv_reads", "event_comments",
+  "post_comments", "post_likes", "posts", "profiles", "video_lives"];
+const PUBLIEES = new Set(PUBLIEES_AVANT_2026_11_09);
 const analyser = (sql, options = {}) => gate.analyser(sql, { publiees: PUBLIEES, ...options });
 const MARQUE = "-- audit-identite-replication: assumé — retour arrière de R25 décidé en revue du 2026-11-04\n";
 // Tout SQL que l'analyse REFUSE doit passer le pré-filtre : `auditer` n'analyse

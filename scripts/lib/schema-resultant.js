@@ -155,8 +155,15 @@ function schemaResultant(fichiers) {
         // sur une gate de sécurité coûte plus qu'un trou : il pousse à écrire
         // la migration autrement pour lui plaire, ou à l'inscrire au socle.**
         // On neutralise donc cette forme AVANT de chercher le DDL de table.
+        // ⚠️ ET SA FORME PAR SCHÉMA (2026-11-09) : `… drop tables in schema x`
+        // retire d'une publication les tables d'un schéma entier, sans en
+        // toucher aucune. Le motif ci-dessus (`table\b`) ne la reconnaissait
+        // pas, et le brut `drop\s+table` l'attrapait dans « drop tables » : la
+        // migration qui VIDE `supabase_realtime`
+        // (`migration_realtime_public_hors_cdc_2026-11-09.sql`) était refusée
+        // comme du DDL de table indéterminé.
         const sansPublication = corps.replace(
-          /\balter\s+publication\s+[a-z0-9_".]+\s+(add|drop|set)\s+table\b/gi,
+          /\balter\s+publication\s+[a-z0-9_".]+\s+(add|drop|set)\s+(table\b|tables\s+in\s+schema\b)/gi,
           " alter publication … ",
         );
         const construit = /\bexecute\b[\s\S]*?\b(create\s+table|drop\s+table|alter\s+table[^;]*?\b(add|drop|rename|set\s+schema)\b)/i.test(sansPublication);

@@ -1215,12 +1215,14 @@ window.__visitorDetail = (deviceId) => {
 const INTER_ICON = { like: "heart", unlike: "heart", comment: "messaging", cint: "sparkles", message: "messaging", publish: "content", rsvp: "sessions" };
 // Chemin realtime concerné par type → contexte de diagnostic pour Claude.
 const INTER_DIAG = {
-  like: { table: "post_likes", chan: "realtime:db" },
-  unlike: { table: "post_likes (DELETE)", chan: "realtime:db" },
-  comment: { table: "post_comments", chan: "realtime:db" },
-  cint: { table: "comment_interactions", chan: "realtime:db" },
-  message: { table: "conv_messages", chan: "user:<uid> (v3) / conv:<id> (v2) / realtime:db (v1)" },
-  publish: { table: "posts", chan: "realtime:db" },
+  // ⚠️ `realtime:db` n'existe plus depuis le 2026-11-09 (« 📴 », publication vide) :
+  // chaque type désigne le chemin qui le livre réellement.
+  like: { table: "post_likes", chan: "aucun canal — relu par startPostLikeRefresh (HEAD ciblés)" },
+  unlike: { table: "post_likes (DELETE)", chan: "aucun canal — relu par startPostLikeRefresh (HEAD ciblés)" },
+  comment: { table: "post_comments", chan: "fil:<publication> (discussion à l'écran) / user:<auteur> (trg_diffuser_commentaire_publication)" },
+  cint: { table: "comment_interactions", chan: "fil:<publication> / user:<auteur> (trg_diffuser_interaction)" },
+  message: { table: "conv_messages", chan: "user:<uid> (v1, v3) / conv:<id> (v2)" },
+  publish: { table: "posts", chan: "aucun canal — relu par le filet du fil (60 s)" },
 };
 let INTER_LAST = []; // dernières interactions rendues (pour __fixInteraction)
 function fmtLatency(ms) { if (ms == null) return "—"; return ms < 1000 ? ms + " ms" : (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + " s"; }

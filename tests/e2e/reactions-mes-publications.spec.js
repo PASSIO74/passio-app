@@ -12,7 +12,8 @@
 // en direct, ou persistées, s'y affichaient.
 //
 // CE QUE CETTE SUITE EXIGE (la vraie lecture du fil, le vrai filet, la vraie
-// liaison temps réel de `_creerCanalDb` ; seul le « serveur » est simulé, et
+// liaison temps réel — `user:<moi>` depuis le 2026-11-09, `_creerCanalDb`
+// avant ; seul le « serveur » est simulé, et
 // rien n'est écrit) :
 //   ① la réaction d'un autre compte rendue par `fil_compteurs` apparaît sur la
 //     pastille de ma publication, repeinte EN PLACE sur une carte déjà à l'écran ;
@@ -172,11 +173,29 @@ async function preparer(page, opts = {}) {
         subscribe() { return ch; }, unsubscribe: async () => "ok" };
       return ch;
     } });
-    window.__canalDb = _creerCanalDb(true);
+    // 📴 (2026-11-09) : plus de `realtime:db` ni de `postgres_changes`. Les MÊMES
+    // gestionnaires reçoivent leurs lignes par `user:<moi>` (`_subscribeUserTopic`)
+    // — c'est la vraie liaison que ce banc exerce désormais. Les scénarios gardent
+    // leurs charges au format d'avant (`new` / `old`) : l'adaptateur en tire la
+    // ligne poussée. Un retrait y vaut la ligne entière ; `{ id }` seul (la charge
+    // de l'ancien CDC, R37) y reste accepté et retrouvé dans l'index.
+    window.__canaux = [];
+    const _canalBrut = window.supa.channel;
+    Object.defineProperty(window.supa, "channel", { configurable: true, writable: true, value: function (topic, opts) {
+      const ch = _canalBrut.call(this, topic, opts); window.__canaux.push(ch); return ch;
+    } });
+    window._userTopicChan = null;
+    _subscribeUserTopic();
+    window.__canalUser = window.__canaux.find((c) => c.topic === "user:" + MY_UID);
+    if (!window.__canalUser) throw new Error("user:<moi> n'a pas été rejoint");
     window.__liaison = (tbl, evenement) => {
-      const l = window.__canalDb.liaisons.find((x) => x.type === "postgres_changes" && x.filtre.table === tbl && x.filtre.event === evenement);
-      if (!l) throw new Error("aucune liaison " + evenement + " sur " + tbl);
-      return l.cb;
+      const nom = tbl === "conv_reads" ? "conv_reads:UPSERT" : tbl + ":" + evenement;
+      const l = window.__canalUser.liaisons.find((x) => x.type === "broadcast" && x.filtre.event === nom);
+      if (!l) throw new Error("aucune liaison " + nom + " sur user:<moi>");
+      return (p) => {
+        const operation = (p && p.eventType) || evenement;
+        return l.cb({ payload: { table: tbl, operation, record: operation === "DELETE" ? (p && p.old) : (p && p.new) } });
+      };
     };
     // La charge EXACTE d'un DELETE sous RLS : la clé primaire, rien d'autre.
     window.__supprimer = (id) => {

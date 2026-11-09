@@ -939,12 +939,14 @@ echo "── ② LA FUITE EST FERMÉE EN AMONT DU MOTEUR ───────�
 verifier "le décodeur ne reçoit plus conv_members ni notifications : aucun DELETE n'atteint apply_rls" \
   "0|0" "$(DECODEES | tr ',' '\n' | grep -cx 'public.conv_members' || true)|$(DECODEES | tr ',' '\n' | grep -cx 'public.notifications' || true)"
 # ⚠️ L'ÉTAT FINAL EST LA SOURCE QUE LIT LA GATE CI. `audit:realtime` compare
-# `scripts/realtime-publication.json` au CODE ; ce banc — celui de la migration
-# de publication la plus récente — le compare à la BASE (relais repris des
-# bancs du 2026-09-19 et du 2026-09-20, qui rendent à leur attendu ce que R25
-# a retiré depuis).
-verifier "l'état final de la publication EST scripts/realtime-publication.json" \
-  "$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');console.log(d.publiees.slice().sort().join(' '))")" \
+# `scripts/realtime-publication.json` au CODE ; le banc de la migration de
+# publication la plus récente le compare à la BASE. Ce fut celui-ci jusqu'au
+# 2026-11-09 ; c'est désormais `migration-realtime-public-hors-cdc.test.sh`
+# (« 📴 », la publication VIDÉE). Comme les bancs du 2026-09-19 et du
+# 2026-09-20 avant lui, celui-ci rend à son attendu ce qui a été retiré depuis :
+# les neuf tables de la production.
+verifier "la liste en base = scripts/realtime-publication.json + les neuf tables retirées le 2026-11-09 (« 📴 »)" \
+  "$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');const l=d.publiees.slice();for(const t of ['comment_interactions','conv_messages','conv_reads','event_comments','post_comments','post_likes','posts','profiles','video_lives'])if(!l.includes(t))l.push(t);console.log(l.sort().join(' '))")" \
   "$(Q "select string_agg(tablename, ' ' order by tablename) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public';")"
 verifier "les neuf autres tables sont toujours décodées" \
   "public.comment_interactions,public.conv_messages,public.conv_reads,public.event_comments,public.post_comments,public.post_likes,public.posts,public.profiles,public.video_lives" \

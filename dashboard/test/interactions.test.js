@@ -70,12 +70,14 @@ test("les événements non-interaction sont ignorés", () => {
   assert.equal(snapshot().recent.length, 0);
 });
 
-test("publish est vérifiable par proximité temporelle (sans id partagé)", () => {
+test("publish n'est plus vérifiable (2026-11-09) : émise seulement, jamais « non confirmée »", () => {
   interactions.reset();
   onEvent(ev({ action: "publish_post", device_id: "A", meta: { postId: "local_1" } }));
-  // La réception porte l'id serveur (différent) → appariement heuristique par le temps.
+  // Plus aucun client ne reçoit une publication en direct (« 📴 ») : sans réception
+  // possible, la marquer vérifiable la ferait passer « non confirmée » — un faux
+  // incident. Une vieille réception qui traînerait ne la rend pas « livrée » non plus.
   onEvent(ev({ type: "rt_recv", action: "post", device_id: "B", meta: { postId: "uuid-serveur" } }));
   const rec = snapshot().recent.find((r) => r.kind === "publish");
-  assert.equal(rec.status, "delivered");
+  assert.equal(rec.status, "emit_only");
   assert.equal(rec.idCorrelated, false);
 });
