@@ -31,6 +31,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { poserGateSansPremiereVisite } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 const MOTIF_TEL = "**/rest/v1/telemetry_events*";
 const BACKLOG_KEY = "passio_tel_backlog";
@@ -41,6 +42,9 @@ const estAlarme = (r) => r && r.type === "connectivity" && r.action === "send_fa
 // coupe la requête comme le fait le navigateur au déchargement. Chaque lot est
 // journalisé avec le mode en vigueur, qu'il ait abouti ou non.
 async function intercepter(page) {
+  // Le projet Supabase VIDE (2026-11-09) : la télémétrie reste jugée par la
+  // route de page ci-dessous ; le reste du démarrage ne part plus en production.
+  await projetSupabaseVide(page);
   const etat = { mode: "ok", lots: [] };
   await page.route(MOTIF_TEL, (route) => {
     const req = route.request();

@@ -16,8 +16,11 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { projetSupabaseVide } = require("./app-helper");
 
 async function ouvrirInscription(page, erreurSignUp) {
+  // Le projet Supabase VIDE (2026-11-09) : rien du démarrage ne part en production.
+  await projetSupabaseVide(page);
   await page.addInitScript(([k, t]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");

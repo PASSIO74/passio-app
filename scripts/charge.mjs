@@ -325,17 +325,17 @@ function liaisonsApp(uid) {
   // liaisons invisibles, sans une erreur. Un commentaire qui CITE la règle la
   // déclenche aussi — c'est ce qui a fait rougir ce fichier au premier jet,
   // et c'est le piège que la gate a déjà dû fermer sur elle-même.
+  // ⚠️ 2026-11-09 (contenu public sorti du CDC, fiche « 📴 ») :
+  // l'app ne garde plus que ses CINQ liaisons de TRANSITION, jusqu'à la
+  // migration qui vide la publication. `profiles`, `posts`, `post_likes` et
+  // `video_lives` ne sont plus écoutées par personne — les recopier ici ferait
+  // mesurer au banc une charge que l'app ne produit plus.
   const postgres_changes = [
     { event: "*", schema: "public", table: "conv_reads" },
     { event: "INSERT", schema: "public", table: "comment_interactions" },
     { event: "DELETE", schema: "public", table: "comment_interactions" },
-    { event: "UPDATE", schema: "public", table: "profiles" },
-    { event: "INSERT", schema: "public", table: "posts" },
-    { event: "INSERT", schema: "public", table: "post_likes" },
-    { event: "DELETE", schema: "public", table: "post_likes" },
     { event: "INSERT", schema: "public", table: "post_comments" },
     { event: "INSERT", schema: "public", table: "event_comments" },
-    { event: "*", schema: "public", table: "video_lives" },
   ];
   return postgres_changes;
 }
