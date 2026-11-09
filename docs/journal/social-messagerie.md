@@ -25,6 +25,8 @@
 - 🎙️ UNE MISE À JOUR SILENCIEUSE PERDAIT LE VOCAL, LA CAPTURE ET L'ENVOI — le rechargement attend aussi (2026-11-04)
 - 📎 UNE PIÈCE JOINTE EN ÉCHEC PARTAIT EN ÉTIQUETTE « NON SYNCHRONISÉ », ANNONCÉE ENVOYÉE — le dépôt a désormais un verdict, une file et un « réessayer » (2026-11-07)
 - ↪️ TRANSFÉRER UN VOCAL ENVOYAIT UN MESSAGE VIDE — il part en vocal, son objet copié ou déposé dans la cible (2026-11-07)
+- 📡 LE RELAIS DES LIVES ET DES APPELS ÉTAIT MORT — relais Cloudflare, identifiants fabriqués par le serveur (2026-11-09)
+- 🎞️ LES GIF PASSENT PAR KLIPY — Tenor fermé, Giphy plafonné à 100 recherches par heure pour toute l'app (2026-11-09)
 
 ---
 
@@ -657,3 +659,41 @@ Constaté le jour même par le lot pièce jointe (fiche précédente, « hors ch
   - aucun signe pendant la copie ou le dépôt : la fenêtre se ferme, la bulle n'apparaît qu'après l'attente — qui refait le transfert, faute de rien voir, double le dépôt et le message ;
   - un objet copié ou déposé reste orphelin si l'insertion est ensuite refusée pour de bon (compte bloqué, plus membre), ou si l'application est tuée entre les deux — pour tout média transféré ;
   - la bulle transférée ne porte pas `de` : si la file perd son entrée (refus définitif, plafond), « réessayer » refuse avec « écrit avec un autre compte », au lieu de reconstruire depuis un texte vide — sûr, mais trompeur.
+
+---
+
+## 📡 LE RELAIS DES LIVES ET DES APPELS ÉTAIT MORT — relais Cloudflare, identifiants fabriqués par le serveur (2026-11-09)
+
+- **Constat, mesuré le 2026-11-09** : `openrelay.metered.ca` résout vers 192.0.2.1 et 100::1, deux adresses réservées et non routables (RFC 5737, RFC 6666). L'opérateur a neutralisé son TURN public, et un banc Chromium n'en obtenait aucun candidat `relay`. Ses entrées sont sorties de `CALL_ICE_SERVERS` avec #795. Sans relais, un live ou un appel entre deux réseaux à NAT strict (4G derrière un CGNAT, réseau d'entreprise) échoue. Les appels sont coupés pendant le pilote (ASTRA-60) : aujourd'hui, le relais sert aux **lives**.
+- **Remède sans dépense** : le TURN de Cloudflare Realtime (1 000 Go par mois gratuits, partagés avec le SFU). Ses identifiants se **fabriquent côté serveur** avec un jeton secret : `notify-call` répond à `{ type: "ice" }` par un `POST rtc.live.cloudflare.com/v1/turn/keys/<id>/credentials/generate-ice-servers` (`ttl` 86 400 s). La clé ne quitte jamais le serveur (secrets de la fonction `TURN_CF_KEY_ID` / `TURN_CF_API_TOKEN`) ; le navigateur ne reçoit que des identifiants valables 24 h.
+  - **Où le geste se place** : APRÈS l'authentification et le plafond (un visiteur ne fabrique rien), AVANT l'interrupteur des appels (un live en a besoin quand les appels sont coupés), jamais en cache (`Cache-Control: no-store`).
+  - **Secrets absents** → `{ iceServers: [], configure: false }` en 200 : l'app reste en STUN seul, comme avant. Cloudflare en erreur, ou muet au-delà de 4 s → 502 `turn_indisponible`.
+  - **`serveursIceDepuisCloudflare`** (`_shared/appels.js`) ne laisse passer qu'une liste sûre : 4 serveurs et 8 adresses au plus ; schéma `stun:` / `turn:` / `turns:`, hôte en caractères fermés ; **port 53 écarté** (Cloudflare prévient qu'il expire souvent dans un navigateur) ; identifiants exigés pour un relais, 512 caractères au plus. Le client revalide la même forme (`_iceServeursSurs`).
+- **Client** (`assurerServeursIce`, app-05) : les relais s'**AJOUTENT** au tableau `CALL_ICE_SERVERS`, que lisent les cinq `new RTCPeerConnection` ; rien d'autre n'a changé.
+  - Gardés jusqu'à une heure avant leur expiration ; un renouvellement REMPLACE les précédents (le tableau ne grossit pas) ; une fonction non configurée n'est pas redemandée avant une heure.
+  - La promesse se règle en **2,5 s au plus** : jamais un live ou un appel retardé davantage.
+  - Un refus du serveur arrive dans `error` (le SDK ne lève pas) : il l'emporte sur le corps et laisse une trace `diagLog`.
+  - **Demandé** : au lancement d'un live (avant la saisie du titre) ; à l'entrée d'un spectateur, ATTENDU avant le canal `vlive:` (l'offre de l'hôte peut arriver tout de suite) ; au départ et à l'acceptation d'un appel.
+- **Cible supprimée = tout ce qui la vise part avec** : la CSP (`netlify.toml` ET `_headers`, identiques) n'autorise plus Open Relay, elle nomme le relais Cloudflare. La politique de confidentialité (§6, version 2026-11-09) nomme « Cloudflare, États-Unis, quand ce relais est activé » à la place d'Open Relay.
+- **Gestes humains, faits le 2026-11-09** : Cloudflare exige une **carte bancaire** pour activer Realtime, même dans la tranche gratuite ; Benjamin l'a posée. L'application TURN « passio » a été créée (Cloudflare › Realtime › TURN Server) et ses deux valeurs collées par lui dans Supabase › Edge Functions › Secrets — l'API Token ne se relit jamais, ni chez Cloudflare ni dans Supabase (seul un condensé s'affiche). ⚠️ **Au-delà de 1 000 Go par mois, Cloudflare facture (de l'ordre de 0,05 $ le Go), sans plafond dur** : l'usage se lit dans Cloudflare › Realtime › TURN Server › Analytics. Seules les connexions qui échouent en direct passent par le relais.
+- **Couper le relais** : supprimer l'un des deux secrets suffit — la fonction rend `configure: false` et l'app revient au STUN seul, sans déploiement.
+- **Verrous** : `tests/e2e/relais-turn.spec.js` (8), `tests/unit/appels.test.mjs` ⑪ ⑫, `tests/e2e/politique-tiers-appeles.spec.js` ③ (configuration, politique, CSP).
+- ⚠️ **Piège du banc** : `supa.functions` est un ACCESSEUR du client supabase-js, sans mutateur. `supa.functions = faux` est ignoré EN SILENCE et c'est le vrai `invoke` qui part — cinq cas sur huit rouges pour une raison sans rapport avec le code. Le banc pose une propriété propre (`Object.defineProperty`) et vérifie que le faux a pris.
+- **Réinjection** (8 défauts, 8 tués, avec le lot KLIPY) : refus du serveur ignoré → ④ ; renouvellement sans retrait des anciens → ⑥ ; visiteur non filtré → ⑦ ; borne de 2,5 s portée à 60 s → ⑤ ; port 53 gardé côté serveur → `appels.test.mjs` ⑪.
+
+---
+
+## 🎞️ LES GIF PASSENT PAR KLIPY — Tenor fermé, Giphy plafonné à 100 recherches par heure pour toute l'app (2026-11-09)
+
+- **Constat** : Tenor a fermé son API le 2026-06-30. La clé Giphy de l'app était une clé « beta » : **100 appels par heure pour TOUTE l'application**, au-delà de quoi chaque recherche retombait sur la liste locale de 26 GIF. La clé de production de Giphy est devenue payante.
+- **KLIPY** reprend l'API de Tenor à l'identique (`/v2/search`, `/v2/featured`, `results[].media_formats.{tinygif,gif}.url`) sur `api.klipy.com`, médias sur `static.klipy.com` (et `static1`/`static2`). Mesuré le 2026-11-09 : 200 en 0,6 s, forme conforme. Sa clé de **test** plafonne elle aussi à 100 appels par heure ; sa clé de **production** est gratuite, illimitée, **sur demande** dans partner.klipy.com.
+- **Compte et clé** : plateforme « PASSIO », clé Web « PASSIO-WEB », **publicité KLIPY désactivée**. Benjamin a accepté lui-même les conditions de l'API (geste refusé à l'agent) et transmis la clé : elle est PUBLIQUE, comme la clé anon Supabase — KLIPY exige d'ailleurs que l'appel parte du navigateur.
+- **Exigences de KLIPY** (docs.klipy.com/integration-requirements), et où elles vivent :
+  - « Search KLIPY » comme texte d'appel du champ de recherche — **obligatoire** : `passioGifPlaceholder()` (emoji-misc), lu par les cinq champs (panneau générique, messagerie, deux panneaux de commentaires, réaction GIF d'une bobine) ; sans clé, le texte redevient « Rechercher un GIF… » ;
+  - les URL des médias telles que l'API les rend, chargées en direct du navigateur — jamais copiées ni relayées ;
+  - les résultats dans l'ordre rendu, jamais mêlés à un autre fournisseur dans une même grille : la liste locale (Giphy) ne sert que quand l'API ne rend RIEN.
+- **Giphy reste** : 15 GIF Giphy existent en base (2 commentaires, 10 messages, 3 réactions, mesuré le 2026-11-09), la liste de secours est sur `media.giphy.com`, et le fournisseur de réserve se rebranche d'un mot (`PASSIO_GIF_CLE_GIPHY`). Tenor : 0 GIF en base, il part de la CSP, du code et de la politique (§6 : « GIF (KLIPY, Giphy) »).
+- **`_looksLikeMediaUrl`** (app-04) reconnaît l'hôte des médias (`static\d*.klipy.com`), pas le site `klipy.com` : une page n'est pas une image.
+- **À faire** : demander la clé de production dans partner.klipy.com (ligne PASSIO-WEB). Tant qu'elle n'est pas accordée, le plafond de 100 recherches par heure reste celui d'avant — avec Giphy, il l'était aussi.
+- **Verrou** : `tests/e2e/gif-klipy.spec.js` (7) — le vrai `passioFetchGifs`, réseau tenu par `page.route`, aucun appel ne part vers KLIPY ; `politique-tiers-appeles` ①, ③ bis. Réinjection : paramètre `country` retiré → ① ; texte d'appel figé → ⑤ ; hôte des médias KLIPY oublié → ⑥.
+- **Non-régression** (2026-11-09) : `npm run verif` vert (lancé depuis Git Bash — sous PowerShell, `bash` est introuvable et `edge-functions-verrous` ⑥ rougit sans rapport avec le code) ; 72/72 sur `gif-klipy`, `politique-tiers-appeles`, `relais-turn`, `echappement`, `reactions-commentaire-bloque`, `retrait-interactions-direct`, `audit-2026-11-xss`, `capacite-fil-compteurs` ; 147 cas sur les suites des appels, des lives, du consentement et de l'ouverture publique (huit rouges du premier passage : le faux `invoke` ci-dessus, et trois tests qui figeaient l'ancienne version de la politique ou l'ancienne ligne d'import — mis à jour).

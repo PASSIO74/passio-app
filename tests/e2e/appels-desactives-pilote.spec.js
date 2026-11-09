@@ -110,7 +110,9 @@ test.describe("ASTRA-60 — les appels sont désactivés pour le pilote", () => 
     // lit pour dire « appels coupés ») : une seule source, que notify-call importe.
     const partage = fs.readFileSync(path.join(__dirname, "..", "..", "supabase", "functions", "_shared", "appels.js"), "utf8");
     expect(partage).toMatch(/^export const APPELS_ACTIFS = false;$/m);
-    expect(src).toMatch(/import \{ APPELS_ACTIFS, pousserAppareils \} from "\.\.\/_shared\/appels\.js";/);
+    // 2026-11-09 : le même import porte aussi le relais TURN (`{ type: "ice" }`), servi
+    // AVANT l'interrupteur — un live en a besoin quand les appels sont coupés.
+    expect(src).toMatch(/import \{ APPELS_ACTIFS, pousserAppareils, serveursIceDepuisCloudflare, TTL_ICE_S \} from "\.\.\/_shared\/appels\.js";/);
     expect(src).not.toMatch(/const APPELS_ACTIFS\s*=/);
     expect(src).toMatch(/type === "call" && !APPELS_ACTIFS\) return json\(\{ ok: false, code: "appels_desactives"/);
     const app05 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-05-config-profil.js"), "utf8");

@@ -13,17 +13,36 @@ window._PASSIO_EMOJI_LIST = [
 ];
 
 // ════════════════════════════════════════════════════════════════
-// API GIF (backlog #5) — Tenor v2 ou Giphy, avec fallback hors-ligne.
-// 👉 POUR ACTIVER : coller la clé ci-dessous (une seule ligne à changer).
-//    Tenor : console.cloud.google.com → activer « Tenor API » → Identifiants → Clé API
-//    Giphy : developers.giphy.com → Create an API Key
-// Sans clé (ou si l'API échoue), l'app retombe sur les listes locales — rien ne casse.
-// ⚠️ CSP : tenor.googleapis.com et api.giphy.com doivent rester autorisés dans
-//    connect-src (netlify.toml + _headers).
+// API GIF — KLIPY depuis le 2026-11-09, Giphy en réserve, liste locale hors ligne.
+// Pourquoi : Tenor a fermé son API le 2026-06-30 ; la clé Giphy « beta » plafonne
+// à 100 appels par heure pour TOUTE l'app, et sa clé de production est devenue
+// payante. KLIPY reprend l'API de Tenor à l'identique (mêmes chemins /v2/search et
+// /v2/featured, mêmes `media_formats`) ; sa clé de test plafonne aussi à 100 appels
+// par heure, sa clé de production est gratuite, sur demande (partner.klipy.com).
+// Les clés sont PUBLIQUES (côté client, comme la clé anon Supabase) : KLIPY exige
+// d'ailleurs que l'appel parte du navigateur, jamais d'un serveur relais.
+// Exigences de KLIPY (docs.klipy.com/integration-requirements) : le champ de
+// recherche affiche « Search KLIPY » (`passioGifPlaceholder`) ; les URL des médias
+// restent telles que l'API les rend ; les résultats gardent leur ordre et ne sont
+// jamais mêlés à ceux d'un autre fournisseur dans une même grille (la liste locale
+// ne sert que quand l'API ne rend RIEN).
+// Sans clé, ou si l'API échoue, l'app retombe sur la liste locale — rien ne casse.
+// ⚠️ CSP : api.klipy.com (et api.giphy.com, la réserve) dans connect-src
+//    (netlify.toml + _headers).
 window.PASSIO_GIF_API = {
-  provider: "giphy", // "tenor" ou "giphy"
-  key: "u28ANom3fQTKp1KmOtVXhJcjRTRTXkBE" // clé Web Giphy (publique, côté client — comme la clé anon Supabase)
+  provider: "klipy", // "klipy" ou "giphy" (la réserve)
+  key: "YB8zOMaLbuuI8hTooVfBViUvkC864dT0rNh1XKzKCdwGe9v4Qbncs7nhc0sMOh12", // clé Web KLIPY « PASSIO-WEB » (publique)
 };
+// Clé Web Giphy (publique), gardée pour repasser en réserve d'un mot :
+// { provider: "giphy", key: PASSIO_GIF_CLE_GIPHY }.
+var PASSIO_GIF_CLE_GIPHY = "u28ANom3fQTKp1KmOtVXhJcjRTRTXkBE";
+
+// Le texte d'appel du champ de recherche — « Search KLIPY » est une exigence de KLIPY.
+function passioGifPlaceholder() {
+  var cfg = window.PASSIO_GIF_API || {};
+  return cfg.provider === "klipy" && cfg.key ? "Rechercher sur KLIPY" : "Rechercher un GIF…";
+}
+window.passioGifPlaceholder = passioGifPlaceholder;
 
 // Liste de secours (les 26 GIFs historiques dédupliqués) — utilisée sans clé ou hors-ligne.
 var PASSIO_DEFAULT_GIFS = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif","https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif","https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif","https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif","https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif","https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif","https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif","https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif","https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif","https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif","https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif"];
@@ -45,9 +64,11 @@ function passioFetchGifs(query, limit) {
       ? "https://api.giphy.com/v1/gifs/search?api_key=" + encodeURIComponent(cfg.key) + "&q=" + encodeURIComponent(q) + "&limit=" + limit + "&rating=pg-13&lang=fr"
       : "https://api.giphy.com/v1/gifs/trending?api_key=" + encodeURIComponent(cfg.key) + "&limit=" + limit + "&rating=pg-13";
   } else {
+    // KLIPY : l'API de Tenor, à l'identique, sur api.klipy.com.
+    var commun = "key=" + encodeURIComponent(cfg.key) + "&limit=" + limit + "&media_filter=tinygif,gif&locale=fr_FR&country=FR&contentfilter=medium";
     url = q
-      ? "https://tenor.googleapis.com/v2/search?key=" + encodeURIComponent(cfg.key) + "&q=" + encodeURIComponent(q) + "&limit=" + limit + "&media_filter=tinygif,gif&locale=fr_FR&contentfilter=medium"
-      : "https://tenor.googleapis.com/v2/featured?key=" + encodeURIComponent(cfg.key) + "&limit=" + limit + "&media_filter=tinygif,gif&locale=fr_FR&contentfilter=medium";
+      ? "https://api.klipy.com/v2/search?" + commun + "&q=" + encodeURIComponent(q)
+      : "https://api.klipy.com/v2/featured?" + commun;
   }
   return fetch(url)
     .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
@@ -84,7 +105,7 @@ function passioGifPanel(opts) {
   panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px;z-index:" + _z + ";box-shadow:0 4px 16px rgba(0,0,0,0.25);" + (opts.position || "bottom:120px;right:20px;");
   var search = document.createElement("input");
   search.type = "search";
-  search.placeholder = "Rechercher un GIF…";
+  search.placeholder = passioGifPlaceholder();
   search.setAttribute("aria-label", "Rechercher un GIF");
   search.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;";
   var grid = document.createElement("div");
@@ -153,6 +174,8 @@ window.toggleEmojiPanel = function() {
   // Remplissage (lazy) de la grille GIF à la première ouverture — via l'API si clé.
   if (p.classList.contains("open") && !p._gifFilled) {
     p._gifFilled = true;
+    var champ = document.getElementById("gifSearchInput");
+    if (champ) champ.placeholder = passioGifPlaceholder();
     if (window._fillEmojiGifGrid) window._fillEmojiGifGrid("");
   }
 };

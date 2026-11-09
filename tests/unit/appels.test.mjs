@@ -21,7 +21,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { pousserAppareils, tirer, genreNoteNotif } from "../../supabase/functions/_shared/appels.js";
+import { pousserAppareils, tirer, genreNoteNotif, serveursIceDepuisCloudflare, TTL_ICE_S, ICE_MAX_SERVEURS, ICE_MAX_URLS } from "../../supabase/functions/_shared/appels.js";
 import { EVT_ENVOI, UID_APPELS, GENRE_APPEL, ECHANTILLON_APPELS, appelMesure, UID_NOTIFS, GENRE_NOTIF, ECHANTILLON_NOTIFS, notifMesuree } from "../../supabase/functions/_shared/reception.js";
 import { GENRES_PUSH, textePush } from "../../supabase/functions/_shared/lien-metier.js";
 
@@ -192,7 +192,7 @@ test("⑥ le tirage vient du SERVEUR (aléa cryptographique, dans [0, 1)) : un a
 test("⑦ câblage de notify-call : toute push par pousserAppareils, l'adresse par adresseAccuse, les refus d'avant intacts et AVANT l'envoi ; la réponse ne porte ni pid ni « mesuré »", () => {
   const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
   assert.match(src, /import \{ adresseAccuse, TTL_NOTIFS_MS \} from "\.\.\/_shared\/reception\.js";/);
-  assert.match(src, /import \{ APPELS_ACTIFS, pousserAppareils \} from "\.\.\/_shared\/appels\.js";/);
+  assert.match(src, /import \{ APPELS_ACTIFS, pousserAppareils, serveursIceDepuisCloudflare, TTL_ICE_S \} from "\.\.\/_shared\/appels\.js";/);
   assert.match(src, /const ACCUSE = adresseAccuse\(\(n\) => Deno\.env\.get\(n\)\)\.accuse;/);
   const envoi = src.indexOf("await pousserAppareils({");
   assert.ok(envoi > 0, "l'envoi passe par le module éprouvé");
@@ -336,4 +336,79 @@ test("⑩ câblage : le genre de la note est celui que le SERVEUR a relu (autori
   assert.match(ap, /\.insert\(\{ user_id: m\.auteur, event: EVT_ENVOI, properties \}\)/);
   assert.match(ap, /kind: genreNoteNotif\(charge\.kind\)/);
   assert.doesNotMatch(ap, /Math\.random/);
+});
+
+// ─── IDENTIFIANTS TURN (2026-11-09) ──────────────────────────────────────────
+// Le TURN public est mort (openrelay.metered.ca → 192.0.2.1 / 100::1) : notify-call
+// fabrique des identifiants Cloudflare de 24 h sur `{ type: "ice" }`. Ce qui part
+// vers le navigateur passe par `serveursIceDepuisCloudflare` : liste fermée.
+
+// La forme documentée par Cloudflare (`…/credentials/generate-ice-servers`, 201).
+const REPONSE_CF = {
+  iceServers: [
+    { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.cloudflare.com:53"] },
+    {
+      urls: [
+        "turn:turn.cloudflare.com:3478?transport=udp", "turn:turn.cloudflare.com:53?transport=udp",
+        "turn:turn.cloudflare.com:3478?transport=tcp", "turns:turn.cloudflare.com:5349?transport=tcp",
+        "turn:turn.cloudflare.com:80?transport=tcp", "turns:turn.cloudflare.com:443?transport=tcp",
+      ],
+      username: "g0a1b2c3d4e5f6", credential: "secret-court-24h",
+    },
+  ],
+};
+
+test("⑪ la réponse Cloudflare devient une liste d'ICE servers SÛRE : port 53 écarté, identifiants gardés, rien d'autre", () => {
+  const s = serveursIceDepuisCloudflare(REPONSE_CF);
+  assert.equal(TTL_ICE_S, 86400, "24 h : le client les garde un peu moins");
+  assert.deepEqual(s, [
+    { urls: ["stun:stun.cloudflare.com:3478"] },
+    {
+      urls: [
+        "turn:turn.cloudflare.com:3478?transport=udp", "turn:turn.cloudflare.com:3478?transport=tcp",
+        "turns:turn.cloudflare.com:5349?transport=tcp", "turn:turn.cloudflare.com:80?transport=tcp",
+        "turns:turn.cloudflare.com:443?transport=tcp",
+      ],
+      username: "g0a1b2c3d4e5f6", credential: "secret-court-24h",
+    },
+  ]);
+  // Formes hostiles ou cassées : rien ne part.
+  for (const r of [null, undefined, 42, "x", {}, { iceServers: "x" }, { iceServers: [null, 1, "x"] }]) {
+    assert.deepEqual(serveursIceDepuisCloudflare(r), [], JSON.stringify(r));
+  }
+  // Un TURN sans identifiants, ou aux identifiants hors forme, est écarté.
+  assert.deepEqual(serveursIceDepuisCloudflare({ iceServers: [{ urls: ["turn:a.example:3478"] }] }), []);
+  assert.deepEqual(serveursIceDepuisCloudflare({ iceServers: [{ urls: "turn:a.example:3478", username: "u", credential: 7 }] }), []);
+  assert.deepEqual(serveursIceDepuisCloudflare({ iceServers: [{ urls: "turn:a.example:3478", username: "u", credential: "x".repeat(513) }] }), []);
+  // Une adresse qui n'est pas une adresse ICE ne passe jamais.
+  for (const u of ["javascript:alert(1)", "https://evil.example", "turn:a b:1", "turn:a.example:3478?transport=quic", "stun:a.example:3478#x", "turn:a.example:3478\n"]) {
+    assert.deepEqual(serveursIceDepuisCloudflare({ iceServers: [{ urls: [u], username: "u", credential: "c" }] }), [], u);
+  }
+  // Bornes : quatre serveurs, huit adresses au plus.
+  const beaucoup = { iceServers: Array.from({ length: 9 }, (_, i) => ({ urls: Array.from({ length: 12 }, (_, j) => `stun:s${i}-${j}.example:3478`) })) };
+  const borne = serveursIceDepuisCloudflare(beaucoup);
+  assert.equal(borne.length, ICE_MAX_SERVEURS);
+  assert.ok(borne.every((x) => x.urls.length === ICE_MAX_URLS));
+});
+
+test("⑫ câblage du geste `ice` : APRÈS l'authentification et le plafond, AVANT l'interrupteur des appels ; jamais en cache ; secrets absents = liste vide", () => {
+  const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
+  const geste = src.indexOf('if (body.type === "ice") return await identifiantsIce();');
+  assert.ok(geste > 0, "le geste existe");
+  assert.equal(src.split('if (body.type === "ice")').length - 1, 1, "une seule entrée");
+  assert.ok(src.indexOf('if (userErr || !userData?.user) return json({ error: "Non authentifié" }, 401);') < geste, "compte réel exigé avant");
+  assert.ok(src.indexOf("if (!verdict.ok) return reponsePlafond(verdict, corsHeaders);") < geste, "plafond avant");
+  assert.ok(geste < src.indexOf('if (type === "call" && !APPELS_ACTIFS)'), "avant l'interrupteur des appels : le live en a besoin");
+  const fn = src.slice(src.indexOf("async function identifiantsIce()"), src.indexOf("function json("));
+  assert.match(fn, /Deno\.env\.get\("TURN_CF_KEY_ID"\)/);
+  assert.match(fn, /Deno\.env\.get\("TURN_CF_API_TOKEN"\)/);
+  assert.match(fn, /return json\(\{ ok: true, iceServers: \[\], configure: false \}, 200, true\);/, "secrets absents : liste vide, sans erreur");
+  assert.match(fn, /https:\/\/rtc\.live\.cloudflare\.com\/v1\/turn\/keys\/\$\{cle\}\/credentials\/generate-ice-servers/);
+  assert.match(fn, /\/\^\[A-Za-z0-9_-\]\{8,128\}\$\/\.test\(cle\)/, "l'identifiant de clé est borné avant d'entrer dans l'URL");
+  assert.match(fn, /setTimeout\(\(\) => ctrl\.abort\(\), 4000\)/, "jamais d'attente sans fin");
+  assert.match(fn, /serveursIceDepuisCloudflare\(await r\.json\(\)\)/, "rien ne part sans passer par la liste fermée");
+  for (const m of fn.matchAll(/return json\([^;]*;/g)) assert.match(m[0], /, true\);$/, "jamais en cache : " + m[0]);
+  assert.match(src, /if \(sansCache\) headers\["Cache-Control"\] = "no-store";/);
+  // Le jeton ne sort jamais : aucune réponse ne le cite.
+  for (const m of src.matchAll(/json\(\{[^)]*\}/g)) assert.doesNotMatch(m[0], /jeton|TURN_CF/, m[0]);
 });

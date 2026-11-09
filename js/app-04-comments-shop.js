@@ -261,8 +261,8 @@ function deletePost(postId) {
   toast("Post supprimé.");
 }
 
-// Détecte une URL d'image/GIF (Giphy/Tenor ou extension média) pour rendre un
-// commentaire « GIF » comme une vraie image plutôt qu'en texte brut. Utilisé par
+// Détecte une URL d'image/GIF (KLIPY, Giphy, Tenor ou extension média) pour rendre
+// un commentaire « GIF » comme une vraie image plutôt qu'en texte brut. Utilisé par
 // le renderer unifié → un commentaire dont le texte EST une URL de GIF s'affiche
 // en image dans les 3 contextes (fil / IRL / CDV) sans changement de schéma.
 function _looksLikeMediaUrl(s) {
@@ -270,7 +270,7 @@ function _looksLikeMediaUrl(s) {
   s = s.trim();
   if (!/^https?:\/\//i.test(s)) return false;
   return /\.(gif|png|jpe?g|webp)(\?|#|$)/i.test(s)
-    || /(giphy\.com|tenor\.com|media\d*\.giphy|media\.tenor)/i.test(s);
+    || /(giphy\.com|tenor\.com|media\d*\.giphy|media\.tenor|static\d*\.klipy\.com)/i.test(s);
 }
 // Transforme les URLs, @mentions et #hashtags en éléments cliquables (façon
 // LinkedIn/Facebook). ⚠️ Opère sur du texte DÉJÀ échappé par escapeHtml → sûr
@@ -3110,7 +3110,7 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
     }
     var search = document.createElement("input");
     search.type = "search";
-    search.placeholder = "Rechercher un GIF…";
+    search.placeholder = (typeof passioGifPlaceholder === "function") ? passioGifPlaceholder() : "Rechercher un GIF…";
     search.setAttribute("aria-label", "Rechercher un GIF");
     search.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;";
     search.onclick = function (e) { e.stopPropagation(); };
@@ -3312,7 +3312,7 @@ function emojiReactPanel(event, onEmoji, onGif) {
     content.innerHTML = "";
     var search = document.createElement("input");
     search.type = "search";
-    search.placeholder = "Rechercher un GIF…";
+    search.placeholder = (typeof passioGifPlaceholder === "function") ? passioGifPlaceholder() : "Rechercher un GIF…";
     search.setAttribute("aria-label", "Rechercher un GIF");
     search.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;";
     search.onclick = function (e) { e.stopPropagation(); };

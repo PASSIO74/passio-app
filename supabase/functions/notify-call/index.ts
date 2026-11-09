@@ -51,7 +51,7 @@ import { endpointPushSur, envoyerPushBorne, MAX_ABONNEMENTS_LUS } from "../_shar
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { identiteAppelant, lienAppel, autoriserPushNotif, reserverPush } from "../_shared/lien-metier.js";
 import { adresseAccuse, TTL_NOTIFS_MS } from "../_shared/reception.js";
-import { APPELS_ACTIFS, pousserAppareils } from "../_shared/appels.js";
+import { APPELS_ACTIFS, pousserAppareils, serveursIceDepuisCloudflare, TTL_ICE_S } from "../_shared/appels.js";
 import { REVISION } from "../_shared/revision.js";
 // Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client
 // (`PASSIO_APPELS_ACTIFS`, app-05). `APPELS_ACTIFS` vit dans _shared/appels.js
@@ -109,6 +109,11 @@ Deno.serve(async (req) => {
 
   let body: { toUserId?: string; callId?: string; kind?: string; fromName?: string; fromEmoji?: string; type?: string; text?: string; emoji?: string };
   try { body = await req.json(); } catch { return json({ error: "Body invalide" }, 400); }
+  // 1 ter. IDENTIFIANTS TURN (2026-11-09, `_shared/appels.js`) — `{ type: "ice" }`.
+  // Servis aux appels ET aux lives : AVANT l'interrupteur des appels (un live en a
+  // besoin même quand les appels sont coupés), APRÈS l'authentification et le
+  // plafond (un compte réel, 20 par minute). Jamais en cache : un secret de 24 h.
+  if (body.type === "ice") return await identifiantsIce();
   const toUserId = borne(body.toUserId, 64);
   const callId = borne(body.callId, 80);
   const kind = borne(body.kind, 32);
@@ -198,9 +203,39 @@ Deno.serve(async (req) => {
   return json({ ok: true, sent });
 });
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+/**
+ * Fabrique des identifiants TURN Cloudflare de 24 h (`TURN_CF_KEY_ID`,
+ * `TURN_CF_API_TOKEN`, secrets de la fonction). Secrets absents → liste vide,
+ * `configure: false` : l'app reste en STUN seul, comme avant. Cloudflare muet ou
+ * en erreur → liste vide aussi (502), jamais une attente sans fin (4 s).
+ */
+async function identifiantsIce(): Promise<Response> {
+  const cle = Deno.env.get("TURN_CF_KEY_ID") ?? "";
+  const jeton = Deno.env.get("TURN_CF_API_TOKEN") ?? "";
+  if (!cle || !jeton || !/^[A-Za-z0-9_-]{8,128}$/.test(cle)) {
+    return json({ ok: true, iceServers: [], configure: false }, 200, true);
+  }
+  const ctrl = new AbortController();
+  const minuterie = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${cle}/credentials/generate-ice-servers`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + jeton, "Content-Type": "application/json" },
+      body: JSON.stringify({ ttl: TTL_ICE_S }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) return json({ ok: false, iceServers: [], configure: true, code: "turn_indisponible" }, 502, true);
+    const iceServers = serveursIceDepuisCloudflare(await r.json());
+    return json({ ok: iceServers.length > 0, iceServers, ttl: TTL_ICE_S, configure: true }, 200, true);
+  } catch (_e) {
+    return json({ ok: false, iceServers: [], configure: true, code: "turn_indisponible" }, 502, true);
+  } finally {
+    clearTimeout(minuterie);
+  }
+}
+
+function json(body: unknown, status = 200, sansCache = false): Response {
+  const headers: Record<string, string> = { ...corsHeaders, "Content-Type": "application/json" };
+  if (sansCache) headers["Cache-Control"] = "no-store";
+  return new Response(JSON.stringify(body), { status, headers });
 }

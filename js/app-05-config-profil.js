@@ -480,15 +480,72 @@ const PASSIO_CALL_TURN = null; // ← ta config TURN dédiée, ou null : STUN se
 // rendait ses `srflx`. Ses trois entrées ne relayaient donc plus RIEN : un appel
 // entre deux réseaux à NAT strict (4G derrière un CGNAT, réseau d'entreprise)
 // échoue, avec ou sans elles. L'ICE part en trickle : elles ne retardaient pas
-// l'appel, elles promettaient seulement un filet qui n'existait plus. Le remède
-// est un TURN DÉDIÉ dans `PASSIO_CALL_TURN` (une offre gratuite avec compte
-// existe chez Metered ou Cloudflare) — journal capacite-perf-realtime, 2026-11-09.
+// l'appel, elles promettaient seulement un filet qui n'existait plus. Le remède :
+// le relais Cloudflare que fabrique `notify-call` (section suivante) — journal
+// social-messagerie, 2026-11-09. `PASSIO_CALL_TURN` ne sert plus qu'à un TURN à
+// identifiants FIXES, qui seraient alors publics.
 const CALL_ICE_SERVERS = [
   ...(PASSIO_CALL_TURN ? (Array.isArray(PASSIO_CALL_TURN) ? PASSIO_CALL_TURN : [PASSIO_CALL_TURN]) : []),
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
 ];
+
+// ── Relais TURN Cloudflare, fabriqué par le serveur (2026-11-09) ────────────
+// `notify-call` rend, sur `{ type: "ice" }`, des identifiants Cloudflare de 24 h
+// (secrets `TURN_CF_KEY_ID` / `TURN_CF_API_TOKEN` de la fonction : jamais dans ce
+// fichier, le dépôt est public). Ils s'AJOUTENT au tableau ci-dessus, que lisent
+// les cinq `new RTCPeerConnection` des appels et des lives : rien d'autre à
+// changer. Secrets absents, réseau coupé, réponse hors forme : le tableau reste
+// tel quel (STUN seul, comme avant) — jamais un appel ou un live retardé de plus
+// de 2,5 s. Gardés jusqu'à une heure avant leur expiration ; une fonction non
+// configurée n'est pas redemandée avant une heure.
+const ICE_ATTENTE_MAX_MS = 2500;
+const _iceRelais = { serveurs: [], jusqua: 0, enCours: null };
+function _iceServeursSurs(liste) {
+  if (!Array.isArray(liste)) return [];
+  return liste.slice(0, 4).filter(function (s) {
+    if (!s || typeof s !== "object") return false;
+    var urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+    if (!urls.length || !urls.every(function (u) { return typeof u === "string" && /^(stun|turns?):[A-Za-z0-9.-]{1,253}(:\d{1,5})?(\?transport=(udp|tcp))?$/.test(u); })) return false;
+    var relais = urls.some(function (u) { return u.indexOf("turn") === 0; });
+    return !relais || (typeof s.username === "string" && !!s.username && typeof s.credential === "string" && !!s.credential);
+  });
+}
+function assurerServeursIce() {
+  try {
+    if (Date.now() < _iceRelais.jusqua) return Promise.resolve(_iceRelais.serveurs.length);
+    if (_iceRelais.enCours) return _iceRelais.enCours;
+    var compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
+    if (typeof supa === "undefined" || !supa || !window._supaReal || !supa.functions || !compteReel) return Promise.resolve(0);
+    var requete = Promise.resolve(supa.functions.invoke("notify-call", { body: { type: "ice" } }))
+      .then(function (r) {
+        // Un refus du serveur (502 `turn_indisponible`, 429 du plafond…) ne LÈVE pas :
+        // il arrive dans `error`. Le repli reste le STUN seul, mais il laisse une trace.
+        if (r && r.error) { try { if (typeof diagLog === "function") diagLog("ice relais refusé : " + (r.error.message || r.error)); } catch (_e) {} return 0; }
+        var d = r && r.data;
+        if (d && d.configure === false) { _iceRelais.jusqua = Date.now() + 3600 * 1000; return 0; }
+        var surs = _iceServeursSurs(d && d.iceServers);
+        if (!surs.length) return 0;
+        // On retire les identifiants précédents AVANT d'ajouter les neufs : le
+        // tableau ne grossit pas d'un renouvellement à l'autre.
+        _iceRelais.serveurs.forEach(function (s) { var i = CALL_ICE_SERVERS.indexOf(s); if (i !== -1) CALL_ICE_SERVERS.splice(i, 1); });
+        surs.forEach(function (s) { CALL_ICE_SERVERS.push(s); });
+        _iceRelais.serveurs = surs;
+        var ttl = (d && Number(d.ttl) > 0) ? Number(d.ttl) : 86400;
+        _iceRelais.jusqua = Date.now() + Math.max(600, ttl - 3600) * 1000;
+        return surs.length;
+      })
+      .catch(function (e) { try { if (typeof diagLog === "function") diagLog("ice relais indisponible : " + (e && e.message)); } catch (_e) {} return 0; });
+    var borne = new Promise(function (ok) { setTimeout(function () { ok(0); }, ICE_ATTENTE_MAX_MS); });
+    _iceRelais.enCours = Promise.race([requete, borne]).then(function (n) { _iceRelais.enCours = null; return n; });
+    return _iceRelais.enCours;
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("✗ ice relais : " + (e && e.message)); } catch (_e) {}
+    return Promise.resolve(0);
+  }
+}
+window.assurerServeursIce = assurerServeursIce;
 
 // État global d'un appel en cours (un seul à la fois).
 window._call = window._call || null;
@@ -583,6 +640,8 @@ async function startCall(convId, kind) {
   if (typeof supa === "undefined" || !supa || !window._supaReal || typeof MY_UID === "undefined" || !MY_UID || !compteReel) {
     toast("Connecte-toi pour passer un appel"); return;
   }
+  // Le relais TURN se demande dès maintenant : la connexion ne se crée qu'à la réponse.
+  assurerServeursIce();
   if (!peer.id || /^u_/.test(peer.id)) { toast("Ce contact de démo n'est pas joignable"); return; }
 
   let stream;
@@ -1145,6 +1204,8 @@ async function acceptIncomingCall() {
   if (typeof RTCPeerConnection === "undefined") { toast("Appels non supportés"); return; }
   let stream;
   _appelEnPreparation();
+  // Le relais TURN se demande pendant la permission caméra/micro.
+  assurerServeursIce();
   try { stream = await _callGetMedia(inv.kind); }
   catch (e) { toast("Caméra/micro refusé"); _callDeclineSilent(inv); _callCloseUI(); return; }
 
@@ -3579,7 +3640,7 @@ function showGifPickerForReelComment(postId, commentIdx) {
 
   openModal(`
     <div class="modal-title">GIF de réaction</div>
-    <input type="search" placeholder="Rechercher un GIF…" aria-label="Rechercher un GIF"
+    <input type="search" placeholder="${escapeHtml(typeof passioGifPlaceholder === "function" ? passioGifPlaceholder() : "Rechercher un GIF…")}" aria-label="Rechercher un GIF"
       oninput="_reelGifSearch('${escapeJsArg(postId)}', ${commentIdx}, this.value)"
       style="width:100%;box-sizing:border-box;margin:10px 0 4px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;" />
     <div id="reelGifGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;max-height:300px;overflow-y:auto;">
@@ -4158,6 +4219,9 @@ async function startVideoLive() {
   if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour lancer un live"); return; }
 
   _appelEnPreparation();
+  // Le relais TURN se demande PENDANT le titre et la caméra : il sera là quand le
+  // premier spectateur arrivera (`_vliveHostAddViewer`).
+  assurerServeursIce();
   const title = await _vlivePromptTitle();
   if (title === null) return;  // annulé
 
@@ -4444,12 +4508,16 @@ async function joinVideoLive(liveId) {
   if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour rejoindre un live"); return; }
 
   _appelEnPreparation();
+  // Le relais TURN se demande EN MÊME TEMPS que l'état du live, et on l'attend
+  // (2,5 s au plus) avant d'entrer : l'offre de l'hôte peut arriver tout de suite.
+  const _relais = assurerServeursIce();
   // Vérifie que le live est encore vivant (statut + heartbeat récent).
   let row = (window._videoLives || []).find(r => r.id === liveId) || null;
   try {
     const { data } = await supa.from("video_lives").select("*").eq("id", liveId).maybeSingle();
     if (data) row = data;
   } catch (e) {}
+  try { await _relais; } catch (e) {}
   if (!row || row.status !== "live" || supaTs(row.last_seen) < Date.now() - VLIVE_STALE_MS) {
     toast("Ce live est terminé"); supaRefreshVideoLives(); return;
   }
