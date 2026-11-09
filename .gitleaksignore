@@ -1,0 +1,10 @@
+# Faux positifs de gitleaks — une empreinte par ligne, TOUJOURS avec sa raison
+# (procédure : .github/workflows/securite.yml). Un vrai positif ne s'ignore pas :
+# il se RÉVOQUE.
+#
+# 2026-11-09 — clé Web KLIPY « PASSIO-WEB » (js/emoji-misc.js) : clé PUBLIQUE par
+# conception, comme la clé anon Supabase ou l'ancienne clé Giphy. KLIPY exige que
+# l'appel parte du navigateur, donc la clé est lue par chaque visiteur dans l'URL
+# de la requête. La ligne porte désormais `gitleaks:allow` ; cette empreinte couvre
+# le premier commit de la PR #796, qui l'avait introduite sans le marqueur.
+3664f98a90c49a58f3c2bb6f073dc509c490585a:js/emoji-misc.js:generic-api-key:34

@@ -31,7 +31,7 @@ window._PASSIO_EMOJI_LIST = [
 //    (netlify.toml + _headers).
 window.PASSIO_GIF_API = {
   provider: "klipy", // "klipy" ou "giphy" (la réserve)
-  key: "YB8zOMaLbuuI8hTooVfBViUvkC864dT0rNh1XKzKCdwGe9v4Qbncs7nhc0sMOh12", // clé Web KLIPY « PASSIO-WEB » (publique)
+  key: "YB8zOMaLbuuI8hTooVfBViUvkC864dT0rNh1XKzKCdwGe9v4Qbncs7nhc0sMOh12", // clé Web KLIPY « PASSIO-WEB » (publique) gitleaks:allow
 };
 // Clé Web Giphy (publique), gardée pour repasser en réserve d'un mot :
 // { provider: "giphy", key: PASSIO_GIF_CLE_GIPHY }.
