@@ -17,8 +17,11 @@
 //      démarrage parce que `#irlMap` existe dans le DOM, écran masqué compris.
 //      CORRIGÉ le 2026-11-02 (app-07 `_scheduleIrlMapUpdate` ne construit la
 //      carte que si `#screen-irl` est actif) : le cas est un verrou ordinaire.
-//   ② budget : au plus 3 scripts externes avant le premier écran, `app.js`
-//      sous 3,5 Mo non minifié (3,0 Mo le 2026-11-02 : +15 % y rougit).
+//   ② budget : au plus 3 scripts externes avant le premier écran HORS du bloc
+//      app, et le bloc app sous 3,5 Mo non minifié (3,0 Mo le 2026-11-02 : +15 %
+//      y rougit). ⚠️ Depuis le 2026-11-09 le bloc app sort en 9 scripts
+//      (`app/app-0…js`, scripts/build.js, étape 1) téléchargés EN PARALLÈLE :
+//      ils comptent pour UN poste, comme l'ancien `app.js` — et ils y sont tous.
 // Les relevés sont écrits dans PASSIO_AUDIT_DIR/dist-boot.json.
 // ═══════════════════════════════════════════════════════════════════════════
 const fs = require("fs");
@@ -69,18 +72,26 @@ test.describe("AUDIT F — budget de l'artefact servi (dist)", () => {
   test.skip(!DIST, "ne mesure que l'artefact de production (PASSIO_CIBLE=dist)");
 
   for (const profil of ["visiteur", "onboarde"]) {
-    test(`① ${profil} : le référentiel des passions ne part pas au démarrage · ② budget (≤ 3 scripts avant le premier écran, app.js < 3,5 Mo)`, async ({ page }) => {
+    test(`① ${profil} : le référentiel des passions ne part pas au démarrage · ② budget (≤ 3 scripts avant le premier écran hors bloc app, bloc app < 3,5 Mo)`, async ({ page }) => {
       const r = await demarrer(page, profil);
       const toutes = [...r.avant, ...r.apres].map((x) => x.url);
-      const appJs = r.ressources.find((x) => /^\/app\.js/.test(x.n));
+      // Les 9 scripts du bloc app (un seul `app.js` avant le 2026-11-09).
+      const blocApp = (n) => /^\/app\/app-0\d[\w-]*\.js/.test(n);
+      const scriptsApp = r.ressources.filter((x) => blocApp(x.n));
+      const blocAppOctets = scriptsApp.reduce((s, x) => s + (x.decode || 0), 0);
       const releve = { note: "STUB LOCAL (servir-dist.js, réseau non bridé, hôtes externes coupés, aucun geste) — artefact NON minifié : la CI minifie ensuite", profil,
         premierEcranRequetes: r.avant.map((x) => x.url), differe: r.apres.map((x) => x.url), ecranIrlOuvert: r.ecranIrlOuvert,
         decodeKo: Object.fromEntries(r.ressources.filter((x) => x.decode).map((x) => [x.n.split("?")[0], Math.round(x.decode / 1024)])),
-        scriptsAvant: r.avant.filter((x) => x.type === "script").length };
+        scriptsAvant: r.avant.filter((x) => x.type === "script" && !blocApp(x.url)).length,
+        blocAppAvant: r.avant.some((x) => x.type === "script" && blocApp(x.url)),
+        scriptsApp: scriptsApp.length, blocAppKo: Math.round(blocAppOctets / 1024) };
       ecrire(profil, releve);
       expect(toutes.filter((n) => /passions-v1\.json/.test(n))).toEqual([]);
-      expect(releve.scriptsAvant).toBeLessThanOrEqual(3);
-      if (appJs) expect(appJs.decode).toBeLessThan(3.5 * 1024 * 1024);
+      // Le bloc app compte pour UN poste, comme l'ancien `app.js` : l'exclure sans le
+      // recompter aurait libéré une place pour un script de plus (relecture de #801).
+      expect(releve.scriptsAvant + (releve.blocAppAvant ? 1 : 0)).toBeLessThanOrEqual(3);
+      expect(releve.scriptsApp, "les 9 scripts du bloc app sont chargés au démarrage").toBe(9);
+      expect(blocAppOctets).toBeLessThan(3.5 * 1024 * 1024);
     });
 
     test(`① bis ${profil} : MapLibre n'est pas chargé tant que l'écran Rencontrer n'est pas ouvert (F-01)`, async ({ page }) => {

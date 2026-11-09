@@ -312,12 +312,12 @@ function verdictGlobal(phases) {
 // et l'outil refuse d'écrire sur une cible dont le client servi ne le porte pas.
 // Sur une cible sans client servi connu (le staging : la CI y joue le client de
 // la PR), rien n'est exigé. Illisible = refus : on ne devine pas.
-// ⚠️ LE CLIENT SERVI, C'EST LE BUNDLE `app.js` ET LA PAGE (2026-11-04). Hors du
-// bloc BUILD:APP, `scripts/build.js` INLINE dans la page chaque `<script
+// ⚠️ LE CLIENT SERVI, C'EST LES SCRIPTS DU BLOC APP ET LA PAGE (2026-11-04). Hors
+// du bloc BUILD:APP, `scripts/build.js` INLINE dans la page chaque `<script
 // src="js/…">` — passions-flat.js, passion-selector.js, la colle… Un motif porté
-// par l'un d'eux n'est JAMAIS dans `app.js` : chercher là seul refusait pour
+// par l'un d'eux n'est JAMAIS dans le bloc app : chercher là seul refusait pour
 // toujours la migration passion_requests du 2026-11-04, dont le prérequis vit
-// dans passions-flat.js. La page et le bundle sortent du même build et du même
+// dans passions-flat.js. La page et les scripts sortent du même build et du même
 // déploiement ; un motif se lit dans l'un OU l'autre.
 const ORIGINES_CLIENT = { njkiyoklssvefstljemx: "https://passio-app.netlify.app" };
 const LIGNE_PREREQUIS = /^--[ \t]*PREREQUIS-CLIENT[ \t]*:[ \t]*(\S(?:.*\S)?)[ \t]*$/gm;
@@ -330,39 +330,59 @@ function prerequisClient(sql) {
   return motifs;
 }
 
-// Le bundle que la page servie charge : `app.js?v=<empreinte>`. ⚠️ Pas une balise
-// `<script src>` : `scripts/build.js` l'injecte par un CHARGEUR (`s.src = "…"`,
-// après le gate) — on cherche donc la chaîne citée, où qu'elle soit (premier jet
-// de cette règle : vert sur un HTML fabriqué, aveugle sur le vrai build).
-function urlBundleServi(html, origine) {
-  const m = /["']((?:\.?\/)?app\.js\?v=[0-9a-z]+)["']/i.exec(String(html || ""));
-  if (!m || !origine) return null;
-  try { return new URL(m[1], origine.replace(/\/?$/, "/")).toString(); } catch (e) { return null; }
+// Les scripts que la page servie charge. ⚠️ DEPUIS LE 2026-11-09, LE BLOC APP SORT
+// EN 9 SCRIPTS (`app/app-04-comments-shop.js?v=<empreinte>`, scripts/build.js,
+// étape 1) — avant, un seul `app.js?v=<empreinte>`. Les deux formes sont lues :
+// un poste à jour doit encore savoir lire une production qui ne l'est pas. Un
+// motif peut vivre dans N'IMPORTE LEQUEL des 9 : les lire tous, pas le premier.
+// ⚠️ Pas une balise `<script src>` : `scripts/build.js` les injecte par un
+// CHARGEUR (littéraux cités, après le gate) — on cherche donc les chaînes citées,
+// où qu'elles soient (premier jet de cette règle : vert sur un HTML fabriqué,
+// aveugle sur le vrai build). Lire moins de scripts que la page n'en charge ne
+// peut que REFUSER à tort, jamais accepter : un motif n'est admis que trouvé.
+const RE_BUNDLE_SERVI = /["']((?:\.?\/)?(?:app\.js|app\/app-\d{2}[\w-]*\.js)\?v=[0-9a-z]+)["']/gi;
+
+function urlsBundlesServis(html, origine) {
+  if (!origine) return [];
+  const base = origine.replace(/\/?$/, "/");
+  const urls = [];
+  for (const m of String(html || "").matchAll(RE_BUNDLE_SERVI)) {
+    let u;
+    try { u = new URL(m[1], base).toString(); } catch (e) { continue; }
+    if (!urls.includes(u)) urls.push(u);
+  }
+  return urls;
 }
 
-function verifierPrerequisClient({ motifs, origine, html, bundle } = {}) {
+// `bundles` : le texte de chaque script de `urlsBundlesServis(html, origine)`, dans
+// le même ordre (null pour un script illisible). `bundle` (un seul texte) reste
+// accepté pour l'ancienne forme à un script.
+function verifierPrerequisClient({ motifs, origine, html, bundles, bundle } = {}) {
   if (!motifs || !motifs.length) return { exige: false };
   if (!origine) return { exige: false, motifs, raison: "aucun client servi connu pour cette cible" };
-  const url = urlBundleServi(html, origine);
-  if (!url) {
+  const urls = urlsBundlesServis(html, origine);
+  if (!urls.length) {
     throw new RefusBarriere("prerequis_client_illisible",
-      "prérequis client : la page servie par " + origine + " n'a pas pu être lue, ou ne charge pas `app.js?v=…`. " +
+      "prérequis client : la page servie par " + origine + " n'a pas pu être lue, ou ne charge aucun script du bloc app (`app/app-0…js?v=…`, ou l'ancien `app.js?v=…`). " +
       "On refuse plutôt que de supposer le client à jour — relancer quand le site répond.", { origine });
   }
-  if (typeof bundle !== "string" || !bundle.length) {
+  const textes = Array.isArray(bundles) ? bundles : (bundle === undefined ? [] : [bundle]);
+  const illisibles = urls.filter((u, i) => typeof textes[i] !== "string" || !textes[i].length);
+  if (illisibles.length) {
     throw new RefusBarriere("prerequis_client_illisible",
-      "prérequis client : le bundle " + url + " n'a pas pu être lu. On refuse plutôt que de supposer le client à jour.", { url });
+      "prérequis client : " + illisibles.length + " script(s) sur " + urls.length + " n'ont pas pu être lus (" + illisibles.join(", ") + "). On refuse plutôt que de supposer le client à jour.",
+      { urls: illisibles });
   }
   const page = String(html);
-  const manquants = motifs.filter((m) => !bundle.includes(m) && !page.includes(m));
+  const manquants = motifs.filter((m) => !page.includes(m) && !textes.some((t) => t.includes(m)));
   if (manquants.length) {
     throw new RefusBarriere("prerequis_client_absent",
-      "prérequis client : le client SERVI (" + url + ", et la page " + origine + ") ne porte pas " + manquants.map((m) => "« " + m + " »").join(", ") + ". " +
+      "prérequis client : le client SERVI (la page " + origine + " et ses " + urls.length + " script(s) : " + urls.join(", ") + ") ne porte pas " + manquants.map((m) => "« " + m + " »").join(", ") + ". " +
       "Cette migration casserait les clients en ligne : déployer d'abord (fusion de la PR, job « Déploiement production » vert), puis relancer.",
-      { url, manquants });
+      { urls, manquants });
   }
-  return { exige: true, url, motifs };
+  return { exige: true, urls, motifs };
 }
 
 module.exports = { CIBLES_PROTEGEES, RefusBarriere, empreinte, choisirCible, verifierAttestation, verifierPreuveRevue, exigerFournisseurReel, MARQUEUR_REVUE, PHRASE_MAINTENEUR_UNIQUE, sqlColonnesJournal, sqlAvecJournal, verdictGlobal,
-  ORIGINES_CLIENT, prerequisClient, urlBundleServi, verifierPrerequisClient };
+  ORIGINES_CLIENT, prerequisClient, urlsBundlesServis, verifierPrerequisClient };

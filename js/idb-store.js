@@ -110,7 +110,7 @@
   // `data/passions-v1.json` pèse **568 ko** pour 5 001 passions, et il est
   // retéléchargé à chaque session : le service worker ne le pré-cache pas
   // (constat écrit dans passions-flat.js). C'est le plus gros transfert de
-  // l'application après `app.js`, pour un fichier qui ne change QU'AU
+  // l'application après les scripts du bloc app, pour un fichier qui ne change QU'AU
   // DÉPLOIEMENT — `scripts/build.js` le recopie tel quel dans `dist/`.
   //
   // ⚠️ LA CLÉ DE FRAÎCHEUR EST LA RELEASE, PAS UNE DURÉE. Un TTL devine ; la

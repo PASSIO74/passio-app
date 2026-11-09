@@ -1045,7 +1045,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build dist (assemblage monolithique + assets publics)
+      - name: Build dist (page assemblée, bloc app en 9 scripts, assets publics)
         env:
           COMMIT_REF: ${{ github.sha }}
         run: |
@@ -1069,11 +1069,29 @@ jobs:
           && mv dist/index.min.html dist/index.html \
           || echo "Minification échouée, déploiement du fichier brut"
 
-      - name: Minify app.js (fallback sur le fichier brut en cas d'erreur)
+      # Les 9 scripts du bloc app (dist/app/, un par fichier source depuis le
+      # 2026-11-09 — avant, un seul dist/app.js). Chacun minifié SÉPARÉMENT : sans
+      # `--toplevel`, terser ne renomme ni ne retire aucun nom de premier niveau,
+      # et c'est par eux que les 9 scripts classiques se parlent (fonctions
+      # globales, `let`/`const` de script). Le `?v=` de leur URL est l'empreinte du
+      # fichier AVANT minification (scripts/build.js) : terser figé par le lockfile,
+      # même source = même fichier servi. Un dossier vide ou absent = build cassé :
+      # on refuse de déployer une page qui ne chargerait aucun script.
+      - name: Minify les scripts app/ (fallback sur le fichier brut en cas d'erreur)
         run: |
-          npx --no-install terser dist/app.js -o dist/app.min.js --compress --mangle \
-          && mv dist/app.min.js dist/app.js \
-          || echo "Minification app.js échouée, déploiement du fichier brut"
+          set -u
+          n=0
+          for f in dist/app/*.js; do
+            [ -f "$f" ] || continue
+            n=$((n + 1))
+            npx --no-install terser "$f" -o "$f.min" --compress --mangle \
+            && mv "$f.min" "$f" \
+            || { rm -f "$f.min"; echo "Minification $f échouée, déploiement du fichier brut"; }
+          done
+          if [ "$n" -ne 9 ]; then
+            echo "::error title=Scripts app absents::dist/app/ contient $n script(s), 9 attendus (scripts/build.js, étape 1)."
+            exit 1
+          fi
 
       - name: Minify styles.css (fallback sur le fichier brut en cas d'erreur)
         run: |

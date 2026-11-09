@@ -4,8 +4,9 @@
 //
 // LE PROBLÈME QU'IL RÉSOUT (mesuré le 2026-08-16)
 // En développement, l'app est 19 fichiers JS chargés séparément. En production,
-// `scripts/build.js` en assemble un monolithe (`dist/app.js`) injecté après le
-// gate, puis la CI le minifie. Ce sont deux programmes.
+// `scripts/build.js` inline les uns dans la page et sort le bloc app en 9 scripts
+// (`dist/app/` — un monolithe `dist/app.js` jusqu'au 2026-11-09) injectés après
+// le gate, puis la CI les minifie. Ce sont deux programmes.
 //
 // Or, sur 175 tests, TROIS seulement visaient `/dist/index.html` — et ces trois
 // ne vérifient que le gate et le démarrage. Le fil, la publication, la
@@ -21,7 +22,7 @@
 //   PASSIO_CIBLE=dist npx playwright test
 //
 // Ce que ça prouve : que la suite passe sur l'artefact assemblé — ordre de
-// concaténation, complétude du build, externalisation de `app.js` derrière le
+// assemblage, complétude du build, externalisation des scripts app/ derrière le
 // gate. Ce que ça ne prouve PAS : le comportement APRÈS minification, que seule
 // la CI applique (`html-minifier-terser`). Le minifieur renomme les identifiants
 // — un piège déjà rencontré en vérifiant la prod.
@@ -50,13 +51,22 @@ function construire() {
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join(DIST, a));
   }
   // Un build muet qui laisse un dist vide donnerait 175 rouges illisibles. Mieux
-  // vaut échouer ici, avec la raison.
-  for (const f of ["index.html", "app.js", "styles.css"]) {
+  // vaut échouer ici, avec la raison. Le bloc app sort en 9 scripts dans dist/app/
+  // depuis le 2026-11-09 (scripts/build.js, étape 1), plus en un dist/app.js.
+  for (const f of ["index.html", "styles.css", ...scriptsApp()]) {
     const p = path.join(DIST, f);
     if (!fs.existsSync(p) || fs.statSync(p).size === 0) {
       throw new Error(`build incomplet : dist/${f} absent ou vide`);
     }
   }
+}
+
+// Les scripts du bloc app que la page construite charge, lus dans son chargeur.
+function scriptsApp() {
+  const page = fs.readFileSync(path.join(DIST, "index.html"), "utf8");
+  const refs = [...page.matchAll(/"(app\/app-0\d[\w-]*\.js)\?v=[0-9a-f]+"/g)].map((m) => m[1]);
+  if (refs.length !== 9) throw new Error(`build incomplet : ${refs.length} script(s) app/ dans le chargeur de dist/index.html, 9 attendus`);
+  return refs;
 }
 
 const MIME = {
@@ -91,6 +101,6 @@ const serveur = http.createServer((req, res) => {
 });
 
 serveur.listen(PORT, "127.0.0.1", () => {
-  const t = fs.statSync(path.join(DIST, "app.js")).size;
-  console.log(`Artefact de production servi sur http://127.0.0.1:${PORT} — app.js ${t} octets`);
+  const t = scriptsApp().reduce((s, f) => s + fs.statSync(path.join(DIST, f)).size, 0);
+  console.log(`Artefact de production servi sur http://127.0.0.1:${PORT} — 9 scripts app/, ${t} octets`);
 });

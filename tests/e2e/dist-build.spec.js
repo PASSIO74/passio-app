@@ -1,8 +1,9 @@
 // Build de PROD (dist/) : depuis le 2026-07-03, le bloc app (~1,1 Mo de JS) est
-// externalisé dans dist/app.js et injecté SEULEMENT après le gate (TBT). Ce spec
+// externalisé hors de la page et injecté SEULEMENT après le gate (TBT) — en 9
+// scripts dist/app/ depuis le 2026-11-09 (un dist/app.js avant). Ce spec
 // vérifie les 3 chemins critiques de cette architecture sur le vrai artefact :
 //   1. page verrouillée → gate peint, AUCUN JS applicatif exécuté ;
-//   2. saisie du code → app.js injecté → landing ;
+//   2. saisie du code → scripts app/ injectés → landing ;
 //   3. session déjà déverrouillée (jeton) → boot direct.
 // Le build (~1 s) est refait à chaque run → protège aussi scripts/build.js.
 const { execSync } = require("child_process");
@@ -11,7 +12,7 @@ const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY, GATE_CODE, CLE_PREMIERE_VISITE, poserGateSansPremiereVisite } = require("./gate-helper");
 const { projetSupabaseVide } = require("./app-helper");
 
-test.describe("build prod (dist) — app.js externalisé derrière le gate", () => {
+test.describe("build prod (dist) — scripts app/ externalisés derrière le gate", () => {
   // ⚠️ La coupure de la « première visite » vaut pour les TROIS cas, pas
   // seulement celui qui pose un jeton. Le cas « saisie du code » n'a aucun
   // script d'injection — il tape le code au clavier — et c'est justement lui qui
@@ -20,7 +21,7 @@ test.describe("build prod (dist) — app.js externalisé derrière le gate", () 
   // Poser la coupure par suite plutôt que par cas évite qu'un futur test ajouté
   // ici hérite du même piège en silence.
   // ⚠️ Le rideau est LEVÉ par défaut depuis l'ouverture publique du 2026-09-11 :
-  // cette suite mesure l'architecture « app.js derrière le gate », elle ARME donc
+  // cette suite mesure l'architecture « bloc app derrière le gate », elle ARME donc
   // le gate elle-même (`passio_gate_actif = "1"`), comme access-gate.spec.js.
   test.beforeEach(async ({ page }) => {
     // L'artefact démarre l'application entière derrière le gate : au projet
@@ -43,7 +44,7 @@ test.describe("build prod (dist) — app.js externalisé derrière le gate", () 
     expect(await page.evaluate(() => typeof renderFeed), "renderFeed ne doit pas exister avant le déverrouillage").toBe("undefined");
   });
 
-  test("saisie du code → app.js injecté → landing", async ({ page }) => {
+  test("saisie du code → scripts app/ injectés → landing", async ({ page }) => {
     await page.goto("/dist/index.html");
     await page.waitForSelector("#pgInput", { state: "attached", timeout: 15000 });
     await page.locator("#pgInput").fill(GATE_CODE);
@@ -58,10 +59,10 @@ test.describe("build prod (dist) — app.js externalisé derrière le gate", () 
     await page.waitForSelector("#landing.active", { timeout: 20000 });
   });
   // ⚖️ LCEN art. 1-1 : les mentions légales doivent se lire SANS code — donc
-  // sans app.js, qui n'est injecté qu'après. Mesuré sur l'ARTEFACT, parce que
+  // sans le bloc app, qui n'est injecté qu'après. Mesuré sur l'ARTEFACT, parce que
   // c'est le build qui décide de ce qui vit en tête de page et de ce qui est
   // repoussé derrière le gate.
-  test("page verrouillée : les mentions légales se lisent SANS app.js (LCEN)", async ({ page }) => {
+  test("page verrouillée : les mentions légales se lisent SANS le bloc app (LCEN)", async ({ page }) => {
     await page.goto("/dist/index.html");
     await page.waitForSelector("#passioGate .pg-title", { timeout: 15000 });
     await page.getByRole("button", { name: "Mentions légales", exact: true }).click();
