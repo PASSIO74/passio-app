@@ -43,7 +43,7 @@ function poserProfilVisite(page, prive) {
     document.body.insertAdjacentHTML("beforeend",
       '<button id="followBtn_u_dodie">Suivre</button>'
       + '<div data-prive-titre="1">Ce compte est privé</div>'
-      + '<div data-prive-texte="Abonne-toi pour voir ses publications, photos, bobines et carnets.">Abonne-toi pour voir ses publications, photos, bobines et carnets.</div>');
+      + '<div data-prive-texte="Abonne-toi pour voir ses publications, photos et bobines.">Abonne-toi pour voir ses publications, photos et bobines.</div>');
   }, prive);
 }
 
@@ -273,4 +273,28 @@ test("⑪ les CINQ surfaces posent l'aide et l'aspect d'état dès le PREMIER re
   expect((a5.match(/r\.status === "pending"/g) || []).length).toBeGreaterThan(0);
   expect(a5).not.toContain('r.status !== "accepted"');
   expect((a4.match(/r\.status !== "pending"/g) || []).length).toBeGreaterThan(0);
+});
+
+// ⚠️ LE TEXTE DU VERROU PROMETTAIT DES « CARNETS » (2026-11-09) : le Carnet de
+// voyage est retiré depuis ADR-011, et ce texte s'affiche sur chaque profil privé
+// visité. On le lit dans le DOM que `openUserProfile` PEINT — gabarit, attribut
+// de restitution, et repli de `_majBlocPriveVisite`.
+test("⑫ le bloc « Ce compte est privé » ne promet plus de « carnets »", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(async () => {
+    state.user.following = []; state.user.followingPending = [];
+    state.seed.users.push({ id: "u_prive_sans_carnets", name: "Compte privé", profileEmoji: "🔒", avatar: "#7c3aed", passion: "musique", bio: "", isPrivate: true });
+    await openUserProfile("u_prive_sans_carnets");
+    const el = document.querySelector("[data-prive-texte]");
+    const peint = el && el.textContent;
+    // Le repli (annulation d'une demande) repeint depuis l'attribut : même phrase.
+    if (el) el.textContent = "";
+    _majBlocPriveVisite("u_prive_sans_carnets");
+    return { locked: window._visited && window._visited.locked, peint, attr: el && el.getAttribute("data-prive-texte"), repeint: el && el.textContent };
+  });
+  expect(r.locked, "prémisse : le profil visité est VERROUILLÉ (compte privé non suivi)").toBe(true);
+  expect(r.peint).toBe("Abonne-toi pour voir ses publications, photos et bobines.");
+  expect(r.attr).toBe(r.peint);
+  expect(r.repeint).toBe(r.peint);
+  expect(r.peint).not.toMatch(/carnet/i);
 });

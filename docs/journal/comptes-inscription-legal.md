@@ -35,6 +35,7 @@
 - 🔔 UXO-11 — « MISE À JOUR DISPONIBLE » AU TOUT PREMIER ÉCRAN : le worker annonçait sa première installation (2026-11-04)
 - 🔗 LE NOUVEAU VENU RETROUVE UNE PORTE D'INSCRIPTION — un lien sur la carte (2026-11-04)
 - ↩️ ROUVRIR UNE MODALE PENDANT LE RETOUR DE FERMETURE NE SORT PLUS DE L'APPLICATION — un seul geste d'historique à la fois (2026-11-08)
+- 📱 INSCRIPTION SUR iPHONE — trois frictions au moment de créer son compte (2026-11-09)
 
 ---
 
@@ -598,3 +599,15 @@ Verrous : `tests/e2e/historique-retour-en-vol.spec.js` (13 cas, dans `SUITES_WEB
 ⚠️ **EN LOCAL, `/demo/*` N'EXISTE PAS** : `npm run serve` ne lance pas les Edge Functions. Les exemples y montrent le dégradé ; c'est normal.
 
 Version de la politique : 2026-11-08. Verrous : `politique-tiers-appeles.spec.js` ①bis, `demo-edge.test.mjs`.
+
+## 📱 INSCRIPTION SUR iPHONE — trois frictions au moment de créer son compte (2026-11-09)
+
+`index.html` (écran d'auth), `styles.css` (`label.field > span`, `.fr-grid`, `.fr-specs`, `.fr-panel-footer`), `js/first-run.js` (`ouvrirAuth`). Mesuré sur iPhone, à l'instant où le visiteur décide de s'inscrire.
+
+- **La case de consentement est JUSTE AU-DESSUS de Google** (`#authConsentWrap` + son écho `#authConsentRefus`, avant `#authGoogleBloc`). 3 inscriptions sur 4 passent par Google depuis octobre ; la case vivait ~640 px plus bas, le premier toucher était REFUSÉ et le refus défilait vers la case — Google sortait de l'écran. Mesuré après : case 356-428 / Google 440-487 sur 390 × 664 ; 372-462 / 474-521 sur 320 × 568. Toujours UNE case, en création seulement (`switchAuthTab`, `display: flex`) ; le formulaire e-mail, en dessous, exige la même, et `_amenerConsentementAuxYeux` reste le filet de ses refus (la case est alors HORS champ, vers le haut).
+- **Capitales espacées : l'intitulé seulement** (`label.field > span:first-child`). Posées sur toute `> span`, elles prenaient les aides du nom et de l'année, les 164 caractères du consentement et ceux de la modale `consentRequisCase`. Inventaire fait (`index.html` et `js/`) : dans chaque `label.field`, l'intitulé est TOUJOURS le premier enfant ; une case à cocher passe son `input` d'abord, donc son texte n'est plus en capitales.
+- **La bulle `.fr-tip` ne survit plus à l'inscription** : `ouvrirAuth` appelle `fermerBulle()` (sans « abandon ») — même geste que `surNavigation`. `ecranOccupe()` empêchait d'en POSER une, rien ne retirait celle déjà posée (9000 contre 50 pour `#onboarding`, elle couvrait les onglets). Au retour, `retourExploration` → `goTo("feed")` laisse le planificateur décider.
+- **« Voir mon fil » reste à l'écran** : pied de panneau COLLANT, et un SEUL défilement — la feuille. `.fr-grid` (44vh) et `.fr-specs` (26vh) ont perdu leur défilement propre : trois défilements imbriqués sur iPhone SE. Avant : 564-612 → 712-760 px après un choix (390 × 664), hors écran dès l'ouverture sur 320 × 568 ; après : 536-584 et 440-488, à l'ouverture comme après trois choix.
+  ⚠️ **`bottom` NÉGATIF, voulu** : un `sticky` se cale sur la boîte de CONTENU du conteneur qui défile, padding déduit (mesuré : 24 px sous Chromium). Avec `bottom: 0`, une bande de 24 px laissait les tuiles défiler, visibles, sous les boutons. Le pied descend de `--fr-pied-bas`, porte ce padding lui-même (safe area comprise), opaque, et la marge négative rend au flux sa place. **`--fr-pied-bas` RECOPIE le `padding-bottom` de `.modal`** : changer l'un, c'est changer l'autre.
+
+Verrou : `tests/e2e/inscription-frictions-iphone.spec.js` (7), en hauteurs UTILES Safari (390 × 664, 320 × 568), par les gestes. Réinjection : case remise sous le formulaire → ① rouge (×2) ; capitales sur toute `> span` → ① ter rouge ; `fermerBulle()` retiré → ② rouge ; pied statique → ③ rouge (×2, 725 et 704 px) ; défilements imbriqués rendus → ③ rouge ; `bottom: 0` → ③ rouge (bande de 24 px).

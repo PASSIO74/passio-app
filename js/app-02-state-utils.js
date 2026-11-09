@@ -129,6 +129,36 @@ function _estNotifEconomieLegacy(n) {
   return ecriteParLApp && LEGACY_ECONOMY_NOTIF_RE.test(String(n.text || ""));
 }
 
+// ⚠️ NOTIFICATIONS FABRIQUÉES À PARTIR DE LA DÉMO (2026-11-09) — mêmes trois
+// frontières que l'économie, même raison : copiées dans l'état, donc dans le
+// blob `user_state`, elles y restaient pour toujours.
+//  ① Les copies SOCIALES du seed (n1 « Léa Moreau a aimé… », n2 « Clara Jensen
+//     suit maintenant tes publications » — profil à 0 abonné —, n3, n4, n7) :
+//     `loadState` les recopiait dans toute liste vide, trois NON LUES, comptées
+//     par la cloche, le titre « (3) PASSIO » et `setAppBadge`. Reconnues à leur
+//     identifiant court `n<chiffres>` (le serveur écrit des uuid ou `n_…`,
+//     `pushNotification` des `x…`) ET à un émetteur de démo `u_…`. Les messages
+//     SYSTÈME (n5, n6 « Bienvenue sur PASSIO ») disent vrai : ils restent.
+//  ② Les résumés IRL « N événements cette semaine » d'avant ce jour :
+//     `_irlWeeklyDigest` comptait les activités d'exemple (44 résumés chez 12
+//     comptes réels, aucune activité réelle à venir). Leur NOMBRE est faux par
+//     construction : les marquer lus laisserait le mensonge dans la liste. Le
+//     résumé corrigé porte `NOTIF_DIGEST_IRL_PREFIXE` et n'est jamais retiré.
+// Retirées plutôt que marquées lues : ni l'une ni l'autre n'est une donnée du
+// compte — une copie de démo, un message dérivé et périmé que l'app a écrit
+// elle-même (précédent : les notifications d'économie ci-dessus).
+const NOTIF_DIGEST_IRL_PREFIXE = "irl_digest_";
+const NOTIF_DIGEST_IRL_RE = /^<b>\d+ événements?<\/b> cette semaine/;
+
+function _estNotifFabriqueeDepuisDemo(n) {
+  if (!n || typeof n !== "object") return false;
+  var id = String(n.id || "");
+  if (/^n\d+$/.test(id) && n.kind !== "system" && /^u_/.test(String(n.fromId || ""))) return true;
+  var ecriteParLApp = !n.fromId || n.fromId === "me";
+  return ecriteParLApp && id.indexOf(NOTIF_DIGEST_IRL_PREFIXE) !== 0
+    && NOTIF_DIGEST_IRL_RE.test(String(n.text || ""));
+}
+
 function stripLegacyEconomy(obj) {
   if (!obj || typeof obj !== "object") return obj;
   LEGACY_ECONOMY_ROOT_KEYS.forEach(function (k) { delete obj[k]; });
@@ -136,7 +166,9 @@ function stripLegacyEconomy(obj) {
     // Réaffectation (et non splice) : sur la copie d'ENVOI, `notifications` est
     // encore le tableau vivant de l'application — le filtrer en place ferait de
     // cette fonction de lecture un effet de bord sur l'état affiché.
-    var gardees = obj.notifications.filter(function (n) { return !_estNotifEconomieLegacy(n); });
+    var gardees = obj.notifications.filter(function (n) {
+      return !_estNotifEconomieLegacy(n) && !_estNotifFabriqueeDepuisDemo(n);
+    });
     if (gardees.length !== obj.notifications.length) obj.notifications = gardees;
   }
   if (obj.user && typeof obj.user === "object") {
@@ -160,7 +192,11 @@ function loadState() {
     // Migrate for upgraded schema
     if (!parsed.user.seenStories) parsed.user.seenStories = [];
     if (!Array.isArray(parsed.notifications) || !parsed.notifications.length) {
-      parsed.notifications = def.seed.notifications.map(n => ({ ...n }));
+      // Seuls les messages SYSTÈME de la graine (bienvenue) : jamais une fausse
+      // notification sociale, non lue, pour un compte neuf (2026-11-09). La
+      // première visite d'un visiteur ne s'appuie sur aucune d'elles.
+      parsed.notifications = def.seed.notifications
+        .filter(n => !_estNotifFabriqueeDepuisDemo(n)).map(n => ({ ...n }));
     }
     if (typeof parsed.landingSeen === "undefined") parsed.landingSeen = false;
     if (!Array.isArray(parsed.user.customPassions)) parsed.user.customPassions = [];
@@ -5690,6 +5726,9 @@ async function onbResendConfirmation() {
 // champ. Le message « accepte les conditions » désignerait alors un élément
 // invisible : très exactement le défaut refermé le 2026-09-18 sur le renvoi de
 // confirmation, déplacé d'un cran. On amène donc la case sous les yeux.
+// (2026-11-09) La case est désormais JUSTE AU-DESSUS de Google (index.html) : ce
+// refus devient un filet — Google touché sans cocher, ou « Créer mon compte » en
+// bas du formulaire, d'où la case est maintenant HORS champ, vers le haut.
 // ⚠️ LES DEUX GARDES L'APPELLENT — `onbGoogleAuth` ET `onbDoAuth` portent le même
 // refus mot pour mot. Posée à une seule porte, l'autre l'aurait oubliée (faute
 // déjà payée par `quickCreateProfile` et le Studio sur le plafond de passions).
@@ -8500,29 +8539,108 @@ function poserSeparateurExemples(list, repere) {
   for (var i = 0; i < cartes.length; i++) {
     if (cartes[i].getAttribute("data-postid") === repere.id) { cible = cartes[i]; break; }
   }
-  var genre = repere.reels > 0 ? "apres-reel" : "seul";
+  // Trois textes : après du réel, seul — ou PANNE (2026-11-09) : la lecture du
+  // réel a échoué faute de réseau et rien de réel n'est en mémoire. Annoncer
+  // alors « pas encore de publication » mentait sur la communauté.
+  var genre = repere.reels > 0 ? "apres-reel" : (filCommunauteInjoignable() ? "panne" : "seul");
+  // « Inviter quelqu'un » : pour un VRAI compte seulement (son lien porte
+  // `?inv=`, c'est lui qui fait suivre l'invitant), jamais sur une panne.
+  var invite = genre !== "panne" && _uidEstUnCompte();
   if (!cible) {
     // Carte pas encore montée (au-delà de la peinture rapide) : le complément
     // différé rappellera. Un séparateur resté d'un rendu précédent, lui, part.
     if (ancien) ancien.remove();
     return;
   }
-  if (ancien && ancien.nextElementSibling === cible && ancien.getAttribute("data-genre") === genre) return;
+  if (ancien && ancien.nextElementSibling === cible && ancien.getAttribute("data-genre") === genre
+      && ancien.hasAttribute("data-invite") === invite) return;
   if (ancien) ancien.remove();
   var sep = document.createElement("div");
   sep.className = "feed-exemples-sep";
   sep.setAttribute("role", "note");
   sep.setAttribute("data-genre", genre);
+  if (invite) sep.setAttribute("data-invite", "1");
+  var gestes = (genre === "seul"
+      ? '<button type="button" class="btn small primary feed-exemples-sep-cta" onclick="goTo(\'studio\')">Publier la première</button>'
+      : "")
+    + (genre === "panne"
+      ? '<button type="button" class="btn small primary feed-exemples-sep-cta" onclick="reessayerFilCommunaute(this)">Réessayer</button>'
+      : "")
+    + (invite
+      ? '<button type="button" class="btn small ghost feed-exemples-sep-invite" onclick="inviterDesAmis(\'fil\')">Inviter quelqu\'un</button>'
+      : "");
   sep.innerHTML = '<div class="feed-exemples-sep-titre"><span>Exemples PASSIO</span></div>'
     + '<div class="feed-exemples-sep-texte">'
     + (genre === "apres-reel"
         ? "Tu es à jour : au-dessus, toutes les publications de ta communauté. En dessous, des exemples pour découvrir ce qui se partage sur PASSIO, en attendant que vous soyez plus nombreux."
+        : genre === "panne"
+        ? "Impossible de charger les publications de ta communauté pour l'instant. En attendant, voici des exemples de ce qui s'y partage."
         : "Pas encore de publication de ta communauté par ici. En attendant, voici des exemples de ce qui s'y partage — les vraies publications passeront toujours au-dessus.")
     + '</div>'
-    + (genre === "seul"
-        ? '<button type="button" class="btn small primary feed-exemples-sep-cta" onclick="goTo(\'studio\')">Publier la première</button>'
-        : "");
+    + (gestes ? '<div class="feed-exemples-sep-actions">' + gestes + '</div>' : "");
   cible.parentNode.insertBefore(sep, cible);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// UNE PANNE N'EST PAS UNE COMMUNAUTÉ VIDE (2026-11-09)
+// ──────────────────────────────────────────────────────────────────────────
+// Reproduit en coupant `*.supabase.co` : `navigator.onLine` reste vrai (aucun
+// bandeau hors ligne), `supaLoadPosts` rend `[]` comme pour une table vide, et
+// le séparateur annonçait « Pas encore de publication de ta communauté par
+// ici » + « Publier la première » — un mensonge sur la communauté.
+// La lecture de TÊTE du fil (`supaLoadPosts`, app-08) rend ici son verdict :
+// panne RÉSEAU (`estEchecReseau`, seule autorité) ou serveur joint. Le
+// séparateur dit la panne tant que rien de réel n'a été lu — une page déjà en
+// mémoire, même ancienne, dit vrai sur la communauté. Aucun minuteur de plus :
+// le filet du fil et le retour en ligne relisent déjà la tête, et une réponse
+// du serveur efface la panne.
+var _filTeteEchecReseau = false;
+function noterLectureTeteFil(echecReseau) {
+  var avant = _filTeteEchecReseau;
+  _filTeteEchecReseau = echecReseau === true;
+  if (avant !== _filTeteEchecReseau) _majSeparateurExemples();
+}
+function filCommunauteInjoignable() {
+  if (!_filTeteEchecReseau) return false;
+  if (state && Array.isArray(state.supabasePosts) && state.supabasePosts.length) return false;
+  return !(window._feedExtraPosts || []).length;
+}
+// Le verdict change hors de tout rendu (le démarrage ne repeint pas le fil sur
+// une page vide) : on repose le séparateur DÉJÀ peint, sans toucher aux cartes.
+// Son repère se relit dans le DOM (il précède le premier exemple). Pas besoin
+// d'invalider `_feedDomSig` : chaque chemin de `renderFeed`, no-op compris,
+// repose le séparateur selon ce même verdict.
+function _majSeparateurExemples() {
+  var list = document.getElementById("feedList");
+  if (!list) return;
+  var sep = list.querySelector(":scope > .feed-exemples-sep");
+  var cible = sep && sep.nextElementSibling;
+  if (!cible || !cible.matches(".post[data-postid]")) return;
+  poserSeparateurExemples(list, {
+    id: cible.getAttribute("data-postid"),
+    reels: sep.getAttribute("data-genre") === "apres-reel" ? 1 : 0,
+  });
+}
+// « Réessayer » : UNE lecture de tête, au geste (jamais un minuteur), fusionnée
+// comme le tirer-pour-rafraîchir, puis un rendu complet.
+function reessayerFilCommunaute(btn) {
+  if (typeof supaLoadPosts !== "function") return;
+  if (btn) { btn.disabled = true; btn.textContent = "Chargement…"; }
+  supaLoadPosts().then(function (posts) {
+    if (Array.isArray(posts) && posts.length) {
+      var extra = (window._feedExtraPosts || []).filter(function (p) {
+        return !posts.some(function (x) { return x.id === p.id; });
+      });
+      state.supabasePosts = posts.concat(extra);
+    }
+    if (filCommunauteInjoignable()) toast("Toujours impossible de joindre PASSIO — réessaie dans un instant.");
+  }).catch(function (e) {
+    diagLog("fil_reessayer", e && e.message);
+  }).then(function () {
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = "Réessayer"; }
+    window._feedDomSig = null;
+    renderFeed();
+  });
 }
 function rankFeedPosts(posts) {
   var arr = (posts || []).slice();

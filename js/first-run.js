@@ -1545,6 +1545,13 @@
     try { closeModal(); } catch (e) {}
     var onb = document.getElementById("onboarding");
     if (!onb) return;
+    // ⚠️ LA BULLE DE REPÈRE NE SURVIT PAS À L'INSCRIPTION (2026-11-09). `.fr-tip`
+    // est en `fixed`, z-index 9000 ; `#onboarding` en 50 : mesuré sur iPhone, la
+    // bulle « Découvrir » couvrait les onglets puis les champs. `ecranOccupe()`
+    // empêche d'en POSER une, rien ne retirait celle déjà posée — même geste que
+    // `surNavigation`. Fermée sans « abandon » : au retour (`retourExploration`
+    // → `goTo("feed")`), le planificateur décide seul de la suite.
+    fermerBulle();
     onb.classList.add("active");
     var landing = document.getElementById("landing");
     if (landing) landing.classList.remove("active");
@@ -2581,6 +2588,9 @@
     filDecouverte: filDecouverte,
     contenuOuvert: contenuOuvert,
     etiquetteDemo: etiquetteDemo,
+    // Exposée pour `_irlWeeklyDigest` (app-07, 2026-11-09) : le résumé de la
+    // semaine comptait les activités d'exemple — un SEUL discriminant, celui-ci.
+    evenementDemo: evenementDemo,
     participationPossible: participationPossible,
     masquerChiffresDemo: masquerChiffresDemo
   };

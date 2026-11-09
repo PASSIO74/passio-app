@@ -241,25 +241,16 @@ function endTour() {
 }
 
 // ======== SHARE / FEEDBACK ========
+// « Inviter des amis » de Paramètres → Support. ⚠️ Plus de lien ni de texte
+// fabriqués ici (2026-11-09) : l'accueil nu, sans `?inv=`, court-circuitait la
+// boucle d'invitation, et le texte (« la beta… que je prépare », « leurs données
+// restent sur leur appareil ») parlait avec la voix du fondateur et promettait
+// le faux. Seule autorité : `inviterDesAmis` (app-06), appelée SANS `await`
+// depuis le clic — `navigator.share` exige le geste.
 function shareBeta() {
-  $("#devPanel").classList.remove("active");
-  // Lien beta SUIVI : c'est LE lien envoyé aux testeurs → on le tague (?plk) pour
-  // apparier l'envoi à une ouverture réellement confirmée dans le centre de pilotage.
-  // `origin + pathname` : ni fragment ni requête (audit 2026-11-06). Une page ouverte
-  // depuis un lien de connexion porte des jetons dans son fragment.
-  const rawLink = window.location.origin + window.location.pathname;
-  const link = (window.tel && tel.linkCreate) ? tel.tagUrl(rawLink, tel.linkCreate("beta", "invite")) : rawLink;
-  openModal(`
-    <div class="modal-handle"></div>
-    <div class="modal-title">Partager la beta</div>
-    <div class="modal-subtitle">Envoie ce lien à tes bêta-testeurs. Leurs données restent sur leur appareil.</div>
-    <div class="share-box">${escapeHtml(link)}</div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn primary block" onclick="navigator.clipboard && navigator.clipboard.writeText('${escapeJsArg(link)}');window.tel&&tel.linkFromUrl&&tel.linkShare(tel.linkFromUrl('${escapeJsArg(link)}'),'clipboard');toast('Lien copié');closeModal();">Copier le lien</button>
-    </div>
-    <div class="section-title" style="margin-top:14px;">Message prêt-à-envoyer</div>
-    <textarea class="textarea" readonly style="min-height:120px;">Salut ! Je te partage la beta de PASSIO, le réseau social basé sur les passions que je prépare. 5 min de test, je veux tes retours honnêtes. 👉 ${link}</textarea>
-  `);
+  var panneau = $("#devPanel");
+  if (panneau) panneau.classList.remove("active");
+  inviterDesAmis();
 }
 
 // ⚠️ CE FORMULAIRE N'ENVOYAIT RIEN, ET C'EST LE SEUL CANAL DE RETOUR DE LA BETA
@@ -4781,18 +4772,26 @@ let _feedTeteSeq = 0;
 let _feedTeteDerniereServie = 0;
 
 async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
+  // Hors du `try` : le `catch` final rend lui aussi le verdict réseau de la tête.
+  let teteSeq = 0;
   try {
     const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
     const cacheGeneration = typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0;
     const paginationAvant = _feedPagination;
-    const teteSeq = (!authorId && offset === 0 && !options.cursor) ? ++_feedTeteSeq : 0;
+    teteSeq = (!authorId && offset === 0 && !options.cursor) ? ++_feedTeteSeq : 0;
     const lectureValide = () => owner === (typeof MY_UID !== "undefined" ? MY_UID : null)
       && cacheGeneration === (typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0)
       && (options.generation === undefined || options.generation === _feedRefreshGeneration)
       && (!teteSeq || teteSeq > _feedTeteDerniereServie);
     // Une lecture de tête qui va rendre son verdict (données ou page vide) est
     // désormais la plus récente SERVIE : celles parties avant elle sont périmées.
-    const servir = () => { if (teteSeq && teteSeq > _feedTeteDerniereServie) _feedTeteDerniereServie = teteSeq; };
+    // Le serveur a répondu : le réseau n'est pas en panne (séparateur du fil, app-02).
+    const servir = () => {
+      if (teteSeq && teteSeq > _feedTeteDerniereServie) {
+        _feedTeteDerniereServie = teteSeq;
+        noterLectureTeteFil(false);
+      }
+    };
     const pageSize = authorId ? 60 : FEED_SERVER_PAGE_SIZE;
     const extraAvant = !authorId && offset === 0 ? new Set((window._feedExtraPosts || []).map(p => p.id)) : null;
     // ⚠️ `event_id` fait partie du SELECT depuis le 2026-08-28. Il était ÉCRIT
@@ -4822,7 +4821,14 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     if (error && /event_id/.test(error.message || "")) {
       ({ data, error } = await _interroger(COLONNES.replace(", event_id,", ",")));
     }
-    if (error) { diagLog("feed_lecture: " + error.message); return []; }
+    if (error) {
+      diagLog("feed_lecture: " + error.message);
+      // ⚠️ UNE PANNE N'EST PAS UNE PAGE VIDE (2026-11-09) : les deux rendent `[]`,
+      // seul ce verdict dit au séparateur du fil laquelle des deux annoncer.
+      // Une erreur SERVEUR prouve que le réseau répond.
+      if (teteSeq && teteSeq > _feedTeteDerniereServie) noterLectureTeteFil(estEchecReseau(error));
+      return [];
+    }
     if (!lectureValide()) return [];
     const lignesBrutes = data || [];
     // Ne publier ni curseur ni cache avant le dernier await d'hydratation.
@@ -5046,7 +5052,11 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       }
       return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
     });
-  } catch(e) { return []; }
+  } catch(e) {
+    // Une exception qui n'est pas réseau ne dit rien du réseau : verdict inchangé.
+    if (teteSeq && teteSeq > _feedTeteDerniereServie && estEchecReseau(e)) noterLectureTeteFil(true);
+    return [];
+  }
 }
 
 // ── Compléments d'une page de fil : compteurs, mon like, aperçus, réactions ──

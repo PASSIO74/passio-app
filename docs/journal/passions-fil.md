@@ -24,6 +24,7 @@
 - 🧱 LE RÉEL D'ABORD, LES EXEMPLES ENSUITE — ET DES EXEMPLES CRÉDIBLES (2026-11-01)
 - 🔁 « INFINITE RECURSION » SUR `passion_requests` — PLUS UNE DEMANDE NE PASSAIT, ET LA CORRECTION NAÏVE ROUVRAIT UN ORACLE (2026-11-04) — migration à appliquer APRÈS le client
 - 🌀 LA BOUCLE DU BAS DU FIL — LE ROUGE CI « Received: 12 » ÉTAIT UN DÉFAUT DU FENÊTRAGE, RÉVÉLÉ PAR CHROMIUM 158 (2026-11-07)
+- 📡 UNE PANNE N'EST PAS UNE COMMUNAUTÉ VIDE — le séparateur du fil dit l'échec de lecture (2026-11-09)
 
 ---
 
@@ -1021,3 +1022,38 @@ comme les suites `capacite-*` : sans quoi un `supaLoadPosts` tardif le remettrai
 Réinjections une à une, sous les deux moteurs : sentinelle toujours posée → « fin de liste » rouge ; frein désactivé
 → 92 et 91 lots (8 cartes), 45 sous 158 (20 cartes) ; garde `isConnected` retirée → 92 et 47 lots (8 cartes) ;
 réobservation retirée → « geste pendant un lot lent » rouge ; jeton du rendu vide retiré → 8 cartes périmées.
+
+---
+
+## 📡 UNE PANNE N'EST PAS UNE COMMUNAUTÉ VIDE — le séparateur du fil dit l'échec de lecture (2026-11-09)
+
+**Reproduit** en coupant `*.supabase.co` : `navigator.onLine` reste vrai (`#offlineBanner` caché, aucun
+`#serveurBanner`), `supaLoadPosts` rend `[]` — exactement comme une table vide — et le séparateur
+« Exemples PASSIO » (fiche 🧱) passait en `data-genre="seul"` : « Pas encore de publication de ta
+communauté par ici » + « Publier la première ». Un mensonge sur la communauté, surtout pour un compte
+neuf ou un visiteur (un compte qui revient a souvent une page réelle en mémoire, `supabasePosts` étant
+gardé dans le blob local).
+**Correctif.** ① La lecture de TÊTE de `supaLoadPosts` (app-08 : `offset 0`, sans auteur ni curseur)
+rend son verdict à `noterLectureTeteFil` (app-02) : `estEchecReseau(error)` sur une erreur du SDK (une
+erreur SERVEUR — 401, 42501 — prouve que le réseau répond), `true` sur une exception RÉSEAU du `catch`
+final (une autre exception ne dit rien du réseau : verdict inchangé), `false` dès que la tête est
+servie (`servir`). Même garde de fraîcheur que D-06 : une lecture dépassée par une tête plus récente ne
+parle pas. ② `filCommunauteInjoignable()` : panne ET rien de réel en mémoire (`supabasePosts`,
+`_feedExtraPosts`) — une page déjà lue, même ancienne, dit vrai sur la communauté. ③ Troisième genre
+`panne` : « Impossible de charger les publications de ta communauté pour l'instant. » + **Réessayer**
+(`reessayerFilCommunaute`, UNE lecture au geste, fusion du tirer-pour-rafraîchir, `_feedDomSig = null`
+puis `renderFeed`). ⚠️ **Le démarrage ne repeint pas le fil sur une page vide** (`if (initPosts.length
+> 0 || …)`) : un changement de verdict repose donc lui-même le séparateur DÉJÀ peint
+(`_majSeparateurExemples`, repère relu dans le DOM, cartes intactes). Inutile d'invalider
+`_feedDomSig` : tous les chemins de `renderFeed`, no-op compris, reposent le séparateur selon le même
+verdict. ⚠️ **Aucun minuteur de plus** : le filet du fil et le retour en ligne relisent déjà la tête,
+et leur succès efface la panne. supabase-js réessaie trois fois une lecture coupée : la panne s'affiche
+~6 s après le démarrage, pas avant.
+**Hors lot, connu** : l'état VIDE du fil (aucun exemple ni réel pour la sélection : « Sois le premier à
+publier ») ne distingue toujours pas la panne ; seul le séparateur le fait.
+Verrou : `tests/e2e/fil-panne-reseau.spec.js` (4) — démarrage avec Supabase coupé, puis réseau rendu ;
+le banc pose le projet vide du CONTEXTE avant la coupure, pour que « Réessayer » n'atteigne jamais la
+production. **Éprouvé par RÉINJECTION de sept mutations**, chacune rouge : verdict d'erreur retiré (4
+rouges), genre `panne` jamais choisi (4), toute erreur prise pour une panne (②), mémoire ignorée (③),
+« Réessayer » sans lecture (①②②bis), changement de verdict sans repeint du séparateur (4), succès sans
+verdict (② bis).
