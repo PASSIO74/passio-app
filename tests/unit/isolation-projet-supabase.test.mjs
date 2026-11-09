@@ -97,6 +97,16 @@ test("① lectures : `[]` exposé, HEAD à 0, `.single()` en 406, privilèges d'
   assert.equal((await repondre({ url: "/rest/v1/events?select=id,title" })).status, 200, "events : colonnes publiques lisibles");
   // Une table INCONNUE du relevé : la majorité, lisible sous RLS, donc vide.
   assert.deepEqual((await repondre({ url: "/rest/v1/table_de_demain?select=*" })).json, []);
+
+  // Le référentiel des passions : le MIROIR, paginé comme PostgREST — jamais `[]`
+  // (une suite qui ne pose que le projet vide lisait le vrai référentiel).
+  const page0 = await repondre({ url: "/rest/v1/passions?select=id&status=eq.active&offset=0&limit=1000" });
+  assert.equal(page0.status, 200);
+  assert.equal(page0.json.length, 1000);
+  assert.deepEqual(Object.keys(page0.json[0]), ["id"]);
+  // …mais une ÉCRITURE sur `passions` reste jugée par le projet vide (la RLS
+  // filtre : zéro ligne touchée, rien ne part).
+  assert.equal((await repondre({ methode: "PATCH", url: "/rest/v1/passions?id=eq.musique" })).status, 204);
 });
 
 test("② écritures : refus de la RLS, zéro ligne, et les deux tables qu'un visiteur alimente", async () => {

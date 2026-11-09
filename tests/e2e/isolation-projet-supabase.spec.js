@@ -28,7 +28,7 @@
 // pas `ERR_FAILED` (abandon par une route) est donc, lui aussi, une requête partie.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded, projetSupabaseVide } = require("./app-helper");
+const { bootOnboarded, projetSupabaseVide, miroirPassions } = require("./app-helper");
 const { GATE_KEY, GATE_TOKEN } = require("./gate-helper");
 
 const SUPABASE = /^https:\/\/[a-z0-9]{20}\.supabase\.co\//;
@@ -304,6 +304,15 @@ test.describe("Isolation — le projet Supabase vide des suites locales", () => 
     await page.waitForFunction(() => !!window.supa && !!window._supaReal, null, { timeout: 20000 });
     const r = await parLeClient(page, (supa) => supa.from("video_lives").select("*").limit(1));
     expect(r.data).toEqual([]);
+    // ⚠️ Le référentiel des passions reste COMPLET : le projet vide sert le miroir,
+    // pas une table vide — une suite qui ne pose que lui lisait le vrai
+    // référentiel avant ce lot, et le plancher des 19 passions en changerait le sujet.
+    await page.waitForFunction(
+      () => typeof window._referentielEtat === "function" && window._referentielEtat().complet,
+      null,
+      { timeout: 15000 },
+    );
+    expect(await page.evaluate(() => window._referentielEtat().taille)).toBe(miroirPassions().length);
     await espion.calme();
     expect(espion.partis).toEqual([]);
   });

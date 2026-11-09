@@ -636,6 +636,16 @@ function repondreProjetVide(route) {
   const jeton = String(h.authorization || "").replace(/^Bearer\s+/i, "").trim();
   const jetonFictif = !!jeton && jeton !== String(h.apikey || "").trim();
   const p = url.pathname;
+  // ⚠️ LE RÉFÉRENTIEL DES PASSIONS : LE MIROIR, PAS `[]`. Une suite qui ne pose
+  // que ce projet vide (sans la route de page de `sansDonneesDistantes`) lisait
+  // le VRAI référentiel avant ce lot ; lui rendre une table vide la ferait
+  // tomber au plancher des 19 passions du socle — exactement ce que
+  // `servirPassions` refuse de faire, pour les raisons écrites plus haut.
+  if (req.method() === "GET" && MOTIF_PASSIONS_DISTANTES.test(req.url())) {
+    let miroir = null;
+    try { miroir = miroirPassions(); } catch (e) {}
+    if (miroir) return servirPassions(route);
+  }
   if (p.startsWith("/rest/v1/")) return repondreRestVide(route, req, url, jetonFictif);
   if (p.startsWith("/auth/v1/")) return repondreAuthVide(route, req, url);
   if (p.startsWith("/storage/v1/")) return repondreStorageVide(route, req);
