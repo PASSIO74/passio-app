@@ -317,6 +317,14 @@ verifier "la sonde n'a rien laissé dans realtime.messages" "0" "$(Q "select cou
 echo "② Les publications"
 verifier "supabase_realtime : aucune table, les deux de staging comprises" "0" \
   "$(Q "select count(*) from pg_publication_rel pr join pg_publication p on p.oid = pr.prpubid where p.pubname = 'supabase_realtime';")"
+# ⚠️ L'ÉTAT FINAL EST LA SOURCE QUE LIT LA GATE CI : `audit:realtime` compare
+# `scripts/realtime-publication.json` au CODE, ce banc — celui de la migration
+# de publication la plus récente — le compare à la BASE (relais repris de
+# `migration-realtime-diffusion-privee.test.sh`, qui rend désormais à son
+# attendu les neuf tables retirées ici).
+verifier "l'état final de la publication EST scripts/realtime-publication.json" \
+  "$(node -e "const d=require('$RACINE/scripts/realtime-publication.json');console.log(d.publiees.slice().sort().join(' '))")" \
+  "$(Q "select coalesce(string_agg(c.relname, ' ' order by c.relname), '') from pg_publication_rel pr join pg_publication p on p.oid = pr.prpubid join pg_class c on c.oid = pr.prrelid where p.pubname = 'supabase_realtime';")"
 verifier "la publication des messages diffusés porte toujours realtime.messages" "1" \
   "$(Q "select count(*) from pg_publication_rel pr join pg_publication p on p.oid = pr.prpubid
          where p.pubname = 'supabase_realtime_messages_publication' and pr.prrelid = 'realtime.messages'::regclass;")"

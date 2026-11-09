@@ -1988,6 +1988,21 @@ client. **La contre-revue est le seul contrôle humain de cette PR** : rien de c
 - ⚠️ **UN RETRAIT N'EST PLUS `{ id }`** : `retrait-interactions-reel` ① exigeait la charge CDC d'un DELETE
   sous RLS (la clé seule, R37) ; il exige désormais la ligne entière, sur `fil:<publication>`. Le chemin
   `{ id }` → index reste dans le client et dans les bancs locaux, qui l'exercent par `user:<moi>`.
+- ⚠️ **TROIS BANCS ANCIENS COMPARAIENT LEUR ÉTAT AU MANIFESTE** (`migration-realtime-publication`,
+  `-telemetry`, `-diffusion-privee`) : rouges à la première CI. La règle existait déjà — le banc de la
+  migration de publication la plus RÉCENTE compare l'état final au manifeste, les plus anciens rendent à
+  leur attendu ce qui a été retiré depuis — ; le relais passe au banc de ce lot.
+- ⚠️ **UN DÉMARRAGE PLUS COURT A FAIT ROUGIR UNE COURSE DU BANC** : `audit-2026-11-participants-compte`
+  (« a bis », « c », « h0 bis ») rougissait en CI à chaque essai. Le bloc différé de `supaInit`
+  (`rafraichirEvenements(true)`, à 2 s) tombait au milieu du scénario et remplaçait l'activité par une
+  lecture d'avant le geste. La course existait (1 rouge sur 27 en local sur cette PR, 0 sur la première) ;
+  le banc attend désormais ces blocs (`demarrageTermine` : les lectures de stories, qu'ils lancent seuls).
+  ⚠️ **Il y en a DEUX** : `supaInit` tourne au démarrage puis sur `onAuthStateChange`, et chaque passage
+  programme son bloc — deux lectures de stories à ~0,5 s d'écart dans le journal du faux serveur.
+  Attendre la première seulement déplaçait la course (« c » rougissait alors sur le compteur) ; le banc
+  attend que leur nombre ne bouge plus pendant 1,5 s. Deux défauts PRODUIT, révélés et non traités ici :
+  une relecture partie avant un « je viens » écrase son compteur optimiste (une minute au plus), et le
+  démarrage relit DEUX fois stories, activités et notifications.
 
 **Ce qui reste.** La mesure APRÈS se lit au canal ① une fois la migration appliquée en production et les
 anciens clients rechargés : le compte des appels de `list_changes` doit cesser de croître pendant une
