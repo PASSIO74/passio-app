@@ -17,7 +17,7 @@
 // ══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
+import Module, { createRequire } from "node:module";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,21 +28,26 @@ const E2E = path.join(RACINE, "tests", "e2e");
 const AIDE = path.join(E2E, "app-helper.js");
 
 // `projetPlaywright()` lit `require("@playwright/test").test.info()` À L'APPEL :
-// on remplace le module dans le cache de `require`, et on change de projet à
-// volonté entre deux appels.
-const requireAide = createRequire(AIDE);
-const cheminPlaywright = requireAide.resolve("@playwright/test");
+// on intercepte ce `require` au CHARGEMENT, et on change de projet à volonté
+// entre deux appels.
+// ⚠️ PAS PAR `require.resolve` + `require.cache` : le job « Audits statiques et
+// bancs serveur » n'installe PAS `node_modules` — la résolution levait
+// `Cannot find module '@playwright/test'` et le fichier entier tombait au
+// chargement (vécu au premier passage CI de la PR #799). `Module._load` reçoit
+// la DEMANDE avant toute résolution : rien n'a besoin d'être installé.
 let projetSimule = "local";
-require.cache[cheminPlaywright] = {
-  id: cheminPlaywright, filename: cheminPlaywright, loaded: true,
-  exports: {
-    test: {
-      info() {
-        if (projetSimule === null) throw new Error("test.info() hors d'un test");
-        return { project: { name: projetSimule } };
-      },
+const fauxPlaywright = {
+  test: {
+    info() {
+      if (projetSimule === null) throw new Error("test.info() hors d'un test");
+      return { project: { name: projetSimule } };
     },
   },
+};
+const chargerOrigine = Module._load;
+Module._load = function (demande, ...reste) {
+  if (demande === "@playwright/test") return fauxPlaywright;
+  return chargerOrigine.call(this, demande, ...reste);
 };
 const { repondreProjetVide, projetSupabaseVide } = require(AIDE);
 
