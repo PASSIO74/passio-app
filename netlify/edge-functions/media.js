@@ -39,7 +39,10 @@
 //    URL `/media/…?width=` d'un appareil pas encore à jour repartaient ICI vers
 //    `render/image` — éteindre la transformation les aurait cassées. Elles
 //    reçoivent désormais l'OBJET que l'URL désigne, exactement ce que rend
-//    `passioThumb` : la transformation s'éteint chez Supabase sans rien casser.
+//    `passioThumb`. La transformation pourra s'éteindre chez Supabase sans rien
+//    casser, mais PAS le jour même : un navigateur garde un jour l'ancien renvoi
+//    vers `render/image` (TTL_RENVOI), et un onglet resté sur un build d'avant #795
+//    la demande directement — précondition écrite dans docs/CDN_MEDIAS.md.
 //    Verrou : tests/unit/media-edge.test.mjs ⑪ (ni ici, ni dans le client).
 // Toute réponse porte le bac à sable (`enTetesSecurite`) : le bloc [[headers]]
 // de netlify.toml ne s'applique pas aux réponses d'une Edge Function.

@@ -1824,7 +1824,9 @@ télémétrie étaient déjà durcis (lots de septembre et d'octobre) ; **les mu
   monde sur le même Wi-Fi ; Turnstile protège déjà) ; passer la connexion d'Auth en pourcentage
   (avis du linter, utile seulement le jour d'un changement de calcul).
 - Supabase › Storage › Settings : **éteindre la transformation d'image**. PASSIO n'en demande plus
-  aucune ; l'URL `render/image` reste publique tant qu'elle est allumée.
+  aucune ; l'URL `render/image` reste publique tant qu'elle est allumée. ⚠️ Vrai pour `passioThumb`
+  seulement : le renvoi `/media/…?width=` la demandait encore — fermé par #800, avec la précondition
+  d'extinction (fiche suivante).
 
 **Ce qui reste — serveur, relevé par `passio-red-team` (antérieur à ce lot, dit ici pour être suivi).**
 - Un déclencheur `BEFORE INSERT OR UPDATE OF passion_id` sur `posts` qui refuse une passion non
@@ -1865,14 +1867,28 @@ chiffrer une capacité, lire `origin/main` et le `release.json` servi, jamais la
 transformation chez Supabase, le geste que #795 recommande, aurait donc cassé ces vignettes-là. Elles
 reçoivent désormais l'OBJET, exactement ce que rend `passioThumb` ; la liste fermée des largeurs ne
 borne plus que la clé de cache du bord. Verrou : `tests/unit/media-edge.test.mjs` ⑪ — aucune forme de
-requête n'est renvoyée vers la transformation, et aucune ligne du code servi (`js/` hors `vendor/`,
-`netlify/`, `supabase/functions/`, `sw.js`, `index.html`) ne la nomme hors commentaire. Éprouvé par
-RÉINJECTION : renvoi rendu à `render/image` (①, ⑦, ⑪ rouges) ; miniature transformée ajoutée au
-client (⑪ rouge, la ligne fautive nommée).
-**Le geste humain qui en découle, gratuit : Supabase › Storage › Settings → éteindre « Enable Image
-Transformations ».** Allumée, `render/image` reste une URL publique : n'importe qui peut épuiser les
-100 images d'origine du mois, et au-delà, spend cap actif, s'applique la politique d'usage équitable
-de Supabase (avertissement, puis restrictions possibles du projet entier).
+requête n'est renvoyée vers la transformation, et rien de ce que Netlify sert ou exécute (`js/` hors
+`vendor/`, `pilotage/`, `data/`, `netlify/`, `supabase/functions/`, `sw.js`, `index.html`,
+`styles.css`, `netlify.toml`, `_headers`) ne la demande — ni en clair (`render/`), ni par l'option
+`transform` du SDK (`getPublicUrl`, `createSignedUrl(s)`, `download` avec options), qui fabrique
+`render/image` lui-même. ⑫ éprouve l'effaceur de commentaires qui sert ⑪ : un « // » dans une URL n'est
+pas un commentaire, du code après un « /* … */ » reste du code, un gabarit imbriqué reste du texte.
+Éprouvé par RÉINJECTION : renvoi rendu à `render/image` (①, ⑦, ⑪ rouges) ; miniature transformée
+ajoutée au client, option `transform` ajoutée à app-08, URL transformée derrière un commentaire de
+bloc dans le pilotage (⑪ rouge chaque fois, la ligne fautive nommée).
+⚠️ **ÉTEINDRE LA TRANSFORMATION N'EST PAS SANS RISQUE LE JOUR MÊME** (contre-revue `audit-passio` de
+#800, P2-1) : un navigateur garde UN JOUR le renvoi de #795 vers `render/image` (`TTL_RENVOI`), et un
+onglet resté sur un build d'avant #795 la demande directement chez Supabase (`js/release-guard.js` ne
+force jamais de rechargement). **Le geste humain, gratuit : Supabase › Storage › Settings → éteindre
+« Enable Image Transformations », au moins 24 h après la mise en ligne de #800, une fois constatés
+zéro `/render/image/` sur 24 h dans les journaux Storage (ou Usage › Image Transformations à plat) et
+plus aucun `release/version_skew` d'un build antérieur à #795** (`docs/CDN_MEDIAS.md`). Allumée,
+`render/image` reste une URL publique : n'importe qui peut épuiser les 100 images d'origine du mois,
+et au-delà, spend cap actif, s'applique la politique d'usage équitable de Supabase (avertissement,
+puis restrictions possibles du projet entier).
+Laissé pour un lot suivant, antérieur à #800 : ⑩ (« la liste couvre chaque largeur du client ») n'a
+plus d'objet depuis que `passioThumb` ignore la largeur — retirer ces arguments morts le ferait
+rougir ; ce sont désormais les largeurs FIGÉES des builds d'avant #795 qu'il faut couvrir.
 
 **Capacité au 2026-11-09 au soir — mesuré :** 16 comptes (15 confirmés), 2 connexions en 24 h,
 7 appareils du public en 3 jours ; base 120 Mo / 8 Go, médias 30 Mo / 100 Go ; calcul Micro
@@ -1883,8 +1899,8 @@ de Supabase (avertissement, puis restrictions possibles du projet entier).
 | E-mails d'inscription | 30/h (défaut Supabase en SMTP perso), 300/j (Brevo gratuit) | un pic de lancement ; Google n'y est pas soumis |
 | **Messages temps réel** | **5 M/mois** | **~1 000 actifs/jour (600 à 2 000)** |
 | Messages temps réel par seconde | 500/s (au-delà, déconnexions `tenant_events`) | 300 à 500 comptes connectés ensemble |
-| Connexions temps réel | 500 | 500 comptes (un visiteur n'en ouvre pas) |
-| Sortie en cache Supabase (médias) | 250 Go/mois | ~1 400 actifs/jour (fiche précédente, ~2 Mo/session) |
+| Connexions temps réel | 500 | 500 sockets — un onglet ou appareil connecté chacun (un visiteur n'en ouvre pas ; `test:prod` et le tableau de bord comptent aussi) |
+| Sortie en cache Supabase (médias) | 250 Go/mois | ~1 400 actifs/jour (fiche précédente : ~2 Mo par session, ~3 sessions par jour et par actif) |
 | Bande passante Netlify (l'app seule) | 100 Go/mois | ~3 000 appareils/jour |
 | Base Micro | ~400 req/s (banc du 14/09) | 2 000 à 4 000 personnes actives ensemble |
 

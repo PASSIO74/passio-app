@@ -22,10 +22,21 @@
 |---|---|
 | `cdnUrl()` (app-08) | Point UNIQUE de tout envoi, identité tant que `PASSIO_CDN_BASE` est vide. Un futur CDN (Cloudflare R2 : sortie gratuite, mais un nom de domaine, ~10 €/an) n'y sera qu'une valeur à poser. |
 | `urlMediaDirecte()` (app-02) | Lit une ancienne URL du relais à sa SOURCE (seau `content` seulement ; une pièce jointe garde sa forme pour le résolveur signé). Appelée par `passioThumb`, `_reelVideoSrc`, les couvertures d'activité et de passion, les cartes ; `og:image` des aperçus est rendue sous la forme directe (`netlify/lib/apercu-coeur.js`). |
-| `passioThumb()` (app-02) | **Ne demande plus AUCUNE transformation d'image** : rend l'objet (sa légère, ou l'ancien tel quel). La transformation compte 100 images d'origine/mois en Pro et son URL est publique — un quota que n'importe qui pouvait épuiser. Elle peut être éteinte chez Supabase sans rien casser. |
+| `passioThumb()` (app-02) | **Ne demande plus AUCUNE transformation d'image** : rend l'objet (sa légère, ou l'ancien tel quel). La transformation compte 100 images d'origine/mois en Pro et son URL est publique — un quota que n'importe qui pouvait épuiser. Elle peut être éteinte chez Supabase — **après la précondition écrite plus bas**. |
 | `netlify/edge-functions/media.js` | `/media/content/<chemin>` → **301** vers `…/storage/v1/object/public/content/<chemin>`, **avec ou sans** `?width=W&quality=75` : depuis la suite du 2026-11-09, une ancienne miniature reçoit l'OBJET, jamais `render/image` (la liste fermée ne borne plus que la clé de cache du bord). Aucune lecture d'origine, renvoi gardé un jour par le navigateur. Verrou : `tests/unit/media-edge.test.mjs` (⑪ : ni renvoi ni ligne de code servi vers la transformation). |
 | Version légère à l'envoi | `supaUploadMedia(…, { legere: true })` pour les publications, et depuis le 2026-11-09 l'avatar et la photo de passion (352 px), la couverture, le fond de passion, la couverture d'activité et de bobine (720 px) : sans elle, `passioThumb` demandait une **transformation d'image**, plafonnée à 100 images d'origine par mois en Pro (19/100 avec dix comptes le 20/09 — un mur vers 50 profils avec photo). Verrou : `tests/e2e/capacite-images-legeres.spec.js`. |
 | `{ cache: "3600" }` | Un chemin RÉÉCRIT à l'identique (`upsert` d'une photo de passion, couverture d'une activité modifiée) se garde une heure ; tout le reste un an. Supabase purge son CDN à la réécriture, le navigateur non. |
+
+**Éteindre la transformation d'image (Supabase › Storage › Settings) — la précondition.**
+PASSIO n'en demande plus aucune depuis #800 (renvoi `/media/…?width=` compris), mais deux
+sources d'anciennes demandes vivent encore un temps : un navigateur garde **un jour** le
+renvoi de #795 vers `render/image` (`TTL_RENVOI`), et un onglet ou une PWA resté sur un build
+d'avant #795 la demande directement chez Supabase (`js/release-guard.js` ne force aucun
+rechargement). Éteindre **au moins 24 h après la mise en ligne de #800**, et seulement après
+avoir constaté : zéro requête `/render/image/` sur 24 h dans les journaux Storage de Supabase
+(ou le compteur Usage › Image Transformations à plat), et plus aucun événement
+`release/version_skew` venu d'un build antérieur à #795. Le coût d'un oubli est une vignette
+grise sur un appareil en retard, jamais une panne.
 
 **Ce qui ne bouge pas :** le seau `attachments` reste privé et se lit par URL signée ;
 `sw.js` n'intercepte toujours ni `/media/*` ni une autre origine ; aucune ligne de la base
@@ -78,7 +89,7 @@ contredisait ce document et personne ne le déployait. À vérifier une fois : a
 
 ---
 
-## Les pièces
+### Les pièces (du relais, 2026-09-11)
 
 | Pièce | Fichier | Rôle |
 |---|---|---|
@@ -90,7 +101,7 @@ contredisait ce document et personne ne le déployait. À vérifier une fois : a
 | Tests | `tests/e2e/app-helper.js` (`MOTIF_MEDIAS_DISTANTS`), `tests/e2e/cdn-medias.spec.js` | l'interception des médias distants couvre aussi `/media/(content|attachments)/` — sans quoi une suite chargeant un profil réel irait chercher ses images sur le CDN de production ; 3 cas verrouillent les trois helpers. |
 | Déploiement | `netlify.toml` → `edge_functions = "netlify/edge-functions"` | la CLI (`netlify deploy --dir dist`, lancée depuis la racine) embarque la fonction avec le site. |
 
-## Ce qu'il faut savoir — les neuf règles de la fonction, chacune payée par un défaut
+### Ce qu'il faut savoir — les neuf règles du relais, chacune payée par un défaut
 
 Une revue adversariale (trois lentilles, contre-expertise) a relu le premier jet le
 2026-09-11 et confirmé neuf défauts. Chacun est devenu une règle du fichier :
@@ -137,7 +148,7 @@ Et côté app :
   CDN déjà stockées continuent d'être servies par la fonction. Les tests restent verts dans
   les deux états — un kill switch qui rougit la CI n'en est pas un.
 
-## Vérifier en production
+### Vérifier le relais en production (historique)
 
 ```
 curl -sI https://passio-app.netlify.app/media/content/avatars/<uid>/<fichier>.jpg
@@ -152,7 +163,7 @@ curl -sI https://passio-app.netlify.app/media/content/avatars/<uid>/<fichier>.jp
 Dans l'app : publie une photo, ouvre l'onglet Réseau, l'URL du média commence par
 `passio-app.netlify.app/media/`. Une vidéo de 25 Mo doit se lire jusqu'au bout.
 
-## Ce que ça change pour la capacité
+### Ce que le relais changeait pour la capacité (historique)
 
 | Mur | Avant | Après |
 |---|---|---|
