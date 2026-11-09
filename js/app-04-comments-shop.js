@@ -1314,16 +1314,19 @@ async function openComments(postId) {
   // Bouton d'envoi désactivé tant que le champ est vide (état initial).
   var _nc = document.getElementById("newComment");
   if (_nc) _syncComposerSendState(_nc);
+  // Le sujet privé de cette discussion (`fil:<id>`, app-08) : la demande part
+  // AVANT la lecture ci-dessous, qui finit donc le plus souvent après lui.
+  try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
 
   // Charger les vrais commentaires Supabase — SAUF si ce fil a déjà été chargé il
   // y a moins de 20 s : rouvrir la même discussion est alors INSTANTANÉ, sans
   // re-fetch réseau (~300-700 ms) ni re-render. C'est le correctif « ouverture
-  // fluide ». Pendant ces 20 s, le temps réel `comment_interactions` tient les
-  // interactions à jour : un AJOUT par sa charge, un RETRAIT par l'index des
-  // lignes lues ou reçues (R37, 2026-11-05 — avant, aucun retrait d'un autre
-  // compte n'arrivait : la charge d'un DELETE n'a que l'`id`). Ce que le temps
-  // réel ne voit pas, il ne le rattrape pas : un événement tombé pendant que le
-  // socket dormait (repos, onglet masqué) attend la prochaine lecture.
+  // fluide ». Pendant ces 20 s, le temps réel tient la discussion à jour : un
+  // AJOUT par sa charge, un RETRAIT par la ligne (ou, par `postgres_changes`,
+  // par l'index des lignes lues ou reçues — R37). Depuis le 2026-11-09, c'est le
+  // sujet privé `fil:<id>` de la discussion qui écoute, et il reste joint 20 s
+  // après la fermeture : le cache et lui ont la même durée. Un événement tombé
+  // pendant que le socket dormait est relu au réveil (`_rtRattraper`).
   if (_willLoad) {
     try {
       // Première page (les plus récents) ; « précédents » charge la suite.
@@ -1364,6 +1367,63 @@ async function openComments(postId) {
     }
   }
 }
+
+// Relit la discussion d'une publication À L'ÉCRAN — la première page, ses
+// interactions — et la repeint partout où elle est affichée (modale, détail,
+// compteur de la carte). C'est la relecture du sujet `fil:<id>` (app-08) :
+// rattrapage après l'abonnement ou le réveil du socket, repli quand le sujet
+// est en panne. Lève si la page n'a pas pu être lue (une panne n'est pas un
+// calme : l'appelant garde sa cadence vive). `opts.epingle === false` : ne pas
+// relire l'épingle (`hydrateCommentInteractions`).
+async function _relireDiscussionPublication(postId, opts) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post || typeof supaLoadComments !== "function") return false;
+  var page = await supaLoadComments(postId);
+  if (!page) throw new Error("page de commentaires illisible");
+  post = findPostAnywhere(postId) || post;   // le filet a pu remplacer l'objet pendant la lecture
+  // ⚠️ LA PAGE EST UN INSTANTANÉ, L'ÉCRAN A PU AVANCER PENDANT SA LECTURE
+  // (relecture adversariale du lot). Deux choses qu'elle ne peut pas savoir :
+  //   · un commentaire arrivé PENDANT la lecture — reçu par le sujet, ou le mien
+  //     tout juste confirmé —, plus récent que sa ligne la plus récente : il
+  //     reste (la déduplication empêcherait sa seconde copie de le remettre) ;
+  //   · les interactions déjà appliquées : la fusion rebâtit chaque commentaire
+  //     depuis la page, et une hydratation en ÉCHEC repeindrait « 🤍 0 » ; on les
+  //     reporte alors par identifiant (réussie, elle dit la vérité — y compris
+  //     « plus rien » pour un commentaire sans ligne).
+  var avant = (post.comments || []).slice();
+  var dansLaPage = new Set(page.map(function (c) { return c.id; }));
+  var plusRecent = page.reduce(function (m, c) { return Math.max(m, (c && c.createdAt) || 0); }, 0);
+  var arrives = avant.filter(function (c) {
+    return c && c.fromSupabase && !c._epingleGarde && !dansLaPage.has(c.id) && (c.createdAt || 0) > plusRecent;
+  });
+  var connus = new Map(avant.filter(function (c) { return c && c.id; }).map(function (c) { return [c.id, c]; }));
+  _fusionnerPageCommentaires(post, page);
+  post = findPostAnywhere(postId) || post;
+  if (arrives.length) {
+    var liste = post.comments || (post.comments = []);
+    var ajoutes = 0;
+    arrives.forEach(function (c) { if (!liste.some(function (x) { return x.id === c.id; })) { liste.push(c); ajoutes++; } });
+    liste.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    if (ajoutes) _copiesDiscussion(postId, post).forEach(function (c) { if (Number.isSafeInteger(c.commentsTotal)) c.commentsTotal += ajoutes; });
+  }
+  var hydratee = false;
+  if (typeof hydrateCommentInteractions === "function") {
+    try { hydratee = (await hydrateCommentInteractions(post, opts)) === true; } catch (e) {}
+  }
+  if (!hydratee) {
+    (post.comments || []).forEach(function (c) {
+      var v = connus.get(c.id);
+      if (!v || v === c) return;
+      ["likes", "likedBy", "replies", "emojis"].forEach(function (k) { if (c[k] === undefined && v[k] !== undefined) c[k] = v[k]; });
+    });
+  }
+  window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
+  window._cmtThreadLoadedAt[postId] = Date.now();
+  if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(postId);
+  try { _patchPostCommentCount(postId); } catch (e) {}
+  return true;
+}
+window._relireDiscussionPublication = _relireDiscussionPublication;
 
 function submitComment(postId) {
   // Mode invité (première visite) : cette action engage le compte. Le gate
@@ -1690,13 +1750,20 @@ function _ciBalayerEcranPlusTard() {
   }, CI_ECRAN_DELAI_MS);
 }
 
-// Gestionnaire DELETE de `comment_interactions` (liaison de `_creerCanalDb`,
-// app-08). `old` vaut `{ id }` : la ligne est retrouvée dans l'index.
+// Gestionnaire DELETE de `comment_interactions` (app-08, `_rtInteractionRetiree`).
+// Par la liaison de TRANSITION `postgres_changes`, `old` vaut `{ id }` : la
+// ligne est retrouvée dans l'index. Par un sujet privé (`fil:<id>`,
+// `user:<auteur>`, 2026-11-09), le serveur pousse la LIGNE ENTIÈRE : à défaut
+// d'index, c'est elle qui décide — sans lecture des identifiants.
 function _commentInteractionRetiree(old) {
   try {
     var id = old && typeof old.id === "string" ? old.id : null;
     if (id) _ciNoterTombe(id);
     var r = id ? _ciOublier(id) : null;
+    if (!r && old && old.comment_id && old.kind) {
+      r = { id: id, comment_id: old.comment_id, post_id: old.post_id || null, user_id: old.user_id || null,
+        kind: old.kind, payload: old.payload == null ? null : old.payload, created_at: old.created_at == null ? null : old.created_at };
+    }
     if (r) {
       // Une réaction de PUBLICATION : `fil_compteurs` la rendrait sans `id`, et
       // la pierre par identifiant ne la reconnaîtrait pas (RV-39).
@@ -2929,6 +2996,8 @@ function openCommentSheet(threadId, title) {
     + '<button class="btn primary" onclick="submitCommentSheet(\'' + escapeJsArg(threadId) + '\')">Envoyer</button>'
     + '</div>'
   );
+  // Le sujet privé de cette discussion (`fil:<id>`, app-08).
+  try { if (typeof _filsRtReconcilier === "function") _filsRtReconcilier(); } catch (e) {}
   // Hydrate / charge les commentaires distants selon le contexte.
   if (thread.kind === "event" && typeof _loadEventComments === "function") {
     _loadEventComments(threadId); // écrit dans #cmtThreadList (cf. _renderEventComments)

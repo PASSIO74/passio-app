@@ -89,6 +89,19 @@ async function passer(page, ms = 17000) {
   await page.evaluate(() => Promise.resolve());
 }
 async function lectures(page) { return page.evaluate(() => __headReads); }
+// Fige l'horloge `marge` ms devant la page. Le temps coule sous `clock.install()` :
+// sous charge, plus de 50 ms passaient parfois entre la lecture de `Date.now()`
+// et `pauseAt`, qui refuse une date passée (« Cannot fast-forward to the past »,
+// cas « ancienne lecture complète … : clic », 2026-11-09, deux ouvriers). On
+// relit l'heure et on réessaie, sans élargir la marge.
+async function figer(page, marge = 50) {
+  for (let essai = 0; ; essai++) {
+    const cible = await page.evaluate((m) => Date.now() + m, marge);
+    try { await page.clock.pauseAt(new Date(cible)); return; } catch (e) {
+      if (essai >= 4 || !/past/i.test(String(e && e.message))) throw e;
+    }
+  }
+}
 
 test("phase initiale fixe : scroll, visibilité et stop/start ne la retirent ni ne la repoussent", async ({ page }) => {
   await preparer(page, 3, 0.5);
@@ -299,6 +312,21 @@ for (const disposition of ["pending", "success", "failure"]) {
 
 test("like puis unlike après800ms : écritures ordonnées, HEAD attend le dernier règlement", async ({ page }) => {
   await preparer(page);
+  // ⚠️ L'HORLOGE EST FIGÉE AVANT LE PREMIER CLIC (2026-11-09). `clock.install()`
+  // laisse le temps s'écouler : le premier relevé part 200 ms après
+  // `startPostLikeRefresh`, et le clic de Playwright en prend 55 à 280 en temps
+  // réel (mesuré sur `main` comme sur la branche du lot « 📴 », 12 essais
+  // chacun, 279 ms une fois sur `main`). Quand le relevé gagnait, la carte
+  // peignait « 7 » avant le clic, et le cas rougissait sur une course du banc,
+  // pas du produit — 4 essais sur 34 sur la branche, 0 sur 34 sur `main`, un
+  // écart que la durée mesurée du clic n'explique pas : la course est des deux
+  // côtés. Le cycle est arrêté, l'horloge figée, puis le cycle repart sous
+  // l'horloge figée : le temps n'avance plus que par `passer`.
+  await page.clock.pauseAt(new Date(await page.evaluate(() => { stopPostLikeRefresh(); return Date.now() + 1000; })));
+  await page.evaluate(() => {
+    _postLikeRefreshNextAt = 0; _postLikeRefreshPhaseIdentity = null; _postLikeRefreshEntries.clear();
+    startPostLikeRefresh();
+  });
   await page.locator('#likes-test-stage [data-action="like"]').click();
   await passer(page, 1000);
   await page.locator('#likes-test-stage [data-action="like"]').click();
@@ -402,7 +430,7 @@ for (const chemin of ["listes", "rpc"]) for (const newValue of ["head", "clic"])
     // Horloge FIGÉE : sans cela le premier HEAD (dû à 200 ms réels) pouvait
     // partir entre la pose des stubs et le clic, et le cas « clic » attendait
     // 4 + 1 sur un compteur déjà passé à 7 (contre-revue).
-    await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 50)));
+    await figer(page);
     await page.evaluate((chemin) => {
       const original = supa.from;
       sessionStorage.removeItem("passio_fil_compteurs_absente");
@@ -453,11 +481,15 @@ test("stop/start pendant HEAD : ancienne réponse écartée et nouveau cycle viv
   expect(await page.evaluate(() => state.supabasePosts[0].likes)).toBe(7);
 });
 
-test("huit bindings CDC : messages privés, notifications (poussées sur user:) et posts continuent de répondre", async ({ page }) => {
+test("cinq bindings CDC de transition : messages privés, notifications (poussées sur user:) et commentaires continuent de répondre", async ({ page }) => {
   // ⚠️ R25 (2026-11-03) : `conv_members` et `notifications` ne sont plus des
   // liaisons `postgres_changes` (tables hors publication : leurs DELETE
   // livraient la clé primaire à tout abonné, sans RLS). Le serveur les pousse
   // sur `user:<moi>` sous `conv_members:INSERT` / `notifications:INSERT`.
+  // ⚠️ 2026-11-09 (« 📴 ») : publications, profils et lives ne sont plus écoutés
+  // du tout — le filet du fil fait arriver les publications. Restent CINQ
+  // liaisons de TRANSITION jusqu'à la migration qui vide la publication ; leurs
+  // lignes arrivent aussi, après elle, par `fil:<id>` et `user:<moi>`.
   await preparer(page);
   const result = await page.evaluate(async () => {
     stopPostLikeRefresh();
@@ -478,13 +510,16 @@ test("huit bindings CDC : messages privés, notifications (poussées sur user:) 
     surUser("INSERT").callback({ payload: { id: "message-prive", conv_id: "conversation" } });
     surUser("notifications:INSERT").callback({ payload: { table: "notifications", operation: "INSERT",
       record: { id: "notification-privee", user_id: MY_UID, kind: "like", created_at: "2026-09-20T12:00:00" } } });
-    await bindings.find(b => b.config.table === "posts").callback({ new: { id: "post-recu", author_id: "autre", content: "Nouveau", created_at: "2026-09-20T12:00:00Z" } });
-    return { count: bindings.length, likes: bindings.filter(b => b.config.table === "post_likes").length,
-      received, postPresent: !!findPostAnywhere("post-recu"),
+    const cible = state.supabasePosts[0];
+    await bindings.find(b => b.config.table === "post_comments").callback({ new: { id: "commentaire-recu", post_id: cible.id, author_id: "autre", content: "Nouveau", created_at: "2026-09-20T12:00:00Z" } });
+    return { count: bindings.length, tables: bindings.map(b => b.config.table), received,
+      commentairePresent: (findPostAnywhere(cible.id).comments || []).some(c => c.id === "commentaire-recu"),
       prives: bindings.filter(b => ["conv_members", "notifications"].includes(b.config.table)).length,
       filtres: bindings.filter(b => b.config.filter).length,
       evenementsUser: broadcasts.filter(b => b.topic === "user:" + MY_UID).map(b => b.config.event) };
   });
-  expect(result).toEqual({ count: 8, likes: 0, received: ["message-prive", "notification-privee"], postPresent: true,
-    prives: 0, filtres: 0, evenementsUser: ["INSERT", "conv_members:INSERT", "notifications:INSERT"] });
+  expect(result).toEqual({ count: 5, tables: ["conv_reads", "comment_interactions", "comment_interactions", "post_comments", "event_comments"],
+    received: ["message-prive", "notification-privee"], commentairePresent: true, prives: 0, filtres: 0,
+    evenementsUser: ["INSERT", "conv_members:INSERT", "notifications:INSERT", "conv_reads:UPSERT", "post_comments:INSERT",
+      "comment_interactions:INSERT", "comment_interactions:DELETE"] });
 });

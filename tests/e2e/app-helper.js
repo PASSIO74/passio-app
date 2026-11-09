@@ -727,12 +727,13 @@ async function sansDonneesDistantes(page, opts = {}) {
   });
 
   // ── LE CANAL TEMPS RÉEL, QUE LA ROUTE REST NE POUVAIT PAS ATTEINDRE ────────
-  // `app-08` ouvre un canal `realtime:db` et s'y abonne aux `postgres_changes`
-  // INSERT sur `posts` : toute publication d'un AUTRE auteur y est injectée dans
-  // le fil par `feedAddRealtimePost`, puis `scheduleFeedRender()`. C'est du
-  // WebSocket, donc `page.route` — qui ne voit que HTTP — le laissait passer :
-  // une vraie publication tombant pendant la fenêtre d'un test s'invitait dans
-  // `#feedList` malgré toute l'isolation REST.
+  // `app-08` ouvre des canaux temps réel (`user:<moi>`, les sujets `fil:<id>`
+  // des discussions à l'écran, et jusqu'à la migration « 📴 » du 2026-11-09 les
+  // liaisons de transition de `realtime:db`) ; jusqu'au 2026-11-09, une
+  // publication d'un AUTRE auteur y arrivait aussi et s'injectait dans le fil
+  // (`feedAddRealtimePost`). C'est du WebSocket, donc `page.route` — qui ne voit
+  // que HTTP — le laissait passer : une vraie ligne tombant pendant la fenêtre
+  // d'un test s'invitait à l'écran malgré toute l'isolation REST.
   //
   // On intercepte sans jamais appeler `ws.connectToServer()` : la page croit
   // parler à un serveur, aucun octet de production n'arrive.
