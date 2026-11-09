@@ -13,7 +13,9 @@
 // ④ API en échec ou vide : la liste locale, et l'échec n'est pas gardé en cache ;
 // ⑤ le champ de recherche dit « Rechercher sur KLIPY » (exigence de KLIPY), partout ;
 // ⑥ une URL de média KLIPY s'affiche en image dans un commentaire ;
-// ⑦ la configuration et la CSP : KLIPY appelé, Tenor parti, Giphy en réserve.
+// ⑦ la configuration et la CSP : KLIPY appelé, Tenor parti, Giphy en réserve ;
+// ⑧ sur un téléphone de 390 px, le panneau tient dans l'écran (il débordait à gauche,
+//    vu sur la vidéo de démonstration : « Rechercher sur KLIPY » était coupé).
 // ═══════════════════════════════════════════════════════════════════════════
 const fs = require("fs");
 const path = require("path");
@@ -168,6 +170,39 @@ test("⑥ une URL de média KLIPY s'affiche en image dans un commentaire", async
   expect(r.sansExtension).toBe(true);
   // Une page du site n'est pas un média : seul l'hôte des médias compte.
   expect(r.page).toBe(false);
+});
+
+test("⑧ sur un téléphone de 390 px, le panneau GIF tient dans l'écran — messagerie, commentaire, centré", async ({ page }) => {
+  await bootOnboarded(page);
+  await brancher(page, (route) => route.fulfill({ json: reponse(8, "ecran") }));
+  const r = await page.evaluate(async () => {
+    const positions = {
+      messagerie: "bottom:120px;right:20px;",                // showGifPickerForMessage
+      commentaire: "left:" + (window.innerWidth - 420) + "px;top:120px;", // l'ancien calcul, négatif
+      centre: "left:50%;bottom:84px;transform:translateX(-50%);",
+      basHorsEcran: "left:20px;top:" + (window.innerHeight - 40) + "px;",
+    };
+    const out = { largeur: window.innerWidth, hauteur: window.innerHeight };
+    for (const [nom, position] of Object.entries(positions)) {
+      const p = passioGifPanel({ id: "banc-" + nom, position, onPick: () => {} });
+      const b = p.getBoundingClientRect();
+      const c = p.querySelector("input[type=search]").getBoundingClientRect();
+      out[nom] = { gauche: b.left, droite: b.right, haut: b.top, bas: b.bottom, champGauche: c.left, champDroite: c.right };
+      p.remove();
+    }
+    return out;
+  });
+  expect(r.largeur).toBe(390);
+  for (const nom of ["messagerie", "commentaire", "centre", "basHorsEcran"]) {
+    const b = r[nom];
+    expect(b.gauche, nom).toBeGreaterThanOrEqual(8);
+    expect(b.droite, nom).toBeLessThanOrEqual(r.largeur - 8);
+    expect(b.haut, nom).toBeGreaterThanOrEqual(8);
+    expect(b.bas, nom).toBeLessThanOrEqual(r.hauteur - 8);
+    // « Rechercher sur KLIPY » est lisible en entier.
+    expect(b.champGauche, nom).toBeGreaterThanOrEqual(8);
+    expect(b.champDroite, nom).toBeLessThanOrEqual(r.largeur - 8);
+  }
 });
 
 test("⑦ configuration et CSP : KLIPY appelé, Tenor parti, Giphy en réserve", async () => {

@@ -99,6 +99,13 @@ function passioGifPanel(opts) {
   var old = document.getElementById(opts.id);
   if (old) { old.remove(); return null; } // toggle : 2e clic = fermer
   var cols = opts.cols || 4, cell = opts.cell || 90;
+  // Le panneau tient dans l'écran. Quatre colonnes de 90 px font 406 px avec les
+  // marges : sur un téléphone de 390 px, la première colonne et le début de
+  // « Rechercher sur KLIPY » sortaient de l'écran par la gauche (mesuré le
+  // 2026-11-09). Moins de colonnes quand l'écran est étroit ; la position est
+  // ramenée dans l'écran après l'ajout (plus bas).
+  var largeurVue = window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 390;
+  cols = Math.max(2, Math.min(cols, Math.floor((largeurVue - 2 * 8 - 22 + 8) / (cell + 8))));
   var panel = document.createElement("div");
   panel.id = opts.id;
   var _z = opts.z || 10000; // surclassable : un composeur ouvert depuis un modal (10001) doit passer au-dessus
@@ -153,6 +160,7 @@ function passioGifPanel(opts) {
   search.onclick = function (e) { e.stopPropagation(); };
 
   document.body.appendChild(panel);
+  _ramenerDansLEcran(panel);
   setTimeout(function () {
     var closeListener = function (e) {
       if (!panel.contains(e.target) && (!opts.keepOpenFor || e.target.id !== opts.keepOpenFor)) {
@@ -165,6 +173,30 @@ function passioGifPanel(opts) {
   return panel;
 }
 window.passioGifPanel = passioGifPanel;
+
+// Garde-fou de position : quelle que soit la position demandée (`right:20px`, un
+// `left` calculé depuis un bouton, un centrage par `translateX(-50%)`), un panneau
+// flottant reste à 8 px des bords. Le panneau des commentaires calculait sa gauche
+// avec `innerWidth - 420` : négative sur tout téléphone.
+function _ramenerDansLEcran(panel) {
+  try {
+    var r = panel.getBoundingClientRect();
+    var marge = 8;
+    var vw = window.innerWidth || document.documentElement.clientWidth;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    if (r.left < marge || r.right > vw - marge) {
+      panel.style.left = Math.max(marge, Math.min(r.left, vw - marge - r.width)) + "px";
+      panel.style.right = "auto";
+      panel.style.transform = "none";
+    }
+    if (r.top < marge || r.bottom > vh - marge) {
+      panel.style.top = Math.max(marge, Math.min(r.top, vh - marge - r.height)) + "px";
+      panel.style.bottom = "auto";
+    }
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("✗ panneau GIF hors écran : " + (e && e.message)); } catch (_e) {}
+  }
+}
 // ════════════════════════════════════════════════════════════════
 
 window.toggleEmojiPanel = function() {
