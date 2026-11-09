@@ -55,6 +55,13 @@ test.describe("notifications : rien de fabriqué pour un compte", () => {
       { id: "n6", kind: "system", fromId: "me", text: "Bienvenue sur PASSIO 🎉 Choisis tes passions et découvre qui les partage.", createdAt: t - 6 * 3600000, unread: false, html: true, emoji: "✨" },
       // Résumé écrit par l'ancien `_irlWeeklyDigest` (identifiant `uid()`).
       { id: "xk3j2ab9lq", kind: "local", fromId: "me", text: "<b>11 événements</b> cette semaine à Lyon — à commencer par <b>Jam session guitaristes débutants</b>", createdAt: t - 86400000, unread: true, html: true, emoji: "📍" },
+      // Forme plus ancienne encore, préfixée de « 📍 » DANS le texte : 18 des 44
+      // résumés stockés en production (relecture du 09/11) — la première version
+      // du filtre les laissait passer.
+      { id: "xp1n0ld7aa", kind: "local", fromId: "me", text: "📍 <b>9 événements</b> cette semaine près de toi — à commencer par <b>Rando</b>", createdAt: t - 2 * 86400000, unread: false, html: true, emoji: "📍" },
+      { id: "xp2n0ld7bb", kind: "local", fromId: "me", text: "📍<b>1 événement</b> cette semaine à Annecy — à commencer par <b>Escalade</b>", createdAt: t - 3 * 86400000, unread: false, html: true, emoji: "📍" },
+      // Une notification locale qui n'est PAS un résumé, même avec l'épingle.
+      { id: "xrsvp0001z", kind: "local", fromId: "me", text: "📍 Tu rejoins <b>Atelier</b> samedi", createdAt: t - 4 * 86400000, unread: false, html: true, emoji: "📍" },
       // Résumé du code corrigé : jamais retiré.
       { id: "irl_digest_2026-W45", kind: "local", fromId: "me", text: "<b>1 événement</b> cette semaine près de toi — à commencer par <b>Atelier</b>", createdAt: t - 7200000, unread: true, html: true, emoji: "📍" },
       // Une vraie notification serveur.
@@ -78,8 +85,8 @@ test.describe("notifications : rien de fabriqué pour un compte", () => {
       state.notifications = garde;
       return { auChargement, aLHydratation, envoyees, vivantAvant, vivantApres, nonLues: unreadCount() };
     }, notifs);
-    const gardees = ["n6", "irl_digest_2026-W45", "c0ffee00-1111-4222-8333-444455556666"];
-    const retirees = ["n1", "n2", "xk3j2ab9lq"];
+    const gardees = ["n6", "irl_digest_2026-W45", "c0ffee00-1111-4222-8333-444455556666", "xrsvp0001z"];
+    const retirees = ["n1", "n2", "xk3j2ab9lq", "xp1n0ld7aa", "xp2n0ld7bb"];
     // RÉINJECTION : sans `_estNotifFabriqueeDepuisDemo` dans `stripLegacyEconomy`,
     // les trois listes portent n1, n2 et l'ancien résumé, et nonLues = 4.
     for (const liste of ["auChargement", "aLHydratation", "envoyees"]) {

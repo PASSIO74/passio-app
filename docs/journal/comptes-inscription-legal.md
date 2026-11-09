@@ -611,3 +611,20 @@ Version de la politique : 2026-11-08. Verrous : `politique-tiers-appeles.spec.js
   ⚠️ **`bottom` NÉGATIF, voulu** : un `sticky` se cale sur la boîte de CONTENU du conteneur qui défile, padding déduit (mesuré : 24 px sous Chromium). Avec `bottom: 0`, une bande de 24 px laissait les tuiles défiler, visibles, sous les boutons. Le pied descend de `--fr-pied-bas`, porte ce padding lui-même (safe area comprise), opaque, et la marge négative rend au flux sa place. **`--fr-pied-bas` RECOPIE le `padding-bottom` de `.modal`** : changer l'un, c'est changer l'autre.
 
 Verrou : `tests/e2e/inscription-frictions-iphone.spec.js` (7), en hauteurs UTILES Safari (390 × 664, 320 × 568), par les gestes. Réinjection : case remise sous le formulaire → ① rouge (×2) ; capitales sur toute `> span` → ① ter rouge ; `fermerBulle()` retiré → ② rouge ; pied statique → ③ rouge (×2, 725 et 704 px) ; défilements imbriqués rendus → ③ rouge ; `bottom: 0` → ③ rouge (bande de 24 px).
+
+**Relecture adverse du même jour — deux défauts introduits par le déplacement de la case, refermés :**
+- **Un INVITÉ perdait Google sous le pli** : l'annonce `#authInvite` (« Léa t'invite… », 104 à 123 px)
+  + la case remontée poussaient Google à 611–658 px pour 568 (iPhone SE) et 558–605 pour 553 (iPhone 8
+  sous Safari) ; sur main il était visible. L'annonce vit maintenant **sous Google, au-dessus du
+  formulaire e-mail** : elle ne vaut accord QUE pour le chemin e-mail (`invitationPourInscription`, qui
+  ne lit que `display:block` + `data-de`) ; le chemin Google redemande « Suivre … ? » au retour (⑥ de la
+  fiche 👋 de `partage-liens-invitation.md`). Elle se lit donc là où elle engage.
+- **Cocher faisait sauter Google sous le doigt** : l'écho `#authConsentRefus` vit désormais ENTRE la case
+  et Google ; l'effondrer au cochage remontait Google de 56 à 74 px et le toucher suivant tombait sur
+  « Nom d'utilisateur ». Cocher le rend `visibility: hidden` (sa place reste) ; `_majRefusConsentement`
+  (bascule d'onglet, nouveau refus) le replie ou le remontre pour de bon. `capacite-sans-investir` ②
+  quater mesure désormais la VISIBILITÉ (display ET visibility).
+- ⚠️ **Non mesuré sous WebKit** : le pied collant à `bottom` négatif est mesuré sous Chromium seulement
+  (WebKit indisponible dans le bac de ce lot). À contrôler sur iPhone réel ou `PASSIO_WEBKIT=1`.
+Verrous ajoutés : `inscription-frictions-iphone.spec.js` ① quater (invité, 320 × 568 et 375 × 553) et
+① quinquies (refus → case → Google n'a pas bougé), chacun rouge en réinjection.

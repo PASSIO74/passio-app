@@ -1049,6 +1049,12 @@ puis `renderFeed`). ⚠️ **Le démarrage ne repeint pas le fil sur une page vi
 verdict. ⚠️ **Aucun minuteur de plus** : le filet du fil et le retour en ligne relisent déjà la tête,
 et leur succès efface la panne. supabase-js réessaie trois fois une lecture coupée : la panne s'affiche
 ~6 s après le démarrage, pas avant.
+⚠️ **Une passerelle en 5xx ou un 429 n'est PAS une réponse** (relecture adverse du 09/11) : supabase-js
+rend le statut HORS de l'objet `error`, et un corps HTML n'a pas de `code` — `estEchecReseau` seul y
+voyait « le serveur a répondu » et, après « Réessayer », réannonçait une communauté vide. Le verdict de
+tête lit donc aussi `status` (`estEchecReseau(error) || status >= 500 || status === 429`). Ce verdict ne
+sert QU'À l'affichage : `estEchecReseau` reste seul juge du rejeu. Un refus 401/403/42501 reste « seul ».
+Verrou ② ter (503 HTML → la panne reste, toast « Toujours impossible… »), rouge en réinjection.
 **Hors lot, connu** : l'état VIDE du fil (aucun exemple ni réel pour la sélection : « Sois le premier à
 publier ») ne distingue toujours pas la panne ; seul le séparateur le fait.
 Verrou : `tests/e2e/fil-panne-reseau.spec.js` (4) — démarrage avec Supabase coupé, puis réseau rendu ;

@@ -28,6 +28,7 @@
 - 📡 LE RELAIS DES LIVES ET DES APPELS ÉTAIT MORT — relais Cloudflare, identifiants fabriqués par le serveur (2026-11-09)
 - 📵 LES PUSH SOCIALES PLANTAIENT DEPUIS LE 07/11 — `uid` jamais déclaré dans `notify-call` (2026-11-09)
 - 🎞️ LES GIF PASSENT PAR KLIPY — Tenor fermé, Giphy plafonné à 100 recherches par heure pour toute l'app (2026-11-09)
+- 🔔 DES NOTIFICATIONS D'EXEMPLE PRÉSENTÉES COMME RÉELLES — résumé IRL, copies de la graine, tendances (2026-11-09)
 
 ---
 
@@ -725,3 +726,35 @@ Constaté le jour même par le lot pièce jointe (fiche précédente, « hors ch
 - **§6 de la politique** : « GIF (KLIPY, Giphy — qui reçoivent aussi les mots que tu tapes dans la recherche de GIF) ». C'était déjà vrai avec Giphy, sans être dit (relevé par l'audit indépendant).
 - **Verrou** : `tests/e2e/gif-klipy.spec.js` (9, dont ④ bis pour le quota) — le vrai `passioFetchGifs`, réseau tenu par `page.route`, aucun appel ne part vers KLIPY ; `politique-tiers-appeles` ①, ③ bis. Réinjection : paramètre `country` retiré → ① ; texte d'appel figé → ⑤ ; hôte des médias KLIPY oublié → ⑥.
 - **Non-régression** (2026-11-09) : `npm run verif` vert (lancé depuis Git Bash — sous PowerShell, `bash` est introuvable et `edge-functions-verrous` ⑥ rougit sans rapport avec le code) ; 72/72 sur `gif-klipy`, `politique-tiers-appeles`, `relais-turn`, `echappement`, `reactions-commentaire-bloque`, `retrait-interactions-direct`, `audit-2026-11-xss`, `capacite-fil-compteurs` ; 147 cas sur les suites des appels, des lives, du consentement et de l'ouverture publique (huit rouges du premier passage : le faux `invoke` ci-dessus, et trois tests qui figeaient l'ancienne version de la politique ou l'ancienne ligne d'import — mis à jour).
+
+---
+
+## 🔔 DES NOTIFICATIONS D'EXEMPLE PRÉSENTÉES COMME RÉELLES — résumé IRL, copies de la graine, tendances (2026-11-09)
+
+Mesuré en production (canal ①, 09/11) : **12 comptes réels sur 13 portaient 44 résumés « N événements cette
+semaine »** — les comptes d'octobre en avaient tous reçu « 11 événements » — alors que la base n'avait
+**aucune** activité réelle à venir : `_irlWeeklyDigest` (app-07) comptait `allEvents()`, qui inclut les
+activités d'EXEMPLE, et pouvait le pousser en notification système. Un compte neuf recevait en plus trois
+notifications sociales **fabriquées et non lues** (`loadState` recopiait `seed.notifications` dans toute
+liste vide : « Clara Jensen suit maintenant tes publications » sur un profil à 0 abonné), comptées par la
+cloche, le titre « (3) PASSIO » et `setAppBadge`. Explorer annonçait « Musique 41 posts » pour 2 réelles.
+- **Résumé IRL** : `PassioFirstRun.evenementDemo` (exporté pour l'occasion — identifiant `^e\d+$`, le
+  discriminant déjà utilisé par l'étiquette et `participationPossible`) écarte les exemples ; s'il ne reste
+  rien, ni notification ni push, et la clé de semaine n'est PAS consommée (une vraie activité publiée plus
+  tard dans la semaine sera annoncée). Fonction absente → muet : on ne compte jamais la démo par défaut.
+  Le résumé corrigé porte l'id déterministe `irl_digest_<semaine>` (`NOTIF_DIGEST_IRL_PREFIXE`).
+- **Copies et anciens résumés RETIRÉS, pas marqués lus** : `_estNotifFabriqueeDepuisDemo` (app-02) entre
+  dans le filtre de `stripLegacyEconomy`, donc aux TROIS frontières (`loadState`, `_applyUserState`,
+  `_syncableState`) — précédent : les notifications d'économie d'ADR-009. Copie de graine = id `n<chiffres>`
+  + émetteur `u_…` + kind ≠ `system` (aucune notification serveur n'a cette forme : uuid, `n_…`, `x…`).
+  Ancien résumé = écrit par l'app, id hors `irl_digest_`, texte `^(?:📍\s*)?<b>N événement(s)</b> cette
+  semaine`. ⚠️ **Le préfixe « 📍 » DANS le texte** est celui des versions plus anciennes : 18 des 44 résumés
+  de production le portent — la première version du filtre les laissait passer (relecture adverse du 09/11,
+  inventaire complet de `user_state` : 234 notifications, les 44 retirées sont toutes fausses, aucune vraie
+  n'est touchée). Marquer lu laissait le mensonge dans la liste : le NOMBRE d'un ancien résumé est faux par
+  construction. Bienvenue (`n6`) et messages système gardés.
+- **Tendances** (`peindreTendances`, app-06) : `userPosts` + `supabasePosts`, une fois par id, jamais
+  `state.seed.posts` ; une tuile sans publication réelle n'affiche pas « 0 post ».
+Verrou : `tests/e2e/notifications-exemples.spec.js` (5), **éprouvé par RÉINJECTION** (recopie de la graine
+sans filtre, prédicat retiré de chaque frontière séparément, résumé sans filtre ni marque, tendances qui
+recomptent la démo, « 0 post », dédoublonnage retiré, préfixe 📍 ignoré : chacun rouge).

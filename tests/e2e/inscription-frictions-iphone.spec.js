@@ -95,6 +95,73 @@ for (const [nom, vp] of [["iPhone 13", IPHONE_13], ["iPhone SE", IPHONE_SE]]) {
   });
 }
 
+// ① quater — RELECTURE DU 09/11 : un visiteur INVITÉ porte en plus l'annonce
+// « Léa t'invite… » (#authInvite, 104 à 123 px). Posée en tête du formulaire,
+// avec la case désormais au-dessus de Google, elle repoussait le bouton SOUS LE
+// PLI (611–658 px pour 568 sur iPhone SE). Les cas ① ne le voyaient pas : ils
+// n'avaient pas d'invitation. L'annonce vit maintenant sous Google, au-dessus du
+// formulaire e-mail — le seul chemin pour lequel elle vaut accord.
+const INVITATION = { de: "3f1c2b7e-9a4d-4c1e-8b2f-6d5e4c3b2a10", nom: "Léa Moreau", accueillie: true };
+for (const [nom, vp] of [["iPhone SE", IPHONE_SE], ["iPhone 8 sous Safari", { width: 375, height: 553 }]]) {
+  test.describe(`① quater invité, ${nom} (${vp.width} × ${vp.height})`, () => {
+    test.use({ viewport: vp });
+
+    test("① quater avec une invitation en attente, Google reste au premier écran et l'annonce est sous lui", async ({ page }) => {
+      await page.addInitScript((inv) => {
+        localStorage.setItem("passio_invitation_v1", JSON.stringify(Object.assign({ at: Date.now() }, inv)));
+      }, INVITATION);
+      await ouvrirInscriptionVisiteur(page);
+      // Prémisse : l'annonce est bien peinte (sinon le cas ne mesure rien).
+      await expect(page.locator("#authInvite")).toBeVisible();
+      await expect(page.locator("#authInvite")).toContainText("Léa Moreau t'invite sur PASSIO");
+      const g = await page.evaluate(geo, "#authGoogleBtn");
+      const c = await page.evaluate(geo, "#authConsentWrap");
+      const inv = await page.evaluate(geo, "#authInvite");
+      expect(g.bas, `Google finit à ${g.bas} px pour ${g.vue} px d'écran`).toBeLessThanOrEqual(g.vue);
+      expect(c.bas, "la case reste au-dessus de Google").toBeLessThanOrEqual(g.haut);
+      expect(inv.haut, "l'annonce d'invitation vient APRÈS Google").toBeGreaterThanOrEqual(g.bas);
+      // L'annonce engage toujours le chemin e-mail : elle précède « Créer mon compte ».
+      const avantEnvoi = await page.evaluate(() => {
+        const a = document.getElementById("authInvite"), b = document.getElementById("authSubmitBtn");
+        return !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
+      });
+      expect(avantEnvoi, "#authInvite doit précéder #authSubmitBtn").toBe(true);
+      await page.locator("#authConsent").click();
+      await page.locator("#authGoogleBtn").click();
+      await expect.poll(() => page.evaluate(() => window.__oauth.length)).toBe(1);
+    });
+  });
+}
+
+// ① quinquies — RELECTURE DU 09/11 : l'écho du refus vit ENTRE la case et
+// Google. L'effondrer au moment où l'on coche remontait Google de 56 à 74 px
+// sous le doigt : le toucher suivant tombait sur « Nom d'utilisateur ».
+test.describe("① quinquies iPhone SE (320 × 568)", () => {
+  test.use({ viewport: IPHONE_SE });
+  test("① quinquies refus, puis case cochée : Google ne bouge pas sous le doigt", async ({ page }) => {
+    await ouvrirInscriptionVisiteur(page);
+    await page.locator("#authGoogleBtn").click();
+    await expect(page.locator("#authConsentRefus")).toBeVisible();
+    expect(await page.evaluate(() => window.__oauth.length), "sans case, rien ne part").toBe(0);
+    // Le refus a pu défiler : on mesure APRÈS qu'il s'est posé.
+    await page.waitForTimeout(700);
+    const avant = await page.evaluate(geo, "#authGoogleBtn");
+    await page.locator("#authConsent").click();
+    await page.waitForTimeout(200);
+    const apres = await page.evaluate(geo, "#authGoogleBtn");
+    expect(apres.haut, "cocher ne doit pas déplacer Google").toBe(avant.haut);
+    await expect(page.locator("#authConsentRefus")).toBeHidden();
+    // Le toucher là où le doigt avait vu Google atteint bien Google.
+    const vise = await page.evaluate(([y]) => {
+      const el = document.elementFromPoint(window.innerWidth / 2, y);
+      return !!(el && el.closest("#authGoogleBtn"));
+    }, [Math.round((apres.haut + apres.bas) / 2)]);
+    expect(vise, "le point visé est toujours le bouton Google").toBe(true);
+    await page.locator("#authGoogleBtn").click();
+    await expect.poll(() => page.evaluate(() => window.__oauth.length)).toBe(1);
+  });
+});
+
 test("① bis la case n'existe qu'en création : absente en connexion, et Google y part sans elle", async ({ page }) => {
   await page.setViewportSize(IPHONE_13);
   await ouvrirInscriptionVisiteur(page);

@@ -148,7 +148,10 @@ function _estNotifEconomieLegacy(n) {
 // compte — une copie de démo, un message dérivé et périmé que l'app a écrit
 // elle-même (précédent : les notifications d'économie ci-dessus).
 const NOTIF_DIGEST_IRL_PREFIXE = "irl_digest_";
-const NOTIF_DIGEST_IRL_RE = /^<b>\d+ événements?<\/b> cette semaine/;
+// Les versions plus anciennes de `_irlWeeklyDigest` préfixaient le texte de
+// « 📍 » (18 des 44 résumés stockés en production, mesuré le 09/11) ; l'actuel
+// ne le fait plus : les deux formes sont des résumés d'avant ce jour.
+const NOTIF_DIGEST_IRL_RE = /^(?:📍\s*)?<b>\d+ événements?<\/b> cette semaine/;
 
 function _estNotifFabriqueeDepuisDemo(n) {
   if (!n || typeof n !== "object") return false;
@@ -5750,6 +5753,7 @@ function _majRefusConsentement(afficher) {
   if (!ligne) return;
   ligne.textContent = afficher ? CONSENT_REFUS_TXT : "";
   ligne.style.display = afficher ? "block" : "none";
+  ligne.style.visibility = "";
 }
 
 function _amenerConsentementAuxYeux() {
@@ -5769,7 +5773,16 @@ function _amenerConsentementAuxYeux() {
   const boite = document.getElementById("authConsent");
   if (boite && !boite._refusBranche) {
     boite._refusBranche = true;
-    boite.addEventListener("change", function () { if (boite.checked) _majRefusConsentement(false); });
+    // ⚠️ COCHER NE FAIT RIEN SAUTER (2026-11-09). L'écho vit désormais ENTRE la
+    // case et Google : l'effondrer remontait Google de 56 à 74 px sous le doigt,
+    // et le toucher suivant tombait sur « Nom d'utilisateur ». On le rend
+    // invisible en gardant sa place ; `_majRefusConsentement` (bascule d'onglet,
+    // nouveau refus) le replie ou le remontre pour de bon.
+    boite.addEventListener("change", function () {
+      if (!boite.checked) return;
+      const ligne = document.getElementById("authConsentRefus");
+      if (ligne && ligne.style.display !== "none") ligne.style.visibility = "hidden";
+    });
   }
 }
 

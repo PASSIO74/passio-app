@@ -9,8 +9,9 @@
 //      « Réessayer », et ne dit jamais « Pas encore de publication » ;
 //      « Réessayer » relance UNE lecture, et la vraie publication s'affiche ;
 //   ② une réponse du SERVEUR, même un refus, prouve que le réseau répond : la
-//      panne s'efface (`estEchecReseau` est le seul juge) ; ② bis une table
-//      vide aussi — la communauté est alors VRAIMENT vide ;
+//      panne s'efface ; ② ter une passerelle en 503 n'est PAS une réponse : la
+//      panne reste ; ② bis une table vide efface la panne — la communauté est
+//      alors VRAIMENT vide ;
 //   ③ une page réelle déjà en mémoire dit vrai sur la communauté : pas de panne
 //      annoncée.
 // Autorités : `noterLectureTeteFil` / `filCommunauteInjoignable` /
@@ -94,6 +95,26 @@ test("② une réponse du serveur, même un refus, efface la panne : le réseau 
   await separateur(page).locator(".feed-exemples-sep-cta", { hasText: "Réessayer" }).click();
   await expect(separateur(page)).toHaveAttribute("data-genre", "seul");
   await expect(separateur(page)).toContainText("Pas encore de publication");
+});
+
+test("② ter une passerelle en 503 n'est pas une réponse : la panne reste, « Réessayer » le dit", async ({ page }) => {
+  await demarrerSansSupabase(page);
+  await attendrePanne(page);
+  await page.unroute(COUPURE);
+  // Relecture du 09/11 : supabase-js rend le statut HORS de l'objet `error`, et
+  // un corps HTML n'a pas de `code` — `estEchecReseau` seul y voyait une réponse
+  // et réannonçait « Pas encore de publication ».
+  let lectures = 0;
+  await page.route(LECTURE_POSTS, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    lectures++;
+    return route.fulfill({ status: 503, contentType: "text/html", body: "<html><body>503 Service Unavailable</body></html>" });
+  });
+  await separateur(page).locator(".feed-exemples-sep-cta", { hasText: "Réessayer" }).click();
+  await expect(page.locator("#toastStack .toast", { hasText: "Toujours impossible de joindre PASSIO" })).toHaveCount(1, { timeout: 30000 });
+  expect(lectures, "« Réessayer » a bien relu le fil").toBeGreaterThan(0);
+  await expect(separateur(page)).toHaveAttribute("data-genre", "panne");
+  await expect(page.locator("#feedList")).not.toContainText("Pas encore de publication");
 });
 
 test("② bis le réseau revient sur une table vide : la panne s'efface, la communauté est vraiment vide", async ({ page }) => {

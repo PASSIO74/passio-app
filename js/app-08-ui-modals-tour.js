@@ -4814,19 +4814,26 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       const debut = options.cursor && !authorId ? 0 : offset;
       return await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(debut, debut + pageSize - 1);
     }
-    let { data, error } = await _interroger(COLONNES);
+    let { data, error, status } = await _interroger(COLONNES);
     // Repli symétrique de celui de l'écriture : sur une base où la migration
     // IRL v2 n'est pas appliquée, un SELECT nommant `event_id` échoue en bloc
     // et VIDERAIT le fil. On réessaie sans la colonne plutôt que de tout perdre.
     if (error && /event_id/.test(error.message || "")) {
-      ({ data, error } = await _interroger(COLONNES.replace(", event_id,", ",")));
+      ({ data, error, status } = await _interroger(COLONNES.replace(", event_id,", ",")));
     }
     if (error) {
       diagLog("feed_lecture: " + error.message);
       // ⚠️ UNE PANNE N'EST PAS UNE PAGE VIDE (2026-11-09) : les deux rendent `[]`,
       // seul ce verdict dit au séparateur du fil laquelle des deux annoncer.
-      // Une erreur SERVEUR prouve que le réseau répond.
-      if (teteSeq && teteSeq > _feedTeteDerniereServie) noterLectureTeteFil(estEchecReseau(error));
+      // Un REFUS (401/403, 42501, PGRST*) prouve que le serveur a répondu : la
+      // communauté s'affiche telle que la RLS la donne. Une passerelle en 5xx ou
+      // un débit dépassé (429), non — rien n'a été lu (relecture du 09/11 : un
+      // 503 après « Réessayer » réannonçait une communauté vide). `status` est
+      // hors de l'objet `error` chez supabase-js. Ce verdict ne sert QU'À
+      // l'affichage : `estEchecReseau` reste seul juge du rejeu.
+      if (teteSeq && teteSeq > _feedTeteDerniereServie) {
+        noterLectureTeteFil(estEchecReseau(error) || status >= 500 || status === 429);
+      }
       return [];
     }
     if (!lectureValide()) return [];
