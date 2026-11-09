@@ -340,7 +340,7 @@ test("⑩ câblage : le genre de la note est celui que le SERVEUR a relu (autori
 
 // ─── IDENTIFIANTS TURN (2026-11-09) ──────────────────────────────────────────
 // Le TURN public est mort (openrelay.metered.ca → 192.0.2.1 / 100::1) : notify-call
-// fabrique des identifiants Cloudflare de 24 h sur `{ type: "ice" }`. Ce qui part
+// fabrique des identifiants Cloudflare de 6 h sur `{ type: "ice" }`. Ce qui part
 // vers le navigateur passe par `serveursIceDepuisCloudflare` : liste fermée.
 
 // La forme documentée par Cloudflare (`…/credentials/generate-ice-servers`, 201).
@@ -360,7 +360,7 @@ const REPONSE_CF = {
 
 test("⑪ la réponse Cloudflare devient une liste d'ICE servers SÛRE : port 53 écarté, identifiants gardés, rien d'autre", () => {
   const s = serveursIceDepuisCloudflare(REPONSE_CF);
-  assert.equal(TTL_ICE_S, 86400, "24 h : le client les garde un peu moins");
+  assert.equal(TTL_ICE_S, 6 * 3600, "6 h : assez pour un live, assez court pour qu'un identifiant sorti ne serve pas une journée");
   assert.deepEqual(s, [
     { urls: ["stun:stun.cloudflare.com:3478"] },
     {
@@ -393,15 +393,25 @@ test("⑪ la réponse Cloudflare devient une liste d'ICE servers SÛRE : port 53
 
 test("⑫ câblage du geste `ice` : APRÈS l'authentification et le plafond, AVANT l'interrupteur des appels ; jamais en cache ; secrets absents = liste vide", () => {
   const src = fs.readFileSync("supabase/functions/notify-call/index.ts", "utf8");
-  const geste = src.indexOf('if (body.type === "ice") return await identifiantsIce();');
+  const geste = src.indexOf('if (body.type === "ice") return await identifiantsIce(userData.user);');
   assert.ok(geste > 0, "le geste existe");
   assert.equal(src.split('if (body.type === "ice")').length - 1, 1, "une seule entrée");
   assert.ok(src.indexOf('if (userErr || !userData?.user) return json({ error: "Non authentifié" }, 401);') < geste, "compte réel exigé avant");
   assert.ok(src.indexOf("if (!verdict.ok) return reponsePlafond(verdict, corsHeaders);") < geste, "plafond avant");
   assert.ok(geste < src.indexOf('if (type === "call" && !APPELS_ACTIFS)'), "avant l'interrupteur des appels : le live en a besoin");
-  const fn = src.slice(src.indexOf("async function identifiantsIce()"), src.indexOf("function json("));
+  const fn = src.slice(src.indexOf("async function identifiantsIce(user"), src.indexOf("function json("));
   assert.match(fn, /Deno\.env\.get\("TURN_CF_KEY_ID"\)/);
   assert.match(fn, /Deno\.env\.get\("TURN_CF_API_TOKEN"\)/);
+  // Audit du 2026-11-09 : une session anonyme n'obtient rien ; un secret collé avec une
+  // espace ne coupe pas le relais en silence ; un relais absent est un repli PRÉVU (200,
+  // jamais 502, que la télémétrie compterait en erreur) ; les pannes sont journalisées,
+  // sans jamais le jeton ni l'identifiant de clé.
+  assert.match(fn, /if \(!user \|\| user\.is_anonymous\) return json\(\{ ok: false, iceServers: \[\], code: "compte_requis" \}, 200, true\);/);
+  assert.equal((fn.match(/\)\.trim\(\);/g) || []).length, 2, "les deux secrets sont nettoyés");
+  assert.doesNotMatch(fn, /, 50\d, true\)/, "aucune réponse en erreur");
+  const journaux = [...fn.matchAll(/console\.error\(([^;]*)\);/g)].map((m) => m[1]);
+  assert.ok(journaux.length >= 4, "clé hors forme, statut Cloudflare, réponse hors forme, exception");
+  for (const j of journaux) assert.doesNotMatch(j, /jeton|Authorization|\+ cle(?!\.length)\b/, j);
   assert.match(fn, /return json\(\{ ok: true, iceServers: \[\], configure: false \}, 200, true\);/, "secrets absents : liste vide, sans erreur");
   assert.match(fn, /https:\/\/rtc\.live\.cloudflare\.com\/v1\/turn\/keys\/\$\{cle\}\/credentials\/generate-ice-servers/);
   assert.match(fn, /\/\^\[A-Za-z0-9_-\]\{8,128\}\$\/\.test\(cle\)/, "l'identifiant de clé est borné avant d'entrer dans l'URL");

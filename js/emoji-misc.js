@@ -50,11 +50,17 @@ var PASSIO_DEFAULT_GIFS = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/gip
 // Recherche de GIFs (tendances si query vide) → Promise<string[]> d'URLs.
 // Cache mémoire 10 min par requête pour économiser le quota.
 var _gifCache = {};
+// Quota épuisé (429 — la clé de test KLIPY donne 100 appels par heure à TOUTE
+// l'app) : plus d'appel pendant une minute. Sans cette pause, chaque frappe dans
+// le champ de recherche rappelait l'API pour un refus de plus.
+var GIF_PAUSE_QUOTA_MS = 60 * 1000;
+var _gifPauseJusqua = 0;
 function passioFetchGifs(query, limit) {
   limit = limit || 24;
   var q = (query || "").trim();
   var cfg = window.PASSIO_GIF_API || {};
   if (!cfg.key) return Promise.resolve(PASSIO_DEFAULT_GIFS.slice(0, limit));
+  if (Date.now() < _gifPauseJusqua) return Promise.resolve(PASSIO_DEFAULT_GIFS.slice(0, limit));
   var cacheKey = cfg.provider + ":" + q.toLowerCase() + ":" + limit;
   var hit = _gifCache[cacheKey];
   if (hit && Date.now() - hit.at < 600000) return Promise.resolve(hit.urls);
@@ -71,7 +77,11 @@ function passioFetchGifs(query, limit) {
       : "https://api.klipy.com/v2/featured?" + commun;
   }
   return fetch(url)
-    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function (r) {
+      if (r.status === 429) _gifPauseJusqua = Date.now() + GIF_PAUSE_QUOTA_MS;
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
     .then(function (data) {
       var urls;
       if (cfg.provider === "giphy") {
@@ -89,7 +99,10 @@ function passioFetchGifs(query, limit) {
       _gifCache[cacheKey] = { at: Date.now(), urls: urls };
       return urls;
     })
-    .catch(function () { return PASSIO_DEFAULT_GIFS.slice(0, limit); });
+    .catch(function (e) {
+      try { if (typeof diagLog === "function") diagLog("GIF " + cfg.provider + " indisponible : " + (e && e.message)); } catch (_e) {}
+      return PASSIO_DEFAULT_GIFS.slice(0, limit);
+    });
 }
 window.passioFetchGifs = passioFetchGifs;
 

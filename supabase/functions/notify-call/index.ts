@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
   // Servis aux appels ET aux lives : AVANT l'interrupteur des appels (un live en a
   // besoin même quand les appels sont coupés), APRÈS l'authentification et le
   // plafond (un compte réel, 20 par minute). Jamais en cache : un secret de 24 h.
-  if (body.type === "ice") return await identifiantsIce();
+  if (body.type === "ice") return await identifiantsIce(userData.user);
   const toUserId = borne(body.toUserId, 64);
   const callId = borne(body.callId, 80);
   const kind = borne(body.kind, 32);
@@ -165,7 +165,11 @@ Deno.serve(async (req) => {
     // `autoriserPushNotif` (lien-metier.js), testée par Node.
     const decision = await autoriserPushNotif(admin, fromUid, toUserId);
     if (!decision.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
-    if (!(await reserverPush(admin, decision.id, toUserId, 30, Date.now(), uid))) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+    // ⚠️ `fromUid`, l'appelant AUTHENTIFIÉ — et non `uid`, jamais déclaré : de #753
+    // (07/11) au 2026-11-09, la lecture levait une ReferenceError et TOUTE push
+    // sociale rendait 500 (aucune notification n'était née entre-temps, donc aucune
+    // perdue). Verrou : tests/unit/notify-call-chemins.test.mjs, qui EXÉCUTE ce chemin.
+    if (!(await reserverPush(admin, decision.id, toUserId, 30, Date.now(), fromUid))) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
     texteServeur = decision.texte;
     kindServeur = decision.kind || "";
   }
@@ -204,16 +208,30 @@ Deno.serve(async (req) => {
 });
 
 /**
- * Fabrique des identifiants TURN Cloudflare de 24 h (`TURN_CF_KEY_ID`,
- * `TURN_CF_API_TOKEN`, secrets de la fonction). Secrets absents → liste vide,
- * `configure: false` : l'app reste en STUN seul, comme avant. Cloudflare muet ou
- * en erreur → liste vide aussi (502), jamais une attente sans fin (4 s).
+ * Fabrique des identifiants TURN Cloudflare de TTL_ICE_S secondes (`TURN_CF_KEY_ID`,
+ * `TURN_CF_API_TOKEN`, secrets de la fonction). Toute réponse est un 200 sans cache :
+ * un relais absent est un repli PRÉVU (STUN seul), pas une erreur — sinon la
+ * télémétrie compterait chaque entrée dans un live pendant une panne Cloudflare,
+ * indiscernable d'une panne des pushes. Le corps dit pourquoi :
+ *   · `configure: false` — secrets absents : le relais est coupé ;
+ *   · `code: "cle_invalide"` — identifiant de clé hors forme (journalisé) ;
+ *   · `code: "compte_requis"` — session anonyme : pas de relais ;
+ *   · `code: "turn_indisponible"` — Cloudflare en erreur, hors forme ou muet au-delà
+ *     de 4 s (journalisé, statut et nom d'erreur seulement — jamais l'en-tête).
+ * ⚠️ COUPER LE RELAIS VITE se fait chez Cloudflare (supprimer l'application TURN) :
+ * retirer un secret empêche seulement d'en fabriquer de nouveaux, et ceux déjà émis
+ * restent valables jusqu'à TTL_ICE_S.
  */
-async function identifiantsIce(): Promise<Response> {
-  const cle = Deno.env.get("TURN_CF_KEY_ID") ?? "";
-  const jeton = Deno.env.get("TURN_CF_API_TOKEN") ?? "";
-  if (!cle || !jeton || !/^[A-Za-z0-9_-]{8,128}$/.test(cle)) {
-    return json({ ok: true, iceServers: [], configure: false }, 200, true);
+async function identifiantsIce(user: { is_anonymous?: boolean } | null): Promise<Response> {
+  if (!user || user.is_anonymous) return json({ ok: false, iceServers: [], code: "compte_requis" }, 200, true);
+  // `trim` : un secret collé avec une espace ou un retour à la ligne final ne doit pas
+  // couper le relais en silence (le `$` d'une regex JS ne tolère pas le `\n`).
+  const cle = (Deno.env.get("TURN_CF_KEY_ID") ?? "").trim();
+  const jeton = (Deno.env.get("TURN_CF_API_TOKEN") ?? "").trim();
+  if (!cle || !jeton) return json({ ok: true, iceServers: [], configure: false }, 200, true);
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(cle)) {
+    console.error("relais TURN : TURN_CF_KEY_ID hors forme (" + cle.length + " caractères)");
+    return json({ ok: false, iceServers: [], configure: false, code: "cle_invalide" }, 200, true);
   }
   const ctrl = new AbortController();
   const minuterie = setTimeout(() => ctrl.abort(), 4000);
@@ -224,11 +242,19 @@ async function identifiantsIce(): Promise<Response> {
       body: JSON.stringify({ ttl: TTL_ICE_S }),
       signal: ctrl.signal,
     });
-    if (!r.ok) return json({ ok: false, iceServers: [], configure: true, code: "turn_indisponible" }, 502, true);
+    if (!r.ok) {
+      console.error("relais TURN : Cloudflare a répondu " + r.status);
+      return json({ ok: false, iceServers: [], configure: true, code: "turn_indisponible" }, 200, true);
+    }
     const iceServers = serveursIceDepuisCloudflare(await r.json());
-    return json({ ok: iceServers.length > 0, iceServers, ttl: TTL_ICE_S, configure: true }, 200, true);
-  } catch (_e) {
-    return json({ ok: false, iceServers: [], configure: true, code: "turn_indisponible" }, 502, true);
+    if (!iceServers.length) {
+      console.error("relais TURN : réponse de Cloudflare hors forme");
+      return json({ ok: false, iceServers: [], configure: true, code: "turn_indisponible" }, 200, true);
+    }
+    return json({ ok: true, iceServers, ttl: TTL_ICE_S, configure: true }, 200, true);
+  } catch (e) {
+    console.error("relais TURN : " + ((e && (e as Error).name) || "erreur"));
+    return json({ ok: false, iceServers: [], configure: true, code: "turn_indisponible" }, 200, true);
   } finally {
     clearTimeout(minuterie);
   }

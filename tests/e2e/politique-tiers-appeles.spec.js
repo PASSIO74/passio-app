@@ -88,7 +88,8 @@ test.describe("politique de confidentialité — les tiers appelés sont nommés
     await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true });
     const txt = await page.evaluate(() => passioTextePolitique().replace(/<[^>]+>/g, " "));
     expect(txt).not.toMatch(/Tenor/);
-    expect(txt).toMatch(/GIF \(KLIPY, Giphy\)/);
+    // Et ce qui part chez eux : les mots cherchés (c'était déjà vrai avec Giphy, sans être dit).
+    expect(txt).toMatch(/GIF \(KLIPY, Giphy — qui reçoivent aussi les mots que tu tapes dans la recherche de GIF\)/);
     for (const f of ["netlify.toml", "_headers", "js/emoji-misc.js"]) expect(lire(f), f).not.toMatch(/tenor\.googleapis\.com/);
   });
 

@@ -91,8 +91,11 @@ export const APPELS_ACTIFS = false;
 // côté serveur avec un jeton secret (`TURN_CF_KEY_ID`, `TURN_CF_API_TOKEN`,
 // secrets de la fonction) — d'où ce geste `{ type: "ice" }` de `notify-call`.
 // Secrets absents : la fonction rend une liste vide et l'app reste en STUN seul,
-// comme avant. Durée des identifiants : 24 h.
-export const TTL_ICE_S = 86400;
+// comme avant. Durée des identifiants : 6 h. Assez pour un live ou un appel (le
+// client les renouvelle quand il en reste moins de 3 h, au départ de chacun), assez
+// court pour qu'un identifiant sorti d'un navigateur ne serve pas de relais gratuit
+// une journée entière : la facture Cloudflare n'a pas de plafond au-delà de 1 000 Go.
+export const TTL_ICE_S = 6 * 3600;
 export const ICE_MAX_SERVEURS = 4;
 export const ICE_MAX_URLS = 8;
 // Une adresse ICE admise : stun/turn/turns, un hôte, un port facultatif, un
