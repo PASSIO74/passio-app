@@ -20,10 +20,13 @@
 
 ## Vue d'ensemble
 
-**Aucun P0 trouvé à ce stade** — sur un périmètre incomplet (voir `08-POINT-DE-REPRISE.md` : six domaines sur huit n'ont pas rendu leur rapport).
+**Un P0, corrigé en PR (#823, ni fusionnée ni déployée)** : CLI-01. Les huit domaines ont rendu leur rapport (six après la reprise de 17:31 UTC).
+Les findings marqués `agent` sont des lectures : **non revérifiés par le coordinateur**, sauf mention.
 
 | ID | Prio | Statut | Qui | En une ligne | Suite |
 |---|---|---|---|---|---|
+| CLI-01 | **P0** | confirmé, **corrigé** | agent, puis coord. (code, catalogue de production, exécution sur serveur simulé) | Profil visité : une valeur reçue était écrite sans échappement dans un attribut (détail au dossier privé). Production : aucune ligne de la forme en cause | **PR #823** |
+| PIL-01 | **P1** | confirmé (statique) | agent | Le pilotage en ligne tient à un seul facteur, sur l'origine et la session de l'application publique (second facteur suspendu le 08/11, #793) | décision de Benjamin |
 | STAB-04 | **P1** (décision produit) | confirmé | coord. | Depuis le 31/08 (#226), tout compte neuf naît PRIVÉ : 9 profils sur 13, 36 publications sur 37 invisibles hors abonnés, 1 seule publication réelle visible d'un visiteur | décision de Benjamin |
 | ETAT-01 | **P1** | confirmé (statique) | agent | Le rejeu de la file d'état remplace un état serveur plus récent par un instantané plus ancien (perte silencieuse à plusieurs appareils) | lot critique à préparer |
 | ETAT-02 | **P1** | confirmé (statique) | agent ; R19 relu par coord. | Se déconnecter d'un appareil tue la session des autres (`signOut` global), et l'application n'y voit rien : aucun écouteur `SIGNED_OUT` | lot critique à préparer |
@@ -132,3 +135,103 @@ Correction : compléter le texte, ou fermer ces deux colonnes — validation jur
 
 `tests/e2e/ui-v6a0-activite.spec.js:230` écrit `docs/captures/ui-6a0/creer-activite-{320,390,430}.png` à chaque passage :
 après `npm run test:local`, l'arbre est modifié (constaté le 10/11). Risque : captures commitées par inadvertance.
+
+---
+
+## Findings des six domaines rendus après la reprise (résumé — détail au dossier privé)
+
+Tous `agent`, analyse statique ou catalogue, **non revérifiés par le coordinateur** sauf CLI-01. Les lignes de sécurité sont
+volontairement dites sans mode d'emploi.
+
+### Sécurité côté client (CLI)
+
+| ID | Prio | Statut | En une ligne |
+|---|---|---|---|
+| CLI-01 | P0 | confirmé, corrigé (#823) | voir plus haut |
+| CLI-02 | P2 | confirmé (client) | Un message de forme inattendue casse l'affichage des conversations de son destinataire |
+| CLI-03 | P2 | confirmé | L'arrivée par un lien d'authentification forgé bascule de compte et purge l'état local (réglage par défaut du SDK) |
+| CLI-04 | P2 | confirmé | Un média d'autrui peut être servi par un hôte tiers |
+| CLI-05 | P3 | confirmé | Le gate `audit-echappement` ne tient pas le contexte « attribut » ; 24 des 65 entrées de son socle sont périmées |
+| CLI-06 / 07 / 08 | P3–P4 | confirmé | identité d'affichage d'un live ; `?equipe=1` et `?telemetry=0` durables depuis un lien reçu ; observations |
+
+Ce qui tient : aucun `escapeHtml` dans un attribut `on*` ; 349 interpolations `on*` sur 364 par `escapeJsArg` (les 15 autres relues) ;
+messages, notifications, fiche d'activité et marqueurs de carte en `textContent` ou échappés (B-01 tient) ; fonctions de bord en listes
+fermées ; **aucun secret dans l'historique complet** (4 111 commits, 19 motifs — R14 largement levé) ; MapLibre toujours en 4.7.1, mais le
+contrôle vulnérable n'est plus utilisé (R9).
+
+### Pilotage, Sentinelle, agents (PIL)
+
+| ID | Prio | Statut | En une ligne |
+|---|---|---|---|
+| PIL-01 | P1 | confirmé | voir plus haut |
+| PIL-02 | P2 | confirmé (catalogue), non reproduit | La télémétrie peut être saturée sans compte ; le voyant reste alors vert |
+| PIL-03 | P2 | confirmé (données réelles) | « Régler » sur une exécution en échec lance un agent qui ne peut pas exécuter son ordre (PR #808, #809) |
+| PIL-04 | P2 | confirmé | Une erreur de visiteurs sans compte n'a ni enquête ni alerte, et l'écran dit « rien à corriger » |
+| PIL-05 | P2 | confirmé | Les robots sans signature comptent comme du public (= STAB-03) |
+| PIL-06 … 13 | P3–P4 | confirmé | geste envoyé deux fois ; une réparation peut modifier son propre capteur (`pilotage/` et les capteurs ne sont pas classés critiques) ; six gestes sans trace en base ; interrupteurs distants jamais exercés en production ; seuil « Sentinelle muette » sous la cadence réelle de GitHub ; documents décrivant une auto-fusion qui n'existe plus ; balayage des secrets rouge et muet |
+
+Ce qui tient : **un tiers ne peut rien déclencher dans la chaîne d'agents GitHub** (issue ET ordre de PASSIO74 exigés ; 102 événements de
+tiers sortis `skipped` en 14 jours) ; plus d'auto-fusion ; `reglages_distants` sans écriture cliente ; agent distant en liste blanche
+d'outils, sans réseau ; `main` protégée, administrateurs compris.
+
+### Exploitation, CI, récupération, lancement (EXPL)
+
+| ID | Prio | Statut | En une ligne |
+|---|---|---|---|
+| EXPL-01 | P2 | non vérifié | Archives chiffrées en `age` depuis le 07/11 : aucun déchiffrement éprouvé avec la clé privée |
+| EXPL-02 | P2 | confirmé | La veille lit l'âge du dernier run d'une sauvegarde, jamais sa conclusion : un échec chaque nuit resterait « ok » |
+| EXPL-03 | P2 | confirmé | = STAB-10 (la page minifiée n'est testée par rien) |
+| EXPL-04 | P2 | confirmé | `netlify-cli` installé sans lockfile avant de recevoir le jeton de déploiement |
+| EXPL-05 | P2 | confirmé | Retour arrière exercé une seule fois, le 14/09, avant les 9 scripts et `integrity` ; `rollback.yml` : zéro run |
+| EXPL-06 | P2 | confirmé | Une panne totale de Supabase n'est vue que par les crons GitHub : écart médian 5,7 h, maximum 10,6 h |
+| EXPL-07 | P2 | confirmé | Procédure d'incident non adoptée : responsable et suppléant non nommés, un seul compte GitHub |
+| EXPL-08 … 14 | P3–P4 | confirmé | gitleaks hebdomadaire rouge (64 constats publics ou de test) ; deux audits statiques hors de tout workflow ; `ask-ai` déployée sans porte dans l'interface ; politique de confidentialité incomplète sur les sous-traitants ; documents périmés |
+
+Ce qui tient : protection de `main` (PR obligatoire, deux contrôles, `enforce_admins`) ; 18 déploiements verts sur 20, 17,4 min de
+médiane ; **30 sauvegardes sur 30** ; restauration éprouvée de bout en bout sur le staging (14/09, 15/09, 21/10) ; `npm audit` à 0 ;
+DKIM et DMARC en place. Écart avec `AGENTS.md` : zéro approbation exigée par GitHub, et la « contre-revue » est un commentaire du compte unique.
+
+### Parcours et couverture (PARC)
+
+| ID | Prio | Statut | En une ligne |
+|---|---|---|---|
+| PARC-01 | P2 | confirmé | Sur une activité, j'aime, réaction, GIF et commentaire : ni porte visiteur ni lecture du verdict ; « Réaction envoyée » avant l'écriture |
+| PARC-02 | P2 | confirmé | « Nouveau groupe » ne propose que dix comptes de démonstration, en exige un, puis annonce « Groupe créé » |
+| PARC-03 | P2 | confirmé | Toucher « a aimé / réagi à ton événement » n'ouvre rien |
+| PARC-04 | P2 | confirmé (latent) | Une demande d'abonnement en attente est comptée comme abonné |
+| PARC-05 | P2 | confirmé | Réglages sans effet : notifications, contenu sensible, langue, temps d'écran, mode pause |
+| PARC-06 | P2 | confirmé | Récupération de mot de passe : aucun test ne l'exécute ; refus serveur en anglais brut |
+| PARC-07 / 10 | P2 | confirmé | Inscription jamais jouée sur WebKit ni avec un vrai e-mail ; signalement, pointage, note, annulation, export, push jamais joués contre un vrai serveur |
+| PARC-08 … 13 | P3–P4 | confirmé | suite de verrou jamais exécutée ; version des CGU jamais comparée ; sous-cas 12c sauté en production ; = STAB-04 |
+
+Ce qui tient : chaque refus d'inscription ou de connexion est dit en français, avec le renvoi du lien ; `setEventRsvp` exemplaire et
+joué en réel sur le staging ; suppression de compte et export sans succès annoncé à tort ; aucune porte vers Wallet, Passia, points ou Carnet.
+
+### PWA, mobile, accessibilité (PWA)
+
+| ID | Prio | Statut | En une ligne |
+|---|---|---|---|
+| PWA-01 | P2 | confirmé (mécanisme) | Le démarrage attend deux requêtes sans délai (page, SDK) : sur réseau présent mais muet, l'application installée reste blanche |
+| PWA-02 | P2 | confirmé | Quand le chargeur abandonne : ni message, ni télémétrie, ni reprise |
+| PWA-03 | P2 | confirmé (Chrome iOS) | « Installer l'application » recharge la racine au lieu d'ouvrir Safari ; aucun navigateur intégré n'est détecté |
+| PWA-12 | P2 | confirmé | Accessibilité : placeholders à 2,06:1 seuls libellés d'une vingtaine de champs, toasts d'erreur effacés en 3 s, 22 gabarits d'image sans `alt` |
+| PWA-04 … 14 | P3–P4 | voir rapport | = STAB-02, STAB-03 ; page rechargée après chaque déploiement ; faux bandeau hors-ligne ; `netlify.toml` gagne sur `_headers` pour `/sw.js` ; manifeste sans `id` |
+
+Réponse à l'observation du chargeur : aucun navigateur ne rejoue un `load` de lui-même (ni bfcache, ni prérendu) — événements
+synthétiques d'un automate. **Aucun appareil réel** : 14 manipulations exactes sont écrites au rapport pour iPhone et Android.
+
+### Performance, capacité, coûts (PERF)
+
+| ID | Prio | Statut | En une ligne |
+|---|---|---|---|
+| PERF-01 | P2 | confirmé (mur calculé) | `fil_compteurs` : 47,9 ms par appel ; coût qui croît avec l'engagement |
+| PERF-02 | P2 | confirmé | Démarrage d'un compte ≈ 54 requêtes en 25 s ; `supaInit()` deux fois ; `user_state` lu 2,85 fois et réécrit 3,74 fois sans changement |
+| PERF-03 | P2 | confirmé | Télémétrie au repos : 74 % des requêtes d'un visiteur |
+| PERF-04 | P2 | confirmé / suspecté | Image d'exemple `/demo` : 139 Ko, cache de bord non servi |
+| PERF-05 | P2 | confirmé | Le banc de charge ne joue ni `fil_compteurs`, ni la télémétrie, ni `user_state`, ni le démarrage |
+| PERF-06 … 10 | P3 | confirmé | ≈ 290 Ko évitables par version ; trois bornes de taille différentes ; index et table jamais nettoyés |
+
+**Aucune capacité n'est mesurée pour le code servi.** Mesuré : 630 Ko (brotli) avant le premier écran ; ≈ 272 requêtes par heure au
+repos pour un visiteur, ≈ 572 pour un compte. Calculé, hypothèses écrites au rapport : S (100 inscrits / 20 simultanés) tient avec une
+marge de plus de dix ; M (1 000 / 100) tient en calcul, avec deux réserves ; **L (10 000 / 500) ne tient pas en l'état** — premiers
+murs, dans l'ordre : e-mails d'inscription, 500 connexions temps réel (vers 330 à 400 simultanés), télémétrie, calcul partagé.
