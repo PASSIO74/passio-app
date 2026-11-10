@@ -18,13 +18,16 @@
 // Stub local (`bootOnboarded`) : aucune écriture, aucune lecture en production.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, serviceWorkersHorsWebkit } = require("./app-helper");
 
 test.describe("Contrôle général 2026-11-10", () => {
   // La largeur où les défauts ⑦ ⑧ ⑨ ont été mesurés (iPhone 12 mini, 13 mini, X, 11 Pro).
   // Le fuseau de Paris : les runners de la CI sont en UTC, où le cas « changement
   // d'heure » de ④ ne prouvait rien — 48 h y valent toujours deux jours (audit du lot 28).
-  test.use({ viewport: { width: 375, height: 812 }, timezoneId: "Europe/Paris" });
+  // Le service worker est BLOQUÉ sous WebKit : une page qu'il contrôle y échappe aux
+  // routes d'isolation, et ses requêtes partiraient en production
+  // (`isolation-projet-supabase.test.mjs` ⑦, pour toute suite de `SUITES_WEBKIT`).
+  test.use({ viewport: { width: 375, height: 812 }, timezoneId: "Europe/Paris", serviceWorkers: serviceWorkersHorsWebkit });
 
   test("① fil : le texte d'une carte est collé à ses balises — ni ligne vide, ni retrait, ni « Lire la suite » seul à la ligne", async ({ page }) => {
     await bootOnboarded(page);
