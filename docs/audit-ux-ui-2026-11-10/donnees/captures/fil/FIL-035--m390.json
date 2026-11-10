@@ -1,0 +1,89 @@
+{
+ "id": "FIL-035",
+ "domaine": "fil",
+ "scenario": "discussion",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Options de mon commentaire (Modifier, Supprimer)",
+ "note": "",
+ "prisLe": "2026-11-10T17:40:34.982Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Discussion",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-035--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 24084,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Supprimer » efface aussitôt, sans confirmation ni annulation (la publication, elle, demande confirmation)",
+   "x": 0.5,
+   "y": 0.89,
+   "w": 0.959,
+   "h": 0.062,
+   "sel": "#cmtSheet .cmt-sheet-row.danger",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 7,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 7,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#cmtSheet > div.cmt-sheet > button.cmt-sheet-row.danger",
+     "texte": "Supprimer",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 15
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

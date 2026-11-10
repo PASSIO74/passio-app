@@ -331,7 +331,7 @@ module.exports = {
         await page.locator("#commentsBox .comment[data-commentid='c_fil_recent'] .comment-action[title='Répondre']").click();
         await page.waitForTimeout(700);
         await prendre({
-          id: "FIL-037",
+          id: "FIL-037", seulement: ["m390"],
           titre: "Réponse à un commentaire (champ en ligne)",
           zooms: [{ nom: "reponse", titre: "Champ de réponse", sel: ".comment-reply-input", marge: 8 }],
           annotationsAvant: [

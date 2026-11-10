@@ -47,6 +47,7 @@ module.exports = async ({ page, serveur, banc, photo }) => {
   out.blocage = await page.evaluate(() => ({ toasts: window.__toasts.map((t) => t.msg), bloques: (state.user.blocked || []).length, suivis: (state.user.following || []).length, modale: document.getElementById("modalBackdrop").classList.contains("active"), texteModale: document.getElementById("modalContent").innerText.slice(0, 160), toastDom: Array.from(document.querySelectorAll("#toastStack .toast, .toast")).map((t) => t.innerText).slice(0, 3) }));
   out.blocageServeur = serveur.t.blocks.length;
   await photo("a-apres-blocage");
+  require("fs").writeFileSync(require("path").join(__dirname, "fil-04-resultats.json"), JSON.stringify(out, null, 1));
   return out;
 };
 module.exports.demarrage = { mode: "compte", nbPassions: 3, peupler: (srv, ctx) => { base.peupler(srv, ctx); jeu.peupler(srv, ctx); } };

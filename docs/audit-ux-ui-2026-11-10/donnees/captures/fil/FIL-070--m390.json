@@ -1,0 +1,174 @@
+{
+ "id": "FIL-070",
+ "domaine": "fil",
+ "scenario": "etats-du-fil",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil d'un compte sans publication réelle — séparateur « Exemples PASSIO » en tête",
+ "note": "",
+ "prisLe": "2026-11-10T17:42:48.907Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-070--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 91048,
+  "zooms": [
+   {
+    "nom": "separateur",
+    "titre": "Séparateur",
+    "fichier": "captures/fil/FIL-070--m390--avant-zoom-separateur.webp",
+    "largeur": 684,
+    "hauteur": 378,
+    "octets": 19702
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Quatre lignes centrées en 12 px avant le premier contenu",
+   "x": 0.5,
+   "y": 0.425,
+   "w": 0.769,
+   "h": 0.089,
+   "sel": ".feed-exemples-sep-texte",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Deux boutons (« Publier la première », « Inviter quelqu'un ») avant d'avoir rien lu",
+   "x": 0.5,
+   "y": 0.508,
+   "w": 0.769,
+   "h": 0.052,
+   "sel": ".feed-exemples-sep-actions",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 33,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Moreau",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Moreau 🎸 Musique · 22:07",
+     "w": 217.4,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "article.post > div > div.comment > div.avatar.sm",
+     "texte": "🎧",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div > div.comment > div.comment-body > div.comment-author",
+     "texte": "Oussama Farid",
+     "w": 241,
+     "h": 16,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 21,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-070--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 93102,
+  "zooms": [
+   {
+    "nom": "separateur",
+    "titre": "Séparateur",
+    "fichier": "captures/fil/FIL-070--m390--apres-zoom-separateur.webp",
+    "largeur": 684,
+    "hauteur": 280,
+    "octets": 13646
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une phrase en 13 px, encre pleine ; mêmes deux gestes, séparateur plus bas d'un tiers",
+   "x": 0.5,
+   "y": 0.417,
+   "w": 0.846,
+   "h": 0.152,
+   "sel": ".feed-exemples-sep",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

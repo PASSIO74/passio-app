@@ -1,0 +1,175 @@
+{
+ "id": "FIL-050",
+ "domaine": "fil",
+ "scenario": "detail-et-options",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Page d'une publication — texte long, sans commentaire",
+ "note": "",
+ "prisLe": "2026-11-10T17:44:43.684Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#post"
+ },
+ "avant": {
+  "fichier": "captures/fil/FIL-050--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 69314,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "Barre de titre",
+    "fichier": "captures/fil/FIL-050--m390--avant-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 94,
+    "octets": 958
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Titre « Post » (ailleurs : « publication ») ; fond #ede9fe écrit en dur",
+   "x": 0.155,
+   "y": 0.027,
+   "w": 0.083,
+   "h": 0.024,
+   "sel": "#postDetailPage > div:first-child > span",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Commentaires (0) » ici, « Discussion » dans la feuille : deux mots pour un même fil ; aucun champ pour écrire sur cette page",
+   "x": 0.5,
+   "y": 0.715,
+   "w": 0.918,
+   "h": 0.068,
+   "sel": "#postDetailComments",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 8,
+   "sous44": [
+    {
+     "el": "div#postDetailPage > div > button",
+     "texte": "Fermer la publication",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailContent > div.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#postDetailContent > div.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 17:29",
+     "w": 149.3,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#postDetailContent > div > div",
+     "texte": "Commentaires (0)",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#postDetailComments > div",
+     "texte": "Aucun commentaire — sois le premier 💬",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/fil/FIL-050--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 73646,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "Barre de titre",
+    "fichier": "captures/fil/FIL-050--m390--apres-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 94,
+    "octets": 1964
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Publication », sur le fond de l'application",
+   "x": 0.228,
+   "y": 0.027,
+   "w": 0.23,
+   "h": 0.026,
+   "sel": "#postDetailPage > div:first-child > span",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Même mot que la feuille (« Discussion ») et une porte visible pour écrire (elle ouvre la feuille existante)",
+   "x": 0.5,
+   "y": 0.709,
+   "w": 0.918,
+   "h": 0.055,
+   "sel": "#postDetailComments",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}
