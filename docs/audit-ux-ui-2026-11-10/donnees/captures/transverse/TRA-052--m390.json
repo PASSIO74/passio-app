@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Signalement refusé par le serveur : « déjà envoyé, ou impossible »",
  "note": "Refus 500 programmé sur l'insertion `reports` (faux serveur). Toast figé.",
- "prisLe": "2026-11-10T19:46:39.434Z",
+ "prisLe": "2026-11-10T19:48:29.106Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/transverse/TRA-052--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 47684,
+  "octets": 41904,
   "zooms": []
  },
  "annotationsAvant": [
@@ -45,57 +45,64 @@
    "h": 844
   },
   "cibles": {
-   "total": 4,
-   "sous44": [],
-   "nbSous44": 0
+   "total": 11,
+   "sous44": [
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > button.btn.ghost",
+     "texte": "Discussion des participants",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "input#eventCommentInput",
+     "texte": "Écris un commentaire…",
+     "w": 228.5,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.cmt-tool-btn",
+     "texte": "Ajouter un emoji ou un GIF",
+     "w": 38,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.primary",
+     "texte": "Envoyer",
+     "w": 79.5,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Ajouter au calendrier",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Partager",
+     "w": 241,
+     "h": 30,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
   },
   "champs": {
-   "total": 0,
+   "total": 1,
    "sous16": []
   },
   "contraste": {
-   "juges": 16,
-   "indetermines": 3,
+   "juges": 18,
+   "indetermines": 1,
    "sousSeuil": [
     {
-     "el": "div#eventDetailHero > button.event-detail-back",
-     "texte": "← Retour",
-     "ratio": 3.53,
-     "seuil": 4.5,
-     "couleur": "#ffffff",
-     "fond": "#898793",
-     "px": 0
-    },
-    {
-     "el": "button#eventDetailShareBtn",
-     "texte": "Partager",
-     "ratio": 3.53,
-     "seuil": 4.5,
-     "couleur": "#ffffff",
-     "fond": "#898793",
-     "px": 0
-    },
-    {
-     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
-     "texte": "🎸 Musique · Atelier",
-     "ratio": 2.83,
-     "seuil": 4.5,
-     "couleur": "#ffffff",
-     "fond": "#a886f8",
-     "px": 11
-    },
-    {
-     "el": "div#eventDetailHeroTitle > div.event-detail-title",
-     "texte": "Atelier réglage de guitare",
-     "ratio": 1.19,
-     "seuil": 3,
-     "couleur": "#ffffff",
-     "fond": "#ede9fe",
-     "px": 22
-    },
-    {
-     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
-     "texte": "Le rendez-vous",
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Participants (1 / 8 max)",
      "ratio": 4.39,
      "seuil": 4.5,
      "couleur": "#6e6987",
@@ -103,17 +110,8 @@
      "px": 11
     },
     {
-     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.soon",
-     "texte": "Demain",
-     "ratio": 1.68,
-     "seuil": 4.5,
-     "couleur": "#f59e0b",
-     "fond": "#eee0e1",
-     "px": 11
-    },
-    {
-     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
-     "texte": "Organisateur·ice",
+     "el": "div.v4b-fiche > section.v4b-sec > div > span",
+     "texte": "7 places disponibles",
      "ratio": 4.39,
      "seuil": 4.5,
      "couleur": "#6e6987",
@@ -122,7 +120,7 @@
     },
     {
      "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
-     "texte": "Description",
+     "texte": "Album de l'événement",
      "ratio": 4.39,
      "seuil": 4.5,
      "couleur": "#6e6987",
@@ -130,8 +128,53 @@
      "px": 11
     },
     {
+     "el": "div#eventAlbum > div.event-album-empty",
+     "texte": "Aucune photo pour l'instant — sois le premier à pa",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
      "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
-     "texte": "Infos pratiques",
+     "texte": "Échanges",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div.post-actions > span.post-action",
+     "texte": "🤍 0",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12.5
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Commentaires",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventCommentsList > div",
+     "texte": "Aucun commentaire — lance la conversation !",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 12
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Autres actions",
      "ratio": 4.39,
      "seuil": 4.5,
      "couleur": "#6e6987",
@@ -158,7 +201,12 @@
   },
   "tronques": [],
   "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
-  "champsSansEtiquette": []
+  "champsSansEtiquette": [
+   {
+    "el": "input#eventCommentInput",
+    "placeholder": "Écris un commentaire…"
+   }
+  ]
  },
  "apres": null,
  "annotations": [],

@@ -30,7 +30,7 @@ async function viderToasts(page) { await page.evaluate(() => { const p = documen
 // coins de carte quand le texte passe sur deux lignes.
 const CSS_PILE = ".toast-stack{position:fixed!important;left:0!important;right:0!important;bottom:calc(96px + env(safe-area-inset-bottom,0px))!important;z-index:2147483000!important;padding:0 16px}"
   + ".toast{max-width:min(440px,100%);border-radius:16px!important;line-height:1.35;text-align:left}"
-  + "#modalBackdrop.active ~ .toast-stack,body:has(#modalBackdrop.active) .toast-stack,body:has(#conv-fullpage.active) .toast-stack{bottom:calc(24px + env(safe-area-inset-bottom,0px))!important}";
+  + "body:has(#modalBackdrop.active) .toast-stack,body:has(#conv-fullpage.active) .toast-stack,body:has(.reels-viewer.open) .toast-stack{bottom:auto!important;top:calc(12px + env(safe-area-inset-top,0px))!important}";
 
 const CSS_PANNEAU = "#devPanel .btn{min-height:44px!important;font-size:14px!important;padding:10px 12px!important}"
   + "#devPanel .settings-section:has([onclick*='startTour']),#devPanel .settings-section:has([onclick*='openScreenTime']),#devPanel [onclick*='resetOnboarding']{display:none!important}"
@@ -443,7 +443,7 @@ module.exports = {
           note: "Toast figé par le banc ; il existe dans la pile (« Dis-nous en deux mots… ») mais il est peint sous la fenêtre (pile z-index 200, fenêtre 10001).",
           annotationsAvant: [{ n: 1, sel: "#modalContent button.btn.primary", texte: "« Envoyer le signalement » ne répond rien de visible" }],
           apres: { css: CSS_PILE },
-          annotations: [{ n: 1, sel: "#toastStack .toast", texte: "La pile passe au-dessus de toute superposition : l'avertissement se lit" }],
+          annotations: [{ n: 1, sel: "#toastStack .toast", texte: "Pile au-dessus de toute superposition ; fenêtre ouverte en bas → toast en haut, sans masquer les boutons" }],
         });
         await page.evaluate(() => { try { closeModal(); } catch (e) {} try { closeEventDetail(); } catch (e) {} });
         await viderToasts(page);
@@ -458,7 +458,7 @@ module.exports = {
           id: "TRA-042", seulement: ["m390"], titre: "Conversation ouverte : un toast d'échec est émis, rien ne paraît",
           note: "Toast émis par appel direct de toast() (simulé), figé par le banc.",
           apres: { css: CSS_PILE },
-          annotations: [{ n: 1, sel: "#toastStack .toast", texte: "Au-dessus de la conversation et de son champ de saisie" }],
+          annotations: [{ n: 1, sel: "#toastStack .toast", texte: "Au-dessus de la conversation, en haut : le champ de saisie et le clavier restent libres" }],
         });
         await page.evaluate(() => { try { closeConversation(); } catch (e) {} goTo("feed"); });
         await viderToasts(page);
@@ -496,13 +496,13 @@ module.exports = {
         await page.evaluate((id) => openEventDetails(id), jeu.EV_ID);
         await page.waitForTimeout(1500);
         // Tout en bas de la fiche (défilement maximal de #appMain)
-        await page.evaluate(() => { const m = document.getElementById("appMain"); m.scrollTop = m.scrollHeight; });
-        await page.waitForTimeout(500);
+        const enBas = () => page.evaluate(() => { const b = document.querySelector("button[onclick*='reportEvent']"); if (b) b.scrollIntoView({ block: "end" }); const m = document.getElementById("appMain"); m.scrollTop = m.scrollHeight; });
+        await enBas(); await page.waitForTimeout(900); await enBas(); await page.waitForTimeout(400);
         await prendre({
           id: "TRA-050", titre: "Fiche d'activité défilée jusqu'en bas : « Signaler cet événement » reste sous le pied collant",
           zooms: [{ nom: "pied", titre: "Bas de la fiche", sel: "#eventDetailCta", marge: 40 }],
           annotationsAvant: [{ n: 1, sel: "#eventDetailCta", texte: "Le pied « Je participe » recouvre « Signaler cet événement » même au bout du défilement (elementFromPoint = #eventDetailCta)" }],
-          apres: { css: "#eventDetailContent{padding-bottom:150px!important}", js: async (page) => page.evaluate(() => { const m = document.getElementById("appMain"); m.scrollTop = m.scrollHeight; const b = document.querySelector("button[onclick*='reportEvent']"); if (b) b.textContent = "Signaler cette activité"; }) },
+          apres: { css: "#eventDetailContent{padding-bottom:150px!important}", js: async (page) => { await page.evaluate(() => { const b = document.querySelector("button[onclick*='reportEvent']"); if (b) { b.textContent = "Signaler cette activité"; b.scrollIntoView({ block: "end" }); } const m = document.getElementById("appMain"); m.scrollTop = m.scrollHeight; }); await page.waitForTimeout(400); } },
           annotations: [{ n: 1, sel: "button[onclick*='reportEvent']", texte: "Une marge basse égale au pied : le bouton devient atteignable ; un seul mot, « activité »" }],
         });
         // Le toucher est impossible : la fenêtre est ouverte par reportEvent() (simulé)

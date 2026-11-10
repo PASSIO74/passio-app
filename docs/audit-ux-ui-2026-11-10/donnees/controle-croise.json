@@ -1,5 +1,5 @@
 {
- "genereLe": "2026-11-10T19:46:39.780Z",
+ "genereLe": "2026-11-10T19:48:31.696Z",
  "total": {
   "inventoriees": 599,
   "observees": 400,
@@ -241,7 +241,7 @@
    "P3": 2
   }
  ],
- "nbImages": 1579,
+ "nbImages": 1582,
  "orphelines": [
   "TRA-001",
   "TRA-002",
@@ -280,12 +280,14 @@
   "TRA-043",
   "TRA-050",
   "TRA-051",
+  "TRA-052",
+  "TRA-053",
   "TRA-055"
  ],
  "alertes": [
   {
    "niveau": "avert",
-   "msg": "captures sans ligne de registre : TRA-001, TRA-002, TRA-003, TRA-004, TRA-005, TRA-006, TRA-010, TRA-011, TRA-012, TRA-013, TRA-014, TRA-015, TRA-016, TRA-017, TRA-018, TRA-019, TRA-020, TRA-021, TRA-022, TRA-023, TRA-024, TRA-025, TRA-026, TRA-027, TRA-030, TRA-031, TRA-032, TRA-033, TRA-034, TRA-035, TRA-036, TRA-040, TRA-041, TRA-042, TRA-043, TRA-050, TRA-051, TRA-055"
+   "msg": "captures sans ligne de registre : TRA-001, TRA-002, TRA-003, TRA-004, TRA-005, TRA-006, TRA-010, TRA-011, TRA-012, TRA-013, TRA-014, TRA-015, TRA-016, TRA-017, TRA-018, TRA-019, TRA-020, TRA-021, TRA-022, TRA-023, TRA-024, TRA-025, TRA-026, TRA-027, TRA-030, TRA-031, TRA-032, TRA-033, TRA-034, TRA-035, TRA-036, TRA-040, TRA-041, TRA-042, TRA-043, TRA-050, TRA-051, TRA-052, TRA-053, TRA-055"
   }
  ]
 }

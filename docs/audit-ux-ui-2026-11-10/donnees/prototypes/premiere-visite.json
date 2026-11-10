@@ -1,0 +1,18 @@
+{
+ "ordre": 4,
+ "fichier": "prototypes/premiere-visite.html",
+ "titre": "Première visite → premier geste",
+ "description": "De l'arrivée d'un visiteur à son premier « J'aime », en treize étapes guidées : entrée directe dans Découvrir avec la carte de bienvenue (une action, la promesse qu'un compte ne sera demandé qu'au moment d'agir) ; choix des passions sans compte, qui se voit tout de suite et dit qu'il vit sur cet appareil ; un repère posé au-dessus de la barre basse, qui encadre sa cible au lieu de la cacher ; l'onglet Profil d'un visiteur qui dit ce qu'un compte apporte au lieu d'un faux profil vide ; la porte « Crée ton compte pour aimer cette publication » conservée ; une inscription en deux étapes (l'accès, puis le nom public et l'année de naissance) avec un bouton visible sans défiler, une sortie qui ne recouvre rien et des erreurs écrites sous chaque champ, toutes à la fois ; la confirmation d'e-mail avec ses sorties ; le retour exactement sur la publication, sans action rejouée ; et le premier geste réussi. Les fonctions montrées existent toutes dans l'application ; seules les phrases « sur cet appareil » et la carte du profil visiteur sont des ajouts de texte.",
+ "constats": [
+  "ENT-C01",
+  "ENT-C02",
+  "ENT-C03",
+  "ENT-C04",
+  "ENT-C05",
+  "ENT-C08",
+  "ENT-C11",
+  "ENT-C15",
+  "ENT-C19",
+  "PAR-C02"
+ ]
+}

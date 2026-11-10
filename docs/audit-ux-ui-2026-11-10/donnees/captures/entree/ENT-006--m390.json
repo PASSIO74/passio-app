@@ -9,7 +9,7 @@
  "mode": "visiteur",
  "titre": "Visiteur — Rencontrer, avec son repère",
  "note": "",
- "prisLe": "2026-11-10T19:28:27.677Z",
+ "prisLe": "2026-11-10T19:47:43.618Z",
  "ecran": {
   "ecran": "screen-irl",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/entree/ENT-006--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 81420,
+  "octets": 84442,
   "zooms": []
  },
  "annotationsAvant": [
@@ -45,7 +45,7 @@
    "h": 844
   },
   "cibles": {
-   "total": 18,
+   "total": 19,
    "sous44": [
     {
      "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
@@ -95,7 +95,7 @@
   "fichier": "captures/entree/ENT-006--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 82510,
+  "octets": 80788,
   "zooms": []
  },
  "annotations": [

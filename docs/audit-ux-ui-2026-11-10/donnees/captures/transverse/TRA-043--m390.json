@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Quatre toasts d'affilée : couleurs, longueurs, durée unique de 3 s",
  "note": "Quatre libellés RÉELS de l'application (app-04:5176 sans type, app-02:5278, app-04:5407), émis par appel direct (simulé) et figés.",
- "prisLe": "2026-11-10T19:46:10.442Z",
+ "prisLe": "2026-11-10T19:48:01.428Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": null,
@@ -128,7 +128,7 @@
   "fichier": "captures/transverse/TRA-043--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 87884,
+  "octets": 88028,
   "zooms": [
    {
     "nom": "pile",

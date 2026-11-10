@@ -44,8 +44,8 @@
     .pv-passions { display: none; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
     body[data-passions="1"] .pv-passions { display: flex; }
     .pv-pass { min-height: 40px; padding: 0 12px; border-radius: 999px; background: var(--accent-tile, #f3effe); border: 1px solid var(--accent-tile-line, #e2d9fb); color: var(--accent); font: 700 14px/1 system-ui, sans-serif; display: inline-flex; align-items: center; gap: 6px; }
-    .pv-local { display: none; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 13.5px; color: var(--pv-encre2); margin: 0 0 12px; }
-    body[data-passions="1"][data-compte="0"] .pv-local { display: flex; }
+    .pv-local { display: none; font-size: 13.5px; line-height: 1.4; color: var(--pv-encre2); margin: 0 0 12px; } .pv-local .pv-lien { padding: 0 2px; min-height: 44px; }
+    body[data-passions="1"][data-compte="0"] .pv-local { display: block; }
     body[data-passions="1"] #pvBienvenue { display: none; }
     body[data-compte="1"] #pvBienvenue { display: none; }
 

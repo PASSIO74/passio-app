@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Signaler, motif vide : l'avertissement est émis SOUS la fenêtre",
  "note": "Toast figé par le banc ; il existe dans la pile (« Dis-nous en deux mots… ») mais il est peint sous la fenêtre (pile z-index 200, fenêtre 10001).",
- "prisLe": "2026-11-10T19:46:00.175Z",
+ "prisLe": "2026-11-10T19:47:52.979Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": "Signaler cette rencontre",
@@ -73,15 +73,15 @@
   "fichier": "captures/transverse/TRA-041--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 33562,
+  "octets": 36460,
   "zooms": []
  },
  "annotations": [
   {
    "n": 1,
-   "texte": "La pile passe au-dessus de toute superposition : l'avertissement se lit",
+   "texte": "Pile au-dessus de toute superposition ; fenêtre ouverte en bas → toast en haut, sans masquer les boutons",
    "x": 0.5,
-   "y": 0.938,
+   "y": 0.048,
    "w": 0.918,
    "h": 0.068,
    "sel": "#toastStack .toast",

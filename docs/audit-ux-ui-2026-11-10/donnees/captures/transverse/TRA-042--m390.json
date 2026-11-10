@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Conversation ouverte : un toast d'échec est émis, rien ne paraît",
  "note": "Toast émis par appel direct de toast() (simulé), figé par le banc.",
- "prisLe": "2026-11-10T19:46:07.332Z",
+ "prisLe": "2026-11-10T19:47:58.737Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/transverse/TRA-042--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 30816,
+  "octets": 30740,
   "zooms": []
  },
  "annotationsAvant": [],
@@ -117,15 +117,15 @@
   "fichier": "captures/transverse/TRA-042--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 34120,
+  "octets": 32894,
   "zooms": []
  },
  "annotations": [
   {
    "n": 1,
-   "texte": "Au-dessus de la conversation et de son champ de saisie",
+   "texte": "Au-dessus de la conversation, en haut : le champ de saisie et le clavier restent libres",
    "x": 0.5,
-   "y": 0.948,
+   "y": 0.038,
    "w": 0.644,
    "h": 0.047,
    "sel": "#toastStack .toast",
