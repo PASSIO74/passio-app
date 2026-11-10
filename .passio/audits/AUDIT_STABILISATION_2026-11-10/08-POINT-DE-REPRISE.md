@@ -50,3 +50,15 @@ test, sonde anonyme, reproductions, avant / après de chaque lot), `outils/` (`s
 ## Verdict à ce point
 
 **NON PRÊT** — voir `00-SYNTHESE.md`.
+
+## Ajout de 19:00 UTC — `main` a avancé pendant la mission
+
+- `main` = production = `36b778d1` (PR #821, intégrité de la feuille de style ; buildId `7e41f8b20efe`), fusionnée par une autre
+  session. Les mesures de cet audit portent sur `4e1d8ed1` ; #821 touche `scripts/build.js`, `sw.js`, `deploy.yml` et la suite du
+  chargeur — **non auditée ici**.
+- #822 : `main` fusionnée dans la branche sans conflit (`340db0aa`), suite du chargeur 12 / 12, `integrite-app` 9 / 9, `verif` vert.
+  La contre-revue doit donc s'ancrer sur ce nouveau SHA.
+- #824 : un rouge en CI sur `app-scripts-par-fichier` ⑤ (« l'application s'exécute avant `load` »), test que ce lot ne touche pas ;
+  6 / 6 en local sur la branche ; déjà rouge sous charge sur `main` intact (baseline V7). Jobs relancés une fois. **Ce test est
+  instable** : à inscrire au registre (STAB-12, P3) et à diagnostiquer — un rouge relancé n'est pas un rouge expliqué.
+- PR des documents : **#825**.
