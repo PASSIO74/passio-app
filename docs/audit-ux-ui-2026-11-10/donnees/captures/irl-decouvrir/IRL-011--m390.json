@@ -1,0 +1,143 @@
+{
+ "id": "IRL-011",
+ "domaine": "irl-decouvrir",
+ "scenario": "compte-liste",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Activité au centre de Paris — « environ 0 m » sans aucune position",
+ "note": "",
+ "prisLe": "2026-11-10T18:11:35.768Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-011--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 68328,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Carte « Paris · environ 0 m »",
+    "fichier": "captures/irl-decouvrir/IRL-011--m390--avant-zoom-carte.webp",
+    "largeur": 740,
+    "hauteur": 500,
+    "octets": 21708
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« environ 0 m » : le repli Paris pris pour la position",
+   "x": 0.615,
+   "y": 0.346,
+   "w": 0.621,
+   "h": 0.021,
+   "sel": "#eventList .event-card[data-evid=\"ev_ird_07\"] .v4a2-ou",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventList > button.btn.ghost",
+     "texte": "Afficher plus (21 restants)",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 18,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-decouvrir/IRL-011--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 67466,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Carte « Paris · environ 0 m »",
+    "fichier": "captures/irl-decouvrir/IRL-011--m390--apres-zoom-carte.webp",
+    "largeur": 740,
+    "hauteur": 500,
+    "octets": 20948
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Ville seule",
+   "x": 0.615,
+   "y": 0.346,
+   "w": 0.621,
+   "h": 0.021,
+   "sel": "#eventList .event-card[data-evid=\"ev_ird_07\"] .v4a2-ou",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,156 @@
+{
+ "id": "IRL-002",
+ "domaine": "irl-decouvrir",
+ "scenario": "demo-liste",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Carte d'activité d'exemple — « participation désactivée » mais « Je viens » actif",
+ "note": "",
+ "prisLe": "2026-11-10T17:54:42.447Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-002--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 60072,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Carte d'exemple",
+    "fichier": "captures/irl-decouvrir/IRL-002--m360--avant-zoom-carte.webp",
+    "largeur": 680,
+    "hauteur": 290,
+    "octets": 23706
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« participation désactivée »",
+   "x": 0.625,
+   "y": 0.929,
+   "w": 0.589,
+   "h": 0.055,
+   "sel": "#eventList .event-card:nth-child(2) .v4a2-monde",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "… et pourtant un bouton corail plein, actif",
+   "x": 0.808,
+   "y": 1.009,
+   "w": 0.223,
+   "h": 0.069,
+   "sel": "#eventList .event-card:nth-child(2) .v4a2-go",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 16,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-decouvrir/IRL-002--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 62258,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Carte d'exemple",
+    "fichier": "captures/irl-decouvrir/IRL-002--m360--apres-zoom-carte.webp",
+    "largeur": 680,
+    "hauteur": 324,
+    "octets": 27392
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "L'état est dit en clair",
+   "x": 0.625,
+   "y": 0.888,
+   "w": 0.589,
+   "h": 0.027,
+   "sel": "#eventList .event-card:nth-child(2) .v4a2-monde",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Pastille d'état (composant « Annulé » / « Tu organises »)",
+   "x": 0.815,
+   "y": 0.955,
+   "w": 0.209,
+   "h": 0.069,
+   "sel": "#eventList .event-card:nth-child(2) .v4a2-etat",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

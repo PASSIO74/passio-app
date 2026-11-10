@@ -2,8 +2,672 @@
   "domaine": "irl-fiche",
   "groupe": "Rencontres IRL",
   "titre": "Rencontres IRL — fiche, participation, organisation",
-  "resume": "Version de travail : inventaire et captures en cours.",
-  "aConserver": [],
-  "registre": [],
-  "constats": []
+  "resume": "La fiche d'activité (lot UI-4B) répond bien en un coup d'œil à « quand, où, avec qui, puis-je venir ? » : bloc « Le rendez-vous », une seule action corail, libellé « Rejoindre la liste d'attente » annoncé avant le geste, refus du serveur relus et dits. Le moment qui suit l'inscription est en revanche fragile : le lien « Retirer ma participation » prend la place exacte du bouton touché (un second appui désinscrit, mesuré), la « Discussion des participants » répond « indisponible hors connexion » en ligne tant que l'organisateur ne l'a pas ouverte, et les gestes utiles (calendrier, inviter, itinéraire) restent rangés sous les commentaires. Les messages éphémères se posent sur le pied d'action, et ceux émis pendant une fenêtre ouverte (validation de « Créer une activité », « Code incorrect », « Choisis une note ») sont cachés sous la fenêtre (mesuré : pile 200, fenêtre 10001). Côté organisation, l'organisatrice voit « ✓ Je participe / Retirer ma participation » sur sa propre activité, ses outils sont dispersés, la modification rouvre l'ancien formulaire, et annuler ou supprimer passent par des `confirm()` natifs. Enjeu : c'est le dernier mètre de la boucle Fil → interaction → IRL ; chaque ambiguïté y coûte une venue réelle.",
+  "aConserver": [
+    "Le bloc « Le rendez-vous » : tuile de date, jour et heure, ville publique seulement, participants et places en mots (« complet » est écrit, pas seulement coloré).",
+    "Une seule action primaire corail sur la fiche, réservée au passage au réel.",
+    "« Rejoindre la liste d'attente » : le libellé annonce la conséquence avant le geste.",
+    "Le refus du serveur est relu et dit avec sa raison (complète, annulée, passée) au lieu d'une fausse confirmation (ROB-02, IRL-05).",
+    "« Événement annulé » remplace l'action : on ne peut pas s'inscrire à une activité annulée.",
+    "Le formulaire « Créer une activité » (UI-6A0) : couverture d'abord, 17 champs à 16 px, prix en `inputmode=decimal`, aperçu avant publication, garde contre le double envoi.",
+    "Le QR d'accueil avec code en clair de repli, et la saisie du code côté participant.",
+    "L'affiche à imprimer avec QR d'inscription.",
+    "La proposition d'inviter juste après la création (« Ton activité est en ligne 🎉 »).",
+    "L'activité d'exemple refuse la participation avant toute écriture, avec un message honnête."
+  ],
+  "registre": [
+    {
+      "id": "IRL-101", "surface": "Fiche d'activité", "composant": "Haut de fiche : couverture, titre, « Le rendez-vous », organisateur, pied « Je participe »",
+      "etat": "activité à venir, places restantes", "role": "connecté · non inscrit",
+      "geste": "Fil → « Voir l'activité » (porte du parcours cœur) ; ici `openEventDetails(id)`, la fonction de cette porte",
+      "observation": "observe", "preuve": "capture IRL-101 (m390, m360, t768, d1440) ; rendu js/app-07-ia-explore-irl.js:4243, décor js/ui-v4b-fiche.js:347-381 ; porte réelle déjà vue en PCS-008",
+      "problemes": ["IRL-C69"], "proposition": "Garder la composition ; borner la largeur de lecture sur grand écran.",
+      "visuel": "avant", "verdict": "a-conserver", "justification": "En moins de dix secondes on sait quand, où, combien de places et qui organise ; seul le gabarit 1440 px étire la fiche (P3)."
+    },
+    {
+      "id": "IRL-102", "surface": "Fiche d'activité", "composant": "Infos pratiques, preuve sociale, participants, bouton de discussion",
+      "etat": "activité à venir, non inscrit", "role": "connecté · non inscrit", "geste": "Défiler la fiche",
+      "observation": "observe", "preuve": "capture IRL-102 (m390, m360) ; app-07:4375-4397, 4416-4422",
+      "problemes": ["IRL-C51"], "proposition": "Le bouton de discussion n'apparaît que lorsqu'il mène quelque part ; avant l'inscription, une phrase dit qu'elle s'ouvre en participant.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Un bouton plein largeur qui, avant inscription, ne fait qu'afficher un message."
+    },
+    {
+      "id": "IRL-103", "surface": "Fiche d'activité", "composant": "Échanges (réactions, commentaires) et « Autres actions »",
+      "etat": "bas de fiche, 2 commentaires", "role": "connecté · non inscrit", "geste": "Défiler jusqu'en bas",
+      "observation": "observe", "preuve": "capture IRL-103 (m390) ; mesures : tris « Récents/Aimés » 23 px de haut ; ui-v4b-fiche.js:389-431",
+      "problemes": ["IRL-C52", "IRL-C67", "IRL-C62"], "proposition": "Remonter calendrier et inviter dans l'état « inscrit » ; une seule barre de tri des commentaires ; un seul « Partager ».",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Les gestes utiles après l'inscription sont sous les commentaires, Partager apparaît trois fois, le tri des commentaires deux fois."
+    },
+    {
+      "id": "IRL-110", "surface": "Fiche d'activité", "composant": "Pied fixe `#eventDetailCta .v4b-rsvp` après « Je participe »",
+      "etat": "inscrit (going), 400 ms après l'appui", "role": "connecté · participant", "geste": "Appui tactile réel sur « Je participe »",
+      "observation": "observe", "preuve": "capture IRL-110 (m390, m360) ; elementFromPoint au point d'appui = `v4b-rsvp-retirer` ; ui-v4b-fiche.js:601-640, styles.css:8628-8672",
+      "problemes": ["IRL-C50", "IRL-C52"], "proposition": "Confirmation datée + « Écrire aux participants » à la place du bouton touché + calendrier / itinéraire / inviter ; « Je ne peux plus venir » à l'écart.",
+      "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "Le geste suivant le plus probable (un second appui) annule ce qu'on vient de faire, et rien ne dit la suite (PCS-C03)."
+    },
+    {
+      "id": "IRL-111", "surface": "Fiche d'activité", "composant": "Pied fixe après un second appui au même endroit",
+      "etat": "désinscrit involontairement", "role": "connecté", "geste": "Deux appuis tactiles réels à ≈ 0,5 s d'intervalle",
+      "observation": "observe", "preuve": "capture IRL-111 (m390) ; journal du faux serveur : PATCH, POST puis DELETE sur event_attendees ; toast « Désinscrit »",
+      "problemes": ["IRL-C50"], "proposition": "Voir IRL-110 : le lien de retrait ne doit jamais occuper la zone du bouton principal.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Mesuré : l'inscription est annulée sans que la personne l'ait voulu."
+    },
+    {
+      "id": "IRL-112", "surface": "Fiche d'activité", "composant": "« Discussion des participants » après inscription",
+      "etat": "inscrit, discussion jamais ouverte par l'organisatrice (conv_id nul)", "role": "connecté · participant", "geste": "Appui sur « Discussion des participants »",
+      "observation": "observe", "preuve": "capture IRL-112 (m390) ; toasts « Ouverture de la discussion… » puis « Discussion indisponible hors connexion » ; app-07:3845-3851, 3899-3910",
+      "problemes": ["IRL-C51"], "proposition": "Créer la discussion au moment de la publication (ou à la première inscription, côté serveur) ; à défaut, un message exact : « L'organisatrice n'a pas encore ouvert la discussion ».",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Le chemin vers le groupe, cœur de l'après-inscription, est bloqué avec un message faux (en ligne)."
+    },
+    {
+      "id": "IRL-113", "surface": "Fiche d'activité", "composant": "Retrait volontaire",
+      "etat": "après « Retirer ma participation »", "role": "connecté", "geste": "Appui sur le lien « Retirer ma participation »",
+      "observation": "observe", "preuve": "capture IRL-113 (m390) ; setEventRsvp(id, null), app-07:3551-3563",
+      "problemes": ["IRL-C50", "IRL-C62"], "proposition": "Retrait à l'écart du bouton, formulé « Je ne peux plus venir », avec un « Annuler » de quelques secondes plutôt qu'une confirmation bloquante.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Retrait immédiat sans retour possible, annoncé par un troisième mot (« Désinscrit »)."
+    },
+    {
+      "id": "IRL-120", "surface": "Fiche d'activité", "composant": "Pied « Rejoindre la liste d'attente »",
+      "etat": "complète, 2 en liste d'attente", "role": "connecté · non inscrit", "geste": "Ouvrir la fiche",
+      "observation": "observe", "preuve": "capture IRL-120 (m390) ; ui-v4b-fiche.js:619-626",
+      "problemes": [], "proposition": "À conserver.",
+      "visuel": "avant", "verdict": "a-conserver", "justification": "La conséquence du geste est dite avant le geste ; « complet · 2 en liste d'attente » est écrit."
+    },
+    {
+      "id": "IRL-121", "surface": "Fiche d'activité", "composant": "Pied « Sur liste d'attente »",
+      "etat": "en liste d'attente, juste après le geste", "role": "connecté · en attente", "geste": "Appui sur « Rejoindre la liste d'attente »",
+      "observation": "observe", "preuve": "capture IRL-121 (m390) ; deux toasts pour un geste (« C'est complet — tu es sur liste d'attente » puis « Liste d'attente ») posés sur le pied ; app-07:3491-3494, 3606",
+      "problemes": ["IRL-C55", "IRL-C64"], "proposition": "« Tu es sur la liste d'attente — si une place se libère, tu es inscrit·e automatiquement et prévenu·e » ; « Quitter la liste d'attente » ; un seul message.",
+      "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "L'état ne dit pas ce qui va se passer, et les deux messages recouvrent l'état qu'ils commentent."
+    },
+    {
+      "id": "IRL-122", "surface": "Fiche d'activité", "composant": "Pied après refus « complète » du serveur",
+      "etat": "dernière place prise entre l'ouverture et l'appui", "role": "connecté", "geste": "Appui sur « Je participe » (refus rejoué par le déclencheur du faux serveur)",
+      "observation": "observe", "preuve": "capture IRL-122 (m390) ; toast « Activité complète — tu peux rejoindre la liste d'attente », pied revenu à « Je participe », bloc « 1 place restante » ; app-07:3575-3583, 3519-3527",
+      "problemes": ["IRL-C54", "IRL-C64"], "proposition": "Après ce refus, relire le compteur et basculer le bouton sur « Rejoindre la liste d'attente » ; dire sur place que la dernière place vient d'être prise.",
+      "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "Le message propose une sortie que le bouton ne propose pas ; un nouvel appui se refait refuser."
+    },
+    {
+      "id": "IRL-130", "surface": "Fiche d'activité", "composant": "Haut de fiche d'une activité passée",
+      "etat": "terminée, j'y étais", "role": "connecté · participant", "geste": "Ouvrir la fiche",
+      "observation": "observe", "preuve": "capture IRL-130 (m390) ; « 3 participants · 7 places restantes » ; ui-v4b-fiche.js:327-338, app-07:4540-4542",
+      "problemes": ["IRL-C56"], "proposition": "« Tu y étais · 3 participants », tuile neutre ; le corail reste à ce qui peut encore se vivre.",
+      "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "Des places « restantes » sur une activité finie ; même traitement visuel qu'une activité à venir."
+    },
+    {
+      "id": "IRL-131", "surface": "Fiche d'activité", "composant": "Souvenir, avis, album (activité passée)",
+      "etat": "terminée, pas encore notée", "role": "connecté · participant", "geste": "Défiler",
+      "observation": "observe", "preuve": "capture IRL-131 (m390) ; « Partager mon expérience » dans le corps ET dans le pied ; bouton « Noter » 29 px de haut",
+      "problemes": ["IRL-C56", "IRL-C68"], "proposition": "Un seul « Partager mon expérience » (le pied) ; « C'était comment ? » en cinq étoiles directement touchables.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Doublon d'action et petite cible sur le moment de retour d'expérience."
+    },
+    {
+      "id": "IRL-132", "surface": "Fiche d'activité", "composant": "Activité annulée",
+      "etat": "annulée par l'organisateur, j'étais inscrit·e", "role": "connecté · inscrit", "geste": "Ouvrir la fiche",
+      "observation": "observe", "preuve": "capture IRL-132 (m390) ; app-07:4405, 4536-4538",
+      "problemes": ["IRL-C57"], "proposition": "L'annulation devient le message principal et dit ce qu'elle change pour moi ; le rendez-vous est barré et éteint.",
+      "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "Seule une petite pastille signale l'annulation ; le rendez-vous a toujours l'air valable."
+    },
+    {
+      "id": "IRL-133", "surface": "Fiche d'activité", "composant": "Pointage sur place (« Je suis sur place », « J'ai un code d'accueil »)",
+      "etat": "en cours, inscrit·e", "role": "connecté · participant", "geste": "Défiler",
+      "observation": "observe", "preuve": "capture IRL-133 (m390) ; app-07:4429-4434 ; géolocalisation non exercée",
+      "problemes": [], "proposition": "À conserver ; la position GPS réelle reste à vérifier sur appareil.",
+      "visuel": "avant", "verdict": "a-conserver", "justification": "Deux chemins clairs (position ou code) au bon moment ; le pointage n'est proposé que pendant la fenêtre."
+    },
+    {
+      "id": "IRL-134", "surface": "Fiche d'activité", "composant": "Infos pratiques sans adresse lisible",
+      "etat": "adresse réservée aux inscrits", "role": "connecté · non inscrit", "geste": "Défiler",
+      "observation": "observe", "preuve": "capture IRL-134 (m390) ; lignes « Adresse : 69001, Lyon / Voir sur Google Maps → » puis « Adresse exacte : Communiquée une fois inscrit·e » ; app-07:4375-4385",
+      "problemes": ["IRL-C58"], "proposition": "Une seule ligne « Lieu » : nom du lieu + zone publique, et quand l'adresse sera donnée ; pas de lien de carte vers une ville entière.",
+      "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "Deux lignes « Adresse » qui se contredisent et un lien de carte inutile."
+    },
+    {
+      "id": "IRL-135", "surface": "Fiche d'activité", "composant": "Pied de fiche de MA propre activité",
+      "etat": "organisatrice, 4 inscrits", "role": "connecté · organisatrice", "geste": "Ouvrir sa propre activité",
+      "observation": "observe", "preuve": "capture IRL-135 (m390) ; pied « ✓ Je participe / Retirer ma participation » ; ui-v4b-fiche.js:579-599 ne distingue pas l'organisation",
+      "problemes": ["IRL-C53"], "proposition": "Pour l'organisation : « Écrire aux participants » + « Gérer l'activité », et un état « Tu organises ».",
+      "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "L'organisatrice peut se retirer de sa propre activité d'un geste, et ses outils ne sont pas là."
+    },
+    {
+      "id": "IRL-136", "surface": "Fiche d'activité", "composant": "Outils d'organisation dans le corps (discussion, QR, affiche, Gérer)",
+      "etat": "organisatrice", "role": "connecté · organisatrice", "geste": "Défiler",
+      "observation": "observe", "preuve": "capture IRL-136 (m390) ; « Gérer » classé en « Autres actions » (ui-v4b-fiche.js:430)",
+      "problemes": ["IRL-C53"], "proposition": "Regrouper les outils de l'organisation dans « Gérer l'activité » appelé depuis le pied.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Trois sections différentes pour les outils d'une même personne."
+    },
+    {
+      "id": "IRL-140", "surface": "Feuille de participation à trois états", "composant": "openEventRsvpSheet",
+      "etat": "places restantes", "role": "connecté · non inscrit", "geste": "Rencontrer → carte → « + Rejoindre » (ici fonction appelée sur la fiche)",
+      "observation": "simule", "preuve": "capture IRL-140 (m390) ; `openEventRsvpSheet` appelée ; app-07:4006-4032",
+      "problemes": ["IRL-C59", "IRL-C62"], "proposition": "Titre puis description, alignés à gauche ; mêmes mots que la fiche (PCS-C06).",
+      "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "Titres et descriptions côte à côte, « Je viens » coupé en deux lignes, « Peut-être » centré."
+    },
+    {
+      "id": "IRL-141", "surface": "Feuille de participation à trois états", "composant": "openEventRsvpSheet",
+      "etat": "activité complète", "role": "connecté · non inscrit", "geste": "Fonction appelée",
+      "observation": "simule", "preuve": "capture IRL-141 (m390)",
+      "problemes": ["IRL-C59", "IRL-C62"], "proposition": "Même correction que IRL-140 ; « liste d'attente » partout (pas « file »).",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Même mise en page, et « file d'attente » / « liste d'attente » pour la même chose."
+    },
+    {
+      "id": "IRL-142", "surface": "Inviter des amis", "composant": "openEventInvite",
+      "etat": "2 abonnements invitables", "role": "connecté", "geste": "Fiche → « Inviter » (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-142 (m390) ; boutons « Inviter » 29 px de haut ; app-07:7411-7485",
+      "problemes": ["IRL-C63", "IRL-C65", "IRL-C68"], "proposition": "Cibles de 44 px ; confirmation visible dans la fenêtre (le toast est caché dessous) ; « Inviter tous » si la liste est longue.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Petites cibles, et « Invitation envoyée » s'affiche sous la fenêtre sans verdict d'écriture."
+    },
+    {
+      "id": "IRL-143", "surface": "Gérer l'activité", "composant": "openEventManage",
+      "etat": "activité active, 4 inscrits", "role": "connecté · organisatrice", "geste": "Fiche → Autres actions → « Gérer » (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-143 (m390) ; app-07:6677-6701 ; contraste « Supprimer définitivement » 3,76:1",
+      "problemes": ["IRL-C60", "IRL-C62"], "proposition": "Annuler séparé et signalé ; suppression en lien discret ; confirmations dans l'application.",
+      "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "« Annuler l'événement », qui prévient tous les inscrits, a le style d'une action ordinaire."
+    },
+    {
+      "id": "IRL-144", "surface": "Co-organisateurs", "composant": "openEventCoOrganizers",
+      "etat": "4 candidats", "role": "connecté · organisatrice", "geste": "Gérer → Co-organisateurs (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-144 (m390) ; boutons « Ajouter » 29 px",
+      "problemes": ["IRL-C68", "IRL-C65"], "proposition": "Cibles de 44 px ; confirmation dans la fenêtre.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Clair, mais cibles trop petites et « Co-organisateur ajouté » caché sous la fenêtre."
+    },
+    {
+      "id": "IRL-145", "surface": "Prévenir les inscrits", "composant": "_messageEventAttendees",
+      "etat": "4 destinataires", "role": "connecté · organisatrice", "geste": "Gérer → Prévenir les inscrits (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-145 (m390) ; app-07:6907-6931",
+      "problemes": ["IRL-C63"], "proposition": "Dire « Message envoyé à N personnes » seulement après le verdict des écritures.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "« Message envoyé aux inscrits » est affiché sans lire le résultat."
+    },
+    {
+      "id": "IRL-146", "surface": "QR d'accueil des participants", "composant": "openEventCheckinQr",
+      "etat": "code tiré par le serveur", "role": "connecté · organisatrice", "geste": "Fiche → « QR d'accueil des participants » (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-146 (m390) ; app-07:8042-8081",
+      "problemes": [], "proposition": "À conserver.",
+      "visuel": "avant", "verdict": "a-conserver", "justification": "QR lisible, code de repli en clair, consigne d'une phrase."
+    },
+    {
+      "id": "IRL-147", "surface": "Pointer mon arrivée", "composant": "openCheckinCodeEntry",
+      "etat": "saisie du code", "role": "connecté · participant", "geste": "Fiche → « J'ai un code d'accueil » (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-147 (m390) ; app-07:8096-8149",
+      "problemes": ["IRL-C65"], "proposition": "Afficher « Code incorrect » sous le champ, pas en toast caché par la fenêtre.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "La saisie est bonne ; ses erreurs (code incorrect, trop d'essais) partent sous la fenêtre."
+    },
+    {
+      "id": "IRL-148", "surface": "Ton retour (avis)", "composant": "openEventFeedback",
+      "etat": "activité passée, pas encore notée", "role": "connecté · participant", "geste": "Fiche → « Noter » (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-148 (m390) ; app-07:7645-7704",
+      "problemes": ["IRL-C63", "IRL-C65"], "proposition": "« Choisis une note » dans la fenêtre ; « Merci » après le verdict de `supaRateEvent`.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Étoiles accessibles au clavier, mais le merci précède l'écriture et l'erreur est invisible."
+    },
+    {
+      "id": "IRL-149", "surface": "Proposition d'invitation après création", "composant": "proposerInvitationActivite",
+      "etat": "activité publiée", "role": "connecté · organisatrice", "geste": "Fonction appelée (même fenêtre que celle ouverte après une publication réussie)",
+      "observation": "simule", "preuve": "capture IRL-149 (m390) ; app-07:7187-7227",
+      "problemes": [], "proposition": "À conserver.",
+      "visuel": "avant", "verdict": "a-conserver", "justification": "Le bon moment, une phrase d'explication, un seul geste, « Plus tard » possible."
+    },
+    {
+      "id": "IRL-150", "surface": "Affiche de la rencontre", "composant": "PassioAffiche.ouvrir (js/affiche-rencontre.js)",
+      "etat": "ma propre activité", "role": "connecté · organisatrice", "geste": "Fiche → « Affiche à imprimer · QR d'inscription » (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-150 (m390)",
+      "problemes": [], "proposition": "À conserver.",
+      "visuel": "avant", "verdict": "a-conserver", "justification": "Affiche lisible, QR, consigne d'usage, une action « Enregistrer l'image »."
+    },
+    {
+      "id": "IRL-160", "surface": "Créer une activité", "composant": "openCreateEvent + UI-6A0",
+      "etat": "formulaire vide, haut", "role": "connecté", "geste": "« + » → Activité (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-160 (m390, m360) ; mesure : 17 champs à 16 px",
+      "problemes": [], "proposition": "À conserver.",
+      "visuel": "avant", "verdict": "a-conserver", "justification": "La photo d'abord, l'essentiel ensuite, champs lisibles et sans zoom iOS."
+    },
+    {
+      "id": "IRL-161", "surface": "Créer une activité", "composant": "Bas du formulaire : Plus d'options, Aperçu, Publier",
+      "etat": "formulaire vide, bas", "role": "connecté", "geste": "Défiler la fenêtre",
+      "observation": "simule", "preuve": "capture IRL-161 (m390) ; « Plus d'options » 33 px de haut",
+      "problemes": ["IRL-C68"], "proposition": "« Plus d'options » à 44 px.",
+      "visuel": "avant", "verdict": "a-conserver", "justification": "Aperçu et action unique bien placés ; seule la cible « Plus d'options » est courte (P3)."
+    },
+    {
+      "id": "IRL-162", "surface": "Créer une activité", "composant": "Champ « Titre » avec clavier ouvert",
+      "etat": "clavier simulé (300 px)", "role": "connecté", "geste": "Focus sur le titre + réduction de la fenêtre",
+      "observation": "simule", "preuve": "capture IRL-162 (m390, m360) ; banc.simulerClavier",
+      "problemes": [], "proposition": "À conserver.",
+      "visuel": "avant", "verdict": "a-conserver", "justification": "Le champ actif reste visible au-dessus du clavier simulé, focus marqué."
+    },
+    {
+      "id": "IRL-163", "surface": "Créer une activité", "composant": "Validation à la publication",
+      "etat": "« Publier l'activité » sans titre", "role": "connecté", "geste": "Appui réel sur « Publier l'activité »",
+      "observation": "observe", "preuve": "capture IRL-163 (m390) ; toast « Titre trop court (3 caractères min) » émis mais invisible : pile des toasts z-index 200 sous la fenêtre z-index 10001 (sonde irl-fiche-06) ; aucun focus déplacé",
+      "problemes": ["IRL-C65"], "proposition": "Erreur sous le champ concerné, focus dessus, bouton qui dit ce qui manque.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Appuyer sur « Publier » sans titre ne produit rien de visible."
+    },
+    {
+      "id": "IRL-164", "surface": "Modifier l'activité", "composant": "openCreateEvent(editId) — ancien formulaire",
+      "etat": "édition de ma propre activité", "role": "connecté · organisatrice", "geste": "Gérer → Modifier les informations (fonction appelée)",
+      "observation": "simule", "preuve": "capture IRL-164 (m390, m360) ; contraste « Position précise enregistrée » 3,3:1 (#16a34a sur blanc)",
+      "problemes": ["IRL-C61", "IRL-C62"], "proposition": "Appliquer la même mise en page UI-6A0 à l'édition ; titre « Modifier l'activité ».",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Deux formulaires différents pour la même activité selon qu'on la crée ou la modifie."
+    },
+    {
+      "id": "IRL-170", "surface": "Fiche d'activité", "composant": "Activité d'exemple (socle de démonstration)",
+      "etat": "exemple, sans compte", "role": "démo · sans session", "geste": "Ouvrir une activité d'exemple",
+      "observation": "observe", "preuve": "capture IRL-170 (m390, mode demo)",
+      "problemes": ["IRL-C66"], "proposition": "Annoncer « Exemple » sur la fiche et remplacer l'action corail par un bouton neutre « Exemple — participation désactivée ».",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Rien ne distingue l'exemple d'une vraie rencontre avant le geste."
+    },
+    {
+      "id": "IRL-171", "surface": "Fiche d'activité", "composant": "Activité d'exemple après « Je participe »",
+      "etat": "participation refusée", "role": "démo · sans session", "geste": "Appui réel sur « Je participe »",
+      "observation": "observe", "preuve": "capture IRL-171 (m390) ; toast « Cette activité est un exemple : elle n'accueille pas de vraie participation. » ; aucune écriture",
+      "problemes": ["IRL-C66"], "proposition": "Dire avant le geste ce que le toast dit après.",
+      "visuel": "avant", "verdict": "a-ameliorer", "justification": "Le refus est honnête mais tardif : le bouton corail promettait l'inverse."
+    },
+    {
+      "id": "IRL-180", "surface": "Gérer l'activité", "composant": "Annuler l'activité (toggleCancelEvent)",
+      "etat": "confirmation", "role": "connecté · organisatrice", "geste": "Gérer → Annuler l'événement",
+      "observation": "code", "preuve": "app-07:6844-6862 : `confirm(\"Annuler cet événement ? Les inscrits seront prévenus.\")` — dialogue natif non capturable par le banc",
+      "problemes": ["IRL-C60"], "proposition": "Feuille de confirmation dans l'application, nombre de personnes prévenues, message facultatif.",
+      "visuel": "aucun", "verdict": "a-ameliorer", "justification": "Dialogue natif hors identité, sans dire combien de personnes seront touchées."
+    },
+    {
+      "id": "IRL-181", "surface": "Gérer l'activité", "composant": "Supprimer définitivement (deleteEventConfirm) / annuler la série (cancelEventSeries)",
+      "etat": "confirmation", "role": "connecté · organisatrice", "geste": "Gérer → Supprimer définitivement",
+      "observation": "code", "preuve": "app-07:6864-6897 et 6811-6839 : `confirm()` natifs",
+      "problemes": ["IRL-C60"], "proposition": "Confirmation dans l'application ; recommander l'annulation plutôt que la suppression quand il y a des inscrits.",
+      "visuel": "aucun", "verdict": "a-ameliorer", "justification": "Action irréversible confirmée par un dialogue système."
+    },
+    {
+      "id": "IRL-182", "surface": "Liste d'attente (organisatrice)", "composant": "openEventWaitlist / promoteWaitlisted",
+      "etat": "file non vide", "role": "connecté · organisatrice", "geste": "Gérer → Liste d'attente (N)",
+      "observation": "code", "preuve": "app-07:6751-6808 ; la porte n'apparaît que si la file de MON activité est non vide (pas semé ici)",
+      "problemes": [], "proposition": "Rien à proposer sans l'avoir vue ; promotion lue sur le verdict serveur (IRL-04).",
+      "visuel": "aucun", "verdict": "a-verifier", "justification": "Non rendue : à capturer avec une activité de l'organisatrice complète."
+    },
+    {
+      "id": "IRL-183", "surface": "Proposition de rappels", "composant": "proposerRappelsActivite (« ⏰ Un rappel avant d'y aller ? »)",
+      "etat": "après inscription confirmée", "role": "connecté · participant", "geste": "« Je participe »",
+      "observation": "inaccessible", "preuve": "app-07:4965-4999 ; le verdict n'a jamais été « proposer » sur le banc (service worker bloqué, Push non disponible en Chromium sans tête)",
+      "problemes": [], "proposition": "À vérifier sur un vrai téléphone : apparaît-elle par-dessus la fiche, juste après l'inscription ?",
+      "visuel": "aucun", "verdict": "a-verifier", "justification": "Dépend des notifications push, non émulables ici."
+    },
+    {
+      "id": "IRL-184", "surface": "Fiche d'activité", "composant": "Inscription hors ligne",
+      "etat": "réseau coupé", "role": "connecté", "geste": "« Je participe » avec `context.setOffline(true)`",
+      "observation": "inaccessible", "preuve": "sonde irl-fiche-02 : l'écriture passe quand même — le faux serveur répond par interception de route, que `setOffline` ne coupe pas ; résultat non représentatif",
+      "problemes": [], "proposition": "À vérifier sur appareil en mode avion : le refus doit annuler l'affichage (ROB-02).",
+      "visuel": "aucun", "verdict": "a-verifier", "justification": "Limite du banc, pas un constat produit."
+    },
+    {
+      "id": "IRL-185", "surface": "Pointage par QR scanné", "composant": "Lien `#irl-checkin-<id>-<code>`",
+      "etat": "scan à l'entrée", "role": "participant sur place", "geste": "Scanner le QR avec l'appareil photo",
+      "observation": "inaccessible", "preuve": "caméra et deux appareils nécessaires ; routeur app-07:4896",
+      "problemes": [], "proposition": "À vérifier sur le terrain.",
+      "visuel": "aucun", "verdict": "a-verifier", "justification": "Caméra et second appareil."
+    },
+    {
+      "id": "IRL-186", "surface": "Promotion automatique depuis la liste d'attente", "composant": "_promoteNextWaitlisted + notification",
+      "etat": "une place se libère", "role": "personne en attente", "geste": "Un participant se retire",
+      "observation": "code", "preuve": "app-07:3640-3691 ; notification « Une place s'est libérée … : tu es inscrit·e ! » écrite par la base ; vue côté promu non capturée (deux comptes)",
+      "problemes": ["IRL-C55"], "proposition": "La notification doit mener à la fiche avec l'état « inscrit·e » et la suite (voir IRL-110).",
+      "visuel": "aucun", "verdict": "a-verifier", "justification": "Parcours à deux comptes non déroulé."
+    },
+    {
+      "id": "IRL-187", "surface": "Mes événements / Mes rencontres", "composant": "Filtres de l'écran Rencontrer (ui-v4a5-filtres.js)",
+      "etat": "—", "role": "connecté", "geste": "Rencontrer → filtres",
+      "observation": "sans-objet", "preuve": "traité par le domaine irl-decouvrir ; noté ici pour le vocabulaire (« événements » / « rencontres » / « Mes activités » du profil, index.html:863)",
+      "problemes": ["IRL-C62"], "proposition": "Un seul mot dans les trois portes.",
+      "visuel": "aucun", "verdict": "a-ameliorer", "justification": "Trois mots pour la même liste."
+    },
+    {
+      "id": "IRL-188", "surface": "Proposer une rencontre depuis une conversation", "composant": "js/ui-v6c-proposer-irl.js, irlProposalOpenFromConversation",
+      "etat": "conversation 1:1", "role": "connecté · majeur", "geste": "Conversation → proposer une rencontre",
+      "observation": "code", "preuve": "app-07:6258-6360 ; règles d'âge et de vérification serveur (sensible)",
+      "problemes": [], "proposition": "À capturer avec le domaine messagerie.",
+      "visuel": "aucun", "verdict": "a-verifier", "justification": "Porte située dans la conversation ; non déroulée ici."
+    },
+    {
+      "id": "IRL-189", "surface": "Partager une activité", "composant": "shareEvent / shareEventInFeed",
+      "etat": "—", "role": "connecté", "geste": "Fiche → Partager",
+      "observation": "sans-objet", "preuve": "traité par le domaine partage ; la porte existe en trois endroits de la fiche (IRL-103)",
+      "problemes": ["IRL-C67"], "proposition": "Une seule porte « Partager » sur la fiche.",
+      "visuel": "aucun", "verdict": "a-ameliorer", "justification": "Trois portes pour le même geste."
+    },
+    {
+      "id": "IRL-190", "surface": "Admission 18 ans et plus", "composant": "requireAdmission (participer, organiser)",
+      "etat": "compte sans année déclarée", "role": "connecté", "geste": "« Je participe » / « Publier l'activité »",
+      "observation": "code", "preuve": "app-07:3472, 5957-6057 ; le jeu de données déclare la majorité de tous les comptes (user_safety)",
+      "problemes": [], "proposition": "À capturer avec un compte sans année déclarée.",
+      "visuel": "aucun", "verdict": "a-verifier", "justification": "Règle métier sensible, non rendue ici."
+    },
+    {
+      "id": "IRL-191", "surface": "Réactions sur l'activité", "composant": "openEventReactions / showEmojiPickerForEvent",
+      "etat": "—", "role": "connecté", "geste": "Fiche → 😊",
+      "observation": "code", "preuve": "app-07:3303 ; js/emoji-misc.js:568 ; barre visible en IRL-103",
+      "problemes": [], "proposition": "Rien à signaler sur la barre ; panneau non ouvert.",
+      "visuel": "aucun", "verdict": "a-verifier", "justification": "Panneau non ouvert."
+    },
+    {
+      "id": "IRL-192", "surface": "Fiche ouverte par un visiteur sans compte", "composant": "Lien `#irl-event-<id>`",
+      "etat": "première visite", "role": "visiteur", "geste": "Ouvrir un lien d'activité reçu",
+      "observation": "code", "preuve": "app-07:4896 (_openIrlEventFromHash), garde `requireAuthentication(\"rejoindre\")` app-07:3467 ; lien profond traité par le domaine partage",
+      "problemes": [], "proposition": "À croiser avec le domaine partage.",
+      "visuel": "aucun", "verdict": "a-verifier", "justification": "Couvert par un autre domaine."
+    },
+    {
+      "id": "IRL-193", "surface": "Ajouter au calendrier", "composant": "downloadEventIcs",
+      "etat": "—", "role": "connecté", "geste": "Fiche → Autres actions → Ajouter au calendrier",
+      "observation": "code", "preuve": "app-07:4818 ; téléchargement d'un .ics non exécuté (aucun fichier téléchargé par le banc)",
+      "problemes": ["IRL-C52"], "proposition": "Remonter la porte dans l'état « inscrit » (IRL-110).",
+      "visuel": "aucun", "verdict": "a-ameliorer", "justification": "Fonction utile reléguée en bas de fiche."
+    },
+    {
+      "id": "IRL-194", "surface": "Envoi d'une invitation", "composant": "inviteToEvent / inviteAllFollowingToEvent",
+      "etat": "—", "role": "connecté", "geste": "Inviter → « Inviter »",
+      "observation": "code", "preuve": "app-07:7461-7485 : bouton passé à « ✓ Invité » et toast « Invitation envoyée » avant tout verdict ; `inviteAllFollowingToEvent` sans porte",
+      "problemes": ["IRL-C63"], "proposition": "Confirmer après le verdict ; garder « ✓ Invité » seulement si l'écriture a réussi.",
+      "visuel": "aucun", "verdict": "a-ameliorer", "justification": "Invitation annoncée sans vérification."
+    }
+  ],
+  "constats": [
+    {
+      "id": "IRL-C50", "titre": "Après « Je participe », un second appui au même endroit désinscrit",
+      "emplacement": "Fiche › pied fixe `#eventDetailCta .v4b-rsvp` — js/ui-v4b-fiche.js:601-640, styles.css:8628-8672",
+      "surfaces": ["IRL-110", "IRL-111", "IRL-113"], "type": "observation", "nature": "fonctionnel",
+      "preuve": "Mesuré à m390 : 400 ms après l'appui en (195, 800), `elementFromPoint` = `.v4b-rsvp-retirer` (« Retirer ma participation »). Second appui 0,5 s plus tard : requêtes PATCH, POST puis DELETE sur `event_attendees`, toast « Désinscrit », pied revenu à « Je participe » (IRL-111). Vu une fois avec un double-clic : l'écran disait « désinscrit » alors que la ligne serveur restait « going » (non reproduit).",
+      "probleme": "Le bouton plein disparaît et le lien de retrait vient se placer exactement là où le doigt vient de toucher ; aucune confirmation ni annulation.",
+      "declencheur": "Double appui, appui impatient quand rien ne semble se passer, doigt qui rebondit.",
+      "consequence": "La personne se croit inscrite ou ne comprend pas ce qui s'est passé ; une place est perdue ou rendue sans le vouloir, l'organisateur reçoit des allers-retours.",
+      "proposition": "Ne jamais mettre le retrait dans la zone du bouton principal : après l'inscription, la zone du bouton porte l'étape suivante (« Écrire aux participants ») et « Je ne peux plus venir » passe sous les actions, à l'écart ; ajouter un « Annuler » de quelques secondes au retrait plutôt qu'un dialogue.",
+      "visuels": ["IRL-110", "IRL-111"], "priorite": "P1", "gravite": 3, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Aucune ; à faire avec IRL-C52 (même pied).",
+      "risqueRegression": "Verrous e2e de UI-4B qui cherchent `[data-v4b-rsvp-remove]` et l'ordre des enfants du pied (tests/e2e/ui-v4b-*.spec.js).",
+      "critereAcceptation": "À 360 et 390 px, juste après « Je participe », l'élément au centre de l'ancien bouton n'est pas `[data-v4b-rsvp-remove]` ; deux appuis à 300 ms laissent la personne inscrite.",
+      "fichiers": ["js/ui-v4b-fiche.js", "styles.css"], "sensible": false
+    },
+    {
+      "id": "IRL-C51", "titre": "« Discussion des participants » répond « indisponible hors connexion » alors qu'on est en ligne",
+      "emplacement": "Fiche › bouton « Discussion des participants » — js/app-07-ia-explore-irl.js:3845-3851 (`_joinEventConversation` : seul un gestionnaire crée la discussion), 3899-3910 (`openEventChat`)",
+      "surfaces": ["IRL-112", "IRL-102"], "type": "observation", "nature": "fonctionnel",
+      "preuve": "Capture IRL-112 : inscrit·e, en ligne, conv_id nul ; toasts « Ouverture de la discussion… » puis « Discussion indisponible hors connexion ». D'après le code, la discussion n'existe qu'une fois qu'un gestionnaire l'a ouverte lui-même (l'organisateur entre dans `attendees` par `supaJoinEvent`, pas par `setEventRsvp`).",
+      "probleme": "Tant que l'organisateur n'a pas ouvert la discussion, aucun participant ne peut y entrer, et le message accuse le réseau.",
+      "declencheur": "Toute activité dont l'organisateur n'a jamais touché « Discussion des participants ».",
+      "consequence": "Le lien entre inscrits — l'étape qui fait réellement venir — est coupé ; la personne croit à une panne et ne revient pas.",
+      "proposition": "Créer la discussion à la publication de l'activité (ou à la première inscription, côté serveur, sous la même règle `can_join_event_conversation`) ; à défaut, message exact : « La discussion n'est pas encore ouverte par l'organisateur·ice ».",
+      "visuels": ["IRL-112"], "priorite": "P1", "gravite": 3, "effort": "M", "risqueTechnique": "moyen",
+      "dependances": "Policy `can_join_event_conversation` et RPC de création de conversation d'activité (app-08 `supaCreateEventConversation` ~9119).",
+      "risqueRegression": "Création de conversations en double si plusieurs clients la créent ; garder un seul créateur (serveur).",
+      "critereAcceptation": "Sur une activité neuve, la première personne inscrite ouvre la discussion du groupe en un appui ; le texte « hors connexion » n'apparaît que hors connexion.",
+      "fichiers": ["js/app-07-ia-explore-irl.js", "js/app-08-ui-modals-tour.js"], "sensible": true
+    },
+    {
+      "id": "IRL-C52", "titre": "Après l'inscription, les gestes utiles restent tout en bas de la fiche",
+      "emplacement": "Fiche › « Autres actions » — js/ui-v4b-fiche.js:389-431 (classement « pratique » → section « secondaire »)",
+      "surfaces": ["IRL-110", "IRL-103", "IRL-193"], "type": "jugement", "nature": "friction",
+      "preuve": "Captures IRL-103 et IRL-110 : « Ajouter au calendrier » et « Inviter » sont sous les commentaires, dans « Autres actions » ; le pied après inscription ne propose que « Retirer ma participation ». Prolonge PCS-C03 (aucune confirmation ni suite).",
+      "probleme": "Une fois inscrite, la personne ne voit ni comment se préparer (calendrier, itinéraire) ni comment entraîner quelqu'un (inviter).",
+      "declencheur": "Juste après « Je participe ».",
+      "consequence": "Moins de rappels personnels, moins d'invitations : l'activité se remplit moins et l'on oublie d'y aller.",
+      "proposition": "Dans l'état « inscrit », le pied montre : confirmation datée, « Écrire aux participants » (plein), puis « Ajouter au calendrier », « Itinéraire », « Inviter » ; ces fonctions existent déjà (aucune nouvelle).",
+      "visuels": ["IRL-110", "IRL-103"], "priorite": "P2", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "IRL-C50 ; IRL-C51 pour que « Écrire aux participants » aboutisse.",
+      "risqueRegression": "Hauteur du pied fixe sur 320–360 px : vérifier qu'il ne masque pas plus d'un tiers de l'écran.",
+      "critereAcceptation": "Après « Je participe », « Ajouter au calendrier » et « Inviter » sont visibles sans défiler, à 360 px.",
+      "fichiers": ["js/ui-v4b-fiche.js", "styles.css"], "sensible": false
+    },
+    {
+      "id": "IRL-C53", "titre": "L'organisatrice voit « ✓ Je participe / Retirer ma participation » sur sa propre activité",
+      "emplacement": "Fiche de MON activité › pied — js/ui-v4b-fiche.js:579-631 (aucune branche organisation) ; « Gérer » classé en « Autres actions » (ui-v4b-fiche.js:430)",
+      "surfaces": ["IRL-135", "IRL-136", "IRL-143"], "type": "observation", "nature": "clarte",
+      "preuve": "Capture IRL-135 : pied « ✓ Je participe » + « Retirer ma participation » ; « Gérer », « QR d'accueil », « Affiche », « Discussion » répartis dans trois sections (IRL-136).",
+      "probleme": "L'organisatrice peut se retirer de sa propre activité d'un geste, et ses outils sont dispersés.",
+      "declencheur": "Ouvrir sa propre activité (souvent juste après l'avoir créée, ou le jour J).",
+      "consequence": "Risque de se compter hors de sa propre activité ; le jour J, chercher le QR ou le message groupé fait perdre du temps.",
+      "proposition": "Pour l'organisation, le pied montre « Écrire aux participants » et « Gérer l'activité », plus un état « Tu organises · N participants » ; « Gérer » regroupe modifier, prévenir, co-organisateurs, QR, affiche, annuler.",
+      "visuels": ["IRL-135"], "priorite": "P2", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "`_canManageEvent` (app-07) pour la condition.",
+      "risqueRegression": "Co-organisateurs : même pied que l'organisatrice (droit déjà vérifié par la RLS).",
+      "critereAcceptation": "Sur sa propre activité, le pied ne contient pas « Retirer ma participation » et donne accès à « Gérer » en un appui.",
+      "fichiers": ["js/ui-v4b-fiche.js"], "sensible": true
+    },
+    {
+      "id": "IRL-C54", "titre": "Refus « complète » : le message propose la liste d'attente, le bouton propose encore « Je participe »",
+      "emplacement": "Fiche › pied après refus serveur — js/app-07-ia-explore-irl.js:3575-3583 (`annuler` rétablit l'état précédent sans relire le compteur)",
+      "surfaces": ["IRL-122"], "type": "observation", "nature": "fonctionnel",
+      "preuve": "Capture IRL-122 : la 5e place est prise pendant que la fiche est ouverte ; toast « Activité complète — tu peux rejoindre la liste d'attente », pied « Je participe », bloc « 4 participants · 1 place restante ».",
+      "probleme": "L'écran garde un compteur périmé ; un nouvel appui retente « going » et se fait refuser de nouveau.",
+      "declencheur": "Dernière place prise entre l'ouverture de la fiche et l'appui (activités populaires).",
+      "consequence": "Boucle de refus ; la personne n'entre ni dans l'activité ni dans la liste d'attente.",
+      "proposition": "Sur le motif `complete`, relire les compteurs (`supaLireParticipants`) et repeindre : « complet », bouton « Rejoindre la liste d'attente », phrase « La dernière place vient d'être prise ».",
+      "visuels": ["IRL-122"], "priorite": "P2", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Verrous ROB-02 / IRL-05 (annulation de l'optimiste) ; ne pas annoncer d'inscription.",
+      "critereAcceptation": "Après un refus `activite_complete`, le pied affiche « Rejoindre la liste d'attente » et le bloc « complet », sans rechargement.",
+      "fichiers": ["js/app-07-ia-explore-irl.js"], "sensible": false
+    },
+    {
+      "id": "IRL-C55", "titre": "« Sur liste d'attente » ne dit pas ce qui va se passer",
+      "emplacement": "Fiche › pied en liste d'attente — js/ui-v4b-fiche.js:65, 608-616",
+      "surfaces": ["IRL-121", "IRL-186"], "type": "jugement", "nature": "clarte",
+      "preuve": "Capture IRL-121 : « Sur liste d'attente » + « Retirer ma participation ». La feuille à trois états dit pourtant « Tu seras inscrit·e automatiquement si une place se libère » (app-07:4025).",
+      "probleme": "La personne ne sait pas si elle doit revenir vérifier, ni comment elle sera prévenue ; le retrait parle de « participation » alors qu'elle n'en a pas.",
+      "declencheur": "Inscription sur une activité complète.",
+      "consequence": "Inquiétude, retours répétés sur la fiche, ou abandon de la liste.",
+      "proposition": "« Tu es sur la liste d'attente — si une place se libère, tu es inscrit·e automatiquement et prévenu·e » ; « Quitter la liste d'attente ». Pas de rang affiché (la base ne le montre plus aux tiers, C-04).",
+      "visuels": ["IRL-121"], "priorite": "P2", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Libellés vérifiés par les e2e UI-4B.",
+      "critereAcceptation": "En liste d'attente, le pied contient la phrase « inscrit·e automatiquement » et le lien « Quitter la liste d'attente ».",
+      "fichiers": ["js/ui-v4b-fiche.js"], "sensible": false
+    },
+    {
+      "id": "IRL-C56", "titre": "Activité passée : « 7 places restantes », tuile corail et deux « Partager mon expérience »",
+      "emplacement": "Fiche passée — js/ui-v4b-fiche.js:327-338 (`texteParticipation`), app-07:4338, 4450-4455, 4540-4542",
+      "surfaces": ["IRL-130", "IRL-131"], "type": "observation", "nature": "clarte",
+      "preuve": "Captures IRL-130/131 : « 3 participants · 7 places restantes », « 7 places disponibles » ; même tuile corail qu'une activité à venir ; « Partager mon expérience » dans le corps et dans le pied.",
+      "probleme": "Des places « restantes » sur une activité finie, et le signal du passage au réel sur ce qui est passé.",
+      "declencheur": "Ouvrir une activité terminée (depuis une notification, son profil, l'album).",
+      "consequence": "Confusion (« je peux encore y aller ? »), corail affaibli comme signal.",
+      "proposition": "Activité terminée : « Tu y étais · N participants » (ou « N participants »), tuile neutre, une seule porte « Partager mon expérience » (le pied).",
+      "visuels": ["IRL-130", "IRL-131"], "priorite": "P3", "gravite": 1, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Sur une activité terminée, aucune mention de places restantes ; la tuile n'est pas corail.",
+      "fichiers": ["js/ui-v4b-fiche.js", "js/app-07-ia-explore-irl.js", "styles.css"], "sensible": false
+    },
+    {
+      "id": "IRL-C57", "titre": "Activité annulée : une petite pastille, et le rendez-vous a toujours l'air valable",
+      "emplacement": "Fiche annulée — app-07:4405 (pastille `.event-detail-urgency.cancelled`), bloc `.v4b-rdv` inchangé",
+      "surfaces": ["IRL-132"], "type": "jugement", "nature": "clarte",
+      "preuve": "Capture IRL-132 : pastille rose d'une ligne, tuile corail, « 2 participants » ; pied « Événement annulé » grisé ; rien ne dit que MA participation tombe.",
+      "probleme": "L'information la plus importante est la moins visible.",
+      "declencheur": "Inscrit·e qui rouvre la fiche (souvent depuis la notification d'annulation).",
+      "consequence": "Risque de se déplacer pour rien si l'on lit la carte du rendez-vous plutôt que la pastille.",
+      "proposition": "Bandeau d'annulation en tête : « Activité annulée par <organisateur>. Ta participation est annulée, rien d'autre à faire. » ; rendez-vous barré et éteint.",
+      "visuels": ["IRL-132"], "priorite": "P2", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Sur une activité annulée, le premier texte lisible sous le titre dit l'annulation et ses conséquences ; la date est barrée.",
+      "fichiers": ["js/ui-v4b-fiche.js", "styles.css"], "sensible": false
+    },
+    {
+      "id": "IRL-C58", "titre": "Deux lignes « Adresse » qui se contredisent quand l'adresse est réservée",
+      "emplacement": "Fiche › Infos pratiques — js/app-07-ia-explore-irl.js:4375-4385",
+      "surfaces": ["IRL-134"], "type": "observation", "nature": "clarte",
+      "preuve": "Capture IRL-134 : « Adresse : 69001, Lyon » + « Voir sur Google Maps → » (vers la ville entière), puis « Lieu », puis « Adresse exacte : Communiquée une fois inscrit·e ».",
+      "probleme": "La zone publique est présentée comme une adresse, avec un lien de carte qui ne mène nulle part d'utile.",
+      "declencheur": "Toute activité dont l'adresse n'est lisible que par les inscrits.",
+      "consequence": "On croit l'adresse incomplète ou fausse ; on peut partir vers le mauvais endroit.",
+      "proposition": "Une ligne « Lieu » : nom du lieu + zone publique, et « L'adresse exacte s'affiche ici dès que tu participes » ; pas de lien de carte tant que l'adresse n'est pas connue. Règle de confidentialité inchangée.",
+      "visuels": ["IRL-134"], "priorite": "P2", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Lecture `supaLireAdresses` (app-08:5902) inchangée.",
+      "risqueRegression": "Ne jamais afficher l'adresse avant l'inscription (verrous de la migration adresses).",
+      "critereAcceptation": "Pour un non-inscrit, une seule ligne mentionne le lieu, sans lien Google Maps ; l'adresse apparaît après inscription.",
+      "fichiers": ["js/app-07-ia-explore-irl.js"], "sensible": true
+    },
+    {
+      "id": "IRL-C59", "titre": "Feuille à trois états : libellés cassés et mots différents de la fiche",
+      "emplacement": "Rencontrer › carte › « + Rejoindre » → `openEventRsvpSheet`, js/app-07-ia-explore-irl.js:4006-4032 ; libellés RSVP_LABELS app-07:612-617",
+      "surfaces": ["IRL-140", "IRL-141"], "type": "observation", "nature": "polish",
+      "preuve": "Captures IRL-140/141 : titre et description côte à côte, « Je viens » sur deux lignes, « Peut-être » centré ; « Complet — file d'attente ouverte » puis option « Liste d'attente ». Vocabulaire : voir PCS-C06 (« Je viens » vs « Je participe »).",
+      "probleme": "Le choix est difficile à lire, et le même geste porte d'autres mots que sur la fiche.",
+      "declencheur": "S'inscrire depuis une carte de la liste Rencontrer.",
+      "consequence": "Hésitation, erreurs de choix (« Peut-être » au lieu de venir).",
+      "proposition": "Titre au-dessus de la description, alignés à gauche, cibles de 56 px ; mêmes mots partout (« Je participe », « Liste d'attente »).",
+      "visuels": ["IRL-140"], "priorite": "P3", "gravite": 1, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Décision de vocabulaire PCS-C06.",
+      "risqueRegression": "Faible ; `.btn` est partagé, cibler la feuille.",
+      "critereAcceptation": "Dans la feuille, chaque titre tient sur une ligne au-dessus de sa description à 360 px ; « file d'attente » n'apparaît plus.",
+      "fichiers": ["js/app-07-ia-explore-irl.js", "styles.css"], "sensible": false
+    },
+    {
+      "id": "IRL-C60", "titre": "Annuler et supprimer une activité : style ordinaire et `confirm()` natifs",
+      "emplacement": "Gérer › `openEventManage` app-07:6677-6701 ; `toggleCancelEvent` 6844-6862, `deleteEventConfirm` 6864-6897, `cancelEventSeries` 6811-6839",
+      "surfaces": ["IRL-143", "IRL-180", "IRL-181"], "type": "observation", "nature": "friction",
+      "preuve": "Capture IRL-143 : « Annuler l'événement » a le même style que « Modifier » ; d'après le code, annuler / supprimer / annuler la série passent par `confirm()` natif (non capturable). Contraste « Supprimer définitivement » 3,76:1.",
+      "probleme": "L'action qui prévient tous les inscrits ressemble à une action anodine ; la confirmation sort de l'identité et ne dit pas combien de personnes seront touchées.",
+      "declencheur": "Imprévu de dernière minute de l'organisateur.",
+      "consequence": "Annulation par erreur, ou suppression au lieu d'annulation (les inscrits perdent l'historique).",
+      "proposition": "Séparer et signaler « Annuler l'activité » ; suppression en lien discret ; confirmation dans l'application avec le nombre de personnes prévenues et un message facultatif ; recommander l'annulation s'il y a des inscrits.",
+      "visuels": ["IRL-143"], "priorite": "P2", "gravite": 2, "effort": "M", "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Verrous IRL-06 / IRL-13 (verdict serveur, notification des trois listes) à conserver.",
+      "critereAcceptation": "Aucun `confirm(` dans le parcours d'annulation ; la confirmation affiche le nombre de personnes prévenues.",
+      "fichiers": ["js/app-07-ia-explore-irl.js"], "sensible": false
+    },
+    {
+      "id": "IRL-C61", "titre": "Modifier une activité rouvre l'ancien formulaire",
+      "emplacement": "Gérer › Modifier → `openCreateEvent(editId)` app-07:6431-6620 ; lot UI-6A0 `js/ui-v6a0-activite.js` (n'agit qu'à la création)",
+      "surfaces": ["IRL-164", "IRL-160"], "type": "observation", "nature": "clarte",
+      "preuve": "Captures IRL-160 et IRL-164 : création = « Créer une activité », couverture 16:9, description en 3e ; édition = « Modifier l'événement », en-têtes « PHOTO DE COUVERTURE / INFOS PRINCIPALES / DÉTAILS », couverture 140 px, description en dernier.",
+      "probleme": "Deux formulaires pour la même activité ; l'organisatrice ne retrouve pas ses champs au même endroit.",
+      "declencheur": "Corriger une heure, un lieu, un nombre de places.",
+      "consequence": "Temps perdu, impression d'application inachevée.",
+      "proposition": "Appliquer la même réorganisation UI-6A0 en édition ; titre « Modifier l'activité » ; bouton « Enregistrer » avec la même garde contre le double envoi.",
+      "visuels": ["IRL-164", "IRL-160"], "priorite": "P2", "gravite": 2, "effort": "M", "risqueTechnique": "moyen",
+      "dependances": "Lot UI-6A0 (garde `editId`).",
+      "risqueRegression": "Les identifiants de champs relus par `submitEvent` ; verrous tests/e2e/ui-v6a0-*.spec.js.",
+      "critereAcceptation": "« Modifier » affiche la même structure que « Créer » (couverture, titre, passion, description en tête).",
+      "fichiers": ["js/ui-v6a0-activite.js", "js/app-07-ia-explore-irl.js"], "sensible": false
+    },
+    {
+      "id": "IRL-C62", "titre": "Activité, événement, rencontre ; participer, venir, inscrit : plusieurs mots pour la même chose",
+      "emplacement": "Fiche, feuilles, Gérer, filtres — ui-v4b-fiche.js:62-66, app-07:612-617, 4405-4414, 4488, 4512, 6690 ; ui-v4a5-filtres.js:109-113 ; index.html:863",
+      "surfaces": ["IRL-103", "IRL-113", "IRL-140", "IRL-141", "IRL-143", "IRL-164", "IRL-187"], "type": "observation", "nature": "clarte",
+      "preuve": "Relevé à l'écran : « Créer une activité » / « Modifier l'événement » / « Affiche de la rencontre » ; « Album de l'événement », « Signaler cet événement », « Événement terminé », « Gérer l'événement » ; « Je participe » / « Je viens » / « Inscrit » / « Désinscrit » ; « Mes événements » / « Mes rencontres » / « Mes activités ». Prolonge PCS-C06.",
+      "probleme": "Une même chose porte trois noms selon l'écran.",
+      "declencheur": "Tout le parcours IRL.",
+      "consequence": "Charge de compréhension, doute sur le fait qu'il s'agisse du même objet.",
+      "proposition": "Un lexique : « activité » (l'objet), « Je participe » / « Je ne peux plus venir » (le geste), « participants » (les personnes), « Rencontrer » (l'onglet) ; appliquer aux libellés listés.",
+      "visuels": ["IRL-103", "IRL-113", "IRL-164"], "priorite": "P3", "gravite": 1, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Décision de Benjamin sur le lexique (PCS-C06).",
+      "risqueRegression": "Tests e2e qui cherchent des libellés exacts.",
+      "critereAcceptation": "Aucune occurrence visible de « événement » ni de « Je viens » dans les surfaces IRL.",
+      "fichiers": ["js/app-07-ia-explore-irl.js", "js/ui-v4b-fiche.js", "js/ui-v4a5-filtres.js", "index.html"], "sensible": false
+    },
+    {
+      "id": "IRL-C63", "titre": "Avis, message groupé et invitations sont annoncés sans lire le résultat",
+      "emplacement": "`submitEventFeedback` app-07:7683-7704 ; `_sendEventBroadcast` 6924-6931 ; `inviteToEvent` 7461-7474",
+      "surfaces": ["IRL-145", "IRL-148", "IRL-142", "IRL-194"], "type": "observation", "nature": "fonctionnel",
+      "preuve": "D'après le code : « Merci pour ton retour » avant `supaRateEvent` (non attendu) ; « Message envoyé aux inscrits » sans verdict de `supaInsertNotif` ; bouton « ✓ Invité » et « Invitation envoyée » avant toute écriture. Même famille que ROB-02, déjà corrigée pour l'inscription.",
+      "probleme": "Un refus (réseau, droits, blocage) reste invisible : on croit avoir noté, prévenu, invité.",
+      "declencheur": "Réseau faible, refus RLS, personne bloquée.",
+      "consequence": "Des participants ne sont pas prévenus d'un changement de lieu alors que l'organisatrice croit l'avoir fait.",
+      "proposition": "Attendre le verdict des écritures, compter les réussites (« Message envoyé à 3 personnes sur 4 ») et dire les échecs, comme l'annulation de série (IRL-13).",
+      "visuels": ["IRL-145", "IRL-148"], "priorite": "P2", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Valeur de retour de `supaInsertNotif` / `supaRateEvent` (app-08).",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Avec une écriture refusée par le faux serveur, aucun message de succès n'est affiché et l'échec est dit.",
+      "fichiers": ["js/app-07-ia-explore-irl.js"], "sensible": false
+    },
+    {
+      "id": "IRL-C64", "titre": "Les messages éphémères se posent sur le pied d'action, parfois deux pour un geste",
+      "emplacement": "Pile `#toastStack` (styles.css:1468-1495, positionnée au-dessus de la barre d'onglets, masquée sous la fiche) ; doublon app-07:3491-3494 + 3606",
+      "surfaces": ["IRL-121", "IRL-122"], "type": "observation", "nature": "polish",
+      "preuve": "Captures IRL-121/122 : toast mesuré en (103, 705, 184 × 39) à m390, sur le pied de fiche ; « C'est complet — tu es sur liste d'attente » + « Liste d'attente » pour un seul geste, posés sur l'état « Sur liste d'attente ». (Le banc neutralise l'animation de sortie pour rendre les toasts visibles : voir rapport § 7.)",
+      "probleme": "Le message recouvre l'état qu'il commente ; deux messages disent la même chose.",
+      "declencheur": "Tout geste du pied de fiche.",
+      "consequence": "On lit mal l'état final ; impression de bruit.",
+      "proposition": "Sur la fiche, placer la pile au-dessus du pied (variable de décalage), un seul message par geste, et dire l'état durable dans le pied plutôt qu'en toast.",
+      "visuels": ["IRL-121", "IRL-122"], "priorite": "P3", "gravite": 1, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "IRL-C65 (même pile).",
+      "risqueRegression": "Position des toasts ailleurs dans l'application.",
+      "critereAcceptation": "Fiche ouverte, un toast ne chevauche pas `#eventDetailCta` ; un seul toast après « Rejoindre la liste d'attente ».",
+      "fichiers": ["styles.css", "js/app-07-ia-explore-irl.js"], "sensible": false
+    },
+    {
+      "id": "IRL-C65", "titre": "Les messages émis pendant une fenêtre ouverte sont cachés dessous (validation de « Créer une activité » invisible)",
+      "emplacement": "Pile `#toastStack` z-index 200 vs `#modalBackdrop` z-index 10001 ; validations en toast `submitEvent` app-07:6994-7025 ; `submitCheckinCode` 8114-8149 ; `submitEventFeedback` 7685",
+      "surfaces": ["IRL-163", "IRL-142", "IRL-144", "IRL-147", "IRL-148"], "type": "observation", "nature": "fonctionnel",
+      "preuve": "Sonde irl-fiche-06 : « Publier l'activité » sans titre émet « Titre trop court (3 caractères min) » ; au centre du toast, `elementFromPoint` = `#evDate` (la fenêtre) ; z-index pile 200, fenêtre 10001 ; focus non déplacé. Capture IRL-163 : rien de visible.",
+      "probleme": "Appuyer sur « Publier » sans titre, ville ou date ne produit rien de visible ; de même « Code incorrect », « Choisis une note d'abord », « Invitation envoyée », « Co-organisateur ajouté ».",
+      "declencheur": "Toute erreur ou confirmation dite par toast pendant qu'une fenêtre est ouverte.",
+      "consequence": "On croit le bouton cassé et on abandonne la création d'activité — le geste le plus précieux du réseau.",
+      "proposition": "Erreurs de formulaire sous le champ concerné avec focus dessus (et `aria-invalid`) ; plus généralement, pile des toasts au-dessus des fenêtres (z-index supérieur à `#modalBackdrop`).",
+      "visuels": ["IRL-163"], "priorite": "P1", "gravite": 3, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Transverse : vérifier l'ordre d'empilement avec le domaine transverse.",
+      "risqueRegression": "Toasts au-dessus d'une fenêtre : vérifier qu'ils ne masquent pas son bouton principal.",
+      "critereAcceptation": "Dans « Créer une activité », « Publier » sans titre montre un message lisible et place le focus sur « Titre ».",
+      "fichiers": ["styles.css", "js/app-07-ia-explore-irl.js", "js/ui-v6a0-activite.js"], "sensible": false
+    },
+    {
+      "id": "IRL-C66", "titre": "Activité d'exemple : bouton corail « Je participe » actif, refus seulement après le geste",
+      "emplacement": "Fiche d'une activité du socle de démonstration — `PassioFirstRun.participationPossible` (garde app-07:3482-3484), pied ui-v4b-fiche.js:619-626",
+      "surfaces": ["IRL-170", "IRL-171"], "type": "observation", "nature": "clarte",
+      "preuve": "Captures IRL-170/171 (mode demo) : rien n'indique « exemple » sur la fiche ; après l'appui, toast « Cette activité est un exemple : elle n'accueille pas de vraie participation. »",
+      "probleme": "La fiche d'exemple ressemble en tout point à une vraie rencontre jusqu'au refus.",
+      "declencheur": "Découverte de l'application avant d'avoir du contenu réel.",
+      "consequence": "Déception au moment exact où l'on voulait passer au réel ; doute sur les vraies activités.",
+      "proposition": "Pastille « Exemple » dans le bloc rendez-vous et pied neutre « Exemple — participation désactivée » (avec, si pertinent, « Voir les vraies activités près de toi »).",
+      "visuels": ["IRL-170", "IRL-171"], "priorite": "P2", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Marqueur d'exemple déjà connu de `PassioFirstRun`.",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Sur une activité d'exemple, le pied n'est pas corail et dit « exemple » avant tout appui.",
+      "fichiers": ["js/ui-v4b-fiche.js"], "sensible": false
+    },
+    {
+      "id": "IRL-C67", "titre": "Bas de fiche chargé : Partager trois fois, deux barres de tri des commentaires",
+      "emplacement": "Fiche › Échanges et Autres actions — app-07:4495-4512 ; hero `#eventDetailShareBtn` index.html:1269",
+      "surfaces": ["IRL-103", "IRL-189"], "type": "observation", "nature": "polish",
+      "preuve": "Capture IRL-103 : « Partager » en haut de fiche, dans la barre d'échanges et dans « Autres actions » ; tris « Récents / Aimés » puis « Pertinents / Récents » ; chips de tri 23 px de haut.",
+      "probleme": "Doublons qui allongent la fiche et brouillent la hiérarchie.",
+      "declencheur": "Lecture du bas de fiche.",
+      "consequence": "Défilement plus long avant les informations utiles, cibles minuscules.",
+      "proposition": "Un seul « Partager » (icône du haut), une seule barre de tri, chips à 44 px de zone tactile.",
+      "visuels": ["IRL-103"], "priorite": "P3", "gravite": 1, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Composant de commentaires partagé avec les publications (domaine fil).",
+      "risqueRegression": "Le composant de tri est commun : vérifier les publications.",
+      "critereAcceptation": "La fiche ne contient qu'une porte « Partager » et qu'une barre de tri.",
+      "fichiers": ["js/app-07-ia-explore-irl.js", "js/ui-v4b-fiche.js"], "sensible": false
+    },
+    {
+      "id": "IRL-C68", "titre": "Petites cibles dans les fenêtres d'organisation (29 px)",
+      "emplacement": "Boutons `.btn.small` : Inviter (app-07:7455), Ajouter co-organisateur (6720), Noter (7719) ; « Plus d'options » (UI-6A0)",
+      "surfaces": ["IRL-142", "IRL-144", "IRL-131", "IRL-161"], "type": "observation", "nature": "accessibilite",
+      "preuve": "Mesures m390 : « Inviter » 29 px de haut, « Ajouter » 29 px, « Noter » 29 px, « Plus d'options » 33 px (fiches IRL-142, IRL-144, IRL-131, IRL-161, mesures.cibles.sous44).",
+      "probleme": "Cibles sous 44 px sur des gestes répétés (inviter plusieurs personnes).",
+      "declencheur": "Usage à une main, en mouvement.",
+      "consequence": "Appuis manqués ou sur la mauvaise ligne.",
+      "proposition": "Zone tactile ≥ 44 px (padding ou pseudo-élément) pour `.btn.small` dans ces listes.",
+      "visuels": ["IRL-142", "IRL-144"], "priorite": "P3", "gravite": 1, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Hauteur des lignes de liste.",
+      "critereAcceptation": "À 360 px, chaque bouton « Inviter » / « Ajouter » / « Noter » offre ≥ 44 × 44 px.",
+      "fichiers": ["styles.css"], "sensible": false
+    },
+    {
+      "id": "IRL-C69", "titre": "Sur ordinateur, la fiche s'étire sur toute la largeur",
+      "emplacement": "`#eventDetailPage` — styles.css (pas de largeur maximale sous `.passio-ui-4b`)",
+      "surfaces": ["IRL-101"], "type": "observation", "nature": "polish",
+      "preuve": "Capture IRL-101 d1440 : bloc rendez-vous, organisateur et bouton « Je participe » de 1 408 px de large.",
+      "probleme": "Lignes et bouton démesurés, lecture difficile.",
+      "declencheur": "Ouverture sur un ordinateur ou une tablette paysage.",
+      "consequence": "Aspect inachevé pour les personnes qui découvrent PASSIO sur ordinateur via un lien partagé.",
+      "proposition": "Largeur de lecture bornée (≈ 640 px) centrée, pied aligné sur la même colonne.",
+      "visuels": ["IRL-101"], "priorite": "P3", "gravite": 1, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Gabarit ordinateur transverse.",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "À 1 440 px, le contenu de la fiche ne dépasse pas 680 px de large.",
+      "fichiers": ["styles.css"], "sensible": false
+    }
+  ]
 }

@@ -66,6 +66,8 @@ function peupler(srv, ctx, opts) {
     price: 0, max_attendees: 6, external_link: "", event_type: "Atelier", cover_url: media("photo-atelier.jpg"), status: "active",
     created_at: base.ilYA(60 * 8), updated_at: base.ilYA(60 * 8), co_organizers: [], series_id: null, recurrence: "none", conv_id: null,
   });
+  srv.t.event_attendees.push({ event_id: "ev_pro_lea", user_id: GENS.lea.id, rsvp: "going", created_at: base.ilYA(60 * 8), checked_in_at: null });
+  srv.t.event_attendees.push({ event_id: "ev_pro_lea", user_id: MOI.id, rsvp: "going", created_at: base.ilYA(60 * 2), checked_in_at: null });
   if (opts.bloque) srv.t.blocks.push({ blocker_id: MOI.id, blocked_id: GENS.tom.id, created_at: base.ilYA(60) });
   if (opts.bloquePar) srv.t.blocks.push({ blocker_id: GENS.ines.id, blocked_id: MOI.id, created_at: base.ilYA(60) });
   return srv;
@@ -120,4 +122,21 @@ function etat(media, opts) {
   };
 }
 
-module.exports = { peupler, etat, NORA, abonneId, BIO, BIO_LONGUE };
+// Les médias de l'état local sont écrits en chemin (« /docs/… ») parce que le port
+// du serveur du banc n'est connu qu'au démarrage ; `safeUrlAttr` refuse un chemin
+// relatif dans une carte de publication. On les rend absolus APRÈS le boot, puis
+// on repeint le profil. Ce n'est qu'une adresse : le contenu ne change pas.
+async function absolutiser(page) {
+  await page.evaluate(() => {
+    const o = location.origin;
+    const abs = (v) => (typeof v === "string" && v.indexOf("/docs/") === 0 ? o + v : v);
+    (state.userPosts || []).forEach((p) => { ["image", "video", "audio", "poster"].forEach((k) => { p[k] = abs(p[k]); }); });
+    const g = state.user.general || {};
+    g.coverPhoto = abs(g.coverPhoto); g.avatarPhoto = abs(g.avatarPhoto);
+    (state.user.profiles || []).forEach((p) => { p.photoUrl = abs(p.photoUrl); p.coverUrl = abs(p.coverUrl); });
+    saveState();
+    try { if (document.querySelector("#screen-profiles.active")) renderProfilesScreen(); } catch (e) {}
+  });
+}
+
+module.exports = { peupler, etat, absolutiser, NORA, abonneId, BIO, BIO_LONGUE };

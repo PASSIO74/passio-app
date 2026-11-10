@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="fr" class="proto-page passio-flat-passions passio-ui-v2 passio-ui-3 passio-ui-4b passio-ui-4a0 passio-ui-4a1 passio-ui-4a2 passio-ui-4a3 passio-ui-5 passio-ui-4a4 passio-ui-4a5 passio-ui-6 passio-ui-6a passio-ui-6b passio-ui-6c passio-ui-7">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prototype — Rejoindre une activité (audit UX/UI PASSIO)</title>
+  <link rel="stylesheet" href="kit/passio-styles.css">
+  <link rel="stylesheet" href="kit/kit.css">
+  <style>
+    /* LA PROPOSITION : uniquement ce qui change par rapport à l'application.
+       Base : HTML réel de la carte « Rencontrer » du fil et de la fiche UI-4B,
+       extrait dans le banc (outils/sondes/irl-fiche-07-extraire.js), nettoyé de ses onclick. */
+
+    /* Cadre des écrans maquettés */
+    .ra-tete { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 6px 16px; background: #fff; border-bottom: 1px solid var(--border); font-family: var(--v2-titre, Manrope, sans-serif); font-weight: 800; font-size: 17px; color: var(--text); flex-shrink: 0; }
+    .ra-tete .ra-marque { color: var(--accent); letter-spacing: .08em; }
+    .ra-tete .ra-retour { min-width: 44px; min-height: 44px; margin-left: -12px; border: none; background: none; font-size: 22px; color: var(--text); cursor: pointer; border-radius: 12px; }
+    .ra-tete .ra-retour:focus-visible, .proto-telephone button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .ra-corps { padding: 14px 16px 40px; }
+    .proto-telephone .post { margin: 0 0 14px; }
+    .proto-telephone .post-media img { width: 100%; display: block; border-radius: 14px; }
+    .proto-telephone .post-actions .post-action { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: none; background: none; font: inherit; color: inherit; }
+    .proto-telephone .avatar.ra-photo { background-size: cover !important; background-position: center !important; }
+
+    /* PCS-C01 : la porte « Voir l'activité » est peinte dès le premier rendu du fil. */
+    .proto-telephone .v3-tempt { min-height: 44px; cursor: pointer; }
+
+    /* La fiche dans le cadre du téléphone (position fixe → contenue par .proto-telephone). */
+    .proto-telephone .event-detail-page { animation: none; }
+    .proto-telephone .event-detail-back { min-width: 44px; min-height: 44px; }
+    .proto-telephone .event-detail-body { padding-bottom: 260px; }
+
+    /* IRL-C58 : une seule ligne « Lieu », sans lien de carte tant que l'adresse est réservée. */
+    .ra-note { font-size: 12.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    .ra-adresse-pleine { display: none; }
+    body[data-rsvp="going"] .ra-adresse-reservee { display: none; }
+    body[data-rsvp="going"] .ra-adresse-pleine { display: block; }
+
+    /* IRL-C51 : la discussion n'est proposée que là où elle mène quelque part. */
+    .ra-disc-avant { font-size: 13px; color: var(--muted); padding: 10px 12px; border: 1px dashed var(--border); border-radius: 14px; margin: 4px 0 8px; }
+    .ra-disc-apres { display: none; }
+    body[data-rsvp="going"] .ra-disc-avant { display: none; }
+    body[data-rsvp="going"] .ra-disc-apres { display: flex; }
+    .ra-disc-apres { width: 100%; min-height: 48px; align-items: center; justify-content: center; gap: 8px; border-radius: 14px; border: 1px solid var(--accent-tile-line, #d2c2fb); background: var(--accent-tile, #f3eeff); color: var(--accent, #6d32f4); font: 700 14px/1.2 system-ui, sans-serif; cursor: pointer; margin: 4px 0 8px; }
+
+    /* Participants : « Camille » apparaît une fois inscrit·e. */
+    .ra-moi { display: none; }
+    body[data-rsvp="going"] .ra-moi { display: flex; }
+    .ra-n-avant { display: inline; } .ra-n-apres { display: none; }
+    body[data-rsvp="going"] .ra-n-avant { display: none; } body[data-rsvp="going"] .ra-n-apres { display: inline; }
+
+    /* ── Pied de fiche proposé (IRL-C50, IRL-C52, PCS-C03) ── */
+    .proto-telephone #eventDetailCta.ra-pied { padding: 12px 16px 18px; }
+    .ra-pied .ra-etat { display: none; }
+    .ra-go { min-height: 48px; font-size: 15px; }
+    .ra-ok { padding: 12px 14px; border-radius: 16px; background: #e9f8ef; border: 1px solid #bfe8d0; color: #0b5a33; font: 600 13.5px/1.35 system-ui, sans-serif; display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+    .ra-ok b { display: block; font: 800 15px/1.3 var(--v2-titre, Manrope, sans-serif); color: #06452a; }
+    .ra-suite { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .ra-suite button { min-height: 48px; border-radius: 14px; border: 1px solid var(--accent-tile-line, #d2c2fb); background: var(--accent-tile, #f3eeff); color: var(--accent, #6d32f4); font: 700 12.5px/1.15 system-ui, sans-serif; padding: 4px 6px; cursor: pointer; }
+    .ra-suite button.ra-plein { grid-column: 1 / -1; background: var(--v4b-coral-texte, #c13d28); color: #fff; border-color: transparent; font-size: 15px; }
+    .ra-retirer { display: block; margin: 10px auto 0; min-height: 44px; padding: 0 12px; background: none; border: 0; color: var(--muted); font: 600 13px system-ui, sans-serif; text-decoration: underline; cursor: pointer; border-radius: 8px; }
+    .ra-libere { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #fff; border: 1px solid var(--border); font: 600 13.5px/1.35 system-ui, sans-serif; color: var(--text); margin-bottom: 8px; }
+    .ra-libere span { flex: 1; }
+    .ra-libere button { min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--accent-tile-line, #d2c2fb); background: var(--accent-tile, #f3eeff); color: var(--accent, #6d32f4); font: 700 13.5px system-ui, sans-serif; cursor: pointer; }
+    body:not([data-rsvp]) .ra-etat-none, body[data-rsvp="none"] .ra-etat-none, body[data-rsvp="retire"] .ra-etat-none { display: block; }
+    body[data-rsvp="going"] .ra-etat-going { display: block; }
+    body[data-rsvp="retire"] .ra-etat-retire { display: block; }
+
+    /* Fiche « complète » : liste d'attente (IRL-C54, IRL-C55) */
+    .ra-attente-etat { display: none; }
+    body[data-attente="oui"] .ra-attente-etat { display: block; }
+    body[data-attente="oui"] .ra-attente-go { display: none; }
+    .ra-attente-box { padding: 12px 14px; border-radius: 16px; background: #f5f3ff; border: 1px solid var(--border); text-align: center; }
+    .ra-attente-box b { display: block; font: 800 15px/1.3 var(--v2-titre, Manrope, sans-serif); color: var(--text); }
+    .ra-attente-box span { display: block; font: 600 12.5px/1.4 system-ui, sans-serif; color: var(--muted); margin-top: 3px; }
+    .ra-n-attente-apres { display: none; } body[data-attente="oui"] .ra-n-attente-avant { display: none; } body[data-attente="oui"] .ra-n-attente-apres { display: inline; }
+
+    /* Discussion des participants (conversation de groupe existante, openEventChat) */
+    .ra-conv { flex: 1; overflow-y: auto; padding: 14px 14px 20px; display: flex; flex-direction: column; gap: 10px; }
+    .ra-sys { align-self: center; font: 600 12px/1.4 system-ui, sans-serif; color: var(--muted); background: #fff; border: 1px solid var(--border); padding: 6px 12px; border-radius: 999px; text-align: center; }
+    .ra-carte-act { display: flex; gap: 10px; align-items: center; background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 10px 12px; }
+    .ra-carte-act .v4b-rdv-tuile { width: 48px; padding: 6px 0; border-radius: 12px; background: var(--v4b-coral-texte, #c13d28); color: #fff; display: flex; flex-direction: column; align-items: center; line-height: 1; font-weight: 900; }
+    .ra-msg { display: flex; gap: 8px; align-items: flex-end; max-width: 86%; }
+    .ra-msg .avatar { width: 30px; height: 30px; flex: 0 0 30px; }
+    .ra-bulle { background: #fff; border: 1px solid var(--border); border-radius: 18px 18px 18px 6px; padding: 9px 12px; font-size: 14.5px; line-height: 1.4; color: var(--text); }
+    .ra-bulle small { display: block; font: 700 12px system-ui, sans-serif; color: var(--accent); margin-bottom: 2px; }
+    .ra-msg.moi { align-self: flex-end; flex-direction: row-reverse; }
+    .ra-msg.moi .ra-bulle { background: var(--accent, #6d32f4); color: #fff; border-color: transparent; border-radius: 18px 18px 6px 18px; }
+    .ra-saisie { display: flex; gap: 8px; padding: 10px 12px 16px; background: #fff; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .ra-saisie input { flex: 1; min-height: 44px; font-size: 16px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--border); background: var(--bg-deep, #f7f5fc); color: var(--text); }
+    .ra-saisie button { min-width: 48px; min-height: 44px; border-radius: 22px; border: none; background: var(--accent); color: #fff; font: 700 14px system-ui, sans-serif; padding: 0 16px; cursor: pointer; }
+    .ra-sous-titre { display: block; font: 600 12px system-ui, sans-serif; color: var(--muted); }
+  </style>
+</head>
+<body data-rsvp="none" data-attente="non">
+  <aside class="proto-notes">
+    <span class="proto-surtitre">Prototype · proposition</span>
+    <h1>Rejoindre une activité</h1>
+    <p>Du fil à la rencontre : une publication « Rencontrer », la fiche, « Je participe », puis une confirmation explicite qui propose la suite (écrire aux participants, calendrier, itinéraire, inviter). Les cas « complet » et « je ne peux plus venir » sont traités sans piège ni message caché.</p>
+    <p>Tout ce qui est montré existe déjà dans l'application (discussion de groupe, calendrier .ics, lien de carte, invitations, liste d'attente) : la proposition réorganise et clarifie, elle n'ajoute pas de fonction.</p>
+    <p class="proto-avis">Maquette interactive : rien n'est envoyé, rien n'est enregistré. Données fictives.</p>
+    <ol class="proto-etapes"></ol>
+    <div class="proto-commandes">
+      <button type="button" data-proto="precedent">Étape précédente</button>
+      <button type="button" class="principal" data-proto="suivant">Commencer le parcours</button>
+      <button type="button" data-proto="zones" aria-pressed="false">Montrer les zones cliquables</button>
+      <button type="button" data-proto="recommencer">Recommencer</button>
+    </div>
+    <p class="proto-legende">Flèches ← → : étape précédente / suivante. Le cadre corail désigne l'élément dont parle l'étape. On peut aussi cliquer librement dans le téléphone.</p>
+    <a class="proto-retour" href="../galerie/index.html#/prototypes">← Retour à la galerie</a>
+  </aside>
+
+  <div class="proto-scene">
+    <span class="proto-etiquette">Après · maquette interactive</span>
+    <div class="proto-telephone">
+
+      <!-- ═══ 1. FIL : publication « Rencontrer » avec sa porte ═══ -->
+      <section data-ecran="fil">
+        <div class="ra-tete"><span class="ra-marque">PASSIO</span></div>
+        <div class="proto-defile"><div class="ra-corps">
+          <article class="post" id="raPost">
+            <div class="post-header">
+              <div class="avatar ra-photo" aria-hidden="true" style="background:url('medias/avatar-4.jpg') center/cover, #7c3aed;"></div>
+              <div class="post-author">
+                <div class="post-author-name">Tom Girard</div>
+                <div class="post-author-meta"><span class="post-passion-tag">🎸 Musique</span> · 4 min</div>
+              </div>
+              <span class="post-mood-tag" data-mood="irl">Rencontrer</span>
+            </div>
+            <div class="post-body">Qui vient jouer vendredi ? Bœuf acoustique au kiosque, tous niveaux.</div>
+            <div class="post-media"><img alt="Coucher de soleil sur les collines" src="medias/photo-paysage.jpg"></div>
+            <div class="post-actions">
+              <button type="button" class="post-action" aria-label="Aimer">🤍 1</button>
+              <button type="button" class="post-action" aria-label="Commenter">💬 1</button>
+              <button type="button" class="post-action" aria-label="Partager"><svg class="share-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.6" y1="10.7" x2="15.4" y2="6.3"></line><line x1="8.6" y1="13.3" x2="15.4" y2="17.7"></line></svg></button>
+            </div>
+            <div class="v3-bridge"><button type="button" class="v3-tempt v3-voir" id="raPorte" data-aller="fiche" data-etat="rsvp:none">Voir l'activité</button></div>
+          </article>
+          <article class="post">
+            <div class="post-header">
+              <div class="avatar ra-photo" aria-hidden="true" style="background:url('medias/avatar-2.jpg') center/cover, #7c3aed;"></div>
+              <div class="post-author"><div class="post-author-name">Malik Benali</div><div class="post-author-meta"><span class="post-passion-tag">🏋️ Sport</span> · 1 h</div></div>
+              <span class="post-mood-tag" data-mood="irl">Rencontrer</span>
+            </div>
+            <div class="post-body">Initiation escalade samedi soir, baudriers prêtés.</div>
+            <div class="v3-bridge"><button type="button" class="v3-tempt v3-voir" id="raPorte2" data-aller="complet" data-etat="attente:non">Voir l'activité</button></div>
+          </article>
+        </div></div>
+      </section>
+
+      <!-- ═══ 2-5, 9-10. FICHE de l'activité (UI-4B) ═══ -->
+      <section data-ecran="fiche">
+        <div class="event-detail-page" style="display:flex;">
+          <div class="event-detail-hero">
+            <div><img class="event-detail-cover" src="medias/couverture-evenement.jpg" alt=""></div>
+            <button type="button" class="event-detail-back" aria-label="Retour" data-aller="fil">← Retour</button>
+            <button type="button" class="event-detail-back" style="left:auto;right:12px;" aria-label="Partager">Partager</button>
+            <div class="event-detail-hero-title">
+              <div class="event-detail-passion-badge">🎸 Musique · Rencontre</div>
+              <div class="event-detail-title">Bœuf acoustique au kiosque</div>
+            </div>
+          </div>
+          <div class="event-detail-body"><div class="v4b-fiche">
+            <section class="v4b-sec" data-v4b-sec="rendezvous">
+              <h3 class="v4b-sec-titre">Le rendez-vous</h3>
+              <div class="event-detail-urgency soon">Dans 3 jours</div>
+              <div class="v4b-rdv" id="raRdv">
+                <div class="v4b-rdv-tuile" aria-hidden="true"><span class="v4b-rdv-jour">13</span><span class="v4b-rdv-mois">nov</span></div>
+                <div class="v4b-rdv-corps">
+                  <div class="v4b-rdv-quand">vendredi 13 novembre · 15:00</div>
+                  <div class="v4b-rdv-ou">Kiosque du parc — Lyon 6e</div>
+                  <div class="v4b-rdv-places"><span class="ra-n-avant">3 participants · 5 places restantes</span><span class="ra-n-apres">Tu participes · 4 participants · 4 places restantes</span></div>
+                </div>
+              </div>
+            </section>
+            <section class="v4b-sec" data-v4b-sec="organisateur">
+              <div class="event-detail-section-title">Organisateur·ice</div>
+              <div class="event-detail-organizer" id="raOrga">
+                <div class="avatar sm ra-photo" aria-hidden="true" style="background:url('medias/avatar-4.jpg') center/cover, #7c3aed;"></div>
+                <div style="font-size:14px;font-weight:700;">Tom Girard</div>
+              </div>
+            </section>
+            <section class="v4b-sec" data-v4b-sec="description">
+              <div class="event-detail-section-title">Description</div>
+              <div class="event-detail-desc">On se retrouve près du kiosque avec nos instruments. Tous niveaux, on joue ce qui vient.<br>Apporte de l'eau et de quoi t'asseoir.</div>
+            </section>
+            <section class="v4b-sec" data-v4b-sec="infos">
+              <h3 class="v4b-sec-titre">Infos pratiques</h3>
+              <div class="event-detail-info-card" id="raInfos">
+                <div class="event-detail-info-row"><div style="flex:1;min-width:0;"><div class="event-detail-info-label">Date &amp; heure</div><div class="event-detail-info-value">vendredi 13 novembre 2026 à 15:00 · 2 h</div></div></div>
+                <div class="event-detail-info-row"><div style="flex:1;min-width:0;"><div class="event-detail-info-label">Lieu</div>
+                  <div class="event-detail-info-value">Kiosque du parc — Lyon 6e (69006)</div>
+                  <div class="ra-note ra-adresse-reservee">L'adresse exacte s'affiche ici dès que tu participes.</div>
+                  <div class="ra-note ra-adresse-pleine">Parc de la Tête d'Or, 69006 Lyon</div>
+                </div></div>
+                <div class="event-detail-info-row"><div style="flex:1;min-width:0;"><div class="event-detail-info-label">Prix</div><div class="event-detail-info-value">Gratuit</div></div></div>
+              </div>
+            </section>
+            <section class="v4b-sec" data-v4b-sec="participants">
+              <div class="event-social-proof"><div style="display:flex;padding-left:6px;"><div class="avatar sm ra-photo" aria-hidden="true" style="background:url('medias/avatar-1.jpg') center/cover, #7c3aed;margin-left:-6px;border:2px solid var(--bg-card);"></div></div><span>Léa Fontaine y va</span></div>
+              <div class="event-detail-section-title">Participants <span class="ra-n-avant">(3 / 8 max)</span><span class="ra-n-apres">(4 / 8 max)</span></div>
+              <div class="event-detail-participants" id="raParticipants">
+                <div class="event-detail-participant"><div class="avatar sm ra-photo" aria-hidden="true" style="background:url('medias/avatar-4.jpg') center/cover, #7c3aed;"></div><div class="event-detail-participant-name">Tom</div></div>
+                <div class="event-detail-participant"><div class="avatar sm ra-photo" aria-hidden="true" style="background:url('medias/avatar-1.jpg') center/cover, #7c3aed;"></div><div class="event-detail-participant-name">Léa</div></div>
+                <div class="event-detail-participant"><div class="avatar sm ra-photo" aria-hidden="true" style="background:url('medias/avatar-3.jpg') center/cover, #7c3aed;"></div><div class="event-detail-participant-name">Inès</div></div>
+                <div class="event-detail-participant ra-moi"><div class="avatar sm" aria-hidden="true" style="background:#7c3aed;">🎧</div><div class="event-detail-participant-name">Camille</div></div>
+              </div>
+            </section>
+            <section class="v4b-sec" data-v4b-sec="discussion">
+              <div class="ra-disc-avant">La discussion des participants s'ouvre dès que tu participes.</div>
+              <button type="button" class="ra-disc-apres" data-aller="discussion">💬 Discussion des participants · 4</button>
+            </section>
+          </div></div>
+
+          <!-- Pied proposé : un état par situation, jamais le retrait sous le doigt -->
+          <div class="event-detail-cta ra-pied" id="eventDetailCta">
+            <div class="ra-etat ra-etat-none">
+              <div class="ra-etat ra-etat-retire"><div class="ra-libere" role="status" id="raLibere"><span>Ta place est libérée. Tom est prévenu.</span><button type="button" data-action="participer">Annuler</button></div></div>
+              <button type="button" class="btn primary block v4b-rsvp-go ra-go" id="raJeParticipe" data-action="participer">Je participe</button>
+            </div>
+            <div class="ra-etat ra-etat-going">
+              <div class="ra-ok" role="status" id="raConfirmation"><span aria-hidden="true">✓</span><span><b>C'est noté, tu participes</b>Vendredi 13 nov. · 15:00 — Tom est prévenu.</span></div>
+              <div class="ra-suite">
+                <button type="button" class="ra-plein" id="raEcrire" data-aller="discussion">Écrire aux participants</button>
+                <button type="button" id="raCalendrier" data-action="info" data-info="Ajoute l'activité à ton agenda (fichier .ics, fonction existante).">Ajouter au calendrier</button>
+                <button type="button" data-action="info" data-info="Ouvre l'adresse exacte dans ta carte (lien existant de la fiche).">Itinéraire</button>
+                <button type="button" data-action="info" data-info="Ouvre « Inviter des amis » (fonction existante).">Inviter</button>
+              </div>
+              <button type="button" class="ra-retirer" id="raPlusVenir" data-action="retirer">Je ne peux plus venir</button>
+            </div>
+          </div>
+          <div class="proto-bulle" id="raBulle" hidden></div>
+        </div>
+      </section>
+
+      <!-- ═══ 6. DISCUSSION des participants ═══ -->
+      <section data-ecran="discussion">
+        <div class="ra-tete"><button type="button" class="ra-retour" aria-label="Retour à la fiche" data-aller="fiche">←</button><span><span>📍 Bœuf acoustique au kiosque</span><span class="ra-sous-titre">4 participants · vendredi 15:00</span></span></div>
+        <div class="ra-conv" id="raConv">
+          <div class="ra-carte-act"><div class="v4b-rdv-tuile" aria-hidden="true"><span style="font-size:20px">13</span><span style="font-size:10px;text-transform:uppercase;margin-top:2px">nov</span></div><div><b style="font-family:var(--v2-titre,Manrope,sans-serif)">Bœuf acoustique au kiosque</b><div style="font-size:12.5px;color:var(--muted)">Kiosque du parc — Lyon 6e · 15:00</div></div></div>
+          <div class="ra-msg"><div class="avatar ra-photo" aria-hidden="true" style="background:url('medias/avatar-1.jpg') center/cover, #7c3aed;"></div><div class="ra-bulle"><small>Léa</small>Je prends le cajón !</div></div>
+          <div class="ra-msg"><div class="avatar ra-photo" aria-hidden="true" style="background:url('medias/avatar-4.jpg') center/cover, #7c3aed;"></div><div class="ra-bulle"><small>Tom · organisateur</small>S'il pleut on se replie sous le kiosque.</div></div>
+          <div class="ra-sys" id="raRejoint">Camille a rejoint l'activité</div>
+          <div class="ra-msg moi" id="raMonMsg" hidden><div class="ra-bulle">Salut ! J'apporte ma guitare 🎸</div></div>
+        </div>
+        <form class="ra-saisie" data-action="rien" onsubmit="return false;">
+          <label for="raSaisie" class="sr-only" style="position:absolute;left:-9999px">Message aux participants</label>
+          <input id="raSaisie" type="text" placeholder="Écris aux participants…" value="Salut ! J'apporte ma guitare 🎸">
+          <button type="button" data-action="envoyer" aria-label="Envoyer">Envoyer</button>
+        </form>
+      </section>
+
+      <!-- ═══ 7-8. Activité COMPLÈTE ═══ -->
+      <section data-ecran="complet">
+        <div class="event-detail-page" style="display:flex;">
+          <div class="event-detail-hero">
+            <div><img class="event-detail-cover" src="medias/photo-atelier.jpg" alt=""></div>
+            <button type="button" class="event-detail-back" aria-label="Retour" data-aller="fil">← Retour</button>
+            <div class="event-detail-hero-title">
+              <div class="event-detail-passion-badge">🏋️ Sport · Sport &amp; activité</div>
+              <div class="event-detail-title">Initiation escalade en salle</div>
+            </div>
+          </div>
+          <div class="event-detail-body"><div class="v4b-fiche">
+            <section class="v4b-sec" data-v4b-sec="rendezvous">
+              <h3 class="v4b-sec-titre">Le rendez-vous</h3>
+              <div class="event-detail-urgency soon">Dans 4 jours</div>
+              <div class="v4b-rdv" id="raRdvComplet">
+                <div class="v4b-rdv-tuile" aria-hidden="true"><span class="v4b-rdv-jour">14</span><span class="v4b-rdv-mois">nov</span></div>
+                <div class="v4b-rdv-corps">
+                  <div class="v4b-rdv-quand">samedi 14 novembre · 19:00</div>
+                  <div class="v4b-rdv-ou">Salle Vertige — Lyon 2e</div>
+                  <div class="v4b-rdv-places"><span class="ra-n-attente-avant">4 participants · complet · 2 en liste d'attente</span><span class="ra-n-attente-apres">4 participants · complet · 3 en liste d'attente</span></div>
+                </div>
+              </div>
+            </section>
+            <section class="v4b-sec" data-v4b-sec="organisateur">
+              <div class="event-detail-section-title">Organisateur·ice</div>
+              <div class="event-detail-organizer"><div class="avatar sm ra-photo" aria-hidden="true" style="background:url('medias/avatar-2.jpg') center/cover, #7c3aed;"></div><div style="font-size:14px;font-weight:700;">Malik Benali</div></div>
+            </section>
+            <section class="v4b-sec" data-v4b-sec="description">
+              <div class="event-detail-section-title">Description</div>
+              <div class="event-detail-desc">Baudriers prêtés. Chaussons en location sur place (5 €).</div>
+            </section>
+          </div></div>
+          <div class="event-detail-cta ra-pied">
+            <button type="button" class="btn primary block v4b-rsvp-go ra-go ra-attente-go" id="raRejoindreAttente" data-action="attente">Rejoindre la liste d'attente</button>
+            <div class="ra-attente-etat">
+              <div class="ra-attente-box" role="status" id="raAttenteEtat"><b>Tu es sur la liste d'attente</b><span>Si une place se libère, tu es inscrit·e automatiquement et prévenu·e.</span></div>
+              <button type="button" class="ra-retirer" data-action="quitterAttente">Quitter la liste d'attente</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <script type="application/json" id="proto-parcours">[
+    { "titre": "Une publication « Rencontrer » et sa porte", "note": "Dans le fil, la publication de Tom porte l'envie « Rencontrer » et, dès le premier affichage, la porte « Voir l'activité » (aujourd'hui elle n'apparaît qu'après un aller-retour d'écran).", "ecran": "fil", "cible": "#raPorte", "etat": { "rsvp": "none", "attente": "non" }, "refs": "PCS-C01" },
+    { "titre": "La fiche : quand, où, combien, avec qui", "note": "Le bloc « Le rendez-vous » (inchangé, à conserver) dit le jour, l'heure, le lieu public et les places. Le lieu tient sur une seule ligne et dit quand l'adresse exacte sera donnée, sans lien de carte vers une ville entière.", "ecran": "fiche", "cible": "#raRdv", "etat": { "rsvp": "none" }, "refs": "IRL-C58 · IRL-C62" },
+    { "titre": "Organisateur et infos pratiques", "note": "L'organisateur, la description, puis une seule ligne « Lieu ». Avant l'inscription, la discussion n'est pas un bouton qui ne mène nulle part : une phrase dit qu'elle s'ouvre en participant.", "ecran": "fiche", "cible": "#raInfos", "etat": { "rsvp": "none" }, "refs": "IRL-C58 · IRL-C51" },
+    { "titre": "« Je participe »", "note": "Une seule action, en corail (réservé au passage au réel), avec le même mot partout dans l'application. Touche-la (ou passe à l'étape suivante).", "ecran": "fiche", "cible": "#raJeParticipe", "etat": { "rsvp": "none" }, "refs": "PCS-C06 · IRL-C62" },
+    { "titre": "Confirmation explicite et étape suivante", "note": "« C'est noté, tu participes », la date, et ce qui s'est passé (Tom est prévenu) — dans le pied, pas dans un toast qui le recouvre. Puis la suite : écrire aux participants, ajouter au calendrier, itinéraire, inviter (fonctions existantes remontées depuis le bas de la fiche).", "ecran": "fiche", "cible": "#raConfirmation", "etat": { "rsvp": "going" }, "refs": "PCS-C03 · IRL-C52 · IRL-C64" },
+    { "titre": "Un second appui ne désinscrit plus", "note": "À la place exacte du bouton touché se trouve maintenant « Écrire aux participants » : un double appui ouvre la discussion au lieu d'annuler l'inscription. « Je ne peux plus venir » est à l'écart, en bas.", "ecran": "fiche", "cible": "#raEcrire", "etat": { "rsvp": "going" }, "refs": "IRL-C50" },
+    { "titre": "La discussion des participants", "note": "La conversation de groupe de l'activité (existante) s'ouvre en un geste et rappelle l'activité en tête. Elle existe dès la publication de l'activité : plus de « Discussion indisponible hors connexion » en ligne. Touche « Envoyer ».", "ecran": "discussion", "cible": "#raRejoint", "etat": { "rsvp": "going" }, "refs": "IRL-C51 · PCS-C03" },
+    { "titre": "Activité complète : la liste d'attente annoncée", "note": "Le bouton dit la conséquence avant le geste (à conserver). Si la dernière place part pendant qu'on lit la fiche, ce même bouton prend ce libellé au lieu de reproposer « Je participe ».", "ecran": "complet", "cible": "#raRejoindreAttente", "etat": { "attente": "non" }, "refs": "IRL-C54" },
+    { "titre": "Sur la liste d'attente : la suite est dite", "note": "« Tu es sur la liste d'attente — si une place se libère, tu es inscrit·e automatiquement et prévenu·e. » Un seul message, dans le pied ; « Quitter la liste d'attente » nomme ce qu'il retire. Aucun rang affiché (la base ne le montre plus aux tiers).", "ecran": "complet", "cible": "#raAttenteEtat", "etat": { "attente": "oui" }, "refs": "IRL-C55 · IRL-C64" },
+    { "titre": "« Je ne peux plus venir »", "note": "Retour sur la première activité, inscrit·e. Le retrait est formulé du point de vue de la personne et placé loin du bouton principal. Touche-le.", "ecran": "fiche", "cible": "#raPlusVenir", "etat": { "rsvp": "going" }, "refs": "IRL-C50 · IRL-C62" },
+    { "titre": "Place libérée, annulable", "note": "Le retrait est immédiat (pas de dialogue bloquant) mais rattrapable : « Ta place est libérée. Tom est prévenu. — Annuler », dans le pied. Si une liste d'attente existe, la place part à la première personne (promotion existante).", "ecran": "fiche", "cible": "#raLibere", "etat": { "rsvp": "retire" }, "refs": "IRL-C50 · IRL-C64" }
+  ]</script>
+  <script src="kit/kit.js"></script>
+  <script>
+    (function () {
+      var P = window.PROTO;
+      var bulle = document.getElementById("raBulle");
+      var minuterie = null;
+      function dire(texte) {
+        if (!bulle) return;
+        bulle.textContent = texte; bulle.hidden = false;
+        clearTimeout(minuterie); minuterie = setTimeout(function () { bulle.hidden = true; }, 2600);
+      }
+      P.actions.participer = function () { document.body.dataset.rsvp = "going"; P.viser("#raConfirmation"); };
+      P.actions.retirer = function () { document.body.dataset.rsvp = "retire"; P.viser("#raLibere"); };
+      P.actions.attente = function () { document.body.dataset.attente = "oui"; P.viser("#raAttenteEtat"); };
+      P.actions.quitterAttente = function () { document.body.dataset.attente = "non"; P.viser("#raRejoindreAttente"); };
+      P.actions.info = function (el) { dire(el.getAttribute("data-info") || ""); };
+      P.actions.envoyer = function () {
+        var m = document.getElementById("raMonMsg"), s = document.getElementById("raSaisie");
+        if (m) m.hidden = false; if (s) s.value = "";
+        P.viser("#raMonMsg");
+      };
+      P.actions.rien = function () {};
+      P.surEcran = function () { if (bulle) bulle.hidden = true; };
+    })();
+  </script>
+</body>
+</html>

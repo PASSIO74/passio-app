@@ -1,0 +1,121 @@
+{
+ "id": "IRL-001",
+ "domaine": "irl-decouvrir",
+ "scenario": "demo-liste",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Rencontrer — vue Liste, haut d'écran (activités d'exemple)",
+ "note": "",
+ "prisLe": "2026-11-10T17:54:17.121Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-001--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 86610,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Titre et recherche",
+   "x": 0.5,
+   "y": 0.154,
+   "w": 0.918,
+   "h": 0.118,
+   "sel": "#v4a0Head",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Commutateur Liste · Carte · Filtre",
+   "x": 0.5,
+   "y": 0.258,
+   "w": 0.918,
+   "h": 0.062,
+   "sel": "#v4a3Vue",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Je viens » plein, sur un exemple",
+   "x": 0.823,
+   "y": 0.519,
+   "w": 0.206,
+   "h": 0.052,
+   "sel": "#eventList .event-card:first-child .v4a2-go",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 20,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 20,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

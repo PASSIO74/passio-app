@@ -2,8 +2,1395 @@
   "domaine": "irl-decouvrir",
   "groupe": "Rencontres IRL",
   "titre": "Rencontres IRL — découvrir (liste, carte, filtre)",
-  "resume": "Version de travail : inventaire et constats en cours de rédaction.",
-  "aConserver": [],
-  "registre": [],
-  "constats": []
+  "resume": "Rencontrer est devenu un écran sobre et lisible : une recherche, trois vues (Liste, Carte, Filtre), des cartes d'activité compactes qui disent honnêtement leur état, et une page Filtre en quatre questions avec un compteur de résultats en direct. Deux défauts minent pourtant la confiance au moment clé du passage au réel. D'abord, les activités d'exemple — souvent la majorité de la liste — affichent un « Je viens » corail plein, actif, sur une ligne qui dit « participation désactivée » : le premier geste IRL se solde par un refus. Ensuite, faute de position (jamais demandée automatiquement, par choix), toutes les distances sont calculées depuis Paris et affichées comme réelles (« Lyon · environ 391 km », « Paris · environ 0 m »), y compris dans le filtre « 5 km » et la bulle de la carte. Les filtres actifs deviennent invisibles dès qu'on quitte la vue Filtre, alors qu'ils survivent à la navigation, et une combinaison sans résultat laisse un pied grisé sans issue. Le reste relève de la finition : prix absent des cartes, commandes de carte sous 44 px, rouge d'annulation sous AA, vocabulaire flottant (activité / événement / rencontre / expérience ; « Je viens » / « Je participe »). Les corrections proposées sont petites et réutilisent des composants existants ; elles servent directement « Rencontrer ».",
+  "aConserver": [
+    "La carte V2 compacte : vignette, titre sur deux lignes, passion · quand, ville, participants agrégés, deux actions de 44 px.",
+    "Les états honnêtes de la carte : « Inscrit ✓ », « Liste d'attente » annoncée avant le geste, « Tu organises » non cliquable, « Annulé » sans invitation, titre barré.",
+    "La preuve sociale bornée aux personnes suivies (« Léa Fontaine y va · 1 hésite »).",
+    "Le commutateur Liste · Carte · Filtre : trois cases d'un mot, vues exclusives, carte sous les onglets.",
+    "La vue Filtre en quatre questions avec un pied fixe « Afficher N résultats » qui compte en direct.",
+    "Aucune demande de position automatique ; « Utiliser ma position » donne ensuite des distances justes.",
+    "La recherche instantanée, champ à 16 px, et la pagination « Afficher plus (N restants) ».",
+    "Le lien profond #irl-event-… qui ouvre directement la fiche."
+  ],
+  "registre": [
+    {
+      "id": "IRL-001",
+      "surface": "Rencontrer — vue Liste",
+      "composant": "Titre, recherche, commutateur Liste · Carte · Filtre, cartes",
+      "etat": "haut d'écran, exemples",
+      "role": "démo (sans session, socle d'exemples)",
+      "geste": "Barre basse → Rencontrer",
+      "observation": "observe",
+      "preuve": "capture IRL-001 (m390, m360, t768, d1440) ; tête js/ui-v4a0-tete.js, commutateur js/ui-v4a3-vue.js:211, cartes js/ui-v4a2-cartes.js:527",
+      "problemes": [
+        "IRL-C01",
+        "IRL-C17"
+      ],
+      "proposition": "Les exemples perdent leur bouton d'inscription (maquette sur IRL-002).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Structure claire (un titre, une recherche, trois cases, cartes compactes), mais chaque exemple pousse un « Je viens » corail inopérant."
+    },
+    {
+      "id": "IRL-002",
+      "surface": "Carte d'activité d'exemple",
+      "composant": ".v4a2-actions › .v4a2-go",
+      "etat": "exemple « participation désactivée »",
+      "role": "démo (sans session, socle d'exemples)",
+      "geste": "Rencontrer → regarder une carte",
+      "observation": "observe",
+      "preuve": "capture IRL-002 (m390, m360) ; ligne js/ui-v4a2-cartes.js:366, bouton :627 ; refus js/first-run.js:2520",
+      "problemes": [
+        "IRL-C01"
+      ],
+      "proposition": "Pastille d'état « Exemple » (composant .v4a2-etat de « Annulé » / « Tu organises ») à la place du bouton corail ; « Détails » reste la seule action.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "La carte dit « participation désactivée » et propose la participation dans la même vue."
+    },
+    {
+      "id": "IRL-003",
+      "surface": "Toast de refus sur un exemple",
+      "composant": "#toastStack .toast",
+      "etat": "après « Je viens » sur un exemple",
+      "role": "démo (sans session, socle d'exemples)",
+      "geste": "Toucher « Je viens » sur une carte d'exemple",
+      "observation": "observe",
+      "preuve": "capture IRL-003 (m390) ; texte js/first-run.js:2523 ; animation du toast figée à l'état visible (artefact du banc, déclaré dans la fiche)",
+      "problemes": [
+        "IRL-C01"
+      ],
+      "proposition": "Devient sans objet si le bouton n'est plus proposé (IRL-002).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Refus honnête et clair, mais il sanctionne un geste que l'interface a elle-même suggéré."
+    },
+    {
+      "id": "IRL-004",
+      "surface": "Liste — fin de la première page",
+      "composant": "#eventList > button « Afficher plus (N restants) »",
+      "etat": "35 activités, 12 affichées",
+      "role": "démo (sans session, socle d'exemples)",
+      "geste": "Faire défiler jusqu'en bas",
+      "observation": "observe",
+      "preuve": "capture IRL-004 (m390) ; app-07:2839-2843, 3075 ; mesure 42 px de haut (zone sondée)",
+      "problemes": [],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Pagination explicite, pleine largeur, compte des restants : lisible et sans saut de liste."
+    },
+    {
+      "id": "IRL-005",
+      "surface": "Recherche — avec résultat",
+      "composant": "Champ « Rechercher une activité ou une ville » (#v4a0Head)",
+      "etat": "« salsa » → 1 carte",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Toucher le champ, taper « salsa »",
+      "observation": "observe",
+      "preuve": "capture IRL-005 (m390, m360) ; filtre texte app-07:2651-2658 ; champ 16 px",
+      "problemes": [],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Filtrage instantané sur titre, ville, lieu, description et passion ; croix d'effacement ; champ à 16 px (pas de zoom iOS)."
+    },
+    {
+      "id": "IRL-006",
+      "surface": "Recherche — sans résultat",
+      "composant": "#eventList .empty",
+      "etat": "« kitesurf » → 0",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Taper un mot sans correspondance",
+      "observation": "observe",
+      "preuve": "capture IRL-006 (m390) ; message app-07:2880 (branche « filtrée ») ; #irlSearchEmpty (index.html:1187) jamais affiché",
+      "problemes": [
+        "IRL-C12"
+      ],
+      "proposition": "Le vide nomme la recherche (« Aucune activité pour « kitesurf » ») et propose « Effacer la recherche ».",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le message parle de filtres alors qu'aucun n'est posé."
+    },
+    {
+      "id": "IRL-007",
+      "surface": "Recherche par ville",
+      "composant": "Champ de recherche",
+      "etat": "« Lyon »",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Taper « Lyon »",
+      "observation": "observe",
+      "preuve": "capture IRL-007 (m390)",
+      "problemes": [
+        "IRL-C02"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "La recherche par ville marche, mais les cartes lyonnaises affichent « environ 391 km » (distance depuis Paris)."
+    },
+    {
+      "id": "IRL-010",
+      "surface": "Liste d'un compte connecté",
+      "composant": "Cartes réelles et exemples mêlés",
+      "etat": "position jamais donnée (état par défaut)",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Barre basse → Rencontrer",
+      "observation": "observe",
+      "preuve": "capture IRL-010 (m390, m360, t768, d1440) ; distance ui-v4a2-cartes.js:332-356, repli Paris app-07:2495-2499",
+      "problemes": [
+        "IRL-C02",
+        "IRL-C03",
+        "IRL-C08",
+        "IRL-C14",
+        "IRL-C17"
+      ],
+      "proposition": "Sans référence, la carte n'affiche que la ville ; une porte « Choisis ta ville pour voir les distances » ouvre le sélecteur existant.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Les distances affichées sont calculées depuis Paris pour une personne dont on ne connaît pas la position."
+    },
+    {
+      "id": "IRL-011",
+      "surface": "Carte — activité au centre de Paris",
+      "composant": ".v4a2-ou",
+      "etat": "« Paris · environ 0 m »",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Faire défiler (« Afficher plus »)",
+      "observation": "observe",
+      "preuve": "capture IRL-011 (m390)",
+      "problemes": [
+        "IRL-C02"
+      ],
+      "proposition": "Ville seule tant qu'aucune référence réelle n'existe.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "« environ 0 m » affirme une proximité qui n'existe pas."
+    },
+    {
+      "id": "IRL-012",
+      "surface": "Carte — je participe",
+      "composant": ".v4a2-reponse « Inscrit ✓ »",
+      "etat": "inscrite",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Faire défiler",
+      "observation": "observe",
+      "preuve": "capture IRL-012 (m390) ; libellé ui-v4a2-cartes.js:99",
+      "problemes": [
+        "IRL-C13"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "L'état est dit (« Inscrit ✓ ») en bouton neutre ; la preuve sociale « Léa Fontaine y va · 1 hésite » aide à décider. Seul le mot est à aligner (IRL-C13)."
+    },
+    {
+      "id": "IRL-013",
+      "surface": "Carte — complète, file d'attente, titre très long",
+      "composant": ".v4a2-go « Liste d'attente »",
+      "etat": "3/3, 1 en attente",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Faire défiler",
+      "observation": "observe",
+      "preuve": "capture IRL-013 (m390, m360) ; ui-v4a2-cartes.js:627",
+      "problemes": [],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Le libellé annonce la file avant le geste ; titre coupé proprement à deux lignes ; « complet · 1 en attente » lisible."
+    },
+    {
+      "id": "IRL-014",
+      "surface": "Carte — activité payante",
+      "composant": ".v4a2-monde",
+      "etat": "15 €",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Faire défiler",
+      "observation": "observe",
+      "preuve": "capture IRL-014 (m390) ; lignes de la carte ui-v4a2-cartes.js:15-22 (pas de prix) ; prix historique app-07:3021",
+      "problemes": [
+        "IRL-C06"
+      ],
+      "proposition": "Le prix rejoint la ligne des places (« · 15 € »).",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le prix, critère de décision, a disparu de la carte V2."
+    },
+    {
+      "id": "IRL-015",
+      "surface": "Carte — j'organise",
+      "composant": ".v4a2-etat-mien « Tu organises »",
+      "etat": "mienne",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Faire défiler",
+      "observation": "observe",
+      "preuve": "capture IRL-015 (m390) ; ui-v4a2-cartes.js:604-613",
+      "problemes": [
+        "IRL-C08"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Organiser n'est pas participer : état non cliquable, gestion laissée à la fiche. Seule la pastille 📍 est à revoir (IRL-C08)."
+    },
+    {
+      "id": "IRL-016",
+      "surface": "Carte — activité annulée",
+      "composant": "Bandeau + pastille « Annulé »",
+      "etat": "annulée",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Faire défiler",
+      "observation": "observe",
+      "preuve": "capture IRL-016 (m390) ; styles.css:6825, 9004 ; contraste mesuré 3,23:1 et 3,76:1",
+      "problemes": [
+        "IRL-C11",
+        "IRL-C13"
+      ],
+      "proposition": "Rouge foncé #B42318 pour le bandeau et la pastille (AA).",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Bon comportement (titre barré, aucune invitation), contraste du rouge insuffisant."
+    },
+    {
+      "id": "IRL-017",
+      "surface": "Carte — sans couverture ni coordonnées",
+      "composant": ".v4a2-visuel",
+      "etat": "Annecy, sans lat/lng",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Faire défiler",
+      "observation": "observe",
+      "preuve": "capture IRL-017 (m390) ; emoji par défaut « 📍 » posé au chargement (app-08:6208) avant le repli passion (ui-v4a2-cartes.js:418)",
+      "problemes": [
+        "IRL-C08",
+        "IRL-C02"
+      ],
+      "proposition": "La pastille reprend l'emoji de la passion (🎨).",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Toutes les activités sans couverture portent la même épingle : la passion ne se lit plus d'un coup d'œil."
+    },
+    {
+      "id": "IRL-030",
+      "surface": "Rencontrer — vue Carte",
+      "composant": "#irlMapWrap (MapLibre + OpenFreeMap) sous le commutateur, liste dessous",
+      "etat": "35 exemples, aucune position",
+      "role": "démo (sans session, socle d'exemples)",
+      "geste": "Toucher « Carte »",
+      "observation": "observe",
+      "preuve": "capture IRL-030 (m390, m360, t768, d1440) ; app-07:1551-1836, ui-v4a3-vue.js:171",
+      "problemes": [
+        "IRL-C09",
+        "IRL-C15",
+        "IRL-C02"
+      ],
+      "proposition": "Commandes de carte portées à 44 px.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Carte lisible et marqueurs-emoji parlants, mais commandes trop petites (29 et 38 px) et cadrage sur Paris faute de position."
+    },
+    {
+      "id": "IRL-031",
+      "surface": "Carte — marqueur touché",
+      "composant": "Bulle MapLibre « Voir l'événement »",
+      "etat": "exemple Fontainebleau",
+      "role": "démo (sans session, socle d'exemples)",
+      "geste": "Toucher un marqueur",
+      "observation": "observe",
+      "preuve": "capture IRL-031 (m390) ; bulle app-07:1797-1801",
+      "problemes": [
+        "IRL-C01",
+        "IRL-C02",
+        "IRL-C13"
+      ],
+      "proposition": "La bulle d'un exemple dit « Exemple » et ne donne pas de distance ; bouton « Détails » comme la liste.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "La bulle donne « 57 km » et « Voir l'événement » sur un exemple que la liste, elle, masque."
+    },
+    {
+      "id": "IRL-032",
+      "surface": "Carte — plein écran",
+      "composant": ".irl-map-wrap.fullscreen",
+      "etat": "bulle ouverte",
+      "role": "démo (sans session, socle d'exemples)",
+      "geste": "Toucher l'icône plein écran",
+      "observation": "observe",
+      "preuve": "capture IRL-032 (m390) ; app-07:1838-1853",
+      "problemes": [
+        "IRL-C10"
+      ],
+      "proposition": "Bouton nommé « ✕ Fermer la carte » 44 px ; croix de bulle 44 px.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "La seule sortie est la même icône que l'entrée, sans libellé ; la barre basse est recouverte."
+    },
+    {
+      "id": "IRL-040",
+      "surface": "Rencontrer — vue Filtre (haut)",
+      "composant": "#v4a5Panneau : Quand ? · Où ? · Distance",
+      "etat": "aucun filtre",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Toucher « Filtre »",
+      "observation": "observe",
+      "preuve": "capture IRL-040 (m390, m360, t768, d1440) ; js/ui-v4a5-filtres.js",
+      "problemes": [
+        "IRL-C04"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Page claire, en quatre questions, gros boutons ; mais « Où ? » annonce « Aucune position » alors que tout est calculé depuis Paris."
+    },
+    {
+      "id": "IRL-041",
+      "surface": "Rencontrer — vue Filtre (bas)",
+      "composant": "Passions, Horaire, « Mes événements | Mes rencontres », pied fixe « Afficher N résultats »",
+      "etat": "aucun filtre",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Faire défiler la vue Filtre",
+      "observation": "observe",
+      "preuve": "capture IRL-041 (m390, m360) ; raccourcis ui-v4a5-filtres.js:108-114",
+      "problemes": [
+        "IRL-C13"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Pied fixe avec le nombre de résultats : excellent repère. Seul le mot « Mes rencontres » (= mes inscriptions) est à revoir (IRL-C13)."
+    },
+    {
+      "id": "IRL-042",
+      "surface": "Filtre — distance sans position",
+      "composant": "Distance maximale 5 km",
+      "etat": "« Aucune position », 6 résultats autour de Paris",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Filtre → 5 km",
+      "observation": "observe",
+      "preuve": "capture IRL-042 (m390) ; app-07:2627-2636 (référence _irlReferenceLoc)",
+      "problemes": [
+        "IRL-C04"
+      ],
+      "proposition": "Distances désactivées tant qu'il n'y a ni ville ni position, avec la phrase « Choisis une ville ou autorise ta position pour filtrer par distance ».",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le filtre agit autour d'un point que l'écran dit ne pas avoir."
+    },
+    {
+      "id": "IRL-043",
+      "surface": "Filtre — combinaison sans résultat",
+      "composant": "#v4a5Pied / #v4a5Done",
+      "etat": "5 km + Aujourd'hui + Soir → 0",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Cocher trois filtres incompatibles",
+      "observation": "observe",
+      "preuve": "capture IRL-043 (m390, m360) ; contraste mesuré 2,87:1 (bouton désactivé)",
+      "problemes": [
+        "IRL-C05"
+      ],
+      "proposition": "Le pied dit ce qui bloque et offre « Tout effacer » à portée de pouce.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Impasse : bouton grisé, aucune explication, « Tout effacer » hors écran en haut."
+    },
+    {
+      "id": "IRL-044",
+      "surface": "Liste filtrée, retour depuis Filtre",
+      "composant": "#eventList .empty + commutateur",
+      "etat": "3 filtres actifs, 0 résultat",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Filtre → toucher « Liste »",
+      "observation": "observe",
+      "preuve": "capture IRL-044 (m390) ; pastille masquée styles.css:11670",
+      "problemes": [
+        "IRL-C07"
+      ],
+      "proposition": "Réafficher la pastille de compte existante (#irlToolsBadge) sur l'onglet « Filtre ».",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Rien ne signale, hors de la vue Filtre, que la liste est filtrée."
+    },
+    {
+      "id": "IRL-045",
+      "surface": "Retour sur Rencontrer après un détour",
+      "composant": "Écran entier",
+      "etat": "filtres conservés, vue Liste",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Filtre → Découvrir → Rencontrer",
+      "observation": "observe",
+      "preuve": "capture IRL-045 (m390)",
+      "problemes": [
+        "IRL-C07"
+      ],
+      "proposition": "Même proposition qu'IRL-044 : la pastille rend la conservation lisible.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "La conservation des filtres est utile, mais on revient sur « Rien avec ces filtres » sans savoir lesquels."
+    },
+    {
+      "id": "IRL-046",
+      "surface": "Filtre — calendrier « Choisir une date »",
+      "composant": "#irlPaneDate déplacé",
+      "etat": "mois courant, jours à activités pointés",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Filtre → Choisir une date",
+      "observation": "observe",
+      "preuve": "capture IRL-046 (m390) ; app-07:2137 ; ‹ › mesurés 28 × 28 px",
+      "problemes": [
+        "IRL-C16"
+      ],
+      "proposition": "Flèches de mois portées à 44 px.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Calendrier clair (jours passés éteints, points sous les jours occupés), flèches trop petites."
+    },
+    {
+      "id": "IRL-047",
+      "surface": "Sélecteur de lieu « Changer de lieu »",
+      "composant": "Feuille openIrlCitySelector (app-07:1374)",
+      "etat": "ouverture",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Filtre → Où ? → Modifier",
+      "observation": "observe",
+      "preuve": "capture IRL-047 (m390) ; boutons de villes 40 px de haut",
+      "problemes": [
+        "IRL-C03"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Champ, « Utiliser ma position » et grandes villes : complet et compréhensible. Défaut : il est enfoui (IRL-C03)."
+    },
+    {
+      "id": "IRL-048",
+      "surface": "Sélecteur de lieu — saisie",
+      "composant": "Suggestions BAN / Photon",
+      "etat": "« Grenoble »",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Taper « Grenoble »",
+      "observation": "observe",
+      "preuve": "capture IRL-048 (m390) ; passioGeoSuggest app-07:1112 (géocodeurs réels, requête fictive)",
+      "problemes": [
+        "IRL-C18"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-verifier",
+      "justification": "« Grenoble » propose aussi Le Boupère, Arcisses, Saint-Priest, Aulnay-sous-Bois : pertinence à vérifier sur d'autres saisies."
+    },
+    {
+      "id": "IRL-049",
+      "surface": "Recherche de passion « Chercher »",
+      "composant": "Feuille « Quelles activités ? »",
+      "etat": "ouverture",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Filtre → Quelles passions ? → Chercher",
+      "observation": "observe",
+      "preuve": "capture IRL-049 (m390) ; ouvrirRecherchePassionIRL app-07:1949",
+      "problemes": [
+        "IRL-C13"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Feuille utile (idées, recherche), mais titrée « Quelles activités ? » sous la section « Quelles passions ? », placeholder coupé (« …cui »)."
+    },
+    {
+      "id": "IRL-050",
+      "surface": "Liste — position accordée",
+      "composant": ".v4a2-ou",
+      "etat": "Lyon émulé : « environ 2,6 km »",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Filtre → Où ? → Modifier → Utiliser ma position",
+      "observation": "simule",
+      "preuve": "capture IRL-050 (m390) ; position émulée (Playwright geolocation + permission), geste réel ; requestUserLocation app-07:1181",
+      "problemes": [],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Avec une vraie référence, la distance devient juste et utile."
+    },
+    {
+      "id": "IRL-051",
+      "surface": "Filtre — « Où ? » après position",
+      "composant": "Carte « Lyon · Position actuelle »",
+      "etat": "position accordée",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Même geste",
+      "observation": "simule",
+      "preuve": "capture IRL-051 (m390)",
+      "problemes": [
+        "IRL-C03"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Le lieu est nommé (« Lyon ») ; le chemin pour y arriver reste long (IRL-C03)."
+    },
+    {
+      "id": "IRL-052",
+      "surface": "Vue Carte — après position",
+      "composant": "#irlMapWrap",
+      "etat": "position accordée",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Même geste puis « Carte »",
+      "observation": "simule",
+      "preuve": "capture IRL-052 (m390)",
+      "problemes": [
+        "IRL-C15"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Recadrage autour de la référence ; marqueurs toujours empilés."
+    },
+    {
+      "id": "IRL-053",
+      "surface": "Position refusée",
+      "composant": "Toast d'avertissement + « Où ? »",
+      "etat": "PERMISSION_DENIED",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Filtre → Où ? → Modifier → Utiliser ma position (refus simulé)",
+      "observation": "simule",
+      "preuve": "capture IRL-053 (m390) ; refus simulé (navigator.geolocation remplacé avant le boot) ; toast app-07:1226",
+      "problemes": [
+        "IRL-C04",
+        "IRL-C19"
+      ],
+      "proposition": "Toast : « Position refusée. Choisis ta ville dans « Où ? » » ; la carte « Où ? » affiche « Aucune position » et non « Paris (par défaut) · Position actuelle ».",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Le toast renvoie à « Filtre → Autour de moi », section inexistante, recouvre le bouton du pied, et « Où ? » nomme Paris « Position actuelle »."
+    },
+    {
+      "id": "IRL-055",
+      "surface": "Compte sans aucune activité réelle",
+      "composant": "#eventList",
+      "etat": "table events vide",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Rencontrer",
+      "observation": "observe",
+      "preuve": "capture IRL-055 (m390) ; app-08:9881 (fusion réelles + exemples)",
+      "problemes": [
+        "IRL-C14",
+        "IRL-C01"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Jamais d'état vide : les 35 exemples remplissent l'écran, chacun avec « Je viens »."
+    },
+    {
+      "id": "IRL-056",
+      "surface": "Volume — 51 activités réelles + exemples",
+      "composant": "Pagination",
+      "etat": "85 cartes, 12 affichées",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Défiler jusqu'en bas",
+      "observation": "observe",
+      "preuve": "capture IRL-056 (m390) ; « Afficher plus (73 restants) »",
+      "problemes": [
+        "IRL-C14"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "La pagination tient, mais les exemples continuent d'occuper la liste même quand les vraies activités abondent."
+    },
+    {
+      "id": "IRL-057",
+      "surface": "Volume — vue Carte",
+      "composant": "Marqueurs",
+      "etat": "51 réelles + exemples",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "« Carte »",
+      "observation": "observe",
+      "preuve": "capture IRL-057 (m390) ; micro-décalage déterministe app-07:1774-1777, aucun regroupement",
+      "problemes": [
+        "IRL-C15"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Les marqueurs d'une même ville se recouvrent ; aucun regroupement chiffré."
+    },
+    {
+      "id": "IRL-058",
+      "surface": "Carte — tuiles en échec",
+      "composant": "#irlMap",
+      "etat": "tiles.openfreemap.org refusé",
+      "role": "démo (sans session, socle d'exemples)",
+      "geste": "« Carte » avec tuiles interrompues",
+      "observation": "simule",
+      "preuve": "capture IRL-058 (m390) ; route du scénario qui interrompt les requêtes de tuiles",
+      "problemes": [
+        "IRL-C15"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Fond gris uni, marqueurs flottants, aucun message : on ne sait pas si la carte charge ou a échoué."
+    },
+    {
+      "id": "IRL-060",
+      "surface": "Fil — CTA « Trouver une activité »",
+      "composant": "Bouton de carte de publication (ui-v3-passerelle.js:68)",
+      "etat": "publication sans activité liée",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Découvrir → faire défiler",
+      "observation": "observe",
+      "preuve": "capture IRL-060 (m390)",
+      "problemes": [
+        "IRL-C13"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Passerelle discrète et pertinente vers l'IRL (hors périmètre visuel, vue comme porte d'entrée)."
+    },
+    {
+      "id": "IRL-061",
+      "surface": "Feuille « Trouver une expérience »",
+      "composant": "Passerelle UI-3A",
+      "etat": "ouverte depuis le Fil",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Toucher « Trouver une activité »",
+      "observation": "observe",
+      "preuve": "capture IRL-061 (m390) ; ui-v3-passerelle.js:69 ; croix 34 × 34 px",
+      "problemes": [
+        "IRL-C13"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Le bouton dit « activité », la feuille « expérience », la page d'arrivée « Rencontrer »."
+    },
+    {
+      "id": "IRL-062",
+      "surface": "Lien profond #irl-event-…",
+      "composant": "Fiche d'activité (porte du domaine irl-fiche)",
+      "etat": "activité réelle",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Ouvrir l'URL avec le hachage",
+      "observation": "observe",
+      "preuve": "capture IRL-062 (m390) ; _openIrlEventFromHash app-07:4896",
+      "problemes": [
+        "IRL-C13"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "La fiche s'ouvre directement ; son bouton « Je participe » est audité par irl-fiche (et PCS-C06)."
+    },
+    {
+      "id": "IRL-063",
+      "surface": "Rencontrer — visiteur",
+      "composant": "Aide « Passe du numérique au réel » + liste",
+      "etat": "première visite",
+      "role": "visiteur (première visite, sans compte)",
+      "geste": "Barre basse → Rencontrer",
+      "observation": "observe",
+      "preuve": "capture IRL-063 (m390) ; étape first-run « rencontrer » (first-run.js:2399)",
+      "problemes": [
+        "IRL-C01"
+      ],
+      "proposition": "",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "L'aide explique en une phrase que la position n'est pas activée d'office ; elle masque le commutateur une seule fois, avec « Compris »."
+    },
+    {
+      "id": "IRL-070",
+      "surface": "Intentions « Tous · Cette semaine · Ma ville · Mes passions »",
+      "composant": "js/ui-v4a0-tete.js, ui-v4a1-intentions.js",
+      "etat": "non rendues sous UI-4A5",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Aucun (repli si passio_ui_4a5 = \"0\")",
+      "observation": "code",
+      "preuve": "ui-v4a5-filtres.js:27-33",
+      "problemes": [],
+      "proposition": "",
+      "visuel": "aucun",
+      "verdict": "a-conserver",
+      "justification": "Repli de kill switch : chaque intention a son équivalent nommé dans la vue Filtre."
+    },
+    {
+      "id": "IRL-071",
+      "surface": "Dialogue « Filtre » contextuel (irlToolsSections)",
+      "composant": "contextual-nav.js",
+      "etat": "repli",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Aucun en production (UI-4A5 actif)",
+      "observation": "code",
+      "preuve": "app-07:2785-2828 ; libellés « Autour de moi », « Mes inscriptions »",
+      "problemes": [
+        "IRL-C19",
+        "IRL-C13"
+      ],
+      "proposition": "",
+      "visuel": "aucun",
+      "verdict": "a-ameliorer",
+      "justification": "Invisible aujourd'hui, mais c'est lui qui porte « Autour de moi » et « Mes inscriptions », mots que le toast et la vue Filtre contredisent."
+    },
+    {
+      "id": "IRL-072",
+      "surface": "Feuille historique #irlFiltersPanel",
+      "composant": "Date / Distance / Horaire",
+      "etat": "repli",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Aucun",
+      "observation": "code",
+      "preuve": "index.html ~1060 ; openIrlFiltersPanel app-07:2737",
+      "problemes": [],
+      "proposition": "",
+      "visuel": "aucun",
+      "verdict": "a-conserver",
+      "justification": "Conservée pour le kill switch ; aucune porte en production."
+    },
+    {
+      "id": "IRL-073",
+      "surface": "Activités passées / tri",
+      "composant": "setIrlPastMode, setIrlSort",
+      "etat": "sans interface",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Aucun",
+      "observation": "code",
+      "preuve": "app-07:2830-2868 (barre supprimée le 2026-07-22)",
+      "problemes": [],
+      "proposition": "",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Les activités passées ne sont plus joignables depuis Rencontrer ; à confirmer comme choix produit."
+    },
+    {
+      "id": "IRL-074",
+      "surface": "Chargement et erreur de chargement de la liste",
+      "composant": "#eventList",
+      "etat": "réseau lent / en échec",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Aucun observé",
+      "observation": "code",
+      "preuve": "renderIRL app-07:2912 : rendu synchrone depuis state.seed.events, sans squelette ni message d'échec",
+      "problemes": [],
+      "proposition": "",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Les exemples masquent tout échec de chargement : à vérifier hors ligne sur appareil."
+    },
+    {
+      "id": "IRL-075",
+      "surface": "Repli « carte indisponible » (sans WebGL)",
+      "composant": ".irl-map-fallback",
+      "etat": "WebGL absent",
+      "role": "connecté (faux serveur, lot first-run actif comme en production)",
+      "geste": "Aucun",
+      "observation": "inaccessible",
+      "preuve": "app-07:1567-1570 ; Chromium du banc a WebGL",
+      "problemes": [],
+      "proposition": "",
+      "visuel": "aucun",
+      "verdict": "a-conserver",
+      "justification": "Le repli existe et rassure (« la liste fonctionne normalement ») ; à voir sur vieil appareil."
+    }
+  ],
+  "constats": [
+    {
+      "dependances": "PassioFirstRun.masquerChiffresDemo / evenementDemo (first-run.js:735, 2509) déjà disponibles.",
+      "sensible": false,
+      "id": "IRL-C01",
+      "titre": "Les exemples « participation désactivée » portent un « Je viens » corail plein et actif",
+      "emplacement": "Rencontrer › carte d'activité — .v4a2-go (js/ui-v4a2-cartes.js:627, styles.css:8983) ; bulle de carte app-07:1800",
+      "surfaces": [
+        "IRL-001",
+        "IRL-002",
+        "IRL-003",
+        "IRL-031",
+        "IRL-055",
+        "IRL-063"
+      ],
+      "type": "observation",
+      "nature": "clarte",
+      "preuve": "IRL-002 : la ligne dit « Exemple PASSIO · participation désactivée » ; le bouton « Je viens » (80 × 44 px, fond #C13D28, texte blanc, non désactivé) est identique à celui d'une vraie activité. Toucher → toast « Cette activité est un exemple : elle n'accueille pas de vraie participation. » (IRL-003). En démo, 12 cartes sur 12 de la première page sont des exemples ; en compte sans activité réelle, 35 sur 35 (IRL-055).",
+      "probleme": "L'action principale de l'écran, en corail (couleur du passage au réel), est proposée sur un contenu qui la refuse.",
+      "declencheur": "Toute personne qui découvre Rencontrer avant que des activités réelles existent autour d'elle — c'est-à-dire la majorité aujourd'hui.",
+      "consequence": "Premier geste IRL raté et sanctionné par un refus ; le corail perd sa valeur de signal ; la personne apprend que « Je viens » peut ne rien faire.",
+      "proposition": "Sur un exemple, remplacer le bouton par la pastille d'état existante (.v4a2-etat, comme « Annulé » / « Tu organises ») avec le mot « Exemple » ; ligne « Activité d'exemple · pas d'inscription » ; « Détails » reste la seule action. Même règle dans la bulle de la carte.",
+      "visuels": [
+        "IRL-002",
+        "IRL-003"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Verrous e2e du lot UI-4A2 et de first-run qui cliquent « Je viens » sur e1 (refus) : à adapter.",
+      "critereAcceptation": "Sur une carte dont l'id correspond à /^e\\d+$/, aucun bouton .v4a2-go n'est rendu ; une pastille « Exemple » non cliquable est présente ; la bulle de carte d'un exemple n'a pas de distance.",
+      "fichiers": [
+        "js/ui-v4a2-cartes.js",
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": true,
+      "id": "IRL-C02",
+      "titre": "Sans position, les distances sont calculées depuis Paris et affichées comme réelles",
+      "emplacement": "Carte d'activité › ligne lieu — ligneOu (js/ui-v4a2-cartes.js:332-356) ; repli _irlReferenceLoc (app-07:2495-2499) ; bulle de carte app-07:1799",
+      "surfaces": [
+        "IRL-007",
+        "IRL-010",
+        "IRL-011",
+        "IRL-017",
+        "IRL-030",
+        "IRL-031"
+      ],
+      "type": "observation",
+      "nature": "fonctionnel",
+      "preuve": "Compte connecté, aucune position (état par défaut : l'écran ne la demande jamais seul, first-run.js:2392 et ui-v4a0-tete.js:377 ; 0 appel à getCurrentPosition mesuré par la sonde irl-decouvrir-05) : « Lyon · environ 391 km », « Grenoble · environ 481 km », « Paris · environ 0 m » (IRL-010, IRL-011). Avec position Lyon accordée : « Lyon · environ 2,6 km » (IRL-050). En démo, la liste masque la distance des exemples mais la bulle de carte affiche « 57 km » (IRL-031).",
+      "probleme": "Une distance précise (« environ 0 m ») est affirmée à partir d'un point par défaut que la personne n'a jamais choisi.",
+      "declencheur": "Toute personne qui n'a pas fait le geste « Utiliser ma position » ou choisi une ville — c'est l'état par défaut.",
+      "consequence": "Une Lyonnaise lit que l'atelier du parc de la Tête d'Or est à 391 km ; un non-Parisien croit des activités parisiennes « à 0 m ». La confiance dans toutes les distances s'effondre.",
+      "proposition": "N'afficher une distance que si une référence réelle existe (position obtenue ou ville choisie). Sinon : la ville seule, et une ligne-bouton « Choisis ta ville pour voir les distances » au-dessus de la liste qui ouvre le sélecteur existant. Même garde dans la bulle de la carte.",
+      "visuels": [
+        "IRL-010",
+        "IRL-011"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Tri « le plus proche » (irlSort near, sans interface) et filtre distance utilisent la même référence : voir IRL-C04.",
+      "critereAcceptation": "Avec irlUserLocation nul et irlSelectedCity nul, aucune carte ni bulle ne contient « km » ou « m » ; après « Utiliser ma position », les distances apparaissent.",
+      "fichiers": [
+        "js/ui-v4a2-cartes.js",
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "dependances": "IRL-C02 (même maquette).",
+      "sensible": true,
+      "id": "IRL-C03",
+      "titre": "Le seul chemin vers « ma position » est enfoui à trois gestes, dans la vue Filtre",
+      "emplacement": "Filtre › Où ? › Modifier › Utiliser ma position (ui-v4a5-filtres.js:355 ; openIrlCitySelector app-07:1374)",
+      "surfaces": [
+        "IRL-010",
+        "IRL-047",
+        "IRL-051"
+      ],
+      "type": "jugement",
+      "nature": "friction",
+      "preuve": "Le choix « jamais de géolocalisation automatique » est documenté (first-run.js:2392) et l'aide visiteur l'annonce (IRL-063). Mais aucune porte n'existe dans la liste : il faut Filtre → Modifier → Utiliser ma position (IRL-047, IRL-051).",
+      "probleme": "La décision de ne pas demander la position est bonne, mais rien n'invite à la donner ni à choisir sa ville là où la distance compte.",
+      "declencheur": "Toute personne qui consulte la liste sans avoir ouvert Filtre.",
+      "consequence": "La promesse « près de moi » n'est jamais tenue pour qui ne fouille pas ; la liste reste nationale.",
+      "proposition": "Une ligne-bouton au-dessus de la liste, tant qu'aucune référence n'existe : « Choisis ta ville pour voir les distances » (ouvre le même sélecteur, qui garde « Utiliser ma position »). Disparaît dès qu'une référence existe.",
+      "visuels": [
+        "IRL-010"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Aucune demande de position ne doit partir sans geste : verrou ONB-11 à conserver.",
+      "critereAcceptation": "Sans référence, un bouton ≥ 44 px au-dessus de #eventList ouvre le sélecteur de lieu ; aucune permission n'est demandée à l'ouverture de l'écran.",
+      "fichiers": [
+        "js/ui-v4a2-cartes.js",
+        "styles.css"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": true,
+      "id": "IRL-C04",
+      "titre": "« Aucune position » affiché, mais la distance et le libellé « Position actuelle » se réfèrent à Paris",
+      "emplacement": "Vue Filtre › Où ? et Distance maximale (ui-v4a5-filtres.js:340-380 ; _filterIrlEvents app-07:2627-2636)",
+      "surfaces": [
+        "IRL-040",
+        "IRL-042",
+        "IRL-053"
+      ],
+      "type": "observation",
+      "nature": "fonctionnel",
+      "preuve": "IRL-042 : « Choisir une ville · Aucune position », puis « 5 km » → « Afficher 6 résultats » (des activités parisiennes). IRL-053 (refus) : la même carte devient « Paris (par défaut) · Position actuelle ».",
+      "probleme": "Le filtre agit autour d'un point que l'écran dit ne pas avoir, puis appelle ce point « Position actuelle ».",
+      "declencheur": "Choisir une distance sans ville ni position ; refuser la position.",
+      "consequence": "Résultats incompréhensibles (« 5 km » de quoi ?) pour qui n'habite pas Paris.",
+      "proposition": "Sans référence réelle : pastilles de distance désactivées + phrase « Choisis une ville ou autorise ta position pour filtrer par distance ». Après un refus : « Aucune position » (jamais « Position actuelle » pour le repli).",
+      "visuels": [
+        "IRL-042"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Un filtre distance déjà actif au moment où la référence disparaît doit être levé proprement (compteur, pastille).",
+      "critereAcceptation": "Sans référence, les boutons 5/10/25/50 km sont désactivés avec la phrase d'aide ; après refus, la carte « Où ? » ne contient pas « Position actuelle ».",
+      "fichiers": [
+        "js/ui-v4a5-filtres.js",
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C05",
+      "titre": "Filtres combinés sans résultat : pied grisé, sans explication ni issue",
+      "emplacement": "Vue Filtre › pied fixe #v4a5Pied / #v4a5Done (ui-v4a5-filtres.js)",
+      "surfaces": [
+        "IRL-043"
+      ],
+      "type": "observation",
+      "nature": "friction",
+      "preuve": "IRL-043 (m390, m360) : 5 km + Aujourd'hui + Soir → bouton « Aucun résultat » désactivé (2,87:1) ; « Tout effacer » est en haut de la vue, hors écran.",
+      "probleme": "La personne ne sait ni quel filtre bloque, ni comment sortir sans remonter.",
+      "declencheur": "Toute combinaison à zéro résultat.",
+      "consequence": "Abandon de la recherche ou retour à la liste vide (IRL-044).",
+      "proposition": "Dans le pied : une phrase qui nomme les choix actifs (« Aucune activité ne coche « 5 km » + « Aujourd'hui » + « Soir ». Retire un choix. ») et un bouton « Tout effacer » à côté du bouton grisé.",
+      "visuels": [
+        "IRL-043"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Le pied est recopié de window._irlResultCount : ne pas créer un second comptage.",
+      "critereAcceptation": "Avec 0 résultat, le pied visible contient un bouton « Tout effacer » ≥ 44 px et une phrase citant les filtres actifs.",
+      "fichiers": [
+        "js/ui-v4a5-filtres.js",
+        "styles.css"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C06",
+      "titre": "Le prix d'une activité payante n'apparaît plus sur la carte",
+      "emplacement": "Carte d'activité V2 — ligneMonde (js/ui-v4a2-cartes.js:362-381)",
+      "surfaces": [
+        "IRL-014"
+      ],
+      "type": "observation",
+      "nature": "clarte",
+      "preuve": "IRL-014 : activité à 15 € → « 2 participants · 6 places restantes », aucun prix ; la carte historique l'affichait (app-07:3021).",
+      "probleme": "Une information de décision (payant ou non) n'est visible qu'en ouvrant la fiche.",
+      "declencheur": "Toute activité au prix renseigné.",
+      "consequence": "Ouvertures de fiche inutiles ; surprise au moment de s'inscrire.",
+      "proposition": "Ajouter « · 15 € » (fmtEventPrice) à la ligne des places ; rien pour une activité gratuite.",
+      "visuels": [
+        "IRL-014"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Signature de la carte (ui-v4a2-cartes.js:512) à étendre si le prix peut changer sans rendu.",
+      "critereAcceptation": "Une activité avec price = 15 affiche « 15 € » sur sa carte ; price = 0 n'affiche rien.",
+      "fichiers": [
+        "js/ui-v4a2-cartes.js"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C07",
+      "titre": "Les filtres actifs sont invisibles hors de la vue Filtre, et ils survivent à la navigation",
+      "emplacement": "Commutateur › onglet « Filtre » — pastille #irlToolsBadge masquée (styles.css:11670)",
+      "surfaces": [
+        "IRL-044",
+        "IRL-045"
+      ],
+      "type": "observation",
+      "nature": "friction",
+      "preuve": "IRL-044 : 3 filtres actifs, vue Liste « Rien avec ces filtres », l'onglet « Filtre » ne porte aucune marque (la pastille est alimentée mais masquée par CSS). IRL-045 : après Découvrir → Rencontrer, même état.",
+      "probleme": "La liste est amputée sans signal ; la seule trace est l'état vide quand il n'y a plus rien.",
+      "declencheur": "Poser un filtre, revenir à la Liste ou quitter l'écran.",
+      "consequence": "On croit qu'il n'y a pas d'activité ; une liste partiellement filtrée passe pour complète.",
+      "proposition": "Réafficher la pastille de compte existante (#irlToolsBadge) sur l'onglet « Filtre » : un nombre violet, comme ailleurs dans l'app.",
+      "visuels": [
+        "IRL-044"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Maquette du 2026-09-04 (« trois cases d'un mot ») à rediscuter avec Benjamin.",
+      "critereAcceptation": "Avec n > 0 filtres actifs, l'onglet « Filtre » affiche n de façon visible et annoncée (aria-label « Filtre, 3 actifs »).",
+      "fichiers": [
+        "styles.css",
+        "js/ui-v4a5-filtres.js"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C08",
+      "titre": "Les activités sans couverture portent toutes une épingle 📍 au lieu de l'emoji de leur passion",
+      "emplacement": "Carte › .v4a2-visuel — emoji par défaut « 📍 » posé au chargement (app-08:6208), prioritaire sur la passion (ui-v4a2-cartes.js:418)",
+      "surfaces": [
+        "IRL-010",
+        "IRL-015",
+        "IRL-017"
+      ],
+      "type": "observation",
+      "nature": "polish",
+      "preuve": "IRL-010 (salsa → 📍), IRL-015, IRL-017 (Art → 📍) ; les marqueurs de carte, eux, montrent l'emoji de la passion.",
+      "probleme": "La vignette ne dit plus de quoi il s'agit.",
+      "declencheur": "Activité sans cover_url ni emoji.",
+      "consequence": "Liste moins lisible ; incohérence avec les marqueurs.",
+      "proposition": "Ne pas poser « 📍 » par défaut au chargement (laisser null) : le repli passion de la carte s'applique.",
+      "visuels": [
+        "IRL-017"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Autres lecteurs de ev.emoji (fiche, partage) à vérifier.",
+      "critereAcceptation": "Une activité Art sans couverture ni emoji affiche 🎨 dans sa vignette.",
+      "fichiers": [
+        "js/app-08-ui-modals-tour.js"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C09",
+      "titre": "Commandes de la carte sous 44 px (zoom 29 px, replier / plein écran 38 px)",
+      "emplacement": "Vue Carte — .maplibregl-ctrl-zoom-in/out, .irl-map-collapse, .irl-map-expand",
+      "surfaces": [
+        "IRL-030"
+      ],
+      "type": "observation",
+      "nature": "accessibilite",
+      "preuve": "Mesures sonde 03 : zoom 29 × 29 px, replier 38 × 38, plein écran 38 × 38 (IRL-030).",
+      "probleme": "Cibles trop petites, au pouce, sur une carte où un geste raté déplace la vue.",
+      "declencheur": "Utilisation à une main.",
+      "consequence": "Erreurs de toucher.",
+      "proposition": "Porter les quatre commandes à 44 × 44 px.",
+      "visuels": [
+        "IRL-030"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Chevauchement avec les marqueurs du coin : vérifier à 360 px.",
+      "critereAcceptation": "À 360 px, chaque commande de carte mesure ≥ 44 × 44 px.",
+      "fichiers": [
+        "styles.css"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C10",
+      "titre": "Carte plein écran : la seule sortie est l'icône d'entrée, sans libellé",
+      "emplacement": "toggleIrlMapFullscreen (app-07:1838) ; .irl-map-expand",
+      "surfaces": [
+        "IRL-032"
+      ],
+      "type": "observation",
+      "nature": "friction",
+      "preuve": "IRL-032 : la carte couvre l'écran et la barre basse ; en haut à droite, la même icône ⛶ ; croix de bulle ≈ 12 px ; texte d'aide « pince ou molette » (molette sur mobile).",
+      "probleme": "On ne sait pas comment revenir à la liste (le retour système marche, d'après le code, mais rien ne le dit).",
+      "declencheur": "Toucher plein écran.",
+      "consequence": "Sentiment d'être enfermé dans la carte.",
+      "proposition": "Bouton nommé « ✕ Fermer la carte » 44 px en haut à droite en plein écran ; croix de bulle 44 px.",
+      "visuels": [
+        "IRL-032"
+      ],
+      "priorite": "P3",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "critereAcceptation": "En plein écran, un bouton visible au libellé « Fermer la carte » referme la vue.",
+      "risqueRegression": "Entrée d'historique #carte (pushOverlayHistory) à garder cohérente.",
+      "fichiers": [
+        "index.html",
+        "styles.css",
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C11",
+      "titre": "Rouge de l'activité annulée sous le contraste AA (3,23:1 et 3,76:1)",
+      "emplacement": ".event-card-banner.cancelled (styles.css:6825), .v4a2-etat-annule (styles.css:9004)",
+      "surfaces": [
+        "IRL-016"
+      ],
+      "type": "observation",
+      "nature": "accessibilite",
+      "preuve": "Mesure IRL-016--m390 : bandeau « Événement annulé par l'organisateur » 3,23:1, pastille « Annulé » 3,76:1 (#ef4444).",
+      "probleme": "L'information la plus importante de la carte est la moins lisible.",
+      "declencheur": "Activité annulée.",
+      "consequence": "Risque de se déplacer pour rien.",
+      "proposition": "#B42318 (rouge foncé) pour le texte du bandeau et de la pastille.",
+      "visuels": [
+        "IRL-016"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Aucune.",
+      "critereAcceptation": "Bandeau et pastille « Annulé » ≥ 4,5:1.",
+      "fichiers": [
+        "styles.css"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C19",
+      "titre": "Le toast de refus de position renvoie à « Filtre → Autour de moi », qui n'existe plus",
+      "emplacement": "requestUserLocation, branche erreur (app-07:1226) ; section « Autour de moi » seulement dans le dialogue de repli (app-07:2811)",
+      "surfaces": [
+        "IRL-053",
+        "IRL-071"
+      ],
+      "type": "observation",
+      "nature": "clarte",
+      "preuve": "IRL-053 : toast « Localisation indisponible — résultats autour de Paris. Choisis ta ville dans Filtre → Autour de moi. » affiché alors qu'on est déjà dans Filtre, dont la section s'appelle « Où ? » ; le toast recouvre le pied « Afficher 45 résultats ».",
+      "probleme": "Le message guide vers un mot introuvable.",
+      "declencheur": "Refus ou échec de la position.",
+      "consequence": "On cherche « Autour de moi » ; on lit « résultats autour de Paris » sans savoir corriger.",
+      "proposition": "« Position indisponible. Choisis ta ville dans « Où ? ». » — et le toast au-dessus du pied fixe.",
+      "visuels": [
+        "IRL-053"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Aucune.",
+      "critereAcceptation": "Le texte du toast ne contient plus « Autour de moi » ; il ne recouvre pas #v4a5Done.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C12",
+      "titre": "Une recherche sans résultat annonce « Rien avec ces filtres »",
+      "emplacement": "_irlEmptyStateHtml (app-07:2872-2887)",
+      "surfaces": [
+        "IRL-006"
+      ],
+      "type": "observation",
+      "nature": "clarte",
+      "preuve": "IRL-006 : « kitesurf » → « Rien avec ces filtres · Élargis la zone, la date ou la passion » ; aucun filtre posé. #irlSearchEmpty (« Aucun événement trouvé pour cette recherche. ») n'est plus jamais affiché.",
+      "probleme": "Le message accuse des filtres inexistants.",
+      "declencheur": "Recherche texte sans correspondance.",
+      "consequence": "On ouvre Filtre pour rien.",
+      "proposition": "Branche dédiée quand seule la recherche est active : « Aucune activité pour « kitesurf » » + « Effacer la recherche ».",
+      "visuels": [
+        "IRL-006"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Aucune.",
+      "critereAcceptation": "Recherche seule à 0 résultat : le titre cite la saisie et le bouton efface la recherche.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "dependances": "PCS-C06 (même décision de verbe).",
+      "sensible": false,
+      "id": "IRL-C13",
+      "titre": "Mots divergents pour la même chose : activité / événement / rencontre / expérience ; « Je viens » / « Je participe » ; « Mes rencontres » = « Mes inscriptions »",
+      "emplacement": "Cartes (ui-v4a2-cartes.js:89-99), bandeau annulé et état vide (app-07:2875-2886, 3046), bulle de carte (app-07:1800), vue Filtre (ui-v4a5-filtres.js:108-114), dialogue de repli (app-07:2822-2824), passerelle (ui-v3-passerelle.js:68-69), feuille passion « Quelles activités ? »",
+      "surfaces": [
+        "IRL-012",
+        "IRL-016",
+        "IRL-031",
+        "IRL-041",
+        "IRL-049",
+        "IRL-061",
+        "IRL-062",
+        "IRL-071"
+      ],
+      "type": "observation",
+      "nature": "clarte",
+      "preuve": "Relevés : carte « Je viens » / fiche « Je participe » (IRL-062 ; constat PCS-C06 de parcours.json) ; « Détails » / « Voir l'événement » ; « Événement annulé » sur une carte d'« activité » ; « Mes événements | Mes rencontres » (vue Filtre) = « Mes événements | Mes inscriptions » (dialogue) ; CTA « Trouver une activité » → feuille « Trouver une expérience » → écran « Rencontrer » ; section « Quelles passions ? » → feuille « Quelles activités ? ».",
+      "probleme": "Chaque surface nomme autrement l'objet et l'action centrale de la boucle IRL.",
+      "declencheur": "Parcours Fil → Rencontrer → fiche.",
+      "consequence": "Charge de compréhension ; « Mes rencontres » se lit comme « personnes rencontrées », pas « activités où je suis inscrit ».",
+      "proposition": "Un lexique : l'objet = « activité » ; l'action = un seul verbe partout (choix PCS-C06) ; « Mes inscriptions » au lieu de « Mes rencontres » ; « Détails » aussi dans la bulle ; « Activité annulée par l'organisateur ».",
+      "visuels": [
+        "IRL-041",
+        "IRL-061"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Tests e2e qui cherchent les libellés par texte.",
+      "critereAcceptation": "Aucune occurrence visible de « événement » ou « expérience » dans les surfaces du domaine ; le même verbe sur la carte et la fiche.",
+      "fichiers": [
+        "js/ui-v4a2-cartes.js",
+        "js/ui-v4a5-filtres.js",
+        "js/app-07-ia-explore-irl.js",
+        "js/ui-v3-passerelle.js"
+      ]
+    },
+    {
+      "dependances": "Règle produit à arbitrer par Benjamin (seuil de retrait).",
+      "sensible": true,
+      "id": "IRL-C14",
+      "titre": "Les exemples sont mêlés aux vraies activités et occupent la liste même quand le réel existe",
+      "emplacement": "Fusion state.seed.events (app-08:9881) ; tri par date seul (_sortIrlEvents app-07:2663)",
+      "surfaces": [
+        "IRL-010",
+        "IRL-055",
+        "IRL-056"
+      ],
+      "type": "jugement",
+      "nature": "friction",
+      "preuve": "Jeu « normal » (11 activités réelles, dont 7 à Lyon) : 9 des 12 premières cartes sont des exemples ailleurs en France (sonde 04). Jeu « gros » (51 réelles) : « Afficher plus (73 restants) », exemples toujours intercalés (IRL-056).",
+      "probleme": "Les rencontres réelles, rares et précieuses, sont noyées dans un décor.",
+      "declencheur": "Toute liste où existent des activités réelles.",
+      "consequence": "On fait défiler des exemples inactifs pour trouver la seule vraie activité de sa ville ; la boucle Fil → IRL s'affaiblit.",
+      "proposition": "Activités réelles d'abord ; les exemples regroupés après, sous un intertitre « Exemples pour découvrir », et retirés de la liste dès que les activités réelles dépassent une page.",
+      "visuels": [
+        "IRL-055"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "M",
+      "risqueTechnique": "moyen",
+      "risqueRegression": "Carte et liste doivent rester alimentées par le même filtrage (_filterIrlEvents).",
+      "critereAcceptation": "Avec au moins une activité réelle, aucune carte d'exemple ne précède une carte réelle.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C15",
+      "titre": "Carte : marqueurs empilés sans regroupement, et aucun message si les tuiles échouent",
+      "emplacement": "updateIrlMapMarkers (app-07:1694-1836) ; micro-décalage :1774",
+      "surfaces": [
+        "IRL-030",
+        "IRL-052",
+        "IRL-057",
+        "IRL-058"
+      ],
+      "type": "observation",
+      "nature": "polish",
+      "preuve": "IRL-030 / IRL-057 : six marqueurs superposés sur Paris, impossibles à toucher séparément ; IRL-058 : tuiles refusées → fond gris uni, aucun texte.",
+      "probleme": "La carte ne sert pas à choisir entre activités proches ; l'échec réseau est muet.",
+      "declencheur": "Plusieurs activités dans une même ville ; réseau faible.",
+      "consequence": "On revient à la liste ; on attend une carte qui ne viendra pas.",
+      "proposition": "Regrouper les marqueurs proches en une pastille chiffrée qui zoome au toucher ; en cas d'erreur de tuiles, réutiliser le message de repli existant (« La carte n'est pas disponible… la liste fonctionne normalement »).",
+      "visuels": [
+        "IRL-057",
+        "IRL-058"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "M",
+      "risqueTechnique": "moyen",
+      "risqueRegression": "Shim Leaflet → MapLibre (map-loader.js) : le regroupement passe par une source GeoJSON.",
+      "critereAcceptation": "Deux activités à moins de 40 px l'une de l'autre forment une pastille « 2 » ; tuiles en échec → message visible.",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js",
+        "js/map-loader.js"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C16",
+      "titre": "Flèches de mois du calendrier à 28 × 28 px",
+      "emplacement": ".irl-cal-nav (index.html:1107-1109)",
+      "surfaces": [
+        "IRL-046"
+      ],
+      "type": "observation",
+      "nature": "accessibilite",
+      "preuve": "Mesure IRL-046--m390 : « Mois précédent » et « Mois suivant » 28 × 28 px.",
+      "probleme": "Cibles trop petites.",
+      "declencheur": "Chercher une date le mois suivant.",
+      "consequence": "Erreurs de toucher.",
+      "proposition": "44 × 44 px.",
+      "visuels": [
+        "IRL-046"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Aucune.",
+      "critereAcceptation": "‹ et › ≥ 44 × 44 px.",
+      "fichiers": [
+        "styles.css"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C17",
+      "titre": "« C'est maintenant » et « En cours » disent deux fois la même chose sur la même carte",
+      "emplacement": "Bandeau historique app-07:3046 + ligne quand ui-v4a2-cartes.js:295",
+      "surfaces": [
+        "IRL-001",
+        "IRL-010"
+      ],
+      "type": "jugement",
+      "nature": "polish",
+      "preuve": "IRL-001 / IRL-010 : bandeau lavande « C'est maintenant » puis « Musique · En cours ».",
+      "probleme": "Redondance qui coûte une ligne par carte.",
+      "declencheur": "Activité en cours.",
+      "consequence": "Moins de cartes visibles.",
+      "proposition": "Garder la ligne « En cours » (dans le corps) et retirer le bandeau, ou l'inverse — un seul signal.",
+      "visuels": [
+        "IRL-001"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Le bandeau est conservé par la règle CSS du lot (styles.css:8891).",
+      "critereAcceptation": "Une activité en cours n'affiche qu'un seul marqueur « en cours ».",
+      "fichiers": [
+        "styles.css"
+      ]
+    },
+    {
+      "dependances": "Aucune.",
+      "sensible": false,
+      "id": "IRL-C18",
+      "titre": "Suggestions de lieu peu pertinentes (« Grenoble » → Le Boupère, Arcisses…)",
+      "emplacement": "passioGeoSuggest (app-07:1112), feuille « Changer de lieu »",
+      "surfaces": [
+        "IRL-048"
+      ],
+      "type": "hypothese",
+      "nature": "clarte",
+      "preuve": "IRL-048 : « Grenoble » → résultat Grenoble + « Autres communes » Le Boupère, Arcisses, Saint-Priest, Aulnay-sous-Bois (réponses réelles des géocodeurs, une seule saisie observée).",
+      "probleme": "Des communes sans rapport peuvent faire douter du sélecteur.",
+      "declencheur": "Saisie d'une grande ville.",
+      "consequence": "Faible : le bon résultat est en tête.",
+      "proposition": "Vérifier sur une dizaine de saisies ; si confirmé, n'afficher « Autres communes » que si elles contiennent la saisie.",
+      "visuels": [
+        "IRL-048"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "risqueRegression": "Aucune.",
+      "critereAcceptation": "« Grenoble » ne propose que des communes dont le nom ou le contexte contient « Grenoble ».",
+      "fichiers": [
+        "js/app-07-ia-explore-irl.js"
+      ]
+    }
+  ]
 }

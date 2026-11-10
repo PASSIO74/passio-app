@@ -1,0 +1,255 @@
+{
+ "id": "IRL-030",
+ "domaine": "irl-decouvrir",
+ "scenario": "demo-carte",
+ "vue": "t768",
+ "gabarit": "Tablette 768×1024",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "demo",
+ "titre": "Vue Carte — carte dépliée sous le commutateur, liste dessous",
+ "note": "",
+ "prisLe": "2026-11-10T18:00:01.253Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/irl-decouvrir/IRL-030--t768--avant.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 105790,
+  "zooms": [
+   {
+    "nom": "commandes",
+    "titre": "Commandes de la carte",
+    "fichier": "captures/irl-decouvrir/IRL-030--t768--avant-zoom-commandes.webp",
+    "largeur": 762,
+    "hauteur": 360,
+    "octets": 48758
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Zoom + / − : 29 × 29 px",
+   "x": 0.202,
+   "y": 0.275,
+   "w": 0.038,
+   "h": 0.028,
+   "sel": ".maplibregl-ctrl-zoom-in",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Replier : 38 × 38 px, sans nom accessible visible",
+   "x": 0.732,
+   "y": 0.279,
+   "w": 0.049,
+   "h": 0.037,
+   "sel": ".irl-map-collapse",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Plein écran : 38 × 38 px",
+   "x": 0.792,
+   "y": 0.279,
+   "w": 0.049,
+   "h": 0.037,
+   "sel": ".irl-map-expand",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 768,
+   "h": 1024
+  },
+  "cibles": {
+   "total": 32,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 22,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div#irlMap > div.maplibregl-canvas-container.maplibregl-interactive > div.passio-marker-wrap.maplibregl-marker",
+     "texte": "Map marker",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.maplibregl-control-container > div.maplibregl-ctrl-top-left > div.maplibregl-ctrl.maplibregl-ctrl-group > button.maplibregl-ctrl-zoom-in",
+     "texte": "Zoom in",
+     "w": 29,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div.maplibregl-control-container > div.maplibregl-ctrl-top-left > div.maplibregl-ctrl.maplibregl-ctrl-group > button.maplibregl-ctrl-zoom-out",
+     "texte": "Zoom out",
+     "w": 29,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#irlMapCollapseBtn",
+     "texte": "Replier la carte",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "button#irlMapExpandBtn",
+     "texte": "Carte en plein écran",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 306,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 15
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 19,
+   "indetermines": 8,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 768,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/irl-decouvrir/IRL-030--t768--apres.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 104800,
+  "zooms": [
+   {
+    "nom": "commandes",
+    "titre": "Commandes de la carte",
+    "fichier": "captures/irl-decouvrir/IRL-030--t768--apres-zoom-commandes.webp",
+    "largeur": 762,
+    "hauteur": 360,
+    "octets": 47766
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Commandes portées à 44 px",
+   "x": 0.212,
+   "y": 0.282,
+   "w": 0.057,
+   "h": 0.043,
+   "sel": ".maplibregl-ctrl-zoom-in",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "44 px",
+   "x": 0.728,
+   "y": 0.282,
+   "w": 0.057,
+   "h": 0.043,
+   "sel": ".irl-map-collapse",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}
