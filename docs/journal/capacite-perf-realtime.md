@@ -2164,6 +2164,8 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
 | (2026-11-10) Chaque script porte l'empreinte `integrity` (sha384) de ses octets SERVIS, sur le preload et sur le `<script>` ; le buildId et les `?v=` ne bougent pas quand le build minifie | `scripts/build.js` (étapes 1 et 1 bis) | `app-scripts-par-fichier.spec.js` ⑦ ⑧ (deux moteurs), `integrite-app.test.mjs` ①③ |
 | (2026-11-10) Le worker honore une redemande `cache: "reload"` d'un fichier versionné : réseau, rangé si c'est bien un script, réponse une fois rangée | `sw.js` | ⑧ |
 | (2026-11-10) Refus de déployer une page dont une empreinte ne désigne pas son fichier — relue APRÈS la minification de la page ; même contrôle à chaque PR (« Gates artefact » construit minifié) | `scripts/verifier-integrite-app.js`, `deploy.yml`, `scripts/servir-dist.js` | `integrite-app.test.mjs` ② |
+| (2026-11-10, la feuille) `styles.css?v=` porte l'empreinte `integrity` de ses octets SERVIS ; une reprise posée AVANT son `<link>` : au refus, TOUT DE SUITE un secours SANS empreinte à la même place (jamais une page sans styles), puis la redemande (`cache: "reload"`) et un `<link>` AVEC l'empreinte juste après le secours, qui le retire s'il se charge | `scripts/build.js` (étape 2) | `app-scripts-par-fichier.spec.js` ⑨ ⑩ (deux moteurs) et ① (une seule demande), `integrite-app.test.mjs` ① |
+| (2026-11-10, la feuille) Minifiée PAR LE BUILD (`PASSIO_MINIFIER_APP`, étape 2 bis : même commande clean-css, mêmes octets que la production) ; l'étape « Minify styles.css » du déploiement est RETIRÉE ; le contrôle relit aussi le `<link>` de la feuille, et exige la reprise avant lui | `scripts/build.js`, `deploy.yml`, `scripts/verifier-integrite-app.js` | `integrite-app.test.mjs` ② ③ ⑤ |
 | La barrière des migrations lit les 9 scripts servis (un motif peut vivre dans n'importe lequel ; un seul illisible = refus) ; l'ancienne forme reste lue | `scripts/lib/barriere-migration.js` (`urlsBundlesServis`), `scripts/appliquer-migration.mjs` | `tests/unit/barriere-migration.test.mjs` ④ (sur le VRAI build ; deux mutations) |
 | Le serveur d'artefact et les suites qui lisaient `dist/app.js` | `scripts/servir-dist.js`, `dist-build`, `version-skew`, `pwa-maj-pendant-appel`, `audit-2026-11-perf-dist` | — |
 
@@ -2354,17 +2356,128 @@ une demande de l'adresse de B reçoit le contenu de A, en 200 `immutable`.
 - ⚠️ **UNE MISE À JOUR DE TERSER** change les octets servis sous les mêmes `?v=` : chaque appareil
   refuse une fois ce qu'il garde, et le redemande (une seconde par script modifié). Le prix d'une
   version de terser, pas un défaut ; terser est figé (5.51.2, sans `^`).
-- **Survivant de la même classe, non traité : `styles.css?v=`** (la seule autre règle `immutable` de
-  `_headers`). Un retour arrière range la feuille de A sous l'adresse de B, et B rétabli la garde un an.
-  L'effet est visuel (des styles de B manquants), pas un mélange de code. Le remède a deux pièces qui
-  n'existent pas pour elle : une empreinte `integrity` sur un `<link rel=stylesheet>` refusé laisserait
-  la page SANS styles, faute de reprise ; et clean-css la minifie après le build (le même obstacle que
-  terser). Le worker, lui, est déjà prêt (`estVersionne` couvre `.css`, la branche `reload` aussi).
+- **Survivant de la même classe : `styles.css?v=`** (la seule autre règle `immutable` de `_headers`) —
+  reproduit puis fermé le jour même, ci-dessous.
+
+**La feuille de style, même cas — reproduit, puis fermé (2026-11-10, la suite).** Netlify ignore le
+`?v=` de la feuille comme celui des scripts : pendant un retour arrière de C vers A, la feuille de A
+est servie en 200 `immutable` sous l'adresse de C.
+- **Reproduit d'abord, sous Chromium ET WebKit, dans les deux caches** (`app-scripts-par-fichier.spec.js`,
+  un troisième artefact C qui ne diffère de A QUE par la feuille ; profil persistant, aucune route).
+  ⑨ — une page C partie juste avant la bascule range la feuille de A sous l'adresse de C dans le cache
+  HTTP ; C rétabli à l'identique, la page applique la feuille de A, sans une demande au serveur.
+  ⑩ — le worker de C installé pendant la bascule (`FICHIERS_VERSION`) la range dans SON cache ; C
+  rétabli, il la sert à chaque ouverture. Prémisses assertées (la feuille de A servie en 200 sous
+  l'adresse de C, puis relue sans une demande `style` — `Sec-Fetch-Dest`), verdict rouge sur les deux
+  moteurs : un seul `load`, celui de la feuille de A, et zéro demande.
+- **L'exposition, mesurée sur `main`** : 11 versions sur 151 touchent la feuille en 30 jours, avec des
+  écarts jusqu'à 33 jours (18/09 → 21/10). Un appareil touché gardait donc des styles périmés des jours
+  à des semaines, jusqu'à la prochaine version qui change la feuille. La fenêtre qui le déclenche est
+  étroite (quelques millisecondes entre la page et sa feuille, ou entre `sw.js` et l'installation) ;
+  l'effet, lui, dure.
+- **Le remède** (les deux lignes « la feuille » du tableau ci-dessus) : l'empreinte `integrity` de la
+  feuille SERVIE sur son `<link>`, une reprise, la minification dans le build. Le worker n'a pas
+  bougé : `estVersionne` couvre `.css`, et sa branche `reload` (⑧) range la feuille neuve avant de
+  répondre.
+- ⚠️ **SANS REPRISE, L'EMPREINTE SERAIT PIRE QUE LE DÉFAUT** : une feuille refusée laisse la page SANS
+  styles (mutation « sans reprise », tableau ci-dessous). La reprise est une écoute de `error` en
+  capture sur le document, posée par un petit script JUSTE AVANT le `<link>` : son échec part avant que
+  le moindre script du `<body>` ne s'exécute (ils attendent la feuille, « script-blocking style sheet »),
+  un écouteur posé plus loin ne le verrait jamais. ⚠️ Pas une écoute de `error` quelconque comme
+  marqueur : telemetry.js et platform.js en posent plus haut dans le `<head>` ; le contrôle cherche
+  l'expression de la reprise, `^styles\.css\?v=`, qui survit à la minification.
+- ⚠️ **LE SECOURS D'ABORD, LA REDEMANDE ENSUITE.** Au refus, la reprise pose TOUT DE SUITE, à la place
+  du `<link>` refusé, un `<link>` de secours SANS empreinte : la page prend la feuille que gardent les
+  caches (celle de l'autre version) au lieu de rester nue. Le secours réglé, elle redemande l'adresse
+  (`fetch(…, { cache: "reload" })`, corps lu jusqu'au bout) et pose JUSTE APRÈS le secours un `<link>`
+  AVEC l'empreinte : chargé, il retire le secours ; refusé (pendant la bascule elle-même, le site sert
+  encore A), il se retire, et la page garde le secours — la feuille de A, comme avant ce lot. ⑨ ⑩
+  assertent la suite exacte des événements : refus, secours chargé, PUIS le `<link>` avec empreinte.
+  La première version faisait l'inverse — redemander, puis poser — et la relecture `audit-passio` l'a
+  arrêtée : un réseau qui cale après le refus (tunnel, portail captif) laissait la page SANS styles
+  aussi longtemps que la redemande ne se réglait pas, et même sur un réseau sain chaque reprise
+  montrait un éclair sans styles — mesuré sous charge, médiane 0,2 à 0,9 s, au plus 1,7 s. À l'inverse
+  des scripts (qui s'arrêtent : jamais deux versions de code dans la même page), une feuille de
+  l'autre version un instant n'est qu'un défaut visuel ; l'absence de styles serait pire. Rien ne
+  s'installe : chaque ouverture repart du `<link>` avec empreinte, qui répare dès que le site sert la
+  bonne feuille.
+- ⚠️ **TOUT SE POSE À LA PLACE DU `<link>` D'ORIGINE, JAMAIS EN FIN DE `<head>`** (`replaceChild`, puis
+  `insertBefore(…, secours.nextSibling)`) : l'ordre des feuilles fait la cascade, et app-05 ajoute au
+  `<head>`, APRÈS la feuille, les `<style>` des réglages de l'utilisateur (`#passio-color-override`,
+  `-ff-`, `-fs-`, `-rd-`). Une feuille rajoutée derrière eux effacerait thème, police, taille et
+  arrondi choisis. ⑨ ⑩ vérifient que le `<link>` final suit directement le script de la reprise — et,
+  en prémisse, qu'un élément le suit (sans lui, un `<link>` rajouté en fin de `<head>` serait lui aussi
+  juste après la reprise, et la vérification ne distinguerait rien).
+- ⚠️ **L'EMPREINTE N'EST BONNE QUE SUR LES OCTETS SERVIS — LA MINIFICATION PASSE DANS LE BUILD** (étape
+  2 bis), comme terser la veille : `cleancss -o <sortie> <entrée>`, clean-css-cli 5.6.3 du lockfile.
+  Vérifié avant de pousser, deux fois : sur `7dade60f` puis, rebasé, sur `4e1d8ed1` (#820 venait de
+  changer la feuille), la feuille minifiée PAR LE BUILD est octet pour octet celle que servait la
+  production (231 511 octets, même sha384, sous `?v=a6881b4c96` puis `?v=709d2be1cc`), et les 9
+  scripts aussi : la mise en ligne ne fait refuser à aucun appareil ce qu'il garde. Le buildId change
+  une fois (la page porte la reprise et l'empreinte : `3d8e98bb12ad` → `7e41f8b20efe` sur `4e1d8ed1`),
+  identique minifié ou non. L'étape « Minify styles.css » du déploiement est RETIRÉE : une seconde
+  minification après le contrôle ferait refuser la feuille à tout le monde.
+- ⚠️ **L'EMPREINTE NE DOUBLE PAS LE TÉLÉCHARGEMENT** (mesuré, ① : routes posées, donc cache HTTP coupé —
+  un second téléchargement atteindrait le serveur) : UNE demande `style`, et un seul `load`, avec
+  l'empreinte, sur les deux moteurs. Le pré-chargement spéculatif lit l'empreinte avec l'adresse.
+- ⚠️ **UN `update()` PEUT SE FONDRE DANS UNE AUTRE TÂCHE DU WORKER** : la toute première passe de ⑩ sous
+  Chromium a vu le worker de C ne jamais s'installer (30 s, le cache de A seul) ; les suivantes non. La
+  prémisse de ⑧ et ⑩ redemande désormais la mise à jour à chaque tour (`installerWorker`), comme
+  `majSilencieuse` toutes les 60 s.
+- **Mutations, chacune mesurée sur les deux moteurs** (la reprise « secours d'abord » ; fichiers restaurés
+  et comparés par empreinte après chacune ; « au repos » = une passe, « sous charge » = ×9 sur trois
+  workers) :
+
+  | Pièce retirée | Chromium | WebKit |
+  |---|---|---|
+  | l'empreinte du `<link>` | ⑨ ⑩ rouges : la feuille de A s'applique, un seul `load`, zéro demande | ⑨ ⑩ rouges |
+  | la reprise | ⑨ ⑩ rouges : page SANS styles, bascule comprise | ⑨ ⑩ rouges |
+  | le secours (il porte l'empreinte, donc il est refusé aussi) | ⑨ ⑩ rouges : page sans styles jusqu'au `<link>` juste, et pendant toute la bascule | ⑨ ⑩ rouges |
+  | `cache: "reload"` sur la redemande | ⑨ ⑩ rouges : la redemande relit le cache, le `<link>` avec empreinte est refusé, la page garde la feuille de A | ⑨ ⑩ rouges |
+  | la redemande (le `<link>` avec empreinte posé dès le secours chargé) | ⑨ ⑩ rouges, même issue | ⑨ ⑩ rouges |
+  | le retrait du secours quand le `<link>` juste se charge | ⑨ ⑩ rouges : deux feuilles dans la page | ⑨ ⑩ rouges |
+  | le retrait du `<link>` refusé | ⑨ rouge (pendant la bascule, deux `<link>`) ; ⑩ vert (il ne joue pas la bascule) | idem |
+  | la place du secours (en fin de `<head>`) | ⑨ ⑩ rouges — **verts tant que le banc ne posait rien après la feuille**, voir ci-dessous | ⑨ ⑩ rouges |
+  | la place du `<link>` juste (en fin de `<head>`, derrière les surcharges d'app-05) | ⑨ ⑩ rouges | ⑨ ⑩ rouges |
+  | la branche `reload` du worker | ⑩ rouge : le worker resert son cache | ⑩ rouge |
+  | l'attente du rangement dans le worker | vert au repos ; sous charge **2 rouges sur 9** | vert au repos ; sous charge **1 rouge sur 9** |
+  | la lecture du corps avant le `<link>` juste | vert au repos ; sous charge **1 rouge sur 18** | vert au repos ; sous charge **3 rouges sur 18** |
+  | attendre que le secours soit réglé avant de redemander | vert au repos et sous charge (18/18) | **rouge** : 1 sur 2 au repos, 9 sur 18 sous charge — la prémisse rougit, le secours repart au SERVEUR : la feuille est téléchargée deux fois |
+  | le remplacement de l'empreinte de la feuille (étape 2 bis) | `integrite-app.test.mjs` ③ ④ rouges | — |
+  | la comparaison de la feuille dans le contrôle | `integrite-app.test.mjs` ② rouge | — |
+  | l'exigence de la reprise dans le contrôle | `integrite-app.test.mjs` ② rouge | — |
+
+  Trois pièces ne se voient que sous charge, ou que sous WebKit — la leçon de #815, de nouveau.
+- ⚠️ **UNE VÉRIFICATION DE PLACE QUI NE DISTINGUAIT RIEN.** La mutation « secours en fin de `<head>` »
+  est d'abord restée verte sous Chromium : au moment du refus, la feuille est encore le dernier élément
+  du `<head>` (le refus part avant les scripts du `<body>`), l'y rajouter à la fin revient au même.
+  En production aussi, au refus — mais pas plus tard, quand le chargeur a posé ses preloads et app-05
+  ses `<style>` : c'est là que le `<link>` juste arrive. ⑨ ⑩ posent désormais un élément juste après la
+  feuille dès que le parseur l'insère (`marquerApresFeuille`) ; les deux mutations de place rougissent
+  sur les deux moteurs. Relevé en prémisse par la relecture `audit-passio`, prouvé par la mutation.
+- **Sous charge, le remède intact** (⑨ ⑩ ×9, trois workers) : 18/18 sous Chromium, 18/18 sous WebKit,
+  toujours la même suite — C rétabli : refus, secours chargé, `<link>` juste chargé ; pendant la
+  bascule : refus, secours chargé, `<link>` juste refusé. Annotation `feuille` du rapport :
+  **la page reste sans styles** du refus au secours, médiane 26 à 105 ms sous Chromium et 136 à 143 ms
+  sous WebKit, au plus 0,3 s (la première conception : médiane 0,2 à 0,9 s, au plus 1,7 s, et sans
+  borne si le réseau calait) ; elle porte ensuite **la feuille de l'autre version** jusqu'au `<link>`
+  juste, médiane 171 à 334 ms, au plus 0,8 s. Une fois par appareil après un retour arrière, au lieu
+  de semaines de styles périmés. Masquer la page le temps de la reprise a été écarté : une page
+  masquée dont la reprise ne se règle pas serait bien pire.
+- **⑤ est intermittent, ANTÉRIEUREMENT à ce lot** — mesuré dans les mêmes conditions (Chromium, ⑤ ×12, un
+  worker) : 1 rouge sur 12 avec le `build.js` d'avant ce lot, 2 sur 12 avec lui, la même signature
+  (`loading` au lieu d'`interactive` : app-01 tourne avant la fin du parsing). ⑤ n'a pas été touché.
 
 **Ce qui reste.** Mesurer sur un vrai iPhone (session persistante) ce que son worker retrouve dans le
 cache réseau — le lot n'en dépend plus ; un profil WebKit persistant (`launchPersistentContext`, comme
-⑥) en donne déjà une approximation d'ici. `styles.css?v=` après un retour arrière (ci-dessus) : une
-reprise pour la feuille de style, puis son empreinte, sa minification dans le build. La première installation
+⑥) en donne déjà une approximation d'ici. (`styles.css?v=` après un retour arrière : fermé le
+2026-11-10, ci-dessus.) Les deux reprises, scripts et feuille, ne laissent aucune trace au pilotage :
+les écoutes `error` de telemetry.js et platform.js sont sur `window`, en remontée, et ne voient pas
+l'échec d'un `<script>` ou d'un `<link>` — un traitement hors CI qui casserait une empreinte pour tout
+le monde ne se verrait qu'à l'œil (relevé par `audit-passio`). ⑤ (antérieur, mesuré ci-dessus) :
+app-01 tourne parfois avant la fin du parsing ; or des éléments du `<body>` suivent le chargeur
+(`#pwa-overlay`, `#convEmojiPanel`) — mesurer en production si le 9ᵉ script et `boot()` peuvent
+partir avant eux. La première installation
 sous WebKit (ci-dessus) : la page pourrait confier ses scripts au worker
 plutôt que de le laisser les redemander. Le résidu des minuteurs de démarrage : les réarmer sur
 `passio:app-ready` (app-04 ×2, app-08), après avoir vérifié que deux rejeux rapprochés d'une même file
