@@ -29,6 +29,7 @@
 - 📵 LES PUSH SOCIALES PLANTAIENT DEPUIS LE 07/11 — `uid` jamais déclaré dans `notify-call` (2026-11-09)
 - 🎞️ LES GIF PASSENT PAR KLIPY — Tenor fermé, Giphy plafonné à 100 recherches par heure pour toute l'app (2026-11-09)
 - 🔔 DES NOTIFICATIONS D'EXEMPLE PRÉSENTÉES COMME RÉELLES — résumé IRL, copies de la graine, tendances (2026-11-09)
+- 🪆 LE DÉCOR DES EXEMPLES : UNE DISCUSSION QUI SE VIDAIT, DES MESSAGES QUI SE DÉDOUBLAIENT (2026-11-10)
 
 ---
 
@@ -758,3 +759,50 @@ cloche, le titre « (3) PASSIO » et `setAppBadge`. Explorer annonçait « Musiq
 Verrou : `tests/e2e/notifications-exemples.spec.js` (5), **éprouvé par RÉINJECTION** (recopie de la graine
 sans filtre, prédicat retiré de chaque frontière séparément, résumé sans filtre ni marque, tendances qui
 recomptent la démo, « 0 post », dédoublonnage retiré, préfixe 📍 ignoré : chacun rouge).
+
+
+---
+
+## 🪆 LE DÉCOR DES EXEMPLES : UNE DISCUSSION QUI SE VIDAIT, DES MESSAGES QUI SE DÉDOUBLAIENT (2026-11-10)
+
+Trouvés au contrôle général du 10/11 (fiche d'écran : `docs/lots-ui/28-CONTROLE-GENERAL-2026-11-10.md`), en
+parcourant l'app comme quelqu'un qui arrive : le fil d'un nouveau compte est fait d'exemples, ce sont donc
+ses PREMIERS gestes qui tombaient dessus. Deux défauts de la même famille — une règle écrite pour du
+contenu réel, appliquée au décor.
+
+**⑤ La discussion d'un exemple se vidait à l'ouverture.** La carte annonce « 💬 1 » avec l'aperçu du
+commentaire ; on touche la bulle ; le commentaire paraît une demi-seconde, puis « Discussion (0) · Sois le
+premier à réagir ». `_fusionnerPageCommentaires` (app-04, lot du 21/09) ne garde, hors page serveur, que
+MES commentaires en attente : « une ligne sans drapeau ni `fromSupabase` est périmée » — vrai pour la
+liste persistée de mes publications, faux pour les commentaires d'un exemple (`buildSeed`), qui n'ont ni
+l'un ni l'autre. La page serveur d'un exemple étant presque toujours vide, la fusion les effaçait — de la
+feuille « Discussion » ET du panneau de commentaires des Bobines (même fonction).
+⚠️ **La lecture serveur d'un exemple n'est PAS à retirer** : le serveur accepte les commentaires et les
+interactions sous un identifiant d'exemple (`est_identifiant_exemple`, R31) — mesuré ce jour, le
+commentaire d'exemple `cp401_0` porte 3 « j'aime » et 1 réponse de vrais comptes en base. Le correctif
+garde le décor ET la page : sur une publication d'exemple (`_ciEstExemple`, jamais `fromSupabase`), une
+ligne sans drapeau EST le décor — `state.seed` n'est jamais persisté (`_leanState`), il ne peut pas
+porter un reste d'ancien client. La règle d'origine tient partout ailleurs (verrou ⑤, troisième volet).
+
+**⑥ Chaque message d'exemple apparaissait deux fois à la deuxième visite.** Les messages de
+`SEED_CONVERSATIONS` n'ont pas d'identifiant et leur horodatage est relatif au démarrage
+(`Date.now() - 90 min`). `_unionConvsById` les reconnaît par « émetteur | horodatage | texte » : une
+graine semée à un autre démarrage est, pour elle, une autre série de messages. **Le chemin est celui de
+tout appareil neuf, sans rien faire de spécial** : 1ʳᵉ visite — `hydrateConvsFromIDB` pousse la graine
+dans IndexedDB (« migration initiale »), rien n'écrit `localStorage` tant qu'aucune conversation n'est
+touchée ; 2ᵉ visite — `getConversations()` sème une graine fraîche, la fusion l'unit à celle d'IndexedDB :
+8 messages au lieu de 4 dans « Léa Moreau », 6 au lieu de 3 ailleurs, puis l'état doublé est sauvegardé
+dans les deux stores. Mesuré sur le navigateur de contrôle (deux graines à 312 s d'écart, l'intervalle
+entre les deux démarrages). Le même chemin se rouvre dès qu'un des deux stores manque (purge ITP de
+`localStorage`, quota).
+Correctif : `_dedoublonnerDecorConversation` (app-04), appelée par `deduplicateConversations` — donc à la
+lecture, à la fusion ET à la sauvegarde : **un appareil déjà doublé se répare au démarrage suivant**. Elle
+ne touche qu'un fil dont l'identifiant est dans `SEED_CONVERSATIONS` (lecture seule : `_estConvDemo` y
+refuse l'envoi), et que des messages SANS identifiant ; une vraie conversation où quelqu'un a écrit deux
+fois « ok » est intouchable (verrou ⑥). La copie la plus ancienne est gardée, la date du fil suit son
+dernier message.
+⚠️ Ne pas « corriger » en donnant un identifiant aux messages de la graine : les copies déjà persistées
+n'en ont pas, la fusion (clé `id:` contre clé `sig:`) les doublerait une fois de plus, pour toujours.
+
+Verrou : `tests/e2e/controle-general-2026-11-10.spec.js` ⑤ ⑥, contre-éprouvé sur 6dafc0f1 (décor vidé :
+1 ligne attendue, 0 reçue ; `conv_lea` : 4 attendus, 8 reçus).

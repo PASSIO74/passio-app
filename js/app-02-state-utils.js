@@ -2130,6 +2130,23 @@ function fmtEventDate(ts) {
   };
 }
 
+// Nombre de jours de CALENDRIER entre aujourd'hui et `ts` : 0 = aujourd'hui,
+// 1 = demain, négatif = passé. On compare des MINUITS locaux, jamais une durée.
+// ⚠️ `Math.ceil((ts - Date.now()) / 86400000)` N'EST PAS CE NOMBRE (2026-11-10) :
+// une activité de ce soir, lue le matin, y vaut 1 — la fiche disait « Demain »
+// au-dessus de la date du jour, pendant que la carte de la liste (qui compte
+// déjà des minuits, `ui-v4a2-cartes.js`) disait « Aujourd'hui » ; et une
+// activité de demain soir y vaut 2. `Math.round` absorbe l'heure d'été (un
+// jour de 23 ou 25 h). Rend 0 sur une date illisible : jamais NaN à l'écran.
+function joursCalendairesAvant(ts, maintenant) {
+  var a = new Date(ts);
+  var b = (maintenant === undefined || maintenant === null) ? new Date() : new Date(maintenant);
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
+  a.setHours(0, 0, 0, 0);
+  b.setHours(0, 0, 0, 0);
+  return Math.round((a.getTime() - b.getTime()) / 86400000);
+}
+
 // Échappe une valeur injectée dans une chaîne JS simple-quotée D'UN ATTRIBUT
 // onclick. Contexte double : le parser HTML décode les entités AVANT le parse JS
 // — escapeHtml seul transforme ' en &#39; que le HTML re-décode en ' → SyntaxError
@@ -7143,9 +7160,28 @@ function passionTileHTML(o) {
   var label = String(o.label || "Passion");
   var selected = !!o.selected;
   var dimmed = !!o.dimmed;
+  // ⚠️ UNE VIGNETTE QUI NE CHARGE PAS S'EFFACE (2026-11-10). Sans `onerror`, une
+  // image en échec (hors ligne, relais d'images en panne, bloqueur de contenu)
+  // laissait l'icône « image cassée » du navigateur et le texte alternatif
+  // tronqué dans chaque bulle — la première rangée du fil et l'en-tête du
+  // profil. Effacée, la bulle garde son fond et sa pastille d'emoji. Avec
+  // `fallbackUrl`, on l'essaie d'abord, UNE fois (`data-repli`) : une image de
+  // repli elle-même en échec ne boucle pas.
+  // ⚠️ `visibility`, JAMAIS `display` : `display` reste l'autorité de la MISE EN
+  // PAGE (le lot UI-7 vérifie que la bulle porte une vignette et non le glyphe) ;
+  // un échec de chargement n'est pas une décision de mise en page. Mesuré : avec
+  // `display: none`, `ui-v7-lot` §3 lisait « pas de vignette » là où seule
+  // l'image de démonstration manquait (404 hors Netlify).
+  // L'attribut ENTIER est écrit d'un seul tenant : `audit:echappement` lit le
+  // contexte dans le littéral qui précède l'interpolation — `onerror="` doit y
+  // être, sinon `this.src='` passe pour un attribut d'URL. `fallbackUrl` vient
+  // de `passionPhotoFallback` (catalogue interne), jamais d'un autre compte.
+  var surErreur = o.fallbackUrl
+    ? ' onerror="if(this.dataset.repli){this.onerror=null;this.style.visibility=\'hidden\';}else{this.dataset.repli=\'1\';this.src=\'' + escapeJsArg(o.fallbackUrl) + '\';}"'
+    : ' onerror="this.onerror=null;this.style.visibility=\'hidden\';"';
   var avatarContent = o.photoUrl
     ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + safeUrlAttr(passioThumb(o.photoUrl, 192)) + '" alt="' + escapeHtml(label) + '"'
-      + (o.fallbackUrl ? ' onerror="this.onerror=null;this.src=\'' + escapeJsArg(o.fallbackUrl) + '\'"' : '')
+      + surErreur
       + '/><span class="profile-tile-emoji-badge">' + escapeHtml(emoji) + '</span>'
       + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>'
     : escapeHtml(emoji) + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>';
@@ -10405,6 +10441,15 @@ function renderPostHTML(p) {
   // (commentaires, listes, inbox) — aucune de celles-là n'affiche de passion à
   // côté, donc aucune n'y fait doublon. Même retrait dans openPost, qui
   // affichait exactement la même paire.
+  //
+  // ⚠️ LE TEXTE EST COLLÉ À SES BALISES, ET CE N'EST PAS DU STYLE (2026-11-10).
+  // `.post-body` est en `white-space: pre-wrap` — les sauts de ligne de l'auteur
+  // comptent — donc le retour à la ligne et l'indentation du GABARIT comptaient
+  // aussi. Mesuré sur chaque carte du fil : une ligne vide au-dessus du texte,
+  // la première ligne décalée de six espaces, « Lire la suite » rejeté seul à la
+  // ligne, et deux lignes vides sous un texte court — trois lignes de 22 px
+  // perdues par publication (7 lignes peintes pour 4 écrites). `openPost`
+  // écrivait déjà le texte collé. Verrou : `controle-general-2026-11-10.spec.js` ①.
   return `<article class="post" data-postid="${escapeHtml(p.id)}">
     <div class="post-header">
       <div class="avatar" role="button" tabindex="0" aria-label="Profil de ${escapeHtml(author.name || "Moi")}" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">${avatarInner(author)}</div>
@@ -10426,10 +10471,7 @@ function renderPostHTML(p) {
       ${_moodTagHTML(p.mood)}
     </div>
 
-    <div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">
-      ${escapeHtml(displayText)}
-      ${truncated ? `<span style="color:var(--accent);font-weight:700;"> Lire la suite</span>` : ""}
-    </div>
+    <div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">${escapeHtml(displayText)}${truncated ? ` <span style="color:var(--accent);font-weight:700;white-space:nowrap;">Lire la suite</span>` : ""}</div>
     <div onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">${media}</div>
 
     <div class="post-actions">
@@ -10468,7 +10510,11 @@ async function openPost(id) {
   // compte (`userById`, passion de repli) ne savent pas de qui ils parlent.
   const author = (post._source === "me" || (typeof MY_UID !== "undefined" && post.authorId === MY_UID))
     ? { id: (typeof MY_UID !== "undefined" && MY_UID) || "me", name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6", photoUrl: (state.user.general || {}).avatarPhoto || null }
-    : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { id: post.authorId, passions: cu.passions, passion: cu.passion || post.passion, name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
+    // ⚠️ MÊME CHAÎNE DE REPLI QUE LA CARTE DU FIL (`renderPostHTML`) : l'emoji et la
+    // couleur du COMPTE quand la publication n'en porte pas. Sans elle, la page
+    // montrait « ✨ » sur fond violet pour un auteur que la carte, une seconde
+    // plus tôt, montrait avec son avatar (2026-11-10, mesuré sur les exemples).
+    : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { id: post.authorId, passions: cu.passions, passion: cu.passion || post.passion, name: post.authorName, profileEmoji: post.authorEmoji || cu.profileEmoji || "✨", avatar: post.authorColor || cu.avatar || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
   const passion = passionById(post.passion);
   const liked = state.user.likedPosts.includes(id);
 

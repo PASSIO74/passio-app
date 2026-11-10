@@ -3002,7 +3002,9 @@ function renderIRL() {
     const cancelled = _eventIsCancelled(e);
     const over = _eventIsOver(e);
     const live = _eventIsLive(e);
-    const daysLeft = Math.max(0, Math.ceil((e.date - Date.now()) / 86400000));
+    // Jours de CALENDRIER (`joursCalendairesAvant`, app-02), jamais une durée divisée :
+    // ce soir, lu le matin, c'est « Aujourd'hui », pas « Demain ».
+    const daysLeft = Math.max(0, joursCalendairesAvant(e.date));
     const urgency = cancelled ? "" : live ? "En cours" : over ? "" :
       daysLeft === 0 ? "Aujourd'hui" : daysLeft === 1 ? "Demain" : daysLeft <= 7 ? "Dans " + daysLeft + "j" : "";
     const atts = (e.attendees || []).slice(0, 4);
@@ -4270,7 +4272,10 @@ function openEventDetails(id) {
   const passion = passionById(ev.passion) || { emoji: "✨", label: "Passion" };
   const organizer = userById(ev.organizerId) || { name: currentProfile()?.name || "Organisateur", profileEmoji: "✨", avatar: "#8b5cf6" };
   const joined = (state.user.joinedEvents || []).includes(id);
-  const daysLeft = Math.max(0, Math.ceil((ev.date - Date.now()) / 86400000));
+  // ⚠️ JOURS DE CALENDRIER, PAS UNE DURÉE (2026-11-10). `Math.ceil(durée / 24 h)` rendait 1
+  // pour une activité du soir même : la fiche affichait « Demain » au-dessus de la date du
+  // jour, la carte de la liste « Aujourd'hui ». Verrou : `controle-general-2026-11-10.spec.js` ④.
+  const daysLeft = Math.max(0, joursCalendairesAvant(ev.date));
   const urgencyClass = daysLeft === 0 ? "today" : daysLeft <= 3 ? "soon" : "normal";
   const urgencyText = daysLeft === 0 ? "Aujourd'hui !" : daysLeft === 1 ? "Demain" : `Dans ${daysLeft} jours`;
 
