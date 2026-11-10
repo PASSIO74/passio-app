@@ -1171,8 +1171,10 @@ projet) ; garde armée sur tout `pagehide` → ③ rouge ; promesse résolue au 
 10/11 de 08:08 à 08:53 UTC — les passages WebKit de `navigation-artefact` et `deconnexion-artefact`, dont
 la page contrôlée par le service worker échappe à toutes les routes. `deconnexion-artefact` le bloquait
 depuis #816 ; `navigation-artefact` aussi désormais : derrière la sonde, **18 tentatives vers
-`*.supabase.co` par passage WebKit sans la ligne, 0 avec.** (Sous WebKit et sur une machine chargée, son
-cas ① dépasse parfois les 45 s : 19 s d'horloge simulée. Sans effet en CI, qui la passe sous Chromium.)
+`*.supabase.co` sur un passage WebKit sans la ligne ; avec, 0 sur deux passages au calme (3/3 verts
+chacun) et sur un passage chargé.** Sur une machine chargée, son cas ① dépasse parfois les 45 s (19 s
+d'horloge simulée) : un tel passage a laissé 3 tentatives, à la fermeture forcée de son contexte. Sans
+effet en CI, qui la passe sous Chromium.
 
 **Ce qui reste, et c'est VOULU** :
 - **`telemetrie-preauth` ①** : un lot de 8 à 11 lignes par passage (`linux`, `robot`, `session start` …
@@ -1187,7 +1189,18 @@ du navigateur : Chromium lancé avec `proxy` et `--ignore-certificate-errors`, u
 le TLS de `*.supabase.co` sur place, journalise le corps (sessions, actions) et répond sans jamais
 transmettre. Passé sur les 26 suites qui forcent la télémétrie : deux seulement envoient — `telemetrie-
 preauth` (1 lot, voulu) et `telemetrie-trafic` (5 envois de départ) ; sur les deux suites `dist` :
-`passion-context`. Puis sur la suite `local` complète, garde posée.
+`passion-context`. Puis sur la suite `local` COMPLÈTE, garde posée : 2 572 verts, 1 rouge sans rapport
+(`audit-2026-11-fluidite` ④ : son rapport dans `test-results/` effacé par un passage parallèle ; vert
+seul), et **UN seul envoi au réseau en 58 min : le lot voulu de `telemetrie-preauth` ①.**
+⚠️ L'étiquette d'une sonde partagée est GLOBALE : la changer pour un autre passage pendant une course
+range ses envois sous un autre nom. Le compte « 0 » d'une course longue se refait par fenêtre et par
+contenu, jamais par étiquette.
+
+**Mesuré au canal ① sur la CI, code corrigé** (run 42821051653 de la PR #819, 13:03 → 13:20 UTC) : **une
+seule session `development`, le lot de `telemetrie-preauth` (8 lignes, 13:05:45)** ; plus de paire
+`equipe`, rien du job `dist`. Avant : une trentaine de lignes par passage complet (ce lot, + 12 de
+`passion-context`, + la paire, environ 13). La paire et le lot arrivés à 13:18–13:19 viennent d'un autre run, d'une branche
+sans le correctif.
 ⚠️ **Playwright fait passer le LOOPBACK par le proxy** (`<-loopback>`) : déclarer `bypass:
 "127.0.0.1,localhost"` (ou relayer le HTTP en clair), sinon la page locale ne charge jamais — le premier
 passage du verrou est mort là-dessus, 30 s sur `#landing.active`.
