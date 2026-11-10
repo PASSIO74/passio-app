@@ -174,7 +174,21 @@ participants » (celui d'`openModal` et celui du gabarit) ; titre de la page d'a
 
 ## 8. Compteurs
 
-Rendus par `node docs/audit-ux-ui-2026-11-10/outils/sondes/partage-construire-json.js` (voir la fin du fichier pour
-les valeurs à jour) :
+Valeurs rendues par `outils/sondes/partage-construire-json.js`, qui vérifie aussi les renvois et la présence des captures :
 
-COMPTEURS_ICI
+| Mesure | Nombre |
+|---|---|
+| Surfaces inventoriées | 59 |
+| — observées (vrais gestes dans le banc) | 41 |
+| — simulées (état forcé, dit dans la preuve) | 8 |
+| — code seul | 9 |
+| — inaccessibles | 1 |
+| Avec avant/après | 23 |
+| Avec capture avant seule | 17 |
+| Sans visuel | 19 |
+| Verdict « à conserver » | 17 |
+| Verdict « à améliorer » | 36 |
+| Verdict « à vérifier » | 6 |
+| Constats | 21 : P0 1 · P1 5 · P2 12 · P3 3 |
+
+Prototype interactif du parcours : `prototypes/partage.html` (fiche `donnees/prototypes/partage.json`).

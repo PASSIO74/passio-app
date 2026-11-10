@@ -1,0 +1,147 @@
+{
+ "id": "PAR-050",
+ "domaine": "partage",
+ "scenario": "visiteur-lien-mort",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Visiteur — verdict du lien mort : un toast « Publication introuvable ou supprimée »",
+ "note": "Toast figé (①) : en réalité 3 s, après ~8 s de silence (mesuré : 7,9 à 8,7 s en session).",
+ "prisLe": "2026-11-10T17:43:34.853Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#post-pa_prive_1"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-050--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 64866,
+  "zooms": [
+   {
+    "nom": "toast",
+    "titre": "Le verdict",
+    "fichier": "captures/partage/PAR-050--m390--avant-zoom-toast.webp",
+    "largeur": 558,
+    "hauteur": 110,
+    "octets": 7356
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "3 s, sans suite proposée",
+   "x": 0.5,
+   "y": 0.87,
+   "w": 0.676,
+   "h": 0.046,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 31,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 19,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-050--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 73732,
+  "zooms": [
+   {
+    "nom": "toast",
+    "manquant": true,
+    "sel": "#toastStack .toast"
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Un état d'arrivée qui reste, explique sans rien révéler, et propose une suite",
+   "x": 0.5,
+   "y": 0.257,
+   "w": 0.836,
+   "h": 0.296,
+   "sel": "[data-mq='arrivee']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

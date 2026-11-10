@@ -1,0 +1,189 @@
+{
+ "id": "PAR-002",
+ "domaine": "partage",
+ "scenario": "publication",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Feuille « Partager ce post » (publication)",
+ "note": "",
+ "prisLe": "2026-11-10T17:45:04.793Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Partager ce post",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-002--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 21998,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "La feuille",
+    "fichier": "captures/partage/PAR-002--m360--avant-zoom-feuille.webp",
+    "largeur": 720,
+    "hauteur": 488,
+    "octets": 18124
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« post » ; ailleurs « publication »",
+   "x": 0.5,
+   "y": 0.665,
+   "w": 0.9,
+   "h": 0.035,
+   "sel": ".modal .modal-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« feed » ; action principale = republier, pas envoyer",
+   "x": 0.5,
+   "y": 0.848,
+   "w": 0.9,
+   "h": 0.066,
+   "sel": "#_shareInFeedBtn",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« en dehors » : ne dit ni à qui ni comment ; 42 px",
+   "x": 0.5,
+   "y": 0.93,
+   "w": 0.9,
+   "h": 0.066,
+   "sel": "#_shareOutBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "button#_shareInFeedBtn",
+     "texte": "Partager dans mon feed",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#_shareOutBtn",
+     "texte": "Partager en dehors",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-002--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 45224,
+  "zooms": [
+   {
+    "nom": "feuille",
+    "titre": "La feuille unifiée",
+    "fichier": "captures/partage/PAR-002--m360--apres-zoom-feuille.webp",
+    "largeur": 720,
+    "hauteur": 876,
+    "octets": 42920
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Aperçu de CE qui part : auteur, passion, extrait, vignette",
+   "x": 0.5,
+   "y": 0.476,
+   "w": 0.9,
+   "h": 0.122,
+   "sel": "[data-mq='apercu']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Ce que verra la personne, et que le lien porte ton nom",
+   "x": 0.5,
+   "y": 0.575,
+   "w": 0.889,
+   "h": 0.057,
+   "sel": "[data-mq='qui']",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Action principale unique ; mêmes mots et même ordre sur toutes les portes",
+   "x": 0.5,
+   "y": 0.676,
+   "w": 0.9,
+   "h": 0.114,
+   "sel": "[data-mq='dehors']",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "« Copier le lien » toujours présent, lien lisible",
+   "x": 0.5,
+   "y": 0.791,
+   "w": 0.9,
+   "h": 0.091,
+   "sel": "[data-mq='copier']",
+   "trouve": true
+  },
+  {
+   "n": 5,
+   "texte": "« Republier dans mon fil » : un seul mot (fil), plus « feed »",
+   "x": 0.5,
+   "y": 0.905,
+   "w": 0.9,
+   "h": 0.114,
+   "sel": "[data-mq='fil']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

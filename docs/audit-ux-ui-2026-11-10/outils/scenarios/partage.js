@@ -65,7 +65,7 @@ function feuilleUnifiee(o) {
         + '<button type="button" class="mq-ligne principal" data-mq="dehors"><i>' + ICO.dehors + "</i><div><b>Envoyer à quelqu'un</b><small>WhatsApp, SMS, e-mail… par ton téléphone</small></div></button>"
         + '<button type="button" class="mq-ligne" data-mq="copier"><i>' + ICO.lien + "</i><div><b>Copier le lien</b><small>" + o.lien + "</small></div></button>"
         + (o.inviter ? '<button type="button" class="mq-ligne" data-mq="inviter"><i>' + ICO.amis + "</i><div><b>Inviter mes abonnements</b><small>Une notification PASSIO, personne par personne</small></div></button>" : "")
-        + '<button type="button" class="mq-ligne" data-mq="fil"><i>' + ICO.fil + "</i><div><b>Republier dans mon fil</b><small>" + o.fil + "</small></div></button>"
+        + (!o.fil ? "" : '<button type="button" class="mq-ligne" data-mq="fil"><i>' + ICO.fil + "</i><div><b>Republier dans mon fil</b><small>" + o.fil + "</small></div></button>")
         + (o.confirmation ? '<div class="mq-ok" role="status" data-mq="ok">✓ ' + o.confirmation + "</div>" : "")
         + (o.repli ? '<div class="mq-lien" data-mq="repli"><input readonly aria-label="Lien à copier" value="' + o.repli + '"><button type="button">Copier</button></div><div class="mq-qui" style="margin-top:6px;">La copie automatique est bloquée sur ce navigateur : sélectionne le lien, ou réessaie.</div>' : "");
       const m = document.querySelector(".modal"); if (m) { m.setAttribute("role", "dialog"); m.setAttribute("aria-labelledby", "mqTitre"); }
@@ -80,9 +80,9 @@ const ANNOT_FEUILLE = [
   { n: 5, sel: "[data-mq='fil']", texte: "« Republier dans mon fil » : un seul mot (fil), plus « feed »" },
 ];
 const F_POST = { image: null, titre: "Léa Fontaine · Musique", extrait: "Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'achat.", qui: "La personne verra cette publication, même sans compte. Le lien porte ton nom : si elle s'inscrit, elle te suivra.", lien: "passio-app.netlify.app/p/pa_lea_1", fil: "Tes abonnés la verront, avec un lien vers l'originale" };
-const F_BOBINE = { emoji: "🎬", titre: "Bobine de Léa Fontaine · Musique", extrait: "Trente secondes d'arpèges.", qui: "La personne verra cette bobine, même sans compte. Le lien porte ton nom : si elle s'inscrit, elle te suivra.", lien: "passio-app.netlify.app/b/pa_lea_2", fil: "Tes abonnés la verront, avec un lien vers l'originale" };
+const F_BOBINE = { emoji: "🎬", titre: "Bobine de Léa Fontaine · Musique", extrait: "Trente secondes d'arpèges.", qui: "La personne verra cette bobine, même sans compte. Le lien porte ton nom : si elle s'inscrit, elle te suivra.", lien: "passio-app.netlify.app/p/pa_lea_2", fil: "Tes abonnés la verront, avec un lien vers l'originale" };
 const F_ACTIVITE = { emoji: "🎸", titre: "Atelier lutherie : régler son chevalet", extrait: "Vendredi 13 novembre · 18:00 · Atelier des Cordes, Lyon", qui: "La personne verra l'activité et pourra s'y inscrire en créant son compte. Le lien porte ton nom.", lien: "passio-app.netlify.app/e/ev_par_lea", fil: "Tes abonnés verront la carte de l'activité", inviter: true };
-const F_PROFIL = { emoji: "🎸", titre: "Léa Fontaine", extrait: "Luthière amatrice. Je répare, j'accorde, je joue.", qui: "La personne verra ce profil public. Le lien porte ton nom : si elle s'inscrit, elle te suivra.", lien: "passio-app.netlify.app/u/…b002", fil: "Recommande ce profil à tes abonnés" };
+const F_PROFIL = { emoji: "🎸", titre: "Léa Fontaine", extrait: "Luthière amatrice. Je répare, j'accorde, je joue.", qui: "La personne verra ce profil public. Le lien porte ton nom : si elle s'inscrit, elle te suivra.", lien: "passio-app.netlify.app/u/…b002" };
 
 const CSS_TOAST_DESSUS = "#toastStack{z-index:10050!important;position:fixed!important;}";
 
@@ -228,7 +228,7 @@ module.exports = {
           id: "PAR-020", titre: "Fiche d'activité — porte « Partager » du haut", seulement: ["m390"],
           zooms: [{ nom: "haut", titre: "Bouton du coin haut droit", sel: "#eventDetailShareBtn", marge: 14 }],
           annotationsAvant: [{ n: 1, sel: "#eventDetailShareBtn", texte: "Flèche courbe : pas l'icône de partage du reste de l'app" }],
-          apres: { js: async (page) => { await page.evaluate((svg) => { const b = document.getElementById("eventDetailShareBtn"); b.innerHTML = svg; b.style.display = "flex"; b.style.alignItems = "center"; b.style.justifyContent = "center"; b.style.color = "#fff"; }, ICO.dehors); }, zooms: [{ nom: "haut", titre: "Bouton du coin haut droit", sel: "#eventDetailShareBtn", marge: 14 }] },
+          apres: { css: "#eventDetailShareBtn::before,#eventDetailShareBtn::after{content:none!important;display:none!important;background:none!important;}", js: async (page) => { await page.evaluate((svg) => { const b = document.getElementById("eventDetailShareBtn"); b.style.backgroundImage = "none"; b.style.fontSize = "0"; b.innerHTML = svg; b.style.display = "flex"; b.style.alignItems = "center"; b.style.justifyContent = "center"; b.style.color = "#fff"; }, ICO.dehors); }, zooms: [{ nom: "haut", titre: "Bouton du coin haut droit", sel: "#eventDetailShareBtn", marge: 14 }] },
           annotations: [{ n: 1, sel: "#eventDetailShareBtn", texte: "Même icône à nœuds que partout (shareIconSvg)" }],
         });
         await page.evaluate(() => { const b = document.querySelector("#eventDetailContent button[onclick*='openEventInvite']"); if (b) b.scrollIntoView({ block: "center" }); });
@@ -353,7 +353,7 @@ module.exports = {
         await prendre({
           id: "PAR-031", titre: "Profil visité — après « Partager le profil » (copie) : aucun retour visible",
           note: "Toast « Lien du profil copié » émis et figé (contournement ①), peint sous la modale plein écran du profil.",
-          apres: { js: async (page) => { await page.evaluate(() => sharePost("pa_lea_1")); await page.waitForTimeout(300); await feuilleUnifiee(Object.assign({}, F_PROFIL, { confirmation: "Lien du profil copié" }))(page); } },
+          apres: { js: async (page) => { await page.evaluate(() => { sharePost("pa_lea_1"); const m = document.querySelector(".modal"); if (m) m.classList.remove("modal-fullscreen"); }); await page.waitForTimeout(300); await feuilleUnifiee(Object.assign({}, F_PROFIL, { confirmation: "Lien du profil copié" }))(page); } },
           annotations: [{ n: 1, sel: "[data-mq='apercu']", texte: "Même feuille que pour une publication" }, { n: 2, sel: "[data-mq='ok']", texte: "Confirmation visible" }],
         });
         await page.keyboard.press("Escape");
@@ -367,7 +367,7 @@ module.exports = {
           zooms: [{ nom: "menu", titre: "Le menu", sel: ".profile-dots-menu", marge: 10 }],
           annotationsAvant: [{ n: 1, sel: "#screen-profiles .v6b-modifier", texte: "Bouton nommé « Modifier le profil »" }, { n: 2, sel: ".profile-dots-menu button:last-of-type", texte: "6e entrée : inviter n'est pas « modifier »" }],
           apres: {
-            js: async (page) => { await page.evaluate((svg) => { const m = document.querySelector(".profile-dots-menu"); if (m) m.remove(); const st = document.querySelector("#screen-profiles .profile-stats, #screen-profiles .v6b-stats, #mainProfileStats") || document.querySelector("#screen-profiles .profile-card"); const b = document.createElement("button"); b.type = "button"; b.setAttribute("data-mq", "inviter"); b.style.cssText = "display:flex;align-items:center;justify-content:center;gap:8px;width:calc(100% - 32px);margin:12px 16px 4px;min-height:48px;border-radius:16px;border:1px solid var(--accent-tile-line,#e2d9fb);background:var(--accent-tile,#f3effe);color:var(--accent);font-weight:800;font-size:15px;"; b.innerHTML = svg + " Partager mon profil"; (st.parentNode || st).appendChild(b); }, ICO.dehors); },
+            js: async (page) => { await page.evaluate((svg) => { const m = document.querySelector(".profile-dots-menu"); if (m) m.remove(); const cov = document.getElementById("mainProfileCover"); const st = cov.closest(".profile-card") || cov.parentElement; const b = document.createElement("button"); b.type = "button"; b.setAttribute("data-mq", "inviter"); b.style.cssText = "display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:12px 0 4px;min-height:48px;border-radius:16px;border:1px solid var(--accent-tile-line,#e2d9fb);background:var(--accent-tile,#f3effe);color:var(--accent);font-weight:800;font-size:15px;"; b.innerHTML = svg + " Partager mon profil"; st.insertAdjacentElement("afterend", b); }, ICO.dehors); },
           },
           annotations: [{ n: 1, sel: "[data-mq='inviter']", texte: "Porte visible sur le profil, nommée pour ce qu'elle envoie (le lien de MON profil)" }],
         });
@@ -437,7 +437,7 @@ module.exports = {
           id: "PAR-044", titre: "Après l'inscription (simulée) — retour sur le fil, « Tu peux aimer cette publication. »",
           note: "Simulé : `PassioFirstRun.apresAuthentification()` appelée après retrait de l'écran d'inscription ; aucun compte créé, l'état reste celui d'un visiteur (d'où la carte de bienvenue). Ce qui est observé : `retour.hash` était vide, la publication n'est pas rouverte.",
           annotationsAvant: [{ n: 1, sel: "#toastStack .toast", texte: "« cette publication » n'est plus à l'écran" }],
-          apres: { js: async (page) => { await page.evaluate(() => { document.getElementById("toastStack").innerHTML = ""; openPost("pa_lea_1"); }); await page.waitForTimeout(500); await page.evaluate(() => { const p = document.getElementById("postDetailPage"); const d = document.createElement("div"); d.setAttribute("data-mq", "rappel"); d.setAttribute("role", "status"); d.style.cssText = "margin:12px 16px 0;background:#e8f6ee;border:1px solid #b9e2c9;color:#0f5c3d;border-radius:14px;padding:10px 12px;font-size:14px;font-weight:700;"; d.textContent = "✓ Compte créé. Tu peux maintenant aimer cette publication."; p.insertBefore(d, p.children[1] || null); }); } },
+          apres: { js: async (page) => { await page.evaluate(() => { document.getElementById("toastStack").innerHTML = ""; openPost("pa_lea_1"); }); await page.waitForTimeout(500); await page.evaluate(() => { const p = document.getElementById("postDetailPage"); const tt = Array.from(p.querySelectorAll("*")).find((e) => e.children.length === 0 && e.textContent.trim() === "Post"); if (tt) tt.textContent = "Publication"; const d = document.createElement("div"); d.setAttribute("data-mq", "rappel"); d.setAttribute("role", "status"); d.style.cssText = "margin:12px 16px 0;background:#e8f6ee;border:1px solid #b9e2c9;color:#0f5c3d;border-radius:14px;padding:10px 12px;font-size:14px;font-weight:700;"; d.textContent = "✓ Compte créé. Tu peux maintenant aimer cette publication."; p.insertBefore(d, p.children[1] || null); }); } },
           annotations: [{ n: 1, sel: "[data-mq='rappel']", texte: "La publication visée est rouverte, le rappel parle de ce qui est à l'écran" }],
         });
       },

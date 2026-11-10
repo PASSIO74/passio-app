@@ -1,0 +1,93 @@
+{
+ "id": "PAR-012",
+ "domaine": "partage",
+ "scenario": "bobine",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Après « Copier le lien » d'une bobine — toast sous le lecteur",
+ "note": "Toast « Lien copié » émis et figé (contournement ①), peint sous .reels-viewer (z-index 200 < 9999).",
+ "prisLe": "2026-11-10T17:45:52.234Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#reels"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-012--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 30754,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 8,
+   "sous44": [
+    {
+     "el": "div#reelsList > div.reel-item > div.reel-info > div.reel-author",
+     "texte": "🎸 Léa Fontaine 🎸 Musique",
+     "w": 241,
+     "h": 38,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 7,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-012--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 30500,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le toast passe au-dessus du lecteur et des feuilles",
+   "x": 0.5,
+   "y": 0.87,
+   "w": 0.249,
+   "h": 0.046,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

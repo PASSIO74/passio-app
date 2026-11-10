@@ -1,0 +1,173 @@
+{
+ "id": "PAR-023",
+ "domaine": "partage",
+ "scenario": "activite",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Feuille « Inviter des amis » (abonnements) d'une activité",
+ "note": "",
+ "prisLe": "2026-11-10T17:48:33.113Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": "Inviter des amis",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-023--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 18746,
+  "zooms": [
+   {
+    "nom": "ligne",
+    "titre": "Une ligne",
+    "fichier": "captures/partage/PAR-023--m360--avant-zoom-ligne.webp",
+    "largeur": 680,
+    "hauteur": 124,
+    "octets": 6042
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Même titre que l'invitation à l'application (lien externe)",
+   "x": 0.5,
+   "y": 0.729,
+   "w": 0.9,
+   "h": 0.033,
+   "sel": ".modal .modal-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Champ sans libellé",
+   "x": 0.5,
+   "y": 0.837,
+   "w": 0.9,
+   "h": 0.077,
+   "sel": "#eventInviteSearch",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "56 × 29 px ; nom coupé",
+   "x": 0.861,
+   "y": 0.927,
+   "w": 0.155,
+   "h": 0.045,
+   "sel": ".event-invite-row button",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#eventInviteList > div.event-invite-row > button.btn.small",
+     "texte": "Inviter",
+     "w": 55.8,
+     "h": 29,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#eventInviteList > div.event-invite-row > div",
+    "texte": "Marie-Charlotte de La Rochefoucauld-Montmorency",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#eventInviteSearch",
+    "placeholder": "Rechercher parmi tes abonnements…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-023--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 31224,
+  "zooms": [
+   {
+    "nom": "ligne",
+    "titre": "Une ligne",
+    "fichier": "captures/partage/PAR-023--m360--apres-zoom-ligne.webp",
+    "largeur": 680,
+    "hauteur": 176,
+    "octets": 8638
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Titre qui dit QUI on invite",
+   "x": 0.5,
+   "y": 0.615,
+   "w": 0.9,
+   "h": 0.033,
+   "sel": ".modal .modal-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Ce que la personne recevra, et l'autre voie",
+   "x": 0.5,
+   "y": 0.713,
+   "w": 0.889,
+   "h": 0.057,
+   "sel": "[data-mq='note']",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Bouton 44 px ; nom sur deux lignes",
+   "x": 0.817,
+   "y": 0.906,
+   "w": 0.244,
+   "h": 0.069,
+   "sel": ".event-invite-row button",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

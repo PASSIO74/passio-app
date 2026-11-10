@@ -1,0 +1,171 @@
+{
+ "id": "PAR-004",
+ "domaine": "partage",
+ "scenario": "publication-copie-refusee",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Presse-papiers refusé — repli « Lien : <adresse> » (vu ici feuille refermée)",
+ "note": "Presse-papiers non autorisé dans le contexte (état réel d'un navigateur intégré). Tant que la feuille est ouverte ce toast est invisible ; il est capturé ici juste après sa fermeture. Toast figé (contournement ①) : en réalité il disparaît après 3 s.",
+ "prisLe": "2026-11-10T17:45:29.611Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/partage/PAR-004--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 62244,
+  "zooms": [
+   {
+    "nom": "toast",
+    "titre": "Le toast de repli",
+    "fichier": "captures/partage/PAR-004--m390--avant-zoom-toast.webp",
+    "largeur": 780,
+    "hauteur": 170,
+    "octets": 20786
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Adresse brute de 120+ caractères, non sélectionnable, 3 s",
+   "x": 0.5,
+   "y": 0.85,
+   "w": 1,
+   "h": 0.086,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 24,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "🤍 0",
+     "w": 45.3,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "💬 0",
+     "w": 45.3,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-actions > span.post-action",
+     "texte": "😊",
+     "w": 44,
+     "h": 43,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/partage/PAR-004--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 59706,
+  "zooms": [
+   {
+    "nom": "repli",
+    "titre": "Le repli dans la feuille",
+    "fichier": "captures/partage/PAR-004--m390--apres-zoom-repli.webp",
+    "largeur": 748,
+    "hauteur": 130,
+    "octets": 7036
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le lien reste à l'écran, sélectionnable, avec un bouton « Copier »",
+   "x": 0.5,
+   "y": 0.883,
+   "w": 0.908,
+   "h": 0.053,
+   "sel": "[data-mq='repli']",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

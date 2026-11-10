@@ -24,6 +24,13 @@ async function ouvrirRencontrer(page, ms) {
 }
 // Amène une carte d'activité sous l'en-tête (la zone qui défile est #appMain).
 async function montrer(page, sel, decalage) {
+  // Au-delà des 12 premières, la carte est derrière « Afficher plus » : un vrai toucher par page.
+  for (let i = 0; i < 6 && !(await page.$(sel)); i++) {
+    const plus = page.locator("#eventList > button.btn", { hasText: "Afficher plus" });
+    if (!(await plus.count())) break;
+    await plus.first().click();
+    await page.waitForTimeout(700);
+  }
   await page.waitForSelector(sel, { state: "attached", timeout: 15000 });
   await page.evaluate(([s, d]) => {
     const c = document.querySelector(s); const m = document.getElementById("appMain");
