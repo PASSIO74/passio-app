@@ -4369,6 +4369,19 @@ async function openUserProfile(authorId, source) {
     return;
   }
 
+  // ⚠️ À PARTIR D'ICI, L'IDENTIFIANT EST CELUI DU COMPTE RÉSOLU, JAMAIS LA VALEUR REÇUE
+  // (2026-11-10, CLI-01 de l'audit de stabilisation). Le compte peut avoir été retrouvé
+  // PAR PSEUDO (plus haut), et un pseudo n'est borné par la base qu'en longueur : un
+  // guillemet y passe. La valeur reçue restait pourtant l'identifiant de toute la fiche —
+  // écrite brute dans l'attribut `id` du bouton « Suivre », où un pseudo qui ferme le
+  // guillemet puis écrit son propre attribut de clic posait SON code sur le bouton (le
+  // premier attribut gagne), et passée telle quelle au suivi,
+  // à la messagerie et aux lectures `author_id`, qui ne trouvaient rien.
+  // (Ne pas recopier ici le début littéral de cet attribut : `suivre-compte-prive` ⑦
+  // cherche sa PREMIÈRE occurrence dans ce fichier pour lire le gabarit.)
+  // Verrou : tests/e2e/profil-visite-identifiant-hostile.spec.js.
+  if (user.id && user.id !== authorId) authorId = user.id;
+
   // 🔄 Charger le profil COMPLET depuis Supabase (toujours, même si user déjà
   // trouvé en local) : passions enrichies (bio/photos), couverture, réseaux
   // sociaux, mode privé — pour reproduire le MÊME visuel que « mon profil ».
@@ -4616,7 +4629,7 @@ async function openUserProfile(authorId, source) {
     <!-- BOUTONS -->\
     <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
+      <button class="btn ghost" id="followBtn_' + escapeHtml(authorId) + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
     \
