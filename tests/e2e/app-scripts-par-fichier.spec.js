@@ -24,7 +24,11 @@
 //     fois (le preload sert l'exécution), une réouverture n'en télécharge AUCUN, et
 //     une version qui ne change qu'un fichier ne retélécharge QUE LUI — alors même
 //     que le nouveau worker vide son cache à l'activation (le cache HTTP, immutable,
-//     rend les autres).
+//     rend les autres) ;
+//   ⑥ un 404 « immutable » (celui de la production pour une adresse absente sous
+//     /app/) resté dans le cache du navigateur après un retour arrière ne l'empêche
+//     plus de démarrer une fois l'adresse rétablie : la reprise redemande l'adresse
+//     au réseau (`cache: "reload"`) avant de réinsérer le script.
 //
 // ⚠️ LE SERVEUR AJOUTE UNE SONDE à chaque script servi (`__ordre.push(<nom>)`) : le
 // contenu change, pas l'URL — l'ordre d'exécution se lit sans toucher aux sources.
@@ -41,7 +45,8 @@ const { execFileSync } = require("child_process");
 const { test, expect } = require("@playwright/test");
 const { onboardedState, sansDonneesDistantes } = require("./app-helper");
 
-test.use({ proxy: { server: "http://127.0.0.1:9", bypass: "127.0.0.1,localhost" } });
+const PROXY_MORT = { server: "http://127.0.0.1:9", bypass: "127.0.0.1,localhost" };
+test.use({ proxy: PROXY_MORT });
 
 const RACINE = path.join(__dirname, "..", "..");
 const UID_MOI = "6d0c2b9e-41f7-4a8e-9b3d-5e2f1a7c8d90";
@@ -85,6 +90,14 @@ function deuxArtefacts() {
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png" };
 
+// Le 404 que la PRODUCTION rend pour une adresse absente sous /app/ (mesuré le
+// 2026-11-09 sur passio-app.netlify.app) : Netlify y applique la règle `/app/*` de
+// `_headers`, donc `public,max-age=31536000,immutable`, avec une page HTML d'environ
+// 3,7 Ko et un ETag sans guillemets (⑥).
+const ENTETES_404_PRODUCTION = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public,max-age=31536000,immutable", "ETag": "1779914909-ssl" };
+const PAGE_404 = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\" /><title>Page not found</title></head><body><h1>Page not found</h1><p>"
+  + "This page does not exist on this site. ".repeat(90) + "</p></body></html>";
+
 // Les en-têtes de production qui comptent ici (`_headers`) : les scripts app/ un an,
 // immutable ; la page, le worker et le contrat jamais en cache.
 function servir() {
@@ -95,8 +108,13 @@ function servir() {
     const f = path.join(etat.dossier, rel);
     const scriptApp = /^app\/(app-0\d[\w-]*\.js)$/.exec(rel);
     const nom = scriptApp && scriptApp[1];
-    etat.journal.push({ rel, query: url.search, t: Date.now() });
+    // `reload` : la demande vient d'un `fetch(…, { cache: "reload" })`, que le navigateur
+    // annonce par `Cache-Control: no-cache` et `Pragma: no-cache` (Fetch, « HTTP-network-or-cache
+    // fetch »). `statut` : ce que le banc a répondu (⑥).
+    const entree = { rel, query: url.search, t: Date.now(), reload: /no-cache/i.test(String(req.headers["cache-control"] || "") + " " + String(req.headers.pragma || "")) };
+    etat.journal.push(entree);
     if (!f.startsWith(etat.dossier) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
+      entree.statut = 404;
       res.writeHead(404, { "Cache-Control": "no-store" });
       res.end();
       return;
@@ -104,8 +122,17 @@ function servir() {
     const faute = (nom && etat.fautes[nom]) || {};
     if (nom) etat.essais[nom] = (etat.essais[nom] || 0) + 1;
     if (faute.toujours || (faute.echecs && etat.essais[nom] <= faute.echecs)) {
+      entree.statut = 503;
       res.writeHead(503, { "Cache-Control": "no-store" });
       res.end();
+      return;
+    }
+    // Le retour arrière vers un déploiement d'avant le découpage : l'adresse n'existe
+    // plus, et le 404 qui le dit est celui de la production — un an, immutable (⑥).
+    if (faute.introuvable) {
+      entree.statut = 404;
+      res.writeHead(404, ENTETES_404_PRODUCTION);
+      res.end(PAGE_404);
       return;
     }
     let corps = fs.readFileSync(f);
@@ -113,6 +140,7 @@ function servir() {
     if (nom) corps = Buffer.concat([corps, Buffer.from("\n;window.__etatAuDebut = window.__etatAuDebut || document.readyState; (window.__ordre = window.__ordre || []).push(" + JSON.stringify(nom) + ");\n")]);
     const envoyer = () => {
       if (nom) etat.liberes[nom] = Date.now();
+      entree.statut = 200;
       res.writeHead(200, {
         "Content-Type": TYPES[path.extname(f)] || "application/octet-stream",
         "Cache-Control": (nom || rel === "styles.css") ? "public, max-age=31536000, immutable" : "no-store",
@@ -136,14 +164,8 @@ test.afterAll(async () => {
 });
 
 let erreurs = [];
-test.beforeEach(async ({ page }) => {
-  test.setTimeout(90000);
-  etat.dossier = artefacts.a;
-  etat.journal = [];
-  etat.fautes = {};
-  etat.essais = {};
-  etat.liberes = {};
-  erreurs = [];
+// Chaque page du banc : la sonde d'ordre et de « prête », un compte déjà inscrit.
+async function preparer(page) {
   page.on("pageerror", (e) => erreurs.push(String(e && e.message)));
   await page.addInitScript(({ local, uid }) => {
     window.__ordre = window.__ordre || [];
@@ -152,6 +174,17 @@ test.beforeEach(async ({ page }) => {
     localStorage.setItem("passio_uid", uid);
     if (!localStorage.getItem("passio_mvp_state_v1")) localStorage.setItem("passio_mvp_state_v1", JSON.stringify(local));
   }, { local: onboardedState(1), uid: UID_MOI });
+}
+
+test.beforeEach(async ({ page }) => {
+  test.setTimeout(90000);
+  etat.dossier = artefacts.a;
+  etat.journal = [];
+  etat.fautes = {};
+  etat.essais = {};
+  etat.liberes = {};
+  erreurs = [];
+  await preparer(page);
 });
 
 const adresse = () => "http://127.0.0.1:" + serveur.address().port + "/index.html";
@@ -298,6 +331,80 @@ test.describe("avec le vrai worker : ce qui part sur le réseau", () => {
     expect(requetesVersionnees(avantB).map((r) => r.rel + r.query), "seul le script modifié repart sur le réseau — ni les 8 autres, ni la feuille de style")
       .toEqual(["app/" + SOURCE_MODIFIEE + "?v=" + changes[0].v]);
     expect(referencesManquantes()).toEqual([]);
+  });
+});
+
+// ⑥ UN 404 « IMMUTABLE » RESTÉ EN CACHE NE BLOQUE PLUS LE DÉMARRAGE (2026-11-09).
+// Netlify applique la règle `/app/*` de `_headers` aux 404 aussi (mesuré en
+// production) : une adresse du lot demandée pendant un RETOUR ARRIÈRE vers un
+// déploiement d'avant le découpage (aucun `app/`) revient en 404
+// `public,max-age=31536000,immutable`. Quand un redéploiement la rétablit à
+// l'identique (fichier inchangé, même `?v=`), le navigateur relit ce 404 — et la
+// reprise du chargeur aussi : l'application ne démarrait plus sur cet appareil.
+// Le remède (scripts/build.js) : avant chaque reprise, redemander l'adresse en
+// `fetch(…, { cache: "reload" })`, qui va au réseau et range la réponse.
+// Mutation : sans cette redemande → rouge (la seconde visite relit son 404 trois
+// fois, puis le chargeur s'arrête — sans une seule requête au serveur).
+// ⚠️ AUCUNE ROUTE ICI NON PLUS (cf. ④) : Playwright couperait le cache HTTP, le 404
+// ne serait jamais relu, et le cas passerait sans le remède.
+// ⚠️ UN PROFIL PERSISTANT, PAS LE CONTEXTE ÉPHÉMÈRE DU BANC (mesuré le 2026-11-09) :
+// sous WebKit, un contexte éphémère de Playwright n'a pas de cache réseau — la
+// seconde visite redemandait le script au serveur, et le cas passait sans le remède.
+// Un vrai Safari, un vrai Chrome ont un profil et son cache disque : c'est lui qu'on
+// éprouve, sur les deux moteurs.
+// ⚠️ LA PRÉMISSE EST ASSERTÉE : la seconde visite n'envoie AUCUNE demande ordinaire
+// de ce script au serveur (ni son preload, ni son `<script>`) — elle a donc relu le
+// 404 en cache. Sans elle, un moteur qui ne garderait pas le 404 rendrait ce cas
+// vert sans rien prouver.
+test.describe("un 404 immutable resté en cache : la reprise redemande l'adresse au réseau", () => {
+  const demandes = (nom, depuis = 0) => etat.journal
+    .filter((r) => r.t >= depuis && r.rel === "app/" + nom)
+    .map((r) => ({ statut: r.statut, reload: r.reload }));
+
+  test("⑥ un 404 « immutable » mis en cache pendant un retour arrière n'empêche plus l'application de démarrer", async ({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }) => {
+    const profil = fs.mkdtempSync(path.join(os.tmpdir(), "passio-profil-"));
+    const contexte = await playwright[browserName].launchPersistentContext(profil, {
+      ...launchOptions, headless, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale,
+      serviceWorkers: "block", proxy: PROXY_MORT,
+    });
+    try {
+      const page = contexte.pages()[0] || await contexte.newPage();
+      await preparer(page);
+
+      // 1. Le retour arrière : l'adresse n'existe plus, la production rend son 404 d'un an.
+      etat.fautes = { [SOURCE_MODIFIEE]: { introuvable: true } };
+      const abandonPendantRetour = page.waitForEvent("console", { predicate: (m) => /ne se charge pas/.test(m.text()), timeout: 30000 });
+      await page.goto(adresse());
+      await abandonPendantRetour;
+      const pendantRetour = demandes(SOURCE_MODIFIEE);
+      expect(pendantRetour.length, "prémisse : le script a été demandé pendant le retour arrière").toBeGreaterThan(0);
+      expect(pendantRetour.every((r) => r.statut === 404), "prémisse : chaque demande a reçu le 404 de production — " + JSON.stringify(pendantRetour)).toBe(true);
+
+      // 2. Le redéploiement rétablit l'adresse à l'identique (même fichier, même `?v=`),
+      //    et l'appareil rouvre l'application.
+      etat.fautes = {};
+      const depuis = Date.now();
+      const abandon = page.waitForEvent("console", { predicate: (m) => /ne se charge pas/.test(m.text()), timeout: 30000 })
+        .then(() => "le chargeur abandonne", () => "délai dépassé");
+      await page.goto(adresse());
+      const prete = page.waitForFunction(() => window.__appPrete === true, null, { polling: 50, timeout: 30000 })
+        .then(() => "application prête", () => "délai dépassé");
+      const issue = await Promise.race([prete, abandon]);
+      const apres = demandes(SOURCE_MODIFIEE, depuis);
+      expect(issue, "l'application démarre sur l'adresse rétablie — demandes reçues par le serveur : " + JSON.stringify(apres)).toBe("application prête");
+      // La prémisse : ni le preload ni le `<script>` de la nouvelle page ne sont allés au
+      // réseau — ils ont relu le 404 en cache —, et la seule demande est la redemande.
+      expect(apres.filter((r) => !r.reload), "prémisse : la nouvelle page a relu le 404 EN CACHE (aucune demande ordinaire de " + SOURCE_MODIFIEE + " au serveur)").toEqual([]);
+      expect(apres, "une seule demande au réseau, la redemande `cache: \"reload\"`, qui reçoit le script").toEqual([{ statut: 200, reload: true }]);
+
+      expect(await page.evaluate(() => window.__ordre)).toEqual([...nomsA(), "ready"]);
+      expect(await page.evaluate(() => typeof boot)).toBe("function");
+      await page.waitForSelector("#screen-feed.active", { state: "attached", timeout: 30000 });
+      expect(referencesManquantes()).toEqual([]);
+    } finally {
+      await contexte.close().catch(() => {});
+      try { fs.rmSync(profil, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (e) { /* profil verrouillé sous Windows : le dossier temporaire le reprendra */ }
+    }
   });
 });
 
