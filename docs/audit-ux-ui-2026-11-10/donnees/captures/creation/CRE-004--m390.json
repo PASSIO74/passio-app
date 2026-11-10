@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Choix de la passion — « Associer cette publication à une passion »",
  "note": "",
- "prisLe": "2026-11-10T18:15:05.275Z",
+ "prisLe": "2026-11-10T19:15:56.675Z",
  "ecran": {
   "ecran": "screen-studio",
   "modale": "Associer cette publication à une passion",
@@ -28,8 +28,11 @@
   "zooms": [
    {
     "nom": "entete",
-    "manquant": true,
-    "sel": ".modal .modal-title"
+    "titre": "Titre, consigne et fermeture",
+    "fichier": "captures/creation/CRE-004--m390--avant-zoom-entete.webp",
+    "largeur": 772,
+    "hauteur": 174,
+    "octets": 11836
    }
   ]
  },
@@ -37,11 +40,21 @@
   {
    "n": 1,
    "texte": "« + » sur chaque ligne : ajouter… à quoi ?",
-   "x": 0.5,
+   "x": 0.903,
    "y": 0.595,
+   "w": 0.035,
+   "h": 0.029,
+   "sel": ".modal .psel-item-plus",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le titre passe sous le bouton Fermer",
+   "x": 0.5,
+   "y": 0.363,
    "w": 0.908,
-   "h": 0.057,
-   "sel": ".modal .psel-item",
+   "h": 0.065,
+   "sel": ".modal .psel-titre",
    "trouve": true
   }
  ],

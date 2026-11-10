@@ -100,10 +100,11 @@ async function maquetteStory(page, opts) {
 const CSS_LIVE = `
   .vlive-topbar{flex-wrap:wrap!important;row-gap:6px!important;}
   .vlive-badge,.vlive-chip{white-space:nowrap!important;}
-  .vlive-name{order:9;flex:1 1 100%!important;font-size:16px!important;font-weight:800!important;}
-  .vlive-follow{min-height:44px!important;padding:0 16px!important;}
+  .vlive-name{order:9;flex:1 1 calc(100% - 120px)!important;min-width:0;font-size:16px!important;font-weight:800!important;}
+  .vlive-follow{order:10;min-height:44px!important;padding:0 16px!important;}
   .vlive-icon-btn{width:44px!important;height:44px!important;}
-  .vlive-title-pill{top:calc(104px + env(safe-area-inset-top))!important;}
+  .vlive-icon-btn{margin-left:auto;}
+  .vlive-title-pill{top:calc(118px + env(safe-area-inset-top))!important;}
 `;
 
 module.exports = {
@@ -296,7 +297,7 @@ module.exports = {
             { n: 3, sel: ".reel-comment-item:first-child .reel-comment-footer", texte: "J'aime / répondre / réagir : 16 px, sans libellé" },
             { n: 4, sel: "#reelCommentInput", texte: "« Lancez » : vouvoiement, seul écran" },
           ],
-          apres: { css: CSS_COMMENTAIRES + `#reelCommentInput::placeholder{color:transparent;}`, zooms: [
+          apres: { css: CSS_COMMENTAIRES, zooms: [
             { nom: "entete", titre: "Fermeture du panneau", sel: ".reel-comments-header", marge: 4 },
             { nom: "saisie", titre: "Champ et envoi", sel: ".reel-comments-input-wrapper", marge: 8 },
             { nom: "actions", titre: "Actions d'un commentaire", sel: ".reel-comment-item:first-child .reel-comment-footer", marge: 10 },

@@ -1,0 +1,79 @@
+{
+ "id": "CRE-029",
+ "domaine": "creation",
+ "scenario": "visiteur",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Visiteur — Créer → Publication → Publier : porte d'inscription",
+ "note": "",
+ "prisLe": "2026-11-10T19:15:36.473Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": "Crée ton compte pour publier ta création",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-029--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 36328,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Explique le geste ; le texte reste au Studio si on ferme",
+   "x": 0.5,
+   "y": 0.615,
+   "w": 0.908,
+   "h": 0.025,
+   "sel": ".fr-gate-title",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

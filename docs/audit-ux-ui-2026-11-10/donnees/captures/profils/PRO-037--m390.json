@@ -1,0 +1,108 @@
+{
+ "id": "PRO-037",
+ "domaine": "profils",
+ "scenario": "mes-passions",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Aide « Comment marchent tes passions » — parle de « place » et de « changement »",
+ "note": "",
+ "prisLe": "2026-11-10T19:22:29.103Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "Comment marchent tes passions",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-037--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 60338,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« quand une place et un changement sont disponibles »",
+   "x": 0.5,
+   "y": 0.868,
+   "w": 0.908,
+   "h": 0.074,
+   "sel": "#modalContent .passions-aide p:last-child",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 3,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "J'ai compris",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 7,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-037--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 57246,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Règle en vigueur : réactiver quand on veut",
+   "x": 0.5,
+   "y": 0.868,
+   "w": 0.908,
+   "h": 0.074,
+   "sel": "#modalContent .passions-aide p:last-child",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:56696/index.html#",
+   "Audio failed: http://127.0.0.1:56696/index.html#",
+   "Audio failed: http://127.0.0.1:56696/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

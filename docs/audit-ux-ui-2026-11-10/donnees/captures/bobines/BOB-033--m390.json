@@ -1,0 +1,103 @@
+{
+ "id": "BOB-033",
+ "domaine": "bobines",
+ "scenario": "stories",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Story vidéo déjà vue (Malik) — bouton son",
+ "note": "",
+ "prisLe": "2026-11-10T19:19:17.281Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#story"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-033--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 17612,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Son coupé par défaut, 42 px, emoji",
+   "x": 0.854,
+   "y": 0.821,
+   "w": 0.108,
+   "h": 0.05,
+   "sel": "#storySoundBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [
+    {
+     "el": "button#storyReportBtn",
+     "texte": "Signaler cette story",
+     "w": 33.1,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "button#storySoundBtn",
+     "texte": "Activer ou couper le son",
+     "w": 42,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-prev",
+    "html": "<div class=\"story-viewer-tap story-tap-prev\" onclick=\"storyPrev()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   },
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-next",
+    "html": "<div class=\"story-viewer-tap story-tap-next\" onclick=\"storyNext()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

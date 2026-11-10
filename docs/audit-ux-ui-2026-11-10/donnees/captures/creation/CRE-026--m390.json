@@ -1,0 +1,265 @@
+{
+ "id": "CRE-026",
+ "domaine": "creation",
+ "scenario": "story",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Story — barre d'emojis",
+ "note": "",
+ "prisLe": "2026-11-10T19:15:12.510Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#media"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-026--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 36310,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Recouvre la barre d'outils : on ne la referme qu'en choisissant",
+   "x": 0.5,
+   "y": 0.707,
+   "w": 0.5,
+   "h": 0.386,
+   "sel": "#meEmojiBar",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 24,
+   "sous44": [
+    {
+     "el": "button#meBackBtn",
+     "texte": "Fermer",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#ov_1 > button.me-ov-del.me-ov-ctrl",
+     "texte": "✕",
+     "w": 22,
+     "h": 22,
+     "enLigne": false
+    },
+    {
+     "el": "div#ov_1 > button.me-ov-resize.me-ov-ctrl",
+     "texte": "Redimensionner",
+     "w": 24,
+     "h": 24,
+     "enLigne": false
+    },
+    {
+     "el": "button#mePublishBtn",
+     "texte": "Publier ma story",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "🔥",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "😂",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "❤️",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "✨",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "😍",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "🎉",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "👏",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "🙌",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "💯",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "🎸",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "📸",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "🌍",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "☕",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "🍕",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "⚽",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "🎬",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "💜",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "😎",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "🥳",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#meEmojiBar > button",
+     "texte": "🤩",
+     "w": 41,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 24
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 0,
+   "indetermines": 3,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/creation/CRE-026--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 38462,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Au-dessus des outils : 😀 la referme ; 44 px par emoji",
+   "x": 0.5,
+   "y": 0.738,
+   "w": 0.918,
+   "h": 0.192,
+   "sel": "#meEmojiBar",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

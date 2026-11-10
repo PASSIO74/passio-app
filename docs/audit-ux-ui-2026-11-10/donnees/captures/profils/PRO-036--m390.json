@@ -1,0 +1,180 @@
+{
+ "id": "PRO-036",
+ "domaine": "profils",
+ "scenario": "mes-passions",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "« Mes passions » — en-tête, cartes, ajouter",
+ "note": "",
+ "prisLe": "2026-11-10T19:22:26.564Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-036--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 53766,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Une carte : trois emojis, badge 20 px",
+    "fichier": "captures/profils/PRO-036--m390--avant-zoom-carte.webp",
+    "largeur": 740,
+    "hauteur": 156,
+    "octets": 5710
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« 3 passions actives » (icône de personnes)…",
+   "x": 0.5,
+   "y": 0.261,
+   "w": 0.918,
+   "h": 0.062,
+   "sel": "#passionsResume",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "… puis « Passions actives » en 26 px",
+   "x": 0.5,
+   "y": 0.331,
+   "w": 0.908,
+   "h": 0.035,
+   "sel": "#passionManager h3, #passionManager .section-title",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Badge photo 20 × 20 px",
+   "x": 0.162,
+   "y": 0.42,
+   "w": 0.051,
+   "h": 0.024,
+   "sel": "#passionManager .passion-photo-badge",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 21,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-036--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 47706,
+  "zooms": [
+   {
+    "nom": "carte",
+    "titre": "Une carte : trois emojis, badge 20 px",
+    "fichier": "captures/profils/PRO-036--m390--apres-zoom-carte.webp",
+    "largeur": 740,
+    "hauteur": 156,
+    "octets": 5518
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Un seul titre, le compte dans la rubrique",
+   "x": 0.5,
+   "y": 0.128,
+   "w": 0.651,
+   "h": 0.036,
+   "sel": "#passionManagerTitre",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Un emoji (celui de l'avatar), pas trois",
+   "x": 0.497,
+   "y": 0.308,
+   "w": 0.59,
+   "h": 0.024,
+   "sel": "#passionManager .profile-card-name",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Badge 28 px, zone de 44 px",
+   "x": 0.162,
+   "y": 0.334,
+   "w": 0.072,
+   "h": 0.033,
+   "sel": "#passionManager .passion-photo-badge",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:56696/index.html#",
+   "Audio failed: http://127.0.0.1:56696/index.html#",
+   "Audio failed: http://127.0.0.1:56696/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

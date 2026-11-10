@@ -1,23 +1,23 @@
 {
- "genereLe": "2026-11-10T19:10:53.668Z",
+ "genereLe": "2026-11-10T19:23:34.310Z",
  "total": {
-  "inventoriees": 384,
-  "observees": 249,
-  "simulees": 81,
-  "codeSeul": 43,
-  "inaccessibles": 9,
+  "inventoriees": 512,
+  "observees": 346,
+  "simulees": 92,
+  "codeSeul": 59,
+  "inaccessibles": 13,
   "sansObjet": 2,
-  "avecAvant": 302,
-  "maquettees": 133,
-  "aAmeliorer": 243,
-  "aConserver": 95,
-  "aVerifier": 46,
-  "restantAExaminer": 52,
-  "constats": 170,
+  "avecAvant": 396,
+  "maquettees": 174,
+  "aAmeliorer": 321,
+  "aConserver": 128,
+  "aVerifier": 63,
+  "restantAExaminer": 72,
+  "constats": 233,
   "P0": 1,
-  "P1": 33,
-  "P2": 82,
-  "P3": 54
+  "P1": 40,
+  "P2": 105,
+  "P3": 87
  },
  "parGroupe": [
   {
@@ -102,63 +102,63 @@
   },
   {
    "groupe": "Profils et passions",
-   "inventoriees": 0,
-   "observees": 0,
-   "simulees": 0,
-   "codeSeul": 0,
+   "inventoriees": 49,
+   "observees": 41,
+   "simulees": 2,
+   "codeSeul": 6,
    "inaccessibles": 0,
    "sansObjet": 0,
-   "avecAvant": 0,
-   "maquettees": 0,
-   "aAmeliorer": 0,
-   "aConserver": 0,
-   "aVerifier": 0,
-   "restantAExaminer": 0,
-   "constats": 0,
+   "avecAvant": 37,
+   "maquettees": 18,
+   "aAmeliorer": 32,
+   "aConserver": 13,
+   "aVerifier": 4,
+   "restantAExaminer": 6,
+   "constats": 23,
    "P0": 0,
-   "P1": 0,
-   "P2": 0,
-   "P3": 0
+   "P1": 2,
+   "P2": 6,
+   "P3": 15
   },
   {
    "groupe": "Création et médias",
-   "inventoriees": 0,
-   "observees": 0,
-   "simulees": 0,
-   "codeSeul": 0,
-   "inaccessibles": 0,
+   "inventoriees": 41,
+   "observees": 30,
+   "simulees": 3,
+   "codeSeul": 5,
+   "inaccessibles": 3,
    "sansObjet": 0,
-   "avecAvant": 0,
-   "maquettees": 0,
-   "aAmeliorer": 0,
-   "aConserver": 0,
-   "aVerifier": 0,
-   "restantAExaminer": 0,
-   "constats": 0,
+   "avecAvant": 31,
+   "maquettees": 14,
+   "aAmeliorer": 24,
+   "aConserver": 10,
+   "aVerifier": 7,
+   "restantAExaminer": 8,
+   "constats": 18,
    "P0": 0,
-   "P1": 0,
-   "P2": 0,
-   "P3": 0
+   "P1": 1,
+   "P2": 8,
+   "P3": 9
   },
   {
    "groupe": "Bobines et stories",
-   "inventoriees": 0,
-   "observees": 0,
-   "simulees": 0,
-   "codeSeul": 0,
-   "inaccessibles": 0,
+   "inventoriees": 38,
+   "observees": 26,
+   "simulees": 6,
+   "codeSeul": 5,
+   "inaccessibles": 1,
    "sansObjet": 0,
-   "avecAvant": 0,
-   "maquettees": 0,
-   "aAmeliorer": 0,
-   "aConserver": 0,
-   "aVerifier": 0,
-   "restantAExaminer": 0,
-   "constats": 0,
+   "avecAvant": 26,
+   "maquettees": 9,
+   "aAmeliorer": 22,
+   "aConserver": 10,
+   "aVerifier": 6,
+   "restantAExaminer": 6,
+   "constats": 22,
    "P0": 0,
-   "P1": 0,
-   "P2": 0,
-   "P3": 0
+   "P1": 4,
+   "P2": 9,
+   "P3": 9
   },
   {
    "groupe": "Rencontres IRL",
@@ -241,55 +241,76 @@
    "P3": 2
   }
  ],
- "nbImages": 1084,
- "orphelines": [
-  "CRE-001",
-  "CRE-002",
-  "CRE-003",
-  "CRE-004",
-  "CRE-005",
-  "CRE-006",
-  "CRE-007",
-  "CRE-008",
-  "CRE-009",
-  "CRE-010",
-  "CRE-011",
-  "CRE-012",
-  "CRE-013",
-  "CRE-014",
-  "CRE-015",
-  "CRE-016",
-  "CRE-017",
-  "CRE-018",
-  "CRE-019",
-  "CRE-020",
-  "CRE-021",
-  "CRE-022",
-  "PRO-001",
-  "PRO-002",
-  "PRO-003",
-  "PRO-004",
-  "PRO-005",
-  "PRO-006",
-  "PRO-007",
-  "PRO-008",
-  "PRO-009",
-  "PRO-010",
-  "PRO-011",
-  "PRO-012",
-  "PRO-013",
-  "PRO-014",
-  "PRO-015",
-  "PRO-033",
-  "PRO-034",
-  "PRO-035",
-  "PRO-048",
-  "PRO-049"
- ],
+ "nbImages": 1270,
+ "orphelines": [],
  "alertes": [
   {
    "niveau": "avert",
-   "msg": "captures sans ligne de registre : CRE-001, CRE-002, CRE-003, CRE-004, CRE-005, CRE-006, CRE-007, CRE-008, CRE-009, CRE-010, CRE-011, CRE-012, CRE-013, CRE-014, CRE-015, CRE-016, CRE-017, CRE-018, CRE-019, CRE-020, CRE-021, CRE-022, PRO-001, PRO-002, PRO-003, PRO-004, PRO-005, PRO-006, PRO-007, PRO-008, PRO-009, PRO-010, PRO-011, PRO-012, PRO-013, PRO-014, PRO-015, PRO-033, PRO-034, PRO-035, PRO-048, PRO-049"
+   "msg": "PRO-016 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-017 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-018 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-019 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-021 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-022 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-024 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-025 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-026 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-027 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-028 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-029 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-030 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-031 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-032 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-036 : capture présente alors que le registre dit « avant non capturé »"
+  },
+  {
+   "niveau": "avert",
+   "msg": "PRO-037 : capture présente alors que le registre dit « avant non capturé »"
   }
  ]
 }

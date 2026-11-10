@@ -308,7 +308,7 @@ function contexteEcran() {
     landing: visible(document.getElementById("landing")),
     onboarding: visible(document.getElementById("onboarding")),
     conversation: (document.getElementById("conv-fullpage") || { classList: { contains: () => false } }).classList.contains("active"),
-    bobines: (document.getElementById("reelsViewer") || { classList: { contains: () => false } }).classList.contains("active"),
+    bobines: (function () { const r = document.getElementById("reelsViewer"); return !!r && (r.classList.contains("open") || r.classList.contains("active")); })(),
     titre: document.title,
     hash: location.hash,
   };

@@ -6,20 +6,27 @@
 | Priorité | Constats |
 |---|---|
 | P0 | 1 |
-| P1 | 33 |
-| P2 | 82 |
-| P3 | 54 |
+| P1 | 40 |
+| P2 | 105 |
+| P3 | 87 |
 
 ## Vue d'ensemble
 
 | ID | Priorité | Gravité | Nature | Type | Effort | Risque technique | Domaine | Constat |
 |---|---|---|---|---|---|---|---|---|
 | PAR-C01 | P0 | 4 | fonctionnel | observation | S | moyen | Partage | Visiteur arrivé par un lien : « Créer mon compte » ouvre le formulaire derrière le contenu ⚠ sensible |
+| PRO-C01 | P1 | 4 | fonctionnel | observation | S | faible | Profils et passions | Un enregistrement du profil refusé par le serveur s'annonce « Profil mis à jour » — confidentialité comprise ⚠ sensible |
 | MSG-C53 | P1 | 4 | fonctionnel | observation | S | faible | Messagerie | Un toucher bref sur le micro lance un enregistrement qui ne s'arrête pas — et le toucher suivant l'envoie ⚠ sensible |
 | PCS-C01 | P1 | 3 | fonctionnel | observation | S | faible | Parcours de bout en bout | La porte « Voir l'activité » n'apparaît qu'au bout d'une minute |
 | PCS-C03 | P1 | 3 | clarte | observation | M | faible | Parcours de bout en bout | L'inscription à une activité ne confirme rien et ne propose pas la suite |
 | FIL-C01 | P1 | 3 | fonctionnel | observation | S | faible | Fil et interactions | « Voir l'activité » n'apparaît pas à l'ouverture sur une publication reliée à une activité |
 | FIL-C06 | P1 | 3 | fonctionnel | observation | M | faible | Fil et interactions | Supprimer un commentaire agit sans confirmation et annonce « supprimé » même si le serveur refuse |
+| PRO-C02 | P1 | 3 | fonctionnel | observation | S | faible | Profils et passions | Changer la couverture depuis « Modifier le profil » : le recadreur s'ouvre sous la modale |
+| CRE-C01 | P1 | 3 | fonctionnel | observation | S | moyen | Création et médias | Après une photo, une vidéo ou l'audio, le Studio refuse un texte seul |
+| BOB-C01 | P1 | 3 | fonctionnel | observation | S | faible | Bobines et stories | Au clavier, chaque espace d'un commentaire de bobine fait passer à la bobine suivante |
+| BOB-C02 | P1 | 3 | fonctionnel | observation | S | faible | Bobines et stories | Une bobine photo s'ouvre sans sa photo |
+| BOB-C03 | P1 | 3 | friction | observation | S | faible | Bobines et stories | Les deux sorties vers le réel sont hors de l'écran |
+| BOB-C04 | P1 | 3 | fonctionnel | observation | M | moyen | Bobines et stories | Aucune bobine ne peut être signalée ni supprimée depuis le lecteur ⚠ sensible |
 | IRL-C01 | P1 | 3 | clarte | observation | S | faible | Rencontres IRL | Les exemples « participation désactivée » portent un « Je viens » corail plein et actif |
 | IRL-C02 | P1 | 3 | fonctionnel | observation | S | faible | Rencontres IRL | Sans position, les distances sont calculées depuis Paris et affichées comme réelles ⚠ sensible |
 | IRL-C07 | P1 | 3 | friction | observation | S | faible | Rencontres IRL | Les filtres actifs sont invisibles hors de la vue Filtre, et ils survivent à la navigation |
@@ -50,6 +57,10 @@
 | PAR-C06 | P1 | 3 | clarte | observation | M | moyen | Partage | Le repartage d'une publication ou d'une bobine perd le média et le lien vers l'originale ⚠ sensible |
 | FIL-C08 | P2 | 3 | friction | observation | S | faible | Fil et interactions | « Bloquer » agit au premier toucher, sans confirmation, depuis deux menus ⚠ sensible |
 | FIL-C10 | P2 | 3 | fonctionnel | observation | S | faible | Fil et interactions | Le panneau de réaction sort de l'écran par le haut et demande deux touchers |
+| PRO-C03 | P2 | 3 | fonctionnel | observation | S | faible | Profils et passions | Le pseudo n'est pas validé à l'enregistrement (vide, « Admin » acceptés) ⚠ sensible |
+| PRO-C05 | P2 | 3 | fonctionnel | observation | S | faible | Profils et passions | Une demande d'abonnement en attente est comptée et listée comme abonnement accepté ⚠ sensible |
+| PRO-C06 | P2 | 3 | friction | observation | S | faible | Profils et passions | « Bloquer » agit au premier appui, sans confirmation, et retire l'abonnement en silence ⚠ sensible |
+| CRE-C03 | P2 | 3 | fonctionnel | observation | S | faible | Création et médias | Le lien avec une activité est invisible et se colle à une publication ultérieure ⚠ sensible |
 | MSG-C64 | P2 | 3 | fonctionnel | hypothese | S | faible | Messagerie | La feuille d'actions s'ouvre sous le doigt encore posé : le relâchement peut déclencher une action ou refermer la feuille |
 | MSG-C65 | P2 | 3 | fonctionnel | observation | M | moyen | Messagerie | Le menu d'actions ne s'ouvre pas sur une vidéo |
 | PAR-C17 | P2 | 3 | clarte | observation | M | faible | Partage | Partage de position : un appui envoie des coordonnées précises, sans aperçu ni confirmation ⚠ sensible |
@@ -64,6 +75,25 @@
 | FIL-C15 | P2 | 2 | clarte | observation | S | faible | Fil et interactions | Le visiteur lit « ta communauté » et « Publier la première » avant tout contenu |
 | FIL-C17 | P2 | 2 | clarte | observation | S | faible | Fil et interactions | États vides : le bouton ne fait pas ce que le message conseille |
 | FIL-C20 | P2 | 2 | clarte | observation | M | faible | Fil et interactions | Un repartage est un texte sans lien vers l'original ; un partage d'activité déborde de la carte |
+| PRO-C04 | P2 | 2 | friction | observation | S | faible | Profils et passions | « Tout » reste coché : toucher « Photos » ne filtre rien |
+| PRO-C07 | P2 | 2 | clarte | observation | S | faible | Profils et passions | Le profil d'un compte que j'ai bloqué ne dit pas qu'il est bloqué ⚠ sensible |
+| PRO-C15 | P2 | 2 | friction | jugement | S | faible | Profils et passions | « Modifier le profil » : 1 096 px de haut, huit champs de réseaux, Sauvegarder tout en bas |
+| CRE-C02 | P2 | 2 | clarte | observation | S | faible | Création et médias | Choisir une passion pour une publication l'ajoute aux passions du compte, sans le dire ⚠ sensible |
+| CRE-C04 | P2 | 2 | clarte | observation | M | moyen | Création et médias | Après Publier, les messages se contredisent et l'état de la carte reste figé sur « Sync… » |
+| CRE-C05 | P2 | 2 | friction | observation | S | faible | Création et médias | Aucun brouillon : le texte est perdu au rechargement |
+| CRE-C07 | P2 | 2 | polish | observation | S | faible | Création et médias | Une seconde zone d'envoi, sombre et illisible, sous chaque aperçu |
+| CRE-C08 | P2 | 2 | accessibilite | observation | S | faible | Création et médias | Commandes de création sous 44 px ou sans nom accessible |
+| CRE-C09 | P2 | 2 | friction | observation | M | faible | Création et médias | Le texte d'une story ou d'une bobine se saisit dans une boîte native prompt() |
+| CRE-C14 | P2 | 2 | fonctionnel | observation | S | faible | Création et médias | Visiteur : le micro est demandé avant tout compte, et « Live vidéo » répond par un simple toast ⚠ sensible |
+| BOB-C05 | P2 | 2 | clarte | observation | M | moyen | Bobines et stories | Les bobines vidéo n'ont pas de vignette (rail du fil, grilles de profil) |
+| BOB-C06 | P2 | 2 | accessibilite | observation | S | faible | Bobines et stories | Impossible de mettre une bobine en pause, même avec « réduire les animations » |
+| BOB-C07 | P2 | 2 | accessibilite | observation | S | faible | Bobines et stories | Stories : le maintien ne met pas en pause, le relâchement saute la story, et le clavier ne fait rien |
+| BOB-C08 | P2 | 2 | fonctionnel | observation | S | faible | Bobines et stories | Les stories réelles n'affichent pas leur heure et passent de la plus récente à la plus ancienne |
+| BOB-C09 | P2 | 2 | friction | jugement | M | moyen | Bobines et stories | Une story ne permet ni de répondre ni de réagir ⚠ sensible |
+| BOB-C10 | P2 | 2 | friction | observation | S | faible | Bobines et stories | Fermer une bobine ouverte depuis un profil ne ramène pas à ce profil |
+| BOB-C11 | P2 | 2 | clarte | observation | S | faible | Bobines et stories | Live : le nom de la personne en direct n'apparaît pas |
+| BOB-C12 | P2 | 2 | friction | hypothese | S | faible | Bobines et stories | Échap ou retour ferment tout le lecteur au lieu du panneau ou de la feuille ouverte au-dessus |
+| BOB-C22 | P2 | 2 | clarte | observation | S | faible | Bobines et stories | Les bobines d'exemple se mêlent à celles des comptes, sans marque et sans fin de liste |
 | IRL-C03 | P2 | 2 | friction | jugement | S | faible | Rencontres IRL | Le seul chemin vers « ma position » est enfoui à trois gestes, dans la vue Filtre ⚠ sensible |
 | IRL-C04 | P2 | 2 | fonctionnel | observation | S | faible | Rencontres IRL | « Aucune position » affiché, mais la distance et le libellé « Position actuelle » se réfèrent à Paris ⚠ sensible |
 | IRL-C05 | P2 | 2 | friction | observation | S | faible | Rencontres IRL | Filtres combinés sans résultat : pied grisé, sans explication ni issue |
@@ -133,6 +163,14 @@
 | FIL-C14 | P3 | 2 | friction | jugement | S | faible | Fil et interactions | Sur petit écran, le premier contenu commence à mi-hauteur |
 | FIL-C24 | P3 | 2 | friction | hypothese | L | faible | Fil et interactions | Une publication ne peut pas être corrigée : son menu n'offre que « Supprimer » |
 | FIL-C27 | P3 | 2 | clarte | jugement | S | faible | Fil et interactions | Rien ne distingue la publication d'un compte privé ⚠ sensible |
+| PRO-C10 | P3 | 2 | friction | observation | M | moyen | Profils et passions | Fermer un profil ouvert depuis une liste ramène au profil, pas à la liste |
+| PRO-C11 | P3 | 2 | clarte | observation | S | faible | Profils et passions | « Toutes » est cité deux fois alors qu'aucun bouton ne porte ce nom |
+| PRO-C18 | P3 | 2 | fonctionnel | observation | S | faible | Profils et passions | Photo : un fichier refusé ou un envoi raté ne dit rien |
+| PRO-C20 | P3 | 2 | clarte | hypothese | M | moyen | Profils et passions | Le profil d'une personne qui m'a bloquée reste visible avec Suivre et Message ⚠ sensible |
+| PRO-C23 | P3 | 2 | accessibilite | observation | S | faible | Profils et passions | Petites cibles et petits textes du domaine |
+| CRE-C10 | P3 | 2 | clarte | jugement | S | faible | Création et médias | Story et publication partent sans dire pour qui, ni combien de temps ⚠ sensible |
+| BOB-C13 | P3 | 2 | accessibilite | observation | S | faible | Bobines et stories | Commentaires de bobine : commandes minuscules et vouvoiement isolé |
+| BOB-C21 | P3 | 2 | friction | observation | M | moyen | Bobines et stories | Ma story : ni « vue par », ni suppression, et elle s'insère au milieu des stories des autres ⚠ sensible |
 | IRL-C10 | P3 | 2 | friction | observation | S | faible | Rencontres IRL | Carte plein écran : la seule sortie est l'icône d'entrée, sans libellé |
 | MSG-C28 | P3 | 2 | accessibilite | observation | S | faible | Messagerie | Champs sans étiquette, onglets et calques sans rôle |
 | MSG-C32 | P3 | 2 | clarte | hypothese | S | faible | Messagerie | Au-delà de 8 s de chargement, la liste affiche « Aucune conversation » |
@@ -155,6 +193,31 @@
 | FIL-C28 | P3 | 1 | friction | jugement | M | faible | Fil et interactions | La suite du fil se demande au bouton « ⤵ Charger plus de posts » |
 | FIL-C29 | P3 | 1 | friction | observation | S | faible | Fil et interactions | La saisie d'un commentaire s'arrête à 400 caractères sans le dire |
 | FIL-C30 | P3 | 1 | clarte | observation | S | faible | Fil et interactions | « Passionnés à découvrir » propose d'abord des comptes que je suis déjà |
+| PRO-C08 | P3 | 1 | clarte | jugement | S | faible | Profils et passions | Mon profil et le profil visité ne disent pas les mêmes choses |
+| PRO-C09 | P3 | 1 | polish | observation | S | faible | Profils et passions | Listes Abonnés / Abonnements : emoji au lieu des photos, rendus différents, double « × » |
+| PRO-C12 | P3 | 1 | clarte | observation | S | faible | Profils et passions | L'aide des passions parle de « place » et de « changement » alors que le plafond est levé |
+| PRO-C13 | P3 | 1 | polish | jugement | S | faible | Profils et passions | « Mes passions » : en-tête redondant, trois emojis par carte, badge photo de 20 px |
+| PRO-C14 | P3 | 1 | clarte | observation | S | faible | Profils et passions | Vocabulaire hérité du multi-profil : « Mon profil principal », « Bio de ce profil » |
+| PRO-C16 | P3 | 1 | clarte | jugement | S | faible | Profils et passions | Le crayon « Modifier le profil » ouvre un menu de six options |
+| PRO-C17 | P3 | 1 | accessibilite | jugement | S | faible | Profils et passions | Profil visité : deux boutons « pleins », 39 px de haut, texte de 12 px |
+| PRO-C19 | P3 | 1 | polish | observation | S | faible | Profils et passions | « Ajouter une passion » propose des passions que j'ai déjà |
+| PRO-C21 | P3 | 1 | polish | observation | S | faible | Profils et passions | La pastille du nombre de publications est rognée sur le rail des passions |
+| PRO-C22 | P3 | 1 | polish | observation | S | faible | Profils et passions | « Signaler ce compte » hérite du plein écran du profil et le remplace |
+| CRE-C06 | P3 | 1 | clarte | observation | S | faible | Création et médias | « MOOD » en anglais, pastilles 40 px / 11 px, ordre différent du Fil |
+| CRE-C11 | P3 | 1 | friction | observation | S | faible | Création et médias | Les panneaux emojis et GIF recouvrent la barre d'outils et ne se referment qu'en choisissant |
+| CRE-C12 | P3 | 1 | polish | observation | S | faible | Création et médias | « Recommencer » quasi invisible sur l'aperçu de bobine |
+| CRE-C13 | P3 | 1 | clarte | observation | M | faible | Création et médias | La bobine choisit sa passion autrement que le Studio, et sans envie |
+| CRE-C15 | P3 | 1 | clarte | observation | S | faible | Création et médias | « Post » et « publication » alternent ; « Photo / vidéo » cache le texte seul |
+| CRE-C16 | P3 | 1 | friction | hypothese | M | moyen | Création et médias | Une publication ne peut pas être corrigée, seulement supprimée ⚠ sensible |
+| CRE-C17 | P3 | 1 | polish | observation | S | faible | Création et médias | Sélecteur de passion : titre sous la croix, « + » qui ne marque pas la sélection |
+| CRE-C18 | P3 | 1 | friction | jugement | M | moyen | Création et médias | Préparation d'une vidéo lourde : plein écran sans annulation jusqu'à 90 s |
+| BOB-C14 | P3 | 1 | polish | observation | S | faible | Bobines et stories | Haut du lecteur : fermer à 38 px, étiquette en doublon qui chevauche la flèche, « Commentaire » sans nombre |
+| BOB-C15 | P3 | 1 | clarte | observation | S | faible | Bobines et stories | Vidéo illisible : un bouton « Lire » recouvre le message « Vidéo non lisible » |
+| BOB-C16 | P3 | 1 | polish | observation | S | faible | Bobines et stories | Visionneuse de stories : piste des barres invisible, « ⋯ » au milieu, ✕ sans nom accessible |
+| BOB-C17 | P3 | 1 | polish | observation | S | faible | Bobines et stories | Bobines et stories montrent l'emoji de la personne au lieu de sa photo ; ma bobine m'est proposée à « découvrir » |
+| BOB-C18 | P3 | 1 | polish | observation | S | faible | Bobines et stories | Réactions de bobine et de commentaire : code masqué, mort ou purement local |
+| BOB-C19 | P3 | 1 | polish | observation | S | faible | Bobines et stories | État vide du lecteur : chemin « ➕ → Studio → onglet Bobine » périmé |
+| BOB-C20 | P3 | 1 | clarte | observation | S | faible | Bobines et stories | Les confirmations sont peintes sous le lecteur (commentaire posté, lien copié) |
 | IRL-C08 | P3 | 1 | polish | observation | S | faible | Rencontres IRL | Les activités sans couverture portent toutes une épingle 📍 au lieu de l'emoji de leur passion |
 | IRL-C12 | P3 | 1 | clarte | observation | S | faible | Rencontres IRL | Une recherche sans résultat annonce « Rien avec ces filtres » |
 | IRL-C13 | P3 | 1 | clarte | observation | S | faible | Rencontres IRL | Mots divergents pour la même chose : activité / événement / rencontre / expérience ; « Je viens » / « Je participe » ; « Mes rencontres » = « Mes inscriptions » |
@@ -204,6 +267,22 @@
 - **Fichiers probables** : `js/first-run.js`, `styles.css`
 
 ## P1 — friction importante sur un parcours essentiel
+
+### PRO-C01 — Un enregistrement du profil refusé par le serveur s'annonce « Profil mis à jour » — confidentialité comprise  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Modifier le profil › Sauvegarder — saveMainProfile (js/app-06-reels-partage.js:2099-2113)
+- **Domaine** : Profils et passions · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Panne programmée PATCH profiles 500 : toast « Profil mis à jour », état local isPrivate=true et pseudo changé, ligne serveur inchangée (is_private=false). supaSavePublicProfile rend false (app-08:4026) mais son retour n'est pas lu ; le catch est vide.
+- **Problème** : La personne croit son compte privé (et son pseudo changé) alors que rien n'est écrit.
+- **Situation déclenchante** : Réseau instable, session expirée, refus RLS ou contrainte serveur (pseudo).
+- **Conséquence pour l'utilisateur** : Publications visibles de tous alors qu'on les croit réservées ; écran et serveur divergent jusqu'au prochain démarrage.
+- **Proposition** : Lire le verdict : en cas d'échec, garder la modale ouverte, dire « Rien n'a été enregistré — ton compte est toujours public », proposer « Réessayer », ne pas écrire l'état local avant le succès.
+- **Visuels** : [PRO-015](galerie/index.html#/surface/PRO-015) · **Surfaces** : PRO-015
+- **Priorité** : P1 · **Gravité** : 4/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faux clients des suites qui rendent true ; garde `privacyChoisi`. Verrous : suites confidentialité du profil.
+- **Critère d'acceptation** : PATCH profiles refusé : aucun toast de succès, message d'échec visible, state.user.general inchangé, modale ouverte avec la saisie.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
 
 ### MSG-C53 — Un toucher bref sur le micro lance un enregistrement qui ne s'arrête pas — et le toucher suivant l'envoie  ⚠ sensible (auth, droits, données privées ou règle métier)
 
@@ -284,6 +363,102 @@
 - **Risque de régression** : Compteur `commentsTotal` décrémenté à tort si l'annulation n'est pas symétrique. Verrous : commentaires*.spec.js, retrait-interactions-direct.spec.js.
 - **Critère d'acceptation** : DELETE refusé par le serveur : le commentaire est de nouveau à l'écran avec un message d'échec ; aucun toast « supprimé ». Suppression réussie : un geste d'annulation ou une confirmation existe.
 - **Fichiers probables** : `js/app-04-comments-shop.js`
+
+### PRO-C02 — Changer la couverture depuis « Modifier le profil » : le recadreur s'ouvre sous la modale
+
+- **Emplacement** : Modifier › Photo de couverture › Changer — passioOpenCropper z-index 6000 (app-06:1563) sous #modalBackdrop 10001
+- **Domaine** : Profils et passions · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sonde profils-07 (vrai filechooser) : recadreur présent, modale active, elementFromPoint au centre = #editBio ; après fermeture de la modale le recadreur réapparaît.
+- **Problème** : Après le choix de la photo, rien ne bouge ; le recadreur est caché.
+- **Situation déclenchante** : Seule porte de la couverture dans la modale d'édition.
+- **Conséquence pour l'utilisateur** : Changement de couverture impossible par ce chemin ; recadreur fantôme ensuite.
+- **Proposition** : Placer le recadreur au-dessus des modales (z-index > 10001) ou fermer la modale avant de l'ouvrir (le brouillon existe déjà).
+- **Visuels** : — · **Surfaces** : PRO-017, PRO-018
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Ordre des couches avec le menu ⋯ (10002) et les toasts. Verrous : recadrage, couverture.
+- **Critère d'acceptation** : Depuis la modale, après choix d'une image, elementFromPoint au centre de l'écran rend #pcropImg ; Valider rouvre la modale avec la saisie.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### CRE-C01 — Après une photo, une vidéo ou l'audio, le Studio refuse un texte seul
+
+- **Emplacement** : Studio — js/app-06-reels-partage.js:5025, 5047 (clearPhoto), 5093 (clearVideo), 5229 (clearAudio), 5266-5281, 5428-5437 ; onglets masqués styles.css:9338
+- **Domaine** : Création et médias · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sondes creation-01/02/03 : photo ajoutée puis retirée → studioType « photo », toast « Ajoute une photo. » ; photo PUBLIÉE puis texte → même refus ; Créer → Audio puis Publication → « Enregistre un audio. ». Captures CRE-007, CRE-011.
+- **Problème** : Le format du dernier média reste en mémoire ; les onglets qui permettaient de revenir à « Texte » sont masqués depuis UI-6.
+- **Situation déclenchante** : Retirer un média, publier une photo/vidéo puis vouloir publier un texte, ou passer par « Audio / podcast ».
+- **Conséquence pour l'utilisateur** : La publication suivante est bloquée sans issue visible jusqu'au rechargement ; la personne croit que la photo est obligatoire.
+- **Proposition** : Recalculer le type au moment de publier d'après le média réellement attaché (photo si photoDataUrl, vidéo si videoDataUrl, audio si audioDataUrl, sinon texte), et remettre studioType à « text » au retrait d'un média, après publication et à l'ouverture par « Publication ».
+- **Visuels** : [CRE-007](galerie/index.html#/surface/CRE-007), [CRE-011](galerie/index.html#/surface/CRE-011) · **Surfaces** : CRE-007, CRE-011, CRE-006, CRE-009, CRE-010
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : moyen
+- **Dépendances** : Aucune.
+- **Risque de régression** : studioType est la source de vérité de publishPost (piège UI-6) : ne jamais publier un texte avec un média perdu. Verrous : tests/e2e/ui-v6-composer.spec.js, studio-moods.spec.js.
+- **Critère d'acceptation** : Ajouter puis retirer une photo, écrire 10 caractères, Publier → publication de type texte ; idem après une photo publiée et après Créer → Audio → Créer → Publication.
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `js/ui-v2-shell.js`
+
+### BOB-C01 — Au clavier, chaque espace d'un commentaire de bobine fait passer à la bobine suivante
+
+- **Emplacement** : Lecteur › panneau Commentaires — écouteur keydown du document (js/app-06-reels-partage.js:1012-1024)
+- **Domaine** : Bobines et stories · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Frappe réelle de « Bonjour à tous » : le champ contient « Bonjouràtous », le compteur passe de 1 / 27 à 2 / 27 (sonde bobines-02, capture BOB-022).
+- **Problème** : Les espaces disparaissent du texte et la bobine change sous le panneau, qui garde les commentaires de la précédente.
+- **Situation déclenchante** : Écrire un commentaire avec un clavier physique (ordinateur, tablette) ; très probablement aussi sur iPhone, dont le clavier émet la touche « » (hypothèse à vérifier sur appareil).
+- **Conséquence pour l'utilisateur** : Commentaire illisible, publié sous une bobine qui n'est plus celle à l'écran ; Flèches haut/bas changent aussi de bobine.
+- **Proposition** : Dans l'écouteur, ne rien faire si la cible est un champ (INPUT, TEXTAREA, contenteditable) ou si le panneau de commentaires est ouvert.
+- **Visuels** : [BOB-022](galerie/index.html#/surface/BOB-022) · **Surfaces** : BOB-022
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Navigation clavier du lecteur (Espace, flèches) à revérifier hors champ.
+- **Critère d'acceptation** : Taper « Bonjour à tous » dans #reelCommentInput donne exactement ce texte et #reelsCounter ne change pas.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### BOB-C02 — Une bobine photo s'ouvre sans sa photo
+
+- **Emplacement** : Lecteur — reelMediaHTML (js/app-05-config-profil.js:3002-3008)
+- **Domaine** : Bobines et stories · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Bobine dont media_url est une photo : la vignette du rail l'affiche (BOB-002), le lecteur montre un dégradé violet et seulement le texte superposé (BOB-013). Le code lit photo / coverPhotoUrl / cover ; la bobine créée (app-08:1684) et relue (app-08:4985) porte `image`.
+- **Problème** : Le contenu publié est invisible dans le lecteur.
+- **Situation déclenchante** : Toute bobine publiée à partir d'une photo, pour tout le monde, y compris son auteur.
+- **Conséquence pour l'utilisateur** : L'auteur croit sa bobine ratée ; les autres voient un écran vide.
+- **Proposition** : Ajouter `post.image` en tête des sources de reelMediaHTML (via passioThumb).
+- **Visuels** : [BOB-013](galerie/index.html#/surface/BOB-013) · **Surfaces** : BOB-013
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Bobines vidéo dont `image` porte la couverture : ne pas l'utiliser quand `type === 'video'`.
+- **Critère d'acceptation** : Une bobine photo ouverte dans #reelsViewer affiche une <img class=reel-media> dont la source est sa photo.
+- **Fichiers probables** : `js/app-05-config-profil.js`
+
+### BOB-C03 — Les deux sorties vers le réel sont hors de l'écran
+
+- **Emplacement** : Lecteur — rangée .v5-actions (js/ui-v5-bobines.js:241-293 ; styles.css:9136-9147)
+- **Domaine** : Bobines et stories · **Nature** : friction · **Type** : observation
+- **Preuve** : À 390 px, .reel-info finit à x = 296 ; « À vivre près de moi » commence à x = 295 et « Proposer une sortie » à x = 452 (sonde bobines-04). Rangée en défilement horizontal sans barre ni indice.
+- **Problème** : On ne voit que « Ça m'intéresse » et « Découvrir Musique » ; les portes vers les activités et la sortie sont cachées.
+- **Situation déclenchante** : Toute bobine non reliée à une activité, sur mobile.
+- **Conséquence pour l'utilisateur** : La boucle Découvrir → Rencontrer que le lot UI-5 veut ouvrir reste invisible ; un glisser horizontal dans un lecteur vertical ne se devine pas.
+- **Proposition** : Grille 2 × 2 dans la zone texte (cibles 44 px maintenues), les deux sorties IRL bordées de corail.
+- **Visuels** : [BOB-010](galerie/index.html#/surface/BOB-010) · **Surfaces** : BOB-010, BOB-013, BOB-015
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Hauteur de .reel-info : vérifier le dégagement de .reels-nav.next et des légendes longues.
+- **Critère d'acceptation** : À 360 et 390 px, les quatre .v5-chip sont entièrement dans la fenêtre sans défilement horizontal.
+- **Fichiers probables** : `styles.css`
+
+### BOB-C04 — Aucune bobine ne peut être signalée ni supprimée depuis le lecteur  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Lecteur — rail .reel-actions (js/app-05-config-profil.js:3053-3072)
+- **Domaine** : Bobines et stories · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Rail : Aimer, Commentaire, Partager ; aucun « ⋯ ». La story a un « Signaler » (app-08:1925-1935) ; la bobine, format le plus viral, non.
+- **Problème** : Un contenu choquant vu en plein écran ne peut pas être signalé là où on le voit ; l'auteur ne peut pas retirer sa bobine depuis le lecteur.
+- **Situation déclenchante** : Bobine d'un autre compte ou bobine à soi.
+- **Conséquence pour l'utilisateur** : Modération affaiblie sur le format le plus exposé ; frustration de l'auteur.
+- **Proposition** : Ajouter « Plus » au rail : Signaler (reportPost existant) pour autrui, Supprimer (suppression existante des publications) pour sa bobine.
+- **Visuels** : [BOB-010](galerie/index.html#/surface/BOB-010) · **Surfaces** : BOB-010, BOB-015
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Flux de signalement et de suppression existants des publications.
+- **Risque de régression** : Fermer le lecteur avant d'ouvrir une feuille (règle UI-5) ou utiliser la couche modale (10001).
+- **Critère d'acceptation** : Chaque .reel-item porte un bouton « Plus » ouvrant Signaler (autrui) ou Supprimer (auteur).
+- **Fichiers probables** : `js/app-05-config-profil.js`
 
 ### IRL-C01 — Les exemples « participation désactivée » portent un « Je viens » corail plein et actif
 
@@ -767,6 +942,70 @@
 - **Critère d'acceptation** : À 360×640 et 390×844, quel que soit l'endroit du bouton, le panneau est entièrement dans l'écran (8 px de marge) ; chaque case mesure ≥ 40 px.
 - **Fichiers probables** : `js/app-04-comments-shop.js`, `js/emoji-misc.js`
 
+### PRO-C03 — Le pseudo n'est pas validé à l'enregistrement (vide, « Admin » acceptés)  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Modifier › Pseudo — saveMainProfile (app-06:2042) ; règle nomCompteValide (app-02:6253)
+- **Domaine** : Profils et passions · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Pseudo vidé : « Profil mis à jour », PATCH username="" ; « Admin » : même chose (sonde profils-05). En production la contrainte profiles_username_forme refuserait — échec alors masqué par PRO-C01. « Déjà pris » passe par un toast, peint sous la modale (fait transverse PAR-C03 / IRL-C65 / MSG-C85).
+- **Problème** : Aucune règle de pseudo à l'édition, alors qu'elle existe à l'inscription.
+- **Situation déclenchante** : Vider ou raccourcir son pseudo, choisir un mot réservé.
+- **Conséquence pour l'utilisateur** : Pseudo vide en base (banc) ou divergence silencieuse écran/serveur (production).
+- **Proposition** : Appliquer nomCompteValide avant l'envoi ; erreur sous le champ (2 à 40 caractères, mots réservés, déjà pris), modale ouverte.
+- **Visuels** : [PRO-013](galerie/index.html#/surface/PRO-013) · **Surfaces** : PRO-013, PRO-014
+- **Priorité** : P2 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : PRO-C01.
+- **Risque de régression** : Comptes existants dont le pseudo ne respecte pas la règle : ne bloquer que la saisie modifiée.
+- **Critère d'acceptation** : Pseudo vide, d'un caractère ou réservé : aucune requête PATCH, message sous #editUsername.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### PRO-C05 — Une demande d'abonnement en attente est comptée et listée comme abonnement accepté  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : loadFollowersCount (app-06:1144), openFollowersList (app-06:1210), compteurs du profil visité (app-04:4519)
+- **Domaine** : Profils et passions · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Compte privé : « 8 abonnés » = 7 acceptés + Nora en attente, Nora dans la liste ; profil de Sacha (privé) : « 1 abonné » = ma propre demande ; Nora : « 1 abonnement » = sa demande. Aucune requête ne filtre status=accepted ; la policy follows ouvre les lignes pending aux deux intéressés.
+- **Problème** : Les compteurs et la liste mélangent demandes et abonnés.
+- **Situation déclenchante** : Compte privé recevant une demande ; visite d'un compte privé après avoir demandé.
+- **Conséquence pour l'utilisateur** : On croit qu'une personne non acceptée voit déjà ses publications ; les demandes ne sont pas repérables hors de la cloche.
+- **Proposition** : Filtrer status=accepted partout ; dans « Abonnés » d'un compte privé, une ligne « N demandes en attente » qui renvoie aux notifications.
+- **Visuels** : [PRO-009](galerie/index.html#/surface/PRO-009), [PRO-049](galerie/index.html#/surface/PRO-049) · **Surfaces** : PRO-009, PRO-049, PRO-008, PRO-025, PRO-028
+- **Priorité** : P2 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Bases sans colonne status (repli _followsSansStatut).
+- **Critère d'acceptation** : Avec une demande pending, « Abonnés » vaut le nombre de lignes accepted et la personne n'est pas listée ; profil visité privé : ma demande ne compte pas.
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `js/app-04-comments-shop.js`
+
+### PRO-C06 — « Bloquer » agit au premier appui, sans confirmation, et retire l'abonnement en silence  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Profil visité › ⋯ › Bloquer — openVisitedProfileMenu (app-04:4680), blockUser (app-04:5147)
+- **Domaine** : Profils et passions · **Nature** : friction · **Type** : observation
+- **Preuve** : Sonde profils-06 : aucune modale, toast « 🚫 Malik Benali bloqué », ligne blocks écrite, Malik retiré des abonnements.
+- **Problème** : Action lourde, irréversible en un geste, sans annoncer ses effets.
+- **Situation déclenchante** : Appui involontaire dans un menu de trois lignes de 38 px.
+- **Conséquence pour l'utilisateur** : Blocage et désabonnement non voulus ; l'autre perd la conversation.
+- **Proposition** : Feuille de confirmation : conséquences (ne peut plus te suivre, t'écrire, voir tes publications ; tu ne le suis plus ; il n'est pas prévenu), bouton « Bloquer » rouge.
+- **Visuels** : — · **Surfaces** : PRO-031, PRO-022
+- **Priorité** : P2 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Verrou d'écriture ROB-04 ; tests de modération.
+- **Critère d'acceptation** : Toucher « Bloquer » ouvre une confirmation ; aucune ligne blocks avant « Bloquer » confirmé.
+- **Fichiers probables** : `js/app-04-comments-shop.js`
+
+### CRE-C03 — Le lien avec une activité est invisible et se colle à une publication ultérieure  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : « Partager mon expérience » — js/app-07-ia-explore-irl.js:4558-4592 ; publishPost app-06:5379-5382
+- **Domaine** : Création et médias · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sonde creation-06 : Studio ouvert depuis l'activité, retour au Fil sans publier, puis publication de « Un tout autre sujet… » → eventId = ev_cre_passee. Capture CRE-016 : aucune mention du rattachement.
+- **Problème** : window._pendingEventPost n'est consommé qu'à la publication suivante, quelle qu'elle soit, et rien à l'écran ne le montre.
+- **Situation déclenchante** : Ouvrir « Partager mon expérience » puis quitter le Studio.
+- **Conséquence pour l'utilisateur** : Une publication sans rapport rejoint l'album public d'une activité ; à l'inverse, personne ne sait que son souvenir y sera rangé.
+- **Proposition** : Pastille « Liée à l'activité X · Retirer » dans le composer (maquette CRE-016) ; effacer le lien quand on quitte le Studio sans publier.
+- **Visuels** : [CRE-016](galerie/index.html#/surface/CRE-016) · **Surfaces** : CRE-016
+- **Priorité** : P2 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Album d'activité (_loadEventAlbum) ; colonne posts.event_id.
+- **Critère d'acceptation** : Après « Partager mon expérience », quitter puis republier : la publication n'a pas d'event_id ; dans le Studio, le nom de l'activité est visible.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`, `js/app-06-reels-partage.js`, `js/ui-v6-composer.js`
+
 ### MSG-C64 — La feuille d'actions s'ouvre sous le doigt encore posé : le relâchement peut déclencher une action ou refermer la feuille
 
 - **Emplacement** : Conversation › appui long sur une bulle — _wireMsgActions (js/app-04-comments-shop.js:6263-6283) : ouverture à 480 ms pendant l'appui, aucun traitement du clic qui suit le relâchement
@@ -990,6 +1229,310 @@
 - **Risque de régression** : partage*.spec.js ; les repartages existants portent le texte en dur dans `content`.
 - **Critère d'acceptation** : Toucher la citation d'un repartage ouvre la publication d'origine ; aucune boîte ne dépasse la carte.
 - **Fichiers probables** : `js/app-02-state-utils.js`, `js/app-03-posts-vlogs.js`, `styles.css`
+
+### PRO-C04 — « Tout » reste coché : toucher « Photos » ne filtre rien
+
+- **Emplacement** : Mon profil › filtres de type — switchProfileTab (app-06:1497), PROFILE_TAB_PRED.posts = tout
+- **Domaine** : Profils et passions · **Nature** : friction · **Type** : observation
+- **Preuve** : Capture PRO-003 : Tout + Photos cochés, la liste garde textes et vidéos (union). Le profil visité part de « rien coché » : même geste, effet différent.
+- **Problème** : Le filtre le plus attendu semble cassé.
+- **Situation déclenchante** : Premier usage des filtres.
+- **Conséquence pour l'utilisateur** : On croit qu'il n'y a pas de photo ou que le filtre ne marche pas.
+- **Proposition** : Choix unique avec « Tout » comme neutre (comme le rail) sur les deux profils.
+- **Visuels** : [PRO-003](galerie/index.html#/surface/PRO-003) · **Surfaces** : PRO-003, PRO-021
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : État persistant contentTabIds ; tests des sous-filtres.
+- **Critère d'acceptation** : Depuis « Tout », toucher « Photos » décoche « Tout » et n'affiche que la grille des photos ; idem sur le profil visité.
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `js/app-04-comments-shop.js`
+
+### PRO-C07 — Le profil d'un compte que j'ai bloqué ne dit pas qu'il est bloqué  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : openUserProfile (app-04:4596-4620)
+- **Domaine** : Profils et passions · **Nature** : clarte · **Type** : observation
+- **Preuve** : Sonde profils-06 : Tom bloqué → Message et Suivre affichés normalement ; seul le menu ⋯ montre « Débloquer ».
+- **Problème** : Rien ne rappelle l'état de blocage.
+- **Situation déclenchante** : Rouvrir le profil d'une personne bloquée (liste, lien, commentaire).
+- **Conséquence pour l'utilisateur** : Message ou Suivre tentés puis refusés ; on oublie qu'on a bloqué.
+- **Proposition** : Remplacer les actions par un bandeau « Tu as bloqué ce compte » et un bouton « Débloquer ».
+- **Visuels** : — · **Surfaces** : PRO-029
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Profil d'un compte bloqué : bandeau visible, pas de bouton Message ni Suivre.
+- **Fichiers probables** : `js/app-04-comments-shop.js`
+
+### PRO-C15 — « Modifier le profil » : 1 096 px de haut, huit champs de réseaux, Sauvegarder tout en bas
+
+- **Emplacement** : openEditMainProfile (app-06:1979-2001)
+- **Domaine** : Profils et passions · **Nature** : friction · **Type** : jugement
+- **Preuve** : Capture PRO-012 : 8 champs URL toujours affichés (39 px de haut), « Tiktok », « Youtube », « Linkedin », « Twitter » ; texte de confidentialité 11 px de six lignes.
+- **Problème** : Long à parcourir pour une modification de bio.
+- **Situation déclenchante** : Toute édition.
+- **Conséquence pour l'utilisateur** : Défilement, risque d'abandon ; marques mal écrites.
+- **Proposition** : N'afficher que les réseaux remplis + « Ajouter un réseau » ; barre d'enregistrement collante ; noms de marque corrects.
+- **Visuels** : [PRO-012](galerie/index.html#/surface/PRO-012) · **Surfaces** : PRO-012
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Conservation du brouillon (editCoverFromModal).
+- **Critère d'acceptation** : À 390 px, « Sauvegarder » visible sans défiler ; un réseau vide n'occupe pas de champ.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### CRE-C02 — Choisir une passion pour une publication l'ajoute aux passions du compte, sans le dire  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Studio › Changer — js/passions-flat-ui.js:158-250 (ajouterPassionAuCompte), app-06:4800-4813 (onStudioPassionChange → switchToProfile)
+- **Domaine** : Création et médias · **Nature** : clarte · **Type** : observation
+- **Preuve** : Sonde creation-03b : profils actifs [musique] → [musique, outdoor-escalade-bloc] après « Publier dans cette passion » ; aucun toast ; la zone de sélection s'intitule « TES PASSIONS ».
+- **Problème** : Un choix ponctuel modifie durablement le profil (passions affichées, fil) et la passion courante.
+- **Situation déclenchante** : Publier dans une passion que l'on n'a pas encore.
+- **Conséquence pour l'utilisateur** : Le profil et le fil changent à l'insu de la personne ; le commentaire du composer UI-6 promet l'inverse (« ne change pas durablement »).
+- **Proposition** : Dire avant de valider « … rejoindra aussi tes passions » (maquette CRE-005), et confirmer après ; l'intitulé de la zone devient « Pour cette publication ». Décision produit : faut-il vraiment l'ajouter ?
+- **Visuels** : [CRE-005](galerie/index.html#/surface/CRE-005) · **Surfaces** : CRE-004, CRE-005
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Décision produit sur la règle « publier ⇒ posséder la passion ».
+- **Risque de régression** : Ne pas écrire #postPassion avant l'acquisition (garde existante) ; plafond levé mais logique conservée.
+- **Critère d'acceptation** : Choisir une passion non possédée affiche, avant validation, la phrase qui annonce son ajout au compte.
+- **Fichiers probables** : `js/passions-flat-ui.js`, `js/passion-search-selector.js`
+
+### CRE-C04 — Après Publier, les messages se contredisent et l'état de la carte reste figé sur « Sync… »
+
+- **Emplacement** : Fil — app-06:5307, 5410-5424 ; carte app-02-state-utils.js:10473-10478
+- **Domaine** : Création et médias · **Nature** : clarte · **Type** : observation
+- **Preuve** : CRE-014 (refus 403 simulé) : « Publication en cours… » reste affiché à côté de « Post en local (connexion lente) » ; la carte dit « Sync… » alors que l'état est « offline ». CRE-013 : carte « Sync… » alors que l'état est « synced ». Libellé 10 px, couleurs #22c55e/#f59e0b sur blanc.
+- **Problème** : Le toast de chargement n'est pas retiré, un refus serveur est attribué au réseau, la carte n'est pas repeinte au verdict.
+- **Situation déclenchante** : Toute publication ; surtout un refus (RLS, session).
+- **Conséquence pour l'utilisateur** : On croit à une lenteur et on attend un envoi qui ne viendra peut-être pas, ou on republie.
+- **Proposition** : Remplacer le toast de chargement par le verdict ; distinguer « refusée » de « en attente de réseau » ; repeindre la carte au verdict ; libellé 12 px contrasté (« En ligne », « En attente — renvoi auto », « Non publiée »).
+- **Visuels** : [CRE-013](galerie/index.html#/surface/CRE-013), [CRE-014](galerie/index.html#/surface/CRE-014) · **Surfaces** : CRE-013, CRE-014
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Fait transverse PAR-C03 / IRL-C65 / MSG-C85 (toasts sous les feuilles).
+- **Risque de régression** : File de renvoi durable (app-08:1728-1840) ; tests publication-optimiste-refusee.spec.js, publications-reprise.spec.js.
+- **Critère d'acceptation** : Refus 403 : un seul message « Publication refusée… » et la carte affiche « Non publiée » ; succès : la carte affiche « En ligne » sans rechargement.
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `js/app-08-ui-modals-tour.js`, `js/app-02-state-utils.js`
+
+### CRE-C05 — Aucun brouillon : le texte est perdu au rechargement
+
+- **Emplacement** : Studio — app-06:4872-4890, 5478-5546 (saveDraft/loadDraft sans appelant, #draftList absent)
+- **Domaine** : Création et médias · **Nature** : friction · **Type** : observation
+- **Preuve** : Sonde creation-02 : texte conservé en changeant d'onglet, vide après rechargement (CRE-015). grep : saveDraft n'est appelé nulle part.
+- **Problème** : Une fermeture de la PWA, une mise à jour ou un rechargement efface la création en cours.
+- **Situation déclenchante** : Quitter l'application en cours de rédaction.
+- **Conséquence pour l'utilisateur** : Perte de texte ; découragement à rédiger long.
+- **Proposition** : Conserver automatiquement le texte (et la passion, l'envie) du Studio en local, restauré à l'ouverture avec « Reprendre / Effacer » ; supprimer le code de brouillons orphelin. Pas de liste de brouillons.
+- **Visuels** : [CRE-015](galerie/index.html#/surface/CRE-015) · **Surfaces** : CRE-015, CRE-032, CRE-002
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Quota localStorage : ne jamais y écrire un média base64 (_leanState).
+- **Critère d'acceptation** : Saisir un texte, recharger, ouvrir le Studio : le texte est proposé à la reprise.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### CRE-C07 — Une seconde zone d'envoi, sombre et illisible, sous chaque aperçu
+
+- **Emplacement** : Studio — .upload-zone styles.css:2659-2672 (fond rgba(15,23,42,.6)) ; index.html:889-903
+- **Domaine** : Création et médias · **Nature** : polish · **Type** : observation
+- **Preuve** : Captures CRE-006, CRE-007, CRE-009 : bloc gris foncé « Ajouter une photo / vidéo », texte d'aide 11 px muet sur fond sombre, troisième porte vers le même fichier ; Publier sort de l'écran à 390 px.
+- **Problème** : Vestige d'un thème sombre ; doublon des boutons du composer.
+- **Situation déclenchante** : Ajouter ou retirer un média.
+- **Conséquence pour l'utilisateur** : Écran alourdi, hors identité ; laisse croire qu'on peut ajouter plusieurs photos.
+- **Proposition** : Masquer .upload-zone sous UI-6 (les boutons du composer suffisent) ; le bouton devient « Changer la photo » quand une photo est là.
+- **Visuels** : [CRE-006](galerie/index.html#/surface/CRE-006), [CRE-007](galerie/index.html#/surface/CRE-007), [CRE-009](galerie/index.html#/surface/CRE-009) · **Surfaces** : CRE-006, CRE-007, CRE-009
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : La zone déclenche #photoInput/#videoInput : les boutons v6 font de même.
+- **Critère d'acceptation** : Avec une photo, aucun bloc sombre n'apparaît ; Publier visible à 390 × 844 sans défiler sous un texte court.
+- **Fichiers probables** : `styles.css`
+
+### CRE-C08 — Commandes de création sous 44 px ou sans nom accessible
+
+- **Emplacement** : Retirer photo (.photo-clear, div 28 px, app-06:5043) ; #recBtn (index.html:914) ; .me-tool 40 px title seul (index.html:226-229) ; poignées 22/24 px (app-08:1505-1508) ; #v7BobineCoverBtn 29 px ; .v2-sheet-close 34 px
+- **Domaine** : Création et médias · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Mesures sondes creation-01/03/04 : 28 × 28, 34 × 34, 40 × 40, 22 × 22, 24 × 24, 116 × 29 px ; aria-label absent sur .photo-clear, #recBtn, .me-tool, .me-ov-del.
+- **Problème** : Cibles petites et commandes muettes pour un lecteur d'écran.
+- **Situation déclenchante** : Usage au pouce, lecteur d'écran.
+- **Conséquence pour l'utilisateur** : Erreurs de toucher (retrait de photo, suppression d'un texte) ; outils inutilisables à l'aveugle.
+- **Proposition** : 44 px minimum (zone tactile), vrai <button> avec aria-label : « Retirer la photo », « Enregistrer », « Ajouter un texte », « Supprimer ce texte ».
+- **Visuels** : [CRE-001](galerie/index.html#/surface/CRE-001), [CRE-006](galerie/index.html#/surface/CRE-006), [CRE-019](galerie/index.html#/surface/CRE-019), [CRE-020](galerie/index.html#/surface/CRE-020), [CRE-025](galerie/index.html#/surface/CRE-025) · **Surfaces** : CRE-001, CRE-006, CRE-010, CRE-019, CRE-020, CRE-024, CRE-025
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Poignées d'overlay : contre-échelle (_meApplyTransform).
+- **Critère d'acceptation** : Les commandes citées mesurent ≥ 44 × 44 px de zone tactile et ont un nom accessible.
+- **Fichiers probables** : `index.html`, `styles.css`, `js/app-06-reels-partage.js`, `js/app-08-ui-modals-tour.js`, `js/ui-v7-lot.js`
+
+### CRE-C09 — Le texte d'une story ou d'une bobine se saisit dans une boîte native prompt()
+
+- **Emplacement** : Éditeur média — meAddText app-08:1451 ; modification au double-clic app-08:1511
+- **Domaine** : Création et médias · **Nature** : friction · **Type** : observation
+- **Preuve** : Sonde creation-04 : dialogue natif « Ton texte : » ; modification par double-clic seulement (aucun geste tactile équivalent).
+- **Problème** : Fenêtre système hors identité, sans aperçu ni couleur ; modifier un texte exige un double-clic de souris.
+- **Situation déclenchante** : Ajouter ou corriger un texte superposé.
+- **Conséquence pour l'utilisateur** : Saisie maladroite sur mobile, texte difficile à corriger.
+- **Proposition** : Feuille de saisie dans l'éditeur (champ 16 px, aperçu en direct, 4 couleurs, OK), ouverte aussi par un appui sur le texte (maquette CRE-025).
+- **Visuels** : [CRE-025](galerie/index.html#/surface/CRE-025) · **Surfaces** : CRE-025
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : M · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Format des overlays (_meOverlaysData) inchangé.
+- **Critère d'acceptation** : Aa ouvre une saisie dans la page, sans window.prompt ; toucher un texte existant permet de le modifier.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`, `styles.css`
+
+### CRE-C14 — Visiteur : le micro est demandé avant tout compte, et « Live vidéo » répond par un simple toast  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : toggleRecording app-06:5151 (aucun requireAuthentication) ; startVideoLive app-05:4233
+- **Domaine** : Création et médias · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Captures CRE-031 (toast « Micro refusé » = getUserMedia appelé pour un visiteur) et CRE-030 (« Connecte-toi pour lancer un live ») ; Bobine/Story/Activité ouvrent la porte d'inscription (sonde creation-05).
+- **Problème** : Contraire à la règle « aucune demande de permission à l'entrée » ; entrée Live incohérente avec les cinq autres.
+- **Situation déclenchante** : Visiteur → Créer → Audio / podcast → micro ; ou → Live vidéo.
+- **Conséquence pour l'utilisateur** : Demande système déroutante pour quelqu'un qui découvre ; message sans issue pour le live.
+- **Proposition** : requireAuthentication("publier") en tête de toggleRecording et de la porte Audio ; porte d'inscription commune pour Live.
+- **Visuels** : [CRE-031](galerie/index.html#/surface/CRE-031), [CRE-030](galerie/index.html#/surface/CRE-030) · **Surfaces** : CRE-031, CRE-030
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Gate visiteur (first-run.js) ; comptes existants non touchés (rend true).
+- **Critère d'acceptation** : Visiteur : toucher le micro ou Live ouvre « Crée ton compte… » et aucun getUserMedia n'est appelé.
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `js/app-05-config-profil.js`, `js/ui-v2-shell.js`
+
+### BOB-C05 — Les bobines vidéo n'ont pas de vignette (rail du fil, grilles de profil)
+
+- **Emplacement** : reelPoster js/ui-v2-shell.js:474 ; grilles app-06:1478 et app-04:4888
+- **Domaine** : Bobines et stories · **Nature** : clarte · **Type** : observation
+- **Preuve** : 5 tuiles sur 8 du rail sans image (sonde bobines-01) : aucune bobine vidéo de compte n'a de `poster`.
+- **Problème** : Des aplats violets identiques à la place d'un aperçu.
+- **Situation déclenchante** : Toute bobine vidéo.
+- **Conséquence pour l'utilisateur** : Rien n'invite à ouvrir : la porte de découverte la plus visuelle ne montre rien.
+- **Proposition** : Calculer une image de la vidéo à la publication (poster), ou à défaut <video preload=metadata> sur une image de la vidéo.
+- **Visuels** : [BOB-002](galerie/index.html#/surface/BOB-002) · **Surfaces** : BOB-002, BOB-050, BOB-051
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Stockage d'une image de couverture à la publication.
+- **Risque de régression** : Poids du fil (pas de vidéo jouée dans le rail).
+- **Critère d'acceptation** : Chaque tuile du rail d'une bobine vidéo affiche une image extraite de la vidéo.
+- **Fichiers probables** : `js/ui-v2-shell.js`, `js/app-08-ui-modals-tour.js`
+
+### BOB-C06 — Impossible de mettre une bobine en pause, même avec « réduire les animations »
+
+- **Emplacement** : Lecteur — aucun gestionnaire de toucher sur .reel-media ; videoPubliqueAutoplay js/app-02-state-utils.js:4163
+- **Domaine** : Bobines et stories · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Toucher au centre : paused reste false (sonde bobines-04). Avec reducedMotion: reduce, la vidéo démarre et boucle (BOB-070).
+- **Problème** : Une vidéo en boucle sans contrôle de pause.
+- **Situation déclenchante** : Toute bobine vidéo.
+- **Conséquence pour l'utilisateur** : Contraire au critère WCAG 2.2.2 ; gênant pour qui veut lire la légende ou est sensible au mouvement.
+- **Proposition** : Toucher = pause/lecture avec repère ❚❚ ; pas de lecture automatique si prefers-reduced-motion: reduce (bouton « Lire » à la place).
+- **Visuels** : [BOB-011](galerie/index.html#/surface/BOB-011) · **Surfaces** : BOB-011, BOB-070
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Les boutons du rail et les chips arrêtent déjà la propagation ; vérifier le défilement vertical.
+- **Critère d'acceptation** : Un toucher sur la vidéo l'arrête et affiche un repère ; sous reduce, aucune vidéo ne démarre seule.
+- **Fichiers probables** : `js/app-05-config-profil.js`, `js/app-02-state-utils.js`
+
+### BOB-C07 — Stories : le maintien ne met pas en pause, le relâchement saute la story, et le clavier ne fait rien
+
+- **Emplacement** : Visionneuse — .story-tap-prev/next index.html:183-184 ; minuteur app-08:2030-2045
+- **Domaine** : Bobines et stories · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Appui maintenu 1,5 s : barre 17,9 % → 51,6 %, puis story suivante au relâcher. Échap et → : aucun effet (sonde bobines-03).
+- **Problème** : Lire une story longue est impossible : elle avance en 4,5 s quoi qu'on fasse.
+- **Situation déclenchante** : Story texte, maintien pour lire, ordinateur.
+- **Conséquence pour l'utilisateur** : Contenu manqué ; WCAG 2.2.1 (durée réglable) non tenu.
+- **Proposition** : Maintien = pause (pointerdown/up), relâcher ne navigue pas ; Échap ferme, ← → naviguent, Espace met en pause.
+- **Visuels** : — · **Surfaces** : BOB-035, BOB-036, BOB-037
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Distinguer toucher court et maintien (> 250 ms).
+- **Critère d'acceptation** : Pendant un maintien, la largeur de la barre courante ne change pas et la story ne change pas au relâcher.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`, `index.html`
+
+### BOB-C08 — Les stories réelles n'affichent pas leur heure et passent de la plus récente à la plus ancienne
+
+- **Emplacement** : supaLoadStories js/app-08-ui-modals-tour.js:5703 (aucun createdAt) ; tri app-08:603 ; fmtTime app-02:2098
+- **Domaine** : Bobines et stories · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : #storyTime vide sur toutes les stories du faux serveur ; Léa : la story de 30 min est jouée avant celle de 90 min (sonde bobines-03).
+- **Problème** : On ne sait pas quand la story a été publiée et l'histoire se lit à l'envers.
+- **Situation déclenchante** : Toute story chargée depuis Supabase avec plusieurs stories d'un même auteur.
+- **Conséquence pour l'utilisateur** : « Atelier ouvert ce soir » lu sans savoir si c'est encore ce soir : décision IRL faussée.
+- **Proposition** : Reprendre createdAt: supaTs(r.created_at) dans supaLoadStories.
+- **Visuels** : [BOB-030](galerie/index.html#/surface/BOB-030) · **Surfaces** : BOB-030, BOB-031
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Ordre des groupes (anneaux vus en fin) inchangé.
+- **Critère d'acceptation** : #storyTime affiche l'âge de la story ; les stories d'un auteur passent de la plus ancienne à la plus récente.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`
+
+### BOB-C09 — Une story ne permet ni de répondre ni de réagir  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Visionneuse de stories (index.html:168-187)
+- **Domaine** : Bobines et stories · **Nature** : friction · **Type** : jugement
+- **Preuve** : Seuls le nom (vers le profil), ⋯ (signaler) et ✕ sont actifs ; la story de Léa pose une question (« Qui passe les essayer avant samedi ? »).
+- **Problème** : Rien ne prolonge la story en interaction.
+- **Situation déclenchante** : Story qui invite à venir, à répondre.
+- **Conséquence pour l'utilisateur** : La boucle interaction → IRL s'arrête net sur le format le plus spontané.
+- **Proposition** : Un champ « Répondre à Léa… » qui ouvre la conversation EXISTANTE avec la story citée (pas de nouveau canal).
+- **Visuels** : [BOB-030](galerie/index.html#/surface/BOB-030) · **Surfaces** : BOB-030
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Messagerie existante (ouverture d'une conversation 1:1).
+- **Risque de régression** : Comptes privés et bloqués : réutiliser les règles de la messagerie.
+- **Critère d'acceptation** : Sur la story d'autrui, « Répondre » ouvre la conversation avec cette personne, la story citée.
+- **Fichiers probables** : `index.html`, `js/app-08-ui-modals-tour.js`
+
+### BOB-C10 — Fermer une bobine ouverte depuis un profil ne ramène pas à ce profil
+
+- **Emplacement** : Grille des bobines du profil visité — « closeModal();openReelById » (js/app-04-comments-shop.js:4890)
+- **Domaine** : Bobines et stories · **Nature** : friction · **Type** : observation
+- **Preuve** : Profil de Léa → Bobines → bobine → Fermer : écran « Mon profil », aucune modale (sonde bobines-05, capture BOB-052).
+- **Problème** : Le profil visité disparaît.
+- **Situation déclenchante** : Regarder les bobines de quelqu'un depuis son profil.
+- **Conséquence pour l'utilisateur** : Il faut rechercher la personne pour revenir à elle (suivre, écrire).
+- **Proposition** : Mémoriser le profil d'origine et le rouvrir à la fermeture du lecteur.
+- **Visuels** : — · **Surfaces** : BOB-052
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Historique (pushOverlayHistory) : un seul retour doit suffire.
+- **Critère d'acceptation** : Après Fermer, la fiche de Léa est de nouveau affichée.
+- **Fichiers probables** : `js/app-04-comments-shop.js`, `js/app-05-config-profil.js`
+
+### BOB-C11 — Live : le nom de la personne en direct n'apparaît pas
+
+- **Emplacement** : Visionneuse live — .vlive-topbar (styles.css:6468-6495 ; app-05:5084-5102)
+- **Domaine** : Bobines et stories · **Nature** : clarte · **Type** : observation
+- **Preuve** : À 390 px, .vlive-name (flex:1, nowrap) est réduit à 0 ; « EN DIRECT » et « 👁 0 » passent sur deux lignes ; Suivre 61 × 34 px, ↗ 40 × 40 px (sonde bobines-05).
+- **Problème** : On regarde un direct sans savoir de qui.
+- **Situation déclenchante** : Spectateur sur mobile.
+- **Conséquence pour l'utilisateur** : Confiance et envie de suivre affaiblies.
+- **Proposition** : Barre sur deux lignes : statut en haut, nom en clair dessous ; Suivre et partager à 44 px.
+- **Visuels** : [BOB-040](galerie/index.html#/surface/BOB-040) · **Surfaces** : BOB-040
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Position de .vlive-title-pill.
+- **Critère d'acceptation** : À 360 px, le nom du diffuseur est entièrement lisible et toutes les commandes font ≥ 44 px.
+- **Fichiers probables** : `styles.css`
+
+### BOB-C12 — Échap ou retour ferment tout le lecteur au lieu du panneau ou de la feuille ouverte au-dessus
+
+- **Emplacement** : closeCurrentOverlay js/app-02-state-utils.js:3764 ; keydown js/app-06-reels-partage.js:1015
+- **Domaine** : Bobines et stories · **Nature** : friction · **Type** : hypothese
+- **Preuve** : D'après le code : les bobines sont fermées avant la modale et le panneau de commentaires n'est pas testé ; Échap déclenche à la fois closeModal (app-08:72) et closeReels.
+- **Problème** : Revenir en arrière depuis les commentaires ou le partage quitte la bobine.
+- **Situation déclenchante** : Geste retour / Échap avec un panneau ouvert.
+- **Conséquence pour l'utilisateur** : Perte de la bobine en cours (et du commentaire tapé).
+- **Proposition** : Fermer d'abord le panneau de commentaires puis la modale, et seulement ensuite le lecteur.
+- **Visuels** : — · **Surfaces** : BOB-086
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Pile d'historique des overlays.
+- **Critère d'acceptation** : Panneau ouvert : un retour le ferme et laisse la bobine à l'écran.
+- **Fichiers probables** : `js/app-02-state-utils.js`, `js/app-06-reels-partage.js`
+
+### BOB-C22 — Les bobines d'exemple se mêlent à celles des comptes, sans marque et sans fin de liste
+
+- **Emplacement** : buildReels js/app-05-config-profil.js:2867 ; compteur #reelsCounter
+- **Domaine** : Bobines et stories · **Nature** : clarte · **Type** : observation
+- **Preuve** : Compte connecté : 27 bobines dont 20 d'exemple (sonde bobines-01) ; dans le lecteur aucune n'est marquée « Exemple » ; en fin de liste seule la flèche ↓ grise.
+- **Problème** : On ne sait pas ce qui est réel.
+- **Situation déclenchante** : Compte avec peu de bobines réelles.
+- **Conséquence pour l'utilisateur** : Confiance : on peut vouloir rencontrer une personne d'exemple.
+- **Proposition** : Étiquette « Exemple PASSIO » sur ces bobines (comme dans le fil) et carte de fin « Tu as tout vu ».
+- **Visuels** : — · **Surfaces** : BOB-010, BOB-016
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucune.
+- **Critère d'acceptation** : Chaque bobine d'exemple porte la mention « Exemple » dans le lecteur.
+- **Fichiers probables** : `js/app-05-config-profil.js`
 
 ### IRL-C03 — Le seul chemin vers « ma position » est enfoui à trois gestes, dans la vue Filtre  ⚠ sensible (auth, droits, données privées ou règle métier)
 
@@ -2097,6 +2640,134 @@
 - **Critère d'acceptation** : La carte d'un compte privé porte une mention de visibilité lisible par un lecteur d'écran.
 - **Fichiers probables** : `js/app-02-state-utils.js`
 
+### PRO-C10 — Fermer un profil ouvert depuis une liste ramène au profil, pas à la liste
+
+- **Emplacement** : _personRowHTML : closeModal();openUserProfile (app-06:1185)
+- **Domaine** : Profils et passions · **Nature** : friction · **Type** : observation
+- **Preuve** : Capture PRO-033 : Abonnés → Léa → × : retour sur mon profil, la liste a disparu.
+- **Problème** : Parcourir ses abonnés un par un oblige à rouvrir la liste.
+- **Situation déclenchante** : Visiter plusieurs abonnés.
+- **Conséquence pour l'utilisateur** : Trois gestes de plus par personne.
+- **Proposition** : Mémoriser la liste d'origine et la rouvrir à la fermeture du profil (ou empiler la modale).
+- **Visuels** : [PRO-033](galerie/index.html#/surface/PRO-033) · **Surfaces** : PRO-033
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Aucune.
+- **Risque de régression** : Historique et bouton retour Android (openModal pose une entrée).
+- **Critère d'acceptation** : Abonnés → profil → × : la liste « Abonnés » est de nouveau affichée, à la même position.
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `js/app-04-comments-shop.js`
+
+### PRO-C11 — « Toutes » est cité deux fois alors qu'aucun bouton ne porte ce nom
+
+- **Emplacement** : État vide filtré (app-06:1458) ; confirmation d'archivage (app-06:2732)
+- **Domaine** : Profils et passions · **Nature** : clarte · **Type** : observation
+- **Preuve** : Capture PRO-004 : « Touche « Toutes » pour revoir… » ; le rail n'a que des bulles. Le profil visité a déjà corrigé ce texte (app-04:4863).
+- **Problème** : Consigne impossible à suivre.
+- **Situation déclenchante** : Filtre qui vide l'écran ; archivage.
+- **Conséquence pour l'utilisateur** : On cherche un bouton absent.
+- **Proposition** : « Touche de nouveau la bulle X » ; « restent sur ton profil ».
+- **Visuels** : [PRO-004](galerie/index.html#/surface/PRO-004) · **Surfaces** : PRO-004, PRO-040
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Tests de textes d'archivage.
+- **Critère d'acceptation** : Aucun texte de Profil ou de Mes passions ne mentionne « Toutes ».
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### PRO-C18 — Photo : un fichier refusé ou un envoi raté ne dit rien
+
+- **Emplacement** : _readAndCrop / changeCoverPhoto / changeAvatarPhoto / _syncProfilePhoto (app-06:1511-1710)
+- **Domaine** : Profils et passions · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sonde profils-07 : vidéo choisie → aucun recadreur, aucun message. D'après le code : toast « mise à jour » avant l'envoi, échec avalé (console.warn).
+- **Problème** : Échecs silencieux.
+- **Situation déclenchante** : Fichier non image, réseau coupé.
+- **Conséquence pour l'utilisateur** : Photo perdue sans le savoir.
+- **Proposition** : Message « Ce fichier n'est pas une image » ; annoncer le succès après l'envoi, sinon dire l'échec.
+- **Visuels** : — · **Surfaces** : PRO-019, PRO-020
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Fichier non image : message visible ; Storage refusé : pas de toast de succès.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### PRO-C20 — Le profil d'une personne qui m'a bloquée reste visible avec Suivre et Message  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : openUserProfile (app-04:4287)
+- **Domaine** : Profils et passions · **Nature** : clarte · **Type** : hypothese
+- **Preuve** : Sonde profils-06 (faux serveur, policies recopiées) : profil et publication d'Inès visibles, Suivre proposé ; d'après le code, Suivre sera refusé (« Impossible de suivre … pour le moment »).
+- **Problème** : Proposition d'actions vouées à l'échec, message trompeur « pour le moment ».
+- **Situation déclenchante** : Ouvrir le profil de quelqu'un qui m'a bloqué.
+- **Conséquence pour l'utilisateur** : Insistance involontaire envers quelqu'un qui a choisi de couper le lien.
+- **Proposition** : À trancher côté règle métier (ce qu'un compte bloqué voit) ; au minimum un message de refus neutre.
+- **Visuels** : — · **Surfaces** : PRO-030
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Décision produit sur la visibilité réciproque.
+- **Risque de régression** : Ne jamais révéler explicitement « X t'a bloqué ».
+- **Critère d'acceptation** : Règle décidée et appliquée ; aucun bouton menant à un refus certain.
+- **Fichiers probables** : `js/app-04-comments-shop.js`
+
+### PRO-C23 — Petites cibles et petits textes du domaine
+
+- **Emplacement** : Réactiver 83 × 34 ; badge photo de passion 20 × 20 ; ⋯ et × du profil visité 34 × 34 ; curseur du recadreur 16 px ; dates d'activité 10,5 px
+- **Domaine** : Profils et passions · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Sondes profils-03, 04, 07 ; capture PRO-006. Les compteurs du profil (40 px) sont déjà établis : SOC-C01.
+- **Problème** : Cibles sous 44 px, textes sous 12 px.
+- **Situation déclenchante** : Usage à une main.
+- **Conséquence pour l'utilisateur** : Appuis manqués, lecture difficile.
+- **Proposition** : Zones tactiles de 44 px (marge ou pseudo-élément), dates ≥ 12 px.
+- **Visuels** : — · **Surfaces** : PRO-041, PRO-036, PRO-021, PRO-016, PRO-006
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Mise en page des cartes à 320 px.
+- **Critère d'acceptation** : elementFromPoint rend la même commande sur 44 × 44 px pour chacune ; aucun texte < 12 px.
+- **Fichiers probables** : `styles.css`, `js/app-06-reels-partage.js`, `js/app-04-comments-shop.js`
+
+### CRE-C10 — Story et publication partent sans dire pour qui, ni combien de temps  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Éditeur story (#mePublishBtn) ; Studio (aucune lecture de isPrivate)
+- **Domaine** : Création et médias · **Nature** : clarte · **Type** : jugement
+- **Preuve** : Capture CRE-024 : seul « Publier ma story » ; la story part dans la passion courante (app-08:1655) sans choix ; l'ancien compositeur disait « Visible 24 h par ta communauté » (app-08:725).
+- **Problème** : Durée, public et passion d'une story ne sont pas affichés ; un compte privé n'a aucun rappel.
+- **Situation déclenchante** : Publier une story ; publier depuis un compte privé.
+- **Conséquence pour l'utilisateur** : Doute sur la confidentialité, frein à partager.
+- **Proposition** : Une ligne au-dessus de Publier : « Visible 24 h par ta communauté · 🎸 Musique » (maquette CRE-024) ; au Studio d'un compte privé, « Visible par tes abonnés ».
+- **Visuels** : [CRE-024](galerie/index.html#/surface/CRE-024) · **Surfaces** : CRE-024, CRE-028, CRE-038
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Confirmer la règle de visibilité réelle des stories (RLS).
+- **Risque de régression** : Texte seulement.
+- **Critère d'acceptation** : L'éditeur story affiche durée, public et passion avant Publier.
+- **Fichiers probables** : `index.html`, `js/app-08-ui-modals-tour.js`
+
+### BOB-C13 — Commentaires de bobine : commandes minuscules et vouvoiement isolé
+
+- **Emplacement** : Panneau — .reel-comments-close (styles.css:5136), .reel-comments-send (5338), pied de commentaire (app-05:3412-3416), placeholder index.html:1311
+- **Domaine** : Bobines et stories · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Fermer « − » 28 × 28 px, envoi « ↑ » 36 × 36 px, j'aime / répondre / réagir 16 px de haut, sans libellé (sonde bobines-02) ; « Lancez la conversation... » alors que l'application tutoie.
+- **Problème** : Cibles difficiles ; « − » ne dit pas « fermer ».
+- **Situation déclenchante** : Tout commentaire de bobine.
+- **Conséquence pour l'utilisateur** : Mauvais touchers, ton incohérent.
+- **Proposition** : « Fermer » en toutes lettres à 44 px, envoi 44 px plein, zones de 44 px autour des icônes, « Écris un commentaire… ».
+- **Visuels** : [BOB-020](galerie/index.html#/surface/BOB-020) · **Surfaces** : BOB-020
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucune.
+- **Critère d'acceptation** : Toutes les commandes du panneau mesurent ≥ 44 px ; le texte d'invite tutoie.
+- **Fichiers probables** : `styles.css`, `index.html`, `js/app-05-config-profil.js`
+
+### BOB-C21 — Ma story : ni « vue par », ni suppression, et elle s'insère au milieu des stories des autres  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : playCurrentStory app-08:1925 (⋯ réservé à autrui) ; buildStoryGroups app-08:574
+- **Domaine** : Bobines et stories · **Nature** : friction · **Type** : observation
+- **Preuve** : Aucune commande sur ma story ; après la dernière story de Léa, la suivante est la mienne (sonde bobines-03).
+- **Problème** : Je ne peux pas retirer une story publiée par erreur ; je revois la mienne en parcourant celles des autres.
+- **Situation déclenchante** : Avoir une story active.
+- **Conséquence pour l'utilisateur** : Perte de contrôle sur son contenu.
+- **Proposition** : « ⋯ » sur ma story : Supprimer (et « Vue par » si la donnée existe déjà) ; sortir mon groupe de l'enchaînement.
+- **Visuels** : — · **Surfaces** : BOB-034, BOB-038
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Aucune.
+- **Risque de régression** : RLS de stories (suppression par l'auteur).
+- **Critère d'acceptation** : Sur ma story, « Supprimer » retire la story ; le parcours des autres ne passe plus par la mienne.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`
+
 ### IRL-C10 — Carte plein écran : la seule sortie est l'icône d'entrée, sans libellé
 
 - **Emplacement** : toggleIrlMapFullscreen (app-07:1838) ; .irl-map-expand
@@ -2448,6 +3119,406 @@
 - **Risque de régression** : Faible.
 - **Critère d'acceptation** : 10 s après l'ouverture, le module ne liste aucun compte déjà suivi.
 - **Fichiers probables** : `js/ui-v2-shell.js`
+
+### PRO-C08 — Mon profil et le profil visité ne disent pas les mêmes choses
+
+- **Emplacement** : Compteurs (« posts » vs « passions »), filtres (« Posts » vs « Tout », « Audio / podcast » vs « Audio »), état vide « Rien à afficher pour cette sélection » sans filtre
+- **Domaine** : Profils et passions · **Nature** : clarte · **Type** : jugement
+- **Preuve** : Sonde profils-03 : POSTS · ABONNÉS · ABONNEMENTS chez l'autre, ABONNÉS · PASSIONS · ABONNEMENTS chez moi ; compteurs du profil visité non cliquables ; « Créer un post » sur mon état vide.
+- **Problème** : Deux écrans jumeaux, deux vocabulaires (et l'anglicisme « post »).
+- **Situation déclenchante** : Passer de son profil à celui d'un autre.
+- **Conséquence pour l'utilisateur** : Moins de repères ; impression de produit inachevé.
+- **Proposition** : « publications » partout ; mêmes libellés de filtres ; état vide sans « sélection » quand rien n'est filtré.
+- **Visuels** : — · **Surfaces** : PRO-021, PRO-024, PRO-002
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Tests de libellés.
+- **Critère d'acceptation** : Aucune occurrence visible de « posts » / « Posts » / « Audio / podcast » sur les deux profils.
+- **Fichiers probables** : `js/app-04-comments-shop.js`, `js/app-06-reels-partage.js`, `index.html`
+
+### PRO-C09 — Listes Abonnés / Abonnements : emoji au lieu des photos, rendus différents, double « × »
+
+- **Emplacement** : _personRowHTML / openFollowersList (app-06:1184-1232)
+- **Domaine** : Profils et passions · **Nature** : polish · **Type** : observation
+- **Preuve** : Capture PRO-008 : Léa (avatar_url renseigné) montrée en emoji ; « Abonnés » sans passions, « Abonnements » avec ; deux éléments « Fermer » superposés (bouton d'openModal + span) ; lignes en div sans rôle.
+- **Problème** : On reconnaît mal les personnes.
+- **Situation déclenchante** : Parcourir ses abonnés.
+- **Conséquence pour l'utilisateur** : Découverte entre passionnés moins efficace ; lecteur d'écran : deux « Fermer », lignes non annoncées.
+- **Proposition** : Charger avatar_url et passions ; même ligne dans les deux listes ; une seule fermeture ; rôle bouton.
+- **Visuels** : [PRO-008](galerie/index.html#/surface/PRO-008) · **Surfaces** : PRO-008, PRO-010
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Une ligne d'abonné montre la photo si avatar_url existe et ses passions ; un seul élément « Fermer » dans la modale.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### PRO-C12 — L'aide des passions parle de « place » et de « changement » alors que le plafond est levé
+
+- **Emplacement** : openPassionsAide (app-06:2664-2666)
+- **Domaine** : Profils et passions · **Nature** : clarte · **Type** : observation
+- **Preuve** : Sonde profils-04 : « tu peux la réactiver quand une place et un changement sont disponibles », phrase non conditionnée à plafondPassionsActif().
+- **Problème** : Règle obsolète présentée comme actuelle.
+- **Situation déclenchante** : Ouvrir l'aide de « Mes passions ».
+- **Conséquence pour l'utilisateur** : Peur d'archiver ; doute sur la gratuité.
+- **Proposition** : Conditionner la fin de phrase au plafond actif ; sinon « tu peux la réactiver quand tu veux ».
+- **Visuels** : — · **Surfaces** : PRO-037
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Plafond levé : l'aide ne contient ni « place » ni « changement ».
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### PRO-C13 — « Mes passions » : en-tête redondant, trois emojis par carte, badge photo de 20 px
+
+- **Emplacement** : #passionsResume + titre « Passions actives » ; .v8-passion-card
+- **Domaine** : Profils et passions · **Nature** : polish · **Type** : jugement
+- **Preuve** : Sonde profils-04 : « 3 passions actives » (icône de personnes) puis titre « Passions actives » 26 px ; carte « 🎸 » + badge 📷 + « 🎸 Musique » ; badge 20 × 20.
+- **Problème** : La même information deux fois, emojis répétés.
+- **Situation déclenchante** : Ouvrir la page.
+- **Conséquence pour l'utilisateur** : Page plus chargée qu'elle ne devrait.
+- **Proposition** : Un compteur dans le titre de rubrique, un seul emoji (avatar), badge 28 px avec zone de 44 px.
+- **Visuels** : — · **Surfaces** : PRO-036
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Tests de l'en-tête (_rendrePagePassionsEntete).
+- **Critère d'acceptation** : Une seule mention du nombre de passions actives ; badge ≥ 44 px de zone tactile.
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `styles.css`
+
+### PRO-C14 — Vocabulaire hérité du multi-profil : « Mon profil principal », « Bio de ce profil »
+
+- **Emplacement** : openEditMainProfile (app-06:1943), openEditPassionProfile (app-06:3513)
+- **Domaine** : Profils et passions · **Nature** : clarte · **Type** : observation
+- **Preuve** : Captures PRO-011 : titre « Mon profil principal », libellés 16 px casse normale puis 11 px capitales ; sonde profils-08 : « ✏️ 🎸 Musique », « Bio de ce profil ».
+- **Problème** : Laisse croire à plusieurs profils (contraire d'ADR-011).
+- **Situation déclenchante** : Éditer son profil ou une passion.
+- **Conséquence pour l'utilisateur** : Confusion personne / passion.
+- **Proposition** : « Modifier mon profil », « Modifier « Musique » », « Ce que tu partages ici » ; un seul style de libellé.
+- **Visuels** : [PRO-011](galerie/index.html#/surface/PRO-011) · **Surfaces** : PRO-011, PRO-039
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Tests de libellés de modales.
+- **Critère d'acceptation** : Aucune occurrence de « profil principal » ni « de ce profil » ; libellés de champs d'un seul style.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### PRO-C16 — Le crayon « Modifier le profil » ouvre un menu de six options
+
+- **Emplacement** : #v6bModifier (ui-v6b-profil.js) → openMainProfileMenu
+- **Domaine** : Profils et passions · **Nature** : clarte · **Type** : jugement
+- **Preuve** : Capture PRO-007 : crayon → Modifier, Photo de profil, Photo de couverture, Gérer mes passions, Apparence & thème, Inviter des amis.
+- **Problème** : L'icône promet une chose, le bouton en propose six.
+- **Situation déclenchante** : Chercher « Mes passions » ou l'invitation.
+- **Conséquence pour l'utilisateur** : Ces entrées restent introuvables pour qui ne pense pas « éditer ».
+- **Proposition** : Icône « ⋯ » (convention des autres profils et cartes) et nom « Options du profil ».
+- **Visuels** : [PRO-007](galerie/index.html#/surface/PRO-007) · **Surfaces** : PRO-007, PRO-001
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Ancre de l'aide « second profil » (#v6bModifier).
+- **Critère d'acceptation** : Le bouton porte l'icône ⋯ et un nom accessible « Options du profil ».
+- **Fichiers probables** : `js/ui-v6b-profil.js`, `styles.css`
+
+### PRO-C17 — Profil visité : deux boutons « pleins », 39 px de haut, texte de 12 px
+
+- **Emplacement** : #visitedProfileActions (app-04:4617-4620)
+- **Domaine** : Profils et passions · **Nature** : accessibilite · **Type** : jugement
+- **Preuve** : Sonde profils-03 : Message (dégradé) et « ✓ Suivi » (violet plein) 173 × 39 ; ⋯ et × 34 × 34.
+- **Problème** : Un état (« Suivi ») est plus fort que l'action ; cibles basses.
+- **Situation déclenchante** : Visiter un profil suivi.
+- **Conséquence pour l'utilisateur** : Hiérarchie confuse ; appuis manqués.
+- **Proposition** : « ✓ Suivi » en contour, Message seule action pleine ; 44 px, 14 px.
+- **Visuels** : — · **Surfaces** : PRO-021
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : _peindreBoutonsSuivi peint le style inline des trois états.
+- **Critère d'acceptation** : Boutons ≥ 44 px ; état « suivi » non plein.
+- **Fichiers probables** : `js/app-04-comments-shop.js`
+
+### PRO-C19 — « Ajouter une passion » propose des passions que j'ai déjà
+
+- **Emplacement** : Sélecteur js/passion-selector.js (idées)
+- **Domaine** : Profils et passions · **Nature** : polish · **Type** : observation
+- **Preuve** : Sonde profils-04 : Musique et Photo (miennes) dans « Quelques idées » ; « Musculation » et « Musculation et fitness » ; Piano en 🎸 ; exemple de saisie tronqué.
+- **Problème** : Idées sans tenir compte du compte.
+- **Situation déclenchante** : Ajouter une passion.
+- **Conséquence pour l'utilisateur** : Bruit, doute sur ce qui est ajouté.
+- **Proposition** : Exclure ou marquer « Déjà ajoutée » ; dédoublonner les idées.
+- **Visuels** : — · **Surfaces** : PRO-043
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Aucune passion vivante du compte n'est proposée comme idée actionnable.
+- **Fichiers probables** : `js/passion-selector.js`
+
+### PRO-C21 — La pastille du nombre de publications est rognée sur le rail des passions
+
+- **Emplacement** : #v9ProfilePassions .profile-tile-count (passionTileHTML, app-02 : vignette en overflow:hidden, pastille à top/right -5 px)
+- **Domaine** : Profils et passions · **Nature** : polish · **Type** : observation
+- **Preuve** : Capture PRO-001, gros plan « rail » : « 4 », « 2 », « 1 » coupés à moitié.
+- **Problème** : Chiffre illisible.
+- **Situation déclenchante** : Toute vignette avec photo.
+- **Conséquence pour l'utilisateur** : Information perdue.
+- **Proposition** : Poser la pastille dans la vignette (top/right 1 px) ou hors du conteneur rogné.
+- **Visuels** : [PRO-001](galerie/index.html#/surface/PRO-001) · **Surfaces** : PRO-001
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Même composant au Fil (règle propre en styles.css:9805).
+- **Critère d'acceptation** : La pastille est entièrement visible à 360 et 390 px.
+- **Fichiers probables** : `js/app-02-state-utils.js`, `styles.css`
+
+### PRO-C22 — « Signaler ce compte » hérite du plein écran du profil et le remplace
+
+- **Emplacement** : reportUser → _demanderMotifSignalement, classe .modal-fullscreen laissée par openUserProfile
+- **Domaine** : Profils et passions · **Nature** : polish · **Type** : observation
+- **Preuve** : Sonde profils-08 : modale plein écran presque vide, poignée en haut, « Envoyer le signalement » sur deux lignes ; le profil est perdu.
+- **Problème** : Mise en page incohérente ; pas de retour au profil.
+- **Situation déclenchante** : Signaler depuis un profil.
+- **Conséquence pour l'utilisateur** : Désorientation dans un geste déjà délicat.
+- **Proposition** : Retirer .modal-fullscreen à l'ouverture d'une autre modale ; revenir au profil après Annuler.
+- **Visuels** : — · **Surfaces** : PRO-032
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Autres modales ouvertes depuis le profil visité.
+- **Critère d'acceptation** : La modale de signalement s'affiche en feuille basse ; Annuler ramène au profil.
+- **Fichiers probables** : `js/app-04-comments-shop.js`, `js/app-08-ui-modals-tour.js`
+
+### CRE-C06 — « MOOD » en anglais, pastilles 40 px / 11 px, ordre différent du Fil
+
+- **Emplacement** : Studio — index.html:940-956 ; styles.css:9438-9452
+- **Domaine** : Création et médias · **Nature** : clarte · **Type** : observation
+- **Preuve** : Mesure : pastilles 49-81 × 40 px, texte 11 px (sonde creation-01) ; titre « MOOD » ; Fil : rail « Envie du moment » Explorer · Apprendre · Idées · Rencontrer. Rejoint SOC-C01.
+- **Problème** : Un mot anglais pour un choix qui pilote le classement, des cibles sous 44 px, un ordre qui change entre écrire et lire.
+- **Situation déclenchante** : Chaque publication.
+- **Conséquence pour l'utilisateur** : Choix compris de travers ou ignoré ; erreurs de toucher.
+- **Proposition** : « Envie », pastilles 44 px / 13 px dans l'ordre du rail (maquette CRE-002).
+- **Visuels** : [CRE-002](galerie/index.html#/surface/CRE-002) · **Surfaces** : CRE-002
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : SOC-C01 (socle).
+- **Risque de régression** : Valeurs creation/learn/irl/all inchangées (fiche lots-ui 07) ; studio-moods.spec.js lit les libellés.
+- **Critère d'acceptation** : Le bloc s'intitule « Envie » ; chaque pastille mesure ≥ 44 px de haut à 360 px.
+- **Fichiers probables** : `index.html`, `styles.css`
+
+### CRE-C11 — Les panneaux emojis et GIF recouvrent la barre d'outils et ne se referment qu'en choisissant
+
+- **Emplacement** : meAddEmoji app-08:1456-1467 (bottom 84 px), meAddGif app-08:1468
+- **Domaine** : Création et médias · **Nature** : friction · **Type** : observation
+- **Preuve** : Captures CRE-026, CRE-027 : le panneau couvre 😀/GIF ; 3 emojis par ligne sur 20.
+- **Problème** : Le bouton qui refermerait le panneau est dessous.
+- **Situation déclenchante** : Ouvrir les emojis ou les GIF.
+- **Conséquence pour l'utilisateur** : Obligé de poser un emoji pour sortir.
+- **Proposition** : Panneau au-dessus des outils, pleine largeur, 44 px par emoji (maquette CRE-026) ; toucher hors du panneau le referme.
+- **Visuels** : [CRE-026](galerie/index.html#/surface/CRE-026) · **Surfaces** : CRE-026, CRE-027
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : passioGifPanel partagé avec la messagerie.
+- **Critère d'acceptation** : Panneau ouvert, le bouton 😀 reste visible et le referme.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`
+
+### CRE-C12 — « Recommencer » quasi invisible sur l'aperçu de bobine
+
+- **Emplacement** : js/ui-v7-lot.js:346-357 (btn ghost sur fond sombre)
+- **Domaine** : Création et médias · **Nature** : polish · **Type** : observation
+- **Preuve** : Capture CRE-019 : texte gris sur fond translucide sombre.
+- **Problème** : L'issue de reprise ne se voit pas.
+- **Situation déclenchante** : Aperçu d'une bobine.
+- **Conséquence pour l'utilisateur** : On continue faute de voir qu'on peut refaire.
+- **Proposition** : Contour blanc, texte blanc, 48 px (maquette CRE-019).
+- **Visuels** : [CRE-019](galerie/index.html#/surface/CRE-019) · **Surfaces** : CRE-019
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : ui-v7-bobine-camera.spec.js.
+- **Critère d'acceptation** : Contraste du libellé ≥ 4,5:1 sur l'aperçu.
+- **Fichiers probables** : `styles.css`
+
+### CRE-C13 — La bobine choisit sa passion autrement que le Studio, et sans envie
+
+- **Emplacement** : Feuille « Ta bobine » — ui-v7-lot.js:403-404, 487-519 ; mood « creation » forcé app-08:1682
+- **Domaine** : Création et médias · **Nature** : clarte · **Type** : observation
+- **Preuve** : Capture CRE-020 : « Passion » en liste native des passions du compte ; le Studio dit « Publier dans : » et ouvre la recherche plate.
+- **Problème** : Deux sélecteurs, deux mots ; toute bobine est classée « Idées ».
+- **Situation déclenchante** : Publier une bobine.
+- **Conséquence pour l'utilisateur** : Incohérence ; une bobine « Rencontrer » est impossible.
+- **Proposition** : « Publier dans » + même sélecteur que le Studio ; ajouter la rangée « Envie » si le produit le souhaite.
+- **Visuels** : [CRE-020](galerie/index.html#/surface/CRE-020) · **Surfaces** : CRE-020
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : M · **Risque technique** : faible
+- **Dépendances** : CRE-C02 (règle d'ajout au compte).
+- **Risque de régression** : passionDeRepartage / publicationRefuseeFautePassion avant meClose (app-08:1637-1646).
+- **Critère d'acceptation** : La feuille de bobine et le Studio utilisent le même libellé et le même sélecteur de passion.
+- **Fichiers probables** : `js/ui-v7-lot.js`, `js/app-08-ui-modals-tour.js`
+
+### CRE-C15 — « Post » et « publication » alternent ; « Photo / vidéo » cache le texte seul
+
+- **Emplacement** : Toasts app-06:5413, 5420 ; menu app-04:21 ; feuille Créer ui-v2-shell.js:126
+- **Domaine** : Création et médias · **Nature** : clarte · **Type** : observation
+- **Preuve** : « Post publié », « Post en local », « Supprimer le post » vs « Publication » (feuille), « Associer cette publication » (sélecteur), « Publication envoyée » (rejeu app-08:1804).
+- **Problème** : Deux mots pour une chose ; sous-titre trompeur.
+- **Situation déclenchante** : Créer, publier, supprimer.
+- **Conséquence pour l'utilisateur** : Petite friction de compréhension.
+- **Proposition** : « Publication » partout ; sous-titre « Texte, photo ou vidéo » (maquette CRE-001).
+- **Visuels** : [CRE-001](galerie/index.html#/surface/CRE-001) · **Surfaces** : CRE-001, CRE-013, CRE-017
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Tests qui lisent les toasts.
+- **Critère d'acceptation** : Aucun texte visible du domaine ne contient « post ».
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `js/app-04-comments-shop.js`, `js/ui-v2-shell.js`
+
+### CRE-C16 — Une publication ne peut pas être corrigée, seulement supprimée  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Menu ⋯ — app-04-comments-shop.js:9-26
+- **Domaine** : Création et médias · **Nature** : friction · **Type** : hypothese
+- **Preuve** : Capture CRE-017 : « Supprimer le post · Annuler ».
+- **Problème** : Une coquille ou une mauvaise passion impose de supprimer (réactions perdues) et de republier.
+- **Situation déclenchante** : Erreur après publication.
+- **Conséquence pour l'utilisateur** : Hypothèse : publications erronées laissées en ligne ou supprimées avec leurs réactions.
+- **Proposition** : Vérifier le besoin auprès des testeurs avant tout développement ; s'il est confirmé, « Modifier le texte » seul.
+- **Visuels** : [CRE-017](galerie/index.html#/surface/CRE-017) · **Surfaces** : CRE-017, CRE-040
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Décision produit ; policy UPDATE sur posts.
+- **Risque de régression** : RLS posts.
+- **Critère d'acceptation** : Décision documentée.
+- **Fichiers probables** : `js/app-04-comments-shop.js`
+
+### CRE-C17 — Sélecteur de passion : titre sous la croix, « + » qui ne marque pas la sélection
+
+- **Emplacement** : js/passion-search-selector.js (.psel-titre, .psel-item-plus)
+- **Domaine** : Création et médias · **Nature** : polish · **Type** : observation
+- **Preuve** : Captures CRE-004/005 : « une » du titre passe sous le bouton Fermer ; la ligne choisie garde son « + ».
+- **Problème** : Chevauchement ; état choisi lisible seulement dans la pastille du haut.
+- **Situation déclenchante** : Ouvrir le sélecteur à 390 px.
+- **Conséquence pour l'utilisateur** : Finition.
+- **Proposition** : Marge droite du titre = largeur de la croix ; « ✓ » sur la ligne choisie.
+- **Visuels** : [CRE-005](galerie/index.html#/surface/CRE-005) · **Surfaces** : CRE-004, CRE-005
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Composant partagé avec Rencontrer.
+- **Risque de régression** : Sélecteur partagé (filtre IRL).
+- **Critère d'acceptation** : À 360 px le titre ne recouvre pas la croix ; la ligne choisie affiche ✓.
+- **Fichiers probables** : `js/passion-search-selector.js`, `styles.css`
+
+### CRE-C18 — Préparation d'une vidéo lourde : plein écran sans annulation jusqu'à 90 s
+
+- **Emplacement** : _meShowProgress app-08:1110-1127, borne 1234
+- **Domaine** : Création et médias · **Nature** : friction · **Type** : jugement
+- **Preuve** : Capture CRE-022 (simulée) : voile noir, barre, pourcentage, aucune commande.
+- **Problème** : On ne peut ni annuler ni choisir une autre vidéo.
+- **Situation déclenchante** : Vidéo > 2 Mo.
+- **Conséquence pour l'utilisateur** : Attente subie ; tentation de fermer l'application.
+- **Proposition** : Bouton « Annuler » qui interrompt la préparation.
+- **Visuels** : [CRE-022](galerie/index.html#/surface/CRE-022) · **Surfaces** : CRE-022
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Aucune.
+- **Risque de régression** : Un seul point de retrait de l'overlay (finally) à conserver.
+- **Critère d'acceptation** : Pendant la préparation, « Annuler » rend la main en moins d'une seconde.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`
+
+### BOB-C14 — Haut du lecteur : fermer à 38 px, étiquette en doublon qui chevauche la flèche, « Commentaire » sans nombre
+
+- **Emplacement** : .reels-close styles.css:4958 ; .reel-tag-mood 4827 ; .reels-nav.prev 5048 ; libellé app-05:3064
+- **Domaine** : Bobines et stories · **Nature** : polish · **Type** : observation
+- **Preuve** : Fermer 38 × 38 px ; « SPORT · RENCONTRER » (14→184 px) sous la flèche ↑ (174→216 px) ; la passion est déjà sous le nom de l'auteur ; 3 commentaires affichés « Commentaire ».
+- **Problème** : Petites frictions cumulées sur l'écran le plus regardé.
+- **Situation déclenchante** : Toute bobine.
+- **Conséquence pour l'utilisateur** : Fermeture ratée, information répétée, compte d'engagement invisible.
+- **Proposition** : Fermer 44 px ; envie ajoutée à la ligne de passion, étiquette du haut retirée ; nombre de commentaires sous l'icône.
+- **Visuels** : [BOB-010](galerie/index.html#/surface/BOB-010) · **Surfaces** : BOB-010, BOB-012, BOB-018
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucune.
+- **Critère d'acceptation** : .reels-close ≥ 44 px ; aucune superposition étiquette/flèche ; le libellé du bouton commentaire est un nombre.
+- **Fichiers probables** : `styles.css`, `js/app-05-config-profil.js`
+
+### BOB-C15 — Vidéo illisible : un bouton « Lire » recouvre le message « Vidéo non lisible »
+
+- **Emplacement** : _reelVideoError js/app-05-config-profil.js:2843 ; boutonVideoPubliqueHTML app-02:4168
+- **Domaine** : Bobines et stories · **Nature** : clarte · **Type** : observation
+- **Preuve** : Bobine en 404 : placeholder 🎬 « Vidéo non lisible sur cet appareil » et bouton « ▶ Lire » au même endroit (BOB-014).
+- **Problème** : Promesse contradictoire.
+- **Situation déclenchante** : Vidéo absente ou format non décodable (webm sur iPhone).
+- **Conséquence pour l'utilisateur** : Touchers inutiles.
+- **Proposition** : Masquer le bouton de lecture quand la vidéo est remplacée.
+- **Visuels** : [BOB-014](galerie/index.html#/surface/BOB-014) · **Surfaces** : BOB-014
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucune.
+- **Critère d'acceptation** : Sur une bobine en erreur, aucun [data-video-public-play] visible.
+- **Fichiers probables** : `js/app-05-config-profil.js`
+
+### BOB-C16 — Visionneuse de stories : piste des barres invisible, « ⋯ » au milieu, ✕ sans nom accessible
+
+- **Emplacement** : .story-progress styles.css:4172 ; #storyReportBtn app-08:1930 ; .story-viewer-close index.html:176
+- **Domaine** : Bobines et stories · **Nature** : polish · **Type** : observation
+- **Preuve** : Piste rgba(139,92,246,0.18) sur #0a0818 ; ⋯ à x = 221 (deux marges auto) ; ✕ div 32 px, role ajouté par DEV-02, sans aria-label (sonde bobines-03).
+- **Problème** : On ne voit pas combien de stories restent ; commandes mal rangées.
+- **Situation déclenchante** : Toute story.
+- **Conséquence pour l'utilisateur** : Lecture moins prévisible ; lecteur d'écran : « bouton ✕ ».
+- **Proposition** : Piste blanche 35 %, ⋯ collé à ✕ à 44 px, aria-label « Fermer ».
+- **Visuels** : [BOB-030](galerie/index.html#/surface/BOB-030) · **Surfaces** : BOB-030
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucune.
+- **Critère d'acceptation** : Piste visible (contraste ≥ 3:1 avec le fond) ; ⋯ et ✕ adjacents ; ✕ nommé « Fermer ».
+- **Fichiers probables** : `styles.css`, `index.html`, `js/app-08-ui-modals-tour.js`
+
+### BOB-C17 — Bobines et stories montrent l'emoji de la personne au lieu de sa photo ; ma bobine m'est proposée à « découvrir »
+
+- **Emplacement** : authorOfReel app-05:2960 ; playCurrentStory app-08:1915 ; pickFeedReels ui-v2-shell.js:463 ; ui-v5 sans test d'auteur
+- **Domaine** : Bobines et stories · **Nature** : polish · **Type** : observation
+- **Preuve** : Léa a une photo de profil (fil, profil) mais 🎸 dans le lecteur et la story ; ma bobine figure dans « Bobines à découvrir » et porte « Ça m'intéresse ».
+- **Problème** : Reconnaissance des personnes plus difficile ; propositions absurdes sur son propre contenu.
+- **Situation déclenchante** : Toute bobine / story.
+- **Conséquence pour l'utilisateur** : Incohérence avec le reste de l'application.
+- **Proposition** : Utiliser la photo de profil quand elle existe ; exclure mes bobines du rail et des sorties UI-5.
+- **Visuels** : [BOB-002](galerie/index.html#/surface/BOB-002) · **Surfaces** : BOB-002, BOB-010, BOB-015, BOB-030
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucune.
+- **Critère d'acceptation** : Avatar photo dans le lecteur et la story ; aucune de mes bobines dans le rail.
+- **Fichiers probables** : `js/app-05-config-profil.js`, `js/app-08-ui-modals-tour.js`, `js/ui-v2-shell.js`, `js/ui-v5-bobines.js`
+
+### BOB-C18 — Réactions de bobine et de commentaire : code masqué, mort ou purement local
+
+- **Emplacement** : index.html:1302-1309 ; styles.css:5291 ; app-05:3652-3801
+- **Domaine** : Bobines et stories · **Nature** : polish · **Type** : observation
+- **Preuve** : Rangée ❤️🔥… en display:none ; deux sélecteurs sans appelant ; la réaction 😊 à un commentaire n'est écrite que dans l'état local.
+- **Problème** : Dette qui ressortira si quelqu'un réaffiche la rangée : réactions jamais envoyées.
+- **Situation déclenchante** : —
+- **Conséquence pour l'utilisateur** : Risque de fausse fonctionnalité.
+- **Proposition** : Retirer ce code ou le brancher sur les réactions de commentaire du fil.
+- **Visuels** : — · **Surfaces** : BOB-083, BOB-084, BOB-085
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucune.
+- **Critère d'acceptation** : Plus aucune réaction locale non envoyée dans le panneau des bobines.
+- **Fichiers probables** : `index.html`, `styles.css`, `js/app-05-config-profil.js`
+
+### BOB-C19 — État vide du lecteur : chemin « ➕ → Studio → onglet Bobine » périmé
+
+- **Emplacement** : openReels js/app-05-config-profil.js:3093
+- **Domaine** : Bobines et stories · **Nature** : polish · **Type** : observation
+- **Preuve** : Texte de l'état vide (BOB-060) ; la création passe aujourd'hui par « Créer ».
+- **Problème** : Indication fausse.
+- **Situation déclenchante** : Aucune bobine (rare : exemples présents).
+- **Conséquence pour l'utilisateur** : Faible.
+- **Proposition** : « Filme un moment de ta passion » + le bouton existant.
+- **Visuels** : — · **Surfaces** : BOB-060
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucune.
+- **Critère d'acceptation** : Le texte ne cite plus « Studio → onglet Bobine ».
+- **Fichiers probables** : `js/app-05-config-profil.js`
+
+### BOB-C20 — Les confirmations sont peintes sous le lecteur (commentaire posté, lien copié)
+
+- **Emplacement** : .toast-stack z-index 200 < .reels-viewer 9999 (styles.css:1484, 4736)
+- **Domaine** : Bobines et stories · **Nature** : clarte · **Type** : observation
+- **Preuve** : Fait transverse établi : PAR-C03, IRL-C65, MSG-C85 ; ici « Commentaire posté » et « Réponse postée » (app-05:3536, 3550) sont émis sous le lecteur.
+- **Problème** : Aucune confirmation visible.
+- **Situation déclenchante** : Commenter, répondre, copier depuis le lecteur.
+- **Conséquence pour l'utilisateur** : Doute, double envoi.
+- **Proposition** : Corriger une fois pour toutes la couche des toasts (voir PAR-C03).
+- **Visuels** : — · **Surfaces** : BOB-020, BOB-081
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : PAR-C03.
+- **Risque de régression** : Voir PAR-C03.
+- **Critère d'acceptation** : Un toast émis lecteur ouvert est visible au-dessus.
+- **Fichiers probables** : `styles.css`
 
 ### IRL-C08 — Les activités sans couverture portent toutes une épingle 📍 au lieu de l'emoji de leur passion
 

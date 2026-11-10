@@ -1,0 +1,106 @@
+{
+ "id": "BOB-035",
+ "domaine": "bobines",
+ "scenario": "stories",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Story texte longue (nom très long) — 4,5 s pour lire",
+ "note": "",
+ "prisLe": "2026-11-10T19:19:21.976Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#story"
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-035--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29540,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Deux phrases, 4,5 s, pas de pause au maintien",
+   "x": 0.5,
+   "y": 0.764,
+   "w": 0.754,
+   "h": 0.13,
+   "sel": "#storyContent",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Nom long sur une ligne : tient",
+   "x": 0.451,
+   "y": 0.049,
+   "w": 0.626,
+   "h": 0.04,
+   "sel": "#storyAuthor",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "button#storyReportBtn",
+     "texte": "Signaler cette story",
+     "w": 33.1,
+     "h": 28,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 1,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-prev",
+    "html": "<div class=\"story-viewer-tap story-tap-prev\" onclick=\"storyPrev()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   },
+   {
+    "el": "div#storyCard > div.story-viewer-tap.story-tap-next",
+    "html": "<div class=\"story-viewer-tap story-tap-next\" onclick=\"storyNext()\" tabindex=\"0\" data-tabulable=\"1\" role=\"butto"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

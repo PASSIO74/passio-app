@@ -1,0 +1,133 @@
+{
+ "id": "PRO-038",
+ "domaine": "profils",
+ "scenario": "mes-passions-gestes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Menu « ⋯ » d'une carte de passion",
+ "note": "",
+ "prisLe": "2026-11-10T19:24:11.752Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-038--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 60954,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Modifier · Photo · Photo de fond · Archiver",
+   "x": 0.656,
+   "y": 0.541,
+   "w": 0.538,
+   "h": 0.207,
+   "sel": "#profileDotsMenu",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 21,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Modifier cette passion",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Photo de la passion",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Photo de fond",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#profileDotsMenu > button.profile-dots-item",
+     "texte": "Archiver cette passion",
+     "w": 196,
+     "h": 38,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:60233/index.html#",
+   "Audio failed: http://127.0.0.1:60233/index.html#",
+   "Audio failed: http://127.0.0.1:60233/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

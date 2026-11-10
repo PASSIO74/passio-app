@@ -1,0 +1,147 @@
+{
+ "id": "BOB-001",
+ "domaine": "bobines",
+ "scenario": "portes",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil — rangée de stories : ma story, un live, des stories non vues et vues",
+ "note": "Live réel du faux serveur (table video_lives). Libellés à 9 px : déjà relevé (FIL-C14).",
+ "prisLe": "2026-11-10T19:15:14.220Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/bobines/BOB-001--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 54520,
+  "zooms": [
+   {
+    "nom": "stories",
+    "titre": "Rangée de stories",
+    "fichier": "captures/bobines/BOB-001--m360--avant-zoom-stories.webp",
+    "largeur": 696,
+    "hauteur": 154,
+    "octets": 14612
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Live : anneau rouge et « 🔴 Tom » — même gabarit qu'une story",
+   "x": 0.264,
+   "y": 0.357,
+   "w": 0.122,
+   "h": 0.069,
+   "sel": "#storiesRowFeed .story-item:nth-child(2) .story-ring",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Story vue : anneau gris, rejetée en fin de rangée",
+   "x": 0.897,
+   "y": 0.357,
+   "w": 0.122,
+   "h": 0.069,
+   "sel": "#storiesRowFeed .story-item:last-child .story-ring",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 27,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#storiesRowFeed > div.story-item > button.story-add-badge",
+     "texte": "Ajouter une story",
+     "w": 16,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 153.8,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 6,
+   "indetermines": 19,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#storiesRowFeed > div.story-item > div.story-label",
+    "texte": "Marie-Charlotte",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}
