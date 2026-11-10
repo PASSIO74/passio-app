@@ -2477,3 +2477,12 @@ Verrou : `tests/e2e/repos-sans-boucle.spec.js` (3) — 8 s de repos après déma
 ET visiteur (`bootVisiteur`) : moins de 50 `setTimeout` de délai ≤ 4 ms et moins de 50 rappels
 d'observateur (mesuré après correctif : 1 et 3 ; avant : plus de 3 000). ③ vérifie que la comparaison n'a
 rien figé (« Publier dans » suit toujours la passion). Réinjection : écriture sans comparaison → ①② rouges.
+- ⚠️ **LA BOUCLE MASQUAIT UN DÉFAUT DU COMPTEUR DE LIKES** (CI de #812, `capacite-likes-visibles` « détail,
+  profil et Bobines » rouge sur la branche, vert sur main). `#postDetailPage` entre par `fadeIn` (opacité
+  0 → 1, 200 ms) : le tour de lecture réveillé par son ouverture jugeait la carte invisible
+  (`_postLikeCardVisible` refuse une opacité nulle), n'interrogeait rien et reprenait 15 s plus tard —
+  aucune mutation du DOM ne marque la FIN d'une animation. Les ~470 réveils par seconde de la boucle
+  relançaient un tour toutes les 200 ms et cachaient l'oubli. `startPostLikeRefresh` écoute désormais
+  `animationend` et `transitionend` (capture, passifs) : un réveil coûte O(1), le tour reste borné par
+  son rendez-vous. Leçon : **corriger une boucle de réveils, c'est aussi chercher qui en vivait** —
+  relancer les suites des AUTRES consommateurs des mêmes observateurs, pas seulement la sienne.

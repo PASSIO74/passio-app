@@ -418,6 +418,16 @@ function startPostLikeRefresh() {
     document.addEventListener("visibilitychange", _postLikeRefreshReprise);
     window.addEventListener("pageshow", _postLikeRefreshReprise);
     window.addEventListener("resize", _postLikeRefreshWake, { passive: true });
+    // ⚠️ LA FIN D'UNE RÉVÉLATION CHANGE LA VISIBILITÉ SANS MUTER LE DOM
+    // (2026-11-09). `#postDetailPage` entre par `fadeIn` (opacité 0 → 1, 200 ms) :
+    // le tour réveillé par son ouverture le jugeait invisible, puis attendait le
+    // créneau suivant (15 s) — rien ne le réveillait à la fin de l'animation.
+    // Ça ne se voyait pas : la boucle MutationObserver ↔ setTimeout(0) du
+    // composer (ui-v6, ~470 réveils/s) relançait un tour toutes les 200 ms. Elle
+    // est corrigée ; la fin d'animation ou de transition réveille désormais
+    // elle-même (verrou : capacite-likes-visibles, « détail, profil et Bobines »).
+    document.addEventListener("animationend", _postLikeRefreshWake, { capture: true, passive: true });
+    document.addEventListener("transitionend", _postLikeRefreshWake, { capture: true, passive: true });
     window.addEventListener("online", _postLikeRefreshReprise);
   }
   _postLikeRefreshWake();
