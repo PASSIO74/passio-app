@@ -927,8 +927,17 @@ function _sondeServeurBandeau(type) {
     try { if (typeof diagLog === "function") diagLog("serveur " + type); } catch (e) {}
   } catch (e) {}
 }
+// ⚠️ SE RECONNECTER NE PURGE RIEN (ETAT-06, audit de stabilisation du 2026-11-10).
+// Ce bouton appelait `doLogout("signin")` : messages en file, publications à
+// reprendre et état non synchronisé partaient avec la purge — exactement ce que le
+// mode « session expirée » promet de garder. Même sortie que son bandeau orange :
+// écritures suspendues, rafraîchissement tenté, puis l'écran de connexion. Si un
+// AUTRE compte se connecte, l'adoption du démarrage purge, elle (`adopterCompteConnecte`).
 function _sondeServeurReconnecter() {
-  try { if (typeof doLogout === "function") doLogout("signin"); } catch (e) {}
+  try { if (typeof poserSessionExpiree === "function") poserSessionExpiree("sonde_401"); } catch (e) {}
+  try { _sondeServeurBandeau(null); } catch (e) {}
+  try { if (typeof _poserBandeauSessionExpiree === "function") _poserBandeauSessionExpiree(); } catch (e) {}
+  try { if (typeof reconnecterSession === "function") reconnecterSession(); } catch (e) {}
 }
 // Verdict d'une réponse de l'hôte Supabase. Exposé pour le banc.
 function _sondeServeurReponse(status, url) {
@@ -4957,7 +4966,11 @@ async function doLogout(intention) {
   // avait bien été purgé. On ferme alors la session côté appareil.
   var echecSignOut = false;
   try {
-    var so = await supa.auth.signOut();
+    // ⚠️ PORTÉE LOCALE (ETAT-02, audit de stabilisation du 2026-11-10). Sans argument,
+    // le SDK embarqué prend `scope: "global"` et révoque TOUTES les sessions du compte :
+    // se déconnecter de l'ordinateur tuait la session du téléphone. Seule la
+    // suppression de compte (`doDeleteAccount`) ferme tout, et c'est voulu.
+    var so = await supa.auth.signOut({ scope: "local" });
     if (so && so.error) echecSignOut = true;
   } catch(e) { echecSignOut = true; }
   if (echecSignOut) { try { purgerJetonAuthLocal(); } catch (e) {} }

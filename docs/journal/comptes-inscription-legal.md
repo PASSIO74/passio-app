@@ -36,6 +36,7 @@
 - 🔗 LE NOUVEAU VENU RETROUVE UNE PORTE D'INSCRIPTION — un lien sur la carte (2026-11-04)
 - ↩️ ROUVRIR UNE MODALE PENDANT LE RETOUR DE FERMETURE NE SORT PLUS DE L'APPLICATION — un seul geste d'historique à la fois (2026-11-08)
 - 📱 INSCRIPTION SUR iPHONE — trois frictions au moment de créer son compte (2026-11-09)
+- 🔐 UNE SESSION QUI FINIT AILLEURS NE DÉTRUIT RIEN ICI — déconnexion locale, SIGNED_OUT écouté, bandeau qui ne purge plus (2026-11-10)
 
 ---
 
@@ -628,3 +629,29 @@ Verrou : `tests/e2e/inscription-frictions-iphone.spec.js` (7), en hauteurs UTILE
   (WebKit indisponible dans le bac de ce lot). À contrôler sur iPhone réel ou `PASSIO_WEBKIT=1`.
 Verrous ajoutés : `inscription-frictions-iphone.spec.js` ① quater (invité, 320 × 568 et 375 × 553) et
 ① quinquies (refus → case → Google n'a pas bougé), chacun rouge en réinjection.
+
+## 🔐 UNE SESSION QUI FINIT AILLEURS NE DÉTRUIT RIEN ICI — déconnexion locale, SIGNED_OUT écouté, bandeau qui ne purge plus (2026-11-10)
+
+Deux défauts de l'audit de stabilisation du 10/11 (ETAT-02, ETAT-06), revérifiés dans le code et dans le SDK embarqué.
+Verrou : `tests/e2e/session-fin-a-distance.spec.js` (①–⑤), rouge par mutation sur `app-02` (① ④) et `app-08` (② ③ ⑤).
+
+**ETAT-02.** `doLogout` appelait `supa.auth.signOut()` sans argument ; dans supabase-js 2.116, `_signOut` vaut alors
+`scope: "global"` : se déconnecter de l'ordinateur révoquait la session du téléphone. Là-bas, au premier rafraîchissement
+refusé avec un jeton expiré, le SDK retire la session et émet `SIGNED_OUT` — que personne n'écoutait quand le démarrage
+avait trouvé une session (R19 : `onAuthStateChange` n'est enregistré que dans la branche « sans session »). L'écran restait
+« connecté », les lectures « de moi » rendaient vide, les écritures partaient en 401.
+⚠️ **Déconnexion = cet appareil.** `signOut({ scope: "local" })` dans `doLogout` et dans la branche « déconnexion
+inachevée » de `boot()`. Seule la suppression de compte garde la portée globale.
+⚠️ **`_ecouterFinDeSession()` (app-08)**, appelé par la branche « session trouvée » : sur `SIGNED_OUT`, par
+`setTimeout(…, 0)` (verrou auth), pose le mode « session expirée » et son bandeau — jamais une purge. Pas pendant un
+rechargement annoncé (`rechargementImminent`), une suppression de compte, ni pour un visiteur.
+
+**ETAT-06.** Le bouton du bandeau ROUGE « Session expirée » (sonde 401) appelait `doLogout("signin")`, donc
+`purgeAccountScopedData` : file des messages, publications à reprendre, état non synchronisé — ce que le mode « session
+expirée » promet de garder. Il fait désormais ce que fait le bandeau orange : mode posé, `reconnecterSession()`
+(rafraîchissement d'abord, puis l'écran de connexion), sans purge. Un AUTRE compte qui se connecte reste adopté et purgé
+par le démarrage (`adopterCompteConnecte`).
+
+**Ce que ce lot ne fait pas.** Au démarrage suivant d'une session perdue, `entrerEnSessionExpiree()` exige toujours un jeton
+SDK persisté (que le SDK vient de retirer) : l'appareil peut encore retomber sur l'ancienne landing. `session-expiree.spec.js`
+② fige ce comportement ; le changer touche l'ordre de démarrage de tous les bancs — lot à part.
