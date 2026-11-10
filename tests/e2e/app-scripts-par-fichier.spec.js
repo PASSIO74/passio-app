@@ -668,8 +668,10 @@ test.describe("un retour arrière qui change la feuille de style : la feuille p�
     }
     return (ev || []).map((e) => e.type + (e.empreinte ? "+" : ""));
   }
-  // La durée sans styles d'une reprise (du premier refus au `load` final), relevée dans le
-  // rapport du banc (annotation `feuille`, reporter json ou html) : elle ne fait pas le verdict.
+  // Les instants d'une reprise, relevés dans le rapport du banc (annotation `feuille`,
+  // reporter json ou html) : la page reste sans styles du refus au `load` du secours, puis
+  // porte la feuille de l'autre version jusqu'au `load` du <link> avec l'empreinte. Ils ne
+  // font pas le verdict.
   async function noterReprise(page, etape) {
     test.info().annotations.push({ type: "feuille", description: etape + " " + JSON.stringify(await evenementsFeuille(page)) });
   }
