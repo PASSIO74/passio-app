@@ -70,3 +70,13 @@ test, sonde anonyme, reproductions, avant / après de chaque lot), `outils/` (`s
   quand on rend le fichier de `main`, verts après ; 19 suites voisines 199 / 199 ; `npm run verif` vert. Risque normal.
 - Reste de l'étape 4 du plan : c (session, critique), d (rejeu de l'état, critique), e (« verdicts » restants : SRV-04,
   ETAT-04, ETAT-09, PARC-01), f (migrations), g (CI).
+
+## Ajout — lot « session » (PR #827, critique)
+
+- Branche `security/session-deconnexion-locale` (worktree `lot-session`), base `36b778d1`.
+- ETAT-02 (déconnexion locale + écoute de `SIGNED_OUT`) et ETAT-06 (bandeau rouge sans purge). 5 verrous rouges par
+  mutation ; 28 suites voisines : 293 verts + 2 contrats de source qui figeaient ETAT-06, attendus changés avec leur
+  raison, rouges sur le code d'avant ; `npm run verif` vert. **Contre-revue indépendante requise avant fusion.**
+- Reste : au démarrage suivant d'une session perdue, `entrerEnSessionExpiree()` exige un jeton persisté
+  (`session-expiree.spec.js` ② le fige) — lot à part. Étapes suivantes du plan : d (ETAT-01, rejeu de l'état),
+  e (verdicts restants), f (migrations), g (CI).
