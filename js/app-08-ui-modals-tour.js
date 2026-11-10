@@ -397,8 +397,7 @@ function entrerEnSessionExpiree() {
 // retombait sur `showLanding()`, un écran qu'aucun appareil ne devrait plus voir.
 //
 // Il n'y a ici RIEN de local à protéger (pas d'état onboardé) : on termine donc
-// la déconnexion que la session morte a commencée, exactement comme le bouton
-// « Se reconnecter » du bandeau (`doLogout("signin")`) — purge des clés de
+// la déconnexion que la session morte a commencée — purge des clés de
 // compte et du jeton, intention « signin », rechargement. Le démarrage suivant
 // entre dans le fil invité avec l'écran de connexion par-dessus.
 // ⚠️ Pas quand `getSession()` a dépassé son délai (appelant) : la session peut
@@ -429,6 +428,37 @@ function sortirCompteSansSession() {
       try { location.reload(); } catch (e) {}
     });
   return true;
+}
+
+// ======== UNE SESSION QUI FINIT AILLEURS (ETAT-02 / R19, 2026-11-10) ========
+// Quand le démarrage trouve une session, `boot()` rend la main AVANT d'enregistrer
+// `onAuthStateChange` : la fin de cette session n'était entendue par personne. Or
+// elle arrive sans geste ici — déconnexion « partout » faite ailleurs, jeton révoqué,
+// rafraîchissement refusé : le SDK retire la session et émet `SIGNED_OUT`. L'écran
+// restait « connecté », les lectures privées rendaient vide, les écritures partaient
+// en 401. On pose alors le mode « session expirée » (lecture seule, files gardées,
+// bandeau « Se reconnecter ») — jamais une purge.
+// ⚠️ AUCUNE requête dans le rappel (verrou auth du SDK) : `setTimeout(…, 0)`.
+// ⚠️ Pas pendant une déconnexion ou un rechargement annoncés (`rechargementImminent`),
+// ni pour un visiteur. Enregistré une seule fois par page.
+function _ecouterFinDeSession() {
+  if (window._finDeSessionEcoutee) return;
+  try {
+    if (!(supa && supa.auth && typeof supa.auth.onAuthStateChange === "function")) return;
+    window._finDeSessionEcoutee = true;
+    supa.auth.onAuthStateChange(function (event) {
+      if (event !== "SIGNED_OUT") return;
+      setTimeout(function () {
+        try {
+          if (typeof rechargementImminent === "function" && rechargementImminent()) return;
+          if (window._suppressionEnCours) return;
+          if (!_compteAuthReel()) return;
+          if (typeof poserSessionExpiree === "function") poserSessionExpiree("signed_out");
+          _poserBandeauSessionExpiree();
+        } catch (e) { try { diagLog("fin de session : " + (e && e.message)); } catch (_) {} }
+      }, 0);
+    });
+  } catch (e) { window._finDeSessionEcoutee = false; }
 }
 
 // Le bandeau vit entre la barre du haut et `#appMain`, en flux (l'app-shell
@@ -2880,7 +2910,8 @@ async function boot() {
       // On lit `{ error }` : le SDK ne LÈVE PAS sur un refus, et une
       // déconnexion qui échoue en silence est précisément ce qui nous a amenés ici.
       try {
-        const _so = await supa.auth.signOut();
+        // Portée LOCALE : ne pas révoquer les sessions des autres appareils (ETAT-02).
+        const _so = await supa.auth.signOut({ scope: "local" });
         if (_so && _so.error) console.warn("signOut refusé :", _so.error.message || _so.error);
       } catch (e) { console.warn("signOut indisponible :", e); }
       try { purgerJetonAuthLocal(); } catch (e) {}
@@ -3084,6 +3115,9 @@ async function boot() {
         try { restoreFeedPassions(); } catch (e) { _activeFeedPassions = new Set(); }
         try { renderEverything(); } catch(e) {}
         document.body.classList.add("screen-feed-active");
+        // La fin de session, sur CE chemin aussi (ETAT-02 / R19) : le gestionnaire plus bas
+        // n'est enregistré que lorsqu'aucune session n'a été trouvée.
+        try { _ecouterFinDeSession(); } catch (e) {}
         try { supaInit(); } catch(e) {}
         // Compte NEUF venu par un lien d'invitation (app-06) : il suit l'invitant
         // qui lui a été ANNONCÉ à l'inscription, ou on lui DEMANDE s'il veut le
