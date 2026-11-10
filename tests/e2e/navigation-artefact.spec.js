@@ -134,6 +134,15 @@ function uneFoisChacun(r) {
 }
 
 test.describe("Navigation mesurée sur l'artefact de production", () => {
+  // ⚠️ SERVICE WORKER BLOQUÉ (2026-11-10), comme dans deconnexion-artefact.spec.js.
+  // Sous WebKit, une page que le service worker contrôle échappe aux routes de
+  // page ET de contexte : un passage WebKit local de cette suite a écrit sa
+  // télémétrie dans la table de PRODUCTION (`screen_view`, `ios_nav_irl`,
+  // `ios_feed_to_irl`… env `development`, safari, le 10/11 entre 08:08 et
+  // 08:11 UTC, mesurées au canal ①). Sans effet en CI, qui la passe sous
+  // Chromium ; le service worker ne touche ni goTo ni ses enveloppes.
+  test.use({ serviceWorkers: "block" });
+
   test("① le bloc app arrive après la fin des deux sondages : la navigation est comptée, une fois", async ({ page, baseURL }) => {
     await page.clock.install();
     const { journal, domPret, liberer } = await servirArtefact(page, baseURL, /^app\/app-01/);

@@ -1,10 +1,19 @@
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
-const { onboardedState } = require("./app-helper");
+const { onboardedState, sansDonneesDistantes } = require("./app-helper");
 
 test.skip(process.env.PASSIO_CIBLE !== "dist", "contrat du bundle de production uniquement");
 
+// ⚠️ ISOLÉE DU PROJET DE PRODUCTION (2026-11-10). Ce que la suite mesure — ce que
+// le bundle ÉMET au changement de passion — se lit par l'espion posé sur
+// `tel.track`, jamais au réseau. Sans isolation, chaque passage du job « Gates
+// artefact production » écrivait pourtant en PRODUCTION la file de démarrage de
+// ses deux pages (`?telemetry=1`) : 6 lots, 31 lignes `env = development` par
+// passage, mesurés derrière un proxy local ; une session de 12 lignes par passage
+// de la CI au canal ①. Le projet vide accepte la télémétrie comme le vrai (201).
+
 test("le changement de profil émet uniquement la passion métier, jamais l'id local", async ({ page }) => {
+  await sansDonneesDistantes(page);
   await page.addInitScript(([k, t, st]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
@@ -45,6 +54,7 @@ test("le changement de profil émet uniquement la passion métier, jamais l'id l
 });
 
 test("un refresh sans changement n'émet pas de doublon", async ({ page }) => {
+  await sansDonneesDistantes(page);
   await page.addInitScript(([k, t, st]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
