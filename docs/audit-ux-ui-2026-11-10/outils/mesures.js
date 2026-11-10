@@ -49,12 +49,24 @@ function mesurerDansLaPage(options) {
     var top = document.elementFromPoint(x, y);
     return !!top && (top === el || el.contains(top));
   }
+  // Opacité EFFECTIVE (produit des opacités des ancêtres) : un panneau fermé en
+  // `opacity: 0` reste « touchable » pour `elementFromPoint`, mais n'est pas vu.
+  var cacheOpacite = new WeakMap();
+  function opaciteEffective(el) {
+    if (!el || el.nodeType !== 1) return 1;
+    if (cacheOpacite.has(el)) return cacheOpacite.get(el);
+    var o = Number(getComputedStyle(el).opacity);
+    if (isNaN(o)) o = 1;
+    o = o * opaciteEffective(el.parentElement);
+    cacheOpacite.set(el, o);
+    return o;
+  }
   function visible(el) {
     var r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return false;
     if (r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) return false;
     var cs = getComputedStyle(el);
-    if (cs.visibility === "hidden" || cs.display === "none" || Number(cs.opacity) === 0) return false;
+    if (cs.visibility === "hidden" || cs.display === "none" || opaciteEffective(el) < 0.05) return false;
     var cx = Math.min(vw - 1, Math.max(0, r.left + r.width / 2));
     var cy = Math.min(vh - 1, Math.max(0, r.top + r.height / 2));
     var top = document.elementFromPoint(cx, cy);

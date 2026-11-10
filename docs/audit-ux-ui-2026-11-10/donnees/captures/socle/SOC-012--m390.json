@@ -1,0 +1,132 @@
+{
+ "id": "SOC-012",
+ "domaine": "socle",
+ "scenario": "ecrans-principaux-webkit",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "webkit",
+ "version": "27.2",
+ "mode": "compte",
+ "titre": "Rencontrer — écran principal, haut de page",
+ "note": "",
+ "prisLe": "2026-11-10T17:11:09.065Z",
+ "ecran": {
+  "ecran": "screen-irl",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#irl"
+ },
+ "avant": {
+  "fichier": "captures/socle/SOC-012--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 91820,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 26,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.event-card > div.event-footer > div.attendees > div.avatar.sm",
+     "texte": "📷",
+     "w": 24,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div.event-card > div.event-footer > div.attendees > div.avatar.sm",
+     "texte": "💃",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventList > div.event-card > div.event-footer > button.btn.small",
+     "texte": "+ Rejoindre",
+     "w": 80.6,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div.event-card > div.post-actions > span.event-react-chip-holder > button.ev-react-chip",
+     "texte": "🔥 1",
+     "w": 50.2,
+     "h": 25,
+     "enLigne": false
+    },
+    {
+     "el": "div.event-card > div.event-footer > div.attendees > div.avatar.sm",
+     "texte": "🎧",
+     "w": 30,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "div#eventList > div.event-card > div.event-footer > button.btn.small",
+     "texte": "+ Rejoindre",
+     "w": 80.6,
+     "h": 29,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 9
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 27,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

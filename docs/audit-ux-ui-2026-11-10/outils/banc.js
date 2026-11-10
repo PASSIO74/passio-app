@@ -140,6 +140,11 @@ async function ouvrirContexte(nav, vue, baseURL, extra) {
   };
   // Sous Chromium : agent Android + tactile (couple moteur/agent réel d'un Chrome Android).
   if (v.mobile && nav.browserType().name() === "chromium") { opts.isMobile = true; opts.hasTouch = true; opts.userAgent = UA_ANDROID; }
+  // Sous WebKit : l'agent et le tactile d'un iPhone 13 (le moteur de tous les navigateurs de l'iPhone).
+  if (v.mobile && nav.browserType().name() === "webkit") {
+    const iphone = require("@playwright/test").devices["iPhone 13"];
+    opts.isMobile = true; opts.hasTouch = true; opts.userAgent = iphone.userAgent;
+  }
   return nav.newContext(opts);
 }
 

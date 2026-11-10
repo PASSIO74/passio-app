@@ -1,0 +1,71 @@
+{
+  "domaine": "socle",
+  "groupe": "Transverse",
+  "titre": "Socle de mesure — six écrans principaux sur sept gabarits",
+  "resume": "Les six écrans principaux (Fil, Rencontrer, Rechercher, Messages, Profil, Studio) ont été capturés au même état — compte connecté fictif, même jeu de données — sur six gabarits Chromium (320×568 à 1440×900), sous WebKit (gabarit iPhone 13) et avec la préférence « mouvement réduit ». Les acquis tiennent : aucun débordement horizontal même à 320 px, aucun champ sous 16 px, aucun contraste mesurable sous AA, aucune commande sans nom, aucune erreur JavaScript. Les écarts relevés sont des cibles tactiles juste sous 44 px dans la barre supérieure et sur quelques commandes secondaires, un panneau fermé qui reste atteignable au clavier, et une mise en page tablette/ordinateur qui se contente de la colonne mobile. Les constats d'écran détaillés sont portés par les domaines ; ce socle les étaie par une mesure comparable.",
+  "aConserver": [
+    "Aucun débordement horizontal sur les 36 captures Chromium, y compris à 320 px (05-MESURES.md).",
+    "Tous les champs de saisie mesurés sont à 16 px ou plus : pas de zoom automatique d'iOS au focus.",
+    "Zoom possible : la balise viewport n'interdit pas le zoom (`width=device-width, initial-scale=1, viewport-fit=cover`).",
+    "Aucun texte jugé sous le seuil AA sur fond uni ; la palette v2 (#6D32F4 sur blanc : 6,15:1) tient ses promesses.",
+    "Rendu identique sous WebKit (moteur de tous les navigateurs de l'iPhone) pour les six écrans (SOC-011 à SOC-016)."
+  ],
+  "registre": [
+    { "id": "SOC-001", "surface": "Fil (Découvrir)", "composant": "Écran principal, haut de page", "etat": "compte connecté, socle de données", "role": "connecté", "geste": "Onglet « Découvrir »", "observation": "observe", "preuve": "captures SOC-001 sur m320, m360, m390, m430, t768, d1440 ; mesures automatiques", "problemes": ["SOC-C01", "SOC-C03"], "proposition": "Barre supérieure : zones tactiles de 44 px.", "visuel": "avant-apres", "verdict": "a-ameliorer", "justification": "Lisible et stable sur tous les gabarits ; deux commandes de la barre supérieure sous 44 px de large." },
+    { "id": "SOC-002", "surface": "Rencontrer", "composant": "Écran principal, haut de page", "etat": "compte connecté", "role": "connecté", "geste": "Onglet « Rencontrer »", "observation": "observe", "preuve": "captures SOC-002 (6 gabarits)", "problemes": ["SOC-C01"], "proposition": "", "visuel": "avant", "verdict": "a-conserver", "justification": "Aucun débordement ; constats détaillés dans les domaines IRL." },
+    { "id": "SOC-003", "surface": "Rechercher", "composant": "Écran principal, haut de page", "etat": "compte connecté", "role": "connecté", "geste": "Loupe de la barre supérieure", "observation": "observe", "preuve": "captures SOC-003 (6 gabarits) ; mesure : bouton « OK » 40,9 × 28 px", "problemes": ["SOC-C01"], "proposition": "", "visuel": "avant", "verdict": "a-ameliorer", "justification": "Le bouton « OK » de la recherche est la plus petite cible des écrans principaux." },
+    { "id": "SOC-004", "surface": "Messages", "composant": "Écran principal, haut de page", "etat": "compte connecté, conversations d'exemple", "role": "connecté", "geste": "Onglet « Messages »", "observation": "observe", "preuve": "captures SOC-004 (6 gabarits)", "problemes": [], "proposition": "", "visuel": "avant", "verdict": "a-conserver", "justification": "Mise en page saine à toutes les largeurs ; constats détaillés dans les domaines Messagerie." },
+    { "id": "SOC-005", "surface": "Profil", "composant": "Écran principal, haut de page", "etat": "mon profil", "role": "propriétaire", "geste": "Onglet « Profil »", "observation": "observe", "preuve": "captures SOC-005 (6 gabarits) ; compteurs mesurés 82 × 40 px", "problemes": ["SOC-C01"], "proposition": "", "visuel": "avant", "verdict": "a-conserver", "justification": "Seuls les compteurs (abonnés, passions, abonnements) sont à 40 px de haut ; détail dans le domaine Profils." },
+    { "id": "SOC-006", "surface": "Créer (Studio)", "composant": "Écran principal, haut de page", "etat": "Studio vide", "role": "connecté", "geste": "Bouton « Créer »", "observation": "observe", "preuve": "captures SOC-006 (6 gabarits) ; pastilles d'envie 32 à 40 px de haut", "problemes": ["SOC-C01"], "proposition": "", "visuel": "avant", "verdict": "a-conserver", "justification": "Lisible ; pastilles d'envie sous 44 px de haut, traité dans le domaine Création." },
+    { "id": "SOC-011", "surface": "Six écrans principaux", "composant": "Rendu WebKit (gabarit iPhone 13)", "etat": "compte connecté", "role": "connecté", "geste": "Parcours des six onglets", "observation": "observe", "preuve": "captures SOC-011 à SOC-016 (WebKit 27.2, émulation)", "captures": ["SOC-011", "SOC-012", "SOC-013", "SOC-014", "SOC-015", "SOC-016"], "problemes": [], "proposition": "", "visuel": "avant", "verdict": "a-conserver", "justification": "Rendu équivalent à Chromium ; reste à confirmer sur un véritable iPhone (zones sûres, clavier)." },
+    { "id": "SOC-021", "surface": "Fil", "composant": "Préférence « mouvement réduit »", "etat": "prefers-reduced-motion: reduce", "role": "connecté", "geste": "Réglage du système", "observation": "simule", "preuve": "capture SOC-021 (préférence émulée par Playwright) ; 22 règles prefers-reduced-motion dans styles.css, 19 animations infinies", "problemes": [], "proposition": "", "visuel": "avant", "verdict": "a-verifier", "justification": "Une image fixe ne prouve pas l'absence de mouvement : à vérifier en vidéo (bobines, stories, anneaux)." },
+    { "id": "SOC-030", "surface": "Toute l'application", "composant": "Ordre de tabulation", "etat": "fil, rien d'ouvert", "role": "visiteur clavier / lecteur d'écran", "geste": "Tabulation depuis le haut de page", "observation": "simule", "preuve": "sondes outils/sondes/socle-clavier.js (45 arrêts, focus visible partout) et socle-focus-cache.js (8 commandes du panneau de conversation FERMÉ atteignables)", "captures": [], "problemes": ["SOC-C02"], "proposition": "Rendre inerte le panneau de conversation fermé.", "visuel": "aucun", "verdict": "a-ameliorer", "justification": "Le focus est visible, mais des commandes invisibles restent dans l'ordre de tabulation." }
+  ],
+  "constats": [
+    {
+      "id": "SOC-C01", "titre": "Plusieurs commandes fréquentes mesurent moins de 44 px",
+      "emplacement": "Barre supérieure (`.topbar-bell` Explorer 40 × 44, Notifications 41 × 44 ; zone « Mon profil » 170 × 36) ; Rechercher (bouton « OK » 40,9 × 28) ; Studio (pastilles d'envie 32–40 px de haut) ; Profil (compteurs 40 px de haut)",
+      "surfaces": ["SOC-001", "SOC-002", "SOC-003", "SOC-005", "SOC-006"], "type": "observation", "nature": "accessibilite",
+      "preuve": "Mesures automatiques (zone sondée par elementFromPoint) sur les 43 captures du socle, voir 05-MESURES.md.",
+      "probleme": "Cibles un peu étroites ou basses par rapport à l'acquis PASSIO de 44 px.",
+      "declencheur": "Usage à une main, pouce, mouvement ou tremblement.",
+      "consequence": "Appuis manqués ou voisins (Explorer et Notifications sont collés), surtout sur la barre supérieure utilisée à chaque session.",
+      "proposition": "Porter à 44 × 44 px la zone tactile (la taille visible peut rester la même : marge interne ou pseudo-élément mesuré par elementFromPoint) des icônes de la barre supérieure, du bouton « OK » et des pastilles d'envie.",
+      "visuels": ["SOC-001"], "priorite": "P3", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Décalage de la barre supérieure sur 320 px. Verrous : cadrage, ios-zones-sures.",
+      "critereAcceptation": "À 360 px, `elementFromPoint` rend la même commande sur 44 × 44 px autour du centre de chaque icône de la barre supérieure, du bouton « OK » et de chaque pastille d'envie.",
+      "fichiers": ["styles.css"], "sensible": false
+    },
+    {
+      "id": "SOC-C02", "titre": "Le panneau de conversation fermé reste atteignable au clavier",
+      "emplacement": "`#conv-fullpage` fermé (déplacé hors champ par `translateX`, sans `inert` ni `aria-hidden`)",
+      "surfaces": ["SOC-030"], "type": "observation", "nature": "accessibilite",
+      "preuve": "Sonde socle-focus-cache.js : 8 commandes du panneau fermé (Retour, Pièce jointe, Emoji, champ Message, Envoyer…) atteignables par tabulation et exposées aux lecteurs d'écran ; sonde socle-panneau-invisible.js : le panneau est hors champ (x = 390) et n'intercepte aucun toucher.",
+      "probleme": "Une personne au clavier ou au lecteur d'écran traverse des commandes qu'elle ne voit pas.",
+      "declencheur": "Navigation au clavier, lecteur d'écran (VoiceOver, TalkBack).",
+      "consequence": "Focus perdu hors de l'écran, annonces de « Envoyer le message » sans conversation ouverte : désorientation.",
+      "proposition": "Poser `inert` (et `aria-hidden`) sur `#conv-fullpage` tant qu'il n'est pas `.active`, et le retirer à l'ouverture — après injection du contenu (règle « contenu avant révélation »).",
+      "visuels": [], "priorite": "P2", "gravite": 2, "effort": "S", "risqueTechnique": "faible",
+      "dependances": "Ordre d'ouverture du panneau (CLAUDE.md, « Panneau animé : le contenu AVANT la révélation »).",
+      "risqueRegression": "Focus initial à l'ouverture de la conversation. Verrou : conv-ouverture-fil.",
+      "critereAcceptation": "Conversation fermée : aucune tabulation n'atteint un descendant de `#conv-fullpage` ; ouverte : le focus peut atteindre le champ Message.",
+      "fichiers": ["js/app-04-comments-shop.js", "index.html"], "sensible": false
+    },
+    {
+      "id": "SOC-C03", "titre": "Tablette et ordinateur : la colonne mobile au milieu d'un grand vide",
+      "emplacement": "`.app-shell` (colonne de 440 px) sur t768 et d1440",
+      "surfaces": ["SOC-001"], "type": "jugement", "nature": "polish",
+      "preuve": "Captures SOC-001 à SOC-006 en t768 et d1440 : la colonne mobile est centrée, le reste de l'écran est un fond décoratif.",
+      "probleme": "L'espace disponible n'apporte rien (sur 1440 px, 70 % de la largeur est vide) ; la barre de navigation reste en bas.",
+      "declencheur": "Ouverture sur tablette ou ordinateur (partage d'un lien ouvert au bureau, par exemple).",
+      "consequence": "Impression d'application « téléphone » ; pas de défaut fonctionnel.",
+      "proposition": "Garder la colonne (choix mobile-first assumé) ; à moyen terme, sur ≥ 1024 px, une barre de navigation latérale et une colonne plus large pour les fiches et les conversations. À arbitrer selon la part réelle de trafic hors mobile.",
+      "visuels": ["SOC-001"], "priorite": "P3", "gravite": 1, "effort": "L", "risqueTechnique": "moyen",
+      "dependances": "Mesure de la part de trafic tablette/ordinateur (Centre de pilotage).",
+      "risqueRegression": "Pages en `position: fixed` hors de `#appMain` (lots-ui INDEX), pied fixe de la vue Filtre calé sur `.app-shell`.",
+      "critereAcceptation": "Décision documentée à partir de la mesure de trafic ; si réalisé, aucune régression mobile sur les suites de cadrage.",
+      "fichiers": ["styles.css", "js/ui-v2-shell.js"], "sensible": false
+    }
+  ]
+}

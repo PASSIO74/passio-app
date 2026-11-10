@@ -1,0 +1,224 @@
+{
+ "id": "SOC-001",
+ "domaine": "socle",
+ "scenario": "ecrans-principaux",
+ "vue": "t768",
+ "gabarit": "Tablette 768×1024",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil (Découvrir) — écran principal, haut de page",
+ "note": "",
+ "prisLe": "2026-11-10T17:42:38.845Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#feed"
+ },
+ "avant": {
+  "fichier": "captures/socle/SOC-001--t768--avant.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 61970,
+  "zooms": [
+   {
+    "nom": "barre",
+    "titre": "Barre supérieure",
+    "fichier": "captures/socle/SOC-001--t768--avant-zoom-barre.webp",
+    "largeur": 810,
+    "hauteur": 96,
+    "octets": 3780
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Explorer : 40 × 44 px, collé à Notifications (41 × 44 px).",
+   "x": 0.707,
+   "y": 0.031,
+   "w": 0.044,
+   "h": 0.033,
+   "sel": ".topbar-right .topbar-bell",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Zone « Mon profil » : 36 px de haut.",
+   "x": 0.28,
+   "y": 0.031,
+   "w": 0.227,
+   "h": 0.035,
+   "sel": ".topbar-left",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 768,
+   "h": 1024
+  },
+  "cibles": {
+   "total": 40,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 241,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-body",
+     "texte": "Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'ach",
+     "w": 241,
+     "h": 22.5,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Malik Benali",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Malik Benali 🏋️ Sport · 55 min",
+     "w": 241,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-body",
+     "texte": "Qui est partant pour la salle jeudi 19 h ? On se retrouve de",
+     "w": 241,
+     "h": 22.5,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 306,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 12
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 21,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 768,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/socle/SOC-001--t768--apres.webp",
+  "largeur": 1152,
+  "hauteur": 1536,
+  "octets": 62202,
+  "zooms": [
+   {
+    "nom": "barre",
+    "titre": "Barre supérieure",
+    "fichier": "captures/socle/SOC-001--t768--apres-zoom-barre.webp",
+    "largeur": 810,
+    "hauteur": 96,
+    "octets": 3778
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Chaque icône a une zone de 44 × 44 px, séparée de sa voisine.",
+   "x": 0.674,
+   "y": 0.031,
+   "w": 0.057,
+   "h": 0.043,
+   "sel": ".topbar-right .topbar-bell",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Zone « Mon profil » portée à 44 px de haut.",
+   "x": 0.28,
+   "y": 0.031,
+   "w": 0.227,
+   "h": 0.043,
+   "sel": ".topbar-left",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

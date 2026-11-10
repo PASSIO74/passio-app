@@ -17,7 +17,7 @@ const AUDIT = path.resolve(__dirname, "..");
 const lire = (f) => JSON.parse(fs.readFileSync(f, "utf8"));
 const existe = (rel) => fs.existsSync(path.join(AUDIT, rel));
 
-const GROUPES = ["Entrée et navigation", "Fil et interactions", "Recherche et découverte", "Profils et passions", "Création et médias", "Bobines et stories", "Rencontres IRL", "Messagerie", "Partage", "Transverse"];
+const GROUPES = ["Parcours de bout en bout", "Entrée et navigation", "Fil et interactions", "Recherche et découverte", "Profils et passions", "Création et médias", "Bobines et stories", "Rencontres IRL", "Messagerie", "Partage", "Transverse"];
 const VAL = {
   observation: ["observe", "simule", "code", "inaccessible", "sans-objet"],
   visuel: ["avant-apres", "avant", "aucun"],
