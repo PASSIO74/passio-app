@@ -2410,12 +2410,13 @@ est servie en 200 `immutable` sous l'adresse de C.
   juste après la reprise, et la vérification ne distinguerait rien).
 - ⚠️ **L'EMPREINTE N'EST BONNE QUE SUR LES OCTETS SERVIS — LA MINIFICATION PASSE DANS LE BUILD** (étape
   2 bis), comme terser la veille : `cleancss -o <sortie> <entrée>`, clean-css-cli 5.6.3 du lockfile.
-  Vérifié avant de pousser : sur `7dade60f` (la production du moment), la feuille minifiée PAR LE BUILD
-  est octet pour octet celle que servait la production (231 511 octets, même sha384), sous le même
-  `?v=a6881b4c96` : la mise en ligne ne fait refuser à aucun appareil la feuille qu'il garde. Le
-  buildId change une fois (la page porte la reprise et l'empreinte : `3c4ddb55e9e9` → `70f648f28b95`
-  sur cette tête), identique minifié ou non. L'étape « Minify styles.css » du déploiement est RETIRÉE :
-  une seconde minification après le contrôle ferait refuser la feuille à tout le monde.
+  Vérifié avant de pousser, deux fois : sur `7dade60f` puis, rebasé, sur `4e1d8ed1` (#820 venait de
+  changer la feuille), la feuille minifiée PAR LE BUILD est octet pour octet celle que servait la
+  production (231 511 octets, même sha384, sous `?v=a6881b4c96` puis `?v=709d2be1cc`), et les 9
+  scripts aussi : la mise en ligne ne fait refuser à aucun appareil ce qu'il garde. Le buildId change
+  une fois (la page porte la reprise et l'empreinte : `3d8e98bb12ad` → `7e41f8b20efe` sur `4e1d8ed1`),
+  identique minifié ou non. L'étape « Minify styles.css » du déploiement est RETIRÉE : une seconde
+  minification après le contrôle ferait refuser la feuille à tout le monde.
 - ⚠️ **L'EMPREINTE NE DOUBLE PAS LE TÉLÉCHARGEMENT** (mesuré, ① : routes posées, donc cache HTTP coupé —
   un second téléchargement atteindrait le serveur) : UNE demande `style`, et un seul `load`, avec
   l'empreinte, sur les deux moteurs. Le pré-chargement spéculatif lit l'empreinte avec l'adresse.
