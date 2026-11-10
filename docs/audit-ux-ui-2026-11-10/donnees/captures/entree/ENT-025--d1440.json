@@ -1,0 +1,186 @@
+{
+ "id": "ENT-025",
+ "domaine": "entree",
+ "scenario": "historique",
+ "vue": "d1440",
+ "gabarit": "Ordinateur 1440×900",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Parcours historique — landing (drapeau `passio_first_run_experience_v1=\"0\"`)",
+ "note": "État conditionnel : la landing n'est plus vue par défaut depuis le 2026-09-01 ; elle revient si le parcours de première visite est coupé.",
+ "prisLe": "2026-11-10T19:36:03.711Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": true,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO – MVP Beta",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-025--d1440--avant.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 45950,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied collant",
+    "fichier": "captures/entree/ENT-025--d1440--avant-zoom-pied.webp",
+    "largeur": 452,
+    "hauteur": 174,
+    "octets": 5886
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Trois boutons pleins du même poids : « Se connecter », « Créer un compte », « Installer l'application ».",
+   "x": 0.5,
+   "y": 0.883,
+   "w": 0.306,
+   "h": 0.18,
+   "sel": ".landing-cta",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Six piliers ; le pied collant cache le dernier et ne laisse voir que leurs titres.",
+   "x": 0.5,
+   "y": 0.685,
+   "w": 0.278,
+   "h": 0.601,
+   "sel": ".landing-pillars",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 1440,
+   "h": 900
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "div#convSettingsPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFilesPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 206,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnVoice",
+     "texte": "Maintenir pour enregistrer",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#convFpSendBtn",
+     "texte": "Envoyer le message",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 9,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 1440,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/entree/ENT-025--d1440--apres.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 45986,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied collant",
+    "fichier": "captures/entree/ENT-025--d1440--apres-zoom-pied.webp",
+    "largeur": 452,
+    "hauteur": 164,
+    "octets": 6204
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une action principale (« Créer un compte »), la connexion en secondaire, l'installation en lien.",
+   "x": 0.5,
+   "y": 0.889,
+   "w": 0.306,
+   "h": 0.169,
+   "sel": ".landing-cta",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

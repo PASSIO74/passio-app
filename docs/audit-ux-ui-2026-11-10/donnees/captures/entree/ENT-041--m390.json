@@ -1,0 +1,90 @@
+{
+ "id": "ENT-041",
+ "domaine": "entree",
+ "scenario": "rideau",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Rideau d'accès armé (`passio_gate_actif=\"1\"`) — état conditionnel",
+ "note": "État conditionnel : le rideau est levé par défaut depuis le 2026-09-11 ; il ne s'arme que par `localStorage.passio_gate_actif=\"1\"`.",
+ "prisLe": "2026-11-10T19:34:14.026Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO – MVP Beta",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-041--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28882,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#passioGate > div.pg-card > nav.pg-legal > button.pg-legal-link",
+     "texte": "Mentions légales",
+     "w": 93.9,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#passioGate > div.pg-card > nav.pg-legal > button.pg-legal-link",
+     "texte": "Conditions d'utilisation",
+     "w": 124.7,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#passioGate > div.pg-card > nav.pg-legal > button.pg-legal-link",
+     "texte": "Confidentialité",
+     "w": 82.1,
+     "h": 27,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 0,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

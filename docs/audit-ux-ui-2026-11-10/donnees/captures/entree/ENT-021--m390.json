@@ -1,0 +1,104 @@
+{
+ "id": "ENT-021",
+ "domaine": "entree",
+ "scenario": "etats-auth",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "« Ton compte attend… » — e-mail non confirmé (simulé)",
+ "note": "Simulé : message et sortie posés par `_showResendConfirmation` (app-02:5685), comme après un refus « Email not confirmed ».",
+ "prisLe": "2026-11-10T19:31:17.917Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": true,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-021--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 54988,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "La sortie (renvoyer l'e-mail) est sous les yeux, en 44 px.",
+   "x": 0.5,
+   "y": 0.472,
+   "w": 0.785,
+   "h": 0.052,
+   "sel": "#authResendTopBtn",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le refus et sa sortie se lisent ensemble.",
+   "x": 0.5,
+   "y": 0.35,
+   "w": 0.785,
+   "h": 0.078,
+   "sel": "#authMsg",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "button#authTabSignin",
+     "texte": "Se connecter",
+     "w": 122.3,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#authTabSignup",
+     "texte": "Créer un compte",
+     "w": 145.6,
+     "h": 35,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 13,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

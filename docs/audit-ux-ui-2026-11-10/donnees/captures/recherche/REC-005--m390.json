@@ -1,0 +1,39 @@
+{
+ "id": "REC-005",
+ "domaine": "recherche",
+ "scenario": "saisie",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Pendant la recherche : « Recherche… »",
+ "note": "",
+ "prisLe": "2026-11-10T19:32:48.773Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-005--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 55012,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": null,
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

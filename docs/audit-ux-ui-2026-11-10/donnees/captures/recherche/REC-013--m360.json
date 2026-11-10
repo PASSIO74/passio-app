@@ -1,0 +1,172 @@
+{
+ "id": "REC-013",
+ "domaine": "recherche",
+ "scenario": "fiche",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fiche « Musique » (une de mes passions), haut",
+ "note": "",
+ "prisLe": "2026-11-10T19:44:35.880Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": "Musique",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-013--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 53020,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« 42 posts » ici, « 4 posts » sur la tuile qu'on vient de toucher : la fiche compte les exemples.",
+   "x": 0.341,
+   "y": 0.229,
+   "w": 0.195,
+   "h": 0.033,
+   "sel": "#modalContent .modal-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Personnages d'exemple mêlés aux vrais comptes, sans marque.",
+   "x": 0.5,
+   "y": 0.684,
+   "w": 0.9,
+   "h": 0.097,
+   "sel": "#pexCreators .list-row:nth-child(3)",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Aucune activité « Musique » alors qu'une jam a lieu dans trois jours : rien ne mène à Rencontrer.",
+   "x": 0.5,
+   "y": 0.67,
+   "w": 0.9,
+   "h": 0.589,
+   "sel": "#pexCreators",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 12,
+   "sous44": [
+    {
+     "el": "div#pexCreators > div.list-row > button.btn.small",
+     "texte": "Demande envoyée — appuie pour l'annuler",
+     "w": 118.2,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#pexCreators > div.list-row > button.btn.small",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 58,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#pexCreators > div.list-row > button.btn.small",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#pexCreators > div.list-row > button.btn.small",
+     "texte": "Suivre ce compte",
+     "w": 55.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#pexCreators > div.list-row > button.btn.small",
+     "texte": "Suivi — appuie pour ne plus suivre ce compte",
+     "w": 58,
+     "h": 29,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 20,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/recherche/REC-013--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 51008,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Un seul compte, le même que la tuile : les vraies publications.",
+   "x": 0.345,
+   "y": 0.229,
+   "w": 0.202,
+   "h": 0.033,
+   "sel": "#modalContent .modal-title",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "La porte vers Rencontrer, déjà filtrée sur la passion (moteur existant « Voir les activités »), en corail : c'est l'IRL.",
+   "x": 0.5,
+   "y": 0.345,
+   "w": 0.9,
+   "h": 0.075,
+   "sel": "#maqActivites",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Un exemple est marqué et ne se suit pas.",
+   "x": 0.5,
+   "y": 0.813,
+   "w": 0.9,
+   "h": 0.097,
+   "sel": "#pexCreators .list-row:nth-child(3)",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

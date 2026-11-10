@@ -1,0 +1,135 @@
+{
+ "id": "TRA-055",
+ "domaine": "transverse",
+ "scenario": "theme-sombre",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fil après « Sombre » dans Apparence & thème : un mode sombre partiel",
+ "note": "",
+ "prisLe": "2026-11-10T19:44:37.012Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-055--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 59880,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Barre et fond repeints ; cartes et textes mélangés (mode sombre retiré du produit, ADR)",
+   "x": 0.5,
+   "y": 0.038,
+   "w": 1,
+   "h": 0.076,
+   "sel": ".app-topbar, .topbar",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Contrastes non vérifiés sur ce thème",
+   "x": 0.5,
+   "y": 0.608,
+   "w": 0.918,
+   "h": 0.568,
+   "sel": "#feedList .post",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 32,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 27,
+   "sousSeuil": [
+    {
+     "el": "div#profileStrip > div.profile-tile.active > div.profile-tile-avatar > span.profile-tile-count",
+     "texte": "42",
+     "ratio": 4.47,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#6366f1",
+     "px": 9
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

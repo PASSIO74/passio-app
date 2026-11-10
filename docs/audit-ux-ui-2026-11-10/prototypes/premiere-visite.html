@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="fr" class="proto-page passio-flat-passions passio-ui-v2 passio-ui-3 passio-ui-4b passio-ui-4a0 passio-ui-4a1 passio-ui-4a2 passio-ui-4a3 passio-ui-5 passio-ui-4a4 passio-ui-4a5 passio-ui-6 passio-ui-6a passio-ui-6b passio-ui-6c passio-ui-7">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prototype — Première visite → premier geste (audit UX/UI PASSIO)</title>
+  <link rel="stylesheet" href="kit/passio-styles.css">
+  <link rel="stylesheet" href="kit/kit.css">
+  <style>
+    /* LA PROPOSITION : uniquement ce qui change par rapport à l'application. */
+    .proto-telephone { --pv-encre2: #4b4763; }
+    .pv-titre { font-family: var(--v2-titre, Manrope, sans-serif); font-weight: 800; color: var(--text); }
+    .pv-btn:focus-visible, .pv-lien:focus-visible, .pv-tuile:focus-visible, .pv-nav button:focus-visible, .pv-ico:focus-visible, .post-action:focus-visible, .pv-case:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+    /* Barre supérieure (inchangée, sauf la loupe nommée « Rechercher » — ENT-C08). */
+    .pv-haut { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: #fff; border-bottom: 1px solid var(--border); }
+    .pv-marque { display: flex; align-items: center; gap: 8px; min-height: 44px; font-family: var(--v2-titre, Manrope, sans-serif); font-weight: 800; letter-spacing: .08em; color: var(--accent); }
+    .pv-marque img { width: 32px; height: 32px; border-radius: 10px; }
+    .pv-ico { margin-left: auto; width: 44px; height: 44px; border-radius: 14px; border: 1px solid var(--border); background: var(--accent-tile, #f3effe); color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+    .pv-ico + .pv-ico { margin-left: 0; }
+    .pv-ico svg { width: 20px; height: 20px; }
+
+    /* Barre inférieure. */
+    .pv-nav { display: flex; background: #fff; border-top: 1px solid var(--border); padding: 4px 0 10px; }
+    .pv-nav button { flex: 1; min-height: 56px; border: none; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font: 600 11.5px/1.2 system-ui, sans-serif; color: #5b5770; cursor: pointer; }
+    .pv-nav button svg { width: 22px; height: 22px; }
+    .pv-nav button[aria-current="page"] { color: var(--accent); }
+    .pv-nav .pv-creer span.pv-plus { width: 44px; height: 44px; border-radius: 16px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; }
+
+    .pv-corps { padding: 12px 14px 24px; }
+    .pv-carte { background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 16px; margin-bottom: 12px; box-shadow: 0 4px 18px rgba(23,21,43,.05); }
+    .pv-carte h2 { font-family: var(--v2-titre, Manrope, sans-serif); font-weight: 800; font-size: 19px; margin: 0 0 4px; color: var(--text); }
+    .pv-carte p { margin: 0 0 12px; font-size: 15px; line-height: 1.45; color: var(--pv-encre2); }
+    .pv-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; border-radius: 16px; border: 1px solid var(--border); background: #fff; color: var(--text); font: 700 15px/1.2 system-ui, sans-serif; cursor: pointer; padding: 0 14px; }
+    .pv-btn.plein { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .pv-btn + .pv-btn { margin-top: 8px; }
+    .pv-lien { min-height: 44px; border: none; background: none; color: var(--accent); font: 700 14px/1.2 system-ui, sans-serif; cursor: pointer; padding: 0 6px; }
+    .pv-liens { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+    /* Envies : mêmes pastilles, mots sans doublon (ENT-C08). */
+    .pv-envies { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; }
+    .pv-envie { flex: 0 0 auto; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: #fff; font: 600 14px/1 system-ui, sans-serif; color: var(--text); display: inline-flex; align-items: center; }
+
+    /* Rangée des passions choisies + phrase « sur cet appareil » (ENT-C15). */
+    .pv-passions { display: none; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+    body[data-passions="1"] .pv-passions { display: flex; }
+    .pv-pass { min-height: 40px; padding: 0 12px; border-radius: 999px; background: var(--accent-tile, #f3effe); border: 1px solid var(--accent-tile-line, #e2d9fb); color: var(--accent); font: 700 14px/1 system-ui, sans-serif; display: inline-flex; align-items: center; gap: 6px; }
+    .pv-local { display: none; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 13.5px; color: var(--pv-encre2); margin: 0 0 12px; }
+    body[data-passions="1"][data-compte="0"] .pv-local { display: flex; }
+    body[data-passions="1"] #pvBienvenue { display: none; }
+    body[data-compte="1"] #pvBienvenue { display: none; }
+
+    /* Rappel après le compte : il parle de ce qui est à l'écran (PAR-C02). */
+    .pv-rappel { display: none; background: #e8f6ee; border: 1px solid #b9e2c9; color: #0f5c3d; border-radius: 14px; padding: 10px 12px; font-size: 14px; line-height: 1.4; font-weight: 600; margin-bottom: 12px; }
+    body[data-compte="1"] .pv-rappel { display: block; }
+    body[data-aime="1"] .pv-rappel { display: none; }
+    .pv-reussi { display: none; background: #fff; border: 1px solid var(--accent-tile-line, #e2d9fb); border-radius: 14px; padding: 10px 12px; font-size: 14px; line-height: 1.45; color: var(--text); margin: 8px 0 0; }
+    body[data-aime="1"] .pv-reussi { display: block; }
+    .pv-reussi .pv-lien { padding: 0 2px; }
+
+    /* Publication d'exemple (classes de l'application). */
+    .proto-telephone .post { margin: 0 0 14px; }
+    .proto-telephone .post-media img { width: 100%; display: block; border-radius: 14px; }
+    .proto-telephone .post-actions .post-action { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
+    body[data-aime="1"] #pvCoeur { color: #b42318; font-weight: 800; }
+
+    /* Repère posé AU-DESSUS de la barre basse, il ne cache plus sa cible (ENT-C05). */
+    .pv-repere { display: none; position: absolute; left: 12px; right: 12px; bottom: 82px; z-index: 6; background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 12px 14px; box-shadow: 0 10px 30px rgba(23,21,43,.18); }
+    body[data-repere="1"] .pv-repere { display: block; }
+    .pv-repere small { display: block; font: 800 11px/1.3 var(--v2-titre, Manrope, sans-serif); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+    .pv-repere b { display: block; font-family: var(--v2-titre, Manrope, sans-serif); font-size: 15px; color: var(--text); margin: 2px 0; }
+    .pv-repere p { margin: 0 0 6px; font-size: 13.5px; color: var(--pv-encre2); line-height: 1.4; }
+    .pv-repere .pv-actions { display: flex; justify-content: space-between; align-items: center; }
+    body[data-repere="1"] #pvEnvies { outline: 2px dashed var(--accent); outline-offset: 3px; border-radius: 12px; }
+
+    /* Feuille basse et fenêtres (dans le téléphone). */
+    .pv-fond { position: absolute; inset: 0; z-index: 20; background: rgba(23,21,43,.42); display: flex; align-items: flex-end; }
+    .pv-feuille { width: 100%; background: #fff; border-radius: 24px 24px 0 0; padding: 10px 16px 18px; max-height: 88%; overflow-y: auto; }
+    .pv-poignee { width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: 0 auto 10px; }
+    .pv-feuille h2 { font-family: var(--v2-titre, Manrope, sans-serif); font-weight: 800; font-size: 20px; margin: 0 0 4px; color: var(--text); }
+    .pv-feuille .pv-sous { font-size: 14px; color: var(--pv-encre2); margin: 0 0 12px; line-height: 1.45; }
+    .pv-grille { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+    .pv-tuile { min-height: 76px; border: 1.5px solid var(--border); border-radius: 16px; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: 700 13.5px/1.2 system-ui, sans-serif; color: var(--text); cursor: pointer; }
+    .pv-tuile span { font-size: 24px; }
+    .pv-tuile[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-tile, #f3effe); color: var(--accent); }
+    .pv-recherche { width: 100%; box-sizing: border-box; font-size: 16px; min-height: 48px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--border); margin-bottom: 12px; color: var(--text); background: #fff; }
+
+    /* Profil d'un visiteur : la carte qui dit ce qu'un compte apporte (ENT-C04). */
+    .pv-profil { text-align: center; padding: 22px 18px; }
+    .pv-profil .pv-rond { width: 84px; height: 84px; border-radius: 50%; margin: 2px auto 12px; background: var(--accent-tile, #f3effe); display: flex; align-items: center; justify-content: center; font-size: 38px; }
+
+    /* Formulaire de compte en deux étapes (ENT-C01, C02, C03, C11). */
+    .pv-barre { display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 0 8px; background: #fff; border-bottom: 1px solid var(--border); }
+    .pv-barre .pv-lien { color: var(--text); font-size: 15px; display: inline-flex; align-items: center; gap: 4px; }
+    .pv-barre .pv-etape { margin-left: auto; padding-right: 8px; font: 800 12px/1 var(--v2-titre, Manrope, sans-serif); letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
+    .pv-contexte { background: var(--accent-tile, #f3effe); border: 1px solid var(--accent-tile-line, #e2d9fb); border-radius: 14px; padding: 10px 12px; font-size: 14px; line-height: 1.45; color: var(--text); margin-bottom: 14px; }
+    .pv-onglets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; }
+    .pv-onglets button { min-height: 44px; border-radius: 12px; border: 1.5px solid var(--border); background: #fff; font: 700 14px/1 system-ui, sans-serif; color: var(--pv-encre2); cursor: pointer; }
+    .pv-onglets button[aria-selected="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-tile, #f3effe); }
+    .pv-case { display: flex; gap: 12px; align-items: flex-start; min-height: 44px; padding: 6px 0; font-size: 13.5px; line-height: 1.45; color: var(--pv-encre2); cursor: pointer; }
+    .pv-case input { width: 22px; height: 22px; min-width: 22px; margin: 1px 0 0; accent-color: var(--accent); }
+    .pv-case button { border: none; background: none; padding: 0; font: inherit; color: var(--accent); font-weight: 700; text-decoration: underline; cursor: pointer; }
+    .pv-google { display: flex; align-items: center; justify-content: center; gap: 10px; color: #3c4043; }
+    .pv-ou { display: flex; align-items: center; gap: 8px; color: var(--pv-encre2); font-size: 12.5px; margin: 12px 0 2px; }
+    .pv-ou::before, .pv-ou::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .pv-champ { display: block; margin-top: 12px; font: 700 12px/1.3 system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--pv-encre2); }
+    .pv-champ input { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; font: 400 16px/1.3 system-ui, sans-serif; min-height: 48px; padding: 0 14px; border: 1px solid var(--border); border-radius: 14px; background: #fff; color: var(--text); text-transform: none; letter-spacing: 0; }
+    .pv-aide { display: block; font: 400 12.5px/1.45 system-ui, sans-serif; text-transform: none; letter-spacing: 0; color: var(--pv-encre2); margin-top: 4px; }
+    .pv-err { display: none; font: 600 13px/1.4 system-ui, sans-serif; text-transform: none; letter-spacing: 0; color: #b42318; margin-top: 4px; }
+    body[data-erreur="1"] .pv-err { display: block; }
+    body[data-erreur="1"] .pv-fautif input { border-color: #b42318; box-shadow: 0 0 0 3px rgba(180,35,24,.14); }
+    body[data-erreur="1"] .pv-resume { display: block; }
+    .pv-resume { display: none; background: #fef3f2; border: 1px solid #fecdca; color: #912018; border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.4; margin-bottom: 12px; }
+    .pv-regles { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--pv-encre2); margin-top: 6px; text-transform: none; letter-spacing: 0; font-weight: 400; }
+    .pv-mdp { position: relative; } .pv-mdp input { padding-right: 52px; }
+    .pv-oeil { position: absolute; right: 2px; bottom: 2px; width: 44px; height: 44px; border: none; background: none; cursor: pointer; color: var(--pv-encre2); }
+    .pv-pied { padding: 12px 16px 16px; background: #fff; border-top: 1px solid var(--border); }
+    .pv-courrier { font-size: 54px; text-align: center; margin: 18px 0 6px; }
+  </style>
+</head>
+<body data-passions="0" data-compte="0" data-aime="0" data-erreur="0" data-repere="0">
+  <aside class="proto-notes">
+    <span class="proto-surtitre">Prototype · proposition</span>
+    <h1>Première visite → premier geste</h1>
+    <p>Un visiteur arrive, choisit ses passions sans compte, voit ce qu'un compte lui apporterait, puis touche « J'aime » : la demande de compte nomme ce geste, l'inscription tient en deux étapes courtes, et il revient exactement sur la publication pour réussir son premier geste.</p>
+    <p class="proto-avis">Maquette interactive : rien n'est envoyé, rien n'est enregistré. Données fictives.</p>
+    <ol class="proto-etapes"></ol>
+    <div class="proto-commandes">
+      <button type="button" data-proto="precedent">Étape précédente</button>
+      <button type="button" class="principal" data-proto="suivant">Commencer le parcours</button>
+      <button type="button" data-proto="zones" aria-pressed="false">Montrer les zones cliquables</button>
+      <button type="button" data-proto="recommencer">Recommencer</button>
+    </div>
+    <p class="proto-legende">Flèches ← → : étape précédente / suivante. Le cadre corail désigne l'élément dont parle l'étape. On peut aussi cliquer librement dans le téléphone.</p>
+    <a class="proto-retour" href="../galerie/index.html#/prototypes">← Retour à la galerie</a>
+  </aside>
+  <div class="proto-scene">
+    <span class="proto-etiquette">Après · maquette interactive</span>
+    <div class="proto-telephone">
+
+      <!-- ÉCRAN : Découvrir (fil de découverte) -->
+      <section data-ecran="fil">
+        <div class="pv-haut">
+          <span class="pv-marque"><img src="kit/icon-192.png" alt="">PASSIO</span>
+          <button type="button" class="pv-ico" aria-label="Rechercher" title="Rechercher"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20 16.4 16.4"/></svg></button>
+          <button type="button" class="pv-ico" aria-label="Notifications"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 0 0-12 0C6 14 3.8 15.5 3.8 15.5h16.4S18 14 18 8.5Z"/><path d="M10.2 19a2 2 0 0 0 3.6 0"/></svg></button>
+        </div>
+        <div class="proto-defile" id="pvDefile"><div class="pv-corps">
+          <div class="pv-passions" id="pvPassions"><span class="pv-pass">🎵 Musique</span><span class="pv-pass">📷 Photo</span></div>
+          <p class="pv-local" id="pvLocal">Gardées sur cet appareil · <button type="button" class="pv-lien" data-action="porte" data-ctx="preferences">Créer mon compte pour les retrouver partout</button></p>
+          <div class="pv-envies" id="pvEnvies" role="group" aria-label="Envies du moment">
+            <span class="pv-envie">Nouveau pour toi</span><span class="pv-envie">Apprendre</span><span class="pv-envie">Idées</span><span class="pv-envie">Rendez-vous</span>
+          </div>
+          <div class="pv-rappel" id="pvRappel" role="status">Ton compte est prêt. Tu étais sur la publication de Léa : touche ♡ pour l'aimer.</div>
+          <section class="pv-carte" id="pvBienvenue" aria-labelledby="pvBienvenueTitre">
+            <h2 id="pvBienvenueTitre">Bienvenue sur PASSIO</h2>
+            <p>Tout ce que tu aimes, au même endroit. Regarde librement : un compte ne sera demandé qu'au moment d'agir.</p>
+            <button type="button" class="pv-btn plein" id="pvChoisir" data-ouvrir="passions">Choisir mes passions</button>
+            <div class="pv-liens"><button type="button" class="pv-lien" data-action="porte" data-ctx="preferences">Créer un compte</button><button type="button" class="pv-lien" data-action="connexion">J'ai déjà un compte</button></div>
+          </section>
+          <article class="post" id="pvPost">
+            <div class="post-header">
+              <div class="avatar" style="background:#8b5cf6;">🎸</div>
+              <div class="post-author"><div class="post-author-name">Léa Fontaine</div><div class="post-author-meta"><span class="post-passion-tag">🎸 Musique</span> · 12 min</div></div>
+              <span class="post-mood-tag" data-mood="creation">Idées</span>
+            </div>
+            <div class="post-body">Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'achat.</div>
+            <div class="post-media"><img alt="Guitare posée sur un établi" src="medias/photo-atelier.jpg"></div>
+            <div class="post-actions">
+              <button type="button" class="post-action" id="pvCoeur" aria-label="Aimer" data-action="aimer">🤍 4</button>
+              <button type="button" class="post-action" aria-label="Commenter" data-action="porte" data-ctx="commenter">💬 1</button>
+            </div>
+            <div class="pv-reussi" id="pvReussi" role="status">Tu aimes la publication de Léa. <button type="button" class="pv-lien">Suivre Léa</button> pour voir ses prochaines créations.</div>
+          </article>
+          <article class="post">
+            <div class="post-header">
+              <div class="avatar" style="background:#6D32F4;">📷</div>
+              <div class="post-author"><div class="post-author-name">Inès Moreau</div><div class="post-author-meta"><span class="post-passion-tag">📷 Photo</span> · 2 h</div></div>
+              <span class="post-mood-tag" data-mood="learn">Apprendre</span>
+            </div>
+            <div class="post-body">Premier développement en noir et blanc : ce que j'ai appris.</div>
+            <div class="post-media"><img alt="Portrait en lumière douce" src="medias/photo-portrait.jpg"></div>
+          </article>
+        </div></div>
+        <div class="pv-repere" id="pvRepere" role="dialog" aria-labelledby="pvRepereTitre">
+          <small>Repère 1 sur 3</small>
+          <b id="pvRepereTitre">Un fil construit autour de tes passions</b>
+          <p>Tes passions et tes envies (encadrées) s'additionnent pour composer ce que tu vois.</p>
+          <div class="pv-actions"><button type="button" class="pv-lien" data-etat="repere:0">Ne plus afficher</button><button type="button" class="pv-btn plein" style="width:auto" data-etat="repere:0">Compris</button></div>
+        </div>
+        <nav class="pv-nav" aria-label="Navigation principale">
+          <button type="button" aria-current="page" data-aller="fil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18"/><path d="m14.9 9.1-1.6 4.2-4.2 1.6 1.6-4.2z"/></svg>Découvrir</button>
+          <button type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>Rencontrer</button>
+          <button type="button" class="pv-creer"><span class="pv-plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></span>Créer</button>
+          <button type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2h-9l-4 3V6a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2z"/></svg>Messages</button>
+          <button type="button" id="pvOngletProfil" data-aller="profil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg>Profil</button>
+        </nav>
+        <!-- COUCHE : choisir ses passions -->
+        <div data-couche="passions" class="pv-fond">
+          <div class="pv-feuille" id="pvFeuillePassions" role="dialog" aria-modal="true" aria-labelledby="pvPassTitre">
+            <div class="pv-poignee"></div>
+            <h2 id="pvPassTitre">Qu'est-ce qui te passionne ?</h2>
+            <p class="pv-sous">Choisis quelques sujets. Tu pourras tout modifier ensuite.</p>
+            <input class="pv-recherche" type="search" aria-label="Chercher une passion ou une spécialité" placeholder="Chercher une passion, une spécialité…">
+            <div class="pv-grille" id="pvGrille">
+              <button type="button" class="pv-tuile" aria-pressed="false" data-action="tuile"><span aria-hidden="true">🎵</span>Musique</button>
+              <button type="button" class="pv-tuile" aria-pressed="false" data-action="tuile"><span aria-hidden="true">📷</span>Photo</button>
+              <button type="button" class="pv-tuile" aria-pressed="false" data-action="tuile"><span aria-hidden="true">🍳</span>Cuisine</button>
+              <button type="button" class="pv-tuile" aria-pressed="false" data-action="tuile"><span aria-hidden="true">🏋️</span>Sport</button>
+              <button type="button" class="pv-tuile" aria-pressed="false" data-action="tuile"><span aria-hidden="true">🌍</span>Voyage</button>
+              <button type="button" class="pv-tuile" aria-pressed="false" data-action="tuile"><span aria-hidden="true">🎨</span>Art</button>
+            </div>
+            <button type="button" class="pv-btn plein" id="pvValider" data-action="valider">Choisis au moins une passion</button>
+          </div>
+        </div>
+        <!-- COUCHE : la porte de compte (texte de l'application, inchangé) -->
+        <div data-couche="porte" class="pv-fond">
+          <div class="pv-feuille" role="dialog" aria-modal="true" aria-labelledby="pvPorteTitre">
+            <div class="pv-poignee"></div>
+            <h2 id="pvPorteTitre" style="color:var(--accent)">Crée ton compte pour aimer cette publication</h2>
+            <p class="pv-sous">Tes passions et tes préférences seront conservées. Tu reviendras ici, sur la publication de Léa.</p>
+            <button type="button" class="pv-btn plein" id="pvPorteCreer" data-action="inscription">Créer mon compte</button>
+            <button type="button" class="pv-btn" data-action="connexion">J'ai déjà un compte</button>
+            <button type="button" class="pv-btn" data-fermer="porte">Continuer à explorer</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ÉCRAN : Profil d'un visiteur (ENT-C04) -->
+      <section data-ecran="profil">
+        <div class="pv-haut"><span class="pv-marque"><img src="kit/icon-192.png" alt="">PASSIO</span></div>
+        <div class="proto-defile"><div class="pv-corps">
+          <section class="pv-carte pv-profil" id="pvProfilCarte" aria-labelledby="pvProfilTitre">
+            <div class="pv-rond" aria-hidden="true">✨</div>
+            <h2 id="pvProfilTitre">Ton profil t'attend</h2>
+            <p>Un compte te donne un profil public, la possibilité de suivre des passionnés, de publier et de rejoindre des activités. Les passions choisies sur cet appareil seront gardées.</p>
+            <button type="button" class="pv-btn plein" data-action="porte" data-ctx="preferences">Créer mon compte</button>
+            <button type="button" class="pv-btn" data-action="connexion">J'ai déjà un compte</button>
+            <button type="button" class="pv-lien" style="margin-top:8px" data-aller="fil">Continuer à explorer</button>
+          </section>
+        </div></div>
+        <nav class="pv-nav" aria-label="Navigation principale">
+          <button type="button" data-aller="fil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18"/><path d="m14.9 9.1-1.6 4.2-4.2 1.6 1.6-4.2z"/></svg>Découvrir</button>
+          <button type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>Rencontrer</button>
+          <button type="button" class="pv-creer"><span class="pv-plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></span>Créer</button>
+          <button type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2h-9l-4 3V6a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2z"/></svg>Messages</button>
+          <button type="button" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg>Profil</button>
+        </nav>
+      </section>
+
+      <!-- ÉCRAN : inscription, étape 1 sur 2 — l'accès -->
+      <section data-ecran="acces">
+        <div class="pv-barre"><button type="button" class="pv-lien" id="pvRetour1" data-action="renoncer">← Continuer à explorer</button><span class="pv-etape">Étape 1 sur 2</span></div>
+        <div class="proto-defile"><div class="pv-corps">
+          <div class="pv-onglets" role="tablist" aria-label="Type d'accès"><button type="button" role="tab" aria-selected="false" data-action="connexion">Se connecter</button><button type="button" role="tab" aria-selected="true">Créer un compte</button></div>
+          <div class="pv-contexte" id="pvContexte">Pour aimer la publication de Léa. Tes passions (Musique, Photo) seront gardées.</div>
+          <div class="pv-resume" id="pvResume" role="alert">Deux points à corriger : l'adresse e-mail et la case d'accord.</div>
+          <label class="pv-case pv-fautif-case" id="pvCase"><input type="checkbox" id="pvAccord"><span>J'ai lu et j'accepte les <button type="button">conditions générales</button> et la <button type="button">politique de confidentialité</button>. J'ai 18 ans ou plus et j'ai compris que PASSIO est une beta fournie sans garantie.</span></label>
+          <div class="pv-err" id="pvErrCase" style="margin:0 0 6px 34px">Coche cette case pour continuer.</div>
+          <button type="button" class="pv-btn pv-google" style="margin-top:6px"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>Continuer avec Google</button>
+          <div class="pv-ou">ou avec ton e-mail</div>
+          <label class="pv-champ pv-fautif" id="pvChampMail">Adresse e-mail<input type="email" id="pvMail" inputmode="email" autocomplete="email" placeholder="toi@exemple.com" value="camille@exemple"><span class="pv-err">Il manque la fin de l'adresse (par exemple « .fr »).</span></label>
+          <label class="pv-champ">Mot de passe<span class="pv-mdp" style="display:block"><input type="password" autocomplete="new-password" value="Velo-Lyon-2026"><button type="button" class="pv-oeil" aria-label="Afficher le mot de passe">👁</button></span>
+            <span class="pv-regles"><span>✓ 8 caractères</span><span>✓ des lettres</span><span>✓ des chiffres</span></span></label>
+        </div></div>
+        <div class="pv-pied"><button type="button" class="pv-btn plein" id="pvContinuer" data-action="continuer">Continuer</button></div>
+      </section>
+
+      <!-- ÉCRAN : inscription, étape 2 sur 2 — le profil -->
+      <section data-ecran="profilcompte">
+        <div class="pv-barre"><button type="button" class="pv-lien" data-aller="acces">← Retour</button><span class="pv-etape">Étape 2 sur 2</span></div>
+        <div class="proto-defile"><div class="pv-corps">
+          <h2 class="pv-titre" style="font-size:21px;margin:4px 0 4px">Ton profil</h2>
+          <p style="margin:0 0 6px;color:var(--pv-encre2);font-size:15px">Deux informations, et c'est fini.</p>
+          <label class="pv-champ">Nom public<input type="text" id="pvNom" autocomplete="nickname" value="Camille"><span class="pv-aide">C'est le nom que les autres verront. Tu pourras le changer.</span></label>
+          <label class="pv-champ">Année de naissance<input type="text" inputmode="numeric" autocomplete="bday-year" maxlength="4" value="1994"><span class="pv-aide">PASSIO est réservé aux 18 ans et plus. Ton année n'est jamais affichée.</span></label>
+        </div></div>
+        <div class="pv-pied"><button type="button" class="pv-btn plein" id="pvCreer" data-aller="courrier">Créer mon compte</button></div>
+      </section>
+
+      <!-- ÉCRAN : confirmation de l'e-mail (obligatoire dans l'application) -->
+      <section data-ecran="courrier">
+        <div class="pv-barre"><button type="button" class="pv-lien" data-action="renoncer">← Continuer à explorer</button></div>
+        <div class="proto-defile"><div class="pv-corps">
+          <div class="pv-courrier" aria-hidden="true">📬</div>
+          <h2 class="pv-titre" style="font-size:21px;text-align:center;margin:0 0 6px">Ouvre le lien reçu par e-mail</h2>
+          <p style="text-align:center;color:var(--pv-encre2);font-size:15px;line-height:1.5;margin:0 0 16px">Il a été envoyé à <b style="color:var(--text)">camille.audit@exemple.fr</b>. Regarde aussi dans les spams. Le lien te ramènera sur la publication de Léa.</p>
+          <button type="button" class="pv-btn" id="pvRenvoyer">Renvoyer l'e-mail</button>
+          <button type="button" class="pv-btn" data-aller="acces">Corriger l'adresse</button>
+          <button type="button" class="pv-btn plein" id="pvLienOuvert" data-action="revenir" style="margin-top:18px">(Simulation) J'ouvre le lien reçu</button>
+        </div></div>
+      </section>
+
+    </div>
+  </div>
+  <script type="application/json" id="proto-parcours">[
+    { "titre": "Arrivée : directement dans Découvrir", "note": "Comme aujourd'hui, aucun écran d'accueil : un fil vivant et une carte à une seule action. Nouveau texte : on dit que le compte ne sera demandé qu'au moment d'agir. La loupe s'appelle « Rechercher », les envies ne reprennent plus les mots de la loupe et de l'onglet.", "ecran": "fil", "cible": "#pvBienvenue", "etat": { "passions": "0", "compte": "0", "aime": "0", "erreur": "0", "repere": "0" }, "refs": "ENT-C08 · ENT-001" },
+    { "titre": "Choisir ses passions, sans compte", "note": "Le panneau de l'application, tel quel : recherche en 16 px, tuiles de 44 px et plus, le bouton dit ce qui manque puis compte la sélection.", "ecran": "fil", "couches": ["passions"], "cible": "#pvGrille", "refs": "ENT-003 · ENT-004" },
+    { "titre": "Le choix se voit, et on sait où il vit", "note": "Les passions passent en tête du fil. Une ligne discrète dit qu'elles sont gardées sur cet appareil et propose le compte pour les retrouver partout (aujourd'hui : rien ne le dit avant une prochaine visite).", "ecran": "fil", "cible": "#pvLocal", "etat": { "passions": "1", "repere": "0" }, "refs": "ENT-C15" },
+    { "titre": "Un repère qui ne cache pas sa cible", "note": "Posé au-dessus de la barre basse, il encadre les envies au lieu de les recouvrir ; trois repères au plus (Découvrir, Rencontrer, Créer).", "ecran": "fil", "cible": "#pvRepere", "etat": { "passions": "1", "repere": "1" }, "refs": "ENT-C05" },
+    { "titre": "« Profil » sans compte : ce qu'un compte apporte", "note": "Au lieu d'un faux « Mon profil » à 0 abonné, une carte qui dit ce que le compte donne, avec la même porte que partout ailleurs.", "ecran": "profil", "cible": "#pvProfilCarte", "etat": { "repere": "0" }, "refs": "ENT-C04" },
+    { "titre": "Le premier geste : aimer une publication", "note": "Le visiteur touche ♡ sous la publication de Léa. Touche-le.", "ecran": "fil", "cible": "#pvCoeur", "etat": { "passions": "1", "repere": "0", "compte": "0", "aime": "0" }, "refs": "ENT-012" },
+    { "titre": "La porte de compte nomme le geste", "note": "Texte et trois sorties de l'application, conservés ; une phrase ajoutée promet le retour sur cette publication.", "ecran": "fil", "couches": ["porte"], "cible": "#pvPorteCreer", "refs": "ENT-012 · PAR-C02" },
+    { "titre": "Étape 1 sur 2 : l'accès seulement", "note": "La sortie est une barre fixe qui ne recouvre rien, et le retour système fait la même chose qu'elle. Le contexte rappelle pourquoi on est là. Consentement, Google, e-mail et mot de passe : le bouton « Continuer » est visible sans défiler (aujourd'hui à 1 117 px pour 844).", "ecran": "acces", "cible": "#pvContinuer", "etat": { "erreur": "0" }, "refs": "ENT-C01 · ENT-C02 · ENT-C03 · ENT-C11" },
+    { "titre": "Des erreurs utiles, toutes à la fois", "note": "Un résumé en haut, puis chaque défaut écrit sous son champ, champ entouré : l'adresse incomplète et la case non cochée, en un seul envoi.", "ecran": "acces", "cible": "#pvChampMail", "etat": { "erreur": "1" }, "refs": "ENT-C02 · ENT-C03" },
+    { "titre": "Étape 2 sur 2 : le profil", "note": "Nom public et année de naissance (clavier numérique) ; le contrôle 18+ reste bloquant et dit la même chose qu'aujourd'hui. Les mêmes libellés servent au chemin Google.", "ecran": "profilcompte", "cible": "#pvCreer", "etat": { "erreur": "0" }, "refs": "ENT-C02 · ENT-C19" },
+    { "titre": "Confirmer l'e-mail, avec ses sorties", "note": "La confirmation reste obligatoire. L'écran dit où regarder, donne « Renvoyer » et « Corriger l'adresse », et promet le retour sur la publication.", "ecran": "courrier", "cible": "#pvRenvoyer", "refs": "ENT-021 · ENT-C02" },
+    { "titre": "Retour exactement là où l'on était", "note": "Le lien ramène sur Découvrir, à la publication de Léa, et le rappel parle de ce qui est à l'écran. Rien n'est rejoué à sa place : c'est la personne qui touche ♡.", "ecran": "fil", "cible": "#pvRappel", "etat": { "passions": "1", "compte": "1", "aime": "0", "repere": "0" }, "refs": "PAR-C02 · ENT-046" },
+    { "titre": "Premier geste réussi", "note": "♡ devient ❤️ 5, une ligne confirme et propose la suite naturelle (suivre Léa). La boucle Découvrir → interaction est bouclée.", "ecran": "fil", "cible": "#pvReussi", "etat": { "passions": "1", "compte": "1", "aime": "1", "repere": "0" }, "refs": "ENT-C10 · ENT-046" }
+  ]</script>
+  <script src="kit/kit.js"></script>
+  <script>
+    (function () {
+      var defile = document.getElementById("pvDefile");
+      function majValider() {
+        var n = document.querySelectorAll('#pvGrille .pv-tuile[aria-pressed="true"]').length;
+        document.getElementById("pvValider").textContent = n ? "Voir mon fil (" + n + ")" : "Choisis au moins une passion";
+      }
+      function majCoeur() {
+        document.getElementById("pvCoeur").textContent = document.body.dataset.aime === "1" ? "❤️ 5" : "🤍 4";
+      }
+      // Toucher le fond (hors de la feuille) ferme la fenêtre.
+      document.querySelectorAll(".pv-fond").forEach(function (f) {
+        f.addEventListener("click", function (ev) { if (ev.target === f) PROTO.couche(f.getAttribute("data-couche"), false); });
+      });
+      PROTO.actions.tuile = function (el, ev) { ev.stopPropagation(); el.setAttribute("aria-pressed", el.getAttribute("aria-pressed") === "true" ? "false" : "true"); majValider(); };
+      PROTO.actions.valider = function (el, ev) {
+        ev.stopPropagation();
+        if (!document.querySelectorAll('#pvGrille .pv-tuile[aria-pressed="true"]').length) return;
+        document.body.dataset.passions = "1"; PROTO.fermerCouches(); defile.scrollTop = 0;
+      };
+      PROTO.actions.porte = function (el, ev) {
+        if (ev) ev.stopPropagation();
+        var ctx = el.getAttribute("data-ctx") || "aimer";
+        var titres = { aimer: "Crée ton compte pour aimer cette publication", commenter: "Crée ton compte pour commenter", preferences: "Crée ton compte pour conserver tes passions" };
+        document.getElementById("pvPorteTitre").textContent = titres[ctx] || titres.aimer;
+        if (PROTO.ecranCourant !== "fil") PROTO.ecran("fil");
+        PROTO.couche("porte", true);
+      };
+      PROTO.actions.aimer = function (el, ev) {
+        if (document.body.dataset.compte !== "1") { PROTO.actions.porte(el, ev); return; }
+        document.body.dataset.aime = document.body.dataset.aime === "1" ? "0" : "1"; majCoeur();
+      };
+      PROTO.actions.inscription = function (el, ev) { if (ev) ev.stopPropagation(); PROTO.fermerCouches(); document.body.dataset.erreur = "0"; PROTO.ecran("acces"); };
+      PROTO.actions.connexion = function (el, ev) { if (ev) ev.stopPropagation(); PROTO.fermerCouches(); PROTO.ecran("acces"); };
+      PROTO.actions.renoncer = function () { PROTO.fermerCouches(); PROTO.ecran("fil"); };
+      PROTO.actions.continuer = function () {
+        var ok = document.getElementById("pvAccord").checked && /@[^@]+\.[a-z]{2,}$/i.test(document.getElementById("pvMail").value);
+        if (!ok) { document.body.dataset.erreur = "1"; return; }
+        document.body.dataset.erreur = "0"; PROTO.ecran("profilcompte");
+      };
+      PROTO.actions.revenir = function () {
+        document.body.dataset.compte = "1"; document.body.dataset.aime = "0"; majCoeur(); PROTO.ecran("fil");
+        var p = document.getElementById("pvPost"); if (p.scrollIntoView) p.scrollIntoView({ block: "center" });
+      };
+      PROTO.surEtape = function (e) {
+        majCoeur();
+        if (e.couches && e.couches.indexOf("passions") > -1) {
+          document.querySelectorAll("#pvGrille .pv-tuile").forEach(function (t, i) { t.setAttribute("aria-pressed", i === 0 || i === 1 ? "true" : "false"); });
+          majValider();
+        }
+        if (e.etat && e.etat.erreur === "1") { document.getElementById("pvAccord").checked = false; document.getElementById("pvMail").value = "camille@exemple"; }
+        if (e.etat && e.etat.erreur === "0" && e.ecran === "profilcompte") { document.getElementById("pvAccord").checked = true; document.getElementById("pvMail").value = "camille.audit@exemple.fr"; }
+        if (e.ecran === "fil" && e.etat && e.etat.compte === "1") { var p = document.getElementById("pvPost"); if (p.scrollIntoView) p.scrollIntoView({ block: "center" }); }
+      };
+      majValider();
+    })();
+  </script>
+</body>
+</html>

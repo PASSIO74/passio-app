@@ -1,0 +1,96 @@
+{
+ "id": "TRA-041",
+ "domaine": "transverse",
+ "scenario": "toasts",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Signaler, motif vide : l'avertissement est émis SOUS la fenêtre",
+ "note": "Toast figé par le banc ; il existe dans la pile (« Dis-nous en deux mots… ») mais il est peint sous la fenêtre (pile z-index 200, fenêtre 10001).",
+ "prisLe": "2026-11-10T19:46:00.175Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Signaler cette rencontre",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-041--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28406,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Envoyer le signalement » ne répond rien de visible",
+   "x": 0.267,
+   "y": 0.902,
+   "w": 0.441,
+   "h": 0.097,
+   "sel": "#modalContent button.btn.primary",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 4,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-041--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 33562,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "La pile passe au-dessus de toute superposition : l'avertissement se lit",
+   "x": 0.5,
+   "y": 0.938,
+   "w": 0.918,
+   "h": 0.068,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

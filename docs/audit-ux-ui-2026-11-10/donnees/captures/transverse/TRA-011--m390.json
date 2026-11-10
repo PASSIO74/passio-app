@@ -1,0 +1,90 @@
+{
+ "id": "TRA-011",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Confidentialité — mesure d'usage et export",
+ "note": "",
+ "prisLe": "2026-11-10T19:38:17.622Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Confidentialité",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-011--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 36524,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [
+    {
+     "el": "input#privTelemetry",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Sauvegarder",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "button#privExporter",
+     "texte": "📦 Exporter mes données (JSON)",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

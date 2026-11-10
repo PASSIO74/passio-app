@@ -1,0 +1,184 @@
+{
+ "id": "ENT-008",
+ "domaine": "entree",
+ "scenario": "visiteur-destinations",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Visiteur — onglet Profil : un « Mon profil » vide, sans compte",
+ "note": "",
+ "prisLe": "2026-11-10T19:28:36.769Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-008--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 45852,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête du profil d'un visiteur",
+    "fichier": "captures/entree/ENT-008--m390--avant-zoom-entete.webp",
+    "largeur": 716,
+    "hauteur": 1528,
+    "octets": 40650
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Mon profil », 0 abonné, crayon d'édition : un profil qui n'existe pas.",
+   "x": 0.5,
+   "y": 0.237,
+   "w": 0.913,
+   "h": 0.281,
+   "sel": "#mainProfileCover",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Les actions mènent à publier, jamais à créer le compte qui manque.",
+   "x": 0.892,
+   "y": 0.126,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#screen-profiles .btn, #screen-profiles button",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 22,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "0 ABONNÉS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "0 PASSIONS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "0 ABONNEMENTS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#v9ProfilePassions > div.v9-strip-empty > span.link",
+     "texte": "Ajouter une passion",
+     "w": 108.4,
+     "h": 16,
+     "enLigne": true
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 10,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/entree/ENT-008--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 44682,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête du profil d'un visiteur",
+    "fichier": "captures/entree/ENT-008--m390--apres-zoom-entete.webp",
+    "largeur": 716,
+    "hauteur": 902,
+    "octets": 32718
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "L'onglet dit ce qu'un compte apporte au lieu de simuler un profil vide.",
+   "x": 0.5,
+   "y": 0.381,
+   "w": 0.836,
+   "h": 0.535,
+   "sel": "#maquetteProfilVisiteur",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Une seule action principale : la même porte que la fenêtre « Crée ton compte pour… ».",
+   "x": 0.5,
+   "y": 0.451,
+   "w": 0.733,
+   "h": 0.057,
+   "sel": "#maqProfilCreer",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

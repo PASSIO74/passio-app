@@ -1,0 +1,115 @@
+{
+ "id": "TRA-027",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Supprimer mon compte — confirmation saisie",
+ "note": "",
+ "prisLe": "2026-11-10T19:38:55.460Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Supprimer mon compte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-027--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 50160,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Ce qui sera effacé est dit ; l'export de ses données n'est pas proposé ici (il vit dans Confidentialité)",
+   "x": 0.5,
+   "y": 0.526,
+   "w": 0.908,
+   "h": 0.025,
+   "sel": "#modalContent ul, #modalContent .modal-title",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 12,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#modalContent > div.modal-title",
+     "texte": "Supprimer mon compte",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 17
+    },
+    {
+     "el": "div#modalContent > div > button.btn.primary",
+     "texte": "Supprimer définitivement",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#ef4444",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-027--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 58550,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "L'export existant (exporterMesDonnees) proposé au moment où il compte",
+   "x": 0.5,
+   "y": 0.754,
+   "w": 0.908,
+   "h": 0.115,
+   "sel": "#maqExport",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

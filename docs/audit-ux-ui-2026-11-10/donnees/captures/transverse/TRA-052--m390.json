@@ -1,0 +1,170 @@
+{
+ "id": "TRA-052",
+ "domaine": "transverse",
+ "scenario": "signalement",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Signalement refusé par le serveur : « déjà envoyé, ou impossible »",
+ "note": "Refus 500 programmé sur l'insertion `reports` (faux serveur). Toast figé.",
+ "prisLe": "2026-11-10T19:46:39.434Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#event-ev_tra_atelier"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-052--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 47684,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Deux causes opposées dans une phrase : faut-il réessayer ?",
+   "x": 0.5,
+   "y": 0.87,
+   "w": 0.981,
+   "h": 0.046,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 16,
+   "indetermines": 3,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailHero > button.event-detail-back",
+     "texte": "← Retour",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "button#eventDetailShareBtn",
+     "texte": "Partager",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
+     "texte": "🎸 Musique · Atelier",
+     "ratio": 2.83,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#a886f8",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-title",
+     "texte": "Atelier réglage de guitare",
+     "ratio": 1.19,
+     "seuil": 3,
+     "couleur": "#ffffff",
+     "fond": "#ede9fe",
+     "px": 22
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Le rendez-vous",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.soon",
+     "texte": "Demain",
+     "ratio": 1.68,
+     "seuil": 4.5,
+     "couleur": "#f59e0b",
+     "fond": "#eee0e1",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Organisateur·ice",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Description",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Infos pratiques",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailCta > div.v4b-rsvp > button.v4b-rsvp-retirer",
+     "texte": "Retirer ma participation",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 10
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

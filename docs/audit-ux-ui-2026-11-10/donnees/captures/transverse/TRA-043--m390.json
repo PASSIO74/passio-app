@@ -1,0 +1,170 @@
+{
+ "id": "TRA-043",
+ "domaine": "transverse",
+ "scenario": "toasts",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Quatre toasts d'affilée : couleurs, longueurs, durée unique de 3 s",
+ "note": "Quatre libellés RÉELS de l'application (app-04:5176 sans type, app-02:5278, app-04:5407), émis par appel direct (simulé) et figés.",
+ "prisLe": "2026-11-10T19:46:10.442Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#feed"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-043--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 91032,
+  "zooms": [
+   {
+    "nom": "pile",
+    "titre": "Pile",
+    "fichier": "captures/transverse/TRA-043--m390--avant-zoom-pile.webp",
+    "largeur": 780,
+    "hauteur": 432,
+    "octets": 34020
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Un échec (« Blocage non enregistré ») peint en violet, comme une réussite",
+   "x": 0.5,
+   "y": 0.723,
+   "w": 0.677,
+   "h": 0.046,
+   "sel": "#toastStack .toast:nth-child(2)",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "113 caractères, bord à bord, en pilule ; lu en 3 s comme « Lien copié »",
+   "x": 0.5,
+   "y": 0.797,
+   "w": 1,
+   "h": 0.086,
+   "sel": "#toastStack .toast:nth-child(3)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 32,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.post-author",
+     "texte": "Léa Fontaine 🎸 Musique · 12 min",
+     "w": 177.4,
+     "h": 36,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 20,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-043--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 87884,
+  "zooms": [
+   {
+    "nom": "pile",
+    "titre": "Pile",
+    "fichier": "captures/transverse/TRA-043--m390--apres-zoom-pile.webp",
+    "largeur": 780,
+    "hauteur": 438,
+    "octets": 32338
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Échec = type « warning » ou « error » : fond ambre ou rouge, sans emoji",
+   "x": 0.5,
+   "y": 0.713,
+   "w": 0.622,
+   "h": 0.047,
+   "sel": "#toastStack .toast:nth-child(2)",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Marges de 16 px, coins de carte ; durée proportionnelle à la longueur (~6 s ici)",
+   "x": 0.5,
+   "y": 0.788,
+   "w": 0.918,
+   "h": 0.088,
+   "sel": "#toastStack .toast:nth-child(3)",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

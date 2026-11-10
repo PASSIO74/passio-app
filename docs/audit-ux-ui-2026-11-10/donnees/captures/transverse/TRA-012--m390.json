@@ -1,0 +1,156 @@
+{
+ "id": "TRA-012",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Comptes bloqués — un compte non résolu s'affiche « Utilisateur »",
+ "note": "",
+ "prisLe": "2026-11-10T19:38:19.977Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Comptes bloqués",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-012--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29764,
+  "zooms": [
+   {
+    "nom": "liste",
+    "titre": "Liste",
+    "fichier": "captures/transverse/TRA-012--m390--avant-zoom-liste.webp",
+    "largeur": 732,
+    "hauteur": 236,
+    "octets": 10796
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« ? Utilisateur » : on ne sait pas qui l'on débloque",
+   "x": 0.5,
+   "y": 0.812,
+   "w": 0.908,
+   "h": 0.06,
+   "sel": "#blockedListBox > div:first-child",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Débloquer » : 81 × 29 px, texte de 11 px",
+   "x": 0.851,
+   "y": 0.812,
+   "w": 0.207,
+   "h": 0.034,
+   "sel": "#blockedListBox button",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [
+    {
+     "el": "div#blockedListBox > div > button.btn.ghost",
+     "texte": "Débloquer",
+     "w": 80.6,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#blockedListBox > div > button.btn.ghost",
+     "texte": "Débloquer",
+     "w": 80.6,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "OK",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 6,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-012--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31212,
+  "zooms": [
+   {
+    "nom": "liste",
+    "titre": "Liste",
+    "fichier": "captures/transverse/TRA-012--m390--apres-zoom-liste.webp",
+    "largeur": 732,
+    "hauteur": 284,
+    "octets": 12758
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Nom et visage relus sur le serveur (profil public), date du blocage",
+   "x": 0.5,
+   "y": 0.792,
+   "w": 0.908,
+   "h": 0.077,
+   "sel": "#blockedListBox > div:first-child",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Débloquer » à 44 px",
+   "x": 0.833,
+   "y": 0.791,
+   "w": 0.242,
+   "h": 0.052,
+   "sel": "#blockedListBox button",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

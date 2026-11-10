@@ -2,8 +2,1457 @@
   "domaine": "entree",
   "groupe": "Entrée et navigation",
   "titre": "Entrée et navigation — première visite, inscription, barres",
-  "resume": "Version de travail : inventaire en cours (sondes 01 à 05 faites), captures à venir.",
-  "aConserver": [],
-  "registre": [],
-  "constats": []
+  "resume": "La première visite est la meilleure porte d'entrée de l'application : on arrive directement dans un fil vivant, une carte propose une seule action (« Choisir mes passions »), et chaque geste qui demande un compte l'annonce par une fenêtre qui nomme ce geste et laisse « Continuer à explorer ». Ce qui gêne commence là où l'on décide de créer son compte : le formulaire empile six champs avant un bouton placé sous le pli, écrit ses erreurs une à une loin du champ (et sous la sortie flottante), et le retour système ne le ferme pas — dans le parcours historique, il quitte PASSIO. Un visiteur qui touche « Profil » voit un faux « Mon profil » vide sans porte vers le compte, et jusqu'à neuf repères recouvrent les écrans qu'ils présentent. Pour un compte, la navigation est stable mais trois superpositions (formulaire, feuille Créer, Paramètres) échappent au retour système, le fil perd sa position à chaque changement d'onglet et un rechargement rouvre le Fil sous une adresse #messages. Enfin les mots se chevauchent : « Explorer » nomme la loupe, son écran et une envie ; « Rencontrer » un onglet et une envie ; la même publication est « post », « Passio » ou « publication ». Enjeu : la boucle Découvrir → premier geste → compte, que ces frictions ralentissent au moment le plus fragile.",
+  "aConserver": [
+    "Entrée directe d'un visiteur dans Découvrir, avec des exemples marqués « Exemple PASSIO » (aucune landing à traverser).",
+    "La carte de bienvenue : une action principale, deux liens, fermable.",
+    "La porte de compte « Crée ton compte pour… » : titre nommé par le geste, promesse de conservation, « Continuer à explorer ».",
+    "Le panneau de passions : recherche en 16 px, compteur dans le bouton, spécialités dites facultatives.",
+    "Des refus d'authentification traduits et rassurants (quota d'e-mails, e-mail non confirmé avec sa sortie sous les yeux, 18+ non culpabilisant, consentement refusé là où l'on agit).",
+    "La fenêtre « session expirée » et la bascule de compte, qui disent les conséquences avant d'agir.",
+    "Les anciens liens (wallet, shop, cdv) qui retombent sur un écran vivant.",
+    "Zoom permis, champs en 16 px, contour de focus visible partout, aucune erreur JavaScript sur les 42 surfaces capturées."
+  ],
+  "registre": [
+    {
+      "id": "ENT-001",
+      "surface": "Première visite — Découvrir",
+      "composant": "Fil de découverte + carte de bienvenue",
+      "etat": "appareil vierge",
+      "role": "visiteur",
+      "geste": "Ouvrir PASSIO sans compte",
+      "observation": "observe",
+      "preuve": "capture ENT-001 (m390, m360, m320, t768, d1440) ; rendu : js/first-run.js:788 (carteBienvenueHTML), :838 (poserBienvenue)",
+      "problemes": [
+        "ENT-C04",
+        "ENT-C08"
+      ],
+      "proposition": "Garder l'entrée directe et la carte ; le logo ne s'annonce plus « Mon profil » à un visiteur, les envies ne réutilisent plus les noms de la loupe et de l'onglet.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Entrée directe dans le contenu, une action principale claire (« Choisir mes passions »), sortie vers le compte toujours visible : c'est la bonne porte d'entrée ; les deux défauts relevés sont traités ailleurs (ENT-008, ENT-031)."
+    },
+    {
+      "id": "ENT-002",
+      "surface": "Première visite — premier repère",
+      "composant": "Bulle `.fr-tip` « Un Fil construit autour de tes passions »",
+      "etat": "carte fermée",
+      "role": "visiteur",
+      "geste": "Fermer la carte de bienvenue (×)",
+      "observation": "observe",
+      "preuve": "capture ENT-002 (m390, m360) ; js/first-run.js:1808 (montrerEtape), :1913 (planifierTour)",
+      "problemes": [
+        "ENT-C05"
+      ],
+      "proposition": "Poser le repère en carte au-dessus de la barre basse, sans couvrir ce qu'il présente.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "La bulle recouvre précisément les envies et les stories qu'elle explique."
+    },
+    {
+      "id": "ENT-003",
+      "surface": "Choisir ses passions sans compte",
+      "composant": "Panneau « Qu'est-ce qui te passionne ? »",
+      "etat": "vide",
+      "role": "visiteur",
+      "geste": "Carte de bienvenue › Choisir mes passions",
+      "observation": "observe",
+      "preuve": "capture ENT-003 (m390, m360) ; js/first-run.js:887, :922",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Recherche en 16 px, tuiles de 44 px et plus, bouton qui dit ce qui manque : aucune friction relevée."
+    },
+    {
+      "id": "ENT-004",
+      "surface": "Choisir ses passions sans compte",
+      "composant": "Panneau — sélection et spécialités",
+      "etat": "deux passions, une spécialité",
+      "role": "visiteur",
+      "geste": "Toucher deux tuiles puis « Guitare »",
+      "observation": "observe",
+      "preuve": "capture ENT-004 (m390) ; js/first-run.js:1160 (specialitesHTML), :957 (libelleValidation)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Le compteur suit la sélection, les spécialités se disent facultatives ; « Revoir les repères » sous la validation est un voisinage discutable mais sans gêne mesurée."
+    },
+    {
+      "id": "ENT-005",
+      "surface": "Retour au fil après le choix",
+      "composant": "Fil personnalisé + repère",
+      "etat": "passions choisies, même session",
+      "role": "visiteur",
+      "geste": "Panneau › Voir mon fil (3)",
+      "observation": "observe",
+      "preuve": "capture ENT-005 (m390) ; js/first-run.js:1262 (validerPersonnalisation), :788 (carte « Tes passions sont sur cet appareil » posée à la session suivante seulement)",
+      "problemes": [
+        "ENT-C15",
+        "ENT-C05"
+      ],
+      "proposition": "Après validation, une ligne discrète sous les passions dit « Gardées sur cet appareil — crée ton compte pour les retrouver partout ».",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Le choix est visible tout de suite (bon), mais rien ne dit qu'il est fragile."
+    },
+    {
+      "id": "ENT-006",
+      "surface": "Visiteur — Rencontrer",
+      "composant": "Écran Rencontrer + repère « Passe du numérique au réel »",
+      "etat": "premier passage",
+      "role": "visiteur",
+      "geste": "Barre basse › Rencontrer",
+      "observation": "observe",
+      "preuve": "capture ENT-006 (m390) ; js/first-run.js:1700–1730 (ETAPES)",
+      "problemes": [
+        "ENT-C05"
+      ],
+      "proposition": "Même repère, posé au-dessus de la barre basse.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le repère cache le choix Liste / Carte / Filtre et la première activité."
+    },
+    {
+      "id": "ENT-007",
+      "surface": "Visiteur — Messages",
+      "composant": "Conversations d'exemple + repère « Tes conversations »",
+      "etat": "premier passage",
+      "role": "visiteur",
+      "geste": "Barre basse › Messages",
+      "observation": "observe",
+      "preuve": "capture ENT-007 (m390)",
+      "problemes": [
+        "ENT-C05"
+      ],
+      "proposition": "Limiter les repères aux trois destinations clés (Découvrir, Rencontrer, Créer).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Quatrième repère en quatre écrans : la présentation devient une série d'interruptions."
+    },
+    {
+      "id": "ENT-008",
+      "surface": "Visiteur — Profil",
+      "composant": "Écran Profil d'une personne sans compte",
+      "etat": "aucun compte",
+      "role": "visiteur",
+      "geste": "Barre basse › Profil (ou logo de la barre supérieure)",
+      "observation": "observe",
+      "preuve": "capture ENT-008 (m390) ; mesures : 0 ABONNÉS / 0 PASSIONS / 0 ABONNEMENTS ; rendu renderProfilesScreen (goTo, js/app-02-state-utils.js:3690)",
+      "problemes": [
+        "ENT-C04"
+      ],
+      "proposition": "Remplacer le faux profil vide par une carte « Ton profil t'attend » avec une seule action « Créer mon compte » et « J'ai déjà un compte ».",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Un profil qui n'existe pas est présenté comme le sien, sans la porte du compte."
+    },
+    {
+      "id": "ENT-009",
+      "surface": "Visiteur — Créer › Publication",
+      "composant": "Studio + repère « Publie ce que tu veux »",
+      "etat": "premier passage",
+      "role": "visiteur",
+      "geste": "Créer › Publication",
+      "observation": "observe",
+      "preuve": "capture ENT-009 (m390) ; index.html:941 (« Mood »)",
+      "problemes": [
+        "ENT-C05",
+        "ENT-C08"
+      ],
+      "proposition": "Repère posé en bas ; libellé « Envie » au lieu de « Mood ».",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Le Studio s'ouvre sans friction (bon), mais c'est le sixième repère et le mot « Mood » n'existe nulle part ailleurs."
+    },
+    {
+      "id": "ENT-010",
+      "surface": "Visiteur — « ⋯ »",
+      "composant": "Panneau Paramètres `#devPanel`",
+      "etat": "visiteur",
+      "role": "visiteur",
+      "geste": "Barre supérieure › ⋯",
+      "observation": "observe",
+      "preuve": "capture ENT-010 (m390) ; index.html:479 (« ⋯ » aria-label Paramètres), js/app-02-state-utils.js:3916 (toggleDevPanel) ; sonde 02 : Échap et retour système sans effet",
+      "problemes": [
+        "ENT-C06"
+      ],
+      "proposition": "Voir ENT-033 (même panneau, maquetté une fois) ; masquer « Démo » hors mode démo.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Sortie non évidente et entrée « Démo » offerte au public."
+    },
+    {
+      "id": "ENT-011",
+      "surface": "Recherche (loupe)",
+      "composant": "Écran « Explorer par passion »",
+      "etat": "vide",
+      "role": "visiteur",
+      "geste": "Barre supérieure › loupe",
+      "observation": "observe",
+      "preuve": "capture ENT-011 (m390) ; index.html:460 (aria-label « Explorer »), :974 (titre)",
+      "problemes": [
+        "ENT-C08"
+      ],
+      "proposition": "Appeler la loupe et l'écran « Rechercher ».",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Trois « Explorer » dans l'application pour deux choses différentes."
+    },
+    {
+      "id": "ENT-012",
+      "surface": "Porte de compte",
+      "composant": "Fenêtre « Crée ton compte pour publier ta création »",
+      "etat": "geste engageant interrompu",
+      "role": "visiteur",
+      "geste": "Studio › écrire › Publier",
+      "observation": "observe",
+      "preuve": "capture ENT-012 (m390, m360) ; js/first-run.js:1463 (requireAuthentication), :1482 (gateHTML)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Le titre nomme le geste, la promesse « passions conservées » rassure, trois sorties nettes dont « Continuer à explorer »."
+    },
+    {
+      "id": "ENT-013",
+      "surface": "Inscription",
+      "composant": "Formulaire « Créer un compte » — haut",
+      "etat": "vide",
+      "role": "visiteur",
+      "geste": "Porte de compte › Créer mon compte",
+      "observation": "observe",
+      "preuve": "capture ENT-013 (m390, m360) ; mesures : onglets 35 px de haut, case 20 px ; bouton « Créer mon compte » à y = 1 117 px pour un écran de 844 (sonde 03) ; index.html:239–483",
+      "problemes": [
+        "ENT-C02",
+        "ENT-C11"
+      ],
+      "proposition": "Deux étapes : 1) l'accès (Google, ou e-mail + mot de passe) ; 2) nom public et année de naissance. Onglets à 44 px.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le geste attendu (envoyer) est sous le pli derrière six champs."
+    },
+    {
+      "id": "ENT-014",
+      "surface": "Inscription",
+      "composant": "Formulaire « Créer un compte » — bas",
+      "etat": "vide, défilé",
+      "role": "visiteur",
+      "geste": "Défiler jusqu'au bouton",
+      "observation": "observe",
+      "preuve": "capture ENT-014 (m390)",
+      "problemes": [
+        "ENT-C02"
+      ],
+      "proposition": "Voir ENT-013.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Il faut défiler deux écrans pour atteindre l'envoi."
+    },
+    {
+      "id": "ENT-015",
+      "surface": "Inscription — erreur",
+      "composant": "Message `#authMsg` après un envoi à vide",
+      "etat": "erreur de saisie",
+      "role": "visiteur",
+      "geste": "Créer mon compte (vide)",
+      "observation": "observe",
+      "preuve": "capture ENT-015 (m390, m360) ; js/app-02-state-utils.js:6298 (onbDoAuth) ; styles.css:10825 (.fr-back-explore absolu)",
+      "problemes": [
+        "ENT-C02",
+        "ENT-C03"
+      ],
+      "proposition": "Sortie « Continuer à explorer » en barre fixe ; erreur sous le champ fautif, champ entouré.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le message est en partie caché par la sortie flottante et ne désigne pas le champ."
+    },
+    {
+      "id": "ENT-016",
+      "surface": "Inscription — consentement",
+      "composant": "Refus « Coche cette case pour continuer »",
+      "etat": "case non cochée",
+      "role": "visiteur",
+      "geste": "Tout remplir sauf la case, envoyer",
+      "observation": "observe",
+      "preuve": "capture ENT-016 (m390) ; index.html:304 (#authConsentRefus)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Refus dit là où l'on agit, hors de l'étiquette (aucun accord donné en touchant le texte du refus)."
+    },
+    {
+      "id": "ENT-017",
+      "surface": "Inscription — moins de 18 ans",
+      "composant": "Refus d'âge",
+      "etat": "année 2012",
+      "role": "visiteur",
+      "geste": "Année 2012, envoyer",
+      "observation": "observe",
+      "preuve": "capture ENT-017 (m390)",
+      "problemes": [
+        "ENT-C02"
+      ],
+      "proposition": "Garder le texte ; l'écrire sous le champ « Année de naissance ».",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Texte juste et non culpabilisant (« si tu t'es trompé d'année, corrige-la ») ; seul l'emplacement relève d'ENT-C02."
+    },
+    {
+      "id": "ENT-018",
+      "surface": "Connexion",
+      "composant": "Onglet « Se connecter » + refus",
+      "etat": "identifiants refusés",
+      "role": "visiteur",
+      "geste": "Onglet Se connecter › envoyer",
+      "observation": "observe",
+      "preuve": "capture ENT-018 (m390, m360) ; refus produit par le banc (« Invalid login credentials »), traduit par le code (js/app-02-state-utils.js:6473) ; index.html:387 (#authForgotLink en `span`)",
+      "problemes": [
+        "ENT-C11"
+      ],
+      "proposition": "« Mot de passe oublié ? » et « Renvoyer l'e-mail » en vrais boutons.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Formulaire court et lisible, mais deux sorties ne sont pas atteignables au clavier."
+    },
+    {
+      "id": "ENT-019",
+      "surface": "Mot de passe oublié",
+      "composant": "Consigne sans adresse",
+      "etat": "champ e-mail vide",
+      "role": "visiteur",
+      "geste": "Vider l'e-mail › Mot de passe oublié ?",
+      "observation": "observe",
+      "preuve": "capture ENT-019 (m390) ; js/app-02-state-utils.js:5656",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "La consigne dit quoi faire ; la suite (envoi du lien) n'est pas vérifiable ici (ENT-047)."
+    },
+    {
+      "id": "ENT-020",
+      "surface": "Inscription — retour système",
+      "composant": "Formulaire après « retour »",
+      "etat": "retour système",
+      "role": "visiteur",
+      "geste": "Formulaire ouvert depuis le Studio › retour",
+      "observation": "observe",
+      "preuve": "capture ENT-020 (m390) ; sonde 03 : onboarding toujours affiché, écran dessous `screen-feed`, adresse sans ancre ; js/app-02-state-utils.js:3757 (closeCurrentOverlay ne connaît pas #onboarding)",
+      "problemes": [
+        "ENT-C01"
+      ],
+      "proposition": "Le retour ferme le formulaire et rend l'écran d'avant (comme « ← Continuer à explorer »).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Le geste le plus naturel pour renoncer ne fait pas ce qu'on attend."
+    },
+    {
+      "id": "ENT-021",
+      "surface": "Connexion — e-mail non confirmé",
+      "composant": "« Ton compte attend… » + Renvoyer l'e-mail",
+      "etat": "compte non confirmé",
+      "role": "visiteur",
+      "geste": "Simulé : `_showResendConfirmation()`",
+      "observation": "simule",
+      "preuve": "capture ENT-021 (m390) ; js/app-02-state-utils.js:5685 ; index.html:274 (#authResendTop)",
+      "problemes": [
+        "ENT-C03",
+        "ENT-C11"
+      ],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Le refus montre TOUJOURS sa sortie, sous les yeux et en 44 px ; la sortie flottante recouvre le logo (ENT-C03)."
+    },
+    {
+      "id": "ENT-022",
+      "surface": "Inscription — quota d'e-mails",
+      "composant": "Refus « Beaucoup de monde s'inscrit… »",
+      "etat": "429",
+      "role": "visiteur",
+      "geste": "Simulé : texte du code posé dans #authMsg",
+      "observation": "simule",
+      "preuve": "capture ENT-022 (m390) ; js/app-02-state-utils.js:6500 (branche rate limit)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Refus traduit et rassurant (« ton adresse n'est pas perdue »)."
+    },
+    {
+      "id": "ENT-023",
+      "surface": "Consentement après Google",
+      "composant": "Modale « Avant de continuer »",
+      "etat": "compte Google sans accord",
+      "role": "connecté · nouveau",
+      "geste": "Simulé : clé `passio_consentement_requis_v1` + ouvrirConsentementRequis()",
+      "observation": "simule",
+      "preuve": "capture ENT-023 (m390) ; mesures : case 13 px ; js/app-02-state-utils.js:5958",
+      "problemes": [
+        "ENT-C16"
+      ],
+      "proposition": "Case agrandie, ligne entière ≥ 44 px, refus en action secondaire.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Le texte est honnête (« rien n'a été accepté à ta place ») mais la case est minuscule."
+    },
+    {
+      "id": "ENT-024",
+      "surface": "Session expirée",
+      "composant": "Fenêtre « Reconnecte-toi pour… »",
+      "etat": "session expirée",
+      "role": "connecté · session perdue",
+      "geste": "Simulé : `_sessionExpiree = true` + requireAuthentication('aimer')",
+      "observation": "simule",
+      "preuve": "capture ENT-024 (m390) ; js/first-run.js:1495",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Dit ce qui est gardé et ce qui ne partira pas ; deux sorties claires."
+    },
+    {
+      "id": "ENT-025",
+      "surface": "Parcours historique — landing",
+      "composant": "`#landing` (drapeau coupé)",
+      "etat": "état conditionnel",
+      "role": "visiteur",
+      "geste": "Appareil vierge, `passio_first_run_experience_v1=\"0\"`",
+      "observation": "observe",
+      "preuve": "capture ENT-025 (m390, m360, t768, d1440) ; index.html:96–165 ; js/app-08-ui-modals-tour.js:360",
+      "problemes": [
+        "ENT-C13"
+      ],
+      "proposition": "Une action principale (« Créer un compte »), connexion en secondaire, installation en lien.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Trois boutons pleins de même poids ; n'est plus vue par défaut (P3)."
+    },
+    {
+      "id": "ENT-026",
+      "surface": "Parcours historique — landing défilée",
+      "composant": "Pied collant `.landing-cta`",
+      "etat": "bas de page",
+      "role": "visiteur",
+      "geste": "Défiler la landing",
+      "observation": "observe",
+      "preuve": "capture ENT-026 (m390)",
+      "problemes": [
+        "ENT-C13"
+      ],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Le pied collant laisse lire les titres des piliers, pas leur texte."
+    },
+    {
+      "id": "ENT-027",
+      "surface": "Parcours historique — formulaire",
+      "composant": "Formulaire ouvert depuis la landing",
+      "etat": "sans sortie",
+      "role": "visiteur",
+      "geste": "Landing › Créer un compte",
+      "observation": "observe",
+      "preuve": "capture ENT-027 (m390) ; sonde 05 : le retour système mène à une page vide (une seule entrée d'historique)",
+      "problemes": [
+        "ENT-C01"
+      ],
+      "proposition": "Une sortie « ← Retour » vers la landing et un retour système qui la rouvre.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Sans bouton de retour, le seul geste de sortie quitte PASSIO."
+    },
+    {
+      "id": "ENT-028",
+      "surface": "Après Google — âge",
+      "composant": "Étape « Vérification d'âge »",
+      "etat": "étape forcée",
+      "role": "connecté · nouveau",
+      "geste": "Simulé : showOnbStep('age')",
+      "observation": "simule",
+      "preuve": "capture ENT-028 (m390) ; index.html:406 (#birthYear sans inputmode ni autocomplete)",
+      "problemes": [
+        "ENT-C19"
+      ],
+      "proposition": "Mêmes attributs que le champ du formulaire e-mail (`inputmode=numeric`, `autocomplete=bday-year`).",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Texte juste (âge déclaratif) ; champ moins bien équipé que son jumeau."
+    },
+    {
+      "id": "ENT-029",
+      "surface": "Après Google — nom",
+      "composant": "Étape « Comment t'appelles-tu ? »",
+      "etat": "étape forcée",
+      "role": "connecté · nouveau",
+      "geste": "Simulé : showOnbStep('name')",
+      "observation": "simule",
+      "preuve": "capture ENT-029 (m390) ; index.html:421",
+      "problemes": [
+        "ENT-C19",
+        "ENT-C08"
+      ],
+      "proposition": "Libellé « Nom d'utilisateur », comme le formulaire e-mail.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "« Ton prénom » ici, « Nom d'utilisateur » là, pour la même donnée."
+    },
+    {
+      "id": "ENT-030",
+      "surface": "Après le compte — passions",
+      "composant": "Étape « passions » / « Entrer sur PASSIO »",
+      "etat": "étape forcée",
+      "role": "connecté · nouveau",
+      "geste": "Simulé : showOnbStep('passions')",
+      "observation": "simule",
+      "preuve": "capture ENT-030 (m390) ; js/app-02-state-utils.js:7497 (onbFinish)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Dernière étape lisible, retour possible ; le pré-remplissage depuis les choix du visiteur (prefiller) n'a pas été exercé ici."
+    },
+    {
+      "id": "ENT-031",
+      "surface": "Navigation principale (connecté)",
+      "composant": "Barre supérieure, envies, barre inférieure",
+      "etat": "Fil",
+      "role": "connecté",
+      "geste": "Ouverture de l'application",
+      "observation": "observe",
+      "preuve": "capture ENT-031 (m390, m360, t768, d1440) ; js/ui-v2-shell.js:70 (DESTINATIONS), index.html:644 (envies), :460 (loupe)",
+      "problemes": [
+        "ENT-C08",
+        "ENT-C12"
+      ],
+      "proposition": "Envies « Nouveau pour toi » et « Rendez-vous » ; loupe « Rechercher ».",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Barres nettes et constantes ; les noms se chevauchent d'un niveau à l'autre."
+    },
+    {
+      "id": "ENT-032",
+      "surface": "Feuille « Créer »",
+      "composant": "`#v2CreateSheet`",
+      "etat": "ouverte",
+      "role": "connecté",
+      "geste": "Barre basse › Créer",
+      "observation": "observe",
+      "preuve": "capture ENT-032 (m390, m360) ; mesures : croix 34 px ; sonde 04 : Échap ferme, retour système navigue DESSOUS (feuille restée ouverte sur Rencontrer)",
+      "problemes": [
+        "ENT-C07",
+        "ENT-C08"
+      ],
+      "proposition": "Le retour système ferme la feuille ; croix à 44 px.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Six choix clairs avec icônes ; le retour système ne la ferme pas."
+    },
+    {
+      "id": "ENT-033",
+      "surface": "Panneau « Paramètres »",
+      "composant": "`#devPanel` (connecté)",
+      "etat": "ouvert",
+      "role": "connecté",
+      "geste": "Barre supérieure › ⋯",
+      "observation": "observe",
+      "preuve": "capture ENT-033 (m390, m360) ; mesures : « Se déconnecter » et « Supprimer mon compte » 33 px ; sonde 04 : Échap et retour sans effet",
+      "problemes": [
+        "ENT-C06"
+      ],
+      "proposition": "Fond assombri, croix, fermeture par Échap / retour / toucher dehors ; actions de compte séparées.",
+      "visuel": "avant-apres",
+      "verdict": "a-ameliorer",
+      "justification": "Une superposition qu'on ne sait pas quitter autrement qu'en retrouvant le « ⋯ »."
+    },
+    {
+      "id": "ENT-034",
+      "surface": "Aides contextuelles",
+      "composant": "Bulle `.passio-hint` « Appuie sur l'auteur… »",
+      "etat": "compte neuf",
+      "role": "connecté",
+      "geste": "Ouverture avec aides non vues (`sansAides: false`)",
+      "observation": "observe",
+      "preuve": "capture ENT-034 (m390) ; mesures : « Compris » 34 px ; js/app-02-state-utils.js:9005 (montrerHint) ; une seule aide à la fois observée",
+      "problemes": [
+        "ENT-C14",
+        "ENT-C08"
+      ],
+      "proposition": "Aide posée sous la ligne d'auteur, « Compris » à 44 px, « son profil » au lieu de « sa Passio ».",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Une seule aide à la fois (bon), mais posée sur la photo et avec un mot que personne n'emploie ailleurs."
+    },
+    {
+      "id": "ENT-035",
+      "surface": "Bascule de compte",
+      "composant": "Modale « Se connecter avec un autre compte »",
+      "etat": "ouverte",
+      "role": "connecté",
+      "geste": "Paramètres › Compte (simulé : openAccountSwitch())",
+      "observation": "simule",
+      "preuve": "capture ENT-035 (m390) ; js/app-02-state-utils.js:4609",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Conséquence dite avant d'agir, réversible, deux boutons sans ambiguïté."
+    },
+    {
+      "id": "ENT-036",
+      "surface": "Rechargement sur un écran profond",
+      "composant": "Application rechargée sur #messages",
+      "etat": "rechargement",
+      "role": "connecté",
+      "geste": "Messages › recharger la page",
+      "observation": "observe",
+      "preuve": "capture ENT-036 (m390) ; fiche : écran actif `screen-feed`, adresse `#messages`",
+      "problemes": [
+        "ENT-C09"
+      ],
+      "proposition": "Rouvrir l'écran nommé par l'adresse (liste fermée des six écrans), ou réécrire l'adresse.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "L'adresse et l'écran se contredisent."
+    },
+    {
+      "id": "ENT-037",
+      "surface": "Position du fil",
+      "composant": "Fil après Rencontrer → Découvrir",
+      "etat": "fil défilé de 900 px",
+      "role": "connecté",
+      "geste": "Défiler › Rencontrer › Découvrir",
+      "observation": "observe",
+      "preuve": "capture ENT-037 (m390) : retour en haut ; sonde 04 : 1 200 px → 0 (onglet ou retour système) ; js/app-02-state-utils.js:3679 (`scrollTop = 0`), :9102 (feedWindowEnabled faux par défaut : la restauration ne s'exécute pas)",
+      "problemes": [
+        "ENT-C10"
+      ],
+      "proposition": "Mémoriser et rendre la position du fil au retour.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Chaque aller-retour fait perdre sa place dans le fil."
+    },
+    {
+      "id": "ENT-038",
+      "surface": "Clavier",
+      "composant": "Ordre de tabulation, focus",
+      "etat": "trois tabulations",
+      "role": "connecté",
+      "geste": "Tab ×3 depuis le haut",
+      "observation": "observe",
+      "preuve": "capture ENT-038 (m390) ; sonde 04 : 14 arrêts — barre supérieure (4), filtres de passions, envies, stories ; aucun lien d'évitement ; contour de focus présent partout",
+      "problemes": [
+        "ENT-C12"
+      ],
+      "proposition": "Lien « Aller au contenu » et barre de navigation plus tôt dans l'ordre.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Focus visible (bon) ; la navigation principale n'arrive qu'après tout le fil."
+    },
+    {
+      "id": "ENT-039",
+      "surface": "Paysage",
+      "composant": "Fil en 844 × 390",
+      "etat": "téléphone tourné",
+      "role": "connecté",
+      "geste": "Fenêtre 844 × 390 (émulée)",
+      "observation": "simule",
+      "preuve": "capture ENT-039 (m390, fenêtre réduite par setViewportSize)",
+      "problemes": [
+        "ENT-C17"
+      ],
+      "proposition": "Réduire la barre supérieure en paysage.",
+      "visuel": "avant",
+      "verdict": "a-verifier",
+      "justification": "Les deux barres laissent environ deux tiers de la hauteur au contenu ; à confirmer sur appareil."
+    },
+    {
+      "id": "ENT-040",
+      "surface": "Tour guidé historique",
+      "composant": "`#tourOverlay`",
+      "etat": "étape 1/5",
+      "role": "connecté · parcours historique",
+      "geste": "Simulé : showTour()",
+      "observation": "simule",
+      "preuve": "capture ENT-040 (m390) ; mesures : Quitter / Suivant 29 px ; js/app-08-ui-modals-tour.js:160",
+      "problemes": [
+        "ENT-C13"
+      ],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-ameliorer",
+      "justification": "Cinq cartes avant le premier geste, boutons de 29 px ; ne vit plus que dans le parcours historique."
+    },
+    {
+      "id": "ENT-041",
+      "surface": "Rideau d'accès",
+      "composant": "Code d'accès à quatre chiffres",
+      "etat": "état conditionnel (armé)",
+      "role": "visiteur",
+      "geste": "`localStorage.passio_gate_actif=\"1\"`",
+      "observation": "simule",
+      "preuve": "capture ENT-041 (m390) ; js/access-gate.js ; mesures : liens légaux 27 px de haut",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "avant",
+      "verdict": "a-conserver",
+      "justification": "Levé par défaut ; quand il est armé, il est clair et propose les textes légaux."
+    },
+    {
+      "id": "ENT-042",
+      "surface": "Connexion hors ligne",
+      "composant": "Refus après envoi hors ligne",
+      "etat": "hors ligne (émulé)",
+      "role": "visiteur",
+      "geste": "Hors ligne › Se connecter",
+      "observation": "simule",
+      "preuve": "capture ENT-042 (m390) : « E-mail ou mot de passe incorrect. » — ARTEFACT DU BANC (les routes du faux serveur répondent même hors ligne) ; d'après le code, aucun test `navigator.onLine` dans onbDoAuth (js/app-02-state-utils.js:6298–6608)",
+      "problemes": [
+        "ENT-C18"
+      ],
+      "proposition": "Dire « Pas de connexion internet » avant tout envoi quand l'appareil est hors ligne.",
+      "visuel": "avant",
+      "verdict": "a-verifier",
+      "justification": "Le vrai message hors ligne n'est pas observable ici."
+    },
+    {
+      "id": "ENT-043",
+      "surface": "Inscription avec Google",
+      "composant": "Aller-retour OAuth",
+      "etat": "redirection Google",
+      "role": "visiteur",
+      "geste": "Continuer avec Google",
+      "observation": "inaccessible",
+      "preuve": "Hôte tiers refusé par le banc ; js/app-02-state-utils.js:5819 (onbGoogleAuth)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Non vérifiable sans compte Google réel."
+    },
+    {
+      "id": "ENT-044",
+      "surface": "Vérification anti-robot",
+      "composant": "Turnstile `#authCaptcha`",
+      "etat": "captcha actif",
+      "role": "visiteur",
+      "geste": "Formulaire de compte",
+      "observation": "inaccessible",
+      "preuve": "Hôte tiers (Cloudflare) refusé par le banc ; le bloc reste masqué dans les captures ; index.html:385",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Sa hauteur repousse le bouton d'envoi encore plus bas (constat ENT-C02) : à mesurer sur appareil."
+    },
+    {
+      "id": "ENT-045",
+      "surface": "Reprise d'une inscription interrompue",
+      "composant": "`passio_signup_pending`, rechargement en cours de saisie",
+      "etat": "interruption",
+      "role": "visiteur",
+      "geste": "Fermer / recharger pendant l'inscription",
+      "observation": "code",
+      "preuve": "js/app-02-state-utils.js:6552 (`passio_signup_pending` posé après un compte en attente) ; aucune sauvegarde des champs saisis repérée",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Non exercé dans le banc (le banc refuse toute inscription)."
+    },
+    {
+      "id": "ENT-046",
+      "surface": "Retour après inscription",
+      "composant": "Retour exactement là où l'on était",
+      "etat": "après compte",
+      "role": "connecté · nouveau",
+      "geste": "Porte de compte › inscription › retour",
+      "observation": "code",
+      "preuve": "js/first-run.js:1513 (memoriserRetour), :2313 (apresAuthentification) ; établi par partage PAR-C02 (contenu d'un lien non rouvert)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Non observable sans inscription ; voir PAR-C02 et le prototype premiere-visite."
+    },
+    {
+      "id": "ENT-047",
+      "surface": "Mot de passe oublié — suite",
+      "composant": "E-mail de réinitialisation, `_showPasswordRecoveryUI`",
+      "etat": "lien reçu",
+      "role": "visiteur",
+      "geste": "Mot de passe oublié avec adresse",
+      "observation": "code",
+      "preuve": "js/app-02-state-utils.js:5656, :6007 (_showPasswordRecoveryUI)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Exige un vrai courriel."
+    },
+    {
+      "id": "ENT-048",
+      "surface": "Retour d'un visiteur",
+      "composant": "Carte « Tes passions sont sur cet appareil »",
+      "etat": "nouvelle session, préférences gardées",
+      "role": "visiteur",
+      "geste": "Revenir après avoir choisi des passions",
+      "observation": "code",
+      "preuve": "js/first-run.js:788 (carteBienvenueHTML, branche dejaChoisi), :780 (fermeture limitée à la session)",
+      "problemes": [
+        "ENT-C15"
+      ],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "aucun",
+      "verdict": "a-conserver",
+      "justification": "Le texte (« Crée ton compte pour les garder ») est juste ; il arrive seulement trop tard (ENT-C15)."
+    },
+    {
+      "id": "ENT-049",
+      "surface": "Cadrage",
+      "composant": "`--app-vh`, zones sûres, zoom",
+      "etat": "tous gabarits",
+      "role": "tous",
+      "geste": "—",
+      "observation": "code",
+      "preuve": "index.html:6 (viewport sans `user-scalable=no`) ; fiche ENT-001 : `--app-vh` = 844px à 390 × 844 ; styles.css:10827 (`env(safe-area-inset-top)`)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "aucun",
+      "verdict": "a-conserver",
+      "justification": "Zoom permis, hauteur mesurée, zones sûres prises en compte ; tablette / ordinateur : voir SOC-C03."
+    },
+    {
+      "id": "ENT-050",
+      "surface": "Badges de la barre",
+      "composant": "Point de messages non lus, cloche",
+      "etat": "non lus",
+      "role": "connecté",
+      "geste": "Recevoir un message",
+      "observation": "code",
+      "preuve": "index.html:473 (#msgDot), :477 (#bellDot) ; js/ui-v2-shell.js (Messages en barre basse)",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "aucun",
+      "verdict": "a-verifier",
+      "justification": "Non exercé ici (temps réel coupé par le banc) ; couvert par msg-liste."
+    },
+    {
+      "id": "ENT-051",
+      "surface": "Anciens liens",
+      "composant": "goTo('wallet' | 'shop' | 'cdv')",
+      "etat": "lien périmé",
+      "role": "connecté",
+      "geste": "goTo('wallet'), goTo('cdv')",
+      "observation": "simule",
+      "preuve": "sonde 04 : wallet → Profil, cdv → Fil ; js/app-02-state-utils.js:3639–3640",
+      "problemes": [],
+      "proposition": "Aucune : à conserver en l'état.",
+      "visuel": "aucun",
+      "verdict": "a-conserver",
+      "justification": "Les destinations retirées (ADR-009, ADR-011) retombent sur un écran vivant, sans erreur."
+    }
+  ],
+  "constats": [
+    {
+      "id": "ENT-C01",
+      "titre": "Le retour système ne ferme pas le formulaire de compte : il navigue dessous, ou quitte PASSIO",
+      "emplacement": "`#onboarding` — js/app-02-state-utils.js:3757 (closeCurrentOverlay ne le connaît pas), :3871 (popstate) ; js/first-run.js:1544 (ouvrirAuth ne pose aucune entrée d'historique)",
+      "surfaces": [
+        "ENT-020",
+        "ENT-027",
+        "ENT-013"
+      ],
+      "type": "observation",
+      "nature": "fonctionnel",
+      "preuve": "Sonde 03 : formulaire ouvert depuis le Studio, retour système → le formulaire reste affiché, l'écran dessous devient le Fil, l'adresse perd son ancre (capture ENT-020). Sonde 05 (parcours historique) : landing → « Créer un compte » → retour système → page vide, PASSIO quitté (capture ENT-027).",
+      "probleme": "Pour renoncer à s'inscrire, le geste naturel sur Android (retour) ne ferme pas le formulaire ; un second retour sort de l'application.",
+      "declencheur": "Une personne ouvre l'inscription depuis une porte de compte, puis change d'avis.",
+      "consequence": "Elle croit l'application bloquée ou la quitte sans le vouloir, au moment exact où elle hésitait à s'engager.",
+      "proposition": "À l'ouverture du formulaire, poser une entrée d'historique (même mécanique que les modales, `pushHistorySafe` + `_navOverlayDepth`) ; au retour système, faire ce que fait « ← Continuer à explorer » (retourExploration) et rendre l'écran d'avant (pas toujours le Fil). Dans le parcours historique, rouvrir la landing.",
+      "visuels": [
+        "ENT-020",
+        "ENT-027"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "S",
+      "risqueTechnique": "moyen",
+      "dependances": "Cohérent avec PAR-C01 (formulaire ouvert sous le contenu d'un lien) : les deux corrections touchent `ouvrirAuth`.",
+      "risqueRegression": "Pile d'historique (un seul geste à la fois, tests/e2e/historique-retour-en-vol.spec.js) ; retour OAuth Google qui recharge la page.",
+      "critereAcceptation": "Formulaire ouvert depuis le Studio → retour système : le formulaire disparaît et le Studio est à l'écran ; un second retour suit l'historique normal. Depuis la landing : le retour rouvre la landing.",
+      "fichiers": [
+        "js/first-run.js",
+        "js/app-02-state-utils.js"
+      ],
+      "sensible": true
+    },
+    {
+      "id": "ENT-C02",
+      "titre": "Inscription : six champs avant l'action, bouton sous le pli, erreurs une à une loin du champ",
+      "emplacement": "Formulaire « Créer un compte » — index.html:239–483 ; js/app-02-state-utils.js:5580 (switchAuthTab), :6298 (onbDoAuth)",
+      "surfaces": [
+        "ENT-013",
+        "ENT-014",
+        "ENT-015",
+        "ENT-017"
+      ],
+      "type": "observation",
+      "nature": "friction",
+      "preuve": "Sonde 03 (390 × 844) : case de consentement, Google, nom d'utilisateur, année de naissance, e-mail, mot de passe, confirmation, mention du responsable — « Créer mon compte » à y = 1 117 px. Envoi à vide → un seul message « Choisis un nom d'utilisateur (2 à 40 caractères). » en haut, champ non entouré ; puis « Adresse e-mail invalide. » au tour suivant (captures ENT-014, ENT-015, ENT-017). En production, le captcha Turnstile s'ajoute au-dessus du bouton (non rendu ici).",
+      "probleme": "Le geste qui conclut est invisible au départ ; chaque erreur se découvre après un aller-retour, et loin de l'endroit à corriger.",
+      "declencheur": "Toute inscription par e-mail, sur téléphone.",
+      "consequence": "Effort perçu élevé au moment le plus fragile du parcours ; risque d'abandon (hypothèse à mesurer par la télémétrie `signup_refused` / `guest_signup_started`).",
+      "proposition": "Deux étapes : 1) « Ton accès » — Google, ou e-mail + mot de passe (règles visibles), consentement, bouton « Continuer » visible sans défiler ; 2) « Ton profil » — nom public et année de naissance (refus 18+ inchangé, écrit sous le champ). Valider tous les champs à la fois et écrire chaque erreur sous son champ, champ entouré ; garder le bandeau du haut comme résumé. Supprimer la confirmation du mot de passe (le bouton « 👁 » suffit) — à arbitrer.",
+      "visuels": [
+        "ENT-013",
+        "ENT-015"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "M",
+      "risqueTechnique": "moyen",
+      "dependances": "Aucune ; le contrôle d'âge et le consentement restent bloquants (ADMISSION_18_PLUS, CGU).",
+      "risqueRegression": "Verrous e2e de l'inscription (consentement avant Google, #authResendTop, #authPwdHint) ; métadonnées envoyées à signUp (nom, année, consentement) inchangées.",
+      "critereAcceptation": "À 390 × 844, le bouton d'envoi de l'étape 1 est visible sans défiler ; un envoi incomplet entoure TOUS les champs fautifs et écrit leur défaut dessous ; une année < 18 ans reste refusée.",
+      "fichiers": [
+        "index.html",
+        "js/app-02-state-utils.js",
+        "styles.css"
+      ],
+      "sensible": true
+    },
+    {
+      "id": "ENT-C03",
+      "titre": "La sortie flottante « ← Continuer à explorer » recouvre le message d'erreur",
+      "emplacement": "`.fr-back-explore` — styles.css:10825 (position absolue dans #onboarding) ; js/first-run.js:1591",
+      "surfaces": [
+        "ENT-015",
+        "ENT-021"
+      ],
+      "type": "observation",
+      "nature": "polish",
+      "preuve": "Capture ENT-015 : après l'envoi, la page défile jusqu'au message, dont la première ligne passe sous la pastille blanche (gros plan « message ») ; capture ENT-021 : la pastille couvre le logo.",
+      "probleme": "Le refus est partiellement caché par un bouton.",
+      "declencheur": "Toute erreur dans le formulaire de compte ouvert depuis la première visite.",
+      "consequence": "Le message se lit mal, précisément quand il compte.",
+      "proposition": "Faire de la sortie une barre fixe pleine largeur (fond blanc, 44 px) et décaler le contenu d'autant.",
+      "visuels": [
+        "ENT-015"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Verrous first-run sur #frBackToExplore (présence, clic).",
+      "critereAcceptation": "Après un envoi refusé, `document.elementFromPoint` au centre de #authMsg renvoie #authMsg (ou un descendant).",
+      "fichiers": [
+        "styles.css"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C04",
+      "titre": "Un visiteur qui touche « Profil » voit un faux « Mon profil » vide, sans porte vers le compte",
+      "emplacement": "Onglet Profil et logo de la barre supérieure (aria-label « Mon profil ») — index.html:451 ; js/ui-v2-shell.js:74 ; renderProfilesScreen",
+      "surfaces": [
+        "ENT-008",
+        "ENT-001"
+      ],
+      "type": "observation",
+      "nature": "clarte",
+      "preuve": "Capture ENT-008 : « Mon profil », 0 abonné, 0 passion, 0 abonnement, crayon d'édition, « Aucune passion pour l'instant · Ajouter une passion », « Créer un post » — aucune mention du compte. Sonde 02 : le logo mène au même écran.",
+      "probleme": "On présente au visiteur un profil qui n'existe pas, comme s'il était le sien, et rien ne dit qu'il faut un compte pour l'avoir.",
+      "declencheur": "Visiteur qui explore la barre de navigation — geste très probable en première visite.",
+      "consequence": "Confusion (« ai-je déjà un compte ? ») et occasion de conversion manquée sur l'onglet le plus explicite.",
+      "proposition": "Pour un visiteur, l'onglet Profil affiche une carte « Ton profil t'attend » : ce qu'un compte apporte, « Créer mon compte » (même porte que requireAuthentication, contexte `preferences`) et « J'ai déjà un compte ». Le logo garde son nom accessible « Mon profil » seulement pour un compte.",
+      "visuels": [
+        "ENT-008"
+      ],
+      "priorite": "P1",
+      "gravite": 3,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "Réutilise `PassioFirstRun.allerInscription` ; aucune nouvelle collecte.",
+      "risqueRegression": "Rendu du profil d'un compte neuf (state.onboarded vrai) inchangé ; tests first-run.",
+      "critereAcceptation": "Mode visiteur → onglet Profil : aucun compteur « 0 abonné » ; un bouton « Créer mon compte » ouvre le formulaire en mode création.",
+      "fichiers": [
+        "js/first-run.js",
+        "js/app-08-ui-modals-tour.js",
+        "index.html"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C05",
+      "titre": "Jusqu'à neuf repères, posés par-dessus ce qu'ils présentent",
+      "emplacement": "`.fr-tip` — js/first-run.js:1700–1960 (ETAPES, ZONES_GESTE, montrerEtape) ; styles.css:10783",
+      "surfaces": [
+        "ENT-002",
+        "ENT-005",
+        "ENT-006",
+        "ENT-007",
+        "ENT-009"
+      ],
+      "type": "observation",
+      "nature": "friction",
+      "preuve": "Trois étapes principales (decouvrir, rencontrer, creer), trois d'écran (profil, messages, studio) et trois aides au geste (passions, envies, stories) : sonde 02 en a vu un à CHAQUE premier passage (Rencontrer, Messages, Profil, Studio). Capture ENT-002 : la bulle « Un Fil construit autour de tes passions » couvre les envies et les stories qu'elle décrit ; ENT-006 : elle couvre Liste / Carte / Filtre.",
+      "probleme": "La présentation interrompt chaque écran et cache sa cible.",
+      "declencheur": "Première visite d'un visiteur ou d'un compte neuf.",
+      "consequence": "Les repères sont vite fermés par réflexe (« Ne plus afficher »), donc perdus ; l'écran découvert est masqué au moment où on le découvre.",
+      "proposition": "Garder trois repères (Découvrir, Rencontrer, Créer) ; supprimer ceux d'écran (Profil, Messages, Studio) ou les réserver au geste ; poser la bulle en carte au-dessus de la barre basse, avec un repère visuel (contour) sur la cible au lieu de la recouvrir.",
+      "visuels": [
+        "ENT-002",
+        "ENT-006"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "tests/e2e/first-run.spec.js (étapes vues, abandon, « Revoir les repères »).",
+      "critereAcceptation": "En première visite, au plus trois repères sur les six écrans principaux ; aucun ne recouvre sa cible (`elementFromPoint` au centre de la cible ne renvoie pas `.fr-tip`).",
+      "fichiers": [
+        "js/first-run.js",
+        "styles.css"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C06",
+      "titre": "Panneau « Paramètres » : ni croix, ni fond, ni Échap, ni retour pour le fermer",
+      "emplacement": "`#devPanel` — js/app-02-state-utils.js:3916 (toggleDevPanel), :3757 (absent de closeCurrentOverlay) ; index.html:479 (« ⋯ ») ; styles.css:2952",
+      "surfaces": [
+        "ENT-010",
+        "ENT-033"
+      ],
+      "type": "observation",
+      "nature": "fonctionnel",
+      "preuve": "Sonde 04 : panneau ouvert → Échap : reste ouvert ; retour système : reste ouvert, l'écran dessous change ; seul un second toucher sur « ⋯ » le ferme. « ⋯ » est un `div role=button` sans `aria-expanded`. Mesures ENT-033 : « Se déconnecter » et « Supprimer mon compte » 33 px de haut, l'un sous l'autre. Visiteur (ENT-010) : entrée « Démo » visible.",
+      "probleme": "On ne sait pas comment quitter ce panneau, et la destruction du compte touche la déconnexion.",
+      "declencheur": "Toute ouverture des Paramètres.",
+      "consequence": "Sensation de blocage ; risque de toucher la mauvaise des deux actions de compte (même si la suppression est confirmée ensuite, d'après le code).",
+      "proposition": "Traiter le panneau comme une feuille : fond assombri, croix 44 px, fermeture par Échap / retour système / toucher dehors, `aria-expanded` sur « ⋯ » ; éloigner « Supprimer mon compte » (dans Compte) ; masquer « Démo » hors mode démo. Le rangement des entrées relève de MSG-C17.",
+      "visuels": [
+        "ENT-033"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "MSG-C17 (contenu du panneau).",
+      "risqueRegression": "Fermetures programmées existantes (`$('#devPanel').classList.remove('active')` en huit endroits).",
+      "critereAcceptation": "Panneau ouvert : Échap, retour système et toucher hors du panneau le ferment ; « ⋯ » expose `aria-expanded` vrai / faux.",
+      "fichiers": [
+        "js/app-02-state-utils.js",
+        "index.html",
+        "styles.css"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C07",
+      "titre": "Le retour système ne ferme pas la feuille « Créer » : il change d'écran dessous",
+      "emplacement": "`#v2CreateSheet` — js/ui-v2-shell.js:270–340 (aucune entrée d'historique) ; js/app-02-state-utils.js:3757",
+      "surfaces": [
+        "ENT-032"
+      ],
+      "type": "observation",
+      "nature": "fonctionnel",
+      "preuve": "Sonde 04 : feuille ouverte sur le Fil → retour système → écran Rencontrer dessous, feuille toujours ouverte. Échap, croix et fond la ferment.",
+      "probleme": "Même famille que MSG-C73 et BOB-C12 : une superposition que le retour système ignore.",
+      "declencheur": "Créer › changer d'avis avec le geste de retour.",
+      "consequence": "On perd l'écran où l'on était, la feuille reste.",
+      "proposition": "Ouvrir la feuille avec une entrée d'historique et la fermer dans closeCurrentOverlay ; croix portée à 44 px (34 px mesurés).",
+      "visuels": [
+        "ENT-032"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "Même correctif générique que ENT-C01 et ENT-C06 (un registre des superpositions dans closeCurrentOverlay).",
+      "risqueRegression": "tests/e2e/historique-retour-en-vol.spec.js.",
+      "critereAcceptation": "Feuille ouverte → retour système : la feuille se ferme, l'écran ne change pas.",
+      "fichiers": [
+        "js/ui-v2-shell.js",
+        "js/app-02-state-utils.js"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C08",
+      "titre": "Vocabulaire de navigation : un même mot pour plusieurs choses, plusieurs mots pour une même chose",
+      "emplacement": "Barre basse (js/ui-v2-shell.js:70), loupe (index.html:460), envies (index.html:644), Studio (« Mood », index.html:941), écran de recherche (index.html:974), aides (app-02 HINTS), landing (« humeur », index.html:123), étapes de compte (index.html:420)",
+      "surfaces": [
+        "ENT-031",
+        "ENT-011",
+        "ENT-009",
+        "ENT-034",
+        "ENT-029",
+        "ENT-032",
+        "ENT-001"
+      ],
+      "type": "observation",
+      "nature": "clarte",
+      "preuve": "Relevé : « Explorer » = loupe (aria-label) + titre de l'écran de recherche + envie du Fil ; « Rencontrer » = onglet + envie + valeur de mood ; l'onglet « Découvrir » s'appelait « Fil » (aria-label de l'ancienne barre) et les textes disent « le Fil » ; « envie » (Fil) = « Mood » (Studio) = « humeur » (landing) ; « Publication » (feuille) = « post » (« Créer un post », profil) = « Passio » (« Publier une Passio », fil) ; « profil » = « sa Passio » (aide) ; « Nom d'utilisateur » (formulaire) = « Ton prénom » (étape Google). Tableau complet au rapport, § 6.",
+      "probleme": "Les noms ne permettent pas de prédire où mène un geste.",
+      "declencheur": "Toute navigation, surtout la première visite.",
+      "consequence": "Hésitations, et des repères qui doivent expliquer ce que les mots auraient dû dire.",
+      "proposition": "Un lexique fermé : onglets Découvrir · Rencontrer · Créer · Messages · Profil ; loupe et écran « Rechercher » ; envies « Nouveau pour toi » · Apprendre · Idées · « Rendez-vous » ; « envie » partout (Studio compris) ; « publication » partout (jamais post ni Passio) ; « profil » partout ; « nom public » pour le nom affiché. Valeurs stockées inchangées.",
+      "visuels": [
+        "ENT-031",
+        "ENT-011"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "M",
+      "risqueTechnique": "faible",
+      "dependances": "PAR-C09 (feed/fil, post/publication), FIL-C13 (envies comme filtres), PRO-C14 (vocabulaire du profil).",
+      "risqueRegression": "Tests e2e qui ciblent des textes (« Explorer », « Rencontrer ») ; aucune valeur en base.",
+      "critereAcceptation": "Aucun libellé ni nom accessible « Explorer » ne désigne deux destinations ; « Mood », « post » et « Passio » (pour une publication ou un profil) n'apparaissent plus dans l'interface.",
+      "fichiers": [
+        "index.html",
+        "js/ui-v2-shell.js",
+        "js/app-02-state-utils.js"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C09",
+      "titre": "Recharger sur un écran rouvre le Fil, mais l'adresse garde l'ancien écran",
+      "emplacement": "boot (js/app-08-ui-modals-tour.js:2764) ; routage par ancre (js/app-02-state-utils.js:3867–3871, NAV_SCREENS)",
+      "surfaces": [
+        "ENT-036"
+      ],
+      "type": "observation",
+      "nature": "fonctionnel",
+      "preuve": "Capture ENT-036 : Messages, rechargement → écran actif `screen-feed`, adresse `#messages` (fiche ENT-036--m390.json, champ ecran).",
+      "probleme": "L'écran et l'adresse se contredisent ; la personne perd l'écran où elle était.",
+      "declencheur": "Rechargement (pull-to-refresh, mise à jour de la PWA, retour d'arrière-plan sur un téléphone qui a purgé l'onglet).",
+      "consequence": "Retour au Fil inattendu ; le retour système suivant part d'un état incohérent.",
+      "proposition": "Au démarrage, ouvrir l'écran nommé par l'ancre quand il appartient à la liste fermée NAV_SCREENS ; sinon remplacer l'ancre par #feed.",
+      "visuels": [
+        "ENT-036"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "moyen",
+      "dependances": "Liens profonds de partage (#post-…, #irl-event-…) : ne pas les intercepter.",
+      "risqueRegression": "Routeurs de liens profonds (js/app-06-reels-partage.js) ; first-run (écran d'entrée d'un visiteur).",
+      "critereAcceptation": "Compte connecté, #messages, rechargement → l'écran Messages est actif (ou l'adresse devient #feed).",
+      "fichiers": [
+        "js/app-08-ui-modals-tour.js",
+        "js/app-02-state-utils.js"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C10",
+      "titre": "Changer d'onglet fait perdre sa place dans le fil",
+      "emplacement": "goTo — js/app-02-state-utils.js:3679 (`$('#appMain').scrollTop = 0`) ; feedWindowRestoreScroll (:9430) inactif car feedWindowEnabled() est faux par défaut (:9102)",
+      "surfaces": [
+        "ENT-037"
+      ],
+      "type": "observation",
+      "nature": "friction",
+      "preuve": "Sonde 04 : fil défilé à 1 200 px → Rencontrer → retour système : 0 px ; capture ENT-037 : 900 px → Rencontrer → Découvrir : haut du fil.",
+      "probleme": "Après un coup d'œil sur un autre onglet, on revient tout en haut.",
+      "declencheur": "Aller-retour entre onglets, très fréquent (Découvrir ↔ Rencontrer ↔ Messages).",
+      "consequence": "Il faut redéfiler et retrouver la publication ; la boucle Fil → interaction est cassée.",
+      "proposition": "Mémoriser la position du fil en le quittant et la rendre au retour (par onglet ou par retour système) ; un second toucher sur « Découvrir » déjà actif remonte en haut.",
+      "visuels": [
+        "ENT-037"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "moyen",
+      "dependances": "Le mécanisme existe derrière le drapeau `passio_feed_window_v1` ; peut être découplé du fenêtrage.",
+      "risqueRegression": "Rendu du fil à l'arrivée (renderFeed reconstruit la liste) ; nouvelles publications arrivées entre-temps.",
+      "critereAcceptation": "Fil défilé de 900 px → Rencontrer → Découvrir : la même publication est en haut de l'écran (± 50 px).",
+      "fichiers": [
+        "js/app-02-state-utils.js"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C11",
+      "titre": "Formulaire de compte : onglets de 35 px et deux sorties inatteignables au clavier",
+      "emplacement": "index.html:253–254 (onglets), :291 (liens CGU en `span role=button`), :387–388 (#authForgotLink, #authResendLink en `span onclick`)",
+      "surfaces": [
+        "ENT-013",
+        "ENT-018",
+        "ENT-021"
+      ],
+      "type": "observation",
+      "nature": "accessibilite",
+      "preuve": "Mesures ENT-013 / ENT-018 : « Se connecter » et « Créer un compte » 35 px de haut ; liens « conditions générales » et « politique de confidentialité » 16 px de haut (sonde 03). « Mot de passe oublié ? » et « Renvoyer l'e-mail de confirmation » (bas) n'ont ni rôle ni tabindex : absents du parcours clavier (sonde 03, liste des éléments focalisables de l'onglet connexion).",
+      "probleme": "Une personne au clavier ou au lecteur d'écran ne peut pas demander un nouveau mot de passe ; les onglets sont étroits au doigt.",
+      "declencheur": "Connexion oubliée, navigation au clavier, lecteur d'écran.",
+      "consequence": "Compte inaccessible pour ces personnes.",
+      "proposition": "`<button type=button>` pour « Mot de passe oublié ? » et « Renvoyer l'e-mail » ; onglets à 44 px avec `role=tab` / `aria-selected` ; liens légaux en `<button>` avec zone de 44 px (padding vertical).",
+      "visuels": [
+        "ENT-013"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Verrous qui ciblent #authForgotLink / #authResendLink par id (inchangés).",
+      "critereAcceptation": "Au clavier, Tab atteint « Mot de passe oublié ? » et Entrée le déclenche ; les onglets mesurent ≥ 44 px.",
+      "fichiers": [
+        "index.html",
+        "styles.css"
+      ],
+      "sensible": true
+    },
+    {
+      "id": "ENT-C12",
+      "titre": "Clavier : pas de lien d'évitement, la barre de navigation arrive après tout le fil",
+      "emplacement": "index.html (aucun lien « Aller au contenu ») ; #appNavV2 inséré après #appNav (js/ui-v2-shell.js:262) ; destinations en `div role=button`",
+      "surfaces": [
+        "ENT-038",
+        "ENT-031"
+      ],
+      "type": "observation",
+      "nature": "accessibilite",
+      "preuve": "Sonde 04, 14 tabulations : Mon profil, Explorer, Notifications, Paramètres, Suivis, Musique, quatre envies, Ta story, Léa, Clara, Noa… la barre basse n'est pas atteinte. Contour de focus visible à chaque arrêt (bon).",
+      "probleme": "Changer d'écran au clavier demande de traverser tout le fil.",
+      "declencheur": "Navigation au clavier (ordinateur, clavier externe), lecteur d'écran.",
+      "consequence": "Navigation principale pratiquement inaccessible au clavier.",
+      "proposition": "Lien « Aller au contenu » / « Aller à la navigation » en premier arrêt ; destinations en `<button>` ; envisager la barre de navigation avant le contenu dans l'ordre du document (position visuelle inchangée).",
+      "visuels": [
+        "ENT-038"
+      ],
+      "priorite": "P3",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "SOC-C02 (panneau fermé atteignable au clavier).",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Le premier Tab montre un lien d'évitement ; la barre de navigation est atteinte en moins de 8 tabulations.",
+      "fichiers": [
+        "index.html",
+        "js/ui-v2-shell.js",
+        "styles.css"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C13",
+      "titre": "Parcours historique : trois boutons de même poids, piliers tronqués, tour de cinq cartes",
+      "emplacement": "Landing — index.html:96–165 ; tour — js/app-08-ui-modals-tour.js:160, index.html:1371",
+      "surfaces": [
+        "ENT-025",
+        "ENT-026",
+        "ENT-040"
+      ],
+      "type": "jugement",
+      "nature": "clarte",
+      "preuve": "Capture ENT-025 : « Se connecter », « Créer un compte » et « Installer l'application » en boutons pleins identiques ; les six piliers n'affichent que leur titre, le sixième passe sous le pied collant. Capture ENT-040 : « Étape 1 / 5 », boutons Quitter / Suivant de 29 px.",
+      "probleme": "Aucune action n'est désignée comme la première ; la présentation se lit mal.",
+      "declencheur": "Seulement si le parcours de première visite est coupé (`passio_first_run_experience_v1=\"0\"`).",
+      "consequence": "Faible aujourd'hui (état conditionnel), mais c'est l'état de repli du kill switch.",
+      "proposition": "« Créer un compte » en action principale, « Se connecter » en secondaire, installation en lien ; boutons du tour à 44 px.",
+      "visuels": [
+        "ENT-025"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "Aucune.",
+      "risqueRegression": "Verrous du parcours historique (gate-helper.poserGateSansPremiereVisite).",
+      "critereAcceptation": "Drapeau coupé : un seul bouton plein sur la landing ; Quitter / Suivant ≥ 44 px.",
+      "fichiers": [
+        "index.html",
+        "styles.css"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C14",
+      "titre": "Aide « Compris » posée sur la photo, avec « sa Passio » pour dire profil",
+      "emplacement": "`.passio-hint` — js/app-02-state-utils.js:9005 (montrerHint, HINTS) ; styles.css:7456",
+      "surfaces": [
+        "ENT-034"
+      ],
+      "type": "observation",
+      "nature": "polish",
+      "preuve": "Capture ENT-034 : « Appuie sur l'auteur pour découvrir sa Passio » recouvre le bas de la photo de la première publication ; « Compris » 34 px de haut (mesures).",
+      "probleme": "L'aide cache du contenu et emploie un mot propre à elle.",
+      "declencheur": "Compte neuf, première ouverture du fil.",
+      "consequence": "Petite gêne de lecture et de compréhension.",
+      "proposition": "Ancrer l'aide sous la ligne d'auteur (flèche vers le nom), « Compris » à 44 px, texte « Touche le nom pour voir son profil ».",
+      "visuels": [
+        "ENT-034"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "ENT-C08 (lexique).",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "L'aide ne recouvre pas la photo ; « Compris » ≥ 44 px ; le mot « Passio » n'y désigne plus un profil.",
+      "fichiers": [
+        "js/app-02-state-utils.js",
+        "styles.css"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C15",
+      "titre": "Après le choix des passions, rien ne dit qu'il ne vit que sur cet appareil",
+      "emplacement": "js/first-run.js:1262 (validerPersonnalisation ferme la carte pour la session), :788 (carte « Tes passions sont sur cet appareil » à la session suivante)",
+      "surfaces": [
+        "ENT-005",
+        "ENT-048"
+      ],
+      "type": "jugement",
+      "nature": "clarte",
+      "preuve": "Capture ENT-005 : après « Voir mon fil (3) », les passions sont en tête du fil et un repère s'affiche ; aucune mention de la conservation locale ni du compte. La carte qui le dit n'apparaît qu'à une prochaine visite (d'après le code).",
+      "probleme": "Le moment où le visiteur vient d'investir (choisir ses passions) n'est pas relié au compte qui le garderait.",
+      "declencheur": "Première visite, validation du panneau de passions.",
+      "consequence": "Moins de raisons de créer un compte ; perte du choix sur un autre appareil.",
+      "proposition": "Sous la rangée de passions, une ligne discrète (« Gardées sur cet appareil · Créer mon compte pour les retrouver partout »), refermable, une seule fois.",
+      "visuels": [
+        "ENT-005"
+      ],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "Aucune ; texte cohérent avec TEXTE_COMMUN de la porte de compte.",
+      "risqueRegression": "tests first-run (carte de bienvenue, prefs).",
+      "critereAcceptation": "Après validation du panneau, la phrase « sur cet appareil » et un lien vers la création de compte sont visibles sans défiler.",
+      "fichiers": [
+        "js/first-run.js",
+        "styles.css"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C16",
+      "titre": "« Avant de continuer » : case de 13 px et croix qui ne ferme pas vraiment",
+      "emplacement": "ouvrirConsentementRequis — js/app-02-state-utils.js:5958 ; reprise planifierConsentementRequis (la modale réapparaît si fermée autrement)",
+      "surfaces": [
+        "ENT-023"
+      ],
+      "type": "observation",
+      "nature": "accessibilite",
+      "preuve": "Capture ENT-023 : case native sans taille, 13 px (mesures) ; la modale porte la croix générique alors que, d'après le code, elle se rouvre tant qu'aucune réponse n'est donnée ; « Refuser et me déconnecter » de même poids que l'acceptation.",
+      "probleme": "Accord difficile à cocher au doigt ; une croix qui promet une sortie qu'elle ne donne pas.",
+      "declencheur": "Inscription par Google sans accord préalable.",
+      "consequence": "Toucher raté, sentiment d'être forcé.",
+      "proposition": "Case de 22 px dans une ligne cliquable ≥ 44 px ; pas de croix sur cette modale (deux réponses seulement) ; refus en action secondaire lisible.",
+      "visuels": [
+        "ENT-023"
+      ],
+      "priorite": "P3",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "Aucune ; l'accord reste explicite et bloquant.",
+      "risqueRegression": "Verrous du consentement Google.",
+      "critereAcceptation": "#consentRequisCase ≥ 22 px, sa ligne ≥ 44 px ; aucune croix dans cette modale.",
+      "fichiers": [
+        "js/app-02-state-utils.js"
+      ],
+      "sensible": true
+    },
+    {
+      "id": "ENT-C17",
+      "titre": "Paysage : les deux barres prennent un tiers de la hauteur",
+      "emplacement": ".app-topbar, #appNavV2 — styles.css:7642",
+      "surfaces": [
+        "ENT-039"
+      ],
+      "type": "hypothese",
+      "nature": "friction",
+      "preuve": "Capture ENT-039 (844 × 390, émulée) : barre haute ≈ 64 px + barre basse ≈ 65 px sur 390 px.",
+      "probleme": "Peu de place au contenu quand le téléphone est tourné (vidéo, carte).",
+      "declencheur": "Téléphone en paysage.",
+      "consequence": "À vérifier sur appareil : lecture gênée.",
+      "proposition": "En paysage (hauteur < 500 px), barre haute réduite ou masquée au défilement.",
+      "visuels": [
+        "ENT-039"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "SOC-C03 (tablette, ordinateur).",
+      "risqueRegression": "tests/e2e/cadrage.spec.js.",
+      "critereAcceptation": "À 844 × 390, le contenu dispose d'au moins 75 % de la hauteur.",
+      "fichiers": [
+        "styles.css"
+      ],
+      "sensible": false
+    },
+    {
+      "id": "ENT-C18",
+      "titre": "Hors ligne, l'inscription et la connexion ne disent probablement pas « pas de connexion »",
+      "emplacement": "onbDoAuth — js/app-02-state-utils.js:6298–6608 (aucun test `navigator.onLine` ; message brut si supabase-js rend une erreur réseau sans lever d'exception)",
+      "surfaces": [
+        "ENT-042"
+      ],
+      "type": "hypothese",
+      "nature": "fonctionnel",
+      "preuve": "Capture ENT-042 : « E-mail ou mot de passe incorrect. » hors ligne — mais c'est un artefact du banc (le faux serveur répond même hors ligne). Lecture du code : seul le `catch` affiche « Erreur réseau. Vérifie ta connexion. » ; une erreur rendue (non levée) passerait par la chaîne de traduction, qui ne reconnaît pas « Failed to fetch ».",
+      "probleme": "Un message faux (« mot de passe incorrect ») ou en anglais pourrait s'afficher hors ligne.",
+      "declencheur": "Réseau absent ou instable au moment de l'envoi.",
+      "consequence": "La personne doute de son mot de passe et le réinitialise pour rien.",
+      "proposition": "Avant l'envoi, si `navigator.onLine` est faux, dire « Pas de connexion internet — réessaie quand tu es en ligne » ; traduire aussi « Failed to fetch » / « Load failed » / « NetworkError ».",
+      "visuels": [],
+      "priorite": "P2",
+      "gravite": 2,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "À vérifier d'abord sur appareil (mode avion).",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "Mode avion → Se connecter : message « Pas de connexion internet… », jamais « E-mail ou mot de passe incorrect » ni un texte anglais.",
+      "fichiers": [
+        "js/app-02-state-utils.js"
+      ],
+      "sensible": true
+    },
+    {
+      "id": "ENT-C19",
+      "titre": "Étapes après Google : « Ton prénom » et un champ d'année moins équipé",
+      "emplacement": "index.html:406 (#birthYear), :421 (#userName)",
+      "surfaces": [
+        "ENT-028",
+        "ENT-029"
+      ],
+      "type": "observation",
+      "nature": "polish",
+      "preuve": "Captures ENT-028 / ENT-029 (simulées) : #birthYear sans `inputmode` ni `autocomplete` (le champ du formulaire e-mail a `inputmode=numeric`, `autocomplete=bday-year`) ; « Ton prénom » là où le formulaire e-mail dit « Nom d'utilisateur — ton nom public ».",
+      "probleme": "Deux chemins d'inscription, deux vocabulaires et deux claviers pour les mêmes données.",
+      "declencheur": "Inscription par Google.",
+      "consequence": "Léger trouble ; clavier non numérique selon le navigateur.",
+      "proposition": "Aligner les deux champs sur ceux du formulaire e-mail (mêmes libellés, mêmes attributs, même aide).",
+      "visuels": [
+        "ENT-028",
+        "ENT-029"
+      ],
+      "priorite": "P3",
+      "gravite": 1,
+      "effort": "S",
+      "risqueTechnique": "faible",
+      "dependances": "ENT-C02 (l'étape 2 proposée peut devenir l'unique écran pour les deux chemins).",
+      "risqueRegression": "Faible.",
+      "critereAcceptation": "#birthYear porte `inputmode=numeric` et `autocomplete=bday-year` ; le libellé dit « Nom d'utilisateur ».",
+      "fichiers": [
+        "index.html"
+      ],
+      "sensible": true
+    }
+  ]
 }

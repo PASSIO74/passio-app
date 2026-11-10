@@ -1,0 +1,195 @@
+{
+ "id": "REC-001",
+ "domaine": "recherche",
+ "scenario": "ecran",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Rechercher — haut de l'écran (champ, « Passions tendance »)",
+ "note": "",
+ "prisLe": "2026-11-10T19:37:17.039Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-001--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 43574,
+  "zooms": [
+   {
+    "nom": "champ",
+    "titre": "Champ et bouton « OK »",
+    "fichier": "captures/recherche/REC-001--m360--avant-zoom-champ.webp",
+    "largeur": 672,
+    "hauteur": 362,
+    "octets": 13872
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« OK » : 40,9 × 28 px ; le champ est un type=text sans étiquette ni croix d'effacement.",
+   "x": 0.804,
+   "y": 0.32,
+   "w": 0.114,
+   "h": 0.044,
+   "sel": "#exPanel_search .explorer-hero button",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« tout le référentiel des passions » : un mot d'équipe, pas d'utilisateur.",
+   "x": 0.5,
+   "y": 0.238,
+   "w": 0.806,
+   "h": 0.056,
+   "sel": "#exPanel_search .explorer-hero p",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Tuile sans publication, posée là par ordre alphabétique sous l'étiquette « Hot ».",
+   "x": 0.733,
+   "y": 0.92,
+   "w": 0.444,
+   "h": 0.163,
+   "sel": "#trendingGrid .trending-tile:last-child",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 15,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "input#explorerSearch",
+     "texte": "Enduro, guitare électrique, un pseudo…",
+     "w": 188.1,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div.explorer-hero > div > div > button",
+     "texte": "OK",
+     "w": 40.9,
+     "h": 28,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 11,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#explorerSearch",
+    "placeholder": "Enduro, guitare électrique, un pseudo…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/recherche/REC-001--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 38386,
+  "zooms": [
+   {
+    "nom": "champ",
+    "titre": "Champ et bouton « OK »",
+    "fichier": "captures/recherche/REC-001--m360--apres-zoom-champ.webp",
+    "largeur": 672,
+    "hauteur": 334,
+    "octets": 11388
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« OK » porté à 44 px de haut ; le champ reçoit un nom accessible.",
+   "x": 0.817,
+   "y": 0.295,
+   "w": 0.144,
+   "h": 0.069,
+   "sel": "#exPanel_search .explorer-hero button",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Accroche en mots simples : une passion ou une personne.",
+   "x": 0.5,
+   "y": 0.223,
+   "w": 0.806,
+   "h": 0.028,
+   "sel": "#exPanel_search .explorer-hero p",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Seules les passions qui ont des publications ; le titre dit ce qu'on mesure, sans « Hot ».",
+   "x": 0.5,
+   "y": 0.422,
+   "w": 0.9,
+   "h": 0.047,
+   "sel": "#exploreNormalContent .section-title",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

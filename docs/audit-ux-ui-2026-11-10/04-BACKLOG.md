@@ -6,9 +6,9 @@
 | Priorité | Constats |
 |---|---|
 | P0 | 1 |
-| P1 | 40 |
-| P2 | 105 |
-| P3 | 87 |
+| P1 | 47 |
+| P2 | 123 |
+| P3 | 100 |
 
 ## Vue d'ensemble
 
@@ -19,8 +19,15 @@
 | MSG-C53 | P1 | 4 | fonctionnel | observation | S | faible | Messagerie | Un toucher bref sur le micro lance un enregistrement qui ne s'arrête pas — et le toucher suivant l'envoie ⚠ sensible |
 | PCS-C01 | P1 | 3 | fonctionnel | observation | S | faible | Parcours de bout en bout | La porte « Voir l'activité » n'apparaît qu'au bout d'une minute |
 | PCS-C03 | P1 | 3 | clarte | observation | M | faible | Parcours de bout en bout | L'inscription à une activité ne confirme rien et ne propose pas la suite |
+| ENT-C01 | P1 | 3 | fonctionnel | observation | S | moyen | Entrée et navigation | Le retour système ne ferme pas le formulaire de compte : il navigue dessous, ou quitte PASSIO ⚠ sensible |
+| ENT-C02 | P1 | 3 | friction | observation | M | moyen | Entrée et navigation | Inscription : six champs avant l'action, bouton sous le pli, erreurs une à une loin du champ ⚠ sensible |
+| ENT-C04 | P1 | 3 | clarte | observation | S | faible | Entrée et navigation | Un visiteur qui touche « Profil » voit un faux « Mon profil » vide, sans porte vers le compte |
 | FIL-C01 | P1 | 3 | fonctionnel | observation | S | faible | Fil et interactions | « Voir l'activité » n'apparaît pas à l'ouverture sur une publication reliée à une activité |
 | FIL-C06 | P1 | 3 | fonctionnel | observation | M | faible | Fil et interactions | Supprimer un commentaire agit sans confirmation et annonce « supprimé » même si le serveur refuse |
+| REC-C01 | P1 | 3 | fonctionnel | observation | S | faible | Recherche et découverte | « Créateurs à suivre » ouvert tôt : « Suivre » affiché sur des personnes déjà suivies, et l'appui désabonne ⚠ sensible |
+| REC-C02 | P1 | 3 | clarte | observation | S | faible | Recherche et découverte | Des personnages d'exemple sont proposés comme vraies personnes à suivre, et le suivi s'écrit en base ⚠ sensible |
+| REC-C03 | P1 | 3 | fonctionnel | observation | S | faible | Recherche et découverte | Un compte bloqué est proposé dans la recherche et dans « Créateurs à suivre » ⚠ sensible |
+| REC-C04 | P1 | 3 | friction | jugement | S | faible | Recherche et découverte | La fiche d'une passion ne mène pas à Rencontrer |
 | PRO-C02 | P1 | 3 | fonctionnel | observation | S | faible | Profils et passions | Changer la couverture depuis « Modifier le profil » : le recadreur s'ouvre sous la modale |
 | CRE-C01 | P1 | 3 | fonctionnel | observation | S | moyen | Création et médias | Après une photo, une vidéo ou l'audio, le Studio refuse un texte seul |
 | BOB-C01 | P1 | 3 | fonctionnel | observation | S | faible | Bobines et stories | Au clavier, chaque espace d'un commentaire de bobine fait passer à la bobine suivante |
@@ -65,6 +72,16 @@
 | MSG-C65 | P2 | 3 | fonctionnel | observation | M | moyen | Messagerie | Le menu d'actions ne s'ouvre pas sur une vidéo |
 | PAR-C17 | P2 | 3 | clarte | observation | M | faible | Partage | Partage de position : un appui envoie des coordonnées précises, sans aperçu ni confirmation ⚠ sensible |
 | PCS-C02 | P2 | 2 | friction | observation | M | moyen | Parcours de bout en bout | « Retour » depuis une conversation perd le contexte d'origine |
+| ENT-C03 | P2 | 2 | polish | observation | S | faible | Entrée et navigation | La sortie flottante « ← Continuer à explorer » recouvre le message d'erreur |
+| ENT-C05 | P2 | 2 | friction | observation | S | faible | Entrée et navigation | Jusqu'à neuf repères, posés par-dessus ce qu'ils présentent |
+| ENT-C06 | P2 | 2 | fonctionnel | observation | S | faible | Entrée et navigation | Panneau « Paramètres » : ni croix, ni fond, ni Échap, ni retour pour le fermer |
+| ENT-C07 | P2 | 2 | fonctionnel | observation | S | faible | Entrée et navigation | Le retour système ne ferme pas la feuille « Créer » : il change d'écran dessous |
+| ENT-C08 | P2 | 2 | clarte | observation | M | faible | Entrée et navigation | Vocabulaire de navigation : un même mot pour plusieurs choses, plusieurs mots pour une même chose |
+| ENT-C09 | P2 | 2 | fonctionnel | observation | S | moyen | Entrée et navigation | Recharger sur un écran rouvre le Fil, mais l'adresse garde l'ancien écran |
+| ENT-C10 | P2 | 2 | friction | observation | S | moyen | Entrée et navigation | Changer d'onglet fait perdre sa place dans le fil |
+| ENT-C11 | P2 | 2 | accessibilite | observation | S | faible | Entrée et navigation | Formulaire de compte : onglets de 35 px et deux sorties inatteignables au clavier ⚠ sensible |
+| ENT-C15 | P2 | 2 | clarte | jugement | S | faible | Entrée et navigation | Après le choix des passions, rien ne dit qu'il ne vit que sur cet appareil |
+| ENT-C18 | P2 | 2 | fonctionnel | hypothese | S | faible | Entrée et navigation | Hors ligne, l'inscription et la connexion ne disent probablement pas « pas de connexion » ⚠ sensible |
 | FIL-C02 | P2 | 2 | accessibilite | observation | M | faible | Fil et interactions | La barre d'actions est faite d'emojis : nommée « 🤍 5 », « 💬 34 », « 😊 », en 12,5 px |
 | FIL-C03 | P2 | 2 | fonctionnel | observation | S | faible | Fil et interactions | Mon j'aime déjà posé s'affiche « 🤍 » pendant les premières secondes ; le toucher alors compte un j'aime de trop |
 | FIL-C04 | P2 | 2 | friction | observation | S | faible | Fil et interactions | La discussion montre deux commentaires et demi : sa liste est bornée à 260 px |
@@ -75,6 +92,14 @@
 | FIL-C15 | P2 | 2 | clarte | observation | S | faible | Fil et interactions | Le visiteur lit « ta communauté » et « Publier la première » avant tout contenu |
 | FIL-C17 | P2 | 2 | clarte | observation | S | faible | Fil et interactions | États vides : le bouton ne fait pas ce que le message conseille |
 | FIL-C20 | P2 | 2 | clarte | observation | M | faible | Fil et interactions | Un repartage est un texte sans lien vers l'original ; un partage d'activité déborde de la carte |
+| REC-C05 | P2 | 2 | clarte | jugement | S | faible | Recherche et découverte | « Créateurs à suivre » montre des personnes déjà suivies et ne suggère rien de lié à mes passions |
+| REC-C06 | P2 | 2 | friction | observation | S | faible | Recherche et découverte | Les personnes sont sous le pli du panneau de résultats, nommées « Utilisateurs » |
+| REC-C07 | P2 | 2 | friction | observation | S | faible | Recherche et découverte | Le panneau de résultats ne se ferme qu'en vidant le champ à la main |
+| REC-C08 | P2 | 2 | friction | jugement | S | faible | Recherche et découverte | « Aucun résultat » est un cul-de-sac |
+| REC-C09 | P2 | 2 | clarte | observation | S | faible | Recherche et découverte | La fiche annonce « 42 posts » quand la tuile dit « 4 posts », et n'en montre que 6 |
+| REC-C10 | P2 | 2 | clarte | observation | S | faible | Recherche et découverte | « + Créer profil » pour ajouter une passion, puis bascule vers Profil ⚠ sensible |
+| REC-C11 | P2 | 2 | fonctionnel | observation | S | faible | Recherche et découverte | Une fiche ouverte depuis un résultat peut s'ouvrir au milieu de ses publications |
+| REC-C12 | P2 | 2 | clarte | observation | S | faible | Recherche et découverte | Hors ligne, la recherche dit « n'a pas abouti. Réessaie. » sans nommer la cause |
 | PRO-C04 | P2 | 2 | friction | observation | S | faible | Profils et passions | « Tout » reste coché : toucher « Photos » ne filtre rien |
 | PRO-C07 | P2 | 2 | clarte | observation | S | faible | Profils et passions | Le profil d'un compte que j'ai bloqué ne dit pas qu'il est bloqué ⚠ sensible |
 | PRO-C15 | P2 | 2 | friction | jugement | S | faible | Profils et passions | « Modifier le profil » : 1 096 px de haut, huit champs de réseaux, Sauvegarder tout en bas |
@@ -160,9 +185,12 @@
 | PAR-C16 | P2 | 2 | clarte | observation | S | faible | Partage | « Partager mon expérience » : le rattachement à l'activité est invisible et persiste ⚠ sensible |
 | PAR-C20 | P2 | 2 | clarte | jugement | M | faible | Partage | L'invitation nominative ne tient que six secondes à l'arrivée ⚠ sensible |
 | SOC-C02 | P2 | 2 | accessibilite | observation | S | faible | Transverse | Le panneau de conversation fermé reste atteignable au clavier |
+| ENT-C12 | P3 | 2 | accessibilite | observation | S | faible | Entrée et navigation | Clavier : pas de lien d'évitement, la barre de navigation arrive après tout le fil |
+| ENT-C16 | P3 | 2 | accessibilite | observation | S | faible | Entrée et navigation | « Avant de continuer » : case de 13 px et croix qui ne ferme pas vraiment ⚠ sensible |
 | FIL-C14 | P3 | 2 | friction | jugement | S | faible | Fil et interactions | Sur petit écran, le premier contenu commence à mi-hauteur |
 | FIL-C24 | P3 | 2 | friction | hypothese | L | faible | Fil et interactions | Une publication ne peut pas être corrigée : son menu n'offre que « Supprimer » |
 | FIL-C27 | P3 | 2 | clarte | jugement | S | faible | Fil et interactions | Rien ne distingue la publication d'un compte privé ⚠ sensible |
+| REC-C13 | P3 | 2 | accessibilite | observation | S | faible | Recherche et découverte | Le champ de recherche : « OK » de 28 px, sans étiquette ni croix, invite tronquée |
 | PRO-C10 | P3 | 2 | friction | observation | M | moyen | Profils et passions | Fermer un profil ouvert depuis une liste ramène au profil, pas à la liste |
 | PRO-C11 | P3 | 2 | clarte | observation | S | faible | Profils et passions | « Toutes » est cité deux fois alors qu'aucun bouton ne porte ce nom |
 | PRO-C18 | P3 | 2 | fonctionnel | observation | S | faible | Profils et passions | Photo : un fichier refusé ou un envoi raté ne dit rien |
@@ -180,6 +208,10 @@
 | PCS-C04 | P3 | 1 | polish | observation | S | faible | Parcours de bout en bout | Le compteur d'abonnés ne bouge pas après « Suivre » |
 | PCS-C05 | P3 | 1 | clarte | hypothese | M | faible | Parcours de bout en bout | La conversation ouverte depuis une publication ne rappelle pas ce qui l'a motivée |
 | PCS-C06 | P3 | 1 | polish | observation | S | faible | Parcours de bout en bout | Le même geste d'inscription porte deux noms : « Je viens » et « Je participe » |
+| ENT-C13 | P3 | 1 | clarte | jugement | S | faible | Entrée et navigation | Parcours historique : trois boutons de même poids, piliers tronqués, tour de cinq cartes |
+| ENT-C14 | P3 | 1 | polish | observation | S | faible | Entrée et navigation | Aide « Compris » posée sur la photo, avec « sa Passio » pour dire profil |
+| ENT-C17 | P3 | 1 | friction | hypothese | S | faible | Entrée et navigation | Paysage : les deux barres prennent un tiers de la hauteur |
+| ENT-C19 | P3 | 1 | polish | observation | S | faible | Entrée et navigation | Étapes après Google : « Ton prénom » et un champ d'année moins équipé ⚠ sensible |
 | FIL-C05 | P3 | 1 | clarte | observation | S | faible | Fil et interactions | Le même fil s'appelle « Discussion » ou « Commentaires », et son nombre passe de 34 à 37 en l'ouvrant |
 | FIL-C09 | P3 | 1 | fonctionnel | observation | S | faible | Fil et interactions | « Copier le texte » annonce « Texte copié » sans attendre le presse-papiers |
 | FIL-C16 | P3 | 1 | clarte | jugement | S | faible | Fil et interactions | Le séparateur « Exemples PASSIO » prend quatre lignes de 12 px et deux boutons |
@@ -193,6 +225,12 @@
 | FIL-C28 | P3 | 1 | friction | jugement | M | faible | Fil et interactions | La suite du fil se demande au bouton « ⤵ Charger plus de posts » |
 | FIL-C29 | P3 | 1 | friction | observation | S | faible | Fil et interactions | La saisie d'un commentaire s'arrête à 400 caractères sans le dire |
 | FIL-C30 | P3 | 1 | clarte | observation | S | faible | Fil et interactions | « Passionnés à découvrir » propose d'abord des comptes que je suis déjà |
+| REC-C14 | P3 | 1 | clarte | observation | S | faible | Recherche et découverte | « Passions tendance · Hot » complétée par ordre alphabétique |
+| REC-C15 | P3 | 1 | polish | observation | S | faible | Recherche et découverte | Une passion inconnue s'affiche « ✨ Passion » dans les tendances et ouvre une fiche anonyme |
+| REC-C16 | P3 | 1 | polish | observation | S | faible | Recherche et découverte | La recherche de personnes prend toute sous-chaîne de la bio |
+| REC-C17 | P3 | 1 | friction | jugement | S | faible | Recherche et découverte | Fiche d'une passion vide : aucun geste proposé |
+| REC-C18 | P3 | 1 | accessibilite | observation | S | faible | Recherche et découverte | Boutons et pastilles de la fiche à 29 px |
+| REC-C19 | P3 | 1 | polish | observation | S | faible | Recherche et découverte | L'assistant IA et les « Recherches récentes » survivent en code mort |
 | PRO-C08 | P3 | 1 | clarte | jugement | S | faible | Profils et passions | Mon profil et le profil visité ne disent pas les mêmes choses |
 | PRO-C09 | P3 | 1 | polish | observation | S | faible | Profils et passions | Listes Abonnés / Abonnements : emoji au lieu des photos, rendus différents, double « × » |
 | PRO-C12 | P3 | 1 | clarte | observation | S | faible | Profils et passions | L'aide des passions parle de « place » et de « changement » alors que le plafond est levé |
@@ -332,6 +370,54 @@
 - **Critère d'acceptation** : Après « Je participe » réussi : un message de confirmation lisible par un lecteur d'écran nomme la date ; une action « Écrire aux participants » est visible sans défilement ; « Je ne peux plus venir » reste accessible ; en cas de refus serveur (complète, annulée), le message dit pourquoi et rien n'est affiché comme réussi.
 - **Fichiers probables** : `js/ui-v4b-fiche.js`, `js/app-07-ia-explore-irl.js`, `styles.css`
 
+### ENT-C01 — Le retour système ne ferme pas le formulaire de compte : il navigue dessous, ou quitte PASSIO  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : `#onboarding` — js/app-02-state-utils.js:3757 (closeCurrentOverlay ne le connaît pas), :3871 (popstate) ; js/first-run.js:1544 (ouvrirAuth ne pose aucune entrée d'historique)
+- **Domaine** : Entrée et navigation · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sonde 03 : formulaire ouvert depuis le Studio, retour système → le formulaire reste affiché, l'écran dessous devient le Fil, l'adresse perd son ancre (capture ENT-020). Sonde 05 (parcours historique) : landing → « Créer un compte » → retour système → page vide, PASSIO quitté (capture ENT-027).
+- **Problème** : Pour renoncer à s'inscrire, le geste naturel sur Android (retour) ne ferme pas le formulaire ; un second retour sort de l'application.
+- **Situation déclenchante** : Une personne ouvre l'inscription depuis une porte de compte, puis change d'avis.
+- **Conséquence pour l'utilisateur** : Elle croit l'application bloquée ou la quitte sans le vouloir, au moment exact où elle hésitait à s'engager.
+- **Proposition** : À l'ouverture du formulaire, poser une entrée d'historique (même mécanique que les modales, `pushHistorySafe` + `_navOverlayDepth`) ; au retour système, faire ce que fait « ← Continuer à explorer » (retourExploration) et rendre l'écran d'avant (pas toujours le Fil). Dans le parcours historique, rouvrir la landing.
+- **Visuels** : [ENT-020](galerie/index.html#/surface/ENT-020), [ENT-027](galerie/index.html#/surface/ENT-027) · **Surfaces** : ENT-020, ENT-027, ENT-013
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : moyen
+- **Dépendances** : Cohérent avec PAR-C01 (formulaire ouvert sous le contenu d'un lien) : les deux corrections touchent `ouvrirAuth`.
+- **Risque de régression** : Pile d'historique (un seul geste à la fois, tests/e2e/historique-retour-en-vol.spec.js) ; retour OAuth Google qui recharge la page.
+- **Critère d'acceptation** : Formulaire ouvert depuis le Studio → retour système : le formulaire disparaît et le Studio est à l'écran ; un second retour suit l'historique normal. Depuis la landing : le retour rouvre la landing.
+- **Fichiers probables** : `js/first-run.js`, `js/app-02-state-utils.js`
+
+### ENT-C02 — Inscription : six champs avant l'action, bouton sous le pli, erreurs une à une loin du champ  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Formulaire « Créer un compte » — index.html:239–483 ; js/app-02-state-utils.js:5580 (switchAuthTab), :6298 (onbDoAuth)
+- **Domaine** : Entrée et navigation · **Nature** : friction · **Type** : observation
+- **Preuve** : Sonde 03 (390 × 844) : case de consentement, Google, nom d'utilisateur, année de naissance, e-mail, mot de passe, confirmation, mention du responsable — « Créer mon compte » à y = 1 117 px. Envoi à vide → un seul message « Choisis un nom d'utilisateur (2 à 40 caractères). » en haut, champ non entouré ; puis « Adresse e-mail invalide. » au tour suivant (captures ENT-014, ENT-015, ENT-017). En production, le captcha Turnstile s'ajoute au-dessus du bouton (non rendu ici).
+- **Problème** : Le geste qui conclut est invisible au départ ; chaque erreur se découvre après un aller-retour, et loin de l'endroit à corriger.
+- **Situation déclenchante** : Toute inscription par e-mail, sur téléphone.
+- **Conséquence pour l'utilisateur** : Effort perçu élevé au moment le plus fragile du parcours ; risque d'abandon (hypothèse à mesurer par la télémétrie `signup_refused` / `guest_signup_started`).
+- **Proposition** : Deux étapes : 1) « Ton accès » — Google, ou e-mail + mot de passe (règles visibles), consentement, bouton « Continuer » visible sans défiler ; 2) « Ton profil » — nom public et année de naissance (refus 18+ inchangé, écrit sous le champ). Valider tous les champs à la fois et écrire chaque erreur sous son champ, champ entouré ; garder le bandeau du haut comme résumé. Supprimer la confirmation du mot de passe (le bouton « 👁 » suffit) — à arbitrer.
+- **Visuels** : [ENT-013](galerie/index.html#/surface/ENT-013), [ENT-015](galerie/index.html#/surface/ENT-015) · **Surfaces** : ENT-013, ENT-014, ENT-015, ENT-017
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Aucune ; le contrôle d'âge et le consentement restent bloquants (ADMISSION_18_PLUS, CGU).
+- **Risque de régression** : Verrous e2e de l'inscription (consentement avant Google, #authResendTop, #authPwdHint) ; métadonnées envoyées à signUp (nom, année, consentement) inchangées.
+- **Critère d'acceptation** : À 390 × 844, le bouton d'envoi de l'étape 1 est visible sans défiler ; un envoi incomplet entoure TOUS les champs fautifs et écrit leur défaut dessous ; une année < 18 ans reste refusée.
+- **Fichiers probables** : `index.html`, `js/app-02-state-utils.js`, `styles.css`
+
+### ENT-C04 — Un visiteur qui touche « Profil » voit un faux « Mon profil » vide, sans porte vers le compte
+
+- **Emplacement** : Onglet Profil et logo de la barre supérieure (aria-label « Mon profil ») — index.html:451 ; js/ui-v2-shell.js:74 ; renderProfilesScreen
+- **Domaine** : Entrée et navigation · **Nature** : clarte · **Type** : observation
+- **Preuve** : Capture ENT-008 : « Mon profil », 0 abonné, 0 passion, 0 abonnement, crayon d'édition, « Aucune passion pour l'instant · Ajouter une passion », « Créer un post » — aucune mention du compte. Sonde 02 : le logo mène au même écran.
+- **Problème** : On présente au visiteur un profil qui n'existe pas, comme s'il était le sien, et rien ne dit qu'il faut un compte pour l'avoir.
+- **Situation déclenchante** : Visiteur qui explore la barre de navigation — geste très probable en première visite.
+- **Conséquence pour l'utilisateur** : Confusion (« ai-je déjà un compte ? ») et occasion de conversion manquée sur l'onglet le plus explicite.
+- **Proposition** : Pour un visiteur, l'onglet Profil affiche une carte « Ton profil t'attend » : ce qu'un compte apporte, « Créer mon compte » (même porte que requireAuthentication, contexte `preferences`) et « J'ai déjà un compte ». Le logo garde son nom accessible « Mon profil » seulement pour un compte.
+- **Visuels** : [ENT-008](galerie/index.html#/surface/ENT-008) · **Surfaces** : ENT-008, ENT-001
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Réutilise `PassioFirstRun.allerInscription` ; aucune nouvelle collecte.
+- **Risque de régression** : Rendu du profil d'un compte neuf (state.onboarded vrai) inchangé ; tests first-run.
+- **Critère d'acceptation** : Mode visiteur → onglet Profil : aucun compteur « 0 abonné » ; un bouton « Créer mon compte » ouvre le formulaire en mode création.
+- **Fichiers probables** : `js/first-run.js`, `js/app-08-ui-modals-tour.js`, `index.html`
+
 ### FIL-C01 — « Voir l'activité » n'apparaît pas à l'ouverture sur une publication reliée à une activité
 
 - **Emplacement** : Fil › carte reliée à une activité — décoration UI-3B (js/ui-v3-passerelle.js:382-383 et 1006-1008), arrivée des activités (js/app-08-ui-modals-tour.js:6283-6288 et 9881)
@@ -363,6 +449,70 @@
 - **Risque de régression** : Compteur `commentsTotal` décrémenté à tort si l'annulation n'est pas symétrique. Verrous : commentaires*.spec.js, retrait-interactions-direct.spec.js.
 - **Critère d'acceptation** : DELETE refusé par le serveur : le commentaire est de nouveau à l'écran avec un message d'échec ; aucun toast « supprimé ». Suppression réussie : un geste d'annulation ou une confirmation existe.
 - **Fichiers probables** : `js/app-04-comments-shop.js`
+
+### REC-C01 — « Créateurs à suivre » ouvert tôt : « Suivre » affiché sur des personnes déjà suivies, et l'appui désabonne  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Rechercher › Créateurs à suivre — renderExplorer (js/app-06-reels-partage.js:5725-5781) ; même rendu unique dans la fiche (#pexCreators, app-07:367-382)
+- **Domaine** : Recherche et découverte · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Écran ouvert aussitôt après le démarrage : 4 s plus tard l'état connaît 3 suivis et 1 demande, les six boutons disent toujours « Suivre » (fiche REC-027--m390). Appui sur celui de Léa (suivie) : ligne follows 1 → 0, toast « Tu ne suis plus Léa Fontaine » (REC-028--m390).
+- **Problème** : Le bouton annonce « Suivre » alors que l'appui fait l'inverse : il supprime l'abonnement (ou annule la demande envoyée à un compte privé).
+- **Situation déclenchante** : Ouvrir Rechercher dans les premières secondes après le lancement, avant l'arrivée des suivis ; plus long sur réseau lent.
+- **Conséquence pour l'utilisateur** : Désabonnement involontaire d'une personne qu'on suit ; demande à un compte privé annulée sans le vouloir.
+- **Proposition** : Repeindre les boutons de suivi de l'écran (et de la fiche ouverte) quand l'état de suivi arrive, avec le moteur unique libelleBoutonSuivi / _peindreBoutonsSuivi ; tant qu'il n'est pas connu, bouton neutre désactivé.
+- **Visuels** : [REC-028](galerie/index.html#/surface/REC-028) · **Surfaces** : REC-027, REC-028
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Repeinture des boutons pendant un appui ; verrou suivi-trois-etats.
+- **Critère d'acceptation** : Écran ouvert à t+0, suivis chargés à t+2 s : à t+3 s chaque bouton dit l'état réel ; un appui sur une personne suivie n'est jamais présenté comme « Suivre ».
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `js/app-07-ia-explore-irl.js`, `js/app-04-comments-shop.js`
+
+### REC-C02 — Des personnages d'exemple sont proposés comme vraies personnes à suivre, et le suivi s'écrit en base  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Créateurs à suivre (createursSeed, app-06:5739), résultats « Utilisateurs » (seedUsers, app-07:254-262), Créateurs de la fiche (app-07:361)
+- **Domaine** : Recherche et découverte · **Nature** : clarte · **Type** : observation
+- **Preuve** : « Léa Moreau », « Karim Belkacem », « Dylan Rocher »… s'affichent sans marque à un compte connecté. « Suivre » Karim : toast « Tu suis Karim Belkacem ! » et ligne follows vers « u_karim » sur le faux serveur (REC-018). D'après le schéma de référence, follows.following_id est un text sans clé étrangère listée : l'écriture passerait aussi en production (hypothèse).
+- **Problème** : On croit suivre une personne réelle ; elle n'existe pas, ne publiera jamais et ne répondra jamais.
+- **Situation déclenchante** : Toute visite de Rechercher, toute recherche qui touche un exemple, toute fiche de passion.
+- **Conséquence pour l'utilisateur** : Confiance entamée au premier contact, abonnements fantômes comptés, impression d'un réseau qui ne répond pas.
+- **Proposition** : Marquer « Exemple » (comme les publications : « Exemple PASSIO ») et retirer le bouton « Suivre » des exemples ; refuser côté client un suivi vers un identifiant d'exemple. Même constat que MSG-C03 côté messagerie.
+- **Visuels** : [REC-003](galerie/index.html#/surface/REC-003), [REC-013](galerie/index.html#/surface/REC-013) · **Surfaces** : REC-003, REC-006, REC-013, REC-018, REC-021
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Socle de démonstration en visite ; verrous exemples-premiere-visite.
+- **Critère d'acceptation** : Aucun bouton « Suivre » sur une ligne dont l'identifiant est un exemple ; chaque exemple porte la mention « Exemple ».
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `js/app-07-ia-explore-irl.js`, `js/app-04-comments-shop.js`
+
+### REC-C03 — Un compte bloqué est proposé dans la recherche et dans « Créateurs à suivre »  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : supaSearchUsers (js/app-08-ui-modals-tour.js:6472) ; renderExplorer (app-06:5754-5779)
+- **Domaine** : Recherche et découverte · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Tom Girard, bloqué par le compte (ligne blocks et state.user.blocked), sort sur « tom » (REC-007) et figure dans « Créateurs à suivre » avec un bouton « Suivre » (REC-003). Aucun filtre isBlocked() dans ces deux chemins.
+- **Problème** : La personne qu'on a choisi de ne plus voir revient sous les yeux, présentée comme une suggestion.
+- **Situation déclenchante** : Avoir bloqué quelqu'un puis ouvrir Rechercher.
+- **Conséquence pour l'utilisateur** : Sentiment d'insécurité ; le blocage paraît inefficace.
+- **Proposition** : Filtrer isBlocked(id) (dans les deux sens si l'information est connue) dans les résultats de personnes, Créateurs à suivre et Créateurs de la fiche. Les garde-fous serveur restent inchangés.
+- **Visuels** : [REC-007](galerie/index.html#/surface/REC-007), [REC-003](galerie/index.html#/surface/REC-003) · **Surfaces** : REC-007, REC-003
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucun ; verrous blocage.
+- **Critère d'acceptation** : Avec Tom bloqué, « tom » ne le rend pas et « Créateurs à suivre » ne le montre pas.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`, `js/app-06-reels-partage.js`
+
+### REC-C04 — La fiche d'une passion ne mène pas à Rencontrer
+
+- **Emplacement** : Fiche d'une passion (openPassionExplorer, js/app-07-ia-explore-irl.js:410-438)
+- **Domaine** : Recherche et découverte · **Nature** : friction · **Type** : jugement
+- **Preuve** : Une activité « Jam guitare au parc » (Musique, dans 3 jours) existe ; la fiche « Musique » montre Créateurs, Passions proches, Posts — aucune activité ni lien vers Rencontrer. Arrivée depuis la feuille « Trouver une expérience », la fiche ne reparle plus d'activités.
+- **Problème** : Découvrir une passion n'ouvre pas le passage au réel, cœur de la promesse (Fil → interaction → IRL).
+- **Situation déclenchante** : Toute ouverture d'une fiche de passion.
+- **Conséquence pour l'utilisateur** : La personne doit repartir vers Rencontrer et refiltrer elle-même ; le parcours Découvrir → Rencontrer se casse ici.
+- **Proposition** : Un bouton corail « Voir les activités <passion> · N à venir » sous l'en-tête, qui réutilise le moteur existant voirActivites (filtre Rencontrer sur la passion, sans demande de position). Pas de nouvelle fonction.
+- **Visuels** : [REC-013](galerie/index.html#/surface/REC-013) · **Surfaces** : REC-013, REC-026
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Moteur voirActivites de js/ui-v3-passerelle.js (à exposer).
+- **Risque de régression** : Marqueur _passioIrlSkipGeoOnce ; verrous passerelle UI-3.
+- **Critère d'acceptation** : Depuis la fiche « Musique », un appui ouvre Rencontrer filtré sur Musique et la jam y figure, sans demande de position.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`, `js/ui-v3-passerelle.js`
 
 ### PRO-C02 — Changer la couverture depuis « Modifier le profil » : le recadreur s'ouvre sous la modale
 
@@ -1070,6 +1220,166 @@
 - **Critère d'acceptation** : Fil → profil → Message → Retour : le profil est de nouveau affiché sur le fil, à la même position de défilement ; Messages → conversation → Retour : la liste Messages.
 - **Fichiers probables** : `js/app-04-comments-shop.js`, `js/app-08-ui-modals-tour.js`
 
+### ENT-C03 — La sortie flottante « ← Continuer à explorer » recouvre le message d'erreur
+
+- **Emplacement** : `.fr-back-explore` — styles.css:10825 (position absolue dans #onboarding) ; js/first-run.js:1591
+- **Domaine** : Entrée et navigation · **Nature** : polish · **Type** : observation
+- **Preuve** : Capture ENT-015 : après l'envoi, la page défile jusqu'au message, dont la première ligne passe sous la pastille blanche (gros plan « message ») ; capture ENT-021 : la pastille couvre le logo.
+- **Problème** : Le refus est partiellement caché par un bouton.
+- **Situation déclenchante** : Toute erreur dans le formulaire de compte ouvert depuis la première visite.
+- **Conséquence pour l'utilisateur** : Le message se lit mal, précisément quand il compte.
+- **Proposition** : Faire de la sortie une barre fixe pleine largeur (fond blanc, 44 px) et décaler le contenu d'autant.
+- **Visuels** : [ENT-015](galerie/index.html#/surface/ENT-015) · **Surfaces** : ENT-015, ENT-021
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Verrous first-run sur #frBackToExplore (présence, clic).
+- **Critère d'acceptation** : Après un envoi refusé, `document.elementFromPoint` au centre de #authMsg renvoie #authMsg (ou un descendant).
+- **Fichiers probables** : `styles.css`
+
+### ENT-C05 — Jusqu'à neuf repères, posés par-dessus ce qu'ils présentent
+
+- **Emplacement** : `.fr-tip` — js/first-run.js:1700–1960 (ETAPES, ZONES_GESTE, montrerEtape) ; styles.css:10783
+- **Domaine** : Entrée et navigation · **Nature** : friction · **Type** : observation
+- **Preuve** : Trois étapes principales (decouvrir, rencontrer, creer), trois d'écran (profil, messages, studio) et trois aides au geste (passions, envies, stories) : sonde 02 en a vu un à CHAQUE premier passage (Rencontrer, Messages, Profil, Studio). Capture ENT-002 : la bulle « Un Fil construit autour de tes passions » couvre les envies et les stories qu'elle décrit ; ENT-006 : elle couvre Liste / Carte / Filtre.
+- **Problème** : La présentation interrompt chaque écran et cache sa cible.
+- **Situation déclenchante** : Première visite d'un visiteur ou d'un compte neuf.
+- **Conséquence pour l'utilisateur** : Les repères sont vite fermés par réflexe (« Ne plus afficher »), donc perdus ; l'écran découvert est masqué au moment où on le découvre.
+- **Proposition** : Garder trois repères (Découvrir, Rencontrer, Créer) ; supprimer ceux d'écran (Profil, Messages, Studio) ou les réserver au geste ; poser la bulle en carte au-dessus de la barre basse, avec un repère visuel (contour) sur la cible au lieu de la recouvrir.
+- **Visuels** : [ENT-002](galerie/index.html#/surface/ENT-002), [ENT-006](galerie/index.html#/surface/ENT-006) · **Surfaces** : ENT-002, ENT-005, ENT-006, ENT-007, ENT-009
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : tests/e2e/first-run.spec.js (étapes vues, abandon, « Revoir les repères »).
+- **Critère d'acceptation** : En première visite, au plus trois repères sur les six écrans principaux ; aucun ne recouvre sa cible (`elementFromPoint` au centre de la cible ne renvoie pas `.fr-tip`).
+- **Fichiers probables** : `js/first-run.js`, `styles.css`
+
+### ENT-C06 — Panneau « Paramètres » : ni croix, ni fond, ni Échap, ni retour pour le fermer
+
+- **Emplacement** : `#devPanel` — js/app-02-state-utils.js:3916 (toggleDevPanel), :3757 (absent de closeCurrentOverlay) ; index.html:479 (« ⋯ ») ; styles.css:2952
+- **Domaine** : Entrée et navigation · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sonde 04 : panneau ouvert → Échap : reste ouvert ; retour système : reste ouvert, l'écran dessous change ; seul un second toucher sur « ⋯ » le ferme. « ⋯ » est un `div role=button` sans `aria-expanded`. Mesures ENT-033 : « Se déconnecter » et « Supprimer mon compte » 33 px de haut, l'un sous l'autre. Visiteur (ENT-010) : entrée « Démo » visible.
+- **Problème** : On ne sait pas comment quitter ce panneau, et la destruction du compte touche la déconnexion.
+- **Situation déclenchante** : Toute ouverture des Paramètres.
+- **Conséquence pour l'utilisateur** : Sensation de blocage ; risque de toucher la mauvaise des deux actions de compte (même si la suppression est confirmée ensuite, d'après le code).
+- **Proposition** : Traiter le panneau comme une feuille : fond assombri, croix 44 px, fermeture par Échap / retour système / toucher dehors, `aria-expanded` sur « ⋯ » ; éloigner « Supprimer mon compte » (dans Compte) ; masquer « Démo » hors mode démo. Le rangement des entrées relève de MSG-C17.
+- **Visuels** : [ENT-033](galerie/index.html#/surface/ENT-033) · **Surfaces** : ENT-010, ENT-033
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : MSG-C17 (contenu du panneau).
+- **Risque de régression** : Fermetures programmées existantes (`$('#devPanel').classList.remove('active')` en huit endroits).
+- **Critère d'acceptation** : Panneau ouvert : Échap, retour système et toucher hors du panneau le ferment ; « ⋯ » expose `aria-expanded` vrai / faux.
+- **Fichiers probables** : `js/app-02-state-utils.js`, `index.html`, `styles.css`
+
+### ENT-C07 — Le retour système ne ferme pas la feuille « Créer » : il change d'écran dessous
+
+- **Emplacement** : `#v2CreateSheet` — js/ui-v2-shell.js:270–340 (aucune entrée d'historique) ; js/app-02-state-utils.js:3757
+- **Domaine** : Entrée et navigation · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sonde 04 : feuille ouverte sur le Fil → retour système → écran Rencontrer dessous, feuille toujours ouverte. Échap, croix et fond la ferment.
+- **Problème** : Même famille que MSG-C73 et BOB-C12 : une superposition que le retour système ignore.
+- **Situation déclenchante** : Créer › changer d'avis avec le geste de retour.
+- **Conséquence pour l'utilisateur** : On perd l'écran où l'on était, la feuille reste.
+- **Proposition** : Ouvrir la feuille avec une entrée d'historique et la fermer dans closeCurrentOverlay ; croix portée à 44 px (34 px mesurés).
+- **Visuels** : [ENT-032](galerie/index.html#/surface/ENT-032) · **Surfaces** : ENT-032
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Même correctif générique que ENT-C01 et ENT-C06 (un registre des superpositions dans closeCurrentOverlay).
+- **Risque de régression** : tests/e2e/historique-retour-en-vol.spec.js.
+- **Critère d'acceptation** : Feuille ouverte → retour système : la feuille se ferme, l'écran ne change pas.
+- **Fichiers probables** : `js/ui-v2-shell.js`, `js/app-02-state-utils.js`
+
+### ENT-C08 — Vocabulaire de navigation : un même mot pour plusieurs choses, plusieurs mots pour une même chose
+
+- **Emplacement** : Barre basse (js/ui-v2-shell.js:70), loupe (index.html:460), envies (index.html:644), Studio (« Mood », index.html:941), écran de recherche (index.html:974), aides (app-02 HINTS), landing (« humeur », index.html:123), étapes de compte (index.html:420)
+- **Domaine** : Entrée et navigation · **Nature** : clarte · **Type** : observation
+- **Preuve** : Relevé : « Explorer » = loupe (aria-label) + titre de l'écran de recherche + envie du Fil ; « Rencontrer » = onglet + envie + valeur de mood ; l'onglet « Découvrir » s'appelait « Fil » (aria-label de l'ancienne barre) et les textes disent « le Fil » ; « envie » (Fil) = « Mood » (Studio) = « humeur » (landing) ; « Publication » (feuille) = « post » (« Créer un post », profil) = « Passio » (« Publier une Passio », fil) ; « profil » = « sa Passio » (aide) ; « Nom d'utilisateur » (formulaire) = « Ton prénom » (étape Google). Tableau complet au rapport, § 6.
+- **Problème** : Les noms ne permettent pas de prédire où mène un geste.
+- **Situation déclenchante** : Toute navigation, surtout la première visite.
+- **Conséquence pour l'utilisateur** : Hésitations, et des repères qui doivent expliquer ce que les mots auraient dû dire.
+- **Proposition** : Un lexique fermé : onglets Découvrir · Rencontrer · Créer · Messages · Profil ; loupe et écran « Rechercher » ; envies « Nouveau pour toi » · Apprendre · Idées · « Rendez-vous » ; « envie » partout (Studio compris) ; « publication » partout (jamais post ni Passio) ; « profil » partout ; « nom public » pour le nom affiché. Valeurs stockées inchangées.
+- **Visuels** : [ENT-031](galerie/index.html#/surface/ENT-031), [ENT-011](galerie/index.html#/surface/ENT-011) · **Surfaces** : ENT-031, ENT-011, ENT-009, ENT-034, ENT-029, ENT-032, ENT-001
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : M · **Risque technique** : faible
+- **Dépendances** : PAR-C09 (feed/fil, post/publication), FIL-C13 (envies comme filtres), PRO-C14 (vocabulaire du profil).
+- **Risque de régression** : Tests e2e qui ciblent des textes (« Explorer », « Rencontrer ») ; aucune valeur en base.
+- **Critère d'acceptation** : Aucun libellé ni nom accessible « Explorer » ne désigne deux destinations ; « Mood », « post » et « Passio » (pour une publication ou un profil) n'apparaissent plus dans l'interface.
+- **Fichiers probables** : `index.html`, `js/ui-v2-shell.js`, `js/app-02-state-utils.js`
+
+### ENT-C09 — Recharger sur un écran rouvre le Fil, mais l'adresse garde l'ancien écran
+
+- **Emplacement** : boot (js/app-08-ui-modals-tour.js:2764) ; routage par ancre (js/app-02-state-utils.js:3867–3871, NAV_SCREENS)
+- **Domaine** : Entrée et navigation · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Capture ENT-036 : Messages, rechargement → écran actif `screen-feed`, adresse `#messages` (fiche ENT-036--m390.json, champ ecran).
+- **Problème** : L'écran et l'adresse se contredisent ; la personne perd l'écran où elle était.
+- **Situation déclenchante** : Rechargement (pull-to-refresh, mise à jour de la PWA, retour d'arrière-plan sur un téléphone qui a purgé l'onglet).
+- **Conséquence pour l'utilisateur** : Retour au Fil inattendu ; le retour système suivant part d'un état incohérent.
+- **Proposition** : Au démarrage, ouvrir l'écran nommé par l'ancre quand il appartient à la liste fermée NAV_SCREENS ; sinon remplacer l'ancre par #feed.
+- **Visuels** : [ENT-036](galerie/index.html#/surface/ENT-036) · **Surfaces** : ENT-036
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : moyen
+- **Dépendances** : Liens profonds de partage (#post-…, #irl-event-…) : ne pas les intercepter.
+- **Risque de régression** : Routeurs de liens profonds (js/app-06-reels-partage.js) ; first-run (écran d'entrée d'un visiteur).
+- **Critère d'acceptation** : Compte connecté, #messages, rechargement → l'écran Messages est actif (ou l'adresse devient #feed).
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`, `js/app-02-state-utils.js`
+
+### ENT-C10 — Changer d'onglet fait perdre sa place dans le fil
+
+- **Emplacement** : goTo — js/app-02-state-utils.js:3679 (`$('#appMain').scrollTop = 0`) ; feedWindowRestoreScroll (:9430) inactif car feedWindowEnabled() est faux par défaut (:9102)
+- **Domaine** : Entrée et navigation · **Nature** : friction · **Type** : observation
+- **Preuve** : Sonde 04 : fil défilé à 1 200 px → Rencontrer → retour système : 0 px ; capture ENT-037 : 900 px → Rencontrer → Découvrir : haut du fil.
+- **Problème** : Après un coup d'œil sur un autre onglet, on revient tout en haut.
+- **Situation déclenchante** : Aller-retour entre onglets, très fréquent (Découvrir ↔ Rencontrer ↔ Messages).
+- **Conséquence pour l'utilisateur** : Il faut redéfiler et retrouver la publication ; la boucle Fil → interaction est cassée.
+- **Proposition** : Mémoriser la position du fil en le quittant et la rendre au retour (par onglet ou par retour système) ; un second toucher sur « Découvrir » déjà actif remonte en haut.
+- **Visuels** : [ENT-037](galerie/index.html#/surface/ENT-037) · **Surfaces** : ENT-037
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : moyen
+- **Dépendances** : Le mécanisme existe derrière le drapeau `passio_feed_window_v1` ; peut être découplé du fenêtrage.
+- **Risque de régression** : Rendu du fil à l'arrivée (renderFeed reconstruit la liste) ; nouvelles publications arrivées entre-temps.
+- **Critère d'acceptation** : Fil défilé de 900 px → Rencontrer → Découvrir : la même publication est en haut de l'écran (± 50 px).
+- **Fichiers probables** : `js/app-02-state-utils.js`
+
+### ENT-C11 — Formulaire de compte : onglets de 35 px et deux sorties inatteignables au clavier  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : index.html:253–254 (onglets), :291 (liens CGU en `span role=button`), :387–388 (#authForgotLink, #authResendLink en `span onclick`)
+- **Domaine** : Entrée et navigation · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Mesures ENT-013 / ENT-018 : « Se connecter » et « Créer un compte » 35 px de haut ; liens « conditions générales » et « politique de confidentialité » 16 px de haut (sonde 03). « Mot de passe oublié ? » et « Renvoyer l'e-mail de confirmation » (bas) n'ont ni rôle ni tabindex : absents du parcours clavier (sonde 03, liste des éléments focalisables de l'onglet connexion).
+- **Problème** : Une personne au clavier ou au lecteur d'écran ne peut pas demander un nouveau mot de passe ; les onglets sont étroits au doigt.
+- **Situation déclenchante** : Connexion oubliée, navigation au clavier, lecteur d'écran.
+- **Conséquence pour l'utilisateur** : Compte inaccessible pour ces personnes.
+- **Proposition** : `<button type=button>` pour « Mot de passe oublié ? » et « Renvoyer l'e-mail » ; onglets à 44 px avec `role=tab` / `aria-selected` ; liens légaux en `<button>` avec zone de 44 px (padding vertical).
+- **Visuels** : [ENT-013](galerie/index.html#/surface/ENT-013) · **Surfaces** : ENT-013, ENT-018, ENT-021
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Verrous qui ciblent #authForgotLink / #authResendLink par id (inchangés).
+- **Critère d'acceptation** : Au clavier, Tab atteint « Mot de passe oublié ? » et Entrée le déclenche ; les onglets mesurent ≥ 44 px.
+- **Fichiers probables** : `index.html`, `styles.css`
+
+### ENT-C15 — Après le choix des passions, rien ne dit qu'il ne vit que sur cet appareil
+
+- **Emplacement** : js/first-run.js:1262 (validerPersonnalisation ferme la carte pour la session), :788 (carte « Tes passions sont sur cet appareil » à la session suivante)
+- **Domaine** : Entrée et navigation · **Nature** : clarte · **Type** : jugement
+- **Preuve** : Capture ENT-005 : après « Voir mon fil (3) », les passions sont en tête du fil et un repère s'affiche ; aucune mention de la conservation locale ni du compte. La carte qui le dit n'apparaît qu'à une prochaine visite (d'après le code).
+- **Problème** : Le moment où le visiteur vient d'investir (choisir ses passions) n'est pas relié au compte qui le garderait.
+- **Situation déclenchante** : Première visite, validation du panneau de passions.
+- **Conséquence pour l'utilisateur** : Moins de raisons de créer un compte ; perte du choix sur un autre appareil.
+- **Proposition** : Sous la rangée de passions, une ligne discrète (« Gardées sur cet appareil · Créer mon compte pour les retrouver partout »), refermable, une seule fois.
+- **Visuels** : [ENT-005](galerie/index.html#/surface/ENT-005) · **Surfaces** : ENT-005, ENT-048
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune ; texte cohérent avec TEXTE_COMMUN de la porte de compte.
+- **Risque de régression** : tests first-run (carte de bienvenue, prefs).
+- **Critère d'acceptation** : Après validation du panneau, la phrase « sur cet appareil » et un lien vers la création de compte sont visibles sans défiler.
+- **Fichiers probables** : `js/first-run.js`, `styles.css`
+
+### ENT-C18 — Hors ligne, l'inscription et la connexion ne disent probablement pas « pas de connexion »  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : onbDoAuth — js/app-02-state-utils.js:6298–6608 (aucun test `navigator.onLine` ; message brut si supabase-js rend une erreur réseau sans lever d'exception)
+- **Domaine** : Entrée et navigation · **Nature** : fonctionnel · **Type** : hypothese
+- **Preuve** : Capture ENT-042 : « E-mail ou mot de passe incorrect. » hors ligne — mais c'est un artefact du banc (le faux serveur répond même hors ligne). Lecture du code : seul le `catch` affiche « Erreur réseau. Vérifie ta connexion. » ; une erreur rendue (non levée) passerait par la chaîne de traduction, qui ne reconnaît pas « Failed to fetch ».
+- **Problème** : Un message faux (« mot de passe incorrect ») ou en anglais pourrait s'afficher hors ligne.
+- **Situation déclenchante** : Réseau absent ou instable au moment de l'envoi.
+- **Conséquence pour l'utilisateur** : La personne doute de son mot de passe et le réinitialise pour rien.
+- **Proposition** : Avant l'envoi, si `navigator.onLine` est faux, dire « Pas de connexion internet — réessaie quand tu es en ligne » ; traduire aussi « Failed to fetch » / « Load failed » / « NetworkError ».
+- **Visuels** : — · **Surfaces** : ENT-042
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : À vérifier d'abord sur appareil (mode avion).
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Mode avion → Se connecter : message « Pas de connexion internet… », jamais « E-mail ou mot de passe incorrect » ni un texte anglais.
+- **Fichiers probables** : `js/app-02-state-utils.js`
+
 ### FIL-C02 — La barre d'actions est faite d'emojis : nommée « 🤍 5 », « 💬 34 », « 😊 », en 12,5 px
 
 - **Emplacement** : Carte et page d'une publication › barre d'actions — `renderPostHTML` (js/app-02-state-utils.js:10490-10500), `openPost` (10571-10581), .post-action (styles.css:1155)
@@ -1229,6 +1539,134 @@
 - **Risque de régression** : partage*.spec.js ; les repartages existants portent le texte en dur dans `content`.
 - **Critère d'acceptation** : Toucher la citation d'un repartage ouvre la publication d'origine ; aucune boîte ne dépasse la carte.
 - **Fichiers probables** : `js/app-02-state-utils.js`, `js/app-03-posts-vlogs.js`, `styles.css`
+
+### REC-C05 — « Créateurs à suivre » montre des personnes déjà suivies et ne suggère rien de lié à mes passions
+
+- **Emplacement** : renderExplorer — requête profiles sans critère, limit 12 (app-06:5755-5758)
+- **Domaine** : Recherche et découverte · **Nature** : clarte · **Type** : jugement
+- **Preuve** : Sur 10 lignes : 3 « ✓ Suivi », 1 « Demande envoyée », 1 compte bloqué, 4 exemples ; l'ordre est celui de la table.
+- **Problème** : La section se nomme « à suivre » mais liste surtout ce qui est déjà suivi.
+- **Situation déclenchante** : Toute visite.
+- **Conséquence pour l'utilisateur** : Section ignorée ; aucune vraie découverte de personnes.
+- **Proposition** : Exclure suivis, demandes et blocages ; privilégier les personnes qui partagent une de mes passions (colonne passion_id déjà lue).
+- **Visuels** : [REC-003](galerie/index.html#/surface/REC-003) · **Surfaces** : REC-003
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Section vide pour un petit réseau : prévoir un repli.
+- **Critère d'acceptation** : Aucune ligne de la section n'est déjà suivie, en attente ou bloquée.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### REC-C06 — Les personnes sont sous le pli du panneau de résultats, nommées « Utilisateurs »
+
+- **Emplacement** : #exploreSearchResults (index.html:990, max-height 360 px ; app-07:271-309)
+- **Domaine** : Recherche et découverte · **Nature** : friction · **Type** : observation
+- **Preuve** : « gui » : 6 lignes de passion (59 px) avant l'en-tête « UTILISATEURS » ; panneau de 360 px qui défile à part. Ailleurs : « personnes » (MSG-C27), « membres ».
+- **Problème** : Qui cherche un pseudo voit six passions et doit faire défiler un petit panneau dans la page.
+- **Situation déclenchante** : Une frappe qui touche passions et personnes.
+- **Conséquence pour l'utilisateur** : Personnes manquées ; deux zones de défilement imbriquées sous le pouce.
+- **Proposition** : Trois passions puis « Voir N autres passions », en-tête « Personnes », panneau étendu jusqu'au bas de l'écran.
+- **Visuels** : [REC-006](galerie/index.html#/surface/REC-006) · **Surfaces** : REC-006, REC-033
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Verrou recherche-referentiel (⑦).
+- **Critère d'acceptation** : À 390 × 844, « gui » montre au moins une personne sans défilement.
+- **Fichiers probables** : `index.html`, `js/app-07-ia-explore-irl.js`
+
+### REC-C07 — Le panneau de résultats ne se ferme qu'en vidant le champ à la main
+
+- **Emplacement** : #explorerSearch / #exploreSearchResults (index.html:979-990)
+- **Domaine** : Recherche et découverte · **Nature** : friction · **Type** : observation
+- **Preuve** : Échap, un toucher hors du panneau et un aller-retour vers le fil le laissent ouvert (sonde recherche-03) ; aucune croix d'effacement. Après un profil ouvert depuis un résultat, le champ garde « malik » mais le panneau est fermé.
+- **Problème** : Le panneau couvre l'écran ; pour le fermer il faut effacer lettre à lettre.
+- **Situation déclenchante** : Toute recherche.
+- **Conséquence pour l'utilisateur** : Contenu de l'écran inaccessible ; état incohérent au retour.
+- **Proposition** : Croix d'effacement 44 px ; Échap et toucher hors du panneau ferment ; au retour, champ rempli = résultats rouverts.
+- **Visuels** : [REC-012](galerie/index.html#/surface/REC-012) · **Surfaces** : REC-012, REC-036
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Un toucher hors du panneau le ferme ; la croix vide le champ et ferme.
+- **Fichiers probables** : `index.html`, `js/app-07-ia-explore-irl.js`
+
+### REC-C08 — « Aucun résultat » est un cul-de-sac
+
+- **Emplacement** : _exSearchLancer (app-07:264-267)
+- **Domaine** : Recherche et découverte · **Nature** : friction · **Type** : jugement
+- **Preuve** : « zzqxw », « escalde » et une phrase contenant « guitare électrique » rendent la même ligne grise, sans conseil ni geste.
+- **Problème** : Rien n'aide à reformuler.
+- **Situation déclenchante** : Faute, phrase, mot inconnu.
+- **Conséquence pour l'utilisateur** : Abandon de la recherche.
+- **Proposition** : Conseil court (orthographe, mot plus court) et trois passions qui ont des publications à toucher.
+- **Visuels** : [REC-008](galerie/index.html#/surface/REC-008) · **Surfaces** : REC-008, REC-009, REC-010
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Sur « zzqxw », l'écran propose au moins un geste.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`
+
+### REC-C09 — La fiche annonce « 42 posts » quand la tuile dit « 4 posts », et n'en montre que 6
+
+- **Emplacement** : openPassionExplorer : allFeedPosts() (exemples compris) et posts.slice(0,6) (app-07:351, 387, 417-419) ; tuile : publications réelles seules (app-06:5591-5600)
+- **Domaine** : Recherche et découverte · **Nature** : clarte · **Type** : observation
+- **Preuve** : Tuile « Musique · 4 posts » → fiche « Musique · 42 posts » ; la liste s'arrête à 6, sans suite. « posts » ici, « publications » ailleurs.
+- **Problème** : Deux chiffres pour la même chose ; promesse de 42 publications introuvables.
+- **Situation déclenchante** : Toute fiche de passion portée par des exemples.
+- **Conséquence pour l'utilisateur** : Doute sur les chiffres ; frustration.
+- **Proposition** : Un seul compte (le même que la tuile), « 6 sur N » et un lien vers le fil filtré ; le mot « publications ».
+- **Visuels** : [REC-013](galerie/index.html#/surface/REC-013) · **Surfaces** : REC-013, REC-014
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Tuile et fiche affichent le même nombre.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`
+
+### REC-C10 — « + Créer profil » pour ajouter une passion, puis bascule vers Profil  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Fiche d'une passion (app-07:394-398) ; quickCreateProfile (app-07:549-571)
+- **Domaine** : Recherche et découverte · **Nature** : clarte · **Type** : observation
+- **Preuve** : Bouton « + Créer profil » (90 × 29 px) ; l'appui ajoute la passion et ouvre l'écran Profil (toast « ✨ Escalade ajoutée à tes passions »).
+- **Problème** : Le mot « profil » dit l'inverse d'ADR-011 (un profil, plusieurs passions) ; le geste fait quitter la découverte.
+- **Situation déclenchante** : Fiche d'une passion qu'on n'a pas.
+- **Conséquence pour l'utilisateur** : Hésitation (« vais-je créer un deuxième profil ? ») ; perte du fil de la découverte.
+- **Proposition** : « ＋ Ajouter à mes passions » (44 px), rester sur la fiche et montrer « Ta passion ». Le moteur ajouterPassionAuCompte et ses garde-fous restent.
+- **Visuels** : [REC-015](galerie/index.html#/surface/REC-015) · **Surfaces** : REC-015, REC-016, REC-017, REC-020, REC-035
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Verrous passions-plates (plafond, restauration d'archive).
+- **Critère d'acceptation** : Le bouton dit « Ajouter à mes passions » et, après appui, la fiche reste ouverte avec « Ta passion ».
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`
+
+### REC-C11 — Une fiche ouverte depuis un résultat peut s'ouvrir au milieu de ses publications
+
+- **Emplacement** : #modalContent (openModal) après une fiche défilée puis fermée
+- **Domaine** : Recherche et découverte · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Fiche « Musique » défilée en bas, fermée, puis « Escalade » ouverte depuis la recherche : #modalContent.scrollTop = 1 226 puis 1 085 sur deux essais (sonde recherche-09) ; depuis une tuile : 0. Cause non établie.
+- **Problème** : L'en-tête, le bouton d'ajout et les créateurs sont hors de vue.
+- **Situation déclenchante** : Avoir défilé une fiche, puis en ouvrir une autre par la recherche.
+- **Conséquence pour l'utilisateur** : On croit être sur une autre page ; il faut remonter.
+- **Proposition** : Remettre #modalContent en haut à chaque openPassionExplorer.
+- **Visuels** : [REC-015](galerie/index.html#/surface/REC-015) · **Surfaces** : REC-015
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Toute fiche s'ouvre avec scrollTop = 0.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`
+
+### REC-C12 — Hors ligne, la recherche dit « n'a pas abouti. Réessaie. » sans nommer la cause
+
+- **Emplacement** : _exSearchLancer catch (app-07:312-320) ; renderExplorer après reconnexion
+- **Domaine** : Recherche et découverte · **Nature** : clarte · **Type** : observation
+- **Preuve** : Hors ligne : « escalade » et « malik » rendent ce message ; même le socle et les exemples deviennent introuvables. Après reconnexion, la grille reste au socle et le compteur muet jusqu'à une nouvelle ouverture de l'écran (sonde recherche-07).
+- **Problème** : Le message invite à réessayer une action vouée à l'échec.
+- **Situation déclenchante** : Réseau absent.
+- **Conséquence pour l'utilisateur** : Essais répétés, sentiment de panne.
+- **Proposition** : « Tu es hors ligne : la recherche reprendra dès que le réseau revient » ; chercher dans le socle local en attendant ; repeindre la grille au retour du réseau.
+- **Visuels** : [REC-024](galerie/index.html#/surface/REC-024) · **Surfaces** : REC-024, REC-023
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Invariant « repli hors ligne n'est pas un référentiel » (fiche lots-ui 20).
+- **Critère d'acceptation** : Hors ligne, le message mentionne le réseau.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`, `js/app-06-reels-partage.js`
 
 ### PRO-C04 — « Tout » reste coché : toucher « Photos » ne filtre rien
 
@@ -2592,6 +3030,38 @@
 
 ## P3 — finition et cohérence visuelle
 
+### ENT-C12 — Clavier : pas de lien d'évitement, la barre de navigation arrive après tout le fil
+
+- **Emplacement** : index.html (aucun lien « Aller au contenu ») ; #appNavV2 inséré après #appNav (js/ui-v2-shell.js:262) ; destinations en `div role=button`
+- **Domaine** : Entrée et navigation · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Sonde 04, 14 tabulations : Mon profil, Explorer, Notifications, Paramètres, Suivis, Musique, quatre envies, Ta story, Léa, Clara, Noa… la barre basse n'est pas atteinte. Contour de focus visible à chaque arrêt (bon).
+- **Problème** : Changer d'écran au clavier demande de traverser tout le fil.
+- **Situation déclenchante** : Navigation au clavier (ordinateur, clavier externe), lecteur d'écran.
+- **Conséquence pour l'utilisateur** : Navigation principale pratiquement inaccessible au clavier.
+- **Proposition** : Lien « Aller au contenu » / « Aller à la navigation » en premier arrêt ; destinations en `<button>` ; envisager la barre de navigation avant le contenu dans l'ordre du document (position visuelle inchangée).
+- **Visuels** : [ENT-038](galerie/index.html#/surface/ENT-038) · **Surfaces** : ENT-038, ENT-031
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : SOC-C02 (panneau fermé atteignable au clavier).
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Le premier Tab montre un lien d'évitement ; la barre de navigation est atteinte en moins de 8 tabulations.
+- **Fichiers probables** : `index.html`, `js/ui-v2-shell.js`, `styles.css`
+
+### ENT-C16 — « Avant de continuer » : case de 13 px et croix qui ne ferme pas vraiment  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : ouvrirConsentementRequis — js/app-02-state-utils.js:5958 ; reprise planifierConsentementRequis (la modale réapparaît si fermée autrement)
+- **Domaine** : Entrée et navigation · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Capture ENT-023 : case native sans taille, 13 px (mesures) ; la modale porte la croix générique alors que, d'après le code, elle se rouvre tant qu'aucune réponse n'est donnée ; « Refuser et me déconnecter » de même poids que l'acceptation.
+- **Problème** : Accord difficile à cocher au doigt ; une croix qui promet une sortie qu'elle ne donne pas.
+- **Situation déclenchante** : Inscription par Google sans accord préalable.
+- **Conséquence pour l'utilisateur** : Toucher raté, sentiment d'être forcé.
+- **Proposition** : Case de 22 px dans une ligne cliquable ≥ 44 px ; pas de croix sur cette modale (deux réponses seulement) ; refus en action secondaire lisible.
+- **Visuels** : [ENT-023](galerie/index.html#/surface/ENT-023) · **Surfaces** : ENT-023
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune ; l'accord reste explicite et bloquant.
+- **Risque de régression** : Verrous du consentement Google.
+- **Critère d'acceptation** : #consentRequisCase ≥ 22 px, sa ligne ≥ 44 px ; aucune croix dans cette modale.
+- **Fichiers probables** : `js/app-02-state-utils.js`
+
 ### FIL-C14 — Sur petit écran, le premier contenu commence à mi-hauteur
 
 - **Emplacement** : En-tête du fil — barre (64 px), rail (70), envies (44), stories (65)
@@ -2639,6 +3109,22 @@
 - **Risque de régression** : La RLS reste la barrière : ne rien assouplir.
 - **Critère d'acceptation** : La carte d'un compte privé porte une mention de visibilité lisible par un lecteur d'écran.
 - **Fichiers probables** : `js/app-02-state-utils.js`
+
+### REC-C13 — Le champ de recherche : « OK » de 28 px, sans étiquette ni croix, invite tronquée
+
+- **Emplacement** : index.html:979-986 (#explorerSearch, bouton « OK »)
+- **Domaine** : Recherche et découverte · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : type=text, ni enterkeyhint ni aria-label ni <label> ; « OK » 40,9 × 28 px (SOC-C01) ; l'invite « …, un pseudo… » est coupée à 390 px : l'idée qu'on peut chercher une personne ne se voit pas ; accroche « tout le référentiel des passions ».
+- **Problème** : Cible petite, champ sans nom pour un lecteur d'écran, pas de moyen d'effacer, personnes non suggérées.
+- **Situation déclenchante** : Toute recherche.
+- **Conséquence pour l'utilisateur** : Appuis manqués ; recherche de personnes ignorée.
+- **Proposition** : type=search, enterkeyhint=search, aria-label « Chercher une passion ou une personne », « OK » à 44 px, croix d'effacement, accroche « Cherche une passion ou une personne. ».
+- **Visuels** : [REC-001](galerie/index.html#/surface/REC-001) · **Surfaces** : REC-001, REC-004, REC-021
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Débordement à 320 px (défaut ⑧ de la fiche lots-ui 20).
+- **Critère d'acceptation** : À 320 px, « OK » ≥ 44 px de haut et visible ; le champ a un nom accessible.
+- **Fichiers probables** : `index.html`
 
 ### PRO-C10 — Fermer un profil ouvert depuis une liste ramène au profil, pas à la liste
 
@@ -2912,6 +3398,70 @@
 - **Critère d'acceptation** : Une recherche du libellé non retenu dans index.html et js/ ne rend plus que des commentaires.
 - **Fichiers probables** : `js/ui-v4a2-cartes.js`, `js/ui-v4b-fiche.js`
 
+### ENT-C13 — Parcours historique : trois boutons de même poids, piliers tronqués, tour de cinq cartes
+
+- **Emplacement** : Landing — index.html:96–165 ; tour — js/app-08-ui-modals-tour.js:160, index.html:1371
+- **Domaine** : Entrée et navigation · **Nature** : clarte · **Type** : jugement
+- **Preuve** : Capture ENT-025 : « Se connecter », « Créer un compte » et « Installer l'application » en boutons pleins identiques ; les six piliers n'affichent que leur titre, le sixième passe sous le pied collant. Capture ENT-040 : « Étape 1 / 5 », boutons Quitter / Suivant de 29 px.
+- **Problème** : Aucune action n'est désignée comme la première ; la présentation se lit mal.
+- **Situation déclenchante** : Seulement si le parcours de première visite est coupé (`passio_first_run_experience_v1="0"`).
+- **Conséquence pour l'utilisateur** : Faible aujourd'hui (état conditionnel), mais c'est l'état de repli du kill switch.
+- **Proposition** : « Créer un compte » en action principale, « Se connecter » en secondaire, installation en lien ; boutons du tour à 44 px.
+- **Visuels** : [ENT-025](galerie/index.html#/surface/ENT-025) · **Surfaces** : ENT-025, ENT-026, ENT-040
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Verrous du parcours historique (gate-helper.poserGateSansPremiereVisite).
+- **Critère d'acceptation** : Drapeau coupé : un seul bouton plein sur la landing ; Quitter / Suivant ≥ 44 px.
+- **Fichiers probables** : `index.html`, `styles.css`
+
+### ENT-C14 — Aide « Compris » posée sur la photo, avec « sa Passio » pour dire profil
+
+- **Emplacement** : `.passio-hint` — js/app-02-state-utils.js:9005 (montrerHint, HINTS) ; styles.css:7456
+- **Domaine** : Entrée et navigation · **Nature** : polish · **Type** : observation
+- **Preuve** : Capture ENT-034 : « Appuie sur l'auteur pour découvrir sa Passio » recouvre le bas de la photo de la première publication ; « Compris » 34 px de haut (mesures).
+- **Problème** : L'aide cache du contenu et emploie un mot propre à elle.
+- **Situation déclenchante** : Compte neuf, première ouverture du fil.
+- **Conséquence pour l'utilisateur** : Petite gêne de lecture et de compréhension.
+- **Proposition** : Ancrer l'aide sous la ligne d'auteur (flèche vers le nom), « Compris » à 44 px, texte « Touche le nom pour voir son profil ».
+- **Visuels** : [ENT-034](galerie/index.html#/surface/ENT-034) · **Surfaces** : ENT-034
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : ENT-C08 (lexique).
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : L'aide ne recouvre pas la photo ; « Compris » ≥ 44 px ; le mot « Passio » n'y désigne plus un profil.
+- **Fichiers probables** : `js/app-02-state-utils.js`, `styles.css`
+
+### ENT-C17 — Paysage : les deux barres prennent un tiers de la hauteur
+
+- **Emplacement** : .app-topbar, #appNavV2 — styles.css:7642
+- **Domaine** : Entrée et navigation · **Nature** : friction · **Type** : hypothese
+- **Preuve** : Capture ENT-039 (844 × 390, émulée) : barre haute ≈ 64 px + barre basse ≈ 65 px sur 390 px.
+- **Problème** : Peu de place au contenu quand le téléphone est tourné (vidéo, carte).
+- **Situation déclenchante** : Téléphone en paysage.
+- **Conséquence pour l'utilisateur** : À vérifier sur appareil : lecture gênée.
+- **Proposition** : En paysage (hauteur < 500 px), barre haute réduite ou masquée au défilement.
+- **Visuels** : [ENT-039](galerie/index.html#/surface/ENT-039) · **Surfaces** : ENT-039
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : SOC-C03 (tablette, ordinateur).
+- **Risque de régression** : tests/e2e/cadrage.spec.js.
+- **Critère d'acceptation** : À 844 × 390, le contenu dispose d'au moins 75 % de la hauteur.
+- **Fichiers probables** : `styles.css`
+
+### ENT-C19 — Étapes après Google : « Ton prénom » et un champ d'année moins équipé  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : index.html:406 (#birthYear), :421 (#userName)
+- **Domaine** : Entrée et navigation · **Nature** : polish · **Type** : observation
+- **Preuve** : Captures ENT-028 / ENT-029 (simulées) : #birthYear sans `inputmode` ni `autocomplete` (le champ du formulaire e-mail a `inputmode=numeric`, `autocomplete=bday-year`) ; « Ton prénom » là où le formulaire e-mail dit « Nom d'utilisateur — ton nom public ».
+- **Problème** : Deux chemins d'inscription, deux vocabulaires et deux claviers pour les mêmes données.
+- **Situation déclenchante** : Inscription par Google.
+- **Conséquence pour l'utilisateur** : Léger trouble ; clavier non numérique selon le navigateur.
+- **Proposition** : Aligner les deux champs sur ceux du formulaire e-mail (mêmes libellés, mêmes attributs, même aide).
+- **Visuels** : [ENT-028](galerie/index.html#/surface/ENT-028), [ENT-029](galerie/index.html#/surface/ENT-029) · **Surfaces** : ENT-028, ENT-029
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : ENT-C02 (l'étape 2 proposée peut devenir l'unique écran pour les deux chemins).
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : #birthYear porte `inputmode=numeric` et `autocomplete=bday-year` ; le libellé dit « Nom d'utilisateur ».
+- **Fichiers probables** : `index.html`
+
 ### FIL-C05 — Le même fil s'appelle « Discussion » ou « Commentaires », et son nombre passe de 34 à 37 en l'ouvrant
 
 - **Emplacement** : Carte « 💬 34 » (app-02:10494) · feuille « Discussion », « Discussion (37) », « Discussion · 38 » (app-04:1318, 1374, 1494, 2331) · page « Commentaires (34) » (app-02:10584) · `nbCommentairesPost` (app-02:2407)
@@ -3119,6 +3669,102 @@
 - **Risque de régression** : Faible.
 - **Critère d'acceptation** : 10 s après l'ouverture, le module ne liste aucun compte déjà suivi.
 - **Fichiers probables** : `js/ui-v2-shell.js`
+
+### REC-C14 — « Passions tendance · Hot » complétée par ordre alphabétique
+
+- **Emplacement** : peindreTendances (app-06:5591-5621)
+- **Domaine** : Recherche et découverte · **Nature** : clarte · **Type** : observation
+- **Preuve** : Compte : « Actualité » sans publication ferme la grille ; visiteur : Actualité, Animaux, Art, Artisanat, Cinéma, Cuisine — l'alphabet.
+- **Problème** : « Hot » affirme une mesure qui n'existe pas.
+- **Situation déclenchante** : Peu de publications réelles (tout réseau jeune, tout visiteur).
+- **Conséquence pour l'utilisateur** : Promesse de vitalité démentie au premier toucher.
+- **Proposition** : Ne montrer que les passions qui ont des publications ; sinon titrer « Pour commencer », sans « Hot ».
+- **Visuels** : [REC-001](galerie/index.html#/surface/REC-001), [REC-021](galerie/index.html#/surface/REC-021) · **Surfaces** : REC-001, REC-021
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Aucune tuile sans publication sous un titre « tendance ».
+- **Fichiers probables** : `js/app-06-reels-partage.js`, `index.html`
+
+### REC-C15 — Une passion inconnue s'affiche « ✨ Passion » dans les tendances et ouvre une fiche anonyme
+
+- **Emplacement** : peindreTendances → passionById (app-02:2432-2465)
+- **Domaine** : Recherche et découverte · **Nature** : polish · **Type** : observation
+- **Preuve** : Simulé : une publication sur « perso_tirage_cyanotype » donne la tuile « ✨ Passion · 1 post » et une fiche « Passion ». Explique SOC-003 : le jeu de données de l'époque portait « photographie », absent du socle et du référentiel (corrigé depuis en « photo »).
+- **Problème** : Une tuile qui ne dit pas de quoi elle parle.
+- **Situation déclenchante** : Publication sur une passion perso d'autrui ou plus récente que l'instantané du référentiel (hypothèse sur la fréquence en production).
+- **Conséquence pour l'utilisateur** : Confusion ; fiche inutile.
+- **Proposition** : Écarter du classement toute passion résolue en générique (ou résoudre son libellé par le serveur).
+- **Visuels** : [REC-019](galerie/index.html#/surface/REC-019) · **Surfaces** : REC-019, REC-020
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Faible.
+- **Critère d'acceptation** : Aucune tuile « Passion » générique dans la section.
+- **Fichiers probables** : `js/app-06-reels-partage.js`
+
+### REC-C16 — La recherche de personnes prend toute sous-chaîne de la bio
+
+- **Emplacement** : supaSearchUsers : bio.ilike.%q% (app-08:6492)
+- **Domaine** : Recherche et découverte · **Nature** : polish · **Type** : observation
+- **Preuve** : « tom » rend Victor Aubry (bio « … automobile … »).
+- **Problème** : Résultats parasites sur les requêtes courtes.
+- **Situation déclenchante** : Requête de 2 à 4 lettres.
+- **Conséquence pour l'utilisateur** : Bruit dans les huit places disponibles.
+- **Proposition** : Bio comptée en début de mot seulement (ou à partir de 4 lettres), pseudo prioritaire.
+- **Visuels** : [REC-007](galerie/index.html#/surface/REC-007) · **Surfaces** : REC-007
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Requête PostgREST : garder l'échappement des métacaractères.
+- **Critère d'acceptation** : « tom » ne rend pas une personne dont seul « automobile » contient « tom ».
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`
+
+### REC-C17 — Fiche d'une passion vide : aucun geste proposé
+
+- **Emplacement** : openPassionExplorer états vides (app-07:384-387)
+- **Domaine** : Recherche et découverte · **Nature** : friction · **Type** : jugement
+- **Preuve** : « Céramique » : « Pas encore de créateurs », « Aucun post pour l'instant », rien d'autre.
+- **Problème** : La première personne passionnée de céramique ne se voit pas proposer d'être celle qui commence.
+- **Situation déclenchante** : Passion sans contenu (la majorité des 5 001).
+- **Conséquence pour l'utilisateur** : Sortie de la fiche.
+- **Proposition** : « Publier sur <passion> » (Studio avec la passion pré-choisie) dans l'état vide.
+- **Visuels** : [REC-017](galerie/index.html#/surface/REC-017) · **Surfaces** : REC-017
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : estPassionCanonique reste juge de ce qui est publiable.
+- **Critère d'acceptation** : Une fiche vide propose un geste qui la remplit.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`
+
+### REC-C18 — Boutons et pastilles de la fiche à 29 px
+
+- **Emplacement** : Fiche : « Suivre » 55 × 29, « + Créer profil » 90 × 29, Passions proches 29 px de haut ; Créateurs à suivre idem
+- **Domaine** : Recherche et découverte · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Mesures sonde recherche-04 (cmds) et fiches REC-013/REC-015.
+- **Problème** : Cibles sous l'acquis 44 px.
+- **Situation déclenchante** : Usage au pouce.
+- **Conséquence pour l'utilisateur** : Appuis manqués, surtout entre deux lignes rapprochées.
+- **Proposition** : min-height 44 px pour .btn.small de ces listes et pour les pastilles.
+- **Visuels** : [REC-015](galerie/index.html#/surface/REC-015) · **Surfaces** : REC-013, REC-015, REC-003
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Hauteur des lignes de liste.
+- **Critère d'acceptation** : Chaque bouton et pastille de la fiche mesure ≥ 44 px de haut.
+- **Fichiers probables** : `styles.css`
+
+### REC-C19 — L'assistant IA et les « Recherches récentes » survivent en code mort
+
+- **Emplacement** : js/app-07-ia-explore-irl.js:1-134 ; js/app-06-reels-partage.js:5799 (switchExploreTab) et base AI_KNOWLEDGE ; app-08:9949 (renderAiHistory)
+- **Domaine** : Recherche et découverte · **Nature** : polish · **Type** : observation
+- **Preuve** : index.html:967 : onglet et panneau retirés le 2026-11-02 ; aucun #aiInput, #aiHistoryBox, #exTab_ai dans le document ; goTo('explore') appelle encore renderAiHistory.
+- **Problème** : Aucun pour l'utilisateur ; dette et risque de remise en service partielle.
+- **Situation déclenchante** : —
+- **Conséquence pour l'utilisateur** : Code chargé à chaque visite, appel inutile à l'ouverture de l'écran.
+- **Proposition** : Décider : retirer le code (git le garde) ou le placer derrière un drapeau documenté.
+- **Visuels** : — · **Surfaces** : REC-029, REC-030
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Références croisées app-06/07/08 (audit:handlers).
+- **Critère d'acceptation** : Aucun appel à renderAiHistory sans conteneur.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`, `js/app-06-reels-partage.js`, `js/app-08-ui-modals-tour.js`
 
 ### PRO-C08 — Mon profil et le profil visité ne disent pas les mêmes choses
 

@@ -1,0 +1,144 @@
+{
+ "id": "REC-012",
+ "domaine": "recherche",
+ "scenario": "saisie",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Retour sur l'écran : la recherche précédente est restée ouverte",
+ "note": "",
+ "prisLe": "2026-11-10T19:33:09.072Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#explore"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-012--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 64128,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Ni Échap, ni un toucher à côté, ni la navigation ne ferment le panneau : seul vider le champ le fait.",
+   "x": 0.5,
+   "y": 0.493,
+   "w": 0.821,
+   "h": 0.427,
+   "sel": "#exploreSearchResults",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "input#explorerSearch",
+     "texte": "Enduro, guitare électrique, un pseudo…",
+     "w": 218.1,
+     "h": 23,
+     "enLigne": false
+    },
+    {
+     "el": "div.explorer-hero > div > div > button",
+     "texte": "OK",
+     "w": 40.9,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div#exploreSearchResults > div",
+     "texte": "🥾 Cascade de glace Explorer →",
+     "w": 241,
+     "h": 37,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 17,
+   "indetermines": 11,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#explorerSearch",
+    "placeholder": "Enduro, guitare électrique, un pseudo…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/recherche/REC-012--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 62332,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une croix d'effacement de 44 px, à l'endroit où le pouce l'attend.",
+   "x": 0.69,
+   "y": 0.231,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#maqEffacer",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

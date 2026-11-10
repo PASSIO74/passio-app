@@ -1,0 +1,115 @@
+{
+ "id": "REC-020",
+ "domaine": "recherche",
+ "scenario": "passion-inconnue",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fiche ouverte depuis cette tuile : « ✨ Passion »",
+ "note": "",
+ "prisLe": "2026-11-10T19:35:12.844Z",
+ "ecran": {
+  "ecran": "screen-explore",
+  "modale": "Passion",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/recherche/REC-020--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31344,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Passion », « + Créer profil », « Signaler cette passion » : une fiche qui ne dit pas de quoi elle parle.",
+   "x": 0.307,
+   "y": 0.425,
+   "w": 0.166,
+   "h": 0.025,
+   "sel": "#modalContent .modal-title",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 12,
+   "sous44": [
+    {
+     "el": "div#modalContent > div > div > button.btn.small",
+     "texte": "+ Créer profil",
+     "w": 89.6,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Inès Moreau",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-header > div.post-author",
+     "texte": "Inès Moreau ✨ Passion · 30 min",
+     "w": 173.4,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > article.post > div.post-body",
+     "texte": "Tirage au cyanotype, premier essai au soleil.",
+     "w": 241,
+     "h": 22.5,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div.passion-explorer-signaler > span.link",
+     "texte": "Signaler cette passion",
+     "w": 108.9,
+     "h": 15,
+     "enLigne": true
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

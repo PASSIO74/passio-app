@@ -1,0 +1,96 @@
+{
+ "id": "TRA-051",
+ "domaine": "transverse",
+ "scenario": "signalement",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Fenêtre « Signaler cette rencontre »",
+ "note": "",
+ "prisLe": "2026-11-10T19:46:36.222Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Signaler cette rencontre",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-051--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28026,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Titre « Signaler cette rencontre » ouvert par « Signaler cet événement »",
+   "x": 0.5,
+   "y": 0.599,
+   "w": 0.908,
+   "h": 0.025,
+   "sel": "#modalContent .modal-title",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 4,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-051--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 27854,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le même mot que le bouton et que la fiche : « activité »",
+   "x": 0.5,
+   "y": 0.599,
+   "w": 0.908,
+   "h": 0.025,
+   "sel": "#modalContent .modal-title",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

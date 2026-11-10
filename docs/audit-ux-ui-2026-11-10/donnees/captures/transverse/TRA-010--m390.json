@@ -1,0 +1,166 @@
+{
+ "id": "TRA-010",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Réglages des notifications",
+ "note": "",
+ "prisLe": "2026-11-10T19:38:15.380Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Notifications",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-010--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 30554,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Nouveaux posts », « Messages », « Likes & commentaires », « Événements IRL », « Système » : enregistrés, jamais lus",
+   "x": 0.921,
+   "y": 0.544,
+   "w": 0.051,
+   "h": 0.024,
+   "sel": "#notifPosts",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Seul « Récap de la semaine » agit",
+   "x": 0.921,
+   "y": 0.861,
+   "w": 0.051,
+   "h": 0.024,
+   "sel": "#notifRecap",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [
+    {
+     "el": "input#notifPosts",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "input#notifMessages",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "input#notifLikes",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "input#notifEvents",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "input#notifSystem",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "input#notifRecap",
+     "texte": "",
+     "w": 20,
+     "h": 20,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Sauvegarder",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 7
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-010--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 35092,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Les interrupteurs inertes sont retirés ; la phrase dit ce qui arrive réellement",
+   "x": 0.5,
+   "y": 0.765,
+   "w": 0.908,
+   "h": 0.069,
+   "sel": "#maqNotifTexte",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le seul réglage branché reste",
+   "x": 0.921,
+   "y": 0.861,
+   "w": 0.051,
+   "h": 0.024,
+   "sel": "#notifRecap",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

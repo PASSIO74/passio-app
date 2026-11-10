@@ -1,0 +1,124 @@
+{
+ "id": "ENT-025",
+ "domaine": "entree",
+ "scenario": "historique",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "visiteur",
+ "titre": "Parcours historique — landing (drapeau `passio_first_run_experience_v1=\"0\"`)",
+ "note": "État conditionnel : la landing n'est plus vue par défaut depuis le 2026-09-01 ; elle revient si le parcours de première visite est coupé.",
+ "prisLe": "2026-11-10T19:35:49.132Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": true,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO – MVP Beta",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/entree/ENT-025--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 46020,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied collant",
+    "fichier": "captures/entree/ENT-025--m360--avant-zoom-pied.webp",
+    "largeur": 720,
+    "hauteur": 336,
+    "octets": 12234
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Trois boutons pleins du même poids : « Se connecter », « Créer un compte », « Installer l'application ».",
+   "x": 0.5,
+   "y": 0.873,
+   "w": 1,
+   "h": 0.253,
+   "sel": ".landing-cta",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Six piliers ; le pied collant cache le dernier et ne laisse voir que leurs titres.",
+   "x": 0.5,
+   "y": 0.903,
+   "w": 0.889,
+   "h": 0.67,
+   "sel": ".landing-pillars",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 3,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 9,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/entree/ENT-025--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 44428,
+  "zooms": [
+   {
+    "nom": "pied",
+    "titre": "Pied collant",
+    "fichier": "captures/entree/ENT-025--m360--apres-zoom-pied.webp",
+    "largeur": 720,
+    "hauteur": 316,
+    "octets": 10624
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une action principale (« Créer un compte »), la connexion en secondaire, l'installation en lien.",
+   "x": 0.5,
+   "y": 0.881,
+   "w": 1,
+   "h": 0.238,
+   "sel": ".landing-cta",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

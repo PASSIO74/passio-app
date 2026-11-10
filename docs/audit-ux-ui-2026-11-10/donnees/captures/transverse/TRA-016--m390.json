@@ -1,0 +1,169 @@
+{
+ "id": "TRA-016",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Temps d'écran",
+ "note": "",
+ "prisLe": "2026-11-10T19:38:29.894Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Temps d'écran",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-016--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 33704,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« 0h 00min utilisé aujourd'hui » : le compteur n'est jamais alimenté",
+   "x": 0.5,
+   "y": 0.461,
+   "w": 0.908,
+   "h": 0.066,
+   "sel": "#modalContent div[style*='font-size:42px']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Une limite journalière à la seconde près, jamais appliquée",
+   "x": 0.704,
+   "y": 0.61,
+   "w": 0.144,
+   "h": 0.053,
+   "sel": "#limitS",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Raccourcis de 29 px de haut, texte de 11 px",
+   "x": 0.326,
+   "y": 0.689,
+   "w": 0.086,
+   "h": 0.034,
+   "sel": "#modalContent [onclick='setTimeLimitQuick(3600)']",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "div#modalContent > div > div > button.btn.ghost",
+     "texte": "30 min",
+     "w": 57,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > button.btn.ghost",
+     "texte": "1h",
+     "w": 33.5,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > button.btn.ghost",
+     "texte": "1h30",
+     "w": 46.9,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > button.btn.ghost",
+     "texte": "2h",
+     "w": 35.2,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > button.btn.ghost",
+     "texte": "3h",
+     "w": 35,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > div > button.btn.ghost",
+     "texte": "Illimité",
+     "w": 57.7,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "Définir un code parental",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.primary",
+     "texte": "Sauvegarder la limite",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 3,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 16,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#limitH",
+    "placeholder": ""
+   },
+   {
+    "el": "input#limitM",
+    "placeholder": ""
+   },
+   {
+    "el": "input#limitS",
+    "placeholder": ""
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}
