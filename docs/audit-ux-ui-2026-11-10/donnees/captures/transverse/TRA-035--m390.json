@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Panneau Notifications — vide",
  "note": "Liste vidée par le banc (state.notifications = []) : un compte neuf reçoit sinon deux notifications d'accueil locales.",
- "prisLe": "2026-11-10T19:42:18.224Z",
+ "prisLe": "2026-11-10T19:59:32.509Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": "Notifications",

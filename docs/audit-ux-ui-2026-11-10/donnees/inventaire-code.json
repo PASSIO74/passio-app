@@ -1,5 +1,5 @@
 {
- "genereLe": "2026-11-10T16:54:14.336Z",
+ "genereLe": "2026-11-10T20:03:08.569Z",
  "ecrans": [
   "screen-feed",
   "screen-profiles",
@@ -28,87 +28,87 @@
   {
    "nom": "openNotifSettings",
    "ou": "js/app-02-state-utils.js:3994",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPrivacySettings",
    "ou": "js/app-02-state-utils.js:4018",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openContentSettings",
    "ou": "js/app-02-state-utils.js:4241",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openScreenTime",
    "ou": "js/app-02-state-utils.js:4267",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPauseMode",
    "ou": "js/app-02-state-utils.js:4448",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openAbout",
    "ou": "js/app-02-state-utils.js:4467",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openLogoutConfirm",
    "ou": "js/app-02-state-utils.js:4489",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openAuthScreen",
    "ou": "js/app-02-state-utils.js:4551",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openAccountSwitch",
    "ou": "js/app-02-state-utils.js:4609",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openChangePassword",
    "ou": "js/app-02-state-utils.js:5003",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openDeleteAccountConfirm",
    "ou": "js/app-02-state-utils.js:5125",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPrivacyPolicy",
    "ou": "js/app-02-state-utils.js:5313",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openTermsOfService",
    "ou": "js/app-02-state-utils.js:5321",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openLegalNotice",
    "ou": "js/app-02-state-utils.js:5332",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showOnbStep",
    "ou": "js/app-02-state-utils.js:5348",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "ouvrirConsentementRequis",
    "ou": "js/app-02-state-utils.js:5958",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openCreateCustomPassion",
    "ou": "js/app-02-state-utils.js:6857",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openFeedPost",
@@ -118,22 +118,22 @@
   {
    "nom": "montrerHint",
    "ou": "js/app-02-state-utils.js:9005",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPost",
    "ou": "js/app-02-state-utils.js:10508",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPostOptions",
    "ou": "js/app-04-comments-shop.js:9",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPostOptionsAutrui",
    "ou": "js/app-04-comments-shop.js:31",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openCommentReactors",
@@ -148,12 +148,12 @@
   {
    "nom": "openComments",
    "ou": "js/app-04-comments-shop.js:1298",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openCommentOptions",
    "ou": "js/app-04-comments-shop.js:2381",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openCommentSheet",
@@ -163,37 +163,37 @@
   {
    "nom": "openNewMessage",
    "ou": "js/app-04-comments-shop.js:4007",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openUserProfile",
    "ou": "js/app-04-comments-shop.js:4287",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openVisitedProfileMenu",
    "ou": "js/app-04-comments-shop.js:4673",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openBlockedList",
    "ou": "js/app-04-comments-shop.js:5432",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openConversation",
    "ou": "js/app-04-comments-shop.js:5654",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openConfigurator",
    "ou": "js/app-05-config-profil.js:185",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openCreateGroup",
    "ou": "js/app-05-config-profil.js:1906",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showGroupMembers",
@@ -203,12 +203,12 @@
   {
    "nom": "openReels",
    "ou": "js/app-05-config-profil.js:3076",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openReelById",
    "ou": "js/app-05-config-profil.js:3139",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openReelComments",
@@ -218,22 +218,22 @@
   {
    "nom": "showQuickEmojiForReelComment",
    "ou": "js/app-05-config-profil.js:3652",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showEmojiPickerForReelComment",
    "ou": "js/app-05-config-profil.js:3676",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showGifPickerForReelComment",
    "ou": "js/app-05-config-profil.js:3708",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openReelShareModal",
    "ou": "js/app-05-config-profil.js:3807",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openMyPostsTab",
@@ -243,47 +243,47 @@
   {
    "nom": "openFollowingList",
    "ou": "js/app-06-reels-partage.js:1200",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openFollowersList",
    "ou": "js/app-06-reels-partage.js:1210",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openMainProfileMenu",
    "ou": "js/app-06-reels-partage.js:1856",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPassionProfileMenu",
    "ou": "js/app-06-reels-partage.js:1891",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEditMainProfile",
    "ou": "js/app-06-reels-partage.js:1916",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPassionManager",
    "ou": "js/app-06-reels-partage.js:2613",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPassionsAide",
    "ou": "js/app-06-reels-partage.js:2646",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEditPassionProfile",
    "ou": "js/app-06-reels-partage.js:3513",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPassionPaywall",
    "ou": "js/app-06-reels-partage.js:4365",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "ouvrirGestionPassions",
@@ -303,22 +303,22 @@
   {
    "nom": "openCreateCustomPassionFromExplorer",
    "ou": "js/app-06-reels-partage.js:5794",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openPassionExplorer",
    "ou": "js/app-07-ia-explore-irl.js:330",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openIrlCitySelector",
    "ou": "js/app-07-ia-explore-irl.js:1374",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "ouvrirRecherchePassionIRL",
    "ou": "js/app-07-ia-explore-irl.js:1949",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openIrlCalendar",
@@ -328,22 +328,22 @@
   {
    "nom": "openIrlFiltersPanel",
    "ou": "js/app-07-ia-explore-irl.js:2737",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEventReactions",
    "ou": "js/app-07-ia-explore-irl.js:3303",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEventChat",
    "ou": "js/app-07-ia-explore-irl.js:3899",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEventRsvpSheet",
    "ou": "js/app-07-ia-explore-irl.js:4006",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openIrlTimePicker",
@@ -358,22 +358,22 @@
   {
    "nom": "openCreateEvent",
    "ou": "js/app-07-ia-explore-irl.js:6431",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEventManage",
    "ou": "js/app-07-ia-explore-irl.js:6677",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEventCoOrganizers",
    "ou": "js/app-07-ia-explore-irl.js:6706",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEventWaitlist",
    "ou": "js/app-07-ia-explore-irl.js:6751",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEventInvite",
@@ -383,42 +383,42 @@
   {
    "nom": "openEventFeedback",
    "ou": "js/app-07-ia-explore-irl.js:7645",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openEventCheckinQr",
    "ou": "js/app-07-ia-explore-irl.js:8042",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openCheckinCodeEntry",
    "ou": "js/app-07-ia-explore-irl.js:8096",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openModal",
    "ou": "js/app-08-ui-modals-tour.js:32",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showTour",
    "ou": "js/app-08-ui-modals-tour.js:160",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openLimitesPilote",
    "ou": "js/app-08-ui-modals-tour.js:286",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showLanding",
    "ou": "js/app-08-ui-modals-tour.js:360",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openStoryComposer",
    "ou": "js/app-08-ui-modals-tour.js:717",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openStudioAsStory",
@@ -443,17 +443,17 @@
   {
    "nom": "openNotifications",
    "ou": "js/app-08-ui-modals-tour.js:2383",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openNotifTarget",
    "ou": "js/app-08-ui-modals-tour.js:2470",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showPitchLanding",
    "ou": "js/app-08-ui-modals-tour.js:2677",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openConvFiles",
@@ -463,17 +463,17 @@
   {
    "nom": "openConvSettings",
    "ou": "js/app-09-boot-pwa.js:1645",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "openFullImg",
    "ou": "js/app-09-boot-pwa.js:1933",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showGifPickerForMessage",
    "ou": "js/emoji-misc.js:476",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showGifPickerForComment",
@@ -493,7 +493,7 @@
   {
    "nom": "showEmojiPickerForEvent",
    "ou": "js/emoji-misc.js:568",
-   "citee": false
+   "citee": true
   },
   {
    "nom": "showGifPickerForPost",
@@ -505,7 +505,7 @@
  "fonctionsOuvrantUneModale": [
   {
    "nom": "pushOverlayHistory",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:3485"
    ]
@@ -519,84 +519,84 @@
   },
   {
    "nom": "openNotifSettings",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:3997"
    ]
   },
   {
    "nom": "openPrivacySettings",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:4024"
    ]
   },
   {
    "nom": "openContentSettings",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:4244"
    ]
   },
   {
    "nom": "openScreenTime",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:4277"
    ]
   },
   {
    "nom": "setupParentalCode",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:4360"
    ]
   },
   {
    "nom": "askParentalCode",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:4406"
    ]
   },
   {
    "nom": "openPauseMode",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:4449"
    ]
   },
   {
    "nom": "openAbout",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:4468"
    ]
   },
   {
    "nom": "openLogoutConfirm",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:4490"
    ]
   },
   {
    "nom": "openAccountSwitch",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:4623"
    ]
   },
   {
    "nom": "openChangePassword",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:5004"
    ]
   },
   {
    "nom": "openDeleteAccountConfirm",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:5126"
    ]
@@ -610,14 +610,14 @@
   },
   {
    "nom": "ouvrirConsentementRequis",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:5960"
    ]
   },
   {
    "nom": "openCreateCustomPassion",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-02-state-utils.js:6859",
     "js/app-02-state-utils.js:6903"
@@ -625,35 +625,35 @@
   },
   {
    "nom": "sharePost",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-03-posts-vlogs.js:30"
    ]
   },
   {
    "nom": "openPostOptions",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:15"
    ]
   },
   {
    "nom": "openPostOptionsAutrui",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:37"
    ]
   },
   {
    "nom": "confirmDeletePost",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:229"
    ]
   },
   {
    "nom": "openComments",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:1316"
    ]
@@ -667,84 +667,84 @@
   },
   {
    "nom": "openNewMessage",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:4018"
    ]
   },
   {
    "nom": "openUserProfile",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:4628"
    ]
   },
   {
    "nom": "_demanderMotifSignalement",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:5308"
    ]
   },
   {
    "nom": "openBlockedList",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:5433"
    ]
   },
   {
    "nom": "_openMsgActions",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:6352"
    ]
   },
   {
    "nom": "_forwardPick",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-04-comments-shop.js:6578"
    ]
   },
   {
    "nom": "openConfigurator",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-05-config-profil.js:248"
    ]
   },
   {
    "nom": "openCreateGroup",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-05-config-profil.js:1939"
    ]
   },
   {
    "nom": "_renderGroupMembersModal",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-05-config-profil.js:2070"
    ]
   },
   {
    "nom": "showEmojiPickerForReelComment",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-05-config-profil.js:3683"
    ]
   },
   {
    "nom": "showGifPickerForReelComment",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-05-config-profil.js:3712"
    ]
   },
   {
    "nom": "openReelShareModal",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-05-config-profil.js:3859"
    ]
@@ -758,35 +758,35 @@
   },
   {
    "nom": "_peopleModal",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-06-reels-partage.js:1194"
    ]
   },
   {
    "nom": "openEditMainProfile",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-06-reels-partage.js:2003"
    ]
   },
   {
    "nom": "openPassionsAide",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-06-reels-partage.js:2650"
    ]
   },
   {
    "nom": "confirmArchivePassion",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-06-reels-partage.js:2725"
    ]
   },
   {
    "nom": "openEditPassionProfile",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-06-reels-partage.js:3525"
    ]
@@ -800,7 +800,7 @@
   },
   {
    "nom": "openPassionPaywall",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-06-reels-partage.js:4437"
    ]
@@ -814,14 +814,14 @@
   },
   {
    "nom": "openPassionExplorer",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:440"
    ]
   },
   {
    "nom": "openIrlCitySelector",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:1410"
    ]
@@ -835,14 +835,14 @@
   },
   {
    "nom": "openEventRsvpSheet",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:4019"
    ]
   },
   {
    "nom": "proposerRappelsActivite",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:4989"
    ]
@@ -856,7 +856,7 @@
   },
   {
    "nom": "requireAdmission",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:5973"
    ]
@@ -877,42 +877,42 @@
   },
   {
    "nom": "openCreateEvent",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:6502"
    ]
   },
   {
    "nom": "openEventManage",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:6688"
    ]
   },
   {
    "nom": "openEventCoOrganizers",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:6723"
    ]
   },
   {
    "nom": "openEventWaitlist",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:6755"
    ]
   },
   {
    "nom": "_messageEventAttendees",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:6913"
    ]
   },
   {
    "nom": "proposerInvitationActivite",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:7193"
    ]
@@ -926,56 +926,56 @@
   },
   {
    "nom": "openEventFeedback",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:7651"
    ]
   },
   {
    "nom": "_rendreCheckinQr",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:8067"
    ]
   },
   {
    "nom": "openCheckinCodeEntry",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-07-ia-explore-irl.js:8099"
    ]
   },
   {
    "nom": "feedbackModal",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-08-ui-modals-tour.js:271"
    ]
   },
   {
    "nom": "openLimitesPilote",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-08-ui-modals-tour.js:289"
    ]
   },
   {
    "nom": "openStoryComposer",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-08-ui-modals-tour.js:722"
    ]
   },
   {
    "nom": "playCurrentStory",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-08-ui-modals-tour.js:1950"
    ]
   },
   {
    "nom": "openNotifications",
-   "citee": false,
+   "citee": true,
    "lignes": [
     "js/app-08-ui-modals-tour.js:2397"
    ]
@@ -3996,166 +3996,37 @@
  ],
  "recroisement": {
   "portesNonCitees": [
-   "openNotifSettings (js/app-02-state-utils.js:3994)",
-   "openPrivacySettings (js/app-02-state-utils.js:4018)",
-   "openContentSettings (js/app-02-state-utils.js:4241)",
-   "openScreenTime (js/app-02-state-utils.js:4267)",
-   "openPauseMode (js/app-02-state-utils.js:4448)",
-   "openAbout (js/app-02-state-utils.js:4467)",
-   "openLogoutConfirm (js/app-02-state-utils.js:4489)",
-   "openAuthScreen (js/app-02-state-utils.js:4551)",
-   "openAccountSwitch (js/app-02-state-utils.js:4609)",
-   "openChangePassword (js/app-02-state-utils.js:5003)",
-   "openDeleteAccountConfirm (js/app-02-state-utils.js:5125)",
-   "openPrivacyPolicy (js/app-02-state-utils.js:5313)",
-   "openTermsOfService (js/app-02-state-utils.js:5321)",
-   "openLegalNotice (js/app-02-state-utils.js:5332)",
-   "showOnbStep (js/app-02-state-utils.js:5348)",
-   "ouvrirConsentementRequis (js/app-02-state-utils.js:5958)",
-   "openCreateCustomPassion (js/app-02-state-utils.js:6857)",
    "openFeedPost (js/app-02-state-utils.js:8250)",
-   "montrerHint (js/app-02-state-utils.js:9005)",
-   "openPost (js/app-02-state-utils.js:10508)",
-   "openPostOptions (js/app-04-comments-shop.js:9)",
-   "openPostOptionsAutrui (js/app-04-comments-shop.js:31)",
    "openCommentReactors (js/app-04-comments-shop.js:1093)",
    "openPostReactors (js/app-04-comments-shop.js:1288)",
-   "openComments (js/app-04-comments-shop.js:1298)",
-   "openCommentOptions (js/app-04-comments-shop.js:2381)",
    "openCommentSheet (js/app-04-comments-shop.js:2989)",
-   "openNewMessage (js/app-04-comments-shop.js:4007)",
-   "openUserProfile (js/app-04-comments-shop.js:4287)",
-   "openVisitedProfileMenu (js/app-04-comments-shop.js:4673)",
-   "openBlockedList (js/app-04-comments-shop.js:5432)",
-   "openConversation (js/app-04-comments-shop.js:5654)",
-   "openConfigurator (js/app-05-config-profil.js:185)",
-   "openCreateGroup (js/app-05-config-profil.js:1906)",
    "showGroupMembers (js/app-05-config-profil.js:1999)",
-   "openReels (js/app-05-config-profil.js:3076)",
-   "openReelById (js/app-05-config-profil.js:3139)",
    "openReelComments (js/app-05-config-profil.js:3307)",
-   "showQuickEmojiForReelComment (js/app-05-config-profil.js:3652)",
-   "showEmojiPickerForReelComment (js/app-05-config-profil.js:3676)",
-   "showGifPickerForReelComment (js/app-05-config-profil.js:3708)",
-   "openReelShareModal (js/app-05-config-profil.js:3807)",
    "openMyPostsTab (js/app-06-reels-partage.js:1155)",
-   "openFollowingList (js/app-06-reels-partage.js:1200)",
-   "openFollowersList (js/app-06-reels-partage.js:1210)",
-   "openMainProfileMenu (js/app-06-reels-partage.js:1856)",
-   "openPassionProfileMenu (js/app-06-reels-partage.js:1891)",
-   "openEditMainProfile (js/app-06-reels-partage.js:1916)",
-   "openPassionManager (js/app-06-reels-partage.js:2613)",
-   "openPassionsAide (js/app-06-reels-partage.js:2646)",
-   "openEditPassionProfile (js/app-06-reels-partage.js:3513)",
-   "openPassionPaywall (js/app-06-reels-partage.js:4365)",
    "ouvrirGestionPassions (js/app-06-reels-partage.js:4496)",
    "ouvrirRecherchePassionStudio (js/app-06-reels-partage.js:4502)",
    "openCreateProfile (js/app-06-reels-partage.js:4587)",
-   "openCreateCustomPassionFromExplorer (js/app-06-reels-partage.js:5794)",
-   "openPassionExplorer (js/app-07-ia-explore-irl.js:330)",
-   "openIrlCitySelector (js/app-07-ia-explore-irl.js:1374)",
-   "ouvrirRecherchePassionIRL (js/app-07-ia-explore-irl.js:1949)",
    "openIrlCalendar (js/app-07-ia-explore-irl.js:2439)",
-   "openIrlFiltersPanel (js/app-07-ia-explore-irl.js:2737)",
-   "openEventReactions (js/app-07-ia-explore-irl.js:3303)",
-   "openEventChat (js/app-07-ia-explore-irl.js:3899)",
-   "openEventRsvpSheet (js/app-07-ia-explore-irl.js:4006)",
    "openIrlTimePicker (js/app-07-ia-explore-irl.js:4074)",
-   "openCreateEvent (js/app-07-ia-explore-irl.js:6431)",
-   "openEventManage (js/app-07-ia-explore-irl.js:6677)",
-   "openEventCoOrganizers (js/app-07-ia-explore-irl.js:6706)",
-   "openEventWaitlist (js/app-07-ia-explore-irl.js:6751)",
-   "openEventFeedback (js/app-07-ia-explore-irl.js:7645)",
-   "openEventCheckinQr (js/app-07-ia-explore-irl.js:8042)",
-   "openCheckinCodeEntry (js/app-07-ia-explore-irl.js:8096)",
-   "openModal (js/app-08-ui-modals-tour.js:32)",
-   "showTour (js/app-08-ui-modals-tour.js:160)",
-   "openLimitesPilote (js/app-08-ui-modals-tour.js:286)",
-   "showLanding (js/app-08-ui-modals-tour.js:360)",
-   "openStoryComposer (js/app-08-ui-modals-tour.js:717)",
    "openStudioAsStory (js/app-08-ui-modals-tour.js:803)",
    "openStoryGroup (js/app-08-ui-modals-tour.js:1854)",
    "openStoryViewerAt (js/app-08-ui-modals-tour.js:1871)",
    "openStoryViewer (js/app-08-ui-modals-tour.js:1883)",
-   "openNotifications (js/app-08-ui-modals-tour.js:2383)",
-   "openNotifTarget (js/app-08-ui-modals-tour.js:2470)",
-   "showPitchLanding (js/app-08-ui-modals-tour.js:2677)",
    "openConvFiles (js/app-09-boot-pwa.js:1560)",
-   "openConvSettings (js/app-09-boot-pwa.js:1645)",
-   "openFullImg (js/app-09-boot-pwa.js:1933)",
-   "showGifPickerForMessage (js/emoji-misc.js:476)",
    "showGifPickerForComment (js/emoji-misc.js:496)",
    "showEmojiPickerForComment (js/emoji-misc.js:522)",
    "showEmojiPickerForPost (js/emoji-misc.js:557)",
-   "showEmojiPickerForEvent (js/emoji-misc.js:568)",
    "showGifPickerForPost (js/emoji-misc.js:663)"
   ],
   "modalesNonCitees": [
-   "pushOverlayHistory",
-   "openNotifSettings",
-   "openPrivacySettings",
-   "openContentSettings",
-   "openScreenTime",
-   "setupParentalCode",
-   "askParentalCode",
-   "openPauseMode",
-   "openAbout",
-   "openLogoutConfirm",
-   "openAccountSwitch",
-   "openChangePassword",
-   "openDeleteAccountConfirm",
    "_legalModale",
-   "ouvrirConsentementRequis",
-   "openCreateCustomPassion",
-   "sharePost",
-   "openPostOptions",
-   "openPostOptionsAutrui",
-   "confirmDeletePost",
-   "openComments",
    "openCommentSheet",
-   "openNewMessage",
-   "openUserProfile",
-   "_demanderMotifSignalement",
-   "openBlockedList",
-   "_openMsgActions",
-   "_forwardPick",
-   "openConfigurator",
-   "openCreateGroup",
-   "_renderGroupMembersModal",
-   "showEmojiPickerForReelComment",
-   "showGifPickerForReelComment",
-   "openReelShareModal",
    "_proposerSuiviInvitant",
-   "_peopleModal",
-   "openEditMainProfile",
-   "openPassionsAide",
-   "confirmArchivePassion",
-   "openEditPassionProfile",
    "confirmDeleteProfile",
-   "openPassionPaywall",
    "openCreateProfile",
-   "openPassionExplorer",
-   "openIrlCitySelector",
    "openIrlCalendar",
-   "openEventRsvpSheet",
-   "proposerRappelsActivite",
-   "requireAdmission",
    "admissionOuvrirPorte",
    "admissionValiderAnnee",
-   "openCreateEvent",
-   "openEventManage",
-   "openEventCoOrganizers",
-   "openEventWaitlist",
-   "_messageEventAttendees",
-   "proposerInvitationActivite",
-   "openEventFeedback",
-   "_rendreCheckinQr",
-   "openCheckinCodeEntry",
-   "feedbackModal",
-   "openLimitesPilote",
-   "openStoryComposer",
-   "playCurrentStory",
-   "openNotifications",
    "_openConvBgPicker"
   ]
  }

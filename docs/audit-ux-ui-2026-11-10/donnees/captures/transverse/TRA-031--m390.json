@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Panneau Notifications — haut (non lues)",
  "note": "",
- "prisLe": "2026-11-10T19:41:34.929Z",
+ "prisLe": "2026-11-10T19:57:52.184Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": "Notifications",
@@ -24,7 +24,7 @@
   "fichier": "captures/transverse/TRA-031--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 67804,
+  "octets": 67090,
   "zooms": [
    {
     "nom": "demande",
@@ -117,7 +117,7 @@
   "fichier": "captures/transverse/TRA-031--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 68506,
+  "octets": 68636,
   "zooms": [
    {
     "nom": "demande",
@@ -133,12 +133,12 @@
   {
    "n": 1,
    "texte": "Un seul mot par objet : « publication », « activité »",
-   "x": null,
-   "y": null,
-   "w": null,
-   "h": null,
-   "sel": ".notif-row:first-child .notif-text",
-   "trouve": false
+   "x": 0.536,
+   "y": 0.32,
+   "w": 0.697,
+   "h": 0.042,
+   "sel": ".notif-list > .notif-row .notif-text",
+   "trouve": true
   },
   {
    "n": 2,

@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Signaler, motif vide : l'avertissement est émis SOUS la fenêtre",
  "note": "Toast figé par le banc ; il existe dans la pile (« Dis-nous en deux mots… ») mais il est peint sous la fenêtre (pile z-index 200, fenêtre 10001).",
- "prisLe": "2026-11-10T19:47:52.979Z",
+ "prisLe": "2026-11-10T19:59:56.269Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": "Signaler cette rencontre",
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": false,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(1) PASSIO",
   "hash": "#modal"
  },
  "avant": {
   "fichier": "captures/transverse/TRA-041--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 28406,
+  "octets": 28394,
   "zooms": []
  },
  "annotationsAvant": [
@@ -73,7 +73,7 @@
   "fichier": "captures/transverse/TRA-041--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 36460,
+  "octets": 36452,
   "zooms": []
  },
  "annotations": [

@@ -1,0 +1,131 @@
+{
+ "id": "TRA-032",
+ "domaine": "transverse",
+ "scenario": "notifications",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Panneau Notifications — bas (lues, modération, boutons)",
+ "note": "",
+ "prisLe": "2026-11-10T19:58:36.753Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Notifications",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-032--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 59226,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Tout marquer lu » : l'ouverture du panneau a DÉJÀ tout marqué lu (pastille remise à zéro)",
+   "x": 0.269,
+   "y": 0.929,
+   "w": 0.439,
+   "h": 0.066,
+   "sel": "#modalContent .btn.ghost.block",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Modération : « Ta publication a été masquée » — laquelle ? Le toucher n'ouvre rien",
+   "x": 0.5,
+   "y": 0.813,
+   "w": 0.9,
+   "h": 0.122,
+   "sel": ".notif-row:last-child",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "Tout marquer lu",
+     "w": 158,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.primary",
+     "texte": "OK",
+     "w": 158,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 16,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-032--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 62186,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Une seule action : « Fermer » (le panneau marque déjà tout comme lu)",
+   "x": 0.5,
+   "y": 0.964,
+   "w": 0.9,
+   "h": 0.066,
+   "sel": "#maqFermer",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "La décision de modération mène à la publication concernée",
+   "x": 0.565,
+   "y": 0.848,
+   "w": 0.725,
+   "h": 0.026,
+   "sel": "#maqVoir",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

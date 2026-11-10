@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Toucher une invitation à une activité : la fiche s'ouvre",
  "note": "",
- "prisLe": "2026-11-10T19:41:43.333Z",
+ "prisLe": "2026-11-10T19:57:59.739Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/transverse/TRA-034--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 40476,
+  "octets": 40556,
   "zooms": []
  },
  "annotationsAvant": [],

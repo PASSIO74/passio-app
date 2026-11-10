@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Signalement refusé par le serveur : « déjà envoyé, ou impossible »",
  "note": "Refus 500 programmé sur l'insertion `reports` (faux serveur). Toast figé.",
- "prisLe": "2026-11-10T19:48:29.106Z",
+ "prisLe": "2026-11-10T20:00:51.639Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/transverse/TRA-052--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 41904,
+  "octets": 41778,
   "zooms": []
  },
  "annotationsAvant": [
@@ -45,7 +45,7 @@
    "h": 844
   },
   "cibles": {
-   "total": 11,
+   "total": 12,
    "sous44": [
     {
      "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > button.btn.ghost",
@@ -86,18 +86,25 @@
      "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
      "texte": "Partager",
      "w": 241,
-     "h": 30,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Inviter",
+     "w": 241,
+     "h": 41,
      "enLigne": false
     }
    ],
-   "nbSous44": 6
+   "nbSous44": 7
   },
   "champs": {
    "total": 1,
    "sous16": []
   },
   "contraste": {
-   "juges": 18,
+   "juges": 16,
    "indetermines": 1,
    "sousSeuil": [
     {
@@ -208,8 +215,25 @@
    }
   ]
  },
- "apres": null,
- "annotations": [],
+ "apres": {
+  "fichier": "captures/transverse/TRA-052--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 42626,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Doublon et échec distingués (code 23505 pour le doublon : « Tu l'as déjà signalé »)",
+   "x": 0.5,
+   "y": 0.852,
+   "w": 0.918,
+   "h": 0.068,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
  "erreurs": {
   "js": [],
   "console": []

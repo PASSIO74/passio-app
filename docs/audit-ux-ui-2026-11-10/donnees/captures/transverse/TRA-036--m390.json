@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Panneau Notifications — 45 reçues : ni regroupement ni sections",
  "note": "",
- "prisLe": "2026-11-10T19:42:26.596Z",
+ "prisLe": "2026-11-10T19:59:40.166Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": "Notifications",
@@ -24,7 +24,7 @@
   "fichier": "captures/transverse/TRA-036--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 68074,
+  "octets": 67992,
   "zooms": []
  },
  "annotationsAvant": [
@@ -73,7 +73,7 @@
   "fichier": "captures/transverse/TRA-036--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 69746,
+  "octets": 69666,
   "zooms": []
  },
  "annotations": [

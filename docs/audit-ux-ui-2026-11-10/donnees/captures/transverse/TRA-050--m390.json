@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Fiche d'activité défilée jusqu'en bas : « Signaler cet événement » reste sous le pied collant",
  "note": "",
- "prisLe": "2026-11-10T19:48:24.043Z",
+ "prisLe": "2026-11-10T20:00:47.245Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/transverse/TRA-050--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 35006,
+  "octets": 34684,
   "zooms": [
    {
     "nom": "pied",
@@ -32,7 +32,7 @@
     "fichier": "captures/transverse/TRA-050--m390--avant-zoom-pied.webp",
     "largeur": 780,
     "hauteur": 338,
-    "octets": 5674
+    "octets": 4598
    }
   ]
  },
@@ -54,7 +54,7 @@
    "h": 844
   },
   "cibles": {
-   "total": 11,
+   "total": 12,
    "sous44": [
     {
      "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > button.btn.ghost",
@@ -95,18 +95,25 @@
      "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
      "texte": "Partager",
      "w": 241,
-     "h": 30,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div.v4b-fiche > section.v4b-sec > div > button.btn.ghost",
+     "texte": "Inviter",
+     "w": 241,
+     "h": 41,
      "enLigne": false
     }
    ],
-   "nbSous44": 6
+   "nbSous44": 7
   },
   "champs": {
    "total": 1,
    "sous16": []
   },
   "contraste": {
-   "juges": 18,
+   "juges": 16,
    "indetermines": 1,
    "sousSeuil": [
     {
@@ -221,7 +228,7 @@
   "fichier": "captures/transverse/TRA-050--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 35006,
+  "octets": 33994,
   "zooms": [
    {
     "nom": "pied",
@@ -229,7 +236,7 @@
     "fichier": "captures/transverse/TRA-050--m390--apres-zoom-pied.webp",
     "largeur": 780,
     "hauteur": 338,
-    "octets": 5674
+    "octets": 5500
    }
   ]
  },
@@ -238,7 +245,7 @@
    "n": 1,
    "texte": "Une marge basse égale au pied : le bouton devient atteignable ; un seul mot, « activité »",
    "x": 0.5,
-   "y": 0.976,
+   "y": 0.798,
    "w": 0.918,
    "h": 0.049,
    "sel": "button[onclick*='reportEvent']",

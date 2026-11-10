@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Fenêtre « Signaler cette rencontre »",
  "note": "",
- "prisLe": "2026-11-10T19:48:26.297Z",
+ "prisLe": "2026-11-10T20:00:49.075Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": "Signaler cette rencontre",
@@ -24,7 +24,7 @@
   "fichier": "captures/transverse/TRA-051--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 25070,
+  "octets": 25280,
   "zooms": []
  },
  "annotationsAvant": [
@@ -73,7 +73,7 @@
   "fichier": "captures/transverse/TRA-051--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 24940,
+  "octets": 25082,
   "zooms": []
  },
  "annotations": [

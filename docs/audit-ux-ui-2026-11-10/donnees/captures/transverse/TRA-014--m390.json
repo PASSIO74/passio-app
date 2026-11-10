@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Apparence & thème (configurateur) — haut",
  "note": "",
- "prisLe": "2026-11-10T19:38:25.608Z",
+ "prisLe": "2026-11-10T19:53:27.764Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": "ouverte",
@@ -50,12 +50,12 @@
   {
    "n": 2,
    "texte": "« Sombre » : le mode sombre retiré du produit revient par ici",
-   "x": null,
-   "y": null,
-   "w": null,
-   "h": null,
-   "sel": "#modalContent [onclick*=\"setConfig('accent','dark')\"], #modalContent [onclick*='dark']",
-   "trouve": false
+   "x": 0.5,
+   "y": 0.787,
+   "w": 0.908,
+   "h": 0.071,
+   "sel": "#modalContent [onclick*=\"'noir'\"]",
+   "trouve": true
   },
   {
    "n": 3,
@@ -64,7 +64,7 @@
    "y": 0.396,
    "w": 0.908,
    "h": 0.071,
-   "sel": "#modalContent [onclick*=\"'accent','pink'\"], #modalContent [onclick*='pink'], #modalContent [onclick*='rose']",
+   "sel": "#modalContent [onclick*=\"'rose'\"]",
    "trouve": true
   }
  ],

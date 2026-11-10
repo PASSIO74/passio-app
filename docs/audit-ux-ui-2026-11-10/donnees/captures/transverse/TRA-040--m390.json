@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Toast sur le fil (au-dessus de la barre d'onglets)",
  "note": "Toast figé par le banc.",
- "prisLe": "2026-11-10T19:47:49.847Z",
+ "prisLe": "2026-11-10T19:59:53.901Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": null,
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": false,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(1) PASSIO",
   "hash": ""
  },
  "avant": {
   "fichier": "captures/transverse/TRA-040--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 66352,
+  "octets": 66380,
   "zooms": [
    {
     "nom": "toast",

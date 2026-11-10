@@ -236,6 +236,18 @@ for (const p of ["P0", "P1", "P2", "P3"]) {
 fs.writeFileSync(path.join(AUDIT, "04-BACKLOG.md"), bk);
 fs.writeFileSync(path.join(AUDIT, "donnees", "backlog.csv"), "﻿" + ["ID;Priorité;Gravité;Nature;Type;Effort;Risque technique;Sensible;Domaine;Titre;Emplacement;Preuve;Problème;Situation déclenchante;Conséquence;Proposition;Surfaces;Visuels;Dépendances;Risque de régression;Critère d'acceptation;Fichiers"].concat(tries.map((c) => [c.id, c.priorite, c.gravite, c.nature, c.type, c.effort, c.risqueTechnique, c.sensible ? "oui" : "non", c.groupe, c.titre, c.emplacement, c.preuve, c.probleme, c.declencheur, c.consequence, c.proposition, c.surfaces, c.visuels, c.dependances, c.risqueRegression, c.critereAcceptation, c.fichiers || []].map(csv).join(";"))).join("\r\n"));
 
+// ── 6 bis. Lots en Markdown ─────────────────────────────────────────────────
+if (lots.length) {
+  let lm = "# Ordre de réalisation par lots — audit UX/UI PASSIO\n\n> Généré par `outils/construire-galerie.js` depuis `donnees/lots.json`. Version auditée : " + versionTxt + ".\n";
+  lm += "> Risque **critique** = touche à l'authentification, aux droits, aux données privées ou à une règle métier : revue indépendante obligatoire, garde-fous existants conservés (AGENTS.md).\n\n";
+  lm += "| Lot | Vague | Risque | Titre | Constats |\n|---|---|---|---|---|\n" + lots.map((l) => "| " + l.id + " | " + l.vague + " | " + l.risque + " | " + cell(l.titre) + " | " + l.constats.length + " |").join("\n") + "\n";
+  for (const l of lots) {
+    lm += "\n## " + l.id + " — " + l.titre + "\n\n- **Vague** : " + l.vague + " · **Risque** : " + l.risque + "\n- **Résultat utilisateur attendu** : " + l.resultat + "\n- **Périmètre** : " + l.perimetre + "\n- **Constats couverts** : " + l.constats.join(", ") + "\n- **Critères d'acceptation** :\n" + l.criteres.map((c) => "  - " + c).join("\n") + "\n";
+    lm += "- **Fichiers ou systèmes probablement concernés** : " + l.fichiers.map((f) => "`" + f + "`").join(", ") + "\n- **Vérifications nécessaires** : " + l.verifications + "\n- **Centre de pilotage / Sentinelle** : " + l.pilotage + "\n- **Métrique utile** : " + l.metrique + "\n- **Retour arrière** : " + l.retourArriere + "\n";
+  }
+  fs.writeFileSync(path.join(AUDIT, "03-LOTS.md"), lm);
+}
+
 // ── 7. Compte rendu ─────────────────────────────────────────────────────────
 const err = alertes.filter((a) => a.niveau === "erreur"), av = alertes.filter((a) => a.niveau === "avert");
 console.log("Surfaces inventoriées : " + total.inventoriees + " — observées " + total.observees + ", simulées " + total.simulees + ", code seul " + total.codeSeul + ", inaccessibles " + total.inaccessibles + ", sans objet " + total.sansObjet);

@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Panneau Notifications — bas (lues, modération, boutons)",
  "note": "",
- "prisLe": "2026-11-10T19:41:36.887Z",
+ "prisLe": "2026-11-10T19:57:53.740Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": "Notifications",
@@ -24,7 +24,7 @@
   "fichier": "captures/transverse/TRA-032--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 75784,
+  "octets": 75912,
   "zooms": []
  },
  "annotationsAvant": [
@@ -98,7 +98,7 @@
   "fichier": "captures/transverse/TRA-032--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 78608,
+  "octets": 78950,
   "zooms": []
  },
  "annotations": [

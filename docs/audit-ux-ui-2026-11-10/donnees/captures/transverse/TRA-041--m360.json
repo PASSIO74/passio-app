@@ -1,0 +1,96 @@
+{
+ "id": "TRA-041",
+ "domaine": "transverse",
+ "scenario": "toasts",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Signaler, motif vide : l'avertissement est émis SOUS la fenêtre",
+ "note": "Toast figé par le banc ; il existe dans la pile (« Dis-nous en deux mots… ») mais il est peint sous la fenêtre (pile z-index 200, fenêtre 10001).",
+ "prisLe": "2026-11-10T20:00:21.730Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Signaler cette rencontre",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-041--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 25490,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Envoyer le signalement » ne répond rien de visible",
+   "x": 0.268,
+   "y": 0.87,
+   "w": 0.436,
+   "h": 0.128,
+   "sel": "#modalContent button.btn.primary",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 4,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-041--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 33160,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Pile au-dessus de toute superposition ; fenêtre ouverte en bas → toast en haut, sans masquer les boutons",
+   "x": 0.5,
+   "y": 0.063,
+   "w": 0.911,
+   "h": 0.089,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

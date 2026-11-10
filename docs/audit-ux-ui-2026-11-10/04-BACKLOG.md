@@ -6,9 +6,9 @@
 | Priorité | Constats |
 |---|---|
 | P0 | 1 |
-| P1 | 47 |
-| P2 | 123 |
-| P3 | 100 |
+| P1 | 55 |
+| P2 | 135 |
+| P3 | 109 |
 
 ## Vue d'ensemble
 
@@ -17,6 +17,7 @@
 | PAR-C01 | P0 | 4 | fonctionnel | observation | S | moyen | Partage | Visiteur arrivé par un lien : « Créer mon compte » ouvre le formulaire derrière le contenu ⚠ sensible |
 | PRO-C01 | P1 | 4 | fonctionnel | observation | S | faible | Profils et passions | Un enregistrement du profil refusé par le serveur s'annonce « Profil mis à jour » — confidentialité comprise ⚠ sensible |
 | MSG-C53 | P1 | 4 | fonctionnel | observation | S | faible | Messagerie | Un toucher bref sur le micro lance un enregistrement qui ne s'arrête pas — et le toucher suivant l'envoie ⚠ sensible |
+| TRA-C17 | P1 | 4 | fonctionnel | observation | S | faible | Transverse | Sur la fiche d'activité, « Signaler » (et « Inviter ») restent sous le pied collant : impossible de les toucher ⚠ sensible |
 | PCS-C01 | P1 | 3 | fonctionnel | observation | S | faible | Parcours de bout en bout | La porte « Voir l'activité » n'apparaît qu'au bout d'une minute |
 | PCS-C03 | P1 | 3 | clarte | observation | M | faible | Parcours de bout en bout | L'inscription à une activité ne confirme rien et ne propose pas la suite |
 | ENT-C01 | P1 | 3 | fonctionnel | observation | S | moyen | Entrée et navigation | Le retour système ne ferme pas le formulaire de compte : il navigue dessous, ou quitte PASSIO ⚠ sensible |
@@ -62,6 +63,13 @@
 | PAR-C04 | P1 | 3 | fonctionnel | observation | S | faible | Partage | Copie refusée : une adresse brute pendant 3 s, ou rien du tout pour une bobine |
 | PAR-C05 | P1 | 3 | friction | observation | M | faible | Partage | Lien mort, privé ou inconnu : huit secondes de silence puis un toast de trois secondes ⚠ sensible |
 | PAR-C06 | P1 | 3 | clarte | observation | M | moyen | Partage | Le repartage d'une publication ou d'une bobine perd le média et le lien vers l'originale ⚠ sensible |
+| TRA-C01 | P1 | 3 | fonctionnel | observation | S | faible | Transverse | Synthèse : les toasts sont peints sous toute fenêtre, feuille, conversation ou lecteur — refus, validations et confirmations passent inaperçus |
+| TRA-C03 | P1 | 3 | fonctionnel | observation | M | moyen | Transverse | Synthèse : des écritures refusées ou inexistantes sont annoncées réussies, dans tous les domaines |
+| TRA-C04 | P1 | 3 | fonctionnel | observation | S | faible | Transverse | Réglages des notifications : cinq interrupteurs sur six ne commandent rien |
+| TRA-C05 | P1 | 3 | fonctionnel | observation | S | faible | Transverse | « Bien-être digital » ne fait rien : temps d'écran toujours à 0, limite et pause jamais appliquées ⚠ sensible |
+| TRA-C10 | P1 | 3 | friction | observation | S | faible | Transverse | Bloquer : quatre portes, deux comportements — immédiat sans confirmation, ou boîte native ⚠ sensible |
+| TRA-C11 | P1 | 3 | friction | observation | M | moyen | Transverse | Synthèse : actions destructrices sans confirmation, ou confirmées par 8 `confirm()` et saisies par 4 `prompt()` natifs |
+| TRA-C15 | P1 | 3 | fonctionnel | observation | S | faible | Transverse | Le rappel d'activité annonce « dans une semaine » une activité du lendemain |
 | FIL-C08 | P2 | 3 | friction | observation | S | faible | Fil et interactions | « Bloquer » agit au premier toucher, sans confirmation, depuis deux menus ⚠ sensible |
 | FIL-C10 | P2 | 3 | fonctionnel | observation | S | faible | Fil et interactions | Le panneau de réaction sort de l'écran par le haut et demande deux touchers |
 | PRO-C03 | P2 | 3 | fonctionnel | observation | S | faible | Profils et passions | Le pseudo n'est pas validé à l'enregistrement (vide, « Admin » acceptés) ⚠ sensible |
@@ -185,6 +193,18 @@
 | PAR-C16 | P2 | 2 | clarte | observation | S | faible | Partage | « Partager mon expérience » : le rattachement à l'activité est invisible et persiste ⚠ sensible |
 | PAR-C20 | P2 | 2 | clarte | jugement | M | faible | Partage | L'invitation nominative ne tient que six secondes à l'arrivée ⚠ sensible |
 | SOC-C02 | P2 | 2 | accessibilite | observation | S | faible | Transverse | Le panneau de conversation fermé reste atteignable au clavier |
+| TRA-C02 | P2 | 2 | clarte | observation | M | faible | Transverse | Les toasts ne distinguent pas l'échec de la réussite (74 échecs sur 85 émis en « info ») et durent 3 s quelle que soit leur longueur |
+| TRA-C06 | P2 | 2 | clarte | observation | S | faible | Transverse | « Apparence & thème » réintroduit le mode sombre retiré et six palettes hors charte ; « Disposition des onglets » et « Appliquer » sont sans effet |
+| TRA-C07 | P2 | 2 | fonctionnel | observation | S | faible | Transverse | « Contenu & feed » : « Afficher contenu sensible » et « Langue » ne font rien |
+| TRA-C08 | P2 | 2 | accessibilite | observation | S | faible | Transverse | Panneau Paramètres : cibles de 33 px en 11–12 px, section « Démo » ouverte à tous, Échap ne ferme pas |
+| TRA-C09 | P2 | 2 | clarte | observation | S | faible | Transverse | Comptes bloqués : un compte non résolu s'affiche « ? Utilisateur », et « Débloquer » fait 29 px ⚠ sensible |
+| TRA-C12 | P2 | 2 | clarte | observation | S | faible | Transverse | Toucher une notification dont la cible a disparu ne dit rien ; la décision de modération ne désigne aucune publication ⚠ sensible |
+| TRA-C13 | P2 | 2 | friction | observation | S | faible | Transverse | Panneau Notifications : « Tout marquer lu » n'a plus rien à faire, Accepter/Refuser à 29 px, heures sans jour |
+| TRA-C18 | P2 | 2 | clarte | observation | S | faible | Transverse | Signalement : sept portes, trois mots pour l'objet, six réponses différentes, une porte sans motif ⚠ sensible |
+| TRA-C19 | P2 | 2 | friction | observation | S | faible | Transverse | Bandeaux du haut (hors ligne, message de l'équipe) : ils recouvrent la barre et se cachent l'un l'autre ; la reconnexion annonce un envoi fantôme |
+| TRA-C21 | P2 | 2 | accessibilite | observation | S | moyen | Transverse | Fenêtre commune (openModal) : le focus reste derrière, pas de nom accessible, pas de retour du focus |
+| TRA-C27 | P2 | 2 | friction | jugement | S | faible | Transverse | Supprimer mon compte : l'export des données n'est pas proposé au moment où il compte ⚠ sensible |
+| TRA-C28 | P2 | 2 | clarte | observation | S | faible | Transverse | Permissions : deux façons de demander les notifications, aucune place pour voir ou changer son choix |
 | ENT-C12 | P3 | 2 | accessibilite | observation | S | faible | Entrée et navigation | Clavier : pas de lien d'évitement, la barre de navigation arrive après tout le fil |
 | ENT-C16 | P3 | 2 | accessibilite | observation | S | faible | Entrée et navigation | « Avant de continuer » : case de 13 px et croix qui ne ferme pas vraiment ⚠ sensible |
 | FIL-C14 | P3 | 2 | friction | jugement | S | faible | Fil et interactions | Sur petit écran, le premier contenu commence à mi-hauteur |
@@ -205,6 +225,8 @@
 | MSG-C84 | P3 | 2 | polish | observation | S | faible | Messagerie | Transférer : la conversation d'origine est proposée en premier et l'envoi part sans confirmation |
 | PAR-C18 | P3 | 2 | accessibilite | observation | S | faible | Partage | Cibles de partage sous 44 px |
 | SOC-C01 | P3 | 2 | accessibilite | observation | S | faible | Transverse | Plusieurs commandes fréquentes mesurent moins de 44 px |
+| TRA-C20 | P3 | 2 | clarte | observation | S | faible | Transverse | Installer l'application : sur téléphone, des consignes d'ordinateur, un faux « Installation en cours… » et l'ancien violet |
+| TRA-C26 | P3 | 2 | clarte | hypothese | S | faible | Transverse | Textes légaux : longues feuilles sans sommaire, dates de version différentes, et une contradiction apparente sur l'identité de l'éditeur ⚠ sensible |
 | PCS-C04 | P3 | 1 | polish | observation | S | faible | Parcours de bout en bout | Le compteur d'abonnés ne bouge pas après « Suivre » |
 | PCS-C05 | P3 | 1 | clarte | hypothese | M | faible | Parcours de bout en bout | La conversation ouverte depuis une publication ne rappelle pas ce qui l'a motivée |
 | PCS-C06 | P3 | 1 | polish | observation | S | faible | Parcours de bout en bout | Le même geste d'inscription porte deux noms : « Je viens » et « Je participe » |
@@ -285,6 +307,13 @@
 | PAR-C19 | P3 | 1 | polish | observation | S | faible | Partage | Après le partage, la feuille reste ouverte ici et se ferme là |
 | PAR-C21 | P3 | 1 | polish | hypothese | S | moyen | Partage | Page d'aperçu : nue pour un humain pris pour un robot ⚠ sensible |
 | SOC-C03 | P3 | 1 | polish | jugement | L | moyen | Transverse | Tablette et ordinateur : la colonne mobile au milieu d'un grand vide |
+| TRA-C14 | P3 | 1 | polish | jugement | M | faible | Transverse | Notifications : aucun regroupement, plafond de 30 sans « voir plus » |
+| TRA-C16 | P3 | 1 | polish | observation | S | faible | Transverse | Libellés de notification préfixés du nom même quand la phrase n'a pas de sujet |
+| TRA-C22 | P3 | 1 | polish | observation | S | faible | Transverse | Synthèse : deux « × » superposés dans dix fenêtres |
+| TRA-C23 | P3 | 1 | clarte | observation | M | faible | Transverse | Synthèse : un même objet porte plusieurs noms (post/publication, événement/activité/rencontre, feed/fil, likes/j'aime) |
+| TRA-C24 | P3 | 1 | polish | observation | M | faible | Transverse | Synthèse : des emojis servent encore d'icônes de fonction |
+| TRA-C25 | P3 | 1 | polish | observation | S | faible | Transverse | « À propos » affiche une version figée (« Beta 1.1 · Mai 2026 ») et un emoji en guise de logo |
+| TRA-C29 | P3 | 1 | clarte | jugement | S | faible | Transverse | « Feedback & aide » n'offre aucune aide : un formulaire qui ouvre la messagerie du téléphone |
 
 ## P0 — parcours bloqué ou conséquence grave
 
@@ -337,6 +366,22 @@
 - **Risque de régression** : Le premier usage (invite d'autorisation) ne doit plus démarrer d'enregistrement : la personne réappuie une fois l'accès accordé. Verrous : audit-2026-11-04 « mise à jour pendant un vocal » (pwa-maj-pendant-appel), message-media-echec.
 - **Critère d'acceptation** : Toucher de 100 ms sur le micro, flux disponible après 300 ms : aucune piste audio active 1 s plus tard (`_isRecording` faux, barre masquée), aucun message créé, une consigne visible.
 - **Fichiers probables** : `js/app-09-boot-pwa.js`, `index.html`
+
+### TRA-C17 — Sur la fiche d'activité, « Signaler » (et « Inviter ») restent sous le pied collant : impossible de les toucher  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Fiche v4b — bouton reportEvent (app-07:4512, rendu .v4b-fiche) ; pied #eventDetailCta position fixed 129 px ; `.event-detail-body` padding-bottom 100 px ; défileur #eventDetailPage
+- **Domaine** : Transverse · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sondes transverse-04/05 (m390, participant) : au défilement maximal de #eventDetailPage, « Signaler cet événement » occupe (16, 703, 358 × 41) ; `elementFromPoint` en son centre = #eventDetailCta (haut du pied à 715 px, hauteur 129 px) ; la marge basse du corps (100 px) est plus courte que le pied. Capture TRA-050 : « Inviter » est aussi à moitié couvert. Non constaté par le domaine irl-fiche.
+- **Problème** : On ne peut pas signaler une activité depuis sa fiche.
+- **Situation déclenchante** : Toute personne qui veut signaler une activité suspecte (lieu inexistant, comportement).
+- **Conséquence pour l'utilisateur** : Sur un produit qui organise des rencontres physiques, la porte de signalement la plus importante est fermée sans qu'on le sache.
+- **Proposition** : `.event-detail-body { padding-bottom: calc(hauteur du pied + 20 px + safe-area) }` (ou hauteur mesurée du pied en variable CSS) ; vérifier toutes les fiches à pied collant (publication, profil).
+- **Visuels** : [TRA-050](galerie/index.html#/surface/TRA-050) · **Surfaces** : TRA-050
+- **Priorité** : P1 · **Gravité** : 4/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Hauteur du pied variable selon l'état (organisateur, liste d'attente, terminé) : mesurer plutôt que fixer.
+- **Critère d'acceptation** : Au défilement maximal, `elementFromPoint` au centre de « Signaler » rend le bouton, pour chaque état du pied, à 360 et 390 px.
+- **Fichiers probables** : `styles.css`, `js/ui-v4b-fiche.js`
 
 ### PCS-C01 — La porte « Voir l'activité » n'apparaît qu'au bout d'une minute
 
@@ -1057,6 +1102,118 @@
 - **Risque de régression** : Originale supprimée ou devenue privée après coup (afficher « publication indisponible ») ; partage-bobine.spec.js.
 - **Critère d'acceptation** : Après repartage, la carte contient une zone cliquable qui ouvre la publication d'origine, et son média s'il existe.
 - **Fichiers probables** : `js/app-02-state-utils.js`, `js/app-03-posts-vlogs.js`, `js/app-05-config-profil.js`
+
+### TRA-C01 — Synthèse : les toasts sont peints sous toute fenêtre, feuille, conversation ou lecteur — refus, validations et confirmations passent inaperçus
+
+- **Emplacement** : Composant toast — `.toast-stack` position absolute, z-index 200 (styles.css:1468-1485) ; superpositions : `.modal-backdrop` 10001 (styles.css:1382), `#conv-fullpage` 1200, `.reels-viewer` 9999 (styles.css:4736) ; toast() (js/app-02-state-utils.js:3324)
+- **Domaine** : Transverse · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sonde transverse-03 (toast figé : animation coupée, `pointer-events` levé le temps de la mesure, car `elementFromPoint` ignore un élément en `pointer-events:none`) : fil → visible ; page d'une publication → visible ; clavier simulé (fenêtre 544 px) → visible, bas à 454 px ; fenêtre ouverte → dessus = #modalContent ; conversation → dessus = #convFpThread ; lecteur de bobines → dessus = #reelsList. Nouvelle occurrence : « Envoyer le signalement » sans motif émet « Dis-nous en deux mots… » (app-04:5299) sous la fenêtre (capture TRA-041). Constats de domaine regroupés : PAR-C03 (partage), IRL-C65 (création d'activité), MSG-C85 (conversation), BOB-C20 (bobines).
+- **Problème** : Dès qu'une fenêtre, une conversation ou le lecteur est ouvert, les messages de l'application sont invisibles : l'appui semble ne rien faire.
+- **Situation déclenchante** : Tout toast émis pendant qu'une superposition est ouverte — c'est-à-dire la plupart des validations de formulaires, des refus serveur et des confirmations de partage.
+- **Conséquence pour l'utilisateur** : On réessaie, on abandonne, ou on croit réussi ce qui a échoué ; une validation de signalement invisible peut faire renoncer à signaler.
+- **Proposition** : Sortir la pile de la coque : `position:fixed`, z-index au-dessus de toute superposition (z-index max), bas à `calc(96px + safe-area)` au-dessus de la barre d'onglets ; quand une fenêtre, une conversation ou le lecteur est ouvert, la poser en HAUT de l'écran (sous la zone sûre) pour ne masquer ni les boutons ni le champ de saisie. Une seule règle CSS corrige les quatre domaines.
+- **Visuels** : [TRA-041](galerie/index.html#/surface/TRA-041), [TRA-042](galerie/index.html#/surface/TRA-042) · **Surfaces** : TRA-041, TRA-042, TRA-040
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune ; à faire avant TRA-C02.
+- **Risque de régression** : Position des toasts sur les écrans sans superposition (iPhone à barre d'accueil : le calcul safe-area de styles.css:1471 est à garder). Verrous e2e qui lisent `#toastStack` par position.
+- **Critère d'acceptation** : Avec une fenêtre, une conversation ou le lecteur ouverts, `elementFromPoint` au centre d'un toast rend le toast (pointer-events levé pour la mesure), à 360 et 390 px ; le toast ne recouvre ni le bouton principal de la fenêtre ni le champ de saisie.
+- **Fichiers probables** : `styles.css`, `js/app-02-state-utils.js`
+
+### TRA-C03 — Synthèse : des écritures refusées ou inexistantes sont annoncées réussies, dans tous les domaines
+
+- **Emplacement** : Patron « toast de succès sans lecture de `{ error }` » : saveMainProfile (app-06:2099), deleteCommentEntry (app-04:2444), addGroupMember (app-05:2211), publication (app-06:5307) ; et, ici, activatePause (app-02:4462), « Configuration appliquée ! » (app-05:245), toast de reconnexion (app-04:7586)
+- **Domaine** : Transverse · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Constats de domaine regroupés : PRO-C01 (profil — confidentialité comprise — annoncé « mis à jour » sur un refus 500), FIL-C06 (commentaire « supprimé » qui revient), MSG-C05 (membre « ajouté » refusé), CRE-C04 (publication « connexion lente » contradictoire), et voisins IRL-C63, MSG-C11, MSG-C23, FIL-C09. Transverse : « Mode pause activé — 1h » sans aucun effet (TRA-018) ; « 🟢 Connexion rétablie — envoi des messages en attente » émis à chaque retour réseau même file vide (TRA-062, app-04:7586) ; « Notifications mises à jour » pour cinq réglages jamais lus (TRA-010).
+- **Problème** : L'application dit « fait » sans savoir si c'est fait.
+- **Situation déclenchante** : Panne serveur, refus de droits, réseau lent — ou réglage non branché.
+- **Conséquence pour l'utilisateur** : Perte de confiance au premier écart constaté ; pour la confidentialité (PRO-C01) ou la modération, la personne se croit protégée.
+- **Proposition** : Une règle d'équipe et une aide unique : `annoncerResultat(promesse, {ok, ko})` qui attend la réponse, lit `{ error }` et choisit le toast (succès vert / échec ambre) ; interdire `toast("… ✅")` hors de cette aide (verrou statique dans `npm run verif`). Les réglages sans effet sont retirés (TRA-C04, TRA-C05, TRA-C07).
+- **Visuels** : [TRA-018](galerie/index.html#/surface/TRA-018) · **Surfaces** : TRA-018, TRA-062, TRA-010
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : TRA-C02 (types d'échec).
+- **Risque de régression** : Chaque site corrigé change un toast lu par les e2e ; écritures optimistes à garder (annuler l'affichage sur refus, comme blockUser app-04:5169).
+- **Critère d'acceptation** : Avec une panne 500 programmée sur chaque table écrite, aucun toast de succès n'apparaît (sondes PRO, FIL, MSG, CRE rejouées) ; aucun toast « … activé » sans effet observable.
+- **Fichiers probables** : `js/app-02-state-utils.js`, `js/app-04-comments-shop.js`, `js/app-05-config-profil.js`, `js/app-06-reels-partage.js`
+
+### TRA-C04 — Réglages des notifications : cinq interrupteurs sur six ne commandent rien
+
+- **Emplacement** : Paramètres › Personnalisation › Notifications — openNotifSettings / saveNotifSettings (js/app-02-state-utils.js:3994-4016)
+- **Domaine** : Transverse · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Code : `cfg.notifs.posts∣messages∣likes∣events∣system` sont écrits dans `passio_config` et lus nulle part (recherche de `notifs.` dans js/ et supabase/functions : seul `notifs.recap` est lu, recap-semaine.js:72). Les notifications sont écrites par l'émetteur (`supaInsertNotif`, app-08:7252) et poussées par `notify-call` sans consulter ce choix. Capture TRA-010 : six cases, « Sauvegarder » → toast « Notifications mises à jour ».
+- **Problème** : Décocher « Messages » ou « Likes & commentaires » ne change rien : les notifications continuent.
+- **Situation déclenchante** : Une personne submergée qui veut réduire ses notifications.
+- **Conséquence pour l'utilisateur** : Elle croit avoir réglé, reçoit quand même, et conclut que l'application ne respecte pas ses choix (ou coupe toutes les notifications du téléphone, y compris les rappels d'activité).
+- **Proposition** : Comme pour la confidentialité le 2026-11-06 : retirer les cinq interrupteurs inertes et dire en une phrase ce qui notifie ; ne réintroduire un tri que branché côté émetteur ET côté `notify-call`. Montrer à cet endroit l'état de la permission du téléphone (TRA-C28).
+- **Visuels** : [TRA-010](galerie/index.html#/surface/TRA-010) · **Surfaces** : TRA-010, TRA-003
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : La clé `cfg.notifs` reste lue pour `recap` (ne pas la supprimer). Test e2e éventuel sur les ids `notifPosts…`.
+- **Critère d'acceptation** : Chaque contrôle de l'écran Notifications a un effet vérifiable (sonde : décocher → aucune notification de ce type reçue) ; sinon il n'est pas affiché.
+- **Fichiers probables** : `js/app-02-state-utils.js`
+
+### TRA-C05 — « Bien-être digital » ne fait rien : temps d'écran toujours à 0, limite et pause jamais appliquées  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : Paramètres › Bien-être digital — openScreenTime (app-02:4267-4357), code parental (4359-4440), openPauseMode / activatePause (4448-4465)
+- **Domaine** : Transverse · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Code : `passio_usage_min` n'est écrit nulle part (l'écran affiche toujours « 0h 00min utilisé aujourd'hui ») ; `passio_limit_sec` n'est lu que par cet écran (aucune coupure) ; `activatePause(min)` n'appelle que `toast("Mode pause activé — …")`. Captures TRA-016 (compteur à 0, limite à la seconde), TRA-017, TRA-018 (toast « Mode pause activé — 1h », l'application reste entièrement utilisable). Le « code parental » est un haché posé dans le localStorage de l'appareil.
+- **Problème** : Une personne qui veut limiter son usage, ou un parent qui pose un code, croit l'avoir fait ; rien ne se passe.
+- **Situation déclenchante** : Utilisation de l'une des deux entrées de la section.
+- **Conséquence pour l'utilisateur** : Promesse de protection non tenue ; la crédibilité des autres réglages en souffre. PASSIO étant réservé aux majeurs (politique, point 2), un « contrôle parental » brouille aussi le message.
+- **Proposition** : Retirer la section (comme les quatre réglages de confidentialité retirés le 2026-11-06). Si le bien-être reste un objectif : une seule fonction réelle, « Pause » qui suspend notifications poussées et pastilles jusqu'à l'heure choisie, avec son état visible dans le panneau.
+- **Visuels** : [TRA-001](galerie/index.html#/surface/TRA-001), [TRA-016](galerie/index.html#/surface/TRA-016), [TRA-018](galerie/index.html#/surface/TRA-018) · **Surfaces** : TRA-004, TRA-016, TRA-017, TRA-018, TRA-081
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Clés locales `passio_limit_sec`, `passio_parental_code` listées dans la purge de compte (app-02:4690) : garder la purge.
+- **Critère d'acceptation** : Le panneau ne propose aucun réglage de temps ou de pause sans effet mesurable (sonde : après « Pause 1 h », aucune notification poussée ni pastille pendant l'heure, ou entrée absente).
+- **Fichiers probables** : `index.html`, `js/app-02-state-utils.js`
+
+### TRA-C10 — Bloquer : quatre portes, deux comportements — immédiat sans confirmation, ou boîte native  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : blockUser (app-04:5147) depuis menu de publication (app-04:41), menu de commentaire (2407), profil visité (4680) ; _blockFromConv (app-09:1807, `confirm()`)
+- **Domaine** : Transverse · **Nature** : friction · **Type** : observation
+- **Preuve** : Constats de domaine : FIL-C08 et PRO-C06 (blocage au premier toucher, abonnement retiré en silence). Code : depuis une conversation, `confirm("Bloquer X ?\nSes messages seront masqués et tu ne le suivras plus.")` — seule porte qui dit les conséquences, dans une boîte du navigateur. PRO-C07 / PRO-C20 : l'effet d'un blocage n'est pas visible sur le profil.
+- **Problème** : Le même geste grave est tantôt irréversible au premier toucher, tantôt confirmé dans une boîte système.
+- **Situation déclenchante** : Bloquer depuis une publication, un commentaire, un profil ou une conversation.
+- **Conséquence pour l'utilisateur** : Blocages accidentels (désabonnement compris) ; ou hésitation devant une boîte non stylée.
+- **Proposition** : Une feuille de confirmation commune « Bloquer Léa Fontaine ? » listant les effets (ne plus se voir, ne plus s'écrire, abonnement retiré) et « Bloquer » en rouge, sur le modèle de « Se déconnecter ? » (TRA-026) ; même composant pour les quatre portes.
+- **Visuels** : [TRA-026](galerie/index.html#/surface/TRA-026) · **Surfaces** : TRA-073
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Composant de TRA-C11.
+- **Risque de régression** : e2e de blocage (un clic de plus) ; verrou d'écriture `_ecritureBlocageEnCours`.
+- **Critère d'acceptation** : Les quatre portes ouvrent la même feuille ; aucune ligne `blocks` n'est écrite avant « Bloquer » dans la feuille.
+- **Fichiers probables** : `js/app-04-comments-shop.js`, `js/app-09-boot-pwa.js`
+
+### TRA-C11 — Synthèse : actions destructrices sans confirmation, ou confirmées par 8 `confirm()` et saisies par 4 `prompt()` natifs
+
+- **Emplacement** : donnees/inventaire-code.json › dialoguesNatifs : confirm (leaveGroup app-05:2467, cancelEventSeries app-07:6815, toggleCancelEvent 6848, deleteEventConfirm 6867, resetApp app-08:353, _clearConvMessages app-09:1726, _deleteConv 1758, _blockFromConv 1807) ; prompt (editGroupDescription app-05:2484, meAddText app-08:1452, _meRenderOverlay 1511, _searchConv app-09:1820)
+- **Domaine** : Transverse · **Nature** : friction · **Type** : observation
+- **Preuve** : Sans confirmation : FIL-C06 (supprimer un commentaire), FIL-C08 / PRO-C06 (bloquer), MSG-C09 (retirer un membre), MSG-C58 (supprimer un message), MSG-C84 (transférer). Natifs : IRL-C60 (annuler / supprimer une activité), CRE-C09 (texte de story par prompt). `resetApp` (confirm) n'est plus appelée nulle part : code mort. Les boîtes natives ne se capturent pas (titre = adresse du site sous Android). Modèle interne réussi : « Se déconnecter ? » (TRA-026) et « Supprimer mon compte » (TRA-027).
+- **Problème** : Selon l'écran, un geste irréversible part au premier toucher, ou dans une boîte système qui ne ressemble pas à PASSIO.
+- **Situation déclenchante** : Supprimer, retirer, bloquer, annuler une activité, quitter un groupe.
+- **Conséquence pour l'utilisateur** : Pertes de données et désinscriptions accidentelles ; confiance entamée par des boîtes « passio-app.netlify.app indique… ».
+- **Proposition** : Un composant `confirmerAction({ titre, consequence, libelle, danger })` en feuille (gabarit de TRA-026) pour tout geste irréversible ; un toast « Annuler » de 6 s pour les gestes réversibles (retirer un membre, supprimer pour moi) ; remplacer les 4 `prompt()` par des champs dans la page ; supprimer `resetApp`.
+- **Visuels** : [TRA-026](galerie/index.html#/surface/TRA-026) · **Surfaces** : TRA-073, TRA-074, TRA-026
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : M · **Risque technique** : moyen
+- **Dépendances** : Aucune.
+- **Risque de régression** : e2e qui acceptent les dialogues par `page.on('dialog')` (à réécrire) ; promesses en attente si la feuille est fermée par la poignée (cf. _demanderMotifSignalement, app-04:5322 : même garde à reprendre).
+- **Critère d'acceptation** : `grep -c "confirm(\∣prompt(" js/` = 0 ; chaque geste de la liste ouvre la feuille commune ou propose « Annuler ».
+- **Fichiers probables** : `js/app-04-comments-shop.js`, `js/app-05-config-profil.js`, `js/app-07-ia-explore-irl.js`, `js/app-08-ui-modals-tour.js`, `js/app-09-boot-pwa.js`
+
+### TRA-C15 — Le rappel d'activité annonce « dans une semaine » une activité du lendemain
+
+- **Emplacement** : _checkEventReminders (js/app-07-ia-explore-irl.js:4683-4726) : `when = tier.label` hors palier d1
+- **Domaine** : Transverse · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Capture TRA-031 : activité le lendemain à 22:41 (fiche TRA-034 : « Demain ») ; notification locale « Rappel : Atelier réglage de guitare dans une semaine à 22:41 · Lyon ». Code : le palier retenu est le plus proche encore devant (`diff <= 7 j` → `d7`) et son libellé est affiché tel quel ; seul le palier `d1` recalcule « aujourd'hui / demain ». Une activité à 26 h reçoit donc « dans une semaine ».
+- **Problème** : Le rappel donne une date fausse, sans jour.
+- **Situation déclenchante** : Inscription à une activité qui a lieu entre 24 h et 7 jours plus tard.
+- **Conséquence pour l'utilisateur** : On croit avoir le temps et on manque l'activité : la boucle Fil → IRL casse au dernier pas.
+- **Proposition** : Composer la date réelle (`fmtEventDate` : « demain à 22:41 », « samedi à 14:00 ») quel que soit le palier ; ne garder le palier que pour décider QUAND rappeler.
+- **Visuels** : [TRA-031](galerie/index.html#/surface/TRA-031) · **Surfaces** : TRA-031
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Mémoire `passio_event_reminded` inchangée ; test unitaire possible sur des écarts 3 h / 26 h / 6 j.
+- **Critère d'acceptation** : Pour une activité à J+1, J+3 et J+6, le texte du rappel nomme le bon jour.
+- **Fichiers probables** : `js/app-07-ia-explore-irl.js`
 
 ## P2 — amélioration significative du confort
 
@@ -3028,6 +3185,198 @@
 - **Critère d'acceptation** : Conversation fermée : aucune tabulation n'atteint un descendant de `#conv-fullpage` ; ouverte : le focus peut atteindre le champ Message.
 - **Fichiers probables** : `js/app-04-comments-shop.js`, `index.html`
 
+### TRA-C02 — Les toasts ne distinguent pas l'échec de la réussite (74 échecs sur 85 émis en « info ») et durent 3 s quelle que soit leur longueur
+
+- **Emplacement** : toast() (js/app-02-state-utils.js:3324-3337) ; styles `.toast.info∣error∣warning∣success` (styles.css:1487-1530) ; 362 appels littéraux (donnees/inventaire-code.json › toasts)
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : observation
+- **Preuve** : Inventaire : 362 toasts (301 info, 27 success, 18 warning, 13 error, 2 reward, 1 loading). Parmi les 85 libellés qui annoncent un échec (« impossible », « non enregistré », « réessaie », « ⚠️ »…), 74 sont émis sans type, donc peints du même dégradé violet que « Lien copié » (ex. « ⚠️ Blocage non enregistré — réessaie », app-04:5176 ; « Modification refusée », app-04:2533). Durée unique : retrait à 3 s (`setTimeout(…, 3000)`), sortie animée dès 2,6 s ; 17 libellés dépassent 70 caractères (jusqu'à 113, app-02:5278). Capture TRA-043 : le toast long occupe 390 px, bord à bord, en pilule (border-radius 999px). 50 libellés commencent par un emoji.
+- **Problème** : Un refus ressemble à une confirmation ; un message long disparaît avant d'être lu et touche les bords de l'écran.
+- **Situation déclenchante** : Tout échec signalé par toast sans type ; tout message de plus d'une ligne.
+- **Conséquence pour l'utilisateur** : On croit réussi ce qui a échoué ; on manque la consigne (« écris à … », « recharge »).
+- **Proposition** : Règle du composant : (1) tout échec passe `type` « warning » ou « error » (les couleurs existent déjà, AA vérifié) et perd son emoji ; (2) durée = max(3 s, 60 ms par caractère), plafonnée à 8 s ; (3) `max-width: min(440px, 100% − 32px)`, coins de carte (16 px) dès deux lignes ; (4) un toast qui porte une consigne d'action (« recharge ») devient cliquable avec un verbe. Balayage des 74 appels par motif (« impossible∣non enregistr∣réessaie∣⚠️ »).
+- **Visuels** : [TRA-043](galerie/index.html#/surface/TRA-043) · **Surfaces** : TRA-043, TRA-072
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : M · **Risque technique** : faible
+- **Dépendances** : TRA-C01 (position de la pile).
+- **Risque de régression** : Tests qui lisent le texte exact d'un toast avec son emoji ; verrous de couleur des toasts (styles.css:1506).
+- **Critère d'acceptation** : Aucun libellé d'échec de l'inventaire n'est émis en « info » ; un toast de 113 caractères reste ≥ 6 s et laisse 16 px de marge de chaque côté à 360 px.
+- **Fichiers probables** : `js/app-02-state-utils.js`, `styles.css`, `js/app-04-comments-shop.js`, `js/app-05-config-profil.js`, `js/app-07-ia-explore-irl.js`
+
+### TRA-C06 — « Apparence & thème » réintroduit le mode sombre retiré et six palettes hors charte ; « Disposition des onglets » et « Appliquer » sont sans effet
+
+- **Emplacement** : Configurateur — openConfigurator / setConfig / applyConfig / applyNavOrder (js/app-05-config-profil.js:1-260), ACCENT_COLORS (id `noir` « Sombre »)
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : observation
+- **Preuve** : Capture TRA-014 : sept thèmes (Violet, Rose, Bleu, Vert, Orange, Rouge, Sombre) ; TRA-055 : après un toucher sur « Sombre », le fil passe en thème sombre partiel (barre, fonds, textes réécrits par `--text:#e2e8f0`, `--bg-card` rgba(30,27,75,.92)). L'ouverture charge 16 polices Google (app-05:186-197). TRA-015 : « Disposition des onglets » liste « Fil, Bobines, Explorer, Créer, Messages, IRL » ; `applyNavOrder` réordonne `#appNav`, la barre historique masquée par UI v2 — sans effet sur la barre visible (Découvrir, Rencontrer, Créer, Messages, Profil). « Appliquer » affiche « Configuration appliquée ! » alors que chaque choix s'applique au toucher. Double « × » (span du gabarit app-05:229 + bouton injecté).
+- **Problème** : Un outil d'avant la charte « UI v2 » permet de repeindre l'application hors identité, en mode sombre, et propose des réglages qui ne font rien.
+- **Situation déclenchante** : Toute personne qui ouvre « Apparence & thème ».
+- **Conséquence pour l'utilisateur** : Contrastes et identité non garantis (le mode sombre n'est ni maintenu ni testé), captures partagées qui ne ressemblent pas à PASSIO, confusion sur la barre d'onglets.
+- **Proposition** : Réduire l'écran à « Affichage » : la taille du texte (utile à la lecture), une seule croix, « Fermer ». Retirer palettes, Sombre, polices, coins et ordre des onglets ; à l'ouverture, effacer de `passio_config` les clés `accent`, `fontFamily`, `radius`, `navOrder` déjà posées.
+- **Visuels** : [TRA-014](galerie/index.html#/surface/TRA-014), [TRA-055](galerie/index.html#/surface/TRA-055) · **Surfaces** : TRA-014, TRA-015, TRA-055, TRA-003
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Comptes ayant déjà choisi un thème : le retour au violet doit être fait au démarrage (applyConfig). `updateLogos` dépend des variables d'accent.
+- **Critère d'acceptation** : Aucun chemin de l'interface ne pose `--text` clair ou un `--accent` autre que #6D32F4 ; l'écran ne montre qu'une croix.
+- **Fichiers probables** : `js/app-05-config-profil.js`, `index.html`
+
+### TRA-C07 — « Contenu & feed » : « Afficher contenu sensible » et « Langue » ne font rien
+
+- **Emplacement** : openContentSettings / saveContentSettings (js/app-02-state-utils.js:4241-4265)
+- **Domaine** : Transverse · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Code : `content.showSensitive` et `content.language` sont écrits et lus nulle part ailleurs (recherche dans js/). Capture TRA-013 : « Langue : Français / English / Español » alors que l'interface n'existe qu'en français. Lecture auto et économie de données sont, elles, lues par `preferencesVideoPublique` (app-02:4153).
+- **Problème** : Choisir « English » ou « Afficher contenu sensible » ne change rien.
+- **Situation déclenchante** : Toute personne qui explore ses réglages.
+- **Conséquence pour l'utilisateur** : Réglage décoratif de plus ; « contenu sensible » laisse croire à un filtrage qui n'existe pas.
+- **Proposition** : Garder les deux réglages branchés, renommer l'écran « Vidéos et données » ; retirer les deux autres.
+- **Visuels** : [TRA-013](galerie/index.html#/surface/TRA-013) · **Surfaces** : TRA-013
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Aucune lecture des deux clés ; `preferencesVideoPublique` intacte.
+- **Critère d'acceptation** : L'écran ne propose que des réglages lus par le code.
+- **Fichiers probables** : `js/app-02-state-utils.js`, `index.html`
+
+### TRA-C08 — Panneau Paramètres : cibles de 33 px en 11–12 px, section « Démo » ouverte à tous, Échap ne ferme pas
+
+- **Emplacement** : #devPanel (index.html:484-599 ; styles.css:2952-3020) ; toggleDevPanel (app-02:3916)
+- **Domaine** : Transverse · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Sonde transverse-01 : entrées de section 33 px de haut, texte 12 px ; « Se déconnecter » et « Supprimer mon compte » 33 px, texte 11 px ; en-têtes de section 47 px (bons). Section « Démo » : « Afficher le pitch » (landing investisseurs) et « Tour démo » visibles de tout compte ; « Voir l'onboarding » parmi les réglages du compte. Sonde transverse-06 : Échap ne ferme pas le panneau (le toucher au-dehors, oui) ; « ⋯ » sans `aria-expanded`, sections sans `aria-expanded`. Porte « ⋯ » : 34 × 34 px (cf. SOC-001).
+- **Problème** : Petites cibles serrées dans un panneau étroit (260 px) ; des outils de présentation mêlés aux réglages.
+- **Situation déclenchante** : Ouverture du panneau sur téléphone, à une main.
+- **Conséquence pour l'utilisateur** : Erreurs de toucher entre « Se déconnecter » et « Supprimer mon compte » ; « Afficher le pitch » sort la personne de l'application vers une page d'investisseurs.
+- **Proposition** : Boutons à 44 px et 14 px, zone danger à 13 px ; retirer « Démo » (réservée à un drapeau éditeur, comme « Passions illimitées ») ; déplacer « Voir l'onboarding » vers Support à côté de « Revoir les repères » ; Échap et retour système ferment le panneau ; `aria-expanded` sur « ⋯ » et sur chaque section.
+- **Visuels** : [TRA-001](galerie/index.html#/surface/TRA-001), [TRA-002](galerie/index.html#/surface/TRA-002) · **Surfaces** : TRA-001, TRA-002, TRA-005, TRA-006
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : e2e qui ouvrent le panneau par `toggleDevPanel` et cliquent un libellé ; `majSectionCompte` réécrit des libellés à chaque ouverture.
+- **Critère d'acceptation** : À 360 px, chaque bouton du panneau mesure ≥ 44 px de haut ; la section Démo n'apparaît pas pour un compte ordinaire ; Échap ferme le panneau.
+- **Fichiers probables** : `index.html`, `styles.css`, `js/app-02-state-utils.js`
+
+### TRA-C09 — Comptes bloqués : un compte non résolu s'affiche « ? Utilisateur », et « Débloquer » fait 29 px  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : _blockedListHtml / openBlockedList (js/app-04-comments-shop.js:5412-5440)
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : observation
+- **Preuve** : Capture TRA-012 : deux lignes `blocks` (Tom Girard, Marie-Charlotte …) ; Tom, absent du cache local `userById`, apparaît « ? Utilisateur ». Boutons « Débloquer » 81 × 29 px, texte 11 px. Aucune date de blocage.
+- **Problème** : On ne sait pas qui l'on débloque.
+- **Situation déclenchante** : Compte bloqué depuis un autre appareil, ou dont le profil n'est plus dans le cache.
+- **Conséquence pour l'utilisateur** : Débloquer au hasard une personne qu'on avait bloquée pour se protéger.
+- **Proposition** : Relire nom et avatar des comptes bloqués sur `profiles` à l'ouverture (lecture publique, aucun nouveau droit) ; afficher la date ; « Débloquer » à 44 px ; garder le déblocage immédiat (réversible) mais dire ce qu'il rétablit.
+- **Visuels** : [TRA-012](galerie/index.html#/surface/TRA-012) · **Surfaces** : TRA-012
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Lecture de `profiles` pour des comptes bloqués : vérifier que la policy l'autorise (profil public).
+- **Risque de régression** : Respecter l'isolement des blocages (RLS `blocks` : blocker_id = moi).
+- **Critère d'acceptation** : Chaque ligne de la liste nomme la personne ; « Débloquer » ≥ 44 px.
+- **Fichiers probables** : `js/app-04-comments-shop.js`
+
+### TRA-C12 — Toucher une notification dont la cible a disparu ne dit rien ; la décision de modération ne désigne aucune publication  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : openNotifTarget (js/app-08-ui-modals-tour.js:2470-2514) ; kind `moderation` sans cas (default)
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : observation
+- **Preuve** : Sonde transverse-02 (une notification de chaque type) : « a aimé ton commentaire » vers une publication absente → panneau fermé, fil, aucun toast ; « t'a envoyé un message » vers une conversation absente → fil, aucun toast ; activité supprimée → hash #event-… sans fiche ni message ; « Ta publication a été masquée après signalement » → rien (pas de cible). Capture TRA-033.
+- **Problème** : Le panneau se ferme et l'on reste sur le fil sans savoir pourquoi.
+- **Situation déclenchante** : Contenu supprimé entre-temps, conversation quittée, activité supprimée, décision de modération.
+- **Conséquence pour l'utilisateur** : Sentiment de panne ; pour la modération, impossible de savoir quelle publication est visée ni de contester.
+- **Proposition** : Quand la cible manque : toast « Cette publication n'existe plus » (activité, conversation : même phrase) et garder le panneau ouvert ; pour `moderation` : porter `ref_id` (publication) et ouvrir la publication avec la décision et le recours (contact).
+- **Visuels** : [TRA-033](galerie/index.html#/surface/TRA-033), [TRA-032](galerie/index.html#/surface/TRA-032) · **Surfaces** : TRA-033, TRA-032
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Notification `moderation` écrite par l'outil de modération : y poser `ref_id`.
+- **Risque de régression** : openPost / openConversation / openEventDetails doivent rendre un verdict (trouvé / absent).
+- **Critère d'acceptation** : Pour chaque kind de `_notifEmoji`, un toucher ouvre la cible ou affiche un message ; la notification de modération ouvre la publication concernée.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`
+
+### TRA-C13 — Panneau Notifications : « Tout marquer lu » n'a plus rien à faire, Accepter/Refuser à 29 px, heures sans jour
+
+- **Emplacement** : openNotifications (app-08:2383-2410), _resetNotifBadge (2415), _notifDemandeAbonnementHtml (2299), fmtTime
+- **Domaine** : Transverse · **Nature** : friction · **Type** : observation
+- **Preuve** : Sonde transverse-02 : pastille « 8 » avant ouverture, vide dès l'ouverture (toutes marquées lues par `_resetNotifBadge`) ; « Tout marquer lu » ne fait donc que fermer le panneau et émettre « Notifications marquées comme lues ». Boutons « Accepter » 69 × 29 et « Refuser » 63 × 29 px. Au-delà d'une heure, l'heure seule (« 19:25 », « 00:30 ») sans « hier » ni « aujourd'hui ». Deux boutons de pied (« Tout marquer lu » / « OK »).
+- **Problème** : Un bouton inutile, des cibles trop petites pour trancher une demande d'abonnement, une chronologie ambiguë.
+- **Situation déclenchante** : Toute ouverture du panneau ; demande d'un compte privé.
+- **Conséquence pour l'utilisateur** : Erreur de toucher entre Accepter et Refuser ; « 00:30 » lu comme aujourd'hui alors que c'était hier.
+- **Proposition** : Pied réduit à « Fermer » ; sections « Nouveau » / « Plus tôt » ; Accepter/Refuser à 44 px ; « Aujourd'hui, 19:25 » / « Hier, 00:30 » / date au-delà.
+- **Visuels** : [TRA-031](galerie/index.html#/surface/TRA-031), [TRA-032](galerie/index.html#/surface/TRA-032) · **Surfaces** : TRA-031, TRA-032
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : e2e qui cliquent « Tout marquer lu » ; `markAllNotifsRead` peut rester appelée ailleurs.
+- **Critère d'acceptation** : À 360 px, Accepter/Refuser ≥ 44 px ; aucune heure sans jour au-delà de 24 h ; un seul bouton de pied.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`, `styles.css`
+
+### TRA-C18 — Signalement : sept portes, trois mots pour l'objet, six réponses différentes, une porte sans motif  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : reportPost, reportCommentEntry, reportUser, reportMessage, reportStory, reportEvent, reportPassion (app-04:2970, 5230-5410, 6371 ; app-07:6940) ; _demanderMotifSignalement (app-04:5280)
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : observation
+- **Preuve** : Tableau du rapport. Activité : bouton « Signaler cet événement », fenêtre « Signaler cette rencontre », fiche « activité » (TRA-050/051). Réponses : « 🚩 Signalement envoyé. Notre équipe va vérifier. » (compte), « Publication signalée. Merci, on s'en occupe. », « Commentaire signalé. Merci, on s'en occupe. », « 🚩 Message signalé. Notre équipe va vérifier. », « Story signalée. Merci, on s'en occupe. », « Signalement envoyé — merci » (activité), « 🚩 « X » signalée. On vérifie. » (passion, sans motif ni confirmation, lien gris de 11,5 px — TRA-053). Échec : « Signalement déjà envoyé, ou impossible pour le moment. » pour un doublon comme pour une panne (TRA-052, refus 500 programmé). Bobines : aucune porte (BOB-C04) ; profil : la fenêtre remplace le plein écran (PRO-C22). Bon point : accusé « Signalement reçu — tu seras informé·e de la décision ici » dans la cloche (app-04:5252).
+- **Problème** : Le parcours change d'une porte à l'autre et la réponse d'échec ne dit pas s'il faut réessayer.
+- **Situation déclenchante** : Signaler un contenu, un compte ou une activité.
+- **Conséquence pour l'utilisateur** : Doute sur la prise en compte (« est-ce parti ? »), signalements abandonnés après une panne prise pour un doublon.
+- **Proposition** : Un seul libellé « Signaler » + l'objet au même mot que l'écran (publication, commentaire, message, compte, activité, passion) ; la même fenêtre de motif partout (passion comprise) ; une réponse unique « Signalement envoyé. Tu seras prévenu·e de la décision dans tes notifications. » ; échec distingué : doublon (code 23505) « Tu l'as déjà signalé » / autre « Signalement non envoyé — réessaie ».
+- **Visuels** : [TRA-051](galerie/index.html#/surface/TRA-051), [TRA-052](galerie/index.html#/surface/TRA-052), [TRA-053](galerie/index.html#/surface/TRA-053) · **Surfaces** : TRA-051, TRA-052, TRA-053, TRA-082
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : TRA-C17 (porte d'activité atteignable), TRA-C01 (validation visible).
+- **Risque de régression** : supaReport rend un booléen : il faut remonter le code d'erreur pour distinguer le doublon.
+- **Critère d'acceptation** : Les sept portes ouvrent la même fenêtre (motif ≥ 3 caractères) et rendent la même phrase ; un refus 500 ne dit pas « déjà envoyé ».
+- **Fichiers probables** : `js/app-04-comments-shop.js`, `js/app-07-ia-explore-irl.js`, `js/app-08-ui-modals-tour.js`
+
+### TRA-C19 — Bandeaux du haut (hors ligne, message de l'équipe) : ils recouvrent la barre et se cachent l'un l'autre ; la reconnexion annonce un envoi fantôme
+
+- **Emplacement** : #offlineBanner (index.html:1250, fixed top 0, z 9999) ; #passioBandeauDistant (reglages-distants.js:160-192, fixed top 0, z 10050) ; toast de reconnexion (app-04:7586)
+- **Domaine** : Transverse · **Nature** : friction · **Type** : observation
+- **Preuve** : Captures TRA-060/061 (simulé : bandeau distant servi par le banc, réseau coupé par `context.setOffline` + refus Supabase) : le bandeau distant (z 10050) recouvre la barre (cloche, « ⋯ ») et masque entièrement le bandeau « Mode hors-ligne — contenu en cache » (z 9999) posé au même endroit. Le « × » du bandeau hors ligne n'a pas de nom accessible, 16 px. Constats de domaine regroupés : FIL-C25 (le bandeau hors ligne recouvre la barre du haut), MSG-C63 (il recouvre l'en-tête d'une conversation). TRA-062 : au retour du réseau, « 🟢 Connexion rétablie — envoi des messages en attente » alors qu'aucun message n'attend (toast inconditionnel).
+- **Problème** : Hors ligne, on ne le voit pas toujours ; on perd l'accès aux notifications et aux réglages ; on lit qu'un envoi a lieu quand il n'y a rien.
+- **Situation déclenchante** : Réseau instable (métro, campagne) ; message d'équipe actif.
+- **Conséquence pour l'utilisateur** : Actions tentées sans savoir qu'elles attendent ; confiance entamée par un message faux.
+- **Proposition** : Bandeau d'équipe : dans le flux en haut (il pousse l'écran), lavis violet, texte encre. Hors ligne : pastille au-dessus de la barre d'onglets « Hors ligne — ce que tu fais sera envoyé au retour du réseau », « × » nommé « Masquer » à 44 px. Reconnexion : toast seulement si la file d'envoi n'est pas vide (« 2 messages envoyés »).
+- **Visuels** : [TRA-060](galerie/index.html#/surface/TRA-060), [TRA-061](galerie/index.html#/surface/TRA-061), [TRA-062](galerie/index.html#/surface/TRA-062) · **Surfaces** : TRA-060, TRA-061, TRA-062
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Zone sûre iPhone (safe-area-inset-top) ; e2e hors ligne qui lisent #offlineBanner.
+- **Critère d'acceptation** : Avec les deux bandeaux actifs, la cloche et « ⋯ » restent touchables (elementFromPoint) et l'état hors ligne est visible ; aucun toast d'envoi sans file.
+- **Fichiers probables** : `index.html`, `js/reglages-distants.js`, `js/app-09-boot-pwa.js`, `js/app-04-comments-shop.js`
+
+### TRA-C21 — Fenêtre commune (openModal) : le focus reste derrière, pas de nom accessible, pas de retour du focus
+
+- **Emplacement** : openModal / closeModal (js/app-08-ui-modals-tour.js:32-66) ; #modalContent role=dialog aria-modal=true (index.html:1367)
+- **Domaine** : Transverse · **Nature** : accessibilite · **Type** : observation
+- **Preuve** : Sonde transverse-06 (panneau Notifications) : à l'ouverture, le focus reste sur la cloche (hors fenêtre) ; 25 tabulations sur 25 restent HORS de la fenêtre (derrière le fond) ; `aria-labelledby` et `aria-label` absents ; Échap ferme (bon) ; après fermeture, le focus tombe sur un élément sans rapport (`v3-tempt`). 69 fonctions ouvrent cette fenêtre (inventaire).
+- **Problème** : Au clavier ou au lecteur d'écran, la fenêtre est inatteignable et sans titre annoncé.
+- **Situation déclenchante** : Navigation clavier (ordinateur, clavier Bluetooth), VoiceOver/TalkBack.
+- **Conséquence pour l'utilisateur** : Les 69 fenêtres de l'application sont difficilement utilisables sans écran tactile.
+- **Proposition** : Dans openModal : mémoriser l'élément actif, poser `aria-labelledby` sur le premier `.modal-title`, déplacer le focus sur le titre (tabindex=-1), boucler la tabulation dans #modalContent ; dans closeModal : rendre le focus à l'élément mémorisé. Une modification, 69 fenêtres corrigées.
+- **Visuels** : [TRA-031](galerie/index.html#/surface/TRA-031) · **Surfaces** : TRA-031, TRA-011
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : moyen
+- **Dépendances** : Aucune.
+- **Risque de régression** : Fenêtres remplacées en place (openModal sur une modale ouverte) : ne mémoriser qu'à la première ouverture ; champs auto-focalisés (signalement) à préserver.
+- **Critère d'acceptation** : Après ouverture, `document.activeElement` est dans #modalContent ; 25 tabulations y restent ; le lecteur annonce le titre ; à la fermeture le focus revient sur la porte.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`
+
+### TRA-C27 — Supprimer mon compte : l'export des données n'est pas proposé au moment où il compte  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : openDeleteAccountConfirm (app-02:5125) ; exporterMesDonnees (app-02:4041) rangé dans Confidentialité
+- **Domaine** : Transverse · **Nature** : friction · **Type** : jugement
+- **Preuve** : Capture TRA-027 : la fenêtre liste ce qui sera effacé (bon) et exige la saisie « SUPPRIMER » (bon) mais ne mentionne pas l'export, qui existe (Confidentialité › « 📦 Exporter mes données (JSON) »). Le bouton « Supprimer définitivement » passe sur deux lignes (173 × 60 px à 390 px).
+- **Problème** : On supprime son compte sans savoir qu'on pouvait garder une copie de ses publications et messages.
+- **Situation déclenchante** : Décision de partir.
+- **Conséquence pour l'utilisateur** : Perte définitive de contenus personnels (photos, messages) que l'on aurait voulu garder.
+- **Proposition** : Encart « Avant de partir, garde une copie… » avec le bouton « Télécharger mes données » (exporterMesDonnees) au-dessus du champ de confirmation ; bouton « Supprimer » sur une ligne.
+- **Visuels** : [TRA-027](galerie/index.html#/surface/TRA-027) · **Surfaces** : TRA-027, TRA-080
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : La reconnexion exigée par l'export (`_demandeReconnexion`) peut déconnecter : enchaîner proprement.
+- **Critère d'acceptation** : La fenêtre de suppression propose l'export ; le bouton tient sur une ligne à 360 px.
+- **Fichiers probables** : `js/app-02-state-utils.js`
+
+### TRA-C28 — Permissions : deux façons de demander les notifications, aucune place pour voir ou changer son choix
+
+- **Emplacement** : Rappels d'activité : proposerRappels / activerRappelsActivite (app-07:4985-5011, pré-question) ; messagerie : requestCallNotifications (app-05:1700-1716, demande sèche) ; réglages : openNotifSettings (app-02:3994)
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : observation
+- **Preuve** : D'après le code : « ⏰ Un rappel avant d'y aller ? » explique le bénéfice, propose « Plus tard », et sur refus renvoie aux réglages du téléphone (modèle à conserver). À la première conversation, la demande système part sans un mot (MSG-C25). L'écran Notifications ne montre pas si le téléphone les autorise. Autres permissions : micro demandé avant tout compte (CRE-C14), refus de position renvoyant à un filtre disparu (IRL-C19).
+- **Problème** : La même permission est demandée tantôt avec sa raison, tantôt sans ; après un refus, aucun endroit de l'application ne permet de comprendre l'état.
+- **Situation déclenchante** : Première conversation ; refus antérieur.
+- **Conséquence pour l'utilisateur** : Refus réflexes, puis absence de rappels d'activité sans que la personne sache pourquoi.
+- **Proposition** : Pré-question unique (gabarit des rappels) avant toute demande système ; dans Notifications, une ligne d'état « Notifications du téléphone : autorisées / bloquées — comment les réactiver » (lecture de `Notification.permission`).
+- **Visuels** : [TRA-010](galerie/index.html#/surface/TRA-010) · **Surfaces** : TRA-076, TRA-077, TRA-010
+- **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : TRA-C04.
+- **Risque de régression** : `requestPermission` exige un geste : la pré-question doit garder le clic comme déclencheur.
+- **Critère d'acceptation** : Aucune demande système de notification sans pré-question ; l'état de la permission est lisible dans Notifications.
+- **Fichiers probables** : `js/app-05-config-profil.js`, `js/app-07-ia-explore-irl.js`, `js/app-02-state-utils.js`
+
 ## P3 — finition et cohérence visuelle
 
 ### ENT-C12 — Clavier : pas de lien d'évitement, la barre de navigation arrive après tout le fil
@@ -3349,6 +3698,38 @@
 - **Risque de régression** : Décalage de la barre supérieure sur 320 px. Verrous : cadrage, ios-zones-sures.
 - **Critère d'acceptation** : À 360 px, `elementFromPoint` rend la même commande sur 44 × 44 px autour du centre de chaque icône de la barre supérieure, du bouton « OK » et de chaque pastille d'envie.
 - **Fichiers probables** : `styles.css`
+
+### TRA-C20 — Installer l'application : sur téléphone, des consignes d'ordinateur, un faux « Installation en cours… » et l'ancien violet
+
+- **Emplacement** : pwaInstall / pwaShowBannerInstall / pwaShowOverlay (js/app-09-boot-pwa.js:9-232)
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : observation
+- **Preuve** : Capture TRA-065 (simulé : Chromium du banc ne déclenche pas `beforeinstallprompt` ; agent Android émulé) : toast « Installation en cours… » puis, 4 s plus tard, « Installe via Chrome — Regarde en haut à droite dans la barre d'adresse : clique sur l'icône ⊕ ou 💾 ». Sur Chrome Android, l'installation est dans le menu ⋮. Couleurs codées #7c3aed / #1e1b4b / #6d28d9 (ancienne palette), emojis 1️⃣ 2️⃣ 🍎 🧭 comme icônes. D'après le code, la branche Android sans invite enchaîne trois redirections `intent://` (Chrome, Edge, Samsung) en 3,2 s.
+- **Problème** : La personne cherche une icône qui n'existe pas sur son téléphone.
+- **Situation déclenchante** : Installer depuis un navigateur qui n'a pas encore proposé l'invite.
+- **Conséquence pour l'utilisateur** : Abandon de l'installation (donc des notifications poussées, indispensables aux rappels d'activité).
+- **Proposition** : Consignes par plateforme réelle : Android « Menu ⋮ → Installer l'application », iPhone « Partager → Sur l'écran d'accueil » (déjà juste) ; supprimer le toast « Installation en cours… » et les redirections en cascade ; couleurs `--accent`, pictogrammes SVG.
+- **Visuels** : [TRA-065](galerie/index.html#/surface/TRA-065) · **Surfaces** : TRA-065
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Détection de plateforme (`_isAndroid`, `_isIOSSafari`) partagée avec pwa-detect.js.
+- **Critère d'acceptation** : Avec un agent Android sans invite, le texte nomme le menu ⋮ ; aucune couleur #7c3aed dans le gabarit.
+- **Fichiers probables** : `js/app-09-boot-pwa.js`
+
+### TRA-C26 — Textes légaux : longues feuilles sans sommaire, dates de version différentes, et une contradiction apparente sur l'identité de l'éditeur  ⚠ sensible (auth, droits, données privées ou règle métier)
+
+- **Emplacement** : openPrivacyPolicy, openTermsOfService, openLegalNotice (app-02:5313-5340) ; js/legal-textes.js
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : hypothese
+- **Preuve** : Sonde transverse-01 : politique 5 904 caractères, CGU 7 557, mentions 1 812, chacune dans une feuille de 607 px sans sommaire ni ancres. Dates : politique « 2026-11-09 », CGU « 2026-09-10 ». Les mentions légales invoquent l'anonymat de l'éditeur non professionnel vis-à-vis du public (LCEN art. 1-1, II) ; la politique de confidentialité, publique elle aussi, nomme l'éditeur en clair (point 1). Hypothèse : la contradiction peut être voulue (RGPD art. 13) — à faire trancher par un juriste.
+- **Problème** : On ne trouve pas une clause sans tout faire défiler ; deux documents semblent se contredire.
+- **Situation déclenchante** : Question précise (suppression, position, mineurs) ; lecture attentive.
+- **Conséquence pour l'utilisateur** : Défiance ; risque juridique si la contradiction est réelle.
+- **Proposition** : Sommaire ancré en tête de chaque texte (liens vers les points numérotés), date de version unique affichée dans « À propos » ; faire vérifier la cohérence identité / anonymat.
+- **Visuels** : [TRA-022](galerie/index.html#/surface/TRA-022) · **Surfaces** : TRA-022, TRA-023, TRA-024
+- **Priorité** : P3 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Avis juridique pour l'identité de l'éditeur.
+- **Risque de régression** : Textes sous verrou (tests de présence de clauses).
+- **Critère d'acceptation** : Chaque texte légal ouvre sur un sommaire cliquable ; politique et mentions disent la même chose de l'éditeur.
+- **Fichiers probables** : `js/legal-textes.js`, `js/app-02-state-utils.js`
 
 ### PCS-C04 — Le compteur d'abonnés ne bouge pas après « Suivre »
 
@@ -4629,3 +5010,115 @@
 - **Risque de régression** : Pages en `position: fixed` hors de `#appMain` (lots-ui INDEX), pied fixe de la vue Filtre calé sur `.app-shell`.
 - **Critère d'acceptation** : Décision documentée à partir de la mesure de trafic ; si réalisé, aucune régression mobile sur les suites de cadrage.
 - **Fichiers probables** : `styles.css`, `js/ui-v2-shell.js`
+
+### TRA-C14 — Notifications : aucun regroupement, plafond de 30 sans « voir plus »
+
+- **Emplacement** : supaLoadNotifications limit(30) (app-08:9173), mergeSupaNotifs slice(0,50) (2376), _notifListHtml
+- **Domaine** : Transverse · **Nature** : polish · **Type** : jugement
+- **Preuve** : Capture TRA-036 (45 notifications semées) : une ligne par j'aime ; le serveur n'en rend que 30, l'état local en garde 50 ; rien n'indique qu'il en existe d'autres.
+- **Problème** : Une publication qui plaît noie le reste (abonnements, invitations à des activités).
+- **Situation déclenchante** : Activité soutenue (beta ouverte).
+- **Conséquence pour l'utilisateur** : Les notifications qui mènent au réel (invitation, place libérée) se perdent entre les j'aime.
+- **Proposition** : Regrouper par (kind, ref_id) les j'aime et réactions : « Léa, Malik et 6 autres ont aimé ta publication » ; sections « Nouveau » / « Plus tôt » ; « Voir les plus anciennes » si 30 atteint.
+- **Visuels** : [TRA-036](galerie/index.html#/surface/TRA-036) · **Surfaces** : TRA-036
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : M · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Marquage lu par identifiant : un groupe porte plusieurs ids (tous à marquer).
+- **Critère d'acceptation** : Dix j'aime sur une même publication occupent une ligne.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`
+
+### TRA-C16 — Libellés de notification préfixés du nom même quand la phrase n'a pas de sujet
+
+- **Emplacement** : supaInsertNotif compose `nom + " " + content` (app-08:7252-7257) ; appels app-07 « une place s'est libérée, tu es inscrit·e ! », « t'a inscrit·e depuis la liste d'attente ! », _notifyEventAttendees « « Titre » a été supprimé par l'organisateur »
+- **Domaine** : Transverse · **Nature** : polish · **Type** : observation
+- **Preuve** : D'après le code (et rendu avec des textes identiques, capture TRA-031) : « Léa Fontaine une place s'est libérée, tu es inscrit·e ! » ; « Marie-Charlotte … « Répétition ouverte » a été supprimé par l'organisateur ». Vocabulaire des libellés : « ton post », « ton événement », « ton activité », « a réagi 😂 à ton post ».
+- **Problème** : Phrases agrammaticales et mots différents pour les mêmes objets.
+- **Situation déclenchante** : Place libérée, promotion depuis la liste d'attente, activité supprimée.
+- **Conséquence pour l'utilisateur** : Lecture hésitante d'une information importante (inscription confirmée).
+- **Proposition** : Passer à `supaInsertNotif` un gabarit avec `{nom}` explicite (« Une place s'est libérée : tu es inscrit·e à « {titre} » ») ; « publication » et « activité » partout.
+- **Visuels** : [TRA-031](galerie/index.html#/surface/TRA-031) · **Surfaces** : TRA-031
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Texte stocké en base (`notifications.content`) : seuls les nouveaux changent ; échappement du nom à conserver.
+- **Critère d'acceptation** : Chaque libellé de notification se lit comme une phrase et n'emploie ni « post » ni « événement ».
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`, `js/app-07-ia-explore-irl.js`
+
+### TRA-C22 — Synthèse : deux « × » superposés dans dix fenêtres
+
+- **Emplacement** : openModal injecte `button.modal-close` (app-08:41) ; dix gabarits ajoutent leur propre `span.modal-close` : confirmDeletePost (app-04:215), openNewMessage (4009), openUserProfile (4593), openConfigurator (app-05:229), openCreateGroup (1920), _peopleModal (app-06:1194 — abonnés / abonnements), openEventInvite (app-07:7415), openEventFeedback (7651), _rendreCheckinQr (8067), openCheckinCodeEntry (8099)
+- **Domaine** : Transverse · **Nature** : polish · **Type** : observation
+- **Preuve** : Capture TRA-014 (configurateur) : texte de la fenêtre « × × Configurateur » ; les deux croix occupent la même place. La règle DEV-02 rend le `span` tabulable (role=button) : au clavier et au lecteur d'écran, deux « Fermer » successifs. Constats de domaine : PRO-C09 (listes Abonnés / Abonnements), PAR-C13 / PAR-023 (« Inviter des amis »), irl-fiche (accueil des participants : _rendreCheckinQr / openCheckinCodeEntry).
+- **Problème** : Double annonce, double tabulation ; un léger décalage (z-index:20 dans openUserProfile) rend parfois les deux visibles.
+- **Situation déclenchante** : Ouverture d'une des dix fenêtres.
+- **Conséquence pour l'utilisateur** : Bruit pour les technologies d'assistance ; finition.
+- **Proposition** : Retirer les dix `span.modal-close` des gabarits ; si une fenêtre doit masquer la croix, un paramètre `openModal(html, panel, { sansCroix: true })`.
+- **Visuels** : [TRA-014](galerie/index.html#/surface/TRA-014) · **Surfaces** : TRA-014
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : openUserProfile pose sa croix à z-index 20 au-dessus d'une couverture : vérifier la lisibilité de la croix injectée sur photo.
+- **Critère d'acceptation** : `#modalContent .modal-close` compte un seul élément pour chacune des dix fenêtres.
+- **Fichiers probables** : `js/app-04-comments-shop.js`, `js/app-05-config-profil.js`, `js/app-06-reels-partage.js`, `js/app-07-ia-explore-irl.js`
+
+### TRA-C23 — Synthèse : un même objet porte plusieurs noms (post/publication, événement/activité/rencontre, feed/fil, likes/j'aime)
+
+- **Emplacement** : Libellés d'interface, toasts et notifications de tous les domaines ; ici : Paramètres (« Contenu & feed », « Feedback & aide », « Nouveaux posts », « Likes & commentaires », « Événements IRL »), notifications (« ton post », « ton événement », « ton activité »), signalement (« événement » / « rencontre »)
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : observation
+- **Preuve** : Inventaire des toasts (littéraux) : « événement » 14, « activité » 3, « rencontre » 1 ; « post » 9, « publication » 5. Écrans : barre « Découvrir / Rencontrer », Studio « publication », fiche « activité », bouton « Signaler cet événement », fenêtre « Signaler cette rencontre ». Tutoiement dominant ; vouvoiement isolé dans les commentaires de bobines (BOB-C13). Constats de domaine : PAR-C09, IRL-C62, PRO-C14, BOB-C13.
+- **Problème** : On ne sait pas si « événement », « activité » et « rencontre » désignent la même chose.
+- **Situation déclenchante** : Passage d'un écran à l'autre, d'un toast à une notification.
+- **Conséquence pour l'utilisateur** : Compréhension ralentie de la boucle Fil → IRL, surtout chez les nouveaux venus.
+- **Proposition** : Lexique fermé (à poser dans CLAUDE.md) : publication, activité (l'objet IRL ; « rencontre » réservé au fait de se voir), fil, j'aime, commentaire, retour ; tutoiement partout. Balayage par grep des libellés visibles (toasts, notifications, titres).
+- **Visuels** : [TRA-013](galerie/index.html#/surface/TRA-013), [TRA-051](galerie/index.html#/surface/TRA-051) · **Surfaces** : TRA-003, TRA-010, TRA-013, TRA-031, TRA-051
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : M · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Textes lus par les e2e ; textes déjà stockés en base (notifications) inchangés.
+- **Critère d'acceptation** : `grep` des libellés visibles : zéro « post », « feed », « événement » hors code ; un seul mot par objet.
+- **Fichiers probables** : `index.html`, `js/app-02-state-utils.js`, `js/app-04-comments-shop.js`, `js/app-07-ia-explore-irl.js`, `js/app-08-ui-modals-tour.js`
+
+### TRA-C24 — Synthèse : des emojis servent encore d'icônes de fonction
+
+- **Emplacement** : Barres d'actions, menus, toasts, fenêtres ; ici : À propos (🟣 en guise de logo), « 📦 Exporter mes données », invites d'installation (1️⃣ 2️⃣ 🍎 🧭 ✅), 50 toasts qui commencent par un emoji
+- **Domaine** : Transverse · **Nature** : polish · **Type** : observation
+- **Preuve** : Charte : emojis = contenu, icônes de fonction = SVG currentColor. Constats de domaine : FIL-C02, FIL-C23, MSG-C17, MSG-C26, MSG-C82, PRO-C13, IRL-C08. Inventaire : 50 libellés de toast commencent par un emoji, souvent seul porteur de la nature du message (⚠️, ✅).
+- **Problème** : Rendu variable selon les téléphones, sens porté par l'emoji, cohérence perdue avec les icônes SVG de la barre.
+- **Situation déclenchante** : Partout.
+- **Conséquence pour l'utilisateur** : Finition inégale ; information portée par un pictogramme non lu par les lecteurs d'écran.
+- **Proposition** : Jeu d'icônes SVG commun (déjà utilisé par la barre et le menu de partage) pour toute fonction ; les toasts portent leur nature par leur type (TRA-C02), plus par un emoji.
+- **Visuels** : [TRA-025](galerie/index.html#/surface/TRA-025) · **Surfaces** : TRA-025, TRA-065, TRA-043
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : M · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Libellés testés avec leur emoji.
+- **Critère d'acceptation** : Aucun bouton de fonction dont le seul contenu visuel est un emoji.
+- **Fichiers probables** : `js/app-02-state-utils.js`, `js/app-09-boot-pwa.js`, `styles.css`
+
+### TRA-C25 — « À propos » affiche une version figée (« Beta 1.1 · Mai 2026 ») et un emoji en guise de logo
+
+- **Emplacement** : openAbout (js/app-02-state-utils.js:4467-4488)
+- **Domaine** : Transverse · **Nature** : polish · **Type** : observation
+- **Preuve** : Capture TRA-025 : « Version Beta 1.1 · Mai 2026 » alors que la version en ligne est le build 3d8e98bb12ad du 2026-11-10 (release.json) ; CGU « Version du 2026-09-10 », politique « 2026-11-09 ». Logo : emoji 🟣 de 48 px.
+- **Problème** : Impossible de dire quelle version on utilise en écrivant au support.
+- **Situation déclenchante** : Signalement d'un problème, question au support.
+- **Conséquence pour l'utilisateur** : Échanges de support plus longs ; impression d'abandon.
+- **Proposition** : Lire la version de release.json (build et date) ; logo de l'application (icon-192.png) ; garder « Mentions légales » et « Fermer ».
+- **Visuels** : [TRA-025](galerie/index.html#/surface/TRA-025) · **Surfaces** : TRA-025
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : release-guard.js lit déjà release.json : réutiliser sa valeur.
+- **Critère d'acceptation** : La version affichée égale le buildId de release.json.
+- **Fichiers probables** : `js/app-02-state-utils.js`
+
+### TRA-C29 — « Feedback & aide » n'offre aucune aide : un formulaire qui ouvre la messagerie du téléphone
+
+- **Emplacement** : feedbackModal / saveFeedback (js/app-08-ui-modals-tour.js:265-281)
+- **Domaine** : Transverse · **Nature** : clarte · **Type** : jugement
+- **Preuve** : Capture TRA-020 : « Ton retour sur la beta — Il part par e-mail à l'équipe » ; trois champs (« Une feature à ajouter ») ; envoi par `mailto:` (dépend d'une application de messagerie configurée). Aucune question fréquente, aucun lien vers « Limites de cette version pilote » qui répond pourtant aux questions courantes.
+- **Problème** : Qui cherche de l'aide ne trouve qu'un formulaire ; sans application de messagerie, l'envoi n'aboutit pas.
+- **Situation déclenchante** : Blocage, question.
+- **Conséquence pour l'utilisateur** : Questions sans réponse, retours perdus.
+- **Proposition** : Renommer « Aide et retour » ; en tête, trois liens (Limites du pilote, Signaler un problème de sécurité, Contact) ; dire « s'ouvre dans ta messagerie » sur le bouton ; « fonctionnalité » au lieu de « feature ».
+- **Visuels** : [TRA-020](galerie/index.html#/surface/TRA-020) · **Surfaces** : TRA-020, TRA-005
+- **Priorité** : P3 · **Gravité** : 1/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Aucune.
+- **Risque de régression** : Copie locale du retour à conserver.
+- **Critère d'acceptation** : L'écran d'aide propose au moins une réponse avant le formulaire.
+- **Fichiers probables** : `js/app-08-ui-modals-tour.js`, `index.html`

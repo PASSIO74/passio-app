@@ -495,14 +495,14 @@ module.exports = {
         await page.waitForTimeout(1500);
         await page.evaluate((id) => openEventDetails(id), jeu.EV_ID);
         await page.waitForTimeout(1500);
-        // Tout en bas de la fiche (défilement maximal de #appMain)
-        const enBas = () => page.evaluate(() => { const b = document.querySelector("button[onclick*='reportEvent']"); if (b) b.scrollIntoView({ block: "end" }); const m = document.getElementById("appMain"); m.scrollTop = m.scrollHeight; });
+        // Tout en bas de la fiche (défilement maximal de #eventDetailPage)
+        const enBas = () => page.evaluate(() => { const b = document.querySelector("button[onclick*='reportEvent']"); if (b) b.scrollIntoView({ block: "end" }); const m = document.getElementById("eventDetailPage"); m.scrollTop = m.scrollHeight; });
         await enBas(); await page.waitForTimeout(900); await enBas(); await page.waitForTimeout(400);
         await prendre({
           id: "TRA-050", titre: "Fiche d'activité défilée jusqu'en bas : « Signaler cet événement » reste sous le pied collant",
           zooms: [{ nom: "pied", titre: "Bas de la fiche", sel: "#eventDetailCta", marge: 40 }],
           annotationsAvant: [{ n: 1, sel: "#eventDetailCta", texte: "Le pied « Je participe » recouvre « Signaler cet événement » même au bout du défilement (elementFromPoint = #eventDetailCta)" }],
-          apres: { css: "#eventDetailContent{padding-bottom:150px!important}", js: async (page) => { await page.evaluate(() => { const b = document.querySelector("button[onclick*='reportEvent']"); if (b) { b.textContent = "Signaler cette activité"; b.scrollIntoView({ block: "end" }); } const m = document.getElementById("appMain"); m.scrollTop = m.scrollHeight; }); await page.waitForTimeout(400); } },
+          apres: { css: ".event-detail-body{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))!important}", js: async (page) => { await page.evaluate(() => { const b = document.querySelector("button[onclick*='reportEvent']"); if (b) { b.textContent = "Signaler cette activité"; b.scrollIntoView({ block: "end" }); } const m = document.getElementById("eventDetailPage"); m.scrollTop = m.scrollHeight; }); await page.waitForTimeout(400); } },
           annotations: [{ n: 1, sel: "button[onclick*='reportEvent']", texte: "Une marge basse égale au pied : le bouton devient atteignable ; un seul mot, « activité »" }],
         });
         // Le toucher est impossible : la fenêtre est ouverte par reportEvent() (simulé)
@@ -574,6 +574,8 @@ module.exports = {
       demarrage: {
         mode: "compte", peupler: (s, c) => base.peupler(s, c),
         avantBoot: async (page) => {
+          // La lecture distante est servie par le banc (même bandeau que le cache) : rendu déterministe.
+          await page.route(/reglages_distants/, (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ cle: "bandeau", valeur: { texte: "Maintenance ce soir de 22 h à 22 h 30 : les messages peuvent arriver en retard.", niveau: "info" }, maj: "audit" }]) }));
           await page.addInitScript(() => {
             window.PASSIO_REGLAGES_DISTANTS = true;
             localStorage.setItem("passio_reglages_distants_v1", JSON.stringify({ recuLe: Date.now(), reglages: { delestage: 0, coupures: [], bandeau: { texte: "Maintenance ce soir de 22 h à 22 h 30 : les messages peuvent arriver en retard.", niveau: "info", id: "audit|1" } } }));
@@ -587,7 +589,7 @@ module.exports = {
           id: "TRA-060", titre: "Bandeau distant (message de l'équipe) au-dessus de la barre",
           note: "Bandeau posé par le cache des réglages distants (simulé : le module est inerte en local, réactivé par window.PASSIO_REGLAGES_DISTANTS).",
           annotationsAvant: [{ n: 1, sel: "#passioBandeauDistant", texte: "Fixé en haut (z-index 10050) : il recouvre la barre (cloche, réglages)" }],
-          apres: { css: "#passioBandeauDistant{position:sticky!important;top:0;z-index:5!important;background:var(--accent-tile,#F1ECFE)!important;color:var(--text)!important;box-shadow:none!important;border-bottom:1px solid var(--accent-tile-line,#E2D8FD)}body:has(#passioBandeauDistant) .app-shell{margin-top:var(--maq-bd,64px)}" },
+          apres: { css: "#passioBandeauDistant{background:#F1ECFE!important;color:#17152B!important;box-shadow:0 1px 0 #E2D8FD!important;font-size:13.5px!important}body:has(#passioBandeauDistant){padding-top:62px!important;box-sizing:border-box!important}body:has(#passioBandeauDistant) .app-shell{height:auto!important;flex:1 1 auto!important;min-height:0!important}" },
           annotations: [{ n: 1, sel: "#passioBandeauDistant", texte: "Le bandeau POUSSE l'écran au lieu de le recouvrir ; lavis violet, texte encre" }],
         });
         // Hors ligne : le banc coupe le réseau du contexte, refuse Supabase, et prévient la page
@@ -604,7 +606,7 @@ module.exports = {
             { n: 2, sel: "#offlineBanner button", texte: "« × » sans nom accessible, 16 px" },
           ],
           apres: {
-            css: "#offlineBanner{position:fixed!important;top:auto!important;bottom:calc(86px + env(safe-area-inset-bottom,0px))!important;left:16px!important;right:16px!important;border-radius:14px;z-index:2147482000!important;padding:10px 14px!important;justify-content:space-between;align-items:center;gap:10px}#offlineBanner button{min-width:44px;min-height:44px}#passioBandeauDistant{position:sticky!important;z-index:5!important;background:var(--accent-tile,#F1ECFE)!important;color:var(--text)!important;box-shadow:none!important}",
+            css: "#offlineBanner{position:fixed!important;top:auto!important;bottom:calc(86px + env(safe-area-inset-bottom,0px))!important;left:16px!important;right:16px!important;border-radius:14px;z-index:2147482000!important;padding:10px 14px!important;justify-content:space-between;align-items:center;gap:10px}#offlineBanner button{min-width:44px;min-height:44px}"+"#passioBandeauDistant{background:#F1ECFE!important;color:#17152B!important;box-shadow:0 1px 0 #E2D8FD!important;font-size:13.5px!important}body:has(#passioBandeauDistant){padding-top:62px!important;box-sizing:border-box!important}body:has(#passioBandeauDistant) .app-shell{height:auto!important;flex:1 1 auto!important;min-height:0!important}",
             js: async (page) => page.evaluate(() => { const b = document.getElementById("offlineBanner"); b.firstChild.textContent = "Hors ligne — ce que tu fais sera envoyé au retour du réseau"; b.querySelector("button").setAttribute("aria-label", "Masquer"); }),
           },
           annotations: [
@@ -616,7 +618,7 @@ module.exports = {
         await figer(page); await viderToasts(page);
         await context.setOffline(false);
         await page.unroute(/supabase\.co/);
-        await page.evaluate(() => window.dispatchEvent(new Event("online")));
+        // context.setOffline(false) émet lui-même l'événement « online » (un second envoi doublerait le toast).
         await page.waitForTimeout(900);
         await prendre({
           id: "TRA-062", seulement: ["m390"], titre: "Reconnexion : « envoi des messages en attente » alors qu'aucun n'attend",

@@ -1,0 +1,255 @@
+{
+ "id": "TRA-001",
+ "domaine": "transverse",
+ "scenario": "reglages",
+ "vue": "d1440",
+ "gabarit": "Ordinateur 1440×900",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Paramètres — panneau ouvert par « ⋯ », sections repliées",
+ "note": "",
+ "prisLe": "2026-11-10T19:57:39.069Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": ""
+ },
+ "avant": {
+  "fichier": "captures/transverse/TRA-001--d1440--avant.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 29340,
+  "zooms": [
+   {
+    "nom": "danger",
+    "titre": "Déconnexion et suppression",
+    "fichier": "captures/transverse/TRA-001--d1440--avant-zoom-danger.webp",
+    "largeur": 330,
+    "hauteur": 133,
+    "octets": 3116
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Porte : « ⋯ » de 34 × 34 px, nommée « Paramètres »",
+   "x": 0.631,
+   "y": 0.062,
+   "w": 0.024,
+   "h": 0.038,
+   "sel": ".hamburger[onclick*='toggleDevPanel']",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Section « Démo » (pitch investisseurs, tour démo) ouverte à tout le monde",
+   "x": 0.556,
+   "y": 0.413,
+   "w": 0.16,
+   "h": 0.052,
+   "sel": "#devPanel .settings-section:has([onclick*='startTour']) .settings-section-header",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Se déconnecter » et « Supprimer mon compte » : 33 px de haut, texte de 11 px",
+   "x": 0.556,
+   "y": 0.518,
+   "w": 0.16,
+   "h": 0.037,
+   "sel": "#settingsDeleteAccount",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 1440,
+   "h": 900
+  },
+  "cibles": {
+   "total": 37,
+   "sous44": [
+    {
+     "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "button#settingsLogout",
+     "texte": "Se déconnecter",
+     "w": 230,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "button#settingsDeleteAccount",
+     "texte": "Supprimer mon compte",
+     "w": 230,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "div#storiesRowFeed > div.story-item",
+     "texte": "Clara",
+     "w": 42,
+     "h": 59,
+     "enLigne": false
+    },
+    {
+     "el": "div#feedList > article.post > div.post-header > div.avatar",
+     "texte": "Profil de Léa Fontaine",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#convSettingsPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFilesPanel > div.conv-fp-head > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnEmoji",
+     "texte": "Emoji ou GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 206,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnVoice",
+     "texte": "Maintenir pour enregistrer",
+     "w": 36,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "button#convFpSendBtn",
+     "texte": "Envoyer le message",
+     "w": 40,
+     "h": 40,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 15
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 15,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 1440,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/transverse/TRA-001--d1440--apres.webp",
+  "largeur": 1440,
+  "hauteur": 900,
+  "octets": 28916,
+  "zooms": [
+   {
+    "nom": "danger",
+    "titre": "Déconnexion et suppression",
+    "fichier": "captures/transverse/TRA-001--d1440--apres-zoom-danger.webp",
+    "largeur": 330,
+    "hauteur": 144,
+    "octets": 4310
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Quatre sections utiles ; « Démo » et « Bien-être digital » (inopérant) retirées",
+   "x": 0.556,
+   "y": 0.243,
+   "w": 0.16,
+   "h": 0.052,
+   "sel": "#devPanel .settings-section:has([onclick*='openNotifSettings']) .settings-section-header",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Cibles de 44 px, texte de 13 px",
+   "x": 0.556,
+   "y": 0.423,
+   "w": 0.16,
+   "h": 0.049,
+   "sel": "#settingsDeleteAccount",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

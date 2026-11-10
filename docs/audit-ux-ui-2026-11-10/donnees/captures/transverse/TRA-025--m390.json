@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "À propos de PASSIO",
  "note": "",
- "prisLe": "2026-11-10T19:38:49.977Z",
+ "prisLe": "2026-11-10T19:53:52.982Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": "ouverte",
@@ -98,7 +98,7 @@
   "fichier": "captures/transverse/TRA-025--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 33780,
+  "octets": 34740,
   "zooms": []
  },
  "annotations": [

@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Quatre toasts d'affilée : couleurs, longueurs, durée unique de 3 s",
  "note": "Quatre libellés RÉELS de l'application (app-04:5176 sans type, app-02:5278, app-04:5407), émis par appel direct (simulé) et figés.",
- "prisLe": "2026-11-10T19:48:01.428Z",
+ "prisLe": "2026-11-10T20:00:03.302Z",
  "ecran": {
   "ecran": "screen-feed",
   "modale": null,
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": false,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(1) PASSIO",
   "hash": "#feed"
  },
  "avant": {
   "fichier": "captures/transverse/TRA-043--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 91032,
+  "octets": 91200,
   "zooms": [
    {
     "nom": "pile",
