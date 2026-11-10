@@ -13,7 +13,7 @@
 |---|---|---|---|---|
 | ① | Fil, **chaque carte** | Une ligne vide au-dessus du texte, première ligne décalée de 23 px, « Lire la suite » seul à la ligne, deux lignes vides sous un texte court : **7 lignes peintes pour 4 écrites** (157 px au lieu de 90) | `.post-body` est en `white-space: pre-wrap` ; le gabarit de `renderPostHTML` mettait le texte sur sa propre ligne, indentée | Le texte est collé à ses balises ; « Lire la suite » est insécable (`app-02`) |
 | ② | Page d'une publication | « ✨ » sur fond violet à la place de l'avatar que la carte venait de montrer | `openPost` ne reprenait pas l'emoji et la couleur du COMPTE quand la publication ne porte que le nom | Même chaîne de repli que la carte (`app-02`) |
-| ③ | Bulles de passion (tête du fil, profil) | Icône « image cassée » du navigateur et texte alternatif tronqué quand la vignette ne charge pas (hors ligne, relais d'images en panne, bloqueur) | `<img>` sans `onerror` hors du cas `fallbackUrl` | La vignette en échec se retire ; le repli est essayé une fois (`passionTileHTML`) |
+| ③ | Bulles de passion (tête du fil, profil) | Icône « image cassée » du navigateur et texte alternatif tronqué quand la vignette ne charge pas (hors ligne, relais d'images en panne, bloqueur) | `<img>` sans `onerror` hors du cas `fallbackUrl` | La vignette en échec s'efface (`visibility`, jamais `display`) ; le repli est essayé une fois (`passionTileHTML`) |
 | ④ | Fiche d'une activité | **« Demain » au-dessus de « Mardi 10 novembre · 18:30 », lu le 10 au matin** ; « Dans 2 jours » pour demain soir | `Math.ceil(durée / 24 h)` — la carte de la liste comptait déjà des minuits (`ui-v4a2-cartes.js`), pas la fiche | `joursCalendairesAvant()` (app-02), aux deux endroits d'`app-07` |
 | ⑦ | Landing (compte connu, sans session) | Le sixième pilier lisible ENTRE « Se connecter » et « Créer un compte », et sous eux | `.landing-cta` collant et transparent | Pied dépoli, pleine largeur, jusqu'au bord bas (`styles.css`) |
 | ⑧ | Carte d'exemple | « Mehdi Saïd » sur deux lignes, « Sport · 12:52 » aussi | « Exemple PASSIO » + la capsule d'envie laissaient ~62 px au pseudo | Les deux capsules s'empilent à droite (grille, `:has(> .fr-demo-tag)`) |
@@ -35,6 +35,9 @@ deuxième visite) sont de la logique, pas de l'écran : fiche dans `docs/journal
   (mesuré : le bas du pied restait à 782 sur 812). `.landing-cta` doit rester le DERNIER enfant de `#landing`.
 - **L'en-tête en grille ne vise que la carte qui porte `.fr-demo-tag`** : la carte d'une vraie
   publication est inchangée, à l'octet. Sans `:has()` (Safari < 15.4), la mise en page d'avant.
+- **Une vignette en échec s'efface par `visibility`, jamais par `display`** : `display` est l'autorité de
+  la MISE EN PAGE. La première version (`display: none`) faisait lire « pas de vignette » à `ui-v7-lot` §3,
+  en local et en CI, où les images de démonstration (Edge Function `demo`) répondent 404.
 - **`audit:echappement` lit le contexte dans le littéral qui précède l'interpolation** : un gestionnaire
   `onerror="…"` s'écrit d'un seul tenant, attribut compris, sinon `this.src='` passe pour un attribut d'URL.
 

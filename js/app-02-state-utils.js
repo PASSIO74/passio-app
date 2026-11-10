@@ -7160,20 +7160,25 @@ function passionTileHTML(o) {
   var label = String(o.label || "Passion");
   var selected = !!o.selected;
   var dimmed = !!o.dimmed;
-  // ⚠️ UNE VIGNETTE QUI NE CHARGE PAS SE RETIRE (2026-11-10). Sans `onerror`, une
+  // ⚠️ UNE VIGNETTE QUI NE CHARGE PAS S'EFFACE (2026-11-10). Sans `onerror`, une
   // image en échec (hors ligne, relais d'images en panne, bloqueur de contenu)
   // laissait l'icône « image cassée » du navigateur et le texte alternatif
   // tronqué dans chaque bulle — la première rangée du fil et l'en-tête du
-  // profil. Retirée, la bulle garde son fond et sa pastille d'emoji. Avec
+  // profil. Effacée, la bulle garde son fond et sa pastille d'emoji. Avec
   // `fallbackUrl`, on l'essaie d'abord, UNE fois (`data-repli`) : une image de
   // repli elle-même en échec ne boucle pas.
+  // ⚠️ `visibility`, JAMAIS `display` : `display` reste l'autorité de la MISE EN
+  // PAGE (le lot UI-7 vérifie que la bulle porte une vignette et non le glyphe) ;
+  // un échec de chargement n'est pas une décision de mise en page. Mesuré : avec
+  // `display: none`, `ui-v7-lot` §3 lisait « pas de vignette » là où seule
+  // l'image de démonstration manquait (404 hors Netlify).
   // L'attribut ENTIER est écrit d'un seul tenant : `audit:echappement` lit le
   // contexte dans le littéral qui précède l'interpolation — `onerror="` doit y
   // être, sinon `this.src='` passe pour un attribut d'URL. `fallbackUrl` vient
   // de `passionPhotoFallback` (catalogue interne), jamais d'un autre compte.
   var surErreur = o.fallbackUrl
-    ? ' onerror="if(this.dataset.repli){this.onerror=null;this.style.display=\'none\';}else{this.dataset.repli=\'1\';this.src=\'' + escapeJsArg(o.fallbackUrl) + '\';}"'
-    : ' onerror="this.onerror=null;this.style.display=\'none\';"';
+    ? ' onerror="if(this.dataset.repli){this.onerror=null;this.style.visibility=\'hidden\';}else{this.dataset.repli=\'1\';this.src=\'' + escapeJsArg(o.fallbackUrl) + '\';}"'
+    : ' onerror="this.onerror=null;this.style.visibility=\'hidden\';"';
   var avatarContent = o.photoUrl
     ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + safeUrlAttr(passioThumb(o.photoUrl, 192)) + '" alt="' + escapeHtml(label) + '"'
       + surErreur

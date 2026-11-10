@@ -85,7 +85,7 @@ test.describe("Contrôle général 2026-11-10", () => {
     expect(r.page, "la page disait « ✨ » là où la carte montrait l'avatar du compte").toBe(r.carte);
   });
 
-  test("③ bulle de passion : une vignette qui ne charge pas se retire — son repli est essayé une fois, la pastille d'emoji reste", async ({ page }) => {
+  test("③ bulle de passion : une vignette qui ne charge pas s'efface — son repli est essayé une fois, la pastille d'emoji reste, la mise en page ne bouge pas", async ({ page }) => {
     await bootOnboarded(page);
     const r = await page.evaluate(async () => {
       const attendre = (cond) => new Promise((ok, ko) => {
@@ -104,13 +104,15 @@ test.describe("Contrôle général 2026-11-10", () => {
       document.body.appendChild(scene);
       const imgs = [...scene.querySelectorAll("img.profile-tile-photo")];
       imgs.forEach((i) => { i.loading = "eager"; });
-      await attendre(() => imgs.every((i) => getComputedStyle(i).display === "none"));
+      await attendre(() => imgs.every((i) => getComputedStyle(i).visibility === "hidden"));
       const out = {
         n: imgs.length,
         repli: imgs[1].getAttribute("src"),
         repliEssaye: imgs[1].dataset.repli || null,
         sansRepli: imgs[0].dataset.repli || null,
         pastilles: [...scene.querySelectorAll(".profile-tile-emoji-badge")].filter((b) => b.getBoundingClientRect().width > 0).length,
+        // `display` reste l'autorité de la mise en page (ui-v7-lot §3 la lit) : intact.
+        affichees: imgs.filter((i) => getComputedStyle(i).display !== "none").length,
         attendu: o + "/ctrl-introuvable-c.png",
       };
       scene.remove();
@@ -121,6 +123,7 @@ test.describe("Contrôle général 2026-11-10", () => {
     expect(r.repliEssaye).toBe("1");
     expect(r.sansRepli).toBeNull();
     expect(r.pastilles, "la bulle garde sa pastille d'emoji").toBe(2);
+    expect(r.affichees, "l'échec efface l'image sans toucher à `display`").toBe(2);
   });
 
   test("④ fiche d'une activité : « Aujourd'hui » pour ce soir et « Demain » pour demain soir — des jours de calendrier, pas une durée", async ({ page }) => {
