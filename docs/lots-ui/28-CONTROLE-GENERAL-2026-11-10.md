@@ -69,3 +69,28 @@ deuxième visite) sont de la logique, pas de l'écran : fiche dans `docs/journal
   réveil du worker, jamais purgé : 8 caches en vingt minutes de test. Sans effet en production
   (`build.js` y écrit le `buildId`), mais **une feuille de style modifiée n'apparaît pas tant que le
   worker n'est pas désinscrit** — `serviceWorkers: "block"` pour une capture.
+
+## Audit du diff (`audit-passio`), mené après la fusion — et ce qu'il a changé
+
+`CLAUDE.md` prescrit l'audit d'un diff par le subagent `audit-passio` AVANT de livrer ; il n'a été lancé
+qu'après la fusion de #817 (déjà en ligne). Verdict : **aucun P0, P1 ni P2**. Les suites ont été traitées
+dans une PR à part :
+
+- **P3, confirmé — un trou dans le verrou ⑤.** Son cas « vraie publication » portait `fromSupabase`, qui
+  court-circuite la garde : le cas pour lequel la règle d'origine a été écrite (MA publication dans
+  `userPosts`, ni `fromSupabase` ni `_source`) n'était pas couvert. Couvert, et **prouvé par mutation** :
+  `_ciEstExemple` simplifiée en `!p.fromSupabase` rougit le test.
+- **P4 corrigés.** Le titre « Discussion (N) » d'un exemple dont la discussion pagine (31 vrais commentaires
+  et plus) oubliait le décor : `nbCommentairesPost` le compte. `joursCalendairesAvant` passe une chaîne par
+  `supaTs`. La suite tourne au fuseau de Paris (la CI est en UTC, où le cas du changement d'heure de ④ ne
+  prouvait rien). Le masque du pied de la landing s'arrête à 10 px, avant l'anneau de focus des boutons.
+  Enfin **la suite est inscrite dans `SUITES_WEBKIT`** : le pied collant (flou et masque) n'avait jamais
+  été rendu par le moteur de l'iPhone. Sous WebKit, deux fragilités de TEST sont apparues et ont été
+  corrigées — l'indice des bobines se mesure au repos (son animation de 5 s était lue en plein fondu), et le
+  fondu d'entrée de la landing est terminé avant la mesure (figé au départ, il la décalait de 6 px) — puis
+  27/27 en trois tours.
+- **P4 laissés, avec leur raison.** L'indice des bobines en paysage, dans le navigateur, couvre 5 s le
+  bouton « précédente » (la PWA est verrouillée en portrait ; l'indice ne capte aucun toucher). La fusion
+  de deux copies d'un message d'EXEMPLE garde la plus ancienne valeur d'un champ présent des deux côtés
+  (décor en lecture seule, aucune donnée réelle). Les points de suspension d'un libellé de bobine rognent
+  les 3 px de flou de son ombre (cosmétique).

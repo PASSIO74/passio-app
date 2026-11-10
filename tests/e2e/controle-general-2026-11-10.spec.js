@@ -18,11 +18,16 @@
 // Stub local (`bootOnboarded`) : aucune écriture, aucune lecture en production.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, serviceWorkersHorsWebkit } = require("./app-helper");
 
 test.describe("Contrôle général 2026-11-10", () => {
   // La largeur où les défauts ⑦ ⑧ ⑨ ont été mesurés (iPhone 12 mini, 13 mini, X, 11 Pro).
-  test.use({ viewport: { width: 375, height: 812 } });
+  // Le fuseau de Paris : les runners de la CI sont en UTC, où le cas « changement
+  // d'heure » de ④ ne prouvait rien — 48 h y valent toujours deux jours (audit du lot 28).
+  // Le service worker est BLOQUÉ sous WebKit : une page qu'il contrôle y échappe aux
+  // routes d'isolation, et ses requêtes partiraient en production
+  // (`isolation-projet-supabase.test.mjs` ⑦, pour toute suite de `SUITES_WEBKIT`).
+  test.use({ viewport: { width: 375, height: 812 }, timezoneId: "Europe/Paris", serviceWorkers: serviceWorkersHorsWebkit });
 
   test("① fil : le texte d'une carte est collé à ses balises — ni ligne vide, ni retrait, ni « Lire la suite » seul à la ligne", async ({ page }) => {
     await bootOnboarded(page);
@@ -158,6 +163,10 @@ test.describe("Contrôle général 2026-11-10", () => {
           joursCalendairesAvant(new Date(2026, 9, 26, 12), new Date(2026, 9, 24, 12)),           // par-dessus le changement d'heure du 25/10 : 2
           joursCalendairesAvant(new Date(2026, 10, 9, 20), new Date(2026, 10, 10, 9)),           // hier soir : -1
           joursCalendairesAvant("illisible"),                                                    // jamais NaN à l'écran
+          // Une colonne `timestamp` (sans fuseau) est en UTC : 23:30 UTC le 10, c'est
+          // 00:30 le 11 à Paris — demain. Lue par `new Date(chaîne)`, ce serait 23:30
+          // heure locale, donc « aujourd'hui » : le passage par `supaTs` (audit du lot 28).
+          joursCalendairesAvant("2026-11-10 23:30:00", new Date(2026, 10, 10, 9)),
         ],
       };
     });
@@ -165,7 +174,7 @@ test.describe("Contrôle général 2026-11-10", () => {
     expect(r.a && r.a.texte, "« Demain » avant : la durée jusqu'à ce soir, arrondie au jour supérieur").toBe("Aujourd'hui !");
     expect(r.a.classe).toContain("today");
     expect(r.b && r.b.texte, "« Dans 2 jours » avant").toBe("Demain");
-    expect(r.calc).toEqual([0, 1, 2, -1, 0]);
+    expect(r.calc).toEqual([0, 1, 2, -1, 0, 1]);
   });
 
   test("⑤ discussion d'un exemple : son décor reste, un vrai commentaire s'y ajoute, et une ligne sans drapeau reste périmée sur une vraie publication", async ({ page }) => {
@@ -190,7 +199,27 @@ test.describe("Contrôle général 2026-11-10", () => {
       ]);
       _fusionnerPageCommentaires(findPostAnywhere("ctrl_reelle"), []);
       const reelle = (findPostAnywhere("ctrl_reelle").comments || []).map((c) => c.id);
-      return { id: ex.id, decor, apresVide, apresPage, compte, reelle };
+      // ⚠️ MA publication (`state.userPosts`) n'a ni `fromSupabase` ni `_source` : c'est
+      // le cas pour lequel la règle d'origine a été écrite (audit du lot 28, P3). Une
+      // simplification de `_ciEstExemple` en `!p.fromSupabase` la prendrait pour un
+      // exemple, et y garderait pour toujours une ligne périmée.
+      state.userPosts = (state.userPosts || []).concat([
+        { id: "ctrl_mienne", authorId: "me", text: "x", comments: [{ id: "ctrl_perimee", text: "ligne d'un ancien client", createdAt: 1 }] },
+      ]);
+      _fusionnerPageCommentaires(findPostAnywhere("ctrl_mienne"), []);
+      const mienne = (findPostAnywhere("ctrl_mienne").comments || []).map((c) => c.id);
+      // Un exemple dont la discussion PAGINE (31 vrais commentaires et plus) : le total
+      // serveur est posé, et le décor doit rester compté — le titre « Discussion (N) »
+      // vaut ce qui est affiché, réponses comprises (audit du lot 28, P4).
+      const pageLongue = [];
+      for (let i = 0; i < 30; i++) {
+        pageLongue.push({ id: "c_ctrl_p" + i, authorId: "ctrl-compte", content: "page " + i, createdAt: Date.now() - i * 1000, fromSupabase: true });
+      }
+      pageLongue.suite = { created_at: new Date(Date.now() - 31000).toISOString(), id: "c_ctrl_p29" };
+      _fusionnerPageCommentaires(findPostAnywhere(ex.id), pageLongue);
+      const pagine = findPostAnywhere(ex.id);
+      const longue = { total: pagine.commentsTotal, affiche: nbCommentairesPost(pagine), attendu: commentThreadCount(pagine.comments || []) };
+      return { id: ex.id, decor, apresVide, apresPage, compte, reelle, mienne, longue };
     });
     expect(r, "un exemple commenté dans la graine").not.toBeNull();
     expect(r.decor.length).toBeGreaterThan(0);
@@ -198,6 +227,9 @@ test.describe("Contrôle général 2026-11-10", () => {
     expect(r.apresPage).toEqual(r.decor.concat(["c_ctrl_vrai"]).sort());
     expect(r.compte).toBeGreaterThanOrEqual(r.decor.length + 1);
     expect(r.reelle).toEqual([]);
+    expect(r.mienne, "ma propre publication garde la règle d'origine : la ligne périmée part").toEqual([]);
+    expect(r.longue.total, "prémisse : la page annonce une suite, le total serveur est posé").toBe(30);
+    expect(r.longue.affiche, "« Discussion (N) » compte le décor d'un exemple dont la discussion pagine").toBe(r.longue.attendu);
 
     // Et à l'écran : la feuille « Discussion » d'un exemple montre son commentaire.
     await page.evaluate((id) => { openComments(id); }, r.id);
@@ -267,7 +299,11 @@ test.describe("Contrôle général 2026-11-10", () => {
       const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
       const l = document.getElementById("landing");
       l.classList.add("active");
-      await pause(450);   // l'entrée en fondu (320 ms) est finie
+      // L'entrée en fondu (`fadeIn`, 320 ms) part 6 px plus bas. Sous WebKit sans écran,
+      // elle n'avance pas toujours : attendre 450 ms y laissait mesurer la landing figée
+      // au début du fondu (bas à 818 pour 812). On la TERMINE avant de mesurer.
+      await pause(50);
+      l.getAnimations({ subtree: true }).forEach((a) => { try { a.finish(); } catch (e) {} });
       const pied = l.querySelector(".landing-cta");
       const R = (e) => { const b = e.getBoundingClientRect(); return { g: Math.round(b.left), h: Math.round(b.top), d: Math.round(b.right), b: Math.round(b.bottom) }; };
       const cs = getComputedStyle(pied);
@@ -352,9 +388,19 @@ test.describe("Contrôle général 2026-11-10", () => {
       const indice = document.getElementById("reelsHint");
       const capsules = it.querySelector(".v5-actions");
       const colonne = it.querySelector(".reel-actions");
+      // L'indice s'anime 5 s (apparition, maintien, disparition, ±8 px) : l'instant de
+      // la mesure varie selon le moteur et la machine — WebKit, plus lent à démarrer,
+      // le mesurait en plein fondu. On lit sa position de REPOS, animation suspendue.
+      let indiceRepos = null;
+      if (indice) {
+        const anim = indice.style.animation;
+        indice.style.animation = "none";
+        indiceRepos = { ...R(indice), affiche: getComputedStyle(indice).display !== "none" };
+        indice.style.animation = anim;
+      }
       const out = {
         info: R(it.querySelector(".reel-info")), libelle: R(libelle), vw: document.documentElement.clientWidth,
-        indice: indice ? R(indice) : null, indiceVisible: indice ? Number(getComputedStyle(indice).opacity) : 0,
+        indice: indiceRepos,
         capsules: capsules ? R(capsules) : null,
         colonne: R(colonne),
         boutons: [...colonne.querySelectorAll(".reel-action-btn")].map((b) => b.getBoundingClientRect().width),
@@ -393,7 +439,8 @@ test.describe("Contrôle général 2026-11-10", () => {
     // il ne doit couvrir ni la rangée de capsules, ni le libellé.
     expect(r.capsules, "la rangée de capsules du lot UI-5").not.toBeNull();
     expect(r.indice).not.toBeNull();
-    expect(r.indiceVisible, "l'indice est à l'écran au moment de la mesure").toBeGreaterThan(0.5);
+    expect(r.indice.affiche, "prémisse : l'indice est rendu").toBe(true);
+    expect(r.indice.b - r.indice.h, "prémisse : l'indice a une hauteur").toBeGreaterThan(10);
     expect(r.indice.b, "l'indice tombait sur la rangée de capsules").toBeLessThanOrEqual(r.info.h);
     expect(r.indice.b).toBeLessThanOrEqual(r.libelle.h);
   });

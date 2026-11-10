@@ -2139,6 +2139,12 @@ function fmtEventDate(ts) {
 // activité de demain soir y vaut 2. `Math.round` absorbe l'heure d'été (un
 // jour de 23 ou 25 h). Rend 0 sur une date illisible : jamais NaN à l'écran.
 function joursCalendairesAvant(ts, maintenant) {
+  // Une CHAÎNE vient de Supabase : elle passe par `supaTs`, jamais par
+  // `new Date(chaîne)`, qui lirait une colonne `timestamp` (sans fuseau) en heure
+  // locale (règle de CLAUDE.md ; relevé par l'audit du lot 28, aucun appelant ne
+  // passait encore de chaîne).
+  if (typeof ts === "string") ts = supaTs(ts);
+  if (typeof maintenant === "string") maintenant = supaTs(maintenant);
   var a = new Date(ts);
   var b = (maintenant === undefined || maintenant === null) ? new Date() : new Date(maintenant);
   if (isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
@@ -2403,10 +2409,17 @@ function nbCommentairesPost(p) {
   var charges = commentThreadCount(liste);
   if (!p || !Number.isSafeInteger(p.commentsTotal) || p.commentsTotal < 0) return charges;
   var premierNiveau = 0, serveur = 0, locaux = 0;
+  // ⚠️ LE DÉCOR D'UN EXEMPLE COMPTE AUSSI (2026-11-10, audit du lot 28). Sur une
+  // publication d'exemple, une ligne sans drapeau est le décor (`buildSeed`),
+  // jamais en base : le total serveur ne la connaît pas. Sans ceci, un exemple
+  // dont la discussion pagine (31 vrais commentaires et plus) affichait
+  // « Discussion (30) » au-dessus de 31 lignes. Sur une vraie publication, la
+  // règle reste celle d'avant : une ligne sans drapeau ni attente est périmée.
+  var exemple = !p.fromSupabase && typeof _ciEstExemple === "function" && _ciEstExemple(p);
   liste.forEach(function (c) {
     if (!c) return;
     premierNiveau++;
-    if (c.fromSupabase) serveur++; else if (commentaireEnAttente(c)) locaux++;
+    if (c.fromSupabase) serveur++; else if (commentaireEnAttente(c) || exemple) locaux++;
   });
   var reponses = charges - premierNiveau;
   return Math.max(p.commentsTotal, serveur) + locaux + reponses;

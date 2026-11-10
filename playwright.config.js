@@ -91,6 +91,7 @@ const SUITES_WEBKIT = [
   "historique-retour-en-vol.spec.js", // rouvrir une modale pendant le retour de fermeture ne sort pas de l'application
   "sw-page-revalidee.spec.js",   // le vrai worker : la page se revalide en 304 (Safari, PWA iPhone)
   "app-scripts-par-fichier.spec.js", // le bloc app en 9 scripts : ordre, reprise, et une version ne retélécharge que ce qui a changé
+  "controle-general-2026-11-10.spec.js", // pied collant de la landing (flou + masque), cartes d'exemple (`:has()`), colonne des bobines — au moteur de l'iPhone
 ];
 const PROJET_WEBKIT = {
   name: "webkit-iphone",

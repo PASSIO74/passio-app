@@ -4412,8 +4412,8 @@
        bord bas : il PORTE le padding bas de la page (30 + 6 px) — une marge
        négative sous un enfant de flex défilant ne l'aurait pas fait descendre
        (mesuré) ; voile dépoli plutôt qu'aplat, pour que le halo du fond
-       reste continu ; le masque fond le bord haut sur les 14 px de padding, avant
-       les boutons. Verrou : controle-general-2026-11-10.spec.js ⑦. */
+       reste continu ; le masque fond le bord haut sur 10 px des 14 de padding : il
+       s'arrête avant l'anneau de focus clavier des boutons (audit du lot 28). Verrou : controle-general-2026-11-10.spec.js ⑦. */
     .landing-cta {
       position: sticky;
       bottom: 0;
@@ -4422,8 +4422,8 @@
       background: rgba(237, 233, 250, 0.82);
       -webkit-backdrop-filter: blur(12px);
       backdrop-filter: blur(12px);
-      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
-      mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 10px);
     }
     .landing-cta .btn {
       padding: 18px 20px;
