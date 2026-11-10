@@ -2306,6 +2306,7 @@ une demande de l'adresse de B reçoit le contenu de A, en 200 `immutable`.
   | `integrity` sur le preload seulement | ① rouge : 18 demandes au lieu de 9 | vert : WebKit réutilise le preload sans elle — pièce sans objet sous WebKit |
   | la branche `reload` du worker | ⑧ rouge : « le chargeur abandonne », le worker resservait son cache | ⑧ rouge |
   | le rangement dans cette branche | ⑧ rouge | ⑧ rouge |
+  | l'attente du rangement avant de répondre | vert au repos | vert au repos ; sous charge (⑧ ×18, trois workers) 2 rouges sur 18 — 0 avec l'attente |
   | `cache: "reload"` sur la redemande | ⑥ ⑦ ⑧ rouges | ⑥ ⑦ ⑧ rouges |
   | le remplacement des empreintes (étape 1 bis) | `integrite-app.test.mjs` ③ ④ rouges | — |
   | la comparaison du contrôle | `integrite-app.test.mjs` ② rouge | — |
@@ -2322,11 +2323,15 @@ une demande de l'adresse de B reçoit le contenu de A, en 200 `immutable`.
   aucun script déjà en cache.
 - ⚠️ **LE WORKER SERVAIT SON CACHE D'ABORD, ET IGNORAIT `cache: "reload"`.** Un contenu refusé rangé là
   aurait été resservi à chaque reprise. La branche `estVersionne` honore désormais `reload` : réseau,
-  puis rangé si `contenuVersionne` — le script que la page réinsère le relit de là. WebKit transmet
-  bien le mode `reload` au worker (⑧ vert sous WebKit). Répondre seulement une fois la copie rangée
-  (première version) n'a rien changé au banc, sur aucun des deux moteurs : la mutation restait verte.
-  Retiré : la copie part en tâche de fond, comme dans le reste de la branche (une copie tardive
-  coûterait au pire la seconde reprise).
+  rangé si `contenuVersionne`, et la réponse ne part qu'une fois la copie rangée — le script que la
+  page réinsère aussitôt relit la copie neuve. WebKit transmet bien le mode `reload` au worker (⑧ vert
+  sous WebKit).
+- ⚠️ **UNE MUTATION VERTE AU REPOS N'EST PAS UNE PIÈCE INUTILE.** Répondre sans attendre la copie (en
+  tâche de fond, comme le reste de la branche) laissait ⑧ vert sur les deux moteurs, une passe chacun :
+  je l'ai d'abord retiré. Les suites voisines, lancées à deux workers, l'ont fait rougir sous WebKit —
+  la page relisait l'ancien script et il fallait la seconde reprise. Mesuré ensuite sur la même charge
+  (⑧ ×18, trois workers, WebKit) : sans l'attente 2 rouges sur 18 (et 1 sur 6 au premier essai), avec
+  l'attente 0 sur 18. Rétablie. ⑧ exige une seule redemande : c'est cette assertion qui l'a vu.
 - ⚠️ **L'EMPREINTE VA AUSSI SUR LE PRELOAD — MESURÉ.** Sans elle, Chromium ne réutilise pas le preload
   pour la balise et télécharge chaque script DEUX fois (18 demandes au lieu de 9 en ①, où les routes
   coupent le cache HTTP) ; WebKit le réutilise dans les deux cas. ① exige désormais une seule demande
