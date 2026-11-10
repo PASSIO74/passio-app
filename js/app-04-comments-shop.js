@@ -2557,6 +2557,9 @@ function editCommentEntry(threadId, commentId) {
 async function _supaUpdateCommentRow(commentId, text) {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return true;
+    // Un visiteur n'a rien en base : son commentaire vit sur l'appareil, le refus serveur
+    // attendu n'est pas un échec (relu à la contre-revue du 2026-11-10).
+    if (typeof _compteAuthReel === "function" && !_compteAuthReel()) return true;
     if (!/^[A-Za-z0-9_-]{1,120}$/.test(String(commentId || "")) || /^(ec_|lc_)/.test(commentId)) return false;
     // Le SDK ne LÈVE PAS sur un refus RLS : depuis le 2026-09-11 l'UPDATE de
     // post_comments porte un WITH CHECK (auteur du post bloqueur → refus). Et un

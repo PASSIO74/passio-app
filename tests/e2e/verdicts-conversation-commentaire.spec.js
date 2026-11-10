@@ -82,7 +82,9 @@ test.describe("ETAT-07 : le démarrage ne retire ni les bulles en attente ni le 
 });
 
 test.describe("SRV-03 : modifier un commentaire n'annonce que ce que la base a gardé", () => {
-  async function preparer(page, verdictUpdate) {
+  async function preparer(page, verdictUpdate, opts = {}) {
+    // Un COMPTE réel (forme d'un uuid), sauf demande : un visiteur n'a rien en base.
+    if (!opts.visiteur) await page.addInitScript(() => { try { localStorage.setItem("passio_uid", "3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a"); } catch (e) {} });
     await bootOnboarded(page);
     await capterToasts(page);
     await page.evaluate((verdict) => {
@@ -162,6 +164,20 @@ test.describe("SRV-03 : modifier un commentaire n'annonce que ce que la base a g
     expect(r.edite).toBe(false);
     expect(r.toasts).not.toContain("Commentaire modifié");
     expect(r.toasts.some((t) => /refus|pas été modifié|non modifié/i.test(t)), "toasts : " + JSON.stringify(r.toasts)).toBe(true);
+  });
+
+  test("⑥ un visiteur garde sa modification locale : le refus serveur attendu n'est pas un échec", async ({ page }) => {
+    await preparer(page, "refus", { visiteur: true });
+    const cid = "c_banc_srv03";
+    const pid = await filAvecMonCommentaire(page, cid);
+    const r = await page.evaluate(async ({ pid, cid }) => {
+      const node = findPostAnywhere(pid).comments.find((c) => c.id === cid);
+      await _enregistrerModificationCommentaire({ node, thread: null }, "p:" + pid, cid, "Nouveau texte", "Ancien texte");
+      return { texte: node.text, ecritures: window.__updates.length, toasts: window.__toasts.slice() };
+    }, { pid, cid });
+    expect(r.ecritures, "rien ne part au serveur pour un visiteur").toBe(0);
+    expect(r.texte).toBe("Nouveau texte");
+    expect(r.toasts).toContain("Commentaire modifié");
   });
 
   test("⑤ la même modification acceptée garde le texte et le dit", async ({ page }) => {
