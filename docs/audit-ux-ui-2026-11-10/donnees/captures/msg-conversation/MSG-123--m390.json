@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Envoi refusé par le serveur : « ✓ réessayer »",
  "note": "Panne programmée dans le faux serveur (HTTP 500, une fois). La relance fonctionne : un toucher sur « réessayer » renvoie le message (sonde 02).",
- "prisLe": "2026-11-10T18:04:21.602Z",
+ "prisLe": "2026-11-10T18:56:08.921Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-123--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 37086,
+  "octets": 36932,
   "zooms": [
    {
     "nom": "statut",
@@ -155,7 +155,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:52941/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:62400/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -176,7 +176,7 @@
   "fichier": "captures/msg-conversation/MSG-123--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 39920,
+  "octets": 39824,
   "zooms": [
    {
     "nom": "statut",
@@ -184,7 +184,7 @@
     "fichier": "captures/msg-conversation/MSG-123--m390--apres-zoom-statut.webp",
     "largeur": 496,
     "hauteur": 226,
-    "octets": 8886
+    "octets": 8900
    }
   ]
  },

@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Micro refusé",
  "note": "SIMULÉ : getUserMedia rejette « NotAllowedError ».",
- "prisLe": "2026-11-10T18:11:35.507Z",
+ "prisLe": "2026-11-10T18:59:37.251Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,18 +24,18 @@
   "fichier": "captures/msg-conversation/MSG-175--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 28480,
+  "octets": 28674,
   "zooms": []
  },
  "annotationsAvant": [
   {
    "n": 1,
-   "texte": "« 🎙️ Micro non disponible (autorisation refusée ?) » : une question, aucune piste.",
-   "x": 0.5,
-   "y": 0.858,
-   "w": 0.843,
-   "h": 0.046,
-   "sel": "#toastStack .toast",
+   "texte": "Le refus est annoncé par le toast « 🎙️ Micro non disponible (autorisation refusée ?) », caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10) : le micro semble ne rien faire.",
+   "x": 0.81,
+   "y": 0.967,
+   "w": 0.092,
+   "h": 0.043,
+   "sel": "#btnVoice",
    "trouve": true
   }
  ],
@@ -76,7 +76,7 @@
      "enLigne": false
     },
     {
-     "el": "button#pb_aud_msgx6p8dsjjkmwb0b0dk",
+     "el": "button#pb_aud_msgxd81l4wipmwb20ssv",
      "texte": "▶",
      "w": 34,
      "h": 34,
@@ -129,7 +129,7 @@
    "indetermines": 1,
    "sousSeuil": [
     {
-     "el": "span#dur_aud_msgx6p8dsjjkmwb0b0dk",
+     "el": "span#dur_aud_msgxd81l4wipmwb20ssv",
      "texte": "0:03",
      "ratio": 1.06,
      "seuil": 4.5,
@@ -152,7 +152,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63457/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61447/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
@@ -177,7 +177,7 @@
   "fichier": "captures/msg-conversation/MSG-175--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 28682,
+  "octets": 36762,
   "zooms": []
  },
  "annotations": [
@@ -185,8 +185,8 @@
    "n": 1,
    "texte": "La cause est affirmée et le geste à faire est dit.",
    "x": 0.5,
-   "y": 0.848,
-   "w": 1,
+   "y": 0.123,
+   "w": 0.92,
    "h": 0.066,
    "sel": "#toastStack .toast",
    "trouve": true

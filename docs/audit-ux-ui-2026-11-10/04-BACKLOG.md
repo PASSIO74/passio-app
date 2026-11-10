@@ -6,7 +6,7 @@
 | Priorité | Constats |
 |---|---|
 | P0 | 1 |
-| P1 | 32 |
+| P1 | 33 |
 | P2 | 82 |
 | P3 | 54 |
 
@@ -42,6 +42,7 @@
 | MSG-C57 | P1 | 3 | fonctionnel | observation | S | faible | Messagerie | Un GIF ou une position dont l'envoi échoue reste affiché comme envoyé |
 | MSG-C58 | P1 | 3 | friction | observation | S | faible | Messagerie | « Supprimer pour moi » et « Supprimer pour tous » s'exécutent sans confirmation ni annulation |
 | MSG-C60 | P1 | 3 | friction | observation | M | moyen | Messagerie | Le champ de saisie ne fait que 156 px sur 390 : cinq commandes permanentes l'encadrent, dont deux entrées GIF |
+| MSG-C85 | P1 | 3 | fonctionnel | observation | S | faible | Messagerie | Conversation ouverte : aucun toast n'est visible — refus, erreurs et confirmations passent inaperçus |
 | PAR-C02 | P1 | 3 | fonctionnel | observation | M | moyen | Partage | Après l'inscription, le contenu du lien n'est pas rouvert ⚠ sensible |
 | PAR-C03 | P1 | 3 | friction | observation | S | faible | Partage | Les confirmations de partage sont peintes sous les feuilles et sous le lecteur de bobines |
 | PAR-C04 | P1 | 3 | fonctionnel | observation | S | faible | Partage | Copie refusée : une adresse brute pendant 3 s, ou rien du tout pour une bobine |
@@ -635,6 +636,22 @@
 - **Risque de régression** : `#convFpSendBtn` et `#btnVoice` doivent rester dans le DOM (suites e2e et handlers en ligne) : on bascule leur affichage, on ne les retire pas. Verrous : conv-clavier-ouverture.spec.js, audit-2026-11-a11y.spec.js (cibles).
 - **Critère d'acceptation** : À 390 px le champ mesure ≥ 250 px, à 360 px ≥ 220 px ; champ vide : micro visible, envoi masqué ; champ rempli : envoi visible, micro masqué ; chaque bouton de la barre mesure ≥ 44 × 44 px.
 - **Fichiers probables** : `index.html`, `styles.css`, `js/app-04-comments-shop.js`, `js/emoji-misc.js`
+
+### MSG-C85 — Conversation ouverte : aucun toast n'est visible — refus, erreurs et confirmations passent inaperçus
+
+- **Emplacement** : Coque — .toast-stack en position absolue, z-index 200 (styles.css:1468-1485) ; #conv-fullpage en z-index 1200 dans la même coque (.app-shell) ; toast() (js/app-02-state-utils.js:3325)
+- **Domaine** : Messagerie · **Nature** : fonctionnel · **Type** : observation
+- **Preuve** : Sonde 10 : même toast émis sur la liste des conversations puis dans une conversation, capture prise SANS figer les animations, 500 ms après l'émission (opacité mesurée : 1). Sur la liste il s'affiche au-dessus de la barre d'onglets ; dans la conversation il est absent de l'image. `document.elementFromPoint` au centre du toast rend #convFpThread (conversation) et #modalBackdrop (feuille ouverte par-dessus la conversation) : la pile des toasts (z-index 200) est sous le panneau de conversation (z-index 1200). Sonde 09 (mode démonstration) : l'appui sur Envoyer émet un toast et ne produit rien de visible. Les captures du banc figent les animations à leur fin et ne pouvaient donc pas le montrer : le défaut n'apparaît qu'avec la sonde 10.
+- **Problème** : Dans une conversation, tout ce que l'application dit par toast est invisible : « Message trop long », « Impossible d'obtenir la position », « Micro non disponible », « Pièce jointe non envoyée », « Message introuvable », « Message supprimé pour tous », « Connexion rétablie — envoi des messages en attente », le refus d'écrire dans une conversation d'exemple, les fichiers trop lourds, les formats de vocal illisibles. Vu de la personne, le geste ne fait rien.
+- **Situation déclenchante** : Tout appel à toast() pendant que #conv-fullpage est ouvert (et toute feuille modale ouverte par-dessus).
+- **Conséquence pour l'utilisateur** : La personne répète le geste, croit l'application en panne ou abandonne ; les garde-fous déjà codés (limite de longueur, refus de permission, échec de dépôt) perdent leur effet. Dans la conversation d'exemple, l'envoi semble simplement cassé — c'est la première conversation qu'ouvre un nouveau venu.
+- **Proposition** : Placer la pile des toasts au-dessus des panneaux plein écran et des feuilles (z-index supérieur à celui de #conv-fullpage et de #modalBackdrop) et, conversation ouverte, l'afficher juste sous l'en-tête (la barre de saisie grandit jusqu'à cinq lignes : un toast calé dessus la recouvrirait ; la barre d'onglets, repère actuel, est absente). Vérifier les autres panneaux plein écran (bobines, création) qui ont le même empilement.
+- **Visuels** : [MSG-126](galerie/index.html#/surface/MSG-126), [MSG-158](galerie/index.html#/surface/MSG-158), [MSG-175](galerie/index.html#/surface/MSG-175) · **Surfaces** : MSG-126, MSG-158, MSG-175, MSG-146, MSG-185, MSG-206, MSG-164, MSG-125, MSG-165, MSG-177, MSG-178
+- **Priorité** : P1 · **Gravité** : 3/4 · **Effort** : S · **Risque technique** : faible
+- **Dépendances** : Socle (coque, z-index) — à traiter une fois pour tous les panneaux plein écran.
+- **Risque de régression** : Un toast ne doit pas couvrir la barre de saisie ni le bouton d'envoi (position à recaler conversation ouverte) ; les toasts restent non interactifs (pointer-events: none). Verrous à ajouter : un test qui émet un toast conversation ouverte et vérifie par elementFromPoint qu'il est au premier plan.
+- **Critère d'acceptation** : Conversation ouverte, puis feuille d'actions ouverte : un toast émis est l'élément au premier plan à son centre (elementFromPoint), entièrement visible, et ne recouvre ni le champ ni le bouton d'envoi.
+- **Fichiers probables** : `styles.css`
 
 ### PAR-C02 — Après l'inscription, le contenu du lien n'est pas rouvert  ⚠ sensible (auth, droits, données privées ou règle métier)
 
@@ -1737,7 +1754,7 @@
 - **Proposition** : Au démarrage, reporter sur l'entrée venue du serveur les champs purement locaux de l'entrée existante (brouillon, fond) — c'est déjà ce que fait la fusion du réveil (`_fusionnerConvsServeurDansLocal`).
 - **Visuels** : — · **Surfaces** : MSG-200, MSG-199
 - **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : moyen
-- **Dépendances** : Domaine « liste » (mêmes champs locaux : épinglage, archivage, sourdine).
+- **Dépendances** : Même cause que MSG-C01 (domaine « liste » : épinglage, archivage, sourdine, fond, description effacés au démarrage) — un seul correctif ; ce constat en est la face « conversation » (le brouillon).
 - **Risque de régression** : Pierres tombales et déduplication des conversations ; purge au changement de compte (un brouillon ne doit pas passer d'un compte à l'autre). Verrous : conv-suppression.spec.js, file-messages-par-compte.spec.js.
 - **Critère d'acceptation** : Brouillon tapé, application rechargée : le champ de la même conversation contient le brouillon et la liste affiche « Brouillon : … ».
 - **Fichiers probables** : `js/app-08-ui-modals-tour.js`, `js/app-04-comments-shop.js`
@@ -1751,7 +1768,7 @@
 - **Situation déclenchante** : Usage à une main, doigts larges, lecteur d'écran, commande vocale.
 - **Conséquence pour l'utilisateur** : Touches ratées (le voisin d'un bouton de 34 px est à 4 px), fonctions inaccessibles en synthèse vocale.
 - **Proposition** : Porter chaque cible à 44 px (zone tactile, taille visuelle conservée quand elle suffit), ajouter les noms accessibles (« Paramètres de la conversation », « Membres du groupe », « Lire le message vocal », « Vitesse de lecture : 1× », « Annuler la réponse », « Annuler l'enregistrement »), étiqueter le champ (« Message à Léa Fontaine »), donner un texte alternatif aux images (« Photo envoyée par Léa »), ne pas poser d'attribut onclick vide.
-- **Visuels** : [MSG-101](galerie/index.html#/surface/MSG-101), [MSG-108](galerie/index.html#/surface/MSG-108), [MSG-140](galerie/index.html#/surface/MSG-140) · **Surfaces** : MSG-101, MSG-108, MSG-130, MSG-140, MSG-159, MSG-176, MSG-190, MSG-102
+- **Visuels** : [MSG-101](galerie/index.html#/surface/MSG-101), [MSG-107](galerie/index.html#/surface/MSG-107), [MSG-140](galerie/index.html#/surface/MSG-140) · **Surfaces** : MSG-101, MSG-108, MSG-130, MSG-140, MSG-159, MSG-176, MSG-190, MSG-102
 - **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
 - **Dépendances** : Constat transverse du socle : le panneau de conversation FERMÉ garde 8 commandes focusables (sonde socle-focus-cache.js).
 - **Risque de régression** : Mesures de audit-2026-11-a11y.spec.js (cibles de l'en-tête) ; règle WCAG 2.5.3 (le nom contient le libellé visible).
@@ -1794,14 +1811,14 @@
 
 - **Emplacement** : Conversation › enregistrement — onstop : sortie muette si < 600 ms ou aucun fragment (js/app-09-boot-pwa.js:2019) ; toast du refus (:2040) ; aucune durée maximale
 - **Domaine** : Messagerie · **Nature** : clarte · **Type** : observation
-- **Preuve** : Sonde 05 : micro refusé (simulé) → toast « 🎙️ Micro non disponible (autorisation refusée ?) ». Sonde 05b : le Chromium du banc annonce audio/mp4 puis n'encode rien (0 octet) → l'application ne dit rien, aucun message, aucun toast (limite du banc, mais le chemin muet est celui du code). D'après le code : appui < 0,6 s → rien ; pas de plafond de durée.
+- **Preuve** : Sonde 05 : micro refusé (simulé) → toast « 🎙️ Micro non disponible (autorisation refusée ?) ». Sonde 05b : le Chromium du banc annonce audio/mp4 puis n'encode rien (0 octet) → l'application ne dit rien, aucun message, aucun toast (limite du banc, mais le chemin muet est celui du code). D'après le code : appui < 0,6 s → rien ; pas de plafond de durée. Tant que MSG-C85 n'est pas corrigé, ces textes resteraient de toute façon invisibles conversation ouverte : les deux corrections vont ensemble.
 - **Problème** : Après un appui trop bref ou un enregistrement vide, rien n'explique pourquoi aucun vocal n'apparaît. Quand le micro est bloqué, le message doute lui-même de la cause et ne dit pas quoi faire.
 - **Situation déclenchante** : Appui bref sur le micro ; micro refusé dans le navigateur ; encodeur indisponible.
 - **Conséquence pour l'utilisateur** : Le bouton paraît cassé ; la personne ne sait pas comment réautoriser le micro.
 - **Proposition** : Appui trop court : « Maintiens le micro pour enregistrer ». Aucun son capté : « L'enregistrement n'a pas fonctionné, réessaie ». Micro refusé : « Micro bloqué — autorise-le dans les réglages du site pour envoyer un vocal ». Vérifier s'il faut une durée maximale (hypothèse).
 - **Visuels** : [MSG-175](galerie/index.html#/surface/MSG-175) · **Surfaces** : MSG-175, MSG-172, MSG-177
 - **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible
-- **Dépendances** : MSG-C53.
+- **Dépendances** : MSG-C53, MSG-C85 (sans lui, aucun de ces messages n'est visible).
 - **Risque de régression** : Aucune.
 - **Critère d'acceptation** : Chaque sortie sans message de startVoiceRecord / onstop affiche un texte ; aucun texte d'erreur ne se termine par un point d'interrogation.
 - **Fichiers probables** : `js/app-09-boot-pwa.js`
@@ -1810,10 +1827,10 @@
 
 - **Emplacement** : Conversation › fil de démonstration — sous-titre « Voir le profil » (js/app-04-comments-shop.js:5709) ; refus par toast à l'envoi (:6999-7002) ; la liste, elle, affiche « Exemple PASSIO · réponse désactivée » (:5603)
 - **Domaine** : Messagerie · **Nature** : clarte · **Type** : observation
-- **Preuve** : Capture MSG-206 (mode démonstration) : voir la fiche — en-tête identique à celui d'une vraie conversation, barre de saisie complète ; l'envoi répond par le toast « Conversation de démonstration — écris à un vrai membre depuis son profil ».
-- **Problème** : Dans la liste la conversation est étiquetée « Exemple », mais une fois ouverte rien ne le rappelle : on écrit un message, et c'est seulement à l'envoi qu'un toast refuse.
+- **Preuve** : Capture MSG-206 (mode démonstration) : voir la fiche — en-tête identique à celui d'une vraie conversation, barre de saisie complète. Sonde 09 : l'envoi et le micro émettent le toast « Conversation de démonstration — écris à un vrai membre depuis son profil », que la conversation masque (MSG-C85) : à l'écran, il ne se passe rien et le texte reste dans le champ.
+- **Problème** : Dans la liste la conversation est étiquetée « Exemple », mais une fois ouverte rien ne le rappelle : on écrit un message, on appuie sur Envoyer, et rien ne se passe — le refus existe mais reste invisible.
 - **Situation déclenchante** : Nouveau compte ou visiteur qui ouvre une des conversations d'exemple.
-- **Conséquence pour l'utilisateur** : Premier essai de la messagerie qui se solde par un refus après l'effort d'écrire.
+- **Conséquence pour l'utilisateur** : Premier essai de la messagerie qui ressemble à une panne, après l'effort d'écrire.
 - **Proposition** : Dans une conversation d'exemple : sous-titre « Exemple PASSIO », et à la place de la barre de saisie une ligne « Conversation d'exemple — pour écrire à quelqu'un, ouvre son profil » avec le bouton « Découvrir des profils ».
 - **Visuels** : [MSG-206](galerie/index.html#/surface/MSG-206) · **Surfaces** : MSG-206
 - **Priorité** : P2 · **Gravité** : 2/4 · **Effort** : S · **Risque technique** : faible

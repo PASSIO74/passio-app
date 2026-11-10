@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Menu « + »",
  "note": "",
- "prisLe": "2026-11-10T18:08:32.600Z",
+ "prisLe": "2026-11-10T19:00:28.763Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-150--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 39394,
+  "octets": 38568,
   "zooms": [
    {
     "nom": "menu",
@@ -32,7 +32,7 @@
     "fichier": "captures/msg-conversation/MSG-150--m390--avant-zoom-menu.webp",
     "largeur": 444,
     "hauteur": 820,
-    "octets": 13100
+    "octets": 13000
    }
   ]
  },
@@ -131,7 +131,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:60679/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -152,7 +152,7 @@
   "fichier": "captures/msg-conversation/MSG-150--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 39804,
+  "octets": 39518,
   "zooms": [
    {
     "nom": "menu",

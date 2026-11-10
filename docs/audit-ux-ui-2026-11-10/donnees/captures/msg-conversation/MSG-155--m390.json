@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Photo choisie dans le sélecteur du système : déjà envoyée",
  "note": "Vrai <input type=file>. 1,5 s après le choix, la photo est dans le fil et sur le serveur ; aucun aperçu ni confirmation.",
- "prisLe": "2026-11-10T18:08:45.377Z",
+ "prisLe": "2026-11-10T19:00:40.370Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-155--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 32474,
+  "octets": 32320,
   "zooms": []
  },
  "annotationsAvant": [
@@ -112,7 +112,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:60679/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
@@ -137,7 +137,7 @@
   "fichier": "captures/msg-conversation/MSG-155--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 33174,
+  "octets": 32794,
   "zooms": []
  },
  "annotations": [

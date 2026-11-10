@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Position envoyée en un toucher",
  "note": "Géolocalisation fictive accordée au contexte (45,7485 ; 4,8467). Aucune étape entre le toucher sur « Localisation » et l'envoi.",
- "prisLe": "2026-11-10T18:08:55.823Z",
+ "prisLe": "2026-11-10T19:00:50.554Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-157--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 39550,
+  "octets": 39438,
   "zooms": [
    {
     "nom": "bulle",
@@ -32,7 +32,7 @@
     "fichier": "captures/msg-conversation/MSG-157--m390--avant-zoom-bulle.webp",
     "largeur": 668,
     "hauteur": 252,
-    "octets": 10676
+    "octets": 10688
    }
   ]
  },
@@ -147,7 +147,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:60679/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
@@ -178,7 +178,7 @@
   "fichier": "captures/msg-conversation/MSG-157--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 32138,
+  "octets": 32092,
   "zooms": [
    {
     "nom": "bulle",

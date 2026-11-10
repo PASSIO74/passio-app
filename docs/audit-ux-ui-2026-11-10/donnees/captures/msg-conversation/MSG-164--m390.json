@@ -8,8 +8,8 @@
  "version": "158.0.8127.18",
  "mode": "compte",
  "titre": "Dépôt d'une photo refusé par le stockage : échec dit, relance possible",
- "note": "SIMULÉ : le dépôt Storage répond 500. Toast « ⚠️ Pièce jointe non envoyée — touche « réessayer » » ; la relance repart de la copie locale.",
- "prisLe": "2026-11-10T18:10:56.439Z",
+ "note": "SIMULÉ : le dépôt Storage répond 500. Le toast « ⚠️ Pièce jointe non envoyée — touche « réessayer » » est émis mais caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10) ; la relance repart de la copie locale.",
+ "prisLe": "2026-11-10T19:05:33.753Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-164--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 36366,
+  "octets": 35778,
   "zooms": []
  },
  "annotationsAvant": [
@@ -136,7 +136,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:53045/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:54912/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",

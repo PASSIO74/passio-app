@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Feuille d'actions d'une photo reçue",
  "note": "",
- "prisLe": "2026-11-10T18:06:13.913Z",
+ "prisLe": "2026-11-10T19:02:38.808Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": "ouverte",
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": true,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(2) PASSIO",
   "hash": "#modal"
  },
  "avant": {
   "fichier": "captures/msg-conversation/MSG-142--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 22934,
+  "octets": 23094,
   "zooms": []
  },
  "annotationsAvant": [
@@ -126,16 +126,16 @@
   "fichier": "captures/msg-conversation/MSG-142--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 21692,
+  "octets": 21720,
   "zooms": []
  },
  "annotations": [
   {
    "n": 1,
    "texte": "Le message visé est décrit par son type (« Photo ») ; « Copier le texte » n'est proposé que pour du texte.",
-   "x": 0.5,
+   "x": 0.433,
    "y": 0.56,
-   "w": 0.897,
+   "w": 0.764,
    "h": 0.064,
    "sel": "#modalContent .maq-apercu",
    "trouve": true

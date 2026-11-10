@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Clavier virtuel ouvert (simulé : fenêtre réduite de 300 px)",
  "note": "ÉMULATION : la fenêtre est réduite, la coque de l'application garde ses 844 px (--app-vh n'est pas recalculé pendant la frappe) ; le navigateur fait glisser la page pour garder le champ visible, l'en-tête sort par le haut. À vérifier sur un vrai téléphone.",
- "prisLe": "2026-11-10T18:04:07.249Z",
+ "prisLe": "2026-11-10T18:55:54.644Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-120--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1088,
-  "octets": 21370,
+  "octets": 21270,
   "zooms": []
  },
  "annotationsAvant": [

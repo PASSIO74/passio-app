@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Appui long : la feuille s'ouvre sous le doigt encore posé",
  "note": "Doigt maintenu depuis 0,8 s (appui tactile CDP), pas encore relâché. Dans le banc, relâcher ici déclenche « Répondre » (sonde 03c). À confirmer sur appareil réel.",
- "prisLe": "2026-11-10T18:06:06.931Z",
+ "prisLe": "2026-11-10T19:02:33.318Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": "ouverte",
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": true,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(2) PASSIO",
   "hash": "#modal"
  },
  "avant": {
   "fichier": "captures/msg-conversation/MSG-148--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 22954,
+  "octets": 22950,
   "zooms": []
  },
  "annotationsAvant": [

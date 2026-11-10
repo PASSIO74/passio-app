@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Barre de réponse",
  "note": "",
- "prisLe": "2026-11-10T18:06:10.993Z",
+ "prisLe": "2026-11-10T19:02:36.322Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": true,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(2) PASSIO",
   "hash": "#conv"
  },
  "avant": {
   "fichier": "captures/msg-conversation/MSG-130--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 33994,
+  "octets": 34112,
   "zooms": [
    {
     "nom": "reponse",
@@ -157,11 +157,11 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:56707/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:62004/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
-    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:56707/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
+    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:62004/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
    }
   ],
   "debordement": {
@@ -182,7 +182,7 @@
   "fichier": "captures/msg-conversation/MSG-130--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 35154,
+  "octets": 35290,
   "zooms": [
    {
     "nom": "reponse",

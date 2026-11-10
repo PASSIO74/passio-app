@@ -7,9 +7,9 @@
  "moteur": "chromium",
  "version": "158.0.8127.18",
  "mode": "demo",
- "titre": "Conversation d'exemple : rien ne le dit, le refus n'arrive qu'à l'envoi",
- "note": "Mode démonstration du banc (aucune session). Le toast répond à l'appui sur Envoyer ; le texte reste dans le champ.",
- "prisLe": "2026-11-10T18:16:05.392Z",
+ "titre": "Conversation d'exemple : rien ne le dit, et l'envoi ne fait rien de visible",
+ "note": "Mode démonstration du banc (aucune session). L'appui sur Envoyer émet le toast « Conversation de démonstration — écris à un vrai membre depuis son profil », caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10) ; le texte reste dans le champ, le micro fait de même (sonde 09).",
+ "prisLe": "2026-11-10T19:05:11.430Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-206--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 31166,
+  "octets": 31312,
   "zooms": []
  },
  "annotationsAvant": [
@@ -50,12 +50,12 @@
   },
   {
    "n": 3,
-   "texte": "Le refus n'arrive qu'après avoir écrit.",
-   "x": 0.5,
-   "y": 0.848,
-   "w": 1,
-   "h": 0.066,
-   "sel": "#toastStack .toast",
+   "texte": "Envoyer : refus émis mais invisible — rien ne se passe.",
+   "x": 0.923,
+   "y": 0.964,
+   "w": 0.111,
+   "h": 0.051,
+   "sel": "#convFpSendBtn",
    "trouve": true
   }
  ],
@@ -155,7 +155,7 @@
   "fichier": "captures/msg-conversation/MSG-206--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 36760,
+  "octets": 36904,
   "zooms": []
  },
  "annotations": [

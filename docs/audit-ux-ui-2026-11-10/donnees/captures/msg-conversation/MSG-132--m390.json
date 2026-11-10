@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "« En train d'écrire »",
  "note": "SIMULÉ : la barre est affichée par le scénario (son canal temps réel est coupé dans le banc).",
- "prisLe": "2026-11-10T18:12:55.958Z",
+ "prisLe": "2026-11-10T19:04:33.265Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-132--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 43914,
+  "octets": 44062,
   "zooms": [
    {
     "nom": "barre",
@@ -32,7 +32,7 @@
     "fichier": "captures/msg-conversation/MSG-132--m390--avant-zoom-barre.webp",
     "largeur": 780,
     "hauteur": 66,
-    "octets": 2752
+    "octets": 2796
    }
   ]
  },
@@ -110,7 +110,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63882/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:54836/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {

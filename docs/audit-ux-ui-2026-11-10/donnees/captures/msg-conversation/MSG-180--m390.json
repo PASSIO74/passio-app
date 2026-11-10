@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Longue conversation (230 messages) — à l'ouverture",
  "note": "40 bulles rendues, fil calé sur le dernier message (0 px d'écart).",
- "prisLe": "2026-11-10T18:12:45.446Z",
+ "prisLe": "2026-11-10T19:04:23.916Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-180--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 44472,
+  "octets": 44518,
   "zooms": []
  },
  "annotationsAvant": [
@@ -112,7 +112,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63882/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:54836/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -133,7 +133,7 @@
   "fichier": "captures/msg-conversation/MSG-180--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 44452,
+  "octets": 44518,
   "zooms": []
  },
  "annotations": [

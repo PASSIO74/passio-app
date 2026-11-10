@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Sélecteur de GIF flottant (bouton pellicule)",
  "note": "SIMULÉ : images locales. Second sélecteur de GIF, différent de l'onglet du panneau emoji.",
- "prisLe": "2026-11-10T18:08:41.429Z",
+ "prisLe": "2026-11-10T19:00:36.690Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-154--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 46614,
+  "octets": 46262,
   "zooms": []
  },
  "annotationsAvant": [
@@ -119,7 +119,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:60679/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {

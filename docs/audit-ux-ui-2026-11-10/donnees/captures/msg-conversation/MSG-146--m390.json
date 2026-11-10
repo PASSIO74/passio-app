@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "« Supprimer pour tous » : le message a disparu au premier toucher",
  "note": "Aucune confirmation ; la ligne est supprimée en base, un contrôle `del` est envoyé ; le fil ne garde aucune trace.",
- "prisLe": "2026-11-10T18:06:32.535Z",
+ "prisLe": "2026-11-10T19:02:54.598Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -17,25 +17,25 @@
   "onboarding": false,
   "conversation": true,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(2) PASSIO",
   "hash": "#conv"
  },
  "avant": {
   "fichier": "captures/msg-conversation/MSG-146--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 25618,
+  "octets": 25786,
   "zooms": []
  },
  "annotationsAvant": [
   {
    "n": 1,
-   "texte": "Seul retour : un toast de 3 s, sans « Annuler ».",
+   "texte": "Le message a disparu sans un mot : le toast « Message supprimé pour tous » est caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10).",
    "x": 0.5,
-   "y": 0.858,
-   "w": 0.541,
-   "h": 0.046,
-   "sel": "#toastStack .toast",
+   "y": 0.499,
+   "w": 1,
+   "h": 0.856,
+   "sel": "#convFpThread",
    "trouve": true
   }
  ],
@@ -131,11 +131,11 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:56707/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:62004/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
-    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:56707/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
+    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:62004/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
    }
   ],
   "debordement": {
@@ -156,7 +156,7 @@
   "fichier": "captures/msg-conversation/MSG-146--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 28018,
+  "octets": 28058,
   "zooms": []
  },
  "annotations": [

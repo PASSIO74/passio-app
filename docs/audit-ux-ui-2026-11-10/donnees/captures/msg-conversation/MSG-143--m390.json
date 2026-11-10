@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Répondre à une photo : la citation affiche une étiquette technique",
  "note": "",
- "prisLe": "2026-11-10T18:06:15.680Z",
+ "prisLe": "2026-11-10T19:02:40.122Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": true,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(2) PASSIO",
   "hash": "#conv"
  },
  "avant": {
   "fichier": "captures/msg-conversation/MSG-143--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 62748,
+  "octets": 62576,
   "zooms": [
    {
     "nom": "reponse",
@@ -135,11 +135,11 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:56707/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:62004/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div#convFpThread > div.conv-bubble-wrap.them > div.conv-bubble.them > img",
-    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:56707/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
+    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:62004/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
    }
   ],
   "debordement": {
@@ -166,7 +166,7 @@
   "fichier": "captures/msg-conversation/MSG-143--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 61256,
+  "octets": 61102,
   "zooms": [
    {
     "nom": "reponse",

@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Appui long sur une vidéo : aucune feuille",
  "note": "Doigt maintenu 0,9 s au centre de la vidéo (appui tactile CDP). Sur une photo ou un texte, la feuille est ouverte à ce moment.",
- "prisLe": "2026-11-10T18:06:37.765Z",
+ "prisLe": "2026-11-10T19:02:59.410Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": true,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(2) PASSIO",
   "hash": "#conv"
  },
  "avant": {
   "fichier": "captures/msg-conversation/MSG-149--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 25172,
+  "octets": 25378,
   "zooms": []
  },
  "annotationsAvant": [
@@ -131,11 +131,11 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:56707/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:62004/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
-    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:56707/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
+    "html": "<img loading=\"lazy\" decoding=\"async\" src=\"http://127.0.0.1:62004/docs/audit-ux-ui-2026-11-10/outils/medias/pho"
    }
   ],
   "debordement": {

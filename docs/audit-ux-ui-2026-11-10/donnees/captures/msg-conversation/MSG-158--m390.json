@@ -7,9 +7,9 @@
  "moteur": "chromium",
  "version": "158.0.8127.18",
  "mode": "compte",
- "titre": "Position refusée",
- "note": "SIMULÉ : getCurrentPosition répond « permission refusée ». Toast « ❌ Impossible d'obtenir la position » ; rien n'est envoyé ; le menu reste ouvert.",
- "prisLe": "2026-11-10T18:08:58.480Z",
+ "titre": "Position refusée : rien n'est envoyé, rien n'est dit",
+ "note": "SIMULÉ : getCurrentPosition répond « permission refusée ». Rien n'est envoyé (correct) ; les toasts « 📍 Localisation en cours… » puis « ❌ Impossible d'obtenir la position » sont caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10).",
+ "prisLe": "2026-11-10T19:00:51.913Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,10 +24,21 @@
   "fichier": "captures/msg-conversation/MSG-158--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 42722,
+  "octets": 42598,
   "zooms": []
  },
- "annotationsAvant": [],
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le menu reste ouvert, aucune explication visible.",
+   "x": 0.269,
+   "y": 0.69,
+   "w": 0.538,
+   "h": 0.472,
+   "sel": "#convAttachMenu",
+   "trouve": true
+  }
+ ],
  "mesures": {
   "fenetre": {
    "w": 390,
@@ -120,7 +131,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:60679/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div#convFpThread > div.conv-bubble-wrap.me > div.conv-bubble.me > img",
@@ -147,8 +158,25 @@
    }
   ]
  },
- "apres": null,
- "annotations": [],
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-158--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 52340,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Message visible au-dessus de la conversation, qui dit quoi faire.",
+   "x": 0.5,
+   "y": 0.123,
+   "w": 0.92,
+   "h": 0.066,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
  "erreurs": {
   "js": [],
   "console": []

@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Après un simple toucher : l'enregistrement tourne, personne ne tient le bouton",
  "note": "SIMULÉ (micro de synthèse). 2,4 s après un toucher de quelques millisecondes : `_isRecording` est vrai, le minuteur avance. Le prochain toucher sur le micro ENVOIE l'enregistrement (sonde 05).",
- "prisLe": "2026-11-10T18:11:33.148Z",
+ "prisLe": "2026-11-10T18:59:35.581Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-172--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 31638,
+  "octets": 31814,
   "zooms": []
  },
  "annotationsAvant": [
@@ -86,7 +86,7 @@
      "enLigne": false
     },
     {
-     "el": "button#pb_aud_msgx6p8dsjjkmwb0b0dk",
+     "el": "button#pb_aud_msgxd81l4wipmwb20ssv",
      "texte": "▶",
      "w": 34,
      "h": 34,
@@ -146,7 +146,7 @@
    "indetermines": 1,
    "sousSeuil": [
     {
-     "el": "span#dur_aud_msgx6p8dsjjkmwb0b0dk",
+     "el": "span#dur_aud_msgxd81l4wipmwb20ssv",
      "texte": "0:03",
      "ratio": 1.06,
      "seuil": 4.5,
@@ -165,7 +165,7 @@
     },
     {
      "el": "span#voiceRecordTimer",
-     "texte": "0:03",
+     "texte": "0:02",
      "ratio": 3.15,
      "seuil": 4.5,
      "couleur": "#ef4444",
@@ -187,7 +187,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63457/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61447/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
@@ -212,7 +212,7 @@
   "fichier": "captures/msg-conversation/MSG-172--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 28480,
+  "octets": 32252,
   "zooms": []
  },
  "annotations": [
@@ -220,7 +220,7 @@
    "n": 1,
    "texte": "Doigt levé avant l'ouverture du micro : le flux est refermé, rien n'est enregistré, une consigne s'affiche.",
    "x": 0.5,
-   "y": 0.858,
+   "y": 0.113,
    "w": 0.64,
    "h": 0.046,
    "sel": "#toastStack .toast",

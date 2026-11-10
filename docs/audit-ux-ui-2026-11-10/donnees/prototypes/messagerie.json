@@ -1,0 +1,32 @@
+{
+ "ordre": 4,
+ "fichier": "prototypes/messagerie.html",
+ "titre": "Écrire dans une conversation",
+ "description": "La conversation 1:1 de bout en bout, en quatorze étapes guidées : ouverture sur le dernier message avec le contexte de l'échange (passions) dans l'en-tête ; mes vocaux et documents lisibles dans leur bulle ; une barre de saisie à trois zones (champ large, emoji dans le champ, un seul bouton micro / envoi) ; des états d'envoi en toutes lettres (« Envoi… », « Non envoyé · Réessayer », « En attente du réseau ») ; le vocal par appui maintenu qui annonce « relâche pour envoyer · glisse pour annuler », et qui ne démarre plus sur un simple toucher ; des messages d'erreur enfin visibles au-dessus de la conversation ; l'aperçu d'une photo avant envoi et la confirmation avant de partager sa position ; le menu d'un message qui rappelle le message visé et une suppression à deux portées confirmée ; le retour aux derniers messages ; « Proposer un moment IRL » unique, en corail ; et la conversation d'exemple qui le dit. Tout ce qui est montré existe déjà dans l'application, réorganisé ou clarifié.",
+ "constats": [
+  "MSG-C50",
+  "MSG-C52",
+  "MSG-C53",
+  "MSG-C54",
+  "MSG-C55",
+  "MSG-C56",
+  "MSG-C58",
+  "MSG-C59",
+  "MSG-C60",
+  "MSG-C62",
+  "MSG-C63",
+  "MSG-C64",
+  "MSG-C68",
+  "MSG-C69",
+  "MSG-C71",
+  "MSG-C72",
+  "MSG-C75",
+  "MSG-C76",
+  "MSG-C81",
+  "MSG-C82",
+  "MSG-C83",
+  "MSG-C85",
+  "MSG-C87",
+  "MSG-C12"
+ ]
+}

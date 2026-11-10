@@ -12,7 +12,7 @@ const path = require("path");
 const AUDIT = path.resolve(__dirname, "..", "..");
 const DOM = "msg-conversation";
 const surfaces = require("./msg-conversation-_surfaces.js");
-const constats = require("./msg-conversation-_constats.js");
+const constats = require("./msg-conversation-_constats.js").slice().sort((a, b) => a.id.localeCompare(b.id));
 
 const dirDon = path.join(AUDIT, "donnees", "captures", DOM);
 const fiches = {};
@@ -51,22 +51,22 @@ const sortie = {
   domaine: DOM,
   groupe: "Messagerie",
   titre: "Messagerie — la conversation",
-  resume: "L'écran de conversation fait l'essentiel correctement : ouverture rapide, envoi sans doublon, file hors ligne, relance d'un envoi raté, pagination qui garde la position, réponses, réactions, signalement d'un message. Mais plusieurs défauts mesurés touchent des gestes quotidiens : mes vocaux, documents et positions envoyés sont blancs sur fond clair (1,08:1), le fil n'arrive pas sur le dernier message quand il contient des médias (360 px d'écart), le champ de saisie ne fait que 156 px sur 390 et la touche Entrée envoie sur mobile. Le vocal est le point le plus fragile : un simple toucher lance un enregistrement qui continue sans doigt posé et que le toucher suivant envoie, et l'annuler demande un second doigt. Trois envois se font sans filet — position exacte, photo, suppression « pour tous » — et un GIF ou une position en échec restent affichés comme envoyés. Enfin la conversation est coupée de la boucle Fil → interaction → IRL : l'en-tête ne rappelle ni la passion commune ni l'activité dont on discute, et « proposer un IRL » existe en deux versions différentes.",
+  resume: "L'écran de conversation fait l'essentiel correctement : ouverture rapide, envoi sans doublon, file hors ligne, relance d'un envoi raté, pagination qui garde la position, réponses, réactions, signalement d'un message. Mais plusieurs défauts mesurés touchent des gestes quotidiens : mes vocaux, documents et positions envoyés sont blancs sur fond clair (1,08:1), le fil n'arrive pas sur le dernier message quand il contient des médias (360 px d'écart), le champ de saisie ne fait que 156 px sur 390 et la touche Entrée envoie sur mobile. Le vocal est le point le plus fragile : un simple toucher lance un enregistrement qui continue sans doigt posé et que le toucher suivant envoie, et l'annuler demande un second doigt. Trois envois se font sans filet — position exacte, photo, suppression « pour tous » — et un GIF ou une position en échec restent affichés comme envoyés. Surtout, aucun toast n'est visible tant qu'une conversation est ouverte (pile des toasts sous le panneau) : « message trop long », micro ou position refusés, pièce jointe non envoyée, refus dans une conversation d'exemple — tous ces garde-fous existent, mais le geste semble ne rien faire. Enfin la conversation est coupée de la boucle Fil → interaction → IRL : l'en-tête ne rappelle ni la passion commune ni l'activité dont on discute, et « proposer un IRL » existe en deux versions différentes.",
   aConserver: [
     "L'ouverture ne donne pas le focus au champ sur tactile : le clavier ne masque pas le fil (correctif du 2026-09-02, vérifié).",
     "Aucun doublon : double appui sur Envoyer et Entrée répétée ne créent qu'un message (2 lignes en base pour 2 envois).",
-    "La file hors ligne : un message écrit sans réseau part seul, une seule fois, au retour de la connexion, avec un toast qui l'annonce.",
+    "La file hors ligne : un message écrit sans réseau part seul, une seule fois, au retour de la connexion.",
     "« Réessayer » renvoie réellement le message après une panne serveur ; rien n'est perdu.",
     "La pagination par 40 messages conserve le point de lecture à chaque page (230 messages parcourus en 5 remontées, rendu complet en 29 ms).",
     "Répondre : barre « Réponse à … » avec extrait, citation lisible dans la bulle, saut au message cité.",
     "Signaler un message : feuille claire, confidentialité rappelée, absent de mes propres messages.",
-    "Le dépôt d'une pièce jointe a un statut, un toast d'échec et une relance depuis la copie locale.",
+    "Le dépôt d'une pièce jointe a un statut d'échec et une relance depuis la copie locale.",
     "Groupes : nom de l'expéditeur au-dessus de chaque série de bulles, mentions @ proposées dans une liste propre.",
     "Le champ de saisie est à 16 px (pas de zoom automatique sur iOS) et grandit jusqu'à cinq lignes.",
     "Le brouillon est gardé par conversation pendant la session et annoncé dans la liste.",
     "Le retour système ferme la conversation (entrée d'historique dédiée).",
     "Le menu « + » : six lignes de 60 px, pictogrammes au trait cohérents, « Proposer un IRL » en tête.",
-    "Message de plus de 5 000 caractères : refusé avec la limite et la longueur, le texte reste dans le champ.",
+    "Message de plus de 5 000 caractères : refusé, le texte reste dans le champ (le message qui donne la limite existe, mais il est masqué — MSG-C85).",
   ],
   registre: surfaces.map((s) => { const { _visuelVise, ...r } = s; return r; }),
   constats,

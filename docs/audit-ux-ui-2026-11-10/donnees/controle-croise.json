@@ -1,5 +1,5 @@
 {
- "genereLe": "2026-11-10T18:18:15.247Z",
+ "genereLe": "2026-11-10T19:10:53.668Z",
  "total": {
   "inventoriees": 384,
   "observees": 249,
@@ -8,14 +8,14 @@
   "inaccessibles": 9,
   "sansObjet": 2,
   "avecAvant": 302,
-  "maquettees": 131,
-  "aAmeliorer": 240,
-  "aConserver": 98,
+  "maquettees": 133,
+  "aAmeliorer": 243,
+  "aConserver": 95,
   "aVerifier": 46,
   "restantAExaminer": 52,
-  "constats": 169,
+  "constats": 170,
   "P0": 1,
-  "P1": 32,
+  "P1": 33,
   "P2": 82,
   "P3": 54
  },
@@ -189,14 +189,14 @@
    "inaccessibles": 2,
    "sansObjet": 0,
    "avecAvant": 117,
-   "maquettees": 67,
-   "aAmeliorer": 105,
-   "aConserver": 26,
+   "maquettees": 69,
+   "aAmeliorer": 108,
+   "aConserver": 23,
    "aVerifier": 15,
    "restantAExaminer": 11,
-   "constats": 70,
+   "constats": 71,
    "P0": 0,
-   "P1": 17,
+   "P1": 18,
    "P2": 39,
    "P3": 14
   },
@@ -241,7 +241,7 @@
    "P3": 2
   }
  ],
- "nbImages": 1037,
+ "nbImages": 1084,
  "orphelines": [
   "CRE-001",
   "CRE-002",
@@ -260,6 +260,11 @@
   "CRE-015",
   "CRE-016",
   "CRE-017",
+  "CRE-018",
+  "CRE-019",
+  "CRE-020",
+  "CRE-021",
+  "CRE-022",
   "PRO-001",
   "PRO-002",
   "PRO-003",
@@ -268,14 +273,23 @@
   "PRO-006",
   "PRO-007",
   "PRO-008",
+  "PRO-009",
   "PRO-010",
+  "PRO-011",
+  "PRO-012",
+  "PRO-013",
+  "PRO-014",
+  "PRO-015",
   "PRO-033",
-  "PRO-048"
+  "PRO-034",
+  "PRO-035",
+  "PRO-048",
+  "PRO-049"
  ],
  "alertes": [
   {
    "niveau": "avert",
-   "msg": "captures sans ligne de registre : CRE-001, CRE-002, CRE-003, CRE-004, CRE-005, CRE-006, CRE-007, CRE-008, CRE-009, CRE-010, CRE-011, CRE-012, CRE-013, CRE-014, CRE-015, CRE-016, CRE-017, PRO-001, PRO-002, PRO-003, PRO-004, PRO-005, PRO-006, PRO-007, PRO-008, PRO-010, PRO-033, PRO-048"
+   "msg": "captures sans ligne de registre : CRE-001, CRE-002, CRE-003, CRE-004, CRE-005, CRE-006, CRE-007, CRE-008, CRE-009, CRE-010, CRE-011, CRE-012, CRE-013, CRE-014, CRE-015, CRE-016, CRE-017, CRE-018, CRE-019, CRE-020, CRE-021, CRE-022, PRO-001, PRO-002, PRO-003, PRO-004, PRO-005, PRO-006, PRO-007, PRO-008, PRO-009, PRO-010, PRO-011, PRO-012, PRO-013, PRO-014, PRO-015, PRO-033, PRO-034, PRO-035, PRO-048, PRO-049"
   }
  ]
 }

@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "GIF et position en échec d'envoi : affichés comme envoyés",
  "note": "SIMULÉ : le faux serveur répond 500 aux insertions. Aucune des deux lignes n'existe en base, aucune n'est en file ; les bulles portent « ✓ ».",
- "prisLe": "2026-11-10T18:10:52.595Z",
+ "prisLe": "2026-11-10T19:05:31.101Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-163--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 42282,
+  "octets": 42220,
   "zooms": []
  },
  "annotationsAvant": [
@@ -129,7 +129,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:53045/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:54912/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -150,7 +150,7 @@
   "fichier": "captures/msg-conversation/MSG-163--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 48438,
+  "octets": 48432,
   "zooms": []
  },
  "annotations": [

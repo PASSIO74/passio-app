@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Hors ligne : message en file, bandeau par-dessus l'en-tête",
  "note": "Réseau coupé par le contexte du navigateur. Le message est en file et partira seul au retour du réseau.",
- "prisLe": "2026-11-10T18:04:25.901Z",
+ "prisLe": "2026-11-10T18:56:12.727Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-124--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 40828,
+  "octets": 40644,
   "zooms": [
    {
     "nom": "haut",
@@ -40,7 +40,7 @@
     "fichier": "captures/msg-conversation/MSG-124--m390--avant-zoom-statut.webp",
     "largeur": 404,
     "hauteur": 168,
-    "octets": 5520
+    "octets": 5548
    }
   ]
  },
@@ -158,7 +158,7 @@
   "fichier": "captures/msg-conversation/MSG-124--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 44828,
+  "octets": 44630,
   "zooms": [
    {
     "nom": "haut",
@@ -174,7 +174,7 @@
     "fichier": "captures/msg-conversation/MSG-124--m390--apres-zoom-statut.webp",
     "largeur": 404,
     "hauteur": 170,
-    "octets": 5624
+    "octets": 5576
    }
   ]
  },

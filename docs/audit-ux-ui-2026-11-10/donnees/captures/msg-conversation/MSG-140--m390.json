@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Feuille d'actions d'un message reçu",
  "note": "Feuille ouverte par appui maintenu puis glissé (voir MSG-148).",
- "prisLe": "2026-11-10T18:06:08.957Z",
+ "prisLe": "2026-11-10T19:02:34.871Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": "ouverte",
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": true,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(2) PASSIO",
   "hash": "#modal"
  },
  "avant": {
   "fichier": "captures/msg-conversation/MSG-140--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 22954,
+  "octets": 22950,
   "zooms": [
    {
     "nom": "feuille",
@@ -155,7 +155,7 @@
   "fichier": "captures/msg-conversation/MSG-140--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 27772,
+  "octets": 27078,
   "zooms": [
    {
     "nom": "feuille",
@@ -163,7 +163,7 @@
     "fichier": "captures/msg-conversation/MSG-140--m390--apres-zoom-feuille.webp",
     "largeur": 780,
     "hauteur": 984,
-    "octets": 23648
+    "octets": 22934
    }
   ]
  },
@@ -181,9 +181,9 @@
   {
    "n": 2,
    "texte": "Rappel du message visé.",
-   "x": 0.5,
+   "x": 0.433,
    "y": 0.493,
-   "w": 0.897,
+   "w": 0.764,
    "h": 0.064,
    "sel": "#modalContent .maq-apercu",
    "trouve": true

@@ -7,9 +7,9 @@
  "moteur": "chromium",
  "version": "158.0.8127.18",
  "mode": "compte",
- "titre": "Message de 5 200 caractères : refusé, le texte reste",
- "note": "Toast : « ✋ Message trop long : 5 000 caractères au plus (il en fait 5 200) ».",
- "prisLe": "2026-11-10T18:04:08.424Z",
+ "titre": "Message de 5 200 caractères : refusé… sans que rien ne s'affiche",
+ "note": "L'application émet le toast « ✋ Message trop long : 5 000 caractères au plus (il en fait 5 200) », mais il est caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10). Vu de la personne : l'appui sur Envoyer ne fait rien.",
+ "prisLe": "2026-11-10T18:55:55.632Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,10 +24,21 @@
   "fichier": "captures/msg-conversation/MSG-126--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 40758,
+  "octets": 40616,
   "zooms": []
  },
- "annotationsAvant": [],
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Appui sur Envoyer : aucun retour visible, le texte reste dans le champ.",
+   "x": 0.923,
+   "y": 0.964,
+   "w": 0.111,
+   "h": 0.051,
+   "sel": "#convFpSendBtn",
+   "trouve": true
+  }
+ ],
  "mesures": {
   "fenetre": {
    "w": 390,
@@ -101,7 +112,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:52941/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:62400/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -118,8 +129,25 @@
    }
   ]
  },
- "apres": null,
- "annotations": [],
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-126--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 48062,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Les toasts passent au-dessus de la conversation : la limite et la longueur actuelle se lisent.",
+   "x": 0.5,
+   "y": 0.123,
+   "w": 0.92,
+   "h": 0.066,
+   "sel": "#toastStack .toast",
+   "trouve": true
+  }
+ ],
  "erreurs": {
   "js": [],
   "console": []

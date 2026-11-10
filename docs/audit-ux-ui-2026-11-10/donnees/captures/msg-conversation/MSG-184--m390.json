@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Je lisais le message n° 120 ; un message arrive : l'écran a sauté tout en bas",
  "note": "SIMULÉ : le message entrant est injecté par `_handleIncomingConvMessage` (canal temps réel coupé dans le banc). Avant l'arrivée, le fil montrait les messages n° 116 à 123.",
- "prisLe": "2026-11-10T18:12:54.572Z",
+ "prisLe": "2026-11-10T19:04:32.081Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-184--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 41852,
+  "octets": 42056,
   "zooms": []
  },
  "annotationsAvant": [
@@ -112,7 +112,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63882/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:54836/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -133,7 +133,7 @@
   "fichier": "captures/msg-conversation/MSG-184--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 44686,
+  "octets": 44736,
   "zooms": []
  },
  "annotations": [

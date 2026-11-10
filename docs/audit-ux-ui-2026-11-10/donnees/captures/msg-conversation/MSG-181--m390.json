@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Remontée : 40 messages plus anciens chargés, position conservée",
  "note": "Après le chargement, le premier message visible est le même qu'avant (n° 190-191) ; la ligne « ⏳ Remonte pour charger… » se trouve tout en haut du fil.",
- "prisLe": "2026-11-10T18:12:49.250Z",
+ "prisLe": "2026-11-10T19:04:27.404Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-181--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 44558,
+  "octets": 45238,
   "zooms": []
  },
  "annotationsAvant": [],
@@ -101,7 +101,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63882/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:54836/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {

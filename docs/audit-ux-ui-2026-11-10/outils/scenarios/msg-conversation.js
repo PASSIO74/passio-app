@@ -156,7 +156,7 @@ const CSS = {
   sombre: `#convFpThread .conv-bubble-time, #convFpThread > div:not(.conv-bubble-wrap) span { color: rgba(255,255,255,.78) !important; }
     #convFpThread > div:not(.conv-bubble-wrap) > div { background: rgba(255,255,255,.22) !important; }`,
   // MSG-C89 — les toasts passent AU-DESSUS du panneau de conversation (et restent affichés pour la capture)
-  toasts: `.toast-stack { z-index: 100000 !important; bottom: 84px !important; } .toast-stack .toast { animation: none !important; opacity: 1 !important; max-width: 92%; text-align:center; border-radius:18px; }`,
+  toasts: `.toast-stack { z-index: 100000 !important; top: 76px !important; bottom: auto !important; } .toast-stack .toast { animation: none !important; opacity: 1 !important; max-width: 92%; text-align:center; border-radius:18px; }`,
   // MSG-C78 / C87 — bandeau à la place de la barre de saisie
   bandeau: `
     .maq-bandeau { flex:1; display:flex; align-items:center; gap:12px; min-height:44px; font-size:13px; color:var(--text); }
@@ -509,7 +509,15 @@ module.exports = {
           await page.locator("#convFpInput").fill("a".repeat(5200));
           await page.locator("#convFpSendBtn").click();
           await attendre(page, 350);
-          await prendre({ id: "MSG-126", titre: "Message de 5 200 caractères : refusé, le texte reste", note: "Toast : « ✋ Message trop long : 5 000 caractères au plus (il en fait 5 200) ».", attendre: 100 });
+          await prendre({
+            id: "MSG-126",
+            titre: "Message de 5 200 caractères : refusé… sans que rien ne s'affiche",
+            note: "L'application émet le toast « ✋ Message trop long : 5 000 caractères au plus (il en fait 5 200) », mais il est caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10). Vu de la personne : l'appui sur Envoyer ne fait rien.",
+            annotationsAvant: [{ n: 1, sel: "#convFpSendBtn", texte: "Appui sur Envoyer : aucun retour visible, le texte reste dans le champ." }],
+            apres: { css: CSS.toasts },
+            annotations: [{ n: 1, sel: "#toastStack .toast", texte: "Les toasts passent au-dessus de la conversation : la limite et la longueur actuelle se lisent." }],
+            attendre: 100,
+          });
           await page.locator("#convFpInput").fill("");
           await page.evaluate(() => { try { autoResizeTextarea(document.getElementById("convFpInput")); } catch (e) {} });
           await attendre(page, 3000);
@@ -699,7 +707,7 @@ module.exports = {
           id: "MSG-146",
           titre: "« Supprimer pour tous » : le message a disparu au premier toucher",
           note: "Aucune confirmation ; la ligne est supprimée en base, un contrôle `del` est envoyé ; le fil ne garde aucune trace.",
-          annotationsAvant: [{ n: 1, sel: "#toastStack .toast", texte: "Seul retour : un toast de 3 s, sans « Annuler »." }],
+          annotationsAvant: [{ n: 1, sel: "#convFpThread", texte: "Le message a disparu sans un mot : le toast « Message supprimé pour tous » est caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10)." }],
           apres: { css: CSS.feuille, js: (p) => JS.confirmerSuppression(p, { prenom: "Léa", texte: "Ça marche, à samedi !" }) },
           annotations: [{ n: 1, sel: "#modalContent .maq-danger", texte: "La confirmation explique les deux portées avant d'agir ; « Annuler », le fond et Retour ne suppriment rien." }],
           attendre: 100,
@@ -856,7 +864,15 @@ module.exports = {
         await page.locator("#btnAttach").tap(); await attendre(page, 300);
         await page.locator("#convAttachMenu .attach-item", { hasText: "Localisation" }).tap();
         await attendre(page, 500);
-        await prendre({ id: "MSG-158", titre: "Position refusée", note: "SIMULÉ : getCurrentPosition répond « permission refusée ». Toast « ❌ Impossible d'obtenir la position » ; rien n'est envoyé ; le menu reste ouvert.", attendre: 100 });
+        await prendre({
+          id: "MSG-158",
+          titre: "Position refusée : rien n'est envoyé, rien n'est dit",
+          note: "SIMULÉ : getCurrentPosition répond « permission refusée ». Rien n'est envoyé (correct) ; les toasts « 📍 Localisation en cours… » puis « ❌ Impossible d'obtenir la position » sont caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10).",
+          annotationsAvant: [{ n: 1, sel: "#convAttachMenu", texte: "Le menu reste ouvert, aucune explication visible." }],
+          apres: { css: CSS.toasts, js: (p) => p.evaluate(() => { const ts = [...document.querySelectorAll("#toastStack .toast")]; const t = ts.pop(); ts.forEach((x) => x.remove()); if (t) t.textContent = "Position bloquée — autorise-la dans les réglages du site pour la partager"; }) },
+          annotations: [{ n: 1, sel: "#toastStack .toast", texte: "Message visible au-dessus de la conversation, qui dit quoi faire." }],
+          attendre: 100,
+        });
         await page.touchscreen.tap(300, 150); await attendre(page, 3200);
 
         // Galerie des pièces jointes
@@ -927,7 +943,7 @@ module.exports = {
         await prendre({
           id: "MSG-164",
           titre: "Dépôt d'une photo refusé par le stockage : échec dit, relance possible",
-          note: "SIMULÉ : le dépôt Storage répond 500. Toast « ⚠️ Pièce jointe non envoyée — touche « réessayer » » ; la relance repart de la copie locale.",
+          note: "SIMULÉ : le dépôt Storage répond 500. Le toast « ⚠️ Pièce jointe non envoyée — touche « réessayer » » est émis mais caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10) ; la relance repart de la copie locale.",
           annotationsAvant: [{ n: 1, sel: "#convFpThread [data-msgst] span[onclick]", texte: "Le verdict existe (à conserver) ; son affichage a le défaut de MSG-C62 : « ✓ réessayer », 47 × 15 px." }],
           attendre: 100,
         });
@@ -989,6 +1005,7 @@ module.exports = {
               { n: 2, sel: "#btnVoice", texte: "Retoucher le micro « pour l'éteindre » envoie le son capté." },
             ],
             apres: {
+              css: CSS.toasts,
               js: (p) => p.evaluate(() => { document.getElementById("voiceRecordBar").style.display = "none"; const t = document.createElement("div"); t.className = "toast"; t.textContent = "Maintiens le micro pour enregistrer"; document.getElementById("toastStack").appendChild(t); }),
             },
             annotations: [{ n: 1, sel: "#toastStack .toast", texte: "Doigt levé avant l'ouverture du micro : le flux est refermé, rien n'est enregistré, une consigne s'affiche." }],
@@ -1002,8 +1019,8 @@ module.exports = {
             id: "MSG-175",
             titre: "Micro refusé",
             note: "SIMULÉ : getUserMedia rejette « NotAllowedError ».",
-            annotationsAvant: [{ n: 1, sel: "#toastStack .toast", texte: "« 🎙️ Micro non disponible (autorisation refusée ?) » : une question, aucune piste." }],
-            apres: { js: (p) => p.evaluate(() => { const t = document.querySelector("#toastStack .toast"); if (t) t.textContent = "Micro bloqué — autorise-le dans les réglages du site pour envoyer un vocal"; }) },
+            annotationsAvant: [{ n: 1, sel: "#btnVoice", texte: "Le refus est annoncé par le toast « 🎙️ Micro non disponible (autorisation refusée ?) », caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10) : le micro semble ne rien faire." }],
+            apres: { css: CSS.toasts, js: (p) => p.evaluate(() => { const t = document.querySelector("#toastStack .toast"); if (t) t.textContent = "Micro bloqué — autorise-le dans les réglages du site pour envoyer un vocal"; }) },
             annotations: [{ n: 1, sel: "#toastStack .toast", texte: "La cause est affirmée et le geste à faire est dit." }],
             attendre: 100,
           });
@@ -1114,7 +1131,7 @@ module.exports = {
           id: "MSG-185",
           titre: "Toucher la citation d'un message ancien : « Message introuvable »",
           note: "SIMULÉ (message entrant injecté). Le message cité (n° 010) existe, mais seuls les 40 derniers sont rendus.",
-          annotationsAvant: [{ n: 1, sel: "#toastStack .toast", texte: "Le lien de citation est mort au-delà de 40 messages." }],
+          annotationsAvant: [{ n: 1, sel: ".conv-reply-quote", texte: "Le toucher ne fait rien de visible : le toast « Message introuvable (peut-être plus ancien) » est caché derrière la conversation." }],
           attendre: 100,
         });
       },
@@ -1318,12 +1335,12 @@ module.exports = {
         await attendre(page, 400);
         await prendre({
           id: "MSG-206",
-          titre: "Conversation d'exemple : rien ne le dit, le refus n'arrive qu'à l'envoi",
-          note: "Mode démonstration du banc (aucune session). Le toast répond à l'appui sur Envoyer ; le texte reste dans le champ.",
+          titre: "Conversation d'exemple : rien ne le dit, et l'envoi ne fait rien de visible",
+          note: "Mode démonstration du banc (aucune session). L'appui sur Envoyer émet le toast « Conversation de démonstration — écris à un vrai membre depuis son profil », caché derrière la conversation (pile des toasts en z-index 200, conversation en 1200 — sonde 10) ; le texte reste dans le champ, le micro fait de même (sonde 09).",
           annotationsAvant: [
             { n: 1, sel: "#convFpHead .conv-fp-passion", texte: "« Voir le profil » : l'étiquette « Exemple PASSIO » de la liste a disparu." },
             { n: 2, sel: "#convFpInput", texte: "Barre de saisie complète et active." },
-            { n: 3, sel: "#toastStack .toast", texte: "Le refus n'arrive qu'après avoir écrit." },
+            { n: 3, sel: "#convFpSendBtn", texte: "Envoyer : refus émis mais invisible — rien ne se passe." },
           ],
           apres: { css: CSS.bandeau, js: async (p) => { await p.evaluate(() => { document.querySelectorAll("#toastStack .toast").forEach((t) => t.remove()); }); await JS.bandeau(p, { texte: "Conversation d'exemple — pour écrire à quelqu'un, ouvre son profil.", bouton: "Découvrir", sous: "Exemple PASSIO · réponse désactivée" }); } },
           annotations: [

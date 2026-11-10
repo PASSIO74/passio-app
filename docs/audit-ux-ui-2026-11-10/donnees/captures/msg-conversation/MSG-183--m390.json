@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Remonté de 30 messages : aucun retour rapide en bas",
  "note": "",
- "prisLe": "2026-11-10T18:12:52.541Z",
+ "prisLe": "2026-11-10T19:04:30.336Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-183--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 42636,
+  "octets": 42124,
   "zooms": []
  },
  "annotationsAvant": [
@@ -112,7 +112,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63882/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:54836/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -133,7 +133,7 @@
   "fichier": "captures/msg-conversation/MSG-183--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 42518,
+  "octets": 42662,
   "zooms": []
  },
  "annotations": [

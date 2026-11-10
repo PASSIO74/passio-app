@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Envoi en cours (réponse du serveur retardée)",
  "note": "",
- "prisLe": "2026-11-10T18:04:12.520Z",
+ "prisLe": "2026-11-10T18:56:00.494Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-122--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 32220,
+  "octets": 32076,
   "zooms": [
    {
     "nom": "statut",
@@ -32,7 +32,7 @@
     "fichier": "captures/msg-conversation/MSG-122--m390--avant-zoom-statut.webp",
     "largeur": 468,
     "hauteur": 168,
-    "octets": 5218
+    "octets": 5222
    }
   ]
  },
@@ -128,7 +128,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:52941/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:62400/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -149,7 +149,7 @@
   "fichier": "captures/msg-conversation/MSG-122--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 32496,
+  "octets": 32422,
   "zooms": [
    {
     "nom": "statut",
@@ -157,7 +157,7 @@
     "fichier": "captures/msg-conversation/MSG-122--m390--apres-zoom-statut.webp",
     "largeur": 468,
     "hauteur": 170,
-    "octets": 5366
+    "octets": 5354
    }
   ]
  },

@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Toucher la citation d'un message ancien : « Message introuvable »",
  "note": "SIMULÉ (message entrant injecté). Le message cité (n° 010) existe, mais seuls les 40 derniers sont rendus.",
- "prisLe": "2026-11-10T18:13:00.131Z",
+ "prisLe": "2026-11-10T19:04:37.091Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,18 +24,18 @@
   "fichier": "captures/msg-conversation/MSG-185--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 42198,
+  "octets": 42470,
   "zooms": []
  },
  "annotationsAvant": [
   {
    "n": 1,
-   "texte": "Le lien de citation est mort au-delà de 40 messages.",
-   "x": 0.5,
-   "y": 0.858,
-   "w": 0.773,
-   "h": 0.046,
-   "sel": "#toastStack .toast",
+   "texte": "Le toucher ne fait rien de visible : le toast « Message introuvable (peut-être plus ancien) » est caché derrière la conversation.",
+   "x": 0.319,
+   "y": 0.806,
+   "w": 0.448,
+   "h": 0.051,
+   "sel": ".conv-reply-quote",
    "trouve": true
   }
  ],
@@ -119,7 +119,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63882/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:54836/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {

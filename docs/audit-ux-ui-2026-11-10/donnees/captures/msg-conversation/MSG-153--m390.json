@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Panneau emoji — onglet GIF",
  "note": "SIMULÉ : 8 images locales à la place des GIF de KLIPY (hôte refusé par le banc).",
- "prisLe": "2026-11-10T18:08:39.159Z",
+ "prisLe": "2026-11-10T19:00:34.420Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-153--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 40000,
+  "octets": 39712,
   "zooms": []
  },
  "annotationsAvant": [
@@ -152,7 +152,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:60679/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {

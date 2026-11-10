@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Enregistrement vocal en cours (doigt maintenu)",
  "note": "SIMULÉ : le micro est remplacé par un flux audio de synthèse (le banc n'a pas de micro) ; le conteneur est forcé en webm, le Chromium du banc n'encodant pas l'AAC.",
- "prisLe": "2026-11-10T18:11:25.732Z",
+ "prisLe": "2026-11-10T18:59:28.987Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-170--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 31080,
+  "octets": 31148,
   "zooms": [
    {
     "nom": "bas",
@@ -167,7 +167,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63457/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61447/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -188,7 +188,7 @@
   "fichier": "captures/msg-conversation/MSG-170--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 29926,
+  "octets": 29994,
   "zooms": [
    {
     "nom": "bas",

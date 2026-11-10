@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "« Transférer vers… »",
  "note": "",
- "prisLe": "2026-11-10T18:06:19.210Z",
+ "prisLe": "2026-11-10T19:02:43.174Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": "Transférer vers…",
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": true,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(2) PASSIO",
   "hash": "#modal"
  },
  "avant": {
   "fichier": "captures/msg-conversation/MSG-144--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 26402,
+  "octets": 26452,
   "zooms": []
  },
  "annotationsAvant": [

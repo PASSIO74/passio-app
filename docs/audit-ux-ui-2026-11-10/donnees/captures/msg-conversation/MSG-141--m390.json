@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Feuille d'actions d'un de mes messages",
  "note": "",
- "prisLe": "2026-11-10T18:06:30.472Z",
+ "prisLe": "2026-11-10T19:02:53.514Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": "ouverte",
@@ -17,14 +17,14 @@
   "onboarding": false,
   "conversation": true,
   "bobines": false,
-  "titre": "PASSIO",
+  "titre": "(2) PASSIO",
   "hash": "#modal"
  },
  "avant": {
   "fichier": "captures/msg-conversation/MSG-141--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 23202,
+  "octets": 23196,
   "zooms": [
    {
     "nom": "feuille",
@@ -144,7 +144,7 @@
   "fichier": "captures/msg-conversation/MSG-141--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 22040,
+  "octets": 21980,
   "zooms": [
    {
     "nom": "feuille",
@@ -152,7 +152,7 @@
     "fichier": "captures/msg-conversation/MSG-141--m390--apres-zoom-feuille.webp",
     "largeur": 780,
     "hauteur": 870,
-    "octets": 17326
+    "octets": 17350
    }
   ]
  },

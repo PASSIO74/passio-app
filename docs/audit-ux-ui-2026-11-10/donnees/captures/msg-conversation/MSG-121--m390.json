@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Message de 141 caractères en cours de frappe",
  "note": "",
- "prisLe": "2026-11-10T18:04:05.281Z",
+ "prisLe": "2026-11-10T18:55:53.140Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-121--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 38928,
+  "octets": 38786,
   "zooms": [
    {
     "nom": "barre",
@@ -124,7 +124,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:52941/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:62400/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -145,15 +145,15 @@
   "fichier": "captures/msg-conversation/MSG-121--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 43430,
+  "octets": 47006,
   "zooms": [
    {
     "nom": "barre",
     "titre": "Barre de saisie",
     "fichier": "captures/msg-conversation/MSG-121--m390--apres-zoom-barre.webp",
     "largeur": 780,
-    "hauteur": 278,
-    "octets": 20626
+    "hauteur": 346,
+    "octets": 24632
    }
   ]
  },
@@ -162,9 +162,9 @@
    "n": 1,
    "texte": "Même message dans le champ élargi : tout le texte est relisible.",
    "x": 0.5,
-   "y": 0.917,
+   "y": 0.897,
    "w": 0.682,
-   "h": 0.142,
+   "h": 0.182,
    "sel": "#convFpInput",
    "trouve": true
   },

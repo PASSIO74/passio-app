@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Panneau emoji (grille telle que la page construite la laisse)",
  "note": "SIMULÉ : `_populateEmojiGrid()` est rappelé par le scénario pour reproduire l'ordre d'exécution de la page de production ; dans le banc le résultat dépend de la vitesse de chargement (voir MSG-152).",
- "prisLe": "2026-11-10T18:08:34.502Z",
+ "prisLe": "2026-11-10T19:00:30.660Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-151--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 68090,
+  "octets": 67578,
   "zooms": [
    {
     "nom": "panneau",
@@ -162,7 +162,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:60679/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61495/docs/audit-ux-ui-2026-11-10/out"
    }
   ],
   "debordement": {
@@ -187,7 +187,7 @@
   "fichier": "captures/msg-conversation/MSG-151--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 60398,
+  "octets": 60172,
   "zooms": [
    {
     "nom": "panneau",

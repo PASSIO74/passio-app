@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Visionneuse d'image",
  "note": "",
- "prisLe": "2026-11-10T18:09:06.198Z",
+ "prisLe": "2026-11-10T19:00:58.851Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-159--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 15588,
+  "octets": 15602,
   "zooms": []
  },
  "annotationsAvant": [
@@ -88,7 +88,7 @@
   "fichier": "captures/msg-conversation/MSG-159--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 15324,
+  "octets": 15336,
   "zooms": []
  },
  "annotations": [

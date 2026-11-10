@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Vocal que je viens d'envoyer",
  "note": "",
- "prisLe": "2026-11-10T18:11:29.010Z",
+ "prisLe": "2026-11-10T18:59:31.860Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -24,7 +24,7 @@
   "fichier": "captures/msg-conversation/MSG-171--m390--avant.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 28480,
+  "octets": 28674,
   "zooms": [
    {
     "nom": "vocal",
@@ -32,7 +32,7 @@
     "fichier": "captures/msg-conversation/MSG-171--m390--avant-zoom-vocal.webp",
     "largeur": 420,
     "hauteur": 150,
-    "octets": 666
+    "octets": 784
    }
   ]
  },
@@ -85,7 +85,7 @@
      "enLigne": false
     },
     {
-     "el": "button#pb_aud_msgx6p8dsjjkmwb0b0dk",
+     "el": "button#pb_aud_msgxd81l4wipmwb20ssv",
      "texte": "▶",
      "w": 34,
      "h": 34,
@@ -138,7 +138,7 @@
    "indetermines": 1,
    "sousSeuil": [
     {
-     "el": "span#dur_aud_msgx6p8dsjjkmwb0b0dk",
+     "el": "span#dur_aud_msgxd81l4wipmwb20ssv",
      "texte": "0:03",
      "ratio": 1.06,
      "seuil": 4.5,
@@ -161,7 +161,7 @@
   "sansNom": [
    {
     "el": "div#convFpHead > div.conv-fp-head-avatar",
-    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63457/docs/audit-ux-ui-2026-11-10/out"
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:61447/docs/audit-ux-ui-2026-11-10/out"
    },
    {
     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
@@ -186,7 +186,7 @@
   "fichier": "captures/msg-conversation/MSG-171--m390--apres.webp",
   "largeur": 780,
   "hauteur": 1688,
-  "octets": 30812,
+  "octets": 31020,
   "zooms": [
    {
     "nom": "vocal",
@@ -194,7 +194,7 @@
     "fichier": "captures/msg-conversation/MSG-171--m390--apres-zoom-vocal.webp",
     "largeur": 572,
     "hauteur": 202,
-    "octets": 3324
+    "octets": 3458
    }
   ]
  },

@@ -9,7 +9,7 @@
  "mode": "compte",
  "titre": "Galerie « Pièces jointes » de la conversation",
  "note": "",
- "prisLe": "2026-11-10T18:09:04.256Z",
+ "prisLe": "2026-11-10T19:00:57.069Z",
  "ecran": {
   "ecran": "screen-messages",
   "modale": null,
@@ -55,7 +55,7 @@
      "enLigne": false
     },
     {
-     "el": "button#pb_gmsgmwb07m4xk9h5ift9b2s",
+     "el": "button#pb_gmsgmwb22djndifblt0au26",
      "texte": "▶",
      "w": 34,
      "h": 34,
