@@ -23,9 +23,11 @@
 //
 // Ce que ça prouve : que la suite passe sur l'artefact assemblé — ordre de
 // assemblage, complétude du build, externalisation des scripts app/ derrière le
-// gate. Ce que ça ne prouve PAS : le comportement APRÈS minification, que seule
-// la CI applique (`html-minifier-terser`). Le minifieur renomme les identifiants
-// — un piège déjà rencontré en vérifiant la prod.
+// gate. Ce que ça ne prouve PAS : le comportement APRÈS minification de la PAGE,
+// que seul le déploiement applique (`html-minifier-terser`). Le minifieur renomme
+// les identifiants — un piège déjà rencontré en vérifiant la prod. Les 9 scripts,
+// eux, sortent minifiés comme en production quand `PASSIO_MINIFIER_APP=1` (le
+// build les minifie lui-même depuis le 2026-11-10 : scripts/build.js, étape 1 bis).
 // ═══════════════════════════════════════════════════════════════════════════
 "use strict";
 const http = require("node:http");
@@ -59,6 +61,12 @@ function construire() {
       throw new Error(`build incomplet : dist/${f} absent ou vide`);
     }
   }
+  // Même raison, depuis le 2026-11-10 : une empreinte `integrity` qui ne serait pas
+  // celle du fichier servi arrêterait l'application sur son premier script.
+  // `PASSIO_MINIFIER_APP=1` (la passe « Gates artefact » de la CI) fait minifier les
+  // 9 scripts par le build, comme au déploiement : c'est ce chemin-là qu'on éprouve.
+  const { problemes } = require("./verifier-integrite-app").controler(DIST);
+  if (problemes.length) throw new Error("build incohérent : " + problemes.join(" ; "));
 }
 
 // Les scripts du bloc app que la page construite charge, lus dans son chargeur.

@@ -482,6 +482,33 @@ self.addEventListener("fetch", e => {
   // text/html) rangée sous l'adresse d'un script y resterait jusqu'à ce que ce
   // fichier change — et l'installation la recopierait de version en version.
   if (estVersionne(url)) {
+    // ⚠️ UNE REDEMANDE `cache: "reload"` VA AU RÉSEAU, MÊME QUAND CE CACHE A LE FICHIER
+    // (2026-11-10). C'est la reprise du chargeur (scripts/build.js, étape 1) après un
+    // script refusé : un retour arrière entre deux versions range l'ANCIEN contenu
+    // sous la NOUVELLE adresse (Netlify ignore le `?v=`), et le navigateur le refuse
+    // (`integrity`). Servi d'ici, il serait refusé encore, à chaque ouverture, jusqu'à
+    // ce que ce fichier change. On redemande donc au réseau (le mode `reload` suit
+    // `e.request`, et remplace aussi l'entrée du cache HTTP), et on range la réponse si
+    // c'est bien un script (`contenuVersionne`) : le script que la page réinsère
+    // ensuite la relit d'ici. Sans ce rangement, ⑧ rougit (mutation, deux moteurs).
+    // Répondre seulement une fois la copie rangée n'a rien changé au banc (⑧ vert sur
+    // les deux moteurs) : en tâche de fond, comme le reste de cette branche ; une
+    // copie tardive coûterait au pire la seconde reprise.
+    // Verrou : tests/e2e/app-scripts-par-fichier.spec.js ⑧.
+    if (e.request.cache === "reload") {
+      e.respondWith(
+        fetch(e.request)
+          .then(res => {
+            if (contenuVersionne(url, res)) {
+              const copy = res.clone();
+              caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+            }
+            return res;
+          })
+          .catch(() => new Response("", { status: 503 }))
+      );
+      return;
+    }
     e.respondWith(
       caches.match(e.request)
         .catch(() => null) // Safari, navigation privée : `caches.match` peut rejeter
