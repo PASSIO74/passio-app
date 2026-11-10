@@ -10157,13 +10157,17 @@ function renderPostCover(p, passion) {
   if (primary) {
     const pc = passion.color || "#8b5cf6";
     // Plus de repli chez des tiers (picsum, loremflickr) : une photo qui ne charge pas laisse le dégradé.
+    // ⚠️ `load` PEUT ARRIVER SUR UNE IMAGE DÉTACHÉE (2026-11-10, STAB-02) : le fil est repeint pendant
+    // que la photo charge, et l'image n'a plus de parent. Vu en production le 10/11 (iPhone, navigateur
+    // intégré d'Instagram) : une TypeError sur la lecture de la classe du parent. D'où `p&&`.
+    // Verrou : tests/e2e/couverture-image-detachee.spec.js.
     const onerr = "this.style.display='none'";
     return `<div class="post-media post-cover-photo" style="
       background:
         radial-gradient(circle at 30% 30%, ${pc}55, transparent 55%),
         linear-gradient(135deg, ${pc}33 0%, #2a2450 60%, #1c1938 100%);
     ">
-      <img class="post-cover-img" src="${safeUrlAttr(primary)}" alt="${escapeHtml(passionLabel)}" loading="lazy" onload="if(this.src.indexOf('/demo/u/')>-1)this.parentNode.classList.add('cover-ok');" onerror="${onerr}" />
+      <img class="post-cover-img" src="${safeUrlAttr(primary)}" alt="${escapeHtml(passionLabel)}" loading="lazy" onload="var p=this.parentNode;if(p&&this.src.indexOf('/demo/u/')>-1)p.classList.add('cover-ok');" onerror="${onerr}" />
       <div class="post-cover-overlay"></div>
       <div class="post-cover-caption">${passionEmoji} ${escapeHtml(passionLabel)}</div>
     </div>`;
