@@ -178,6 +178,7 @@ function fauxContexte() {
   const ctx = {
     route: async (motif, gestionnaire) => { appels.push(["route", motif, gestionnaire]); },
     routeWebSocket: async (motif) => { appels.push(["ws", motif]); },
+    addInitScript: async (fn, arg) => { appels.push(["init", fn, arg]); },
   };
   return { page: { context: () => ctx }, appels };
 }
@@ -210,6 +211,7 @@ test("④ le projet `prod` est EXEMPT ; local et WebKit sont couverts ; idempote
   assert.ok(!motif.test("https://passio-essai.invalid/rest/v1/posts"), "l'hôte fictif des verrous reste hors du filet");
   assert.ok(!motif.test("http://127.0.0.1:8080/index.html"), "le serveur local reste hors du filet");
   assert.ok(local.appels.some(([k]) => k === "ws"), "le canal temps réel est avalé au même niveau");
+  assert.equal(local.appels.filter(([k]) => k === "init").length, 1, "la garde de départ de page est posée au contexte, une fois");
 
   projetSimule = "webkit-iphone";
   const webkit = fauxContexte();
@@ -240,6 +242,62 @@ test("④ le projet `prod` est EXEMPT ; local et WebKit sont couverts ; idempote
   const autre = await passerPar(g2, PROJET + "/rest/v1/video_lives?select=*");
   assert.equal(autre.continue, false, "un chemin réel désigné ne rouvre pas le reste du projet");
   assert.equal(autre.fulfill.status, 200);
+});
+
+// ── ⑧ LA GARDE DE DÉPART DE PAGE, DANS UNE FAUSSE FENÊTRE ──────────────────
+// Ce que les routes ne voient pas (app-helper.js, `gardeDepartDePage`) : après un
+// `pagehide` RÉEL, un envoi `keepalive` vers le projet ne part plus, et sa
+// promesse ne se règle jamais. Le pendant réseau (proxy local) de ce banc est
+// `tests/e2e/isolation-depart-page.spec.js`.
+test("⑧ la garde de départ : après un `pagehide` RÉEL, aucun envoi keepalive vers le projet ne part", async () => {
+  projetSimule = "local";
+  const f = fauxContexte();
+  await projetSupabaseVide(f.page);
+  const init = f.appels.find(([k]) => k === "init");
+  assert.ok(init, "la garde est posée par le projet vide");
+  const [, garde, source] = init;
+
+  const ecouteurs = {};
+  const partis = [];
+  const fenetre = {
+    addEventListener: (type, fn) => { (ecouteurs[type] = ecouteurs[type] || []).push(fn); },
+    fetch: (entree, opts) => {
+      partis.push(((typeof Request !== "undefined" && entree instanceof Request) ? entree.url : String(entree)) + (opts && opts.keepalive ? " [keepalive]" : ""));
+      return Promise.resolve("réseau");
+    },
+  };
+  const emettre = (type, isTrusted) => (ecouteurs[type] || []).forEach((fn) => fn({ type, isTrusted }));
+  const reglee = (p) => Promise.race([p.then(() => true, () => true), new Promise((r) => setTimeout(() => r(false), 30))]);
+  const avant = globalThis.window;
+  globalThis.window = fenetre;
+  try {
+    garde(source);
+    const TEL = PROJET + "/rest/v1/telemetry_events";
+    const ka = { method: "POST", keepalive: true, body: "[]" };
+
+    await window.fetch(TEL, ka);
+    assert.deepEqual(partis, [TEL + " [keepalive]"], "page vivante : la garde ne retient rien");
+
+    emettre("pagehide", false);   // `dispatchEvent(new Event("pagehide"))` d'une suite
+    await window.fetch(TEL, ka);
+    assert.equal(partis.length, 2, "un pagehide SYNTHÉTIQUE n'arme pas la garde : la page est vivante, ses routes voient tout");
+
+    emettre("pagehide", true);    // le vrai départ
+    assert.equal(await reglee(window.fetch(TEL, ka)), false, "départ réel : la promesse ne se règle jamais");
+    assert.equal(await reglee(window.fetch(new Request(TEL, ka))), false, "une `Request` keepalive est retenue aussi");
+    assert.equal(partis.length, 2, "départ réel : rien n'est parti vers le projet");
+    assert.equal(window.__passioDepartsRetenus, 2);
+    await window.fetch(TEL, { method: "POST", body: "[]" });
+    assert.equal(partis.length, 3, "un envoi ORDINAIRE n'est pas retenu : le navigateur l'annule lui-même au départ");
+    await window.fetch("http://127.0.0.1:8080/x", ka);
+    assert.equal(partis.length, 4, "un autre hôte n'est pas l'affaire de la garde");
+
+    emettre("pageshow", true);    // retour de bfcache : la page revit
+    await window.fetch(TEL, ka);
+    assert.equal(partis.length, 5, "un `pageshow` réel désarme la garde");
+  } finally {
+    globalThis.window = avant;
+  }
 });
 
 // ── ④/⑤ LA RÈGLE, SUR LE DÉPÔT TEL QU'IL EST ────────────────────────────────

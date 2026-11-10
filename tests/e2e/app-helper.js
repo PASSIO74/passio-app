@@ -672,6 +672,50 @@ function projetPlaywright() {
 
 const _contextesProjetVide = new WeakSet();
 
+// ══════════════════════════════════════════════════════════════════════════
+// LE DÉPART D'UNE PAGE : CE QU'AUCUNE ROUTE NE VOIT (2026-11-10)
+// ──────────────────────────────────────────────────────────────────────────
+// Mesuré au canal ① (`telemetry_events`, env `development`) puis reproduit
+// derrière un proxy local qui refuse et journalise tout ce qui vise
+// `*.supabase.co` : `telemetrie-trafic` ④ NAVIGUE trois fois dans la même page,
+// et à chaque départ (`pagehide`, puis `visibilitychange`) les envois
+// `keepalive` du document quitté — fin de session, instantanés « exit » de
+// perf-ios, `lifecycle hidden` — PARTAIENT EN PRODUCTION malgré la route de
+// page de la suite ET ce projet vide : une paire de sessions par passage de la
+// CI, marquées `equipe`. Playwright ne les voit même pas (aucun événement
+// `request`) : ni une route, ni une écoute ne peut les retenir. Et le défaut
+// ne tient pas au service worker (`serviceWorkers: "block"` n'y change rien).
+// ⚠️ D'OÙ UNE GARDE DANS LA PAGE, posée avant tout script de l'application :
+// après un `pagehide` RÉEL, un envoi `keepalive` vers le projet ne part plus,
+// et sa promesse ne se règle jamais — exactement ce que vit une page dont le
+// document meurt avant la réponse ; la file de télémétrie le garde donc pour le
+// chargement suivant, comme avant. Un `pagehide` SYNTHÉTIQUE
+// (`dispatchEvent`, `isTrusted` faux — telemetrie-fermeture, -doublons) ne
+// l'arme pas : ces suites éprouvent le départ sur une page VIVANTE, dont les
+// routes voient tout. Un `pageshow` réel (retour de bfcache) la désarme.
+// Verrou : `tests/e2e/isolation-depart-page.spec.js` (un proxy local compte les
+// connexions au projet ; le témoin sans garde en voit).
+function gardeDepartDePage(source) {
+  var motif = new RegExp(source);
+  var depart = false;
+  window.addEventListener("pagehide", function (e) { if (e.isTrusted) depart = true; }, true);
+  window.addEventListener("pageshow", function (e) { if (e.isTrusted) depart = false; }, true);
+  var origine = window.fetch;
+  if (typeof origine !== "function") return;
+  window.fetch = function (entree, init) {
+    if (depart) {
+      var url = "", keepalive = false;
+      try { url = (typeof Request !== "undefined" && entree instanceof Request) ? entree.url : String(entree); } catch (e) {}
+      try { keepalive = !!((init && init.keepalive) || (entree && entree.keepalive === true)); } catch (e) {}
+      if (keepalive && motif.test(url)) {
+        window.__passioDepartsRetenus = (window.__passioDepartsRetenus || 0) + 1;
+        return new Promise(function () {});
+      }
+    }
+    return origine.apply(this, arguments);
+  };
+}
+
 /**
  * Pose le projet Supabase VIDE sur le CONTEXTE de la page (voir le bloc
  * ci-dessus). Idempotent par contexte (le premier appel fixe les options).
@@ -695,6 +739,9 @@ async function projetSupabaseVide(page, opts = {}) {
     if (reels.length && reels.some((m) => m.test(route.request().url()))) return route.continue();
     return repondreProjetVide(route);
   });
+  // Ce que les routes ne voient pas : les envois `keepalive` d'une page qui part
+  // (voir `gardeDepartDePage`). Au CONTEXTE, donc sur chaque document de chaque page.
+  await ctx.addInitScript(gardeDepartDePage, MOTIF_PROJET_SUPABASE.source);
   // Le canal temps réel, au même niveau : une page qui n'a pas sa propre route
   // de WebSocket (celle de `sansDonneesDistantes` est une route de PAGE, donc
   // prioritaire) ne se connecte pas non plus au vrai projet.

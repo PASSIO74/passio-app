@@ -48,6 +48,7 @@
 - 🫀 LE SEUIL DU BATTEMENT SE DÉDUIT DE LA CADENCE DE LA VEILLE — 35 MIN N'ÉTAIT TENU PAR RIEN (2026-11-08)
 - 🏃 LES FONCTIONS S'EXÉCUTENT AVANT D'ÊTRE DÉPLOYÉES — UNE VARIABLE NON DÉCLARÉE NE PART PLUS (2026-11-09)
 - 🩺 CONTRÔLE GÉNÉRAL DU 10/11 : L'ÉTAT MESURÉ DE LA CHAÎNE, ET UNE SONDE QUI COMPTE TOUTE LA TABLE (2026-11-10)
+- 🚱 LES LIGNES `development` DE LA PRODUCTION : TROIS SOURCES, UNE VOULUE, ET LE DÉPART D'UNE PAGE QU'AUCUNE ROUTE NE VOIT (2026-11-10)
 
 ---
 
@@ -1102,3 +1103,112 @@ lot à part (le tableau de bord local n'est plus l'écran de référence depuis 
 (`docs/journal/capacite-perf-realtime.md`, « Capacité au 2026-11-09 au soir »). Les trois premières
 requêtes de `pg_stat_statements` (`realtime.list_changes`, la liste des 5 000 passions, le KPI ci-dessus)
 ont chacune leur lot ou leur note. Les murs restants sont des QUOTAS, pas du code.
+
+---
+
+## 🚱 LES LIGNES `development` DE LA PRODUCTION : TROIS SOURCES, UNE VOULUE, ET LE DÉPART D'UNE PAGE QU'AUCUNE ROUTE NE VOIT (2026-11-10)
+
+**Le constat** (canal ①, 2026-11-10 vers 12:00 UTC) : `telemetry_events` compte 75 173 lignes, dont
+**62 308 `env = development` (83 %)**, 9 452 `production` et 3 413 `preview`. Une ligne `development` vient
+d'une page servie par `localhost` ou `127.0.0.1` dont la télémétrie a été FORCÉE (`?telemetry=1`, ou la
+clé `passio_telemetry = "1"` qu'il laisse) : il n'existe qu'une base, elle atterrit en production. Le
+pilotage l'écarte par son filtre `env`, la purge l'emporte en 3 jours — mais la table, la sonde du
+tableau de bord qui la compte (fiche précédente) et toute lecture SQL directe la portaient.
+
+⚠️ **LE « DÉBUT » DU 07/11 À 07:47 UTC EST LA PURGE, PAS UNE DATE.** La télémétrie brute vit 3 jours
+(échecs et lenteurs : 7) : les lignes `production` « commencent » à la même minute. Avant la borne ne
+survivent que des erreurs — 159 `api error` `development` depuis le 03/11, toutes de la source ③. Une
+fuite ne se date donc pas par cette table : ses premières lignes sont celles que la purge a laissées.
+
+**Trois sources**, départagées par la signature de chaque session — `platform`, `meta.trafic`,
+`app_version`, `screen_size`, et `meta.cpu` / `meta.dev_mem` des instantanés de perf-ios — croisée avec
+`gh run list` :
+
+① **Les suites `?telemetry=1` sans route du projet : le gros, ARRÊTÉ PAR #799** (2026-11-09 18:41 UTC,
+`docs/journal/capacite-perf-realtime.md`, « 🧪 »). Signature : `linux`, `robot`, `app_version = dev`
+(ou le SHA du run pour l'artefact). **Jusqu'à 1 516 lignes par heure** (09/11, 16 h UTC) ; 5 069
+sessions et 54 911 lignes en trois jours, plus 234 sessions de l'artefact. Une session = une page de
+test : sa file de démarrage (`session start`, les `ui_v*`, `page_load`, `GET passions`) partait au
+premier envoi. Le projet vide posé au CONTEXTE a fermé ce chemin : **8 à 62 lignes par heure ensuite.**
+
+② **`passion-context` (job « Gates artefact production », `PASSIO_CIBLE=dist`) : non voulu, ARRÊTÉ ICI.**
+Aucune isolation, au nom d'une entrée de socle fausse (« l'émission réelle EST le sujet ») : sa mesure
+passe par un espion posé sur `tel.track`, jamais par le réseau. Au canal ① : une session de 12 lignes
+(`context passion_active`) par passage de la CI ; derrière la sonde, 6 lots et 31 lignes par passage.
+La suite pose `sansDonneesDistantes`, l'entrée de socle est retirée : 3 passages × 2 cas verts, plus un
+seul envoi de télémétrie.
+
+③ **Le DÉPART d'une page : `telemetrie-trafic` ④. Non voulu, ARRÊTÉ ICI — et c'est un trou de
+l'isolation elle-même.** Signature : une PAIRE de sessions `equipe` par passage de la CI, `platform =
+windows`. Ce `windows` n'est PAS ce poste : c'est l'agent « bureau » que la suite FORCE ; `cpu 4 /
+dev_mem 16` est le gabarit d'un runner GitHub (`cpu 12` : ce poste). Visible dès le 03/11 (les plus
+anciennes erreurs gardées : ses `GET passions` coupés au départ), sans doute depuis la création de la
+suite (2026-10-05) ; 5 à 92 lignes par heure le 09/11 et le 10/11, selon le nombre de passages.
+④ navigue TROIS fois dans la même page. À chaque départ, la télémétrie et perf-ios vident leur file en
+`keepalive` (fin de session, instantanés « exit », `lifecycle hidden`) — et ces envois, émis par le
+document QUITTÉ, partaient au réseau malgré la route de page de la suite ET le projet vide.
+Mesuré sur l'application, routes seules : navigation à 09,801 s → trois POST au réseau entre 09,844 et
+09,848 s, **sans AUCUN événement `request` de Playwright** ; à 10,076 s, la page suivante rejoue la
+file, et ce rejeu-là est routé (la fin de session partait donc DEUX fois : en production, et au test).
+`serviceWorkers: "block"` n'y change rien sous Chromium. ⚠️ Sur une page minimale (un `fetch`
+`keepalive` dans `pagehide`), le même envoi est ABANDONNÉ quand une route existe et part quand il n'y
+en a pas : la condition exacte côté Chromium n'est pas établie. Le remède n'en dépend pas.
+**Le remède : `gardeDepartDePage` (`tests/e2e/app-helper.js`), posée au CONTEXTE par
+`projetSupabaseVide`, donc par `bootOnboarded` et `sansDonneesDistantes`.** Après un `pagehide` RÉEL
+(`isTrusted`), un envoi `keepalive` vers le projet ne part plus, et sa promesse ne se règle jamais : ce
+que vit une page dont le document meurt avant la réponse. La file le garde, la page suivante le rejoue,
+routé. Un `pagehide` synthétique (`dispatchEvent`) ne l'arme pas : `telemetrie-fermeture` et
+`-doublons` éprouvent le départ sur une page VIVANTE, que les routes voient. Un envoi ordinaire n'est
+pas retenu : le navigateur l'annule lui-même au départ.
+Verrous : `tests/e2e/isolation-depart-page.spec.js` (3) — un proxy local compte toute connexion vers
+`*.supabase.co` ; ① témoin, routes seules : zéro tant que la page vit, au moins une au départ ; ② projet
+vide : zéro, et la fin de la session quittée revient par la page suivante ; ③ `pagehide` synthétique :
+l'envoi reste routé. Réinjections (source restaurée, `cmp`) : garde retirée → ② rouge (4 connexions au
+projet) ; garde armée sur tout `pagehide` → ③ rouge ; promesse résolue au lieu de pendante → ② rouge
+(rejeu perdu). Pendant sans navigateur : `tests/unit/isolation-projet-supabase.test.mjs` ⑧.
+
+**Et WebKit, en local** : 10 sessions, 146 lignes (`ios`, `app_version = b…`, artefact construit) le
+10/11 de 08:08 à 08:53 UTC — les passages WebKit de `navigation-artefact` et `deconnexion-artefact`, dont
+la page contrôlée par le service worker échappe à toutes les routes. `deconnexion-artefact` le bloquait
+depuis #816 ; `navigation-artefact` aussi désormais : derrière la sonde, **18 tentatives vers
+`*.supabase.co` sur un passage WebKit sans la ligne ; avec, 0 sur deux passages au calme (3/3 verts
+chacun) et sur un passage chargé.** Sur une machine chargée, son cas ① dépasse parfois les 45 s (19 s
+d'horloge simulée) : un tel passage a laissé 3 tentatives, à la fermeture forcée de son contexte. Sans
+effet en CI, qui la passe sous Chromium.
+
+**Ce qui reste, et c'est VOULU** :
+- **`telemetrie-preauth` ①** : un lot de 8 à 11 lignes par passage (`linux`, `robot`, `session start` …
+  `page_load`, parfois `GET passions`). Son sujet est la policy RÉELLE d'insertion de `telemetry_events`
+  (`cheminsReels`, inscrit au socle). **C'est la seule ligne `development` attendue d'un passage de la CI.**
+- **Le débogage à la main** (`npm run serve` puis `?telemetry=1`) : `env = development`, hors des chiffres
+  du pilotage par son filtre `env`.
+
+**Ce qui VOIT ces envois — et ce qui ne les voit pas.** Ni une route, ni `page.on("request")`, ni la sonde
+`scripts/trafic-supabase-tests.cjs` (elle écoute Playwright : elle était aveugle à ③). Seul un proxy hors
+du navigateur : Chromium lancé avec `proxy` et `--ignore-certificate-errors`, un proxy Node qui termine
+le TLS de `*.supabase.co` sur place, journalise le corps (sessions, actions) et répond sans jamais
+transmettre. Passé sur les 26 suites qui forcent la télémétrie : deux seulement envoient — `telemetrie-
+preauth` (1 lot, voulu) et `telemetrie-trafic` (5 envois de départ) ; sur les deux suites `dist` :
+`passion-context`. Puis sur la suite `local` COMPLÈTE, garde posée : 2 572 verts, 1 rouge sans rapport
+(`audit-2026-11-fluidite` ④ : son rapport dans `test-results/` effacé par un passage parallèle ; vert
+seul), et **UN seul envoi au réseau en 58 min : le lot voulu de `telemetrie-preauth` ①.**
+⚠️ L'étiquette d'une sonde partagée est GLOBALE : la changer pour un autre passage pendant une course
+range ses envois sous un autre nom. Le compte « 0 » d'une course longue se refait par fenêtre et par
+contenu, jamais par étiquette.
+
+**Mesuré au canal ① sur la CI, code corrigé** (run 42821051653 de la PR #819, 13:03 → 13:20 UTC) : **une
+seule session `development`, le lot de `telemetrie-preauth` (8 lignes, 13:05:45)** ; plus de paire
+`equipe`, rien du job `dist`. Avant : une trentaine de lignes par passage complet (ce lot, + 12 de
+`passion-context`, + la paire, environ 13). La paire et le lot arrivés à 13:18–13:19 viennent d'un autre run, d'une branche
+sans le correctif.
+⚠️ **Playwright fait passer le LOOPBACK par le proxy** (`<-loopback>`) : déclarer `bypass:
+"127.0.0.1,localhost"` (ou relayer le HTTP en clair), sinon la page locale ne charge jamais — le premier
+passage du verrou est mort là-dessus, 30 s sur `#landing.active`.
+
+**Reste à faire, hors de ce lot** : `release-integrity` (job `dist`) lit encore la production, 9 GET par
+passage (`posts`, `events`, `passions`) ; sa raison au socle (« le drain attend ses VRAIS POST ») est
+périmée depuis que son cas du drain route la télémétrie (2026-09-11). Aucune ligne de télémétrie. Les
+lignes `preview` viennent des contrôles des aperçus de déploiement : un autre lot.
+Règle d'une ligne proposée pour `CLAUDE.md` (chemin protégé, non appliquée) : « Le départ d'une page
+échappe aux routes de Playwright : `projetSupabaseVide` retient ses envois `keepalive` après un
+`pagehide` réel ; une fuite se mesure par un proxy hors du navigateur, jamais par la sonde Playwright. »
