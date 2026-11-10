@@ -197,7 +197,20 @@ async function deconnexionAttendLaVidange(page, envois) {
 }
 
 test.describe("Déconnexion sur l'artefact de production : la télémétrie est vidée d'abord", () => {
+  // ⚠️ SERVICE WORKER BLOQUÉ. Sous WebKit, une page que le service worker
+  // contrôle échappe aux routes du test, même pour un POST qu'il ne traite pas
+  // (`sw.js` ignore tout ce qui n'est pas un GET). Mesuré le 2026-11-10 : l'envoi
+  // de la déconnexion contournait `telemetrieSurPlace`, ① rougissait (« la
+  // déconnexion a demandé l'envoi de la file »), et la sonde arrivait dans la
+  // table de production (deux lignes `deconnexion_artefact_sonde`). Le service
+  // worker ne touche ni l'enveloppe ni la vidange.
+  test.use({ serviceWorkers: "block" });
+
   test("① le bloc app arrive après la fin du sondage : la déconnexion attend la vidange", async ({ page, baseURL }) => {
+    // 61 s d'horloge simulée déclenchent tous les minuteurs de la page en
+    // retard : ~6 s sous Chromium, ~55 s sous WebKit (mesuré le 2026-11-10),
+    // au-delà des 45 s par défaut.
+    test.slow();
     await page.clock.install();
     const envois = await telemetrieSurPlace(page);
     const { journal, domPret, liberer } = await servirArtefact(page, baseURL, /^app\/app-01/);
