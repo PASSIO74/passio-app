@@ -1,0 +1,134 @@
+{
+ "id": "MSG-051",
+ "domaine": "msg-liste",
+ "scenario": "appels",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Appel entrant (audio)",
+ "note": "SIMULÉ. En production les appels sont désactivés (PASSIO_APPELS_ACTIFS = false) : aucun bouton d'appel n'est rendu. Drapeau d'essai armé ; écran rendu par sa fonction, sans WebRTC.",
+ "prisLe": "2026-11-10T17:45:26.382Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#appel"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-051--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 13950,
+  "zooms": [
+   {
+    "nom": "commandes",
+    "titre": "Refuser / Répondre",
+    "fichier": "captures/msg-liste/MSG-051--m360--avant-zoom-commandes.webp",
+    "largeur": 608,
+    "hauteur": 168,
+    "octets": 3638
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "📵 et ✅ : emojis sans libellé, 12 px d'écart",
+   "x": 0.406,
+   "y": 0.651,
+   "w": 0.156,
+   "h": 0.088,
+   "sel": "#callOverlay .call-control-btn.hangup",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Emoji sur violet fixe : jamais la photo de la personne",
+   "x": 0.5,
+   "y": 0.391,
+   "w": 0.306,
+   "h": 0.172,
+   "sel": "#callOverlay .call-avatar",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 2,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 0,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-051--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 17664,
+  "zooms": [
+   {
+    "nom": "commandes",
+    "titre": "Refuser / Répondre",
+    "fichier": "captures/msg-liste/MSG-051--m360--apres-zoom-commandes.webp",
+    "largeur": 608,
+    "hauteur": 242,
+    "octets": 6948
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Deux commandes nommées, écartées, en icônes",
+   "x": 0.5,
+   "y": 0.666,
+   "w": 0.767,
+   "h": 0.145,
+   "sel": "#callOverlay .call-controls",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "La photo de profil : on reconnaît qui appelle",
+   "x": 0.5,
+   "y": 0.347,
+   "w": 0.306,
+   "h": 0.172,
+   "sel": "#callOverlay .call-avatar",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

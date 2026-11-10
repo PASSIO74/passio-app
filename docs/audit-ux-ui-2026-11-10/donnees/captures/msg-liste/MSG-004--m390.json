@@ -1,0 +1,165 @@
+{
+ "id": "MSG-004",
+ "domaine": "msg-liste",
+ "scenario": "nouveau",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Nouveau message — ouverture (contacts déjà joints)",
+ "note": "",
+ "prisLe": "2026-11-10T17:38:48.656Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-004--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 33604,
+  "zooms": [
+   {
+    "nom": "ligne",
+    "titre": "Ligne de personne",
+    "fichier": "captures/msg-liste/MSG-004--m390--avant-zoom-ligne.webp",
+    "largeur": 724,
+    "hauteur": 142,
+    "octets": 4016
+   },
+   {
+    "nom": "champ",
+    "titre": "Champ de recherche",
+    "fichier": "captures/msg-liste/MSG-004--m390--avant-zoom-champ.webp",
+    "largeur": 740,
+    "hauteur": 130,
+    "octets": 3432
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Chercher un utilisateur… » : ni étiquette, ni type recherche",
+   "x": 0.5,
+   "y": 0.554,
+   "w": 0.908,
+   "h": 0.058,
+   "sel": "#_nmSearch",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Liste sans titre ; avatars carrés (ronds partout ailleurs)",
+   "x": 0.5,
+   "y": 0.63,
+   "w": 0.908,
+   "h": 0.075,
+   "sel": "#_nmResults ._nm-row",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 3,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#_nmSearch",
+    "placeholder": "Chercher un utilisateur…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-004--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28438,
+  "zooms": [
+   {
+    "nom": "ligne",
+    "titre": "Ligne de personne",
+    "fichier": "captures/msg-liste/MSG-004--m390--apres-zoom-ligne.webp",
+    "largeur": 724,
+    "hauteur": 142,
+    "octets": 3032
+   },
+   {
+    "nom": "champ",
+    "titre": "Champ de recherche",
+    "fichier": "captures/msg-liste/MSG-004--m390--apres-zoom-champ.webp",
+    "largeur": 740,
+    "hauteur": 130,
+    "octets": 3836
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Rechercher une personne… », champ nommé",
+   "x": 0.5,
+   "y": 0.554,
+   "w": 0.908,
+   "h": 0.058,
+   "sel": "#_nmSearch",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "La liste dit ce qu'elle est : « Récents »",
+   "x": 0.5,
+   "y": 0.608,
+   "w": 0.908,
+   "h": 0.032,
+   "sel": "._nm-titre",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Avatar rond, comme dans la liste et l'en-tête",
+   "x": 0.5,
+   "y": 0.662,
+   "w": 0.908,
+   "h": 0.075,
+   "sel": "#_nmResults ._nm-row",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

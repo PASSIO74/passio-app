@@ -1,0 +1,245 @@
+{
+ "id": "MSG-002",
+ "domaine": "msg-liste",
+ "scenario": "liste",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Messages — bas de liste : aperçus de pièces jointes",
+ "note": "",
+ "prisLe": "2026-11-10T17:38:30.795Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-002--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 58052,
+  "zooms": [
+   {
+    "nom": "apercu-doc",
+    "titre": "Aperçu d'un document",
+    "fichier": "captures/msg-liste/MSG-002--m390--avant-zoom-apercu-doc.webp",
+    "largeur": 740,
+    "hauteur": 192,
+    "octets": 6960
+   },
+   {
+    "nom": "apercu-audio",
+    "titre": "Aperçu d'un fichier audio",
+    "fichier": "captures/msg-liste/MSG-002--m390--avant-zoom-apercu-audio.webp",
+    "largeur": 740,
+    "hauteur": 172,
+    "octets": 7174
+   },
+   {
+    "nom": "apercu-position",
+    "titre": "Aperçu d'une position",
+    "fichier": "captures/msg-liste/MSG-002--m390--avant-zoom-apercu-position.webp",
+    "largeur": 740,
+    "hauteur": 172,
+    "octets": 8218
+   },
+   {
+    "nom": "sans-message",
+    "titre": "Conversation sans message",
+    "fichier": "captures/msg-liste/MSG-002--m390--avant-zoom-sans-message.webp",
+    "largeur": 740,
+    "hauteur": 172,
+    "octets": 5742
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« [DOC] topo-falaise.pdf » : étiquette technique",
+   "x": 0.574,
+   "y": 0.177,
+   "w": 0.692,
+   "h": 0.02,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Grimpe du jeudi\")) .msg-preview",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Adresse Google Maps brute en aperçu",
+   "x": 0.574,
+   "y": 0.572,
+   "w": 0.692,
+   "h": 0.02,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Bastien Leroy\")) .msg-preview",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« [AUDIO] … »",
+   "x": 0.574,
+   "y": 0.669,
+   "w": 0.692,
+   "h": 0.02,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Clémence Vasseur\")) .msg-preview",
+   "trouve": true
+  },
+  {
+   "n": 4,
+   "texte": "Fil ouvert par l'autre, sans aucun message : il apparaît quand même",
+   "x": 0.5,
+   "y": 0.755,
+   "w": 0.918,
+   "h": 0.088,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Driss Haddad\"))",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 16,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 3
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 22,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card.unread > div.msg-body > div.msg-preview.unread-preview",
+    "texte": "Rendez-vous 14 h devant la grille, on entre ensemble.",
+    "mode": "ellipse"
+   },
+   {
+    "el": "div#messageList > div.msg-card > div.msg-body > div.msg-preview",
+    "texte": "Toi : 📍 Ma position : https://maps.google.com/?q=45.75000,4.85000",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-002--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 57276,
+  "zooms": [
+   {
+    "nom": "apercu-doc",
+    "titre": "Aperçu d'un document",
+    "fichier": "captures/msg-liste/MSG-002--m390--apres-zoom-apercu-doc.webp",
+    "largeur": 740,
+    "hauteur": 192,
+    "octets": 7354
+   },
+   {
+    "nom": "apercu-audio",
+    "titre": "Aperçu d'un fichier audio",
+    "fichier": "captures/msg-liste/MSG-002--m390--apres-zoom-apercu-audio.webp",
+    "largeur": 740,
+    "hauteur": 172,
+    "octets": 7522
+   },
+   {
+    "nom": "apercu-position",
+    "titre": "Aperçu d'une position",
+    "fichier": "captures/msg-liste/MSG-002--m390--apres-zoom-apercu-position.webp",
+    "largeur": 740,
+    "hauteur": 172,
+    "octets": 6436
+   },
+   {
+    "nom": "sans-message",
+    "titre": "Conversation sans message",
+    "fichier": "captures/msg-liste/MSG-002--m390--apres-zoom-sans-message.webp",
+    "largeur": 740,
+    "hauteur": 172,
+    "octets": 5740
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Document · topo-falaise.pdf »",
+   "x": 0.574,
+   "y": 0.177,
+   "w": 0.692,
+   "h": 0.02,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Grimpe du jeudi\")) .msg-preview",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Toi : Position partagée »",
+   "x": 0.574,
+   "y": 0.572,
+   "w": 0.692,
+   "h": 0.02,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Bastien Leroy\")) .msg-preview",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "« Fichier audio · … »",
+   "x": 0.574,
+   "y": 0.669,
+   "w": 0.692,
+   "h": 0.02,
+   "sel": "#messageList .msg-card:has(.msg-name:has-text(\"Clémence Vasseur\")) .msg-preview",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

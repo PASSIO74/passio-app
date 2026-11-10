@@ -1,0 +1,146 @@
+{
+ "id": "MSG-031",
+ "domaine": "msg-liste",
+ "scenario": "archives",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Messages — vue des conversations archivées",
+ "note": "",
+ "prisLe": "2026-11-10T17:42:34.513Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-031--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31760,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le titre reste « Messages » ; « + » et recherche inchangés",
+   "x": 0.178,
+   "y": 0.121,
+   "w": 0.273,
+   "h": 0.036,
+   "sel": ".v6a-title",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Seul repère : un bouton « ← Retour aux conversations »",
+   "x": 0.5,
+   "y": 0.268,
+   "w": 0.918,
+   "h": 0.05,
+   "sel": "#archivedToggleRow button",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#archivedToggleRow > button.btn.ghost",
+     "texte": "← Retour aux conversations",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 3,
+   "indetermines": 9,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card.unread > div.msg-body > div.msg-preview.unread-preview",
+    "texte": "Tu viens samedi à l'atelier ? J'apporte les cordes.",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-031--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 27226,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "L'écran dit où l'on est ; retour à gauche, comme dans une conversation",
+   "x": 0.342,
+   "y": 0.121,
+   "w": 0.273,
+   "h": 0.036,
+   "sel": ".v6a-title",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

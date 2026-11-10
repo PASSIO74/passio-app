@@ -338,7 +338,7 @@ module.exports = {
             { n: 1, sel: "#convSettingsPanel .conv-fp-head", texte: "Le panneau porte le nom de la conversation" },
             { n: 2, sel: "#convSettingsContent .csetting-item:nth-of-type(3)", texte: "Chaque réglage dit son effet" },
             { n: 3, sel: "#convSettingsContent .csetting-item:nth-of-type(2)", texte: "Icônes fonctionnelles en SVG, plus d'emoji" },
-            { n: 4, sel: "#convSettingsContent .csetting-section:nth-of-type(8)", texte: "Quatre groupes ; « Accusés de lecture » rejoint Options › Confidentialité" },
+            { n: 4, sel: "#convSettingsContent .csetting-section:nth-of-type(7)", texte: "Quatre groupes ; « Accusés de lecture » rejoint Options › Confidentialité" },
           ],
         });
         await page.evaluate(() => { document.getElementById("convSettingsContent").scrollTop = 9999; });

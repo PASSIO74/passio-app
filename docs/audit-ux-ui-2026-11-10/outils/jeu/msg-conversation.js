@@ -89,6 +89,7 @@ function peupler(srv, ctx, opts) {
     msg(c, MOI, 23 * H - 6, JSON.stringify({ type: "audio", filename: "Message vocal (7s)", fileType: "audio/webm", url: vocal, text: "[AUDIO] Message vocal (7s)" }), "m_lea_11");
     msg(c, GENS.lea, 23 * H - 10, JSON.stringify({ type: "doc", filename: "Programme-stage-lutherie-novembre-2026.pdf", fileType: "application/pdf", url: media("photo-carre.jpg") + "?doc=programme.pdf", text: "[DOC] Programme-stage-lutherie-novembre-2026.pdf" }), "m_lea_12");
     msg(c, GENS.lea, 23 * H - 11, JSON.stringify({ type: "audio", filename: "maquette-pont-re-mineur.mp3", fileType: "audio/mpeg", url: vocal + "?piste=maquette", text: "[AUDIO] maquette-pont-re-mineur.mp3" }), "m_lea_13");
+    msg(c, MOI, 23 * H - 14, JSON.stringify({ type: "doc", filename: "tablature-pont-re-mineur.pdf", fileType: "application/pdf", url: media("photo-carre.jpg") + "?doc=tablature.pdf", text: "[DOC] tablature-pont-re-mineur.pdf" }), "m_lea_13b");
     msg(c, GENS.lea, 22 * H, texte("Je te garde la table du fond."), "m_lea_14");
     // Bloc « aujourd'hui »
     msg(c, GENS.lea, 50, texte("Tu viens à quelle heure samedi ?"), "m_lea_15");
@@ -230,6 +231,24 @@ async function enBas(page) {
   await page.waitForTimeout(250);
 }
 const bulle = (id) => '.conv-bubble-wrap[data-mid="' + id + '"] .conv-bubble';
+// Ouvre la feuille d'actions d'un message par un APPUI TACTILE MAINTENU (CDP).
+// ⚠️ Le doigt est relâché APRÈS un glissement : dans ce banc, relâcher sur place
+// produit un clic de synthèse à l'endroit du doigt — or la feuille vient de
+// s'ouvrir dessous (sonde 03c : le relâchement déclenche « Répondre » ou referme
+// la feuille). Le glissement neutralise ce clic ; c'est un geste de banc, pas
+// une propriété du produit.
+async function ouvrirMenu(page, banc, id, sel) {
+  const cible = sel || bulle(id);
+  await page.locator(cible).first().scrollIntoViewIfNeeded().catch(() => {});
+  await page.waitForTimeout(250);
+  const main = await banc.appuiMaintenu(page, cible);
+  await page.waitForTimeout(700);
+  await main.glisser(0, -160);
+  await page.waitForTimeout(60);
+  await main.relacher();
+  await page.waitForTimeout(550);
+  return page.evaluate(() => document.getElementById("modalBackdrop").classList.contains("active"));
+}
 // Les routes du domaine : un vocal jouable (WAV généré) et, au besoin, le verdict
 // serveur de la proposition IRL (la RPC n'existe pas dans le faux serveur).
 async function routes(page, opts) {
@@ -243,4 +262,4 @@ async function routes(page, opts) {
   }
 }
 
-module.exports = { IDS, peupler, wav, TEXTE_LONG, LIEN, filPret, entrer, enBas, bulle, routes };
+module.exports = { IDS, peupler, wav, TEXTE_LONG, LIEN, filPret, entrer, enBas, bulle, routes, ouvrirMenu };

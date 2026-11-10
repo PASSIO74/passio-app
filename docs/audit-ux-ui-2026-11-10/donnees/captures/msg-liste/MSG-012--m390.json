@@ -1,0 +1,195 @@
+{
+ "id": "MSG-012",
+ "domaine": "msg-liste",
+ "scenario": "groupes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Conversation de groupe — en-tête",
+ "note": "",
+ "prisLe": "2026-11-10T17:40:01.560Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-012--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31014,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête de groupe",
+    "fichier": "captures/msg-liste/MSG-012--m390--avant-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 120,
+    "octets": 5514
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "L'avatar du groupe est la photo d'UN membre (la liste montre 👥)",
+   "x": 0.203,
+   "y": 0.035,
+   "w": 0.097,
+   "h": 0.045,
+   "sel": "#convFpHead .conv-fp-head-avatar",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Annoncé « bouton », mais toucher le nom ne fait rien",
+   "x": 0.515,
+   "y": 0.035,
+   "w": 0.477,
+   "h": 0.043,
+   "sel": "#convFpHead .conv-fp-head-info",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Seule porte vers les membres : icône de 34 px, sans nom accessible",
+   "x": 0.823,
+   "y": 0.035,
+   "w": 0.087,
+   "h": 0.04,
+   "sel": "#convFpHead .conv-action-btn[title=\"Membres\"]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 5,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Grimpe du jeudi 👥 4 membres",
+     "w": 186,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 5
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:50441/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-012--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31650,
+  "zooms": [
+   {
+    "nom": "entete",
+    "titre": "En-tête de groupe",
+    "fichier": "captures/msg-liste/MSG-012--m390--apres-zoom-entete.webp",
+    "largeur": 780,
+    "hauteur": 130,
+    "octets": 6190
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Même avatar de groupe que dans la liste",
+   "x": 0.223,
+   "y": 0.038,
+   "w": 0.097,
+   "h": 0.045,
+   "sel": "#convFpHead .conv-fp-head-avatar",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le nom ouvre le groupe ; la ligne le dit",
+   "x": 0.562,
+   "y": 0.038,
+   "w": 0.528,
+   "h": 0.043,
+   "sel": "#convFpHead .conv-fp-head-info",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Cibles de 44 px",
+   "x": 0.908,
+   "y": 0.038,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#convFpHead .conv-action-btn[title=\"Paramètres\"]",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

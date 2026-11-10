@@ -24,7 +24,7 @@ R("PAR-003", "Feuille de partage", "Retour de « Partager en dehors » (copie r�
   ["PAR-C03", "PAR-C19", "PAR-C10"], "Confirmation dans la feuille et toast au-dessus des feuilles.", "avant-apres", "a-ameliorer", "Le geste réussit sans aucun signe visible.");
 R("PAR-004", "Feuille de partage", "Repli « Lien : <adresse> » (presse-papiers refusé)", "échec", "connecté", "Partager en dehors, copie refusée par le navigateur", "observe",
   "capture PAR-004 (m390) ; sonde partage-01 : toast 390 × 73 px, adresse de 120+ caractères ; js/app-02-state-utils.js:3609",
-  ["PAR-C04", "PAR-C03"], "Lien affiché dans la feuille, sélectionnable, bouton « Copier ».", "avant-apres", "a-ameliorer", "Un échec dit par une adresse brute qui disparaît en 3 s.");
+  ["PAR-C04"], "Lien affiché dans la feuille, sélectionnable, bouton « Copier ».", "avant-apres", "a-ameliorer", "Un échec dit par une adresse brute qui disparaît en 3 s.");
 R("PAR-005", "Fil", "Carte produite par « Partager dans mon feed »", "après repartage", "connecté", "Feuille → Partager dans mon feed", "observe",
   "capture PAR-005 (m390) ; sonde partage-02 : texte seul, aucune image, aucun lien vers pa_lea_1 ; double appui réel = 1 seule publication ; js/app-03-posts-vlogs.js:87",
   ["PAR-C06", "PAR-C09"], "Carte « a republié » avec l'originale citée (vignette, auteur, extrait) et cliquable.", "avant-apres", "a-ameliorer", "Le repartage perd la photo et le chemin vers l'originale.");
@@ -154,7 +154,7 @@ R("PAR-060", "Aperçu de lien", "Page servie aux robots (/p/, /u/, /e/)", "conte
   "capture PAR-060 ; vraie fonction netlify/edge-functions/apercu.js exécutée dans Node avec un faux `fetch` ; humain : « 302 → /?plk=…&inv=…#post-pa_lea_1 »",
   ["PAR-C21"], "Un style minimal pour l'humain mal reconnu.", "avant-apres", "a-ameliorer", "Sûre et correcte ; nue pour un humain.");
 R("PAR-061", "Aperçu de lien", "Titres et descriptions : publication, activité, contenu inaccessible", "trois cas", "robot d'aperçu", "—", "simule",
-  "capture PAR-061 (rendu générique des balises og:) ; netlify/lib/apercu-coeur.js:215–258", ["PAR-C08"], "", "avant", "a-conserver", "« Léa Fontaine · Musique », date complète et ville pour une activité, repli générique qui ne révèle rien pour un contenu privé.");
+  "capture PAR-061 (rendu générique des balises og:) ; netlify/lib/apercu-coeur.js:215–258", [], "", "avant", "a-conserver", "« Léa Fontaine · Musique », date complète et ville pour une activité, repli générique qui ne révèle rien pour un contenu privé.");
 // ── SURFACES NON RENDUES ────────────────────────────────────────────────────
 R("PAR-070", "Live vidéo", "Bouton « ↗ » Partager le live", "en direct", "diffuseur / spectateur", "Pendant un live", "code",
   "js/app-05-config-profil.js:5097 (caractère « ↗ », pas `shareIconSvg`) et :5209 ; lien `/?live=<id>` ni court ni signé", ["PAR-C12", "PAR-C08"], "Icône à nœuds, lien de `lienPartageDe`.", "aucun", "a-ameliorer", "Troisième icône pour la même action.");

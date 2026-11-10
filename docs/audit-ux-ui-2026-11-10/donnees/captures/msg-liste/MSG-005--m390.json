@@ -1,0 +1,119 @@
+{
+ "id": "MSG-005",
+ "domaine": "msg-liste",
+ "scenario": "nouveau",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Nouveau message — recherche « tom » : une vraie personne et un personnage d'exemple",
+ "note": "",
+ "prisLe": "2026-11-10T17:38:51.383Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-005--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 19294,
+  "zooms": [
+   {
+    "nom": "resultats",
+    "titre": "Résultats",
+    "fichier": "captures/msg-liste/MSG-005--m390--avant-zoom-resultats.webp",
+    "largeur": 732,
+    "hauteur": 276,
+    "octets": 7636
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Tom Larivière » est un personnage d'exemple : rien ne le dit, on ne peut pas lui écrire",
+   "x": 0.5,
+   "y": 0.934,
+   "w": 0.908,
+   "h": 0.075,
+   "sel": "#_nmResults ._nm-row[data-uid=\"u_tom\"]",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 3,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#_nmSearch",
+    "placeholder": "Chercher un utilisateur…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-005--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 16066,
+  "zooms": [
+   {
+    "nom": "resultats",
+    "titre": "Résultats",
+    "fichier": "captures/msg-liste/MSG-005--m390--apres-zoom-resultats.webp",
+    "largeur": 732,
+    "hauteur": 150,
+    "octets": 4154
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Un compte connecté ne voit que de vraies personnes",
+   "x": 0.5,
+   "y": 0.934,
+   "w": 0.908,
+   "h": 0.075,
+   "sel": "#_nmResults ._nm-row",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

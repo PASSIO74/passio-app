@@ -153,8 +153,8 @@ function peuplerQuelques(srv, ctx) {
   o.msg(ID.doc, extra[2].id, 60 * 24 * 15, contenu.audio(media("boucle.webm"), "maquette-refrain.mp3"));
   o.lu(ID.doc, MOI.id, 60 * 24 * 14);
 
-  // 12. Conversation ouverte mais jamais commencée
-  o.conv(ID.vide, MOI.id, [MOI.id, extra[3].id], { created_at: ilYA(60 * 24 * 18) });
+  // 12. Conversation ouverte PAR L'AUTRE mais jamais commencée (aucun message)
+  o.conv(ID.vide, extra[3].id, [MOI.id, extra[3].id], { created_at: ilYA(60 * 24 * 18) });
   return srv;
 }
 

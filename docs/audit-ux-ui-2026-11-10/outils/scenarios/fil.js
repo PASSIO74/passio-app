@@ -12,7 +12,15 @@ const base = require("../jeu/base");
 const jeu = require("../jeu/fil");
 
 const COMPTE = { mode: "compte", nbPassions: 3, peupler: (srv, ctx) => { base.peupler(srv, ctx); jeu.peupler(srv, ctx); } };
-const carte = (id) => '#feedList .post[data-postid="' + id + '"]';
+function etatAvecAbonnements() {
+  const banc = require("../banc");
+  const e = banc.onboardedState(3);
+  e.user.name = banc.MOI.nom; e.user.general.username = banc.MOI.nom;
+  e.user.profiles.forEach((p) => { p.name = banc.MOI.nom; });
+  e.user.following = [banc.GENS.lea.id, banc.GENS.malik.id, banc.GENS.long.id, banc.GENS.prive.id];
+  return e;
+}
+const carte = (id) =>'#feedList .post[data-postid="' + id + '"]';
 
 // Amène une carte du fil sous la barre du haut (la zone qui défile est #appMain).
 async function montrer(page, id, decalage) {
@@ -375,7 +383,7 @@ module.exports = {
       nom: "detail-et-options",
       demarrage: COMPTE,
       vues: ["m390", "m360"],
-      async derouler({ page, prendre, serveur }) {
+      async derouler({ page, prendre, serveur, vue }) {
         await page.waitForTimeout(1800);
         await montrer(page, "pf_texte_long");
         await page.locator(carte("pf_texte_long") + " .post-body").click();
@@ -385,14 +393,14 @@ module.exports = {
           titre: "Page d'une publication — texte long, sans commentaire",
           zooms: [{ nom: "entete", titre: "Barre de titre", sel: "#postDetailPage > div", marge: 0 }],
           annotationsAvant: [
-            { n: 1, sel: "#postDetailPage > div span", texte: "Titre « Post » (ailleurs : « publication ») ; fond #ede9fe écrit en dur" },
+            { n: 1, sel: "#postDetailPage > div:first-child > span", texte: "Titre « Post » (ailleurs : « publication ») ; fond #ede9fe écrit en dur" },
             { n: 2, sel: "#postDetailComments", texte: "« Commentaires (0) » ici, « Discussion » dans la feuille : deux mots pour un même fil ; aucun champ pour écrire sur cette page" },
           ],
           apres: {
-            css: `#postDetailPage, #postDetailPage > div{ background:var(--bg-deep) !important; } #postDetailPage > div span{ font-size:0 !important; } #postDetailPage > div span::after{ content:"Publication"; font-size:16px; font-weight:800; font-family:var(--v2-titre, inherit); }`,
+            css: `#postDetailPage, #postDetailPage > div{ background:var(--bg-deep) !important; } #postDetailPage > div:first-child > span{ font-size:0 !important; } #postDetailPage > div:first-child > span::after{ content:"Publication"; font-size:16px; font-weight:800; font-family:var(--v2-titre, inherit); }`,
             js: async (page) => { await page.evaluate(() => { const c = document.getElementById("postDetailComments"); const t = c && c.previousElementSibling; if (t) t.textContent = "Discussion · 0 commentaire"; if (c) c.innerHTML = '<button class="btn primary block" style="min-height:46px;">Écrire le premier commentaire</button>'; }); } },
           annotations: [
-            { n: 1, sel: "#postDetailPage > div span", texte: "« Publication », sur le fond de l'application" },
+            { n: 1, sel: "#postDetailPage > div:first-child > span", texte: "« Publication », sur le fond de l'application" },
             { n: 2, sel: "#postDetailComments", texte: "Même mot que la feuille (« Discussion ») et une porte visible pour écrire (elle ouvre la feuille existante)" },
           ],
         });
@@ -417,10 +425,13 @@ module.exports = {
           id: "FIL-052",
           titre: "Panneau de réaction à une publication (emoji | GIF)",
           zooms: [{ nom: "panneau", titre: "Panneau de réaction", sel: "#emoji-react-panel", marge: 6 }],
-          annotationsAvant: [{ n: 1, sel: "#emoji-react-panel", texte: "Trente emojis de 18 px (cases de 28 px) ; un toucher ne réagit pas : il faut ensuite « Envoyer ✓ »" }],
-          apres: { css: `#emoji-react-panel span{ font-size:24px !important; width:40px; height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0 !important; } #emoji-react-panel{ width:min(344px, calc(100vw - 16px)) !important; left:8px !important; } #emoji-react-panel button{ min-height:40px; font-size:14px !important; }` },
-          annotations: [{ n: 1, sel: "#emoji-react-panel", texte: "Cases de 40 px ; recommandation associée : un toucher sur un emoji réagit tout de suite (re-toucher le retire)" }],
+          annotationsAvant: [{ n: 1, sel: "#emoji-react-panel", texte: "Le panneau sort par le haut de l'écran (premières rangées coupées) ; emojis de 18 px dans des cases de 28 px ; un toucher ne réagit pas : il faut ensuite « Envoyer ✓ »" }],
+          apres: { css: `#emoji-react-panel span{ font-size:24px !important; width:40px; height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0 !important; } #emoji-react-panel{ width:min(344px, calc(100vw - 16px)) !important; left:8px !important; top:76px !important; bottom:auto !important; } #emoji-react-panel button{ min-height:40px; font-size:14px !important; }` },
+          annotations: [{ n: 1, sel: "#emoji-react-panel", texte: "Panneau ramené dans l'écran, cases de 40 px ; recommandation associée : un toucher sur un emoji réagit tout de suite (re-toucher le retire)" }],
         });
+        // À 360×640 le panneau sort de l'écran par le haut : ses premiers emojis ne sont
+        // pas touchables (le geste ci-dessous échoue). La suite n'est déroulée qu'à 390.
+        if (vue !== "m390") return;
         await page.locator("#emoji-react-panel span").nth(2).click();
         await page.waitForTimeout(400);
         await prendre({ id: "FIL-053", seulement: ["m390"], titre: "Réaction choisie — ligne de validation « Envoyer ✓ »", zooms: [{ nom: "panneau", titre: "Validation", sel: "#emoji-react-panel", marge: 6 }] });
@@ -474,6 +485,46 @@ module.exports = {
         await page.locator(carte("pf_moi_texte") + " .v3-tempt").click();
         await page.waitForTimeout(700);
         await prendre({ id: "FIL-064", titre: "Feuille « Trouver une expérience » ouverte depuis une carte", note: "Porte d'entrée vers l'IRL ; l'intérieur des parcours relève des domaines IRL." });
+      },
+    },
+    // ───────────────────────────────────────────────────────────────────────
+    {
+      nom: "fil-modules",
+      demarrage: COMPTE,
+      vues: ["m390"],
+      async derouler({ page, prendre }) {
+        await page.waitForTimeout(2500);
+        await prendre({
+          id: "FIL-016",
+          titre: "Rangée de stories (porte d'entrée)",
+          mesurer: false,
+          zooms: [{ nom: "stories", titre: "Rangée de stories", sel: "#storiesRowFeed", marge: 6 }],
+          annotationsAvant: [{ n: 1, sel: "#storiesRowFeed .story-item:nth-child(2)", texte: "Bulles de 48 × 59 px, prénom seul en 9,5 px ; stories réelles et d'exemple mêlées sans distinction" }],
+        });
+        await page.evaluate(() => { const c = document.querySelector("#feedList .v2-reels"), m = document.getElementById("appMain"); if (c) m.scrollTop += c.getBoundingClientRect().top - 76; });
+        await page.waitForTimeout(700);
+        await prendre({
+          id: "FIL-017",
+          titre: "Module « Bobines à découvrir » inséré dans le fil (porte d'entrée)",
+          zooms: [{ nom: "bobines", titre: "Rail de bobines", sel: "#feedList .v2-reels", marge: 4 }],
+        });
+        await page.evaluate(() => { const c = document.querySelector("#feedList .v2-people"), m = document.getElementById("appMain"); if (c) m.scrollTop += c.getBoundingClientRect().top - 76; });
+        await page.waitForTimeout(700);
+        await prendre({
+          id: "FIL-018",
+          titre: "Module « Passionnés à découvrir » inséré dans le fil",
+          zooms: [{ nom: "personnes", titre: "Passionnés à découvrir", sel: "#feedList .v2-people", marge: 4 }],
+        });
+        await page.evaluate(() => { const m = document.getElementById("appMain"); m.scrollTop = m.scrollHeight; });
+        await page.waitForTimeout(1200);
+        await page.evaluate(() => { const c = document.querySelector("#feedList .feed-exemples-sep"), m = document.getElementById("appMain"); if (c) m.scrollTop += c.getBoundingClientRect().top - 300; });
+        await page.waitForTimeout(700);
+        await prendre({
+          id: "FIL-019",
+          titre: "Séparateur « Exemples PASSIO » après les publications réelles (« Tu es à jour »)",
+          zooms: [{ nom: "separateur", titre: "Séparateur", sel: "#feedList .feed-exemples-sep", marge: 6 }],
+          annotationsAvant: [{ n: 1, sel: "#feedList .feed-exemples-sep", texte: "« Tu es à jour » : la frontière entre le réel et les exemples est dite" }],
+        });
       },
     },
     // ───────────────────────────────────────────────────────────────────────
@@ -573,7 +624,10 @@ module.exports = {
     // ───────────────────────────────────────────────────────────────────────
     {
       nom: "volume",
-      demarrage: { mode: "compte", nbPassions: 3, peupler: (srv, ctx) => { base.peupler(srv, ctx); jeu.peupler(srv, ctx, { volume: true, priveSuivi: true }); } },
+      // L'état local porte déjà les abonnements (comme sur un appareil qui a déjà servi) :
+      // sans cela, la première lecture du fil précède celle des abonnements et écarte
+      // la publication du compte privé jusqu'au rafraîchissement suivant.
+      demarrage: { mode: "compte", etat: etatAvecAbonnements(), peupler: (srv, ctx) => { base.peupler(srv, ctx); jeu.peupler(srv, ctx, { volume: true, priveSuivi: true }); } },
       vues: ["m390"],
       async derouler({ page, prendre }) {
         await page.waitForTimeout(2500);

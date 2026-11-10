@@ -1,0 +1,182 @@
+{
+ "id": "MSG-014",
+ "domaine": "msg-liste",
+ "scenario": "groupes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Groupe — onglet « Ajouter » : candidats = personnages d'exemple d'abord",
+ "note": "",
+ "prisLe": "2026-11-10T17:40:04.489Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "👥 Grimpe du jeudi",
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-014--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 39198,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "78 candidats, les personnages d'exemple en tête ; recherche locale seulement, sensible aux accents",
+   "x": 0.5,
+   "y": 0.765,
+   "w": 0.908,
+   "h": 0.284,
+   "sel": "#grpAddList",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« + Ajouter » : 73 × 27 px",
+   "x": 0.86,
+   "y": 0.654,
+   "w": 0.187,
+   "h": 0.032,
+   "sel": "#grpAddList button",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [
+    {
+     "el": "div#modalContent > div",
+     "texte": "Ajouter une description…",
+     "w": 241,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "button#grpTab_members",
+     "texte": "Membres (5)",
+     "w": 177,
+     "h": 33,
+     "enLigne": false
+    },
+    {
+     "el": "button#grpTab_add",
+     "texte": "Ajouter",
+     "w": 177,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "input#grpSearchInput",
+     "texte": "Rechercher un utilisateur...",
+     "w": 241,
+     "h": 41,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpAddList > div > button.btn.primary",
+     "texte": "+ Ajouter",
+     "w": 73.1,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpAddList > div > button.btn.primary",
+     "texte": "+ Ajouter",
+     "w": 73.1,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpAddList > div > button.btn.primary",
+     "texte": "+ Ajouter",
+     "w": 73.1,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpAddList > div > button.btn.primary",
+     "texte": "+ Ajouter",
+     "w": 73.1,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#grpAddList > div > button.btn.primary",
+     "texte": "+ Ajouter",
+     "w": 73.1,
+     "h": 16,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "← Retour",
+     "w": 173,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "Quitter",
+     "w": 173,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 11
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 13,
+   "indetermines": 5,
+   "sousSeuil": [
+    {
+     "el": "div#modalContent > div > button.btn.ghost",
+     "texte": "Quitter",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#grpSearchInput",
+    "placeholder": "Rechercher un utilisateur..."
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

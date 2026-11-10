@@ -1,0 +1,101 @@
+{
+ "id": "MSG-006",
+ "domaine": "msg-liste",
+ "scenario": "nouveau",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Nouveau message — « lea f » sans accent : « Aucun utilisateur trouvé » alors que Léa Fontaine est un contact",
+ "note": "",
+ "prisLe": "2026-11-10T17:38:53.414Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(8) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-liste/MSG-006--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 14304,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "La recherche distingue « lea » de « Léa »",
+   "x": 0.5,
+   "y": 0.938,
+   "w": 0.908,
+   "h": 0.068,
+   "sel": "#_nmResults",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 3,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#_nmSearch",
+    "placeholder": "Chercher un utilisateur…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-liste/MSG-006--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 14744,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Accents et casse ignorés : « lea f » trouve « Léa Fontaine »",
+   "x": 0.5,
+   "y": 0.934,
+   "w": 0.908,
+   "h": 0.075,
+   "sel": "#_nmResults ._nm-row",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

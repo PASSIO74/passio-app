@@ -1,0 +1,2032 @@
+{
+ "domaine": "msg-liste",
+ "groupe": "Messagerie",
+ "titre": "Messagerie — liste, nouvelle conversation, groupes, paramètres, appels",
+ "resume": "La liste des conversations est lisible, rapide et bien structurée : titre, « + », recherche, lignes claires, exemples étiquetés, pagination. Ce qui gêne est dessous : les réglages d'une conversation (épingle, archive, sourdine, fond, brouillon) s'effacent à chaque démarrage, et « Couper les notifications » ne coupe rien. Pour écrire à quelqu'un, « Nouveau message » mêle des personnages d'exemple aux vraies personnes — cinq lignes « Passionné » pour un compte neuf — et la recherche exige l'accent exact. Les groupes sont la partie la plus fragile : on ne peut y inviter que des personnages d'exemple, la fenêtre des membres donne un nombre, un rôle et une présence faux, et un ajout refusé par le serveur est annoncé réussi. Le panneau Paramètres aligne quatorze entrées en emoji et six boîtes du navigateur. Les appels sont désactivés en production ; leurs écrans, rendus ici par simulation, sont à reprendre avant toute réactivation. L'enjeu est direct pour « Rencontrer » : c'est par ce premier message, et par les discussions d'activité, que le fil mène au réel.",
+ "aConserver": [
+  "La tête de l'écran : titre « Messages », « + » de 44 px qui regroupe les deux créations, recherche de 16 px.",
+  "La ligne de conversation : avatar, nom, heure relative, aperçu sur une ligne, « Toi : » et « Brouillon : ».",
+  "L'étiquette « Exemple PASSIO · réponse désactivée » sur chaque exemple, et des exemples qui ne comptent pas dans le badge.",
+  "La pagination à 30 avec « Voir les conversations plus anciennes (N) » et la position de défilement gardée au retour d'une conversation.",
+  "L'en-tête 1:1 : nom, « Voir le profil », profil à un toucher de l'avatar ou du nom.",
+  "Le badge de l'onglet Messages, plafonné à « 9+ », avec son libellé accessible « Messages, N non lus ».",
+  "La fenêtre de signalement : motif obligatoire, confidentialité dite, annulation propre.",
+  "Le refus d'écrire à un compte bloqué, immédiat et expliqué.",
+  "Le message honnête quand le serveur refuse un retrait de membre.",
+  "Le choix de ne montrer aucun bouton d'appel tant que les appels sont désactivés."
+ ],
+ "registre": [
+  {
+   "id": "MSG-001",
+   "surface": "Écran Messages",
+   "composant": "Liste des conversations",
+   "etat": "contenu normal (12), 1 épinglée, 1 en sourdine",
+   "role": "connecté · participant",
+   "geste": "Barre basse → Messages",
+   "observation": "simule",
+   "preuve": "capture MSG-001 (m390, m360, t768, d1440) ; liste atteinte par vrais gestes, épingle et sourdine posées par données injectées ; rendu : js/app-04-comments-shop.js:5451–5609, js/ui-v6a-messages.js",
+   "problemes": [
+    "MSG-C13",
+    "MSG-C10",
+    "MSG-C28"
+   ],
+   "proposition": "Nombre de non-lus sur la ligne, épingle et sourdine en icônes, nom long sur une ligne, espace resserré.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "La structure est bonne ; il manque trois repères (combien, épinglée, en sourdine)."
+  },
+  {
+   "id": "MSG-002",
+   "surface": "Écran Messages",
+   "composant": "Aperçu du dernier message",
+   "etat": "pièces jointes : document, fichier audio, position, vidéo, GIF, fil sans message",
+   "role": "connecté · participant",
+   "geste": "Messages → défiler",
+   "observation": "observe",
+   "preuve": "capture MSG-002 (m390) ; js/app-04-comments-shop.js:5554–5561",
+   "problemes": [
+    "MSG-C12",
+    "MSG-C22"
+   ],
+   "proposition": "Aperçus en mots : « Document · nom », « Fichier audio · nom », « Position partagée ».",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Trois types d'aperçu montrent une étiquette technique ou une adresse brute."
+  },
+  {
+   "id": "MSG-003",
+   "surface": "Écran Messages",
+   "composant": "Menu « + »",
+   "etat": "ouvert",
+   "role": "connecté · participant",
+   "geste": "Messages → +",
+   "observation": "observe",
+   "preuve": "capture MSG-003 (m390) ; entrées de 44 px ; js/ui-v6a-messages.js:141–166",
+   "problemes": [],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Deux entrées claires, 44 px, fermeture au clic extérieur et à Échap."
+  },
+  {
+   "id": "MSG-004",
+   "surface": "Nouveau message",
+   "composant": "Feuille de recherche de personnes",
+   "etat": "ouverture, contacts déjà joints",
+   "role": "connecté · participant",
+   "geste": "+ → Nouveau message",
+   "observation": "observe",
+   "preuve": "capture MSG-004 (m390, m360) ; js/app-04-comments-shop.js:4007–4098",
+   "problemes": [
+    "MSG-C27",
+    "MSG-C28",
+    "MSG-C03"
+   ],
+   "proposition": "Champ nommé « Rechercher une personne… », titre « Récents », avatars ronds.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "La liste ne dit pas ce qu'elle est et le vocabulaire diverge."
+  },
+  {
+   "id": "MSG-005",
+   "surface": "Nouveau message",
+   "composant": "Résultats de recherche",
+   "etat": "une vraie personne et un personnage d'exemple",
+   "role": "connecté · participant",
+   "geste": "Nouveau message → taper « tom »",
+   "observation": "observe",
+   "preuve": "capture MSG-005 ; sonde 02 (résultat `u_tom`) ; js/app-04-comments-shop.js:4043–4050",
+   "problemes": [
+    "MSG-C03"
+   ],
+   "proposition": "Un compte connecté ne voit que de vraies personnes.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Le personnage d'exemple n'est pas signalé et on ne peut pas lui écrire."
+  },
+  {
+   "id": "MSG-006",
+   "surface": "Nouveau message",
+   "composant": "Résultats de recherche",
+   "etat": "saisie sans accent : aucun résultat",
+   "role": "connecté · participant",
+   "geste": "Nouveau message → taper « lea f »",
+   "observation": "observe",
+   "preuve": "capture MSG-006 ; sondes 06b et 06c",
+   "problemes": [
+    "MSG-C06"
+   ],
+   "proposition": "Recherche insensible aux accents et à la casse.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "« lea » ne trouve pas « Léa », contact existant."
+  },
+  {
+   "id": "MSG-007",
+   "surface": "Nouveau message",
+   "composant": "Suggestions",
+   "etat": "compte sans conversation : cinq « Passionné »",
+   "role": "connecté · compte neuf",
+   "geste": "+ → Nouveau message",
+   "observation": "observe",
+   "preuve": "capture MSG-007 ; sonde 06b",
+   "problemes": [
+    "MSG-C03"
+   ],
+   "proposition": "Pas de faux contacts : une consigne tant qu'il n'y a personne à proposer.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Premier écran du premier message : cinq lignes identiques et fictives."
+  },
+  {
+   "id": "MSG-008",
+   "surface": "Nouveau message",
+   "composant": "Feuille",
+   "etat": "clavier ouvert",
+   "role": "connecté · participant",
+   "geste": "Nouveau message → champ actif",
+   "observation": "simule",
+   "preuve": "capture MSG-008 (m360), clavier simulé par réduction de fenêtre ; champ et résultats restent visibles",
+   "problemes": [],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "La feuille suit le clavier, champ de 16 px, résultats visibles."
+  },
+  {
+   "id": "MSG-010",
+   "surface": "Nouveau groupe",
+   "composant": "Formulaire",
+   "etat": "ouverture",
+   "role": "connecté · participant",
+   "geste": "+ → Nouveau groupe",
+   "observation": "observe",
+   "preuve": "capture MSG-010 (m390, m360) ; sonde 04 ; js/app-05-config-profil.js:1906–1941",
+   "problemes": [
+    "MSG-C04",
+    "MSG-C10",
+    "MSG-C31"
+   ],
+   "proposition": "Recherche de vraies personnes, contacts récents proposés, passion facultative.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "On ne peut inviter que dix personnages d'exemple."
+  },
+  {
+   "id": "MSG-011",
+   "surface": "Nouveau groupe",
+   "composant": "Formulaire",
+   "etat": "rempli, clavier ouvert",
+   "role": "connecté · participant",
+   "geste": "Nouveau groupe → saisir, cocher",
+   "observation": "simule",
+   "preuve": "capture MSG-011 (m360), clavier simulé ; validations par toasts successifs (sonde 04)",
+   "problemes": [
+    "MSG-C04"
+   ],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Les trois erreurs de saisie arrivent une par une, en toast."
+  },
+  {
+   "id": "MSG-012",
+   "surface": "Conversation de groupe",
+   "composant": "En-tête",
+   "etat": "groupe de 4",
+   "role": "connecté · participant",
+   "geste": "Messages → toucher un groupe",
+   "observation": "observe",
+   "preuve": "capture MSG-012 (m390, m360) ; js/app-04-comments-shop.js:5685–5724",
+   "problemes": [
+    "MSG-C20",
+    "MSG-C10"
+   ],
+   "proposition": "Avatar de groupe, nom qui ouvre le groupe, cibles de 44 px.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "L'en-tête montre la photo d'un membre et un nom inerte."
+  },
+  {
+   "id": "MSG-013",
+   "surface": "Groupe",
+   "composant": "Fenêtre « membres »",
+   "etat": "onglet Membres",
+   "role": "connecté · créatrice",
+   "geste": "En-tête → icône membres",
+   "observation": "observe",
+   "preuve": "capture MSG-013 (m390, m360) ; sonde 04 ; js/app-05-config-profil.js:2006–2105",
+   "problemes": [
+    "MSG-C08",
+    "MSG-C09",
+    "MSG-C10"
+   ],
+   "proposition": "Un seul nombre, rôle réel, « Retirer » en 44 px avec confirmation.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Compte faux, rôle et présence écrits en dur, retrait immédiat."
+  },
+  {
+   "id": "MSG-014",
+   "surface": "Groupe",
+   "composant": "Fenêtre « membres »",
+   "etat": "onglet Ajouter",
+   "role": "connecté · créatrice",
+   "geste": "Fenêtre membres → Ajouter",
+   "observation": "observe",
+   "preuve": "capture MSG-014 ; sonde 04 (78 candidats, « ines » → aucun résultat)",
+   "problemes": [
+    "MSG-C04",
+    "MSG-C06",
+    "MSG-C10"
+   ],
+   "proposition": "Même recherche de personnes que « Nouveau message ».",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Candidats d'exemple en tête, recherche locale sensible aux accents."
+  },
+  {
+   "id": "MSG-015",
+   "surface": "Discussion d'activité",
+   "composant": "Fenêtre « membres »",
+   "etat": "simple participante",
+   "role": "connecté · membre non créateur",
+   "geste": "Discussion d'activité → icône membres",
+   "observation": "observe",
+   "preuve": "capture MSG-015 ; sonde 04b (retrait refusé par le serveur, ajout annoncé mais refusé)",
+   "problemes": [
+    "MSG-C05",
+    "MSG-C08"
+   ],
+   "proposition": "Sans droit, ni « Retirer » ni « Ajouter » ; rôle affiché = rôle réel.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Une participante se voit « Admin » et peut tenter de retirer l'organisatrice."
+  },
+  {
+   "id": "MSG-016",
+   "surface": "Groupe",
+   "composant": "Photo du groupe",
+   "etat": "après choix d'une image",
+   "role": "connecté · créatrice",
+   "geste": "Fenêtre membres → toucher l'avatar → choisir un fichier",
+   "observation": "observe",
+   "preuve": "capture MSG-016 ; erreur page « renderConvList is not defined » (sonde 04) ; js/app-05-config-profil.js:2107–2146",
+   "problemes": [
+    "MSG-C11"
+   ],
+   "proposition": "Rafraîchir l'avatar partout ou ne pas annoncer.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Succès annoncé, avatar inchangé, erreur JavaScript."
+  },
+  {
+   "id": "MSG-020",
+   "surface": "Conversation 1:1",
+   "composant": "En-tête (production)",
+   "etat": "appels désactivés",
+   "role": "connecté · participant",
+   "geste": "Messages → toucher une conversation",
+   "observation": "observe",
+   "preuve": "capture MSG-020 (m390, m360) ; sonde 03 (retour 36 px, ⋮ zone 38 × 46 px)",
+   "problemes": [
+    "MSG-C10",
+    "MSG-C28"
+   ],
+   "proposition": "Retour et ⋮ en 44 px, nom accessible.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Identité claire et profil à un geste ; deux cibles trop petites."
+  },
+  {
+   "id": "MSG-021",
+   "surface": "Paramètres de conversation",
+   "composant": "Panneau (1:1)",
+   "etat": "haut",
+   "role": "connecté · participant",
+   "geste": "Conversation → ⋮",
+   "observation": "observe",
+   "preuve": "capture MSG-021 (m390, m360) ; sonde 03 (14 entrées, 877 px pour 784 visibles) ; js/app-09-boot-pwa.js:1645–1713",
+   "problemes": [
+    "MSG-C17",
+    "MSG-C02",
+    "MSG-C01"
+   ],
+   "proposition": "Quatre groupes, icônes SVG, effet de chaque réglage écrit, nom de la conversation en titre.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Quatorze entrées en emoji, rangement incohérent."
+  },
+  {
+   "id": "MSG-022",
+   "surface": "Paramètres de conversation",
+   "composant": "Panneau (1:1)",
+   "etat": "bas : bloquer, signaler, supprimer",
+   "role": "connecté · participant",
+   "geste": "Conversation → ⋮ → défiler",
+   "observation": "observe",
+   "preuve": "capture MSG-022 (m390, m360) ; boîtes natives relevées par la sonde 03",
+   "problemes": [
+    "MSG-C17",
+    "MSG-C18",
+    "MSG-C21"
+   ],
+   "proposition": "Voir MSG-021.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Actions destructrices sous le pli, sous un titre qui ne les concerne pas."
+  },
+  {
+   "id": "MSG-023",
+   "surface": "Paramètres de conversation",
+   "composant": "Sélecteur de fond",
+   "etat": "ouvert",
+   "role": "connecté · participant",
+   "geste": "⋮ → Fond de conversation",
+   "observation": "observe",
+   "preuve": "capture MSG-023 (m390, m360) ; js/app-09-boot-pwa.js:1855–1862",
+   "problemes": [
+    "MSG-C16"
+   ],
+   "proposition": "Six fonds clairs.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Cinq fonds sombres dans une application sans mode sombre."
+  },
+  {
+   "id": "MSG-024",
+   "surface": "Conversation 1:1",
+   "composant": "Fil avec fond « Violet »",
+   "etat": "fond sombre appliqué",
+   "role": "connecté · participant",
+   "geste": "Sélecteur de fond → Violet",
+   "observation": "observe",
+   "preuve": "capture MSG-024 ; contraste calculé de l'heure (#6E6987 sur #2A1A4A → #160D2A) : 3,0 à 3,6:1",
+   "problemes": [
+    "MSG-C16"
+   ],
+   "proposition": "Voir MSG-023.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Dates et heures deviennent presque invisibles."
+  },
+  {
+   "id": "MSG-025",
+   "surface": "Signalement",
+   "composant": "Fenêtre de motif",
+   "etat": "ouverte depuis une conversation",
+   "role": "connecté · participant",
+   "geste": "⋮ → Signaler",
+   "observation": "observe",
+   "preuve": "capture MSG-025 ; sonde 03 (motif vide refusé, annulation rend la conversation)",
+   "problemes": [],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Motif obligatoire, confidentialité dite, annulation propre."
+  },
+  {
+   "id": "MSG-026",
+   "surface": "Paramètres de conversation",
+   "composant": "Panneau (groupe)",
+   "etat": "ouvert",
+   "role": "connecté · créatrice",
+   "geste": "Groupe → ⋮",
+   "observation": "observe",
+   "preuve": "capture MSG-026 ; sonde 04b",
+   "problemes": [
+    "MSG-C21",
+    "MSG-C17"
+   ],
+   "proposition": "Une seule sortie, nommée « Quitter le groupe ».",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "« Supprimer la conversation » ici et « Quitter » ailleurs ne font pas la même chose."
+  },
+  {
+   "id": "MSG-027",
+   "surface": "Paramètres de conversation",
+   "composant": "Panneau (conversation d'exemple)",
+   "etat": "bas",
+   "role": "sans session · démo",
+   "geste": "Exemple → ⋮",
+   "observation": "observe",
+   "preuve": "capture MSG-027 ; sonde 06a (« Bloquer » sans nom)",
+   "problemes": [
+    "MSG-C24"
+   ],
+   "proposition": "Sur un exemple : seulement « Supprimer cet exemple ».",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Quatorze actions sans objet sur un personnage fictif."
+  },
+  {
+   "id": "MSG-028",
+   "surface": "Pièces jointes",
+   "composant": "Panneau des fichiers partagés",
+   "etat": "un document",
+   "role": "connecté · participant",
+   "geste": "⋮ → Pièces jointes & médias",
+   "observation": "observe",
+   "preuve": "capture MSG-028 ; js/app-09-boot-pwa.js:1560–1638",
+   "problemes": [
+    "MSG-C10"
+   ],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Sections Médias / Messages vocaux / Fichiers lisibles, état vide explicite (code)."
+  },
+  {
+   "id": "MSG-030",
+   "surface": "Écran Messages",
+   "composant": "Bandeau « Archivées » et épingle",
+   "etat": "1 épinglée, 1 archivée non lue",
+   "role": "connecté · participant",
+   "geste": "⋮ → Épingler (réel) ; archive non lue injectée",
+   "observation": "simule",
+   "preuve": "capture MSG-030 ; sonde 08 (onglet 9, liste visible sans la conversation)",
+   "problemes": [
+    "MSG-C14",
+    "MSG-C13"
+   ],
+   "proposition": "Rangée « Archivées » avec son nombre de non-lus.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Le compte de l'onglet ne se retrouve pas dans la liste."
+  },
+  {
+   "id": "MSG-031",
+   "surface": "Écran Messages",
+   "composant": "Vue des archivées",
+   "etat": "1 conversation",
+   "role": "connecté · participant",
+   "geste": "Messages → Archivées (1)",
+   "observation": "observe",
+   "preuve": "capture MSG-031 ; sonde 03",
+   "problemes": [
+    "MSG-C14"
+   ],
+   "proposition": "Titre « Archivées » et retour à gauche.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Rien ne dit qu'on regarde les archives, sauf un bouton."
+  },
+  {
+   "id": "MSG-033",
+   "surface": "Écran Messages",
+   "composant": "Recherche",
+   "etat": "résultat trouvé",
+   "role": "connecté · participant",
+   "geste": "Messages → taper dans la recherche",
+   "observation": "observe",
+   "preuve": "capture MSG-033 ; sonde 06c",
+   "problemes": [
+    "MSG-C07"
+   ],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Le résultat ne montre pas où le mot a été trouvé."
+  },
+  {
+   "id": "MSG-034",
+   "surface": "Écran Messages",
+   "composant": "Recherche",
+   "etat": "aucun résultat (mot d'un message ancien)",
+   "role": "connecté · participant",
+   "geste": "Messages → taper « capodastre »",
+   "observation": "observe",
+   "preuve": "capture MSG-034 ; sonde 06c ; js/app-04-comments-shop.js:5484–5490 et js/app-08-ui-modals-tour.js:7184–7232 (un seul message chargé par conversation)",
+   "problemes": [
+    "MSG-C07",
+    "MSG-C06"
+   ],
+   "proposition": "Bouton d'effacement ; message qui dit la portée réelle de la recherche.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "La recherche promet les messages et n'en connaît qu'un par conversation."
+  },
+  {
+   "id": "MSG-035",
+   "surface": "Écran Messages",
+   "composant": "Pagination",
+   "etat": "46 conversations, 30 affichées",
+   "role": "connecté · participant",
+   "geste": "Messages → défiler jusqu'en bas",
+   "observation": "observe",
+   "preuve": "capture MSG-035 ; sonde 06c (bouton 358 × 42 px, position gardée au retour)",
+   "problemes": [],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Libellé clair avec le reste à voir, position de défilement gardée au retour d'une conversation."
+  },
+  {
+   "id": "MSG-036",
+   "surface": "Écran Messages",
+   "composant": "Conversations d'exemple",
+   "etat": "mode démo, cinq exemples",
+   "role": "sans session · démo",
+   "geste": "Messages",
+   "observation": "observe",
+   "preuve": "capture MSG-036 ; sonde 06a",
+   "problemes": [],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "L'étiquette « Exemple PASSIO · réponse désactivée » est sur chaque ligne et les exemples ne comptent pas dans le badge."
+  },
+  {
+   "id": "MSG-037",
+   "surface": "Écran Messages",
+   "composant": "État vide",
+   "etat": "aucune conversation",
+   "role": "sans session · démo",
+   "geste": "Supprimer les cinq exemples",
+   "observation": "observe",
+   "preuve": "capture MSG-037 (m390, m360) ; js/app-04-comments-shop.js:5527, index.html:1213",
+   "problemes": [
+    "MSG-C19"
+   ],
+   "proposition": "Texte juste et bouton « Nouveau message ».",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "La consigne renvoie à un champ qui ne cherche pas de personnes."
+  },
+  {
+   "id": "MSG-038",
+   "surface": "Écran Messages",
+   "composant": "Hors ligne",
+   "etat": "bandeau, liste en cache",
+   "role": "connecté · participant",
+   "geste": "Couper le réseau",
+   "observation": "simule",
+   "preuve": "capture MSG-038 ; hors ligne émulé (setOffline + refus des requêtes Supabase) ; sonde 10",
+   "problemes": [
+    "MSG-C23",
+    "MSG-C10"
+   ],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "La liste reste lisible, mais le bandeau recouvre la barre du haut."
+  },
+  {
+   "id": "MSG-039",
+   "surface": "Nouveau message",
+   "composant": "Recherche hors ligne",
+   "etat": "« Aucun utilisateur trouvé »",
+   "role": "connecté · participant",
+   "geste": "Hors ligne → Nouveau message → taper un nom",
+   "observation": "simule",
+   "preuve": "capture MSG-039 ; sonde 10 (même réponse sur une erreur 500 : résultat local seul)",
+   "problemes": [
+    "MSG-C23"
+   ],
+   "proposition": "Dire « Pas de connexion » plutôt qu'« aucun ».",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Une panne est présentée comme une absence de résultat."
+  },
+  {
+   "id": "MSG-040",
+   "surface": "Comptes bloqués",
+   "composant": "Fenêtre",
+   "etat": "un compte bloqué",
+   "role": "connecté · participant",
+   "geste": "Options ··· → Personnalisation → Comptes bloqués",
+   "observation": "simule",
+   "preuve": "capture MSG-040, fenêtre ouverte par openBlockedList() ; sonde 09 (déblocage écrit en base)",
+   "problemes": [
+    "MSG-C10",
+    "MSG-C29"
+   ],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Fonctionne, mais « Débloquer » fait 29 px et la fenêtre est à trois niveaux de la messagerie."
+  },
+  {
+   "id": "MSG-041",
+   "surface": "Écran Messages",
+   "composant": "Après un blocage",
+   "etat": "conversation masquée",
+   "role": "connecté · participant",
+   "geste": "⋮ → Bloquer → confirmer",
+   "observation": "observe",
+   "preuve": "capture MSG-041 ; sonde 09 (ligne `blocks` écrite, toast « 🚫 Inès Moreau bloqué »)",
+   "problemes": [
+    "MSG-C18",
+    "MSG-C27"
+   ],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Le blocage tient ; ses conséquences et le chemin du retour ne sont pas dits."
+  },
+  {
+   "id": "MSG-050",
+   "surface": "Conversation 1:1",
+   "composant": "En-tête avec boutons d'appel",
+   "etat": "drapeau d'essai armé",
+   "role": "connecté · participant",
+   "geste": "Inaccessible en production",
+   "observation": "simule",
+   "preuve": "capture MSG-050 (m390, m360), `passio_appels_actifs` armé ; production : js/app-05-config-profil.js:648 (appels désactivés)",
+   "problemes": [
+    "MSG-C26",
+    "MSG-C10"
+   ],
+   "proposition": "Un seul bouton « Appeler » de 44 px.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Trois boutons de 34 px réduisent le nom à 148 px."
+  },
+  {
+   "id": "MSG-051",
+   "surface": "Appel",
+   "composant": "Appel entrant (audio)",
+   "etat": "sonnerie",
+   "role": "connecté · participant",
+   "geste": "Inaccessible (deux appareils)",
+   "observation": "simule",
+   "preuve": "capture MSG-051 (m390, m360), rendu par _callRenderIncomingUI ; js/app-05-config-profil.js:1512–1535",
+   "problemes": [
+    "MSG-C26"
+   ],
+   "proposition": "Commandes nommées et écartées, photo de la personne.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Deux emojis sans libellé à 12 px l'un de l'autre."
+  },
+  {
+   "id": "MSG-052",
+   "surface": "Appel",
+   "composant": "Appel entrant (vidéo)",
+   "etat": "nom très long",
+   "role": "connecté · participant",
+   "geste": "Inaccessible",
+   "observation": "simule",
+   "preuve": "capture MSG-052 (m360) ; nom sur 3 lignes, sans débordement (sonde 05)",
+   "problemes": [
+    "MSG-C26"
+   ],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Même écran que MSG-051 ; le nom long tient."
+  },
+  {
+   "id": "MSG-053",
+   "surface": "Appel",
+   "composant": "Appel sortant (audio)",
+   "etat": "sonnerie côté appelant",
+   "role": "connecté · participant",
+   "geste": "Inaccessible",
+   "observation": "simule",
+   "preuve": "capture MSG-053, rendu par _callRenderActiveUI ; js/app-05-config-profil.js:1537–1565",
+   "problemes": [
+    "MSG-C26"
+   ],
+   "proposition": "« Ça sonne… » sans minuteur avant la réponse.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "« Appel en cours… » et « 00:00 » avant toute réponse."
+  },
+  {
+   "id": "MSG-054",
+   "surface": "Appel",
+   "composant": "Appel audio en cours",
+   "etat": "connecté",
+   "role": "connecté · participant",
+   "geste": "Inaccessible",
+   "observation": "simule",
+   "preuve": "capture MSG-054 (m390, m360) ; minuteur #6D32F4 sur fond #3B1D72 : 2,1:1 (calcul)",
+   "problemes": [
+    "MSG-C26"
+   ],
+   "proposition": "Minuteur blanc, commandes nommées, diagnostic retiré.",
+   "visuel": "avant-apres",
+   "verdict": "a-ameliorer",
+   "justification": "Minuteur peu lisible, micro presque invisible, chiffres techniques à l'écran."
+  },
+  {
+   "id": "MSG-055",
+   "surface": "Appel",
+   "composant": "Appel vidéo en cours",
+   "etat": "connecté, sans flux",
+   "role": "connecté · participant",
+   "geste": "Inaccessible",
+   "observation": "simule",
+   "preuve": "capture MSG-055 (aucun flux : vidéos noires) ; commandes à y = 760–816 sur 844",
+   "problemes": [
+    "MSG-C26"
+   ],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Mêmes commandes en emoji ; disposition correcte."
+  },
+  {
+   "id": "MSG-060",
+   "surface": "Écran Messages",
+   "composant": "Liste d'un compte sans conversation",
+   "etat": "cinq exemples",
+   "role": "connecté · compte neuf",
+   "geste": "Messages",
+   "observation": "observe",
+   "preuve": "capture MSG-060 ; sonde 06b",
+   "problemes": [],
+   "proposition": "",
+   "visuel": "avant",
+   "verdict": "a-conserver",
+   "justification": "Le décor est étiqueté ligne par ligne ; à garder tant qu'il existe."
+  },
+  {
+   "id": "MSG-061",
+   "surface": "Écran Messages",
+   "composant": "Liste après un premier fil",
+   "etat": "fil vide en tête, exemples mêlés",
+   "role": "connecté · compte neuf",
+   "geste": "Nouveau message → choisir une personne → Retour",
+   "observation": "observe",
+   "preuve": "capture MSG-061 ; sonde 06b (ligne `conversations` + 2 `conv_members` créées sans message)",
+   "problemes": [
+    "MSG-C22",
+    "MSG-C24"
+   ],
+   "proposition": "Créer le fil au premier message ; retirer les exemples dès la première vraie conversation.",
+   "visuel": "avant",
+   "verdict": "a-ameliorer",
+   "justification": "Un fil vide existe des deux côtés et les exemples restent mêlés."
+  },
+  {
+   "id": "MSG-070",
+   "surface": "Paramètres de conversation",
+   "composant": "Boîtes natives confirm() / prompt()",
+   "etat": "effacer, supprimer, bloquer, quitter, rechercher, description",
+   "role": "connecté · participant",
+   "geste": "⋮ → action",
+   "observation": "observe",
+   "preuve": "textes relevés par l'événement « dialog » (sondes 03, 04, 04b) ; une boîte du navigateur ne se capture pas",
+   "problemes": [
+    "MSG-C18"
+   ],
+   "proposition": "Feuilles de confirmation de l'application, qui disent la conséquence.",
+   "visuel": "aucun",
+   "verdict": "a-ameliorer",
+   "justification": "Six boîtes du navigateur, hors identité, aux textes incomplets."
+  },
+  {
+   "id": "MSG-071",
+   "surface": "Paramètres de conversation",
+   "composant": "Persistance des réglages",
+   "etat": "après rechargement",
+   "role": "connecté · participant",
+   "geste": "Régler puis fermer et rouvrir l'application",
+   "observation": "observe",
+   "preuve": "sonde 07 : épingle, archive, sourdine, fond, brouillon, description perdus après page.reload()",
+   "problemes": [
+    "MSG-C01"
+   ],
+   "proposition": "Garder les champs locaux lors du remplacement par la copie serveur.",
+   "visuel": "aucun",
+   "verdict": "a-ameliorer",
+   "justification": "Six réglages s'effacent à chaque démarrage."
+  },
+  {
+   "id": "MSG-072",
+   "surface": "Écran Messages",
+   "composant": "Arrivée d'un message (sourdine, archive, badge)",
+   "etat": "message entrant",
+   "role": "connecté · participant",
+   "geste": "Réception",
+   "observation": "simule",
+   "preuve": "sonde 08 : gestionnaire _handleIncomingConvMessage appelé avec une ligne de la forme du serveur (temps réel coupé dans le banc)",
+   "problemes": [
+    "MSG-C02",
+    "MSG-C14",
+    "MSG-C15"
+   ],
+   "proposition": "",
+   "visuel": "aucun",
+   "verdict": "a-ameliorer",
+   "justification": "Son, cloche et badge ignorent la sourdine ; un message compte deux fois."
+  },
+  {
+   "id": "MSG-073",
+   "surface": "Paramètres de conversation",
+   "composant": "Marquer comme non lu",
+   "etat": "ligne et badge",
+   "role": "connecté · participant",
+   "geste": "⋮ → Marquer comme non lu",
+   "observation": "observe",
+   "preuve": "sonde 03 : retour à la liste, ligne non lue, onglet +1, toast",
+   "problemes": [
+    "MSG-C01"
+   ],
+   "proposition": "",
+   "visuel": "aucun",
+   "verdict": "a-conserver",
+   "justification": "Effet immédiat et visible (mais perdu au redémarrage, cf. MSG-C01)."
+  },
+  {
+   "id": "MSG-074",
+   "surface": "Paramètres de conversation",
+   "composant": "Exporter la conversation",
+   "etat": "fichier texte",
+   "role": "connecté · participant",
+   "geste": "⋮ → Exporter la conversation",
+   "observation": "observe",
+   "preuve": "sonde 03 : téléchargement « conv_Malik Benali.txt », toast « Exporté ! » ; le fichier ne contient que les messages chargés (js/app-09-boot-pwa.js:1741–1755)",
+   "problemes": [
+    "MSG-C17"
+   ],
+   "proposition": "",
+   "visuel": "aucun",
+   "verdict": "a-verifier",
+   "justification": "À vérifier sur iPhone installé (lien data: + download) et sur un long historique."
+  },
+  {
+   "id": "MSG-075",
+   "surface": "Écran Messages",
+   "composant": "Squelette de chargement",
+   "etat": "première lecture en cours",
+   "role": "connecté · participant",
+   "geste": "Ouvrir Messages avant la réponse du serveur",
+   "observation": "code",
+   "preuve": "js/app-04-comments-shop.js:5498–5519 ; non atteint au banc malgré une lecture retenue (le démarrage du banc attend la fin du chargement)",
+   "problemes": [
+    "MSG-C32"
+   ],
+   "proposition": "",
+   "visuel": "aucun",
+   "verdict": "a-verifier",
+   "justification": "Le filet de 8 s bascule sur « Aucune conversation » même si la lecture n'est pas revenue."
+  },
+  {
+   "id": "MSG-076",
+   "surface": "Écran Messages",
+   "composant": "Filtres lu / non lu / passion",
+   "etat": "retirés",
+   "role": "connecté · participant",
+   "geste": "—",
+   "observation": "code",
+   "preuve": "js/app-04-comments-shop.js:3997–4005 : les deux rangées sont vidées à chaque rendu ; js/app-05-config-profil.js:2505–2512 écoute encore `data-msgpassion`",
+   "problemes": [],
+   "proposition": "",
+   "visuel": "aucun",
+   "verdict": "a-conserver",
+   "justification": "Pas de filtre : la liste reste simple ; le code mort est sans effet à l'écran."
+  },
+  {
+   "id": "MSG-077",
+   "surface": "Écran Messages",
+   "composant": "Gestes sur une ligne (glisser, appui long)",
+   "etat": "inexistants",
+   "role": "connecté · participant",
+   "geste": "—",
+   "observation": "code",
+   "preuve": "aucun écouteur tactile sur .msg-card (js/app-04-comments-shop.js:5595) ; toute action passe par la conversation puis ⋮",
+   "problemes": [
+    "MSG-C30"
+   ],
+   "proposition": "",
+   "visuel": "aucun",
+   "verdict": "a-verifier",
+   "justification": "À confirmer auprès d'utilisateurs : trois gestes pour archiver ou épingler."
+  },
+  {
+   "id": "MSG-078",
+   "surface": "Notifications",
+   "composant": "Demande d'autorisation à la première conversation",
+   "etat": "permission jamais demandée",
+   "role": "connecté · compte neuf",
+   "geste": "Ouvrir une première conversation 1:1",
+   "observation": "simule",
+   "preuve": "sonde 06b : Notification.requestPermission remplacée par un témoin (1 appel, puis toast « Tu seras prévenu·e de tes messages même app fermée ») ; js/app-04-comments-shop.js:5665, js/app-05-config-profil.js:1703–1718",
+   "problemes": [
+    "MSG-C25"
+   ],
+   "proposition": "Une phrase d'explication avant la demande du système.",
+   "visuel": "aucun",
+   "verdict": "a-ameliorer",
+   "justification": "La demande du système arrive sans contexte."
+  },
+  {
+   "id": "MSG-079",
+   "surface": "Appel",
+   "composant": "Micro ou caméra refusés",
+   "etat": "toast",
+   "role": "connecté · participant",
+   "geste": "Inaccessible en production",
+   "observation": "simule",
+   "preuve": "sonde 05 : toucher « Appel audio » (drapeau armé, navigateur sans micro) → toast « Caméra/micro indisponible ou refusé », aucun écran",
+   "problemes": [
+    "MSG-C26"
+   ],
+   "proposition": "Dire comment rétablir l'autorisation.",
+   "visuel": "aucun",
+   "verdict": "a-ameliorer",
+   "justification": "Le message ne dit ni la cause exacte ni le remède."
+  },
+  {
+   "id": "MSG-080",
+   "surface": "Appel",
+   "composant": "Appel réel à deux appareils, sonnerie, push d'appel",
+   "etat": "WebRTC",
+   "role": "connecté · participant",
+   "geste": "—",
+   "observation": "inaccessible",
+   "preuve": "un seul navigateur, temps réel coupé, pas de micro ; appels désactivés en production (js/app-05-config-profil.js:633–654)",
+   "problemes": [],
+   "proposition": "",
+   "visuel": "aucun",
+   "verdict": "a-verifier",
+   "justification": "À vérifier sur deux téléphones avant toute réactivation."
+  },
+  {
+   "id": "MSG-081",
+   "surface": "Nouveau message",
+   "composant": "Se choisir soi-même",
+   "etat": "conversation avec son propre compte",
+   "role": "connecté · participant",
+   "geste": "Nouveau message → taper son nom → toucher",
+   "observation": "observe",
+   "preuve": "sonde 09 : « Camille Audit » proposée, conversation locale ouverte avec soi-même",
+   "problemes": [
+    "MSG-C22"
+   ],
+   "proposition": "Exclure son propre compte des résultats.",
+   "visuel": "aucun",
+   "verdict": "a-ameliorer",
+   "justification": "Mène à un fil sans destinataire."
+  },
+  {
+   "id": "MSG-082",
+   "surface": "Nouveau message",
+   "composant": "Écrire à un compte bloqué",
+   "etat": "refus",
+   "role": "connecté · participant",
+   "geste": "Nouveau message → choisir un compte bloqué",
+   "observation": "observe",
+   "preuve": "sonde 09 : toast « Compte bloqué — débloque-le pour lui écrire », rien n'est créé",
+   "problemes": [
+    "MSG-C29"
+   ],
+   "proposition": "",
+   "visuel": "aucun",
+   "verdict": "a-conserver",
+   "justification": "Le refus est immédiat et dit quoi faire."
+  },
+  {
+   "id": "MSG-083",
+   "surface": "Nouveau groupe",
+   "composant": "Création hors ligne ou refusée",
+   "etat": "groupe local",
+   "role": "connecté · participant",
+   "geste": "Hors ligne → créer un groupe",
+   "observation": "simule",
+   "preuve": "sonde 10 : « Groupe créé », identifiant local `conv_grp_…`, 0 ligne en base, rien après reconnexion",
+   "problemes": [
+    "MSG-C23"
+   ],
+   "proposition": "Dire que le groupe n'est pas encore créé, et le créer au retour du réseau.",
+   "visuel": "aucun",
+   "verdict": "a-ameliorer",
+   "justification": "Succès annoncé pour un groupe qui n'existe que sur l'appareil."
+  },
+  {
+   "id": "MSG-084",
+   "surface": "Écran Messages",
+   "composant": "Navigation au clavier",
+   "etat": "tabulation",
+   "role": "connecté · participant",
+   "geste": "Tab",
+   "observation": "code",
+   "preuve": "js/app-08-ui-modals-tour.js:2604–2656 : toute ligne `onclick` reçoit role=button et tabindex ; parcours non déroulé au banc",
+   "problemes": [
+    "MSG-C28"
+   ],
+   "proposition": "",
+   "visuel": "aucun",
+   "verdict": "a-verifier",
+   "justification": "Mécanisme générique présent ; le parcours clavier complet reste à dérouler."
+  }
+ ],
+ "constats": [
+  {
+   "id": "MSG-C01",
+   "titre": "Épingle, archive, sourdine, fond, brouillon et description s'effacent à chaque démarrage",
+   "emplacement": "Démarrage › _rafraichirConversationsServeur (js/app-08-ui-modals-tour.js:7059–7094), appelé sans fusion par supaInit (js/app-08-ui-modals-tour.js:9837)",
+   "surfaces": [
+    "MSG-071",
+    "MSG-021",
+    "MSG-030",
+    "MSG-073"
+   ],
+   "type": "observation",
+   "nature": "fonctionnel",
+   "preuve": "Sonde 07 : six réglages posés par de vrais gestes, présents en mémoire et dans localStorage ; après rechargement de la page, tous sont absents (épinglée false, archivée false, sourdine false, fond null, brouillon null, description null) et la conversation archivée est revenue dans la liste.",
+   "probleme": "Ce qu'on règle sur une conversation ne tient que jusqu'à la prochaine ouverture de l'application.",
+   "declencheur": "Tout compte réel dont la conversation existe côté serveur, à chaque démarrage à froid.",
+   "consequence": "Une conversation archivée revient, une épinglée redescend, un brouillon disparaît : les fonctions paraissent ne pas marcher et la confiance dans les réglages tombe.",
+   "proposition": "Au démarrage, fusionner comme au réveil du socket : reporter sur la copie serveur les champs locaux (pinned, archived, _muted, bg, draft, groupDesc, groupPhoto, groupPassions). À terme, porter épingle, archive et sourdine par compte côté serveur pour qu'elles suivent d'un appareil à l'autre.",
+   "visuels": [
+    "MSG-021",
+    "MSG-030"
+   ],
+   "priorite": "P1",
+   "gravite": 3,
+   "effort": "S",
+   "risqueTechnique": "moyen",
+   "dependances": "Aucune pour la fusion locale ; une table par membre pour la version multi-appareils.",
+   "risqueRegression": "La fusion de démarrage remplace aujourd'hui les messages par le dernier seul : ne reporter que la liste fermée de champs. Verrous : controle-general-2026-11-10.spec.js, audit-2026-11-parcours-social-session.spec.js.",
+   "critereAcceptation": "Épingler A, archiver B, couper C, écrire un brouillon dans D, recharger : A est en tête avec son repère, B est sous « Archivées », C garde son état, D affiche « Brouillon : … ».",
+   "fichiers": [
+    "js/app-08-ui-modals-tour.js",
+    "js/app-04-comments-shop.js",
+    "js/app-09-boot-pwa.js"
+   ],
+   "sensible": true
+  },
+  {
+   "id": "MSG-C02",
+   "titre": "« Couper les notifications » ne coupe rien",
+   "emplacement": "Paramètres › Couper les notifications — _toggleMuteConv (js/app-09-boot-pwa.js:1715–1723) ; réception : _handleIncomingConvMessage (js/app-08-ui-modals-tour.js:7514–7538)",
+   "surfaces": [
+    "MSG-072",
+    "MSG-021",
+    "MSG-001"
+   ],
+   "type": "observation",
+   "nature": "fonctionnel",
+   "preuve": "`_muted` n'est écrit et lu que dans le panneau (recherche dans tout js/ : 4 occurrences, toutes dans app-09). Sonde 08 : sourdine posée par geste réel sur une conversation, puis message entrant simulé → son joué (1), notification ajoutée à la cloche (« Tom Girard t'a envoyé un message »), onglet 8 → 9, titre « (10) PASSIO ».",
+   "probleme": "Le réglage change de libellé et affiche « Notifications coupées », mais son, cloche, badge et push continuent.",
+   "declencheur": "Dès qu'un message arrive dans une conversation mise en sourdine.",
+   "consequence": "La personne croit s'être mise au calme (groupe bavard, personne insistante) et continue d'être sollicitée : promesse non tenue sur un réglage de tranquillité.",
+   "proposition": "Faire lire `_muted` par la réception : ni son, ni notification de cloche, ni unité au badge d'onglet et d'application (la ligne garde son point non lu). Côté expéditeur, ne pas pousser vers un membre qui a coupé (réglage à porter côté serveur). Montrer la sourdine sur la ligne de liste.",
+   "visuels": [
+    "MSG-001",
+    "MSG-021"
+   ],
+   "priorite": "P1",
+   "gravite": 3,
+   "effort": "M",
+   "risqueTechnique": "moyen",
+   "dependances": "MSG-C01 (sinon la sourdine se perd au démarrage) ; table de préférences par membre pour le push.",
+   "risqueRegression": "Ne pas toucher au compteur `unread` de la conversation. Verrous : notifications-exemples.spec.js, suites de messagerie.",
+   "critereAcceptation": "Conversation en sourdine + message entrant : aucun son, aucune notification de cloche, badge d'onglet inchangé, point non lu présent sur la ligne, cloche barrée visible sur la ligne.",
+   "fichiers": [
+    "js/app-08-ui-modals-tour.js",
+    "js/app-09-boot-pwa.js",
+    "js/app-04-comments-shop.js",
+    "supabase/functions/notify-call"
+   ],
+   "sensible": true
+  },
+  {
+   "id": "MSG-C03",
+   "titre": "« Nouveau message » propose des personnages d'exemple sans le dire — cinq « Passionné » pour un compte neuf",
+   "emplacement": "Nouveau message › suggestions et résultats — _nmDoSearch (js/app-04-comments-shop.js:4033–4086)",
+   "surfaces": [
+    "MSG-007",
+    "MSG-005",
+    "MSG-004"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Sonde 06b, compte connecté sans conversation : les dix suggestions sont des personnages d'exemple (`u_…`), dont les cinq premiers s'appellent tous « Passionné ». Recherche « m » : dix personnages d'exemple d'abord, les vraies personnes ensuite, sous le pli. Toucher « Tom Larivière » (exemple) ouvre un fil « Exemple PASSIO · réponse désactivée » ; l'envoi répond « Conversation de démonstration ».",
+   "probleme": "Au moment d'écrire à quelqu'un, la liste montre des personnes fictives, non signalées, auxquelles on ne peut pas écrire.",
+   "declencheur": "Compte connecté ; pire pour un compte neuf, dont c'est le premier message.",
+   "consequence": "Le premier geste social échoue ou paraît absurde (cinq « Passionné ») ; les vraies personnes sont enfouies sous le décor.",
+   "proposition": "Pour un compte connecté : ne proposer que de vraies personnes (contacts récents, puis recherche serveur). Sans contact : une consigne, pas de faux contacts. Jamais de personnage d'exemple dans les résultats d'un compte connecté.",
+   "visuels": [
+    "MSG-007",
+    "MSG-005",
+    "MSG-004"
+   ],
+   "priorite": "P1",
+   "gravite": 3,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "Le mode démo (sans session) s'appuie sur ces personnages : borner le filtre aux comptes connectés (`_compteAuthReel`).",
+   "critereAcceptation": "Compte connecté : aucun résultat ni suggestion dont l'identifiant commence par `u_` ; compte sans conversation : la feuille affiche une consigne et zéro ligne « Passionné ».",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C04",
+   "titre": "« Nouveau groupe » n'invite que dix personnages d'exemple et annonce un groupe « créé »",
+   "emplacement": "Nouveau groupe › Membres à inviter — openCreateGroup (js/app-05-config-profil.js:1906–1941), confirmCreateGroup (1943–1997)",
+   "surfaces": [
+    "MSG-010",
+    "MSG-011",
+    "MSG-014"
+   ],
+   "type": "observation",
+   "nature": "fonctionnel",
+   "preuve": "Sonde 04 : la liste est `state.seed.users.slice(0, 10)` — dix personnages `u_…`, aucun champ de recherche ; au moins un membre est exigé. Groupe créé avec u_lea et u_nina : toast « Groupe créé », ligne « 👥 2 membres ». D'après le code (js/app-05-config-profil.js:2246–2249), la clé étrangère de production refuse ces identifiants : le groupe n'a alors que son créateur. L'onglet « Ajouter » liste 78 candidats, exemples en tête, sans recherche serveur.",
+   "probleme": "On ne peut pas créer un groupe avec de vraies personnes ; il faut cocher un personnage fictif pour passer.",
+   "declencheur": "Tout compte connecté qui ouvre « Nouveau groupe ».",
+   "consequence": "Le groupe annoncé n'a personne dedans ; inviter une vraie personne jamais contactée est impossible.",
+   "proposition": "Même recherche de personnes que « Nouveau message » (contacts récents puis recherche serveur), sélection multiple, zéro personnage d'exemple pour un compte connecté ; lire le verdict de chaque ajout et dire qui n'a pas pu être ajouté.",
+   "visuels": [
+    "MSG-010"
+   ],
+   "priorite": "P1",
+   "gravite": 3,
+   "effort": "M",
+   "risqueTechnique": "moyen",
+   "dependances": "MSG-C03 (même composant de recherche), MSG-C06.",
+   "risqueRegression": "retrait-membre-groupe.spec.js distingue les membres d'exemple par leur identifiant non uuid : garder ce chemin pour les groupes déjà créés.",
+   "critereAcceptation": "Compte connecté : la liste d'invitation ne contient aucun identifiant `u_` ; une personne trouvée par recherche peut être cochée ; après création, le nombre affiché égale le nombre de lignes `conv_members`.",
+   "fichiers": [
+    "js/app-05-config-profil.js",
+    "js/app-08-ui-modals-tour.js"
+   ],
+   "sensible": true
+  },
+  {
+   "id": "MSG-C05",
+   "titre": "Ajouter un membre est annoncé réussi alors que le serveur a refusé",
+   "emplacement": "Groupe › onglet Ajouter — addGroupMember (js/app-05-config-profil.js:2211–2230)",
+   "surfaces": [
+    "MSG-015"
+   ],
+   "type": "observation",
+   "nature": "fonctionnel",
+   "preuve": "Sonde 04b, participante non créatrice : « + Ajouter » sur Tom Girard → toast « ✅ Tom Girard ajouté·e au groupe », message « 👋 Tom Girard a rejoint le groupe. », compteur 8 → 9 ; en base : 1 POST refusé, Tom n'est pas membre (7 lignes).",
+   "probleme": "L'écran affirme un ajout que le serveur n'a pas fait.",
+   "declencheur": "Membre non créateur qui ajoute ; créateur dont l'écriture échoue (réseau, blocage).",
+   "consequence": "La personne « ajoutée » ne reçoit rien ; le groupe local ne correspond plus au groupe réel.",
+   "proposition": "Même patron que le retrait (RV-44) : écrire, lire le verdict, puis seulement annoncer ; sans droit d'ajout, ne pas montrer l'onglet.",
+   "visuels": [
+    "MSG-015"
+   ],
+   "priorite": "P1",
+   "gravite": 3,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Connaître le créateur (`created_by`) côté client.",
+   "risqueRegression": "retrait-membre-groupe.spec.js (modale rendue de nouveau après aller-retour).",
+   "critereAcceptation": "Ajout refusé par le serveur : aucun message « a rejoint », compteur inchangé, toast d'échec ; non-créateur : pas d'onglet « Ajouter ».",
+   "fichiers": [
+    "js/app-05-config-profil.js",
+    "js/app-08-ui-modals-tour.js"
+   ],
+   "sensible": true
+  },
+  {
+   "id": "MSG-C06",
+   "titre": "Les trois recherches distinguent « lea » de « Léa »",
+   "emplacement": "Nouveau message (js/app-04-comments-shop.js:4052), recherche de la liste (js/app-04-comments-shop.js:5486–5489), Ajouter un membre (js/app-05-config-profil.js:2041–2044), supaSearchUsers (js/app-08-ui-modals-tour.js:6499–6502)",
+   "surfaces": [
+    "MSG-006",
+    "MSG-034",
+    "MSG-014"
+   ],
+   "type": "observation",
+   "nature": "friction",
+   "preuve": "Sondes 06b, 06c, 04 : « lea f » → « Aucun utilisateur trouvé », « léa f » → Léa Fontaine ; « ines » → rien, « inès » → trouvée, dans la liste comme dans l'onglet Ajouter. Côté serveur la requête est un `ilike` simple (sensible aux accents ; non mesuré sur la base réelle).",
+   "probleme": "Sans l'accent exact, une personne ou une conversation existante est introuvable.",
+   "declencheur": "Saisie rapide au clavier mobile, prénoms accentués (Léa, Inès, Anaïs, Zoé…).",
+   "consequence": "On conclut que la personne n'est pas sur PASSIO ou que la conversation a disparu.",
+   "proposition": "Normaliser les deux côtés de la comparaison locale (NFD, sans diacritiques, minuscules) ; côté serveur, colonne ou fonction de recherche sans accents.",
+   "visuels": [
+    "MSG-006"
+   ],
+   "priorite": "P1",
+   "gravite": 3,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Extension ou colonne normalisée côté base pour la partie serveur.",
+   "risqueRegression": "Aucun verrou connu sur la casse des accents ; vérifier la garde d'obsolescence de _nmDoSearch.",
+   "critereAcceptation": "« lea », « LEA » et « léa » rendent la même liste dans les trois recherches.",
+   "fichiers": [
+    "js/app-04-comments-shop.js",
+    "js/app-05-config-profil.js",
+    "js/app-08-ui-modals-tour.js",
+    "migrations/"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C07",
+   "titre": "La recherche « ou un message » ne connaît que le dernier message de chaque conversation",
+   "emplacement": "Écran Messages › recherche — renderMessages (js/app-04-comments-shop.js:5484–5490) ; supaLoadMyConversations ne charge qu'un message (js/app-08-ui-modals-tour.js:7210–7230)",
+   "surfaces": [
+    "MSG-034",
+    "MSG-033"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Sonde 06c : « accueil » (dernier message) → trouvé ; « capodastre » (message plus ancien du même compte) → « Aucun résultat ». Le champ n'a pas de bouton d'effacement ; la recherche reste posée après un aller-retour sur un autre onglet (champ « zzzz », liste vide). La ligne trouvée ne montre pas le passage.",
+   "probleme": "Le champ promet de chercher dans les messages et répond « Aucun résultat » pour un mot qui existe.",
+   "declencheur": "Recherche d'un mot ancien dans une conversation non rouverte depuis le démarrage.",
+   "consequence": "Information jugée perdue ; en revenant sur l'onglet, liste vide tant que le champ n'est pas vidé à la main.",
+   "proposition": "Sans changer le moteur : libellé « Rechercher une conversation », message vide qui dit la portée et renvoie à « Rechercher dans la conversation », bouton × de 44 px, recherche vidée en quittant l'écran. Une vraie recherche de messages serait une fonction serveur à part.",
+   "visuels": [
+    "MSG-034"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "Le champ est déplacé par ui-v6a-messages.js (id et oninput à conserver).",
+   "critereAcceptation": "Le placeholder ne promet plus les messages ; un × vide le champ et rend la liste ; revenir sur l'onglet affiche la liste complète.",
+   "fichiers": [
+    "index.html",
+    "js/app-04-comments-shop.js",
+    "js/ui-v6a-messages.js",
+    "styles.css"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C08",
+   "titre": "La fenêtre des membres ment sur le nombre, le rôle et la présence",
+   "emplacement": "Groupe › fenêtre membres — _renderGroupMembersModal (js/app-05-config-profil.js:2006–2105)",
+   "surfaces": [
+    "MSG-013",
+    "MSG-015"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Sondes 04 et 04b : en-tête « 4 membres », fenêtre « 5 membres » et « Membres (5) » (longueur + 1 alors que la liste serveur m'inclut déjà) ; « Toi — Admin · En ligne » écrit en dur, y compris quand je ne suis pas la créatrice ; « ✨ Passion » sous chaque nom et en pastille ; discussion d'activité : 7 membres en base, « Membres (8) », 6 lignes (un membre hors cache n'est pas listé) ; « Retirer » offert sur l'organisatrice.",
+   "probleme": "Trois nombres différents pour le même groupe, un rôle faux, une présence inventée, des membres invisibles.",
+   "declencheur": "Tout groupe venu du serveur.",
+   "consequence": "On ne sait pas qui est dans le groupe ni ce qu'on a le droit d'y faire ; dans une discussion d'activité, qui lit ce que j'écris.",
+   "proposition": "Un seul calcul du nombre ; rôle tiré du créateur ; retirer « En ligne » et le libellé de remplissage ; lister tous les membres (nom chargé à la demande) ; « Retirer » et « Ajouter » réservés au créateur.",
+   "visuels": [
+    "MSG-013"
+   ],
+   "priorite": "P1",
+   "gravite": 3,
+   "effort": "M",
+   "risqueTechnique": "moyen",
+   "dependances": "`created_by` dans la conversation locale ; résolution de profils par lot.",
+   "risqueRegression": "retrait-membre-groupe.spec.js lit les boutons « Retirer ».",
+   "critereAcceptation": "Le nombre est identique dans la liste, l'en-tête et la fenêtre et égal au nombre de lignes affichées ; un non-créateur ne voit ni « Admin » ni « Retirer ».",
+   "fichiers": [
+    "js/app-05-config-profil.js",
+    "js/app-04-comments-shop.js",
+    "js/app-08-ui-modals-tour.js"
+   ],
+   "sensible": true
+  },
+  {
+   "id": "MSG-C09",
+   "titre": "« Retirer » un membre agit au premier toucher, sans confirmation ni retour",
+   "emplacement": "Groupe › fenêtre membres › Retirer — removeGroupMember (js/app-05-config-profil.js:2381–2462)",
+   "surfaces": [
+    "MSG-013"
+   ],
+   "type": "observation",
+   "nature": "friction",
+   "preuve": "Sonde 04 : un toucher sur « Retirer » (55 × 26 px) → ligne `conv_members` supprimée en base, toast « retiré·e du groupe » ; aucune boîte de confirmation (0 dialogue), alors que « Quitter » en demande une.",
+   "probleme": "Un geste destructeur pour autrui part sur une cible de 26 px, à côté du défilement.",
+   "declencheur": "Créateur qui fait défiler la liste des membres.",
+   "consequence": "Membre exclu par erreur, prévenu par un message « a quitté le groupe ».",
+   "proposition": "Confirmation dans une feuille de l'application (« Retirer Malik du groupe ? ») et cible de 44 px.",
+   "visuels": [
+    "MSG-013"
+   ],
+   "priorite": "P1",
+   "gravite": 3,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "MSG-C18 (feuille de confirmation commune).",
+   "risqueRegression": "retrait-membre-groupe.spec.js clique « Retirer » directement : adapter.",
+   "critereAcceptation": "Toucher « Retirer » ouvre une confirmation ; rien n'est écrit avant « Confirmer » ; le bouton mesure ≥ 44 px de haut.",
+   "fichiers": [
+    "js/app-05-config-profil.js",
+    "styles.css"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C10",
+   "titre": "Cibles tactiles sous 44 px dans toute la messagerie",
+   "emplacement": "En-tête (.conv-fp-back, .conv-action-btn — styles.css:5936–5961), fenêtre membres, comptes bloqués, création de groupe, bandeau hors ligne",
+   "surfaces": [
+    "MSG-020",
+    "MSG-012",
+    "MSG-013",
+    "MSG-014",
+    "MSG-010",
+    "MSG-040",
+    "MSG-038",
+    "MSG-050",
+    "MSG-001"
+   ],
+   "type": "observation",
+   "nature": "accessibilite",
+   "preuve": "Mesures (sondes 03, 04, 05, 09, 10) : retour 36 × 36 px ; ⋮, membres, appels : boîte 34 × 34, zone sondée 38 × 46 ; « Retirer » 55 × 26 ; « + Ajouter » 73 × 27 ; « Débloquer » 81 × 29 ; onglets Membres / Ajouter 35 px ; case de passion 32 px ; fermeture de feuille 34 × 34 ; × du bandeau hors ligne 23 × 23 ; point non lu 12 × 9 (non interactif).",
+   "probleme": "Les commandes les plus fréquentes de la messagerie sont plus petites que le doigt.",
+   "declencheur": "Usage à une main, en marchant.",
+   "consequence": "Erreurs de toucher ; pour « Retirer », erreur aux dépens d'un tiers.",
+   "proposition": "Boîtes de 44 × 44 px (icône inchangée), boutons de liste à 44 px de haut.",
+   "visuels": [
+    "MSG-020",
+    "MSG-012",
+    "MSG-013"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "Bloc « cibles 44 px » de fin de styles.css (lignes 12262–12280) : y ajouter, ne pas dupliquer.",
+   "critereAcceptation": "À 360 px, chaque commande citée mesure ≥ 44 × 44 px par elementFromPoint.",
+   "fichiers": [
+    "styles.css",
+    "js/app-05-config-profil.js",
+    "js/app-04-comments-shop.js",
+    "index.html"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C11",
+   "titre": "Changer la photo du groupe : succès annoncé, rien ne change, erreur JavaScript",
+   "emplacement": "Groupe › photo — pickGroupPhoto (js/app-05-config-profil.js:2107–2146)",
+   "surfaces": [
+    "MSG-016"
+   ],
+   "type": "observation",
+   "nature": "fonctionnel",
+   "preuve": "Sonde 04 : après choix d'une image, toast « Photo du groupe mise à jour », erreur « renderConvList is not defined » (fonction inexistante, ligne 2134), avatar de la fenêtre inchangé ; le code cherche `#modal-backdrop` et `#convFpHead .msg-avatar`, qui n'existent pas. La photo n'est écrite que dans la copie locale (data URL) : les autres membres ne la voient pas, et elle se perd au démarrage (MSG-C01).",
+   "probleme": "La photo choisie n'apparaît pas, puis disparaît.",
+   "declencheur": "Tout membre qui touche l'avatar du groupe.",
+   "consequence": "Geste perdu, annoncé réussi.",
+   "proposition": "Corriger les trois références, repeindre liste, en-tête et fenêtre ; tant que la photo n'est pas déposée côté serveur, dire « visible sur cet appareil ».",
+   "visuels": [
+    "MSG-016"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Dépôt serveur de la photo pour un vrai partage (lot à part).",
+   "risqueRegression": "Échappement `_cssUrl` de la photo de groupe (audit-echappement).",
+   "critereAcceptation": "Après le choix : aucune erreur de page, avatar à jour dans la fenêtre, l'en-tête et la liste.",
+   "fichiers": [
+    "js/app-05-config-profil.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C12",
+   "titre": "Aperçus techniques dans la liste : « [DOC] … », « [AUDIO] … », adresse Google Maps",
+   "emplacement": "Liste › aperçu — renderMessages (js/app-04-comments-shop.js:5554–5556), enveloppes écrites par js/app-09-boot-pwa.js:1396–1402 et 1501",
+   "surfaces": [
+    "MSG-002"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Capture MSG-002 : « [DOC] topo-falaise.pdf », « [AUDIO] maquette-refrain.mp3 », « Toi : 📍 Ma position : https://maps.google.com/?q=45.75000,4.85000 ». Photo, vidéo, vocal et GIF sont, eux, rendus en mots.",
+   "probleme": "Trois types de pièce jointe s'affichent avec leur étiquette interne.",
+   "declencheur": "Dernier message = document ou fichier audio reçu du serveur, ou position.",
+   "consequence": "Liste moins lisible, impression d'inachevé.",
+   "proposition": "Passer l'aperçu par _msgPreviewText (js/app-04-comments-shop.js:6326), qui traite déjà document et position, et y ajouter le fichier audio.",
+   "visuels": [
+    "MSG-002"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "L'aperçu « Brouillon : » et « Toi : » doivent rester.",
+   "critereAcceptation": "Aucun aperçu ne commence par « [ » ni ne contient « http ».",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C13",
+   "titre": "La ligne de conversation ne dit ni combien de non-lus, ni qu'elle est en sourdine",
+   "emplacement": "Liste › ligne — .msg-badge (styles.css:5601–5614), nom (js/app-04-comments-shop.js:5599)",
+   "surfaces": [
+    "MSG-001",
+    "MSG-030"
+   ],
+   "type": "jugement",
+   "nature": "clarte",
+   "preuve": "Mesures (sonde 02) : point non lu de 12 × 9 px (ovale : largeur maximale 9 px + marges), nombre présent dans le DOM en taille 0 ; l'onglet affiche « 8 ». Nom en 800 (non lu) contre 700 (lu). Épingle = « 📌 » dans le texte du nom. Sourdine : aucun repère. 34 px vides entre la recherche et la première ligne. Nom long sur deux lignes.",
+   "probleme": "On voit qu'il y a du nouveau, pas combien ; on ne voit pas ce qui est coupé.",
+   "declencheur": "Liste avec plusieurs non-lus, groupes actifs.",
+   "consequence": "Le compte de l'onglet ne se relie pas aux lignes ; on oublie qu'une conversation est en sourdine.",
+   "proposition": "Pastille chiffrée de 20 px, épingle et cloche barrée en SVG, nom sur une ligne, espace ramené à 12 px.",
+   "visuels": [
+    "MSG-001",
+    "MSG-030"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "MSG-C02 pour que la sourdine ait un sens.",
+   "risqueRegression": "Le point discret est un choix du 2026-07-20 (commentaire styles.css:5572) : à valider avec Benjamin.",
+   "critereAcceptation": "Une ligne à 5 non-lus affiche « 5 » ; une ligne en sourdine porte une icône nommée « Notifications coupées ».",
+   "fichiers": [
+    "styles.css",
+    "js/app-04-comments-shop.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C14",
+   "titre": "Une conversation archivée et non lue fait compter l'onglet sans rien montrer dans la liste",
+   "emplacement": "Écran Messages › bandeau « Archivées » (js/app-04-comments-shop.js:5474–5482), _convNonLus (js/app-04-comments-shop.js:3723–3727)",
+   "surfaces": [
+    "MSG-030",
+    "MSG-031",
+    "MSG-072"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Sonde 08 : conversation archivée avec 2 non-lus → onglet « 9 », liste visible sans elle, bandeau « Archivées (1) » sans marque ; un nouveau message y arrive : elle reste archivée, l'onglet passe à « 9+ », toujours rien dans la liste. La vue des archives garde le titre « Messages ».",
+   "probleme": "Le badge annonce des messages qu'on ne trouve pas.",
+   "declencheur": "Conversation archivée qui reçoit un message.",
+   "consequence": "Recherche vaine dans la liste ; message manqué.",
+   "proposition": "Porter les non-lus sur la rangée « Archivées » ; titre « Archivées » avec retour dans la vue.",
+   "visuels": [
+    "MSG-030",
+    "MSG-031"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "MSG-C01.",
+   "risqueRegression": "Le bandeau est réécrit à chaque rendu (innerHTML).",
+   "critereAcceptation": "Archivée avec 2 non-lus : la rangée « Archivées » affiche 2 ; la vue des archives est titrée « Archivées ».",
+   "fichiers": [
+    "js/app-04-comments-shop.js",
+    "js/ui-v6a-messages.js",
+    "styles.css"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C15",
+   "titre": "Un message reçu compte deux fois dans le badge de l'application",
+   "emplacement": "updateAppBadge (js/app-08-ui-modals-tour.js:2125–2134) : notifications non lues + messages non lus",
+   "surfaces": [
+    "MSG-072"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Sonde 08 : un message entrant → onglet +1, cloche +1, titre « (10) PASSIO » pour 9 non-lus de messagerie ; après 6 messages : onglet 14, cloche 6, titre « (20) ».",
+   "probleme": "Chaque message crée une notification de cloche en plus du non-lu.",
+   "declencheur": "Toute réception hors de la conversation ouverte.",
+   "consequence": "Le nombre sur l'icône de l'application dit le double de la réalité.",
+   "proposition": "Ne pas compter deux fois : soit la cloche ignore le genre « message », soit le badge ne compte que la messagerie pour ce genre. À trancher avec le domaine Notifications.",
+   "visuels": [],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Domaine Notifications.",
+   "risqueRegression": "notifications-exemples.spec.js.",
+   "critereAcceptation": "Un message reçu augmente le badge de l'application de 1.",
+   "fichiers": [
+    "js/app-08-ui-modals-tour.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C16",
+   "titre": "Cinq fonds de conversation sur six sont sombres",
+   "emplacement": "Fond de conversation — CONV_BGS (js/app-09-boot-pwa.js:1855–1862)",
+   "surfaces": [
+    "MSG-023",
+    "MSG-024"
+   ],
+   "type": "observation",
+   "nature": "accessibilite",
+   "preuve": "Capture MSG-024 : fond « Violet » (#2A1A4A → #160D2A) ; heures et date en #6E6987 : 3,0 à 3,6:1 calculés (seuil 4,5:1 pour 11 px). « Nuit » est #0A0A0F.",
+   "probleme": "Le sélecteur propose un mode sombre par conversation, que l'habillage ne suit pas.",
+   "declencheur": "Choix de tout fond autre que « Par défaut ».",
+   "consequence": "Dates, heures et accusés de lecture presque invisibles.",
+   "proposition": "Six fonds clairs dans la palette actuelle ; pas de fond sombre (mode sombre retiré du produit).",
+   "visuels": [
+    "MSG-023"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "MSG-C01 (le fond se perd au démarrage).",
+   "risqueRegression": "Une conversation qui porte déjà un fond sombre doit retomber sur « Par défaut ».",
+   "critereAcceptation": "Sur chacun des six fonds, l'heure d'une bulle atteint 4,5:1.",
+   "fichiers": [
+    "js/app-09-boot-pwa.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C17",
+   "titre": "Le panneau « Paramètres » : quatorze entrées en emoji, mal rangées",
+   "emplacement": "Paramètres de conversation — openConvSettings (js/app-09-boot-pwa.js:1645–1713), styles.css:6280–6285",
+   "surfaces": [
+    "MSG-021",
+    "MSG-022",
+    "MSG-026",
+    "MSG-074"
+   ],
+   "type": "jugement",
+   "nature": "clarte",
+   "preuve": "Captures MSG-021/022 : 14 entrées (877 px pour 784 visibles) ; « Supprimer la conversation » sous CONFIDENTIALITÉ ; « Effacer les messages » en gris #6E6987 (aspect inactif) ; rouge #EF4444 sur #F7F5FC : 3,5:1 ; « Archiver » 📥 et « Exporter » 📤 presque identiques ; « Accusés de lecture » est un réglage de tout le compte ; titre « Paramètres » sans nom ; icônes en emoji (la charte veut des SVG).",
+   "probleme": "On cherche, on hésite, les actions graves sont sous le pli et mal étiquetées.",
+   "declencheur": "Ouverture du panneau.",
+   "consequence": "Réglage global changé sans le savoir ; action destructrice prise pour inactive.",
+   "proposition": "Quatre groupes (Conversation, Contenu, Confidentialité, Supprimer), icônes SVG, sous-texte d'effet, nom en titre ; « Accusés de lecture » vers Options › Confidentialité.",
+   "visuels": [
+    "MSG-021"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "M",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "Les libellés sont lus par des tests (hasText) : garder les textes d'action.",
+   "critereAcceptation": "Le panneau tient sans défilement à 390 × 844 hors section « Supprimer » ; aucun emoji en icône ; texte rouge ≥ 4,5:1.",
+   "fichiers": [
+    "js/app-09-boot-pwa.js",
+    "styles.css"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C18",
+   "titre": "Six boîtes du navigateur pour les actions graves, aux textes incomplets",
+   "emplacement": "confirm() / prompt() — js/app-09-boot-pwa.js:1726, 1758, 1807, 1820 ; js/app-05-config-profil.js:2467, 2484",
+   "surfaces": [
+    "MSG-070",
+    "MSG-022",
+    "MSG-041"
+   ],
+   "type": "observation",
+   "nature": "friction",
+   "preuve": "Textes relevés : « Effacer tous les messages ? », « Supprimer cette conversation ? », « Bloquer Malik Benali ?\\nSes messages seront masqués et tu ne le suivras plus. », « Quitter ce groupe ? Tu ne recevras plus ses messages. », « 🔍 Rechercher dans la conversation : », « Description du groupe : ».",
+   "probleme": "Boîtes hors identité, qui ne disent pas la portée (pour moi seulement ? l'autre est-il prévenu ?).",
+   "declencheur": "Effacer, supprimer, bloquer, quitter, rechercher, décrire.",
+   "consequence": "Décision prise sans connaître la conséquence ; sur une application installée, une boîte native peut être supprimée par le système.",
+   "proposition": "Feuille de confirmation de l'application : titre, conséquence en une phrase (« Sur cet appareil seulement », « Elle ne sera pas prévenue »), bouton d'action nommé, Annuler ; champ dans une feuille pour la recherche et la description.",
+   "visuels": [
+    "MSG-021"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "M",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "Les suites e2e posent `window.confirm = () => true` : à adapter.",
+   "critereAcceptation": "Aucune de ces six actions n'appelle confirm() ni prompt().",
+   "fichiers": [
+    "js/app-09-boot-pwa.js",
+    "js/app-05-config-profil.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C19",
+   "titre": "L'état vide donne une consigne fausse",
+   "emplacement": "Écran Messages › #messagesEmpty (index.html:1210–1214, js/app-04-comments-shop.js:5527)",
+   "surfaces": [
+    "MSG-037"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Capture MSG-037 : « Recherche un utilisateur ci-dessus pour démarrer une discussion. » ; le champ au-dessus est « Rechercher une conversation ou un message… » et ne cherche pas de personnes ; aucun bouton.",
+   "probleme": "La seule aide de l'écran envoie au mauvais endroit.",
+   "declencheur": "Compte sans conversation.",
+   "consequence": "Impasse au moment où la personne veut écrire pour la première fois.",
+   "proposition": "« Écris à une personne… » et un bouton « Nouveau message » (même action que le « + »).",
+   "visuels": [
+    "MSG-037"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "Le texte est réécrit par renderMessages selon trois cas (vide, recherche, archives).",
+   "critereAcceptation": "L'état vide contient un bouton qui ouvre « Nouveau message » et ne contient plus « ci-dessus ».",
+   "fichiers": [
+    "index.html",
+    "js/app-04-comments-shop.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C20",
+   "titre": "En-tête de groupe : la photo d'un membre, un nom inerte, aucun lien vers l'activité",
+   "emplacement": "Conversation de groupe › en-tête — openConversation (js/app-04-comments-shop.js:5685–5724)",
+   "surfaces": [
+    "MSG-012",
+    "MSG-015"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Capture MSG-012 : l'avatar est la photo du premier autre membre (la liste montre 👥) ; le bloc du nom est annoncé role=button mais son onclick est vide (sonde 04) ; « 👥 4 membres » n'est pas touchable ; une discussion d'activité (« 📍 … ») n'offre aucun chemin vers l'activité (sonde 04b).",
+   "probleme": "Le groupe ressemble à un fil privé avec une personne ; toucher le nom ne fait rien.",
+   "declencheur": "Ouverture de tout groupe ou discussion d'activité.",
+   "consequence": "Doute sur le destinataire ; depuis la discussion d'une activité, impossible de revoir l'heure et le lieu.",
+   "proposition": "Avatar de groupe, nom qui ouvre la fenêtre du groupe ; pour une discussion d'activité, ligne « Voir l'activité ».",
+   "visuels": [
+    "MSG-012"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "Le bouton IRL de l'en-tête 1:1 (irlProposalMountConversationAction) ne doit pas bouger.",
+   "critereAcceptation": "Dans un groupe, l'avatar d'en-tête est celui de la liste ; toucher le nom ouvre la fenêtre du groupe ; une discussion `evgrp_` propose l'activité.",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C21",
+   "titre": "Deux sorties d'un groupe qui ne font pas la même chose",
+   "emplacement": "« Supprimer la conversation » (js/app-09-boot-pwa.js:1757–1769) et « Quitter » (js/app-05-config-profil.js:2466–2478)",
+   "surfaces": [
+    "MSG-026",
+    "MSG-022"
+   ],
+   "type": "jugement",
+   "nature": "clarte",
+   "preuve": "D'après le code : « Supprimer » retire le groupe de l'appareil sans toucher à l'appartenance (le prochain message le fait revenir) ; « Quitter » retire l'appartenance. En 1:1, « Supprimer cette conversation ? » ne dit pas que l'autre garde tout.",
+   "probleme": "Deux mots, deux endroits, deux effets.",
+   "declencheur": "Vouloir sortir d'un groupe.",
+   "consequence": "On « supprime » un groupe et il revient ; ou l'on croit avoir effacé pour tout le monde.",
+   "proposition": "Groupe : une seule sortie, « Quitter le groupe ». 1:1 : « Supprimer pour moi », avec la conséquence écrite.",
+   "visuels": [
+    "MSG-021"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "MSG-C18.",
+   "risqueRegression": "Pierres tombales `conv` / `clr` (MSG-06).",
+   "critereAcceptation": "Le panneau d'un groupe ne contient plus « Supprimer la conversation » mais « Quitter le groupe ».",
+   "fichiers": [
+    "js/app-09-boot-pwa.js",
+    "js/app-05-config-profil.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C22",
+   "titre": "Choisir une personne crée la conversation chez elle avant tout message ; son propre compte est proposé",
+   "emplacement": "startDirectMessage (js/app-04-comments-shop.js:4205–4285), supaCreateConversation (js/app-08-ui-modals-tour.js:6554–6577)",
+   "surfaces": [
+    "MSG-061",
+    "MSG-002",
+    "MSG-081"
+   ],
+   "type": "observation",
+   "nature": "friction",
+   "preuve": "Sonde 06b : toucher « Malik Benali » puis revenir sans écrire → 1 ligne `conversations` et 2 `conv_members` créées ; ligne « Démarrer la conversation… » en tête de ma liste. Jeu de données : un fil ouvert par un autre, sans message, apparaît dans ma liste (MSG-002). Sonde 09 : mon propre compte est dans les résultats et ouvre un fil avec moi-même.",
+   "probleme": "Un toucher de curiosité laisse une trace chez l'autre.",
+   "declencheur": "Ouvrir un fil sans écrire.",
+   "consequence": "L'autre voit qu'on a « ouvert » une conversation ; listes encombrées de fils vides.",
+   "proposition": "Créer la conversation au premier message envoyé ; ne pas lister un fil sans message ; exclure son propre compte.",
+   "visuels": [
+    "MSG-002"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "M",
+   "risqueTechnique": "moyen",
+   "dependances": "Chemin d'envoi du premier message (autre domaine).",
+   "risqueRegression": "audit-2026-11-parcours-social-session.spec.js crée la conversation avant d'écrire.",
+   "critereAcceptation": "Choisir une personne puis revenir : aucune ligne en base, aucune ligne dans la liste ; la recherche ne rend jamais mon compte.",
+   "fichiers": [
+    "js/app-04-comments-shop.js",
+    "js/app-08-ui-modals-tour.js"
+   ],
+   "sensible": true
+  },
+  {
+   "id": "MSG-C23",
+   "titre": "Hors ligne ou serveur en panne : « aucun résultat » et faux succès",
+   "emplacement": "Nouveau message (js/app-04-comments-shop.js:4055–4071), confirmCreateGroup (js/app-05-config-profil.js:1952–1996), bandeau #offlineBanner (index.html:1250)",
+   "surfaces": [
+    "MSG-039",
+    "MSG-083",
+    "MSG-038"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Sonde 10 (hors ligne simulé) : recherche d'une personne existante → « Aucun utilisateur trouvé » ; groupe créé → « Groupe créé », identifiant local, 0 ligne en base, rien après reconnexion ; conversation dont la création échoue (500) → fil local ouvert sans un mot. Le bandeau hors ligne (43 px, z-index 9999) recouvre la barre du haut.",
+   "probleme": "Une panne se présente comme une absence, ou comme une réussite.",
+   "declencheur": "Réseau coupé, serveur indisponible.",
+   "consequence": "La personne croit que quelqu'un n'existe pas, ou qu'un groupe existe.",
+   "proposition": "« Pas de connexion — réessaie » dans la recherche ; groupe et conversation : dire « en attente » et créer au retour du réseau, ou refuser clairement.",
+   "visuels": [],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "M",
+   "risqueTechnique": "moyen",
+   "dependances": "File d'attente d'envoi existante (outbox).",
+   "risqueRegression": "retrait-membre-groupe.spec.js s'appuie sur le préfixe `conv_grp_` des ébauches.",
+   "critereAcceptation": "Hors ligne, la recherche affiche un message de connexion ; un groupe non créé côté serveur n'est jamais annoncé « créé ».",
+   "fichiers": [
+    "js/app-04-comments-shop.js",
+    "js/app-05-config-profil.js",
+    "index.html"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C24",
+   "titre": "Une conversation d'exemple offre quatorze actions réelles et reste mêlée aux vraies",
+   "emplacement": "openConvSettings (js/app-09-boot-pwa.js:1645), _rafraichirConversationsServeur (js/app-08-ui-modals-tour.js:7067)",
+   "surfaces": [
+    "MSG-027",
+    "MSG-061"
+   ],
+   "type": "observation",
+   "nature": "clarte",
+   "preuve": "Sonde 06a : sur un exemple, le panneau propose bloquer (« Bloquer » sans nom), signaler, archiver, exporter… ; l'en-tête n'indique pas qu'il s'agit d'un exemple (seul l'envoi le dit). Sonde 06b et constat partagé par la coordination : avec une vraie conversation, les cinq exemples restent dans la liste pendant la session (ils ne partent qu'au démarrage suivant, d'après le code).",
+   "probleme": "Le décor se manipule comme du réel.",
+   "declencheur": "Compte neuf, mode démo.",
+   "consequence": "Signalement ou blocage d'un personnage fictif ; vraie conversation noyée parmi les exemples.",
+   "proposition": "Sur un exemple : étiquette dans l'en-tête et une seule action, « Supprimer cet exemple » ; retirer les exemples dès la première vraie conversation.",
+   "visuels": [],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "controle-general-2026-11-10.spec.js ⑥ (décor), UXO-03.",
+   "critereAcceptation": "Le panneau d'un exemple ne contient ni « Bloquer » ni « Signaler » ; après un premier fil réel, la liste ne contient plus d'exemple.",
+   "fichiers": [
+    "js/app-09-boot-pwa.js",
+    "js/app-04-comments-shop.js",
+    "js/app-08-ui-modals-tour.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C25",
+   "titre": "La permission de notification est demandée sans un mot à la première conversation",
+   "emplacement": "openConversation → requestCallNotifications (js/app-04-comments-shop.js:5665, js/app-05-config-profil.js:1703–1718)",
+   "surfaces": [
+    "MSG-078"
+   ],
+   "type": "observation",
+   "nature": "friction",
+   "preuve": "Sonde 06b (demande du système remplacée par un témoin) : 1 appel à Notification.requestPermission à l'ouverture de la première conversation 1:1, sans explication préalable ; après accord, toast « Tu seras prévenu·e de tes messages même app fermée ». La demande réelle n'est pas observable sans tête.",
+   "probleme": "La boîte du système surgit au milieu d'un geste, sans raison donnée.",
+   "declencheur": "Première ouverture d'un fil privé.",
+   "consequence": "Refus réflexe, définitif côté navigateur : plus de notification de message.",
+   "proposition": "Une ligne d'explication avec « Activer » / « Plus tard » avant d'appeler le système ; ne rien demander si « Plus tard ».",
+   "visuels": [],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Domaine Notifications.",
+   "risqueRegression": "Le geste utilisateur doit rester l'origine de l'appel (exigence des navigateurs).",
+   "critereAcceptation": "Aucun appel à Notification.requestPermission sans un toucher sur « Activer ».",
+   "fichiers": [
+    "js/app-05-config-profil.js",
+    "js/app-04-comments-shop.js"
+   ],
+   "sensible": true
+  },
+  {
+   "id": "MSG-C26",
+   "titre": "Écrans d'appel : commandes en emoji sans nom, minuteur peu lisible, diagnostic affiché",
+   "emplacement": "Appels — _callRenderIncomingUI, _callRenderActiveUI (js/app-05-config-profil.js:1512–1565), styles.css:5832–5894",
+   "surfaces": [
+    "MSG-050",
+    "MSG-051",
+    "MSG-052",
+    "MSG-053",
+    "MSG-054",
+    "MSG-055",
+    "MSG-079"
+   ],
+   "type": "observation",
+   "nature": "accessibilite",
+   "preuve": "Écrans SIMULÉS (appels désactivés en production, js/app-05-config-profil.js:648). Sonde 05 : boutons 📵 ✅ 🎙 📷 🔄 📞 nommés par `title` seulement, sans aria-label ; Refuser et Répondre à 12 px l'un de l'autre ; avatar = emoji sur #7C3AED fixe, jamais la photo ; minuteur #6D32F4 sur fond nuit : 2,1:1 ; « audio · 32 kb/s · relais » affiché ; micro sombre sur fond sombre ; « Appel en cours… 00:00 » pendant la sonnerie ; calque sans rôle de dialogue ni prise de focus ; aucune trace de l'appel dans le fil.",
+   "probleme": "On ne sait pas lire les commandes ni reconnaître qui appelle.",
+   "declencheur": "Dès la réactivation des appels.",
+   "consequence": "Refus ou réponse par erreur ; lecteur d'écran muet sur les commandes.",
+   "proposition": "Icônes SVG avec libellés, commandes écartées, photo de profil, minuteur blanc, diagnostic réservé au mode de mise au point, « Ça sonne… » avant la réponse.",
+   "visuels": [
+    "MSG-051",
+    "MSG-054",
+    "MSG-050"
+   ],
+   "priorite": "P2",
+   "gravite": 2,
+   "effort": "M",
+   "risqueTechnique": "moyen",
+   "dependances": "À traiter avant de remettre PASSIO_APPELS_ACTIFS à true.",
+   "risqueRegression": "appel-canal-refuse.spec.js, appels-sonnerie-privee.spec.js ciblent les classes `.call-control-btn`.",
+   "critereAcceptation": "Chaque commande d'appel a un nom accessible et un libellé visible ; le minuteur atteint 4,5:1 ; aucun débit n'est affiché.",
+   "fichiers": [
+    "js/app-05-config-profil.js",
+    "styles.css"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C27",
+   "titre": "Mots qui varient : utilisateur / personne / membre, chercher / rechercher, conversation / discussion",
+   "emplacement": "Libellés de la messagerie",
+   "surfaces": [
+    "MSG-004",
+    "MSG-041"
+   ],
+   "type": "observation",
+   "nature": "polish",
+   "preuve": "Relevé : « Chercher un utilisateur… », « Rechercher un utilisateur... », « Aucun utilisateur trouvé », « Membres à inviter », « démarrer une discussion », « Démarrer la conversation… », « Nouveau message » (ouvre une conversation) ; « bloqué », « débloqué », « tu ne le suivras plus » au masculin, alors que « ajouté·e », « retiré·e », « prévenu·e » sont inclusifs ; emojis en tête de toasts et de titres.",
+   "probleme": "Le même objet change de nom d'un écran à l'autre.",
+   "declencheur": "Lecture des écrans à la suite.",
+   "consequence": "Impression de pièces rapportées.",
+   "proposition": "« Personne » pour qui l'on cherche, « membre » dans un groupe, « Rechercher », « conversation » partout ; formulations sans genre (« Compte bloqué »).",
+   "visuels": [
+    "MSG-004"
+   ],
+   "priorite": "P3",
+   "gravite": 1,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Glossaire commun à l'audit.",
+   "risqueRegression": "Tests qui lisent des libellés.",
+   "critereAcceptation": "Les mots « utilisateur » et « discussion » n'apparaissent plus dans la messagerie (hors « discussion d'activité »).",
+   "fichiers": [
+    "js/app-04-comments-shop.js",
+    "js/app-05-config-profil.js",
+    "js/app-09-boot-pwa.js",
+    "index.html"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C28",
+   "titre": "Champs sans étiquette, onglets et calques sans rôle",
+   "emplacement": "Recherches, création de groupe, fenêtre membres, panneau Paramètres, calque d'appel",
+   "surfaces": [
+    "MSG-004",
+    "MSG-001",
+    "MSG-020",
+    "MSG-084"
+   ],
+   "type": "observation",
+   "nature": "accessibilite",
+   "preuve": "Sondes 02, 03, 04, 05 : #convGlobalSearch, #_nmSearch, #grpSearchInput sans aria-label (placeholder seul, type text, pas d'enterkeyhint) ; ⋮, membres, appels nommés par `title` ; onglets Membres / Ajouter sans role=tab ; cases de membre et de passion sans état coché exposé ; panneau Paramètres et calque d'appel sans rôle de dialogue ; nom de groupe annoncé bouton sans action.",
+   "probleme": "Un lecteur d'écran n'annonce ni l'objet des champs ni l'état des choix.",
+   "declencheur": "Navigation assistée ou au clavier.",
+   "consequence": "Parcours de messagerie peu praticable sans la vue.",
+   "proposition": "aria-label sur les trois champs et les boutons d'icône, role=tab/aria-selected, aria-pressed sur les cases, role=dialog et focus sur les panneaux.",
+   "visuels": [
+    "MSG-020",
+    "MSG-004"
+   ],
+   "priorite": "P3",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "La règle mécanique de app-08:2604 pose déjà role=button : ne pas la doubler.",
+   "critereAcceptation": "Les trois champs et tous les boutons d'icône de la messagerie ont un nom accessible non vide.",
+   "fichiers": [
+    "js/app-04-comments-shop.js",
+    "js/app-05-config-profil.js",
+    "js/app-09-boot-pwa.js",
+    "index.html"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C29",
+   "titre": "Après un déblocage, la conversation ne revient pas tout de suite",
+   "emplacement": "unblockUser (js/app-04-comments-shop.js:5185–5210)",
+   "surfaces": [
+    "MSG-040",
+    "MSG-082"
+   ],
+   "type": "observation",
+   "nature": "polish",
+   "preuve": "Sonde 09 : « Débloquer » → ligne `blocks` supprimée, toast, fenêtre « Aucun compte bloqué » ; à la fermeture, la conversation n'est pas dans la liste (unblockUser repeint le fil et la fenêtre, pas la liste des messages). La fenêtre est à trois niveaux (Options ··· › Personnalisation › Comptes bloqués) et le toast de blocage n'y renvoie pas.",
+   "probleme": "On débloque et la conversation reste absente.",
+   "declencheur": "Déblocage depuis l'écran Messages.",
+   "consequence": "Doute sur l'effet du déblocage.",
+   "proposition": "Repeindre la liste après déblocage ; toast de blocage avec « Gérer les comptes bloqués ».",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 1,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "ROB-04 (verrou d'écriture du blocage).",
+   "critereAcceptation": "Après « Débloquer » puis « OK », la conversation est visible dans la liste sans autre geste.",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C30",
+   "titre": "Archiver, épingler ou marquer non lu demande d'ouvrir la conversation",
+   "emplacement": "Liste › ligne (js/app-04-comments-shop.js:5595) — aucun geste",
+   "surfaces": [
+    "MSG-077"
+   ],
+   "type": "hypothese",
+   "nature": "friction",
+   "preuve": "D'après le code : la ligne n'a qu'un onclick ; chaque action de liste passe par ouvrir → ⋮ → entrée (3 gestes), et ouvrir marque la conversation comme lue.",
+   "probleme": "On ne peut pas ranger une conversation sans la lire.",
+   "declencheur": "Tri rapide de la liste.",
+   "consequence": "Hypothèse : usage faible de l'archive et de l'épingle.",
+   "proposition": "À vérifier auprès d'utilisateurs avant d'ajouter quoi que ce soit ; piste sobre : un appui long ouvrant les mêmes entrées.",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 1,
+   "effort": "M",
+   "risqueTechnique": "moyen",
+   "dependances": "MSG-C01, MSG-C17.",
+   "risqueRegression": "Défilement de #appMain et geste de retour.",
+   "critereAcceptation": "À définir après vérification auprès d'utilisateurs.",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ],
+   "sensible": false
+  },
+  {
+   "id": "MSG-C31",
+   "titre": "Une passion est exigée pour créer un groupe",
+   "emplacement": "Nouveau groupe › « Passion(s) du groupe (1 à 3) » — confirmCreateGroup (js/app-05-config-profil.js:1949)",
+   "surfaces": [
+    "MSG-010"
+   ],
+   "type": "jugement",
+   "nature": "friction",
+   "preuve": "Sonde 04 : sans passion cochée, « Choisis au moins 1 passion » ; seules les passions du compte sont proposées (une ici) ; côté serveur la passion d'une conversation est facultative (js/app-08-ui-modals-tour.js:6591–6593, ADR-010).",
+   "probleme": "Un choix obligatoire qui n'en est pas un quand le compte n'a qu'une passion.",
+   "declencheur": "Création d'un groupe.",
+   "consequence": "Étape de plus ; groupe d'amis classé de force.",
+   "proposition": "Rendre la passion facultative, comme le serveur. Règle métier : à décider par Benjamin.",
+   "visuels": [
+    "MSG-010"
+   ],
+   "priorite": "P3",
+   "gravite": 1,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Décision produit.",
+   "risqueRegression": "Fenêtre membres (pastilles de passion).",
+   "critereAcceptation": "Un groupe se crée sans passion cochée.",
+   "fichiers": [
+    "js/app-05-config-profil.js"
+   ],
+   "sensible": true
+  },
+  {
+   "id": "MSG-C32",
+   "titre": "Au-delà de 8 s de chargement, la liste affiche « Aucune conversation »",
+   "emplacement": "renderMessages › squelette (js/app-04-comments-shop.js:5498–5519)",
+   "surfaces": [
+    "MSG-075"
+   ],
+   "type": "hypothese",
+   "nature": "clarte",
+   "preuve": "D'après le code : un minuteur de 8 s pose `_convNetLoaded = true` et rend l'état vide, que la lecture soit revenue ou non. Non reproduit au banc.",
+   "probleme": "Sur un réseau lent, l'écran affirme qu'il n'y a aucune conversation.",
+   "declencheur": "Stockage local vide et première lecture de plus de 8 s.",
+   "consequence": "Inquiétude (« j'ai tout perdu »), puis apparition tardive de la liste.",
+   "proposition": "Après 8 s : « Chargement plus long que prévu… » avec « Réessayer », jamais « Aucune conversation ».",
+   "visuels": [],
+   "priorite": "P3",
+   "gravite": 2,
+   "effort": "S",
+   "risqueTechnique": "faible",
+   "dependances": "Aucune.",
+   "risqueRegression": "feed-premier-rendu et suites de démarrage.",
+   "critereAcceptation": "Tant que la première lecture n'a pas répondu, l'écran n'affiche jamais « Aucune conversation ».",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ],
+   "sensible": false
+  }
+ ]
+}

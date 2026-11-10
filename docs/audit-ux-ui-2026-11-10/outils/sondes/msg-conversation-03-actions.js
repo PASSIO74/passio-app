@@ -19,7 +19,7 @@ module.exports = async ({ page, context, serveur, photo, banc, GENS }) => {
       const reacts = [...mc.querySelectorAll("span[onclick^='_reactAndClose']")].map((e) => { const b = e.getBoundingClientRect(); return { e: e.textContent, w: Math.round(b.width), h: Math.round(b.height), role: e.getAttribute("role"), nom: e.getAttribute("aria-label") }; });
       return { ouvert, items, reacts, titre: (mc.querySelector(".modal-title") || {}).innerText || null };
     });
-    const appui = async (id) => { await page.locator(sel(id)).scrollIntoViewIfNeeded(); await page.waitForTimeout(250); await banc.appuiLong(page, sel(id), 700); await page.waitForTimeout(500); return menu(); };
+    const appui = async (id) => { await jeu.ouvrirMenu(page, banc, id); return menu(); };
 
     // ① Appui long RÉEL sur un message reçu (texte)
     out.menuRecu = await appui("m_lea_21");
