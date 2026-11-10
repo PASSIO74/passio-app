@@ -52,6 +52,7 @@
     .proto-telephone #eventDetailCta.ra-pied { padding: 12px 16px 18px; }
     .ra-pied .ra-etat { display: none; }
     .ra-go { min-height: 48px; font-size: 15px; }
+    .proto-telephone .ra-pied .ra-go { background: var(--v4b-coral-texte, #c13d28); border-color: transparent; color: #fff; box-shadow: none; }
     .ra-ok { padding: 12px 14px; border-radius: 16px; background: #e9f8ef; border: 1px solid #bfe8d0; color: #0b5a33; font: 600 13.5px/1.35 system-ui, sans-serif; display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
     .ra-ok b { display: block; font: 800 15px/1.3 var(--v2-titre, Manrope, sans-serif); color: #06452a; }
     .ra-suite { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
@@ -88,6 +89,7 @@
     .ra-saisie { display: flex; gap: 8px; padding: 10px 12px 16px; background: #fff; border-top: 1px solid var(--border); flex-shrink: 0; }
     .ra-saisie input { flex: 1; min-height: 44px; font-size: 16px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--border); background: var(--bg-deep, #f7f5fc); color: var(--text); }
     .ra-saisie button { min-width: 48px; min-height: 44px; border-radius: 22px; border: none; background: var(--accent); color: #fff; font: 700 14px system-ui, sans-serif; padding: 0 16px; cursor: pointer; }
+    .proto-telephone #raBulle { z-index: 300; bottom: 250px; }
     .ra-sous-titre { display: block; font: 600 12px system-ui, sans-serif; color: var(--muted); }
   </style>
 </head>
@@ -153,7 +155,7 @@
           <div class="event-detail-hero">
             <div><img class="event-detail-cover" src="medias/couverture-evenement.jpg" alt=""></div>
             <button type="button" class="event-detail-back" aria-label="Retour" data-aller="fil">← Retour</button>
-            <button type="button" class="event-detail-back" style="left:auto;right:12px;" aria-label="Partager">Partager</button>
+            <button type="button" class="event-detail-back" id="eventDetailShareBtn" style="left:auto;right:12px;" aria-label="Partager">Partager</button>
             <div class="event-detail-hero-title">
               <div class="event-detail-passion-badge">🎸 Musique · Rencontre</div>
               <div class="event-detail-title">Bœuf acoustique au kiosque</div>
@@ -242,11 +244,11 @@
           <div class="ra-sys" id="raRejoint">Camille a rejoint l'activité</div>
           <div class="ra-msg moi" id="raMonMsg" hidden><div class="ra-bulle">Salut ! J'apporte ma guitare 🎸</div></div>
         </div>
-        <form class="ra-saisie" data-action="rien" onsubmit="return false;">
-          <label for="raSaisie" class="sr-only" style="position:absolute;left:-9999px">Message aux participants</label>
+        <div class="ra-saisie">
+          <label for="raSaisie" style="position:absolute;left:-9999px">Message aux participants</label>
           <input id="raSaisie" type="text" placeholder="Écris aux participants…" value="Salut ! J'apporte ma guitare 🎸">
           <button type="button" data-action="envoyer" aria-label="Envoyer">Envoyer</button>
-        </form>
+        </div>
       </section>
 
       <!-- ═══ 7-8. Activité COMPLÈTE ═══ -->

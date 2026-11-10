@@ -1,0 +1,206 @@
+{
+ "id": "IRL-130",
+ "domaine": "irl-fiche",
+ "scenario": "etats",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Activité passée (j'y étais)",
+ "note": "Pastille « Événement terminé », tuile de date corail, « 3 participants · 7 places restantes », pied « Partager mon expérience » (dégradé violet) ; le corps répète « Tu y étais ? … Partager mon expérience » et « C'était comment ? Noter ».",
+ "prisLe": "2026-11-10T18:02:18.939Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(1) PASSIO",
+  "hash": "#event-ev_if_passee"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-130--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 47420,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« 7 places restantes » sur une activité terminée.",
+   "x": 0.592,
+   "y": 0.52,
+   "w": 0.646,
+   "h": 0.019,
+   "sel": ".v4b-rdv-places",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Tuile corail (couleur du passage au réel) identique à une activité à venir.",
+   "x": 0.159,
+   "y": 0.495,
+   "w": 0.149,
+   "h": 0.064,
+   "sel": ".v4b-rdv-tuile",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [
+    {
+     "el": "div#eventDetailCta > button.btn.primary",
+     "texte": "Partager mon expérience",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 15,
+   "indetermines": 4,
+   "sousSeuil": [
+    {
+     "el": "div#eventDetailHero > button.event-detail-back",
+     "texte": "← Retour",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "button#eventDetailShareBtn",
+     "texte": "Partager",
+     "ratio": 3.53,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#898793",
+     "px": 0
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-passion-badge",
+     "texte": "📷 Photo · Rencontre",
+     "ratio": 2.83,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#a886f8",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailHeroTitle > div.event-detail-title",
+     "texte": "Balade photo argentique dans le Vieux-Lyon",
+     "ratio": 1.19,
+     "seuil": 3,
+     "couleur": "#ffffff",
+     "fond": "#ede9fe",
+     "px": 22
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Le rendez-vous",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-urgency.past",
+     "texte": "Événement terminé",
+     "ratio": 3.83,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#dddbf0",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Organisateur·ice",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > div.event-detail-section-title",
+     "texte": "Description",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    },
+    {
+     "el": "div#eventDetailContent > div.v4b-fiche > section.v4b-sec > h3.v4b-sec-titre",
+     "texte": "Infos pratiques",
+     "ratio": 4.39,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#ede9fe",
+     "px": 11
+    }
+   ],
+   "nbSousSeuil": 9
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-fiche/IRL-130--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 46520,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Ce qui compte après coup : y avoir été, et avec combien de personnes.",
+   "x": 0.592,
+   "y": 0.52,
+   "w": 0.646,
+   "h": 0.019,
+   "sel": ".v4b-rdv-places",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Tuile neutre : le corail reste réservé à ce qui peut encore se vivre.",
+   "x": 0.159,
+   "y": 0.495,
+   "w": 0.149,
+   "h": 0.064,
+   "sel": ".v4b-rdv-tuile",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

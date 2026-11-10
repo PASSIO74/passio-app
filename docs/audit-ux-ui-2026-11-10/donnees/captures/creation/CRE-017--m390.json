@@ -1,0 +1,79 @@
+{
+ "id": "CRE-017",
+ "domaine": "creation",
+ "scenario": "menu",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Menu ⋯ de ma publication",
+ "note": "Ouvert par openPostOptions (même fonction que le ⋯ de mes cartes, vu par un vrai geste dans la sonde creation-06).",
+ "prisLe": "2026-11-10T18:18:06.929Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-017--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 15970,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Seule action : supprimer (« le post ») — pas de modification",
+   "x": 0.5,
+   "y": 0.873,
+   "w": 0.908,
+   "h": 0.059,
+   "sel": ".post-option.danger",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 4,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

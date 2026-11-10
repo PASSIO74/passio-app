@@ -25,6 +25,10 @@ async function defiler(page, sec, decalage) {
   }, [sec, decalage || 0]);
   await page.waitForTimeout(500);
 }
+// Artefact du banc : les captures sont prises avec animations:"disabled", ce qui avance
+// l'animation toastOut (2,6 s, forwards) à sa fin : un toast n'apparaît JAMAIS sur une
+// capture. On retire l'animation des seuls toasts (ils restent 3 s, comme dans l'app).
+async function toastsVisibles(page) { await page.addStyleTag({ content: ".toast{animation:none!important}" }); }
 async function modale(page, code) {
   await page.evaluate(() => { try { closeModal(); } catch (e) {} });
   await page.waitForTimeout(300);
@@ -97,6 +101,7 @@ module.exports = {
       vues: ["m390", "m360"],
       async derouler({ page, prendre, serveur, MOI }) {
         await ouvrir(page, "ev_if_payante");
+        await toastsVisibles(page);
         const b = await page.locator("[data-v4b-rsvp-go]").boundingBox();
         const x = b.x + b.width / 2, y = b.y + b.height / 2;
         await page.touchscreen.tap(x, y);
@@ -138,7 +143,7 @@ module.exports = {
           id: "IRL-112", titre: "Inscrit·e → « Discussion des participants » : « indisponible hors connexion », en ligne",
           seulement: ["m390"],
           note: "L'activité n'a pas encore de discussion (conv_id nul : l'organisatrice ne l'a pas ouverte). Seul un gestionnaire peut la créer (`_joinEventConversation`, app-07:3845-3851) ; le participant reçoit « Ouverture de la discussion… » puis « Discussion indisponible hors connexion » (app-07:3907-3910) alors que l'appareil est en ligne. Toasts : " + JSON.stringify(await page.evaluate(() => (window.__toasts || []).slice(-2).map((t) => t.msg))),
-          zooms: [{ nom: "toast", titre: "Message affiché", sel: ".toast, #toast, .toast-container", marge: 6 }],
+          zooms: [{ nom: "toast", titre: "Message affiché", sel: "#toastStack .toast", marge: 6 }],
         });
         // Retrait volontaire.
         await page.evaluate(() => { const p = document.querySelector("#eventDetailCta .v4b-rsvp-retirer"); if (p) p.scrollIntoView(); });
@@ -159,6 +164,7 @@ module.exports = {
       vues: ["m390"],
       async derouler({ page, prendre, serveur, GENS }) {
         await ouvrir(page, "ev_if_complete");
+        await toastsVisibles(page);
         await prendre({
           id: "IRL-120", titre: "Activité complète — « Rejoindre la liste d'attente »",
           note: "Le libellé dit la conséquence AVANT le geste ; le bloc rendez-vous écrit « complet · 2 en liste d'attente ».",
@@ -174,6 +180,7 @@ module.exports = {
           apres: {
             js: async (p) => {
               await p.evaluate(() => {
+                document.querySelectorAll("#toastStack .toast").forEach((t) => t.remove());
                 const e = document.querySelector("#eventDetailCta .v4b-rsvp-etat");
                 if (!e) return;
                 e.innerHTML = '<span style="display:block;text-align:center"><b style="display:block;font-size:15px">Tu es sur la liste d\'attente</b><span style="display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-top:2px">Si une place se libère, tu es inscrit·e automatiquement et prévenu·e.</span></span>';
@@ -202,6 +209,7 @@ module.exports = {
           apres: {
             js: async (p) => {
               await p.evaluate(() => {
+                document.querySelectorAll("#toastStack .toast").forEach((t) => t.remove());
                 const g = document.querySelector("#eventDetailCta [data-v4b-rsvp-go]"); if (g) g.textContent = "Rejoindre la liste d'attente";
                 const pl = document.querySelector(".v4b-rdv-places"); if (pl) pl.textContent = "5 participants · complet";
                 const n = document.createElement("div"); n.className = "audit-if-note"; n.setAttribute("role", "status");
@@ -289,7 +297,10 @@ module.exports = {
                 const rows = Array.from(document.querySelectorAll("[data-v4b-sec=infos] .event-detail-info-row"));
                 const adr = rows.find((r) => /^Adresse$/i.test((r.querySelector(".event-detail-info-label") || {}).textContent || ""));
                 const exacte = rows.find((r) => /Adresse exacte/i.test(r.textContent));
-                if (adr) { adr.querySelector(".event-detail-info-value").textContent = "Lyon 1er (69001)"; adr.querySelector(".event-detail-info-label").textContent = "Lieu"; const l = adr.querySelector(".event-detail-info-link"); if (l) l.parentElement.innerHTML = '<span style="font-size:12.5px;color:var(--muted)">L\'adresse exacte s\'affiche ici dès que tu participes.</span>'; }
+                const lieu = rows.find((r) => /^Lieu$/i.test((r.querySelector(".event-detail-info-label") || {}).textContent || ""));
+                const nomLieu = lieu ? lieu.querySelector(".event-detail-info-value").textContent : "";
+                if (lieu) lieu.style.display = "none";
+                if (adr) { adr.querySelector(".event-detail-info-value").textContent = (nomLieu ? nomLieu + " — " : "") + "Lyon 1er (69001)"; adr.querySelector(".event-detail-info-label").textContent = "Lieu"; const l = adr.querySelector(".event-detail-info-link"); if (l) l.parentElement.innerHTML = '<span style="font-size:12.5px;color:var(--muted)">L\'adresse exacte s\'affiche ici dès que tu participes.</span>'; }
                 if (exacte) exacte.style.display = "none";
               });
             },
@@ -304,8 +315,11 @@ module.exports = {
           apres: {
             js: async (p) => {
               await p.evaluate(() => {
-                const cta = document.getElementById("eventDetailCta");
-                cta.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn primary block" style="min-height:48px;background:var(--accent);border-color:transparent;color:#fff">Écrire aux participants</button><button class="btn ghost block" style="min-height:48px">Gérer l\'activité</button></div><div style="text-align:center;font:600 12.5px system-ui;color:var(--muted);margin-top:8px">Tu organises · 4 participants · 2 places restantes</div>';
+                const box = document.querySelector("#eventDetailCta .v4b-rsvp");
+                if (!box) return;
+                Array.from(box.children).forEach((c) => { c.style.display = "none"; });
+                const d = document.createElement("div"); box.appendChild(d);
+                d.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn primary block" style="min-height:48px;background:var(--accent);border-color:transparent;color:#fff">Écrire aux participants</button><button class="btn ghost block" style="min-height:48px">Gérer l\'activité</button></div><div style="text-align:center;font:600 12.5px system-ui;color:var(--muted);margin-top:8px">Tu organises · 4 participants · 2 places restantes</div>';
               });
             },
           },
@@ -345,14 +359,14 @@ module.exports = {
         await prendre({
           id: "IRL-143", titre: "Gérer l'activité (organisatrice)",
           note: "Modifier, Prévenir les inscrits, Co-organisateurs, Annuler l'événement, Supprimer définitivement, Fermer. Annuler a le même style que Modifier ; Annuler et Supprimer passent par un `confirm()` natif.",
-          annotationsAvant: [{ n: 1, sel: "#modalContent .btn:nth-of-type(4)", texte: "« Annuler l'événement » (prévient tous les inscrits) a l'air d'une action ordinaire." }],
+          annotationsAvant: [{ n: 1, sel: "#modalContent .btn:nth-of-type(5)", texte: "« Annuler l'événement » (prévient tous les inscrits) a l'air d'une action ordinaire." }],
           apres: {
-            css: `#modalContent > .btn:nth-of-type(4){margin-top:22px!important;color:#b42318!important;border-color:rgba(180,35,24,.3)!important}
-                  #modalContent > .btn:nth-of-type(5){background:none!important;border-color:transparent!important;text-decoration:underline;min-height:44px}`,
+            css: `#modalContent > .btn:nth-of-type(5){margin-top:22px!important;color:#b42318!important;border-color:rgba(180,35,24,.3)!important}
+                  #modalContent > .btn:nth-of-type(6){background:none!important;border-color:transparent!important;text-decoration:underline;min-height:44px}`,
           },
           annotations: [
-            { n: 1, sel: "#modalContent > .btn:nth-of-type(4)", texte: "Les actions qui touchent les inscrits sont séparées et signalées." },
-            { n: 2, sel: "#modalContent > .btn:nth-of-type(5)", texte: "La suppression, rare et irréversible, en lien discret (confirmation dans l'app, pas `confirm()`)." },
+            { n: 1, sel: "#modalContent > .btn:nth-of-type(5)", texte: "Les actions qui touchent les inscrits sont séparées et signalées." },
+            { n: 2, sel: "#modalContent > .btn:nth-of-type(6)", texte: "La suppression, rare et irréversible, en lien discret (confirmation dans l'app, pas `confirm()`)." },
           ],
         });
         await modale(page, () => openEventCoOrganizers("ev_if_mienne"));
@@ -382,6 +396,7 @@ module.exports = {
       vues: ["m390", "m360"],
       async derouler({ page, prendre, banc }) {
         await page.waitForTimeout(1800);
+        await toastsVisibles(page);
         await modale(page, () => openCreateEvent());
         await prendre({ id: "IRL-160", titre: "Créer une activité — haut du formulaire", note: "UI-6A0 : couverture 16:9, titre, passion, type, description, date. Champs à 16 px (mesuré : 17 champs, tous 16 px)." });
         await page.evaluate(() => { const b = Array.from(document.querySelectorAll("#modalContent button")).filter((x) => x.offsetParent).pop(); if (b) b.scrollIntoView({ block: "end" }); });
@@ -419,9 +434,11 @@ module.exports = {
         await page.evaluate((i) => openEventDetails(i), id);
         await page.waitForTimeout(1400);
         await prendre({ id: "IRL-170", titre: "Activité d'exemple — fiche", note: "Socle de démonstration (« Exemple PASSIO »), aucun compte. Activité : " + id + "." });
+        await toastsVisibles(page);
+        await page.evaluate(() => { window.__t = []; const o = window.toast; window.toast = function (m) { window.__t.push(String(m)); return o.apply(this, arguments); }; });
         const go = page.locator("[data-v4b-rsvp-go]");
         if (await go.count()) { await go.click(); await page.waitForTimeout(900); }
-        await prendre({ id: "IRL-171", titre: "Activité d'exemple — après « Je participe »", note: "Ce que dit l'application quand la participation est désactivée. Toasts/modale : " + JSON.stringify(await page.evaluate(() => ({ modale: (document.querySelector("#modalBackdrop.active .modal-title") || {}).textContent || null }))) });
+        await prendre({ id: "IRL-171", titre: "Activité d'exemple — après « Je participe »", note: "Ce que dit l'application quand la participation est désactivée. Toasts/modale : " + JSON.stringify(await page.evaluate(() => ({ toasts: window.__t, ecrits: (typeof state !== "undefined" && state.user && state.user.eventRsvp) || null, modale: (document.querySelector("#modalBackdrop.active .modal-title") || {}).textContent || null }))) });
       },
     },
   ],

@@ -1,0 +1,163 @@
+{
+ "id": "CRE-006",
+ "domaine": "creation",
+ "scenario": "photo",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Studio — photo ajoutée (aperçu)",
+ "note": "",
+ "prisLe": "2026-11-10T18:16:16.570Z",
+ "ecran": {
+  "ecran": "screen-studio",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#studio"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-006--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 37922,
+  "zooms": [
+   {
+    "nom": "retirer",
+    "titre": "Retirer la photo",
+    "fichier": "captures/creation/CRE-006--m390--avant-zoom-retirer.webp",
+    "largeur": 96,
+    "hauteur": 96,
+    "octets": 958
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Retirer : 28 × 28 px, sans nom accessible",
+   "x": 0.9,
+   "y": 0.42,
+   "w": 0.072,
+   "h": 0.033,
+   "sel": ".photo-clear",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Seconde zone « Ajouter une photo », sombre et illisible",
+   "x": 0.5,
+   "y": 0.782,
+   "w": 0.918,
+   "h": 0.184,
+   "sel": "#studioPhoto .upload-zone",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#photoPreviewBox > div.photo-preview > div.photo-clear",
+     "texte": "✕",
+     "w": 28,
+     "h": 28,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 4
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 2,
+   "indetermines": 11,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/creation/CRE-006--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 43568,
+  "zooms": [
+   {
+    "nom": "retirer",
+    "titre": "Retirer la photo",
+    "fichier": "captures/creation/CRE-006--m390--apres-zoom-retirer.webp",
+    "largeur": 128,
+    "hauteur": 128,
+    "octets": 1242
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Retirer : 44 × 44 px",
+   "x": 0.879,
+   "y": 0.429,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": ".photo-clear",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Plus de zone en double : la destination remonte",
+   "x": 0.5,
+   "y": 0.729,
+   "w": 0.918,
+   "h": 0.05,
+   "sel": ".v6-passio",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

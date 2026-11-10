@@ -1,0 +1,183 @@
+{
+ "id": "MSG-153",
+ "domaine": "msg-conversation",
+ "scenario": "pieces-jointes",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Panneau emoji — onglet GIF",
+ "note": "SIMULÉ : 8 images locales à la place des GIF de KLIPY (hôte refusé par le banc).",
+ "prisLe": "2026-11-10T18:08:39.159Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-153--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 40000,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Un toucher sur une vignette envoie aussitôt le GIF.",
+   "x": 0.5,
+   "y": 0.816,
+   "w": 1,
+   "h": 0.225,
+   "sel": "#gifGrid",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 14,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 176,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#emojiTopBar > button",
+     "texte": "Emoji",
+     "w": 183,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#emojiTopBar > button",
+     "texte": "GIF",
+     "w": 183,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "input#gifSearchInput",
+     "texte": "Rechercher sur KLIPY",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 10
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "div#emojiTopBar > button",
+     "texte": "Emoji",
+     "ratio": 1.14,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f1eefb",
+     "px": 12
+    },
+    {
+     "el": "div#emojiTopBar > button",
+     "texte": "GIF",
+     "ratio": 1.09,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#7c3aed",
+     "px": 12
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:60679/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   },
+   {
+    "el": "input#gifSearchInput",
+    "placeholder": "Rechercher sur KLIPY"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

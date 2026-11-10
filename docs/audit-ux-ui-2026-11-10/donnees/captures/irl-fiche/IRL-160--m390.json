@@ -1,0 +1,68 @@
+{
+ "id": "IRL-160",
+ "domaine": "irl-fiche",
+ "scenario": "creer",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Créer une activité — haut du formulaire",
+ "note": "UI-6A0 : couverture 16:9, titre, passion, type, description, date. Champs à 16 px (mesuré : 17 champs, tous 16 px).",
+ "prisLe": "2026-11-10T18:06:04.832Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Créer une activité",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-160--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 42132,
+  "zooms": []
+ },
+ "annotationsAvant": [],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 10,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 7,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 9,
+   "indetermines": 2,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

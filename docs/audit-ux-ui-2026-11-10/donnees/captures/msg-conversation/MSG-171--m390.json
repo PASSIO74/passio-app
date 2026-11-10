@@ -1,0 +1,218 @@
+{
+ "id": "MSG-171",
+ "domaine": "msg-conversation",
+ "scenario": "vocal",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Vocal que je viens d'envoyer",
+ "note": "",
+ "prisLe": "2026-11-10T18:11:29.010Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-171--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28480,
+  "zooms": [
+   {
+    "nom": "vocal",
+    "titre": "Mon vocal",
+    "fichier": "captures/msg-conversation/MSG-171--m390--avant-zoom-vocal.webp",
+    "largeur": 420,
+    "hauteur": 150,
+    "octets": 666
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Le vocal est parti, mais sa bulle est blanche sur fond clair : on ne voit que l'heure.",
+   "x": 0.718,
+   "y": 0.547,
+   "w": 0.462,
+   "h": 0.04,
+   "sel": "#convFpThread .conv-bubble-wrap:last-child .conv-bubble",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#pb_aud_msgx6p8dsjjkmwb0b0dk",
+     "texte": "▶",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
+     "texte": "",
+     "w": 68,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > button.voice-speed-btn",
+     "texte": "1×",
+     "w": 24,
+     "h": 18,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 10
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 11,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "span#dur_aud_msgx6p8dsjjkmwb0b0dk",
+     "texte": "0:03",
+     "ratio": 1.06,
+     "seuil": 4.5,
+     "couleur": "#fdfdfe",
+     "fond": "#f7f5fc",
+     "px": 11
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > button.voice-speed-btn",
+     "texte": "1×",
+     "ratio": 1.07,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f8f7fd",
+     "px": 10
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63457/docs/audit-ux-ui-2026-11-10/out"
+   },
+   {
+    "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
+    "html": "<div style=\"flex:1;height:28px;background:rgba(255,255,255,0.2);border-radius:8px;overflow:hidden;cursor:point"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-171--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 30812,
+  "zooms": [
+   {
+    "nom": "vocal",
+    "titre": "Mon vocal",
+    "fichier": "captures/msg-conversation/MSG-171--m390--apres-zoom-vocal.webp",
+    "largeur": 572,
+    "hauteur": 202,
+    "octets": 3324
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Bulle violette conservée : lecture, durée et vitesse lisibles.",
+   "x": 0.621,
+   "y": 0.563,
+   "w": 0.656,
+   "h": 0.071,
+   "sel": "#convFpThread .conv-bubble-wrap:last-child .conv-bubble",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

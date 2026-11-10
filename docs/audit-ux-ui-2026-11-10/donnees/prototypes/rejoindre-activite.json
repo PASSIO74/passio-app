@@ -1,0 +1,19 @@
+{
+ "ordre": 1,
+ "fichier": "prototypes/rejoindre-activite.html",
+ "titre": "Rejoindre une activité",
+ "description": "Du fil à la rencontre, en onze étapes guidées : la publication « Rencontrer » et sa porte « Voir l'activité » peinte dès le premier affichage ; la fiche (date, lieu public sur une seule ligne, places, organisateur) ; « Je participe » ; une confirmation explicite dans le pied avec l'étape suivante (écrire aux participants, ajouter au calendrier, itinéraire, inviter) placée là où un second appui désinscrivait ; la discussion des participants ; le cas « complet » (liste d'attente annoncée, puis état qui dit la suite) ; et « Je ne peux plus venir », à l'écart, immédiat mais annulable. Toutes les fonctions montrées existent déjà dans l'application : la proposition les réorganise.",
+ "constats": [
+  "IRL-C50",
+  "IRL-C51",
+  "IRL-C52",
+  "IRL-C54",
+  "IRL-C55",
+  "IRL-C58",
+  "IRL-C62",
+  "IRL-C64",
+  "PCS-C01",
+  "PCS-C03",
+  "PCS-C06"
+ ]
+}

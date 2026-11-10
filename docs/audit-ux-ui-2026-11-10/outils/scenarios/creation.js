@@ -108,8 +108,11 @@ module.exports = {
         await page.locator(".v6-passio .v6-lien").click(); await page.waitForTimeout(1500);
         await prendre({
           id: "CRE-004", titre: "Choix de la passion — « Associer cette publication à une passion »",
-          zooms: [{ nom: "entete", titre: "Titre et consigne", sel: ".modal .modal-title", marge: 40 }],
-          annotationsAvant: [{ n: 1, sel: ".modal .psel-item", texte: "« + » sur chaque ligne : ajouter… à quoi ?" }],
+          zooms: [{ nom: "entete", titre: "Titre, consigne et fermeture", sel: ".modal .psel-titre", marge: 16 }],
+          annotationsAvant: [
+            { n: 1, sel: ".modal .psel-item-plus", texte: "« + » sur chaque ligne : ajouter… à quoi ?" },
+            { n: 2, sel: ".modal .psel-titre", texte: "Le titre passe sous le bouton Fermer" },
+          ],
         });
         await page.locator(".modal input").first().fill("Escalade"); await page.waitForTimeout(1200);
         await page.locator(".modal .psel-item", { hasText: "Escalade de bloc" }).first().click(); await page.waitForTimeout(700);
@@ -257,7 +260,7 @@ module.exports = {
         await viderToasts(page);
         await studio(page);
         await page.locator("#postText").fill("Publication que le serveur refuse.");
-        await page.locator("[data-v6-publier]").click(); await page.waitForTimeout(5600);
+        await page.locator("[data-v6-publier]").click(); await page.waitForTimeout(1500);
         await prendre({
           id: "CRE-014", titre: "Publication refusée par le serveur (403 simulé)",
           note: "Refus SIMULÉ : page.route répond 403 à l'insert `posts`.",

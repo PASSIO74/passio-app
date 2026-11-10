@@ -1,0 +1,159 @@
+{
+ "id": "IRL-143",
+ "domaine": "irl-fiche",
+ "scenario": "modales",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Gérer l'activité (organisatrice)",
+ "note": "Modifier, Prévenir les inscrits, Co-organisateurs, Annuler l'événement, Supprimer définitivement, Fermer. Annuler a le même style que Modifier ; Annuler et Supprimer passent par un `confirm()` natif.",
+ "prisLe": "2026-11-10T18:05:29.079Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": "Gérer l'événement",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/irl-fiche/IRL-143--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 28482,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Annuler l'événement » (prévient tous les inscrits) a l'air d'une action ordinaire.",
+   "x": 0.5,
+   "y": 0.823,
+   "w": 0.908,
+   "h": 0.05,
+   "sel": "#modalContent .btn:nth-of-type(5)",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 8,
+   "sous44": [
+    {
+     "el": "div#modalContent > button.btn.ghost",
+     "texte": "Modifier les informations",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.ghost",
+     "texte": "Prévenir les inscrits",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.ghost",
+     "texte": "Co-organisateurs (0)",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.ghost",
+     "texte": "Annuler l'événement",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.ghost",
+     "texte": "Supprimer définitivement",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > button.btn.secondary",
+     "texte": "Fermer",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#modalContent > button.btn.ghost",
+     "texte": "Supprimer définitivement",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 13
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/irl-fiche/IRL-143--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29194,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Les actions qui touchent les inscrits sont séparées et signalées.",
+   "x": 0.5,
+   "y": 0.821,
+   "w": 0.908,
+   "h": 0.05,
+   "sel": "#modalContent > .btn:nth-of-type(5)",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "La suppression, rare et irréversible, en lien discret (confirmation dans l'app, pas `confirm()`).",
+   "x": 0.5,
+   "y": 0.882,
+   "w": 0.908,
+   "h": 0.052,
+   "sel": "#modalContent > .btn:nth-of-type(6)",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

@@ -1,0 +1,149 @@
+{
+ "id": "CRE-020",
+ "domaine": "creation",
+ "scenario": "bobine",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Bobine — feuille « Ta bobine » (description, passion, couverture, activité)",
+ "note": "",
+ "prisLe": "2026-11-10T18:18:29.270Z",
+ "ecran": {
+  "ecran": "screen-feed",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#media"
+ },
+ "avant": {
+  "fichier": "captures/creation/CRE-020--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 26896,
+  "zooms": [
+   {
+    "nom": "couverture",
+    "titre": "Couverture",
+    "fichier": "captures/creation/CRE-020--m390--avant-zoom-couverture.webp",
+    "largeur": 748,
+    "hauteur": 124,
+    "octets": 2430
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Passion » : liste du compte, pas la recherche du Studio",
+   "x": 0.5,
+   "y": 0.698,
+   "w": 0.918,
+   "h": 0.06,
+   "sel": "#v7BobinePassion",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Choisir une image » : 29 px de haut",
+   "x": 0.328,
+   "y": 0.794,
+   "w": 0.297,
+   "h": 0.034,
+   "sel": "#v7BobineCoverBtn",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 6,
+   "sous44": [
+    {
+     "el": "button#v7BobineCoverBtn",
+     "texte": "Choisir une image",
+     "w": 115.7,
+     "h": 29,
+     "enLigne": false
+    },
+    {
+     "el": "button#v7BobinePublier",
+     "texte": "Publier ma bobine",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 2
+  },
+  "champs": {
+   "total": 3,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 6,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/creation/CRE-020--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 27400,
+  "zooms": [
+   {
+    "nom": "couverture",
+    "titre": "Couverture",
+    "fichier": "captures/creation/CRE-020--m390--apres-zoom-couverture.webp",
+    "largeur": 748,
+    "hauteur": 124,
+    "octets": 3150
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Même mot que le Studio (« Publier dans ») — et même sélecteur",
+   "x": 0.5,
+   "y": 0.698,
+   "w": 0.918,
+   "h": 0.06,
+   "sel": "#v7BobinePassion",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "44 px",
+   "x": 0.361,
+   "y": 0.794,
+   "w": 0.362,
+   "h": 0.052,
+   "sel": "#v7BobineCoverBtn",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

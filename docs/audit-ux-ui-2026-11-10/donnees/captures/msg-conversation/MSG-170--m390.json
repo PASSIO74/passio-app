@@ -1,0 +1,240 @@
+{
+ "id": "MSG-170",
+ "domaine": "msg-conversation",
+ "scenario": "vocal",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Enregistrement vocal en cours (doigt maintenu)",
+ "note": "SIMULÉ : le micro est remplacé par un flux audio de synthèse (le banc n'a pas de micro) ; le conteneur est forcé en webm, le Chromium du banc n'encodant pas l'AAC.",
+ "prisLe": "2026-11-10T18:11:25.732Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-170--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 31080,
+  "zooms": [
+   {
+    "nom": "bas",
+    "titre": "Barre d'enregistrement et barre de saisie",
+    "fichier": "captures/msg-conversation/MSG-170--m390--avant-zoom-bas.webp",
+    "largeur": 780,
+    "hauteur": 356,
+    "octets": 7484
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Enregistrement en cours… » : rien ne dit que relâcher envoie.",
+   "x": 0.5,
+   "y": 0.899,
+   "w": 1,
+   "h": 0.056,
+   "sel": "#voiceRecordBar",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "✕ : 18 × 30 px, sans nom ; à toucher d'un second doigt pendant que le premier tient le micro.",
+   "x": 0.941,
+   "y": 0.9,
+   "w": 0.046,
+   "h": 0.036,
+   "sel": "#voiceRecordBar button",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Micro sans état visuel (la classe .record-active n'est jamais posée) ; glisser hors du bouton puis relâcher envoie.",
+   "x": 0.81,
+   "y": 0.967,
+   "w": 0.092,
+   "h": 0.043,
+   "sel": "#btnVoice",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 11,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Inès Moreau Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "div#voiceRecordBar > button",
+     "texte": "✕",
+     "w": 18,
+     "h": 30,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 8
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 10,
+   "indetermines": 1,
+   "sousSeuil": [
+    {
+     "el": "span#voiceRecordTimer",
+     "texte": "0:02",
+     "ratio": 3.15,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#f6e7ed",
+     "px": 13
+    },
+    {
+     "el": "div#voiceRecordBar > span",
+     "texte": "Enregistrement en cours…",
+     "ratio": 4.36,
+     "seuil": 4.5,
+     "couleur": "#6e6987",
+     "fond": "#f6e7ed",
+     "px": 12
+    }
+   ],
+   "nbSousSeuil": 2
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:63457/docs/audit-ux-ui-2026-11-10/out"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-170--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29926,
+  "zooms": [
+   {
+    "nom": "bas",
+    "titre": "Barre d'enregistrement",
+    "fichier": "captures/msg-conversation/MSG-170--m390--apres-zoom-bas.webp",
+    "largeur": 780,
+    "hauteur": 226,
+    "octets": 7356
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "La barre de saisie devient la barre d'enregistrement et annonce les deux issues.",
+   "x": 0.626,
+   "y": 0.962,
+   "w": 0.439,
+   "h": 0.037,
+   "sel": ".maq-rec-c",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Annuler » : 44 px, nommé.",
+   "x": 0.121,
+   "y": 0.962,
+   "w": 0.191,
+   "h": 0.052,
+   "sel": ".maq-rec-x",
+   "trouve": true
+  },
+  {
+   "n": 3,
+   "texte": "Micro en état actif ; glisser à gauche de plus de 80 px puis relâcher annule.",
+   "x": 0.918,
+   "y": 0.962,
+   "w": 0.113,
+   "h": 0.052,
+   "sel": "#btnVoice",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

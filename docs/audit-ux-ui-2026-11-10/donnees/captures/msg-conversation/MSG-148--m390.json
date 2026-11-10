@@ -1,0 +1,132 @@
+{
+ "id": "MSG-148",
+ "domaine": "msg-conversation",
+ "scenario": "menu-message",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Appui long : la feuille s'ouvre sous le doigt encore posé",
+ "note": "Doigt maintenu depuis 0,8 s (appui tactile CDP), pas encore relâché. Dans le banc, relâcher ici déclenche « Répondre » (sonde 03c). À confirmer sur appareil réel.",
+ "prisLe": "2026-11-10T18:06:06.931Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "ouverte",
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-148--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 22954,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Position du doigt : il se trouve sur la ligne « Répondre » de la feuille qui vient d'apparaître.",
+   "x": 0.442,
+   "y": 0.667,
+   "w": null,
+   "h": null,
+   "sel": null,
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 13,
+   "sous44": [
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "❤️",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "😂",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "👍",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "😮",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "😢",
+     "w": 35.6,
+     "h": 35,
+     "enLigne": false
+    },
+    {
+     "el": "div#modalContent > div > span",
+     "texte": "🔥",
+     "w": 35.6,
+     "h": 26,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 5,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "div#modalContent > div.csetting-item > div.csetting-label",
+     "texte": "Supprimer pour moi",
+     "ratio": 3.76,
+     "seuil": 4.5,
+     "couleur": "#ef4444",
+     "fond": "#ffffff",
+     "px": 14
+    }
+   ],
+   "nbSousSeuil": 1
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

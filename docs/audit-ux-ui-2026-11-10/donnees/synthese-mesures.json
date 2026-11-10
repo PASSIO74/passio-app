@@ -1,0 +1,697 @@
+{
+ "genereLe": "2026-11-10T17:11:50.143Z",
+ "fiches": 43,
+ "fichesMesurees": 43,
+ "parVue": {
+  "d1440": {
+   "captures": 6,
+   "avecPetiteCible": 6,
+   "petitesCibles": 78,
+   "avecChampSous16": 0,
+   "avecContraste": 0,
+   "contrastes": 0,
+   "debordePage": 0
+  },
+  "m320": {
+   "captures": 6,
+   "avecPetiteCible": 6,
+   "petitesCibles": 29,
+   "avecChampSous16": 0,
+   "avecContraste": 0,
+   "contrastes": 0,
+   "debordePage": 0
+  },
+  "m360": {
+   "captures": 6,
+   "avecPetiteCible": 6,
+   "petitesCibles": 29,
+   "avecChampSous16": 0,
+   "avecContraste": 0,
+   "contrastes": 0,
+   "debordePage": 0
+  },
+  "m390": {
+   "captures": 13,
+   "avecPetiteCible": 13,
+   "petitesCibles": 79,
+   "avecChampSous16": 0,
+   "avecContraste": 0,
+   "contrastes": 0,
+   "debordePage": 0
+  },
+  "m430": {
+   "captures": 6,
+   "avecPetiteCible": 6,
+   "petitesCibles": 31,
+   "avecChampSous16": 0,
+   "avecContraste": 0,
+   "contrastes": 0,
+   "debordePage": 0
+  },
+  "t768": {
+   "captures": 6,
+   "avecPetiteCible": 6,
+   "petitesCibles": 52,
+   "avecChampSous16": 0,
+   "avecContraste": 0,
+   "contrastes": 0,
+   "debordePage": 0
+  }
+ },
+ "cibles": [
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-001/m320",
+    "SOC-001/m360",
+    "SOC-001/m390",
+    "SOC-001/m430",
+    "SOC-001/t768",
+    "SOC-002/d1440",
+    "SOC-002/m320",
+    "SOC-002/m360",
+    "SOC-002/m390",
+    "SOC-002/m430",
+    "SOC-002/t768"
+   ],
+   "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+   "texte": "Explorer",
+   "w": 40,
+   "h": 44,
+   "nbCaptures": 43
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-001/m320",
+    "SOC-001/m360",
+    "SOC-001/m390",
+    "SOC-001/m430",
+    "SOC-001/t768",
+    "SOC-002/d1440",
+    "SOC-002/m320",
+    "SOC-002/m360",
+    "SOC-002/m390",
+    "SOC-002/m430",
+    "SOC-002/t768"
+   ],
+   "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+   "texte": "Notifications",
+   "w": 41,
+   "h": 44,
+   "nbCaptures": 43
+  },
+  {
+   "captures": [
+    "SOC-002/d1440",
+    "SOC-002/m320",
+    "SOC-002/m360",
+    "SOC-002/m390",
+    "SOC-002/m430",
+    "SOC-002/t768",
+    "SOC-003/d1440",
+    "SOC-003/m320",
+    "SOC-003/m360",
+    "SOC-003/m390",
+    "SOC-003/m430",
+    "SOC-003/t768"
+   ],
+   "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+   "texte": "Mon profil",
+   "w": 170,
+   "h": 36,
+   "nbCaptures": 35
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-001/t768",
+    "SOC-002/d1440",
+    "SOC-002/t768",
+    "SOC-003/d1440",
+    "SOC-003/t768",
+    "SOC-004/d1440",
+    "SOC-004/t768",
+    "SOC-005/d1440",
+    "SOC-005/t768",
+    "SOC-006/d1440",
+    "SOC-006/t768"
+   ],
+   "el": "button#btnAttach",
+   "texte": "Pièce jointe",
+   "w": 36,
+   "h": 36,
+   "nbCaptures": 12
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-001/t768",
+    "SOC-002/d1440",
+    "SOC-002/t768",
+    "SOC-003/d1440",
+    "SOC-003/t768",
+    "SOC-004/d1440",
+    "SOC-004/t768",
+    "SOC-005/d1440",
+    "SOC-005/t768",
+    "SOC-006/d1440",
+    "SOC-006/t768"
+   ],
+   "el": "button#btnEmoji",
+   "texte": "Emoji ou GIF",
+   "w": 36,
+   "h": 36,
+   "nbCaptures": 12
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-001/t768",
+    "SOC-002/d1440",
+    "SOC-002/t768",
+    "SOC-003/d1440",
+    "SOC-003/t768",
+    "SOC-004/d1440",
+    "SOC-004/t768",
+    "SOC-005/d1440",
+    "SOC-005/t768",
+    "SOC-006/d1440",
+    "SOC-006/t768"
+   ],
+   "el": "textarea#convFpInput",
+   "texte": "Message…",
+   "w": 206,
+   "h": 42,
+   "nbCaptures": 12
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-001/m320",
+    "SOC-001/m360",
+    "SOC-001/m390",
+    "SOC-001/m430",
+    "SOC-001/t768",
+    "SOC-011/m390",
+    "SOC-021/m390"
+   ],
+   "el": "div#feedList > article.post > div.post-header > div.avatar",
+   "texte": "Profil de Léa Fontaine",
+   "w": 40,
+   "h": 40,
+   "nbCaptures": 8
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-001/m320",
+    "SOC-001/m360",
+    "SOC-001/m390",
+    "SOC-001/m430",
+    "SOC-001/t768",
+    "SOC-011/m390",
+    "SOC-021/m390"
+   ],
+   "el": "div#feedList > article.post > div.post-header > div.post-author",
+   "texte": "Léa Fontaine 🎸 Musique · 12 min",
+   "w": 113.8,
+   "h": 36,
+   "nbCaptures": 8
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-001/m320",
+    "SOC-001/m360",
+    "SOC-001/m390",
+    "SOC-001/m430",
+    "SOC-001/t768",
+    "SOC-011/m390",
+    "SOC-021/m390"
+   ],
+   "el": "body.screen-feed-active > div.app-shell > div.app-topbar > div.topbar-left",
+   "texte": "Mon profil",
+   "w": 170,
+   "h": 36,
+   "nbCaptures": 8
+  },
+  {
+   "captures": [
+    "SOC-003/d1440",
+    "SOC-003/m320",
+    "SOC-003/m360",
+    "SOC-003/m390",
+    "SOC-003/m430",
+    "SOC-003/t768",
+    "SOC-013/m390"
+   ],
+   "el": "div.explorer-hero > div > div > button",
+   "texte": "OK",
+   "w": 40.9,
+   "h": 28,
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-006/d1440",
+    "SOC-006/m320",
+    "SOC-006/m360",
+    "SOC-006/m390",
+    "SOC-006/m430",
+    "SOC-006/t768",
+    "SOC-016/m390"
+   ],
+   "el": "div#postMoodRow > button.pill",
+   "texte": "Tous",
+   "w": 48.7,
+   "h": 32,
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-006/d1440",
+    "SOC-006/m320",
+    "SOC-006/m360",
+    "SOC-006/m390",
+    "SOC-006/m430",
+    "SOC-006/t768",
+    "SOC-016/m390"
+   ],
+   "el": "div#postMoodRow > button.pill.active",
+   "texte": "Idées",
+   "w": 55,
+   "h": 40,
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-006/d1440",
+    "SOC-006/m320",
+    "SOC-006/m360",
+    "SOC-006/m390",
+    "SOC-006/m430",
+    "SOC-006/t768",
+    "SOC-016/m390"
+   ],
+   "el": "div#postMoodRow > button.pill",
+   "texte": "Apprendre",
+   "w": 79.3,
+   "h": 40,
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-006/d1440",
+    "SOC-006/m320",
+    "SOC-006/m360",
+    "SOC-006/m390",
+    "SOC-006/m430",
+    "SOC-006/t768",
+    "SOC-016/m390"
+   ],
+   "el": "div#postMoodRow > button.pill",
+   "texte": "Rencontrer",
+   "w": 80.9,
+   "h": 40,
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-005/d1440",
+    "SOC-005/m320",
+    "SOC-005/m360",
+    "SOC-005/m390",
+    "SOC-005/m430",
+    "SOC-005/t768",
+    "SOC-015/m390"
+   ],
+   "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+   "texte": "3 ABONNÉS",
+   "w": 82.4,
+   "h": 40,
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-005/d1440",
+    "SOC-005/m320",
+    "SOC-005/m360",
+    "SOC-005/m390",
+    "SOC-005/m430",
+    "SOC-005/t768",
+    "SOC-015/m390"
+   ],
+   "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+   "texte": "1 PASSIONS",
+   "w": 82.4,
+   "h": 40,
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-003/d1440",
+    "SOC-003/m320",
+    "SOC-003/m360",
+    "SOC-003/m390",
+    "SOC-003/m430",
+    "SOC-003/t768",
+    "SOC-013/m390"
+   ],
+   "el": "input#explorerSearch",
+   "texte": "Enduro, guitare électrique, un pseudo…",
+   "w": 148.1,
+   "h": 23,
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-005/d1440",
+    "SOC-005/m320",
+    "SOC-005/m360",
+    "SOC-005/m390",
+    "SOC-005/m430",
+    "SOC-005/t768",
+    "SOC-015/m390"
+   ],
+   "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+   "texte": "3 ABONNEMENTS",
+   "w": 89.1,
+   "h": 40,
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-002/d1440",
+    "SOC-003/d1440",
+    "SOC-004/d1440",
+    "SOC-005/d1440",
+    "SOC-006/d1440"
+   ],
+   "el": "div#convSettingsPanel > div.conv-fp-head > button.conv-fp-back",
+   "texte": "Retour",
+   "w": 36,
+   "h": 36,
+   "nbCaptures": 6
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-002/d1440",
+    "SOC-003/d1440",
+    "SOC-004/d1440",
+    "SOC-005/d1440",
+    "SOC-006/d1440"
+   ],
+   "el": "div#convFilesPanel > div.conv-fp-head > button.conv-fp-back",
+   "texte": "Retour",
+   "w": 36,
+   "h": 36,
+   "nbCaptures": 6
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-002/d1440",
+    "SOC-003/d1440",
+    "SOC-004/d1440",
+    "SOC-005/d1440",
+    "SOC-006/d1440"
+   ],
+   "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+   "texte": "Ajouter un GIF",
+   "w": 36,
+   "h": 36,
+   "nbCaptures": 6
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-002/d1440",
+    "SOC-003/d1440",
+    "SOC-004/d1440",
+    "SOC-005/d1440",
+    "SOC-006/d1440"
+   ],
+   "el": "button#btnVoice",
+   "texte": "Maintenir pour enregistrer",
+   "w": 36,
+   "h": 36,
+   "nbCaptures": 6
+  },
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-002/d1440",
+    "SOC-003/d1440",
+    "SOC-004/d1440",
+    "SOC-005/d1440",
+    "SOC-006/d1440"
+   ],
+   "el": "button#convFpSendBtn",
+   "texte": "Envoyer le message",
+   "w": 40,
+   "h": 40,
+   "nbCaptures": 6
+  },
+  {
+   "captures": [
+    "SOC-005/d1440",
+    "SOC-005/m430",
+    "SOC-005/t768"
+   ],
+   "el": "div#myPosts > div.empty > button.btn.primary",
+   "texte": "Créer un post",
+   "w": 121.8,
+   "h": 26,
+   "nbCaptures": 3
+  },
+  {
+   "captures": [
+    "SOC-001/m430",
+    "SOC-011/m390"
+   ],
+   "el": "div#feedList > article.post > div.post-header > div.avatar",
+   "texte": "Profil de Marie-Charlotte de La Rochefoucauld-Montmorency",
+   "w": 40,
+   "h": 40,
+   "nbCaptures": 2
+  },
+  {
+   "captures": [
+    "SOC-011/m390"
+   ],
+   "el": "div#feedList > article.post > div",
+   "texte": "",
+   "w": 318,
+   "h": 2,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-012/m390"
+   ],
+   "el": "div.event-card > div.event-footer > div.attendees > div.avatar.sm",
+   "texte": "📷",
+   "w": 24,
+   "h": 30,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-011/m390"
+   ],
+   "el": "div#feedList > article.post > div.post-header > button.post-menu-btn",
+   "texte": "Signaler ou bloquer",
+   "w": 30,
+   "h": 30,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-012/m390"
+   ],
+   "el": "div.event-card > div.event-footer > div.attendees > div.avatar.sm",
+   "texte": "💃",
+   "w": 30,
+   "h": 30,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-012/m390"
+   ],
+   "el": "div.event-card > div.event-footer > div.attendees > div.avatar.sm",
+   "texte": "🎧",
+   "w": 30,
+   "h": 30,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-011/m390"
+   ],
+   "el": "div#feedList > article.post > div.post-actions > span.post-action",
+   "texte": "😊",
+   "w": 44,
+   "h": 27,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-011/m390"
+   ],
+   "el": "div#feedList > article.post > div.post-actions > span.post-action",
+   "texte": "🤍 0",
+   "w": 45,
+   "h": 27,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-011/m390"
+   ],
+   "el": "div#feedList > article.post > div.post-actions > span.post-action",
+   "texte": "💬 0",
+   "w": 45,
+   "h": 27,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-012/m390"
+   ],
+   "el": "div.event-card > div.post-actions > span.event-react-chip-holder > button.ev-react-chip",
+   "texte": "🔥 1",
+   "w": 50.2,
+   "h": 25,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-011/m390"
+   ],
+   "el": "div#feedList > article.post > div.post-actions > span.post-action",
+   "texte": "Partager",
+   "w": 44,
+   "h": 31,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-001/t768"
+   ],
+   "el": "div#feedList > article.post > div.post-header > div.avatar",
+   "texte": "Profil de Malik Benali",
+   "w": 40,
+   "h": 40,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-012/m390"
+   ],
+   "el": "div#eventList > div.event-card > div.event-footer > button.btn.small",
+   "texte": "+ Rejoindre",
+   "w": 80.6,
+   "h": 29,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-001/t768"
+   ],
+   "el": "div#feedList > article.post > div.post-body",
+   "texte": "Chevalet recollé, cordes neuves. Elle sonne mieux qu'à l'ach",
+   "w": 241,
+   "h": 22.5,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-001/t768"
+   ],
+   "el": "div#feedList > article.post > div.post-body",
+   "texte": "Qui est partant pour la salle jeudi 19 h ? On se retrouve de",
+   "w": 241,
+   "h": 22.5,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-011/m390"
+   ],
+   "el": "div#feedList > article.post > div.post-body",
+   "texte": "Répétition ouverte samedi.",
+   "w": 318,
+   "h": 22,
+   "nbCaptures": 1
+  },
+  {
+   "captures": [
+    "SOC-001/t768"
+   ],
+   "el": "div#feedList > article.post > div.post-header > div.post-author",
+   "texte": "Malik Benali 🏋️ Sport · 55 min",
+   "w": 241,
+   "h": 36,
+   "nbCaptures": 1
+  }
+ ],
+ "champs": [],
+ "pairesDeContraste": [],
+ "contrastes": [],
+ "sansNom": [],
+ "champsSansEtiquette": [
+  {
+   "captures": [
+    "SOC-001/d1440",
+    "SOC-001/t768",
+    "SOC-002/d1440",
+    "SOC-002/t768",
+    "SOC-003/d1440",
+    "SOC-003/t768",
+    "SOC-004/d1440",
+    "SOC-004/t768",
+    "SOC-005/d1440",
+    "SOC-005/t768",
+    "SOC-006/d1440",
+    "SOC-006/t768"
+   ],
+   "el": "textarea#convFpInput",
+   "placeholder": "Message…",
+   "nbCaptures": 12
+  },
+  {
+   "captures": [
+    "SOC-003/d1440",
+    "SOC-003/m320",
+    "SOC-003/m360",
+    "SOC-003/m390",
+    "SOC-003/m430",
+    "SOC-003/t768",
+    "SOC-013/m390"
+   ],
+   "el": "input#explorerSearch",
+   "placeholder": "Enduro, guitare électrique, un pseudo…",
+   "nbCaptures": 7
+  },
+  {
+   "captures": [
+    "SOC-004/d1440",
+    "SOC-004/m320",
+    "SOC-004/m360",
+    "SOC-004/m390",
+    "SOC-004/m430",
+    "SOC-004/t768",
+    "SOC-014/m390"
+   ],
+   "el": "input#convGlobalSearch",
+   "placeholder": "Rechercher une conversation ou un message…",
+   "nbCaptures": 7
+  }
+ ],
+ "debordements": [],
+ "erreursJs": []
+}

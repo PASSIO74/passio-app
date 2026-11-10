@@ -1,0 +1,209 @@
+{
+ "id": "PRO-004",
+ "domaine": "profils",
+ "scenario": "mon-profil-filtre-vide",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Mon profil — état vide filtré : « Touche « Toutes » » vise un bouton absent",
+ "note": "",
+ "prisLe": "2026-11-10T18:15:53.139Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#profiles"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-004--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 49102,
+  "zooms": [
+   {
+    "nom": "texte",
+    "titre": "Le texte de sortie",
+    "fichier": "captures/profils/PRO-004--m390--avant-zoom-texte.webp",
+    "largeur": 740,
+    "hauteur": 394,
+    "octets": 11220
+   }
+  ]
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "« Toutes » n'existe plus sur cet écran",
+   "x": 0.5,
+   "y": 0.712,
+   "w": 0.641,
+   "h": 0.041,
+   "sel": "#myPosts .empty-text",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Le rail n'a que des bulles de passion",
+   "x": 0.5,
+   "y": 0.319,
+   "w": 0.918,
+   "h": 0.079,
+   "sel": "#v9ProfilePassions",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 26,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileBio",
+     "texte": "Guitare le soir, rando le dimanche. Je photographie les conc",
+     "w": 241,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileRs > a.main-profile-rs-link",
+     "texte": "📸 instagram",
+     "w": 91.3,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileRs > a.main-profile-rs-link",
+     "texte": "▶️ youtube",
+     "w": 82.3,
+     "h": 27,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "22 ABONNÉS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 PASSIONS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#mainProfileCard > div.main-profile-body > div.main-profile-stats > div.main-profile-stat",
+     "texte": "3 ABONNEMENTS",
+     "w": 108,
+     "h": 40,
+     "enLigne": false
+    },
+    {
+     "el": "div#myPosts > div.empty > button.btn.primary",
+     "texte": "Créer un post",
+     "w": 121.8,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 10
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 14,
+   "indetermines": 13,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-004--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 49882,
+  "zooms": [
+   {
+    "nom": "texte",
+    "titre": "Le texte de sortie",
+    "fichier": "captures/profils/PRO-004--m390--apres-zoom-texte.webp",
+    "largeur": 740,
+    "hauteur": 394,
+    "octets": 12174
+   }
+  ]
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "Le geste de sortie réel est nommé",
+   "x": 0.5,
+   "y": 0.712,
+   "w": 0.641,
+   "h": 0.041,
+   "sel": "#myPosts .empty-text",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Bouton qui reprend le filtre",
+   "x": 0.5,
+   "y": 0.767,
+   "w": 0.397,
+   "h": 0.05,
+   "sel": "#myPosts .empty .btn.primary",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:51826/index.html#",
+   "Audio failed: http://127.0.0.1:51826/index.html#",
+   "Audio failed: http://127.0.0.1:51826/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

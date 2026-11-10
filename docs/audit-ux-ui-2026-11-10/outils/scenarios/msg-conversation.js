@@ -155,6 +155,8 @@ const CSS = {
   // MSG-C79 — fond sombre
   sombre: `#convFpThread .conv-bubble-time, #convFpThread > div:not(.conv-bubble-wrap) span { color: rgba(255,255,255,.78) !important; }
     #convFpThread > div:not(.conv-bubble-wrap) > div { background: rgba(255,255,255,.22) !important; }`,
+  // MSG-C89 — les toasts passent AU-DESSUS du panneau de conversation (et restent affichés pour la capture)
+  toasts: `.toast-stack { z-index: 100000 !important; bottom: 84px !important; } .toast-stack .toast { animation: none !important; opacity: 1 !important; max-width: 92%; text-align:center; border-radius:18px; }`,
   // MSG-C78 / C87 — bandeau à la place de la barre de saisie
   bandeau: `
     .maq-bandeau { flex:1; display:flex; align-items:center; gap:12px; min-height:44px; font-size:13px; color:var(--text); }

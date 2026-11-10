@@ -1,0 +1,279 @@
+{
+ "id": "MSG-104",
+ "domaine": "msg-conversation",
+ "scenario": "fil-1a1",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Séparateurs de jour : « Aujourd'hui » deux fois",
+ "note": "Les messages du haut datent d'hier (−23 h), ceux du bas d'aujourd'hui : même libellé. Plus haut, le bloc d'avant-hier (−47 h) est intitulé « Hier ».",
+ "prisLe": "2026-11-10T18:02:05.370Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#conv"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-104--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29530,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Messages d'HIER libellés « Aujourd'hui » (moins de 24 h écoulées).",
+   "x": 0.5,
+   "y": 0.112,
+   "w": null,
+   "h": null,
+   "sel": null,
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Messages du jour : même libellé « Aujourd'hui ».",
+   "x": 0.5,
+   "y": 0.811,
+   "w": null,
+   "h": null,
+   "sel": null,
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 19,
+   "sous44": [
+    {
+     "el": "div#convFpHead > button.conv-fp-back",
+     "texte": "Retour",
+     "w": 40,
+     "h": 48,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-avatar",
+     "texte": "",
+     "w": 38,
+     "h": 38,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-fp-head-info",
+     "texte": "Léa Fontaine Voir le profil",
+     "w": 224,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#convFpHead > div.conv-actions > button.conv-action-btn",
+     "texte": "",
+     "w": 38,
+     "h": 46,
+     "enLigne": false
+    },
+    {
+     "el": "button#pb_aud_mlea10",
+     "texte": "▶",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.them > div.conv-bubble.them > div > div",
+     "texte": "",
+     "w": 68,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.them > div.conv-bubble.them > div > button.voice-speed-btn",
+     "texte": "1×",
+     "w": 24,
+     "h": 18,
+     "enLigne": false
+    },
+    {
+     "el": "button#pb_aud_mlea11",
+     "texte": "▶",
+     "w": 34,
+     "h": 34,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
+     "texte": "",
+     "w": 68,
+     "h": 28,
+     "enLigne": false
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > button.voice-speed-btn",
+     "texte": "1×",
+     "w": 24,
+     "h": 18,
+     "enLigne": false
+    },
+    {
+     "el": "button#btnAttach",
+     "texte": "Pièce jointe",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "textarea#convFpInput",
+     "texte": "Message…",
+     "w": 156,
+     "h": 42.4,
+     "enLigne": false
+    },
+    {
+     "el": "div#conv-fullpage > div.conv-toolbar > button.conv-tool-btn",
+     "texte": "Ajouter un GIF",
+     "w": 42,
+     "h": 44,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 13
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 23,
+   "indetermines": 0,
+   "sousSeuil": [
+    {
+     "el": "span#dur_aud_mlea11",
+     "texte": "0:07",
+     "ratio": 1.06,
+     "seuil": 4.5,
+     "couleur": "#fdfdfe",
+     "fond": "#f7f5fc",
+     "px": 11
+    },
+    {
+     "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > button.voice-speed-btn",
+     "texte": "1×",
+     "ratio": 1.07,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f8f7fd",
+     "px": 10
+    },
+    {
+     "el": "a > div > div > div",
+     "texte": "tablature-pont-re-mineur.pdf",
+     "ratio": 1.08,
+     "seuil": 4.5,
+     "couleur": "#ffffff",
+     "fond": "#f7f5fc",
+     "px": 13
+    },
+    {
+     "el": "a > div > div > div",
+     "texte": "Télécharger",
+     "ratio": 1.05,
+     "seuil": 4.5,
+     "couleur": "#fcfbfe",
+     "fond": "#f7f5fc",
+     "px": 10
+    }
+   ],
+   "nbSousSeuil": 4
+  },
+  "sansNom": [
+   {
+    "el": "div#convFpHead > div.conv-fp-head-avatar",
+    "html": "<div class=\"conv-fp-head-avatar\" style=\"background:url('http://127.0.0.1:52538/docs/audit-ux-ui-2026-11-10/out"
+   },
+   {
+    "el": "div.conv-bubble-wrap.them > div.conv-bubble.them > div > div",
+    "html": "<div style=\"flex:1;height:28px;background:rgba(139,92,246,0.12);border-radius:8px;overflow:hidden;cursor:point"
+   },
+   {
+    "el": "div.conv-bubble-wrap.me > div.conv-bubble.me > div > div",
+    "html": "<div style=\"flex:1;height:28px;background:rgba(255,255,255,0.2);border-radius:8px;overflow:hidden;cursor:point"
+   }
+  ],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "a > div > div > div",
+    "texte": "Programme-stage-lutherie-novembre-2026.pdf",
+    "mode": "ellipse"
+   },
+   {
+    "el": "a > div > div > div",
+    "texte": "maquette-pont-re-mineur.mp3",
+    "mode": "ellipse"
+   },
+   {
+    "el": "a > div > div > div",
+    "texte": "tablature-pont-re-mineur.pdf",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "textarea#convFpInput",
+    "placeholder": "Message…"
+   }
+  ]
+ },
+ "apres": {
+  "fichier": "captures/msg-conversation/MSG-104--m390--apres.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 29048,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Hier » : libellé calculé par jour calendaire.",
+   "x": 0.5,
+   "y": 0.112,
+   "w": null,
+   "h": null,
+   "sel": null,
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "« Aujourd'hui » n'apparaît qu'une fois.",
+   "x": 0.5,
+   "y": 0.811,
+   "w": null,
+   "h": null,
+   "sel": null,
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

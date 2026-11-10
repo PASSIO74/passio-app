@@ -1,0 +1,79 @@
+{
+ "id": "MSG-144",
+ "domaine": "msg-conversation",
+ "scenario": "menu-message",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "« Transférer vers… »",
+ "note": "",
+ "prisLe": "2026-11-10T18:06:19.210Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": "Transférer vers…",
+  "landing": false,
+  "onboarding": false,
+  "conversation": true,
+  "bobines": false,
+  "titre": "PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-144--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 26402,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "La conversation d'origine est proposée en premier ; un toucher envoie sans confirmation.",
+   "x": 0.5,
+   "y": 0.602,
+   "w": 0.908,
+   "h": 0.066,
+   "sel": "#modalContent .csetting-item",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [],
+   "nbSous44": 0
+  },
+  "champs": {
+   "total": 0,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 7,
+   "indetermines": 0,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": []
+}

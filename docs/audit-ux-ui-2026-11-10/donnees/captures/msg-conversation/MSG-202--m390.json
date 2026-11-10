@@ -1,0 +1,139 @@
+{
+ "id": "MSG-202",
+ "domaine": "msg-conversation",
+ "scenario": "fond-retour",
+ "vue": "m390",
+ "gabarit": "Mobile 390×844",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Retour système, panneau emoji ouvert : le panneau reste sur la liste",
+ "note": "",
+ "prisLe": "2026-11-10T18:15:19.709Z",
+ "ecran": {
+  "ecran": "screen-messages",
+  "modale": null,
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#messages"
+ },
+ "avant": {
+  "fichier": "captures/msg-conversation/MSG-202--m390--avant.webp",
+  "largeur": 780,
+  "hauteur": 1688,
+  "octets": 87566,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "La conversation est fermée ; son panneau emoji (position fixe, hors du panneau de conversation) flotte sur la liste.",
+   "x": 0.5,
+   "y": 0.751,
+   "w": 1,
+   "h": 0.355,
+   "sel": "#convEmojiPanel",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 390,
+   "h": 844
+  },
+  "cibles": {
+   "total": 17,
+   "sous44": [
+    {
+     "el": "body > div.app-shell > div.app-topbar > div.topbar-left",
+     "texte": "Mon profil",
+     "w": 174.5,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Explorer",
+     "w": 40,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div.app-shell > div.app-topbar > div.topbar-right > div.topbar-bell",
+     "texte": "Notifications",
+     "w": 41,
+     "h": 44,
+     "enLigne": false
+    },
+    {
+     "el": "div#emojiTopBar > button",
+     "texte": "Emoji",
+     "w": 183,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "div#emojiTopBar > button",
+     "texte": "GIF",
+     "w": 183,
+     "h": 36,
+     "enLigne": false
+    },
+    {
+     "el": "input#emojiSearchInput",
+     "texte": "Chercher…",
+     "w": 241,
+     "h": 39,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 6
+  },
+  "champs": {
+   "total": 2,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 15,
+   "indetermines": 7,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 390,
+   "elements": []
+  },
+  "tronques": [
+   {
+    "el": "div#messageList > div.msg-card.unread > div.msg-body > div.msg-preview.unread-preview",
+    "texte": "Parfait. À jeudi, et pensez à accorder avant d'arriver, on gagne un qu",
+    "mode": "ellipse"
+   }
+  ],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": [
+   {
+    "el": "input#convGlobalSearch",
+    "placeholder": "Rechercher une conversation ou un message…"
+   },
+   {
+    "el": "input#emojiSearchInput",
+    "placeholder": "Chercher…"
+   }
+  ]
+ },
+ "apres": null,
+ "annotations": [],
+ "erreurs": {
+  "js": [],
+  "console": []
+ },
+ "reseauRefuse": [
+  "https://api.klipy.com/v2/featured?key=YB8zOMaLbuuI8hTooVfBViUvkC864dT0rNh1XKzKCdwGe9v4Qbncs7nhc0sMOh12&limit=26&media_filter=tinygif,gif&locale=fr_FR&country=FR"
+ ]
+}
