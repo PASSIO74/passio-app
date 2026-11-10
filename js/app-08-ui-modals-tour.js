@@ -7077,7 +7077,12 @@ async function _rafraichirConversationsServeur(opts) {
     supaConvs.forEach(function (sc) {
       const lc = localConvs.find(function (x) { return x && x.id === sc.id; });
       if (!lc || !Array.isArray(lc.messages)) return;
-      const enAttente = lc.messages.filter(function (m) { return m && m.from === "me" && m.pj && (m.status === "sending" || m.status === "failed"); });
+      // ⚠️ ET MES BULLES TEXTE AUSSI, ET LE BROUILLON (ETAT-07, 2026-11-10). Le filtre
+      // portait `m.pj` : une bulle texte « envoi… » ou « réessayer » (refus, session
+      // morte, onze essais) disparaissait au démarrage, comme le brouillon tapé dans la
+      // conversation — alors que l'écran avait promis « le message reste, marqué échec ».
+      if (lc.draft && !sc.draft) sc.draft = lc.draft;
+      const enAttente = lc.messages.filter(function (m) { return m && m.from === "me" && (m.status === "sending" || m.status === "failed"); });
       if (!enAttente.length) return;
       const connus = new Set((sc.messages || []).map(function (m) { return m && m.id; }));
       sc.messages = (sc.messages || []).concat(enAttente.filter(function (m) { return !connus.has(m.id); }))

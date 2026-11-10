@@ -2056,6 +2056,11 @@ async function saveMainProfile() {
   }
 
   if (!state.user.general) state.user.general = {};
+  // ⚠️ INSTANTANÉ AVANT TOUTE ÉCRITURE (ETAT-03, 2026-11-10) : un refus du serveur rend
+  // cet état — jamais « Profil mis à jour » sur une ligne que la base n'a pas gardée.
+  const _avantGeneral = JSON.parse(JSON.stringify(state.user.general));
+  const _avantNom = state.user.name;
+  const _avantNomsPassions = (state.user.profiles || []).map(function (pr) { return pr && pr.name; });
   state.user.general.username = username;
   state.user.general.bio      = bio;
   state.user.general.rsLinks  = rsLinks;
@@ -2096,15 +2101,34 @@ async function saveMainProfile() {
   // `is_private` — et encore : `supaSavePublicProfile` le refusera si
   // `privacyChoisi` n'est pas posé (cf. le marqueur, plus haut dans cette
   // fonction). L'ancien appel republiait tout le profil depuis l'état local.
+  // ⚠️ `is_private` NE PART QUE SUR LE GESTE DE CETTE OUVERTURE (ETAT-03, 2026-11-10).
+  // `privacyChoisi` reste posé pour toujours et voyage entre appareils : s'y fier faisait
+  // repartir la valeur AFFICHÉE par la case à chaque enregistrement — celle de l'état local,
+  // périmé, quand la relecture serveur était lente ou en panne. Un compte rendu privé
+  // ailleurs redevenait public en enregistrant une bio.
   if (typeof supaSavePublicProfile === "function") {
-    try {
-      await supaSavePublicProfile({
-        username: state.user.general.username,
-        bio: state.user.general.bio,
-        rs_links: Array.isArray(state.user.general.rsLinks) ? state.user.general.rsLinks : [],
-        is_private: state.user.general.isPrivate,
-      });
-    } catch (e) {}
+    const champs = {
+      username: state.user.general.username,
+      bio: state.user.general.bio,
+      rs_links: Array.isArray(state.user.general.rsLinks) ? state.user.general.rsLinks : [],
+    };
+    if (window._privacyTouched === true) champs.is_private = state.user.general.isPrivate;
+    let enregistre = false;
+    try { enregistre = (await supaSavePublicProfile(champs)) !== false; } catch (e) { enregistre = false; }
+    // ⚠️ LE VERDICT SE LIT (ETAT-03). L'ancien appel l'avalait dans un `catch` vide et
+    // disait toujours « Profil mis à jour » : hors ligne ou sur un refus, la personne
+    // se croyait en compte privé pendant que sa ligne restait publique.
+    // Un visiteur n'a pas de ligne `profiles` : son profil vit sur l'appareil, et le
+    // refus serveur attendu (0 ligne) n'est pas un échec pour lui.
+    const compteReel = typeof _compteAuthReel === "function" ? _compteAuthReel() : true;
+    if (!enregistre && compteReel) {
+      state.user.general = _avantGeneral;
+      state.user.name = _avantNom;
+      (state.user.profiles || []).forEach(function (pr, i) { if (pr) pr.name = _avantNomsPassions[i]; });
+      saveState();
+      toast("Profil non enregistré — vérifie ta connexion et réessaie", "warning");
+      return;   // l'écran reste ouvert : la saisie n'est pas perdue
+    }
   }
   // Flush user_state immédiat (username/bio/rsLinks doivent être dans le blob sync).
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
