@@ -277,12 +277,12 @@
    "role": "connecté · propriétaire",
    "geste": "Crayon → Photo de profil → fichier",
    "observation": "observe",
-   "preuve": "sonde profils-07 (filechooser réel) ; passioOpenCropper app-06:1551 ; curseur 16 px, boutons 166 × 42",
+   "preuve": "sonde profils-07 (filechooser réel) ; passioOpenCropper app-06:1551 ; curseur 16 px, boutons 166 × 42 — vues : m360, m390",
    "problemes": [
     "PRO-C23"
    ],
    "proposition": "Curseur plus haut ; sinon garder.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-conserver",
    "justification": "Cercle, grille, zoom, Annuler/Valider clairs ; seul le curseur est petit. Capture de livrable non produite (arrêt pour limite d'usage)."
   },
@@ -294,12 +294,12 @@
    "role": "connecté · propriétaire",
    "geste": "Modifier → Changer (couverture) → fichier",
    "observation": "observe",
-   "preuve": "sonde profils-07 : recadreur z-index 6000, modale 10001, elementFromPoint au centre = #editBio",
+   "preuve": "sonde profils-07 : recadreur z-index 6000, modale 10001, elementFromPoint au centre = #editBio — vues : m360, m390",
    "problemes": [
     "PRO-C02"
    ],
    "proposition": "Recadreur au-dessus de la modale.",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Le geste paraît sans effet. Capture de livrable non produite (scénario « recadreur » prêt)."
   },
@@ -311,12 +311,12 @@
    "role": "connecté · propriétaire",
    "geste": "Fermer la modale",
    "observation": "observe",
-   "preuve": "sonde profils-07 : après closeModal, le recadreur oublié est au premier plan",
+   "preuve": "sonde profils-07 : après closeModal, le recadreur oublié est au premier plan — vues : m390",
    "problemes": [
     "PRO-C02"
    ],
    "proposition": "Disparaît avec la correction de PRO-C02.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-ameliorer",
    "justification": "Conséquence directe de PRO-C02."
   },
@@ -328,12 +328,12 @@
    "role": "connecté · propriétaire",
    "geste": "Photo de couverture → boucle.webm",
    "observation": "observe",
-   "preuve": "sonde profils-07 : aucun recadreur, aucun toast ; img.onerror → reject → catch muet (app-06:1611, 1689)",
+   "preuve": "sonde profils-07 : aucun recadreur, aucun toast ; img.onerror → reject → catch muet (app-06:1611, 1689) — vues : m390",
    "problemes": [
     "PRO-C18"
    ],
    "proposition": "Message « Ce fichier n'est pas une image ».",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-ameliorer",
    "justification": "Échec silencieux."
   },
@@ -362,7 +362,7 @@
    "role": "connecté · visiteur suivi",
    "geste": "Abonnés → Léa",
    "observation": "observe",
-   "preuve": "sonde profils-03 (vrai geste) ; openUserProfile app-04:4287 ; boutons 173 × 39, 12 px ; ⋯ et × 34 px ; deux « × » superposés",
+   "preuve": "sonde profils-03 (vrai geste) ; openUserProfile app-04:4287 ; boutons 173 × 39, 12 px ; ⋯ et × 34 px ; deux « × » superposés — vues : d1440, m360, m390, t768",
    "problemes": [
     "PRO-C08",
     "PRO-C17",
@@ -370,7 +370,7 @@
     "PRO-C23"
    ],
    "proposition": "Suivi en contour, 44 px, mêmes mots que mon profil.",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Même gabarit que mon profil (bien) mais mots, filtres et hiérarchie divergent. Captures prêtes (scénario « profil-visite »), non produites."
   },
@@ -382,12 +382,12 @@
    "role": "connecté · visiteur",
    "geste": "⋯ sur la couverture",
    "observation": "observe",
-   "preuve": "sonde profils-03 ; openVisitedProfileMenu app-04:4673",
+   "preuve": "sonde profils-03 ; openVisitedProfileMenu app-04:4673 — vues : m390",
    "problemes": [
     "PRO-C06"
    ],
    "proposition": "Garder le menu ; confirmer Bloquer.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-ameliorer",
    "justification": "Le menu passe bien devant la modale ; « Bloquer » agit sans confirmation."
   },
@@ -414,12 +414,12 @@
    "role": "connecté · visiteur",
    "geste": "Abonnés → Tom",
    "observation": "observe",
-   "preuve": "sonde profils-03 : « Suivre », « Aucune publication — Rien à afficher pour cette sélection »",
+   "preuve": "sonde profils-03 : « Suivre », « Aucune publication — Rien à afficher pour cette sélection » — vues : m390",
    "problemes": [
     "PRO-C08"
    ],
    "proposition": "État vide sans parler de « sélection » quand aucun filtre n'est posé.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-ameliorer",
    "justification": "Le texte évoque un filtre absent ; rien ne dit qu'il me suit."
   },
@@ -431,12 +431,12 @@
    "role": "connecté · demandeur",
    "geste": "openUserProfile (simulé)",
    "observation": "simule",
-   "preuve": "sonde profils-03 : « 1 ABONNÉS » = ma propre demande pending ; requêtes app-04:4519 sans filtre status",
+   "preuve": "sonde profils-03 : « 1 ABONNÉS » = ma propre demande pending ; requêtes app-04:4519 sans filtre status — vues : m390",
    "problemes": [
     "PRO-C05"
    ],
    "proposition": "Ne compter que les abonnés acceptés.",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Le compteur dit faux ; le bloc « Demande envoyée » est juste."
   },
@@ -448,10 +448,10 @@
    "role": "connecté · visiteur",
    "geste": "Toucher « Demande envoyée »",
    "observation": "code",
-   "preuve": "d'après le code : toggleFollowUser app-04:5015 (toast « Demande annulée — appuie sur « Suivre » pour la renvoyer »), _majBlocPriveVisite",
+   "preuve": "d'après le code : toggleFollowUser app-04:5015 (toast « Demande annulée — appuie sur « Suivre » pour la renvoyer »), _majBlocPriveVisite — vues : m390",
    "problemes": [],
    "proposition": "—",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-conserver",
    "justification": "Retour clair, aide accessible qui annonce le geste (app-02:2326)."
   },
@@ -463,10 +463,10 @@
    "role": "connecté · visiteur suivi",
    "geste": "Abonnements → Marie-Charlotte",
    "observation": "observe",
-   "preuve": "sonde profils-03 : nom sur deux lignes, bio entière (pre-line)",
+   "preuve": "sonde profils-03 : nom sur deux lignes, bio entière (pre-line) — vues : m390",
    "problemes": [],
    "proposition": "Aucune.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-conserver",
    "justification": "Pas de débordement ni de coupure."
   },
@@ -478,12 +478,12 @@
    "role": "connecté · visiteur",
    "geste": "Abonnés → Nora",
    "observation": "observe",
-   "preuve": "sonde profils-03 : « 1 ABONNEMENTS » = sa demande en attente vers moi",
+   "preuve": "sonde profils-03 : « 1 ABONNEMENTS » = sa demande en attente vers moi — vues : m390",
    "problemes": [
     "PRO-C05"
    ],
    "proposition": "Voir PRO-C05.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-ameliorer",
    "justification": "Compteur gonflé par une demande."
   },
@@ -495,12 +495,12 @@
    "role": "connecté · bloqueur",
    "geste": "Abonnés → Tom",
    "observation": "observe",
-   "preuve": "sonde profils-06 : Message et Suivre affichés, seul le menu dit « Débloquer »",
+   "preuve": "sonde profils-06 : Message et Suivre affichés, seul le menu dit « Débloquer » — vues : m390",
    "problemes": [
     "PRO-C07"
    ],
    "proposition": "Bandeau « Tu as bloqué ce compte » + Débloquer.",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Aucun signal de l'état."
   },
@@ -512,12 +512,12 @@
    "role": "connecté · bloqué",
    "geste": "Abonnés → Inès",
    "observation": "observe",
-   "preuve": "sonde profils-06 : profil et publication visibles, Suivre/Message proposés (faux serveur, policies recopiées)",
+   "preuve": "sonde profils-06 : profil et publication visibles, Suivre/Message proposés (faux serveur, policies recopiées) — vues : m390",
    "problemes": [
     "PRO-C20"
    ],
    "proposition": "À trancher côté règle.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-verifier",
    "justification": "Dépend de la règle métier de visibilité."
   },
@@ -529,12 +529,12 @@
    "role": "connecté · visiteur",
    "geste": "⋯ → Bloquer",
    "observation": "observe",
-   "preuve": "sonde profils-06 : aucune modale, toast « 🚫 Malik Benali bloqué », ligne blocks écrite ; blockUser app-04:5147 retire aussi l'abonnement",
+   "preuve": "sonde profils-06 : aucune modale, toast « 🚫 Malik Benali bloqué », ligne blocks écrite ; blockUser app-04:5147 retire aussi l'abonnement — vues : m390",
    "problemes": [
     "PRO-C06"
    ],
    "proposition": "Confirmation qui dit les conséquences.",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Geste lourd sans confirmation."
   },
@@ -546,12 +546,12 @@
    "role": "connecté · visiteur",
    "geste": "⋯ → Signaler",
    "observation": "observe",
-   "preuve": "sonde profils-08 : classe modal-fullscreen héritée du profil visité, profil remplacé",
+   "preuve": "sonde profils-08 : classe modal-fullscreen héritée du profil visité, profil remplacé — vues : m390",
    "problemes": [
     "PRO-C22"
    ],
    "proposition": "Feuille basse ordinaire ; retour au profil après Annuler.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-ameliorer",
    "justification": "Écran plein presque vide ; le profil est perdu."
   },
@@ -610,13 +610,13 @@
    "role": "connecté · propriétaire",
    "geste": "Toucher « Passions »",
    "observation": "observe",
-   "preuve": "sonde profils-04 ; openPassionManager app-06:2613 ; badge photo 20 × 20",
+   "preuve": "sonde profils-04 ; openPassionManager app-06:2613 ; badge photo 20 × 20 — vues : d1440, m360, m390, t768",
    "problemes": [
     "PRO-C13",
     "PRO-C23"
    ],
    "proposition": "Un titre, un emoji par carte, badge 28 px.",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Bonne page de gestion, en-tête redondant. Captures prêtes, non produites."
   },
@@ -628,12 +628,12 @@
    "role": "connecté · propriétaire",
    "geste": "?",
    "observation": "observe",
-   "preuve": "sonde profils-04 ; openPassionsAide app-06:2646 (phrase « place et changement » inconditionnelle, l.2664)",
+   "preuve": "sonde profils-04 ; openPassionsAide app-06:2646 (phrase « place et changement » inconditionnelle, l.2664) — vues : m360, m390",
    "problemes": [
     "PRO-C12"
    ],
    "proposition": "Texte de la règle en vigueur.",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Phrase héritée du plafond levé."
   },
@@ -645,10 +645,10 @@
    "role": "connecté · propriétaire",
    "geste": "⋯ d'une carte",
    "observation": "observe",
-   "preuve": "sonde profils-04 ; openPassionProfileMenu app-06:1891",
+   "preuve": "sonde profils-04 ; openPassionProfileMenu app-06:1891 — vues : m390",
    "problemes": [],
    "proposition": "Aucune.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-conserver",
    "justification": "Quatre entrées claires, archivage en dernier."
   },
@@ -660,12 +660,12 @@
    "role": "connecté · propriétaire",
    "geste": "⋯ → Modifier cette passion",
    "observation": "observe",
-   "preuve": "sonde profils-04/08 ; openEditPassionProfile app-06:3513 : « Bio de ce profil », titre « ✏️ 🎸 Musique »",
+   "preuve": "sonde profils-04/08 ; openEditPassionProfile app-06:3513 : « Bio de ce profil », titre « ✏️ 🎸 Musique » — vues : m360, m390",
    "problemes": [
     "PRO-C14"
    ],
    "proposition": "« Modifier « Musique » », « Ce que tu partages ici ».",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Vocabulaire « profil » pour une passion."
   },
@@ -677,12 +677,12 @@
    "role": "connecté · propriétaire",
    "geste": "⋯ → Archiver",
    "observation": "observe",
-   "preuve": "sonde profils-04 ; confirmArchivePassion app-06:2732 (« Toutes »)",
+   "preuve": "sonde profils-04 ; confirmArchivePassion app-06:2732 (« Toutes ») — vues : m390",
    "problemes": [
     "PRO-C11"
    ],
    "proposition": "« restent sur ton profil ».",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Rassurant, mais cite un bouton inexistant."
   },
@@ -694,12 +694,12 @@
    "role": "connecté · propriétaire",
    "geste": "Archiver",
    "observation": "observe",
-   "preuve": "sonde profils-04 : « Réactiver » 83 × 34",
+   "preuve": "sonde profils-04 : « Réactiver » 83 × 34 — vues : m390",
    "problemes": [
     "PRO-C23"
    ],
    "proposition": "Réactiver 44 px.",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Clair, cible basse."
   },
@@ -711,10 +711,10 @@
    "role": "connecté · propriétaire",
    "geste": "Archiver l'unique passion",
    "observation": "code",
-   "preuve": "d'après le code : toast « Tu dois garder au moins une passion active » (app-06:2700) ; scénario prêt",
+   "preuve": "d'après le code : toast « Tu dois garder au moins une passion active » (app-06:2700) ; scénario prêt — vues : m390",
    "problemes": [],
    "proposition": "—",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-conserver",
    "justification": "Refus avant la confirmation, explicite."
   },
@@ -726,12 +726,12 @@
    "role": "connecté · propriétaire",
    "geste": "Ajouter une passion",
    "observation": "observe",
-   "preuve": "sonde profils-04 : Musique et Photo (déjà miennes) proposées, Piano 🎸, placeholder tronqué",
+   "preuve": "sonde profils-04 : Musique et Photo (déjà miennes) proposées, Piano 🎸, placeholder tronqué — vues : m360, m390",
    "problemes": [
     "PRO-C19"
    ],
    "proposition": "Marquer « Déjà ajoutée ».",
-   "visuel": "aucun",
+   "visuel": "avant-apres",
    "verdict": "a-ameliorer",
    "justification": "Idées sans tenir compte de ce que j'ai."
   },
@@ -743,10 +743,10 @@
    "role": "connecté · propriétaire",
    "geste": "Saisir",
    "observation": "observe",
-   "preuve": "sonde profils-04 : un résultat « Raku », effacer 44 px",
+   "preuve": "sonde profils-04 : un résultat « Raku », effacer 44 px — vues : m390",
    "problemes": [],
    "proposition": "Aucune.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-conserver",
    "justification": "Recherche tolérante, résultat direct."
   },
@@ -758,10 +758,10 @@
    "role": "connecté · propriétaire",
    "geste": "Saisir",
    "observation": "observe",
-   "preuve": "sonde profils-04 : « Demander l'ajout de « zzqxw » » (passion-selector.js:299)",
+   "preuve": "sonde profils-04 : « Demander l'ajout de « zzqxw » » (passion-selector.js:299) — vues : m390",
    "problemes": [],
    "proposition": "Aucune.",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-conserver",
    "justification": "Sortie utile au lieu d'un cul-de-sac."
   },
@@ -773,10 +773,10 @@
    "role": "connecté · propriétaire",
    "geste": "—",
    "observation": "code",
-   "preuve": "d'après le code app-02:6855-6870 ; la tuile est masquée, la modale explique",
+   "preuve": "d'après le code app-02:6855-6870 ; la tuile est masquée, la modale explique — vues : m390",
    "problemes": [],
    "proposition": "—",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-conserver",
    "justification": "Porte masquée, garde expliquée."
   },
@@ -788,10 +788,10 @@
    "role": "connecté · propriétaire",
    "geste": "—",
    "observation": "code",
-   "preuve": "d'après le code app-06:4365 ; n'apparaît qu'avec PASSIO_PLAFOND_PASSIONS=true (état conditionnel, pas la règle en vigueur) ; scénario « plafond-arme » prêt",
+   "preuve": "d'après le code app-06:4365 ; n'apparaît qu'avec PASSIO_PLAFOND_PASSIONS=true (état conditionnel, pas la règle en vigueur) ; scénario « plafond-arme » prêt — vues : m390",
    "problemes": [],
    "proposition": "—",
-   "visuel": "aucun",
+   "visuel": "avant",
    "verdict": "a-verifier",
    "justification": "Non rendu."
   },

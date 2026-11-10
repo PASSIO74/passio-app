@@ -1,0 +1,118 @@
+{
+ "id": "PRO-043",
+ "domaine": "profils",
+ "scenario": "ajouter-passion",
+ "vue": "m360",
+ "gabarit": "Mobile petit 360×640",
+ "moteur": "chromium",
+ "version": "158.0.8127.18",
+ "mode": "compte",
+ "titre": "Ajouter une passion — idées (dont Musique et Photo, déjà miennes)",
+ "note": "",
+ "prisLe": "2026-11-10T19:25:55.575Z",
+ "ecran": {
+  "ecran": "screen-profiles",
+  "modale": "Ajouter une passion",
+  "landing": false,
+  "onboarding": false,
+  "conversation": false,
+  "bobines": false,
+  "titre": "(2) PASSIO",
+  "hash": "#modal"
+ },
+ "avant": {
+  "fichier": "captures/profils/PRO-043--m360--avant.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 27734,
+  "zooms": []
+ },
+ "annotationsAvant": [
+  {
+   "n": 1,
+   "texte": "Déjà dans mes passions, rien ne le dit",
+   "x": 0.5,
+   "y": 1.515,
+   "w": 0.9,
+   "h": 0.075,
+   "sel": "#modalContent button:has-text('Musique')",
+   "trouve": true
+  },
+  {
+   "n": 2,
+   "texte": "Exemple de saisie tronqué",
+   "x": 0.529,
+   "y": 0.448,
+   "w": 0.782,
+   "h": 0.073,
+   "sel": "#modalContent input",
+   "trouve": true
+  }
+ ],
+ "mesures": {
+  "fenetre": {
+   "w": 360,
+   "h": 640
+  },
+  "cibles": {
+   "total": 9,
+   "sous44": [
+    {
+     "el": "div#pselHote > div.psel-pied > button.btn.primary",
+     "texte": "Ajouter à mes passions",
+     "w": 241,
+     "h": 42,
+     "enLigne": false
+    }
+   ],
+   "nbSous44": 1
+  },
+  "champs": {
+   "total": 1,
+   "sous16": []
+  },
+  "contraste": {
+   "juges": 8,
+   "indetermines": 1,
+   "sousSeuil": [],
+   "nbSousSeuil": 0
+  },
+  "sansNom": [],
+  "debordement": {
+   "page": false,
+   "largeurDocument": 360,
+   "elements": []
+  },
+  "tronques": [],
+  "viewportMeta": "width=device-width, initial-scale=1, viewport-fit=cover",
+  "champsSansEtiquette": []
+ },
+ "apres": {
+  "fichier": "captures/profils/PRO-043--m360--apres.webp",
+  "largeur": 720,
+  "hauteur": 1280,
+  "octets": 26688,
+  "zooms": []
+ },
+ "annotations": [
+  {
+   "n": 1,
+   "texte": "« Déjà ajoutée », non actionnable",
+   "x": 0.5,
+   "y": 1.515,
+   "w": 0.9,
+   "h": 0.075,
+   "sel": "#mqDejaMusique",
+   "trouve": true
+  }
+ ],
+ "erreurs": {
+  "js": [],
+  "console": [
+   "Audio failed: http://127.0.0.1:55148/index.html#",
+   "Audio failed: http://127.0.0.1:55148/index.html#",
+   "Audio failed: http://127.0.0.1:55148/index.html#"
+  ]
+ },
+ "reseauRefuse": []
+}

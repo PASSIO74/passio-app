@@ -1,5 +1,5 @@
 {
- "genereLe": "2026-11-10T19:23:34.310Z",
+ "genereLe": "2026-11-10T19:26:33.515Z",
  "total": {
   "inventoriees": 512,
   "observees": 346,
@@ -7,8 +7,8 @@
   "codeSeul": 59,
   "inaccessibles": 13,
   "sansObjet": 2,
-  "avecAvant": 396,
-  "maquettees": 174,
+  "avecAvant": 406,
+  "maquettees": 178,
   "aAmeliorer": 321,
   "aConserver": 128,
   "aVerifier": 63,
@@ -108,8 +108,8 @@
    "codeSeul": 6,
    "inaccessibles": 0,
    "sansObjet": 0,
-   "avecAvant": 37,
-   "maquettees": 18,
+   "avecAvant": 47,
+   "maquettees": 22,
    "aAmeliorer": 32,
    "aConserver": 13,
    "aVerifier": 4,
@@ -241,76 +241,7 @@
    "P3": 2
   }
  ],
- "nbImages": 1270,
+ "nbImages": 1296,
  "orphelines": [],
- "alertes": [
-  {
-   "niveau": "avert",
-   "msg": "PRO-016 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-017 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-018 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-019 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-021 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-022 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-024 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-025 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-026 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-027 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-028 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-029 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-030 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-031 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-032 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-036 : capture présente alors que le registre dit « avant non capturé »"
-  },
-  {
-   "niveau": "avert",
-   "msg": "PRO-037 : capture présente alors que le registre dit « avant non capturé »"
-  }
- ]
+ "alertes": []
 }
