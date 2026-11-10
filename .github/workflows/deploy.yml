@@ -1064,7 +1064,12 @@ jobs:
       # personne ne reçoit, et la production entière se serait arrêtée sur son premier
       # script. Même commande qu'avant (terser du lockfile, `--compress --mangle`, sans
       # `--toplevel`), mêmes octets (vérifié), même repli sur le fichier brut.
-      - name: Build dist (page assemblée, bloc app en 9 scripts minifiés, assets publics)
+      # La feuille de style aussi, depuis le 2026-11-10 (étape 2 bis) : elle porte à son
+      # tour l'empreinte de ses octets servis. Même commande que l'ancienne étape « Minify
+      # styles.css » de ce job (`cleancss -o`, clean-css-cli du lockfile), mêmes octets
+      # (comparés à la feuille que servait la production) : cette étape est retirée — une
+      # seconde minification après le build ferait refuser la feuille à tout le monde.
+      - name: Build dist (page assemblée, bloc app en 9 scripts et feuille de style minifiés, assets publics)
         env:
           COMMIT_REF: ${{ github.sha }}
           PASSIO_MINIFIER_APP: "1"
@@ -1088,15 +1093,12 @@ jobs:
       # Relu APRÈS la minification de la page : les 9 paires (adresse, empreinte) du
       # chargeur, et dist/app/. Un écart, et le navigateur refuserait le script :
       # l'application ne démarrerait pour personne. Refuse aussi un dist/app/ qui n'a
-      # pas ses 9 scripts (une page qui n'en chargerait aucun).
-      - name: Vérifier les scripts app/ — 9, et l'empreinte que la page déclare pour chacun
+      # pas ses 9 scripts (une page qui n'en chargerait aucun). Et la feuille de style :
+      # son <link> porte l'empreinte de dist/styles.css — sinon chaque page passerait par
+      # sa reprise, et finirait sur la feuille SANS empreinte.
+      # ⚠️ PLUS RIEN NE TOUCHE dist/ APRÈS CE CONTRÔLE, hormis l'envoi.
+      - name: Vérifier les scripts app/ et la feuille de style — l'empreinte que la page déclare pour chacun
         run: node scripts/verifier-integrite-app.js dist
-
-      - name: Minify styles.css (fallback sur le fichier brut en cas d'erreur)
-        run: |
-          npx --no-install clean-css-cli -o dist/styles.min.css dist/styles.css \
-          && mv dist/styles.min.css dist/styles.css \
-          || echo "Minification styles.css échouée, déploiement du fichier brut"
 
       - name: Installer netlify-cli (sans le jeton dans l'environnement)
         run: |
