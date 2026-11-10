@@ -124,11 +124,32 @@
   };
   window.PassioIdentityTransition = api;
 
+  // ⚠️ EN PRODUCTION, `doLogout` PEUT ARRIVER APRÈS LA FIN DU SONDAGE (240 ×
+  //    250 ms = 60 s, comptées depuis le <head>). Ce module n'est PAS dans
+  //    index.html : `scripts/build.js` l'injecte après telemetry.js et l'inline,
+  //    dans l'artefact seulement. Le bloc app, lui, arrive en neuf scripts
+  //    injectés APRÈS le gate. Si le gate est réarmé (`passio_gate_actif="1"`),
+  //    les 60 s courent pendant que la personne tape le code : le sondage
+  //    abandonnait, et toutes les déconnexions de la session partaient sans
+  //    vider la file. telemetry.js désattribuait alors les lignes du compte au
+  //    lieu de les envoyer sous son identité.
+  //    `passio:app-ready` part une fois, après le neuvième script : il retente
+  //    et arrête le sondage (docs/lots-ui/INDEX.md : tout module inliné hors du
+  //    bloc app l'écoute). Le sondage reste pour la fenêtre entre app-02, qui
+  //    définit `doLogout`, et le signal.
+  //    La réussite est retenue ICI (`wrappedLogout`), jamais par le seul
+  //    marqueur `__passioTelemetryDrainWrapped` de la fonction exposée : un
+  //    module qui envelopperait `doLogout` par-dessus le cacherait, et chaque
+  //    déconnexion attendrait alors deux vidanges.
+  //    Verrou sur l'artefact : tests/e2e/deconnexion-artefact.spec.js.
   if (!wrapLogoutWhenReady()) {
     var tries = 0;
     var iv = setInterval(function () {
       tries++;
       if (wrapLogoutWhenReady() || tries >= 240) clearInterval(iv); // 60 s max
     }, 250);
+    window.addEventListener("passio:app-ready", function () {
+      if (wrapLogoutWhenReady()) clearInterval(iv);
+    });
   }
 })();
