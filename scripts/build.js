@@ -7,15 +7,21 @@
 // Depuis le 2026-11-09, ce bloc sort en 9 SCRIPTS (dist/app/), plus en un seul
 // dist/app.js : voir l'étape 1.
 // Usage : node scripts/build.js [dist/index.html]
+// PASSIO_MINIFIER_APP=1 (déploiement de production, et la passe « Gates artefact »
+// de la CI) : les 9 scripts sont minifiés ICI, par le terser du lockfile — l'étape 1
+// bis dit pourquoi.
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { execFileSync } = require("child_process");
 
 const root = path.join(__dirname, "..");
 const outPath = process.argv[2] || path.join(root, "dist", "index.html");
 let html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 const hash10 = (texte) => crypto.createHash("sha1").update(texte).digest("hex").slice(0, 10);
+// L'empreinte `integrity` (Subresource Integrity) d'octets servis : sha384, base64.
+const sri = (octets) => "sha384-" + crypto.createHash("sha384").update(octets).digest("base64");
 
 // 1. Bloc app : les 9 fichiers entre les marqueurs sortent en 9 SCRIPTS, chacun
 //    sous l'empreinte de SON contenu : `app/app-04-comments-shop.js?v=<hash>`
@@ -59,6 +65,22 @@ const hash10 = (texte) => crypto.createHash("sha1").update(texte).digest("hex").
 //    app-scripts-par-fichier.spec.js ⑥ (profil persistant, deux moteurs : la seconde
 //    visite relit le 404 en cache, et c'est la redemande qui démarre l'application ;
 //    mutations : sans redemande, ou redemande sans `cache: "reload"` → rouge).
+//    ⚠️ CHAQUE SCRIPT PORTE L'EMPREINTE `integrity` (sha384) DE SES OCTETS SERVIS
+//    (2026-11-10). Netlify ignore le `?v=` : pendant un retour arrière de B vers A
+//    (scripts/rollback-netlify.mjs, une restauration instantanée), une demande de
+//    l'adresse de B reçoit le contenu de A, en 200 `immutable` — une page B partie
+//    juste avant la bascule, ou le worker de B qui s'installe. Quand B revient à
+//    l'identique (même fichier, même `?v=`), le navigateur exécutait l'ANCIEN script
+//    avec les 8 autres de B, et rien n'échouait : la reprise du 404 ne le voyait pas.
+//    Mesuré sous Chromium et WebKit, dans le cache HTTP comme dans celui du worker.
+//    Avec `integrity`, le navigateur REFUSE ces octets : `onerror`, la reprise
+//    redemande l'adresse au réseau (`cache: "reload"`, que le worker honore — sw.js),
+//    et le script de B tourne. Pendant la bascule elle-même, la page B refuse le
+//    script de A et s'arrête comme devant un script manquant : jamais deux versions
+//    mêlées. L'empreinte va sur le preload ET sur le `<script>` (sans elle sur le
+//    preload, Chromium ne le réutilise pas et retélécharge). La redemande n'en porte
+//    pas : elle sert à remplacer ce que gardent les caches, quoi qu'arrive. Verrou :
+//    app-scripts-par-fichier.spec.js ⑦ (cache HTTP) ⑧ (cache du worker), deux moteurs.
 //    emoji-misc.js (qui doit garder son ordre APRÈS le bloc app) et
 //    passion-context.js (il observe la persona active, donc APRÈS la définition
 //    de state/currentProfile) ferment le 9ᵉ script, comme ils fermaient app.js :
@@ -80,7 +102,9 @@ const appScripts = appFiles.map((f, i) => {
   const contenu = read(f) + (i === appFiles.length - 1
     ? "\n" + read("js/emoji-misc.js") + "\n" + read("js/passion-context.js") : "");
   const nom = path.basename(f);
-  return { nom, contenu, ref: "app/" + nom + "?v=" + hash10(contenu) };
+  // `integrite` : celle des octets écrits ici ; l'étape 1 bis la remplace par celle
+  // des octets minifiés quand elle minifie.
+  return { nom, contenu, ref: "app/" + nom + "?v=" + hash10(contenu), integrite: sri(contenu) };
 });
 // Le texte de l'application, octet pour octet celui de l'ancien app.js : il fait
 // l'empreinte d'ensemble du contrat (`appHash`) et entre dans le buildId (étape 5).
@@ -89,31 +113,36 @@ const appHash = hash10(appJs);
 // ⚠️ Chaque adresse reste un LITTÉRAL COMPLET dans la page : la barrière des
 // migrations (scripts/lib/barriere-migration.js, `urlsBundlesServis`) les lit dans
 // le HTML servi, minifié compris. Une adresse recomposée à l'exécution
-// ("app/" + nom + "?v=" + h) lui serait invisible.
+// ("app/" + nom + "?v=" + h) lui serait invisible. Son empreinte `integrity` la suit
+// dans la MÊME paire : scripts/verifier-integrite-app.js les relit ensemble dans la
+// page servie, minifiée comprise.
 const loader = ""
   + "<script>\n"
   + "/* Bloc app externalisé : 9 scripts (scripts/build.js, étape 1), parsés et\n"
   + "   exécutés SEULEMENT après le gate. Téléchargés en parallèle, exécutés un par\n"
   + "   un dans l'ordre du bloc, chacun inséré dès que le précédent a tourné : un\n"
   + "   script inséré retarde l'événement `load` de la page, l'application tourne donc\n"
-  + "   avant lui, comme avec l'ancien app.js. Un échec de chargement est retenté deux\n"
-  + "   fois, l'adresse d'abord redemandée au réseau (un 404 « immutable » resterait\n"
-  + "   sinon un an dans le cache HTTP), puis on s'arrête plutôt que de lancer la suite\n"
+  + "   avant lui, comme avec l'ancien app.js. Chacun porte l'empreinte de ses octets\n"
+  + "   (`integrity`) : un script d'une autre version resté en cache est refusé. Un\n"
+  + "   échec de chargement est retenté deux fois, l'adresse d'abord redemandée au\n"
+  + "   réseau (un 404 « immutable », ou le script d'une autre version, resterait sinon\n"
+  + "   un an dans le cache HTTP), puis on s'arrête plutôt que de lancer la suite\n"
   + "   sans lui. Pas de preload statique (il concurrençait le HTML/CSS critiques sur\n"
   + "   mobile et polluait les métriques LCP) : prefetch basse priorité à la PREMIÈRE\n"
   + "   frappe dans le champ code — les fichiers sont en cache HTTP quand le 4e\n"
   + "   chiffre déverrouille. */\n"
   + "(function () {\n"
   + "  var scripts = [\n"
-  + appScripts.map(s => "    " + JSON.stringify(s.ref)).join(",\n") + "\n"
+  + appScripts.map(s => "    [" + JSON.stringify(s.ref) + ", " + JSON.stringify(s.integrite) + "]").join(",\n") + "\n"
   + "  ];\n"
-  + "  function lier(rel, href) {\n"
+  + "  function lier(rel, href, integrite) {\n"
   + '    var l = document.createElement("link");\n'
   + '    l.rel = rel; l.as = "script"; l.href = href;\n'
+  + "    if (integrite) l.integrity = integrite;\n"
   + "    document.head.appendChild(l);\n"
   + "  }\n"
   + "  (window.__gateReady || Promise.resolve()).then(function () {\n"
-  + '    scripts.forEach(function (src) { lier("preload", src); });\n'
+  + '    scripts.forEach(function (x) { lier("preload", x[0], x[1]); });\n'
   + "    var i = 0, essais = 0;\n"
   + "    (function suivant() {\n"
   + "      if (i === scripts.length) {\n"
@@ -121,25 +150,26 @@ const loader = ""
   + "        return;\n"
   + "      }\n"
   + '      var s = document.createElement("script");\n'
-  + "      s.src = scripts[i];\n"
+  + "      s.src = scripts[i][0];\n"
+  + "      s.integrity = scripts[i][1];\n"
   + "      s.onload = function () { i++; essais = 0; suivant(); };\n"
   + "      s.onerror = function () {\n"
   + "        if (s.parentNode) s.parentNode.removeChild(s);\n"
   + "        if (++essais <= 2) setTimeout(function () {\n"
   + "          var reprendre = function () { suivant(); };\n"
   + '          if (typeof fetch !== "function") return reprendre();\n'
-  + '          fetch(scripts[i], { cache: "reload" })\n'
+  + '          fetch(scripts[i][0], { cache: "reload" })\n'
   + "            .then(function (r) { return r.arrayBuffer(); })\n"
   + "            .then(reprendre, reprendre);\n"
   + "        }, 1000 * essais);\n"
-  + '        else if (window.console) console.error("PASSIO : " + scripts[i] + " ne se charge pas, l\'application ne démarre pas.");\n'
+  + '        else if (window.console) console.error("PASSIO : " + scripts[i][0] + " ne se charge pas, l\'application ne démarre pas.");\n'
   + "      };\n"
   + "      document.body.appendChild(s);\n"
   + "    })();\n"
   + "  });\n"
   + '  if (document.documentElement.classList.contains("passio-locked")) {\n'
   + '    document.addEventListener("input", function () {\n'
-  + '      scripts.forEach(function (src) { lier("prefetch", src); });\n'
+  + '      scripts.forEach(function (x) { lier("prefetch", x[0]); });\n'
   + "    }, { once: true, capture: true });\n"
   + "  }\n"
   + "})();\n"
@@ -242,13 +272,51 @@ sw = sw.replace(/const FICHIERS_VERSION = \[\];/,
 if (sw === swAvantFichiers) throw new Error("Ligne FICHIERS_VERSION de sw.js introuvable — les fichiers de la version ne seraient plus gardés d'une mise à jour à l'autre");
 
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
-fs.writeFileSync(outPath, html);
 // Les 9 scripts du bloc app (étape 1), sous leur nom de source. Un dist/app.js
 // laissé par un build d'avant le 2026-11-09 est retiré : personne ne le charge
 // plus, et un banc qui le relirait mesurerait un fichier périmé.
 const appDir = path.join(path.dirname(outPath), "app");
 fs.mkdirSync(appDir, { recursive: true });
 for (const s of appScripts) fs.writeFileSync(path.join(appDir, s.nom), s.contenu);
+
+// 1 bis. LA MINIFICATION DES 9 SCRIPTS SE FAIT ICI, PLUS DANS LE WORKFLOW (2026-11-10).
+//    L'empreinte `integrity` de la page (étape 1) doit être celle des octets SERVIS :
+//    calculée ici puis minifiée par `.github/workflows/deploy.yml`, elle aurait
+//    désigné un fichier que personne ne reçoit, et la production entière se serait
+//    arrêtée sur son premier script. Même commande que l'ancienne étape du workflow
+//    (`terser <f> --compress --mangle`, le terser figé par le lockfile : mêmes octets,
+//    vérifié), même repli sur le fichier brut si elle échoue — l'empreinte suit
+//    alors le brut. ⚠️ SANS `--toplevel` : aucun nom de premier niveau n'est renommé
+//    ni retiré, et c'est par eux que les 9 scripts classiques se parlent.
+//    ⚠️ LE buildId NE BOUGE PAS (étape 5) : il a été calculé sur la page qui cite les
+//    empreintes des sources, et seules les empreintes sont remplacées ici, chacune à
+//    son unique place. Un build local rend donc le buildId servi — ce qui permet de
+//    vérifier la production depuis le poste. Le `?v=` reste l'empreinte de la source.
+//    ⚠️ UNE MISE À JOUR DE TERSER change les octets servis sous les mêmes `?v=` : chaque
+//    appareil refuse une fois ce qu'il garde (`integrity`) et le redemande (la
+//    reprise, une seconde par script) — le prix d'une version de terser, pas un défaut.
+//    Contrôle, après la minification de la page : scripts/verifier-integrite-app.js.
+if (process.env.PASSIO_MINIFIER_APP === "1") {
+  const terser = require.resolve("terser/bin/terser", { paths: [root] });
+  for (const s of appScripts) {
+    const f = path.join(appDir, s.nom);
+    try {
+      execFileSync(process.execPath, [terser, f, "-o", f + ".min", "--compress", "--mangle"], { stdio: "pipe", timeout: 120000 });
+      fs.renameSync(f + ".min", f);
+    } catch (e) {
+      try { fs.unlinkSync(f + ".min"); } catch (_e) { /* rien à retirer */ }
+      console.log("Minification de app/" + s.nom + " échouée, fichier brut servi : " + String((e && e.message) || e).split("\n")[0]);
+    }
+    const servie = sri(fs.readFileSync(f));
+    if (servie === s.integrite) continue;
+    const citee = JSON.stringify(s.integrite);
+    const n = html.split(citee).length - 1;
+    if (n !== 1) throw new Error("app/" + s.nom + " : son empreinte figure " + n + " fois dans la page, 1 attendue");
+    html = html.replace(citee, () => JSON.stringify(servie));
+    s.integrite = servie;
+  }
+}
+fs.writeFileSync(outPath, html);
 const ancienAppJs = path.join(path.dirname(outPath), "app.js");
 if (fs.existsSync(ancienAppJs)) fs.unlinkSync(ancienAppJs);
 fs.writeFileSync(path.join(path.dirname(outPath), "styles.css"), css);

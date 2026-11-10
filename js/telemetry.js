@@ -1500,21 +1500,44 @@
   });
 
   // 4) Navigation : encapsule goTo() quand il apparaît (défini dans app-02)
+  //
+  // ⚠️ EN PRODUCTION, `goTo` PEUT ARRIVER APRÈS LA FIN DU SONDAGE. Ce fichier est
+  // inliné dans le <head> par `scripts/build.js` ; le bloc app sort en neuf
+  // scripts injectés APRÈS le gate. Le sondage (60 × 300 ms = 18 s, comptées
+  // depuis le <head>) suffit au démarrage ordinaire. Mais si le gate est réarmé
+  // (`passio_gate_actif="1"`), les 18 s courent pendant que la personne tape le
+  // code : le sondage abandonnait, et toute la navigation de la session était
+  // perdue (`screen_view`, `_telScreen`), sans aucune erreur. `passio:app-ready`
+  // part une fois, après le neuvième script, et retente ici
+  // (docs/lots-ui/INDEX.md : tout module inliné hors bloc app l'écoute). En
+  // développement ce signal n'est jamais émis : le sondage reste.
+  //
+  // ⚠️ LA RÉUSSITE EST RETENUE DANS CE MODULE (`pose`), JAMAIS PAR `goTo.__tel` :
+  // perf-ios.js enveloppe `goTo` par-dessus nous, et son enveloppe cache notre
+  // marqueur. Se fier au marqueur poserait une seconde enveloppe au signal, et
+  // chaque navigation serait comptée deux fois (le piège corrigé par #813).
+  // Verrou sur l'artefact : tests/e2e/navigation-artefact.spec.js.
   (function hookGoTo() {
-    var tries = 0;
-    var iv = setInterval(function () {
-      tries++;
-      if (typeof window.goTo === "function" && !window.goTo.__tel) {
-        var orig = window.goTo;
-        window.goTo = function (screen) {
-          try { Telemetry.nav(screen); } catch (e) {}
-          return orig.apply(this, arguments);
-        };
-        window.goTo.__tel = true;
-        clearInterval(iv);
-      }
-      if (tries > 60) clearInterval(iv);
+    var pose = false, tries = 0, iv = null;
+    function poser() {
+      if (pose) return true;
+      if (typeof window.goTo !== "function") return false;
+      pose = true;
+      if (window.goTo.__tel) return true;   // double inclusion : déjà enveloppé
+      var orig = window.goTo;
+      window.goTo = function (screen) {
+        try { Telemetry.nav(screen); } catch (e) {}
+        return orig.apply(this, arguments);
+      };
+      window.goTo.__tel = true;
+      return true;
+    }
+    iv = setInterval(function () {
+      if (poser() || ++tries > 60) clearInterval(iv);
     }, 300);
+    window.addEventListener("passio:app-ready", function () {
+      if (poser()) clearInterval(iv);
+    });
   })();
 
   // 5) Clics : délégation sur les éléments intéressants (nav, boutons, [data-tel])
