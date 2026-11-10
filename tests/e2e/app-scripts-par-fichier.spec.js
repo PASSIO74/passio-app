@@ -343,6 +343,41 @@ test.describe("sans worker : l'ordre, le parallélisme, la reprise, l'arrêt", (
     expect(etat.essais[SOURCE_MODIFIEE], "trois essais au moins avant d'abandonner").toBeGreaterThanOrEqual(3);
     expect(referencesManquantes()).toEqual([]);
   });
+
+  // ⑨ CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10, audit de stabilisation).
+  // Mesuré en production le 10/11 à 12:18 UTC (version 7dade60f, `client_errors` 211 à 220,
+  // 19 `window_error` en télémétrie) : dans une page DÉJÀ démarrée, les `load` des 9 scripts
+  // ont été rejoués ~25 s plus tard (un robot de prévisualisation arrivé par `?fbclid=`, écran
+  // 2000 × 2000 ; la mesure `page_load` de la page est repartie à l'identique au même instant).
+  // Chaque `onload` refaisait `i++` puis `suivant()` : `i` dépassait le nombre de scripts, la
+  // garde `i === scripts.length` ne tenait plus, et `scripts[i][0]` levait « Cannot read
+  // properties of undefined (reading '0') » — 9 fois par page, comptées comme des erreurs de
+  // la production. Un `error` rejoué retirait de la page le script déjà exécuté, et sa
+  // reprise levait la même erreur une seconde plus tard.
+  // Mutation : sans le désarmement des deux écouteurs (scripts/build.js) → 18 erreurs pour
+  // 9 `load` et 9 `error` rejoués, rouge (mesuré avant le correctif, sous Chromium).
+  test("⑨ un load ou un error rejoué sur un script déjà traité ne relance pas le chargeur", async ({ page }) => {
+    await page.goto(adresse());
+    await page.waitForFunction(() => window.__appPrete === true, null, { polling: 50, timeout: 30000 });
+    await page.waitForSelector("#screen-feed.active", { state: "attached", timeout: 30000 });
+    const selecteur = 'script[src*="app/app-0"]';
+    expect(await page.evaluate((s) => document.querySelectorAll(s).length, selecteur), "prémisse : les 9 scripts du bloc sont dans la page").toBe(9);
+    erreurs = [];
+    const depuis = Date.now();
+    await page.evaluate((s) => {
+      document.querySelectorAll(s).forEach((el) => {
+        el.dispatchEvent(new Event("load"));
+        el.dispatchEvent(new Event("error"));
+      });
+    }, selecteur);
+    // La reprise d'un `error` part au bout d'une seconde : on attend au-delà.
+    await page.waitForTimeout(1600);
+    expect(erreurs, "aucune erreur levée par le chargeur").toEqual([]);
+    expect(await page.evaluate((s) => document.querySelectorAll(s).length, selecteur), "aucun script retiré ni inséré de nouveau").toBe(9);
+    expect(requetesApp(depuis), "aucune redemande d'un script").toEqual([]);
+    expect((await page.evaluate(() => window.__ordre)).filter((x) => x === "ready"), "le signal passio:app-ready n'est parti qu'une fois").toHaveLength(1);
+    expect(referencesManquantes()).toEqual([]);
+  });
 });
 
 // ⚠️ ICI, AUCUN `page.route` — DONC PAS DE `sansDonneesDistantes`. Playwright COUPE
