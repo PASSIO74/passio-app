@@ -395,33 +395,50 @@
     } catch (e) {}
     return null;
   }
+  // ⚠️ EN PRODUCTION, `goTo` PEUT ARRIVER APRÈS LA FIN DU SONDAGE (60 × 300 ms =
+  //    18 s depuis le <head>, où ce fichier est inliné) : le bloc app est injecté
+  //    après le gate, et un gate réarmé (`passio_gate_actif="1"`) fait courir les
+  //    18 s pendant la saisie du code. Les parcours `nav_*` et `feed_to_irl`
+  //    étaient alors perdus pour toute la session. `passio:app-ready` (émis une
+  //    fois, après le neuvième script) retente ; en développement il n'est jamais
+  //    émis, le sondage reste.
+  //    La réussite est retenue ICI (`pose`), jamais par `goTo.__perf` : un module
+  //    qui enveloppe `goTo` par-dessus cache le marqueur, et une seconde enveloppe
+  //    chronométrerait chaque navigation deux fois (le piège corrigé par #813).
+  //    Verrou sur l'artefact : tests/e2e/navigation-artefact.spec.js.
   (function hookGoTo() {
-    var tries = 0;
-    var iv = setInterval(function () {
-      tries++;
-      if (typeof W.goTo === "function" && !W.goTo.__perf) {
-        var orig = W.goTo;
-        W.goTo = function (screen) {
-          var from = currentScreenId();
-          var cible = String(screen || "?").replace(/[^a-z0-9_-]/gi, "").slice(0, 20);
-          var end = journey("nav_" + cible, { from: from || "?" });
-          var endBridge = (from === "feed" && cible === "irl") ? journey("feed_to_irl", { from: from }) : null;
-          var r;
-          try {
-            r = orig.apply(this, arguments);
-          } finally {
-            // `finally` : même si la navigation lève, la mesure est close — sinon
-            // le parcours suivant hériterait d'un chronomètre jamais arrêté.
-            end();
-            if (endBridge) endBridge();
-          }
-          return r;
-        };
-        W.goTo.__perf = true;
-        clearInterval(iv);
-      }
-      if (tries > 60) clearInterval(iv);
+    var pose = false, tries = 0, iv = null;
+    function poser() {
+      if (pose) return true;
+      if (typeof W.goTo !== "function") return false;
+      pose = true;
+      if (W.goTo.__perf) return true;       // déjà enveloppé
+      var orig = W.goTo;
+      W.goTo = function (screen) {
+        var from = currentScreenId();
+        var cible = String(screen || "?").replace(/[^a-z0-9_-]/gi, "").slice(0, 20);
+        var end = journey("nav_" + cible, { from: from || "?" });
+        var endBridge = (from === "feed" && cible === "irl") ? journey("feed_to_irl", { from: from }) : null;
+        var r;
+        try {
+          r = orig.apply(this, arguments);
+        } finally {
+          // `finally` : même si la navigation lève, la mesure est close — sinon
+          // le parcours suivant hériterait d'un chronomètre jamais arrêté.
+          end();
+          if (endBridge) endBridge();
+        }
+        return r;
+      };
+      W.goTo.__perf = true;
+      return true;
+    }
+    iv = setInterval(function () {
+      if (poser() || ++tries > 60) clearInterval(iv);
     }, 300);
+    W.addEventListener("passio:app-ready", function () {
+      if (poser()) clearInterval(iv);
+    });
   })();
 
   // C) Gestes du fil : ouverture de post, commentaires, j'aime, suivre, bobines.
