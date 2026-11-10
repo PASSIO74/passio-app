@@ -34,7 +34,9 @@
 // (liste blanche des réglages distants : coupable chez tout le monde depuis le
 // pilotage). Le drapeau ne sait qu'ENLEVER : coupé, la modale d'avant revient
 // telle quelle à la prochaine ouverture.
-// Verrou : tests/e2e/ui-v6a0-activite.spec.js.
+// Verrous : tests/e2e/ui-v6a0-activite.spec.js (fichiers de développement) et
+// tests/e2e/ui-v6a0-artefact.spec.js (l'artefact de production, où le moteur
+// arrive APRÈS ce module — docs/lots-ui/27-UI6A0-ARTEFACT-2026-11-09.md).
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   "use strict";
@@ -231,9 +233,20 @@
   }
 
   // ── Branchements ─────────────────────────────────────────────────────────
+  // UNE enveloppe par fonction, retenue ICI et non sur la fonction : le marqueur
+  // `__v6a0` ne vit que sur NOTRE enveloppe, et un module qui envelopperait
+  // `submitEvent` par-dessus le cacherait. Une seconde enveloppe ne serait pas
+  // un doublon inoffensif : l'extérieure poserait `enCours`, l'intérieure le
+  // lirait et rendrait la main sans jamais appeler le moteur — plus aucune
+  // activité publiée. `brancher` est appelée jusqu'à trois fois (chargement,
+  // `DOMContentLoaded`, `passio:app-ready`) : elle ne pose que ce qui manque.
+  var branche = {};
   function envelopper(nom, fabrique) {
+    if (branche[nom]) return;
     var origine = window[nom];
-    if (typeof origine !== "function" || origine.__v6a0) return;
+    if (typeof origine !== "function") return;
+    branche[nom] = true;
+    if (origine.__v6a0) return;
     var f = fabrique(origine);
     f.__v6a0 = true;
     window[nom] = f;
@@ -265,7 +278,21 @@
     });
   }
 
+  // ⚠️ EN PRODUCTION, LE MOTEUR ARRIVE APRÈS CE MODULE, ET APRÈS
+  // `DOMContentLoaded`. En développement ce fichier suit le bloc app :
+  // `openCreateEvent` existe déjà, l'enveloppe se pose tout de suite. Au build,
+  // `scripts/build.js` inline ce module dans la page, mais le bloc app sort en
+  // neuf scripts injectés APRÈS le gate, un par un : ni au chargement ni à
+  // `DOMContentLoaded` le moteur n'est là. Le module n'écoutait que ces deux
+  // moments, et le lot ne s'est jamais appliqué en production — titre
+  // « Créer un événement IRL », formulaire d'avant, double envoi possible
+  // (mesuré le 2026-11-09 sur l'artefact : 10 tests rouges, verts en dev).
+  // `passio:app-ready` part une fois, après le neuvième script : c'est le signal
+  // de tous les lots inlinés (docs/lots-ui/INDEX.md). Aucune reprise par minuteur :
+  // en dev le moteur est là au chargement, en production ce signal suffit.
+  // Verrou sur l'artefact : tests/e2e/ui-v6a0-artefact.spec.js.
   if (typeof window.openCreateEvent === "function") brancher();
-  else document.addEventListener("DOMContentLoaded", brancher);
+  else document.addEventListener("DOMContentLoaded", brancher, { once: true });
+  window.addEventListener("passio:app-ready", brancher);
   window.PassioUiV6a0 = { actif: actif, _ranger: ranger };
 })();
