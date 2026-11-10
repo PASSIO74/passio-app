@@ -351,17 +351,44 @@ test.describe("Contrôle général 2026-11-10", () => {
       const libelle = [...it.querySelectorAll(".reel-action-label")].find((l) => /Commentaire/.test(l.textContent));
       const indice = document.getElementById("reelsHint");
       const capsules = it.querySelector(".v5-actions");
+      const colonne = it.querySelector(".reel-actions");
       const out = {
         info: R(it.querySelector(".reel-info")), libelle: R(libelle), vw: document.documentElement.clientWidth,
         indice: indice ? R(indice) : null, indiceVisible: indice ? Number(getComputedStyle(indice).opacity) : 0,
         capsules: capsules ? R(capsules) : null,
+        colonne: R(colonne),
+        boutons: [...colonne.querySelectorAll(".reel-action-btn")].map((b) => b.getBoundingClientRect().width),
       };
+      // La police de l'appareil est `system-ui` : on rejoue la mesure sous une police
+      // LARGE, comme celle de la CI Linux (où la première version de ce correctif
+      // laissait encore le libellé à 275,8 px sous une zone de texte finie à 287).
+      const large = document.createElement("style");
+      large.textContent = ".reel-action-label { font-family: 'Courier New', monospace !important; letter-spacing: 1px !important; }";
+      document.head.appendChild(large);
+      out.large = {
+        info: R(it.querySelector(".reel-info")), libelle: R(libelle), colonne: R(colonne),
+        rogne: libelle.scrollWidth > libelle.clientWidth,
+      };
+      large.remove();
       closeReels();   // le lecteur est en z-index 9999 : on le ferme avant de sortir
       return out;
     });
     expect(r.vw).toBe(375);
     expect(r.libelle.d - r.libelle.g, "le libellé est bien à l'écran").toBeGreaterThan(20);
     expect(r.info.d, "la zone de texte (et sa rangée de capsules) s'arrête avant le libellé").toBeLessThanOrEqual(r.libelle.g);
+    // Ce qui ne dépend PAS de la police de l'appareil (la pile est `system-ui` : le
+    // libellé fait 70 px sous Segoe UI, ~83 sous la police de repli de la CI Linux) :
+    // la colonne a une largeur fixe, le libellé y reste, la zone de texte s'arrête avant.
+    expect(Math.round(r.colonne.d - r.colonne.g), "la colonne d'actions a une largeur fixe").toBe(80);
+    expect(r.libelle.g, "le libellé ne déborde pas de sa colonne").toBeGreaterThanOrEqual(r.colonne.g - 0.5);
+    expect(r.libelle.d).toBeLessThanOrEqual(r.colonne.d + 0.5);
+    expect(r.info.d, "la zone de texte s'arrête avant la colonne").toBeLessThanOrEqual(r.colonne.g);
+    for (const largeur of r.boutons) expect(largeur, "un bouton d'action reste une cible de 44 px").toBeGreaterThanOrEqual(44);
+    // Sous une police large : le libellé est rogné DANS sa colonne, jamais sous le texte.
+    expect(r.large.rogne, "prémisse : la police large déborde bien les 76 px du libellé").toBe(true);
+    expect(Math.round(r.large.colonne.d - r.large.colonne.g)).toBe(80);
+    expect(r.large.libelle.g, "police large : le libellé reste dans sa colonne").toBeGreaterThanOrEqual(r.large.colonne.g - 0.5);
+    expect(r.large.info.d, "police large : la zone de texte s'arrête avant le libellé").toBeLessThanOrEqual(r.large.libelle.g);
     // L'indice « Glisse vers le haut… » rejoue cinq secondes à chaque ouverture :
     // il ne doit couvrir ni la rangée de capsules, ni le libellé.
     expect(r.capsules, "la rangée de capsules du lot UI-5").not.toBeNull();
@@ -369,4 +396,5 @@ test.describe("Contrôle général 2026-11-10", () => {
     expect(r.indiceVisible, "l'indice est à l'écran au moment de la mesure").toBeGreaterThan(0.5);
     expect(r.indice.b, "l'indice tombait sur la rangée de capsules").toBeLessThanOrEqual(r.info.h);
     expect(r.indice.b).toBeLessThanOrEqual(r.libelle.h);
-  });});
+  });
+});
