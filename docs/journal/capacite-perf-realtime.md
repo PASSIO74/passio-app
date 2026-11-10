@@ -2160,7 +2160,10 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
 | Budget de démarrage : le bloc app compte pour UN poste, comme l'ancien `app.js` | `tests/e2e/audit-2026-11-perf-dist.spec.js` | — |
 | `/app/*` immutable, plus de règle `/app.js` | `_headers` | `tests/unit/entetes-coherence.test.mjs` ③, `version-skew.spec.js` |
 | Le worker reçoit la liste des fichiers versionnés de la version — les 9 scripts et `styles.css` (`FICHIERS_VERSION`, écrite par le build) : à l'installation il RECOPIE de l'ancien cache les inchangés, ne télécharge que les autres ; un fichier versionné est servi du cache, SANS revalidation ; n'entre au cache que du script ou du CSS (`contenuVersionne`) | `sw.js`, `scripts/build.js` (étape 6) | `app-scripts-par-fichier.spec.js` ④ (vrai worker, deux artefacts, deux moteurs ; mutations : sans recopie → rouge, sans cache d'abord → rouge sous WebKit) |
-| Minification fichier par fichier, et refus de déployer si `dist/app/` n'a pas 9 scripts | `.github/workflows/deploy.yml` | — (CI) |
+| Minification fichier par fichier — PAR LE BUILD depuis le 2026-11-10 (`PASSIO_MINIFIER_APP`, étape 1 bis : même commande, mêmes octets) —, et refus de déployer si `dist/app/` n'a pas 9 scripts | `scripts/build.js`, `.github/workflows/deploy.yml` | `tests/unit/integrite-app.test.mjs` ③ ④ |
+| (2026-11-10) Chaque script porte l'empreinte `integrity` (sha384) de ses octets SERVIS, sur le preload et sur le `<script>` ; le buildId et les `?v=` ne bougent pas quand le build minifie | `scripts/build.js` (étapes 1 et 1 bis) | `app-scripts-par-fichier.spec.js` ⑦ ⑧ (deux moteurs), `integrite-app.test.mjs` ①③ |
+| (2026-11-10) Le worker honore une redemande `cache: "reload"` d'un fichier versionné : réseau, rangé si c'est bien un script, réponse une fois rangée | `sw.js` | ⑧ |
+| (2026-11-10) Refus de déployer une page dont une empreinte ne désigne pas son fichier — relue APRÈS la minification de la page ; même contrôle à chaque PR (« Gates artefact » construit minifié) | `scripts/verifier-integrite-app.js`, `deploy.yml`, `scripts/servir-dist.js` | `integrite-app.test.mjs` ② |
 | La barrière des migrations lit les 9 scripts servis (un motif peut vivre dans n'importe lequel ; un seul illisible = refus) ; l'ancienne forme reste lue | `scripts/lib/barriere-migration.js` (`urlsBundlesServis`), `scripts/appliquer-migration.mjs` | `tests/unit/barriere-migration.test.mjs` ④ (sur le VRAI build ; deux mutations) |
 | Le serveur d'artefact et les suites qui lisaient `dist/app.js` | `scripts/servir-dist.js`, `dist-build`, `version-skew`, `pwa-maj-pendant-appel`, `audit-2026-11-perf-dist` | — |
 
@@ -2277,12 +2280,91 @@ pour ces suites.
     `Cache-Control` et `Pragma`), atteint le serveur. Un moteur qui ne garderait pas le 404 rougirait sur la prémisse au lieu de
     passer sans rien prouver.
 
+**Le retour arrière entre deux versions d'APRÈS ce lot — reproduit, puis fermé (2026-11-10).** Le cas
+que « Ce qui reste » notait la veille. Netlify ignore le `?v=` : pendant une restauration instantanée
+de B vers A (`scripts/rollback-netlify.mjs`, « réversible par le même geste vers l'autre déploiement »),
+une demande de l'adresse de B reçoit le contenu de A, en 200 `immutable`.
+- **Reproduit d'abord, sous Chromium ET WebKit** (profil persistant, aucune route ; `app-scripts-par-fichier.spec.js`).
+  ⑦ — une page B partie juste avant la bascule (le banc bascule le site après la page) range l'app-04 de A
+  sous l'adresse de B, dans le cache HTTP ; B rétabli à l'identique, la page relit ce contenu SANS une
+  demande au serveur et exécute l'app-04 de A avec les 8 autres de B : l'application « démarre », aucune
+  erreur, rien ne reprend. ⑧ — le worker de B installé pendant la bascule (`sw.js` venu de B, tout le reste
+  de A) range l'app-04 de A dans SON cache ; B rétabli, le même worker le sert à chaque ouverture, jusqu'à
+  ce que ce fichier change. Les deux prémisses sont assertées : le contenu de A servi en 200 sous
+  l'adresse de B, puis relu sans aller au serveur. Le risque était réel, sur les deux moteurs.
+- **Le remède** (lignes datées du 2026-11-10 dans le tableau ci-dessus) : l'empreinte `integrity` fait
+  refuser au navigateur un script qui n'est pas celui de la page ; la reprise du chargeur (#811,
+  `fetch(…, { cache: "reload" })`) le redemande ; le worker honore cette redemande au lieu de resservir
+  son cache. Après le remède, ⑦ et ⑧ : la version rétablie exécute SON script, une seule demande au
+  serveur (la redemande, en `no-cache`), et le worker range le bon contenu — l'ouverture suivante n'a
+  plus rien à réparer.
+- **Mutations, chacune mesurée sur les deux moteurs** (fichiers restaurés et comparés octet pour octet après) :
+
+  | Pièce retirée | Chromium | WebKit |
+  |---|---|---|
+  | `integrity` (preload et balise) | ⑦ ⑧ rouges : le script de A s'exécute | ⑦ ⑧ rouges |
+  | `integrity` sur le preload seulement | ① rouge : 18 demandes au lieu de 9 | vert : WebKit réutilise le preload sans elle — pièce sans objet sous WebKit |
+  | la branche `reload` du worker | ⑧ rouge : « le chargeur abandonne », le worker resservait son cache | ⑧ rouge |
+  | le rangement dans cette branche | ⑧ rouge | ⑧ rouge |
+  | l'attente du rangement avant de répondre | vert au repos | vert au repos ; sous charge (⑧ ×18, trois workers) 2 rouges sur 18 — 0 avec l'attente |
+  | `cache: "reload"` sur la redemande | ⑥ ⑦ ⑧ rouges | ⑥ ⑦ ⑧ rouges |
+  | le remplacement des empreintes (étape 1 bis) | `integrite-app.test.mjs` ③ ④ rouges | — |
+  | la comparaison du contrôle | `integrite-app.test.mjs` ② rouge | — |
+- ⚠️ **L'EMPREINTE N'EST BONNE QUE SI ELLE EST CALCULÉE SUR LES OCTETS SERVIS.** Le `?v=` était calculé
+  avant que le workflow minifie `dist/app/` : une empreinte posée par le build aurait désigné des
+  fichiers que personne ne reçoit, et la production entière se serait arrêtée sur son premier script.
+  La minification passe donc DANS le build (même commande, terser du lockfile : octets identiques à
+  l'ancienne étape, comparés fichier par fichier), qui remplace chaque empreinte à son unique place.
+  Le buildId est calculé avant, sur les empreintes des sources : un build local rend toujours le
+  buildId servi. Et le déploiement relit la page APRÈS sa propre minification (html-minifier-terser)
+  avant de partir (`verifier-integrite-app.js`) ; « Gates artefact » construit minifié à chaque PR.
+  Vérifié avant de pousser : les 9 fichiers que la production servait (`6dafc0f1`) sont octet pour
+  octet ceux du nouveau build minifié (mêmes `?v=`, même `appHash`) — la mise en ligne ne fait refuser
+  aucun script déjà en cache.
+- ⚠️ **LE WORKER SERVAIT SON CACHE D'ABORD, ET IGNORAIT `cache: "reload"`.** Un contenu refusé rangé là
+  aurait été resservi à chaque reprise. La branche `estVersionne` honore désormais `reload` : réseau,
+  rangé si `contenuVersionne`, et la réponse ne part qu'une fois la copie rangée — le script que la
+  page réinsère aussitôt relit la copie neuve. WebKit transmet bien le mode `reload` au worker (⑧ vert
+  sous WebKit).
+- ⚠️ **UNE MUTATION VERTE AU REPOS N'EST PAS UNE PIÈCE INUTILE.** Répondre sans attendre la copie (en
+  tâche de fond, comme le reste de la branche) laissait ⑧ vert sur les deux moteurs, une passe chacun :
+  je l'ai d'abord retiré. Les suites voisines, lancées à deux workers, l'ont fait rougir sous WebKit —
+  la page relisait l'ancien script et il fallait la seconde reprise. Mesuré ensuite sur la même charge
+  (⑧ ×18, trois workers, WebKit) : sans l'attente 2 rouges sur 18 (et 1 sur 6 au premier essai), avec
+  l'attente 0 sur 18. Rétablie. ⑧ exige une seule redemande : c'est cette assertion qui l'a vu.
+- ⚠️ **L'EMPREINTE VA AUSSI SUR LE PRELOAD — MESURÉ.** Sans elle, Chromium ne réutilise pas le preload
+  pour la balise et télécharge chaque script DEUX fois (18 demandes au lieu de 9 en ①, où les routes
+  coupent le cache HTTP) ; WebKit le réutilise dans les deux cas. ① exige désormais une seule demande
+  par script, celle du preload.
+- ⚠️ **UNE PRÉMISSE QUI COMPTAIT LA REDEMANDE ELLE-MÊME.** « Aucune demande ordinaire au serveur »
+  (la forme de ⑥) se lisait sur le marqueur `no-cache` ; avec une reprise sans `cache: "reload"`
+  (mutation), WebKit envoyait la redemande au serveur, et ⑦ rougissait sur sa PRÉMISSE, pas sur son
+  verdict. ⑦ et ⑧ distinguent désormais par `Sec-Fetch-Dest` : `script` pour le preload et la balise,
+  `empty` pour la redemande — et assertent que le banc voit bien des demandes `script` (les deux
+  moteurs envoient l'en-tête : mesuré, la prémisse n'est pas creuse).
+- ⚠️ **LA SONDE DU BANC ÉTAIT DANS LES OCTETS SERVIS.** Le serveur de banc ajoutait `__ordre.push(…)` à
+  chaque script : avec `integrity`, plus rien ne se serait chargé. La sonde est passée dans la page — un
+  écouteur `load` en capture sur `document`, qui note chaque script avant le `onload` du chargeur.
+  ⚠️ Sur `document`, pas sur `window` : un événement `load` ne remonte jamais jusqu'à `window` (DOM,
+  « get the parent » d'un Document). ①–⑥ sont restés verts sur les deux moteurs avec la sonde déplacée.
+- ⚠️ **PENDANT LA BASCULE ELLE-MÊME, LA PAGE B S'ARRÊTE** : elle refuse le script de A (trois essais)
+  et le chargeur abandonne, comme devant un script manquant (③). Avant, elle tournait sur deux versions
+  mêlées, sans le dire. Un rechargement sert la version en ligne. C'est voulu : jamais deux versions
+  dans la même page.
+- ⚠️ **UNE MISE À JOUR DE TERSER** change les octets servis sous les mêmes `?v=` : chaque appareil
+  refuse une fois ce qu'il garde, et le redemande (une seconde par script modifié). Le prix d'une
+  version de terser, pas un défaut ; terser est figé (5.51.2, sans `^`).
+- **Survivant de la même classe, non traité : `styles.css?v=`** (la seule autre règle `immutable` de
+  `_headers`). Un retour arrière range la feuille de A sous l'adresse de B, et B rétabli la garde un an.
+  L'effet est visuel (des styles de B manquants), pas un mélange de code. Le remède a deux pièces qui
+  n'existent pas pour elle : une empreinte `integrity` sur un `<link rel=stylesheet>` refusé laisserait
+  la page SANS styles, faute de reprise ; et clean-css la minifie après le build (le même obstacle que
+  terser). Le worker, lui, est déjà prêt (`estVersionne` couvre `.css`, la branche `reload` aussi).
+
 **Ce qui reste.** Mesurer sur un vrai iPhone (session persistante) ce que son worker retrouve dans le
 cache réseau — le lot n'en dépend plus ; un profil WebKit persistant (`launchPersistentContext`, comme
-⑥) en donne déjà une approximation d'ici. Le même retour arrière entre deux versions d'APRÈS ce lot :
-Netlify ignorant `?v=`, l'ancien déploiement sert l'ANCIEN contenu d'un fichier modifié sous sa NOUVELLE
-empreinte, en 200 immutable — rien n'échoue, le remède du 404 ne le voit pas ; un attribut `integrity`
-(l'empreinte du contenu est déjà calculée) le ferait échouer, donc reprendre. La première installation
+⑥) en donne déjà une approximation d'ici. `styles.css?v=` après un retour arrière (ci-dessus) : une
+reprise pour la feuille de style, puis son empreinte, sa minification dans le build. La première installation
 sous WebKit (ci-dessus) : la page pourrait confier ses scripts au worker
 plutôt que de le laisser les redemander. Le résidu des minuteurs de démarrage : les réarmer sur
 `passio:app-ready` (app-04 ×2, app-08), après avoir vérifié que deux rejeux rapprochés d'une même file

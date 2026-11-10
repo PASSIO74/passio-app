@@ -28,10 +28,21 @@
 //   ⑥ un 404 « immutable » (celui de la production pour une adresse absente sous
 //     /app/) resté dans le cache du navigateur après un retour arrière ne l'empêche
 //     plus de démarrer une fois l'adresse rétablie : la reprise redemande l'adresse
-//     au réseau (`cache: "reload"`) avant de réinsérer le script.
+//     au réseau (`cache: "reload"`) avant de réinsérer le script ;
+//   ⑦ ⑧ un retour arrière entre deux versions d'APRÈS le découpage (Netlify ignore le
+//     `?v=`) range l'ANCIEN contenu d'un script sous sa NOUVELLE adresse, en 200
+//     immutable — dans le cache HTTP (⑦), dans celui du worker (⑧). Une fois la
+//     nouvelle version rétablie, ce script périmé n'est plus exécuté : l'attribut
+//     `integrity` le refuse, la reprise le redemande au réseau, et le worker honore
+//     la redemande au lieu de resservir son cache.
 //
-// ⚠️ LE SERVEUR AJOUTE UNE SONDE à chaque script servi (`__ordre.push(<nom>)`) : le
-// contenu change, pas l'URL — l'ordre d'exécution se lit sans toucher aux sources.
+// ⚠️ LA SONDE EST DANS LA PAGE, PAS DANS LES SCRIPTS (2026-11-10) : un écouteur `load`
+// en capture sur `document` note chaque script du bloc quand il a tourné (`__ordre`),
+// AVANT le `onload` du chargeur — l'ordre d'exécution se lit sans toucher ni aux
+// sources ni aux octets servis. Jusqu'au 2026-11-10 le serveur l'ajoutait au contenu
+// de chaque script : depuis l'attribut `integrity` (⑦ ⑧), un octet de plus et le
+// navigateur refuse le script. ⚠️ Sur `document`, pas sur `window` : un événement
+// `load` ne remonte jamais jusqu'à `window` (DOM, « get the parent » d'un Document).
 // ⚠️ LA CIBLE SUPABASE DES ARTEFACTS N'EXISTE PAS, ET LE PROXY EST MORT (même banc que
 // pwa-maj-pendant-appel.spec.js) : sous WebKit, une requête émise par un worker
 // échappe à `page.route`.
@@ -55,7 +66,11 @@ const SOURCE_MODIFIEE = "app-04-comments-shop.js";
 // ── Les deux artefacts : B ne diffère de A que par UN fichier du bloc ─────────
 let artefacts = null;
 let serveur = null;
-const etat = { dossier: null, journal: [], fautes: {}, essais: {}, liberes: {} };
+// `basculeApresPage` : le dossier que sert le site JUSTE APRÈS la page (un retour
+// arrière qui tombe entre la page et ses scripts, ⑦). `swDe` : le dossier dont vient
+// `sw.js`, quand il n'est pas celui du reste du site (le worker d'une version
+// installé pendant le retour arrière vers une autre, ⑧).
+const etat = { dossier: null, basculeApresPage: null, swDe: null, journal: [], fautes: {}, essais: {}, liberes: {} };
 
 function construire(arbre, sortie) {
   const env = {
@@ -105,15 +120,25 @@ function servir() {
     const url = new URL(req.url, "http://x");
     const chemin = decodeURIComponent(url.pathname);
     const rel = chemin === "/" ? "index.html" : chemin.replace(/^\/+/, "");
-    const f = path.join(etat.dossier, rel);
+    const dossier = (rel === "sw.js" && etat.swDe) || etat.dossier;
+    // Le retour arrière tombe juste après la page : ses scripts viendront de l'autre version (⑦).
+    if (rel === "index.html" && etat.basculeApresPage) {
+      etat.dossier = etat.basculeApresPage;
+      etat.basculeApresPage = null;
+    }
+    const f = path.join(dossier, rel);
     const scriptApp = /^app\/(app-0\d[\w-]*\.js)$/.exec(rel);
     const nom = scriptApp && scriptApp[1];
     // `reload` : la demande vient d'un `fetch(…, { cache: "reload" })`, que le navigateur
     // annonce par `Cache-Control: no-cache` et `Pragma: no-cache` (Fetch, « HTTP-network-or-cache
-    // fetch »). `statut` : ce que le banc a répondu (⑥).
-    const entree = { rel, query: url.search, t: Date.now(), reload: /no-cache/i.test(String(req.headers["cache-control"] || "") + " " + String(req.headers.pragma || "")) };
+    // fetch »). `statut` : ce que le banc a répondu (⑥). `version` : l'artefact qui a
+    // répondu, quelle que soit l'empreinte demandée — Netlify ignore le `?v=` (⑦ ⑧).
+    // `dest` (`Sec-Fetch-Dest`) : `script` pour le preload et la balise, `empty` pour un
+    // `fetch` — la redemande de la reprise, avec ou sans `cache: "reload"` (⑦ ⑧).
+    const version = dossier === artefacts.a ? "A" : dossier === artefacts.b ? "B" : "?";
+    const entree = { rel, query: url.search, version, dest: String(req.headers["sec-fetch-dest"] || ""), t: Date.now(), reload: /no-cache/i.test(String(req.headers["cache-control"] || "") + " " + String(req.headers.pragma || "")) };
     etat.journal.push(entree);
-    if (!f.startsWith(etat.dossier) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
+    if (!f.startsWith(dossier) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
       entree.statut = 404;
       res.writeHead(404, { "Cache-Control": "no-store" });
       res.end();
@@ -135,9 +160,8 @@ function servir() {
       res.end(PAGE_404);
       return;
     }
-    let corps = fs.readFileSync(f);
-    // La sonde note aussi l'état du document au PREMIER script exécuté (⑤).
-    if (nom) corps = Buffer.concat([corps, Buffer.from("\n;window.__etatAuDebut = window.__etatAuDebut || document.readyState; (window.__ordre = window.__ordre || []).push(" + JSON.stringify(nom) + ");\n")]);
+    // Les octets du build, tels quels : la sonde est dans la page (`preparer`).
+    const corps = fs.readFileSync(f);
     const envoyer = () => {
       if (nom) etat.liberes[nom] = Date.now();
       entree.statut = 200;
@@ -169,6 +193,15 @@ async function preparer(page) {
   page.on("pageerror", (e) => erreurs.push(String(e && e.message)));
   await page.addInitScript(({ local, uid }) => {
     window.__ordre = window.__ordre || [];
+    // La sonde : chaque script du bloc, quand il a tourné (son `load` part après son
+    // exécution), avant le `onload` du chargeur (capture) — et l'état du document au
+    // premier (⑤). Un script refusé (réseau, `integrity`) ne déclenche que `error`.
+    document.addEventListener("load", (e) => {
+      const m = e.target && e.target.tagName === "SCRIPT" && /\/app\/(app-0\d[\w-]*\.js)(\?|$)/.exec(e.target.src || "");
+      if (!m) return;
+      window.__etatAuDebut = window.__etatAuDebut || document.readyState;
+      window.__ordre.push(m[1]);
+    }, true);
     window.addEventListener("passio:app-ready", () => { window.__ordre.push("ready"); window.__appPrete = true; });
     sessionStorage.setItem("passio_pwa_dismissed", "1");
     localStorage.setItem("passio_uid", uid);
@@ -179,6 +212,8 @@ async function preparer(page) {
 test.beforeEach(async ({ page }) => {
   test.setTimeout(90000);
   etat.dossier = artefacts.a;
+  etat.basculeApresPage = null;
+  etat.swDe = null;
   etat.journal = [];
   etat.fautes = {};
   etat.essais = {};
@@ -223,6 +258,14 @@ test.describe("sans worker : l'ordre, le parallélisme, la reprise, l'arrêt", (
     // Et l'application a réellement démarré sur ses 9 scripts : le fil est peint.
     await page.waitForSelector("#screen-feed.active", { state: "attached", timeout: 30000 });
     expect(referencesManquantes()).toEqual([]);
+    // Chaque script part UNE fois : le preload sert l'exécution. ⚠️ Il porte la même
+    // empreinte `integrity` que la balise (2026-11-10) : sans elle, Chromium ne le
+    // réutilise pas et redemande chaque script (mesuré : 18 demandes au lieu de 9 ;
+    // WebKit le réutilise dans les deux cas). Les routes de ce bloc coupent le cache
+    // HTTP : un second téléchargement atteint le serveur, et se voit ici.
+    for (const nom of nomsA()) {
+      expect(requetesApp().filter((r) => r.rel === "app/" + nom).map((r) => r.dest), nom + " : une seule demande, celle du preload").toEqual(["script"]);
+    }
   });
 
   test("② un script qui ne se charge pas est retenté : l'application démarre quand même", async ({ page }) => {
@@ -404,6 +447,131 @@ test.describe("un 404 immutable resté en cache : la reprise redemande l'adresse
     } finally {
       await contexte.close().catch(() => {});
       try { fs.rmSync(profil, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (e) { /* profil verrouillé sous Windows : le dossier temporaire le reprendra */ }
+    }
+  });
+});
+
+// ⑦ ⑧ UN RETOUR ARRIÈRE ENTRE DEUX VERSIONS D'APRÈS LE DÉCOUPAGE (2026-11-10).
+// Netlify ignore le `?v=` (mesuré le 2026-11-09 : `app/app-04-comments-shop.js?v=0000000000`
+// → 200, contenu courant). Pendant un retour arrière de B vers A (restauration
+// instantanée, scripts/rollback-netlify.mjs — « réversible par le même geste »), une
+// demande de l'adresse de B reçoit le contenu de A, en 200 `immutable` : une page B
+// partie juste avant la bascule (⑦), ou le worker de B qui s'installe (⑧). Quand B est
+// rétabli à l'identique (même fichier, même `?v=`), l'appareil exécutait l'ANCIEN
+// script avec les 8 autres de B — sans que rien n'échoue, donc sans que la reprise du
+// 404 (⑥) ne le voie.
+// ⚠️ AUCUNE ROUTE, UN PROFIL PERSISTANT : mêmes raisons que ⑥.
+// ⚠️ LES PRÉMISSES SONT ASSERTÉES : le contenu de A a bien été servi sous l'adresse de
+// B, puis relu SANS aller au serveur (cache HTTP en ⑦, cache du worker en ⑧).
+test.describe("un retour arrière entre deux versions d'après le découpage : le script périmé n'est plus exécuté", () => {
+  const vDe = (artefact) => artefact.scripts.find((s) => s.nom === SOURCE_MODIFIEE).v;
+  const adresseB = () => "app/" + SOURCE_MODIFIEE + "?v=" + vDe(artefacts.B);
+  // Les demandes reçues pour l'adresse de B du script modifié, et l'artefact qui y a répondu.
+  const demandesB = (depuis = 0) => etat.journal
+    .filter((r) => r.t >= depuis && r.rel === "app/" + SOURCE_MODIFIEE && r.query === "?v=" + vDe(artefacts.B))
+    .map((r) => ({ statut: r.statut, reload: r.reload, version: r.version, dest: r.dest }));
+
+  async function ouvrirProfil({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }, serviceWorkers) {
+    const profil = fs.mkdtempSync(path.join(os.tmpdir(), "passio-profil-"));
+    const contexte = await playwright[browserName].launchPersistentContext(profil, {
+      ...launchOptions, headless, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale,
+      serviceWorkers, proxy: PROXY_MORT,
+    });
+    const page = contexte.pages()[0] || await contexte.newPage();
+    await preparer(page);
+    const fermer = async () => {
+      await contexte.close().catch(() => {});
+      try { fs.rmSync(profil, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (e) { /* profil verrouillé sous Windows : le dossier temporaire le reprendra */ }
+    };
+    return { page, fermer };
+  }
+
+  // Une ouverture de l'application, et son issue : prête, ou le chargeur qui abandonne.
+  async function ouvrir(page) {
+    const abandon = page.waitForEvent("console", { predicate: (m) => /ne se charge pas/.test(m.text()), timeout: 30000 })
+      .then(() => "le chargeur abandonne", () => "délai dépassé");
+    await page.goto(adresse());
+    const prete = page.waitForFunction(() => window.__appPrete === true, null, { polling: 50, timeout: 30000 })
+      .then(() => "application prête", () => "délai dépassé");
+    return Promise.race([prete, abandon]);
+  }
+
+  test("⑦ sans worker : l'ancien script rangé sous la nouvelle adresse (cache HTTP) n'est plus exécuté quand la nouvelle version revient", async ({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }) => {
+    const { page, fermer } = await ouvrirProfil({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }, "block");
+    try {
+      expect(vDe(artefacts.B), "prémisse : B change l'empreinte du script modifié").not.toBe(vDe(artefacts.A));
+
+      // 1. B est en ligne ; une page B part, et le retour arrière vers A tombe juste après elle.
+      etat.dossier = artefacts.b;
+      etat.basculeApresPage = artefacts.a;
+      const pendant = await ouvrir(page);
+      const servisPendant = demandesB();
+      expect(servisPendant.length, "prémisse : la page B a demandé " + SOURCE_MODIFIEE + " sous son adresse").toBeGreaterThan(0);
+      expect(servisPendant.every((r) => r.statut === 200 && r.version === "A"), "prémisse : chaque demande a reçu le contenu de A, en 200 immutable — " + JSON.stringify(servisPendant)).toBe(true);
+      expect(servisPendant.some((r) => r.dest === "script"), "prémisse : le banc reconnaît une demande du preload ou de la balise (Sec-Fetch-Dest) — " + JSON.stringify(servisPendant)).toBe(true);
+      // Pendant la bascule, la page B n'exécute jamais le script de A : elle s'arrête
+      // comme devant un script manquant (③) — un rechargement sert la version en ligne.
+      expect.soft(await page.evaluate(() => window.__ordre), "pendant la bascule : le script de A n'est jamais exécuté par la page B").not.toContain(SOURCE_MODIFIEE);
+      expect.soft(pendant, "pendant la bascule").toBe("le chargeur abandonne");
+
+      // 2. B est rétabli à l'identique (même fichier, même `?v=`) ; l'appareil rouvre l'application.
+      etat.dossier = artefacts.b;
+      const depuis = Date.now();
+      const issue = await ouvrir(page);
+      const apres = demandesB(depuis);
+      expect(apres.filter((r) => r.dest === "script"), "prémisse : la page B a relu le contenu de A EN CACHE (ni son preload ni sa balise ne sont allés au serveur)").toEqual([]);
+      expect.soft(issue, "B rétabli : l'application démarre").toBe("application prête");
+      expect.soft(await page.evaluate(() => window.__versionServie), "B rétabli : le script exécuté est celui de B, pas celui de A resté en cache").toBe("B");
+      expect.soft(apres, "une seule demande au réseau, la redemande `cache: \"reload\"`, qui reçoit le script de B").toEqual([{ statut: 200, reload: true, version: "B", dest: "empty" }]);
+      expect.soft(await page.evaluate(() => window.__ordre)).toEqual([...nomsA(), "ready"]);
+      expect(referencesManquantes()).toEqual([]);
+    } finally {
+      await fermer();
+    }
+  });
+
+  test("⑧ avec le worker : l'ancien script rangé par le worker sous la nouvelle adresse n'est plus exécuté quand la nouvelle version revient", async ({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }) => {
+    const { page, fermer } = await ouvrirProfil({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }, "allow");
+    try {
+      // 0. A est en ligne : l'appareil ouvre l'application, le worker de A prend la main.
+      etat.dossier = artefacts.a;
+      expect(await ouvrir(page), "prémisse : A démarre").toBe("application prête");
+      await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { polling: 50, timeout: 20000 });
+
+      // 1. B est déployé, l'appareil va chercher le worker de B (`majSilencieuse`) — et le
+      //    retour arrière vers A tombe juste après `sw.js` : le worker de B s'installe avec
+      //    les fichiers que sert A.
+      etat.swDe = artefacts.b;
+      const cacheB = "passio-v" + artefacts.B.release.buildId;
+      await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()).catch(() => {})).catch(() => {});
+      await expect.poll(() => page.evaluate(() => caches.keys()).catch(() => []), { timeout: 30000, intervals: [100] }).toEqual([cacheB]);
+      const servisPendant = demandesB();
+      expect(servisPendant.length, "prémisse : le worker de B a demandé " + SOURCE_MODIFIEE + " sous son adresse").toBeGreaterThan(0);
+      expect(servisPendant.every((r) => r.statut === 200 && r.version === "A"), "prémisse : chaque demande a reçu le contenu de A — " + JSON.stringify(servisPendant)).toBe(true);
+      const range = await page.evaluate(([c, u]) => caches.open(c).then((k) => k.match(u)).then((r) => (r ? r.text() : null)), [cacheB, adresseB()]);
+      expect(range, "prémisse : le worker de B a rangé un script sous l'adresse de B").toBeTruthy();
+      expect(range.includes('window.__versionServie = "B"'), "prémisse : ce script est celui de A").toBe(false);
+
+      // 2. B est rétabli à l'identique : même `sw.js`, le worker de B reste en place, et
+      //    l'appareil rouvre l'application.
+      etat.swDe = null;
+      etat.dossier = artefacts.b;
+      const depuis = Date.now();
+      const issue = await ouvrir(page);
+      expect(await page.evaluate(() => !!navigator.serviceWorker.controller), "prémisse : un worker contrôle la page").toBe(true);
+      expect(await page.evaluate(() => caches.keys()), "prémisse : c'est toujours le worker de B").toEqual([cacheB]);
+      const apres = demandesB(depuis);
+      expect(apres.filter((r) => r.dest === "script"), "prémisse : le worker a servi son cache (ni le preload ni la balise ne sont allés au serveur)").toEqual([]);
+      expect.soft(issue, "B rétabli : l'application démarre").toBe("application prête");
+      expect.soft(await page.evaluate(() => window.__versionServie), "B rétabli : le script exécuté est celui de B, pas celui de A resté dans le cache du worker").toBe("B");
+      expect.soft(apres, "une seule demande au réseau, la redemande `cache: \"reload\"`, que le worker laisse passer").toEqual([{ statut: 200, reload: true, version: "B", dest: "empty" }]);
+      expect.soft(await page.evaluate(() => window.__ordre)).toEqual([...nomsA(), "ready"]);
+      // Et le worker a remplacé ce qu'il gardait : la prochaine ouverture n'a plus rien à réparer.
+      const rangeApres = await page.evaluate(([c, u]) => caches.open(c).then((k) => k.match(u)).then((r) => (r ? r.text() : null)), [cacheB, adresseB()]);
+      expect.soft(!!rangeApres && rangeApres.includes('window.__versionServie = "B"'), "le cache du worker porte désormais le script de B").toBe(true);
+      expect(referencesManquantes()).toEqual([]);
+    } finally {
+      await fermer();
     }
   });
 });

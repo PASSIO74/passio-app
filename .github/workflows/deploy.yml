@@ -268,7 +268,7 @@ jobs:
           while IFS= read -r file; do
             case "${file}" in
               # Tout ce qui s'exécute avec un secret, écrit ce qui part en production ou juge la PR (E-05).
-              .github/*|.claude/*|CLAUDE.md|AGENTS.md|migrations/*|supabase/*|netlify/*|netlify.toml|_headers|sw.js|js/vendor/*|package.json|package-lock.json|dashboard/package.json|dashboard/package-lock.json|dashboard/server/*|playwright.config.js|tests/ci/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|scripts/audit-*.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js|scripts/schema-executable.js|scripts/sentinelle-detecter.mjs|scripts/veille-production.mjs|scripts/digest.mjs|scripts/moderation-alerte.mjs|scripts/mesure-passions.js|scripts/controle-realtime.mjs|scripts/purge-e2e-rest.js|scripts/verifier-prerequis-fonctions.mjs|scripts/build.js)
+              .github/*|.claude/*|CLAUDE.md|AGENTS.md|migrations/*|supabase/*|netlify/*|netlify.toml|_headers|sw.js|js/vendor/*|package.json|package-lock.json|dashboard/package.json|dashboard/package-lock.json|dashboard/server/*|playwright.config.js|tests/ci/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|scripts/audit-*.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js|scripts/schema-executable.js|scripts/sentinelle-detecter.mjs|scripts/veille-production.mjs|scripts/digest.mjs|scripts/moderation-alerte.mjs|scripts/mesure-passions.js|scripts/controle-realtime.mjs|scripts/purge-e2e-rest.js|scripts/verifier-prerequis-fonctions.mjs|scripts/build.js|scripts/verifier-integrite-app.js)
                 critical=true ;;
             esac
           done <<< "${files}"
@@ -967,10 +967,15 @@ jobs:
           echo "::error title=Installation Playwright impossible::deux essais de 10 min ont échoué. Relancer le job (Re-run failed jobs) : il repart sur une machine neuve."
           exit 1
 
+      # `PASSIO_MINIFIER_APP` (2026-11-10) : le build minifie les 9 scripts app/ comme
+      # au déploiement, et scripts/servir-dist.js refuse l'artefact si une empreinte
+      # `integrity` de la page n'est pas celle de son fichier — ces suites tournent donc
+      # sur les octets et les empreintes que la production recevra, à chaque PR.
       - name: Gates artefact production
         env:
           PASSIO_CIBLE: dist
           PASSIO_PORT: 8091
+          PASSIO_MINIFIER_APP: "1"
           COMMIT_REF: ${{ github.sha }}
         run: npx playwright test tests/e2e/release-integrity.spec.js tests/e2e/passion-context.spec.js
 
@@ -1045,18 +1050,28 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build dist (page assemblée, bloc app en 9 scripts, assets publics)
+      # Ces trois outils écrivent ce qui part en production, et aucun test ne passe après eux : leurs
+      # versions viennent du lockfile, jamais de « la dernière » publiée (E-07). AVANT le build
+      # depuis le 2026-11-10 : c'est lui qui minifie les 9 scripts app/ (étape suivante).
+      - name: Outils de minification figés par le lockfile
+        run: npm ci --ignore-scripts
+
+      # Les 9 scripts du bloc app (dist/app/, un par fichier source depuis le
+      # 2026-11-09) sont minifiés PAR LE BUILD depuis le 2026-11-10
+      # (`PASSIO_MINIFIER_APP`, scripts/build.js, étape 1 bis) : la page porte
+      # l'empreinte `integrity` de chacun, et elle doit être celle des octets SERVIS —
+      # calculée avant une minification faite ici, elle aurait désigné des fichiers que
+      # personne ne reçoit, et la production entière se serait arrêtée sur son premier
+      # script. Même commande qu'avant (terser du lockfile, `--compress --mangle`, sans
+      # `--toplevel`), mêmes octets (vérifié), même repli sur le fichier brut.
+      - name: Build dist (page assemblée, bloc app en 9 scripts minifiés, assets publics)
         env:
           COMMIT_REF: ${{ github.sha }}
+          PASSIO_MINIFIER_APP: "1"
         run: |
           node scripts/build.js dist/index.html
           # sw.js et release.json sont générés par build.js — ne pas les recopier
           cp manifest.json _headers icon-192.png icon-512.png dist/
-
-      # Ces trois outils écrivent ce qui part en production, et aucun test ne passe après eux : leurs
-      # versions viennent du lockfile, jamais de « la dernière » publiée (E-07).
-      - name: Outils de minification figés par le lockfile
-        run: npm ci --ignore-scripts
 
       - name: Minify index.html (fallback sur le fichier brut en cas d'erreur)
         run: |
@@ -1069,29 +1084,13 @@ jobs:
           && mv dist/index.min.html dist/index.html \
           || echo "Minification échouée, déploiement du fichier brut"
 
-      # Les 9 scripts du bloc app (dist/app/, un par fichier source depuis le
-      # 2026-11-09 — avant, un seul dist/app.js). Chacun minifié SÉPARÉMENT : sans
-      # `--toplevel`, terser ne renomme ni ne retire aucun nom de premier niveau,
-      # et c'est par eux que les 9 scripts classiques se parlent (fonctions
-      # globales, `let`/`const` de script). Le `?v=` de leur URL est l'empreinte du
-      # fichier AVANT minification (scripts/build.js) : terser figé par le lockfile,
-      # même source = même fichier servi. Un dossier vide ou absent = build cassé :
-      # on refuse de déployer une page qui ne chargerait aucun script.
-      - name: Minify les scripts app/ (fallback sur le fichier brut en cas d'erreur)
-        run: |
-          set -u
-          n=0
-          for f in dist/app/*.js; do
-            [ -f "$f" ] || continue
-            n=$((n + 1))
-            npx --no-install terser "$f" -o "$f.min" --compress --mangle \
-            && mv "$f.min" "$f" \
-            || { rm -f "$f.min"; echo "Minification $f échouée, déploiement du fichier brut"; }
-          done
-          if [ "$n" -ne 9 ]; then
-            echo "::error title=Scripts app absents::dist/app/ contient $n script(s), 9 attendus (scripts/build.js, étape 1)."
-            exit 1
-          fi
+      # ⚠️ L'EMPREINTE QUE LA PAGE DÉCLARE EST CELLE DES OCTETS QUI PARTENT (2026-11-10).
+      # Relu APRÈS la minification de la page : les 9 paires (adresse, empreinte) du
+      # chargeur, et dist/app/. Un écart, et le navigateur refuserait le script :
+      # l'application ne démarrerait pour personne. Refuse aussi un dist/app/ qui n'a
+      # pas ses 9 scripts (une page qui n'en chargerait aucun).
+      - name: Vérifier les scripts app/ — 9, et l'empreinte que la page déclare pour chacun
+        run: node scripts/verifier-integrite-app.js dist
 
       - name: Minify styles.css (fallback sur le fichier brut en cas d'erreur)
         run: |
