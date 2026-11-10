@@ -62,3 +62,11 @@ test, sonde anonyme, reproductions, avant / après de chaque lot), `outils/` (`s
   6 / 6 en local sur la branche ; déjà rouge sous charge sur `main` intact (baseline V7). Jobs relancés une fois. **Ce test est
   instable** : à inscrire au registre (STAB-12, P3) et à diagnostiquer — un rouge relancé n'est pas un rouge expliqué.
 - PR des documents : **#825**.
+
+## Ajout — lot « verdicts » (PR #826)
+
+- Branche `fix/verdicts-profil-conversation-commentaire` (worktree `lot-verdicts-client`), base `36b778d1`.
+- ETAT-03, ETAT-07, SRV-03 revérifiés dans le code par le coordinateur, puis corrigés : 7 verrous neufs, chacun rouge
+  quand on rend le fichier de `main`, verts après ; 19 suites voisines 199 / 199 ; `npm run verif` vert. Risque normal.
+- Reste de l'étape 4 du plan : c (session, critique), d (rejeu de l'état, critique), e (« verdicts » restants : SRV-04,
+  ETAT-04, ETAT-09, PARC-01), f (migrations), g (CI).
