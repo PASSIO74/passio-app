@@ -6224,7 +6224,13 @@ async function supaLoadEvents(authorId) {
       status: r.status || "active",
       updatedAt: r.updated_at ? supaTs(r.updated_at) : null,
       createdAt: r.created_at ? supaTs(r.created_at) : null,   // borne du rattrapage au fil (app-07)
-      coOrganizers: Array.isArray(r.co_organizers) ? r.co_organizers : [],
+      // ⚠️ SEULS DES IDENTIFIANTS DE COMPTE (2026-11-10, CLI-01). La base n'exige de
+      // `co_organizers` que d'être un tableau (`events_co_organizers_tableau`) : ses
+      // éléments sont écrits par l'auteur de l'activité, et la fiche ouvre le profil de
+      // chacun. Un élément qui n'est pas un identifiant de compte n'a rien à y faire.
+      coOrganizers: Array.isArray(r.co_organizers)
+        ? r.co_organizers.filter(function (x) { return typeof x === "string" && RE_UID_COMPTE.test(x); })
+        : [],
       seriesId: r.series_id || null,
       recurrence: r.recurrence || "none",
       convId: r.conv_id || null,
