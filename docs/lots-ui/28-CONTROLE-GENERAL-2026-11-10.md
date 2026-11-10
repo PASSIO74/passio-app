@@ -1,11 +1,11 @@
-# Lot 28 — Contrôle général du 2026-11-10 : dix défauts, mesurés puis corrigés
+# Lot 28 — Contrôle général du 2026-11-10 : neuf défauts, mesurés puis corrigés
 
 > Demande de Benjamin : « un contrôle et une optimisation générale de PASSIO / Sentinelle / centre de
 > pilotage ; teste chaque onglet ». Chaque onglet a été parcouru à **375 × 812** (iPhone 12/13 mini,
 > X, 11 Pro), en visiteur puis avec un état embarqué, sur `main` 6dafc0f1. Rien n'a été corrigé
 > avant d'être mesuré dans le DOM ; chaque correctif a son test, **rouge sur le code d'avant**
-> (contre-épreuve faite sur un second worktree à 6dafc0f1 : 10 rouges).
-> Verrou unique : `tests/e2e/controle-general-2026-11-10.spec.js` (10).
+> (contre-épreuve faite sur un second worktree à 6dafc0f1 : 9 rouges).
+> Verrou unique : `tests/e2e/controle-general-2026-11-10.spec.js` (9).
 
 ## Ce qui a été trouvé
 
@@ -18,8 +18,6 @@
 | ⑦ | Landing (compte connu, sans session) | Le sixième pilier lisible ENTRE « Se connecter » et « Créer un compte », et sous eux | `.landing-cta` collant et transparent | Pied dépoli, pleine largeur, jusqu'au bord bas (`styles.css`) |
 | ⑧ | Carte d'exemple | « Mehdi Saïd » sur deux lignes, « Sport · 12:52 » aussi | « Exemple PASSIO » + la capsule d'envie laissaient ~62 px au pseudo | Les deux capsules s'empilent à droite (grille, `:has(> .fr-demo-tag)`) |
 | ⑨ | Bobines | Le « Co » de « Commentaire » mangé ; l'indice « Glisse vers le haut… » posé sur la rangée de capsules cinq secondes à chaque ouverture | `.reel-info` finissait à 78 px du bord, le libellé déborde jusqu'à 86 ; l'indice datait d'avant la rangée du lot UI-5 | `right: 88px` ; l'indice à 260 px du bas sous `passio-ui-5` |
-
-| ⑩ | Landing, onboarding | La bulle d'aide du fil (« Appuie sur l'auteur… », z-index 9000) posée SUR la page d'accueil, par-dessus un pilier, quand un état embarqué démarre sans session | `montrerHint` juge `offsetParent` : le fil est monté sous la landing, sa cible n'est pas « invisible » | La règle des routeurs de liens : rien ne s'ouvre par-dessus `#landing.active` ni `#onboarding.active` ; refusée, l'aide n'est pas marquée vue |
 
 Les défauts ⑤ (discussion d'un exemple vidée à l'ouverture) et ⑥ (messages d'exemple en double à la
 deuxième visite) sont de la logique, pas de l'écran : fiche dans `docs/journal/social-messagerie.md`.
@@ -40,14 +38,19 @@ deuxième visite) sont de la logique, pas de l'écran : fiche dans `docs/journal
 - **`audit:echappement` lit le contexte dans le littéral qui précède l'interpolation** : un gestionnaire
   `onerror="…"` s'écrit d'un seul tenant, attribut compris, sinon `this.src='` passe pour un attribut d'URL.
 
-- **Une suite qui démarre par un état embarqué sans session démarre DERRIÈRE la landing.** `bootOnboarded`
-  la ferme ; le `boot` d'`aides-contextuelles.spec.js` ne le faisait pas, et deux de ses tests mesuraient
-  donc une bulle posée sur la page d'accueil (rouges dès la garde ⑩, prémisse corrigée dans leur `boot`).
-  Effet de bord voulu : après `bootOnboarded`, la bulle « Appuie sur l'auteur… » n'est plus à l'écran —
-  elle se posait pendant les 2,5 s où la landing couvrait le fil, puis restait par-dessus les tests.
-
 ## Vu, mesuré, laissé
 
+- **La bulle d'aide « Appuie sur l'auteur… » se pose par-dessus la landing** (z-index 9000 contre 60) quand
+  un état embarqué démarre sans session : `montrerHint` juge `offsetParent`, et le fil est monté SOUS la
+  landing. ⚠️ **Une garde a été ESSAYÉE puis RETIRÉE le jour même** (« rien ne s'ouvre par-dessus
+  `#landing.active` ni `#onboarding.active` », la règle des routeurs de liens). Elle corrige l'écran, mais
+  elle change l'état de départ de presque toutes les suites : `bootOnboarded` démarre derrière la landing,
+  et c'est LÀ que l'aide du fil était consommée. Refusée au démarrage, elle se pose plus tard — au premier
+  `renderFeed` — par-dessus le test en cours : `accessibilite-cibles` ⑦ y perdait 2 px de la zone tactile
+  du « ⋯ » (42 pour 44, rouge net ; vert dès la garde retirée), et deux tests d'`aides-contextuelles`
+  mesuraient une bulle posée sur la page d'accueil. Le reprendre, c'est d'abord décider ce que
+  `bootOnboarded` fait de cette aide — un lot à part, pas un correctif d'écran. Chemin rare en production
+  (session expirée, état local conservé).
 - **Le fil d'un compte neuf ne montre que des exemples** quand ses passions n'ont aucune publication
   réelle, alors que le réseau en a ailleurs (37 en base) : `selectedFeedPassions` filtre le réel comme
   le décor. C'est une décision de produit (ChatGPT / Benjamin), pas un défaut.

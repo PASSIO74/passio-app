@@ -9004,17 +9004,6 @@ function montrerHint(id, cible) {
     // un compte des aides qu'il recevait hier.
     if (window.PassioFirstRun && typeof PassioFirstRun.aidesHistoriquesEnPause === "function"
         && PassioFirstRun.aidesHistoriquesEnPause()) return false;
-    // ⚠️ RIEN NE S'OUVRE PAR-DESSUS LA LANDING NI L'ONBOARDING (2026-11-10) — la
-    // règle des routeurs de liens (`_irlLienAppPrete`, app-07 ; app-06), que les
-    // aides n'appliquaient pas. La cible n'y est pas « invisible » pour
-    // `offsetParent` : le fil est monté SOUS la landing d'un état embarqué sans
-    // session, et la bulle (z-index 9000) se posait donc sur la page d'accueil,
-    // par-dessus un pilier — vue en capture à 375 px. Refusée ici, l'aide n'est
-    // PAS marquée vue : elle se montrera sur le fil, une fois la porte passée.
-    var _porte = document.getElementById("landing");
-    if (_porte && _porte.classList.contains("active")) return false;
-    _porte = document.getElementById("onboarding");
-    if (_porte && _porte.classList.contains("active")) return false;
     var texte = HINTS[id];
     if (!texte || hintDejaVu(id) || hintVisible()) return false;
     var el = (typeof cible === "string") ? document.querySelector(cible) : cible;

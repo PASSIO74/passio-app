@@ -1,8 +1,8 @@
 // ══════════════════════════════════════════════════════════════════════════
-// CONTRÔLE GÉNÉRAL DU 2026-11-10 — dix défauts trouvés en parcourant chaque
+// CONTRÔLE GÉNÉRAL DU 2026-11-10 — neuf défauts trouvés en parcourant chaque
 // onglet à 375 × 812, comme quelqu'un qui arrive. Chacun a été MESURÉ avant
 // d'être corrigé, et chaque test ci-dessous est rouge sur le code d'avant
-// (contre-épreuve faite sur `main` 6dafc0f1, les dix).
+// (contre-épreuve faite sur `main` 6dafc0f1, les neuf).
 //
 //   ① fil — le texte d'une carte portait le retour à la ligne et l'indentation
 //     du gabarit (`.post-body` est en pre-wrap) : 7 lignes peintes pour 4 écrites ;
@@ -14,7 +14,6 @@
 //   ⑦ landing — le sixième pilier lisible entre et sous les boutons collants ;
 //   ⑧ carte d'exemple — le pseudo sur deux lignes, écrasé par les deux capsules ;
 //   ⑨ bobines — le libellé « Commentaire » mangé par la rangée de capsules.
-//   ⑩ aides — la bulle du fil posée sur la landing d'un état embarqué sans session.
 //
 // Stub local (`bootOnboarded`) : aucune écriture, aucune lecture en production.
 // ══════════════════════════════════════════════════════════════════════════
@@ -367,34 +366,4 @@ test.describe("Contrôle général 2026-11-10", () => {
     expect(r.indiceVisible, "l'indice est à l'écran au moment de la mesure").toBeGreaterThan(0.5);
     expect(r.indice.b, "l'indice tombait sur la rangée de capsules").toBeLessThanOrEqual(r.info.h);
     expect(r.indice.b).toBeLessThanOrEqual(r.libelle.h);
-  });
-  test("⑩ aides : une bulle ne s'ouvre pas par-dessus la landing ni l'onboarding — refusée, elle n'est pas consommée", async ({ page }) => {
-    await bootOnboarded(page);
-    const r = await page.evaluate(async () => {
-      goTo("feed");
-      await new Promise((ok) => setTimeout(ok, 600));
-      try { fermerHint(); } catch (e) {}
-      state.hintsVus = {};
-      const cible = "#feedList .post .post-author";
-      const ancre = document.querySelector(cible);
-      const sousPorte = (id) => {
-        const porte = document.getElementById(id);
-        porte.classList.add("active");
-        const rendu = montrerHint("feed_auteur", cible);
-        const out = { rendu, bulles: document.querySelectorAll(".passio-hint").length, vue: !!(state.hintsVus && state.hintsVus.feed_auteur) };
-        porte.classList.remove("active");
-        return out;
-      };
-      const landing = sousPorte("landing");
-      const onboarding = sousPorte("onboarding");
-      // La porte passée, la même aide se montre : le refus ne l'avait pas consommée.
-      const apres = { rendu: montrerHint("feed_auteur", cible), bulles: document.querySelectorAll(".passio-hint").length };
-      try { fermerHint(); } catch (e) {}
-      return { ancreVisible: !!(ancre && ancre.offsetParent), landing, onboarding, apres };
-    });
-    expect(r.ancreVisible, "prémisse : la cible est montée, le refus ne vient pas d'elle").toBe(true);
-    expect(r.landing).toEqual({ rendu: false, bulles: 0, vue: false });
-    expect(r.onboarding).toEqual({ rendu: false, bulles: 0, vue: false });
-    expect(r.apres).toEqual({ rendu: true, bulles: 1 });
-  });
-});
+  });});
