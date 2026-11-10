@@ -4286,7 +4286,9 @@
       flex-direction: column;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      padding: 20px 20px 30px;
+      /* Pas de padding bas ICI : c'est le pied collant (`.landing-cta`, dernier
+         enfant) qui le porte, pour que son voile aille jusqu'au bord de l'écran. */
+      padding: 20px 20px 0;
     }
     .landing.active { display: flex; animation: fadeIn 320ms ease-out; }
 
@@ -4403,12 +4405,25 @@
     .landing-pillar-title { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
     .landing-pillar-text  { font-size: 12px; color: var(--muted); line-height: 1.45; }
 
+    /* Le pied COLLANT couvre ce qui défile dessous (2026-11-10). Transparent, il
+       laissait le sixième pilier lisible ENTRE les deux boutons et sous eux, à
+       375 × 812 comme sur tout écran plus court que la page. Pleine largeur (les
+       marges négatives reprennent le padding latéral de `.landing`) et jusqu'au
+       bord bas : il PORTE le padding bas de la page (30 + 6 px) — une marge
+       négative sous un enfant de flex défilant ne l'aurait pas fait descendre
+       (mesuré) ; voile dépoli plutôt qu'aplat, pour que le halo du fond
+       reste continu ; le masque fond le bord haut sur les 14 px de padding, avant
+       les boutons. Verrou : controle-general-2026-11-10.spec.js ⑦. */
     .landing-cta {
       position: sticky;
       bottom: 0;
-      padding: 14px 0 6px;
-      margin-top: auto;
-      background: transparent;
+      padding: 14px 20px 36px;
+      margin: auto -20px 0;
+      background: rgba(237, 233, 250, 0.82);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
     }
     .landing-cta .btn {
       padding: 18px 20px;
@@ -5062,7 +5077,10 @@
       .bobines-cta-sub { font-size: 10px; }
       .reel-actions { right: 10px; bottom: calc(30px + env(safe-area-inset-bottom)); gap: 18px; }
       .reel-action-icon { width: 42px; height: 42px; }
-      .reel-info { left: 12px; right: 78px; bottom: calc(22px + env(safe-area-inset-bottom)); }
+      /* right: 88px, et non 78 (2026-11-10) : le libellé « Commentaire » (70 px, centré
+         sur son bouton de 42 px) déborde de la colonne jusqu'à 86 px du bord droit. À 78,
+         la rangée de capsules de `.reel-info` passait dessus et en mangeait le « Co ». */
+      .reel-info { left: 12px; right: 88px; bottom: calc(22px + env(safe-area-inset-bottom)); }
     }
 
     /* ============ REEL COMMENTS PANEL (STYLE INSTAGRAM) ============ */
@@ -12269,3 +12287,56 @@ button, a, label, select, summary,
   src: url("fonts/manrope-latin.woff2") format("woff2");
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+
+/* ═════════════════════════════════════════════════
+   EN-TÊTE D'UNE CARTE D'EXEMPLE : LES DEUX CAPSULES S'EMPILENT  (2026-11-10)
+   « Exemple PASSIO » et la capsule d'envie partageaient la ligne du pseudo. À
+   375 px il restait une soixantaine de pixels au nom : « Mehdi Saïd » passait
+   sur deux lignes, « Sport · 12:52 » aussi — sur les cartes que voit d'abord
+   quelqu'un qui arrive. Empilées à droite (deux capsules ≈ la hauteur de
+   l'avatar), elles rendent ~70 px au pseudo. Ne vise QUE l'en-tête qui porte
+   l'étiquette : la carte d'une vraie publication est inchangée. `:has()` absent
+   (vieux navigateur) : la mise en page d'avant, sans plus.
+   ═════════════════════════════════════════════════ */
+.post-header:has(> .fr-demo-tag) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 4px;
+  align-items: center;
+}
+.post-header:has(> .fr-demo-tag) > .avatar,
+.post-header:has(> .fr-demo-tag) > .post-author,
+.post-header:has(> .fr-demo-tag) > .post-menu-btn { grid-row: 1 / span 2; }
+.post-header:has(> .fr-demo-tag) > .fr-demo-tag {
+  grid-column: -2;
+  grid-row: 1;
+  justify-self: end;
+  align-self: end;
+  margin-left: 0;
+}
+.post-header:has(> .fr-demo-tag) > .post-mood-tag {
+  grid-column: -2;
+  grid-row: 2;
+  justify-self: end;
+  align-self: start;
+}
+/* Sans capsule d'envie, l'étiquette reste centrée sur la hauteur de l'en-tête. */
+.post-header:has(> .fr-demo-tag):not(:has(> .post-mood-tag)) > .fr-demo-tag {
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+/* Un bouton d'options à côté de l'étiquette (aucun exemple n'en porte
+   aujourd'hui) : il prend sa colonne, les capsules restent la dernière. */
+.post-header:has(> .fr-demo-tag):has(> .post-menu-btn) {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+/* ── Bobines : l'indice de défilement passe AU-DESSUS du bloc auteur (2026-11-10) ──
+   Posé à 88 px du bas avant le lot UI-5, il tombait depuis exactement sur la
+   rangée de capsules (« Ça m'intéresse », « À vivre près de moi »…) et sur le
+   « Co » de « Commentaire », cinq secondes à CHAQUE ouverture du lecteur.
+   260 px : au-dessus du bloc auteur même avec une légende de quatre lignes,
+   sous le premier bouton de la colonne d'actions. */
+:root.passio-ui-5 .reels-hint { bottom: calc(260px + env(safe-area-inset-bottom)); }

@@ -47,6 +47,7 @@
 - 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
 - 🫀 LE SEUIL DU BATTEMENT SE DÉDUIT DE LA CADENCE DE LA VEILLE — 35 MIN N'ÉTAIT TENU PAR RIEN (2026-11-08)
 - 🏃 LES FONCTIONS S'EXÉCUTENT AVANT D'ÊTRE DÉPLOYÉES — UNE VARIABLE NON DÉCLARÉE NE PART PLUS (2026-11-09)
+- 🩺 CONTRÔLE GÉNÉRAL DU 10/11 : L'ÉTAT MESURÉ DE LA CHAÎNE, ET UNE SONDE QUI COMPTAIT TOUTE LA TABLE (2026-11-10)
 
 ---
 
@@ -1055,3 +1056,46 @@ L'étape lance désormais 27 suites, 409 tests, en 3,1 s sur le poste.
 ⚠️ **UN BANC SANS IMPORT N'ÉTAIT PAS UN BANC POUR LA GATE.** La gate de #787 mesurait ce que garde une suite à ses imports de modules emportés. Le banc qui exécute le site d'appel n'en a aucun, exprès : ses modules sont des doublures. Sans cette extension, le lister rougissait ③, et ne pas le lister laissait un push direct déployer le défaut.
 
 Détail : `docs/AUTONOMIE_EXPLOITATION.md` § 3.9.
+
+
+---
+
+## 🩺 CONTRÔLE GÉNÉRAL DU 10/11 : L'ÉTAT MESURÉ DE LA CHAÎNE, ET UNE SONDE QUI COMPTAIT TOUTE LA TABLE (2026-11-10)
+
+Relevé fait le 2026-11-10 vers 08:30 UTC, canal ① (lecture seule), à la demande de Benjamin (« contrôle
+général de PASSIO / Sentinelle / centre de pilotage »). Ce qui suit est MESURÉ, pas déduit.
+
+**La chaîne tourne.** `npm run verif` vert sur `main` 6dafc0f1. Les dix tâches pg_cron : **100 % de
+succès sur 48 h** — `pilotage_veille` 576 / 576 (0,05 s en moyenne), `purge_telemetrie_debit` et
+`purge_debit_ecritures` 192 / 192, `agreger_croissance` et `purge_analytics_courte` 48 / 48, les
+purges quotidiennes 2 / 2. GitHub : `CI & Deploy`, Sentinelle autonome et distante, veille de production,
+pilotage (secours), disponibilité — tous verts sur `main` ; digest du 09/11 : « 0 à faire ».
+Conseillers Supabase : **aucune alerte de performance au-dessus d'INFO** (10 index inutilisés sur des
+tables presque vides, stratégie de connexions d'Auth en valeur absolue) ; sécurité : les avertissements
+connus et délibérés (fonctions SECURITY DEFINER exécutables, `pg_trgm` dans `public`, 11 tables à RLS sans
+policy réservées à `service_role`).
+**La base** : 121 Mo sur 8 Go, 24 connexions sur 60, PostgreSQL 17.6 ; 13 profils, 37 publications, 88
+messages ; `telemetry_events` 66 835 lignes / 48 Mo. **La publication temps réel est vide** (0 table,
+0 abonnement, aucun slot) : l'état d'après #802 est bien celui de la production.
+**Erreurs des 7 derniers jours** (`telemetry_events`, production) : des coupures réseau (« signal timed
+out », « Failed to fetch »), presque toutes en trafic `emulation` ; une seule famille d'erreur JS, « Can't
+find variable: EmptyRanges », 10 fois sur 1 appareil le 03/11 à 20:46 — le défaut connu des contrôles vidéo
+de Safari (WebKit 318284), écarté depuis ce soir-là par `estBugVideoSafari` (`js/platform.js`) : plus une
+ligne depuis.
+
+**Ce que le contrôle a corrigé ici : la sonde de lecture du tableau de bord local.** `probeDbRead`
+(`dashboard/server/observation.js`) demandait `select("id", { head: true, count: "exact" }).limit(1)`.
+Elle ne lit que `error` ; mais `count: "exact"` ignore `limit` : PostgREST comptait TOUTE
+`telemetry_events` à chaque passage. `pg_stat_statements` : **8 238 appels, 190 ms de moyenne, 5,9 s au
+pire** — 1 568 s cumulées, pour une valeur que personne ne lit, et un coût qui croît avec la télémétrie,
+donc avec l'audience. Sans le compte, c'est une ligne lue.
+⚠️ **Non corrigé, à savoir** : `kpi()` (`dashboard/server/kpi.js`) relit 30 jours de
+`user_id, received_at` page par page (107 771 appels, 54 ms, 4 652 blocs chacun — la deuxième requête de
+la base en temps cumulé). Depuis le 01/11 la télémétrie brute ne vit que 3 jours (échecs 7) : son MAU est
+donc faux PAR CONSTRUCTION, et la bonne source est `activite_jour`, comme le pilotage du nuage. C'est un
+lot à part (le tableau de bord local n'est plus l'écran de référence depuis le 04/11).
+
+**Ce que le contrôle n'a PAS trouvé** : rien à reprendre dans les murs de capacité du 09/11
+(`docs/journal/capacite-perf-realtime.md`, « Capacité au 2026-11-09 au soir »). Les trois premières
+requêtes de `pg_stat_statements` (`realtime.list_changes`, la liste des 5 000 passions, le KPI ci-dessus)
+ont chacune leur lot ou leur note. Les murs restants sont des QUOTAS, pas du code.

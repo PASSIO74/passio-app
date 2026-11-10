@@ -41,6 +41,18 @@ async function boot(page, etat) {
     window.supaSaveUserState = async () => {};
     window.supaUpsertProfile = async () => {};
   });
+  // ⚠️ UN ÉTAT EMBARQUÉ SANS SESSION DÉMARRE DERRIÈRE LA LANDING (chemin de test :
+  // `bootOnboarded` la ferme lui aussi). Depuis le 2026-11-10, une aide ne s'ouvre
+  // plus par-dessus (`montrerHint`) : sans cette fermeture, les suites qui passent
+  // un état mesuraient une bulle posée SUR la page d'accueil. On attend qu'elle
+  // soit montée avant de la fermer — la fermer trop tôt la laisserait revenir.
+  if (etat && etat.onboarded) {
+    await page.waitForFunction(() => {
+      const l = document.getElementById("landing");
+      return !!l && l.classList.contains("active");
+    }, null, { timeout: 20000 });
+    await page.evaluate(() => { document.getElementById("landing").classList.remove("active"); });
+  }
 }
 
 async function inscrire(page, passion) {

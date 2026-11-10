@@ -872,6 +872,21 @@ function _fusionnerPageCommentaires(post, page) {
   // Ce qui est à moi et en attente d'envoi ; une ligne sans drapeau ni
   // `fromSupabase` (liste persistée par l'ancien client) est périmée : la page fait foi.
   var locaux = (post.comments || []).filter(function (c) { return c && !ids.has(c.id) && commentaireEnAttente(c); });
+  // ⚠️ SAUF LE DÉCOR D'UN EXEMPLE (2026-11-10). Les commentaires d'une publication
+  // de démonstration (`buildSeed`, app-01) n'ont ni `fromSupabase` ni drapeau
+  // d'attente : la règle ci-dessus — écrite pour la liste persistée de MES
+  // publications — les prenait pour des lignes périmées. La page serveur d'un
+  // exemple étant presque toujours vide, ouvrir sa discussion affichait le
+  // commentaire une demi-seconde, puis « Discussion (0) · Sois le premier à
+  // réagir », alors que la carte du fil annonçait « 💬 1 » avec son aperçu — et
+  // que les « j'aime » posés sur ce commentaire par de vrais comptes sont en
+  // base (`comment_interactions`). `state.seed` n'est jamais persisté
+  // (`_leanState`) : sur un exemple, une ligne sans drapeau EST le décor, jamais
+  // un reste d'ancien client. Les vrais commentaires écrits sous un exemple
+  // (la page) s'y ajoutent. Verrou : `controle-general-2026-11-10.spec.js` ⑤.
+  var decor = (!post.fromSupabase && typeof _ciEstExemple === "function" && _ciEstExemple(post))
+    ? (post.comments || []).filter(function (c) { return c && !c.fromSupabase && !ids.has(c.id) && !commentaireEnAttente(c); })
+    : [];
   // L'ÉPINGLÉ lu à part (RV-38), plus ancien que la page, quand la page annonce une
   // suite : il reste — sinon chaque réouverture le relisait par son identifiant
   // (contre-revue du delta, P3-B). Sans suite, la page est la liste entière, et
@@ -887,7 +902,7 @@ function _fusionnerPageCommentaires(post, page) {
     : [];
   garde.forEach(function (c) { c._aVerifier = true; });
   var liste = page.map(function (c) { return Object.assign({}, c, { text: c.content || c.text || "" }); })
-    .concat(anciennes, garde, locaux)
+    .concat(anciennes, garde, locaux, decor)
     .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
   copies.forEach(function (c) {
     c.comments = liste;
@@ -3618,7 +3633,55 @@ function deduplicateConversations(convs) {
       if (!main.userId && c.userId) main.userId = c.userId;
     }
   }
+  result.forEach(_dedoublonnerDecorConversation);
   return result;
+}
+
+// ⚠️ LE DÉCOR NE SE DÉDOUBLE PAS (2026-11-10). Les messages des cinq fils de
+// démonstration (`SEED_CONVERSATIONS`) n'ont pas d'identifiant, et leur
+// horodatage est RELATIF au démarrage (`Date.now() - 90 min`). La fusion des
+// deux stores les reconnaît par « émetteur | horodatage | texte » : une graine
+// semée à un autre démarrage est donc, pour elle, une AUTRE série de messages.
+// Mesuré sur un appareil neuf, sans rien faire de spécial : 1ʳᵉ visite — la
+// graine part dans IndexedDB (« migration initiale »), rien dans localStorage ;
+// 2ᵉ visite — `getConversations()` sème une graine fraîche, `hydrateConvsFromIDB`
+// l'unit à celle d'IndexedDB : chaque message d'exemple apparaît DEUX fois
+// (8 au lieu de 4 dans « Léa Moreau »), puis l'état doublé est sauvegardé.
+// Le même chemin s'ouvre chaque fois qu'un des deux stores manque (purge ITP
+// de localStorage sur iPhone, quota).
+// Un fil de démonstration est en lecture seule (`_estConvDemo` y refuse
+// l'envoi) : deux messages sans identifiant, du même émetteur et du même texte,
+// y sont forcément deux copies du décor. On garde la plus ANCIENNE (le fil
+// vieillit comme il a été vu), on adopte les champs qu'elle n'a pas, et la date
+// du fil suit son dernier message. Passe par `deduplicateConversations` : la
+// lecture, la fusion ET la sauvegarde — un appareil déjà doublé se répare au
+// prochain démarrage. Verrou : `controle-general-2026-11-10.spec.js` ⑥.
+function _dedoublonnerDecorConversation(c) {
+  try {
+    if (!c || !Array.isArray(c.messages) || c.messages.length < 2) return;
+    if (typeof SEED_CONVERSATIONS === "undefined" || !SEED_CONVERSATIONS.some(function (s) { return s.id === c.id; })) return;
+    var vus = {};
+    var gardes = [];
+    c.messages.slice()
+      .sort(function (a, b) { return ((a && a.at) || 0) - ((b && b.at) || 0); })
+      .forEach(function (m) {
+        if (!m) return;
+        // Identifié, ou sans texte (une pièce jointe) : ce n'est pas le décor écrit.
+        if (m.id || !m.text) { gardes.push(m); return; }
+        var cle = (m.from || "") + "|" + String(m.text);
+        var deja = vus[cle];
+        if (!deja) { vus[cle] = m; gardes.push(m); return; }
+        Object.keys(m).forEach(function (champ) {
+          if (deja[champ] === undefined || deja[champ] === null || deja[champ] === "") deja[champ] = m[champ];
+        });
+      });
+    if (gardes.length === c.messages.length) return;
+    c.messages = gardes;
+    var dernier = gardes[gardes.length - 1];
+    if (dernier && dernier.at) c.lastAt = dernier.at;
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("conv_decor_doublons : " + (e && e.message)); } catch (_e) {}
+  }
 }
 
 // ⚠️ UNE CONVERSATION DE DÉMONSTRATION SE DIT (UXO-03, contre-revue Astra,
