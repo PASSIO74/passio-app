@@ -254,13 +254,6 @@
           <button class="onb-auth-tab" id="authTabSignup" onclick="switchAuthTab('signup')">Créer un compte</button>
         </div>
 
-        <!-- Invitation en attente (2026-10-04) : en création de compte SEULEMENT,
-             peinte par `majInvitationAuth` (app-06) et par lui seul. Elle ANNONCE
-             l'abonnement à l'invitant, que `appliquerInvitation` fera au premier
-             démarrage du compte. Texte posé par `textContent` : le nom vient d'un
-             autre compte. -->
-        <div id="authInvite" role="status" style="display:none;margin:0 0 14px;padding:10px 12px;border-radius:12px;background:var(--accent-tile, #f1ebff);border:1px solid var(--accent-tile-line, #d9c8ff);font-size:13px;line-height:1.45;font-weight:600;color:var(--text, #1f1235);"></div>
-
         <div id="authMsg" class="onb-auth-msg"></div>
 
         <!-- ══ LA SORTIE DU MUR « CONFIRME TON E-MAIL » SE PRONONCE LÀ OÙ LE
@@ -286,6 +279,30 @@
           <button type="button" id="authResendTopBtn" onclick="onbResendConfirmation()" style="display:block;width:100%;min-height:44px;padding:11px 14px;font-size:14px;font-weight:800;color:#fff;background:var(--accent);border:none;border-radius:12px;cursor:pointer;">📧 Renvoyer l'e-mail de confirmation</button>
         </div>
 
+        <!-- LA CASE DE CONSENTEMENT AVANT GOOGLE (2026-11-09) — mesuré sur iPhone : 3 inscriptions
+             sur 4 passent par Google, et la case vivait ~640 px sous lui. Le premier toucher sur
+             « Continuer avec Google » était donc REFUSÉ, puis le refus défilait vers la case et
+             renvoyait Google hors de l'écran. Juste au-dessus, « cocher puis Google » se fait sans
+             défiler ni être refusé. UNE seule case pour les deux chemins : le formulaire e-mail,
+             en dessous, exige la même (`onbDoAuth`), et elle reste montrée en mode création
+             SEULEMENT (`switchAuthTab` pose `display: flex`, jamais `""`). -->
+        <label class="field" id="authConsentWrap" style="display:none;flex-direction:row;align-items:flex-start;gap:10px;margin:2px 0 12px;">
+          <input type="checkbox" id="authConsent" style="width:20px;height:20px;min-width:20px;margin:1px 0 0;accent-color:var(--accent);"/>
+          <span style="display:block;font-size:12px;line-height:1.5;color:var(--muted);margin:0;">J'ai lu et j'accepte les <span id="authCguLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openTermsOfService()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">conditions générales</span> et la <span id="authPrivacyLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span>. J'ai 18 ans ou plus et j'ai compris que PASSIO est une beta fournie sans garantie.</span>
+        </label>
+
+        <!-- ⚠️ L'ÉCHO DU REFUS VIT HORS DE L'ÉTIQUETTE, ET CE N'EST PAS UN DÉTAIL DE MISE EN PAGE.
+             L'activation d'une etiquette part du clic sur N'IMPORTE LEQUEL de ses descendants : posee
+             DEDANS (aucun chevron dans ce commentaire : le comptage de balises de CLAUDE.md est un
+             grep, et un nom de balise cite entre chevrons y compte comme une vraie balise),
+             DEDANS, cette ligne ferait COCHER le consentement au simple fait de toucher le texte
+             qui explique qu'il manque — un accord donné par le geste de lire le refus. Même piège
+             que les liens CGU/politique (2026-09-08), qui ont dû être neutralisés au preventDefault.
+             Le refus se prononce LÀ OÙ L'ON AGIT, en plus du bandeau du haut : même patron que
+             #authPwdRefus (2026-09-16). Sans lui, une fois la page défilée jusqu'à la case, on voit
+             un halo sur une case et plus une ligne de texte expliquant pourquoi. -->
+        <div id="authConsentRefus" role="alert" style="display:none;font-size:12px;line-height:1.45;color:#b91c1c;margin:-8px 0 12px;padding-left:30px;"></div>
+
         <!-- GOOGLE EN PREMIER (2026-09-19) — ET C'EST UN GESTE DE CAPACITÉ, PAS DE GOÛT.
              La confirmation d'e-mail est obligatoire depuis le 2026-08-30 : une
              inscription = un e-mail, et le relais Brevo en offre gratuite en donne
@@ -300,10 +317,10 @@
              emplacements selon le mode, ce sont deux états qui divergent sur celui
              qu'on oublie. Le séparateur, lui, NOMME l'alternative (peint par `switchAuthTab`,
              app-02) — « ou » seul ne dit pas ce qu'il y a en dessous.
-             ⚠️ LA CASE DE CONSENTEMENT EST DÉSORMAIS PLUS BAS QUE CE BOUTON, et
-             `onbGoogleAuth` la refuse en mode création : le refus AMÈNE donc la case
-             à l'écran (`_amenerConsentementAuxYeux`). Un refus qui désigne un élément
-             hors champ est le défaut qu'on vient de fermer, déplacé d'un cran. -->
+             ⚠️ LA CASE DE CONSENTEMENT EST JUSTE AU-DESSUS DE CE BOUTON depuis le
+             2026-11-09 (voir le bloc précédent) : posée ~640 px plus bas, elle faisait
+             refuser le premier toucher sur Google. `_amenerConsentementAuxYeux` reste
+             le filet d'un refus (Google touché sans cocher, ou « Créer mon compte »). -->
         <div id="authGoogleBloc" style="display:flex;flex-direction:column;gap:10px;margin:0 0 16px;">
           <button class="btn block" id="authGoogleBtn" onclick="onbGoogleAuth()" style="padding:13px;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border);background:#fff;color:#3c4043;">
             <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>
@@ -311,6 +328,18 @@
           </button>
           <div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;margin:0;"><span style="flex:1;height:1px;background:var(--border);"></span><span id="authGoogleOu">ou avec ton e-mail</span><span style="flex:1;height:1px;background:var(--border);"></span></div>
         </div>
+
+        <!-- Invitation en attente (2026-10-04) : en création de compte SEULEMENT,
+             peinte par `majInvitationAuth` (app-06) et par lui seul. Elle ANNONCE
+             l'abonnement à l'invitant, que `appliquerInvitation` fera au premier
+             démarrage du compte. Texte posé par `textContent` : le nom vient d'un
+             autre compte.
+             ⚠️ SOUS GOOGLE, AU-DESSUS DU FORMULAIRE E-MAIL (2026-11-09). Posée en tête, avec la
+             case de consentement désormais au-dessus de Google, elle repoussait « Continuer avec
+             Google » SOUS LE PLI pour un invité sur iPhone SE (611–658 px pour 568). Elle ne vaut
+             accord QUE pour le chemin e-mail (`invitationPourInscription`, ④) : le chemin Google
+             redemande « Suivre … ? » après le retour (⑥). Elle se lit donc là où elle engage. -->
+        <div id="authInvite" role="status" style="display:none;margin:0 0 14px;padding:10px 12px;border-radius:12px;background:var(--accent-tile, #f1ebff);border:1px solid var(--accent-tile-line, #d9c8ff);font-size:13px;line-height:1.45;font-weight:600;color:var(--text, #1f1235);"></div>
 
         <label class="field" id="authNameWrap" style="display:none;">
           <span>Nom d'utilisateur</span>
@@ -347,23 +376,6 @@
           <span>Confirmer le mot de passe</span>
           <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
-
-        <label class="field" id="authConsentWrap" style="display:none;flex-direction:row;align-items:flex-start;gap:10px;margin:2px 0 12px;">
-          <input type="checkbox" id="authConsent" style="width:20px;height:20px;min-width:20px;margin:1px 0 0;accent-color:var(--accent);"/>
-          <span style="display:block;font-size:12px;line-height:1.5;color:var(--muted);margin:0;">J'ai lu et j'accepte les <span id="authCguLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openTermsOfService()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">conditions générales</span> et la <span id="authPrivacyLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span>. J'ai 18 ans ou plus et j'ai compris que PASSIO est une beta fournie sans garantie.</span>
-        </label>
-
-        <!-- ⚠️ L'ÉCHO DU REFUS VIT HORS DE L'ÉTIQUETTE, ET CE N'EST PAS UN DÉTAIL DE MISE EN PAGE.
-             L'activation d'une etiquette part du clic sur N'IMPORTE LEQUEL de ses descendants : posee
-             DEDANS (aucun chevron dans ce commentaire : le comptage de balises de CLAUDE.md est un
-             grep, et un nom de balise cite entre chevrons y compte comme une vraie balise),
-             DEDANS, cette ligne ferait COCHER le consentement au simple fait de toucher le texte
-             qui explique qu'il manque — un accord donné par le geste de lire le refus. Même piège
-             que les liens CGU/politique (2026-09-08), qui ont dû être neutralisés au preventDefault.
-             Le refus se prononce LÀ OÙ L'ON AGIT, en plus du bandeau du haut : même patron que
-             #authPwdRefus (2026-09-16). Sans lui, une fois la page défilée jusqu'à la case, on voit
-             un halo sur une case et plus une ligne de texte expliquant pourquoi. -->
-        <div id="authConsentRefus" role="alert" style="display:none;font-size:12px;line-height:1.45;color:#b91c1c;margin:-8px 0 12px;padding-left:30px;"></div>
 
         <!-- Art. 13 RGPD : l'identité du responsable du traitement, AU MOMENT de la collecte
              (ASTRA-09). Rempli par switchAuthTab depuis js/legal-textes.js, en mode inscription seulement. -->

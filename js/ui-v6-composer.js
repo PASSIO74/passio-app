@@ -262,10 +262,17 @@
   // L'écran est repeint par `renderStudio` à chaque `goTo("studio")`, et
   // `shareEventExperience` force la Passio à +250 ms depuis une fiche
   // d'activité : le résumé doit se remettre à jour, pas être figé au montage.
+  // ⚠️ N'ÉCRIRE QUE SI LA VALEUR CHANGE (2026-11-09). Affecter `textContent`
+  // remplace le nœud texte, donc produit une mutation `childList` même à valeur
+  // identique : notre propre observateur rappelait `planifier()` → `decorer()`
+  // → ici, sans fin — ~470 setTimeout(0)/s au repos, pour tous, sur tous les
+  // écrans (`#screen-studio` est toujours dans le DOM). Verrou :
+  // tests/e2e/repos-sans-boucle.spec.js.
   function syncResume() {
     try {
       var t = document.querySelector("[data-v6-passio]");
-      if (t) t.textContent = libellePublieDans() + (libellePassionChoisie() || "—");
+      var v = libellePublieDans() + (libellePassionChoisie() || "—");
+      if (t && t.textContent !== v) t.textContent = v;
     } catch (e) {}
   }
 

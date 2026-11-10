@@ -33,6 +33,7 @@
 - 🖼️ LES ANCIENNES MINIATURES NE DEMANDENT PLUS DE TRANSFORMATION — ET LE QUOTA DE MESSAGES TEMPS RÉEL, AVANT ET APRÈS #802 (2026-11-09, la suite)
 - 🧩 LE BLOC APP EN 9 SCRIPTS : UNE VERSION NE RETÉLÉCHARGE QUE CE QUI A CHANGÉ — ET SOUS WEBKIT, IL A FALLU LE WORKER (2026-11-09)
 - 🧪 LA CI NE PARLE PLUS AU PROJET DE PRODUCTION : UN PROJET SUPABASE VIDE POUR LES SUITES LOCALES (2026-11-09)
+- ♻️ UNE BOUCLE AU REPOS — 470 setTimeout(0) par seconde, pour tout le monde, sur tous les écrans (2026-11-09)
 
 ---
 
@@ -2471,3 +2472,39 @@ LOCALE qui navigue pose le projet vide, chemins réels au socle seulement — il
 `node_modules`, comme le job d'audits).
 Remesurer : la sonde sur `--project=local` (chemin Windows : `$(pwd -W)`), puis la requête
 `edge_logs` groupée par `request.cf.asOrganization` (préfixe « Microsoft »), par famille de chemin.
+**Ce qui reste.** Mesurer sur un vrai iPhone (session persistante) ce que son worker retrouve dans le
+cache réseau — le lot n'en dépend plus. La première installation sous WebKit (ci-dessus) : la page
+pourrait confier ses scripts au worker plutôt que de le laisser les redemander. Et le résidu des
+minuteurs de démarrage : les réarmer sur `passio:app-ready` (app-04 ×2, app-08), après avoir vérifié
+que deux rejeux rapprochés d'une même file ne doublent rien.
+
+---
+
+## ♻️ UNE BOUCLE AU REPOS — 470 setTimeout(0) par seconde, pour tout le monde, sur tous les écrans (2026-11-09)
+
+Mesuré deux fois, indépendamment (audit du 09/11) : sans aucun geste, ~470 `setTimeout(0)` par seconde,
+en deux chaînes de ~235. `syncResume` (`js/ui-v6-composer.js`) réécrivait `textContent` SANS comparer ;
+or affecter `textContent` remplace le nœud texte — une mutation `childList` même à valeur identique —
+que l'observateur de `#screen-studio` (toujours dans le DOM, visiteurs compris) transformait en
+`planifier()` → `setTimeout(0)` → `decorer()` → `syncResume()`… `ui-v4a4-outils` (observateur sur tout
+`document.body`) suivait la même cadence : la deuxième chaîne. Fil principal ~6 % occupé au repos sous
+CPU ×4, ~0,4 % après ; c'est de la batterie et de la chauffe, pas un chiffre de laboratoire.
+- **Règle** : un décorateur qui écrit dans ce qu'il observe n'écrit que si la valeur CHANGE
+  (`if (t && t.textContent !== v) t.textContent = v;`). Les autres observateurs ont été mesurés dans dix
+  situations (compte et visiteur) : aucune autre boucle ; ui-v6a/v6b/v7/v6c/v5/v4a2 écrivent derrière un
+  marqueur ou une signature, app-08 et app-03 ne font que suivre, perf-ios lit et se déconnecte.
+- ⚠️ **Le verrou existant ne la voyait pas** : `audit-2026-11-perf-derives.spec.js` ③ ne compte que les
+  `setInterval`. Une boucle `setTimeout(0)` ↔ `MutationObserver` lui échappe par construction.
+Verrou : `tests/e2e/repos-sans-boucle.spec.js` (3) — 8 s de repos après démarrage, compte (`bootOnboarded`)
+ET visiteur (`bootVisiteur`) : moins de 50 `setTimeout` de délai ≤ 4 ms et moins de 50 rappels
+d'observateur (mesuré après correctif : 1 et 3 ; avant : plus de 3 000). ③ vérifie que la comparaison n'a
+rien figé (« Publier dans » suit toujours la passion). Réinjection : écriture sans comparaison → ①② rouges.
+- ⚠️ **LA BOUCLE MASQUAIT UN DÉFAUT DU COMPTEUR DE LIKES** (CI de #812, `capacite-likes-visibles` « détail,
+  profil et Bobines » rouge sur la branche, vert sur main). `#postDetailPage` entre par `fadeIn` (opacité
+  0 → 1, 200 ms) : le tour de lecture réveillé par son ouverture jugeait la carte invisible
+  (`_postLikeCardVisible` refuse une opacité nulle), n'interrogeait rien et reprenait 15 s plus tard —
+  aucune mutation du DOM ne marque la FIN d'une animation. Les ~470 réveils par seconde de la boucle
+  relançaient un tour toutes les 200 ms et cachaient l'oubli. `startPostLikeRefresh` écoute désormais
+  `animationend` et `transitionend` (capture, passifs) : un réveil coûte O(1), le tour reste borné par
+  son rendez-vous. Leçon : **corriger une boucle de réveils, c'est aussi chercher qui en vivait** —
+  relancer les suites des AUTRES consommateurs des mêmes observateurs, pas seulement la sienne.

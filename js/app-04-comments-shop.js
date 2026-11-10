@@ -4893,7 +4893,9 @@ function _verrouEcriture(table, id, promesse) {
 // Une phrase écrite en trois endroits finit par diverger sur celui qu'on oublie :
 // le gabarit, l'attribut de restitution et le repli lisent la MÊME constante.
 var TEXTE_DEMANDE_EN_VOL = "Tu verras ses publications dès qu'elle aura accepté ta demande.";
-var TEXTE_COMPTE_PRIVE = "Abonne-toi pour voir ses publications, photos, bobines et carnets.";
+// « et carnets » retiré le 2026-11-09 : le Carnet de voyage n'existe plus
+// (ADR-011), et ce texte s'affiche sur chaque profil privé visité.
+var TEXTE_COMPTE_PRIVE = "Abonne-toi pour voir ses publications, photos et bobines.";
 
 function _ciblePrivee(uid) {
   try {

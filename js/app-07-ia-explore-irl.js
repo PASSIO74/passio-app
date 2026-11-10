@@ -4763,7 +4763,16 @@ function _irlWeeklyDigest() {
     const now = Date.now();
     const ref = _irlReferenceLoc();
     const myPassions = new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean));
+    // ⚠️ LE RÉEL SEULEMENT (2026-11-09). `allEvents()` mêle les activités
+    // d'exemple du seed : 12 comptes réels sur 13 avaient reçu « 11 événements
+    // cette semaine » alors que la base n'en portait AUCUNE à venir — et ce
+    // résumé part aussi en notification système. Discriminant : celui de
+    // l'étiquette « exemple » des activités ; sans lui, on se tait plutôt que
+    // de compter de la démo.
+    const estExemple = window.PassioFirstRun && window.PassioFirstRun.evenementDemo;
+    if (typeof estExemple !== "function") return;
     const soon = allEvents().filter(e => {
+      if (estExemple(e)) return false;
       if (_eventIsCancelled(e) || _eventEndAt(e) <= now || e.date > now + 7 * 86400000) return false;
       if ((state.user.joinedEvents || []).includes(e.id)) return false; // déjà inscrit
       const d = _eventDistanceKm(e, ref);
@@ -4783,7 +4792,9 @@ function _irlWeeklyDigest() {
     const city = irlSelectedCity ? irlSelectedCity.name
       : (irlUserLocation ? getClosestCity(irlUserLocation.lat, irlUserLocation.lng) : "près de toi");
     const text = `<b>${soon.length} événement${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(city === "près de toi" ? city : "à " + city)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
-    if (typeof pushNotification === "function") pushNotification(text, "📍");
+    // Identifiant par semaine : il distingue ce résumé, compté sur le réel, de
+    // ceux d'avant le 2026-11-09 que `stripLegacyEconomy` retire (app-02).
+    if (typeof pushNotification === "function") pushNotification(text, "📍", "me", { id: NOTIF_DIGEST_IRL_PREFIXE + wk });
 
     // Notification système : uniquement si l'utilisateur l'a DÉJÀ acceptée.
     if (typeof Notification !== "undefined" && Notification.permission === "granted"

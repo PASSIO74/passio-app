@@ -125,8 +125,10 @@ test.describe("la page Rechercher connaît tout le référentiel", () => {
       state.seed.posts = [];
       state.userPosts = [];
       state.supabasePosts = [];
+      // Semées comme publications RÉELLES : depuis le 2026-11-09 les tendances
+      // ne comptent plus la démo (`state.seed.posts`, notifications-exemples ⑤).
       for (let i = 0; i < 5; i++) {
-        state.seed.posts.push({ id: "t_" + i, passion: cible.id, author: "u1", text: "x", createdAt: Date.now() });
+        state.supabasePosts.push({ id: "t_" + i, passion: cible.id, author: "u1", text: "x", createdAt: Date.now() });
       }
       renderExplorer();
       return {

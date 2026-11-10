@@ -858,6 +858,43 @@ window.addEventListener("passio:app-ready", function () {
   if (g && typeof g.then === "function") g.then(demarrer); else demarrer();
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// INVITER DES AMIS — un lien qui porte MON nom, et des portes qu'on trouve
+// (2026-11-09)
+//
+// Le seul bouton « Inviter des amis » vivait dans Paramètres → Support et
+// diffusait l'ACCUEIL NU : sans `?inv=`, l'invité n'était ni accueilli par mon
+// nom ni abonné à moi en créant son compte — la boucle ci-dessus, contournée
+// par sa propre porte. Son texte parlait avec la voix du fondateur et
+// promettait « leurs données restent sur leur appareil », faux depuis les
+// comptes Supabase.
+// ① Un VRAI compte invite avec le lien de SON profil, signé `?inv=` par
+//    `lienPartageDe` (seule source des formes d'URL : court en production).
+//    Un visiteur, avec le lien de l'app, sans invitant. Jamais `location.href` :
+//    une page ouverte depuis un lien de connexion porte des jetons dans son
+//    fragment (audit du 2026-11-06).
+// ② Le texte est à la première personne de qui invite.
+// ③ Le partage part du CLIC (`partagerOuCopier`, synchrone). `link_create` et
+//    `link_share` sont émis au geste ; le type `beta` est gardé pour la
+//    continuité du pilotage, la cible nomme la porte.
+// Portes : Paramètres → Support (`shareBeta`), le menu ⋯ de mon profil, le
+// séparateur « Exemples PASSIO » du fil (compte seulement).
+// ═══════════════════════════════════════════════════════════════════════════
+var INVITATION_AMIS_TEXTE = "Je suis sur PASSIO, le réseau des passions — rejoins-moi :";
+
+function lienInvitationAmis() {
+  if (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) return lienPartageDe("user", MY_UID);
+  return location.origin + location.pathname;
+}
+
+function inviterDesAmis(porte) {
+  var brut = lienInvitationAmis();
+  var cible = porte ? "invite_" + String(porte).slice(0, 20) : "invite";
+  var url = (window.tel && tel.shareLink)
+    ? tel.shareLink(brut, "beta", cible, navigator.share ? "native" : "clipboard") : brut;
+  partagerOuCopier({ title: "PASSIO", text: INVITATION_AMIS_TEXTE, url: url }, "Lien d'invitation copié");
+}
+
 function copyReelLink(postId, encodedUrl) {
   const url = decodeURIComponent(encodedUrl);
   if (navigator.clipboard) {
@@ -1843,7 +1880,10 @@ function openMainProfileMenu(ev) {
           return n ? " (" + n + " archivée" + (n > 1 ? "s" : "") + ")" : "";
         } catch (e) { return ""; }
       })(), run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
-    { label: "Apparence & thème", run: function() { if (typeof openConfigurator === "function") openConfigurator(); } }
+    { label: "Apparence & thème", run: function() { if (typeof openConfigurator === "function") openConfigurator(); }, sep: true },
+    // L'invitation avait pour seule porte Paramètres → Support (2026-11-09).
+    // `run` est appelé dans le clic même : le partage natif garde son geste.
+    { label: "Inviter des amis", run: function() { inviterDesAmis("profil"); } }
   ]);
 }
 
@@ -5541,15 +5581,22 @@ function renderExplorer() {
   try { pret = !!(moteur && moteur.pret()); } catch (e) {}
 
   // ── PASSIONS TENDANCE ────────────────────────────────────────────────────
-  // Le classement part des passions RÉELLEMENT publiées (seed + userPosts +
+  // Le classement part des passions RÉELLEMENT publiées (userPosts +
   // supabasePosts), et le socle ne sert plus qu'à compléter une section qui
   // serait autrement creuse sur un réseau encore vide.
+  // ⚠️ JAMAIS `state.seed.posts` (2026-11-09) : la démo y affichait « Musique
+  // 41 posts » pour 2 publications réelles. Une publication à moi revient aussi
+  // du serveur : comptée une fois (par id). Sans publication réelle, la tuile
+  // ne porte aucun compteur plutôt qu'un « 0 post ».
   function peindreTendances() {
     var cible = document.getElementById("trendingGrid");
     if (!cible) return;
     var counts = {};
-    [].concat(state.seed.posts, state.userPosts, (state.supabasePosts || [])).forEach(function (p) {
-      if (p && p.passion) counts[p.passion] = (counts[p.passion] || 0) + 1;
+    var dejaComptes = Object.create(null);
+    [].concat(state.userPosts || [], state.supabasePosts || []).forEach(function (p) {
+      if (!p || !p.passion) return;
+      if (p.id != null) { if (dejaComptes[p.id]) return; dejaComptes[p.id] = true; }
+      counts[p.passion] = (counts[p.passion] || 0) + 1;
     });
     var vus = Object.create(null);
     var ids = Object.keys(counts).concat(PASSIONS.map(function (p) { return p.id; }));
@@ -5568,7 +5615,7 @@ function renderExplorer() {
       return '<div class="trending-tile" onclick="openPassionExplorer(\'' + escapeJsArg(p.id) + '\')">'
         + '<div class="trending-emoji">' + escapeHtml(p.emoji) + '</div>'
         + '<div class="trending-name">' + escapeHtml(p.label) + '</div>'
-        + '<div class="trending-stat">' + p.count + ' post' + (p.count > 1 ? "s" : "") + '</div>'
+        + (p.count > 0 ? '<div class="trending-stat">' + p.count + ' post' + (p.count > 1 ? "s" : "") + '</div>' : "")
         + '</div>';
     }).join("");
   }

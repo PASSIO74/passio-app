@@ -17,6 +17,7 @@
 - 👋 L'INVITATION — « Léa t'invite », et Léa suivie à la création du compte (2026-10-04)
 - 📈 ENTONNOIR DES LIENS — LA MARCHE « COMPTE CRÉÉ » (2026-10-04)
 - 🪧 L'AFFICHE DE LA RENCONTRE — un QR imprimable, suivi jusqu'à l'inscription (2026-11-01)
+- 💌 « INVITER DES AMIS » — la porte contournait la boucle d'invitation (2026-11-09)
 
 ---
 
@@ -260,4 +261,33 @@ long ») ; ③ le lien suivi n'est CRÉÉ (`link_create`) que si un identifiant 
 pas s'ouvrir ; ④ le cas ③ de la suite ne dépend plus de `BarcodeDetector` : il relit l'image produite
 au centre de CHAQUE module et la compare à `qrEncode` (0 écart exigé). Réinjections : QR décalé
 d'un module, contrôle du seul voisin — chacune rend son cas rouge.
+
+---
+
+## 💌 « INVITER DES AMIS » — la porte contournait la boucle d'invitation (2026-11-09)
+
+Le seul bouton « Inviter des amis » vivait dans Paramètres → Support (`shareBeta`, app-08) et ouvrait
+une fenêtre « Partager la beta » qui diffusait **l'accueil nu** (`origin + pathname`) : sans `?inv=`,
+l'invité n'était ni accueilli par le nom de l'invitant ni abonné à lui en créant son compte — toute
+la boucle de la fiche 👋, contournée par sa propre porte. Le texte parlait avec la voix du fondateur
+(« la beta… que je prépare, 5 min de test ») et promettait « leurs données restent sur leur
+appareil », **faux depuis les comptes Supabase**.
+① `inviterDesAmis(porte)` (app-06, fin de la section invitation) est la SEULE autorité : un vrai
+compte (`_uidEstUnCompte`) diffuse le lien de SON profil, `lienPartageDe("user", MY_UID)` — signé
+`?inv=`, court en production ; un visiteur, l'accueil sans invitant. Jamais `location.href` (jetons de
+connexion dans le fragment, audit du 2026-11-06). Texte à la première personne
+(`INVITATION_AMIS_TEXTE`). ② Le partage part du CLIC (`partagerOuCopier`, natif sinon presse-papiers) :
+`shareBeta` et l'entrée du menu ⋯ l'appellent SANS `await`. ③ `link_create` + `link_share` partent au
+geste par `tel.shareLink` ; le type reste `beta` (continuité du pilotage), la CIBLE nomme la porte :
+`invite` (Support, inchangée), `invite_profil`, `invite_fil`.
+④ **Trois portes** : Support (gardée), le menu ⋯ de mon profil (`openMainProfileMenu`, sixième entrée —
+`ui-v6b-profil.spec.js` compte désormais 6), et le séparateur « Exemples PASSIO » du fil
+(`.feed-exemples-sep-invite`, **compte seulement** : le lien d'un visiteur ne fait suivre personne ;
+jamais sur une panne réseau — fiche ⚠️ de `passions-fil.md` du même jour). Le séparateur compare aussi
+`data-invite` dans sa garde d'idempotence : sans elle, un compte connu APRÈS la première peinture
+gardait le séparateur de visiteur. La classe `.share-box` est partie avec la fenêtre (seul émetteur).
+Verrou : `tests/e2e/invitation-amis.spec.js` (4), **éprouvé par RÉINJECTION de sept mutations**, chacune
+rouge : lien sans `?inv=` (①③④), ancien texte (①②), ancien `shareBeta` à fenêtre (①②), entrée du menu
+retirée (③), bouton du séparateur retiré (④) ou offert au visiteur (④), lien de profil pour un
+visiteur (②).
 

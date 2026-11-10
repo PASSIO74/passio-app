@@ -195,7 +195,8 @@ test.describe("UI-6B — Profil et multi-profils", () => {
       };
     });
 
-    expect(vu.nb, "les cinq entrées sont toujours là").toBe(5);
+    // Six depuis le 2026-11-09 : « Inviter des amis » (invitation-amis.spec.js ③).
+    expect(vu.nb, "les six entrées sont toujours là").toBe(6);
     expect(vu.exotiques, "aucun emoji dans les libellés du menu").toEqual([]);
     expect(vu.icones, "et aucune colonne d'icônes, même vide").toBe(0);
   });

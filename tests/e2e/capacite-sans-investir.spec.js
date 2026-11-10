@@ -289,7 +289,12 @@ test.describe("② le bouton Google", () => {
       const boite = document.getElementById("authConsent");
       boite.checked = true;
       boite.dispatchEvent(new Event("change", { bubbles: true }));
-      const apresCoche = getComputedStyle(document.getElementById("authConsentRefus")).display !== "none";
+      // (2026-11-09) Cocher rend l'écho INVISIBLE en gardant sa place — l'effondrer
+      // faisait sauter Google, posé juste en dessous, sous le doigt
+      // (inscription-frictions-iphone ① quinquies). Le refus ne se lit plus : c'est
+      // ce que ce cas exige.
+      const cs = getComputedStyle(document.getElementById("authConsentRefus"));
+      const apresCoche = cs.display !== "none" && cs.visibility !== "hidden";
       boite.checked = false;
       try { await window.onbGoogleAuth(); } catch (e) {}
       switchAuthTab("signin");
