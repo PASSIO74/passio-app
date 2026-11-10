@@ -47,7 +47,7 @@
 - 🧷 LES VERROUS D'AVANT DÉPLOIEMENT SE DÉDUISENT DES IMPORTS — CINQ MODULES PARTAIENT SANS LEUR SUITE (2026-11-07)
 - 🫀 LE SEUIL DU BATTEMENT SE DÉDUIT DE LA CADENCE DE LA VEILLE — 35 MIN N'ÉTAIT TENU PAR RIEN (2026-11-08)
 - 🏃 LES FONCTIONS S'EXÉCUTENT AVANT D'ÊTRE DÉPLOYÉES — UNE VARIABLE NON DÉCLARÉE NE PART PLUS (2026-11-09)
-- 🩺 CONTRÔLE GÉNÉRAL DU 10/11 : L'ÉTAT MESURÉ DE LA CHAÎNE, ET UNE SONDE QUI COMPTAIT TOUTE LA TABLE (2026-11-10)
+- 🩺 CONTRÔLE GÉNÉRAL DU 10/11 : L'ÉTAT MESURÉ DE LA CHAÎNE, ET UNE SONDE QUI COMPTE TOUTE LA TABLE (2026-11-10)
 
 ---
 
@@ -1060,7 +1060,7 @@ Détail : `docs/AUTONOMIE_EXPLOITATION.md` § 3.9.
 
 ---
 
-## 🩺 CONTRÔLE GÉNÉRAL DU 10/11 : L'ÉTAT MESURÉ DE LA CHAÎNE, ET UNE SONDE QUI COMPTAIT TOUTE LA TABLE (2026-11-10)
+## 🩺 CONTRÔLE GÉNÉRAL DU 10/11 : L'ÉTAT MESURÉ DE LA CHAÎNE, ET UNE SONDE QUI COMPTE TOUTE LA TABLE (2026-11-10)
 
 Relevé fait le 2026-11-10 vers 08:30 UTC, canal ① (lecture seule), à la demande de Benjamin (« contrôle
 général de PASSIO / Sentinelle / centre de pilotage »). Ce qui suit est MESURÉ, pas déduit.
@@ -1083,12 +1083,15 @@ find variable: EmptyRanges », 10 fois sur 1 appareil le 03/11 à 20:46 — le d
 de Safari (WebKit 318284), écarté depuis ce soir-là par `estBugVideoSafari` (`js/platform.js`) : plus une
 ligne depuis.
 
-**Ce que le contrôle a corrigé ici : la sonde de lecture du tableau de bord local.** `probeDbRead`
-(`dashboard/server/observation.js`) demandait `select("id", { head: true, count: "exact" }).limit(1)`.
-Elle ne lit que `error` ; mais `count: "exact"` ignore `limit` : PostgREST comptait TOUTE
+**Ce que le contrôle a trouvé ici : la sonde de lecture du tableau de bord local.** `probeDbRead`
+(`dashboard/server/observation.js`) demande `select("id", { head: true, count: "exact" }).limit(1)`.
+Elle ne lit que `error` ; mais `count: "exact"` ignore `limit` : PostgREST compte TOUTE
 `telemetry_events` à chaque passage. `pg_stat_statements` : **8 238 appels, 190 ms de moyenne, 5,9 s au
 pire** — 1 568 s cumulées, pour une valeur que personne ne lit, et un coût qui croît avec la télémétrie,
 donc avec l'audience. Sans le compte, c'est une ligne lue.
+⚠️ **Le correctif (une ligne) part dans une PR À PART** : `dashboard/server/*` est un périmètre critique de
+la gouvernance (contre-revue de PASSIO74 exigée), et il n'avait rien à faire dans un lot d'interface —
+la première version de la PR du contrôle l'embarquait, « Gouvernance critique » l'a refusée, à raison.
 ⚠️ **Non corrigé, à savoir** : `kpi()` (`dashboard/server/kpi.js`) relit 30 jours de
 `user_id, received_at` page par page (107 771 appels, 54 ms, 4 652 blocs chacun — la deuxième requête de
 la base en temps cumulé). Depuis le 01/11 la télémétrie brute ne vit que 3 jours (échecs 7) : son MAU est

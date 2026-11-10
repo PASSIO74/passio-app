@@ -93,13 +93,7 @@ async function probeDbRead() {
   }
   try {
     admin ||= createClient(config.supabaseUrl, config.supabaseServiceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-    // ⚠️ SANS `count: "exact"` (2026-11-10). La sonde ne lit que `error` : le
-    // compte ne servait à rien, et `count: "exact"` ignore `limit` — PostgREST
-    // comptait TOUTE la table à chaque passage. Mesuré dans pg_stat_statements :
-    // 8 238 appels, 190 ms de moyenne, 5,9 s au pire, sur 67 000 lignes ; le coût
-    // croît avec la télémétrie, donc avec l'audience. Une ligne lue suffit à
-    // prouver que la base répond et que le rôle a le droit de lire.
-    const { error } = await admin.from("telemetry_events").select("id", { head: true }).limit(1);
+    const { error } = await admin.from("telemetry_events").select("id", { head: true, count: "exact" }).limit(1);
     if (error) throw error;
     db.update((d) => { d.dbRead = { at: nowIso(), ok: true, configured: true, role: "service_role", error: null }; });
   } catch (e) {
