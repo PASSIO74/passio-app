@@ -1,0 +1,4162 @@
+{
+ "genereLe": "2026-11-10T16:54:14.336Z",
+ "ecrans": [
+  "screen-feed",
+  "screen-profiles",
+  "screen-studio",
+  "screen-explore",
+  "screen-irl",
+  "screen-messages"
+ ],
+ "conteneurs": [
+  "landing",
+  "onboarding",
+  "storyViewer",
+  "reelsViewer",
+  "reelCommentsPanel",
+  "modalBackdrop",
+  "tourOverlay",
+  "toastStack",
+  "devPanel",
+  "appNav",
+  "conv-fullpage",
+  "passionManager"
+ ],
+ "scriptsCharges": 45,
+ "nbFonctions": 1803,
+ "portes": [
+  {
+   "nom": "openNotifSettings",
+   "ou": "js/app-02-state-utils.js:3994",
+   "citee": false
+  },
+  {
+   "nom": "openPrivacySettings",
+   "ou": "js/app-02-state-utils.js:4018",
+   "citee": false
+  },
+  {
+   "nom": "openContentSettings",
+   "ou": "js/app-02-state-utils.js:4241",
+   "citee": false
+  },
+  {
+   "nom": "openScreenTime",
+   "ou": "js/app-02-state-utils.js:4267",
+   "citee": false
+  },
+  {
+   "nom": "openPauseMode",
+   "ou": "js/app-02-state-utils.js:4448",
+   "citee": false
+  },
+  {
+   "nom": "openAbout",
+   "ou": "js/app-02-state-utils.js:4467",
+   "citee": false
+  },
+  {
+   "nom": "openLogoutConfirm",
+   "ou": "js/app-02-state-utils.js:4489",
+   "citee": false
+  },
+  {
+   "nom": "openAuthScreen",
+   "ou": "js/app-02-state-utils.js:4551",
+   "citee": false
+  },
+  {
+   "nom": "openAccountSwitch",
+   "ou": "js/app-02-state-utils.js:4609",
+   "citee": false
+  },
+  {
+   "nom": "openChangePassword",
+   "ou": "js/app-02-state-utils.js:5003",
+   "citee": false
+  },
+  {
+   "nom": "openDeleteAccountConfirm",
+   "ou": "js/app-02-state-utils.js:5125",
+   "citee": false
+  },
+  {
+   "nom": "openPrivacyPolicy",
+   "ou": "js/app-02-state-utils.js:5313",
+   "citee": false
+  },
+  {
+   "nom": "openTermsOfService",
+   "ou": "js/app-02-state-utils.js:5321",
+   "citee": false
+  },
+  {
+   "nom": "openLegalNotice",
+   "ou": "js/app-02-state-utils.js:5332",
+   "citee": false
+  },
+  {
+   "nom": "showOnbStep",
+   "ou": "js/app-02-state-utils.js:5348",
+   "citee": false
+  },
+  {
+   "nom": "ouvrirConsentementRequis",
+   "ou": "js/app-02-state-utils.js:5958",
+   "citee": false
+  },
+  {
+   "nom": "openCreateCustomPassion",
+   "ou": "js/app-02-state-utils.js:6857",
+   "citee": false
+  },
+  {
+   "nom": "openFeedPost",
+   "ou": "js/app-02-state-utils.js:8250",
+   "citee": false
+  },
+  {
+   "nom": "montrerHint",
+   "ou": "js/app-02-state-utils.js:9005",
+   "citee": false
+  },
+  {
+   "nom": "openPost",
+   "ou": "js/app-02-state-utils.js:10508",
+   "citee": false
+  },
+  {
+   "nom": "openPostOptions",
+   "ou": "js/app-04-comments-shop.js:9",
+   "citee": false
+  },
+  {
+   "nom": "openPostOptionsAutrui",
+   "ou": "js/app-04-comments-shop.js:31",
+   "citee": false
+  },
+  {
+   "nom": "openCommentReactors",
+   "ou": "js/app-04-comments-shop.js:1093",
+   "citee": false
+  },
+  {
+   "nom": "openPostReactors",
+   "ou": "js/app-04-comments-shop.js:1288",
+   "citee": false
+  },
+  {
+   "nom": "openComments",
+   "ou": "js/app-04-comments-shop.js:1298",
+   "citee": false
+  },
+  {
+   "nom": "openCommentOptions",
+   "ou": "js/app-04-comments-shop.js:2381",
+   "citee": false
+  },
+  {
+   "nom": "openCommentSheet",
+   "ou": "js/app-04-comments-shop.js:2989",
+   "citee": false
+  },
+  {
+   "nom": "openNewMessage",
+   "ou": "js/app-04-comments-shop.js:4007",
+   "citee": false
+  },
+  {
+   "nom": "openUserProfile",
+   "ou": "js/app-04-comments-shop.js:4287",
+   "citee": false
+  },
+  {
+   "nom": "openVisitedProfileMenu",
+   "ou": "js/app-04-comments-shop.js:4673",
+   "citee": false
+  },
+  {
+   "nom": "openBlockedList",
+   "ou": "js/app-04-comments-shop.js:5432",
+   "citee": false
+  },
+  {
+   "nom": "openConversation",
+   "ou": "js/app-04-comments-shop.js:5654",
+   "citee": false
+  },
+  {
+   "nom": "openConfigurator",
+   "ou": "js/app-05-config-profil.js:185",
+   "citee": false
+  },
+  {
+   "nom": "openCreateGroup",
+   "ou": "js/app-05-config-profil.js:1906",
+   "citee": false
+  },
+  {
+   "nom": "showGroupMembers",
+   "ou": "js/app-05-config-profil.js:1999",
+   "citee": false
+  },
+  {
+   "nom": "openReels",
+   "ou": "js/app-05-config-profil.js:3076",
+   "citee": false
+  },
+  {
+   "nom": "openReelById",
+   "ou": "js/app-05-config-profil.js:3139",
+   "citee": false
+  },
+  {
+   "nom": "openReelComments",
+   "ou": "js/app-05-config-profil.js:3307",
+   "citee": false
+  },
+  {
+   "nom": "showQuickEmojiForReelComment",
+   "ou": "js/app-05-config-profil.js:3652",
+   "citee": false
+  },
+  {
+   "nom": "showEmojiPickerForReelComment",
+   "ou": "js/app-05-config-profil.js:3676",
+   "citee": false
+  },
+  {
+   "nom": "showGifPickerForReelComment",
+   "ou": "js/app-05-config-profil.js:3708",
+   "citee": false
+  },
+  {
+   "nom": "openReelShareModal",
+   "ou": "js/app-05-config-profil.js:3807",
+   "citee": false
+  },
+  {
+   "nom": "openMyPostsTab",
+   "ou": "js/app-06-reels-partage.js:1155",
+   "citee": false
+  },
+  {
+   "nom": "openFollowingList",
+   "ou": "js/app-06-reels-partage.js:1200",
+   "citee": false
+  },
+  {
+   "nom": "openFollowersList",
+   "ou": "js/app-06-reels-partage.js:1210",
+   "citee": false
+  },
+  {
+   "nom": "openMainProfileMenu",
+   "ou": "js/app-06-reels-partage.js:1856",
+   "citee": false
+  },
+  {
+   "nom": "openPassionProfileMenu",
+   "ou": "js/app-06-reels-partage.js:1891",
+   "citee": false
+  },
+  {
+   "nom": "openEditMainProfile",
+   "ou": "js/app-06-reels-partage.js:1916",
+   "citee": false
+  },
+  {
+   "nom": "openPassionManager",
+   "ou": "js/app-06-reels-partage.js:2613",
+   "citee": false
+  },
+  {
+   "nom": "openPassionsAide",
+   "ou": "js/app-06-reels-partage.js:2646",
+   "citee": false
+  },
+  {
+   "nom": "openEditPassionProfile",
+   "ou": "js/app-06-reels-partage.js:3513",
+   "citee": false
+  },
+  {
+   "nom": "openPassionPaywall",
+   "ou": "js/app-06-reels-partage.js:4365",
+   "citee": false
+  },
+  {
+   "nom": "ouvrirGestionPassions",
+   "ou": "js/app-06-reels-partage.js:4496",
+   "citee": false
+  },
+  {
+   "nom": "ouvrirRecherchePassionStudio",
+   "ou": "js/app-06-reels-partage.js:4502",
+   "citee": false
+  },
+  {
+   "nom": "openCreateProfile",
+   "ou": "js/app-06-reels-partage.js:4587",
+   "citee": false
+  },
+  {
+   "nom": "openCreateCustomPassionFromExplorer",
+   "ou": "js/app-06-reels-partage.js:5794",
+   "citee": false
+  },
+  {
+   "nom": "openPassionExplorer",
+   "ou": "js/app-07-ia-explore-irl.js:330",
+   "citee": false
+  },
+  {
+   "nom": "openIrlCitySelector",
+   "ou": "js/app-07-ia-explore-irl.js:1374",
+   "citee": false
+  },
+  {
+   "nom": "ouvrirRecherchePassionIRL",
+   "ou": "js/app-07-ia-explore-irl.js:1949",
+   "citee": false
+  },
+  {
+   "nom": "openIrlCalendar",
+   "ou": "js/app-07-ia-explore-irl.js:2439",
+   "citee": false
+  },
+  {
+   "nom": "openIrlFiltersPanel",
+   "ou": "js/app-07-ia-explore-irl.js:2737",
+   "citee": false
+  },
+  {
+   "nom": "openEventReactions",
+   "ou": "js/app-07-ia-explore-irl.js:3303",
+   "citee": false
+  },
+  {
+   "nom": "openEventChat",
+   "ou": "js/app-07-ia-explore-irl.js:3899",
+   "citee": false
+  },
+  {
+   "nom": "openEventRsvpSheet",
+   "ou": "js/app-07-ia-explore-irl.js:4006",
+   "citee": false
+  },
+  {
+   "nom": "openIrlTimePicker",
+   "ou": "js/app-07-ia-explore-irl.js:4074",
+   "citee": false
+  },
+  {
+   "nom": "openEventDetails",
+   "ou": "js/app-07-ia-explore-irl.js:4243",
+   "citee": true
+  },
+  {
+   "nom": "openCreateEvent",
+   "ou": "js/app-07-ia-explore-irl.js:6431",
+   "citee": false
+  },
+  {
+   "nom": "openEventManage",
+   "ou": "js/app-07-ia-explore-irl.js:6677",
+   "citee": false
+  },
+  {
+   "nom": "openEventCoOrganizers",
+   "ou": "js/app-07-ia-explore-irl.js:6706",
+   "citee": false
+  },
+  {
+   "nom": "openEventWaitlist",
+   "ou": "js/app-07-ia-explore-irl.js:6751",
+   "citee": false
+  },
+  {
+   "nom": "openEventInvite",
+   "ou": "js/app-07-ia-explore-irl.js:7411",
+   "citee": true
+  },
+  {
+   "nom": "openEventFeedback",
+   "ou": "js/app-07-ia-explore-irl.js:7645",
+   "citee": false
+  },
+  {
+   "nom": "openEventCheckinQr",
+   "ou": "js/app-07-ia-explore-irl.js:8042",
+   "citee": false
+  },
+  {
+   "nom": "openCheckinCodeEntry",
+   "ou": "js/app-07-ia-explore-irl.js:8096",
+   "citee": false
+  },
+  {
+   "nom": "openModal",
+   "ou": "js/app-08-ui-modals-tour.js:32",
+   "citee": false
+  },
+  {
+   "nom": "showTour",
+   "ou": "js/app-08-ui-modals-tour.js:160",
+   "citee": false
+  },
+  {
+   "nom": "openLimitesPilote",
+   "ou": "js/app-08-ui-modals-tour.js:286",
+   "citee": false
+  },
+  {
+   "nom": "showLanding",
+   "ou": "js/app-08-ui-modals-tour.js:360",
+   "citee": false
+  },
+  {
+   "nom": "openStoryComposer",
+   "ou": "js/app-08-ui-modals-tour.js:717",
+   "citee": false
+  },
+  {
+   "nom": "openStudioAsStory",
+   "ou": "js/app-08-ui-modals-tour.js:803",
+   "citee": false
+  },
+  {
+   "nom": "openStoryGroup",
+   "ou": "js/app-08-ui-modals-tour.js:1854",
+   "citee": false
+  },
+  {
+   "nom": "openStoryViewerAt",
+   "ou": "js/app-08-ui-modals-tour.js:1871",
+   "citee": false
+  },
+  {
+   "nom": "openStoryViewer",
+   "ou": "js/app-08-ui-modals-tour.js:1883",
+   "citee": false
+  },
+  {
+   "nom": "openNotifications",
+   "ou": "js/app-08-ui-modals-tour.js:2383",
+   "citee": false
+  },
+  {
+   "nom": "openNotifTarget",
+   "ou": "js/app-08-ui-modals-tour.js:2470",
+   "citee": false
+  },
+  {
+   "nom": "showPitchLanding",
+   "ou": "js/app-08-ui-modals-tour.js:2677",
+   "citee": false
+  },
+  {
+   "nom": "openConvFiles",
+   "ou": "js/app-09-boot-pwa.js:1560",
+   "citee": false
+  },
+  {
+   "nom": "openConvSettings",
+   "ou": "js/app-09-boot-pwa.js:1645",
+   "citee": false
+  },
+  {
+   "nom": "openFullImg",
+   "ou": "js/app-09-boot-pwa.js:1933",
+   "citee": false
+  },
+  {
+   "nom": "showGifPickerForMessage",
+   "ou": "js/emoji-misc.js:476",
+   "citee": false
+  },
+  {
+   "nom": "showGifPickerForComment",
+   "ou": "js/emoji-misc.js:496",
+   "citee": false
+  },
+  {
+   "nom": "showEmojiPickerForComment",
+   "ou": "js/emoji-misc.js:522",
+   "citee": false
+  },
+  {
+   "nom": "showEmojiPickerForPost",
+   "ou": "js/emoji-misc.js:557",
+   "citee": false
+  },
+  {
+   "nom": "showEmojiPickerForEvent",
+   "ou": "js/emoji-misc.js:568",
+   "citee": false
+  },
+  {
+   "nom": "showGifPickerForPost",
+   "ou": "js/emoji-misc.js:663",
+   "citee": false
+  }
+ ],
+ "nbAppelsOpenModal": 75,
+ "fonctionsOuvrantUneModale": [
+  {
+   "nom": "pushOverlayHistory",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:3485"
+   ]
+  },
+  {
+   "nom": "goTo",
+   "citee": true,
+   "lignes": [
+    "js/app-02-state-utils.js:3670"
+   ]
+  },
+  {
+   "nom": "openNotifSettings",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:3997"
+   ]
+  },
+  {
+   "nom": "openPrivacySettings",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:4024"
+   ]
+  },
+  {
+   "nom": "openContentSettings",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:4244"
+   ]
+  },
+  {
+   "nom": "openScreenTime",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:4277"
+   ]
+  },
+  {
+   "nom": "setupParentalCode",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:4360"
+   ]
+  },
+  {
+   "nom": "askParentalCode",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:4406"
+   ]
+  },
+  {
+   "nom": "openPauseMode",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:4449"
+   ]
+  },
+  {
+   "nom": "openAbout",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:4468"
+   ]
+  },
+  {
+   "nom": "openLogoutConfirm",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:4490"
+   ]
+  },
+  {
+   "nom": "openAccountSwitch",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:4623"
+   ]
+  },
+  {
+   "nom": "openChangePassword",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:5004"
+   ]
+  },
+  {
+   "nom": "openDeleteAccountConfirm",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:5126"
+   ]
+  },
+  {
+   "nom": "_legalModale",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:5305"
+   ]
+  },
+  {
+   "nom": "ouvrirConsentementRequis",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:5960"
+   ]
+  },
+  {
+   "nom": "openCreateCustomPassion",
+   "citee": false,
+   "lignes": [
+    "js/app-02-state-utils.js:6859",
+    "js/app-02-state-utils.js:6903"
+   ]
+  },
+  {
+   "nom": "sharePost",
+   "citee": false,
+   "lignes": [
+    "js/app-03-posts-vlogs.js:30"
+   ]
+  },
+  {
+   "nom": "openPostOptions",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:15"
+   ]
+  },
+  {
+   "nom": "openPostOptionsAutrui",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:37"
+   ]
+  },
+  {
+   "nom": "confirmDeletePost",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:229"
+   ]
+  },
+  {
+   "nom": "openComments",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:1316"
+   ]
+  },
+  {
+   "nom": "openCommentSheet",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:2997"
+   ]
+  },
+  {
+   "nom": "openNewMessage",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:4018"
+   ]
+  },
+  {
+   "nom": "openUserProfile",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:4628"
+   ]
+  },
+  {
+   "nom": "_demanderMotifSignalement",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:5308"
+   ]
+  },
+  {
+   "nom": "openBlockedList",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:5433"
+   ]
+  },
+  {
+   "nom": "_openMsgActions",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:6352"
+   ]
+  },
+  {
+   "nom": "_forwardPick",
+   "citee": false,
+   "lignes": [
+    "js/app-04-comments-shop.js:6578"
+   ]
+  },
+  {
+   "nom": "openConfigurator",
+   "citee": false,
+   "lignes": [
+    "js/app-05-config-profil.js:248"
+   ]
+  },
+  {
+   "nom": "openCreateGroup",
+   "citee": false,
+   "lignes": [
+    "js/app-05-config-profil.js:1939"
+   ]
+  },
+  {
+   "nom": "_renderGroupMembersModal",
+   "citee": false,
+   "lignes": [
+    "js/app-05-config-profil.js:2070"
+   ]
+  },
+  {
+   "nom": "showEmojiPickerForReelComment",
+   "citee": false,
+   "lignes": [
+    "js/app-05-config-profil.js:3683"
+   ]
+  },
+  {
+   "nom": "showGifPickerForReelComment",
+   "citee": false,
+   "lignes": [
+    "js/app-05-config-profil.js:3712"
+   ]
+  },
+  {
+   "nom": "openReelShareModal",
+   "citee": false,
+   "lignes": [
+    "js/app-05-config-profil.js:3859"
+   ]
+  },
+  {
+   "nom": "_proposerSuiviInvitant",
+   "citee": false,
+   "lignes": [
+    "js/app-06-reels-partage.js:761"
+   ]
+  },
+  {
+   "nom": "_peopleModal",
+   "citee": false,
+   "lignes": [
+    "js/app-06-reels-partage.js:1194"
+   ]
+  },
+  {
+   "nom": "openEditMainProfile",
+   "citee": false,
+   "lignes": [
+    "js/app-06-reels-partage.js:2003"
+   ]
+  },
+  {
+   "nom": "openPassionsAide",
+   "citee": false,
+   "lignes": [
+    "js/app-06-reels-partage.js:2650"
+   ]
+  },
+  {
+   "nom": "confirmArchivePassion",
+   "citee": false,
+   "lignes": [
+    "js/app-06-reels-partage.js:2725"
+   ]
+  },
+  {
+   "nom": "openEditPassionProfile",
+   "citee": false,
+   "lignes": [
+    "js/app-06-reels-partage.js:3525"
+   ]
+  },
+  {
+   "nom": "confirmDeleteProfile",
+   "citee": false,
+   "lignes": [
+    "js/app-06-reels-partage.js:3638"
+   ]
+  },
+  {
+   "nom": "openPassionPaywall",
+   "citee": false,
+   "lignes": [
+    "js/app-06-reels-partage.js:4437"
+   ]
+  },
+  {
+   "nom": "openCreateProfile",
+   "citee": false,
+   "lignes": [
+    "js/app-06-reels-partage.js:4621"
+   ]
+  },
+  {
+   "nom": "openPassionExplorer",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:440"
+   ]
+  },
+  {
+   "nom": "openIrlCitySelector",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:1410"
+   ]
+  },
+  {
+   "nom": "openIrlCalendar",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:2440"
+   ]
+  },
+  {
+   "nom": "openEventRsvpSheet",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:4019"
+   ]
+  },
+  {
+   "nom": "proposerRappelsActivite",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:4989"
+   ]
+  },
+  {
+   "nom": "shareEvent",
+   "citee": true,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:5078"
+   ]
+  },
+  {
+   "nom": "requireAdmission",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:5973"
+   ]
+  },
+  {
+   "nom": "admissionOuvrirPorte",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:6029"
+   ]
+  },
+  {
+   "nom": "admissionValiderAnnee",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:6083"
+   ]
+  },
+  {
+   "nom": "openCreateEvent",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:6502"
+   ]
+  },
+  {
+   "nom": "openEventManage",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:6688"
+   ]
+  },
+  {
+   "nom": "openEventCoOrganizers",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:6723"
+   ]
+  },
+  {
+   "nom": "openEventWaitlist",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:6755"
+   ]
+  },
+  {
+   "nom": "_messageEventAttendees",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:6913"
+   ]
+  },
+  {
+   "nom": "proposerInvitationActivite",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:7193"
+   ]
+  },
+  {
+   "nom": "openEventInvite",
+   "citee": true,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:7415"
+   ]
+  },
+  {
+   "nom": "openEventFeedback",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:7651"
+   ]
+  },
+  {
+   "nom": "_rendreCheckinQr",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:8067"
+   ]
+  },
+  {
+   "nom": "openCheckinCodeEntry",
+   "citee": false,
+   "lignes": [
+    "js/app-07-ia-explore-irl.js:8099"
+   ]
+  },
+  {
+   "nom": "feedbackModal",
+   "citee": false,
+   "lignes": [
+    "js/app-08-ui-modals-tour.js:271"
+   ]
+  },
+  {
+   "nom": "openLimitesPilote",
+   "citee": false,
+   "lignes": [
+    "js/app-08-ui-modals-tour.js:289"
+   ]
+  },
+  {
+   "nom": "openStoryComposer",
+   "citee": false,
+   "lignes": [
+    "js/app-08-ui-modals-tour.js:722"
+   ]
+  },
+  {
+   "nom": "playCurrentStory",
+   "citee": false,
+   "lignes": [
+    "js/app-08-ui-modals-tour.js:1950"
+   ]
+  },
+  {
+   "nom": "openNotifications",
+   "citee": false,
+   "lignes": [
+    "js/app-08-ui-modals-tour.js:2397"
+   ]
+  },
+  {
+   "nom": "_openConvBgPicker",
+   "citee": false,
+   "lignes": [
+    "js/app-09-boot-pwa.js:1879"
+   ]
+  }
+ ],
+ "dialoguesNatifs": {
+  "confirm": [
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 2467,
+    "dans": "leaveGroup",
+    "extrait": "if (!confirm(\"Quitter ce groupe ? Tu ne recevras plus ses messages.\")) return;"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6815,
+    "dans": "cancelEventSeries",
+    "extrait": "if (!confirm(\"Annuler les \" + all.length + \" dates à venir de cette série ? Les inscrits seront prévenus.\")) return;"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6848,
+    "dans": "toggleCancelEvent",
+    "extrait": "if (cancel && !confirm(\"Annuler cet événement ? Les inscrits seront prévenus.\")) return;"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6867,
+    "dans": "deleteEventConfirm",
+    "extrait": "if (!confirm(\"Supprimer définitivement « \" + (ev.title || \"\") + \" » ? Cette action est irréversible.\")) return;"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 353,
+    "dans": "resetApp",
+    "extrait": "if (!confirm(\"Tout réinitialiser ? (onboarding, profils, posts)\")) return;"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1726,
+    "dans": "_clearConvMessages",
+    "extrait": "if (!confirm(\"Effacer tous les messages ?\")) return;"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1758,
+    "dans": "_deleteConv",
+    "extrait": "if (!confirm(\"Supprimer cette conversation ?\")) return;"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1807,
+    "dans": "_blockFromConv",
+    "extrait": "if (!confirm(\"Bloquer \" + (c.userName || \"cet utilisateur\") + \" ?\\nSes messages seront masqués et tu ne le suivras plus.\")) return;"
+   }
+  ],
+  "alert": [],
+  "prompt": [
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 2484,
+    "dans": "editGroupDescription",
+    "extrait": "var d = prompt(\"Description du groupe :\", c.groupDesc || \"\");"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1452,
+    "dans": "meAddText",
+    "extrait": "var t = prompt(\"Ton texte :\"); if (t == null) return; t = t.trim(); if (!t) return;"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1511,
+    "dans": "_meRenderOverlay",
+    "extrait": "el.addEventListener(\"dblclick\", function(e) { e.stopPropagation(); var nt = prompt(\"Modifier le texte :\", ov.text); if (nt != null && nt.trim()) { ov."
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1820,
+    "dans": "_searchConv",
+    "extrait": "var q = prompt(\"🔍 Rechercher dans la conversation :\");"
+   }
+  ]
+ },
+ "toasts": {
+  "total": 362,
+  "parType": {
+   "info": 301,
+   "warning": 18,
+   "reward": 2,
+   "error": 13,
+   "success": 27,
+   "loading": 1
+  },
+  "liste": [
+   {
+    "fichier": "js/affiche-rencontre.js",
+    "ligne": 310,
+    "texte": "Rencontre introuvable.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/affiche-rencontre.js",
+    "ligne": 312,
+    "texte": "Réservé à l'organisateur",
+    "type": "info"
+   },
+   {
+    "fichier": "js/affiche-rencontre.js",
+    "ligne": 355,
+    "texte": "L'affiche n'a pas pu être créée — réessaie dans un instant.",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 872,
+    "texte": "Session rétablie ✓",
+    "type": "reward"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 3609,
+    "texte": "Lien : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 3612,
+    "texte": "Lien : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4015,
+    "texte": "Notifications mises à jour",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4044,
+    "texte": "Sans compte, tes données ne vivent que sur cet appareil : rien à exporter du serveur.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4088,
+    "texte": "🔒 ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4098,
+    "texte": "Téléchargement impossible sur ce navigateur",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4147,
+    "texte": "Confidentialité mise à jour",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4264,
+    "texte": "Préférences de contenu mises à jour",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4353,
+    "texte": "Limite désactivée — temps illimité",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4355,
+    "texte": "Limite : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4387,
+    "texte": "Le code doit contenir 4 chiffres",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4393,
+    "texte": "Code parental activé !",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4400,
+    "texte": "Code parental supprimé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4433,
+    "texte": "Code incorrect",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4444,
+    "texte": "Limite : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 4464,
+    "texte": "Mode pause activé — ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 5110,
+    "texte": "Mot de passe mis à jour",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 5149,
+    "texte": "Tape SUPPRIMER pour confirmer",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 5153,
+    "texte": "Suppression en cours…",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 5278,
+    "texte": "Ton compte est fermé et tes données supprimées, mais la confirmation finale n'a pas pu être enregistrée. Écris à ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 5282,
+    "texte": "Compte supprimé. Au revoir",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 5403,
+    "texte": "Année invalide",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 5409,
+    "texte": "PASSIO est réservé aux personnes majeures (18 ans et plus).",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 5419,
+    "texte": "Indique ton prénom.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 5995,
+    "texte": "Merci — bienvenue sur PASSIO",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 6001,
+    "texte": "Compte non activé : tu es déconnecté",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 6990,
+    "texte": "Donne un nom à ta passion (2+ caractères)",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 7036,
+    "texte": "Passion ajoutée à tes passions",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 7078,
+    "texte": "Max ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 7499,
+    "texte": "Choisis au moins 1 passion.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-02-state-utils.js",
+    "ligne": 8698,
+    "texte": "Toujours impossible de joindre PASSIO — réessaie dans un instant.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-03-posts-vlogs.js",
+    "ligne": 13,
+    "texte": "Le contenu original n'est plus disponible.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-03-posts-vlogs.js",
+    "ligne": 54,
+    "texte": "Connexion requise pour partager ce contenu.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-03-posts-vlogs.js",
+    "ligne": 60,
+    "texte": "Le contenu original n'est plus disponible.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-03-posts-vlogs.js",
+    "ligne": 122,
+    "texte": "Publication partagée avec succès.",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-03-posts-vlogs.js",
+    "ligne": 132,
+    "texte": "Impossible de partager ce contenu pour le moment.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-03-posts-vlogs.js",
+    "ligne": 608,
+    "texte": "Ce contenu n'est plus disponible.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 208,
+    "texte": "Tu ne peux supprimer que tes propres posts.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 235,
+    "texte": "Post introuvable.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 261,
+    "texte": "Post supprimé.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 355,
+    "texte": "@",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 367,
+    "texte": "#",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 1449,
+    "texte": "Trop court",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2431,
+    "texte": "Texte copié",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2432,
+    "texte": "Copie impossible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2437,
+    "texte": "Commentaire masqué",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2468,
+    "texte": "Commentaire supprimé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2498,
+    "texte": "Un GIF ne peut pas être modifié",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2516,
+    "texte": "Le commentaire ne peut pas être vide",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2522,
+    "texte": "Commentaire modifié",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2533,
+    "texte": "Modification refusée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2887,
+    "texte": "Seul l'auteur du fil peut épingler un commentaire",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2890,
+    "texte": "Épingle indisponible sur ce fil",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2894,
+    "texte": "Ce commentaire n'est pas encore envoyé : épingle-le dans un instant",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 2991,
+    "texte": "Commentaires indisponibles",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 3137,
+    "texte": "GIF prêt — appuie sur Envoyer ✓",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 4213,
+    "texte": "Compte bloqué — débloque-le pour lui écrire",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 4359,
+    "texte": "Profil non trouvé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 4368,
+    "texte": "Ce profil n'est pas disponible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5021,
+    "texte": "Demande annulée — appuie sur « Suivre » pour la renvoyer",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5029,
+    "texte": "Annulation non enregistrée — ta demande est toujours en cours",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5042,
+    "texte": "Demande envoyée à ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5046,
+    "texte": "Tu suis ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5059,
+    "texte": "Impossible de suivre ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5077,
+    "texte": "Tu suis ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5085,
+    "texte": "Demande envoyée à ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5093,
+    "texte": "Tu ne suis plus ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5164,
+    "texte": "🚫 ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5176,
+    "texte": "⚠️ Blocage non enregistré — réessaie",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5181,
+    "texte": "🚫 ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5195,
+    "texte": "✅ ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5205,
+    "texte": "⚠️ Déblocage non enregistré — réessaie",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5208,
+    "texte": "✅ ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5299,
+    "texte": "Dis-nous en deux mots ce qui ne va pas (3 caractères au moins).",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5389,
+    "texte": "🚩 « ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 5393,
+    "texte": "Signalement déjà envoyé, ou impossible pour le moment.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6289,
+    "texte": "Message introuvable (peut-être plus ancien)",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6393,
+    "texte": "Copié",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6430,
+    "texte": "Message supprimé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6459,
+    "texte": "Message supprimé pour tous",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6628,
+    "texte": "⚠️ Transfert impossible : la pièce jointe n'a pas pu être copiée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6649,
+    "texte": "⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6688,
+    "texte": "⚠️ Ce message ne peut pas être transféré",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6693,
+    "texte": "⚠️ Transfert impossible : la pièce jointe n'a pas pu être envoyée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6694,
+    "texte": "✋ Message trop long pour être transféré : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6735,
+    "texte": "Transféré",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 6869,
+    "texte": "🎧 Ce vocal a été enregistré dans un format que cet appareil ne sait pas lire.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 7001,
+    "texte": "Conversation de démonstration — écris à un vrai membre depuis son profil",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 7014,
+    "texte": "✋ Message trop long : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 7029,
+    "texte": "Erreur : conversation introuvable",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 7508,
+    "texte": "Ce message ne peut pas être renvoyé depuis ce compte.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 7518,
+    "texte": "Ce message a été écrit avec un autre compte ou une ancienne version — recopie-le pour l'envoyer.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-04-comments-shop.js",
+    "ligne": 7586,
+    "texte": "🟢 Connexion rétablie — envoi des messages en attente",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 441,
+    "texte": "Configuration réinitialisée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 663,
+    "texte": "Un appel est déjà en cours",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 667,
+    "texte": "Ton navigateur ne gère pas les appels",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 669,
+    "texte": "Appel disponible uniquement en conversation privée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 677,
+    "texte": "Connecte-toi pour passer un appel",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 679,
+    "texte": "Ce contact de démo n'est pas joignable",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 694,
+    "texte": "Caméra/micro indisponible ou refusé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 763,
+    "texte": "Appel impossible vers cette personne",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 769,
+    "texte": "Ta session a expiré — reconnecte-toi pour appeler",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 788,
+    "texte": "Pas de réponse",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1003,
+    "texte": "Connexion perdue",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1109,
+    "texte": "Impossible de rejoindre l'appel : ta version de l'application est périmée — recharge-la",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1194,
+    "texte": "Appel terminé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1195,
+    "texte": "Appel refusé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1252,
+    "texte": "Appels non supportés",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1267,
+    "texte": "Caméra/micro refusé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1304,
+    "texte": "L'appelant ne répond plus",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1465,
+    "texte": "Une seule caméra disponible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1468,
+    "texte": "Caméra indisponible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1819,
+    "texte": "Maximum 3 passions",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1946,
+    "texte": "Donne un nom au groupe",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1949,
+    "texte": "Choisis au moins 1 passion",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1950,
+    "texte": "Sélectionne au moins 1 membre",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 1996,
+    "texte": "Groupe « ${name} » créé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 2125,
+    "texte": "Photo du groupe mise à jour",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 2226,
+    "texte": "✅ ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 2291,
+    "texte": "🗑 ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 2477,
+    "texte": "Tu as quitté le groupe",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 2492,
+    "texte": "Description mise à jour",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 3202,
+    "texte": "Profil indisponible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 3521,
+    "texte": "Écris quelque chose d'abord! 💭",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 3560,
+    "texte": "Réponse postée",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 3583,
+    "texte": "Commentaire posté",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 3763,
+    "texte": "${emoji} Réaction ajoutée!",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 3785,
+    "texte": "GIF ajouté",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 3800,
+    "texte": "${emoji} Réaction ajoutée!",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 3866,
+    "texte": "Le contenu original n'est plus disponible.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 3947,
+    "texte": "Bobine partagée dans ton feed",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4219,
+    "texte": "Termine ton appel d'abord",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4222,
+    "texte": "Ton navigateur ne gère pas le direct",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4233,
+    "texte": "Connecte-toi pour lancer un live",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4252,
+    "texte": "Caméra/micro indisponible ou refusé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4267,
+    "texte": "Impossible de démarrer le live",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4268,
+    "texte": "Impossible de démarrer le live",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4291,
+    "texte": "Tu es en direct !",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4513,
+    "texte": "Live terminé · ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4520,
+    "texte": "Termine ton appel d'abord",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4521,
+    "texte": "Tu es déjà en direct",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4524,
+    "texte": "Ton navigateur ne gère pas le direct",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4531,
+    "texte": "Connecte-toi pour rejoindre un live",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4556,
+    "texte": "Ce live est terminé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 4639,
+    "texte": "Ce live est complet 😅",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 5009,
+    "texte": "Une seule caméra disponible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 5139,
+    "texte": "Demande annulée — appuie sur « Suivre » pour la renvoyer",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 5147,
+    "texte": "Annulation non enregistrée — ta demande est toujours en cours",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 5154,
+    "texte": "Tu suis ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 5160,
+    "texte": "Impossible de suivre ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 5170,
+    "texte": "Demande envoyée à ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 5222,
+    "texte": "Lien du live copié",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-05-config-profil.js",
+    "ligne": 5223,
+    "texte": "Lien : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 112,
+    "texte": "Bobine introuvable ou supprimée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 124,
+    "texte": "Bobine introuvable ou supprimée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 617,
+    "texte": "👋 ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 779,
+    "texte": "Impossible de suivre ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 903,
+    "texte": "Lien copié",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 907,
+    "texte": "Copie impossible sur ce navigateur",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 941,
+    "texte": "Ouverture ${platform}...",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 961,
+    "texte": "Ouverture de ton client email…",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 975,
+    "texte": "Ouverture SMS…",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 1686,
+    "texte": "Photo de couverture mise à jour",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 1707,
+    "texte": "Photo de profil mise à jour",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 1723,
+    "texte": "Photo de la passion mise à jour",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 1766,
+    "texte": "Photo de fond mise à jour",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 2055,
+    "texte": "⚠️ Ce pseudo est déjà utilisé, choisis-en un autre",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 2113,
+    "texte": "Profil mis à jour",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 2700,
+    "texte": "Tu dois garder au moins une passion active",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 2772,
+    "texte": "Tu dois garder au moins une passion active",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 2822,
+    "texte": "🗄️ ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 2867,
+    "texte": "✅ ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 2891,
+    "texte": "Cette passion n'est plus disponible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 2915,
+    "texte": "L'échange n'a pas abouti — rien n'a changé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 2924,
+    "texte": "🔄 ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 3476,
+    "texte": "Tu crées maintenant dans ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 3591,
+    "texte": "Photo de fond retirée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 3629,
+    "texte": "Passion mise à jour",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 3635,
+    "texte": "Tu dois garder au moins 1 passion",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 3654,
+    "texte": "Tu dois garder au moins 1 profil",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 3693,
+    "texte": "Profil supprimé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 4163,
+    "texte": "Lancement gratuit : les passions sont déjà illimitées pour tout le monde.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 4169,
+    "texte": "Mode réservé au compte de l'éditeur — le plafond reste à ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 4657,
+    "texte": "Choisis une passion",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 4664,
+    "texte": "✨ ${passionById(pid).label} ajoutée à tes passions",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 4905,
+    "texte": "Template appliqué",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5020,
+    "texte": "Choisis une image.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5022,
+    "texte": "Image trop lourde (>40 Mo).",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5034,
+    "texte": "Impossible de lire cette image.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5063,
+    "texte": "Chargement vidéo…",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5077,
+    "texte": "Vidéo chargée",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5101,
+    "texte": "Audio > 500 KB, compresse-la!",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5122,
+    "texte": "Audio chargé",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5161,
+    "texte": "Ton navigateur ne supporte pas l'enregistrement audio.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5219,
+    "texte": "Micro refusé, active l'autorisation navigateur",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5245,
+    "texte": "Publication en cours, attends un moment...",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5260,
+    "texte": "Cette passion est archivée — réactive-la ou choisis-en une autre",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5267,
+    "texte": "Écris quelque chose.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5271,
+    "texte": "Ajoute une photo.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5279,
+    "texte": "Enregistre un audio.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5307,
+    "texte": "Publication en cours…",
+    "type": "loading"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5413,
+    "texte": "Post publié",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5423,
+    "texte": "Post en local (erreur réseau)",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5480,
+    "texte": "Rien à sauvegarder",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5499,
+    "texte": "Brouillon sauvegardé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5521,
+    "texte": "⚠️ « ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-06-reels-partage.js",
+    "ligne": 5539,
+    "texte": "Brouillon chargé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 350,
+    "texte": "Passion non trouvée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 570,
+    "texte": "✨ ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 1226,
+    "texte": "Localisation indisponible — résultats autour de Paris. Choisis ta ville dans Filtre → Autour de moi.",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 1505,
+    "texte": "Autour de ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 1520,
+    "texte": "Autour de ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 1594,
+    "texte": "Position actuelle",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 1661,
+    "texte": "Autour de ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 1668,
+    "texte": "Entrez une adresse",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 1677,
+    "texte": "Adresse non trouvée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 1691,
+    "texte": "Autour de ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 2456,
+    "texte": "Choisis une date",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3485,
+    "texte": "Cet événement a été annulé",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3493,
+    "texte": "C'est complet — tu es sur liste d'attente",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3559,
+    "texte": "Désinscrit",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3907,
+    "texte": "Ouverture de la discussion…",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3910,
+    "texte": "Discussion indisponible hors connexion",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3916,
+    "texte": "⚠️ Impossible de rejoindre la discussion pour le moment — réessaie",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3931,
+    "texte": "Tu as déjà pointé ton arrivée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3932,
+    "texte": "Le pointage ouvre 1 h avant le début",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3952,
+    "texte": "Arrivée confirmée — bon moment !",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3959,
+    "texte": "Position indisponible — saisis le code d'accueil affiché sur place",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3963,
+    "texte": "Vérification de ta position…",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 3968,
+    "texte": "Tu sembles à ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 4009,
+    "texte": "Cet événement a été annulé",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 4152,
+    "texte": "Erreur: sélects non trouvés",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 4171,
+    "texte": "✓ Filtre appliqué: ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 4589,
+    "texte": "Ajoute tes photos et raconte !",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 4849,
+    "texte": "Événement ajouté à ton calendrier (rappel J-1 inclus)",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 4850,
+    "texte": "Export calendrier impossible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 4921,
+    "texte": "Événement introuvable ou supprimé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 5007,
+    "texte": "Rappels non activés — tu peux les autoriser dans les réglages du téléphone",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 5009,
+    "texte": "C'est noté : rappel la veille et 2 h avant ⏰",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 5058,
+    "texte": "Événement introuvable.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 5098,
+    "texte": "Connexion requise pour partager cet événement.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 5104,
+    "texte": "Événement introuvable.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 5124,
+    "texte": "Événement partagé dans ton feed.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6061,
+    "texte": "Année invalide",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6066,
+    "texte": "Vérifie ton année de naissance.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6080,
+    "texte": "Merci — c'est enregistré",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6296,
+    "texte": "Cette proposition IRL n'est plus disponible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6441,
+    "texte": "Événement introuvable",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6673,
+    "texte": "Lieu enregistré : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6680,
+    "texte": "Seul l'organisateur peut gérer cet événement",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6790,
+    "texte": "⚠️ Inscription non enregistrée : la personne n'est peut-être plus en liste d'attente, ou l'activité est complète.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6805,
+    "texte": "Participant inscrit",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6836,
+    "texte": "Série annulée — inscrits prévenus",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6837,
+    "texte": "⚠️ Annulation non enregistrée : aucune des ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6838,
+    "texte": "⚠️ Série annulée en partie : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6854,
+    "texte": "⚠️ Changement non enregistré — réessaie",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6882,
+    "texte": "⚠️ Suppression non enregistrée — réessaie",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6927,
+    "texte": "Écris un message",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6930,
+    "texte": "Message envoyé aux inscrits",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6994,
+    "texte": "Le prix doit être un montant positif (ou 0)",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 6995,
+    "texte": "Le nombre de places doit être au moins 1",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7003,
+    "texte": "Titre trop court (3 caractères min)",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7004,
+    "texte": "Indique une ville",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7005,
+    "texte": "Choisis une date",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7006,
+    "texte": "Sélectionne une passion",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7011,
+    "texte": "Cette passion n'existe que chez toi : choisis-en une du catalogue pour créer une activité.",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7016,
+    "texte": "Date invalide",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7024,
+    "texte": "Cette date est déjà passée",
+    "type": "error"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7032,
+    "texte": "Événement introuvable",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7296,
+    "texte": "🧪 5 événements de test créés! Ouvre le diagnostic (F12)",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7413,
+    "texte": "Événement introuvable",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7473,
+    "texte": "Invitation envoyée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7481,
+    "texte": "Personne de nouveau à inviter",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7685,
+    "texte": "Choisis une note d'abord",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 7692,
+    "texte": "Merci pour ton retour",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8045,
+    "texte": "Réservé à l'organisateur",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8089,
+    "texte": "Lien copié",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8090,
+    "texte": "Lien : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8091,
+    "texte": "Lien : ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8120,
+    "texte": "Code incorrect — vérifie avec l'organisateur",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8128,
+    "texte": "Tu as déjà pointé ton arrivée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8157,
+    "texte": "Tu as déjà pointé ton arrivée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8158,
+    "texte": "Le pointage ouvre 1 h avant le début",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8162,
+    "texte": "Arrivée confirmée — bon moment !",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8201,
+    "texte": "Événement introuvable ou supprimé",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-07-ia-explore-irl.js",
+    "ligne": 8212,
+    "texte": "Lien de pointage invalide",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 314,
+    "texte": "Écris au moins une ligne 🙂",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 751,
+    "texte": "Écris quelque chose pour ta story",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 790,
+    "texte": "Story enregistrée sur cet appareil",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 793,
+    "texte": "Story publiée",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 797,
+    "texte": "⚠️ Story non publiée — réessaie",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 949,
+    "texte": "Une bobine est une vidéo : appuie pour filmer",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 960,
+    "texte": "Impossible de prendre la photo",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1033,
+    "texte": "Maintiens le bouton pour filmer ta bobine",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1034,
+    "texte": "Enregistrement impossible — réessaie ou choisis une vidéo dans la galerie",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1043,
+    "texte": "Enregistrement vide — réessaie",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1050,
+    "texte": "Impossible de lire la vidéo",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1332,
+    "texte": "Photo ou vidéo uniquement",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1334,
+    "texte": "Une bobine est une vidéo — choisis une vidéo",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1469,
+    "texte": "GIF indisponible",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1616,
+    "texte": "Une bobine est une vidéo — filme ou choisis une vidéo",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1701,
+    "texte": "Bobine en cours de publication…",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1716,
+    "texte": "Bobine publiée",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1724,
+    "texte": "Vidéo pas encore envoyée — nouvel essai automatique. Garde l'app ouverte.",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 1796,
+    "texte": "⚠️ Une publication n'a pas pu être envoyée : son média n'est plus sur cet appareil — republie-la",
+    "type": "warning"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 2530,
+    "texte": "Notifications marquées comme lues",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 3130,
+    "texte": "Session rétablie ✓",
+    "type": "reward"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 8655,
+    "texte": "Impossible d'accepter pour le moment",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 8656,
+    "texte": "Cette demande n'existe plus",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 8658,
+    "texte": "Demande acceptée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 8663,
+    "texte": "Impossible d'accepter pour le moment",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 8669,
+    "texte": "Impossible de refuser pour le moment",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 8671,
+    "texte": "Demande refusée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-08-ui-modals-tour.js",
+    "ligne": 8673,
+    "texte": "Impossible de refuser pour le moment",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 169,
+    "texte": "PASSIO installée ! 🎉",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 179,
+    "texte": "Installation en cours…",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 192,
+    "texte": "PASSIO installée ! 🎉",
+    "type": "success"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 260,
+    "texte": "✨ Mise à jour disponible — recharge pour l'appliquer",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 973,
+    "texte": "📶 Pas de réseau — la pièce jointe partira à la reconnexion",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 974,
+    "texte": "⚠️ Fichier trop lourd pour être envoyé (50 Mo max)",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 975,
+    "texte": "⚠️ Pièce jointe introuvable sur cet appareil — joins-la de nouveau",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 976,
+    "texte": "⚠️ Pièce jointe non envoyée — touche « réessayer »",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1202,
+    "texte": "Conversation de démonstration — écris à un vrai membre depuis son profil",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1220,
+    "texte": "Image trop lourde (>40 Mo).",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1223,
+    "texte": "Impossible de lire cette image.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1264,
+    "texte": "Ouvre une conversation d'abord",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1283,
+    "texte": "Impossible de lire ce fichier.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1366,
+    "texte": "⚠️ Pièce jointe non envoyée — touche « réessayer »",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1485,
+    "texte": "Ouvre une conversation d'abord",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1486,
+    "texte": "Géolocalisation non supportée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1488,
+    "texte": "📍 Localisation en cours…",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1556,
+    "texte": "❌ Impossible d'obtenir la position",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1738,
+    "texte": "Messages effacés",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1754,
+    "texte": "Exporté !",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1768,
+    "texte": "Conversation supprimée",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1799,
+    "texte": "📩 Marqué comme non lu",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1825,
+    "texte": "Aucun message trouvé pour « ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1896,
+    "texte": "🎨 Fond mis à jour",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 1984,
+    "texte": "🎙️ Enregistrement non supporté sur cet appareil",
+    "type": "info"
+   },
+   {
+    "fichier": "js/app-09-boot-pwa.js",
+    "ligne": 2040,
+    "texte": "🎙️ Micro non disponible (autorisation refusée ?)",
+    "type": "info"
+   },
+   {
+    "fichier": "js/emoji-misc.js",
+    "ligne": 552,
+    "texte": "GIF ajouté en commentaire 🎬",
+    "type": "info"
+   },
+   {
+    "fichier": "js/emoji-misc.js",
+    "ligne": 571,
+    "texte": "Réaction envoyée ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/emoji-misc.js",
+    "ligne": 572,
+    "texte": "GIF envoyé 🎬",
+    "type": "info"
+   },
+   {
+    "fichier": "js/emoji-misc.js",
+    "ligne": 729,
+    "texte": "GIF ajouté en commentaire 🎬",
+    "type": "info"
+   },
+   {
+    "fichier": "js/emoji-misc.js",
+    "ligne": 873,
+    "texte": "✅ Feed rafraîchi (${posts.length} posts)",
+    "type": "success"
+   },
+   {
+    "fichier": "js/emoji-misc.js",
+    "ligne": 876,
+    "texte": "❌ Aucun post trouvé",
+    "type": "error"
+   },
+   {
+    "fichier": "js/emoji-misc.js",
+    "ligne": 880,
+    "texte": "❌ Erreur: ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/first-run.js",
+    "ligne": 1264,
+    "texte": "Choisis au moins une passion",
+    "type": "info"
+   },
+   {
+    "fichier": "js/first-run.js",
+    "ligne": 1288,
+    "texte": "Ton fil est à toi ✨",
+    "type": "info"
+   },
+   {
+    "fichier": "js/first-run.js",
+    "ligne": 2523,
+    "texte": "Cette activité est un exemple : elle n'accueille pas de vraie participation.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/passion-selector.js",
+    "ligne": 388,
+    "texte": "Maximum ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/passion-selector.js",
+    "ligne": 476,
+    "texte": "Maximum ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/passion-selector.js",
+    "ligne": 503,
+    "texte": "Impossible de créer cette passion pour le moment.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/passion-selector.js",
+    "ligne": 518,
+    "texte": "Maximum ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/passion-selector.js",
+    "ligne": 524,
+    "texte": "Donne un nom d'au moins 2 caractères.",
+    "type": "info"
+   },
+   {
+    "fichier": "js/passion-selector.js",
+    "ligne": 533,
+    "texte": "« ",
+    "type": "info"
+   },
+   {
+    "fichier": "js/passion-selector.js",
+    "ligne": 603,
+    "texte": "Demande envoyée.",
+    "type": "success"
+   },
+   {
+    "fichier": "js/recap-semaine.js",
+    "ligne": 255,
+    "texte": "Récap coupé. Tu peux le remettre dans Paramètres › Personnalisation › Notifications.",
+    "type": "info"
+   }
+  ]
+ },
+ "drapeaux": [
+  {
+   "cle": "passio_acq_signale_v1",
+   "fichiers": [
+    "js/telemetry.js"
+   ]
+  },
+  {
+   "cle": "passio_acq_v1",
+   "fichiers": [
+    "js/telemetry.js"
+   ]
+  },
+  {
+   "cle": "passio_activite_au_fil_v1",
+   "fichiers": [
+    "js/app-07-ia-explore-irl.js"
+   ]
+  },
+  {
+   "cle": "passio_affiche_rencontre",
+   "fichiers": [
+    "js/affiche-rencontre.js"
+   ]
+  },
+  {
+   "cle": "passio_ai_history",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "cle": "passio_appels_actifs",
+   "fichiers": [
+    "js/app-05-config-profil.js"
+   ]
+  },
+  {
+   "cle": "passio_attachments_read_membre",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_auth_intent_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_bandeau_distant_ferme",
+   "fichiers": [
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_cdv_geo_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_cdv_lives",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-03-posts-vlogs.js"
+   ]
+  },
+  {
+   "cle": "passio_cmt_outbox_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "cle": "passio_config",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-05-config-profil.js",
+    "js/recap-semaine.js",
+    "js/ui-v2-shell.js"
+   ]
+  },
+  {
+   "cle": "passio_consentement_requis_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_conv_deleted_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "cle": "passio_conversations_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "cle": "passio_coupures_distantes_v1",
+   "fichiers": [
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_debug",
+   "fichiers": [
+    "js/platform.js"
+   ]
+  },
+  {
+   "cle": "passio_device_id",
+   "fichiers": [
+    "js/telemetry.js"
+   ]
+  },
+  {
+   "cle": "passio_event_comments_v1",
+   "fichiers": [
+    "js/app-07-ia-explore-irl.js"
+   ]
+  },
+  {
+   "cle": "passio_event_reminded",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-07-ia-explore-irl.js"
+   ]
+  },
+  {
+   "cle": "passio_feed_intents_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_feed_irl_bridge_v1",
+   "fichiers": [
+    "js/app-07-ia-explore-irl.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_feed_rank",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_feed_window_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_fil_compteurs_absente",
+   "fichiers": [
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "cle": "passio_fil_reel_dabord_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_first_run_bienvenue_fermee",
+   "fichiers": [
+    "js/first-run.js"
+   ]
+  },
+  {
+   "cle": "passio_first_run_experience_v1",
+   "fichiers": [
+    "js/first-run.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_first_run_v1",
+   "fichiers": [
+    "js/first-run.js"
+   ]
+  },
+  {
+   "cle": "passio_gate_actif",
+   "fichiers": [
+    "js/access-gate.js",
+    "js/app-05-config-profil.js"
+   ]
+  },
+  {
+   "cle": "passio_gate_v1",
+   "fichiers": [
+    "js/access-gate.js"
+   ]
+  },
+  {
+   "cle": "passio_geo_cache_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-07-ia-explore-irl.js"
+   ]
+  },
+  {
+   "cle": "passio_image",
+   "fichiers": [
+    "js/app-09-boot-pwa.js"
+   ]
+  },
+  {
+   "cle": "passio_invitation_v1",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "cle": "passio_invitations_v1",
+   "fichiers": [
+    "js/app-06-reels-partage.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_invite_apres_creation_v1",
+   "fichiers": [
+    "js/app-07-ia-explore-irl.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_irl_digest_week",
+   "fichiers": [
+    "js/app-07-ia-explore-irl.js"
+   ]
+  },
+  {
+   "cle": "passio_irl_map_peek",
+   "fichiers": [
+    "js/app-07-ia-explore-irl.js",
+    "js/ui-v4a3-vue.js"
+   ]
+  },
+  {
+   "cle": "passio_irl_proposal_v1",
+   "fichiers": [
+    "js/app-07-ia-explore-irl.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_irl_villes_recentes_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-07-ia-explore-irl.js"
+   ]
+  },
+  {
+   "cle": "passio_lien_arrivee_v1",
+   "fichiers": [
+    "js/telemetry.js"
+   ]
+  },
+  {
+   "cle": "passio_liens_courts_v1",
+   "fichiers": [
+    "js/app-06-reels-partage.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_limit_sec",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_logo_variant",
+   "fichiers": [
+    "js/app-01-diag-seed.js"
+   ]
+  },
+  {
+   "cle": "passio_mvp_state_v1",
+   "fichiers": [
+    "js/access-gate.js",
+    "js/app-01-diag-seed.js",
+    "js/first-run.js"
+   ]
+  },
+  {
+   "cle": "passio_oauth_cgu",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_oauth_pending",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "cle": "passio_outbox_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-04-comments-shop.js",
+    "js/app-09-boot-pwa.js"
+   ]
+  },
+  {
+   "cle": "passio_parental_code",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_passion_requests",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_passions_demandes",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/passions-flat.js"
+   ]
+  },
+  {
+   "cle": "passio_passions_illimitees_v1",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "cle": "passio_passions_recentes",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/passions-flat.js"
+   ]
+  },
+  {
+   "cle": "passio_pending_user_state",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_pending_user_state_u_xxx",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_pj_outbox_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-04-comments-shop.js",
+    "js/app-08-ui-modals-tour.js",
+    "js/app-09-boot-pwa.js"
+   ]
+  },
+  {
+   "cle": "passio_plafond_passions_v1",
+   "fichiers": [
+    "js/app-06-reels-partage.js"
+   ]
+  },
+  {
+   "cle": "passio_post_delete_outbox_v1",
+   "fichiers": [
+    "js/app-04-comments-shop.js"
+   ]
+  },
+  {
+   "cle": "passio_preview",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/ui-v3-passerelle.js",
+    "js/ui-v4b-fiche.js"
+   ]
+  },
+  {
+   "cle": "passio_probe_ecriture",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_pwa_dismissed",
+   "fichiers": [
+    "js/app-09-boot-pwa.js"
+   ]
+  },
+  {
+   "cle": "passio_pwa_installed",
+   "fichiers": [
+    "js/platform.js"
+   ]
+  },
+  {
+   "cle": "passio_rappels_proposes_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-07-ia-explore-irl.js"
+   ]
+  },
+  {
+   "cle": "passio_rappels_push_v1",
+   "fichiers": [
+    "js/app-07-ia-explore-irl.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_realtime_v2",
+   "fichiers": [
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "cle": "passio_realtime_v3",
+   "fichiers": [
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "cle": "passio_recap_semaine",
+   "fichiers": [
+    "js/recap-semaine.js",
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_recap_semaine_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/recap-semaine.js"
+   ]
+  },
+  {
+   "cle": "passio_reglages_distants",
+   "fichiers": [
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_reglages_distants_absente",
+   "fichiers": [
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_reglages_distants_v1",
+   "fichiers": [
+    "js/reglages-distants.js"
+   ]
+  },
+  {
+   "cle": "passio_restauration_requise",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_rt_emettre",
+   "fichiers": [
+    "js/app-05-config-profil.js",
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "cle": "passio_rt_recevoir",
+   "fichiers": [
+    "js/app-04-comments-shop.js",
+    "js/app-05-config-profil.js"
+   ]
+  },
+  {
+   "cle": "passio_signup_pending",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "cle": "passio_sortie_compte_v1",
+   "fichiers": [
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "cle": "passio_state",
+   "fichiers": [
+    "js/access-gate.js"
+   ]
+  },
+  {
+   "cle": "passio_store",
+   "fichiers": [
+    "js/idb-store.js"
+   ]
+  },
+  {
+   "cle": "passio_tel_backlog",
+   "fichiers": [
+    "js/telemetry.js"
+   ]
+  },
+  {
+   "cle": "passio_telemetry",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/platform.js",
+    "js/telemetry.js"
+   ]
+  },
+  {
+   "cle": "passio_trafic",
+   "fichiers": [
+    "js/telemetry.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_3",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v3-passerelle.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_4a0",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v4a0-tete.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_4a1",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v4a1-intentions.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_4a2",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v4a2-cartes.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_4a3",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v4a3-vue.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_4a4",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v4a4-outils.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_4a5",
+   "fichiers": [
+    "js/app-06-reels-partage.js",
+    "js/reglages-distants.js",
+    "js/ui-v4a5-filtres.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_4b",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v4b-fiche.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_5",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v5-bobines.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_6",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v6-composer.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_6a",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v6a-messages.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_6a0",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v6a0-activite.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_6b",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v6b-profil.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_6c",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v6c-proposer-irl.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_7",
+   "fichiers": [
+    "js/reglages-distants.js",
+    "js/ui-v7-lot.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_8",
+   "fichiers": [
+    "js/app-06-reels-partage.js",
+    "js/reglages-distants.js",
+    "js/ui-v6-composer.js",
+    "js/ui-v6b-profil.js"
+   ]
+  },
+  {
+   "cle": "passio_ui_v2",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/reglages-distants.js",
+    "js/ui-v2-shell.js"
+   ]
+  },
+  {
+   "cle": "passio_uid",
+   "fichiers": [
+    "js/app-02-state-utils.js",
+    "js/app-05-config-profil.js",
+    "js/app-06-reels-partage.js",
+    "js/app-08-ui-modals-tour.js",
+    "js/emoji-misc.js",
+    "js/first-run.js"
+   ]
+  },
+  {
+   "cle": "passio_usage_min",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  },
+  {
+   "cle": "passio_vitrine_publiee_v1",
+   "fichiers": [
+    "js/app-08-ui-modals-tour.js"
+   ]
+  },
+  {
+   "cle": "passio_vlog_draft_v1",
+   "fichiers": [
+    "js/app-02-state-utils.js"
+   ]
+  }
+ ],
+ "liensProfonds": [
+  {
+   "motif": "#irl-event-",
+   "ou": [
+    "js/affiche-rencontre.js:105",
+    "js/app-06-reels-partage.js:175",
+    "js/app-06-reels-partage.js:180",
+    "js/app-06-reels-partage.js:394"
+   ]
+  },
+  {
+   "motif": "#post-<id>",
+   "ou": [
+    "js/app-03-posts-vlogs.js:39",
+    "js/app-06-reels-partage.js:198",
+    "js/first-run.js:634"
+   ]
+  },
+  {
+   "motif": "#reel=",
+   "ou": [
+    "js/app-06-reels-partage.js:175",
+    "js/app-06-reels-partage.js:180",
+    "js/first-run.js:597",
+    "js/first-run.js:2345"
+   ]
+  },
+  {
+   "motif": "#post-",
+   "ou": [
+    "js/app-06-reels-partage.js:392"
+   ]
+  },
+  {
+   "motif": "#reel=<id>",
+   "ou": [
+    "js/app-07-ia-explore-irl.js:4864"
+   ]
+  },
+  {
+   "motif": "#irl-checkin-",
+   "ou": [
+    "js/app-07-ia-explore-irl.js:8037",
+    "js/first-run.js:598"
+   ]
+  },
+  {
+   "motif": "#irl-event-e1",
+   "ou": [
+    "js/first-run.js:603"
+   ]
+  }
+ ],
+ "recroisement": {
+  "portesNonCitees": [
+   "openNotifSettings (js/app-02-state-utils.js:3994)",
+   "openPrivacySettings (js/app-02-state-utils.js:4018)",
+   "openContentSettings (js/app-02-state-utils.js:4241)",
+   "openScreenTime (js/app-02-state-utils.js:4267)",
+   "openPauseMode (js/app-02-state-utils.js:4448)",
+   "openAbout (js/app-02-state-utils.js:4467)",
+   "openLogoutConfirm (js/app-02-state-utils.js:4489)",
+   "openAuthScreen (js/app-02-state-utils.js:4551)",
+   "openAccountSwitch (js/app-02-state-utils.js:4609)",
+   "openChangePassword (js/app-02-state-utils.js:5003)",
+   "openDeleteAccountConfirm (js/app-02-state-utils.js:5125)",
+   "openPrivacyPolicy (js/app-02-state-utils.js:5313)",
+   "openTermsOfService (js/app-02-state-utils.js:5321)",
+   "openLegalNotice (js/app-02-state-utils.js:5332)",
+   "showOnbStep (js/app-02-state-utils.js:5348)",
+   "ouvrirConsentementRequis (js/app-02-state-utils.js:5958)",
+   "openCreateCustomPassion (js/app-02-state-utils.js:6857)",
+   "openFeedPost (js/app-02-state-utils.js:8250)",
+   "montrerHint (js/app-02-state-utils.js:9005)",
+   "openPost (js/app-02-state-utils.js:10508)",
+   "openPostOptions (js/app-04-comments-shop.js:9)",
+   "openPostOptionsAutrui (js/app-04-comments-shop.js:31)",
+   "openCommentReactors (js/app-04-comments-shop.js:1093)",
+   "openPostReactors (js/app-04-comments-shop.js:1288)",
+   "openComments (js/app-04-comments-shop.js:1298)",
+   "openCommentOptions (js/app-04-comments-shop.js:2381)",
+   "openCommentSheet (js/app-04-comments-shop.js:2989)",
+   "openNewMessage (js/app-04-comments-shop.js:4007)",
+   "openUserProfile (js/app-04-comments-shop.js:4287)",
+   "openVisitedProfileMenu (js/app-04-comments-shop.js:4673)",
+   "openBlockedList (js/app-04-comments-shop.js:5432)",
+   "openConversation (js/app-04-comments-shop.js:5654)",
+   "openConfigurator (js/app-05-config-profil.js:185)",
+   "openCreateGroup (js/app-05-config-profil.js:1906)",
+   "showGroupMembers (js/app-05-config-profil.js:1999)",
+   "openReels (js/app-05-config-profil.js:3076)",
+   "openReelById (js/app-05-config-profil.js:3139)",
+   "openReelComments (js/app-05-config-profil.js:3307)",
+   "showQuickEmojiForReelComment (js/app-05-config-profil.js:3652)",
+   "showEmojiPickerForReelComment (js/app-05-config-profil.js:3676)",
+   "showGifPickerForReelComment (js/app-05-config-profil.js:3708)",
+   "openReelShareModal (js/app-05-config-profil.js:3807)",
+   "openMyPostsTab (js/app-06-reels-partage.js:1155)",
+   "openFollowingList (js/app-06-reels-partage.js:1200)",
+   "openFollowersList (js/app-06-reels-partage.js:1210)",
+   "openMainProfileMenu (js/app-06-reels-partage.js:1856)",
+   "openPassionProfileMenu (js/app-06-reels-partage.js:1891)",
+   "openEditMainProfile (js/app-06-reels-partage.js:1916)",
+   "openPassionManager (js/app-06-reels-partage.js:2613)",
+   "openPassionsAide (js/app-06-reels-partage.js:2646)",
+   "openEditPassionProfile (js/app-06-reels-partage.js:3513)",
+   "openPassionPaywall (js/app-06-reels-partage.js:4365)",
+   "ouvrirGestionPassions (js/app-06-reels-partage.js:4496)",
+   "ouvrirRecherchePassionStudio (js/app-06-reels-partage.js:4502)",
+   "openCreateProfile (js/app-06-reels-partage.js:4587)",
+   "openCreateCustomPassionFromExplorer (js/app-06-reels-partage.js:5794)",
+   "openPassionExplorer (js/app-07-ia-explore-irl.js:330)",
+   "openIrlCitySelector (js/app-07-ia-explore-irl.js:1374)",
+   "ouvrirRecherchePassionIRL (js/app-07-ia-explore-irl.js:1949)",
+   "openIrlCalendar (js/app-07-ia-explore-irl.js:2439)",
+   "openIrlFiltersPanel (js/app-07-ia-explore-irl.js:2737)",
+   "openEventReactions (js/app-07-ia-explore-irl.js:3303)",
+   "openEventChat (js/app-07-ia-explore-irl.js:3899)",
+   "openEventRsvpSheet (js/app-07-ia-explore-irl.js:4006)",
+   "openIrlTimePicker (js/app-07-ia-explore-irl.js:4074)",
+   "openCreateEvent (js/app-07-ia-explore-irl.js:6431)",
+   "openEventManage (js/app-07-ia-explore-irl.js:6677)",
+   "openEventCoOrganizers (js/app-07-ia-explore-irl.js:6706)",
+   "openEventWaitlist (js/app-07-ia-explore-irl.js:6751)",
+   "openEventFeedback (js/app-07-ia-explore-irl.js:7645)",
+   "openEventCheckinQr (js/app-07-ia-explore-irl.js:8042)",
+   "openCheckinCodeEntry (js/app-07-ia-explore-irl.js:8096)",
+   "openModal (js/app-08-ui-modals-tour.js:32)",
+   "showTour (js/app-08-ui-modals-tour.js:160)",
+   "openLimitesPilote (js/app-08-ui-modals-tour.js:286)",
+   "showLanding (js/app-08-ui-modals-tour.js:360)",
+   "openStoryComposer (js/app-08-ui-modals-tour.js:717)",
+   "openStudioAsStory (js/app-08-ui-modals-tour.js:803)",
+   "openStoryGroup (js/app-08-ui-modals-tour.js:1854)",
+   "openStoryViewerAt (js/app-08-ui-modals-tour.js:1871)",
+   "openStoryViewer (js/app-08-ui-modals-tour.js:1883)",
+   "openNotifications (js/app-08-ui-modals-tour.js:2383)",
+   "openNotifTarget (js/app-08-ui-modals-tour.js:2470)",
+   "showPitchLanding (js/app-08-ui-modals-tour.js:2677)",
+   "openConvFiles (js/app-09-boot-pwa.js:1560)",
+   "openConvSettings (js/app-09-boot-pwa.js:1645)",
+   "openFullImg (js/app-09-boot-pwa.js:1933)",
+   "showGifPickerForMessage (js/emoji-misc.js:476)",
+   "showGifPickerForComment (js/emoji-misc.js:496)",
+   "showEmojiPickerForComment (js/emoji-misc.js:522)",
+   "showEmojiPickerForPost (js/emoji-misc.js:557)",
+   "showEmojiPickerForEvent (js/emoji-misc.js:568)",
+   "showGifPickerForPost (js/emoji-misc.js:663)"
+  ],
+  "modalesNonCitees": [
+   "pushOverlayHistory",
+   "openNotifSettings",
+   "openPrivacySettings",
+   "openContentSettings",
+   "openScreenTime",
+   "setupParentalCode",
+   "askParentalCode",
+   "openPauseMode",
+   "openAbout",
+   "openLogoutConfirm",
+   "openAccountSwitch",
+   "openChangePassword",
+   "openDeleteAccountConfirm",
+   "_legalModale",
+   "ouvrirConsentementRequis",
+   "openCreateCustomPassion",
+   "sharePost",
+   "openPostOptions",
+   "openPostOptionsAutrui",
+   "confirmDeletePost",
+   "openComments",
+   "openCommentSheet",
+   "openNewMessage",
+   "openUserProfile",
+   "_demanderMotifSignalement",
+   "openBlockedList",
+   "_openMsgActions",
+   "_forwardPick",
+   "openConfigurator",
+   "openCreateGroup",
+   "_renderGroupMembersModal",
+   "showEmojiPickerForReelComment",
+   "showGifPickerForReelComment",
+   "openReelShareModal",
+   "_proposerSuiviInvitant",
+   "_peopleModal",
+   "openEditMainProfile",
+   "openPassionsAide",
+   "confirmArchivePassion",
+   "openEditPassionProfile",
+   "confirmDeleteProfile",
+   "openPassionPaywall",
+   "openCreateProfile",
+   "openPassionExplorer",
+   "openIrlCitySelector",
+   "openIrlCalendar",
+   "openEventRsvpSheet",
+   "proposerRappelsActivite",
+   "requireAdmission",
+   "admissionOuvrirPorte",
+   "admissionValiderAnnee",
+   "openCreateEvent",
+   "openEventManage",
+   "openEventCoOrganizers",
+   "openEventWaitlist",
+   "_messageEventAttendees",
+   "proposerInvitationActivite",
+   "openEventFeedback",
+   "_rendreCheckinQr",
+   "openCheckinCodeEntry",
+   "feedbackModal",
+   "openLimitesPilote",
+   "openStoryComposer",
+   "playCurrentStory",
+   "openNotifications",
+   "_openConvBgPicker"
+  ]
+ }
+}

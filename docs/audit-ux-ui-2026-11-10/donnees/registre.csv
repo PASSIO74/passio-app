@@ -1,0 +1,4 @@
+﻿ID;Domaine;Surface;Sous-onglet/composant;État;Rôle utilisateur;Geste à effectuer;Preuve;Problèmes;Proposition;Visuel avant/après;Statut;Verdict;Justification
+"ZZZ-001";"Transverse";"Rencontrer";"Liste d'activités";"exemples";"démo";"Onglet Rencontrer";"capture ZZZ-001 (m390, d1440)";"ZZZ-C01";"Rendre inactif le bouton d'un exemple.";"Avant / après";"Observé dans le navigateur";"À améliorer";"Le bouton promet une action désactivée."
+"ZZZ-002";"Transverse";"Messages";"Liste";"exemples";"démo";"Onglet Messages";"capture ZZZ-002";"";"";"Avant seul";"Observé dans le navigateur";"À conserver";"Lisible."
+"ZZZ-003";"Transverse";"Appel vidéo";"Appel en cours";"connecté";"connecté";"Bouton d'appel";"WebRTC : deux appareils requis";"";"";"Avant non capturé";"Inaccessible ou non vérifiable";"À vérifier";"Non vérifiable dans le banc."

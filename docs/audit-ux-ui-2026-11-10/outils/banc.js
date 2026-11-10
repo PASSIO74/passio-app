@@ -316,8 +316,21 @@ async function ecrireImage(buffer, fichier) {
   const meta = await sharp(buffer).metadata();
   return { largeur: meta.width, hauteur: meta.height, octets: fs.statSync(fichier).size };
 }
+// Boîte du premier élément VISIBLE qui répond au sélecteur (un premier élément
+// masqué — `display:none` — ne doit pas faire conclure « introuvable »).
+async function premiereBoiteVisible(page, sel) {
+  try {
+    const loc = page.locator(sel);
+    const n = Math.min(await loc.count(), 15);
+    for (let i = 0; i < n; i++) {
+      const b = await loc.nth(i).boundingBox({ timeout: 1500 }).catch(() => null);
+      if (b && b.width > 0.5 && b.height > 0.5) return b;
+    }
+  } catch (e) {}
+  return null;
+}
 async function boiteDe(page, sel, marge) {
-  const b = await page.locator(sel).first().boundingBox().catch(() => null);
+  const b = await premiereBoiteVisible(page, sel);
   if (!b) return null;
   const v = page.viewportSize();
   const m = marge == null ? 10 : marge;
@@ -332,7 +345,7 @@ async function resoudreAnnotations(page, annotations) {
   for (const a of annotations || []) {
     let x = a.x, y = a.y, w = null, h = null, trouve = true;
     if (a.sel) {
-      const b = await page.locator(a.sel).first().boundingBox().catch(() => null);
+      const b = await premiereBoiteVisible(page, a.sel);
       if (b) { x = (b.x + b.width / 2) / v.width; y = (b.y + b.height / 2) / v.height; w = b.width / v.width; h = b.height / v.height; }
       else trouve = false;
     }
@@ -428,6 +441,9 @@ async function executer(fichier, filtre) {
             fs.writeFileSync(fDon, JSON.stringify(fiche, null, 1));
             bilan.ok++; bilan.captures.push(base);
             console.log("  ✓ " + base + (spec.apres ? (spec.apres.js ? "  (après : rejoué)" : "  + après") : ""));
+            // Un sélecteur d'annotation ou de gros plan qui ne trouve rien se dit tout de suite.
+            for (const a of fiche.annotationsAvant.concat(fiche.annotations)) if (a.sel && !a.trouve) console.log("    ⚠ annotation " + a.n + " : aucun élément visible pour « " + a.sel + " »");
+            for (const z of (fiche.avant.zooms || []).concat((fiche.apres && fiche.apres.zooms) || [])) if (z.manquant) console.log("    ⚠ gros plan « " + z.nom + " » : aucun élément visible pour « " + z.sel + " »");
             return;
           }
           // phase "apres" : la maquette scriptée, sur un état rejoué à l'identique.
@@ -438,6 +454,8 @@ async function executer(fichier, filtre) {
           fiche.annotations = await resoudreAnnotations(page, spec.annotations);
           fs.writeFileSync(fDon, JSON.stringify(fiche, null, 1));
           console.log("  ✓ " + base + "  après (maquette scriptée)");
+          for (const a of fiche.annotations) if (a.sel && !a.trouve) console.log("    ⚠ annotation " + a.n + " : aucun élément visible pour « " + a.sel + " »");
+          for (const z of (fiche.apres.zooms || [])) if (z.manquant) console.log("    ⚠ gros plan « " + z.nom + " » : aucun élément visible pour « " + z.sel + " »");
           throw ARRET;
         };
         try {
