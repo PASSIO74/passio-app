@@ -81,6 +81,18 @@ const sri = (octets) => "sha384-" + crypto.createHash("sha384").update(octets).d
 //    preload, Chromium ne le réutilise pas et retélécharge). La redemande n'en porte
 //    pas : elle sert à remplacer ce que gardent les caches, quoi qu'arrive. Verrou :
 //    app-scripts-par-fichier.spec.js ⑦ (cache HTTP) ⑧ (cache du worker), deux moteurs.
+//    ⚠️ CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10, audit de stabilisation).
+//    `onload` et `onerror` se DÉSARMENT au premier appel. Mesuré en production le 10/11
+//    à 12:18 UTC : dans une page déjà démarrée, un robot de prévisualisation (arrivé par
+//    `?fbclid=`, écran 2000 × 2000) a rejoué le `load` des 9 scripts ; chaque `onload`
+//    refaisait `i++` puis `suivant()`, `i` dépassait le nombre de scripts et
+//    `scripts[i][0]` levait — 9 erreurs par page, comptées comme des erreurs de la
+//    production (`client_errors` 211 à 220). Un `error` rejoué retirait de la page le
+//    script déjà exécuté, puis la reprise levait la même erreur une seconde plus tard
+//    (mesuré au banc : 18 erreurs pour 9 `load` et 9 `error` rejoués) ; rejoué PENDANT
+//    le chargement, il aurait redemandé et réinséré le script en cours — lu dans le
+//    code, non mesuré. Désarmé, un événement rejoué ne fait plus rien ; la reprise, elle,
+//    pose ses écouteurs sur le NOUVEL élément. Verrou : app-scripts-par-fichier.spec.js ⑨.
 //    emoji-misc.js (qui doit garder son ordre APRÈS le bloc app) et
 //    passion-context.js (il observe la persona active, donc APRÈS la définition
 //    de state/currentProfile) ferment le 9ᵉ script, comme ils fermaient app.js :
@@ -152,8 +164,9 @@ const loader = ""
   + '      var s = document.createElement("script");\n'
   + "      s.src = scripts[i][0];\n"
   + "      s.integrity = scripts[i][1];\n"
-  + "      s.onload = function () { i++; essais = 0; suivant(); };\n"
+  + "      s.onload = function () { s.onload = s.onerror = null; i++; essais = 0; suivant(); };\n"
   + "      s.onerror = function () {\n"
+  + "        s.onload = s.onerror = null;\n"
   + "        if (s.parentNode) s.parentNode.removeChild(s);\n"
   + "        if (++essais <= 2) setTimeout(function () {\n"
   + "          var reprendre = function () { suivant(); };\n"

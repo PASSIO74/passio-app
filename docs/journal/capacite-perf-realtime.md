@@ -34,6 +34,7 @@
 - 🧩 LE BLOC APP EN 9 SCRIPTS : UNE VERSION NE RETÉLÉCHARGE QUE CE QUI A CHANGÉ — ET SOUS WEBKIT, IL A FALLU LE WORKER (2026-11-09)
 - 🧪 LA CI NE PARLE PLUS AU PROJET DE PRODUCTION : UN PROJET SUPABASE VIDE POUR LES SUITES LOCALES (2026-11-09)
 - ♻️ UNE BOUCLE AU REPOS — 470 setTimeout(0) par seconde, pour tout le monde, sur tous les écrans (2026-11-09)
+- 🔂 LE CHARGEUR DES 9 SCRIPTS : CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10)
 
 ---
 
@@ -2590,3 +2591,34 @@ rien figé (« Publier dans » suit toujours la passion). Réinjection : écritu
   `animationend` et `transitionend` (capture, passifs) : un réveil coûte O(1), le tour reste borné par
   son rendez-vous. Leçon : **corriger une boucle de réveils, c'est aussi chercher qui en vivait** —
   relancer les suites des AUTRES consommateurs des mêmes observateurs, pas seulement la sienne.
+
+## 🔂 LE CHARGEUR DES 9 SCRIPTS : CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10)
+
+`scripts/build.js` (chargeur du bloc app), `tests/e2e/app-scripts-par-fichier.spec.js` ⑨. Trouvé par l'audit de
+stabilisation du 10/11 (STAB-01), dans les erreurs de la production, pas dans le code.
+
+**Le fait.** Le 10/11 à 12:18 UTC (version `7dade60f`), `client_errors` 211 à 220 et 19 `window_error` en
+télémétrie : « Cannot read properties of undefined (reading '0') », pile `suivant` ← `s.onload`, colonne
+199000 de la page — la lecture `scripts[i][0]`. Deux pages, toutes deux arrivées par `?fbclid=…`, écran
+2000 × 2000 et plateforme Linux pour les deux, l'une sous un agent « Chrome Windows » (agent maquillé) : des
+robots de prévisualisation. L'application y avait démarré
+normalement ; ~25 s plus tard les `load` des 9 scripts ont été rejoués (la mesure `page_load` de la même page est
+repartie au même instant, à l'identique). Chaque `onload` refaisait `i++` puis `suivant()` : `i` passait 9, la garde
+`i === scripts.length` ne tenait plus, et la lecture levait — 9 erreurs par page.
+
+**La cause.** Les deux écouteurs du chargeur restaient armés après avoir servi. Rien, dans un navigateur ordinaire,
+ne rejoue un `load` ; mais ce chargeur est la seule chose entre une page et son application, et il ne doit dépendre
+d'aucune politesse de son hôte.
+
+**Le correctif.** `onload` et `onerror` se désarment à leur premier appel (`s.onload = s.onerror = null`). La reprise
+d'un échec pose ses écouteurs sur le NOUVEL élément : rien d'autre ne change, et le bloc app est le même à l'octet
+(`appHash` inchangé, seul le `buildId` de la page bouge).
+
+**Mesuré.** Reproduit sur l'artefact de production reconstruit localement (identique à l'octet à la production) :
+9 `load` rejoués → 9 erreurs, au message de la production. Le cas ⑨ rejoue 9 `load` et 9 `error` : 18 erreurs avant
+(un `error` rejoué retirait le script déjà exécuté, puis sa reprise levait une seconde plus tard), 0 après, 9 scripts
+toujours en place, aucune redemande, un seul `passio:app-ready`. Suite complète verte sous Chromium (①–⑨) et WebKit.
+
+⚠️ **Ce que ce lot ne fait pas.** Ces deux pages n'étaient pas classées `robot` (`meta.trafic` vide : ni
+`navigator.webdriver`, ni agent connu) : elles restent comptées dans l'audience. Reconnaître ces robots est une
+décision de mesure, laissée au registre de l'audit (STAB-03).
