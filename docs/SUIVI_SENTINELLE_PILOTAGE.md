@@ -125,7 +125,9 @@ quand une version armée change (rouge), sans rien désarmer.
 d'abord celle que NOMME la réparation, par son identifiant ; une relance fait remonter à la tentative en
 échec ; le banc est `tests/unit/reparation-journal.test.mjs`, en Node, parce que
 `tests/ci/frontiere-confiance.sh` ne tourne pas hors de la CI). À faire après la fusion de #848 : retirer
-« Lis son journal (`gh run view --log-failed`) » de `corpsReparation`, et écrire la fiche du journal.
+« Lis son journal (`gh run view --log-failed`) » de `corpsReparation`, écrire la fiche du journal, et faire jouer par le
+banc de la fonction (`pilotage-chemins`) chaque titre de `titreReparation` contre la liste fermée de la marche — les deux
+listes vivent en double (constat 9 de la relecture de #854, non fermé là-bas pour ne pas mettre deux PR en conflit).
 Critère d'OBSERVÉ : la première réparation d'une exécution en échec qui établit sa cause.
 
 Rendre l'agent de réparation capable de lire pourquoi une
@@ -201,7 +203,7 @@ personne n'est prévenu par un second canal si le téléphone ne reçoit pas.
 | Date | Lot | Branche · PR | État | Preuve |
 |---|---|---|---|---|
 | 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | IMPLÉMENTÉ, TESTÉ ; relu par un agent indépendant (huit constats corrigés) ; en attente de la contre-revue de PASSIO74 | banc 46/46, réinjections 46/46, unitaires 1 103, `verif`, navigateur 49 (après fusion de `main` à `fa09eb43`) |
-| 2026-11-12 | 2 (P1-4 bis) | `fix/reparation-journal-execution` · #854 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | banc `reparation-journal` 9/9, 24 réinjections sur 24, unitaires 1 055, `verif` ; le programme d'extraction rend la cause sur les deux journaux réels du 12/11 ; relecture indépendante en cours à l'ouverture |
+| 2026-11-12 | 2 (P1-4 bis) | `fix/reparation-journal-execution` · #854 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | banc `reparation-journal` 11/11, 46 réinjections sur 46, unitaires 1 057 ; le programme d'extraction rend la cause sur les deux journaux réels du 12/11 ; relu par un agent indépendant (dix constats traités ; sa première lecture a montré que dix protections sur onze n'étaient pas verrouillées par le banc) ; deux défauts du lot attrapés par la CI (un caractère invisible brut qui rendait le workflow illisible pour un vrai lecteur YAML ; un verrou du dépôt sur les imports) |
 | 2026-11-12 | 2 (premier sujet) | `fix/moderation-alerte-code-3` · #849 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | étape réelle rejouée sous `bash -e` : rouge sur `main`, verte ; unitaires 1 044 |
 
 ## 8. L'incident du 12/11, chronométré (un exercice réel, pas un essai)
