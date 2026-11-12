@@ -4113,13 +4113,14 @@ function _etatPermissionNotif() {
 }
 function _notifPermissionHTML() {
   var e = _etatPermissionNotif();
-  var ligne = function (txt, couleur) {
-    return '<div class="notif-perm" data-notif-perm="' + e + '" style="font-size:13px;line-height:1.45;padding:10px 12px;border-radius:12px;background:var(--bg-soft);margin-bottom:12px;color:' + couleur + ';">' + txt + '</div>';
+  // Le ton vient d'une classe (styles.css), jamais d'une valeur dans `style`.
+  var ligne = function (txt) {
+    return '<div class="notif-perm notif-perm-' + e + '" data-notif-perm="' + e + '">' + txt + '</div>';
   };
-  if (e === "granted") return ligne("✓ Ce téléphone t'affiche les notifications de PASSIO, même application fermée.", "#0f5c3d");
-  if (e === "denied") return ligne("Ce téléphone bloque les notifications de PASSIO. Pour les recevoir, autorise-les dans les réglages du navigateur ou de l'application.", "#9a3412");
-  if (e === "absent") return ligne("Ce navigateur ne sait pas afficher de notifications : tu les retrouves dans la cloche 🔔.", "var(--muted)");
-  return ligne("Ce téléphone ne t'affiche pas encore les notifications de PASSIO.", "var(--text)")
+  if (e === "granted") return ligne("✓ Ce téléphone t'affiche les notifications de PASSIO, même application fermée.");
+  if (e === "denied") return ligne("Ce téléphone bloque les notifications de PASSIO. Pour les recevoir, autorise-les dans les réglages du navigateur ou de l'application.");
+  if (e === "absent") return ligne("Ce navigateur ne sait pas afficher de notifications : tu les retrouves dans la cloche 🔔.");
+  return ligne("Ce téléphone ne t'affiche pas encore les notifications de PASSIO.")
     + '<button type="button" class="btn primary block" id="notifAutoriser" onclick="_notifAutoriser()" style="margin:-4px 0 12px;">Autoriser les notifications</button>';
 }
 async function _notifAutoriser() {
