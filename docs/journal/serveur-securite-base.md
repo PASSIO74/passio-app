@@ -30,6 +30,7 @@
 - 📌 RV-38 — L'ÉPINGLE D'UN COMMENTAIRE N'ATTEIGNAIT JAMAIS LA BASE ; SEUL LE PROPRIÉTAIRE DU FIL Y ÉPINGLERA (2026-11-05)
 - 🔐 C-02 / R41, RV-44 — L'APPARTENANCE NE SE LIT PLUS SUR AUTRUI, ET LE CRÉATEUR RETIRE ENFIN UN MEMBRE BLOQUÉ (2026-11-06)
 - 🧱 « JAMAIS DE BASE64 EN BASE » DEVIENT UNE RÈGLE DU SERVEUR : `conv_messages.content` BORNÉ (2026-11-07)
+- 🧹 MÉNAGE DES PUBLICATIONS DE TEST MASQUÉES LE 04/11 — sauvegarde, migration fermée sur échec, journal de modération (2026-11-12)
 
 ---
 
@@ -1799,3 +1800,19 @@ contre-revue 5817042152 ; la remarque 1, les titres du banc encore datés du 07/
 **Retour arrière** : le bloc « --| » de l'en-tête (deux `drop constraint if exists`, rien d'effacé ; les CHECK du lot de
 sécurité restent) ; le banc ⑦ prouve le
 catalogue de conv_messages revenu À L'IDENTIQUE.
+
+## 🧹 MÉNAGE DES PUBLICATIONS DE TEST MASQUÉES LE 04/11 — sauvegarde, migration fermée sur échec, journal de modération (2026-11-12)
+
+`migrations/migration_menage_publications_test_2026-11-12.sql`. Décision de Benjamin le 12/11 (STAB-05) : les
+publications de ses trois comptes de test, masquées le 04/11 par 35 lignes `contenus_masques` (`signaleurs = 0`),
+sont supprimées. Sauvegarde complète AVANT, hors du dépôt (`.passio/sauvegardes/`, ignoré).
+
+⚠️ **Supprimer une publication emporte ce que d'AUTRES y ont écrit** : les déclencheurs R31 effacent ses commentaires,
+« j'aime » et interactions (28 / 29 / 128, dont 5 commentaires d'autres comptes). C'est pourquoi le 04/11 avait choisi
+le masquage ; la sauvegarde rend le geste réversible à la main.
+⚠️ **Un DELETE sur `contenus_masques` n'est pas journalisé** (`trg_contenus_masques_journal` : INSERT OR UPDATE) : la
+migration écrit elle-même une ligne `moderation_actions` par masquage retiré.
+⚠️ **Le stockage refuse un DELETE en SQL** (`storage.protect_delete`) : les 5 médias restent dans `content`, à
+retirer par l'API Storage (`npm run medias:orphelins`, clé de service).
+L'ensemble est figé sur le prédicat EXACT du geste du 04/11 (`masque_le` à la microseconde) ; la migration refuse si
+ce n'est plus 35 masquages — un rejeu après application n'efface rien.
