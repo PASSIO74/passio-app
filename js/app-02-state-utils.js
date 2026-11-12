@@ -6348,6 +6348,13 @@ function authProposerMotDePasse() {
 // Même liste que la contrainte `profiles_username_forme` du serveur (audit de sécurité du 2026-11-06) : sans ce
 // contrôle, le compte se créait sans ligne `profiles`, avec un simple avertissement en console. Le tiret bas compte
 // dans le mot, comme `\m…\M` côté PostgreSQL.
+// LOT-4 (audit UX/UI du 2026-11-10, MSG-C06) : « lea » trouve « Léa », « ines »
+// trouve « Inès ». Les DEUX côtés d'une comparaison de recherche passent par ici.
+function plierRecherche(v) {
+  var s = String(v == null ? "" : v);
+  try { s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); } catch (e) {}
+  return s.toLowerCase();
+}
 function nomCompteReserve(v) {
   var plie = String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return /(^|[^a-z0-9_])(passio|moderation|moderateur|administrateur|admin|support|securite)($|[^a-z0-9_])/.test(plie);

@@ -1967,6 +1967,7 @@ async function confirmCreateGroup() {
   const convs = getConversations().filter(c => c && c.id !== groupId);
   const welcomeMsgId = "msg_" + uid();
   const newConv = {
+    createdBy: MY_UID, // LOT-4 (MSG-C08)
     id: groupId,
     isGroup: true,
     groupName: name,
@@ -1996,6 +1997,29 @@ async function confirmCreateGroup() {
   toast(`Groupe « ${name} » créé`);
 }
 
+// LOT-4 (audit UX/UI du 2026-11-10, MSG-C08) — UN SEUL CALCUL des membres d'un groupe.
+// `userIds` inclut MON compte quand il vient du serveur, pas quand le groupe a été
+// créé ici : l'en-tête disait 4, la fenêtre 5. Les autres membres, sans moi, uniques.
+function membresAutresGroupe(c) {
+  var vus = {};
+  return ((c && c.userIds) || []).filter(function (id) {
+    if (!id || id === "me" || id === MY_UID || vus[id]) return false;
+    vus[id] = true; return true;
+  });
+}
+function nbMembresGroupe(c) { return membresAutresGroupe(c).length + 1; }
+// Le rôle se tire du créateur ; inconnu, personne n'est présenté comme tel.
+function estCreateurGroupe(c) { return !!(c && c.createdBy && c.createdBy === MY_UID); }
+
+// LOT-4 (MSG-C09) : retirer quelqu'un d'un groupe se confirme, comme « Quitter ».
+function confirmerRetraitMembre(convId, userId, nom) {
+  ouvrirFeuilleConfirmation({
+    titre: "Retirer " + (nom || "ce membre") + " du groupe ?",
+    texte: ["Cette personne ne recevra plus les messages du groupe."],
+    actions: [{ id: "retirer", libelle: "Retirer du groupe", danger: true, agir: function () { removeGroupMember(convId, userId); } }],
+  });
+}
+
 function showGroupMembers(convId) {
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
@@ -2008,29 +2032,38 @@ function _renderGroupMembersModal(convId) {
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) return;
   var seedUsers = state.seed.users || [];
-  var memberIds = c.userIds || [];
+  // LOT-4 (MSG-C08) : la liste, le compte et le rôle disent vrai. Plus de « Admin ·
+  // En ligne » écrit en dur, plus de libellé de remplissage, plus de membre absent
+  // parce qu'il n'est pas dans le cache de démonstration ; « Retirer » et « Ajouter »
+  // ne sont proposés qu'au créateur, jamais sur le créateur.
+  var memberIds = membresAutresGroupe(c);
+  var nbMembres = memberIds.length + 1;
+  var jeCree = estCreateurGroupe(c);
+  var moi = (state.user && state.user.general) || {};
 
   var membersHTML = '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
-    '<div style="width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;">😊</div>' +
-    '<div style="flex:1;"><div style="font-weight:700;font-size:13px;">Toi</div><div style="font-size:11px;color:var(--muted);">Admin · En ligne</div></div>' +
-    '<span style="font-size:10px;font-weight:700;color:var(--accent);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">Admin</span>' +
+    '<div style="width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;">' + escapeHtml(moi.profileEmoji || "😊") + '</div>' +
+    '<div style="flex:1;"><div style="font-weight:700;font-size:13px;">Toi</div>' + (jeCree ? '<div style="font-size:11px;color:var(--muted);">A créé le groupe</div>' : '') + '</div>' +
   '</div>';
 
   membersHTML += memberIds.map(function(uid) {
     var u = seedUsers.find(function(x) { return x.id === uid; });
-    if (!u) return '';
-    var passion = passionById(u.passion);
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
-      '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + avatarInner(u) + '</div>' +
-      '<div style="flex:1;">' +
-        '<div style="font-weight:700;font-size:13px;">' + escapeHtml(u.name) + '</div>' +
-        '<div style="font-size:11px;color:var(--muted);">' + (passion ? escapeHtml(passion.emoji) + ' ' + escapeHtml(passion.label) : '') + '</div>' +
+    var p = (!u && typeof _profileCache !== "undefined" && _profileCache && _profileCache.get) ? _profileCache.get(uid) : null;
+    var nom = (u && u.name) || (p && p.username) || "Membre";
+    var avatar = u ? '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + avatarInner(u) + '</div>'
+      : '<div style="width:40px;height:40px;border-radius:50%;background:' + escapeHtml((p && p.color) || "#8b5cf6") + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + escapeHtml((p && p.emoji) || "👤") + '</div>';
+    var estCreateur = !!(c.createdBy && c.createdBy === uid);
+    return '<div class="grp-membre" data-membre="' + escapeHtml(uid) + '" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
+      avatar +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-weight:700;font-size:13px;">' + escapeHtml(nom) + '</div>' +
+        (estCreateur ? '<div style="font-size:11px;color:var(--muted);">A créé le groupe</div>' : '') +
       '</div>' +
-      '<button class="btn ghost" style="font-size:10px;padding:5px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);" onclick="removeGroupMember(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(uid) + '\')">Retirer</button>' +
+      ((jeCree && !estCreateur) ? '<button class="btn ghost grp-retirer" style="min-height:44px;font-size:13px;padding:0 14px;color:#b91c1c;border-color:rgba(185,28,28,0.35);" onclick="confirmerRetraitMembre(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(nom) + '\')">Retirer</button>' : '') +
     '</div>';
   }).join("");
 
-  var passionsHTML = (c.groupPassions || [c.passion]).map(function(pid) {
+  var passionsHTML = (c.groupPassions || (c.passion ? [c.passion] : [])).filter(Boolean).map(function(pid) {
     var p = passionById(pid);
     return p ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--bg-deep);border-radius:8px;font-size:11px;font-weight:700;">' + escapeHtml(p.emoji) + ' ' + escapeHtml(p.label) + '</span>' : '';
   }).join(" ");
@@ -2040,7 +2073,7 @@ function _renderGroupMembersModal(convId) {
 
   function buildNonMembersHTML(filter) {
     var filtered = filter ? nonMembers.filter(function(u) {
-      return u.name.toLowerCase().includes(filter.toLowerCase());
+      return plierRecherche(u.name).includes(plierRecherche(filter));
     }) : nonMembers;
     if (nonMembers.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Tous les utilisateurs sont déjà membres.</div>';
     if (filtered.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Aucun résultat.</div>';
@@ -2071,14 +2104,14 @@ function _renderGroupMembersModal(convId) {
     '<div class="modal-handle"></div>' +
     grpAvatarHTML +
     '<div class="modal-title" style="margin-top:0;">👥 ' + escapeHtml(c.groupName || "Groupe") + '</div>' +
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + (memberIds.length + 1) + ' membre' + (memberIds.length + 1 > 1 ? 's' : '') + '</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + nbMembres + ' membre' + (nbMembres > 1 ? 's' : '') + '</div>' +
     '<div onclick="editGroupDescription(\'' + escapeJsArg(convId) + '\')" style="cursor:pointer;font-size:13px;color:' + (c.groupDesc ? 'var(--text)' : 'var(--muted)') + ';background:var(--bg-deep);border-radius:10px;padding:9px 12px;margin-bottom:10px;">' +
       (c.groupDesc ? escapeHtml(c.groupDesc) : 'Ajouter une description…') + '</div>' +
     '<div style="margin-bottom:12px;">' + passionsHTML + '</div>' +
     // Onglets
     '<div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--border);">' +
-      '<button id="grpTab_members" onclick="switchGroupTab(\'members\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer;">Membres (' + (memberIds.length + 1) + ')</button>' +
-      '<button id="grpTab_add" onclick="switchGroupTab(\'add\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;">Ajouter</button>' +
+      '<button id="grpTab_members" onclick="switchGroupTab(\'members\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer;">Membres (' + nbMembres + ')</button>' +
+      (jeCree ? '<button id="grpTab_add" onclick="switchGroupTab(\'add\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;">Ajouter</button>' : '') +
     '</div>' +
     // Panneau Membres
     '<div id="grpPanel_members" style="display:block;">' +
@@ -2180,7 +2213,7 @@ function filterGroupAddList(query) {
   var nonMembers = window._grpNonMembers || [];
   var convId = window._grpConvId || "";
   var filtered = query ? nonMembers.filter(function(u) {
-    return u.name.toLowerCase().includes(query.toLowerCase());
+    return plierRecherche(u.name).includes(plierRecherche(query));
   }) : nonMembers;
   var list = document.getElementById("grpAddList");
   if (!list) return;

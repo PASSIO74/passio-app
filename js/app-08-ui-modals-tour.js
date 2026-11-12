@@ -7129,6 +7129,16 @@ async function _rafraichirConversationsServeur(opts) {
       // morte, onze essais) disparaissait au démarrage, comme le brouillon tapé dans la
       // conversation — alors que l'écran avait promis « le message reste, marqué échec ».
       if (lc.draft && !sc.draft) sc.draft = lc.draft;
+      // LOT-4 (audit UX/UI du 2026-11-10, MSG-C01) : épingle, archive, sourdine,
+      // fond, description et photo de groupe n'existent QUE dans la copie locale —
+      // l'entrée serveur ne les porte pas. Ils s'effaçaient à chaque démarrage (la
+      // conversation archivée revenait dans la liste). On les reporte comme le
+      // brouillon. Coupure le temps d'une version : localStorage.passio_conv_prefs_boot="0".
+      if (_reporterReglagesConvActif()) {
+        CHAMPS_LOCAUX_CONV.forEach(function (k) {
+          if (lc[k] !== undefined && lc[k] !== null && (sc[k] === undefined || sc[k] === null)) sc[k] = lc[k];
+        });
+      }
       const enAttente = lc.messages.filter(function (m) { return m && m.from === "me" && (m.status === "sending" || m.status === "failed"); });
       if (!enAttente.length) return;
       const connus = new Set((sc.messages || []).map(function (m) { return m && m.id; }));
@@ -7143,6 +7153,12 @@ async function _rafraichirConversationsServeur(opts) {
   saveConversations();
   window._convNetLoaded = true; // fin du squelette de la liste de conversations
   try { renderMessages(); } catch(e) {}
+}
+
+// Champs d'une conversation tenus par CET appareil seul (aucune colonne serveur).
+var CHAMPS_LOCAUX_CONV = ["pinned", "archived", "_muted", "muted", "bg", "groupDesc", "groupPhoto", "groupPassions", "createdBy"];
+function _reporterReglagesConvActif() {
+  try { return localStorage.getItem("passio_conv_prefs_boot") !== "0"; } catch (e) { return true; }
 }
 
 // Pour chaque conversation serveur déjà connue localement : l'objet LOCAL est
@@ -7270,6 +7286,8 @@ async function supaLoadMyConversations() {
       const lastSp = (last && last.from_id !== MY_UID && lastMsg && lastMsg.senderProfile) ? lastMsg.senderProfile : null;
       return {
         id: c.id, isGroup: c.is_group, groupName: c.group_name,
+        createdBy: c.created_by || null, // LOT-4 (MSG-C08) : le rôle se tire du créateur
+        groupDesc: c.description || null, // la description vit en base (conversations.description)
         passion: null,
         userId: otherId,
         userEmoji: lastSp?.e || otherProf?.emoji || "✨",
@@ -7560,7 +7578,8 @@ async function _handleIncomingConvMessage(r, opts) {
     try {
       const fp = document.getElementById("conv-fullpage");
       const displayName = fp ? fp.getAttribute("data-display-name") : (conv.userName || "");
-      renderConvFpThread(conv, displayName);
+      // LOT-4 (MSG-C55) : on ne ramène plus en bas quelqu'un qui relit l'historique.
+      if (typeof _convMessageEntrant === "function") _convMessageEntrant(conv, displayName); else renderConvFpThread(conv, displayName);
     } catch(e) {}
     try { renderMessages(); } catch(e) {}
   } else {
