@@ -129,6 +129,14 @@ test.describe("iPhone — zones sûres des panneaux plein écran", () => {
     expect(panneaux.length,
       "un panneau plein écran a été ajouté ou retiré : vérifie que ses commandes " +
       "de bord d'écran portent env(safe-area-inset-*), puis ajuste ce nombre.\n" +
-      panneaux.join("\n")).toBe(14);
+      panneaux.join("\n")).toBe(15);
+  });
+
+  // LOT-4 (audit UX/UI du 2026-11-10) : 15ᵉ panneau, arbitré — la feuille de
+  // confirmation de la messagerie (`.feuille-conf-ov`). Ses commandes sont en BAS
+  // de l'écran : la feuille doit garder le retrait de la barre d'accueil.
+  test("la feuille de confirmation de la messagerie garde la zone sûre du bas", async () => {
+    expect(corpsDe(".feuille-conf"), "les boutons de la feuille passent sous la barre d'accueil de l'iPhone")
+      .toContain("env(safe-area-inset-bottom");
   });
 });
