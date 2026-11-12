@@ -28,6 +28,7 @@ Object.defineProperty(window.supa, "from", { configurable: true, writable: true,
   value: function (table) { var b = {
     insert: function (row) { window.__inserts.push({ table: table, row: row }); return Promise.resolve({ error: null }); },
     delete: function () { return b; }, eq: function () { return b; },
+    select: function () { return Promise.resolve({ data: [{ id: "ligne" }], error: null }); },
     then: function (a, c) { return Promise.resolve({ error: null }).then(a, c); } }; return b; } });
 Object.defineProperty(window.supa, "storage", { configurable: true, writable: true,
   value: { from: function (seau) { return {

@@ -92,6 +92,8 @@ async function reseau(page) {
         }
         return ok(route, [], 201);
       }
+      // Un DELETE accepté rend la ligne retirée (« Supprimer pour tous » lit ce verdict, ETAT-04).
+      if (methode === "DELETE") { const d = /[?&]id=eq\.([^&]+)/.exec(url); return ok(route, d ? [{ id: decodeURIComponent(d[1]) }] : []); }
       // La relecture de la preuve (`_ligneDejaEnBase`) : la ligne, avec son auteur.
       const lu = /[?&]id=eq\.([^&]+)/.exec(url);
       if (lu && etat.dejaEnBase.has(decodeURIComponent(lu[1]))) return ok(route, [{ from_id: UID_MOI }]);

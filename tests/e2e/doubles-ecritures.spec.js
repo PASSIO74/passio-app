@@ -29,7 +29,9 @@ window.supaEnsureProfileExists = async function () { return true; };
 // Chaque écriture reste EN VOL jusqu'à __repondre() : c'est la fenêtre du double tap.
 function __enVol(table, op, row) {
   window.__ecrits.push({ table: table, op: op, row: row });
-  return new Promise(function (resolve) { window.__attentes.push(function () { resolve({ data: (table === "follows" && op === "insert") ? { status: "accepted" } : (row ? [row] : []), error: null, status: 201 }); }); });
+// Un DELETE accepté rend la ligne retirée (.select(...)), comme PostgREST : « Ne plus
+// suivre » lit désormais ce verdict, et « 0 ligne » n'y vaut succès que sous la session du compte (ETAT-08).
+  return new Promise(function (resolve) { window.__attentes.push(function () { resolve({ data: (table === "follows" && op === "insert") ? { status: "accepted" } : (row ? [row] : (op === "delete" ? [{ supprimee: true }] : [])), error: null, status: 201 }); }); });
 }
 // Répond à tout ce qui est en vol, y compris les écritures de suite (retrait
 // d'abonné après un blocage…), jusqu'à ce que plus rien n'attende.

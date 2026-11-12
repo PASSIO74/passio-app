@@ -112,7 +112,10 @@ function _delObStopTimer() { if (_delObTimer) { clearInterval(_delObTimer); _del
 function _enqueuePostDelete(postId, paths) {
   if (!postId) return;
   var arr = _delObLoad().filter(function (o) { return o.postId !== postId; });
-  arr.push({ postId: postId, paths: paths || [], uid: (typeof MY_UID !== "undefined" ? MY_UID : null), tries: 0, ts: Date.now() });
+  // AUTH-06 : le compte RÉEL qui supprime, jamais le `u_<aléatoire>` d'un visiteur.
+  var proprio = (typeof _fileProprietaire === "function") ? _fileProprietaire() : null;
+  if (!proprio) return;   // un visiteur n'a aucune ligne en base à supprimer
+  arr.push({ postId: postId, paths: paths || [], uid: proprio, tries: 0, ts: Date.now() });
   _delObSave(arr);
   _delObStartTimer();
   _delObFlush();
@@ -127,9 +130,20 @@ function _enqueuePostDelete(postId, paths) {
 // coûte une requête sur un chemin rare.
 async function _delObRun(op) {
   try {
-    if (typeof sessionExpiree === "function" && sessionExpiree()) return false; // UXO-02
+    if (typeof sessionExpiree === "function" && sessionExpiree()) return "sans_session"; // UXO-02 : on attend, sans compter d'essai
     if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
     if (typeof MY_UID === "undefined" || !MY_UID) return false;
+    // ⚠️ LA RELECTURE N'EST UNE PREUVE QUE SI LE LECTEUR EST L'AUTEUR (ETAT-05, audit
+    // du 2026-11-10). Sous une session morte, le DELETE est filtré par la RLS (0 ligne,
+    // aucune erreur) et la relecture se fait sous le rôle anonyme : la publication d'un
+    // compte PRIVÉ existe mais n'est pas lisible → « reste » nul → « supprimée ». La
+    // file l'abandonnait, la pierre tombale la cachait à son auteur, ses abonnés la
+    // lisaient toujours. Sans session de CE compte, on attend — sans compter d'essai.
+    try {
+      const ses = await supa.auth.getSession();
+      const su = ses && ses.data && ses.data.session && ses.data.session.user;
+      if (!su || su.id !== MY_UID) return "sans_session";
+    } catch (e) { return "sans_session"; }
     const res = await supa.from("posts").delete().eq("id", op.postId).eq("author_id", MY_UID).select("id");
     const verdict = (typeof _writeVerdict === "function")
       ? _writeVerdict(res, { label: "suppression de la publication " + op.postId })
@@ -163,10 +177,16 @@ async function _delObFlush() {
     for (var i = 0; i < arr.length; i++) {
       var op = arr[i];
       if ((op.tries || 0) >= _DEL_OB_MAX_TRIES) continue;
-      if (op.uid && op.uid !== MY_UID) continue;   // suppression d'un AUTRE compte : pas la nôtre à rejouer
+      if (!op.uid) {   // entrée d'avant AUTH-06, sans propriétaire : ni rejouée sous un autre compte, ni gardée en silence
+        try { if (typeof diagLog === "function") diagLog("file suppressions : entrée sans propriétaire retirée " + String(op.postId).slice(0, 40)); } catch (e) {}
+        _delObSave(_delObLoad().filter(function (o) { return o.postId !== op.postId; }));
+        continue;
+      }
+      if (op.uid !== MY_UID) continue;   // suppression d'un AUTRE compte : pas la nôtre à rejouer
       var ok = false;
       try { ok = await _delObRun(op); } catch (e) { ok = false; }
-      if (ok) {
+      if (ok === "sans_session") continue;   // ni preuve ni essai : on attend la session
+      if (ok === true) {
         _delObSave(_delObLoad().filter(function (o) { return o.postId !== op.postId; }));
       } else {
         op.tries = (op.tries || 0) + 1;
@@ -175,7 +195,7 @@ async function _delObFlush() {
     }
   } finally { _delObFlushing = false; }
   var pend = _delObLoad().filter(function (o) {
-    return (o.tries || 0) < _DEL_OB_MAX_TRIES && (!o.uid || o.uid === MY_UID);
+    return (o.tries || 0) < _DEL_OB_MAX_TRIES && o.uid === MY_UID;
   });
   if (pend.length) _delObStartTimer(); else _delObStopTimer();
 }
@@ -5196,7 +5216,16 @@ function toggleFollowUser(userId, userName) {
   state.user.following = state.user.following.filter(function (id) { return id !== userId; });
   _peindreBoutonsSuivi(userId, "aucun");
   toast("Tu ne suis plus " + nom);
-  _verrouEcriture(_ecritureSuiviEnCours, userId, supaUnfollowUser(userId)).catch(function () {});
+  // ⚠️ LE VERDICT EST LU (ETAT-08, audit du 2026-11-10). Seul un `.catch` était
+  // attaché : un DELETE refusé laissait l'abonnement vivant en base pendant que
+  // l'écran disait « Tu ne suis plus » — et la lecture suivante le remettait.
+  _verrouEcriture(_ecritureSuiviEnCours, userId, supaUnfollowUser(userId)).then(function (r) {
+    if (!r || r.ok !== false) return;
+    if ((state.user.following || []).indexOf(userId) < 0) state.user.following.push(userId);
+    _peindreBoutonsSuivi(userId, "suivi");
+    toast("Désabonnement non enregistré — tu suis toujours " + nom);
+    saveState();
+  }).catch(function () {});
   saveState();
 }
 
@@ -6685,7 +6714,7 @@ function _demanderSuppressionMsg(convId, msgId) {
   var qui = _convInterlocuteur(r.c);
   var aMoi = r.m.from === "me";
   var actions = [];
-  if (aMoi) actions.push({ id: "tous", libelle: "Supprimer pour tout le monde", danger: true, agir: function () { _deleteMsgForAll(convId, msgId); } });
+  if (aMoi) actions.push({ id: "tous", libelle: "Supprimer pour tout le monde", danger: true, agir: function () { _deleteMsgForAll(convId, msgId).catch(function (e) { try { diagLog("supprimer pour tous : " + (e && e.message)); } catch (_) {} }); } });
   actions.push({ id: "moi", libelle: "Supprimer pour moi", danger: true, agir: function () { _deleteMsgForMe(convId, msgId); } });
   ouvrirFeuilleConfirmation({
     titre: "Supprimer ce message ?",
@@ -6711,17 +6740,56 @@ function _deleteMsgForMe(convId, msgId) {
 
 // Supprimer pour tous (mes messages) : retrait local + suppression Supabase +
 // tombstone diffusé au destinataire (géré par _handleIncomingConvMessage type:del).
-function _deleteMsgForAll(convId, msgId) {
+// ⚠️ ANNONCÉ = FAIT (ETAT-04, audit du 2026-11-10). Le DELETE partait sans être lu,
+// la bulle disparaissait et une pierre tombale empêchait même de s'en apercevoir :
+// sur un refus ou une coupure, le message restait lisible chez le destinataire
+// pendant que l'écran disait « supprimé pour tous ». Pour un COMPTE, la base
+// tranche d'abord ; un refus laisse la bulle et le dit.
+async function _deleteMsgForAll(convId, msgId) {
   closeModal();
-  var r = _msgById(convId, msgId); if (!r || !r.m || r.m.from !== "me") return;
+  var r0 = _msgById(convId, msgId); if (!r0 || !r0.m || r0.m.from !== "me") return;
+  // Un message EN FILE hors ligne (« envoi… » sans réseau) se retire de sa file
+  // d'abord : sans quoi il partirait après sa suppression. En ligne, un envoi en
+  // cours peut poser sa ligne APRÈS notre DELETE : on attend qu'il finisse.
+  var dansLaFile = false;
+  try { dansLaFile = typeof _outboxLoad === "function" && _outboxLoad().some(function (x) { return x.msgId === msgId; }); } catch (e) {}
+  if (r0.m.status === "sending") {
+    var horsLigneNav = typeof navigator !== "undefined" && navigator.onLine === false;
+    if (!(dansLaFile && horsLigneNav)) { toast("Ce message est encore en cours d'envoi — réessaie dans un instant."); return; }
+  }
+  if (dansLaFile || r0.m.status === "failed") { try { if (typeof _outboxRemove === "function") _outboxRemove(msgId); } catch (e) {} }
+  // « en échec » ne veut pas dire « absent de la base » (réponse perdue APRÈS
+  // l'écriture) : on tente toujours le DELETE, et 0 ligne sous MA session vaut
+  // succès — ligne déjà partie (autre appareil, purge de nuit) ou jamais posée.
+  var envoyeAuServeur = true;
+  if (typeof supa !== "undefined" && supa && window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()) {
+    var v;
+    try {
+      v = _writeVerdict(await supa.from("conv_messages").delete().eq("id", msgId).eq("from_id", MY_UID).select("id"),
+        { label: "message supprimé pour tous" });
+      if (v.ok && v.rows === 0) {
+        var moi = (typeof _sessionEstMoi === "function") ? await _sessionEstMoi() : false;
+        if (!moi) v = { ok: false, error: null };   // session morte : 0 ligne ne prouve rien
+        else envoyeAuServeur = false;               // rien en base à retirer chez l'autre
+      }
+    } catch (e) { v = { ok: false, error: e }; }
+    if (!v.ok) {
+      var horsLigne = typeof estEchecReseau === "function" && estEchecReseau(v.error);
+      toast(horsLigne ? "Hors connexion : message non supprimé. Réessaie une fois en ligne."
+                      : "Le message n'a pas pu être supprimé pour tout le monde. Réessaie.", "error");
+      return;
+    }
+  }
+  var jamaisEnvoye = !envoyeAuServeur;
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
   r.c.messages = (r.c.messages || []).filter(function(x){ return x.id !== msgId; });
   convTombAdd("msg", msgId);        // sinon la fusion au boot le ressuscite (ADR-008)
   saveConversations();
   var fp = document.getElementById("conv-fullpage");
   renderConvFpThread(r.c, fp ? fp.getAttribute("data-display-name") : "");
   try { renderMessages(); } catch(e) {}
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    try { supa.from("conv_messages").delete().eq("id", msgId).then(function(){}, function(){}); } catch(e) {}
+  if (!jamaisEnvoye && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    // (La ligne est déjà supprimée ci-dessus pour un compte, verdict lu.)
     // ⚠️ LA PIÈCE JOINTE PART AVEC LE MESSAGE (MSG-03, 2026-09-14). La ligne
     // était supprimée, l'objet Storage jamais : photo, vidéo, vocal, fichier
     // restaient lisibles par tout membre de la conversation (URL signée), pour

@@ -8801,11 +8801,25 @@ function _demandeAbonnementTraitee(notifId, verdict) {
 }
 
 async function supaUnfollowUser(targetId) {
+  // Un visiteur (pas un uuid) n'a aucune ligne `follows` : son retrait est local,
+  // et réussi. Sans cette garde, l'échec forcé du DELETE faisait REVENIR le suivi
+  // depuis que l'appelant lit le verdict (ETAT-08).
+  if (typeof _compteAuthReel === "function" && !_compteAuthReel()) return { ok: true, local: true };
   var _cid = null;
   try { if (window.tel && tel.flowStart) _cid = tel.flowStart("unfollow_user", { target: targetId }); } catch (e) {}
   try {
-    const res = await supa.from("follows").delete().eq("follower_id", MY_UID).eq("following_id", targetId);
-    const ok = !!(!res || !res.error);
+    const res = await supa.from("follows").delete().eq("follower_id", MY_UID).eq("following_id", targetId).select("following_id");
+    let ok = !!(!res || !res.error);
+    // ⚠️ 0 LIGNE N'EST UN SUCCÈS QUE SOUS LA SESSION DE CE COMPTE (ETAT-08 / ETAT-05) :
+    // sous une session morte, la RLS filtre le DELETE sans erreur. Déjà plus suivi
+    // (0 ligne sous MA session) reste un succès : l'état voulu est atteint.
+    if (ok && res && Array.isArray(res.data) && res.data.length === 0 && supa.auth && supa.auth.getSession) {
+      try {
+        const ses = await supa.auth.getSession();
+        const su = ses && ses.data && ses.data.session && ses.data.session.user;
+        if (!su || su.id !== MY_UID) ok = false;
+      } catch (e) { ok = false; }
+    }
     try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
     // ⚠️ LE VERDICT REMONTE (2026-09-22). Cette fonction avalait `{ error }` et
     // ne rendait RIEN : un DELETE refusé (RLS, réseau) laissait l'écran annoncer
@@ -8825,13 +8839,17 @@ async function supaLoadFollowing() {
       if (res && res.error && _erreurColonneStatutAbsente(res.error)) { window._followsSansStatut = true; res = null; }
     }
     if (!res) res = await supa.from("follows").select("following_id").eq("follower_id", MY_UID);
-    const lignes = (res && res.data) || [];
+    // ⚠️ `null` SUR UN ÉCHEC, `[]` POUR « AUCUN SUIVI » (ETAT-08, audit du 2026-11-10) :
+    // l'appelant ne pouvait pas distinguer une panne d'une liste vide, et ne faisait
+    // donc qu'AJOUTER — un désabonnement revenait au démarrage suivant.
+    if (!res || res.error) return null;
+    const lignes = res.data || [];
     // Les demandes EN ATTENTE ne sont pas des abonnements : elles n'entrent ni
     // dans « Suivis » ni dans le verrou du profil visité, mais le bouton les dit.
     const enAttente = lignes.filter(r => r.status === "pending").map(r => r.following_id);
     if (state && state.user) state.user.followingPending = enAttente;
     return lignes.filter(r => r.status !== "pending").map(r => r.following_id);
-  } catch(e) { return []; }
+  } catch(e) { return null; }
 }
 
 // ---- MODÉRATION : BLOCAGE / SIGNALEMENT ----
@@ -8889,9 +8907,10 @@ async function supaUnblockUser(targetId) {
 async function supaLoadBlocks() {
   if (!_compteAuthReel()) return [];   // lecture « de moi » : voir supaLoadMyConversations
   try {
-    const { data } = await supa.from("blocks").select("blocked_id").eq("blocker_id", MY_UID);
+    const { data, error } = await supa.from("blocks").select("blocked_id").eq("blocker_id", MY_UID);
+    if (error) return null;   // ETAT-08 : une panne n'est pas « aucun blocage »
     return (data || []).map(r => r.blocked_id);
-  } catch(e) { return []; }
+  } catch(e) { return null; }
 }
 // Renvoie true seulement si le signalement est réellement en base. Sans ce verdict,
 // une policy INSERT absente ou cassée faisait disparaître le signalement sans le
@@ -9177,17 +9196,87 @@ async function supaFirstWaitlisted(eventId) {
 }
 
 // Mes participations AVEC leur état (pour rehydrater les RSVP au boot).
+// ══════════════════════════════════════════════════════════════════════════
+// LES RETRAITS CONVERGENT : APRÈS UNE LECTURE RÉUSSIE, LA BASE FAIT FOI (ETAT-08)
+// ──────────────────────────────────────────────────────────────────────────
+// Audit de stabilisation du 2026-11-10. Le démarrage ne faisait qu'AJOUTER ce que
+// la base rendait (union) — et les lecteurs rendaient `[]`/`{}` aussi bien sur
+// une panne que sur une liste vide, si bien qu'aucun remplacement n'était sûr.
+// Un désabonnement, un déblocage, une désinscription faits sur un autre appareil
+// (ou hors ligne) revenaient donc au démarrage suivant, et l'appareil qui les
+// portait encore les repoussait aux autres par le blob d'état.
+// Désormais : un lecteur rend `null` sur un échec (on ne touche à rien) ; sur un
+// succès, la liste du serveur REMPLACE la liste locale, sauf :
+//   · un identifiant dont l'écriture est EN VOL — l'état local décide, dans les
+//     deux sens (suivre comme ne plus suivre) ;
+//   · un profil d'EXEMPLE (pas un uuid) — il n'existe pas en base, il reste local.
+// ⚠️ LE REMPLACEMENT N'EST SÛR QUE SOUS LA SESSION DE CE COMPTE (revue du 12/11) :
+// sous une session morte, la lecture passe en rôle anonyme et rend 0 ligne SANS
+// erreur (`blocks` n'est lisible que par son auteur) — remplacer effacerait tous
+// les blocages. Sans session vérifiée, on retombe sur l'union d'avant.
+async function _sessionEstMoi() {
+  try {
+    if (typeof supa === "undefined" || !supa || !supa.auth || !supa.auth.getSession) return false;
+    var ses = await supa.auth.getSession();
+    var su = ses && ses.data && ses.data.session && ses.data.session.user;
+    return !!(su && su.id === MY_UID);
+  } catch (e) { return false; }
+}
+function _fusionnerSuivisServeur(ids, remplacer) {
+  if (!Array.isArray(ids) || !state || !state.user) return false;
+  if (remplacer !== true) { state.user.following = [...new Set([...(state.user.following || []), ...ids])]; return true; }
+  var enVol = Object.keys((typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) || {});
+  state.user.following = [...new Set([
+    ...ids.filter(function (id) { return enVol.indexOf(id) < 0; }),
+    ...(state.user.following || []).filter(function (id) { return enVol.indexOf(id) > -1 || !RE_UID_COMPTE.test(String(id)); }),
+  ])];
+  return true;
+}
+function _fusionnerBlocagesServeur(bl, remplacer) {
+  if (!Array.isArray(bl) || !state || !state.user) return false;
+  if (remplacer !== true) { state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])]; return true; }
+  var enVol = Object.keys((typeof _ecritureBlocageEnCours !== "undefined" && _ecritureBlocageEnCours) || {});
+  state.user.blocked = [...new Set([
+    ...bl.filter(function (id) { return enVol.indexOf(id) < 0; }),
+    ...(state.user.blocked || []).filter(function (id) { return enVol.indexOf(id) > -1 || !RE_UID_COMPTE.test(String(id)); }),
+  ])];
+  return true;
+}
+// Une inscription locale à une activité DU SERVEUR, sans ligne en base, est une
+// désinscription faite ailleurs (ou une écriture perdue) : elle part. Les
+// activités d'exemple, qui n'existent qu'ici, gardent leur réponse locale.
+function _fusionnerRsvpServeur(map, remplacer) {
+  if (!map || typeof map !== "object" || !state || !state.user) return false;
+  state.user.eventRsvp = state.user.eventRsvp || {};
+  state.user.checkedInEvents = state.user.checkedInEvents || [];
+  if (remplacer === true) Object.keys(state.user.eventRsvp).forEach(function (evId) {
+    if (map[evId]) return;
+    var ev = (typeof _findCanonicalEvent === "function") ? _findCanonicalEvent(evId) : null;
+    if (ev && ev.fromSupabase) delete state.user.eventRsvp[evId];
+  });
+  Object.keys(map).forEach(function (evId) {
+    state.user.eventRsvp[evId] = map[evId].rsvp;
+    if (map[evId].checkedIn && state.user.checkedInEvents.indexOf(evId) === -1) state.user.checkedInEvents.push(evId);
+  });
+  state.user.joinedEvents = Object.keys(state.user.eventRsvp)
+    .filter(function (k) { return state.user.eventRsvp[k] === "going" || state.user.eventRsvp[k] === "maybe"; });
+  return true;
+}
+
 async function supaLoadMyRsvps() {
   // ⚠️ CE CHEMIN COÛTAIT DEUX REFUS, PAS UN : `if (error) throw error` tombait
   // dans le repli ci-dessous, qui REFAISAIT la même requête refusée. Sans compte
   // réel, le filtre `user_id = MY_UID` ne pourrait de toute façon rendre aucune
   // ligne utile — et `{}` est déjà ce que la fonction rend quand elle échoue.
-  if (!_attendeesLisibles()) return {};
+  // Un visiteur n'a aucune inscription (`{}`) ; un COMPTE dont la lecture est
+  // refusée (mémo de refus) ne sait pas : `null` (ETAT-08, revue du 12/11).
+  if (!_attendeesLisibles()) return _compteAuthReel() ? null : {};
   try {
     const { data, error } = await supa.from("event_attendees")
       .select("event_id,rsvp,checked_in_at").eq("user_id", MY_UID);
     // Un refus est définitif : on ne passe PAS au repli « sans la colonne rsvp ».
-    if (error && _attendeesRefusMemorise(error, "supaLoadMyRsvps")) return {};
+    // ETAT-08 : un refus ou une panne rend `null` — « je ne sais pas », jamais « aucune inscription ».
+    if (error && _attendeesRefusMemorise(error, "supaLoadMyRsvps")) return null;
     if (error) throw error;
     const out = {};
     (data || []).forEach(r => { out[r.event_id] = { rsvp: r.rsvp || "going", checkedIn: !!r.checked_in_at }; });
@@ -9196,16 +9285,16 @@ async function supaLoadMyRsvps() {
     // Repli sans la colonne rsvp.
     try {
       const { data, error } = await supa.from("event_attendees").select("event_id").eq("user_id", MY_UID);
-      if (error) { _attendeesRefusMemorise(error, "supaLoadMyRsvps (repli sans rsvp)"); return {}; }
+      if (error) { _attendeesRefusMemorise(error, "supaLoadMyRsvps (repli sans rsvp)"); return null; }
       const out = {};
       (data || []).forEach(r => { out[r.event_id] = { rsvp: "going", checkedIn: false }; });
       return out;
-    } catch(e2) { return {}; }
+    } catch(e2) { return null; }
   }
 }
 
 async function supaLoadJoinedEvents() {
-  const rsvps = await supaLoadMyRsvps();
+  const rsvps = (await supaLoadMyRsvps()) || {};
   // « Inscrit » = je viens ou peut-être (pas les refus ni la liste d'attente).
   return Object.keys(rsvps).filter(id => rsvps[id].rsvp === "going" || rsvps[id].rsvp === "maybe");
 }
@@ -9892,17 +9981,8 @@ async function supaInit() {
       // RSVP (je viens / peut-être / liste d'attente) + check-ins : rechargés
       // depuis le serveur pour être cohérents d'un appareil à l'autre.
       if (typeof supaLoadMyRsvps === "function") {
-        supaLoadMyRsvps().then(function(map) {
-          if (!map) return;
-          state.user.eventRsvp = state.user.eventRsvp || {};
-          state.user.checkedInEvents = state.user.checkedInEvents || [];
-          Object.keys(map).forEach(function(evId) {
-            state.user.eventRsvp[evId] = map[evId].rsvp;
-            if (map[evId].checkedIn && state.user.checkedInEvents.indexOf(evId) === -1)
-              state.user.checkedInEvents.push(evId);
-          });
-          state.user.joinedEvents = Object.keys(state.user.eventRsvp)
-            .filter(function(k) { return state.user.eventRsvp[k] === "going" || state.user.eventRsvp[k] === "maybe"; });
+        supaLoadMyRsvps().then(async function(map) {
+          if (!_fusionnerRsvpServeur(map, await _sessionEstMoi())) return;   // ETAT-08 : la base fait foi, voir la fonction
           saveState();
           try {
             var s = document.getElementById("screen-irl");
@@ -9915,9 +9995,8 @@ async function supaInit() {
       if (typeof _irlWeeklyDigest === "function") setTimeout(_irlWeeklyDigest, 4000);
       // Liste de blocage (modération) : fusion avec le cache local.
       if (typeof supaLoadBlocks === "function")
-        supaLoadBlocks().then(bl => {
-          if (bl && bl.length) {
-            state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])];
+        supaLoadBlocks().then(async bl => {
+          if (_fusionnerBlocagesServeur(bl, await _sessionEstMoi())) {   // ETAT-08 : la base fait foi
             try { saveState(); } catch(e) {}
             try { if (typeof renderFeed === "function") renderFeed(); } catch(e) {}
           }
@@ -9933,11 +10012,8 @@ async function supaInit() {
         }).catch(e => {});
       // Follows : restaure depuis Supabase (le code mort après return; ne s'exécutait jamais).
       if (typeof supaLoadFollowing === "function")
-        supaLoadFollowing().then(ids => {
-          if (ids && ids.length) {
-            state.user.following = [...new Set([...(state.user.following || []), ...ids])];
-            try { saveState(); } catch(e) {}
-          }
+        supaLoadFollowing().then(async ids => {
+          if (_fusionnerSuivisServeur(ids, await _sessionEstMoi())) { try { saveState(); } catch(e) {} }   // ETAT-08 : la base fait foi
         }).catch(e => {});
     }, 2000);
 
