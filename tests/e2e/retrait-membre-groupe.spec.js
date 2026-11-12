@@ -143,7 +143,8 @@ async function banc(page, { uid = MOI, conv = CONV, membre = LEA } = {}) {
     state.seed.users.push({ id: autre, name: "Autre", profileEmoji: "🙂", avatar: "#0ea5e9", distant: true });
     const t = Date.now();
     const convs = getConversations();
-    convs.push({ id: conv, isGroup: true, groupName: "Rando du dimanche", userIds: [membre], userId: membre, _otherRead: true,
+    // LOT-4 (MSG-C08) : « Retirer » et « Ajouter » ne sont proposés qu'au créateur — ici, moi.
+    convs.push({ id: conv, isGroup: true, groupName: "Rando du dimanche", userIds: [membre], userId: membre, createdBy: MY_UID, _otherRead: true,
       messages: [{ id: "m0", from: "me", text: "Bienvenue dans la rando", at: t - 60000 }], lastAt: t - 30000 });
     convs.push({ id: conv2, isGroup: false, userId: autre, userName: "Autre", userIds: [autre], _otherRead: true,
       messages: [{ id: "x1", from: autre, text: "Message du fil de l'AUTRE", at: t - 50000 }], lastAt: t - 40000 });
@@ -516,7 +517,8 @@ const ecran = (page) => page.evaluate(() => {
 });
 const carte = (page, nom) => page.locator("#messageList .msg-card", { hasText: nom }).first().click();
 const boutonMembres = (page) => page.locator('#convFpHead .conv-action-btn[title="Membres"]').click();
-const toucherRetirer = (page) => page.locator("#grpPanel_members button", { hasText: "Retirer" }).first().click();
+// LOT-4 (MSG-C09) : « Retirer » se confirme dans une feuille.
+const toucherRetirer = async (page) => { await page.locator("#grpPanel_members button", { hasText: "Retirer" }).first().click(); await page.locator('#feuilleConfirmation [data-conf="retirer"]').click(); };
 const croix = (page) => page.locator("#modalContent .modal-close").click();
 const retourConv = (page) => page.locator("#convFpHead .conv-fp-back").click();
 const liberer = (page) => page.evaluate(() => window.__libererDelete && window.__libererDelete());

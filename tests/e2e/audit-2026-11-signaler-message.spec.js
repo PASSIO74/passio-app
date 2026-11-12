@@ -216,7 +216,10 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
         out.maReaction = !!((B.msg(mid) || {}).myReact || {})["❤️"];
 
         B.ouvrirMenu(mid);
-        out.cliqueSupprimer = B.cliquer("Supprimer pour moi");
+        // LOT-4 (MSG-C58) : « Supprimer… » ouvre une confirmation qui porte la portée.
+        out.cliqueSupprimer = B.cliquer("Supprimer…");
+        const _moi = document.querySelector('#feuilleConfirmation [data-conf="moi"]');
+        if (_moi) _moi.click(); else out.cliqueSupprimer = false;
         out.encorePresent = !!B.msg(mid);
         out.tombe = convTombLoad()["msg:" + mid] !== undefined;
         out.autresIntacts = autres.every((id) => !!B.msg(id));
@@ -224,7 +227,7 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
       }, [mid, [MID_SYS, MID_MOI, MID_CITE]]);
 
       expect(r.ouvert, "le clic droit sur la bulle ouvre le menu").toBe(true);
-      expect(r.libelles).toEqual(["Répondre", "Copier le texte", "Transférer", "Signaler ce message", "Supprimer pour moi"]);
+      expect(r.libelles).toEqual(["Répondre", "Copier le texte", "Transférer", "Signaler ce message", "Supprimer…"]);
       expect(r.reactions, "la rangée des six réactions").toBe(6);
       expect(r.cliqueRepondre && r.cliqueCopier && r.cliqueTransferer && r.cliqueSupprimer).toBe(true);
       // Répondre vise CE message, dans CETTE conversation.
@@ -266,7 +269,8 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
     expect(r.typeHandler, "le handler inline référence une fonction globale existante").toBe("function");
     expect(r.recu).toContain("Signaler ce message");
     expect(r.moi).not.toContain("Signaler ce message");
-    expect(r.moi, "le mien garde « Supprimer pour tous »").toContain("Supprimer pour tous");
+    // LOT-4 (MSG-C58) : la portée « pour tout le monde » se choisit dans la confirmation.
+    expect(r.moi, "le mien garde « Supprimer… »").toContain("Supprimer…");
     expect(r.sys).not.toContain("Signaler ce message");
     expect(r.fenetreMotif, "aucune fenêtre de motif pour le mien, le système, l'inexistant").toBe(false);
     expect(r.reports).toEqual([]);

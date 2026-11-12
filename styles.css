@@ -12439,3 +12439,115 @@ button, a, label, select, summary,
    sous le premier bouton de la colonne d'actions. LOT-3 : 310 px, la rangée
    de capsules tient désormais sur deux lignes (grille 2 × 2). */
 :root.passio-ui-5 .reels-hint { bottom: calc(310px + env(safe-area-inset-bottom)); }
+
+/* LOT-4 (audit UX/UI du 2026-11-10, MSG-C55) : retour aux derniers messages.
+   Rond de 44 px au-dessus de la saisie ; avec un compte, il devient une pastille
+   « 2 nouveaux messages ↓ ». Posé par _convMajBoutonBas (app-04), `top` mesuré. */
+#conv-fullpage .conv-fp-bas {
+  position: fixed;
+  right: 14px;
+  z-index: 30;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border, #e4defa);
+  border-radius: 22px;
+  background: #fff;
+  color: #5b21b6;
+  font-size: 18px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(40, 20, 90, 0.18);
+  cursor: pointer;
+}
+#conv-fullpage .conv-fp-bas.conv-fp-bas-compte {
+  right: 50%;
+  transform: translateX(50%);
+  background: #5b21b6;
+  border-color: #5b21b6;
+  color: #fff;
+  font-size: 14px;
+}
+#conv-fullpage .conv-fp-bas[hidden] { display: none; }
+/* LOT-4 (MSG-C56, MSG-C58, MSG-C09) : feuille de confirmation de la messagerie.
+   Au-dessus de la conversation et des modales, sous les toasts (100010). Boutons
+   de 48 px ; le destructeur est rouge plein (#b91c1c sur blanc : 6,5:1). */
+.feuille-conf-ov {
+  position: fixed;
+  inset: 0;
+  z-index: 100005;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(20, 10, 40, 0.48);
+}
+.feuille-conf {
+  width: 100%;
+  max-width: 480px;
+  box-sizing: border-box;
+  padding: 20px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 20px 20px 0 0;
+  background: #fff;
+  color: #1f1235;
+  box-shadow: 0 -8px 30px rgba(20, 10, 40, 0.25);
+}
+.feuille-conf-titre {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.feuille-conf-texte {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #4b4060;
+}
+.feuille-conf-btn {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 8px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.feuille-conf-btn:first-of-type { margin-top: 14px; }
+.feuille-conf-primaire { background: #5b21b6; color: #fff; }
+.feuille-conf-danger { background: #fff; color: #b91c1c; border-color: rgba(185, 28, 28, 0.4); }
+.feuille-conf-annuler { background: #f3f0fa; color: #1f1235; }
+@media (min-width: 600px) {
+  .feuille-conf-ov { align-items: center; }
+  .feuille-conf { border-radius: 20px; }
+}
+/* LOT-4 (MSG-C60) : un champ de saisie large. Le bouton GIF séparé a disparu
+   (l'onglet GIF du panneau emoji le couvre) ; UN bouton rond à droite : le micro
+   quand le champ est vide, la flèche d'envoi dès qu'il contient du texte
+   (`:placeholder-shown` d'un textarea vide). Sans `:has`, les deux restent. */
+#conv-fullpage .conv-toolbar:has(#convFpInput:placeholder-shown) #convFpSendBtn { display: none; }
+#conv-fullpage .conv-toolbar:not(:has(#convFpInput:placeholder-shown)) #btnVoice { display: none; }
+
+/* LOT-4 (MSG-C53/C54) : le micro se maintient, sans menu ni sélection ; la barre
+   dit « relâche pour envoyer · glisse pour annuler », et vire au gris quand le
+   relâcher annulera. « Annuler » : 44 px. */
+#btnVoice {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#voiceRecordBar .voice-annuler {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(185, 28, 28, 0.35);
+  border-radius: 22px;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+#voiceRecordBar.voice-annule { background: #f3f0fa; border-top-color: var(--border, #e4defa); }
+#voiceRecordBar.voice-annule #voiceRecordConsigne { color: #b91c1c; font-weight: 800; }
