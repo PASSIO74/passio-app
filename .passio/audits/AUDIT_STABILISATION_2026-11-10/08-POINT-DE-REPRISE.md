@@ -125,3 +125,34 @@ Décisions de Benjamin du 12/11 :
 - STAB-10 : la CI ne teste pas la page minifiée (touche `.github/`).
 - `entrerEnSessionExpiree()` exige un jeton persisté au démarrage suivant.
 - Gestes de Benjamin : essais sur iPhone et Android réels, inscription réelle, retour arrière Netlify.
+
+## Ajout du 2026-11-12, fin d'après-midi — durcissements serveur (PR #843, fusionnée et déployée)
+
+Ordre de Benjamin : « Oui, enchaîne » (durcissements CLI-01 serveur, SRV-02, SRV-05).
+
+- **#843 fusionnée**, production = `42fff1d5` (buildId `793660ea3d2b`), gouvernance, fumée et déploiement au vert. Cinq
+  migrations, toutes appliquées au staging puis en production et mesurées au canal ① :
+  - **CLI-01 serveur** : `profiles_username_forme` refuse `"`, `<`, `>`, l'accent grave et `\` ; les co-organisateurs
+    sont des uuid. Le client refuse avant la base (inscription, onboarding, profil). Appliquée en production APRÈS le
+    déploiement du client.
+  - **SRV-02** : le nom et la phrase d'une notification sont posés par le serveur. Liens exigés : conversation commune
+    pour `message` ; inscription à l'activité pour `event_update` et `event_cancelled`. L'avis de suppression d'une
+    activité est écrit par la base. 17 contrôles verts sur les deux cibles.
+  - **SRV-05** : purge de nuit à 03:53. Premier passage en production : 153 conversations vides, 8 stories,
+    9 directs clos, 107 notifications lues de plus de 90 jours, 9 `conv_reads` et 15 vues orphelines.
+- **Relecture adversariale** (agent `passio-red-team`, modèle Claude, avant toute application). Elle a trouvé un trou
+  P1 dans SRV-02 que l'épreuve validait : un organisateur pouvait écrire à n'importe qui. Deux P2 et des épreuves
+  creuses aussi. Tout a été corrigé avant l'application.
+- **Incident au staging, créé par cette PR et réparé avant la production.** La contrainte des co-organisateurs appelle
+  une fonction neuve, et `authenticated` n'avait pas le droit `execute` : créer une activité échouait en 42501. La CI à
+  comptes réels l'a vu 4 minutes après l'application. Réparé par `migration_forme_pseudo_coorganisateurs_droits`, dont
+  l'épreuve écrit SOUS `authenticated`. La production n'a jamais reçu la contrainte seule.
+
+### Ce qui reste ouvert
+- ETAT-04 (« supprimer pour tous », suppression d'un commentaire), ETAT-05, ETAT-08.
+- STAB-10 : la page minifiée n'est testée par aucune CI (`.github/`).
+- SRV-02 : l'événement métier n'est pas exigé pour chaque genre. On peut encore écrire « X a aimé ton post » sans avoir
+  aimé, mais sous son vrai nom et avec une phrase fixe.
+- Les médias des stories purgées et des publications de test restent dans le stockage, à retirer par l'API Storage
+  avec la clé de service.
+- Restent à faire par Benjamin : essais sur appareil réel, inscription réelle, retour arrière Netlify.

@@ -34,6 +34,8 @@ constat que des conditions écrites dans le mandat ne sont pas remplies aujourd'
 
 Détail des lots du 12/11 : `08-POINT-DE-REPRISE.md`.
 
+En fin de journée, #843 a fermé côté serveur CLI-01, SRV-02 et SRV-05 : migrations appliquées au staging puis en production, et mesurées. Un défaut créé par ce lot (droit `execute` manquant) a été vu au staging par la CI et réparé avant la production. Le verdict ne change pas : les conditions manquantes sont des gestes humains (appareils réels, revue humaine, retour arrière rejoué).
+
 ## 2. Périmètre, versions, environnements, charge
 
 - **Version** : `4e1d8ed1`, buildId `3d8e98bb12ad`, vérifiée servie par la production à 16:11 et 17:31 UTC.
