@@ -282,7 +282,12 @@ test.describe("AUDIT D — états dégradés (faux serveur, SDK réel)", () => {
     expect(post.text).toBe("Publication d'audit en 500");
     expect(["offline", "syncing"]).toContain(post.syncStatus);
     const t = (await toasts(page)).join(" | ");
-    expect(t).toMatch(/Post en local|connexion lente|erreur réseau/);
+    // LOT-1 (audit UX/UI, CRE-C04) : le message nomme le cas vécu — renvoi
+    // automatique (panne, hors ligne) ou envoi plus long que prévu.
+    expect(t).toMatch(/partira automatiquement|s'affichera « En ligne »/);
+    // Le toast « en cours » est retiré au verdict : il n'est plus À L'ÉCRAN.
+    const aLEcran = await page.evaluate(() => Array.from(document.querySelectorAll("#toastStack .toast")).map((x) => x.textContent).join(" | "));
+    expect(aLEcran).not.toMatch(/Publication en cours/);
     expect(await page.evaluate(() => _publishInProgress)).toBe(false);
     expect(compter(journal, "POST", "posts")).toBeGreaterThanOrEqual(1);
     const local = await etatLocal(page);
@@ -369,5 +374,157 @@ test.describe("AUDIT D — états dégradés (faux serveur, SDK réel)", () => {
     test.info().annotations.push({ type: "mesure", description: "supabasePosts après désordre : " + ids.join(",") });
     // La réponse arrivée EN DERNIER (la plus ancienne) ne doit pas écraser la plus récente.
     expect(ids).toContain("p_neuf");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOT-1 (audit UX/UI du 2026-11-10) — CE QUE L'APPLICATION DIT SE VOIT, ET DIT VRAI
+// Constats : TRA-C01 (toasts sous les superpositions : PAR-C03, IRL-C65,
+// MSG-C85, BOB-C20), FIL-C06, MSG-C05, MSG-C57, CRE-C04. Chaque cas mesure
+// le RÉSULTAT (élément au premier plan, état final des données), jamais le
+// seul message.
+// ═══════════════════════════════════════════════════════════════════════════
+test.describe("LOT-1 — toasts visibles et verdicts vrais", () => {
+  // Le toast est `pointer-events: none` : `elementFromPoint` l'ignore. On le
+  // rend touchable LE TEMPS DE LA MESURE, et on fige son animation de sortie.
+  async function toastAuPremierPlan(page, ouvrir) {
+    return page.evaluate(async (code) => {
+      (0, eval)(code);
+      await new Promise((r) => setTimeout(r, 250));
+      const t = toast("Message de contrôle LOT-1");
+      t.style.animation = "none"; t.style.pointerEvents = "auto";
+      const r = t.getBoundingClientRect();
+      const dessus = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { auPremierPlan: dessus === t || t.contains(dessus), dessus: dessus ? (dessus.id || String(dessus.className)) : null, haut: Math.round(r.top), hauteurFenetre: innerHeight };
+    }, ouvrir);
+  }
+
+  test("① toast émis fenêtre ouverte : au premier plan, en haut de l'écran", async ({ page }) => {
+    await banc(page);
+    const m = await toastAuPremierPlan(page, "openModal('<div style=\"height:520px\">Fenêtre de contrôle</div>')");
+    expect(m.auPremierPlan, "dessus : " + m.dessus).toBe(true);
+    expect(m.haut).toBeLessThan(m.hauteurFenetre / 3);
+  });
+
+  test("② toast émis conversation ouverte : au premier plan, sans recouvrir la saisie", async ({ page }) => {
+    await banc(page);
+    const m = await toastAuPremierPlan(page, "document.getElementById('conv-fullpage').classList.add('active')");
+    expect(m.auPremierPlan, "dessus : " + m.dessus).toBe(true);
+    expect(m.haut).toBeLessThan(m.hauteurFenetre / 3);
+  });
+
+  test("② bis toast émis fiche d'activité ouverte : au premier plan, en haut (le pied fixe reste libre)", async ({ page }) => {
+    await banc(page);
+    const m = await toastAuPremierPlan(page, "openEventDetails('" + EVENT_ID + "')");
+    expect(m.auPremierPlan, "dessus : " + m.dessus).toBe(true);
+    expect(m.haut).toBeLessThan(m.hauteurFenetre / 3);
+  });
+
+  // ⚠️ La fiche d'activité reste dans le DOM, masquée (`display: none` en ligne) :
+  // un sélecteur qui la visait sans condition montait la pile en haut en
+  // permanence — défaut attrapé par ce cas pendant le lot.
+  test("③ toast sans superposition : reste en bas, au-dessus de la barre d'onglets", async ({ page }) => {
+    await banc(page);
+    const m = await toastAuPremierPlan(page, "void 0");
+    expect(m.auPremierPlan, "dessus : " + m.dessus).toBe(true);
+    expect(m.haut).toBeGreaterThan(m.hauteurFenetre / 2);
+  });
+
+  async function avecMonCommentaire(page) {
+    await page.evaluate(([pid, uid]) => {
+      const p = state.supabasePosts.find((x) => x.id === pid);
+      p.comments = [{ id: "c_lot1_a", authorId: uid, authorName: "Moi", text: "à supprimer", content: "à supprimer", createdAt: Date.now() - 5000, fromSupabase: true }];
+      saveState();
+    }, [POST_AUTRUI, UID]);
+  }
+  const resteCommentaire = (page) => page.evaluate((pid) => !!_findCommentThread(pid).comments.find((c) => c.id === "c_lot1_a"), POST_AUTRUI);
+
+  test("④ suppression de commentaire REFUSÉE (500) : le commentaire revient, aucun « supprimé »", async ({ page }) => {
+    const { journal } = await banc(page, { regle: (e) => (e.table === "post_comments" && e.m === "DELETE") ? { status: 500, body: { message: "boom" } } : null });
+    await avecMonCommentaire(page);
+    await page.evaluate((pid) => deleteCommentEntry(pid, "c_lot1_a"), POST_AUTRUI);
+    await page.waitForTimeout(1500);
+    expect(compter(journal, "DELETE", "post_comments")).toBe(1);
+    expect(await resteCommentaire(page), "le commentaire est remis à l'écran").toBe(true);
+    const t = (await toasts(page)).join(" | ");
+    expect(t).not.toMatch(/Commentaire supprimé/);
+    expect(t).toMatch(/pas pu être supprimé/);
+  });
+
+  test("⑤ suppression de commentaire REFUSÉE par la RLS (0 ligne, ligne toujours là) : même verdict", async ({ page }) => {
+    await banc(page, { regle: (e) => {
+      if (e.table === "post_comments" && e.m === "DELETE") return { status: 200, body: [] };
+      if (e.table === "post_comments" && e.m === "GET") return { status: 200, body: [{ id: "c_lot1_a" }] };
+      return null;
+    } });
+    await avecMonCommentaire(page);
+    await page.evaluate((pid) => deleteCommentEntry(pid, "c_lot1_a"), POST_AUTRUI);
+    await page.waitForTimeout(1500);
+    expect(await resteCommentaire(page)).toBe(true);
+    expect((await toasts(page)).join(" | ")).not.toMatch(/Commentaire supprimé/);
+  });
+
+  test("⑥ suppression de commentaire ACCEPTÉE : « Commentaire supprimé », le commentaire ne revient pas", async ({ page }) => {
+    await banc(page, { regle: (e) => (e.table === "post_comments" && e.m === "DELETE") ? { status: 200, body: [{ id: "c_lot1_a" }] } : null });
+    await avecMonCommentaire(page);
+    await page.evaluate((pid) => deleteCommentEntry(pid, "c_lot1_a"), POST_AUTRUI);
+    await page.waitForTimeout(1500);
+    expect(await resteCommentaire(page)).toBe(false);
+    expect((await toasts(page)).join(" | ")).toMatch(/Commentaire supprimé/);
+  });
+
+  const GRP = "grp_lot1_0000";
+  const MEMBRE = "99990000-1111-4222-8333-444455556666";
+  async function avecGroupe(page) {
+    await page.evaluate(([g, uid, autre]) => {
+      const cs = getConversations();
+      cs.unshift({ id: g, isGroup: true, groupName: "Groupe LOT-1", userIds: [uid, autre], userName: "Groupe LOT-1", userEmoji: "👥", userColor: "#8b5cf6", unread: 0, lastAt: Date.now(), messages: [] });
+      conversationsState = cs; saveConversationsNow();
+    }, [GRP, UID, AUTRE]);
+  }
+  const etatGroupe = (page) => page.evaluate(([g, m]) => { const c = getConversations().find((x) => x.id === g); return { membre: c.userIds.includes(m), rejoint: c.messages.some((x) => /a rejoint/.test(x.text || "")) }; }, [GRP, MEMBRE]);
+
+  test("⑦ ajout d'un membre REFUSÉ par le serveur : pas membre, pas de « a rejoint », un échec dit", async ({ page }) => {
+    const { journal } = await banc(page, { regle: (e) => (e.table === "conv_members" && e.m === "POST") ? { status: 403, body: { code: "42501", message: "new row violates row-level security policy" } } : null });
+    await avecGroupe(page);
+    await page.evaluate(([g, m]) => addGroupMember(g, m), [GRP, MEMBRE]);
+    await page.waitForTimeout(1200);
+    expect(compter(journal, "POST", "conv_members")).toBe(1);
+    expect(await etatGroupe(page)).toEqual({ membre: false, rejoint: false });
+    const t = (await toasts(page)).join(" | ");
+    expect(t).not.toMatch(/ajouté·e au groupe/);
+    expect(t).toMatch(/refusé l'ajout/);
+  });
+
+  test("⑧ ajout d'un membre ACCEPTÉ : membre, « a rejoint », succès annoncé APRÈS la réponse", async ({ page }) => {
+    await banc(page, { regle: (e) => (e.table === "conv_members" && e.m === "POST") ? { status: 201, body: [{ user_id: MEMBRE }], delai: 600 } : null });
+    await avecGroupe(page);
+    // Sans `return` : `evaluate` attendrait la promesse de l'ajout, donc la réponse.
+    await page.evaluate(([g, m]) => { addGroupMember(g, m); }, [GRP, MEMBRE]);
+    await page.waitForTimeout(200);
+    expect((await etatGroupe(page)).membre, "rien n'est annoncé avant la réponse").toBe(false);
+    await page.waitForTimeout(1200);
+    expect(await etatGroupe(page)).toEqual({ membre: true, rejoint: true });
+  });
+
+  test("⑨ GIF et position en panne (500) : en échec, jamais affichés envoyés, contenu gardé pour le renvoi", async ({ page }) => {
+    await banc(page, { regle: (e) => (e.table === "conv_messages" && e.m === "POST") ? { status: 500, body: { message: "boom" } } : null });
+    await page.context().grantPermissions(["geolocation"]);
+    await page.context().setGeolocation({ latitude: 45.9, longitude: 6.12 });
+    await page.evaluate((autre) => {
+      const cs = getConversations();
+      cs.unshift({ id: "c_lot1_gif", userId: autre, userName: "Camille", userEmoji: "🎨", userColor: "#8b5cf6", unread: 0, lastAt: Date.now(), messages: [], isGroup: false });
+      conversationsState = cs; saveConversationsNow();
+      openConversation("c_lot1_gif");
+    }, AUTRE);
+    await page.waitForTimeout(600);
+    await page.evaluate(() => { _sendGif("https://media.klipy.com/lot1.gif"); shareLocation(); });
+    await page.waitForTimeout(4000);
+    const etats = await page.evaluate(() => getConversations().find((x) => x.id === "c_lot1_gif").messages.map((m) => ({ gif: !!m.gif, status: m.status, envoi: !!m.envoi })));
+    expect(etats.length).toBe(2);
+    for (const e of etats) {
+      expect(["sending", "failed"], JSON.stringify(e)).toContain(e.status);
+      expect(e.envoi, "le contenu exact est gardé pour le renvoi").toBe(true);
+    }
   });
 });
