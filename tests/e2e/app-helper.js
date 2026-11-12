@@ -860,7 +860,22 @@ async function serviceWorkersHorsWebkit({ browserName }, use) {
   await use(browserName === "webkit" ? "block" : "allow");
 }
 
+// LOT-8 (audit UX/UI du 2026-11-10, FIL-C02) : la barre d'actions d'une
+// publication n'écrit plus d'emoji — icône SVG, nombre dans `.pa-n`, état dans
+// `aria-pressed` et `data-n`. Les suites qui vérifiaient « ❤️ 5 » / « 🤍 4 » /
+// « 💬 45 » lisent la MÊME information par l'état exposé : cette fonction la
+// rend dans l'ancienne forme, pour que chaque assertion garde son sens.
+async function lireAction(locator) {
+  return locator.first().evaluate((el) => {
+    const n = el.getAttribute("data-n");
+    if (el.hasAttribute("data-cmtcount")) return "💬 " + n;
+    if (el.hasAttribute("aria-pressed")) return (el.getAttribute("aria-pressed") === "true" ? "❤️" : "🤍") + " " + n;
+    return el.textContent.trim();
+  }).catch(() => null);
+}
+
 module.exports = {
+  lireAction,
   onboardedState, bootOnboarded, sansDonneesDistantes, projetSupabaseVide, miroirPassions, PASSIONS, armerPlafondPassions,
   serviceWorkersHorsWebkit,
   // Exposé pour le banc unitaire (`tests/unit/isolation-projet-supabase.test.mjs`) :

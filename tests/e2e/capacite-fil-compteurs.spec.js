@@ -143,8 +143,9 @@ test("une page de fil = une lecture groupée, aucune liste de likes/commentaires
       tables: __lectures.map((q) => q.table),
       p0: { likes: p0.likes, liked: p0.liked, total: p0.commentsTotal, apercus: p0.comments.map((c) => c.id), auteurs: p0.comments.map((c) => c.authorName), reactions: p0.reactions.map((x) => x.text), affiche: nbCommentairesPost(p0) },
       p1: { likes: p1.likes, liked: p1.liked, total: p1.commentsTotal, apercus: p1.comments.length, affiche: nbCommentairesPost(p1) },
-      compteurCarte: carte.querySelector('[data-cmtcount="fil_00"]').textContent.trim(),
-      likeCarte: carte.querySelector('[data-action="like"]').textContent.trim(),
+      // LOT-8 (FIL-C02) : le nombre est porté par `data-n` (icône SVG, plus d'emoji).
+      compteurCarte: "💬 " + carte.querySelector('[data-cmtcount="fil_00"]').getAttribute("data-n"),
+      likeCarte: (carte.querySelector('[data-action="like"]').getAttribute("aria-pressed") === "true" ? "❤️ " : "🤍 ") + carte.querySelector('[data-action="like"]').getAttribute("data-n"),
     };
   });
   expect(r.n).toBe(20);
@@ -643,7 +644,7 @@ test("ma publication : la liste persistée par l'ancien client (sans drapeau) ne
     const q = findPostAnywhere("fil_00");
     out.ouverture = { charges: q.comments.length, doublons: new Set(q.comments.map(c => c.id)).size, affiche: nbCommentairesPost(q), titre: document.querySelector(".modal-title").textContent };
     // Le rendu de MON profil et de la carte disent 45, pas 54.
-    out.html = (renderPostHTML(mien).match(/💬\s*(\d+)/) || [])[1];
+    out.html = (renderPostHTML(mien).match(/data-cmtcount="[^"]*"[^>]*?data-n="(\d+)"/) || [])[1];
     state.userPosts = [];
     return out;
   });
@@ -706,7 +707,7 @@ test("ma publication : supprimer un commentaire décrémente le total sur TOUTES
     window.supaDeleteComment = async () => true;
     deleteCommentEntry("fil_01", "c_seul", true);
     const mien = findPostAnywhere("fil_01"), carte = state.supabasePosts.find(p => p.id === "fil_01");
-    const out = { mien: { total: mien.commentsTotal, affiche: nbCommentairesPost(mien) }, carte: { total: carte.commentsTotal, affiche: nbCommentairesPost(carte) }, html: (renderPostHTML(carte).match(/💬\s*(\d+)/) || [])[1] };
+    const out = { mien: { total: mien.commentsTotal, affiche: nbCommentairesPost(mien) }, carte: { total: carte.commentsTotal, affiche: nbCommentairesPost(carte) }, html: (renderPostHTML(carte).match(/data-cmtcount="[^"]*"[^>]*?data-n="(\d+)"/) || [])[1] };
     state.userPosts = [];
     return out;
   });

@@ -135,8 +135,9 @@ test.describe("AUDIT D — états dégradés (faux serveur, SDK réel)", () => {
     const local = await etatLocal(page);
     expect((local.user.likedPosts || []).includes(POST_AUTRUI)).toBe(false);
     expect(compter(journal, "POST", "post_likes")).toBe(1);
-    const coeur = await page.evaluate((pid) => { const b = document.querySelector('#feedList article.post[data-postid="' + pid + '"] .post-action[data-action="like"]'); return b ? b.textContent.trim() : null; }, POST_AUTRUI);
-    expect(coeur, "le cœur du fil est repeint « non aimé »").toMatch(/🤍/);
+    const coeur = await page.evaluate((pid) => { const b = document.querySelector('#feedList article.post[data-postid="' + pid + '"] .post-action[data-action="like"]'); return b ? b.getAttribute("aria-pressed") : null; }, POST_AUTRUI);
+    // LOT-8 (FIL-C02) : l'état « aimé » est exposé par aria-pressed (icône SVG).
+    expect(coeur, "le cœur du fil est repeint « non aimé »").toBe("false");
   });
 
   test("like · double clic en 50 ms : une seule écriture part (anti double-clic 800 ms)", async ({ page }) => {

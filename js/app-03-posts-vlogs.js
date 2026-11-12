@@ -480,8 +480,7 @@ function _paintPostLike(id, liked, count, el, pop) {
   function paint(n) {
     if (!n || done.indexOf(n) > -1) return;
     done.push(n);
-    n.classList.toggle("liked", liked);
-    n.innerHTML = (liked ? "❤️" : "🤍") + " " + count;
+    peindreLikePost(n, liked, count);
     if (liked && pop) _likePop(n);
   }
   // Fil et toute surface qui rend une carte de post.
@@ -496,7 +495,9 @@ function _paintPostLike(id, liked, count, el, pop) {
   document.querySelectorAll('[data-postchip="' + id + '"]').forEach(function (chip) {
     var bar = chip.closest ? chip.closest(".post-actions") : null;
     var first = bar ? bar.querySelector(".post-action") : null;
-    if (first && /[❤🤍]/.test(first.textContent || "")) paint(first);
+    // LOT-8 (FIL-C02) : le j'aime n'a plus d'emoji ; il se reconnaît à
+    // `aria-pressed`, que seul lui porte dans la barre.
+    if (first && first.hasAttribute("aria-pressed")) paint(first);
   });
   if (el && el.isConnected) paint(el);
   // Bobines : structure différente (icône + label séparé), pas de innerHTML.

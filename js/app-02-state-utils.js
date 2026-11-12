@@ -8,6 +8,58 @@ function shareIconSvg(size) {
     + '<line x1="8.6" y1="10.7" x2="15.4" y2="6.3"/><line x1="8.6" y1="13.3" x2="15.4" y2="17.7"/></svg>';
 }
 
+// ── LOT-8 (audit UX/UI du 2026-11-10, FIL-C02) — LA BARRE D'ACTIONS D'UNE PUBLICATION ──
+// Les actions les plus fréquentes du produit étaient des emojis pâles (« 🤍 5 »,
+// « 💬 34 », « 😊 ») en 12,5 px, sans nom prononçable ni état « aimé » exposé.
+// Les emojis restent au CONTENU (réactions choisies) ; les FONCTIONS ont des
+// icônes SVG `currentColor`, comme le partage. UNE seule source pour les huit
+// endroits qui peignent ces boutons : rendu initial ET repeints.
+function _icoAction(chemin, plein) {
+  return '<svg class="pa-ico" viewBox="0 0 24 24" width="19" height="19" fill="' + (plein ? "currentColor" : "none") + '" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + chemin + '</svg>';
+}
+var _CHEMIN_COEUR = '<path d="M12 20.5C6.5 16.3 3 13.2 3 9.2 3 6.6 5 4.5 7.6 4.5c1.7 0 3.3.9 4.4 2.4 1.1-1.5 2.7-2.4 4.4-2.4C19 4.5 21 6.6 21 9.2c0 4-3.5 7.1-9 11.3z"/>';
+var _CHEMIN_BULLE = '<path d="M20.5 11.6c0 4.1-3.8 7.4-8.5 7.4-1.2 0-2.3-.2-3.3-.6L4 19.8l1.4-3.6C4.2 15 3.5 13.4 3.5 11.6 3.5 7.5 7.3 4.2 12 4.2s8.5 3.3 8.5 7.4z"/>';
+var _CHEMIN_SOURIRE = '<circle cx="12" cy="12" r="8.5"/><path d="M8.8 14.2a4 4 0 0 0 6.4 0"/><path d="M9.4 9.6h.01M14.6 9.6h.01"/>';
+function libelleLikePost(liked, n) {
+  n = Number(n) || 0;
+  return (liked ? "Tu aimes" : "J'aime") + " — " + n + " j'aime";
+}
+// Contenu ET attributs, posés par les gabarits (`attrsLikePost`) et par les repeints
+// (`peindreLikePost`). `data-n` porte le nombre, `aria-pressed` l'état.
+function contenuLikePost(liked, n) {
+  return _icoAction(_CHEMIN_COEUR, !!liked) + '<span class="pa-n">' + escapeHtml(String(Number(n) || 0)) + '</span>';
+}
+function attrsLikePost(liked, n) {
+  return ' role="button" tabindex="0" aria-pressed="' + (liked ? "true" : "false") + '" aria-label="' + escapeHtml(libelleLikePost(liked, n)) + '" data-n="' + escapeHtml(String(Number(n) || 0)) + '"';
+}
+function peindreLikePost(el, liked, n) {
+  if (!el) return;
+  el.classList.toggle("liked", !!liked);
+  el.innerHTML = contenuLikePost(liked, n);
+  el.setAttribute("aria-pressed", liked ? "true" : "false");
+  el.setAttribute("aria-label", libelleLikePost(liked, n));
+  el.setAttribute("data-n", String(Number(n) || 0));
+}
+function contenuCommentairesPost(n) {
+  return _icoAction(_CHEMIN_BULLE, false) + '<span class="pa-n">' + escapeHtml(String(Number(n) || 0)) + '</span>';
+}
+function libelleCommentairesPost(n) {
+  n = Number(n) || 0;
+  return "Commenter — " + n + " commentaire" + (n > 1 ? "s" : "");
+}
+function attrsCommentairesPost(n) {
+  return ' role="button" tabindex="0" aria-label="' + escapeHtml(libelleCommentairesPost(n)) + '" data-n="' + escapeHtml(String(Number(n) || 0)) + '"';
+}
+function peindreCommentairesPost(el, n) {
+  if (!el) return;
+  el.innerHTML = contenuCommentairesPost(n);
+  el.setAttribute("aria-label", libelleCommentairesPost(n));
+  el.setAttribute("data-n", String(Number(n) || 0));
+}
+function contenuReagirPost() {
+  return _icoAction(_CHEMIN_SOURIRE, false);
+}
+
 function defaultState() {
   const seed = buildSeed();
 
@@ -10049,8 +10101,7 @@ function patchPostLikeDom(post) {
   var liked = !!post.liked;
   var sel = '.post[data-postid="' + post.id + '"] .post-action[data-action="like"]';
   document.querySelectorAll(sel).forEach(function(span){
-    span.classList.toggle("liked", liked);
-    span.innerHTML = (liked ? "❤️" : "🤍") + " " + (post.likes || 0);
+    peindreLikePost(span, liked, post.likes || 0);
   });
 }
 
@@ -10474,11 +10525,9 @@ function renderPostHTML(p) {
     <div onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">${media}</div>
 
     <div class="post-actions">
-      <span class="post-action ${likeClass}" data-action="like" onclick="likePost('${escapeJsArg(p.id)}', false, this)">
-        ${liked ? "❤️" : "🤍"} ${p.likes || 0}
-      </span>
-      <span class="post-action" data-cmtcount="${escapeHtml(p.id)}" onclick="openComments('${escapeJsArg(p.id)}')">💬 ${nbCommentairesPost(p)}</span>
-      <span class="post-action" onclick="return showEmojiPickerForPost('${escapeJsArg(p.id)}', event);" title="Emoji & GIF">😊</span>
+      <span class="post-action ${likeClass}" data-action="like"${attrsLikePost(liked, p.likes || 0)} onclick="likePost('${escapeJsArg(p.id)}', false, this)">${contenuLikePost(liked, p.likes || 0)}</span>
+      <span class="post-action" data-cmtcount="${escapeHtml(p.id)}"${attrsCommentairesPost(nbCommentairesPost(p))} onclick="openComments('${escapeJsArg(p.id)}')">${contenuCommentairesPost(nbCommentairesPost(p))}</span>
+      <span class="post-action" role="button" tabindex="0" onclick="return showEmojiPickerForPost('${escapeJsArg(p.id)}', event);" title="Réagir avec un emoji ou un GIF" aria-label="Réagir">${contenuReagirPost()}</span>
       <span class="post-action" onclick="event.stopPropagation();sharePost('${escapeJsArg(p.id)}')" title="Partager" aria-label="Partager">
         ${shareIconSvg(18)}
       </span>
@@ -10555,11 +10604,11 @@ async function openPost(id) {
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
       ${media ? `<div class="dbl-like" ondblclick="_dblLikeDetail('${escapeJsArg(id)}', event)" title="Double-clic pour aimer ❤️">${media}</div>` : ""}
       <div class="post-actions">
-        <span class="post-action ${liked ? "liked" : ""}" onclick="event.stopPropagation(); likePostDetail('${escapeJsArg(id)}', this);">
-          ${liked ? "❤️" : "🤍"} ${post.likes || 0}
+        <span class="post-action ${liked ? "liked" : ""}"${attrsLikePost(liked, post.likes || 0)} onclick="event.stopPropagation(); likePostDetail('${escapeJsArg(id)}', this);">
+          ${contenuLikePost(liked, post.likes || 0)}
         </span>
-        <span class="post-action" data-cmtcount="${escapeHtml(id)}" onclick="openComments('${escapeJsArg(id)}')">💬 ${nbCommentairesPost(post)}</span>
-        <span class="post-action" onclick="return showEmojiPickerForPost('${escapeJsArg(id)}', event);" title="Emoji & GIF">😊</span>
+        <span class="post-action" data-cmtcount="${escapeHtml(id)}"${attrsCommentairesPost(nbCommentairesPost(post))} onclick="openComments('${escapeJsArg(id)}')">${contenuCommentairesPost(nbCommentairesPost(post))}</span>
+        <span class="post-action" role="button" tabindex="0" onclick="return showEmojiPickerForPost('${escapeJsArg(id)}', event);" title="Réagir avec un emoji ou un GIF" aria-label="Réagir">${contenuReagirPost()}</span>
         <span class="post-action" onclick="event.stopPropagation();sharePost('${escapeJsArg(id)}')" title="Partager" aria-label="Partager">
           ${shareIconSvg(18)}
         </span>
@@ -10622,7 +10671,6 @@ function likePostDetail(id, el) {
   const p = findPostAnywhere(id);
   const n = p ? (p.likes || 0) : 0;
   if (el) {
-    el.classList.toggle("liked", liked);
-    el.innerHTML = (liked ? "❤️" : "🤍") + " " + n;
+    peindreLikePost(el, liked, n);
   }
 }

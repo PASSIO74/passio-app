@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, lireAction } = require("./app-helper");
 
 // Vrai rendu/réveil du produit, horloge navigateur et serveur HEAD contrôlé.
 // Aucune donnée distante ni écriture réelle : les barrières retiennent les
@@ -135,14 +135,14 @@ test("phase initiale haute de14999ms, premier compteur et clic local immédiat",
   await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
   expect(await page.evaluate(() => _postLikeRefreshStats.initialDelayMs)).toBe(14999);
   await page.locator('#likes-test-stage [data-action="like"]').click();
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 5");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 5");
   await page.evaluate(() => __writeResolvers.shift()({ ok: true }));
   expect(await lectures(page)).toHaveLength(0);
   await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() - 1));
   expect(await lectures(page)).toHaveLength(0);
   await passer(page, 1);
   expect(await lectures(page)).toHaveLength(1);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 7");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 7");
 });
 
 test("aucune phase anonyme ou cachée ; connexion visible et nouveau compte ont chacun leur échéance", async ({ page }) => {
@@ -191,10 +191,10 @@ test("HEAD exact, compteur supérieur à1000, retrait à zéro et état aimé co
   });
   await passer(page, 350);
   expect(await lectures(page)).toEqual([expect.objectContaining({ table: "post_likes", cols: "post_id", col: "post_id", id: "visible_like_0", options: { count: "exact", head: true } })]);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 1234");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 1234");
   await page.evaluate(() => { __counts.visible_like_0 = 0; });
   await passer(page);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 0");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 0");
   expect(await page.evaluate(() => state.user.likedPosts)).toEqual(["visible_like_0"]);
 });
 
@@ -297,11 +297,11 @@ for (const disposition of ["pending", "success", "failure"]) {
     await page.evaluate(() => { __hold = () => new Promise(resolve => { window.__resolveHead = resolve; }); });
     await passer(page, 350);
     await page.locator('#likes-test-stage [data-action="like"]').click();
-    await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 5");
+    await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("❤️ 5");
     if (disposition !== "pending") await page.evaluate((ok) => __writeResolvers.shift()({ ok }), disposition === "success");
     await page.evaluate(() => { __resolveHead({ count: 1, error: null }); __hold = null; });
     await page.evaluate(() => Promise.resolve());
-    await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText(disposition === "failure" ? "🤍 4" : "❤️ 5");
+    await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe(disposition === "failure" ? "🤍 4" : "❤️ 5");
     if (disposition === "pending") {
       await passer(page);
       expect(await lectures(page)).toHaveLength(1); // bien plus que le verrou UI de800ms
@@ -331,7 +331,7 @@ test("like puis unlike après800ms : écritures ordonnées, HEAD attend le derni
   await passer(page, 1000);
   await page.locator('#likes-test-stage [data-action="like"]').click();
   expect(await page.evaluate(() => __writes.map(w => w.want))).toEqual([true]);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("🤍 4");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("🤍 4");
   await page.evaluate(() => __writeResolvers.shift()({ ok: true }));
   await page.evaluate(() => Promise.resolve());
   expect(await page.evaluate(() => __writes.map(w => w.want))).toEqual([true, false]);
@@ -339,7 +339,7 @@ test("like puis unlike après800ms : écritures ordonnées, HEAD attend le derni
   expect(await lectures(page)).toHaveLength(0);
   await page.evaluate(() => __writeResolvers.shift()({ ok: true }));
   await passer(page, 350);
-  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("🤍 7");
+  await expect.poll(() => lireAction(page.locator('#likes-test-stage [data-action="like"]'))).toBe("🤍 7");
 });
 
 for (const change of ["compte", "purge", "suppression", "blocage", "masque"]) {
@@ -394,7 +394,7 @@ test("détail, profil et Bobines : copies durables, compteur visible et dédupli
   expect(await page.evaluate(() => [state.supabasePosts[0].likes, _feedExtraPosts[0].likes, _visited.posts[0].likes, reelsState.items[0].likes])).toEqual([7, 7, 7, 7]);
   await expect(page.locator('#likes-test-stage [data-reellike] .reel-action-label')).toHaveText("7");
   await page.evaluate(() => { _renderVisitedContent(); });
-  await expect(page.locator('#visitedContent [data-action="like"]')).toHaveText("🤍 7");
+  await expect.poll(() => lireAction(page.locator('#visitedContent [data-action="like"]'))).toBe("🤍 7");
   await page.evaluate(() => {
     document.getElementById("likes-test-stage").style.display = "none";
     window.supaLoadComments = async () => [];
@@ -402,7 +402,7 @@ test("détail, profil et Bobines : copies durables, compteur visible et dédupli
     __counts.visible_like_0 = 12;
   });
   await passer(page);
-  await expect(page.locator('#postDetailContent .post-actions .post-action').first()).toHaveText("🤍 12");
+  await expect.poll(() => lireAction(page.locator('#postDetailContent .post-actions .post-action').first())).toBe("🤍 12");
   expect((await lectures(page)).length).toBe(2);
 });
 
