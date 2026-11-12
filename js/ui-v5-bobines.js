@@ -256,6 +256,11 @@
     }
 
     row.setAttribute("aria-label", "Prolonger cette bobine dans le réel");
+    // LOT-3 (audit UX/UI du 2026-11-10, BOB-C03) : quatre actions en grille 2 × 2
+    // au lieu d'une rangée qui défile — mesuré à 390 px, « À vivre près de moi »
+    // et « Proposer une sortie », les deux sorties vers le réel, étaient HORS de
+    // l'écran, sans barre ni indice.
+    row.classList.add("v5-actions-grille");
 
     // ① Signal d'intérêt — le seul qui n'ouvre rien. État exposé par
     //    aria-pressed, et re-taper le retire (réversible, comme un like).
@@ -280,12 +285,12 @@
 
     // ③ Les activités de cette Passio — SANS demande de position : le moteur
     //    d'UI-3A pose le marqueur à usage unique que renderIRL consomme.
-    row.appendChild(chip("À vivre près de moi", "", function () {
+    row.appendChild(chip("À vivre près de moi", "v5-chip-irl", function () {
       voirActivites(passion);
     }));
 
     // ④ Le formulaire EXISTANT, prérempli. Aucun événement n'est créé ici.
-    row.appendChild(chip("Proposer une sortie", "", function () {
+    row.appendChild(chip("Proposer une sortie", "v5-chip-irl", function () {
       proposerSortie(passion, reel.id);
     }));
 

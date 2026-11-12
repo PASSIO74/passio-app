@@ -2056,6 +2056,11 @@ async function saveMainProfile() {
   }
 
   if (!state.user.general) state.user.general = {};
+  // ⚠️ INSTANTANÉ AVANT TOUTE ÉCRITURE (ETAT-03, 2026-11-10) : un refus du serveur rend
+  // cet état — jamais « Profil mis à jour » sur une ligne que la base n'a pas gardée.
+  const _avantGeneral = JSON.parse(JSON.stringify(state.user.general));
+  const _avantNom = state.user.name;
+  const _avantNomsPassions = (state.user.profiles || []).map(function (pr) { return pr && pr.name; });
   state.user.general.username = username;
   state.user.general.bio      = bio;
   state.user.general.rsLinks  = rsLinks;
@@ -2096,15 +2101,34 @@ async function saveMainProfile() {
   // `is_private` — et encore : `supaSavePublicProfile` le refusera si
   // `privacyChoisi` n'est pas posé (cf. le marqueur, plus haut dans cette
   // fonction). L'ancien appel republiait tout le profil depuis l'état local.
+  // ⚠️ `is_private` NE PART QUE SUR LE GESTE DE CETTE OUVERTURE (ETAT-03, 2026-11-10).
+  // `privacyChoisi` reste posé pour toujours et voyage entre appareils : s'y fier faisait
+  // repartir la valeur AFFICHÉE par la case à chaque enregistrement — celle de l'état local,
+  // périmé, quand la relecture serveur était lente ou en panne. Un compte rendu privé
+  // ailleurs redevenait public en enregistrant une bio.
   if (typeof supaSavePublicProfile === "function") {
-    try {
-      await supaSavePublicProfile({
-        username: state.user.general.username,
-        bio: state.user.general.bio,
-        rs_links: Array.isArray(state.user.general.rsLinks) ? state.user.general.rsLinks : [],
-        is_private: state.user.general.isPrivate,
-      });
-    } catch (e) {}
+    const champs = {
+      username: state.user.general.username,
+      bio: state.user.general.bio,
+      rs_links: Array.isArray(state.user.general.rsLinks) ? state.user.general.rsLinks : [],
+    };
+    if (window._privacyTouched === true) champs.is_private = state.user.general.isPrivate;
+    let enregistre = false;
+    try { enregistre = (await supaSavePublicProfile(champs)) !== false; } catch (e) { enregistre = false; }
+    // ⚠️ LE VERDICT SE LIT (ETAT-03). L'ancien appel l'avalait dans un `catch` vide et
+    // disait toujours « Profil mis à jour » : hors ligne ou sur un refus, la personne
+    // se croyait en compte privé pendant que sa ligne restait publique.
+    // Un visiteur n'a pas de ligne `profiles` : son profil vit sur l'appareil, et le
+    // refus serveur attendu (0 ligne) n'est pas un échec pour lui.
+    const compteReel = typeof _compteAuthReel === "function" ? _compteAuthReel() : true;
+    if (!enregistre && compteReel) {
+      state.user.general = _avantGeneral;
+      state.user.name = _avantNom;
+      (state.user.profiles || []).forEach(function (pr, i) { if (pr) pr.name = _avantNomsPassions[i]; });
+      saveState();
+      toast("Profil non enregistré — vérifie ta connexion et réessaie", "warning");
+      return;   // l'écran reste ouvert : la saisie n'est pas perdue
+    }
   }
   // Flush user_state immédiat (username/bio/rsLinks doivent être dans le blob sync).
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
@@ -5304,7 +5328,7 @@ async function publishPost() {
     return;
   }
 
-  toast("Publication en cours…", "loading");
+  const _toastEnCours = toast("Publication en cours…", "loading");
 
   // ✅ Afficher directement le nom du profil courant!
   const prof = currentProfile();
@@ -5403,24 +5427,34 @@ async function publishPost() {
 
     // Quand l'upload se termine (même après le timeout d'affichage), l'URL Storage
     // a remplacé le base64 dans `post` → on persiste et on re-rend pour fixer l'image.
-    const syncPromise = supaPublishPostWithRetry(post).then((ok) => {
-      if (ok) { try { saveState(); renderFeed(); } catch (e) {} }
-      return ok;
-    });
+    // ⚠️ LOT-1 (audit UX/UI du 2026-11-10, CRE-C04) : la carte restait sur
+    // « Sync… » après le verdict — succès comme refus — parce que `renderFeed`
+    // sautait le repeint (`_feedDomSig` ne voit pas `syncStatus`). On invalide
+    // la signature AU VERDICT, quel qu'il soit, et seulement à lui.
+    const _repeindreVerdict = () => { try { saveState(); window._feedDomSig = null; renderFeed(); } catch (e) {} };
+    const syncPromise = supaPublishPostWithRetry(post).then((ok) => { _repeindreVerdict(); return ok; },
+      (e) => { _repeindreVerdict(); throw e; });
     syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
+    // Le verdict remplace « Publication en cours… » : jamais les deux à l'écran.
+    try { if (_toastEnCours && _toastEnCours.remove) _toastEnCours.remove(); } catch (e) {}
 
     if (syncSuccess) {
-      toast("Post publié", "success");
+      toast("Publication en ligne", "success");
       try { supaTrack("publish_post", { type: post.type, passion: post.passion, is_reel: !!post.isReel }); } catch(_) {}
     } else {
       // ⚠️ « connexion lente » accusait le RÉSEAU pour une erreur de DONNÉES :
       // l'utilisateur réessayait une opération qui ne pouvait jamais aboutir
-      // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3).
+      // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3). Le statut posé par
+      // `supaPublishPostWithRetry` (app-08) dit lequel des trois cas on vit.
       var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
-      toast(_msgP || "Post en local (connexion lente)", "warning");
+      if (_msgP) toast(_msgP, "error");
+      else if (post.syncStatus === "refusee") toast("Publication refusée par le serveur : elle n'est visible que sur cet appareil.", "error");
+      else if (post.syncStatus === "offline") toast("Pas de réseau : ta publication partira automatiquement dès que possible.", "warning");
+      else toast("Envoi plus long que prévu : ta publication s'affichera « En ligne » dès qu'elle est reçue.", "info");
     }
   } catch (e) {
-    toast("Post en local (erreur réseau)", "warning");
+    try { if (_toastEnCours && _toastEnCours.remove) _toastEnCours.remove(); } catch (e2) {}
+    toast("Pas de réseau : ta publication partira automatiquement dès que possible.", "warning");
   } finally {
     _publishInProgress = false; // libère le verrou quoi qu'il arrive
   }

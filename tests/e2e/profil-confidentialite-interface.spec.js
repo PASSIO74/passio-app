@@ -37,6 +37,8 @@ async function boot(page, ligneServeur = null) {
           update: (corps) => {
             const q = { eq: () => q, select: async () => {
               window.__updates.push(JSON.parse(JSON.stringify(corps)));
+              // Refus du serveur, à la demande d'un cas (ETAT-03, 2026-11-10).
+              if (window.__updateRefus) return { data: null, error: { code: "42501", message: "refus du banc" } };
               const cible = window.__rows.find((r) => r.id === window.__uid);
               if (!cible) return { data: [], error: null };
               Object.assign(cible, JSON.parse(JSON.stringify(corps)));
@@ -48,6 +50,8 @@ async function boot(page, ligneServeur = null) {
           select: (cols) => {
             window.__selects.push(String(cols || ""));
             return { eq: () => ({ maybeSingle: async () => {
+              // Lecture d'hydratation en panne, à la demande d'un cas (ETAT-03, 2026-11-10).
+              if (window.__selectRefus) return { data: null, error: { message: "réseau du banc" } };
               const l = window.__rows.find((r) => r.id === window.__uid);
               return { data: l ? { is_private: !!l.is_private } : null, error: null };
             } }) };
@@ -77,9 +81,11 @@ async function boot(page, ligneServeur = null) {
 
 const laLigne = (page) => page.evaluate(() => window.__rows.find((r) => r.id === window.__uid) || null);
 
-test("le parcours complet : ligne créée privée → l'écran le reflète → un seul décochage → public en base", async ({ page }) => {
+test("le parcours complet : ligne serveur privée → l'écran le reflète → un seul décochage → public en base", async ({ page }) => {
   // ── ① aucune ligne profiles, ② état local incomplet ────────────────────
-  await boot(page, null);
+  // Prémisse explicite depuis le 2026-11-12 (STAB-04 : une ligne NEUVE naît publique) :
+  // un compte dont la ligne serveur est PRIVÉE, l'état local vide.
+  await boot(page, { username: "Benjamin", is_private: true });
   await page.evaluate(() => {
     state.user.profiles = [{ id: "pp_0", name: "QA", passion: "moto", emoji: "🏍", color: "#7c3aed" }];
     state.user.currentProfileId = "pp_0";
@@ -91,7 +97,7 @@ test("le parcours complet : ligne créée privée → l'écran le reflète → u
   await page.evaluate(() => supaEnsureProfileExists());
   let ligne = await laLigne(page);
   expect(ligne, "la ligne doit exister").not.toBeNull();
-  expect(ligne.is_private, "créée privée, faute de choix prouvé").toBe(true);
+  expect(ligne.is_private, "ensure ne réécrit pas une ligne existante : elle reste privée").toBe(true);
 
   // ── ④ ouverture de l'écran Profil ──────────────────────────────────────
   await page.evaluate(() => openEditMainProfile());
@@ -133,7 +139,9 @@ test("le parcours complet : ligne créée privée → l'écran le reflète → u
 });
 
 test("complémentaire : la bio seule est modifiée, le contrôle n'est pas touché → reste privé", async ({ page }) => {
-  await boot(page, null);
+  // Prémisse explicite depuis le 2026-11-12 (STAB-04 : une ligne NEUVE naît publique) :
+  // un compte dont la ligne serveur est PRIVÉE, l'état local vide.
+  await boot(page, { username: "Benjamin", is_private: true });
   await page.evaluate(() => {
     state.user.profiles = [{ id: "pp_0", name: "QA", passion: "moto", emoji: "🏍", color: "#7c3aed" }];
     state.user.currentProfileId = "pp_0";
@@ -206,4 +214,80 @@ test("la preuve vient du GESTE, pas de la valeur finale", async ({ page }) => {
   expect(vu.updates.length, "le chemin d'écriture a bien été exercé").toBeGreaterThan(0);
   expect(vu.updates.some((u) => "is_private" in u), "`is_private` n'y figure pas").toBe(false);
   expect(vu.updates.some((u) => "username" in u || "bio" in u), "mais les champs édités, oui").toBe(true);
+});
+
+// ═════════════════════════════════════════════════════════════════════
+// ETAT-03 (audit de stabilisation du 2026-11-10) — CE QUI EST ANNONCÉ EST CE QUI EST GARDÉ
+//
+// ① `saveMainProfile` jetait le verdict de `supaSavePublicProfile` et disait toujours
+//    « Profil mis à jour » : hors ligne, ou sur un refus, la personne se croyait passée
+//    en compte privé alors que sa ligne restait publique.
+// ② `privacyChoisi`, une fois posé, vaut pour TOUS les enregistrements suivants, sur tous
+//    les appareils (il voyage par `user_state`) : `is_private` repartait avec la valeur
+//    affichée par la case, même sans geste — et si la lecture d'hydratation était lente
+//    ou en panne, cette valeur était celle de l'état LOCAL, périmé. Un compte rendu privé
+//    ailleurs redevenait public en enregistrant une bio.
+// La preuve d'un choix est le geste de CETTE ouverture (`_privacyTouched`), pas un
+// marqueur hérité.
+// ═════════════════════════════════════════════════════════════════════
+test("ETAT-03 ① un refus du serveur ne dit pas « Profil mis à jour », rend l'état d'avant et garde l'écran ouvert", async ({ page }) => {
+  // Un COMPTE réel (identifiant de la forme d'un uuid) : pour un visiteur, le refus serveur
+  // attendu (aucune ligne) n'est pas un échec — son profil vit sur l'appareil.
+  await page.addInitScript(() => { try { localStorage.setItem("passio_uid", "7a1c2e3f-4b5d-4e6f-8a9b-0c1d2e3f4a5b"); } catch (e) {} });
+  await boot(page, { username: "Benjamin", is_private: false });
+  await page.evaluate(() => {
+    state.user.profiles = [{ id: "pp_0", name: "QA", passion: "moto", emoji: "🏍", color: "#7c3aed" }];
+    state.user.currentProfileId = "pp_0";
+    state.user.general = { username: "Benjamin", isPrivate: false, privacyChoisi: true };
+    saveState();
+    window.__toasts = [];
+    const vrai = window.toast;
+    window.toast = function (m) { window.__toasts.push(String(m)); try { return vrai.apply(this, arguments); } catch (e) {} };
+  });
+  await page.evaluate(() => openEditMainProfile());
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const el = document.getElementById("editIsPrivate");
+    el.checked = true;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    window.__updateRefus = true;
+  });
+  await page.evaluate(() => saveMainProfile());
+  await page.waitForTimeout(400);
+  const fin = await page.evaluate(() => ({
+    toasts: window.__toasts.slice(),
+    prive: state.user.general.isPrivate,
+    ouvert: !!document.getElementById("editIsPrivate"),
+    ligne: window.__rows.find((r) => r.id === window.__uid),
+  }));
+  expect(fin.toasts, "aucun succès annoncé sur un refus").not.toContain("Profil mis à jour");
+  expect(fin.toasts.some((t) => /non enregistr/i.test(t)), "toasts : " + JSON.stringify(fin.toasts)).toBe(true);
+  expect(fin.prive, "l'état local revient à ce que la base a gardé").toBe(false);
+  expect(fin.ligne.is_private).toBe(false);
+  expect(fin.ouvert, "l'écran reste ouvert : rien n'est perdu de la saisie").toBe(true);
+});
+
+test("ETAT-03 ② un marqueur hérité ne fait pas repartir `is_private` sans geste — même quand la relecture serveur est en panne", async ({ page }) => {
+  // La base dit PRIVÉ (rendu privé sur un autre appareil) ; l'état local, périmé, dit public.
+  await boot(page, { username: "Benjamin", is_private: true });
+  await page.evaluate(() => {
+    state.user.profiles = [{ id: "pp_0", name: "QA", passion: "moto", emoji: "🏍", color: "#7c3aed" }];
+    state.user.currentProfileId = "pp_0";
+    state.user.general = { username: "Benjamin", isPrivate: false, privacyChoisi: true };
+    saveState();
+    window.__selectRefus = true;
+  });
+  await page.evaluate(() => openEditMainProfile());
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const b = document.getElementById("editBio");
+    b.value = "Nouvelle bio";
+    b.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.evaluate(() => saveMainProfile());
+  await page.waitForTimeout(400);
+  const fin = await page.evaluate(() => ({ updates: window.__updates, ligne: window.__rows.find((r) => r.id === window.__uid) }));
+  expect(fin.updates.some((u) => "is_private" in u), "aucun geste sur le contrôle : `is_private` ne part pas").toBe(false);
+  expect(fin.ligne.is_private, "le compte reste privé").toBe(true);
+  expect(fin.ligne.bio, "la bio, elle, est bien enregistrée").toBe("Nouvelle bio");
 });

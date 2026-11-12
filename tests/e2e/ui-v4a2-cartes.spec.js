@@ -288,7 +288,7 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
 
     const carte = page.locator(`#eventList .event-card[data-evid="${id}"]`);
     const go = carte.locator('[data-v4a2-act="go"]');
-    await expect(go).toHaveText("Je viens");
+    await expect(go).toHaveText("Je participe"); // LOT-3 (PCS-C06)
 
     // Rien n'a été écrit par le simple affichage de la carte.
     expect(await page.evaluate((e) => myRsvp(e), id)).toBeNull();

@@ -496,7 +496,13 @@ self.addEventListener("fetch", e => {
     // course ; sous WebKit chargé (⑧ ×18 sur trois workers), la page relisait
     // l'ancien script 2 fois sur 18, et il fallait la seconde reprise — avec
     // l'attente, 0 sur 18 (mesuré le 2026-11-10).
-    // Verrou : tests/e2e/app-scripts-par-fichier.spec.js ⑧.
+    // ⚠️ LA FEUILLE DE STYLE PASSE PAR ICI AUSSI (2026-11-10, la suite) : elle porte à son
+    // tour son empreinte, et sa reprise (scripts/build.js, étape 2) redemande son adresse
+    // de la même façon avant de poser le <link> qui remplace son secours. Même mesure :
+    // sans l'attente, sous charge (⑩ ×9, trois workers), 2 rouges sur 9 sous Chromium et 1
+    // sur 9 sous WebKit — la page relisait l'ancienne feuille et gardait son secours sans
+    // empreinte ; avec, 0 sur 18 sur chaque moteur.
+    // Verrou : tests/e2e/app-scripts-par-fichier.spec.js ⑧ (scripts), ⑩ (feuille).
     if (e.request.cache === "reload") {
       e.respondWith(
         fetch(e.request)

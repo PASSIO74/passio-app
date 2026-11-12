@@ -9,7 +9,8 @@
 // Usage : node scripts/build.js [dist/index.html]
 // PASSIO_MINIFIER_APP=1 (déploiement de production, et la passe « Gates artefact »
 // de la CI) : les 9 scripts sont minifiés ICI, par le terser du lockfile — l'étape 1
-// bis dit pourquoi.
+// bis dit pourquoi —, et la feuille de style aussi, par le clean-css du lockfile
+// (étape 2 bis, depuis le 2026-11-10).
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -81,6 +82,18 @@ const sri = (octets) => "sha384-" + crypto.createHash("sha384").update(octets).d
 //    preload, Chromium ne le réutilise pas et retélécharge). La redemande n'en porte
 //    pas : elle sert à remplacer ce que gardent les caches, quoi qu'arrive. Verrou :
 //    app-scripts-par-fichier.spec.js ⑦ (cache HTTP) ⑧ (cache du worker), deux moteurs.
+//    ⚠️ CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10, audit de stabilisation).
+//    `onload` et `onerror` se DÉSARMENT au premier appel. Mesuré en production le 10/11
+//    à 12:18 UTC : dans une page déjà démarrée, un robot de prévisualisation (arrivé par
+//    `?fbclid=`, écran 2000 × 2000) a rejoué le `load` des 9 scripts ; chaque `onload`
+//    refaisait `i++` puis `suivant()`, `i` dépassait le nombre de scripts et
+//    `scripts[i][0]` levait — 9 erreurs par page, comptées comme des erreurs de la
+//    production (`client_errors` 211 à 220). Un `error` rejoué retirait de la page le
+//    script déjà exécuté, puis la reprise levait la même erreur une seconde plus tard
+//    (mesuré au banc : 18 erreurs pour 9 `load` et 9 `error` rejoués) ; rejoué PENDANT
+//    le chargement, il aurait redemandé et réinséré le script en cours — lu dans le
+//    code, non mesuré. Désarmé, un événement rejoué ne fait plus rien ; la reprise, elle,
+//    pose ses écouteurs sur le NOUVEL élément. Verrou : app-scripts-par-fichier.spec.js ⑨.
 //    emoji-misc.js (qui doit garder son ordre APRÈS le bloc app) et
 //    passion-context.js (il observe la persona active, donc APRÈS la définition
 //    de state/currentProfile) ferment le 9ᵉ script, comme ils fermaient app.js :
@@ -152,8 +165,9 @@ const loader = ""
   + '      var s = document.createElement("script");\n'
   + "      s.src = scripts[i][0];\n"
   + "      s.integrity = scripts[i][1];\n"
-  + "      s.onload = function () { i++; essais = 0; suivant(); };\n"
+  + "      s.onload = function () { s.onload = s.onerror = null; i++; essais = 0; suivant(); };\n"
   + "      s.onerror = function () {\n"
+  + "        s.onload = s.onerror = null;\n"
   + "        if (s.parentNode) s.parentNode.removeChild(s);\n"
   + "        if (++essais <= 2) setTimeout(function () {\n"
   + "          var reprendre = function () { suivant(); };\n"
@@ -183,12 +197,92 @@ html = html.replace(EMOJI_TAG, "<!-- emoji-misc.js + passion-context.js : inclus
 //    (?v=<hash>, cf. _headers : /styles.css immutable), il n'est téléchargé qu'une
 //    fois par version — et le <link> reste dans les premiers octets du HTML, donc
 //    découvert immédiatement par le preload-scanner (pas de flash sans style).
+//    ⚠️ LA FEUILLE PORTE L'EMPREINTE `integrity` (sha384) DE SES OCTETS SERVIS, ET UNE
+//    REPRISE (2026-11-10). Le cas des 9 scripts (étape 1), pour la feuille : Netlify
+//    ignore le `?v=`, et pendant un retour arrière de C vers A
+//    (scripts/rollback-netlify.mjs, une restauration instantanée), une demande de
+//    l'adresse de C reçoit la feuille de A, en 200 `immutable` — une page C partie juste
+//    avant la bascule (cache HTTP), ou le worker de C qui s'installe (son cache,
+//    `FICHIERS_VERSION`). Quand C revient à l'identique, l'appareil appliquait la feuille
+//    de A jusqu'au prochain changement de la feuille (11 versions sur 151 en 30 jours,
+//    jusqu'à 33 jours d'écart) : des styles de C manquants, sans une erreur ni une
+//    demande au serveur. Mesuré sous Chromium et WebKit, dans les deux caches. Avec
+//    `integrity`, le navigateur REFUSE ces octets.
+//    ⚠️ UNE FEUILLE REFUSÉE LAISSE LA PAGE SANS STYLES — pire que le défaut. D'où la
+//    reprise, posée AVANT le <link> : son `error` part avant que le moindre script du
+//    <body> ne s'exécute (ils attendent la feuille), un écouteur posé plus tard ne le
+//    verrait jamais. Au refus, elle pose TOUT DE SUITE, à la place du <link> refusé, un
+//    <link> de SECOURS sans empreinte : la page prend la feuille que gardent les caches
+//    (celle de l'autre version) au lieu de rester nue. Puis, le secours réglé, elle
+//    redemande l'adresse au réseau (`fetch(…, { cache: "reload" })`, que le worker honore
+//    — sw.js — et qui remplace l'entrée du cache HTTP), et pose JUSTE APRÈS le secours un
+//    <link> AVEC l'empreinte : chargé, il retire le secours ; refusé (pendant la bascule
+//    elle-même, le site sert encore l'autre version), il se retire, et la page garde le
+//    secours — comme avant ce lot. Toujours à la place du <link> d'origine : l'ordre des
+//    feuilles fait la cascade, et app-05 ajoute au <head>, APRÈS la feuille, les <style>
+//    des réglages de l'utilisateur (thème, police, taille, arrondi).
+//    ⚠️ LE SECOURS D'ABORD, LA REDEMANDE ENSUITE (relecture `audit-passio`, même jour) :
+//    la première version redemandait d'abord et ne reposait un <link> qu'au retour du
+//    réseau — un réseau qui cale (tunnel, portail captif) laissait la page SANS styles
+//    aussi longtemps que la redemande ne se réglait pas, et chaque reprise montrait un
+//    éclair sans styles (médiane 0,2 à 0,9 s mesurée). Jamais une page sans styles :
+//    pour une feuille, deux versions mêlées un instant sont un défaut visuel, l'absence
+//    de styles serait pire — à l'inverse des scripts, qui s'arrêtent.
+//    Verrou : app-scripts-par-fichier.spec.js ⑨ (cache HTTP) ⑩ (cache du worker), deux
+//    moteurs. Contrôle des octets servis, et de la présence de la reprise :
+//    scripts/verifier-integrite-app.js.
 const CSS_TAG = '  <link rel="stylesheet" href="styles.css" />';
 if (!html.includes(CSS_TAG)) throw new Error("Tag <link styles.css> introuvable dans index.html");
 const css = read("styles.css");
 const cssHash = crypto.createHash("sha1").update(css).digest("hex").slice(0, 10);
 const cssRef = "styles.css?v=" + cssHash;
-html = html.replace(CSS_TAG, '  <link rel="stylesheet" href="' + cssRef + '" />');
+// `cssIntegrite` : celle des octets écrits ici ; l'étape 2 bis la remplace par celle des
+// octets minifiés quand elle minifie.
+let cssIntegrite = sri(css);
+const repriseFeuille = ""
+  + "  <script>\n"
+  + "/* Reprise de la feuille de style (scripts/build.js, étape 2). Elle porte l'empreinte\n"
+  + "   de ses octets : celle d'une autre version restée en cache est refusée. Tout de\n"
+  + "   suite, à sa place, un secours SANS empreinte (la feuille que gardent les caches) :\n"
+  + "   jamais une page sans styles. Puis on redemande l'adresse au réseau, et un <link>\n"
+  + "   AVEC l'empreinte, posé juste après le secours, le retire s'il se charge. Posée\n"
+  + "   AVANT le <link> : son échec part avant les scripts du <body>, qui attendent la\n"
+  + "   feuille. */\n"
+  + "(function () {\n"
+  + "  var fait = false;\n"
+  + '  document.addEventListener("error", function (e) {\n'
+  + "    var l = e.target;\n"
+  + '    if (fait || !l || l.tagName !== "LINK" || !l.parentNode || !/^styles\\.css\\?v=[0-9a-f]+$/.test(l.getAttribute("href") || "")) return;\n'
+  + "    fait = true;\n"
+  + '    var adresse = l.getAttribute("href"), integrite = l.getAttribute("integrity"), relance = false;\n'
+  + "    var lien = function (empreinte) {\n"
+  + '      var n = document.createElement("link");\n'
+  + '      n.rel = "stylesheet";\n'
+  + '      if (empreinte) n.setAttribute("integrity", empreinte);\n'
+  + "      n.href = adresse;\n"
+  + "      return n;\n"
+  + "    };\n"
+  + "    var secours = lien(null);\n"
+  + "    var redemander = function () {\n"
+  + '      if (relance || !integrite || typeof fetch !== "function") return;\n'
+  + "      relance = true;\n"
+  + "      var poser = function () {\n"
+  + "        if (!secours.parentNode) return;\n"
+  + "        var n = lien(integrite);\n"
+  + "        n.onload = function () { if (secours.parentNode) secours.parentNode.removeChild(secours); };\n"
+  + "        n.onerror = function () { if (n.parentNode) n.parentNode.removeChild(n); };\n"
+  + "        secours.parentNode.insertBefore(n, secours.nextSibling);\n"
+  + "      };\n"
+  + '      fetch(adresse, { cache: "reload" })\n'
+  + "        .then(function (r) { return r.arrayBuffer(); })\n"
+  + "        .then(poser, poser);\n"
+  + "    };\n"
+  + "    secours.onload = secours.onerror = redemander;\n"
+  + "    l.parentNode.replaceChild(secours, l);\n"
+  + "  }, true);\n"
+  + "})();\n"
+  + "  </script>\n";
+html = html.replace(CSS_TAG, () => repriseFeuille + '  <link rel="stylesheet" href="' + cssRef + '" integrity="' + cssIntegrite + '" />');
 
 // 3. Les gardes sont chargés juste après telemetry.js :
 //    - identity-transition observe les POST telemetry_events avant le bloc app ;
@@ -296,8 +390,9 @@ for (const s of appScripts) fs.writeFileSync(path.join(appDir, s.nom), s.contenu
 //    appareil refuse une fois ce qu'il garde (`integrity`) et le redemande (la
 //    reprise, une seconde par script) — le prix d'une version de terser, pas un défaut.
 //    Contrôle, après la minification de la page : scripts/verifier-integrite-app.js.
+//    La feuille de style suit le même chemin (étape 2 bis, juste après).
 if (process.env.PASSIO_MINIFIER_APP === "1") {
-  const terser = require.resolve("terser/bin/terser", { paths: [root] });
+  const terser =require.resolve("terser/bin/terser", { paths: [root] });
   for (const s of appScripts) {
     const f = path.join(appDir, s.nom);
     try {
@@ -305,7 +400,7 @@ if (process.env.PASSIO_MINIFIER_APP === "1") {
       fs.renameSync(f + ".min", f);
     } catch (e) {
       try { fs.unlinkSync(f + ".min"); } catch (_e) { /* rien à retirer */ }
-      console.log("Minification de app/" + s.nom + " échouée, fichier brut servi : " + String((e && e.message) || e).split("\n")[0]);
+      console.log("::warning title=Minification::Minification de app/" + s.nom + " échouée, fichier brut servi : " + String((e && e.message) || e).split("\n")[0]);
     }
     const servie = sri(fs.readFileSync(f));
     if (servie === s.integrite) continue;
@@ -316,10 +411,47 @@ if (process.env.PASSIO_MINIFIER_APP === "1") {
     s.integrite = servie;
   }
 }
+
+// 2 bis. LA FEUILLE DE STYLE EST MINIFIÉE ICI AUSSI, PLUS DANS LE WORKFLOW (2026-11-10).
+//    Même raison que l'étape 1 bis : l'empreinte `integrity` du <link> (étape 2) doit être
+//    celle des octets SERVIS, et `.github/workflows/deploy.yml` minifiait la feuille APRÈS
+//    le build. Même commande que l'ancienne étape du workflow (`cleancss -o <sortie>
+//    <entrée>`, le clean-css-cli figé par le lockfile, réglages par défaut : mêmes octets,
+//    comparés à la feuille que servait la production), même repli sur le fichier brut si
+//    elle échoue — l'empreinte suit alors le brut. ⚠️ LE `?v=` ET LE buildId NE BOUGENT
+//    PAS : ce sont les empreintes de la SOURCE (`cssHash`, étape 5) ; seule l'empreinte
+//    `integrity` est remplacée, à son unique place. ⚠️ UNE MISE À JOUR DE CLEAN-CSS change
+//    les octets servis sous le même `?v=` : chaque appareil refuse une fois la feuille
+//    qu'il garde et la redemande (la reprise) — le prix d'une version, pas un défaut ;
+//    clean-css-cli est figé (5.6.3, sans `^`).
+const feuilleServie = path.join(path.dirname(outPath), "styles.css");
+fs.writeFileSync(feuilleServie, css);
+let tailleFeuille = Buffer.byteLength(css);
+if (process.env.PASSIO_MINIFIER_APP === "1") {
+  const cleancss = require.resolve("clean-css-cli/bin/cleancss", { paths: [root] });
+  try {
+    execFileSync(process.execPath, [cleancss, "-o", feuilleServie + ".min", feuilleServie], { stdio: "pipe", timeout: 120000 });
+    fs.renameSync(feuilleServie + ".min", feuilleServie);
+  } catch (e) {
+    try { fs.unlinkSync(feuilleServie + ".min"); } catch (_e) { /* rien à retirer */ }
+    // `::warning` : une annotation dans le résumé du run — le déploiement reste vert avec
+    // une feuille brute de 489 Ko, mais il le dit (relecture `audit-passio`, 2026-11-10).
+    console.log("::warning title=Minification::Minification de styles.css échouée, fichier brut servi : " + String((e && e.message) || e).split("\n")[0]);
+  }
+  const octetsServis = fs.readFileSync(feuilleServie);
+  tailleFeuille = octetsServis.length;
+  const servie = sri(octetsServis);
+  if (servie !== cssIntegrite) {
+    const citee = JSON.stringify(cssIntegrite);
+    const n = html.split(citee).length - 1;
+    if (n !== 1) throw new Error("styles.css : son empreinte figure " + n + " fois dans la page, 1 attendue");
+    html = html.replace(citee, () => JSON.stringify(servie));
+    cssIntegrite = servie;
+  }
+}
 fs.writeFileSync(outPath, html);
 const ancienAppJs = path.join(path.dirname(outPath), "app.js");
 if (fs.existsSync(ancienAppJs)) fs.unlinkSync(ancienAppJs);
-fs.writeFileSync(path.join(path.dirname(outPath), "styles.css"), css);
 fs.writeFileSync(path.join(path.dirname(outPath), "sw.js"), sw);
 fs.writeFileSync(path.join(path.dirname(outPath), "release.json"), JSON.stringify(release, null, 2) + "\n");
 
@@ -388,5 +520,5 @@ if (fs.existsSync(pilotageDir)) {
 }
 console.log("Build OK →", outPath,
   "(", Buffer.byteLength(html), "octets ) + app/ :", appScripts.length, "scripts (", Buffer.byteLength(appJs),
-  "octets, ensemble v=" + appHash + ") + styles.css (", Buffer.byteLength(css),
-  "octets, v=" + cssHash + ") + sw.js + release.json (build " + buildId + ")");
+  "octets, ensemble v=" + appHash + ") + styles.css (", tailleFeuille,
+  "octets servis, v=" + cssHash + ") + sw.js + release.json (build " + buildId + ")");

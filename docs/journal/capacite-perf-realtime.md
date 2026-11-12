@@ -34,6 +34,8 @@
 - 🧩 LE BLOC APP EN 9 SCRIPTS : UNE VERSION NE RETÉLÉCHARGE QUE CE QUI A CHANGÉ — ET SOUS WEBKIT, IL A FALLU LE WORKER (2026-11-09)
 - 🧪 LA CI NE PARLE PLUS AU PROJET DE PRODUCTION : UN PROJET SUPABASE VIDE POUR LES SUITES LOCALES (2026-11-09)
 - ♻️ UNE BOUCLE AU REPOS — 470 setTimeout(0) par seconde, pour tout le monde, sur tous les écrans (2026-11-09)
+- 🔂 LE CHARGEUR DES 9 SCRIPTS : CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10)
+- 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
 
 ---
 
@@ -2164,6 +2166,8 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
 | (2026-11-10) Chaque script porte l'empreinte `integrity` (sha384) de ses octets SERVIS, sur le preload et sur le `<script>` ; le buildId et les `?v=` ne bougent pas quand le build minifie | `scripts/build.js` (étapes 1 et 1 bis) | `app-scripts-par-fichier.spec.js` ⑦ ⑧ (deux moteurs), `integrite-app.test.mjs` ①③ |
 | (2026-11-10) Le worker honore une redemande `cache: "reload"` d'un fichier versionné : réseau, rangé si c'est bien un script, réponse une fois rangée | `sw.js` | ⑧ |
 | (2026-11-10) Refus de déployer une page dont une empreinte ne désigne pas son fichier — relue APRÈS la minification de la page ; même contrôle à chaque PR (« Gates artefact » construit minifié) | `scripts/verifier-integrite-app.js`, `deploy.yml`, `scripts/servir-dist.js` | `integrite-app.test.mjs` ② |
+| (2026-11-10, la feuille) `styles.css?v=` porte l'empreinte `integrity` de ses octets SERVIS ; une reprise posée AVANT son `<link>` : au refus, TOUT DE SUITE un secours SANS empreinte à la même place (jamais une page sans styles), puis la redemande (`cache: "reload"`) et un `<link>` AVEC l'empreinte juste après le secours, qui le retire s'il se charge | `scripts/build.js` (étape 2) | `app-scripts-par-fichier.spec.js` ⑨ ⑩ (deux moteurs) et ① (une seule demande), `integrite-app.test.mjs` ① |
+| (2026-11-10, la feuille) Minifiée PAR LE BUILD (`PASSIO_MINIFIER_APP`, étape 2 bis : même commande clean-css, mêmes octets que la production) ; l'étape « Minify styles.css » du déploiement est RETIRÉE ; le contrôle relit aussi le `<link>` de la feuille, et exige la reprise avant lui | `scripts/build.js`, `deploy.yml`, `scripts/verifier-integrite-app.js` | `integrite-app.test.mjs` ② ③ ⑤ |
 | La barrière des migrations lit les 9 scripts servis (un motif peut vivre dans n'importe lequel ; un seul illisible = refus) ; l'ancienne forme reste lue | `scripts/lib/barriere-migration.js` (`urlsBundlesServis`), `scripts/appliquer-migration.mjs` | `tests/unit/barriere-migration.test.mjs` ④ (sur le VRAI build ; deux mutations) |
 | Le serveur d'artefact et les suites qui lisaient `dist/app.js` | `scripts/servir-dist.js`, `dist-build`, `version-skew`, `pwa-maj-pendant-appel`, `audit-2026-11-perf-dist` | — |
 
@@ -2354,17 +2358,128 @@ une demande de l'adresse de B reçoit le contenu de A, en 200 `immutable`.
 - ⚠️ **UNE MISE À JOUR DE TERSER** change les octets servis sous les mêmes `?v=` : chaque appareil
   refuse une fois ce qu'il garde, et le redemande (une seconde par script modifié). Le prix d'une
   version de terser, pas un défaut ; terser est figé (5.51.2, sans `^`).
-- **Survivant de la même classe, non traité : `styles.css?v=`** (la seule autre règle `immutable` de
-  `_headers`). Un retour arrière range la feuille de A sous l'adresse de B, et B rétabli la garde un an.
-  L'effet est visuel (des styles de B manquants), pas un mélange de code. Le remède a deux pièces qui
-  n'existent pas pour elle : une empreinte `integrity` sur un `<link rel=stylesheet>` refusé laisserait
-  la page SANS styles, faute de reprise ; et clean-css la minifie après le build (le même obstacle que
-  terser). Le worker, lui, est déjà prêt (`estVersionne` couvre `.css`, la branche `reload` aussi).
+- **Survivant de la même classe : `styles.css?v=`** (la seule autre règle `immutable` de `_headers`) —
+  reproduit puis fermé le jour même, ci-dessous.
+
+**La feuille de style, même cas — reproduit, puis fermé (2026-11-10, la suite).** Netlify ignore le
+`?v=` de la feuille comme celui des scripts : pendant un retour arrière de C vers A, la feuille de A
+est servie en 200 `immutable` sous l'adresse de C.
+- **Reproduit d'abord, sous Chromium ET WebKit, dans les deux caches** (`app-scripts-par-fichier.spec.js`,
+  un troisième artefact C qui ne diffère de A QUE par la feuille ; profil persistant, aucune route).
+  ⑨ — une page C partie juste avant la bascule range la feuille de A sous l'adresse de C dans le cache
+  HTTP ; C rétabli à l'identique, la page applique la feuille de A, sans une demande au serveur.
+  ⑩ — le worker de C installé pendant la bascule (`FICHIERS_VERSION`) la range dans SON cache ; C
+  rétabli, il la sert à chaque ouverture. Prémisses assertées (la feuille de A servie en 200 sous
+  l'adresse de C, puis relue sans une demande `style` — `Sec-Fetch-Dest`), verdict rouge sur les deux
+  moteurs : un seul `load`, celui de la feuille de A, et zéro demande.
+- **L'exposition, mesurée sur `main`** : 11 versions sur 151 touchent la feuille en 30 jours, avec des
+  écarts jusqu'à 33 jours (18/09 → 21/10). Un appareil touché gardait donc des styles périmés des jours
+  à des semaines, jusqu'à la prochaine version qui change la feuille. La fenêtre qui le déclenche est
+  étroite (quelques millisecondes entre la page et sa feuille, ou entre `sw.js` et l'installation) ;
+  l'effet, lui, dure.
+- **Le remède** (les deux lignes « la feuille » du tableau ci-dessus) : l'empreinte `integrity` de la
+  feuille SERVIE sur son `<link>`, une reprise, la minification dans le build. Le worker n'a pas
+  bougé : `estVersionne` couvre `.css`, et sa branche `reload` (⑧) range la feuille neuve avant de
+  répondre.
+- ⚠️ **SANS REPRISE, L'EMPREINTE SERAIT PIRE QUE LE DÉFAUT** : une feuille refusée laisse la page SANS
+  styles (mutation « sans reprise », tableau ci-dessous). La reprise est une écoute de `error` en
+  capture sur le document, posée par un petit script JUSTE AVANT le `<link>` : son échec part avant que
+  le moindre script du `<body>` ne s'exécute (ils attendent la feuille, « script-blocking style sheet »),
+  un écouteur posé plus loin ne le verrait jamais. ⚠️ Pas une écoute de `error` quelconque comme
+  marqueur : telemetry.js et platform.js en posent plus haut dans le `<head>` ; le contrôle cherche
+  l'expression de la reprise, `^styles\.css\?v=`, qui survit à la minification.
+- ⚠️ **LE SECOURS D'ABORD, LA REDEMANDE ENSUITE.** Au refus, la reprise pose TOUT DE SUITE, à la place
+  du `<link>` refusé, un `<link>` de secours SANS empreinte : la page prend la feuille que gardent les
+  caches (celle de l'autre version) au lieu de rester nue. Le secours réglé, elle redemande l'adresse
+  (`fetch(…, { cache: "reload" })`, corps lu jusqu'au bout) et pose JUSTE APRÈS le secours un `<link>`
+  AVEC l'empreinte : chargé, il retire le secours ; refusé (pendant la bascule elle-même, le site sert
+  encore A), il se retire, et la page garde le secours — la feuille de A, comme avant ce lot. ⑨ ⑩
+  assertent la suite exacte des événements : refus, secours chargé, PUIS le `<link>` avec empreinte.
+  La première version faisait l'inverse — redemander, puis poser — et la relecture `audit-passio` l'a
+  arrêtée : un réseau qui cale après le refus (tunnel, portail captif) laissait la page SANS styles
+  aussi longtemps que la redemande ne se réglait pas, et même sur un réseau sain chaque reprise
+  montrait un éclair sans styles — mesuré sous charge, médiane 0,2 à 0,9 s, au plus 1,7 s. À l'inverse
+  des scripts (qui s'arrêtent : jamais deux versions de code dans la même page), une feuille de
+  l'autre version un instant n'est qu'un défaut visuel ; l'absence de styles serait pire. Rien ne
+  s'installe : chaque ouverture repart du `<link>` avec empreinte, qui répare dès que le site sert la
+  bonne feuille.
+- ⚠️ **TOUT SE POSE À LA PLACE DU `<link>` D'ORIGINE, JAMAIS EN FIN DE `<head>`** (`replaceChild`, puis
+  `insertBefore(…, secours.nextSibling)`) : l'ordre des feuilles fait la cascade, et app-05 ajoute au
+  `<head>`, APRÈS la feuille, les `<style>` des réglages de l'utilisateur (`#passio-color-override`,
+  `-ff-`, `-fs-`, `-rd-`). Une feuille rajoutée derrière eux effacerait thème, police, taille et
+  arrondi choisis. ⑨ ⑩ vérifient que le `<link>` final suit directement le script de la reprise — et,
+  en prémisse, qu'un élément le suit (sans lui, un `<link>` rajouté en fin de `<head>` serait lui aussi
+  juste après la reprise, et la vérification ne distinguerait rien).
+- ⚠️ **L'EMPREINTE N'EST BONNE QUE SUR LES OCTETS SERVIS — LA MINIFICATION PASSE DANS LE BUILD** (étape
+  2 bis), comme terser la veille : `cleancss -o <sortie> <entrée>`, clean-css-cli 5.6.3 du lockfile.
+  Vérifié avant de pousser, deux fois : sur `7dade60f` puis, rebasé, sur `4e1d8ed1` (#820 venait de
+  changer la feuille), la feuille minifiée PAR LE BUILD est octet pour octet celle que servait la
+  production (231 511 octets, même sha384, sous `?v=a6881b4c96` puis `?v=709d2be1cc`), et les 9
+  scripts aussi : la mise en ligne ne fait refuser à aucun appareil ce qu'il garde. Le buildId change
+  une fois (la page porte la reprise et l'empreinte : `3d8e98bb12ad` → `7e41f8b20efe` sur `4e1d8ed1`),
+  identique minifié ou non. L'étape « Minify styles.css » du déploiement est RETIRÉE : une seconde
+  minification après le contrôle ferait refuser la feuille à tout le monde.
+- ⚠️ **L'EMPREINTE NE DOUBLE PAS LE TÉLÉCHARGEMENT** (mesuré, ① : routes posées, donc cache HTTP coupé —
+  un second téléchargement atteindrait le serveur) : UNE demande `style`, et un seul `load`, avec
+  l'empreinte, sur les deux moteurs. Le pré-chargement spéculatif lit l'empreinte avec l'adresse.
+- ⚠️ **UN `update()` PEUT SE FONDRE DANS UNE AUTRE TÂCHE DU WORKER** : la toute première passe de ⑩ sous
+  Chromium a vu le worker de C ne jamais s'installer (30 s, le cache de A seul) ; les suivantes non. La
+  prémisse de ⑧ et ⑩ redemande désormais la mise à jour à chaque tour (`installerWorker`), comme
+  `majSilencieuse` toutes les 60 s.
+- **Mutations, chacune mesurée sur les deux moteurs** (la reprise « secours d'abord » ; fichiers restaurés
+  et comparés par empreinte après chacune ; « au repos » = une passe, « sous charge » = ×9 sur trois
+  workers) :
+
+  | Pièce retirée | Chromium | WebKit |
+  |---|---|---|
+  | l'empreinte du `<link>` | ⑨ ⑩ rouges : la feuille de A s'applique, un seul `load`, zéro demande | ⑨ ⑩ rouges |
+  | la reprise | ⑨ ⑩ rouges : page SANS styles, bascule comprise | ⑨ ⑩ rouges |
+  | le secours (il porte l'empreinte, donc il est refusé aussi) | ⑨ ⑩ rouges : page sans styles jusqu'au `<link>` juste, et pendant toute la bascule | ⑨ ⑩ rouges |
+  | `cache: "reload"` sur la redemande | ⑨ ⑩ rouges : la redemande relit le cache, le `<link>` avec empreinte est refusé, la page garde la feuille de A | ⑨ ⑩ rouges |
+  | la redemande (le `<link>` avec empreinte posé dès le secours chargé) | ⑨ ⑩ rouges, même issue | ⑨ ⑩ rouges |
+  | le retrait du secours quand le `<link>` juste se charge | ⑨ ⑩ rouges : deux feuilles dans la page | ⑨ ⑩ rouges |
+  | le retrait du `<link>` refusé | ⑨ rouge (pendant la bascule, deux `<link>`) ; ⑩ vert (il ne joue pas la bascule) | idem |
+  | la place du secours (en fin de `<head>`) | ⑨ ⑩ rouges — **verts tant que le banc ne posait rien après la feuille**, voir ci-dessous | ⑨ ⑩ rouges |
+  | la place du `<link>` juste (en fin de `<head>`, derrière les surcharges d'app-05) | ⑨ ⑩ rouges | ⑨ ⑩ rouges |
+  | la branche `reload` du worker | ⑩ rouge : le worker resert son cache | ⑩ rouge |
+  | l'attente du rangement dans le worker | vert au repos ; sous charge **2 rouges sur 9** | vert au repos ; sous charge **1 rouge sur 9** |
+  | la lecture du corps avant le `<link>` juste | vert au repos ; sous charge **1 rouge sur 18** | vert au repos ; sous charge **3 rouges sur 18** |
+  | attendre que le secours soit réglé avant de redemander | vert au repos et sous charge (18/18) | **rouge** : 1 sur 2 au repos, 9 sur 18 sous charge — la prémisse rougit, le secours repart au SERVEUR : la feuille est téléchargée deux fois |
+  | le remplacement de l'empreinte de la feuille (étape 2 bis) | `integrite-app.test.mjs` ③ ④ rouges | — |
+  | la comparaison de la feuille dans le contrôle | `integrite-app.test.mjs` ② rouge | — |
+  | l'exigence de la reprise dans le contrôle | `integrite-app.test.mjs` ② rouge | — |
+
+  Trois pièces ne se voient que sous charge, ou que sous WebKit — la leçon de #815, de nouveau.
+- ⚠️ **UNE VÉRIFICATION DE PLACE QUI NE DISTINGUAIT RIEN.** La mutation « secours en fin de `<head>` »
+  est d'abord restée verte sous Chromium : au moment du refus, la feuille est encore le dernier élément
+  du `<head>` (le refus part avant les scripts du `<body>`), l'y rajouter à la fin revient au même.
+  En production aussi, au refus — mais pas plus tard, quand le chargeur a posé ses preloads et app-05
+  ses `<style>` : c'est là que le `<link>` juste arrive. ⑨ ⑩ posent désormais un élément juste après la
+  feuille dès que le parseur l'insère (`marquerApresFeuille`) ; les deux mutations de place rougissent
+  sur les deux moteurs. Relevé en prémisse par la relecture `audit-passio`, prouvé par la mutation.
+- **Sous charge, le remède intact** (⑨ ⑩ ×9, trois workers) : 18/18 sous Chromium, 18/18 sous WebKit,
+  toujours la même suite — C rétabli : refus, secours chargé, `<link>` juste chargé ; pendant la
+  bascule : refus, secours chargé, `<link>` juste refusé. Annotation `feuille` du rapport :
+  **la page reste sans styles** du refus au secours, médiane 26 à 105 ms sous Chromium et 136 à 143 ms
+  sous WebKit, au plus 0,3 s (la première conception : médiane 0,2 à 0,9 s, au plus 1,7 s, et sans
+  borne si le réseau calait) ; elle porte ensuite **la feuille de l'autre version** jusqu'au `<link>`
+  juste, médiane 171 à 334 ms, au plus 0,8 s. Une fois par appareil après un retour arrière, au lieu
+  de semaines de styles périmés. Masquer la page le temps de la reprise a été écarté : une page
+  masquée dont la reprise ne se règle pas serait bien pire.
+- **⑤ est intermittent, ANTÉRIEUREMENT à ce lot** — mesuré dans les mêmes conditions (Chromium, ⑤ ×12, un
+  worker) : 1 rouge sur 12 avec le `build.js` d'avant ce lot, 2 sur 12 avec lui, la même signature
+  (`loading` au lieu d'`interactive` : app-01 tourne avant la fin du parsing). ⑤ n'a pas été touché.
 
 **Ce qui reste.** Mesurer sur un vrai iPhone (session persistante) ce que son worker retrouve dans le
 cache réseau — le lot n'en dépend plus ; un profil WebKit persistant (`launchPersistentContext`, comme
-⑥) en donne déjà une approximation d'ici. `styles.css?v=` après un retour arrière (ci-dessus) : une
-reprise pour la feuille de style, puis son empreinte, sa minification dans le build. La première installation
+⑥) en donne déjà une approximation d'ici. (`styles.css?v=` après un retour arrière : fermé le
+2026-11-10, ci-dessus.) Les deux reprises, scripts et feuille, ne laissent aucune trace au pilotage :
+les écoutes `error` de telemetry.js et platform.js sont sur `window`, en remontée, et ne voient pas
+l'échec d'un `<script>` ou d'un `<link>` — un traitement hors CI qui casserait une empreinte pour tout
+le monde ne se verrait qu'à l'œil (relevé par `audit-passio`). ⑤ (antérieur, mesuré ci-dessus) :
+app-01 tourne parfois avant la fin du parsing ; or des éléments du `<body>` suivent le chargeur
+(`#pwa-overlay`, `#convEmojiPanel`) — mesurer en production si le 9ᵉ script et `boot()` peuvent
+partir avant eux. La première installation
 sous WebKit (ci-dessus) : la page pourrait confier ses scripts au worker
 plutôt que de le laisser les redemander. Le résidu des minuteurs de démarrage : les réarmer sur
 `passio:app-ready` (app-04 ×2, app-08), après avoir vérifié que deux rejeux rapprochés d'une même file
@@ -2513,9 +2628,29 @@ n'envoie rien ») — trouvée là par hasard, ici par la sonde. Remède (Playwr
 `pwa-maj-pendant-appel` ni `sw-page-revalidee`, dont le VRAI worker est le sujet. Après : 180/180,
 **0 requête partie**. Banc unitaire ⑦ : toute suite du socle WebKit qui pose les routes d'isolation
 bloque le worker (réinjection faite sur `cadrage`).
-⚠️ **À REMESURER SUR 24 H PLEINES** après la fusion de la PR de suite, avec la même requête
-(`edge_logs`, `request.cf.asOrganization` préfixé « Microsoft », groupé par famille et par
-`request.headers.cf_connecting_ip`), et le nombre de runs « CI & Deploy » de la fenêtre.
+**SUR 24 H PLEINES APRÈS LA PR DE SUITE (#804, fusionnée le 09/11 à 21:05 UTC) — même requête,
+fenêtre du 09/11 21:10 au 10/11 21:10 UTC, relevée le 12/11** : **37 200 requêtes reçues par la
+production, dont 4 520 du réseau Azure — 12,2 %** (68,1 % avant). Le dépôt a tourné **57 runs « CI &
+Deploy »** dans la fenêtre (39 de PR, 18 sur `main`), plus de quatre fois les 13 de la fenêtre de
+référence : **≈ 79 requêtes de production PAR RUN, contre ≈ 2 860 — −97 %**. Au rythme d'avant, ces
+57 runs en auraient envoyé ≈ 163 000.
+Ce qui reste est, pour l'essentiel, ce qui parle au vrai projet PAR CONSTRUCTION : les gates `dist`
+(démarrage réel de l'artefact et sa télémétrie : `passions`, `profiles`, `posts`, `events`,
+`fil_compteurs`, `notifications`), `authz-critical` (comptes réels — `auth/v1/admin` 60, soit
+≈ 30 comptes en 24 h —, dépôts dans le stockage 90, écritures de profils 86), le contrat désigné de
+`telemetrie-preauth` (avec la télémétrie réelle des gates `dist` : 199 lots), et des lectures de
+comptage des scripts Node (HEAD `stories` / `profiles`).
+⚠️ **UN RÉSIDU NEUF, PROPRE À WEBKIT : 320 PRÉ-REQUÊTES CORS** (`OPTIONS /rest/v1/passions`,
+≈ 6 par run) contre 6 `GET` réels sur la même table. Sous WebKit, la pré-requête d'une requête que la
+route sert part quand même au serveur : la requête est servie par le miroir, son `OPTIONS` ne l'est
+pas. Aucune donnée ne revient (une pré-requête n'a pas de corps), mais c'est une requête comptée ;
+Chromium, lui, ne la laisse pas partir. S'y ajoutent ≈ 90 lectures WebKit réelles en 24 h
+(`profiles` 24, `posts` 22, `fil_compteurs` 18…), compatibles avec `pwa-maj-pendant-appel`, qui garde
+EXPRÈS le vrai service worker (son sujet) — donc des requêtes qui, une fois le worker aux commandes,
+échappent aux routes. Ni l'un ni l'autre ne vaut un lot tant que ces chiffres restent à ce niveau.
+⚠️ **LA PART EN POURCENTAGE BAISSE MOINS VITE QUE LE PAR-RUN** (68,1 % → 12,2 % pour −97 % par run) :
+la CI a tourné quatre fois plus, et le reste du trafic a lui aussi changé. Le bon indicateur reste
+**par run**, rapporté au nombre de runs de `gh run list --created`.
 
 **LES SUITES À COMPTES RÉELS, AU STRICT NÉCESSAIRE.** Une seule vise encore la production :
 `authz-critical` (la barrière RLS de la production ; le reste du projet `prod` tourne sur le staging) —
@@ -2590,3 +2725,80 @@ rien figé (« Publier dans » suit toujours la passion). Réinjection : écritu
   `animationend` et `transitionend` (capture, passifs) : un réveil coûte O(1), le tour reste borné par
   son rendez-vous. Leçon : **corriger une boucle de réveils, c'est aussi chercher qui en vivait** —
   relancer les suites des AUTRES consommateurs des mêmes observateurs, pas seulement la sienne.
+
+## 🔂 LE CHARGEUR DES 9 SCRIPTS : CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10)
+
+`scripts/build.js` (chargeur du bloc app), `tests/e2e/app-scripts-par-fichier.spec.js` ⑨. Trouvé par l'audit de
+stabilisation du 10/11 (STAB-01), dans les erreurs de la production, pas dans le code.
+
+**Le fait.** Le 10/11 à 12:18 UTC (version `7dade60f`), `client_errors` 211 à 220 et 19 `window_error` en
+télémétrie : « Cannot read properties of undefined (reading '0') », pile `suivant` ← `s.onload`, colonne
+199000 de la page — la lecture `scripts[i][0]`. Deux pages, toutes deux arrivées par `?fbclid=…`, écran
+2000 × 2000 et plateforme Linux pour les deux, l'une sous un agent « Chrome Windows » (agent maquillé) : des
+robots de prévisualisation. L'application y avait démarré
+normalement ; ~25 s plus tard les `load` des 9 scripts ont été rejoués (la mesure `page_load` de la même page est
+repartie au même instant, à l'identique). Chaque `onload` refaisait `i++` puis `suivant()` : `i` passait 9, la garde
+`i === scripts.length` ne tenait plus, et la lecture levait — 9 erreurs par page.
+
+**La cause.** Les deux écouteurs du chargeur restaient armés après avoir servi. Rien, dans un navigateur ordinaire,
+ne rejoue un `load` ; mais ce chargeur est la seule chose entre une page et son application, et il ne doit dépendre
+d'aucune politesse de son hôte.
+
+**Le correctif.** `onload` et `onerror` se désarment à leur premier appel (`s.onload = s.onerror = null`). La reprise
+d'un échec pose ses écouteurs sur le NOUVEL élément : rien d'autre ne change, et le bloc app est le même à l'octet
+(`appHash` inchangé, seul le `buildId` de la page bouge).
+
+**Mesuré.** Reproduit sur l'artefact de production reconstruit localement (identique à l'octet à la production) :
+9 `load` rejoués → 9 erreurs, au message de la production. Le cas ⑨ rejoue 9 `load` et 9 `error` : 18 erreurs avant
+(un `error` rejoué retirait le script déjà exécuté, puis sa reprise levait une seconde plus tard), 0 après, 9 scripts
+toujours en place, aucune redemande, un seul `passio:app-ready`. Suite complète verte sous Chromium (①–⑨) et WebKit.
+
+⚠️ **Ce que ce lot ne fait pas.** Ces deux pages n'étaient pas classées `robot` (`meta.trafic` vide : ni
+`navigator.webdriver`, ni agent connu) : elles restent comptées dans l'audience. Reconnaître ces robots est une
+décision de mesure, laissée au registre de l'audit (STAB-03).
+
+---
+
+## 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
+
+**Le défaut (audit de stabilisation du 10/11, ETAT-01, P1).** La file `passio_pending_user_state_<uid>` garde le
+dernier blob d'état qui n'a pas abouti : elle est posée à chaque masquage de page « sale », et le `.then` du keepalive
+ne la retire pas quand la page meurt. Au démarrage, `supaLoadUserState` lit la ligne serveur, l'applique si elle est
+plus récente, **et avance `state._stateSyncedAt` jusqu'à elle**. Puis `_flushPendingUserState` rejouait la file avec
+`UPDATE … WHERE updated_at <= state._stateSyncedAt`, soit « updated_at <= updated_at » : la condition était toujours
+vraie. Suite d'usage ordinaire, sans aucune concurrence : le téléphone ferme l'application avec un état de 09:00 en
+file ; l'ordinateur travaille à 10:00 ; le téléphone redémarre à midi. Le serveur, puis les deux appareils,
+reviennent à 09:00. Perdus : brouillons, réglages du fil, passions archivées, désinscriptions.
+
+**Le correctif.** La base voyage avec le blob : `_queuePendingUserState` note `base = state._stateSyncedAt` au moment
+de la mise en file, et le rejeu compare à elle (`_baseDeLaFile`).
+- Une file d'avant le correctif n'a pas de base : on prend le repère que son blob porte (`data._stateSyncedAt`).
+- Sans base du tout, on compare à l'époque : le blob peut créer une ligne absente, jamais en remplacer une.
+- « 0 ligne + ligne existante » jette la file, et le dit à `diagLog` (`rejeu_etat_jete`).
+
+**Le piège trouvé en relecture (agent `audit-passio`, le même jour), avant fusion.** Comparer à la seule base
+fait perdre des gestes à un appareil SEUL. Le beacon (`return=minimal`) et la sauvegarde dont la réponse s'est
+perdue écrivent la ligne SANS avancer le repère. Une file posée ensuite porte donc une base plus ancienne que la
+ligne que l'appareil a lui-même écrite, et le rejeu la jetait. Désormais chaque blob envoyé porte une estampille
+`_ecriture` (`_estampillerEcriture`), dont l'appareil garde les 30 dernières (`passio_mes_ecritures_<uid>`). Quand la
+ligne a bougé depuis la base mais que sa dernière écriture est l'une des nôtres, le rejeu passe, toujours en
+compare-et-remplace sur la valeur relue. Le chemin « insert » relit aussi `updated_at` au lieu de marquer l'heure
+locale de la file.
+
+Verrou : `tests/e2e/user-state-rejeu-anciennete.spec.js` (6). Le cas ⑥ joue la vraie séquence : beacon, sauvegarde
+hors ligne, lecture, rejeu. Mutations : remettre le repère vivant rougit ①, ③ et ④ ; retirer la reconnaissance de
+ses propres écritures rougit ⑥.
+
+**Ce que ça ne règle pas.** `updated_at` reste l'heure de DÉBUT de transaction (`now()`), pas une révision monotone :
+deux écritures réellement concurrentes peuvent encore s'ordonner à l'envers (SYNC-CLOCK-012). Une colonne `revision`
+réglerait ce cas, mais au prix d'une migration ; elle n'est pas faite ici.
+
+**ETAT-09, même lot.** Un commentaire d'activité refusé par la base restait affiché sous un identifiant `ec_local_…`,
+persisté et vu de son seul auteur. Désormais, pour un compte : le commentaire est retiré, le texte revient dans le
+champ et un toast « Commentaire non envoyé » prévient la personne (`_retirerCommentaireEvtNonEnvoye`, app-07). Un
+visiteur garde sa copie locale, comme pour SRV-03.
+
+**PARC-01, même lot.** Le « j'aime » d'une activité jetait le verdict de `supaSetEventLike` et notifiait l'organisateur
+tout de suite. Il passe maintenant par la porte visiteur (`requireAuthentication("aimer")`). L'organisateur n'est
+notifié qu'après un succès, et un refus pour un compte rétablit l'état d'avant (« « J'aime » non enregistré »).
+Verrou : `tests/e2e/commentaire-activite-echec.spec.js` (5). Mutations : rougissent ① et ④.

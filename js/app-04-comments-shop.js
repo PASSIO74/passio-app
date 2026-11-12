@@ -2400,7 +2400,7 @@ function openCommentOptions(threadId, commentId, mine, event) {
     rows += _cmtRow("📌", _estEpingle(threadId, c) ? "Retirer l'épingle" : "Épingler en haut", "pin");
   }
   if (isMine) {
-    if (!_looksLikeMediaUrl(c.text || c.content || "")) rows += _cmtRow("✏️", "Modifier", "edit");
+    if (_commentaireModifiable(commentId, c.text || c.content || "")) rows += _cmtRow("✏️", "Modifier", "edit");
     rows += _cmtRow("🗑", "Supprimer", "delete", true);
   } else {
     rows += _cmtRow("🔕", "Masquer ce commentaire", "hide");
@@ -2463,22 +2463,64 @@ function deleteCommentEntry(threadId, commentId, localOnly) {
   // en place, sans reconstruire tout le fil.
   if (thread.kind === "post") { try { _patchPostCommentCount(threadId); } catch(e){} }
   _refreshCommentThreadUI(threadId);
-  if (!localOnly) {
-    _supaDeleteCommentRow(commentId);
-    toast("Commentaire supprimé");
-  }
+  if (localOnly) return;
+  // ⚠️ LOT-1 (audit UX/UI du 2026-11-10, FIL-C06) : « Commentaire supprimé »
+  // partait AVANT la réponse du serveur, qui n'était jamais lue. Un refus (RLS,
+  // panne, hors ligne) laissait la ligne en base : le commentaire « supprimé »
+  // revenait à la relecture suivante. On annonce désormais le VERDICT, et un
+  // refus remet le commentaire à sa place.
+  _supaDeleteCommentRow(commentId).then(function (v) {
+    if (v && v.ok) { toast("Commentaire supprimé"); return; }
+    if (retire) {
+      var t2 = _findCommentThread(threadId);
+      if (t2 && !t2.comments.some(function (c) { return c.id === retire.id; })) {
+        t2.comments.splice(Math.min(Math.max(idx, 0), t2.comments.length), 0, retire);
+        if (retire.fromSupabase && t2.kind === "post") {
+          var vuRet = new Set();
+          ((typeof _copiesDiscussion === "function") ? _copiesDiscussion(threadId, null) : []).forEach(function (c) {
+            if (!c || vuRet.has(c)) return; vuRet.add(c);
+            if (Number.isSafeInteger(c.commentsTotal)) c.commentsTotal++;
+          });
+        }
+        if (typeof t2.save === "function") t2.save();
+        if (t2.kind === "post") { try { _patchPostCommentCount(threadId); } catch (e) {} }
+        _refreshCommentThreadUI(threadId);
+      }
+    }
+    toast(v && v.reseau ? "Hors connexion : commentaire non supprimé. Réessaie une fois en ligne."
+                        : "Le commentaire n'a pas pu être supprimé. Réessaie.", "error");
+  });
 }
+// Rend le verdict de la suppression : { ok: true } (supprimé, ou rien à
+// supprimer côté serveur : commentaire local, visiteur, démonstration),
+// { ok: false, reseau } sinon. Une suppression qui ne touche AUCUNE ligne alors
+// que la ligne existe encore est un refus (RLS) : le SDK ne lève pas dessus.
 async function _supaDeleteCommentRow(commentId) {
   try {
-    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return { ok: true, local: true };
     var table = null;
     if (/^ec_/.test(commentId)) table = "event_comments";
     else if (/^lc_/.test(commentId)) table = "cdv_live_comments";
     else table = "post_comments"; // c_… et autres
-    await supa.from(table).delete().eq("id", commentId);
+    var r = await supa.from(table).delete().eq("id", commentId).select("id");
+    if (r && r.error) {
+      if (typeof diagLog === "function") diagLog("cmt_suppression: " + (r.error.message || r.error.code));
+      return { ok: false, reseau: typeof estEchecReseau === "function" && estEchecReseau(r.error) };
+    }
+    if (!r || !Array.isArray(r.data) || !r.data.length) {
+      // Zéro ligne : déjà partie (succès) ou refusée (la ligne est toujours là).
+      var reste = await supa.from(table).select("id").eq("id", commentId).limit(1);
+      if (reste && !reste.error && Array.isArray(reste.data) && reste.data.length) {
+        if (typeof diagLog === "function") diagLog("cmt_suppression: 0 ligne, refus");
+        return { ok: false, reseau: false };
+      }
+    }
     // Nettoie aussi les interactions liées (best-effort, RLS owner).
     try { await supa.from("comment_interactions").delete().eq("comment_id", commentId); } catch(e) {}
-  } catch(e) {}
+    return { ok: true };
+  } catch(e) {
+    return { ok: false, reseau: typeof estEchecReseau === "function" ? estEchecReseau(e) : true };
+  }
 }
 
 // Suis-je le propriétaire du fil (auteur du post / organisateur événement /
@@ -2491,11 +2533,45 @@ function _isThreadOwner(threadId) {
   return false;
 }
 // ── #10 ÉDITION d'un commentaire (façon IG/FB) ── éditeur inline + sync.
+// ⚠️ UN COMMENTAIRE D'ACTIVITÉ NE SE MODIFIE PAS (SRV-03, audit de stabilisation du
+// 2026-11-10). Mesuré au canal ① : `event_comments` n'a ni colonne `content` ni policy
+// UPDATE. « Modifier » y était proposé, l'écran disait « Commentaire modifié », et le
+// texte ne quittait jamais l'appareil. Seule autorité du menu ET de l'édition directe.
+// (`lc_` : commentaires des lives du Carnet, retirés par ADR-011, table sans droit.)
+function _commentaireModifiable(commentId, texte) {
+  if (/^(ec_|lc_)/.test(String(commentId || ""))) return false;
+  return !_looksLikeMediaUrl(texte || "");
+}
+
+// L'enregistrement d'une modification : optimiste, puis LE VERDICT DE LA BASE décide
+// (SRV-03). Sur un refus ou 0 ligne, l'ancien texte revient et c'est dit.
+async function _enregistrerModificationCommentaire(found, threadId, commentId, v, cur) {
+  var node = found.node;
+  var avantEdite = !!node.edited;
+  var sauver = function () {
+    if (found.thread && typeof found.thread.save === "function") found.thread.save(); else { try { saveState(); } catch (e) {} }
+  };
+  node.text = v; node.content = v; node.edited = true;
+  sauver();
+  try { _refreshCommentThreadUINow(threadId); } catch (e) {}
+  var ok = await _supaUpdateCommentRow(commentId, v);
+  if (!ok) {
+    node.text = cur; node.content = cur; node.edited = avantEdite;
+    sauver();
+    try { _refreshCommentThreadUINow(threadId); } catch (e) {}
+    toast("Le commentaire n'a pas été modifié — réessaie", "warning");
+    return false;
+  }
+  toast("Commentaire modifié");
+  return true;
+}
+
 function editCommentEntry(threadId, commentId) {
   var found = (typeof _findCommentNode === "function") ? _findCommentNode(threadId, commentId) : null;
   if (!found || !found.node) return;
   var node = found.node;
   if (_looksLikeMediaUrl(node.text || node.content || "")) { toast("Un GIF ne peut pas être modifié"); return; }
+  if (!_commentaireModifiable(commentId, node.text || node.content || "")) { toast("Ce commentaire ne peut pas être modifié"); return; }
   var el = document.querySelector('[data-commentid="' + commentId + '"] .comment-text');
   if (!el) return;
   var cur = node.text || node.content || "";
@@ -2515,23 +2591,24 @@ function editCommentEntry(threadId, commentId) {
     var v = (ta.value || "").trim();
     if (!v) { toast("Le commentaire ne peut pas être vide"); return; }
     if (v === cur) { _refreshCommentThreadUINow(threadId); return; }
-    node.text = v; node.content = v; node.edited = true;
-    if (found.thread && typeof found.thread.save === "function") found.thread.save(); else { try { saveState(); } catch (e) {} }
-    _supaUpdateCommentRow(commentId, v);
-    _refreshCommentThreadUINow(threadId);
-    toast("Commentaire modifié");
+    _enregistrerModificationCommentaire(found, threadId, commentId, v, cur);
   };
 }
+// Rend le VERDICT : `true` si la base a gardé le texte (ou s'il n'y a pas de base :
+// commentaire local, mode hors Supabase), `false` sur un refus, une panne ou 0 ligne.
 async function _supaUpdateCommentRow(commentId, text) {
   try {
-    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
-    var table = /^ec_/.test(commentId) ? "event_comments" : /^lc_/.test(commentId) ? "cdv_live_comments" : "post_comments";
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return true;
+    // Un visiteur n'a rien en base : son commentaire vit sur l'appareil, le refus serveur
+    // attendu n'est pas un échec (relu à la contre-revue du 2026-11-10).
+    if (typeof _compteAuthReel === "function" && !_compteAuthReel()) return true;
+    if (!/^[A-Za-z0-9_-]{1,120}$/.test(String(commentId || "")) || /^(ec_|lc_)/.test(commentId)) return false;
     // Le SDK ne LÈVE PAS sur un refus RLS : depuis le 2026-09-11 l'UPDATE de
-    // post_comments porte un WITH CHECK (auteur du post bloqueur → refus), et
-    // une édition refusée resterait « Commentaire modifié » à l'écran.
-    var r = await supa.from(table).update({ content: text }).eq("id", commentId);
-    if (r && r.error) { try { toast("Modification refusée"); } catch (e) {} }
-  } catch (e) {}
+    // post_comments porte un WITH CHECK (auteur du post bloqueur → refus). Et un
+    // UPDATE qui ne touche aucune ligne ne lève pas non plus : on compte les lignes.
+    var r = await supa.from("post_comments").update({ content: text }).eq("id", commentId).select("id");
+    return _writeVerdict(r, { expectRows: true, label: "commentaire (modification)" }).ok;
+  } catch (e) { console.warn("commentaire (modification) :", e && e.message); return false; }
 }
 // ── #11 ÉPINGLER un commentaire (le propriétaire du fil le remonte en tête) ──
 // Un seul épinglé par fil. Écrit dans comment_interactions (kind « pin », charge
@@ -4369,6 +4446,19 @@ async function openUserProfile(authorId, source) {
     return;
   }
 
+  // ⚠️ À PARTIR D'ICI, L'IDENTIFIANT EST CELUI DU COMPTE RÉSOLU, JAMAIS LA VALEUR REÇUE
+  // (2026-11-10, CLI-01 de l'audit de stabilisation). Le compte peut avoir été retrouvé
+  // PAR PSEUDO (plus haut), et un pseudo n'est borné par la base qu'en longueur : un
+  // guillemet y passe. La valeur reçue restait pourtant l'identifiant de toute la fiche —
+  // écrite brute dans l'attribut `id` du bouton « Suivre », où un pseudo qui ferme le
+  // guillemet puis écrit son propre attribut de clic posait SON code sur le bouton (le
+  // premier attribut gagne), et passée telle quelle au suivi,
+  // à la messagerie et aux lectures `author_id`, qui ne trouvaient rien.
+  // (Ne pas recopier ici le début littéral de cet attribut : `suivre-compte-prive` ⑦
+  // cherche sa PREMIÈRE occurrence dans ce fichier pour lire le gabarit.)
+  // Verrou : tests/e2e/profil-visite-identifiant-hostile.spec.js.
+  if (user.id && user.id !== authorId) authorId = user.id;
+
   // 🔄 Charger le profil COMPLET depuis Supabase (toujours, même si user déjà
   // trouvé en local) : passions enrichies (bio/photos), couverture, réseaux
   // sociaux, mode privé — pour reproduire le MÊME visuel que « mon profil ».
@@ -4616,7 +4706,7 @@ async function openUserProfile(authorId, source) {
     <!-- BOUTONS -->\
     <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
+      <button class="btn ghost" id="followBtn_' + escapeHtml(authorId) + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
     \
@@ -7525,7 +7615,9 @@ function _retryMsg(convId, msgId) {
   _setMsgStatus(convId, msgId, "sending");
   // Reconstruit depuis le texte : l'auteur est `m.de`, celui inscrit à
   // l'écriture — et il vient d'être confronté au compte courant ci-dessus.
-  _sendTextToSupa(convId, msgId, _withSenderMeta(m.text || ""), m.de);
+  // `envoi` : le contenu exact d'un GIF ou d'une position (LOT-1, MSG-C57) — sans
+  // lui, un renvoi les reconstruirait en simple texte.
+  _sendTextToSupa(convId, msgId, _withSenderMeta(m.envoi || m.text || ""), m.de);
 }
 
 // Vide la file d'attente (à la reconnexion ou au boot).

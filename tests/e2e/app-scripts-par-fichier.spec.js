@@ -62,8 +62,11 @@ test.use({ proxy: PROXY_MORT });
 const RACINE = path.join(__dirname, "..", "..");
 const UID_MOI = "6d0c2b9e-41f7-4a8e-9b3d-5e2f1a7c8d90";
 const SOURCE_MODIFIEE = "app-04-comments-shop.js";
+// La règle que C ajoute à la feuille de style de A (⑨ ⑩) : lue par `getComputedStyle`.
+const MARQUE_FEUILLE_C = '\n:root{--passio-version-feuille:"C"}\n';
 
-// ── Les deux artefacts : B ne diffère de A que par UN fichier du bloc ─────────
+// ── Les artefacts : B ne diffère de A que par UN fichier du bloc, C que par la
+//    feuille de style ───────────────────────────────────────────────────────────
 let artefacts = null;
 let serveur = null;
 // `basculeApresPage` : le dossier que sert le site JUSTE APRÈS la page (un retour
@@ -80,6 +83,9 @@ function construire(arbre, sortie) {
   };
   delete env.GITHUB_SHA;
   delete env.PASSIO_BUILD_TIME;
+  // L'arbre jetable n'a pas de node_modules : un build qui minifierait (variable héritée
+  // du poste ou d'une passe « Gates artefact ») n'y trouverait ni terser ni clean-css.
+  delete env.PASSIO_MINIFIER_APP;
   execFileSync(process.execPath, ["scripts/build.js", path.join(sortie, "index.html")], { cwd: arbre, env, stdio: "pipe" });
   for (const f of ["manifest.json", "icon-192.png", "icon-512.png"]) fs.copyFileSync(path.join(arbre, f), path.join(sortie, f));
   const page = fs.readFileSync(path.join(sortie, "index.html"), "utf8");
@@ -88,7 +94,7 @@ function construire(arbre, sortie) {
   return { release: JSON.parse(fs.readFileSync(path.join(sortie, "release.json"), "utf8")), scripts, css };
 }
 
-function deuxArtefacts() {
+function construireArtefacts() {
   const arbre = fs.mkdtempSync(path.join(os.tmpdir(), "passio-app-scripts-"));
   fs.mkdirSync(path.join(arbre, "scripts"));
   for (const d of ["js", "data"]) fs.cpSync(path.join(RACINE, d), path.join(arbre, d), { recursive: true });
@@ -97,10 +103,17 @@ function deuxArtefacts() {
   }
   const a = path.join(arbre, "dist-a");
   const b = path.join(arbre, "dist-b");
+  const c = path.join(arbre, "dist-c");
   const A = construire(arbre, a);
+  // C : la feuille de style de A plus UNE règle, les 9 scripts de A (⑨ ⑩).
+  const feuille = path.join(arbre, "styles.css");
+  const feuilleA = fs.readFileSync(feuille);
+  fs.appendFileSync(feuille, MARQUE_FEUILLE_C);
+  const C = construire(arbre, c);
+  fs.writeFileSync(feuille, feuilleA);
   fs.appendFileSync(path.join(arbre, "js", SOURCE_MODIFIEE), '\nwindow.__versionServie = "B";\n');
   const B = construire(arbre, b);
-  return { arbre, a, b, A, B };
+  return { arbre, a, b, c, A, B, C };
 }
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png" };
@@ -135,7 +148,7 @@ function servir() {
     // répondu, quelle que soit l'empreinte demandée — Netlify ignore le `?v=` (⑦ ⑧).
     // `dest` (`Sec-Fetch-Dest`) : `script` pour le preload et la balise, `empty` pour un
     // `fetch` — la redemande de la reprise, avec ou sans `cache: "reload"` (⑦ ⑧).
-    const version = dossier === artefacts.a ? "A" : dossier === artefacts.b ? "B" : "?";
+    const version = dossier === artefacts.a ? "A" : dossier === artefacts.b ? "B" : dossier === artefacts.c ? "C" : "?";
     const entree = { rel, query: url.search, version, dest: String(req.headers["sec-fetch-dest"] || ""), t: Date.now(), reload: /no-cache/i.test(String(req.headers["cache-control"] || "") + " " + String(req.headers.pragma || "")) };
     etat.journal.push(entree);
     if (!f.startsWith(dossier) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
@@ -178,7 +191,7 @@ function servir() {
 
 test.beforeAll(async () => {
   test.setTimeout(180000);
-  artefacts = deuxArtefacts();
+  artefacts = construireArtefacts();
   serveur = await servir();
 });
 
@@ -202,6 +215,16 @@ async function preparer(page) {
       window.__etatAuDebut = window.__etatAuDebut || document.readyState;
       window.__ordre.push(m[1]);
     }, true);
+    // La feuille de style (⑨ ⑩) : chaque `load` ou `error` d'un <link> vers styles.css,
+    // quand, et si ce lien portait une empreinte — la durée d'une page sans styles se lit ici.
+    window.__feuille = window.__feuille || [];
+    for (const type of ["load", "error"]) {
+      document.addEventListener(type, (e) => {
+        const l = e.target;
+        if (!l || l.tagName !== "LINK" || !/\/styles\.css(\?|$)/.test(l.href || "")) return;
+        window.__feuille.push({ type, t: Math.round(performance.now()), empreinte: l.hasAttribute("integrity") });
+      }, true);
+    }
     window.addEventListener("passio:app-ready", () => { window.__ordre.push("ready"); window.__appPrete = true; });
     sessionStorage.setItem("passio_pwa_dismissed", "1");
     localStorage.setItem("passio_uid", uid);
@@ -266,6 +289,11 @@ test.describe("sans worker : l'ordre, le parallélisme, la reprise, l'arrêt", (
     for (const nom of nomsA()) {
       expect(requetesApp().filter((r) => r.rel === "app/" + nom).map((r) => r.dest), nom + " : une seule demande, celle du preload").toEqual(["script"]);
     }
+    // La feuille de style aussi, qui porte son empreinte depuis le 2026-11-10 (⑨ ⑩) : UNE
+    // demande, celle du <link> (le pré-chargement spéculatif du navigateur lit l'empreinte
+    // avec l'adresse), et pas de reprise — la feuille servie est la bonne.
+    expect(requetesVersionnees().filter((r) => r.rel === "styles.css").map((r) => r.dest), "styles.css : une seule demande, celle du <link>").toEqual(["style"]);
+    expect(await page.evaluate(() => window.__feuille.map((e) => e.type + (e.empreinte ? "+empreinte" : ""))), "la feuille s'applique du premier coup, avec son empreinte").toEqual(["load+empreinte"]);
   });
 
   test("② un script qui ne se charge pas est retenté : l'application démarre quand même", async ({ page }) => {
@@ -313,6 +341,41 @@ test.describe("sans worker : l'ordre, le parallélisme, la reprise, l'arrêt", (
     // `boot` est défini par app-08 : il n'existe pas, donc app-09 n'a rien démarré.
     expect(await page.evaluate(() => [typeof boot, window.__appPrete === true])).toEqual(["undefined", false]);
     expect(etat.essais[SOURCE_MODIFIEE], "trois essais au moins avant d'abandonner").toBeGreaterThanOrEqual(3);
+    expect(referencesManquantes()).toEqual([]);
+  });
+
+  // ⑨ CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10, audit de stabilisation).
+  // Mesuré en production le 10/11 à 12:18 UTC (version 7dade60f, `client_errors` 211 à 220,
+  // 19 `window_error` en télémétrie) : dans une page DÉJÀ démarrée, les `load` des 9 scripts
+  // ont été rejoués ~25 s plus tard (un robot de prévisualisation arrivé par `?fbclid=`, écran
+  // 2000 × 2000 ; la mesure `page_load` de la page est repartie à l'identique au même instant).
+  // Chaque `onload` refaisait `i++` puis `suivant()` : `i` dépassait le nombre de scripts, la
+  // garde `i === scripts.length` ne tenait plus, et `scripts[i][0]` levait « Cannot read
+  // properties of undefined (reading '0') » — 9 fois par page, comptées comme des erreurs de
+  // la production. Un `error` rejoué retirait de la page le script déjà exécuté, et sa
+  // reprise levait la même erreur une seconde plus tard.
+  // Mutation : sans le désarmement des deux écouteurs (scripts/build.js) → 18 erreurs pour
+  // 9 `load` et 9 `error` rejoués, rouge (mesuré avant le correctif, sous Chromium).
+  test("⑨ un load ou un error rejoué sur un script déjà traité ne relance pas le chargeur", async ({ page }) => {
+    await page.goto(adresse());
+    await page.waitForFunction(() => window.__appPrete === true, null, { polling: 50, timeout: 30000 });
+    await page.waitForSelector("#screen-feed.active", { state: "attached", timeout: 30000 });
+    const selecteur = 'script[src*="app/app-0"]';
+    expect(await page.evaluate((s) => document.querySelectorAll(s).length, selecteur), "prémisse : les 9 scripts du bloc sont dans la page").toBe(9);
+    erreurs = [];
+    const depuis = Date.now();
+    await page.evaluate((s) => {
+      document.querySelectorAll(s).forEach((el) => {
+        el.dispatchEvent(new Event("load"));
+        el.dispatchEvent(new Event("error"));
+      });
+    }, selecteur);
+    // La reprise d'un `error` part au bout d'une seconde : on attend au-delà.
+    await page.waitForTimeout(1600);
+    expect(erreurs, "aucune erreur levée par le chargeur").toEqual([]);
+    expect(await page.evaluate((s) => document.querySelectorAll(s).length, selecteur), "aucun script retiré ni inséré de nouveau").toBe(9);
+    expect(requetesApp(depuis), "aucune redemande d'un script").toEqual([]);
+    expect((await page.evaluate(() => window.__ordre)).filter((x) => x === "ready"), "le signal passio:app-ready n'est parti qu'une fois").toHaveLength(1);
     expect(referencesManquantes()).toEqual([]);
   });
 });
@@ -463,6 +526,48 @@ test.describe("un 404 immutable resté en cache : la reprise redemande l'adresse
 // ⚠️ AUCUNE ROUTE, UN PROFIL PERSISTANT : mêmes raisons que ⑥.
 // ⚠️ LES PRÉMISSES SONT ASSERTÉES : le contenu de A a bien été servi sous l'adresse de
 // B, puis relu SANS aller au serveur (cache HTTP en ⑦, cache du worker en ⑧).
+
+// Un profil persistant (⑦ ⑧ ⑨ ⑩), avec ou sans worker : son cache disque est celui
+// d'un vrai navigateur.
+async function ouvrirProfil({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }, serviceWorkers) {
+  const profil = fs.mkdtempSync(path.join(os.tmpdir(), "passio-profil-"));
+  const contexte = await playwright[browserName].launchPersistentContext(profil, {
+    ...launchOptions, headless, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale,
+    serviceWorkers, proxy: PROXY_MORT,
+  });
+  const page = contexte.pages()[0] || await contexte.newPage();
+  await preparer(page);
+  const fermer = async () => {
+    await contexte.close().catch(() => {});
+    try { fs.rmSync(profil, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (e) { /* profil verrouillé sous Windows : le dossier temporaire le reprendra */ }
+  };
+  return { page, fermer };
+}
+
+// L'appareil va chercher le worker de la version en ligne, et attend qu'il ait pris la
+// main (son cache, seul). ⚠️ LA MISE À JOUR EST REDEMANDÉE À CHAQUE TOUR, comme le fait
+// `majSilencieuse` toutes les 60 s (pwa-detect.js) : un `update()` demandé pendant une autre
+// tâche de la registration peut s'y fondre et ne jamais lire le nouveau `sw.js` (vu une
+// fois sur deux passes de ⑩ sous Chromium : 30 s sans que le worker change).
+async function installerWorker(page, cache) {
+  const majour = () => page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {})).catch(() => {});
+  await expect.poll(async () => {
+    const cles = await page.evaluate(() => caches.keys()).catch(() => []);
+    if (cles.join() !== cache) await majour();
+    return cles;
+  }, { timeout: 30000, intervals: [1000] }).toEqual([cache]);
+}
+
+// Une ouverture de l'application, et son issue : prête, ou le chargeur qui abandonne.
+async function ouvrir(page) {
+  const abandon = page.waitForEvent("console", { predicate: (m) => /ne se charge pas/.test(m.text()), timeout: 30000 })
+    .then(() => "le chargeur abandonne", () => "délai dépassé");
+  await page.goto(adresse());
+  const prete = page.waitForFunction(() => window.__appPrete === true, null, { polling: 50, timeout: 30000 })
+    .then(() => "application prête", () => "délai dépassé");
+  return Promise.race([prete, abandon]);
+}
+
 test.describe("un retour arrière entre deux versions d'après le découpage : le script périmé n'est plus exécuté", () => {
   const vDe = (artefact) => artefact.scripts.find((s) => s.nom === SOURCE_MODIFIEE).v;
   const adresseB = () => "app/" + SOURCE_MODIFIEE + "?v=" + vDe(artefacts.B);
@@ -470,31 +575,6 @@ test.describe("un retour arrière entre deux versions d'après le découpage : l
   const demandesB = (depuis = 0) => etat.journal
     .filter((r) => r.t >= depuis && r.rel === "app/" + SOURCE_MODIFIEE && r.query === "?v=" + vDe(artefacts.B))
     .map((r) => ({ statut: r.statut, reload: r.reload, version: r.version, dest: r.dest }));
-
-  async function ouvrirProfil({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }, serviceWorkers) {
-    const profil = fs.mkdtempSync(path.join(os.tmpdir(), "passio-profil-"));
-    const contexte = await playwright[browserName].launchPersistentContext(profil, {
-      ...launchOptions, headless, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale,
-      serviceWorkers, proxy: PROXY_MORT,
-    });
-    const page = contexte.pages()[0] || await contexte.newPage();
-    await preparer(page);
-    const fermer = async () => {
-      await contexte.close().catch(() => {});
-      try { fs.rmSync(profil, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (e) { /* profil verrouillé sous Windows : le dossier temporaire le reprendra */ }
-    };
-    return { page, fermer };
-  }
-
-  // Une ouverture de l'application, et son issue : prête, ou le chargeur qui abandonne.
-  async function ouvrir(page) {
-    const abandon = page.waitForEvent("console", { predicate: (m) => /ne se charge pas/.test(m.text()), timeout: 30000 })
-      .then(() => "le chargeur abandonne", () => "délai dépassé");
-    await page.goto(adresse());
-    const prete = page.waitForFunction(() => window.__appPrete === true, null, { polling: 50, timeout: 30000 })
-      .then(() => "application prête", () => "délai dépassé");
-    return Promise.race([prete, abandon]);
-  }
 
   test("⑦ sans worker : l'ancien script rangé sous la nouvelle adresse (cache HTTP) n'est plus exécuté quand la nouvelle version revient", async ({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }) => {
     const { page, fermer } = await ouvrirProfil({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }, "block");
@@ -543,8 +623,7 @@ test.describe("un retour arrière entre deux versions d'après le découpage : l
       //    les fichiers que sert A.
       etat.swDe = artefacts.b;
       const cacheB = "passio-v" + artefacts.B.release.buildId;
-      await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()).catch(() => {})).catch(() => {});
-      await expect.poll(() => page.evaluate(() => caches.keys()).catch(() => []), { timeout: 30000, intervals: [100] }).toEqual([cacheB]);
+      await installerWorker(page, cacheB);
       const servisPendant = demandesB();
       expect(servisPendant.length, "prémisse : le worker de B a demandé " + SOURCE_MODIFIEE + " sous son adresse").toBeGreaterThan(0);
       expect(servisPendant.every((r) => r.statut === 200 && r.version === "A"), "prémisse : chaque demande a reçu le contenu de A — " + JSON.stringify(servisPendant)).toBe(true);
@@ -576,12 +655,192 @@ test.describe("un retour arrière entre deux versions d'après le découpage : l
   });
 });
 
+// ⑨ ⑩ LA FEUILLE DE STYLE : LE MÊME RETOUR ARRIÈRE (2026-11-10). `styles.css?v=` est la
+// seule autre règle `immutable` de `_headers`, et Netlify y ignore le `?v=` aussi. Pendant
+// un retour arrière de C vers A, la feuille de A est rangée sous l'adresse de C — par une
+// page C partie juste avant la bascule (⑨, cache HTTP), ou par le worker de C qui s'installe
+// (⑩, son cache, `FICHIERS_VERSION`). C rétabli à l'identique, l'appareil appliquait la
+// feuille de A jusqu'au prochain changement de la feuille : des styles de C manquants, sans
+// une erreur, sans une demande au serveur.
+// Le remède (scripts/build.js, étape 2) : l'empreinte `integrity` de la feuille SERVIE sur
+// son <link>, et une reprise — au refus, TOUT DE SUITE, un secours SANS empreinte à la même
+// place (la feuille que gardent les caches : jamais une page sans styles), puis une
+// redemande `cache: "reload"`, et un <link> AVEC l'empreinte posé juste après le secours,
+// qui le retire s'il se charge (pendant la bascule elle-même, il est refusé à son tour, et
+// la page C garde la feuille de A, comme avant le remède).
+// ⚠️ AUCUNE ROUTE, UN PROFIL PERSISTANT : mêmes raisons que ⑥. Prémisses assertées : la
+// feuille de A servie en 200 sous l'adresse de C, puis relue sans une demande `style`.
+test.describe("un retour arrière qui change la feuille de style : la feuille périmée n'est plus appliquée", () => {
+  // Les demandes reçues pour l'adresse de la feuille de C, et l'artefact qui y a répondu.
+  const demandesFeuilleC = (depuis = 0) => etat.journal
+    .filter((r) => r.t >= depuis && r.rel === "styles.css" && "styles.css" + r.query === artefacts.C.css)
+    .map((r) => ({ statut: r.statut, reload: r.reload, version: r.version, dest: r.dest }));
+  // La feuille que la page applique : une feuille (`--accent`), et si c'est celle de C.
+  const feuille = (page) => page.evaluate(() => {
+    const s = getComputedStyle(document.documentElement);
+    return { stylee: s.getPropertyValue("--accent").trim() !== "", c: s.getPropertyValue("--passio-version-feuille").trim() === '"C"' };
+  }).catch(() => null);
+  // Attend l'état `attendu` (la reprise est asynchrone) et rend le dernier état lu.
+  async function feuilleFinale(page, attendu, delai = 10000) {
+    const fin = Date.now() + delai;
+    let v = await feuille(page);
+    while (Date.now() < fin && JSON.stringify(v) !== JSON.stringify(attendu)) {
+      await new Promise((ok) => setTimeout(ok, 100));
+      v = await feuille(page);
+    }
+    return v;
+  }
+  const evenementsFeuille = (page) => page.evaluate(() => window.__feuille).catch(() => null);
+  // La suite des événements de la feuille (`+` : le <link> portait l'empreinte), une fois
+  // qu'il y en a `n` (ou au bout de 10 s). C'est elle qui dit « jamais sans styles » : le
+  // refus, le SECOURS chargé tout de suite, et seulement ensuite le <link> avec l'empreinte.
+  async function suiteFeuille(page, n) {
+    const fin = Date.now() + 10000;
+    let ev = await evenementsFeuille(page);
+    while (Date.now() < fin && !(ev && ev.length >= n)) {
+      await new Promise((ok) => setTimeout(ok, 100));
+      ev = await evenementsFeuille(page);
+    }
+    return (ev || []).map((e) => e.type + (e.empreinte ? "+" : ""));
+  }
+  // Les instants d'une reprise, relevés dans le rapport du banc (annotation `feuille`,
+  // reporter json ou html) : la page reste sans styles du refus au `load` du secours, puis
+  // porte la feuille de l'autre version jusqu'au `load` du <link> avec l'empreinte. Ils ne
+  // font pas le verdict.
+  async function noterReprise(page, etape) {
+    test.info().annotations.push({ type: "feuille", description: etape + " " + JSON.stringify(await evenementsFeuille(page)) });
+  }
+  // Le <link> de la feuille, une fois la reprise passée : UN seul, À LA PLACE de l'ancien
+  // (juste après le script de la reprise, devant tout ce que le <head> a reçu depuis — les
+  // surcharges de thème, police, taille et arrondi d'app-05 sont des <style> ajoutés au
+  // <head> APRÈS la feuille, et la cascade les veut après elle), et s'il porte l'empreinte.
+  // `suivi` est la prémisse de `aSaPlace` : sans élément après la feuille, un <link> rajouté
+  // en fin de <head> serait lui aussi juste après la reprise, et la vérification ne
+  // distinguerait rien. ⚠️ Il doit y être AU MOMENT DU REFUS : le refus part avant les
+  // scripts du <body>, quand la feuille est encore le dernier élément du <head> — la mutation
+  // « secours en fin de <head> » est restée verte sous Chromium tant que le banc ne posait
+  // rien après elle. D'où `marquerApresFeuille`, qui pose un élément juste après la feuille
+  // dès que le parseur l'insère (comme les <style> d'app-05, qui arrivent plus tard).
+  const lienFeuille = (page) => page.evaluate(() => {
+    const liens = [...document.querySelectorAll('link[rel="stylesheet"]')].filter((l) => /^styles\.css\?v=/.test(l.getAttribute("href") || ""));
+    const avant = liens.length === 1 ? liens[0].previousElementSibling : null;
+    const apres = liens.length === 1 ? liens[0].nextElementSibling : null;
+    return {
+      liens: liens.length,
+      aSaPlace: !!avant && avant.tagName === "SCRIPT" && avant.textContent.includes('addEventListener("error"'),
+      suivi: !!apres && apres.id === "banc-apres-feuille",
+      empreinte: liens.length === 1 && liens[0].hasAttribute("integrity"),
+    };
+  }).catch(() => null);
+  const marquerApresFeuille = () => {
+    const obs = new MutationObserver(() => {
+      const l = document.querySelector('link[rel="stylesheet"][href^="styles.css?v="]');
+      if (!l || document.getElementById("banc-apres-feuille")) return;
+      const m = document.createElement("meta");
+      m.id = "banc-apres-feuille";
+      l.parentNode.insertBefore(m, l.nextSibling);
+      obs.disconnect();
+    });
+    obs.observe(document, { childList: true, subtree: true });
+  };
+
+  test("⑨ sans worker : la feuille d'une autre version rangée sous la nouvelle adresse (cache HTTP) n'est plus appliquée quand la nouvelle version revient", async ({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }) => {
+    const { page, fermer } = await ouvrirProfil({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }, "block");
+    try {
+      await page.addInitScript(marquerApresFeuille);
+      expect(artefacts.C.css, "prémisse : C change l'empreinte de la feuille").not.toBe(artefacts.A.css);
+      expect(artefacts.C.scripts, "prémisse : C garde les 9 scripts de A").toEqual(artefacts.A.scripts);
+
+      // 1. C est en ligne ; une page C part, et le retour arrière vers A tombe juste après elle.
+      etat.dossier = artefacts.c;
+      etat.basculeApresPage = artefacts.a;
+      expect(await ouvrir(page), "pendant la bascule : l'application démarre (ses scripts sont ceux de A)").toBe("application prête");
+      const pendant = await feuilleFinale(page, { stylee: true, c: false });
+      const servisPendant = demandesFeuilleC();
+      expect(servisPendant.length, "prémisse : la page C a demandé sa feuille sous son adresse").toBeGreaterThan(0);
+      expect(servisPendant.every((r) => r.statut === 200 && r.version === "A"), "prémisse : chaque demande a reçu la feuille de A, en 200 immutable — " + JSON.stringify(servisPendant)).toBe(true);
+      expect(servisPendant.some((r) => r.dest === "style"), "prémisse : le banc reconnaît la demande du <link> (Sec-Fetch-Dest) — " + JSON.stringify(servisPendant)).toBe(true);
+      // Pendant la bascule, la page C est stylée — par la feuille de A : jamais une page sans
+      // styles. Le refus, le secours chargé, puis le <link> avec l'empreinte refusé lui aussi
+      // (le site sert encore A) : la page garde le secours.
+      expect.soft(await suiteFeuille(page, 3), "pendant la bascule : refus, secours chargé, puis le <link> avec empreinte refusé").toEqual(["error+", "load", "error+"]);
+      await noterReprise(page, "pendant la bascule");
+      expect.soft(pendant, "pendant la bascule : une page stylée, par la feuille en ligne (celle de A) — " + JSON.stringify(await evenementsFeuille(page))).toEqual({ stylee: true, c: false });
+      expect.soft(await lienFeuille(page), "pendant la bascule : le secours, SANS empreinte, seul et à la place de l'ancien").toEqual({ liens: 1, aSaPlace: true, suivi: true, empreinte: false });
+
+      // 2. C est rétabli à l'identique (même feuille, même `?v=`) ; l'appareil rouvre l'application.
+      etat.dossier = artefacts.c;
+      const depuis = Date.now();
+      const issue = await ouvrir(page);
+      const finale = await feuilleFinale(page, { stylee: true, c: true });
+      await noterReprise(page, "C rétabli");
+      expect.soft(await suiteFeuille(page, 3), "C rétabli : refus, secours chargé tout de suite, puis le <link> avec empreinte chargé").toEqual(["error+", "load", "load+"]);
+      const apres = demandesFeuilleC(depuis);
+      expect(apres.filter((r) => r.dest === "style"), "prémisse : la page C a relu la feuille de A EN CACHE (son <link> n'est pas allé au serveur)").toEqual([]);
+      expect.soft(issue, "C rétabli : l'application démarre").toBe("application prête");
+      expect.soft(finale, "C rétabli : la feuille appliquée est celle de C, pas celle de A restée en cache — " + JSON.stringify(await evenementsFeuille(page))).toEqual({ stylee: true, c: true });
+      expect.soft(apres, "une seule demande au réseau, la redemande `cache: \"reload\"`, qui reçoit la feuille de C").toEqual([{ statut: 200, reload: true, version: "C", dest: "empty" }]);
+      expect.soft(await lienFeuille(page), "C rétabli : un seul <link>, AVEC son empreinte, à la place de l'ancien (le secours retiré)").toEqual({ liens: 1, aSaPlace: true, suivi: true, empreinte: true });
+      expect(referencesManquantes()).toEqual([]);
+    } finally {
+      await fermer();
+    }
+  });
+
+  test("⑩ avec le worker : la feuille d'une autre version rangée par le worker sous la nouvelle adresse n'est plus appliquée quand la nouvelle version revient", async ({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }) => {
+    const { page, fermer } = await ouvrirProfil({ playwright, browserName, headless, launchOptions, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale }, "allow");
+    try {
+      // 0. A est en ligne : l'appareil ouvre l'application, le worker de A prend la main.
+      etat.dossier = artefacts.a;
+      expect(await ouvrir(page), "prémisse : A démarre").toBe("application prête");
+      await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { polling: 50, timeout: 20000 });
+
+      // 1. C est déployé, l'appareil va chercher le worker de C (`majSilencieuse`) — et le
+      //    retour arrière vers A tombe juste après `sw.js` : le worker de C s'installe avec
+      //    les fichiers que sert A.
+      etat.swDe = artefacts.c;
+      await page.addInitScript(marquerApresFeuille);
+      const cacheC = "passio-v" + artefacts.C.release.buildId;
+      await installerWorker(page, cacheC);
+      const servisPendant = demandesFeuilleC();
+      expect(servisPendant.length, "prémisse : le worker de C a demandé la feuille sous son adresse").toBeGreaterThan(0);
+      expect(servisPendant.every((r) => r.statut === 200 && r.version === "A"), "prémisse : chaque demande a reçu la feuille de A — " + JSON.stringify(servisPendant)).toBe(true);
+      const range = await page.evaluate(([c, u]) => caches.open(c).then((k) => k.match(u)).then((r) => (r ? r.text() : null)), [cacheC, artefacts.C.css]);
+      expect(range, "prémisse : le worker de C a rangé une feuille sous l'adresse de C").toBeTruthy();
+      expect(range.includes("--passio-version-feuille"), "prémisse : cette feuille est celle de A").toBe(false);
+
+      // 2. C est rétabli à l'identique : même `sw.js`, le worker de C reste en place, et
+      //    l'appareil rouvre l'application.
+      etat.swDe = null;
+      etat.dossier = artefacts.c;
+      const depuis = Date.now();
+      const issue = await ouvrir(page);
+      expect(await page.evaluate(() => !!navigator.serviceWorker.controller), "prémisse : un worker contrôle la page").toBe(true);
+      expect(await page.evaluate(() => caches.keys()), "prémisse : c'est toujours le worker de C").toEqual([cacheC]);
+      const finale = await feuilleFinale(page, { stylee: true, c: true });
+      await noterReprise(page, "C rétabli");
+      expect.soft(await suiteFeuille(page, 3), "C rétabli : refus, secours chargé tout de suite, puis le <link> avec empreinte chargé").toEqual(["error+", "load", "load+"]);
+      const apres = demandesFeuilleC(depuis);
+      expect(apres.filter((r) => r.dest === "style"), "prémisse : le worker a servi son cache (le <link> n'est pas allé au serveur)").toEqual([]);
+      expect.soft(issue, "C rétabli : l'application démarre").toBe("application prête");
+      expect.soft(finale, "C rétabli : la feuille appliquée est celle de C, pas celle de A restée dans le cache du worker — " + JSON.stringify(await evenementsFeuille(page))).toEqual({ stylee: true, c: true });
+      expect.soft(apres, "une seule demande au réseau, la redemande `cache: \"reload\"`, que le worker laisse passer").toEqual([{ statut: 200, reload: true, version: "C", dest: "empty" }]);
+      expect.soft(await lienFeuille(page), "C rétabli : un seul <link>, AVEC son empreinte, à la place de l'ancien (le secours retiré)").toEqual({ liens: 1, aSaPlace: true, suivi: true, empreinte: true });
+      // Et le worker a remplacé ce qu'il gardait : la prochaine ouverture n'a plus rien à réparer.
+      const rangeApres = await page.evaluate(([c, u]) => caches.open(c).then((k) => k.match(u)).then((r) => (r ? r.text() : null)), [cacheC, artefacts.C.css]);
+      expect.soft(!!rangeApres && rangeApres.includes("--passio-version-feuille"), "le cache du worker porte désormais la feuille de C").toBe(true);
+      expect(referencesManquantes()).toEqual([]);
+    } finally {
+      await fermer();
+    }
+  });
+});
+
 // Témoin du banc : les empreintes que la page cite sont celles du contenu servi.
 test("témoin : chaque ?v= de l'artefact est l'empreinte de son fichier", async () => {
-  for (const [dossier, scripts] of [[artefacts.a, artefacts.A.scripts], [artefacts.b, artefacts.B.scripts]]) {
-    for (const s of scripts) {
-      const h = crypto.createHash("sha1").update(fs.readFileSync(path.join(dossier, "app", s.nom))).digest("hex").slice(0, 10);
-      expect(s.v, s.nom).toBe(h);
-    }
+  const h10 = (f) => crypto.createHash("sha1").update(fs.readFileSync(f)).digest("hex").slice(0, 10);
+  for (const [dossier, artefact] of [[artefacts.a, artefacts.A], [artefacts.b, artefacts.B], [artefacts.c, artefacts.C]]) {
+    for (const s of artefact.scripts) expect(s.v, s.nom).toBe(h10(path.join(dossier, "app", s.nom)));
+    expect(artefact.css, "styles.css").toBe("styles.css?v=" + h10(path.join(dossier, "styles.css")));
   }
 });
