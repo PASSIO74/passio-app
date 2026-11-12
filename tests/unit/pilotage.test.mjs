@@ -906,13 +906,14 @@ test("㊶ une PR n'est un correctif que sur une branche de la chaîne, de CE dé
   assert.deepEqual(chantier.gestes.map((g) => g.corps.action), ["fusionner", "fermer"], "les gestes restent, rangés dans Détails");
   assert.equal(une({ correctif: true, brouillon: true }).prio, 2, "un brouillon n'est pas prêt");
   assert.deepEqual(une({ correctif: false, externe: true }).gestes.map((g) => g.corps.action), ["fermer"], "un fork ne se fusionne pas d'ici");
-  // La fonction : une lecture de plus, illisible = chantier (jamais un bouton à l'aveugle), et c'est dit.
+  // La fonction : une lecture de plus — par pages de cent depuis le 12/11 (pilotage-chemins ㊵ l'exécute) —,
+  // illisible = chantier (jamais un bouton à l'aveugle), et c'est dit.
   const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const lire = src.slice(src.indexOf("async function lireGithub"), src.indexOf("const sansJeton"));
-  assert.match(lire, /gh\(`\/repos\/\$\{DEPOT\}\/pulls\?state=open&per_page=50`\)/);
+  assert.match(lire, /gh\(`\/repos\/\$\{DEPOT\}\/pulls\?state=open&per_page=100&page=\$\{page\}`\)/);
   assert.match(lire, /resumerPr\(p, DEPOT\)/);
   assert.match(lire, /infosPr\.get\(i\.numero\) \|\| \{ externe: true, correctif: false, autoFusion: false, brouillon: false \}/);
-  assert.match(lire, /prNonLues: pulls\.ok \? null : /);
+  assert.match(lire, /prNonLues: pulls\.raison/);
   assert.equal(aFaire({ github: { issues: [], runs: {}, aReparer: [], prNonLues: "GitHub HTTP 502" }, gestesGithub: true }, MAINTENANT_AF)[0].id, "lecture:pr");
 });
 

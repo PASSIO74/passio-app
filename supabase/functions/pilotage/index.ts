@@ -148,7 +148,17 @@ Deno.serve(async (req) => {
   // geste qui ÉCRIT est peut-être parti — c'est dit ; rien n'est promis, rien n'est rejoué.
   try { return await geste(); }
   catch (err) {
-    console.warn("pilotage : geste interrompu " + JSON.stringify({ action: action.slice(0, 30), erreur: String((err as { message?: string })?.message || err).slice(0, 120) }));
+    // Un DÉFAUT DU CODE (une variable jamais déclarée — le défaut de #753 —, une syntaxe, une plage) n'est pas une panne
+    // de GitHub : il se dit comme tel, en erreur dans les journaux (seconde relecture de #848). Une erreur de type reste
+    // ambiguë : sous Deno, un `fetch` qui n'arrive pas à joindre GitHub lève aussi une TypeError.
+    // Par le NOM, pas `instanceof` : une erreur venue d'un autre domaine d'exécution garde son nom.
+    const defaut = ["ReferenceError", "SyntaxError", "RangeError"].includes(String((err as { name?: string })?.name || ""));
+    const trace = JSON.stringify({ action: action.slice(0, 30), nom: String((err as { name?: string })?.name || ""), erreur: String((err as { message?: string })?.message || err).slice(0, 120) });
+    if (defaut) {
+      console.error("pilotage : défaut du code dans un geste " + trace);
+      return json({ error: "Erreur interne du pilotage (un défaut du code, pas une panne de GitHub) : le geste a peut-être été fait en partie. Relis l'écran ; le défaut est dans les journaux de la fonction." }, 500);
+    }
+    console.warn("pilotage : geste interrompu " + trace);
     return json({ error: LECTURES_SEULES.has(action) ? "La lecture n'a pas abouti : réessaie dans un instant."
       : "Le geste a été interrompu (GitHub ou la base n'a pas répondu) : il est peut-être parti. Relis l'écran avant de retoucher." }, 502);
   }
@@ -1475,6 +1485,8 @@ function gh(chemin: string, init: RequestInit = {}) {
 }
 
 let cacheGh: { at: number; val: unknown } | null = null;
+// Les PR ouvertes se lisent sur au plus trois pages de cent (lireGithub) : au-delà, c'est dit à l'écran.
+const PR_PAGES_MAX = 3;
 // Les issues ouvertes sous UN filtre (`labels=…`, `creator=…`), jusqu'à ISSUES_PAR_FILTRE_MAX.
 type IssueBrute = { number: number; [cle: string]: unknown };
 async function lireIssuesFiltre(filtre: string): Promise<{ lignes: IssueBrute[]; tronque: boolean }> {
@@ -1513,10 +1525,16 @@ async function lireGithub() {
   const runsNonLus: string[] = [];
   const run = async (cle: "deploy" | "sentinelle" | "veille", f: string) => {
     const opts = { evenements: EVENEMENTS_RUNS[cle], depot: DEPOT };
-    const filtre = cle === "deploy" ? "&event=push&per_page=10" : "&per_page=10";
-    const r = await gh(`/repos/${DEPOT}/actions/workflows/${f}/runs?branch=main&exclude_pull_requests=true${filtre}`).catch(() => null);
-    const j = r && r.ok ? await r.json().catch(() => null) : null;
-    if (!j || !Array.isArray(j.workflow_runs)) { runsNonLus.push(cle); return null; }
+    // Une lecture FILTRÉE PAR GITHUB par événement qui lance le workflow (2026-11-12, seconde relecture de #848) :
+    // filtrées ici seulement, dix exécutions de la PR d'un fork (branche « main ») occupaient les dix places et les
+    // nôtres n'étaient pas lues — `runs.sentinelle` à null, l'orange « n'a pas tourné depuis 8 h » disparaissait.
+    const lectures = await Promise.all((EVENEMENTS_RUNS[cle] as string[]).map(async (ev) => {
+      const r = await gh(`/repos/${DEPOT}/actions/workflows/${f}/runs?branch=main&exclude_pull_requests=true&event=${ev}&per_page=10`).catch(() => null);
+      const lu = r && r.ok ? await r.json().catch(() => null) : null;
+      return lu && Array.isArray(lu.workflow_runs) ? lu.workflow_runs : null;
+    }));
+    if (lectures.some((l) => !l)) { runsNonLus.push(cle); return null; }
+    const j = { workflow_runs: lectures.flat() };
     // Une RELANCE en cours (`gh run rerun`) garde son identifiant et vide sa conclusion : sa
     // tentative précédente se relit, et se range juste derrière elle (même date de création, tri
     // stable). Illisible, le workflow est « non lu » : on ne conclut pas à un retour au calme.
@@ -1539,8 +1557,24 @@ async function lireGithub() {
     }
     return resumerRuns(liste, opts);
   };
-  const [sentinelle, veille, deploy, pulls] = await Promise.all([run("sentinelle", "sentinelle-autonome.yml"), run("veille", "veille-production.yml"), run("deploy", "deploy.yml"), gh(`/repos/${DEPOT}/pulls?state=open&per_page=50`)]);
-  const listePr = pulls.ok ? ((await pulls.json().catch(() => [])) as IssueBrute[]) : [];
+  // Les PR ouvertes, par pages de cent, jusqu'à PR_PAGES_MAX (2026-11-12, seconde relecture de #848) : lues sur 50, cinquante
+  // PR de forks plus récentes faisaient sortir un correctif armé de la liste — il devenait un « chantier », et la ligne
+  // « a changé depuis ton Régler » disparaissait. Le CORPS se lit dans la même promesse : lu après coup, un corps illisible
+  // devenait une liste vide sans rien dire. Au-delà des pages lues, c'est dit (`prNonLues`).
+  const lirePulls = async (): Promise<{ ok: boolean; lignes: IssueBrute[]; raison: string | null }> => {
+    const lignes: IssueBrute[] = [];
+    for (let page = 1; page <= PR_PAGES_MAX; page++) {
+      const r = await gh(`/repos/${DEPOT}/pulls?state=open&per_page=100&page=${page}`).catch(() => null);
+      if (!r || !r.ok) return { ok: false, lignes: [], raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };
+      const lot = await r.json().catch(() => null);
+      if (!Array.isArray(lot)) return { ok: false, lignes: [], raison: "GitHub : liste des PR illisible" };
+      lignes.push(...(lot as IssueBrute[]));
+      if (lot.length < 100) return { ok: true, lignes, raison: null };
+    }
+    return { ok: true, lignes, raison: "plus de " + PR_PAGES_MAX * 100 + " PR ouvertes : les plus anciennes ne sont pas lues" };
+  };
+  const [sentinelle, veille, deploy, pulls] = await Promise.all([run("sentinelle", "sentinelle-autonome.yml"), run("veille", "veille-production.yml"), run("deploy", "deploy.yml"), lirePulls()]);
+  const listePr = pulls.lignes;
   // CENT issues ouvertes ou plus : le dépôt est PUBLIC, n'importe qui en ouvre. Lire « les N plus
   // récentes » laissait un sujet `humain` se cacher derrière du bruit (D-18) — et dire « lecture
   // partielle » tant que le bruit est là donnait à un tiers le moyen de figer la veille
@@ -1569,7 +1603,7 @@ async function lireGithub() {
   const infosPr = new Map(listePr.map((p) => [p.number, resumerPr(p, DEPOT)]));
   const suivies = issues.map((i) => (i.pr ? { ...i, ...(infosPr.get(i.numero) || { externe: true, correctif: false, autoFusion: false, brouillon: false }) } : i));
   // `luLe` : l'heure de CETTE lecture — la réponse peut sortir du cache (2 min).
-  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.ok ? null : "GitHub HTTP " + pulls.status, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
+  const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.raison, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
   // `runsNonLus` tient le voyant de la VEILLE (on ne sait pas si la mise en ligne a réussi) ;
   // `partiel` dit à l'ÉCRAN tout ce qui manque, issues comprises — elles ne figent jamais la veille.
   val.runsNonLus = runsNonLus;
@@ -1619,11 +1653,11 @@ async function relancer(admin: Admin, cible: string) {
   return json({ ok: true, suivie, message: "Lancé : " + r.libelle + (suivie ? ". Le résultat s'affiche sur sa ligne dans la minute." : ". Le suivi n'a pas pu être noté : relis dans une minute.") });
 }
 
-// Les auto-fusions ARMÉES depuis le téléphone, sept jours : numéro de PR → version armée (la plus
-// récente). Seule la fonction écrit sous « systeme:pilotage ».
+// Les auto-fusions ARMÉES depuis le téléphone, trente jours (sept laissaient une auto-fusion encore armée sans
+// comparaison — seconde relecture de #848) : numéro de PR → version armée (la plus récente). Seule la fonction écrit sous « systeme:pilotage ».
 async function lireFusionsArmees(admin: Admin) {
   const { data, error } = await admin.from("analytics_events").select("properties,created_at").eq("event", EVT_GESTE).eq("user_id", "systeme:pilotage")
-    .eq("properties->>geste", "fusion_armee").gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(100);
+    .eq("properties->>geste", "fusion_armee").gte("created_at", ilYa(30 * 864e5)).order("created_at", { ascending: false }).limit(100);
   if (error) throw error;
   const out: Record<string, string> = {};
   for (const l of (data || []) as { properties: { geste?: unknown; numero?: unknown; sha?: unknown } | null }[]) {

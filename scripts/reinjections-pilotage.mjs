@@ -24,7 +24,7 @@ const PJ = "supabase/functions/_shared/pilotage.js";
 const BT = "supabase/functions/_shared/battement.js";
 const BANC = "tests/unit/pilotage-chemins.test.mjs";
 const M = [
-  ["R01 une seule exécution lue (per_page=1)", FN, `const filtre = cle === "deploy" ? "&event=push&per_page=10" : "&per_page=10";`, `const filtre = cle === "deploy" ? "&event=push&per_page=1" : "&per_page=1";`, BANC, "⑫"],
+  ["R01 une seule exécution lue (per_page=1)", FN, "&event=${ev}&per_page=10", "&event=${ev}&per_page=1", BANC, "⑫"],
   ["R02 seule « failure » est un échec", PJ, `Object.freeze(["failure", "timed_out", "startup_failure"])`, `Object.freeze(["failure"])`, BANC, "⑪"],
   ["R03 une exécution annulée ne dit rien", PJ, `return termine && r.conclusion ? { nature: "inabouti", run: r } : null;`, `return null;`, BANC, "⑪"],
   ["R04 une lecture d'exécutions refusée n'est pas notée", FN, `if (!j || !Array.isArray(j.workflow_runs)) { runsNonLus.push(cle); return null; }`, `if (!j || !Array.isArray(j.workflow_runs)) { return null; }`, BANC, "⑩"],
@@ -70,7 +70,18 @@ const M = [
   ["R43 au-delà de cent issues, les correctifs ne sont plus lus", FN, `    for (const p of listePr) if (!vues.has(p.number)) vues.set(p.number, { ...p, pull_request: {} });\n`, ``, BANC, "⑩"],
   ["R44 une tentative illisible ne se dit pas", FN, `if (!ja || typeof ja !== "object") { nonLu(); break; }`, `if (!ja || typeof ja !== "object") { break; }`, BANC, "⑫ bis"],
   ["R45 relancer un échec sonne « résolu » au départ de la relance", PJ, `    if (Number(r.run_attempt) > 1 && Number.isInteger(r.id) && r.id > 0) out.push({ id: r.id, tentative: Number(r.run_attempt) - 1 });\n`, ``, BANC, "㉙ bis"],
-  ["R46 la mise en ligne se lit sans filtre d'événement côté GitHub", FN, `"&event=push&per_page=10" : "&per_page=10"`, `"&per_page=10" : "&per_page=10"`, BANC, "⑪ bis"],
+  ["R46 la mise en ligne se lit sans filtre d'événement côté GitHub", FN, "&event=${ev}&per_page=10", "&per_page=10", BANC, "⑪ bis"],
+  // Suites de #848 (2026-11-12, seconde relecture) : les trous côté écran.
+  ["R47 la Sentinelle se lit sans filtre d'événement : dix exécutions d'un fork la chassent", FN, "&event=${ev}&per_page=10", "&per_page=10", BANC, "㊴"],
+  ["R48 une lecture d'exécutions refusée passe si l'autre répond", FN, `if (lectures.some((l) => !l))`, `if (lectures.every((l) => !l))`, BANC, "㊴"],
+  ["R49 les PR se lisent sur une seule page", FN, `const PR_PAGES_MAX = 3;`, `const PR_PAGES_MAX = 1;`, BANC, "㊵"],
+  ["R50 une liste de PR illisible passe pour vide", FN, `if (!Array.isArray(lot)) return { ok: false, lignes: [], raison: "GitHub : liste des PR illisible" };`, `if (!Array.isArray(lot)) return { ok: true, lignes: [], raison: null };`, BANC, "㊵"],
+  ["R51 au-delà de trois pages, rien n'est dit", FN, `raison: "plus de " + PR_PAGES_MAX * 100 + " PR ouvertes : les plus anciennes ne sont pas lues" };`, `raison: null };`, BANC, "㊵"],
+  ["R52 un défaut du code passe pour une panne de GitHub", FN, `const defaut = ["ReferenceError", "SyntaxError", "RangeError"].includes(`, `const defaut = [].includes(`, BANC, "㊶"],
+  ["R53 une TypeError (un fetch qui ne joint pas GitHub) passe pour un défaut du code", FN, `const defaut = ["ReferenceError", "SyntaxError", "RangeError"].includes(`, `const defaut = ["ReferenceError", "SyntaxError", "RangeError", "TypeError"].includes(`, BANC, "㊶"],
+  ["R54 un défaut du code n'est qu'un avertissement dans les journaux", FN, `console.error("pilotage : défaut du code dans un geste "`, `console.warn("pilotage : défaut du code dans un geste "`, BANC, "㊶"],
+  ["R55 la note armée illisible laisse dire « part en ligne »", PJ, `if (i.autoFusion && fusionner && nonLus.includes("fusionsArmees")) {`, `if (false) {`, BANC, "㊷"],
+  ["R56 sept jours de notes armées : une auto-fusion plus ancienne n'est plus comparée", FN, `.gte("created_at", ilYa(30 * 864e5))`, `.gte("created_at", ilYa(7 * 864e5))`, BANC, "㊷"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");

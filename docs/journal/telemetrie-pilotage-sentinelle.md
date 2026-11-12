@@ -1383,7 +1383,7 @@ reste sur le runner ; la réponse d'erreur de l'API n'entre jamais ; chaque coup
   lignes de couleurs par extrait). Et **`gh run view` laisse l'archive COMPLÈTE du journal dans son
   cache** : `XDG_CACHE_HOME` pointé dans `RUNNER_TEMP`, effacé avec le fichier brut.
 - ⚠️ **Un caractère invisible écrit BRUT dans un workflow le rend illisible pour un vrai lecteur YAML.**
-  L'outil d'édition a posé la marque d'ordre d'octets (U+FEFF) en clair au lieu de `﻿` : le
+  L'outil d'édition a posé la marque d'ordre d'octets (U+FEFF) en clair au lieu de `\ufeff` : le
   lecteur maison des bancs (`lib/yaml-mini.mjs`) la tolérait, tout était vert en local ; `zizmor` l'a
   refusée en CI (« input is not valid YAML »). Verrou : l'exercice ⑩ balaie TOUS les workflows.
 - ⚠️ **Une suite qui importe un module de `supabase/functions/_shared/` doit être inscrite avant
@@ -1392,7 +1392,7 @@ reste sur le runner ; la réponse d'erreur de l'API n'entre jamais ; chaque coup
   (déjà inscrite), qui lit la liste fermée de `claude-code.yml`.
 - ⚠️ **Un banc vert ne prouve pas qu'il verrouille.** La relecture indépendante a retiré dix protections
   sur onze sans qu'un exercice rougisse (désamorçage de l'annonce, du message, du nom de job ; borne de
-  3 Mo ; délais ; fuite sur l'erreur standard…). 46 réinjections, toutes rouges, depuis.
+  3 Mo ; délais ; fuite sur l'erreur standard…). 51 réinjections, toutes rouges, depuis.
 - ⚠️ **Une liste noire ne ferme pas tout** : une autre langue, un homoglyphe passent ; elle retire aussi
   des lignes légitimes (4/1 841, 2/1 560, 57/15 256 sur trois journaux réels). La ligne retirée dit sa
   FAMILLE, jamais son texte. La vraie barrière reste ce que l'agent ne peut pas faire.

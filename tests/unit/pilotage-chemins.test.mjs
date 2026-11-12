@@ -70,11 +70,13 @@ const sha = (c) => c.repeat(40);
 
 let banc = null;
 const ACTIONS_ABOUTIES = new Set();
-const consoleDOrigine = { warn: console.warn, log: console.log };
+const consoleDOrigine = { warn: console.warn, log: console.log, error: console.error };
 console.warn = (...a) => { if (banc) banc.console.push(a.map(String).join(" ")); };
 console.log = (...a) => { if (banc) banc.console.push(a.map(String).join(" ")); };
+// Une ERREUR (un défaut du code, ㊶) se reconnaît à son préfixe ; hors d'un banc, elle s'imprime comme d'habitude.
+console.error = (...a) => { if (banc) banc.console.push("[erreur] " + a.map(String).join(" ")); else consoleDOrigine.error(...a); };
 const fetchDOrigine = globalThis.fetch;
-after(() => { console.warn = consoleDOrigine.warn; console.log = consoleDOrigine.log; globalThis.fetch = fetchDOrigine; });
+after(() => { console.warn = consoleDOrigine.warn; console.log = consoleDOrigine.log; console.error = consoleDOrigine.error; globalThis.fetch = fetchDOrigine; });
 
 const MODULES = {
   "https://esm.sh/@supabase/supabase-js@2.118.0": { createClient: (url, cle, options) => banc.base.client(url, cle, options) },
@@ -140,7 +142,12 @@ async function github(methode, url, corps) {
     const t = (g.tentatives[m[1]] || {})[m[2]];
     return t ? rep(t) : rep({ message: "Not Found" }, 404);
   }
-  if (methode === "GET" && chemin === `/repos/${DEPOT}/pulls`) return rep(g.pulls.filter((x) => x.state === "open"));
+  if (methode === "GET" && chemin === `/repos/${DEPOT}/pulls`) {
+    // Comme GitHub : les plus récentes d'abord (ici, le plus grand numéro), page par page. `pullsIllisible` : un corps qui n'est pas une liste.
+    if (g.pullsIllisible) return new Response("<html>coupé", { status: 200, headers: { "Content-Type": "application/json" } });
+    const par = Number(q.get("per_page")) || 30, page = Number(q.get("page")) || 1;
+    return rep(g.pulls.filter((x) => x.state === "open").sort((a, b) => b.number - a.number).slice((page - 1) * par, page * par));
+  }
   if (methode === "GET" && (m = /\/pulls\/(\d+)$/.exec(chemin))) { const x = g.pulls.find((y) => y.number === Number(m[1])); return x ? rep(x) : rep({ message: "Not Found" }, 404); }
   if (methode === "PUT" && (m = /\/pulls\/(\d+)\/merge$/.exec(chemin))) {
     const x = g.pulls.find((y) => y.number === Number(m[1]));
@@ -1248,6 +1255,113 @@ test("㊳ bis deux pilotes : ce qui dispense du parcours, ce sont des ADRESSES p
   await veille();
   assert.equal(sonnes().length, 3);
   assert.equal(banc.base.appelsAuth.filter((a) => a.quoi === "listUsers").length, 0);
+});
+
+// ═══ SUITES DE #848 (2026-11-12) — les trous côté écran relevés par sa seconde relecture ═══════════════
+
+test("㊴ dix exécutions de la PR d'un fork (branche « main ») ne chassent plus les nôtres : la Sentinelle et la veille se lisent par événement, filtrées par GitHub — « n'a pas tourné depuis 8 h » reste dit", async () => {
+  await monter();
+  // Avant : une lecture « branch=main », filtrée ENSUITE ici — les dix places prises par le fork, `runs.sentinelle` à null, plus d'orange.
+  const duFork = (id, minutes) => run({ event: "pull_request", head_branch: "main", head_repository: { full_name: "inconnu/passio-app" }, conclusion: "action_required", id, le: ilYa(minutes * 60e3) });
+  banc.gh.runs["sentinelle-autonome.yml"] = [...Array.from({ length: 10 }, (_, k) => duFork(700 + k, k + 1)), run({ event: "schedule", id: 650, le: ilYa(9 * 3600e3) })];
+  const r = await appeler({ action: "etat" });
+  assert.ok(r.corps.github.runs.sentinelle, "notre exécution est lue malgré les dix du fork : " + JSON.stringify(r.corps.github.runs));
+  assert.equal(r.corps.github.runs.sentinelle.conclusion, "success");
+  assert.match(r.corps.verdict.raisons.join(" "), /la Sentinelle n'a pas tourné depuis plus de 8 h/);
+  assert.ok(ligneAFaire(r, "sentinelle:muette"), JSON.stringify((r.corps.aFaire || []).map((x) => x.id)));
+  // Une lecture par événement qui lance le workflow, filtrée par GitHub — aucune sans filtre.
+  const lectures = appelsGithub("GET", /sentinelle-autonome\.yml\/runs/).map((x) => x.chemin);
+  assert.ok(lectures.some((c) => /event=schedule/.test(c)) && lectures.some((c) => /event=workflow_dispatch/.test(c)), lectures.join(" | "));
+  assert.ok(lectures.every((c) => /branch=main/.test(c) && /event=/.test(c)), lectures.join(" | "));
+  const veilles = appelsGithub("GET", /veille-production\.yml\/runs/).map((x) => x.chemin);
+  assert.ok(veilles.length === 2 && veilles.every((c) => /event=(schedule|workflow_dispatch)/.test(c)), veilles.join(" | "));
+  // Une des lectures refusée : le workflow est « non lu », jamais « rien à dire ».
+  await monter();
+  banc.gh.panne = (m, chemin) => (/sentinelle-autonome\.yml\/runs\?.*event=workflow_dispatch/.test(chemin) ? { status: 502 } : null);
+  const p = await appeler({ action: "etat" });
+  assert.equal(p.corps.github.runs.sentinelle, null);
+  assert.ok(p.corps.github.runsNonLus.includes("sentinelle"), JSON.stringify(p.corps.github.runsNonLus));
+  assert.notEqual(p.corps.verdict.couleur, "vert", JSON.stringify(p.corps.verdict));
+});
+
+test("㊵ cent vingt PR de forks plus récentes ne font plus sortir un correctif de la liste : les PR se lisent par pages de cent ; au-delà de trois pages, ou illisibles, c'est dit", async () => {
+  // Le dépôt est public : une PR de fork est aussi une issue (GitHub les liste ensemble), d'un inconnu, sans label.
+  const prDuFork = (number) => {
+    banc.gh.pulls.push(pr({ number, user: { login: "inconnu" }, head: { ref: "main", sha: sha("d"), repo: { full_name: "inconnu/passio-app" } } }));
+    banc.gh.issues.push(issue({ number, title: "PR d'un fork " + number, user: { login: "inconnu" }, pull_request: {} }));
+  };
+  await monter();
+  ouvrirPr({ number: 12 });
+  for (let n = 0; n < 120; n++) prDuFork(1000 + n);
+  let r = await appeler({ action: "etat" });
+  assert.equal(ligneAFaire(r, "pr:12") && ligneAFaire(r, "pr:12").titre, "Un correctif est prêt", "le correctif, plus ancien que 120 PR de forks, est lu");
+  assert.equal(r.corps.github.prNonLues, null);
+  assert.equal(ligneAFaire(r, "lecture:pr"), null);
+  assert.deepEqual(appelsGithub("GET", /\/pulls\?/).map((x) => /[?&]page=(\d+)/.exec(x.chemin)[1]), ["1", "2"], "deux pages lues, pas une de plus");
+  assert.ok(!(r.corps.aFaire || []).some((x) => /fork/.test(String(x.titre) + String(x.reference))), "aucune PR de fork n'entre dans la liste");
+  // Plus de trois cents : les plus anciennes ne sont pas lues — et c'est dit à l'écran.
+  await monter();
+  ouvrirPr({ number: 12 });
+  for (let n = 0; n < 320; n++) prDuFork(1000 + n);
+  r = await appeler({ action: "etat" });
+  assert.match(String(r.corps.github.prNonLues), /plus de 300 PR ouvertes/);
+  assert.match(String(ligneAFaire(r, "lecture:pr") && ligneAFaire(r, "lecture:pr").reference), /plus de 300 PR ouvertes/);
+  assert.equal(appelsGithub("GET", /\/pulls\?/).length, 3, "trois pages, pas une de plus");
+  // Un corps de liste illisible n'est pas une liste vide : c'est dit, et aucun bouton ne met en ligne à l'aveugle.
+  await monter();
+  ouvrirPr({ number: 12 });
+  banc.gh.pullsIllisible = true;
+  r = await appeler({ action: "etat" });
+  assert.match(String(r.corps.github.prNonLues), /liste des PR illisible/);
+  assert.ok(ligneAFaire(r, "lecture:pr"));
+  const l12 = ligneAFaire(r, "pr:12");
+  assert.ok(!l12 || !(l12.gestes || []).some((g) => g.corps && g.corps.action === "fusionner"), "sans lecture de la PR, jamais un bouton qui met en ligne : " + JSON.stringify(l12));
+});
+
+test("㊶ un DÉFAUT DU CODE dans un geste se dit comme tel (500, « défaut du code », en ERREUR dans les journaux) — une TypeError reste ambiguë (un fetch qui ne joint pas GitHub en lève une) : 502, « peut-être parti »", async () => {
+  for (const [Erreur, status, motif, journal] of [
+    [ReferenceError, 500, /défaut du code, pas une panne de GitHub/, /^\[erreur\] pilotage : défaut du code dans un geste/],
+    [SyntaxError, 500, /défaut du code, pas une panne de GitHub/, /^\[erreur\] pilotage : défaut du code dans un geste/],
+    [RangeError, 500, /défaut du code, pas une panne de GitHub/, /^\[erreur\] pilotage : défaut du code dans un geste/],
+    [TypeError, 502, /peut-être parti/, /^pilotage : geste interrompu/],
+  ]) {
+    await monter();
+    ouvrirPr({ number: 12 });
+    banc.gh.lenteur = (m, chemin) => { if (m === "PUT" && /\/merge$/.test(chemin)) throw new Erreur("cibleInconnue is not defined"); };
+    const r = await appeler({ action: "fusionner", numero: 12, sha: sha("c") });
+    assert.equal(r.status, status, Erreur.name + " : " + JSON.stringify(r.corps));
+    assert.match(r.corps.error, motif, Erreur.name);
+    assert.ok(banc.console.some((l) => journal.test(l) && l.includes('"nom":"' + Erreur.name + '"')), Erreur.name + " : " + banc.console.join(" | "));
+  }
+});
+
+test("㊷ la note de la version armée ILLISIBLE ne laisse plus dire « part en ligne » : la ligne dit qu'elle n'a pas pu vérifier, et propose de relire", async () => {
+  await monter();
+  ouvrirPr({ number: 12 });
+  banc.gh.fusion = { status: 405, corps: { message: "Required status check is expected." } };
+  assert.equal((await appeler({ action: "fusionner", numero: 12, sha: sha("c") })).status, 200);
+  assert.ok(banc.gh.pulls[0].auto_merge, "l'auto-fusion est armée");
+  banc.base.panne = (q) => (q.table === "analytics_events" && q.type === "select" && (q.filtres || []).some((f) => f[0] === "eq" && f[1] === "properties->>geste" && f[2] === "fusion_armee") ? { code: "57014", message: "timeout" } : null);
+  const r = await appeler({ action: "etat", frais: true });
+  assert.ok(r.corps.nonLus.includes("fusionsArmees"), JSON.stringify(r.corps.nonLus));
+  const l = ligneAFaire(r, "pr:12");
+  assert.equal(l.titre, "Un correctif part en ligne, sans pouvoir vérifier sa version");
+  assert.equal(l.prio, 1);
+  assert.ok(!l.enCours, "ce n'est pas « les machines s'en occupent »");
+  assert.equal(l.gestes[0].special, "relire");
+  assert.ok(!l.gestes.some((g) => g.corps && g.corps.action === "fusionner"), "aucun bouton qui valide une version qu'on n'a pas pu comparer");
+  // Relue, la note revient : la ligne redevient « part en ligne ».
+  banc.base.panne = null;
+  assert.equal(ligneAFaire(await appeler({ action: "etat", frais: true }), "pr:12").titre, "Un correctif part en ligne");
+  // Une version armée il y a DIX jours (la note se relisait sur sept) : toujours comparée — GitHub, lui, n'a pas oublié l'armement.
+  await monter();
+  const p14 = ouvrirPr({ number: 14 });
+  p14.auto_merge = { merge_method: "squash" };
+  p14.head.sha = sha("f");
+  banc.base.semer("analytics_events", [{ user_id: "systeme:pilotage", event: EVT_GESTE, created_at: ilYa(10 * 864e5), properties: { geste: "fusion_armee", numero: 14, sha: sha("d") } }]);
+  const e14 = await appeler({ action: "etat", frais: true });
+  assert.deepEqual(e14.corps.fusionsArmees, { 14: sha("d") });
+  assert.equal(ligneAFaire(e14, "pr:14").titre, "Un correctif a changé depuis ton « Régler »");
 });
 
 test("㊲ chaque action du gestionnaire est exécutée par ce banc, ET menée au bout au moins une fois — une action neuve sans exercice, ou seulement refusée, rougit ici", () => {

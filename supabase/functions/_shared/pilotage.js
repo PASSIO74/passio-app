@@ -830,6 +830,13 @@ export function aFaire(d, maintenant = Date.now()) {
     // Le geste principal referme (rien ne part sans avoir été vu) ; valider la nouvelle version
     // reste possible, d'un toucher explicite. Jamais dans « Tout régler ».
     const armee = d && d.fusionsArmees && typeof d.fusionsArmees === "object" ? d.fusionsArmees[String(i.numero)] : null;
+    // La note de la version armée n'a pas pu être relue : on ne sait pas si ce qui partirait est ce qui a été vu — on le
+    // dit, au lieu d'afficher « part en ligne » comme si de rien n'était (seconde relecture de #848).
+    if (i.autoFusion && fusionner && nonLus.includes("fusionsArmees")) {
+      ajoute({ ...base, prio: 1, etiquette: "Correctif", reference, titre: "Un correctif part en ligne, sans pouvoir vérifier sa version", quoi: "Relit GitHub et la note de la version armée.",
+        gestes: [relire, ...refuser] });
+      continue;
+    }
     if (i.autoFusion && fusionner && shaValide(armee) && armee !== i.sha) {
       ajoute({ ...base, prio: 0, etiquette: "Correctif", reference, titre: "Un correctif a changé depuis ton « Régler »", quoi: "Le referme : ce qui partirait n'est plus ce que tu as vu.",
         gestes: gestesGh ? [regler({ action: "fermer", numero: i.numero }, false), { libelle: "Valider la nouvelle version", ...fusionner }] : [] });
