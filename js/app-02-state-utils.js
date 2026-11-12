@@ -4097,28 +4097,58 @@ function toggleSettingsSection(el) {
 }
 
 // ===== PARAMÈTRES COMPLETS =====
+// ⚠️ CINQ INTERRUPTEURS RETIRÉS (LOT-7, audit UX/UI du 2026-11-10, TRA-C04).
+// « Nouveaux posts », « Messages », « Likes & commentaires », « Événements IRL » et
+// « Système » s'enregistraient dans `passio_config` et rien ne les lisait : ni
+// l'émetteur (`supaInsertNotif`), ni `notify-call`. Décocher « Messages » ne
+// changeait rien. Même règle que la confidentialité le 2026-11-06 : un réglage ne
+// revient qu'avec son effet, branché côté émetteur ET côté `notify-call`.
+// Restent : ce qui notifie, dit en une phrase ; l'état de la permission du
+// téléphone ; le récap de la semaine (lu par js/recap-semaine.js).
+function _etatPermissionNotif() {
+  try {
+    if (typeof Notification === "undefined") return "absent";
+    return Notification.permission; // "granted" | "denied" | "default"
+  } catch (e) { return "absent"; }
+}
+function _notifPermissionHTML() {
+  var e = _etatPermissionNotif();
+  var ligne = function (txt, couleur) {
+    return '<div class="notif-perm" data-notif-perm="' + e + '" style="font-size:13px;line-height:1.45;padding:10px 12px;border-radius:12px;background:var(--bg-soft);margin-bottom:12px;color:' + couleur + ';">' + txt + '</div>';
+  };
+  if (e === "granted") return ligne("✓ Ce téléphone t'affiche les notifications de PASSIO, même application fermée.", "#0f5c3d");
+  if (e === "denied") return ligne("Ce téléphone bloque les notifications de PASSIO. Pour les recevoir, autorise-les dans les réglages du navigateur ou de l'application.", "#9a3412");
+  if (e === "absent") return ligne("Ce navigateur ne sait pas afficher de notifications : tu les retrouves dans la cloche 🔔.", "var(--muted)");
+  return ligne("Ce téléphone ne t'affiche pas encore les notifications de PASSIO.", "var(--text)")
+    + '<button type="button" class="btn primary block" id="notifAutoriser" onclick="_notifAutoriser()" style="margin:-4px 0 12px;">Autoriser les notifications</button>';
+}
+async function _notifAutoriser() {
+  try {
+    window._callNotifAsked = false;   // geste explicite : on redemande
+    if (typeof requestCallNotifications === "function") await requestCallNotifications();
+  } catch (e) {}
+  try { openNotifSettings(); } catch (e) {}
+}
 function openNotifSettings() {
   var cfg = getCurrentConfig();
-  var notifs = cfg.notifs || { posts: true, messages: true, likes: true, events: true, system: true };
+  var notifs = cfg.notifs || {};
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Notifications</div>\
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Choisis ce qui te notifie</p>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Nouveaux posts</span><input type="checkbox" id="notifPosts" ' + (notifs.posts ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Messages</span><input type="checkbox" id="notifMessages" ' + (notifs.messages ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Likes & commentaires</span><input type="checkbox" id="notifLikes" ' + (notifs.likes ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Événements IRL</span><input type="checkbox" id="notifEvents" ' + (notifs.events ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Système</span><input type="checkbox" id="notifSystem" ' + (notifs.system ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;"><span style="font-size:13px;">Récap de la semaine<br><span style="font-size:11.5px;color:var(--muted);">Une carte en tête du fil, une fois par semaine, dans l\'app seulement.</span></span><input type="checkbox" id="notifRecap" ' + (notifs.recap !== false ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);"></label>\
+    <p class="notif-ce-qui-notifie" style="font-size:13px;line-height:1.5;margin:4px 0 12px;">Tu es prévenu·e des messages qu\'on t\'envoie, des j\'aime et des commentaires sur ce que tu publies, des abonnements, et de ce qui se passe autour des activités que tu organises ou que tu as rejointes (dont un rappel la veille et deux heures avant).</p>\
+    ' + _notifPermissionHTML() + '\
+    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border);"><span style="font-size:13px;">Récap de la semaine<br><span style="font-size:11.5px;color:var(--muted);">Une carte en tête du fil, une fois par semaine, dans l\'app seulement.</span></span><input type="checkbox" id="notifRecap" ' + (notifs.recap !== false ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);"></label>\
+    <p style="font-size:12px;color:var(--muted);margin:6px 0 0;">Pour couper une conversation précise : ouvre-la, puis « Paramètres » › « Couper les notifications ».</p>\
     <button class="btn primary block" onclick="saveNotifSettings()" style="margin-top:14px;">Sauvegarder</button>\
   ');
 }
 function saveNotifSettings() {
   var cfg = getCurrentConfig();
   // `recap` (2026-10-06) : le récap de la semaine, js/recap-semaine.js — absent = oui.
+  // Les clés retirées ne sont plus écrites (rien ne les lisait).
   var recap = document.getElementById("notifRecap");
-  cfg.notifs = { posts: document.getElementById("notifPosts").checked, messages: document.getElementById("notifMessages").checked, likes: document.getElementById("notifLikes").checked, events: document.getElementById("notifEvents").checked, system: document.getElementById("notifSystem").checked, recap: recap ? recap.checked : true };
-  saveConfig(cfg); closeModal(); toast("Notifications mises à jour");
+  cfg.notifs = { recap: recap ? recap.checked : true };
+  saveConfig(cfg); closeModal(); toast("Récap de la semaine " + ((recap ? recap.checked : true) ? "activé" : "désactivé"));
 }
 
 function openPrivacySettings() {
@@ -4370,205 +4400,13 @@ function saveContentSettings() {
   closeModal(); toast("Préférences de contenu mises à jour");
 }
 
-function openScreenTime() {
-  var usage = parseInt(localStorage.getItem("passio_usage_min") || "0");
-  var limitSec = parseInt(localStorage.getItem("passio_limit_sec") || "3600");
-  var hasCode = localStorage.getItem("passio_parental_code") ? true : false;
-  var lH = Math.floor(limitSec / 3600);
-  var lM = Math.floor((limitSec % 3600) / 60);
-  var lS = limitSec % 60;
-  var uH = Math.floor(usage / 60);
-  var uM = usage % 60;
-
-  openModal('\
-    <div class="modal-handle"></div>\
-    <div class="modal-title">Temps d\'écran</div>\
-    \
-    <div style="text-align:center;margin:16px 0;">\
-      <div style="font-size:42px;font-weight:900;color:var(--accent);">' + uH + 'h ' + (uM < 10 ? '0' : '') + uM + 'min</div>\
-      <div style="font-size:12px;color:var(--muted);">utilisé aujourd\'hui</div>\
-    </div>\
-    \
-    <div style="background:var(--bg-deep);border-radius:14px;padding:16px;margin-bottom:14px;">\
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px;">Limite journalière</div>\
-      <div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:12px;">\
-        <div style="text-align:center;">\
-          <input type="number" id="limitH" value="' + escapeHtml(lH) + '" min="0" max="23" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
-          <div style="font-size:10px;color:var(--muted);margin-top:4px;">heures</div>\
-        </div>\
-        <span style="font-size:24px;font-weight:900;color:var(--muted);">:</span>\
-        <div style="text-align:center;">\
-          <input type="number" id="limitM" value="' + escapeHtml(lM) + '" min="0" max="59" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
-          <div style="font-size:10px;color:var(--muted);margin-top:4px;">minutes</div>\
-        </div>\
-        <span style="font-size:24px;font-weight:900;color:var(--muted);">:</span>\
-        <div style="text-align:center;">\
-          <input type="number" id="limitS" value="' + escapeHtml(lS) + '" min="0" max="59" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
-          <div style="font-size:10px;color:var(--muted);margin-top:4px;">secondes</div>\
-        </div>\
-      </div>\
-      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;">\
-        <button onclick="setTimeLimitQuick(1800)" class="btn ghost" style="font-size:11px;padding:6px 10px;">30 min</button>\
-        <button onclick="setTimeLimitQuick(3600)" class="btn ghost" style="font-size:11px;padding:6px 10px;">1h</button>\
-        <button onclick="setTimeLimitQuick(5400)" class="btn ghost" style="font-size:11px;padding:6px 10px;">1h30</button>\
-        <button onclick="setTimeLimitQuick(7200)" class="btn ghost" style="font-size:11px;padding:6px 10px;">2h</button>\
-        <button onclick="setTimeLimitQuick(10800)" class="btn ghost" style="font-size:11px;padding:6px 10px;">3h</button>\
-        <button onclick="setTimeLimitQuick(0)" class="btn ghost" style="font-size:11px;padding:6px 10px;">Illimité</button>\
-      </div>\
-    </div>\
-    \
-    <div style="background:var(--bg-deep);border-radius:14px;padding:16px;margin-bottom:14px;">\
-      <div style="font-size:13px;font-weight:800;margin-bottom:8px;">Contrôle parental</div>\
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Un code à 4 chiffres sera demandé pour modifier ou désactiver la limite.</div>\
-      ' + (hasCode
-        ? '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;color:var(--accent);font-weight:700;">Code actif</span><button onclick="removeParentalCode()" class="btn ghost" style="font-size:11px;padding:6px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);">Supprimer</button></div>'
-        : '<button onclick="setupParentalCode()" class="btn ghost" style="font-size:12px;width:100%;">Définir un code parental</button>'
-      ) + '\
-    </div>\
-    \
-    <button class="btn primary block" onclick="saveScreenTimeLimit()">Sauvegarder la limite</button>\
-  ');
-}
-
-function setTimeLimitQuick(sec) {
-  var h = Math.floor(sec / 3600);
-  var m = Math.floor((sec % 3600) / 60);
-  var s = sec % 60;
-  var hEl = document.getElementById("limitH"); if (hEl) hEl.value = h;
-  var mEl = document.getElementById("limitM"); if (mEl) mEl.value = m;
-  var sEl = document.getElementById("limitS"); if (sEl) sEl.value = s;
-}
-
-function saveScreenTimeLimit() {
-  var hasCode = localStorage.getItem("passio_parental_code");
-  if (hasCode) {
-    askParentalCode(function() { doSaveScreenTimeLimit(); });
-  } else {
-    doSaveScreenTimeLimit();
-  }
-}
-
-function doSaveScreenTimeLimit() {
-  var h = parseInt(document.getElementById("limitH")?.value || "0");
-  var m = parseInt(document.getElementById("limitM")?.value || "0");
-  var s = parseInt(document.getElementById("limitS")?.value || "0");
-  var total = h * 3600 + m * 60 + s;
-  localStorage.setItem("passio_limit_sec", total.toString());
-  closeModal();
-  if (total === 0) {
-    toast("Limite désactivée — temps illimité");
-  } else {
-    toast("Limite : " + h + "h " + (m < 10 ? "0" : "") + m + "min " + (s < 10 ? "0" : "") + s + "s");
-  }
-}
-
-function setupParentalCode() {
-  openModal('\
-    <div class="modal-handle"></div>\
-    <div class="modal-title">Définir le code parental</div>\
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ce code à 4 chiffres sera demandé pour modifier la limite de temps. Note-le bien !</p>\
-    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:14px;">\
-      <input type="password" id="parentCode1" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'parentCode2\').focus()"/>\
-      <input type="password" id="parentCode2" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'parentCode3\').focus()"/>\
-      <input type="password" id="parentCode3" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'parentCode4\').focus()"/>\
-      <input type="password" id="parentCode4" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)confirmParentalCode()"/>\
-    </div>\
-    <button class="btn primary block" onclick="confirmParentalCode()">Confirmer le code</button>\
-    <button class="btn ghost block" onclick="closeModal();openScreenTime();" style="margin-top:6px;">Annuler</button>\
-  ');
-  setTimeout(function() { var el = document.getElementById("parentCode1"); if (el) el.focus(); }, 100);
-}
-
-async function _hashPin(code) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("passio:" + code));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function confirmParentalCode() {
-  var code = (document.getElementById("parentCode1")?.value || "") +
-    (document.getElementById("parentCode2")?.value || "") +
-    (document.getElementById("parentCode3")?.value || "") +
-    (document.getElementById("parentCode4")?.value || "");
-  if (code.length !== 4 || !/^\d{4}$/.test(code)) {
-    toast("Le code doit contenir 4 chiffres");
-    return;
-  }
-  const hash = await _hashPin(code);
-  localStorage.setItem("passio_parental_code", hash);
-  closeModal();
-  toast("Code parental activé !");
-  openScreenTime();
-}
-
-function removeParentalCode() {
-  askParentalCode(function() {
-    localStorage.removeItem("passio_parental_code");
-    toast("Code parental supprimé");
-    openScreenTime();
-  });
-}
-
-function askParentalCode(onSuccess) {
-  openModal('\
-    <div class="modal-handle"></div>\
-    <div class="modal-title">Entrer le code parental</div>\
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Saisis ton code à 4 chiffres pour continuer.</p>\
-    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:14px;">\
-      <input type="password" id="askCode1" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'askCode2\').focus()"/>\
-      <input type="password" id="askCode2" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'askCode3\').focus()"/>\
-      <input type="password" id="askCode3" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'askCode4\').focus()"/>\
-      <input type="password" id="askCode4" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);"/>\
-    </div>\
-    <button class="btn primary block" id="askCodeBtn">Valider</button>\
-    <button class="btn ghost block" onclick="closeModal()" style="margin-top:6px;">Annuler</button>\
-  ');
-  setTimeout(function() {
-    var el = document.getElementById("askCode1"); if (el) el.focus();
-    var btn = document.getElementById("askCodeBtn");
-    if (btn) {
-      btn.onclick = async function() {
-        var code = (document.getElementById("askCode1")?.value||"") + (document.getElementById("askCode2")?.value||"") + (document.getElementById("askCode3")?.value||"") + (document.getElementById("askCode4")?.value||"");
-        var stored = localStorage.getItem("passio_parental_code");
-        var hash = await _hashPin(code);
-        // Compatibilité : supporte ancien code en clair (migration)
-        if (hash === stored || code === stored) {
-          if (code === stored) { _hashPin(code).then(h => localStorage.setItem("passio_parental_code", h)); }
-          closeModal();
-          if (onSuccess) onSuccess();
-        } else {
-          toast("Code incorrect", "error");
-          ["askCode1","askCode2","askCode3","askCode4"].forEach(function(id) { var e = document.getElementById(id); if(e) e.value=""; });
-          var el = document.getElementById("askCode1"); if (el) el.focus();
-        }
-      };
-    }
-  }, 100);
-}
-
-function setTimeLimit(min) {
-  localStorage.setItem("passio_limit_sec", (min * 60).toString());
-  toast("Limite : " + (min > 0 ? min + " min/jour" : "illimitée"));
-  openScreenTime();
-}
-
-function openPauseMode() {
-  openModal('\
-    <div class="modal-handle"></div>\
-    <div class="modal-title">Mode pause</div>\
-    <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">Prends une pause. PASSIO sera là quand tu reviens.</p>\
-    <div style="display:flex;flex-direction:column;gap:8px;">\
-      <button class="btn ghost" onclick="activatePause(30)" style="text-align:left;padding:14px;">Pause 30 minutes</button>\
-      <button class="btn ghost" onclick="activatePause(60)" style="text-align:left;padding:14px;">Pause 1 heure</button>\
-      <button class="btn ghost" onclick="activatePause(1440)" style="text-align:left;padding:14px;">Pause jusqu\'à demain</button>\
-      <button class="btn ghost" onclick="activatePause(10080)" style="text-align:left;padding:14px;">Pause 1 semaine</button>\
-    </div>\
-    <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Annuler</button>\
-  ');
-}
-function activatePause(min) {
-  closeModal();
-  toast("Mode pause activé — " + (min < 60 ? min + " min" : min < 1440 ? Math.round(min/60) + "h" : Math.round(min/1440) + " jour(s)"));
-}
+// ⚠️ « BIEN-ÊTRE DIGITAL » RETIRÉ (LOT-7, audit UX/UI du 2026-11-10, TRA-C05).
+// Temps d'écran, limite quotidienne, code parental et mode pause ne faisaient
+// rien : `passio_usage_min` n'était écrit nulle part (compteur toujours à 0),
+// `passio_limit_sec` n'était lu que par l'écran lui-même (aucune coupure), et
+// « Mode pause » n'affichait qu'un toast. Une personne, ou un parent, croyait
+// avoir limité l'usage. Ne revient qu'avec un effet RÉEL (ex. une pause qui
+// suspend les notifications poussées), visible dans le panneau.
 
 function openAbout() {
   openModal('\
