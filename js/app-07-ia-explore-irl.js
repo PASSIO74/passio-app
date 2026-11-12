@@ -4602,7 +4602,8 @@ function openEventDetails(id) {
 
     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
       ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">Ajouter au calendrier</button>`}
-      <button class="btn ghost block" onclick="shareEvent('${escapeJsArg(ev.id)}')" style="font-size:12px;">${shareIconSvg(14)} Partager</button>
+      <!-- LOT-12 (PAR-C12) : la porte « Partager » du milieu est retirée — deux suffisent
+           (l'icône du haut, la barre d'actions du bas), et la feuille propose l'invitation. -->
       ${over ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">Inviter</button>`}
       ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">Gérer</button>` : ""}
     </div>
@@ -4713,7 +4714,11 @@ function openEventDetails(id) {
   _refreshEventDetailCta(ev, joined);
 
   const shareBtn = document.getElementById("eventDetailShareBtn");
-  if (shareBtn) shareBtn.onclick = function() { shareEvent(id); };
+  if (shareBtn) {
+    // LOT-12 (PAR-C12) : la MÊME icône que les autres portes (nœuds), pas un mot.
+    shareBtn.innerHTML = shareIconSvg(20);
+    shareBtn.onclick = function() { shareEvent(id); };
+  }
 
   const page = document.getElementById("eventDetailPage");
   page.style.display = "flex";
@@ -4748,6 +4753,33 @@ function _refreshEventDetailCta(ev, joined) {
 // mon contenu » — le cœur de la promesse PASSIO. Le post publié sera rattaché à
 // l'événement (window._pendingEventPost, lu par publishPost) et remontera dans
 // son album.
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C16) — LE SOUVENIR SE VOIT. Le Studio
+// s'ouvrait rattaché à l'album PUBLIC de l'activité sans le dire, et le marqueur
+// survivait : quitter le Studio puis publier autre chose rattachait cette autre
+// publication à l'album. Un bandeau le dit, une croix le retire, et quitter le
+// Studio l'efface (goTo, app-02).
+function _peindreSouvenirStudio() {
+  var ancien = document.getElementById("studioSouvenir");
+  var id = window._pendingEventPost;
+  if (!id) { if (ancien) ancien.remove(); return; }
+  var ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e.id === id; });
+  if (!ev) { if (ancien) ancien.remove(); return; }
+  var ta = document.getElementById("postText");
+  if (!ta || !ta.parentNode) return;
+  var b = ancien || document.createElement("div");
+  b.id = "studioSouvenir";
+  b.className = "studio-souvenir";
+  b.setAttribute("role", "status");
+  b.innerHTML = '<span class="studio-souvenir-texte"></span><button type="button" class="studio-souvenir-retirer" aria-label="Ne pas l\'ajouter à l\'album" onclick="retirerSouvenirStudio()">×</button>';
+  b.querySelector(".studio-souvenir-texte").textContent = "Souvenir de « " + (ev.title || "l'activité") + " » — ira dans l'album de l'activité";
+  if (!ancien) ta.parentNode.insertBefore(b, ta);
+}
+function retirerSouvenirStudio() {
+  window._pendingEventPost = null;
+  _peindreSouvenirStudio();
+  toast("Ta publication n'ira pas dans l'album");
+}
+
 function shareEventExperience(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
@@ -4757,6 +4789,7 @@ function shareEventExperience(id) {
   const prefill = `📍 ${ev.title}${ev.city ? " · " + ev.city : ""} (${d.day} ${d.month})\n\n`;
   goTo("studio");
   setTimeout(() => {
+    try { _peindreSouvenirStudio(); } catch (e) {}
     const ta = document.getElementById("postText") || document.querySelector("#screen-studio textarea");
     if (ta) { ta.value = prefill; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
     // ⚠️ AFFECTER `select.value` AVEC UNE VALEUR SANS <option> NE LÈVE PAS :
@@ -5258,35 +5291,22 @@ window.addEventListener("passio:app-ready", function () {
 // les carnets CDV.
 function shareEvent(id) {
   const ev = allEvents().find(e => e.id === id);
-  if (!ev) { toast("Événement introuvable."); return; }
+  if (!ev) { toast("Activité introuvable."); return; }
   // Lien COURT en production (aperçu de l'activité chez WhatsApp, iMessage…) : app-06.
   const rawUrl = (typeof lienPartageDe === "function")
     ? lienPartageDe("event", id) : location.origin + location.pathname + "#irl-event-" + id;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "event", id, navigator.share ? "native" : "clipboard") : rawUrl;
   const d = fmtEventDate(ev.date);
-  const text = `${ev.title} · ${ev.city || ""} · ${d.day} ${d.month}`;
-
-  const html = `
-    <div class="modal-title">${shareIconSvg(20)} Partager cet événement</div>
-    <div style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
-      ${escapeHtml(ev.title || "Événement")}${ev.city ? " · " + escapeHtml(ev.city) : ""}<br>${escapeHtml(d.day + " " + d.month)}
-    </div>
-    <button class="btn primary block" id="_shareEvInFeedBtn" onclick="shareEventInFeed('${escapeJsArg(id)}')" style="margin-bottom:10px;">
-      Partager dans mon feed
-    </button>
-    <button class="btn secondary block" id="_shareEvOutBtn">
-      ${shareIconSvg(16)} Partager en dehors
-    </button>
-  `;
-  openModal(html);
-  // Listener propre : pas d'injection de texte utilisateur dans un onclick inline.
-  setTimeout(() => {
-    const btn = document.getElementById("_shareEvOutBtn");
-    if (!btn) return;
-    btn.addEventListener("click", function () {
-      partagerOuCopier({ title: ev.title, text, url }, "Lien de l'événement copié");
-    });
-  }, 0);
+  const quand = d.day + " " + d.month + " à " + _eventTimeLabel(ev);
+  ouvrirFeuillePartage({
+    quoi: "activité", titre: ev.title || "Activité", extrait: quand + (ev.city ? " · " + ev.city : ""),
+    url: url,
+    message: (ev.title || "Une activité") + " — " + quand + (ev.city ? " · " + ev.city : "") + ". Sur PASSIO 👇",
+    voit: "La personne qui reçoit le lien voit l'activité et peut s'y inscrire, même sans compte.",
+    idEnvoyer: "_shareEvOutBtn", idRepublier: "_shareEvInFeedBtn",
+    republier: function () { shareEventInFeed(id); },
+    inviter: function () { closeModal(); openEventInvite(id); },
+  });
 }
 
 // Crée un post « repost » de l'événement dans le feed (miroir de sharePostInFeed
@@ -5304,14 +5324,14 @@ async function shareEventInFeed(id) {
   }
 
   const ev = allEvents().find(e => e.id === id);
-  if (!ev) { toast("Événement introuvable."); closeModal(); return; }
+  if (!ev) { toast("Activité introuvable."); closeModal(); return; }
 
   try { window.tel && tel.action("share_event", { eventId: id }); } catch (e) {}
 
   // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
   if (typeof publicationRefuseeFautePassion === "function"
       && publicationRefuseeFautePassion(passionDeRepartage(ev.passion))) {
-    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
+    if (btn) { btn.disabled = false; btn.textContent = "Republier dans mon fil"; }
     closeModal();
     return;
   }
@@ -7639,18 +7659,46 @@ function _rememberEventInvite(eventId, userId) {
   saveState();
 }
 
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C13) — « INVITER MES ABONNEMENTS ».
+// Deux « × » superposés (celui d'`openModal` + celui du gabarit), un bouton de
+// 29 px, des noms coupés, et l'invitation partait au premier appui ; la personne
+// disparaissait ensuite de la liste (« Tu as invité tout le monde »), sans trace.
+// Désormais : un seul ×, des boutons de 44 px, les noms sur deux lignes, une
+// section « Déjà invités », 5 s pour annuler, et toujours une sortie « Envoyer le
+// lien à quelqu'un d'autre ».
+var EVENT_INVITE_ANNULER_MS = 5000;
+window._invitesEnAttente = window._invitesEnAttente || {};
 function openEventInvite(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
-  if (!ev) { toast("Événement introuvable"); return; }
+  if (!ev) { toast("Activité introuvable"); return; }
   window._inviteEventId = eventId;
-  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">Inviter des amis</div>'
+  openModal('<div class="modal-title">Inviter mes abonnements</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">'
     + escapeHtml(ev.title || "") + '</div>'
-    + '<input type="text" class="input" id="eventInviteSearch" placeholder="Rechercher parmi tes abonnements…" '
+    + '<input type="search" class="input" id="eventInviteSearch" aria-label="Chercher parmi tes abonnements" placeholder="Chercher parmi tes abonnements…" '
     + 'oninput="_renderEventInviteList()" style="margin-bottom:10px;"/>'
-    + '<div id="eventInviteList"></div>');
+    + '<div id="eventInviteList"></div>'
+    + '<button type="button" class="btn secondary block event-invite-lien" onclick="_inviterParLien(\'' + escapeJsArg(eventId) + '\')">Envoyer le lien à quelqu\'un d\'autre</button>');
   _renderEventInviteList();
+}
+function _inviterParLien(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  var d = fmtEventDate(ev.date);
+  inviterActivite(ev, d.day + " " + d.month + " à " + _eventTimeLabel(ev));
+}
+
+function _ligneInvite(eventId, id, etat) {
+  var u = (typeof userById === "function" && userById(id)) || { avatar: "#64748b", profileEmoji: "?", name: "Passionné" };
+  var bouton = etat === "fait"
+    ? '<span class="event-invite-fait" role="status">✓ Invité</span>'
+    : etat === "attente"
+      ? '<button type="button" class="btn small ghost event-invite-btn" data-invite="' + escapeHtml(id) + '" onclick="annulerInviteEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\')">Annuler</button>'
+      : '<button type="button" class="btn small primary event-invite-btn" data-invite="' + escapeHtml(id) + '" aria-label="Inviter ' + escapeHtml(u.name || "Passionné") + '" onclick="inviteToEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\',this)">Inviter</button>';
+  return '<div class="event-invite-row">'
+    + '<div class="avatar sm" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
+    + '<div class="event-invite-nom">' + escapeHtml(u.name || "Passionné") + '</div>'
+    + bouton + '</div>';
 }
 
 function _renderEventInviteList() {
@@ -7660,48 +7708,57 @@ function _renderEventInviteList() {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
 
-  var q = ((document.getElementById("eventInviteSearch") || {}).value || "").trim().toLowerCase();
-  var ids = _eventInvitables(ev).filter(function (id) {
+  var q = plierRecherche(((document.getElementById("eventInviteSearch") || {}).value || "").trim());
+  var filtre = function (id) {
     if (!q) return true;
     var u = (typeof userById === "function" && userById(id)) || {};
-    return (u.name || "").toLowerCase().indexOf(q) > -1;
-  });
+    return plierRecherche(u.name || "").indexOf(q) > -1;
+  };
+  var enAttente = window._invitesEnAttente[eventId] || {};
+  var ids = _eventInvitables(ev).filter(filtre);
+  var faits = _eventInvitesSent(eventId).filter(function (id) { return !enAttente[id] && filtre(id); });
 
-  if (!ids.length) {
-    var sent = _eventInvitesSent(eventId).length;
-    box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">'
-      + (q ? "Aucun résultat pour « " + escapeHtml(q) + " »"
-           : sent ? "Tu as invité tout le monde"
-                  : "Abonne-toi à des passionnés pour pouvoir les inviter ici.")
+  var html = "";
+  if (!ids.length && !faits.length) {
+    html = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px;">'
+      + (q ? "Aucun résultat pour « " + escapeHtml(q) + " »" : "Abonne-toi à des passionnés pour pouvoir les inviter ici — ou envoie-leur le lien.")
       + '</div>';
-    return;
   }
-
-  box.innerHTML = ids.slice(0, 50).map(function (id) {
-    var u = (typeof userById === "function" && userById(id)) || { avatar: "#64748b", profileEmoji: "?", name: "Passionné" };
-    return '<div class="event-invite-row">'
-      + '<div class="avatar sm" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
-      + '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
-      + escapeHtml(u.name || "Passionné") + '</div>'
-      + '<button class="btn small primary" data-invite="' + escapeHtml(id) + '" '
-      + 'onclick="inviteToEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\',this)">Inviter</button>'
-      + '</div>';
-  }).join("");
+  html += ids.slice(0, 50).map(function (id) { return _ligneInvite(eventId, id, enAttente[id] ? "attente" : "a-faire"); }).join("");
+  if (faits.length) {
+    html += '<div class="event-invite-section">Déjà invités</div>'
+      + faits.slice(0, 50).map(function (id) { return _ligneInvite(eventId, id, "fait"); }).join("");
+  }
+  box.innerHTML = html;
 }
 
+// `btn` présent = un geste à l'écran : 5 s pour annuler avant que la notification
+// parte. Sans bouton (« inviter tout le monde »), l'envoi est immédiat, comme avant.
 function inviteToEvent(eventId, userId, btn) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
-  if (btn) { btn.disabled = true; btn.textContent = "✓ Invité"; btn.classList.remove("primary"); btn.classList.add("ghost"); }
-  _rememberEventInvite(eventId, userId);
-
-  // L'invitation EST la notification (kind "event_invite" → openEventDetails).
-  // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
-  if (typeof supaInsertNotif === "function") {
-    supaInsertNotif(userId, "event_invite", eventId,
-      "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
-  }
-  toast("Invitation envoyée");
+  var envoyer = function () {
+    if (window._invitesEnAttente[eventId]) delete window._invitesEnAttente[eventId][userId];
+    _rememberEventInvite(eventId, userId);
+    // L'invitation EST la notification (kind "event_invite" → openEventDetails).
+    // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
+    if (typeof supaInsertNotif === "function") {
+      supaInsertNotif(userId, "event_invite", eventId,
+        "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
+    }
+    try { _renderEventInviteList(); } catch (e) {}
+  };
+  if (!btn) { envoyer(); toast("Invitation envoyée"); return; }
+  window._invitesEnAttente[eventId] = window._invitesEnAttente[eventId] || {};
+  window._invitesEnAttente[eventId][userId] = setTimeout(envoyer, EVENT_INVITE_ANNULER_MS);
+  _renderEventInviteList();
+  toast("Invitation envoyée dans 5 s — touche « Annuler » pour la retenir");
+}
+function annulerInviteEvent(eventId, userId) {
+  var t = window._invitesEnAttente[eventId] && window._invitesEnAttente[eventId][userId];
+  if (t) { clearTimeout(t); delete window._invitesEnAttente[eventId][userId]; }
+  _renderEventInviteList();
+  toast("Invitation annulée");
 }
 
 // Invite d'un coup tous ceux que je suis et qui ne se sont pas encore prononcés.

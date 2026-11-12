@@ -11,39 +11,23 @@ function closePost() {
 function sharePost(id) {
   const post = findPostAnywhere(id);
   if (!post) { toast("Le contenu original n'est plus disponible."); return; }
-
-  const passion = passionById(post.passion) || { label: post.passion || "", emoji: "✨" };
-  const txt = (post.text || post.caption || "").slice(0, 100);
-
-  const html = `
-    <div class="modal-title">${shareIconSvg(20)} Partager ce post</div>
-    <div style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
-      ${escapeHtml(txt)}${txt.length >= 100 ? "…" : ""}
-    </div>
-    <button class="btn primary block" id="_shareInFeedBtn" onclick="sharePostInFeed('${escapeJsArg(id)}')" style="margin-bottom:10px;">
-      Partager dans mon feed
-    </button>
-    <button class="btn secondary block" id="_shareOutBtn">
-      ${shareIconSvg(16)} Partager en dehors
-    </button>
-  `;
-  openModal(html);
-  // Listener propre : évite l'injection de texte utilisateur dans un onclick inline
-  setTimeout(() => {
-    const btn = document.getElementById("_shareOutBtn");
-    if (!btn) return;
-    btn.addEventListener("click", function() {
-      // Le lien doit OUVRIR la publication, pas la page d'accueil (2026-10-03) :
-      // il envoyait l'URL de l'accueil en dur depuis le retrait de `#carnet-<id>`
-      // (ADR-011 §6), et le destinataire tombait sur un fil quelconque.
-      // `#post-<id>` est lu par `_ouvrirLienPartage` (app-06).
-      const rawUrl = (typeof lienPartagePublication === "function")
-        ? lienPartagePublication(id) : "https://passio-app.netlify.app";
-      const shareUrl = (window.tel && tel.shareLink)
-        ? tel.shareLink(rawUrl, "post", id, navigator.share ? "native" : "clipboard") : rawUrl;
-      partagerOuCopier({ title: "PASSIO", text: txt, url: shareUrl }, "Lien copié");
-    });
-  }, 0);
+  const txt = String(post.text || post.caption || "");
+  const extrait = txt.length > 100 ? txt.slice(0, 100) + "…" : txt;
+  const auteur = post.authorName || "Passionné";
+  // Le lien doit OUVRIR la publication, pas la page d'accueil (2026-10-03) :
+  // `#post-<id>` est lu par `_ouvrirLienPartage` (app-06).
+  const rawUrl = (typeof lienPartagePublication === "function") ? lienPartagePublication(id) : "https://passio-app.netlify.app";
+  const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "post", id, navigator.share ? "native" : "clipboard") : rawUrl;
+  // LOT-12 (PAR-C10) : « Une publication de Léa sur PASSIO : “…” » — plus le texte
+  // de Léa collé sans son nom, comme si l'expéditeur l'avait écrit.
+  ouvrirFeuillePartage({
+    quoi: "publication", titre: "", auteur: auteur, extrait: extrait,
+    vignette: post.image || post.photo || post.poster || post.coverPhotoUrl || "",
+    url: url,
+    message: "Une publication de " + auteur + " sur PASSIO" + (extrait ? " : « " + extrait + " »" : ""),
+    idEnvoyer: "_shareOutBtn", idRepublier: "_shareInFeedBtn",
+    republier: function () { sharePostInFeed(id); },
+  });
 }
 
 async function sharePostInFeed(id) {
@@ -114,7 +98,7 @@ async function sharePostInFeed(id) {
   // rendu à son état initial : le geste a échoué, il doit rester possible.
   if (typeof publicationRefuseeFautePassion === "function"
       && publicationRefuseeFautePassion(newPost.passion)) {
-    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
+    if (btn) { btn.disabled = false; btn.textContent = "Republier dans mon fil"; }
     closeModal();
     return;
   }

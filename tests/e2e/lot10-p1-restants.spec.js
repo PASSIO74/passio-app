@@ -75,7 +75,9 @@ test("⑤ PAR-C04 : copie refusée — le lien est dans un champ sélectionné, 
   await bootOnboarded(page);
   await page.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("Write permission denied")) } });
-    copyReelLink("r1", encodeURIComponent("https://passio-app.netlify.app/?plk=abc#reel=r1"));
+    // LOT-12 : la copie passe par la feuille unique (`ouvrirFeuillePartage`).
+    ouvrirFeuillePartage({ quoi: "bobine", url: "https://passio-app.netlify.app/?plk=abc#reel=r1" });
+    document.getElementById("_partageCopier").click();
   });
   const champ = page.locator("#feuilleConfirmation #feuilleConfirmationChamp");
   await expect(champ).toHaveValue("https://passio-app.netlify.app/?plk=abc#reel=r1");
