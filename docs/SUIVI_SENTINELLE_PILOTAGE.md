@@ -61,7 +61,7 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | P1-5 | Création de rencontre, connexion, inscription, chargement du fil : sans contrat. Export, synchronisation, affichage des médias, chargement du fil : absents de la couverture affichée — recensés au lot 1 (`PARCOURS_NON_INSTRUMENTES`) | lot 3 pour les contrats |
 | P1-6 | Staging partagé : une migration non fusionnée bloque toutes les mises en ligne (07/11, 09/11, 12/11) | lot 2 — garde à écrire |
 | P1-7 | Sentinelle dite muette à 8 h quand son cron est servi au P95 toutes les 8,9 h : fausses lignes | lot 2 — décision (réveil de cadence = politique) |
-| P1-8 | `lireActivation` parcourt jusqu'à 20 000 comptes à chaque ouverture d'écran ; total faux au-delà | lot 5 — migration `pilotage_inscrits` |
+| P1-8 | `lireActivation` parcourt jusqu'à 20 000 comptes à chaque ouverture d'écran ; total faux au-delà. Depuis #850 (12/11), `lireSeuils` fait un second parcours des comptes (20 pages au plus) au même moment | lot 5 — migration `pilotage_inscrits` ; y joindre les seuils |
 | P1-9 | `securite.yml` planifié en échec le 09/11, vu par personne ; la veille lit l'âge de la sauvegarde, pas sa conclusion ; expiration de `CLAUDE_CODE_OAUTH_TOKEN` non suivie ; six jobs de `deploy.yml` sans `timeout-minutes` | lot 2 |
 | P1-10 | `PILOTAGE_NETLIFY_TOKEN` absent : retour arrière d'un toucher et proposition inactifs | geste humain (§ 6) |
 
@@ -83,7 +83,7 @@ version servie contre `main` (retard en fusions et en minutes) ; une ligne « à
   qu'un agent ; l'alerte part encore à 100 000 inscrits.
 - **Critères d'acceptation** : `tests/unit/pilotage-chemins.test.mjs` vert (46) ; rouge sur `main` pour
   ⑩ ⑪ ⑫ ⑯ ⑱ ㉒ ㉛ ; 46 réinjections sur 46 (`scripts/reinjections-pilotage.mjs`) ; suite unitaire
-  complète et `npm run verif` verts ; `pilotage-nuage.spec.js` vert (48).
+  complète et `npm run verif` verts ; `pilotage-nuage.spec.js` vert (49, dont ㉝ bis et ㉝ ter).
 - **Périmètre** : `supabase/functions/pilotage/index.ts`, `_shared/pilotage.js`, `_shared/autonomie.js`,
   `_shared/battement.js`, `_shared/contrats-actions.js` (quatre parcours recensés « non instrumentés »),
   leurs bancs (`tests/unit/pilotage-chemins.test.mjs`, `tests/unit/lib/fausse-base.mjs`),
@@ -193,7 +193,7 @@ personne n'est prévenu par un second canal si le téléphone ne reçoit pas.
 
 | Date | Lot | Branche · PR | État | Preuve |
 |---|---|---|---|---|
-| 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | IMPLÉMENTÉ, TESTÉ ; relu par un agent indépendant (huit constats corrigés) ; en attente de la contre-revue de PASSIO74 | banc 46/46, réinjections 46/46, suite unitaire complète, `verif`, navigateur 48 — chiffres du dernier passage dans la PR |
+| 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | IMPLÉMENTÉ, TESTÉ ; relu par un agent indépendant (huit constats corrigés) ; en attente de la contre-revue de PASSIO74 | banc 46/46, réinjections 46/46, unitaires 1 103, `verif`, navigateur 49 (après fusion de `main` à `fa09eb43`) |
 | 2026-11-12 | 2 (premier sujet) | `fix/moderation-alerte-code-3` · #849 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | étape réelle rejouée sous `bash -e` : rouge sur `main`, verte ; unitaires 1 044 |
 
 ## 8. L'incident du 12/11, chronométré (un exercice réel, pas un essai)
