@@ -420,6 +420,7 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     +   '</div>'
     +   '<div style="margin-left:auto;">' + profileBtn + '</div>'
     + '</div>'
+    + _pexActivitesHTML(pid, p.label || pid)
     + '<div class="section-title" style="margin-top:6px;">Créateurs</div>'
     + '<div id="pexCreators">' + creatorsHTML + '</div>'
     + '<div id="pexLiees"></div>'
@@ -446,6 +447,28 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
 // Les comptes RÉELS qui portent cette passion. Bornée, tolérante à l'échec, et
 // elle ne peint que si la modale est TOUJOURS celle-ci — `openModal` n'empile
 // pas, une réponse tardive écrirait sinon dans la modale suivante.
+// LOT-3 (audit UX/UI du 2026-11-10, REC-C04) : la fiche d'une passion ne menait
+// jamais à Rencontrer, même avec une activité de cette passion à venir — le
+// parcours Découvrir → Rencontrer s'y arrêtait. Une porte corail (§5 : le corail
+// signale le passage au réel) qui réutilise le moteur EXISTANT de la passerelle
+// (`PassioUIV3.seeActivities` : Rencontrer filtré sur la passion, sans demande
+// de position). Aucune fonction nouvelle ; sans le moteur, aucune porte.
+function _pexActivitesHTML(pid, label) {
+  try {
+    if (!window.PassioUIV3 || typeof PassioUIV3.seeActivities !== "function") return "";
+    var maintenant = Date.now();
+    var n = (typeof allEvents === "function" ? allEvents() : []).filter(function (e) {
+      return e && e.passion === pid && e.status !== "cancelled" && Number(e.date) > maintenant;
+    }).length;
+    var compte = n ? " · " + n + " à venir" : "";
+    return '<button type="button" class="btn block pex-activites" data-tel="passion_activites"'
+      + ' style="min-height:48px;margin:0 0 16px;background:var(--v4b-coral-texte,#c13d28);color:#fff;border-color:transparent;font-weight:800;"'
+      + ' onclick="closeModal(); PassioUIV3.seeActivities(\'' + escapeJsArg(String(pid)) + '\')">'
+      + 'Voir les activités ' + escapeHtml(String(label)) + compte
+      + '</button>';
+  } catch (e) { return ""; }
+}
+
 function _pexChargerCreateurs(pid, creatorsSeed) {
   var hote = document.getElementById("pexCreators");
   if (!hote || typeof supa === "undefined" || !supa) return;
@@ -610,7 +633,7 @@ function _eventEndAt(ev) {
 // sans être sûrs. Trois états honnêtes (going / maybe / declined) + une file
 // d'attente quand c'est complet (cf. Partiful, Luma, Eventbrite).
 const RSVP_LABELS = {
-  going:    { label: "Je viens",        short: "✓ Je viens" },
+  going:    { label: "Je participe",    short: "✓ Je participe" },  // LOT-3 (PCS-C06) : un seul mot pour le geste, partout
   maybe:    { label: "Peut-être",       short: "Peut-être" },
   declined: { label: "Je ne peux pas",  short: "Je ne peux pas" },
   waitlist: { label: "Liste d'attente", short: "En attente" },
@@ -3900,7 +3923,7 @@ async function openEventChat(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
   if (myRsvp(id) !== "going" && !_canManageEvent(ev)) {
-    toast(myRsvp(id) ? "La discussion est réservée à celles et ceux qui viennent : passe en « Je viens »" : "Rejoins l'événement pour accéder à la discussion");
+    toast(myRsvp(id) ? "La discussion est réservée à celles et ceux qui viennent : passe en « Je participe »" : "Rejoins l'événement pour accéder à la discussion");
     return;
   }
   if (!ev.convId) {

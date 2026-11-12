@@ -126,7 +126,7 @@ test.describe("IRL-10 — la discussion d'une activité n'apparaît que si l'on 
     });
     expect(r.appelsPeutEtre, "« peut-être » : aucune demande d'entrée au serveur").toBe(0);
     expect(r.ouvertePeutEtre, "…et aucune discussion ouverte").toBeNull();
-    expect(r.toastPeutEtre).toMatch(/Je viens/);
+    expect(r.toastPeutEtre).toMatch(/Je participe/); // LOT-3 (PCS-C06) : un seul mot pour le geste
     expect(await miroir(page), "aucun miroir local").toBe(false);
     expect(r.versPeutEtre, "je viens → peut-être : la discussion est quittée, jamais rejointe").toEqual(["sort"]);
     expect(r.versJeViens, "peut-être → je viens : la discussion est rejointe").toEqual(["entre"]);

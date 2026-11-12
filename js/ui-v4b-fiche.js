@@ -61,9 +61,14 @@
   // à trois états de l'issue sont dépassés pour cette surface.
   var LIBELLE_RSVP = "Je participe";
   var LIBELLE_RSVP_FILE = "Rejoindre la liste d'attente";
-  var LIBELLE_RSVP_FAIT = "✓ Je participe";
+  var LIBELLE_RSVP_FAIT = "✓ Tu participes";
   var LIBELLE_RSVP_ATTENTE = "Sur liste d'attente";
-  var LIBELLE_RSVP_RETIRER = "Retirer ma participation";
+  // Formulé du point de vue de la personne (LOT-3, PCS-C03).
+  var LIBELLE_RSVP_RETIRER = "Je ne peux plus venir";
+  // Le retrait est inerte juste après une inscription : un second appui au même
+  // endroit (double appui, doigt qui rebondit) ne doit pas désinscrire (IRL-C50).
+  var RETRAIT_GARDE_MS = 1200;
+  var _inscritA = 0;
 
   // ══════════════════════════════════════════════════════════════════════════
   // DRAPEAU
@@ -605,14 +610,49 @@
 
     // Participation confirmée (ou file d'attente) : un ÉTAT lisible, pas un
     // bouton qui bascule — un tap malheureux ne doit pas désinscrire.
+    // ⚠️ LOT-3 (audit UX/UI du 2026-11-10, PCS-C03, IRL-C50) : l'état « inscrit »
+    // ressemblait à un bouton inactif, ne disait ni la date ni la suite, et posait
+    // « Retirer ma participation » EXACTEMENT sous le doigt qui venait de
+    // s'inscrire (mesuré : un second appui à 0,5 s désinscrivait). Désormais :
+    // une confirmation qui dit quand ; à la place du bouton, l'ÉTAPE SUIVANTE
+    // (écrire aux participants — fonction existante, `openEventChat`) ; le retrait
+    // à l'écart, et inerte pendant RETRAIT_GARDE_MS après l'inscription.
     if (etat === "going" || etat === "waitlist") {
+      box.classList.add("v4b-rsvp-inscrit");
       var st = document.createElement("div");
       st.className = "v4b-rsvp-etat";
       st.setAttribute("data-v4b-rsvp-etat", etat);
       st.setAttribute("role", "status");
       st.textContent = etat === "going" ? LIBELLE_RSVP_FAIT : LIBELLE_RSVP_ATTENTE;
       box.appendChild(st);
+      var ev = evenementCourant();
+      var detail = document.createElement("div");
+      detail.className = "v4b-rsvp-detail";
+      detail.textContent = etat === "going"
+        ? (ev ? texteDate(ev) + (texteHeure(ev) ? " · " + texteHeure(ev) : "") + " — l'organisation est prévenue." : "")
+        : "Tu seras prévenu·e si une place se libère.";
+      if (detail.textContent) box.appendChild(detail);
+      // Le pied est fixé en BAS et grandit vers le haut : l'élément du bas prend
+      // la place de l'ancien bouton. Le retrait passe donc AU-DESSUS de la suite —
+      // sous le doigt qui vient de s'inscrire, c'est « Écrire aux participants ».
       box.appendChild(construireRetrait());
+      if (etat === "going") {
+        var suite = document.createElement("div");
+        suite.className = "v4b-rsvp-suite";
+        var chat = document.createElement("button");
+        chat.type = "button";
+        chat.className = "btn primary v4b-rsvp-chat";
+        chat.setAttribute("data-v4b-rsvp-chat", "1");
+        chat.textContent = "Écrire aux participants";
+        suite.appendChild(chat);
+        var inv = document.createElement("button");
+        inv.type = "button";
+        inv.className = "btn ghost v4b-rsvp-inviter";
+        inv.setAttribute("data-v4b-rsvp-inviter", "1");
+        inv.textContent = "Inviter quelqu'un";
+        suite.appendChild(inv);
+        box.appendChild(suite);
+      }
       return box;
     }
 
@@ -768,9 +808,29 @@
   function onDocumentClick(e) {
     if (!e.target || !e.target.closest) return;
     var go = e.target.closest("[data-v4b-rsvp-go]");
-    if (go) { e.preventDefault(); e.stopPropagation(); participer(); return; }
+    if (go) { e.preventDefault(); e.stopPropagation(); _inscritA = Date.now(); participer(); return; }
+    var chat = e.target.closest("[data-v4b-rsvp-chat]");
+    if (chat) {
+      e.preventDefault(); e.stopPropagation();
+      var evC = evenementCourant();
+      track("ui_v4b_rsvp_suite", { v: VERSION, quoi: "chat" });
+      try { if (evC && typeof openEventChat === "function") openEventChat(evC.id); } catch (x) { fail("rsvp_chat", x); }
+      return;
+    }
+    var inv = e.target.closest("[data-v4b-rsvp-inviter]");
+    if (inv) {
+      e.preventDefault(); e.stopPropagation();
+      var evI = evenementCourant();
+      track("ui_v4b_rsvp_suite", { v: VERSION, quoi: "inviter" });
+      try { if (evI && typeof openEventInvite === "function") openEventInvite(evI.id); } catch (x) { fail("rsvp_inviter", x); }
+      return;
+    }
     var rm = e.target.closest("[data-v4b-rsvp-remove]");
-    if (rm) { e.preventDefault(); e.stopPropagation(); retirerParticipation(); }
+    if (rm) {
+      e.preventDefault(); e.stopPropagation();
+      if (Date.now() - _inscritA < RETRAIT_GARDE_MS) return; // IRL-C50 : appui de rebond
+      retirerParticipation();
+    }
   }
 
   // Escape ferme la fiche, comme le bouton « Retour » (même appel, donc même
