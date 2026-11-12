@@ -53,9 +53,10 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | # | Sujet | État |
 |---|---|---|
 | P1-1 | « Régler » fusionnait une version que l'écran n'avait pas montrée | lot 1 — TESTÉ |
-| P1-2 | Deux touchers, deux réparations (deux agents) ; deux relances, deux runs | lot 1 — TESTÉ |
+| P1-2 | Deux touchers, deux réparations (deux agents) ; deux relances, deux runs. Observé en production le 09/11 : #806 et #807 ouvertes à une seconde d'écart (21:40:27, 21:40:28), deux agents partis | lot 1 — TESTÉ |
 | P1-3 | Mémoire du voyant illisible prise pour « aucun état » | lot 1 — TESTÉ |
 | P1-4 | Circuit B : depuis l'audit du 06/11 la PR de l'agent naît sans CI (`GITHUB_TOKEN`, choix de sécurité : « un humain la rouvre après l'avoir lue »). Depuis le téléphone, « Régler » arme alors une auto-fusion dont les tests ne partiront jamais, et l'écran dit « les tests tournent encore ». La politique (`correctif_sentinelle`) décrit encore une fusion par la CI | lot 2 — décision humaine : qui rouvre, et d'où |
+| P1-4 bis | « Régler » sur une exécution en échec lance un agent qui ne peut PAS la diagnostiquer : sa consigne dit « lis son journal (`gh run view --log-failed`) », sa liste d'outils n'a ni `gh` ni réseau (`claude-code.yml` l.550). Quatre fois sur quatre (#757 le 07/11, #806 et #807 le 09/11, #844 le 12/11) : une PR « cause NON établie », sans CI | EXISTANT VÉRIFIÉ (PR #845) — lot 2 : le journal de l'exécution fourni comme DONNÉE par l'étape de confiance du workflow, jamais un outil de plus à l'agent |
 | P1-5 | Création de rencontre, connexion, inscription, chargement du fil : sans contrat. Export, synchronisation, affichage des médias, chargement du fil : absents de la couverture affichée — recensés au lot 1 (`PARCOURS_NON_INSTRUMENTES`) | lot 3 pour les contrats |
 | P1-6 | Staging partagé : une migration non fusionnée bloque toutes les mises en ligne (07/11, 09/11, 12/11) | lot 2 — garde à écrire |
 | P1-7 | Sentinelle dite muette à 8 h quand son cron est servi au P95 toutes les 8,9 h : fausses lignes | lot 2 — décision (réveil de cadence = politique) |
@@ -65,7 +66,7 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 
 **P2 — rapidité, simplicité, couverture** : second canal d'alerte hors de Supabase ; sonde extérieure
 (le chien de garde GitHub passe toutes les 5 h) ; délais de la chaîne en médiane et P95 à l'écran ;
-version servie contre `main` (retard en fusions et en minutes) ; coût de la CI et des agents ; purge de
+version servie contre `main` (retard en fusions et en minutes) ; une ligne « à régler » sans voyant coloré (Sentinelle ou veille en échec : l'écran dit « Tout va bien » et « 1 chose à régler ») ; coût de la CI et des agents ; purge de
 `cron.job_run_details` ; banc à 1 000 comptes ; déchiffrement d'une archive `age` ; RTO chronométré.
 
 **P3** : sommaire du journal (5 fiches absentes) ; commentaires périmés (`deploy.yml` l.164,
@@ -164,3 +165,25 @@ personne n'est prévenu par un second canal si le téléphone ne reçoit pas.
 |---|---|---|---|---|
 | 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | banc 39/39, réinjections 26/26, unitaires 1 088, `verif`, navigateur 48 ; CI : audits, bancs serveur et suites à comptes réels verts |
 | 2026-11-12 | 2 (premier sujet) | `fix/moderation-alerte-code-3` · #849 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | étape réelle rejouée sous `bash -e` : rouge sur `main`, verte ; unitaires 1 044 |
+
+## 8. L'incident du 12/11, chronométré (un exercice réel, pas un essai)
+
+Heures UTC, relevées sur GitHub et au canal ①. C'est la chaîne telle qu'elle a tourné AVANT le lot 1.
+
+| Étape | Heure | Délai |
+|---|---|---|
+| Premier déploiement en échec (run 43234813436) | 14:31 | — |
+| Second déploiement en échec (run 43235671422) | 14:47 | le premier est resté invisible 19 min (corrigé au lot 1) |
+| Voyant rouge noté par la veille | 14:50:04 | 3 min après la fin du second run |
+| Notification acceptée, puis affichée (Edge, Chrome) | 14:50:05 | 1 s, puis 1 s et 13 s |
+| « Régler » touché depuis le pilotage (issue #844) | 14:50:38 | 33 s après la sonnerie |
+| Agent parti (run 43241416806, `claude-opus-5`, abonnement) | 14:50:41 | 3 s |
+| PR de l'agent (#845) : « cause NON établie », sans CI | 14:56:42 | 6 min — sans résultat : il ne peut pas lire le journal du run (P1-4 bis) |
+| Cause établie dans cette session, en lisant le journal, et signalée sur #843 | 14:54 | 4 min après la sonnerie |
+| Correctif poussé par la session de #843 | 14:57 | 3 min après le signalement |
+| « Problème résolu » sonné | 15:25:05 | 2 min 33 s AVANT la première mise en ligne réussie (corrigé au lot 1) |
+| Première mise en ligne réussie (relance du run 43235671422) | 15:27:38 | 37 min après la sonnerie, 56 min après le premier échec |
+| Version de `main` servie (`bea4fac1`, run 43248974244) | 16:01:48 | — |
+
+Ce que l'exercice dit : la détection, l'alerte et le geste depuis le téléphone tiennent en moins d'une
+minute ; ce qui a manqué, c'est un agent capable de lire pourquoi une exécution a échoué.
