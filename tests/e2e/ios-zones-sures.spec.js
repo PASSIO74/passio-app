@@ -50,7 +50,7 @@ const HAUT = [
   [".story-viewer-header",  "la croix qui ferme une story"],
   [".reels-header",         "la croix qui ferme le viewer Bobines"],
   [".reel-sound-btn",       "coupure du son d'une bobine"],
-  [".reel-tag-mood",        "étiquette d'humeur d'une bobine"],
+  // « .reel-tag-mood » retirée (LOT-14, BOB-C14) : l'envie rejoint la ligne de passion, sous le nom.
 ];
 
 // Commandes ancrées en BAS : la barre d'accueil de l'iPhone (~34 px) les

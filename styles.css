@@ -4851,21 +4851,6 @@
     }
     .story-sound-btn:active { transform: scale(0.92); }
 
-    .reel-tag-mood {
-      position: absolute;
-      top: calc(64px + env(safe-area-inset-top));
-      left: 14px;
-      padding: 5px 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.16);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
 
     .reel-info {
       position: absolute;
@@ -5265,14 +5250,6 @@
     .reel-comment-reply:hover {
       color: var(--text);
     }
-    .reel-comment-action {
-      cursor: pointer;
-      color: var(--muted);
-      transition: color 200ms;
-    }
-    .reel-comment-action:hover {
-      color: var(--text);
-    }
     .reel-comment-reply-count {
       cursor: pointer;
       color: var(--accent);
@@ -5314,28 +5291,6 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
-    }
-    .reel-emoji-reactions {
-      display: none;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .reel-emoji-btn {
-      background: transparent;
-      border: none;
-      border-radius: 20px;
-      padding: 6px 12px;
-      cursor: pointer;
-      font-size: 20px;
-      transition: transform 150ms, background 200ms;
-      opacity: 0.7;
-    }
-    .reel-emoji-btn:hover {
-      opacity: 1;
-      background: var(--bg-soft);
-    }
-    .reel-emoji-btn:active {
-      transform: scale(1.2);
     }
 
     .reel-comments-input-wrapper {
@@ -12772,3 +12727,21 @@ button, a, label, select, summary,
    n'a plus à réserver 48 px pour l'ancienne pastille flottante (iPhone SE : le
    bouton Google repassait sous le pli). */
 .fr-back-explore ~ .onb-step[data-onb-step="splash"] > div:first-child { padding-top: 16px !important; padding-bottom: 20px !important; margin-bottom: 14px !important; }
+
+/* LOT-14 (audit UX/UI du 2026-11-10) — bobines et stories.
+   BOB-C11 : la barre du direct sur deux lignes — le statut en haut, le nom en
+   clair dessous ; Suivre et Partager à 44 px. */
+.vlive-topbar { flex-wrap: wrap; row-gap: 4px; }
+.vlive-topbar .vlive-name { order: 2; flex: 1 0 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
+.vlive-topbar .vlive-follow, .vlive-topbar .vlive-icon-btn { min-height: 44px; min-width: 44px; }
+/* BOB-C13 : commandes des commentaires de bobine à 44 px, « Fermer » en toutes lettres. */
+.reel-comments-close { min-height: 44px; min-width: 44px; padding: 0 14px; width: auto; height: auto; border: none; border-radius: 12px; background: rgba(124, 58, 237, 0.1); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.reel-comments-send { min-width: 44px; min-height: 44px; }
+.reel-comment-like, .reel-comment-reply { min-height: 44px; padding: 0 10px; border: none; background: transparent; color: inherit; font: inherit; font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+/* BOB-C14 : fermer le lecteur à 44 px. */
+.reels-close { width: 44px; height: 44px; }
+/* BOB-C16 : piste des barres visible, « ⋯ » collé à ✕, 44 px, ✕ nommé. */
+.story-progress { background: rgba(255, 255, 255, 0.35); }
+.story-viewer-header .story-more-btn { margin-left: auto; min-width: 44px; min-height: 44px; background: none; border: none; color: #fff; font-size: 22px; line-height: 1; cursor: pointer; }
+.story-viewer-header .story-more-btn + .story-viewer-close { margin-left: 4px; }
+.story-viewer-close { width: 44px; height: 44px; border: none; color: #fff; font: inherit; }
