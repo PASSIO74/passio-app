@@ -35,6 +35,7 @@
 - 🧪 LA CI NE PARLE PLUS AU PROJET DE PRODUCTION : UN PROJET SUPABASE VIDE POUR LES SUITES LOCALES (2026-11-09)
 - ♻️ UNE BOUCLE AU REPOS — 470 setTimeout(0) par seconde, pour tout le monde, sur tous les écrans (2026-11-09)
 - 🔂 LE CHARGEUR DES 9 SCRIPTS : CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10)
+- 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
 
 ---
 
@@ -2627,16 +2628,42 @@ n'envoie rien ») — trouvée là par hasard, ici par la sonde. Remède (Playwr
 `pwa-maj-pendant-appel` ni `sw-page-revalidee`, dont le VRAI worker est le sujet. Après : 180/180,
 **0 requête partie**. Banc unitaire ⑦ : toute suite du socle WebKit qui pose les routes d'isolation
 bloque le worker (réinjection faite sur `cadrage`).
-⚠️ **REMESURÉ SUR 24 H PLEINES** après la fusion de la PR de suite (#804), avec la même requête,
-rapportée au nombre de runs « CI & Deploy » de la fenêtre : paragraphe suivant.
+**SUR 24 H PLEINES APRÈS LA PR DE SUITE (#804, fusionnée le 09/11 à 21:05 UTC) — même requête,
+fenêtre du 09/11 21:10 au 10/11 21:10 UTC, relevée le 12/11** : **37 200 requêtes reçues par la
+production, dont 4 520 du réseau Azure — 12,2 %** (68,1 % avant). Le dépôt a tourné **57 runs « CI &
+Deploy »** dans la fenêtre (39 de PR, 18 sur `main`), plus de quatre fois les 13 de la fenêtre de
+référence : **≈ 79 requêtes de production PAR RUN, contre ≈ 2 860 — −97 %**. Au rythme d'avant, ces
+57 runs en auraient envoyé ≈ 163 000.
+Ce qui reste est, pour l'essentiel, ce qui parle au vrai projet PAR CONSTRUCTION : les gates `dist`
+(démarrage réel de l'artefact et sa télémétrie : `passions`, `profiles`, `posts`, `events`,
+`fil_compteurs`, `notifications`), `authz-critical` (comptes réels — `auth/v1/admin` 60 **[121 :
+paragraphe suivant]**, soit ≈ 30 comptes en 24 h —, dépôts dans le stockage 90, écritures de profils
+86), le contrat désigné de `telemetrie-preauth` (avec la télémétrie réelle des gates `dist` : 199
+lots), et des lectures de comptage des scripts Node (HEAD `stories` / `profiles`).
+⚠️ **UN RÉSIDU NEUF, PROPRE À WEBKIT : 320 PRÉ-REQUÊTES CORS** (`OPTIONS /rest/v1/passions`,
+≈ 6 par run) contre 6 `GET` réels sur la même table. Sous WebKit, la pré-requête d'une requête que la
+route sert part quand même au serveur : la requête est servie par le miroir, son `OPTIONS` ne l'est
+pas. Aucune donnée ne revient (une pré-requête n'a pas de corps), mais c'est une requête comptée ;
+Chromium, lui, ne la laisse pas partir. S'y ajoutent ≈ 90 lectures WebKit réelles en 24 h
+(`profiles` 24, `posts` 22, `fil_compteurs` 18…), compatibles avec `pwa-maj-pendant-appel`, qui garde
+EXPRÈS le vrai service worker (son sujet) — donc des requêtes qui, une fois le worker aux commandes,
+échappent aux routes **[rectifié au paragraphe suivant : ce sont les lectures des deux seuls runs de
+la PR #820, jamais de `main`]**. Ni l'un ni l'autre ne vaut un lot tant que ces chiffres restent à ce
+niveau.
+⚠️ **LA PART EN POURCENTAGE BAISSE MOINS VITE QUE LE PAR-RUN** (68,1 % → 12,2 % pour −97 % par run) :
+la CI a tourné quatre fois plus, et le reste du trafic a lui aussi changé. Le bon indicateur reste
+**par run**, rapporté au nombre de runs de `gh run list --created` **[rectifié au paragraphe suivant :
+de runs EXÉCUTÉS, 51 des 57]**.
 
-**APRÈS LA FUSION DE #804 — 24 H PLEINES (2026-11-09 21:10 → 2026-11-10 21:10 UTC).** Mêmes journaux
-(`query_logs`, `edge_logs`, canal ① en lecture seule), relus le 12/11. **37 200 requêtes reçues par la
-production, dont 4 520 du réseau des runners — 12,2 %, contre 37 159 et 68,1 % avant** — par 175
-adresses : headless 3 248, Node 833, WebKit (« iPhone OS 15_0 ») 439. **51 runs « CI & Deploy »
-exécutés** (57 créés : quatre annulés avant leur premier job, deux runs de PR d'agent restés en
-`action_required`, jamais approuvés), dont 15 `push` : près de quatre fois l'activité de la fenêtre
-d'avant (13 runs), pour **88 % de requêtes en moins en valeur absolue**.
+**APRÈS LA FUSION DE #804 — 24 H PLEINES (2026-11-09 21:10 → 2026-11-10 21:10 UTC), SECONDE LECTURE :
+ADRESSE PAR ADRESSE.** Mêmes journaux (`query_logs`, `edge_logs`, canal ① en lecture seule), relus le
+12/11 en même temps que la précédente : mêmes totaux à l'unité (37 200 requêtes, 4 520 du réseau des
+runners, 57 runs créés). Ces 4 520 viennent de 175 adresses : headless 3 248, Node 833, WebKit
+(« iPhone OS 15_0 ») 439. **51 des 57 runs ont joué au moins un job**, dont les 15 `push` ; les six
+autres : trois `push` et un run de PR annulés avant leur premier job, deux runs de PR d'agent
+(`claude/issue-806`, `-807`, déclenchés par `github-actions[bot]`) restés en attente d'approbation puis
+clos en `failure` le lendemain, sans un job. Près de quatre fois l'activité de la fenêtre d'avant
+(13 runs), pour **88 % de requêtes en moins en valeur absolue**.
 Lu adresse par adresse (une adresse = un job), classé par SIGNATURE, puis contrôlé par les fenêtres
 des runs de `gh run list` :
 - **`authz-critical` : 15 exécutions, les 15 runs `push` exécutés — 3 256 requêtes, 217 par
@@ -2670,6 +2697,14 @@ WebKit ≈ 8,4, `release-integrity` ≈ 4,8, lot de télémétrie voulu ≈ 1,3)
 `push`** (`authz-critical`). Méthode brute d'avant (tout le réseau des runners / runs) : 4 520 / 51
 ≈ 89 contre 2 858, **−96,9 %**. L'attendu (≈ 35 par run, + ≈ 216 quand `authz-critical` tourne) est
 tenu, et passé.
+⚠️ **CE QUE CETTE LECTURE RECTIFIE DANS LA PRÉCÉDENTE** (#830, même fenêtre, fusionnée pendant que
+celle-ci passait sa CI) : ① les ≈ 90 lectures WebKit ne viennent pas de `pwa-maj-pendant-appel` : ce
+sont les 96 des deux runs de #820 (puce ci-dessus) — une suite du socle aurait lu à CHAQUE run WebKit,
+et aucune autre adresse WebKit n'a lu une table ; ② le dénominateur est le run EXÉCUTÉ (puce « UN RUN
+CRÉÉ… » ci-dessous) : 4 520 / 51 ≈ 89, et non / 57 ≈ 79 — le même −97 %, mais un « par run » qui se
+dilue dès qu'une rafale de fusions annule des runs ; ③ les appels `/auth/v1/admin` sont 121, et non
+60 — 8 par exécution d'`authz-critical` (30 créations, 30 liens, 30 listes, 30 suppressions), plus la
+liste de la sauvegarde ; les 30 comptes créés concordent.
 ⚠️ **LA RÉFÉRENCE, DÉCOMPOSÉE DE MÊME** (requête rejouée le 09/11 sur la fenêtre d'avant : 54 563,
 37 159 et 34 318 retrouvés à l'unité) : headless 33 668, WebKit 2 036, `authz-critical` 1 301 en six
 exécutions, Node hors CI 154 — d'où 35 704 / 13 = 2 746 par run hors `authz-critical`. La part hors CI
@@ -2792,3 +2827,49 @@ toujours en place, aucune redemande, un seul `passio:app-ready`. Suite complète
 ⚠️ **Ce que ce lot ne fait pas.** Ces deux pages n'étaient pas classées `robot` (`meta.trafic` vide : ni
 `navigator.webdriver`, ni agent connu) : elles restent comptées dans l'audience. Reconnaître ces robots est une
 décision de mesure, laissée au registre de l'audit (STAB-03).
+
+---
+
+## 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
+
+**Le défaut (audit de stabilisation du 10/11, ETAT-01, P1).** La file `passio_pending_user_state_<uid>` garde le
+dernier blob d'état qui n'a pas abouti : elle est posée à chaque masquage de page « sale », et le `.then` du keepalive
+ne la retire pas quand la page meurt. Au démarrage, `supaLoadUserState` lit la ligne serveur, l'applique si elle est
+plus récente, **et avance `state._stateSyncedAt` jusqu'à elle**. Puis `_flushPendingUserState` rejouait la file avec
+`UPDATE … WHERE updated_at <= state._stateSyncedAt`, soit « updated_at <= updated_at » : la condition était toujours
+vraie. Suite d'usage ordinaire, sans aucune concurrence : le téléphone ferme l'application avec un état de 09:00 en
+file ; l'ordinateur travaille à 10:00 ; le téléphone redémarre à midi. Le serveur, puis les deux appareils,
+reviennent à 09:00. Perdus : brouillons, réglages du fil, passions archivées, désinscriptions.
+
+**Le correctif.** La base voyage avec le blob : `_queuePendingUserState` note `base = state._stateSyncedAt` au moment
+de la mise en file, et le rejeu compare à elle (`_baseDeLaFile`).
+- Une file d'avant le correctif n'a pas de base : on prend le repère que son blob porte (`data._stateSyncedAt`).
+- Sans base du tout, on compare à l'époque : le blob peut créer une ligne absente, jamais en remplacer une.
+- « 0 ligne + ligne existante » jette la file, et le dit à `diagLog` (`rejeu_etat_jete`).
+
+**Le piège trouvé en relecture (agent `audit-passio`, le même jour), avant fusion.** Comparer à la seule base
+fait perdre des gestes à un appareil SEUL. Le beacon (`return=minimal`) et la sauvegarde dont la réponse s'est
+perdue écrivent la ligne SANS avancer le repère. Une file posée ensuite porte donc une base plus ancienne que la
+ligne que l'appareil a lui-même écrite, et le rejeu la jetait. Désormais chaque blob envoyé porte une estampille
+`_ecriture` (`_estampillerEcriture`), dont l'appareil garde les 30 dernières (`passio_mes_ecritures_<uid>`). Quand la
+ligne a bougé depuis la base mais que sa dernière écriture est l'une des nôtres, le rejeu passe, toujours en
+compare-et-remplace sur la valeur relue. Le chemin « insert » relit aussi `updated_at` au lieu de marquer l'heure
+locale de la file.
+
+Verrou : `tests/e2e/user-state-rejeu-anciennete.spec.js` (6). Le cas ⑥ joue la vraie séquence : beacon, sauvegarde
+hors ligne, lecture, rejeu. Mutations : remettre le repère vivant rougit ①, ③ et ④ ; retirer la reconnaissance de
+ses propres écritures rougit ⑥.
+
+**Ce que ça ne règle pas.** `updated_at` reste l'heure de DÉBUT de transaction (`now()`), pas une révision monotone :
+deux écritures réellement concurrentes peuvent encore s'ordonner à l'envers (SYNC-CLOCK-012). Une colonne `revision`
+réglerait ce cas, mais au prix d'une migration ; elle n'est pas faite ici.
+
+**ETAT-09, même lot.** Un commentaire d'activité refusé par la base restait affiché sous un identifiant `ec_local_…`,
+persisté et vu de son seul auteur. Désormais, pour un compte : le commentaire est retiré, le texte revient dans le
+champ et un toast « Commentaire non envoyé » prévient la personne (`_retirerCommentaireEvtNonEnvoye`, app-07). Un
+visiteur garde sa copie locale, comme pour SRV-03.
+
+**PARC-01, même lot.** Le « j'aime » d'une activité jetait le verdict de `supaSetEventLike` et notifiait l'organisateur
+tout de suite. Il passe maintenant par la porte visiteur (`requireAuthentication("aimer")`). L'organisateur n'est
+notifié qu'après un succès, et un refus pour un compte rétablit l'état d'avant (« « J'aime » non enregistré »).
+Verrou : `tests/e2e/commentaire-activite-echec.spec.js` (5). Mutations : rougissent ① et ④.

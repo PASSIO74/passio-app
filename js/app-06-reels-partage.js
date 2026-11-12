@@ -5328,7 +5328,7 @@ async function publishPost() {
     return;
   }
 
-  toast("Publication en cours…", "loading");
+  const _toastEnCours = toast("Publication en cours…", "loading");
 
   // ✅ Afficher directement le nom du profil courant!
   const prof = currentProfile();
@@ -5427,24 +5427,34 @@ async function publishPost() {
 
     // Quand l'upload se termine (même après le timeout d'affichage), l'URL Storage
     // a remplacé le base64 dans `post` → on persiste et on re-rend pour fixer l'image.
-    const syncPromise = supaPublishPostWithRetry(post).then((ok) => {
-      if (ok) { try { saveState(); renderFeed(); } catch (e) {} }
-      return ok;
-    });
+    // ⚠️ LOT-1 (audit UX/UI du 2026-11-10, CRE-C04) : la carte restait sur
+    // « Sync… » après le verdict — succès comme refus — parce que `renderFeed`
+    // sautait le repeint (`_feedDomSig` ne voit pas `syncStatus`). On invalide
+    // la signature AU VERDICT, quel qu'il soit, et seulement à lui.
+    const _repeindreVerdict = () => { try { saveState(); window._feedDomSig = null; renderFeed(); } catch (e) {} };
+    const syncPromise = supaPublishPostWithRetry(post).then((ok) => { _repeindreVerdict(); return ok; },
+      (e) => { _repeindreVerdict(); throw e; });
     syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
+    // Le verdict remplace « Publication en cours… » : jamais les deux à l'écran.
+    try { if (_toastEnCours && _toastEnCours.remove) _toastEnCours.remove(); } catch (e) {}
 
     if (syncSuccess) {
-      toast("Post publié", "success");
+      toast("Publication en ligne", "success");
       try { supaTrack("publish_post", { type: post.type, passion: post.passion, is_reel: !!post.isReel }); } catch(_) {}
     } else {
       // ⚠️ « connexion lente » accusait le RÉSEAU pour une erreur de DONNÉES :
       // l'utilisateur réessayait une opération qui ne pouvait jamais aboutir
-      // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3).
+      // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3). Le statut posé par
+      // `supaPublishPostWithRetry` (app-08) dit lequel des trois cas on vit.
       var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
-      toast(_msgP || "Post en local (connexion lente)", "warning");
+      if (_msgP) toast(_msgP, "error");
+      else if (post.syncStatus === "refusee") toast("Publication refusée par le serveur : elle n'est visible que sur cet appareil.", "error");
+      else if (post.syncStatus === "offline") toast("Pas de réseau : ta publication partira automatiquement dès que possible.", "warning");
+      else toast("Envoi plus long que prévu : ta publication s'affichera « En ligne » dès qu'elle est reçue.", "info");
     }
   } catch (e) {
-    toast("Post en local (erreur réseau)", "warning");
+    try { if (_toastEnCours && _toastEnCours.remove) _toastEnCours.remove(); } catch (e2) {}
+    toast("Pas de réseau : ta publication partira automatiquement dès que possible.", "warning");
   } finally {
     _publishInProgress = false; // libère le verrou quoi qu'il arrive
   }

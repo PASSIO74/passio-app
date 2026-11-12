@@ -3679,22 +3679,23 @@ function _conflitClePrimaireProfiles(e) {
 // ══════════════════════════════════════════════════════════════════════════
 // Règle produit (Benjamin, 2026-08-31) : choix explicitement PROUVÉ → on le
 // respecte ; choix absent, ambigu, ou simple valeur initiale → profil PRIVÉ.
+// ⚠️ RÈGLE CHANGÉE LE 2026-11-12 (Benjamin, audit de stabilisation, STAB-04) :
+// une ligne NEUVE sans choix exprimé naît PUBLIQUE. Mesuré en production le 10/11 :
+// 9 profils sur 13 privés, dont 7 des 8 créés depuis septembre sans l'avoir choisi ;
+// un visiteur ne lisait qu'UNE publication réelle, et ce qu'un nouvel inscrit
+// publiait n'était vu de personne — l'inverse de « Découvrir → Partager ».
+// CE QUI NE CHANGE PAS, et c'était le cœur du correctif P0 du 31/08 : cette valeur
+// ne sert qu'à l'INSERT d'une ligne absente (`_insertProfilMinimalSiAbsent`) ; une
+// ligne existante n'est jamais réécrite, donc un compte PRIVÉ ne redevient jamais
+// public tout seul. Et un `isPrivate === true` local reste respecté.
 //
-// ⚠️ NE JAMAIS écrire `is_private: !!g.isPrivate` ici : `undefined` y devient
-// `false` en silence, donc « je ne sais pas » deviendrait « public ».
-//
-// Ce que l'application sait réellement, vérifié sur tout le dépôt : `general`
-// vaut `{}` par défaut (`isPrivate` est donc `undefined`, jamais `false`), et
-// il n'existe qu'UNE seule assignation, dans `saveMainProfile`. Un `false` n'y
-// prouve rien — la case peut simplement avoir été décochée pendant qu'on
-// enregistrait sa bio. D'où le marqueur `privacyChoisi`, posé par
-// `saveMainProfile` UNIQUEMENT quand la personne agit sur le contrôle : elle
-// coche la case, ou elle décoche une case qui était cochée.
+// Depuis le 12/11, « je ne sais pas » vaut public À LA CRÉATION de la ligne, et
+// seulement là. Seul un `isPrivate === true` local la fait naître privée : le
+// marqueur `privacyChoisi` (posé par `saveMainProfile` quand la personne agit sur
+// la case) n'est plus lu ici — un choix public n'a plus rien à prouver.
 function _confidentialiteDeLaLigneMinimale(g) {
-  if (!g || typeof g !== "object") return true;        // rien à prouver → privé
-  if (g.isPrivate === true) return true;               // privé : le choix se prouve lui-même
-  if (g.privacyChoisi === true && g.isPrivate === false) return false;  // public, explicitement prouvé
-  return true;                                         // inconnu, ou ambigu → privé
+  if (g && typeof g === "object" && g.isPrivate === true) return true;  // privé : le choix se prouve lui-même
+  return false;                                        // aucun choix privé exprimé → public (STAB-04)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -6325,6 +6326,12 @@ async function rafraichirEvenements(force, apresLecture) {
     if (change) {
       const irl = document.getElementById("screen-irl");
       if (irl && irl.classList.contains("active") && typeof renderIRL === "function") renderIRL();
+      // LOT-3 (audit UX/UI du 2026-11-10, PCS-C01 / FIL-C01) : une publication
+      // reliée à une activité n'avait pas sa porte « Voir l'activité » tant que
+      // l'activité n'était pas en mémoire, et rien ne la redécorait à son arrivée
+      // (mesuré : absente à 5, 20 et 40 s, présente à 60 s). On redécore les
+      // cartes DÉJÀ peintes — sans repeindre le fil, donc sans saut de défilement.
+      try { if (window.PassioUIV3 && typeof PassioUIV3.decorateFeed === "function") PassioUIV3.decorateFeed(null); } catch (e) {}
     }
     return change;
   } catch (e) {

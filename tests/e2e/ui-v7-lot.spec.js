@@ -250,7 +250,7 @@ test.describe("UI-7 §2 — la carte d'activité dit ce qu'il faut", () => {
     // serveur a écrit l'inscription : un refus annule l'optimiste. Cette suite
     // mesure la CARTE, pas la base — le faux client accorde l'écriture.
     await page.evaluate(() => { window.supaSetEventRsvp = async () => true; });
-    await expect(carte.locator('[data-v4a2-act="go"]')).toHaveText("Je viens");
+    await expect(carte.locator('[data-v4a2-act="go"]')).toHaveText("Je participe"); // LOT-3 (PCS-C06)
     await carte.locator('[data-v4a2-act="go"]').click();
     await page.waitForTimeout(500);
     await expect(carte.locator('[data-v4a2-act="reponse"]')).toHaveText("Inscrit ✓");
