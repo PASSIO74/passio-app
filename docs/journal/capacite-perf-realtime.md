@@ -2121,6 +2121,27 @@ connexions, pas les messages, qui borne la simultanéité. **Ce sont des estimat
 près** : le chiffre réel se lit dans Supabase › Usage › Realtime Messages, que rien dans le pilotage ne
 suit encore.
 
+**Mesuré après coup (2026-11-12) : la précondition d'extinction est remplie — et Netlify recopie la
+requête dans le renvoi.**
+- #800 est servie depuis le 2026-11-09 (fusion à 19:39 UTC ; le commit servi le 12/11, `00258361`, la
+  contient).
+- Journaux edge de Supabase (`query_logs`, source `edge_logs`, chemin `/render/image/`) : **zéro demande
+  sur trois fenêtres de 24 h**, du 09/11 18:00 au 12/11 18:00 UTC (0 sur 38 898, 17 124 et 23 558
+  requêtes) ; 94 lectures `object/public` sur la dernière.
+- `release/version_skew` sur 3 jours : un seul événement, un appareil du public sur `36b778d1` (#821,
+  qui contient #795). Aucun build d'avant #795 vu.
+- ⚠️ **NETLIFY RECOPIE LA REQUÊTE ENTIÈRE DANS LE `Location` D'UN RENVOI D'EDGE FUNCTION.**
+  `/media/content/x.jpg?width=192&quality=75&next=https://evil.example` rend
+  `301 → …/object/public/content/x.jpg?width=192&quality=75&next=https://evil.example`, alors que
+  `media.js` pose une cible SANS requête : ⑦ le vérifie sur la fonction, pas sur la plateforme. Ce n'est
+  pas un renvoi ouvert (l'origine reste celle de Supabase), ni une transformation : `object/public`
+  ignore ces paramètres — mêmes octets avec et sans `?width=192&quality=75` (1 269 896 octets,
+  `image/jpeg`, mesuré). Un renvoi qui ne doit RIEN transmettre ne peut pas compter sur la fonction
+  seule.
+
+Le geste reste humain, et son risque est désormais mesuré nul : **Supabase › Storage › Settings →
+éteindre « Enable Image Transformations »**.
+
 ---
 
 ## 🧩 LE BLOC APP EN 9 SCRIPTS : UNE VERSION NE RETÉLÉCHARGE QUE CE QUI A CHANGÉ — ET SOUS WEBKIT, IL A FALLU LE WORKER (2026-11-09)

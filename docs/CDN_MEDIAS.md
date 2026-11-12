@@ -36,7 +36,10 @@ rechargement). Éteindre **au moins 24 h après la mise en ligne de #800**, et s
 avoir constaté : zéro requête `/render/image/` sur 24 h dans les journaux Storage de Supabase
 (ou le compteur Usage › Image Transformations à plat), et plus aucun événement
 `release/version_skew` venu d'un build antérieur à #795. Le coût d'un oubli est une vignette
-grise sur un appareil en retard, jamais une panne.
+grise sur un appareil en retard, jamais une panne. **Remplie le 2026-11-12** : zéro
+`/render/image/` sur les trois dernières fenêtres de 24 h, aucun build d'avant #795 vu (mesures
+dans `docs/journal/capacite-perf-realtime.md`, fiche « 2026-11-09, la suite ») — il ne reste
+que le geste.
 
 **Ce qui ne bouge pas :** le seau `attachments` reste privé et se lit par URL signée ;
 `sw.js` n'intercepte toujours ni `/media/*` ni une autre origine ; aucune ligne de la base
@@ -47,7 +50,8 @@ n'a été réécrite (les URL du relais en base se lisent à la source ou suiven
 curl -s -o /dev/null -D - https://passio-app.netlify.app/media/content/<chemin>
 # → HTTP/1.1 301, Location: https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/<chemin>
 curl -s -o /dev/null -D - "https://passio-app.netlify.app/media/content/<chemin>?width=192&quality=75"
-# → HTTP/1.1 301, Location: …/storage/v1/object/public/content/<chemin> — jamais render/image
+# → HTTP/1.1 301, Location: …/storage/v1/object/public/content/<chemin>?width=192&quality=75 — jamais render/image
+#   (Netlify recopie la requête entière dans le renvoi ; object/public l'ignore : mêmes octets, mesuré le 12/11)
 curl -s -o /dev/null -D - https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/content/<chemin>
 # → Cache-Control: public, max-age=31536000 ; CF-Cache-Status: HIT à la 2ᵉ requête
 ```
