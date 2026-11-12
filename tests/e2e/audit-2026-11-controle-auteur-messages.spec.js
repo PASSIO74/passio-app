@@ -69,6 +69,10 @@ async function banc(page) {
     let corps = null;
     try { corps = req.postDataJSON(); } catch (e) { corps = req.postData(); }
     ecritures.push({ m, chemin: url.replace(/^.*\/v1\//, ""), corps });
+    // Un DELETE accepté rend la ligne retirée (`.select("id")`), comme PostgREST :
+    // « Supprimer pour tous » lit désormais ce verdict (ETAT-04).
+    const del = m === "DELETE" && /\/rest\/v1\/conv_messages\?(?:[^#]*&)?id=eq\.([^&]+)/.exec(url);
+    if (del) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ id: decodeURIComponent(del[1]) }]) });
     return route.fulfill({ status: 201, contentType: "application/json", body: "[]" });
   });
 
@@ -185,7 +189,9 @@ test.describe("Audit 2026-11 — messages de contrôle : la suppression et la r�
     const { errors, ecritures } = await banc(page);
     const r = await page.evaluate(async (cid) => {
       const B = window.__b;
-      _deleteMsgForAll(cid, "m_moi2");
+      // Un COMPTE (forme d'un uuid) : pour un visiteur, rien ne part au serveur (ETAT-04).
+      MY_UID = "6b1d2c3e-4f50-4a61-8b72-9c83d4e5f601";
+      await _deleteMsgForAll(cid, "m_moi2");
       // Défense en profondeur côté émetteur : jamais le message d'un autre.
       _deleteMsgForAll(cid, "m_lea");
       await new Promise((ok) => setTimeout(ok, 400));
@@ -203,6 +209,55 @@ test.describe("Audit 2026-11 — messages de contrôle : la suppression et la r�
     expect(ligne.from_id, "le contrôle part sous MON identifiant").toBe(r.uid);
     expect(ligne.conv_id).toBe(CID);
     expect(JSON.parse(ligne.content)).toMatchObject({ type: "del", target: "m_moi2" });
+    expect(errors.js).toEqual([]);
+  });
+
+  test("② bis « Supprimer pour tous » REFUSÉ par la base : la bulle reste, aucune pierre tombale, aucun contrôle, et c'est dit (ETAT-04)", async ({ page }) => {
+    const { errors, ecritures } = await banc(page);
+    // La base touche 0 ligne (refus RLS, session morte) : PostgREST rend [] en 200.
+    await page.route(/\/rest\/v1\/conv_messages\?/, (route) => {
+      if (route.request().method() !== "DELETE") return route.fallback();
+      ecritures.push({ m: "DELETE", chemin: route.request().url().replace(/^.*\/v1\//, ""), corps: null });
+      return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    const r = await page.evaluate(async (cid) => {
+      const B = window.__b;
+      MY_UID = "6b1d2c3e-4f50-4a61-8b72-9c83d4e5f601";
+      window.__toasts = [];
+      const vrai = window.toast;
+      window.toast = function (m) { window.__toasts.push(String(m)); try { return vrai.apply(this, arguments); } catch (e) {} };
+      await _deleteMsgForAll(cid, "m_moi2");
+      await new Promise((ok) => setTimeout(ok, 300));
+      return { ids: B.ids(), bulles: B.bulles(), tombe: convTombLoad()["msg:m_moi2"] !== undefined, toasts: window.__toasts.slice() };
+    }, CID);
+    expect(ecritures.filter((e) => e.m === "DELETE").length, "le DELETE est bien parti").toBe(1);
+    expect(r.ids, "le message est toujours là").toContain("m_moi2");
+    expect(r.bulles).toContain("m_moi2");
+    expect(r.tombe, "aucune pierre tombale ne le cache").toBe(false);
+    expect(ecritures.filter((e) => e.m === "POST" && /^conv_messages/.test(e.chemin)).length, "aucun contrôle `del` envoyé").toBe(0);
+    expect(r.toasts.some((t) => /pas pu être supprimé|non supprimé/.test(t)), JSON.stringify(r.toasts)).toBe(true);
+    expect(r.toasts).not.toContain("Message supprimé pour tous");
+    expect(errors.js).toEqual([]);
+  });
+
+  test("② ter ligne DÉJÀ partie (0 ligne sous MA session) : c'est un succès, la bulle part, aucun contrôle inutile", async ({ page }) => {
+    const { errors, ecritures } = await banc(page);
+    await page.route(/\/rest\/v1\/conv_messages\?/, (route) => {
+      if (route.request().method() !== "DELETE") return route.fallback();
+      ecritures.push({ m: "DELETE", chemin: route.request().url().replace(/^.*\/v1\//, ""), corps: null });
+      return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    const r = await page.evaluate(async (cid) => {
+      const B = window.__b;
+      MY_UID = "6b1d2c3e-4f50-4a61-8b72-9c83d4e5f601";
+      window._sessionEstMoi = async () => true;   // la session de CE compte est vivante
+      await _deleteMsgForAll(cid, "m_moi2");
+      await new Promise((ok) => setTimeout(ok, 300));
+      return { ids: B.ids(), tombe: convTombLoad()["msg:m_moi2"] !== undefined };
+    }, CID);
+    expect(r.ids).not.toContain("m_moi2");
+    expect(r.tombe).toBe(true);
+    expect(ecritures.filter((e) => e.m === "POST" && /^conv_messages/.test(e.chemin)).length, "rien à retirer chez l'autre : aucun contrôle").toBe(0);
     expect(errors.js).toEqual([]);
   });
 

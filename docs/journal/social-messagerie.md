@@ -32,6 +32,7 @@
 - 🪆 LE DÉCOR DES EXEMPLES : UNE DISCUSSION QUI SE VIDAIT, DES MESSAGES QUI SE DÉDOUBLAIENT (2026-11-10)
 - ✅ CE QUI EST ANNONCÉ EST CE QUI EST GARDÉ : PROFIL, BULLES EN ATTENTE, COMMENTAIRE MODIFIÉ (2026-11-10)
 - 🧾 GROUPE : DESCRIPTION ET SORTIE SOUS VERDICT (2026-11-12, SRV-04 et ETAT-04)
+- ↩️ LES RETRAITS DISENT LEUR VERDICT ET CONVERGENT : SUPPRIMER POUR TOUS, FILE DES SUPPRESSIONS, SUIVIS, BLOCAGES, INSCRIPTIONS (2026-11-12, ETAT-04, ETAT-05, ETAT-08)
 
 ---
 
@@ -856,3 +857,54 @@ Verrou : `tests/e2e/groupe-verdicts.spec.js` (4). Mutation : rougit ① et ③.
 
 « Supprimer pour tous » et la suppression d'un commentaire (reste d'ETAT-04) ne sont pas dans ce lot : ils passent par
 des files de rejeu qui ont leurs propres preuves.
+
+---
+
+## ↩️ LES RETRAITS DISENT LEUR VERDICT ET CONVERGENT : SUPPRIMER POUR TOUS, FILE DES SUPPRESSIONS, SUIVIS, BLOCAGES, INSCRIPTIONS (2026-11-12, ETAT-04, ETAT-05, ETAT-08)
+
+**ETAT-04 — « Supprimer pour tous ».** Le DELETE de `conv_messages` partait sans que son résultat soit lu. La bulle
+disparaissait, et une pierre tombale empêchait même de s'apercevoir de l'échec. Sur un refus, le message restait
+donc lisible chez le destinataire. Pour un compte, la base tranche désormais d'abord
+(`.select("id")` + `_writeVerdict`, `expectRows`). Un refus laisse la bulle à l'écran : pas de pierre tombale, pas
+de contrôle `del`, et un message le dit. Un message « en cours d'envoi » ne se supprime pas pour tous. Un message en
+échec, qui n'a jamais atteint la base, se retire de sa file.
+- Les deux autres gestes cités par l'audit étaient déjà corrigés : supprimer un commentaire (FIL-C06, 10/11) et
+  quitter un groupe (#836).
+- Verrou : `audit-2026-11-controle-auteur-messages.spec.js` ② bis, rougi par mutation. Les faux serveurs de trois
+  suites rendent désormais la ligne supprimée, comme PostgREST.
+
+**ETAT-05 — la file des suppressions.** « 0 ligne + relecture vide » valait preuve de suppression, même sous une
+session morte. Or la relecture anonyme ne voit pas la publication d'un compte PRIVÉ. La file l'abandonnait, et la
+pierre tombale la cachait à son auteur pendant que ses abonnés la lisaient encore. `_delObRun` exige désormais une
+session dont l'utilisateur est `MY_UID`. Sans elle, il rend `"sans_session"` : il attend, sans consommer d'essai.
+- AUTH-06 : l'entrée porte `_fileProprietaire()`. Un visiteur n'y met rien, et une entrée sans propriétaire n'est
+  plus rejouée sous n'importe quel compte.
+- « Ne plus suivre » applique la même règle : 0 ligne n'est un succès que sous la session de ce compte.
+- Verrou : `suppression-durable.spec.js`, ETAT-05, rougi par mutation.
+
+**ETAT-08 — les retraits convergent.** Les trois lecteurs (`supaLoadFollowing`, `supaLoadBlocks`, `supaLoadMyRsvps`)
+rendent `null` sur un échec. Après une lecture réussie, la liste du serveur REMPLACE la liste locale
+(`_fusionnerSuivisServeur`, `_fusionnerBlocagesServeur`, `_fusionnerRsvpServeur`), avec deux exceptions :
+- un identifiant dont l'écriture est EN VOL : l'état local décide, dans les deux sens ;
+- un profil ou une activité d'EXEMPLE : il n'existe pas en base, il reste local.
+
+« Ne plus suivre » lit enfin son verdict : un refus rend le suivi et le dit.
+Verrou : `retraits-convergent.spec.js` (5). Mutations : rougissent ①, ③ et ⑤.
+
+⚠️ Le bloc qui fusionnait `supaFollowing` dans `supaInit`, après un `return`, est du code mort. Il n'a pas été
+touché.
+
+**Corrigé avant fusion, après relecture par l'agent `audit-passio` (12/11).** La première version avait deux défauts P1 :
+- sous une session morte, une lecture passe en rôle anonyme et rend 0 ligne sans erreur. Le remplacement aurait
+  donc EFFACÉ tous les blocages et une partie des suivis. Le remplacement n'a désormais lieu que si
+  `_sessionEstMoi()` confirme une session de ce compte ; sinon, la fusion retombe sur l'union d'avant.
+- un refus de lecture déjà mémorisé faisait rendre `{}` à `supaLoadMyRsvps`, ce qui effaçait les inscriptions.
+  Il rend maintenant `null` pour un compte, et `{}` reste réservé au visiteur.
+
+Trois P2 corrigés dans le même temps :
+- « Supprimer pour tous » : une ligne déjà partie (0 ligne sous MA session) est un succès ;
+- un message « en échec » tente quand même le DELETE ;
+- un message en file hors ligne se retire de sa file.
+
+Enfin, `supaUnfollowUser` rend un succès local pour un visiteur (`parcours-suivre` l'a rattrapé : le suivi
+revenait).
