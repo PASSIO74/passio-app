@@ -2627,9 +2627,66 @@ n'envoie rien ») — trouvée là par hasard, ici par la sonde. Remède (Playwr
 `pwa-maj-pendant-appel` ni `sw-page-revalidee`, dont le VRAI worker est le sujet. Après : 180/180,
 **0 requête partie**. Banc unitaire ⑦ : toute suite du socle WebKit qui pose les routes d'isolation
 bloque le worker (réinjection faite sur `cadrage`).
-⚠️ **À REMESURER SUR 24 H PLEINES** après la fusion de la PR de suite, avec la même requête
-(`edge_logs`, `request.cf.asOrganization` préfixé « Microsoft », groupé par famille et par
-`request.headers.cf_connecting_ip`), et le nombre de runs « CI & Deploy » de la fenêtre.
+⚠️ **REMESURÉ SUR 24 H PLEINES** après la fusion de la PR de suite (#804), avec la même requête,
+rapportée au nombre de runs « CI & Deploy » de la fenêtre : paragraphe suivant.
+
+**APRÈS LA FUSION DE #804 — 24 H PLEINES (2026-11-09 21:10 → 2026-11-10 21:10 UTC).** Mêmes journaux
+(`query_logs`, `edge_logs`, canal ① en lecture seule), relus le 12/11. **37 200 requêtes reçues par la
+production, dont 4 520 du réseau des runners — 12,2 %, contre 37 159 et 68,1 % avant** — par 175
+adresses : headless 3 248, Node 833, WebKit (« iPhone OS 15_0 ») 439. **51 runs « CI & Deploy »
+exécutés** (57 créés : quatre annulés avant leur premier job, deux runs de PR d'agent restés en
+`action_required`, jamais approuvés), dont 15 `push` : près de quatre fois l'activité de la fenêtre
+d'avant (13 runs), pour **88 % de requêtes en moins en valeur absolue**.
+Lu adresse par adresse (une adresse = un job), classé par SIGNATURE, puis contrôlé par les fenêtres
+des runs de `gh run list` :
+- **`authz-critical` : 15 exécutions, les 15 runs `push` exécutés — 3 256 requêtes, 217 par
+  exécution**, inchangé par construction (1 301 / 6 = 217 avant). Chacune : ≈ 170 du navigateur (dont
+  2 `/auth/v1/verify` et une connexion temps réel), ≈ 45 du service role (dont 8 `/auth/v1/admin` —
+  créer, lier, lister, supprimer les deux comptes — et la purge d'environ 25 tables). C'est désormais
+  LE poste de la CI : 75 % de ses requêtes.
+- **Gates `dist` (référent `127.0.0.1:8091`) : 466.** Jusqu'à #819 (fusionnée le 10/11 à 13:53 UTC),
+  `passion-context` y parlait à la production ; ensuite `release-integrity` seul : 3 GET (`posts`,
+  `events`, `passions`) et leurs 3 pré-requêtes par passage — le « reste à faire » de #819
+  (`telemetrie-pilotage-sentinelle.md`).
+- **Télémétrie (référent `:8080`) : 197 POST acceptés (201).** Avant #819, surtout les envois
+  `keepalive` du DÉPART d'une page (`telemetrie-trafic` ④, la fuite que #819 ferme) ; ensuite 25 pour
+  19 runs : le lot voulu de `telemetrie-preauth` ①, et lui seul.
+- **WebKit : 343 pré-requêtes CORS** (`OPTIONS`, 200, sans corps ni requête en base) — 320 sur la
+  pagination du référentiel (`passions?…&offset=N000`), 18 sur `post_comments`, ≈ 7 par job. La route
+  sert la requête, mais sous WebKit sa pré-requête part au réseau.
+- **Une fuite WebKit, arrêtée par son banc : 96 vraies lectures** (`profiles`, `posts`,
+  `fil_compteurs`, la messagerie de `conv_lea`) par les deux runs de la PR #820, à 13:27 et 13:37 UTC :
+  la suite qu'elle ajoutait au socle WebKit démarrait l'application sans bloquer le service worker. Le
+  banc ⑦ de `tests/unit/isolation-projet-supabase.test.mjs` a rougi les deux runs (« Audits statiques
+  et bancs serveur »), 8fd2f5bf l'a corrigée avant la fusion : **jamais sur `main`** — et aucune autre
+  adresse WebKit n'a lu une table dans la fenêtre.
+- **Bord de fenêtre : 1** WebSocket à 21:10:28, d'un run créé avant le début de la fenêtre.
+- **Hors CI : 161** — « Sauvegarde production » 119 (10:19, Node, dont la liste des comptes),
+  « Sentinelle autonome » 38 (six passages de 6 ou 7 lectures), « Veille de production » 3, « Alerte
+  de modération » 1.
+**PAR RUN EXÉCUTÉ : la CI hors `authz-critical` pèse 1 103 / 51 ≈ 22 requêtes de production, contre
+2 746 avant — −99,2 %** (≈ 20 sans la fuite de #820) ; **depuis #819, 277 / 19 ≈ 15** (pré-requêtes
+WebKit ≈ 8,4, `release-integrity` ≈ 4,8, lot de télémétrie voulu ≈ 1,3). **S'y ajoutent ≈ 217 par run
+`push`** (`authz-critical`). Méthode brute d'avant (tout le réseau des runners / runs) : 4 520 / 51
+≈ 89 contre 2 858, **−96,9 %**. L'attendu (≈ 35 par run, + ≈ 216 quand `authz-critical` tourne) est
+tenu, et passé.
+⚠️ **LA RÉFÉRENCE, DÉCOMPOSÉE DE MÊME** (requête rejouée le 09/11 sur la fenêtre d'avant : 54 563,
+37 159 et 34 318 retrouvés à l'unité) : headless 33 668, WebKit 2 036, `authz-critical` 1 301 en six
+exécutions, Node hors CI 154 — d'où 35 704 / 13 = 2 746 par run hors `authz-critical`. La part hors CI
+y pesait 0,4 % ; elle pèse 3,6 % aujourd'hui : **ce qui se rapporte à un run se lit par classe
+d'adresse, plus par réseau.**
+⚠️ **`authz-critical` = `/auth/v1/admin` ET un navigateur sur la même adresse** : la sauvegarde lit
+aussi `/auth/v1/admin/users` (la liste des comptes) — une règle « admin ⇒ authz » la range en CI.
+⚠️ **UN RUN CRÉÉ N'EST PAS UN RUN EXÉCUTÉ** : six des 57 n'ont joué aucun job. Compter par
+`gh run view --json jobs` (au moins un job `success` ou `failure`), sinon le « par run » se dilue.
+⚠️ **LE PARSEUR DE `query_logs` REFUSE LES CTE** (la requête y est enveloppée) et l'accès `r.1` aux
+tuples ; les sous-requêtes imbriquées, `tupleElement`, `arrayJoin([...])` et `cross join` passent.
+**Ce qui reste, par poids.** `authz-critical`, voulu : 30 comptes créés en 24 h, deux par déploiement
+— à quinze déploiements par jour, ~900 MAU par mois et non ~360 (paragraphe suivant), moins de 1 % des
+100 000 du forfait ; deux comptes PERMANENTS le ramèneraient à 2. Les pré-requêtes WebKit, sans coût
+en base : les faire disparaître demanderait de pointer le SDK des suites vers une adresse qui ne
+résout pas, plutôt que vers la production. `release-integrity` (3 GET par passage), dont la raison au
+socle est périmée d'après #819.
 
 **LES SUITES À COMPTES RÉELS, AU STRICT NÉCESSAIRE.** Une seule vise encore la production :
 `authz-critical` (la barrière RLS de la production ; le reste du projet `prod` tourne sur le staging) —
