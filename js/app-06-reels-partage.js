@@ -619,12 +619,47 @@ function accueillirInvitation() {
       });
       try { if (window.tel && tel.action) tel.action("invitation_accueil", { v: 1 }); } catch (e) {}
       majInvitationAuth();
+      peindreBandeauInvitation();
     }).catch(function (e) { _invitationEchec("accueil", e); });
     return true;
   } catch (e) {
     _invitationEchec("accueil", e);
     return false;
   }
+}
+
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C20) — L'INVITATION RESTE VISIBLE.
+// Le seul signe de l'invitation était un toast de 6 s : le visiteur qui lit
+// d'abord le contenu ne revoyait jamais qui l'avait invité ni pourquoi s'inscrire.
+// Un bandeau bas, discret et persistant, tant que l'appareil ne porte aucun
+// compte ; une croix le range pour la session. Posé sur <body> (jamais dans
+// #appMain : un `position: fixed` y défilerait avec le conteneur sous WebKit).
+function peindreBandeauInvitation() {
+  try {
+    var ancien = document.getElementById("invitationBandeau");
+    var inv = invitationEnAttente();
+    var range = false;
+    try { range = sessionStorage.getItem("passio_invitation_bandeau_range") === "1"; } catch (e) {}
+    if (!inv || !inv.nom || _appareilPorteUnCompte() || range) { if (ancien) ancien.remove(); return; }
+    var b = ancien || document.createElement("div");
+    b.id = "invitationBandeau";
+    b.className = "invitation-bandeau";
+    b.setAttribute("role", "region");
+    b.setAttribute("aria-label", "Invitation");
+    b.innerHTML = '<div class="invitation-bandeau-texte"><strong class="invitation-bandeau-nom"></strong>'
+      + '<span>Le réseau des passions : partage ce que tu aimes, retrouve des gens près de chez toi.</span></div>'
+      + '<button type="button" class="btn primary invitation-bandeau-cta">Créer mon compte</button>'
+      + '<button type="button" class="invitation-bandeau-fermer" aria-label="Fermer l\'invitation">×</button>';
+    b.querySelector(".invitation-bandeau-nom").textContent = inv.nom + " t'invite sur PASSIO";
+    b.querySelector(".invitation-bandeau-cta").onclick = function () {
+      try { if (window.PassioFirstRun && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription("invitation"); } catch (e) {}
+    };
+    b.querySelector(".invitation-bandeau-fermer").onclick = function () {
+      try { sessionStorage.setItem("passio_invitation_bandeau_range", "1"); } catch (e) {}
+      b.remove();
+    };
+    if (!ancien) document.body.appendChild(b);
+  } catch (e) { try { diagLog("bandeau invitation : " + (e && e.message)); } catch (_e) {} }
 }
 
 // ③ La ligne du formulaire de création. `mode` vient de `switchAuthTab` ; sans
@@ -850,6 +885,9 @@ capterInvitation();
 window.addEventListener("passio:app-ready", function () {
   _invitationAccueilEssais = 0;
   accueillirInvitation();
+  // LOT-12 (PAR-C20) : une invitation déjà accueillie garde son bandeau aux visites
+  // suivantes, tant qu'aucun compte n'est né sur l'appareil.
+  setTimeout(peindreBandeauInvitation, 1500);
 });
 (function _invitationBoot() {
   if (!invitationEnAttente()) return;
@@ -887,6 +925,15 @@ function lienInvitationAmis() {
   return location.origin + location.pathname;
 }
 
+// LOT-12 (PAR-C14) : le bouton visible du profil. Un vrai compte envoie le lien de
+// SON profil (feuille unique) ; sans compte, l'invitation générale.
+function partagerMonProfil() {
+  var compte = (typeof _uidEstUnCompte === "function") && _uidEstUnCompte();
+  if (!compte) { inviterDesAmis("profil"); return; }
+  var g = (state.user && state.user.general) || {};
+  shareUserProfile(MY_UID, g.username || state.user.name || "Mon profil");
+}
+
 function inviterDesAmis(porte) {
   var brut = lienInvitationAmis();
   var cible = porte ? "invite_" + String(porte).slice(0, 20) : "invite";
@@ -895,88 +942,11 @@ function inviterDesAmis(porte) {
   partagerOuCopier({ title: "PASSIO", text: INVITATION_AMIS_TEXTE, url: url }, "Lien d'invitation copié");
 }
 
-function copyReelLink(postId, encodedUrl) {
-  const url = decodeURIComponent(encodedUrl);
-  // LOT-10 (PAR-C04) : la copie refusée levait sans `catch` — aucune réaction.
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(() => {
-      _telLinkShare(url, "clipboard");
-      toast("Lien copié");
-      closeModal();
-    }, () => { closeModal(); montrerLienACopier(url); });
-  } else {
-    closeModal();
-    montrerLienACopier(url);
-  }
-}
-
-// Émet le signal « lien partagé » (canal donné) au centre de pilotage, à partir
-// d'une URL taguée. Guardé : ne casse rien si la télémétrie est absente/désactivée.
-function _telLinkShare(url, channel) {
-  try { if (window.tel && tel.linkShare) { var id = tel.linkFromUrl(url); if (id) tel.linkShare(id, channel); } } catch (e) {}
-}
-
-function shareReelVia(platform, postId, encodedUrl, encodedText) {
-  const url = decodeURIComponent(encodedUrl);
-  const text = decodeURIComponent(encodedText);
-  let shareUrl;
-
-  switch(platform) {
-    case "whatsapp":
-      shareUrl = `https://wa.me/?text=${encodedText}%20${encodedUrl}`;
-      break;
-    case "twitter":
-      shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
-      break;
-    case "facebook":
-      shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
-      break;
-    case "telegram":
-      shareUrl = `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`;
-      break;
-    default:
-      return;
-  }
-
-  _telLinkShare(url, platform);
-  window.open(shareUrl, "_blank", "width=600,height=400");
-  toast(`Ouverture ${platform}...`);
-  closeModal();
-}
-
-function shareReelEmail(postId, encodedText, encodedUrl) {
-  const reel = findPostAnywhere(postId);
-  if (!reel) return;
-
-  // Réutilise l'URL taguée du modal (suivi du lien) ; repli si absente.
-  const url = encodedUrl ? decodeURIComponent(encodedUrl) : `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
-  const author = authorOfReel(reel);
-  const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
-  const text = reel.text || reel.caption || "";
-
-  const subject = encodeURIComponent(`Regarde cette bobine PASSIO de ${author.name}!`);
-  const body = encodeURIComponent(`Salut!\n\nJe viens de découvrir cette super bobine sur PASSIO:\n\n${passion.emoji} ${author.name} – ${passion.label}\n"${text.slice(0, 150)}${text.length > 150 ? "…" : ""}"\n\nViens la voir ici: ${url}\n\nPASSIO - Partage tes passions!`);
-
-  _telLinkShare(url, "email");
-  const mailtoLink = `mailto:?subject=${subject}&body=${body}`;
-  window.location.href = mailtoLink;
-  toast("Ouverture de ton client email…");
-  closeModal();
-}
-
-function shareReelSMS(postId, encodedUrl) {
-  const url = decodeURIComponent(encodedUrl);
-  const reel = findPostAnywhere(postId);
-  if (!reel) return;
-
-  const text = reel.text || reel.caption || "";
-  const smsBody = encodeURIComponent(`Regarde cette bobine PASSIO: ${text.slice(0, 30)}... ${url}`);
-  _telLinkShare(url, "sms");
-  const smsLink = `sms:?body=${smsBody}`;
-  window.location.href = smsLink;
-  toast("Ouverture SMS…");
-  closeModal();
-}
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C07) : `copyReelLink`, `shareReelVia`,
+// `shareReelEmail`, `shareReelSMS` et `_telLinkShare` RETIRÉES avec les huit
+// boutons de l'ancienne feuille de bobine. La bobine passe par la feuille unique
+// (`ouvrirFeuillePartage`, app-02) : la feuille du téléphone couvre WhatsApp,
+// Telegram, SMS, e-mail…, et le lien est compté par `tel.shareLink`.
 
 function scrollToReel(idx) {
   const list = document.getElementById("reelsList");

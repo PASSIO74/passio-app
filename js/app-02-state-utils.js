@@ -3750,6 +3750,68 @@ function unlockBodyScroll(owner) {
 // `await` avant `navigator.share` consomme l'activation utilisateur et l'appel
 // est alors refusé.
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C07) — UNE FEUILLE DE PARTAGE.
+// Quatre contenus, quatre façons de partager : publication et activité avaient
+// deux boutons, la bobine huit (réseaux nommés, sans feuille du téléphone), le
+// profil aucun écran. Une seule feuille désormais :
+//   aperçu (vignette, auteur ou titre, extrait) ; ce que verra la personne ;
+//   « Envoyer à quelqu'un » (feuille du téléphone, sinon copie du message) ;
+//   « Copier le lien » ; « Republier dans mon fil » ; pour une activité,
+//   « Inviter mes abonnements ».
+// PAR-C09 : un seul vocabulaire (« fil », « publication », « activité »).
+// PAR-C11 : un lien qui porte mon nom le DIT (l'invité me suivra en s'inscrivant).
+// PAR-C19 : une règle de fermeture — la feuille se ferme après l'action.
+// Les identifiants de boutons historiques (_shareOutBtn, _shareInFeedBtn,
+// _shareEvOutBtn, _shareEvInFeedBtn) sont gardés : le code de republication les
+// désactive pendant l'écriture, et des suites les visent.
+//   o = { quoi: "publication"|"bobine"|"activité"|"profil", titre, auteur, extrait,
+//         vignette, url, message, voit, idEnvoyer, idRepublier, republier, inviter }
+// ═══════════════════════════════════════════════════════════════════════════
+function ouvrirFeuillePartage(o) {
+  o = o || {};
+  var quoi = o.quoi || "publication";
+  var titres = { publication: "Partager cette publication", bobine: "Partager cette bobine", "activité": "Partager cette activité", profil: "Partager ce profil" };
+  var signe = /[?&]inv=/.test(String(o.url || ""));
+  var vignette = o.vignette && !/^data:/.test(String(o.vignette)) ? ((typeof passioThumb === "function") ? passioThumb(o.vignette, 192) : o.vignette) : "";
+  var html = '<div class="modal-handle"></div>'
+    + '<div class="modal-title">' + shareIconSvg(20) + " " + escapeHtml(titres[quoi] || "Partager") + '</div>'
+    + '<div class="partage-apercu">'
+    +   (vignette ? '<img class="partage-apercu-media" src="' + safeUrlAttr(vignette) + '" alt="" onerror="this.remove()">' : "")
+    +   '<div class="partage-apercu-texte">'
+    +     (o.titre ? '<div class="partage-apercu-titre">' + escapeHtml(o.titre) + '</div>' : "")
+    +     (o.auteur ? '<div class="partage-apercu-auteur">' + escapeHtml(o.auteur) + '</div>' : "")
+    +     (o.extrait ? '<div class="partage-apercu-extrait">' + escapeHtml(o.extrait) + '</div>' : "")
+    +   '</div>'
+    + '</div>'
+    + '<p class="partage-qui-voit">' + escapeHtml(o.voit || "La personne qui reçoit le lien l'ouvre dans PASSIO, même sans compte.") + '</p>'
+    + (signe ? '<p class="partage-signe">Le lien porte ton nom : si la personne s\'inscrit, elle te suivra.</p>' : "")
+    + '<button type="button" class="btn primary block partage-btn" id="' + escapeHtml(o.idEnvoyer || "_partageEnvoyer") + '">' + shareIconSvg(16) + " Envoyer à quelqu'un</button>"
+    + '<button type="button" class="btn secondary block partage-btn" id="_partageCopier">Copier le lien</button>'
+    + (typeof o.republier === "function" ? '<button type="button" class="btn secondary block partage-btn" id="' + escapeHtml(o.idRepublier || "_partageRepublier") + '">Republier dans mon fil</button>' : "")
+    + (typeof o.inviter === "function" ? '<button type="button" class="btn secondary block partage-btn" id="_partageInviter">Inviter mes abonnements</button>' : "");
+  openModal(html);
+  var brancher = function (id, fn) { var b = document.getElementById(id); if (b) b.addEventListener("click", fn); };
+  brancher(o.idEnvoyer || "_partageEnvoyer", function () {
+    partagerOuCopier({ title: o.titre || "PASSIO", text: o.message || "", url: o.url }, "Message et lien copiés");
+    setTimeout(function () { try { closeModal(); } catch (e) {} }, 400);
+  });
+  brancher("_partageCopier", function () {
+    var fini = function () { toast("Lien copié"); try { closeModal(); } catch (e) {} };
+    var repli = function () { try { closeModal(); } catch (e) {} montrerLienACopier(o.url); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(String(o.url)).then(fini, repli);
+      else repli();
+    } catch (e) { repli(); }
+  });
+  if (typeof o.republier === "function") brancher(o.idRepublier || "_partageRepublier", function () {
+    // PAR-C15 : un double appui ne traverse plus la feuille — le bouton se fige.
+    this.disabled = true; this.textContent = "Partage en cours…";
+    o.republier();
+  });
+  if (typeof o.inviter === "function") brancher("_partageInviter", function () { o.inviter(); });
+}
+
 function partagerOuCopier(data, msgCopie) {
   const url = (data && data.url) || "";
   const texteCopie = data && data.text ? (data.text + "\n" + url) : url;
@@ -3787,6 +3849,12 @@ function pushOverlayToHistory(overlayType, overlayId = "") {
 }
 
 function goTo(screen) {
+  // LOT-12 (PAR-C16) : quitter le Studio efface le rattachement d'un souvenir à
+  // l'album d'une activité — il ne doit pas s'appliquer à une autre publication.
+  if (screen !== "studio" && window._pendingEventPost) {
+    window._pendingEventPost = null;
+    try { var _sv = document.getElementById("studioSouvenir"); if (_sv) _sv.remove(); } catch (e) {}
+  }
   // ADR-009 : l'écran Wallet n'existe plus. Un ancien lien, un deep link `#wallet`
   // ou un raccourci mémorisé doit mener à une destination valide plutôt qu'à un
   // écran blanc (aucun `#screen-wallet` ne peut plus recevoir la classe active).
