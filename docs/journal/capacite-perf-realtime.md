@@ -2627,9 +2627,29 @@ n'envoie rien ») — trouvée là par hasard, ici par la sonde. Remède (Playwr
 `pwa-maj-pendant-appel` ni `sw-page-revalidee`, dont le VRAI worker est le sujet. Après : 180/180,
 **0 requête partie**. Banc unitaire ⑦ : toute suite du socle WebKit qui pose les routes d'isolation
 bloque le worker (réinjection faite sur `cadrage`).
-⚠️ **À REMESURER SUR 24 H PLEINES** après la fusion de la PR de suite, avec la même requête
-(`edge_logs`, `request.cf.asOrganization` préfixé « Microsoft », groupé par famille et par
-`request.headers.cf_connecting_ip`), et le nombre de runs « CI & Deploy » de la fenêtre.
+**SUR 24 H PLEINES APRÈS LA PR DE SUITE (#804, fusionnée le 09/11 à 21:05 UTC) — même requête,
+fenêtre du 09/11 21:10 au 10/11 21:10 UTC, relevée le 12/11** : **37 200 requêtes reçues par la
+production, dont 4 520 du réseau Azure — 12,2 %** (68,1 % avant). Le dépôt a tourné **57 runs « CI &
+Deploy »** dans la fenêtre (39 de PR, 18 sur `main`), plus de quatre fois les 13 de la fenêtre de
+référence : **≈ 79 requêtes de production PAR RUN, contre ≈ 2 860 — −97 %**. Au rythme d'avant, ces
+57 runs en auraient envoyé ≈ 163 000.
+Ce qui reste est, pour l'essentiel, ce qui parle au vrai projet PAR CONSTRUCTION : les gates `dist`
+(démarrage réel de l'artefact et sa télémétrie : `passions`, `profiles`, `posts`, `events`,
+`fil_compteurs`, `notifications`), `authz-critical` (comptes réels — `auth/v1/admin` 60, soit
+≈ 30 comptes en 24 h —, dépôts dans le stockage 90, écritures de profils 86), le contrat désigné de
+`telemetrie-preauth` (avec la télémétrie réelle des gates `dist` : 199 lots), et des lectures de
+comptage des scripts Node (HEAD `stories` / `profiles`).
+⚠️ **UN RÉSIDU NEUF, PROPRE À WEBKIT : 320 PRÉ-REQUÊTES CORS** (`OPTIONS /rest/v1/passions`,
+≈ 6 par run) contre 6 `GET` réels sur la même table. Sous WebKit, la pré-requête d'une requête que la
+route sert part quand même au serveur : la requête est servie par le miroir, son `OPTIONS` ne l'est
+pas. Aucune donnée ne revient (une pré-requête n'a pas de corps), mais c'est une requête comptée ;
+Chromium, lui, ne la laisse pas partir. S'y ajoutent ≈ 90 lectures WebKit réelles en 24 h
+(`profiles` 24, `posts` 22, `fil_compteurs` 18…), compatibles avec `pwa-maj-pendant-appel`, qui garde
+EXPRÈS le vrai service worker (son sujet) — donc des requêtes qui, une fois le worker aux commandes,
+échappent aux routes. Ni l'un ni l'autre ne vaut un lot tant que ces chiffres restent à ce niveau.
+⚠️ **LA PART EN POURCENTAGE BAISSE MOINS VITE QUE LE PAR-RUN** (68,1 % → 12,2 % pour −97 % par run) :
+la CI a tourné quatre fois plus, et le reste du trafic a lui aussi changé. Le bon indicateur reste
+**par run**, rapporté au nombre de runs de `gh run list --created`.
 
 **LES SUITES À COMPTES RÉELS, AU STRICT NÉCESSAIRE.** Une seule vise encore la production :
 `authz-critical` (la barrière RLS de la production ; le reste du projet `prod` tourne sur le staging) —
