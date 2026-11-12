@@ -1,0 +1,466 @@
+{
+  "date": "2026-11-10T16:32:38.473Z",
+  "projet": "https://njkiyoklssvefstljemx.supabase.co",
+  "role": "anon",
+  "tables": {
+    "access_policies": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table access_policies"
+    },
+    "activite_jour": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table activite_jour"
+    },
+    "analytics_events": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "blocks": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "call_invites": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table call_invites"
+    },
+    "cdv_live_collaborators": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table cdv_live_collaborators"
+    },
+    "cdv_live_comments": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table cdv_live_comments"
+    },
+    "cdv_live_followers": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table cdv_live_followers"
+    },
+    "cdv_live_reactions": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table cdv_live_reactions"
+    },
+    "cdv_live_steps": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table cdv_live_steps"
+    },
+    "cdv_lives": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table cdv_lives"
+    },
+    "client_errors": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "client_errors_par_heure": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "client_errors_top_24h": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "comment_interactions": {
+      "status": 206,
+      "total": "131",
+      "colonnes_rendues": [
+        "id",
+        "comment_id",
+        "post_id",
+        "user_id",
+        "kind",
+        "payload",
+        "created_at"
+      ],
+      "erreur": null
+    },
+    "comment_likes": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "comptes_en_suppression": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table comptes_en_suppression"
+    },
+    "contenus_masques": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table contenus_masques"
+    },
+    "conv_members": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "conv_messages": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "conv_reads": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "conversations": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "croissance_jour": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table croissance_jour"
+    },
+    "debit_ecritures": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table debit_ecritures"
+    },
+    "event_attendees": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table event_attendees"
+    },
+    "event_checkin_secrets": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table event_checkin_secrets"
+    },
+    "event_comments": {
+      "status": 200,
+      "total": "1",
+      "colonnes_rendues": [
+        "id",
+        "event_id",
+        "author_id",
+        "author_name",
+        "text",
+        "created_at"
+      ],
+      "erreur": null
+    },
+    "event_reactions": {
+      "status": 206,
+      "total": "2",
+      "colonnes_rendues": [
+        "event_id",
+        "user_id",
+        "emoji",
+        "created_at"
+      ],
+      "erreur": null
+    },
+    "events": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table events"
+    },
+    "follows": {
+      "status": 206,
+      "total": "3",
+      "colonnes_rendues": [
+        "follower_id",
+        "following_id",
+        "created_at",
+        "status"
+      ],
+      "erreur": null
+    },
+    "migrations_appliquees": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table migrations_appliquees"
+    },
+    "moderation_actions": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table moderation_actions"
+    },
+    "notifications": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "passion_quotas": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "passion_relations": {
+      "status": 206,
+      "total": "10012",
+      "colonnes_rendues": [
+        "source_passion_id",
+        "target_passion_id",
+        "relation_type",
+        "weight",
+        "created_at"
+      ],
+      "erreur": null
+    },
+    "passion_requests": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "passions": {
+      "status": 206,
+      "total": "5010",
+      "colonnes_rendues": [
+        "id",
+        "emoji",
+        "label",
+        "color",
+        "sort_order",
+        "normalized_label",
+        "aliases",
+        "status",
+        "source",
+        "is_broad",
+        "popularity",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "recherche"
+      ],
+      "erreur": null
+    },
+    "pointage_essais": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table pointage_essais"
+    },
+    "post_collaborators": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "post_comments": {
+      "status": 206,
+      "total": "21",
+      "colonnes_rendues": [
+        "id",
+        "post_id",
+        "author_id",
+        "content",
+        "created_at"
+      ],
+      "erreur": null
+    },
+    "post_likes": {
+      "status": 206,
+      "total": "18",
+      "colonnes_rendues": [
+        "post_id",
+        "user_id",
+        "rid"
+      ],
+      "erreur": null
+    },
+    "posts": {
+      "status": 200,
+      "total": "1",
+      "colonnes_rendues": [
+        "id",
+        "author_id",
+        "passion_id",
+        "mood",
+        "content",
+        "media_url",
+        "likes",
+        "created_at",
+        "shared_from_post_id",
+        "shared_data",
+        "is_reel",
+        "overlays",
+        "vlog",
+        "event_id"
+      ],
+      "erreur": null
+    },
+    "profiles": {
+      "status": 206,
+      "total": "13",
+      "colonnes_rendues": [
+        "id",
+        "username",
+        "emoji",
+        "color",
+        "passion_id",
+        "bio",
+        "created_at",
+        "avatar_url",
+        "cover_url",
+        "passions",
+        "is_private",
+        "rs_links"
+      ],
+      "erreur": null
+    },
+    "push_subscriptions": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "reglages_distants": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table reglages_distants"
+    },
+    "reports": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "signalements_preuves": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table signalements_preuves"
+    },
+    "step_interactions": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table step_interactions"
+    },
+    "stories": {
+      "status": 206,
+      "total": "5",
+      "colonnes_rendues": [
+        "id",
+        "author_id",
+        "passion_id",
+        "content",
+        "emoji",
+        "created_at",
+        "media_url",
+        "media_type",
+        "overlays"
+      ],
+      "erreur": null
+    },
+    "story_views": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "telemetrie_debit": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table telemetrie_debit"
+    },
+    "telemetry_events": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "telemetry_last24h": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "user_passions": {
+      "status": 206,
+      "total": "68",
+      "colonnes_rendues": [
+        "user_id",
+        "passion_id",
+        "position",
+        "archived",
+        "created_at"
+      ],
+      "erreur": null
+    },
+    "user_safety": {
+      "status": 401,
+      "total": null,
+      "colonnes_rendues": null,
+      "erreur": "42501 permission denied for table user_safety"
+    },
+    "user_state": {
+      "status": 200,
+      "total": "0",
+      "colonnes_rendues": null,
+      "erreur": null
+    },
+    "video_lives": {
+      "status": 206,
+      "total": "21",
+      "colonnes_rendues": [
+        "id",
+        "author_id",
+        "author_name",
+        "author_emoji",
+        "author_photo",
+        "title",
+        "status",
+        "started_at",
+        "last_seen",
+        "ended_at"
+      ],
+      "erreur": null
+    }
+  },
+  "rpc": {},
+  "openapi_status": 401,
+  "openapi_tables": 0,
+  "openapi_fonctions": [],
+  "source_liste": "catalogue (canal 1)"
+}
