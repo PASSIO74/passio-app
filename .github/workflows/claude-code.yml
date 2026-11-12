@@ -329,7 +329,8 @@ jobs:
             # On ne lui donne PAS un outil de plus : c'est cette marche, de confiance, qui relit
             # l'exécution et en recopie un extrait borné et désamorcé.
             #  · le workflow vient d'une liste FERMÉE écrite ici, jamais d'une adresse lue (les mêmes
-            #    libellés que RUNS_REPARABLES de _shared/pilotage.js : le banc joue l'un contre l'autre) ;
+            #    libellés que RUNS_REPARABLES de _shared/pilotage.js — deux listes à tenir ensemble
+            #    à la main : une quatrième exécution réparable sans sa ligne ici ne lirait aucun journal) ;
             #  · l'exécution doit être la NÔTRE — ce fichier, `main`, ce dépôt, un événement qui
             #    n'est pas une PR : le journal de la PR d'un fork est écrit par son auteur ;
             #  · ce que dit le WORKFLOW (ce qu'il a relu, ce qui manque) et ce que dit le JOURNAL
