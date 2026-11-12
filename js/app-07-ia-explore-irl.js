@@ -5461,12 +5461,40 @@ async function addEventComment(eventId) {
     try {
       var realId = await supaAddEventComment(eventId, text);
       if (realId) { optimistic.id = realId; _persistEventComments(); }
+      // ⚠️ ÉCHEC = ON LE DIT ET ON REND LE TEXTE (ETAT-09, audit du 2026-11-10).
+      // L'échec était muet : le commentaire restait affiché sous un identifiant
+      // local, persisté, vu de son seul auteur, pour toujours. Pour un COMPTE, il
+      // est retiré et le texte revient dans le champ ; un visiteur n'a rien en
+      // base, sa copie locale reste comme avant.
+      else if (typeof _compteAuthReel === "function" && _compteAuthReel()) {
+        _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp);
+        return;
+      }
       // Notifier l'organisateur (interaction cross-compte sur SON événement).
       if (ev && ev.organizerId && ev.organizerId !== myId && typeof supaInsertNotif === "function") {
         supaInsertNotif(ev.organizerId, "event_comment", eventId, "a commenté ton événement");
       }
     } catch (e) {}
   }
+}
+
+// Retire le commentaire optimiste qu'un refus serveur a laissé sans ligne, et rend
+// le texte à la personne : rien n'a été publié, l'écran ne doit pas le prétendre.
+function _retirerCommentaireEvtNonEnvoye(eventId, optimistic, text, inp) {
+  var liste = _eventCommentsCache[eventId] || [];
+  var i = liste.indexOf(optimistic);
+  if (i >= 0) liste.splice(i, 1);
+  _persistEventComments();
+  try {
+    if (window._eventCommentCounts && window._eventCommentCounts[eventId] > 0) window._eventCommentCounts[eventId]--;
+    var badge = document.querySelector('[data-evc="' + CSS.escape(String(eventId)) + '"]');
+    if (badge) badge.textContent = "💬 " + _eventCmtBadge(eventId);
+  } catch (e) {}
+  try { _renderEventComments(eventId); } catch (e) {}
+  if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch (e) {} }
+  var champ = document.getElementById("cmtThreadInput") || document.getElementById("eventCommentInput") || inp;
+  if (champ && !champ.value) champ.value = text;
+  toast("Commentaire non envoyé — ton texte est resté dans le champ");
 }
 
 function previewEventCover(input) {

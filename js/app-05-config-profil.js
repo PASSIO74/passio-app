@@ -2463,10 +2463,21 @@ function removeGroupMember(convId, userId) {
 
 // Quitter un groupe : retire MA propre adhésion (RLS « Suppression propre ») et
 // supprime la conversation localement.
-function leaveGroup(convId) {
+// ⚠️ ANNONCÉ = FAIT (ETAT-04, audit du 2026-11-10). Le retrait de `conv_members`
+// partait sans être lu : sur un refus ou une coupure, l'écran disait « Tu as quitté
+// le groupe » et la pierre tombale cachait la conversation, alors que le compte en
+// restait MEMBRE — il continuait d'en recevoir les messages et les notifications.
+// Pour un compte, on attend le verdict ; un échec garde la conversation et le dit.
+async function leaveGroup(convId) {
   if (!confirm("Quitter ce groupe ? Tu ne recevras plus ses messages.")) return;
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal) {
-    try { supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", MY_UID).then(function(){}, function(){}); } catch(e) {}
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal
+      && typeof _compteAuthReel === "function" && _compteAuthReel()) {
+    var v;
+    try {
+      v = _writeVerdict(await supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", MY_UID).select("conv_id"),
+        { expectRows: true, label: "quitter le groupe" });
+    } catch (e) { v = { ok: false }; }
+    if (!v.ok) { toast("Impossible de quitter le groupe pour l'instant — réessaie"); return; }
   }
   conversationsState = (getConversations() || []).filter(function(c){ return c.id !== convId; });
   if (typeof convTombAdd === "function") convTombAdd("conv", convId);  // sinon la fusion au boot la ressuscite (ADR-008)
@@ -2483,12 +2494,26 @@ function editGroupDescription(convId) {
   if (!c) return;
   var d = prompt("Description du groupe :", c.groupDesc || "");
   if (d == null) return;
+  var avant = c.groupDesc || "";
   c.groupDesc = d.trim();
   saveConversations();
-  if (typeof supa !== "undefined" && supa && window._supaReal) {
-    try { supa.from("conversations").update({ description: c.groupDesc }).eq("id", convId).then(function(){}, function(){}); } catch(e) {}
-  }
   _renderGroupMembersModal(convId);
+  // ⚠️ ANNONCÉ = GARDÉ (SRV-04, audit du 2026-11-10). L'écriture partait sans être
+  // lue : un membre que la policy n'autorise pas voyait « Description mise à jour »,
+  // et la description revenait au prochain rechargement. Pour un compte, le verdict
+  // décide ; un refus rend l'ancienne description.
+  if (typeof supa !== "undefined" && supa && window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()) {
+    return supa.from("conversations").update({ description: c.groupDesc }).eq("id", convId).select("id")
+      .then(function (res) { return _writeVerdict(res, { expectRows: true, label: "description du groupe" }); },
+            function () { return { ok: false }; })
+      .then(function (v) {
+        if (v.ok) { toast("Description mise à jour", "success"); return; }
+        c.groupDesc = avant;
+        saveConversations();
+        try { _renderGroupMembersModal(convId); } catch (e) {}
+        toast("Description non modifiée — le serveur l'a refusée");
+      });
+  }
   toast("Description mise à jour", "success");
 }
 

@@ -31,6 +31,7 @@
 - 🔔 DES NOTIFICATIONS D'EXEMPLE PRÉSENTÉES COMME RÉELLES — résumé IRL, copies de la graine, tendances (2026-11-09)
 - 🪆 LE DÉCOR DES EXEMPLES : UNE DISCUSSION QUI SE VIDAIT, DES MESSAGES QUI SE DÉDOUBLAIENT (2026-11-10)
 - ✅ CE QUI EST ANNONCÉ EST CE QUI EST GARDÉ : PROFIL, BULLES EN ATTENTE, COMMENTAIRE MODIFIÉ (2026-11-10)
+- 🧾 GROUPE : DESCRIPTION ET SORTIE SOUS VERDICT (2026-11-12, SRV-04 et ETAT-04)
 
 ---
 
@@ -835,3 +836,23 @@ l'appareil. `_commentaireModifiable` (app-04) est la seule autorité du menu et 
 Sur une publication, `_enregistrerModificationCommentaire` lit le verdict (`.select("id")` + `_writeVerdict`,
 `expectRows`) : refus ou 0 ligne → l'ancien texte revient, et c'est dit. Rendre un commentaire d'activité modifiable
 demanderait une policy UPDATE (migration, critique) : non fait, délibérément.
+
+---
+
+## 🧾 GROUPE : DESCRIPTION ET SORTIE SOUS VERDICT (2026-11-12, SRV-04 et ETAT-04)
+
+Deux écritures de groupe partaient sans qu'on lise leur résultat (`.then(function(){}, function(){})`). L'écran annonçait
+pourtant le résultat :
+- « Description mise à jour » apparaissait même quand la policy refusait la modification, et la description d'origine
+  revenait au rechargement.
+- « Tu as quitté le groupe » apparaissait même quand le retrait de `conv_members` échouait. La pierre tombale cachait
+  alors la conversation, mais le compte restait membre et continuait d'en recevoir les messages.
+
+Pour un compte réel, `editGroupDescription` et `leaveGroup` (app-05) lisent désormais le verdict
+(`.select(…)` + `_writeVerdict`, `expectRows`). Sur un refus, l'ancienne description revient. Une sortie refusée
+garde la conversation et affiche « Impossible de quitter le groupe pour l'instant — réessaie ».
+
+Verrou : `tests/e2e/groupe-verdicts.spec.js` (4). Mutation : rougit ① et ③.
+
+« Supprimer pour tous » et la suppression d'un commentaire (reste d'ETAT-04) ne sont pas dans ce lot : ils passent par
+des files de rejeu qui ont leurs propres preuves.

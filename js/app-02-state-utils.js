@@ -1332,6 +1332,17 @@ function _pendingUserStateKey(uid) {
 function _queuePendingUserState(payload) {
   if (_accountPurged) return false;   // déconnexion en cours : ne rien remettre en file
   try {
+    // ⚠️ LA BASE DU BLOB VOYAGE AVEC LUI (ETAT-01, audit du 2026-11-10). Le rejeu
+    // n'écrit que si la ligne serveur n'a pas bougé depuis CETTE valeur — la
+    // dernière ligne relue au moment où ce blob a été construit. Le rejeu comparait
+    // au repère VIVANT `state._stateSyncedAt`, que la lecture du démarrage venait
+    // d'avancer jusqu'à la ligne serveur elle-même : « updated_at <= updated_at »,
+    // toujours vrai. Un instantané de 09:00 resté en file sur le téléphone écrasait
+    // l'état de 10:00 écrit depuis l'ordinateur, sur le serveur puis sur les deux
+    // appareils. Une base absente (aucune ligne jamais relue) vaut `null`.
+    if (payload && typeof payload === "object" && !("base" in payload)) {
+      payload = Object.assign({}, payload, { base: (typeof state !== "undefined" && state && state._stateSyncedAt) || null });
+    }
     localStorage.setItem(_pendingUserStateKey(payload && payload.user_id), JSON.stringify(payload));
     return true;
   } catch (_e) { return false; }
@@ -1551,6 +1562,16 @@ function supaSaveUserStateBeacon() {
 // que la ligne serveur — sinon un autre appareil (ou le keepalive qui a fini par
 // aboutir) a déjà écrit une version au moins aussi neuve, on jette la file.
 let _flushingPendingState = false;
+// La base de comparaison d'une entrée de file : celle qu'elle porte, sinon le
+// repère copié dans son blob, sinon l'époque (le blob n'a jamais vu de ligne).
+const BASE_FILE_SANS_LIGNE = "1970-01-01T00:00:00Z";
+function _baseDeLaFile(pending) {
+  if (pending && typeof pending.base === "string" && pending.base) return pending.base;
+  const d = pending && pending.data;
+  if (d && typeof d._stateSyncedAt === "string" && d._stateSyncedAt) return d._stateSyncedAt;
+  return BASE_FILE_SANS_LIGNE;
+}
+
 async function _flushPendingUserState() {
   // Le rejeu est branché sur deux chemins (boot et supaInit/SIGNED_IN) qui peuvent se
   // chevaucher : sans ce verrou, deux SELECT puis deux upserts concurrents du même blob.
@@ -1601,7 +1622,12 @@ async function _flushPendingUserState() {
     // logique. Le seul ordre réellement fiable serait une révision monotone
     // portée par la ligne (compare-et-remplace) — voir le risque résiduel de
     // SYNC-CLOCK-012 dans passio_qa_registry.json.
-    const baseServeur = (typeof state !== "undefined" && state && state._stateSyncedAt) || pending.updated_at;
+    // ⚠️ LA BASE EST CELLE DU BLOB, JAMAIS LE REPÈRE VIVANT (ETAT-01) : voir
+    // `_queuePendingUserState`. Une file écrite avant ce correctif n'a pas de
+    // `base` : on prend le repère que le blob porte lui-même (`data._stateSyncedAt`).
+    // Sans base du tout, le blob n'a jamais vu de ligne serveur : il ne peut que
+    // CRÉER la ligne absente, jamais en remplacer une (époque → 0 ligne touchée).
+    const baseServeur = _baseDeLaFile(pending);
     const { data: upd, error: upErr } = await supa.from("user_state")
       .update({ data: pending.data })       // le trigger horodate : rien à imposer
       .eq("user_id", MY_UID)
@@ -1614,7 +1640,11 @@ async function _flushPendingUserState() {
       // rejouer), soit la ligne n'existe pas encore (premier appareil du compte).
       const { data: row, error: selErr } = await supa.from("user_state").select("user_id").eq("user_id", MY_UID).maybeSingle();
       if (selErr) return;
-      if (row) { _clearPendingUserState(MY_UID, pending.updated_at); return; }  // serveur plus récent : file obsolète
+      if (row) {   // serveur plus récent que la base du blob : file obsolète, jetée — et dit
+        try { if (typeof diagLog === "function") diagLog("rejeu_etat_jete base=" + String(baseServeur).slice(0, 32)); } catch (_e) {}
+        _clearPendingUserState(MY_UID, pending.updated_at);
+        return;
+      }
       // Insertion sans `updated_at` : la base horodate. Envoyer la valeur de la
       // file reviendrait à réintroduire l'autorité client par la porte de secours.
       const { error: insErr } = await supa.from("user_state").insert({ user_id: pending.user_id, data: pending.data });
