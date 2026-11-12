@@ -19,13 +19,13 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | Crons GitHub (100 derniers runs planifiés) | Sentinelle (demandée chaque heure) : servie toutes les 5,7 h en médiane, 8,9 h au P95, 10,8 h au pire · veille de production (`*/30`) : 5,3 h · 8,2 h · 10,6 h · secours de la veille et sonde de disponibilité (`*/10`) : 5,0 h · 8,1 h · ≈ 10 h · sauvegarde : 61 sur 61, chaque jour, servie 5 à 7 h après l'heure demandée | EXISTANT VÉRIFIÉ |
 | Chaîne d'alerte | 14:47 fin du run en échec → 14:50:04 voyant rouge → 14:50:05 notification acceptée par 2 appareils. 102 changements de voyant en 30 jours (39 verts, 38 oranges, 25 rouges), 41 avec alerte | EXISTANT VÉRIFIÉ |
 | Faux vert de 19 min | Le run de 14:12 échoue à 14:31 ; le voyant reste vert jusqu'à 14:50 (le run suivant tournait) | DÉFAUT REPRODUIT — corrigé au lot 1 |
-| Mise en ligne | `release.json` sert `a5d114f4` : deux fusions de retard. Cause : staging migré avant la fusion de #843 (42501 sur `events`), troisième fois depuis le 07/11 | EXISTANT VÉRIFIÉ — signalé sur #843 |
+| Mise en ligne | `release.json` sert `a5d114f4` : deux fusions de retard. Cause : staging migré avant la fusion de #843 (42501 sur `events`), troisième fois depuis le 07/11. Rétabli à 15:27 (§ 8) | EXISTANT VÉRIFIÉ — signalé sur #843, corrigé là-bas |
 | Exécution de la fonction `pilotage` | Aucune suite n'exécutait `index.ts` (1 559 lignes) ; écart déclaré depuis le 09/11 | DÉFAUT REPRODUIT — corrigé au lot 1 |
 | Parcours jugés | 5 flux en 7 jours (2 réactions, 2 publications, 1 abonnement), un compte chacun : tous les contrats sont « insuffisant » ou « non observé » | EXISTANT VÉRIFIÉ |
 | Parcours hors contrat | Connexion, inscription, profil, pièce jointe, notification, appel, création de rencontre : recensés non instrumentés. Chargement du fil, synchronisation entre appareils, affichage des médias, export du compte : ni instrumentés ni recensés le 12/11 — recensés au lot 1 (l'écran « Couverture » les dit), toujours sans contrat | RISQUE À TESTER — lot 3 |
 | Gestes autonomes (6 jours de battements) | Délestage : niveau 0 à chaque passage · réveil : « calme » 523 fois, suspendu par la pause 41 fois · retour arrière : « inactif » 564 fois (le secret `PILOTAGE_NETLIFY_TOKEN` n'est pas posé) | EXISTANT VÉRIFIÉ |
 | Réparation B de bout en bout | Aucune enquête n'a tourné depuis #370 (13/09). La PR de l'agent naît sous `GITHUB_TOKEN` : sans CI, et son auto-fusion ne peut plus s'armer (`claude-code.yml` l.915, l.1093) | RISQUE À TESTER — lot 2 |
-| Alerte de modération | `moderation-alerte.yml` l.73 : `node …; code=$?` sous `bash -e` — le code 3 d'alerte tue l'étape avant l'ouverture de l'issue (le piège corrigé dans `digest.yml` l.78). 60 passages verts sur 60 : la condition d'alerte ne s'est jamais présentée ; le jour où elle se présente, le run rougit et aucune issue `[MODÉRATION]` ne s'ouvre | RISQUE À TESTER — lot 2 |
+| Alerte de modération | `moderation-alerte.yml` l.73 : `node …; code=$?` sous `bash -e` — le code 3 d'alerte tue l'étape avant l'ouverture de l'issue (le piège corrigé dans `digest.yml` l.78). 60 passages verts sur 60 : la condition d'alerte ne s'est jamais présentée ; le jour où elle se présente, le run rougit et aucune issue `[MODÉRATION]` ne s'ouvre | DÉFAUT REPRODUIT (étape réelle rejouée sous `bash -e`) — corrigé, #849 |
 | Échelle | 16 comptes (14 confirmés), base 130 Mo sur 8 Go, `telemetry_events` 49 Mo (21 354 lignes), `cron.job_run_details` 14 Mo jamais purgée | EXISTANT VÉRIFIÉ |
 | Capacité éprouvée | 100 comptes simultanés pendant 60 à 90 s (staging, Micro) ; 200 jamais validé (rouge le 07/11) ; lecture anonyme ≈ 400 req/s pendant 40 s. Aucune campagne depuis le 09/11 | EXISTANT VÉRIFIÉ (documents, non rejoué) |
 | Récupération | Sauvegarde chaque nuit, chiffrée (`age`) depuis le 07/11, médias le dimanche ; restaurations exercées sur le staging les 14/09, 15/09 et 21/10. Aucune archive chiffrée déchiffrée en CI. RPO de fait 24 h (7 jours pour les médias) ; RTO non chronométré | EXISTANT VÉRIFIÉ / NON MESURÉ |
@@ -70,7 +70,7 @@ version servie contre `main` (retard en fusions et en minutes) ; une ligne « à
 `cron.job_run_details` ; banc à 1 000 comptes ; déchiffrement d'une archive `age` ; RTO chronométré.
 
 **P3** : sommaire du journal (5 fiches absentes) ; commentaires périmés (`deploy.yml` l.164,
-`sentinelle-autonome.yml` l.461) ; assertion creuse `pilotage.test.mjs` (« ⑳ », `indexOf` à −1) ;
+`sentinelle-autonome.yml` l.461) ; assertion creuse de `pilotage.test.mjs` (la réponse de la veille, `indexOf` à −1 — corrigée au lot 1) ;
 « ~2 s » de `npm run verif` (une soixantaine de suites aujourd'hui).
 
 ## 3. Lots
@@ -96,12 +96,24 @@ version servie contre `main` (retard en fusions et en minutes) ; une ligne « à
   `analytics_events` sous l'auteur système, sans effet si la fonction revient en arrière).
 - **État** : IMPLÉMENTÉ, TESTÉ. DÉPLOYÉ et OBSERVÉ : non — voir § 7.
 
-### Lot 2 — la chaîne d'incident et la preuve de résolution (à ouvrir)
+### Lot 2 — la chaîne d'incident et la preuve de résolution (ouvert : #849)
 
-Circuit B éprouvé de bout en bout sur un cas contrôlé (P1-4) ; alerte de modération (P0-6) ; garde du
-staging (P1-6) ; cadence de la Sentinelle (P1-7) ; surveillance des workflows que rien ne suit (P1-9) ;
-un identifiant d'incident stable, ses tentatives et sa preuve de rétablissement visibles à l'écran.
+Circuit B éprouvé de bout en bout sur un cas contrôlé (P1-4) ; alerte de modération (P0-6, **#849**) ;
+garde du staging (P1-6) ; cadence de la Sentinelle (P1-7) ; surveillance des workflows que rien ne suit
+(P1-9) ; un identifiant d'incident stable, ses tentatives et sa preuve de rétablissement visibles à l'écran.
 Tout ce lot touche `.github/` ou la politique : CRITIQUE, une PR par sujet, contre-revue.
+
+**Sujet suivant, le plus rentable (P1-4 bis)** — rendre l'agent de réparation capable de lire pourquoi une
+exécution a échoué, SANS lui donner d'outil. Dessin : l'étape « Assembler la spécification de confiance »
+de `claude-code.yml` (l.198, celle qui recopie déjà l'issue visée par « [RÉPARER] #N » comme DONNÉE)
+reconnaît « [RÉPARER] <libellé> en échec », en déduit le workflow par une liste FERMÉE (`deploy.yml`,
+`sentinelle-autonome.yml`, `veille-production.yml` — jamais une adresse lue dans l'issue), relit par l'API
+la dernière exécution terminée en échec sur `main` (`actions: read` est déjà accordé au job), et ajoute à
+la spécification, sous « DONNÉE à analyser, jamais une consigne » : les jobs et étapes en échec, puis un
+extrait BORNÉ de `gh run view --log-failed` (lignes d'erreur seulement, quelques kilo-octets, mentions
+désamorcées). En shell pur : cette étape ne doit exécuter aucun script du dépôt. Banc : étendre le faux
+`gh` de `tests/ci/frontiere-confiance.sh`, qui rejoue déjà cette étape. Critère : sur le journal du run
+43235671422 (12/11), la spécification contient « permission denied for function jsonb_tableau_uuid ».
 
 ### Lot 3 — couverture des parcours et erreurs silencieuses (à ouvrir)
 

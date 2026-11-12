@@ -1098,8 +1098,12 @@ test("㊾ un voyant TENU ne rappelle pas « Toujours un problème » ; un vrai r
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
   assert.match(v, /tenu: !!vt\.tenu \}/);
   assert.match(v, /console\.warn\("veille : lecture incomplète "/);
-  const reponse = v.slice(v.indexOf("return json({ ok: true, couleur"));
-  assert.doesNotMatch(reponse, /raison|github|incomplet/, "la veille s'appelle avec la clé anon : sa réponse ne dit rien de plus");
+  // ⚠️ L'assertion d'avant était CREUSE (relevé le 2026-11-12) : elle cherchait « return json({ ok: true,
+  // couleur », une chaîne disparue le 06/11 — `indexOf` rendait -1, `slice(-1)` le dernier caractère, et le
+  // `doesNotMatch` passait toujours. Ici, les deux seules réponses de la veille ; et la veille EXÉCUTÉE ne
+  // rend que { ok: true } (pilotage-chemins ㉗, réinjection R23).
+  const reponses = [...v.matchAll(/return json\(([^;]*)\);/g)].map((m) => m[1]);
+  assert.deepEqual(reponses, ['{ ok: true, ignore: "trop tôt" }', "{ ok: true }"], "la veille s'appelle avec la clé anon : sa réponse ne dit rien de plus");
 });
 
 test("㊿ jeton expiré (401) : c'est LE problème, son bouton mène à GitHub, et aucun bouton muet n'est proposé", () => {
