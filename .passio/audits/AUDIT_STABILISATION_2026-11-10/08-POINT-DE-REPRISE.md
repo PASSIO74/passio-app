@@ -89,3 +89,39 @@ test, sonde anonyme, reproductions, avant / après de chaque lot), `outils/` (`s
   (buildId `ef7641d4dca7`), run 43199065800 : gouvernance, fumée et « Déploiement production » verts.
 - Reste du plan : ETAT-01 (rejeu de l'état, critique), verdicts restants (SRV-04, ETAT-04, ETAT-09, PARC-01),
   migrations à préparer (durcissement CLI-01, SRV-02, SRV-08, purge SRV-05), CI (STAB-10), décisions STAB-04 / STAB-05 / PIL-01.
+
+## Ajout du 2026-11-12, après-midi — décisions de Benjamin et lots suivants
+
+Décisions de Benjamin du 12/11 :
+1. « on fait le ménage » (STAB-05) ;
+2. « public » (STAB-04) ;
+3. second facteur du pilotage : « suspendu » (PIL-01, rien à faire) ;
+4. relecture : « fait au mieux » ;
+5. essais sur un vrai téléphone : plus tard, de sa main.
+
+- **#834 — ménage (STAB-05), fusionnée.** Migration appliquée en production le 12/11, fermée sur échec, après une
+  sauvegarde complète hors du dépôt (`.passio/sauvegardes/menage-publications-test-2026-11-12.json`, poste de Benjamin).
+  Mesuré au canal ① :
+  - 3 publications restent, 0 masquage, 35 notes au journal de modération ;
+  - plus rien ne vise les publications supprimées. Les 45 commentaires et 26 « j'aime » orphelins de la base existaient
+    avant et visent d'autres identifiants.
+  - **Reste** : 5 médias dans le seau `content`, à retirer par l'API Storage (clé de service, absente de ce poste).
+- **#833 — un compte neuf naît public (STAB-04), fusionnée.** Les comptes existants n'ont pas été touchés. La CI à
+  comptes réels a trouvé un test (`confidentialite.spec.js`) qui ne passait que parce que la ligne neuve naissait
+  privée ; il a été corrigé dans la PR.
+- **#838 — SRV-08, `client_errors` en trois réservoirs, fusionnée.** Appliquée au staging puis en production. Elle
+  s'éprouve elle-même sous les vrais rôles : 8 contrôles sur 8 au vert sur les deux cibles. Mesurée au canal ①.
+- **#836 — ETAT-01 (critique), ETAT-09, PARC-01, SRV-04, ETAT-04 (sortie d'un groupe).** Relue par un agent séparé
+  (`audit-passio`). Il a trouvé un défaut **bloquant** dans le premier correctif d'ETAT-01 (perte hors ligne sur un
+  appareil seul), corrigé avant fusion par une estampille d'écriture, verrou ⑥. Suites voisines : 282 tests sur 282.
+- Attestations des trois migrations consignées dans cette PR (`.passio/migrations/attestations.json`).
+- **Relecture « au mieux »** : chaque revue postée depuis PASSIO74 le dit, elle est écrite par Claude. La seule seconde
+  lecture est celle d'un agent séparé, qui reste un modèle Claude : **aucune revue humaine ni d'un second modèle n'a eu lieu**.
+
+### Ce qui reste ouvert
+- Migrations de durcissement : le côté serveur de CLI-01 (forme du pseudo, `co_organizers`), SRV-02 (notifications
+  forgées), purge SRV-05.
+- ETAT-04 en partie (« supprimer pour tous », suppression d'un commentaire), ETAT-05, ETAT-08.
+- STAB-10 : la CI ne teste pas la page minifiée (touche `.github/`).
+- `entrerEnSessionExpiree()` exige un jeton persisté au démarrage suivant.
+- Gestes de Benjamin : essais sur iPhone et Android réels, inscription réelle, retour arrière Netlify.

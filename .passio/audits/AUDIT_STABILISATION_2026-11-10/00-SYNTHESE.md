@@ -21,6 +21,19 @@ constat que des conditions écrites dans le mandat ne sont pas remplies aujourd'
 | Observabilité exploitable | **en partie** — elle a permis de trouver deux défauts en une heure ; mais une panne totale se voit en 5,7 h de médiane |
 | Risques et inconnues exposés | **oui** — `06-RISQUES-RESIDUELS.md` |
 
+### Verdict mis à jour le 2026-11-12
+
+**Toujours NON PRÊT pour une commercialisation**, mais pour des raisons qui ne sont plus des défauts connus du code :
+
+| Condition | État au 12/11 |
+|---|---|
+| Aucun P0 ou P1 ouvert | **presque** — CLI-01 (P0) corrigé et déployé ; ETAT-01, ETAT-02, ETAT-03, STAB-04 corrigés et déployés. Reste PIL-01 (P1), **suspendu par décision de Benjamin** (risque accepté, pas corrigé) |
+| Parcours essentiels vérifiés | **en partie** — inchangé : inscription réelle sur iPhone et Android, et récupération de mot de passe, jamais jouées (reportées par Benjamin) |
+| Corrections relues | **en partie** — revues de mainteneur unique écrites par Claude, plus un agent relecteur séparé (qui a trouvé un défaut bloquant, corrigé). **Aucune revue humaine ni d'un second modèle** |
+| Récupération éprouvée | **en partie** — inchangé |
+
+Détail des lots du 12/11 : `08-POINT-DE-REPRISE.md`.
+
 ## 2. Périmètre, versions, environnements, charge
 
 - **Version** : `4e1d8ed1`, buildId `3d8e98bb12ad`, vérifiée servie par la production à 16:11 et 17:31 UTC.
