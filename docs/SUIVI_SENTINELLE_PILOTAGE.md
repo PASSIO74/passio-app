@@ -57,12 +57,12 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | P1-2 | Deux touchers, deux réparations (deux agents) ; deux relances, deux runs. Observé en production le 09/11 : #806 et #807 ouvertes à une seconde d'écart (21:40:27, 21:40:28), deux agents partis | lot 1 — TESTÉ |
 | P1-3 | Mémoire du voyant illisible prise pour « aucun état » | lot 1 — TESTÉ |
 | P1-4 | Circuit B : depuis l'audit du 06/11 la PR de l'agent naît sans CI (`GITHUB_TOKEN`, choix de sécurité : « un humain la rouvre après l'avoir lue »). Depuis le téléphone, « Régler » arme alors une auto-fusion dont les tests ne partiront jamais, et l'écran dit « les tests tournent encore ». La politique (`correctif_sentinelle`) décrit encore une fusion par la CI | lot 2 — décision humaine : qui rouvre, et d'où |
-| P1-4 bis | « Régler » sur une exécution en échec lance un agent qui ne peut PAS la diagnostiquer : sa consigne dit « lis son journal (`gh run view --log-failed`) », sa liste d'outils n'a ni `gh` ni réseau (`claude-code.yml` l.550). Quatre fois sur quatre (#757 le 07/11, #806 et #807 le 09/11, #844 le 12/11) : une PR « cause NON établie », sans CI | EXISTANT VÉRIFIÉ (PR #845) — lot 2 : le journal de l'exécution fourni comme DONNÉE par l'étape de confiance du workflow, jamais un outil de plus à l'agent |
+| P1-4 bis | « Régler » sur une exécution en échec lance un agent qui ne peut PAS la diagnostiquer : sa consigne dit « lis son journal (`gh run view --log-failed`) », sa liste d'outils n'a ni `gh` ni réseau (`claude-code.yml` l.550). Quatre fois sur quatre (#757 le 07/11, #806 et #807 le 09/11, #844 le 12/11) : une PR « cause NON établie », sans CI | EXISTANT VÉRIFIÉ (PR #845) — lot 2, **#854** : le journal de l'exécution fourni comme DONNÉE par l'étape de confiance du workflow, jamais un outil de plus à l'agent. IMPLÉMENTÉ, TESTÉ ; NON VÉRIFIÉ sur un runner réel tant que la PR n'est pas fusionnée |
 | P1-5 | Création de rencontre, connexion, inscription, chargement du fil : sans contrat. Export, synchronisation, affichage des médias, chargement du fil : absents de la couverture affichée — recensés au lot 1 (`PARCOURS_NON_INSTRUMENTES`) | lot 3 pour les contrats |
 | P1-6 | Staging partagé : une migration non fusionnée bloque toutes les mises en ligne (07/11, 09/11, 12/11) | lot 2 — garde à écrire |
 | P1-7 | Sentinelle dite muette à 8 h quand son cron est servi au P95 toutes les 8,9 h : fausses lignes | lot 2 — décision (réveil de cadence = politique) |
 | P1-8 | `lireActivation` parcourt jusqu'à 20 000 comptes à chaque ouverture d'écran ; total faux au-delà. Depuis #850 (12/11), `lireSeuils` fait un second parcours des comptes (20 pages au plus) au même moment | lot 5 — migration `pilotage_inscrits` ; y joindre les seuils |
-| P1-9 | `securite.yml` planifié en échec le 09/11, vu par personne ; la veille lit l'âge de la sauvegarde, pas sa conclusion ; expiration de `CLAUDE_CODE_OAUTH_TOKEN` non suivie ; six jobs de `deploy.yml` sans `timeout-minutes` | lot 2 |
+| P1-9 | `securite.yml` planifié en échec le 09/11, vu par personne ; la veille lit l'âge de la sauvegarde, pas sa conclusion ; expiration de `CLAUDE_CODE_OAUTH_TOKEN` non suivie ; six jobs de `deploy.yml` sans `timeout-minutes`. Mesuré le 12/11 sur les 100 dernières exécutions PLANIFIÉES de chaque workflow : deux échecs que rien n'a signalés — `securite.yml` (sa seule exécution planifiée, lundi 09/11, « Secrets dans le diff » ; la suivante le 16/11) et `sentinelle-distante.yml` (11/11 à 16:10, « Installer Chromium », une panne du runner) ; les sept autres (Sentinelle, veille, sonde, secours de la veille, sauvegarde, modération, digest) : aucune en échec | lot 2 — EXISTANT VÉRIFIÉ |
 | P1-10 | `PILOTAGE_NETLIFY_TOKEN` absent : retour arrière d'un toucher et proposition inactifs | geste humain (§ 6) |
 
 **P2 — rapidité, simplicité, couverture** : second canal d'alerte hors de Supabase ; sonde extérieure
@@ -106,7 +106,7 @@ version servie contre `main` (retard en fusions et en minutes) ; une ligne « à
   `analytics_events` sous l'auteur système, sans effet si la fonction revient en arrière).
 - **État** : IMPLÉMENTÉ, TESTÉ. DÉPLOYÉ et OBSERVÉ : non — voir § 7.
 
-### Lot 2 — la chaîne d'incident et la preuve de résolution (ouvert : #849)
+### Lot 2 — la chaîne d'incident et la preuve de résolution (ouvert : #849, #854)
 
 Circuit B éprouvé de bout en bout sur un cas contrôlé (P1-4) ; alerte de modération (P0-6, **#849**) ;
 garde du staging (P1-6) ; cadence de la Sentinelle (P1-7) ; surveillance des workflows que rien ne suit
@@ -121,7 +121,14 @@ veille (elle fusionnerait, sur l'accord déjà donné) : entrée au catalogue de
 — à préparer en PR critique, jamais glissé dans un autre lot. Variante plus légère : la veille sonne
 quand une version armée change (rouge), sans rien désarmer.
 
-**Sujet suivant, le plus rentable (P1-4 bis)** — rendre l'agent de réparation capable de lire pourquoi une
+**P1-4 bis — fait, PR #854** (le dessin ci-dessous a été suivi, à trois écarts près : l'exécution lue est
+d'abord celle que NOMME la réparation, par son identifiant ; une relance fait remonter à la tentative en
+échec ; le banc est `tests/unit/reparation-journal.test.mjs`, en Node, parce que
+`tests/ci/frontiere-confiance.sh` ne tourne pas hors de la CI). À faire après la fusion de #848 : retirer
+« Lis son journal (`gh run view --log-failed`) » de `corpsReparation`, et écrire la fiche du journal.
+Critère d'OBSERVÉ : la première réparation d'une exécution en échec qui établit sa cause.
+
+Rendre l'agent de réparation capable de lire pourquoi une
 exécution a échoué, SANS lui donner d'outil. Dessin : l'étape « Assembler la spécification de confiance »
 de `claude-code.yml` (l.198, celle qui recopie déjà l'issue visée par « [RÉPARER] #N » comme DONNÉE)
 reconnaît « [RÉPARER] <libellé> en échec », en déduit le workflow par une liste FERMÉE (`deploy.yml`,
@@ -194,6 +201,7 @@ personne n'est prévenu par un second canal si le téléphone ne reçoit pas.
 | Date | Lot | Branche · PR | État | Preuve |
 |---|---|---|---|---|
 | 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | IMPLÉMENTÉ, TESTÉ ; relu par un agent indépendant (huit constats corrigés) ; en attente de la contre-revue de PASSIO74 | banc 46/46, réinjections 46/46, unitaires 1 103, `verif`, navigateur 49 (après fusion de `main` à `fa09eb43`) |
+| 2026-11-12 | 2 (P1-4 bis) | `fix/reparation-journal-execution` · #854 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | banc `reparation-journal` 9/9, 24 réinjections sur 24, unitaires 1 055, `verif` ; le programme d'extraction rend la cause sur les deux journaux réels du 12/11 ; relecture indépendante en cours à l'ouverture |
 | 2026-11-12 | 2 (premier sujet) | `fix/moderation-alerte-code-3` · #849 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | étape réelle rejouée sous `bash -e` : rouge sur `main`, verte ; unitaires 1 044 |
 
 ## 8. L'incident du 12/11, chronométré (un exercice réel, pas un essai)
