@@ -2400,7 +2400,7 @@ function openCommentOptions(threadId, commentId, mine, event) {
     rows += _cmtRow("📌", _estEpingle(threadId, c) ? "Retirer l'épingle" : "Épingler en haut", "pin");
   }
   if (isMine) {
-    if (!_looksLikeMediaUrl(c.text || c.content || "")) rows += _cmtRow("✏️", "Modifier", "edit");
+    if (_commentaireModifiable(commentId, c.text || c.content || "")) rows += _cmtRow("✏️", "Modifier", "edit");
     rows += _cmtRow("🗑", "Supprimer", "delete", true);
   } else {
     rows += _cmtRow("🔕", "Masquer ce commentaire", "hide");
@@ -2491,11 +2491,45 @@ function _isThreadOwner(threadId) {
   return false;
 }
 // ── #10 ÉDITION d'un commentaire (façon IG/FB) ── éditeur inline + sync.
+// ⚠️ UN COMMENTAIRE D'ACTIVITÉ NE SE MODIFIE PAS (SRV-03, audit de stabilisation du
+// 2026-11-10). Mesuré au canal ① : `event_comments` n'a ni colonne `content` ni policy
+// UPDATE. « Modifier » y était proposé, l'écran disait « Commentaire modifié », et le
+// texte ne quittait jamais l'appareil. Seule autorité du menu ET de l'édition directe.
+// (`lc_` : commentaires des lives du Carnet, retirés par ADR-011, table sans droit.)
+function _commentaireModifiable(commentId, texte) {
+  if (/^(ec_|lc_)/.test(String(commentId || ""))) return false;
+  return !_looksLikeMediaUrl(texte || "");
+}
+
+// L'enregistrement d'une modification : optimiste, puis LE VERDICT DE LA BASE décide
+// (SRV-03). Sur un refus ou 0 ligne, l'ancien texte revient et c'est dit.
+async function _enregistrerModificationCommentaire(found, threadId, commentId, v, cur) {
+  var node = found.node;
+  var avantEdite = !!node.edited;
+  var sauver = function () {
+    if (found.thread && typeof found.thread.save === "function") found.thread.save(); else { try { saveState(); } catch (e) {} }
+  };
+  node.text = v; node.content = v; node.edited = true;
+  sauver();
+  try { _refreshCommentThreadUINow(threadId); } catch (e) {}
+  var ok = await _supaUpdateCommentRow(commentId, v);
+  if (!ok) {
+    node.text = cur; node.content = cur; node.edited = avantEdite;
+    sauver();
+    try { _refreshCommentThreadUINow(threadId); } catch (e) {}
+    toast("Le commentaire n'a pas été modifié — réessaie", "warning");
+    return false;
+  }
+  toast("Commentaire modifié");
+  return true;
+}
+
 function editCommentEntry(threadId, commentId) {
   var found = (typeof _findCommentNode === "function") ? _findCommentNode(threadId, commentId) : null;
   if (!found || !found.node) return;
   var node = found.node;
   if (_looksLikeMediaUrl(node.text || node.content || "")) { toast("Un GIF ne peut pas être modifié"); return; }
+  if (!_commentaireModifiable(commentId, node.text || node.content || "")) { toast("Ce commentaire ne peut pas être modifié"); return; }
   var el = document.querySelector('[data-commentid="' + commentId + '"] .comment-text');
   if (!el) return;
   var cur = node.text || node.content || "";
@@ -2515,23 +2549,24 @@ function editCommentEntry(threadId, commentId) {
     var v = (ta.value || "").trim();
     if (!v) { toast("Le commentaire ne peut pas être vide"); return; }
     if (v === cur) { _refreshCommentThreadUINow(threadId); return; }
-    node.text = v; node.content = v; node.edited = true;
-    if (found.thread && typeof found.thread.save === "function") found.thread.save(); else { try { saveState(); } catch (e) {} }
-    _supaUpdateCommentRow(commentId, v);
-    _refreshCommentThreadUINow(threadId);
-    toast("Commentaire modifié");
+    _enregistrerModificationCommentaire(found, threadId, commentId, v, cur);
   };
 }
+// Rend le VERDICT : `true` si la base a gardé le texte (ou s'il n'y a pas de base :
+// commentaire local, mode hors Supabase), `false` sur un refus, une panne ou 0 ligne.
 async function _supaUpdateCommentRow(commentId, text) {
   try {
-    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
-    var table = /^ec_/.test(commentId) ? "event_comments" : /^lc_/.test(commentId) ? "cdv_live_comments" : "post_comments";
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return true;
+    // Un visiteur n'a rien en base : son commentaire vit sur l'appareil, le refus serveur
+    // attendu n'est pas un échec (relu à la contre-revue du 2026-11-10).
+    if (typeof _compteAuthReel === "function" && !_compteAuthReel()) return true;
+    if (!/^[A-Za-z0-9_-]{1,120}$/.test(String(commentId || "")) || /^(ec_|lc_)/.test(commentId)) return false;
     // Le SDK ne LÈVE PAS sur un refus RLS : depuis le 2026-09-11 l'UPDATE de
-    // post_comments porte un WITH CHECK (auteur du post bloqueur → refus), et
-    // une édition refusée resterait « Commentaire modifié » à l'écran.
-    var r = await supa.from(table).update({ content: text }).eq("id", commentId);
-    if (r && r.error) { try { toast("Modification refusée"); } catch (e) {} }
-  } catch (e) {}
+    // post_comments porte un WITH CHECK (auteur du post bloqueur → refus). Et un
+    // UPDATE qui ne touche aucune ligne ne lève pas non plus : on compte les lignes.
+    var r = await supa.from("post_comments").update({ content: text }).eq("id", commentId).select("id");
+    return _writeVerdict(r, { expectRows: true, label: "commentaire (modification)" }).ok;
+  } catch (e) { console.warn("commentaire (modification) :", e && e.message); return false; }
 }
 // ── #11 ÉPINGLER un commentaire (le propriétaire du fil le remonte en tête) ──
 // Un seul épinglé par fil. Écrit dans comment_interactions (kind « pin », charge

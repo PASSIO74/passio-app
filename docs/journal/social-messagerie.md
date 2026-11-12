@@ -30,6 +30,7 @@
 - 🎞️ LES GIF PASSENT PAR KLIPY — Tenor fermé, Giphy plafonné à 100 recherches par heure pour toute l'app (2026-11-09)
 - 🔔 DES NOTIFICATIONS D'EXEMPLE PRÉSENTÉES COMME RÉELLES — résumé IRL, copies de la graine, tendances (2026-11-09)
 - 🪆 LE DÉCOR DES EXEMPLES : UNE DISCUSSION QUI SE VIDAIT, DES MESSAGES QUI SE DÉDOUBLAIENT (2026-11-10)
+- ✅ CE QUI EST ANNONCÉ EST CE QUI EST GARDÉ : PROFIL, BULLES EN ATTENTE, COMMENTAIRE MODIFIÉ (2026-11-10)
 
 ---
 
@@ -806,3 +807,31 @@ n'en ont pas, la fusion (clé `id:` contre clé `sig:`) les doublerait une fois 
 
 Verrou : `tests/e2e/controle-general-2026-11-10.spec.js` ⑤ ⑥, contre-éprouvé sur 6dafc0f1 (décor vidé :
 1 ligne attendue, 0 reçue ; `conv_lea` : 4 attendus, 8 reçus).
+
+## ✅ CE QUI EST ANNONCÉ EST CE QUI EST GARDÉ : PROFIL, BULLES EN ATTENTE, COMMENTAIRE MODIFIÉ (2026-11-10)
+
+Trois défauts trouvés par l'audit de stabilisation du 10/11 (ETAT-03, ETAT-07, SRV-03), revérifiés dans le code avant
+correction. Verrous : `tests/e2e/profil-confidentialite-interface.spec.js` (ETAT-03 ① ②) et
+`tests/e2e/verdicts-conversation-commentaire.spec.js` (① à ⑤) — chacun rouge sur le code d'avant, par mutation.
+
+**ETAT-03 — « Profil mis à jour » sans écriture.** `saveMainProfile` (app-06) avalait le verdict de
+`supaSavePublicProfile` dans un `catch` vide. Hors ligne ou sur un refus, la personne voyait le succès — dont le
+passage en compte privé — et sa ligne restait publique. Désormais : instantané de `general` avant l'écriture, verdict
+lu, état rendu et écran laissé ouvert sur un échec (pour un COMPTE ; un visiteur n'a pas de ligne).
+⚠️ **Le marqueur `privacyChoisi` ne prouve plus rien à lui seul.** Posé une fois, jamais retiré, il voyage par
+`user_state` : `is_private` repartait avec la valeur AFFICHÉE par la case — celle de l'état local, périmé, quand la
+relecture serveur était lente ou en panne. Un compte rendu privé ailleurs redevenait public en enregistrant une bio.
+`is_private` ne part plus que sur le geste de CETTE ouverture (`_privacyTouched`). La garde serveur de
+`supaSavePublicProfile` (`_choixConfidentialiteProuve`) reste en place, en seconde couche.
+
+**ETAT-07 — Les bulles TEXTE en attente et le brouillon disparaissaient au démarrage.** `_rafraichirConversationsServeur`
+(app-08), sans `fusion`, remplace la conversation par celle du serveur, qui ne porte que son dernier message. Le
+report du 07/11 ne gardait que les bulles à pièce jointe (`m.pj`). Il garde désormais toutes MES bulles `sending` /
+`failed`, et le brouillon.
+
+**SRV-03 — « Modifier » sur un commentaire d'ACTIVITÉ.** Mesuré au canal ① le 10/11 : `event_comments` n'a ni colonne
+`content` ni policy UPDATE. Le menu le proposait, l'écran disait « Commentaire modifié », et le texte ne quittait pas
+l'appareil. `_commentaireModifiable` (app-04) est la seule autorité du menu et de l'édition : jamais sur `ec_` / `lc_`.
+Sur une publication, `_enregistrerModificationCommentaire` lit le verdict (`.select("id")` + `_writeVerdict`,
+`expectRows`) : refus ou 0 ligne → l'ancien texte revient, et c'est dit. Rendre un commentaire d'activité modifiable
+demanderait une policy UPDATE (migration, critique) : non fait, délibérément.
