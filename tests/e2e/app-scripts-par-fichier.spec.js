@@ -34,7 +34,11 @@
 //     immutable — dans le cache HTTP (⑦), dans celui du worker (⑧). Une fois la
 //     nouvelle version rétablie, ce script périmé n'est plus exécuté : l'attribut
 //     `integrity` le refuse, la reprise le redemande au réseau, et le worker honore
-//     la redemande au lieu de resservir son cache.
+//     la redemande au lieu de resservir son cache ;
+//   ⑪ ⑫ dans l'ordre ORDINAIRE de la production, le bloc tourne APRÈS les modules de fin
+//     de page : la barre du bas v2 est déjà construite, avec ses écouteurs, quand app-08
+//     branche la barre historique. Un toucher sur l'une ou l'autre = UN `goTo`, UNE entrée
+//     d'historique, et un retour revient au fil (⑪ barre v2, ⑫ barre historique).
 //
 // ⚠️ LA SONDE EST DANS LA PAGE, PAS DANS LES SCRIPTS (2026-11-10) : un écouteur `load`
 // en capture sur `document` note chaque script du bloc quand il a tourné (`__ordre`),
@@ -376,6 +380,156 @@ test.describe("sans worker : l'ordre, le parallélisme, la reprise, l'arrêt", (
     expect(await page.evaluate((s) => document.querySelectorAll(s).length, selecteur), "aucun script retiré ni inséré de nouveau").toBe(9);
     expect(requetesApp(depuis), "aucune redemande d'un script").toEqual([]);
     expect((await page.evaluate(() => window.__ordre)).filter((x) => x === "ready"), "le signal passio:app-ready n'est parti qu'une fois").toHaveLength(1);
+    expect(referencesManquantes()).toEqual([]);
+  });
+
+  // ⑪ ⑫ UN TOUCHER SUR LA BARRE DU BAS = UNE NAVIGATION (2026-11-12).
+  // Dans l'ordre ORDINAIRE de la production, les 9 scripts tournent APRÈS les modules de fin
+  // de page : `ui-v2-shell.js` (inliné) a construit `#appNavV2` et branché SES écouteurs à
+  // DOMContentLoaded quand app-08 branche la barre historique. app-08 prenait `.nav-item` sans
+  // le borner : il branchait AUSSI les boutons v2. Mesuré en production (b918d9a9, puis 0677abc2)
+  // et sur cet artefact, Chromium et WebKit, à chaque ouverture : un toucher = deux `goTo`, deux entrées
+  // d'historique, et le premier retour restait sur l'écran ; Entrée = deux `goTo` ; Entrée ou
+  // Espace sur « Créer » (bouton natif) n'ouvraient plus la feuille — le `keydown` d'app-08 en
+  // empêchait l'activation. En développement, les 9 fichiers précèdent ui-v2 : rien de tout
+  // cela, et ui-v2-shell.spec.js restait verte.
+  // Le banc RETIENT app-08 jusqu'à DOMContentLoaded : l'ordre de la production, rendu
+  // déterministe (une page qui arrive lentement peut l'inverser, ⑤ bis — la barre v2 naît
+  // alors après app-08, et n'a qu'un écouteur, avant comme après le correctif).
+  // Mutations, mesurées sous Chromium et WebKit : app-08 sur `.nav-item` au lieu de
+  // `#appNav .nav-item` → ⑪ rouge sur ses huit mesures, ⑫ vert ; un sélecteur qui ne trouve
+  // plus `#appNav` → ⑫ rouge (la barre historique ne navigue plus), ⑪ vert.
+  async function ordreDeProduction(page) {
+    let liberer;
+    const dcl = new Promise((ok) => { liberer = ok; });
+    await page.exposeFunction("__passioDcl", () => liberer());
+    await page.addInitScript(() => {
+      document.addEventListener("DOMContentLoaded", () => { window.__passioDcl(); }, { once: true });
+      // Le `load` d'un script part juste après son exécution (même tâche) : on y lit ce
+      // qu'app-08 a trouvé dans la page.
+      document.addEventListener("load", (e) => {
+        const t = e.target;
+        if (t && t.tagName === "SCRIPT" && /\/app\/app-08[\w-]*\.js(\?|$)/.test(t.src || "")) {
+          window.__barreV2AuApp08 = !!document.getElementById("appNavV2");
+        }
+      }, true);
+    });
+    await page.route(/\/app\/app-08[\w-]*\.js/, async (route) => { await dcl; await route.continue(); });
+  }
+
+  // Démarre l'application, retire la landing (banc sans session : un compte connecté ne la
+  // voit pas, cf. ui-v2-shell.spec.js), puis compte chaque `goTo`, chaque `pushState` et
+  // chaque `popstate` — `goTo` est relu au global à chaque appel, par app-08 comme par ui-v2.
+  async function demarrerEtCompter(page) {
+    await page.goto(adresse());
+    await page.waitForFunction(() => window.__appPrete === true, null, { polling: 50, timeout: 30000 });
+    await page.waitForSelector("#screen-feed.active", { state: "attached", timeout: 30000 });
+    await page.evaluate(() => {
+      const l = document.getElementById("landing");
+      if (l) l.classList.remove("active");
+      const goTo = window.goTo;
+      window.__goTo = [];
+      window.goTo = function (ecran) { window.__goTo.push(ecran); return goTo.apply(this, arguments); };
+      const pushState = history.pushState;
+      window.__push = [];
+      history.pushState = function (etatHist, titre, url) { window.__push.push(String(url)); return pushState.apply(this, arguments); };
+      window.__pops = 0;
+      window.addEventListener("popstate", () => { window.__pops++; });
+    });
+  }
+  const ecranActif = (page) => page.evaluate(() => (document.querySelector(".screen.active") || {}).id || null);
+  // Ce que le dernier geste a produit, puis remise à zéro.
+  const releve = (page) => page.evaluate(() => {
+    const r = { goTo: window.__goTo.slice(), push: window.__push.slice(), longueur: history.length };
+    window.__goTo.length = 0;
+    window.__push.length = 0;
+    return r;
+  });
+  // Un toucher quand le gabarit est tactile (iPhone, socle WebKit), un clic sinon.
+  // ⚠️ `force` : sans l'attente « stable » de Playwright, qui compte sur
+  // `requestAnimationFrame`. Au banc local, sous WebKit sans tête et sur un poste chargé,
+  // elle n'a jamais rendu la main (3 cas sur 10, `tap` arrêté 15 s sur « waiting for
+  // element to be visible, enabled and stable », sans une relance). La visibilité est
+  // vérifiée d'abord ; le geste reste un vrai toucher au centre de l'élément, et le moteur
+  // fait son propre test de cible : un élément recouvert ne navigue pas, le cas rougit.
+  async function toucher(locator, hasTouch) {
+    await expect(locator).toBeVisible();
+    return hasTouch ? locator.tap({ force: true }) : locator.click({ force: true });
+  }
+  async function retour(page) {
+    const avant = await page.evaluate(() => window.__pops);
+    await page.evaluate(() => history.back());
+    // 15 s, pas 5 : au banc local, sous WebKit et sur un poste chargé, deux retours sur
+    // ~70 n'avaient pas atterri en 5 s (cas à ~19 s au lieu de 4 à 9). La mutation n'en
+    // dépend pas : sous le défaut, le retour atterrit bien — sur l'entrée en double.
+    try {
+      await page.waitForFunction((n) => window.__pops > n, avant, { polling: 50, timeout: 15000 });
+    } catch (e) {
+      const ou = await page.evaluate(() => ({ etat: document.readyState, adresse: location.href, longueur: history.length, pops: window.__pops, ecran: (document.querySelector(".screen.active") || {}).id || null })).catch(() => null);
+      throw new Error("un retour sans popstate en 15 s — la page : " + JSON.stringify(ou) + " — " + e.message);
+    }
+  }
+
+  test("⑪ barre du bas v2, dans l'ordre de la production : un toucher = un goTo et une entrée d'historique, un retour revient au fil, « Créer » s'ouvre au clavier", async ({ page, hasTouch }) => {
+    await ordreDeProduction(page);
+    await demarrerEtCompter(page);
+    expect(await page.evaluate(() => window.__barreV2AuApp08), "prémisse : la barre v2 était construite quand app-08 a tourné (l'ordre de la production)").toBe(true);
+    const longueur = (await releve(page)).longueur;
+
+    // `expect.soft` : un rouge dit TOUT ce que le double branchement casse, pas sa première ligne.
+    await toucher(page.locator('#appNavV2 .nav-item[data-screen="irl"]'), hasTouch);
+    await expect.poll(() => ecranActif(page), { message: "la barre v2 mène à Rencontrer" }).toBe("screen-irl");
+    const geste = await releve(page);
+    expect.soft(geste.goTo, "un toucher, une navigation (deux : la barre v2 est branchée deux fois)").toEqual(["irl"]);
+    expect.soft(geste.push, "une entrée d'historique").toEqual(["#irl"]);
+    expect.soft(geste.longueur - longueur, "history.length +1").toBe(1);
+
+    await retour(page);
+    expect.soft(await ecranActif(page), "un retour revient au fil (avec deux entrées, il restait sur Rencontrer)").toBe("screen-feed");
+    await releve(page);
+
+    // Au clavier : Entrée sur un onglet…
+    await page.focus('#appNavV2 .nav-item[data-screen="irl"]');
+    await page.keyboard.press("Enter");
+    await expect.poll(() => ecranActif(page), { message: "Entrée sur l'onglet v2 mène à Rencontrer" }).toBe("screen-irl");
+    const entree = await releve(page);
+    expect.soft(entree.goTo, "Entrée sur un onglet : une navigation").toEqual(["irl"]);
+    expect.soft(entree.push, "Entrée sur un onglet : une entrée d'historique").toEqual(["#irl"]);
+
+    // …et sur « Créer », un bouton natif : son activation au clavier n'est empêchée par personne.
+    const feuille = page.locator("#v2CreateSheet");
+    for (const [touche, nom] of [["Enter", "Entrée"], [" ", "Espace"]]) {
+      await page.focus('#appNavV2 [data-v2-action="create"]');
+      await page.keyboard.press(touche);
+      await expect.soft(feuille, "« Créer » s'ouvre au clavier (" + nom + ")").toBeVisible();
+      await page.evaluate(() => window.PassioUIV2.closeCreateSheet());
+      await expect(feuille).toBeHidden();
+    }
+    expect(referencesManquantes()).toEqual([]);
+  });
+
+  test("⑫ barre historique (coupure de la v2), même ordre : un toucher = un goTo et une entrée d'historique, un retour revient au fil", async ({ page, hasTouch }) => {
+    await page.addInitScript(() => { localStorage.setItem("passio_ui_v2", "0"); });
+    await ordreDeProduction(page);
+    await demarrerEtCompter(page);
+    expect(await page.evaluate(() => [window.__barreV2AuApp08, !!document.getElementById("appNavV2")]), "prémisse : la v2 est coupée, aucune barre v2").toEqual([false, false]);
+    const longueur = (await releve(page)).longueur;
+
+    await toucher(page.locator('#appNav .nav-item[data-screen="irl"]'), hasTouch);
+    await expect.poll(() => ecranActif(page), { message: "la barre historique mène à Rencontrer" }).toBe("screen-irl");
+    const geste = await releve(page);
+    expect(geste.goTo, "la barre historique navigue, une fois").toEqual(["irl"]);
+    expect(geste.push, "une entrée d'historique").toEqual(["#irl"]);
+    expect(geste.longueur - longueur, "history.length +1").toBe(1);
+
+    await retour(page);
+    expect(await ecranActif(page), "un retour revient au fil").toBe("screen-feed");
+    await releve(page);
+
+    await page.focus('#appNav .nav-item[data-screen="irl"]');
+    await page.keyboard.press("Enter");
+    await expect.poll(() => ecranActif(page), { message: "Entrée sur l'onglet historique mène à Rencontrer" }).toBe("screen-irl");
+    expect((await releve(page)).goTo, "Entrée sur un onglet historique : une navigation").toEqual(["irl"]);
     expect(referencesManquantes()).toEqual([]);
   });
 });

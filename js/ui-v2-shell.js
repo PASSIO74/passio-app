@@ -248,7 +248,11 @@
       el.addEventListener("click", activate);
       // Les `<div role="button">` doivent s'activer au clavier ; le délégué
       // générique d'app-08 exclut explicitement les `.nav-item`, et le listener
-      // historique n'a jamais vu ces nœuds (créés après son exécution).
+      // historique ne branche que `#appNav .nav-item` : ces nœuds-ci n'ont donc
+      // que les écouteurs posés ICI, dans les deux ordres de chargement.
+      // ⚠️ Jusqu'au 2026-11-12 il branchait `.nav-item` : en production, où le
+      // bloc app tourne APRÈS ce module, chaque toucher partait deux fois (deux
+      // `goTo`, deux entrées d'historique) — cf. app-08, « NAV CLICKS ».
       if (d.screen) {
         el.addEventListener("keydown", function (e) {
           if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
