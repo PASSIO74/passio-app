@@ -46,7 +46,7 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | P0-3 | La fonction `pilotage` jamais exécutée par un test | lot 1 — TESTÉ |
 | P0-4 | L'alerte parcourt tous les comptes pour trouver le pilote (ne passe pas 100 000 inscrits) | lot 1 — TESTÉ |
 | P0-5 | Migration de #843 : création de rencontre refusée (42501) si appliquée en production ; staging cassé, `main` non déployé (second échec du 12/11 ; le premier venait du stockage du staging) | signalé sur #843, corrigé là-bas — hors de ce lot |
-| P0-6 | `moderation-alerte.yml` : le jour d'une vraie alerte, l'étape mourait avant d'ouvrir l'issue (60 passages verts sur 60 : jamais survenu) | DÉFAUT REPRODUIT sur le banc des workflows, corrigé — PR #849, TESTÉ |
+| P0-6 | `moderation-alerte.yml` : le jour d'une vraie alerte, l'étape mourait avant d'ouvrir l'issue (60 passages verts sur 60 : jamais survenu) | DÉFAUT REPRODUIT sur le banc des workflows, corrigé — #849 fusionnée le 12/11 à 20:56 UTC (`bf2c37bf`), DÉPLOYÉ ; OBSERVÉ : non (aucune vraie alerte depuis : il faut un signalement de plus de 24 h) |
 
 **P1 — parcours essentiels, réparations bloquées, limites de capacité**
 
@@ -57,13 +57,15 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | P1-2 | Deux touchers, deux réparations (deux agents) ; deux relances, deux runs. Observé en production le 09/11 : #806 et #807 ouvertes à une seconde d'écart (21:40:27, 21:40:28), deux agents partis | lot 1 — TESTÉ |
 | P1-3 | Mémoire du voyant illisible prise pour « aucun état » | lot 1 — TESTÉ |
 | P1-4 | Circuit B : depuis l'audit du 06/11 la PR de l'agent naît sans CI (`GITHUB_TOKEN`, choix de sécurité : « un humain la rouvre après l'avoir lue »). Depuis le téléphone, « Régler » arme alors une auto-fusion dont les tests ne partiront jamais, et l'écran dit « les tests tournent encore ». La politique (`correctif_sentinelle`) décrit encore une fusion par la CI | lot 2 — décision humaine : qui rouvre, et d'où |
-| P1-4 bis | « Régler » sur une exécution en échec lance un agent qui ne peut PAS la diagnostiquer : sa consigne dit « lis son journal (`gh run view --log-failed`) », sa liste d'outils n'a ni `gh` ni réseau (`claude-code.yml` l.550). Quatre fois sur quatre (#757 le 07/11, #806 et #807 le 09/11, #844 le 12/11) : une PR « cause NON établie », sans CI | EXISTANT VÉRIFIÉ (PR #845) — lot 2, **#854** : le journal de l'exécution fourni comme DONNÉE par l'étape de confiance du workflow, jamais un outil de plus à l'agent. IMPLÉMENTÉ, TESTÉ ; NON VÉRIFIÉ sur un runner réel tant que la PR n'est pas fusionnée |
+| P1-4 bis | « Régler » sur une exécution en échec lance un agent qui ne peut PAS la diagnostiquer : sa consigne dit « lis son journal (`gh run view --log-failed`) », sa liste d'outils n'a ni `gh` ni réseau (`claude-code.yml` l.550). Quatre fois sur quatre (#757 le 07/11, #806 et #807 le 09/11, #844 le 12/11) : une PR « cause NON établie », sans CI | EXISTANT VÉRIFIÉ (PR #845) — lot 2, **#854** : le journal de l'exécution fourni comme DONNÉE par l'étape de confiance du workflow, jamais un outil de plus à l'agent. IMPLÉMENTÉ, TESTÉ, fusionné le 12/11 à 21:24 UTC (`56318cf0`) ; OBSERVÉ : non — critère : la première réparation d'une exécution en échec dont la PR établit la cause |
 | P1-5 | Création de rencontre, connexion, inscription, chargement du fil : sans contrat. Export, synchronisation, affichage des médias, chargement du fil : absents de la couverture affichée — recensés au lot 1 (`PARCOURS_NON_INSTRUMENTES`) | lot 3 pour les contrats |
 | P1-6 | Staging partagé : une migration non fusionnée bloque toutes les mises en ligne (07/11, 09/11, 12/11) | lot 2 — garde à écrire |
 | P1-7 | Sentinelle dite muette à 8 h quand son cron est servi au P95 toutes les 8,9 h : fausses lignes | lot 2 — décision (réveil de cadence = politique) |
 | P1-8 | `lireActivation` parcourt jusqu'à 20 000 comptes à chaque ouverture d'écran ; total faux au-delà. Depuis #850 (12/11), `lireSeuils` fait un second parcours des comptes (20 pages au plus) au même moment | lot 5 — migration `pilotage_inscrits` ; y joindre les seuils |
-| P1-9 | `securite.yml` planifié en échec le 09/11, vu par personne ; la veille lit l'âge de la sauvegarde, pas sa conclusion ; expiration de `CLAUDE_CODE_OAUTH_TOKEN` non suivie ; six jobs de `deploy.yml` sans `timeout-minutes`. Mesuré le 12/11 sur les 100 dernières exécutions PLANIFIÉES de chaque workflow : deux échecs que rien n'a signalés — `securite.yml` (sa seule exécution planifiée, lundi 09/11, « Secrets dans le diff » ; la suivante le 16/11) et `sentinelle-distante.yml` (11/11 à 16:10, « Installer Chromium », une panne du runner) ; les sept autres (Sentinelle, veille, sonde, secours de la veille, sauvegarde, modération, digest) : aucune en échec | lot 2 — EXISTANT VÉRIFIÉ |
+| P1-9 | `securite.yml` planifié en échec le 09/11, vu par personne ; la veille lit l'âge de la sauvegarde, pas sa conclusion ; expiration de `CLAUDE_CODE_OAUTH_TOKEN` non suivie ; six jobs de `deploy.yml` sans `timeout-minutes`. Mesuré le 12/11 sur les 100 dernières exécutions PLANIFIÉES de chaque workflow : deux échecs que rien n'a signalés — `securite.yml` (sa seule exécution planifiée, lundi 09/11, « Secrets dans le diff » ; la suivante le 16/11) et `sentinelle-distante.yml` (11/11 à 16:10, « Installer Chromium », une panne du runner) ; les sept autres (Sentinelle, veille, sonde, secours de la veille, sauvegarde, modération, digest) : aucune en échec | lot 2 — la veille juge la CONCLUSION des passages planifiés et l'âge du dernier réussi, le scan à part et plafonné à l'attention : **#863** (contre-revue « à corriger » traitée, en seconde lecture) ; le scan à l'écran du pilote, « à trier », jamais « Régler » : PR des suites. `CLAUDE_CODE_OAUTH_TOKEN` et les `timeout-minutes` de `deploy.yml` : à faire |
 | P1-10 | `PILOTAGE_NETLIFY_TOKEN` absent : retour arrière d'un toucher et proposition inactifs | geste humain (§ 6) |
+| P1-11 | Seconde relecture de #848 : dix exécutions de la PR d'un fork chassaient la Sentinelle de la lecture (plus d'orange « muette ») ; cinquante PR de forks faisaient sortir un correctif armé de la liste ; un défaut du code dans un geste se disait « GitHub n'a pas répondu » ; la note de version armée illisible laissait dire « part en ligne » ; la consigne de réparation renvoyait vers `gh run view` | PR des suites — IMPLÉMENTÉ, TESTÉ (banc ㊴ à ㊸, 60 réinjections sur 60) |
+| P1-12 | « [RÉPARER] #N » sur une issue qui ne se relit pas : `set -e` tuait la marche de confiance sans un mot | PR des suites — IMPLÉMENTÉ, TESTÉ |
 
 **P2 — rapidité, simplicité, couverture** : second canal d'alerte hors de Supabase ; sonde extérieure
 (le chien de garde GitHub passe toutes les 5 h) ; délais de la chaîne en médiane et P95 à l'écran ;
@@ -104,9 +106,9 @@ version servie contre `main` (retard en fusions et en minutes) ; une ligne « à
   `edge_pilotage-reparer-*` (purgés à 2 h par `purge_analytics_courte`).
 - **Récupération** : revert de la PR ; aucune donnée à défaire (les marques et créneaux sont des lignes
   `analytics_events` sous l'auteur système, sans effet si la fonction revient en arrière).
-- **État** : IMPLÉMENTÉ, TESTÉ. DÉPLOYÉ et OBSERVÉ : non — voir § 7.
+- **État** : IMPLÉMENTÉ, TESTÉ, DÉPLOYÉ (#848 fusionnée le 12/11 à 20:26 UTC, `f98d8969` ; déploiements des fonctions et du site verts), OBSERVÉ EN PRODUCTION le 12/11 : révision servie par la fonction = `f98d8969` ; battement de la veille de 20:35 UTC sous cette révision (`lectures.memoire = ok`, `gestes.essai = pas_du`, voyant inchangé) ; journaux de la fonction depuis : aucune lecture incomplète, aucun geste interrompu, aucune erreur. Les suites de sa seconde relecture (P1-11) : PR des suites, § 7.
 
-### Lot 2 — la chaîne d'incident et la preuve de résolution (ouvert : #849, #854)
+### Lot 2 — la chaîne d'incident et la preuve de résolution (fusionnés : #849, #854 ; en revue : #863, PR des suites)
 
 Circuit B éprouvé de bout en bout sur un cas contrôlé (P1-4) ; alerte de modération (P0-6, **#849**) ;
 garde du staging (P1-6) ; cadence de la Sentinelle (P1-7) ; surveillance des workflows que rien ne suit
@@ -124,10 +126,9 @@ quand une version armée change (rouge), sans rien désarmer.
 **P1-4 bis — fait, PR #854** (le dessin ci-dessous a été suivi, à trois écarts près : l'exécution lue est
 d'abord celle que NOMME la réparation, par son identifiant ; une relance fait remonter à la tentative en
 échec ; le banc est `tests/unit/reparation-journal.test.mjs`, en Node, parce que
-`tests/ci/frontiere-confiance.sh` ne tourne pas hors de la CI). À faire après la fusion de #848 : retirer
-« Lis son journal (`gh run view --log-failed`) » de `corpsReparation`, écrire la fiche du journal, et faire jouer par le
-banc de la fonction (`pilotage-chemins`) chaque titre de `titreReparation` contre la liste fermée de la marche — les deux
-listes vivent en double (constat 9 de la relecture de #854, non fermé là-bas pour ne pas mettre deux PR en conflit).
+`tests/ci/frontiere-confiance.sh` ne tourne pas hors de la CI). Fait dans la PR des suites : `corpsReparation` ne renvoie plus vers `gh run view` (« le workflow relit pour toi le
+journal »), la fiche du journal est écrite, et `pilotage.test.mjs` ㉿㉖ tient ensemble la liste fermée de la marche et
+`RUNS_REPARABLES` (constat 9 de la relecture de #854).
 Critère d'OBSERVÉ : la première réparation d'une exécution en échec qui établit sa cause.
 
 Rendre l'agent de réparation capable de lire pourquoi une
@@ -182,7 +183,14 @@ recherche du pilote. Banc : `scripts/charge-realiste.mjs` (staging seul, plafonn
 
 ## 6. Ce qui reste humain
 
-1. Contre-revue de chaque PR critique (GitHub, compte PASSIO74) — voir § 7 pour celle du lot 1.
+1. Contre-revue de chaque PR critique (GitHub, compte PASSIO74). **Le 12/11, sur l'ordre explicite de Benjamin
+   (« Prend la main et fait tout », en réponse à « qui poste la revue de gouvernance ? »), la revue de gouvernance de
+   #848, #849 et #854 a été postée depuis PASSIO74 par Claude**, après relecture de CHAQUE version par un agent
+   indépendant de l'auteur (contexte neuf, lecture seule) ; le corps de chaque revue le dit. Ce n'est pas une relecture
+   humaine : aucune n'a eu lieu.
+5. Trier les 64 trouvailles du scan de sécurité du 09/11 (Actions › « Sécurité de la chaîne », artefact
+   `gitleaks-results.sarif`) : une clé publique par conception s'inscrit dans `.gitleaksignore` ; une vraie clé se
+   révoque d'abord, puis s'y inscrit aussi. Jamais un agent.
 2. Poser `PILOTAGE_NETLIFY_TOKEN` (retour arrière d'un toucher). **Ne pas poser**
    `PILOTAGE_VEILLE_SECRET` avant que pg_cron et `pilotage-veille.yml` envoient l'en-tête : tous deux
    recevraient 401, et la veille s'arrêterait.
@@ -202,9 +210,11 @@ personne n'est prévenu par un second canal si le téléphone ne reçoit pas.
 
 | Date | Lot | Branche · PR | État | Preuve |
 |---|---|---|---|---|
-| 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | IMPLÉMENTÉ, TESTÉ ; relu par un agent indépendant (huit constats corrigés) ; en attente de la contre-revue de PASSIO74 | banc 46/46, réinjections 46/46, unitaires 1 103, `verif`, navigateur 49 (après fusion de `main` à `fa09eb43`) |
-| 2026-11-12 | 2 (P1-4 bis) | `fix/reparation-journal-execution` · #854 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | banc `reparation-journal` 11/11, 46 réinjections sur 46, unitaires 1 057 ; le programme d'extraction rend la cause sur les deux journaux réels du 12/11 ; relu par un agent indépendant (dix constats traités ; sa première lecture a montré que dix protections sur onze n'étaient pas verrouillées par le banc) ; deux défauts du lot attrapés par la CI (un caractère invisible brut qui rendait le workflow illisible pour un vrai lecteur YAML ; un verrou du dépôt sur les imports) |
-| 2026-11-12 | 2 (premier sujet) | `fix/moderation-alerte-code-3` · #849 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | étape réelle rejouée sous `bash -e` : rouge sur `main`, verte ; unitaires 1 044 |
+| 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | DÉPLOYÉ, OBSERVÉ (§ 3) ; relu par deux agents indépendants (huit constats, puis une seconde lecture « fusionnable » dont les suites sont P1-11) ; fusionnée à 20:26 UTC | banc 46/46, réinjections 46/46, unitaires 1 103, `verif`, navigateur 49 (après fusion de `main` à `fa09eb43`) |
+| 2026-11-12 | 2 (P1-4 bis) | `fix/reparation-journal-execution` · #854 | fusionnée à 21:24 UTC ; OBSERVÉ : non (critère au § 2) ; trois relectures indépendantes (dix constats, puis six, puis « confirmé ») ; 51 réinjections sur 51 rejouées seules | banc `reparation-journal` 11/11, 46 réinjections sur 46, unitaires 1 057 ; le programme d'extraction rend la cause sur les deux journaux réels du 12/11 ; relu par un agent indépendant (dix constats traités ; sa première lecture a montré que dix protections sur onze n'étaient pas verrouillées par le banc) ; deux défauts du lot attrapés par la CI (un caractère invisible brut qui rendait le workflow illisible pour un vrai lecteur YAML ; un verrou du dépôt sur les imports) |
+| 2026-11-12 | 2 (premier sujet) | `fix/moderation-alerte-code-3` · #849 | fusionnée à 20:56 UTC ; OBSERVÉ : non | étape réelle rejouée sous `bash -e` : rouge sur `main`, verte ; relu par un agent indépendant (« fusionnable », puis « confirmé » : le balayage voit désormais la forme sur deux lignes et `PIPESTATUS`) ; deux constats hors diff ouverts : l'étape « Ouvrir ou mettre à jour l'issue » n'est verrouillée par aucun test, et « Refermer » avale un échec de `gh issue list` |
+| 2026-11-12 | 2 (P1-9) | `fix/veille-conclusion-crons` · #863 | contre-revue « à corriger avant fusion » (C1 passage bloqué resté « ok », C2/C3 scan qui cache la sauvegarde et se « Règle » par un agent, C5 double « Régler »…) traitée ; seconde lecture en cours | veille 30/30, 20 réinjections sur 20 ; C6 (une lecture en échec referme puis rouvre la [VEILLE]) laissé ouvert |
+| 2026-11-12 | 2 (P1-11, P1-12, P1-9 écran) | `fix/reparation-suites-journal` · PR des suites | IMPLÉMENTÉ, TESTÉ ; relecture indépendante à faire | banc de la fonction 51/51 (㊴ à ㊸), 60 réinjections sur 60 ; la garde de « [RÉPARER] #N » rougit son exercice quand on la retire |
 
 ## 8. L'incident du 12/11, chronométré (un exercice réel, pas un essai)
 

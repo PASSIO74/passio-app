@@ -53,6 +53,7 @@
 ---
 - 🧪 LA FONCTION `pilotage` S'EXÉCUTE ENFIN — ET CE QUE L'EXÉCUTER A FAIT TOMBER (2026-11-12)
 - 📜 L'AGENT DE RÉPARATION REÇOIT ENFIN LE JOURNAL D'UNE EXÉCUTION EN ÉCHEC — COMME DONNÉE, PAS COMME OUTIL (2026-11-12)
+- 🔁 CE QUE L'ÉCRAN NE DISAIT PAS ENCORE — SUITES DE #848, DE #854 ET DE LA CONTRE-REVUE DE #863 (2026-11-12)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -1399,3 +1400,45 @@ reste sur le runner ; la réponse d'erreur de l'API n'entre jamais ; chaque coup
 
 **Reste à observer** : la marche n'a tourné que contre un faux `gh`. Critère d'OBSERVÉ : la première
 réparation d'une exécution en échec dont la PR établit la cause.
+
+## 🔁 CE QUE L'ÉCRAN NE DISAIT PAS ENCORE — SUITES DE #848, DE #854 ET DE LA CONTRE-REVUE DE #863 (2026-11-12)
+
+**Les trous, trouvés par la seconde relecture de #848 et la contre-revue de #863** (tous rejoués sur le
+banc `pilotage-chemins`, qui EXÉCUTE la fonction) :
+- **Dix exécutions de la PR d'un fork** (branche « main ») prenaient les dix places de la lecture des runs
+  de la Sentinelle, filtrée ensuite seulement : `runs.sentinelle` à null, et l'orange « n'a pas tourné
+  depuis plus de 8 h » disparaissait. Lecture désormais filtrée PAR GITHUB, une par événement
+  d'`EVENEMENTS_RUNS` ; le filtre local (événement ET dépôt de tête) reste, et ⑪ bis l'éprouve avec un
+  GitHub qui n'honorerait pas `event=`.
+- **Cinquante PR de forks plus récentes** faisaient sortir un correctif armé de la liste (lue sur 50) :
+  pages de cent, trois au plus ; au-delà, ou un corps illisible, `prNonLues` le dit — et la ligne du PR
+  ne porte jamais de bouton qui met en ligne à l'aveugle. Choix maintenu de #703 : les PR non lues font
+  une ligne, pas le voyant (un tiers peut ouvrir 300 PR : il ne doit pas pouvoir teindre l'écran).
+- **Un défaut du code dans un geste** (la `ReferenceError` de #753) sortait en « GitHub n'a pas répondu,
+  peut-être parti » : par le NOM de l'erreur, `ReferenceError`/`SyntaxError`/`RangeError` → 500 « défaut
+  du code », en `console.error`. Une `TypeError` reste ambiguë — sous Deno, un `fetch` qui ne joint pas
+  GitHub en lève une.
+- **La note de la version armée illisible** laissait dire « part en ligne » : la ligne dit « sans pouvoir
+  vérifier sa version ». La note se relit sur trente jours (sept laissaient une auto-fusion armée sans
+  comparaison).
+- **Le scan de sécurité du lundi** (échec du 09/11, vu par personne) : la fonction lit son seul passage
+  PLANIFIÉ et l'écran dit « Le scan de sécurité du lundi a échoué — À trier ». ⚠️ **Jamais « Régler »** :
+  le tri des secrets est une décision de Benjamin (une clé publique par conception s'inscrit dans
+  `.gitleaksignore`, une vraie clé se révoque d'abord). Un agent lancé sur la [VEILLE] du scan aurait écrit
+  des exceptions sans voir le rapport. La ligne n'a qu'un lien ; le scan n'est pas dans `RUNS_REPARABLES`.
+  Côté veille (#863), même règle : signal `scan` à part, plafonné à l'attention.
+- **« [RÉPARER] #N » sur une issue qui ne se relit pas** : `set -e` tuait la marche de confiance sans un
+  mot. L'échec se dit (annotation « Issue visée illisible »), et aucun agent ne part.
+
+**Pièges du lot.**
+- ⚠️ **Une réinjection qui ne mord plus est un verrou mort.** Après la lecture filtrée par GitHub, celle
+  qui retirait le filtre LOCAL (R29) restait verte : le filtre était devenu invisible au banc, pas inutile.
+  Rejouer TOUTES les réinjections après chaque refonte, pas seulement les neuves (60/60 depuis).
+- ⚠️ **Un délai dépassé finit `cancelled`, jamais `timed_out`** (aucun run `timed_out` dans tout le
+  dépôt) — et `cancelled` est aussi une éviction de file. On ne juge pas un workflow sur ses annulés :
+  on juge l'âge de son dernier passage planifié RÉUSSI (veille, #863).
+- ⚠️ **Deux processus de réinjection dans la même copie** : en relançant un banc de mutations sans avoir
+  vérifié que le précédent était fini, les deux ont muté les mêmes fichiers — un résultat de plus à jeter.
+  Une copie par passage, un journal par passage.
+- ⚠️ **`bornes-ci` ③ rougit sous charge locale** (« 10 556 ms » pour une borne de 10 s) : il mesure un
+  temps. Le rejouer seul avant de conclure ; en CI et dans `npm run verif`, il passe (5,8 s).
