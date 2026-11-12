@@ -763,7 +763,8 @@ function fauxNode(nom) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(dir + "/node", `#!/usr/bin/env bash
 case "$*" in
-  *"scripts/digest.mjs"*|*"scripts/veille-production.mjs"*) printf '%s' "$FAUX_JSON"; exit "\${FAUX_CODE:-0}" ;;
+  # FAUX_SUR_ERREUR : la panne sort sur l'erreur standard, comme le vrai script (moderation-alerte.mjs l. 105 et 116).
+  *"scripts/digest.mjs"*|*"scripts/veille-production.mjs"*|*"scripts/moderation-alerte.mjs"*) if [ -n "\${FAUX_SUR_ERREUR:-}" ]; then printf '%s' "$FAUX_JSON" >&2; else printf '%s' "$FAUX_JSON"; fi; exit "\${FAUX_CODE:-0}" ;;
   *) exec "$VRAI_NODE" "$@" ;;
 esac
 `);
@@ -803,6 +804,95 @@ test("veille-production.yml : Verdict — code 3 (alerte) rend alerte=oui et le 
   r = jouer(run, { ...env, SUPABASE_ACCESS_TOKEN: "", FAUX_JSON: json, FAUX_CODE: "3" });
   assert.equal(r.code, 1, "sans jeton, la veille est aveugle : refus, pas un verdict");
   assert.ok(r.sortie.includes("SUPABASE_ACCESS_TOKEN absent"), r.sortie);
+});
+
+// Le TROISIÈME canal de cette forme (2026-11-12) : l'alerte de modération. Son étape « Verdict » portait encore
+// `node …; code=$?` — le piège corrigé ci-dessus pour le digest et la veille. 60 passages verts sur 60 : la
+// condition d'alerte (un signalement en attente depuis plus de 24 h) ne s'était jamais présentée. Le jour où elle
+// se présente, le code 3 tuait l'étape : run rouge, « Ouvrir ou mettre à jour l'issue » sautée, aucune issue
+// `[MODÉRATION]` — donc aucune ligne au pilotage, le jour même où il en fallait une.
+// Mutation : remettre `node …; code=$?` dans le workflow → ce test rougit (code 3 au lieu de 0).
+const MOD = wf("moderation-alerte.yml");
+test("moderation-alerte.yml : Verdict — code 3 (signalements en retard) rend alerte=oui, le titre et le corps de l'issue ; code 0 → non ; code 2 = panne VISIBLE ; sans la clé l'étape REFUSE", () => {
+  const run = etape(MOD, "compter", "Verdict").run;
+  const env = fauxNode("moderation");
+  const json = JSON.stringify({ titre: "[MODÉRATION] 2 signalements en attente depuis plus de 24 h", corps: "corps de l'alerte", ouverts: 3, enRetard: 2, alerte: true });
+  for (const f of ["titre.txt", "corps.md"]) fs.rmSync(BAC + "/" + f, { force: true });
+  let r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "cle-de-test", FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(r.code, 0, "code 3 = une alerte à ouvrir, pas une panne : " + r.sortie);
+  assert.match(r.out, /^alerte=oui$/m, r.out);
+  assert.match(r.summary, /^- Signalements ouverts : 3$/m, r.summary);
+  assert.match(r.summary, /^- En attente depuis plus de 24 h : 2$/m, r.summary);
+  // Ce que l'étape suivante lit pour ouvrir l'issue.
+  assert.equal(fs.readFileSync(BAC + "/titre.txt", "utf8"), "[MODÉRATION] 2 signalements en attente depuis plus de 24 h");
+  assert.match(fs.readFileSync(BAC + "/corps.md", "utf8"), /^corps de l'alerte\n\n_Dernier passage : \d{4}-/);
+  assert.equal(etape(MOD, "compter", "Ouvrir ou mettre à jour l'issue").if, "github.event_name != 'pull_request' && steps.verdict.outputs.alerte == 'oui'");
+  assert.equal(etape(MOD, "compter", "Refermer l'issue").if, "github.event_name != 'pull_request' && steps.verdict.outputs.alerte == 'non'");
+  r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "cle-de-test", FAUX_JSON: JSON.stringify({ titre: "", corps: "", ouverts: 1, enRetard: 0, alerte: false }), FAUX_CODE: "0" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.match(r.out, /^alerte=non$/m, r.out);
+  // La panne, comme le vrai script l'écrit : sur l'erreur standard, rien sur la sortie. Un `2>/dev/null` ajouté à l'étape la
+  // rendrait muette : ce test rougirait.
+  r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "cle-de-test", FAUX_JSON: "lecture des signalements impossible", FAUX_SUR_ERREUR: "1", FAUX_CODE: "2" });
+  assert.equal(r.code, 2, "une panne du lecteur reste une panne");
+  assert.ok(r.sortie.includes("lecture des signalements impossible"), "et elle est affichée : " + r.sortie);
+  assert.doesNotMatch(r.out, /alerte=/, "une panne ne rend ni « oui » ni « non » : l'issue n'est ni ouverte ni refermée");
+  r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "", FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(r.code, 1, "sans la clé, l'alerte est aveugle : refus, pas un verdict");
+  assert.ok(r.sortie.includes("SUPABASE_SERVICE_ROLE_KEY absent"), r.sortie);
+});
+
+// Aucun canal ne doit retomber dans le piège (2026-11-12, élargi après la relecture indépendante de #849) : sous le shell
+// par défaut d'une étape GitHub (`bash -e`), la commande qui sort en code non nul a DÉJÀ tué l'étape quand la ligne
+// suivante lit `$?`. Le balayage raisonne ÉTAPE par ÉTAPE, pas ligne par ligne : il ne retient que les étapes dont le shell
+// garde `-e` (pas de `shell:`, ou `bash`, ou `sh`, ou une option `-…e`), ignore ce qui suit un `set +e`, et signale toute
+// lecture de `$?` ou de `PIPESTATUS` qui ne suit pas un `||` sur sa ligne. Il attrape donc la forme sur deux lignes,
+// `node … | tee f` puis `${PIPESTATUS[0]}` (la forme qui a cassé controle-realtime.yml le 2026-09-12), et `if [ $? -eq 3 ]`.
+// Il est PRUDENT sur PIPESTATUS : sans `pipefail`, `node … | tee` ne tue pas l'étape et la lecture serait juste — il la signale
+// quand même (écrire alors `shell: bash {0}` ou `set +e`, comme controle-realtime.yml). Ce qu'il NE prouve pas : qu'un code lu
+// ailleurs soit bien traité — seulement qu'aucune lecture ne vient trop tard.
+function lecturesTropTard(nom, texte) {
+  const d = parse(texte);
+  const res = [];
+  for (const [idJob, job] of Object.entries((d && d.jobs) || {})) {
+    const shellJob = (job && job.defaults && job.defaults.run && job.defaults.run.shell) ?? (d.defaults && d.defaults.run && d.defaults.run.shell);
+    for (const s of (job && job.steps) || []) {
+      if (typeof s.run !== "string") continue;
+      const shell = s.shell ?? shellJob; // absent → `bash -e {0}` ; `bash` → `-eo pipefail` ; `bash {0}` → sans -e
+      const avecE = shell === undefined || /^(bash|sh)$/.test(String(shell).trim()) || /\s-[a-z]*e/.test(String(shell));
+      if (!avecE) continue;
+      let sousPlusE = false;
+      for (const ligne of s.run.split("\n")) {
+        const code = ligne.replace(/(^|\s)#.*$/, "");
+        if (/^\s*set\s+\+[a-z]*e/.test(code)) sousPlusE = true;
+        if (/^\s*set\s+-[a-z]*e/.test(code)) sousPlusE = false;
+        if (sousPlusE) continue;
+        if (/\$\?|\$\{?PIPESTATUS/.test(code) && !/\|\|[^;]*(\$\?|PIPESTATUS)/.test(code)) res.push(`${nom} ${idJob}/${s.name || s.id}: ${code.trim()}`);
+      }
+    }
+  }
+  return res;
+}
+
+test("aucun workflow ne lit un code de sortie TROP TARD : sous le shell de GitHub (bash -e), la commande qui le produit a déjà tué l'étape — étape par étape, `set +e` et `shell:` compris", () => {
+  const dossier = path.join(RACINE, ".github/workflows");
+  const fautifs = [];
+  for (const nom of fs.readdirSync(dossier).filter((x) => /\.ya?ml$/.test(x))) fautifs.push(...lecturesTropTard(nom, fs.readFileSync(path.join(dossier, nom), "utf8")));
+  assert.deepEqual(fautifs, [], "écrire `code=0; commande || code=$?`, ou poser `set +e` avant la commande");
+  // Le balayage éprouvé sur les formes qu'il doit attraper, et sur celles qu'il doit épargner.
+  const synthetique = [
+    "name: t", "on: push", "jobs:", "  j:", "    runs-on: ubuntu-latest", "    steps:",
+    "      - name: une-ligne", "        run: |", "          node x.mjs > /tmp/v.json; code=$?",
+    "      - name: deux-lignes", "        run: |", "          set -uo pipefail", "          node x.mjs > /tmp/v.json", "          code=$?",
+    "      - name: pipestatus", "        run: |", "          set -uo pipefail", "          node x.mjs | tee /tmp/v.txt", "          code=${PIPESTATUS[0]}",
+    "      - name: if-dollar", "        run: |", "          node x.mjs; if [ $? -eq 3 ]; then echo a; fi",
+    "      - name: bonne-forme", "        run: |", "          code=0; node x.mjs || code=$?",
+    "      - name: apres-set-plus-e", "        run: |", "          set +e", "          node x.mjs", "          code=$?",
+    "      - name: sans-e", "        shell: bash {0}", "        run: |", "          node x.mjs | tee /tmp/v.txt", "          code=${PIPESTATUS[0]}",
+    "      - name: commentaire", "        run: |", "          # écrit `node …; code=$?`, le code 3 tuait l'étape", "          echo ok",
+  ].join("\n");
+  const vus = lecturesTropTard("t.yml", synthetique).map((x) => x.split(": ")[0].split("/")[1]);
+  assert.deepEqual(vus, ["une-ligne", "deux-lignes", "pipestatus", "if-dollar"], "attrapées : une ligne, deux lignes, PIPESTATUS, `if [ $? …` ; épargnées : `|| code=$?`, après `set +e`, `shell: bash {0}`, un commentaire");
 });
 
 // ═══ F — Tableaux : les comptes rendus vivent dans le centre de pilotage ═════════════════

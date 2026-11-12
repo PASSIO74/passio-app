@@ -70,7 +70,12 @@ jobs:
             echo "::error title=SUPABASE_SERVICE_ROLE_KEY absent::Sans la clé, aucun signalement ne peut être lu : l'alerte est AVEUGLE. Settings > Secrets and variables > Actions."
             exit 1
           fi
-          node scripts/moderation-alerte.mjs --json > /tmp/verdict.json; code=$?
+          # ⚠️ Le shell par défaut de GitHub est `bash -e {0}`, et `set -uo pipefail` ne RETIRE pas -e :
+          # écrit `node …; code=$?`, le code 3 (« des signalements attendent ») tuait l'étape — run rouge,
+          # issue [MODÉRATION] jamais ouverte, le jour même où il en fallait une (reproduit le 2026-11-12
+          # sur le banc, tests/unit/sentinelle-workflows.test.mjs ; le piège du digest, run 35350876138).
+          # La forme `|| code=$?` survit à -e.
+          code=0; node scripts/moderation-alerte.mjs --json > /tmp/verdict.json || code=$?
           # 0 = rien en retard, 3 = alerte, autre = panne (et une panne se voit).
           if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then cat /tmp/verdict.json; exit "$code"; fi
           echo "alerte=$([ "$code" -eq 3 ] && echo oui || echo non)" >> "${GITHUB_OUTPUT}"
