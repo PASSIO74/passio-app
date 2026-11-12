@@ -2624,7 +2624,8 @@ function removeGroupMember(convId, userId) {
 // restait MEMBRE — il continuait d'en recevoir les messages et les notifications.
 // Pour un compte, on attend le verdict ; un échec garde la conversation et le dit.
 async function leaveGroup(convId) {
-  if (!confirm("Quitter ce groupe ? Tu ne recevras plus ses messages.")) return;
+  // LOT-6 (TRA-C11) : feuille de l'application, plus de boîte native.
+  if (!(await confirmerAction({ titre: "Quitter ce groupe ?", texte: "Tu ne recevras plus ses messages.", libelle: "Quitter le groupe", danger: true }))) return;
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal
       && typeof _compteAuthReel === "function" && _compteAuthReel()) {
     var v;
@@ -2644,10 +2645,11 @@ async function leaveGroup(convId) {
 }
 
 // Édite la description du groupe (locale + colonne conversations.description).
-function editGroupDescription(convId) {
+async function editGroupDescription(convId) {
   var c = getConversations().find(function(x){ return x.id === convId; });
   if (!c) return;
-  var d = prompt("Description du groupe :", c.groupDesc || "");
+  // LOT-6 (TRA-C11) : un champ dans une feuille de l'application, plus de prompt().
+  var d = await demanderTexte({ titre: "Description du groupe", valeur: c.groupDesc || "", placeholder: "De quoi parle ce groupe ?", libelle: "Enregistrer", multiligne: true, max: 2000 });
   if (d == null) return;
   var avant = c.groupDesc || "";
   c.groupDesc = d.trim();
@@ -3269,8 +3271,30 @@ function renderReelHTML(post, idx) {
           </span>
           <span class="reel-action-label">Partager</span>
         </button>
+        <button class="reel-action-btn reel-plus-btn" onclick="openReelMenu('${escapeJsArg(post.id)}')" aria-label="Plus d'actions sur cette bobine">
+          <span class="reel-action-icon">
+            <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+          </span>
+          <span class="reel-action-label">Plus</span>
+        </button>
       </div>
     </div>`;
+}
+
+// LOT-6 (audit UX/UI du 2026-11-10, BOB-C04) — « PLUS » SUR UNE BOBINE.
+// Le format le plus viral n'avait ni « Signaler » (la story l'a), ni « Supprimer »
+// pour son auteur. La feuille passe au-dessus du lecteur (z-index 9999) ;
+// supprimer FERME d'abord le lecteur, puis passe par la suppression existante
+// (`confirmDeletePost` → `deletePost`, pierre tombale, quatre tableaux).
+function openReelMenu(postId) {
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!p) p = (reelsState.items || []).find(function (x) { return x && x.id === postId; }) || null;
+  if (!p) return;
+  var mien = (typeof _estMonPost === "function") && _estMonPost(p);
+  var actions = mien
+    ? [{ id: "supprimer", libelle: "Supprimer cette bobine", danger: true, agir: function () { try { closeReels(); } catch (e) {} confirmDeletePost(postId); } }]
+    : [{ id: "signaler", libelle: "Signaler cette bobine", danger: true, agir: function () { reportPost(postId); } }];
+  ouvrirFeuilleConfirmation({ titre: mien ? "Ta bobine" : "Cette bobine", actions: actions });
 }
 
 function openReels(pinnedId) {
@@ -4698,7 +4722,7 @@ async function _vliveNotifyFollowers(liveId, title) {
     ? ("est en direct : « " + String(title).slice(0, 60) + " » — rejoins !")
     : "est en direct — rejoins le live !";
   try {
-    const { data } = await supa.from("follows").select("follower_id").eq("following_id", MY_UID).limit(200);
+    const { data } = await seulementAbonnementsAcceptes(supa.from("follows").select("follower_id").eq("following_id", MY_UID)).limit(200);
     const ids = [...new Set((data || []).map(r => r.follower_id))].filter(x => x && x !== MY_UID);
     for (const fid of ids) {
       try { await supaInsertNotif(fid, "live_video", liveId, msg); } catch (e) {}

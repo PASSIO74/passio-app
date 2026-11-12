@@ -79,6 +79,8 @@ async function banc(page) {
   await page.evaluate(async ([lea, marc, cid, cidRejeu]) => {
     window.__toasts = [];
     window.toast = (t, k) => { window.__toasts.push({ t: String(t), k: k || "" }); };
+    // LOT-6 (TRA-C11) : plus de boîte native — le banc répond « oui » à la feuille de l'application.
+    window.confirmerAction = async () => true;
     window.confirm = () => true;
     state.notifications = [];
     try { cacheRemoteProfile({ id: lea, username: "Léa", emoji: "🌿", color: "#22c55e" }); } catch (e) {}

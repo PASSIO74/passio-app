@@ -671,6 +671,8 @@ async function ouvrirCompte(context, serveur, uid, opts = {}) {
     window.supaAddComment = window.__vraiSupa.addComment;
     window.supaInsertNotif = window.__vraiSupa.insertNotif;
     window.supaUpsertProfile = window.__vraiSupa.upsertProfile;
+    // LOT-6 (TRA-C11) : plus de boîte native — le banc répond « oui » à la feuille de l'application.
+    window.confirmerAction = async () => true;
     window.confirm = () => true;
     delete window.supaSetPostLike;
   });

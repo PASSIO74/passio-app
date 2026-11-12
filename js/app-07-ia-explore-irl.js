@@ -259,7 +259,9 @@ function _exSearchLancer(query) {
         || (pw && pw.label.toLowerCase().includes(q));
     }).slice(0, 5);
 
-    var fu = supaFormatted.concat(seedUsers).slice(0, 8);
+  // LOT-6 (audit UX/UI du 2026-11-10, REC-C03) : une personne qu'on a BLOQUÉE ne revient
+  // pas comme suggestion ni comme résultat. Les garde-fous serveur restent inchangés.
+    var fu = supaFormatted.concat(seedUsers).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0, 8);
 
     if (fp.length === 0 && fu.length === 0) {
       cible.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query) + " »</div>";
@@ -358,7 +360,9 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
   // donc « Pas encore de créateurs », y compris quand de vrais comptes la
   // portent. Le seed reste le repli de démonstration ; les comptes RÉELS sont
   // chargés juste après et se posent EN TÊTE.
-  var creators = (state.seed.users || []).filter(function(u) { return u.passion === pid; });
+  // LOT-6 (audit UX/UI du 2026-11-10, REC-C03) : une personne qu'on a BLOQUÉE ne revient
+  // pas comme suggestion ni comme résultat. Les garde-fous serveur restent inchangés.
+  var creators = (state.seed.users || []).filter(function(u) { return u.passion === pid && !(typeof isBlocked === "function" && isBlocked(u.id)); });
 
   // Un seul constructeur de ligne, et le moteur de suivi UNIQUE
   // (`toggleFollowUser`, app-04) : il garde `requireAuthentication`, sait
@@ -495,6 +499,9 @@ function _pexChargerCreateurs(pid, creatorsSeed) {
       (creatorsSeed || []).forEach(function (u) { vus[u.id] = 1; });
       var reels = r.data.filter(function (u) {
         if (!u || !u.id || u.id === MY_UID || vus[u.id]) return false;
+        // LOT-6 (REC-C03) : on ne bloque en pratique que de VRAIS comptes — ils
+        // arrivent ici, chargés après le socle, et passent par le même filtre.
+        if (typeof isBlocked === "function" && isBlocked(u.id)) return false;
         vus[u.id] = 1;
         return true;
       });
@@ -4296,6 +4303,23 @@ function _lienContactEvenement(contact) {
   return escapeHtml(brut);
 }
 
+// LOT-6 (audit UX/UI du 2026-11-10, TRA-C17) — LA HAUTEUR DU PIED COLLANT, MESURÉE.
+// Le pied de la fiche change de hauteur (état « inscrit », liste d'attente, suite
+// proposée) : une marge fixe sous le corps le laissait recouvrir « Signaler cet
+// événement ». `--fiche-pied` suit sa hauteur réelle (styles.css).
+(function _brancherHauteurPiedFiche() {
+  function brancher() {
+    var page = document.getElementById("eventDetailPage");
+    var pied = document.getElementById("eventDetailCta");
+    if (!page || !pied || pied._hauteurBranchee) return;
+    pied._hauteurBranchee = true;
+    var poser = function () { page.style.setProperty("--fiche-pied", Math.ceil(pied.getBoundingClientRect().height) + "px"); };
+    poser();
+    try { new ResizeObserver(poser).observe(pied); } catch (e) {}
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
+})();
+
 function openEventDetails(id) {
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
@@ -6906,7 +6930,7 @@ async function cancelEventSeries(id) {
   const ref = _findCanonicalEvent(id);
   if (!ref || !ref.seriesId) return;
   const all = allEvents().filter(e => e.seriesId === ref.seriesId && !_eventIsOver(e));
-  if (!confirm("Annuler les " + all.length + " dates à venir de cette série ? Les inscrits seront prévenus.")) return;
+  if (!(await confirmerAction({ titre: "Annuler les " + all.length + " dates à venir ?", texte: "Toute la série est annulée. Les inscrits seront prévenus.", libelle: "Annuler la série", annuler: "Garder la série", danger: true }))) return;
   closeModal();
   // ⚠️ IRL-13 (contre-revue Astra, 2026-09-15) : « Série annulée » était
   // annoncé même quand TOUS les appels serveur échouaient — chaque refus
@@ -6939,7 +6963,7 @@ async function toggleCancelEvent(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
   const cancel = !_eventIsCancelled(ev);
-  if (cancel && !confirm("Annuler cet événement ? Les inscrits seront prévenus.")) return;
+  if (cancel && !(await confirmerAction({ titre: "Annuler cette activité ?", texte: "Les inscrits seront prévenus. Tu pourras la réactiver.", libelle: "Annuler l'activité", annuler: "Garder l'activité", danger: true }))) return;
   // Le serveur d'abord : « annulé » n'est ni affiché ni notifié sur un refus
   // (même famille que ROB-02 / IRL-06 ; l'annulation optimiste restait barrée
   // à l'écran après « Changement non synchronisé »).
@@ -6958,7 +6982,7 @@ async function toggleCancelEvent(id) {
 async function deleteEventConfirm(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
-  if (!confirm("Supprimer définitivement « " + (ev.title || "") + " » ? Cette action est irréversible.")) return;
+  if (!(await confirmerAction({ titre: "Supprimer « " + (ev.title || "cette activité") + " » ?", texte: "Elle disparaît pour tout le monde, et ses inscrits sont prévenus. Cette action est définitive.", libelle: "Supprimer définitivement", danger: true }))) return;
   // ⚠️ LE VERDICT DU SERVEUR EST LU, ET LES INSCRITS SONT PRÉVENUS (IRL-06,
   // 2026-09-14). « Événement supprimé » était affiché quel que soit le retour de
   // `supaDeleteEvent` (qui rendait déjà false sur refus ou zéro ligne) : un

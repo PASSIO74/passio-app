@@ -40,7 +40,7 @@ function openPostOptionsAutrui(postId) {
       <button class="post-option" onclick="closeModal();reportPost('${escapeJsArg(postId)}')">🚩 Signaler cette publication</button>
       ${bloque
         ? `<button class="post-option" onclick="closeModal();unblockUser('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">✅ Débloquer ${escapeHtml(nom)}</button>`
-        : `<button class="post-option danger" onclick="closeModal();blockUser('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">🚫 Bloquer ${escapeHtml(nom)}</button>`}
+        : `<button class="post-option danger" onclick="closeModal();demanderBlocage('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">🚫 Bloquer ${escapeHtml(nom)}</button>`}
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
@@ -2455,7 +2455,7 @@ function _cmtAct(kind) {
   else if (kind === "pin") { togglePinComment(ctx.threadId, ctx.commentId); }
   else if (kind === "delete") { deleteCommentEntry(ctx.threadId, ctx.commentId); }
   else if (kind === "hide") { deleteCommentEntry(ctx.threadId, ctx.commentId, true); toast("Commentaire masqué"); }
-  else if (kind === "block") { if (typeof blockUser === "function") blockUser(ctx.authorId); }
+  else if (kind === "block") { demanderBlocage(ctx.authorId, ctx.name); }
   else if (kind === "report") { reportCommentEntry(ctx.threadId, ctx.commentId); }
 }
 
@@ -4155,6 +4155,8 @@ function _nmDoSearch(q) {
   // des résultats ; sans contact, une consigne au lieu de faux contacts.
   var compte = (typeof _compteAuthReel === "function") && _compteAuthReel();
   if (compte) all = all.filter(function (u) { return !estPersonneExemple(u.id); });
+  // LOT-6 (REC-C03) : ni personne bloquée.
+  all = all.filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); });
 
   var matches = q ? all.filter(function(u) { return plierRecherche(u.name).includes(q); }) : all;
   matches = matches.slice(0, 10);
@@ -4261,7 +4263,8 @@ function searchUsers(query) {
 
     // Seed : exclure ceux déjà dans Supabase
     var seedFiltered = seedUsers.filter(function(u) { return !supaIds.has(u.id); });
-    var matches = supaFormatted.concat(seedFiltered).slice(0, 8);
+    // LOT-6 (REC-C03) : une personne bloquée n'est pas un résultat.
+    var matches = supaFormatted.concat(seedFiltered).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0, 8);
 
     if (matches.length === 0) {
       results.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun utilisateur trouvé</div>";
@@ -4638,8 +4641,8 @@ async function openUserProfile(authorId, source) {
   if (typeof supa !== "undefined" && supa) {
     try {
       const [fRes, gRes] = await Promise.all([
-        supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", authorId),
-        supa.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", authorId),
+        seulementAbonnementsAcceptes(supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", authorId)),
+        seulementAbonnementsAcceptes(supa.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", authorId)),
       ]);
       followerCount = fRes.count || 0;
       followingCount = gRes.count || 0;
@@ -4799,7 +4802,7 @@ function openVisitedProfileMenu(ev, authorId, name) {
     { label: "Signaler", run: function () { reportUser(authorId, name); } },
     bloque
       ? { label: "Débloquer", run: function () { unblockUser(authorId, name); closeModal(); } }
-      : { label: "Bloquer", danger: true, run: function () { blockUser(authorId, name); } }
+      : { label: "Bloquer", danger: true, run: function () { demanderBlocage(authorId, name); } }
   ]);
 }
 
@@ -5035,6 +5038,18 @@ var VISITED_PROFILE_COLS = "id,username,emoji,color,passion_id,passions,bio,avat
 // silence. Les surfaces marquent donc leurs boutons d'un `data-follow-uid` et on
 // les retourne TOUS ; l'identifiant historique reste pris en compte pour les
 // surfaces qui ne l'ont pas encore.
+// LOT-6 (REC-C01) : repeint TOUS les boutons de suivi présents dans la page, avec
+// le moteur unique (`_peindreBoutonsSuivi`, libellé de `libelleBoutonSuivi`).
+function repeindreBoutonsSuiviVisibles() {
+  var vus = {};
+  Array.prototype.forEach.call(document.querySelectorAll('[data-follow-uid], [id^="followBtn_"]'), function (b) {
+    var uid = b.getAttribute("data-follow-uid") || String(b.id || "").replace(/^followBtn_/, "");
+    if (!uid || vus[uid]) return;
+    vus[uid] = true;
+    try { _peindreBoutonsSuivi(uid, etatSuivi(uid)); } catch (e) { try { diagLog("repeint suivi : " + (e && e.message)); } catch (_e) {} }
+  });
+}
+
 function _boutonsSuivi(userId) {
   var out = [];
   try {
@@ -5278,6 +5293,24 @@ function _peindreBoutonsSuivi(userId, etat) {
 // contraire, et l'état local, lui, survivait à la réhydratation. Même famille
 // que « signalement envoyé » annoncé sans écriture (2026-09-10).
 // Optimiste à l'écran, puis le verdict : un échec ANNULE l'affichage et le dit.
+// LOT-6 (audit UX/UI du 2026-11-10, TRA-C10) — UNE SEULE PORTE DE BLOCAGE.
+// Quatre portes, deux comportements : immédiat au premier toucher (fil, profil,
+// commentaire) ou boîte native (conversation). Toutes passent par cette feuille,
+// qui dit les effets AVANT. `blockUser` reste l'exécutant (verdict serveur, retour
+// arrière) ; rien n'est bloqué sans « Bloquer ».
+async function demanderBlocage(userId, name) {
+  if (!userId || userId === MY_UID || userId === "me") return false;
+  var nom = name || "ce compte";
+  var oui = await confirmerAction({
+    titre: "Bloquer " + nom + " ?",
+    texte: ["Vous ne verrez plus vos publications, commentaires et messages l'un de l'autre.",
+            "Vous ne pourrez plus vous écrire, et l'abonnement est retiré. " + nom + " n'est pas prévenu·e."],
+    libelle: "Bloquer", danger: true,
+  });
+  if (!oui) return false;
+  return blockUser(userId, name);
+}
+
 async function blockUser(userId, name) {
   if (!userId || userId === MY_UID || userId === "me") return false;
   if (_ecritureBlocageEnCours[userId]) return false; // écriture en cours (ROB-04)
@@ -6646,9 +6679,15 @@ function _renderReplyBar() {
 // Au-dessus de tout (conversation pleine page ET fenêtre modale : `openModal`
 // remplace la modale courante, cette feuille non). Texte posé par `textContent`
 // (le nom d'un autre compte y passe). Fond, « Annuler » et Échap ferment sans agir.
-//   o = { titre, texte, actions: [{ libelle, danger, agir }], annuler }
+//   o = { titre, texte, actions: [{ libelle, danger, agir }], annuler,
+//         champ: { valeur, placeholder, multiligne, max } (LOT-6), surAnnuler }
+// Avec `champ`, `agir` reçoit le texte saisi. `surAnnuler` est appelé quand la
+// feuille se ferme SANS action (Annuler, fond, Échap).
 function ouvrirFeuilleConfirmation(o) {
   o = o || {};
+  // Une feuille encore ouverte se ferme par SON `fermer` : sa promesse se résout
+  // (« non ») et son écouteur Échap part — un `remove()` nu les laissait en suspens.
+  if (typeof window._fermerFeuilleConf === "function") { try { window._fermerFeuilleConf(); } catch (e) {} }
   var ancien = document.getElementById("feuilleConfirmation");
   if (ancien) ancien.remove();
   var ov = document.createElement("div");
@@ -6670,10 +6709,27 @@ function ouvrirFeuilleConfirmation(o) {
     p.textContent = t;
     f.appendChild(p);
   });
+  var champ = null;
+  if (o.champ) {
+    champ = document.createElement(o.champ.multiligne ? "textarea" : "input");
+    champ.className = "feuille-conf-champ";
+    champ.id = "feuilleConfirmationChamp";
+    if (!o.champ.multiligne) champ.type = "text";
+    else champ.rows = 3;
+    champ.value = o.champ.valeur || "";
+    if (o.champ.placeholder) champ.placeholder = o.champ.placeholder;
+    if (o.champ.max) champ.maxLength = o.champ.max;
+    champ.setAttribute("aria-labelledby", "feuilleConfirmationTitre");
+    f.appendChild(champ);
+  }
+  var agi = false;
   var fermer = function () {
     document.removeEventListener("keydown", surTouche, true);
     if (ov.parentNode) ov.parentNode.removeChild(ov);
+    if (window._fermerFeuilleConf === fermer) window._fermerFeuilleConf = null;
+    if (!agi && typeof o.surAnnuler === "function") { try { o.surAnnuler(); } catch (e) {} }
   };
+  window._fermerFeuilleConf = fermer;
   var surTouche = function (e) { if (e.key === "Escape") { e.stopPropagation(); fermer(); } };
   (o.actions || []).forEach(function (a) {
     var b = document.createElement("button");
@@ -6681,9 +6737,21 @@ function ouvrirFeuilleConfirmation(o) {
     b.className = "feuille-conf-btn" + (a.danger ? " feuille-conf-danger" : " feuille-conf-primaire");
     b.textContent = a.libelle;
     if (a.id) b.setAttribute("data-conf", a.id);
-    b.addEventListener("click", function () { fermer(); try { a.agir && a.agir(); } catch (e) { try { diagLog("feuille_conf : " + (e && e.message)); } catch (_e) {} } });
+    b.addEventListener("click", function () {
+      agi = true;
+      var saisi = champ ? champ.value : undefined;
+      fermer();
+      try { a.agir && a.agir(saisi); } catch (e) { try { diagLog("feuille_conf : " + (e && e.message)); } catch (_e) {} }
+    });
     f.appendChild(b);
   });
+  if (champ && !o.champ.multiligne) {
+    champ.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      var premier = f.querySelector(".feuille-conf-btn[data-conf]:not([data-conf='annuler'])");
+      if (premier) { e.preventDefault(); premier.click(); }
+    });
+  }
   var annuler = document.createElement("button");
   annuler.type = "button";
   annuler.className = "feuille-conf-btn feuille-conf-annuler";
@@ -6695,8 +6763,38 @@ function ouvrirFeuilleConfirmation(o) {
   ov.addEventListener("click", function (e) { if (e.target === ov) fermer(); });
   document.addEventListener("keydown", surTouche, true);
   document.body.appendChild(ov);
-  try { (f.querySelector(".feuille-conf-btn") || annuler).focus(); } catch (e) {}
+  // Un geste DESTRUCTEUR ne se confirme pas d'un Entrée réflexe : le focus va sur « Annuler ».
+  var destructeur = (o.actions || []).some(function (a) { return a && a.danger; });
+  try { (champ || (destructeur ? annuler : f.querySelector(".feuille-conf-btn")) || annuler).focus(); } catch (e) {}
   return fermer;
+}
+
+// LOT-6 (audit UX/UI du 2026-11-10, TRA-C11) — LES BOÎTES NATIVES REMPLACÉES.
+// Huit `confirm()` et quatre `prompt()` : une boîte système qui ne ressemble pas
+// à PASSIO (titre = adresse du site sous Android), qui ne dit pas les
+// conséquences et qu'un test ne capture pas. Deux promesses sur la feuille :
+//   confirmerAction({ titre, texte, libelle, danger }) → true | false
+//   demanderTexte({ titre, texte, valeur, placeholder, libelle, multiligne, max }) → texte | null
+function confirmerAction(o) {
+  o = o || {};
+  return new Promise(function (resoudre) {
+    ouvrirFeuilleConfirmation({
+      titre: o.titre, texte: o.texte, annuler: o.annuler,
+      actions: [{ id: "ok", libelle: o.libelle || "Confirmer", danger: o.danger !== false, agir: function () { resoudre(true); } }],
+      surAnnuler: function () { resoudre(false); },
+    });
+  });
+}
+function demanderTexte(o) {
+  o = o || {};
+  return new Promise(function (resoudre) {
+    ouvrirFeuilleConfirmation({
+      titre: o.titre, texte: o.texte, annuler: o.annuler,
+      champ: { valeur: o.valeur || "", placeholder: o.placeholder || "", multiligne: !!o.multiligne, max: o.max || 0 },
+      actions: [{ id: "ok", libelle: o.libelle || "Valider", danger: false, agir: function (v) { resoudre(v == null ? "" : String(v)); } }],
+      surAnnuler: function () { resoudre(null); },
+    });
+  });
 }
 
 // Le nom à qui l'on parle, pour les phrases de confirmation.

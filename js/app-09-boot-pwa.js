@@ -1664,8 +1664,9 @@ function _toggleMuteConv(convId) {
   toast(c._muted ? "🔕 Notifications coupées" : "🔔 Notifications activées");
 }
 
-function _clearConvMessages(convId) {
-  if (!confirm("Effacer tous les messages ?")) return;
+async function _clearConvMessages(convId) {
+  // LOT-6 (TRA-C11) : feuille de l'application ; la portée est dite.
+  if (!(await confirmerAction({ titre: "Effacer tous les messages ?", texte: "Ils disparaissent de cet appareil. Ils restent visibles chez les autres membres.", libelle: "Effacer les messages", danger: true }))) return;
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; });
   if (!c) return;
@@ -1696,8 +1697,8 @@ function _exportConv(convId) {
   toast("Exporté !");
 }
 
-function _deleteConv(convId) {
-  if (!confirm("Supprimer cette conversation ?")) return;
+async function _deleteConv(convId) {
+  if (!(await confirmerAction({ titre: "Supprimer cette conversation ?", texte: "Elle disparaît de ta liste et de cet appareil. Elle reste chez les autres.", libelle: "Supprimer", danger: true }))) return;
   conversationsState = (conversationsState||[]).filter(function(c){ return c.id !== convId; });
   // Pierres tombales : la conversation ne revient ni au boot ni par la fusion,
   // et son historique reste effacé si un nouveau message la fait réapparaître
@@ -1742,24 +1743,26 @@ function _markConvUnread(convId) {
 }
 
 // Bloquer depuis la conversation (avec confirmation) → masque ses messages + retour liste.
-function _blockFromConv(convId) {
+async function _blockFromConv(convId) {
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; });
   if (!c || c.isGroup) return;
-  if (!confirm("Bloquer " + (c.userName || "cet utilisateur") + " ?\nSes messages seront masqués et tu ne le suivras plus.")) return;
+  // LOT-6 (TRA-C10) : la même feuille que les trois autres portes de blocage.
+  var fait = await demanderBlocage(c.userId, c.userName);
+  if (!fait) return;
   closeConvSettings();
-  if (typeof blockUser === "function") blockUser(c.userId, c.userName);
   try { if (typeof closeConversation === "function") closeConversation(); } catch(e) {}
 }
 
 // Recherche de texte dans la conversation : filtre le fil sur les messages
 // correspondants, avec un bandeau « Tout afficher » pour revenir.
-function _searchConv(convId) {
+async function _searchConv(convId) {
   closeConvSettings();
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; });
   if (!c) return;
-  var q = prompt("🔍 Rechercher dans la conversation :");
+  // LOT-6 (TRA-C11) : un champ dans une feuille de l'application, plus de prompt().
+  var q = await demanderTexte({ titre: "Rechercher dans la conversation", placeholder: "Un mot, un nom…", libelle: "Rechercher" });
   if (q == null) return;
   q = q.trim().toLowerCase();
   if (!q) return;

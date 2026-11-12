@@ -24,6 +24,8 @@ async function banc(page) {
     window._supaReal = true;
     window.__toasts = []; window.__notifs = [];
     window.toast = (t) => window.__toasts.push(String(t));
+    // LOT-6 (TRA-C11) : plus de boîte native — le banc répond « oui » à la feuille de l'application.
+    window.confirmerAction = async () => true;
     window.confirm = () => true;
     window.supaInsertNotif = async (to, kind, ref, txt) => { window.__notifs.push(kind + ":" + to); };
     window.__cancel = true; window.supaCancelEvent = async () => window.__cancel;

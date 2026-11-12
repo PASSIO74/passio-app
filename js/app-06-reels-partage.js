@@ -1144,7 +1144,7 @@ function renderMainProfile() {
 async function loadFollowersCount() {
   if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) return;
   try {
-    const { count } = await supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", MY_UID);
+    const { count } = await seulementAbonnementsAcceptes(supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", MY_UID));
     window._followersCount = count || 0;
     var fEl = document.getElementById("mainStatFollowers");
     if (fEl) fEl.textContent = window._followersCount;
@@ -1215,7 +1215,7 @@ async function openFollowersList() {
     return;
   }
   try {
-    const { data: rels } = await supa.from("follows").select("follower_id").eq("following_id", MY_UID);
+    const { data: rels } = await seulementAbonnementsAcceptes(supa.from("follows").select("follower_id").eq("following_id", MY_UID));
     var ids = (rels || []).map(function(r){ return r.follower_id; }).filter(Boolean);
     if (!ids.length) { if (body) body.innerHTML = _peopleEmpty("Personne ne te suit encore."); return; }
     const { data: profs } = await supa.from("profiles").select("id,username,emoji,color,passions").in("id", ids);
@@ -1954,7 +1954,8 @@ function openEditMainProfile() {
 
     <label class="field">
       <span>Pseudo</span>
-      <input type="text" class="input" id="editUsername" value="${escapeHtml(g.username || state.user.name || "")}" maxlength="40" placeholder="Ton nom sur PASSIO"/>
+      <input type="text" class="input" id="editUsername" value="${escapeHtml(g.username || state.user.name || "")}" maxlength="40" placeholder="Ton nom sur PASSIO" aria-describedby="editUsernameErreur"/>
+      <span class="champ-erreur" id="editUsernameErreur" role="alert" hidden></span>
     </label>
 
     <label class="field">
@@ -2038,8 +2039,30 @@ function editCoverFromModal() {
   if (inp) inp.click();
 }
 
+// LOT-6 (audit UX/UI du 2026-11-10, PRO-C03) : l'erreur d'un pseudo se dit SOUS le
+// champ, modale ouverte — un toast se peignait sous la modale, invisible.
+function _erreurPseudo(msg) {
+  var e = document.getElementById("editUsernameErreur");
+  var inp = document.getElementById("editUsername");
+  if (e) { e.textContent = msg || ""; e.hidden = !msg; }
+  if (inp) { if (msg) { inp.setAttribute("aria-invalid", "true"); try { inp.focus(); } catch (x) {} } else inp.removeAttribute("aria-invalid"); }
+  if (msg && !e) toast("⚠️ " + msg);
+}
+
 async function saveMainProfile() {
   const username = document.getElementById("editUsername")?.value.trim() || "";
+  _erreurPseudo("");
+  // LOT-6 (PRO-C03) : la même règle qu'à l'inscription (`nomCompteValide`, app-02,
+  // seule autorité du nom) — un pseudo vide ou réservé (« Admin ») partait en PATCH
+  // et l'écran disait « Profil mis à jour ».
+  if (typeof nomCompteValide === "function" && !nomCompteValide(username)) {
+    _erreurPseudo(!username
+      ? "Choisis un pseudo."
+      : (typeof nomCompteReserve === "function" && nomCompteReserve(username))
+        ? "Ce pseudo est réservé, choisis-en un autre."
+        : "Ton pseudo doit faire entre " + (typeof NOM_COMPTE_MIN !== "undefined" ? NOM_COMPTE_MIN : 2) + " et " + (typeof NOM_COMPTE_MAX !== "undefined" ? NOM_COMPTE_MAX : 40) + " caractères.");
+    return;
+  }
   // ⚠️ PAS de `.trim()` seul : il écrase les espaces aux bouts mais laisse passer
   // les \r d'un collage Windows, et n'a jamais borné les lignes vides. La bio est
   // MULTILIGNE (rendue en `white-space: pre-line`), donc elle passe par le
@@ -2051,13 +2074,13 @@ async function saveMainProfile() {
 
   // CLI-01 : mêmes caractères interdits que la base (`profiles_username_forme`).
   if (username && typeof nomCompteCaracteresInterdits === "function" && nomCompteCaracteresInterdits(username)) {
-    toast("⚠️ Ton pseudo ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse");
+    _erreurPseudo("Ton pseudo ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse.");
     return;
   }
   // Unicité du pseudo : refuse un pseudo déjà porté par un autre compte.
   if (username && typeof supaUsernameTaken === "function") {
     const takenBy = await supaUsernameTaken(username);
-    if (takenBy) { toast("⚠️ Ce pseudo est déjà utilisé, choisis-en un autre"); return; }
+    if (takenBy) { _erreurPseudo("Ce pseudo est déjà utilisé, choisis-en un autre."); return; }
   }
 
   if (!state.user.general) state.user.general = {};
@@ -5770,6 +5793,9 @@ function renderExplorer() {
   // suivi. Tout passe désormais par `toggleFollowUser` (app-04), qui garde
   // `requireAuthentication`, sait DÉSUIVRE, et synchronise.
   function ligneCreateur(u) {
+  // LOT-6 (audit UX/UI du 2026-11-10, REC-C03) : une personne qu'on a BLOQUÉE ne revient
+  // pas comme suggestion ni comme résultat. Les garde-fous serveur restent inchangés.
+    if (typeof isBlocked === "function" && isBlocked(u.id)) return "";
     var suivi = ((state.user.following || []).indexOf(u.id) >= 0);
     return '<div class="list-row" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">'
       + '<div class="avatar" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
@@ -5784,7 +5810,7 @@ function renderExplorer() {
   }
 
   function createursSeed() {
-    return (state.seed.users || []).slice(0, 4).map(function (u) {
+    return (state.seed.users || []).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0, 4).map(function (u) {
       var p = passionById(u.passion);
       return ligneCreateur({
         id: u.id, name: u.name, avatar: u.avatar, profileEmoji: u.profileEmoji,

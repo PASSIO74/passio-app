@@ -26,6 +26,8 @@ async function banc(page, verdict) {
     window.__toasts = [];
     const vrai = window.toast;
     window.toast = function (m) { window.__toasts.push(String(m)); try { return vrai.apply(this, arguments); } catch (e) {} };
+    // LOT-6 (TRA-C11) : plus de boîte native — le banc répond « oui » à la feuille de l'application.
+    window.confirmerAction = async () => true;
     window.confirm = () => true;
     window.__ecritures = [];
     const rendu = () => verdict === "ok" ? { data: [{ id: cid, conv_id: cid }], error: null } : { data: [], error: null };
@@ -67,7 +69,7 @@ const lire = (page) => page.evaluate((cid) => {
 test.describe("SRV-04 et ETAT-04 : description et sortie d'un groupe sous verdict", () => {
   test("① description refusée : l'ancienne revient, rien n'est annoncé comme fait", async ({ page }) => {
     await banc(page, "zero");
-    await page.evaluate(async (cid) => { window.prompt = () => "Nouvelle"; try { await editGroupDescription(cid); } catch (e) {} }, CONV);
+    await page.evaluate(async (cid) => { window.demanderTexte = async () => "Nouvelle"; try { await editGroupDescription(cid); } catch (e) {} }, CONV);
     const r = await lire(page);
     expect(r.ecritures).toEqual(["update:conversations"]);
     expect(r.desc).toBe("Ancienne");
@@ -77,7 +79,7 @@ test.describe("SRV-04 et ETAT-04 : description et sortie d'un groupe sous verdic
 
   test("② description acceptée : gardée et annoncée", async ({ page }) => {
     await banc(page, "ok");
-    await page.evaluate(async (cid) => { window.prompt = () => "Nouvelle"; try { await editGroupDescription(cid); } catch (e) {} }, CONV);
+    await page.evaluate(async (cid) => { window.demanderTexte = async () => "Nouvelle"; try { await editGroupDescription(cid); } catch (e) {} }, CONV);
     const r = await lire(page);
     expect(r.desc).toBe("Nouvelle");
     expect(r.toasts).toContain("Description mise à jour");

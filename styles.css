@@ -12607,3 +12607,24 @@ button, a, label, select, summary,
 .cmt-react-chip { position: relative; }
 .cmt-react-chip::after { content: ""; position: absolute; left: -4px; right: -4px; top: 50%; height: 44px; transform: translateY(-50%); }
 .profile-dots-btn:not(.on-cover) { position: relative; }
+
+/* LOT-6 (audit UX/UI du 2026-11-10, TRA-C17) : le bas de la fiche d'activité
+   dégage TOUJOURS le pied collant. La marge fixe (100 px) était plus courte que
+   le pied (129 px, plus encore à l'état « inscrit ») : « Signaler cet
+   événement » et « Inviter » restaient dessous, intouchables. La hauteur du
+   pied est mesurée (`--fiche-pied`, posée par app-07). */
+#eventDetailPage .event-detail-body {
+  padding-bottom: calc(var(--fiche-pied, 140px) + 20px + env(safe-area-inset-bottom, 0px));
+}
+
+/* LOT-6 (PRO-C03) : l'erreur d'un champ, sous le champ. */
+.champ-erreur { display: block; margin-top: 6px; font-size: 13px; font-weight: 600; color: #b42318; }
+.champ-erreur[hidden] { display: none; }
+
+/* LOT-6 (TRA-C11) : le champ d'une feuille de l'application (plus de prompt()). */
+.feuille-conf-champ {
+  display: block; width: 100%; box-sizing: border-box; margin: 6px 0 4px;
+  padding: 12px 14px; border: 1.5px solid var(--border, #e4defa); border-radius: 12px;
+  font: inherit; font-size: 16px; color: inherit; background: #fff; resize: vertical;
+}
+.feuille-conf-champ:focus { outline: none; border-color: #7c3aed; }
