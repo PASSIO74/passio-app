@@ -6719,6 +6719,10 @@ function ouvrirFeuilleConfirmation(o) {
     champ.value = o.champ.valeur || "";
     if (o.champ.placeholder) champ.placeholder = o.champ.placeholder;
     if (o.champ.max) champ.maxLength = o.champ.max;
+    if (o.champ.lectureSeule) {
+      champ.readOnly = true;
+      champ.addEventListener("focus", function () { try { champ.select(); } catch (e) {} });
+    }
     champ.setAttribute("aria-labelledby", "feuilleConfirmationTitre");
     f.appendChild(champ);
   }
@@ -6775,6 +6779,29 @@ function ouvrirFeuilleConfirmation(o) {
 // conséquences et qu'un test ne capture pas. Deux promesses sur la feuille :
 //   confirmerAction({ titre, texte, libelle, danger }) → true | false
 //   demanderTexte({ titre, texte, valeur, placeholder, libelle, multiligne, max }) → texte | null
+// LOT-10 (audit UX/UI du 2026-11-10, PAR-C04) — UN LIEN QU'ON N'A PAS PU COPIER.
+// Le presse-papiers refusé, le lien n'apparaissait que 3 s dans un toast non
+// sélectionnable — ou pas du tout pour une bobine. Il est posé dans un champ en
+// lecture seule, sélectionné, avec « Copier » (nouvel essai, puis sélection
+// manuelle si le navigateur refuse encore).
+function montrerLienACopier(url, titre) {
+  ouvrirFeuilleConfirmation({
+    titre: titre || "Copie ce lien",
+    texte: "Ton navigateur n'a pas autorisé la copie automatique. Le lien est sélectionné : copie-le, ou appuie sur « Copier ».",
+    champ: { valeur: String(url || ""), lectureSeule: true },
+    annuler: "Fermer",
+    actions: [{ id: "copier", libelle: "Copier", danger: false, agir: function () {
+      var ok = function () { toast("Lien copié"); };
+      var echec = function () { montrerLienACopier(url, "Sélectionne le lien pour le copier"); };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(String(url)).then(ok, echec);
+        else echec();
+      } catch (e) { echec(); }
+    } }],
+  });
+  try { var c = document.getElementById("feuilleConfirmationChamp"); if (c) c.select(); } catch (e) {}
+}
+
 function confirmerAction(o) {
   o = o || {};
   return new Promise(function (resoudre) {

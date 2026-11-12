@@ -84,7 +84,9 @@ async function sharePostInFeed(id) {
     authorColor: prof?.color || g.color || "#8b5cf6",
     // ⚠️ PAS d'escapeHtml : voir la note de `shareReelInFeed` (app-05) — `text`
     // est échappé à l'affichage, l'échapper ici le fait passer deux fois.
-    text: `📤 A partagé un post\n\n${passion.emoji} ${post.authorName || "Passionné"} – ${passion.label}\n\n"${txt.slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
+    // LOT-10 (PAR-C06) : la carte citée montre l'originale ; le texte stocké reste
+    // une phrase sobre, lisible par un client qui n'a pas encore la carte.
+    text: "A partagé une publication de " + (post.authorName || "Passionné"),
     // Le repartage est MA publication : il hérite du classement de la source
     // quand celui-ci peut partir, et retombe sur le mien sinon. `posts` est en
     // politique OBLIGATOIRE (ADR-010) — `null` ferait refuser l'envoi.
@@ -101,7 +103,9 @@ async function sharePostInFeed(id) {
       authorName: post.authorName || "Passionné",
       authorEmoji: post.authorEmoji || "✨",
       authorColor: post.authorColor || "#8b5cf6",
-      passion: post.passion
+      passion: post.passion,
+      media: (function () { var m = post.image || post.photo || post.poster || post.coverPhotoUrl || ""; return /^data:/.test(String(m)) ? "" : m; })(),
+      isReel: !!post.isReel,
     }
   };
 

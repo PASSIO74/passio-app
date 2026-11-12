@@ -3757,10 +3757,10 @@ function partagerOuCopier(data, msgCopie) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(texteCopie).then(
         function () { toast(msgCopie || "Lien copié"); },
-        function () { toast("Lien : " + url); }
+        function () { montrerLienACopier(url); }
       );
     } else {
-      toast("Lien : " + url);
+      montrerLienACopier(url);
     }
   };
   if (!navigator.share) { copier(); return; }
@@ -8593,6 +8593,36 @@ function filReelDabordActif() {
 function seulementAbonnementsAcceptes(q) {
   return (window._followsSansStatut === true || !q || typeof q.eq !== "function") ? q : q.eq("status", "accepted");
 }
+// LOT-10 (PAR-C06) — LA CARTE CITÉE D'UN REPARTAGE. `sharedReelData` est écrit par
+// le compte qui repartage (`posts.shared_data`) : donnée HOSTILE, tout est échappé,
+// la vignette passe par `safeUrlAttr`. L'originale encore en mémoire fait foi
+// (vignette, auteur à jour) ; la copie sert de repli. Toucher la carte ouvre
+// l'ORIGINALE (`sharedReel` = son identifiant), plus le repartage lui-même.
+function carteCiteeHTML(p) {
+  if (!p || !p.sharedReel) return "";
+  var d = p.sharedReelData || {};
+  var vrai = (typeof findPostAnywhere === "function") ? findPostAnywhere(p.sharedReel) : null;
+  var auteur = (vrai && vrai.authorName) || d.authorName || "Passionné";
+  var emoji = (vrai && vrai.authorEmoji) || d.authorEmoji || "✨";
+  var pid = (vrai && vrai.passion) || d.passion || "";
+  var pa = pid && typeof passionById === "function" ? passionById(pid) : null;
+  var texte = String((vrai && (vrai.text || vrai.caption)) || d.text || "");
+  var extrait = texte.length > 160 ? texte.slice(0, 160) + "…" : texte;
+  var media = (vrai && (vrai.image || vrai.photo || vrai.poster || vrai.coverPhotoUrl)) || d.media || "";
+  if (/^data:/.test(String(media))) media = "";
+  var vignette = media ? ((typeof passioThumb === "function") ? passioThumb(media, 192) : media) : "";
+  var bobine = !!((vrai && vrai.isReel) || d.isReel || d.type === "bobine");
+  return '<div class="post-citee" role="link" tabindex="0" data-citee="' + escapeHtml(p.sharedReel) + '"'
+    + ' onclick="event.stopPropagation();' + (bobine ? "openReelById" : ((typeof feedIntentsEnabled === "function" && feedIntentsEnabled()) ? "openFeedPost" : "openPost")) + '(\'' + escapeJsArg(p.sharedReel) + '\')">'
+    + '<div class="post-citee-tete">A partagé ' + (bobine ? "une bobine" : "une publication") + '</div>'
+    + '<div class="post-citee-corps">'
+    + (vignette ? '<img class="post-citee-media" src="' + safeUrlAttr(vignette) + '" alt="" loading="lazy" onerror="this.remove()">' : "")
+    + '<div class="post-citee-texte">'
+    + '<div class="post-citee-auteur">' + escapeHtml(emoji) + " " + escapeHtml(auteur) + (pa ? ' · <span class="post-citee-passion">' + escapeHtml(pa.emoji || "") + " " + escapeHtml(pa.label || "") + "</span>" : "") + '</div>'
+    + (extrait ? '<div class="post-citee-extrait">' + escapeHtml(extrait) + '</div>' : "")
+    + '</div></div></div>';
+}
+
 function estExempleDuFil(p) { return !!p && p._source === "seed"; }
 // LOT-4/5 (audit UX/UI du 2026-11-10, MSG-C03, MSG-C04, REC-C02) : une PERSONNE
 // d'exemple est un membre du socle de démonstration (`state.seed.users`) qui
@@ -10461,8 +10491,13 @@ function renderPostHTML(p) {
     </div>`;
   }).join("");
 
+  // LOT-10 (audit UX/UI du 2026-11-10, PAR-C06) : un REPARTAGE montre l'originale
+  // comme une carte citée (vignette, auteur, passion, extrait) qui y mène. Le
+  // texte « 📤 A partagé… » que les anciens repartages portent en clair n'est pas
+  // repeint : la citation le remplace.
+  const _citee = carteCiteeHTML(p);
   // Tronquer le texte long avec un "Lire la suite"
-  const fullText = p.text || "";
+  const fullText = _citee ? "" : (p.text || "");
   const truncated = fullText.length > 220;
   const displayText = truncated ? fullText.slice(0, 220) + "…" : fullText;
   // Le HTML historique reste littéralement identique quand le flag est OFF.
@@ -10528,7 +10563,8 @@ function renderPostHTML(p) {
       ${_moodTagHTML(p.mood)}
     </div>
 
-    <div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">${escapeHtml(displayText)}${truncated ? ` <span style="color:var(--accent);font-weight:700;white-space:nowrap;">Lire la suite</span>` : ""}</div>
+    ${_citee ? "" : `<div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">${escapeHtml(displayText)}${truncated ? ` <span style="color:var(--accent);font-weight:700;white-space:nowrap;">Lire la suite</span>` : ""}</div>`}
+    ${_citee}
     <div onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">${media}</div>
 
     <div class="post-actions">

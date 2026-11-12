@@ -3970,7 +3970,19 @@ async function openEventChat(id) {
     toast("Ouverture de la discussion…");
     await _joinEventConversation(ev);
   }
-  if (!ev.convId) { toast("Discussion indisponible hors connexion"); return; }
+  // LOT-10 (audit UX/UI du 2026-11-10, IRL-C51) : le message accusait le réseau
+  // alors qu'on était en ligne. La discussion n'existe qu'une fois qu'un
+  // gestionnaire l'a ouverte : tant que ce n'est pas fait, c'est CE QU'ON DIT.
+  // (L'ouvrir dès la publication est une règle serveur — hors de ce lot.)
+  if (!ev.convId) {
+    var horsLigne = (typeof navigator !== "undefined" && navigator.onLine === false);
+    toast(horsLigne
+      ? "Discussion indisponible hors connexion"
+      : (_canManageEvent(ev)
+        ? "Impossible d'ouvrir la discussion pour l'instant — réessaie dans un moment"
+        : "La discussion n'est pas encore ouverte par l'organisation de l'activité"));
+    return;
+  }
   // Déjà membre localement : on ouvre. Sinon on DEMANDE l'entrée au serveur et
   // on ne montre la discussion que s'il l'accorde (IRL-10).
   const dejaLocal = typeof getConversations === "function" && getConversations().some(c => c.id === ev.convId);
@@ -8205,7 +8217,7 @@ function _copyCheckinLink(eventId) {
   if (window.tel && tel.shareLink) url = tel.shareLink(url, "checkin", ev.id, "clipboard");
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(function () { toast("Lien copié"); },
-      function () { toast("Lien : " + url); });
+      function () { montrerLienACopier(url); });
   } else { toast("Lien : " + url); }
 }
 

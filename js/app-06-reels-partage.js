@@ -897,14 +897,16 @@ function inviterDesAmis(porte) {
 
 function copyReelLink(postId, encodedUrl) {
   const url = decodeURIComponent(encodedUrl);
+  // LOT-10 (PAR-C04) : la copie refusée levait sans `catch` — aucune réaction.
   if (navigator.clipboard) {
     navigator.clipboard.writeText(url).then(() => {
       _telLinkShare(url, "clipboard");
       toast("Lien copié");
       closeModal();
-    });
+    }, () => { closeModal(); montrerLienACopier(url); });
   } else {
-    toast("Copie impossible sur ce navigateur");
+    closeModal();
+    montrerLienACopier(url);
   }
 }
 
@@ -1012,6 +1014,13 @@ document.addEventListener("keydown", (e) => {
   if (!reelsState.open) {
     return;
   }
+  // LOT-10 (audit UX/UI du 2026-11-10, BOB-C01) : une touche frappée DANS UN CHAMP
+  // (commentaire d'une bobine, recherche…) n'est pas une commande du lecteur.
+  // L'Espace passait à la bobine suivante : « Bonjour à tous » devenait
+  // « Bonjouràtous », et le panneau restait sur les commentaires de la précédente.
+  var cible = e.target;
+  if (cible && (cible.tagName === "INPUT" || cible.tagName === "TEXTAREA" || cible.isContentEditable)) return;
+  if (document.querySelector("#reelCommentsPanel.open, .cmt-sheet-ov, #modalBackdrop.active, #feuilleConfirmation")) return;
   if (e.key === "Escape") { closeReels(); return; }
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
     e.preventDefault();
@@ -1560,7 +1569,11 @@ function passioOpenCropper(src, opts) {
     var VH = Math.round(VW / aspect);
     var ov = document.createElement("div");
     ov.className = "passio-cropper-ov";
-    ov.style.cssText = "position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
+    // LOT-10 (audit UX/UI du 2026-11-10, PRO-C02) : 10050 et non 6000. Ouvert depuis
+    // « Modifier le profil » (modale à 10001), le recadreur s'ouvrait DESSOUS : après
+    // le choix de la photo, rien ne bougeait. Au-dessus des modales, sous les
+    // feuilles de confirmation (100005) et les toasts (100010).
+    ov.style.cssText = "position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
     ov.innerHTML =
       '<div style="color:#fff;font-weight:800;font-size:16px;margin-bottom:14px;text-align:center;">' + escapeHtml(title) + '</div>'
       + '<div id="pcropView" style="position:relative;width:' + VW + 'px;height:' + VH + 'px;overflow:hidden;border-radius:' + (round ? "50%" : "14px") + ';touch-action:none;background:#000;box-shadow:0 0 0 2px rgba(255,255,255,0.9);cursor:grab;">'
@@ -5323,6 +5336,17 @@ async function publishPost() {
     }
   }
 
+  // LOT-10 (audit UX/UI du 2026-11-10, CRE-C01) : le format du DERNIER média restait
+  // en mémoire — photo ajoutée puis retirée, ou déjà publiée, ou « Créer → Audio »
+  // puis « Publication » : le Studio refusait ensuite un texte seul (« Ajoute une
+  // photo. »), et les onglets pour revenir à « Texte » sont masqués depuis UI-6.
+  // `studioType` reste la SEULE source de ce qui est publié : on le REMET juste
+  // quand le média qu'il annonce n'est pas là et qu'un texte est écrit. La
+  // bobine, format choisi explicitement, n'est pas concernée.
+  var _mediaAttendu = { photo: photoDataUrl, video: videoDataUrl, audio: audioDataUrl };
+  if (Object.prototype.hasOwnProperty.call(_mediaAttendu, studioType) && !_mediaAttendu[studioType] && text.length >= 3) {
+    studioType = "text";
+  }
   if (studioType === "text" && text.length < 3) {
     toast("Écris quelque chose.");
     return;
