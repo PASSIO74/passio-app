@@ -237,7 +237,9 @@ test.describe("Créer une passion", () => {
     // aboutissent au même mur : quelqu'un qui vient de se faire refuser une
     // CRÉATION ne doit pas y lire qu'il « suit déjà 3 passions » — ce peut être
     // faux, et un mur qui parle d'autre chose se lit comme une panne.
-    await expect(modale).toContainText("Trois créations offertes");
+    await expect(modale).toContainText("Trois créations de passion");
+    // ADR-013 : la limite de création est l'anti-abus du catalogue, jamais une offre payante.
+    await expect(modale).not.toContainText("payante");
     await expect(modale).toContainText("créations de passion");
     await expect(modale).not.toContainText("Tu suis déjà");
     // ⚠️ AUCUN TARIF, AUCUN BOUTON « PAYER » — invariant du paywall (㉒).
@@ -687,7 +689,9 @@ test.describe("Créer une passion", () => {
     await bouton.click();
     const modale = page.locator("#modalContent");
     await expect(modale).toBeVisible({ timeout: 10000 });
-    await expect(modale).toContainText("Trois créations offertes");
+    await expect(modale).toContainText("Trois créations de passion");
+    // ADR-013 : la limite de création est l'anti-abus du catalogue, jamais une offre payante.
+    await expect(modale).not.toContainText("payante");
     expect(await page.evaluate((i) => estPassionCanonique(i), ID_ESSAI)).toBe(false);
   });
 });

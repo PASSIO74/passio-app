@@ -37,7 +37,7 @@ import {
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
   pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
-  EVT_GESTE, RELANCE_SUIVIE_MS,
+  EVT_GESTE, RELANCE_SUIVIE_MS, seuilsLancement,
 } from "../_shared/pilotage.js";
 import { croissance } from "../_shared/croissance.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
@@ -487,7 +487,7 @@ async function etat(admin: Admin, frais = false) {
     sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), activation: lireActivation(admin), signalements: lireSignalements(admin),
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
     disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin), reglages: lireReglages(admin),
-    historique: lireHistorique(admin), croissance: lireCroissance(admin),
+    historique: lireHistorique(admin), croissance: lireCroissance(admin), seuils: lireSeuils(admin),
     parcours: lireParcours(admin), battement: lireBattement(admin), reception: lireReception(admin),
     relances: lireRelances(admin),
   };
@@ -1280,6 +1280,58 @@ async function deciderMasquage(admin: Admin, id: string, decision: string) {
 
 // Croissance (2026-11-01, _shared/croissance.js) : une lecture agrégée.
 const MIGRATION_CROISSANCE = "migrations/migration_croissance_2026-11-01.sql";
+// Les seuils d'usage du lancement (2026-11-12, seuilsLancement, ADR-013) : par
+// ville, ce qui décide d'ouvrir une offre — jamais un nombre d'inscrits. Lecture
+// seule. Chaque lecture est bornée et le DIT (`partiel`) : un nombre tronqué est
+// un minimum, jamais présenté comme exact.
+const SEUILS_FENETRE_JOURS = 60, SEUILS_PAGES_MAX = 20, SEUILS_PAQUET = 100;
+async function lireSeuils(admin: Admin) {
+  const maintenant = Date.now();
+  let partiel = false;
+  // Les comptes comptés : les mêmes exclusions que l'activation (tests e2e, éditeur, supprimés).
+  const mesurables = new Set<string>();
+  for (let page = 1; page <= SEUILS_PAGES_MAX; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    const lot = (data && data.users) || [];
+    for (const u of lot) if (compteCree(u, EXTRA)) mesurables.add(String(u.id));
+    if (lot.length < 1000) break;
+    if (page === SEUILS_PAGES_MAX) partiel = true;
+  }
+  // Une ligne par compte et par jour actif : paginée, max-rows rend 1 000 lignes au plus.
+  const jour7 = new Date(maintenant - 6 * 864e5).toISOString().slice(0, 10);
+  const actifs: { uid: string }[] = [];
+  for (let page = 0; page < SEUILS_PAGES_MAX; page++) {
+    const { data, error } = await admin.from("activite_jour").select("uid").gte("jour", jour7)
+      .order("jour", { ascending: true }).order("uid", { ascending: true })
+      .range(page * MAX_LIGNES_POSTGREST, (page + 1) * MAX_LIGNES_POSTGREST - 1);
+    if (error) { if (estObjetAbsent(error)) return { absente: true }; throw error; }
+    const lot = (data || []) as { uid: string }[];
+    actifs.push(...lot);
+    if (lot.length < MAX_LIGNES_POSTGREST) break;
+    if (page === SEUILS_PAGES_MAX - 1) partiel = true;
+  }
+  // Les rencontres de la fenêtre : 60 jours en arrière, 60 en avant (colonnes `timestamp` en UTC).
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 19);
+  const { data: rs, error: er } = await admin.from("events").select("id,city,date_at,end_at,status,author_id,organizer_id")
+    .gte("date_at", iso(maintenant - SEUILS_FENETRE_JOURS * 864e5)).lte("date_at", iso(maintenant + SEUILS_FENETRE_JOURS * 864e5))
+    .order("date_at", { ascending: false }).limit(MAX_LIGNES_POSTGREST);
+  if (er) throw er;
+  const rencontres = (rs || []) as Record<string, unknown>[];
+  if (rencontres.length >= MAX_LIGNES_POSTGREST) partiel = true;
+  // Les participations des rencontres déjà commencées, par paquets d'identifiants (taille de l'URL).
+  const passees = rencontres.filter((r) => dateUtc(r.date_at as string) < maintenant).map((r) => String(r.id));
+  const participations: Record<string, unknown>[] = [];
+  for (let i = 0; i < passees.length; i += SEUILS_PAQUET) {
+    const { data, error } = await admin.from("event_attendees").select("event_id,user_id,rsvp,checked_in_at")
+      .in("event_id", passees.slice(i, i + SEUILS_PAQUET)).limit(MAX_LIGNES_POSTGREST);
+    if (error) throw error;
+    if ((data || []).length >= MAX_LIGNES_POSTGREST) partiel = true;
+    participations.push(...((data || []) as Record<string, unknown>[]));
+  }
+  return seuilsLancement({ actifs, rencontres, participations, mesurables, partiel }, maintenant);
+}
+
 async function lireCroissance(admin: Admin) {
   const { data, error } = await admin.rpc("pilotage_croissance", { p_jours: 30 });
   if (error) { if (estObjetAbsent(error)) return { absente: true, migration: MIGRATION_CROISSANCE }; throw error; }

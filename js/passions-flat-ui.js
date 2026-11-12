@@ -89,7 +89,7 @@
 
   function annoncerPlafond() {
     try { if (typeof openPassionPaywall === "function") { openPassionPaywall(); return; } } catch (e) {}
-    dire("Trois passions offertes : les suivantes seront payantes.");
+    dire("Trois passions à la fois : range-en une pour en ajouter une autre.");
   }
 
   function ouvrirAjoutPassions(options) {

@@ -1,5 +1,12 @@
 # PASSIO — Plan de lancement gratuit et de monétisation
 
+> ⛔ **En partie remplacé le 2026-11-12 par [ADR-013](../.passio/adr/ADR-013-membres-gratuits-passions-illimitees.md).**
+> Un membre ne paie jamais : **PASSIO+ est abandonné** (§ 1 ④, § 2, § 8 L7, § 9), et le plafond de
+> passions ne sera jamais vendu. Une offre aux organisateurs ne s'ouvre que sur des **seuils d'usage
+> par ville**, tenus huit semaines, que le centre de pilotage affiche (`SEUILS_LANCEMENT`). Le
+> détail des offres et des prix vit dans le dossier d'affaires, hors de ce dépôt public. Le reste de
+> ce document (densité d'abord, ordre des phases, ce qu'il ne faut pas faire) reste valable.
+
 > 2026-11-01. Réponse à la demande de Benjamin : « un plan complet comme un vrai monétiseur pro pour
 > lancer l'app gratuitement, puis comment gagner de l'argent — quelles options payantes ».
 > Ce document distingue ce qui est **mesuré** (production, 01/11), ce qui est **estimé** (et le dit),

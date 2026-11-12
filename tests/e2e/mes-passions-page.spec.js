@@ -353,7 +353,7 @@ test("⑤ limite atteinte : la porte dit « Limite de N atteinte » — et elle 
     };
   });
   expect(dit.fenetre, "au plafond, la porte n'a rien répondu du tout").toBe(true);
-  expect(dit.texte, "et la fenêtre doit nommer la limite").toContain("Trois passions offertes");
+  expect(dit.texte, "et la fenêtre doit nommer la limite").toContain("Trois passions à la fois");
 });
 
 test("⑥ changement disponible : une information, PAS une alerte", async ({ page }) => {
@@ -831,7 +831,7 @@ test("⑭ ter — allumé, les gestes ABOUTISSENT au-delà du plafond et du quot
   const ouvert = await page.evaluate(() => ({
     recherche: document.querySelectorAll(".psel-input").length,
     mur: ((document.getElementById("modalContent") || {}).textContent || "")
-      .includes("Trois passions offertes"),
+      .includes("Trois passions à la fois"),
   }));
   expect(ouvert.recherche, "la porte n'a pas ouvert de recherche").toBeGreaterThan(0);
   expect(ouvert.mur, "la fenêtre payante s'ouvre alors que rien ne borne").toBe(false);
