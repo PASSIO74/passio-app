@@ -161,11 +161,52 @@ var _exSearchJeton = 0;      // annulation des recherches dépassées
 var _exSearchTimer = null;   // anti-rebond
 var EX_SEARCH_DEBOUNCE = 160;
 
+// LOT-11 (audit UX/UI du 2026-11-10, REC-C07) — LE PANNEAU DE RÉSULTATS SE FERME.
+// Il ne se fermait qu'en vidant le champ lettre à lettre. Croix d'effacement de
+// 44 px, Échap et toucher hors du panneau le ferment ; revenir dans un champ
+// rempli rouvre les résultats.
+function exFermerResultats() {
+  var r = document.getElementById("exploreSearchResults");
+  if (r) r.style.display = "none";
+}
+function exRouvrirResultats() {
+  var inp = document.getElementById("explorerSearch");
+  if (inp && inp.value.trim()) filterExplore();
+}
+function exEffacerRecherche() {
+  var inp = document.getElementById("explorerSearch");
+  if (inp) { inp.value = ""; try { inp.focus(); } catch (e) {} }
+  filterExplore();
+}
+(function _brancherFermetureRecherche() {
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    var r = document.getElementById("exploreSearchResults");
+    if (r && r.style.display !== "none") exFermerResultats();
+  });
+  document.addEventListener("click", function (e) {
+    var r = document.getElementById("exploreSearchResults");
+    if (!r || r.style.display === "none") return;
+    var zone = r.parentNode;
+    if (zone && !zone.contains(e.target)) exFermerResultats();
+  }, true);
+})();
+// LOT-11 (REC-C06) : le panneau descend jusqu'au bas de l'écran au lieu de 360 px.
+function _exHauteurPanneau(r) {
+  try {
+    var haut = r.getBoundingClientRect().top;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    r.style.maxHeight = Math.max(240, Math.floor(vh - haut - 16)) + "px";
+  } catch (e) {}
+}
+
 function filterExplore() {
   var inp = document.getElementById("explorerSearch");
   var results = document.getElementById("exploreSearchResults");
   if (!results) return;
   var query = inp ? inp.value : "";
+  var croix = document.getElementById("explorerClear");
+  if (croix) croix.hidden = !query;
 
   if (_exSearchTimer) { clearTimeout(_exSearchTimer); _exSearchTimer = null; }
 
@@ -177,12 +218,33 @@ function filterExplore() {
   }
 
   results.style.display = "block";
+  _exHauteurPanneau(results);
   results.innerHTML = "<div style='padding:14px;text-align:center;color:var(--muted);font-size:13px;'>Recherche…</div>";
   _exSearchTimer = setTimeout(function () { _exSearchLancer(query.trim()); }, EX_SEARCH_DEBOUNCE);
 }
 
 // Passions correspondant à la frappe. Rend une PROMESSE : le référentiel plat
 // n'est chargé qu'au premier usage réel de la recherche, et c'en est un.
+// LOT-11 (REC-C08, REC-C12) — Passions qui ont des publications RÉELLES (le même
+// compte que la tuile des tendances), et recherche dans le socle embarqué.
+function _exPassionsActivesHTML(n) {
+  var ps = (typeof passionsAvecPublications === "function") ? passionsAvecPublications().slice(0, n) : [];
+  if (!ps.length) return "";
+  return "<div class='ex-suggestions' style='padding:4px 14px 12px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;'>"
+    + ps.map(function (p) {
+      return "<button type='button' class='pill' onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');exFermerResultats();\">" + escapeHtml(p.emoji || "✨") + " " + escapeHtml(p.label) + "</button>";
+    }).join("") + "</div>";
+}
+function _exRechercheLocaleHTML(query) {
+  var q = (typeof plierRecherche === "function") ? plierRecherche(query) : String(query || "").toLowerCase();
+  var ps = PASSIONS.filter(function (p) { return p && p.label && ((typeof plierRecherche === "function") ? plierRecherche(p.label) : p.label.toLowerCase()).indexOf(q) >= 0; }).slice(0, 6);
+  if (!ps.length) return "";
+  return ps.map(function (p) {
+    return "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');exFermerResultats();\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-top:1px solid var(--border);'>"
+      + "<div style='font-size:20px;'>" + escapeHtml(p.emoji || "✨") + "</div><div style='font-weight:700;font-size:13px;'>" + escapeHtml(p.label) + "</div></div>";
+  }).join("");
+}
+
 function _exChercherPassions(q) {
   var repliSocle = function () {
     var ql = q.toLowerCase();
@@ -264,7 +326,10 @@ function _exSearchLancer(query) {
     var fu = supaFormatted.concat(seedUsers).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0, 8);
 
     if (fp.length === 0 && fu.length === 0) {
-      cible.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query) + " »</div>";
+      // LOT-11 (REC-C08) : un « aucun résultat » qui aide à reformuler, et trois
+      // passions qui ont des publications, à toucher.
+      cible.innerHTML = "<div class='ex-aucun' style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query) + " ».<br>Vérifie l'orthographe, ou essaie un mot plus court.</div>"
+        + _exPassionsActivesHTML(3);
       return;
     }
 
@@ -273,18 +338,24 @@ function _exSearchLancer(query) {
     // Passions
     if (fp.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Passions</div>";
-      fp.forEach(function(p) {
-        html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "','',\'" + escapeJsArg(p.label || p.id) + "\');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+      // LOT-11 (REC-C06) : trois passions, puis « Voir N autres passions » — qui
+      // cherche un pseudo ne traverse plus six lignes avant les personnes.
+      var _plus = fp.length > 3 ? fp.length - 3 : 0;
+      fp.forEach(function(p, _i) {
+        html += "<div" + (_i >= 3 ? " class='ex-passion-plus' hidden" : "") + " onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "','',\'" + escapeJsArg(p.label || p.id) + "\');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
           "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + escapeHtml(p.emoji || "✨") + "</div>" +
           "<div style='flex:1;'><div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(p.label || p.id) + "</div></div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);'>Explorer →</div>" +
           "</div>";
       });
+      if (_plus) {
+        html += "<button type='button' class='ex-voir-plus' onclick=\"event.stopPropagation();this.parentNode.querySelectorAll('.ex-passion-plus').forEach(function(x){x.hidden=false});this.remove();\">Voir " + _plus + " autre" + (_plus > 1 ? "s passions" : " passion") + "</button>";
+      }
     }
 
     // Utilisateurs
     if (fu.length) {
-      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Utilisateurs</div>";
+      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Personnes</div>";
       fu.forEach(function(u) {
         // §2 : la MÊME ligne d'identité que partout ailleurs. Deux écrans de
         // recherche portaient chacun leur variante de pastilles ; ils
@@ -318,7 +389,10 @@ function _exSearchLancer(query) {
     try { diagLog("explorer recherche " + (e && e.message ? e.message : e)); } catch (_) {}
     if (jeton !== _exSearchJeton) return;
     var c = document.getElementById("exploreSearchResults");
-    if (c) c.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>La recherche n'a pas abouti. Réessaie.</div>";
+    // LOT-11 (REC-C12) : hors ligne, on le DIT, et on cherche dans ce qu'on a.
+    if (c) c.innerHTML = (typeof navigator !== "undefined" && navigator.onLine === false)
+      ? "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Tu es hors ligne : la recherche reprendra dès que le réseau revient.</div>" + _exRechercheLocaleHTML(query)
+      : "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>La recherche n'a pas abouti. Réessaie.</div>";
   });
 }
 
@@ -351,6 +425,9 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
   // fonction qui peut échouer. On le garde, il ne coûte rien.
   if (!p) { toast("Passion non trouvée"); return; }
   var posts = allFeedPosts().filter(function(x) { return x.passion === pid; });
+  // LOT-11 (REC-C09) : UN compte, le même que la tuile des tendances — les
+  // publications RÉELLES (sans les exemples) ; la liste peut montrer des exemples.
+  var nbReelles = (typeof nbPublicationsPassion === "function") ? nbPublicationsPassion(pid) : posts.length;
   // ⚠️ `_parDefaut` EXCLU (même famille) : la fiche d'une passion annonçait
   // « tu as cette passion » sur le seul profil de remplissage.
   var hasProfile = (state.user.profiles || []).find(function(up) { return up.passion === pid && !up._parDefaut; });
@@ -388,7 +465,13 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
   var vide = '<div class="empty"><div class="empty-text">Pas encore de créateurs</div></div>';
   var creatorsHTML = creators.length ? creators.map(ligne).join("") : vide;
 
-  var postsHTML = posts.length ? posts.slice(0,6).map(renderPostHTML).join("") : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucun post pour l\'instant</div></div>';
+  // LOT-11 (REC-C09, REC-C17) : « 6 sur N » et un chemin vers le fil filtré ; une
+  // fiche vide propose d'être la personne qui commence.
+  var postsHTML = posts.length
+    ? posts.slice(0,6).map(renderPostHTML).join("")
+      + (posts.length > 6 ? '<div class="pex-suite"><span>6 sur ' + posts.length + '</span> <button type="button" class="btn small ghost" onclick="closeModal();setFeedPassions([\'' + escapeJsArg(pid) + '\']);goTo(\'feed\')">Voir dans le fil</button></div>' : "")
+    : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucune publication pour l\'instant</div>'
+      + '<button type="button" class="btn primary pex-publier" onclick="closeModal();publierSurPassion(\'' + escapeJsArg(pid) + '\')">Publier sur ' + escapeHtml(p.label || pid) + '</button></div>';
 
   // Lot UI-8 : une passion ARCHIVÉE n'est pas « ta passion » — mais ce n'est pas
   // non plus une passion à créer (elle existe, rangée). On propose la
@@ -399,7 +482,7 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     ? '<button class="btn small ghost" onclick="restaurerPassion(\'' + escapeJsArg(hasProfile.id) + '\')">Restaurer cette passion</button>'
     : (hasProfile
       ? '<span class="pill active">Ta passion</span>'
-      : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>');
+      : '<button class="btn small primary pex-ajouter" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">＋ Ajouter à mes passions</button>');
 
   // Le retour est un LIEN, pas une croix : la croix ferme déjà la modale, et
   // fermer ne ramène pas au profil. Le libellé nomme la destination.
@@ -419,7 +502,7 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     +   '<div>'
     +     '<div class="modal-title" style="margin:0;">' + escapeHtml(p.label || pid) + '</div>'
     +     '<div style="font-size:12px;color:var(--muted);">'
-    +       posts.length + ' post' + (posts.length > 1 ? "s" : "")
+    +       nbReelles + ' publication' + (nbReelles > 1 ? "s" : "")
     +     '</div>'
     +   '</div>'
     +   '<div style="margin-left:auto;">' + profileBtn + '</div>'
@@ -443,6 +526,9 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     + '</div>';
 
   openModal(html);
+  // LOT-11 (REC-C11) : la fiche s'ouvre EN HAUT — ouverte depuis un résultat, elle
+  // héritait du défilement de la fiche précédente (scrollTop 1 226 mesuré).
+  try { var _mc = document.getElementById("modalContent"); if (_mc) _mc.scrollTop = 0; } catch (e) {}
 
   _pexChargerCreateurs(pid, creators);
   _pexPeindreLiees(pid);
@@ -576,6 +662,20 @@ function _pexPeindreLiees(pid) {
 // unique : c'est lui qui garde le plafond, restaure une archive au lieu de la
 // dupliquer, et synchronise. Deux moteurs pour un même geste divergent toujours
 // au premier correctif — la leçon de `sharePostInFeed` / `shareReelInFeed`.
+// LOT-11 (REC-C17) : depuis la fiche VIDE d'une passion, « Publier sur … » ouvre
+// le Studio avec cette passion choisie (ajoutée au compte si besoin, sous les
+// mêmes garde-fous que « Ajouter à mes passions »).
+function publierSurPassion(pid) {
+  var vivante = function () { return (state.user.profiles || []).find(function (x) { return x.passion === pid && !x.archived && !x._parDefaut; }); };
+  if (!vivante() && typeof ajouterPassionAuCompte === "function") ajouterPassionAuCompte(pid, "");
+  var v = vivante();
+  if (!v) return;   // refusé (plafond, passion non publiable) : la fenêtre l'a déjà dit
+  state.user.currentProfileId = v.id;
+  saveState();
+  goTo("studio");
+  try { renderStudio(); } catch (e) {}
+}
+
 function quickCreateProfile(pid) {
   if (typeof ajouterPassionAuCompte !== "function") return;
   const p = passionById(pid);
@@ -594,9 +694,10 @@ function quickCreateProfile(pid) {
   if (!vivante) return;
   state.user.currentProfileId = vivante.id;
   saveState();
-  closeModal();
   renderTopbar();
-  goTo("profiles");
+  // LOT-11 (REC-C10) : on RESTE sur la fiche — elle montre désormais « Ta passion ».
+  // Basculer vers Profil faisait quitter la découverte au milieu d'un geste.
+  try { openPassionExplorer(pid); } catch (e) {}
   if (np) toast("✨ " + ((p && p.label) || "Passion") + " ajoutée à tes passions", "success");
 }
 
