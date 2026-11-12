@@ -378,13 +378,14 @@ test.describe("Contrôle général 2026-11-10", () => {
     await page.evaluate(() => { openReels(); });
     await page.waitForFunction(() => {
       const it = document.querySelector("#reelsViewer .reel-item");
-      return !!it && [...it.querySelectorAll(".reel-action-label")].some((l) => /Commentaire/.test(l.textContent));
+      return !!it && !!it.querySelector('.reel-action-btn[aria-label="Commenter"] .reel-action-label');
     }, null, { timeout: 15000 });
     await page.waitForTimeout(700);   // l'ouverture du lecteur est finie
     const r = await page.evaluate(() => {
       const it = document.querySelector("#reelsViewer .reel-item");
       const R = (e) => { const b = e.getBoundingClientRect(); return { g: b.left, d: b.right, h: b.top, b: b.bottom }; };
-      const libelle = [...it.querySelectorAll(".reel-action-label")].find((l) => /Commentaire/.test(l.textContent));
+      // LOT-14 (BOB-C14) : le libellé dit désormais le NOMBRE de commentaires.
+      const libelle = it.querySelector('.reel-action-btn[aria-label="Commenter"] .reel-action-label');
       const indice = document.getElementById("reelsHint");
       const capsules = it.querySelector(".v5-actions");
       const colonne = it.querySelector(".reel-actions");
@@ -420,7 +421,8 @@ test.describe("Contrôle général 2026-11-10", () => {
       return out;
     });
     expect(r.vw).toBe(375);
-    expect(r.libelle.d - r.libelle.g, "le libellé est bien à l'écran").toBeGreaterThan(20);
+    // LOT-14 (BOB-C14) : un nombre (« 0 », « 12 ») et non plus le mot « Commentaire ».
+    expect(r.libelle.d - r.libelle.g, "le libellé est bien à l'écran").toBeGreaterThan(4);
     expect(r.info.d, "la zone de texte (et sa rangée de capsules) s'arrête avant le libellé").toBeLessThanOrEqual(r.libelle.g);
     // Ce qui ne dépend PAS de la police de l'appareil (la pile est `system-ui` : le
     // libellé fait 70 px sous Segoe UI, ~83 sous la police de repli de la CI Linux) :
@@ -431,7 +433,8 @@ test.describe("Contrôle général 2026-11-10", () => {
     expect(r.info.d, "la zone de texte s'arrête avant la colonne").toBeLessThanOrEqual(r.colonne.g);
     for (const largeur of r.boutons) expect(largeur, "un bouton d'action reste une cible de 44 px").toBeGreaterThanOrEqual(44);
     // Sous une police large : le libellé est rogné DANS sa colonne, jamais sous le texte.
-    expect(r.large.rogne, "prémisse : la police large déborde bien les 76 px du libellé").toBe(true);
+    // LOT-14 (BOB-C14) : le libellé est un NOMBRE ; même sous une police large il ne
+    // déborde plus — la prémisse « rogné » ne tient plus, les garanties de placement restent.
     expect(Math.round(r.large.colonne.d - r.large.colonne.g)).toBe(80);
     expect(r.large.libelle.g, "police large : le libellé reste dans sa colonne").toBeGreaterThanOrEqual(r.large.colonne.g - 0.5);
     expect(r.large.info.d, "police large : la zone de texte s'arrête avant le libellé").toBeLessThanOrEqual(r.large.libelle.g);

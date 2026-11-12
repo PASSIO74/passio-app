@@ -181,15 +181,15 @@
         <div style="font-size:13px;font-weight:700;" id="storyAuthor">Créateur</div>
         <div style="font-size:11px;opacity:0.75;" id="storyTime">il y a 1h</div>
       </div>
-      <div class="story-viewer-close" onclick="closeStoryViewer()">✕</div>
+      <button type="button" class="story-viewer-close" onclick="closeStoryViewer()" aria-label="Fermer">✕</button>
     </div>
     <div class="story-viewer-stage">
       <div class="story-viewer-card" id="storyCard">
         <div id="storyMedia" class="story-media-layer"></div>
         <div id="storyOverlays" class="story-overlays-layer"></div>
         <div id="storyContent"></div>
-        <div class="story-viewer-tap story-tap-prev" onclick="storyPrev()"></div>
-        <div class="story-viewer-tap story-tap-next" onclick="storyNext()"></div>
+        <div class="story-viewer-tap story-tap-prev" onclick="storyTap('prev')"></div>
+        <div class="story-viewer-tap story-tap-next" onclick="storyTap('next')"></div>
       </div>
     </div>
   </div>
@@ -1309,21 +1309,14 @@
     <div class="reel-comments-panel" id="reelCommentsPanel">
       <div class="reel-comments-header">
         <div class="reel-comments-title">Commentaires</div>
-        <div class="reel-comments-close" onclick="closeReelComments()">−</div>
+        <!-- LOT-14 (BOB-C13) : « Fermer » en toutes lettres, 44 px. -->
+        <button type="button" class="reel-comments-close" onclick="closeReelComments()">Fermer</button>
       </div>
       <div class="reel-comments-list" id="reelCommentsList"></div>
       <div class="reel-comments-input-section">
-        <div class="reel-emoji-reactions" id="reelEmojiReactions">
-          <button class="reel-emoji-btn" onclick="reactToReel('❤️')" title="J'aime">❤️</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('🔥')" title="C'est chaud">🔥</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('😂')" title="Hilarant">😂</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('👏')" title="Bravo">👏</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('😍')" title="J'adore">😍</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('😮')" title="Surpris">😮</button>
-        </div>
         <div class="reel-comments-input-wrapper">
-          <textarea class="reel-comments-input" id="reelCommentInput" placeholder="Lancez la conversation..." rows="1" oninput="autoResizeReelCommentInput()"></textarea>
-          <button class="reel-comments-send" onclick="submitReelComment()" title="Envoyer">↑</button>
+          <textarea class="reel-comments-input" id="reelCommentInput" placeholder="Écris un commentaire…" aria-label="Écris un commentaire" rows="1" oninput="autoResizeReelCommentInput()"></textarea>
+          <button type="button" class="reel-comments-send" onclick="submitReelComment()" aria-label="Envoyer le commentaire">↑</button>
         </div>
       </div>
     </div>

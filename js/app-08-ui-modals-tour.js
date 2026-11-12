@@ -1954,8 +1954,10 @@ function playCurrentStory() {
     profileEmoji: s.authorEmoji || uLocal?.profileEmoji || "✨",
   };
 
-  $("#storyAvatar").style.background = u.avatar;
-  $("#storyAvatar").textContent = (u.profileEmoji || u.name[0] || "?");
+  // LOT-14 (BOB-C17) : la photo de profil quand elle existe, l'emoji sinon.
+  const _photoStory = (typeof _userPhoto === "function") ? _userPhoto(uLocal) : null;
+  $("#storyAvatar").style.background = _photoStory ? avatarBg({ photoUrl: _photoStory, avatar: u.avatar }) : u.avatar;
+  $("#storyAvatar").textContent = _photoStory ? "" : (u.profileEmoji || u.name[0] || "?");
   $("#storyAvatar").style.cursor = "pointer";
   $("#storyAvatar").onclick = function(e) { e.stopPropagation(); closeStoryViewer(); openUserProfile(s.authorId); };
   $("#storyAuthor").textContent = u.name;
@@ -1968,12 +1970,25 @@ function playCurrentStory() {
   // inline avec un identifiant d'autrui — règle MSG-02).
   try {
     var _hdr = document.querySelector("#storyViewer .story-viewer-header");
-    var _old = document.getElementById("storyReportBtn"); if (_old) _old.remove();
+    ["storyReportBtn", "storyOptionsBtn"].forEach(function (_id) { var _old = document.getElementById(_id); if (_old) _old.remove(); });
     var _reel = typeof _uidEstUnCompte === "function" && _uidEstUnCompte() && s.authorId && s.authorId !== MY_UID && !/^u_/.test(String(s.authorId));
+    // LOT-14 (BOB-C21) : MA story a son « ⋯ » : la supprimer.
+    var _mienne = s.authorId && (s.authorId === MY_UID || s.authorId === "me");
+    if (_hdr && _mienne) {
+      var _b2 = document.createElement("button");
+      _b2.id = "storyOptionsBtn"; _b2.type = "button"; _b2.className = "story-more-btn"; _b2.setAttribute("aria-label", "Options de ma story");
+      _b2.textContent = "⋯";
+      _b2.addEventListener("click", function (e) {
+        e.stopPropagation();
+        window._storyEnPause = true;
+        ouvrirFeuilleConfirmation({ titre: "Ta story", actions: [{ id: "supprimer", libelle: "Supprimer cette story", danger: true, agir: function () { supprimerMaStory(s.id); } }], surAnnuler: function () { window._storyEnPause = false; } });
+      });
+      _hdr.insertBefore(_b2, _hdr.querySelector(".story-viewer-close"));
+    }
     if (_hdr && _reel) {
       var _btn = document.createElement("button");
       _btn.id = "storyReportBtn"; _btn.type = "button"; _btn.setAttribute("aria-label", "Signaler cette story");
-      _btn.textContent = "⋯"; _btn.style.cssText = "background:none;border:none;color:#fff;font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;margin-left:auto;";
+      _btn.textContent = "⋯"; _btn.className = "story-more-btn";
       _btn.addEventListener("click", function (e) { e.stopPropagation(); clearInterval(storyTimer); openModal('<div class="modal-handle"></div><div class="modal-title">Cette story</div><button class="btn ghost block" id="storyReportGo">🚩 Signaler cette story</button>'); var go = document.getElementById("storyReportGo"); if (go) go.addEventListener("click", function () { closeModal(); reportStory(s.id); }); });
       _hdr.insertBefore(_btn, _hdr.querySelector(".story-viewer-close"));
     }
@@ -2060,7 +2075,7 @@ function playCurrentStory() {
       dernierTour = maintenant;
       // En mode économe/manuel, on attend le geste : la story ne disparaît pas
       // avant d'avoir été regardée. Une page masquée ne consomme pas les stories.
-      if (document.hidden || (storyVideo && storyVideo.paused)) return;
+      if (document.hidden || (storyVideo && storyVideo.paused) || window._storyEnPause) return;
       ecoule += pas;
       const p = Math.min(100, (ecoule / STORY_DURATION) * 100);
       bar.style.width = p + "%";
@@ -2070,6 +2085,77 @@ function playCurrentStory() {
       }
     }, 80);
   }
+}
+
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C07) : MAINTENIR met en pause, et le
+// relâchement ne navigue pas ; un toucher bref avance ou recule. Clavier : Échap
+// ferme, ← → naviguent, Espace met en pause.
+const STORY_MAINTIEN_MS = 300;
+function storyTap(sens) {
+  if (window._storyClicIgnore) { window._storyClicIgnore = false; return; }
+  if (sens === "prev") storyPrev(); else storyNext();
+}
+(function _brancherMaintienStory() {
+  var debut = 0;
+  document.addEventListener("pointerdown", function (e) {
+    var carte = document.getElementById("storyCard");
+    if (!carte || !carte.contains(e.target) || e.target.closest("button")) return;
+    debut = Date.now();
+    window._storyEnPause = true;
+  }, true);
+  var relacher = function () {
+    if (!debut) return;
+    window._storyClicIgnore = (Date.now() - debut) >= STORY_MAINTIEN_MS;
+    debut = 0;
+    window._storyEnPause = false;
+  };
+  document.addEventListener("pointerup", relacher, true);
+  document.addEventListener("pointercancel", relacher, true);
+  document.addEventListener("keydown", function (e) {
+    var sv = document.getElementById("storyViewer");
+    if (!sv || !sv.classList.contains("active")) return;
+    if (document.querySelector("#modalBackdrop.active, #feuilleConfirmation")) return;
+    var t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (e.key === "Escape") { e.preventDefault(); closeStoryViewer(); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); storyNext(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); storyPrev(); }
+    else if (e.key === " ") { e.preventDefault(); window._storyEnPause = !window._storyEnPause; }
+  });
+})();
+
+// LOT-14 (BOB-C21) : supprimer MA story — la base d'abord (`{ error }` lu, zéro
+// ligne = refus), puis l'état local et le rail. Une story locale (sans compte)
+// part seulement de l'appareil.
+async function supprimerMaStory(id) {
+  var s = (state.seed.stories || []).find(function (x) { return x && x.id === id; });
+  if (!s) return false;
+  if (s.fromSupabase && typeof supa !== "undefined" && supa && window._supaReal) {
+    try {
+      var r = await supa.from("stories").delete().eq("id", id).eq("author_id", MY_UID).select("id");
+      if (r.error || !r.data || !r.data.length) { toast("Suppression impossible — réessaie.", "warning"); window._storyEnPause = false; return false; }
+    } catch (e) { toast("Suppression impossible — réessaie.", "warning"); window._storyEnPause = false; return false; }
+  }
+  state.seed.stories = (state.seed.stories || []).filter(function (x) { return x && x.id !== id; });
+  try { saveState(); } catch (e) {}
+  window._storyEnPause = false;
+  closeStoryViewer();
+  toast("Story supprimée", "success");
+  return true;
+}
+
+function _estMonGroupeStory(g) {
+  return !!g && (String(g.authorId) === String(MY_UID) || g.authorId === "me");
+}
+// Le groupe voisin dans le sens donné ; mon propre groupe est sauté, sauf si
+// c'est lui que je regarde.
+function _groupeStoryVoisin(depuis, sens) {
+  var monTour = _estMonGroupeStory(storyGroups[depuis]);
+  for (var i = depuis + sens; i >= 0 && i < storyGroups.length; i += sens) {
+    if (!monTour && _estMonGroupeStory(storyGroups[i])) continue;
+    return i;
+  }
+  return -1;
 }
 
 function storyNext() {
@@ -2082,9 +2168,11 @@ function storyNext() {
     playCurrentStory();
     return;
   }
-  // …sinon on passe à l'auteur suivant…
-  if (storyGroupIdx < storyGroups.length - 1) {
-    storyGroupIdx++;
+  // …sinon on passe à l'auteur suivant — jamais à MOI quand je parcours les
+  // stories des autres (LOT-14, BOB-C21)…
+  var suivant = _groupeStoryVoisin(storyGroupIdx, +1);
+  if (suivant > -1) {
+    storyGroupIdx = suivant;
     storyItemIdx = 0;
     playCurrentStory();
     return;
@@ -2102,8 +2190,9 @@ function storyPrev() {
     return;
   }
   // …sinon dernière story de l'auteur précédent…
-  if (storyGroupIdx > 0) {
-    storyGroupIdx--;
+  var precedent = _groupeStoryVoisin(storyGroupIdx, -1);
+  if (precedent > -1) {
+    storyGroupIdx = precedent;
     const g = storyGroups[storyGroupIdx];
     storyItemIdx = g ? Math.max(0, g.stories.length - 1) : 0;
     playCurrentStory();
@@ -2119,6 +2208,8 @@ function closeStoryViewer() {
   const etaitOuvert = !!(sv && sv.classList.contains("active"));
   if (sv) sv.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
   if (sv) sv.classList.remove("active");
+  window._storyEnPause = false;
+  window._storyClicIgnore = false;
   renderStories();
   // Reprend l'entrée posée à l'ouverture (cf. releaseOverlayHistory, app-02) :
   // sans cela, chaque story consultée mangeait un appui sur « retour ».
@@ -5780,7 +5871,7 @@ async function supaLoadStories() {
     if (error) { console.warn("supaLoadStories:", error.message); return []; }
     const rows = data || [];
     const profs = await _resolveProfilesByIds(rows.map(r => r.author_id));
-    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null, mediaType: r.media_type || null, overlays: r.overlays || null, fromSupabase: true }; });
+    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null, mediaType: r.media_type || null, overlays: r.overlays || null, createdAt: supaTs(r.created_at), fromSupabase: true }; });
   } catch(e) { return []; }
 }
 

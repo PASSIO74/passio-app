@@ -988,6 +988,13 @@ document.addEventListener("keydown", (e) => {
   // (commentaire d'une bobine, recherche…) n'est pas une commande du lecteur.
   // L'Espace passait à la bobine suivante : « Bonjour à tous » devenait
   // « Bonjouràtous », et le panneau restait sur les commentaires de la précédente.
+  // LOT-14 (BOB-C12) : Échap ferme ce qui est AU-DESSUS du lecteur d'abord — le
+  // panneau de commentaires (même depuis son champ), puis une fenêtre ou une
+  // feuille (leurs propres écouteurs s'en chargent) — et le lecteur en dernier.
+  if (e.key === "Escape" && !document.querySelector("#modalBackdrop.active, .cmt-sheet-ov, #feuilleConfirmation")) {
+    var panneau = document.getElementById("reelCommentsPanel");
+    if (panneau && panneau.classList.contains("open")) { e.preventDefault(); closeReelComments(); return; }
+  }
   var cible = e.target;
   if (cible && (cible.tagName === "INPUT" || cible.tagName === "TEXTAREA" || cible.isContentEditable)) return;
   if (document.querySelector("#reelCommentsPanel.open, .cmt-sheet-ov, #modalBackdrop.active, #feuilleConfirmation")) return;
@@ -1456,7 +1463,7 @@ function renderProfileContent() {
     myPostsDiv.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+bobines.map(function(p){
           var poster = p.image || p.poster || "";
-          var thumb = miniatureVideoPubliqueHTML(poster);
+          var thumb = miniatureVideoPubliqueHTML(poster, p.video);
           return '<div onclick="openReelById(\''+escapeJsArg(p.id)+'\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">'+thumb+'<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
         }).join("")+'</div>'
       // ⚠️ `emptyBlock` n'a jamais existé → ReferenceError en prod (8× le 20/07)

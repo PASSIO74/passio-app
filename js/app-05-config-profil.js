@@ -3029,6 +3029,12 @@ function _reelVideoError(videoEl) {
   ph.className = "reel-media";
   ph.style.cssText = "background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:rgba(255,255,255,0.9);font-size:14px;font-weight:600;text-align:center;padding:24px;";
   ph.innerHTML = '<span style="font-size:40px;">🎬</span>Vidéo non lisible sur cet appareil';
+  // LOT-14 (BOB-C15) : le bouton « ▶ Lire » ne promet plus ce que le message dément.
+  try {
+    var item = videoEl.closest(".reel-item, .post, .reel-media-container");
+    var porte = item && (item.closest(".reel-item") || item);
+    if (porte) porte.querySelectorAll("[data-video-public-play], .reel-sound-btn").forEach(function (b) { if (b.parentNode) b.parentNode.removeChild(b); });
+  } catch (e) {}
   if (videoEl.parentNode) videoEl.parentNode.replaceChild(ph, videoEl);
 }
 
@@ -3148,6 +3154,9 @@ function _reelVideoSrc(post) {
   return v;
 }
 
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C17) : l'auteur porte aussi sa PHOTO
+// (`photoUrl`, lue par `avatarBg` / `avatarInner`) quand elle est connue — le
+// lecteur montrait l'emoji de Léa alors que le fil et son profil montrent sa photo.
 function authorOfReel(post) {
   if (post._source === "me") {
     const prof = (state.user.profiles || []).find(p => p.id === post.profileId);
@@ -3155,6 +3164,7 @@ function authorOfReel(post) {
       name: prof ? prof.name : "Toi",
       emoji: prof ? prof.emoji : "🙂",
       color: prof ? prof.color : "#7c3aed",
+      photoUrl: (state.user.general && state.user.general.avatarPhoto) || null,
     };
   }
   const su = (state.seed.users || []).find(u => u.id === post.userId);
@@ -3163,6 +3173,16 @@ function authorOfReel(post) {
       name: su.name,
       emoji: su.profileEmoji || "🙂",
       color: su.avatar || "#7c3aed",
+      photoUrl: (typeof _userPhoto === "function") ? _userPhoto(su) : null,
+    };
+  }
+  const distant = (post.authorId && typeof userById === "function") ? userById(post.authorId) : null;
+  if (distant && (typeof _userPhoto === "function") && _userPhoto(distant)) {
+    return {
+      name: post.authorName || distant.name || "Anonyme",
+      emoji: post.authorEmoji || distant.profileEmoji || "🙂",
+      color: post.authorColor || distant.avatar || "#7c3aed",
+      photoUrl: _userPhoto(distant),
     };
   }
   // 🔧 FIX AUDIT 2026-06-10 : posts Supabase (vrais utilisateurs) — ils
@@ -3237,20 +3257,20 @@ function renderReelHTML(post, idx) {
   const txt = post.text || post.caption || "";
   return `
     <div class="reel-item" data-reel-idx="${idx}" data-post-id="${escapeHtml(post.id)}">
-      <div class="reel-media-container">
+      <div class="reel-media-container"${post.type === "video" ? ' onclick="basculerLectureBobine(this, event)"' : ""}>
         ${reelMediaHTML(post)}
         ${(Array.isArray(post.overlays) && post.overlays.length && typeof _storyOverlaysHtml === "function") ? `<div class="reel-overlays-layer">${_storyOverlaysHtml(post.overlays)}</div>` : ""}
       </div>
       <div class="reel-overlay"></div>
       ${post.type === "video" ? boutonVideoPubliqueHTML() : ""}
-      <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
+      ${/* LOT-14 (BOB-C14) : l'étiquette du haut répétait la passion et chevauchait la flèche ; l'envie rejoint la ligne de passion, sous le nom. */ ""}
       ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
         <div class="reel-author" onclick="_openReelAuthor('${escapeJsArg(post.authorId || post.userId || '')}'); return false;" style="cursor:pointer;">
-          <div class="reel-avatar" style="background:${_cssColor(author.color)};">${escapeHtml(author.emoji)}</div>
+          <div class="reel-avatar" style="background:${avatarBg(author)};">${avatarInner(author)}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
-            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
+            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}${moodLabel ? " · " + escapeHtml(moodLabel) : ""}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
           </div>
         </div>
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>
@@ -3266,7 +3286,7 @@ function renderReelHTML(post, idx) {
           <span class="reel-action-icon">
             <svg viewBox="0 0 24 24"><path d="M21 12 C21 16 16.5 19 12 19 C10.8 19 9.7 18.85 8.7 18.55 L4 20 L5.5 16 C4 14.85 3 13.5 3 12 C3 8 7.5 5 12 5 C16.5 5 21 8 21 12 Z"/></svg>
           </span>
-          <span class="reel-action-label">Commentaire</span>
+          <span class="reel-action-label">${(typeof nbCommentairesPost === "function") ? nbCommentairesPost(post) : ((post.comments || []).length)}</span>
         </button>
         <button class="reel-action-btn" onclick="shareReel('${escapeJsArg(post.id)}')" aria-label="Partager">
           <span class="reel-action-icon">
@@ -3295,7 +3315,7 @@ function openReelMenu(postId) {
   if (!p) return;
   var mien = (typeof _estMonPost === "function") && _estMonPost(p);
   var actions = mien
-    ? [{ id: "supprimer", libelle: "Supprimer cette bobine", danger: true, agir: function () { try { closeReels(); } catch (e) {} confirmDeletePost(postId); } }]
+    ? [{ id: "supprimer", libelle: "Supprimer cette bobine", danger: true, agir: function () { window._bobineRetourProfil = null; try { closeReels(); } catch (e) {} confirmDeletePost(postId); } }]
     : [{ id: "signaler", libelle: "Signaler cette bobine", danger: true, agir: function () { reportPost(postId); } }];
   ouvrirFeuilleConfirmation({ titre: mien ? "Ta bobine" : "Cette bobine", actions: actions });
 }
@@ -3317,7 +3337,7 @@ function openReels(pinnedId) {
       <div class="reels-empty">
         <div class="reels-empty-emoji">🎬</div>
         <div class="reels-empty-title">Pas encore de bobines</div>
-        <div class="reels-empty-text">Crée ta première bobine : ➕ → Studio → onglet <b>Bobine</b>.</div>
+        <div class="reels-empty-text">Filme un moment de ta passion.</div>
         <button class="btn primary" style="margin-top:14px;" onclick="startBobineCreation()">Créer une bobine</button>
       </div>`;
     lockBodyScroll("reels");
@@ -3417,7 +3437,20 @@ function closeReels() {
   // Pause toutes les vidéos
   document.querySelectorAll("#reelsList video").forEach(arreterVideoPublique);
   if (reelsState && reelsState.observer) { try { reelsState.observer.disconnect(); } catch(e){} reelsState.observer = null; }
+  // LOT-14 (BOB-C12) : le panneau de commentaires part avec le lecteur.
+  const panneauCmt = document.getElementById("reelCommentsPanel");
+  if (panneauCmt && panneauCmt.classList.contains("open")) {
+    panneauCmt.classList.remove("open");
+    if (v) v.classList.remove("comments-open");
+    window.currentReelCommentPostId = null;
+  }
   if (etaitOuvert) releaseOverlayHistory();
+  // LOT-14 (BOB-C10) : retour au profil visité d'où la bobine a été ouverte.
+  const retour = window._bobineRetourProfil;
+  window._bobineRetourProfil = null;
+  if (etaitOuvert && retour && typeof openUserProfile === "function") {
+    setTimeout(function () { try { openUserProfile(retour); } catch (e) {} }, 0);
+  }
 }
 
 function resumeReels() {
@@ -3444,6 +3477,21 @@ function updateReelsCounter() {
   const total = reelsState.items.length;
   const cur = Math.min(reelsState.current + 1, total);
   el.textContent = `${cur} / ${total}`;
+}
+
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C06) : toucher la vidéo la met en
+// pause, la toucher encore la relance ; en pause, le bouton « ▶ Lire » se
+// montre — c'est le repère, et la porte de reprise.
+function basculerLectureBobine(conteneur, ev) {
+  const vid = conteneur && conteneur.querySelector("video");
+  if (!vid) return;
+  if (ev) ev.stopPropagation();
+  if (vid.paused) {
+    lancerVideoPublique(vid, true);
+  } else {
+    try { vid.pause(); } catch (e) {}
+    videoPubliqueBouton(vid, true);
+  }
 }
 
 function playReelAt(idx) {
@@ -3546,6 +3594,8 @@ function openReelComments(postId) {
   if (panel && reelsViewer) {
     // Ajouter la classe pour réduire la vidéo
     reelsViewer.classList.add("comments-open");
+    // LOT-14 (BOB-C12) : une entrée d'historique — le retour ferme le panneau, pas la bobine.
+    if (!panel.classList.contains("open")) { try { pushOverlayHistory("commentaires-bobine"); } catch (e) {} }
     panel.classList.add("open");
 
     // Stocker le postId courant
@@ -3577,7 +3627,12 @@ function closeReelComments() {
   const reelsViewer = document.getElementById("reelsViewer");
 
   if (panel) {
+    const etaitOuvert = panel.classList.contains("open");
+    // Le champ ne garde pas le focus d'un panneau fermé : Échap suivant doit
+    // atteindre le lecteur, pas un champ invisible.
+    try { if (panel.contains(document.activeElement)) document.activeElement.blur(); } catch (e) {}
     panel.classList.remove("open");
+    if (etaitOuvert) { try { releaseOverlayHistory(); } catch (e) {} }
     if (reelsViewer) {
       reelsViewer.classList.remove("comments-open");
     }
@@ -3656,9 +3711,8 @@ function loadReelComments(postId) {
           </div>
           <div class="reel-comment-text">${escapeHtml(c.text || c.content || "")}</div>
           <div class="reel-comment-footer">
-            <span class="reel-comment-like ${isLiked ? 'liked' : ''}" onclick="likeReelComment('${escapeJsArg(postId)}', ${idx})">${isLiked ? '❤️' : '🤍'} ${likesCount}</span>
-            <span class="reel-comment-reply" onclick="replyToReelCommentBox('${escapeJsArg(postId)}', ${idx}, '${escapeJsArg(commenter.name)}')">💬</span>
-            <span class="reel-comment-action" onclick="showQuickEmojiForReelComment('${escapeJsArg(postId)}', ${idx}, event)" title="Réagir">😊</span>
+            <button type="button" class="reel-comment-like ${isLiked ? 'liked' : ''}" aria-pressed="${isLiked ? 'true' : 'false'}" aria-label="J'aime ce commentaire — ${likesCount}" onclick="likeReelComment('${escapeJsArg(postId)}', ${idx})">${isLiked ? '❤️' : '🤍'} ${likesCount}</button>
+            <button type="button" class="reel-comment-reply" aria-label="Répondre à ${escapeHtml(commenter.name)}" onclick="replyToReelCommentBox('${escapeJsArg(postId)}', ${idx}, '${escapeJsArg(commenter.name)}')">💬 Répondre</button>
             ${replies.length > 0 ? `<span class="reel-comment-reply-count" onclick="toggleReelCommentReplies(${idx})">${replies.length} réponse${replies.length > 1 ? 's' : ''}</span>` : ''}
           </div>
         </div>
@@ -3883,156 +3937,12 @@ function toggleReelCommentReplies(commentIdx) {
   }
 }
 
-function showQuickEmojiForReelComment(postId, commentIdx, event) {
-  event.stopPropagation();
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const emojis = window._PASSIO_EMOJI_LIST || ["😂","❤️","😍","🔥","👍","💯","🎉","🤔"];
-  const container = document.createElement("div");
-  container.style.cssText = "position:absolute;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:6px;display:flex;gap:4px;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,0.1);";
-
-  emojis.forEach(emoji => {
-    const btn = document.createElement("button");
-    btn.textContent = emoji;
-    btn.style.cssText = "background:none;border:none;font-size:18px;cursor:pointer;padding:4px;";
-    btn.onclick = () => {
-      addEmojiReactionToReelComment(postId, commentIdx, emoji);
-      container.remove();
-    };
-    container.appendChild(btn);
-  });
-
-  event.target.parentElement.appendChild(container);
-  setTimeout(() => container.remove(), 3000);
-}
-
-function showEmojiPickerForReelComment(postId, commentIdx) {
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const emojis = window._PASSIO_EMOJI_LIST || ["😂","❤️","😍","🔥","🎉","👍","💯","🤔"];
-  let selected = [];
-
-  openModal(`
-    <div class="modal-title">Réagir au commentaire</div>
-    <div id="_reelEmojiPreviewRow" style="display:flex;align-items:center;gap:8px;min-height:38px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">
-      <span id="_reelEmojiPreview" style="font-size:24px;flex:1;letter-spacing:2px;"></span>
-      <button id="_reelEmojiValidate" onclick="_reelEmojiConfirm('${escapeJsArg(postId)}',${commentIdx})" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:15px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;">✓ Valider</button>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:4px 0;max-height:200px;overflow-y:auto;">
-      ${emojis.map(emoji => `<button class="btn secondary" onclick="_reelEmojiPick('${escapeJsArg(emoji)}')" style="padding:8px;font-size:22px;border:none;">${emoji}</button>`).join("")}
-    </div>
-  `);
-
-  window._reelEmojiSelected = [];
-  window._reelEmojiPick = function(e) {
-    window._reelEmojiSelected.push(e);
-    var prev = document.getElementById("_reelEmojiPreview");
-    var val = document.getElementById("_reelEmojiValidate");
-    if (prev) prev.textContent = window._reelEmojiSelected.join("");
-    if (val) { val.style.opacity = "1"; val.style.pointerEvents = "auto"; }
-  };
-  window._reelEmojiConfirm = function(pid, idx) {
-    if (!window._reelEmojiSelected.length) return;
-    addEmojiReactionToReelComment(pid, idx, window._reelEmojiSelected.join(""));
-  };
-}
-
-function showGifPickerForReelComment(postId, commentIdx) {
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  openModal(`
-    <div class="modal-title">GIF de réaction</div>
-    <input type="search" placeholder="${escapeHtml(typeof passioGifPlaceholder === "function" ? passioGifPlaceholder() : "Rechercher un GIF…")}" aria-label="Rechercher un GIF"
-      oninput="_reelGifSearch('${escapeJsArg(postId)}', ${commentIdx}, this.value)"
-      style="width:100%;box-sizing:border-box;margin:10px 0 4px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;" />
-    <div id="reelGifGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;max-height:300px;overflow-y:auto;">
-      <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:18px;">Chargement…</div>
-    </div>
-  `);
-  _fillReelGifGrid(postId, commentIdx, "");
-}
-
-// Remplit la grille GIF du modal de réaction bobine via l'API (fallback local)
-function _fillReelGifGrid(postId, commentIdx, query) {
-  passioFetchGifs(query, 12).then(urls => {
-    const grid = document.getElementById("reelGifGrid");
-    if (!grid) return; // modal refermé entre-temps
-    grid.innerHTML = urls.length
-      // ⚠️ Le MÊME `gif` va dans deux contextes différents, donc deux helpers
-      // différents : escapeHtml dans l'onclick était le piège documenté — le HTML
-      // décode `&#39;` AVANT le parse JS, l'apostrophe rouvre la chaîne.
-      ? urls.map(gif => `<img loading="lazy" decoding="async" src="${safeUrlAttr(gif)}" alt="GIF" style="width:100%;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="addGifReactionToReelComment('${escapeJsArg(postId)}', ${Number(commentIdx) || 0}, '${escapeJsArg(gif)}')" />`).join("")
-      : '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:18px;">Aucun GIF trouvé</div>';
-  });
-}
-
-let _reelGifDeb = null;
-function _reelGifSearch(postId, commentIdx, q) {
-  clearTimeout(_reelGifDeb);
-  _reelGifDeb = setTimeout(() => _fillReelGifGrid(postId, commentIdx, q), 350);
-}
-
-function addEmojiReactionToReelComment(postId, commentIdx, emoji) {
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const comment = reel.comments[commentIdx];
-  if (!comment.replies) comment.replies = [];
-
-  const reply = {
-    type: "emoji_reaction",
-    text: emoji,
-    authorId: state.user?.id || "me",
-    authorName: currentProfile()?.name || "Moi",
-    createdAt: Date.now()
-  };
-
-  comment.replies.push(reply);
-  saveState();
-  closeModal();
-  loadReelComments(postId);
-  toast(`${emoji} Réaction ajoutée!`);
-}
-
-function addGifReactionToReelComment(postId, commentIdx, gifUrl) {
-  const reel = findPostAnywhere(postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const comment = reel.comments[commentIdx];
-  if (!comment.replies) comment.replies = [];
-
-  const reply = {
-    type: "gif_reaction",
-    text: gifUrl,
-    authorId: state.user?.id || "me",
-    authorName: currentProfile()?.name || "Moi",
-    createdAt: Date.now()
-  };
-
-  comment.replies.push(reply);
-  saveState();
-  closeModal();
-  loadReelComments(postId);
-  toast("GIF ajouté");
-}
-
-function reactToReel(emoji) {
-  const postId = window.currentReelCommentPostId;
-  if (!postId) return;
-
-  const reel = findPostAnywhere(postId);
-  if (!reel) return;
-
-  if (!reel.reactions) reel.reactions = {};
-  if (!reel.reactions[emoji]) reel.reactions[emoji] = 0;
-  reel.reactions[emoji]++;
-
-  saveState();
-  toast(`${emoji} Réaction ajoutée!`);
-}
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C18) — RETIRÉ : la rangée de réactions
+// de bobine (masquée, `reactToReel`) et la réaction « 😊 » / GIF à un commentaire
+// de bobine (`showQuickEmojiForReelComment`, sélecteurs emoji et GIF,
+// `addEmojiReactionToReelComment`, `addGifReactionToReelComment`). Elles
+// n'écrivaient que dans l'état local : une réaction que personne d'autre ne
+// voyait jamais, et qui disparaissait au rechargement. J'aime et Répondre restent.
 
 function shareReel(postId) {
   openReelShareModal(postId);

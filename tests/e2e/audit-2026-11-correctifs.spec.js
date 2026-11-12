@@ -111,7 +111,8 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
     expect(croix).not.toBeNull();
     expect(croix.w).toBeGreaterThanOrEqual(44);
     expect(croix.h).toBeGreaterThanOrEqual(44);
-    expect(croix.visuelW).toBe(38);
+    // LOT-14 (BOB-C14) : la croix du lecteur est désormais VISIBLEMENT de 44 px.
+    expect(croix.visuelW).toBe(44);
     await page.evaluate(() => { try { closeReels(); } catch (e) {} });
   });
 

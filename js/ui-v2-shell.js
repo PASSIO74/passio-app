@@ -476,6 +476,11 @@
       if (window.console && console.error) console.error("[ui-v2] buildReels :", e);
       return [];
     }
+    // LOT-14 (audit UX/UI du 2026-11-10, BOB-C17) : « Bobines à découvrir » ne
+    // me propose pas MES bobines.
+    reels = reels.filter(function (r) {
+      try { return !(typeof window._estMonPost === "function" && window._estMonPost(r)); } catch (e) { return true; }
+    });
     return reels.slice(0, max);
   }
 
@@ -549,6 +554,12 @@
       img.alt = "";
       img.src = poster;
       thumb.appendChild(img);
+    } else if (reel.video && typeof window.miniatureVideoPubliqueHTML === "function") {
+      // LOT-14 (BOB-C05) : une image de la vidéo (preload=metadata, jamais une
+      // lecture) plutôt qu'un aplat ; en économie de données, l'aplat reste.
+      var apercu = window.miniatureVideoPubliqueHTML("", reel.video);
+      if (apercu.indexOf("<video") === 0) thumb.insertAdjacentHTML("beforeend", apercu);
+      else thumb.classList.add("v2-reel-thumb-empty");
     } else {
       thumb.classList.add("v2-reel-thumb-empty");
     }

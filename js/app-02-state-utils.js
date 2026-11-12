@@ -4014,13 +4014,22 @@ function closeCurrentOverlay() {
     ContextualTools.close();
     return true;
   }
-  // Vérifier et fermer les overlays dans cet ordre de priorité
-  if (reelsState && reelsState.open) {
-    closeReels();
+  // Vérifier et fermer les overlays dans cet ordre de priorité.
+  // LOT-14 (audit UX/UI du 2026-11-10, BOB-C12) : ce qui est AU-DESSUS du lecteur
+  // d'abord — le panneau de commentaires, puis une fenêtre ouverte depuis la
+  // bobine (partage, « Plus ») — et le lecteur seulement ensuite. Le retour
+  // depuis les commentaires quittait la bobine.
+  const panneauCmtBobine = document.getElementById("reelCommentsPanel");
+  if (reelsState && reelsState.open && panneauCmtBobine && panneauCmtBobine.classList.contains("open")) {
+    closeReelComments();
     return true;
   }
   if (document.getElementById("modalBackdrop") && document.getElementById("modalBackdrop").classList.contains("active")) {
     closeModal();
+    return true;
+  }
+  if (reelsState && reelsState.open) {
+    closeReels();
     return true;
   }
   if (document.getElementById("storyViewer") && document.getElementById("storyViewer").classList.contains("active")) {
@@ -4504,7 +4513,12 @@ function preferencesVideoPublique() {
 
 function videoPubliqueAutoplay() {
   var prefs = preferencesVideoPublique();
-  return prefs.autoplay && !prefs.dataEco && !document.hidden;
+  // LOT-14 (audit UX/UI du 2026-11-10, BOB-C06) : « réduire les animations »
+  // est une demande de l'appareil — aucune vidéo ne part seule ; le bouton
+  // « ▶ Lire » reste la porte (WCAG 2.2.2).
+  var reduit = false;
+  try { reduit = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) {}
+  return prefs.autoplay && !prefs.dataEco && !document.hidden && !reduit;
 }
 
 function boutonVideoPubliqueHTML() {
@@ -4569,7 +4583,18 @@ function videoPubliqueHTML(src) {
     boutonVideoPubliqueHTML() + '</div>';
 }
 
-function miniatureVideoPubliqueHTML(poster) {
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C05) : une bobine vidéo SANS poster
+// montre une image de sa vidéo (`preload=metadata`, `#t=0.5` : la première
+// image, jamais une lecture), au lieu d'un aplat violet identique pour toutes.
+// En économie de données, on garde l'aplat : pas un octet de vidéo pour un aperçu.
+function miniatureVideoPubliqueHTML(poster, video) {
+  var eco = false;
+  try { eco = preferencesVideoPublique().dataEco; } catch (e) {}
+  var brut = (!poster && video && !eco) ? String(video).split("#")[0] : "";
+  if (brut && safeUrlAttr(brut) !== "#") {
+    var apercuVideo = brut + "#t=0.5";
+    return '<video class="miniature-video" src="' + safeUrlAttr(apercuVideo) + '" preload="metadata" muted playsinline tabindex="-1" aria-label="Aperçu de la bobine" style="width:100%;height:100%;object-fit:cover;pointer-events:none;background:#2e1065;"></video>';
+  }
   return poster
     ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(poster) + '" alt="Aperçu de la bobine" style="width:100%;height:100%;object-fit:cover;"/>'
     : '<div aria-label="Bobine vidéo" style="width:100%;height:100%;background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px;">▶</div>';
