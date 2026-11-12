@@ -30,6 +30,8 @@ async function banc(page) {
   await page.evaluate(([lui, t0]) => {
     window._supaReal = true;
     window.__toasts = []; window.toast = (t) => window.__toasts.push(String(t));
+    // LOT-6 (TRA-C11) : plus de boîte native — le banc répond « oui » à la feuille de l'application.
+    window.confirmerAction = async () => true;
     window.confirm = () => true;
     localStorage.removeItem("passio_conv_deleted_v1");
     // Le serveur : trois messages dans la conversation `c_x`.
@@ -63,7 +65,7 @@ test.describe("MSG-06 — les suppressions tiennent face au serveur", () => {
 
   test("② « effacer le fil » puis rouvrir : rien ne revient", async ({ page }) => {
     await banc(page);
-    await page.evaluate(async () => { await openConversation("c_x"); await new Promise((r) => setTimeout(r, 200)); _clearConvMessages("c_x"); });
+    await page.evaluate(async () => { await openConversation("c_x"); await new Promise((r) => setTimeout(r, 200)); await _clearConvMessages("c_x"); });
     expect(await idsLocaux(page)).toEqual([]);
     await rouvrir(page);
     // RÉINJECTION : sur le code d'avant, les trois messages reviennent.
@@ -72,7 +74,7 @@ test.describe("MSG-06 — les suppressions tiennent face au serveur", () => {
 
   test("③ après « effacer le fil », un message POSTÉRIEUR s'affiche", async ({ page }) => {
     await banc(page);
-    await page.evaluate(async () => { await openConversation("c_x"); await new Promise((r) => setTimeout(r, 200)); _clearConvMessages("c_x"); });
+    await page.evaluate(async () => { await openConversation("c_x"); await new Promise((r) => setTimeout(r, 200)); await _clearConvMessages("c_x"); });
     await page.evaluate((lui) => { window.__serveur.push({ id: "m4", from: lui, fromName: "Léa", text: "quatre", at: Date.now() + 5000 }); }, UID_LUI);
     await rouvrir(page);
     expect(await idsLocaux(page)).toEqual(["m4"]);
@@ -80,7 +82,7 @@ test.describe("MSG-06 — les suppressions tiennent face au serveur", () => {
 
   test("④ « supprimer la conversation » : le boot ne la remet pas depuis le serveur", async ({ page }) => {
     await banc(page);
-    await page.evaluate(() => { _deleteConv("c_x"); });
+    await page.evaluate(async () => { await _deleteConv("c_x"); });
     expect(await page.evaluate(() => getConversations().some((c) => c.id === "c_x"))).toBe(false);
     // Le boot : `supaLoadMyConversations` rend la conversation ; `_filtrerConvsServeur` est ce que supaInit applique.
     const r = await page.evaluate(([lui, t0]) => {
@@ -96,7 +98,7 @@ test.describe("MSG-06 — les suppressions tiennent face au serveur", () => {
 
   test("⑤ un NOUVEAU message dans une conversation supprimée la fait réapparaître, avec ce seul message", async ({ page }) => {
     await banc(page);
-    await page.evaluate(() => { _deleteConv("c_x"); });
+    await page.evaluate(async () => { await _deleteConv("c_x"); });
     await page.evaluate(async ([lui]) => {
       // Le serveur confirme l'appartenance et la conversation ; l'historique reste effacé.
       Object.defineProperty(window.supa, "from", { configurable: true, writable: true, value: function (table) {

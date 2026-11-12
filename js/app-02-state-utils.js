@@ -8586,6 +8586,13 @@ function filReelDabordActif() {
   try { if (localStorage.getItem("passio_fil_reel_dabord_v1") === "0") return false; } catch (e) {}
   return true;
 }
+// LOT-6 (audit UX/UI du 2026-11-10, PRO-C05) : un abonnement COMPTÉ ou LISTÉ est un
+// abonnement ACCEPTÉ. Une demande à un compte privé (`pending`) n'est pas un abonné :
+// « 8 abonnés » valait 7 acceptés + 1 demande. Base ancienne sans colonne `status`
+// (`_followsSansStatut`, app-08) : tout suivi y est accepté, la requête reste nue.
+function seulementAbonnementsAcceptes(q) {
+  return (window._followsSansStatut === true || !q || typeof q.eq !== "function") ? q : q.eq("status", "accepted");
+}
 function estExempleDuFil(p) { return !!p && p._source === "seed"; }
 // LOT-4/5 (audit UX/UI du 2026-11-10, MSG-C03, MSG-C04, REC-C02) : une PERSONNE
 // d'exemple est un membre du socle de démonstration (`state.seed.users`) qui

@@ -349,12 +349,8 @@ function saveFeedback() {
 }
 
 // ======== RESET ========
-function resetApp() {
-  if (!confirm("Tout réinitialiser ? (onboarding, profils, posts)")) return;
-  try { discardPendingStateSave(); } catch (e) {}
-  localStorage.removeItem(STATE_KEY);
-  location.reload();
-}
+// `resetApp` RETIRÉE (LOT-6, TRA-C11) : plus aucun appelant, et elle portait une
+// boîte native qui effaçait tout l'état local.
 
 // ======== LANDING ========
 function showLanding() {
@@ -1478,8 +1474,9 @@ function _meSetupVideoPreviewControls(video) {
   canvas.appendChild(bar);
   syncPlay(); syncSound();
 }
-function meAddText() {
-  var t = prompt("Ton texte :"); if (t == null) return; t = t.trim(); if (!t) return;
+async function meAddText() {
+  // LOT-6 (TRA-C11) : un champ dans une feuille de l'application, plus de prompt().
+  var t = await demanderTexte({ titre: "Ajouter un texte", placeholder: "Ton texte", libelle: "Ajouter", max: 200 }); if (t == null) return; t = t.trim(); if (!t) return;
   meAddOverlay({ type: "text", text: t, color: "#ffffff", x: 50, y: 45, size: 26 });
 }
 var ME_EMOJIS = ["🔥","😂","❤️","✨","😍","🎉","👏","🙌","💯","🎸","📸","🌍","☕","🍕","⚽","🎬","💜","😎","🥳","🤩"];
@@ -1538,7 +1535,7 @@ function _meRenderOverlay(ov) {
   var rsz = document.createElement("button"); rsz.className = "me-ov-resize me-ov-ctrl"; rsz.textContent = "⤡"; rsz.setAttribute("aria-label", "Redimensionner");
   el.appendChild(rsz);
   if (ov.type === "text") {
-    el.addEventListener("dblclick", function(e) { e.stopPropagation(); var nt = prompt("Modifier le texte :", ov.text); if (nt != null && nt.trim()) { ov.text = nt.trim(); content.textContent = ov.text; } });
+    el.addEventListener("dblclick", async function(e) { e.stopPropagation(); var nt = await demanderTexte({ titre: "Modifier le texte", valeur: ov.text, libelle: "Enregistrer", max: 200 }); if (nt != null && nt.trim()) { ov.text = nt.trim(); content.textContent = ov.text; } });
   }
   _meApplyTransform(el, ov);
   _meMakeInteractive(el, ov, rsz);
@@ -10014,6 +10011,11 @@ async function supaInit() {
       if (typeof supaLoadFollowing === "function")
         supaLoadFollowing().then(async ids => {
           if (_fusionnerSuivisServeur(ids, await _sessionEstMoi())) { try { saveState(); } catch(e) {} }   // ETAT-08 : la base fait foi
+          // LOT-6 (audit UX/UI du 2026-11-10, REC-C01) : un écran ouvert AVANT cette
+          // lecture disait « Suivre » sur des personnes déjà suivies — et l'appui
+          // désabonnait. Les boutons visibles sont repeints dès que l'état arrive
+          // (abonnements ET demandes en attente, posées par supaLoadFollowing).
+          try { if (typeof repeindreBoutonsSuiviVisibles === "function") repeindreBoutonsSuiviVisibles(); } catch (e) {}
         }).catch(e => {});
     }, 2000);
 
