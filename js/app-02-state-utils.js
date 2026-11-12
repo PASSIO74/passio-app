@@ -3896,7 +3896,9 @@ function goTo(screen) {
   if (screen === "feed")     { renderFeed(); try { feedWindowRestoreScroll(); } catch (e) {} }
   if (screen === "profiles") renderProfilesScreen();
   if (screen === "studio")   renderStudio();
-  if (screen === "explore")  { renderExplorer(); setTimeout(renderAiHistory, 50); }
+  // LOT-11 (REC-C19) : l'assistant IA a quitté l'écran le 2026-11-02 ; plus d'appel
+  // à son historique, qui n'a plus de nœud où s'écrire.
+  if (screen === "explore")  { renderExplorer(); }
   if (screen === "irl")      { renderIRL(); if (typeof rafraichirEvenements === "function") rafraichirEvenements(); }
   if (screen === "messages") renderMessages();
 
@@ -8621,6 +8623,32 @@ function carteCiteeHTML(p) {
     + '<div class="post-citee-auteur">' + escapeHtml(emoji) + " " + escapeHtml(auteur) + (pa ? ' · <span class="post-citee-passion">' + escapeHtml(pa.emoji || "") + " " + escapeHtml(pa.label || "") + "</span>" : "") + '</div>'
     + (extrait ? '<div class="post-citee-extrait">' + escapeHtml(extrait) + '</div>' : "")
     + '</div></div></div>';
+}
+
+// LOT-11 (audit UX/UI du 2026-11-10, REC-C09) — LE COMPTE D'UNE PASSION. La tuile
+// des tendances disait « 4 posts », la fiche « 42 posts » (exemples compris).
+// Une seule source : les publications RÉELLES (les miennes et celles du serveur,
+// comptées une fois par identifiant), jamais le socle de démonstration.
+function _publicationsReellesParPassion() {
+  var counts = {};
+  var vus = Object.create(null);
+  [].concat(state.userPosts || [], state.supabasePosts || []).forEach(function (p) {
+    if (!p || !p.passion) return;
+    if (p.id != null) { if (vus[p.id]) return; vus[p.id] = true; }
+    counts[p.passion] = (counts[p.passion] || 0) + 1;
+  });
+  return counts;
+}
+function nbPublicationsPassion(pid) { return _publicationsReellesParPassion()[pid] || 0; }
+// Les passions qui ont des publications réelles, la plus active d'abord ; jamais
+// une passion que l'app ne sait pas nommer (REC-C15 : « ✨ Passion »).
+function passionsAvecPublications() {
+  var counts = _publicationsReellesParPassion();
+  return Object.keys(counts).map(function (id) {
+    var p = passionById(id);
+    return { id: id, emoji: p.emoji, label: p.label, count: counts[id] };
+  }).filter(function (p) { return p.label && p.label !== "Passion"; })
+    .sort(function (a, b) { return (b.count - a.count) || String(a.label).localeCompare(String(b.label), "fr"); });
 }
 
 function estExempleDuFil(p) { return !!p && p._source === "seed"; }

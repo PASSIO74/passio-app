@@ -6600,9 +6600,17 @@ async function supaSearchUsers(query) {
         bio: profile.bio || "",
         passions
       };
-    }).slice(0, 8);
-
-    return results;
+    });
+    // LOT-11 (REC-C16) : « tom » rendait Victor Aubry (bio « … automobile … »).
+    // Le pseudo compte partout ; la bio, en DÉBUT DE MOT sous 4 lettres. Les
+    // pseudos qui correspondent passent devant.
+    const _q = (typeof plierRecherche === "function") ? plierRecherche(cleanQuery) : cleanQuery.toLowerCase();
+    const _pli = (x) => (typeof plierRecherche === "function") ? plierRecherche(x || "") : String(x || "").toLowerCase();
+    const _parPseudo = (r) => _pli(r.username).includes(_q);
+    const _parBio = (r) => _q.length >= 4 ? _pli(r.bio).includes(_q) : _pli(r.bio).split(/[^a-z0-9]+/).some((mot) => mot.startsWith(_q));
+    return results.filter((r) => _parPseudo(r) || _parBio(r))
+      .sort((a, b) => (_parPseudo(b) ? 1 : 0) - (_parPseudo(a) ? 1 : 0))
+      .slice(0, 8);
   } catch(e) {
     console.error("[SEARCH] Error:", e);
     return [];

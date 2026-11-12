@@ -5685,6 +5685,22 @@ function renderExplorer() {
   function peindreTendances() {
     var cible = document.getElementById("trendingGrid");
     if (!cible) return;
+    // LOT-11 (REC-C14, REC-C15) : seules les passions qui ont des publications
+    // réelles, nommées ; sans elles, la section dit « Pour commencer » et montre
+    // le socle — plus de « Hot » posé sur l'ordre alphabétique.
+    var actives = (typeof passionsAvecPublications === "function") ? passionsAvecPublications().slice(0, 6) : [];
+    var titre = document.getElementById("trendingTitle");
+    if (titre) titre.textContent = actives.length ? "Passions actives" : "Pour commencer";
+    if (actives.length) {
+      cible.innerHTML = actives.map(function (p) {
+        return '<div class="trending-tile" onclick="openPassionExplorer(\'' + escapeJsArg(p.id) + '\')">'
+          + '<div class="trending-emoji">' + escapeHtml(p.emoji) + '</div>'
+          + '<div class="trending-name">' + escapeHtml(p.label) + '</div>'
+          + '<div class="trending-stat">' + p.count + ' publication' + (p.count > 1 ? "s" : "") + '</div>'
+          + '</div>';
+      }).join("");
+      return;
+    }
     var counts = {};
     var dejaComptes = Object.create(null);
     [].concat(state.userPosts || [], state.supabasePosts || []).forEach(function (p) {
@@ -5816,6 +5832,13 @@ function renderExplorer() {
   // garde d'authentification, si bien qu'un visiteur sans compte écrivait un
   // suivi. Tout passe désormais par `toggleFollowUser` (app-04), qui garde
   // `requireAuthentication`, sait DÉSUIVRE, et synchronise.
+  // LOT-11 (REC-C05) : « à suivre » = personnes que je ne suis pas encore (ni
+  // suivies, ni en demande, ni bloquées), celles qui partagent une de mes
+  // passions d'abord.
+  var _mesPassions = {};
+  try { (state.user.profiles || []).forEach(function (p) { if (p && !p.archived && !p._parDefaut && p.passion) _mesPassions[p.passion] = 1; }); } catch (e) {}
+  function _aSuivre(id) { return id && (typeof etatSuivi !== "function" || etatSuivi(id) === "aucun") && !(typeof isBlocked === "function" && isBlocked(id)); }
+  function _parAffinite(a, b) { return (_mesPassions[b.passion || b.passion_id] ? 1 : 0) - (_mesPassions[a.passion || a.passion_id] ? 1 : 0); }
   function ligneCreateur(u) {
   // LOT-6 (audit UX/UI du 2026-11-10, REC-C03) : une personne qu'on a BLOQUÉE ne revient
   // pas comme suggestion ni comme résultat. Les garde-fous serveur restent inchangés.
@@ -5834,7 +5857,7 @@ function renderExplorer() {
   }
 
   function createursSeed() {
-    return (state.seed.users || []).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0, 4).map(function (u) {
+    return (state.seed.users || []).filter(function (u) { return _aSuivre(u.id); }).slice().sort(_parAffinite).slice(0, 4).map(function (u) {
       var p = passionById(u.passion);
       return ligneCreateur({
         id: u.id, name: u.name, avatar: u.avatar, profileEmoji: u.profileEmoji,
@@ -5858,7 +5881,7 @@ function renderExplorer() {
         if ((r && r.error) || !data || !data.length) return;
         var el = document.getElementById("suggestedCreators");
         if (!el) return;
-        var others = data.filter(function (u) { return u.id !== MY_UID && u.username; });
+        var others = data.filter(function (u) { return u.id !== MY_UID && u.username && _aSuivre(u.id); }).sort(_parAffinite);
         if (!others.length) return;
         var supaHtml = others.map(function (u) {
           var p = passionById(u.passion_id);

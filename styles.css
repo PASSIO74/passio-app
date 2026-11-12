@@ -12640,3 +12640,26 @@ button, a, label, select, summary,
 .post-citee-auteur { font-size: 13.5px; font-weight: 700; color: var(--text, #1f1235); }
 .post-citee-passion { font-weight: 600; color: var(--muted, #6b6280); }
 .post-citee-extrait { margin-top: 4px; font-size: 13.5px; line-height: 1.4; color: var(--text, #1f1235); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* LOT-11 (audit UX/UI du 2026-11-10) — l'écran Rechercher.
+   REC-C07 / C13 : une croix d'effacement de 44 px dans le champ. */
+.explorer-clear {
+  flex: 0 0 auto; width: 44px; height: 44px; margin: -10px -6px -10px 0;
+  border: none; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer;
+}
+.explorer-clear[hidden] { display: none; }
+#explorerSearch::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+/* REC-C06 : « Voir N autres passions ». */
+.ex-voir-plus {
+  display: block; width: 100%; min-height: 44px; border: none; border-bottom: 1px solid var(--border);
+  background: transparent; color: var(--accent); font-weight: 700; font-size: 13px; cursor: pointer;
+}
+/* REC-C09 : « 6 sur N · Voir dans le fil ». */
+.pex-suite { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0 4px; font-size: 13px; color: var(--muted); }
+/* REC-C10 / C17 / C18 : les commandes de la fiche d'une passion à 44 px. */
+#modalContent .pex-ajouter, #modalContent .pex-publier, #modalContent .pex-suite .btn,
+#pexCreators .btn.small, #pexLiees .pill, .ex-suggestions .pill { min-height: 44px; }
+#modalContent .pex-publier { margin-top: 12px; }
+/* LOT-11 (REC-C06) : une ligne de passion repliée reste repliée — son `display:flex`
+   en ligne battait l'attribut `hidden`. */
+#exploreSearchResults .ex-passion-plus[hidden] { display: none !important; }
