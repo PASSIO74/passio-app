@@ -1812,6 +1812,66 @@ function toggleGroupUser(el) {
   if (cb) cb.checked = el.classList.contains("selected");
   const check = el.querySelector(".grp-check");
   if (check) check.textContent = el.classList.contains("selected") ? "✓" : "";
+  // LOT-5 (MSG-C04) : la sélection survit à une nouvelle recherche.
+  const id = el.getAttribute("data-uid");
+  if (id && window._grpSel) {
+    if (el.classList.contains("selected")) window._grpSel.set(id, el.getAttribute("data-nom") || "");
+    else window._grpSel.delete(id);
+  }
+}
+
+// LOT-5 (audit UX/UI du 2026-11-10, MSG-C04) — LES MEMBRES D'UN NOUVEAU GROUPE.
+// La liste était `state.seed.users.slice(0, 10)` : dix personnages d'exemple, sans
+// recherche ; la base refusait ensuite leurs identifiants et l'écran disait
+// « Groupe créé ». Pour un COMPTE : tes contacts réels (conversations), puis la
+// recherche de personnes du serveur ; jamais un personnage d'exemple.
+function _grpOptionHTML(u, coche) {
+  return '<div class="group-user-option' + (coche ? ' selected' : '') + '" data-uid="' + escapeHtml(u.id) + '" data-nom="' + escapeHtml(u.name || "") + '" onclick="toggleGroupUser(this)">' +
+    '<input type="checkbox" value="' + escapeHtml(u.id) + '"' + (coche ? ' checked' : '') + ' />' +
+    '<span class="msg-avatar" style="background:' + avatarBg(u) + ';width:36px;height:36px;font-size:18px;flex-shrink:0;">' + avatarInner(u) + '</span>' +
+    '<span style="flex:1;font-size:13px;">' + escapeHtml(u.name || "Passionné") + '</span>' +
+    '<span class="grp-check">' + (coche ? '✓' : '') + '</span>' +
+  '</div>';
+}
+function _grpContactsReels() {
+  var vus = {};
+  return (getConversations() || []).filter(function (c) {
+    if (!c || c.isGroup || !c.userId || vus[c.userId] || estPersonneExemple(c.userId)) return false;
+    vus[c.userId] = true; return true;
+  }).map(function (c) {
+    return { id: c.userId, name: c.userName || "Passionné", profileEmoji: c.userEmoji || "✨", avatar: c.userColor || "#8b5cf6", photoUrl: c.userPhoto || null };
+  });
+}
+function _grpPeindreCandidats(liste, vide) {
+  var box = document.getElementById("grpNewList");
+  if (!box) return;
+  var sel = window._grpSel || new Map();
+  // Les personnes déjà cochées restent en tête, même hors de la recherche courante.
+  var dejaVus = {};
+  var html = [];
+  sel.forEach(function (nom, id) {
+    dejaVus[id] = true;
+    var u = (liste || []).find(function (x) { return x.id === id; }) || { id: id, name: nom };
+    html.push(_grpOptionHTML(u, true));
+  });
+  (liste || []).forEach(function (u) { if (!dejaVus[u.id]) html.push(_grpOptionHTML(u, false)); });
+  box.innerHTML = html.length ? html.join("") : '<div class="grp-new-vide" style="font-size:12px;color:var(--muted);padding:8px 0;">' + escapeHtml(vide || "Aucune personne trouvée.") + '</div>';
+}
+function grpChercherMembres(q) {
+  var brut = String(q || "").trim();
+  var plie = plierRecherche(brut);
+  var contacts = _grpContactsReels();
+  var locaux = plie ? contacts.filter(function (u) { return plierRecherche(u.name).includes(plie); }) : contacts;
+  _grpPeindreCandidats(locaux, plie ? "Aucune personne trouvée." : "Écris le nom d'une personne pour l'inviter.");
+  if (!plie || typeof supaSearchUsers !== "function") return;
+  window._grpRequete = plie;
+  supaSearchUsers(brut).then(function (res) {
+    if (window._grpRequete !== plie) return;   // une réponse ancienne n'écrase pas la courante
+    var vus = {}; locaux.forEach(function (u) { vus[u.id] = true; });
+    var serveur = (res || []).filter(function (u) { return u && u.id && u.id !== MY_UID && !vus[u.id] && !estPersonneExemple(u.id); })
+      .map(function (u) { return { id: u.id, name: u.username || "Passionné", profileEmoji: u.emoji || "✨", avatar: u.color || "#8b5cf6", photoUrl: u.photoUrl || null }; });
+    _grpPeindreCandidats(locaux.concat(serveur).slice(0, 12), "Aucune personne trouvée.");
+  }).catch(function () {});
 }
 function toggleGroupPassion(el) {
   const selected = document.querySelectorAll(".group-passion-option.selected");
@@ -1905,14 +1965,14 @@ function _groupeAssurerLibelles() {
 
 function openCreateGroup() {
   const seedUsers = state.seed.users || [];
-  const userOptions = seedUsers.slice(0, 10).map(u =>
-    `<div class="group-user-option" data-uid="${escapeHtml(u.id)}" onclick="toggleGroupUser(this)">
-      <input type="checkbox" value="${escapeHtml(u.id)}" />
-      <span class="msg-avatar" style="background:${avatarBg(u)};width:36px;height:36px;font-size:18px;flex-shrink:0;">${avatarInner(u)}</span>
-      <span style="flex:1;font-size:13px;">${escapeHtml(u.name)}</span>
-      <span class="grp-check"></span>
-    </div>`
-  ).join("");
+  const compte = (typeof _compteAuthReel === "function") && _compteAuthReel();
+  window._grpSel = new Map();
+  window._grpRequete = "";
+  // Sans compte, rien ne part en base : l'aperçu d'avant reste (exemples).
+  const userOptions = compte ? "" : seedUsers.slice(0, 10).map(u => _grpOptionHTML(u, false)).join("");
+  const recherche = compte
+    ? `<input type="search" class="input" id="grpNewSearch" placeholder="Rechercher une personne…" oninput="grpChercherMembres(this.value)" style="margin-bottom:8px;" />`
+    : "";
   const passionOptions = _groupePassionsHTML();
 
   const html = `
@@ -1932,12 +1992,14 @@ function openCreateGroup() {
     <div class="group-passion-grid">${passionOptions}</div>
 
     <label class="field" style="margin-top:14px;"><span>Membres à inviter</span></label>
-    <div class="group-user-list">${userOptions}</div>
+    ${recherche}
+    <div class="group-user-list" id="grpNewList">${userOptions}</div>
 
     <button class="btn primary block" onclick="confirmCreateGroup()" style="margin-top:14px;">Créer le groupe</button>
   `;
   openModal(html);
   _groupeAssurerLibelles();
+  if (compte) grpChercherMembres("");
 }
 
 async function confirmCreateGroup() {
@@ -1945,19 +2007,26 @@ async function confirmCreateGroup() {
   const name = (nameInput && nameInput.value || "").trim();
   if (!name) { toast("Donne un nom au groupe"); return; }
   const selectedPassions = [...document.querySelectorAll(".group-passion-option.selected input")].map(i => i.value);
-  const selectedUsers = [...document.querySelectorAll(".group-user-option.selected input")].map(i => i.value);
+  const selectedUsers = (window._grpSel && window._grpSel.size)
+    ? [...window._grpSel.keys()]
+    : [...document.querySelectorAll(".group-user-option.selected input")].map(i => i.value);
   if (selectedPassions.length === 0) { toast("Choisis au moins 1 passion"); return; }
   if (selectedUsers.length === 0) { toast("Sélectionne au moins 1 membre"); return; }
 
   let groupId = "conv_grp_" + uid();
+  // LOT-5 (MSG-C04) : le verdict de CHAQUE ajout est lu ; un membre refusé par la
+  // base n'est ni compté ni annoncé.
+  const rapport = { refuses: [] };
 
   // Créer le groupe dans Supabase si connecté
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     try {
-      const supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0]);
+      const supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0], rapport);
       if (supaId) groupId = supaId;
     } catch(e) {}
   }
+  const refuses = new Set(rapport.refuses || []);
+  const membresAjoutes = selectedUsers.filter(u => !refuses.has(u));
 
   // ⚠️ PAR IDENTIFIANT, JAMAIS À L'AVEUGLE : ma propre ligne `conv_members` m'est
   // poussée sur `user:<moi>` (`conv_members:INSERT`, R25) et peut avoir posé
@@ -1972,8 +2041,8 @@ async function confirmCreateGroup() {
     isGroup: true,
     groupName: name,
     groupPassions: selectedPassions,
-    userIds: selectedUsers,
-    userId: selectedUsers[0],
+    userIds: membresAjoutes,
+    userId: membresAjoutes[0] || selectedUsers[0],
     passion: selectedPassions[0],
     unread: 0,
     lastAt: Date.now(),
@@ -1994,7 +2063,13 @@ async function confirmCreateGroup() {
 
   closeModal();
   renderMessages();
-  toast(`Groupe « ${name} » créé`);
+  if (refuses.size) {
+    const noms = [...refuses].map(id => (window._grpSel && window._grpSel.get(id)) || "un membre");
+    toast(`Groupe « ${name} » créé — pas pu ajouter : ${noms.join(", ")}`, "warning");
+  } else {
+    toast(`Groupe « ${name} » créé`);
+  }
+  window._grpSel = null;
 }
 
 // LOT-4 (audit UX/UI du 2026-11-10, MSG-C08) — UN SEUL CALCUL des membres d'un groupe.
@@ -2993,6 +3068,15 @@ function buildReels(pinnedId) {
       return true;
     })
     .sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+  // LOT-5 (audit UX/UI du 2026-11-10, BOB-C22) : le RÉEL d'abord, les exemples
+  // ensuite — même règle et même coupure que le fil (`filReelDabordActif`). Mesuré :
+  // 20 bobines d'exemple sur 27, mêlées à celles des comptes, sans marque.
+  if (typeof filReelDabordActif === "function" && filReelDabordActif()) {
+    const reelles = eligibles.filter(function (p) { return !bobineExemple(p); });
+    const exemples = eligibles.filter(bobineExemple);
+    eligibles.length = 0;
+    Array.prototype.push.apply(eligibles, reelles.concat(exemples));
+  }
 
   const liste = eligibles.slice(0, 30);
   // `pinnedId` : la bobine visée par un lien partagé (#reel=<id>), ou choisie
@@ -3127,6 +3211,17 @@ const COLORS_PASSION_BG = {
   cinema: "#9333ea", nature: "#15803d", actu: "#0f172a",
 };
 
+// Une bobine d'EXEMPLE vient du socle de démonstration (`state.seed.posts`) et
+// d'aucune source réelle. Les bobines du socle portent `_source: "seed_reel"`, le
+// fil pose `"seed"` : toute source qui commence par « seed » est un exemple.
+function bobineExemple(post) {
+  if (!post) return false;
+  if (post._source) return String(post._source).indexOf("seed") === 0;
+  const id = post.id;
+  const dans = function (t) { return (t || []).some(function (p) { return p && (p === post || p.id === id); }); };
+  return dans(state.seed.posts) && !dans(state.supabasePosts) && !dans(state.userPosts);
+}
+
 function renderReelHTML(post, idx) {
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
@@ -3146,6 +3241,7 @@ function renderReelHTML(post, idx) {
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
       ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
+        ${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? '<div class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</div>' : ""}
         <div class="reel-author" onclick="_openReelAuthor('${escapeJsArg(post.authorId || post.userId || '')}'); return false;" style="cursor:pointer;">
           <div class="reel-avatar" style="background:${_cssColor(author.color)};">${escapeHtml(author.emoji)}</div>
           <div class="reel-author-meta">
@@ -3208,7 +3304,14 @@ function openReels(pinnedId) {
   reelsState.pausePrompted = false;
 
   const list = document.getElementById("reelsList");
-  list.innerHTML = items.map((p, i) => renderReelHTML(p, i)).join("");
+  // LOT-5 (BOB-C22) : une fin de liste qui le dit, au lieu d'une flèche grise.
+  list.innerHTML = items.map((p, i) => renderReelHTML(p, i)).join("") + `
+    <div class="reels-fin" role="status">
+      <div class="reels-fin-emoji">🎬</div>
+      <div class="reels-fin-titre">Tu as tout vu</div>
+      <div class="reels-fin-texte">Reviens plus tard, ou crée la tienne.</div>
+      <button class="btn primary" onclick="startBobineCreation()">Créer une bobine</button>
+    </div>`;
 
   const v = document.getElementById("reelsViewer");
   v.classList.add("open");

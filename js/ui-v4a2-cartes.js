@@ -364,7 +364,7 @@
     // de démonstration dit ce qu'elle est, à la place des chiffres.
     try {
       if (window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)) {
-        return "Exemple PASSIO · participation désactivée";
+        return "Activité d'exemple · pas d'inscription";
       }
     } catch (e) {}
     var n = nbInscrits(ev, "going");
@@ -600,6 +600,22 @@
       return true;
     }
     if (termine) return true;
+
+    // LOT-5 (audit UX/UI du 2026-11-10, IRL-C01) : une activité d'EXEMPLE refuse la
+    // participation — le « Je participe » corail plein, identique à celui d'une
+    // vraie activité, était proposé quand même (et finissait sur un toast). La
+    // pastille d'état dit ce qu'elle est ; « Détails » reste la seule action.
+    var estExemple = false;
+    try { estExemple = !!(window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)); } catch (e) {}
+    if (estExemple) {
+      var ex = document.createElement("span");
+      ex.className = "v4a2-etat v4a2-etat-exemple";
+      ex.setAttribute("data-v4a2-act", "exemple");
+      ex.setAttribute("role", "status");
+      ex.textContent = "Exemple";
+      a.appendChild(ex);
+      return true;
+    }
 
     if (estMien(ev)) {
       // Organiser n'est pas participer : proposer « Je viens » à l'organisateur

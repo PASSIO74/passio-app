@@ -4128,12 +4128,20 @@ function _nmDoSearch(q) {
   var all = recentUsers.concat(seedUsers.filter(function(su) {
     return !recentUsers.find(function(r) { return r.id === su.id; });
   }));
+  // LOT-5 (audit UX/UI du 2026-11-10, MSG-C03) : un COMPTE ne se voit proposer que
+  // de vraies personnes. Les personnages d'exemple (cinq « Passionné » pour un
+  // compte neuf, auxquels on ne peut pas écrire) sortent des suggestions comme
+  // des résultats ; sans contact, une consigne au lieu de faux contacts.
+  var compte = (typeof _compteAuthReel === "function") && _compteAuthReel();
+  if (compte) all = all.filter(function (u) { return !estPersonneExemple(u.id); });
 
   var matches = q ? all.filter(function(u) { return plierRecherche(u.name).includes(q); }) : all;
   matches = matches.slice(0, 10);
 
   if (matches.length === 0) {
-    box.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun utilisateur trouvé</div>`;
+    box.innerHTML = (compte && !q)
+      ? `<div class="nm-consigne" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Écris le nom d'une personne pour la trouver.</div>`
+      : `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun utilisateur trouvé</div>`;
     // Lancer aussi la recherche Supabase si query non vide
     if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
       // ⚠️ GARDE D'OBSOLESCENCE. Les réponses reviennent dans l'ordre du réseau,
@@ -4709,7 +4717,7 @@ async function openUserProfile(authorId, source) {
     <!-- BOUTONS -->\
     <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
-      <button class="btn ghost" id="followBtn_' + escapeHtml(authorId) + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
+      <button class="btn ghost" id="followBtn_' + escapeHtml(authorId) + '"' + (estPersonneExemple(authorId) ? ' disabled aria-disabled="true" data-exemple="1"' : '') + ' onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
     \
@@ -5083,6 +5091,9 @@ function _majBlocPriveVisite(userId) {
 }
 
 function toggleFollowUser(userId, userName) {
+  // LOT-5 (REC-C02) : un personnage d'exemple n'existe pas — aucun suivi ne part,
+  // ni en local ni en base, et c'est dit.
+  if (estPersonneExemple(userId)) { toast("C'est un profil d'exemple : on ne peut pas le suivre."); return; }
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
@@ -5585,8 +5596,10 @@ function renderMessages() {
     // Vue normale : actives, ou archivées si on a basculé.
     filtered = filtered.filter(c => _showArch ? c.archived : !c.archived);
   }
-  // Épinglées d'abord, puis par date du dernier message.
-  filtered.sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (b.lastAt - a.lastAt));
+  // Épinglées d'abord, puis les VRAIES conversations, puis les exemples (LOT-5,
+  // PCS-006 : elles étaient mêlées), chacune par date du dernier message.
+  const _exConv = (c) => (typeof _estConvDemo === "function" && _estConvDemo(c)) ? 1 : 0;
+  filtered.sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (_exConv(a) - _exConv(b)) || (b.lastAt - a.lastAt));
 
   if (!filtered.length) {
     // Squelette shimmer tant que le chargement réseau initial n'est pas terminé

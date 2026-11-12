@@ -2377,6 +2377,8 @@ function etatSuivi(uid) {
   return "aucun";
 }
 function libelleBoutonSuivi(uid) {
+  // LOT-5 (REC-C02) : un personnage d'exemple ne se suit pas — le bouton le dit.
+  if (estPersonneExemple(uid)) return "Exemple";
   var e = etatSuivi(uid);
   return e === "suivi" ? "✓ Suivi" : e === "attente" ? "Demande envoyée" : "Suivre";
 }
@@ -2403,6 +2405,11 @@ function libelleBoutonSuivi(uid) {
 // d'attente par un `box-shadow`, pas par un contour. Les DEUX lisent en revanche
 // `aideBoutonSuivi` et `etatSuivi`, qui restent les autorités communes.
 function attrsBoutonSuivi(uid) {
+  if (estPersonneExemple(uid)) {
+    var aideEx = aideBoutonSuivi(uid);
+    return ' disabled aria-disabled="true" data-exemple="1" title="' + escapeHtml(aideEx) + '" aria-label="' + escapeHtml(aideEx) + '"'
+         + ' style="color:var(--muted);border-style:dashed;cursor:default;"';
+  }
   var e = etatSuivi(uid);
   var aide = aideBoutonSuivi(uid);
   var styleEtatSuivi = e === "suivi" ? "background:var(--accent);color:#fff;border-color:var(--accent);"
@@ -2412,6 +2419,7 @@ function attrsBoutonSuivi(uid) {
        + (styleEtatSuivi ? ' style="' + styleEtatSuivi + '"' : '');
 }
 function aideBoutonSuivi(uid) {
+  if (estPersonneExemple(uid)) return "Exemple — profil de démonstration, on ne peut pas le suivre";
   var e = etatSuivi(uid);
   // ⚠️ WCAG 2.5.3 « Label in Name » : l'étiquette CONTIENT le libellé visible,
   // sinon la commande vocale (« clique Suivi ») ne trouve pas le bouton.
@@ -8688,6 +8696,15 @@ function filReelDabordActif() {
   return true;
 }
 function estExempleDuFil(p) { return !!p && p._source === "seed"; }
+// LOT-4/5 (audit UX/UI du 2026-11-10, MSG-C03, MSG-C04, REC-C02) : une PERSONNE
+// d'exemple est un membre du socle de démonstration (`state.seed.users`) qui
+// n'est pas un vrai profil mis en cache (`distant: true`, app-02) — même règle
+// que `_estConvDemo`. Jamais la forme de l'identifiant (`u_…`) : les bancs s'en
+// servent pour des fixtures réelles.
+function estPersonneExemple(uid) {
+  if (!uid) return false;
+  try { return (state.seed.users || []).some(function (u) { return u && u.id === uid && !u.distant; }); } catch (e) { return false; }
+}
 function ordonnerFil(posts) {
   var tries = trierFilChronologique(posts);
   if (!filReelDabordActif()) return tries;

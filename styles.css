@@ -12551,3 +12551,29 @@ button, a, label, select, summary,
 }
 #voiceRecordBar.voice-annule { background: #f3f0fa; border-top-color: var(--border, #e4defa); }
 #voiceRecordBar.voice-annule #voiceRecordConsigne { color: #b91c1c; font-weight: 800; }
+
+/* LOT-5 (audit UX/UI du 2026-11-10, BOB-C22) : la bobine d'exemple porte la même
+   étiquette que le fil, et la liste a une fin qui le dit. */
+.reel-info .reel-exemple { margin-bottom: 6px; }
+.reels-fin {
+  height: 100vh;
+  height: var(--app-vh, 100svh);
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  box-sizing: border-box;
+  color: #fff;
+  text-align: center;
+}
+.reels-fin-emoji { font-size: 44px; }
+.reels-fin-titre { font-size: 20px; font-weight: 800; }
+.reels-fin-texte { font-size: 14px; color: rgba(255, 255, 255, 0.85); margin-bottom: 8px; }
+
+/* LOT-5 (IRL-C01) : une activité d'exemple montre une pastille d'état, pas un
+   « Je participe » corail ; la bulle de carte le dit aussi. */
+:root.passio-ui-4a2 .v4a2-etat.v4a2-etat-exemple { color: #4b4060; background: #f3f0fa; border: 1px dashed #b7a8e0; }
+.irl-popup-exemple { font-size: 11px; font-weight: 700; color: #5b21b6; margin-bottom: 2px; }
