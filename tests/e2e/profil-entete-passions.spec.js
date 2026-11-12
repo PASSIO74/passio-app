@@ -380,7 +380,7 @@ test("③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'
   const vu = await page.evaluate(() => {
     const m = document.getElementById("modalContent");
     return {
-      murOuvert: !!(m && (m.textContent || "").includes("Trois passions offertes")),
+      murOuvert: !!(m && (m.textContent || "").includes("Trois passions à la fois")),
       renvoiPanneau: !!(m && m.querySelector('[data-tel="passion_paywall_gerer"]')),
       // La sortie restante prend le style primaire : une fenêtre à une seule
       // issue ne laisse pas deviner laquelle.

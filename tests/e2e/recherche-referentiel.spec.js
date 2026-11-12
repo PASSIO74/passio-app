@@ -211,6 +211,10 @@ test.describe("la page Rechercher connaît tout le référentiel", () => {
       // UPSERT réel. Ce cas mesure l'ÉTAT LOCAL et le bouton, rien d'autre.
       window.supaFollowUser = async () => true;
       window.supaUnfollowUser = async () => true;
+      // LOT-5 (REC-C02) : un personnage d'exemple ne se suit plus. Ce cas mesure le
+      // MOTEUR de suivi : les créateurs deviennent de vrais profils mis en cache.
+      (state.seed.users || []).forEach((x) => { x.distant = true; });
+      renderExplorer();
       const btn = document.querySelector("#suggestedCreators button[id^='followBtn_']");
       if (!btn) return { absent: true };
       const uid = btn.id.replace("followBtn_", "");
@@ -279,6 +283,8 @@ test.describe("la page Rechercher connaît tout le référentiel", () => {
       window.supaFollowUser = async () => true;
       window.supaUnfollowUser = async () => true;
       state.user.following = [];
+      // LOT-5 (REC-C02) : de vrais profils mis en cache, voir ⑧.
+      (state.seed.users || []).forEach((x) => { x.distant = true; });
       // Une personne présente DANS LES DEUX surfaces à la fois.
       const u = (state.seed.users || [])[0];
       renderExplorer();

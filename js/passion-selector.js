@@ -84,8 +84,8 @@
       // sans rien pour conclure. Mesuré par Benjamin sur la preview.
       verifier: null,
       // Appelée à la place du toast quand `max` est atteint : l'appelant décide
-      // ce que « plus de place » veut dire chez lui (au compte, c'est une offre
-      // payante à annoncer ; ailleurs, un simple plafond de confort).
+      // ce que « plus de place » veut dire chez lui (au compte, la limite qui a
+      // refusé le geste ; ailleurs, un simple plafond de confort).
       onMax: null,
       onChoisir: null,
       onValider: null,

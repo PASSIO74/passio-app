@@ -525,8 +525,8 @@ export const PALIERS_CROISSANCE = Object.freeze([
   { seuil: 100, nom: "100 inscrits", geste: "Vérifier que 2 à 4 rencontres réelles ont lieu chaque semaine ; installer la Session PASSIO hebdomadaire." },
   { seuil: 300, nom: "300 inscrits", geste: "Mesurer les actifs par semaine et la rétention à 4 semaines ; lancer la structure (micro-entreprise) et le dépôt INPI s'ils ne sont pas faits." },
   { seuil: 1000, nom: "1 000 inscrits", geste: "Relire les 5 seuils de la phase 2 (§ 3) ; si 3 organisateurs demandent à faire payer : prérequis légaux, puis billetterie (lot L4)." },
-  { seuil: 2000, nom: "2 000 inscrits", geste: "Phase 3 si la densité tient : PASSIO Orga et lieux partenaires ; PASSIO+ seulement au-delà de 2 000 ACTIFS par mois." },
-  { seuil: 5000, nom: "5 000 inscrits", geste: "Ouvrir la 2e ville avec un ambassadeur local ; PASSIO+ si la conversion mesurée le justifie." },
+  { seuil: 2000, nom: "2 000 inscrits", geste: "Si le pilote organisateurs a tenu : l'ouvrir à tous les organisateurs, puis les lieux partenaires. Les membres ne paient jamais (ADR-013)." },
+  { seuil: 5000, nom: "5 000 inscrits", geste: "Ouvrir la 2e ville avec un ambassadeur local, seulement si la première tient ses seuils d'usage." },
   { seuil: 10000, nom: "10 000 inscrits", geste: "Phase 4 : sponsors d'événements, affiliation, financement (prêt d'honneur, Bourse French Tech)." },
 ]);
 
@@ -544,6 +544,126 @@ export function palierCroissance(total, semaine = 0) {
   const p = PALIERS_CROISSANCE[i], suivant = PALIERS_CROISSANCE[i + 1] || null;
   const s = Math.max(0, Number(semaine) || 0);
   return { ...p, rang: i, suivant, franchiCetteSemaine: p.seuil > 0 && t - s < p.seuil };
+}
+
+// ─── SEUILS D'USAGE DU LANCEMENT (2026-11-12) ───────────────────────────────
+// Demande de Benjamin : « mets en place ce qu'il y a à faire, je fais venir les
+// utilisateurs ». Les paliers ci-dessus comptent des INSCRITS ; une offre ne
+// s'ouvre que sur l'USAGE, mesuré par ville : des gens actifs, des rencontres
+// qui ont vraiment eu lieu, des présences pointées au QR, des organisateurs qui
+// reviennent. Ni une date, ni un nombre d'inscrits (ADR-013).
+//
+// Définitions (tenues ici seulement, lues par la fonction et par la page) :
+//   • rencontre RÉELLE : passée, non annulée, au moins 3 présents pointés ;
+//   • actifs de la VILLE (7 j) : comptes actifs sur 7 jours (`activite_jour`,
+//     identité serveur) qui ont organisé, rejoint ou pointé une rencontre de la
+//     ville dans la fenêtre lue — un compte n'a pas de ville déclarée ;
+//   • taux de présence (30 j) : pointés ÷ inscrits « j'y vais » (ou pointés)
+//     des rencontres passées et non annulées ; sans inscrit, pas de taux ;
+//   • organisateur RÉGULIER : au moins 2 rencontres réelles en 30 jours.
+// Les organisateurs PROFESSIONNELS ne se mesurent pas encore : aucun champ ne
+// les distingue. Le dire vaut mieux qu'un faux zéro.
+// Un seuil tenu une semaine ne décide rien : le pilote s'ouvre après huit
+// semaines d'observation, dont les quatre dernières au-dessus.
+export const SEUILS_LANCEMENT = Object.freeze({
+  pilote: Object.freeze({ actifs: 150, rencontres: 5, presence: 60, organisateurs: 10 }),
+  general: Object.freeze({ actifs: 300, rencontres: 8, presence: 65, organisateurs: 20 }),
+});
+export const PRESENTS_RENCONTRE_REELLE = 3;
+export const ORGANISATEUR_REGULIER_MIN = 2;
+export const SEMAINES_OBSERVATION = 8;
+const RSVP_INSCRIT = new Set(["going"]);
+
+/** Une ville → sa clé de regroupement (casse, accents, espaces). `null` si vide. */
+export function cleVille(v) {
+  const s = String(v == null ? "" : v).normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return s || null;
+}
+
+/**
+ * Les seuils d'usage, PURS. Entrées :
+ *   actifs        [{ uid }] — une ligne par compte et par jour actif sur 7 jours ;
+ *   rencontres    [{ id, city, date_at, end_at, status, author_id, organizer_id }] ;
+ *   participations [{ event_id, user_id, rsvp, checked_in_at }] ;
+ *   mesurables    Set des comptes comptés (hors tests et éditeur), ou null ;
+ *   partiel       une lecture a touché son plafond : les nombres sont des minimums.
+ */
+export function seuilsLancement({ actifs = [], rencontres = [], participations = [], mesurables = null, partiel = false } = {}, maintenant = Date.now()) {
+  const compte = (uid) => !!uid && (!mesurables || mesurables.has(String(uid)));
+  const actifs7 = new Set((Array.isArray(actifs) ? actifs : []).map((a) => a && String(a.uid)).filter(compte));
+  const parRencontre = new Map();
+  for (const p of Array.isArray(participations) ? participations : []) {
+    if (!p || !compte(p.user_id)) continue;
+    const k = String(p.event_id);
+    if (!parRencontre.has(k)) parRencontre.set(k, []);
+    parRencontre.get(k).push(p);
+  }
+  const J7 = maintenant - 7 * 864e5, J30 = maintenant - 30 * 864e5;
+  const villes = new Map();
+  const ville = (r) => {
+    const cle = cleVille(r.city) || "?";
+    if (!villes.has(cle)) villes.set(cle, { cle, noms: new Map(), rencontres: [], touches: new Set() });
+    const v = villes.get(cle);
+    const nom = String(r.city || "").trim() || "Sans ville";
+    v.noms.set(nom, (v.noms.get(nom) || 0) + 1);
+    return v;
+  };
+  for (const r of Array.isArray(rencontres) ? rencontres : []) {
+    if (!r || !r.id || r.status === "cancelled") continue;
+    const debut = dateUtc(r.date_at);
+    if (!Number.isFinite(debut)) continue;
+    const fin = Number.isFinite(dateUtc(r.end_at)) ? dateUtc(r.end_at) : debut;
+    const orga = String(r.organizer_id || r.author_id || "");
+    const ps = parRencontre.get(String(r.id)) || [];
+    const pointes = ps.filter((p) => !!p.checked_in_at).length;
+    const inscrits = ps.filter((p) => !!p.checked_in_at || RSVP_INSCRIT.has(String(p.rsvp))).length;
+    const v = ville(r);
+    const passee = fin < maintenant;
+    v.rencontres.push({ orga: compte(orga) ? orga : "", passee, aVenir: debut >= maintenant, fin, pointes, inscrits,
+      reelle: passee && pointes >= PRESENTS_RENCONTRE_REELLE });
+    if (compte(orga)) v.touches.add(orga);
+    for (const p of ps) v.touches.add(String(p.user_id));
+  }
+  const mesurer = (v) => {
+    const rs = v.rencontres;
+    const reelles30 = rs.filter((r) => r.reelle && r.fin >= J30);
+    const passees30 = rs.filter((r) => r.passee && r.fin >= J30);
+    const inscrits = passees30.reduce((s, r) => s + r.inscrits, 0), pointes = passees30.reduce((s, r) => s + r.pointes, 0);
+    const parOrga = new Map();
+    for (const r of reelles30) if (r.orga) parOrga.set(r.orga, (parOrga.get(r.orga) || 0) + 1);
+    const nom = [...v.noms.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0];
+    return {
+      cle: v.cle, ville: nom ? nom[0] : "Sans ville",
+      actifs: [...v.touches].filter((u) => actifs7.has(u)).length,
+      rencontres: rs.filter((r) => r.reelle && r.fin >= J7).length,
+      reelles30: reelles30.length,
+      aVenir: rs.filter((r) => r.aVenir).length,
+      presence: inscrits > 0 ? Math.round((100 * pointes) / inscrits) : null, pointes30: pointes, inscrits30: inscrits,
+      organisateurs: [...parOrga.values()].filter((n) => n >= ORGANISATEUR_REGULIER_MIN).length,
+    };
+  };
+  const liste = [...villes.values()].map(mesurer)
+    .sort((a, b) => b.reelles30 - a.reelles30 || b.actifs - a.actifs || b.aVenir - a.aVenir || (a.cle < b.cle ? -1 : 1));
+  const suivie = liste.find((v) => v.cle !== "?") || null;
+  const indicateurs = [
+    { cle: "actifs", libelle: "actifs de la ville (7 j)" },
+    { cle: "rencontres", libelle: "rencontres réelles (7 j)" },
+    { cle: "presence", libelle: "taux de présence (30 j)", unite: "%" },
+    { cle: "organisateurs", libelle: "organisateurs réguliers (30 j)" },
+  ].map((x) => {
+    const valeur = suivie ? suivie[x.cle] : null;
+    const tient = (s) => valeur != null && valeur >= s;
+    return { ...x, valeur, pilote: SEUILS_LANCEMENT.pilote[x.cle], general: SEUILS_LANCEMENT.general[x.cle],
+      tenuPilote: tient(SEUILS_LANCEMENT.pilote[x.cle]), tenuGeneral: tient(SEUILS_LANCEMENT.general[x.cle]) };
+  });
+  return {
+    suivie, villes: liste.slice(0, 5), indicateurs,
+    tenusPilote: indicateurs.filter((i) => i.tenuPilote).length, total: indicateurs.length,
+    actifsTotal: actifs7.size,
+    aVenirTotal: liste.reduce((s, v) => s + v.aVenir, 0),
+    professionnels: null, semainesObservation: SEMAINES_OBSERVATION, partiel: !!partiel,
+  };
 }
 
 /** Les pull requests listées au plus dans « À faire » — les correctifs de la chaîne passent devant. */
@@ -865,6 +985,22 @@ export function aFaire(d, maintenant = Date.now()) {
       titre: (pc.seuil ? pc.nom + " atteints" : pc.nom) + " · " + Number(totalInscrits) + " inscrits",
       detail: pc.geste + (pc.suivant ? " Prochain palier : " + pc.suivant.nom + "." : "")
         + " Le plan compte des actifs, pas des inscrits : docs/PLAN_MONETISATION_2026-11-01.md § 9." });
+  }
+  // Les seuils d'usage (2026-11-12, seuilsLancement) : deux rappels, aucun bouton.
+  // Sans rencontre à venir, un nouvel inscrit ne trouve rien et ne revient pas ;
+  // et le jour où les quatre seuils du pilote tiennent, l'observation commence.
+  const sl = d && d.seuils;
+  if (sl && !sl.absente && typeof sl.aVenirTotal === "number") {
+    if (sl.aVenirTotal === 0) {
+      ajoute({ id: "seuils:a-venir", prio: 2, etiquette: "Lancement", titre: "Aucune rencontre à venir",
+        detail: "Publie la rencontre de la semaine : un nouvel inscrit qui ne trouve rien près de chez lui ne revient pas." });
+    }
+    if (sl.suivie && sl.total > 0 && sl.tenusPilote === sl.total) {
+      ajoute({ id: "seuils:pilote:" + sl.suivie.cle, prio: 2, franchi: true, etiquette: "Seuils tenus",
+        titre: "Les " + sl.total + " seuils du pilote tiennent à " + sl.suivie.ville,
+        detail: "N'ouvre rien encore : il faut " + (Number(sl.semainesObservation) || SEMAINES_OBSERVATION)
+          + " semaines d'observation, dont les 4 dernières au-dessus. Vérifie aussi les organisateurs professionnels, que le pilotage ne mesure pas." });
+    }
   }
   const al = d && d.alertes;
   if (al && al.appareils === 0) {

@@ -2377,6 +2377,8 @@ function etatSuivi(uid) {
   return "aucun";
 }
 function libelleBoutonSuivi(uid) {
+  // LOT-5 (REC-C02) : un personnage d'exemple ne se suit pas — le bouton le dit.
+  if (estPersonneExemple(uid)) return "Exemple";
   var e = etatSuivi(uid);
   return e === "suivi" ? "✓ Suivi" : e === "attente" ? "Demande envoyée" : "Suivre";
 }
@@ -2403,6 +2405,11 @@ function libelleBoutonSuivi(uid) {
 // d'attente par un `box-shadow`, pas par un contour. Les DEUX lisent en revanche
 // `aideBoutonSuivi` et `etatSuivi`, qui restent les autorités communes.
 function attrsBoutonSuivi(uid) {
+  if (estPersonneExemple(uid)) {
+    var aideEx = aideBoutonSuivi(uid);
+    return ' disabled aria-disabled="true" data-exemple="1" title="' + escapeHtml(aideEx) + '" aria-label="' + escapeHtml(aideEx) + '"'
+         + ' style="color:var(--muted);border-style:dashed;cursor:default;"';
+  }
   var e = etatSuivi(uid);
   var aide = aideBoutonSuivi(uid);
   var styleEtatSuivi = e === "suivi" ? "background:var(--accent);color:#fff;border-color:var(--accent);"
@@ -2412,6 +2419,7 @@ function attrsBoutonSuivi(uid) {
        + (styleEtatSuivi ? ' style="' + styleEtatSuivi + '"' : '');
 }
 function aideBoutonSuivi(uid) {
+  if (estPersonneExemple(uid)) return "Exemple — profil de démonstration, on ne peut pas le suivre";
   var e = etatSuivi(uid);
   // ⚠️ WCAG 2.5.3 « Label in Name » : l'étiquette CONTIENT le libellé visible,
   // sinon la commande vocale (« clique Suivi ») ne trouve pas le bouton.
@@ -5519,6 +5527,9 @@ function onbValidateAge() {
 function onbValidateName() {
   const v = $("#userName").value.trim();
   if (v.length < 2) { toast("Indique ton prénom."); return; }
+  // CLI-01 : ce nom peut devenir le pseudo en base (`_uname`) ; la base refuse
+  // ces caractères, et le refus emporterait tout l'enregistrement du profil.
+  if (nomCompteCaracteresInterdits(v)) { toast("Ton prénom ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse."); return; }
   state.user.name = v;
   // La préparation de l'écran des passions (grille + pré-remplissage de la
   // première visite) vit dans `_onbPreparerEtape`, appelée par `onbNext` : elle
@@ -6348,15 +6359,33 @@ function authProposerMotDePasse() {
 // Même liste que la contrainte `profiles_username_forme` du serveur (audit de sécurité du 2026-11-06) : sans ce
 // contrôle, le compte se créait sans ligne `profiles`, avec un simple avertissement en console. Le tiret bas compte
 // dans le mot, comme `\m…\M` côté PostgreSQL.
+// LOT-4 (audit UX/UI du 2026-11-10, MSG-C06) : « lea » trouve « Léa », « ines »
+// trouve « Inès ». Les DEUX côtés d'une comparaison de recherche passent par ici.
+function plierRecherche(v) {
+  var s = String(v == null ? "" : v);
+  try { s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); } catch (e) {}
+  return s.toLowerCase();
+}
 function nomCompteReserve(v) {
   var plie = String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return /(^|[^a-z0-9_])(passio|moderation|moderateur|administrateur|admin|support|securite)($|[^a-z0-9_])/.test(plie);
+}
+// ⚠️ CLI-01 (audit du 2026-11-10) : un pseudo est recopié dans des attributs et
+// des gestionnaires partout dans l'interface, et `openUserProfile` retrouve un
+// compte PAR PSEUDO. Le guillemet droit, les chevrons, l'accent grave et la barre
+// oblique inverse n'y ont aucun usage légitime et ont servi au scénario
+// d'injection : la base les refuse (`profiles_username_forme`, migration du
+// 2026-11-12), le client les refuse AVANT, en français. L'apostrophe reste
+// permise (« Zoé d'Annecy ») : `escapeJsArg` la traite.
+const NOM_COMPTE_INTERDITS_RE = /["<>`\\]/;
+function nomCompteCaracteresInterdits(v) {
+  return NOM_COMPTE_INTERDITS_RE.test(String(v == null ? "" : v));
 }
 function nomCompteValide(v) {
   // Les blancs ne font pas une identité : « Ben   jamin » et «  Benjamin  »
   // ne doivent pas donner deux pseudos différents dans `profiles.username`.
   const s = String(v == null ? "" : v).replace(/\s+/g, " ").trim();
-  if (s.length < NOM_COMPTE_MIN || s.length > NOM_COMPTE_MAX || nomCompteReserve(s)) return "";
+  if (s.length < NOM_COMPTE_MIN || s.length > NOM_COMPTE_MAX || nomCompteReserve(s) || nomCompteCaracteresInterdits(s)) return "";
   return s;
 }
 
@@ -6409,6 +6438,8 @@ async function onbDoAuth() {
   if (_authMode === "signup" && !nom) {
     _showAuthMsg(nomCompteReserve(document.getElementById("authName")?.value || "")
       ? "Ce nom d'utilisateur est réservé : choisis-en un autre."
+      : nomCompteCaracteresInterdits(document.getElementById("authName")?.value || "")
+      ? "Ton nom d'utilisateur ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse."
       : "Choisis un nom d'utilisateur (" + NOM_COMPTE_MIN + " \u00e0 " + NOM_COMPTE_MAX + " caract\u00e8res).", "error");
     return;
   }
@@ -8665,6 +8696,15 @@ function filReelDabordActif() {
   return true;
 }
 function estExempleDuFil(p) { return !!p && p._source === "seed"; }
+// LOT-4/5 (audit UX/UI du 2026-11-10, MSG-C03, MSG-C04, REC-C02) : une PERSONNE
+// d'exemple est un membre du socle de démonstration (`state.seed.users`) qui
+// n'est pas un vrai profil mis en cache (`distant: true`, app-02) — même règle
+// que `_estConvDemo`. Jamais la forme de l'identifiant (`u_…`) : les bancs s'en
+// servent pour des fixtures réelles.
+function estPersonneExemple(uid) {
+  if (!uid) return false;
+  try { return (state.seed.users || []).some(function (u) { return u && u.id === uid && !u.distant; }); } catch (e) { return false; }
+}
 function ordonnerFil(posts) {
   var tries = trierFilChronologique(posts);
   if (!filReelDabordActif()) return tries;

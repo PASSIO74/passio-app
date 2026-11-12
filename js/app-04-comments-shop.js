@@ -4104,13 +4104,16 @@ function openNewMessage() {
 // `_nmDoSearch` la reçoit. Sert à jeter une réponse réseau devenue obsolète.
 function _nmRequeteCourante() {
   var inp = document.getElementById("_nmSearch");
-  return ((inp && inp.value) || "").trim().toLowerCase();
+  return plierRecherche(((inp && inp.value) || "").trim());
 }
 
 function _nmDoSearch(q) {
   var box = document.getElementById("_nmResults");
   if (!box) return;
-  q = (q || "").trim().toLowerCase();
+  // La saisie BRUTE part au serveur (son ilike trouve « Léa » si l'on tape « léa ») ;
+  // la version pliée sert aux comparaisons locales (MSG-C06).
+  var brut = (q || "").trim();
+  q = plierRecherche(brut);
 
   // Contacts récents (conversations existantes)
   var convs = getConversations();
@@ -4125,12 +4128,20 @@ function _nmDoSearch(q) {
   var all = recentUsers.concat(seedUsers.filter(function(su) {
     return !recentUsers.find(function(r) { return r.id === su.id; });
   }));
+  // LOT-5 (audit UX/UI du 2026-11-10, MSG-C03) : un COMPTE ne se voit proposer que
+  // de vraies personnes. Les personnages d'exemple (cinq « Passionné » pour un
+  // compte neuf, auxquels on ne peut pas écrire) sortent des suggestions comme
+  // des résultats ; sans contact, une consigne au lieu de faux contacts.
+  var compte = (typeof _compteAuthReel === "function") && _compteAuthReel();
+  if (compte) all = all.filter(function (u) { return !estPersonneExemple(u.id); });
 
-  var matches = q ? all.filter(function(u) { return u.name.toLowerCase().includes(q); }) : all;
+  var matches = q ? all.filter(function(u) { return plierRecherche(u.name).includes(q); }) : all;
   matches = matches.slice(0, 10);
 
   if (matches.length === 0) {
-    box.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun utilisateur trouvé</div>`;
+    box.innerHTML = (compte && !q)
+      ? `<div class="nm-consigne" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Écris le nom d'une personne pour la trouver.</div>`
+      : `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun utilisateur trouvé</div>`;
     // Lancer aussi la recherche Supabase si query non vide
     if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
       // ⚠️ GARDE D'OBSOLESCENCE. Les réponses reviennent dans l'ordre du réseau,
@@ -4138,7 +4149,7 @@ function _nmDoSearch(q) {
       // la réponse d'« ab » écraser celle d'« abc ». On ne peint que si la
       // question posée est encore la question courante.
       var _qA = q;
-      supaSearchUsers(q).then(function(res) {
+      supaSearchUsers(brut).then(function(res) {
         if (_nmRequeteCourante() !== _qA) return;
         if (!res || !res.length) return;
         var html2 = res.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
@@ -4153,7 +4164,7 @@ function _nmDoSearch(q) {
   // Compléter avec Supabase en arrière-plan si query
   if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
     var _qB = q;
-    supaSearchUsers(q).then(function(res) {
+    supaSearchUsers(brut).then(function(res) {
       if (_nmRequeteCourante() !== _qB) return;   // cf. garde d'obsolescence
       if (!res || !box) return;
       var extra = res.filter(function(u) { return !matches.find(function(m) { return m.id === u.id; }); }).slice(0,5);
@@ -4201,11 +4212,11 @@ function searchUsers(query) {
   results.style.display = "block";
   results.innerHTML = "<div style='padding:14px;text-align:center;color:var(--muted);font-size:13px;'>Recherche…</div>";
 
-  var q = query.trim().toLowerCase();
+  var q = plierRecherche(query.trim());
 
   // Seed local
   var seedUsers = ((state.seed && state.seed.users) ? state.seed.users : []).filter(function(u) {
-    return (u.name||"").toLowerCase().includes(q) || (u.passion||"").toLowerCase().includes(q);
+    return plierRecherche(u.name).includes(q) || plierRecherche(u.passion).includes(q);
   }).slice(0, 5);
 
   // Supabase (vrais utilisateurs)
@@ -4706,7 +4717,7 @@ async function openUserProfile(authorId, source) {
     <!-- BOUTONS -->\
     <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
-      <button class="btn ghost" id="followBtn_' + escapeHtml(authorId) + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
+      <button class="btn ghost" id="followBtn_' + escapeHtml(authorId) + '"' + (estPersonneExemple(authorId) ? ' disabled aria-disabled="true" data-exemple="1"' : '') + ' onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
     \
@@ -5080,6 +5091,9 @@ function _majBlocPriveVisite(userId) {
 }
 
 function toggleFollowUser(userId, userName) {
+  // LOT-5 (REC-C02) : un personnage d'exemple n'existe pas — aucun suivi ne part,
+  // ni en local ni en base, et c'est dit.
+  if (estPersonneExemple(userId)) { toast("C'est un profil d'exemple : on ne peut pas le suivre."); return; }
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
@@ -5555,7 +5569,7 @@ function renderMessages() {
   // Génère les pills lu/non lu
   renderMessageFilters();
 
-  const _q = (window._msgSearchQuery || "").trim().toLowerCase();
+  const _q = plierRecherche((window._msgSearchQuery || "").trim());
   const _showArch = !!window._showArchived;
 
   // Masquer les conversations avec un utilisateur bloqué (modération)
@@ -5574,16 +5588,18 @@ function renderMessages() {
   if (_q) {
     // Recherche globale : nom de conversation OU texte d'un message (archivées incluses).
     filtered = filtered.filter(c => {
-      const name = (c.isGroup ? (c.groupName || "") : (c.userName || "")).toLowerCase();
+      const name = plierRecherche(c.isGroup ? (c.groupName || "") : (c.userName || ""));
       if (name.indexOf(_q) > -1) return true;
-      return (c.messages || []).some(m => (m.text || "").toLowerCase().indexOf(_q) > -1);
+      return (c.messages || []).some(m => plierRecherche(m.text || "").indexOf(_q) > -1);
     });
   } else {
     // Vue normale : actives, ou archivées si on a basculé.
     filtered = filtered.filter(c => _showArch ? c.archived : !c.archived);
   }
-  // Épinglées d'abord, puis par date du dernier message.
-  filtered.sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (b.lastAt - a.lastAt));
+  // Épinglées d'abord, puis les VRAIES conversations, puis les exemples (LOT-5,
+  // PCS-006 : elles étaient mêlées), chacune par date du dernier message.
+  const _exConv = (c) => (typeof _estConvDemo === "function" && _estConvDemo(c)) ? 1 : 0;
+  filtered.sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (_exConv(a) - _exConv(b)) || (b.lastAt - a.lastAt));
 
   if (!filtered.length) {
     // Squelette shimmer tant que le chargement réseau initial n'est pas terminé
@@ -5677,7 +5693,7 @@ function renderMessages() {
     const _convAvInner = (c.isGroup && c.groupPhoto) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
 
     const membresLine = c.isGroup
-      ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${((c.userIds||[]).length || 0)} membres</div>`
+      ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${(typeof nbMembresGroupe === "function" ? nbMembresGroupe(c) : ((c.userIds||[]).length || 0))} membres</div>`
       : "";
 
     const _demo = _estConvDemo(c);
@@ -5847,7 +5863,8 @@ async function openConversation(convId) {
   renderConvFpThread(c, displayName);
   // `_auBas` survit d'une conversation à l'autre (le nœud est réutilisé) :
   // une conversation qu'on ouvre part du bas, quelle que soit la précédente.
-  if (thread) { thread.scrollTop = thread.scrollHeight; thread._auBas = true; }
+  if (thread) { thread.scrollTop = thread.scrollHeight; thread._auBas = true; thread._nouveaux = 0; }
+  try { var _bas = document.getElementById("convFpBas"); if (_bas) _bas.hidden = true; } catch (e) {}
 
   // ── Afficher pleine page ──
   if (fp) {
@@ -6114,6 +6131,9 @@ function renderConvFpThread(c, displayName) {
     // Contenu
     var content = "";
     var isMedia = false;
+    // LOT-4 (MSG-C50) : seuls les médias VISUELS perdent le fond de la bulle ; vocal,
+    // document et position le gardent (blanc sur fond clair : 1,08:1 mesuré).
+    var isVisuel = false;
 
     // Décoder le JSON du texte si nécessaire (messages média Supabase non encore décodés)
     applyMsgContentData(m);
@@ -6122,10 +6142,10 @@ function renderConvFpThread(c, displayName) {
     // L'AUTRE compte → sans neutralisation un correspondant pouvait sortir de
     // l'attribut src (XSS) ou pointer un href javascript:.
     if (m.gif) {
-      isMedia = true;
+      isMedia = true; isVisuel = true;
       content = '<img src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
-      isMedia = true;
+      isMedia = true; isVisuel = true;
       // ⚠️ `playsinline` est OBLIGATOIRE : sans lui, iOS confisque la lecture et
       // bascule en lecteur plein écran natif dès le premier tap — on quitte la
       // conversation, on perd le fil, et il faut ressortir à la main. Android
@@ -6139,7 +6159,7 @@ function renderConvFpThread(c, displayName) {
       // `attachments` est privé depuis le 2026-09-11. Un GIF (Tenor) garde son src.
       content = '<video ' + attrMediaSrc(m.video) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls playsinline preload="none"></video>';
     } else if (m.img) {
-      isMedia = true;
+      isMedia = true; isVisuel = true;
       content = '<img loading="lazy" decoding="async" ' + attrMediaSrc(m.img) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
     } else if (m.fileUrl) {
       isMedia = true;
@@ -6211,7 +6231,7 @@ function renderConvFpThread(c, displayName) {
       if (!isLastOfGroup) extraBubbleStyle += 'border-bottom-left-radius:6px;';
     }
 
-    var bubbleStyle = isMedia
+    var bubbleStyle = isVisuel
       ? ' style="background:transparent;padding:0;box-shadow:none;' + extraBubbleStyle + '"'
       : (extraBubbleStyle ? ' style="' + extraBubbleStyle + '"' : '');
 
@@ -6320,6 +6340,52 @@ function _rerendreFilSansArracher(c, displayName) {
   if (window.visualViewport) window.visualViewport.addEventListener("resize", relancer);
 })();
 
+// LOT-4 (audit UX/UI du 2026-11-10, MSG-C55) — retour aux derniers messages.
+// Remonté de plus d'un écran, ou un message arrivé pendant la relecture : un
+// bouton rond « ↓ » (44 px) au-dessus de la saisie ramène au dernier message, et
+// dit combien sont arrivés (« 2 nouveaux messages ↓ »). On ne ramène JAMAIS en
+// bas sans geste quelqu'un qui relit l'historique.
+function _convMajBoutonBas(thread) {
+  var fp = document.getElementById("conv-fullpage");
+  if (!thread || !fp) return;
+  var b = document.getElementById("convFpBas");
+  var n = thread._nouveaux || 0;
+  var loin = thread.scrollHeight - thread.scrollTop - thread.clientHeight > thread.clientHeight;
+  var montrer = fp.classList.contains("active") && thread._auBas === false && (n > 0 || loin);
+  if (!montrer) { if (b) b.hidden = true; return; }
+  if (!b) {
+    b = document.createElement("button");
+    b.id = "convFpBas";
+    b.type = "button";
+    b.className = "conv-fp-bas";
+    b.addEventListener("click", function () {
+      var t = document.getElementById("convFpThread");
+      if (!t) return;
+      t.scrollTop = t.scrollHeight;
+      t._auBas = true; t._nouveaux = 0;
+      b.hidden = true;
+    });
+    fp.appendChild(b);
+  }
+  var r = thread.getBoundingClientRect();
+  b.style.top = Math.max(0, Math.round(r.bottom - 56)) + "px";
+  b.textContent = n > 0 ? (n === 1 ? "1 nouveau message ↓" : n + " nouveaux messages ↓") : "↓";
+  b.setAttribute("aria-label", n > 0 ? b.textContent.replace(" ↓", "") + " — revenir en bas" : "Revenir aux derniers messages");
+  b.classList.toggle("conv-fp-bas-compte", n > 0);
+  b.hidden = false;
+}
+
+// Un message ENTRANT dans la conversation ouverte : rendu sans arracher la
+// relecture, et compté s'il arrive hors de vue.
+function _convMessageEntrant(c, displayName) {
+  var t = document.getElementById("convFpThread");
+  var relecture = !!t && t._auBas === false;
+  _rerendreFilSansArracher(c, displayName);
+  if (!t) return;
+  if (relecture) t._nouveaux = (t._nouveaux || 0) + 1;
+  _convMajBoutonBas(t);
+}
+
 // Scroll infini : charge une page de messages plus anciens quand on approche du
 // haut du fil, en préservant la position visuelle.
 function _wireConvScroll(thread, convId) {
@@ -6327,10 +6393,23 @@ function _wireConvScroll(thread, convId) {
   thread._curConvId = convId;
   if (thread._scrollWired) return;
   thread._scrollWired = true;
+  // LOT-4 (MSG-C52) : une photo, une vidéo ou un GIF qui finit de charger fait
+  // grandir le fil SOUS le point de lecture ; collé au bas, on y reste. Les
+  // événements `load` ne remontent pas : on les capte à la descente.
+  var recaler = function (e) {
+    var el = e && e.target;
+    if (!el || (el.tagName !== "IMG" && el.tagName !== "VIDEO")) return;
+    if (thread._auBas === false || thread._loadingMore) return;
+    thread.scrollTop = thread.scrollHeight;
+  };
+  thread.addEventListener("load", recaler, true);
+  thread.addEventListener("loadedmetadata", recaler, true);
   thread.addEventListener("scroll", function() {
     // Mémorise si l'on est collé au bas : c'est la seule information que la
     // géométrie d'APRÈS un redimensionnement ne permet plus de retrouver.
     thread._auBas = (thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 80);
+    if (thread._auBas) thread._nouveaux = 0;
+    _convMajBoutonBas(thread);
     if (thread.scrollTop > 60 || thread._loadingMore) return;
     var c = getConversations().find(function(x){ return x.id === thread._curConvId; });
     if (!c || !c.messages) return;
@@ -6447,8 +6526,10 @@ function _openMsgActions(convId, msgId) {
     // Signaler CE message (E-08, DSA : un contenu se signale, pas seulement son
     // auteur) — jamais pour les miens ni pour les messages système.
     (!isMe && m.from ? item('🚩', 'Signaler ce message', "reportMessage('" + cj + "','" + mj + "')") : '') +
-    item('🗑️', 'Supprimer pour moi', "_deleteMsgForMe('" + cj + "','" + mj + "')", true) +
-    (isMe ? item('🗑️', 'Supprimer pour tous', "_deleteMsgForAll('" + cj + "','" + mj + "')", true) : '')
+    // LOT-4 (MSG-C58) : une seule entrée, séparée des autres ; la portée se choisit
+    // dans la confirmation (« pour moi » / « pour tout le monde »).
+    '<div style="height:1px;background:var(--border);margin:6px 0;"></div>' +
+    item('🗑️', 'Supprimer…', "_demanderSuppressionMsg('" + cj + "','" + mj + "')", true)
   );
 }
 
@@ -6505,6 +6586,89 @@ function _renderReplyBar() {
     '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:800;color:var(--accent);">Réponse à ' + escapeHtml(rt.n) + '</div>' +
     '<div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(rt.t) + '</div></div>' +
     '<span onclick="_cancelReply()" style="font-size:18px;cursor:pointer;color:var(--muted);padding:0 4px;">✕</span></div>';
+}
+
+// LOT-4 (audit UX/UI du 2026-11-10) — FEUILLE DE CONFIRMATION de la messagerie.
+// Au-dessus de tout (conversation pleine page ET fenêtre modale : `openModal`
+// remplace la modale courante, cette feuille non). Texte posé par `textContent`
+// (le nom d'un autre compte y passe). Fond, « Annuler » et Échap ferment sans agir.
+//   o = { titre, texte, actions: [{ libelle, danger, agir }], annuler }
+function ouvrirFeuilleConfirmation(o) {
+  o = o || {};
+  var ancien = document.getElementById("feuilleConfirmation");
+  if (ancien) ancien.remove();
+  var ov = document.createElement("div");
+  ov.id = "feuilleConfirmation";
+  ov.className = "feuille-conf-ov";
+  var f = document.createElement("div");
+  f.className = "feuille-conf";
+  f.setAttribute("role", "dialog");
+  f.setAttribute("aria-modal", "true");
+  f.setAttribute("aria-labelledby", "feuilleConfirmationTitre");
+  var h = document.createElement("h2");
+  h.id = "feuilleConfirmationTitre";
+  h.className = "feuille-conf-titre";
+  h.textContent = o.titre || "Confirmer ?";
+  f.appendChild(h);
+  (Array.isArray(o.texte) ? o.texte : (o.texte ? [o.texte] : [])).forEach(function (t) {
+    var p = document.createElement("p");
+    p.className = "feuille-conf-texte";
+    p.textContent = t;
+    f.appendChild(p);
+  });
+  var fermer = function () {
+    document.removeEventListener("keydown", surTouche, true);
+    if (ov.parentNode) ov.parentNode.removeChild(ov);
+  };
+  var surTouche = function (e) { if (e.key === "Escape") { e.stopPropagation(); fermer(); } };
+  (o.actions || []).forEach(function (a) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "feuille-conf-btn" + (a.danger ? " feuille-conf-danger" : " feuille-conf-primaire");
+    b.textContent = a.libelle;
+    if (a.id) b.setAttribute("data-conf", a.id);
+    b.addEventListener("click", function () { fermer(); try { a.agir && a.agir(); } catch (e) { try { diagLog("feuille_conf : " + (e && e.message)); } catch (_e) {} } });
+    f.appendChild(b);
+  });
+  var annuler = document.createElement("button");
+  annuler.type = "button";
+  annuler.className = "feuille-conf-btn feuille-conf-annuler";
+  annuler.setAttribute("data-conf", "annuler");
+  annuler.textContent = o.annuler || "Annuler";
+  annuler.addEventListener("click", fermer);
+  f.appendChild(annuler);
+  ov.appendChild(f);
+  ov.addEventListener("click", function (e) { if (e.target === ov) fermer(); });
+  document.addEventListener("keydown", surTouche, true);
+  document.body.appendChild(ov);
+  try { (f.querySelector(".feuille-conf-btn") || annuler).focus(); } catch (e) {}
+  return fermer;
+}
+
+// Le nom à qui l'on parle, pour les phrases de confirmation.
+function _convInterlocuteur(c) {
+  if (!c) return "ton interlocuteur";
+  if (c.isGroup) return "les autres membres";
+  return c.userName || "ton interlocuteur";
+}
+
+// LOT-4 (MSG-C58) : UNE entrée « Supprimer… » dans le menu ; elle explique les deux
+// portées et demande confirmation. Les exécutants ci-dessous restent tels quels.
+function _demanderSuppressionMsg(convId, msgId) {
+  closeModal();
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
+  var qui = _convInterlocuteur(r.c);
+  var aMoi = r.m.from === "me";
+  var actions = [];
+  if (aMoi) actions.push({ id: "tous", libelle: "Supprimer pour tout le monde", danger: true, agir: function () { _deleteMsgForAll(convId, msgId); } });
+  actions.push({ id: "moi", libelle: "Supprimer pour moi", danger: true, agir: function () { _deleteMsgForMe(convId, msgId); } });
+  ouvrirFeuilleConfirmation({
+    titre: "Supprimer ce message ?",
+    texte: aMoi
+      ? ["Pour moi : il disparaît de cet appareil, il reste visible chez " + qui + ".", "Pour tout le monde : il disparaît aussi chez " + qui + "."]
+      : ["Il disparaît de cet appareil. Il reste visible chez " + qui + "."],
+    actions: actions,
+  });
 }
 
 // Supprimer pour moi : retrait local uniquement.

@@ -519,6 +519,8 @@ test.describe("LOT-1 — toasts visibles et verdicts vrais", () => {
     }, AUTRE);
     await page.waitForTimeout(600);
     await page.evaluate(() => { _sendGif("https://media.klipy.com/lot1.gif"); shareLocation(); });
+    // LOT-4 (MSG-C56) : la position ne part qu'après confirmation.
+    await page.locator('#feuilleConfirmation [data-conf="envoyer"]').click();
     await page.waitForTimeout(4000);
     const etats = await page.evaluate(() => getConversations().find((x) => x.id === "c_lot1_gif").messages.map((m) => ({ gif: !!m.gif, status: m.status, envoi: !!m.envoi })));
     expect(etats.length).toBe(2);

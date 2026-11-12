@@ -1812,6 +1812,66 @@ function toggleGroupUser(el) {
   if (cb) cb.checked = el.classList.contains("selected");
   const check = el.querySelector(".grp-check");
   if (check) check.textContent = el.classList.contains("selected") ? "✓" : "";
+  // LOT-5 (MSG-C04) : la sélection survit à une nouvelle recherche.
+  const id = el.getAttribute("data-uid");
+  if (id && window._grpSel) {
+    if (el.classList.contains("selected")) window._grpSel.set(id, el.getAttribute("data-nom") || "");
+    else window._grpSel.delete(id);
+  }
+}
+
+// LOT-5 (audit UX/UI du 2026-11-10, MSG-C04) — LES MEMBRES D'UN NOUVEAU GROUPE.
+// La liste était `state.seed.users.slice(0, 10)` : dix personnages d'exemple, sans
+// recherche ; la base refusait ensuite leurs identifiants et l'écran disait
+// « Groupe créé ». Pour un COMPTE : tes contacts réels (conversations), puis la
+// recherche de personnes du serveur ; jamais un personnage d'exemple.
+function _grpOptionHTML(u, coche) {
+  return '<div class="group-user-option' + (coche ? ' selected' : '') + '" data-uid="' + escapeHtml(u.id) + '" data-nom="' + escapeHtml(u.name || "") + '" onclick="toggleGroupUser(this)">' +
+    '<input type="checkbox" value="' + escapeHtml(u.id) + '"' + (coche ? ' checked' : '') + ' />' +
+    '<span class="msg-avatar" style="background:' + avatarBg(u) + ';width:36px;height:36px;font-size:18px;flex-shrink:0;">' + avatarInner(u) + '</span>' +
+    '<span style="flex:1;font-size:13px;">' + escapeHtml(u.name || "Passionné") + '</span>' +
+    '<span class="grp-check">' + (coche ? '✓' : '') + '</span>' +
+  '</div>';
+}
+function _grpContactsReels() {
+  var vus = {};
+  return (getConversations() || []).filter(function (c) {
+    if (!c || c.isGroup || !c.userId || vus[c.userId] || estPersonneExemple(c.userId)) return false;
+    vus[c.userId] = true; return true;
+  }).map(function (c) {
+    return { id: c.userId, name: c.userName || "Passionné", profileEmoji: c.userEmoji || "✨", avatar: c.userColor || "#8b5cf6", photoUrl: c.userPhoto || null };
+  });
+}
+function _grpPeindreCandidats(liste, vide) {
+  var box = document.getElementById("grpNewList");
+  if (!box) return;
+  var sel = window._grpSel || new Map();
+  // Les personnes déjà cochées restent en tête, même hors de la recherche courante.
+  var dejaVus = {};
+  var html = [];
+  sel.forEach(function (nom, id) {
+    dejaVus[id] = true;
+    var u = (liste || []).find(function (x) { return x.id === id; }) || { id: id, name: nom };
+    html.push(_grpOptionHTML(u, true));
+  });
+  (liste || []).forEach(function (u) { if (!dejaVus[u.id]) html.push(_grpOptionHTML(u, false)); });
+  box.innerHTML = html.length ? html.join("") : '<div class="grp-new-vide" style="font-size:12px;color:var(--muted);padding:8px 0;">' + escapeHtml(vide || "Aucune personne trouvée.") + '</div>';
+}
+function grpChercherMembres(q) {
+  var brut = String(q || "").trim();
+  var plie = plierRecherche(brut);
+  var contacts = _grpContactsReels();
+  var locaux = plie ? contacts.filter(function (u) { return plierRecherche(u.name).includes(plie); }) : contacts;
+  _grpPeindreCandidats(locaux, plie ? "Aucune personne trouvée." : "Écris le nom d'une personne pour l'inviter.");
+  if (!plie || typeof supaSearchUsers !== "function") return;
+  window._grpRequete = plie;
+  supaSearchUsers(brut).then(function (res) {
+    if (window._grpRequete !== plie) return;   // une réponse ancienne n'écrase pas la courante
+    var vus = {}; locaux.forEach(function (u) { vus[u.id] = true; });
+    var serveur = (res || []).filter(function (u) { return u && u.id && u.id !== MY_UID && !vus[u.id] && !estPersonneExemple(u.id); })
+      .map(function (u) { return { id: u.id, name: u.username || "Passionné", profileEmoji: u.emoji || "✨", avatar: u.color || "#8b5cf6", photoUrl: u.photoUrl || null }; });
+    _grpPeindreCandidats(locaux.concat(serveur).slice(0, 12), "Aucune personne trouvée.");
+  }).catch(function () {});
 }
 function toggleGroupPassion(el) {
   const selected = document.querySelectorAll(".group-passion-option.selected");
@@ -1905,14 +1965,14 @@ function _groupeAssurerLibelles() {
 
 function openCreateGroup() {
   const seedUsers = state.seed.users || [];
-  const userOptions = seedUsers.slice(0, 10).map(u =>
-    `<div class="group-user-option" data-uid="${escapeHtml(u.id)}" onclick="toggleGroupUser(this)">
-      <input type="checkbox" value="${escapeHtml(u.id)}" />
-      <span class="msg-avatar" style="background:${avatarBg(u)};width:36px;height:36px;font-size:18px;flex-shrink:0;">${avatarInner(u)}</span>
-      <span style="flex:1;font-size:13px;">${escapeHtml(u.name)}</span>
-      <span class="grp-check"></span>
-    </div>`
-  ).join("");
+  const compte = (typeof _compteAuthReel === "function") && _compteAuthReel();
+  window._grpSel = new Map();
+  window._grpRequete = "";
+  // Sans compte, rien ne part en base : l'aperçu d'avant reste (exemples).
+  const userOptions = compte ? "" : seedUsers.slice(0, 10).map(u => _grpOptionHTML(u, false)).join("");
+  const recherche = compte
+    ? `<input type="search" class="input" id="grpNewSearch" placeholder="Rechercher une personne…" oninput="grpChercherMembres(this.value)" style="margin-bottom:8px;" />`
+    : "";
   const passionOptions = _groupePassionsHTML();
 
   const html = `
@@ -1932,12 +1992,14 @@ function openCreateGroup() {
     <div class="group-passion-grid">${passionOptions}</div>
 
     <label class="field" style="margin-top:14px;"><span>Membres à inviter</span></label>
-    <div class="group-user-list">${userOptions}</div>
+    ${recherche}
+    <div class="group-user-list" id="grpNewList">${userOptions}</div>
 
     <button class="btn primary block" onclick="confirmCreateGroup()" style="margin-top:14px;">Créer le groupe</button>
   `;
   openModal(html);
   _groupeAssurerLibelles();
+  if (compte) grpChercherMembres("");
 }
 
 async function confirmCreateGroup() {
@@ -1945,19 +2007,26 @@ async function confirmCreateGroup() {
   const name = (nameInput && nameInput.value || "").trim();
   if (!name) { toast("Donne un nom au groupe"); return; }
   const selectedPassions = [...document.querySelectorAll(".group-passion-option.selected input")].map(i => i.value);
-  const selectedUsers = [...document.querySelectorAll(".group-user-option.selected input")].map(i => i.value);
+  const selectedUsers = (window._grpSel && window._grpSel.size)
+    ? [...window._grpSel.keys()]
+    : [...document.querySelectorAll(".group-user-option.selected input")].map(i => i.value);
   if (selectedPassions.length === 0) { toast("Choisis au moins 1 passion"); return; }
   if (selectedUsers.length === 0) { toast("Sélectionne au moins 1 membre"); return; }
 
   let groupId = "conv_grp_" + uid();
+  // LOT-5 (MSG-C04) : le verdict de CHAQUE ajout est lu ; un membre refusé par la
+  // base n'est ni compté ni annoncé.
+  const rapport = { refuses: [] };
 
   // Créer le groupe dans Supabase si connecté
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     try {
-      const supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0]);
+      const supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0], rapport);
       if (supaId) groupId = supaId;
     } catch(e) {}
   }
+  const refuses = new Set(rapport.refuses || []);
+  const membresAjoutes = selectedUsers.filter(u => !refuses.has(u));
 
   // ⚠️ PAR IDENTIFIANT, JAMAIS À L'AVEUGLE : ma propre ligne `conv_members` m'est
   // poussée sur `user:<moi>` (`conv_members:INSERT`, R25) et peut avoir posé
@@ -1967,12 +2036,13 @@ async function confirmCreateGroup() {
   const convs = getConversations().filter(c => c && c.id !== groupId);
   const welcomeMsgId = "msg_" + uid();
   const newConv = {
+    createdBy: MY_UID, // LOT-4 (MSG-C08)
     id: groupId,
     isGroup: true,
     groupName: name,
     groupPassions: selectedPassions,
-    userIds: selectedUsers,
-    userId: selectedUsers[0],
+    userIds: membresAjoutes,
+    userId: membresAjoutes[0] || selectedUsers[0],
     passion: selectedPassions[0],
     unread: 0,
     lastAt: Date.now(),
@@ -1993,7 +2063,36 @@ async function confirmCreateGroup() {
 
   closeModal();
   renderMessages();
-  toast(`Groupe « ${name} » créé`);
+  if (refuses.size) {
+    const noms = [...refuses].map(id => (window._grpSel && window._grpSel.get(id)) || "un membre");
+    toast(`Groupe « ${name} » créé — pas pu ajouter : ${noms.join(", ")}`, "warning");
+  } else {
+    toast(`Groupe « ${name} » créé`);
+  }
+  window._grpSel = null;
+}
+
+// LOT-4 (audit UX/UI du 2026-11-10, MSG-C08) — UN SEUL CALCUL des membres d'un groupe.
+// `userIds` inclut MON compte quand il vient du serveur, pas quand le groupe a été
+// créé ici : l'en-tête disait 4, la fenêtre 5. Les autres membres, sans moi, uniques.
+function membresAutresGroupe(c) {
+  var vus = {};
+  return ((c && c.userIds) || []).filter(function (id) {
+    if (!id || id === "me" || id === MY_UID || vus[id]) return false;
+    vus[id] = true; return true;
+  });
+}
+function nbMembresGroupe(c) { return membresAutresGroupe(c).length + 1; }
+// Le rôle se tire du créateur ; inconnu, personne n'est présenté comme tel.
+function estCreateurGroupe(c) { return !!(c && c.createdBy && c.createdBy === MY_UID); }
+
+// LOT-4 (MSG-C09) : retirer quelqu'un d'un groupe se confirme, comme « Quitter ».
+function confirmerRetraitMembre(convId, userId, nom) {
+  ouvrirFeuilleConfirmation({
+    titre: "Retirer " + (nom || "ce membre") + " du groupe ?",
+    texte: ["Cette personne ne recevra plus les messages du groupe."],
+    actions: [{ id: "retirer", libelle: "Retirer du groupe", danger: true, agir: function () { removeGroupMember(convId, userId); } }],
+  });
 }
 
 function showGroupMembers(convId) {
@@ -2008,29 +2107,38 @@ function _renderGroupMembersModal(convId) {
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) return;
   var seedUsers = state.seed.users || [];
-  var memberIds = c.userIds || [];
+  // LOT-4 (MSG-C08) : la liste, le compte et le rôle disent vrai. Plus de « Admin ·
+  // En ligne » écrit en dur, plus de libellé de remplissage, plus de membre absent
+  // parce qu'il n'est pas dans le cache de démonstration ; « Retirer » et « Ajouter »
+  // ne sont proposés qu'au créateur, jamais sur le créateur.
+  var memberIds = membresAutresGroupe(c);
+  var nbMembres = memberIds.length + 1;
+  var jeCree = estCreateurGroupe(c);
+  var moi = (state.user && state.user.general) || {};
 
   var membersHTML = '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
-    '<div style="width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;">😊</div>' +
-    '<div style="flex:1;"><div style="font-weight:700;font-size:13px;">Toi</div><div style="font-size:11px;color:var(--muted);">Admin · En ligne</div></div>' +
-    '<span style="font-size:10px;font-weight:700;color:var(--accent);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">Admin</span>' +
+    '<div style="width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;">' + escapeHtml(moi.profileEmoji || "😊") + '</div>' +
+    '<div style="flex:1;"><div style="font-weight:700;font-size:13px;">Toi</div>' + (jeCree ? '<div style="font-size:11px;color:var(--muted);">A créé le groupe</div>' : '') + '</div>' +
   '</div>';
 
   membersHTML += memberIds.map(function(uid) {
     var u = seedUsers.find(function(x) { return x.id === uid; });
-    if (!u) return '';
-    var passion = passionById(u.passion);
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
-      '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + avatarInner(u) + '</div>' +
-      '<div style="flex:1;">' +
-        '<div style="font-weight:700;font-size:13px;">' + escapeHtml(u.name) + '</div>' +
-        '<div style="font-size:11px;color:var(--muted);">' + (passion ? escapeHtml(passion.emoji) + ' ' + escapeHtml(passion.label) : '') + '</div>' +
+    var p = (!u && typeof _profileCache !== "undefined" && _profileCache && _profileCache.get) ? _profileCache.get(uid) : null;
+    var nom = (u && u.name) || (p && p.username) || "Membre";
+    var avatar = u ? '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + avatarInner(u) + '</div>'
+      : '<div style="width:40px;height:40px;border-radius:50%;background:' + escapeHtml((p && p.color) || "#8b5cf6") + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + escapeHtml((p && p.emoji) || "👤") + '</div>';
+    var estCreateur = !!(c.createdBy && c.createdBy === uid);
+    return '<div class="grp-membre" data-membre="' + escapeHtml(uid) + '" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
+      avatar +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-weight:700;font-size:13px;">' + escapeHtml(nom) + '</div>' +
+        (estCreateur ? '<div style="font-size:11px;color:var(--muted);">A créé le groupe</div>' : '') +
       '</div>' +
-      '<button class="btn ghost" style="font-size:10px;padding:5px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);" onclick="removeGroupMember(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(uid) + '\')">Retirer</button>' +
+      ((jeCree && !estCreateur) ? '<button class="btn ghost grp-retirer" style="min-height:44px;font-size:13px;padding:0 14px;color:#b91c1c;border-color:rgba(185,28,28,0.35);" onclick="confirmerRetraitMembre(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(nom) + '\')">Retirer</button>' : '') +
     '</div>';
   }).join("");
 
-  var passionsHTML = (c.groupPassions || [c.passion]).map(function(pid) {
+  var passionsHTML = (c.groupPassions || (c.passion ? [c.passion] : [])).filter(Boolean).map(function(pid) {
     var p = passionById(pid);
     return p ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--bg-deep);border-radius:8px;font-size:11px;font-weight:700;">' + escapeHtml(p.emoji) + ' ' + escapeHtml(p.label) + '</span>' : '';
   }).join(" ");
@@ -2040,7 +2148,7 @@ function _renderGroupMembersModal(convId) {
 
   function buildNonMembersHTML(filter) {
     var filtered = filter ? nonMembers.filter(function(u) {
-      return u.name.toLowerCase().includes(filter.toLowerCase());
+      return plierRecherche(u.name).includes(plierRecherche(filter));
     }) : nonMembers;
     if (nonMembers.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Tous les utilisateurs sont déjà membres.</div>';
     if (filtered.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Aucun résultat.</div>';
@@ -2071,14 +2179,14 @@ function _renderGroupMembersModal(convId) {
     '<div class="modal-handle"></div>' +
     grpAvatarHTML +
     '<div class="modal-title" style="margin-top:0;">👥 ' + escapeHtml(c.groupName || "Groupe") + '</div>' +
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + (memberIds.length + 1) + ' membre' + (memberIds.length + 1 > 1 ? 's' : '') + '</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + nbMembres + ' membre' + (nbMembres > 1 ? 's' : '') + '</div>' +
     '<div onclick="editGroupDescription(\'' + escapeJsArg(convId) + '\')" style="cursor:pointer;font-size:13px;color:' + (c.groupDesc ? 'var(--text)' : 'var(--muted)') + ';background:var(--bg-deep);border-radius:10px;padding:9px 12px;margin-bottom:10px;">' +
       (c.groupDesc ? escapeHtml(c.groupDesc) : 'Ajouter une description…') + '</div>' +
     '<div style="margin-bottom:12px;">' + passionsHTML + '</div>' +
     // Onglets
     '<div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--border);">' +
-      '<button id="grpTab_members" onclick="switchGroupTab(\'members\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer;">Membres (' + (memberIds.length + 1) + ')</button>' +
-      '<button id="grpTab_add" onclick="switchGroupTab(\'add\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;">Ajouter</button>' +
+      '<button id="grpTab_members" onclick="switchGroupTab(\'members\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer;">Membres (' + nbMembres + ')</button>' +
+      (jeCree ? '<button id="grpTab_add" onclick="switchGroupTab(\'add\')" style="flex:1;background:none;border:none;padding:8px 0;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;">Ajouter</button>' : '') +
     '</div>' +
     // Panneau Membres
     '<div id="grpPanel_members" style="display:block;">' +
@@ -2180,7 +2288,7 @@ function filterGroupAddList(query) {
   var nonMembers = window._grpNonMembers || [];
   var convId = window._grpConvId || "";
   var filtered = query ? nonMembers.filter(function(u) {
-    return u.name.toLowerCase().includes(query.toLowerCase());
+    return plierRecherche(u.name).includes(plierRecherche(query));
   }) : nonMembers;
   var list = document.getElementById("grpAddList");
   if (!list) return;
@@ -2960,6 +3068,15 @@ function buildReels(pinnedId) {
       return true;
     })
     .sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+  // LOT-5 (audit UX/UI du 2026-11-10, BOB-C22) : le RÉEL d'abord, les exemples
+  // ensuite — même règle et même coupure que le fil (`filReelDabordActif`). Mesuré :
+  // 20 bobines d'exemple sur 27, mêlées à celles des comptes, sans marque.
+  if (typeof filReelDabordActif === "function" && filReelDabordActif()) {
+    const reelles = eligibles.filter(function (p) { return !bobineExemple(p); });
+    const exemples = eligibles.filter(bobineExemple);
+    eligibles.length = 0;
+    Array.prototype.push.apply(eligibles, reelles.concat(exemples));
+  }
 
   const liste = eligibles.slice(0, 30);
   // `pinnedId` : la bobine visée par un lien partagé (#reel=<id>), ou choisie
@@ -3094,6 +3211,17 @@ const COLORS_PASSION_BG = {
   cinema: "#9333ea", nature: "#15803d", actu: "#0f172a",
 };
 
+// Une bobine d'EXEMPLE vient du socle de démonstration (`state.seed.posts`) et
+// d'aucune source réelle. Les bobines du socle portent `_source: "seed_reel"`, le
+// fil pose `"seed"` : toute source qui commence par « seed » est un exemple.
+function bobineExemple(post) {
+  if (!post) return false;
+  if (post._source) return String(post._source).indexOf("seed") === 0;
+  const id = post.id;
+  const dans = function (t) { return (t || []).some(function (p) { return p && (p === post || p.id === id); }); };
+  return dans(state.seed.posts) && !dans(state.supabasePosts) && !dans(state.userPosts);
+}
+
 function renderReelHTML(post, idx) {
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
@@ -3117,7 +3245,7 @@ function renderReelHTML(post, idx) {
           <div class="reel-avatar" style="background:${_cssColor(author.color)};">${escapeHtml(author.emoji)}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
-            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}</div>
+            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
           </div>
         </div>
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>
@@ -3175,7 +3303,14 @@ function openReels(pinnedId) {
   reelsState.pausePrompted = false;
 
   const list = document.getElementById("reelsList");
-  list.innerHTML = items.map((p, i) => renderReelHTML(p, i)).join("");
+  // LOT-5 (BOB-C22) : une fin de liste qui le dit, au lieu d'une flèche grise.
+  list.innerHTML = items.map((p, i) => renderReelHTML(p, i)).join("") + `
+    <div class="reels-fin" role="status">
+      <div class="reels-fin-emoji">🎬</div>
+      <div class="reels-fin-titre">Tu as tout vu</div>
+      <div class="reels-fin-texte">Reviens plus tard, ou crée la tienne.</div>
+      <button class="btn primary" onclick="startBobineCreation()">Créer une bobine</button>
+    </div>`;
 
   const v = document.getElementById("reelsViewer");
   v.classList.add("open");

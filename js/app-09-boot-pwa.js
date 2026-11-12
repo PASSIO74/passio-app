@@ -1444,15 +1444,34 @@ function shareLocation() {
   navigator.geolocation.getCurrentPosition(function(pos) {
     var lat = pos.coords.latitude.toFixed(5);
     var lng = pos.coords.longitude.toFixed(5);
-    var url = "https://maps.google.com/?q=" + lat + "," + lng;
 
     var convId = fp.getAttribute("data-conv-id");
-    var displayName = fp.getAttribute("data-display-name");
     var convs = getConversations ? getConversations() : (window.conversationsState || []);
     var c = convs.find(x => x.id === convId);
     if (!c) return;
 
     if (typeof _estConvDemo === "function" && _estConvDemo(c)) { toast("Conversation de démonstration — écris à un vrai membre depuis son profil"); return; }
+
+    // LOT-4 (audit UX/UI du 2026-11-10, MSG-C56) : la position exacte, au mètre près,
+    // partait au premier toucher, sans aperçu. On montre ce qui part et à qui ; rien
+    // ne part sans « Envoyer ma position ».
+    var qui = (typeof _convInterlocuteur === "function") ? _convInterlocuteur(c) : (c.userName || "ton interlocuteur");
+    if (typeof ouvrirFeuilleConfirmation !== "function") return _envoyerPositionMesuree(fp, c, lat, lng);
+    ouvrirFeuilleConfirmation({
+      titre: c.isGroup ? "Envoyer ta position actuelle au groupe ?" : "Envoyer ta position actuelle à " + qui + " ?",
+      texte: ["Position précise : " + lat + ", " + lng + ".", "Elle part comme un lien vers une carte, visible par " + qui + "."],
+      actions: [{ id: "envoyer", libelle: "Envoyer ma position", agir: function () { _envoyerPositionMesuree(fp, c, lat, lng); } }],
+    });
+  }, function() {
+    toast("❌ Impossible d'obtenir la position");
+  });
+}
+
+// L'envoi lui-même, après confirmation (MSG-C56).
+function _envoyerPositionMesuree(fp, c, lat, lng) {
+    var url = "https://maps.google.com/?q=" + lat + "," + lng;
+    var convId = c.id;
+    var displayName = fp.getAttribute("data-display-name");
 
     var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
     var msgText = "📍 Ma position : " + url;
@@ -1478,9 +1497,6 @@ function shareLocation() {
         if(btn) btn.classList.remove("active");
       }
     }, 300);
-  }, function() {
-    toast("❌ Impossible d'obtenir la position");
-  });
 }
 
 function openConvFiles() {
@@ -1904,7 +1920,59 @@ function openFullImg(src) {
 var _voiceRecorder = null, _voiceChunks = [], _voiceStartAt = 0, _voiceTimerInt = null, _voiceCancelled = false;
 window._isRecording = false;
 
-async function startVoiceRecord() {
+// LOT-4 (audit UX/UI du 2026-11-10, MSG-C53/C54) — LE GESTE DU MICRO.
+// Avant : le micro s'ouvrait APRÈS que le doigt s'était levé (autorisation, flux
+// lent), l'enregistrement continuait seul, et le toucher suivant l'ENVOYAIT ; glisser
+// hors du bouton puis relâcher envoyait aussi. Désormais : on n'enregistre que doigt
+// posé ; relâcher envoie ; glisser de plus de 80 px vers la gauche puis relâcher
+// annule (la barre le dit). Un toucher bref ne capte rien et dit quoi faire.
+var VOIX_SEUIL_ANNULER = 80;
+var _voixGeste = null; // { x, annuler } tant que le doigt est posé
+var VOIX_CONSIGNE = "Relâche pour envoyer · glisse vers la gauche pour annuler";
+function _voixConsigneCourte() { try { toast("🎙️ Maintiens le micro pour enregistrer"); } catch (e) {} }
+function _voixMajBarre() {
+  var bar = document.getElementById("voiceRecordBar");
+  var c = document.getElementById("voiceRecordConsigne");
+  var annuler = !!(_voixGeste && _voixGeste.annuler);
+  if (bar) bar.classList.toggle("voice-annule", annuler);
+  if (c) c.textContent = annuler ? "Relâche pour annuler" : VOIX_CONSIGNE;
+}
+function _brancherBoutonVocal() {
+  var b = document.getElementById("btnVoice");
+  if (!b || b._voixBranche) return;
+  b._voixBranche = true;
+  var finir = function (e) {
+    document.removeEventListener("pointermove", bouger, true);
+    document.removeEventListener("pointerup", finir, true);
+    document.removeEventListener("pointercancel", finir, true);
+    var g = _voixGeste; _voixGeste = null;
+    if (!g) return;
+    if (e && e.type === "pointercancel") g.annuler = true;
+    if (g.annuler) cancelVoiceRecord(); else stopVoiceRecord();
+    _voixMajBarre();
+  };
+  var bouger = function (e) {
+    if (!_voixGeste) return;
+    var annuler = (_voixGeste.x - e.clientX) > VOIX_SEUIL_ANNULER;
+    if (annuler !== _voixGeste.annuler) { _voixGeste.annuler = annuler; _voixMajBarre(); }
+  };
+  b.addEventListener("pointerdown", function (e) {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    _voixGeste = { x: e.clientX, annuler: false };
+    _voixMajBarre();
+    document.addEventListener("pointermove", bouger, true);
+    document.addEventListener("pointerup", finir, true);
+    document.addEventListener("pointercancel", finir, true);
+    startVoiceRecord({ geste: true });
+  });
+  // Pas de menu « copier / partager » ni de sélection sous un appui long.
+  b.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", _brancherBoutonVocal); else _brancherBoutonVocal();
+
+async function startVoiceRecord(opts) {
+  var parGeste = !!(opts && opts.geste);
   if (window._isRecording) return;
   if (typeof _pjEnvoiPermis === "function" && !_pjEnvoiPermis()) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { toast("🎙️ Enregistrement non supporté sur cet appareil"); return; }
@@ -1916,6 +1984,13 @@ async function startVoiceRecord() {
       echoCancellation: true, noiseSuppression: true, autoGainControl: true,
       channelCount: { ideal: 1 }, sampleRate: 48000,
     } });
+    // Le doigt s'est levé pendant que le micro s'ouvrait : on ferme le flux tout de
+    // suite, rien n'est capté, et on dit quoi faire (MSG-C53).
+    if (parGeste && !_voixGeste) {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      _voixConsigneCourte();
+      return;
+    }
     _voiceChunks = []; _voiceCancelled = false;
     // Débit 128 kbps EXPLICITE : le défaut de MediaRecorder est bas et variable
     // selon les navigateurs (voix étouffée).
@@ -1942,6 +2017,7 @@ async function startVoiceRecord() {
       stream.getTracks().forEach(function (t) { t.stop(); });
       _voiceUIStop();
       var elapsed = Date.now() - _voiceStartAt;
+      if (!_voiceCancelled && elapsed < 600) _voixConsigneCourte(); // toucher trop court : dire quoi faire
       if (_voiceCancelled || !_voiceChunks.length || elapsed < 600) return; // tap trop court / annulé
       _mediaEnPreparation();
       var dur = Math.max(1, Math.round(elapsed / 1000));
@@ -1955,6 +2031,8 @@ async function startVoiceRecord() {
     _voiceStartAt = Date.now();
     var bar = document.getElementById("voiceRecordBar");
     if (bar) bar.classList.add("active");
+    try { var _bv = document.getElementById("btnVoice"); if (_bv) _bv.classList.add("record-active"); } catch (e) {}
+    _voixMajBarre();
     var timerEl = document.getElementById("voiceRecordTimer");
     _voiceTimerInt = setInterval(function () {
       if (!timerEl) return;
@@ -1971,7 +2049,8 @@ function _voiceUIStop() {
   window._isRecording = false;
   if (_voiceTimerInt) { clearInterval(_voiceTimerInt); _voiceTimerInt = null; }
   var bar = document.getElementById("voiceRecordBar");
-  if (bar) bar.classList.remove("active");
+  if (bar) bar.classList.remove("active", "voice-annule");
+  try { var _bv = document.getElementById("btnVoice"); if (_bv) _bv.classList.remove("record-active"); } catch (e) {}
   var timerEl = document.getElementById("voiceRecordTimer");
   if (timerEl) timerEl.textContent = "0:00";
 }

@@ -1861,3 +1861,101 @@ test("㉿㉕ quinze PR de tiers ne sortent pas un correctif de la liste : les co
   const seize = aFaire({ gestesGithub: true, github: { issues: issues.slice(5), runs: {}, aReparer: [] } }, MAINTENANT_AF).find((x) => x.id === "pr:autres");
   assert.equal(seize.titre, "1 autre chantier ouvert n'est pas listé ici");
 });
+
+// ─── Seuils d'usage du lancement (2026-11-12, ADR-013) ──────────────────────
+// Ce qui ouvre une offre, par ville : actifs, rencontres réelles, présence,
+// organisateurs réguliers — jamais un nombre d'inscrits.
+// MUTATIONS éprouvées : `>= PRESENTS_RENCONTRE_REELLE` → `>= 1` (㊿① rougit : une
+// rencontre à 2 présents compterait) ; oublier `status === "cancelled"` (㊿①) ;
+// `mesurables` ignoré (㊿② : un compte de test gonflerait les actifs) ; taux sans
+// inscrit rendu 0 (㊿② : un faux zéro) ; item « à venir » sans test du nombre (㊿③).
+import { seuilsLancement, cleVille, SEUILS_LANCEMENT, PRESENTS_RENCONTRE_REELLE } from "../../supabase/functions/_shared/pilotage.js";
+
+const MAINT_SL = Date.parse("2026-12-10T12:00:00Z");
+const ilYaJ = (j) => new Date(MAINT_SL - j * 864e5).toISOString().slice(0, 19); // colonne `timestamp` sans fuseau
+const pres = (event_id, uids, rsvp = "going") => uids.map((user_id) => ({ event_id, user_id, rsvp, checked_in_at: ilYaJ(2) }));
+
+test("㊿① seuils : une rencontre réelle a 3 présents pointés, n'est ni annulée ni à venir ; la ville se regroupe sans accents ni casse", () => {
+  assert.equal(PRESENTS_RENCONTRE_REELLE, 3);
+  assert.equal(cleVille(" Annécy "), "annecy");
+  assert.equal(cleVille("ANNECY"), cleVille("annecy"));
+  assert.equal(cleVille(""), null);
+  const rencontres = [
+    { id: "r1", city: "Annecy", date_at: ilYaJ(2), status: "active", author_id: "o1" },
+    { id: "r2", city: "annecy", date_at: ilYaJ(3), status: "active", author_id: "o1" },
+    { id: "r3", city: "Annécy", date_at: ilYaJ(4), status: "cancelled", author_id: "o1" },
+    { id: "r4", city: "Annecy", date_at: ilYaJ(5), status: "active", author_id: "o2" },
+    { id: "r5", city: "Annecy", date_at: ilYaJ(-3), status: "active", author_id: "o2" },
+    { id: "r6", city: "Lyon", date_at: ilYaJ(2), status: "active", author_id: "o3" },
+  ];
+  const participations = [...pres("r1", ["a", "b", "c"]), ...pres("r2", ["a", "b", "d"]), ...pres("r3", ["a", "b", "c"]), ...pres("r4", ["a", "b"]),
+    ...pres("r6", ["e", "f", "g"])];
+  const s = seuilsLancement({ actifs: [], rencontres, participations }, MAINT_SL);
+  assert.equal(s.suivie.cle, "annecy");
+  assert.equal(s.suivie.ville, "Annecy", "le libellé le plus fréquent");
+  assert.equal(s.suivie.rencontres, 2, "r1 et r2 : r3 annulée, r4 à 2 présents, r5 à venir");
+  assert.equal(s.suivie.aVenir, 1);
+  assert.equal(s.suivie.organisateurs, 1, "o1 a tenu deux rencontres réelles, o2 aucune");
+  assert.equal(s.villes.length, 2);
+  assert.equal(s.aVenirTotal, 1);
+});
+
+test("㊿② seuils : actifs de la ville = actifs 7 j qui ont touché ses rencontres, hors tests ; présence sans inscrit = pas de taux", () => {
+  const rencontres = [{ id: "r1", city: "Nyons", date_at: ilYaJ(2), status: "active", author_id: "o1" }];
+  const participations = [
+    { event_id: "r1", user_id: "a", rsvp: "going", checked_in_at: ilYaJ(2) },
+    { event_id: "r1", user_id: "b", rsvp: "going", checked_in_at: null },
+    { event_id: "r1", user_id: "test", rsvp: "going", checked_in_at: ilYaJ(2) },
+    { event_id: "r1", user_id: "c", rsvp: "maybe", checked_in_at: null },
+  ];
+  const actifs = [{ uid: "a" }, { uid: "a" }, { uid: "o1" }, { uid: "test" }, { uid: "z" }];
+  const mesurables = new Set(["a", "b", "c", "o1", "z"]);
+  const s = seuilsLancement({ actifs, rencontres, participations, mesurables }, MAINT_SL);
+  assert.equal(s.actifsTotal, 3, "a, o1, z : le compte de test sort, un compte actif deux jours compte une fois");
+  assert.equal(s.suivie.actifs, 2, "a et o1 ont touché une rencontre de Nyons ; z n'en a touché aucune");
+  assert.equal(s.suivie.presence, 50, "1 pointé sur 2 « j'y vais » ; « peut-être » ne compte pas, le test non plus");
+  const vide = seuilsLancement({ rencontres: [{ id: "x", city: "Nyons", date_at: ilYaJ(2), status: "active", author_id: "o1" }] }, MAINT_SL);
+  assert.equal(vide.suivie.presence, null, "aucun inscrit : pas de taux, jamais 0 %");
+  const presence = vide.indicateurs.find((i) => i.cle === "presence");
+  assert.equal(presence.tenuPilote, false, "une valeur absente ne tient aucun seuil");
+  assert.equal(seuilsLancement({}, MAINT_SL).suivie, null, "aucune rencontre : aucune ville suivie");
+});
+
+test("㊿③ seuils : les quatre seuils du pilote, et les deux rappels de « À faire »", () => {
+  assert.deepEqual({ ...SEUILS_LANCEMENT.pilote }, { actifs: 150, rencontres: 5, presence: 60, organisateurs: 10 });
+  const orgas = Array.from({ length: 10 }, (_, i) => "o" + i);
+  const rencontres = [], participations = [], actifs = [];
+  orgas.forEach((o, i) => {
+    for (const k of [1, 2]) {
+      const id = o + "-" + k;
+      rencontres.push({ id, city: "Annecy", date_at: ilYaJ(k + (i % 3)), status: "active", author_id: o });
+      const uids = Array.from({ length: 8 }, (_, j) => "m" + ((i * 2 + k - 1) * 8 + j));
+      participations.push(...uids.map((u, j) => ({ event_id: id, user_id: u, rsvp: "going", checked_in_at: j < 6 ? ilYaJ(1) : null })));
+    }
+  });
+  for (let n = 0; n < 160; n++) actifs.push({ uid: "m" + n });
+  for (const o of orgas) actifs.push({ uid: o });
+  const s = seuilsLancement({ actifs, rencontres, participations }, MAINT_SL);
+  assert.equal(s.tenusPilote, 4, JSON.stringify(s.indicateurs));
+  const af = aFaire(etatAF({ seuils: s }), MAINTENANT_AF);
+  const tenus = af.find((x) => x.id === "seuils:pilote:annecy");
+  assert.ok(tenus && tenus.franchi && tenus.prio === 2, "une bonne nouvelle montrée sur l'accueil, sans bouton");
+  assert.match(tenus.detail, /8 semaines/);
+  assert.ok(af.find((x) => x.id === "seuils:a-venir"), "aucune rencontre à venir : le rappel est là");
+  const avecAVenir = { ...s, aVenirTotal: 1, tenusPilote: 3 };
+  const af2 = aFaire(etatAF({ seuils: avecAVenir }), MAINTENANT_AF);
+  assert.ok(!af2.some((x) => x.id.startsWith("seuils:")), "une rencontre à venir, trois seuils : rien à dire");
+  assert.ok(!aFaire(etatAF({ seuils: null }), MAINTENANT_AF).some((x) => x.id.startsWith("seuils:")), "seuils non lus : aucune carte inventée");
+  assert.ok(!aFaire(etatAF({ seuils: { absente: true } }), MAINTENANT_AF).some((x) => x.id.startsWith("seuils:")));
+});
+
+test("㊿④ seuils : la page rend le bloc, et la fonction le lit sans jamais rougir le voyant", () => {
+  const page = fs.readFileSync("pilotage/pilotage.js", "utf8");
+  assert.match(page, /function rendreSeuils\(d\)/);
+  assert.match(page, /rendreSeuils\(d\);/);
+  assert.match(fs.readFileSync("pilotage/index.html", "utf8"), /id="seuils"/);
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.match(fn, /seuils: lireSeuils\(admin\)/);
+  assert.ok(!Object.keys(SOURCES_VERDICT).includes("seuils"), "une lecture des seuils ratée ne colore pas le voyant");
+  assert.ok(!PALIERS_CROISSANCE.some((p) => /PASSIO\+/.test(p.geste)), "ADR-013 : plus aucun palier n'annonce PASSIO+");
+});

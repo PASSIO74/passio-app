@@ -64,12 +64,20 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
     await bootOnboarded(page);
     await page.evaluate(SONDE);
     await semerConv(page);
-    const z = await page.evaluate(() => ({
-      back: window.__zoneTap(document.querySelector(".conv-fp-back")),
-      action: window.__zoneTap(document.querySelector(".conv-action-btn")),
-      envoi: window.__zoneTap(document.getElementById("convFpSendBtn")),
-      gif: window.__zoneTap(document.querySelector('.conv-tool-btn[aria-label="Ajouter un GIF"]')),
-    }));
+    // LOT-4 (MSG-C60) : champ vide, le bouton rond est le micro (le bouton GIF
+    // séparé a disparu) ; avec du texte, c'est l'envoi.
+    const z = await page.evaluate(() => {
+      const micro = window.__zoneTap(document.getElementById("btnVoice"));
+      const inp = document.getElementById("convFpInput");
+      inp.value = "Bonjour";
+      const r = {
+        back: window.__zoneTap(document.querySelector(".conv-fp-back")),
+        action: window.__zoneTap(document.querySelector(".conv-action-btn")),
+        envoi: window.__zoneTap(document.getElementById("convFpSendBtn")),
+        micro,
+      };
+      return r;
+    });
     // RÉINJECTION : sur le code d'avant, back 36×36, action 34×34, envoi 40×40.
     // En largeur, les actions de l'en-tête sont à 4 px l'une de l'autre : on
     // n'y gagne que 2 px de chaque côté (38), la hauteur porte les 44 px.

@@ -2049,6 +2049,11 @@ async function saveMainProfile() {
   const rsLinks  = [];
   rsInputs.forEach(inp => { if (inp.value.trim()) rsLinks.push({ platform: inp.dataset.platform, url: inp.value.trim() }); });
 
+  // CLI-01 : mêmes caractères interdits que la base (`profiles_username_forme`).
+  if (username && typeof nomCompteCaracteresInterdits === "function" && nomCompteCaracteresInterdits(username)) {
+    toast("⚠️ Ton pseudo ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse");
+    return;
+  }
   // Unicité du pseudo : refuse un pseudo déjà porté par un autre compte.
   if (username && typeof supaUsernameTaken === "function") {
     const takenBy = await supaUsernameTaken(username);
@@ -3890,6 +3895,11 @@ function renderProfileStrip() {
 // ══════════════════════════════════════════════════════════════════════════
 // TROIS PASSIONS OFFERTES, LES SUIVANTES SERONT PAYANTES (2026-09-01)
 // ──────────────────────────────────────────────────────────────────────────
+// ⛔ DÉCISION REMPLACÉE PAR ADR-013 (2026-11-12) : les passions sont illimitées
+// pour tous, définitivement, et un membre ne paie jamais. Le récit ci-dessous
+// reste pour l'histoire ; le plafond ne s'arme plus que sur un appareil de test
+// (`plafondPassionsArme`), et aucune fenêtre n'annonce plus d'offre payante.
+//
 // Demande de Benjamin : « 3 profils gratuits, le reste payant ; pour l'instant
 // tu bloques et tu mets une fenêtre qui annonce que ça sera payant » — puis,
 // une minute plus tard : « ne mets pas de valeur, tu mets juste que ça va être
@@ -4122,8 +4132,10 @@ function passionsIllimitees() {
 // donc `passionsRestantesOffertes` → Infinity, le quota (`quotaChangementsActif`)
 // tombe avec lui, l'écran retire seul « sur N » et l'alerte de quota.
 //
-// ⚠️ LE MÉCANISME RESTE, ENTIER. Il sera le premier avantage de PASSIO+
-// (phase 3 du plan). Le réarmer = passer `PLAFOND_PASSIONS_EN_VIGUEUR` à true.
+// ⚠️ LEVÉ DÉFINITIVEMENT (ADR-013, 2026-11-12) : PASSIO+ est abandonné, et le
+// plafond ne sera jamais vendu. Le mécanisme reste dans le code, armable sur un
+// appareil (les suites qui l'éprouvent), comme limite anti-abus de secours :
+// le réarmer pour tous demanderait de rouvrir l'ADR, jamais une constante.
 //   • Un compte qui a pris cinq passions pendant le lancement les GARDE : la
 //     fusion n'ajoute que sous le plafond, elle ne rétrograde jamais l'état
 //     serveur (`reinjecterProfilsLocauxBornes`, fiche 16).
@@ -4439,14 +4451,19 @@ function openPassionPaywall(opts) {
   //   • `opts.creation` : les trois CRÉATIONS de passion sont utilisées ;
   //   • `quotaEpuise`   : les trois CHANGEMENTS sont utilisés ;
   //   • défaut          : les trois passions VIVANTES sont occupées.
+  // ⚠️ AUCUNE OFFRE PAYANTE ANNONCÉE (ADR-013, 2026-11-12) : les passions sont
+  // illimitées, définitivement, et un membre ne paie jamais. Ces fenêtres disent
+  // la limite qui a refusé le geste, jamais qu'elle se lève en payant.
+  //   • la CRÉATION (noms absents du catalogue) reste bornée par le SERVEUR :
+  //     c'est l'anti-abus du catalogue, chaque nom neuf est relu ;
+  //   • le plafond et le quota ne s'arment plus que sur un appareil de test.
   const corps = opts.creation
-    ? `Tu as utilisé tes <strong>${PASSIONS_OFFERTES} créations de passion</strong>.
-       En créer d'autres fera partie d'une formule <strong>payante</strong>.`
+    ? `Tu as créé <strong>${PASSIONS_OFFERTES} passions</strong> qui n'existaient pas
+       encore au catalogue : c'est la limite par compte. Chaque nom nouveau est
+       relu, pour garder un catalogue sans doublons ni abus.`
     : quotaEpuise
-    ? `Tu as utilisé tes <strong>${CHANGEMENTS_PASSION_OFFERTS} changements de passion</strong>.
-       En changer davantage fera partie d'une formule <strong>payante</strong>.`
-    : `Tu suis déjà ${PASSIONS_OFFERTES} passions. Au-delà, les passions
-       supplémentaires feront partie d'une formule <strong>payante</strong>.`;
+    ? `Tu as utilisé tes <strong>${CHANGEMENTS_PASSION_OFFERTS} changements de passion</strong>.`
+    : `Tu suis déjà <strong>${PASSIONS_OFFERTES} passions</strong> : c'est la limite en vigueur.`;
 
   const suite = opts.creation
     ? `Les passions déjà présentes au catalogue restent accessibles : cherche-les,
@@ -4462,12 +4479,8 @@ function openPassionPaywall(opts) {
     <div class="modal-handle"></div>
     <div style="text-align:center;margin-bottom:16px;">
       <div style="font-size:30px;margin-bottom:8px;">🔒</div>
-      <div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:6px;">${opts.creation ? "Trois créations offertes" : "Trois passions offertes"}</div>
+      <div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:6px;">${opts.creation ? "Trois créations de passion" : "Trois passions à la fois"}</div>
       <div style="font-size:13px;color:var(--muted);line-height:1.6;">${corps}</div>
-    </div>
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">
-      Cette formule <strong>n'est pas encore ouverte</strong> : aucun paiement n'est
-      possible aujourd'hui et rien ne t'est débité. Le tarif sera annoncé plus tard.
     </div>
     <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">${suite}</div>
     ${echange}
