@@ -3241,12 +3241,11 @@ function renderReelHTML(post, idx) {
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
       ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
-        ${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? '<div class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</div>' : ""}
         <div class="reel-author" onclick="_openReelAuthor('${escapeJsArg(post.authorId || post.userId || '')}'); return false;" style="cursor:pointer;">
           <div class="reel-avatar" style="background:${_cssColor(author.color)};">${escapeHtml(author.emoji)}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
-            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}</div>
+            <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}${(bobineExemple(post) && window.PassioFirstRun && typeof PassioFirstRun.etiquetteDemo === "function") ? ' <span class="reel-exemple">' + PassioFirstRun.etiquetteDemo({ _source: "seed" }) + '</span>' : ""}</div>
           </div>
         </div>
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>

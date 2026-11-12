@@ -12554,7 +12554,7 @@ button, a, label, select, summary,
 
 /* LOT-5 (audit UX/UI du 2026-11-10, BOB-C22) : la bobine d'exemple porte la même
    étiquette que le fil, et la liste a une fin qui le dit. */
-.reel-info .reel-exemple { margin-bottom: 6px; }
+.reel-passion .reel-exemple { margin-left: 4px; }
 .reels-fin {
   height: 100vh;
   height: var(--app-vh, 100svh);
