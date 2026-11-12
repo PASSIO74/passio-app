@@ -2049,6 +2049,11 @@ async function saveMainProfile() {
   const rsLinks  = [];
   rsInputs.forEach(inp => { if (inp.value.trim()) rsLinks.push({ platform: inp.dataset.platform, url: inp.value.trim() }); });
 
+  // CLI-01 : mêmes caractères interdits que la base (`profiles_username_forme`).
+  if (username && typeof nomCompteCaracteresInterdits === "function" && nomCompteCaracteresInterdits(username)) {
+    toast("⚠️ Ton pseudo ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse");
+    return;
+  }
   // Unicité du pseudo : refuse un pseudo déjà porté par un autre compte.
   if (username && typeof supaUsernameTaken === "function") {
     const takenBy = await supaUsernameTaken(username);

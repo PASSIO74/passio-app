@@ -5788,7 +5788,10 @@ function _eventRow(event) {
     external_link: event.externalLink || null,
     event_type: event.eventType || "Autre",
     cover_url: event.coverUrl || null,
-    co_organizers: event.coOrganizers || [],
+    // CLI-01 : la base n'accepte plus qu'un tableau d'uuid en minuscules (au plus
+    // 20) — un identifiant de démonstration ferait refuser TOUTE l'activité.
+    co_organizers: (event.coOrganizers || []).filter(function (x) { return typeof x === "string" && RE_UID_COMPTE.test(x); })
+      .map(function (x) { return x.toLowerCase(); }).slice(0, 20),
     series_id: event.seriesId || null,
     recurrence: event.recurrence || "none",
     conv_id: event.convId || null,

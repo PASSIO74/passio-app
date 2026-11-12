@@ -5519,6 +5519,9 @@ function onbValidateAge() {
 function onbValidateName() {
   const v = $("#userName").value.trim();
   if (v.length < 2) { toast("Indique ton prénom."); return; }
+  // CLI-01 : ce nom peut devenir le pseudo en base (`_uname`) ; la base refuse
+  // ces caractères, et le refus emporterait tout l'enregistrement du profil.
+  if (nomCompteCaracteresInterdits(v)) { toast("Ton prénom ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse."); return; }
   state.user.name = v;
   // La préparation de l'écran des passions (grille + pré-remplissage de la
   // première visite) vit dans `_onbPreparerEtape`, appelée par `onbNext` : elle
@@ -6352,11 +6355,22 @@ function nomCompteReserve(v) {
   var plie = String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return /(^|[^a-z0-9_])(passio|moderation|moderateur|administrateur|admin|support|securite)($|[^a-z0-9_])/.test(plie);
 }
+// ⚠️ CLI-01 (audit du 2026-11-10) : un pseudo est recopié dans des attributs et
+// des gestionnaires partout dans l'interface, et `openUserProfile` retrouve un
+// compte PAR PSEUDO. Le guillemet droit, les chevrons, l'accent grave et la barre
+// oblique inverse n'y ont aucun usage légitime et ont servi au scénario
+// d'injection : la base les refuse (`profiles_username_forme`, migration du
+// 2026-11-12), le client les refuse AVANT, en français. L'apostrophe reste
+// permise (« Zoé d'Annecy ») : `escapeJsArg` la traite.
+const NOM_COMPTE_INTERDITS_RE = /["<>`\\]/;
+function nomCompteCaracteresInterdits(v) {
+  return NOM_COMPTE_INTERDITS_RE.test(String(v == null ? "" : v));
+}
 function nomCompteValide(v) {
   // Les blancs ne font pas une identité : « Ben   jamin » et «  Benjamin  »
   // ne doivent pas donner deux pseudos différents dans `profiles.username`.
   const s = String(v == null ? "" : v).replace(/\s+/g, " ").trim();
-  if (s.length < NOM_COMPTE_MIN || s.length > NOM_COMPTE_MAX || nomCompteReserve(s)) return "";
+  if (s.length < NOM_COMPTE_MIN || s.length > NOM_COMPTE_MAX || nomCompteReserve(s) || nomCompteCaracteresInterdits(s)) return "";
   return s;
 }
 
@@ -6409,6 +6423,8 @@ async function onbDoAuth() {
   if (_authMode === "signup" && !nom) {
     _showAuthMsg(nomCompteReserve(document.getElementById("authName")?.value || "")
       ? "Ce nom d'utilisateur est réservé : choisis-en un autre."
+      : nomCompteCaracteresInterdits(document.getElementById("authName")?.value || "")
+      ? "Ton nom d'utilisateur ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse."
       : "Choisis un nom d'utilisateur (" + NOM_COMPTE_MIN + " \u00e0 " + NOM_COMPTE_MAX + " caract\u00e8res).", "error");
     return;
   }

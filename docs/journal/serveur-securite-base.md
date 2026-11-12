@@ -32,6 +32,7 @@
 - 🧱 « JAMAIS DE BASE64 EN BASE » DEVIENT UNE RÈGLE DU SERVEUR : `conv_messages.content` BORNÉ (2026-11-07)
 - 🧹 MÉNAGE DES PUBLICATIONS DE TEST MASQUÉES LE 04/11 — sauvegarde, migration fermée sur échec, journal de modération (2026-11-12)
 - 🚰 client_errors : TROIS RÉSERVOIRS AU LIEU D'UN PLAFOND GLOBAL — UN VISITEUR NE FAIT PLUS TAIRE LA REMONTÉE D'ERREURS (2026-11-12, SRV-08)
+- 🧱 DURCISSEMENTS DE L'AUDIT : PSEUDO ET CO-ORGANISATEURS, TEXTE DES NOTIFICATIONS, PURGE DE NUIT (2026-11-12, CLI-01 serveur, SRV-02, SRV-05)
 
 ---
 
@@ -1842,3 +1843,63 @@ Elle vérifie qu'aucune ligne d'essai ne reste.
 plpgsql, qui survit à l'annulation, et ne sont posées en réglage qu'APRÈS le bloc d'exception.
 
 Mesuré au canal ① le 12/11 : 16 lignes en 30 jours, pointe à 11 par minute. Ces plafonds ne gênent aucun usage réel.
+
+---
+
+## 🧱 DURCISSEMENTS DE L'AUDIT : PSEUDO ET CO-ORGANISATEURS, TEXTE DES NOTIFICATIONS, PURGE DE NUIT (2026-11-12, CLI-01 serveur, SRV-02, SRV-05)
+
+**CLI-01, côté serveur** (`migration_forme_pseudo_coorganisateurs_2026-11-12.sql`). Le client était corrigé depuis le
+10/11 (#823), mais la base laissait passer les deux prémisses du scénario d'injection. Ce qui change :
+- `profiles_username_forme` refuse désormais le guillemet droit, les chevrons, l'accent grave et la barre oblique
+  inverse. L'apostrophe reste permise.
+- `events_co_organizers_tableau` n'accepte plus qu'un tableau de 0 à 20 uuid en minuscules (`jsonb_tableau_uuid`,
+  IMMUTABLE).
+
+**PRÉREQUIS-CLIENT, dans la même PR.**
+- `nomCompteCaracteresInterdits` (app-02) refuse ces caractères AVANT la base : à l'inscription et dans « Modifier
+  le profil ».
+- `_eventRow` ne garde que les uuid des co-organisateurs, mis en minuscules. Sans ce filtre, un identifiant de
+  démonstration ferait refuser l'activité entière.
+
+Verrou : `tests/e2e/pseudo-caracteres-interdits.spec.js` (3), rougi par mutation.
+
+**SRV-02** (`migration_notifications_texte_serveur_2026-11-12.sql`). La cloche affichait le `content` écrit par
+l'émetteur. N'importe quel compte pouvait donc envoyer à n'importe qui « Équipe PASSIO : ton compte est
+suspendu… ». Le déclencheur `trg_notifications_texte` traite les seules lignes d'origine client :
+- le NOM est toujours relu dans `profiles` ;
+- la PHRASE doit appartenir à la liste fermée de ce que l'application écrit (relevée dans `js/` et dans les
+  170 lignes de production) ;
+- les phrases qui portent un titre (invitation, avis, direct, groupe) sont reconstruites depuis la base ;
+- toute autre phrase est remplacée par le gabarit du genre.
+
+Liens métier exigés (refus 42501 sinon) :
+- `message` : les deux comptes sont membres de la conversation ;
+- `event_update` et `event_cancelled` : le destinataire est inscrit à l'activité (tous statuts), et l'émetteur
+  l'organise, la co-organise, ou y est inscrit lui aussi (c'est le cas de « une place s'est libérée »). Seul
+  l'organisateur garde un texte libre.
+
+Trouvé par la relecture adversariale avant application (agent `passio-red-team`, 12/11), et corrigé :
+- la première version laissait un organisateur écrire à N'IMPORTE QUI, sous couvert de sa propre activité, et
+  l'épreuve validait ce trou ;
+- les phrases fixes « tu es inscrit·e » et « a annulé » étaient ouvertes à tous ;
+- un nom de groupe servait de texte libre. Un groupe s'annonce désormais par le gabarit « a écrit dans un
+  groupe », comme la push.
+
+**L'avis de suppression d'une activité est écrit par la BASE.** Le client prévenait les inscrits APRÈS avoir
+effacé l'activité : à ce moment, le lien ne se prouve plus. Désormais `trg_events_prevenir_suppression` (BEFORE
+DELETE) écrit une ligne d'origine serveur par inscrit, au nom de l'organisateur. Son échec n'empêche jamais la
+suppression.
+
+⚠️ **Toute nouvelle phrase de notification côté client doit être ajoutée à la liste de
+`notifications_texte_serveur`**. Sinon, elle devient le gabarit du genre, sans erreur.
+
+**SRV-05** (`migration_purge_donnees_expirees_2026-11-12.sql`). `purger_donnees_expirees()` tourne chaque nuit à 03:53
+par pg_cron, et personne d'autre ne peut l'appeler. Chaque catégorie est bornée à 5 000 lignes par passage :
+- conversations sans membre ni message, de plus de 7 jours, qu'aucune activité ne vise (`events.conv_id`) ;
+- stories de plus de 48 h (l'application n'en lit que 24) ;
+- directs muets depuis plus d'une heure, passés en `ended` ;
+- notifications LUES de plus de 90 jours ;
+- `conv_reads` et `story_views` orphelins.
+
+Le verdict compare des IDENTIFIANTS, pas des comptes : une ligne arrivée pendant la migration aurait faussé un
+compte, ou masqué une perte.
