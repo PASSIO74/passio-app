@@ -49,6 +49,7 @@
 - 🏃 LES FONCTIONS S'EXÉCUTENT AVANT D'ÊTRE DÉPLOYÉES — UNE VARIABLE NON DÉCLARÉE NE PART PLUS (2026-11-09)
 - 🩺 CONTRÔLE GÉNÉRAL DU 10/11 : L'ÉTAT MESURÉ DE LA CHAÎNE, ET UNE SONDE QUI COMPTE TOUTE LA TABLE (2026-11-10)
 - 🚱 LES LIGNES `development` DE LA PRODUCTION : TROIS SOURCES, UNE VOULUE, ET LE DÉPART D'UNE PAGE QU'AUCUNE ROUTE NE VOIT (2026-11-10)
+- 🧾 UN RUN ROUGE DE `main` N'EST PAS RÉPARABLE SANS LE NOM DE SON JOB (2026-11-12)
 
 ---
 
@@ -1214,3 +1215,49 @@ lignes `preview` viennent des contrôles des aperçus de déploiement : un autre
 Règle d'une ligne proposée pour `CLAUDE.md` (chemin protégé, non appliquée) : « Le départ d'une page
 échappe aux routes de Playwright : `projetSupabaseVide` retient ses envois `keepalive` après un
 `pagehide` réel ; une fuite se mesure par un proxy hors du navigateur, jamais par la sonde Playwright. »
+
+## 🧾 UN RUN ROUGE DE `main` N'EST PAS RÉPARABLE SANS LE NOM DE SON JOB (2026-11-12)
+
+**Le constat.** Veille du 2026-11-12 18:32:04 UTC, un seul signal en alerte (#856) : `deploiement` —
+« servi `00258361`, main `39e4f605` ; dernier run main en ÉCHEC :
+`.../actions/runs/43274854823` ». Le pilotage a confié la réparation à l'agent distant
+(issue #859, « [RÉPARER] #856 »). **L'agent n'a pas pu établir la cause, et ce n'est pas faute de
+l'avoir cherchée dans le code : l'alerte ne nomme pas ce qui est rouge, et l'agent n'a aucun moyen de
+le lire.** Ce qui suit est la mesure de ce trou, pas une réparation.
+
+**Ce dont dispose un agent de `claude-code.yml`** (mesuré, `--allowedTools` ligne 550 + `fetch-depth: 1`
+ligne 161) : `Read`, `Edit`, `Write`, `Glob`, `Grep`, et `git status / checkout -b / add / commit -m`,
+`ls`, `wc`, `mkdir`, `pwd`. Donc **ni `gh` (hors de cette liste : refusé au runner), ni `npm`/`node`, ni
+`git log`/`git diff`** — et le dépôt est cloné en PROFONDEUR 1 : `git show --stat HEAD` liste le dépôt
+entier, pas la fusion. Un agent de réparation ne peut donc lire ni le job en échec, ni le diff de la PR
+incriminée. Tout ce qu'il a de la panne, c'est la phrase de la veille.
+
+**Ce que le dépôt permet quand même de trancher.** Dans `deploy.yml`, les jobs `audits`, `test-local`,
+`test-webkit`, `gates-artefact` et le gros de `test-prod` n'ont AUCUN `if:` : ils tournent à
+l'identique sur `pull_request` et sur `push`. Un rouge DÉTERMINISTE du code fusionné serait donc déjà
+rouge sur la PR. Ne diffèrent, au push : la résolution « commit → PR » de `governance`, l'étape
+« Barrière RLS de la production (authz-critical seule) », « Mesure `passion_id` »
+(`continue-on-error`, donc jamais rouge), le job `deploy` et `retour-issue`. Or la fusion visée
+(#852, ETAT-04/05/08) ne touche que du JS d'application et des suites e2e — et `authz-critical` parle à
+PostgREST sans passer par ce JS. **Trois familles restent, aucune décidable depuis le dépôt :**
+① `governance` (course de l'index « commit → PR », fiche ⏱️ du 2026-11-03 ; ou « Contre-revue
+manquante » si la PR touche un chemin critique sans revue ancrée sur son SHA de tête) ; ② une panne
+INTERMITTENTE d'un job partagé (quota d'inscriptions, installation Playwright, miroir APT — les trois
+documentées dans les commentaires de `deploy.yml`) ; ③ le job `deploy` lui-même (minification,
+empreintes des scripts `app/`, Netlify).
+
+**Le geste, tant que l'alerte ne nomme rien** : ouvrir le run, lire le job rouge. `governance` rouge
+juste après une fusion se RELANCE (`gh run rerun --failed 43274854823`), jamais se contourne ;
+« Contre-revue manquante » se ferme en postant la revue sur la PR (marqueur « Contre-revue technique
+indépendante », ancrée sur le SHA de tête) puis en relançant ; un intermittent se relance ; s'il n'y a
+aucun run pour le commit, un commit vide sur `main`.
+
+⚠️ **Deux manques, dans `scripts/veille-production.mjs` — chemin PROTÉGÉ pour l'agent, donc NON
+appliqués ici.** (1) `signalDeploiement` MESURE déjà `dernierRun.head_sha` et ne l'imprime pas : sans
+lui, on ne sait pas si le run rouge est celui de `main` HEAD ou celui d'un commit déjà dépassé — et sa
+branche `failure` est évaluée AVANT `enCours`, donc un rouge déjà remplacé par un run en cours ouvre
+quand même un ordre de réparation. (2) L'alerte devrait nommer le premier job (et l'étape) en échec,
+lus par un `GET actions/runs/<id>/jobs` — la même API que celle qu'elle interroge déjà. **Tant que ces
+deux lignes manquent, un ordre « [RÉPARER] » sur le signal `deploiement` demande à un agent de réparer
+ce qu'il ne peut pas lire** : il ne peut qu'énumérer des hypothèses, ce qu'une réparation ne doit
+jamais faire.
