@@ -880,5 +880,173 @@
       "fournisseur": "github",
       "auto_revue_mainteneur_unique": true
     }
+  },
+  {
+    "fichier": "migrations/migration_notifications_texte_serveur_2026-11-12.sql",
+    "empreinte": "66c74e7ac82f2fbb2649cbb7c0d0735949dcb7d115a159b69866a972c2021bdc",
+    "cibles": [
+      "fcksxofaelcdmmifnwjo"
+    ],
+    "pr": "#843",
+    "commit": "e313cbc51f2f07b281d74c7dc71bf20d3c946741",
+    "revue_id": 5876211163,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-12",
+    "consigne_le": "2026-11-12",
+    "source": "https://github.com/PASSIO74/passio-app/pull/843#pullrequestreview-5876211163",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-12T14:32:53Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_purge_donnees_expirees_2026-11-12.sql",
+    "empreinte": "5c6883723d19ffa01d6143fed2f48f8ae407288055529e35930ebf811ba406ca",
+    "cibles": [
+      "fcksxofaelcdmmifnwjo"
+    ],
+    "pr": "#843",
+    "commit": "e313cbc51f2f07b281d74c7dc71bf20d3c946741",
+    "revue_id": 5876211163,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-12",
+    "consigne_le": "2026-11-12",
+    "source": "https://github.com/PASSIO74/passio-app/pull/843#pullrequestreview-5876211163",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-12T14:32:53Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_forme_pseudo_coorganisateurs_2026-11-12.sql",
+    "empreinte": "509c7e3a80ed6ecb2b72ba61943a60b11e778eed5b055faa5571f58597d4737b",
+    "cibles": [
+      "fcksxofaelcdmmifnwjo"
+    ],
+    "pr": "#843",
+    "commit": "253596ee77f295f994dc201fe6ac575737837da5",
+    "revue_id": 5876228539,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-12",
+    "consigne_le": "2026-11-12",
+    "source": "https://github.com/PASSIO74/passio-app/pull/843#pullrequestreview-5876228539",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-12T14:33:55Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_notifications_texte_serveur_2026-11-12.sql",
+    "empreinte": "66c74e7ac82f2fbb2649cbb7c0d0735949dcb7d115a159b69866a972c2021bdc",
+    "cibles": [
+      "njkiyoklssvefstljemx"
+    ],
+    "pr": "#843",
+    "commit": "253596ee77f295f994dc201fe6ac575737837da5",
+    "revue_id": 5876228539,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-12",
+    "consigne_le": "2026-11-12",
+    "source": "https://github.com/PASSIO74/passio-app/pull/843#pullrequestreview-5876228539",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-12T14:33:55Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_purge_donnees_expirees_2026-11-12.sql",
+    "empreinte": "5c6883723d19ffa01d6143fed2f48f8ae407288055529e35930ebf811ba406ca",
+    "cibles": [
+      "njkiyoklssvefstljemx"
+    ],
+    "pr": "#843",
+    "commit": "253596ee77f295f994dc201fe6ac575737837da5",
+    "revue_id": 5876228539,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-12",
+    "consigne_le": "2026-11-12",
+    "source": "https://github.com/PASSIO74/passio-app/pull/843#pullrequestreview-5876228539",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-12T14:33:55Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_forme_pseudo_coorganisateurs_droits_2026-11-12.sql",
+    "empreinte": "16e0c54eb8aa33c70071050caab470d4e595438b4fd7bfe7ed3813d7abe63c09",
+    "cibles": [
+      "fcksxofaelcdmmifnwjo"
+    ],
+    "pr": "#843",
+    "commit": "af89fbb811cbb0beada04140578c5b0a70fd9f3f",
+    "revue_id": 5876607135,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-12",
+    "consigne_le": "2026-11-12",
+    "source": "https://github.com/PASSIO74/passio-app/pull/843#pullrequestreview-5876607135",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-12T14:57:37Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_forme_pseudo_coorganisateurs_2026-11-12.sql",
+    "empreinte": "509c7e3a80ed6ecb2b72ba61943a60b11e778eed5b055faa5571f58597d4737b",
+    "cibles": [
+      "njkiyoklssvefstljemx"
+    ],
+    "pr": "#843",
+    "commit": "af89fbb811cbb0beada04140578c5b0a70fd9f3f",
+    "revue_id": 5876607135,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-12",
+    "consigne_le": "2026-11-12",
+    "source": "https://github.com/PASSIO74/passio-app/pull/843#pullrequestreview-5876607135",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-12T14:57:37Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_forme_pseudo_coorganisateurs_droits_2026-11-12.sql",
+    "empreinte": "16e0c54eb8aa33c70071050caab470d4e595438b4fd7bfe7ed3813d7abe63c09",
+    "cibles": [
+      "njkiyoklssvefstljemx"
+    ],
+    "pr": "#843",
+    "commit": "af89fbb811cbb0beada04140578c5b0a70fd9f3f",
+    "revue_id": 5876607135,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-11-12",
+    "consigne_le": "2026-11-12",
+    "source": "https://github.com/PASSIO74/passio-app/pull/843#pullrequestreview-5876607135",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-11-12T14:57:37Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
   }
 ]
