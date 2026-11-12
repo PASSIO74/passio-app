@@ -763,7 +763,7 @@ function fauxNode(nom) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(dir + "/node", `#!/usr/bin/env bash
 case "$*" in
-  *"scripts/digest.mjs"*|*"scripts/veille-production.mjs"*) printf '%s' "$FAUX_JSON"; exit "\${FAUX_CODE:-0}" ;;
+  *"scripts/digest.mjs"*|*"scripts/veille-production.mjs"*|*"scripts/moderation-alerte.mjs"*) printf '%s' "$FAUX_JSON"; exit "\${FAUX_CODE:-0}" ;;
   *) exec "$VRAI_NODE" "$@" ;;
 esac
 `);
@@ -803,6 +803,53 @@ test("veille-production.yml : Verdict — code 3 (alerte) rend alerte=oui et le 
   r = jouer(run, { ...env, SUPABASE_ACCESS_TOKEN: "", FAUX_JSON: json, FAUX_CODE: "3" });
   assert.equal(r.code, 1, "sans jeton, la veille est aveugle : refus, pas un verdict");
   assert.ok(r.sortie.includes("SUPABASE_ACCESS_TOKEN absent"), r.sortie);
+});
+
+// Le TROISIÈME canal de cette forme (2026-11-12) : l'alerte de modération. Son étape « Verdict » portait encore
+// `node …; code=$?` — le piège corrigé ci-dessus pour le digest et la veille. 60 passages verts sur 60 : la
+// condition d'alerte (un signalement en attente depuis plus de 24 h) ne s'était jamais présentée. Le jour où elle
+// se présente, le code 3 tuait l'étape : run rouge, « Ouvrir ou mettre à jour l'issue » sautée, aucune issue
+// `[MODÉRATION]` — donc aucune ligne au pilotage, le jour même où il en fallait une.
+// Mutation : remettre `node …; code=$?` dans le workflow → ce test rougit (code 3 au lieu de 0).
+const MOD = wf("moderation-alerte.yml");
+test("moderation-alerte.yml : Verdict — code 3 (signalements en retard) rend alerte=oui, le titre et le corps de l'issue ; code 0 → non ; code 2 = panne VISIBLE ; sans la clé l'étape REFUSE", () => {
+  const run = etape(MOD, "compter", "Verdict").run;
+  const env = fauxNode("moderation");
+  const json = JSON.stringify({ titre: "[MODÉRATION] 2 signalements en attente depuis plus de 24 h", corps: "corps de l'alerte", ouverts: 3, enRetard: 2, alerte: true });
+  for (const f of ["titre.txt", "corps.md"]) fs.rmSync(BAC + "/" + f, { force: true });
+  let r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "cle-de-test", FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(r.code, 0, "code 3 = une alerte à ouvrir, pas une panne : " + r.sortie);
+  assert.match(r.out, /^alerte=oui$/m, r.out);
+  assert.match(r.summary, /^- Signalements ouverts : 3$/m, r.summary);
+  assert.match(r.summary, /^- En attente depuis plus de 24 h : 2$/m, r.summary);
+  // Ce que l'étape suivante lit pour ouvrir l'issue.
+  assert.equal(fs.readFileSync(BAC + "/titre.txt", "utf8"), "[MODÉRATION] 2 signalements en attente depuis plus de 24 h");
+  assert.match(fs.readFileSync(BAC + "/corps.md", "utf8"), /^corps de l'alerte\n\n_Dernier passage : \d{4}-/);
+  assert.equal(etape(MOD, "compter", "Ouvrir ou mettre à jour l'issue").if, "github.event_name != 'pull_request' && steps.verdict.outputs.alerte == 'oui'");
+  assert.equal(etape(MOD, "compter", "Refermer l'issue").if, "github.event_name != 'pull_request' && steps.verdict.outputs.alerte == 'non'");
+  r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "cle-de-test", FAUX_JSON: JSON.stringify({ titre: "", corps: "", ouverts: 1, enRetard: 0, alerte: false }), FAUX_CODE: "0" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.match(r.out, /^alerte=non$/m, r.out);
+  r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "cle-de-test", FAUX_JSON: '{"panne":"lecture des signalements impossible"}', FAUX_CODE: "2" });
+  assert.equal(r.code, 2, "une panne du lecteur reste une panne");
+  assert.ok(r.sortie.includes("lecture des signalements impossible"), "et elle est affichée : " + r.sortie);
+  assert.doesNotMatch(r.out, /alerte=/, "une panne ne rend ni « oui » ni « non » : l'issue n'est ni ouverte ni refermée");
+  r = jouer(run, { ...env, SUPABASE_SERVICE_ROLE_KEY: "", FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(r.code, 1, "sans la clé, l'alerte est aveugle : refus, pas un verdict");
+  assert.ok(r.sortie.includes("SUPABASE_SERVICE_ROLE_KEY absent"), r.sortie);
+});
+
+// Aucun canal ne doit retomber dans le piège : tout `run:` qui lit un code de sortie par `; code=$?` meurt sous -e.
+test("aucun workflow ne lit un code de sortie par « ; code=$? » : sous le shell de GitHub (bash -e), la commande qui le produit a déjà tué l'étape", () => {
+  const dossier = path.join(RACINE, ".github/workflows");
+  const fautifs = [];
+  for (const nom of fs.readdirSync(dossier).filter((x) => /\.ya?ml$/.test(x))) {
+    fs.readFileSync(path.join(dossier, nom), "utf8").split(/\r?\n/).forEach((ligne, i) => {
+      const code = ligne.replace(/#.*$/, "");
+      if (/;\s*[A-Za-z_]+=\$\?/.test(code) && !/\|\|\s*[A-Za-z_]+=\$\?/.test(code) && !/^\s*(if|while)\b/.test(code)) fautifs.push(nom + ":" + (i + 1) + " " + code.trim());
+    });
+  }
+  assert.deepEqual(fautifs, [], "écrire `code=0; commande || code=$?`");
 });
 
 // ═══ F — Tableaux : les comptes rendus vivent dans le centre de pilotage ═════════════════
