@@ -3767,6 +3767,13 @@ function goTo(screen) {
 
 // Fonction générique pour fermer les overlays
 function closeCurrentOverlay() {
+  // LOT-2 (audit UX/UI, ENT-C01) : le formulaire de compte ouvert par le mode
+  // invité est au-dessus de tout le reste — le retour système le ferme et rend
+  // ce que la personne regardait, au lieu de naviguer dessous ou de quitter.
+  try {
+    if (window.PassioFirstRun && typeof PassioFirstRun.fermerAuthParRetour === "function"
+        && PassioFirstRun.fermerAuthParRetour()) return true;
+  } catch (e) {}
   // Panneau d'outils contextuel (IRL/CDV…) : priorité haute pour que le bouton
   // retour et Escape le ferment avant tout le reste.
   if (window.ContextualTools && ContextualTools.isOpen()) {

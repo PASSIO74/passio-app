@@ -1585,6 +1585,15 @@
       overflow: hidden;
     }
 
+    /* LOT-2 (audit UX/UI du 2026-11-10, PAR-C01, P0) : ouvert par le mode
+       invité depuis une publication (200), une fiche d'activité (200) ou le
+       lecteur de bobines (9999), le formulaire (50) s'ouvrait DESSOUS : « Créer
+       mon compte » ne changeait rien à l'écran. Il passe au-dessus du contenu,
+       qui reste ouvert dessous (le retour système ferme le formulaire et le
+       rend tel quel). Il reste SOUS les fenêtres (10001 : CGU, confidentialité)
+       et les toasts. Classe posée et retirée par `ouvrirAuth` (first-run.js). */
+    body.fr-auth-dessus #onboarding.onboarding-shell { z-index: 10000; }
+
     .onboarding-shell.active { display: flex; }
 
     .onb-step {
