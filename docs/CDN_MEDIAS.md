@@ -22,7 +22,7 @@
 |---|---|
 | `cdnUrl()` (app-08) | Point UNIQUE de tout envoi, identité tant que `PASSIO_CDN_BASE` est vide. Un futur CDN (Cloudflare R2 : sortie gratuite, mais un nom de domaine, ~10 €/an) n'y sera qu'une valeur à poser. |
 | `urlMediaDirecte()` (app-02) | Lit une ancienne URL du relais à sa SOURCE (seau `content` seulement ; une pièce jointe garde sa forme pour le résolveur signé). Appelée par `passioThumb`, `_reelVideoSrc`, les couvertures d'activité et de passion, les cartes ; `og:image` des aperçus est rendue sous la forme directe (`netlify/lib/apercu-coeur.js`). |
-| `passioThumb()` (app-02) | **Ne demande plus AUCUNE transformation d'image** : rend l'objet (sa légère, ou l'ancien tel quel). La transformation compte 100 images d'origine/mois en Pro et son URL est publique — un quota que n'importe qui pouvait épuiser. Elle peut être éteinte chez Supabase — **après la précondition écrite plus bas**. |
+| `passioThumb()` (app-02) | **Ne demande plus AUCUNE transformation d'image** : rend l'objet (sa légère, ou l'ancien tel quel). La transformation compte 100 images d'origine/mois en Pro et son URL est publique — un quota que n'importe qui pouvait épuiser. Elle est **éteinte chez Supabase** depuis le 2026-11-12 (`403 FeatureNotEnabled`, précondition et mesures plus bas). |
 | `netlify/edge-functions/media.js` | `/media/content/<chemin>` → **301** vers `…/storage/v1/object/public/content/<chemin>`, **avec ou sans** `?width=W&quality=75` : depuis la suite du 2026-11-09, une ancienne miniature reçoit l'OBJET, jamais `render/image` (la liste fermée ne borne plus que la clé de cache du bord). Aucune lecture d'origine, renvoi gardé un jour par le navigateur. Verrou : `tests/unit/media-edge.test.mjs` (⑪ : ni renvoi ni ligne de code servi vers la transformation). |
 | Version légère à l'envoi | `supaUploadMedia(…, { legere: true })` pour les publications, et depuis le 2026-11-09 l'avatar et la photo de passion (352 px), la couverture, le fond de passion, la couverture d'activité et de bobine (720 px) : sans elle, `passioThumb` demandait une **transformation d'image**, plafonnée à 100 images d'origine par mois en Pro (19/100 avec dix comptes le 20/09 — un mur vers 50 profils avec photo). Verrou : `tests/e2e/capacite-images-legeres.spec.js`. |
 | `{ cache: "3600" }` | Un chemin RÉÉCRIT à l'identique (`upsert` d'une photo de passion, couverture d'une activité modifiée) se garde une heure ; tout le reste un an. Supabase purge son CDN à la réécriture, le navigateur non. |
@@ -38,8 +38,9 @@ avoir constaté : zéro requête `/render/image/` sur 24 h dans les journaux Sto
 `release/version_skew` venu d'un build antérieur à #795. Le coût d'un oubli est une vignette
 grise sur un appareil en retard, jamais une panne. **Remplie le 2026-11-12** : zéro
 `/render/image/` sur les trois dernières fenêtres de 24 h, aucun build d'avant #795 vu (mesures
-dans `docs/journal/capacite-perf-realtime.md`, fiche « 2026-11-09, la suite ») — il ne reste
-que le geste.
+dans `docs/journal/capacite-perf-realtime.md`, fiche « 2026-11-09, la suite »). **Et la
+transformation est ÉTEINTE** (constaté le même jour par l'API de gestion) : `render/image` répond
+`403 FeatureNotEnabled`, les images d'origine et les anciennes adresses `?width=` s'affichent.
 
 **Ce qui ne bouge pas :** le seau `attachments` reste privé et se lit par URL signée ;
 `sw.js` n'intercepte toujours ni `/media/*` ni une autre origine ; aucune ligne de la base

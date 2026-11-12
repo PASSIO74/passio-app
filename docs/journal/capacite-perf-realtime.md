@@ -2139,8 +2139,14 @@ requête dans le renvoi.**
   `image/jpeg`, mesuré). Un renvoi qui ne doit RIEN transmettre ne peut pas compter sur la fonction
   seule.
 
-Le geste reste humain, et son risque est désormais mesuré nul : **Supabase › Storage › Settings →
-éteindre « Enable Image Transformations »**.
+**La transformation est ÉTEINTE — constaté le 2026-11-12 par l'API de gestion** (`GET
+/v1/projects/<ref>/config/storage`, jeton de la CLI) : `features.imageTransformation.enabled = false`
+sur le projet de production, déjà à la première lecture — personne ici n'a eu à l'envoyer. Effet
+mesuré : `render/image` répond `403 FeatureNotEnabled` (« feature not enabled for this tenant ») ;
+l'image d'origine répond 200, et l'ancienne adresse `/media/…?width=` du site aboutit à la même image
+(200, mêmes octets). Le quota de 100 images d'origine par mois ne peut plus être consommé par
+personne. Le même interrupteur se lit et se règle par `PATCH` sur la même route, en touchant le seul
+champ `features.imageTransformation` (le reste de la configuration est relu et renvoyé tel quel).
 
 ---
 
