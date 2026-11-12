@@ -2096,7 +2096,7 @@ rougir ; ce sont désormais les largeurs FIGÉES des builds d'avant #795 qu'il f
 
 | Mur | Limite (Pro, spend cap actif) | Atteint vers… |
 |---|---|---|
-| E-mails d'inscription | 30/h (défaut Supabase en SMTP perso), 300/j (Brevo gratuit) | un pic de lancement ; Google n'y est pas soumis |
+| E-mails d'inscription | 150/h côté Supabase (relevé : `rate_limit_email_sent`, lu le 12/11 par l'API de gestion ; le 09/11, le défaut de 30/h avait été supposé sans être lu), 300/j (Brevo gratuit) | un pic de lancement ; Google n'y est pas soumis |
 | **Messages temps réel** | **5 M/mois** | **avant la migration de #802 : ~1 300 actifs/jour (800 à 2 000) ; après : ~14 000** |
 | Messages temps réel par seconde | 500/s (au-delà, déconnexions `tenant_events`) | avant la migration : ~430 comptes connectés ensemble ; après : les 500 connexions passent devant |
 | Connexions temps réel | 500 | 500 sockets — un onglet ou appareil connecté chacun (un visiteur n'en ouvre pas ; `test:prod` et le tableau de bord comptent aussi) |
@@ -2120,6 +2120,33 @@ e ≈ 4, ≈ 3,1 × D², les 5 M vers D ≈ 1 300, les 500/s vers C ≈ 430. **A
 connexions, pas les messages, qui borne la simultanéité. **Ce sont des estimations, à un facteur 2
 près** : le chiffre réel se lit dans Supabase › Usage › Realtime Messages, que rien dans le pilotage ne
 suit encore.
+
+**Mesuré après coup (2026-11-12) : la précondition d'extinction est remplie — et Netlify recopie la
+requête dans le renvoi.**
+- #800 est servie depuis le 2026-11-09 (fusion à 19:39 UTC ; le commit servi le 12/11, `00258361`, la
+  contient).
+- Journaux edge de Supabase (`query_logs`, source `edge_logs`, chemin `/render/image/`) : **zéro demande
+  sur trois fenêtres de 24 h**, du 09/11 18:00 au 12/11 18:00 UTC (0 sur 38 898, 17 124 et 23 558
+  requêtes) ; 94 lectures `object/public` sur la dernière.
+- `release/version_skew` sur 3 jours : un seul événement, un appareil du public sur `36b778d1` (#821,
+  qui contient #795). Aucun build d'avant #795 vu.
+- ⚠️ **NETLIFY RECOPIE LA REQUÊTE ENTIÈRE DANS LE `Location` D'UN RENVOI D'EDGE FUNCTION.**
+  `/media/content/x.jpg?width=192&quality=75&next=https://evil.example` rend
+  `301 → …/object/public/content/x.jpg?width=192&quality=75&next=https://evil.example`, alors que
+  `media.js` pose une cible SANS requête : ⑦ le vérifie sur la fonction, pas sur la plateforme. Ce n'est
+  pas un renvoi ouvert (l'origine reste celle de Supabase), ni une transformation : `object/public`
+  ignore ces paramètres — mêmes octets avec et sans `?width=192&quality=75` (1 269 896 octets,
+  `image/jpeg`, mesuré). Un renvoi qui ne doit RIEN transmettre ne peut pas compter sur la fonction
+  seule.
+
+**La transformation est ÉTEINTE — constaté le 2026-11-12 par l'API de gestion** (`GET
+/v1/projects/<ref>/config/storage`, jeton de la CLI) : `features.imageTransformation.enabled = false`
+sur le projet de production, déjà à la première lecture — personne ici n'a eu à l'envoyer. Effet
+mesuré : `render/image` répond `403 FeatureNotEnabled` (« feature not enabled for this tenant ») ;
+l'image d'origine répond 200, et l'ancienne adresse `/media/…?width=` du site aboutit à la même image
+(200, mêmes octets). Le quota de 100 images d'origine par mois ne peut plus être consommé par
+personne. Le même interrupteur se lit et se règle par `PATCH` sur la même route, en touchant le seul
+champ `features.imageTransformation` (le reste de la configuration est relu et renvoyé tel quel).
 
 ---
 
