@@ -19,7 +19,7 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | Crons GitHub (100 derniers runs planifiés) | Sentinelle (demandée chaque heure) : servie toutes les 5,7 h en médiane, 8,9 h au P95, 10,8 h au pire · veille de production (`*/30`) : 5,3 h · 8,2 h · 10,6 h · secours de la veille et sonde de disponibilité (`*/10`) : 5,0 h · 8,1 h · ≈ 10 h · sauvegarde : 61 sur 61, chaque jour, servie 5 à 7 h après l'heure demandée | EXISTANT VÉRIFIÉ |
 | Chaîne d'alerte | 14:47 fin du run en échec → 14:50:04 voyant rouge → 14:50:05 notification acceptée par 2 appareils. 102 changements de voyant en 30 jours (39 verts, 38 oranges, 25 rouges), 41 avec alerte | EXISTANT VÉRIFIÉ |
 | Faux vert de 19 min | Le run de 14:12 échoue à 14:31 ; le voyant reste vert jusqu'à 14:50 (le run suivant tournait) | DÉFAUT REPRODUIT — corrigé au lot 1 |
-| Mise en ligne | `release.json` sert `a5d114f4` : deux fusions de retard. Cause : staging migré avant la fusion de #843 (42501 sur `events`), troisième fois depuis le 07/11. Rétabli à 15:27 (§ 8) | EXISTANT VÉRIFIÉ — signalé sur #843, corrigé là-bas |
+| Mise en ligne | `release.json` sert `a5d114f4` : deux fusions de retard. DEUX causes, une par échec (journaux relus) : à 14:31 le stockage du staging en 504 (panne passagère, 2 tests) ; à 14:47 le staging migré avant la fusion de #843 (42501 sur `events`, 3 tests) — troisième fois depuis le 07/11. Rétabli à 15:27 (§ 8) | EXISTANT VÉRIFIÉ — le second signalé sur #843, corrigé là-bas |
 | Exécution de la fonction `pilotage` | Aucune suite n'exécutait `index.ts` (1 559 lignes) ; écart déclaré depuis le 09/11 | DÉFAUT REPRODUIT — corrigé au lot 1 |
 | Parcours jugés | 5 flux en 7 jours (2 réactions, 2 publications, 1 abonnement), un compte chacun : tous les contrats sont « insuffisant » ou « non observé » | EXISTANT VÉRIFIÉ |
 | Parcours hors contrat | Connexion, inscription, profil, pièce jointe, notification, appel, création de rencontre : recensés non instrumentés. Chargement du fil, synchronisation entre appareils, affichage des médias, export du compte : ni instrumentés ni recensés le 12/11 — recensés au lot 1 (l'écran « Couverture » les dit), toujours sans contrat | RISQUE À TESTER — lot 3 |
@@ -32,7 +32,7 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | Coût de la supervision | Supabase Pro 25 $/mois ; une veille = 2 lignes `edge_*` (purgées à 2 h) et un battement par quart d'heure ; minutes GitHub Actions et consommation de l'agent | NON MESURÉ |
 | Accusés de réception | Les 4 alertes des 3 derniers jours (la télémétrie brute ne vit pas plus) : 8 envois sur 8 acceptés ET affichés — Edge en 1 s, Chrome en 0 à 13 s | EXISTANT VÉRIFIÉ |
 | Nature des alertes | 25 passages au rouge en 30 jours : 21 « dernier déploiement en échec », 4 « N erreurs dans l'app ». Un rouge dure 3 h 05 en médiane, 6 h 05 au P95. Les alertes disent surtout l'état de la chaîne de livraison, pas celui des utilisateurs | EXISTANT VÉRIFIÉ |
-| « Résolu » avant la preuve | Le 12/11 à 15:25:05 le téléphone reçoit « Problème résolu » : le run de 15:21 venait de DÉMARRER (une exécution en cours ne disait rien, donc vert). Il a réussi ensuite — mais rien ne le prouvait à 15:25 | DÉFAUT REPRODUIT (pilotage-chemins ⑫) — corrigé au lot 1 |
+| « Résolu » avant la preuve | Le 12/11 à 15:25:05 le téléphone reçoit « Problème résolu » : la RELANCE du run en échec venait de DÉMARRER (15:20:55, tentative 2 — même identifiant, conclusion vidée : l'échec avait disparu de la liste). Elle a réussi à 15:27:38 — mais rien ne le prouvait à 15:25 | DÉFAUT REPRODUIT (pilotage-chemins ⑫ bis, ㉙ bis) — corrigé au lot 1, après la contre-revue |
 | Sentinelle dite muette | Le 12/11 de 12:00 à 12:05, orange « la Sentinelle n'a pas tourné depuis plus de 8 h » : son cron était simplement servi tard | EXISTANT VÉRIFIÉ — P1-7 |
 
 ## 2. Priorités
@@ -42,17 +42,18 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | # | Sujet | État |
 |---|---|---|
 | P0-1 | Déploiement expiré, non démarré, annulé ou caché derrière un run en cours : écran vert | lot 1 — TESTÉ |
-| P0-2 | GitHub lu en partie (exécutions illisibles, plus de 500 issues) : écran vert | lot 1 — TESTÉ |
+| P0-2 | GitHub lu en partie (exécutions illisibles) : écran vert ; un sujet `humain` ou la pause cachés derrière cent issues d'inconnus | lot 1 — TESTÉ |
 | P0-3 | La fonction `pilotage` jamais exécutée par un test | lot 1 — TESTÉ |
 | P0-4 | L'alerte parcourt tous les comptes pour trouver le pilote (ne passe pas 100 000 inscrits) | lot 1 — TESTÉ |
-| P0-5 | Migration de #843 : création de rencontre refusée (42501) si appliquée en production ; staging cassé, `main` non déployé | signalé sur #843 — hors de ce lot |
+| P0-5 | Migration de #843 : création de rencontre refusée (42501) si appliquée en production ; staging cassé, `main` non déployé (second échec du 12/11 ; le premier venait du stockage du staging) | signalé sur #843, corrigé là-bas — hors de ce lot |
 | P0-6 | `moderation-alerte.yml` : le jour d'une vraie alerte, l'étape mourait avant d'ouvrir l'issue (60 passages verts sur 60 : jamais survenu) | DÉFAUT REPRODUIT sur le banc des workflows, corrigé — PR #849, TESTÉ |
 
 **P1 — parcours essentiels, réparations bloquées, limites de capacité**
 
 | # | Sujet | État |
 |---|---|---|
-| P1-1 | « Régler » fusionnait une version que l'écran n'avait pas montrée | lot 1 — TESTÉ |
+| P1-1 | « Régler » fusionnait une version que l'écran n'avait pas montrée | lot 1 — TESTÉ pour la fusion directe ; pour l'auto-fusion armée (tests en cours), DÉTECTION à l'écran seulement — voir P1-1 bis |
+| P1-1 bis | L'auto-fusion de GitHub suit la branche après l'armement : un commit poussé ensuite par un compte qui a le droit d'écrire part s'il passe les tests. Aujourd'hui : version armée notée, ligne en tête « a changé depuis ton “Régler” », rien ne sonne, rien ne désarme | lot 2 — décision humaine (dessin au § 3) |
 | P1-2 | Deux touchers, deux réparations (deux agents) ; deux relances, deux runs. Observé en production le 09/11 : #806 et #807 ouvertes à une seconde d'écart (21:40:27, 21:40:28), deux agents partis | lot 1 — TESTÉ |
 | P1-3 | Mémoire du voyant illisible prise pour « aucun état » | lot 1 — TESTÉ |
 | P1-4 | Circuit B : depuis l'audit du 06/11 la PR de l'agent naît sans CI (`GITHUB_TOKEN`, choix de sécurité : « un humain la rouvre après l'avoir lue »). Depuis le téléphone, « Régler » arme alors une auto-fusion dont les tests ne partiront jamais, et l'écran dit « les tests tournent encore ». La politique (`correctif_sentinelle`) décrit encore une fusion par la CI | lot 2 — décision humaine : qui rouvre, et d'où |
@@ -80,15 +81,24 @@ version servie contre `main` (retard en fusions et en minutes) ; une ligne « à
 - **Résultat pour le pilote** : l'écran ne dit plus vert sur une mise en ligne qui n'a pas réussi ni sur
   un GitHub lu en partie ; « Régler » ne met en ligne que ce qui a été vu ; un double toucher ne lance
   qu'un agent ; l'alerte part encore à 100 000 inscrits.
-- **Critères d'acceptation** : `tests/unit/pilotage-chemins.test.mjs` vert (39) ; rouge sur `main` pour
-  ⑩ ⑪ ⑫ ⑯ ⑱ ㉒ ㉛ ; 26 réinjections sur 26 (`scripts/reinjections-pilotage.mjs`) ; suite unitaire
+- **Critères d'acceptation** : `tests/unit/pilotage-chemins.test.mjs` vert (46) ; rouge sur `main` pour
+  ⑩ ⑪ ⑫ ⑯ ⑱ ㉒ ㉛ ; 46 réinjections sur 46 (`scripts/reinjections-pilotage.mjs`) ; suite unitaire
   complète et `npm run verif` verts ; `pilotage-nuage.spec.js` vert (48).
 - **Périmètre** : `supabase/functions/pilotage/index.ts`, `_shared/pilotage.js`, `_shared/autonomie.js`,
-  `_shared/battement.js`, leurs bancs, `edge-functions.yml` (une ligne), `package.json` (une suite dans
+  `_shared/battement.js`, `_shared/contrats-actions.js` (quatre parcours recensés « non instrumentés »),
+  leurs bancs (`tests/unit/pilotage-chemins.test.mjs`, `tests/unit/lib/fausse-base.mjs`),
+  `scripts/reinjections-pilotage.mjs`, `edge-functions.yml` (une ligne), `package.json` (une suite dans
   `verif`). **Hors périmètre** : la page `pilotage/` (elle relaie les gestes tels quels), la politique
   d'automatisation, toute migration.
 - **Risque** : CRITIQUE (`supabase/`, `.github/`, `package.json`). Contre-revue de PASSIO74 exigée par
-  « Gouvernance critique ». Implémenté par Claude (Fable 5.2) ; relu par un agent indépendant.
+  « Gouvernance critique ». Implémenté par Claude (Fable 5.2) ; relu par un agent indépendant, sans le
+  contexte de l'auteur : verdict « à corriger avant fusion », huit constats dont une régression
+  introduite par le lot (la veille figée par des issues de tiers) — tous corrigés dans la même PR, avec
+  leur exercice et leur réinjection (fiche 🧪 du journal).
+- **Limites dites** : l'auto-fusion armée n'est que détectée à l'écran (P1-1 bis) ; `timed_out` n'a jamais
+  été observé dans le dépôt (traité en échec par prudence, NON VÉRIFIÉ) ; au-delà de 300 issues sous un
+  même label suivi, les plus anciennes ne sont pas listées (dit à l'écran) ; au-delà de 15 PR ouvertes,
+  les chantiers en trop ne sont pas listés (comptés à l'écran ; les correctifs passent devant).
 - **Instrumentation** : battement — `lectures.memoire`, `lectures.github = ko` sur une lecture en
   partie, `gestes.essai` ; marque `pilotage_pilote` ; créneaux `edge_pilotage-relance-*`,
   `edge_pilotage-reparer-*` (purgés à 2 h par `purge_analytics_courte`).
@@ -102,6 +112,14 @@ Circuit B éprouvé de bout en bout sur un cas contrôlé (P1-4) ; alerte de mod
 garde du staging (P1-6) ; cadence de la Sentinelle (P1-7) ; surveillance des workflows que rien ne suit
 (P1-9) ; un identifiant d'incident stable, ses tentatives et sa preuve de rétablissement visibles à l'écran.
 Tout ce lot touche `.github/` ou la politique : CRITIQUE, une PR par sujet, contre-revue.
+
+**Auto-fusion armée (P1-1 bis) — dessin, à décider.** Remplacer l'auto-fusion native par une fusion
+DIFFÉRÉE tenue par le serveur : « Régler » note l'intention (`numero`, `sha` vu) ; la veille, à chaque
+passage, tente `PUT /pulls/N/merge` avec ce `sha` — GitHub refuse si la tête a bougé, et la protection de
+`main` reste entière. Garantit « seule la version vue part ». C'est un geste automatique de plus pour la
+veille (elle fusionnerait, sur l'accord déjà donné) : entrée au catalogue de la politique, donc circuit C
+— à préparer en PR critique, jamais glissé dans un autre lot. Variante plus légère : la veille sonne
+quand une version armée change (rouge), sans rien désarmer.
 
 **Sujet suivant, le plus rentable (P1-4 bis)** — rendre l'agent de réparation capable de lire pourquoi une
 exécution a échoué, SANS lui donner d'outil. Dessin : l'étape « Assembler la spécification de confiance »
@@ -175,7 +193,7 @@ personne n'est prévenu par un second canal si le téléphone ne reçoit pas.
 
 | Date | Lot | Branche · PR | État | Preuve |
 |---|---|---|---|---|
-| 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | banc 39/39, réinjections 26/26, unitaires 1 088, `verif`, navigateur 48 ; CI : audits, bancs serveur et suites à comptes réels verts |
+| 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | IMPLÉMENTÉ, TESTÉ ; relu par un agent indépendant (huit constats corrigés) ; en attente de la contre-revue de PASSIO74 | banc 46/46, réinjections 46/46, suite unitaire complète, `verif`, navigateur 48 — chiffres du dernier passage dans la PR |
 | 2026-11-12 | 2 (premier sujet) | `fix/moderation-alerte-code-3` · #849 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | étape réelle rejouée sous `bash -e` : rouge sur `main`, verte ; unitaires 1 044 |
 
 ## 8. L'incident du 12/11, chronométré (un exercice réel, pas un essai)
@@ -184,17 +202,18 @@ Heures UTC, relevées sur GitHub et au canal ①. C'est la chaîne telle qu'elle
 
 | Étape | Heure | Délai |
 |---|---|---|
-| Premier déploiement en échec (run 43234813436) | 14:31 | — |
-| Second déploiement en échec (run 43235671422) | 14:47 | le premier est resté invisible 19 min (corrigé au lot 1) |
+| Premier déploiement en échec (run 43234813436) — stockage du staging en 504 au dépôt d'un média, 2 tests | 14:31 | — |
+| Second déploiement en échec (run 43235671422, tentative 1) — migration de #843 appliquée au staging avant fusion, 3 tests | 14:47 | le premier est resté invisible 19 min (corrigé au lot 1) |
 | Voyant rouge noté par la veille | 14:50:04 | 3 min après la fin du second run |
 | Notification acceptée, puis affichée (Edge, Chrome) | 14:50:05 | 1 s, puis 1 s et 13 s |
 | « Régler » touché depuis le pilotage (issue #844) | 14:50:38 | 33 s après la sonnerie |
 | Agent parti (run 43241416806, `claude-opus-5`, abonnement) | 14:50:41 | 3 s |
 | PR de l'agent (#845) : « cause NON établie », sans CI | 14:56:42 | 6 min — sans résultat : il ne peut pas lire le journal du run (P1-4 bis) |
-| Cause établie dans cette session, en lisant le journal, et signalée sur #843 | 14:54 | 4 min après la sonnerie |
+| Cause du SECOND échec établie dans cette session, en lisant le journal, et signalée sur #843 (le premier, passager, n'a été distingué qu'en relisant les deux journaux le soir) | 14:54 | 4 min après la sonnerie |
 | Correctif poussé par la session de #843 | 14:57 | 3 min après le signalement |
-| « Problème résolu » sonné | 15:25:05 | 2 min 33 s AVANT la première mise en ligne réussie (corrigé au lot 1) |
-| Première mise en ligne réussie (relance du run 43235671422) | 15:27:38 | 37 min après la sonnerie, 56 min après le premier échec |
+| Relance du second run (`gh run rerun`, tentative 2) | 15:20:55 | l'échec disparaît de la liste des exécutions |
+| « Problème résolu » sonné | 15:25:05 | 2 min 33 s AVANT la première mise en ligne réussie (corrigé au lot 1 : la tentative d'avant est relue) |
+| Première mise en ligne réussie (la relance aboutit) | 15:27:38 | 37 min après la sonnerie, 56 min après le premier échec |
 | Version de `main` servie (`bea4fac1`, run 43248974244) | 16:01:48 | — |
 
 Ce que l'exercice dit : la détection, l'alerte et le geste depuis le téléphone tiennent en moins d'une

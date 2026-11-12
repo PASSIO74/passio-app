@@ -1041,6 +1041,39 @@ test("㉝ bis GitHub lu en partie, mise en ligne annulée, échec caché derriè
   expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
 });
 
+// ─── 2026-11-12 (contre-revue) : l'auto-fusion de GitHub SUIT la branche ───────
+// Armée d'ici sur une version (`fusionsArmees`), la PR a changé : ce qui partirait n'est plus ce
+// qui a été vu. La ligne passe en tête ; « Régler » referme, valider reste un geste explicite.
+test("㉝ ter un correctif ARMÉ qui change après « Régler » : en tête, « Régler » le referme, « Valider la nouvelle version » est un second geste — jamais dans « Tout régler »", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  const calme = { signalements: { ouverts: 0, liste: [] }, capacite: { mesuresServeur: true, jauges: [] }, sante: { ...BASE.sante, erreursJs15: 0 }, erreurs: { ...BASE.erreurs, details: [] } };
+  const ARME = { ...CORRECTIF, autoFusion: true, maj: MAINTENANT, sha: TETE("f") };
+  // Un second problème réparable : si la ligne du correctif comptait dans « Tout régler », le bouton paraîtrait (2).
+  const gh = { ...GH, issues: [ARME, { numero: 556, titre: "[VEILLE] flux", labels: ["veille"], url: null, depuis: MAINTENANT, pr: false, pause: false }],
+    aReparer: [{ cible: "issue", numero: 556, libelle: "#556", url: null, enCours: null }] };
+  await routerFonction(page, envois, etat({ ...calme, github: gh, fusionsArmees: { 21: TETE("d") } }));
+  await page.goto("/pilotage/");
+  const ligne = page.locator("#afaire article").first();
+  await expect(ligne).toContainText("Un correctif a changé depuis ton « Régler »");
+  await expect(ligne).toContainText("Le referme : ce qui partirait n'est plus ce que tu as vu.");
+  await expect(page.locator("#enCours article", { hasText: "correctif" })).toHaveCount(0);
+  await expect(page.locator("#toutRegler")).toBeHidden();
+  // Le second geste, déplié : valider la version du MOMENT, celle que l'écran montre.
+  await autreChoix(ligne, "Valider la nouvelle version");
+  await expect.poll(() => gestes(envois).map((x) => x.corps), { timeout: 8000 }).toEqual([{ action: "fusionner", numero: 21, sha: TETE("f") }]);
+  // Le geste principal referme.
+  await ligne.locator(".btn-regler").click();
+  await expect.poll(() => gestes(envois).map((x) => x.corps), { timeout: 8000 }).toEqual([{ action: "fusionner", numero: 21, sha: TETE("f") }, { action: "fermer", numero: 21 }]);
+  // La même PR, tête inchangée depuis l'armement : la ligne d'avant, rangée dans « en cours ».
+  await page.unroute(FONCTION);
+  await routerFonction(page, [], etat({ ...calme, github: gh, fusionsArmees: { 21: TETE("f") } }));
+  await page.click("#actualiser");
+  await expect(page.locator("#enCours article", { hasText: "Un correctif part en ligne" })).toBeVisible();
+  await expect(page.locator("#afaire article", { hasText: "a changé depuis" })).toHaveCount(0);
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
+});
+
 // ─── Parcours critiques, veille, politique (2026-11-06) ────────────────────────
 // L'état est construit par les VRAIES fonctions du serveur (bilanParcours,
 // resumerBattement, resumerPolitique), comme la liste « À faire ».

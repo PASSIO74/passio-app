@@ -108,7 +108,7 @@ export function resumerBattement(ligne, n24 = null, maintenant = Date.now()) {
   // Le voyant mémorisé (2026-11-12) : illisible, la veille ne sait pas d'où elle vient — elle
   // sonne encore un rouge, mais ne peut dire ni « résolu » ni « toujours ». Même règle que les
   // rappels : un battement d'avant ce lot, sans la clé, n'en dit rien.
-  if (lectures.memoire === "ko") raisons.push("la veille n'a pas pu relire son dernier voyant : elle n'a noté aucun changement à ce passage");
+  if (lectures.memoire === "ko") raisons.push("la veille n'a pas pu relire son dernier voyant : à ce passage elle ne pouvait que sonner une alerte, pas annoncer un retour au calme");
   if (politiqueInvalide) raisons.push("politique d'automatisation invalide : aucun geste automatique");
   if (raisons.length) return { ...base, etat: "incomplet", frais: true, raisons };
   return { ...base, etat: "vivant", frais: true, raisons: [`battement il y a ${Math.round(ageMs / 60e3)} min, toutes les lectures abouties`] };

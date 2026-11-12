@@ -135,56 +135,114 @@ export function resumerRun(r) {
 //    échoue à 14:31 UTC pendant que celui de 8fafb55d tourne encore ; le voyant
 //    reste vert jusqu'à 14:50, dix-neuf minutes, le temps que le second finisse.
 //    Avec des fusions rapprochées, un échec peut rester caché indéfiniment.
-// La règle : ce qui compte est la dernière exécution TERMINÉE. En échec, elle se
-// dit même si une suivante tourne (la production n'a toujours pas ce commit) ;
-// terminée sans réussir ni casser (annulée), elle ne se dit que si rien ne la
-// remplace — une exécution en attente évincée par la suivante est la marche
-// normale de la file (`passio-deploy-main`).
+// La règle : ce qui compte est la dernière exécution qui a TRANCHÉ — réussie ou
+// cassée. En échec, elle se dit même si une suivante tourne (la production n'a
+// toujours pas ce commit), et même derrière une exécution annulée. Une exécution
+// terminée sans trancher (annulée) ne se dit que si rien ne la remplace ET que la
+// dernière à avoir tranché avait réussi — une exécution en attente évincée par la
+// suivante est la marche normale de la file (`passio-deploy-main` : 12 annulées
+// sur les 100 dernières, mesuré le 12/11). Une RELANCE garde sa tentative précédente
+// (tentativesARelire) : relancer un échec ne dit pas « résolu ».
 /** Les conclusions d'un pipeline qui a cassé : rouge pour une mise en ligne. */
 export const CONCLUSIONS_ECHEC = Object.freeze(["failure", "timed_out", "startup_failure"]);
+// Une exécution terminée a TRANCHÉ si elle a réussi ou cassé. Annulée, évincée de la file, en
+// attente d'un accord : elle ne dit rien de ce qui est en ligne (contre-revue du 12/11 — « la
+// dernière terminée » laissait A en échec se cacher derrière B, évincée, pendant que C tournait).
+const aTranche = (c) => c === "success" || CONCLUSIONS_ECHEC.includes(c);
 const dateRun = (r) => { const t = Date.parse(String((r && (r.created_at || r.run_started_at || r.updated_at)) || "")); return Number.isFinite(t) ? t : 0; };
 /**
- * Les dernières exécutions d'un workflow → le résumé de la PLUS RÉCENTE et, si
- * elle tourne encore, `precedent` : la dernière terminée. Triées ici : GitHub a
- * déjà rendu une liste dans le désordre (réplique en retard, veille-production.mjs).
+ * Les événements qui lancent VRAIMENT chaque workflow sur `main`. Le dépôt est PUBLIC : une PR
+ * d'un fork ouverte depuis SA branche `main` crée une exécution `pull_request` dont la branche de
+ * tête s'appelle aussi `main`. En tête de liste — en attente d'un accord (`action_required`, trois
+ * au compteur du dépôt le 12/11) ou cassée — elle aurait fait dire « la mise en ligne n'a pas
+ * abouti », ou sonner rouge, sur une exécution qui n'est pas la nôtre. Même filtre que
+ * scripts/veille-production.mjs (`event=push`) et scripts/digest.mjs.
  */
-export function resumerRuns(runs) {
-  const tries = (Array.isArray(runs) ? runs : []).filter((r) => r && typeof r === "object").sort((a, b) => dateRun(b) - dateRun(a));
-  const dernier = resumerRun(tries[0]);
-  if (!dernier || dernier.etat === "completed") return dernier;
-  const fini = tries.find((r) => r.status === "completed");
-  return { ...dernier, precedent: fini ? resumerRun(fini) : null };
+export const EVENEMENTS_RUNS = Object.freeze({
+  deploy: Object.freeze(["push"]),
+  sentinelle: Object.freeze(["schedule", "workflow_dispatch"]),
+  veille: Object.freeze(["schedule", "workflow_dispatch"]),
+});
+// Les exécutions qui comptent, de la plus récente à la plus ancienne. Tri STABLE : à date égale
+// l'ordre reçu tient — la tentative précédente d'une relance (même date de création) suit sa relance.
+function runsTries(runs, { evenements = null, depot = null } = {}) {
+  return (Array.isArray(runs) ? runs : [])
+    .filter((r) => r && typeof r === "object"
+      && (!Array.isArray(evenements) || evenements.includes(r.event))
+      && (!depot || !r.head_repository || r.head_repository.full_name === depot))
+    .sort((a, b) => dateRun(b) - dateRun(a));
 }
 /**
- * Ce qu'un workflow a de travers, lu sur son résumé : null (réussi, ou rien de
- * lu), sinon { nature, run }. « echec » : la dernière exécution terminée a cassé,
- * expiré ou n'a pas démarré. « inabouti » : la plus récente s'est terminée sans
- * réussir (annulée, en attente d'un geste) et rien ne tourne à sa place.
+ * Les dernières exécutions d'un workflow → le résumé de la PLUS RÉCENTE et, si elle n'a pas
+ * tranché (en cours, annulée…), `precedent` : la dernière qui a tranché. Triées ici : GitHub a
+ * déjà rendu une liste dans le désordre (réplique en retard, veille-production.mjs).
+ * `opts` : { evenements, depot } — voir EVENEMENTS_RUNS.
+ */
+export function resumerRuns(runs, opts = {}) {
+  const tries = runsTries(runs, opts);
+  const dernier = resumerRun(tries[0]);
+  if (!dernier) return null;
+  if (runATranche(tries[0])) return dernier;
+  const tranche = tries.slice(1).find(runATranche);
+  return { ...dernier, precedent: tranche ? resumerRun(tranche) : null };
+}
+/** Cette exécution BRUTE (celle de GitHub) a-t-elle tranché — terminée, réussie ou cassée ? */
+export const runATranche = (r) => !!r && r.status === "completed" && aTranche(r.conclusion);
+/** Tentatives précédentes relues au plus, par relance : au-delà, le workflow est « non lu ». */
+export const TENTATIVES_RELUES_MAX = 3;
+/**
+ * Les RELANCES dont il faut relire la tentative précédente : `gh run rerun --failed` (le remède de
+ * CLAUDE.md) garde le même identifiant et vide la conclusion — l'échec qu'on relance disparaissait
+ * de la liste, et « Problème résolu » sonnait au DÉPART de la relance. Vaut aussi pour une relance
+ * annulée : elle non plus ne dit rien de l'échec qu'elle rejouait. Avant la première exécution qui
+ * a tranché, deux au plus : { id, tentative } à relire (`/actions/runs/<id>/attempts/<tentative>`).
+ */
+export function tentativesARelire(runs, opts = {}) {
+  const out = [];
+  for (const r of runsTries(runs, opts)) {
+    if (runATranche(r)) break;
+    if (Number(r.run_attempt) > 1 && Number.isInteger(r.id) && r.id > 0) out.push({ id: r.id, tentative: Number(r.run_attempt) - 1 });
+    if (out.length >= 2) break;
+  }
+  return out;
+}
+/**
+ * Ce qu'un workflow a de travers, lu sur son résumé : null (réussi, ou rien de lu), sinon
+ * { nature, run }. « echec » : la dernière exécution qui a TRANCHÉ a cassé, expiré ou n'a pas
+ * démarré — même si une autre tourne, même si une annulée la suit. « inabouti » : la plus récente
+ * s'est terminée sans trancher (annulée, en attente d'un accord), rien ne tourne à sa place, et la
+ * dernière qui a tranché avait réussi : la version en ligne n'est pas la dernière.
  */
 export function echecRun(r) {
   if (!r || typeof r !== "object") return null;
-  const enCours = !!r.etat && r.etat !== "completed";
-  const fini = enCours ? r.precedent : r;
-  if (!fini || !fini.conclusion || fini.conclusion === "success") return null;
-  if (CONCLUSIONS_ECHEC.includes(fini.conclusion)) return { nature: "echec", run: fini };
-  return enCours ? null : { nature: "inabouti", run: fini };
+  const termine = !r.etat || r.etat === "completed";
+  if (termine && r.conclusion === "success") return null;
+  if (termine && CONCLUSIONS_ECHEC.includes(r.conclusion)) return { nature: "echec", run: r };
+  const p = r.precedent;
+  if (p && CONCLUSIONS_ECHEC.includes(p.conclusion)) return { nature: "echec", run: p };
+  return termine && r.conclusion ? { nature: "inabouti", run: r } : null;
 }
 const SUFFIXES_ECHEC = Object.freeze({ timed_out: " (délai dépassé)", startup_failure: " (elle n'a pas démarré)" });
 
 // ─── GITHUB LU EN PARTIE (2026-11-12) ────────────────────────────────────────
 // La lecture des issues réussissait, celle des exécutions non (limite secondaire,
 // panne partielle) : `runs.deploy` valait null, et un null ne colore rien — vert.
-// Et le dépôt est PUBLIC : au-delà de cinq pages d'issues ouvertes, les suivantes
-// n'étaient pas lues, sans un mot — un sujet « humain » pouvait s'y cacher
-// (pilotage-chemins ⑩). Ce qui n'a pas été lu se NOMME : l'écran ne passe pas au
-// vert (`verdictAffiche`), la veille ne baisse pas son voyant (`tenirVerdict`).
-export const ISSUES_LUES_MAX = 500;
+// Ce qui n'a pas été lu se NOMME : l'écran ne passe pas au vert (`verdictAffiche`),
+// et la veille ne baisse pas son voyant sur des EXÉCUTIONS non lues (`tenirVerdict`).
+// ⚠️ Les issues, elles, ne figent jamais la veille (contre-revue du 12/11) : le dépôt est
+// PUBLIC, et une lecture « partielle tant qu'il y a plus de N issues ouvertes » donnait à
+// n'importe qui le moyen de tenir le voyant — après un premier rouge, plus de « résolu », et
+// un NOUVEAU rouge ne sonnait plus. Au-delà de cent issues ouvertes, la fonction ne lit plus
+// « tout » : elle lit ce qui est SUIVI, par des filtres qu'un tiers ne peut pas noyer — un
+// label ne se pose qu'avec le droit d'écrire, `creator` est le pilote. Ce qui dépasse encore
+// (plus de ISSUES_PAR_FILTRE_MAX sous UN filtre : des résumés jamais refermés) se dit à l'écran.
+export const ISSUES_PAR_FILTRE_MAX = 300;
 const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production" });
 /** Les parties de GitHub qui n'ont pas pu être lues, en clair (vide = tout est lu). */
 export function partielGithub({ runsNonLus = [], issuesTronquees = false } = {}) {
   const l = Array.isArray(runsNonLus) ? runsNonLus : [];
   const out = Object.keys(NOMS_RUNS).filter((c) => l.includes(c)).map((c) => "GitHub, " + NOMS_RUNS[c]);
-  if (issuesTronquees) out.push("GitHub, les issues au-delà des " + ISSUES_LUES_MAX + " plus récentes");
+  if (issuesTronquees) out.push("GitHub, les issues suivies au-delà de " + ISSUES_PAR_FILTRE_MAX + " sous un même filtre");
   return out;
 }
 
@@ -488,6 +546,8 @@ export function palierCroissance(total, semaine = 0) {
   return { ...p, rang: i, suivant, franchiCetteSemaine: p.seuil > 0 && t - s < p.seuil };
 }
 
+/** Les pull requests listées au plus dans « À faire » — les correctifs de la chaîne passent devant. */
+export const PRS_LISTEES_MAX = 15;
 export function aFaire(d, maintenant = Date.now()) {
   const out = [];
   const ajoute = (x) => out.push({ couleur: COULEUR_PRIO[x.prio] || "gris", depuis: null, url: null, gestes: [], detail: "", reference: "", quoi: "", enCours: false, ...x });
@@ -629,13 +689,32 @@ export function aFaire(d, maintenant = Date.now()) {
   // resumerPr) sont des problèmes à régler : mesuré le 2026-11-04, 8 PR ouvertes
   // — toutes des chantiers d'autres sessions — affichaient chacune « Un correctif
   // attend ta validation » sur l'accueil, avec ses deux boutons.
-  for (const i of issues.filter((x) => x.pr).slice(0, 15)) {
+  // Les correctifs de la chaîne D'ABORD (2026-11-12) : le dépôt est public, et quinze PR ouvertes
+  // depuis des forks suffisaient à sortir un correctif prêt de la liste (`correctif` exige NOTRE
+  // dépôt en tête de branche : un fork ne peut pas s'y glisser). Ce qui n'est pas listé se compte.
+  const prs = issues.filter((x) => x.pr);
+  const prsListees = [...prs.filter((x) => x.correctif), ...prs.filter((x) => !x.correctif)].slice(0, PRS_LISTEES_MAX);
+  if (prs.length > prsListees.length) {
+    const reste = prs.length - prsListees.length;
+    ajoute({ id: "pr:autres", prio: 2, etiquette: "Chantier", titre: reste + (reste > 1 ? " autres chantiers ouverts ne sont pas listés ici" : " autre chantier ouvert n'est pas listé ici"), quoi: "Ils se lisent sur GitHub." });
+  }
+  for (const i of prsListees) {
     const base = { id: "pr:" + i.numero, depuis: i.depuis || null, url: urlGithub(i.url) };
     const reference = "#" + i.numero + " · " + i.titre;
     // La version VUE part avec le geste (2026-11-12) : la fonction refuse de fusionner une tête qui a
     // bougé depuis. Sans version lue, aucun bouton ne met en ligne — on ne fusionne pas à l'aveugle.
     const fusionner = shaValide(i.sha) ? { corps: { action: "fusionner", numero: i.numero, sha: i.sha } } : null;
     const refuser = gestesGh ? [{ libelle: "Refuser", corps: { action: "fermer", numero: i.numero } }] : [];
+    // ARMÉE d'ici sur une version, et la tête n'est plus celle-là (2026-11-12, contre-revue) :
+    // l'auto-fusion de GitHub SUIT la branche — ce qui partirait n'est plus ce qui a été vu.
+    // Le geste principal referme (rien ne part sans avoir été vu) ; valider la nouvelle version
+    // reste possible, d'un toucher explicite. Jamais dans « Tout régler ».
+    const armee = d && d.fusionsArmees && typeof d.fusionsArmees === "object" ? d.fusionsArmees[String(i.numero)] : null;
+    if (i.autoFusion && fusionner && shaValide(armee) && armee !== i.sha) {
+      ajoute({ ...base, prio: 0, etiquette: "Correctif", reference, titre: "Un correctif a changé depuis ton « Régler »", quoi: "Le referme : ce qui partirait n'est plus ce que tu as vu.",
+        gestes: gestesGh ? [regler({ action: "fermer", numero: i.numero }, false), { libelle: "Valider la nouvelle version", ...fusionner }] : [] });
+      continue;
+    }
     if (i.correctif && !i.brouillon && fusionner) {
       // Armée puis rien : un test rouge arrête la fusion, sans le dire à personne. Elle revient
       // ici plutôt que de rester « part en ligne » pour toujours. `maj` et non `depuis` : un

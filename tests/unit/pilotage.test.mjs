@@ -699,7 +699,8 @@ test("㊲ une réparation du PILOTE reste suivie SANS label : en cours, plafonn�
 
   // La fonction compose ses issues ainsi — un seul filtre, celui éprouvé ici.
   const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
-  const lire = src.slice(src.indexOf("async function lireGithub"), src.indexOf("const run = async"));
+  const debutLire = src.indexOf("async function lireGithub");
+  const lire = src.slice(debutLire, src.indexOf("\n}\n", debutLire));
   assert.match(lire, /\.map\(\(i\) => \(\{ \.\.\.resumerIssue\(i\), pause: estPauseDuPilote\(i\), reparation: estReparationDuPilote\(i\), confiee: reparationConfiee\(i\) \}\)\)/,
     "même composition que `resume` ici ; l'auteur et le corps n'existent que sur l'issue BRUTE");
   assert.match(lire, /\.filter\(issueSuivie\)/);
@@ -1003,7 +1004,7 @@ test("㊺ la marche des utilisateurs : le cumul finit sur le total, tout compte 
 test("㊻ « Régler » sur un correctif : le geste du pilote arme l'auto-fusion de GitHub si les tests tournent — jamais la machine seule", () => {
   const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const f = src.slice(src.indexOf("async function fusionner"), src.indexOf("// L'auto-fusion native de GitHub"));
-  assert.match(f, /if \(r\.status === 405 && p\.mergeable !== false && await armerAutoFusion\(/, "seulement sur un « pas encore fusionnable », jamais sur un conflit");
+  assert.match(f, /if \(r\.status === 405 && p\.mergeable !== false && \(!!p\.auto_merge \|\| await armerAutoFusion\(/, "seulement sur un « pas encore fusionnable », jamais sur un conflit ; déjà armée, rien à réarmer");
   assert.ok(f.indexOf("/merge`") < f.indexOf("armerAutoFusion("), "on tente d'abord de fusionner");
   assert.match(f, /if \(p\.state !== "open" \|\| p\.draft\)/, "ni fermée ni brouillon");
   const a = src.slice(src.indexOf("async function armerAutoFusion"), src.indexOf("async function fermer"));
@@ -1634,9 +1635,9 @@ test("audit 2026-11-06 : la comparaison du secret ne se satisfait de rien d'appr
 // ─── 2026-11-12 : une exécution qui n'a pas réussi n'est pas un succès ; GitHub lu en
 // partie n'est pas un GitHub calme. Les mêmes règles EXÉCUTÉES dans la fonction :
 // tests/unit/pilotage-chemins.test.mjs ⑩ ⑪ ⑫ (rouges avant ce lot).
-import { resumerRuns, echecRun, CONCLUSIONS_ECHEC, partielGithub, ISSUES_LUES_MAX, shaValide } from "../../supabase/functions/_shared/pilotage.js";
+import { resumerRuns, echecRun, CONCLUSIONS_ECHEC, partielGithub, ISSUES_PAR_FILTRE_MAX, shaValide, tentativesARelire, runATranche, EVENEMENTS_RUNS, TENTATIVES_RELUES_MAX, PRS_LISTEES_MAX } from "../../supabase/functions/_shared/pilotage.js";
 
-test("㉿⑲ resumerRuns : la plus récente, triée ici ; en cours, elle garde la dernière TERMINÉE (`precedent`)", () => {
+test("㉿⑲ resumerRuns : la plus récente, triée ici ; si elle n'a pas tranché, elle garde la dernière qui a TRANCHÉ (`precedent`) — jamais une annulée", () => {
   const r = (status, conclusion, le, id) => ({ status, conclusion, created_at: le, updated_at: le, html_url: "https://github.com/P/p/actions/runs/" + id });
   assert.equal(resumerRuns([]), null);
   assert.equal(resumerRuns(null), null);
@@ -1649,6 +1650,62 @@ test("㉿⑲ resumerRuns : la plus récente, triée ici ; en cours, elle garde l
   assert.equal(le12.precedent.conclusion, "failure");
   assert.match(le12.precedent.url, /runs\/2$/);
   assert.equal(resumerRuns([r("queued", null, "2026-11-12T14:17:00Z", 3)]).precedent, null, "aucune exécution terminée : rien à en dire");
+  // C tourne, B a été évincée de la file, A a cassé : « la dernière terminée » (B) cachait A (contre-revue du 12/11).
+  const evincee = resumerRuns([r("in_progress", null, "2026-11-12T14:20:00Z", 4), r("completed", "cancelled", "2026-11-12T14:17:00Z", 3), r("completed", "failure", "2026-11-12T14:12:00Z", 2), r("completed", "success", "2026-11-12T13:28:00Z", 1)]);
+  assert.equal(evincee.precedent.conclusion, "failure");
+  assert.match(evincee.precedent.url, /runs\/2$/);
+  // B annulée en tête, rien ne tourne : le précédent est encore la dernière qui a tranché.
+  const annulee = resumerRuns([r("completed", "cancelled", "2026-11-12T14:17:00Z", 3), r("completed", "failure", "2026-11-12T14:12:00Z", 2)]);
+  assert.equal(annulee.conclusion, "cancelled");
+  assert.equal(annulee.precedent.conclusion, "failure");
+  assert.equal(echecRun(annulee).nature, "echec");
+  assert.match(echecRun(annulee).run.url, /runs\/2$/, "la ligne mène à l'exécution qui a cassé");
+  assert.equal(echecRun(resumerRuns([r("completed", "cancelled", "2026-11-12T14:17:00Z", 3), r("completed", "success", "2026-11-12T14:12:00Z", 2)])).nature, "inabouti");
+  assert.equal(runATranche(r("completed", "success")), true);
+  assert.equal(runATranche(r("completed", "timed_out")), true);
+  assert.equal(runATranche(r("completed", "cancelled")), false);
+  assert.equal(runATranche(r("in_progress", null)), false);
+  assert.equal(runATranche(null), false);
+});
+
+test("㉿⑲ bis seules NOS exécutions comptent : l'événement et le dépôt de tête sont filtrés — la PR d'un fork dont la branche s'appelle « main » n'est pas une mise en ligne", () => {
+  const DEPOT = "PASSIO74/passio-app";
+  const r = (extra) => ({ status: "completed", conclusion: "success", created_at: "2026-11-12T13:00:00Z", event: "push", head_branch: "main", head_repository: { full_name: DEPOT }, html_url: "https://github.com/P/p/actions/runs/1", ...extra });
+  const fork = r({ event: "pull_request", conclusion: "failure", created_at: "2026-11-12T14:00:00Z", head_repository: { full_name: "inconnu/passio-app" } });
+  const opts = { evenements: EVENEMENTS_RUNS.deploy, depot: DEPOT };
+  assert.deepEqual([...EVENEMENTS_RUNS.deploy], ["push"]);
+  assert.deepEqual([...EVENEMENTS_RUNS.sentinelle], ["schedule", "workflow_dispatch"]);
+  assert.deepEqual([...EVENEMENTS_RUNS.veille], ["schedule", "workflow_dispatch"]);
+  assert.equal(resumerRuns([fork, r({})], opts).conclusion, "success", "l'exécution du fork est ignorée");
+  assert.equal(resumerRuns([fork, r({})]).conclusion, "failure", "prémisse : sans filtre, elle passait devant");
+  // Le bon événement, mais un autre dépôt de tête : ignorée aussi (défense en profondeur).
+  assert.equal(resumerRuns([r({ conclusion: "failure", created_at: "2026-11-12T14:00:00Z", head_repository: { full_name: "inconnu/passio-app" } }), r({})], opts).conclusion, "success");
+  // Une exécution en attente d'un accord (`action_required`, PR d'un premier contributeur) : même règle.
+  assert.equal(echecRun(resumerRuns([r({ event: "pull_request", conclusion: "action_required", created_at: "2026-11-12T14:00:00Z" }), r({})], opts)), null);
+  assert.equal(resumerRuns([fork], opts), null, "rien de nôtre : rien à dire");
+  // Un événement que GitHub ne dit pas (une liste d'avant, une doublure) : écarté quand un filtre est demandé.
+  assert.equal(resumerRuns([{ status: "completed", conclusion: "failure", created_at: "2026-11-12T14:00:00Z" }], opts), null);
+});
+
+test("㉿⑲ ter tentativesARelire : une relance (`gh run rerun`) en cours ou annulée fait relire sa tentative d'avant ; rien à relire derrière une exécution qui a tranché", () => {
+  const r = (status, conclusion, le, id, tentative = 1) => ({ id, status, conclusion, created_at: le, run_attempt: tentative });
+  assert.deepEqual(tentativesARelire([]), []);
+  assert.deepEqual(tentativesARelire(null), []);
+  assert.deepEqual(tentativesARelire([r("in_progress", null, "2026-11-12T14:17:00Z", 7, 2), r("completed", "success", "2026-11-12T13:00:00Z", 6)]), [{ id: 7, tentative: 1 }]);
+  assert.deepEqual(tentativesARelire([r("completed", "cancelled", "2026-11-12T14:17:00Z", 7, 3)]), [{ id: 7, tentative: 2 }], "une relance annulée ne dit rien non plus de l'échec qu'elle rejouait");
+  assert.deepEqual(tentativesARelire([r("in_progress", null, "2026-11-12T14:17:00Z", 7, 1)]), [], "une première tentative n'a rien avant elle");
+  assert.deepEqual(tentativesARelire([r("completed", "success", "2026-11-12T14:17:00Z", 7, 2)]), [], "une relance qui a tranché se suffit");
+  assert.deepEqual(tentativesARelire([r("completed", "failure", "2026-11-12T14:17:00Z", 8), r("in_progress", null, "2026-11-12T13:00:00Z", 7, 2)]), [], "derrière une exécution qui a tranché, plus rien ne compte");
+  assert.deepEqual(tentativesARelire([r("queued", null, "2026-11-12T14:20:00Z", 9, 2), r("in_progress", null, "2026-11-12T14:17:00Z", 8, 4), r("in_progress", null, "2026-11-12T14:10:00Z", 7, 2)]),
+    [{ id: 9, tentative: 1 }, { id: 8, tentative: 3 }], "deux relances au plus");
+  assert.deepEqual(tentativesARelire([{ status: "in_progress", run_attempt: 2, created_at: "2026-11-12T14:17:00Z" }, { id: "7", status: "in_progress", run_attempt: 2 }, { id: -1, status: "in_progress", run_attempt: 2 }]), [], "sans identifiant entier, rien à demander à GitHub");
+  assert.equal(TENTATIVES_RELUES_MAX, 3);
+  // La tentative relue se range derrière sa relance (même date de création, tri stable) : elle devient le « précédent ».
+  const relance = { id: 7, status: "in_progress", conclusion: null, created_at: "2026-11-12T14:12:00Z", run_attempt: 2, html_url: "https://github.com/P/p/actions/runs/7" };
+  const avant = { id: 7, status: "completed", conclusion: "failure", created_at: "2026-11-12T14:12:00Z", run_attempt: 1, html_url: "https://github.com/P/p/actions/runs/7/attempts/1" };
+  const resume = resumerRuns([relance, avant, r("completed", "success", "2026-11-12T13:00:00Z", 6)]);
+  assert.equal(resume.etat, "in_progress");
+  assert.equal(echecRun(resume).nature, "echec", "relancer un échec ne dit pas « résolu »");
 });
 
 test("㉿⑳ echecRun : cassée, expirée ou jamais démarrée = échec, même derrière une exécution en cours ; annulée = « inabouti » seulement si rien ne la remplace ; un succès, ou rien de lu, ne dit rien", () => {
@@ -1665,6 +1722,10 @@ test("㉿⑳ echecRun : cassée, expirée ou jamais démarrée = échec, même d
   assert.equal(echecRun(fini("success")), null);
   assert.equal(echecRun({ etat: "in_progress", conclusion: null, precedent: fini("success") }), null);
   assert.equal(echecRun({ etat: "in_progress", conclusion: null, precedent: null }), null);
+  // Annulée DERRIÈRE un échec : l'échec reste (et c'est lui qu'on montre) ; derrière un succès : « inabouti ».
+  const derriere = echecRun({ etat: "completed", conclusion: "cancelled", url: "u-annulee", precedent: { ...fini("failure"), url: "u-echec" } });
+  assert.deepEqual([derriere.nature, derriere.run.url], ["echec", "u-echec"]);
+  assert.equal(echecRun({ etat: "completed", conclusion: "cancelled", precedent: fini("success") }).nature, "inabouti");
   assert.equal(echecRun(null), null);
   // Un résumé d'avant ce lot, sans `etat` : sa conclusion vaut pour terminée.
   assert.equal(echecRun({ conclusion: "failure" }).nature, "echec");
@@ -1682,6 +1743,7 @@ test("㉿㉑ verdict : un déploiement expiré ou jamais démarré est ROUGE com
   assert.match(annule.raisons[0], /n'a pas abouti \(annulée\) : la version en ligne n'est pas la dernière/);
   assert.equal(verdict(base({ etat: "in_progress", conclusion: null, precedent: fini("failure") })).couleur, "rouge", "le 12/11 : dix-neuf minutes de vert");
   assert.equal(verdict(base({ etat: "in_progress", conclusion: null, precedent: fini("cancelled") })).couleur, "vert");
+  assert.equal(verdict(base({ etat: "completed", conclusion: "cancelled", precedent: fini("failure") })).couleur, "rouge", "une exécution évincée ne blanchit pas l'échec d'avant");
   assert.equal(verdict(base(fini("success"))).couleur, "vert");
 });
 
@@ -1718,9 +1780,9 @@ test("㉿㉒ aReparer et aFaire : un agent ne répare que ce qui a CASSÉ ; une 
 test("㉿㉓ GitHub lu EN PARTIE : ce qui manque est nommé, l'écran ne passe jamais au vert, et une ligne propose de relire", () => {
   assert.deepEqual(partielGithub(), []);
   assert.deepEqual(partielGithub({ runsNonLus: ["deploy", "inconnu"], issuesTronquees: false }), ["GitHub, la dernière mise en ligne"]);
-  assert.equal(ISSUES_LUES_MAX, 500);
+  assert.equal(ISSUES_PAR_FILTRE_MAX, 300);
   assert.deepEqual(partielGithub({ runsNonLus: ["veille", "sentinelle"], issuesTronquees: true }),
-    ["GitHub, l'activité de la Sentinelle", "GitHub, l'activité de la veille de production", "GitHub, les issues au-delà des 500 plus récentes"]);
+    ["GitHub, l'activité de la Sentinelle", "GitHub, l'activité de la veille de production", "GitHub, les issues suivies au-delà de 300 sous un même filtre"]);
   const vert = { couleur: "vert", titre: "Tout va bien", raisons: ["Aucune erreur récente, rien d'urgent."] };
   assert.equal(verdictAffiche(vert, [], []), vert);
   assert.equal(verdictAffiche(vert, [], [null, "", 3]), vert, "seuls des textes comptent");
@@ -1730,7 +1792,7 @@ test("㉿㉓ GitHub lu EN PARTIE : ce qui manque est nommé, l'écran ne passe j
   assert.deepEqual(deux.raisons, ["non lu : erreurs de l'app", "non lu en entier : GitHub, la dernière mise en ligne"]);
   assert.ok(deux.raisons.every((x) => /^non lu/.test(x)), "la page garde les raisons qui commencent par « non lu » (pilotage.js, rendreVerdict)");
   assert.match(fs.readFileSync("pilotage/pilotage.js", "utf8"), /const nonLus = raisons\.filter\(\(r\) => \/\^non lu\/\.test\(r\)\);/, "prémisse : c'est bien à ce mot que la page les garde");
-  const rouge = verdictAffiche({ couleur: "rouge", titre: "Problème en cours", raisons: ["12 erreurs"] }, [], ["GitHub, les issues au-delà des 500 plus récentes"]);
+  const rouge = verdictAffiche({ couleur: "rouge", titre: "Problème en cours", raisons: ["12 erreurs"] }, [], ["GitHub, les issues suivies au-delà de 300 sous un même filtre"]);
   assert.equal(rouge.couleur, "rouge");
   assert.equal(rouge.incomplet, true);
   assert.equal(rouge.raisons.length, 2);
@@ -1740,4 +1802,62 @@ test("㉿㉓ GitHub lu EN PARTIE : ce qui manque est nommé, l'écran ne passe j
   assert.match(l.reference, /^Non vérifié : GitHub, la dernière mise en ligne\./);
   assert.equal(aFaire({ gestesGithub: true, github: { issues: [], runs: {}, aReparer: [], partiel: [] } }, MAINTENANT_AF).some((x) => x.id === "lecture:github-partielle"), false);
   for (const [v, ok] of [["c".repeat(40), true], ["C".repeat(40), false], ["c".repeat(39), false], ["", false], [null, false], [{}, false]]) assert.equal(shaValide(v), ok, String(v));
+});
+
+test("㉿㉔ un correctif ARMÉ qui change : l'auto-fusion de GitHub suit la branche — la ligne passe en tête, referme d'un toucher (hors « Tout régler »), et valider la nouvelle version reste un geste explicite", () => {
+  const VU = "c".repeat(40), NEUF = "f".repeat(40);
+  const prArmee = (extra = {}) => ({ numero: 12, titre: "Correctif", labels: [], url: "https://github.com/P/p/pull/12", depuis: "2026-11-12T10:00:00Z", pr: true,
+    externe: false, correctif: true, autoFusion: true, brouillon: false, maj: new Date(MAINTENANT_AF - 60e3).toISOString(), sha: NEUF, ...extra });
+  const etat = (pr, extra = {}) => ({ gestesGithub: true, github: { issues: [pr], runs: {}, aReparer: [] }, ...extra });
+  const ligne = (d) => aFaire(d, MAINTENANT_AF).find((x) => x.id === "pr:12");
+  // Armée sur VU, la tête est NEUF.
+  const change = ligne(etat(prArmee(), { fusionsArmees: { 12: VU } }));
+  assert.equal(change.titre, "Un correctif a changé depuis ton « Régler »");
+  assert.equal(change.prio, 0);
+  assert.equal(change.enCours, false);
+  assert.deepEqual(change.gestes, [
+    { libelle: "Régler", principal: true, corps: { action: "fermer", numero: 12 } },
+    { libelle: "Valider la nouvelle version", corps: { action: "fusionner", numero: 12, sha: NEUF } },
+  ]);
+  // La tête est celle qui a été armée : la ligne d'avant.
+  assert.equal(ligne(etat(prArmee({ sha: VU }), { fusionsArmees: { 12: VU } })).titre, "Un correctif part en ligne");
+  // Aucune note (armée ailleurs que d'ici, ou note illisible) : rien à comparer, la ligne d'avant.
+  assert.equal(ligne(etat(prArmee())).titre, "Un correctif part en ligne");
+  assert.equal(ligne(etat(prArmee(), { fusionsArmees: null })).titre, "Un correctif part en ligne");
+  assert.equal(ligne(etat(prArmee(), { fusionsArmees: { 12: "pas-un-sha" } })).titre, "Un correctif part en ligne");
+  assert.equal(ligne(etat(prArmee(), { fusionsArmees: { 13: VU } })).titre, "Un correctif part en ligne", "la note d'une AUTRE PR ne compte pas");
+  // Plus armée (GitHub l'a désarmée, ou elle a été retirée) : le correctif redevient « prêt », avec la version du moment.
+  const desarmee = ligne(etat(prArmee({ autoFusion: false }), { fusionsArmees: { 12: VU } }));
+  assert.equal(desarmee.titre, "Un correctif est prêt");
+  assert.deepEqual(desarmee.gestes[0].corps, { action: "fusionner", numero: 12, sha: NEUF });
+  // Un chantier (pas un correctif de la chaîne) armé d'ici puis modifié : même alerte.
+  assert.equal(ligne(etat(prArmee({ correctif: false }), { fusionsArmees: { 12: VU } })).titre, "Un correctif a changé depuis ton « Régler »");
+  // Sans jeton GitHub, aucun bouton — la ligne reste.
+  assert.deepEqual(ligne({ ...etat(prArmee(), { fusionsArmees: { 12: VU } }), gestesGithub: false }).gestes, []);
+});
+
+test("㉿㉕ quinze PR de tiers ne sortent pas un correctif de la liste : les correctifs de la chaîne passent devant, et ce qui n'est pas listé se compte", () => {
+  const prTiers = (n) => ({ numero: n, titre: "PR d'un fork " + n, labels: [], url: "https://github.com/P/p/pull/" + n, depuis: "2026-11-12T10:00:00Z", pr: true,
+    externe: true, correctif: false, autoFusion: false, brouillon: false, maj: null, sha: "d".repeat(40) });
+  const correctif = { numero: 5, titre: "Correctif", labels: [], url: "https://github.com/P/p/pull/5", depuis: "2026-11-10T10:00:00Z", pr: true,
+    externe: false, correctif: true, autoFusion: false, brouillon: false, maj: null, sha: "c".repeat(40) };
+  // GitHub rend les plus récentes d'abord : vingt PR de forks, puis le correctif, plus ancien.
+  const issues = [...Array.from({ length: 20 }, (_, i) => prTiers(100 - i)), correctif];
+  const l = aFaire({ gestesGithub: true, github: { issues, runs: {}, aReparer: [] } }, MAINTENANT_AF);
+  const pret = l.find((x) => x.id === "pr:5");
+  assert.ok(pret, "le correctif est listé, derrière vingt PR plus récentes");
+  assert.equal(pret.titre, "Un correctif est prêt");
+  assert.equal(pret.prio, 1);
+  assert.equal(PRS_LISTEES_MAX, 15);
+  assert.equal(l.filter((x) => /^pr:\d+$/.test(x.id)).length, 15);
+  const autres = l.find((x) => x.id === "pr:autres");
+  assert.equal(autres.titre, "6 autres chantiers ouverts ne sont pas listés ici");
+  assert.equal(autres.prio, 2);
+  assert.deepEqual(autres.gestes, []);
+  // Aucune PR de tiers ne porte de bouton qui fusionne.
+  assert.ok(l.filter((x) => /^pr:1?\d\d$/.test(x.id) && x.id !== "pr:5").every((x) => !x.gestes.some((g) => g.corps && g.corps.action === "fusionner")));
+  // Quinze PR ou moins : aucune ligne « autres ».
+  assert.equal(aFaire({ gestesGithub: true, github: { issues: issues.slice(6), runs: {}, aReparer: [] } }, MAINTENANT_AF).some((x) => x.id === "pr:autres"), false);
+  const seize = aFaire({ gestesGithub: true, github: { issues: issues.slice(5), runs: {}, aReparer: [] } }, MAINTENANT_AF).find((x) => x.id === "pr:autres");
+  assert.equal(seize.titre, "1 autre chantier ouvert n'est pas listé ici");
 });

@@ -69,6 +69,7 @@ const AUDIENCE_CALME = Object.freeze({ comptes: 0, appareils: 0, hors_public: 0,
 const sha = (c) => c.repeat(40);
 
 let banc = null;
+const ACTIONS_ABOUTIES = new Set();
 const consoleDOrigine = { warn: console.warn, log: console.log };
 console.warn = (...a) => { if (banc) banc.console.push(a.map(String).join(" ")); };
 console.log = (...a) => { if (banc) banc.console.push(a.map(String).join(" ")); };
@@ -97,13 +98,21 @@ const MODULES = {
 const rep = (corps, status = 200, entetes = {}) => new Response(status === 204 ? null : JSON.stringify(corps), { status, headers: { "Content-Type": "application/json", ...entetes } });
 const run = (extra = {}) => {
   const le = extra.le || ilYa(20 * 60e3);
-  return { status: "completed", conclusion: "success", created_at: le, run_started_at: le, updated_at: le, html_url: "https://github.com/" + DEPOT + "/actions/runs/" + (extra.id || 1), head_sha: sha("b"), ...extra };
+  return { id: 1, status: "completed", conclusion: "success", created_at: le, run_started_at: le, updated_at: le, html_url: "https://github.com/" + DEPOT + "/actions/runs/" + (extra.id || 1), head_sha: sha("b"), ...extra };
 };
+// Ce que GitHub pose sur chaque exécution et que le banc ne répète pas : l'événement qui l'a
+// lancée (une mise en ligne part d'un `push`, la Sentinelle et la veille d'une planification),
+// la branche et le dépôt de tête, la tentative.
+const EVENEMENT_HABITUEL = { "deploy.yml": "push", "sentinelle-autonome.yml": "schedule", "veille-production.yml": "schedule" };
+const runComplet = (fichier, r) => ({ event: EVENEMENT_HABITUEL[fichier], head_branch: "main", head_repository: { full_name: DEPOT }, run_attempt: 1, ...r });
 const issue = (x) => ({ state: "open", labels: [], html_url: "https://github.com/" + DEPOT + "/issues/" + x.number, created_at: ilYa(3600e3), user: { login: "github-actions[bot]" }, body: "", ...x, labels: (x.labels || []).map((l) => (typeof l === "string" ? { name: l } : l)) });
-const pr = (x) => ({ number: x.number, state: "open", draft: false, mergeable: true, node_id: "PR_" + x.number, updated_at: ilYa(600e3), auto_merge: null, head: { ref: "claude/issue-7-1", sha: sha("c"), repo: { full_name: DEPOT } }, ...x });
+const pr = (x) => ({ number: x.number, state: "open", draft: false, mergeable: true, node_id: "PR_" + x.number, updated_at: ilYa(600e3), auto_merge: null, title: "Correctif " + x.number,
+  html_url: "https://github.com/" + DEPOT + "/pull/" + x.number, created_at: ilYa(3600e3), labels: [], user: { login: "github-actions[bot]" },
+  head: { ref: "claude/issue-7-1", sha: sha("c"), repo: { full_name: DEPOT } }, ...x });
 function githubCalme() {
   return { issues: [], pulls: [], commentaires: {}, runs: { "deploy.yml": [run()], "sentinelle-autonome.yml": [run()], "veille-production.yml": [run()] },
-    panne: null, fusion: { status: 200 }, autoFusion: true, expiration: null, prochainNumero: 900, lenteur: null };
+    // `tentatives` : { <id du run> : { <n> : la tentative n } } — ce que rend /actions/runs/<id>/attempts/<n>.
+    tentatives: {}, panne: null, fusion: { status: 200 }, autoFusion: true, expiration: null, prochainNumero: 900, lenteur: null };
 }
 async function github(methode, url, corps) {
   const g = banc.gh, chemin = url.pathname, q = url.searchParams;
@@ -115,10 +124,22 @@ async function github(methode, url, corps) {
   if (methode === "GET" && chemin === `/repos/${DEPOT}/issues`) {
     const par = Number(q.get("per_page")) || 30, page = Number(q.get("page")) || 1;
     let liste = g.issues.filter((i) => i.state === "open");
+    // Les filtres de GitHub : l'auteur, et les labels (tous exigés).
     if (q.get("creator")) liste = liste.filter((i) => i.user && i.user.login === q.get("creator"));
+    if (q.get("labels")) { const voulus = q.get("labels").split(","); liste = liste.filter((i) => voulus.every((l) => i.labels.some((x) => x.name === l))); }
     return rep(liste.slice((page - 1) * par, page * par), 200, entetes);
   }
-  if (methode === "GET" && (m = /\/actions\/workflows\/([\w.-]+)\/runs$/.exec(chemin))) return rep({ workflow_runs: (g.runs[m[1]] || []).slice(0, Number(q.get("per_page")) || 30) });
+  if (methode === "GET" && (m = /\/actions\/workflows\/([\w.-]+)\/runs$/.exec(chemin))) {
+    // Comme GitHub : `branch` filtre sur le NOM de la branche de tête (celle d'un fork comprise), `event` sur l'événement.
+    let liste = (g.runs[m[1]] || []).map((r) => runComplet(m[1], r));
+    if (q.get("branch")) liste = liste.filter((r) => r.head_branch === q.get("branch"));
+    if (q.get("event")) liste = liste.filter((r) => r.event === q.get("event"));
+    return rep({ workflow_runs: liste.slice(0, Number(q.get("per_page")) || 30) });
+  }
+  if (methode === "GET" && (m = /\/actions\/runs\/(\d+)\/attempts\/(\d+)$/.exec(chemin))) {
+    const t = (g.tentatives[m[1]] || {})[m[2]];
+    return t ? rep(t) : rep({ message: "Not Found" }, 404);
+  }
   if (methode === "GET" && chemin === `/repos/${DEPOT}/pulls`) return rep(g.pulls.filter((x) => x.state === "open"));
   if (methode === "GET" && (m = /\/pulls\/(\d+)$/.exec(chemin))) { const x = g.pulls.find((y) => y.number === Number(m[1])); return x ? rep(x) : rep({ message: "Not Found" }, 404); }
   if (methode === "PUT" && (m = /\/pulls\/(\d+)\/merge$/.exec(chemin))) {
@@ -128,7 +149,16 @@ async function github(methode, url, corps) {
     if (g.fusion.status === 200 && x) x.state = "closed";
     return rep(g.fusion.corps ?? { merged: g.fusion.status === 200 }, g.fusion.status);
   }
-  if (methode === "POST" && chemin === "/graphql") return rep(g.autoFusion ? { data: { enablePullRequestAutoMerge: { clientMutationId: null } } } : { errors: [{ message: "refus" }] });
+  if (methode === "POST" && chemin === "/graphql") {
+    // Comme GitHub : la mutation arme la PR désignée ; si elle porte `expectedHeadOid`, elle est
+    // REFUSÉE quand la tête n'est plus celle-là. Sans ce champ dans la requête, rien n'est contrôlé.
+    const v = (corps && corps.variables) || {};
+    const x = g.pulls.find((y) => y.node_id === v.id && y.state === "open");
+    const attendue = /expectedHeadOid:\s*\$(\w+)/.exec(String(corps && corps.query));
+    if (!g.autoFusion || !x || (attendue && v[attendue[1]] !== x.head.sha)) return rep({ errors: [{ message: "refus" }] });
+    x.auto_merge = { merge_method: "squash" };
+    return rep({ data: { enablePullRequestAutoMerge: { clientMutationId: null } } });
+  }
   if (methode === "PATCH" && (m = /\/issues\/(\d+)$/.exec(chemin))) { const i = g.issues.find((x) => x.number === Number(m[1])); if (i && corps.state) i.state = corps.state; return rep({}); }
   if (methode === "POST" && chemin === `/repos/${DEPOT}/issues`) {
     const i = issue({ number: g.prochainNumero++, title: corps.title, body: corps.body, labels: corps.labels || [], user: { login: "PASSIO74" }, created_at: new Date().toISOString() });
@@ -199,6 +229,8 @@ async function appeler(corps, { jeton = JETON.pilote, entetes = {}, methode = "P
   const texte = await r.text();
   let json = null;
   try { json = JSON.parse(texte); } catch { /* « ok » d'un OPTIONS */ }
+  // Ce que le banc a VRAIMENT mené au bout (㊲) : l'action demandée, quand la fonction a répondu 200.
+  if (r.status === 200 && corps && typeof corps.action === "string") ACTIONS_ABOUTIES.add(corps.action);
   return { status: r.status, corps: json, texte, entetes: r.headers };
 }
 const veille = (entetes = {}) => appeler({ action: "veille" }, { jeton: null, entetes });
@@ -214,6 +246,8 @@ const ligneAFaire = (etat, id) => (etat.corps.aFaire || []).find((x) => x.id ===
 const ecrituresHorsMarque = () => banc.base.ecritures().filter((q) => !(q.type === "insert" && (q.lignes || []).every((l) => l.event === "pilotage_pilote")));
 const ACTIONS_EPROUVEES = new Set();
 const action = (corps, options) => { ACTIONS_EPROUVEES.add(corps.action); return appeler(corps, options); };
+/** Un passage de pg_cron plus tard : le créneau est rendu, l'isolat est neuf (ses caches repartent de zéro). */
+const passageSuivant = async () => { minuteSuivante(); banc.gestionnaire = await chargerFonction(SOURCE, { modules: MODULES, env: (n) => banc.env[n] }); };
 /** Une PR ouverte : GitHub la rend dans ses pulls ET dans ses issues (`pull_request`). */
 function ouvrirPr(x) {
   const p = pr(x);
@@ -340,7 +374,7 @@ test("⑨ le jeton GitHub qui expire dans 3 jours se dit AVANT de casser", async
   assert.ok(l && l.prio === 1 && /expire dans 3 jours/.test(l.titre), JSON.stringify(l));
 });
 
-test("⑩ GitHub lu EN PARTIE n'est pas un GitHub calme : une lecture des exécutions refusée, ou plus de 500 issues ouvertes, et l'écran ne passe pas au vert", async () => {
+test("⑩ GitHub lu EN PARTIE n'est pas un GitHub calme : une lecture des exécutions refusée, et l'écran ne passe pas au vert ; 500 issues d'inconnus ne cachent rien et ne rendent rien « partiel »", async () => {
   await monter();
   // Les issues se lisent, les exécutions non (limite secondaire, panne partielle de l'API).
   banc.gh.panne = (m, chemin) => (/\/actions\/workflows\/deploy\.yml\/runs/.test(chemin) ? { status: 502 } : null);
@@ -352,12 +386,29 @@ test("⑩ GitHub lu EN PARTIE n'est pas un GitHub calme : une lecture des exécu
   banc.gh.panne = null;
   r = await appeler({ action: "etat" });
   assert.equal(r.corps.verdict.couleur, "vert", JSON.stringify(r.corps.verdict));
-  // Le dépôt est public : n'importe qui ouvre des issues. Cinq pages pleines, et ce qui suit n'est pas lu.
+  // Le dépôt est public : n'importe qui ouvre des issues. Cinq cents d'un inconnu, et derrière elles un
+  // sujet « humain » vieux de quarante jours, une pause du pilote et un correctif : tout est LU (par
+  // label, par auteur, par la liste des PR) — et le bruit ne rend pas la lecture « partielle ».
   await monter();
-  for (let n = 1; n <= 500; n++) banc.gh.issues.push(issue({ number: 1000 + n, title: "bruit " + n }));
+  for (let n = 1; n <= 500; n++) banc.gh.issues.push(issue({ number: 1000 + n, title: "bruit " + n, user: { login: "inconnu" } }));
   banc.gh.issues.push(issue({ number: 7, title: "[SENTINELLE] récidive", labels: ["humain"], created_at: ilYa(40 * 864e5) }));
+  banc.gh.issues.push(issue({ number: 8, title: TITRE_PAUSE, user: { login: "PASSIO74" }, created_at: ilYa(41 * 864e5) }));
+  ouvrirPr({ number: 9 });
   r = await appeler({ action: "etat" });
-  assert.notEqual(r.corps.verdict.couleur, "vert", "un sujet « humain » peut se cacher derrière 500 issues");
+  assert.equal(r.corps.verdict.couleur, "rouge", JSON.stringify(r.corps.verdict));
+  assert.match(r.corps.verdict.raisons.join(" "), /1 sujet\(s\) qui t'attendent/);
+  assert.ok(ligneAFaire(r, "issue:7"), "le sujet « humain » ne se cache pas derrière 500 issues");
+  assert.ok(ligneAFaire(r, "issue:8"), "la pause du pilote non plus");
+  assert.equal(ligneAFaire(r, "pr:9").titre, "Un correctif est prêt");
+  assert.equal(ligneAFaire(r, "lecture:github-partielle"), null, "le bruit d'un tiers ne rend pas la lecture partielle");
+  assert.ok(!r.corps.verdict.incomplet);
+  assert.ok(!(r.corps.aFaire || []).some((x) => /bruit/.test(x.reference + x.titre)), "aucune issue d'inconnu sans label n'entre dans la liste");
+  // Plus de 300 issues sous UN label suivi (des résumés jamais refermés) : là, tout n'est pas lu — et c'est dit.
+  await monter();
+  for (let n = 1; n <= 320; n++) banc.gh.issues.push(issue({ number: 3000 + n, title: "[DIGEST] " + n, labels: ["digest"] }));
+  r = await appeler({ action: "etat" });
+  assert.notEqual(r.corps.verdict.couleur, "vert");
+  assert.match(r.corps.verdict.raisons.join(" "), /non lu en entier : GitHub, les issues suivies au-delà de 300 sous un même filtre/);
   assert.ok(ligneAFaire(r, "lecture:github-partielle"));
 });
 
@@ -374,6 +425,32 @@ test("⑪ un déploiement EXPIRÉ, qui n'a pas DÉMARRÉ ou ANNULÉ n'est pas un
   await monter();
   banc.gh.runs["deploy.yml"] = [run({ id: 79 }), run({ conclusion: "cancelled", id: 78, le: ilYa(40 * 60e3) })];
   assert.equal((await appeler({ action: "etat" })).corps.verdict.couleur, "vert");
+  // Une exécution ÉVINCÉE de la file (annulée) ne blanchit pas l'ÉCHEC qui la précède : ce qui compte est la
+  // dernière qui a TRANCHÉ. 12 des 100 dernières mises en ligne du dépôt sont des évictions (mesuré le 12/11).
+  await monter();
+  banc.gh.runs["deploy.yml"] = [run({ conclusion: "cancelled", id: 82, le: ilYa(5 * 60e3) }), run({ conclusion: "failure", id: 81, le: ilYa(9 * 60e3) }), run({ id: 80, le: ilYa(50 * 60e3) })];
+  let r = await appeler({ action: "etat" });
+  assert.equal(r.corps.verdict.couleur, "rouge", "annulée après un échec : " + JSON.stringify(r.corps.verdict));
+  assert.match(r.corps.verdict.raisons.join(" "), /déploiement en échec/);
+  assert.match(String(ligneAFaire(r, "run:deploy").url), /\/runs\/81$/, "la ligne mène à l'exécution qui a cassé, pas à l'annulée");
+});
+
+test("⑪ bis une exécution qui n'est pas la NÔTRE ne compte pas : la PR d'un fork dont la branche s'appelle « main » ne fait dire ni « en échec » ni « non aboutie »", async () => {
+  await monter();
+  // Le dépôt est public : un fork ouvre une PR depuis SA branche `main`, et y ajoute `on: pull_request` au
+  // workflow de la Sentinelle. GitHub range cette exécution sous le même workflow, branche de tête « main ».
+  const duFork = { event: "pull_request", head_branch: "main", head_repository: { full_name: "inconnu/passio-app" } };
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ ...duFork, conclusion: "action_required", id: 91, le: ilYa(60e3) }), run({ ...duFork, conclusion: "failure", id: 90, le: ilYa(2 * 60e3) }), run({ id: 89, le: ilYa(30 * 60e3) })];
+  banc.gh.runs["deploy.yml"] = [run({ ...duFork, conclusion: "failure", id: 93, le: ilYa(60e3) }), run({ id: 92, le: ilYa(30 * 60e3) })];
+  const r = await appeler({ action: "etat" });
+  assert.equal(r.corps.verdict.couleur, "vert", JSON.stringify(r.corps.verdict));
+  assert.equal(ligneAFaire(r, "run:sentinelle"), null);
+  assert.equal(ligneAFaire(r, "run:deploy"), null);
+  assert.equal(r.corps.github.runs.sentinelle.conclusion, "success", "la dernière exécution lue est la nôtre");
+  // La mise en ligne n'est demandée à GitHub que pour un `push` sur main.
+  const [lecture] = appelsGithub("GET", /deploy\.yml\/runs/);
+  assert.match(lecture.chemin, /branch=main/);
+  assert.match(lecture.chemin, /event=push/);
 });
 
 test("⑫ le 12/11 rejoué : un déploiement en ÉCHEC ne se cache pas derrière le run suivant encore en cours", async () => {
@@ -389,6 +466,46 @@ test("⑫ le 12/11 rejoué : un déploiement en ÉCHEC ne se cache pas derrière
   assert.match(r.corps.verdict.raisons.join(" "), /déploiement en échec/);
   assert.ok(ligneAFaire(r, "run:deploy"), "la ligne « La mise en ligne a échoué » est là pendant que la suivante tourne");
   assert.ok(ligneAFaire(r, "deploy:en-cours"), "et la mise en ligne en cours se voit toujours");
+  // C tourne, B a été évincée de la file, A a cassé : toujours rouge — B ne dit rien de ce qui est en ligne.
+  await monter();
+  banc.gh.runs["deploy.yml"] = [
+    run({ status: "in_progress", conclusion: null, id: 103, le: ilYa(2 * 60e3) }),
+    run({ conclusion: "cancelled", id: 102, le: ilYa(5 * 60e3) }),
+    run({ conclusion: "failure", id: 101, le: ilYa(9 * 60e3) }),
+    run({ id: 100, le: ilYa(50 * 60e3) }),
+  ];
+  const r2 = await appeler({ action: "etat" });
+  assert.equal(r2.corps.verdict.couleur, "rouge", JSON.stringify(r2.corps.verdict));
+  assert.match(String(ligneAFaire(r2, "run:deploy").url), /\/runs\/101$/);
+});
+
+test("⑫ bis RELANCER un échec n'est pas le réparer : `gh run rerun` garde l'identifiant et vide la conclusion — la tentative précédente est relue ; illisible, la mise en ligne est « non lue »", async () => {
+  const depart = ilYa(9 * 60e3);
+  const relance = () => [run({ status: "in_progress", conclusion: null, id: 43235671422, run_attempt: 2, le: depart }), run({ id: 43227560180, le: ilYa(50 * 60e3) })];
+  await monter();
+  banc.gh.runs["deploy.yml"] = relance();
+  banc.gh.tentatives["43235671422"] = { 1: runComplet("deploy.yml", run({ conclusion: "failure", id: 43235671422, run_attempt: 1, le: depart })) };
+  let r = await appeler({ action: "etat" });
+  assert.equal(appelsGithub("GET", /\/actions\/runs\/43235671422\/attempts\/1$/).length, 1, "la tentative d'avant est relue");
+  assert.equal(r.corps.verdict.couleur, "rouge", JSON.stringify(r.corps.verdict));
+  assert.match(r.corps.verdict.raisons.join(" "), /déploiement en échec/);
+  // La tentative d'avant avait RÉUSSI (on rejoue un succès) : rien à dire.
+  await monter();
+  banc.gh.runs["deploy.yml"] = relance();
+  banc.gh.tentatives["43235671422"] = { 1: runComplet("deploy.yml", run({ id: 43235671422, run_attempt: 1, le: depart })) };
+  assert.equal((await appeler({ action: "etat" })).corps.verdict.couleur, "vert");
+  // La tentative d'avant ne se lit pas : on ne sait pas ce que la relance remplace — jamais un vert.
+  await monter();
+  banc.gh.runs["deploy.yml"] = relance();
+  r = await appeler({ action: "etat" });
+  assert.notEqual(r.corps.verdict.couleur, "vert", JSON.stringify(r.corps.verdict));
+  assert.match(r.corps.verdict.raisons.join(" "), /non lu en entier : GitHub, la dernière mise en ligne/);
+  assert.ok(ligneAFaire(r, "lecture:github-partielle"));
+  // Une exécution ordinaire en cours (première tentative) ne coûte aucune lecture de plus.
+  await monter();
+  banc.gh.runs["deploy.yml"] = [run({ status: "in_progress", conclusion: null, id: 110, le: ilYa(60e3) }), run({ id: 109, le: ilYa(50 * 60e3) })];
+  assert.equal((await appeler({ action: "etat" })).corps.verdict.couleur, "vert");
+  assert.equal(appelsGithub("GET", /\/attempts\//).length, 0);
 });
 
 test("⑬ données PÉRIMÉES : un battement de plus de 35 min est rouge (« le téléphone ne sonnera pas ») ; aucun battement : à régler — jamais vert", async () => {
@@ -505,6 +622,62 @@ test("⑱ commande PÉRIMÉE ou FORGÉE : un correctif qui a CHANGÉ depuis l'é
   const [gql] = appelsGithub("POST", /\/graphql$/);
   assert.equal(gql.corps.variables.tete, sha("e"), "expectedHeadOid : GitHub refuse l'armement si la tête bouge");
   assert.match(gql.corps.query, /expectedHeadOid: \$tete/);
+  assert.match(arme.corps.message, /l'écran te le dira/);
+});
+
+test("⑱ bis l'auto-fusion SUIT la branche : la version armée est notée, un correctif qui change APRÈS ton « Régler » se dit en tête de liste — refermer d'un toucher, ou valider la nouvelle version", async () => {
+  await monter();
+  ouvrirPr({ number: 12 });
+  banc.gh.fusion = { status: 405, corps: { message: "Required status check is expected." } };
+  // La tête bouge ENTRE la lecture de la PR et l'armement : GitHub refuse d'armer (expectedHeadOid), rien n'est noté.
+  banc.gh.lenteur = (m, chemin) => { if (m === "POST" && chemin === "/graphql") banc.gh.pulls[0].head.sha = sha("d"); };
+  const course = await appeler({ action: "fusionner", numero: 12, sha: sha("c") });
+  assert.equal(course.status, 409, JSON.stringify(course.corps));
+  assert.equal(banc.gh.pulls[0].auto_merge, null, "rien n'est armé sur une version que personne n'a vue");
+  assert.equal(evenements(EVT_GESTE).length, 0);
+  banc.gh.lenteur = null;
+  // Armée sur dddd… : c'est noté, et la ligne dit « part en ligne ».
+  const arme = await appeler({ action: "fusionner", numero: 12, sha: sha("d") });
+  assert.equal(arme.status, 200, JSON.stringify(arme.corps));
+  assert.ok(banc.gh.pulls[0].auto_merge);
+  const [note] = evenements(EVT_GESTE);
+  assert.deepEqual([note.user_id, note.properties], ["systeme:pilotage", { geste: "fusion_armee", numero: 12, sha: sha("d") }]);
+  let etat = await appeler({ action: "etat", frais: true });
+  assert.deepEqual(etat.corps.fusionsArmees, { 12: sha("d") });
+  assert.equal(ligneAFaire(etat, "pr:12").titre, "Un correctif part en ligne");
+  // Un commit est poussé sur la branche par un compte qui a le droit d'écrire : GitHub garde l'auto-fusion armée.
+  banc.gh.pulls[0].head.sha = sha("f");
+  etat = await appeler({ action: "etat", frais: true });
+  const ligne = ligneAFaire(etat, "pr:12");
+  assert.equal(ligne.titre, "Un correctif a changé depuis ton « Régler »");
+  assert.equal(ligne.prio, 0);
+  assert.equal(ligne.enCours, false, "ce n'est plus « les machines s'en occupent »");
+  const [principal, valider] = ligne.gestes;
+  assert.deepEqual(principal.corps, { action: "fermer", numero: 12 });
+  assert.ok(principal.principal && !principal.tout, "jamais dans « Tout régler »");
+  assert.deepEqual(valider.corps, { action: "fusionner", numero: 12, sha: sha("f") });
+  assert.ok(!valider.principal && !valider.tout);
+  // Valider la nouvelle version : déjà armée, rien à réarmer — la note suit, la ligne redevient « part en ligne ».
+  const avant = appelsGithub("POST", /\/graphql$/).length;
+  const valide = await appeler(valider.corps);
+  assert.equal(valide.status, 200, JSON.stringify(valide.corps));
+  assert.equal(appelsGithub("POST", /\/graphql$/).length, avant);
+  etat = await appeler({ action: "etat", frais: true });
+  assert.deepEqual(etat.corps.fusionsArmees, { 12: sha("f") });
+  assert.equal(ligneAFaire(etat, "pr:12").titre, "Un correctif part en ligne");
+  // Refermer : le geste principal ferme la PR — plus rien ne part.
+  banc.gh.pulls[0].head.sha = sha("a");
+  etat = await appeler({ action: "etat", frais: true });
+  assert.equal((await appeler(ligneAFaire(etat, "pr:12").gestes[0].corps)).status, 200);
+  assert.equal(banc.gh.issues.find((i) => i.number === 12).state, "closed");
+  // La note ne peut pas s'écrire : la fusion est armée, mais l'écran ne promet pas de comparer.
+  await monter();
+  ouvrirPr({ number: 13 });
+  banc.gh.fusion = { status: 405, corps: { message: "Required status check is expected." } };
+  banc.base.panne = (q) => (q.table === "analytics_events" && q.type === "insert" && (q.lignes || []).some((l) => l.event === EVT_GESTE) ? { code: "57014", message: "timeout" } : null);
+  const sansNote = await appeler({ action: "fusionner", numero: 13, sha: sha("c") });
+  assert.equal(sansNote.status, 200);
+  assert.ok(!/l'écran te le dira/.test(sansNote.corps.message), sansNote.corps.message);
 });
 
 test("⑲ fermer : numéro invalide → 400 ; valide → fermée « not_planned » ; pause : une seule issue de pause, posée par le pilote ; reprendre ne ferme que les SIENNES", async () => {
@@ -604,6 +777,70 @@ test("㉒ double toucher : deux « Régler » simultanés sur le même problème
   assert.equal(evenements(EVT_GESTE).length, 0, "une relance dont on ne sait rien n'est pas notée comme partie");
   banc.gh.lenteur = null;
   assert.equal((await appeler({ action: "relancer", cible: "veille" })).status, 409);
+});
+
+test("㉒ bis un 5xx de GitHub est aussi AMBIGU qu'un silence : le geste est peut-être parti — le verrou reste, rien n'est promis ; confier une réparation suit la même règle, et un geste interrompu n'est jamais un 500 nu", async () => {
+  // Ouvrir une réparation : GitHub répond 502 APRÈS avoir peut-être créé l'issue.
+  await monter();
+  banc.gh.issues.push(issue({ number: 85, title: "[VEILLE] flux", labels: ["veille"] }));
+  banc.gh.panne = (m, chemin) => (m === "POST" && /\/issues$/.test(chemin) ? { status: 502 } : null);
+  const r = await appeler({ action: "reparer", cible: "issue", numero: 85 });
+  assert.equal(r.status, 502);
+  assert.match(r.corps.error, /HTTP 502.*peut-être partie/);
+  banc.gh.panne = null;
+  assert.equal((await appeler({ action: "reparer", cible: "issue", numero: 85 })).status, 409, "un 5xx ne rend pas le verrou");
+  assert.equal(appelsGithub("POST", /\/issues$/).length, 1, "une seule tentative d'ouverture");
+  // Relancer : même règle — et la relance n'est pas notée comme partie.
+  banc.gh.panne = (m, chemin) => (m === "POST" && /dispatches$/.test(chemin) ? { status: 503 } : null);
+  const rl = await appeler({ action: "relancer", cible: "sentinelle" });
+  assert.equal(rl.status, 502);
+  assert.match(rl.corps.error, /peut-être partie/);
+  assert.equal(evenements(EVT_GESTE).length, 0);
+  banc.gh.panne = null;
+  assert.equal((await appeler({ action: "relancer", cible: "sentinelle" })).status, 409);
+  // Un refus NET (403), lui, rend la main tout de suite : rien n'est parti.
+  minuteSuivante();
+  banc.gh.panne = (m, chemin) => (m === "POST" && /dispatches$/.test(chemin) ? { status: 403 } : null);
+  assert.equal((await appeler({ action: "relancer", cible: "sentinelle" })).status, 502);
+  banc.gh.panne = null;
+  assert.equal((await appeler({ action: "relancer", cible: "sentinelle" })).status, 200);
+  // Confier une réparation ouverte sans mention (une issue d'avant le 25/10) : le label part, GitHub se tait.
+  const decor = async () => {
+    await monter();
+    banc.gh.issues.push(issue({ number: 86, title: "[VEILLE] flux", labels: ["veille"] }), issue({ number: 87, title: PREFIXE_REPARATION + " #86", user: { login: "PASSIO74" } }));
+  };
+  await decor();
+  banc.gh.lenteur = (m, chemin) => { if (m === "POST" && /\/issues\/87\/labels$/.test(chemin)) throw new Error("The operation was aborted due to timeout"); };
+  const muet = await appeler({ action: "reparer", cible: "issue", numero: 86 });
+  assert.equal(muet.status, 502, JSON.stringify(muet.corps));
+  assert.match(muet.corps.error, /peut-être confiée/);
+  assert.equal(appelsGithub("POST", /\/issues\/87\/comments$/).length, 0, "la seconde voie n'est pas tentée : elle lancerait un second agent");
+  banc.gh.lenteur = null;
+  assert.equal((await appeler({ action: "reparer", cible: "issue", numero: 86 })).status, 409, "le verrou reste : pas de second ordre sur une réponse perdue");
+  assert.equal(appelsGithub("POST", /\/issues\/87\/(labels|comments)$/).length, 1);
+  // Le label en 502 : même ambiguïté, même règle.
+  await decor();
+  banc.gh.panne = (m, chemin) => (m === "POST" && /\/issues\/87\/labels$/.test(chemin) ? { status: 502 } : null);
+  const cinq = await appeler({ action: "reparer", cible: "issue", numero: 86 });
+  assert.equal(cinq.status, 502);
+  assert.match(cinq.corps.error, /peut-être confiée/);
+  assert.equal(appelsGithub("POST", /\/issues\/87\/comments$/).length, 0);
+  // Le label REFUSÉ net (403) : la voie de repli (commentaire) est tentée, comme avant.
+  await decor();
+  banc.gh.panne = (m, chemin) => (m === "POST" && /\/issues\/87\/labels$/.test(chemin) ? { status: 403 } : null);
+  const repli = await appeler({ action: "reparer", cible: "issue", numero: 86 });
+  assert.equal(repli.status, 200, JSON.stringify(repli.corps));
+  assert.equal(appelsGithub("POST", /\/issues\/87\/comments$/).length, 1);
+  // Un geste que GitHub laisse sans réponse (fusion, fermeture) : 502 qui le DIT, pas une exception nue.
+  await monter();
+  ouvrirPr({ number: 12 });
+  banc.gh.lenteur = (m, chemin) => { if (m === "PUT" && /\/merge$/.test(chemin)) throw new Error("The operation was aborted due to timeout"); };
+  const fusion = await appeler({ action: "fusionner", numero: 12, sha: sha("c") });
+  assert.equal(fusion.status, 502, JSON.stringify(fusion.corps));
+  assert.match(fusion.corps.error, /peut-être parti/);
+  assert.ok(banc.console.some((l) => /geste interrompu/.test(l) && /"action":"fusionner"/.test(l)));
+  banc.gh.lenteur = (m) => { if (m === "PATCH") throw new Error("The operation was aborted due to timeout"); };
+  assert.equal((await appeler({ action: "fermer", numero: 12 })).status, 502);
 });
 
 test("㉓ réglages : clé inconnue, coupure hors liste blanche, niveau impossible → 400 sans écrire ; un réglage valide est posé « pilote » et journalisé ; `null` le lève ; table absente → 503", async () => {
@@ -760,6 +997,62 @@ test("㉚ lecture INCOMPLÈTE : GitHub illisible pendant un rouge ne sonne jamai
   assert.equal(etats().length, 1);
   assert.equal(evenements(BATTEMENT)[0].properties.lectures.github, "ko");
   assert.ok(banc.console.some((l) => /lecture incomplète/.test(l) && /en partie : GitHub, la dernière mise en ligne/.test(l)));
+});
+
+test("㉚ bis le bruit d'un tiers ne FIGE pas la veille : 500 issues d'inconnus et des résumés qui débordent, et pourtant un rouge réglé sonne « résolu », puis un nouveau rouge sonne", async () => {
+  // Le dépôt est public. Si « beaucoup d'issues ouvertes » valait « lecture incomplète », n'importe qui tenait le
+  // voyant : après un premier rouge, plus jamais de « résolu », et le rouge suivant ne sonnait plus (contre-revue du 12/11).
+  await monter({ battement: false });
+  for (let n = 1; n <= 500; n++) banc.gh.issues.push(issue({ number: 1000 + n, title: "bruit " + n, user: { login: "inconnu" } }));
+  for (let n = 1; n <= 320; n++) banc.gh.issues.push(issue({ number: 3000 + n, title: "[DIGEST] " + n, labels: ["digest"] }));
+  banc.base.semer("analytics_events", [{ user_id: "systeme:pilotage", event: "pilotage_etat", created_at: ilYa(30 * 60e3), properties: { couleur: "rouge", dispo: true, raisons: ["dernier déploiement en échec"], alerteLe: ilYa(30 * 60e3) } }]);
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "vert", "la mise en ligne a réussi depuis : le voyant n'est pas tenu");
+  assert.match(banc.pushes.at(-1).charge.titre, /Problème résolu/);
+  assert.equal(evenements(BATTEMENT)[0].properties.lectures.github, "ok");
+  assert.ok(!banc.console.some((l) => /lecture incomplète/.test(l)));
+  banc.gh.runs["deploy.yml"] = [run({ conclusion: "failure", id: 2, le: ilYa(60e3) }), run()];
+  await passageSuivant();
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "rouge");
+  assert.match(banc.pushes.at(-1).charge.titre, /Problème sur PASSIO/);
+  // Et un sujet « humain » enfoui sous le bruit colore toujours la veille.
+  await monter({ battement: false });
+  for (let n = 1; n <= 500; n++) banc.gh.issues.push(issue({ number: 1000 + n, title: "bruit " + n, user: { login: "inconnu" } }));
+  banc.gh.issues.push(issue({ number: 7, title: "[SENTINELLE] récidive", labels: ["humain"], created_at: ilYa(40 * 864e5) }));
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "rouge");
+  assert.match(banc.pushes.at(-1).charge.texte, /1 sujet\(s\) qui t'attendent/);
+});
+
+test("㉙ bis relancer une mise en ligne en échec ne sonne pas « résolu » au DÉPART de la relance : seulement quand elle a réussi ; sa tentative d'avant illisible, le voyant est tenu", async () => {
+  await monter({ battement: false });
+  const depart = ilYa(9 * 60e3), avant = run({ id: 499, le: ilYa(50 * 60e3) });
+  banc.gh.runs["deploy.yml"] = [run({ conclusion: "failure", id: 500, le: depart }), avant];
+  await veille();
+  assert.equal(banc.pushes.length, 2);
+  assert.match(banc.pushes[0].charge.titre, /Problème sur PASSIO/);
+  // `gh run rerun --failed` (le remède de CLAUDE.md) : même identifiant, même date, conclusion vidée, tentative 2.
+  banc.gh.runs["deploy.yml"] = [run({ status: "in_progress", conclusion: null, id: 500, run_attempt: 2, le: depart }), avant];
+  banc.gh.tentatives["500"] = { 1: runComplet("deploy.yml", run({ conclusion: "failure", id: 500, run_attempt: 1, le: depart })) };
+  await passageSuivant();
+  await veille();
+  assert.equal(banc.pushes.length, 2, "la relance tourne : rien n'est résolu");
+  assert.equal(etats().length, 1);
+  // La tentative d'avant ne se lit pas (GitHub en panne partielle) : on ne conclut pas — le voyant est TENU.
+  banc.gh.panne = (m, chemin) => (/\/attempts\//.test(chemin) ? { status: 502 } : null);
+  await passageSuivant();
+  await veille();
+  assert.equal(banc.pushes.length, 2);
+  assert.equal(etats().length, 1);
+  assert.ok(banc.console.some((l) => /lecture incomplète/.test(l) && /en partie : GitHub, la dernière mise en ligne/.test(l)));
+  // La relance réussit : là, et là seulement, « résolu ».
+  banc.gh.panne = null;
+  banc.gh.runs["deploy.yml"] = [run({ id: 500, run_attempt: 2, le: depart }), avant];
+  await passageSuivant();
+  await veille();
+  assert.equal(etats().at(-1).properties.couleur, "vert");
+  assert.match(banc.pushes.at(-1).charge.titre, /Problème résolu/);
 });
 
 test("㉛ l'état mémorisé ILLISIBLE n'est pas « aucun état » : la veille ne réécrit pas le voyant à l'aveugle et ne perd pas le « résolu » ; un rouge, lui, sonne quand même", async () => {
@@ -931,8 +1224,39 @@ test("㊳ à l'échelle : pour sonner, la veille ne parcourt plus tous les compt
   assert.equal(evenements("pilotage_pilote").length, 0);
 });
 
-test("㊲ chaque action du gestionnaire est exécutée par ce banc — une action neuve sans exercice rougit ici", () => {
-  const declarees = [...SOURCE.matchAll(/^\s*case "([a-z_]+)":/gm)].map((m) => m[1]).concat("veille").sort();
+test("㊳ bis deux pilotes : ce qui dispense du parcours, ce sont des ADRESSES prouvées, pas un nombre de marques — une marque qu'on n'a pas pu relire ne fait pas oublier le second pilote", async () => {
+  const SECOND = { id: "66666666-6666-4666-8666-666666666666", email: "second@exemple.fr", email_confirmed_at: "2026-05-01T00:00:00Z", created_at: "2026-05-01T00:00:00Z" };
+  const FANTOME = "77777777-7777-4777-8777-777777777777";
+  const marque = (uid) => ({ user_id: "systeme:pilotage", event: "pilotage_pilote", properties: { uid } });
+  const sonnes = () => [...new Set(banc.pushes.map((p) => p.endpoint))].sort();
+  const decor = async (marques) => {
+    await monter({ battement: false, utilisateurs: [PILOTE, SECOND, INTRUS], env: { PILOTAGE_EMAILS: "second@exemple.fr" } });
+    banc.base.semer("push_subscriptions", [{ user_id: SECOND.id, endpoint: "https://fcm.googleapis.com/fcm/send/second", subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/second", keys: { p256dh: "p", auth: "a" } } }]);
+    banc.base.semer("analytics_events", marques.map(marque));
+    banc.gh.runs["deploy.yml"] = [run({ conclusion: "failure" })];
+  };
+  // Le pilote est marqué ; une seconde marque ne se relit pas (authentification en 500 pour ce compte) : deux
+  // marques, deux adresses attendues — et pourtant le second pilote n'est PAS parmi elles.
+  await decor([PILOTE.id, FANTOME]);
+  banc.base.panneAuth = (a) => (a.quoi === "getUserById" && a.id === FANTOME ? { status: 500, message: "auth indisponible" } : null);
+  await veille();
+  assert.ok(sonnes().includes("https://fcm.googleapis.com/fcm/send/second"), "le second pilote est sonné : " + JSON.stringify(sonnes()));
+  assert.equal(sonnes().length, 3);
+  assert.ok(banc.base.appelsAuth.some((a) => a.quoi === "listUsers"), "une adresse manque à la preuve : le parcours la cherche");
+  // Les deux pilotes marqués ET relus : aucun parcours.
+  await decor([PILOTE.id, SECOND.id]);
+  await veille();
+  assert.equal(sonnes().length, 3);
+  assert.equal(banc.base.appelsAuth.filter((a) => a.quoi === "listUsers").length, 0);
+});
+
+test("㊲ chaque action du gestionnaire est exécutée par ce banc, ET menée au bout au moins une fois — une action neuve sans exercice, ou seulement refusée, rougit ici", () => {
+  // Tout nom entre guillemets : une action « retour-v2 » ou « Relancer2 » ne passerait pas sous un motif étroit.
+  const declarees = [...SOURCE.matchAll(/^\s*case "([^"]+)":/gm)].map((m) => m[1]).concat("veille").sort();
   assert.ok(declarees.length >= 15, "le gestionnaire a été lu : " + declarees.join(", "));
+  assert.equal(new Set(declarees).size, declarees.length, "aucune action déclarée deux fois");
   assert.deepEqual([...ACTIONS_EPROUVEES].sort(), declarees);
+  // Nommer une action ne suffit pas : un exercice qui ne lui ferait rendre que des refus (400, 409, 501) ne
+  // prouverait rien de ce qu'elle FAIT. Chacune a répondu 200 au moins une fois dans ce banc.
+  assert.deepEqual(declarees.filter((a) => !ACTIONS_ABOUTIES.has(a)), [], "actions jamais menées au bout");
 });
