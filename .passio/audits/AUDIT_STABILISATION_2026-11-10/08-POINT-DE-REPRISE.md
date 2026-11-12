@@ -80,3 +80,12 @@ test, sonde anonyme, reproductions, avant / après de chaque lot), `outils/` (`s
 - Reste : au démarrage suivant d'une session perdue, `entrerEnSessionExpiree()` exige un jeton persisté
   (`session-expiree.spec.js` ② le fige) — lot à part. Étapes suivantes du plan : d (ETAT-01, rejeu de l'état),
   e (verdicts restants), f (migrations), g (CI).
+
+## Ajout du 2026-11-12 — fusionné ET déployé
+
+- Contre-revues de mainteneur unique postées le 10/11 depuis PASSIO74 sur l'ordre de Benjamin, rédigées par Claude Code
+  et le disant (pas des revues indépendantes). La relecture a trouvé et corrigé un défaut dans #826 (visiteur).
+- #823, #824, #822, #827 fusionnées le 10/11 ; #826 le 12/11. Production : `release.json` → commit `6aaafa79`
+  (buildId `ef7641d4dca7`), run 43199065800 : gouvernance, fumée et « Déploiement production » verts.
+- Reste du plan : ETAT-01 (rejeu de l'état, critique), verdicts restants (SRV-04, ETAT-04, ETAT-09, PARC-01),
+  migrations à préparer (durcissement CLI-01, SRV-02, SRV-08, purge SRV-05), CI (STAB-10), décisions STAB-04 / STAB-05 / PIL-01.
