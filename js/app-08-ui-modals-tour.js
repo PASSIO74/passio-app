@@ -2749,6 +2749,7 @@ function renderEverything() {
 function initApp() {
   try { renderEverything(); } catch(e) {}
   document.body.classList.add("screen-feed-active");
+  try { ouvrirEcranDeLAncre(); } catch(e) {}
   try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
   // ✅ LANCER LE TOUR SEULEMENT SI C'EST LA PREMIÈRE VISITE
   if (!state.tourSeen) {
@@ -2756,6 +2757,24 @@ function initApp() {
     saveState();
     launchTourSafe();
   }
+}
+
+// ENT-C09 (audit UX/UI du 2026-11-10) : recharger sur « Messages » rouvrait le
+// Fil, et l'adresse gardait #messages — l'écran et l'adresse se contredisaient.
+// L'ancre n'est suivie que si elle nomme un écran de la liste FERMÉE NAV_SCREENS ;
+// tout autre ancre (#post-…, retour d'authentification) reste à son lecteur.
+// Aucune entrée d'historique n'est poussée : on RÉÉCRIT celle du chargement.
+function ouvrirEcranDeLAncre() {
+  var h = "";
+  try { h = (location.hash || "").replace(/^#/, ""); } catch (e) { return false; }
+  if (!h || h === "feed" || typeof NAV_SCREENS === "undefined" || NAV_SCREENS.indexOf(h) < 0) return false;
+  // Déjà sur cet écran (la personne a navigué avant l'appel différé d'initApp) : rien à faire.
+  var deja = document.getElementById("screen-" + h);
+  if (deja && deja.classList.contains("active")) return false;
+  isNavigatingBack = true;
+  try { goTo(h); } finally { isNavigatingBack = false; }
+  try { if (typeof replaceHistorySafe === "function") replaceHistorySafe({ screen: h }, "#" + h); } catch (e) {}
+  return true;
 }
 
 // navigateTo — alias de goTo pour la compatibilité (utilisé dans les cartes IA)

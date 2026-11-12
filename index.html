@@ -90,6 +90,14 @@
 </head>
 <body>
 
+<!-- ENT-C12 (audit UX/UI du 2026-11-10) : premier arrêt du clavier — changer
+     d'écran sans traverser tout le fil. Des boutons, pas des ancres : un
+     changement de `#` passerait pour une navigation (popstate, NAV_SCREENS). -->
+<div class="liens-evitement">
+  <button type="button" class="lien-evitement" onclick="allerA('navigation')">Aller à la navigation</button>
+  <button type="button" class="lien-evitement" onclick="allerA('contenu')">Aller au contenu</button>
+</div>
+
 <div class="app-shell">
 
   <!-- ============ LANDING / PITCH ============ -->
@@ -120,7 +128,7 @@
       <div class="landing-pillar">
         <div class="landing-pillar-emoji">🎨</div>
         <div>
-          <div class="landing-pillar-title">Choisis ton humeur du moment</div>
+          <div class="landing-pillar-title">Choisis ton envie du moment</div>
           <div class="landing-pillar-text">Envie d'apprendre, de créer, de te détendre ? Le fil s'adapte à toi, à ton rythme.</div>
         </div>
       </div>
@@ -154,12 +162,12 @@
       </div>
     </div>
 
+    <!-- ENT-C13 (audit UX/UI du 2026-11-10) : UNE action principale (« Créer un
+         compte »), la connexion en secondaire, l'installation en lien. -->
     <div class="landing-cta">
-      <div style="display:flex;gap:8px;">
-        <button onclick="exitLandingAsAuth('signin')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Se connecter</button>
-        <button onclick="exitLandingAsAuth('signup')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Créer un compte</button>
-      </div>
-      <button id="btn-install-app" onclick="pwaInstall()" class="btn primary block" style="margin-top:10px;font-size:15px;padding:14px;font-weight:800;display:none;">Installer l'application</button>
+      <button onclick="exitLandingAsAuth('signup')" class="btn primary block" style="font-size:15px;padding:14px;font-weight:800;min-height:48px;">Créer un compte</button>
+      <button onclick="exitLandingAsAuth('signin')" class="btn ghost block landing-cta-secondaire" style="margin-top:8px;font-size:15px;padding:12px;font-weight:700;min-height:44px;">Se connecter</button>
+      <button id="btn-install-app" onclick="pwaInstall()" class="landing-cta-lien" style="display:none;">Installer l'application</button>
     </div>
 
   </div>
@@ -249,9 +257,9 @@
 
       <!-- Onglets Se connecter / Créer un compte -->
       <div style="padding:0 20px;width:100%;box-sizing:border-box;">
-        <div class="onb-auth-toggle" style="margin-bottom:20px;">
-          <button class="onb-auth-tab active" id="authTabSignin" onclick="switchAuthTab('signin')">Se connecter</button>
-          <button class="onb-auth-tab" id="authTabSignup" onclick="switchAuthTab('signup')">Créer un compte</button>
+        <div class="onb-auth-toggle" role="tablist" aria-label="Compte" style="margin-bottom:20px;">
+          <button type="button" role="tab" aria-selected="true" class="onb-auth-tab active" id="authTabSignin" onclick="switchAuthTab('signin')">Se connecter</button>
+          <button type="button" role="tab" aria-selected="false" class="onb-auth-tab" id="authTabSignup" onclick="switchAuthTab('signup')">Créer un compte</button>
         </div>
 
         <div id="authMsg" class="onb-auth-msg"></div>
@@ -288,7 +296,7 @@
              SEULEMENT (`switchAuthTab` pose `display: flex`, jamais `""`). -->
         <label class="field" id="authConsentWrap" style="display:none;flex-direction:row;align-items:flex-start;gap:10px;margin:2px 0 12px;">
           <input type="checkbox" id="authConsent" style="width:20px;height:20px;min-width:20px;margin:1px 0 0;accent-color:var(--accent);"/>
-          <span style="display:block;font-size:12px;line-height:1.5;color:var(--muted);margin:0;">J'ai lu et j'accepte les <span id="authCguLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openTermsOfService()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">conditions générales</span> et la <span id="authPrivacyLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span>. J'ai 18 ans ou plus et j'ai compris que PASSIO est une beta fournie sans garantie.</span>
+          <span style="display:block;font-size:12px;line-height:1.5;color:var(--muted);margin:0;">J'ai lu et j'accepte les <span id="authCguLink" class="auth-lien-legal" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openTermsOfService()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">conditions générales</span> et la <span id="authPrivacyLink" class="auth-lien-legal" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span>. J'ai 18 ans ou plus et j'ai compris que PASSIO est une beta fournie sans garantie.</span>
         </label>
 
         <!-- ⚠️ L'ÉCHO DU REFUS VIT HORS DE L'ÉTIQUETTE, ET CE N'EST PAS UN DÉTAIL DE MISE EN PAGE.
@@ -384,8 +392,8 @@
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
           <div id="authCaptcha" style="display:none;margin:0 0 2px;"></div>
           <button class="btn primary block" id="authSubmitBtn" onclick="onbDoAuth()" style="padding:14px;font-size:15px;font-weight:800;">Se connecter</button>
-          <span id="authForgotLink" onclick="onbForgotPassword()" style="cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Mot de passe oublié ?</span>
-          <span id="authResendLink" onclick="onbResendConfirmation()" style="display:none;cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Renvoyer l'e-mail de confirmation</span>
+          <button type="button" class="auth-lien" id="authForgotLink" onclick="onbForgotPassword()" style="cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Mot de passe oublié ?</button>
+          <button type="button" class="auth-lien" id="authResendLink" onclick="onbResendConfirmation()" style="display:none;cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Renvoyer l'e-mail de confirmation</button>
         </div>
       </div>
     </div>
@@ -403,7 +411,8 @@
       <p class="onb-text">PASSIO est réservé aux personnes majeures. Ton année de naissance est déclarative : elle n'est vérifiée par aucun contrôle automatique.</p>
       <label class="field">
         <span>Ton année de naissance</span>
-        <input type="number" class="input" id="birthYear" placeholder="1995" min="1900" max="2020" />
+        <input type="number" class="input" id="birthYear" placeholder="1995" min="1900" max="2020" inputmode="numeric" autocomplete="bday-year" style="font-size:16px;" />
+        <span style="display:block;font-size:11px;line-height:1.4;color:var(--muted);margin-top:4px;">PASSIO est réservé aux 18 ans et plus. Ton année n'est jamais affichée sur ton profil.</span>
       </label>
       <div class="onb-footer">
         <button class="btn ghost" onclick="onbPrev()">← Retour</button>
@@ -417,8 +426,9 @@
       <div class="onb-title" style="font-size:22px;">Comment t'appelles-tu ?</div>
       <p class="onb-text">C'est ton nom public, le même partout. Tu pourras ajouter d'autres passions ensuite.</p>
       <label class="field">
-        <span>Ton prénom</span>
-        <input type="text" class="input" id="userName" placeholder="Benjamin" maxlength="40" />
+        <span>Nom d'utilisateur</span>
+        <input type="text" class="input" id="userName" placeholder="Benjamin" maxlength="40" autocomplete="nickname" style="font-size:16px;" />
+        <span style="display:block;font-size:11px;line-height:1.4;color:var(--muted);margin-top:4px;">C'est ton nom public sur PASSIO. Tu pourras le changer plus tard.</span>
       </label>
       <div class="onb-footer">
         <button class="btn ghost" onclick="onbPrev()">← Retour</button>
@@ -476,13 +486,19 @@
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M18 8.5 A6 6 0 0 0 6 8.5 C6 14 3.8 15.5 3.8 15.5 H20.2 S18 14 18 8.5 Z"/><path d="M10.2 19 A2 2 0 0 0 13.8 19"/></svg>
         <span class="bell-dot" id="bellDot"></span>
       </div>
-      <div class="hamburger" onclick="toggleDevPanel()" role="button" tabindex="0" aria-label="Paramètres">⋯</div>
+      <div class="hamburger" id="topbarParametres" onclick="toggleDevPanel()" role="button" tabindex="0" aria-label="Paramètres" aria-haspopup="dialog" aria-controls="devPanel" aria-expanded="false">⋯</div>
     </div>
   </div>
 
   <!-- Dev / demo panel -->
-  <div id="devPanel" class="dev-panel">
-    <div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:12px;text-align:center;">Paramètres</div>
+  <!-- ENT-C06 (audit UX/UI du 2026-11-10) : le panneau se ferme comme une feuille —
+       fond assombri (toucher dehors), croix de 44 px, Échap, retour système. -->
+  <div id="devPanelFond" class="dev-panel-fond" onclick="fermerParametres()" aria-hidden="true"></div>
+  <div id="devPanel" class="dev-panel" role="dialog" aria-label="Paramètres">
+    <div class="dev-panel-tete">
+      <span class="dev-panel-titre">Paramètres</span>
+      <button type="button" class="dev-panel-fermer" onclick="fermerParametres()" aria-label="Fermer les paramètres">×</button>
+    </div>
 
     <!-- COMPTE -->
     <div class="settings-section" onclick="toggleSettingsSection(this)">
@@ -501,6 +517,9 @@
              première visite n'offrait AUCUN chemin vers un compte existant. -->
         <button class="btn ghost" id="settingsAuthSwitch" onclick="event.stopPropagation();toggleDevPanel();openAccountSwitch()">Se connecter avec un autre compte</button>
         <button class="btn ghost" onclick="event.stopPropagation();resetOnboarding()" style="font-size:12px;">Voir l'onboarding</button>
+        <!-- ENT-C06 : la destruction du compte vit dans « Compte », loin de la déconnexion.
+             🛡 RGPD 2026-06-10 : vraie suppression (données serveur + locales). -->
+        <button class="btn ghost dev-panel-danger" id="settingsDeleteAccount" onclick="event.stopPropagation();toggleDevPanel();openDeleteAccountConfirm()">Supprimer mon compte</button>
       </div>
     </div>
 
@@ -543,8 +562,8 @@
       </div>
     </div>
 
-    <!-- DÉMO -->
-    <div class="settings-section" onclick="toggleSettingsSection(this)">
+    <!-- DÉMO — ENT-C06 : masquée hors mode démo (majSectionDemo, app-02). -->
+    <div class="settings-section" id="settingsDemo" style="display:none" onclick="toggleSettingsSection(this)">
       <div class="settings-section-header">
         <span>Démo</span>
         <span class="settings-arrow">›</span>
@@ -579,10 +598,7 @@
 
     <!-- DANGER ZONE -->
     <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
-      <button class="btn ghost" id="settingsLogout" onclick="toggleDevPanel();openLogoutConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">Se déconnecter</button>
-      <!-- 🛡 RGPD 2026-06-10 : vraie suppression (données serveur + locales),
-           avant ce bouton ne vidait que le localStorage -->
-      <button class="btn ghost" id="settingsDeleteAccount" onclick="toggleDevPanel();openDeleteAccountConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">Supprimer mon compte</button>
+      <button class="btn ghost dev-panel-danger" id="settingsLogout" onclick="toggleDevPanel();openLogoutConfirm()">Se déconnecter</button>
     </div>
   </div>
 
@@ -929,7 +945,7 @@
       </label>
 
       <label class="field" id="fieldMood">
-        <span>Mood</span>
+        <span>Envie</span>
         <div class="pill-row" id="postMoodRow">
           <!-- ⚠️ Le VOCABULAIRE suit le rail d'intentions du Fil (Tous · Explorer ·
                Apprendre · Idées · Rencontrer) : on publie avec le mot qu'on lit.
@@ -1376,8 +1392,8 @@
       <div class="tour-actions">
         <div class="tour-dots" id="tourDots"></div>
         <div style="display:flex;gap:6px;">
-          <button class="btn ghost small" onclick="endTour()">Quitter</button>
-          <button class="btn primary small" id="tourNextBtn" onclick="tourNext()">Suivant →</button>
+          <button class="btn ghost small tour-btn" onclick="endTour()">Quitter</button>
+          <button class="btn primary small tour-btn" id="tourNextBtn" onclick="tourNext()">Suivant →</button>
         </div>
       </div>
     </div>

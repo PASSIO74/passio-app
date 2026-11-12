@@ -1440,7 +1440,7 @@ function renderProfileContent() {
       + '<div class="empty-icon">'+emoji+'</div>'
       + '<div class="empty-title">'+title+'</div>'
       + '<div class="empty-text">'+text+'</div>'
-      + '<button class="btn primary" onclick="goTo(\'studio\')">Créer un post</button>'
+      + '<button class="btn primary" onclick="goTo(\'studio\')">Créer une publication</button>'
       + '</div>';
   }
 
