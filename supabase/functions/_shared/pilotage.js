@@ -162,6 +162,9 @@ export const EVENEMENTS_RUNS = Object.freeze({
   deploy: Object.freeze(["push"]),
   sentinelle: Object.freeze(["schedule", "workflow_dispatch"]),
   veille: Object.freeze(["schedule", "workflow_dispatch"]),
+  // Le scan de sécurité du lundi : son seul passage PLANIFIÉ parcourt TOUT l'historique (une PR ne
+  // scanne que son diff, et ses exécutions gardaient l'âge frais — contre-revue de #863).
+  securite: Object.freeze(["schedule"]),
 });
 // Les exécutions qui comptent, de la plus récente à la plus ancienne. Tri STABLE : à date égale
 // l'ordre reçu tient — la tentative précédente d'une relance (même date de création) suit sa relance.
@@ -237,7 +240,9 @@ const SUFFIXES_ECHEC = Object.freeze({ timed_out: " (délai dépassé)", startup
 // label ne se pose qu'avec le droit d'écrire, `creator` est le pilote. Ce qui dépasse encore
 // (plus de ISSUES_PAR_FILTRE_MAX sous UN filtre : des résumés jamais refermés) se dit à l'écran.
 export const ISSUES_PAR_FILTRE_MAX = 300;
-const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production" });
+const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production", securite: "le scan de sécurité du lundi" });
+/** Au-delà, le scan de sécurité du lundi est dit en retard : un lundi manqué. */
+export const SCAN_MUET_MS = 8 * 864e5;
 /** Les parties de GitHub qui n'ont pas pu être lues, en clair (vide = tout est lu). */
 export function partielGithub({ runsNonLus = [], issuesTronquees = false } = {}) {
   const l = Array.isArray(runsNonLus) ? runsNonLus : [];
@@ -763,6 +768,21 @@ export function aFaire(d, maintenant = Date.now()) {
     ajoute({ id: "run:" + cle, prio: 1, etiquette: "Non aboutie", titre: TITRES_INABOUTI[cle], url,
       quoi: cle === "deploy" ? "Ouvre GitHub pour la rejouer : la version en ligne n'est pas la dernière." : quoiRate(sr, "La relance maintenant."),
       gestes: cle === "deploy" ? [{ libelle: REGLER, principal: true, ouvrir: url || PAGES_REGLAGE.misesEnLigne }] : relancer(cle) });
+  }
+  // Le scan de sécurité du lundi (`securite.yml`, son passage PLANIFIÉ — 2026-11-12, contre-revue de #863) :
+  // en échec le 09/11, il ne se voyait nulle part. Son tri est une décision de Benjamin, JAMAIS d'un agent —
+  // une clé publique par conception s'inscrit en exception, une vraie clé se RÉVOQUE d'abord : aucun
+  // « Régler », aucune réparation (il n'est pas dans RUNS_REPARABLES), un lien vers le passage.
+  const sc = echecRun(runs.securite);
+  if (sc) {
+    const url = urlGithub(sc.run.url);
+    ajoute({ id: "scan:securite", prio: sc.nature === "echec" ? 1 : 2, etiquette: "À trier",
+      titre: sc.nature === "echec" ? "Le scan de sécurité du lundi a échoué" : "Le scan de sécurité du lundi n'a pas abouti",
+      quoi: "À trier par toi, pas par une machine. Son journal dit quel job : les secrets (une clé publique par conception s'inscrit dans .gitleaksignore ; une vraie clé se révoque d'abord, puis s'y inscrit aussi), npm audit ou la gate des workflows.",
+      url, gestes: url ? [{ libelle: "Ouvrir", principal: true, ouvrir: url }] : [] });
+  } else if (runs.securite && runs.securite.le && maintenant - dateUtc(runs.securite.le) > SCAN_MUET_MS) {
+    ajoute({ id: "scan:securite", prio: 2, etiquette: "À trier", titre: "Le scan de sécurité n'a pas tourné depuis plus de 8 jours",
+      quoi: "Un lundi manqué : vérifie que « Sécurité de la chaîne » est actif sur GitHub.", url: urlGithub(runs.securite.url), gestes: [] });
   }
   // Les issues suivies.
   for (const i of issues) {

@@ -27,7 +27,7 @@ const M = [
   ["R01 une seule exécution lue (per_page=1)", FN, "&event=${ev}&per_page=10", "&event=${ev}&per_page=1", BANC, "⑫"],
   ["R02 seule « failure » est un échec", PJ, `Object.freeze(["failure", "timed_out", "startup_failure"])`, `Object.freeze(["failure"])`, BANC, "⑪"],
   ["R03 une exécution annulée ne dit rien", PJ, `return termine && r.conclusion ? { nature: "inabouti", run: r } : null;`, `return null;`, BANC, "⑪"],
-  ["R04 une lecture d'exécutions refusée n'est pas notée", FN, `if (!j || !Array.isArray(j.workflow_runs)) { runsNonLus.push(cle); return null; }`, `if (!j || !Array.isArray(j.workflow_runs)) { return null; }`, BANC, "⑩"],
+  ["R04 une lecture d'exécutions refusée n'est pas notée", FN, `if (lectures.some((l) => !l)) { runsNonLus.push(cle); return null; }`, `if (lectures.some((l) => !l)) { return null; }`, BANC, "⑩"],
   ["R05 des issues suivies qui débordent leur filtre ne se disent pas", FN, `issuesTronquees = lots.some((l) => l.tronque);`, `issuesTronquees = false;`, BANC, "⑩"],
   ["R06 l'écran ignore ce que GitHub n'a pas rendu", FN, `out.verdict = verdictAffiche(v, nonLus, ((out.github as { partiel?: string[] } | null)?.partiel) || []);`, `out.verdict = verdictAffiche(v, nonLus);`, BANC, "⑩"],
   ["R07 la veille baisse son voyant sur des exécutions non lues", FN, ` || !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0;`, ` || !!(parcoursVeille && parcoursVeille.tronque);`, BANC, "㉚"],
@@ -82,6 +82,11 @@ const M = [
   ["R54 un défaut du code n'est qu'un avertissement dans les journaux", FN, `console.error("pilotage : défaut du code dans un geste "`, `console.warn("pilotage : défaut du code dans un geste "`, BANC, "㊶"],
   ["R55 la note armée illisible laisse dire « part en ligne »", PJ, `if (i.autoFusion && fusionner && nonLus.includes("fusionsArmees")) {`, `if (false) {`, BANC, "㊷"],
   ["R56 sept jours de notes armées : une auto-fusion plus ancienne n'est plus comparée", FN, `.gte("created_at", ilYa(30 * 864e5))`, `.gte("created_at", ilYa(7 * 864e5))`, BANC, "㊷"],
+  // Le scan de sécurité du lundi (contre-revue de #863) : dit, à trier par Benjamin, jamais réparé.
+  ["R57 le scan en échec ne se dit pas", PJ, `  if (sc) {\n`, `  if (false) {\n`, BANC, "㊸"],
+  ["R58 le scan devient réparable (un agent trierait les secrets)", PJ, `  veille: { fichier: "veille-production.yml", libelle: "Veille de production" },\n};`, `  veille: { fichier: "veille-production.yml", libelle: "Veille de production" },\n  securite: { fichier: "securite.yml", libelle: "Scan de sécurité" },\n};`, BANC, "㊸"],
+  ["R59 les exécutions de PR du scan comptent", PJ, `securite: Object.freeze(["schedule"]),`, `securite: Object.freeze(["schedule", "pull_request"]),`, BANC, "㊸"],
+  ["R60 le scan illisible ne se dit pas", PJ, `, securite: "le scan de sécurité du lundi" });`, ` });`, BANC, "㊸"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");

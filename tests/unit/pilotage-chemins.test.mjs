@@ -105,14 +105,14 @@ const run = (extra = {}) => {
 // Ce que GitHub pose sur chaque exécution et que le banc ne répète pas : l'événement qui l'a
 // lancée (une mise en ligne part d'un `push`, la Sentinelle et la veille d'une planification),
 // la branche et le dépôt de tête, la tentative.
-const EVENEMENT_HABITUEL = { "deploy.yml": "push", "sentinelle-autonome.yml": "schedule", "veille-production.yml": "schedule" };
+const EVENEMENT_HABITUEL = { "deploy.yml": "push", "sentinelle-autonome.yml": "schedule", "veille-production.yml": "schedule", "securite.yml": "schedule" };
 const runComplet = (fichier, r) => ({ event: EVENEMENT_HABITUEL[fichier], head_branch: "main", head_repository: { full_name: DEPOT }, run_attempt: 1, ...r });
 const issue = (x) => ({ state: "open", labels: [], html_url: "https://github.com/" + DEPOT + "/issues/" + x.number, created_at: ilYa(3600e3), user: { login: "github-actions[bot]" }, body: "", ...x, labels: (x.labels || []).map((l) => (typeof l === "string" ? { name: l } : l)) });
 const pr = (x) => ({ number: x.number, state: "open", draft: false, mergeable: true, node_id: "PR_" + x.number, updated_at: ilYa(600e3), auto_merge: null, title: "Correctif " + x.number,
   html_url: "https://github.com/" + DEPOT + "/pull/" + x.number, created_at: ilYa(3600e3), labels: [], user: { login: "github-actions[bot]" },
   head: { ref: "claude/issue-7-1", sha: sha("c"), repo: { full_name: DEPOT } }, ...x });
 function githubCalme() {
-  return { issues: [], pulls: [], commentaires: {}, runs: { "deploy.yml": [run()], "sentinelle-autonome.yml": [run()], "veille-production.yml": [run()] },
+  return { issues: [], pulls: [], commentaires: {}, runs: { "deploy.yml": [run()], "sentinelle-autonome.yml": [run()], "veille-production.yml": [run()], "securite.yml": [run({ le: ilYa(3 * 864e5) })] },
     // `tentatives` : { <id du run> : { <n> : la tentative n } } — ce que rend /actions/runs/<id>/attempts/<n>.
     tentatives: {}, panne: null, fusion: { status: 200 }, autoFusion: true, expiration: null, prochainNumero: 900, lenteur: null };
 }
@@ -135,7 +135,8 @@ async function github(methode, url, corps) {
     // Comme GitHub : `branch` filtre sur le NOM de la branche de tête (celle d'un fork comprise), `event` sur l'événement.
     let liste = (g.runs[m[1]] || []).map((r) => runComplet(m[1], r));
     if (q.get("branch")) liste = liste.filter((r) => r.head_branch === q.get("branch"));
-    if (q.get("event")) liste = liste.filter((r) => r.event === q.get("event"));
+    // `evenementIgnore` : un GitHub qui n'honorerait pas ce filtre (réplique, changement d'API) — le filtre de la fonction doit tenir seul (⑪ bis).
+    if (q.get("event") && !g.evenementIgnore) liste = liste.filter((r) => r.event === q.get("event"));
     return rep({ workflow_runs: liste.slice(0, Number(q.get("per_page")) || 30) });
   }
   if (methode === "GET" && (m = /\/actions\/runs\/(\d+)\/attempts\/(\d+)$/.exec(chemin))) {
@@ -458,6 +459,16 @@ test("⑪ bis une exécution qui n'est pas la NÔTRE ne compte pas : la PR d'un 
   const [lecture] = appelsGithub("GET", /deploy\.yml\/runs/);
   assert.match(lecture.chemin, /branch=main/);
   assert.match(lecture.chemin, /event=push/);
+  // Un GitHub qui n'honorerait pas le filtre d'événement (une réplique, un changement d'API) : le filtre de la
+  // fonction (événement ET dépôt de tête) tient seul — les exécutions du fork ne comptent toujours pas.
+  await monter();
+  banc.gh.evenementIgnore = true;
+  banc.gh.runs["sentinelle-autonome.yml"] = [run({ ...duFork, conclusion: "action_required", id: 95, le: ilYa(60e3) }), run({ id: 94, le: ilYa(30 * 60e3) })];
+  banc.gh.runs["deploy.yml"] = [run({ ...duFork, conclusion: "failure", id: 97, le: ilYa(60e3) }), run({ id: 96, le: ilYa(30 * 60e3) })];
+  const sansFiltre = await appeler({ action: "etat" });
+  assert.equal(sansFiltre.corps.verdict.couleur, "vert", JSON.stringify(sansFiltre.corps.verdict));
+  assert.equal(ligneAFaire(sansFiltre, "run:deploy"), null);
+  assert.equal(ligneAFaire(sansFiltre, "run:sentinelle"), null);
 });
 
 test("⑫ le 12/11 rejoué : un déploiement en ÉCHEC ne se cache pas derrière le run suivant encore en cours", async () => {
@@ -1362,6 +1373,44 @@ test("㊷ la note de la version armée ILLISIBLE ne laisse plus dire « part en 
   const e14 = await appeler({ action: "etat", frais: true });
   assert.deepEqual(e14.corps.fusionsArmees, { 14: sha("d") });
   assert.equal(ligneAFaire(e14, "pr:14").titre, "Un correctif a changé depuis ton « Régler »");
+});
+
+test("㊸ le scan de sécurité du lundi se voit — À TRIER par Benjamin, jamais « Régler » : ni réparation, ni bouton d'action, seulement un lien ; ses exécutions de PR ne comptent pas ; illisible, c'est dit", async () => {
+  // Le 09/11 rejoué : le passage planifié a échoué (gitleaks sur tout l'historique), les PR d'après sont vertes.
+  await monter();
+  banc.gh.runs["securite.yml"] = [run({ event: "pull_request", id: 3, le: ilYa(3600e3) }), run({ conclusion: "failure", id: 2, le: ilYa(3 * 864e5) }), run({ id: 1, le: ilYa(10 * 864e5) })];
+  let r = await appeler({ action: "etat" });
+  const l = ligneAFaire(r, "scan:securite");
+  assert.ok(l, JSON.stringify((r.corps.aFaire || []).map((x) => x.id)));
+  assert.deepEqual([l.titre, l.prio, l.etiquette], ["Le scan de sécurité du lundi a échoué", 1, "À trier"]);
+  assert.match(l.quoi, /À trier par toi, pas par une machine/);
+  assert.match(l.quoi, /une vraie clé se révoque d'abord/);
+  assert.match(String(l.url), /\/runs\/2$/, "le lien mène au passage planifié en échec, pas à la PR");
+  assert.equal(l.gestes.length, 1);
+  assert.ok(l.gestes[0].ouvrir && !l.gestes[0].corps, "un lien, aucune action de la fonction");
+  assert.ok(!(r.corps.aFaire || []).some((x) => x.id === "run:securite"), "pas une exécution « en échec » à faire réparer");
+  assert.ok(!(r.corps.github.aReparer || []).some((x) => x.cle === "securite"), "rien à confier à un agent");
+  assert.equal(r.corps.verdict.couleur, "vert", "un tri à faire n'est pas une panne de la production : " + JSON.stringify(r.corps.verdict));
+  // Et la fonction refuse de le confier à un agent, même forgé.
+  assert.equal((await appeler({ action: "reparer", cible: "run", cle: "securite" })).status, 400);
+  assert.equal(appelsGithub("POST", /\/issues$/).length, 0);
+  // Seul le passage PLANIFIÉ est demandé à GitHub.
+  assert.ok(appelsGithub("GET", /securite\.yml\/runs/).every((x) => /event=schedule/.test(x.chemin) && /branch=main/.test(x.chemin)));
+  // Le passage suivant réussit : plus rien à dire. Un succès de plus de 8 jours : un lundi manqué, dit sans urgence.
+  await monter();
+  banc.gh.runs["securite.yml"] = [run({ id: 4, le: ilYa(2 * 864e5) }), run({ conclusion: "failure", id: 2, le: ilYa(9 * 864e5) })];
+  assert.equal(ligneAFaire(await appeler({ action: "etat" }), "scan:securite"), null);
+  await monter();
+  banc.gh.runs["securite.yml"] = [run({ id: 5, le: ilYa(9 * 864e5) })];
+  const muet = ligneAFaire(await appeler({ action: "etat" }), "scan:securite");
+  assert.deepEqual([muet && muet.titre, muet && muet.prio], ["Le scan de sécurité n'a pas tourné depuis plus de 8 jours", 2]);
+  // Illisible : l'écran ne passe pas au vert, et le dit.
+  await monter();
+  banc.gh.panne = (m, chemin) => (/securite\.yml\/runs/.test(chemin) ? { status: 502 } : null);
+  r = await appeler({ action: "etat" });
+  assert.ok(r.corps.github.runsNonLus.includes("securite"));
+  assert.notEqual(r.corps.verdict.couleur, "vert");
+  assert.match(r.corps.verdict.raisons.join(" "), /non lu en entier : GitHub, le scan de sécurité du lundi/);
 });
 
 test("㊲ chaque action du gestionnaire est exécutée par ce banc, ET menée au bout au moins une fois — une action neuve sans exercice, ou seulement refusée, rougit ici", () => {
