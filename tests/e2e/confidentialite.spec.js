@@ -93,20 +93,24 @@ test.describe("Confidentialité cross-compte (RLS)", () => {
       ]);
       expect(uidA && uidB && uidC).toBeTruthy();
 
-      // A passe son compte en PRIVÉ via le VRAI chemin (état + supaUpsertProfile) :
-      // un simple UPDATE serait réécrit par l'upsert différé de supaInit (qui relit
-      // l'état local, isPrivate=false par défaut). On vérifie ensuite que ça a pris.
+      // A passe son compte en PRIVÉ, comme le fait la case du profil : choix PROUVÉ
+      // (`privacyChoisi`), puis écriture de `is_private` par `supaSavePublicProfile`.
+      // ⚠️ Depuis le 12/11 (STAB-04), un compte neuf naît PUBLIC : ce test passait
+      // auparavant parce que la ligne minimale naissait déjà privée, et
+      // `supaUpsertProfile` ne fait que CRÉER une ligne absente — il n'a jamais
+      // écrit le choix. On vérifie ensuite que ça a pris.
       await A.evaluate(async () => {
         state.user.general = state.user.general || {};
-        state.user.general.isPrivate = true;
-        await supaUpsertProfile();
+        state.user.general.isPrivate = true; state.user.general.privacyChoisi = true;
+        saveState();
+        await supaSavePublicProfile({ is_private: true });
       });
       const isPriv = await A.evaluate(async () => {
         const start = Date.now();
         while (Date.now() - start < 8000) {
           const { data } = await supa.from("profiles").select("is_private").eq("id", MY_UID).maybeSingle();
           if (data && data.is_private === true) return true;
-          await supaUpsertProfile();
+          await supa.from("profiles").update({ is_private: true }).eq("id", MY_UID);
           await new Promise((r) => setTimeout(r, 700));
         }
         return false;

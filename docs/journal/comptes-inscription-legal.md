@@ -37,6 +37,7 @@
 - ↩️ ROUVRIR UNE MODALE PENDANT LE RETOUR DE FERMETURE NE SORT PLUS DE L'APPLICATION — un seul geste d'historique à la fois (2026-11-08)
 - 📱 INSCRIPTION SUR iPHONE — trois frictions au moment de créer son compte (2026-11-09)
 - 🔐 UNE SESSION QUI FINIT AILLEURS NE DÉTRUIT RIEN ICI — déconnexion locale, SIGNED_OUT écouté, bandeau qui ne purge plus (2026-11-10)
+- 🌍 UN COMPTE NEUF NAÎT PUBLIC — décision du 2026-11-12, les comptes existants inchangés (2026-11-12)
 
 ---
 
@@ -655,3 +656,18 @@ par le démarrage (`adopterCompteConnecte`).
 **Ce que ce lot ne fait pas.** Au démarrage suivant d'une session perdue, `entrerEnSessionExpiree()` exige toujours un jeton
 SDK persisté (que le SDK vient de retirer) : l'appareil peut encore retomber sur l'ancienne landing. `session-expiree.spec.js`
 ② fige ce comportement ; le changer touche l'ordre de démarrage de tous les bancs — lot à part.
+
+## 🌍 UN COMPTE NEUF NAÎT PUBLIC — décision du 2026-11-12, les comptes existants inchangés (2026-11-12)
+
+`_confidentialiteDeLaLigneMinimale` (app-08). Décision de Benjamin le 12/11 (audit de stabilisation, STAB-04) : une
+ligne `profiles` NEUVE, sans choix privé exprimé, naît **publique**. Mesuré en production le 10/11 : 9 profils sur 13
+privés, dont 7 des 8 créés depuis septembre sans l'avoir choisi ; un visiteur ne lisait qu'une publication réelle.
+
+⚠️ **Ce qui ne change pas, et c'était le cœur du P0 du 31/08.** La valeur ne sert qu'à l'INSERT d'une ligne absente
+(`_insertProfilMinimalSiAbsent`, insert-only, conflit de clé = « elle existe ») : une ligne existante n'est jamais
+réécrite, un compte privé ne redevient jamais public tout seul, et `supaSavePublicProfile` n'écrit toujours
+`is_private` que sur une preuve de choix. Un `isPrivate === true` local est respecté à la création.
+⚠️ **Les comptes existants ne sont PAS basculés** : passer un compte privé en public sans son geste serait l'écrasement
+même que la règle du 31/08 interdit. Verrous : `profil-identite-serveur-autoritaire` ① ⑦ ⑦ bis (rouges sur l'ancienne
+règle) et ⑦ ter ; trois cas qui partaient de « la ligne neuve naît privée » partent désormais d'une ligne serveur privée
+explicite (`profil-confidentialite-interface`, `profil-trois-autorites` ⑤ bis).
