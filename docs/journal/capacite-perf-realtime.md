@@ -2096,7 +2096,7 @@ rougir ; ce sont désormais les largeurs FIGÉES des builds d'avant #795 qu'il f
 
 | Mur | Limite (Pro, spend cap actif) | Atteint vers… |
 |---|---|---|
-| E-mails d'inscription | 30/h (défaut Supabase en SMTP perso), 300/j (Brevo gratuit) | un pic de lancement ; Google n'y est pas soumis |
+| E-mails d'inscription | 150/h côté Supabase (relevé : `rate_limit_email_sent`, lu le 12/11 par l'API de gestion ; le 09/11, le défaut de 30/h avait été supposé sans être lu), 300/j (Brevo gratuit) | un pic de lancement ; Google n'y est pas soumis |
 | **Messages temps réel** | **5 M/mois** | **avant la migration de #802 : ~1 300 actifs/jour (800 à 2 000) ; après : ~14 000** |
 | Messages temps réel par seconde | 500/s (au-delà, déconnexions `tenant_events`) | avant la migration : ~430 comptes connectés ensemble ; après : les 500 connexions passent devant |
 | Connexions temps réel | 500 | 500 sockets — un onglet ou appareil connecté chacun (un visiteur n'en ouvre pas ; `test:prod` et le tableau de bord comptent aussi) |
