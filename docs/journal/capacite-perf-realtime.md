@@ -36,6 +36,7 @@
 - ♻️ UNE BOUCLE AU REPOS — 470 setTimeout(0) par seconde, pour tout le monde, sur tous les écrans (2026-11-09)
 - 🔂 LE CHARGEUR DES 9 SCRIPTS : CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10)
 - 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
+- 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
 
 ---
 
@@ -2675,7 +2676,8 @@ résout `@playwright/test` y tombe au chargement (premier passage CI de #799). O
 run 42653481806) et a rougi le shard 1 des deux premiers passages de #799. Son faux serveur passe
 `sansIsolationDesDonnees` : le projet vide ne s'y pose pas, ce n'est pas lui. À traiter à part.
 ⚠️ **CE QUI PARLE ENCORE AU VRAI PROJET, PAR CONSTRUCTION** : les gates `dist` (`release-integrity`,
-`passion-context`, au socle : l'artefact déployé et sa télémétrie réelle sont leur sujet),
+`passion-context`, au socle : l'artefact déployé et sa télémétrie réelle sont leur sujet — **isolées
+depuis**, `passion-context` le 2026-11-10 (#819), `release-integrity` le 2026-11-12, fiche 🧾),
 `authz-critical` (la barrière RLS de la production), le contrat de `telemetrie-preauth`, et les scripts
 Node des jobs (service role : purge, mesures). Le WebSocket temps réel des suites
 `sansIsolationDesDonnees` est avalé depuis la PR de suite, côté banc seulement — le code temps réel de
@@ -2802,3 +2804,45 @@ visiteur garde sa copie locale, comme pour SRV-03.
 tout de suite. Il passe maintenant par la porte visiteur (`requireAuthentication("aimer")`). L'organisateur n'est
 notifié qu'après un succès, et un refus pour un compte rétablit l'état d'avant (« « J'aime » non enregistré »).
 Verrou : `tests/e2e/commentaire-activite-echec.spec.js` (5). Mutations : rougissent ① et ④.
+
+---
+
+## 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
+
+`tests/e2e/release-integrity.spec.js`, `scripts/tests-isolation-socle.json`. Ferme le « Reste à faire » de la fiche 🚱
+du 2026-11-10 (`telemetrie-pilotage-sentinelle.md`) et la ligne « CE QUI PARLE ENCORE AU VRAI PROJET » de la fiche
+🧪 du 2026-11-09 pour le job `dist`.
+
+**Le fait.** Dernière suite du job « Gates artefact production » inscrite au socle, `release-integrity` lisait la
+production à chaque passage : trois de ses quatre cas (①, ③, ④) démarrent l'application par leur propre `page.goto`,
+sans isolation, et le démarrage d'un visiteur demande `posts`, `events` et le référentiel `passions`. Mesuré derrière
+un proxy local qui REFUSE et compte toute connexion vers `*.supabase.co` (la sonde Playwright donne les chemins) :
+**9 tentatives par passage, 3 par cas** ; ② passe par `bootOnboarded` et était déjà servi par les routes. ⚠️ **9 est
+un PLANCHER** : derrière un proxy qui ne répond rien, la première page du référentiel échoue et le chargeur s'arrête.
+Le même passage servi par le miroir (réponses pleines) en compte **16** : le référentiel pagine tant que la page vit
+— 1, 3 et 6 pages pour ①, ③, ④. Aucune ligne de télémétrie : les POST du drain étaient déjà routés.
+
+**La raison au socle était périmée, sur ses deux moitiés.** « Le drain attend ses VRAIS POST » : depuis le
+2026-09-11, le cas ④ route `/rest/v1/telemetry_events` sur TOUT hôte ; ses POST n'atteignent plus aucun serveur, et
+ce qu'il mesure (que `drain` ne rend la main qu'une fois plus rien en vol) se lit sur cette route. « Un réseau simulé
+ne prouverait rien de l'artefact déployé » : l'artefact est servi EN LOCAL par `scripts/servir-dist.js`, et Supabase
+n'en fait pas partie. L'identité de build (`window.PASSIO_RELEASE`, `/release.json`, `sw.js`) et le garde N+1
+(`/release.json` routé) ne passent par aucune requête au projet.
+
+**Le correctif.** `sansDonneesDistantes(page)` avant la navigation de ①, ③ et ④ ; l'entrée de socle est retirée
+(`audit-tests-isolation.js --ci` l'aurait déclarée inutile). Dans ④, la route `telemetry_events` est une route de
+PAGE : elle passe avant le projet vide, posé au CONTEXTE, et `started > 0` le vérifie à chaque passage.
+
+**Mesuré après**, même proxy, même sonde, `release-integrity` + `passion-context` sous `PASSIO_CIBLE=dist` et
+`PASSIO_MINIFIER_APP=1` : **0 connexion vers le projet, 0 requête partie, 0 échec** ; 40 requêtes Supabase, toutes
+servies par une route ; 6 cas verts. **Réinjection** : un `drain` qui demande le vidage puis rend la main aussitôt
+fait rougir ④ isolé (« aucun POST encore actif au retour de drain », 2 ≠ 3), toujours sans connexion au projet.
+Le job `dist` ne parle plus au projet de production. Ce qui lui parle encore, par construction : `authz-critical`,
+le chemin réel de `telemetrie-preauth` (`cheminsReels`) et les scripts Node des jobs.
+
+⚠️ **Mesurer sans toucher la production, et sans toucher `playwright.config.js`** (chemin protégé, relu par chaque
+worker) : une surcouche de config HORS du dépôt reprend celle du dépôt et ajoute `launchOptions.proxy` (avec
+`bypass: "127.0.0.1,localhost"`). Ses chemins RELATIFS se résolvent contre le dossier de la surcouche : `testDir`,
+`globalTeardown` (« Cannot find module './tests/e2e/global-teardown.js' » au premier essai) et `webServer.cwd` sont à
+poser en absolu. Un port à part (`PASSIO_PORT`) : le 8080 est souvent tenu par une autre session, et `dist` refuse
+de réutiliser un serveur.

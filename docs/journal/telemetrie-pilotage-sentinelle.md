@@ -1207,7 +1207,9 @@ passage du verrou est mort là-dessus, 30 s sur `#landing.active`.
 
 **Reste à faire, hors de ce lot** : `release-integrity` (job `dist`) lit encore la production, 9 GET par
 passage (`posts`, `events`, `passions`) ; sa raison au socle (« le drain attend ses VRAIS POST ») est
-périmée depuis que son cas du drain route la télémétrie (2026-09-11). Aucune ligne de télémétrie. Les
+périmée depuis que son cas du drain route la télémétrie (2026-09-11). Aucune ligne de télémétrie.
+→ **Fait le 2026-11-12** : suite isolée par le projet vide, entrée de socle retirée, zéro connexion au
+projet derrière le même proxy (`capacite-perf-realtime.md`, fiche 🧾). Les
 lignes `preview` viennent des contrôles des aperçus de déploiement : un autre lot.
 Règle d'une ligne proposée pour `CLAUDE.md` (chemin protégé, non appliquée) : « Le départ d'une page
 échappe aux routes de Playwright : `projetSupabaseVide` retient ses envois `keepalive` après un
