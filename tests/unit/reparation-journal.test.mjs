@@ -417,3 +417,20 @@ test("⑩ aucun workflow ne porte un caractère que YAML refuse ou qui y coupe u
   assert.ok(e.includes("      première ligne d'une marche"), "la marque et l'horodatage sont retirés : " + JSON.stringify(e.slice(0, 300)));
   assert.ok(!e.includes(marque) && !/2026-11-12T14:00/.test(e));
 });
+
+test("⑪ un journal de plus de 3 Mo : seuls les 3 derniers Mo sont lus, la ligne coupée par la troncature est jetée — elle ne forme pas un faux job, et la cause, à la fin, est là", () => {
+  // 3,4 Mo de sorties ordinaires, puis l'échec. Chaque ligne est distincte : rien n'est replié par « sans répétition ».
+  const remplissage = [];
+  for (let i = 0; remplissage.length * 86 < 3_400_000; i++) remplissage.push(JOB + "\t" + MARCHE + "\t2026-11-12T14:00:00.0000000Z ligne ordinaire " + String(i).padStart(7, "0"));
+  const gros = remplissage.join("\n") + "\n" + journal({ echecs: 1, bruit: 0 });
+  assert.ok(Buffer.byteLength(gros) > 3_200_000, "prémisse : le journal dépasse 3 Mo (" + Buffer.byteLength(gros) + ")");
+  const r = jouer({ ...DECOR(), ["journal-" + RUN + "-1.txt"]: gros });
+  assert.equal(r.code, 0, r.sortie);
+  const e = extrait(r.spec);
+  assert.ok(e.includes("permission denied for function jsonb_tableau_uuid"), "la cause, en fin de journal, est dans l'extrait");
+  assert.deepEqual(e.match(/^Job : .*$/gm), ["Job : " + JOB], "un seul job : la ligne coupée n'en fabrique pas un second — " + JSON.stringify(e.match(/^Job : .*$/gm)));
+  assert.ok(!e.includes("ligne ordinaire 0000000"), "le début du journal, hors des 3 derniers Mo, n'est pas lu");
+  // Un journal qui tient dans la limite est lu EN ENTIER, première ligne comprise.
+  const petit = extrait(jouer({ ...DECOR(), ["journal-" + RUN + "-1.txt"]: l(JOB, MARCHE, "toute première ligne") + "\n" + l(JOB, MARCHE, "##[error]Process completed with exit code 1.") + "\n" }).spec);
+  assert.ok(petit.includes("      toute première ligne"), "sous la limite, rien n'est jeté");
+});

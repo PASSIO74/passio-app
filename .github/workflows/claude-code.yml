@@ -366,7 +366,13 @@ jobs:
                       || printf -- '- (la liste des jobs n’a pas pu être relue)\n'
                     brut_run="${RUNNER_TEMP}/passio-journal-brut.txt"
                     if timeout 120 gh run view "${id_run}" --repo "${DEPOT}" --attempt "${tentative_run}" --log-failed > "${brut_run}" 2>/dev/null && [ -s "${brut_run}" ]; then
-                      extrait_run="$(tail -c 3000000 "${brut_run}" | jq -R -s -r "${EXTRAIT_JQ}" 2>/dev/null || true)"
+                      # Trois Mo au plus, les DERNIERS (les échecs sont à la fin) ; la première ligne, alors coupée en son
+                      # milieu, est jetée : sans son préfixe elle formerait un faux job.
+                      if [ "$(wc -c < "${brut_run}")" -gt 3000000 ]; then
+                        extrait_run="$(tail -c 3000000 "${brut_run}" | tail -n +2 | jq -R -s -r "${EXTRAIT_JQ}" 2>/dev/null || true)"
+                      else
+                        extrait_run="$(jq -R -s -r "${EXTRAIT_JQ}" < "${brut_run}" 2>/dev/null || true)"
+                      fi
                     fi
                     rm -f "${brut_run}"
                     if [ -n "${extrait_run}" ]; then
