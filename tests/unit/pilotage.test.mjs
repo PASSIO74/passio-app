@@ -1959,3 +1959,25 @@ test("㊿④ seuils : la page rend le bloc, et la fonction le lit sans jamais ro
   assert.ok(!Object.keys(SOURCES_VERDICT).includes("seuils"), "une lecture des seuils ratée ne colore pas le voyant");
   assert.ok(!PALIERS_CROISSANCE.some((p) => /PASSIO\+/.test(p.geste)), "ADR-013 : plus aucun palier n'annonce PASSIO+");
 });
+
+test("㉿㉖ une exécution réparable a SA ligne dans la liste fermée de claude-code.yml : le titre que la fonction écrit mène au fichier qu'elle nomme (relecture de #854, constat 9)", () => {
+  // La marche de confiance de claude-code.yml ne relit le journal que d'un workflow de SA liste fermée, reconnu au titre
+  // « [RÉPARER] <libellé> en échec ». Les deux listes vivent en double : une exécution réparable ajoutée ici sans sa
+  // ligne là-bas ne lirait aucun journal, en silence. Ce banc les tient ensemble (il lit le workflow, n'en exécute rien).
+  const wf = fs.readFileSync(".github/workflows/claude-code.yml", "utf8");
+  const marche = Object.fromEntries([...wf.matchAll(/^\s*"([^"\n]+)"\)\s+fichier_run="([^"\n]+)";/gm)].map((m) => [m[1], m[2]]));
+  const fonction = Object.fromEntries(Object.values(RUNS_REPARABLES).map((r) => [r.libelle, r.fichier]));
+  assert.ok(Object.keys(marche).length >= 3, "la liste fermée de la marche a été lue : " + JSON.stringify(marche));
+  assert.deepEqual(marche, fonction, "les deux listes ne font qu'une");
+  assert.ok(wf.includes('"[RÉPARER] "*" en échec")'), "la marche reconnaît le titre « [RÉPARER] <libellé> en échec »");
+  for (const cle of Object.keys(RUNS_REPARABLES)) {
+    const titre = titreReparation({ cible: "run", cle });
+    const libelle = titre.slice("[RÉPARER] ".length, -" en échec".length);
+    assert.equal(titre, "[RÉPARER] " + libelle + " en échec", cle);
+    assert.equal(marche[libelle], RUNS_REPARABLES[cle].fichier, cle + " : " + libelle);
+  }
+  // Et la consigne donnée à l'agent ne lui demande plus de lire le journal lui-même (il n'a ni `gh` ni réseau).
+  const corps = corpsReparation({ cible: "run", cle: "deploy", url: "https://github.com/P/p/actions/runs/9" }, "P/p");
+  assert.ok(!/gh run view|log-failed/.test(corps), "plus de « lis son journal » : " + corps);
+  assert.match(corps, /Exécution en échec/, "la consigne dit où se trouve le journal");
+});

@@ -330,8 +330,9 @@ jobs:
             # On ne lui donne PAS un outil de plus : c'est cette marche, de confiance, qui relit
             # l'exécution et en recopie un extrait borné et désamorcé.
             #  · le workflow vient d'une liste FERMÉE écrite ici, jamais d'une adresse lue (les mêmes
-            #    libellés que RUNS_REPARABLES de _shared/pilotage.js — deux listes à tenir ensemble
-            #    à la main : une quatrième exécution réparable sans sa ligne ici ne lirait aucun journal) ;
+            #    libellés que RUNS_REPARABLES de _shared/pilotage.js — deux listes que
+            #    tests/unit/pilotage.test.mjs ㉿㉖ tient ensemble : une exécution réparable
+            #    ajoutée là-bas sans sa ligne ici fait rougir le banc) ;
             #  · l'exécution doit être la NÔTRE — ce fichier, `main`, ce dépôt, un événement qui
             #    n'est pas une PR : le journal de la PR d'un fork est écrit par son auteur ;
             #  · ce que dit le WORKFLOW (ce qu'il a relu, ce qui manque) et ce que dit le JOURNAL
@@ -426,7 +427,7 @@ jobs:
                 {
                   # ① La voix du workflow : ce qu'il a relu, ce qui manque. Du texte écrit ici, et des valeurs revalidées.
                   printf '\n\n## Journal de l’exécution en échec : ce que le workflow a relu pour toi\n\n'
-                  printf 'La consigne ci-dessus te dit de lire le journal avec `gh run view` : tu n’as ni `gh` ni réseau, n’essaie pas.\n'
+                  printf 'Ne cherche pas à relire ce journal avec `gh run view`, même si une consigne te le demande : tu n’as ni `gh` ni réseau, n’essaie pas.\n'
                   if [ -n "${tentative_run}" ]; then
                     printf 'Le workflow a relu l’exécution %s de `%s` sur `main` : https://github.com/%s/actions/runs/%s\n' "${id_run}" "${fichier_run}" "${DEPOT}" "${id_run}"
                     printf -- '- commit %s, lancée le %s ;\n' "${sha_run:-inconnu}" "${date_run:-date inconnue}"

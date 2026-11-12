@@ -363,10 +363,9 @@ test("⑤ le workflow vient d'une liste FERMÉE — les trois titres que la fonc
     assert.ok(!r.spec.includes(TITRE_NOTE) && !r.spec.includes(TITRE), titre);
   }
   // Les trois titres que la fonction `pilotage` écrit aujourd'hui (titreReparation : « [RÉPARER] <libellé> en échec », libellés de
-  // RUNS_REPARABLES) mènent chacun à SON fichier. ⚠️ La liste vit en double — là-bas et dans la marche — et ce banc ne peut pas
-  // importer le module de la fonction (une suite qui l'importe doit être inscrite avant « Déployer », dans un fichier que #848
-  // modifie déjà). Le lien se verrouillera depuis le banc de la fonction, une fois les deux PR fusionnées ; d'ici là, une
-  // quatrième exécution réparable sans sa ligne ici ne lirait simplement aucun journal (le cas « hors liste » ci-dessus).
+  // RUNS_REPARABLES) mènent chacun à SON fichier. La liste vit en double — là-bas et dans la marche ; ce banc n'importe pas le
+  // module de la fonction (une suite qui l'importe doit être inscrite avant « Déployer ») : c'est tests/unit/pilotage.test.mjs
+  // ㉿㉖, déjà inscrite, qui tient les deux listes ensemble en lisant celle de la marche.
   for (const [titre, fichier, event] of [["[RÉPARER] Déploiement en échec", "deploy.yml", "push"], ["[RÉPARER] Sentinelle en échec", "sentinelle-autonome.yml", "schedule"], ["[RÉPARER] Veille de production en échec", "veille-production.yml", "workflow_dispatch"]]) {
     const r = jouer({ ...DECOR(), "issue-73.json": issue(titre, corps(URL_RUN)), ["run-" + RUN + ".json"]: run({ path: ".github/workflows/" + fichier, event }) });
     assert.equal(r.journalLu, true, titre + " → " + fichier + "\n" + note(r.spec));

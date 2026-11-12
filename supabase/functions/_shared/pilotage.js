@@ -1440,7 +1440,10 @@ export function corpsReparation(c, depot) {
     const r = RUNS_REPARABLES[c.cle];
     const url = /^https:\/\/github\.com\//.test(String(c.url || "")) ? c.url : `https://github.com/${depot}/actions/workflows/${r.fichier}`;
     return [COMMENTAIRE_CONFIER, "", `La dernière exécution de \`${r.fichier}\` (${r.libelle}) sur \`main\` a échoué : ${url}`, "",
-      "Lis son journal (`gh run view --log-failed`) pour trouver l'étape en échec.", ...consigne].join("\n");
+      // Le journal, c'est le WORKFLOW qui le relit et le joint (claude-code.yml, marche de confiance, #854) : l'agent n'a
+      // ni `gh` ni réseau, et « lis son journal (gh run view) » l'envoyait vers un outil qu'il n'a pas — quatre
+      // réparations sur quatre, « cause NON établie » (#757, #806, #807, #844).
+      "Le workflow relit pour toi le journal de cette exécution et le joint à la fin de ta spécification (section « Exécution en échec ») : c'est là que se lit l'étape en échec.", ...consigne].join("\n");
   }
   return null;
 }
