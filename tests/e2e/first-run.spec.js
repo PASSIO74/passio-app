@@ -897,8 +897,9 @@ test.describe("Gate d'authentification", () => {
     await page.waitForTimeout(1600);
 
     const texte = await page.locator("#eventList").innerText();
-    // Elle DIT ce qu'elle est…
-    expect(texte).toContain("Exemple PASSIO");
+    // Elle DIT ce qu'elle est… (LOT-5, IRL-C01 : « Activité d'exemple · pas
+    // d'inscription », et une pastille « Exemple » à la place de « Je participe »)
+    expect(texte).toContain("Activité d'exemple");
     // …et ne promet ni distance, ni participants. ⚠️ La distance venait d'un
     // point de RÉFÉRENCE, jamais de la position du visiteur (qu'on ne demande
     // pas) : posée sur un exemple, elle laissait croire à une rencontre à côté
@@ -910,7 +911,7 @@ test.describe("Gate d'authentification", () => {
     await page.evaluate(() => { window.PASSIO_FIRST_RUN_V1 = false; renderIRL(); });
     await page.waitForTimeout(900);
     const apres = await page.locator("#eventList").innerText();
-    expect(apres).not.toContain("Exemple PASSIO");
+    expect(apres).not.toContain("Activité d'exemple");
     expect(apres).toMatch(/\d+ participants?/);
   });
 });

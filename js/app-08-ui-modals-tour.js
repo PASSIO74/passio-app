@@ -6640,7 +6640,11 @@ async function supaCreateConversation(withUserId) {
   } catch(e) { console.warn("Conv error:", e); return null; }
 }
 
-async function supaCreateGroup(groupName, memberIds, passionId) {
+// `rapport` (facultatif, LOT-5 / MSG-C04) : reçoit `refuses`, les membres dont
+// l'ajout a été refusé par la base — l'appelant le dit au lieu d'annoncer un
+// groupe complet. La valeur rendue (l'identifiant ou null) ne change pas.
+async function supaCreateGroup(groupName, memberIds, passionId, rapport) {
+  if (rapport) rapport.refuses = [];
   // ⚠️ SDK NON CHARGÉ (revue du lot C-02, 06/11) : le client de repli rend
   // `{ error: null }` à tout, donc un groupe « créé » ici aurait reçu un `grp_…`
   // sans exister en base — et `removeGroupMember`, qui ne reconnaît une ébauche
@@ -6663,7 +6667,7 @@ async function supaCreateGroup(groupName, memberIds, passionId) {
     let anyMemberError = null;
     for (const m of members) {
       const r = await supa.from("conv_members").insert(m);
-      if (r.error && m.user_id !== MY_UID) anyMemberError = r.error;
+      if (r.error && m.user_id !== MY_UID) { anyMemberError = r.error; if (rapport) rapport.refuses.push(m.user_id); }
     }
     if (anyMemberError) console.warn("Group error (conv_members):", anyMemberError.message);
     return convId;
@@ -8672,6 +8676,9 @@ function _erreurColonneStatutAbsente(err) {
 }
 
 async function supaFollowUser(targetId) {
+  // LOT-5 (REC-C02) : garde AU POINT D'ÉCRITURE — `follows.following_id` n'a pas de
+  // clé étrangère, un suivi vers un personnage d'exemple passait en base.
+  if (typeof estPersonneExemple === "function" && estPersonneExemple(targetId)) return { ok: false, exemple: true };
   var _cid = null;
   try { if (window.tel && tel.flowStart) _cid = tel.flowStart("follow_user", { target: targetId }); } catch (e) {}
   try {

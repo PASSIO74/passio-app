@@ -1817,7 +1817,11 @@ function updateIrlMapMarkers() {
     const m = L.marker([lat, lng], { icon }).addTo(irlMarkersLayer);
     const d = fmtEventDate(ev.date);
     const dk = _eventDistanceKm(ev);
+    // LOT-5 (IRL-C01) : la bulle d'une activité d'exemple le dit aussi.
+    let _exPop = false;
+    try { _exPop = !!(window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)); } catch (e) {}
     m.bindPopup(`
+      ${_exPop ? '<div class="irl-popup-exemple">Activité d\'exemple · pas d\'inscription</div>' : ""}
       <div class="irl-popup-title">${escapeHtml(ev.title || "Événement")}</div>
       <div class="irl-popup-meta">${escapeHtml(passion.emoji || "")} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${_eventTimeLabel(ev)}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
       <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'événement</button>
