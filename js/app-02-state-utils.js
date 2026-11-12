@@ -5519,6 +5519,9 @@ function onbValidateAge() {
 function onbValidateName() {
   const v = $("#userName").value.trim();
   if (v.length < 2) { toast("Indique ton prénom."); return; }
+  // CLI-01 : ce nom peut devenir le pseudo en base (`_uname`) ; la base refuse
+  // ces caractères, et le refus emporterait tout l'enregistrement du profil.
+  if (nomCompteCaracteresInterdits(v)) { toast("Ton prénom ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse."); return; }
   state.user.name = v;
   // La préparation de l'écran des passions (grille + pré-remplissage de la
   // première visite) vit dans `_onbPreparerEtape`, appelée par `onbNext` : elle

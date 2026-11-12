@@ -1872,17 +1872,30 @@ suspendu… ». Le déclencheur `trg_notifications_texte` traite les seules lign
 - les phrases qui portent un titre (invitation, avis, direct, groupe) sont reconstruites depuis la base ;
 - toute autre phrase est remplacée par le gabarit du genre.
 
-Deux liens métier sont exigés :
-- `message` exige que les deux comptes soient membres de la conversation, sinon refus 42501 ;
-- un message libre aux inscrits (`event_update`) n'est gardé que s'il vient de l'organisateur ou d'un
-  co-organisateur.
+Liens métier exigés (refus 42501 sinon) :
+- `message` : les deux comptes sont membres de la conversation ;
+- `event_update` et `event_cancelled` : le destinataire est inscrit à l'activité (tous statuts), et l'émetteur
+  l'organise, la co-organise, ou y est inscrit lui aussi (c'est le cas de « une place s'est libérée »). Seul
+  l'organisateur garde un texte libre.
+
+Trouvé par la relecture adversariale avant application (agent `passio-red-team`, 12/11), et corrigé :
+- la première version laissait un organisateur écrire à N'IMPORTE QUI, sous couvert de sa propre activité, et
+  l'épreuve validait ce trou ;
+- les phrases fixes « tu es inscrit·e » et « a annulé » étaient ouvertes à tous ;
+- un nom de groupe servait de texte libre. Un groupe s'annonce désormais par le gabarit « a écrit dans un
+  groupe », comme la push.
+
+**L'avis de suppression d'une activité est écrit par la BASE.** Le client prévenait les inscrits APRÈS avoir
+effacé l'activité : à ce moment, le lien ne se prouve plus. Désormais `trg_events_prevenir_suppression` (BEFORE
+DELETE) écrit une ligne d'origine serveur par inscrit, au nom de l'organisateur. Son échec n'empêche jamais la
+suppression.
 
 ⚠️ **Toute nouvelle phrase de notification côté client doit être ajoutée à la liste de
 `notifications_texte_serveur`**. Sinon, elle devient le gabarit du genre, sans erreur.
 
 **SRV-05** (`migration_purge_donnees_expirees_2026-11-12.sql`). `purger_donnees_expirees()` tourne chaque nuit à 03:53
 par pg_cron, et personne d'autre ne peut l'appeler. Chaque catégorie est bornée à 5 000 lignes par passage :
-- conversations sans membre ni message, de plus de 7 jours ;
+- conversations sans membre ni message, de plus de 7 jours, qu'aucune activité ne vise (`events.conv_id`) ;
 - stories de plus de 48 h (l'application n'en lit que 24) ;
 - directs muets depuis plus d'une heure, passés en `ended` ;
 - notifications LUES de plus de 90 jours ;

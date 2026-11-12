@@ -79,33 +79,75 @@ alter table public.events drop constraint events_co_organizers_tableau;
 alter table public.events add constraint events_co_organizers_tableau
   check (co_organizers is null or public.jsonb_tableau_uuid(co_organizers, 20));
 
--- ── VERDICT : les contraintes s'éprouvent sur des valeurs, sans écrire de ligne ──
+-- ── ÉPREUVE : de VRAIES écritures, dans une sous-transaction ANNULÉE ──
+do $epreuve$
+declare
+  sfx  constant text := left(md5(clock_timestamp()::text || random()::text), 8);
+  u    constant text := '00000000-0000-4000-8000-0000000c1101';
+  mes  jsonb := '{}'::jsonb;
+  t    record;
+  etat text;
+begin
+  begin
+    insert into public.profiles (id, username, is_private) values (u, 'zz cli01 ' || sfx, false);
+    for t in select * from (values
+        ('guillemet', 'x" onclick="a'), ('chevron', 'a<b ' || sfx), ('grave', 'a`b ' || sfx), ('barre', 'a\b ' || sfx),
+        ('apostrophe', 'Zoé d''Annecy ' || sfx)) as x(cle, v)
+    loop
+      begin
+        update public.profiles set username = t.v where id = u;
+        etat := 'ok';
+      exception when others then etat := sqlstate;
+      end;
+      mes := mes || jsonb_build_object(t.cle, etat);
+    end loop;
+    for t in select * from (values
+        ('co_vide', '[]'), ('co_uuid', '["3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a"]'),
+        ('co_pseudo', '["x\" onclick=\"alert(1)"]'), ('co_majuscules', '["3E7D1C9A-5B2F-4A8E-9C6D-0F1E2D3C4B5A"]'),
+        ('co_nombre', '[1]')) as x(cle, v)
+    loop
+      begin
+        insert into public.events (id, organizer_id, author_id, title, co_organizers)
+          values ('zz_cli01_' || t.cle || '_' || sfx, u, u, 'Banc', t.v::jsonb);
+        etat := 'ok';
+      exception when others then etat := sqlstate;
+      end;
+      mes := mes || jsonb_build_object(t.cle, etat);
+    end loop;
+    raise exception 'zz_cli01_annule';
+  exception when others then
+    if sqlerrm <> 'zz_cli01_annule' then mes := mes || jsonb_build_object('erreur', sqlstate || ' ' || sqlerrm); end if;
+  end;
+  perform set_config('passio.verdict_cli01', mes::text, true);
+end $epreuve$;
+
+-- ── VERDICT ──
 create temp table passio_cli01_verdict (n int, bloquant boolean, controle text, valeur text) on commit drop;
+with v as (select current_setting('passio.verdict_cli01', true)::jsonb j)
 insert into pg_temp.passio_cli01_verdict
-select 1, true, 'la forme du pseudo refuse le guillemet droit, les chevrons, l''accent grave, la barre oblique inverse',
-       (select case when count(*) filter (where v ~ '["<>`\\]') = 4 then 'OK' else 'ECHEC' end
-          from unnest(array['x" onclick="a', 'a<b', 'a`b', 'a\b']) v)
-union all select 2, true, 'la contrainte du pseudo porte bien la nouvelle règle',
-       (select case when pg_get_constraintdef(oid) like '%<>`%' then 'OK' else 'ECHEC — ' || pg_get_constraintdef(oid) end
-          from pg_constraint where conname = 'profiles_username_forme' and conrelid = 'public.profiles'::regclass)
+select 1, true, 'l''épreuve a tourné jusqu''au bout', case when j ? 'erreur' then 'ECHEC — ' || (j ->> 'erreur') else 'OK' end from v
+union all select 2, true, 'un pseudo à guillemet droit, chevron, accent grave ou barre oblique inverse est refusé (23514)',
+  case when j ->> 'guillemet' = '23514' and j ->> 'chevron' = '23514' and j ->> 'grave' = '23514' and j ->> 'barre' = '23514'
+       then 'OK' else 'ECHEC — ' || j::text end from v
 union all select 3, true, 'un pseudo à apostrophe et accents reste permis',
-       (select case when 'Zoé d''Annecy' !~ '["<>`\\]' then 'OK' else 'ECHEC' end)
+  case when j ->> 'apostrophe' = 'ok' then 'OK' else 'ECHEC — ' || coalesce(j ->> 'apostrophe', '-') end from v
 union all select 4, true, 'co-organisateurs : tableau vide et uuid acceptés',
-       (select case when public.jsonb_tableau_uuid('[]'::jsonb, 20)
-                     and public.jsonb_tableau_uuid('["3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a"]'::jsonb, 20)
-                    then 'OK' else 'ECHEC' end)
-union all select 5, true, 'co-organisateurs : pseudo, nombre, objet, majuscules et 21 éléments refusés',
-       (select case when not public.jsonb_tableau_uuid('["x\" onclick=\"alert(1)"]'::jsonb, 20)
-                     and not public.jsonb_tableau_uuid('[1]'::jsonb, 20)
-                     and not public.jsonb_tableau_uuid('[{"id":"a"}]'::jsonb, 20)
-                     and not public.jsonb_tableau_uuid('["3E7D1C9A-5B2F-4A8E-9C6D-0F1E2D3C4B5A"]'::jsonb, 20)
-                     and not public.jsonb_tableau_uuid((select jsonb_agg('3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a') from generate_series(1, 21)), 20)
-                    then 'OK' else 'ECHEC' end)
-union all select 6, true, 'les deux contraintes sont VALIDÉES sur les lignes existantes',
-       (select case when count(*) filter (where convalidated) = 2 then 'OK' else 'ECHEC' end
-          from pg_constraint where conname in ('profiles_username_forme', 'events_co_organizers_tableau'))
-union all select 7, false, 'information — profils ; activités',
-       (select (select count(*) from public.profiles) || ' ; ' || (select count(*) from public.events));
+  case when j ->> 'co_vide' = 'ok' and j ->> 'co_uuid' = 'ok' then 'OK' else 'ECHEC — ' || j::text end from v
+union all select 5, true, 'co-organisateurs : pseudo, majuscules et nombre refusés (23514)',
+  case when j ->> 'co_pseudo' = '23514' and j ->> 'co_majuscules' = '23514' and j ->> 'co_nombre' = '23514'
+       then 'OK' else 'ECHEC — ' || j::text end from v
+union all select 6, true, 'au plus 20 co-organisateurs',
+  (select case when not public.jsonb_tableau_uuid((select jsonb_agg('3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a') from generate_series(1, 21)), 20)
+                and public.jsonb_tableau_uuid((select jsonb_agg('3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a') from generate_series(1, 20)), 20)
+               then 'OK' else 'ECHEC' end)
+union all select 7, true, 'les deux contraintes sont VALIDÉES sur les lignes existantes',
+  (select case when count(*) filter (where convalidated) = 2 then 'OK' else 'ECHEC' end
+     from pg_constraint where conname in ('profiles_username_forme', 'events_co_organizers_tableau'))
+union all select 8, true, 'aucune ligne d''essai ne reste',
+  (select case when (select count(*) from public.events where id like 'zz\_cli01\_%') + (select count(*) from public.profiles where username like 'zz cli01 %') = 0
+               then 'OK' else 'ECHEC' end)
+union all select 9, false, 'information — profils ; activités',
+  (select (select count(*) from public.profiles) || ' ; ' || (select count(*) from public.events));
 
 do $$
 declare details text;

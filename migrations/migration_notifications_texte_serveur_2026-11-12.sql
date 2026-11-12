@@ -77,6 +77,8 @@ declare
   titre   text;
   note    text;
   ev      record;
+  orga    boolean := false;
+  ev_existe boolean := false;
 begin
   -- Les lignes du serveur (follows_notifier, notifier_mentions…) ne passent pas ici.
   if new.origine is distinct from 'client' or auth.uid() is null then
@@ -111,9 +113,28 @@ begin
        or not exists (select 1 from public.conv_members m where m.conv_id = new.ref_id and m.user_id = new.user_id) then
       raise exception 'notification de message hors d''une conversation commune' using errcode = '42501';
     end if;
+    -- Un groupe s'annonce par le GABARIT, comme la push (`message_groupe`) : son nom
+    -- est choisi par son créateur, qui peut y ajouter qui il veut — ce serait un
+    -- texte libre par un détour (revue adversariale du 12/11).
     if phrase is null and c ~ ' a écrit dans ' then
-      select 'a écrit dans ' || public.passio_echapper_html(coalesce(nullif(btrim(cv.group_name), ''), 'un groupe'))
-        into phrase from public.conversations cv where cv.id = new.ref_id and cv.is_group;
+      select 'a écrit dans un groupe' into phrase from public.conversations cv where cv.id = new.ref_id and cv.is_group;
+    end if;
+  end if;
+
+  -- Lien métier d'une activité (mise à jour, annulation) : le DESTINATAIRE y est
+  -- inscrit (tous statuts), et l'émetteur l'organise, la co-organise ou y est
+  -- inscrit lui aussi (« une place s'est libérée » part du client de celui qui
+  -- s'en va). Sans ce lien, n'importe qui disait à n'importe qui « tu es
+  -- inscrit·e » ou « ton activité est annulée » (revue adversariale du 12/11).
+  if new.kind in ('event_update', 'event_cancelled') then
+    select e.organizer_id, e.author_id, e.co_organizers into ev from public.events e where e.id = new.ref_id;
+    ev_existe := found;
+    orga := ev_existe and (ev.organizer_id = new.from_id or ev.author_id = new.from_id
+                       or coalesce(ev.co_organizers, '[]'::jsonb) ? new.from_id);
+    if not ev_existe
+       or not exists (select 1 from public.event_attendees a where a.event_id = new.ref_id and a.user_id = new.user_id)
+       or not (orga or exists (select 1 from public.event_attendees a where a.event_id = new.ref_id and a.user_id = new.from_id)) then
+      raise exception 'notification d''activité hors du lien organisateur / inscrits' using errcode = '42501';
     end if;
   end if;
 
@@ -134,10 +155,9 @@ begin
       phrase := case when titre is not null and btrim(titre) <> ''
                      then 'est en direct : « ' || public.passio_echapper_html(titre) || ' » — rejoins !' end;
     elsif new.kind = 'event_update' then
-      -- Le message libre d'un ORGANISATEUR à ses inscrits : gardé, sous son vrai nom.
-      select e.organizer_id, e.author_id, e.co_organizers into ev from public.events e where e.id = new.ref_id;
-      if found and (ev.organizer_id = new.from_id or ev.author_id = new.from_id
-                    or coalesce(ev.co_organizers, '[]'::jsonb) ? new.from_id) then
+      -- Le message libre d'un ORGANISATEUR à un INSCRIT (lien vérifié plus haut) :
+      -- gardé, sous son vrai nom.
+      if orga then
         phrase := c;
         -- Le client préfixe SON nom : on le retire s'il est celui du profil.
         if left(c, char_length(nom) + 1) = nom || ' ' then phrase := substr(c, char_length(nom) + 2); end if;
@@ -177,14 +197,58 @@ drop trigger if exists trg_notifications_texte on public.notifications;
 create trigger trg_notifications_texte before insert on public.notifications
   for each row execute function public.notifications_texte_serveur();
 
+-- ── ②bis L'AVIS DE SUPPRESSION D'UNE ACTIVITÉ, écrit par le SERVEUR ──
+-- Le client prévenait les inscrits APRÈS avoir effacé l'activité : la ligne n'existe
+-- plus, ses inscriptions sont parties en cascade, et le lien métier exigé ci-dessus
+-- ne peut plus se prouver. C'est donc la base qui prévient, AVANT l'effacement,
+-- au nom de l'organisateur (origine 'serveur', texte dérivé). Un échec (plafond de
+-- débit d'une très grande activité) n'empêche JAMAIS la suppression.
+create or replace function public.events_prevenir_suppression()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+declare
+  orga text := coalesce(old.organizer_id, old.author_id);
+  nom  text;
+begin
+  if orga is null then return old; end if;
+  select p.username into nom from public.profiles p where p.id = orga;
+  begin
+    perform set_config('passio.notification_serveur', '1', true);
+    insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen)
+    select 'n_sup_' || left(md5(old.id || a.user_id), 20), a.user_id, 'event_cancelled', orga, old.id,
+           public.passio_echapper_html(coalesce(nullif(btrim(nom), ''), 'Quelqu''un'))
+             || ' a supprimé « ' || public.passio_echapper_html(left(coalesce(old.title, 'une activité'), 60)) || ' »',
+           false
+      from public.event_attendees a
+     where a.event_id = old.id and a.user_id is distinct from orga
+    on conflict (id) do nothing;
+    perform set_config('passio.notification_serveur', '', true);
+  exception when others then
+    perform set_config('passio.notification_serveur', '', true);
+  end;
+  return old;
+end
+$fn$;
+
+revoke all on function public.events_prevenir_suppression() from public, anon, authenticated;
+
+drop trigger if exists trg_events_prevenir_suppression on public.events;
+create trigger trg_events_prevenir_suppression before delete on public.events
+  for each row execute function public.events_prevenir_suppression();
+
 -- ── ③ L'ÉPREUVE, sous le vrai rôle `authenticated`, ANNULÉE ──
 do $epreuve$
 declare
   sfx  constant text := left(md5(clock_timestamp()::text || random()::text), 8);
-  a    constant text := '00000000-0000-4000-8000-0000000c0201';
-  b    constant text := '00000000-0000-4000-8000-0000000c0202';
-  c3   constant text := '00000000-0000-4000-8000-0000000c0203';
+  a    constant text := '00000000-0000-4000-8000-0000000c0201';   -- organise l'activité
+  b    constant text := '00000000-0000-4000-8000-0000000c0202';   -- inscrit
+  c3   constant text := '00000000-0000-4000-8000-0000000c0203';   -- inscrit
+  d    constant text := '00000000-0000-4000-8000-0000000c0204';   -- étranger à tout
   conv constant text := 'zz_srv02_conv_' || sfx;
+  grp  constant text := 'zz_srv02_grp_' || sfx;
   evt  constant text := 'zz_srv02_evt_' || sfx;
   mes  jsonb := '{}'::jsonb;
   t    record;
@@ -194,22 +258,27 @@ begin
     perform set_config('request.jwt.claims', '', true);
     perform set_config('request.jwt.claim.sub', '', true);
     insert into public.profiles (id, username, is_private) values
-      (a, 'zz Alice ' || sfx, false), (b, 'zz Bob ' || sfx, false), (c3, 'zz Carol ' || sfx, false);
+      (a, 'zz Alice ' || sfx, false), (b, 'zz Bob ' || sfx, false), (c3, 'zz Carol ' || sfx, false), (d, 'zz Dan ' || sfx, false);
     insert into public.conversations (id, is_group, created_by) values (conv, false, a);
-    insert into public.conv_members (conv_id, user_id) values (conv, a), (conv, b);
+    insert into public.conversations (id, is_group, created_by, group_name) values (grp, true, a, 'Équipe PASSIO compte suspendu');
+    insert into public.conv_members (conv_id, user_id) values (conv, a), (conv, b), (grp, a), (grp, d);
     insert into public.events (id, organizer_id, author_id, title) values (evt, a, a, 'Rando <du> lac');
+    insert into public.event_attendees (event_id, user_id, rsvp) values (evt, b, 'going'), (evt, c3, 'going');
 
     for t in
       select x.* from jsonb_to_recordset(jsonb_build_array(
-        jsonb_build_object('cle', 'libre',     'de', a, 'a', b,  'kind', 'like',           'ref', 'p1', 'texte', 'Équipe PASSIO : ton compte est suspendu, écris à x@y.z'),
-        jsonb_build_object('cle', 'faux_nom',  'de', a, 'a', b,  'kind', 'like',           'ref', 'p1', 'texte', 'Modération a aimé ton post'),
-        jsonb_build_object('cle', 'reaction',  'de', a, 'a', b,  'kind', 'like',           'ref', 'p1', 'texte', 'x a réagi 💯 à ton post'),
-        jsonb_build_object('cle', 'msg_hors',  'de', a, 'a', c3, 'kind', 'message',        'ref', conv, 'texte', 'x t''a envoyé un message'),
-        jsonb_build_object('cle', 'msg_ok',    'de', a, 'a', b,  'kind', 'message',        'ref', conv, 'texte', 'x t''a envoyé un message'),
-        jsonb_build_object('cle', 'invite',    'de', b, 'a', c3, 'kind', 'event_invite',   'ref', evt,  'texte', 'x t''invite à <b>Gagne un iPhone</b>'),
-        jsonb_build_object('cle', 'orga',      'de', a, 'a', c3, 'kind', 'event_update',   'ref', evt,  'texte', 'zz Alice ' || sfx || ' RDV devant l''entrée nord'),
-        jsonb_build_object('cle', 'pas_orga',  'de', b, 'a', c3, 'kind', 'event_update',   'ref', evt,  'texte', 'x Activité annulée, rembourse-toi sur ce lien'),
-        jsonb_build_object('cle', 'annule',    'de', b, 'a', c3, 'kind', 'event_cancelled','ref', evt,  'texte', 'x « Concert » a été supprimé par l''organisateur')
+        jsonb_build_object('cle', 'libre',     'de', a, 'a', d,  'kind', 'like',            'ref', 'p1', 'texte', 'Équipe PASSIO : ton compte est suspendu, écris à x@y.z'),
+        jsonb_build_object('cle', 'faux_nom',  'de', a, 'a', d,  'kind', 'like',            'ref', 'p1', 'texte', 'Modération a aimé ton post'),
+        jsonb_build_object('cle', 'reaction',  'de', a, 'a', d,  'kind', 'like',            'ref', 'p1', 'texte', 'x a réagi 💯 à ton post'),
+        jsonb_build_object('cle', 'msg_hors',  'de', a, 'a', c3, 'kind', 'message',         'ref', conv, 'texte', 'x t''a envoyé un message'),
+        jsonb_build_object('cle', 'msg_ok',    'de', a, 'a', b,  'kind', 'message',         'ref', conv, 'texte', 'x t''a envoyé un message'),
+        jsonb_build_object('cle', 'groupe',    'de', a, 'a', d,  'kind', 'message',         'ref', grp,  'texte', 'x a écrit dans Équipe PASSIO compte suspendu'),
+        jsonb_build_object('cle', 'invite',    'de', b, 'a', d,  'kind', 'event_invite',    'ref', evt,  'texte', 'x t''invite à <b>Gagne un iPhone</b>'),
+        jsonb_build_object('cle', 'orga',      'de', a, 'a', c3, 'kind', 'event_update',    'ref', evt,  'texte', 'zz Alice ' || sfx || ' RDV devant l''entrée nord'),
+        jsonb_build_object('cle', 'orga_hors', 'de', a, 'a', d,  'kind', 'event_update',    'ref', evt,  'texte', 'x Activité annulée, rembourse-toi sur ce lien'),
+        jsonb_build_object('cle', 'inscrit',   'de', b, 'a', c3, 'kind', 'event_update',    'ref', evt,  'texte', 'x une place s''est libérée, tu es inscrit·e !'),
+        jsonb_build_object('cle', 'inscrit_libre', 'de', b, 'a', c3, 'kind', 'event_update','ref', evt,  'texte', 'x Activité annulée, rembourse-toi sur ce lien'),
+        jsonb_build_object('cle', 'etranger',  'de', d, 'a', c3, 'kind', 'event_cancelled', 'ref', evt,  'texte', 'x a annulé un événement auquel tu participais')
       )) as x(cle text, de text, a text, kind text, ref text, texte text)
     loop
       execute 'set local role authenticated';
@@ -227,6 +296,18 @@ begin
       mes := mes || jsonb_build_object(t.cle, jsonb_build_object('etat', etat,
         'texte', (select n.content from public.notifications n where n.id = 'zz_srv02_' || t.cle || '_' || sfx)));
     end loop;
+
+    -- Une ligne d'origine SERVEUR n'est pas touchée.
+    perform set_config('passio.notification_serveur', '1', true);
+    insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen)
+      values ('zz_srv02_serveur_' || sfx, d, 'follow', a, a, 'texte serveur intact', false);
+    perform set_config('passio.notification_serveur', '', true);
+    mes := mes || jsonb_build_object('serveur', (select n.content from public.notifications n where n.id = 'zz_srv02_serveur_' || sfx));
+
+    -- La suppression de l'activité prévient ses inscrits (b, c3), pas son organisatrice.
+    delete from public.events where id = evt;
+    mes := mes || jsonb_build_object('suppression', (select jsonb_agg(jsonb_build_object('a', n.user_id, 'texte', n.content, 'origine', n.origine) order by n.user_id)
+                                                       from public.notifications n where n.ref_id = evt and n.id like 'n\_sup\_%'));
     mes := mes || jsonb_build_object('sfx', sfx);
     raise exception 'zz_srv02_annule';
   exception when others then
@@ -237,6 +318,7 @@ begin
   execute 'reset role';
   perform set_config('request.jwt.claims', '', true);
   perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('passio.notification_serveur', '', true);
   perform set_config('passio.verdict_srv02', mes::text, true);
 end $epreuve$;
 
@@ -246,7 +328,7 @@ with v as (select current_setting('passio.verdict_srv02', true)::jsonb j)
 insert into pg_temp.passio_srv02_verdict
 select 1, true, 'l''épreuve a tourné jusqu''au bout', case when j ? 'erreur' then 'ECHEC — ' || (j ->> 'erreur') else 'OK' end from v
 union all select 2, true, 'un texte libre devient le gabarit, sous le VRAI nom',
-  case when j #>> '{libre,texte}' = 'zz Alice ' || (j ->> 'sfx') || ' a aimé ta publication' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{libre,texte}', j #>> '{libre,etat}') end from v
+  case when j #>> '{libre,texte}' = 'zz Alice ' || (j ->> 'sfx') || ' a aimé ta publication' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{libre,texte}', j #>> '{libre,etat}', '-') end from v
 union all select 3, true, 'un nom usurpé est remplacé, la phrase connue gardée',
   case when j #>> '{faux_nom,texte}' = 'zz Alice ' || (j ->> 'sfx') || ' a aimé ton post' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{faux_nom,texte}', '-') end from v
 union all select 4, true, 'une réaction emoji garde sa phrase',
@@ -254,20 +336,38 @@ union all select 4, true, 'une réaction emoji garde sa phrase',
 union all select 5, true, 'un message vers quelqu''un hors de la conversation est refusé (42501)',
   case when j #>> '{msg_hors,etat}' = '42501' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{msg_hors,etat}', '-') end from v
 union all select 6, true, 'un message entre membres passe',
-  case when j #>> '{msg_ok,texte}' = 'zz Alice ' || (j ->> 'sfx') || ' t''a envoyé un message' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{msg_ok,texte}', j #>> '{msg_ok,etat}') end from v
-union all select 7, true, 'une invitation porte le VRAI titre, échappé',
+  case when j #>> '{msg_ok,texte}' = 'zz Alice ' || (j ->> 'sfx') || ' t''a envoyé un message' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{msg_ok,texte}', j #>> '{msg_ok,etat}', '-') end from v
+union all select 7, true, 'un groupe s''annonce par le gabarit, jamais par son nom',
+  case when j #>> '{groupe,texte}' = 'zz Alice ' || (j ->> 'sfx') || ' a écrit dans un groupe' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{groupe,texte}', j #>> '{groupe,etat}', '-') end from v
+union all select 8, true, 'une invitation porte le VRAI titre, échappé',
   case when j #>> '{invite,texte}' = 'zz Bob ' || (j ->> 'sfx') || ' t''invite à <b>Rando &lt;du&gt; lac</b>' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{invite,texte}', '-') end from v
-union all select 8, true, 'le message libre de l''organisateur est gardé, sans doubler son nom',
-  case when j #>> '{orga,texte}' = 'zz Alice ' || (j ->> 'sfx') || ' RDV devant l''entrée nord' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{orga,texte}', '-') end from v
-union all select 9, true, 'le message libre d''un NON-organisateur devient le gabarit',
-  case when j #>> '{pas_orga,texte}' = 'zz Bob ' || (j ->> 'sfx') || ' a mis à jour une activité où tu es inscrit·e' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{pas_orga,texte}', '-') end from v
-union all select 10, true, 'une annulation à titre libre devient le gabarit',
-  case when j #>> '{annule,texte}' = 'zz Bob ' || (j ->> 'sfx') || ' a annulé une activité où tu étais inscrit·e' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{annule,texte}', '-') end from v
-union all select 11, true, 'aucune ligne d''essai ne reste',
-  (select case when count(*) = 0 then 'OK' else 'ECHEC — ' || count(*) end from public.notifications where id like 'zz\_srv02\_%')
-union all select 12, true, 'le déclencheur est en place, après celui de l''origine',
-  (select case when exists (select 1 from pg_trigger where tgrelid = 'public.notifications'::regclass and tgname = 'trg_notifications_texte' and tgenabled = 'O')
-               and 'trg_notifications_origine' < 'trg_notifications_texte' then 'OK' else 'ECHEC' end);
+union all select 9, true, 'le message libre de l''organisateur à un INSCRIT est gardé, sans doubler son nom',
+  case when j #>> '{orga,texte}' = 'zz Alice ' || (j ->> 'sfx') || ' RDV devant l''entrée nord' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{orga,texte}', j #>> '{orga,etat}', '-') end from v
+union all select 10, true, 'l''organisateur ne peut pas écrire à un NON-inscrit (42501)',
+  case when j #>> '{orga_hors,etat}' = '42501' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{orga_hors,texte}', j #>> '{orga_hors,etat}', '-') end from v
+union all select 11, true, 'un inscrit prévient un inscrit par une phrase connue',
+  case when j #>> '{inscrit,texte}' = 'zz Bob ' || (j ->> 'sfx') || ' une place s''est libérée, tu es inscrit·e !' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{inscrit,texte}', j #>> '{inscrit,etat}', '-') end from v
+union all select 12, true, 'le texte libre d''un inscrit NON organisateur devient le gabarit',
+  case when j #>> '{inscrit_libre,texte}' = 'zz Bob ' || (j ->> 'sfx') || ' a mis à jour une activité où tu es inscrit·e' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{inscrit_libre,texte}', j #>> '{inscrit_libre,etat}', '-') end from v
+union all select 13, true, 'un étranger à l''activité ne peut pas l''annoncer annulée (42501)',
+  case when j #>> '{etranger,etat}' = '42501' then 'OK' else 'ECHEC — ' || coalesce(j #>> '{etranger,texte}', j #>> '{etranger,etat}', '-') end from v
+union all select 14, true, 'une ligne d''origine serveur n''est pas touchée',
+  case when j ->> 'serveur' = 'texte serveur intact' then 'OK' else 'ECHEC — ' || coalesce(j ->> 'serveur', '-') end from v
+union all select 15, true, 'la suppression prévient les deux inscrits, au nom de l''organisatrice, d''origine serveur',
+  case when jsonb_array_length(coalesce(j -> 'suppression', '[]'::jsonb)) = 2
+        and (j #>> '{suppression,0,texte}') = 'zz Alice ' || (j ->> 'sfx') || ' a supprimé « Rando &lt;du&gt; lac »'
+        and (j #>> '{suppression,0,origine}') = 'serveur'
+       then 'OK' else 'ECHEC — ' || coalesce((j -> 'suppression')::text, '-') end from v
+union all select 16, true, 'aucune ligne d''essai ne reste',
+  (select case when count(*) = 0 then 'OK' else 'ECHEC — ' || count(*) end from public.notifications
+    where id like 'zz\_srv02\_%' or ref_id like 'zz\_srv02\_%')
+union all select 17, true, 'les deux déclencheurs sont en place ; celui du texte passe après celui de l''origine',
+  (select case when count(*) filter (where tgname = 'trg_notifications_texte') = 1
+                and count(*) filter (where tgname = 'trg_notifications_origine') = 1
+                and min(tgname) filter (where tgname in ('trg_notifications_origine', 'trg_notifications_texte')) = 'trg_notifications_origine'
+                and exists (select 1 from pg_trigger where tgrelid = 'public.events'::regclass and tgname = 'trg_events_prevenir_suppression')
+               then 'OK' else 'ECHEC' end
+     from pg_trigger where tgrelid = 'public.notifications'::regclass and not tgisinternal);
 
 do $$
 declare details text;

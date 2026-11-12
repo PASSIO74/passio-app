@@ -20,7 +20,8 @@
 -- PERSONNE d'autre que son propriétaire), appelée chaque nuit à 03:53 par pg_cron,
 -- et une fois par cette migration. Chaque catégorie est bornée à 5 000 lignes par
 -- passage ; la fonction rend ses comptes en jsonb.
---   ① conversations SANS membre ET SANS message, créées il y a plus de 7 jours ;
+--   ① conversations SANS membre ET SANS message, créées il y a plus de 7 jours, et
+--     qu'aucune activité ne vise (`events.conv_id`) ;
 --   ② stories de plus de 48 h (et leurs vues) ;
 --   ③ directs « live » sans signe depuis plus d'une heure → `ended` (rien d'effacé) ;
 --   ④ notifications LUES de plus de 90 jours (une non lue est gardée) ;
@@ -55,6 +56,8 @@ begin
      where c.created_at < now() - interval '7 days'
        and not exists (select 1 from public.conv_members m where m.conv_id = c.id)
        and not exists (select 1 from public.conv_messages x where x.conv_id = c.id)
+       -- la discussion d'une activité reste, même vide : `events.conv_id` la vise
+       and not exists (select 1 from public.events e where e.conv_id = c.id)
      limit 5000)
   delete from public.conversations c using cibles where c.id = cibles.id;
   get diagnostics n_conv = row_count;
@@ -131,7 +134,8 @@ union all select 2, true, 'plus aucune conversation vide de plus de 7 jours',
        (select case when count(*) = 0 then 'OK' else 'ECHEC — ' || count(*) end from public.conversations c
          where c.created_at < now() - interval '7 days'
            and not exists (select 1 from public.conv_members m where m.conv_id = c.id)
-           and not exists (select 1 from public.conv_messages x where x.conv_id = c.id))
+           and not exists (select 1 from public.conv_messages x where x.conv_id = c.id)
+           and not exists (select 1 from public.events e where e.conv_id = c.id))
 union all select 3, true, 'plus aucune story de plus de 48 h',
        (select case when count(*) = 0 then 'OK' else 'ECHEC — ' || count(*) end from public.stories where created_at < now() - interval '48 hours')
 union all select 4, true, 'plus aucune notification LUE de plus de 90 jours',
