@@ -261,6 +261,13 @@ export const PARCOURS_NON_INSTRUMENTES = Object.freeze([
   Object.freeze({ id: "notification_push", libelle: "Recevoir une notification sur l'appareil", vuPar: "accusé du service worker pour les alertes du pilote, les rappels d'activité, un appel sur dix et une notification sociale sur vingt (_shared/reception.js, _shared/appels.js)" }),
   Object.freeze({ id: "appel", libelle: "Passer un appel", vuPar: "erreurs JS ; la sonnerie (push) d'un appel sur dix s'accuse (_shared/appels.js), le parcours de l'appel lui-même n'est pas instrumenté" }),
   Object.freeze({ id: "creer_rencontre", libelle: "Créer une rencontre", vuPar: "appels réseau refusés" }),
+  // Quatre parcours que ce registre TAISAIT (2026-11-12) : ni sous contrat, ni recensés — l'écran
+  // « Couverture » les donnait donc pour couverts par omission. Les dire ne les instrumente pas ;
+  // chacun entrera sous contrat avec son émetteur (docs/SUIVI_SENTINELLE_PILOTAGE.md, lot 3).
+  Object.freeze({ id: "chargement_fil", libelle: "Charger le fil", vuPar: "erreurs JS et appels réseau refusés ; un fil vide, ou une publication enregistrée mais absente du fil, ne se voient pas" }),
+  Object.freeze({ id: "synchronisation_appareils", libelle: "Retrouver ses données sur un autre appareil", vuPar: "rien dans le nuage : la réception temps réel (rt_recv) n'est lue que par l'atelier du poste" }),
+  Object.freeze({ id: "affichage_medias", libelle: "Afficher une photo ou une vidéo", vuPar: "aucun signal dédié : un média qui ne s'affiche pas ne remonte que si le navigateur lève une erreur JS" }),
+  Object.freeze({ id: "export_compte", libelle: "Exporter ses données", vuPar: "la fonction export-account est exécutée par son banc avant chaque déploiement ; aucun suivi des exports réels" }),
 ]);
 
 const CHAMPS_TEXTE = ["id", "libelle", "domaine", "criticite", "acteur", "reaction", "verite", "reprise", "sensibilite", "confirmation"];

@@ -1230,7 +1230,11 @@ création de rencontre. Signalé sur #843 avec les preuves ; rien n'a été touc
 fois (07/11, 09/11, 12/11) qu'un staging migré avant la fusion bloque `main`.
 
 **Ce que l'alerte a montré de la supervision elle-même.** Le premier run a échoué à 14:31 ; le voyant
-est resté **vert dix-neuf minutes**, jusqu'à la fin du second. La fonction ne lisait que la DERNIÈRE
+est resté **vert dix-neuf minutes**, jusqu'à la fin du second. Et l'inverse à 15:25:05 : « Problème
+résolu » a sonné quatre minutes après le DÉPART du run suivant — une exécution en cours ne disait
+rien, donc vert. Il a réussi ensuite ; rien ne le prouvait à 15:25. Mesuré le même jour au canal ① :
+25 rouges en 30 jours, dont 21 pour une mise en ligne en échec (médiane 3 h 05) ; les 8 derniers
+envois d'alerte tous affichés par l'appareil, en 13 s au plus. La fonction ne lisait que la DERNIÈRE
 exécution : en cours, elle ne dit rien. C'est en voulant le reproduire que l'écart déclaré le 09/11
 (« aucune suite n'exécute `pilotage/index.ts` ») a été comblé — et le banc a rendu neuf rouges.
 

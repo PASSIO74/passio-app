@@ -22,7 +22,7 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | Mise en ligne | `release.json` sert `a5d114f4` : deux fusions de retard. Cause : staging migré avant la fusion de #843 (42501 sur `events`), troisième fois depuis le 07/11 | EXISTANT VÉRIFIÉ — signalé sur #843 |
 | Exécution de la fonction `pilotage` | Aucune suite n'exécutait `index.ts` (1 559 lignes) ; écart déclaré depuis le 09/11 | DÉFAUT REPRODUIT — corrigé au lot 1 |
 | Parcours jugés | 5 flux en 7 jours (2 réactions, 2 publications, 1 abonnement), un compte chacun : tous les contrats sont « insuffisant » ou « non observé » | EXISTANT VÉRIFIÉ |
-| Parcours hors contrat | Connexion, inscription, profil, pièce jointe, notification, appel, création de rencontre : recensés non instrumentés. Chargement du fil, synchronisation entre appareils, affichage des médias, export du compte : ni instrumentés ni recensés | RISQUE À TESTER — lot 3 |
+| Parcours hors contrat | Connexion, inscription, profil, pièce jointe, notification, appel, création de rencontre : recensés non instrumentés. Chargement du fil, synchronisation entre appareils, affichage des médias, export du compte : ni instrumentés ni recensés le 12/11 — recensés au lot 1 (l'écran « Couverture » les dit), toujours sans contrat | RISQUE À TESTER — lot 3 |
 | Gestes autonomes (6 jours de battements) | Délestage : niveau 0 à chaque passage · réveil : « calme » 523 fois, suspendu par la pause 41 fois · retour arrière : « inactif » 564 fois (le secret `PILOTAGE_NETLIFY_TOKEN` n'est pas posé) | EXISTANT VÉRIFIÉ |
 | Réparation B de bout en bout | Aucune enquête n'a tourné depuis #370 (13/09). La PR de l'agent naît sous `GITHUB_TOKEN` : sans CI, et son auto-fusion ne peut plus s'armer (`claude-code.yml` l.915, l.1093) | RISQUE À TESTER — lot 2 |
 | Alerte de modération | `moderation-alerte.yml` l.73 : `node …; code=$?` sous `bash -e` — le code 3 d'alerte tue l'étape avant l'ouverture de l'issue (le piège corrigé dans `digest.yml` l.78). 60 passages verts sur 60 : la condition d'alerte ne s'est jamais présentée ; le jour où elle se présente, le run rougit et aucune issue `[MODÉRATION]` ne s'ouvre | RISQUE À TESTER — lot 2 |
@@ -30,7 +30,10 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | Capacité éprouvée | 100 comptes simultanés pendant 60 à 90 s (staging, Micro) ; 200 jamais validé (rouge le 07/11) ; lecture anonyme ≈ 400 req/s pendant 40 s. Aucune campagne depuis le 09/11 | EXISTANT VÉRIFIÉ (documents, non rejoué) |
 | Récupération | Sauvegarde chaque nuit, chiffrée (`age`) depuis le 07/11, médias le dimanche ; restaurations exercées sur le staging les 14/09, 15/09 et 21/10. Aucune archive chiffrée déchiffrée en CI. RPO de fait 24 h (7 jours pour les médias) ; RTO non chronométré | EXISTANT VÉRIFIÉ / NON MESURÉ |
 | Coût de la supervision | Supabase Pro 25 $/mois ; une veille = 2 lignes `edge_*` (purgées à 2 h) et un battement par quart d'heure ; minutes GitHub Actions et consommation de l'agent | NON MESURÉ |
-| Accusés de réception | 12 dernières alertes acceptées par 2 appareils ; leurs accusés n'ont pas été relus dans cette baseline | NON MESURÉ |
+| Accusés de réception | Les 4 alertes des 3 derniers jours (la télémétrie brute ne vit pas plus) : 8 envois sur 8 acceptés ET affichés — Edge en 1 s, Chrome en 0 à 13 s | EXISTANT VÉRIFIÉ |
+| Nature des alertes | 25 passages au rouge en 30 jours : 21 « dernier déploiement en échec », 4 « N erreurs dans l'app ». Un rouge dure 3 h 05 en médiane, 6 h 05 au P95. Les alertes disent surtout l'état de la chaîne de livraison, pas celui des utilisateurs | EXISTANT VÉRIFIÉ |
+| « Résolu » avant la preuve | Le 12/11 à 15:25:05 le téléphone reçoit « Problème résolu » : le run de 15:21 venait de DÉMARRER (une exécution en cours ne disait rien, donc vert). Il a réussi ensuite — mais rien ne le prouvait à 15:25 | DÉFAUT REPRODUIT (pilotage-chemins ⑫) — corrigé au lot 1 |
+| Sentinelle dite muette | Le 12/11 de 12:00 à 12:05, orange « la Sentinelle n'a pas tourné depuis plus de 8 h » : son cron était simplement servi tard | EXISTANT VÉRIFIÉ — P1-7 |
 
 ## 2. Priorités
 
@@ -43,7 +46,7 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | P0-3 | La fonction `pilotage` jamais exécutée par un test | lot 1 — TESTÉ |
 | P0-4 | L'alerte parcourt tous les comptes pour trouver le pilote (ne passe pas 100 000 inscrits) | lot 1 — TESTÉ |
 | P0-5 | Migration de #843 : création de rencontre refusée (42501) si appliquée en production ; staging cassé, `main` non déployé | signalé sur #843 — hors de ce lot |
-| P0-6 | `moderation-alerte.yml` : le jour d'une vraie alerte, l'étape meurt avant d'ouvrir l'issue (texte confirmé, jamais survenu) | lot 2 — à reproduire sur le banc des workflows |
+| P0-6 | `moderation-alerte.yml` : le jour d'une vraie alerte, l'étape mourait avant d'ouvrir l'issue (60 passages verts sur 60 : jamais survenu) | DÉFAUT REPRODUIT sur le banc des workflows, corrigé — PR #849, TESTÉ |
 
 **P1 — parcours essentiels, réparations bloquées, limites de capacité**
 
@@ -53,7 +56,7 @@ Toutes les mesures : canal ① (lecture seule) et API GitHub, le 12/11 entre 14 
 | P1-2 | Deux touchers, deux réparations (deux agents) ; deux relances, deux runs | lot 1 — TESTÉ |
 | P1-3 | Mémoire du voyant illisible prise pour « aucun état » | lot 1 — TESTÉ |
 | P1-4 | Circuit B : depuis l'audit du 06/11 la PR de l'agent naît sans CI (`GITHUB_TOKEN`, choix de sécurité : « un humain la rouvre après l'avoir lue »). Depuis le téléphone, « Régler » arme alors une auto-fusion dont les tests ne partiront jamais, et l'écran dit « les tests tournent encore ». La politique (`correctif_sentinelle`) décrit encore une fusion par la CI | lot 2 — décision humaine : qui rouvre, et d'où |
-| P1-5 | Création de rencontre, connexion, inscription, chargement du fil : sans contrat ; export, synchronisation, affichage des médias : absents de la couverture affichée | lot 3 |
+| P1-5 | Création de rencontre, connexion, inscription, chargement du fil : sans contrat. Export, synchronisation, affichage des médias, chargement du fil : absents de la couverture affichée — recensés au lot 1 (`PARCOURS_NON_INSTRUMENTES`) | lot 3 pour les contrats |
 | P1-6 | Staging partagé : une migration non fusionnée bloque toutes les mises en ligne (07/11, 09/11, 12/11) | lot 2 — garde à écrire |
 | P1-7 | Sentinelle dite muette à 8 h quand son cron est servi au P95 toutes les 8,9 h : fausses lignes | lot 2 — décision (réveil de cadence = politique) |
 | P1-8 | `lireActivation` parcourt jusqu'à 20 000 comptes à chaque ouverture d'écran ; total faux au-delà | lot 5 — migration `pilotage_inscrits` |
@@ -116,10 +119,10 @@ staging recalé. Lot 6 : restauration d'une archive `age`, RTO chronométré, ex
 |---|---|---|
 | Événement → voyant (site, parcours, déploiement) | ≤ 5 min (une veille) | déploiement : 3 min le 12/11 (fin du run → voyant) ; les autres NON MESURÉ |
 | Voyant → notification acceptée | ≤ 10 s | 1 s le 12/11 |
-| Notification → accusée par un appareil | ≤ 10 min, ≥ 95 % | NON MESURÉ dans cette baseline |
+| Notification → affichée par un appareil | ≤ 10 min, ≥ 95 % | 8 sur 8 en 13 s au plus (4 alertes, 9 au 12/11) — trop peu pour un taux |
 | Enquête ouverte → prise en charge par l'agent | médiane ≤ 30 min | 25 à 79 min en septembre ; rien depuis |
 | Rétablissement prouvé après correctif | version servie + parcours rejugé | NON MESURÉ |
-| Fausses alertes (alerte sans défaut réel derrière) | < 1 par semaine | NON MESURÉ — 41 alertes en 30 jours à qualifier |
+| Fausses alertes (alerte sans défaut réel derrière) | < 1 par semaine | NON MESURÉ — 25 rouges en 30 jours, dont 21 pour une mise en ligne en échec : à qualifier une par une (staging, test intermittent, vrai défaut) |
 | Résolution autonome des incidents éligibles (circuit B) | à fixer après le lot 2 | 0 depuis le 13/09 |
 | Temps humain hebdomadaire | à fixer après deux semaines de mesure | NON MESURÉ |
 | Ouverture du pilotage sur mobile (état affiché) | ≤ 3 s en 4G | NON MESURÉ |
@@ -159,4 +162,5 @@ personne n'est prévenu par un second canal si le téléphone ne reçoit pas.
 
 | Date | Lot | Branche · PR | État | Preuve |
 |---|---|---|---|---|
-| 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` | IMPLÉMENTÉ, TESTÉ ; en attente de contre-revue et d'une CI que le staging laisse passer | banc 39/39, réinjections 26/26, unitaires 1 088, `verif`, navigateur 48 |
+| 2026-11-12 | 1 | `fix/pilotage-verite-chemins-executes` · #848 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | banc 39/39, réinjections 26/26, unitaires 1 088, `verif`, navigateur 48 ; CI : audits, bancs serveur et suites à comptes réels verts |
+| 2026-11-12 | 2 (premier sujet) | `fix/moderation-alerte-code-3` · #849 | IMPLÉMENTÉ, TESTÉ ; en attente de la contre-revue de PASSIO74 | étape réelle rejouée sous `bash -e` : rouge sur `main`, verte ; unitaires 1 044 |
