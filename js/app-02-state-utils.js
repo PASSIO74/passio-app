@@ -1332,6 +1332,17 @@ function _pendingUserStateKey(uid) {
 function _queuePendingUserState(payload) {
   if (_accountPurged) return false;   // déconnexion en cours : ne rien remettre en file
   try {
+    // ⚠️ LA BASE DU BLOB VOYAGE AVEC LUI (ETAT-01, audit du 2026-11-10). Le rejeu
+    // n'écrit que si la ligne serveur n'a pas bougé depuis CETTE valeur — la
+    // dernière ligne relue au moment où ce blob a été construit. Le rejeu comparait
+    // au repère VIVANT `state._stateSyncedAt`, que la lecture du démarrage venait
+    // d'avancer jusqu'à la ligne serveur elle-même : « updated_at <= updated_at »,
+    // toujours vrai. Un instantané de 09:00 resté en file sur le téléphone écrasait
+    // l'état de 10:00 écrit depuis l'ordinateur, sur le serveur puis sur les deux
+    // appareils. Une base absente (aucune ligne jamais relue) vaut `null`.
+    if (payload && typeof payload === "object" && !("base" in payload)) {
+      payload = Object.assign({}, payload, { base: (typeof state !== "undefined" && state && state._stateSyncedAt) || null });
+    }
     localStorage.setItem(_pendingUserStateKey(payload && payload.user_id), JSON.stringify(payload));
     return true;
   } catch (_e) { return false; }
@@ -1422,7 +1433,7 @@ async function _supaSaveUserStateOnce() {
     // l'heure : c'est cette valeur qui arbitre la fusion au démarrage, et un
     // appareil en avance gagnait donc définitivement contre tous les autres.
     // On relit la valeur serveur pour marquer la synchro sur elle.
-    const payload = { user_id: MY_UID, data: _syncableState() };
+    const payload = { user_id: MY_UID, data: _estampillerEcriture(_syncableState()) };
     const { data: ligne, error } = await supa.from("user_state")
       .upsert(payload, { onConflict: "user_id" })
       .select("updated_at")
@@ -1448,7 +1459,7 @@ async function _supaSaveUserStateOnce() {
     // « Failed to fetch » (requête avortée par le passage en arrière-plan) atterrit ici.
     try {
       if (typeof MY_UID !== "undefined" && MY_UID) {
-        _queuePendingUserState({ user_id: MY_UID, data: _syncableState(), updated_at: new Date().toISOString() });
+        _queuePendingUserState({ user_id: MY_UID, data: _estampillerEcriture(_syncableState()), updated_at: new Date().toISOString() });
       }
     } catch (_e2) {}
     console.warn("supaSaveUserState:", e && e.message);
@@ -1499,7 +1510,7 @@ function supaSaveUserStateBeacon() {
     // acquittement ciblé) mais n'est PAS envoyé : la base horodate. Deux objets
     // distincts, donc, là où il n'y en avait qu'un — c'est toute la correction.
     const marqueurLocal = new Date().toISOString();
-    const payload = { user_id: MY_UID, data: _syncableState() };
+    const payload = { user_id: MY_UID, data: _estampillerEcriture(_syncableState()) };
     const queued = _queuePendingUserState(Object.assign({ updated_at: marqueurLocal }, payload));   // filet : rejoué au boot si le keepalive rate
     // Le timer de debounce déjà armé porte la MÊME génération d'état : le laisser
     // courir produirait un second upsert, ré-horodaté, au retour du bfcache.
@@ -1551,6 +1562,46 @@ function supaSaveUserStateBeacon() {
 // que la ligne serveur — sinon un autre appareil (ou le keepalive qui a fini par
 // aboutir) a déjà écrit une version au moins aussi neuve, on jette la file.
 let _flushingPendingState = false;
+// ── QUI A ÉCRIT LA LIGNE EN DERNIER (ETAT-01, suite de la revue du 12/11) ──
+// Certaines écritures de CET appareil arrivent en base sans que le repère
+// `_stateSyncedAt` avance : le beacon (`return=minimal`, rien à relire) et la
+// sauvegarde dont la réponse s'est perdue (« Failed to fetch » au passage en
+// arrière-plan). Une file posée ensuite porte donc une base PLUS ANCIENNE que la
+// ligne… que l'appareil a lui-même écrite. Comparer à la seule base la jetterait :
+// perte hors-ligne sur un appareil SEUL. Chaque blob envoyé porte donc une
+// estampille `_ecriture`, mémorisée sur l'appareil : si la ligne a bougé depuis la
+// base mais que sa dernière écriture est l'une des nôtres, personne d'autre n'y a
+// touché, et le rejeu passe — toujours en compare-et-remplace.
+const MES_ECRITURES_PREFIX = "passio_mes_ecritures_";
+const MES_ECRITURES_MAX = 30;
+function _mesEcritures() {
+  try {
+    const l = JSON.parse(localStorage.getItem(MES_ECRITURES_PREFIX + MY_UID) || "[]");
+    return Array.isArray(l) ? l : [];
+  } catch (_e) { return []; }
+}
+function _estampillerEcriture(data) {
+  if (!data || typeof data !== "object") return data;
+  const jeton = "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+  data._ecriture = jeton;
+  try {
+    const l = _mesEcritures();
+    l.push(jeton);
+    localStorage.setItem(MES_ECRITURES_PREFIX + MY_UID, JSON.stringify(l.slice(-MES_ECRITURES_MAX)));
+  } catch (_e) {}
+  return data;
+}
+
+// La base de comparaison d'une entrée de file : celle qu'elle porte, sinon le
+// repère copié dans son blob, sinon l'époque (le blob n'a jamais vu de ligne).
+const BASE_FILE_SANS_LIGNE = "1970-01-01T00:00:00Z";
+function _baseDeLaFile(pending) {
+  if (pending && typeof pending.base === "string" && pending.base) return pending.base;
+  const d = pending && pending.data;
+  if (d && typeof d._stateSyncedAt === "string" && d._stateSyncedAt) return d._stateSyncedAt;
+  return BASE_FILE_SANS_LIGNE;
+}
+
 async function _flushPendingUserState() {
   // Le rejeu est branché sur deux chemins (boot et supaInit/SIGNED_IN) qui peuvent se
   // chevaucher : sans ce verrou, deux SELECT puis deux upserts concurrents du même blob.
@@ -1601,8 +1652,13 @@ async function _flushPendingUserState() {
     // logique. Le seul ordre réellement fiable serait une révision monotone
     // portée par la ligne (compare-et-remplace) — voir le risque résiduel de
     // SYNC-CLOCK-012 dans passio_qa_registry.json.
-    const baseServeur = (typeof state !== "undefined" && state && state._stateSyncedAt) || pending.updated_at;
-    const { data: upd, error: upErr } = await supa.from("user_state")
+    // ⚠️ LA BASE EST CELLE DU BLOB, JAMAIS LE REPÈRE VIVANT (ETAT-01) : voir
+    // `_queuePendingUserState`. Une file écrite avant ce correctif n'a pas de
+    // `base` : on prend le repère que le blob porte lui-même (`data._stateSyncedAt`).
+    // Sans base du tout, le blob n'a jamais vu de ligne serveur : il ne peut que
+    // CRÉER la ligne absente, jamais en remplacer une (époque → 0 ligne touchée).
+    const baseServeur = _baseDeLaFile(pending);
+    let { data: upd, error: upErr } = await supa.from("user_state")
       .update({ data: pending.data })       // le trigger horodate : rien à imposer
       .eq("user_id", MY_UID)
       .lte("updated_at", baseServeur)
@@ -1612,13 +1668,36 @@ async function _flushPendingUserState() {
     if (!upd || upd.length === 0) {
       // Zéro ligne touchée : soit le serveur est déjà au moins aussi récent (rien à
       // rejouer), soit la ligne n'existe pas encore (premier appareil du compte).
-      const { data: row, error: selErr } = await supa.from("user_state").select("user_id").eq("user_id", MY_UID).maybeSingle();
+      const { data: row, error: selErr } = await supa.from("user_state")
+        .select("updated_at, ecriture:data->>_ecriture").eq("user_id", MY_UID).maybeSingle();
       if (selErr) return;
-      if (row) { _clearPendingUserState(MY_UID, pending.updated_at); return; }  // serveur plus récent : file obsolète
+      // La ligne a bougé depuis la base, mais c'est CET appareil qui l'a écrite en
+      // dernier (beacon, réponse perdue) : personne d'autre n'y a touché. Le rejeu
+      // passe, conditionné à CETTE valeur — un autre appareil qui écrirait entre la
+      // lecture et l'écriture ferait toucher 0 ligne, et la file serait gardée.
+      if (row && row.ecriture && _mesEcritures().indexOf(row.ecriture) > -1 && row.updated_at) {
+        const { data: upd2, error: upErr2 } = await supa.from("user_state")
+          .update({ data: pending.data })
+          .eq("user_id", MY_UID)
+          .lte("updated_at", row.updated_at)
+          .select("updated_at");
+        if (upErr2 || !upd2 || upd2.length === 0) return;   // garde la file : prochain essai
+        try { _applyUserState(pending.data); } catch (_e) {}
+        _markStateSynced(upd2[0].updated_at);
+        _clearPendingUserState(MY_UID, pending.updated_at);
+        try { if (typeof renderEverything === "function") renderEverything(); } catch (_e) {}
+        return;
+      }
+      if (row) {   // un AUTRE appareil a écrit depuis la base du blob : file obsolète, jetée — et dit
+        try { if (typeof diagLog === "function") diagLog("rejeu_etat_jete base=" + String(baseServeur).slice(0, 32)); } catch (_e) {}
+        _clearPendingUserState(MY_UID, pending.updated_at);
+        return;
+      }
       // Insertion sans `updated_at` : la base horodate. Envoyer la valeur de la
       // file reviendrait à réintroduire l'autorité client par la porte de secours.
-      const { error: insErr } = await supa.from("user_state").insert({ user_id: pending.user_id, data: pending.data });
+      const { data: ins, error: insErr } = await supa.from("user_state").insert({ user_id: pending.user_id, data: pending.data }).select("updated_at");
       if (insErr) return;
+      if (ins && ins[0] && ins[0].updated_at) upd = ins;   // repère = valeur SERVEUR (revue du 12/11), pas l'heure de la file
     }
 
     // ⚠️ Le rejeu vient de rendre le SERVEUR plus récent que l'état VIVANT : sans
