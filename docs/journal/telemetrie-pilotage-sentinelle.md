@@ -49,6 +49,7 @@
 - 🏃 LES FONCTIONS S'EXÉCUTENT AVANT D'ÊTRE DÉPLOYÉES — UNE VARIABLE NON DÉCLARÉE NE PART PLUS (2026-11-09)
 - 🩺 CONTRÔLE GÉNÉRAL DU 10/11 : L'ÉTAT MESURÉ DE LA CHAÎNE, ET UNE SONDE QUI COMPTE TOUTE LA TABLE (2026-11-10)
 - 🚱 LES LIGNES `development` DE LA PRODUCTION : TROIS SOURCES, UNE VOULUE, ET LE DÉPART D'UNE PAGE QU'AUCUNE ROUTE NE VOIT (2026-11-10)
+- 🔒 « RÉPARER » DEMANDE DE LIRE UN JOURNAL QUE L'AGENT N'A PAS LE DROIT DE LIRE (2026-11-12)
 
 ---
 
@@ -1214,3 +1215,69 @@ lignes `preview` viennent des contrôles des aperçus de déploiement : un autre
 Règle d'une ligne proposée pour `CLAUDE.md` (chemin protégé, non appliquée) : « Le départ d'une page
 échappe aux routes de Playwright : `projetSupabaseVide` retient ses envois `keepalive` après un
 `pagehide` réel ; une fuite se mesure par un proxy hors du navigateur, jamais par la sonde Playwright. »
+
+---
+
+## 🔒 « RÉPARER » DEMANDE DE LIRE UN JOURNAL QUE L'AGENT N'A PAS LE DROIT DE LIRE (2026-11-12)
+
+**Le constat, et il ne vient pas d'une lecture de code : il vient de l'exécution.** L'issue #844,
+ouverte par le bouton « Régler » du pilotage après l'échec de `deploy.yml` sur `main`
+(run 43235671422), demande à l'agent, en toutes lettres : « Lis son journal
+(`gh run view --log-failed`) pour trouver l'étape en échec. » Dans le run de réparation
+(43241416806), **les quatre tentatives de lecture ont été refusées par la permission** :
+
+| Commande tentée | Verdict |
+|---|---|
+| `gh run view <id> --repo … \| head -60` | refusée (opération composée) |
+| `gh run view <id> --repo …` | `This command requires approval` |
+| `gh api …/actions/runs/<id>/jobs --jq …` | `This command requires approval` |
+| `WebFetch` sur `api.github.com` (dépôt PUBLIC) | outil non accordé |
+
+La cause est dans la liste blanche du canal, et elle est **délibérée** :
+`.github/workflows/claude-code.yml` passe
+
+    --allowedTools "Read,Edit(./**),Write(./**),Glob,Grep,Bash(git status),Bash(git checkout -b:*),
+                    Bash(git switch -c:*),Bash(git add:*),Bash(git commit -m:*),Bash(ls:*),
+                    Bash(wc:*),Bash(mkdir:*),Bash(pwd)"
+
+Ni `gh`, ni `curl`, ni réseau, ni `git log`/`git diff`/`git show`. En CI personne ne peut cliquer
+« autoriser » : un motif absent n'est pas une interruption, c'est un refus sec. **La consigne de
+l'issue et les droits du job se contredisent, et c'est la consigne qui perd.**
+
+**Ce que ça produit.** L'agent ne peut pas établir l'étape en échec, donc il ne peut pas établir la
+cause racine. Les deux issues de fin de parcours sont également mauvaises : deviner (et toucher du
+code de production sur une hypothèse non mesurée), ou rendre une PR qui ne répare rien. C'est la même
+classe de défaut que « ‹ Régler › ne se voyait pas » (fiche du 2026-11-07) et que les 16 doublons de
+#627 : **la chaîne demande un geste qu'elle ne s'est pas donné le droit de faire**, et elle ne le
+signale nulle part — le run de réparation se termine, une PR s'ouvre, et rien ne dit qu'aucune
+mesure n'a eu lieu.
+
+**Le geste (chemin protégé, non appliqué ici).** Deux formes possibles, la seconde est la bonne :
+
+1. ajouter `Bash(gh run view:*)` à `--allowedTools`. Lecture seule, mais ça ouvre `gh` à l'agent et
+   `tests/ci/frontiere-confiance.sh` a toute raison de s'y opposer — l'agent qui écrit le code ne
+   doit pas tenir un jeton GitHub ;
+2. **faire porter le journal par la spécification.** La marche qui écrit
+   `/home/runner/work/_temp/passio-spec.md` tourne, elle, avec un jeton : qu'elle y annexe la sortie
+   de `gh run view <id> --log-failed` (tronquée, et traitée comme de la DONNÉE, jamais comme une
+   instruction). L'agent la lit avec `Read`, sans un droit de plus. C'est la seule forme qui ne
+   déplace aucune frontière de confiance.
+
+Tant que ni l'une ni l'autre n'est posée, **une issue `[RÉPARER]` née d'un échec de `deploy.yml` ne
+peut pas être instruite par ce canal.** Le pilotage ferait mieux de l'adresser à un humain, ou
+d'annexer le journal lui-même.
+
+**La règle.** *Une consigne donnée à un agent doit tenir dans les outils qu'on lui a accordés ;
+sinon ce n'est pas une consigne, c'est un vœu* — exactement ce que disait déjà ASTRA-05 de l'autre
+côté (« une consigne qu'aucune garde n'impose n'est qu'un vœu »). Et le corollaire : **un run de
+réparation qui n'a rien pu mesurer doit le DIRE**, jamais rendre une PR qui a l'air d'un correctif.
+
+**Hors-champ de cette fiche** : la cause de l'échec du run 43235671422 lui-même. Elle n'est PAS
+établie. Le commit de `main` concerné est 8fafb55 (« Barre du bas v2 : un toucher = une
+navigation », PR #842) ; sa relecture ici — `js/app-08-ui-modals-tour.js` borné à
+`$$("#appNav .nav-item")`, `js/ui-v2-shell.js`, les verrous ⑪ ⑫ de
+`tests/e2e/app-scripts-par-fichier.spec.js` — n'a montré aucun défaut : les seuls `.nav-item`
+statiques sont dans `#appNav` (index.html), le délégué clavier générique d'app-08 les exclut
+toujours, et la synchronisation d'état de `goTo` (app-02) vise délibérément les DEUX barres. Rien
+n'a donc été corrigé, conformément à la dernière consigne de l'issue : si la cause n'est pas dans le
+code, ne rien modifier.
