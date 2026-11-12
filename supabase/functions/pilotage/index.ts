@@ -1471,9 +1471,12 @@ async function relancer(admin: Admin, cible: string) {
   // L'heure AVANT l'envoi : le run que GitHub crée ensuite part après elle (suiviRelance).
   const demande = new Date().toISOString();
   const res = await gh(`/repos/${DEPOT}/actions/workflows/${r.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) }).catch(() => null);
-  if (!res || res.status !== 204) {
+  // GitHub MUET (délai dépassé) n'est pas un refus : la relance est peut-être partie. Le créneau reste
+  // pris (deux minutes au plus) et l'écran ne promet rien — une réponse perdue n'est ni un succès ni un échec.
+  if (!res) return json({ error: "GitHub n'a pas répondu : la relance est peut-être partie. Relis l'écran dans une minute avant de retoucher." }, 502);
+  if (res.status !== 204) {
     await rendreCreneau(admin, creneau);
-    return json({ error: res ? `GitHub a refusé la relance (HTTP ${res.status}).` + refusDroit(res.status, "Actions") : "GitHub n'a pas répondu : la relance n'est pas partie." }, 502);
+    return json({ error: `GitHub a refusé la relance (HTTP ${res.status}).` + refusDroit(res.status, "Actions") }, 502);
   }
   cacheGh = null; // pour que l'écran voie l'exécution partir, sans attendre le cache de 2 min
   // La relance est NOTÉE (2026-11-07) : chaque ligne qui relance la suit jusqu'au
@@ -1632,9 +1635,12 @@ async function reparer(admin: Admin, corps: Record<string, unknown>) {
   if (verrou.refus) return verrou.refus;
   const r = await gh(`/repos/${DEPOT}/issues`, { method: "POST", body: JSON.stringify({ title: titreReparation(c), body: corpsReparation(c, DEPOT) }) }).catch(() => null);
   cacheGh = null;
-  if (!r || !r.ok) {
+  // GitHub MUET n'est pas un refus : l'issue est peut-être ouverte, et un agent avec. Le verrou RESTE
+  // (dix minutes) : un second toucher ne doit pas en ouvrir une seconde sur une réponse perdue.
+  if (!r) return json({ error: "GitHub n'a pas répondu : la réparation est peut-être partie. Relis l'écran ; si elle n'y est pas, retouche dans dix minutes." }, 502);
+  if (!r.ok) {
     await rendreCreneau(admin, verrou.creneau);
-    return json({ error: r ? `GitHub a refusé l'ouverture (HTTP ${r.status}).` + refusDroit(r.status, "Issues") : "GitHub n'a pas répondu : la réparation n'est pas partie." }, 502);
+    return json({ error: `GitHub a refusé l'ouverture (HTTP ${r.status}).` + refusDroit(r.status, "Issues") }, 502);
   }
   const issue = await r.json().catch(() => ({}));
   return json({ ok: true, message: `Réparation lancée (#${Number(issue.number) || "?"}) : Claude prépare le correctif, il apparaîtra ici, prêt à mettre en ligne.` });

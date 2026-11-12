@@ -584,6 +584,26 @@ test("㉒ double toucher : deux « Régler » simultanés sur le même problème
   assert.equal((await appeler({ action: "reparer", cible: "issue", numero: 81 })).status, 502);
   banc.gh.panne = null;
   assert.equal((await appeler({ action: "reparer", cible: "issue", numero: 81 })).status, 200, "le refus n'a pas laissé de verrou");
+  // Réponse PERDUE (GitHub muet, délai dépassé) : l'issue est peut-être ouverte. L'écran ne dit ni « partie » ni
+  // « pas partie », et le verrou reste : le second toucher n'en ouvre pas une seconde.
+  await monter();
+  banc.gh.issues.push(issue({ number: 82, title: "[VEILLE] flux", labels: ["veille"] }));
+  banc.gh.lenteur = (m, chemin) => { if (m === "POST" && /\/issues$/.test(chemin)) throw new Error("The operation was aborted due to timeout"); };
+  const muet = await appeler({ action: "reparer", cible: "issue", numero: 82 });
+  assert.equal(muet.status, 502);
+  assert.match(muet.corps.error, /peut-être partie/);
+  banc.gh.lenteur = null;
+  const second = await appeler({ action: "reparer", cible: "issue", numero: 82 });
+  assert.equal(second.status, 409, "une réponse perdue ne rend pas le verrou : " + JSON.stringify(second.corps));
+  assert.equal(appelsGithub("POST", /\/issues$/).length, 1, "une seule tentative d'ouverture");
+  // Même règle pour une relance.
+  banc.gh.lenteur = (m, chemin) => { if (m === "POST" && /dispatches$/.test(chemin)) throw new Error("The operation was aborted due to timeout"); };
+  const relanceMuette = await appeler({ action: "relancer", cible: "veille" });
+  assert.equal(relanceMuette.status, 502);
+  assert.match(relanceMuette.corps.error, /peut-être partie/);
+  assert.equal(evenements(EVT_GESTE).length, 0, "une relance dont on ne sait rien n'est pas notée comme partie");
+  banc.gh.lenteur = null;
+  assert.equal((await appeler({ action: "relancer", cible: "veille" })).status, 409);
 });
 
 test("㉓ réglages : clé inconnue, coupure hors liste blanche, niveau impossible → 400 sans écrire ; un réglage valide est posé « pilote » et journalisé ; `null` le lève ; table absente → 503", async () => {

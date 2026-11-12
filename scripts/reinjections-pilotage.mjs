@@ -38,7 +38,7 @@ const M = [
   ["R12 l'auto-fusion s'arme sans tête attendue", FN, `mergeMethod: SQUASH, expectedHeadOid: $tete }`, `mergeMethod: SQUASH }`, BANC, "⑱"],
   ["R13 deux relances simultanées partent toutes deux", FN, `if (!creneau.ok && creneau.raison === "pris") return json({ error: "Cette relance vient de partir`, `if (false) return json({ error: "Cette relance vient de partir`, BANC, "⑯"],
   ["R14 deux réparations simultanées s'ouvrent toutes deux", FN, `  const verrou = await verrouReparation(admin, cleVerrou);\n  if (verrou.refus) return verrou.refus;\n  const r = await gh(`, `  const verrou = await verrouReparation(admin, cleVerrou);\n  const r = await gh(`, BANC, "㉒"],
-  ["R15 un refus de GitHub garde le verrou de la réparation", FN, `    await rendreCreneau(admin, verrou.creneau);\n    return json({ error: r ? \`GitHub a refusé l'ouverture`, `    return json({ error: r ? \`GitHub a refusé l'ouverture`, BANC, "㉒"],
+  ["R15 un refus de GitHub garde le verrou de la réparation", FN, `    await rendreCreneau(admin, verrou.creneau);\n    return json({ error: \`GitHub a refusé l'ouverture`, `    return json({ error: \`GitHub a refusé l'ouverture`, BANC, "㉒"],
   ["R16 une mémoire illisible est prise pour « aucun état »", FN, `const change = memoire.illisible ? d.sonner : (!prec ||`, `const change = (!prec ||`, BANC, "㉛"],
   ["R17 la lecture en échec de la mémoire ne se dit pas", FN, `if (error) return { etat: null, illisible: true, code: String((error as { code?: string }).code || "lecture") };`, `if (error) return { etat: null, illisible: false };`, BANC, "㉛"],
   ["R18 la pause se cherche parmi toutes les issues", FN, "issues?state=open&creator=${PILOTE_GITHUB}&per_page=100", "issues?state=open&per_page=100", BANC, "⑲"],
@@ -50,6 +50,8 @@ const M = [
   ["R24 une variable jamais déclarée dans un geste (le défaut de #753)", FN, `  if (!r) return json({ error: "Relance inconnue." }, 400);`, `  if (!r) return json({ error: "Relance inconnue." + cibleInconnue }, 400);`, BANC, "⑮"],
   ["R25 la veille ignore la marque du pilote et parcourt tous les comptes", FN, `const uids: string[] = await pilotesMarques(admin);`, `const uids: string[] = [];`, BANC, "㊳"],
   ["R26 une marque est crue sans relire le compte", FN, `if (error ? !introuvable : !!(data && data.user && autorise(data.user, EXTRA))) verifies.push(uid);`, `verifies.push(uid);`, BANC, "㊳"],
+  ["R27 une réponse PERDUE de GitHub rend le verrou de la réparation", FN, `  if (!r) return json({ error: "GitHub n'a pas répondu : la réparation est peut-être partie.`, `  if (!r) await rendreCreneau(admin, verrou.creneau);\n  if (!r) return json({ error: "GitHub n'a pas répondu : la réparation est peut-être partie.`, BANC, "㉒"],
+  ["R28 une réponse perdue de GitHub rend le verrou de la relance", FN, `  if (!res) return json({ error: "GitHub n'a pas répondu : la relance est peut-être partie.`, `  if (!res) await rendreCreneau(admin, creneau);\n  if (!res) return json({ error: "GitHub n'a pas répondu : la relance est peut-être partie.`, BANC, "㉒"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");
