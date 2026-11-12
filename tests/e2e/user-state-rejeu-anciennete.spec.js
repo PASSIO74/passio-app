@@ -17,7 +17,11 @@
 //      blob porte (`data._stateSyncedAt`) ;
 //   ④ sans base du tout, le blob ne peut que CRÉER une ligne absente, jamais en
 //      remplacer une ;
-//   ⑤ la mise en file note la base au moment où elle est faite.
+//   ⑤ la mise en file note la base au moment où elle est faite ;
+//   ⑥ appareil SEUL (revue du 12/11) : un beacon a écrit la ligne sans avancer le
+//      repère, puis une sauvegarde hors ligne a été mise en file — au démarrage, la
+//      ligne est plus récente que la base MAIS c'est cet appareil qui l'a écrite :
+//      le rejeu passe. Joué par les vraies fonctions d'envoi, pas posé à la main.
 // ═════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -40,7 +44,17 @@ async function banc(page, ligneServeur) {
         q.insert = (corps) => {
           window.__ops.push({ table, op: "insert", corps });
           if (!window.__serveur) window.__serveur = { data: corps.data, updated_at: "2026-11-12T12:00:00+00:00" };
-          return Promise.resolve({ data: null, error: null });
+          const rendu = { data: [{ updated_at: window.__serveur.updated_at }], error: null };
+          return { select: () => Promise.resolve(rendu), then: (ok) => ok(rendu) };
+        };
+        // L'envoi direct (supaSaveUserState) : refusé quand le banc simule le hors-ligne.
+        q.upsert = (corps) => {
+          window.__ops.push({ table, op: "upsert" });
+          const hl = window.__horsLigne;
+          if (!hl) window.__serveur = { data: corps.data, updated_at: "2026-11-12T11:00:00+00:00" };
+          const rendu = hl ? { data: null, error: { message: "Failed to fetch" } } : { data: { updated_at: window.__serveur.updated_at }, error: null };
+          const c = { select: () => c, maybeSingle: async () => rendu };
+          return c;
         };
         q.eq = () => q;
         q.lte = (col, v) => { q._lte = v; return q; };
@@ -56,7 +70,8 @@ async function banc(page, ligneServeur) {
         };
         q.maybeSingle = async () => {
           window.__ops.push({ table, op: "select" });
-          return { data: window.__serveur ? { user_id: "x" } : null, error: null };
+          const s = window.__serveur;
+          return { data: s ? { user_id: "x", updated_at: s.updated_at, ecriture: (s.data && s.data._ecriture) || null } : null, error: null };
         };
         q.then = (ok) => ok({ data: null, error: null });
         return q;
@@ -151,5 +166,41 @@ test.describe("ETAT-01 : le rejeu de l'état compare à la base du blob, pas au 
       return JSON.parse(localStorage.getItem("passio_pending_user_state_" + uid)).base;
     }, UID);
     expect(base).toBe("2026-11-12T08:30:00+00:00");
+  });
+
+  test("⑥ appareil seul : beacon réussi, puis sauvegarde hors ligne — le rejeu passe", async ({ page }) => {
+    await banc(page, { data: { currentMood: "etat_9h" }, updated_at: T1 });
+    await page.route("**/rest/v1/user_state**", async (route) => {
+      // Le beacon (fetch keepalive) : la base l'enregistre et horodate.
+      const corps = JSON.parse(route.request().postData() || "{}");
+      await page.evaluate((d) => { window.__serveur = { data: d, updated_at: "2026-11-12T10:30:00.123456+00:00" }; }, corps.data);
+      await route.fulfill({ status: 201, body: "" });
+    });
+    const r = await page.evaluate(async (uid) => {
+      state._stateSyncedAt = "2026-11-12T09:00:00.000000+00:00";   // = T1
+      window.PASSIO_SUPABASE = window.PASSIO_SUPABASE || {};
+      // ① passage en arrière-plan : le beacon part et réussit (le repère n'avance pas).
+      state.currentMood = "avant_fermeture"; _stateDirty = true;
+      supaSaveUserStateBeacon();
+      for (let i = 0; i < 40 && !(window.__serveur && window.__serveur.data && window.__serveur.data.currentMood === "avant_fermeture"); i++) await new Promise((r) => setTimeout(r, 50));
+      const beaconArrive = window.__serveur.data.currentMood === "avant_fermeture";
+      // ② retour au premier plan, geste hors ligne : la sauvegarde échoue → file.
+      window.__horsLigne = true;
+      state.currentMood = "fait_hors_ligne"; _stateDirty = true;
+      await supaSaveUserState();
+      const file = JSON.parse(localStorage.getItem("passio_pending_user_state_" + uid) || "null");
+      // ③ redémarrage : la lecture applique la ligne (celle du beacon) et avance le repère.
+      window.__horsLigne = false;
+      state._stateSyncedAt = window.__serveur.updated_at;
+      state.currentMood = "avant_fermeture";
+      await _flushPendingUserState();
+      return { beaconArrive, base: file && file.base, serveur: window.__serveur.data.currentMood,
+        reste: localStorage.getItem("passio_pending_user_state_" + uid), vivant: state.currentMood };
+    }, UID);
+    expect(r.beaconArrive, "le beacon a bien écrit la ligne").toBe(true);
+    expect(r.base, "la file porte la base d'avant le beacon").toBe(T1);
+    expect(r.serveur, "le geste hors ligne est rejoué").toBe("fait_hors_ligne");
+    expect(r.vivant).toBe("fait_hors_ligne");
+    expect(r.reste).toBeNull();
   });
 });

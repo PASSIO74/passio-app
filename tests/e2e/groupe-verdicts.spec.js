@@ -34,8 +34,17 @@ async function banc(page, verdict) {
         const q = {};
         q.update = (corps) => { q._op = "update:" + table; q._corps = corps; return q; };
         q.delete = () => { q._op = "delete:" + table; return q; };
-        q.eq = () => q;
-        q.select = () => { window.__ecritures.push(q._op); return Promise.resolve(rendu()); };
+        q._eq = {};
+        q.eq = (col, v) => { q._eq[col] = v; return q; };
+        q.select = () => {
+          window.__ecritures.push(q._op);
+          // Une sortie qui ne viserait pas MA ligne (tous les membres) est refusée par le banc.
+          if (q._op === "delete:conv_members" && (q._eq.user_id !== uid || q._eq.conv_id !== cid)) {
+            window.__ecritures.push("FILTRE_MANQUANT");
+            return Promise.resolve({ data: [], error: null });
+          }
+          return Promise.resolve(rendu());
+        };
         q.then = (ok) => ok({ data: null, error: null });
         return q;
       },

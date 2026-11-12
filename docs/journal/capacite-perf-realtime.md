@@ -2776,7 +2776,18 @@ de la mise en file, et le rejeu compare à elle (`_baseDeLaFile`).
 - Sans base du tout, on compare à l'époque : le blob peut créer une ligne absente, jamais en remplacer une.
 - « 0 ligne + ligne existante » jette la file, et le dit à `diagLog` (`rejeu_etat_jete`).
 
-Verrou : `tests/e2e/user-state-rejeu-anciennete.spec.js` (5). Mutation : remettre le repère vivant rougit ①, ③ et ④.
+**Le piège trouvé en relecture (agent `audit-passio`, le même jour), avant fusion.** Comparer à la seule base
+fait perdre des gestes à un appareil SEUL. Le beacon (`return=minimal`) et la sauvegarde dont la réponse s'est
+perdue écrivent la ligne SANS avancer le repère. Une file posée ensuite porte donc une base plus ancienne que la
+ligne que l'appareil a lui-même écrite, et le rejeu la jetait. Désormais chaque blob envoyé porte une estampille
+`_ecriture` (`_estampillerEcriture`), dont l'appareil garde les 30 dernières (`passio_mes_ecritures_<uid>`). Quand la
+ligne a bougé depuis la base mais que sa dernière écriture est l'une des nôtres, le rejeu passe, toujours en
+compare-et-remplace sur la valeur relue. Le chemin « insert » relit aussi `updated_at` au lieu de marquer l'heure
+locale de la file.
+
+Verrou : `tests/e2e/user-state-rejeu-anciennete.spec.js` (6). Le cas ⑥ joue la vraie séquence : beacon, sauvegarde
+hors ligne, lecture, rejeu. Mutations : remettre le repère vivant rougit ①, ③ et ④ ; retirer la reconnaissance de
+ses propres écritures rougit ⑥.
 
 **Ce que ça ne règle pas.** `updated_at` reste l'heure de DÉBUT de transaction (`now()`), pas une révision monotone :
 deux écritures réellement concurrentes peuvent encore s'ordonner à l'envers (SYNC-CLOCK-012). Une colonne `revision`
@@ -2785,5 +2796,9 @@ réglerait ce cas, mais au prix d'une migration ; elle n'est pas faite ici.
 **ETAT-09, même lot.** Un commentaire d'activité refusé par la base restait affiché sous un identifiant `ec_local_…`,
 persisté et vu de son seul auteur. Désormais, pour un compte : le commentaire est retiré, le texte revient dans le
 champ et un toast « Commentaire non envoyé » prévient la personne (`_retirerCommentaireEvtNonEnvoye`, app-07). Un
-visiteur garde sa copie locale, comme pour SRV-03. Verrou : `tests/e2e/commentaire-activite-echec.spec.js` (3).
-Mutation : rougit ①.
+visiteur garde sa copie locale, comme pour SRV-03.
+
+**PARC-01, même lot.** Le « j'aime » d'une activité jetait le verdict de `supaSetEventLike` et notifiait l'organisateur
+tout de suite. Il passe maintenant par la porte visiteur (`requireAuthentication("aimer")`). L'organisateur n'est
+notifié qu'après un succès, et un refus pour un compte rétablit l'état d'avant (« « J'aime » non enregistré »).
+Verrou : `tests/e2e/commentaire-activite-echec.spec.js` (5). Mutations : rougissent ① et ④.

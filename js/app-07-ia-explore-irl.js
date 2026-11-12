@@ -3111,6 +3111,8 @@ async function _loadEventReactions(ids) {
 
 // Like ❤️ d'un événement (toggle optimiste local + sync event_reactions).
 function toggleEventLike(id, el) {
+  // Mode invité : même porte que le « j'aime » d'une publication (PARC-01).
+  if (window.requireAuthentication && !requireAuthentication("aimer")) return;
   state.user.likedEvents = state.user.likedEvents || [];
   window._eventLikes = window._eventLikes || {};
   var cur = window._eventLikes[id] || { likes: 0, liked: false, emojiCounts: {} };
@@ -3124,24 +3126,51 @@ function toggleEventLike(id, el) {
   }
   window._eventLikes[id] = cur;
   if (typeof saveState === "function") saveState();
-  // Patch TOUS les exemplaires du bouton : le même événement est affiché à la fois
-  // dans la liste et dans sa fiche (et la fiche se superpose à la liste) — ne
-  // repeindre que `el` laissait l'autre copie sur l'ancien compteur.
-  var _els = document.querySelectorAll('[data-evlike="' + id + '"]');
+  _peindreLikeEvenement(id, cur, el);
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaSetEventLike === "function") {
+    var voulu = cur.liked;
+    // ⚠️ LE VERDICT DÉCIDE (PARC-01, audit du 2026-11-10). Le résultat de
+    // `supaSetEventLike` était jeté et l'organisateur notifié tout de suite : un
+    // « j'aime » refusé restait peint, et notifié. On envoie l'INTENTION, jamais une
+    // relecture ; un refus pour un compte rétablit l'état d'avant et le dit.
+    Promise.resolve(supaSetEventLike(id, voulu)).then(function (ok) {
+      if (ok) {
+        if (voulu) {
+          var ev = _findCanonicalEvent(id) || (typeof allEvents === "function" ? allEvents().find(function(x){ return x.id === id; }) : null);
+          if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof supaInsertNotif === "function") {
+            supaInsertNotif(ev.organizerId, "like", id, "a aimé ton événement");
+          }
+        }
+        return;
+      }
+      if (typeof _compteAuthReel !== "function" || !_compteAuthReel()) return;   // visiteur : rien en base, copie locale
+      var c = window._eventLikes[id] || cur;
+      if (c.liked !== voulu) return;   // un autre geste est passé depuis : il décide
+      if (voulu) {
+        state.user.likedEvents = (state.user.likedEvents || []).filter(function(x){ return x !== id; });
+        c.likes = Math.max(0, (c.likes || 1) - 1); c.liked = false;
+      } else {
+        if ((state.user.likedEvents || []).indexOf(id) === -1) state.user.likedEvents.push(id);
+        c.likes = (c.likes || 0) + 1; c.liked = true;
+      }
+      window._eventLikes[id] = c;
+      if (typeof saveState === "function") saveState();
+      _peindreLikeEvenement(id, c, el);
+      toast("« J'aime » non enregistré — réessaie");
+    });
+  }
+}
+
+// Patch TOUS les exemplaires du bouton : le même événement est affiché à la fois
+// dans la liste et dans sa fiche (et la fiche se superpose à la liste) — ne
+// repeindre que `el` laissait l'autre copie sur l'ancien compteur.
+function _peindreLikeEvenement(id, cur, el) {
+  var _els = document.querySelectorAll('[data-evlike="' + CSS.escape(String(id)) + '"]');
   if (!_els.length && el) _els = [el];
   [].forEach.call(_els, function (n) {
     n.classList.toggle("liked", cur.liked);
     n.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0);
   });
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaSetEventLike === "function") {
-    supaSetEventLike(id, cur.liked);   // l'INTENTION, jamais une relecture de la base
-    if (cur.liked) {
-      var ev = _findCanonicalEvent(id) || (typeof allEvents === "function" ? allEvents().find(function(x){ return x.id === id; }) : null);
-      if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof supaInsertNotif === "function") {
-        supaInsertNotif(ev.organizerId, "like", id, "a aimé ton événement");
-      }
-    }
-  }
 }
 
 // 😊 Réagir à un événement : ouvre le MÊME sélecteur emoji + GIF que les posts
@@ -3437,7 +3466,7 @@ async function _loadEventCommentCounts(ids) {
     Object.keys(counts).forEach(function(id){ window._eventCommentCounts[id] = counts[id]; });
     if (typeof _persistEventComments === "function") _persistEventComments();
     ids.forEach(function(id){
-      var el = document.querySelector('[data-evc="' + id + '"]');
+      var el = document.querySelector('[data-evc="' + CSS.escape(String(id)) + '"]');
       if (el) el.textContent = "💬 " + _eventCmtBadge(id);
     });
   } catch (e) {}
@@ -5452,7 +5481,7 @@ async function addEventComment(eventId) {
   try {
     window._eventCommentCounts = window._eventCommentCounts || {};
     window._eventCommentCounts[eventId] = (window._eventCommentCounts[eventId] || 0) + 1;
-    var _badge = document.querySelector('[data-evc="' + eventId + '"]');
+    var _badge = document.querySelector('[data-evc="' + CSS.escape(String(eventId)) + '"]');
     if (_badge) _badge.textContent = "💬 " + _eventCmtBadge(eventId);
   } catch (e) {}
   // Rafraîchit l'aperçu inline des commentaires sur la carte de l'événement.

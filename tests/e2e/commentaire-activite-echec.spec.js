@@ -10,6 +10,11 @@
 //      le champ, la personne est prévenue ;
 //   ② compte, écriture acceptée → le commentaire reste sous l'identifiant serveur ;
 //   ③ visiteur → sa copie locale reste, comme avant (rien en base pour lui).
+//
+// PARC-01 — le « j'aime » d'une activité jetait le verdict de `supaSetEventLike` et
+// notifiait l'organisateur tout de suite : un « j'aime » refusé restait peint.
+//   ④ compte, « j'aime » refusé → l'état d'avant revient, la personne est prévenue ;
+//   ⑤ compte, « j'aime » accepté → il reste.
 // ═════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -76,5 +81,36 @@ test.describe("ETAT-09 : un commentaire d'activité refusé ne devient pas un fa
     const r = await commenter(page, "Je viens samedi");
     expect(r.liste.length).toBe(1);
     expect(r.toasts.some((t) => /non envoyé/i.test(t))).toBe(false);
+  });
+});
+
+test.describe("PARC-01 : le « j'aime » d'une activité suit le verdict du serveur", () => {
+  const aimer = (page) => page.evaluate(async (evt) => {
+    state.user.likedEvents = [];
+    window._eventLikes = {};
+    toggleEventLike(evt, null);
+    const apresClic = !!(window._eventLikes[evt] && window._eventLikes[evt].liked);
+    await new Promise((r) => setTimeout(r, 300));
+    return { apresClic, aime: !!window._eventLikes[evt].liked, liste: state.user.likedEvents.slice(),
+      compteur: window._eventLikes[evt].likes, toasts: window.__toasts.slice(), inserts: window.__inserts };
+  }, EVT);
+
+  test("④ compte, « j'aime » refusé : l'état d'avant revient, la personne est prévenue", async ({ page }) => {
+    await banc(page, { verdict: "refus" });
+    const r = await aimer(page);
+    expect(r.apresClic, "l'affichage optimiste a bien eu lieu").toBe(true);
+    expect(r.inserts).toBe(1);
+    expect(r.aime).toBe(false);
+    expect(r.liste).toEqual([]);
+    expect(r.compteur).toBe(0);
+    expect(r.toasts.some((t) => /non enregistré/i.test(t)), JSON.stringify(r.toasts)).toBe(true);
+  });
+
+  test("⑤ compte, « j'aime » accepté : il reste", async ({ page }) => {
+    await banc(page, { verdict: "ok" });
+    const r = await aimer(page);
+    expect(r.aime).toBe(true);
+    expect(r.liste).toEqual([EVT]);
+    expect(r.toasts.some((t) => /non enregistré/i.test(t))).toBe(false);
   });
 });
