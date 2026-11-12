@@ -12628,3 +12628,15 @@ button, a, label, select, summary,
   font: inherit; font-size: 16px; color: inherit; background: #fff; resize: vertical;
 }
 .feuille-conf-champ:focus { outline: none; border-color: #7c3aed; }
+
+/* LOT-10 (audit UX/UI du 2026-11-10, PAR-C06) : la carte citée d'un repartage —
+   l'originale (vignette, auteur, passion, extrait), qui mène à elle. */
+.post-citee { margin-top: 8px; border: 1px solid var(--border, #e4defa); border-radius: 14px; padding: 10px 12px; background: var(--bg-soft, #f7f5fc); cursor: pointer; }
+.post-citee:focus-visible { outline: 2px solid #7c3aed; outline-offset: 2px; }
+.post-citee-tete { font-size: 12px; font-weight: 700; color: var(--muted, #6b6280); margin-bottom: 6px; }
+.post-citee-corps { display: flex; gap: 10px; align-items: flex-start; }
+.post-citee-media { width: 72px; height: 72px; flex: 0 0 72px; object-fit: cover; border-radius: 10px; background: #e9e4f7; }
+.post-citee-texte { min-width: 0; }
+.post-citee-auteur { font-size: 13.5px; font-weight: 700; color: var(--text, #1f1235); }
+.post-citee-passion { font-weight: 600; color: var(--muted, #6b6280); }
+.post-citee-extrait { margin-top: 4px; font-size: 13.5px; line-height: 1.4; color: var(--text, #1f1235); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

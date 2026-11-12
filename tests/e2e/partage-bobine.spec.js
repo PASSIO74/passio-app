@@ -101,12 +101,15 @@ test.describe("partage d'une bobine dans le Fil", () => {
 
     const r = await page.evaluate(() => {
       const p = (state.userPosts || []).find((x) => x.sharedReel === "reel_partage");
-      return { texte: p ? p.text : null };
+      return { texte: p ? p.text : null, citee: p && p.sharedReelData ? p.sharedReelData.text : null };
     });
 
-    // La valeur STOCKÉE — celle qui part dans `posts.content` — est du texte brut.
-    expect(r.texte).toContain("Café d'Or & Cie");
+    // La valeur STOCKÉE — celle qui part dans `posts.content` et `posts.shared_data` —
+    // est du texte brut. LOT-10 (PAR-C06) : la légende de l'originale vit dans la
+    // citation (`sharedReelData`), la carte citée l'affiche.
+    expect(r.citee).toContain("Café d'Or & Cie");
     expect(r.texte).not.toMatch(/&(amp|#39|quot|lt|gt);/);
+    expect(r.citee).not.toMatch(/&(amp|#39|quot|lt|gt);/);
 
     // Et à l'écran, l'apostrophe est bien une apostrophe.
     //
@@ -166,12 +169,14 @@ test.describe("partage d'une bobine dans le Fil", () => {
     await page.evaluate(() => sharePostInFeed("post_ordinaire"));
     await page.waitForTimeout(1200);
 
-    const texte = await page.evaluate(() => {
+    const { texte, citee } = await page.evaluate(() => {
       const p = (state.userPosts || []).find((x) => x.sharedReel === "post_ordinaire");
-      return p ? p.text : null;
+      return { texte: p ? p.text : null, citee: p && p.sharedReelData ? p.sharedReelData.text : null };
     });
-    expect(texte).toContain("Café d'Or & Cie");
+    // LOT-10 (PAR-C06) : la légende est dans la citation ; le texte stocké nomme l'auteur.
+    expect(citee).toContain("Café d'Or & Cie");
     expect(texte).toContain("Léa d'Ys");
     expect(texte).not.toMatch(/&(amp|#39|quot|lt|gt);/);
+    expect(citee).not.toMatch(/&(amp|#39|quot|lt|gt);/);
   });
 });

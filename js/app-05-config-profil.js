@@ -3191,7 +3191,10 @@ function reelMediaHTML(post) {
     return `<video class="reel-media" data-video-public-src="${safeUrlAttr(_reelVideoSrc(post))}"${poster}${fallback} muted playsinline loop preload="none"></video>`;
   }
   // Sinon : utilise la cover photo (existant pour les posts seed) ou la photo uploadée
-  const src = post.photo || post.coverPhotoUrl || resolveCoverUrl(post.cover) || "";
+  // LOT-10 (BOB-C02) : une bobine PHOTO créée (app-08) et relue du serveur porte
+  // `image` — le lecteur ne lisait que photo / coverPhotoUrl / cover, et montrait un
+  // dégradé violet à la place de la photo publiée.
+  const src = post.image || post.photo || post.coverPhotoUrl || resolveCoverUrl(post.cover) || "";
   if (!src) {
     return `<div class="reel-media" style="background: linear-gradient(135deg, ${COLORS_PASSION_BG[post.passion] || "#4c1d95"}, #7c3aed);"></div>`;
   }
@@ -4130,7 +4133,8 @@ async function shareReelInFeed(postId) {
     // DEUX fois → « Café d'Or » s'affichait « Café d&#39;Or », et la valeur
     // corrompue partait telle quelle dans `posts.content`. Même motif que le
     // double échappement du formulaire d'activité (#200 ②).
-    text: `📤 A partagé une bobine\n\n${passion.emoji} ${author.name} – ${passion.label}\n\n"${txt.slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
+    // LOT-10 (PAR-C06) : la carte citée montre la bobine ; le texte stocké reste sobre.
+    text: "A partagé une bobine de " + author.name,
     caption: `Shared reel from ${author.name}`,
     // ⚠️ `createdAt` est OBLIGATOIRE : `supaPublishPostWithRetry` fait
     // `new Date(post.createdAt).toISOString()` — sur `undefined` cela lève un
@@ -4158,7 +4162,9 @@ async function shareReelInFeed(postId) {
       authorName: author.name,
       authorEmoji: author.emoji,
       authorColor: author.color,
-      passion: reel.passion
+      passion: reel.passion,
+      media: (function () { var m = reel.poster || reel.image || reel.photo || reel.coverPhotoUrl || ""; return /^data:/.test(String(m)) ? "" : m; })(),
+      isReel: true,
     }
   };
 
@@ -5450,7 +5456,7 @@ function _vliveShare() {
     partagerOuCopier({ title: "PASSIO — Live", text: txt, url: url }, "Lien du live copié"); return;
   } catch (e) {}
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(txt + "\n" + url).then(() => toast("Lien du live copié"), () => toast("Lien : " + url));
-  } else { toast("Lien : " + url); }
+    navigator.clipboard.writeText(txt + "\n" + url).then(() => toast("Lien du live copié"), () => montrerLienACopier(url));
+  } else { montrerLienACopier(url); }
 }
 window._vliveShare = _vliveShare;
