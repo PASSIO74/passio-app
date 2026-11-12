@@ -3911,6 +3911,7 @@ function goTo(screen) {
   var _retourAuFil = screen === "feed" && (!_quitteFil || !_quitteFil.classList.contains("active"));
   if (_quitteFil && _quitteFil.classList.contains("active") && screen !== "feed") {
     try { feedWindowRememberScroll(); feedWindowTeardown(); } catch (e) {}
+    try { var _m = document.getElementById("appMain"); window._filScrollY = _m ? _m.scrollTop : 0; } catch (e) {}
   }
 
   // La page « Mes passions » est une page, pas un état persistant de l'écran :
@@ -3937,6 +3938,18 @@ function goTo(screen) {
   if (el) el.classList.add("active");
   arreterVideosPubliquesHorsEcran();
   $("#appMain").scrollTop = 0;
+  // ENT-C10 (audit UX/UI du 2026-11-10) : changer d'onglet ramenait tout en
+  // haut du fil. Hors fil fenêtré (qui a sa propre ancre), la position est
+  // mémorisée en le quittant et rendue au retour ; un second toucher sur
+  // « Découvrir » déjà actif remonte en haut (rien n'est rendu).
+  if (_retourAuFil && !feedWindowEnabled() && typeof window._filScrollY === "number" && window._filScrollY > 0) {
+    var _yFil = window._filScrollY;
+    window._filScrollY = 0;
+    setTimeout(function () {
+      var fil = document.getElementById("screen-feed");
+      if (fil && fil.classList.contains("active")) $("#appMain").scrollTop = _yFil;
+    }, 60);
+  }
   document.body.classList.toggle("screen-feed-active", screen === "feed");
   // ⚠️ REVENIR AU FIL RÉVEILLE LES DEUX FILETS. Ils ne sont « le seul chemin »
   // d'un visiteur que pendant qu'il regarde le fil (`filetEstLeSeulChemin`) :
@@ -3983,6 +3996,18 @@ function closeCurrentOverlay() {
     if (window.PassioFirstRun && typeof PassioFirstRun.fermerAuthParRetour === "function"
         && PassioFirstRun.fermerAuthParRetour()) return true;
   } catch (e) {}
+  // ENT-C07 / ENT-C06 (audit UX/UI du 2026-11-10) : la feuille « Créer » et le
+  // panneau Paramètres se ferment au retour système, sans changer d'écran dessous.
+  const feuilleCreer = document.getElementById("v2CreateSheet");
+  if (feuilleCreer && !feuilleCreer.hidden && window.PassioUIV2 && typeof PassioUIV2.closeCreateSheet === "function") {
+    PassioUIV2.closeCreateSheet();
+    return true;
+  }
+  const parametres = document.getElementById("devPanel");
+  if (parametres && parametres.classList.contains("active")) {
+    toggleDevPanel();
+    return true;
+  }
   // Panneau d'outils contextuel (IRL/CDV…) : priorité haute pour que le bouton
   // retour et Escape le ferment avant tout le reste.
   if (window.ContextualTools && ContextualTools.isOpen()) {
@@ -4145,17 +4170,75 @@ function toggleDevPanel() {
   var panel = $("#devPanel");
   if (!panel) return;
   panel.classList.toggle("active");
-  if (panel.classList.contains("active")) {
+  // ENT-C06 (audit UX/UI du 2026-11-10) : le panneau se ferme comme une feuille —
+  // fond assombri, croix, Échap, retour système (entrée d'historique).
+  var ouvert = panel.classList.contains("active");
+  var fond = document.getElementById("devPanelFond");
+  if (fond) fond.classList.toggle("active", ouvert);
+  var declencheur = document.getElementById("topbarParametres");
+  if (declencheur) declencheur.setAttribute("aria-expanded", ouvert ? "true" : "false");
+  if (ouvert) {
+    document.addEventListener("keydown", _parametresEchap, true);
+    try { if (typeof pushOverlayHistory === "function") pushOverlayHistory("parametres"); } catch (e) {}
+  } else {
+    document.removeEventListener("keydown", _parametresEchap, true);
+    try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
+  }
+  if (ouvert) {
     try { majSectionCompte(); } catch (e) {}
     // Même raison que `majSectionCompte` : ce bouton est du balisage STATIQUE,
     // et il annonce un ÉTAT (« ACTIVÉ ») et non un geste. Relu à chaque
     // ouverture, il ne peut pas mentir sur le drapeau posé entre-temps.
     try { if (typeof majBoutonPassionsIllimitees === "function") majBoutonPassionsIllimitees(); } catch (e) {}
+    try { majSectionDemo(); } catch (e) {}
     // Même famille : « Revoir les repères » portait `.fr-only`, donc
     // `display:none` dès qu'un compte existe — un tour à UN SEUL COUP sans
     // aucune porte de rejeu. Une porte fermée doit dire par où passer (fiche 16).
     try { majBoutonReperes(); } catch (e) {}
   }
+}
+
+// ENT-C12 (audit UX/UI du 2026-11-10) : liens d'évitement du clavier.
+function allerA(cible) {
+  var el = null;
+  if (cible === "navigation") {
+    var nav = null;
+    ["appNavV2", "appNav"].forEach(function (id) {
+      var n = document.getElementById(id);
+      if (!nav && n && n.offsetParent) nav = n;
+    });
+    if (nav) el = nav.querySelector('.nav-item.active') || nav.querySelector('.nav-item');
+  } else {
+    var ecran = document.querySelector(".screen.active");
+    el = ecran || document.getElementById("appMain");
+    if (el && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+  }
+  if (el) { try { el.focus(); } catch (e) {} }
+  return !!el;
+}
+
+function fermerParametres() {
+  var panel = document.getElementById("devPanel");
+  if (panel && panel.classList.contains("active")) toggleDevPanel();
+}
+function _parametresEchap(e) {
+  if (e.key !== "Escape" && e.key !== "Esc") return;
+  // Une modale ouverte depuis le panneau passe avant lui.
+  var bd = document.getElementById("modalBackdrop");
+  if (bd && bd.classList.contains("active")) return;
+  e.preventDefault();
+  fermerParametres();
+}
+// ENT-C06 : la section « Démo » n'est visible qu'en mode démo (`passio_mode_demo`)
+// ou quand elle porte une entrée réellement ouverte à ce compte.
+function majSectionDemo() {
+  var sec = document.getElementById("settingsDemo");
+  if (!sec) return;
+  var demo = false;
+  try { demo = localStorage.getItem("passio_mode_demo") === "1"; } catch (e) {}
+  var illimite = document.getElementById("settingsPassionsIllimitees");
+  if (illimite && illimite.style.display !== "none") demo = true;
+  sec.style.display = demo ? "" : "none";
 }
 
 /* « Revoir les repères » — visible dès que le lot de première visite EXISTE,
@@ -5490,7 +5573,7 @@ function onbValidateName() {
   if (v.length < 2) { toast("Indique ton prénom."); return; }
   // CLI-01 : ce nom peut devenir le pseudo en base (`_uname`) ; la base refuse
   // ces caractères, et le refus emporterait tout l'enregistrement du profil.
-  if (nomCompteCaracteresInterdits(v)) { toast("Ton prénom ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse."); return; }
+  if (nomCompteCaracteresInterdits(v)) { toast("Ton nom d'utilisateur ne peut contenir ni guillemet droit, ni chevron, ni accent grave, ni barre oblique inverse."); return; }
   state.user.name = v;
   // La préparation de l'écran des passions (grille + pré-remplissage de la
   // première visite) vit dans `_onbPreparerEtape`, appelée par `onbNext` : elle
@@ -5631,7 +5714,20 @@ function captchaReinitialiser() {
 function traduireRefusCaptcha(m) {
   m = String(m || "");
   if (/captcha/i.test(m)) return "La vérification anti-robots a échoué. Recharge la page puis réessaie.";
+  // ENT-C18 (audit UX/UI du 2026-11-10) : une erreur RENDUE par le SDK (et non
+  // levée) passait par cette chaîne, qui ne reconnaissait pas l'échec réseau :
+  // « Failed to fetch » (Chromium), « Load failed » (WebKit), « NetworkError »
+  // (Firefox) s'affichaient en anglais.
+  if (/failed to fetch|load failed|networkerror|network request failed/i.test(m)) return AUTH_HORS_LIGNE;
   return m;
+}
+
+// ENT-C18 : hors ligne, on le dit AVANT l'envoi — jamais « mot de passe
+// incorrect » ni un message anglais pour une absence de réseau.
+const AUTH_HORS_LIGNE = "Pas de connexion internet — réessaie quand tu es en ligne.";
+function authHorsLigne() {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) { _showAuthMsg(AUTH_HORS_LIGNE, "error"); return true; }
+  return false;
 }
 
 // LOT E (2026-09-18) : la RAISON d'un refus d'authentification, en code fermé,
@@ -5655,6 +5751,9 @@ function switchAuthTab(mode) {
   _authMode = mode;
   document.getElementById("authTabSignin").classList.toggle("active", mode === "signin");
   document.getElementById("authTabSignup").classList.toggle("active", mode === "signup");
+  // ENT-C11 : les deux onglets se disent onglets (role=tab) et disent lequel est choisi.
+  document.getElementById("authTabSignin").setAttribute("aria-selected", mode === "signin" ? "true" : "false");
+  document.getElementById("authTabSignup").setAttribute("aria-selected", mode === "signup" ? "true" : "false");
   document.getElementById("authPasswordConfirmWrap").style.display = mode === "signup" ? "" : "none";
   // Nom public : demandé UNIQUEMENT à la création (voir nomCompteValide plus bas).
   // ⚠️ Ici `""` et pas `"flex"` : `label.field` est `display:block` en CSS et
@@ -5733,6 +5832,7 @@ async function onbForgotPassword() {
     _showAuthMsg("Entre ton adresse e-mail ci-dessus, puis reclique sur « Mot de passe oublié ».", "error");
     return;
   }
+  if (authHorsLigne()) return;
   try {
     const captchaToken = await captchaJeton();
     const { error } = await supa.auth.resetPasswordForEmail(email, Object.assign({ redirectTo: window.location.origin + window.location.pathname }, captchaToken !== undefined ? { captchaToken } : {}));
@@ -5740,7 +5840,7 @@ async function onbForgotPassword() {
     if (error) { _showAuthMsg(traduireRefusCaptcha(error.message || "Échec de l'envoi."), "error"); return; }
     _showAuthMsg("📧 E-mail de réinitialisation envoyé. Vérifie ta boîte (et les spams).", "success");
   } catch (e) {
-    _showAuthMsg("Erreur réseau. Vérifie ta connexion.", "error");
+    _showAuthMsg(AUTH_HORS_LIGNE, "error");
   }
 }
 
@@ -5794,6 +5894,7 @@ async function onbResendConfirmation() {
     _showAuthMsg("Entre ton adresse e-mail ci-dessus, puis reclique sur « Renvoyer ».", "error");
     return;
   }
+  if (authHorsLigne()) return;
   try {
     // Absent du client de repli hors ligne comme des SDK antérieurs à 2.7 :
     // le dire, plutôt que de lever un TypeError avalé en « erreur réseau ».
@@ -5819,7 +5920,7 @@ async function onbResendConfirmation() {
     _showAuthMsg("📧 Si ce compte attend une confirmation, le lien vient d'être renvoyé. Pense aux spams.", "success");
   } catch (e) {
     try { window.tel && tel.action("confirmation_resent", { ok: false }); } catch (e2) {}
-    _showAuthMsg("Erreur réseau. Vérifie ta connexion.", "error");
+    _showAuthMsg(AUTH_HORS_LIGNE, "error");
   }
 }
 
@@ -5904,6 +6005,7 @@ async function onbGoogleAuth() {
   // `user_metadata` ET dans l'état local — les deux doivent porter la MÊME
   // valeur, sinon la trace serveur et la trace locale se contrediraient.
   const _cguAccepteA = new Date().toISOString();
+  if (authHorsLigne()) return;
   try {
     try { localStorage.setItem("passio_oauth_pending", "1"); } catch (e) {}
     // ⚠️ `signInWithOAuth` QUITTE LA PAGE : il n'y a pas d'`options.data` sur ce
@@ -6031,19 +6133,23 @@ function planifierConsentementRequis() {
 }
 function ouvrirConsentementRequis() {
   if (!consentementRequis() || typeof openModal !== "function") return;
+  // ENT-C16 (audit UX/UI du 2026-11-10) : deux réponses seulement — la croix
+  // générique promettait une sortie que la modale ne donne pas (elle se rouvre
+  // tant qu'aucune réponse n'est donnée) ; case de 22 px dans une ligne de 44 px ;
+  // le refus en action secondaire.
   openModal(
     '<div class="modal-title">Avant de continuer</div>' +
     '<p style="font-size:13px;color:var(--muted);margin:8px 0 12px;">Ton compte vient d’être créé avec Google. Pour l’utiliser, accepte les conditions générales et la politique de confidentialité — rien n’a été accepté à ta place.</p>' +
-    '<label class="field" style="display:flex;gap:10px;align-items:flex-start;">' +
-      '<input type="checkbox" id="consentRequisCase" style="margin-top:3px;"/>' +
+    '<label class="field consent-requis-ligne">' +
+      '<input type="checkbox" id="consentRequisCase"/>' +
       '<span style="font-size:13px;">J’ai 18 ans ou plus et j’accepte les <a href="#" onclick="event.preventDefault();event.stopPropagation();openTermsOfService();return false;">conditions générales</a> et la <a href="#" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy();return false;">politique de confidentialité</a>.</span>' +
     '</label>' +
     '<div id="consentRequisMsg" style="font-size:12px;color:#ef4444;min-height:16px;margin-top:6px;"></div>' +
-    '<div style="display:flex;gap:8px;margin-top:12px;">' +
-      '<button class="btn ghost" style="flex:1;" onclick="refuserConsentementRequis()">Refuser et me déconnecter</button>' +
-      '<button class="btn primary" style="flex:1;" onclick="accepterConsentementRequis()">J’accepte et je continue</button>' +
-    '</div>'
+    '<button class="btn primary block consent-requis-btn" onclick="accepterConsentementRequis()">J’accepte et je continue</button>' +
+    '<button class="btn ghost block consent-requis-btn consent-requis-refus" onclick="refuserConsentementRequis()">Refuser et me déconnecter</button>'
   );
+  var _croix = document.querySelector("#modalContent > .modal-close");
+  if (_croix) _croix.remove();
 }
 async function accepterConsentementRequis() {
   var caseAccord = document.getElementById("consentRequisCase");
@@ -6456,6 +6562,7 @@ async function onbDoAuth() {
   // serveur répond. La MÊME valeur part dans `user_metadata` et dans l'état
   // local — deux horodatages pour un seul geste seraient une trace inexploitable.
   const _cguAccepteA = new Date().toISOString();
+  if (authHorsLigne()) return;
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="auth-loading"></span>' + (_authMode === "signin" ? "Connexion…" : "Création…"); }
 
@@ -6695,7 +6802,7 @@ async function onbDoAuth() {
     }
     onbNext();
   } catch(e) {
-    _showAuthMsg("Erreur réseau. Vérifie ta connexion.", "error");
+    _showAuthMsg(AUTH_HORS_LIGNE, "error");
     if (btn) { btn.disabled = false; btn.textContent = _authMode === "signin" ? "Se connecter" : "Créer mon compte"; }
   }
 }
@@ -9135,7 +9242,9 @@ function renderFeedExplorationFallback(list) {
 // ignorée (l'utilisateur navigue ailleurs) a joué son rôle ; la remontrer
 // tournerait au harcèlement, ce que le §8 refuse.
 var HINTS = {
-  feed_auteur: "Appuie sur l'auteur pour découvrir sa Passio",
+  // ENT-C14 (audit UX/UI du 2026-11-10) : « sa Passio » était un mot propre à
+  // l'aide ; on dit « profil » partout.
+  feed_auteur: "Touche le nom pour voir son profil",
   profil_visite: "Suis-le, ou envoie-lui un message",
   // ⚠️ La CLÉ reste `second_profil` — `hintsVus`, les tests et les ancres en
   // dépendent. Seul le LIBELLÉ suit ADR-011 : on n'ajoute plus un « profil »,
@@ -9210,8 +9319,12 @@ function montrerHint(id, cible) {
     var haut = r.bottom + 8;
     // Si la cible est en bas d'écran, on passe la bulle au-dessus.
     if (haut + 70 > window.innerHeight) haut = Math.max(12, r.top - 70);
+    // ENT-C14 : une flèche montre la cible (le nom), au lieu d'une bulle
+    // anonyme posée sur la photo ; elle pointe vers le haut ou le bas.
+    var fleche = Math.max(14, Math.min(largeur - 24, Math.round(r.left + Math.min(r.width, 80) / 2 - gauche)));
+    bulle.classList.add(haut > r.top ? "passio-hint-sous" : "passio-hint-sur");
     bulle.style.cssText = "position:fixed;z-index:9000;left:" + Math.round(gauche) + "px;top:"
-      + Math.round(haut) + "px;width:" + largeur + "px;";
+      + Math.round(haut) + "px;width:" + largeur + "px;--hint-fleche:" + fleche + "px;";
     document.body.appendChild(bulle);
 
     try {
