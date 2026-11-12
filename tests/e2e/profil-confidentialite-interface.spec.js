@@ -81,9 +81,11 @@ async function boot(page, ligneServeur = null) {
 
 const laLigne = (page) => page.evaluate(() => window.__rows.find((r) => r.id === window.__uid) || null);
 
-test("le parcours complet : ligne créée privée → l'écran le reflète → un seul décochage → public en base", async ({ page }) => {
+test("le parcours complet : ligne serveur privée → l'écran le reflète → un seul décochage → public en base", async ({ page }) => {
   // ── ① aucune ligne profiles, ② état local incomplet ────────────────────
-  await boot(page, null);
+  // Prémisse explicite depuis le 2026-11-12 (STAB-04 : une ligne NEUVE naît publique) :
+  // un compte dont la ligne serveur est PRIVÉE, l'état local vide.
+  await boot(page, { username: "Benjamin", is_private: true });
   await page.evaluate(() => {
     state.user.profiles = [{ id: "pp_0", name: "QA", passion: "moto", emoji: "🏍", color: "#7c3aed" }];
     state.user.currentProfileId = "pp_0";
@@ -95,7 +97,7 @@ test("le parcours complet : ligne créée privée → l'écran le reflète → u
   await page.evaluate(() => supaEnsureProfileExists());
   let ligne = await laLigne(page);
   expect(ligne, "la ligne doit exister").not.toBeNull();
-  expect(ligne.is_private, "créée privée, faute de choix prouvé").toBe(true);
+  expect(ligne.is_private, "ensure ne réécrit pas une ligne existante : elle reste privée").toBe(true);
 
   // ── ④ ouverture de l'écran Profil ──────────────────────────────────────
   await page.evaluate(() => openEditMainProfile());
@@ -137,7 +139,9 @@ test("le parcours complet : ligne créée privée → l'écran le reflète → u
 });
 
 test("complémentaire : la bio seule est modifiée, le contrôle n'est pas touché → reste privé", async ({ page }) => {
-  await boot(page, null);
+  // Prémisse explicite depuis le 2026-11-12 (STAB-04 : une ligne NEUVE naît publique) :
+  // un compte dont la ligne serveur est PRIVÉE, l'état local vide.
+  await boot(page, { username: "Benjamin", is_private: true });
   await page.evaluate(() => {
     state.user.profiles = [{ id: "pp_0", name: "QA", passion: "moto", emoji: "🏍", color: "#7c3aed" }];
     state.user.currentProfileId = "pp_0";

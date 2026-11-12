@@ -141,7 +141,7 @@ test("④ changement d'UID : un nouvel ensure part", async ({ page }) => {
 // L'AUTORITÉ CHAMP PAR CHAMP
 // ════════════════════════════════════════════════════════════════════════════
 
-test("⑤ onboarding SANS contrôle de confidentialité : le profil reste privé", async ({ page }) => {
+test("⑤ onboarding SANS contrôle de confidentialité : la confidentialité n'est pas écrite par ce parcours", async ({ page }) => {
   await boot(page, []);
   const vu = await page.evaluate(async () => {
     state.user.general = { username: "Benjamin", bio: "Salut" };   // pas de privacyChoisi
@@ -154,11 +154,15 @@ test("⑤ onboarding SANS contrôle de confidentialité : le profil reste privé
   expect(vu.bio).toBe("Salut");
   // ⚠️ Le point de l'arbitrage : une action explicite sur l'identité n'autorise
   // pas à écrire un champ que ce parcours ne propose pas.
-  expect(vu.is_private, "la ligne minimale l'a créé privé, rien ne l'a rendu public").toBe(true);
+  // ⚠️ ATTENDU CHANGÉ LE 2026-11-12 (STAB-04) : la ligne minimale naît publique. Ce
+  // cas garde ce qui compte : l'onboarding n'ENVOIE pas `is_private` (⑤ bis).
+  expect(vu.is_private, "valeur de la ligne minimale, que l'onboarding ne touche pas").toBe(false);
 });
 
 test("⑤ bis — `is_private` soumis SANS preuve de choix est refusé", async ({ page }) => {
-  await boot(page, []);
+  // Prémisse explicite depuis le 2026-11-12 (STAB-04 : une ligne neuve naît publique) :
+  // un compte PRIVÉ existant, que l'envoi sans preuve ne doit pas rendre public.
+  await boot(page, [{ username: "Benjamin", is_private: true }]);
   const vu = await page.evaluate(async () => {
     state.user.general = { username: "Benjamin", isPrivate: false };  // aucun marqueur
     await supaEnsureProfileExists();

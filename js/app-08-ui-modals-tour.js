@@ -3679,6 +3679,15 @@ function _conflitClePrimaireProfiles(e) {
 // ══════════════════════════════════════════════════════════════════════════
 // Règle produit (Benjamin, 2026-08-31) : choix explicitement PROUVÉ → on le
 // respecte ; choix absent, ambigu, ou simple valeur initiale → profil PRIVÉ.
+// ⚠️ RÈGLE CHANGÉE LE 2026-11-12 (Benjamin, audit de stabilisation, STAB-04) :
+// une ligne NEUVE sans choix exprimé naît PUBLIQUE. Mesuré en production le 10/11 :
+// 9 profils sur 13 privés, dont 7 des 8 créés depuis septembre sans l'avoir choisi ;
+// un visiteur ne lisait qu'UNE publication réelle, et ce qu'un nouvel inscrit
+// publiait n'était vu de personne — l'inverse de « Découvrir → Partager ».
+// CE QUI NE CHANGE PAS, et c'était le cœur du correctif P0 du 31/08 : cette valeur
+// ne sert qu'à l'INSERT d'une ligne absente (`_insertProfilMinimalSiAbsent`) ; une
+// ligne existante n'est jamais réécrite, donc un compte PRIVÉ ne redevient jamais
+// public tout seul. Et un `isPrivate === true` local reste respecté.
 //
 // ⚠️ NE JAMAIS écrire `is_private: !!g.isPrivate` ici : `undefined` y devient
 // `false` en silence, donc « je ne sais pas » deviendrait « public ».
@@ -3691,10 +3700,8 @@ function _conflitClePrimaireProfiles(e) {
 // `saveMainProfile` UNIQUEMENT quand la personne agit sur le contrôle : elle
 // coche la case, ou elle décoche une case qui était cochée.
 function _confidentialiteDeLaLigneMinimale(g) {
-  if (!g || typeof g !== "object") return true;        // rien à prouver → privé
-  if (g.isPrivate === true) return true;               // privé : le choix se prouve lui-même
-  if (g.privacyChoisi === true && g.isPrivate === false) return false;  // public, explicitement prouvé
-  return true;                                         // inconnu, ou ambigu → privé
+  if (g && typeof g === "object" && g.isPrivate === true) return true;  // privé : le choix se prouve lui-même
+  return false;                                        // aucun choix privé exprimé → public (STAB-04)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
