@@ -10,7 +10,7 @@ import {
   verdictVeille, signalFlux, signalInscriptions, signalErreurs, signalApi, signalDeploiement,
   signalCrons, signalBase, signalJetons, heureParis, mediane, estSelectSeul, tousInconnus, SQL,
   signalPurgeCourte, PURGE_COURTE_MAX_S,
-  SILENCE_WARN_H, SILENCE_WARN_WEEKEND_H, SILENCE_ALERT_H, SEUILS_CRONS, runPlusRecent,
+  SILENCE_WARN_H, SILENCE_WARN_WEEKEND_H, SILENCE_ALERT_H, SEUILS_CRONS, runPlusRecent, echecsPlanifies,
 } from "../../scripts/veille-production.mjs";
 
 const H = 3600_000;
@@ -228,22 +228,25 @@ test("crons : les seuils tolèrent la desserte réelle (sentinelle 5-7 h) ; 30 h
   // Mutation : `/^disabled/` → `/^enabled/` → le workflow désactivé passe ok → rougit.
   const now = Date.parse("2026-09-18T12:00:00Z");
   const il_y_a = (h) => new Date(now - h * H).toISOString();
+  // Les conclusions planifiées (2026-11-12) : le dernier passage planifié a réussi.
+  const reussi = { suite: 0, lus: 5, dernier: { conclusion: "success", le: il_y_a(5) } };
   const sain = {
-    "sentinelle-autonome": { state: "active", dernierRunFin: il_y_a(7) },
-    "sentinelle-distante": { state: "active", dernierRunFin: il_y_a(5) },
-    "disponibilite": { state: "active", dernierRunFin: il_y_a(5.5) },
-    "sauvegarde": { state: "active", dernierRunFin: il_y_a(29) },
-    "moderation-alerte": { state: "active", dernierRunFin: il_y_a(30) },
+    "sentinelle-autonome": { state: "active", dernierRunFin: il_y_a(7), planifies: reussi },
+    "sentinelle-distante": { state: "active", dernierRunFin: il_y_a(5), planifies: reussi },
+    "disponibilite": { state: "active", dernierRunFin: il_y_a(5.5), planifies: reussi },
+    "sauvegarde": { state: "active", dernierRunFin: il_y_a(29), planifies: reussi },
+    "moderation-alerte": { state: "active", dernierRunFin: il_y_a(30), planifies: reussi },
+    "securite": { state: "active", dernierRunFin: il_y_a(2), planifies: reussi },
   };
   assert.equal(signalCrons(sain, now).etat, "ok");
-  assert.equal(signalCrons({ ...sain, "sentinelle-autonome": { state: "active", dernierRunFin: il_y_a(30) } }, now).etat, "alert");
-  assert.equal(signalCrons({ ...sain, "sentinelle-autonome": { state: "active", dernierRunFin: il_y_a(10) } }, now).etat, "warn");
+  assert.equal(signalCrons({ ...sain, "sentinelle-autonome": { state: "active", dernierRunFin: il_y_a(30), planifies: reussi } }, now).etat, "alert");
+  assert.equal(signalCrons({ ...sain, "sentinelle-autonome": { state: "active", dernierRunFin: il_y_a(10), planifies: reussi } }, now).etat, "warn");
   const desactive = signalCrons({ ...sain, "sauvegarde": { state: "disabled_inactivity", dernierRunFin: il_y_a(2) } }, now);
   assert.equal(desactive.etat, "alert");
   assert.match(desactive.texte, /DÉSACTIVÉ/);
   assert.match(desactive.geste, /Enable workflow/);
-  assert.equal(signalCrons({ ...sain, "sauvegarde": { state: "active", dernierRunFin: il_y_a(40) } }, now).etat, "warn");
-  assert.equal(Object.keys(SEUILS_CRONS).length, 5);
+  assert.equal(signalCrons({ ...sain, "sauvegarde": { state: "active", dernierRunFin: il_y_a(40), planifies: reussi } }, now).etat, "warn");
+  assert.equal(Object.keys(SEUILS_CRONS).length, 6);
   // Un cron non mesuré ne passe pas pour sain.
   const partiel = { ...sain }; delete partiel.disponibilite;
   assert.equal(signalCrons(partiel, now).etat, "unknown");
@@ -253,6 +256,86 @@ test("crons : les seuils tolèrent la desserte réelle (sentinelle 5-7 h) ; 30 h
   assert.equal(refuse.etat, "unknown");
   assert.match(refuse.texte, /disponibilite : lecture en échec \(HTTP 403/);
   assert.doesNotMatch(refuse.texte, /disponibilite : aucun run terminé/);
+});
+
+test("crons (2026-11-12) : echecsPlanifies compte les passages PLANIFIÉS en échec DE SUITE — le plus récent d'abord, annulés et autres événements sautés, le premier succès arrête", () => {
+  // Mutation : retirer le filtre `r.event === "schedule"` → l'échec d'une PR compte → rougit.
+  // Mutation : `else break` retiré → les échecs d'avant un succès comptent → rougit.
+  const run = (event, conclusion, h, status = "completed") => ({ event, status, conclusion, created_at: new Date(Date.parse("2026-11-12T12:00:00Z") - h * H).toISOString(), updated_at: new Date(Date.parse("2026-11-12T12:00:00Z") - h * H + 60e3).toISOString() });
+  assert.deepEqual(echecsPlanifies([]), { suite: 0, lus: 0, dernier: null });
+  assert.deepEqual(echecsPlanifies(null), { suite: 0, lus: 0, dernier: null });
+  // Dans le désordre : le tri est fait ici.
+  const deux = echecsPlanifies([run("schedule", "success", 30), run("schedule", "failure", 2), run("schedule", "failure", 10)]);
+  assert.equal(deux.suite, 2);
+  assert.equal(deux.lus, 3);
+  assert.equal(deux.dernier.conclusion, "failure");
+  // Un succès entre deux échecs : le compte s'arrête au premier succès.
+  assert.equal(echecsPlanifies([run("schedule", "failure", 1), run("schedule", "success", 5), run("schedule", "failure", 9)]).suite, 1);
+  // Les PR, les relances à la main, les passages annulés ou en cours ne comptent ni pour ni contre.
+  const melange = echecsPlanifies([run("pull_request", "failure", 0.5), run("workflow_dispatch", "success", 0.7), run("schedule", "cancelled", 1),
+    run("schedule", null, 0.2, "in_progress"), run("schedule", "timed_out", 3), run("schedule", "startup_failure", 6), run("schedule", "success", 12)]);
+  assert.equal(melange.suite, 2, "deux passages planifiés cassés, l'annulé sauté");
+  assert.equal(melange.lus, 3);
+  assert.equal(melange.dernier.conclusion, "timed_out");
+  assert.equal(echecsPlanifies([run("schedule", "success", 1)]).suite, 0);
+});
+
+test("crons (2026-11-12) : un passage planifié EN ÉCHEC n'est plus un passage frais — la sauvegarde, la modération et le scan de sécurité alertent dès le premier, la Sentinelle au deuxième, la santé distante au troisième ; illisible = inconnu", () => {
+  // Mutation : `if (p.suite >= seuilEchecs)` → `if (false)` → la sauvegarde ratée reste « attention » → rougit.
+  // Mutation : `echecs: 1` → `echecs: 2` sur la sauvegarde → rougit.
+  // Mutation : la branche `if (!p)` retirée → des conclusions non mesurées passent pour saines → rougit.
+  const now = Date.parse("2026-11-12T12:00:00Z");
+  const il_y_a = (h) => new Date(now - h * H).toISOString();
+  const reussi = { suite: 0, lus: 5, dernier: { conclusion: "success", le: il_y_a(5) } };
+  const echecs = (n, conclusion = "failure") => ({ suite: n, lus: 5, dernier: { conclusion, le: il_y_a(3) } });
+  const sain = Object.fromEntries(Object.keys(SEUILS_CRONS).map((k) => [k, { state: "active", dernierRunFin: il_y_a(2), planifies: reussi }]));
+  assert.equal(signalCrons(sain, now).etat, "ok", signalCrons(sain, now).texte);
+  // La sauvegarde de la nuit a CASSÉ : son âge est frais (2 h), l'ancien signal disait « ok ».
+  const sauvegarde = signalCrons({ ...sain, sauvegarde: { state: "active", dernierRunFin: il_y_a(2), planifies: echecs(1) } }, now);
+  assert.equal(sauvegarde.etat, "alert");
+  assert.match(sauvegarde.texte, /sauvegarde : 1 passage\(s\) planifié\(s\) en échec de suite \(dernier : failure le 2026-11-12 09:00 UTC\) — seuil 1/);
+  assert.match(sauvegarde.geste, /journal de l'étape en échec/);
+  for (const nom of ["moderation-alerte", "securite"]) assert.equal(signalCrons({ ...sain, [nom]: { state: "active", dernierRunFin: il_y_a(2), planifies: echecs(1) } }, now).etat, "alert", nom);
+  // Le scan de sécurité dit SON geste : trier les trouvailles, jamais les effacer.
+  const securite = signalCrons({ ...sain, securite: { state: "active", dernierRunFin: il_y_a(2), planifies: echecs(1) } }, now);
+  assert.match(securite.geste, /gitleaks-results/);
+  assert.match(securite.geste, /À trier par Benjamin/);
+  // Toutes les heures : un échec passager est une ATTENTION, deux de suite une alerte.
+  assert.equal(signalCrons({ ...sain, "sentinelle-autonome": { state: "active", dernierRunFin: il_y_a(2), planifies: echecs(1) } }, now).etat, "warn");
+  assert.equal(signalCrons({ ...sain, "sentinelle-autonome": { state: "active", dernierRunFin: il_y_a(2), planifies: echecs(2, "startup_failure") } }, now).etat, "alert");
+  assert.equal(signalCrons({ ...sain, disponibilite: { state: "active", dernierRunFin: il_y_a(2), planifies: echecs(2) } }, now).etat, "alert");
+  // La santé distante échoue EXPRÈS quand la santé est mauvaise (et ouvre son issue) : deux échecs ne doublent pas l'alerte, trois oui.
+  const distante2 = signalCrons({ ...sain, "sentinelle-distante": { state: "active", dernierRunFin: il_y_a(2), planifies: echecs(2) } }, now);
+  assert.equal(distante2.etat, "warn");
+  assert.match(distante2.texte, /\(alerte à 3\)/);
+  assert.equal(signalCrons({ ...sain, "sentinelle-distante": { state: "active", dernierRunFin: il_y_a(2), planifies: echecs(3) } }, now).etat, "alert");
+  // Une alerte d'âge garde la main sur le geste ; l'échec planifié s'ajoute au texte.
+  const lesDeux = signalCrons({ ...sain, sauvegarde: { state: "active", dernierRunFin: il_y_a(60), planifies: echecs(2) } }, now);
+  assert.equal(lesDeux.etat, "alert");
+  assert.match(lesDeux.texte, /sauvegarde : dernier run il y a 60 h/);
+  assert.match(lesDeux.texte, /sauvegarde : 2 passage\(s\) planifié\(s\) en échec/);
+  // Conclusions non mesurées, ou illisibles : jamais « ok ».
+  const sansConclusion = { ...sain }; sansConclusion.sauvegarde = { state: "active", dernierRunFin: il_y_a(2) };
+  assert.equal(signalCrons(sansConclusion, now).etat, "unknown");
+  assert.match(signalCrons(sansConclusion, now).texte, /sauvegarde : conclusions planifiées non mesurées/);
+  const illisible = signalCrons({ ...sain, sauvegarde: { state: "active", dernierRunFin: il_y_a(2), planifies: { erreur: "HTTP 502 sur api.github.com" } } }, now);
+  assert.equal(illisible.etat, "unknown");
+  assert.match(illisible.texte, /conclusions planifiées illisibles \(HTTP 502/);
+  // Mais une alerte reste une alerte : une conclusion illisible ailleurs ne la rabaisse pas.
+  assert.equal(signalCrons({ ...sain, sauvegarde: { state: "active", dernierRunFin: il_y_a(2), planifies: echecs(1) }, securite: { state: "active", dernierRunFin: il_y_a(2), planifies: { erreur: "x" } } }, now).etat, "alert");
+});
+
+test("crons (2026-11-12) : la mesure lit les passages PLANIFIÉS à part — `event=schedule` — et une lecture refusée se note, sans perdre l'âge", () => {
+  // Mutation : la requête sans `event=schedule` → rougit.
+  const source = fs.readFileSync("scripts/veille-production.mjs", "utf8");
+  const mesure = source.slice(source.indexOf("export async function mesurerCrons"), source.indexOf("export async function mesurerBase"));
+  assert.match(mesure, /\/runs\?event=schedule&per_page=10`/);
+  assert.match(mesure, /out\[nom\]\.planifies = echecsPlanifies\(sched && sched\.workflow_runs\);/);
+  assert.match(mesure, /catch \(e\) \{ out\[nom\]\.planifies = enErreur\(e\); \}/, "une lecture des passages planifiés refusée se note, et l'âge déjà lu reste");
+  // Le scan de sécurité est dans la liste, avec son passage hebdomadaire.
+  assert.ok(SEUILS_CRONS.securite && SEUILS_CRONS.securite.echecs === 1);
+  assert.ok(fs.readFileSync(".github/workflows/securite.yml", "utf8").includes('cron: "11 5 * * 1"'), "prémisse : securite.yml passe le lundi");
+  for (const nom of Object.keys(SEUILS_CRONS)) assert.ok(fs.existsSync(".github/workflows/" + nom + ".yml"), "chaque workflow surveillé existe : " + nom);
 });
 
 test("base : anon ≠ 200 = ALERTE ; 6,5 Go = ATTENTION ; 7,8 Go = ALERTE ; purge absente = ATTENTION", () => {
@@ -307,7 +390,7 @@ test("verdictVeille : des ATTENTION seules n'ouvrent pas d'issue ; une ALERTE do
     erreurs: { heures: [], derniereHeure: 0, appareils: 0 },
     api: { n5xx: 0, app5xx: 0, nRefus: 0, appRefus: 0 },
     deploiement: { commitServi: "a", mainHead: "a", mainHeadDate: null, dernierRun: null, enCours: false },
-    crons: Object.fromEntries(Object.keys(SEUILS_CRONS).map((k) => [k, { state: "active", dernierRunFin: new Date(now - H).toISOString() }])),
+    crons: Object.fromEntries(Object.keys(SEUILS_CRONS).map((k) => [k, { state: "active", dernierRunFin: new Date(now - H).toISOString(), planifies: { suite: 0, lus: 3, dernier: { conclusion: "success", le: new Date(now - H).toISOString() } } }])),
     base: { anonStatus: 200, octets: 1024 ** 3, purgePlanifiee: true },
     jetons: { github: { statut: 200, joursRestants: 70 }, supabase: { statut: 200 }, netlify: { statut: 200 } },
     battement: { ligne: { created_at: new Date(now - 5 * 60e3).toISOString(), properties: { lectures: { sante: "ok", signalements: "ok", github: "ok", parcours: "ok" } } }, n24: 96 },

@@ -58,14 +58,48 @@ export const JOURNEE_MEDIANE_MIN = 500;
 export const DEPLOIEMENT_RETARD_MIN = 90;
 // Crons : âge du dernier run terminé, en heures (warn, alert). Les tolérances
 // absorbent la desserte réelle (cron 10 min servi ~4 %, écarts jusqu'à 5,5 h).
+// `echecs` (2026-11-12) : passages PLANIFIÉS en échec DE SUITE qui font l'alerte (un
+// seul : attention). L'âge seul ne disait rien d'un run terminé EN ÉCHEC — une
+// sauvegarde ratée « terminait » quand même et remettait l'âge à zéro. Mesuré le 12/11
+// sur les 100 derniers passages planifiés de chaque workflow : deux échecs que rien
+// n'avait signalés (`securite` le 09/11, `sentinelle-distante` le 11/11).
+//  · 1 pour ce qui passe une fois par jour ou par semaine : un échec dure au moins un jour ;
+//  · 2 pour ce qui passe toutes les heures ou plus souvent : une panne passagère du runner
+//    se rattrape au passage suivant ;
+//  · 3 pour `sentinelle-distante` : elle ÉCHOUE EXPRÈS quand la santé est mauvaise, après
+//    avoir ouvert sa propre issue — ses échecs ne comptent ici que s'ils durent.
+// `geste` : ce que l'alerte demande de faire, quand il diffère du geste commun.
 export const SEUILS_CRONS = {
-  "sentinelle-autonome": { warn: 8, alert: 24 },
-  "sentinelle-distante": { warn: 12, alert: 36 },
+  "sentinelle-autonome": { warn: 8, alert: 24, echecs: 2 },
+  "sentinelle-distante": { warn: 12, alert: 36, echecs: 3 },
   // Mesuré le 2026-10-05 : cron « */10 » servi avec des trous jusqu'à 6,4 h.
-  "disponibilite": { warn: 9, alert: 24 },
-  "sauvegarde": { warn: 30, alert: 54 },
-  "moderation-alerte": { warn: 30, alert: 54 },
+  "disponibilite": { warn: 9, alert: 24, echecs: 2 },
+  "sauvegarde": { warn: 30, alert: 54, echecs: 1 },
+  "moderation-alerte": { warn: 30, alert: 54, echecs: 1 },
+  // Hebdomadaire (lundi). Ses exécutions de PR gardent son âge frais : c'est la CONCLUSION de
+  // son passage planifié qui compte — le scan des secrets y parcourt TOUT l'historique.
+  "securite": { warn: 8 * 24, alert: 15 * 24, echecs: 1,
+    geste: "Actions > « Sécurité de la chaîne » > le dernier passage planifié : son artefact `gitleaks-results` liste ce que le scan de TOUT l'historique a trouvé. À trier par Benjamin — une clé publique par conception s'inscrit dans une liste d'exceptions, une vraie clé se révoque d'abord." },
 };
+// Une conclusion qui dit « ce passage a cassé ». `cancelled` (évincé de la file) ne compte
+// ni pour ni contre : il ne dit rien du workflow.
+const CONCLUSIONS_ECHEC_CRON = new Set(["failure", "timed_out", "startup_failure"]);
+/**
+ * Les passages PLANIFIÉS (`event: schedule`) d'un workflow → combien ont échoué DE SUITE,
+ * en partant du plus récent, et le dernier passage qui a tranché. Un passage annulé ou pas
+ * encore terminé est sauté ; le premier succès arrête le compte.
+ * @returns {{suite:number, lus:number, dernier:{conclusion:string,le:string|null}|null}}
+ */
+export function echecsPlanifies(runs) {
+  const date = (r) => Date.parse(r.run_started_at || r.created_at || r.updated_at) || 0;
+  const planifies = (Array.isArray(runs) ? runs : [])
+    .filter((r) => r && r.event === "schedule" && r.status === "completed" && r.conclusion !== "cancelled" && r.conclusion !== "skipped")
+    .sort((a, b) => date(b) - date(a));
+  let suite = 0;
+  for (const r of planifies) { if (CONCLUSIONS_ECHEC_CRON.has(r.conclusion)) suite++; else break; }
+  const d = planifies[0];
+  return { suite, lus: planifies.length, dernier: d ? { conclusion: String(d.conclusion), le: d.updated_at || d.created_at || null } : null };
+}
 // Base : plan Pro 8 Go.
 export const BASE_WARN_GO = 6;
 export const BASE_ALERT_GO = 7.5;
@@ -344,6 +378,23 @@ export function signalCrons(m, now) {
       lignes.push(`${nom} : dernier run il y a ${ageTxt} (> ${seuil.warn} h)`);
     } else {
       lignes.push(`${nom} : ${ageTxt}`);
+    }
+    // La CONCLUSION des passages planifiés (2026-11-12) : un run terminé n'est pas un run réussi.
+    const p = x.planifies;
+    if (!p) { lignes.push(`${nom} : conclusions planifiées non mesurées`); if (etat === "ok") etat = "unknown"; continue; }
+    if (p.erreur) { lignes.push(`${nom} : conclusions planifiées illisibles (${String(p.erreur).slice(0, 120)})`); if (etat === "ok") etat = "unknown"; continue; }
+    if (p.suite > 0) {
+      const seuilEchecs = Number.isInteger(seuil.echecs) && seuil.echecs > 0 ? seuil.echecs : 2;
+      const quand = p.dernier && Date.parse(p.dernier.le) ? ` le ${new Date(Date.parse(p.dernier.le)).toISOString().slice(0, 16).replace("T", " ")} UTC` : "";
+      const texte = `${nom} : ${p.suite} passage(s) planifié(s) en échec de suite (dernier : ${p.dernier ? p.dernier.conclusion : "?"}${quand})`;
+      if (p.suite >= seuilEchecs) {
+        etat = "alert";
+        lignes.push(texte + ` — seuil ${seuilEchecs}`);
+        geste = geste || seuil.geste || "Actions > le workflow nommé > son dernier passage planifié : lis le journal de l'étape en échec, corrige la cause, puis relance-le (`gh workflow run <fichier>.yml`). Un passage relancé à la main ne remet pas ce compte à zéro : seul un passage planifié réussi le fait.";
+      } else {
+        if (etat !== "alert") etat = "warn";
+        lignes.push(texte + ` (alerte à ${seuilEchecs})`);
+      }
     }
   }
   return { etat, texte: lignes.join(" ; "), geste };
@@ -710,6 +761,12 @@ export async function mesurerCrons(env) {
       const runs = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?per_page=10`);
       const r = runPlusRecent(runs && runs.workflow_runs, (x) => x.status === "completed");
       out[nom] = { state: wf && wf.state, dernierRunFin: r ? r.updated_at : null };
+      // Les passages PLANIFIÉS, lus à part : les exécutions de PR et les relances à la main
+      // remplissent les dix dernières. Illisibles, ils se disent — jamais « aucun échec ».
+      try {
+        const sched = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?event=schedule&per_page=10`);
+        out[nom].planifies = echecsPlanifies(sched && sched.workflow_runs);
+      } catch (e) { out[nom].planifies = enErreur(e); }
     } catch (e) { out[nom] = enErreur(e); }
   }
   return out;
