@@ -229,24 +229,49 @@ export async function idGeste(cle, secret) {
  * @param {string} fonction  ex. "pilotage-veille" → événement "edge_pilotage-veille"
  * @param {string} secret    secret serveur (clé service_role de la fonction)
  * @param {number} [maintenant]
- * @returns {Promise<{ ok: true } | { ok: false, raison: "pris" } | { ok: false, raison: "erreur", code: string }>}
+ * @param {number} [periodeMs]  durée d'un créneau (une minute par défaut : la veille)
+ * @returns {Promise<{ ok: true, ids: string[] } | { ok: false, raison: "pris" } | { ok: false, raison: "erreur", code: string }>}
  */
-export async function prendreCreneau(admin, uid, fonction, secret, maintenant = Date.now()) {
-  const m = Math.floor(maintenant / 60_000);
+// `periodeMs` (2026-11-12) : le même verrou sert aux GESTES du pilote. « Réparer »
+// lisait GitHub (« aucune réparation en cours »), PUIS ouvrait l'issue : deux
+// touchers au même instant lisaient tous deux « rien », et ouvraient deux issues
+// — deux agents sur le même problème (pilotage-chemins ㉒). La clé d'une minute
+// reste EXACTEMENT celle d'avant (deux révisions de la fonction qui se
+// chevauchent pendant un déploiement prennent le même créneau) ; une autre
+// période entre dans la clé. `ids` : ce que `rendreCreneau` efface si le geste
+// n'est finalement pas parti.
+export async function prendreCreneau(admin, uid, fonction, secret, maintenant = Date.now(), periodeMs = 60_000) {
+  const periode = Number.isFinite(periodeMs) && periodeMs >= 1000 ? Math.floor(periodeMs) : 60_000;
+  const m = Math.floor(maintenant / periode);
+  const cle = (n) => (periode === 60_000 ? `creneau:${fonction}:${uid}:${n}` : `creneau:${fonction}:${uid}:${periode}:${n}`);
   let lignes;
   try {
     lignes = await Promise.all([m, m + 1].map(async (minute) => ({
-      id: await idGeste(`creneau:${fonction}:${uid}:${minute}`, secret),
-      user_id: uid, event: "edge_" + fonction, properties: { minute },
+      id: await idGeste(cle(minute), secret),
+      user_id: uid, event: "edge_" + fonction, properties: periode === 60_000 ? { minute } : { tranche: minute, periodeMs: periode },
     })));
   } catch (_e) { return { ok: false, raison: "erreur", code: "secret" }; }
   const { data: pris, error: el } = await admin.from("analytics_events").select("id").in("id", lignes.map((l) => l.id)).limit(1);
   if (el) return { ok: false, raison: "erreur", code: String(el.code || "lecture") };
   if (pris && pris.length) return { ok: false, raison: "pris" };
   const { error } = await admin.from("analytics_events").insert(lignes);
-  if (!error) return { ok: true };
+  if (!error) return { ok: true, ids: lignes.map((l) => l.id) };
   if (String(error.code || "") === "23505") return { ok: false, raison: "pris" };
   return { ok: false, raison: "erreur", code: String(error.code || "ecriture") };
+}
+
+/**
+ * Rend un créneau pris pour un geste qui n'est PAS parti (GitHub a refusé) : le
+ * pilote peut retoucher tout de suite, au lieu d'attendre la fin du créneau.
+ * Jamais pour la veille. Une erreur ici ne casse rien : le créneau expire seul.
+ */
+export async function rendreCreneau(admin, creneau) {
+  const ids = creneau && Array.isArray(creneau.ids) ? creneau.ids.filter((x) => typeof x === "string" && x) : [];
+  if (!ids.length) return false;
+  try {
+    const { error } = await admin.from("analytics_events").delete().in("id", ids);
+    return !error;
+  } catch (_e) { return false; }
 }
 
 /** Un commit court et sûr à afficher ou à recopier (8 hex), sinon « ? ». */

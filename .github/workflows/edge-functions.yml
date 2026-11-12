@@ -102,6 +102,7 @@ jobs:
           node --test tests/unit/ask-ai-chemins.test.mjs
           node --test tests/unit/delete-account-chemins.test.mjs
           node --test tests/unit/export-account-chemins.test.mjs
+          node --test tests/unit/pilotage-chemins.test.mjs
           node --test tests/unit/push-sur.test.mjs
           node --test tests/unit/autonomie.test.mjs
           node --test tests/unit/autonomie-seuils-sql.test.mjs

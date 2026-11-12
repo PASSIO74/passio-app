@@ -369,12 +369,12 @@ test("㉔ la veille tient le voyant AVANT de décider l'alerte ; l'écran passe 
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
   // Les parcours (2026-11-06) entrent dans le voyant : leur lecture manquée est une lecture incomplète.
-  assert.match(v, /const incomplet = \[sante, signalements, github, parc\]\.some\(\(r\) => r\.status === "rejected"\) \|\| !!\(parcoursVeille && parcoursVeille\.tronque\);/, "une lecture des parcours tronquée est une lecture incomplète");
+  assert.match(v, /const incomplet = \[sante, signalements, github, parc\]\.some\(\(r\) => r\.status === "rejected"\) \|\| !!\(parcoursVeille && parcoursVeille\.tronque\) \|\| partielGh\.length > 0;/, "une lecture des parcours tronquée, ou de GitHub en partie, est une lecture incomplète");
   assert.match(v, /const vt = tenirVerdict\(prec, v, incomplet\);/);
   assert.match(v, /const actuel = \{ couleur: vt\.couleur, raisons: vt\.raisons,/);
   assert.ok(v.indexOf("tenirVerdict(") < v.indexOf("decideAlerte("), "le voyant est tenu avant que l'alerte ne décide");
   const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));
-  assert.match(et, /out\.verdict = verdictAffiche\(v, nonLus\);/);
+  assert.match(et, /out\.verdict = verdictAffiche\(v, nonLus, \(\(out\.github as \{ partiel\?: string\[\] \} \| null\)\?\.partiel\) \|\| \[\]\);/, "ce que GitHub n'a pas rendu en entier compte comme une source non lue");
   assert.match(et, /out\.aFaire = aFaire\(out\);/);
   assert.ok(et.indexOf("out.aFaire =") > et.indexOf("out.verdict ="), "la liste voit l'état complet");
   assert.match(fn, /x-ratelimit-remaining/, "un refus de GitHub dit s'il vient de la limite de lecture");
@@ -440,7 +440,7 @@ const etatAF = (extra = {}) => ({
       iss(12, ["sentinelle", "humain"], { titre: HOSTILE, url: "javascript:alert(1)", depuis: "2026-10-23T08:00:00Z" }),
       iss(13, ["sentinelle"]),
       iss(629, ["digest"]),
-      iss(700, [], { pr: true, titre: "fix: correctif", correctif: true }),
+      iss(700, [], { pr: true, titre: "fix: correctif", correctif: true, sha: "c".repeat(40) }),
       iss(601, ["reparation", "claude"], { titre: "[RÉPARER] #627" }),
       iss(5, ["moderation", "humain"]),
     ],
@@ -487,7 +487,7 @@ test("㉚ aFaire : chaque geste est une demande EXACTE, jamais un texte de tiers
   assert.match(par("issue:627").quoi, /#601/);
   assert.equal(par("issue:627").enCours, true);
   assert.deepEqual(par("run:deploy").gestes.map((g) => g.corps), [{ action: "reparer", cible: "run", cle: "deploy" }]);
-  assert.deepEqual(par("pr:700").gestes.map((g) => g.corps), [{ action: "fusionner", numero: 700 }, { action: "fermer", numero: 700 }]);
+  assert.deepEqual(par("pr:700").gestes.map((g) => g.corps), [{ action: "fusionner", numero: 700, sha: "c".repeat(40) }, { action: "fermer", numero: 700 }]);
   assert.deepEqual(par("signalement:rep_1").gestes.map((g) => g.corps), [{ action: "signalement", id: "rep_1", statut: "handled" }, { action: "signalement", id: "rep_1", statut: "dismissed" }]);
   assert.deepEqual(par("protection:bandeau").gestes.map((g) => g.corps), [{ action: "reglages", cle: "bandeau", valeur: null }]);
   assert.deepEqual(par("retour:aaaa1111").gestes, [{ libelle: "Régler", principal: true, special: "retour" }]);
@@ -644,7 +644,7 @@ test("㊱ réparation jamais confiée (label « claude » refusé, #653 le 24/10
   const conf = src.slice(src.indexOf("async function confier"), src.indexOf("async function reconfier"));
   assert.ok(conf.indexOf("/labels`") > 0 && conf.indexOf("/labels`") < conf.indexOf("/comments`"), "label puis commentaire");
   assert.doesNotMatch(src, /pose-le à la main/, "plus jamais un geste renvoyé au téléphone sans tentative");
-  assert.match(src, /if \(c\.enCours\) return reconfier\(c\.enCours, etatGh\.issues\);/);
+  assert.match(src, /if \(c\.enCours\) return reconfier\(admin, cleVerrou, c\.enCours, etatGh\.issues\);/);
   assert.match(src.slice(src.indexOf("async function reconfier")), /dejaConfiee\(/);
 });
 
@@ -869,17 +869,27 @@ test("㊶ une PR n'est un correctif que sur une branche de la chaîne, de CE dé
   assert.equal(resumerPr(pr("feat/paliers-croissance", "P/p"), "P/p").correctif, false);
   assert.equal(resumerPr(pr("claude/awesome-hypatia-atk8b3", "P/p"), "P/p").correctif, false, "une session Claude n'est pas la chaîne de réparation");
   const fork = resumerPr(pr("claude/issue-1-2", "pirate/p"), "P/p");
-  assert.deepEqual(fork, { externe: true, correctif: false, autoFusion: false, brouillon: false, maj: null }, "dépôt public : un fork nomme sa branche comme il veut");
+  assert.deepEqual(fork, { externe: true, correctif: false, autoFusion: false, brouillon: false, maj: null, sha: null }, "dépôt public : un fork nomme sa branche comme il veut");
   assert.equal(resumerPr({ number: 1, head: { ref: "claude/issue-1-2", repo: null } }, "P/p").correctif, false, "dépôt supprimé : rien ne prouve son origine");
   assert.equal(resumerPr(pr("claude/issue-1-2", "P/p", { auto_merge: { merge_method: "squash" } }), "P/p").autoFusion, true);
   assert.equal(resumerPr(pr("claude/issue-1-2", "P/p", { draft: true }), "P/p").brouillon, true);
   assert.equal(resumerPr(null, "P/p").correctif, false);
 
-  const etat = (extra) => ({ gestesGithub: true, github: { issues: [iss(9, [], { pr: true, titre: "t", ...extra })], runs: {}, aReparer: [] } });
+  const TETE = "c".repeat(40);
+  const etat = (extra) => ({ gestesGithub: true, github: { issues: [iss(9, [], { pr: true, titre: "t", sha: TETE, ...extra })], runs: {}, aReparer: [] } });
   const une = (extra) => aFaire(etat(extra), MAINTENANT_AF).find((x) => x.id === "pr:9");
   const correctif = une({ correctif: true });
   assert.equal(correctif.prio, 1);
   assert.deepEqual(correctif.gestes.map((g) => [g.libelle, g.corps.action]), [["Régler", "fusionner"], ["Refuser", "fermer"]]);
+  // La version VUE part avec le geste (2026-11-12) ; sans version lue, ou mal formée, aucun bouton ne met en ligne.
+  assert.deepEqual(correctif.gestes[0].corps, { action: "fusionner", numero: 9, sha: TETE });
+  for (const sha of [null, undefined, "", "main", TETE.slice(1), TETE.toUpperCase()]) {
+    const aveugle = une({ correctif: true, sha });
+    assert.equal(aveugle.prio, 2, "sans version lue, ce n'est pas un correctif prêt : " + sha);
+    assert.deepEqual(aveugle.gestes.map((g) => g.corps.action), ["fermer"], "on ne fusionne pas ce qu'on n'a pas vu : " + sha);
+  }
+  assert.equal(resumerPr(pr("claude/issue-1-2", "P/p", { head: { ref: "claude/issue-1-2", sha: TETE, repo: { full_name: "P/p" } } }), "P/p").sha, TETE);
+  assert.equal(resumerPr(pr("claude/issue-1-2", "P/p", { head: { ref: "claude/issue-1-2", sha: "main", repo: { full_name: "P/p" } } }), "P/p").sha, null);
   const partant = une({ correctif: true, autoFusion: true });
   assert.equal(partant.enCours, true); assert.ok(!partant.gestes.some((g) => g.principal), "elle part toute seule : rien à presser");
   // Armée puis rien (un test rouge l'arrête sans le dire) : elle revient comme un problème, et se referme d'un toucher.
@@ -1615,4 +1625,115 @@ test("audit 2026-11-06 : la comparaison du secret ne se satisfait de rien d'appr
   assert.equal(egaliteConstante("secret", "secret-long"), false);
   assert.equal(egaliteConstante("secret-long-et-plus", "secret-long"), false);
   assert.equal(egaliteConstante("", ""), false, "un secret vide n'authentifie personne");
+});
+
+// ─── 2026-11-12 : une exécution qui n'a pas réussi n'est pas un succès ; GitHub lu en
+// partie n'est pas un GitHub calme. Les mêmes règles EXÉCUTÉES dans la fonction :
+// tests/unit/pilotage-chemins.test.mjs ⑩ ⑪ ⑫ (rouges avant ce lot).
+import { resumerRuns, echecRun, CONCLUSIONS_ECHEC, partielGithub, ISSUES_LUES_MAX, shaValide } from "../../supabase/functions/_shared/pilotage.js";
+
+test("㉿⑲ resumerRuns : la plus récente, triée ici ; en cours, elle garde la dernière TERMINÉE (`precedent`)", () => {
+  const r = (status, conclusion, le, id) => ({ status, conclusion, created_at: le, updated_at: le, html_url: "https://github.com/P/p/actions/runs/" + id });
+  assert.equal(resumerRuns([]), null);
+  assert.equal(resumerRuns(null), null);
+  const fini = resumerRuns([r("completed", "success", "2026-11-12T13:28:00Z", 1)]);
+  assert.equal(fini.conclusion, "success");
+  assert.equal("precedent" in fini, false);
+  // Le 12/11, dans le désordre — comme une réplique en retard a déjà rendu la liste.
+  const le12 = resumerRuns([r("completed", "success", "2026-11-12T13:28:00Z", 1), r("in_progress", null, "2026-11-12T14:17:00Z", 3), r("completed", "failure", "2026-11-12T14:12:00Z", 2)]);
+  assert.equal(le12.etat, "in_progress");
+  assert.equal(le12.precedent.conclusion, "failure");
+  assert.match(le12.precedent.url, /runs\/2$/);
+  assert.equal(resumerRuns([r("queued", null, "2026-11-12T14:17:00Z", 3)]).precedent, null, "aucune exécution terminée : rien à en dire");
+});
+
+test("㉿⑳ echecRun : cassée, expirée ou jamais démarrée = échec, même derrière une exécution en cours ; annulée = « inabouti » seulement si rien ne la remplace ; un succès, ou rien de lu, ne dit rien", () => {
+  const fini = (conclusion) => ({ etat: "completed", conclusion, url: null });
+  assert.deepEqual([...CONCLUSIONS_ECHEC], ["failure", "timed_out", "startup_failure"]);
+  for (const c of CONCLUSIONS_ECHEC) {
+    assert.equal(echecRun(fini(c)).nature, "echec", c);
+    assert.equal(echecRun({ etat: "in_progress", conclusion: null, precedent: fini(c) }).nature, "echec", c + " derrière une exécution en cours");
+  }
+  for (const c of ["cancelled", "action_required", "stale", "skipped", "neutral", "une-conclusion-inconnue"]) {
+    assert.equal(echecRun(fini(c)).nature, "inabouti", c);
+    assert.equal(echecRun({ etat: "queued", conclusion: null, precedent: fini(c) }), null, c + " : évincée par l'exécution suivante, la marche normale de la file");
+  }
+  assert.equal(echecRun(fini("success")), null);
+  assert.equal(echecRun({ etat: "in_progress", conclusion: null, precedent: fini("success") }), null);
+  assert.equal(echecRun({ etat: "in_progress", conclusion: null, precedent: null }), null);
+  assert.equal(echecRun(null), null);
+  // Un résumé d'avant ce lot, sans `etat` : sa conclusion vaut pour terminée.
+  assert.equal(echecRun({ conclusion: "failure" }).nature, "echec");
+});
+
+test("㉿㉑ verdict : un déploiement expiré ou jamais démarré est ROUGE comme un échec, et le dit ; annulé sans relève, orange ; en échec derrière une exécution en cours, rouge", () => {
+  const base = (deploy) => ({ sante: { erreursJs15: 0, api5xx15: 0 }, github: { issues: [], runs: { deploy, sentinelle: { le: new Date().toISOString() } } }, signalements: { ouverts: 0 } });
+  const fini = (conclusion) => ({ etat: "completed", conclusion });
+  assert.deepEqual(verdict(base(fini("failure"))).raisons, ["dernier déploiement en échec"]);
+  assert.deepEqual(verdict(base(fini("timed_out"))).raisons, ["dernier déploiement en échec (délai dépassé)"]);
+  assert.deepEqual(verdict(base(fini("startup_failure"))).raisons, ["dernier déploiement en échec (elle n'a pas démarré)"]);
+  for (const c of CONCLUSIONS_ECHEC) assert.equal(verdict(base(fini(c))).couleur, "rouge", c);
+  const annule = verdict(base(fini("cancelled")));
+  assert.equal(annule.couleur, "orange");
+  assert.match(annule.raisons[0], /n'a pas abouti \(annulée\) : la version en ligne n'est pas la dernière/);
+  assert.equal(verdict(base({ etat: "in_progress", conclusion: null, precedent: fini("failure") })).couleur, "rouge", "le 12/11 : dix-neuf minutes de vert");
+  assert.equal(verdict(base({ etat: "in_progress", conclusion: null, precedent: fini("cancelled") })).couleur, "vert");
+  assert.equal(verdict(base(fini("success"))).couleur, "vert");
+});
+
+test("㉿㉒ aReparer et aFaire : un agent ne répare que ce qui a CASSÉ ; une exécution annulée a sa ligne, sans réparation — la mise en ligne s'ouvre sur GitHub, la Sentinelle et la veille se relancent", () => {
+  const fini = (conclusion, url = null) => ({ etat: "completed", conclusion, url });
+  const URL_RUN = "https://github.com/P/p/actions/runs/77";
+  assert.deepEqual(aReparer({ issues: [], runs: { deploy: fini("timed_out", URL_RUN) } }).map((x) => [x.cle, x.url]), [["deploy", URL_RUN]]);
+  assert.deepEqual(aReparer({ issues: [], runs: { deploy: { etat: "in_progress", conclusion: null, url: "https://github.com/P/p/actions/runs/78", precedent: fini("failure", URL_RUN) } } }).map((x) => x.url), [URL_RUN],
+    "le lien est celui de l'exécution qui a cassé, pas de celle qui tourne");
+  assert.deepEqual(aReparer({ issues: [], runs: { deploy: fini("cancelled"), sentinelle: fini("cancelled"), veille: fini("action_required") } }), []);
+  const etat = (runs, extra = {}) => ({ gestesGithub: true, github: { issues: [], runs, aReparer: aReparer({ issues: [], runs }) }, ...extra });
+  const l = aFaire(etat({ deploy: fini("cancelled", URL_RUN), sentinelle: fini("cancelled"), veille: fini("stale") }), MAINTENANT_AF);
+  const par = (id) => l.find((x) => x.id === id);
+  assert.equal(par("run:deploy").prio, 1);
+  assert.equal(par("run:deploy").titre, "La dernière mise en ligne n'a pas abouti");
+  assert.deepEqual(par("run:deploy").gestes, [{ libelle: "Régler", principal: true, ouvrir: URL_RUN }]);
+  assert.deepEqual(par("run:sentinelle").gestes.map((g) => g.corps), [{ action: "relancer", cible: "sentinelle" }]);
+  assert.deepEqual(par("run:veille").gestes.map((g) => g.corps), [{ action: "relancer", cible: "veille" }]);
+  // Sans lien lisible, le bouton mène à la page des mises en ligne — jamais un problème sans issue.
+  const sansLien = aFaire(etat({ deploy: fini("cancelled", "javascript:alert(1)") }), MAINTENANT_AF).find((x) => x.id === "run:deploy");
+  assert.deepEqual(sansLien.gestes, [{ libelle: "Régler", principal: true, ouvrir: PAGES_REGLAGE.misesEnLigne }]);
+  assert.equal(PAGES_REGLAGE.misesEnLigne, "https://github.com/PASSIO74/passio-app/actions/workflows/deploy.yml");
+  // Une relance en vol se suit, sans second bouton.
+  const enVol = aFaire(etat({ sentinelle: fini("cancelled") }, { relances: { sentinelle: new Date(MAINTENANT_AF - 20e3).toISOString() } }), MAINTENANT_AF).find((x) => x.id === "run:sentinelle");
+  assert.equal(enVol.enCours, true);
+  assert.deepEqual(enVol.gestes, []);
+  // Une ligne par workflow, jamais deux : cassée → réparation ; annulée → sa ligne.
+  const casse = aFaire(etat({ deploy: fini("timed_out", URL_RUN) }), MAINTENANT_AF).filter((x) => x.id === "run:deploy");
+  assert.equal(casse.length, 1);
+  assert.equal(casse[0].prio, 0);
+  assert.deepEqual(casse[0].gestes.map((g) => g.corps), [{ action: "reparer", cible: "run", cle: "deploy" }]);
+});
+
+test("㉿㉓ GitHub lu EN PARTIE : ce qui manque est nommé, l'écran ne passe jamais au vert, et une ligne propose de relire", () => {
+  assert.deepEqual(partielGithub(), []);
+  assert.deepEqual(partielGithub({ runsNonLus: ["deploy", "inconnu"], issuesTronquees: false }), ["GitHub, la dernière mise en ligne"]);
+  assert.equal(ISSUES_LUES_MAX, 500);
+  assert.deepEqual(partielGithub({ runsNonLus: ["veille", "sentinelle"], issuesTronquees: true }),
+    ["GitHub, l'activité de la Sentinelle", "GitHub, l'activité de la veille de production", "GitHub, les issues au-delà des 500 plus récentes"]);
+  const vert = { couleur: "vert", titre: "Tout va bien", raisons: ["Aucune erreur récente, rien d'urgent."] };
+  assert.equal(verdictAffiche(vert, [], []), vert);
+  assert.equal(verdictAffiche(vert, [], [null, "", 3]), vert, "seuls des textes comptent");
+  assert.deepEqual(verdictAffiche(vert, [], ["GitHub, la dernière mise en ligne"]),
+    { couleur: "orange", titre: "À surveiller", raisons: ["non lu en entier : GitHub, la dernière mise en ligne"], incomplet: true });
+  const deux = verdictAffiche(vert, ["sante"], ["GitHub, la dernière mise en ligne"]);
+  assert.deepEqual(deux.raisons, ["non lu : erreurs de l'app", "non lu en entier : GitHub, la dernière mise en ligne"]);
+  assert.ok(deux.raisons.every((x) => /^non lu/.test(x)), "la page garde les raisons qui commencent par « non lu » (pilotage.js, rendreVerdict)");
+  assert.match(fs.readFileSync("pilotage/pilotage.js", "utf8"), /const nonLus = raisons\.filter\(\(r\) => \/\^non lu\/\.test\(r\)\);/, "prémisse : c'est bien à ce mot que la page les garde");
+  const rouge = verdictAffiche({ couleur: "rouge", titre: "Problème en cours", raisons: ["12 erreurs"] }, [], ["GitHub, les issues au-delà des 500 plus récentes"]);
+  assert.equal(rouge.couleur, "rouge");
+  assert.equal(rouge.incomplet, true);
+  assert.equal(rouge.raisons.length, 2);
+  const l = aFaire({ gestesGithub: true, github: { issues: [], runs: {}, aReparer: [], partiel: ["GitHub, la dernière mise en ligne", 7] } }, MAINTENANT_AF).find((x) => x.id === "lecture:github-partielle");
+  assert.equal(l.prio, 1);
+  assert.deepEqual(l.gestes, [{ libelle: "Régler", principal: true, special: "relire" }]);
+  assert.match(l.reference, /^Non vérifié : GitHub, la dernière mise en ligne\./);
+  assert.equal(aFaire({ gestesGithub: true, github: { issues: [], runs: {}, aReparer: [], partiel: [] } }, MAINTENANT_AF).some((x) => x.id === "lecture:github-partielle"), false);
+  for (const [v, ok] of [["c".repeat(40), true], ["C".repeat(40), false], ["c".repeat(39), false], ["", false], [null, false], [{}, false]]) assert.equal(shaValide(v), ok, String(v));
 });

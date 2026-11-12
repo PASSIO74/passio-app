@@ -35,9 +35,11 @@ async function poserSession(page, email = "passioadmin@gmail.com", delaiAnnuler 
 const MAINTENANT = new Date().toISOString();
 const IL_Y_A_3H = new Date(Date.now() - 3 * 3600e3).toISOString();
 const SERIE = [0, 1, 0, 2, 1, 0, 3].map((n, i) => ({ jour: "2026-09-2" + (2 + i), n }));
+// La tête de chaque PR telle que l'écran la montre : le geste « fusionner » la renvoie (2026-11-12).
+const TETE = (c) => c.repeat(40);
 const GH = {
   issues: [{ numero: 12, titre: CHARGE, labels: ["sentinelle", "humain"], url: "javascript:alert(1)", depuis: MAINTENANT, pr: false, pause: false },
-    { numero: 13, titre: "fix: correctif", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/13", depuis: MAINTENANT, pr: true, pause: false, correctif: true, externe: false }],
+    { numero: 13, titre: "fix: correctif", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/13", depuis: MAINTENANT, pr: true, pause: false, correctif: true, externe: false, sha: TETE("c") }],
   runs: { sentinelle: { etat: "completed", conclusion: "success", le: MAINTENANT, url: "https://github.com/PASSIO74/passio-app/actions/runs/1" }, veille: null, deploy: { etat: "completed", conclusion: "success", le: IL_Y_A_3H, url: null } },
   pause: false,
   aReparer: [{ cible: "issue", numero: 12, libelle: "#12 · " + CHARGE, url: null, enCours: null }],
@@ -267,7 +269,7 @@ test("⑥ un toucher : chaque geste envoie EXACTEMENT sa demande, avec le jeton,
   const correctif = af.locator("article", { hasText: "Un correctif est prêt" });
   await correctif.locator(".btn-regler").click();
   await expect(page.locator("#bandeauOk")).toContainText("Fait (banc).");
-  expect(gestes(envois).pop().corps).toEqual({ action: "fusionner", numero: 13 });
+  expect(gestes(envois).pop().corps).toEqual({ action: "fusionner", numero: 13, sha: TETE("c") });
   expect(gestes(envois).pop().auth).toMatch(/^Bearer ey/);
   await autreChoix(correctif, "Refuser");
   await expect.poll(() => gestes(envois).pop().corps).toEqual({ action: "fermer", numero: 13 });
@@ -314,7 +316,7 @@ test("⑦ le geste part seul après le délai ; retoucher pendant le délai l'an
   // Sans le retoucher, il part tout seul.
   await b.click();
   await expect(b).toHaveText(/^Annuler/);
-  await expect.poll(() => gestes(envois).map((e) => e.corps), { timeout: 4000 }).toEqual([{ action: "fusionner", numero: 13 }]);
+  await expect.poll(() => gestes(envois).map((e) => e.corps), { timeout: 4000 }).toEqual([{ action: "fusionner", numero: 13, sha: TETE("c") }]);
 });
 
 test("⑧ sans jeton GitHub : aucun geste GitHub, le premier problème est le jeton, et son bouton mène à la page où le poser", async ({ page }) => {
@@ -747,9 +749,9 @@ test("㉒ Croissance : migration pas appliquée → dit, jamais un faux zéro", 
 });
 
 // ─── Un seul écran, un seul toucher (2026-11-04) ────────────────────────────
-const CORRECTIF = { numero: 21, titre: "fix: x", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/21", depuis: MAINTENANT, pr: true, pause: false, correctif: true, externe: false };
-const CHANTIER = { numero: 22, titre: "feat: un chantier d'une autre session", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/22", depuis: MAINTENANT, pr: true, pause: false, correctif: false, externe: false };
-const FORK = { numero: 23, titre: "fix: urgent, à fusionner", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/23", depuis: MAINTENANT, pr: true, pause: false, correctif: false, externe: true };
+const CORRECTIF = { numero: 21, titre: "fix: x", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/21", depuis: MAINTENANT, pr: true, pause: false, correctif: true, externe: false, sha: TETE("d") };
+const CHANTIER = { numero: 22, titre: "feat: un chantier d'une autre session", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/22", depuis: MAINTENANT, pr: true, pause: false, correctif: false, externe: false, sha: TETE("e") };
+const FORK = { numero: 23, titre: "fix: urgent, à fusionner", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/23", depuis: MAINTENANT, pr: true, pause: false, correctif: false, externe: true, sha: TETE("f") };
 
 test("㉓ « Tout régler » : un toucher pour tout ce qui répare, dans l'ordre, chaque demande une fois ; jamais une décision ni un retour arrière", async ({ page }) => {
   await poserSession(page);
@@ -768,7 +770,7 @@ test("㉓ « Tout régler » : un toucher pour tout ce qui répare, dans l'ordre
   expect(gestes(envois).map((e) => e.corps)).toEqual([
     { action: "reparer", cible: "run", cle: "deploy" },
     { action: "reparer", cible: "issue", numero: 556 },
-    { action: "fusionner", numero: 21 },
+    { action: "fusionner", numero: 21, sha: TETE("d") },
     { action: "relancer", cible: "sentinelle" },
   ]);
   expect(JSON.stringify(gestes(envois)), "ni le retour arrière, ni le signalement").not.toMatch(/retour|signalement|masquage/);
@@ -851,7 +853,7 @@ test("㉜ le téléphone se verrouille pendant le délai : le geste part tout de
     Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  await expect.poll(() => gestes(envois).map((e) => e.corps)).toEqual([{ action: "fusionner", numero: 13 }]);
+  await expect.poll(() => gestes(envois).map((e) => e.corps)).toEqual([{ action: "fusionner", numero: 13, sha: TETE("c") }]);
 });
 
 test("㉗ la marche : elle se lit au doigt et au clavier, finit sur le total, et se retrouve mois par mois", async ({ page }) => {
@@ -987,6 +989,56 @@ test("㉝ jeton GitHub expiré : première ligne, le bouton ouvre GitHub, le sec
   await expect(erreur).toContainText("Il faut d'abord le jeton GitHub.");
   await expect(erreur.locator(".btn-regler")).toHaveCount(0);
   await expect(page.locator("#toutRegler")).toBeHidden();
+});
+
+// ─── 2026-11-12 : trois états que l'écran rendait VERT, ou sans rien à toucher ───
+// Reproduits en exécutant la fonction (tests/unit/pilotage-chemins.test.mjs ⑩ ⑪ ⑫) ; ici, ce
+// que le pilote voit. L'état est construit par les vraies fonctions du serveur (verdict,
+// verdictAffiche, aReparer, aFaire).
+test("㉝ bis GitHub lu en partie, mise en ligne annulée, échec caché derrière une mise en ligne en cours : jamais vert, une ligne chacun, un bouton qui fait quelque chose", async ({ page }) => {
+  const { verdict, verdictAffiche, aReparer } = require("../../supabase/functions/_shared/pilotage.js");
+  const calme = { signalements: { ouverts: 0, liste: [] }, capacite: { mesuresServeur: true, jauges: [] }, sante: { ...BASE.sante, erreursJs15: 0 }, erreurs: { ...BASE.erreurs, details: [] } };
+  const avecGithub = (runs, partiel = []) => {
+    const github = { ...GH, issues: [], runs: { ...GH.runs, ...runs }, partiel };
+    github.aReparer = aReparer(github);
+    const e = { ...BASE, ...calme, github };
+    return etat({ ...calme, github, verdict: verdictAffiche(verdict(e), [], partiel) });
+  };
+  const URL_RUN = "https://github.com/PASSIO74/passio-app/actions/runs/43234813436";
+  await poserSession(page);
+  const envois = [];
+  // ① La lecture des exécutions a été refusée : rien ne prouve que la dernière mise en ligne a réussi.
+  let courant = avecGithub({ deploy: null }, ["GitHub, la dernière mise en ligne"]);
+  await page.route(FONCTION, async (r) => {
+    const corps = r.request().postDataJSON();
+    envois.push({ corps });
+    await r.fulfill({ json: corps.action === "etat" ? courant : { ok: true, message: "Fait (banc)." } });
+  });
+  await page.goto("/pilotage/");
+  await expect(page.locator("#verdict")).toHaveClass(/orange/);
+  await expect(page.locator("#verdictDetail")).toContainText("non lu en entier : GitHub, la dernière mise en ligne");
+  const partielle = page.locator("#afaire article", { hasText: "GitHub n'a été lu qu'en partie" });
+  await expect(partielle).toContainText("Relit GitHub maintenant.");
+  // ② « Régler » relit AU FRAIS — et la relecture rend une mise en ligne ANNULÉE, sans rien pour la remplacer.
+  courant = avecGithub({ deploy: { etat: "completed", conclusion: "cancelled", le: MAINTENANT, url: URL_RUN } });
+  await partielle.locator(".btn-regler").click();
+  await expect.poll(() => envois.some((x) => x.corps.action === "etat" && x.corps.frais === true)).toBe(true);
+  const annulee = page.locator("#afaire article", { hasText: "La dernière mise en ligne n'a pas abouti" });
+  await expect(annulee).toBeVisible();
+  await expect(page.locator("#verdict")).toHaveClass(/orange/);
+  await expect(annulee.locator("a.btn-regler")).toHaveAttribute("href", URL_RUN);
+  await expect(annulee.locator("a.btn-regler")).toHaveAttribute("rel", "noopener");
+  await expect(page.locator("#afaire article", { hasText: "GitHub n'a été lu qu'en partie" })).toHaveCount(0);
+  // ③ Le 12/11 : un déploiement en échec pendant que le suivant tourne — rouge, et « Régler » le confie.
+  courant = avecGithub({ deploy: { etat: "in_progress", conclusion: null, le: MAINTENANT, url: null, precedent: { etat: "completed", conclusion: "failure", le: MAINTENANT, url: URL_RUN } } });
+  await page.locator("#actualiser").click();
+  await expect(page.locator("#verdict")).toHaveClass(/rouge/);
+  const echec = page.locator("#afaire article", { hasText: "La mise en ligne a échoué" });
+  await expect(echec).toBeVisible();
+  await expect(page.locator("#enCours article", { hasText: "Mise en ligne en cours" })).toBeVisible();
+  await echec.locator(".btn-regler").click();
+  await expect.poll(() => gestes(envois).map((x) => x.corps), { timeout: 4000 }).toEqual([{ action: "reparer", cible: "run", cle: "deploy" }]);
+  expect(await sansBarreHorizontale(page)).toBeLessThanOrEqual(0);
 });
 
 // ─── Parcours critiques, veille, politique (2026-11-06) ────────────────────────

@@ -174,3 +174,23 @@ test("⑥ au seuil déduit : une milliseconde avant, le battement est frais ; un
   assert.equal(apres.etat, "arrete", `à ${seuilMs / MIN} min et 1 ms, la veille a manqué deux battements et sa marge : le téléphone ne sonnera plus`);
   assert.equal(apres.frais, false);
 });
+
+test("⑦ le voyant mémorisé ILLISIBLE rend la veille « incomplète », et un essai des alertes PARTI se distingue d'un essai non dû (2026-11-12)", () => {
+  const ok = { status: "fulfilled" }, ko = { status: "rejected" };
+  const lues = { sante: ok, signalements: ok, github: ok, parcours: ok };
+  // L'essai rendait { essai: "envoye" } : le battement le notait « rien », comme un essai non dû
+  // (mesuré en production le 12/11 : 507 battements, 507 « rien »).
+  const c = contenuBattement({ lectures: { ...lues, memoire: ko }, gestes: { essai: { essai: "envoye", appareils: 2 }, autre: { essai: "pas_du" }, vide: {} } });
+  assert.equal(c.lectures.memoire, "ko");
+  assert.equal(c.gestes.essai, "envoye");
+  assert.equal(c.gestes.autre, "pas_du");
+  assert.equal(c.gestes.vide, "rien");
+  const r = resumerBattement({ created_at: new Date().toISOString(), properties: c });
+  assert.equal(r.etat, "incomplet");
+  assert.match(r.raisons.join(" "), /n'a pas pu relire son dernier voyant/);
+  // Un battement d'avant ce lot, sans la clé `memoire`, n'en dit rien : vivant.
+  const avant = contenuBattement({ lectures: lues });
+  assert.equal("memoire" in avant.lectures, false);
+  assert.equal(resumerBattement({ created_at: new Date().toISOString(), properties: avant }).etat, "vivant");
+  assert.equal(resumerBattement({ created_at: new Date().toISOString(), properties: contenuBattement({ lectures: { ...lues, memoire: ok } }) }).etat, "vivant");
+});

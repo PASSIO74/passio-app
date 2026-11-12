@@ -103,10 +103,15 @@ export function resumerIssue(i) {
  * seule une branche de CE dépôt, où seuls les mainteneurs écrivent, compte.
  */
 const BRANCHE_CORRECTIF = /^(claude\/issue-\d+-\d+|sentinelle\/)/;
+/** Un commit entier, en hexadécimal : la seule forme sous laquelle une version se désigne dans un geste. */
+export const shaValide = (s) => typeof s === "string" && /^[0-9a-f]{40}$/.test(s);
+// `sha` (2026-11-12) : la tête de la PR telle que l'écran la montre. Le geste « fusionner » la
+// renvoie, et la fonction refuse si elle a bougé : on ne met en ligne que ce qu'on a vu.
 export function resumerPr(p, depot) {
   const tete = (p && p.head) || {};
   const memeDepot = !!(tete.repo && tete.repo.full_name === depot);
-  return { externe: !memeDepot, correctif: memeDepot && BRANCHE_CORRECTIF.test(String(tete.ref || "")), autoFusion: !!(p && p.auto_merge), brouillon: !!(p && p.draft), maj: (p && p.updated_at) || null };
+  return { externe: !memeDepot, correctif: memeDepot && BRANCHE_CORRECTIF.test(String(tete.ref || "")), autoFusion: !!(p && p.auto_merge), brouillon: !!(p && p.draft), maj: (p && p.updated_at) || null,
+    sha: shaValide(tete.sha) ? tete.sha : null };
 }
 /** Résume la dernière exécution d'un workflow. */
 export function resumerRun(r) {
@@ -119,6 +124,68 @@ export function resumerRun(r) {
     cree: r.created_at || null,
     url: /^https:\/\/github\.com\//.test(String(r.html_url)) ? r.html_url : null,
   };
+}
+
+// ─── UNE EXÉCUTION QUI N'A PAS RÉUSSI N'EST PAS UN SUCCÈS (2026-11-12) ───────
+// Deux faux verts, reproduits en exécutant la fonction (pilotage-chemins ⑪ ⑫) :
+//  · seule la conclusion « failure » comptait. Un déploiement EXPIRÉ (`timed_out`),
+//    qui n'a pas DÉMARRÉ (`startup_failure` : un workflow invalide) ou ANNULÉ
+//    laissait l'écran vert, sans ligne ni bouton — alors que rien n'était parti ;
+//  · seule la DERNIÈRE exécution était lue. Mesuré le 12/11 : le run de c5814de8
+//    échoue à 14:31 UTC pendant que celui de 8fafb55d tourne encore ; le voyant
+//    reste vert jusqu'à 14:50, dix-neuf minutes, le temps que le second finisse.
+//    Avec des fusions rapprochées, un échec peut rester caché indéfiniment.
+// La règle : ce qui compte est la dernière exécution TERMINÉE. En échec, elle se
+// dit même si une suivante tourne (la production n'a toujours pas ce commit) ;
+// terminée sans réussir ni casser (annulée), elle ne se dit que si rien ne la
+// remplace — une exécution en attente évincée par la suivante est la marche
+// normale de la file (`passio-deploy-main`).
+/** Les conclusions d'un pipeline qui a cassé : rouge pour une mise en ligne. */
+export const CONCLUSIONS_ECHEC = Object.freeze(["failure", "timed_out", "startup_failure"]);
+const dateRun = (r) => { const t = Date.parse(String((r && (r.created_at || r.run_started_at || r.updated_at)) || "")); return Number.isFinite(t) ? t : 0; };
+/**
+ * Les dernières exécutions d'un workflow → le résumé de la PLUS RÉCENTE et, si
+ * elle tourne encore, `precedent` : la dernière terminée. Triées ici : GitHub a
+ * déjà rendu une liste dans le désordre (réplique en retard, veille-production.mjs).
+ */
+export function resumerRuns(runs) {
+  const tries = (Array.isArray(runs) ? runs : []).filter((r) => r && typeof r === "object").sort((a, b) => dateRun(b) - dateRun(a));
+  const dernier = resumerRun(tries[0]);
+  if (!dernier || dernier.etat === "completed") return dernier;
+  const fini = tries.find((r) => r.status === "completed");
+  return { ...dernier, precedent: fini ? resumerRun(fini) : null };
+}
+/**
+ * Ce qu'un workflow a de travers, lu sur son résumé : null (réussi, ou rien de
+ * lu), sinon { nature, run }. « echec » : la dernière exécution terminée a cassé,
+ * expiré ou n'a pas démarré. « inabouti » : la plus récente s'est terminée sans
+ * réussir (annulée, en attente d'un geste) et rien ne tourne à sa place.
+ */
+export function echecRun(r) {
+  if (!r || typeof r !== "object") return null;
+  const enCours = !!r.etat && r.etat !== "completed";
+  const fini = enCours ? r.precedent : r;
+  if (!fini || !fini.conclusion || fini.conclusion === "success") return null;
+  if (CONCLUSIONS_ECHEC.includes(fini.conclusion)) return { nature: "echec", run: fini };
+  return enCours ? null : { nature: "inabouti", run: fini };
+}
+const SUFFIXES_ECHEC = Object.freeze({ timed_out: " (délai dépassé)", startup_failure: " (elle n'a pas démarré)" });
+
+// ─── GITHUB LU EN PARTIE (2026-11-12) ────────────────────────────────────────
+// La lecture des issues réussissait, celle des exécutions non (limite secondaire,
+// panne partielle) : `runs.deploy` valait null, et un null ne colore rien — vert.
+// Et le dépôt est PUBLIC : au-delà de cinq pages d'issues ouvertes, les suivantes
+// n'étaient pas lues, sans un mot — un sujet « humain » pouvait s'y cacher
+// (pilotage-chemins ⑩). Ce qui n'a pas été lu se NOMME : l'écran ne passe pas au
+// vert (`verdictAffiche`), la veille ne baisse pas son voyant (`tenirVerdict`).
+export const ISSUES_LUES_MAX = 500;
+const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production" });
+/** Les parties de GitHub qui n'ont pas pu être lues, en clair (vide = tout est lu). */
+export function partielGithub({ runsNonLus = [], issuesTronquees = false } = {}) {
+  const l = Array.isArray(runsNonLus) ? runsNonLus : [];
+  const out = Object.keys(NOMS_RUNS).filter((c) => l.includes(c)).map((c) => "GitHub, " + NOMS_RUNS[c]);
+  if (issuesTronquees) out.push("GitHub, les issues au-delà des " + ISSUES_LUES_MAX + " plus récentes");
+  return out;
 }
 
 /** Au-delà, la Sentinelle est dite muette : orange au voyant, et une ligne à régler. */
@@ -193,7 +260,11 @@ export function verdict(e) {
   if (s.api5xx15 >= 5 && assez(s.comptes5xx15)) rouge.push(`${s.api5xx15} pannes serveur en 15 min`);
   else if (s.api5xx15 >= 5) orange.push(`${s.api5xx15} pannes serveur en 15 min, vues par moins de ${COMPTES_ROUGE_MIN} comptes : à confirmer`);
   else if (s.api5xx15 > 0) orange.push(`${s.api5xx15} panne(s) serveur en 15 min`);
-  if (runs.deploy && runs.deploy.conclusion === "failure") rouge.push("dernier déploiement en échec");
+  // La dernière mise en ligne TERMINÉE (echecRun) : cassée, expirée ou jamais démarrée → rouge,
+  // même si la suivante tourne déjà ; annulée sans rien pour la remplacer → à régler.
+  const ed = echecRun(runs.deploy);
+  if (ed && ed.nature === "echec") rouge.push("dernier déploiement en échec" + (SUFFIXES_ECHEC[ed.run.conclusion] || ""));
+  else if (ed) orange.push("la dernière mise en ligne n'a pas abouti" + (ed.run.conclusion === "cancelled" ? " (annulée)" : "") + " : la version en ligne n'est pas la dernière");
   // Les parcours critiques (2026-11-06, _shared/parcours.js) : jugés sur l'heure
   // écoulée (`recent` à l'écran, la lecture d'une heure dans la veille). Un
   // parcours CRITIQUE en panne — comptes serveur distincts — est rouge, donc
@@ -274,13 +345,20 @@ export function tenirVerdict(prec, actuel, incomplet) {
   const titres = { vert: "Tout va bien", orange: "À surveiller", rouge: "Problème en cours" };
   return { couleur: prec.couleur, titre: titres[prec.couleur], raisons: Array.isArray(prec.raisons) && prec.raisons.length ? prec.raisons : (actuel.raisons || []), tenu: true };
 }
-/** Le voyant de l'ÉCRAN : jamais vert sur une lecture incomplète, et ce qui manque est dit. */
-export function verdictAffiche(v, nonLus) {
+/**
+ * Le voyant de l'ÉCRAN : jamais vert sur une lecture incomplète, et ce qui manque est dit.
+ * `partiels` (2026-11-12, partielGithub) : ce qu'une source LUE n'a pas rendu en entier —
+ * même règle. Chaque raison commence par « non lu » : c'est à ce mot que la page les garde.
+ */
+export function verdictAffiche(v, nonLus, partiels = []) {
   const manquent = sourcesManquantes(nonLus);
-  if (!manquent.length) return v;
-  const raison = "non lu : " + manquent.join(", ");
-  if (!v || v.couleur === "vert") return { couleur: "orange", titre: "À surveiller", raisons: [raison], incomplet: true };
-  return { ...v, raisons: (v.raisons || []).filter((r) => !/^Aucune|^La production n'a pas pu/.test(r)).concat(raison), incomplet: true };
+  const enPartie = (Array.isArray(partiels) ? partiels : []).filter((x) => typeof x === "string" && x);
+  if (!manquent.length && !enPartie.length) return v;
+  const raisons = [];
+  if (manquent.length) raisons.push("non lu : " + manquent.join(", "));
+  if (enPartie.length) raisons.push("non lu en entier : " + enPartie.join(" ; "));
+  if (!v || v.couleur === "vert") return { couleur: "orange", titre: "À surveiller", raisons, incomplet: true };
+  return { ...v, raisons: (v.raisons || []).filter((r) => !/^Aucune|^La production n'a pas pu/.test(r)).concat(raisons), incomplet: true };
 }
 
 // ─── TENDANCES (2026-10-23) ──────────────────────────────────────────────────
@@ -347,6 +425,10 @@ const quoiClaudeEnCours = (n) => "Claude prépare le correctif (#" + n + ").";
 const TITRES_RUN = Object.freeze({
   deploy: "La mise en ligne a échoué", sentinelle: "La Sentinelle s'est arrêtée", veille: "La surveillance s'est arrêtée",
 });
+// Terminée sans réussir ni casser (annulée, en attente d'un geste) : rien à faire réparer par un agent.
+const TITRES_INABOUTI = Object.freeze({
+  deploy: "La dernière mise en ligne n'a pas abouti", sentinelle: "La dernière analyse de la Sentinelle n'a pas abouti", veille: "La dernière surveillance n'a pas abouti",
+});
 const NATURES_SIGNALEMENT = Object.freeze({ post: "une publication", comment: "un commentaire", user: "un profil", story: "une story", event: "une activité" });
 /** Un jeton GitHub qui expire se dit une semaine avant : expiré, plus aucun bouton ne répare. */
 export const JETON_ALERTE_JOURS = 7;
@@ -366,6 +448,8 @@ export const PAGES_REGLAGE = Object.freeze({
   brevo: "https://app.brevo.com/",
   cron: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/integrations/cron/jobs",
   logsPilotage: "https://supabase.com/dashboard/project/njkiyoklssvefstljemx/functions/pilotage/logs",
+  // Les mises en ligne (deploy.yml n'a pas de `workflow_dispatch` : une exécution annulée se rejoue sur GitHub).
+  misesEnLigne: "https://github.com/PASSIO74/passio-app/actions/workflows/deploy.yml",
   // L'application, appareil marqué « équipe » (?equipe=1) : la rouvrir met à jour
   // son service worker (qui apprend à accuser) et propose les notifications.
   app: "https://passio-app.netlify.app/?equipe=1",
@@ -467,6 +551,12 @@ export function aFaire(d, maintenant = Date.now()) {
   if (gh && gh.prNonLues) {
     ajoute({ id: "lecture:pr", prio: 1, etiquette: "Non lu", titre: "Les correctifs n'ont pas pu être lus", quoi: "Relit GitHub maintenant.", reference: "Raison : " + borne(gh.prNonLues, 120) + ".", gestes: [relire] });
   }
+  // GitHub lu en partie (partielGithub) : ce qui manque est nommé, et se relit d'un toucher.
+  const partiel = gh && Array.isArray(gh.partiel) ? gh.partiel.filter((x) => typeof x === "string" && x) : [];
+  if (partiel.length) {
+    ajoute({ id: "lecture:github-partielle", prio: 1, etiquette: "Lu en partie", titre: "GitHub n'a été lu qu'en partie", quoi: "Relit GitHub maintenant.",
+      reference: borne("Non vérifié : " + partiel.join(" ; ") + ". Ce qui s'y trouve n'apparaît pas ici.", 300), gestes: [relire] });
+  }
   const autresNonLus = sourcesManquantes(nonLus.filter((n) => n !== "github"));
   if (autresNonLus.length) {
     ajoute({ id: "lecture:autres", prio: 1, etiquette: "Non lu", titre: "Une partie n'a pas pu être lue", quoi: "Relit tout maintenant.", reference: "Non lu : " + autresNonLus.join(", ") + ".", gestes: [relire] });
@@ -479,6 +569,20 @@ export function aFaire(d, maintenant = Date.now()) {
   for (const x of reparables.filter((r) => r.cible === "run")) {
     ajoute({ id: "run:" + x.cle, prio: x.cle === "deploy" ? 0 : 1, etiquette: x.enCours ? "Réparation en cours" : "En échec", titre: TITRES_RUN[x.cle] || x.libelle,
       enCours: !!x.enCours, quoi: x.enCours ? quoiClaudeEnCours(x.enCours) : QUOI_CLAUDE, url: urlGithub(x.url), gestes: gesteReparer(x) });
+  }
+  // Exécutions terminées sans réussir ni casser (echecRun « inabouti » : annulée, en attente d'un
+  // geste). Aucun agent n'a rien à y réparer, mais la version en ligne n'est pas la dernière — ou
+  // la surveillance n'a pas tourné. Une mise en ligne se rejoue sur GitHub (deploy.yml n'a pas de
+  // `workflow_dispatch`) ; la Sentinelle et la veille se relancent d'ici.
+  for (const cle of Object.keys(RUNS_REPARABLES)) {
+    const e = echecRun(runs[cle]);
+    if (!e || e.nature !== "inabouti") continue;
+    const url = urlGithub(e.run.url);
+    const sr = cle === "deploy" ? null : suivi(cle);
+    if (sr && enVol(sr)) { ajoute({ id: "run:" + cle, prio: 1, enCours: true, etiquette: "Relance", titre: TITRES_INABOUTI[cle], quoi: quoiVol(sr, cle === "sentinelle" ? "La Sentinelle" : "La surveillance"), url }); continue; }
+    ajoute({ id: "run:" + cle, prio: 1, etiquette: "Non aboutie", titre: TITRES_INABOUTI[cle], url,
+      quoi: cle === "deploy" ? "Ouvre GitHub pour la rejouer : la version en ligne n'est pas la dernière." : quoiRate(sr, "La relance maintenant."),
+      gestes: cle === "deploy" ? [{ libelle: REGLER, principal: true, ouvrir: url || PAGES_REGLAGE.misesEnLigne }] : relancer(cle) });
   }
   // Les issues suivies.
   for (const i of issues) {
@@ -528,9 +632,11 @@ export function aFaire(d, maintenant = Date.now()) {
   for (const i of issues.filter((x) => x.pr).slice(0, 15)) {
     const base = { id: "pr:" + i.numero, depuis: i.depuis || null, url: urlGithub(i.url) };
     const reference = "#" + i.numero + " · " + i.titre;
-    const fusionner = { corps: { action: "fusionner", numero: i.numero } };
+    // La version VUE part avec le geste (2026-11-12) : la fonction refuse de fusionner une tête qui a
+    // bougé depuis. Sans version lue, aucun bouton ne met en ligne — on ne fusionne pas à l'aveugle.
+    const fusionner = shaValide(i.sha) ? { corps: { action: "fusionner", numero: i.numero, sha: i.sha } } : null;
     const refuser = gestesGh ? [{ libelle: "Refuser", corps: { action: "fermer", numero: i.numero } }] : [];
-    if (i.correctif && !i.brouillon) {
+    if (i.correctif && !i.brouillon && fusionner) {
       // Armée puis rien : un test rouge arrête la fusion, sans le dire à personne. Elle revient
       // ici plutôt que de rester « part en ligne » pour toujours. `maj` et non `depuis` : un
       // correctif peut attendre son « Régler » des heures, c'est l'armement qui compte.
@@ -542,7 +648,7 @@ export function aFaire(d, maintenant = Date.now()) {
       // Un chantier en cours n'est pas un problème : rangé dans Détails. Une PR
       // venue d'un fork (dépôt public) ne se fusionne pas d'ici, quel que soit son titre.
       ajoute({ ...base, prio: 2, etiquette: "Chantier", titre: reference, quoi: "Un chantier en cours, pas un problème.",
-        gestes: gestesGh ? [...(i.externe ? [] : [{ libelle: "Fusionner", ...fusionner }]), ...refuser] : [] });
+        gestes: gestesGh ? [...(i.externe || !fusionner ? [] : [{ libelle: "Fusionner", ...fusionner }]), ...refuser] : [] });
     }
   }
   // Les signalements : une décision humaine, en deux gestes d'un toucher.
@@ -1156,9 +1262,12 @@ export function aReparer(gh) {
     out.push(c);
   }
   for (const cle of Object.keys(RUNS_REPARABLES)) {
-    const r = runs[cle];
-    if (!r || r.conclusion !== "failure") continue;
-    const c = { cible: "run", cle, libelle: RUNS_REPARABLES[cle].libelle + " en échec", url: r.url || null };
+    // La dernière exécution TERMINÉE (echecRun) : cassée, expirée ou jamais démarrée — même si la
+    // suivante tourne déjà. Une exécution annulée n'a rien qu'un agent puisse réparer : elle a sa
+    // propre ligne (aFaire), pas de réparation.
+    const e = echecRun(runs[cle]);
+    if (!e || e.nature !== "echec") continue;
+    const c = { cible: "run", cle, libelle: RUNS_REPARABLES[cle].libelle + " en échec", url: e.run.url || null };
     c.enCours = ouvertes.get(titreReparation(c)) || null;
     out.push(c);
   }

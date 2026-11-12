@@ -52,6 +52,9 @@ export function contenuBattement({ lectures = {}, verdict = null, sonne = false,
     if (v.erreur) g[k] = "erreur:" + court(v.erreur, 60);
     else if (v.lance || v.propose || v.emis || v.ecrit || v.changer) g[k] = "fait";
     else if ("niveau" in v) g[k] = "niveau:" + Number(v.niveau || 0);
+    // L'essai des alertes rend { essai: "envoye" | "pas_du" } : sans cette ligne il se notait
+    // « rien » dans les deux cas — un essai parti ne se distinguait pas d'un essai non dû.
+    else if (typeof v.essai === "string") g[k] = court(v.essai, 60);
     else g[k] = court(v.raison || (v.inactif ? "inactif" : "rien"), 60);
   }
   const p = parcours && Array.isArray(parcours.parcours) ? parcours.parcours : [];
@@ -102,6 +105,10 @@ export function resumerBattement(ligne, n24 = null, maintenant = Date.now()) {
   // dans `rappels_echec`, que rien ne lisait (revue adversariale du 2026-11-06).
   // Un battement d'avant ce lot, sans la clé, n'en dit rien.
   if (lectures.rappels === "ko") raisons.push("les rappels d'activité ont échoué : aucun n'est parti à ce passage (marque rappels_echec)");
+  // Le voyant mémorisé (2026-11-12) : illisible, la veille ne sait pas d'où elle vient — elle
+  // sonne encore un rouge, mais ne peut dire ni « résolu » ni « toujours ». Même règle que les
+  // rappels : un battement d'avant ce lot, sans la clé, n'en dit rien.
+  if (lectures.memoire === "ko") raisons.push("la veille n'a pas pu relire son dernier voyant : elle n'a noté aucun changement à ce passage");
   if (politiqueInvalide) raisons.push("politique d'automatisation invalide : aucun geste automatique");
   if (raisons.length) return { ...base, etat: "incomplet", frais: true, raisons };
   return { ...base, etat: "vivant", frais: true, raisons: [`battement il y a ${Math.round(ageMs / 60e3)} min, toutes les lectures abouties`] };

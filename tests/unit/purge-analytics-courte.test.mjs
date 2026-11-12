@@ -92,7 +92,8 @@ test("③ un créneau de la veille ne se relit que par IDENTIFIANT (sa minute, l
   const M0 = Date.parse("2026-11-07T12:05:00Z");
   const { client, appels } = enregistreur();
   const r = await prendreCreneau(client, "systeme:pilotage-veille", "pilotage-veille", "secret-serveur-de-test-0123456789", M0);
-  assert.deepEqual(r, { ok: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.ids.length, 2, "les deux lignes du créneau : ce que rend un geste que GitHub a refusé (rendreCreneau)");
   assert.equal(appels.filter((a) => FILTRES_TEMPS.has(a.m)).length, 0, "aucun filtre de date : rien ne relit un vieux créneau");
   const lecture = appels.find((a) => a.m === "in");
   assert.ok(lecture && lecture.args[0] === "id" && lecture.args[1].length === 2, "lecture par identifiant, deux créneaux");

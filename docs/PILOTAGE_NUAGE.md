@@ -78,8 +78,9 @@ avec Google ». Ajouter un compte : secret `PILOTAGE_EMAILS` de la fonction (vir
 - Écritures possibles, chacune annulable 5 s à l'écran : relancer 3 workflows en liste blanche, fusionner/fermer une PR ou une issue par son numéro, poser/retirer la pause Sentinelle, passer un signalement à `handled`/`dismissed`. Une fusion reste soumise à la protection de `main` (CI verte, contre-revue).
 - Aucun corps d'issue ni auteur ne quitte la fonction (`resumerIssue`) ; liens limités à github.com.
 - Plafond 30/min, 600/h (`plafond.js`).
+- Depuis le 2026-11-12 : une fusion exige la version VUE à l'écran (`sha` du geste ; la tête a bougé → 409) ; « Régler » et une relance prennent un créneau atomique (deux touchers, un seul agent, un seul run) ; une mise en ligne expirée, annulée ou cachée derrière la suivante n'est plus verte ; GitHub lu en partie se dit (« non lu en entier »).
 - Rendu par nœuds + `textContent` ; titre hostile éprouvé au navigateur.
 
-Verrous : `tests/unit/pilotage.test.mjs` (dans `npm run verif` et avant déploiement),
+Verrous : `tests/unit/pilotage-chemins.test.mjs` (2026-11-12 : la fonction EXÉCUTÉE — la porte, la veille, chaque geste ; 26 réinjections par `scripts/reinjections-pilotage.mjs`), `tests/unit/pilotage.test.mjs` (dans `npm run verif` et avant déploiement),
 `tests/e2e/pilotage-nuage.spec.js` (éprouvé par réinjection : `innerHTML` → rouge, annulation retirée → rouge),
 `tests/sql/migration-pilotage-veille.test.sh` (11, dont le mutant sans `revoke … from anon` qui doit lever).
