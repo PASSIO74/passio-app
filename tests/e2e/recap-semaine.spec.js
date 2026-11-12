@@ -196,8 +196,9 @@ test("⑤ « Ne plus afficher » coupe pour de bon, et Paramètres › Notificat
   await page.check("#notifRecap");
   await page.evaluate(() => saveNotifSettings());
   expect(await page.evaluate(() => getCurrentConfig().notifs.recap)).toBe(true);
-  // Les cinq autres réglages n'ont pas bougé (défaut : tout coché).
-  expect(await page.evaluate(() => { const n = getCurrentConfig().notifs; return [n.posts, n.messages, n.likes, n.events, n.system]; })).toEqual([true, true, true, true, true]);
+  // LOT-7 (TRA-C04) : les cinq interrupteurs que rien ne lisait ont été retirés —
+  // le récap est le seul réglage écrit.
+  expect(await page.evaluate(() => getCurrentConfig().notifs)).toEqual({ recap: true });
 });
 
 test("⑥ chaque ligne mène là où ça se passe : Rencontrer, les notifications, le fil", async ({ page }) => {

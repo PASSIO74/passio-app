@@ -2356,6 +2356,18 @@ function _neutraliserBalisesNotif(t) {
   return String(t == null ? "" : t).replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// LOT-7 (audit UX/UI du 2026-11-10, MSG-C02) — LA SOURDINE D'UNE CONVERSATION.
+// « Couper les notifications » posait `_muted` et rien ne le lisait : son, cloche,
+// badge et titre continuaient. Une conversation en sourdine : ni son, ni entrée
+// de cloche, ni unité aux badges ; sa ligne garde son point non lu.
+function convEnSourdine(convId) {
+  if (!convId) return false;
+  try {
+    var c = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+    return !!(c && (c._muted || c.muted));
+  } catch (e) { return false; }
+}
+
 function mergeSupaNotifs(ns) {
   if (!ns || !ns.length) return;
   // Point de passage UNIQUE des notifications distantes : la lecture REST
@@ -2391,6 +2403,9 @@ function mergeSupaNotifs(ns) {
   } catch (e) { try { diagLog("notifs : fusion des demandes acceptées — " + (e && e.message)); } catch (_) {} }
   // Ignorer les notifs émises par un utilisateur bloqué (modération)
   if (typeof isBlocked === "function") ns = ns.filter(n => !isBlocked(n.fromId));
+  // LOT-7 (MSG-C02) : un message d'une conversation EN SOURDINE n'entre pas dans
+  // la cloche — l'expéditeur l'écrit en base sans connaître ce réglage local.
+  ns = ns.filter(n => !(n && n.kind === "message" && convEnSourdine(n.refId)));
   if (!ns.length) return;
   // Mémoire locale des notifs déjà vues : même si le `seen` Supabase n'a pas
   // été persisté (ou pas encore propagé), une notif vue ici ne doit JAMAIS
@@ -7607,9 +7622,12 @@ async function _handleIncomingConvMessage(r, opts) {
     conv.unread = (conv.unread || 0) + 1;
     conversationsState = convs;
     saveConversations();
-    _playMsgSound();
+    // LOT-7 (MSG-C02) : en sourdine, le message est rangé (point non lu sur la
+    // ligne) mais rien ne sonne ni ne s'ajoute à la cloche.
+    const _sourdine = !!(conv._muted || conv.muted);
+    if (!_sourdine) _playMsgSound();
     // Notif dans l'onglet 🔔 Notifications (+ badge cloche + titre onglet)
-    try {
+    if (!_sourdine) try {
       // Signature : pushNotification(text, emoji, fromId) — l'ancien appel
       // (sender, body, "✉️") mettait le corps dans l'emoji et rendait le pseudo
       // BRUT (innerHTML) comme texte. escapeHtml : pseudo contrôlé par l'expéditeur.

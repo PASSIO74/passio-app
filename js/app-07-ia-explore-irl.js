@@ -4742,6 +4742,16 @@ var EVENT_REMINDER_TIERS = [
   { key: "h2", ms: 2 * 3600000,  label: "dans 2 h" },
 ];
 
+// LOT-7 (TRA-C15) : le jour d'une activité dit comme une personne le dirait.
+function _quandRappel(ts, maintenant) {
+  var j = joursCalendairesAvant(ts, maintenant);
+  if (j <= 0) return "aujourd'hui";
+  if (j === 1) return "demain";
+  var d = new Date(ts);
+  if (j < 7) return d.toLocaleDateString("fr-FR", { weekday: "long" });
+  return "le " + d.getDate() + " " + d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", "");
+}
+
 function _checkEventReminders() {
   try {
     var reminded = JSON.parse(localStorage.getItem("passio_event_reminded") || "[]");
@@ -4767,11 +4777,11 @@ function _checkEventReminders() {
       var mark = e.id + ":" + tier.key;
       if (reminded.indexOf(mark) > -1) return;
 
-      var d = fmtEventDate(e.date);
-      // À moins de 24 h, « demain » devient faux passé minuit : on recale.
-      var when = tier.key === "d1"
-        ? (diff <= 12 * 3600000 ? "aujourd'hui" : "demain")
-        : tier.label;
+      // LOT-7 (audit UX/UI du 2026-11-10, TRA-C15) : le palier dit QUAND rappeler,
+      // jamais ce qu'on affiche. Une activité à 26 h tombait dans le palier d7 et
+      // recevait « dans une semaine » ; on compose la date RÉELLE, en jours de
+      // calendrier : « aujourd'hui », « demain », « samedi », « le 20 nov. ».
+      var when = _quandRappel(e.date, now);
       // `event_reminder` + `refId` : toucher le rappel dans la cloche ouvre
       // l'activité (openNotifTarget), au lieu d'une ligne inerte.
       if (typeof pushNotification === "function") {

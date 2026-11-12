@@ -3799,7 +3799,8 @@ function _alignerIdentiteConv(c) {
 // Non-lus RÉELS : la démonstration ne fait pas clignoter une pastille.
 function _convNonLus() {
   var n = 0;
-  try { (getConversations() || []).forEach(function (c) { if (!_estConvDemo(c)) n += (c.unread || 0); }); } catch (e) {}
+  // LOT-7 (MSG-C02) : une conversation en sourdine ne compte pas aux badges.
+  try { (getConversations() || []).forEach(function (c) { if (!_estConvDemo(c) && !c._muted && !c.muted) n += (c.unread || 0); }); } catch (e) {}
   return n;
 }
 
@@ -5702,7 +5703,7 @@ function renderMessages() {
       <div class="msg-avatar" style="${avatarStyle}">${_convAvInner}</div>
       <div class="msg-body">
         <div class="msg-head">
-          <span class="msg-name">${c.pinned ? "📌 " : ""}${escapeHtml(displayName)}</span>
+          <span class="msg-name">${c.pinned ? "📌 " : ""}${escapeHtml(displayName)}${(c._muted || c.muted) ? ' <span class="msg-sourdine" title="Notifications coupées" aria-label="Notifications coupées">🔕</span>' : ""}</span>
           <span class="msg-time">${lastMsg ? fmtMsgTime(c.lastAt) : ""}</span>
         </div>
         ${membresLine}

@@ -12577,3 +12577,10 @@ button, a, label, select, summary,
    « Je participe » corail ; la bulle de carte le dit aussi. */
 :root.passio-ui-4a2 .v4a2-etat.v4a2-etat-exemple { color: #4b4060; background: #f3f0fa; border: 1px dashed #b7a8e0; }
 .irl-popup-exemple { font-size: 11px; font-weight: 700; color: #5b21b6; margin-bottom: 2px; }
+
+/* LOT-7 (audit UX/UI du 2026-11-10, TRA-C04) : l'état de la permission de
+   notification du téléphone, dans le panneau Notifications. */
+.notif-perm { font-size: 13px; line-height: 1.45; padding: 10px 12px; border-radius: 12px; background: var(--bg-soft); margin-bottom: 12px; color: var(--text); }
+.notif-perm-granted { color: #0f5c3d; }
+.notif-perm-denied { color: #9a3412; }
+.notif-perm-absent { color: var(--muted); }
