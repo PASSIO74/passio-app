@@ -384,3 +384,36 @@ test("⑨ ce que le correctif n'a PAS fait : l'agent n'a toujours ni `gh` ni ré
   // La permission dont la lecture a besoin est déjà celle du job — et rien de plus.
   assert.deepEqual(WF.jobs.claude.permissions, { contents: "write", issues: "write", "pull-requests": "write", actions: "read" });
 });
+
+// ── Un workflow doit rester du YAML qu'un VRAI lecteur accepte (2026-11-12) ──────────────────────────
+// La première version de ce lot portait, en plein milieu de `claude-code.yml`, une marque d'ordre d'octets
+// écrite en caractère BRUT à la place de son échappement. Le lecteur maison de ces bancs (lib/yaml-mini.mjs)
+// la tolérait : tout était vert ici. `zizmor` l'a refusée en CI (« input is not valid YAML ») — et rien ne
+// garantit que GitHub aurait encore lancé le workflow. YAML n'admet ni caractère de contrôle, ni cette marque
+// ailleurs qu'en tête ; et un séparateur de ligne exotique y coupe une ligne là où l'on n'en voit pas.
+test("⑩ aucun workflow ne porte un caractère que YAML refuse ou qui y coupe une ligne en douce : contrôle, marque d'ordre d'octets hors tête, U+0085, U+2028, U+2029", () => {
+  const dossier = path.join(RACINE, ".github/workflows");
+  const fichiers = fs.readdirSync(dossier).filter((f) => /\.ya?ml$/.test(f)).sort();
+  assert.ok(fichiers.length >= 10 && fichiers.includes("claude-code.yml"), "les workflows ont été lus : " + fichiers.length);
+  const MARQUE = 0xFEFF, COUPES = new Set([0x85, 0x2028, 0x2029]);
+  const interdit = (c, i) => (c < 0x20 && c !== 0x9 && c !== 0xA && c !== 0xD) || c === 0x7F || (c >= 0x80 && c < 0xA0) || COUPES.has(c) || (c === MARQUE && i > 0) || c === 0xFFFE || c === 0xFFFF || (c >= 0xD800 && c <= 0xDFFF);
+  const ecarts = [];
+  for (const f of fichiers) {
+    const texte = fs.readFileSync(path.join(dossier, f), "utf8");
+    let ligne = 1, i = 0;
+    for (const ch of texte) {
+      const c = ch.codePointAt(0);
+      if (interdit(c, i)) ecarts.push(f + ":" + ligne + " U+" + c.toString(16).toUpperCase().padStart(4, "0"));
+      if (c === 0xA) ligne++;
+      i++;
+    }
+  }
+  assert.deepEqual(ecarts, [], "caractères à écrire par leur échappement, jamais bruts");
+  // Prémisse : le programme d'extraction retire bien cette marque — par son ÉCHAPPEMENT, en toutes lettres.
+  assert.ok(ETAPE.run.includes("sub(\"^" + String.fromCharCode(92) + "ufeff?"), "l'échappement est écrit en toutes lettres dans le programme jq");
+  const marque = String.fromCharCode(MARQUE);
+  const brut = JOB + "\t" + MARCHE + "\t" + marque + "2026-11-12T14:00:00.0000000Z première ligne d'une marche\n" + l(JOB, MARCHE, "##[error]Process completed with exit code 1.") + "\n";
+  const e = extrait(jouer({ ...DECOR(), ["journal-" + RUN + "-1.txt"]: brut }).spec);
+  assert.ok(e.includes("      première ligne d'une marche"), "la marque et l'horodatage sont retirés : " + JSON.stringify(e.slice(0, 300)));
+  assert.ok(!e.includes(marque) && !/2026-11-12T14:00/.test(e));
+});
