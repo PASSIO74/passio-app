@@ -156,3 +156,21 @@ Ordre de Benjamin : « Oui, enchaîne » (durcissements CLI-01 serveur, SRV-02, 
 - Les médias des stories purgées et des publications de test restent dans le stockage, à retirer par l'API Storage
   avec la clé de service.
 - Restent à faire par Benjamin : essais sur appareil réel, inscription réelle, retour arrière Netlify.
+
+## Ajout du 2026-11-12, soir — les retraits (PR #852, fusionnée et déployée)
+
+- Production = `39e4f605` (buildId `5a73b5291731`), run entièrement vert.
+- **ETAT-04** : « Supprimer pour tous » attend le verdict de la base, et un refus laisse la bulle. Les deux autres
+  gestes étaient déjà corrigés (FIL-C06, #836).
+- **ETAT-05** : la file des suppressions n'accepte « 0 ligne + relecture vide » que sous la session de l'auteur.
+- **ETAT-08** : suivis, blocages et inscriptions convergent. Une lecture réussie sous la session de ce compte
+  remplace la liste locale, et « Ne plus suivre » lit son verdict.
+- La relecture par l'agent `audit-passio` (modèle Claude, pas une revue humaine) a trouvé deux P1 dans la première
+  version, tous deux corrigés avant fusion :
+  - une session morte aurait effacé les blocages ;
+  - un refus mémorisé aurait effacé les inscriptions.
+- Restent ouverts :
+  - STAB-10 : la CI ne teste pas la page minifiée (`.github/`) ;
+  - l'événement métier n'est pas encore exigé pour chaque genre de notification ;
+  - les médias orphelins, à retirer avec la clé de service ;
+  - les gestes de Benjamin (essais sur appareil réel, inscription réelle, retour arrière Netlify).
