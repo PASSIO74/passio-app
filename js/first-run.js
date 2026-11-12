@@ -1518,9 +1518,61 @@
       screen: ecranActif() || "feed",
       hash: RE_LIEN_PROFOND.test(h) ? h : "",
       action: ctx || "",
-      scroll: mesurerScroll()
+      scroll: mesurerScroll(),
+      // LOT-2 (audit UX/UI du 2026-11-10, PAR-C02) : la CIBLE lue à l'écran.
+      // L'adresse ne suffisait pas : le routeur de `#post-<id>` la nettoie
+      // AVANT d'ouvrir (mesuré : `retour.hash` vide, la publication jamais
+      // rouverte), et une fiche d'activité repose `#event-<id>`, que le routeur
+      // `#irl-event-` ne relit pas. Un genre et un identifiant, rien d'autre.
+      cible: cibleOuverte()
     };
     sauverPrefs();
+  }
+
+  // ── Le contenu ouvert par-dessus l'écran (LOT-2, PAR-C01 / PAR-C02) ─────────
+  // Publication, fiche d'activité ou bobine : ce que la personne regardait quand
+  // elle a demandé un compte. Lu dans ce qui est AFFICHÉ, jamais dans l'adresse.
+  function cibleOuverte() {
+    try {
+      if (typeof reelsState !== "undefined" && reelsState && reelsState.open) {
+        var it = reelsState.items && reelsState.items[reelsState.current];
+        if (it && it.id) return { genre: "bobine", id: String(it.id) };
+      }
+    } catch (e) {}
+    try {
+      var ev = document.getElementById("eventDetailPage");
+      if (ev && ev.style && ev.style.display && ev.style.display !== "none" && window._openEventDetailId) {
+        return { genre: "activite", id: String(window._openEventDetailId) };
+      }
+      var pd = document.getElementById("postDetailPage");
+      if (pd && pd.style && pd.style.display && pd.style.display !== "none") {
+        var art = pd.querySelector("[data-postid]");
+        if (art && art.getAttribute("data-postid")) return { genre: "publication", id: art.getAttribute("data-postid") };
+      }
+    } catch (e) {}
+    return null;
+  }
+  // Ferme le contenu ouvert : le formulaire de compte (z-index 50) était peint
+  // SOUS la page d'une publication et la fiche d'activité (200) et sous le
+  // lecteur de bobines (9999) — « Créer mon compte » ne changeait rien à l'écran.
+  function fermerCible(c) {
+    if (!c) return;
+    try {
+      if (c.genre === "bobine" && typeof closeReels === "function") closeReels();
+      else if (c.genre === "activite" && typeof closeEventDetail === "function") closeEventDetail();
+      else if (c.genre === "publication" && typeof closePost === "function") closePost();
+    } catch (e) { journal("fermer cible", e); }
+  }
+  // Rouvre le contenu par sa fonction d'ouverture — jamais en reposant une
+  // adresse. Rend `true` si une ouverture a été tentée.
+  function rouvrirCible(c) {
+    if (!c || !c.id) return false;
+    try {
+      if (c.genre === "publication" && typeof openPost === "function") { openPost(c.id); return true; }
+      if (c.genre === "activite" && typeof openEventDetails === "function") { openEventDetails(c.id); return true; }
+      if (c.genre === "bobine" && typeof openReelById === "function") { openReelById(c.id); return true; }
+    } catch (e) { journal("rouvrir cible", e); }
+    return false;
   }
 
   function mesurerScroll() {
@@ -1545,6 +1597,18 @@
     try { closeModal(); } catch (e) {}
     var onb = document.getElementById("onboarding");
     if (!onb) return;
+    // LOT-2 (PAR-C01, P0) : le contenu ouvert passe dans le retour PUIS se ferme,
+    // sinon le formulaire s'ouvre DESSOUS et rien ne change à l'écran.
+    var _cible = cibleOuverte();
+    if (_cible) {
+      try {
+        var _p = prefs();
+        if (!_p.retour) _p.retour = { screen: ecranActif() || "feed", hash: "", action: ctx || "", scroll: mesurerScroll() };
+        _p.retour.cible = _cible;
+        sauverPrefs();
+      } catch (e) {}
+      fermerCible(_cible);
+    }
     // ⚠️ LA BULLE DE REPÈRE NE SURVIT PAS À L'INSCRIPTION (2026-11-09). `.fr-tip`
     // est en `fixed`, z-index 9000 ; `#onboarding` en 50 : mesuré sur iPhone, la
     // bulle « Découvrir » couvrait les onglets puis les champs. `ecranOccupe()`
@@ -1575,6 +1639,10 @@
       }
     } catch (e) {}
     poserSortieExploration();
+    // LOT-2 (ENT-C01) : le formulaire pose son entrée d'historique, comme une
+    // modale — le retour système le ferme (`closeCurrentOverlay` → `fermerAuthParRetour`)
+    // au lieu de changer l'écran dessous, ou de quitter PASSIO.
+    try { if (!_authHistoriquePose && typeof pushOverlayHistory === "function") { pushOverlayHistory("compte"); _authHistoriquePose = true; } } catch (e) {}
     if (mode === "signup") tel("guest_signup_started", { ctx: ctx || "" });
     // Sans cette mesure, les trois portes vers un compte EXISTANT (carte de
     // bienvenue, Paramètres, déconnexion) seraient indiscernables de portes
@@ -1601,13 +1669,39 @@
     onb.appendChild(b);
   }
 
-  function retourExploration() {
+  var _authHistoriquePose = false;
+
+  // Retour système pendant le formulaire de compte (LOT-2, ENT-C01). Seulement
+  // tant que la personne est sur le formulaire d'accès : une fois le compte créé,
+  // les étapes suivantes (âge, prénom, passions) ne se ferment pas par un retour.
+  function fermerAuthParRetour() {
+    var onb = document.getElementById("onboarding");
+    if (!onb || !onb.classList.contains("active")) return false;
+    if (!document.getElementById("frBackToExplore")) return false; // pas ouvert par ce parcours
+    try { if (typeof _compteAuthReel === "function" && _compteAuthReel()) return false; } catch (e) {}
+    _authHistoriquePose = false; // l'entrée vient d'être consommée par le retour
+    retourExploration(true);
+    return true;
+  }
+
+  function retourExploration(parRetour) {
     var b = document.getElementById("frBackToExplore");
     if (b && b.parentNode) b.parentNode.removeChild(b);
     var onb = document.getElementById("onboarding");
     if (onb) onb.classList.remove("active");
     var l = document.getElementById("landing");
     if (l) l.classList.remove("active");
+    // Fermé au doigt (« ← Continuer à explorer ») : on reprend l'entrée posée à
+    // l'ouverture. Fermé par le retour système : elle vient d'être consommée.
+    if (parRetour !== true && _authHistoriquePose) {
+      _authHistoriquePose = false;
+      try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
+    }
+    // LOT-2 (PAR-C01) : le contenu fermé à l'ouverture du formulaire est rendu —
+    // « continuer à explorer », c'est reprendre là où l'on était.
+    var _retour = null;
+    try { _retour = prefs().retour; } catch (e) {}
+    if (_retour && _retour.cible && rouvrirCible(_retour.cible)) return;
     try { document.body.classList.add("screen-feed-active"); } catch (e) {}
     // ⚠️ AUCUN RÉARMEMENT DE L'ACCUEIL ICI, ET C'EST DÉLIBÉRÉ. Le budget de
     // `planifierAccueil` se consomme bien pendant que le formulaire occupe
@@ -2340,6 +2434,15 @@
 
     setTimeout(function () {
       try {
+        // LOT-2 (PAR-C02) : la CIBLE d'abord — la publication, l'activité ou la
+        // bobine que la personne regardait est rouverte par sa fonction
+        // d'ouverture, et le rappel s'affiche dessus. Aucune action n'est rejouée.
+        if (r && r.cible && rouvrirCible(r.cible)) {
+          if (r.action && RAPPELS[r.action]) {
+            setTimeout(function () { try { if (typeof toast === "function") toast(RAPPELS[r.action]); } catch (e) {} }, 400);
+          }
+          return;
+        }
         if (r && r.hash) {
           // Destination de lien profond : on redonne la main aux routages
           // existants (`#reel=`, `#irl-event-`…) en reposant le hash.
@@ -2578,6 +2681,8 @@
     poserSortieExploration: poserSortieExploration,
     apresAuthentification: apresAuthentification,
     retourExploration: retourExploration,
+    fermerAuthParRetour: fermerAuthParRetour,
+    cibleOuverte: cibleOuverte,
     migrerPreferences: migrerPreferences,
     // Exposée pour que le verrou interroge la RÈGLE réelle plutôt qu'une copie
     // recopiée dans le test — une copie ne prouverait que sa propre cohérence.
