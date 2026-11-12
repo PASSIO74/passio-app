@@ -1552,27 +1552,21 @@
     } catch (e) {}
     return null;
   }
-  // Ferme le contenu ouvert : le formulaire de compte (z-index 50) était peint
-  // SOUS la page d'une publication et la fiche d'activité (200) et sous le
-  // lecteur de bobines (9999) — « Créer mon compte » ne changeait rien à l'écran.
-  function fermerCible(c) {
-    if (!c) return;
-    try {
-      if (c.genre === "bobine" && typeof closeReels === "function") closeReels();
-      else if (c.genre === "activite" && typeof closeEventDetail === "function") closeEventDetail();
-      else if (c.genre === "publication" && typeof closePost === "function") closePost();
-    } catch (e) { journal("fermer cible", e); }
-  }
+  // Le contenu est-il déjà à l'écran (resté ouvert sous le formulaire) ?
+  function memeCible(a, b) { return !!(a && b && a.genre === b.genre && String(a.id) === String(b.id)); }
   // Rouvre le contenu par sa fonction d'ouverture — jamais en reposant une
-  // adresse. Rend `true` si une ouverture a été tentée.
+  // adresse. Rend `true` seulement si le contenu EST à l'écran ensuite (déjà
+  // ouvert, ou ouvert maintenant) ; sinon le retour retombe sur l'écran mémorisé.
   function rouvrirCible(c) {
     if (!c || !c.id) return false;
+    if (memeCible(cibleOuverte(), c)) return true;
     try {
-      if (c.genre === "publication" && typeof openPost === "function") { openPost(c.id); return true; }
-      if (c.genre === "activite" && typeof openEventDetails === "function") { openEventDetails(c.id); return true; }
-      if (c.genre === "bobine" && typeof openReelById === "function") { openReelById(c.id); return true; }
+      if (c.genre === "publication" && typeof openPost === "function"
+          && typeof findPostAnywhere === "function" && findPostAnywhere(c.id)) openPost(c.id);
+      else if (c.genre === "activite" && typeof openEventDetails === "function") openEventDetails(c.id);
+      else if (c.genre === "bobine" && typeof openReelById === "function") openReelById(c.id);
     } catch (e) { journal("rouvrir cible", e); }
-    return false;
+    return memeCible(cibleOuverte(), c);
   }
 
   function mesurerScroll() {
@@ -1597,17 +1591,22 @@
     try { closeModal(); } catch (e) {}
     var onb = document.getElementById("onboarding");
     if (!onb) return;
-    // LOT-2 (PAR-C01, P0) : le contenu ouvert passe dans le retour PUIS se ferme,
-    // sinon le formulaire s'ouvre DESSOUS et rien ne change à l'écran.
-    var _cible = cibleOuverte();
-    if (_cible) {
+    // LOT-2 (PAR-C01, P0) : le formulaire passe AU-DESSUS du contenu ouvert
+    // (publication, fiche d'activité, bobine), qui reste ouvert dessous — le
+    // fermer reprenait son entrée d'historique et laissait un retour mort
+    // (relecture du lot). Pour un VISITEUR seulement, le contenu est rangé comme
+    // cible du retour, que la connexion recharge la page ou non (PAR-C02) ;
+    // toujours écrite, même nulle, pour qu'une cible ancienne ne ressorte pas.
+    // Une reconnexion (session expirée) n'écrit rien : elle n'est pas une
+    // inscription, et `retour` la ferait compter comme telle.
+    try { document.body.classList.add("fr-auth-dessus"); } catch (e) {}
+    if (estVisiteur()) {
       try {
         var _p = prefs();
         if (!_p.retour) _p.retour = { screen: ecranActif() || "feed", hash: "", action: ctx || "", scroll: mesurerScroll() };
-        _p.retour.cible = _cible;
+        _p.retour.cible = cibleOuverte();
         sauverPrefs();
       } catch (e) {}
-      fermerCible(_cible);
     }
     // ⚠️ LA BULLE DE REPÈRE NE SURVIT PAS À L'INSCRIPTION (2026-11-09). `.fr-tip`
     // est en `fixed`, z-index 9000 ; `#onboarding` en 50 : mesuré sur iPhone, la
@@ -1679,6 +1678,15 @@
     if (!onb || !onb.classList.contains("active")) return false;
     if (!document.getElementById("frBackToExplore")) return false; // pas ouvert par ce parcours
     try { if (typeof _compteAuthReel === "function" && _compteAuthReel()) return false; } catch (e) {}
+    // Une fenêtre ouverte PAR-DESSUS le formulaire (CGU, confidentialité, une
+    // histoire, des outils) se ferme d'abord : c'est elle que vise ce retour.
+    try {
+      var mb = document.getElementById("modalBackdrop");
+      if (mb && mb.classList.contains("active")) return false;
+      var sv = document.getElementById("storyViewer");
+      if (sv && (sv.classList.contains("active") || sv.classList.contains("open"))) return false;
+      if (window.ContextualTools && ContextualTools.isOpen && ContextualTools.isOpen()) return false;
+    } catch (e) {}
     _authHistoriquePose = false; // l'entrée vient d'être consommée par le retour
     retourExploration(true);
     return true;
@@ -1697,11 +1705,10 @@
       _authHistoriquePose = false;
       try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
     }
-    // LOT-2 (PAR-C01) : le contenu fermé à l'ouverture du formulaire est rendu —
-    // « continuer à explorer », c'est reprendre là où l'on était.
-    var _retour = null;
-    try { _retour = prefs().retour; } catch (e) {}
-    if (_retour && _retour.cible && rouvrirCible(_retour.cible)) return;
+    try { document.body.classList.remove("fr-auth-dessus"); } catch (e) {}
+    // LOT-2 (PAR-C01) : le contenu est resté ouvert SOUS le formulaire —
+    // « continuer à explorer », c'est le retrouver tel quel, sans changer d'écran.
+    if (cibleOuverte()) return;
     try { document.body.classList.add("screen-feed-active"); } catch (e) {}
     // ⚠️ AUCUN RÉARMEMENT DE L'ACCUEIL ICI, ET C'EST DÉLIBÉRÉ. Le budget de
     // `planifierAccueil` se consomme bien pendant que le formulaire occupe
@@ -2430,6 +2437,13 @@
     // Le retour ne sert qu'une fois : le garder ferait re-naviguer à chaque
     // rechargement suivant, longtemps après que la personne soit passée à autre chose.
     pref.retour = null;
+    // LOT-2 : le formulaire de compte est fini — son entrée d'historique (posée
+    // par `ouvrirAuth`) est reprise, sinon elle resterait un retour mort.
+    try { document.body.classList.remove("fr-auth-dessus"); } catch (e) {}
+    if (_authHistoriquePose) {
+      _authHistoriquePose = false;
+      try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {}
+    }
     sauverPrefs();
 
     setTimeout(function () {

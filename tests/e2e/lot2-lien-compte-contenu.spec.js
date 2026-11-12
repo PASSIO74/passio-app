@@ -92,6 +92,34 @@ test.describe("LOT-2 — lien → compte → contenu", () => {
     expect(await publicationOuverte(page)).toBe(id);
   });
 
+  // Relecture du lot : fermer le contenu reprenait son entrée d'historique et
+  // laissait un retour MORT. Le contenu reste ouvert ; chaque retour fait un pas.
+  test("⑥ historique : retour → formulaire fermé ; retour suivant → la publication se ferme (aucun retour avalé)", async ({ page }) => {
+    await bootVisiteur(page, { sansBienvenue: true });
+    const id = await ouvrirPublicationDExemple(page);
+    await page.evaluate(() => { requireAuthentication("aimer"); PassioFirstRun.allerInscription("aimer"); });
+    await page.waitForTimeout(500);
+    await page.goBack();
+    await page.waitForTimeout(900);
+    expect(await publicationOuverte(page)).toBe(id);
+    await page.goBack();
+    await page.waitForTimeout(900);
+    expect(await publicationOuverte(page), "le second retour ferme la publication").toBe(null);
+  });
+
+  test("⑦ une fenêtre ouverte sur le formulaire (CGU) : le retour la ferme elle, le formulaire reste", async ({ page }) => {
+    await bootVisiteur(page, { sansBienvenue: true });
+    await ouvrirPublicationDExemple(page);
+    await page.evaluate(() => { requireAuthentication("aimer"); PassioFirstRun.allerInscription("aimer"); });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => openTermsOfService());
+    await page.waitForTimeout(500);
+    await page.goBack();
+    await page.waitForTimeout(900);
+    const r = await page.evaluate(() => ({ fenetre: document.getElementById("modalBackdrop").classList.contains("active"), formulaire: document.getElementById("onboarding").classList.contains("active") }));
+    expect(r).toEqual({ fenetre: false, formulaire: true });
+  });
+
   test("⑤ sans contenu ouvert : le formulaire s'ouvre comme avant, rien n'est mémorisé comme cible", async ({ page }) => {
     await bootVisiteur(page, { sansBienvenue: true });
     await page.evaluate(() => { requireAuthentication("aimer"); PassioFirstRun.allerInscription("aimer"); });
