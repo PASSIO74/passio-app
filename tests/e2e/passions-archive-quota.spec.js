@@ -104,7 +104,7 @@ test.describe("revenir à une passion archivée", () => {
       return {
         vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
         archivee: !!(state.user.profiles || []).find((p) => p.id === "q_2" && p.archived),
-        payante: ((document.getElementById("modalContent") || {}).textContent || "").includes("Trois passions offertes"),
+        payante: ((document.getElementById("modalContent") || {}).textContent || "").includes("Trois passions à la fois"),
       };
     });
     expect(etat.vivantes).toBe(3);
@@ -455,7 +455,7 @@ test.describe("les portes oubliées du plafond", () => {
       quickCreateProfile("moto");
       return {
         vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
-        fenetre: ((document.getElementById("modalContent") || {}).textContent || "").includes("Trois passions offertes"),
+        fenetre: ((document.getElementById("modalContent") || {}).textContent || "").includes("Trois passions à la fois"),
       };
     });
     expect(etat.vivantes, "une quatrième passion est passée par la page d'une passion").toBe(3);

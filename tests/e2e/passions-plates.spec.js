@@ -865,7 +865,7 @@ test.describe("la porte d'ajout et son plafond", () => {
     await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
   });
 
-  test("㉒ à trois passions, la porte refuse en disant pourquoi, et l'offre reste annoncée", async ({ page }) => {
+  test("㉒ à trois passions (plafond armé), la porte refuse en disant pourquoi, sans annoncer d'offre payante", async ({ page }) => {
     await bootOnboarded(page, null, 1, { query: APERCU });
     await poserNPassions(page, 3);
     await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
@@ -889,10 +889,12 @@ test.describe("la porte d'ajout et son plafond", () => {
     await page.waitForTimeout(500);
     expect(await page.locator(".psel-input").count()).toBe(0);
     const modale = page.locator("#modalContent");
-    await expect(modale).toContainText("Trois passions offertes");
-    await expect(modale).toContainText("payante");
-    // ⚠️ AUCUN TARIF. Ordre explicite de Benjamin : « ne mets pas de valeur, tu
-    // mets juste que ça va être payant mais pas de tarif pour l'instant ».
+    await expect(modale).toContainText("Trois passions à la fois");
+    // ⚠️ AUCUNE OFFRE PAYANTE ANNONCÉE (ADR-013, 2026-11-12) : les passions sont
+    // illimitées pour tous, définitivement ; ce mur ne s'arme plus que sur un
+    // appareil de test, et ne promet jamais qu'il se lève en payant.
+    await expect(modale).not.toContainText("payante");
+    // ⚠️ AUCUN TARIF (ordre de Benjamin du 2026-09-01, toujours valable).
     const texte = (await modale.textContent()) || "";
     expect(texte, "un montant est affiché alors que l'offre n'est pas ouverte")
       .not.toMatch(/\d+\s*(?:[,.]\d+)?\s*(?:€|euros?|EUR)/i);
@@ -940,7 +942,7 @@ test.describe("la porte d'ajout et son plafond", () => {
     });
     expect(apres.rendu, "l'écriture a été acceptée au-delà du plafond").toBe(null);
     expect(apres.vivantes).toBe(3);
-    await expect(page.locator("#modalContent")).toContainText("Trois passions offertes");
+    await expect(page.locator("#modalContent")).toContainText("Trois passions à la fois");
   });
 
   test("㉓ archiver libère une place, et restaurer reste gratuit sous le plafond", async ({ page }) => {
@@ -987,7 +989,7 @@ test.describe("la porte d'ajout et son plafond", () => {
     });
     expect(etat.vivantes, "le plafond se contourne par la liste des archives").toBe(3);
     expect(etat.toujoursArchivee).toBe(true);
-    await expect(page.locator("#modalContent")).toContainText("Trois passions offertes");
+    await expect(page.locator("#modalContent")).toContainText("Trois passions à la fois");
   });
 
   test("㉓ ter — depuis la PORTE réelle, reprendre une passion archivée est gratuit", async ({ page }) => {
@@ -1014,7 +1016,7 @@ test.describe("la porte d'ajout et son plafond", () => {
     await page.locator('#passionManager [data-passion-tile="__ajouter__"]').click();
     // Aucune fenêtre payante : on est sous le plafond.
     await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
-    expect(await page.locator("#modalContent").textContent() || "").not.toContain("Trois passions offertes");
+    expect(await page.locator("#modalContent").textContent() || "").not.toContain("Trois passions à la fois");
 
     await page.waitForFunction(() => window.PassioPassions && window.PassioPassions.pret(), null, { timeout: 15000 });
     await chercher(page, "sport");
@@ -1062,6 +1064,6 @@ test.describe("la porte d'ajout et son plafond", () => {
     await chercher(page, "astrophoto");
     await page.locator('.psel-item[data-psel-id="photo-astrophoto"]').click();
     await page.waitForTimeout(500);
-    await expect(page.locator("#modalContent")).toContainText("Trois passions offertes");
+    await expect(page.locator("#modalContent")).toContainText("Trois passions à la fois");
   });
 });

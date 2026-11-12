@@ -344,6 +344,7 @@
     erreursLecture = (d.erreursLecture && typeof d.erreursLecture === "object") ? d.erreursLecture : {};
     rendreVerdict(d, rendreAFaire(d));
     rendreCroissanceAccueil(d);
+    rendreSeuils(d);
     rendreChiffres(d);
     rendreNouveauxComptes(d);
     rendreSite(d);
@@ -621,6 +622,36 @@
       b.append(el("dt", null, l), el("dd", null, v == null ? "—" : v));
       au.append(b);
     });
+  }
+
+  // ─── Seuils d'usage du lancement (2026-11-12, seuilsLancement) ────────────
+  // Quatre chiffres de la ville suivie contre le seuil du pilote. Une partie non
+  // lue le dit ; une fonction pas encore à jour ne montre rien.
+  function rendreSeuils(d) {
+    const z = vider("seuils");
+    const s = d.seuils;
+    if (s === undefined) { z.hidden = true; return; }
+    z.hidden = false;
+    z.append(el("h2", "seuils-titre", "Seuils du lancement" + (s && s.suivie ? " · " + s.suivie.ville : "")));
+    if (!s) { z.append(el("p", "discret", "Non lus" + (erreursLecture.seuils ? " (" + erreursLecture.seuils + ")" : "") + ".")); return; }
+    if (s.absente) { z.append(el("p", "discret", "L'activité par jour n'est pas encore en base (migration de croissance).")); return; }
+    if (!s.suivie) {
+      z.append(el("p", "discret", "Aucune rencontre sur 60 jours : la ville suivie sera celle des premières rencontres. "
+        + (s.actifsTotal || 0) + " compte(s) actif(s) sur 7 jours, toutes villes."));
+      return;
+    }
+    const g = el("div", "chiffres chiffres-petits seuils-grille");
+    (s.indicateurs || []).forEach((i) => {
+      const v = i.valeur == null ? null : i.valeur + (i.unite || "");
+      g.append(chiffre(v, i.libelle, null, { texte: (i.tenuPilote ? "✓ " : "") + "seuil " + i.pilote + (i.unite || ""), classe: i.tenuPilote ? "bon" : "" }));
+    });
+    z.append(g);
+    z.append(el("p", "discret", s.tenusPilote + " seuil(s) sur " + s.total + " tenus · "
+      + s.aVenirTotal + " rencontre(s) à venir · " + (s.actifsTotal || 0) + " actif(s) sur 7 j, toutes villes · "
+      + "organisateurs professionnels : pas encore mesurés."
+      + (s.partiel ? " Lecture partielle : ces nombres sont des minimums." : "")));
+    z.append(el("p", "discret", "Une offre ne s'ouvre qu'après " + (s.semainesObservation || 8)
+      + " semaines d'observation, dont les 4 dernières au-dessus des seuils. Rencontre réelle : au moins 3 présents pointés au QR."));
   }
 
   function rendreChiffres(d) {

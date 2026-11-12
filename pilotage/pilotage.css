@@ -274,3 +274,7 @@ details[open] .depliable::after { transform: rotate(90deg); }
 .tableau-retention th:first-child, .tableau-retention td:first-child { text-align: left; }
 .tableau-retention th { color: var(--discret); font-weight: 600; border-top: 0; }
 #croissance code { font-size: 12px; overflow-wrap: anywhere; }
+/* Seuils d'usage du lancement (2026-11-12) : quatre chiffres, deux par ligne. */
+.seuils { margin: 16px 0 0; }
+.seuils-titre { font-size: 15px; margin: 0 4px 2px; }
+.seuils .seuils-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); }
