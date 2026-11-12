@@ -2591,7 +2591,8 @@ function pushNotification(text, emoji = "✨", fromId = "me", opts) {
 // ======== ACTIVATION CLAVIER GÉNÉRIQUE des [role="button"] non natifs ========
 // Topbar, barre IRL, éléments générés… : tout div role="button" tabindex="0"
 // s'active à Entrée/Espace via ce délégué unique (les .nav-item ont déjà leur
-// listener dédié ci-dessous → exclus pour ne pas activer deux fois).
+// listener dédié — ci-dessous pour `#appNav`, dans ui-v2-shell.js pour
+// `#appNavV2` → exclus pour ne pas activer deux fois).
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
   const cible = e.target;
@@ -2611,7 +2612,7 @@ document.addEventListener("keydown", (e) => {
   if (el !== cible) return;
   const tag = el.tagName;
   if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "TEXTAREA") return; // natifs : déjà gérés
-  if (el.classList.contains("nav-item")) return; // listener dédié plus bas
+  if (el.classList.contains("nav-item")) return; // listener dédié (plus bas, ou ui-v2-shell.js)
   e.preventDefault(); // Espace ne doit pas défiler la page
   el.click();
 });
@@ -2688,7 +2689,20 @@ document.addEventListener("keydown", (e) => {
 // ======== NAV CLICKS + CLAVIER ========
 // Les nav-item sont des role="button" tabindex="0" (accessibilité) : on active
 // donc aussi au clavier (Entrée / Espace), pas seulement au clic souris/tactile.
-$$(".nav-item").forEach(n => {
+// ⚠️ LA SEULE BARRE HISTORIQUE (`#appNav`), JAMAIS `.nav-item` SEUL (2026-11-12).
+// Les boutons de la barre v2 (`#appNavV2`, js/ui-v2-shell.js) portent LEUR
+// écouteur. En développement ce fichier tourne avant eux et ne les voyait pas ;
+// en PRODUCTION, le bloc app sort en 9 scripts injectés qui tournent d'ordinaire
+// APRÈS les modules de fin de page — la barre v2 est déjà construite ici, et
+// `$$(".nav-item")` la branchait une seconde fois. Mesuré en production
+// (b918d9a9 puis 0677abc2), Chromium et WebKit, à chaque ouverture : un toucher
+// = deux `goTo`, deux entrées d'historique — le premier retour (bouton Android,
+// glissement Safari) ne faisait rien, et le plafond d'historique de WebKit
+// s'épuisait deux fois plus vite — et deux `screen_view` de télémétrie (22
+// touchers publics sur 22 en trois jours) ; et le `preventDefault` du `keydown`
+// ci-dessous tuait l'activation au clavier du bouton natif « Créer ».
+// Verrou : tests/e2e/app-scripts-par-fichier.spec.js ⑪ ⑫ (artefact, deux moteurs).
+$$("#appNav .nav-item").forEach(n => {
   const activate = () => {
     const s = n.getAttribute("data-screen");
     if (s === "bobines") { openReels(); return; }
