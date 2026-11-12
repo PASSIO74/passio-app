@@ -137,7 +137,7 @@ test.describe("la page Rechercher connaît tout le référentiel", () => {
       };
     }, HORS_SOCLE);
     expect(vu.noms[0], "la passion la plus publiée mène les tendances").toBe(HORS_SOCLE.label);
-    expect(vu.stats[0]).toContain("5 posts");
+    expect(vu.stats[0]).toContain("5 publications");   // LOT-11 (REC-C09) : le mot du produit
   });
 
   test("⑥ les passions PERSO restent trouvables et affichées", async ({ page }) => {

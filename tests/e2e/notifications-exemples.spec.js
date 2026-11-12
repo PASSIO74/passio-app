@@ -196,12 +196,10 @@ test.describe("Explorer : les tendances ne comptent pas les exemples", () => {
       return { exemplesMusique, tuiles };
     });
     expect(r.exemplesMusique, "prémisse : la démo porte bien plus de 2 publications Musique").toBeGreaterThan(2);
-    expect(r.tuiles.length).toBeGreaterThan(1);
     // RÉINJECTION : sur le code d'avant, Musique affiche « 41 posts » (ou plus,
     // exemples compris) et les autres tuiles leurs comptes de démo.
-    expect(r.tuiles[0]).toEqual({ nom: "Musique", stat: "2 posts" });
-    for (const tuile of r.tuiles.slice(1)) {
-      expect(tuile.stat, tuile.nom + " : aucun compteur sans publication réelle").toBeNull();
-    }
+    // LOT-11 (REC-C14) : seules les passions qui ont des publications RÉELLES
+    // forment la section ; LOT-11 (REC-C09) : le mot est « publications ».
+    expect(r.tuiles).toEqual([{ nom: "Musique", stat: "2 publications" }]);
   });
 });

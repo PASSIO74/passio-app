@@ -161,11 +161,52 @@ var _exSearchJeton = 0;      // annulation des recherches dépassées
 var _exSearchTimer = null;   // anti-rebond
 var EX_SEARCH_DEBOUNCE = 160;
 
+// LOT-11 (audit UX/UI du 2026-11-10, REC-C07) — LE PANNEAU DE RÉSULTATS SE FERME.
+// Il ne se fermait qu'en vidant le champ lettre à lettre. Croix d'effacement de
+// 44 px, Échap et toucher hors du panneau le ferment ; revenir dans un champ
+// rempli rouvre les résultats.
+function exFermerResultats() {
+  var r = document.getElementById("exploreSearchResults");
+  if (r) r.style.display = "none";
+}
+function exRouvrirResultats() {
+  var inp = document.getElementById("explorerSearch");
+  if (inp && inp.value.trim()) filterExplore();
+}
+function exEffacerRecherche() {
+  var inp = document.getElementById("explorerSearch");
+  if (inp) { inp.value = ""; try { inp.focus(); } catch (e) {} }
+  filterExplore();
+}
+(function _brancherFermetureRecherche() {
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    var r = document.getElementById("exploreSearchResults");
+    if (r && r.style.display !== "none") exFermerResultats();
+  });
+  document.addEventListener("click", function (e) {
+    var r = document.getElementById("exploreSearchResults");
+    if (!r || r.style.display === "none") return;
+    var zone = r.parentNode;
+    if (zone && !zone.contains(e.target)) exFermerResultats();
+  }, true);
+})();
+// LOT-11 (REC-C06) : le panneau descend jusqu'au bas de l'écran au lieu de 360 px.
+function _exHauteurPanneau(r) {
+  try {
+    var haut = r.getBoundingClientRect().top;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    r.style.maxHeight = Math.max(240, Math.floor(vh - haut - 16)) + "px";
+  } catch (e) {}
+}
+
 function filterExplore() {
   var inp = document.getElementById("explorerSearch");
   var results = document.getElementById("exploreSearchResults");
   if (!results) return;
   var query = inp ? inp.value : "";
+  var croix = document.getElementById("explorerClear");
+  if (croix) croix.hidden = !query;
 
   if (_exSearchTimer) { clearTimeout(_exSearchTimer); _exSearchTimer = null; }
 
@@ -177,12 +218,33 @@ function filterExplore() {
   }
 
   results.style.display = "block";
+  _exHauteurPanneau(results);
   results.innerHTML = "<div style='padding:14px;text-align:center;color:var(--muted);font-size:13px;'>Recherche…</div>";
   _exSearchTimer = setTimeout(function () { _exSearchLancer(query.trim()); }, EX_SEARCH_DEBOUNCE);
 }
 
 // Passions correspondant à la frappe. Rend une PROMESSE : le référentiel plat
 // n'est chargé qu'au premier usage réel de la recherche, et c'en est un.
+// LOT-11 (REC-C08, REC-C12) — Passions qui ont des publications RÉELLES (le même
+// compte que la tuile des tendances), et recherche dans le socle embarqué.
+function _exPassionsActivesHTML(n) {
+  var ps = (typeof passionsAvecPublications === "function") ? passionsAvecPublications().slice(0, n) : [];
+  if (!ps.length) return "";
+  return "<div class='ex-suggestions' style='padding:4px 14px 12px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;'>"
+    + ps.map(function (p) {
+      return "<button type='button' class='pill' onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');exFermerResultats();\">" + escapeHtml(p.emoji || "✨") + " " + escapeHtml(p.label) + "</button>";
+    }).join("") + "</div>";
+}
+function _exRechercheLocaleHTML(query) {
+  var q = (typeof plierRecherche === "function") ? plierRecherche(query) : String(query || "").toLowerCase();
+  var ps = PASSIONS.filter(function (p) { return p && p.label && ((typeof plierRecherche === "function") ? plierRecherche(p.label) : p.label.toLowerCase()).indexOf(q) >= 0; }).slice(0, 6);
+  if (!ps.length) return "";
+  return ps.map(function (p) {
+    return "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');exFermerResultats();\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-top:1px solid var(--border);'>"
+      + "<div style='font-size:20px;'>" + escapeHtml(p.emoji || "✨") + "</div><div style='font-weight:700;font-size:13px;'>" + escapeHtml(p.label) + "</div></div>";
+  }).join("");
+}
+
 function _exChercherPassions(q) {
   var repliSocle = function () {
     var ql = q.toLowerCase();
@@ -264,7 +326,10 @@ function _exSearchLancer(query) {
     var fu = supaFormatted.concat(seedUsers).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0, 8);
 
     if (fp.length === 0 && fu.length === 0) {
-      cible.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query) + " »</div>";
+      // LOT-11 (REC-C08) : un « aucun résultat » qui aide à reformuler, et trois
+      // passions qui ont des publications, à toucher.
+      cible.innerHTML = "<div class='ex-aucun' style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query) + " ».<br>Vérifie l'orthographe, ou essaie un mot plus court.</div>"
+        + _exPassionsActivesHTML(3);
       return;
     }
 
@@ -273,18 +338,24 @@ function _exSearchLancer(query) {
     // Passions
     if (fp.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Passions</div>";
-      fp.forEach(function(p) {
-        html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "','',\'" + escapeJsArg(p.label || p.id) + "\');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+      // LOT-11 (REC-C06) : trois passions, puis « Voir N autres passions » — qui
+      // cherche un pseudo ne traverse plus six lignes avant les personnes.
+      var _plus = fp.length > 3 ? fp.length - 3 : 0;
+      fp.forEach(function(p, _i) {
+        html += "<div" + (_i >= 3 ? " class='ex-passion-plus' hidden" : "") + " onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "','',\'" + escapeJsArg(p.label || p.id) + "\');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
           "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + escapeHtml(p.emoji || "✨") + "</div>" +
           "<div style='flex:1;'><div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(p.label || p.id) + "</div></div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);'>Explorer →</div>" +
           "</div>";
       });
+      if (_plus) {
+        html += "<button type='button' class='ex-voir-plus' onclick=\"event.stopPropagation();this.parentNode.querySelectorAll('.ex-passion-plus').forEach(function(x){x.hidden=false});this.remove();\">Voir " + _plus + " autre" + (_plus > 1 ? "s passions" : " passion") + "</button>";
+      }
     }
 
     // Utilisateurs
     if (fu.length) {
-      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Utilisateurs</div>";
+      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Personnes</div>";
       fu.forEach(function(u) {
         // §2 : la MÊME ligne d'identité que partout ailleurs. Deux écrans de
         // recherche portaient chacun leur variante de pastilles ; ils
@@ -318,7 +389,10 @@ function _exSearchLancer(query) {
     try { diagLog("explorer recherche " + (e && e.message ? e.message : e)); } catch (_) {}
     if (jeton !== _exSearchJeton) return;
     var c = document.getElementById("exploreSearchResults");
-    if (c) c.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>La recherche n'a pas abouti. Réessaie.</div>";
+    // LOT-11 (REC-C12) : hors ligne, on le DIT, et on cherche dans ce qu'on a.
+    if (c) c.innerHTML = (typeof navigator !== "undefined" && navigator.onLine === false)
+      ? "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Tu es hors ligne : la recherche reprendra dès que le réseau revient.</div>" + _exRechercheLocaleHTML(query)
+      : "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>La recherche n'a pas abouti. Réessaie.</div>";
   });
 }
 
@@ -351,6 +425,9 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
   // fonction qui peut échouer. On le garde, il ne coûte rien.
   if (!p) { toast("Passion non trouvée"); return; }
   var posts = allFeedPosts().filter(function(x) { return x.passion === pid; });
+  // LOT-11 (REC-C09) : UN compte, le même que la tuile des tendances — les
+  // publications RÉELLES (sans les exemples) ; la liste peut montrer des exemples.
+  var nbReelles = (typeof nbPublicationsPassion === "function") ? nbPublicationsPassion(pid) : posts.length;
   // ⚠️ `_parDefaut` EXCLU (même famille) : la fiche d'une passion annonçait
   // « tu as cette passion » sur le seul profil de remplissage.
   var hasProfile = (state.user.profiles || []).find(function(up) { return up.passion === pid && !up._parDefaut; });
@@ -388,7 +465,13 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
   var vide = '<div class="empty"><div class="empty-text">Pas encore de créateurs</div></div>';
   var creatorsHTML = creators.length ? creators.map(ligne).join("") : vide;
 
-  var postsHTML = posts.length ? posts.slice(0,6).map(renderPostHTML).join("") : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucun post pour l\'instant</div></div>';
+  // LOT-11 (REC-C09, REC-C17) : « 6 sur N » et un chemin vers le fil filtré ; une
+  // fiche vide propose d'être la personne qui commence.
+  var postsHTML = posts.length
+    ? posts.slice(0,6).map(renderPostHTML).join("")
+      + (posts.length > 6 ? '<div class="pex-suite"><span>6 sur ' + posts.length + '</span> <button type="button" class="btn small ghost" onclick="closeModal();setFeedPassions([\'' + escapeJsArg(pid) + '\']);goTo(\'feed\')">Voir dans le fil</button></div>' : "")
+    : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucune publication pour l\'instant</div>'
+      + '<button type="button" class="btn primary pex-publier" onclick="closeModal();publierSurPassion(\'' + escapeJsArg(pid) + '\')">Publier sur ' + escapeHtml(p.label || pid) + '</button></div>';
 
   // Lot UI-8 : une passion ARCHIVÉE n'est pas « ta passion » — mais ce n'est pas
   // non plus une passion à créer (elle existe, rangée). On propose la
@@ -399,7 +482,7 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     ? '<button class="btn small ghost" onclick="restaurerPassion(\'' + escapeJsArg(hasProfile.id) + '\')">Restaurer cette passion</button>'
     : (hasProfile
       ? '<span class="pill active">Ta passion</span>'
-      : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>');
+      : '<button class="btn small primary pex-ajouter" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">＋ Ajouter à mes passions</button>');
 
   // Le retour est un LIEN, pas une croix : la croix ferme déjà la modale, et
   // fermer ne ramène pas au profil. Le libellé nomme la destination.
@@ -419,7 +502,7 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     +   '<div>'
     +     '<div class="modal-title" style="margin:0;">' + escapeHtml(p.label || pid) + '</div>'
     +     '<div style="font-size:12px;color:var(--muted);">'
-    +       posts.length + ' post' + (posts.length > 1 ? "s" : "")
+    +       nbReelles + ' publication' + (nbReelles > 1 ? "s" : "")
     +     '</div>'
     +   '</div>'
     +   '<div style="margin-left:auto;">' + profileBtn + '</div>'
@@ -443,6 +526,9 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     + '</div>';
 
   openModal(html);
+  // LOT-11 (REC-C11) : la fiche s'ouvre EN HAUT — ouverte depuis un résultat, elle
+  // héritait du défilement de la fiche précédente (scrollTop 1 226 mesuré).
+  try { var _mc = document.getElementById("modalContent"); if (_mc) _mc.scrollTop = 0; } catch (e) {}
 
   _pexChargerCreateurs(pid, creators);
   _pexPeindreLiees(pid);
@@ -576,6 +662,20 @@ function _pexPeindreLiees(pid) {
 // unique : c'est lui qui garde le plafond, restaure une archive au lieu de la
 // dupliquer, et synchronise. Deux moteurs pour un même geste divergent toujours
 // au premier correctif — la leçon de `sharePostInFeed` / `shareReelInFeed`.
+// LOT-11 (REC-C17) : depuis la fiche VIDE d'une passion, « Publier sur … » ouvre
+// le Studio avec cette passion choisie (ajoutée au compte si besoin, sous les
+// mêmes garde-fous que « Ajouter à mes passions »).
+function publierSurPassion(pid) {
+  var vivante = function () { return (state.user.profiles || []).find(function (x) { return x.passion === pid && !x.archived && !x._parDefaut; }); };
+  if (!vivante() && typeof ajouterPassionAuCompte === "function") ajouterPassionAuCompte(pid, "");
+  var v = vivante();
+  if (!v) return;   // refusé (plafond, passion non publiable) : la fenêtre l'a déjà dit
+  state.user.currentProfileId = v.id;
+  saveState();
+  goTo("studio");
+  try { renderStudio(); } catch (e) {}
+}
+
 function quickCreateProfile(pid) {
   if (typeof ajouterPassionAuCompte !== "function") return;
   const p = passionById(pid);
@@ -594,9 +694,10 @@ function quickCreateProfile(pid) {
   if (!vivante) return;
   state.user.currentProfileId = vivante.id;
   saveState();
-  closeModal();
   renderTopbar();
-  goTo("profiles");
+  // LOT-11 (REC-C10) : on RESTE sur la fiche — elle montre désormais « Ta passion ».
+  // Basculer vers Profil faisait quitter la découverte au milieu d'un geste.
+  try { openPassionExplorer(pid); } catch (e) {}
   if (np) toast("✨ " + ((p && p.label) || "Passion") + " ajoutée à tes passions", "success");
 }
 
@@ -4501,7 +4602,8 @@ function openEventDetails(id) {
 
     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
       ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">Ajouter au calendrier</button>`}
-      <button class="btn ghost block" onclick="shareEvent('${escapeJsArg(ev.id)}')" style="font-size:12px;">${shareIconSvg(14)} Partager</button>
+      <!-- LOT-12 (PAR-C12) : la porte « Partager » du milieu est retirée — deux suffisent
+           (l'icône du haut, la barre d'actions du bas), et la feuille propose l'invitation. -->
       ${over ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">Inviter</button>`}
       ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">Gérer</button>` : ""}
     </div>
@@ -4612,7 +4714,11 @@ function openEventDetails(id) {
   _refreshEventDetailCta(ev, joined);
 
   const shareBtn = document.getElementById("eventDetailShareBtn");
-  if (shareBtn) shareBtn.onclick = function() { shareEvent(id); };
+  if (shareBtn) {
+    // LOT-12 (PAR-C12) : la MÊME icône que les autres portes (nœuds), pas un mot.
+    shareBtn.innerHTML = shareIconSvg(20);
+    shareBtn.onclick = function() { shareEvent(id); };
+  }
 
   const page = document.getElementById("eventDetailPage");
   page.style.display = "flex";
@@ -4647,6 +4753,33 @@ function _refreshEventDetailCta(ev, joined) {
 // mon contenu » — le cœur de la promesse PASSIO. Le post publié sera rattaché à
 // l'événement (window._pendingEventPost, lu par publishPost) et remontera dans
 // son album.
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C16) — LE SOUVENIR SE VOIT. Le Studio
+// s'ouvrait rattaché à l'album PUBLIC de l'activité sans le dire, et le marqueur
+// survivait : quitter le Studio puis publier autre chose rattachait cette autre
+// publication à l'album. Un bandeau le dit, une croix le retire, et quitter le
+// Studio l'efface (goTo, app-02).
+function _peindreSouvenirStudio() {
+  var ancien = document.getElementById("studioSouvenir");
+  var id = window._pendingEventPost;
+  if (!id) { if (ancien) ancien.remove(); return; }
+  var ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e.id === id; });
+  if (!ev) { if (ancien) ancien.remove(); return; }
+  var ta = document.getElementById("postText");
+  if (!ta || !ta.parentNode) return;
+  var b = ancien || document.createElement("div");
+  b.id = "studioSouvenir";
+  b.className = "studio-souvenir";
+  b.setAttribute("role", "status");
+  b.innerHTML = '<span class="studio-souvenir-texte"></span><button type="button" class="studio-souvenir-retirer" aria-label="Ne pas l\'ajouter à l\'album" onclick="retirerSouvenirStudio()">×</button>';
+  b.querySelector(".studio-souvenir-texte").textContent = "Souvenir de « " + (ev.title || "l'activité") + " » — ira dans l'album de l'activité";
+  if (!ancien) ta.parentNode.insertBefore(b, ta);
+}
+function retirerSouvenirStudio() {
+  window._pendingEventPost = null;
+  _peindreSouvenirStudio();
+  toast("Ta publication n'ira pas dans l'album");
+}
+
 function shareEventExperience(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
@@ -4656,6 +4789,7 @@ function shareEventExperience(id) {
   const prefill = `📍 ${ev.title}${ev.city ? " · " + ev.city : ""} (${d.day} ${d.month})\n\n`;
   goTo("studio");
   setTimeout(() => {
+    try { _peindreSouvenirStudio(); } catch (e) {}
     const ta = document.getElementById("postText") || document.querySelector("#screen-studio textarea");
     if (ta) { ta.value = prefill; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
     // ⚠️ AFFECTER `select.value` AVEC UNE VALEUR SANS <option> NE LÈVE PAS :
@@ -5157,35 +5291,22 @@ window.addEventListener("passio:app-ready", function () {
 // les carnets CDV.
 function shareEvent(id) {
   const ev = allEvents().find(e => e.id === id);
-  if (!ev) { toast("Événement introuvable."); return; }
+  if (!ev) { toast("Activité introuvable."); return; }
   // Lien COURT en production (aperçu de l'activité chez WhatsApp, iMessage…) : app-06.
   const rawUrl = (typeof lienPartageDe === "function")
     ? lienPartageDe("event", id) : location.origin + location.pathname + "#irl-event-" + id;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "event", id, navigator.share ? "native" : "clipboard") : rawUrl;
   const d = fmtEventDate(ev.date);
-  const text = `${ev.title} · ${ev.city || ""} · ${d.day} ${d.month}`;
-
-  const html = `
-    <div class="modal-title">${shareIconSvg(20)} Partager cet événement</div>
-    <div style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
-      ${escapeHtml(ev.title || "Événement")}${ev.city ? " · " + escapeHtml(ev.city) : ""}<br>${escapeHtml(d.day + " " + d.month)}
-    </div>
-    <button class="btn primary block" id="_shareEvInFeedBtn" onclick="shareEventInFeed('${escapeJsArg(id)}')" style="margin-bottom:10px;">
-      Partager dans mon feed
-    </button>
-    <button class="btn secondary block" id="_shareEvOutBtn">
-      ${shareIconSvg(16)} Partager en dehors
-    </button>
-  `;
-  openModal(html);
-  // Listener propre : pas d'injection de texte utilisateur dans un onclick inline.
-  setTimeout(() => {
-    const btn = document.getElementById("_shareEvOutBtn");
-    if (!btn) return;
-    btn.addEventListener("click", function () {
-      partagerOuCopier({ title: ev.title, text, url }, "Lien de l'événement copié");
-    });
-  }, 0);
+  const quand = d.day + " " + d.month + " à " + _eventTimeLabel(ev);
+  ouvrirFeuillePartage({
+    quoi: "activité", titre: ev.title || "Activité", extrait: quand + (ev.city ? " · " + ev.city : ""),
+    url: url,
+    message: (ev.title || "Une activité") + " — " + quand + (ev.city ? " · " + ev.city : "") + ". Sur PASSIO 👇",
+    voit: "La personne qui reçoit le lien voit l'activité et peut s'y inscrire, même sans compte.",
+    idEnvoyer: "_shareEvOutBtn", idRepublier: "_shareEvInFeedBtn",
+    republier: function () { shareEventInFeed(id); },
+    inviter: function () { closeModal(); openEventInvite(id); },
+  });
 }
 
 // Crée un post « repost » de l'événement dans le feed (miroir de sharePostInFeed
@@ -5203,14 +5324,14 @@ async function shareEventInFeed(id) {
   }
 
   const ev = allEvents().find(e => e.id === id);
-  if (!ev) { toast("Événement introuvable."); closeModal(); return; }
+  if (!ev) { toast("Activité introuvable."); closeModal(); return; }
 
   try { window.tel && tel.action("share_event", { eventId: id }); } catch (e) {}
 
   // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
   if (typeof publicationRefuseeFautePassion === "function"
       && publicationRefuseeFautePassion(passionDeRepartage(ev.passion))) {
-    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
+    if (btn) { btn.disabled = false; btn.textContent = "Republier dans mon fil"; }
     closeModal();
     return;
   }
@@ -7538,18 +7659,46 @@ function _rememberEventInvite(eventId, userId) {
   saveState();
 }
 
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C13) — « INVITER MES ABONNEMENTS ».
+// Deux « × » superposés (celui d'`openModal` + celui du gabarit), un bouton de
+// 29 px, des noms coupés, et l'invitation partait au premier appui ; la personne
+// disparaissait ensuite de la liste (« Tu as invité tout le monde »), sans trace.
+// Désormais : un seul ×, des boutons de 44 px, les noms sur deux lignes, une
+// section « Déjà invités », 5 s pour annuler, et toujours une sortie « Envoyer le
+// lien à quelqu'un d'autre ».
+var EVENT_INVITE_ANNULER_MS = 5000;
+window._invitesEnAttente = window._invitesEnAttente || {};
 function openEventInvite(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
-  if (!ev) { toast("Événement introuvable"); return; }
+  if (!ev) { toast("Activité introuvable"); return; }
   window._inviteEventId = eventId;
-  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">Inviter des amis</div>'
+  openModal('<div class="modal-title">Inviter mes abonnements</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">'
     + escapeHtml(ev.title || "") + '</div>'
-    + '<input type="text" class="input" id="eventInviteSearch" placeholder="Rechercher parmi tes abonnements…" '
+    + '<input type="search" class="input" id="eventInviteSearch" aria-label="Chercher parmi tes abonnements" placeholder="Chercher parmi tes abonnements…" '
     + 'oninput="_renderEventInviteList()" style="margin-bottom:10px;"/>'
-    + '<div id="eventInviteList"></div>');
+    + '<div id="eventInviteList"></div>'
+    + '<button type="button" class="btn secondary block event-invite-lien" onclick="_inviterParLien(\'' + escapeJsArg(eventId) + '\')">Envoyer le lien à quelqu\'un d\'autre</button>');
   _renderEventInviteList();
+}
+function _inviterParLien(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  var d = fmtEventDate(ev.date);
+  inviterActivite(ev, d.day + " " + d.month + " à " + _eventTimeLabel(ev));
+}
+
+function _ligneInvite(eventId, id, etat) {
+  var u = (typeof userById === "function" && userById(id)) || { avatar: "#64748b", profileEmoji: "?", name: "Passionné" };
+  var bouton = etat === "fait"
+    ? '<span class="event-invite-fait" role="status">✓ Invité</span>'
+    : etat === "attente"
+      ? '<button type="button" class="btn small ghost event-invite-btn" data-invite="' + escapeHtml(id) + '" onclick="annulerInviteEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\')">Annuler</button>'
+      : '<button type="button" class="btn small primary event-invite-btn" data-invite="' + escapeHtml(id) + '" aria-label="Inviter ' + escapeHtml(u.name || "Passionné") + '" onclick="inviteToEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\',this)">Inviter</button>';
+  return '<div class="event-invite-row">'
+    + '<div class="avatar sm" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
+    + '<div class="event-invite-nom">' + escapeHtml(u.name || "Passionné") + '</div>'
+    + bouton + '</div>';
 }
 
 function _renderEventInviteList() {
@@ -7559,48 +7708,57 @@ function _renderEventInviteList() {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
 
-  var q = ((document.getElementById("eventInviteSearch") || {}).value || "").trim().toLowerCase();
-  var ids = _eventInvitables(ev).filter(function (id) {
+  var q = plierRecherche(((document.getElementById("eventInviteSearch") || {}).value || "").trim());
+  var filtre = function (id) {
     if (!q) return true;
     var u = (typeof userById === "function" && userById(id)) || {};
-    return (u.name || "").toLowerCase().indexOf(q) > -1;
-  });
+    return plierRecherche(u.name || "").indexOf(q) > -1;
+  };
+  var enAttente = window._invitesEnAttente[eventId] || {};
+  var ids = _eventInvitables(ev).filter(filtre);
+  var faits = _eventInvitesSent(eventId).filter(function (id) { return !enAttente[id] && filtre(id); });
 
-  if (!ids.length) {
-    var sent = _eventInvitesSent(eventId).length;
-    box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">'
-      + (q ? "Aucun résultat pour « " + escapeHtml(q) + " »"
-           : sent ? "Tu as invité tout le monde"
-                  : "Abonne-toi à des passionnés pour pouvoir les inviter ici.")
+  var html = "";
+  if (!ids.length && !faits.length) {
+    html = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px;">'
+      + (q ? "Aucun résultat pour « " + escapeHtml(q) + " »" : "Abonne-toi à des passionnés pour pouvoir les inviter ici — ou envoie-leur le lien.")
       + '</div>';
-    return;
   }
-
-  box.innerHTML = ids.slice(0, 50).map(function (id) {
-    var u = (typeof userById === "function" && userById(id)) || { avatar: "#64748b", profileEmoji: "?", name: "Passionné" };
-    return '<div class="event-invite-row">'
-      + '<div class="avatar sm" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
-      + '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
-      + escapeHtml(u.name || "Passionné") + '</div>'
-      + '<button class="btn small primary" data-invite="' + escapeHtml(id) + '" '
-      + 'onclick="inviteToEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\',this)">Inviter</button>'
-      + '</div>';
-  }).join("");
+  html += ids.slice(0, 50).map(function (id) { return _ligneInvite(eventId, id, enAttente[id] ? "attente" : "a-faire"); }).join("");
+  if (faits.length) {
+    html += '<div class="event-invite-section">Déjà invités</div>'
+      + faits.slice(0, 50).map(function (id) { return _ligneInvite(eventId, id, "fait"); }).join("");
+  }
+  box.innerHTML = html;
 }
 
+// `btn` présent = un geste à l'écran : 5 s pour annuler avant que la notification
+// parte. Sans bouton (« inviter tout le monde »), l'envoi est immédiat, comme avant.
 function inviteToEvent(eventId, userId, btn) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
-  if (btn) { btn.disabled = true; btn.textContent = "✓ Invité"; btn.classList.remove("primary"); btn.classList.add("ghost"); }
-  _rememberEventInvite(eventId, userId);
-
-  // L'invitation EST la notification (kind "event_invite" → openEventDetails).
-  // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
-  if (typeof supaInsertNotif === "function") {
-    supaInsertNotif(userId, "event_invite", eventId,
-      "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
-  }
-  toast("Invitation envoyée");
+  var envoyer = function () {
+    if (window._invitesEnAttente[eventId]) delete window._invitesEnAttente[eventId][userId];
+    _rememberEventInvite(eventId, userId);
+    // L'invitation EST la notification (kind "event_invite" → openEventDetails).
+    // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
+    if (typeof supaInsertNotif === "function") {
+      supaInsertNotif(userId, "event_invite", eventId,
+        "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
+    }
+    try { _renderEventInviteList(); } catch (e) {}
+  };
+  if (!btn) { envoyer(); toast("Invitation envoyée"); return; }
+  window._invitesEnAttente[eventId] = window._invitesEnAttente[eventId] || {};
+  window._invitesEnAttente[eventId][userId] = setTimeout(envoyer, EVENT_INVITE_ANNULER_MS);
+  _renderEventInviteList();
+  toast("Invitation envoyée dans 5 s — touche « Annuler » pour la retenir");
+}
+function annulerInviteEvent(eventId, userId) {
+  var t = window._invitesEnAttente[eventId] && window._invitesEnAttente[eventId][userId];
+  if (t) { clearTimeout(t); delete window._invitesEnAttente[eventId][userId]; }
+  _renderEventInviteList();
+  toast("Invitation annulée");
 }
 
 // Invite d'un coup tous ceux que je suis et qui ne se sont pas encore prononcés.

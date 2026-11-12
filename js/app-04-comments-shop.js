@@ -5611,8 +5611,14 @@ function shareUserProfile(userId, name) {
   const rawUrl = (typeof lienPartageDe === "function")
     ? lienPartageDe("user", userId) : location.origin + location.pathname + "#user-" + userId;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "profile", userId, navigator.share ? "native" : "clipboard") : rawUrl;
-  const data = { title: name || "Profil PASSIO", text: "Découvre " + (name || "ce profil") + " sur PASSIO", url };
-  partagerOuCopier(data, "Lien du profil copié");
+  // LOT-12 (PAR-C07) : le profil passait directement à la feuille du téléphone,
+  // sans rien montrer de ce qui part.
+  ouvrirFeuillePartage({
+    quoi: "profil", titre: name || "Profil PASSIO", url: url,
+    message: "Découvre " + (name || "ce profil") + " sur PASSIO",
+    voit: "La personne qui reçoit le lien voit ce profil et ses publications publiques.",
+    idEnvoyer: "_shareUserOutBtn",
+  });
 }
 
 function renderMessages() {

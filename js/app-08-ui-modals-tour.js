@@ -6600,9 +6600,17 @@ async function supaSearchUsers(query) {
         bio: profile.bio || "",
         passions
       };
-    }).slice(0, 8);
-
-    return results;
+    });
+    // LOT-11 (REC-C16) : « tom » rendait Victor Aubry (bio « … automobile … »).
+    // Le pseudo compte partout ; la bio, en DÉBUT DE MOT sous 4 lettres. Les
+    // pseudos qui correspondent passent devant.
+    const _q = (typeof plierRecherche === "function") ? plierRecherche(cleanQuery) : cleanQuery.toLowerCase();
+    const _pli = (x) => (typeof plierRecherche === "function") ? plierRecherche(x || "") : String(x || "").toLowerCase();
+    const _parPseudo = (r) => _pli(r.username).includes(_q);
+    const _parBio = (r) => _q.length >= 4 ? _pli(r.bio).includes(_q) : _pli(r.bio).split(/[^a-z0-9]+/).some((mot) => mot.startsWith(_q));
+    return results.filter((r) => _parPseudo(r) || _parBio(r))
+      .sort((a, b) => (_parPseudo(b) ? 1 : 0) - (_parPseudo(a) ? 1 : 0))
+      .slice(0, 8);
   } catch(e) {
     console.error("[SEARCH] Error:", e);
     return [];
@@ -9229,15 +9237,20 @@ function _fusionnerSuivisServeur(ids, remplacer) {
   ])];
   return true;
 }
+// ⚠️ Rend VRAI seulement si la liste a CHANGÉ (2026-11-12, LOT-13) : elle rendait
+// vrai à chaque démarrage, et l'appelant repeignait le fil pour rien, juste après
+// le boot — un rendu qui effaçait ce qui venait d'être peint (feed-irl-bridge).
+function _signatureBlocages(liste) { return (liste || []).map(String).sort().join("\u0001"); }
 function _fusionnerBlocagesServeur(bl, remplacer) {
   if (!Array.isArray(bl) || !state || !state.user) return false;
-  if (remplacer !== true) { state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])]; return true; }
+  var avant = _signatureBlocages(state.user.blocked);
+  if (remplacer !== true) { state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])]; return _signatureBlocages(state.user.blocked) !== avant; }
   var enVol = Object.keys((typeof _ecritureBlocageEnCours !== "undefined" && _ecritureBlocageEnCours) || {});
   state.user.blocked = [...new Set([
     ...bl.filter(function (id) { return enVol.indexOf(id) < 0; }),
     ...(state.user.blocked || []).filter(function (id) { return enVol.indexOf(id) > -1 || !RE_UID_COMPTE.test(String(id)); }),
   ])];
-  return true;
+  return _signatureBlocages(state.user.blocked) !== avant;
 }
 // Une inscription locale à une activité DU SERVEUR, sans ligne en base, est une
 // désinscription faite ailleurs (ou une écriture perdue) : elle part. Les

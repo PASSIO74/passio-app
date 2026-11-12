@@ -687,6 +687,9 @@
             <div class="main-profile-stat" onclick="ouvrirGestionPassions()" style="cursor:pointer;"><span id="mainStatPassions">0</span><span>passions</span></div>
             <div class="main-profile-stat" onclick="openFollowingList()" style="cursor:pointer;"><span id="mainStatFollowing">0</span><span>abonnements</span></div>
           </div>
+          <!-- LOT-12 (audit UX/UI du 2026-11-10, PAR-C14) : inviter quelqu'un était la
+               6e entrée d'un menu et le 7e bouton de « Support ». Visible, ici. -->
+          <button type="button" class="btn secondary block main-profile-partager" onclick="partagerMonProfil()">Partager mon profil</button>
         </div>
       </div>
 
@@ -960,11 +963,12 @@
       <div id="exPanel_search">
         <div class="explorer-hero">
           <h3>Explorer par passion</h3>
-          <p>Tape ce que tu aimes : tout le référentiel des passions et les membres du réseau.</p>
+          <p>Cherche une passion ou une personne.</p>
           <div style="position:relative;">
             <div style="display:flex;align-items:center;gap:8px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:14px;padding:10px 14px;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:15px;height:15px;color:var(--muted);flex-shrink:0;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
-              <input type="text" id="explorerSearch" placeholder="Enduro, guitare électrique, un pseudo…" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()" autocomplete="off" style="flex:1;min-width:0;border:none;background:transparent;font-size:16px;color:var(--text);outline:none;"/><!-- ⚠️ `min-width:0` : un élément flex a un `min-width: auto`, et un `<input>`
+              <input type="search" id="explorerSearch" enterkeyhint="search" aria-label="Chercher une passion ou une personne" placeholder="Une passion, une personne…" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()" onfocus="exRouvrirResultats()" autocomplete="off" style="flex:1;min-width:0;border:none;background:transparent;font-size:16px;color:var(--text);outline:none;"/>
+              <button type="button" id="explorerClear" class="explorer-clear" onclick="exEffacerRecherche()" aria-label="Effacer la recherche" hidden>×</button><!-- ⚠️ `min-width:0` : un élément flex a un `min-width: auto`, et un `<input>`
      a une largeur intrinsèque d'environ 20 caractères (204 px ici). Il refusait
      donc de rétrécir et poussait le bouton « OK » hors de l'écran à 320 px —
      défaut ANTÉRIEUR à ce lot (mesuré identique avec l'ancien libellé d'invite),
@@ -980,7 +984,10 @@
 
         <!-- Contenu normal (masqué pendant la recherche) -->
         <div id="exploreNormalContent">
-        <div class="section-title" style="margin-top:16px;">Passions tendance <span class="tag-hot">Hot</span></div>
+        <!-- LOT-11 (REC-C14) : le titre est écrit par renderExplorer — « Passions actives »
+             quand des passions ont des publications, « Pour commencer » sinon. Plus de
+             « Hot » : il affirmait une mesure qui n'existait pas. -->
+        <div class="section-title" id="trendingTitle" style="margin-top:16px;">Passions actives</div>
         <div class="trending-row" id="trendingGrid"></div>
 
         <div class="section-title" style="margin-top:16px;">Toutes les passions</div>

@@ -619,12 +619,47 @@ function accueillirInvitation() {
       });
       try { if (window.tel && tel.action) tel.action("invitation_accueil", { v: 1 }); } catch (e) {}
       majInvitationAuth();
+      peindreBandeauInvitation();
     }).catch(function (e) { _invitationEchec("accueil", e); });
     return true;
   } catch (e) {
     _invitationEchec("accueil", e);
     return false;
   }
+}
+
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C20) — L'INVITATION RESTE VISIBLE.
+// Le seul signe de l'invitation était un toast de 6 s : le visiteur qui lit
+// d'abord le contenu ne revoyait jamais qui l'avait invité ni pourquoi s'inscrire.
+// Un bandeau bas, discret et persistant, tant que l'appareil ne porte aucun
+// compte ; une croix le range pour la session. Posé sur <body> (jamais dans
+// #appMain : un `position: fixed` y défilerait avec le conteneur sous WebKit).
+function peindreBandeauInvitation() {
+  try {
+    var ancien = document.getElementById("invitationBandeau");
+    var inv = invitationEnAttente();
+    var range = false;
+    try { range = sessionStorage.getItem("passio_invitation_bandeau_range") === "1"; } catch (e) {}
+    if (!inv || !inv.nom || _appareilPorteUnCompte() || range) { if (ancien) ancien.remove(); return; }
+    var b = ancien || document.createElement("div");
+    b.id = "invitationBandeau";
+    b.className = "invitation-bandeau";
+    b.setAttribute("role", "region");
+    b.setAttribute("aria-label", "Invitation");
+    b.innerHTML = '<div class="invitation-bandeau-texte"><strong class="invitation-bandeau-nom"></strong>'
+      + '<span>Le réseau des passions : partage ce que tu aimes, retrouve des gens près de chez toi.</span></div>'
+      + '<button type="button" class="btn primary invitation-bandeau-cta">Créer mon compte</button>'
+      + '<button type="button" class="invitation-bandeau-fermer" aria-label="Fermer l\'invitation">×</button>';
+    b.querySelector(".invitation-bandeau-nom").textContent = inv.nom + " t'invite sur PASSIO";
+    b.querySelector(".invitation-bandeau-cta").onclick = function () {
+      try { if (window.PassioFirstRun && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription("invitation"); } catch (e) {}
+    };
+    b.querySelector(".invitation-bandeau-fermer").onclick = function () {
+      try { sessionStorage.setItem("passio_invitation_bandeau_range", "1"); } catch (e) {}
+      b.remove();
+    };
+    if (!ancien) document.body.appendChild(b);
+  } catch (e) { try { diagLog("bandeau invitation : " + (e && e.message)); } catch (_e) {} }
 }
 
 // ③ La ligne du formulaire de création. `mode` vient de `switchAuthTab` ; sans
@@ -850,6 +885,9 @@ capterInvitation();
 window.addEventListener("passio:app-ready", function () {
   _invitationAccueilEssais = 0;
   accueillirInvitation();
+  // LOT-12 (PAR-C20) : une invitation déjà accueillie garde son bandeau aux visites
+  // suivantes, tant qu'aucun compte n'est né sur l'appareil.
+  setTimeout(peindreBandeauInvitation, 1500);
 });
 (function _invitationBoot() {
   if (!invitationEnAttente()) return;
@@ -887,6 +925,15 @@ function lienInvitationAmis() {
   return location.origin + location.pathname;
 }
 
+// LOT-12 (PAR-C14) : le bouton visible du profil. Un vrai compte envoie le lien de
+// SON profil (feuille unique) ; sans compte, l'invitation générale.
+function partagerMonProfil() {
+  var compte = (typeof _uidEstUnCompte === "function") && _uidEstUnCompte();
+  if (!compte) { inviterDesAmis("profil"); return; }
+  var g = (state.user && state.user.general) || {};
+  shareUserProfile(MY_UID, g.username || state.user.name || "Mon profil");
+}
+
 function inviterDesAmis(porte) {
   var brut = lienInvitationAmis();
   var cible = porte ? "invite_" + String(porte).slice(0, 20) : "invite";
@@ -895,88 +942,11 @@ function inviterDesAmis(porte) {
   partagerOuCopier({ title: "PASSIO", text: INVITATION_AMIS_TEXTE, url: url }, "Lien d'invitation copié");
 }
 
-function copyReelLink(postId, encodedUrl) {
-  const url = decodeURIComponent(encodedUrl);
-  // LOT-10 (PAR-C04) : la copie refusée levait sans `catch` — aucune réaction.
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(() => {
-      _telLinkShare(url, "clipboard");
-      toast("Lien copié");
-      closeModal();
-    }, () => { closeModal(); montrerLienACopier(url); });
-  } else {
-    closeModal();
-    montrerLienACopier(url);
-  }
-}
-
-// Émet le signal « lien partagé » (canal donné) au centre de pilotage, à partir
-// d'une URL taguée. Guardé : ne casse rien si la télémétrie est absente/désactivée.
-function _telLinkShare(url, channel) {
-  try { if (window.tel && tel.linkShare) { var id = tel.linkFromUrl(url); if (id) tel.linkShare(id, channel); } } catch (e) {}
-}
-
-function shareReelVia(platform, postId, encodedUrl, encodedText) {
-  const url = decodeURIComponent(encodedUrl);
-  const text = decodeURIComponent(encodedText);
-  let shareUrl;
-
-  switch(platform) {
-    case "whatsapp":
-      shareUrl = `https://wa.me/?text=${encodedText}%20${encodedUrl}`;
-      break;
-    case "twitter":
-      shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
-      break;
-    case "facebook":
-      shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
-      break;
-    case "telegram":
-      shareUrl = `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`;
-      break;
-    default:
-      return;
-  }
-
-  _telLinkShare(url, platform);
-  window.open(shareUrl, "_blank", "width=600,height=400");
-  toast(`Ouverture ${platform}...`);
-  closeModal();
-}
-
-function shareReelEmail(postId, encodedText, encodedUrl) {
-  const reel = findPostAnywhere(postId);
-  if (!reel) return;
-
-  // Réutilise l'URL taguée du modal (suivi du lien) ; repli si absente.
-  const url = encodedUrl ? decodeURIComponent(encodedUrl) : `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
-  const author = authorOfReel(reel);
-  const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
-  const text = reel.text || reel.caption || "";
-
-  const subject = encodeURIComponent(`Regarde cette bobine PASSIO de ${author.name}!`);
-  const body = encodeURIComponent(`Salut!\n\nJe viens de découvrir cette super bobine sur PASSIO:\n\n${passion.emoji} ${author.name} – ${passion.label}\n"${text.slice(0, 150)}${text.length > 150 ? "…" : ""}"\n\nViens la voir ici: ${url}\n\nPASSIO - Partage tes passions!`);
-
-  _telLinkShare(url, "email");
-  const mailtoLink = `mailto:?subject=${subject}&body=${body}`;
-  window.location.href = mailtoLink;
-  toast("Ouverture de ton client email…");
-  closeModal();
-}
-
-function shareReelSMS(postId, encodedUrl) {
-  const url = decodeURIComponent(encodedUrl);
-  const reel = findPostAnywhere(postId);
-  if (!reel) return;
-
-  const text = reel.text || reel.caption || "";
-  const smsBody = encodeURIComponent(`Regarde cette bobine PASSIO: ${text.slice(0, 30)}... ${url}`);
-  _telLinkShare(url, "sms");
-  const smsLink = `sms:?body=${smsBody}`;
-  window.location.href = smsLink;
-  toast("Ouverture SMS…");
-  closeModal();
-}
+// LOT-12 (audit UX/UI du 2026-11-10, PAR-C07) : `copyReelLink`, `shareReelVia`,
+// `shareReelEmail`, `shareReelSMS` et `_telLinkShare` RETIRÉES avec les huit
+// boutons de l'ancienne feuille de bobine. La bobine passe par la feuille unique
+// (`ouvrirFeuillePartage`, app-02) : la feuille du téléphone couvre WhatsApp,
+// Telegram, SMS, e-mail…, et le lien est compté par `tel.shareLink`.
 
 function scrollToReel(idx) {
   const list = document.getElementById("reelsList");
@@ -5685,6 +5655,22 @@ function renderExplorer() {
   function peindreTendances() {
     var cible = document.getElementById("trendingGrid");
     if (!cible) return;
+    // LOT-11 (REC-C14, REC-C15) : seules les passions qui ont des publications
+    // réelles, nommées ; sans elles, la section dit « Pour commencer » et montre
+    // le socle — plus de « Hot » posé sur l'ordre alphabétique.
+    var actives = (typeof passionsAvecPublications === "function") ? passionsAvecPublications().slice(0, 6) : [];
+    var titre = document.getElementById("trendingTitle");
+    if (titre) titre.textContent = actives.length ? "Passions actives" : "Pour commencer";
+    if (actives.length) {
+      cible.innerHTML = actives.map(function (p) {
+        return '<div class="trending-tile" onclick="openPassionExplorer(\'' + escapeJsArg(p.id) + '\')">'
+          + '<div class="trending-emoji">' + escapeHtml(p.emoji) + '</div>'
+          + '<div class="trending-name">' + escapeHtml(p.label) + '</div>'
+          + '<div class="trending-stat">' + p.count + ' publication' + (p.count > 1 ? "s" : "") + '</div>'
+          + '</div>';
+      }).join("");
+      return;
+    }
     var counts = {};
     var dejaComptes = Object.create(null);
     [].concat(state.userPosts || [], state.supabasePosts || []).forEach(function (p) {
@@ -5816,6 +5802,13 @@ function renderExplorer() {
   // garde d'authentification, si bien qu'un visiteur sans compte écrivait un
   // suivi. Tout passe désormais par `toggleFollowUser` (app-04), qui garde
   // `requireAuthentication`, sait DÉSUIVRE, et synchronise.
+  // LOT-11 (REC-C05) : « à suivre » = personnes que je ne suis pas encore (ni
+  // suivies, ni en demande, ni bloquées), celles qui partagent une de mes
+  // passions d'abord.
+  var _mesPassions = {};
+  try { (state.user.profiles || []).forEach(function (p) { if (p && !p.archived && !p._parDefaut && p.passion) _mesPassions[p.passion] = 1; }); } catch (e) {}
+  function _aSuivre(id) { return id && (typeof etatSuivi !== "function" || etatSuivi(id) === "aucun") && !(typeof isBlocked === "function" && isBlocked(id)); }
+  function _parAffinite(a, b) { return (_mesPassions[b.passion || b.passion_id] ? 1 : 0) - (_mesPassions[a.passion || a.passion_id] ? 1 : 0); }
   function ligneCreateur(u) {
   // LOT-6 (audit UX/UI du 2026-11-10, REC-C03) : une personne qu'on a BLOQUÉE ne revient
   // pas comme suggestion ni comme résultat. Les garde-fous serveur restent inchangés.
@@ -5834,7 +5827,7 @@ function renderExplorer() {
   }
 
   function createursSeed() {
-    return (state.seed.users || []).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0, 4).map(function (u) {
+    return (state.seed.users || []).filter(function (u) { return _aSuivre(u.id); }).slice().sort(_parAffinite).slice(0, 4).map(function (u) {
       var p = passionById(u.passion);
       return ligneCreateur({
         id: u.id, name: u.name, avatar: u.avatar, profileEmoji: u.profileEmoji,
@@ -5858,7 +5851,7 @@ function renderExplorer() {
         if ((r && r.error) || !data || !data.length) return;
         var el = document.getElementById("suggestedCreators");
         if (!el) return;
-        var others = data.filter(function (u) { return u.id !== MY_UID && u.username; });
+        var others = data.filter(function (u) { return u.id !== MY_UID && u.username && _aSuivre(u.id); }).sort(_parAffinite);
         if (!others.length) return;
         var supaHtml = others.map(function (u) {
           var p = passionById(u.passion_id);

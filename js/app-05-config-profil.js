@@ -4041,56 +4041,24 @@ function shareReel(postId) {
 function openReelShareModal(postId) {
   const reel = findPostAnywhere(postId);
   if (!reel) return;
-
-  // Lien suivi : on FABRIQUE l'URL puis on la tague (?plk=<id>) pour que le centre
-  // de pilotage apparie cette création à une éventuelle ouverture confirmée.
-  const rawUrl = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
-  const _lk = (window.tel && tel.linkCreate) ? tel.linkCreate("reel", postId) : "";
-  const url = (_lk && tel.tagUrl) ? tel.tagUrl(rawUrl, _lk) : rawUrl;
+  // LOT-12 (PAR-C08) : le lien d'une bobine porte `?inv=` comme les trois autres
+  // portes (l'invité est accueilli par le nom de qui l'envoie). Il reste un lien
+  // `#reel=` : c'est lui que le routeur sait ouvrir dans le lecteur. L'aperçu
+  // riche (chemin court) reste à faire côté serveur — hors de ce lot.
+  const inv = (typeof _invitationParametre === "function") ? _invitationParametre() : "";
+  const rawUrl = location.origin + location.pathname + inv + "#reel=" + encodeURIComponent(postId);
+  // Même comptage que les trois autres portes : le lien est créé ET compté partagé.
+  const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "reel", postId, navigator.share ? "native" : "clipboard") : rawUrl;
   const author = authorOfReel(reel);
-  const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
-  const moodLabel = moodShortLabel(reel.mood);
-  const txt = reel.text || reel.caption || "";
-
-  // Créer des URLs de partage pour les réseaux sociaux
-  const encodedUrl = encodeURIComponent(url);
-  const encodedText = encodeURIComponent(`Regarde cette bobine PASSIO: ${txt.slice(0, 50)}...`);
-
-  const shareHTML = `
-    <div class="modal-handle"></div>
-    <div class="modal-title">${shareIconSvg(20)} Partager cette bobine</div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-      <button class="btn secondary" onclick="shareReelVia('whatsapp', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        WhatsApp
-      </button>
-      <button class="btn secondary" onclick="shareReelVia('telegram', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        Telegram
-      </button>
-      <button class="btn secondary" onclick="shareReelVia('twitter', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        𝕏 Twitter
-      </button>
-      <button class="btn secondary" onclick="shareReelVia('facebook', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        Facebook
-      </button>
-      <button class="btn secondary" onclick="shareReelEmail('${escapeJsArg(postId)}', '${escapeJsArg(encodedText)}', '${escapeJsArg(encodedUrl)}')" style="font-size:13px;">
-        Email
-      </button>
-      <button class="btn secondary" onclick="shareReelSMS('${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}')" style="font-size:13px;">
-        SMS
-      </button>
-    </div>
-
-    <button class="btn primary block" onclick="shareReelInFeed('${escapeJsArg(postId)}')" style="margin-bottom:8px;">
-      Partager dans le Feed
-    </button>
-
-    <button class="btn secondary block" onclick="copyReelLink('${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}')">
-      Copier le lien
-    </button>
-  `;
-
-  openModal(shareHTML);
+  const txt = String(reel.text || reel.caption || "");
+  const extrait = txt.length > 60 ? txt.slice(0, 60) + "…" : txt;
+  ouvrirFeuillePartage({
+    quoi: "bobine", auteur: author.name || "Passionné", extrait: extrait,
+    vignette: reel.poster || reel.image || reel.photo || reel.coverPhotoUrl || "",
+    url: url,
+    message: "Une bobine de " + (author.name || "Passionné") + " sur PASSIO" + (extrait ? " : « " + extrait + " »" : ""),
+    republier: function () { shareReelInFeed(postId); },
+  });
 }
 
 async function shareReelInFeed(postId) {
