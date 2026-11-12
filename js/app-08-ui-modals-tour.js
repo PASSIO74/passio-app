@@ -6326,6 +6326,12 @@ async function rafraichirEvenements(force, apresLecture) {
     if (change) {
       const irl = document.getElementById("screen-irl");
       if (irl && irl.classList.contains("active") && typeof renderIRL === "function") renderIRL();
+      // LOT-3 (audit UX/UI du 2026-11-10, PCS-C01 / FIL-C01) : une publication
+      // reliée à une activité n'avait pas sa porte « Voir l'activité » tant que
+      // l'activité n'était pas en mémoire, et rien ne la redécorait à son arrivée
+      // (mesuré : absente à 5, 20 et 40 s, présente à 60 s). On redécore les
+      // cartes DÉJÀ peintes — sans repeindre le fil, donc sans saut de défilement.
+      try { if (window.PassioUIV3 && typeof PassioUIV3.decorateFeed === "function") PassioUIV3.decorateFeed(null); } catch (e) {}
     }
     return change;
   } catch (e) {

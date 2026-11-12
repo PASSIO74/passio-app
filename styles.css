@@ -8698,6 +8698,44 @@ body.ctx-locked #appMain { overflow: hidden; }
   border-radius: 8px;
 }
 :root.passio-ui-4b #eventDetailCta .v4b-rsvp-retirer:hover { color: var(--text); }
+/* LOT-3 (audit UX/UI du 2026-11-10, PCS-C03, IRL-C50) : l'état « inscrit » dit
+   QUAND, propose la SUITE (écrire aux participants, inviter) à la place du
+   bouton, et éloigne le retrait du doigt qui vient de s'inscrire. Confirmation
+   verte opaque (#0f5c3d sur #e9f8ef : 7,0:1), jamais une teinte translucide. */
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-inscrit .v4b-rsvp-etat {
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 10px 14px 0;
+  border: 1px solid #bfe8d0;
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  background: #e9f8ef;
+  color: #0b4d2e;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-detail {
+  margin-top: -4px;
+  padding: 2px 14px 10px;
+  border: 1px solid #bfe8d0;
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+  background: #e9f8ef;
+  color: #0f5c3d;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-suite {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-suite .btn {
+  min-height: 48px;
+  font-size: 14px;
+  white-space: normal;
+  line-height: 1.2;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-inscrit .v4b-rsvp-retirer { margin-top: 4px; }
 :root.passio-ui-4b #eventDetailCta .v4b-rsvp-go:focus-visible,
 :root.passio-ui-4b #eventDetailCta .v4b-rsvp-retirer:focus-visible {
   outline: 2px solid var(--v4b-coral-texte, #c13d28);
@@ -9172,6 +9210,25 @@ body.ctx-locked #appMain { overflow: hidden; }
   -ms-overflow-style: none;
 }
 :root.passio-ui-5 .v5-actions::-webkit-scrollbar { display: none; }
+/* LOT-3 (audit UX/UI du 2026-11-10, BOB-C03) : les quatre actions tiennent en
+   grille 2 × 2, sans défilement — les deux sorties vers le réel étaient hors de
+   l'écran à 390 px. Les sorties IRL portent un liseré corail (§5 : le corail
+   signale le passage au réel). Cibles de 44 px conservées. */
+:root.passio-ui-5 .v5-actions.v5-actions-grille {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  overflow: visible;
+}
+:root.passio-ui-5 .v5-actions-grille .v5-chip {
+  width: 100%;
+  padding: 11px 10px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+}
+:root.passio-ui-5 .v5-actions-grille .v5-chip-irl {
+  border: 2px solid var(--v2-coral, #ff6b57);
+}
 
 /* Verre dépoli sur la vidéo : les chips doivent rester lisibles sur n'importe
    quelle image, sans assombrir la bobine. Le texte est blanc plein, le fond
@@ -12379,5 +12436,6 @@ button, a, label, select, summary,
    rangée de capsules (« Ça m'intéresse », « À vivre près de moi »…) et sur le
    « Co » de « Commentaire », cinq secondes à CHAQUE ouverture du lecteur.
    260 px : au-dessus du bloc auteur même avec une légende de quatre lignes,
-   sous le premier bouton de la colonne d'actions. */
-:root.passio-ui-5 .reels-hint { bottom: calc(260px + env(safe-area-inset-bottom)); }
+   sous le premier bouton de la colonne d'actions. LOT-3 : 310 px, la rangée
+   de capsules tient désormais sur deux lignes (grille 2 × 2). */
+:root.passio-ui-5 .reels-hint { bottom: calc(310px + env(safe-area-inset-bottom)); }

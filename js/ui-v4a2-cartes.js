@@ -88,7 +88,7 @@
 
   var LIB_VOIR = "Détails";
   var LIB_REVOIR = "Revoir";
-  var LIB_VIENS = "Je viens";
+  var LIB_VIENS = "Je participe"; // LOT-3 (audit UX/UI, PCS-C06) : le même mot que la fiche
   var LIB_FILE = "Liste d'attente";
   var LIB_ANNULE = "Annulé";
   var LIB_ORGANISE = "Tu organises";
