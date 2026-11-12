@@ -96,10 +96,8 @@ const CE_BANC = SUITES + "/edge-functions-verrous.test.mjs";
 // pilotage ⑯ éprouve désormais les trois valeurs, et identifiants-exemple.test.mjs
 // (ce que la purge tient pour un exemple, contre la base) est listée.
 const ECARTS = Object.freeze({
-  // ⑨ — la seule fonction qu'aucun banc n'exécute encore (2026-11-09). Ses
-  // chemins sont RELUS par des suites listées, aucun n'est exécuté.
-  "supabase/functions/pilotage/index.ts":
-    "1 559 lignes : la veille et quatorze actions derrière l'authentification ; pilotage, autonomie, battement, croissance, rappels… (listées) relisent son code, aucune ne l'exécute — une variable jamais déclarée dans une action partirait encore ; son banc pilotage-chemins reste à écrire, et cet écart rougira le jour où il tournera",
+  // ⑨ — plus aucun écart d'exécution : pilotage, la dernière fonction qu'aucun banc n'exécutait
+  // (2026-11-09), a le sien depuis le 2026-11-12 (pilotage-chemins.test.mjs).
   "supabase/functions/_shared/revision.js":
     "écrit par l'étape « Révision » de ce workflow juste avant « Déployer » (une ligne : le SHA déployé) ; la fumée relit ce qu'il sert sur chaque fonction (X-Passio-Revision)",
   "tests/unit/audit-contrats-actions.test.mjs":
@@ -584,10 +582,10 @@ test("le lecteur voit ce que la CLI emporte : tout _shared, l'import de dix lign
   assert.ok(AUDIT.importsDe.get(SUITES + "/suppression-entrelacement.test.mjs").includes(S("purge-compte.js")));
   // Ce banc n'importe aucun module : ses textes de mutation sont des chaînes.
   assert.equal(AUDIT.importsDe.has(CE_BANC), false);
-  // …et ne lit le code d'aucune fonction (ses chemins se composent) ; il n'en nomme
-  // qu'un, par la clé de son écart ⑨.
+  // …et ne lit le code d'aucune fonction (ses chemins se composent) ; il n'en nomme plus
+  // aucun : l'écart ⑨ de pilotage, dont la clé portait le chemin, est levé (2026-11-12).
   assert.equal(AUDIT.lecturesDe.has(CE_BANC), false);
-  assert.deepEqual(AUDIT.nommeesSeules.get(CE_BANC), [INDEX_PILOTAGE]);
+  assert.equal(AUDIT.nommeesSeules.has(CE_BANC), false);
   // Les LECTURES du code des fonctions (2026-11-09) : le banc qui exécute notify-call,
   // les deux gestionnaires relus par connexion-recente, et la forme
   // `(await import("node:fs")).readFileSync(…)` de plafond.test.mjs.
@@ -597,13 +595,13 @@ test("le lecteur voit ce que la CLI emporte : tout _shared, l'import de dix lign
   // Une lecture par une aide locale (`lire("…")`) ne se voit pas : le chemin, nommé, se dit.
   assert.deepEqual(AUDIT.nommeesSeules.get(SUITES + "/battement.test.mjs"), [INDEX_PILOTAGE]);
   // ⑨ EXÉCUTER, ce n'est pas relire : appels.test.mjs relit notify-call, notify-call-chemins
-  // l'exécute (son propre chargeur) ; les trois autres bancs, par l'aide lib/executer-fonction.mjs.
+  // l'exécute (son propre chargeur) ; les quatre autres bancs, par l'aide lib/executer-fonction.mjs.
   assert.ok(AUDIT.lecturesDe.get(SUITES + "/appels.test.mjs").includes(INDEX_NOTIFY) && !AUDIT.executionsDe.has(SUITES + "/appels.test.mjs"));
   assert.deepEqual(AUDIT.executionsDe.get(NOTIFY_CHEMINS), [INDEX_NOTIFY]);
-  for (const fn of ["ask-ai", "delete-account", "export-account"]) {
+  for (const fn of ["ask-ai", "delete-account", "export-account", "pilotage"]) {
     assert.deepEqual(AUDIT.executionsDe.get(`${SUITES}/${fn}-chemins.test.mjs`), [`${FONCTIONS}/${fn}/index.ts`], fn);
   }
-  assert.ok(![...AUDIT.executionsDe.values()].flat().includes(INDEX_PILOTAGE), "prémisse de l'écart : aucun banc n'exécute pilotage");
+  assert.deepEqual([...new Set([...AUDIT.executionsDe.values()].flat())].sort(), fonctions.slice().sort(), "chaque fonction est exécutée par un banc : plus aucun écart ⑨");
   assert.ok(AUDIT.listees.has(CE_BANC), "ce banc tourne dans l'étape");
   assert.ok(AUDIT.listees.size >= 10 && AUDIT.verrous.length === 1, "prémisse : l'étape est lue");
   assert.equal(majeure(AUDIT.version), majeure(AUDIT.reference.version));
@@ -920,8 +918,7 @@ test("⑦ ② ③ le banc qui EXÉCUTE notify-call : retiré de l'étape, il rou
   rougit(avec({ workflow: sans, fichiers: parAide }), absent);
 });
 
-test("⑦ ⑨ chaque fonction est EXÉCUTÉE avant « Déployer » : un banc retiré, un banc qui ne fait plus que relire, une fonction neuve sans banc, l'écart de pilotage retiré — chacun rougit", () => {
-  const sauf = (cle) => Object.fromEntries(Object.entries(ECARTS).filter(([k]) => k !== cle));
+test("⑦ ⑨ chaque fonction est EXÉCUTÉE avant « Déployer » : un banc retiré, un banc qui ne fait plus que relire, une fonction neuve sans banc, le banc de pilotage retiré, un écart redéclaré pour une fonction exécutée — chacun rougit", () => {
   const ASK = FONCTIONS + "/ask-ai/index.ts";
   const nonExecutee = (e) => new RegExp("^" + echapper(e) + " : aucune suite listée ne l'exécute — une variable jamais déclarée");
   const bancDe = (cible) => 'import fs from "node:fs";\nimport { chargerFonction } from "./lib/executer-fonction.mjs";\n'
@@ -942,11 +939,12 @@ test("⑦ ⑨ chaque fonction est EXÉCUTÉE avant « Déployer » : un banc ret
   rougit(avec({ fichiers: neuve }), nonExecutee(NEUVE));
   const bancNeuf = SUITES + "/neuve-chemins.test.mjs";
   assert.deepEqual(auditer(avec({ workflow: listant(bancNeuf), fichiers: { ...neuve, [bancNeuf]: bancDe(NEUVE) } })).defauts, []);
-  // L'écart de pilotage : retiré, pilotage rougit ; le jour où un banc l'exécute, c'est l'écart qui rougit.
-  rougit(REEL, nonExecutee(INDEX_PILOTAGE), sauf(INDEX_PILOTAGE));
+  // pilotage a son banc depuis le 2026-11-12 : retiré de l'étape, pilotage rougit comme les autres ;
+  // et un écart redéclaré pour une fonction qu'un banc exécute rougit — sans objet.
   const bancPilotage = SUITES + "/pilotage-chemins.test.mjs";
-  rougit(avec({ workflow: listant(bancPilotage), fichiers: { [bancPilotage]: bancDe(INDEX_PILOTAGE) } }),
-    /^écart supabase\/functions\/pilotage\/index\.ts : sans objet — une suite listée l'exécute$/);
+  rougit(avec({ workflow: muter(REEL.workflow, "\n" + INDENT + "node --test " + bancPilotage + "\n", "\n") }), nonExecutee(INDEX_PILOTAGE));
+  rougit(REEL, /^écart supabase\/functions\/pilotage\/index\.ts : sans objet — une suite listée l'exécute$/,
+    { ...ECARTS, [INDEX_PILOTAGE]: "une raison écrite, assez longue pour passer le seuil du banc" });
 });
 
 test("⑦ ② une suite NEUVE qui lit le code d'une fonction rougit tant qu'elle n'est pas listée ; nommé par une aide qui reçoit le chemin, ②' le dit", () => {

@@ -195,7 +195,7 @@ test("⑩ le geste : verrou de 10 min, cible de l'APERÇU, marque HMAC AVANT la 
   assert.match(g, /const id = await idGeste\(`\$\{EVT\.manuel\}:\$\{p\.courant\.id\}:\$\{Math\.floor\(Date\.now\(\) \/ 3600e3\)\}`, SECRET_GESTES\);/, "clé HMAC, une par heure et par version servie");
   // Le secret est la clé service_role (posée sur toute fonction, jamais côté client) ; la clé anon, publique, ne vaut rien.
   assert.match(FN, /const SECRET_GESTES = Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\) \|\| "";/);
-  assert.equal(FN.split("SECRET_GESTES").length - 1, 6, "déclaration + deux clés de geste + le créneau de la veille + les marques de rappel + la transition d'état (⑰), aucun autre usage");
+  assert.equal(FN.split("SECRET_GESTES").length - 1, 9, "déclaration + deux clés de geste + le créneau de la veille + les marques de rappel + la transition d'état (⑰) + le verrou d'une relance, celui d'une réparation et la marque du pilote (2026-11-12), aucun autre usage");
   assert.doesNotMatch(FN, /idGeste\([^)]*ANON/, "jamais la clé anon comme secret");
   assert.match(g, /code === "23505" \? "retour_en_cours" : "journal_refuse"/);
   assert.match(g, /de_deploy: p\.courant\.id/, "la version retirée est notée : elle ne reviendra pas par ce bouton");
@@ -375,4 +375,44 @@ test("⑱ un créneau déjà pris se LIT : l'appel refusé n'écrit rien (une ra
   for (let i = 0; i < 20; i++) assert.deepEqual(await creneau(t, M0 + 1000 + i), { ok: false, raison: "pris" });
   assert.equal(t.essais.insertions, avant, "vingt refus, zéro insertion");
   assert.equal(t.essais.lectures, 21);
+});
+
+// ─── 2026-11-12 : le même verrou pour les GESTES du pilote (relancer, réparer). « Lire GitHub,
+// puis ouvrir l'issue » laissait deux touchers simultanés ouvrir deux réparations — deux agents
+// (tests/unit/pilotage-chemins.test.mjs ⑯ ㉒, rouges avant ce lot).
+import { rendreCreneau } from "../../supabase/functions/_shared/autonomie.js";
+import { creerBase } from "./lib/fausse-base.mjs";
+
+test("⑲ un geste prend son créneau sur une AUTRE période, qui entre dans la clé — celle d'une minute ne change pas ; rendu, le créneau se reprend aussitôt", async () => {
+  const base = creerBase();
+  const admin = base.client("https://banc.supabase.co", "cle-de-service");
+  const T = Date.parse("2026-11-12T15:00:30Z");
+  const DIX_MIN = 10 * 60e3;
+  const prendre = (ms) => prendreCreneau(admin, "systeme:pilotage", "pilotage-reparer-issue-73", SC, ms, DIX_MIN);
+  const a = await prendre(T);
+  assert.equal(a.ok, true);
+  assert.equal(a.ids.length, 2, "sa tranche et la suivante, en une instruction");
+  assert.deepEqual(await prendre(T + 30e3), { ok: false, raison: "pris" }, "trente secondes plus tard");
+  assert.deepEqual(await prendre(T + 12 * 60e3), { ok: false, raison: "pris" }, "douze minutes plus tard : la tranche suivante est tenue aussi");
+  assert.equal((await prendre(T + 20 * 60e3)).ok, true, "vingt minutes plus tard : libre");
+  // Une autre cible ne se gêne pas.
+  assert.equal((await prendreCreneau(admin, "systeme:pilotage", "pilotage-reparer-issue-74", SC, T, DIX_MIN)).ok, true);
+  // La clé d'une minute est EXACTEMENT celle d'avant ce lot : deux révisions de la fonction qui se
+  // chevauchent pendant un déploiement prennent le même créneau de veille.
+  const minute = await prendreCreneau(admin, "systeme:pilotage-veille", "pilotage-veille", SC, T);
+  assert.equal(minute.ids[0], await idGeste("creneau:pilotage-veille:systeme:pilotage-veille:" + Math.floor(T / 60e3), SC));
+  assert.equal(a.ids[0], await idGeste("creneau:pilotage-reparer-issue-73:systeme:pilotage:" + DIX_MIN + ":" + Math.floor(T / DIX_MIN), SC), "la période entre dans la clé");
+  assert.ok(base.table("analytics_events").every((l) => l.event.startsWith("edge_")), "des lignes edge_* : la purge courte les efface après 2 h");
+  // Rendu (GitHub a refusé le geste) : le pilote peut retoucher tout de suite.
+  assert.equal(await rendreCreneau(admin, a), true);
+  assert.equal((await prendre(T + 40e3)).ok, true);
+  assert.equal(await rendreCreneau(admin, { ok: false, raison: "pris" }), false, "rien à rendre");
+  assert.equal(await rendreCreneau(admin, null), false);
+  // Une base qui refuse l'effacement ne casse rien : le créneau expire seul.
+  base.panne = (q) => (q.type === "delete" ? { code: "08006", message: "connexion perdue" } : null);
+  assert.equal(await rendreCreneau(admin, minute), false);
+  base.panne = null;
+  // Une période absurde retombe sur la minute.
+  const absurde = await prendreCreneau(admin, "systeme:x", "y", SC, T, 5);
+  assert.equal(absurde.ids[0], await idGeste("creneau:y:systeme:x:" + Math.floor(T / 60e3), SC));
 });

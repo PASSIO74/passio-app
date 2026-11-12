@@ -51,6 +51,7 @@
 - 🚱 LES LIGNES `development` DE LA PRODUCTION : TROIS SOURCES, UNE VOULUE, ET LE DÉPART D'UNE PAGE QU'AUCUNE ROUTE NE VOIT (2026-11-10)
 
 ---
+- 🧪 LA FONCTION `pilotage` S'EXÉCUTE ENFIN — ET CE QUE L'EXÉCUTER A FAIT TOMBER (2026-11-12)
 
 ## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
 
@@ -1214,3 +1215,136 @@ lignes `preview` viennent des contrôles des aperçus de déploiement : un autre
 Règle d'une ligne proposée pour `CLAUDE.md` (chemin protégé, non appliquée) : « Le départ d'une page
 échappe aux routes de Playwright : `projetSupabaseVide` retient ses envois `keepalive` après un
 `pagehide` réel ; une fuite se mesure par un proxy hors du navigateur, jamais par la sonde Playwright. »
+
+## 🧪 LA FONCTION `pilotage` S'EXÉCUTE ENFIN — ET CE QUE L'EXÉCUTER A FAIT TOMBER (2026-11-12)
+
+**Le point de départ, mesuré le 12/11.** À 14:50:04 UTC le téléphone sonne : « dernier déploiement en
+échec ». Les deux derniers `CI & Deploy` de `main` sont rouges (runs 43234813436 et 43235671422),
+`release.json` sert encore `a5d114f4` : #841 et #842 ne sont pas en ligne. La cause n'est pas dans
+`main` : le job « Suites production (comptes réels) » interroge le **staging** — et les deux échecs n'ont
+PAS la même cause (journaux relus le 12/11 au soir ; la première version de cette fiche les attribuait
+tous deux à la migration, à tort) :
+- **14:31, run 43234813436** : le stockage du staging répond `504 Gateway Time-out` au dépôt d'un média.
+  Deux tests tombent (« story + bobine », « suppression de compte… ET les médias »). Une panne passagère
+  de l'environnement d'essai — ses sept `42501` sont les refus ATTENDUS des tests de confidentialité.
+- **14:47, run 43235671422 (tentative 1)** : une migration d'une PR pas encore fusionnée (#843) venait
+  d'être appliquée au staging — `POST /rest/v1/events → 42501 permission denied for function
+  jsonb_tableau_uuid` (la contrainte appelle une fonction que `authenticated` ne peut pas exécuter : sur
+  ce projet, une fonction créée par `postgres` dans `public` ne reçoit pas `EXECUTE`, `pg_default_acl` lu
+  au canal ①). Trois tests tombent, tous à la création d'une rencontre. Appliquée telle quelle en
+  production, elle l'aurait fait refuser à tout le monde. Signalé sur #843 avec les preuves ; rien n'a
+  été touché là-bas, le correctif y a été poussé trois minutes plus tard.
+
+C'est la troisième fois (07/11, 09/11, 12/11) qu'un staging migré avant la fusion bloque `main`.
+⚠️ Compter les `42501` d'un journal ne dit rien : les suites à comptes réels en produisent exprès. Ce
+qui désigne la cause, c'est la liste des tests tombés et la requête refusée.
+
+**Ce que l'alerte a montré de la supervision elle-même.** Le premier run a échoué à 14:31 ; le voyant
+est resté **vert dix-neuf minutes**, jusqu'à la fin du second. Et l'inverse à 15:25:05 : « Problème
+résolu » a sonné quatre minutes après le DÉPART de la RELANCE du second run (`gh run rerun`, tentative 2
+lancée à 15:20:55). Une relance garde l'identifiant et la date de création du run, et vide sa
+conclusion : l'échec avait disparu de la liste, il ne restait qu'une exécution « en cours », donc vert.
+Elle a réussi à 15:27:38 ; rien ne le prouvait à 15:25. Mesuré le même jour au canal ① :
+25 rouges en 30 jours, dont 21 pour une mise en ligne en échec (médiane 3 h 05) ; les 8 derniers
+envois d'alerte tous affichés par l'appareil, en 13 s au plus. La fonction ne lisait que la DERNIÈRE
+exécution : en cours, elle ne dit rien. C'est en voulant le reproduire que l'écart déclaré le 09/11
+(« aucune suite n'exécute `pilotage/index.ts` ») a été comblé — et le banc a rendu neuf rouges.
+
+**Le banc** : `tests/unit/pilotage-chemins.test.mjs` (46 exercices, ~4 s). Le vrai `index.ts`, chargé
+par `lib/executer-fonction.mjs`, avec les VRAIS modules partagés ; seuls l'extérieur est doublé — la
+base (`tests/unit/lib/fausse-base.mjs` : une base en mémoire qui parle comme supabase-js, compte, pagine
+à 1 000 lignes, et refuse une clé primaire en double en rejetant l'instruction ENTIÈRE), web-push, et le
+réseau (GitHub, Netlify, `release.json` ; tout autre hôte lève). Il tourne avant « Déployer »
+(`edge-functions.yml`), dans `npm run verif`, et l'écart ⑨ de `edge-functions-verrous.test.mjs` est levé :
+les cinq fonctions sont exécutées. Son dernier exercice lit les `case` du gestionnaire : une action neuve
+sans exercice rougit — et une action que le banc n'aurait fait que REFUSER (400, 409) aussi : chacune
+doit avoir répondu 200 au moins une fois.
+
+**Les défauts reproduits (rouges sur `main`, verts après), tous dans ce que l'écran affirme ou lance :**
+
+| # | Ce qui se passait | Depuis | Ce qui change |
+|---|---|---|---|
+| ⑫ ⑫ bis ㉙ bis | un déploiement en échec caché derrière le run suivant en cours (19 min de vert le 12/11), derrière une exécution évincée de la file, ou derrière sa propre relance (« résolu » sonné au départ de la relance) | toujours | les dix dernières exécutions sont lues ; ce qui compte est la dernière qui a TRANCHÉ — réussie ou cassée (`resumerRuns`, `echecRun`) ; la tentative d'avant d'une relance est relue (`tentativesARelire`) |
+| ⑪ bis | une exécution lancée par la PR d'un fork (branche de tête nommée `main`) comptait comme la nôtre | toujours | `EVENEMENTS_RUNS` : `push` pour la mise en ligne, planifiée ou relancée pour la Sentinelle et la veille ; le dépôt de tête est vérifié |
+| ⑪ | un déploiement expiré (`timed_out`), jamais démarré (`startup_failure`) ou annulé : vert, sans ligne | toujours | cassé, expiré, non démarré : rouge et réparable ; annulé sans relève : orange, bouton vers l'exécution |
+| ⑩ ㉚ bis | les exécutions illisibles (`runs.deploy = null`) : vert ; un sujet `humain` ou la pause cachés derrière cent issues d'inconnus | toujours | `partielGithub` nomme les exécutions non lues : l'écran ne passe pas au vert, la veille tient son voyant, le battement dit « ko ». Au-delà de cent issues ouvertes, lecture de ce qui est SUIVI (par label, par auteur, par la liste des PR) ; les issues ne tiennent jamais le voyant de la veille |
+| ⑱ ⑱ bis | « Régler » fusionnait la tête DU MOMENT, pas celle affichée | toujours | le geste porte le `sha` vu ; changé → 409 ; absent → 400 ; l'auto-fusion s'arme avec `expectedHeadOid`, la version armée est notée, et un correctif qui change ensuite passe en tête de liste (détection à l'écran — voir les pièges) |
+| ㉒ ㉒ bis | deux touchers simultanés ouvraient deux réparations — deux agents ; une réponse perdue (silence, 5xx) rendait la main comme un refus | 2026-10-01 | créneau atomique de 10 min par cible (`prendreCreneau`, période en paramètre), rendu sur un refus NET ; gardé sur un silence ou un 5xx, et l'écran dit « peut-être partie ». Un geste interrompu n'est plus un 500 nu |
+| ⑯ | deux relances simultanées, deux runs | 2026-09-28 | créneau d'une minute par workflow |
+| ㉛ | la mémoire du voyant illisible valait « aucun état » : un vert s'écrivait par-dessus un rouge, sans jamais « résolu » | 2026-09-28 | `lireEtatMemorise` rend `illisible` ; seul ce qui sonne s'écrit ; le battement note `memoire: ko` |
+| ㊳ ㊳ bis | pour sonner, la veille parcourait TOUS les comptes (le pilote, premier inscrit, est sur la dernière page) | 2026-10-11 | le pilote se marque en entrant (`pilotage_pilote`, auteur système) ; la marque est revérifiée à chaque usage ; le parcours n'est évité que si chaque adresse autorisée a son compte marqué ET relu |
+| ⑲ | la pause de la Sentinelle cherchée dans les 100 premières issues, tous auteurs | 2026-09-28 | lecture par `creator` |
+| ㉟ bis | un essai des alertes parti se notait « rien » au battement (507 sur 507 en production) | 2026-11-07 | `contenuBattement` rend `envoye` / `pas_du` |
+
+**Ce que le banc PROUVE sans rien avoir trouvé** (ces lignes n'étaient ni exécutées ni même relues) :
+la porte (401, 403, adresse non confirmée, plafond avant toute action, second facteur **suspendu par
+défaut** — décision du 08/11 — et armé par `PILOTAGE_EXIGER_AAL2=1`), `fermer`, `reprendre`,
+`signalement`, 405, 400 ; la veille sans compte ne rend que `{ ok: true }` ; deux veilles simultanées,
+une seule tourne ; la chaîne rouge → alerte → rouge qui dure → « résolu » ; GitHub muet pendant un rouge
+ne sonne jamais « résolu » ; le site qui tombe et revient ; la base en panne ne laisse AUCUN battement ;
+le réveil de la Sentinelle, sa pause, son quota ; l'essai des alertes de jour seulement ; l'alerte non
+accusée après dix minutes ; un titre d'issue, un message d'erreur et un motif hostiles n'entrent ni dans
+ce qu'un bouton annonce, ni dans un ordre. La veille n'appelle que GitHub et le site : aucun modèle.
+
+**Réinjections** : `node scripts/reinjections-pilotage.mjs` retire chaque correctif tour à tour — 46 sur
+46 rougissent leur exercice (dont « une variable jamais déclarée dans un geste », le défaut de #753).
+Dans un worktree isolé seulement : le fichier muté est sur le disque quelques secondes.
+
+**La contre-revue indépendante (12/11, un agent sans le contexte de l'auteur) — « à corriger avant
+fusion ».** Huit constats, tous vérifiés puis corrigés dans la même PR ; le premier était une RÉGRESSION
+introduite par ce lot :
+1. « Lecture partielle tant qu'il y a plus de 500 issues ouvertes » tenait le voyant de la veille. Le
+   dépôt est public : n'importe qui pouvait la figer — après un premier rouge, plus de « résolu », et le
+   rouge suivant ne sonnait plus. → les issues ne tiennent plus jamais le voyant ; lecture par filtres.
+2. Les exécutions se lisaient sans filtre d'événement ni de dépôt : la PR d'un fork (branche `main`)
+   passait pour une mise en ligne. → `EVENEMENTS_RUNS`.
+3. « La dernière TERMINÉE » laissait A (en échec) derrière B (évincée) pendant que C tournait, et
+   derrière sa propre relance. → la dernière qui a TRANCHÉ ; tentative d'avant relue.
+4. `expectedHeadOid` n'est contrôlé qu'à l'armement. → version armée notée, ligne en tête si elle change.
+5. `timed_out` n'a jamais été observé dans le dépôt. → gardé par prudence, dit NON VÉRIFIÉ.
+6. Un 5xx de GitHub rendait encore le verrou ; `confier()` qui lève laissait un 500 nu. → ambigu = gardé.
+7. Les marques du pilote se comptaient en nombre. → en adresses prouvées.
+8. Texte du battement faux (« aucun changement noté » alors qu'un rouge s'écrit), import mort. → corrigés.
+Et trois remarques sur la VALEUR du banc, corrigées : le faux GitHub ignorait `event`, `branch`, `labels`
+(un faux qui ignore les filtres cache les défauts de filtrage) ; son GraphQL acceptait n'importe quelle
+tête ; l'exercice « chaque action est éprouvée » se contentait d'un appel, même refusé.
+
+**Pièges du lot.**
+- ⚠️ La marque `pilotage_pilote` n'ouvre AUCUN droit : `getUserById` puis `autorise()` à chaque usage.
+  Une authentification qui ne répond pas laisse sonner le compte marqué (l'alerte ne porte ni contenu ni
+  donnée) ; un compte supprimé ou sorti de la liste ne l'est plus.
+- ⚠️ La clé d'un créneau d'UNE MINUTE est exactement celle d'avant (deux révisions qui se chevauchent
+  pendant un déploiement prennent le même créneau de veille) ; une autre période entre dans la clé.
+- ⚠️ `verdictAffiche` : chaque raison de lecture manquée commence par « non lu » — c'est à ce mot que la
+  page les garde (`rendreVerdict`). « lu en partie : … » aurait disparu de l'écran.
+- ⚠️ Une lecture de GitHub en partie n'est PAS gardée dans l'isolat (2 min) : la suivante réessaie.
+- ⚠️ Un banc qui sème une base vide déclenche l'ESSAI des alertes (aucune note depuis 7 jours, de jour) :
+  le décor porte une alerte de trois jours ; l'essai a son exercice, à heure fixée (`t.mock.timers`).
+- ⚠️ La veille NE met PAS « GitHub lu en partie » dans son verdict : un orange posé puis levé à chaque
+  lecture partielle referait le clignotement du 22/10 (quatorze bascules). Elle tient son voyant
+  (`incomplet`) ; c'est l'ÉCRAN qui le dit.
+- ⚠️ **Ne jamais faire dépendre « lecture incomplète » d'une quantité qu'un tiers contrôle.** Sur un dépôt
+  public, le nombre d'issues ouvertes en est une. Tenir le voyant est une protection contre une source
+  MUETTE ; appliquée à une source BRUYANTE, elle devient un interrupteur offert à n'importe qui.
+- ⚠️ **L'auto-fusion de GitHub suit la branche.** `expectedHeadOid` refuse d'ARMER sur une tête qui a
+  bougé, rien de plus : un commit poussé ensuite par un compte qui a le droit d'écrire part s'il passe
+  les tests (GitHub ne désarme que sur le push d'un compte sans ce droit). L'écran le DÉTECTE (note
+  `fusion_armee`, ligne en tête) ; il ne l'empêche pas, et rien ne sonne. Le vrai remède — une fusion
+  différée tenue par le serveur, exécutée avec `sha` — est un geste automatique de plus : décision de
+  politique, lot 2.
+- ⚠️ **Une relance (`gh run rerun`) garde l'identifiant ET `created_at` du run** ; seul `run_started_at`
+  change, `run_attempt` s'incrémente, et la conclusion de la tentative d'avant ne se lit plus que par
+  `/actions/runs/<id>/attempts/<n>` (vérifié sur le run 43235671422 : tentative 1 `failure`, tentative 2
+  `success`, même `created_at`). Trier par `created_at` range donc la tentative relue juste derrière sa
+  relance — à condition que le tri soit stable.
+- ⚠️ **Un 5xx n'est pas un refus.** GitHub a pu créer l'issue ou lancer l'exécution avant de répondre :
+  rendre le verrou sur un 502, c'est permettre le second agent. Seul un refus net (4xx) rend la main.
+- ⚠️ `timed_out` : aucune exécution du dépôt ne porte cette conclusion (0 le 12/11 ; un job qui dépasse
+  `timeout-minutes` se lit probablement `cancelled`). Traité en échec par prudence — NON VÉRIFIÉ.
+
+**Reste ouvert** (suivi : `docs/SUIVI_SENTINELLE_PILOTAGE.md`) : `moderation-alerte.yml` meurt avant
+d'ouvrir son issue (`node …; code=$?` sous `bash -e` — reproduit en rejouant l'étape, corrigé dans #849) ;
+l'agent de réparation ne peut pas lire le journal d'une exécution (P1-4 bis) ; le correctif de la Sentinelle
+naît sans CI (`GITHUB_TOKEN`) et son auto-fusion ne peut plus s'armer ; `lireActivation` parcourt jusqu'à
+20 000 comptes à chaque ouverture d'écran ; la Sentinelle est dite muette à 8 h quand son cron est servi
+au P95 toutes les 8,9 h (100 derniers runs planifiés, mesuré le 12/11 : médiane 5,7 h, maximum 10,8 h).
