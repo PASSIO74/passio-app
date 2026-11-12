@@ -9237,15 +9237,20 @@ function _fusionnerSuivisServeur(ids, remplacer) {
   ])];
   return true;
 }
+// ⚠️ Rend VRAI seulement si la liste a CHANGÉ (2026-11-12, LOT-13) : elle rendait
+// vrai à chaque démarrage, et l'appelant repeignait le fil pour rien, juste après
+// le boot — un rendu qui effaçait ce qui venait d'être peint (feed-irl-bridge).
+function _signatureBlocages(liste) { return (liste || []).map(String).sort().join("\u0001"); }
 function _fusionnerBlocagesServeur(bl, remplacer) {
   if (!Array.isArray(bl) || !state || !state.user) return false;
-  if (remplacer !== true) { state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])]; return true; }
+  var avant = _signatureBlocages(state.user.blocked);
+  if (remplacer !== true) { state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])]; return _signatureBlocages(state.user.blocked) !== avant; }
   var enVol = Object.keys((typeof _ecritureBlocageEnCours !== "undefined" && _ecritureBlocageEnCours) || {});
   state.user.blocked = [...new Set([
     ...bl.filter(function (id) { return enVol.indexOf(id) < 0; }),
     ...(state.user.blocked || []).filter(function (id) { return enVol.indexOf(id) > -1 || !RE_UID_COMPTE.test(String(id)); }),
   ])];
-  return true;
+  return _signatureBlocages(state.user.blocked) !== avant;
 }
 // Une inscription locale à une activité DU SERVEUR, sans ligne en base, est une
 // désinscription faite ailleurs (ou une écriture perdue) : elle part. Les
