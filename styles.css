@@ -1481,7 +1481,25 @@
       align-items: center;
       gap: 6px;
       pointer-events: none;
-      z-index: 200;
+      /* LOT-1 (audit UX/UI du 2026-11-10, TRA-C01 : PAR-C03, IRL-C65, MSG-C85,
+         BOB-C20). La pile était à 200 : toute fenêtre (10001), conversation
+         (1200), lecteur de bobines (9999), panneau Paramètres (50000) ou feuille
+         la recouvrait, et les refus, validations et confirmations émis pendant
+         qu'elles étaient ouvertes ne se voyaient JAMAIS. Elle passe au-dessus de
+         tout ce que l'application superpose (le plus haut : la boîte des
+         @mentions, 100004). Elle reste `pointer-events: none` : elle ne vole
+         aucun toucher (un toast cliquable rétablit les siens). */
+      z-index: 100010;
+    }
+
+    /* Une superposition occupe le bas de l'écran (champ de saisie d'une
+       conversation, bouton d'une fenêtre, pied d'une fiche, commandes du
+       lecteur) : la pile se pose EN HAUT, sous la zone sûre, pour ne masquer ni
+       le champ ni le bouton principal. Sans `:has` (navigateurs anciens), la
+       pile reste en bas, et reste visible grâce au z-index ci-dessus. */
+    body:has(#conv-fullpage.active, #modalBackdrop.active, .reels-viewer.open, .event-detail-page:not([style*="none"]), .cmt-sheet-ov, .v2-sheet-backdrop.open, .v7-sheet-backdrop.open, .dev-panel.active, #storyViewer.active, #storyViewer.open) .toast-stack {
+      top: calc(env(safe-area-inset-top, 0px) + 14px);
+      bottom: auto;
     }
 
     .toast {

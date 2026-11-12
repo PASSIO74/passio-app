@@ -3343,6 +3343,9 @@ function toast(msg, type = "info", onClick = null) {
   stack.appendChild(t);
   // Les toasts cliquables restent un peu plus longtemps pour laisser le temps de cliquer.
   setTimeout(() => t.remove(), onClick ? 6000 : 3000);
+  // Rendu : l'appelant d'un toast « en cours » peut le retirer dès le verdict
+  // (LOT-1, CRE-C04 : « Publication en cours… » restait affiché à côté du refus).
+  return t;
 }
 
 // ======== RÉCOMPENSES — RETIRÉES (ADR-009) ========
@@ -10488,11 +10491,12 @@ function renderPostHTML(p) {
         <div class="post-author-meta">
           <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
-            ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">Sync…</span>' : ""}
-            ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">En ligne</span>' : ""}
-            ${p.syncStatus === "offline" ? '<span style="margin-left:8px;font-size:10px;color:#f59e0b;">Local · renvoi automatique</span>' : ""}
-            ${p.syncStatus === "refusee" ? '<span style="margin-left:8px;font-size:10px;color:#ef4444;">Non publiée</span>' : ""}
-            ${p.syncStatus === "perdue" ? '<span style="margin-left:8px;font-size:10px;color:#ef4444;">Média perdu</span>' : ""}
+            ${/* LOT-1 (CRE-C04) : 12 px et couleurs AA sur blanc (#0f5c3d 7,8:1, #7a4c05 7,3:1, #8f1d18 8,9:1) — l'ancien vert #22c55e en 10 px tombait à 2,3:1. */ ""}
+            ${p.syncStatus === "syncing" ? '<span class="post-sync" style="margin-left:8px;font-size:12px;color:var(--muted);">Envoi…</span>' : ""}
+            ${p.syncStatus === "synced" ? '<span class="post-sync" style="margin-left:8px;font-size:12px;font-weight:600;color:#0f5c3d;">En ligne</span>' : ""}
+            ${p.syncStatus === "offline" ? '<span class="post-sync" style="margin-left:8px;font-size:12px;font-weight:600;color:#7a4c05;">En attente · renvoi auto</span>' : ""}
+            ${p.syncStatus === "refusee" ? '<span class="post-sync" style="margin-left:8px;font-size:12px;font-weight:600;color:#8f1d18;">Non publiée</span>' : ""}
+            ${p.syncStatus === "perdue" ? '<span class="post-sync" style="margin-left:8px;font-size:12px;font-weight:600;color:#8f1d18;">Média perdu</span>' : ""}
           ` : ""}
         </div>
       </div>

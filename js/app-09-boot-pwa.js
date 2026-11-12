@@ -626,79 +626,34 @@ function _sendGif(gifUrl) {
     }
     _diag("_sendGif: convId=" + convId);
 
+    // Mêmes portes que le texte (`sendMessageFp`) : un visiteur est invité à créer
+    // son compte, une conversation de démonstration n'envoie rien.
+    if (window.requireAuthentication && !requireAuthentication("message")) return;
     var convs = getConversations();
     var c = convs.find(x => x.id === convId);
     if (!c) {
       _diag("_sendGif: Conversation NOT FOUND");
       return;
     }
+    if (typeof _estConvDemo === "function" && _estConvDemo(c)) { toast("Conversation de démonstration — écris à un vrai membre depuis son profil"); return; }
 
     var msgId = "msg_" + uid();
+    var contentJson = JSON.stringify({type: "gif", url: gifUrl, text: "🎬 GIF"});
     if (!c.messages) c.messages = [];
-    c.messages.push({ id: msgId, from: "me", text: "", gif: gifUrl, at: Date.now() });
+    // ⚠️ LOT-1 (audit UX/UI du 2026-11-10, MSG-C57) : le GIF partait par un INSERT
+    // à part, sans statut, dont l'échec n'était que journalisé — il restait affiché
+    // « 18:48 ✓ » alors que la base n'avait rien (mesuré, panne 500 programmée).
+    // Il passe désormais par le chemin COMMUN du texte (`_sendTextToSupa`) :
+    // « envoi… », échec visible, file hors ligne, « réessayer ». `envoi` garde le
+    // contenu exact pour qu'un renvoi reparte en GIF, pas en message vide.
+    c.messages.push({ id: msgId, from: "me", text: "", gif: gifUrl, at: Date.now(), status: "sending", de: (typeof _fileProprietaire === "function" ? _fileProprietaire() : null), envoi: contentJson });
     c.lastAt = Date.now();
-
-    _diag("_sendGif: Message créé localement - msgId=" + msgId);
     saveConversations();
 
     if (typeof renderConvFpThread === "function") renderConvFpThread(c, displayName);
     if (typeof renderMessages === "function") renderMessages();
 
-    // Sync Supabase
-    if (typeof supa === 'undefined' || !supa) {
-      _diag("_sendGif: Supabase NOT AVAILABLE");
-      return;
-    }
-    if (!MY_UID) {
-      _diag("_sendGif: MY_UID NOT SET");
-      return;
-    }
-
-    _diag("_sendGif: Sync Supabase - Envoi du GIF...");
-    _diag("_sendGif: MY_UID=" + MY_UID);
-
-    // Vérifier que MY_UID est défini
-    // Sync Supabase pour synchronisation multi-appareils
-    _diag("_sendGif: Tentative Supabase...");
-
-    // Encoder le GIF dans le content en JSON
-    var contentData = {type: "gif", url: gifUrl, text: "🎬 GIF"};
-    var contentJson = JSON.stringify(contentData);
-
-    // AVEC from_id d'abord : la RLS v2 rejette toujours l'insert sans from_id
-    // (WITH CHECK from_id = auth.uid()) — fallback sans from_id par prudence.
-    // (Aligné sur sendMessageToSupabase / sendMessageFp le 2026-06-15.)
-    supa.from("conv_messages").insert({
-      id: msgId,
-      conv_id: convId,
-      from_id: MY_UID,
-      content: _withSenderMeta(contentJson),
-      created_at: new Date().toISOString()
-    }).then(function(res) {
-      if (res.error) {
-        _diag("_sendGif: Erreur avec from_id - " + res.error.message);
-        // Fallback: essayer SANS from_id
-        _diag("_sendGif: Fallback - essai sans from_id...");
-        supa.from("conv_messages").insert({
-          id: msgId,
-          conv_id: convId,
-          content: _withSenderMeta(contentJson),
-          created_at: new Date().toISOString()
-        }).then(function(res2) {
-          if (!res2.error) {
-            _diag("_sendGif: ✅ Supabase OK (fallback sans from_id)");
-          } else {
-            _diag("_sendGif: ❌ Échec définitif - " + res2.error.message);
-          }
-        }).catch(function() {});
-      } else {
-        _diag("_sendGif: ✅ Supabase OK (avec from_id)");
-      }
-    }).catch(function(err) {
-      _diag("_sendGif: Catch - " + err.message);
-    });
-
-    _diag("_sendGif: ✅ Sauvegarde locale OK");
+    _sendTextToSupa(convId, msgId, _withSenderMeta(contentJson));
   } catch(err) {
     _diag("_sendGif: EXCEPTION - " + err.message);
     console.error("_sendGif:", err);
@@ -1497,48 +1452,19 @@ function shareLocation() {
     var c = convs.find(x => x.id === convId);
     if (!c) return;
 
+    if (typeof _estConvDemo === "function" && _estConvDemo(c)) { toast("Conversation de démonstration — écris à un vrai membre depuis son profil"); return; }
+
     var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
     var msgText = "📍 Ma position : " + url;
-    c.messages.push({id: msgId, from: "me", text: msgText, at: Date.now()});
+    var contentJson = JSON.stringify({ type: "location", lat: parseFloat(lat), lng: parseFloat(lng), url: url, text: msgText });
+    // ⚠️ LOT-1 (MSG-C57) : même chemin commun que le texte et le GIF — statut,
+    // échec visible, file hors ligne, « réessayer » (l'INSERT séparé d'avant
+    // avalait son échec, la position restait affichée comme envoyée).
+    c.messages.push({id: msgId, from: "me", text: msgText, at: Date.now(), status: "sending", de: (typeof _fileProprietaire === "function" ? _fileProprietaire() : null), envoi: contentJson});
     c.lastAt = Date.now();
 
     if(typeof saveConversations === 'function') saveConversations();
-
-    // Sync Supabase pour synchronisation multi-appareils
-    if(typeof supa !== 'undefined' && supa) {
-      // Encoder dans le content en JSON
-      var contentData = {
-        type: "location",
-        lat: parseFloat(lat),
-        lng: parseFloat(lng),
-        url: url,
-        text: msgText
-      };
-      var contentJson = JSON.stringify(contentData);
-
-      // AVEC from_id d'abord : la RLS v2 rejette TOUJOURS l'insert sans from_id
-      // (même ordre que sendMessageToSupabase — l'ancien ordre inverse échouait
-      // systématiquement au 1er essai et gaspillait une requête par position).
-      supa.from("conv_messages").insert({
-        id: msgId,
-        conv_id: convId,
-        from_id: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null,
-        content: _withSenderMeta(contentJson),
-        created_at: new Date().toISOString()
-      }).then(function(res) {
-        if(res.error) {
-          // Fallback sans from_id (par prudence, ex. RLS historique)
-          supa.from("conv_messages").insert({
-            id: msgId,
-            conv_id: convId,
-            content: _withSenderMeta(contentJson),
-            created_at: new Date().toISOString()
-          }).catch(function() {});
-        }
-      }).catch(function(err) {
-        // Continuer même en cas d'erreur
-      });
-    }
+    _sendTextToSupa(convId, msgId, _withSenderMeta(contentJson));
 
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();

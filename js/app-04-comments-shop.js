@@ -2463,22 +2463,64 @@ function deleteCommentEntry(threadId, commentId, localOnly) {
   // en place, sans reconstruire tout le fil.
   if (thread.kind === "post") { try { _patchPostCommentCount(threadId); } catch(e){} }
   _refreshCommentThreadUI(threadId);
-  if (!localOnly) {
-    _supaDeleteCommentRow(commentId);
-    toast("Commentaire supprimé");
-  }
+  if (localOnly) return;
+  // ⚠️ LOT-1 (audit UX/UI du 2026-11-10, FIL-C06) : « Commentaire supprimé »
+  // partait AVANT la réponse du serveur, qui n'était jamais lue. Un refus (RLS,
+  // panne, hors ligne) laissait la ligne en base : le commentaire « supprimé »
+  // revenait à la relecture suivante. On annonce désormais le VERDICT, et un
+  // refus remet le commentaire à sa place.
+  _supaDeleteCommentRow(commentId).then(function (v) {
+    if (v && v.ok) { toast("Commentaire supprimé"); return; }
+    if (retire) {
+      var t2 = _findCommentThread(threadId);
+      if (t2 && !t2.comments.some(function (c) { return c.id === retire.id; })) {
+        t2.comments.splice(Math.min(Math.max(idx, 0), t2.comments.length), 0, retire);
+        if (retire.fromSupabase && t2.kind === "post") {
+          var vuRet = new Set();
+          ((typeof _copiesDiscussion === "function") ? _copiesDiscussion(threadId, null) : []).forEach(function (c) {
+            if (!c || vuRet.has(c)) return; vuRet.add(c);
+            if (Number.isSafeInteger(c.commentsTotal)) c.commentsTotal++;
+          });
+        }
+        if (typeof t2.save === "function") t2.save();
+        if (t2.kind === "post") { try { _patchPostCommentCount(threadId); } catch (e) {} }
+        _refreshCommentThreadUI(threadId);
+      }
+    }
+    toast(v && v.reseau ? "Hors connexion : commentaire non supprimé. Réessaie une fois en ligne."
+                        : "Le commentaire n'a pas pu être supprimé. Réessaie.", "error");
+  });
 }
+// Rend le verdict de la suppression : { ok: true } (supprimé, ou rien à
+// supprimer côté serveur : commentaire local, visiteur, démonstration),
+// { ok: false, reseau } sinon. Une suppression qui ne touche AUCUNE ligne alors
+// que la ligne existe encore est un refus (RLS) : le SDK ne lève pas dessus.
 async function _supaDeleteCommentRow(commentId) {
   try {
-    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return { ok: true, local: true };
     var table = null;
     if (/^ec_/.test(commentId)) table = "event_comments";
     else if (/^lc_/.test(commentId)) table = "cdv_live_comments";
     else table = "post_comments"; // c_… et autres
-    await supa.from(table).delete().eq("id", commentId);
+    var r = await supa.from(table).delete().eq("id", commentId).select("id");
+    if (r && r.error) {
+      if (typeof diagLog === "function") diagLog("cmt_suppression: " + (r.error.message || r.error.code));
+      return { ok: false, reseau: typeof estEchecReseau === "function" && estEchecReseau(r.error) };
+    }
+    if (!r || !Array.isArray(r.data) || !r.data.length) {
+      // Zéro ligne : déjà partie (succès) ou refusée (la ligne est toujours là).
+      var reste = await supa.from(table).select("id").eq("id", commentId).limit(1);
+      if (reste && !reste.error && Array.isArray(reste.data) && reste.data.length) {
+        if (typeof diagLog === "function") diagLog("cmt_suppression: 0 ligne, refus");
+        return { ok: false, reseau: false };
+      }
+    }
     // Nettoie aussi les interactions liées (best-effort, RLS owner).
     try { await supa.from("comment_interactions").delete().eq("comment_id", commentId); } catch(e) {}
-  } catch(e) {}
+    return { ok: true };
+  } catch(e) {
+    return { ok: false, reseau: typeof estEchecReseau === "function" ? estEchecReseau(e) : true };
+  }
 }
 
 // Suis-je le propriétaire du fil (auteur du post / organisateur événement /
@@ -7573,7 +7615,9 @@ function _retryMsg(convId, msgId) {
   _setMsgStatus(convId, msgId, "sending");
   // Reconstruit depuis le texte : l'auteur est `m.de`, celui inscrit à
   // l'écriture — et il vient d'être confronté au compte courant ci-dessus.
-  _sendTextToSupa(convId, msgId, _withSenderMeta(m.text || ""), m.de);
+  // `envoi` : le contenu exact d'un GIF ou d'une position (LOT-1, MSG-C57) — sans
+  // lui, un renvoi les reconstruirait en simple texte.
+  _sendTextToSupa(convId, msgId, _withSenderMeta(m.envoi || m.text || ""), m.de);
 }
 
 // Vide la file d'attente (à la reconnexion ou au boot).
