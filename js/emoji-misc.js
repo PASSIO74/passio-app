@@ -222,6 +222,10 @@ window.toggleEmojiPanel = function() {
   var p = document.getElementById("convEmojiPanel");
   if(!p) return;
   p.classList.toggle("open");
+  // Une grille d'emojis restée vide (jamais remplie au chargement) se remplit à
+  // l'ouverture : le panneau ne s'ouvre jamais sur rien (2026-11-12, ⑤ bis).
+  var grilleEmojis = document.getElementById("emojiGrid");
+  if (p.classList.contains("open") && grilleEmojis && !grilleEmojis.children.length && typeof _populateEmojiGrid === "function") _populateEmojiGrid();
   // Remplissage (lazy) de la grille GIF à la première ouverture — via l'API si clé.
   if (p.classList.contains("open") && !p._gifFilled) {
     p._gifFilled = true;
@@ -245,23 +249,26 @@ window.switchEmojiTab = function(t,b) {
   }
 };
 
-// Populate emoji grid - TRÈS COMPACT
-var emojiList = "😀😁😂🤣😃😄😅😆😉😊😇🥰😍😘😗😚😙🥲😋😛😜🤪😌😔😑😐😶😏😒🙄😬🤐😷🤒🤕🤮🤧🤥🤓😎😕😟🙁☹️😮😯😲😳😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠️💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾🙈🙉🙊❤️🧡💛💚💙💜🖤🤍🤎💔💕💞💓💗💖💘💝💟👋🤚🖐️✋🖖👌🤌🤏✌️🤞🫰🤟🤘🤙👍👎✊👊🤛🤜👏🙌👐🤲🤝🎉🎊🎈🎁🔥💯✨⭐🌟👀🎯🎭🎨🎬🎤🎧🎼🎹🥁🎷🎺🎸🎻🌈☀️🌙⭐✨💫🌟🎊🎉";
-var grid = document.getElementById("emojiGrid");
-if(grid) {
-  grid.style.gap = "0px";
-  grid.style.gridTemplateColumns = "repeat(12,1fr)";
-  for(var i=0; i < emojiList.length; i++) {
-    var d = document.createElement("div");
-    d.textContent = emojiList[i];
-    d.style.cssText = "font-size:12px;padding:0px;cursor:pointer;text-align:center;line-height:1;";
-    d.onclick = function(e) {
-      if(window.insertEmoji) window.insertEmoji(e.target.textContent);
-      window.toggleEmojiPanel();
-    };
-    grid.appendChild(d);
+// Grille des emojis : sa mise en forme TRÈS COMPACTE (12 colonnes serrées). Son contenu
+// est posé par `_populateEmojiGrid` (app-09), qui la vide puis la remplit.
+// ⚠️ `#emojiGrid` EST À LA FIN DE LA PAGE, APRÈS LE CHARGEUR DU BLOC APP (2026-11-12). Ce
+// fichier ferme le 9ᵉ script, qui peut tourner AVANT que le parseur l'atteigne : sortis du
+// cache sur un réseau lent, les 9 scripts n'attendent pas la page (mesuré en production,
+// 5 ouvertures sur 5 à 1,6 Mbit/s). Ce bloc ne trouvait alors pas la grille : panneau des
+// emojis VIDE pour la session, ou sur 8 colonnes au lieu de 12. Sans grille, on attend la
+// fin du parsing. Il y ajoutait aussi sa propre liste, découpée par unité UTF-16 (des
+// moitiés d'emojis), que `_populateEmojiGrid` remplaçait 100 ms plus tard : retirée.
+// Verrou : tests/e2e/app-scripts-par-fichier.spec.js ⑤ bis.
+(function () {
+  function compacter() {
+    var grille = document.getElementById("emojiGrid");
+    if (!grille) return false;
+    grille.style.gap = "0px";
+    grille.style.gridTemplateColumns = "repeat(12,1fr)";
+    return true;
   }
-}
+  if (!compacter()) document.addEventListener("DOMContentLoaded", compacter, { once: true });
+})();
 
 // Grille GIF du panneau emoji — remplie en LAZY à la première ouverture
 // (toggleEmojiPanel) via passioFetchGifs : API si clé, sinon liste locale.

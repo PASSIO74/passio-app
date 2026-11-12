@@ -555,7 +555,7 @@ function _onEmojiSearch(query) {
 // Populate emoji grid
 function _populateEmojiGrid() {
   var grid = document.getElementById("emojiGrid");
-  if (!grid) return; // panel pas encore ouvert — appelé de nouveau à l'ouverture
+  if (!grid) return; // grille pas encore lue — rappelée à la fin du parsing, et à l'ouverture (toggleEmojiPanel)
 
   grid.innerHTML = "";
 
@@ -577,9 +577,16 @@ function _populateEmojiGrid() {
   });
 }
 
-// Call on page load - avec délai pour garantir que le DOM est chargé
+// Remplissage au chargement.
+// ⚠️ LE DÉLAI NE GARANTISSAIT PAS « QUE LE DOM EST CHARGÉ » (2026-11-12). `#emojiGrid` est
+// à la fin de la page, après le chargeur du bloc app, et ce script peut tourner avant que le
+// parseur l'atteigne : scripts sortis du cache, page qui arrive lentement — mesuré en
+// production, le panneau des emojis restait VIDE pour la session. Sans grille au bout des
+// 100 ms, on attend la fin du parsing ; l'ouverture du panneau remplit aussi une grille
+// restée vide (toggleEmojiPanel, emoji-misc.js). Verrou : app-scripts-par-fichier.spec.js ⑤ bis.
 setTimeout(function() {
-  _populateEmojiGrid();
+  if (document.getElementById("emojiGrid")) _populateEmojiGrid();
+  else document.addEventListener("DOMContentLoaded", _populateEmojiGrid, { once: true });
 }, 100);
 
 // Insert emoji into message input
