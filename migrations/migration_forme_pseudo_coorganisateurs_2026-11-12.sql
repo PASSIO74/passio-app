@@ -137,8 +137,8 @@ union all select 5, true, 'co-organisateurs : pseudo, majuscules et nombre refus
   case when j ->> 'co_pseudo' = '23514' and j ->> 'co_majuscules' = '23514' and j ->> 'co_nombre' = '23514'
        then 'OK' else 'ECHEC — ' || j::text end from v
 union all select 6, true, 'au plus 20 co-organisateurs',
-  (select case when not public.jsonb_tableau_uuid((select jsonb_agg('3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a') from generate_series(1, 21)), 20)
-                and public.jsonb_tableau_uuid((select jsonb_agg('3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a') from generate_series(1, 20)), 20)
+  (select case when not public.jsonb_tableau_uuid((select jsonb_agg('3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a'::text) from generate_series(1, 21)), 20)
+                and public.jsonb_tableau_uuid((select jsonb_agg('3e7d1c9a-5b2f-4a8e-9c6d-0f1e2d3c4b5a'::text) from generate_series(1, 20)), 20)
                then 'OK' else 'ECHEC' end)
 union all select 7, true, 'les deux contraintes sont VALIDÉES sur les lignes existantes',
   (select case when count(*) filter (where convalidated) = 2 then 'OK' else 'ECHEC' end
