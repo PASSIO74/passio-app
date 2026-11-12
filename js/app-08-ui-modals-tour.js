@@ -3689,16 +3689,10 @@ function _conflitClePrimaireProfiles(e) {
 // ligne existante n'est jamais réécrite, donc un compte PRIVÉ ne redevient jamais
 // public tout seul. Et un `isPrivate === true` local reste respecté.
 //
-// ⚠️ NE JAMAIS écrire `is_private: !!g.isPrivate` ici : `undefined` y devient
-// `false` en silence, donc « je ne sais pas » deviendrait « public ».
-//
-// Ce que l'application sait réellement, vérifié sur tout le dépôt : `general`
-// vaut `{}` par défaut (`isPrivate` est donc `undefined`, jamais `false`), et
-// il n'existe qu'UNE seule assignation, dans `saveMainProfile`. Un `false` n'y
-// prouve rien — la case peut simplement avoir été décochée pendant qu'on
-// enregistrait sa bio. D'où le marqueur `privacyChoisi`, posé par
-// `saveMainProfile` UNIQUEMENT quand la personne agit sur le contrôle : elle
-// coche la case, ou elle décoche une case qui était cochée.
+// Depuis le 12/11, « je ne sais pas » vaut public À LA CRÉATION de la ligne, et
+// seulement là. Seul un `isPrivate === true` local la fait naître privée : le
+// marqueur `privacyChoisi` (posé par `saveMainProfile` quand la personne agit sur
+// la case) n'est plus lu ici — un choix public n'a plus rien à prouver.
 function _confidentialiteDeLaLigneMinimale(g) {
   if (g && typeof g === "object" && g.isPrivate === true) return true;  // privé : le choix se prouve lui-même
   return false;                                        // aucun choix privé exprimé → public (STAB-04)
