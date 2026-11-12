@@ -16,7 +16,7 @@
 //
 // Aucune écriture Supabase : les fonctions de sync sont neutralisées après boot.
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes, lireAction } = require("./app-helper");
 
 // Neutralise, POUR CETTE SUITE SEULEMENT, l'optimisation de peinture
 // `.post { content-visibility: auto; contain-intrinsic-size: auto 320px }`
@@ -409,13 +409,12 @@ test.describe("Interactions — like d'un post", () => {
 
     const before = await page.evaluate((i) => findPostAnywhere(i).likes || 0, id);
     await btn.click();
-    await expect(btn).toHaveText(new RegExp(`❤️\\s*${before + 1}`));
+    await expect.poll(() => lireAction(btn)).toMatch(new RegExp(`❤️\\s*${before + 1}`));
     expect(await page.evaluate((i) => state.user.likedPosts.includes(i), id)).toBe(true);
 
     // Le compteur survit à un re-rendu complet du fil.
     await page.evaluate(() => { window._feedDomSig = null; renderFeed(); });
-    await expect(page.locator(`[data-postid="${id}"] [data-action="like"]`))
-      .toHaveText(new RegExp(`❤️\\s*${before + 1}`));
+    await expect.poll(() => lireAction(page.locator(`[data-postid="${id}"] [data-action="like"]`))).toMatch(new RegExp(`❤️\\s*${before + 1}`));
   });
 
   test("écriture serveur refusée : le ❤️ optimiste est ANNULÉ (bouton + état)", async ({ page }) => {
@@ -424,9 +423,9 @@ test.describe("Interactions — like d'un post", () => {
     const btn = page.locator(`[data-postid="${id}"] [data-action="like"]`);
 
     await btn.click();
-    await expect(btn).toHaveText(/❤️\s*5/);   // optimiste : immédiat, sans attendre le réseau
+    await expect.poll(() => lireAction(btn)).toMatch(/❤️\s*5/);   // optimiste : immédiat, sans attendre le réseau
     await page.evaluate(() => window.__releaseWrite());
-    await expect(btn).toHaveText(/🤍\s*4/);   // puis annulé quand le serveur refuse
+    await expect.poll(() => lireAction(btn)).toMatch(/🤍\s*4/);   // puis annulé quand le serveur refuse
     expect(await page.evaluate(() => state.user.likedPosts.includes("p_srv_test"))).toBe(false);
     expect(await page.evaluate(() => findPostAnywhere("p_srv_test").likes)).toBe(4);
     expect(await page.evaluate(() => findPostAnywhere("p_srv_test").liked)).toBe(false);
@@ -439,13 +438,13 @@ test.describe("Interactions — like d'un post", () => {
     await bootInteractions(page);
     const id = await seedServerPostStable(page, { writeResult: { ok: false, error: { message: "réseau" } }, manual: true });
     await page.locator(`[data-postid="${id}"] [data-action="like"]`).click();
-    await expect(page.locator(`[data-postid="${id}"] [data-action="like"]`)).toHaveText(/❤️\s*5/);
+    await expect.poll(() => lireAction(page.locator(`[data-postid="${id}"] [data-action="like"]`))).toMatch(/❤️\s*5/);
 
     // Reconstruction complète du fil pendant que l'écriture est en vol : le bouton
     // cliqué est détaché, seul un nœud retrouvé APRÈS coup peut encore être vu.
     await page.evaluate(() => { window._feedDomSig = null; renderFeed(); });
     await page.evaluate(() => window.__releaseWrite());
-    await expect(page.locator(`[data-postid="${id}"] [data-action="like"]`)).toHaveText(/🤍\s*4/);
+    await expect.poll(() => lireAction(page.locator(`[data-postid="${id}"] [data-action="like"]`))).toMatch(/🤍\s*4/);
   });
 
   test("l'écriture serveur reçoit l'INTENTION de l'utilisateur, jamais son inverse", async ({ page }) => {
@@ -501,7 +500,7 @@ test.describe("Interactions — like d'un post", () => {
     const btn = page.locator(`[data-postid="${id}"] [data-action="like"]`);
 
     await btn.click();
-    await expect(btn).toHaveText(/❤️\s*5/);
+    await expect.poll(() => lireAction(btn)).toMatch(/❤️\s*5/);
     // Lève le verrou anti-double-clic explicitement : l'attendre en temps réel
     // (800 ms) rend le test instable dès que la machine est chargée, et ce n'est
     // pas le verrou qu'on teste ici mais le SENS de l'écriture.
@@ -511,7 +510,7 @@ test.describe("Interactions — like d'un post", () => {
     // part sur un nœud en train d'être détaché (« element is not stable »).
     await attendreFilStable(page, id);
     await btn.click();
-    await expect(btn).toHaveText(/🤍\s*4/);
+    await expect.poll(() => lireAction(btn)).toMatch(/🤍\s*4/);
     expect(await page.evaluate(() => window.__likeCalls)).toEqual([
       { postId: id, want: true }, { postId: id, want: false },
     ]);
@@ -540,7 +539,7 @@ test.describe("Interactions — like d'un post", () => {
       };
     });
     await page.locator(`[data-postid="${id}"] [data-action="like"]`).click();
-    await expect(page.locator(`[data-postid="${id}"] [data-action="like"]`)).toHaveText(/❤️/);
+    await expect.poll(() => lireAction(page.locator(`[data-postid="${id}"] [data-action="like"]`))).toMatch(/❤️/);
     expect(await page.evaluate(() => window.__likeCalls)).toEqual([]);
   });
 

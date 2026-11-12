@@ -12584,3 +12584,26 @@ button, a, label, select, summary,
 .notif-perm-granted { color: #0f5c3d; }
 .notif-perm-denied { color: #9a3412; }
 .notif-perm-absent { color: var(--muted); }
+/* LOT-8 (audit UX/UI du 2026-11-10, FIL-C02) : la barre d'actions d'une
+   publication — icônes SVG, nombres lisibles à l'encre, cœur plein violet
+   quand on aime. */
+.post-action .pa-ico { width: 19px; height: 19px; display: block; flex: 0 0 auto; }
+.post-action .pa-n { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.post-action.liked { color: var(--accent); }
+.post-action.liked .pa-n { color: var(--accent); }
+
+/* LOT-8 (SOC-C01) : 44 px de cible pour les commandes fréquentes qui n'en
+   avaient pas. Les commandes de TEXTE grandissent ; les ICÔNES gardent leur
+   taille visible et reçoivent une zone par pseudo-élément. */
+.app-topbar .topbar-left { min-height: 44px; }
+.onb-auth-tab { min-height: 44px; }
+#settingsLogout { min-height: 44px; font-size: 13px !important; }
+.main-profile-stat { min-height: 44px; }
+.explorer-hero #explorerSearch { min-height: 44px; }
+.explorer-hero button[onclick="filterExplore()"] { min-height: 44px; min-width: 44px; }
+#postMoodRow .pill { min-height: 44px; }
+#visitedProfileActions .btn { min-height: 44px; }
+.profile-dots-btn::after { content: ""; position: absolute; inset: -5px; min-width: 44px; min-height: 44px; }
+.cmt-react-chip { position: relative; }
+.cmt-react-chip::after { content: ""; position: absolute; left: -4px; right: -4px; top: 50%; height: 44px; transform: translateY(-50%); }
+.profile-dots-btn:not(.on-cover) { position: relative; }

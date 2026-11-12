@@ -1041,7 +1041,7 @@ function _patchPostCommentCount(postId) {
   if (!post) return;
   var n = (typeof nbCommentairesPost === "function") ? nbCommentairesPost(post) : (post.comments || []).length;
   document.querySelectorAll('[data-cmtcount="' + postId + '"]').forEach(function (el) {
-    el.innerHTML = "💬 " + n;
+    peindreCommentairesPost(el, n);
   });
 }
 // Patch EN PLACE le bouton like d'un commentaire/réponse (holder [data-cmtlike]).
@@ -6389,6 +6389,30 @@ function _convMessageEntrant(c, displayName) {
 
 // Scroll infini : charge une page de messages plus anciens quand on approche du
 // haut du fil, en préservant la position visuelle.
+// LOT-8 (audit UX/UI du 2026-11-10, SOC-C02) — LE PANNEAU FERMÉ EST INERTE.
+// Hors champ (x = 390), le panneau de conversation restait atteignable au clavier
+// et exposé aux lecteurs d'écran : huit commandes invisibles (Retour, Pièce
+// jointe, Emoji, champ, Envoyer…). `inert` + `aria-hidden` suivent la classe
+// `active`, quel que soit le chemin qui l'ouvre ou la ferme (trois fermetures
+// distinctes) : l'observateur ne dépend d'aucun d'eux. L'ouverture injecte le
+// contenu AVANT `.active` (règle « contenu avant révélation ») ; l'inertie tombe
+// au même instant.
+(function _brancherInertieConv() {
+  function synchroniser(fp) {
+    var ouvert = fp.classList.contains("active");
+    if (ouvert) { fp.removeAttribute("inert"); fp.removeAttribute("aria-hidden"); }
+    else { fp.setAttribute("inert", ""); fp.setAttribute("aria-hidden", "true"); }
+  }
+  function brancher() {
+    var fp = document.getElementById("conv-fullpage");
+    if (!fp || fp._inertieBranchee) return;
+    fp._inertieBranchee = true;
+    synchroniser(fp);
+    try { new MutationObserver(function () { synchroniser(fp); }).observe(fp, { attributes: true, attributeFilter: ["class"] }); } catch (e) {}
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
+})();
+
 function _wireConvScroll(thread, convId) {
   if (!thread) return;
   thread._curConvId = convId;
