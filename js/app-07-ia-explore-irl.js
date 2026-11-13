@@ -2927,9 +2927,18 @@ function _sortIrlEvents(list) {
 
 // Distance en km entre un événement et le point de référence, ou null si le lieu
 // n'est pas géolocalisable.
+// LOT-45 (audit UX/UI du 2026-11-10, IRL-C02) : sans position obtenue ni ville
+// choisie, la référence est le repli Paris — et l'écran affichait « Lyon ·
+// environ 391 km », « Paris · environ 0 m » comme des distances réelles. Une
+// distance n'est AFFICHÉE que s'il existe une référence réelle ; le tri et le
+// filtre, qui passent leur référence explicitement, ne changent pas.
+function _irlAReferenceReelle() {
+  return !!(irlSelectedCity || (irlUserLocation && !(typeof irlUserLocationError !== "undefined" && irlUserLocationError)));
+}
 function _eventDistanceKm(ev, ref) {
   var loc = eventLatLng(ev);
   if (!loc) return null;
+  if (!ref && !_irlAReferenceReelle()) return null;
   var r = ref || _irlReferenceLoc();
   return calculateDistance(r.lat, r.lng, loc[0], loc[1]);
 }
@@ -3175,7 +3184,7 @@ function _peindreInvitationVille(list) {
     var ancien = document.getElementById("irlVilleInvite");
     if (ancien) ancien.remove();
     // Le repli Paris d'un refus n'est pas une référence (IRL-C04).
-    var aReference = !!(irlSelectedCity || (irlUserLocation && !irlUserLocationError));
+    var aReference = _irlAReferenceReelle();
     if (aReference || irlShowPast) return;
     var b = document.createElement("button");
     b.type = "button";
@@ -3295,7 +3304,7 @@ function renderIRL() {
     // ⚠️ Le « · » de séparation est ajouté ICI et NULLE PART AILLEURS (le bug
     // historique « Lyon · · Café des Arts » venait d'un `· ` déjà collé au venue).
     const venueStr = e.venue ? " · " + escapeHtml(e.venue) : "";
-    const distKm = _eventDistanceKm(e, _ref);
+    const distKm = _irlAReferenceReelle() ? _eventDistanceKm(e, _ref) : null; // LOT-45 (IRL-C02)
     const distStr = distKm != null && distKm < 20000 ? " · " + _fmtDistance(distKm) : "";
     const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(fmtEventPrice(e.price))}</span>` : "";
     const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(e.eventType)}</span>` : "";
