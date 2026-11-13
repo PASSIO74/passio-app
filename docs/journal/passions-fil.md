@@ -1063,3 +1063,15 @@ production. **Éprouvé par RÉINJECTION de sept mutations**, chacune rouge : ve
 rouges), genre `panne` jamais choisi (4), toute erreur prise pour une panne (②), mémoire ignorée (③),
 « Réessayer » sans lecture (①②②bis), changement de verdict sans repeint du séparateur (4), succès sans
 verdict (② bis).
+
+## 💬 APERÇUS DU FIL : LES RÉPONSES, LES « J'AIME » ET LE PSEUDO D'UN COMMENTAIRE (2026-11-13)
+
+Retour de Benjamin, deux captures de la même publication : sur la carte du fil, le commentaire s'affichait sous le pseudo « ? », sans réponse, bulle à « 1 » ; sur la page de la publication, « ROMAIN cavagnoud », quatre réponses, sept « j'aime ». Il fallait ouvrir la publication pour voir qu'on avait répondu.
+
+- **Cause ①** : `fil_compteurs` rend le TEXTE des deux aperçus, pas leurs interactions ; seule l'ouverture de la discussion les lisait (`hydrateCommentInteractions`). `supaLoadPosts` (app-08) lit maintenant `comment_interactions` pour les aperçus PEINTS (`FIL_APERCUS_PEINTS` = 2 par publication, 40 identifiants au plus par page), en parallèle des profils. La carte montre « ▼ N réponses », le vrai compte de « j'aime », et la bulle compte les réponses comme la page.
+- **Cause ②** : la carte lisait le pseudo dans le seul cache local (`userById`), alors que le commentaire porte `authorName`. `renderPostHTML` (app-02) le préfère, comme `_renderCommentsList`.
+- **Piège** : l'objet commentaire est REFAIT à chaque tour du filet. Une lecture en échec, ou sans ligne pour un aperçu, reporte les interactions de la copie précédente (même règle que l'hydratation, qui ne touche pas un commentaire sans ligne) — sinon une réponse encore en file disparaissait de la carte toutes les 60 s.
+- **Coût** : une lecture de plus par page de fil. Les suites qui comptent les lectures le disent (`capacite-fil-compteurs`, `retrait-interactions-direct` ②, qui ne compte plus que les lectures d'identifiants).
+- **Même jour, suite** (« fais comme Facebook et Instagram ») : « ▼ N réponses » déplie les réponses SOUS le commentaire, dans la carte, sans ouvrir la discussion (`_apercuReponsesHtml`, app-04). Le rendu d’une ligne est UNE fonction partagée avec la discussion (`_reponseLigneHtml`). Une réponse écrite depuis la carte y apparaît aussitôt : `_refreshCommentThreadUINow` repeint en place le lien et le bloc de chaque copie de l’aperçu (`_rafraichirApercusCarte`). La carte liste `_reponsesComptees` — les réactions emoji y comptent depuis toujours (verrou `reactions-commentaire-bloque`), elles s’y montrent donc aussi en ligne, comme dans le panneau des bobines.
+- Verrou : `capacite-fil-compteurs.spec.js` « carte du fil : « ▼ N réponses » déplie les réponses sur place… ».
+- Verrou : `capacite-fil-compteurs.spec.js` « aperçus du fil : les réponses et les « j'aime »… ».

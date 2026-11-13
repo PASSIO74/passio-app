@@ -907,56 +907,106 @@ function _renderCommentsList(allComments, postId) {
           <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(c.id)}">${cReactChip}</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${escapeJsArg(c.id)}', event);">${cRepOpen ? "▲ Masquer les réponses" : ("⌵ Voir " + cReplies.length + " réponse" + (cReplies.length > 1 ? "s" : ""))}</span>` : ""}
         </div>
-        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${escapeHtml(c.id)}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => {
-          const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-          const rSrc = r.authorId === "me" ? "me" : "seed";
-
-          // Si c'est une réaction emoji, afficher différemment
-          // ⚠️ r.text est ÉCHAPPÉ : le payload de comment_interactions est librement
-          // insérable par tout compte authentifié (RLS insert user_id only) → un
-          // payload HTML brut serait un XSS stocké rendu chez tous les lecteurs.
-          if (r.type === "emoji_reaction") {
-            const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-            return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
-              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${escapeHtml(r.text || "")}</span></div>
-            </div>`;
-          }
-
-          // Si c'est une réaction GIF — n'affiche une image QUE si le texte est une
-          // vraie URL média (sinon texte échappé), même raison anti-XSS que ci-dessus.
-          if (r.type === "gif_reaction") {
-            const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-            const _gifHtml = _looksLikeMediaUrl(r.text)
-              ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
-              : `<span style="font-size:14px;">${escapeHtml(r.text || "")}</span>`;
-            return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span><br/>
-              ${_gifHtml}</div>
-            </div>`;
-          }
-
-          // Réponse normale — avec sa propre action « réagir » + pastille de réactions
-          const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-          const rReactChip = _cmtReactChipHtml(postId, r);
-          const rLiked = (r.likedBy || []).some(x => _selfIds.indexOf(x) > -1);
-          const rLikes = r.likes || 0;
-          return `<div class="comment-reply" data-replyid="${escapeHtml(r.id)}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-            <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAvT)}</div>
-            <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
-            <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
-              <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, r) : ""}</span>
-              <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(r.id)}" style="font-size:12px;" onclick="return likeCommentNode('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
-              <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="Réagir">😊</span>
-              <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(r.id)}">${rReactChip}</span>
-            </div></div>
-          </div>`;
-        }).join("")}</div>` : ""}
+        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${escapeHtml(c.id)}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => _reponseLigneHtml(postId, r, _selfIds)).join("")}</div>` : ""}
       </div>
     </div>`;
   }).join("") + _olderBtn;
   return _sortBar + _listHtml;
+}
+
+// Une ligne de réponse sous un commentaire : réponse texte, GIF, ou réaction
+// emoji. UNE seule écriture, pour la discussion (`_renderCommentsList`) et pour
+// les réponses dépliées sous un aperçu de la carte du fil (`renderPostHTML`,
+// app-02, 2026-11-13 : « fais comme Facebook et Instagram »).
+function _reponseLigneHtml(postId, r, _selfIds) {
+  const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+  const rSrc = r.authorId === "me" ? "me" : "seed";
+
+  // Si c'est une réaction emoji, afficher différemment
+  // ⚠️ r.text est ÉCHAPPÉ : le payload de comment_interactions est librement
+  // insérable par tout compte authentifié (RLS insert user_id only) → un
+  // payload HTML brut serait un XSS stocké rendu chez tous les lecteurs.
+  if (r.type === "emoji_reaction") {
+    const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+    return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
+      <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
+      <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${escapeHtml(r.text || "")}</span></div>
+    </div>`;
+  }
+
+  // Si c'est une réaction GIF — n'affiche une image QUE si le texte est une
+  // vraie URL média (sinon texte échappé), même raison anti-XSS que ci-dessus.
+  if (r.type === "gif_reaction") {
+    const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+    const _gifHtml = _looksLikeMediaUrl(r.text)
+      ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
+      : `<span style="font-size:14px;">${escapeHtml(r.text || "")}</span>`;
+    return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+      <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
+      <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span><br/>
+      ${_gifHtml}</div>
+    </div>`;
+  }
+
+  // Réponse normale — avec sa propre action « réagir » + pastille de réactions
+  const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+  const rReactChip = _cmtReactChipHtml(postId, r);
+  const rLiked = (r.likedBy || []).some(x => _selfIds.indexOf(x) > -1);
+  const rLikes = r.likes || 0;
+  return `<div class="comment-reply" data-replyid="${escapeHtml(r.id)}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+    <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAvT)}</div>
+    <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
+    <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
+      <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, r) : ""}</span>
+      <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(r.id)}" style="font-size:12px;" onclick="return likeCommentNode('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
+      <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="Réagir">😊</span>
+      <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(r.id)}">${rReactChip}</span>
+    </div></div>
+  </div>`;
+}
+
+// Réponses d'un APERÇU de la carte du fil, dépliables sur place (façon Facebook /
+// Instagram, 2026-11-13) : le lien « ▼ N réponses » et le bloc des réponses,
+// replié par défaut, ouvert si `_repliesExpanded` le dit (l'état survit aux
+// re-rendus, comme dans la discussion). La liste est `_reponsesComptees` : la
+// carte compte les réactions emoji avec les réponses depuis toujours, elle les
+// montre donc aussi, en ligne — le compte du lien et les lignes dépliées disent
+// la même chose.
+function _apercuReponsesHtml(postId, c, selfIds) {
+  var reps = (typeof _reponsesComptees === "function") ? _reponsesComptees(c && c.replies) : ((c && c.replies) || []);
+  reps = reps.filter(Boolean);
+  if (!c || !reps.length) return { lien: "", bloc: "" };
+  var ouvert = !!(window._repliesExpanded && window._repliesExpanded[c.id]);
+  var lien = '<span class="comment-reply-count" data-apercu-lien="' + escapeHtml(c.id) + '" role="button" aria-expanded="' + (ouvert ? "true" : "false") + '"'
+    + ' onclick="return toggleCommentReplies(\'' + escapeJsArg(c.id) + '\', event);">'
+    + (ouvert ? "▲ Masquer les réponses" : _libelleApercuReponses(reps.length)) + '</span>';
+  var bloc = '<div class="comment-replies" data-apercu-reps="' + escapeHtml(c.id) + '" id="replies-' + escapeHtml(c.id) + '" style="display:' + (ouvert ? "block" : "none") + ';">'
+    + reps.map(function (r) { return _reponseLigneHtml(postId, r, selfIds || []); }).join("") + '</div>';
+  return { lien: lien, bloc: bloc };
+}
+function _libelleApercuReponses(n) { return "▼ " + n + " réponse" + (n > 1 ? "s" : ""); }
+// Une réponse ajoutée (ou confirmée, retirée) se voit aussi sous l'aperçu de la
+// carte : on repeint en place le lien et le bloc de chaque copie de l'aperçu.
+function _rafraichirApercusCarte(threadId, comments) {
+  var selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, state.user && state.user.id, "me"].filter(Boolean);
+  var cartes = document.querySelectorAll('.post[data-postid="' + CSS.escape(threadId) + '"]');
+  Array.prototype.forEach.call(cartes, function (carte) {
+    Array.prototype.forEach.call(carte.querySelectorAll(".comment[data-commentid]"), function (el) {
+      var c = (comments || []).find(function (x) { return x && x.id === el.getAttribute("data-commentid"); });
+      if (!c) return;
+      var parts = _apercuReponsesHtml(threadId, c, selfIds);
+      var actions = el.querySelector(".comment-actions");
+      var vieuxLien = el.querySelector(".comment-reply-count"), vieuxBloc = el.querySelector(".comment-replies");
+      if (vieuxLien) vieuxLien.remove();
+      if (vieuxBloc) vieuxBloc.remove();
+      if (parts.lien && actions) actions.insertAdjacentHTML("beforeend", parts.lien);
+      if (parts.bloc) {
+        // Sous le champ de réponse s'il est ouvert, sinon sous les actions.
+        var apres = el.querySelector(".comment-reply-input") || actions;
+        if (apres) apres.insertAdjacentHTML("afterend", parts.bloc);
+      }
+    });
+  });
 }
 
 // Déplie tous les commentaires d'un fil (retire le cap de pagination) puis re-rend.
@@ -2529,6 +2579,10 @@ function _refreshCommentThreadUINow(threadId) {
   try {
     if (window.currentReelCommentPostId === threadId && typeof loadReelComments === "function") loadReelComments(threadId);
   } catch(e) {}
+  // Aperçus de la carte du fil : réponses dépliées sur place (2026-11-13).
+  if (thread.kind === "post") {
+    try { _rafraichirApercusCarte(threadId, thread.comments); } catch(e) { try { diagLog("apercus_carte : " + (e && e.message)); } catch (_e) {} }
+  }
   // Feuille générique inline (carte CDV/fil sans ouvrir le détail).
   try {
     var sheet = document.getElementById("cmtThreadList");
