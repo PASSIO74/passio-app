@@ -1732,21 +1732,16 @@
 <!-- ════════════════════════════════════════════════════════════ -->
 <div id="convEmojiPanel">
   <!-- BARRE SUPÉRIEURE: Onglets Emoji/GIF + Recherche -->
-  <div id="emojiTopBar" style="display:flex;border-bottom:1px solid var(--border);background:var(--bg-soft);flex-shrink:0;padding:8px;gap:8px;align-items:center;">
-    <button onclick="switchEmojiTab('emoji',this)" style="flex:1;padding:10px;border:none;background:#7c3aed;color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">Emoji</button>
-    <button onclick="switchEmojiTab('gif',this)" style="flex:1;padding:10px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">GIF</button>
+  <div id="emojiTopBar" role="tablist" aria-label="Emoji ou GIF" style="display:flex;border-bottom:1px solid var(--border);background:var(--bg-soft);flex-shrink:0;padding:8px;gap:8px;align-items:center;">
+    <button type="button" role="tab" aria-selected="true" class="emoji-onglet actif" onclick="switchEmojiTab('emoji',this)">Emoji</button>
+    <button type="button" role="tab" aria-selected="false" class="emoji-onglet" onclick="switchEmojiTab('gif',this)">GIF</button>
   </div>
 
   <!-- TAB EMOJI AVEC CATÉGORIES -->
   <div id="emojiTabContent" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
     <!-- Barre de recherche -->
     <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
-      <input type="text" id="emojiSearchInput" placeholder="Chercher…" oninput="window._onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:16px;box-sizing:border-box;">
-    </div>
-
-    <!-- Catégories d'emojis (icônes en haut) -->
-    <div id="emojiCategoriesBar" style="display:flex;gap:0;padding:8px;border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0;">
-      <!-- Les catégories seront ajoutées par JS -->
+      <input type="text" id="emojiSearchInput" placeholder="Chercher un emoji…" aria-label="Chercher un emoji" oninput="window._onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:16px;box-sizing:border-box;">
     </div>
 
     <!-- Grille d'emojis -->
