@@ -10914,7 +10914,7 @@ function renderPostHTML(p) {
       <div class="post-author" role="button" tabindex="0" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
-          <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}
+          <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}${p.editedAt ? ' · <span class="post-modifie">modifié</span>' : ""}
           ${p._source === "me" && p.syncStatus ? `
             ${/* LOT-1 (CRE-C04) : 12 px et couleurs AA sur blanc (#0f5c3d 7,8:1, #7a4c05 7,3:1, #8f1d18 8,9:1) — l'ancien vert #22c55e en 10 px tombait à 2,3:1. */ ""}
             ${p.syncStatus === "syncing" ? '<span class="post-sync" style="margin-left:8px;font-size:12px;color:var(--muted);">Envoi…</span>' : ""}
@@ -11006,7 +11006,7 @@ async function openPost(id) {
         <div class="avatar" role="button" tabindex="0" aria-label="Profil de ${escapeHtml(author.name || "Utilisateur")}" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
         <div class="post-author" role="button" tabindex="0" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
-          <div class="post-author-meta"><span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(post.createdAt)}</div>
+          <div class="post-author-meta"><span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(post.createdAt)}${post.editedAt ? ' · <span class="post-modifie">modifié</span>' : ""}</div>
         </div>
         ${_boutonOptionsPost(post)}
         ${_moodTagHTML(post.mood)}

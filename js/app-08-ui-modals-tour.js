@@ -5088,7 +5088,9 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     // « Voir l'activité » du fil (lot UI-3B) ne fonctionnait donc que sur le
     // contenu de démonstration. Défaut silencieux : rien n'échouait, la porte
     // vers l'IRL disparaissait simplement.
-    var COLONNES = "id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, event_id, profiles!author_id(username,emoji,color,avatar_url,is_private)";
+    // `edited_at` (CRE-C16 / FIL-C24, migration du 2026-11-13) : la mention
+    // « modifié ». Même repli qu'`event_id` sur une base pas encore migrée.
+    var COLONNES = "id, author_id, passion_id, mood, content, media_url, created_at, edited_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, event_id, profiles!author_id(username,emoji,color,avatar_url,is_private)";
     async function _interroger(cols) {
       let q = supa.from("posts").select(cols);
       if (authorId) q = q.eq("author_id", authorId);
@@ -5103,6 +5105,10 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       return await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(debut, debut + pageSize - 1);
     }
     let { data, error, status } = await _interroger(COLONNES);
+    if (error && /edited_at/.test(error.message || "")) {
+      COLONNES = COLONNES.replace(" edited_at,", "");
+      ({ data, error, status } = await _interroger(COLONNES));
+    }
     // Repli symétrique de celui de l'écriture : sur une base où la migration
     // IRL v2 n'est pas appliquée, un SELECT nommant `event_id` échoue en bloc
     // et VIDERAIT le fil. On réessaie sans la colonne plutôt que de tout perdre.
@@ -5291,6 +5297,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
           return null;
         })(),
         createdAt: supaTs(r.created_at),  // ✅ Ajouter Z pour indiquer que c'est UTC!
+        editedAt: r.edited_at ? supaTs(r.edited_at) : null,  // « modifié » (CRE-C16 / FIL-C24)
         likes: cpl.likes,
         liked: cpl.aime,
         comments: postComments, fromSupabase: true,
@@ -7608,6 +7615,23 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
     if (!error) _pousserPushNotif(toUserId, kind, fullText);
     return !error;
   } catch(e) { return false; }
+}
+// ⚠️ SRV-02 (2026-11-13) : UNE NOTIFICATION EST L'ÉCHO D'UNE ÉCRITURE ACCEPTÉE.
+// La base exige désormais l'événement métier derrière chaque `like`, `comment`,
+// `event_*` et `live_video` (`trg_notifications_preuve`, migration du 13/11) :
+// « X a aimé ton post » sans j'aime réel est refusé. Une notification qui partait
+// EN PARALLÈLE de son écriture arrivait donc avant elle, et se faisait refuser —
+// une notification légitime perdue. On attend le verdict : `ecriture` est la
+// promesse de l'écriture (vrai, `{ ok: true }` ou un identifiant = acceptée) ;
+// refusée ou en échec, rien ne part. Le motif ci-dessous est le PREREQUIS-CLIENT
+// de la migration : elle ne s'applique pas tant que le client servi ne le porte pas.
+var NOTIF_APRES_ECRITURE = "notifications:apres-ecriture";
+function notifierApresEcriture(ecriture, toUserId, kind, refId, content) {
+  return Promise.resolve(ecriture).then(function (r) {
+    var acceptee = r === true || (!!r && typeof r === "object" && r.ok === true) || (typeof r === "string" && r.length > 0);
+    if (!acceptee || typeof supaInsertNotif !== "function") return false;
+    return Promise.resolve(supaInsertNotif(toUserId, kind, refId, content)).then(function () { return true; });
+  }).catch(function () { return false; });
 }
 // ⚠️ ASTRA-24 (2026-09-15) : LES MENTIONS SONT ÉCRITES PAR LE SERVEUR. Le client
 // porte des IDENTIFIANTS (jamais des noms) à `notifier_mentions`, qui vérifie
