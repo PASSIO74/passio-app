@@ -511,7 +511,7 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     + '<div class="section-title" style="margin-top:6px;">Créateurs</div>'
     + '<div id="pexCreators">' + creatorsHTML + '</div>'
     + '<div id="pexLiees"></div>'
-    + '<div class="section-title" style="margin-top:14px;">Posts</div>'
+    + '<div class="section-title" style="margin-top:14px;">Publications</div>'
     + postsHTML
     // ⚠️ EN BAS, ET DISCRET. Signaler n'est pas une action de découverte : la
     // placer en tête ferait d'une fiche de passion un formulaire de plainte.

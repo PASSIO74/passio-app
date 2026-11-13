@@ -882,10 +882,10 @@ window.forceRefreshFeed = function() {
       state.seed.posts = posts;
       console.log(`✅ Posts mis à jour: ${oldCount} → ${posts.length}`);
       renderFeed();
-      toast(`✅ Feed rafraîchi (${posts.length} posts)`, "success");
+      toast(`Fil rafraîchi (${posts.length} publications)`, "success");
     } else {
       console.warn("❌ Aucun post retourné");
-      toast("❌ Aucun post trouvé", "error");
+      toast("Aucune publication trouvée", "error");
     }
   }).catch(function(err) {
     console.error("❌ Erreur refresh:", err);
