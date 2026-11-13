@@ -328,8 +328,20 @@ test.describe("sans worker : l'ordre, le parallélisme, la reprise, l'arrêt", (
     await page.waitForFunction(() => window.__appPrete === true && "__appAuLoad" in window, null, { polling: 50, timeout: 30000 });
     expect(etat.liberes[dernier], "prémisse : le dernier script a bien été retenu").toBeTruthy();
     expect(await page.evaluate(() => window.__ordre)).toEqual([...nomsA(), "ready"]);
-    expect(await page.evaluate(() => [window.__etatAuDebut, window.__appAuLoad]), "premier script avant `load`, application prête quand `load` part")
-      .toEqual(["interactive", true]);
+    // ⚠️ « loading » OU « interactive », jamais « complete » (2026-11-13). Ce qui est
+    // mesuré ici, c'est que le premier script a tourné AVANT `load` — pas lequel des deux
+    // états. Le chargeur insère le premier script dès le gate franchi, en microtâche, et
+    // la page continue de parser-exécuter les ~20 modules inlinés APRÈS lui : savoir qui
+    // des deux finit le premier est une course de quelques millisecondes, que la taille
+    // de ces modules fait pencher d'un côté ou de l'autre. Figée sur « interactive »,
+    // cette mesure a rougi le déploiement du 2026-11-13 (exécution 43433603440, les trois
+    // essais) alors que l'application démarrait bien avant `load` — et « loading », c'est
+    // exactement ce que faisait l'ancien `app.js`, parseur-bloquant. Un `<script>` inséré
+    // retardant `load`, « complete » ne peut sortir d'ici que si le chargeur n'a RIEN
+    // inséré avant : la mutation (attendre les 9 avant d'insérer) rougit les deux mesures.
+    const [etatAuPremier, preteAuLoad] = await page.evaluate(() => [window.__etatAuDebut, window.__appAuLoad]);
+    expect(["loading", "interactive"], "le premier script a tourné avant `load` — readyState : " + etatAuPremier).toContain(etatAuPremier);
+    expect(preteAuLoad, "application prête quand `load` part").toBe(true);
     expect(referencesManquantes()).toEqual([]);
   });
 
