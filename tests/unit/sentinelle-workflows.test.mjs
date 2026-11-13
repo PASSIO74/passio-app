@@ -669,7 +669,8 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
     const disparue = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", ...env });
     assert.notEqual(disparue.code, 0, nom + " : " + disparue.sortie.slice(-600));
     assert.ok(disparue.sortie.includes("::error title=Gouvernance::L'issue #700 n'existe plus (" + cause + ") :"), nom + " : " + disparue.sortie.slice(-600));
-    assert.match(disparue.sortie, /relancer n'y changera rien\. Republie le travail depuis une branche qui ne suit pas claude\/issue-<n>-<run>/, nom);
+    // Ce remède-là, et lui seul : la ligne s'arrête sur lui (un second, jamais éprouvé, avait été proposé).
+    assert.match(disparue.sortie, /relancer n'y changera rien\. Republie le travail depuis une branche qui ne suit pas claude\/issue-<n>-<run>\.$/m, nom);
     assert.doesNotMatch(disparue.sortie, /Relance le job/, nom);
   }
   // Une limite de débit (403) n'est PAS une issue disparue : « Relance le job ».
