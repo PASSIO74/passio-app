@@ -659,9 +659,41 @@ function _commentSkeletonHtml(n) {
   return '<div class="cmt-skel-wrap" aria-hidden="true">' + rows + '</div>';
 }
 
+// FIL-C07 (audit UX/UI du 2026-11-10) : « Masquer ce commentaire » ne tenait
+// que jusqu'à la relecture de la discussion (le commentaire n'était retiré que
+// du tableau en mémoire). Les identifiants masqués vivent désormais dans l'état
+// du COMPTE (`state.user.hiddenComments`, borné à 500), et la liste les écarte
+// comme elle écarte les comptes bloqués.
+var _CMT_MASQUES_MAX = 500;
+function commentaireMasque(id) {
+  try { return !!id && ((state.user && state.user.hiddenComments) || []).indexOf(id) > -1; } catch (e) { return false; }
+}
+function memoriserCommentaireMasque(id) {
+  if (!id || !state.user) return;
+  var l = Array.isArray(state.user.hiddenComments) ? state.user.hiddenComments : (state.user.hiddenComments = []);
+  if (l.indexOf(id) < 0) {
+    l.push(id);
+    if (l.length > _CMT_MASQUES_MAX) l.splice(0, l.length - _CMT_MASQUES_MAX);
+  }
+  try { saveState(); } catch (e) {}
+}
+
+// FIL-C29 : la limite de 400 caractères se dit, à partir de 350.
+function majCompteurCommentaire(champ) {
+  try {
+    var c = document.getElementById((champ && champ.id ? champ.id : "newComment") + "Compteur");
+    if (!c || !champ) return;
+    var max = Number(champ.getAttribute("maxlength")) || 400;
+    var n = (champ.value || "").length;
+    if (n >= max - 50) { c.hidden = false; c.textContent = n + " / " + max; c.classList.toggle("plein", n >= max); }
+    else { c.hidden = true; c.textContent = ""; }
+  } catch (e) {}
+}
+
 function _renderCommentsList(allComments, postId) {
-  // Masquer les commentaires des utilisateurs bloqués (modération)
-  var _visible = (allComments || []).filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId)));
+  // Masquer les commentaires des utilisateurs bloqués (modération) et ceux que
+  // j'ai masqués (FIL-C07).
+  var _visible = (allComments || []).filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId)) && !commentaireMasque(c.id));
   // Tri Pertinents / Récents (le tableau arrive trié récent→ancien).
   window._cmtSort = window._cmtSort || {};
   var _sortMode = window._cmtSort[postId] || "recent";
@@ -752,8 +784,8 @@ function _renderCommentsList(allComments, postId) {
     const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
     const cEpingle = _estEpingle(postId, c);
     return `<div class="comment${cEpingle ? " pinned" : ""}" data-commentid="${escapeHtml(c.id)}">
-      <div class="avatar sm" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(_cAv)}</div>
-      <button class="comment-menu-btn" title="Options" onclick="event.stopPropagation();return openCommentOptions('${escapeJsArg(postId)}','${escapeJsArg(c.id)}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
+      <div class="avatar sm" role="link" aria-label="Profil de ${escapeHtml(name)}" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(_cAv)}</div>
+      <button class="comment-menu-btn" title="Options" aria-label="Options du commentaire" onclick="event.stopPropagation();return openCommentOptions('${escapeJsArg(postId)}','${escapeJsArg(c.id)}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
       <div class="comment-body">
         ${cEpingle ? '<div class="cmt-pinned-badge">Épinglé</div>' : ""}
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(name)}</div>
@@ -761,11 +793,11 @@ function _renderCommentsList(allComments, postId) {
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt || c.at)}${c.edited ? " · modifié" : ""}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, c) : ""}</div>
         <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);">
+          <span class="comment-action ${cLiked ? "liked" : ""}" role="button" aria-label="J'aime ce commentaire — ${cLikes}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="return replyToComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}','${escapeJsArg(name)}', event);" title="Répondre">💬</span>
-          <span class="comment-action" onclick="return showEmojiPickerForComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
+          <span class="comment-action" role="button" aria-label="Répondre" onclick="return replyToComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}','${escapeJsArg(name)}', event);" title="Répondre">💬</span>
+          <span class="comment-action" role="button" aria-label="Réagir" onclick="return showEmojiPickerForComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
           <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(c.id)}">${cReactChip}</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${escapeJsArg(c.id)}', event);">${cRepOpen ? "▲ Masquer les réponses" : ("⌵ Voir " + cReplies.length + " réponse" + (cReplies.length > 1 ? "s" : ""))}</span>` : ""}
         </div>
@@ -1336,14 +1368,14 @@ async function openComments(postId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Discussion</div>
-    <div class="modal-subtitle">Réponds à cette publication.</div>
-    <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;" aria-live="polite">
+    <div id="commentsBox" class="cmt-fil-liste" aria-live="polite">
       ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
     </div>
-    <textarea class="textarea" id="newComment" placeholder="Ajoute un commentaire…" maxlength="400" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
+    <textarea class="textarea" id="newComment" aria-label="Écrire un commentaire" placeholder="Ajoute un commentaire…" maxlength="400" rows="1" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this);majCompteurCommentaire(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
+    <div class="cmt-compteur" id="newCommentCompteur" aria-live="polite" hidden></div>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
-      <button class="btn primary" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier</button>
+      <button class="btn primary cmt-publier" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier</button>
     </div>
   `);
   // Bouton d'envoi désactivé tant que le champ est vide (état initial).
@@ -1466,7 +1498,7 @@ function submitComment(postId) {
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
   if (window.requireAuthentication && !requireAuthentication("commenter")) return;
   const text = $("#newComment").value.trim();
-  if (text.length < 2) { toast("Trop court"); return; }
+  if (text.length < 2) { toast("Écris au moins 2 caractères"); return; }
   let post = findPostAnywhere(postId);
   if (!post) return;
   try { window.tel && tel.action("comment_post", { postId: postId, len: text.length }); } catch (e) {}
@@ -2448,13 +2480,17 @@ function _cmtAct(kind) {
   else if (kind === "react") { try { showEmojiPickerForComment(ctx.threadId, ctx.commentId, null); } catch(e){} }
   else if (kind === "gif") { try { showGifPickerForComment(ctx.threadId, ctx.commentId, null); } catch(e){} }
   else if (kind === "copy") {
-    try { navigator.clipboard.writeText(ctx.text); toast("Texte copié"); }
-    catch(e) { toast("Copie impossible"); }
+    // FIL-C09 : le succès s'annonce APRÈS la réponse du presse-papiers (le
+    // try/catch n'entourait qu'un appel asynchrone : refus avalé, « Texte copié »).
+    try {
+      Promise.resolve(navigator.clipboard.writeText(ctx.text))
+        .then(function () { toast("Texte copié"); }, function () { toast("Copie impossible"); });
+    } catch(e) { toast("Copie impossible"); }
   }
   else if (kind === "edit") { editCommentEntry(ctx.threadId, ctx.commentId); }
   else if (kind === "pin") { togglePinComment(ctx.threadId, ctx.commentId); }
   else if (kind === "delete") { deleteCommentEntry(ctx.threadId, ctx.commentId); }
-  else if (kind === "hide") { deleteCommentEntry(ctx.threadId, ctx.commentId, true); toast("Commentaire masqué"); }
+  else if (kind === "hide") { memoriserCommentaireMasque(ctx.commentId); deleteCommentEntry(ctx.threadId, ctx.commentId, true); toast("Commentaire masqué"); }
   else if (kind === "block") { demanderBlocage(ctx.authorId, ctx.name); }
   else if (kind === "report") { reportCommentEntry(ctx.threadId, ctx.commentId); }
 }

@@ -12820,3 +12820,126 @@ button, a, label, select, summary,
 .suppression-export .btn { min-height: 44px; }
 /* TRA-C21 : le titre qui reçoit le focus ne dessine pas de cadre à la souris. */
 #modalContent .modal-title:focus:not(:focus-visible) { outline: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOT-18 (audit UX/UI du 2026-11-10) — le fil
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* FIL-C04 : la discussion prend la hauteur disponible (elle se lisait par une
+   lucarne de 260 px, la moitié haute de l'écran restant vide). */
+#commentsBox.cmt-fil-liste {
+  max-height: min(58vh, 520px);
+  overflow-y: auto;
+  margin-bottom: 12px;
+  overscroll-behavior: contain;
+}
+/* FIL-C29 : la limite se dit, à partir de 350 caractères. */
+.cmt-compteur {
+  margin-top: 4px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cmt-compteur.plein { color: #b45309; font-weight: 700; }
+/* FIL-C11 : « Publier » à 46 px ; actions d'un commentaire à 44 px de large. */
+.cmt-publier { min-height: 46px; }
+.comment-actions .comment-action {
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* FIL-C12 : la page d'une publication — intertitre, état vide lisible (4,5:1),
+   et un geste pour écrire. */
+.post-page-intertitre {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim, #4b4563);
+  margin-bottom: 10px;
+}
+.post-page-vide {
+  font-size: 13px;
+  color: var(--text-dim, #4b4563);
+  text-align: center;
+  padding: 20px 0;
+}
+.post-page-ecrire {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 12px;
+}
+/* FIL-C18 : une image qui ne charge pas le dit. */
+.post-image-indisponible {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  background: var(--accent-tile, #f5efff);
+  color: var(--text-dim, #4b4563);
+  font-size: 13px;
+  font-weight: 600;
+}
+/* FIL-C19 : une photo très haute ne dépasse plus l'écran dans le fil (l'image
+   entière reste sur la page de la publication). */
+#feedList .post-media img {
+  max-height: min(480px, 70vh);
+  object-fit: cover;
+  object-position: center;
+}
+/* FIL-C13 : les envies se lisent comme des filtres — pastilles cernées, état
+   coché plein. Le contour est une ombre interne : il n'ajoute aucune largeur
+   (« Rencontrer » doit tenir à 320 px). */
+#feedIntentSelector .feed-intent-btn {
+  border-bottom: 0;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--border);
+  margin-block: 4px;
+  min-height: 36px;
+}
+#feedIntentSelector .feed-intent-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: none;
+}
+#feedIntentSelector .feed-intent-btn::after {
+  /* zone tactile de 44 px sans grossir la pastille */
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+/* FIL-C14 : sur un petit écran, le premier contenu remonte ; ailleurs, les
+   libellés des stories passent à 11 px. */
+#storiesRowFeed .story-label { font-size: 11px; }
+@media (max-height: 660px) {
+  #storiesRowFeed .story-label { display: none; }
+}
+/* FIL-C25 : le bandeau hors ligne ne recouvre plus la barre du haut — il se
+   pose au-dessus de la barre d'onglets ; croix de 44 px. */
+.bandeau-hors-ligne {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 9999;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 4px 4px 14px;
+  border-radius: 14px;
+  background: #1e1b4b;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgba(30, 27, 75, 0.25);
+}
+.bandeau-hors-ligne button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: #c4b5fd;
+  font-size: 20px;
+  cursor: pointer;
+}
