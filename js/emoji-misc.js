@@ -222,6 +222,10 @@ window.toggleEmojiPanel = function() {
   var p = document.getElementById("convEmojiPanel");
   if(!p) return;
   p.classList.toggle("open");
+  // LOT-37 (MSG-C70) : la grille d'emojis se remplit à l'ouverture si elle est vide.
+  var grilleEmoji = document.getElementById("emojiGrid");
+  if (p.classList.contains("open") && grilleEmoji && !grilleEmoji.querySelector(".emoji-item")
+      && typeof _populateEmojiGrid === "function") _populateEmojiGrid();
   // Remplissage (lazy) de la grille GIF à la première ouverture — via l'API si clé.
   if (p.classList.contains("open") && !p._gifFilled) {
     p._gifFilled = true;
@@ -232,8 +236,13 @@ window.toggleEmojiPanel = function() {
 };
 
 window.switchEmojiTab = function(t,b) {
-  document.querySelectorAll("#emojiTopBar button").forEach(x => x.style.background="transparent");
-  b.style.background="#7c3aed";
+  // LOT-37 (MSG-C70) : l'onglet actif suit la couleur d'accent (plus de #7c3aed
+  // en dur) et l'annonce (aria-selected).
+  document.querySelectorAll("#emojiTopBar .emoji-onglet").forEach(function (x) {
+    var actif = x === b;
+    x.classList.toggle("actif", actif);
+    x.setAttribute("aria-selected", actif ? "true" : "false");
+  });
   var e = document.getElementById("emojiTabContent");
   var g = document.getElementById("gifTabContent");
   if(t==="emoji") {
@@ -245,23 +254,12 @@ window.switchEmojiTab = function(t,b) {
   }
 };
 
-// Populate emoji grid - TRÈS COMPACT
-var emojiList = "😀😁😂🤣😃😄😅😆😉😊😇🥰😍😘😗😚😙🥲😋😛😜🤪😌😔😑😐😶😏😒🙄😬🤐😷🤒🤕🤮🤧🤥🤓😎😕😟🙁☹️😮😯😲😳😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠️💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾🙈🙉🙊❤️🧡💛💚💙💜🖤🤍🤎💔💕💞💓💗💖💘💝💟👋🤚🖐️✋🖖👌🤌🤏✌️🤞🫰🤟🤘🤙👍👎✊👊🤛🤜👏🙌👐🤲🤝🎉🎊🎈🎁🔥💯✨⭐🌟👀🎯🎭🎨🎬🎤🎧🎼🎹🥁🎷🎺🎸🎻🌈☀️🌙⭐✨💫🌟🎊🎉";
-var grid = document.getElementById("emojiGrid");
-if(grid) {
-  grid.style.gap = "0px";
-  grid.style.gridTemplateColumns = "repeat(12,1fr)";
-  for(var i=0; i < emojiList.length; i++) {
-    var d = document.createElement("div");
-    d.textContent = emojiList[i];
-    d.style.cssText = "font-size:12px;padding:0px;cursor:pointer;text-align:center;line-height:1;";
-    d.onclick = function(e) {
-      if(window.insertEmoji) window.insertEmoji(e.target.textContent);
-      window.toggleEmojiPanel();
-    };
-    grid.appendChild(d);
-  }
-}
+// LOT-37 (audit UX/UI du 2026-11-10, MSG-C70) : une boucle remplissait ici la
+// grille en découpant la chaîne d'emojis par UNITÉ UTF-16 — elle ne pouvait
+// produire que des demi-caractères (« � », 327 cellules de 12 px) dès qu'elle
+// passait après le remplissage correct d'app-09 (une ouverture sur deux selon la
+// vitesse de chargement). Elle est retirée : _populateEmojiGrid (app-09) est la
+// SEULE à remplir la grille, rappelée à l'ouverture si elle est vide.
 
 // Grille GIF du panneau emoji — remplie en LAZY à la première ouverture
 // (toggleEmojiPanel) via passioFetchGifs : API si clé, sinon liste locale.

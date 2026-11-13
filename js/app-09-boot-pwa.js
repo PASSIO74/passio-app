@@ -551,13 +551,7 @@ function _onEmojiSearch(query) {
     return;
   }
 
-  results.forEach(function(emoji) {
-    var div = document.createElement("div");
-    div.className = "emoji-item";
-    div.textContent = emoji;
-    div.onclick = function() { insertEmoji(emoji); };
-    grid.appendChild(div);
-  });
+  results.forEach(function(emoji) { grid.appendChild(_caseEmoji(emoji)); });
 }
 
 // Populate emoji grid
@@ -573,16 +567,19 @@ function _populateEmojiGrid() {
   }
 
   // Remplir avec tous les emojis
-  EMOJIS.forEach(function(emoji) {
-    var div = document.createElement("div");
-    div.className = "emoji-item";
-    div.textContent = emoji;
-    div.style.cursor = "pointer";
-    div.onclick = function() {
-      insertEmoji(emoji);
-    };
-    grid.appendChild(div);
-  });
+  EMOJIS.forEach(function(emoji) { grid.appendChild(_caseEmoji(emoji)); });
+}
+
+// LOT-37 (audit UX/UI du 2026-11-10, MSG-C70) : une case est un BOUTON de 44 px
+// (huit colonnes), nommé par son emoji ; elle n'est jamais un demi-caractère.
+function _caseEmoji(emoji) {
+  var b = document.createElement("button");
+  b.type = "button";
+  b.className = "emoji-item";
+  b.textContent = emoji;
+  b.setAttribute("aria-label", emoji);
+  b.onclick = function() { insertEmoji(emoji); };
+  return b;
 }
 
 // Call on page load - avec délai pour garantir que le DOM est chargé
@@ -598,11 +595,18 @@ function insertEmoji(e) {
     var start = inp.selectionStart != null ? inp.selectionStart : inp.value.length;
     var end = inp.selectionEnd != null ? inp.selectionEnd : inp.value.length;
     inp.value = inp.value.slice(0, start) + e + inp.value.slice(end);
-    inp.focus();
-    var pos = start + [...e].length;
+    // LOT-37 (MSG-C70) : le panneau RESTE ouvert — on choisit souvent plusieurs
+    // emojis de suite ; il se ferme à l'envoi, au bouton ou en touchant ailleurs.
+    // Sur un écran tactile, le champ ne prend pas le focus : le clavier
+    // recouvrirait le panneau. Le curseur se compte en unités UTF-16 (celles de
+    // setSelectionRange) : compter les points de code le plaçait AU MILIEU de
+    // l'emoji suivant.
+    var tactile = false;
+    try { tactile = window.matchMedia && window.matchMedia("(pointer: coarse)").matches; } catch(_) {}
+    if (!tactile) inp.focus();
+    var pos = start + e.length;
     try { inp.setSelectionRange(pos, pos); } catch(_) {}
     if (typeof autoResizeTextarea === "function") autoResizeTextarea(inp);
-    _closeEmojiPanel();
   } catch(err) { console.error("insertEmoji:", err); }
 }
 
