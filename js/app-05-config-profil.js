@@ -1820,8 +1820,15 @@ if (typeof document !== "undefined") {
 }
 
 // Création de groupe (conversation multi-utilisateurs)
+// LOT-44 (MSG-C28) : Entrée ou Espace sur une case = un clic.
+function _caseClavier(e, el) {
+  if (!e || (e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault();
+  el.click();
+}
 function toggleGroupUser(el) {
   el.classList.toggle("selected");
+  el.setAttribute("aria-checked", el.classList.contains("selected") ? "true" : "false");
   const cb = el.querySelector("input[type=checkbox]");
   if (cb) cb.checked = el.classList.contains("selected");
   const check = el.querySelector(".grp-check");
@@ -1840,7 +1847,9 @@ function toggleGroupUser(el) {
 // « Groupe créé ». Pour un COMPTE : tes contacts réels (conversations), puis la
 // recherche de personnes du serveur ; jamais un personnage d'exemple.
 function _grpOptionHTML(u, coche) {
-  return '<div class="group-user-option' + (coche ? ' selected' : '') + '" data-uid="' + escapeHtml(u.id) + '" data-nom="' + escapeHtml(u.name || "") + '" onclick="toggleGroupUser(this)">' +
+  // LOT-44 (MSG-C28) : une case qu'on coche dit son état (role=checkbox,
+  // aria-checked) et se coche au clavier (Entrée, Espace).
+  return '<div class="group-user-option' + (coche ? ' selected' : '') + '" role="checkbox" tabindex="0" aria-checked="' + (coche ? 'true' : 'false') + '" data-uid="' + escapeHtml(u.id) + '" data-nom="' + escapeHtml(u.name || "") + '" onclick="toggleGroupUser(this)" onkeydown="_caseClavier(event,this)">' +
     '<input type="checkbox" value="' + escapeHtml(u.id) + '"' + (coche ? ' checked' : '') + ' />' +
     '<span class="msg-avatar" style="background:' + avatarBg(u) + ';width:36px;height:36px;font-size:18px;flex-shrink:0;">' + avatarInner(u) + '</span>' +
     '<span style="flex:1;font-size:13px;">' + escapeHtml(u.name || "Passionné") + '</span>' +
@@ -1893,6 +1902,7 @@ function toggleGroupPassion(el) {
     toast("Maximum 3 passions"); return;
   }
   el.classList.toggle("selected");
+  el.setAttribute("aria-checked", el.classList.contains("selected") ? "true" : "false");
   const cb = el.querySelector("input[type=checkbox]");
   if (cb) cb.checked = el.classList.contains("selected");
 }
@@ -1932,7 +1942,7 @@ function _groupePassionsHTML() {
     });
   });
   return out.map(p =>
-    `<div class="group-passion-option" data-pid="${escapeHtml(p.id)}" onclick="toggleGroupPassion(this)">
+    `<div class="group-passion-option" role="checkbox" tabindex="0" aria-checked="false" data-pid="${escapeHtml(p.id)}" onclick="toggleGroupPassion(this)" onkeydown="_caseClavier(event,this)">
       <input type="checkbox" value="${escapeHtml(p.id)}" />
       <span>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}</span>
     </div>`
@@ -1962,6 +1972,7 @@ function _groupeRepeindreEnGardantLesCoches() {
     const el = grille.querySelector('.group-passion-option[data-pid="' + (window.CSS && CSS.escape ? CSS.escape(pid) : pid) + '"]');
     if (!el) return;
     el.classList.add("selected");
+    el.setAttribute("aria-checked", "true");
     const cb = el.querySelector("input[type=checkbox]");
     if (cb) cb.checked = true;
   });
@@ -1996,13 +2007,13 @@ function openCreateGroup() {
       <div class="pay-modal-emoji">👥</div>
       <div class="pay-modal-title">Nouveau groupe</div>
     </div>
-    <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px;">Crée un groupe autour d'une ou plusieurs passions, avec les membres de ton choix.</p>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px;">Crée un groupe avec les personnes de ton choix — autour d'une passion si tu veux.</p>
 
     <label class="field"><span>Nom du groupe</span>
       <input type="text" class="input" id="groupName" placeholder="Ex: Photographes de Lyon · Lecteurs assidus…" maxlength="50" />
     </label>
 
-    <label class="field"><span>Passion(s) du groupe (1 à 3)</span></label>
+    <label class="field"><span>Passion(s) du groupe (facultatif, 3 au plus)</span></label>
     <div class="group-passion-grid">${passionOptions}</div>
 
     <label class="field" style="margin-top:14px;"><span>Membres à inviter</span></label>
@@ -2024,7 +2035,10 @@ async function confirmCreateGroup() {
   const selectedUsers = (window._grpSel && window._grpSel.size)
     ? [...window._grpSel.keys()]
     : [...document.querySelectorAll(".group-user-option.selected input")].map(i => i.value);
-  if (selectedPassions.length === 0) { toast("Choisis au moins 1 passion"); return; }
+  // LOT-44 (audit UX/UI du 2026-11-10, MSG-C31) : la passion d'un groupe était
+  // EXIGÉE, alors que le serveur la tient pour facultative (ADR-010,
+  // `optionalCanonicalPassion`) — un compte sans passion cochable ne pouvait pas
+  // créer de groupe. Elle devient facultative, comme en base.
   if (selectedUsers.length === 0) { toast("Sélectionne au moins 1 membre"); return; }
 
   let groupId = "conv_grp_" + uid();
@@ -2042,7 +2056,7 @@ async function confirmCreateGroup() {
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     let supaId = null;
     try {
-      supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0], rapport);
+      supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0] || null, rapport);
       if (supaId) groupId = supaId;
     } catch(e) {}
     if (compteReel && !supaId) { toast("Le groupe n'a pas pu être créé — vérifie ta connexion et réessaie.", "warning"); return; }
@@ -2065,7 +2079,7 @@ async function confirmCreateGroup() {
     groupPassions: selectedPassions,
     userIds: membresAjoutes,
     userId: membresAjoutes[0] || selectedUsers[0],
-    passion: selectedPassions[0],
+    passion: selectedPassions[0] || null,
     unread: 0,
     lastAt: Date.now(),
     messages: [

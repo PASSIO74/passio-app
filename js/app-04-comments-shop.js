@@ -6245,7 +6245,7 @@ function renderMessages() {
 
     const _demo = _estConvDemo(c);
     const _nonLus = _demo ? 0 : (c.unread || 0);
-    return `<div class="msg-card ${_nonLus > 0 ? "unread" : ""}" ${_demo ? 'data-conv-demo="1"' : ""} onclick="openConversation('${escapeJsArg(c.id)}')">
+    return `<div class="msg-card ${_nonLus > 0 ? "unread" : ""}" data-conv-id="${escapeHtml(c.id)}" ${_demo ? 'data-conv-demo="1"' : ""} onclick="openConversation('${escapeJsArg(c.id)}')">
       <div class="msg-avatar" style="${avatarStyle}">${_convAvInner}</div>
       <div class="msg-body">
         <div class="msg-head">
@@ -6294,6 +6294,57 @@ function _toggleArchivedView() {
 }
 
 // Archive / désarchive une conversation (masquée de la liste principale).
+// LOT-44 (audit UX/UI du 2026-11-10, MSG-C30) : épingler, archiver, marquer
+// comme non lu ou couper les notifications demandait d'OUVRIR la conversation
+// (ce qui la marquait lue) puis ⋮ puis l'entrée. Un appui long (ou clic droit)
+// sur la ligne ouvre ces mêmes entrées, sans l'ouvrir. Rien pour un exemple.
+function _actionsListeConv(convId) {
+  var c = getConversations().find(function (x) { return x && x.id === convId; });
+  if (!c || (typeof _estConvDemo === "function" && _estConvDemo(c))) return;
+  var id = escapeJsArg(convId);
+  var ligne = function (ic, lib, fn) {
+    return '<div class="csetting-item" role="button" tabindex="0" onclick="closeModal();' + fn + '"><div class="csetting-icon">' + ic + '</div><div class="csetting-label">' + lib + '</div></div>';
+  };
+  var nom = c.isGroup ? (c.groupName || "Groupe") : (c.userName || "Conversation");
+  openModal('<div class="modal-handle"></div><div class="modal-title">' + escapeHtml(nom) + '</div>' +
+    ligne(picto("epingler"), c.pinned ? "Désépingler" : "Épingler en haut de la liste", "_togglePinConv('" + id + "')") +
+    ligne(picto("nonLu"), "Marquer comme non lu", "_markConvUnread('" + id + "')") +
+    ligne(c._muted ? picto("cloche") : picto("clocheCoupee"), c._muted ? "Activer les notifications" : "Couper les notifications", "_sourdineDepuisListe('" + id + "')") +
+    ligne(picto("archiver"), c.archived ? "Désarchiver" : "Archiver la conversation", "_toggleArchiveConv('" + id + "')"));
+}
+function _sourdineDepuisListe(convId) {
+  var c = getConversations().find(function (x) { return x && x.id === convId; });
+  if (!c) return;
+  c._muted = !c._muted;
+  saveConversations();
+  try { renderMessages(); } catch (e) {}
+  toast(c._muted ? "Notifications coupées" : "Notifications activées");
+  if (typeof _ecrireSourdineServeur === "function") _ecrireSourdineServeur(convId, !!c._muted);
+}
+(function () {
+  var minuteur = null, bouge = false, ouvertA = 0;
+  function carte(t) { return t && t.closest ? t.closest("#messageList .msg-card[data-conv-id]") : null; }
+  document.addEventListener("touchstart", function (e) {
+    var k = carte(e.target); if (!k) return;
+    bouge = false; clearTimeout(minuteur);
+    minuteur = setTimeout(function () { if (!bouge) { ouvertA = Date.now(); _actionsListeConv(k.getAttribute("data-conv-id")); } }, 480);
+  }, { passive: true });
+  document.addEventListener("touchmove", function () { bouge = true; clearTimeout(minuteur); }, { passive: true });
+  document.addEventListener("touchend", function (e) {
+    clearTimeout(minuteur);
+    if (ouvertA && Date.now() - ouvertA < 1500) { try { e.preventDefault(); } catch (x) {} }
+  }, { passive: false });
+  // Le clic de synthèse du relâchement n'ouvre pas la conversation.
+  document.addEventListener("click", function (e) {
+    if (ouvertA && Date.now() - ouvertA < 700 && carte(e.target)) { e.preventDefault(); e.stopPropagation(); ouvertA = 0; }
+  }, true);
+  document.addEventListener("contextmenu", function (e) {
+    var k = carte(e.target); if (!k) return;
+    e.preventDefault();
+    _actionsListeConv(k.getAttribute("data-conv-id"));
+  });
+})();
+
 function _toggleArchiveConv(convId) {
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; });

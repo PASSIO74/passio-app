@@ -3537,13 +3537,30 @@ function dureeToast(msg, cliquable) {
   const n = String(msg || "").length;
   return Math.min(8000, Math.max(cliquable ? 6000 : 3000, n * 60));
 }
+// LOT-44 (audit UX/UI du 2026-11-10, TRA-C24) : cinquante libellés de toast
+// commençaient par un emoji de FONCTION (⚠️ ✅ ❌ 🔕 📌…), souvent seul porteur de
+// leur nature. La nature passe par le TYPE (couleur, role=alert), l'emoji de
+// tête est retiré à l'affichage ; ✅ / ⚠️ / ❌ donnent le type quand l'appelant
+// n'en a pas donné. Les emojis de CONTENU (🎉, une passion) restent.
+const TOAST_EMOJI_TETE = /^(?:⚠️|⚠|❌|✅|✔️|✔|✓|🔕|🔔|📩|📌|🎨|👁️|👁|🚫|💾|📦|🔗|📋|🗑️|🗑|🔍|🔄|⏳|🕓|ℹ️|📤|📥|✏️|🖼️)\s*/u;
+function texteToast(msg) {
+  const s = String(msg == null ? "" : msg);
+  const sans = s.replace(TOAST_EMOJI_TETE, "");
+  return sans.trim() ? sans : s;
+}
 function toast(msg, type = "info", onClick = null) {
   const stack = $("#toastStack");
   const t = document.createElement("div");
   type = typeToast(msg, type);
+  if (type === "info") {
+    const tete = String(msg || "");
+    if (/^(?:✅|✔️|✔|✓)/u.test(tete)) type = "success";
+    else if (/^(?:⚠️|⚠)/u.test(tete)) type = "warning";
+    else if (/^❌/u.test(tete)) type = "error";
+  }
   t.className = "toast " + (type || "");
   if (type === "warning" || type === "error") t.setAttribute("role", "alert");
-  t.textContent = msg;
+  t.textContent = texteToast(msg);
   if (typeof onClick === "function") {
     t.classList.add("clickable");
     t.setAttribute("role", "button");
@@ -4456,7 +4473,7 @@ function openPrivacySettings() {
     <p style="font-size:13px;line-height:1.5;margin:4px 0 12px;">Pour limiter qui te voit et qui te contacte : passe en compte privé depuis ton profil, ou bloque un compte depuis son profil.</p>\
     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border);"><span style="font-size:13px;">Mesure d\'usage<br><span style="font-size:11.5px;color:var(--muted);">Écrans ouverts, erreurs, identifiant d\'appareil. Jamais le contenu de ce que tu écris.</span></span><input type="checkbox" id="privTelemetry" ' + (_mesureUsageActive() ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);"></label>\
     <button class="btn primary block" onclick="savePrivacySettings()" style="margin-top:14px;">Sauvegarder</button>\
-    <button type="button" class="btn ghost block" id="privExporter" onclick="exporterMesDonnees()" style="margin-top:8px;">📦 Exporter mes données (JSON)</button>\
+    <button type="button" class="btn ghost block" id="privExporter" onclick="exporterMesDonnees()" style="margin-top:8px;">Exporter mes données (JSON)</button>\
   ');
 }
 
@@ -4476,7 +4493,7 @@ async function exporterMesDonnees() {
   if (btn) { btn.disabled = true; btn.textContent = "Préparation de l'export…"; }
   var verdict = null;
   try { verdict = await supa.functions.invoke("export-account"); } catch (e) { verdict = { error: e }; }
-  if (btn) { btn.disabled = false; btn.textContent = "📦 Exporter mes données (JSON)"; }
+  if (btn) { btn.disabled = false; btn.textContent = "Exporter mes données (JSON)"; }
   if (await _demandeReconnexion(verdict)) return false;
   if (!verdict || verdict.error || !verdict.data || verdict.data.format !== "passio-export/1") {
     var msg = (verdict && verdict.error && verdict.error.message) || "";
@@ -5578,9 +5595,40 @@ function _legalModale(titre, corps, boutons) {
   openModal(
     '<div class="modal-handle"></div>' +
     '<div class="modal-title">' + escapeHtml(titre) + '</div>' +
-    '<div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">' + corps + '</div>' +
+    '<nav class="legal-sommaire" aria-label="Sommaire" hidden></nav>' +
+    '<div class="legal-corps" style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">' + corps + '</div>' +
     boutons
   );
+  _legalSommaire();
+}
+// LOT-44 (audit UX/UI du 2026-11-10, TRA-C26) : 6 000 à 7 500 caractères dans une
+// feuille de 600 px, sans sommaire. Le sommaire se construit À L'AFFICHAGE à
+// partir des points numérotés (« 1. », « 2 bis. »…) — le TEXTE légal
+// (js/legal-textes.js, seule source) n'est pas touché. Rendu DOM : textContent.
+function _legalSommaire() {
+  try {
+    var nav = document.querySelector(".modal .legal-sommaire, #modalContent .legal-sommaire");
+    var corps = document.querySelector(".modal .legal-corps, #modalContent .legal-corps");
+    if (!nav || !corps) return;
+    var points = [];
+    corps.querySelectorAll("p").forEach(function (p, i) {
+      var t = p.querySelector("strong");
+      var txt = t ? String(t.textContent || "").trim() : "";
+      if (!/^\d+( bis| ter)?\.\s/.test(txt)) return;
+      p.id = "legal-point-" + i;
+      points.push({ p: p, txt: txt.replace(/\.$/, "") });
+    });
+    if (points.length < 3) return;
+    points.forEach(function (x) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "legal-sommaire-lien";
+      b.textContent = x.txt;
+      b.addEventListener("click", function () { corps.scrollTop = x.p.offsetTop - corps.offsetTop; });
+      nav.appendChild(b);
+    });
+    nav.hidden = false;
+  } catch (e) { try { diagLog("legal_sommaire " + (e && e.message)); } catch (_) {} }
 }
 
 function openPrivacyPolicy() {
