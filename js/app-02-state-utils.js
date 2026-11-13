@@ -5604,7 +5604,9 @@ function _legalModale(titre, corps, boutons) {
 // LOT-44 (audit UX/UI du 2026-11-10, TRA-C26) : 6 000 à 7 500 caractères dans une
 // feuille de 600 px, sans sommaire. Le sommaire se construit À L'AFFICHAGE à
 // partir des points numérotés (« 1. », « 2 bis. »…) — le TEXTE légal
-// (js/legal-textes.js, seule source) n'est pas touché. Rendu DOM : textContent.
+// (js/legal-textes.js, seule source) n'est pas touché — ni même annoté : le corps
+// de la fenêtre reste, à l'octet près, celui du rideau d'accès (access-gate).
+// Rendu DOM : textContent.
 function _legalSommaire() {
   try {
     var nav = document.querySelector(".modal .legal-sommaire, #modalContent .legal-sommaire");
@@ -5615,7 +5617,6 @@ function _legalSommaire() {
       var t = p.querySelector("strong");
       var txt = t ? String(t.textContent || "").trim() : "";
       if (!/^\d+( bis| ter)?\.\s/.test(txt)) return;
-      p.id = "legal-point-" + i;
       points.push({ p: p, txt: txt.replace(/\.$/, "") });
     });
     if (points.length < 3) return;
