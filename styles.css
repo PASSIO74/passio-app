@@ -12809,3 +12809,14 @@ button, a, label, select, summary,
 /* PRO-C19 : une passion déjà mienne n'est pas une idée. */
 .psel-item.psel-item-possedee { opacity: 0.6; cursor: default; }
 .psel-item-deja { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--muted); }
+
+/* LOT-17 (audit UX/UI du 2026-11-10) — règles transverses.
+   TRA-C02 : un toast long ne touche plus les bords ; coins de carte dès deux lignes. */
+.toast { max-width: min(440px, calc(100% - 32px)); border-radius: 16px; }
+/* TRA-C09 : « Débloquer » à 44 px. */
+.btn.bloque-debloquer { min-height: 44px; font-size: 13px; padding: 8px 14px; }
+/* TRA-C27 : la copie de ses données, proposée avant la suppression. */
+.suppression-export { margin: 0 0 12px; padding: 12px; border-radius: 12px; background: rgba(124, 58, 237, 0.07); border: 1px solid rgba(124, 58, 237, 0.2); }
+.suppression-export .btn { min-height: 44px; }
+/* TRA-C21 : le titre qui reçoit le focus ne dessine pas de cadre à la souris. */
+#modalContent .modal-title:focus:not(:focus-visible) { outline: none; }
