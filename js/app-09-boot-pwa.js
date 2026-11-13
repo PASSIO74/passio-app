@@ -244,13 +244,17 @@ function togglePwd(id, btn) {
 // Le SW envoie { type:"OFFLINE" } quand il sert depuis le cache faute de réseau.
 // On écoute aussi les événements natifs online/offline du navigateur.
 (function _setupOfflineBanner() {
+  // LOT-31 (TRA-C19) : `passio-hors-ligne` sur <body> fait monter le bandeau de
+  // l'équipe au-dessus de celui-ci — les deux restent lisibles.
   function showOffline() {
     var b = document.getElementById("offlineBanner");
     if (b) b.style.display = "flex";
+    try { document.body.classList.add("passio-hors-ligne"); } catch (e) {}
   }
   function hideOffline() {
     var b = document.getElementById("offlineBanner");
     if (b) b.style.display = "none";
+    try { document.body.classList.remove("passio-hors-ligne"); } catch (e) {}
   }
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("message", function(e) {
@@ -1632,6 +1636,20 @@ function openConvSettings(convId) {
     var uname = String(c.userName || "Utilisateur").replace(/'/g, "\\'");
     var blocked = isDM && typeof isBlocked === "function" && isBlocked(c.userId);
 
+    // LOT-31 (audit UX/UI du 2026-11-10, MSG-C24) : une conversation d'EXEMPLE
+    // proposait quatorze actions réelles (bloquer, signaler, exporter…) sur un
+    // personnage qui n'existe pas. Elle n'en garde qu'une : la retirer.
+    if (typeof _estConvDemo === "function" && _estConvDemo(c)) {
+      content.innerHTML =
+        '<div class="csetting-section">EXEMPLE PASSIO</div>' +
+        '<div class="csetting-note" style="padding:4px 16px 12px;color:var(--muted);font-size:13px;line-height:1.4;">Cette conversation montre à quoi ressemble la messagerie. Personne ne la lit.</div>' +
+        '<div class="csetting-item" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
+          '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Supprimer cet exemple</div></div>';
+      panel.style.display = ""; panel.style.transform = ""; panel.style.pointerEvents = "";
+      panel.classList.add("open");
+      return;
+    }
+
     content.innerHTML =
       '<div class="csetting-section">CONVERSATION</div>' +
       (isDM ? '<div class="csetting-item" onclick="closeConvSettings();openUserProfile(\'' + escapeJsArg(uid) + '\',\'seed\')">' +
@@ -1767,7 +1785,11 @@ function _exportConv(convId) {
 }
 
 async function _deleteConv(convId) {
-  if (!(await confirmerAction({ titre: "Supprimer cette conversation pour toi ?", texte: "Elle disparaît de ta liste et de cet appareil. L'autre personne garde tout l'historique.", libelle: "Supprimer pour moi", danger: true }))) return;
+  var _cDel = (getConversations() || []).find(function (x) { return x && x.id === convId; });
+  var _exemple = typeof _estConvDemo === "function" && _estConvDemo(_cDel);
+  if (!(await confirmerAction(_exemple
+      ? { titre: "Supprimer cet exemple ?", texte: "Il disparaît de ta liste.", libelle: "Supprimer", danger: true }
+      : { titre: "Supprimer cette conversation pour toi ?", texte: "Elle disparaît de ta liste et de cet appareil. L'autre personne garde tout l'historique.", libelle: "Supprimer pour moi", danger: true }))) return;
   conversationsState = (conversationsState||[]).filter(function(c){ return c.id !== convId; });
   // Pierres tombales : la conversation ne revient ni au boot ni par la fusion,
   // et son historique reste effacé si un nouveau message la fait réapparaître

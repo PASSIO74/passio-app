@@ -167,9 +167,15 @@
       el.id = "passioBandeauDistant";
       el.setAttribute("role", "status");
       el.setAttribute("aria-live", "polite");
-      el.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:10050;display:flex;align-items:center;gap:8px;"
-        + "padding:calc(8px + env(safe-area-inset-top, 0px)) 12px 8px 16px;color:#fff;font:600 14px/1.35 system-ui,-apple-system,sans-serif;"
-        + "box-shadow:0 2px 10px rgba(0,0,0,.25)";
+      // LOT-31 (audit UX/UI du 2026-11-10, TRA-C19) : posé en haut (fixed, z 10050),
+      // le bandeau recouvrait la cloche et « ⋯ », et se cachait avec celui du hors
+      // ligne. Il se pose au-dessus de la barre d'onglets, en lavis (encre sur fond
+      // clair) ; avec le hors-ligne affiché, il monte d'un cran (styles.css,
+      // `body.passio-hors-ligne`).
+      el.className = "bandeau-distant";
+      el.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom, 0px));z-index:10050;display:flex;align-items:center;gap:8px;"
+        + "padding:4px 4px 4px 14px;border-radius:14px;font:600 14px/1.35 system-ui,-apple-system,sans-serif;"
+        + "box-shadow:0 4px 16px rgba(30,27,75,.18)";
       var t = document.createElement("span");
       t.className = "bandeau-distant-texte";
       t.style.cssText = "flex:1;min-width:0;overflow-wrap:anywhere";
@@ -186,7 +192,9 @@
       el.appendChild(t); el.appendChild(x);
       document.body.appendChild(el);
     }
-    el.style.background = b.niveau === "alerte" ? "#b91c1c" : "#6d28d9";
+    el.style.background = b.niveau === "alerte" ? "#fee2e2" : "#ede9fe";
+    el.style.color = b.niveau === "alerte" ? "#7f1d1d" : "#1e1b4b";
+    el.style.border = "1px solid " + (b.niveau === "alerte" ? "#fca5a5" : "#c4b5fd");
     el.setAttribute("data-niveau", b.niveau);
     el.querySelector(".bandeau-distant-texte").textContent = b.texte;
   }

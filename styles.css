@@ -13181,3 +13181,10 @@ button, a, label, select, summary,
   white-space: nowrap;
 }
 .msg-card .msg-head { min-width: 0; }
+
+/* LOT-31 (audit UX/UI du 2026-11-10, TRA-C19) : le bandeau de l'équipe vit
+   au-dessus de la barre d'onglets ; quand le bandeau hors ligne y est aussi, il
+   monte d'un cran pour que les deux restent lisibles et touchables. */
+body.passio-hors-ligne #passioBandeauDistant {
+  bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+}
