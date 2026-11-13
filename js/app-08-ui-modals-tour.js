@@ -419,9 +419,15 @@ function showLanding() {
 // ⚠️ PAS de `supaInit()` : il lit les tables privées sous `MY_UID`, et
 // `supaLoadMyConversations` REMPLACE l'entrée locale par son résultat — vide
 // sans session. Lire le public serait possible, écraser le local ne l'est pas.
+// ⚠️ LE JETON OU LA MARQUE (2026-11-13, suite d'ETAT-02) : une session finie en
+// cours de route (`SIGNED_OUT`, 401) a vu le SDK retirer son jeton — la preuve est
+// alors la marque `passio_session_expiree_v1` que `poserSessionExpiree` (app-02) a
+// posée, pour ce même `passio_uid`. Sans elle, ce démarrage-là tombait sur la landing.
 function entrerEnSessionExpiree() {
   if (!(state && state.onboarded)) return false;
-  if (typeof _sessionSdkPersistee !== "function" || !_sessionSdkPersistee()) return false;
+  const jeton = typeof _sessionSdkPersistee === "function" && !!_sessionSdkPersistee();
+  const marque = typeof _marqueSessionExpiree === "function" && _marqueSessionExpiree();
+  if (!jeton && !marque) return false;
   window._sessionExpiree = true;
   try { document.documentElement.classList.add("passio-session-expiree"); } catch (e) {}
   try { restoreFeedPassions(); } catch (e) {}
@@ -3162,6 +3168,10 @@ async function boot() {
       return;
     }
     if (session?.user && (!_authIntent || _recuperationEnCours)) {
+      // Une session est là : la marque d'une session perdue n'a plus de cause.
+      try { if (typeof _oublierMarqueSessionExpiree === "function") _oublierMarqueSessionExpiree(); } catch (e) {}
+      // Une session anonyme ne posera pas de marque si elle meurt (app-02).
+      try { window._sessionAnonyme = session.user.is_anonymous === true; } catch (e) {}
       // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` : le discriminant est l'INSTANTANÉ
       // pris au chargement (`_uidProprietaireEtat`, app-02). Ce chemin-ci couvre
       // les entrées qui ne passent PAS par `onbDoAuth` : retour de
@@ -3396,6 +3406,8 @@ async function boot() {
         try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
         return;
       }
+      // Une session anonyme ne posera pas de marque si elle meurt (app-02).
+      try { if (session?.user) window._sessionAnonyme = session.user.is_anonymous === true; } catch (e) {}
       if (session?.user && window._sessionExpiree === true) {
         // SESSION REVENUE EN MODE EXPIRÉ (UXO-02) : le SDK a rafraîchi seul le
         // jeton (retour du réseau), ou une connexion vient d'aboutir. On ne
@@ -6484,7 +6496,9 @@ async function supaLoadEvents(authorId) {
       passion: r.passion_id || null,   // jamais la valeur fantôme « autre »
       lat: r.lat, lng: r.lng,
       city: r.city || "",
-      emoji: r.emoji || "📍",
+      // LOT-19 (IRL-C08) : sans emoji propre, celui de la PASSION (comme les
+      // marqueurs de la carte) — l'épingle « 📍 » ne disait plus de quoi il s'agit.
+      emoji: r.emoji || (function () { try { var ps = r.passion_id && typeof passionById === "function" ? passionById(r.passion_id) : null; return (ps && ps.id === r.passion_id && ps.emoji) || "📍"; } catch (e) { return "📍"; } })(),
       // supaTs : date_at est stockée en UTC SANS fuseau → un parse local décalait
       // l'heure affichée de l'événement (ex. -2h en été) chez tous les comptes.
       date: r.date_at ? supaTs(r.date_at) : Date.now(),
@@ -7575,9 +7589,11 @@ async function supaLoadMyConversations() {
 // supaSubscribeMessages() remplacée par _supaConvSpecificChannel() — voir plus haut
 
 // ---- NOTIFICATIONS ----
+// LOT-19 (IRL-C63) : rend le VERDICT (vrai = ligne écrite) — les appelants qui
+// l'ignorent ne changent pas ; « Prévenir les inscrits » compte les réussites.
 async function supaInsertNotif(toUserId, kind, refId, content) {
   try {
-    if (toUserId === MY_UID) return;
+    if (toUserId === MY_UID) return false;
     const prof = currentProfile();
     const safeName = (typeof escapeHtml === "function") ? escapeHtml(prof?.name || "Quelqu'un") : (prof?.name || "Quelqu'un");
     const fullText = `${safeName} ${content}`;
@@ -7589,7 +7605,8 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
     });
     // Push Web → réveille le destinataire même app fermée (fire-and-forget).
     if (!error) _pousserPushNotif(toUserId, kind, fullText);
-  } catch(e) {}
+    return !error;
+  } catch(e) { return false; }
 }
 // ⚠️ SRV-02 (2026-11-13) : UNE NOTIFICATION EST L'ÉCHO D'UNE ÉCRITURE ACCEPTÉE.
 // La base exige désormais l'événement métier derrière chaque `like`, `comment`,

@@ -369,14 +369,24 @@
     } catch (e) {}
     var n = nbInscrits(ev, "going");
     var bouts = [n + " participant" + (n > 1 ? "s" : "")];
-    var reste = placesRestantes(ev);
+    // LOT-19 (IRL-C56) : pas de « places restantes » sur une activité finie.
+    var fini = estTermine(ev);
+    var reste = fini ? null : placesRestantes(ev);
     if (reste !== null && reste !== undefined) {
       bouts.push(reste <= 0
         ? "complet"
         : reste + " place" + (reste > 1 ? "s" : "") + " restante" + (reste > 1 ? "s" : ""));
     }
-    var att = nbInscrits(ev, "waitlist");
+    var att = fini ? 0 : nbInscrits(ev, "waitlist");
     if (att) bouts.push(att + " en attente");
+    // LOT-19 (IRL-C06) : le prix est une information de décision — « · 15 € »
+    // sur la carte, rien pour une activité gratuite (seule autorité : fmtEventPrice).
+    try {
+      if (typeof fmtEventPrice === "function") {
+        var prix = fmtEventPrice(ev.price);
+        if (prix && prix !== "Gratuit") bouts.push(prix);
+      }
+    } catch (e) { fail("prix", e); }
     return bouts.join(" · ");
   }
 
