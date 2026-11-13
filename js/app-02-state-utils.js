@@ -895,12 +895,45 @@ window.sessionExpiree = sessionExpiree;
 function poserSessionExpiree(via) {
   if (window._sessionExpiree === true) return false;
   window._sessionExpiree = true;
+  _marquerSessionExpiree();
   try { document.documentElement.classList.add("passio-session-expiree"); } catch (e) {}
   try { if (window.tel && tel.action) tel.action("session_expiree_mode", { via: String(via || "refus") }); } catch (e) {}
   try { if (typeof diagLog === "function") diagLog("session expirée (" + via + ") : écritures suspendues jusqu'à la reconnexion"); } catch (e) {}
   return true;
 }
 window.poserSessionExpiree = poserSessionExpiree;
+
+// ── LA MARQUE QUI SURVIT AU REDÉMARRAGE (audit de stabilisation, suite d'ETAT-02,
+// 2026-11-13) ─────────────────────────────────────────────────────────────────
+// Une session qui finit EN COURS DE ROUTE (déconnexion faite ailleurs, jeton
+// révoqué : `SIGNED_OUT`, ou un 401 sur une publication) pose le mode ci-dessus —
+// mais le SDK a déjà RETIRÉ son jeton persisté. Au démarrage suivant,
+// `entrerEnSessionExpiree()` (app-08) ne trouvait plus de jeton et rendait `false` :
+// `boot()` retombait sur `showLanding()`, l'ancien pitch, par-dessus un fil complet
+// dont les files d'attente n'appartiennent qu'à ce compte. Cette marque est la
+// preuve, posée au moment où le mode l'est, qu'une session a existé ICI pour ce
+// compte-là : elle porte l'uuid, et ne vaut que tant que `passio_uid` est le même.
+// ⚠️ Clé DE COMPTE (`ACCOUNT_SCOPED_KEYS`) : une déconnexion volontaire l'emporte
+// avec le reste. Effacée dès qu'une session est retrouvée au démarrage (app-08).
+const CLE_SESSION_EXPIREE = "passio_session_expiree_v1";
+const _UUID_COMPTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function _marquerSessionExpiree() {
+  try {
+    const uid = (typeof MY_UID === "string") ? MY_UID : "";
+    if (!_UUID_COMPTE.test(uid) || localStorage.getItem("passio_uid") !== uid) return false;
+    localStorage.setItem(CLE_SESSION_EXPIREE, uid);
+    return true;
+  } catch (e) { return false; }
+}
+function _marqueSessionExpiree() {
+  try {
+    const m = localStorage.getItem(CLE_SESSION_EXPIREE);
+    return !!m && _UUID_COMPTE.test(m) && localStorage.getItem("passio_uid") === m;
+  } catch (e) { return false; }
+}
+function _oublierMarqueSessionExpiree() {
+  try { localStorage.removeItem(CLE_SESSION_EXPIREE); } catch (e) {}
+}
 
 // Reconnexion : d'abord un rafraîchissement du jeton (le réseau est peut-être
 // simplement revenu), sinon le formulaire de connexion — SANS purger l'état
@@ -4867,6 +4900,9 @@ var ACCOUNT_SCOPED_KEYS = [
   // (app-09, `_pjFileVider`). Elle ne porte que des identifiants et son `owner`,
   // mais elle désigne des messages du compte, dont la copie locale part avec lui.
   "passio_pj_outbox_v1",     // file des dépôts de pièces jointes en attente
+  // Ajoutée le 2026-11-13 : la preuve qu'une session de CE compte a fini en cours
+  // de route (`_marquerSessionExpiree`, plus haut). Elle part avec le compte.
+  CLE_SESSION_EXPIREE,       // "passio_session_expiree_v1"
   // Ajoutée le 2026-10-06 : la semaine où le récap a été traité POUR CE COMPTE
   // (js/recap-semaine.js). Un autre compte sur l'appareil a droit à son récap.
   "passio_recap_semaine_v1",
