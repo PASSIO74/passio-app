@@ -4382,7 +4382,7 @@ function openNewMessage() {
     
     <div style="font-weight:800;font-size:16px;margin-bottom:14px;">Nouveau message</div>
     <div style="position:relative;">
-      <input id="_nmSearch" type="text" class="input" placeholder="Chercher un utilisateur…" autocomplete="off"
+      <input id="_nmSearch" type="text" class="input" placeholder="Chercher un utilisateur…" aria-label="Chercher une personne à qui écrire" enterkeyhint="search" autocomplete="off"
         style="width:100%;box-sizing:border-box;padding-right:40px;"
         oninput="_nmDoSearch(this.value)" />
     </div>
@@ -6333,16 +6333,16 @@ async function openConversation(convId) {
       <div class="conv-fp-passion">${_ligneGroupe}</div>
     </div>
     <div class="conv-actions">
-      ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${escapeJsArg(convId)}')" title="Membres">
+      ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${escapeJsArg(convId)}')" title="Membres" aria-label="Membres du groupe">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </button>` : ''}
-      ${(c.isGroup || (typeof appelsDisponibles === "function" && !appelsDisponibles())) ? '' : `<button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','voice')" title="Appel audio">
+      ${(c.isGroup || (typeof appelsDisponibles === "function" && !appelsDisponibles())) ? '' : `<button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','voice')" title="Appel audio" aria-label="Appel audio">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.38 2 2 0 0 1 3.6 1.2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
       </button>
-      <button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','video')" title="Appel vidéo">
+      <button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','video')" title="Appel vidéo" aria-label="Appel vidéo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
       </button>`}
-      <button class="conv-action-btn" onclick="openConvSettings('${escapeJsArg(convId)}')" title="Paramètres">
+      <button class="conv-action-btn" onclick="openConvSettings('${escapeJsArg(convId)}')" title="Paramètres" aria-label="Paramètres de la conversation">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
       </button>
     </div>`;
@@ -6352,6 +6352,10 @@ async function openConversation(convId) {
   const btn = document.getElementById("convFpSendBtn");
   if (inp) {
     inp.value = c.draft || ""; // restaure le brouillon non envoyé
+    // LOT-32 (audit UX/UI du 2026-11-10, MSG-C75) : le champ n'avait que son
+    // placeholder ; il porte le nom de la personne ou du groupe (attribut posé
+    // par setAttribute, jamais concaténé dans du HTML).
+    try { inp.setAttribute("aria-label", "Message à " + (displayName || "cette conversation")); } catch (e) {}
     inp.style.height = "auto";
     try { if (inp.value) autoResizeTextarea(inp); } catch(e) {}
     // LOT-20 (MSG-C59) : sur un clavier TACTILE il n'y a pas de Maj+Entrée — la
