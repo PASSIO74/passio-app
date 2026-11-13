@@ -38,6 +38,9 @@ async function boot(page, opts = {}) {
     window.supaLoadPosts = async () => [];
     window.supaSaveUserState = async () => {};
     window._convNetLoaded = true;
+    // LOT-46 (MSG-C69) : l'entrée lit le verdict serveur (âge, blocage) avant
+    // d'ouvrir ; le banc répond « oui » — le refus a son propre verrou.
+    window.irlProposalServerVerdict = async () => ({ ok: true, reason: "ok" });
     conversationsState = [
       {
         id: "v6c_nina", userId: "u_nina", userName: "Nina Costa",
@@ -74,7 +77,7 @@ test.describe("UI-6C — Proposer un IRL depuis une conversation", () => {
     const item = page.locator("#v6cProposerIrl");
     await expect(item).toHaveCount(1);
     expect(await page.evaluate(() => document.getElementById("v6cProposerIrl").hidden)).toBe(false);
-    await expect(item).toContainText("Proposer un IRL");
+    await expect(item).toContainText("Proposer un moment IRL"); // LOT-46 (MSG-C69) : un seul libellé
     // En tête, les pièces jointes historiques dessous et intactes.
     expect(await page.evaluate(() =>
       document.getElementById("convAttachMenu").firstElementChild.id)).toBe("v6cProposerIrl");
