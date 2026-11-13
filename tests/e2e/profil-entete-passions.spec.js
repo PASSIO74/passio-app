@@ -1085,6 +1085,40 @@ test("un commentaire ne porte AUCUNE passion sous le pseudo", async ({ page }) =
   expect(vu.carteIdentites, "aperçu du fil : rien sous le pseudo").toBe(0);
 });
 
+test("listes de personnes, recherche Explorer, notifications : AUCUNE passion sous le pseudo", async ({ page }) => {
+  // Suite du retrait du 2026-11-13 (« supprime également à ces endroits ») :
+  // les trois surfaces qui gardaient la ligne `.ident-passions`.
+  await poser(page);
+  const vu = await page.evaluate(async () => {
+    const auteur = state.seed.users.find((u) => identitePassionsTexte(u));
+    const ligne = document.createElement("div");
+    ligne.innerHTML = _personRowHTML(auteur.id, auteur, "abonnes");
+    const notifs = document.createElement("div");
+    notifs.innerHTML = _notifListHtml([{ id: "n_x", text: "a aimé ta publication", fromId: auteur.id, createdAt: Date.now(), unread: true }]);
+    let res = document.getElementById("exploreSearchResults");
+    if (!res) { res = document.createElement("div"); res.id = "exploreSearchResults"; document.body.appendChild(res); }
+    window.supaSearchUsers = () => Promise.resolve([]);
+    _exSearchLancer(auteur.name);
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      passion: identitePassionsTexte(auteur),
+      ligneNom: ligne.textContent.includes(auteur.name),
+      ligneIdentites: ligne.querySelectorAll(".ident-passions").length,
+      notifLignes: notifs.querySelectorAll(".notif-row").length,
+      notifIdentites: notifs.querySelectorAll(".ident-passions").length,
+      rechercheNom: res.textContent.includes(auteur.name),
+      rechercheIdentites: res.querySelectorAll(".ident-passions").length,
+    };
+  });
+  expect(vu.passion, "prémisse : la personne a une passion à afficher").not.toBe("");
+  expect(vu.ligneNom, "prémisse : la ligne de personne porte le nom").toBe(true);
+  expect(vu.notifLignes, "prémisse : la notification est rendue").toBe(1);
+  expect(vu.rechercheNom, "prémisse : la recherche trouve la personne").toBe(true);
+  expect(vu.ligneIdentites, "liste d'abonnés : rien sous le pseudo").toBe(0);
+  expect(vu.notifIdentites, "notification : rien sous le texte").toBe(0);
+  expect(vu.rechercheIdentites, "recherche Explorer : rien sous le pseudo").toBe(0);
+});
+
 // ══════════════════════════════════════════════════════════════════════════
 // ④ LE COMPTEUR « PASSIONS » DE L'EN-TÊTE (2026-09-04)
 // ══════════════════════════════════════════════════════════════════════════

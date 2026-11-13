@@ -1170,11 +1170,12 @@ function openMyPostsTab() {
 // LOT-16 (audit UX/UI du 2026-11-10, PRO-C09 / PRO-C10) : une ligne de personne
 // est un vrai bouton (rôle, clavier) ; le profil ouvert depuis une LISTE sait
 // y revenir (« ← Abonnés »), au lieu de ramener à mon profil.
+// 2026-11-13 (Benjamin) : plus de ligne de passions sous le pseudo, ici non plus.
 function _personRowHTML(id, u, liste) {
   return '<div class="personne-ligne" role="button" tabindex="0" onclick="closeModal();openUserProfile(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(liste ? "liste-" + liste : "") + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
     + '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + avatarInner(u) + '</div>'
     + '<div style="min-width:0;"><div style="font-weight:700;font-size:14px;color:var(--text);">' + escapeHtml(u.name || 'Utilisateur') + '</div>'
-    + identitePassionsHTML(u, "ident-passions-sm") + '</div></div>';
+    + '</div></div>';
 }
 function _peopleEmpty(msg) {
   return '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;">' + escapeHtml(msg) + '</div>';

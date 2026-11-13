@@ -357,10 +357,8 @@ function _exSearchLancer(query) {
     if (fu.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Personnes</div>";
       fu.forEach(function(u) {
-        // §2 : la MÊME ligne d'identité que partout ailleurs. Deux écrans de
-        // recherche portaient chacun leur variante de pastilles ; ils
-        // n'affichaient donc pas la même chose de la même personne.
-        var passionBadges = identitePassionsHTML(u, "ident-passions-sm");
+        // 2026-11-13 (Benjamin) : plus de passions sous le pseudo d'un
+        // résultat de recherche — « trop chargé ». Nom (et bio) seulement.
 
         var _photo = _userPhoto(u);
         var _avContent = _photo
@@ -373,7 +371,6 @@ function _exSearchLancer(query) {
           "<div style='width:44px;height:44px;border-radius:50%;background:" + _avBgColor + ";display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border:2px solid rgba(124,58,237,0.15);'>" + _avContent + "</div>" +
           "<div style='flex:1;min-width:0;overflow:hidden;'>" +
             "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + escapeHtml(u.name||"") + "</div>" +
-            passionBadges +
             (u.bio ? "<div style='font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + escapeHtml(u.bio) + "</div>" : "") +
           "</div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;margin-left:6px;'>Voir →</div>" +
