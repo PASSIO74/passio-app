@@ -1432,6 +1432,14 @@ banc `pilotage-chemins`, qui EXÉCUTE la fonction) :
   Côté veille (#863), même règle : signal `scan` à part, plafonné à l'attention, et ABSENT du corps des
   [VEILLE] — « Régler » confie ce corps à un agent. Et la règle devient mécanique : `.gitleaksignore` et
   `.gitleaks.toml` sont des chemins interdits à l'agent (`claude-code.yml`, exercice `reparation-journal` ⑫).
+- **Tri du 13/11 (sur ordre de Benjamin, « règle ce problème »)** : les 64 trouvailles rejouées À L'IDENTIQUE
+  avec gitleaks 8.24.3 — la version que l'action épinglée installe — sur `git log --all` (toutes les branches
+  que `fetch-depth: 0` rapatrie ; `main` seul n'en porte que 41). **Aucune clé secrète** : clé anon Supabase
+  (tous les JWT décodent en `anon` ou en banc), `GATE_HASH` du rideau, VAPID publique, clé GIF, identifiants
+  de passions, noms de clés localStorage, valeurs de banc. Exceptions dans `.gitleaks.toml`, chacune par sa
+  VALEUR EXACTE (jamais un dossier) — réinjection : une clé `service_role` et un `api_key` inventés dans un
+  test sont encore vus. ⚠️ Syntaxe `[allowlist]` : 8.24.3 ignore `[[allowlists]]` SANS ERREUR (première
+  version du tri : verte en 8.30, toujours 64 en 8.24.3).
 - **« [RÉPARER] #N » sur une issue qui ne se relit pas** : `set -e` tuait la marche de confiance sans un
   mot. L'échec se dit (annotation « Issue visée illisible »), aucun agent ne part, et l'annotation dit le
   geste qui débloque : refermer la réparation (le pilotage la croit en cours tant qu'elle est ouverte).
