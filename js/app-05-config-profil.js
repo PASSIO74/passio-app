@@ -2000,11 +2000,19 @@ async function confirmCreateGroup() {
   const rapport = { refuses: [] };
 
   // Créer le groupe dans Supabase si connecté
+  // LOT-28 (audit UX/UI du 2026-11-10, MSG-C23) : hors ligne ou serveur en panne,
+  // un COMPTE lisait « Groupe créé » pour une ébauche locale que personne d'autre
+  // ne verrait jamais (0 ligne en base, rien au retour du réseau). Un groupe non
+  // créé côté serveur n'est plus annoncé : la fenêtre reste ouverte, et on le dit.
+  const compteReel = !!(window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel());
+  if (compteReel && navigator.onLine === false) { toast("Pas de connexion — le groupe n'est pas créé. Réessaie quand le réseau revient.", "warning"); return; }
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    let supaId = null;
     try {
-      const supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0], rapport);
+      supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0], rapport);
       if (supaId) groupId = supaId;
     } catch(e) {}
+    if (compteReel && !supaId) { toast("Le groupe n'a pas pu être créé — vérifie ta connexion et réessaie.", "warning"); return; }
   }
   const refuses = new Set(rapport.refuses || []);
   const membresAjoutes = selectedUsers.filter(u => !refuses.has(u));
@@ -2184,7 +2192,7 @@ function _renderGroupMembersModal(convId) {
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:12px;">' +
       '<button class="btn ghost" onclick="closeModal();openConversation(\'' + escapeJsArg(convId) + '\')" style="flex:1;">← Retour</button>' +
-      '<button class="btn ghost" onclick="leaveGroup(\'' + escapeJsArg(convId) + '\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter</button>' +
+      '<button class="btn ghost" onclick="leaveGroup(\'' + escapeJsArg(convId) + '\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter le groupe</button>' +
     '</div>'
   );
 
