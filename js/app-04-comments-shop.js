@@ -11,7 +11,16 @@ function openPostOptions(postId) {
   // éditeur n'existe plus. Les publications de type `vlog` n'apparaissent
   // d'ailleurs plus nulle part, donc ce menu ne peut plus s'ouvrir sur l'une
   // d'elles.
-  var _editBtn = "";
+  // CRE-C16 / FIL-C24 (décision de Benjamin du 2026-11-13, « 1 : a ») : le
+  // TEXTE d'une publication se corrige — rien d'autre (passion, média, type).
+  // Pas pour un repartage : son texte est la citation de l'original.
+  var _p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var _editBtn = (_p && !_p.sharedReelData && !_p.sharedFromPostId && !_p.isReel)
+    ? `<button class="post-option" onclick="closeModal();modifierTextePublication('${escapeJsArg(postId)}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+        Modifier le texte
+      </button>`
+    : "";
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
@@ -23,6 +32,71 @@ function openPostOptions(postId) {
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
+}
+
+// ── CORRIGER LE TEXTE D'UNE PUBLICATION (CRE-C16 / FIL-C24) ───────────────────
+// Le serveur d'abord : le texte affiché ne change qu'une fois l'écriture
+// confirmée (`{ error }` lu, zéro ligne = refus). La migration du 2026-11-13
+// n'ouvre que la colonne `content`, à l'auteur ; `edited_at` est posé par le
+// serveur. Une publication qui n'existe que sur cet appareil se corrige ici.
+var TEXTE_PUBLICATION_MAX = 5000;
+function modifierTextePublication(postId) {
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!p) { toast("Cette publication n'est plus disponible."); return; }
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Modifier le texte</div>
+    <div class="modal-subtitle">La passion, la photo et la vidéo ne changent pas. La publication portera la mention « modifié ».</div>
+    <textarea class="textarea" id="pubTexteEdit" aria-label="Texte de la publication" maxlength="${TEXTE_PUBLICATION_MAX}" style="min-height:120px;"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn ghost block" onclick="closeModal()">Annuler</button>
+      <button class="btn primary block" id="pubTexteEnregistrer" onclick="enregistrerTextePublication('${escapeJsArg(postId)}')">Enregistrer</button>
+    </div>
+  `);
+  var champ = document.getElementById("pubTexteEdit");
+  if (champ) { champ.value = String(p.text || ""); try { champ.focus(); } catch (e) {} }
+}
+async function enregistrerTextePublication(postId) {
+  var champ = document.getElementById("pubTexteEdit");
+  var bouton = document.getElementById("pubTexteEnregistrer");
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!champ || !p) return;
+  var texte = String(champ.value || "").trim().slice(0, TEXTE_PUBLICATION_MAX);
+  if (!texte && !p.image && !p.video && !p.audio) { toast("Écris quelque chose, ou supprime la publication"); return; }
+  if (texte === String(p.text || "").trim()) { closeModal(); return; }
+  if (bouton) { if (bouton.disabled) return; bouton.disabled = true; bouton.textContent = "Enregistrement…"; }
+  var serveur = !!(p.fromSupabase && typeof supa !== "undefined" && supa && window._supaReal
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+  var editedAt = Date.now();
+  if (serveur) {
+    var r = null;
+    try {
+      r = await supa.from("posts").update({ content: texte }).eq("id", postId).eq("author_id", MY_UID).select("id, edited_at");
+    } catch (e) { r = { error: e }; }
+    var ok = r && !r.error && Array.isArray(r.data) && r.data.length === 1;
+    if (!ok) {
+      if (bouton) { bouton.disabled = false; bouton.textContent = "Enregistrer"; }
+      try { diagLog("modification de publication refusée " + String((r && r.error && (r.error.code || r.error.message)) || "0 ligne")); } catch (e) {}
+      toast(typeof estEchecReseau === "function" && r && r.error && estEchecReseau(r.error)
+        ? "⚠️ Pas de connexion — modification non enregistrée"
+        : "⚠️ Modification non enregistrée — réessaie", "warning");
+      return;
+    }
+    if (r.data[0].edited_at) editedAt = supaTs(r.data[0].edited_at);
+  }
+  // Toutes les copies vivantes (userPosts, supabasePosts, seed, extras du fil).
+  [state.userPosts, state.supabasePosts, state.seed && state.seed.posts, window._feedExtraPosts].forEach(function (liste) {
+    (liste || []).forEach(function (x) { if (x && x.id === postId) { x.text = texte; x.editedAt = editedAt; } });
+  });
+  try { saveState(); } catch (e) {}
+  closeModal();
+  window._feedDomSig = null; window._lastHtml = null;
+  try { renderFeed(); } catch (e) {}
+  try {
+    var page = document.getElementById("postDetailPage");
+    if (page && page.style.display === "flex" && typeof openPost === "function") openPost(postId);
+  } catch (e) {}
+  toast(serveur ? "Publication modifiée" : "Publication modifiée sur cet appareil");
 }
 
 // Le ⋯ d'une publication d'AUTRUI : signaler la publication, bloquer l'auteur.
@@ -4450,6 +4524,22 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
   setTimeout(function() { renderMessages(); openConversation(newConv.id); }, 120);
 }
 
+// Vrai si un blocage existe entre ce compte et moi ET que ce n'est pas MOI qui
+// ai bloqué — c'est donc lui. `is_blocked_with` (SECURITY DEFINER, comptes
+// seulement) répond pour les deux sens sans révéler lequel ; le sens « moi »
+// se lit dans ma propre liste. Visiteur, compte d'exemple, panne : faux — le
+// profil s'affiche comme avant.
+async function _profilIndisponiblePourMoi(authorId) {
+  try {
+    if (!authorId || typeof supa === "undefined" || !supa || !window._supaReal) return false;
+    if (typeof _uidEstUnCompte === "function" && !_uidEstUnCompte()) return false;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(authorId))) return false;
+    if (typeof isBlocked === "function" && isBlocked(authorId)) return false;
+    var r = await supa.rpc("is_blocked_with", { _other: String(authorId) });
+    return !!(r && !r.error && r.data === true);
+  } catch (e) { return false; }
+}
+
 async function openUserProfile(authorId, source) {
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
@@ -4461,6 +4551,20 @@ async function openUserProfile(authorId, source) {
 
   if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
     goTo("profiles");
+    return;
+  }
+
+  // PRO-C20 (décision de Benjamin du 2026-11-13, « 3 : b ») : le profil d'un
+  // compte qui M'A bloqué n'est pas affiché — « Ce profil n'est pas
+  // disponible », comme un compte supprimé, sans bouton menant à un refus
+  // certain. (Un compte que J'AI bloqué garde son profil et « Débloquer », LOT-16.)
+  if (await _profilIndisponiblePourMoi(authorId)) {
+    openModal(`
+      <div class="modal-handle"></div>
+      <div class="modal-title">Ce profil n'est pas disponible</div>
+      <div class="modal-subtitle">Il a peut-être été supprimé, ou n'est pas visible pour toi.</div>
+      <button class="btn primary block" onclick="closeModal()">Fermer</button>
+    `);
     return;
   }
 
