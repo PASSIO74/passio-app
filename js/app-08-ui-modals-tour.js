@@ -2110,6 +2110,7 @@ function playCurrentStory() {
       _btn.addEventListener("click", function (e) { e.stopPropagation(); clearInterval(storyTimer); openModal('<div class="modal-handle"></div><div class="modal-title">Cette story</div><button class="btn ghost block" id="storyReportGo">🚩 Signaler cette story</button>'); var go = document.getElementById("storyReportGo"); if (go) go.addEventListener("click", function () { closeModal(); reportStory(s.id); }); });
       _hdr.insertBefore(_btn, _hdr.querySelector(".story-viewer-close"));
     }
+    _barreReponseStory(s, u.name, _reel);
   } catch (e) {}
 
   const card = $("#storyCard");
@@ -2318,6 +2319,74 @@ function storyPrev() {
   }
   // …sinon on ferme.
   closeStoryViewer();
+}
+
+// LOT-49 (audit UX/UI du 2026-11-10, BOB-C09) : une story ne permettait ni de
+// répondre ni de réagir. Sous la story d'un COMPTE RÉEL autre que moi (jamais un
+// exemple), un champ « Répondre à Léa… » : envoyer ouvre la conversation
+// EXISTANTE (startDirectMessage, mêmes règles que la messagerie : blocage,
+// compte d'exemple) avec la réponse PRÉREMPLIE et la story citée — rien ne
+// part tout seul, c'est la personne qui envoie. Rendu DOM, aucun onclick inline.
+function _barreReponseStory(s, nom, reel) {
+  try {
+    var sv = document.getElementById("storyViewer");
+    if (!sv) return;
+    var ancienne = document.getElementById("storyReplyBar");
+    if (ancienne) ancienne.remove();
+    var bloque = typeof isBlocked === "function" && isBlocked(s.authorId);
+    if (!reel || bloque) return;
+    var barre = document.createElement("form");
+    barre.id = "storyReplyBar";
+    barre.className = "story-reply-bar";
+    var champ = document.createElement("input");
+    champ.type = "text";
+    champ.maxLength = 500;
+    champ.className = "story-reply-input";
+    champ.placeholder = "Répondre à " + (nom || "cette personne") + "…";
+    champ.setAttribute("aria-label", "Répondre à " + (nom || "cette personne"));
+    champ.setAttribute("enterkeyhint", "send");
+    var bouton = document.createElement("button");
+    bouton.type = "submit";
+    bouton.className = "story-reply-send";
+    bouton.textContent = "Envoyer";
+    barre.appendChild(champ);
+    barre.appendChild(bouton);
+    // Écrire met la story en pause ; quitter le champ vide la relance.
+    champ.addEventListener("focus", function () { window._storyEnPause = true; });
+    champ.addEventListener("input", function () { window._storyEnPause = true; });
+    champ.addEventListener("blur", function () { if (!champ.value.trim()) window._storyEnPause = false; });
+    ["pointerdown", "click", "touchstart"].forEach(function (t) { barre.addEventListener(t, function (e) { e.stopPropagation(); }); });
+    barre.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var texte = champ.value.trim();
+      if (!texte) { champ.focus(); return; }
+      var extrait = String(s.text || "").replace(/\s+/g, " ").trim().slice(0, 80);
+      var brouillon = "↩️ Ta story" + (extrait ? " « " + extrait + " »" : "") + "\n" + texte;
+      window._storyReponseEnAttente = { userId: s.authorId, texte: brouillon };
+      closeStoryViewer();
+      try { if (window.tel && tel.action) tel.action("story_reponse_ouverte", {}); } catch (_t) {}
+      Promise.resolve(startDirectMessage(s.authorId, nom)).then(function () {
+        setTimeout(_poserReponseStory, 350);
+      });
+    });
+    sv.appendChild(barre);
+  } catch (e) { try { diagLog("story_reponse " + (e && e.message)); } catch (_) {} }
+}
+// Pose la réponse dans le champ de la conversation ouverte — si c'est bien celle
+// de l'auteur de la story. Le message n'est PAS envoyé.
+function _poserReponseStory() {
+  var r = window._storyReponseEnAttente;
+  window._storyReponseEnAttente = null;
+  if (!r) return;
+  try {
+    var c = (getConversations() || []).find(function (x) { return x && x.id === window._openedConvId; });
+    var champ = document.getElementById("convFpInput");
+    if (!c || c.userId !== r.userId || !champ) return;
+    champ.value = r.texte;
+    if (typeof autoResizeTextarea === "function") autoResizeTextarea(champ);
+    try { champ.dispatchEvent(new Event("input", { bubbles: true })); } catch (_e) {}
+    try { champ.focus(); champ.setSelectionRange(champ.value.length, champ.value.length); } catch (_e) {}
+  } catch (e) { try { diagLog("story_reponse_pose " + (e && e.message)); } catch (_) {} }
 }
 
 function closeStoryViewer() {
