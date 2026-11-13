@@ -12895,19 +12895,13 @@ button, a, label, select, summary,
   border-bottom: 0;
   border-radius: 999px;
   box-shadow: inset 0 0 0 1px var(--border);
-  margin-block: 4px;
-  min-height: 36px;
+  margin-block: 0;
+  min-height: 44px; /* cible tactile (verrou feed-intents) */
 }
 #feedIntentSelector .feed-intent-btn.active {
   background: var(--accent);
   color: #fff;
   box-shadow: none;
-}
-#feedIntentSelector .feed-intent-btn::after {
-  /* zone tactile de 44 px sans grossir la pastille */
-  content: "";
-  position: absolute;
-  inset: -4px 0;
 }
 /* FIL-C14 : sur un petit écran, le premier contenu remonte ; ailleurs, les
    libellés des stories passent à 11 px. */

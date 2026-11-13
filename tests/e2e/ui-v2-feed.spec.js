@@ -336,7 +336,7 @@ test("aperçu : l'état vide se termine par une action", async ({ page }) => {
   }, null, { timeout: 8000 });
 });
 
-test("aperçu : sans contenu de mes suivis, l'action proposée est de publier", async ({ page }) => {
+test("aperçu : « Suivis » coché sans abonnement, l'action proposée est de trouver des personnes", async ({ page }) => {
   // ⚠️ CE CAS A RÉVÉLÉ UN DÉFAUT RÉEL de la refonte, il n'a pas été assoupli.
   // « Suivis » coché alors qu'on ne suit personne, c'est un critère CHOISI dont
   // le contenu est vide — pas une absence de choix. La première version
@@ -350,10 +350,18 @@ test("aperçu : sans contenu de mes suivis, l'action proposée est de publier", 
 
   const cta = page.locator("#feedEmpty [data-v2-empty-cta]");
   await expect(cta).toHaveCount(1);
-  await expect(cta).toHaveAttribute("data-v2-empty-cta", "create");
+  // LOT-18 (audit UX/UI du 2026-11-10, FIL-C17) : le message dit « Tu ne suis
+  // encore personne — ouvre le profil de quelqu'un et touche Suivre » ; le
+  // bouton fait désormais CE QUE LE MESSAGE CONSEILLE (« Publier » n'y menait
+  // pas). Ce que ce test protège ne change pas : un critère CHOISI n'est pas
+  // une absence de choix — jamais « Explorer les passions » ici.
+  await expect(cta).toHaveAttribute("data-v2-empty-cta", "people");
+  await expect(cta).toHaveText("Trouver des personnes à suivre");
   await cta.click();
-  // Elle rouvre le sélecteur « Créer » d'UI-1 — aucun nouvel éditeur.
-  await expect(page.locator("#v2CreateSheet")).toBeVisible();
+  await page.waitForFunction(() => {
+    const el = document.getElementById("screen-explore");
+    return el && el.classList.contains("active");
+  }, null, { timeout: 8000 });
 });
 
 test("kill switch : l'état vide historique est strictement inchangé", async ({ page }) => {
