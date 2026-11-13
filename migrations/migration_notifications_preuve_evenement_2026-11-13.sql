@@ -249,7 +249,7 @@ begin
       ('zz_srv02b_ci5_' || sfx, 'srep_2026-11-13T10:00:00.000+00:00', pst, b, 'like', null);
     -- Carol est nommée co-organisatrice par Alice seule, sans son accord (relecture du 13/11, P1).
     insert into public.events (id, organizer_id, author_id, title, status, co_organizers) values
-      (evt, a, a, 'Rando du lac', 'active', jsonb_build_array(c3)), (evx, a, a, 'Rando annulée', 'cancelled', null);
+      (evt, a, a, 'Rando du lac', 'active', jsonb_build_array(c3)), (evx, a, a, 'Rando annulée', 'cancelled', '[]'::jsonb);   -- NOT NULL en base (staging, 13/11)
     insert into public.event_attendees (event_id, user_id, rsvp, rating) values (evt, b, 'going', 4), (evx, b, 'going', null), (evx, c3, 'going', null);
     insert into public.event_reactions (event_id, user_id, emoji) values (evt, b, '❤️');
     insert into public.event_comments (id, event_id, author_id, text) values (ecm, evt, b, 'Je viens');

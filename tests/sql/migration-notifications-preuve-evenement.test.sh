@@ -65,7 +65,7 @@ create table public.posts (id text primary key, author_id text, content text, cr
 create table public.post_comments (id text primary key, post_id text, author_id text, content text, created_at timestamp default now());
 create table public.post_likes (post_id text not null, user_id text not null, primary key (post_id, user_id));
 create table public.comment_interactions (id text primary key, comment_id text not null, post_id text, user_id text not null, kind text not null, payload text, created_at timestamptz default now());
-create table public.events (id text primary key, organizer_id text, author_id text, title text, status text default 'active', co_organizers jsonb, created_at timestamp default now());
+create table public.events (id text primary key, organizer_id text, author_id text, title text, status text not null default 'active', co_organizers jsonb not null default '[]'::jsonb, created_at timestamp default now());
 create table public.event_attendees (event_id text not null references public.events(id) on delete cascade, user_id text not null, rsvp text, rating smallint, rated_at timestamptz, created_at timestamptz default now(), primary key (event_id, user_id));
 create table public.event_reactions (event_id text not null references public.events(id) on delete cascade, user_id text not null, emoji text not null, created_at timestamptz default now());
 create table public.event_comments (id text primary key, event_id text not null references public.events(id) on delete cascade, author_id text not null, text text, created_at timestamptz default now());
