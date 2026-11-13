@@ -23,11 +23,13 @@
 //
 // Ce que ça prouve : que la suite passe sur l'artefact assemblé — ordre de
 // assemblage, complétude du build, externalisation des scripts app/ derrière le
-// gate. Ce que ça ne prouve PAS : le comportement APRÈS minification de la PAGE,
-// que seul le déploiement applique (`html-minifier-terser`). Le minifieur renomme
-// les identifiants — un piège déjà rencontré en vérifiant la prod. Les 9 scripts,
-// eux, sortent minifiés comme en production quand `PASSIO_MINIFIER_APP=1` (le
-// build les minifie lui-même depuis le 2026-11-10 : scripts/build.js, étape 1 bis).
+// gate. Avec `PASSIO_MINIFIER_APP=1` (la passe « Gates artefact » de la CI), c'est
+// AUSSI l'artefact minifié, à l'octet celui qui part : les 9 scripts (étape 1 bis de
+// scripts/build.js, depuis le 2026-11-10), la feuille (2 bis) et, depuis le
+// 2026-11-12 (STAB-10), la PAGE elle-même (6 ter) — jusque-là minifiée par le seul
+// job de déploiement, après tous les tests. Le déploiement refuse d'envoyer un dist/
+// dont l'empreinte n'est pas celle de l'arbre éprouvé ici (scripts/empreinte-dist.js).
+// Sans le drapeau, la page et les scripts restent bruts.
 // ═══════════════════════════════════════════════════════════════════════════
 "use strict";
 const http = require("node:http");

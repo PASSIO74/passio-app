@@ -268,7 +268,7 @@ jobs:
           while IFS= read -r file; do
             case "${file}" in
               # Tout ce qui s'exécute avec un secret, écrit ce qui part en production ou juge la PR (E-05).
-              .github/*|.claude/*|CLAUDE.md|AGENTS.md|migrations/*|supabase/*|netlify/*|netlify.toml|_headers|sw.js|js/vendor/*|package.json|package-lock.json|dashboard/package.json|dashboard/package-lock.json|dashboard/server/*|playwright.config.js|tests/ci/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|scripts/audit-*.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js|scripts/schema-executable.js|scripts/sentinelle-detecter.mjs|scripts/veille-production.mjs|scripts/digest.mjs|scripts/moderation-alerte.mjs|scripts/mesure-passions.js|scripts/controle-realtime.mjs|scripts/purge-e2e-rest.js|scripts/verifier-prerequis-fonctions.mjs|scripts/build.js|scripts/verifier-integrite-app.js)
+              .github/*|.claude/*|CLAUDE.md|AGENTS.md|migrations/*|supabase/*|netlify/*|netlify.toml|_headers|sw.js|js/vendor/*|package.json|package-lock.json|dashboard/package.json|dashboard/package-lock.json|dashboard/server/*|playwright.config.js|tests/ci/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|scripts/audit-*.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js|scripts/schema-executable.js|scripts/sentinelle-detecter.mjs|scripts/veille-production.mjs|scripts/digest.mjs|scripts/moderation-alerte.mjs|scripts/mesure-passions.js|scripts/controle-realtime.mjs|scripts/purge-e2e-rest.js|scripts/verifier-prerequis-fonctions.mjs|scripts/build.js|scripts/verifier-integrite-app.js|scripts/empreinte-dist.js|scripts/servir-dist.js)
                 critical=true ;;
             esac
           done <<< "${files}"
@@ -929,6 +929,11 @@ jobs:
   gates-artefact:
     name: Gates artefact production (dist)
     runs-on: ubuntu-latest
+    # STAB-10 (2026-11-12) : l'empreinte de l'arbre dist/ ÉPROUVÉ ici. Le job
+    # « Déploiement production » reconstruit dist/ et refuse d'envoyer un arbre dont
+    # l'empreinte n'est pas celle-ci : ce qui part est, à l'octet, ce qui a été testé.
+    outputs:
+      empreinte: ${{ steps.empreinte.outputs.empreinte }}
     # Le déploiement sert dist/, pas les fichiers de développement. Cette passe
     # reconstruit donc l'artefact réel et prouve que HTML, release.json, SW et
     # gardes navigateur portent la même identité de release. Elle vérifie aussi
@@ -971,13 +976,26 @@ jobs:
       # au déploiement, et scripts/servir-dist.js refuse l'artefact si une empreinte
       # `integrity` de la page n'est pas celle de son fichier — ces suites tournent donc
       # sur les octets et les empreintes que la production recevra, à chaque PR.
+      # La PAGE aussi, depuis le 2026-11-12 (STAB-10) : le build la minifie lui-même
+      # (scripts/build.js, étape 6 ter) — avant, seul le déploiement la passait à
+      # html-minifier-terser, après tous les tests. La fumée (smoke.spec.js) démarre
+      # l'application sur cette page minifiée : titre, écrans, aucune erreur de page.
       - name: Gates artefact production
         env:
           PASSIO_CIBLE: dist
           PASSIO_PORT: 8091
           PASSIO_MINIFIER_APP: "1"
           COMMIT_REF: ${{ github.sha }}
-        run: npx playwright test tests/e2e/release-integrity.spec.js tests/e2e/passion-context.spec.js
+        run: npx playwright test tests/e2e/release-integrity.spec.js tests/e2e/passion-context.spec.js tests/e2e/smoke.spec.js
+
+      # Après les suites : l'arbre qu'elles ont servi, tel quel (scripts/empreinte-dist.js).
+      - name: Empreinte de l'artefact éprouvé
+        id: empreinte
+        run: |
+          set -euo pipefail
+          h="$(node scripts/empreinte-dist.js dist)"
+          echo "empreinte=${h}" >> "$GITHUB_OUTPUT"
+          echo "Artefact éprouvé : ${h}"
 
   # ════════════════════════════════════════════════════════════════════════════
   # ⚠️ CE JOB NE FAIT RIEN, ET IL EST INDISPENSABLE. NE PAS LE RENOMMER.
@@ -1078,16 +1096,11 @@ jobs:
           # sw.js et release.json sont générés par build.js — ne pas les recopier
           cp manifest.json _headers icon-192.png icon-512.png dist/
 
-      - name: Minify index.html (fallback sur le fichier brut en cas d'erreur)
-        run: |
-          npx --no-install html-minifier-terser \
-            --collapse-whitespace \
-            --remove-comments \
-            --minify-css true \
-            --minify-js true \
-            -o dist/index.min.html dist/index.html \
-          && mv dist/index.min.html dist/index.html \
-          || echo "Minification échouée, déploiement du fichier brut"
+      # ⚠️ PLUS D'ÉTAPE « Minify index.html » ICI (STAB-10, 2026-11-12) : la page est
+      # minifiée par le build (étape 6 ter de scripts/build.js, même commande, mêmes
+      # octets — arbre dist/ comparé à l'octet avec l'ancien chemin), donc AVANT les
+      # suites de la passe « Gates artefact ». La remettre ici changerait les octets
+      # après les tests, et l'étape « Artefact identique » plus bas refuserait l'envoi.
 
       # ⚠️ L'EMPREINTE QUE LA PAGE DÉCLARE EST CELLE DES OCTETS QUI PARTENT (2026-11-10).
       # Relu APRÈS la minification de la page : les 9 paires (adresse, empreinte) du
@@ -1099,6 +1112,16 @@ jobs:
       # ⚠️ PLUS RIEN NE TOUCHE dist/ APRÈS CE CONTRÔLE, hormis l'envoi.
       - name: Vérifier les scripts app/ et la feuille de style — l'empreinte que la page déclare pour chacun
         run: node scripts/verifier-integrite-app.js dist
+
+      # STAB-10 (2026-11-12) : CE QUI PART EST CE QUI A ÉTÉ TESTÉ. dist/ vient d'être
+      # reconstruit sur cette machine ; la passe « Gates artefact » a publié l'empreinte
+      # de l'arbre sur lequel ses suites ont tourné (page, 9 scripts et feuille minifiés,
+      # assets). Le build est déterministe : un écart veut dire un artefact que rien n'a
+      # éprouvé (outil changé entre-temps, étape ajoutée ici…), et rien n'est envoyé.
+      - name: Artefact identique à celui que la passe « Gates artefact » a éprouvé
+        env:
+          EMPREINTE_TESTEE: ${{ needs.gates-artefact.outputs.empreinte }}
+        run: node scripts/empreinte-dist.js dist --attendue "$EMPREINTE_TESTEE"
 
       - name: Installer netlify-cli (sans le jeton dans l'environnement)
         run: |

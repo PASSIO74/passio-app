@@ -450,6 +450,32 @@ if (process.env.PASSIO_MINIFIER_APP === "1") {
   }
 }
 fs.writeFileSync(outPath, html);
+// 6 ter. La PAGE elle-même, minifiée ICI depuis le 2026-11-12 (audit de stabilisation,
+//    STAB-10). Jusque-là le job « Déploiement production » la passait seul à
+//    `html-minifier-terser`, APRÈS tous les tests : la page qui part chez l'utilisateur
+//    n'était éprouvée par rien, et la passe « Gates artefact » jouait une page brute.
+//    Même commande que l'ancienne étape du workflow (html-minifier-terser du lockfile,
+//    figé à 7.2.0 sans `^`, mêmes options), mêmes octets, même repli sur le fichier brut
+//    si elle échoue. Faite APRÈS l'empreinte de la feuille (étape 2 bis), qu'elle ne
+//    touche pas : elle ne réécrit que les blancs, les commentaires, le CSS et le JS
+//    inline ; les empreintes `integrity` sont des chaînes, relues ensuite par
+//    scripts/verifier-integrite-app.js. Le buildId ne bouge pas (étape 5).
+//    Verrou : tests/unit/page-minifiee-testee.test.mjs.
+let taillePage = Buffer.byteLength(html);
+if (process.env.PASSIO_MINIFIER_APP === "1") {
+  try {
+    // `cli.js` n'est pas dans les `exports` du paquet : on part de son package.json.
+    const minifieurPage = path.join(path.dirname(require.resolve("html-minifier-terser/package.json", { paths: [root] })), "cli.js");
+    execFileSync(process.execPath, [minifieurPage,
+      "--collapse-whitespace", "--remove-comments", "--minify-css", "true", "--minify-js", "true",
+      "-o", outPath + ".min", outPath], { stdio: "pipe", timeout: 120000 });
+    fs.renameSync(outPath + ".min", outPath);
+  } catch (e) {
+    try { fs.unlinkSync(outPath + ".min"); } catch (_e) { /* rien à retirer */ }
+    console.log("::warning title=Minification::Minification de index.html échouée, fichier brut servi : " + String((e && e.message) || e).split("\n")[0]);
+  }
+  taillePage = fs.statSync(outPath).size;
+}
 const ancienAppJs = path.join(path.dirname(outPath), "app.js");
 if (fs.existsSync(ancienAppJs)) fs.unlinkSync(ancienAppJs);
 fs.writeFileSync(path.join(path.dirname(outPath), "sw.js"), sw);
@@ -519,6 +545,6 @@ if (fs.existsSync(pilotageDir)) {
   console.log("  + pilotage/ : copié");
 }
 console.log("Build OK →", outPath,
-  "(", Buffer.byteLength(html), "octets ) + app/ :", appScripts.length, "scripts (", Buffer.byteLength(appJs),
+  "(", taillePage, "octets servis ) + app/ :", appScripts.length, "scripts (", Buffer.byteLength(appJs),
   "octets, ensemble v=" + appHash + ") + styles.css (", tailleFeuille,
   "octets servis, v=" + cssHash + ") + sw.js + release.json (build " + buildId + ")");
