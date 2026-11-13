@@ -602,7 +602,8 @@ test.describe("Interactions — like d'un commentaire", () => {
     }, id);
 
     const like = page.locator(`#feedList [data-postid="${id}"] .comment[data-commentid="${cid}"] [data-cmtlike="${cid}"]`);
-    await expect(like).toHaveText(/🤍\s*0/);
+    // LOT-30 (FIL-C26) : l'aperçu n'écrit plus « 0 » — non aimé = « 🤍 » seul.
+    await expect(like).toHaveText(/^\s*🤍\s*$/);
     await like.click();
     expect(await page.evaluate((i) => findPostAnywhere(i).comments.find(c => c.id === "c_prev_1").likes, id)).toBe(1);
     await expect(like).toHaveText(/❤️\s*1/);
