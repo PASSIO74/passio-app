@@ -3469,10 +3469,26 @@ function fmtEventPrice(price) {
 }
 
 // ======== TOAST ========
+// LOT-17 (audit UX/UI du 2026-11-10, TRA-C02) : un ÉCHEC ne se peint plus du
+// violet de la réussite — 74 des 85 libellés d'échec partaient sans type. Le
+// composant reconnaît désormais un échec à ses mots et le passe en « warning »
+// (couleur AA déjà vérifiée) ; un type explicite reste toujours souverain.
+const TOAST_ECHEC_RE = /(impossible|non enregistr|r[ée]essaie|[ée]chou|refus|erreur|introuvable|indisponible|pas pu|n'a pas|⚠️|❌)/i;
+function typeToast(msg, type) {
+  if ((!type || type === "info") && TOAST_ECHEC_RE.test(String(msg || ""))) return "warning";
+  return type || "info";
+}
+// TRA-C02 : la durée suit la longueur — 60 ms par caractère, entre 3 et 8 s.
+function dureeToast(msg, cliquable) {
+  const n = String(msg || "").length;
+  return Math.min(8000, Math.max(cliquable ? 6000 : 3000, n * 60));
+}
 function toast(msg, type = "info", onClick = null) {
   const stack = $("#toastStack");
   const t = document.createElement("div");
+  type = typeToast(msg, type);
   t.className = "toast " + (type || "");
+  if (type === "warning" || type === "error") t.setAttribute("role", "alert");
   t.textContent = msg;
   if (typeof onClick === "function") {
     t.classList.add("clickable");
@@ -3481,7 +3497,7 @@ function toast(msg, type = "info", onClick = null) {
   }
   stack.appendChild(t);
   // Les toasts cliquables restent un peu plus longtemps pour laisser le temps de cliquer.
-  setTimeout(() => t.remove(), onClick ? 6000 : 3000);
+  setTimeout(() => t.remove(), dureeToast(msg, !!onClick));
   // Rendu : l'appelant d'un toast « en cours » peut le retirer dès le verdict
   // (LOT-1, CRE-C04 : « Publication en cours… » restait affiché à côté du refus).
   return t;
@@ -4607,25 +4623,22 @@ document.addEventListener("visibilitychange", function () {
 
 function openContentSettings() {
   var cfg = getCurrentConfig();
-  var content = Object.assign({ showSensitive: false, language: "fr" }, cfg.content || {}, preferencesVideoPublique());
+  // LOT-17 (audit UX/UI du 2026-11-10, TRA-C07) : « Afficher contenu sensible »
+  // et « Langue » étaient écrits et lus NULLE PART (l'interface n'existe qu'en
+  // français) — retirés. Restent les deux réglages branchés (lus par
+  // `preferencesVideoPublique`), sous un nom qui dit ce qu'ils règlent.
+  var content = Object.assign({}, cfg.content || {}, preferencesVideoPublique());
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">Contenu & feed</div>\
+    <div class="modal-title">Vidéos et données</div>\
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Lecture auto des vidéos</span><input type="checkbox" id="contentAutoplay" ' + (content.autoplay ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Mode économie de données</span><input type="checkbox" id="contentDataEco" ' + (content.dataEco ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher contenu sensible</span><input type="checkbox" id="contentSensitive" ' + (content.showSensitive ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <div style="padding:12px 0;"><span style="font-size:13px;">Langue</span>\
-      <select id="contentLang" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:16px;">\
-        <option value="fr" ' + (content.language === "fr" ? "selected" : "") + '>Français</option>\
-        <option value="en" ' + (content.language === "en" ? "selected" : "") + '>English</option>\
-        <option value="es" ' + (content.language === "es" ? "selected" : "") + '>Español</option>\
-      </select></div>\
     <button class="btn primary block" onclick="saveContentSettings()" style="margin-top:14px;">Sauvegarder</button>\
   ');
 }
 function saveContentSettings() {
   var cfg = getCurrentConfig();
-  cfg.content = { autoplay: document.getElementById("contentAutoplay").checked, dataEco: document.getElementById("contentDataEco").checked, showSensitive: document.getElementById("contentSensitive").checked, language: document.getElementById("contentLang").value };
+  cfg.content = { autoplay: document.getElementById("contentAutoplay").checked, dataEco: document.getElementById("contentDataEco").checked };
   saveConfig(cfg);
   if (!videoPubliqueAutoplay()) document.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
   closeModal(); toast("Préférences de contenu mises à jour");
@@ -4639,13 +4652,22 @@ function saveContentSettings() {
 // avoir limité l'usage. Ne revient qu'avec un effet RÉEL (ex. une pause qui
 // suspend les notifications poussées), visible dans le panneau.
 
+// LOT-17 (audit UX/UI du 2026-11-10, TRA-C25) : la version affichée est celle
+// qui TOURNE (identifiant du build et commit, `window.PASSIO_RELEASE` posé par
+// le build) — on peut enfin la citer en écrivant au support ; le logo de l'app
+// remplace l'emoji.
+function versionAffichee() {
+  var r = window.PASSIO_RELEASE || null;
+  if (!r || (!r.buildId && !r.commit)) return "Version de développement";
+  return "Version " + String(r.buildId || "").slice(0, 12) + (r.commit ? " · " + String(r.commit).slice(0, 8) : "");
+}
 function openAbout() {
   openModal('\
     <div class="modal-handle"></div>\
     <div style="text-align:center;margin-bottom:16px;">\
-      <div style="font-size:48px;margin-bottom:8px;">🟣</div>\
-      <div style="font-weight:900;font-size:22px;color:var(--text);">PASSIO</div>\
-      <div style="font-size:12px;color:var(--muted);margin-top:4px;">Version Beta 1.1 · Mai 2026</div>\
+      <img src="icon-192.png" alt="" width="56" height="56" style="border-radius:14px;margin-bottom:8px;"/>\
+      <div class="modal-title" style="font-weight:900;font-size:22px;color:var(--text);">PASSIO</div>\
+      <div class="a-propos-version" style="font-size:12px;color:var(--muted);margin-top:4px;">' + escapeHtml(versionAffichee()) + '</div>\
     </div>\
     <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:14px;">Le premier réseau social pensé pour tes passions. Crée, partage, rencontre — autour de ce qui t\'anime vraiment.</div>\
     <div style="font-size:11px;color:var(--muted);line-height:1.5;">\
@@ -5313,11 +5335,15 @@ function openDeleteAccountConfirm() {
       <li>tes likes, commentaires, abonnements et événements.</li>\
     </ul>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ton compte et ton adresse e-mail sont retirés de nos serveurs immédiatement ; en cas d’incident technique, au plus tard sous 30 jours (art. 17 RGPD). Pour toute question : ' + escapeHtml(PASSIO_EDITEUR.email) + '</p>\
+    <div class="suppression-export">\
+      <p style="margin:0 0 8px;font-size:13px;line-height:1.45;"><b>Avant de partir</b>, garde une copie de tes publications, messages et réglages.</p>\
+      <button type="button" class="btn ghost block" id="privExporter" onclick="exporterMesDonnees()">Télécharger mes données</button>\
+    </div>\
     <label class="field"><span>Tape <strong>SUPPRIMER</strong> pour confirmer</span>\
       <input type="text" class="input" id="deleteConfirmInput" autocomplete="off" placeholder="SUPPRIMER"/></label>\
     <div style="display:flex;gap:8px;margin-top:12px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
-      <button class="btn primary" onclick="doDeleteAccount()" style="flex:1;background:#ef4444;">Supprimer définitivement</button>\
+      <button class="btn primary" onclick="doDeleteAccount()" style="flex:1;background:#ef4444;white-space:nowrap;">Supprimer</button>\
     </div>\
   ');
 }

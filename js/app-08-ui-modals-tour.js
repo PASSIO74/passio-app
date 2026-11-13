@@ -35,6 +35,8 @@ function openModal(html, panel) {
   // Sinon on pousse une seule entrée pour que le bouton back ferme le modal.
   if (backdrop && !backdrop.classList.contains("active")) {
     pushOverlayHistory("modal", "#modal");
+    // LOT-17 (TRA-C21) : d'où l'on vient — le focus y retourne à la fermeture.
+    try { _modalFocusAvant = document.activeElement; } catch (e) { _modalFocusAvant = null; }
   }
 
   // LOT-16 (PRO-C22) : une fenêtre qui en REMPLACE une autre n'hérite pas de son
@@ -45,10 +47,52 @@ function openModal(html, panel) {
   const closeBtn = `<button type="button" class="modal-close" onclick="closeModal()" aria-label="Fermer">×</button>`;
   $("#modalContent").innerHTML = closeBtn + html;
   if (backdrop) backdrop.classList.add("active");
+  try { _modalAccessible(); } catch (e) {}
   // `panel` explicite (appelant) sinon dérivé du gabarit — voir _panelDepuisHtml.
   _modalPanelCourant = (typeof panel === "string" && panel) ? panel.slice(0, 40) : _panelDepuisHtml(html);
   try { window.tel && tel.action("ui_open", { panel: _modalPanelCourant }); } catch (e) {}
 }
+// LOT-17 (audit UX/UI du 2026-11-10, TRA-C21) — LA FENÊTRE COMMUNE EST UNE
+// FENÊTRE pour le clavier et le lecteur d'écran : elle se nomme (son premier
+// titre), reçoit le focus, le garde (tabulation bouclée), et le rend en se
+// fermant. Une modification ici corrige les 69 fenêtres qui passent par elle.
+var _modalFocusAvant = null;
+function _modalAccessible() {
+  var boite = document.querySelector("#modalBackdrop .modal") || document.getElementById("modalContent");
+  var contenu = document.getElementById("modalContent");
+  if (!boite || !contenu) return;
+  boite.setAttribute("role", "dialog");
+  boite.setAttribute("aria-modal", "true");
+  var titre = contenu.querySelector(".modal-title, h2, h3");
+  if (titre) {
+    if (!titre.id) titre.id = "modalTitreCourant";
+    boite.setAttribute("aria-labelledby", titre.id);
+    boite.removeAttribute("aria-label");
+  } else {
+    boite.removeAttribute("aria-labelledby");
+    boite.setAttribute("aria-label", "Fenêtre");
+  }
+  // Le focus entre dans la fenêtre — sauf si l'appelant l'y a déjà mis (un champ).
+  if (!contenu.contains(document.activeElement)) {
+    var cible = titre || contenu.querySelector("button, [href], input, select, textarea, [tabindex]");
+    if (cible) {
+      if (cible === titre && !titre.hasAttribute("tabindex")) titre.setAttribute("tabindex", "-1");
+      try { cible.focus({ preventScroll: true }); } catch (e) {}
+    }
+  }
+}
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Tab") return;
+  var bd = document.getElementById("modalBackdrop");
+  var contenu = document.getElementById("modalContent");
+  if (!bd || !contenu || !bd.classList.contains("active")) return;
+  var f = Array.prototype.filter.call(contenu.querySelectorAll('button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'), function (el) { return el.offsetParent !== null; });
+  if (!f.length) return;
+  var premier = f[0], dernier = f[f.length - 1];
+  var dedans = contenu.contains(document.activeElement);
+  if (e.shiftKey && (document.activeElement === premier || !dedans)) { e.preventDefault(); dernier.focus(); }
+  else if (!e.shiftKey && (document.activeElement === dernier || !dedans)) { e.preventDefault(); premier.focus(); }
+});
 function closeModal() {
   // ⚠️ Le nettoyage du CDV Live (arrêt du polling, retrait du spectateur) a été
   // retiré avec la fonctionnalité (§6). `cdvLiveRefreshInterval` et
@@ -61,6 +105,9 @@ function closeModal() {
   const etaitOuverte = !!(bd && bd.classList.contains("active"));
   if (bd) bd.classList.remove("active");
   if (etaitOuverte) {
+    // LOT-17 (TRA-C21) : le focus revient d'où l'on est parti, s'il existe encore.
+    var _retour = _modalFocusAvant; _modalFocusAvant = null;
+    try { if (_retour && document.contains(_retour) && typeof _retour.focus === "function") _retour.focus({ preventScroll: true }); } catch (e) {}
     releaseOverlayHistory();
     // Seulement quand une modale ÉTAIT ouverte : `closeModal()` est appelée par
     // précaution un peu partout, et un `ui_close` sans `ui_open` serait un mensonge.

@@ -232,7 +232,7 @@ function confirmDeletePost(postId) {
   const preview = (post.text || "").slice(0, 80) + (post.text && post.text.length > 80 ? "…" : "");
   const html = `
     <div class="modal-handle"></div>
-    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
+    
     <div class="pay-modal-head">
       <div class="pay-modal-emoji">🗑</div>
       <div class="pay-modal-title">Supprimer cette publication ?</div>
@@ -4104,7 +4104,7 @@ function renderMessageFilters() {
 
 function openNewMessage() {
   var html = `
-    <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
+    
     <div style="font-weight:800;font-size:16px;margin-bottom:14px;">Nouveau message</div>
     <div style="position:relative;">
       <input id="_nmSearch" type="text" class="input" placeholder="Chercher un utilisateur…" autocomplete="off"
@@ -5617,7 +5617,7 @@ function _blockedListHtml() {
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
       <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
       <div style="flex:1;font-weight:700;font-size:13px;color:var(--text);">${escapeHtml(name)}</div>
-      <button class="btn ghost" style="font-size:11px;padding:6px 12px;" onclick="unblockUser('${escapeJsArg(id)}','${escapeJsArg(name)}')">Débloquer</button>
+      <button class="btn ghost bloque-debloquer" onclick="unblockUser('${escapeJsArg(id)}','${escapeJsArg(name)}')">Débloquer</button>
     </div>`;
   }).join("");
 }
@@ -5631,10 +5631,19 @@ function openBlockedList() {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Comptes bloqués</div>
-    <div class="modal-subtitle">Leurs posts, commentaires et messages sont masqués.</div>
+    <div class="modal-subtitle">Leurs publications, commentaires et messages te sont masqués. Débloquer les rétablit, sans réabonnement automatique.</div>
     <div id="blockedListBox" style="max-height:320px;overflow-y:auto;margin-top:8px;">${_blockedListHtml()}</div>
     <button class="btn primary block" style="margin-top:12px;" onclick="closeModal()">OK</button>
   `);
+  // LOT-17 (audit UX/UI du 2026-11-10, TRA-C09) : un compte absent du cache
+  // local s'affichait « ? Utilisateur » — on relit son nom et sa photo sur
+  // `profiles` (lecture publique, aucun droit nouveau), puis on repeint.
+  try {
+    var inconnus = (state.user.blocked || []).filter(function (id) { var u = userById(id); return !u || !u.name; });
+    if (inconnus.length && typeof _resolveProfilesByIds === "function") {
+      _resolveProfilesByIds(inconnus).then(function () { renderBlockedList(); }).catch(function () {});
+    }
+  } catch (e) {}
 }
 
 function shareUserProfile(userId, name) {

@@ -148,10 +148,10 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
     expect(await page.evaluate(() => document.getElementById("convFpSendBtn").getAttribute("aria-label"))).toMatch(/Envoyer/);
     await page.evaluate(() => openNewMessage());
     await page.waitForTimeout(200);
-    const croix = await page.evaluate(() => [...document.querySelectorAll("#modalContent span.modal-close")].map((s) => s.getAttribute("aria-label")));
-    // RÉINJECTION : sur le code d'avant, `span.modal-close` sans nom.
-    expect(croix.length).toBeGreaterThanOrEqual(1);
-    for (const l of croix) expect(l).toBe("Fermer");
+    // LOT-17 (TRA-C22) : la croix en DOUBLE (`span.modal-close` des gabarits) est
+    // retirée — il ne reste que celle d'`openModal`, un bouton nommé.
+    const croix = await page.evaluate(() => [...document.querySelectorAll("#modalContent .modal-close")].map((s) => s.tagName + ":" + s.getAttribute("aria-label")));
+    expect(croix).toEqual(["BUTTON:Fermer"]);
     // Et le source : plus aucun `<span class="modal-close"` sans nom dans les app-0*.
     const dossier = path.join(__dirname, "..", "..", "js");
     const sansNom = fs.readdirSync(dossier).filter((f) => /^app-0\d/.test(f)).flatMap((f) => (fs.readFileSync(path.join(dossier, f), "utf8").match(/<span class="modal-close" onclick=/g) || []).map(() => f));
