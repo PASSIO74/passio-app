@@ -153,6 +153,21 @@
       } catch (e) {}
       return this;
     };
+    // LOT-36 (audit UX/UI du 2026-11-10, IRL-C15) : prévenir l'appelant quand le
+    // fond de carte ne charge pas (erreur de style ou de tuile AVANT toute tuile
+    // reçue) — `cb(true)` — puis quand une tuile finit par arriver — `cb(false)`.
+    MapShim.prototype.surEchecFond = function (cb) {
+      var m = this._map, recu = false, signale = false;
+      try {
+        m.on("error", function () { if (!recu && !signale) { signale = true; try { cb(true); } catch (e) {} } });
+        m.on("data", function (e) {
+          if (recu || !e || e.dataType !== "source" || !e.tile) return;
+          recu = true;
+          if (signale) { try { cb(false); } catch (err) {} }
+        });
+      } catch (e) {}
+      return this;
+    };
     MapShim.prototype.closePopup = function () { try { if (this._popup) this._popup.remove(); } catch (e) {} return this; };
     MapShim.prototype.getCenter = function () { return this._map.getCenter(); }; // {lat, lng} : compatible
     MapShim.prototype.getZoom = function () { return toLeafletZoom(this._map.getZoom()); };

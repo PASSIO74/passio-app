@@ -13208,3 +13208,14 @@ body.passio-hors-ligne #passioBandeauDistant {
    tombait à 3,5:1) ; l'aide sous un réglage qui vaut pour tout le compte. */
 .csetting-item.csetting-danger .csetting-label { color: #b42318; }
 .csetting-aide { font-size: 12px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+
+/* LOT-36 (audit UX/UI du 2026-11-10, IRL-C15) : une pastille chiffrée pour les
+   activités d'un même lieu, sa bulle qui les liste, et le message posé sur la
+   carte quand le fond ne charge pas. */
+.passio-marker.passio-marker-groupe { width: 40px; height: 40px; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.irl-popup-liste { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; margin-top: 6px; }
+.irl-popup-ligne { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.irl-popup-ligne:hover, .irl-popup-ligne:focus-visible { background: rgba(109, 50, 244, 0.08); }
+.irl-popup-ligne-titre { font-size: 13px; font-weight: 700; line-height: 1.3; }
+.irl-popup-ligne-meta { font-size: 12px; color: var(--muted); }
+.irl-map-fallback.irl-map-tuiles { position: absolute; inset: 0; z-index: 2; height: auto; background: var(--bg-card, #fff); pointer-events: none; }
