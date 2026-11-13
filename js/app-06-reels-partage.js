@@ -4919,24 +4919,10 @@ function renderStudio() {
     }
   }
 
-  // Drafts
-  // 🔧 FIX AUDIT 2026-06-10 : #draftList n'existe plus dans le markup →
-  // TypeError à CHAQUE ouverture du Studio (goTo("studio") → renderStudio).
-  const drafts = state.user.drafts || [];
-  const dl = $("#draftList");
-  if (!dl) return;
-  if (drafts.length === 0) {
-    dl.innerHTML = `<div class="empty"><div class="empty-icon">📝</div><div class="empty-title">Aucun brouillon</div><div class="empty-text">Tes brouillons apparaîtront ici.</div></div>`;
-  } else {
-    dl.innerHTML = drafts.map(d => `<div class="list-row" onclick="loadDraft('${escapeJsArg(escapeHtml(d.id))}')">
-      <div style="font-size:22px;">${d.type === "photo" ? "📷" : d.type === "audio" ? "🎙" : "✍️"}</div>
-      <div class="list-row-body">
-        <div class="list-row-title">${escapeHtml((d.text || "").slice(0, 60)) || "(vide)"}</div>
-        <div class="list-row-meta">${passionById(d.passion).label} · ${fmtTime(d.at)}</div>
-      </div>
-      <button class="btn small ghost" onclick="event.stopPropagation();deleteDraft('${escapeJsArg(escapeHtml(d.id))}')">🗑</button>
-    </div>`).join("");
-  }
+  // LOT-15 (CRE-C05) : le brouillon automatique se propose sur un champ vide.
+  try { proposerBrouillonStudio(); } catch (e) {}
+  // LOT-15 (CRE-C10) : qui verra la publication.
+  try { var _bp = document.querySelector('#screen-studio button[onclick="publishPost()"]'); if (_bp) peindreLigneAudience(_bp.parentNode, "publication"); } catch (e) {}
 }
 
 function applyTemplate(kind) {
@@ -5085,16 +5071,33 @@ $("#photoInput").addEventListener("change", async (e) => {
   }
 });
 
+// LOT-15 (audit UX/UI du 2026-11-10, CRE-C01) : « Créer → Publication » ouvre le
+// Studio sur le média RÉELLEMENT attaché, sinon sur le texte — l'audio choisi
+// avant (« Créer → Audio ») ne restait plus en mémoire pour refuser un texte.
+function ouvrirStudioPublication() {
+  if (studioType !== "bobine") studioType = photoDataUrl ? "photo" : videoDataUrl ? "video" : audioDataUrl ? "audio" : "text";
+  goTo("studio");
+  return true;
+}
+
+// LOT-15 (CRE-C07) : le bouton du composer dit « Changer la photo » quand une photo est là.
+function _libelleBoutonMedia(type, present) {
+  const b = document.querySelector('[data-v6-media="' + type + '"]');
+  if (b) b.textContent = present ? (type === "photo" ? "Changer la photo" : "Changer la vidéo") : (type === "photo" ? "Ajouter une photo" : "Ajouter une vidéo");
+}
+
 function renderPhotoPreview() {
   const box = $("#photoPreviewBox");
+  _libelleBoutonMedia("photo", !!photoDataUrl);
   if (!photoDataUrl) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="photo-preview">
     <img loading="lazy" decoding="async" src="${photoDataUrl}" alt="preview"/>
-    <div class="photo-clear" onclick="clearPhoto()">✕</div>
+    <button type="button" class="photo-clear" onclick="clearPhoto()" aria-label="Retirer la photo">✕</button>
   </div>`;
 }
 
-function clearPhoto() { photoDataUrl = null; renderPhotoPreview(); }
+// LOT-15 (CRE-C01) : retirer le média rend le Studio au texte.
+function clearPhoto() { photoDataUrl = null; if (studioType === "photo") studioType = "text"; renderPhotoPreview(); }
 
 // Video upload
 // ⚠️ CETTE PORTE ENVOYAIT LE FICHIER BRUT, jusqu'à 30 Mo, pendant que l'éditeur
@@ -5132,15 +5135,16 @@ $("#videoInput").addEventListener("change", async (e) => {
 
 function renderVideoPreview() {
   const box = $("#videoPreviewBox");
+  _libelleBoutonMedia("video", !!videoDataUrl);
   if (!box) return;
   if (!videoDataUrl) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="photo-preview">
     <video src="${videoDataUrl}" controls playsinline style="width:100%;max-height:360px;border-radius:14px;display:block;background:#000;"></video>
-    <div class="photo-clear" onclick="clearVideo()">✕</div>
+    <button type="button" class="photo-clear" onclick="clearVideo()" aria-label="Retirer la vidéo">✕</button>
   </div>`;
 }
 
-function clearVideo() { videoDataUrl = null; renderVideoPreview(); }
+function clearVideo() { videoDataUrl = null; if (studioType === "video") studioType = "text"; renderVideoPreview(); }
 
 // ✅ Audio file upload
 $("#audioInput").addEventListener("change", (e) => {
@@ -5199,6 +5203,10 @@ function _passioBestAudioMime() {
 }
 
 async function toggleRecording() {
+  // LOT-15 (CRE-C14) : aucune demande de micro avant un compte — la règle de
+  // première visite (« aucune permission à l'entrée ») ; la porte d'inscription
+  // explique l'action, comme pour publier.
+  if (!(mediaRecorder && mediaRecorder.state === "recording") && window.requireAuthentication && !requireAuthentication("publier")) return;
   if (mediaRecorder && mediaRecorder.state === "recording") {
     _mediaEnPreparation();
     mediaRecorder.stop();
@@ -5323,6 +5331,13 @@ async function publishPost() {
   var _mediaAttendu = { photo: photoDataUrl, video: videoDataUrl, audio: audioDataUrl };
   if (Object.prototype.hasOwnProperty.call(_mediaAttendu, studioType) && !_mediaAttendu[studioType] && text.length >= 3) {
     studioType = "text";
+  }
+  // LOT-15 (CRE-C01, suite) : et dans l'autre sens — un média RÉELLEMENT attaché
+  // décide du type, même si le Studio croyait écrire un texte.
+  if (studioType === "text") {
+    if (photoDataUrl) studioType = "photo";
+    else if (videoDataUrl) studioType = "video";
+    else if (audioDataUrl) studioType = "audio";
   }
   if (studioType === "text" && text.length < 3) {
     toast("Écris quelque chose.");
@@ -5498,6 +5513,7 @@ async function publishPost() {
 
   // Clear form
   $("#postText").value = "";
+  try { effacerBrouillonStudio(); } catch (e) {}
   photoDataUrl = null;
   videoDataUrl = null;
   audioDataUrl = null;
@@ -5542,79 +5558,93 @@ async function publishPost() {
     }
 
     goTo("feed");
-    pushNotification(`Ton post est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
+    pushNotification(`Ta publication est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
   }
 }
 
-function saveDraft() {
-  const text = $("#postText").value.trim();
-  if (!text && !photoDataUrl && !videoDataUrl && !audioDataUrl) { toast("Rien à sauvegarder"); return; }
-  const d = {
-    id: uid(),
-    type: studioType,
-    text,
-    // Filet de dernier recours : un `<select>` peut valoir "" sans que personne
-    // ne l'ait voulu (une affectation à une valeur sans <option> le vide en
-    // silence — cf. shareEventExperience). Un post sans passion perd sa
-    // provenance ET disparaît du fil de son auteur, que le filtre de passions
-    // écarte. On retombe donc sur l'identité active, jamais sur du vide.
-    passion: $("#postPassion").value || (currentProfile() && currentProfile().passion) || "",
-    mood: studioMood,
-    image: photoDataUrl,
-    video: videoDataUrl,
-    audio: audioDataUrl,
-    at: Date.now(),
-  };
-  state.user.drafts.unshift(d);
-  saveState();
-  toast("Brouillon sauvegardé");
-  renderStudio();
+// ══════════════════════════════════════════════════════════════════════════
+// LOT-15 (audit UX/UI du 2026-11-10, CRE-C05) — LE BROUILLON AUTOMATIQUE
+// ──────────────────────────────────────────────────────────────────────────
+// Une fermeture de la PWA, une mise à jour ou un rechargement effaçait la
+// création en cours : `saveDraft` n'avait plus aucun appelant, et `#draftList`
+// n'existait plus. Ce code orphelin est RETIRÉ ; à sa place, le texte (avec la
+// passion et l'envie) se garde seul, en local, et se propose à la réouverture
+// (« Reprendre / Effacer »). Pas de liste de brouillons.
+// ⚠️ Une file locale appartient à un compte (AUTH-06) : le brouillon porte le
+// compte qui l'a écrit et ne se propose qu'à lui ; sa clé est déjà dans
+// ACCOUNT_SCOPED_KEYS (purgée au changement de compte). Le texte seul : jamais
+// un média (base64) dans localStorage.
+const BROUILLON_STUDIO_KEY = "passio_vlog_draft_v1";
+const BROUILLON_STUDIO_DUREE_MS = 14 * 24 * 3600 * 1000;
+let _brouillonStudioMinuteur = null;
+function _brouillonStudioCompte() {
+  try { return (typeof _fileProprietaire === "function" && _fileProprietaire()) || "visiteur"; } catch (e) { return "visiteur"; }
 }
-
-function loadDraft(id) {
-  const d = state.user.drafts.find(x => x.id === id);
-  if (!d) return;
-  studioType = d.type;
-  // ⚠️ La passion du brouillon était la SEULE chose que `loadDraft` ne
-  // restaurait pas. Tant que le `<select>` proposait toutes les passions, le
-  // brouillon repartait sous la sienne par la présélection du profil actif.
-  // Depuis le filtre canonique, un brouillon rangé dans une passion non
-  // publiable serait republié sous une AUTRE passion, sans un mot. On la
-  // restaure quand elle est encore proposée, et on le DIT quand elle ne l'est
-  // plus — plutôt que de reclasser dans le dos de son auteur.
-  setTimeout(function () {
-    try {
-      var sel = $("#postPassion");
-      if (!sel || !d.passion) return;
-      var dispo = [].slice.call(sel.options).some(function (o) { return o.value === d.passion; });
-      if (dispo) { sel.value = d.passion; return; }
-      var pn = (typeof passionById === "function") ? passionById(d.passion) : null;
-      toast("⚠️ « " + ((pn && pn.label) || d.passion) + " » n'est plus publiable : choisis une passion avant d'envoyer.");
-    } catch (e) {}
-  }, 0);
+function enregistrerBrouillonStudio() {
+  const ta = document.getElementById("postText");
+  if (!ta) return false;
+  const text = String(ta.value || "");
+  try {
+    if (!text.trim()) { localStorage.removeItem(BROUILLON_STUDIO_KEY); return false; }
+    const sel = document.getElementById("postPassion");
+    localStorage.setItem(BROUILLON_STUDIO_KEY, JSON.stringify({
+      v: 1, compte: _brouillonStudioCompte(), text: text.slice(0, 1200),
+      passion: (sel && sel.value) || "", mood: studioMood || "", at: Date.now(),
+    }));
+    return true;
+  } catch (e) { return false; }
+}
+function lireBrouillonStudio() {
+  try {
+    const d = JSON.parse(localStorage.getItem(BROUILLON_STUDIO_KEY) || "null");
+    if (!d || d.v !== 1 || typeof d.text !== "string" || !d.text.trim()) return null;
+    if (d.compte !== _brouillonStudioCompte()) return null;
+    if (!(Date.now() - Number(d.at) < BROUILLON_STUDIO_DUREE_MS)) return null;
+    return d;
+  } catch (e) { return null; }
+}
+function effacerBrouillonStudio() {
+  try { localStorage.removeItem(BROUILLON_STUDIO_KEY); } catch (e) {}
+  const b = document.getElementById("studioBrouillon");
+  if (b && b.parentNode) b.parentNode.removeChild(b);
+}
+// Le bandeau ne se pose que sur un champ VIDE : il ne remplace jamais ce qu'on écrit.
+function proposerBrouillonStudio() {
+  const ta = document.getElementById("postText");
+  const ancien = document.getElementById("studioBrouillon");
+  if (ancien && ancien.parentNode) ancien.parentNode.removeChild(ancien);
+  if (!ta || String(ta.value || "").trim()) return false;
+  const d = lireBrouillonStudio();
+  if (!d) return false;
+  const b = document.createElement("div");
+  b.id = "studioBrouillon";
+  b.className = "studio-brouillon";
+  b.setAttribute("role", "status");
+  const extrait = d.text.trim().slice(0, 60) + (d.text.trim().length > 60 ? "…" : "");
+  b.innerHTML = '<span class="studio-brouillon-texte">Un brouillon t’attend : « ' + escapeHtml(extrait) + ' »</span>'
+    + '<button type="button" class="btn small primary" onclick="reprendreBrouillonStudio()">Reprendre</button>'
+    + '<button type="button" class="btn small ghost" onclick="effacerBrouillonStudio()">Effacer</button>';
+  ta.parentNode.insertBefore(b, ta);
+  return true;
+}
+function reprendreBrouillonStudio() {
+  const d = lireBrouillonStudio();
+  if (!d) { effacerBrouillonStudio(); return false; }
+  const ta = document.getElementById("postText");
+  if (ta) ta.value = d.text;
+  const sel = document.getElementById("postPassion");
+  if (sel && d.passion && [].slice.call(sel.options).some(function (o) { return o.value === d.passion; })) sel.value = d.passion;
   studioMood = normalizeStudioMood(d.mood);
-  photoDataUrl = d.image || null;
-  videoDataUrl = d.video || null;
-  audioDataUrl = d.audio || null;
-  $$("#studioTypeTabs .studio-type").forEach(el => el.classList.toggle("active", el.getAttribute("data-type") === studioType));
   $$("#postMoodRow .pill").forEach(el => el.classList.toggle("active", el.getAttribute("data-postmood") === studioMood));
-  $("#studioPhoto").style.display = studioType === "photo" ? "block" : "none";
-  $("#studioVideo").style.display = studioType === "video" ? "block" : "none";
-  $("#studioAudio").style.display = studioType === "audio" ? "block" : "none";
-  $("#postText").value = d.text || "";
-  if (studioType === "photo") renderPhotoPreview();
-  if (studioType === "video") renderVideoPreview();
-  if (studioType === "audio" && audioDataUrl) {
-    $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
-  }
-  toast("Brouillon chargé");
+  const b = document.getElementById("studioBrouillon");
+  if (b && b.parentNode) b.parentNode.removeChild(b);
+  return true;
 }
-
-function deleteDraft(id) {
-  state.user.drafts = state.user.drafts.filter(x => x.id !== id);
-  saveState();
-  renderStudio();
-}
+document.addEventListener("input", function (e) {
+  if (!e.target || e.target.id !== "postText") return;
+  clearTimeout(_brouillonStudioMinuteur);
+  _brouillonStudioMinuteur = setTimeout(enregistrerBrouillonStudio, 600);
+});
 
 // ======== EXPLORER ========
 // ══════════════════════════════════════════════════════════════════════════

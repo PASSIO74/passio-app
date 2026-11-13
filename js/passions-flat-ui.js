@@ -171,6 +171,19 @@
       // rien à toucher. Mesuré par Benjamin sur la preview : « j'arrive à
       // choisir la passion mais je n'arrive pas à la valider ».
       valider: "Publier dans cette passion",
+      // LOT-15 (audit UX/UI du 2026-11-10, CRE-C02) : choisir une passion pour UNE
+      // publication l'ajoute aussi aux passions du compte — on le DIT avant de
+      // valider, et la zone du haut ne s'appelle plus « Tes passions ».
+      titreChoisies: "Pour cette publication",
+      note: function (ids) {
+        var id = ids && ids[0];
+        if (!id) return "";
+        var possedee = false;
+        try { possedee = (typeof passionsPossedeesIds === "function") && passionsPossedeesIds().indexOf(id) > -1; } catch (e) {}
+        if (possedee) return "";
+        var p = moteur().parId(id);
+        return "« " + ((p && p.label) || id) + " » rejoindra aussi tes passions.";
+      },
       // Le motif du refus s'affiche DANS LE PIED, avant même de valider, et
       // désactive le bouton. Une passion absente du référentiel SERVEUR ne peut
       // pas être écrite (clé étrangère de `posts.passion_id`) : laisser publier
@@ -207,6 +220,8 @@
           // rend `null` aussi bien pour un REFUS que pour une RESTAURATION
           // réussie. La seule question qui décide, c'est « la passion est-elle
           // vivante maintenant ? ».
+          var possedeeAvant = false;
+          try { possedeeAvant = (typeof passionsPossedeesIds === "function") && passionsPossedeesIds().indexOf(id) >= 0; } catch (e) {}
           if (typeof ajouterPassionAuCompte === "function") ajouterPassionAuCompte(id, "");
           var possedee = false;
           try {
@@ -238,6 +253,13 @@
           sel.value = id;
           if (typeof onStudioPassionChange === "function") onStudioPassionChange();
           rafraichirBoutonStudio();
+          // LOT-15 (CRE-C02) : confirmé après coup, comme annoncé dans le pied.
+          if (!possedeeAvant) {
+            try {
+              var pn = moteur().parId(id);
+              if (typeof toast === "function") toast("« " + ((pn && pn.label) || id) + " » ajoutée à tes passions", "success");
+            } catch (e) {}
+          }
           // ⚠️ Le composer UI-6 affiche « Publier dans : X » dans un résumé
           // SÉPARÉ du `<select>`. Sans ce rappel, le choix serait écrit dans la
           // source de vérité mais l'écran continuerait d'annoncer l'ancienne

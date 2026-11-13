@@ -18,7 +18,7 @@ function openPostOptions(postId) {
       ${_editBtn}
       <button class="post-option danger" onclick="closeModal();confirmDeletePost('${escapeJsArg(postId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
-        Supprimer le post
+        Supprimer la publication
       </button>
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
@@ -235,7 +235,7 @@ function confirmDeletePost(postId) {
     <span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>
     <div class="pay-modal-head">
       <div class="pay-modal-emoji">🗑</div>
-      <div class="pay-modal-title">Supprimer ce post ?</div>
+      <div class="pay-modal-title">Supprimer cette publication ?</div>
     </div>
     <div style="font-size:13px;color:var(--text);margin-bottom:14px;line-height:1.55;text-align:center;">
       Cette action est <b>définitive</b>. Le post et ses commentaires seront supprimés.
@@ -278,7 +278,7 @@ function deletePost(postId) {
   // Re-render selon l'écran courant
   renderFeed();
   if (typeof renderProfilesScreen === "function") renderProfilesScreen();
-  toast("Post supprimé.");
+  toast("Publication supprimée.");
 }
 
 // Détecte une URL d'image/GIF (KLIPY, Giphy, Tenor ou extension média) pour rendre

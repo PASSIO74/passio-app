@@ -223,11 +223,14 @@
     // ⚠️ NI le terme plus général, NI la « famille » ne s'affichent. Le modèle
     // est plat : une ligne, un nom, rien qui suggère qu'il faudrait passer par
     // autre chose.
-    return '<button type="button" class="psel-item" role="option" aria-selected="false"'
+    // LOT-15 (audit UX/UI du 2026-11-10, CRE-C17) : la ligne CHOISIE le dit (« ✓ »,
+    // aria-selected) — elle gardait son « + », et l'état ne se lisait qu'en haut.
+    var choisie = this.selection.indexOf(p.id) > -1;
+    return '<button type="button" class="psel-item' + (choisie ? " psel-item-choisie" : "") + '" role="option" aria-selected="' + (choisie ? "true" : "false") + '"'
       + ' data-psel="choisir" data-psel-id="' + ech(p.id) + '">'
       + '<span class="psel-item-emoji" aria-hidden="true">' + ech(p.emoji || "✨") + "</span>"
       + '<span class="psel-item-label">' + ech(p.label) + "</span>"
-      + '<span class="psel-item-plus" aria-hidden="true">+</span>'
+      + '<span class="psel-item-plus" aria-hidden="true">' + (choisie ? "✓" : "+") + "</span>"
       + "</button>";
   };
 
@@ -325,6 +328,12 @@
       var n = this.selection.length;
       var refus = this.motifRefus();
       if (refus) html += '<p class="psel-refus" role="status">' + ech(refus) + "</p>";
+      // LOT-15 (CRE-C02) : une NOTE (non bloquante) dit ce que le choix entraîne.
+      if (!refus && n && typeof this.cfg.note === "function") {
+        var note = "";
+        try { note = this.cfg.note(this.selection.slice()) || ""; } catch (e) { journal("note", e); }
+        if (note) html += '<p class="psel-note" role="status">' + ech(note) + "</p>";
+      }
       var bloque = n === 0 || !!refus;
       html += '<button type="button" class="btn primary block psel-valider" data-psel="valider"'
         + (bloque ? " disabled" : "") + ">"
@@ -345,10 +354,25 @@
     return "";
   };
 
+  // LOT-15 (CRE-C17) : les lignes déjà peintes suivent la sélection sur place
+  // (la liste n'est pas repeinte en mode unique — on garde le défilement).
+  Selecteur.prototype.marquerLignes = function () {
+    var sel = this.selection;
+    if (!this.zoneListe) return;
+    Array.prototype.forEach.call(this.zoneListe.querySelectorAll(".psel-item"), function (b) {
+      var on = sel.indexOf(b.getAttribute("data-psel-id")) > -1;
+      b.classList.toggle("psel-item-choisie", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      var plus = b.querySelector(".psel-item-plus");
+      if (plus) plus.textContent = on ? "✓" : "+";
+    });
+  };
+
   Selecteur.prototype.rendreChoisies = function () {
+    try { this.marquerLignes(); } catch (e) {}
     var m = moteur();
     if (!this.selection.length) { this.zoneChoisies.innerHTML = ""; return; }
-    this.zoneChoisies.innerHTML = '<p class="psel-section">Tes passions</p>'
+    this.zoneChoisies.innerHTML = '<p class="psel-section">' + ech(this.cfg.titreChoisies || "Tes passions") + '</p>'
       + this.selection.map(function (id) {
         var p = (m && m.parId(id)) || { id: id, label: id, emoji: "✨" };
         return '<span class="psel-puce">'

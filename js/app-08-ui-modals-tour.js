@@ -837,6 +837,25 @@ var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], b
 // État de la caméra live (capture façon Instagram).
 var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recording: false, recTimer: null, recStart: 0, holdTimer: null, maxTimer: null, _boundShutter: false };
 
+// LOT-15 (audit UX/UI du 2026-11-10, CRE-C10) : avant « Publier », une ligne dit
+// POUR QUI et COMBIEN DE TEMPS — « Visible 24 h par ta communauté · 🎸 Musique ».
+// Un compte privé lit « par tes abonnés ». Texte calculé ici, jamais saisi.
+function ligneAudience(mode) {
+  var prive = !!(state.user && state.user.general && state.user.general.isPrivate);
+  var qui = prive ? "tes abonnés" : "ta communauté";
+  var prof = (typeof currentProfile === "function") ? currentProfile() : null;
+  var p = (prof && prof.passion && typeof passionById === "function") ? passionById(prof.passion) : null;
+  var passion = (p && p.label && mode === "story") ? " · " + (p.emoji ? p.emoji + " " : "") + p.label : "";
+  return (mode === "story" ? "Visible 24 h par " : "Visible par ") + qui + passion;
+}
+function peindreLigneAudience(bouton, mode) {
+  if (!bouton || !bouton.parentNode) return;
+  var id = "ligneAudience_" + (bouton.id || mode);
+  var l = document.getElementById(id);
+  if (!l) { l = document.createElement("p"); l.id = id; l.className = "ligne-audience"; bouton.parentNode.insertBefore(l, bouton); }
+  l.textContent = ligneAudience(mode);
+}
+
 function meOpen(mode) {
   // ⚠️ GARDE AVANT TOUT LE RESTE. `mePublish` était gardée, pas `meOpen` — or
   // c'est `meOpen` qui ouvre l'éditeur média en `phase-capture`, donc qui
@@ -867,6 +886,7 @@ function meOpen(mode) {
   var bgBtn = document.getElementById("meBgBtn"); if (bgBtn) bgBtn.style.display = isBob ? "none" : "";
   var title = document.getElementById("meTitle"); if (title) title.textContent = isBob ? "Bobine" : "Story";
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
+  try { peindreLigneAudience(document.getElementById("mePublishBtn"), isBob ? "bobine" : "story"); } catch (e) {}
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam");
   // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
@@ -1133,7 +1153,9 @@ function _meReadFile(file) {
 }
 
 // ── Overlay de progression (compression vidéo) ──
-function _meShowProgress(label) {
+// LOT-15 (CRE-C18) : `surAnnuler` pose un bouton « Annuler » — la préparation
+// d'une vidéo lourde pouvait durer 90 s sans aucune commande.
+function _meShowProgress(label, surAnnuler) {
   _meHideProgress();
   var d = document.createElement("div");
   d.id = "meProgressOv";
@@ -1141,6 +1163,13 @@ function _meShowProgress(label) {
   d.innerHTML = '<div style="font-weight:800;font-size:15px;">' + escapeHtml(label || "Traitement…") + '</div>'
     + '<div style="width:min(260px,70vw);height:8px;border-radius:999px;background:rgba(255,255,255,0.2);overflow:hidden;"><div id="meProgressBar" style="height:100%;width:0%;background:var(--accent);transition:width 120ms linear;"></div></div>'
     + '<div id="meProgressPct" style="font-size:12px;color:rgba(255,255,255,0.7);">0 %</div>';
+  if (typeof surAnnuler === "function") {
+    var b = document.createElement("button");
+    b.type = "button"; b.id = "meProgressAnnuler"; b.className = "btn ghost"; b.textContent = "Annuler";
+    b.style.cssText = "min-height:44px;min-width:120px;color:#fff;border-color:rgba(255,255,255,0.6);";
+    b.addEventListener("click", function () { surAnnuler(); });
+    d.appendChild(b);
+  }
   document.body.appendChild(d);
 }
 function _meUpdateProgress(p) {
@@ -1294,7 +1323,9 @@ async function passioVideoPourEnvoi(file) {
   }
   try {
     if (typeof passioCompressVideo !== "function") throw new Error("unsupported");
-    _meShowProgress("Optimisation de la vidéo…");
+    var _annuler;
+    var _annulation = new Promise(function (_r, rej) { _annuler = function () { var e = _erreurVideo("Préparation annulée."); e.annulee = true; rej(e); }; });
+    _meShowProgress("Optimisation de la vidéo…", function () { _annuler(); });
     // ⚠️ `passioCompressVideo` PEUT NE JAMAIS SE RÉGLER, et l'overlay ne se
     // retire que sur une sortie. Sa boucle de dessin est un `requestAnimationFrame`
     // et elle ne conclut que sur `video.onended` : une page passée en arrière-plan
@@ -1314,7 +1345,8 @@ async function passioVideoPourEnvoi(file) {
       passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress),
       new Promise(function (_r, rej) {
         _minuteur = setTimeout(function () { rej(new Error("compression-sans-verdict")); }, VIDEO_COMPRESSION_DELAI_MAX);
-      })
+      }),
+      _annulation
     ]);
     clearTimeout(_minuteur);
     if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
@@ -1334,6 +1366,8 @@ async function passioVideoPourEnvoi(file) {
     // c'est-à-dire sur le défaut même que ce lot ferme — et le seul symptôme
     // serait la courbe de Storage qui remonte des semaines plus tard. Ni la
     // Sentinelle ni le pilotage ne verraient rien. Famille du bug `diagLog`.
+    // Annulée par la personne : ni repli brut, ni trace d'incident.
+    if (e && e.annulee) throw e;
     try { if (typeof diagLog === "function") diagLog("video_compression_repli: " + ((e && e.message) || e)); } catch (_) {}
     try { if (window.tel && tel.error) tel.error(e, { action: "video_compression_repli", severity: "warn", meta: { mo: mo } }); } catch (_) {}
     if (file.size <= VIDEO_BRUT_MAX) return retourVideoPreparee(file, await _meReadFile(file), "repli");
@@ -1482,19 +1516,32 @@ async function meAddText() {
 var ME_EMOJIS = ["🔥","😂","❤️","✨","😍","🎉","👏","🙌","💯","🎸","📸","🌍","☕","🍕","⚽","🎬","💜","😎","🥳","🤩"];
 function meAddEmoji() {
   var existing = document.getElementById("meEmojiBar"); if (existing) { existing.remove(); return; }
-  var bar = document.createElement("div"); bar.id = "meEmojiBar";
-  bar.style.cssText = "position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:10px;display:flex;flex-wrap:wrap;gap:4px;max-width:320px;z-index:4100;box-shadow:0 8px 24px rgba(0,0,0,0.3);";
+  // LOT-15 (CRE-C11) : le panneau passe AU-DESSUS de la barre d'outils (il
+  // couvrait le bouton qui le referme), pleine largeur, 44 px par emoji ; un
+  // toucher dehors le referme (`_meFermerPanneauxDehors`).
+  var bar = document.createElement("div"); bar.id = "meEmojiBar"; bar.className = "me-panneau";
+  bar.setAttribute("role", "dialog"); bar.setAttribute("aria-label", "Choisir un emoji");
   ME_EMOJIS.forEach(function(em) {
-    var b = document.createElement("button"); b.textContent = em;
-    b.style.cssText = "font-size:24px;background:none;border:none;cursor:pointer;padding:4px;";
+    var b = document.createElement("button"); b.type = "button"; b.textContent = em; b.className = "me-panneau-emoji"; b.setAttribute("aria-label", "Ajouter " + em);
     b.onclick = function() { meAddOverlay({ type: "emoji", emoji: em, x: 50, y: 55, size: 52 }); bar.remove(); };
     bar.appendChild(b);
   });
   document.body.appendChild(bar);
 }
+(function _meFermerPanneauxDehors() {
+  document.addEventListener("pointerdown", function (e) {
+    ["meEmojiBar", "meGifPanel"].forEach(function (id) {
+      var p = document.getElementById(id);
+      if (!p || p.contains(e.target)) return;
+      // Le bouton qui l'ouvre le referme lui-même (bascule) : ne pas fermer deux fois.
+      if (e.target.closest && e.target.closest(".me-tool")) return;
+      p.remove();
+    });
+  }, true);
+})();
 function meAddGif() {
   if (typeof passioGifPanel !== "function") { toast("GIF indisponible"); return; }
-  passioGifPanel({ id: "meGifPanel", position: "left:50%;bottom:84px;transform:translateX(-50%);", onPick: function(url) { meAddOverlay({ type: "gif", url: url, x: 50, y: 55 }); } });
+  passioGifPanel({ id: "meGifPanel", position: "left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 140px);", onPick: function(url) { meAddOverlay({ type: "gif", url: url, x: 50, y: 55 }); } });
 }
 function meAddOverlay(ov) {
   ov.id = "ov_" + (++meState._seq);
@@ -1529,13 +1576,20 @@ function _meRenderOverlay(ov) {
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
   else if (ov.type === "gif") { content.innerHTML = '<img src="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
   el.appendChild(content);
-  var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕";
+  var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
   del.onclick = function(e) { e.stopPropagation(); meRemoveOverlay(ov.id); };
   el.appendChild(del);
   var rsz = document.createElement("button"); rsz.className = "me-ov-resize me-ov-ctrl"; rsz.textContent = "⤡"; rsz.setAttribute("aria-label", "Redimensionner");
   el.appendChild(rsz);
   if (ov.type === "text") {
-    el.addEventListener("dblclick", async function(e) { e.stopPropagation(); var nt = await demanderTexte({ titre: "Modifier le texte", valeur: ov.text, libelle: "Enregistrer", max: 200 }); if (nt != null && nt.trim()) { ov.text = nt.trim(); content.textContent = ov.text; } });
+    var modifier = async function(e) { if (e) e.stopPropagation(); var nt = await demanderTexte({ titre: "Modifier le texte", valeur: ov.text, libelle: "Enregistrer", max: 200 }); if (nt != null && nt.trim()) { ov.text = nt.trim(); content.textContent = ov.text; } };
+    el.addEventListener("dblclick", modifier);
+    // LOT-15 (CRE-C09) : modifier un texte ne demande plus un double-clic de souris —
+    // un bouton ✎ le fait au doigt.
+    var edit = document.createElement("button"); edit.type = "button"; edit.className = "me-ov-edit me-ov-ctrl"; edit.textContent = "✎"; edit.setAttribute("aria-label", "Modifier le texte");
+    edit.addEventListener("pointerdown", function(e) { e.stopPropagation(); });
+    edit.onclick = modifier;
+    el.appendChild(edit);
   }
   _meApplyTransform(el, ov);
   _meMakeInteractive(el, ov, rsz);

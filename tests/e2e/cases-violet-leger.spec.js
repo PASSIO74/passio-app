@@ -45,9 +45,9 @@ test.describe("Cases violet léger — Créer et Filtre parlent la même langue"
     );
     // Le sous-titre demandé le même jour : petit, et lisible sur le lavis.
     const hint = item.locator(".v2-sheet-item-hint");
-    await expect(hint).toHaveText("Photo / vidéo");
+    await expect(hint).toHaveText("Texte, photo ou vidéo");
     const mh = await hint.evaluate(sonde);
-    expect(mh.contraste, "sous-titre « Photo / vidéo » : contraste AA").toBeGreaterThanOrEqual(4.5);
+    expect(mh.contraste, "sous-titre « Texte, photo ou vidéo » : contraste AA").toBeGreaterThanOrEqual(4.5);
     expect(await hint.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
       "le sous-titre doit être écrit PETIT").toBeLessThan(14);
 

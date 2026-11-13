@@ -231,10 +231,10 @@
     <!-- Outils d'édition (overlays) -->
     <div class="me-toolbar">
       <div class="me-tool-group">
-        <button class="me-tool" onclick="meAddText()" title="Texte">Aa</button>
-        <button class="me-tool" onclick="meAddEmoji()" title="Emoji">😀</button>
-        <button class="me-tool" onclick="meAddGif()" title="GIF">GIF</button>
-        <button class="me-tool" onclick="mePickMedia()" title="Changer de média">🖼️</button>
+        <button type="button" class="me-tool" onclick="meAddText()" title="Texte" aria-label="Ajouter un texte">Aa</button>
+        <button type="button" class="me-tool" onclick="meAddEmoji()" title="Emoji" aria-label="Ajouter un emoji">😀</button>
+        <button type="button" class="me-tool" onclick="meAddGif()" title="GIF" aria-label="Ajouter un GIF">GIF</button>
+        <button type="button" class="me-tool" onclick="mePickMedia()" title="Changer de média" aria-label="Changer de média">🖼️</button>
       </div>
     </div>
     <div class="me-bottom">
@@ -918,7 +918,7 @@
         <div class="recorder">
           <div class="rec-time" id="recTime">00:00</div>
           <div style="display:flex;gap:8px;align-items:center;">
-            <div class="rec-btn" id="recBtn" onclick="toggleRecording()"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11 C5 15 8 18 12 18 C16 18 19 15 19 11"/><path d="M12 18 V22"/><path d="M9 22 H15"/></svg></div>
+            <div class="rec-btn" id="recBtn" onclick="toggleRecording()" role="button" tabindex="0" aria-label="Enregistrer un audio"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11 C5 15 8 18 12 18 C16 18 19 15 19 11"/><path d="M12 18 V22"/><path d="M9 22 H15"/></svg></div>
             <div class="rec-btn" id="audioFileBtn" onclick="$('#audioInput').click()" title="Choisir un fichier audio" style="flex:1;text-align:center;font-size:12px;">Choisir fichier</div>
           </div>
           <div class="rec-status" id="recStatus">Tap pour démarrer l'enregistrement</div>
@@ -956,8 +956,9 @@
                Pas de pastille « Explorer » : cette intention se calcule côté
                lecteur (auteur non suivi, passion inconnue) et ne regarde JAMAIS
                le mood — une pastille y serait purement décorative. -->
-          <button type="button" class="pill active" data-postmood="creation">Idées</button>
+          <!-- LOT-15 (CRE-C06) : l'ORDRE du rail du Fil (Apprendre · Idées · Rencontrer). -->
           <button type="button" class="pill" data-postmood="learn">Apprendre</button>
+          <button type="button" class="pill active" data-postmood="creation">Idées</button>
           <button type="button" class="pill" data-postmood="irl">Rencontrer</button>
           <button type="button" class="pill" data-postmood="all">Tous</button>
         </div>
