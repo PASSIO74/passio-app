@@ -999,6 +999,14 @@ function _pjDeposer(convId, msgId, o) {
     _pjEchec(convId, msgId, Object.assign(base, { reseau: true, rc: "reseau", http: 0 }));
     return Promise.resolve(false);
   }
+  // LOT-43 (MSG-C22) : un brouillon devient une conversation AVANT le dépôt ;
+  // un refus est une coupure (en file, comme sans réseau).
+  if (typeof _convBrouillon === "function" && _convBrouillon(convId)) {
+    return _materialiserConv(convId).then(function (ok) {
+      if (!ok) { _pjEchec(convId, msgId, Object.assign(base, { reseau: true, rc: "reseau", http: 0 })); return false; }
+      return _pjDeposer(convId, msgId, o);
+    });
+  }
   _pjEnVol[msgId] = true;
   // Une mise à jour attend ce dépôt (pwa-detect.js) : la copie n'est sûre qu'une
   // fois l'objet chez Storage ou l'entrée en file.
