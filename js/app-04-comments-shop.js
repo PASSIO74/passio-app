@@ -11,7 +11,16 @@ function openPostOptions(postId) {
   // éditeur n'existe plus. Les publications de type `vlog` n'apparaissent
   // d'ailleurs plus nulle part, donc ce menu ne peut plus s'ouvrir sur l'une
   // d'elles.
-  var _editBtn = "";
+  // CRE-C16 / FIL-C24 (décision de Benjamin du 2026-11-13, « 1 : a ») : le
+  // TEXTE d'une publication se corrige — rien d'autre (passion, média, type).
+  // Pas pour un repartage : son texte est la citation de l'original.
+  var _p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var _editBtn = (_p && !_p.sharedReelData && !_p.sharedFromPostId && !_p.isReel)
+    ? `<button class="post-option" onclick="closeModal();modifierTextePublication('${escapeJsArg(postId)}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+        Modifier le texte
+      </button>`
+    : "";
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
@@ -23,6 +32,71 @@ function openPostOptions(postId) {
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
+}
+
+// ── CORRIGER LE TEXTE D'UNE PUBLICATION (CRE-C16 / FIL-C24) ───────────────────
+// Le serveur d'abord : le texte affiché ne change qu'une fois l'écriture
+// confirmée (`{ error }` lu, zéro ligne = refus). La migration du 2026-11-13
+// n'ouvre que la colonne `content`, à l'auteur ; `edited_at` est posé par le
+// serveur. Une publication qui n'existe que sur cet appareil se corrige ici.
+var TEXTE_PUBLICATION_MAX = 5000;
+function modifierTextePublication(postId) {
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!p) { toast("Cette publication n'est plus disponible."); return; }
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Modifier le texte</div>
+    <div class="modal-subtitle">La passion, la photo et la vidéo ne changent pas. La publication portera la mention « modifié ».</div>
+    <textarea class="textarea" id="pubTexteEdit" aria-label="Texte de la publication" maxlength="${TEXTE_PUBLICATION_MAX}" style="min-height:120px;"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn ghost block" onclick="closeModal()">Annuler</button>
+      <button class="btn primary block" id="pubTexteEnregistrer" onclick="enregistrerTextePublication('${escapeJsArg(postId)}')">Enregistrer</button>
+    </div>
+  `);
+  var champ = document.getElementById("pubTexteEdit");
+  if (champ) { champ.value = String(p.text || ""); try { champ.focus(); } catch (e) {} }
+}
+async function enregistrerTextePublication(postId) {
+  var champ = document.getElementById("pubTexteEdit");
+  var bouton = document.getElementById("pubTexteEnregistrer");
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!champ || !p) return;
+  var texte = String(champ.value || "").trim().slice(0, TEXTE_PUBLICATION_MAX);
+  if (!texte && !p.image && !p.video && !p.audio) { toast("Écris quelque chose, ou supprime la publication"); return; }
+  if (texte === String(p.text || "").trim()) { closeModal(); return; }
+  if (bouton) { if (bouton.disabled) return; bouton.disabled = true; bouton.textContent = "Enregistrement…"; }
+  var serveur = !!(p.fromSupabase && typeof supa !== "undefined" && supa && window._supaReal
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+  var editedAt = Date.now();
+  if (serveur) {
+    var r = null;
+    try {
+      r = await supa.from("posts").update({ content: texte }).eq("id", postId).eq("author_id", MY_UID).select("id, edited_at");
+    } catch (e) { r = { error: e }; }
+    var ok = r && !r.error && Array.isArray(r.data) && r.data.length === 1;
+    if (!ok) {
+      if (bouton) { bouton.disabled = false; bouton.textContent = "Enregistrer"; }
+      try { diagLog("modification de publication refusée " + String((r && r.error && (r.error.code || r.error.message)) || "0 ligne")); } catch (e) {}
+      toast(typeof estEchecReseau === "function" && r && r.error && estEchecReseau(r.error)
+        ? "⚠️ Pas de connexion — modification non enregistrée"
+        : "⚠️ Modification non enregistrée — réessaie", "warning");
+      return;
+    }
+    if (r.data[0].edited_at) editedAt = supaTs(r.data[0].edited_at);
+  }
+  // Toutes les copies vivantes (userPosts, supabasePosts, seed, extras du fil).
+  [state.userPosts, state.supabasePosts, state.seed && state.seed.posts, window._feedExtraPosts].forEach(function (liste) {
+    (liste || []).forEach(function (x) { if (x && x.id === postId) { x.text = texte; x.editedAt = editedAt; } });
+  });
+  try { saveState(); } catch (e) {}
+  closeModal();
+  window._feedDomSig = null; window._lastHtml = null;
+  try { renderFeed(); } catch (e) {}
+  try {
+    var page = document.getElementById("postDetailPage");
+    if (page && page.style.display === "flex" && typeof openPost === "function") openPost(postId);
+  } catch (e) {}
+  toast(serveur ? "Publication modifiée" : "Publication modifiée sur cet appareil");
 }
 
 // Le ⋯ d'une publication d'AUTRUI : signaler la publication, bloquer l'auteur.
@@ -549,6 +623,19 @@ function _enqueueCommentSync(op) {
   _cmtObStartTimer();
   _cmtObFlush();
 }
+// ⚠️ SRV-02 (2026-11-13) : la notification d'un commentaire part à SA
+// CONFIRMATION, jamais à la mise en file. La base exige le commentaire réel
+// derrière une notification `comment` ; posée en parallèle, elle arrivait avant
+// lui (hors ligne : des minutes avant) et se faisait refuser. `op.notif` =
+// { to, kind, text } ; la référence est le fil (`op.threadId`). L'entrée a déjà
+// passé la garde du compte (AUTH-06) : c'est bien son auteur qui notifie.
+function _cmtObNotifier(op) {
+  try {
+    var n = op && op.notif;
+    if (!n || !n.to || !n.kind || typeof supaInsertNotif !== "function") return;
+    supaInsertNotif(n.to, n.kind, op.threadId, n.text);
+  } catch (e) {}
+}
 // Exécute UN envoi ; renvoie une Promise<boolean> (succès serveur).
 function _cmtObRun(op) {
   try {
@@ -614,7 +701,7 @@ async function _cmtObFlush() {
       if ((op.tries || 0) >= 8) continue; // auto-stop : le clic « Réessayer » remet tries à 0
       var ok = false;
       try { ok = await _cmtObRun(op); } catch (e) { ok = false; }
-      if (ok) { _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; })); _cmtObSetStatus(op.threadId, op.nodeId, true); }
+      if (ok) { _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; })); _cmtObSetStatus(op.threadId, op.nodeId, true); _cmtObNotifier(op); }
       else { op.tries = (op.tries || 0) + 1; _cmtObSave(_cmtObLoad().map(function (o) { return o.opId === op.opId ? op : o; })); _cmtObSetStatus(op.threadId, op.nodeId, false); }
     }
   } finally { _cmtObFlushing = false; }
@@ -1214,9 +1301,10 @@ function likeCommentNode(threadId, nodeId, event) {
     if (typeof supaCommentRemoveLike === "function") supaCommentRemoveLike(nodeId);
   } else {
     node.likedBy.push(meId); node.likes += 1;
-    if (typeof supaCommentInteract === "function") supaCommentInteract(nodeId, threadId, "like", "");
-    if (node.authorId && node.authorId !== meId && node.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(node.authorId, "like", threadId, "a aimé ta réponse"); } catch(e) {}
+    var _ecrit = (typeof supaCommentInteract === "function") ? supaCommentInteract(nodeId, threadId, "like", "") : false;
+    // Au verdict de l'écriture (SRV-02 : la base exige le j'aime réel).
+    if (node.authorId && node.authorId !== meId && node.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(_ecrit, node.authorId, "like", threadId, "a aimé ta réponse");
     }
   }
   if (thread && typeof thread.save === "function") thread.save(); else { try { saveState(); } catch(e){} }
@@ -1524,12 +1612,16 @@ function submitComment(postId) {
   // Sync avec Supabase — via la FILE D'ATTENTE (#14) : envoi + réessai auto si
   // offline/erreur, avec statut « Envoi… / Non envoyé » sur le commentaire.
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: postId, commentId: _cid, nodeId: _cid, text: text });
-    else Promise.resolve(supaAddComment(postId, text, _cid)).then(function (ok) { if (ok) _commentaireConfirme(postId, _cid); }).catch(function () {});
-    // Notifier l'auteur du post
+    // Notifier l'auteur du post — à la CONFIRMATION du commentaire (SRV-02) : la
+    // notification voyage avec l'envoi dans la file, qui la pose au succès.
     const commentedPost = findPostAnywhere(postId);
-    if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {
-      supaInsertNotif(commentedPost.authorId, "comment", postId, "a commenté ton post");
+    const _notifCmt = (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase)
+      ? { to: commentedPost.authorId, kind: "comment", text: "a commenté ton post" } : null;
+    if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: postId, commentId: _cid, nodeId: _cid, text: text, notif: _notifCmt });
+    else {
+      const _ecrit = Promise.resolve(supaAddComment(postId, text, _cid));
+      _ecrit.then(function (ok) { if (ok) _commentaireConfirme(postId, _cid); }).catch(function () {});
+      if (_notifCmt) notifierApresEcriture(_ecrit, _notifCmt.to, _notifCmt.kind, postId, _notifCmt.text);
     }
     // ASTRA-24 : les mentions partent depuis `supaAddComment`, une fois le commentaire en base.
   }
@@ -4432,6 +4524,22 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
   setTimeout(function() { renderMessages(); openConversation(newConv.id); }, 120);
 }
 
+// Vrai si un blocage existe entre ce compte et moi ET que ce n'est pas MOI qui
+// ai bloqué — c'est donc lui. `is_blocked_with` (SECURITY DEFINER, comptes
+// seulement) répond pour les deux sens sans révéler lequel ; le sens « moi »
+// se lit dans ma propre liste. Visiteur, compte d'exemple, panne : faux — le
+// profil s'affiche comme avant.
+async function _profilIndisponiblePourMoi(authorId) {
+  try {
+    if (!authorId || typeof supa === "undefined" || !supa || !window._supaReal) return false;
+    if (typeof _uidEstUnCompte === "function" && !_uidEstUnCompte()) return false;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(authorId))) return false;
+    if (typeof isBlocked === "function" && isBlocked(authorId)) return false;
+    var r = await supa.rpc("is_blocked_with", { _other: String(authorId) });
+    return !!(r && !r.error && r.data === true);
+  } catch (e) { return false; }
+}
+
 async function openUserProfile(authorId, source) {
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
@@ -4443,6 +4551,20 @@ async function openUserProfile(authorId, source) {
 
   if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
     goTo("profiles");
+    return;
+  }
+
+  // PRO-C20 (décision de Benjamin du 2026-11-13, « 3 : b ») : le profil d'un
+  // compte qui M'A bloqué n'est pas affiché — « Ce profil n'est pas
+  // disponible », comme un compte supprimé, sans bouton menant à un refus
+  // certain. (Un compte que J'AI bloqué garde son profil et « Débloquer », LOT-16.)
+  if (await _profilIndisponiblePourMoi(authorId)) {
+    openModal(`
+      <div class="modal-handle"></div>
+      <div class="modal-title">Ce profil n'est pas disponible</div>
+      <div class="modal-subtitle">Il a peut-être été supprimé, ou n'est pas visible pour toi.</div>
+      <button class="btn primary block" onclick="closeModal()">Fermer</button>
+    `);
     return;
   }
 

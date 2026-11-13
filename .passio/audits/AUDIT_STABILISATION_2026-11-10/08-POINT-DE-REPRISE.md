@@ -205,3 +205,42 @@ Ordre de Benjamin : « Oui, enchaîne » (durcissements CLI-01 serveur, SRV-02, 
   supprimé ailleurs rouvert sans fin → borne de 30 jours ; compte anonyme enfermé → pas de marque) ; P3 regex en
   double corrigé, deux P3 notés sans effet.
 - Restent ouverts : SRV-02 (événement métier par genre), médias orphelins (clé de service), gestes de Benjamin.
+
+## Ajout du 2026-11-13 — SRV-02, le reste : pas de notification sans événement métier (PR #883, fusionnée, déployée, appliquée)
+
+- **Approche** : (A) chaque notification part au VERDICT de son écriture — `notifierApresEcriture` (app-08), la
+  file des commentaires notifie à la confirmation (`_cmtObNotifier`, app-04), 15 sites réordonnés — puis (B) la
+  migration `migration_notifications_preuve_evenement_2026-11-13.sql` (`-- PREREQUIS-CLIENT:
+  notifications:apres-ecriture`) : `trg_notifications_preuve` exige le fait qui lie émetteur et destinataire pour
+  `like`, `comment`, `event_join`, `event_comment`, `event_feedback`, `event_invite`, `live_video`, `event_cancelled`
+  (annulée ET par l'organisation) ; `reaction`, `event_reminder`, `cdv_live_step` refusés. Un fait ne vaut qu'une
+  notification sur 24 h. Les déclencheurs serveur écrivant à la place du client ont été écartés : ils auraient doublé
+  chaque notification des anciens clients et re-codé dix nuances de texte déjà tenues par le 12/11.
+- **Relecture `passio-red-team`** (modèle Claude, pas une revue humaine) avant toute application : deux P1 corrigés —
+  l'épreuve se serait faussée en production (`follows_notifier` laisse `passio.notification_serveur` posé ; mesuré
+  au canal ①) et `co_organizers`, rempli par l'auteur seul, ouvrait la cloche de vingt inconnus. P2 corrigés : fait
+  jamais consommé, j'aime de réponse `srep_` toujours refusé (perte légitime), invitation sur abonnement en attente.
+  P3 corrigés : cible hors du fil, annulation par un inscrit, direct périmé, contrôle d'ordre tautologique.
+- **Verrous** : `notifications-apres-ecriture.spec.js` (3) et `tests/unit/notifications-apres-ecriture.test.mjs`
+  (dans `npm run verif`), mutations vues rouges ; banc `tests/sql/migration-notifications-preuve-evenement.test.sh`
+  (socle + 12/11 + `follows_notifier` de production, quatre mutations de la migration) — **CI seulement**, pas de
+  PostgreSQL sur le poste. `authz-critical` et `realtime-poussee-reelle` écrivaient un `like` sans j'aime : ils posent
+  désormais le fait (sinon rouges dès la migration au staging).
+- **Reste assumé** : l'invitation affiche le titre de l'activité, texte public choisi par son auteur (abonnement
+  accepté exigé). Les anciens clients en cache perdent, jusqu'à leur mise à jour, les notifications qu'ils envoyaient
+  avant leur fait.
+- **Fait le 13/11, sur l'ordre de Benjamin** (« Continu et fait les contre revue toi même ») :
+  - contre-revue postée depuis PASSIO74 par Claude, qui a écrit le diff : revues n°5890466275, puis n°5890483671 sur
+    `c7e3e86b`. Elles le disent : ce n'est pas une relecture indépendante (ASTRA-61 bis) ;
+  - staging : le premier envoi est REFUSÉ par l'épreuve (`events.co_organizers` est NOT NULL, rien n'est validé).
+    Corrigé dans `c7e3e86b`, puis appliqué : 37/37 ;
+  - CI de `c7e3e86b` entièrement verte, suite à comptes réels jouée contre le staging migré ;
+  - fusion sur ce SHA (`c9e0fb91`), job « Déploiement production » vert, `release.json` = `c9e0fb91` ;
+  - production : la barrière a lu le motif sur la page servie, verdict 37/37. Mesuré au canal ① : déclencheur actif
+    entre l'origine et le texte, SECURITY DEFINER, `search_path` vide, sans EXECUTE pour `authenticated`, aucun
+    résidu, journal présent ;
+  - essai à deux comptes réels en production (`multi-comptes` « interactions sur un post ») : A reçoit les cinq
+    notifications de B (j'aime, commentaire, commentaire GIF, abonnement, réaction 😍), aucune perdue. Comptes
+    jetables purgés. Les refus sans fait sont éprouvés en production par l'épreuve, sous `authenticated`.
+- Suite notée, sans rapport : `audit-2026-11-etats-degrades.spec.js` « RSVP · double clic » rougit aussi sur `main`
+  (2 fois sur 4 le 13/11).

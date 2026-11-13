@@ -256,12 +256,21 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       //    relire la ligne, donc la requête entière échoue en 403 — alors que
       //    l'insertion elle-même est parfaitement légitime. L'app ne demande
       //    aucune représentation ici (`supaInsertNotif` fait un `.insert()` nu).
+      //    ⚠️ SRV-02 (13/11) : la base exige le FAIT derrière un `like`
+      //    (`trg_notifications_preuve`). B aime donc VRAIMENT la publication de A
+      //    d'abord, et la notification la désigne — comme le fait l'app.
+      const jaime = await rest(B.token, "post_likes", {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ post_id: postId, user_id: B.uid }),
+      });
+      expect(jaime.status, "B aime la publication de A (le fait de la notification)").toBeLessThan(300);
       const notifId = `n_ok_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const notifLegitime = await rest(B.token, "notifications", {
         method: "POST",
         headers: { Prefer: "return=minimal" },
         body: JSON.stringify({
-          id: notifId, user_id: A.uid, kind: "like",
+          id: notifId, user_id: A.uid, kind: "like", ref_id: postId,
           from_id: B.uid, content: "B a aimé", seen: false,
           created_at: new Date().toISOString(),
         }),
@@ -274,6 +283,7 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       expect(recue.body[0].from_id, "et elle porte bien l'identité de B").toBe(B.uid);
       log("notification légitime acceptée et reçue par A");
       await rest(A.token, `notifications?id=eq.${notifId}`, { method: "DELETE" }).catch(() => {});
+      await rest(B.token, `post_likes?post_id=eq.${postId}&user_id=eq.${B.uid}`, { method: "DELETE" }).catch(() => {});
 
       // ── 10. Sans jeton, aucune donnée privée ───────────────────────────────
       const anon = await rest(null, "conv_messages?select=id&limit=1");

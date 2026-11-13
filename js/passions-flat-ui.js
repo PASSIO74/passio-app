@@ -158,9 +158,20 @@
     catch (e) { return true; }
   }
 
+  // CRE-C13 (décision de Benjamin du 2026-11-13, « 2 : a ») : la bobine choisit
+  // sa passion par CE sélecteur, avec les mêmes refus et la même acquisition.
+  // `sel` = le `<select>` source de vérité du composeur ; `apres` = ce que le
+  // composeur repeint une fois la passion écrite.
   function ouvrirChoixStudio() {
+    return ouvrirChoixPassion(document.getElementById("postPassion"), function () {
+      if (typeof onStudioPassionChange === "function") onStudioPassionChange();
+      rafraichirBoutonStudio();
+      if (window.PassioUIV6 && typeof PassioUIV6.sync === "function") PassioUIV6.sync();
+    }, rafraichirBoutonStudio);
+  }
+
+  function ouvrirChoixPassion(sel, apres, apresRefus) {
     if (!actif()) return false;
-    var sel = document.getElementById("postPassion");
     if (!sel) return false;
     selecteur().ouvrir({
       mode: "unique",
@@ -250,12 +261,11 @@
               var orpheline = Array.prototype.filter.call(sel.options, function (o) { return o.value === id; })[0];
               if (orpheline && orpheline.parentNode === sel) sel.removeChild(orpheline);
             } catch (e) {}
-            rafraichirBoutonStudio();
+            if (typeof apresRefus === "function") apresRefus();
             return;
           }
           sel.value = id;
-          if (typeof onStudioPassionChange === "function") onStudioPassionChange();
-          rafraichirBoutonStudio();
+          if (typeof apres === "function") apres(id);
           // LOT-15 (CRE-C02) : confirmé après coup, comme annoncé dans le pied.
           if (!possedeeAvant) {
             try {
@@ -264,11 +274,8 @@
             } catch (e) {}
           }
           // ⚠️ Le composer UI-6 affiche « Publier dans : X » dans un résumé
-          // SÉPARÉ du `<select>`. Sans ce rappel, le choix serait écrit dans la
-          // source de vérité mais l'écran continuerait d'annoncer l'ancienne
-          // passion — le défaut exact d'`identiteCourante()` au lot UI-8, où le
-          // Studio annonçait un expéditeur qui n'était pas celui du post.
-          if (window.PassioUIV6 && typeof PassioUIV6.sync === "function") PassioUIV6.sync();
+          // SÉPARÉ du `<select>` : `apres` (Studio) le resynchronise — sans ce
+          // rappel, l'écran annoncerait l'ancienne passion (défaut d'UI-8).
         } catch (e) { journal("studio", e); }
       },
     });
@@ -355,6 +362,7 @@
     mesPassions: mesPassions,
     ouvrirAjoutPassions: ouvrirAjoutPassions,
     ouvrirChoixStudio: ouvrirChoixStudio,
+    ouvrirChoixPassion: ouvrirChoixPassion,
     ouvrirFiltreIRL: ouvrirFiltreIRL,
     monterOnboarding: monterOnboarding,
     rafraichirBoutonStudio: rafraichirBoutonStudio,

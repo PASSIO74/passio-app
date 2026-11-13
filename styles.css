@@ -12995,3 +12995,9 @@ button, a, label, select, summary,
 .event-detail-info-note { font-size: 12.5px; color: var(--muted); }
 /* IRL-C53 / C66 : pied de l'organisation et d'un exemple. */
 :root.passio-ui-4b #eventDetailCta .v4b-rsvp-exemple .v4b-rsvp-etat { color: var(--muted); }
+
+/* Décisions de Benjamin du 2026-11-13 (CRE-C16 / FIL-C24, CRE-C13). */
+.post-modifie { color: var(--muted); font-style: italic; }
+.v7-passion-ligne { display: flex; gap: 8px; align-items: center; }
+.v7-passion-ligne select { flex: 1; min-width: 0; }
+.v7-passion-ligne .btn { min-height: 44px; flex-shrink: 0; }
