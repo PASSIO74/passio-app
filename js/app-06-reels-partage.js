@@ -1898,7 +1898,7 @@ function openMainProfileMenu(ev) {
           return n ? " (" + n + " archivée" + (n > 1 ? "s" : "") + ")" : "";
         } catch (e) { return ""; }
       })(), run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
-    { label: "Apparence & thème", run: function() { if (typeof openConfigurator === "function") openConfigurator(); }, sep: true },
+    { label: "Affichage", run: function() { if (typeof openConfigurator === "function") openConfigurator(); }, sep: true },
     // L'invitation avait pour seule porte Paramètres → Support (2026-11-09).
     // `run` est appelé dans le clic même : le partage natif garde son geste.
     { label: "Inviter des amis", run: function() { inviterDesAmis("profil"); } }
@@ -2017,7 +2017,7 @@ function openEditMainProfile() {
     </div>
 
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
-      <button class="btn ghost" onclick="closeModal();setTimeout(openConfigurator,200);" style="width:100%;font-size:13px;padding:12px;">Apparence &amp; thème</button>
+      <button class="btn ghost" onclick="closeModal();setTimeout(openConfigurator,200);" style="width:100%;font-size:13px;padding:12px;">Affichage</button>
     </div>
 
     <div class="edit-profil-actions" style="display:flex;gap:8px;margin-top:12px;">

@@ -319,14 +319,21 @@ function shareBeta() {
 // ce que le texte dit désormais, au lieu de promettre un export imaginaire.
 function feedbackModal() {
   $("#devPanel").classList.remove("active");
+  // LOT-21 (audit UX/UI du 2026-11-10, TRA-C29) : « Feedback & aide » n'offrait
+  // aucune aide. « Aide et retour » commence par les réponses qui existent déjà
+  // (limites du pilote, confidentialité), et le bouton dit où part l'envoi.
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Ton retour sur la beta</div>
-    <div class="modal-subtitle">Il part par e-mail à l'équipe, et une copie reste sur ton téléphone.</div>
+    <div class="modal-title">Aide et retour</div>
+    <div class="aide-liens">
+      <button type="button" class="btn ghost block" onclick="openLimitesPilote()">Ce que cette version pilote fait (et ne fait pas)</button>
+      <button type="button" class="btn ghost block" onclick="openPrivacyPolicy()">Tes données et la confidentialité</button>
+    </div>
+    <div class="modal-subtitle">Ton retour part par e-mail à l'équipe, et une copie reste sur ton téléphone.</div>
     <label class="field"><span>Ce que tu as aimé</span><textarea class="textarea" id="fbLike"></textarea></label>
     <label class="field"><span>Ce qui ne va pas / bugs</span><textarea class="textarea" id="fbBad"></textarea></label>
-    <label class="field"><span>Une feature à ajouter</span><textarea class="textarea" id="fbIdea"></textarea></label>
-    <button class="btn primary block" onclick="saveFeedback()">Envoyer</button>
+    <label class="field"><span>Une fonctionnalité à ajouter</span><textarea class="textarea" id="fbIdea"></textarea></label>
+    <button class="btn primary block" onclick="saveFeedback()">Envoyer (s'ouvre dans ta messagerie)</button>
   `);
 }
 
@@ -346,7 +353,7 @@ function openLimitesPilote() {
       <li><strong>En test</strong> : les notifications, l'export de tes données, la suppression de compte. Elles fonctionnent ; si l'une d'elles te répond par une erreur, elle te dit quoi faire — et rien n'est annoncé comme fait s'il ne l'est pas.</li>
       <li><strong>Pas de garantie de disponibilité</strong> : c'est une beta. Garde une copie de ce qui compte pour toi (« Exporter mes données » dans les réglages).</li>
       <li><strong>Tes données</strong> : la <span role="button" tabindex="0" onclick="openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span> dit ce qui est collecté et pourquoi. Tu peux supprimer ton compte à tout moment.</li>
-      <li><strong>Un problème, une question, un contenu à signaler</strong> : ${mail ? `<strong style="color:var(--accent);user-select:all;">${escapeHtml(mail)}</strong> (bouton « Feedback & aide » pour écrire depuis l'app)` : "le bouton « Feedback & aide »"}, ou le bouton « Signaler » sur chaque contenu.</li>
+      <li><strong>Un problème, une question, un contenu à signaler</strong> : ${mail ? `<strong style="color:var(--accent);user-select:all;">${escapeHtml(mail)}</strong> (bouton « Aide et retour » pour écrire depuis l'app)` : "le bouton « Aide et retour »"}, ou le bouton « Signaler » sur chaque contenu.</li>
     </ul>
     <button class="btn primary block" onclick="closeModal()">Compris</button>
   `);
@@ -2503,10 +2510,25 @@ function _notifListHtml(notifs) {
         <div class="notif-text">${_notifTexteHtml(n)}</div>
         ${_notifIdentiteHtml(n)}
         ${_notifDemandeAbonnementHtml(n)}
-        <div class="notif-meta">${fmtTime(n.createdAt)}</div>
+        <div class="notif-meta">${escapeHtml(fmtNotifHeure(n.createdAt))}</div>
       </div>
       ${n.unread ? '<div class="notif-dot"></div>' : ""}
     </div>`).join("");
+}
+
+// LOT-21 (audit UX/UI du 2026-11-10, TRA-C13) : au-delà d'une heure, l'heure
+// seule (« 19:25 », « 00:30 ») ne disait pas de quel jour. Jours CALENDAIRES.
+function fmtNotifHeure(ts) {
+  if (!ts) return "";
+  var t = typeof ts === "string" ? supaTs(ts) : Number(ts);
+  if (!isFinite(t)) return "";
+  if (Date.now() - t < 3600e3) return fmtTime(t);
+  var d = new Date(t);
+  var hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  var j = -joursCalendairesAvant(t);
+  if (j <= 0) return "Aujourd'hui, " + hm;
+  if (j === 1) return "Hier, " + hm;
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) + ", " + hm;
 }
 
 // Une demande d'abonnement (compte privé) se tranche DEPUIS la notification :
@@ -2624,6 +2646,19 @@ function mergeSupaNotifs(ns) {
   if (list) list.innerHTML = _notifListHtml(state.notifications);
 }
 
+// LOT-21 (TRA-C28) : après un refus, aucun endroit ne disait si le téléphone
+// autorise les notifications. Une ligne d'état, lue sur `Notification.permission`
+// (aucune demande système n'est faite ici).
+function _etatPermissionNotifHtml() {
+  try {
+    if (typeof Notification === "undefined" || !Notification.permission) return "";
+    var p = Notification.permission;
+    if (p === "granted") return '<div class="notif-permission" data-permission="granted">Notifications du téléphone : autorisées.</div>';
+    if (p === "denied") return '<div class="notif-permission" data-permission="denied">Notifications du téléphone : bloquées. Pour les réactiver, ouvre les réglages de ton navigateur (ou de ton téléphone) pour PASSIO, puis « Notifications ».</div>';
+    return '<div class="notif-permission" data-permission="default">Notifications du téléphone : pas encore activées. PASSIO te les proposera au bon moment (rappel d\'une activité, premier message).</div>';
+  } catch (e) { return ""; }
+}
+
 function openNotifications() {
   const notifs = state.notifications || [];
   const html = `
@@ -2633,11 +2668,13 @@ function openNotifications() {
     <div class="notif-list">
       ${_notifListHtml(notifs)}
     </div>
+    ${_etatPermissionNotifHtml()}
     <div style="display:flex;gap:8px;margin-top:14px;">
-      <button class="btn ghost block" onclick="markAllNotifsRead()">Tout marquer lu</button>
-      <button class="btn primary block" onclick="closeModal()">OK</button>
+      <button class="btn primary block" onclick="closeModal()">Fermer</button>
     </div>
   `;
+  // LOT-21 (TRA-C13) : « Tout marquer lu » n'avait plus rien à faire — ouvrir le
+  // panneau marque déjà tout lu (`_resetNotifBadge`). Un seul bouton : « Fermer ».
   openModal(html);
   // Rafraîchir depuis Supabase à l'ouverture : garantit l'affichage des notifs
   // reçues même si le realtime ne les a pas livrées. La liste se met à jour en
@@ -2713,6 +2750,12 @@ function clickNotif(id) {
 //  message                       → la conversation
 function openNotifTarget(n) {
   if (!n) return;
+  // LOT-21 (audit UX/UI du 2026-11-10, TRA-C12) : toucher une notification
+  // dont la cible a disparu fermait le panneau et laissait sur le fil, sans un
+  // mot (`openPost` et consorts sortent en silence). On vérifie AVANT de fermer ;
+  // une cible absente le dit, et le panneau reste ouvert.
+  const manque = _cibleNotifAbsente(n);
+  if (manque) { toast(manque); return; }
   try { closeModal(); } catch (e) {}
   const ref = n.refId, from = n.fromId;
   switch (n.kind) {
@@ -2755,6 +2798,37 @@ function openNotifTarget(n) {
       // Notif locale / type inconnu : pas de cible précise, on n'ouvre rien.
       break;
   }
+}
+
+// Rend le message à dire quand la cible d'une notification n'existe plus ici,
+// sinon "". Seules les cibles qui se cherchent EN MÉMOIRE sont jugées (une
+// cible inconnue de ce type n'est pas déclarée absente).
+function _cibleNotifAbsente(n) {
+  try {
+    const ref = n && n.refId;
+    switch (n && n.kind) {
+      case "like": case "comment": case "mention": case "reaction":
+        if (!ref) return "";
+        // Une pierre tombale le PROUVE ; une publication simplement absente de
+        // la mémoire peut exister en base (la mention sur la publication d'un
+        // autre) : on le dit sans l'affirmer.
+        if (typeof postSupprime === "function" && postSupprime(ref)) return "Cette publication n'existe plus";
+        return (typeof findPostAnywhere === "function" && !findPostAnywhere(ref)) ? "Publication introuvable ici — elle a peut-être été supprimée" : "";
+      case "event_join": case "event_comment": case "event_update": case "event_cancelled":
+      case "event_reminder": case "event_invite": case "event_feedback": {
+        if (!ref) return "";
+        const ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(ref))
+          || (typeof allEvents === "function" && allEvents().find(function (e) { return e && e.id === ref; }));
+        return ev ? "" : "Cette activité n'existe plus";
+      }
+      // `message` n'est pas jugé : une conversation NEUVE arrive souvent avant
+      // la relecture de la liste, et `openConversation` sait l'aller chercher.
+      case "moderation":
+        return "Décision de modération : la publication concernée a été retirée. Pour la contester, écris à l'équipe depuis « Aide et retour ».";
+      default:
+        return "";
+    }
+  } catch (e) { return ""; }
 }
 
 function markAllNotifsRead() {

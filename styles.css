@@ -13036,3 +13036,41 @@ button, a, label, select, summary,
 .v7-passion-ligne { display: flex; gap: 8px; align-items: center; }
 .v7-passion-ligne select { flex: 1; min-width: 0; }
 .v7-passion-ligne .btn { min-height: 44px; flex-shrink: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOT-21 (audit UX/UI du 2026-11-10) — règles transverses (suite)
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* TRA-C13 : Accepter / Refuser une demande d'abonnement à 44 px. */
+.notif-demande-actions .btn.small { min-height: 44px; padding: 0 16px; font-size: 13px; }
+/* TRA-C28 : l'état de la permission du téléphone. */
+.notif-permission {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--accent-tile, #f5efff);
+  color: var(--text-dim, #4b4563);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+/* TRA-C29 : « Aide et retour » commence par les réponses qui existent. */
+.aide-liens { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.aide-liens .btn { min-height: 44px; justify-content: flex-start; text-align: left; }
+/* TRA-C06 : « Affichage » — la taille du texte seulement. */
+.config-tailles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.config-taille {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.config-taille.actif { border-color: var(--accent); background: var(--accent-tile, #f5efff); }
+.config-taille-aa { font-weight: 800; line-height: 1; }

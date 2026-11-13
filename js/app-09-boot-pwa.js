@@ -176,7 +176,8 @@ async function pwaInstall() {
 
   // Prompt pas encore arrivé → attendre 4s
   if (_supportsPWA) {
-    if (typeof toast === 'function') toast('Installation en cours…', 'info');
+    // LOT-21 (TRA-C20) : plus de « Installation en cours… » — rien n'est en cours,
+    // on attend seulement que le navigateur propose l'installation.
     await new Promise(function(res) {
       var t = 0, iv = setInterval(function() {
         t += 300;
@@ -208,21 +209,24 @@ function pwaShowBannerInstall() {
   var lp = document.getElementById("pwaLogoImg");
   if (lp && typeof LOGO_SRC !== 'undefined') lp.src = LOGO_SRC;
 
-  // Icône adaptée selon le navigateur
-  var icon = _isEdge ? '🟦' : '🟡';
+  // LOT-21 (audit UX/UI du 2026-11-10, TRA-C20) : sur un téléphone Android, la
+  // consigne parlait de l'icône ⊕ de la barre d'adresse d'un ORDINATEUR — elle
+  // n'existe pas sur mobile, où l'installation est dans le menu du navigateur.
+  var _android = /Android/i.test(navigator.userAgent || "");
   var name = _isEdge ? 'Edge' : _isSamsung ? 'Samsung Internet' : 'Chrome';
-  var hint = _isEdge
-    ? 'Regarde en haut à droite dans la barre d\'adresse : clique sur l\'icône <strong style="font-size:16px;">⊕</strong> ou <strong style="font-size:16px;">📥</strong> pour installer PASSIO.'
-    : 'Regarde en haut à droite dans la barre d\'adresse : clique sur l\'icône <strong style="font-size:16px;">⊕</strong> ou <strong style="font-size:16px;">💾</strong> pour installer PASSIO.';
+  var hint = _android
+    ? (_isSamsung
+      ? 'Touche le menu <strong>≡</strong> en bas de l\'écran, puis « Ajouter la page à » → « Écran d\'accueil ».'
+      : 'Touche le menu <strong>⋮</strong> en haut à droite, puis « Installer l\'application » (ou « Ajouter à l\'écran d\'accueil »).')
+    : 'Dans la barre d\'adresse, en haut à droite, clique sur l\'icône d\'installation (un écran avec une flèche), puis « Installer ».';
 
   content.innerHTML =
     '<div style="text-align:center;padding:4px 0 12px;">' +
-    '<div style="font-size:40px;margin-bottom:10px;">' + icon + '</div>' +
-    '<div style="font-size:15px;font-weight:800;color:#1e1b4b;margin-bottom:10px;">Installe via ' + name + '</div>' +
-    '<div style="background:#f5f3ff;border-radius:14px;padding:14px;margin-bottom:14px;text-align:left;font-size:13px;color:#374151;line-height:1.6;">' +
+    '<div style="font-size:15px;font-weight:800;color:var(--text, #1f1235);margin-bottom:10px;">Installer PASSIO avec ' + name + '</div>' +
+    '<div style="background:var(--accent-tile, #f5efff);border-radius:14px;padding:14px;margin-bottom:14px;text-align:left;font-size:14px;color:var(--text, #1f1235);line-height:1.6;">' +
     hint +
     '</div>' +
-    '<button class="pwa-btn-install" onclick="pwaDismiss();window.focus();" style="margin-bottom:8px;">✅&nbsp;&nbsp;Compris, je cherche l\'icône</button>' +
+    '<button class="pwa-btn-install" onclick="pwaDismiss();window.focus();" style="margin-bottom:8px;">Compris</button>' +
     '<button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>' +
     '</div>';
   ov.style.display = "flex";
