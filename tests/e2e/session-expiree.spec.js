@@ -27,21 +27,22 @@ const CLE_JETON = "sb-" + REF + "-auth-token";
 
 // Hors ligne : TOUT supabase.co échoue en réseau (le SDK réel de la CI garde
 // alors le jeton — une erreur réseau n'est pas un jeton invalide).
-async function banc(page, { jeton = true } = {}) {
+async function banc(page, { jeton = true, marque = null } = {}) {
   await page.route(/supabase\.co/, (route) => route.abort());
-  await page.addInitScript(([u, cle, avecJeton]) => {
+  await page.addInitScript(([u, cle, avecJeton, m]) => {
     localStorage.setItem("passio_uid", u);
+    if (m) localStorage.setItem("passio_session_expiree_v1", JSON.stringify(m));
     if (avecJeton && !localStorage.getItem(cle)) {
       localStorage.setItem(cle, JSON.stringify({
         access_token: "jeton-de-banc", refresh_token: "r", token_type: "bearer",
         expires_at: Math.floor(Date.now() / 1000) - 600, user: { id: u },
       }));
     }
-  }, [UID, CLE_JETON, jeton]);
+  }, [UID, CLE_JETON, jeton, marque]);
   await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true });
   // Hors ligne, le SDK réessaie le rafraîchissement ; `boot()` borne l'attente
   // à 8 s (DELAI_SESSION_BOOT_MS) avant d'entrer dans le mode.
-  if (jeton) await page.waitForFunction(() => window._sessionExpiree === true, null, { timeout: 15000 }).catch(() => {});
+  if (jeton || (marque && marque.uid === UID)) await page.waitForFunction(() => window._sessionExpiree === true, null, { timeout: 15000 }).catch(() => {});
   const premisse = await page.evaluate(() => ({
     url: String((window.PASSIO_SUPABASE && window.PASSIO_SUPABASE.url) || ""), uid: MY_UID,
   }));
@@ -81,6 +82,58 @@ test.describe("UXO-02 — session expirée : le fil local, en lecture", () => {
     expect(e.bandeau).toBe(false);
     expect(e.classe).toBe(false);
     expect(await page.evaluate(() => _peutPousserEtat()), "les écritures d'état restent ouvertes hors du mode").toBe(true);
+  });
+
+  // SUITE D'ETAT-02 (audit de stabilisation, 2026-11-13). Une session finie EN COURS
+  // DE ROUTE (`SIGNED_OUT`) a vu le SDK retirer son jeton : au démarrage suivant, ②
+  // s'appliquait et la landing recouvrait un fil complet. La marque posée avec le
+  // mode en est la preuve. RÉINJECTION : sur le code d'avant, ② bis donne la landing.
+  test("② bis sans jeton mais avec la marque de CE compte : le fil s'ouvre en lecture", async ({ page }) => {
+    await banc(page, { jeton: false, marque: { uid: UID, t: Date.now() - 3600 * 1000 } });
+    const e = await etat(page);
+    expect(e.expiree, "la marque prouve qu'une session a existé ici").toBe(true);
+    expect(e.landing).toBe(false);
+    expect(e.feed).toBe(true);
+    expect(e.bandeau, "le bandeau « Session expirée » est à l'écran").toBe(true);
+    expect(await page.evaluate(() => _peutPousserEtat()), "écritures d'état coupées").toBe(false);
+  });
+
+  test("② ter la marque d'un AUTRE compte ne vaut rien", async ({ page }) => {
+    await banc(page, { jeton: false, marque: { uid: "11111111-2222-4333-8444-555555555555", t: Date.now() } });
+    const e = await etat(page);
+    expect(e.expiree).toBe(false);
+    expect(e.bandeau).toBe(false);
+  });
+
+  // Relecture du 2026-11-13 : un compte supprimé ou révoqué depuis un autre appareil
+  // ne doit pas rouvrir ici, sans fin, le contenu local d'un compte injoignable.
+  test("② ter bis une marque de plus de 30 jours ne vaut plus rien", async ({ page }) => {
+    await banc(page, { jeton: false, marque: { uid: UID, t: Date.now() - 31 * 24 * 3600 * 1000 } });
+    const e = await etat(page);
+    expect(e.expiree, "passé 30 jours, la landing reprend").toBe(false);
+    expect(e.bandeau).toBe(false);
+  });
+
+  test("② ter ter une session ANONYME qui meurt ne pose pas de marque", async ({ page }) => {
+    await banc(page, { jeton: false });
+    const r = await page.evaluate(() => {
+      window._sessionAnonyme = true;
+      poserSessionExpiree("signed_out");
+      return localStorage.getItem("passio_session_expiree_v1");
+    });
+    expect(r, "« Se reconnecter » n'a pas de formulaire pour ce compte : pas de marque").toBe(null);
+  });
+
+  test("② quater la fin de session pose la marque ; la déconnexion volontaire l'emporte", async ({ page }) => {
+    await banc(page, { jeton: false });
+    const r = await page.evaluate(() => {
+      const avant = localStorage.getItem("passio_session_expiree_v1");
+      poserSessionExpiree("signed_out");
+      return { avant, apres: (JSON.parse(localStorage.getItem("passio_session_expiree_v1") || "{}")).uid, deCompte: ACCOUNT_SCOPED_KEYS.includes("passio_session_expiree_v1") };
+    });
+    expect(r.avant).toBe(null);
+    expect(r.apres, "la marque porte l'uuid du compte").toBe(UID);
+    expect(r.deCompte, "clé de compte : purgée à la déconnexion").toBe(true);
   });
 
   test("③ l'état ne part pas, et sa file de secours est GARDÉE", async ({ page }) => {
@@ -175,6 +228,8 @@ test.describe("UXO-02 — session expirée : le fil local, en lecture", () => {
     expect(app08.slice(iEntree, iEntree + 260), "…juste avant showLanding()").toMatch(/entrerEnSessionExpiree\(\)\) return;\r?\n\r?\n  \/\/[^\r\n]*\r?\n  if \(!_sessionDelaiEcoule && sortirCompteSansSession\(\)\) return;\r?\n\r?\n  showLanding\(\);\r?\n\}/);
     expect(app08, "l'attente de session au démarrage est bornée").toMatch(/Promise\.race\(\[\s*supa\.auth\.getSession\(\)/);
     expect(app08).toMatch(/session\?\.user && window\._sessionExpiree === true/);
+    // Une session retrouvée au démarrage efface la marque d'une session perdue.
+    expect(app08).toMatch(/if \(session\?\.user && \(!_authIntent \|\| _recuperationEnCours\)\) \{\r?\n[^\r\n]*\r?\n\s*try \{ if \(typeof _oublierMarqueSessionExpiree === "function"\) _oublierMarqueSessionExpiree\(\); \}/);
     const app02 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-02-state-utils.js"), "utf8");
     expect(app02).toMatch(/function _peutPousserEtat\(\) \{\s*\/\/[^\r\n]*\r?\n\s*if \(sessionExpiree\(\)\) return false;/);
   });

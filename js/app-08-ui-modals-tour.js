@@ -419,9 +419,15 @@ function showLanding() {
 // ⚠️ PAS de `supaInit()` : il lit les tables privées sous `MY_UID`, et
 // `supaLoadMyConversations` REMPLACE l'entrée locale par son résultat — vide
 // sans session. Lire le public serait possible, écraser le local ne l'est pas.
+// ⚠️ LE JETON OU LA MARQUE (2026-11-13, suite d'ETAT-02) : une session finie en
+// cours de route (`SIGNED_OUT`, 401) a vu le SDK retirer son jeton — la preuve est
+// alors la marque `passio_session_expiree_v1` que `poserSessionExpiree` (app-02) a
+// posée, pour ce même `passio_uid`. Sans elle, ce démarrage-là tombait sur la landing.
 function entrerEnSessionExpiree() {
   if (!(state && state.onboarded)) return false;
-  if (typeof _sessionSdkPersistee !== "function" || !_sessionSdkPersistee()) return false;
+  const jeton = typeof _sessionSdkPersistee === "function" && !!_sessionSdkPersistee();
+  const marque = typeof _marqueSessionExpiree === "function" && _marqueSessionExpiree();
+  if (!jeton && !marque) return false;
   window._sessionExpiree = true;
   try { document.documentElement.classList.add("passio-session-expiree"); } catch (e) {}
   try { restoreFeedPassions(); } catch (e) {}
@@ -3162,6 +3168,10 @@ async function boot() {
       return;
     }
     if (session?.user && (!_authIntent || _recuperationEnCours)) {
+      // Une session est là : la marque d'une session perdue n'a plus de cause.
+      try { if (typeof _oublierMarqueSessionExpiree === "function") _oublierMarqueSessionExpiree(); } catch (e) {}
+      // Une session anonyme ne posera pas de marque si elle meurt (app-02).
+      try { window._sessionAnonyme = session.user.is_anonymous === true; } catch (e) {}
       // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` : le discriminant est l'INSTANTANÉ
       // pris au chargement (`_uidProprietaireEtat`, app-02). Ce chemin-ci couvre
       // les entrées qui ne passent PAS par `onbDoAuth` : retour de
@@ -3396,6 +3406,8 @@ async function boot() {
         try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
         return;
       }
+      // Une session anonyme ne posera pas de marque si elle meurt (app-02).
+      try { if (session?.user) window._sessionAnonyme = session.user.is_anonymous === true; } catch (e) {}
       if (session?.user && window._sessionExpiree === true) {
         // SESSION REVENUE EN MODE EXPIRÉ (UXO-02) : le SDK a rafraîchi seul le
         // jeton (retour du réseau), ou une connexion vient d'aboutir. On ne
