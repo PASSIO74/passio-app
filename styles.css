@@ -9838,12 +9838,6 @@ body.ctx-locked #appMain { overflow: hidden; }
   font-size: 11px;
   border-width: 1.5px;
 }
-:root.passio-ui-7 #screen-feed .profile-tile-count {
-  top: -4px;
-  right: -4px;
-  font-size: 8px;
-  border-width: 1.5px;
-}
 :root.passio-ui-7 #screen-feed .profile-tile-label {
   font-size: 9.5px;
   max-width: 58px;
@@ -10270,11 +10264,6 @@ body.ctx-locked #appMain { overflow: hidden; }
   bottom: -3px;
   right: -3px;
   font-size: 13px;
-}
-#v9ProfilePassions .profile-tile-count {
-  top: -4px;
-  right: -4px;
-  font-size: 9px;
 }
 #v9ProfilePassions .profile-tile-label { font-size: 10px; max-width: 64px; }
 #v9ProfilePassions .profile-tile.active .profile-tile-label { font-size: 11.5px; }
@@ -12786,9 +12775,8 @@ button, a, label, select, summary,
 :root.passio-ui-6 #fieldMood .pill-row .pill { min-height: 44px; font-size: 13px; }
 
 /* LOT-16 (audit UX/UI du 2026-11-10) — le profil.
-   PRO-C21 : la pastille du nombre de publications est posée DANS la vignette
-   (le rail, en défilement horizontal, rognait tout ce qui dépassait). */
-.profile-tile-count { top: 1px !important; right: 1px !important; }
+   PRO-C21 : la pastille du nombre de publications est RETIRÉE (2026-11-13,
+   plus aucun chiffre sur les bulles de passion). */
 /* PRO-C13 : le badge photo d'une passion, 28 px (sa zone reste de 44 px). */
 .passion-photo-badge { width: 28px; height: 28px; font-size: 14px; }
 /* PRO-C17 : les actions du profil visité à 44 px, texte 14 px. */
