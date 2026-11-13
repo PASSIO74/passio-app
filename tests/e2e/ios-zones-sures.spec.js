@@ -50,7 +50,7 @@ const HAUT = [
   [".story-viewer-header",  "la croix qui ferme une story"],
   [".reels-header",         "la croix qui ferme le viewer Bobines"],
   [".reel-sound-btn",       "coupure du son d'une bobine"],
-  [".reel-tag-mood",        "étiquette d'humeur d'une bobine"],
+  // « .reel-tag-mood » retirée (LOT-14, BOB-C14) : l'envie rejoint la ligne de passion, sous le nom.
 ];
 
 // Commandes ancrées en BAS : la barre d'accueil de l'iPhone (~34 px) les
@@ -129,9 +129,12 @@ test.describe("iPhone — zones sûres des panneaux plein écran", () => {
     expect(panneaux.length,
       "un panneau plein écran a été ajouté ou retiré : vérifie que ses commandes " +
       "de bord d'écran portent env(safe-area-inset-*), puis ajuste ce nombre.\n" +
-      panneaux.join("\n")).toBe(15);
+      panneaux.join("\n")).toBe(16);
   });
 
+  // LOT-13 (audit UX/UI du 2026-11-10, ENT-C06) : 16ᵉ panneau, arbitré — le fond
+  // assombri du panneau Paramètres (`.dev-panel-fond`). Il ne porte AUCUNE
+  // commande : un toucher dessus ferme le panneau ; la croix vit dans le panneau.
   // LOT-4 (audit UX/UI du 2026-11-10) : 15ᵉ panneau, arbitré — la feuille de
   // confirmation de la messagerie (`.feuille-conf-ov`). Ses commandes sont en BAS
   // de l'écran : la feuille doit garder le retrait de la barre d'accueil.

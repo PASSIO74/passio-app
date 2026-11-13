@@ -10,7 +10,7 @@
 //      d'élection donnaient le contraire à lire, à chaque ouverture.
 //
 //   ② UNE FORME. La gestion des passions était une SECTION du profil, prise
-//      entre l'état vide « Créer un post » (déplacé là par UI-7) et le Studio.
+//      entre l'état vide « Créer une publication » (déplacé là par UI-7) et le Studio.
 //      Elle devient une PAGE : en-tête (retour · titre · aide), résumé, quota,
 //      cartes identiques, porte d'ajout, archives repliables.
 //
@@ -94,16 +94,16 @@ const plafonds = (page) => page.evaluate(() => ({
 // ══════════════════════════════════════════════════════════════════════════
 // ① LA PAGE EST UNE PAGE — plus rien du profil au-dessus ni en dessous
 // ══════════════════════════════════════════════════════════════════════════
-test("① ouverte, la page remplace le profil : plus de « Créer un post » au-dessus", async ({ page }) => {
+test("① ouverte, la page remplace le profil : plus de « Créer une publication » au-dessus", async ({ page }) => {
   await poser(page, { vivantes: 2 });
 
-  // Avant : le profil est là, et son état vide propose « Créer un post ».
+  // Avant : le profil est là, et son état vide propose « Créer une publication ».
   const avant = await page.evaluate(() => ({
     carte: !!document.getElementById("mainProfileCard").offsetParent,
-    creerUnPost: (document.getElementById("screen-profiles").textContent || "").includes("Créer un post"),
+    creerUnPost: (document.getElementById("screen-profiles").textContent || "").includes("Créer une publication"),
   }));
   expect(avant.carte, "le profil s'affiche normalement avant l'ouverture").toBe(true);
-  expect(avant.creerUnPost, "l'état vide « Créer un post » est bien là avant").toBe(true);
+  expect(avant.creerUnPost, "l'état vide « Créer une publication » est bien là avant").toBe(true);
 
   await ouvrir(page);
 
@@ -122,7 +122,7 @@ test("① ouverte, la page remplace le profil : plus de « Créer un post » au-
       rail: peint("v9ProfilePassions"),
       studio: (document.getElementById("studioTypeTabs") || {}).offsetParent != null,
       creerUnPost: [...ec.querySelectorAll("*")]
-        .some((n) => n.offsetParent && (n.textContent || "").trim() === "Créer un post"),
+        .some((n) => n.offsetParent && (n.textContent || "").trim() === "Créer une publication"),
       visibles,
       // Les nœuds masqués existent TOUJOURS : rien n'a été détruit.
       toujoursLa: !!document.getElementById("mainProfileCard") && !!document.getElementById("myPosts"),
@@ -134,7 +134,7 @@ test("① ouverte, la page remplace le profil : plus de « Créer un post » au-
   expect(pendant.mesPosts, "le contenu du profil reste peint").toBe(false);
   expect(pendant.rail, "le rail de bulles reste peint").toBe(false);
   expect(pendant.studio, "le Studio reste peint sous la page").toBe(false);
-  expect(pendant.creerUnPost, "« Créer un post » est encore affiché au-dessus").toBe(false);
+  expect(pendant.creerUnPost, "« Créer une publication » est encore affiché au-dessus").toBe(false);
   expect(pendant.visibles, "un seul enfant de l'écran est peint").toEqual(["passionManager"]);
   expect(pendant.toujoursLa, "masquer, jamais retirer : le DOM est intact").toBe(true);
 

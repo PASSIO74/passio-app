@@ -64,7 +64,7 @@ test.describe("Latence perçue", () => {
     await page.waitForSelector("#landing.active", { timeout: 30000 });
 
     // Un bouton bien réel de la landing, pas un élément fabriqué pour le test.
-    const cible = page.locator("button, [role=button]").first();
+    const cible = page.locator("button:not(.lien-evitement), [role=button]").first();
     await cible.waitFor({ state: "visible", timeout: 15000 });
     await cible.click();
 
@@ -118,7 +118,7 @@ test.describe("Latence perçue", () => {
     await page.goto("/index.html?telemetry=1");
     await page.waitForSelector("#landing.active", { timeout: 30000 });
 
-    const cible = page.locator("button, [role=button]").first();
+    const cible = page.locator("button:not(.lien-evitement), [role=button]").first();
     await cible.click({ force: true });
 
     expect(await page.evaluate(() => window.__rafDemandes),

@@ -368,6 +368,9 @@
     var first = wrap.querySelector(".v2-sheet-item");
     if (first) first.focus();
     document.addEventListener("keydown", onSheetKeydown, true);
+    // ENT-C07 (audit UX/UI du 2026-11-10) : une entrée d'historique — le retour
+    // système ferme la feuille (closeCurrentOverlay) au lieu de changer d'écran dessous.
+    try { if (typeof window.pushOverlayHistory === "function") window.pushOverlayHistory("creer"); } catch (e) {}
     track("ui_v2_create_open", {});
   }
 
@@ -379,6 +382,7 @@
     var cta = document.querySelector('#appNavV2 [data-v2-action="create"]');
     if (cta) cta.setAttribute("aria-expanded", "false");
     document.removeEventListener("keydown", onSheetKeydown, true);
+    try { if (typeof window.releaseOverlayHistory === "function") window.releaseOverlayHistory(); } catch (e) {}
     if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
     lastFocused = null;
   }
@@ -472,6 +476,11 @@
       if (window.console && console.error) console.error("[ui-v2] buildReels :", e);
       return [];
     }
+    // LOT-14 (audit UX/UI du 2026-11-10, BOB-C17) : « Bobines à découvrir » ne
+    // me propose pas MES bobines.
+    reels = reels.filter(function (r) {
+      try { return !(typeof window._estMonPost === "function" && window._estMonPost(r)); } catch (e) { return true; }
+    });
     return reels.slice(0, max);
   }
 
@@ -545,6 +554,12 @@
       img.alt = "";
       img.src = poster;
       thumb.appendChild(img);
+    } else if (reel.video && typeof window.miniatureVideoPubliqueHTML === "function") {
+      // LOT-14 (BOB-C05) : une image de la vidéo (preload=metadata, jamais une
+      // lecture) plutôt qu'un aplat ; en économie de données, l'aplat reste.
+      var apercu = window.miniatureVideoPubliqueHTML("", reel.video);
+      if (apercu.indexOf("<video") === 0) thumb.insertAdjacentHTML("beforeend", apercu);
+      else thumb.classList.add("v2-reel-thumb-empty");
     } else {
       thumb.classList.add("v2-reel-thumb-empty");
     }
@@ -762,7 +777,7 @@
     btn.type = "button";
     btn.className = "btn primary v2-empty-cta";
     btn.setAttribute("data-v2-empty-cta", rienChoisi ? "explore" : "create");
-    btn.textContent = rienChoisi ? "Explorer les passions" : "Publier une Passio";
+    btn.textContent = rienChoisi ? "Explorer les passions" : "Publier quelque chose";
     btn.addEventListener("click", function () {
       track("ui_v2_empty_cta", { kind: rienChoisi ? "explore" : "create" });
       if (rienChoisi) { goToScreen("explore"); return; }

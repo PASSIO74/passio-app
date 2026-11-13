@@ -305,6 +305,9 @@
     if (!id) return;
     var reel = bobineParId(id);
     if (!reel) return;                     // bobine inconnue : on ne touche à rien
+    // LOT-14 (audit UX/UI du 2026-11-10, BOB-C17) : pas de « Ça m'intéresse »
+    // ni de « Découvrir » sur MA propre bobine.
+    try { if (typeof window._estMonPost === "function" && window._estMonPost(reel)) return; } catch (e) {}
 
     var evId = refActivite(reel);
     var passion = evId ? "" : passionDe(reel);
