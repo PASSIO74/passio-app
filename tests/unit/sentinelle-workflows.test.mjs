@@ -77,7 +77,7 @@ tout="$*"
 # Échec simulé (contre-revue du 2026-11-03) : une commande qui contient FAUX_ECHEC échoue.
 if [ -n "\${FAUX_ECHEC:-}" ] && [[ "$tout" == *"\${FAUX_ECHEC}"* ]]; then echo "faux gh : échec simulé : $tout" >&2; exit 1; fi
 # FAUX_404 : comme le vrai gh sur une ressource disparue — le message de GitHub sur l'erreur standard, code 1 (#875).
-if [ -n "\${FAUX_404:-}" ] && [[ "$tout" == *"\${FAUX_404}"* ]]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi
+if [ -n "\${FAUX_404:-}" ] && [[ "$tout" == *"\${FAUX_404}"* ]]; then printf '%s' '{"message":"Not Found","documentation_url":"https://docs.github.com/rest","status":"404"}'; echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi
 # FAUX_ERREUR_SUR + FAUX_ERREUR : une commande qui contient le premier échoue en écrivant le second (\\n, \\r compris).
 if [ -n "\${FAUX_ERREUR_SUR:-}" ] && [[ "$tout" == *"\${FAUX_ERREUR_SUR}"* ]]; then printf '%b\\n' "\${FAUX_ERREUR:-}" >&2; exit 1; fi
 corps=""
