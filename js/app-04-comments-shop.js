@@ -4401,13 +4401,9 @@ function searchUsers(query) {
     results.innerHTML = matches.map(function(u) {
       var nameEsc = escapeHtml(u.name || "Passionné");
       var emoji = u.profileEmoji || "✨";
-      // §2 : la MÊME ligne d'identité que partout ailleurs, au lieu des pastilles
-      // propres à cet écran. `identitePassionsHTML` échappe (le jsonb
-      // `profiles.passions` d'un AUTRE compte est du contenu libre — un
-      // `<img src=x onerror=…>` s'y exécutait avant le correctif du 2026-08-30)
-      // et borne la liste, pour qu'un compte à douze passions ne pousse pas
-      // « Message → » hors de l'écran.
-      var passionBadges = identitePassionsHTML(u, "ident-passions-sm");
+      // 2026-11-13 : plus de ligne de passions sous le pseudo dans la messagerie
+      // (demande de Benjamin : « ce n'est pas joli et trop chargé »). Le pseudo
+      // seul, comme dans la liste des conversations.
       // ⚠️ data-emoji recevait `profiles.emoji` BRUT dans un attribut simple-quoté :
       // une valeur du type `' onmouseover='…` refermait l'attribut et ouvrait un
       // gestionnaire d'événement. Tout ce qui entre ici doit être échappé, y compris
@@ -4421,8 +4417,7 @@ function searchUsers(query) {
         '<div style="width:38px;height:38px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">'
          + avatarInner(u) + "</div>" +
         "<div style='flex:1;min-width:0;'>" +
-          "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + nameEsc + "</div>" +
-          "<div>" + passionBadges + "</div>" +
+          "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + nameEsc + "</div>" +
         "</div>" +
         "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;'>Message →</div>" +
       "</div>";

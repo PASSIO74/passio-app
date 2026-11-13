@@ -939,5 +939,6 @@ Demande de Benjamin, capture à l'appui : « supprime les noms des passions dess
 
 - **Messagerie** : la liste des conversations ne préfixe plus l'aperçu par « Moto · Podcast · » (`decorerCartes`, `passionDe`, `convIdDe`, la signature `data-v6a-psn` et la règle `.v6a-psn` sont parties ensemble de `js/ui-v6a-messages.js` et `styles.css`). Le module UI-6A ne pose plus que la tête (« Messages », « + », recherche).
 - **Commentaires** : plus de ligne `.ident-passions` sous le pseudo — commentaire et réponse dans la feuille (`_renderCommentsList`, app-04), aperçu des deux commentaires sur la carte du fil (`renderPostHTML`, app-02).
-- **Ce qui reste, délibérément** : `identitePassionsHTML` sert encore les surfaces où l'on CHERCHE quelqu'un — résultats de « Nouveau message », listes d'abonnés, suggestions, notifications. Ne pas la retirer d'app-02.
+- **« Nouveau message »** (même jour, « supprime dans la messagerie aussi ») : les résultats de recherche (`searchUsers`, app-04) ne portent plus que le pseudo.
+- **Ce qui reste, délibérément** : `identitePassionsHTML` sert encore hors messagerie — listes d'abonnés, suggestions, notifications. Ne pas la retirer d'app-02. Les passions d'un GROUPE (fiche du groupe) sont son sujet, pas une ligne sous un pseudo : intactes.
 - Verrous : `ui-v6a-messages.spec.js` (« aucune passion sur une carte », « elle ne revient pas au rendu suivant »), `ui-v6a-boucle.spec.js`, `profil-entete-passions.spec.js` (« un commentaire ne porte AUCUNE passion sous le pseudo »). Chacun pose sa prémisse : l'auteur A une passion à afficher.

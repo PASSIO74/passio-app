@@ -154,6 +154,30 @@ test.describe("UI-6A — inbox Messages", () => {
     await expect(carte(page, "v6a_groupe").locator(".msg-preview")).toContainText("Rendez-vous à 9h");
   });
 
+  // 2026-11-13, même demande : « Nouveau message » montrait aussi les passions
+  // sous le pseudo de chaque résultat. Le pseudo seul, désormais.
+  test("« Nouveau message » : aucun résultat ne porte de passion sous le pseudo", async ({ page }) => {
+    await boot(page);
+    const vu = await page.evaluate(async () => {
+      window.supaSearchUsers = async () => [];
+      let box = document.getElementById("msgUserResults");
+      if (!box) { box = document.createElement("div"); box.id = "msgUserResults"; document.body.appendChild(box); }
+      const nina = userById("u_nina");
+      searchUsers(nina.name);
+      await new Promise((r) => setTimeout(r, 300));
+      return {
+        passion: identitePassionsTexte(nina),
+        lignes: box.querySelectorAll(".msg-user-result-row").length,
+        identites: box.querySelectorAll(".ident-passions").length,
+        texte: box.textContent,
+      };
+    });
+    expect(vu.passion, "prémisse : le résultat a une passion publiée").not.toBe("");
+    expect(vu.lignes, "prémisse : la recherche rend au moins un résultat").toBeGreaterThan(0);
+    expect(vu.identites, "aucune ligne de passions sous le pseudo").toBe(0);
+    expect(vu.texte, "le nom de la passion n'est écrit nulle part").not.toContain(vu.passion);
+  });
+
   test("et elle ne revient pas au rendu suivant", async ({ page }) => {
     await boot(page);
     await poserConversations(page);
