@@ -298,7 +298,7 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
     await page.fill("#signalementMotif", "harcèlement répété");
     await envoyer.click();
     await page.waitForFunction(() => window.__reports.length === 1);
-    await page.waitForFunction(() => window.__toasts.some((t) => /Message signalé/.test(t.t)));
+    await page.waitForFunction(() => window.__toasts.some((t) => /^Signalement envoyé/.test(t.t)));
     const r = await page.evaluate(() => ({
       reports: window.__reports.slice(),
       toasts: window.__toasts.slice(),
@@ -306,7 +306,7 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
       ouverte: document.getElementById("modalBackdrop").classList.contains("active"),
     }));
     expect(r.reports).toEqual([{ type: "message", id: MID_B, motif: "harcèlement répété" }]);
-    expect(r.toasts.some((t) => /Message signalé/.test(t.t) && t.k === "success")).toBe(true);
+    expect(r.toasts.some((t) => /^Signalement envoyé/.test(t.t) && t.k === "success")).toBe(true);
     expect(r.accuses, "un accusé de réception dans la cloche").toBe(1);
     expect(r.ouverte, "la fenêtre est refermée").toBe(false);
     await aucuneInjection(page, errors, "signalement");
@@ -373,7 +373,7 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
       expect(s.resultat, nom + " : abandon = sortie sans verdict").toBe("undefined");
       expect(s.ouvertures, nom + " : aucune autre modale n'a été nécessaire").toBe(0);
       expect(s.reports, nom + " : rien n'est envoyé").toBe(0);
-      expect(s.toasts.filter((t) => /signalé|impossible/i.test(t)), nom + " : aucun verdict annoncé").toEqual([]);
+      expect(s.toasts.filter((t) => /Signalement|signalé|réessaie|impossible/i.test(t)), nom + " : aucun verdict annoncé").toEqual([]);
       expect(s.accuses).toBe(0);
       // Et une modale ouverte ENSUITE ne réveille rien : la promesse est déjà dénouée.
       await page.evaluate(() => { openModal('<div class="modal-title">suivante</div>'); closeModal(); });
@@ -408,8 +408,8 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
       };
     }, [CID, MID_B]);
     expect(refus.reports).toEqual([{ type: "message", id: MID_B, motif: "spam répété" }]);
-    expect(refus.toasts.some((t) => /impossible pour le moment/.test(t.t) && t.k === "warning")).toBe(true);
-    expect(refus.toasts.some((t) => /Message signalé/.test(t.t))).toBe(false);
+    expect(refus.toasts.some((t) => /non envoyé — réessaie/.test(t.t) && t.k === "warning")).toBe(true);
+    expect(refus.toasts.some((t) => /^Signalement envoyé/.test(t.t))).toBe(false);
     expect(refus.accuses).toBe(0);
 
     // Sans compte : la porte d'authentification arrête tout, AVANT le motif.
@@ -442,7 +442,7 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
     expect(ligne.target_id, "l'identifiant EXACT, guillemets et antislash compris").toBe(MID_B);
     expect(ligne.reason).toBe("contenu haineux");
     expect(ligne.reporter_id).toBe(ok.uid);
-    expect(ok.toasts.some((t) => /Message signalé/.test(t.t) && t.k === "success")).toBe(true);
+    expect(ok.toasts.some((t) => /^Signalement envoyé/.test(t.t) && t.k === "success")).toBe(true);
     expect(ok.accuses).toBe(1);
 
     // Refus RLS : le SDK ne lève pas, `supaReport` doit LIRE { error }.
@@ -454,8 +454,8 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
       accuses: (state.notifications || []).filter((n) => /Signalement reçu/.test(n.text || "")).length,
     }));
     expect(signalements.length).toBe(2);
-    expect(ko.toasts.some((t) => /impossible pour le moment/.test(t.t))).toBe(true);
-    expect(ko.toasts.some((t) => /Message signalé/.test(t.t))).toBe(false);
+    expect(ko.toasts.some((t) => /non envoyé — réessaie/.test(t.t))).toBe(true);
+    expect(ko.toasts.some((t) => /^Signalement envoyé/.test(t.t))).toBe(false);
     expect(ko.accuses, "pas de second accusé sur un refus").toBe(1);
     await aucuneInjection(page, errors, "bout en bout");
   });

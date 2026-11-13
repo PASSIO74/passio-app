@@ -13140,3 +13140,7 @@ button, a, label, select, summary,
 .v4a5-pied-vide .btn { min-height: 44px; flex-shrink: 0; }
 /* Le pied V4A5 est en pointer-events: none (seul « Afficher » capte le toucher) : le bloc d'issue doit l'être aussi. */
 .v4a5-pied-vide { pointer-events: auto; background: #f6f5fa; border-radius: 12px; padding: 6px 8px; }
+
+/* LOT-26 (audit UX/UI du 2026-11-10) — FIL-C27 : la publication d'un compte privé le dit. */
+.post-prive { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 12px; }
+.post-prive svg { flex-shrink: 0; }

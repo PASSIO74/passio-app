@@ -69,7 +69,7 @@ test.describe("chantier 5 — signaler une story, accuser réception", () => {
     await page.waitForFunction(() => window.__reports.length === 1);
     const r = await page.evaluate(() => ({ reports: window.__reports, toasts: window.__toasts.slice(), notifs: (state.notifications || []).map((n) => n.text || n.content || "") }));
     expect(r.reports[0]).toEqual({ type: "story", id: "st_lea", motif: "contenu déplacé" });
-    expect(r.toasts.some((t) => /Story signalée/.test(t))).toBe(true);
+    expect(r.toasts.some((t) => /^Signalement envoyé/.test(t))).toBe(true);
     // RÉINJECTION : sur le code d'avant, aucune notification locale « Signalement reçu ».
     expect(r.notifs.some((t) => /Signalement reçu/.test(t))).toBe(true);
   });
@@ -83,7 +83,7 @@ test.describe("chantier 5 — signaler une story, accuser réception", () => {
       return { ok, toasts: window.__toasts.slice(), notifs: (state.notifications || []).filter((n) => /Signalement reçu/.test(n.text || n.content || "")).length };
     });
     expect(r.ok).toBe(false);
-    expect(r.toasts.some((t) => /impossible pour le moment/.test(t))).toBe(true);
+    expect(r.toasts.some((t) => /non envoyé — réessaie/.test(t))).toBe(true);
     expect(r.notifs).toBe(0);
   });
 
