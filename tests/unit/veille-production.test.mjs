@@ -411,12 +411,14 @@ test("crons et scan (seconde lecture de #863) : l'âge du succès se lit sur le 
   assert.equal(autonome.etat, "warn", autonome.texte);
   assert.match(autonome.texte, /sentinelle-autonome : dernier passage planifié réussi il y a 30 h \(> 24 h\) — attention seulement/);
   assert.equal(autonome.geste, undefined);
-  // Une date de succès illisible : inconnu, et le texte le dit — dans les crons comme dans le scan.
+  // Une date de succès illisible : inconnu, et le texte le dit — dans les crons comme dans le scan. La forme que
+  // `echecsPlanifies` rend vraiment : le dernier passage qui tranche EST le succès, les deux dates sont la même.
   for (const le of ["pas une date", null]) {
-    const c = signalCrons({ ...sain, sauvegarde: { state: "active", dernierRunFin: il_y_a(2), planifies: { ...reussi, dernierSucces: { le } } } }, now);
+    const illisible = { suite: 0, lus: 1, vus: 1, dernier: { conclusion: "success", le }, dernierSucces: { le } };
+    const c = signalCrons({ ...sain, sauvegarde: { state: "active", dernierRunFin: il_y_a(2), planifies: illisible } }, now);
     assert.equal(c.etat, "unknown", String(le) + " : " + c.texte);
     assert.match(c.texte, /sauvegarde : date du dernier passage planifié réussi illisible/);
-    const s = signalScan({ state: "active", dernierRunFin: il_y_a(1), planifies: { ...reussi, dernierSucces: { le } } }, now);
+    const s = signalScan({ state: "active", dernierRunFin: il_y_a(1), planifies: illisible }, now);
     assert.equal(s.etat, "unknown", String(le) + " : " + s.texte);
     assert.doesNotMatch(s.texte, /NaN/);
   }
