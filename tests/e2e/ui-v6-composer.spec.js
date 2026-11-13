@@ -89,11 +89,13 @@ test.describe("UI-6 — composer de publication", () => {
         if (c.classList.contains("v6-passio")) return "passio";
         if (c.id === "fieldPassion") return "select";
         if (c.id === "fieldMood") return "mood";
+        // LOT-15 (CRE-C10) : « Visible par … » juste avant « Publier ».
+        if (c.classList.contains("ligne-audience")) return "audience";
         if (c.querySelector && c.querySelector("[data-v6-publier]")) return "publier";
         return "?";
       });
     })).toEqual([
-      "texte", "media", "apercu", "apercu", "passio", "select", "mood", "publier",
+      "texte", "media", "apercu", "apercu", "passio", "select", "mood", "audience", "publier",
     ]);
 
     // Une seule zone média, deux portes.

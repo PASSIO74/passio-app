@@ -123,8 +123,10 @@
   // s'ajoute sous les cinq autres.
   var CREATE_CHOICES = [
     {
-      key: "post", icon: ICONS.post, title: "Publication", hint: "Photo / vidéo",
-      run: function () { goToScreen("studio"); },
+      // LOT-15 (CRE-C15 / CRE-C01) : le sous-titre ne cache plus le texte seul, et
+      // « Publication » rouvre le Studio sur le média RÉELLEMENT attaché (texte sinon).
+      key: "post", icon: ICONS.post, title: "Publication", hint: "Texte, photo ou vidéo",
+      run: function () { if (!call("ouvrirStudioPublication")) goToScreen("studio"); },
     },
     {
       key: "bobine", icon: ICONS.bobine, title: "Bobine",

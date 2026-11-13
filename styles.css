@@ -12745,3 +12745,45 @@ button, a, label, select, summary,
 .story-viewer-header .story-more-btn { margin-left: auto; min-width: 44px; min-height: 44px; background: none; border: none; color: #fff; font-size: 22px; line-height: 1; cursor: pointer; }
 .story-viewer-header .story-more-btn + .story-viewer-close { margin-left: 4px; }
 .story-viewer-close { width: 44px; height: 44px; border: none; color: #fff; font: inherit; }
+
+/* LOT-15 (audit UX/UI du 2026-11-10) — le Studio et l'éditeur média.
+   CRE-C05 : le brouillon automatique se propose au-dessus du champ. */
+.studio-brouillon { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 10px; border-radius: 12px; background: rgba(124, 58, 237, 0.08); border: 1px solid rgba(124, 58, 237, 0.2); font-size: 13px; color: var(--text); }
+.studio-brouillon-texte { flex: 1 1 100%; min-width: 0; }
+.studio-brouillon .btn { min-height: 44px; }
+/* CRE-C06 : les envies à 44 px / 13 px. */
+#postMoodRow .pill { min-height: 44px; font-size: 13px; padding-left: 14px; padding-right: 14px; }
+/* CRE-C07 : sous UI-6, les boutons du composer suffisent — plus de seconde zone d'envoi sombre. */
+:root.passio-ui-6 #uploadZone, :root.passio-ui-6 #videoUploadZone { display: none; }
+/* CRE-C08 : « Retirer » et les commandes des éléments de l'éditeur, 44 px de zone. */
+.photo-clear { border: none; cursor: pointer; }
+.photo-clear::after { content: ""; position: absolute; inset: -8px; }
+.me-overlay .me-ov-ctrl::after { content: ""; position: absolute; inset: -10px; }
+.me-overlay .me-ov-edit {
+  position: absolute; top: -10px; left: -10px;
+  width: 24px; height: 24px; border-radius: 999px;
+  background: rgba(0,0,0,0.65); color: #fff; border: none;
+  font-size: 12px; cursor: pointer; display: none;
+  align-items: center; justify-content: center; line-height: 1;
+}
+.me-overlay.selected .me-ov-edit { display: flex; }
+.me-tool { min-width: 44px; height: 44px; }
+/* CRE-C10 : pour qui, combien de temps. */
+.ligne-audience { margin: 0 0 8px; font-size: 12.5px; line-height: 1.4; color: var(--muted); text-align: center; }
+.me-bottom .ligne-audience { color: rgba(255, 255, 255, 0.85); }
+/* CRE-C11 : panneaux emoji / GIF au-dessus de la barre d'outils, pleine largeur, 44 px. */
+.me-panneau {
+  position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 140px); z-index: 4100;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 4px;
+  padding: 10px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+.me-panneau-emoji { min-width: 44px; min-height: 44px; font-size: 24px; background: none; border: none; cursor: pointer; border-radius: 10px; }
+/* CRE-C12 : « Recommencer » lisible sur l'aperçu. */
+:root.passio-ui-7 .v7-bobine-actions [data-v7-bobine-act="recommencer"] { min-height: 48px; color: #fff; border: 2px solid #fff; background: rgba(0, 0, 0, 0.35); }
+/* CRE-C17 : le titre ne passe plus sous la croix ; la ligne choisie se voit. */
+.psel-titre { padding-right: 48px; }
+.psel-item.psel-item-choisie { background: rgba(124, 58, 237, 0.08); }
+.psel-item.psel-item-choisie .psel-item-plus { color: var(--accent); font-weight: 800; }
+.psel-note { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; color: #5b21b6; font-weight: 600; }
+:root.passio-ui-6 #fieldMood .pill-row .pill { min-height: 44px; font-size: 13px; }

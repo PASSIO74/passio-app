@@ -4345,6 +4345,9 @@ async function startVideoLive() {
   // déclare défectueux ferait conclure au prochain lecteur qu'il a été audité
   // et validé ici (capacité, 2026-09-20).
   const compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
+  // LOT-15 (CRE-C14) : un visiteur reçoit la MÊME porte d'inscription que les
+  // cinq autres entrées de « Créer », pas un simple toast.
+  if (window.requireAuthentication && !requireAuthentication("publier")) return;
   if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour lancer un live"); return; }
 
   _appelEnPreparation();
