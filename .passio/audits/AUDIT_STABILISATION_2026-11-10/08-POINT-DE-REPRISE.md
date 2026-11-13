@@ -206,7 +206,7 @@ Ordre de Benjamin : « Oui, enchaîne » (durcissements CLI-01 serveur, SRV-02, 
   double corrigé, deux P3 notés sans effet.
 - Restent ouverts : SRV-02 (événement métier par genre), médias orphelins (clé de service), gestes de Benjamin.
 
-## Ajout du 2026-11-13 — SRV-02, le reste : pas de notification sans événement métier (PR #883, NON appliquée)
+## Ajout du 2026-11-13 — SRV-02, le reste : pas de notification sans événement métier (PR #883, fusionnée, déployée, appliquée)
 
 - **Approche** : (A) chaque notification part au VERDICT de son écriture — `notifierApresEcriture` (app-08), la
   file des commentaires notifie à la confirmation (`_cmtObNotifier`, app-04), 15 sites réordonnés — puis (B) la
@@ -229,8 +229,18 @@ Ordre de Benjamin : « Oui, enchaîne » (durcissements CLI-01 serveur, SRV-02, 
 - **Reste assumé** : l'invitation affiche le titre de l'activité, texte public choisi par son auteur (abonnement
   accepté exigé). Les anciens clients en cache perdent, jusqu'à leur mise à jour, les notifications qu'ils envoyaient
   avant leur fait.
-- **Ordre restant, rien n'est fait** : contre-revue PASSIO74 (PR critique) → fusion → déploiement du client (job vert)
-  → `npm run migration:appliquer` au staging (ne PAS l'appliquer avant la fusion : les PR sur base ancienne rougiraient,
-  leurs suites à comptes réels écrivant des `like` sans fait) → CI à comptes réels → production → essai à deux comptes.
+- **Fait le 13/11, sur l'ordre de Benjamin** (« Continu et fait les contre revue toi même ») :
+  - contre-revue postée depuis PASSIO74 par Claude, qui a écrit le diff : revues n°5890466275, puis n°5890483671 sur
+    `c7e3e86b`. Elles le disent : ce n'est pas une relecture indépendante (ASTRA-61 bis) ;
+  - staging : le premier envoi est REFUSÉ par l'épreuve (`events.co_organizers` est NOT NULL, rien n'est validé).
+    Corrigé dans `c7e3e86b`, puis appliqué : 37/37 ;
+  - CI de `c7e3e86b` entièrement verte, suite à comptes réels jouée contre le staging migré ;
+  - fusion sur ce SHA (`c9e0fb91`), job « Déploiement production » vert, `release.json` = `c9e0fb91` ;
+  - production : la barrière a lu le motif sur la page servie, verdict 37/37. Mesuré au canal ① : déclencheur actif
+    entre l'origine et le texte, SECURITY DEFINER, `search_path` vide, sans EXECUTE pour `authenticated`, aucun
+    résidu, journal présent ;
+  - essai à deux comptes réels en production (`multi-comptes` « interactions sur un post ») : A reçoit les cinq
+    notifications de B (j'aime, commentaire, commentaire GIF, abonnement, réaction 😍), aucune perdue. Comptes
+    jetables purgés. Les refus sans fait sont éprouvés en production par l'épreuve, sous `authenticated`.
 - Suite notée, sans rapport : `audit-2026-11-etats-degrades.spec.js` « RSVP · double clic » rougit aussi sur `main`
   (2 fois sur 4 le 13/11).
