@@ -4870,7 +4870,9 @@ function openEventDetails(id) {
     <div class="post-actions" style="margin-top:18px;">
       <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "❤️" : "🤍"} ${((window._eventLikes || {})[ev.id] || {}).likes || 0}</span>
       <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(ev.id)}', event);" title="Réagir">😊</span>
-      <!-- LOT-48 (IRL-C67) : « Partager » est l'icône du haut de la fiche ; ce doublon est retiré. -->
+      <!-- LOT-12 (PAR-C12) : deux portes de partage sur la fiche — l'icône du haut et celle-ci.
+           IRL-C67 proposait de n'en garder qu'une : la décision de LOT-12, déjà livrée, l'emporte. -->
+      <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(ev.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
       <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(ev.id)}" style="margin-left:auto;">${_evReactChipHtml(ev.id)}</span>
     </div>
 
