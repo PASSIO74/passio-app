@@ -1178,7 +1178,8 @@ test("④ ter — il est ENTRE « abonnés » et « abonnements », et il ouvre 
   const ordre = await page.evaluate(() =>
     Array.from(document.querySelectorAll("#screen-profiles .main-profile-stats .main-profile-stat"))
       .map((d) => (d.querySelector("span:last-child") || {}).textContent));
-  expect(ordre).toEqual(["posts", "abonnés", "passions", "abonnements"]);
+  // LOT-34 (FIL-C22) : le compteur dit « publications », plus « posts ».
+  expect(ordre).toEqual(["publications", "abonnés", "passions", "abonnements"]);
 
   await page.evaluate(() => {
     document.querySelector("#mainStatPassions").closest(".main-profile-stat").click();
