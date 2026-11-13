@@ -20,6 +20,9 @@
 //     app-09 ne démarre jamais une application à laquelle il manque un fichier ;
 //   ⑤ comme avec l'ancien app.js unique, l'application s'exécute AVANT l'événement
 //     `load` de la page, même quand le dernier script tarde ;
+//   ⑤ bis et même avant la FIN de la page : sortis du cache sur un réseau lent, les 9
+//     tournent, boot() compris, avant ce qui suit le chargeur (mesuré en production) —
+//     ce qui lit cette fin de page (la grille des emojis) l'attend donc lui-même ;
 //   ④ LE BUT, avec le vrai worker : la première visite télécharge chaque script UNE
 //     fois (le preload sert l'exécution), une réouverture n'en télécharge AUCUN, et
 //     une version qui ne change qu'un fichier ne retélécharge QUE LUI — alors même
@@ -186,6 +189,26 @@ function servir() {
         "Content-Type": TYPES[path.extname(f)] || "application/octet-stream",
         "Cache-Control": (nom || rel === "styles.css") ? "public, max-age=31536000, immutable" : "no-store",
       });
+      // ⑤ bis : la page jusqu'au chargeur compris ; ce qui le suit n'arrive que quand le cas
+      // appelle `etat.finDePage()` — un réseau lent, pendant que les scripts sont déjà là.
+      // ⚠️ Le chargeur se repère à sa liste de scripts (`["app/app-01-…`), pas à
+      // `passio:app-ready` : des scripts de l'EN-TÊTE le nomment aussi (telemetry.js…), et
+      // couper après eux retient la page avant même sa feuille de style.
+      if (rel === "index.html" && etat.retenirFinDePage) {
+        etat.retenirFinDePage = false;
+        const liste = corps.indexOf('["app/app-01-');
+        const coupe = corps.indexOf("</script>", liste) + "</script>".length;
+        etat.coupe = { liste, coupe, chargeursAvant: corps.subarray(0, coupe).toString().split('["app/app-01-').length - 1, finDePage: corps.subarray(coupe).toString() };
+        res.write(corps.subarray(0, coupe));
+        let liberee = false;
+        etat.finDePage = () => {
+          if (liberee) return;
+          liberee = true;
+          etat.finDePageLiberee = Date.now();
+          res.end(corps.subarray(coupe));
+        };
+        return;
+      }
       res.end(corps);
     };
     if (faute.retard) setTimeout(envoyer, faute.retard); else envoyer();
@@ -245,6 +268,10 @@ test.beforeEach(async ({ page }) => {
   etat.fautes = {};
   etat.essais = {};
   etat.liberes = {};
+  etat.retenirFinDePage = false;
+  etat.finDePage = null;
+  etat.finDePageLiberee = 0;
+  etat.coupe = null;
   erreurs = [];
   await preparer(page);
 });
@@ -342,6 +369,101 @@ test.describe("sans worker : l'ordre, le parallélisme, la reprise, l'arrêt", (
     const [etatAuPremier, preteAuLoad] = await page.evaluate(() => [window.__etatAuDebut, window.__appAuLoad]);
     expect(["loading", "interactive"], "le premier script a tourné avant `load` — readyState : " + etatAuPremier).toContain(etatAuPremier);
     expect(preteAuLoad, "application prête quand `load` part").toBe(true);
+    expect(referencesManquantes()).toEqual([]);
+  });
+
+  // ⑤ bis L'APPLICATION PEUT DÉMARRER AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND
+  // (2026-11-12). Un script inséré n'attend pas le parseur : sortis du cache pendant que la
+  // page arrive encore, les 9 tournent, `boot()` et `passio:app-ready` compris, avant ce qui
+  // suit le chargeur (la moitié de la page minifiée : 23 scripts inlinés, puis `#pwa-overlay`
+  // et `#convEmojiPanel`, tout à la fin). Mesuré en production à 1,6 Mbit/s, scripts en
+  // cache, 5 ouvertures sur 5 — et la grille des emojis de la messagerie restait VIDE pour la
+  // session : emoji-misc.js et `_populateEmojiGrid` (le 9ᵉ script) la cherchaient une fois,
+  // au chargement.
+  // Le chargeur ne retient rien, EXPRÈS : retenir le 9ᵉ jusqu'à la fin de la page (essayé et
+  // mesuré, deux moteurs) retardait la première carte du fil de 0,4 à 0,9 s sur réseau lent,
+  // pour un écran final identique — seule la grille différait. Ce qui lit la fin de la page
+  // l'attend donc lui-même. Fiche : docs/journal/capacite-perf-realtime.md (📜).
+  // Le banc tient la fin de la page jusqu'à ce que l'application soit prête ET que le
+  // remplissage d'app-09 (armé à 100 ms) soit passé ; elle arrive ensuite.
+  // Mutations (Chromium et WebKit) : sans l'attente d'app-09 → grille vide ; sans le
+  // remplissage à l'ouverture → panneau ouvert sur rien. (La mise en colonnes est portée par
+  // styles.css depuis LOT-37 : emoji-misc.js ne touche plus la grille.)
+  test("⑤ bis l'application peut démarrer avant la fin de la page : la grille des emojis, qui y est, se remplit quand même", async ({ page }) => {
+    const noms = nomsA();
+    const dernier = noms[noms.length - 1];
+    await page.addInitScript(() => {
+      // Où en est la page quand chaque script a tourné, quand boot() commence, quand
+      // `passio:app-ready` part : sa lecture, et ce qui ne vient qu'APRÈS le chargeur.
+      const instantane = () => ({
+        etat: document.readyState,
+        grilleEmojis: !!document.getElementById("emojiGrid"),
+        installation: !!document.getElementById("pwa-overlay"),
+        modulesDeFin: typeof window.PassioAffiche !== "undefined",
+      });
+      window.__lecture = {};
+      document.addEventListener("load", (e) => {
+        const m = e.target && e.target.tagName === "SCRIPT" && /\/app\/(app-0\d[\w-]*\.js)(\?|$)/.exec(e.target.src || "");
+        if (!m) return;
+        window.__lecture[m[1]] = instantane();
+        // `boot` est déclaré par app-08 et appelé par app-09 (`.then(() => boot())`) :
+        // l'enveloppe posée au `load` d'app-08 est celle qu'app-09 appelle.
+        if (/^app-08/.test(m[1]) && typeof window.boot === "function") {
+          const boot = window.boot;
+          window.boot = function () { window.__lecture.boot = instantane(); return boot.apply(this, arguments); };
+        }
+        // Le remplissage d'app-09 est armé à 100 ms PENDANT son exécution ; ce minuteur-ci,
+        // même délai, armé APRÈS (son `load`), part après lui (HTML : à délai égal, dans
+        // l'ordre d'armement). Garder les deux délais égaux.
+        if (/^app-09/.test(m[1])) setTimeout(() => { window.__remplissage09Passe = true; }, 100);
+      }, true);
+      window.addEventListener("passio:app-ready", () => { window.__lecture.ready = instantane(); });
+      window.addEventListener("load", () => { window.__appAuLoad = window.__appPrete === true; });
+    });
+    etat.retenirFinDePage = true;
+    try {
+      await page.goto(adresse(), { waitUntil: "commit" });
+      expect(etat.coupe && etat.coupe.chargeursAvant, "prémisse : la page est coupée juste après le chargeur").toBe(1);
+      expect(etat.coupe.finDePage.includes('id="pwa-overlay"') && etat.coupe.finDePage.includes('id="emojiGrid"'), "prémisse : la fin retenue porte la fenêtre d'installation et la grille des emojis").toBe(true);
+      // Le remplissage d'app-09 (100 ms) doit tomber PENDANT la retenue : on attend qu'il soit
+      // passé — une condition, pas une durée (sous charge, un délai fixe laisserait passer la
+      // mutation « sans l'attente d'app-09 »).
+      await page.waitForFunction(() => window.__appPrete === true && window.__remplissage09Passe === true, null, { polling: 50, timeout: 30000 });
+      etat.finDePage();
+    } finally {
+      if (etat.finDePage) etat.finDePage();
+    }
+    // Prémisse : le banc reproduit la course de la production — le 9ᵉ script, `boot()` et
+    // `passio:app-ready` sont partis avant la fin de la page, sans la grille ni les modules.
+    const lecture = await page.evaluate(() => window.__lecture);
+    const course = { etat: "loading", grilleEmojis: false, installation: false, modulesDeFin: false };
+    expect(lecture[dernier], "prémisse : " + dernier + " a tourné avant la fin de la page").toEqual(course);
+    expect(lecture.boot, "prémisse : boot() a commencé avant la fin de la page").toEqual(course);
+    expect(lecture.ready, "prémisse : passio:app-ready est parti avant la fin de la page").toEqual(course);
+    await page.waitForFunction(() => "__appAuLoad" in window, null, { polling: 50, timeout: 30000 });
+    // Une lecture non gardée d'un élément de la fin de page lève une TypeError, pas une
+    // ReferenceError (Chromium « … of null », WebKit « null is not an object »).
+    expect(erreurs.filter((m) => /of null\b|null is not an object/i.test(m)), "aucun élément absent lu sans garde pendant que la fin de la page manquait").toEqual([]);
+    expect(await page.evaluate(() => window.__ordre)).toEqual([...noms, "ready"]);
+    expect(await page.evaluate(() => window.__appAuLoad), "l'application est prête quand `load` part (⑤)").toBe(true);
+    // Le symptôme de la production : la grille, remplie.
+    await expect.poll(() => page.evaluate(() => {
+      const g = document.getElementById("emojiGrid");
+      return g ? g.querySelectorAll(".emoji-item").length > 0 : null;
+    }), { timeout: 5000, intervals: [100] }).toBe(true);
+    // Un module de fin de page qui enveloppe le bloc app se pose même quand `passio:app-ready`
+    // est parti avant lui (il se rattrape à DOMContentLoaded — le défaut de #813).
+    await expect.poll(() => page.evaluate(() => typeof openCreateEvent === "function" && openCreateEvent.__v6a0 === true), { timeout: 5000, intervals: [100] }).toBe(true);
+    // Et une grille restée vide se remplit à l'ouverture du panneau.
+    expect(await page.evaluate(() => {
+      const g = document.getElementById("emojiGrid");
+      g.innerHTML = "";
+      window.toggleEmojiPanel();
+      const n = g.children.length;
+      window.toggleEmojiPanel();
+      return n;
+    }), "le panneau des emojis ne s'ouvre jamais sur une grille vide").toBeGreaterThan(0);
+    await page.waitForSelector("#screen-feed.active", { state: "attached", timeout: 30000 });
     expect(referencesManquantes()).toEqual([]);
   });
 
