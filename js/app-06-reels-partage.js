@@ -1167,8 +1167,11 @@ function openMyPostsTab() {
 }
 
 // Une ligne de personne (avatar + nom), clic -> ouvre son profil
-function _personRowHTML(id, u) {
-  return '<div onclick="closeModal();openUserProfile(\'' + escapeJsArg(id) + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
+// LOT-16 (audit UX/UI du 2026-11-10, PRO-C09 / PRO-C10) : une ligne de personne
+// est un vrai bouton (rôle, clavier) ; le profil ouvert depuis une LISTE sait
+// y revenir (« ← Abonnés »), au lieu de ramener à mon profil.
+function _personRowHTML(id, u, liste) {
+  return '<div class="personne-ligne" role="button" tabindex="0" onclick="closeModal();openUserProfile(\'' + escapeJsArg(id) + '\',\'' + escapeJsArg(liste ? "liste-" + liste : "") + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
     + '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + avatarInner(u) + '</div>'
     + '<div style="min-width:0;"><div style="font-weight:700;font-size:14px;color:var(--text);">' + escapeHtml(u.name || 'Utilisateur') + '</div>'
     + identitePassionsHTML(u, "ident-passions-sm") + '</div></div>';
@@ -1177,8 +1180,8 @@ function _peopleEmpty(msg) {
   return '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;">' + escapeHtml(msg) + '</div>';
 }
 function _peopleModal(title, bodyHTML) {
-  openModal('<span class="modal-close" aria-label="Fermer" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">' + title + '</div>'
+  // LOT-16 (PRO-C09) : une seule croix — celle d'`openModal`.
+  openModal('<div class="modal-title">' + title + '</div>'
     + '<div id="peopleListBody" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;max-height:60vh;overflow-y:auto;">' + bodyHTML + '</div>');
 }
 
@@ -1187,7 +1190,7 @@ function openFollowingList() {
   var ids = state.user.following || [];
   var rows = ids.map(function(id){
     var u = userById(id) || { name: "Utilisateur", profileEmoji: "👤", avatar: "#64748b" };
-    return _personRowHTML(id, u);
+    return _personRowHTML(id, u, "abonnements");
   }).join("");
   _peopleModal("Abonnements", ids.length ? rows : _peopleEmpty("Tu ne suis personne pour l'instant."));
 }
@@ -1204,12 +1207,15 @@ async function openFollowersList() {
     const { data: rels } = await seulementAbonnementsAcceptes(supa.from("follows").select("follower_id").eq("following_id", MY_UID));
     var ids = (rels || []).map(function(r){ return r.follower_id; }).filter(Boolean);
     if (!ids.length) { if (body) body.innerHTML = _peopleEmpty("Personne ne te suit encore."); return; }
-    const { data: profs } = await supa.from("profiles").select("id,username,emoji,color,passions").in("id", ids);
+    // LOT-16 (PRO-C09) : la photo et les passions, comme dans « Abonnements ».
+    const { data: profs } = await supa.from("profiles").select("id,username,emoji,color,passions,avatar_url").in("id", ids);
     var map = {}; (profs || []).forEach(function(p){ map[p.id] = p; });
     var rows = ids.map(function(id){
       var p = map[id] || {};
-      var u = { name: p.username || (userById(id) || {}).name || "Utilisateur", profileEmoji: p.emoji || "👤", avatar: p.color || "#64748b" };
-      return _personRowHTML(id, u);
+      var connu = userById(id) || {};
+      var u = { name: p.username || connu.name || "Utilisateur", profileEmoji: p.emoji || "👤", avatar: p.color || "#64748b",
+        photoUrl: p.avatar_url || connu.photoUrl || null, passions: Array.isArray(p.passions) ? p.passions : (connu.passions || []) };
+      return _personRowHTML(id, u, "abonnes");
     }).join("");
     if (body) body.innerHTML = rows || _peopleEmpty("Personne ne te suit encore.");
   } catch (e) {
@@ -1441,7 +1447,8 @@ function renderProfileContent() {
   function guidedEmpty(emoji, title, text) {
     if (_filtreNom) {
       title = "Rien en " + _filtreNom;
-      text = "Touche « Toutes » pour revoir tout ce que tu as publié, ou crée dans cette passion.";
+      // LOT-16 (PRO-C11) : aucun bouton ne s'appelle « Toutes » — on nomme le geste réel.
+      text = "Touche de nouveau la bulle « " + _filtreNom + " » pour revoir tout ce que tu as publié, ou crée dans cette passion.";
     }
     return '<div class="empty">'
       + '<div class="empty-icon">'+emoji+'</div>'
@@ -1482,8 +1489,13 @@ function renderProfileContent() {
 // Bascule un type de contenu (multi-sélection) : re-toucher une icône la décoche.
 function switchProfileTab(tab, btn) {
   if (PROFILE_TAB_KEYS.indexOf(tab) === -1) return;
+  // LOT-16 (audit UX/UI du 2026-11-10, PRO-C04) : CHOIX UNIQUE, « Tout » neutre —
+  // comme le rail. « Tout » restait coché : toucher « Photos » donnait l'union
+  // (Tout ∪ Photos), donc ne filtrait rien. Retoucher le filtre actif rend « Tout ».
   var sel = _profileTabSel();
-  if (sel.has(tab)) sel.delete(tab); else sel.add(tab);
+  var dejaSeul = sel.size === 1 && sel.has(tab);
+  sel.clear();
+  sel.add(dejaSeul || tab === "posts" ? "posts" : tab);
   window.activeProfileTab = _activeProfileTab(); // compat
   _persistProfileTabs();
   _syncProfileTabButtons();
@@ -1525,7 +1537,19 @@ async function _syncProfilePhoto(field, folder, dataUrl) {
     } else if (typeof supaEnsureProfileExists === "function") {
       await supaEnsureProfileExists();   // la ligne doit exister, rien de plus
     }
-  } catch (e) { console.warn("Sync photo profil échouée:", e && e.message); }
+    // LOT-16 (PRO-C18) : avec un compte, la photo n'est « mise à jour » que si
+    // elle est PARTIE (URL Storage) ; sinon on le dit, au lieu d'un succès annoncé
+    // avant l'envoi et d'un échec avalé.
+    if (window._supaReal && typeof MY_UID !== "undefined" && MY_UID && !(typeof _val === "string" && /^https?:\/\//.test(_val))) {
+      toast("La photo n'a pas pu être envoyée — elle reste sur cet appareil. Réessaie.", "warning");
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn("Sync photo profil échouée:", e && e.message);
+    try { toast("La photo n'a pas pu être envoyée — réessaie.", "warning"); } catch (_e) {}
+    return false;
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1657,6 +1681,12 @@ function passioOpenCropper(src, opts) {
 function _readAndCrop(file, cropOpts) {
   return new Promise(function(resolve, reject) {
     if (!file) { reject(new Error("no file")); return; }
+    // LOT-16 (PRO-C18) : une vidéo choisie ne fait plus RIEN en silence.
+    if (file.type && !/^image\//i.test(file.type)) {
+      try { toast("Ce fichier n'est pas une image — choisis une photo.", "warning"); } catch (e) {}
+      reject(new Error("pas une image"));
+      return;
+    }
     var reader = new FileReader();
     reader.onload = function(e) { passioOpenCropper(e.target.result, cropOpts).then(resolve, reject); };
     reader.onerror = function() { reject(reader.error); };
@@ -1672,8 +1702,7 @@ function changeCoverPhoto(event) {
   // la photo est visible ENTIÈRE sur le profil, telle que cadrée ici.
   _readAndCrop(file, { aspect: 3 / 2, outW: 1080, outH: 720, round: false, title: "Recadre ta photo de couverture" })
     .then(function(dataUrl) {
-      _syncProfilePhoto("coverPhoto", "covers", dataUrl);
-      toast("Photo de couverture mise à jour", "success");
+      _syncProfilePhoto("coverPhoto", "covers", dataUrl).then(function (ok) { if (ok) toast("Photo de couverture mise à jour", "success"); });
       _reopenEditProfileAfterCover();
     })
     .catch(function() { _reopenEditProfileAfterCover(); });
@@ -1693,8 +1722,7 @@ function changeAvatarPhoto(event) {
   if (!file) return;
   _readAndCrop(file, { aspect: 1, outW: 480, outH: 480, round: true, title: "Recadre ta photo de profil" })
     .then(function(dataUrl) {
-      _syncProfilePhoto("avatarPhoto", "avatars", dataUrl);
-      toast("Photo de profil mise à jour", "success");
+      _syncProfilePhoto("avatarPhoto", "avatars", dataUrl).then(function (ok) { if (ok) toast("Photo de profil mise à jour", "success"); });
     })
     .catch(function() {});
 }
@@ -1930,7 +1958,7 @@ function openEditMainProfile() {
 
   const html = `
     <div class="modal-handle"></div>
-    <div class="modal-title">Mon profil principal</div>
+    <div class="modal-title">Modifier mon profil</div>
 
     <!-- Photo de couverture : unique point d'entrée (le bouton « Changer » a été
          retiré de la carte profil pour ne garder QU'UN seul onglet d'édition). -->
@@ -1972,21 +2000,27 @@ function openEditMainProfile() {
       ${RS_LIST.map(platform => {
         const icons = { instagram:"📸", tiktok:"🎵", facebook:"👤", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
         const existing = links.find(l => l.platform === platform);
-        return `<div style="display:flex;align-items:center;gap:8px;">
+        // LOT-16 (PRO-C15) : seuls les réseaux REMPLIS sont affichés (les autres
+        // restent dans le formulaire, masqués : l'enregistrement lit tous les
+        // champs) ; « ＋ Ajouter un réseau » les montre. Noms de marque corrects.
+        const NOMS = { instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook", youtube: "YouTube", twitter: "X (Twitter)", linkedin: "LinkedIn", snapchat: "Snapchat", autre: "Autre lien" };
+        return `<div class="rs-ligne" style="display:flex;align-items:center;gap:8px;"${existing && existing.url ? "" : " hidden"}>
           <span style="width:24px;text-align:center;font-size:16px;">${icons[platform]||"🔗"}</span>
           <input type="url" class="input rs-link-input" data-platform="${escapeHtml(platform)}"
-            placeholder="${platform.charAt(0).toUpperCase()+platform.slice(1)} URL"
+            aria-label="${escapeHtml(NOMS[platform] || platform)}"
+            placeholder="${escapeHtml(NOMS[platform] || platform)} — adresse"
             value="${escapeHtml(existing?.url||"")}"
             style="flex:1;font-size:16px;padding:8px 12px;"/>
         </div>`;
       }).join("")}
+      ${RS_LIST.some(p => !links.find(l => l.platform === p && l.url)) ? `<button type="button" class="btn ghost rs-ajouter" onclick="this.parentNode.querySelectorAll('.rs-ligne[hidden]').forEach(function(r){r.hidden=false;});this.remove();">＋ Ajouter un réseau</button>` : ""}
     </div>
 
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
       <button class="btn ghost" onclick="closeModal();setTimeout(openConfigurator,200);" style="width:100%;font-size:13px;padding:12px;">Apparence &amp; thème</button>
     </div>
 
-    <div style="display:flex;gap:8px;margin-top:12px;">
+    <div class="edit-profil-actions" style="display:flex;gap:8px;margin-top:12px;">
       <button class="btn ghost" onclick="closeModal()">Annuler</button>
       <button class="btn primary" style="flex:1;" onclick="saveMainProfile()">Sauvegarder</button>
     </div>`;
@@ -2705,7 +2739,8 @@ function openPassionsAide() {
         : "")
     + "<p><b>Archiver ne supprime rien.</b> Publications, activités, bobines et "
     + "médias d'une passion archivée restent enregistrés ; tu peux la réactiver "
-    + "quand une place et un changement sont disponibles.</p>"
+    // LOT-16 (PRO-C12) : la condition ne se dit que quand le plafond est en vigueur.
+    + (plafondActif ? "quand une place et un changement sont disponibles.</p>" : "quand tu veux.</p>")
     + (restants === Infinity ? ""
         : "<p><b>Réorganiser coûte un changement.</b> Il t'en reste <b>" + restants
           + "</b> sur " + CHANGEMENTS_PASSION_OFFERTS + ". Seul l'archivage d'une "
@@ -3566,7 +3601,7 @@ function openEditPassionProfile(profileId) {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">✏️ ${escapeHtml(passion.emoji + " " + passion.label)}</div>
+    <div class="modal-title">Modifier « ${escapeHtml(passion.label)} »</div>
 
     <div class="field">
       <span>Photo de la passion</span>
@@ -3586,7 +3621,7 @@ function openEditPassionProfile(profileId) {
     </div>
 
     <label class="field">
-      <span>Bio de ce profil <span style="font-weight:400;color:var(--muted);" id="passionBioCount">${(p.bio||"").length}/150</span></span>
+      <span>Ce que tu partages ici <span style="font-weight:400;color:var(--muted);" id="passionBioCount">${(p.bio||"").length}/150</span></span>
       <textarea class="textarea" id="editPassionBio" maxlength="150" placeholder="Décris ce que tu partages avec cette passion…" style="min-height:80px;">${escapeHtml(p.bio||"")}</textarea>
     </label>
 

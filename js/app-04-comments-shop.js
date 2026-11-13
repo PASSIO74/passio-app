@@ -4714,9 +4714,16 @@ async function openUserProfile(authorId, source) {
     ? "background:url('" + _coverSure + "') center/cover;"
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
-  var html = '\
-    <span class="modal-close" aria-label="Fermer" onclick="closeModal()" style="z-index:20;">×</span>\
-    \
+  // LOT-16 (PRO-C07) : un compte que J'AI bloqué le dit, à la place des actions.
+  var _bloqueParMoi = (typeof isBlocked === "function") && isBlocked(authorId);
+  // LOT-16 (PRO-C09) : la croix vient d'`openModal` ; la seconde (un span) est retirée.
+  // LOT-16 (PRO-C10) : ouvert depuis une liste, le profil y ramène.
+  var _retourListe = source === "liste-abonnes"
+    ? '<button type="button" class="profil-retour-liste" onclick="openFollowersList()">← Abonnés</button>'
+    : source === "liste-abonnements"
+      ? '<button type="button" class="profil-retour-liste" onclick="openFollowingList()">← Abonnements</button>'
+      : '';
+  var html = _retourListe + '\
     <!-- OPTIONS DU PROFIL VISITE : voir openVisitedProfileMenu ci-dessus. -->\
     <button class="profile-dots-btn on-cover" style="right:56px;z-index:20;" onclick="openVisitedProfileMenu(event,\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="Options" aria-label="Options du profil" aria-haspopup="menu">⋯</button>\
     \
@@ -4731,7 +4738,7 @@ async function openUserProfile(authorId, source) {
         ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\
-          <div class="main-profile-stat"><span>' + postCount + '</span><span>posts</span></div>\
+          <div class="main-profile-stat"><span>' + postCount + '</span><span>publication' + (postCount > 1 ? "s" : "") + '</span></div>\
           <div class="main-profile-stat"><span>' + followerCount + '</span><span>abonnés</span></div>\
           <div class="main-profile-stat"><span>' + followingCount + '</span><span>abonnements</span></div>\
         </div>\
@@ -4739,9 +4746,13 @@ async function openUserProfile(authorId, source) {
     </div>\
     \
     <!-- BOUTONS -->\
-    <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
-      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
-      <button class="btn ghost" id="followBtn_' + escapeHtml(authorId) + '"' + (estPersonneExemple(authorId) ? ' disabled aria-disabled="true" data-exemple="1"' : '') + ' onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
+    ' + (_bloqueParMoi
+      ? '<div id="visitedProfileActions" class="profil-bloque" role="status"><span>Tu as bloqué ce compte.</span>'
+        + '<button type="button" class="btn ghost profil-action" onclick="unblockUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\');closeModal();">Débloquer</button></div>'
+      : '') + '\
+    <div id="' + (_bloqueParMoi ? 'visitedProfileActionsMasquees" hidden' : 'visitedProfileActions"') + ' style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
+      <button class="btn primary profil-action" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;border-radius:14px;">Message</button>\
+      <button class="btn ghost profil-action" id="followBtn_' + escapeHtml(authorId) + '"' + (estPersonneExemple(authorId) ? ' disabled aria-disabled="true" data-exemple="1"' : '') + ' onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;border-radius:14px;' + (isFollowing ? 'background:rgba(124, 58, 237, 0.1);color:var(--accent);border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
     \
@@ -4924,7 +4935,10 @@ function toggleVisitedPassion(pid) {
 
 function switchVisitedTab(tab) {
   var v = window._visited; if (!v) return;
-  if (v.tabSel.has(tab)) v.tabSel.delete(tab); else v.tabSel.add(tab);
+  // LOT-16 (PRO-C04) : même règle que mon profil — un seul filtre de format à la
+  // fois ; « Tout » (ou retoucher l'actif) les retire tous.
+  var dejaSeul = v.tabSel.size === 1 && v.tabSel.has(tab);
+  v.tabSel = new Set(dejaSeul || tab === "posts" ? [] : [tab]);
   _syncVisitedUI();
   _renderVisitedContent();
 }
@@ -5265,7 +5279,14 @@ function _peindreBoutonsSuivi(userId, etat) {
   var aide = aideBoutonSuivi(userId);
   _boutonsSuivi(userId).forEach(function (btn) {
     btn.innerHTML = libelle;
-    if (etat === "suivi") {
+    if (etat === "suivi" && btn.classList.contains("profil-action")) {
+      // LOT-16 (PRO-C17) : sur le profil visité, l'ÉTAT n'est plus plus fort que
+      // l'action — « Message » reste la seule action pleine ; « ✓ Suivi » est un
+      // contour à fond léger (toujours distinct de « Demande envoyée », contour nu).
+      btn.style.background = "rgba(124, 58, 237, 0.1)";
+      btn.style.color = "var(--accent)";
+      btn.style.borderColor = "var(--accent)";
+    } else if (etat === "suivi") {
       btn.style.background = "var(--accent)";
       btn.style.color = "#fff";
       btn.style.borderColor = "var(--accent)";

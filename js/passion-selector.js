@@ -226,6 +226,14 @@
     // LOT-15 (audit UX/UI du 2026-11-10, CRE-C17) : la ligne CHOISIE le dit (« ✓ »,
     // aria-selected) — elle gardait son « + », et l'état ne se lisait qu'en haut.
     var choisie = this.selection.indexOf(p.id) > -1;
+    // LOT-16 (PRO-C19) : une passion déjà à moi n'est pas une idée à ajouter.
+    if (!choisie && Array.isArray(this.cfg.possedees) && this.cfg.possedees.indexOf(p.id) > -1) {
+      return '<div class="psel-item psel-item-possedee" role="option" aria-disabled="true" aria-selected="false">'
+        + '<span class="psel-item-emoji" aria-hidden="true">' + ech(p.emoji || "✨") + "</span>"
+        + '<span class="psel-item-label">' + ech(p.label) + "</span>"
+        + '<span class="psel-item-deja">Déjà ajoutée</span>'
+        + "</div>";
+    }
     return '<button type="button" class="psel-item' + (choisie ? " psel-item-choisie" : "") + '" role="option" aria-selected="' + (choisie ? "true" : "false") + '"'
       + ' data-psel="choisir" data-psel-id="' + ech(p.id) + '">'
       + '<span class="psel-item-emoji" aria-hidden="true">' + ech(p.emoji || "✨") + "</span>"
