@@ -162,6 +162,12 @@ export const EVENEMENTS_RUNS = Object.freeze({
   deploy: Object.freeze(["push"]),
   sentinelle: Object.freeze(["schedule", "workflow_dispatch"]),
   veille: Object.freeze(["schedule", "workflow_dispatch"]),
+  // Le scan de sécurité : son passage PLANIFIÉ du lundi et un passage lancé à la main (« Run workflow »)
+  // parcourent TOUT l'historique — gitleaks-action, au SHA épinglé, traite `workflow_dispatch` comme
+  // `schedule` (relecture de #866). Une PR ne scanne que son diff, et ses exécutions gardaient l'âge
+  // frais (contre-revue de #863) : elles ne comptent pas. Un passage manuel réussi APRÈS un tri
+  // efface donc la ligne, sans attendre le lundi.
+  securite: Object.freeze(["schedule", "workflow_dispatch"]),
 });
 // Les exécutions qui comptent, de la plus récente à la plus ancienne. Tri STABLE : à date égale
 // l'ordre reçu tient — la tentative précédente d'une relance (même date de création) suit sa relance.
@@ -237,7 +243,16 @@ const SUFFIXES_ECHEC = Object.freeze({ timed_out: " (délai dépassé)", startup
 // label ne se pose qu'avec le droit d'écrire, `creator` est le pilote. Ce qui dépasse encore
 // (plus de ISSUES_PAR_FILTRE_MAX sous UN filtre : des résumés jamais refermés) se dit à l'écran.
 export const ISSUES_PAR_FILTRE_MAX = 300;
-const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production" });
+const NOMS_RUNS = Object.freeze({ deploy: "la dernière mise en ligne", sentinelle: "l'activité de la Sentinelle", veille: "l'activité de la veille de production", securite: "le scan de sécurité" });
+/**
+ * Les exécutions que le VOYANT lit (`verdict` : `runs.deploy`, `runs.sentinelle`). Seules celles-là,
+ * non lues, TIENNENT la veille (`tenirVerdict`) : un scan de sécurité illisible figeait le voyant — plus
+ * de « résolu », plus de rappel — alors que `verdict` ne le lit pas (relecture de #866). L'écran, lui,
+ * dit tout ce qui manque (`partielGithub`). pilotage.test.mjs tient cette liste et `verdict` ensemble.
+ */
+export const RUNS_DU_VOYANT = Object.freeze(["deploy", "sentinelle"]);
+/** Au-delà, le scan de sécurité du lundi est dit en retard : un lundi manqué. */
+export const SCAN_MUET_MS = 8 * 864e5;
 /** Les parties de GitHub qui n'ont pas pu être lues, en clair (vide = tout est lu). */
 export function partielGithub({ runsNonLus = [], issuesTronquees = false } = {}) {
   const l = Array.isArray(runsNonLus) ? runsNonLus : [];
@@ -764,6 +779,23 @@ export function aFaire(d, maintenant = Date.now()) {
       quoi: cle === "deploy" ? "Ouvre GitHub pour la rejouer : la version en ligne n'est pas la dernière." : quoiRate(sr, "La relance maintenant."),
       gestes: cle === "deploy" ? [{ libelle: REGLER, principal: true, ouvrir: url || PAGES_REGLAGE.misesEnLigne }] : relancer(cle) });
   }
+  // Le scan de sécurité (`securite.yml`, ses passages planifiés et manuels — 2026-11-12, contre-revue de #863) :
+  // en échec le 09/11, il ne se voyait nulle part. Son tri est une décision de Benjamin, JAMAIS d'un agent —
+  // une clé publique par conception s'inscrit en exception, une vraie clé se RÉVOQUE d'abord : aucun
+  // « Régler », aucune réparation (il n'est pas dans RUNS_REPARABLES), un lien vers le passage. Étiquette
+  // « À trier » : le banc des boutons (pilotage.test ㊴) exige pour elle un lien, jamais un « Régler ».
+  const sc = echecRun(runs.securite);
+  if (sc) {
+    const url = urlGithub(sc.run.url);
+    ajoute({ id: "scan:securite", prio: sc.nature === "echec" ? 1 : 2, etiquette: "À trier",
+      titre: sc.nature === "echec" ? "Le scan de sécurité a échoué" : "Le scan de sécurité n'a pas abouti",
+      quoi: "À trier par toi, jamais par une machine.",
+      reference: "Son journal dit quel job : les secrets (une clé publique par conception s'inscrit dans .gitleaksignore ; une vraie clé se révoque d'abord, puis s'y inscrit aussi), npm audit ou la gate des workflows. Trié, relance-le (« Run workflow ») : un passage réussi efface cette ligne.",
+      url, gestes: url ? [{ libelle: "Ouvrir", principal: true, ouvrir: url }] : [] });
+  } else if (runs.securite && runs.securite.le && maintenant - dateUtc(runs.securite.le) > SCAN_MUET_MS) {
+    ajoute({ id: "scan:securite", prio: 2, etiquette: "À trier", titre: "Le scan de sécurité n'a pas tourné depuis plus de 8 jours",
+      quoi: "Un lundi manqué.", reference: "Vérifie que « Sécurité de la chaîne » est actif sur GitHub (Actions).", url: urlGithub(runs.securite.url), gestes: [] });
+  }
   // Les issues suivies.
   for (const i of issues) {
     if (i.pr) continue;
@@ -830,6 +862,13 @@ export function aFaire(d, maintenant = Date.now()) {
     // Le geste principal referme (rien ne part sans avoir été vu) ; valider la nouvelle version
     // reste possible, d'un toucher explicite. Jamais dans « Tout régler ».
     const armee = d && d.fusionsArmees && typeof d.fusionsArmees === "object" ? d.fusionsArmees[String(i.numero)] : null;
+    // La note de la version armée n'a pas pu être relue : on ne sait pas si ce qui partirait est ce qui a été vu — on le
+    // dit, au lieu d'afficher « part en ligne » comme si de rien n'était (seconde relecture de #848).
+    if (i.autoFusion && fusionner && nonLus.includes("fusionsArmees")) {
+      ajoute({ ...base, prio: 1, etiquette: "Correctif", reference, titre: "Un correctif part en ligne, sans pouvoir vérifier sa version", quoi: "Relit GitHub et la note de la version armée.",
+        gestes: [relire, ...refuser] });
+      continue;
+    }
     if (i.autoFusion && fusionner && shaValide(armee) && armee !== i.sha) {
       ajoute({ ...base, prio: 0, etiquette: "Correctif", reference, titre: "Un correctif a changé depuis ton « Régler »", quoi: "Le referme : ce qui partirait n'est plus ce que tu as vu.",
         gestes: gestesGh ? [regler({ action: "fermer", numero: i.numero }, false), { libelle: "Valider la nouvelle version", ...fusionner }] : [] });
@@ -1440,7 +1479,10 @@ export function corpsReparation(c, depot) {
     const r = RUNS_REPARABLES[c.cle];
     const url = /^https:\/\/github\.com\//.test(String(c.url || "")) ? c.url : `https://github.com/${depot}/actions/workflows/${r.fichier}`;
     return [COMMENTAIRE_CONFIER, "", `La dernière exécution de \`${r.fichier}\` (${r.libelle}) sur \`main\` a échoué : ${url}`, "",
-      "Lis son journal (`gh run view --log-failed`) pour trouver l'étape en échec.", ...consigne].join("\n");
+      // Le journal, c'est le WORKFLOW qui le relit et le joint (claude-code.yml, marche de confiance, #854) : l'agent n'a
+      // ni `gh` ni réseau, et « lis son journal (gh run view) » l'envoyait vers un outil qu'il n'a pas — quatre
+      // réparations sur quatre, « cause NON établie » (#757, #806, #807, #844).
+      "Le workflow relit pour toi le journal de cette exécution et le joint à la fin de ta spécification (section « Exécution en échec ») : c'est là que se lit l'étape en échec.", ...consigne].join("\n");
   }
   return null;
 }

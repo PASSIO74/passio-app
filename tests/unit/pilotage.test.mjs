@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, COMMENTAIRE_CONFIER, dejaConfiee, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE } from "../../supabase/functions/_shared/pilotage.js";
+import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, COMMENTAIRE_CONFIER, dejaConfiee, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE, RUNS_DU_VOYANT } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
 
@@ -806,7 +806,8 @@ const touteLaPanne = (extra = {}) => ({
       iss(6, ["reparation", "claude"], { titre: "[RÉPARER] #90", reparation: true, confiee: true, depuis: "2026-10-22T00:00:00Z" }),
       iss(7, [], { pr: true, correctif: true, titre: "fix: x" }),
     ],
-    runs: { deploy: { conclusion: "failure", etat: "completed" }, sentinelle: { conclusion: "success", etat: "completed", le: MUTE_LE }, veille: { conclusion: "failure", etat: "completed", le: MUTE_LE } },
+    runs: { deploy: { conclusion: "failure", etat: "completed" }, sentinelle: { conclusion: "success", etat: "completed", le: MUTE_LE }, veille: { conclusion: "failure", etat: "completed", le: MUTE_LE },
+      securite: { conclusion: "failure", etat: "completed", le: MUTE_LE, url: "https://github.com/P/p/actions/runs/9" } },
     aReparer: [
       { cible: "issue", numero: 1, libelle: "#1", enCours: null }, { cible: "issue", numero: 2, libelle: "#2", enCours: 5 }, { cible: "issue", numero: 3, libelle: "#3", enCours: null },
       { cible: "run", cle: "deploy", libelle: "d", enCours: null }, { cible: "run", cle: "veille", libelle: "v", enCours: null },
@@ -827,11 +828,18 @@ test("㊴ n'importe quel problème a son bouton : un seul « Régler », et il d
   for (const d of etats) {
     const pbs = aFaire(d, MAINTENANT_AF).filter((x) => x.prio <= 1 && !x.enCours);
     assert.ok(pbs.length >= 8, "le banc couvre bien toutes les familles : " + pbs.map((x) => x.id));
+    assert.ok(pbs.some((x) => x.id === "scan:securite"), "le banc couvre le scan de sécurité (relecture de #866)");
     for (const x of pbs) {
       const principaux = x.gestes.filter((g) => g.principal);
       if (x.id.startsWith("signalement:")) {
         assert.equal(principaux.length, 0, "aucune machine ne décide d'un signalement");
         assert.deepEqual(x.gestes.map((g) => g.corps.statut), ["handled", "dismissed"]);
+      } else if (x.etiquette === "À trier") {
+        // Un tri HUMAIN (le scan de sécurité) : un lien, jamais un « Régler » ni une action de la fonction.
+        assert.equal(principaux.length, 1, x.id);
+        assert.equal(principaux[0].libelle, "Ouvrir", x.id);
+        assert.ok(principaux[0].ouvrir && !principaux[0].special, x.id);
+        assert.ok(!x.gestes.some((g) => g.corps || g.libelle === "Régler"), x.id + " : aucune action, aucun « Régler »");
       } else {
         assert.equal(principaux.length, 1, x.id + " : un problème sans bouton, ou avec deux");
         assert.equal(principaux[0].libelle, "Régler", x.id);
@@ -847,6 +855,17 @@ test("㊴ n'importe quel problème a son bouton : un seul « Régler », et il d
   assert.ok(!l.find((x) => x.id === "issue:2").gestes.some((g) => g.principal));
   // Plus aucune confirmation à relire : la page laisse 5 s pour annuler.
   for (const x of l) for (const g of x.gestes) assert.equal(g.confirmation, undefined, x.id);
+});
+
+test("㊴ bis (relecture de #866) : la veille n'est TENUE que par les exécutions que le voyant lit — `verdict` et RUNS_DU_VOYANT se tiennent ensemble", () => {
+  // Un scan de sécurité illisible figeait la veille alors que `verdict` ne le lit pas. Si `verdict` se met à lire une
+  // exécution de plus (runs.veille, runs.securite…), elle doit entrer dans RUNS_DU_VOYANT — et l'inverse.
+  const src = fs.readFileSync("supabase/functions/_shared/pilotage.js", "utf8");
+  const debut = src.indexOf("export function verdict(e) {");
+  assert.ok(debut >= 0, "verdict se lit");
+  const corpsVerdict = src.slice(debut, src.indexOf("\n}\n", debut));
+  const lues = [...new Set([...corpsVerdict.matchAll(/\bruns\.(\w+)/g)].map((m) => m[1]))].sort();
+  assert.deepEqual(lues, [...RUNS_DU_VOYANT].sort());
 });
 
 test("㊽ « Tout régler » : seulement ce qui répare ; jamais le retour arrière, la modération, ni un paiement", () => {
@@ -906,13 +925,14 @@ test("㊶ une PR n'est un correctif que sur une branche de la chaîne, de CE dé
   assert.deepEqual(chantier.gestes.map((g) => g.corps.action), ["fusionner", "fermer"], "les gestes restent, rangés dans Détails");
   assert.equal(une({ correctif: true, brouillon: true }).prio, 2, "un brouillon n'est pas prêt");
   assert.deepEqual(une({ correctif: false, externe: true }).gestes.map((g) => g.corps.action), ["fermer"], "un fork ne se fusionne pas d'ici");
-  // La fonction : une lecture de plus, illisible = chantier (jamais un bouton à l'aveugle), et c'est dit.
+  // La fonction : une lecture de plus — par pages de cent depuis le 12/11 (pilotage-chemins ㊵ l'exécute) —,
+  // illisible = chantier (jamais un bouton à l'aveugle), et c'est dit.
   const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const lire = src.slice(src.indexOf("async function lireGithub"), src.indexOf("const sansJeton"));
-  assert.match(lire, /gh\(`\/repos\/\$\{DEPOT\}\/pulls\?state=open&per_page=50`\)/);
+  assert.match(lire, /gh\(`\/repos\/\$\{DEPOT\}\/pulls\?state=open&per_page=100&page=\$\{page\}`\)/);
   assert.match(lire, /resumerPr\(p, DEPOT\)/);
   assert.match(lire, /infosPr\.get\(i\.numero\) \|\| \{ externe: true, correctif: false, autoFusion: false, brouillon: false \}/);
-  assert.match(lire, /prNonLues: pulls\.ok \? null : /);
+  assert.match(lire, /prNonLues: pulls\.raison/);
   assert.equal(aFaire({ github: { issues: [], runs: {}, aReparer: [], prNonLues: "GitHub HTTP 502" }, gestesGithub: true }, MAINTENANT_AF)[0].id, "lecture:pr");
 });
 
@@ -1958,4 +1978,26 @@ test("㊿④ seuils : la page rend le bloc, et la fonction le lit sans jamais ro
   assert.match(fn, /seuils: lireSeuils\(admin\)/);
   assert.ok(!Object.keys(SOURCES_VERDICT).includes("seuils"), "une lecture des seuils ratée ne colore pas le voyant");
   assert.ok(!PALIERS_CROISSANCE.some((p) => /PASSIO\+/.test(p.geste)), "ADR-013 : plus aucun palier n'annonce PASSIO+");
+});
+
+test("㉿㉖ une exécution réparable a SA ligne dans la liste fermée de claude-code.yml : le titre que la fonction écrit mène au fichier qu'elle nomme (relecture de #854, constat 9)", () => {
+  // La marche de confiance de claude-code.yml ne relit le journal que d'un workflow de SA liste fermée, reconnu au titre
+  // « [RÉPARER] <libellé> en échec ». Les deux listes vivent en double : une exécution réparable ajoutée ici sans sa
+  // ligne là-bas ne lirait aucun journal, en silence. Ce banc les tient ensemble (il lit le workflow, n'en exécute rien).
+  const wf = fs.readFileSync(".github/workflows/claude-code.yml", "utf8");
+  const marche = Object.fromEntries([...wf.matchAll(/^\s*"([^"\n]+)"\)\s+fichier_run="([^"\n]+)";/gm)].map((m) => [m[1], m[2]]));
+  const fonction = Object.fromEntries(Object.values(RUNS_REPARABLES).map((r) => [r.libelle, r.fichier]));
+  assert.ok(Object.keys(marche).length >= 3, "la liste fermée de la marche a été lue : " + JSON.stringify(marche));
+  assert.deepEqual(marche, fonction, "les deux listes ne font qu'une");
+  assert.ok(wf.includes('"[RÉPARER] "*" en échec")'), "la marche reconnaît le titre « [RÉPARER] <libellé> en échec »");
+  for (const cle of Object.keys(RUNS_REPARABLES)) {
+    const titre = titreReparation({ cible: "run", cle });
+    const libelle = titre.slice("[RÉPARER] ".length, -" en échec".length);
+    assert.equal(titre, "[RÉPARER] " + libelle + " en échec", cle);
+    assert.equal(marche[libelle], RUNS_REPARABLES[cle].fichier, cle + " : " + libelle);
+  }
+  // Et la consigne donnée à l'agent ne lui demande plus de lire le journal lui-même (il n'a ni `gh` ni réseau).
+  const corps = corpsReparation({ cible: "run", cle: "deploy", url: "https://github.com/P/p/actions/runs/9" }, "P/p");
+  assert.ok(!/gh run view|log-failed/.test(corps), "plus de « lis son journal » : " + corps);
+  assert.match(corps, /Exécution en échec/, "la consigne dit où se trouve le journal");
 });
