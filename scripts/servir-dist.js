@@ -6,7 +6,7 @@
 // En développement, l'app est 19 fichiers JS chargés séparément. En production,
 // `scripts/build.js` inline les uns dans la page et sort le bloc app en 9 scripts
 // (`dist/app/` — un monolithe `dist/app.js` jusqu'au 2026-11-09) injectés après
-// le gate, puis la CI les minifie. Ce sont deux programmes.
+// le gate, minifiés en production par le build lui-même. Ce sont deux programmes.
 //
 // Or, sur 175 tests, TROIS seulement visaient `/dist/index.html` — et ces trois
 // ne vérifient que le gate et le démarrage. Le fil, la publication, la

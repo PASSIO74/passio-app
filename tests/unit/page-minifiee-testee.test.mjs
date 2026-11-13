@@ -77,9 +77,31 @@ test("③ le déploiement refuse un dist/ qui n'est pas celui que les tests ont 
   const envoi = deploy.indexOf("deploy --prod --dir");
   assert.ok(build > 0 && integrite > build && controle > integrite && envoi > controle,
     `ordre build (${build}) < intégrité (${integrite}) < empreinte (${controle}) < envoi (${envoi})`);
-  // Entre le contrôle et l'envoi, plus rien n'écrit dans dist/.
-  const entre = deploy.slice(controle, envoi);
-  assert.doesNotMatch(entre, /\b(cp|mv|rm|sed|node scripts\/build)\b[^\n]*dist/, "rien ne touche dist/ après le contrôle");
+  // Entre le contrôle et l'envoi, aucune ligne exécutée ne cite dist/ (relecture du
+  // 2026-11-12 : une liste de commandes interdites laissait passer `npx … dist`, `> dist/…`).
+  const entre = deploy.slice(controle, envoi).split("\n").slice(1);
+  assert.deepEqual(entre.filter((l) => /\bdist\b/.test(l)), [], "rien ne cite dist/ entre le contrôle et l'envoi");
+  // L'étape ne peut ni être sautée ni laisser passer son échec.
+  for (const nom of ["Artefact identique à celui que la passe « Gates artefact » a éprouvé"]) {
+    const bloc = etape(brut, nom);
+    assert.doesNotMatch(bloc, /continue-on-error|^\s+if:/m, nom + " : ni `continue-on-error`, ni `if:`");
+  }
+});
+
+// Le bloc d'une étape (`- name: <nom>` jusqu'à l'étape suivante), commentaires retirés.
+function etape(bloc, nom) {
+  const lignes = sansCommentaires(bloc).split("\n");
+  const debut = lignes.findIndex((l) => l.trim() === "- name: " + nom);
+  assert.ok(debut >= 0, "étape introuvable : " + nom);
+  let fin = debut + 1;
+  while (fin < lignes.length && !/^\s+- (name|uses):/.test(lignes[fin])) fin++;
+  return lignes.slice(debut, fin).join("\n");
+}
+
+test("② bis l'étape qui publie l'empreinte ne laisse pas passer son échec", () => {
+  const bloc = etape(job("gates-artefact"), "Empreinte de l'artefact éprouvé");
+  assert.doesNotMatch(bloc, /continue-on-error|^\s+if:/m);
+  assert.match(bloc, /set -euo pipefail/);
 });
 
 test("③ bis le script d'empreinte est un fichier critique de la gouvernance", () => {
