@@ -6860,6 +6860,22 @@ async function supaLoadEventCommentCounts(eventIds) {
 
 // ---- MESSAGERIE TEMPS RÉEL ----
 
+// Motif POSIX (pour `imatch`) qui trouve une saisie quelles que soient ses
+// accentuations : « lea » → « l[eéèêë]a ». Rend "" si la saisie, une fois
+// pliée et réduite au jeu sûr (lettres, chiffres, espace, ' et -), est vide.
+// Aucun métacaractère de regex ni de syntaxe PostgREST ne peut y entrer.
+var _VARIANTES_ACCENTS = { a: "aàâäáãå", e: "eéèêë", i: "iîïíì", o: "oôöóòõ", u: "uùûüú", c: "cç", y: "yÿ", n: "nñ" };
+function _motifSansAccents(q) {
+  var plie = (typeof plierRecherche === "function") ? plierRecherche(q) : String(q || "").toLowerCase();
+  plie = plie.replace(/[^a-z0-9 '\-]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!plie) return "";
+  return plie.split("").map(function (ch) {
+    if (_VARIANTES_ACCENTS[ch]) return "[" + _VARIANTES_ACCENTS[ch] + "]";
+    if (ch === "-") return "[-]";
+    return ch;
+  }).join("");
+}
+
 async function supaSearchUsers(query) {
   try {
     const cleanQuery = (query || "").trim();
@@ -6882,9 +6898,18 @@ async function supaSearchUsers(query) {
     // avec bio et avatar_url, à chaque frappe. Invisible à trente comptes de
     // beta, ruineux à dix mille. Les appelants n'affichent au mieux que 8
     // résultats ; 30 laisse de la marge pour leur filtrage local.
+    // LOT-22 (audit UX/UI du 2026-11-10, MSG-C06, côté serveur) : « lea » ne
+    // trouvait pas « Léa » — `ilike` compare les lettres exactes. Sans migration
+    // (`unaccent` n'est pas installé), le motif accepte les variantes accentuées
+    // de chaque lettre (`imatch`, regex insensible à la casse) ; il est BÂTI ICI
+    // à partir de la saisie réduite à des lettres, chiffres, espaces, ' et -.
+    // Le filtrage local fin (`plierRecherche`) reste celui d'avant.
+    const motif = _motifSansAccents(safe);
     const { data, error } = await supa.from("profiles")
       .select("id, username, emoji, color, passion_id, passions, bio, avatar_url")
-      .or(`username.ilike.${searchPattern},bio.ilike.${searchPattern}`)
+      .or(motif
+        ? `username.imatch.${motif},bio.imatch.${motif}`
+        : `username.ilike.${searchPattern},bio.ilike.${searchPattern}`)
       .limit(30);
 
     if (!data) return [];
