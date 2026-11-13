@@ -1212,8 +1212,10 @@
 
       <div style="position:relative;margin-bottom:10px;">
         <input id="convGlobalSearch" type="text" class="input" autocomplete="off"
-          placeholder="Rechercher une conversation ou un message…"
-          oninput="_globalMsgSearch(this.value)" style="width:100%;box-sizing:border-box;" />
+          placeholder="Rechercher une conversation…" aria-label="Rechercher une conversation"
+          oninput="_globalMsgSearch(this.value)" style="width:100%;box-sizing:border-box;padding-right:48px;" />
+        <button type="button" id="convGlobalSearchClear" hidden onclick="_effacerRechercheMessages()" aria-label="Effacer la recherche"
+          style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;border:0;background:none;color:var(--muted);font-size:18px;cursor:pointer;">✕</button>
       </div>
       <div id="archivedToggleRow" style="margin-bottom:8px;"></div>
       <div id="msgFilterRow"></div>

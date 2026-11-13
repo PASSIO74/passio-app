@@ -3934,6 +3934,11 @@ function goTo(screen) {
   // mémorisé ou une notification de carnet ne doit jamais laisser l'application
   // sans écran actif. On renvoie au fil, la destination neutre.
   if (screen === "cdv") screen = "feed";
+  // LOT-30 (MSG-C07) : quitter Messages vide sa recherche — au retour, la liste
+  // est entière.
+  if (screen !== "messages" && window._msgSearchQuery && typeof _effacerRechercheMessages === "function") {
+    try { _effacerRechercheMessages(); } catch (e) {}
+  }
   // Fermer le panneau d'outils contextuel s'il était ouvert (on change d'écran).
   if (window.ContextualTools && ContextualTools.isOpen()) ContextualTools.close();
   // Ajouter à l'historique seulement si ce n'est pas un retour en arrière
@@ -10853,9 +10858,12 @@ function renderPostHTML(p) {
         <div class="comment-text">${escapeHtml(c.text)}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
         <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" role="button" aria-label="J'aime ce commentaire — ${cLikes}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);">
-            ${cLiked ? "❤️" : "🤍"} ${cLikes}
-          </span>
+          <span class="comment-action ${cLiked ? "liked" : ""}" role="button" aria-label="J'aime ce commentaire${cLikes > 0 ? " — " + cLikes : ""}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);">
+            ${cLiked ? "❤️" : "🤍"}${cLikes > 0 ? " " + cLikes : ""}
+          </span>${/* LOT-30 (audit UX/UI du 2026-11-10, FIL-C26) : l'aperçu est servi
+            SANS interactions (`fil_compteurs`) — un commentaire aimé y lisait
+            « 🤍 0 ». Zéro ne s'écrit plus : un nombre n'apparaît que s'il vient
+            d'une lecture. */ ""}
           <span class="comment-action" role="button" aria-label="Répondre" onclick="return replyToComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}','${escapeJsArg(cu.name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" role="button" aria-label="Réagir" onclick="return showEmojiPickerForComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();openComments('${escapeJsArg(p.id)}');return false;">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}

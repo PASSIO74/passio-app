@@ -3407,7 +3407,7 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
       list.forEach(function (e) {
         var b = document.createElement("span");
         b.textContent = e;
-        b.style.cssText = "cursor:pointer;font-size:18px;line-height:1;padding:5px;border-radius:8px;transition:background .15s,transform .1s;";
+        b.style.cssText = "cursor:pointer;font-size:24px;line-height:1;width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;transition:background .15s,transform .1s;"; // LOT-30 (FIL-C10)
         b.onmouseover = function () { this.style.background = "rgba(124,58,237,0.18)"; this.style.transform = "scale(1.18)"; };
         b.onmouseout = function () { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
         b.onclick = function (ev) { ev.stopPropagation(); _insertEmoji(e); };
@@ -3511,10 +3511,14 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
     var r = btn.getBoundingClientRect();
     panel.style.left = Math.max(8, Math.min(r.left - 120, window.innerWidth - 296)) + "px";
     panel.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+    panel._ancreBtn = r;
   } else {
     panel.style.left = "50%"; panel.style.bottom = "30%"; panel.style.transform = "translateX(-50%)";
   }
   document.body.appendChild(panel);
+  // LOT-30 (FIL-C10) : jamais hors de l'écran, même quand le contenu grandit.
+  _placerPanneauReaction(panel);
+  try { if (window.ResizeObserver) new ResizeObserver(function () { _placerPanneauReaction(panel); }).observe(panel); } catch (e) {}
   setTimeout(function () {
     var cl = function (ev) {
       if (!panel.contains(ev.target) && ev.target !== btn) { panel.remove(); document.removeEventListener("click", cl); }
@@ -3554,10 +3558,12 @@ function _emojiReactPopover(event, onPick) {
     var r = btn.getBoundingClientRect();
     pop.style.left = Math.max(8, Math.min(r.left - 90, window.innerWidth - 300)) + "px";
     pop.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+    pop._ancreBtn = r;
   } else {
     pop.style.left = "50%"; pop.style.bottom = "30%"; pop.style.transform = "translateX(-50%)";
   }
   document.body.appendChild(pop);
+  _placerPanneauReaction(pop); // LOT-30 (FIL-C10)
   setTimeout(function () {
     var cl = function (ev) {
       if (!pop.contains(ev.target) && ev.target !== btn) { pop.remove(); document.removeEventListener("click", cl); }
@@ -3576,6 +3582,19 @@ function _emojiReactPopover(event, onPick) {
 //   onEmoji(emoji)  → applique la réaction emoji (obligatoire)
 //   onGif(url)      → applique la réaction GIF (optionnel : sans lui, pas d'onglet GIF)
 // ════════════════════════════════════════════════════════════════════════
+function _placerPanneauReaction(panel) {
+  try {
+    if (!panel || !panel.isConnected) return;
+    var a = panel._ancreBtn;
+    var h = panel.getBoundingClientRect().height;
+    if (a && a.top - 8 - h < 8 && a.bottom + 8 + h <= window.innerHeight - 8) {
+      panel.style.bottom = "auto";
+      panel.style.top = (a.bottom + 8) + "px";
+    }
+    if (typeof _ramenerDansLEcran === "function") _ramenerDansLEcran(panel);
+  } catch (e) { try { diagLog("panneau de réaction : " + (e && e.message)); } catch (_) {} }
+}
+
 function emojiReactPanel(event, onEmoji, onGif) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   var old = document.getElementById("emoji-react-panel");
@@ -3625,10 +3644,15 @@ function emojiReactPanel(event, onEmoji, onGif) {
     content.innerHTML = "";
     var grid = document.createElement("div");
     grid.style.cssText = "display:flex;flex-wrap:wrap;gap:2px;max-height:200px;overflow-y:auto;";
+    // LOT-30 (audit UX/UI du 2026-11-10, FIL-C10) : cases de 40 px, emojis de 24 px
+    // (18 px dans 28 px auparavant, sous la taille d'une cible tactile).
     emojis.forEach(function (e) {
       var b = document.createElement("span");
       b.textContent = e;
-      b.style.cssText = "cursor:pointer;font-size:18px;line-height:1;padding:5px;border-radius:8px;transition:background .15s,transform .1s;";
+      b.className = "emoji-react-case";
+      b.setAttribute("role", "button");
+      b.setAttribute("aria-label", e);
+      b.style.cssText = "cursor:pointer;font-size:24px;line-height:1;width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;transition:background .15s,transform .1s;";
       b.onmouseover = function () { this.style.background = "rgba(124,58,237,0.18)"; this.style.transform = "scale(1.18)"; };
       b.onmouseout = function () { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
       b.onclick = function (ev) { ev.stopPropagation(); pickEmoji(e); };
@@ -3703,8 +3727,15 @@ function emojiReactPanel(event, onEmoji, onGif) {
     var r = btn.getBoundingClientRect();
     panel.style.left = Math.max(8, Math.min(r.left - 120, window.innerWidth - 296)) + "px";
     panel.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+    panel._ancreBtn = r;
   } else { panel.style.left = "50%"; panel.style.bottom = "30%"; panel.style.transform = "translateX(-50%)"; }
   document.body.appendChild(panel);
+  // LOT-30 (FIL-C10) : ouvert depuis un bouton proche du HAUT de l'écran, le
+  // panneau (posé au-dessus du bouton) sortait par le haut. S'il ne tient pas
+  // au-dessus, il passe dessous ; puis il est ramené dans l'écran (8 px), y
+  // compris quand son contenu grandit (onglet GIF, ligne de validation).
+  _placerPanneauReaction(panel);
+  try { if (window.ResizeObserver) new ResizeObserver(function () { _placerPanneauReaction(panel); }).observe(panel); } catch (e) {}
   setTimeout(function () {
     cl = function (ev) { if (!panel.contains(ev.target) && ev.target !== btn) { panel.remove(); document.removeEventListener("click", cl); } };
     document.addEventListener("click", cl);
@@ -6018,7 +6049,9 @@ function renderMessages() {
     if (empt) {
       empt.style.display = "block";
       const t = empt.querySelector(".empty-title"), x = empt.querySelector(".empty-text");
-      if (_q) { if (t) t.textContent = "Aucun résultat"; if (x) x.textContent = "Aucune conversation ni message ne correspond à ta recherche."; }
+      // LOT-30 (audit UX/UI du 2026-11-10, MSG-C07) : la recherche ne connaît que
+      // les noms et les messages déjà chargés sur cet appareil ; elle le dit.
+      if (_q) { if (t) t.textContent = "Aucun résultat"; if (x) x.textContent = "Aucune conversation ne correspond. Pour retrouver un ancien message, ouvre la conversation puis « Rechercher dans la conversation »."; }
       else if (_showArch) { if (t) t.textContent = "Aucune conversation archivée"; if (x) x.textContent = "Les conversations archivées apparaîtront ici."; }
       else if (window._convChargementLent) {
         if (t) t.textContent = "Chargement plus long que prévu…";
@@ -6119,7 +6152,19 @@ function _loadMoreConvs() {
 function _globalMsgSearch(q) {
   window._msgSearchQuery = q || "";
   window._convListLimit = 30; // réinitialise la pagination pour la recherche
+  var effacer = document.getElementById("convGlobalSearchClear");
+  if (effacer) effacer.hidden = !window._msgSearchQuery;
   renderMessages();
+}
+
+// LOT-30 (MSG-C07) : un × vide le champ et rend la liste ; quitter l'écran
+// Messages vide aussi la recherche (revenir montrait une liste filtrée sans
+// qu'on se souvienne pourquoi).
+function _effacerRechercheMessages() {
+  var champ = document.getElementById("convGlobalSearch");
+  if (champ) champ.value = "";
+  if (window._msgSearchQuery) _globalMsgSearch("");
+  else { var effacer = document.getElementById("convGlobalSearchClear"); if (effacer) effacer.hidden = true; }
 }
 
 // Bascule entre conversations actives et archivées.
