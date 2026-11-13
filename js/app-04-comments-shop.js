@@ -1704,7 +1704,7 @@ function submitComment(postId) {
   var _box = document.getElementById("commentsBox");
   if (_box) { _box.scrollTop = 0; _flashNewComment(_box, _cid); } // nouveau = en tête (unshift)
   var _tt = document.querySelector(".modal-title");
-  if (_tt) _tt.textContent = "Discussion · " + nbCommentairesPost(post);
+  if (_tt) _tt.textContent = "Discussion (" + nbCommentairesPost(post) + ")"; // LOT-50 (FIL-C05) : une seule forme
   if (typeof _syncComposerSendState === "function") _syncComposerSendState(_ta);
   // Compteur 💬 de la carte/du détail patché EN PLACE (fini le renderFeed complet
   // derrière la modale : ~100 ms de rebuild du fil à CHAQUE commentaire publié).
