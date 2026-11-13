@@ -7438,10 +7438,15 @@ function _purgerPieceJointeDe(m) {
 function _forwardPick(convId, msgId) {
   closeModal();
   window._forwardSrc = { convId: convId, msgId: msgId };
-  var convs = getConversations().filter(function(c){ return !c.archived; }).sort(function(a,b){ return (b.lastAt||0)-(a.lastAt||0); }).slice(0, 30);
+  // LOT-27 (MSG-C84) : la conversation d'ORIGINE n'est plus proposée (en tête de
+  // liste, un toucher renvoyait le message là où il était déjà), ni celle d'un
+  // compte bloqué ; et un toucher demande confirmation au lieu d'envoyer.
+  var convs = getConversations().filter(function(c){
+    return !c.archived && c.id !== convId && !(typeof isBlocked === "function" && c.userId && isBlocked(c.userId));
+  }).sort(function(a,b){ return (b.lastAt||0)-(a.lastAt||0); }).slice(0, 30);
   var rows = convs.map(function(c){
     var name = c.isGroup ? (c.groupName || "Groupe") : (c.userName || "Conversation");
-    return '<div class="csetting-item" onclick="_forwardTo(\'' + escapeJsArg(c.id) + '\')"><div class="csetting-icon">' + (c.isGroup?'👥':'💬') + '</div>' +
+    return '<div class="csetting-item" role="button" tabindex="0" onclick="_forwardConfirmer(\'' + escapeJsArg(c.id) + '\')"><div class="csetting-icon">' + (c.isGroup?'👥':'💬') + '</div>' +
       '<div class="csetting-label">' + escapeHtml(name) + '</div></div>';
   }).join("");
   openModal('<div class="modal-handle"></div><div class="modal-title">Transférer vers…</div>' +
@@ -7466,6 +7471,21 @@ function _conteneurAudioDuMessage(m) {
   if (ext === "m4a" || ext === "mp4") return "audio/mp4";
   if (ext === "ogg" || ext === "oga" || ext === "opus") return "audio/ogg";
   return "audio/webm";
+}
+
+// MSG-C84 : « Transférer à Malik ? » avant d'envoyer — une erreur de ligne
+// envoyait le message (ou la photo) à la mauvaise personne.
+function _forwardConfirmer(targetConvId) {
+  var c = getConversations().find(function (x) { return x && x.id === targetConvId; });
+  if (!c) return;
+  var nom = c.isGroup ? (c.groupName || "ce groupe") : (c.userName || "cette conversation");
+  closeModal();
+  openModal('<div class="modal-handle"></div>' +
+    '<div class="modal-title">Transférer à ' + escapeHtml(nom) + ' ?</div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px;">' +
+      '<button type="button" class="btn ghost block" onclick="_forwardPick(\'' + escapeJsArg((window._forwardSrc || {}).convId || "") + '\',\'' + escapeJsArg((window._forwardSrc || {}).msgId || "") + '\')">Changer</button>' +
+      '<button type="button" class="btn primary block" onclick="_forwardTo(\'' + escapeJsArg(targetConvId) + '\')">Transférer</button>' +
+    '</div>');
 }
 
 async function _forwardTo(targetConvId) {
@@ -7707,6 +7727,16 @@ function _playVoiceById(aid) {
     if (pb) pb.textContent = '▶';
     return;
   }
+  // LOT-27 (MSG-C80) : un seul vocal à la fois — lancer le second superposait
+  // les deux voix. L'ancien est mis en pause (son bouton repasse à ▶).
+  try {
+    if (window._vocalEnCours && window._vocalEnCours.audio !== audio) {
+      window._vocalEnCours.audio.pause();
+      var pbAncien = document.getElementById("pb_" + window._vocalEnCours.aid);
+      if (pbAncien) pbAncien.textContent = "▶";
+    }
+  } catch (e) {}
+  window._vocalEnCours = { audio: audio, aid: aid };
   audio.play().then(function() {
     if (pb) pb.textContent = '⏸';
     var iv = setInterval(function() {
@@ -8717,6 +8747,9 @@ function closeConversation() {
   document.getElementById("btnEmoji")?.classList.remove("active");
   document.getElementById("convAttachMenu")?.classList.remove("open");
   document.getElementById("btnAttach")?.classList.remove("active");
+  // LOT-27 (MSG-C80) : quitter la conversation coupe le vocal en cours — le son
+  // continuait, sans plus rien à l'écran pour l'arrêter.
+  try { if (window._vocalEnCours) { window._vocalEnCours.audio.pause(); window._vocalEnCours = null; } } catch (e) {}
   renderMessages();
 }
 

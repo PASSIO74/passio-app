@@ -2096,6 +2096,8 @@ async function startVoiceRecord(opts) {
       _voiceUIStop();
       var elapsed = Date.now() - _voiceStartAt;
       if (!_voiceCancelled && elapsed < 600) _voixConsigneCourte(); // toucher trop court : dire quoi faire
+      // LOT-27 (MSG-C81) : rien de capté (0 octet) — l'application ne disait rien.
+      if (!_voiceCancelled && elapsed >= 600 && !_voiceChunks.length) toast("L'enregistrement n'a pas fonctionné, réessaie", "warning");
       if (_voiceCancelled || !_voiceChunks.length || elapsed < 600) return; // tap trop court / annulé
       _mediaEnPreparation();
       var dur = Math.max(1, Math.round(elapsed / 1000));
@@ -2119,7 +2121,11 @@ async function startVoiceRecord(opts) {
     }, 250);
   } catch (e) {
     console.warn("startVoiceRecord:", e);
-    toast("🎙️ Micro non disponible (autorisation refusée ?)");
+    // LOT-27 (MSG-C81) : un message qui sait ce qu'il dit, et ce qu'il faut faire.
+    var refus = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+    toast(refus
+      ? "Micro bloqué — autorise-le dans les réglages du site pour envoyer un vocal"
+      : "Micro indisponible sur cet appareil — impossible d'enregistrer un vocal", "warning");
   }
 }
 

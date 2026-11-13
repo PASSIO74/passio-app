@@ -13159,3 +13159,25 @@ button, a, label, select, summary,
 /* LOT-26 (audit UX/UI du 2026-11-10) — FIL-C27 : la publication d'un compte privé le dit. */
 .post-prive { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 12px; }
 .post-prive svg { flex-shrink: 0; }
+
+/* LOT-27 (audit UX/UI du 2026-11-10, MSG-C13) : la ligne dit COMBIEN de non-lus
+   (pastille chiffrée de 20 px, au lieu d'un point de 9 px dont le nombre était
+   écrit en taille 0) ; le nom tient sur une ligne. */
+.msg-card .msg-badge {
+  min-width: 20px;
+  max-width: none;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 20px;
+}
+.msg-card .msg-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-card .msg-head { min-width: 0; }
