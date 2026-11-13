@@ -4618,6 +4618,9 @@ function lancerVideoPublique(video, volontaire) {
     // masquer la porte de reprise d'une vidéo qui vient d'être arrêtée.
     if (video.dataset.videoPublicLecture !== lecture || !video.hasAttribute("src")) return false;
     videoPubliqueBouton(video, false);
+    // LOT-26 (FIL-C21) : les commandes natives n'apparaissent qu'une fois la
+    // lecture lancée — avant, « ▶ Lire » et la barre native se superposaient.
+    try { if (video.hasAttribute("data-video-public-src")) video.controls = true; } catch (e) {}
     return true;
   }, function () {
     // Un navigateur peut refuser la lecture auto sonore. Garder une vraie porte
@@ -4652,7 +4655,7 @@ function arreterVideosPubliquesHorsEcran() {
 
 function videoPubliqueHTML(src) {
   return '<div class="post-media" data-video-public-shell style="position:relative;min-height:220px;background:#000;">' +
-    '<video data-video-public-src="' + safeUrlAttr(src) + '" controls playsinline preload="none" style="width:100%;min-height:220px;display:block;background:#000;max-height:560px;"></video>' +
+    '<video data-video-public-src="' + safeUrlAttr(src) + '" playsinline preload="none" style="width:100%;min-height:220px;display:block;background:#000;max-height:560px;"></video>' +
     boutonVideoPubliqueHTML() + '</div>';
 }
 
@@ -10917,7 +10920,7 @@ function renderPostHTML(p) {
       <div class="post-author" role="button" tabindex="0" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
-          <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}${p.editedAt ? ' · <span class="post-modifie">modifié</span>' : ""}
+          <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}${p.editedAt ? ' · <span class="post-modifie">modifié</span>' : ""}${p.authorPrive ? ' · <span class="post-prive" title="Réservé aux abonnés" aria-label="Réservé aux abonnés"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Abonnés</span>' : ""}
           ${p._source === "me" && p.syncStatus ? `
             ${/* LOT-1 (CRE-C04) : 12 px et couleurs AA sur blanc (#0f5c3d 7,8:1, #7a4c05 7,3:1, #8f1d18 8,9:1) — l'ancien vert #22c55e en 10 px tombait à 2,3:1. */ ""}
             ${p.syncStatus === "syncing" ? '<span class="post-sync" style="margin-left:8px;font-size:12px;color:var(--muted);">Envoi…</span>' : ""}

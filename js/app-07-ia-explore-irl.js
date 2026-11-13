@@ -3947,7 +3947,7 @@ async function _promoteNextWaitlisted(ev) {
   _appliquerPromotionLocale(ev, next);
   // La notification d'origine serveur est déjà écrite par la RPC : ne pas doubler.
   if (!notifieeParServeur && typeof supaInsertNotif === "function") {
-    supaInsertNotif(next, "event_update", ev.id, "une place s'est libérée, tu es inscrit·e !");
+    supaInsertNotif(next, "event_update", ev.id, "a libéré une place : tu es inscrit·e à « " + String(ev.title || "l'activité").slice(0, 60) + " » !"); /* TRA-C16 : la phrase a un sujet (le nom est préfixé) */
   }
 }
 
@@ -7266,7 +7266,7 @@ async function deleteEventConfirm(id) {
 // « peut-être » et liste d'attente, chacun une fois, jamais soi-même (IRL-06).
 function _prevenirSuppressionActivite(ev) {
   if (!ev) return 0;
-  return _notifyEventAttendees(ev, "« " + String(ev.title || "").slice(0, 60) + " » a été supprimé par l'organisateur", "event_cancelled");
+  return _notifyEventAttendees(ev, "a supprimé l'activité « " + String(ev.title || "").slice(0, 60) + " »", "event_cancelled"); /* TRA-C16 */
 }
 
 // Message groupé aux inscrits (annonce de dernière minute, changement de lieu…).
@@ -7340,9 +7340,7 @@ async function reportEvent(id) {
   if (motif === null) return;
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("event", id, motif); } catch (e) { ok = false; }
-  toast(ok
-    ? "Signalement envoyé — merci"
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  if (typeof messageSignalement === "function") messageSignalement(ok); else toast(ok ? "Signalement envoyé" : "Signalement non envoyé — réessaie", ok ? "success" : "warning");
   if (ok && typeof _accuserReceptionSignalement === "function") _accuserReceptionSignalement();
 }
 

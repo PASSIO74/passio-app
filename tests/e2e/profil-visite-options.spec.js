@@ -125,6 +125,6 @@ test.describe("Profil visité — options dans le menu ⋯", () => {
     const toast = page.locator("#toastStack .toast");
     await expect(toast).toBeVisible();
     await expect(toast).not.toContainText(/Signalement envoyé/i);
-    await expect(toast).toContainText(/impossible|déjà envoyé/i);
+    await expect(toast).toContainText(/non envoyé|déjà signalé/i);
   });
 });

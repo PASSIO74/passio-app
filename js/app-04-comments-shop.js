@@ -3221,9 +3221,7 @@ async function reportCommentEntry(threadId, commentId) {
   if (motif === null) return;
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("comment", commentId, motif); } catch (e) { ok = false; }
-  toast(ok
-    ? "Commentaire signalé. Merci, on s'en occupe."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok && typeof _accuserReceptionSignalement === "function") _accuserReceptionSignalement();
 }
 
@@ -5658,9 +5656,7 @@ async function reportUser(userId, name) {
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("user", userId, motif); } catch (e) { ok = false; }
   closeModal();
-  toast(ok
-    ? "🚩 Signalement envoyé. Notre équipe va vérifier."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok) _accuserReceptionSignalement();
 }
 
@@ -5684,9 +5680,7 @@ async function reportStory(storyId) {
   if (motif === null) return;
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("story", storyId, motif); } catch (e) { ok = false; }
-  toast(ok
-    ? "Story signalée. Merci, on s'en occupe."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok) _accuserReceptionSignalement();
   return ok;
 }
@@ -5806,13 +5800,21 @@ async function reportPassion(pid, label) {
   try {
     if (typeof supaReport === "function") ok = await supaReport("passion", pid, "");
   } catch (e) { ok = false; }
-  if (ok) {
-    toast("🚩 « " + nom + " » signalée. On vérifie.", "success");
-  } else {
-    // Le doublon est le cas le plus fréquent : l'index unique refuse un second
-    // signalement de la même personne sur la même passion.
-    toast("Signalement déjà envoyé, ou impossible pour le moment.");
-  }
+  // Le doublon est le cas le plus fréquent (index unique par personne) :
+  // `messageSignalement` le dit comme tel (TRA-C18).
+  messageSignalement(ok);
+}
+
+// LOT-26 (audit UX/UI du 2026-11-10, TRA-C18) : sept portes de signalement,
+// six réponses différentes, et un échec (« déjà envoyé, ou impossible ») qui ne
+// disait pas s'il fallait réessayer. UNE réponse, quel que soit l'objet ; un
+// doublon (23505, `_dernierSignalementMotif` posé par `supaReport`) se dit
+// comme tel, un vrai échec invite à réessayer. Rien n'est promis de plus que
+// ce que fait la modération (examen par l'équipe).
+function messageSignalement(ok) {
+  if (ok) { toast("Signalement envoyé. L'équipe l'examinera, merci.", "success"); return; }
+  if (window._dernierSignalementMotif === "doublon") { toast("Tu l'as déjà signalé — l'équipe l'a bien reçu.", "info"); return; }
+  toast("Signalement non envoyé — réessaie", "warning");
 }
 
 async function reportPost(postId) {
@@ -5824,9 +5826,7 @@ async function reportPost(postId) {
   if (motif === null) return;
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("post", postId, motif); } catch (e) { ok = false; }
-  toast(ok
-    ? "Publication signalée. Merci, on s'en occupe."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok) _accuserReceptionSignalement();
 }
 
@@ -7032,9 +7032,7 @@ async function reportMessage(convId, msgId) {
   var ok = false;
   try { if (typeof supaReport === "function") ok = await supaReport("message", msgId, motif); } catch (e) { ok = false; }
   closeModal();
-  toast(ok
-    ? "🚩 Message signalé. Notre équipe va vérifier."
-    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  messageSignalement(ok);
   if (ok) _accuserReceptionSignalement();
 }
 
