@@ -390,6 +390,38 @@ test("crons (2026-11-12, contre-revue de #863) : l'état ne fait que MONTER — 
   }
 });
 
+test("crons et scan (seconde lecture de #863) : l'âge du succès se lit sur le dernier SUCCÈS, jamais sur le dernier passage ; le plafond de la Sentinelle autonome vaut aussi pour cette règle ; une date de succès illisible est inconnue, jamais « ok »", () => {
+  // Mutation X1 : l'âge du succès lu sur `p.dernier` → deux échecs récents de la santé distante cachent un succès de 40 h → rougit.
+  // Mutation X5 : la règle de l'âge du succès passe outre le plafond → la Sentinelle autonome (succès de 30 h, run frais) alerte → rougit.
+  // Mutation X3 : la branche « date … illisible » retirée des crons → l'inconnu devient une alerte au texte faux → rougit.
+  // Mutation X2 : la garde `Number.isFinite` retirée du scan → « ok, il y a NaN j » → rougit.
+  const now = Date.parse("2026-11-12T12:00:00Z");
+  const il_y_a = (h) => new Date(now - h * H).toISOString();
+  const reussi = { suite: 0, lus: 5, vus: 5, dernier: { conclusion: "success", le: il_y_a(5) }, dernierSucces: { le: il_y_a(5) } };
+  const sain = Object.fromEntries(Object.keys(SEUILS_CRONS).map((k) => [k, { state: "active", dernierRunFin: il_y_a(2), planifies: reussi }]));
+  // Santé distante : deux échecs, sous son seuil de trois, le dernier il y a 1 h ; son dernier SUCCÈS a 40 h (> 36 h).
+  const distante = signalCrons({ ...sain, "sentinelle-distante": { state: "active", dernierRunFin: il_y_a(1),
+    planifies: { suite: 2, lus: 6, vus: 6, dernier: { conclusion: "failure", le: il_y_a(1) }, dernierSucces: { le: il_y_a(40) } } } }, now);
+  assert.equal(distante.etat, "alert", distante.texte);
+  assert.match(distante.texte, /sentinelle-distante : dernier passage planifié réussi il y a 40 h \(> 36 h\)/);
+  // Sentinelle autonome : un run frais (annulé), cinq passages annulés depuis le dernier succès, vieux de 30 h (> 24 h).
+  // Attention seulement, sans geste : le pilotage dit déjà son arrêt, avec son « Régler » — jamais deux.
+  const autonome = signalCrons({ ...sain, "sentinelle-autonome": { state: "active", dernierRunFin: il_y_a(1),
+    planifies: { suite: 0, lus: 1, vus: 6, dernier: { conclusion: "success", le: il_y_a(30) }, dernierSucces: { le: il_y_a(30) } } } }, now);
+  assert.equal(autonome.etat, "warn", autonome.texte);
+  assert.match(autonome.texte, /sentinelle-autonome : dernier passage planifié réussi il y a 30 h \(> 24 h\) — attention seulement/);
+  assert.equal(autonome.geste, undefined);
+  // Une date de succès illisible : inconnu, et le texte le dit — dans les crons comme dans le scan.
+  for (const le of ["pas une date", null]) {
+    const c = signalCrons({ ...sain, sauvegarde: { state: "active", dernierRunFin: il_y_a(2), planifies: { ...reussi, dernierSucces: { le } } } }, now);
+    assert.equal(c.etat, "unknown", String(le) + " : " + c.texte);
+    assert.match(c.texte, /sauvegarde : date du dernier passage planifié réussi illisible/);
+    const s = signalScan({ state: "active", dernierRunFin: il_y_a(1), planifies: { ...reussi, dernierSucces: { le } } }, now);
+    assert.equal(s.etat, "unknown", String(le) + " : " + s.texte);
+    assert.doesNotMatch(s.texte, /NaN/);
+  }
+});
+
 test("scan (contre-revue de #863) : le scan de sécurité est un signal À PART qui ne dépasse JAMAIS l'attention — son tri est à Benjamin, aucune [VEILLE] ne le fait « Régler » par un agent ; il ne cache plus une sauvegarde ratée", () => {
   // Mutation : `etat: "warn"` → `"alert"` sur un passage en échec → rougit.
   // Mutation : `{ cle: "scan", … }` retiré de verdictVeille → rougit.
