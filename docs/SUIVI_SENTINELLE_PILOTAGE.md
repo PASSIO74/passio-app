@@ -198,7 +198,7 @@ recherche du pilote. Banc : `scripts/charge-realiste.mjs` (staging seul, plafonn
    politique d'automatisation : jamais une machine.
 4. Staging : l'ordre « fusion, puis staging, puis production » — ou un projet jetable pour les essais
    d'une PR.
-5. Trier les 64 trouvailles du scan de sécurité du 09/11 (Actions › « Sécurité de la chaîne », artefact
+5. ~~Trier les 64 trouvailles du scan de sécurité du 09/11~~ — FAIT le 13/11 (`.gitleaks.toml`, aucune clé secrète ; journal télémétrie). Procédure pour la prochaine fois : trier les trouvailles (Actions › « Sécurité de la chaîne », artefact
    `gitleaks-results.sarif`) : une clé publique par conception s'inscrit dans `.gitleaksignore` ; une vraie clé se
    révoque d'abord, puis s'y inscrit aussi. Jamais un agent — et depuis #866, mécaniquement : `.gitleaksignore` et
    `.gitleaks.toml` sont des chemins interdits à l'agent de réparation. Trié, relance le scan (« Run workflow ») :
