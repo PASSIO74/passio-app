@@ -179,18 +179,21 @@ jobs:
             # l'un comme sur l'autre). C'est un texte de GitHub ; s'il part un jour chez un agent (le journal d'une
             # réparation de déploiement), c'est comme DONNÉE, relue par la marche de confiance de claude-code.yml.
             # Une issue SUPPRIMÉE (404, 410) ne reviendra pas :
-            #  · sur une PR ouverte, refus, avec le seul remède qui marche (republier hors du motif claude/issue-…) ;
-            #  · sur un push dans main, la PR est DÉJÀ fusionnée — elle a passé cette gouvernance quand l'issue existait :
-            #    on ne bloque pas sa mise en ligne pour une issue effacée après coup (un avertissement le dit).
+            #  · sur une PR ouverte, refus, avec un remède qui marche : republier hors du motif claude/issue-… (la PR
+            #    est alors jugée comme humaine, contre-revue comprise) ;
+            #  · sur un push dans main, la PR est DÉJÀ fusionnée. Ce qu'elle était (réparation de la Sentinelle ou non)
+            #    n'est plus lisible, et rien ici ne rejoue le contrôle qui l'a laissée fusionner — avant #875, une issue
+            #    illisible y passait pour humaine. On ne bloque pas sa mise en ligne pour une issue effacée : un
+            #    avertissement dit ce qui n'est pas revérifié.
             disparue=false
             if ! labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_num}" --jq '.labels[].name' 2> "${RUNNER_TEMP}/gouvernance-labels.err")"; then
-              cause="$(head -c 300 "${RUNNER_TEMP}/gouvernance-labels.err" | tr '\r\n' '  ')"
+              cause="$(head -c 300 "${RUNNER_TEMP}/gouvernance-labels.err" | tr '\r\n' '  ' | sed 's/[[:space:]]*$//')"
               if grep -qE 'HTTP 404|HTTP 410|Not Found' <<< "${cause}"; then
                 if [ "${EVENT_NAME}" = "push" ]; then
-                  echo "::warning title=Gouvernance::L'issue #${issue_num} n'existe plus (${cause}) ; la PR #${pr}, déjà fusionnée, a passé la gouvernance quand elle était ouverte. Ce déploiement continue : la PR est traitée comme humaine."
+                  echo "::warning title=Gouvernance::L'issue #${issue_num} n'existe plus (${cause}) ; la PR #${pr} est déjà fusionnée : ce déploiement continue en la traitant comme humaine. Non revérifié ici : si c'était une réparation de la Sentinelle, qu'elle restait dans son périmètre."
                   disparue=true
                 else
-                  echo "::error title=Gouvernance::L'issue #${issue_num} n'existe plus (${cause}) : la branche ${head_ref} prétend réparer une issue introuvable, relancer n'y changera rien. Republie le travail depuis une branche qui ne suit pas claude/issue-<n>-<run> (ou recrée l'issue et renomme la branche)."
+                  echo "::error title=Gouvernance::L'issue #${issue_num} n'existe plus (${cause}) : la branche ${head_ref} prétend réparer une issue introuvable, relancer n'y changera rien. Republie le travail depuis une branche qui ne suit pas claude/issue-<n>-<run>."
                   exit 1
                 fi
               else

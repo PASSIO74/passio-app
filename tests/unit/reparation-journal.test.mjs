@@ -660,7 +660,7 @@ test("⑬ ce qui part dans un dépôt public : un jeton est vu même au DÉBUT d
     const propre = jouerGarde(gros("rien de secret\n"));
     assert.equal(propre.code, 0, propre.sortie.slice(-600));
     assert.match(propre.sortie, /PUBLIE/);
-    // Un `gitleaks:allow` AJOUTÉ par l'agent tairait une trouvaille neuve du scan : refus (relecture de #866). Écrit
+    // Le marqueur d'exception du scan des secrets (PERMIS), AJOUTÉ par l'agent, tairait une trouvaille neuve : refus (relecture de #866). Écrit
     // à l'exécution, lui aussi : en clair, il passerait pour une vraie exception dans ce fichier même.
     const PERMIS = "gitleaks" + ":allow";
     const permis = jouerGarde("const cle = 'x'; // " + PERMIS + "\n");
