@@ -6725,6 +6725,9 @@ async function irlProposalOpenFromConversation(convId, targetUserId, btn) {
   if (window._openedConvId !== convId) return false;
   irlProposalTrack("irl_proposal_cta_clicked", "ok");
   try { if (typeof fermerHint === "function") fermerHint(); } catch (e) {}
+  // LOT-46 (MSG-C69) : le même chemin que l'entrée du menu « + » — formulaire
+  // prérempli par la passion. Le verdict vient d'être lu : on ne le relit pas.
+  if (typeof window.PassioProposerIrl === "function") { window.PassioProposerIrl(true); return true; }
   try { if (typeof closeConversation === "function") closeConversation(); } catch (e) {}
   if (typeof openCreateEvent !== "function") return false;
   openCreateEvent();

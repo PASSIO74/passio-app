@@ -92,9 +92,21 @@
     } catch (e) { return ""; }
   }
 
-  function proposer() {
+  // LOT-46 (audit UX/UI du 2026-11-10, MSG-C69) : deux entrées « proposer un
+  // IRL » dans la même conversation, deux noms, deux icônes, deux résultats —
+  // et celle-ci échappait au verdict serveur (âge déclaré, blocage) que porte le
+  // bouton d'en-tête. Un seul libellé, un seul pictogramme, le MÊME verdict aux
+  // deux endroits ; le bouton d'en-tête passe par ce chemin (formulaire
+  // prérempli par la passion).
+  async function proposer(verdictDejaLu) {
     var c = convOuverte();
     if (!c || c.isGroup) return;
+    if (!verdictDejaLu && typeof irlProposalServerVerdict === "function") {
+      var v = null;
+      try { v = await irlProposalServerVerdict(c.userId); } catch (e) { v = null; }
+      if (!v || !v.ok) { try { toast("Proposition IRL indisponible avec cette personne"); } catch (e) {} return; }
+      if (convOuverte() !== c) return;
+    }
     var passion = passionDe(c);
 
     // La conversation est fermée AVANT d'ouvrir le formulaire : le modal passe
@@ -125,6 +137,8 @@
 
   // Le titre suggéré : construit sur la Passio, jamais sur une personne (voir
   // l'entête). Jamais écrasé si le champ porte déjà quelque chose.
+  window.PassioProposerIrl = function (verdictDejaLu) { return proposer(verdictDejaLu); };
+
   function suggererTitre(passion) {
     try {
       var champ = document.getElementById("evTitle");
@@ -147,21 +161,20 @@
 
     var ico = document.createElement("div");
     ico.className = "attach-icon";
-    ico.style.background = "rgba(124,58,237,0.12)";
-    ico.style.color = "var(--att-irl)";
+    ico.style.background = "rgba(255,107,87,0.14)";
+    ico.style.color = "#E5533F";
     // Pictogramme dessiné, comme les cinq pastilles voisines du même menu :
     // l'emoji était TOUT le contenu de la pastille, le vider l'aurait laissée
     // ronde et vide au milieu des autres.
-    ico.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"'
+    ico.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"'
       + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-      + '<path d="M7.5 12.5 4 9l3-3 2.6 2.2h4.8L17 6l3 3-3.5 3.5"/>'
-      + '<path d="M9.6 8.2 7.4 10.6a1.6 1.6 0 0 0 2.2 2.3l1.4-1.2 3.4 3a1.5 1.5 0 0 1-2 2.2"/>'
-      + '<path d="M12.4 16.9a1.5 1.5 0 0 1-2 2.2l-1-.9"/></svg>';
+      + '<path d="M12 21s6-5.3 6-11a6 6 0 1 0-12 0c0 5.7 6 11 6 11z"/><circle cx="12" cy="10" r="2"/>'
+      + '<path d="M18.5 3.5v4M16.5 5.5h4"/></svg>';
     item.appendChild(ico);
 
     var lab = document.createElement("div");
     lab.className = "attach-label";
-    lab.textContent = "Proposer un IRL";
+    lab.textContent = "Proposer un moment IRL";
     item.appendChild(lab);
 
     item.addEventListener("click", function (e) {
