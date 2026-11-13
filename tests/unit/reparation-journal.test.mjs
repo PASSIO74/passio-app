@@ -619,3 +619,44 @@ test("⑫ les exceptions du scan des secrets (`.gitleaksignore`, `.gitleaks.toml
     "permis js/app-01.js", "permis docs/journal/x.md",
   ]);
 });
+
+test("⑬ ce qui part dans un dépôt public : un jeton est vu même au DÉBUT d'un gros diff — sous pipefail, `grep -q` s'arrêtait au premier, `git` mourait de SIGPIPE en écrivant la suite, et le `if` ne voyait rien", () => {
+  // La garde RÉELLE (marche « Publier la branche produite par Claude ») est extraite et jouée par bash -eo pipefail,
+  // comme GitHub lance un `run:`, dans un dépôt jetable.
+  const etape = WF.jobs.claude.steps.find((x) => x.name === "Publier la branche produite par Claude");
+  assert.ok(etape && typeof etape.run === "string", "la marche de publication existe");
+  const debut = etape.run.indexOf("# ── Ce qui part dans un dépôt public ne porte aucun jeton");
+  const fin = etape.run.indexOf("# ── Audits du dépôt", debut);
+  assert.ok(debut >= 0 && fin > debut, "la garde des jetons se lit");
+  const garde = etape.run.slice(debut, fin);
+  const depot = fs.mkdtempSync(path.join(os.tmpdir(), "publication-")).split("\\").join("/");
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "publication-temp-")).split("\\").join("/");
+  const script = temp + "/garde-publication.sh";
+  try {
+    const git = (...a) => execFileSync("git", ["-C", depot, ...a], { encoding: "utf8" });
+    git("init", "-q"); git("config", "user.email", "banc@exemple.invalid"); git("config", "user.name", "banc"); git("config", "core.autocrlf", "false");
+    fs.writeFileSync(depot + "/a.txt", "base\n"); git("add", "a.txt"); git("commit", "-qm", "base");
+    const base = git("rev-parse", "HEAD").trim();
+    // Un jeton FORGÉ à l'exécution : écrit en clair, il ferait rougir le scan des secrets du dépôt lui-même.
+    const JETON = "gh" + "p_" + "A".repeat(36);
+    const jouerGarde = (contenu) => {
+      git("checkout", "-q", "--detach", base);
+      fs.writeFileSync(depot + "/b.txt", contenu); git("add", "b.txt"); git("commit", "-qm", "travail produit");
+      const tip = git("rev-parse", "HEAD").trim();
+      fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tip + "\n" + garde + "\necho PUBLIE\n");
+      const r = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp }, maxBuffer: 64 * 1024 * 1024 });
+      return { code: r.status, sortie: (r.stdout || "") + (r.stderr || "") };
+    };
+    const gros = (tete) => tete + Array.from({ length: 60000 }, (_, i) => "ligne ordinaire numéro " + i + " du travail produit").join("\n") + "\n";
+    // Le jeton TÔT dans un diff de 3 Mo : bien plus que le tampon d'un tube après lui.
+    const tot = jouerGarde(gros(JETON + "\n"));
+    assert.equal(tot.code, 1, "jeton au début d'un gros diff : refus attendu\n" + tot.sortie.slice(-600));
+    assert.match(tot.sortie, /::error title=Jeton dans le travail produit::/);
+    assert.ok(!tot.sortie.includes("PUBLIE"));
+    // Un petit diff avec un jeton : refus ; un gros diff sans jeton : publié.
+    assert.equal(jouerGarde("x\n" + JETON + "\n").code, 1);
+    const propre = jouerGarde(gros("rien de secret\n"));
+    assert.equal(propre.code, 0, propre.sortie.slice(-600));
+    assert.match(propre.sortie, /PUBLIE/);
+  } finally { fs.rmSync(depot, { recursive: true, force: true }); fs.rmSync(temp, { recursive: true, force: true }); }
+});
