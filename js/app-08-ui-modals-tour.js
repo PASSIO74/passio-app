@@ -7591,6 +7591,23 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
     if (!error) _pousserPushNotif(toUserId, kind, fullText);
   } catch(e) {}
 }
+// ⚠️ SRV-02 (2026-11-13) : UNE NOTIFICATION EST L'ÉCHO D'UNE ÉCRITURE ACCEPTÉE.
+// La base exige désormais l'événement métier derrière chaque `like`, `comment`,
+// `event_*` et `live_video` (`trg_notifications_preuve`, migration du 13/11) :
+// « X a aimé ton post » sans j'aime réel est refusé. Une notification qui partait
+// EN PARALLÈLE de son écriture arrivait donc avant elle, et se faisait refuser —
+// une notification légitime perdue. On attend le verdict : `ecriture` est la
+// promesse de l'écriture (vrai, `{ ok: true }` ou un identifiant = acceptée) ;
+// refusée ou en échec, rien ne part. Le motif ci-dessous est le PREREQUIS-CLIENT
+// de la migration : elle ne s'applique pas tant que le client servi ne le porte pas.
+var NOTIF_APRES_ECRITURE = "notifications:apres-ecriture";
+function notifierApresEcriture(ecriture, toUserId, kind, refId, content) {
+  return Promise.resolve(ecriture).then(function (r) {
+    var acceptee = r === true || (!!r && typeof r === "object" && r.ok === true) || (typeof r === "string" && r.length > 0);
+    if (!acceptee || typeof supaInsertNotif !== "function") return false;
+    return Promise.resolve(supaInsertNotif(toUserId, kind, refId, content)).then(function () { return true; });
+  }).catch(function () { return false; });
+}
 // ⚠️ ASTRA-24 (2026-09-15) : LES MENTIONS SONT ÉCRITES PAR LE SERVEUR. Le client
 // porte des IDENTIFIANTS (jamais des noms) à `notifier_mentions`, qui vérifie
 // l'événement et les destinataires, écrit la ligne (origine serveur, texte

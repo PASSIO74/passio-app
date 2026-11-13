@@ -3450,16 +3450,17 @@ function _setEventReaction(eventId, val) {
   state.user.eventReactions[eventId] = val;
   window._eventLikes[eventId] = d;
   if (typeof saveState === "function") saveState();
-  if (typeof supaAddEventReaction === "function") supaAddEventReaction(eventId, val);
+  var ecriture = (typeof supaAddEventReaction === "function") ? supaAddEventReaction(eventId, val) : false;
   _patchEventReactChip(eventId);
-  _notifyEventOrganizerReaction(eventId);
+  _notifyEventOrganizerReaction(eventId, ecriture);
 }
-function _notifyEventOrganizerReaction(eventId) {
+// Au verdict de l'insertion de la réaction (SRV-02 : la base exige la réaction réelle).
+function _notifyEventOrganizerReaction(eventId, ecriture) {
   try {
     var ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(eventId))
       || (typeof allEvents === "function" ? allEvents().find(function(x){ return x.id === eventId; }) : null);
-    if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof supaInsertNotif === "function") {
-      supaInsertNotif(ev.organizerId, "like", eventId, "a réagi à ton événement");
+    if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(ecriture, ev.organizerId, "like", eventId, "a réagi à ton événement");
     }
   } catch(e) {}
 }
@@ -3769,8 +3770,9 @@ async function setEventRsvp(id, rsvp) {
   } else {
     toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
   }
-  // Notifier l'organisateur (interaction cross-compte sur SON événement).
-  if (rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
+  // Notifier l'organisateur (interaction cross-compte sur SON événement) — sur
+  // une inscription ÉCRITE seulement (SRV-02 : la base exige la ligne réelle).
+  if (rsvpOk === true && rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
     supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
   }
   // Les VENANTS rejoignent la discussion de groupe ; tout autre état la quitte.
@@ -5694,7 +5696,8 @@ async function addEventComment(eventId) {
         return;
       }
       // Notifier l'organisateur (interaction cross-compte sur SON événement).
-      if (ev && ev.organizerId && ev.organizerId !== myId && typeof supaInsertNotif === "function") {
+      // Sur un commentaire ÉCRIT seulement (SRV-02 : la base exige la ligne réelle).
+      if (realId && ev && ev.organizerId && ev.organizerId !== myId && typeof supaInsertNotif === "function") {
         supaInsertNotif(ev.organizerId, "event_comment", eventId, "a commenté ton événement");
       }
     } catch (e) {}
@@ -7979,13 +7982,14 @@ function submitEventFeedback(eventId) {
   closeModal();
   toast("Merci pour ton retour");
 
-  if (window._supaReal && typeof supaRateEvent === "function") supaRateEvent(eventId, n, txt);
+  var ecriture = (window._supaReal && typeof supaRateEvent === "function") ? supaRateEvent(eventId, n, txt) : false;
 
-  // Le retour notifie l'organisateur : c'est le signal qu'il attend.
+  // Le retour notifie l'organisateur : c'est le signal qu'il attend — une fois
+  // la note ÉCRITE (SRV-02 : la base exige la note réelle).
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   var orga = ev && (ev.organizerId || ev.authorId);
-  if (ev && orga && orga !== MY_UID && typeof supaInsertNotif === "function") {
-    supaInsertNotif(orga, "event_feedback", eventId,
+  if (ev && orga && orga !== MY_UID && typeof notifierApresEcriture === "function") {
+    notifierApresEcriture(ecriture, orga, "event_feedback", eventId,
       "a noté <b>" + escapeHtml((ev.title || "ton événement").slice(0, 60)) + "</b> " + n + "/5");
   }
   _refreshEventDetailIfOpen(eventId);
