@@ -611,11 +611,11 @@ test("⑫ les exceptions du scan des secrets (`.gitleaksignore`, `.gitleaks.toml
   const m = /\n\s*case "\$\{fichier\}" in\n(?:\s*#[^\n]*\n)*\s*([^\n]+)\)\n/.exec(etape.run);
   assert.ok(m, "le motif des chemins interdits se lit");
   const script = 'for fichier in "$@"; do case "${fichier}" in ' + m[1] + ') echo "INTERDIT ${fichier}" ;; *) echo "permis ${fichier}" ;; esac; done';
-  const fichiers = [".gitleaksignore", ".gitleaks.toml", ".github/workflows/securite.yml", "scripts/veille-production.mjs", "js/app-01.js", "docs/journal/x.md"];
+  const fichiers = [".gitleaksignore", ".gitleaks.toml", ".gitattributes", "js/.gitattributes", ".github/workflows/securite.yml", "scripts/veille-production.mjs", "js/app-01.js", "docs/journal/x.md"];
   const r = spawnSync("bash", ["--noprofile", "--norc", "-c", script, "garde", ...fichiers], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.stdout.trim().split("\n").map((x) => x.trim()), [
-    "INTERDIT .gitleaksignore", "INTERDIT .gitleaks.toml", "INTERDIT .github/workflows/securite.yml", "INTERDIT scripts/veille-production.mjs",
+    "INTERDIT .gitleaksignore", "INTERDIT .gitleaks.toml", "INTERDIT .gitattributes", "INTERDIT js/.gitattributes", "INTERDIT .github/workflows/securite.yml", "INTERDIT scripts/veille-production.mjs",
     "permis js/app-01.js", "permis docs/journal/x.md",
   ]);
 });
@@ -653,6 +653,7 @@ test("⑬ ce qui part dans un dépôt public : un jeton est vu même au DÉBUT d
     assert.equal(tot.code, 1, "jeton au début d'un gros diff : refus attendu\n" + tot.sortie.slice(-600));
     assert.match(tot.sortie, /::error title=Jeton dans le travail produit::/);
     assert.ok(!tot.sortie.includes("PUBLIE"));
+    assert.ok(!fs.existsSync(temp + "/passio-travail-publie.txt"), "le refus d'un jeton efface le travail lu, qui le porte");
     // Un petit diff avec un jeton : refus ; un gros diff sans jeton : publié.
     assert.equal(jouerGarde("x\n" + JETON + "\n").code, 1);
     const propre = jouerGarde(gros("rien de secret\n"));
@@ -681,5 +682,47 @@ test("⑬ ce qui part dans un dépôt public : un jeton est vu même au DÉBUT d
     const casse = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
     assert.notEqual(casse.status, 0);
     assert.ok(!(casse.stdout || "").includes("PUBLIE"), "un diff illisible n'est pas un diff propre");
+    // Relecture de #875 — la garde des jetons JOUÉE SEULE (sans celle du marqueur, dont le `git diff` arrêtait aussi la
+    // marche) : un `git` en échec l'arrête elle-même. Mutation : `|| true` sur sa lecture → « PUBLIE » → rougit.
+    const gardeJetons = garde.slice(0, garde.indexOf("# ── Les exceptions du scan des secrets"));
+    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + "0".repeat(40) + "\n" + gardeJetons + "\necho PUBLIE\n");
+    const casseSeule = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
+    assert.notEqual(casseSeule.status, 0, "la lecture des jetons en échec arrête la marche à elle seule");
+    assert.ok(!(casseSeule.stdout || "").includes("PUBLIE"));
+    // Un jeton dans un MESSAGE de commit, pas dans le diff : refus. Mutation : `git log` retiré de la lecture → rougit.
+    git("checkout", "-q", "--detach", base);
+    fs.writeFileSync(depot + "/d.txt", "rien\n"); git("add", "d.txt"); git("commit", "-qm", "message qui recopie " + JETON);
+    const tipMessage = git("rev-parse", "HEAD").trim();
+    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tipMessage + "\n" + garde + "\necho PUBLIE\n");
+    const message = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
+    assert.equal(message.status, 1, "un jeton dans un message de commit : refus\n" + (message.stdout || "") + (message.stderr || ""));
+    // Ce que git tient pour BINAIRE (relecture de #875) : un octet nul, un `.gitattributes` `-diff` commité, ou laissé
+    // NON commité dans l'arbre — sans `--text`, le diff ne disait que « Binary files differ », et le jeton partait.
+    assert.equal(jouerGarde("\u0000binaire\n" + JETON + "\n").code, 1, "un fichier avec un octet nul");
+    git("checkout", "-q", "--detach", base);
+    fs.writeFileSync(depot + "/.gitattributes", "b.txt -diff\n"); fs.writeFileSync(depot + "/b.txt", JETON + "\n");
+    git("add", ".gitattributes", "b.txt"); git("commit", "-qm", "un attribut commité");
+    const tipAttribut = git("rev-parse", "HEAD").trim();
+    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tipAttribut + "\n" + garde + "\necho PUBLIE\n");
+    const attribut = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
+    assert.equal(attribut.status, 1, "un `.gitattributes -diff` commité ne cache pas le jeton\n" + (attribut.stdout || "") + (attribut.stderr || ""));
+    git("checkout", "-q", "--detach", base);
+    fs.writeFileSync(depot + "/b.txt", JETON + "\n"); git("add", "b.txt"); git("commit", "-qm", "jeton");
+    const tipArbre = git("rev-parse", "HEAD").trim();
+    fs.writeFileSync(depot + "/.gitattributes", "* -diff\n");
+    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tipArbre + "\n" + garde + "\necho PUBLIE\n");
+    const arbre = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
+    fs.rmSync(depot + "/.gitattributes", { force: true });
+    assert.equal(arbre.status, 1, "un `.gitattributes` laissé NON commité dans l'arbre ne cache pas le jeton\n" + (arbre.stdout || "") + (arbre.stderr || ""));
+    // Le marqueur derrière un attribut `-diff` aussi.
+    git("checkout", "-q", "--detach", base);
+    fs.writeFileSync(depot + "/.gitattributes", "*.js -diff\n"); fs.writeFileSync(depot + "/e.js", "x(); // " + PERMIS + "\n");
+    git("add", ".gitattributes", "e.js"); git("commit", "-qm", "marqueur caché");
+    const tipMarqueur = git("rev-parse", "HEAD").trim();
+    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + tipMarqueur + "\n" + garde + "\necho PUBLIE\n");
+    const marqueur = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
+    assert.equal(marqueur.status, 1, "un marqueur derrière `-diff` est vu\n" + (marqueur.stdout || "") + (marqueur.stderr || ""));
+    // Un refus n'oublie pas derrière lui le fichier qui porte le jeton.
+    assert.ok(!fs.existsSync(temp + "/passio-travail-publie.txt"), "le travail lu est effacé après un refus");
   } finally { fs.rmSync(depot, { recursive: true, force: true }); fs.rmSync(temp, { recursive: true, force: true }); }
 });

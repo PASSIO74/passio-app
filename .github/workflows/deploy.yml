@@ -174,9 +174,16 @@ jobs:
             # Les labels LUS d'abord, cherchés ensuite (2026-11-13, #875) : sous pipefail, `gh … | grep -qx` rend 141
             # dès que `gh` écrit encore APRÈS la ligne « sentinelle » (grep déjà sorti : SIGPIPE) — une réparation de la
             # Sentinelle passait alors pour une PR humaine, hors de son périmètre strict. Illisibles (GitHub muet), on ne
-            # sait pas ce qu'est cette PR : la gouvernance s'arrête au lieu de la traiter comme humaine.
-            if ! labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_num}" --jq '.labels[].name' 2>/dev/null)"; then
-              echo "::error title=Gouvernance::Les labels de l'issue #${issue_num} n'ont pas pu être lus : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job."
+            # sait pas ce qu'est cette PR : la gouvernance s'arrête au lieu de la traiter comme humaine. La cause se dit
+            # (relecture de #875) : une issue SUPPRIMÉE (404, 410) ne reviendra pas — « relance » serait faux. Ce texte
+            # vient de GitHub, et il ne va à aucun agent.
+            if ! labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_num}" --jq '.labels[].name' 2> "${RUNNER_TEMP}/gouvernance-labels.err")"; then
+              cause="$(head -c 300 "${RUNNER_TEMP}/gouvernance-labels.err" | tr '\n' ' ')"
+              if grep -qE 'HTTP 40[4]|HTTP 410|Not Found' <<< "${cause}"; then
+                echo "::error title=Gouvernance::L'issue #${issue_num} n'existe plus (${cause}) : la branche ${head_ref} prétend réparer une issue introuvable. Ferme cette PR, ou rouvre l'issue d'origine ; relancer n'y changera rien."
+              else
+                echo "::error title=Gouvernance::Les labels de l'issue #${issue_num} n'ont pas pu être lus (${cause:-sans message}) : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job."
+              fi
               exit 1
             fi
             if grep -qx 'sentinelle' <<< "${labels}"; then

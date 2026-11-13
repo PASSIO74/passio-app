@@ -76,6 +76,8 @@ for a in "$@"; do if [ "$prev" = "--jq" ]; then jqexpr="$a"; fi; prev="$a"; done
 tout="$*"
 # Échec simulé (contre-revue du 2026-11-03) : une commande qui contient FAUX_ECHEC échoue.
 if [ -n "\${FAUX_ECHEC:-}" ] && [[ "$tout" == *"\${FAUX_ECHEC}"* ]]; then echo "faux gh : échec simulé : $tout" >&2; exit 1; fi
+# FAUX_404 : comme le vrai gh sur une ressource disparue — le message de GitHub sur l'erreur standard, code 1 (#875).
+if [ -n "\${FAUX_404:-}" ] && [[ "$tout" == *"\${FAUX_404}"* ]]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi
 corps=""
 case "$tout" in
   "issue list"*"--label disponibilite"*) corps="$(cat "$FX/issues-dispo.json")" ;;
@@ -652,7 +654,14 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   });
   const muet = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
   assert.notEqual(muet.code, 0, muet.sortie.slice(-600));
-  assert.match(muet.sortie, /::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus/);
+  assert.match(muet.sortie, /::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus \(faux gh : échec simulé/);
+  assert.match(muet.sortie, /Relance le job/);
+  // L'issue SUPPRIMÉE (404) : relancer n'y changera rien — c'est dit, avec la cause (relecture de #875).
+  const disparue = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
+  assert.notEqual(disparue.code, 0, disparue.sortie.slice(-600));
+  assert.match(disparue.sortie, /::error title=Gouvernance::L'issue #700 n'existe plus \(gh: Not Found \(HTTP 404\)/);
+  assert.match(disparue.sortie, /relancer n'y changera rien/);
+  assert.doesNotMatch(disparue.sortie, /Relance le job/);
 });
 
 // ═══ Gouvernance — course de l'index « commit → PR » (2026-11-03) ═════════
