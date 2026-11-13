@@ -1049,6 +1049,42 @@ test("une carte de publication ne nomme la passion QU'UNE FOIS", async ({ page }
   expect(vu.boutons, "aucune pastille cliquable dans une carte de publication").toBe(0);
 });
 
+test("un commentaire ne porte AUCUNE passion sous le pseudo", async ({ page }) => {
+  // Retrait du 2026-11-13, demande de Benjamin : « supprime les noms des
+  // passions dessous les pseudos, ce n'est pas joli et trop chargé ». Trois
+  // rendus : le commentaire et sa réponse dans la feuille, l'aperçu du fil.
+  await poser(page);
+  const vu = await page.evaluate(() => {
+    const auteur = state.seed.users.find((u) => identitePassionsTexte(u));
+    const c = {
+      id: "c_x", authorId: auteur.id, text: "Bravo", createdAt: Date.now(), likes: 0,
+      replies: [{ id: "r_x", authorId: auteur.id, text: "Merci", createdAt: Date.now() }],
+    };
+    window._repliesExpanded = { c_x: true };
+    const feuille = document.createElement("div");
+    feuille.innerHTML = _renderCommentsList([c], "p_x");
+    const carte = document.createElement("div");
+    carte.innerHTML = renderPostHTML({
+      id: "p_x", authorId: "me", passion: "moto", type: "text", text: "Coucou",
+      mood: "all", createdAt: Date.now(), likes: 0, comments: [c], _source: "me",
+    });
+    return {
+      passion: identitePassionsTexte(auteur),
+      feuilleCommentaires: feuille.querySelectorAll(".comment").length,
+      feuilleReponses: feuille.querySelectorAll(".comment-reply").length,
+      feuilleIdentites: feuille.querySelectorAll(".ident-passions").length,
+      carteCommentaires: carte.querySelectorAll(".comment").length,
+      carteIdentites: carte.querySelectorAll(".ident-passions").length,
+    };
+  });
+  expect(vu.passion, "prémisse : l'auteur a une passion à afficher").not.toBe("");
+  expect(vu.feuilleCommentaires, "prémisse : le commentaire est rendu").toBe(1);
+  expect(vu.feuilleReponses, "prémisse : sa réponse aussi").toBe(1);
+  expect(vu.carteCommentaires, "prémisse : l'aperçu du fil le rend").toBe(1);
+  expect(vu.feuilleIdentites, "feuille des commentaires : rien sous le pseudo").toBe(0);
+  expect(vu.carteIdentites, "aperçu du fil : rien sous le pseudo").toBe(0);
+});
+
 // ══════════════════════════════════════════════════════════════════════════
 // ④ LE COMPTEUR « PASSIONS » DE L'EN-TÊTE (2026-09-04)
 // ══════════════════════════════════════════════════════════════════════════
