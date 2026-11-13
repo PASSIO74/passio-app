@@ -1218,7 +1218,7 @@ jobs:
           case "${rc}" in 0|1) ;; *) echo "::error title=Garde illisible::Le diff du travail produit n'a pas pu être lu (code ${rc}). Refus de publier."; exit 1 ;; esac
           if [ "${commits}" -eq 0 ] || [ "${rc}" -eq 0 ]; then
             echo "État laissé par l'agent : $(git status --porcelain | wc -l) fichier(s) non committé(s), ${commits} commit(s) d'avance."
-            echo "::error title=Aucun changement::Claude n'a produit aucun commit : rien à publier. Ce run n'est pas un succès."
+            echo "::error title=Aucun changement::Claude n'a produit aucun changement net depuis son départ (aucun commit, ou des commits qui s'annulent) : rien à publier. Ce run n'est pas un succès."
             exit 1
           fi
 
@@ -1252,7 +1252,8 @@ jobs:
           # Un commentaire en ligne `gitleaks:allow` AJOUTÉ par un commit — même intermédiaire, que gitleaks lit aussi —
           # tairait une trouvaille NEUVE du scan. Leur tri est à Benjamin : refus. Une ligne qui le RETIRE passe. Les
           # lignes ajoutées se lisent hunk par hunk : un contenu qui commence par « ++ » est une ligne, pas un en-tête.
-          # (`--no-renames` : un renommage pur d'un fichier déjà marqué est refusé — côté sûr, délibéré.)
+          # Refusés aussi, côté sûr et délibérément : un renommage pur d'un fichier déjà marqué (`--no-renames`), une
+          # ligne déjà marquée touchée puis rétablie (chaque commit est lu), une ligne qui CITE le marqueur en prose.
           lire_publie --format= -m -p -U0 --no-color --text --no-ext-diff --no-textconv --no-renames > "${publie}"
           rc=0; awk '/^diff --git /{h=1} /^@@/{h=0; next} !h && /^\+/ && index($0, "gitleaks:allow") {t=1} END{exit !t}' "${publie}" || rc=$?
           case "${rc}" in
@@ -1564,14 +1565,20 @@ jobs:
           # extrait du commit de DÉPART (noté avant l'agent), et `node` part d'un environnement VIDE (`env -i`) : ni
           # jeton, ni variable du runner ; seuls le chemin des binaires, le dossier temporaire et le drapeau voulus.
           # ── FICHE DE CONFIANCE:DEBUT ── (jouée telle quelle par tests/unit/reparation-journal.test.mjs ⑭)
-          case "${DEPART:-}" in
-            *[!0-9a-f]*|"") echo "::error title=Départ illisible::Le commit de départ du run n'a pas été noté." ; exit 1 ;;
-          esac
+          # NON BLOQUANTE, comme avant : un départ illisible ou un arbre de confiance qui ne s'extrait pas donnent la
+          # fiche de repli et un avertissement — jamais l'échec de la marche, qui ferait annoncer « Rien n'a été
+          # modifié » alors que la branche est poussée (relecture de la suite de #875). Et jamais le détecteur pris
+          # ailleurs que dans l'arbre de confiance.
           confiance="${RUNNER_TEMP}/arbre-de-confiance"
           rm -rf "${confiance}"
-          git -c core.hooksPath=/dev/null worktree add --detach --quiet "${confiance}" "${DEPART}"
+          printf '%s\n' "### Fiche" "" "(fiche illisible : erreur du workflow, non bloquante)" "" > "${RUNNER_TEMP}/fiche.md"
           git log -1 --format=%b "${BRANCHE}" > "${RUNNER_TEMP}/corps-commit.txt" 2>/dev/null || : > "${RUNNER_TEMP}/corps-commit.txt"
-          if ! env -i PATH="${PATH}" HOME="${HOME}" RUNNER_TEMP="${RUNNER_TEMP}" SENTINELLE="${SENTINELLE}" CONFIANCE="${confiance}" node --input-type=module -e '
+          case "${DEPART:-}" in
+            *[!0-9a-f]*|"") echo "::warning title=Départ illisible::Le commit de départ du run n'a pas été noté : la fiche n'est pas produite." ;;
+            *)
+          if ! git -c core.hooksPath=/dev/null worktree add --detach --quiet "${confiance}" "${DEPART}"; then
+            echo "::warning title=Fiche non produite::L'arbre de confiance n'a pas pu être extrait du commit de départ."
+          elif ! env -i PATH="${PATH}" HOME="${HOME}" RUNNER_TEMP="${RUNNER_TEMP}" SENTINELLE="${SENTINELLE}" CONFIANCE="${confiance}" node --input-type=module -e '
             import fs from "node:fs";
             import { pathToFileURL } from "node:url";
             const { desamorcer } = await import(pathToFileURL(process.env.CONFIANCE + "/scripts/sentinelle-detecter.mjs").href);
@@ -1588,8 +1595,9 @@ jobs:
             fs.writeFileSync(process.env.RUNNER_TEMP + "/fiche.md", sortie.join("\n"));
           '; then
             printf '%s\n' "### Fiche" "" "(fiche illisible : erreur du workflow, non bloquante)" "" > "${RUNNER_TEMP}/fiche.md"
-          fi
-          git worktree remove --force "${confiance}" 2>/dev/null || rm -rf "${confiance}"
+          fi ;;
+          esac
+          git worktree remove --force "${confiance}" 2>/dev/null || { rm -rf "${confiance}"; git worktree prune 2>/dev/null || true; }
           # ── FICHE DE CONFIANCE:FIN
           {
             echo "### ✅ Claude Code a exécuté cette tâche"

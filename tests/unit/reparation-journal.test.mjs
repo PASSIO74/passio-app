@@ -863,12 +863,20 @@ test("⑭ la fiche du résultat ne fait tourner AUCUN code de l'arbre de l'agent
     assert.match(fiche, /### Fiche \(message de commit\)/);
     assert.match(fiche, /Cause: un défaut/);
     assert.ok(!fs.existsSync(temp + "/arbre-de-confiance"), "l'arbre de confiance est retiré après usage");
-    // Un départ non noté : refus, jamais un import depuis l'arbre de l'agent.
-    const sansDepart = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8",
-      env: { ...process.env, RUNNER_TEMP: temp, DEPART: "", BRANCHE: "claude/issue-7-1", SENTINELLE: "oui", GH_TOKEN: "jeton-du-banc" } });
-    assert.notEqual(sansDepart.status, 0);
-    assert.match((sansDepart.stdout || "") + (sansDepart.stderr || ""), /::error title=Départ illisible::/);
-    assert.ok(!fs.existsSync(temp + "/execute-par-l-agent.txt"));
+    // Un départ non noté, ou un départ qui ne s'extrait pas : la fiche de repli et un avertissement, la marche CONTINUE
+    // (sinon « Signaler l'échec » annoncerait « Rien n'a été modifié » alors que la branche est poussée — relecture de la
+    // suite de #875) ; et jamais un import depuis l'arbre de l'agent.
+    for (const [nom, valeur, titre] of [["départ vide", "", "Départ illisible"], ["départ introuvable", "f".repeat(40), "Fiche non produite"]]) {
+      fs.rmSync(temp + "/fiche.md", { force: true });
+      const r2 = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8",
+        env: { ...process.env, RUNNER_TEMP: temp, DEPART: valeur, BRANCHE: "claude/issue-7-1", SENTINELLE: "oui", GH_TOKEN: "jeton-du-banc" } });
+      const sortie = (r2.stdout || "") + (r2.stderr || "");
+      assert.equal(r2.status, 0, nom + " : la marche continue\n" + sortie.slice(-600));
+      assert.match(sortie, new RegExp("::warning title=" + titre + "::"), nom);
+      assert.match(fs.readFileSync(temp + "/fiche.md", "utf8"), /fiche illisible : erreur du workflow, non bloquante/, nom + " : la fiche de repli");
+      assert.ok(!fs.existsSync(temp + "/execute-par-l-agent.txt"), nom + " : le code de l'agent ne s'est PAS exécuté");
+      assert.ok(!fs.existsSync(temp + "/arbre-de-confiance"), nom + " : rien n'est laissé derrière");
+    }
   } finally { fs.rmSync(depot, { recursive: true, force: true }); fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
