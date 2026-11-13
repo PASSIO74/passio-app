@@ -69,6 +69,21 @@ if (process.env.FAUX_CLEANCSS_ECHEC) { console.error("refus du faux clean-css");
 fs.writeFileSync(sortie, fs.readFileSync(entree, "utf8").split("\\n").filter((l) => l.trim() !== "").join("\\n"));
 `;
 
+// Le faux minifieur de PAGE (STAB-10, 2026-11-12) : même interface que la commande du
+// build (`--collapse-whitespace … -o <sortie> <entrée>`, `cli.js` à la racine du paquet).
+// Il retire l'indentation et les lignes vides — `fauxPage`, la même transformation, dit
+// ce qu'il doit rendre — et échoue quand FAUX_HTMLMIN_ECHEC est posée.
+const fauxPage = (s) => s.split("\n").map((l) => l.trimStart()).filter((l) => l !== "").join("\n");
+const FAUX_HTMLMIN = `#!/usr/bin/env node
+const fs = require("fs");
+const args = process.argv.slice(2);
+const i = args.indexOf("-o");
+const sortie = args[i + 1];
+const entree = args[args.length - 1];
+if (process.env.FAUX_HTMLMIN_ECHEC) { console.error("refus du faux html-minifier-terser"); process.exit(1); }
+fs.writeFileSync(sortie, (${fauxPage.toString()})(fs.readFileSync(entree, "utf8")));
+`;
+
 let arbre;
 before(() => {
   arbre = fs.mkdtempSync(path.join(os.tmpdir(), "passio-integrite-"));
@@ -81,6 +96,11 @@ before(() => {
     fs.writeFileSync(path.join(paquet, "package.json"), JSON.stringify({ name: nom, version: "0.0.0-banc" }));
     fs.writeFileSync(path.join(paquet, "bin", bin), source);
   }
+  const paquetPage = path.join(arbre, "node_modules", "html-minifier-terser");
+  fs.mkdirSync(paquetPage, { recursive: true });
+  // Comme le vrai : `cli.js` n'est pas exporté, seul `package.json` l'est.
+  fs.writeFileSync(path.join(paquetPage, "package.json"), JSON.stringify({ name: "html-minifier-terser", version: "0.0.0-banc", exports: { "./package.json": "./package.json" } }));
+  fs.writeFileSync(path.join(paquetPage, "cli.js"), FAUX_HTMLMIN);
 });
 after(() => { if (arbre) fs.rmSync(arbre, { recursive: true, force: true }); });
 
@@ -222,9 +242,31 @@ test("③ la minification du build : chaque empreinte devient celle des octets m
   assert.notEqual(mini.feuilles[0].integrite, brut.feuilles[0].integrite);
   assert.equal(mini.feuilles[0].adresse, brut.feuilles[0].adresse, "même adresse (le ?v= reste l'empreinte de la source)");
   assert.equal(mini.release.cssHash, brut.release.cssHash);
-  // Rien d'autre n'a bougé dans la page que les empreintes.
+  // Rien d'autre n'a bougé dans la page que les empreintes — et la minification de la
+  // page elle-même (étape 6 ter, le faux minifieur : `fauxPage`).
   const sansEmpreintes = (h) => h.replace(/"sha384-[A-Za-z0-9+/]+={0,2}"/g, '"…"');
-  assert.equal(sansEmpreintes(mini.html), sansEmpreintes(brut.html));
+  assert.equal(sansEmpreintes(mini.html), sansEmpreintes(fauxPage(brut.html)));
+});
+
+// STAB-10 (2026-11-12) : la PAGE est minifiée par le build, plus par le seul job de
+// déploiement après tous les tests — la passe « Gates artefact » joue donc ses suites
+// sur les octets qui partent. Mutation : retirer l'étape 6 ter → ⑥ rouge.
+test("⑥ la page est minifiée par le build, ses empreintes restent celles des fichiers servis", () => {
+  const mini = construire("dist-page", { PASSIO_MINIFIER_APP: "1" });
+  assert.notEqual(mini.html, brut.html, "la page servie n'est plus la page brute");
+  assert.equal(mini.html, fauxPage(mini.html), "la page a bien traversé le minifieur");
+  assert.ok(!fs.existsSync(path.join(mini.dossier, "index.html.min")), "aucun reste du minifieur");
+  assert.deepEqual(controler(mini.dossier).problemes, [], "chaque empreinte de la page minifiée est celle de son fichier");
+  // Sans le drapeau (développement, passe des suites sur le dev) : page brute.
+  assert.notEqual(brut.html, fauxPage(brut.html), "prémisse : la page brute porte de l'indentation");
+});
+
+test("⑦ une page que le minifieur refuse part brute, et le build réussit", () => {
+  const r = construire("dist-echec-page", { PASSIO_MINIFIER_APP: "1", FAUX_HTMLMIN_ECHEC: "1" });
+  const sansEmpreintes = (h) => h.replace(/"sha384-[A-Za-z0-9+/]+={0,2}"/g, '"…"');
+  assert.equal(sansEmpreintes(r.html), sansEmpreintes(brut.html), "la page servie est la brute");
+  assert.ok(!fs.existsSync(path.join(r.dossier, "index.html.min")), "aucun reste du minifieur");
+  assert.deepEqual(controler(r.dossier).problemes, []);
 });
 
 test("④ un script que le minifieur refuse part brut, avec l'empreinte du brut", () => {
