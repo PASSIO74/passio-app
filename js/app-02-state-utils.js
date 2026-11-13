@@ -7510,9 +7510,10 @@ function passionTileHTML(o) {
       + '/><span class="profile-tile-emoji-badge">' + escapeHtml(emoji) + '</span>'
       + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>'
     : escapeHtml(emoji) + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>';
-  var badge = (o.count > 0)
-    ? '<span class="profile-tile-count" style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + Number(o.count) + '</span>'
-    : '';
+  // ⚠️ PLUS DE PASTILLE CHIFFRÉE (Benjamin, 2026-11-13 : « supprime les chiffres
+  // sur les onglets de passion »). La bulle n'annonce plus de nombre de
+  // publications, ni au Fil ni au Profil : `o.count` est ignoré, et la classe
+  // `.profile-tile-count` est partie avec ses règles CSS.
   return '<div class="profile-tile ' + (selected ? "active" : "") + '"'
     + ' onclick="' + _passionTileOnclick(o.action, o.arg) + '"'
     + ' title="' + escapeHtml(o.title || label) + '"'
@@ -7522,7 +7523,7 @@ function passionTileHTML(o) {
     + ' role="button" tabindex="0" aria-pressed="' + (selected ? "true" : "false") + '"'
     + ' style="opacity:' + (dimmed ? "0.3" : "1") + ';transform:' + (selected ? "scale(1.07)" : "scale(1)") + ';transition:all 0.2s;">'
     + '<div class="profile-tile-avatar" style="position:relative;' + (o.photoUrl ? "overflow:hidden;" : "") + (o.avatarStyle || "") + '">'
-    + avatarContent + badge + '</div>'
+    + avatarContent + '</div>'
     + '<div class="profile-tile-label" style="font-weight:' + (selected ? "800" : "600") + ';color:' + (selected ? "var(--accent)" : "") + ';">'
     + escapeHtml(label) + '</div>'
     + '</div>';

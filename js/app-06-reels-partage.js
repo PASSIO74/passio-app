@@ -2626,7 +2626,6 @@ function renderProfilePassionRail() {
       label: et.label,
       photoUrl: pr.photoUrl || pr.photo || passionPhotoUrl(meta),
       fallbackUrl: passionPhotoFallback(pr.passion),
-      count: posts.filter(function (x) { return _postDeLaPassion(x, pr); }).length,
       selected: on,
       dimmed: !on && nbSel > 0,
       action: "profilePassion", arg: String(pr.id),
@@ -3851,18 +3850,7 @@ function renderProfileStrip() {
   var hasPassionFilter = _activeFeedPassions.size > 0;
   box.classList.toggle("has-filter", hasPassionFilter || enSuivis);
 
-  // Compter les posts disponibles par passion (tous moods)
-  var allPostsFlat = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
-  var postCountByPassion = {};
-  allPostsFlat.forEach(function(p) { postCountByPassion[p.passion] = (postCountByPassion[p.passion] || 0) + 1; });
-
-  // Combien de publications le rail « Suivis » montrerait — même source que le
-  // moteur (`following` × `authorId`), pour ne pas annoncer un chiffre que le
-  // fil ne tiendrait pas.
-  var _suivis = (state.user && state.user.following) || [];
-  var followingPostCount = _suivis.length
-    ? allPostsFlat.filter(function (p) { return _suivis.indexOf(p.authorId) >= 0; }).length
-    : 0;
+  // Aucun chiffre sur les bulles (2026-11-13) : voir `passionTileHTML` (app-02).
   // ⚠️ Le rendu de la bulle est CENTRALISÉ dans `passionTileHTML` (app-02) : le
   // Profil affiche exactement la même, et deux copies auraient divergé.
   var followingTile = passionTileHTML({
@@ -3870,7 +3858,6 @@ function renderProfileStrip() {
     label: "Suivis",
     photoUrl: imageDemo("photo-1529156069898-49953e39b3ac", "avatar"),
     avatarStyle: "background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));",
-    count: followingPostCount,
     selected: enSuivis,
     dimmed: !enSuivis,
     action: "feedFollowing",
@@ -3895,7 +3882,6 @@ function renderProfileStrip() {
       label: passion.label,
       photoUrl: passionPhotoUrl(passion),
       fallbackUrl: passionPhotoFallback(p.passion),
-      count: postCountByPassion[p.passion] || 0,
       selected: isSelected,
       dimmed: isDimmed,
       action: "feedPassion", arg: p.passion,

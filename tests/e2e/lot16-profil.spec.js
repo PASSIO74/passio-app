@@ -99,7 +99,10 @@ test("⑤ PRO-C11 / C14 / C15 : textes justes, réseaux remplis seulement", asyn
   expect(r.apresAjout).toBe(8);
 });
 
-test("⑥ PRO-C18 / C21 : un fichier non image le dit ; la pastille de compte est dans la vignette", async ({ page }) => {
+// 2026-11-13 (Benjamin : « supprime les chiffres sur les onglets de passion ») :
+// la pastille de compte de PRO-C21 est RETIRÉE — plus aucune bulle n'en porte,
+// même quand l'appelant passe encore un `count`.
+test("⑥ PRO-C18 / C21 : un fichier non image le dit ; aucune bulle ne porte de chiffre", async ({ page }) => {
   await bootOnboarded(page);
   const r = await page.evaluate(async () => {
     const toasts = [];
@@ -108,16 +111,20 @@ test("⑥ PRO-C18 / C21 : un fichier non image le dit ; la pastille de compte es
     let refus = null;
     try { await _readAndCrop(new File(["x"], "clip.mp4", { type: "video/mp4" }), { aspect: 1 }); } catch (e) { refus = e.message; }
     window.toast = t0;
-    const span = document.createElement("span");
-    span.className = "profile-tile-count";
-    span.style.cssText = "position:absolute;top:-5px;right:-5px;";
-    document.body.appendChild(span);
-    const cs = getComputedStyle(span);
-    const pos = { top: cs.top, right: cs.right };
-    span.remove();
-    return { toasts, refus, pos };
+    const html = passionTileHTML({ emoji: "🎸", label: "Guitare", count: 12 });
+    const scene = document.createElement("div");
+    scene.innerHTML = html;
+    const chiffre = scene.querySelector(".profile-tile-count");
+    const texte = scene.textContent;
+    // Les deux rails réels : Fil (#profileStrip) et Profil (#v9ProfilePassions).
+    renderProfileStrip();
+    if (typeof renderProfilePassionRail === "function") renderProfilePassionRail();
+    const rails = document.querySelectorAll("#profileStrip .profile-tile-count, #v9ProfilePassions .profile-tile-count").length;
+    return { toasts, refus, chiffre: !!chiffre, texte, rails };
   });
   expect(r.refus).toBe("pas une image");
   expect(r.toasts.join(" ")).toContain("Ce fichier n'est pas une image");
-  expect(r.pos).toEqual({ top: "1px", right: "1px" });
+  expect(r.chiffre, "la bulle ne rend plus de pastille").toBe(false);
+  expect(r.texte).not.toMatch(/12/);
+  expect(r.rails, "ni le rail du Fil ni celui du Profil").toBe(0);
 });
