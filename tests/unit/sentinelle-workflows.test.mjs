@@ -145,12 +145,15 @@ function fixtures(obj) {
 }
 
 /** Les commandes du runner dans ce qu'une étape écrit, d'après la lecture de son code (actions/runner,
- *  `ActionCommand` : `TryParseV2` puis `TryParse`) — rien n'est exécuté sur un vrai runner. Sortie standard ET
- *  erreur standard (le `flux` de `jouer`, même quand l'étape réussit) ; chaque ligne coupée sur \r\n, \r ou \n (sa
- *  lecture ligne à ligne) ; les blancs de tête retirés au sens de .NET, U+0085 compris, que `trimStart` de JS garde
- *  (U+FEFF, que .NET garde, est retiré aussi : au pire un faux rouge) ; une ligne qui commence alors par « :: », ou
- *  qui contient OÙ QUE CE SOIT la forme historique « ##[ ». Plus large que le runner : jamais un faux vert. */
-const annotations = (r) => r.flux.split(/\r\n|\r|\n/).map((l) => l.replace(/^[\s\u0085]+/, "")).filter((l) => l.startsWith("::") || l.includes("##["));
+ *  `ActionCommand` : `TryParseV2` puis `TryParse` ; le lecteur de flux de .NET) — rien n'est exécuté sur un vrai
+ *  runner. Sortie standard ET erreur standard (le `flux` de `jouer`, même quand l'étape réussit), une marque d'ordre
+ *  des octets retirée en tête de chaque flux seulement ; chaque ligne coupée sur \r\n, \r ou \n ; les blancs de tête
+ *  retirés EXACTEMENT comme `TrimStart` de .NET (`char.IsWhiteSpace` : U+0085 oui, U+FEFF non — l'inverse de
+ *  `trimStart` de JS) ; une ligne qui commence alors par « :: », ou qui contient OÙ QUE CE SOIT « ##[ ».
+ *  Écarts connus avec le runner : une ligne « :: » ou « ##[ » sans commande valide, et l'effet de
+ *  `::stop-commands::`, sont retenus ici et pas par lui — au pire un faux rouge. */
+const BLANCS_DOTNET = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/;
+const annotations = (r) => r.flux.split(/\r\n|\r|\n/).map((l) => l.replace(BLANCS_DOTNET, "")).filter((l) => l.startsWith("::") || l.includes("##["));
 
 /** Exécute un bloc `run:` réel dans le bac ; rend code, sortie, journal, outputs, résumé. */
 function jouer(script, env = {}) {
@@ -179,7 +182,9 @@ function jouer(script, env = {}) {
   const stdout = String(r.stdout || ""), stderr = String(r.stderr || "");
   if (r.status === 0) sortie = stdout; else { code = r.status; sortie = stdout + stderr; }
   const log = fs.readFileSync(LOG, "utf8");
-  return { code, sortie, flux: stdout + "\n" + stderr, log, lignes: log.split("\n").filter(Boolean), out: fs.readFileSync(out, "utf8"), summary: fs.readFileSync(summ, "utf8") };
+  // Le lecteur de flux du runner retire une marque d'ordre des octets en TÊTE de flux, et nulle part ailleurs.
+  const sansMarque = (s) => s.replace(/^\uFEFF/, "");
+  return { code, sortie, flux: sansMarque(stdout) + "\n" + sansMarque(stderr), log, lignes: log.split("\n").filter(Boolean), out: fs.readFileSync(out, "utf8"), summary: fs.readFileSync(summ, "utf8") };
 }
 
 const iso = (minAgo) => new Date(Date.now() - minAgo * 60_000).toISOString();
