@@ -6633,9 +6633,12 @@ function renderConvFpThread(c, displayName) {
     // safeUrlAttr : ces URLs viennent du JSON décodé d'un message ENVOYÉ PAR
     // L'AUTRE compte → sans neutralisation un correspondant pouvait sortir de
     // l'attribut src (XSS) ou pointer un href javascript:.
+    // LOT-33 (audit UX/UI du 2026-11-10, MSG-C75) : photos et GIF sans texte
+    // alternatif. Le nom vient d'un autre compte : escapeHtml.
+    var _altAuteur = escapeHtml(isMe ? "toi" : (m.fromName || c.userName || "l'autre personne"));
     if (m.gif) {
       isMedia = true; isVisuel = true;
-      content = '<img src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
+      content = '<img alt="GIF envoyé par ' + _altAuteur + '" src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
       isMedia = true; isVisuel = true;
       // ⚠️ `playsinline` est OBLIGATOIRE : sans lui, iOS confisque la lecture et
@@ -6652,7 +6655,7 @@ function renderConvFpThread(c, displayName) {
       content = '<video ' + attrMediaSrc(m.video) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls playsinline preload="none"></video>';
     } else if (m.img) {
       isMedia = true; isVisuel = true;
-      content = '<img loading="lazy" decoding="async" ' + attrMediaSrc(m.img) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+      content = '<img alt="Photo envoyée par ' + _altAuteur + '" loading="lazy" decoding="async" ' + attrMediaSrc(m.img) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
     } else if (m.fileUrl) {
       isMedia = true;
       var ftype = (m.fileType || 'file').toLowerCase();
@@ -6683,10 +6686,10 @@ function renderConvFpThread(c, displayName) {
       var waveBg = isMe ? 'rgba(255,255,255,0.2)' : 'rgba(139,92,246,0.12)';
       var waveFill = isMe ? 'rgba(255,255,255,0.6)' : 'var(--accent)';
       content = '<div style="display:flex;align-items:center;gap:8px;min-width:180px;max-width:240px;">' +
-        '<button style="width:34px;height:34px;border-radius:50%;background:' + (isMe?'rgba(255,255,255,0.2)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onclick="_playVoiceById(\'' + escapeJsArg(aid) + '\')" id="pb_' + aid + '">▶</button>' +
+        '<button style="width:34px;height:34px;border-radius:50%;background:' + (isMe?'rgba(255,255,255,0.2)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" class="voice-play-btn" aria-label="Lire le message vocal" onclick="_playVoiceById(\'' + escapeJsArg(aid) + '\')" id="pb_' + escapeHtml(aid) + '">▶</button>' +
         '<div style="flex:1;height:28px;background:' + waveBg + ';border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\'' + escapeJsArg(aid) + '\')"><div id="wf_' + aid + '" style="height:100%;background:' + waveFill + ';border-radius:8px;width:0%;transition:width 0.15s;"></div></div>' +
         '<span id="dur_' + aid + '" style="font-size:11px;opacity:0.75;flex-shrink:0;min-width:30px;text-align:right;">' + vDurStr + '</span>' +
-        '<button class="voice-speed-btn" onclick="_cycleVoiceSpeed()" style="flex-shrink:0;background:' + (isMe?'rgba(255,255,255,0.18)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';font-size:10px;font-weight:800;border-radius:8px;padding:2px 6px;cursor:pointer;">' + (((window._voiceSpeed||1) % 1 === 0) ? (window._voiceSpeed||1) : String(window._voiceSpeed).replace(".",",")) + '×</button>' +
+        '<button class="voice-speed-btn" aria-label="Vitesse de lecture : ' + _libelleVitesseVocal(window._voiceSpeed || 1) + '" onclick="_cycleVoiceSpeed()" style="flex-shrink:0;background:' + (isMe?'rgba(255,255,255,0.18)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';font-size:10px;font-weight:800;border-radius:8px;padding:2px 6px;cursor:pointer;">' + (((window._voiceSpeed||1) % 1 === 0) ? (window._voiceSpeed||1) : String(window._voiceSpeed).replace(".",",")) + '×</button>' +
         '</div>';
     } else if (m.voiceData && m.isFile) {
       // LOT-20 (MSG-C51) : ma copie LOCALE d'un fichier audio envoyé était une
@@ -7858,7 +7861,7 @@ function _playVoiceById(aid) {
   audio.playbackRate = window._voiceSpeed || 1; // vitesse de lecture choisie
   if (!audio.paused) {
     audio.pause();
-    if (pb) pb.textContent = '▶';
+    _etatBoutonVocal(pb, false);
     return;
   }
   // LOT-27 (MSG-C80) : un seul vocal à la fois — lancer le second superposait
@@ -7867,16 +7870,16 @@ function _playVoiceById(aid) {
     if (window._vocalEnCours && window._vocalEnCours.audio !== audio) {
       window._vocalEnCours.audio.pause();
       var pbAncien = document.getElementById("pb_" + window._vocalEnCours.aid);
-      if (pbAncien) pbAncien.textContent = "▶";
+      _etatBoutonVocal(pbAncien, false);
     }
   } catch (e) {}
   window._vocalEnCours = { audio: audio, aid: aid };
   audio.play().then(function() {
-    if (pb) pb.textContent = '⏸';
+    _etatBoutonVocal(pb, true);
     var iv = setInterval(function() {
       if (audio.paused || audio.ended) {
         clearInterval(iv);
-        if (pb) pb.textContent = '▶';
+        _etatBoutonVocal(pb, false);
         if (wf) wf.style.width = '0%';
         return;
       }
@@ -7887,7 +7890,7 @@ function _playVoiceById(aid) {
       }
     }, 150);
   }).catch(function (err) {
-    if (pb) pb.textContent = '▶';
+    _etatBoutonVocal(pb, false);
     // ⚠️ Un `catch` MUET ici laissait l'utilisateur taper sur ▶ sans que rien
     // n'arrive et sans la moindre explication. Cas réel sur iPhone : Safari ne
     // décode PAS le conteneur WebM, dans lequel étaient enregistrés tous les
@@ -7913,7 +7916,18 @@ function _cycleVoiceSpeed(btnId) {
   // Applique à tous les vocaux en cours de lecture.
   Object.keys(window).forEach(function(k){ if (k.indexOf("_aud_") === 0 && window[k] && typeof window[k].playbackRate !== "undefined") { try { window[k].playbackRate = next; } catch(e) {} } });
   // Met à jour tous les boutons de vitesse affichés.
-  document.querySelectorAll(".voice-speed-btn").forEach(function(b){ b.textContent = (next % 1 === 0 ? next : next.toString().replace(".", ",")) + "×"; });
+  document.querySelectorAll(".voice-speed-btn").forEach(function(b){ b.textContent = _libelleVitesseVocal(next); b.setAttribute("aria-label", "Vitesse de lecture : " + _libelleVitesseVocal(next)); });
+}
+
+// LOT-33 (audit UX/UI du 2026-11-10, MSG-C75) : le bouton de lecture s'appelait
+// « ▶ » pour un lecteur d'écran, et ne disait pas qu'il était en lecture.
+function _etatBoutonVocal(pb, enLecture) {
+  if (!pb) return;
+  pb.textContent = enLecture ? "⏸" : "▶";
+  pb.setAttribute("aria-label", enLecture ? "Mettre le message vocal en pause" : "Lire le message vocal");
+}
+function _libelleVitesseVocal(v) {
+  return (v % 1 === 0 ? String(v) : String(v).replace(".", ",")) + "×";
 }
 
 function _loadMoreMsgs(convId) {

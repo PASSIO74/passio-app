@@ -13202,3 +13202,18 @@ body.passio-hors-ligne #passioBandeauDistant {
 }
 #conv-fullpage .conv-action-btn::after { content: none; }
 #conv-fullpage .conv-actions { gap: 0; }
+
+/* LOT-33 (audit UX/UI du 2026-11-10, MSG-C75) : lecture d'un vocal (34 px) et
+   vitesse (24 × 18) gardent leur taille visible ; leur zone tactile fait 44 px. */
+.voice-play-btn,
+.voice-speed-btn { position: relative; }
+.voice-play-btn::after,
+.voice-speed-btn::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
