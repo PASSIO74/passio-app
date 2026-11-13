@@ -1236,10 +1236,11 @@ jobs:
             exit 1
           fi
 
-          # ── Les exceptions du scan des secrets ne s'écrivent pas par l'agent (relecture de #866) ──
+          # ── Une exception du scan des secrets ajoutée au diff final est refusée (relecture de #866) ──
           # `.gitleaksignore` et `.gitleaks.toml` sont des chemins interdits ; un commentaire en ligne `gitleaks:allow`
           # AJOUTÉ au diff tairait une trouvaille NEUVE du scan. Leur tri est à Benjamin : refus. Une ligne qui le
-          # RETIRE passe. Les lignes ajoutées se lisent hunk par hunk : un contenu qui commence par « ++ » est une
+          # RETIRE passe. Seul le diff FINAL est lu : un commit intermédiaire ne l'est pas encore (P1-14 bis, PR
+          # suivante), comme pour la garde des jetons. Les lignes ajoutées se lisent hunk par hunk : un contenu qui commence par « ++ » est une
           # ligne, pas un en-tête de fichier.
           # Même lecture en texte : un `.gitattributes` `-diff` rendait le marqueur invisible ici AUSSI. (`--no-renames` :
           # un renommage pur d'un fichier déjà marqué est refusé — côté sûr, délibéré.)

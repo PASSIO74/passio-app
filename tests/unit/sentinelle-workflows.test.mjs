@@ -144,6 +144,9 @@ function fixtures(obj) {
   for (const [k, v] of Object.entries(obj)) fs.writeFileSync(path.join(FX, k + ".json"), JSON.stringify(v));
 }
 
+/** Les commandes du runner d'une sortie (« ::error … », « ::warning … ») : une par ligne, sans retour chariot. */
+const annotations = (sortie) => sortie.split(/\r?\n/).filter((l) => l.startsWith("::"));
+
 /** Exécute un bloc `run:` réel dans le bac ; rend code, sortie, journal, outputs, résumé. */
 function jouer(script, env = {}) {
   fs.writeFileSync(LOG, "");
@@ -668,9 +671,11 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   ]) {
     const disparue = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", ...env });
     assert.notEqual(disparue.code, 0, nom + " : " + disparue.sortie.slice(-600));
-    assert.ok(disparue.sortie.includes("::error title=Gouvernance::L'issue #700 n'existe plus (" + cause + ") :"), nom + " : " + disparue.sortie.slice(-600));
-    // Ce remède-là, et lui seul : la ligne s'arrête sur lui (un second, jamais éprouvé, avait été proposé).
-    assert.match(disparue.sortie, /relancer n'y changera rien\. Republie le travail depuis une branche qui ne suit pas claude\/issue-<n>-<run>\.$/m, nom);
+    // Ce remède-là, et lui seul (un second, jamais éprouvé, avait été proposé) : l'annotation est comparée EN ENTIER,
+    // et c'est la seule de la sortie — rien avant elle, rien après, rien dans une autre annotation.
+    assert.deepEqual(annotations(disparue.sortie), [
+      "::error title=Gouvernance::L'issue #700 est introuvable (" + cause + ") : la branche claude/issue-700-1 prétend réparer une issue introuvable, relancer n'y changera rien. Republie le travail depuis une branche qui ne suit pas claude/issue-<n>-<run>.",
+    ], nom);
     assert.doesNotMatch(disparue.sortie, /Relance le job/, nom);
   }
   // Une limite de débit (403) n'est PAS une issue disparue : « Relance le job ».
@@ -698,7 +703,11 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   fixtures({ "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }], "commit-pulls": [{ number: 77 }] });
   const apres = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
   assert.equal(apres.code, 0, apres.sortie.slice(-600));
-  assert.ok(apres.sortie.includes("::warning title=Gouvernance::L'issue #700 n'existe plus (gh: Not Found (HTTP 404)) ; la PR #77 est déjà fusionnée : ce déploiement continue en la traitant comme humaine. Non revérifié ici : si c'était une réparation de la Sentinelle, qu'elle restait dans son périmètre."), apres.sortie.slice(-600));
+  // L'avertissement EN ENTIER, seul de sa sortie : il dit ce que cette garde fait (elle ne bloque pas) et ce qu'elle
+  // ne revérifie pas — jamais « a passé la gouvernance », qu'elle ne sait pas.
+  assert.deepEqual(annotations(apres.sortie), [
+    "::warning title=Gouvernance::L'issue #700 est introuvable (gh: Not Found (HTTP 404)) ; la PR #77 est déjà fusionnée : elle est jugée ici comme humaine, et cette garde ne bloque pas son déploiement. Non revérifié ici : si c'était une réparation de la Sentinelle, qu'elle restait dans son périmètre.",
+  ], apres.sortie.slice(-600));
   assert.ok(!apres.log.includes("issue comment 700"), "rien n'est écrit sur une issue qui n'existe plus");
   // … mais une PANNE (pas une disparition) sur un push reste un refus à relancer.
   const panne = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
