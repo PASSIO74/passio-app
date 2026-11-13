@@ -845,7 +845,8 @@ test("claude-code.yml : le snippet réel d'extraction de la fiche rend le bloc C
   assert.ok(m, "le snippet Node d'extraction existe dans l'étape de succès");
   const rejouer = (corps, sentinelle) => {
     fs.writeFileSync(BAC + "/corps-commit.txt", corps);
-    execFileSync("node", ["--input-type=module", "-e", m[1]], { cwd: RACINE, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: BAC, SENTINELLE: sentinelle } });
+    // CONFIANCE : l'arbre d'où le détecteur est importé (le commit de départ, en production ; ici, ce dépôt) — #875.
+    execFileSync("node", ["--input-type=module", "-e", m[1]], { cwd: RACINE, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: BAC, SENTINELLE: sentinelle, CONFIANCE: RACINE } });
     return fs.readFileSync(BAC + "/fiche.md", "utf8");
   };
   const avec = rejouer([
