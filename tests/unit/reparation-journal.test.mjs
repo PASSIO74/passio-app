@@ -611,11 +611,11 @@ test("⑫ les exceptions du scan des secrets (`.gitleaksignore`, `.gitleaks.toml
   const m = /\n\s*case "\$\{fichier\}" in\n(?:\s*#[^\n]*\n)*\s*([^\n]+)\)\n/.exec(etape.run);
   assert.ok(m, "le motif des chemins interdits se lit");
   const script = 'for fichier in "$@"; do case "${fichier}" in ' + m[1] + ') echo "INTERDIT ${fichier}" ;; *) echo "permis ${fichier}" ;; esac; done';
-  const fichiers = [".gitleaksignore", ".gitleaks.toml", ".gitleaks.json", ".gitleaks.toml/x", ".gitattributes", "js/.gitattributes", ".github/workflows/securite.yml", "scripts/veille-production.mjs", "js/app-01.js", "docs/journal/x.md"];
+  const fichiers = [".gitleaksignore", ".gitleaks.toml", ".gitleaks.json", ".gitleaks.yaml", ".gitleaks.toml/x", ".gitattributes", "js/.gitattributes", ".github/workflows/securite.yml", "scripts/veille-production.mjs", "js/app-01.js", "docs/journal/x.md"];
   const r = spawnSync("bash", ["--noprofile", "--norc", "-c", script, "garde", ...fichiers], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.stdout.trim().split("\n").map((x) => x.trim()), [
-    "INTERDIT .gitleaksignore", "INTERDIT .gitleaks.toml", "INTERDIT .gitleaks.json", "INTERDIT .gitleaks.toml/x", "INTERDIT .gitattributes", "INTERDIT js/.gitattributes", "INTERDIT .github/workflows/securite.yml", "INTERDIT scripts/veille-production.mjs",
+    "INTERDIT .gitleaksignore", "INTERDIT .gitleaks.toml", "INTERDIT .gitleaks.json", "INTERDIT .gitleaks.yaml", "INTERDIT .gitleaks.toml/x", "INTERDIT .gitattributes", "INTERDIT js/.gitattributes", "INTERDIT .github/workflows/securite.yml", "INTERDIT scripts/veille-production.mjs",
     "permis js/app-01.js", "permis docs/journal/x.md",
   ]);
 });
@@ -708,8 +708,10 @@ test("⑬ ce qui part dans un dépôt public : CHAQUE commit de l'agent est lu �
     const bouge = jouer({ tip: agent, depart: ancien, socle: mainNeuf });
     assert.equal(bouge.code, 0, "main a bougé pendant le run : aucun refus à tort\n" + bouge.sortie.slice(-600));
     assert.match(bouge.sortie, /Fichiers produits \(1 commit\(s\)\) :\s*a\.txt/);
-    // Aucun commit, ou un aller-retour sans effet : rien à publier.
-    assert.match(jouer({ tip: base }).sortie, /::error title=Aucun changement::/);
+    // MAIN A BOUGÉ, et les commits de l'agent s'annulent : le diff net se mesure depuis le DÉPART, pas depuis la base relue.
+    refus(jouer({ tip: commits(ancien, [{ fichiers: { "t2.txt": "x\n" } }, { fichiers: { "t2.txt": null } }]), depart: ancien, socle: mainNeuf }), "Aucun changement", "main a bougé et les commits de l'agent s'annulent");
+    // Aucun commit, ou un aller-retour sans effet : rien à publier — un REFUS (code 1, rien de publié), pas un message.
+    refus(jouer({ tip: base }), "Aucun changement", "aucun commit");
     // Une PANNE d'outil (code 2) n'est pas « rien trouvé » : refus, pour grep comme pour awk.
     for (const [outil, titre] of [["grep", "Garde illisible::La recherche des jetons"], ["awk", "Garde illisible::La recherche des exceptions"]]) {
       fs.writeFileSync(faux + "/" + outil, "#!/usr/bin/env bash\nexit 2\n"); fs.chmodSync(faux + "/" + outil, 0o755);
@@ -723,7 +725,74 @@ test("⑬ ce qui part dans un dépôt public : CHAQUE commit de l'agent est lu �
     // Un `.GitAttributes` (casse changée) compte comme un `.gitattributes` : les chemins interdits sont lus sans casse.
     refus(jouer({ tip: commits(base, [{ fichiers: { ".GitAttributes": "* -diff\n", "s.txt": "x\n" } }]) }), I, "`.GitAttributes`");
     // Des commits qui s'annulent : rien à publier, même avec des commits d'avance.
-    assert.match(jouer({ tip: commits(base, [{ fichiers: { "t.txt": "x\n" } }, { fichiers: { "t.txt": null } }]) }).sortie, /::error title=Aucun changement::/);
+    refus(jouer({ tip: commits(base, [{ fichiers: { "t.txt": "x\n" } }, { fichiers: { "t.txt": null } }]) }), "Aucun changement", "commits qui s'annulent");
+    // Relecture de la suite de #875 — des FUSIONS. Sans `-m`, `git log` n'imprime ni patch ni nom pour une fusion : une
+    // fusion qui ajoute seule un chemin interdit passait la liste des noms (régression sur #875, qui lisait le diff des
+    // extrémités). Deux fusions qui ajoutent puis retirent : ni les commits ordinaires ni les extrémités ne le montrent,
+    // seul `-m` le lit — pour chacune des trois gardes.
+    const fusion = (a, b, fichiers) => {
+      git("checkout", "-q", "--detach", a);
+      git("merge", "-q", "--no-ff", "--no-commit", b);
+      for (const [nom, contenu] of Object.entries(fichiers)) {
+        if (contenu === null) git("rm", "-q", nom);
+        else { fs.mkdirSync(path.dirname(depot + "/" + nom), { recursive: true }); fs.writeFileSync(depot + "/" + nom, contenu); git("add", "--", nom); }
+      }
+      git("commit", "-q", "-m", "fusion");
+      return git("rev-parse", "HEAD").trim();
+    };
+    const brancheA = commits(base, [{ fichiers: { "x.txt": "x\n" } }]);
+    const brancheB = commits(base, [{ fichiers: { "y.txt": "y\n" } }]);
+    refus(jouer({ tip: fusion(brancheA, brancheB, { "scripts/piege.js": "piège\n" }) }), I, "une fusion ajoute seule un chemin interdit");
+    for (const [nom, contenu, titre] of [["scripts/piege.js", "piège\n", I], ["z.txt", JETON + "\n", J], ["z.js", "z(); // " + PERMIS + "\n", E]]) {
+      const m1 = fusion(brancheA, brancheB, { [nom]: contenu });
+      const brancheC = commits(base, [{ fichiers: { "v.txt": "v\n" } }]);
+      refus(jouer({ tip: fusion(m1, brancheC, { [nom]: null }) }), titre, "deux fusions ajoutent puis retirent " + nom);
+    }
+    // Le COMMITTER est lu comme l'auteur (`--format=raw`).
+    git("checkout", "-q", "--detach", base); fs.writeFileSync(depot + "/cm.txt", "x\n"); git("add", "--", "cm.txt");
+    execFileSync("git", ["-C", depot, "commit", "-q", "-m", "travail"], { env: { ...process.env, GIT_COMMITTER_NAME: JETON } });
+    refus(jouer({ tip: git("rev-parse", "HEAD").trim() }), J, "jeton dans le committer");
+    // Un RENOMMAGE qui sort un fichier d'un chemin interdit touche ce chemin (`--no-renames`), et un nom NON ASCII se lit
+    // tel quel (`-z`), pas cité entre guillemets.
+    const avecScript = commits(base, [{ fichiers: { "scripts/audit.js": "v\n" } }]);
+    refus(jouer({ tip: commits(avecScript, [{ fichiers: { "scripts/audit.js": null, "js/audit.js": "v\n" } }]), depart: avecScript, socle: avecScript }), I, "renommage d'un chemin interdit");
+    refus(jouer({ tip: commits(base, [{ fichiers: { "scripts/évité.js": "x\n" } }]) }), I, "chemin interdit non ASCII");
+    // Des NOMS que le poste ne sait pas écrire (caractère de contrôle, « : ») : posés par la plomberie de git, sans
+    // passer par l'arbre de travail.
+    const nomBrut = (depuis, nom, contenu) => {
+      const g = (args, input) => execFileSync("git", ["-C", depot, ...args], { encoding: "utf8", input });
+      const blob = g(["hash-object", "-w", "--stdin"], contenu).trim();
+      const arbre = g(["mktree", "-z"], g(["ls-tree", "-z", depuis + "^{tree}"]) + "100644 blob " + blob + "\t" + nom + "\0").trim();
+      return g(["commit-tree", arbre, "-p", depuis, "-m", "nom posé par la plomberie"]).trim();
+    };
+    // Un jeton COUPÉ par un caractère de contrôle dans un NOM : git le cite échappé dans le patch ; les noms sont aussi
+    // cherchés sans leurs caractères de contrôle.
+    for (const [sep, quoi] of [["\r", "retour chariot"], ["\n", "saut de ligne"], ["\t", "tabulation"]]) {
+      refus(jouer({ tip: nomBrut(base, JETON.slice(0, 14) + sep + JETON.slice(14) + ".md", "x\n") }), J, "jeton coupé par un " + quoi + " dans un nom");
+    }
+    // Les noms s'affichent INERTES : un nom qui commence par « :: » ou qui contient « ##[ » ne forge aucune commande du
+    // runner — ils s'impriment entre `::stop-commands::<clé>` et `::<clé>::`, clé tirée au hasard.
+    const forge = jouer({ tip: nomBrut(commits(base, [{ fichiers: { "docs/x##[warning]forgé.md": "x\n" } }]), "::warning title=forgé::par un nom", "x\n") });
+    assert.equal(forge.code, 0, forge.sortie.slice(-600));
+    const lignes = forge.sortie.split(/\r?\n/);
+    const arret = lignes.findIndex((l) => /^::stop-commands::[0-9a-f]{32}$/.test(l));
+    assert.ok(arret >= 0, "la lecture des commandes est suspendue avant les noms\n" + forge.sortie.slice(-600));
+    const cle = lignes[arret].slice("::stop-commands::".length);
+    const reprise = lignes.indexOf("::" + cle + "::");
+    assert.ok(reprise > arret, "elle reprend après les noms, avec la même clé");
+    for (const nom of ["docs/x##[warning]forgé.md", "::warning title=forgé::par un nom"]) {
+      const i = lignes.indexOf(nom);
+      assert.ok(i > arret && i < reprise, nom + " s'imprime entre l'arrêt et la reprise\n" + forge.sortie.slice(-600));
+    }
+    // Un `git` EN ÉCHEC pendant la lecture des jetons arrête la marche (`set -e`) : rien n'est publié. (L'exercice de
+    // #875 « la lecture des jetons jouée seule » ne mordait pas : il coupait la garde sur un titre absent du workflow.)
+    const vraiGit = execFileSync("bash", ["--noprofile", "--norc", "-c", "command -v git"], { encoding: "utf8" }).trim();
+    fs.writeFileSync(faux + "/git", "#!/usr/bin/env bash\nfor a in \"$@\"; do [ \"$a\" = \"--format=raw\" ] && exit 128; done\nexec \"" + vraiGit + "\" \"$@\"\n");
+    fs.chmodSync(faux + "/git", 0o755);
+    const enPanne = jouer({ tip: commits(base, [{ fichiers: { "gp.txt": "propre\n" } }]), chemin: faux });
+    fs.rmSync(faux + "/git");
+    assert.notEqual(enPanne.code, 0, "git en échec : la marche s'arrête\n" + enPanne.sortie.slice(-400));
+    assert.ok(!enPanne.sortie.includes("PUBLIE"), "git en échec : rien n'est publié");
     // LE CLONE SUPERFICIEL du job (fetch-depth 1), et main qui avance pendant le run : sans la borne DEPART, le commit de
     // départ entrerait dans la lecture comme une RACINE — tout l'arbre en ajouts, et un marqueur déjà présent ailleurs
     // (comme js/emoji-misc.js) ferait refuser un travail propre (relecture de #875, F-04).
@@ -801,4 +870,23 @@ test("⑭ la fiche du résultat ne fait tourner AUCUN code de l'arbre de l'agent
     assert.match((sansDepart.stdout || "") + (sansDepart.stderr || ""), /::error title=Départ illisible::/);
     assert.ok(!fs.existsSync(temp + "/execute-par-l-agent.txt"));
   } finally { fs.rmSync(depot, { recursive: true, force: true }); fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("⑮ le commit de départ est noté AVANT l'agent, rien ne déplace HEAD entre les deux, et la publication comme la fiche lisent CE sha", () => {
+  // Relecture de la suite de #875 : ⑬ et ⑭ reçoivent DEPART à la main ; c'est ici que se vérifie sa place. Notée après
+  // l'agent, la borne partirait d'un commit de l'agent, et ses premiers commits sortiraient de la lecture.
+  const pas = WF.jobs.claude.steps;
+  const iDepart = pas.findIndex((x) => x.id === "depart");
+  const iAgent = pas.findIndex((x) => x.id === "claude");
+  assert.ok(iDepart >= 0 && iAgent > iDepart, "la marche « Noter le commit de départ » précède l'agent");
+  assert.match(pas[iDepart].run, /sha="\$\(git rev-parse HEAD\)"/, "elle note HEAD, et rien d'autre");
+  for (const p of pas.slice(iDepart + 1, iAgent)) {
+    assert.ok(!/actions\/checkout/.test(p.uses || ""), "aucun second checkout avant l'agent : " + p.name);
+    assert.ok(!/\bgit\s+(checkout|switch|reset|rebase|merge|pull|commit|cherry-pick|am)\b/.test(p.run || ""), "aucune marche ne déplace HEAD avant l'agent : " + p.name);
+  }
+  for (const nom of ["Publier la branche produite par Claude", "Signaler le résultat sur l'issue"]) {
+    const p = pas.find((x) => x.name === nom);
+    assert.ok(p, nom);
+    assert.equal(p.env && p.env.DEPART, "${{ steps.depart.outputs.sha }}", nom + " lit le départ noté");
+  }
 });

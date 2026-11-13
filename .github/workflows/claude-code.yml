@@ -1232,6 +1232,9 @@ jobs:
           publie="${RUNNER_TEMP}/passio-travail-publie.txt"
           noms="${RUNNER_TEMP}/passio-noms-publies.txt"
           lire_publie --format=raw -m -p --no-color --text --no-ext-diff --no-textconv > "${publie}.brut"
+          # Les NOMS aussi, caractères de contrôle retirés : dans le patch, git cite un nom qui en porte (\r, \n, \t…)
+          # sous une forme échappée, où un jeton coupé par l'un d'eux ne se lirait plus (relecture de la suite de #875).
+          lire_publie --format= -m --name-only --no-renames -z | tr -d '\001-\037' | tr '\0' '\n' >> "${publie}.brut"
           tr -d '\r' < "${publie}.brut" > "${publie}"
           rm -f "${publie}.brut"
           rc=0; grep -qE 'gh[oprsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|x-access-token:[A-Za-z0-9_-]{10,}|sb_secret_[A-Za-z0-9_-]{20,}' "${publie}" || rc=$?
@@ -1269,9 +1272,11 @@ jobs:
           # liste d'outils : écrire un script dans package.json puis
           # l'exécuter. Les deux contrôles se renforcent — npm/npx retirés de
           # la liste, et package.json/scripts hors d'atteinte.
-          # Les noms de TOUS les commits de l'agent, pas du seul diff des extrémités : un chemin touché puis rétabli a
-          # quand même été poussé. Sans casse (`nocasematch`) : un `.GitAttributes` compte comme les autres.
-          lire_publie --format= --name-only --no-renames -z | tr '\0' '\n' | sed '/^$/d' | sort -u > "${noms}"
+          # Les noms de TOUS les commits de l'agent — fusions comprises (`-m` : contre chaque parent) —, et ceux du diff
+          # des extrémités EN PLUS : un chemin touché puis rétabli a quand même été poussé, et une fusion peut changer
+          # un chemin qu'aucun de ses parents ne change (sans `-m`, `git log` n'en imprime aucun nom — relecture de la
+          # suite de #875). Sans casse (`nocasematch`) : un `.GitAttributes` compte comme les autres.
+          { lire_publie --format= -m --name-only --no-renames -z; git --no-replace-objects diff --name-only --no-renames -z "${DEPART}" "${tip}"; } | tr '\0' '\n' | sed '/^$/d' | sort -u > "${noms}"
           interdits=""
           shopt -s nocasematch
           while IFS= read -r fichier; do
@@ -1293,8 +1298,17 @@ jobs:
             exit 1
           fi
           # Les noms ne s'affichent qu'ICI, une fois les gardes passées : un nom peut porter un jeton, et le journal
-          # d'un dépôt public est public (relecture de #875).
+          # d'un dépôt public est public (relecture de #875). Et ils s'affichent INERTES : un nom est une donnée de
+          # l'agent, et le runner lirait comme une commande une ligne qui commence par « :: » ou qui contient « ##[ »
+          # (un nom à saut de ligne en fait deux lignes). `::stop-commands::` suspend cette lecture, avec une clé
+          # tirée au hasard que l'agent ne connaît pas (relecture de la suite de #875).
+          arret="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
+          case "${arret}" in
+            *[!0-9a-f]*|"") echo "::error title=Garde illisible::La clé d'arrêt des commandes n'a pas pu être tirée. Refus de publier."; rm -f "${noms}"; exit 1 ;;
+          esac
+          echo "::stop-commands::${arret}"
           echo "Fichiers produits (${commits} commit(s)) :"; cat "${noms}"
+          echo "::${arret}::"
           rm -f "${noms}"
           # ── GARDES DE PUBLICATION:FIN
 
