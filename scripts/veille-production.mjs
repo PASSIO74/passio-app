@@ -600,6 +600,10 @@ export function signalBattement(m, now) {
 }
 
 const SYMBOLE = { alert: "[ALERTE]", warn: "[ATTENTION]", ok: "[ok]", unknown: "[?]" };
+// Ce qui n'entre JAMAIS dans le corps d'une [VEILLE] : « Régler » confie ce corps à un agent, et le
+// tri du scan de sécurité est à Benjamin (voir SCAN ; relecture de #866). Il reste dans le résumé,
+// donc dans le [TABLEAU] (label `tableau` seul, jamais confié à un agent) et dans le pilotage.
+const HORS_ISSUE = new Set(["scan"]);
 
 /**
  * Fonction PURE : mesures → verdict. Testée seule (tests/unit/veille-production.test.mjs).
@@ -632,7 +636,7 @@ export function verdictVeille(mesures, now) {
     ...enAlerte.map((s) => `- **${s.cle}** : ${s.geste || "lis le détail ci-dessous et le RUNBOOK (docs/RUNBOOK_MOIS_DE_TEST.md)."}`),
     "",
     "## Tous les signaux",
-    ...tri.map((s) => `- ${SYMBOLE[s.etat]} **${s.cle}** — ${s.texte}`),
+    ...tri.filter((s) => !HORS_ISSUE.has(s.cle)).map((s) => `- ${SYMBOLE[s.etat]} **${s.cle}** — ${s.texte}`),
     "",
     "Cette issue est ouverte par `.github/workflows/veille-production.yml` et se referme",
     "d'elle-même quand plus aucun signal n'est en alerte. Un cron GitHub est servi toutes",

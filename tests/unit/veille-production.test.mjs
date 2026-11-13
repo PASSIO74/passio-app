@@ -466,6 +466,21 @@ test("scan (contre-revue de #863) : le scan de sécurité est un signal À PART 
   assert.doesNotMatch(avecSauvegarde.corps, /## Ce que tu fais[\s\S]*\*\*scan\*\* :/, "le scan n'a pas de geste à faire faire");
 });
 
+test("scan (relecture de #866) : le scan n'entre JAMAIS dans le corps d'une [VEILLE] — « Régler » confie ce corps à un agent ; il reste dans le résumé du [TABLEAU]", () => {
+  // Mutation : le filtre `HORS_ISSUE` retiré du corps → la ligne « à trier par Benjamin » part chez l'agent → rougit.
+  const now = Date.parse("2026-11-16T12:00:00Z");
+  const il_y_a = (h) => new Date(now - h * H).toISOString();
+  const reussi = { suite: 0, lus: 5, vus: 5, dernier: { conclusion: "success", le: il_y_a(5) }, dernierSucces: { le: il_y_a(5) } };
+  const crons = Object.fromEntries(Object.keys(SEUILS_CRONS).map((k) => [k, { state: "active", dernierRunFin: il_y_a(2), planifies: reussi }]));
+  const scan = { state: "active", dernierRunFin: il_y_a(1), planifies: { suite: 1, lus: 4, vus: 4, dernier: { conclusion: "failure", le: il_y_a(7 * 24 - 1) }, dernierSucces: { le: il_y_a(14 * 24) } } };
+  // Une sauvegarde ratée ouvre la [VEILLE] ; le scan en échec au même passage.
+  const v = verdictVeille({ crons: { ...crons, sauvegarde: { state: "active", dernierRunFin: il_y_a(2), planifies: { ...reussi, suite: 1, dernier: { conclusion: "failure", le: il_y_a(3) }, dernierSucces: { le: il_y_a(27) } } } }, scan }, now);
+  assert.equal(v.alerte, true);
+  assert.match(v.corps, /## Tous les signaux[\s\S]*\*\*crons\*\*/, "les autres signaux restent");
+  for (const motif of [/\*\*scan\*\*/, /securite :/, /à trier par Benjamin/, /gitleaks/, /Sécurité de la chaîne/]) assert.doesNotMatch(v.corps, motif);
+  assert.match(v.resume, /\[ATTENTION\] scan — securite : dernier passage planifié en échec/, "le [TABLEAU] le dit toujours");
+});
+
 test("crons et scan (2026-11-12) : la mesure lit les passages PLANIFIÉS à part — `event=schedule` —, y joint ceux de la première liste par identifiant, et une lecture refusée se note, sans perdre l'âge", () => {
   // Mutation : la requête sans `event=schedule` → rougit.
   const source = fs.readFileSync("scripts/veille-production.mjs", "utf8");
