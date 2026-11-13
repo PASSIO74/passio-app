@@ -458,9 +458,12 @@ function toggleCommentReplies(commentId, event) {
     window._repliesExpanded[commentId] = isHidden;
     if (btn) {
       var count = repliesDiv.querySelectorAll(".comment-reply").length;
-      btn.textContent = isHidden
-        ? "▲ Masquer les réponses"
+      // L'aperçu de la carte du fil garde son libellé « ▼ N réponses ».
+      var replie = btn.hasAttribute("data-apercu-lien") && typeof _libelleApercuReponses === "function"
+        ? _libelleApercuReponses(count)
         : "⌵ Voir " + count + " réponse" + (count > 1 ? "s" : "");
+      btn.textContent = isHidden ? "▲ Masquer les réponses" : replie;
+      if (btn.hasAttribute("aria-expanded")) btn.setAttribute("aria-expanded", isHidden ? "true" : "false");
     }
     _diag("✅ Replies toggled");
   }

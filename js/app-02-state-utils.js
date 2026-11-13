@@ -10844,7 +10844,11 @@ function renderPostHTML(p) {
     // « ▼ N réponses » compte aussi les réactions emoji de `c.replies` : celle
     // d'un compte BLOQUÉ n'y entre pas, même règle que la pastille
     // (`_reponsesComptees`, app-04). Réponses texte et GIF inchangés.
-    const cReplies = (typeof _reponsesComptees === "function") ? _reponsesComptees(c.replies) : (c.replies || []);
+    // Réponses dépliables sur place, façon Facebook / Instagram (2026-11-13) :
+    // le lien ne renvoie plus à la discussion, il ouvre les réponses sous le
+    // commentaire (`_apercuReponsesHtml`, app-04 — même rendu de ligne que la
+    // discussion).
+    const cRep = (typeof _apercuReponsesHtml === "function") ? _apercuReponsesHtml(p.id, c, _cSelfIds) : { lien: "", bloc: "" };
 
     return `<div class="comment" data-commentid="${escapeHtml(c.id)}">
       <div class="avatar sm" role="link" aria-label="Profil de ${escapeHtml(cu.name)}" style="background:${avatarBg(cu)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(cu)}</div>
@@ -10858,8 +10862,9 @@ function renderPostHTML(p) {
           </span>
           <span class="comment-action" role="button" aria-label="Répondre" onclick="return replyToComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}','${escapeJsArg(cu.name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" role="button" aria-label="Réagir" onclick="return showEmojiPickerForComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();openComments('${escapeJsArg(p.id)}');return false;">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          ${cRep.lien}
         </div>
+        ${cRep.bloc}
       </div>
     </div>`;
   }).join("");

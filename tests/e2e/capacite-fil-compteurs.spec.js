@@ -772,7 +772,7 @@ test("aperçus du fil : les réponses et les « j'aime » d'un commentaire sont 
       lus,
       reponses: p0.comments[0].replies.length, likes: p0.comments[0].likes,
       lienReponses: (c0.querySelector(".comment-reply-count") || {}).textContent,
-      coeur: c0.querySelector("[data-cmtlike]").textContent.replace(/s+/g, " ").trim(),
+      coeur: c0.querySelector("[data-cmtlike]").textContent.replace(/\s+/g, " ").trim(),
       bulle: carte.querySelector('[data-cmtcount="fil_00"]').getAttribute("data-n"),
       voisin: p0.comments[1].replies,
     };
@@ -801,4 +801,53 @@ test("aperçus du fil : les réponses et les « j'aime » d'un commentaire sont 
   expect(r.cache).toBe(false);
   expect(r.pseudo).toBe("Romain");
   expect(r.reponseA).toBe(true);
+});
+
+// 2026-11-13, suite : « fais comme Facebook et Instagram » — les réponses se
+// déplient SOUS le commentaire, dans la carte, sans ouvrir la discussion ; une
+// réponse écrite depuis la carte y apparaît aussitôt.
+test("carte du fil : « ▼ N réponses » déplie les réponses sur place, et une réponse écrite s'y ajoute", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    const ligne = (kind, user, i, payload) => ({ id: "ci_" + kind + i, comment_id: "c_044", post_id: "fil_00", user_id: user, kind, payload: payload || null, created_at: "2026-09-21T13:00:0" + i + "+00:00" });
+    window.__interactions = [0, 1].map((i) => ligne("reply", "camille", i, "Réponse " + i));
+    window._repliesExpanded = {};
+    window.openComments = () => { window.__discussionOuverte = true; };
+    state.supabasePosts = await supaLoadPosts();
+    const hote = document.createElement("div"); hote.id = "__hoteCarte";
+    hote.innerHTML = renderPostHTML(findPostAnywhere("fil_00"));
+    document.body.appendChild(hote);
+    const cmt = () => hote.querySelector('.comment[data-commentid="c_044"]');
+    const etat = () => ({
+      lien: cmt().querySelector(".comment-reply-count").textContent,
+      visible: cmt().querySelector(".comment-replies").style.display !== "none",
+      lignes: Array.from(cmt().querySelectorAll(".comment-reply")).map((n) => n.textContent.replace(/\s+/g, " ").trim().slice(0, 40)),
+    });
+    const out = { replie: etat() };
+    cmt().querySelector(".comment-reply-count").click();
+    out.deplie = etat();
+    out.discussion = !!window.__discussionOuverte;
+    // Répondre depuis la carte : la réponse apparaît sous le commentaire.
+    window._enqueueCommentSync = () => {};
+    cmt().querySelector('[aria-label="Répondre"]').click();
+    const champ = cmt().querySelector(".reply-field"); champ.value = "Merci !";
+    _submitReply("fil_00|c_044");
+    await new Promise((ok) => requestAnimationFrame(() => setTimeout(ok, 50)));
+    out.apresReponse = etat();
+    cmt().querySelector(".comment-reply-count").click();
+    out.rereplie = etat();
+    hote.remove();
+    return out;
+  });
+  expect(r.replie).toEqual({ lien: "▼ 2 réponses", visible: false, lignes: expect.any(Array) });
+  expect(r.deplie.lien).toBe("▲ Masquer les réponses");
+  expect(r.deplie.visible).toBe(true);
+  expect(r.deplie.lignes).toHaveLength(2);
+  expect(r.deplie.lignes[0]).toContain("Camille");
+  expect(r.deplie.lignes[0]).toContain("Réponse 0");
+  expect(r.discussion, "le lien ne quitte plus le fil").toBe(false);
+  expect(r.apresReponse.visible).toBe(true);
+  expect(r.apresReponse.lignes).toHaveLength(3);
+  expect(r.apresReponse.lignes[2]).toContain("Merci !");
+  expect(r.rereplie).toEqual({ lien: "▼ 3 réponses", visible: false, lignes: expect.any(Array) });
 });
