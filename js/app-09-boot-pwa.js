@@ -1650,7 +1650,7 @@ function openConvSettings(convId) {
         '<div class="csetting-section">EXEMPLE PASSIO</div>' +
         '<div class="csetting-note" style="padding:4px 16px 12px;color:var(--muted);font-size:13px;line-height:1.4;">Cette conversation montre à quoi ressemble la messagerie. Personne ne la lit.</div>' +
         '<div class="csetting-item csetting-danger" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
-          '<div class="csetting-icon">❌</div><div class="csetting-label">Supprimer cet exemple</div></div>';
+          '<div class="csetting-icon">' + picto("supprimer") + '</div><div class="csetting-label">Supprimer cet exemple</div></div>';
       panel.style.display = ""; panel.style.transform = ""; panel.style.pointerEvents = "";
       panel.classList.add("open");
       return;
@@ -1671,39 +1671,39 @@ function openConvSettings(convId) {
     var accuses = !((state.user.general || {}).readReceipts === false);
     content.innerHTML =
       '<div class="csetting-section">CONVERSATION</div>' +
-      (isDM ? item("closeConvSettings();openUserProfile('" + escapeJsArg(uid) + "','seed')", "👤", "Voir le profil") : '') +
-      item("_toggleMuteConv('" + idJs + "')", c._muted ? '🔕' : '🔔', c._muted ? 'Activer les notifications' : 'Couper les notifications') +
-      item("_searchConv('" + idJs + "')", "🔍", "Rechercher dans la conversation") +
-      item("openConvFiles()", "📎", "Pièces jointes & médias") +
-      item("_togglePinConv('" + idJs + "')", "📌", c.pinned ? 'Désépingler la conversation' : 'Épingler en haut de la liste') +
-      item("_markConvUnread('" + idJs + "')", "📩", "Marquer comme non lu") +
-      item("_toggleArchiveConv('" + idJs + "')", "🗃️", c.archived ? 'Désarchiver' : 'Archiver la conversation') +
-      item("_openConvBgPicker('" + idJs + "')", "🎨", "Fond de conversation") +
-      (c.isGroup ? item("closeConvSettings();pickGroupPhoto('" + idJs + "')", "🖼️", "Changer la photo du groupe") : '') +
-      item("_exportConv('" + idJs + "')", "⬇️", "Exporter la conversation") +
+      (isDM ? item("closeConvSettings();openUserProfile('" + escapeJsArg(uid) + "','seed')", picto("profil"), "Voir le profil") : '') +
+      item("_toggleMuteConv('" + idJs + "')", c._muted ? picto("clocheCoupee") : picto("cloche"), c._muted ? 'Activer les notifications' : 'Couper les notifications') +
+      item("_searchConv('" + idJs + "')", picto("recherche"), "Rechercher dans la conversation") +
+      item("openConvFiles()", picto("trombone"), "Pièces jointes & médias") +
+      item("_togglePinConv('" + idJs + "')", picto("epingler"), c.pinned ? 'Désépingler la conversation' : 'Épingler en haut de la liste') +
+      item("_markConvUnread('" + idJs + "')", picto("nonLu"), "Marquer comme non lu") +
+      item("_toggleArchiveConv('" + idJs + "')", picto("archiver"), c.archived ? 'Désarchiver' : 'Archiver la conversation') +
+      item("_openConvBgPicker('" + idJs + "')", picto("palette"), "Fond de conversation") +
+      (c.isGroup ? item("closeConvSettings();pickGroupPhoto('" + idJs + "')", picto("image"), "Changer la photo du groupe") : '') +
+      item("_exportConv('" + idJs + "')", picto("exporter"), "Exporter la conversation") +
 
       '<div class="csetting-section">TON COMPTE</div>' +
-      item("_toggleReadReceipts('" + idJs + "')", accuses ? '👁️' : '🚫',
+      item("_toggleReadReceipts('" + idJs + "')", accuses ? picto("oeil") : picto("masquer"),
         'Accusés de lecture<span style="color:var(--muted);font-weight:600;"> · ' + (accuses ? 'activés' : 'désactivés') + '</span>' +
         '<div class="csetting-aide">Pour toutes tes conversations</div>') +
 
       (isDM ?
         '<div class="csetting-section">CONFIDENTIALITÉ</div>' +
         (blocked
-          ? item("closeConvSettings();unblockUser('" + escapeJsArg(uid) + "','" + escapeJsArg(uname) + "')", "✅", "Débloquer " + escapeHtml(c.userName || ''))
-          : item("_blockFromConv('" + idJs + "')", "🚫", "Bloquer " + escapeHtml(c.userName || ''), true)) +
-        item("closeConvSettings();reportUser('" + escapeJsArg(uid) + "','" + escapeJsArg(uname) + "')", "🚩", "Signaler", true)
+          ? item("closeConvSettings();unblockUser('" + escapeJsArg(uid) + "','" + escapeJsArg(uname) + "')", picto("debloquer"), "Débloquer " + escapeHtml(c.userName || ''))
+          : item("_blockFromConv('" + idJs + "')", picto("bloquer"), "Bloquer " + escapeHtml(c.userName || ''), true)) +
+        item("closeConvSettings();reportUser('" + escapeJsArg(uid) + "','" + escapeJsArg(uname) + "')", picto("signaler"), "Signaler", true)
         : '') +
 
       '<div class="csetting-section">EFFACER</div>' +
-      item("_clearConvMessages('" + idJs + "')", "🗑️", "Effacer les messages", true) +
+      item("_clearConvMessages('" + idJs + "')", picto("supprimer"), "Effacer les messages", true) +
       // LOT-28 (audit UX/UI du 2026-11-10, MSG-C21) : un groupe n'a qu'UNE sortie,
       // « Quitter le groupe » (l'appartenance part, les messages cessent) — l'ancien
       // « Supprimer » ne retirait que la copie locale, et le prochain message le
       // faisait revenir. En 1:1, la portée est dans le libellé : « pour moi ».
       (c.isGroup
-        ? item("closeConvSettings();leaveGroup('" + idJs + "')", "❌", "Quitter le groupe", true)
-        : item("_deleteConv('" + idJs + "')", "❌", "Supprimer pour moi", true));
+        ? item("closeConvSettings();leaveGroup('" + idJs + "')", picto("quitter"), "Quitter le groupe", true)
+        : item("_deleteConv('" + idJs + "')", picto("supprimer"), "Supprimer pour moi", true));
 
     // 🔑 FIX : openConversation pose des styles inline (display:none, transform,
     // pointer-events) sur ce panneau → ils écrasaient la classe .open et le panneau
