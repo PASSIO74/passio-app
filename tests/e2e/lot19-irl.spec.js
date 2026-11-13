@@ -175,7 +175,7 @@ test("⑤ IRL-C63 / C54 : verdicts lus — message groupé compté, note refusé
   }, activite({ id: "ev_l19_complet", title: "Presque plein", maxAttendees: 5, attendees: ["a", "b", "c", "d"] }));
   expect(complet.avant).toBe(false);
   expect(complet.apres, "la base a dit « complète » : l'écran le dit aussi").toBe(true);
-  expect(complet.toast).toContain("La dernière place vient d'être prise");
+  expect(complet.toast).toContain("la dernière place vient d'être prise");
 });
 
 test("⑥ IRL-C09 / C10 / C16 : commandes de 44 px, sortie de la carte nommée", async ({ page }) => {

@@ -3783,7 +3783,7 @@ async function setEventRsvp(id, rsvp) {
     // Le serveur tient désormais la capacité, le statut et la date (IRL-05) :
     // quand il nomme sa raison, on la dit — et on nomme la sortie.
     const motif = window._irlRefusMotif || null;
-    annuler(motif === "complete" ? "La dernière place vient d'être prise — tu peux rejoindre la liste d'attente"
+    annuler(motif === "complete" ? "Activité complète : la dernière place vient d'être prise — tu peux rejoindre la liste d'attente"
       : motif === "annulee" ? "Cette activité a été annulée"
       : motif === "passee" ? "Cette activité est déjà passée"
       : "⚠️ Inscription non enregistrée — réessaie");
