@@ -769,7 +769,7 @@ test("⑬ ce qui part dans un dépôt public : CHAQUE commit de l'agent est lu �
     };
     // Un jeton COUPÉ par un caractère de contrôle dans un NOM : git le cite échappé dans le patch ; les noms sont aussi
     // cherchés sans leurs caractères de contrôle.
-    for (const [sep, quoi] of [["\r", "retour chariot"], ["\n", "saut de ligne"], ["\t", "tabulation"]]) {
+    for (const [sep, quoi] of [["\r", "retour chariot"], ["\n", "saut de ligne"], ["\t", "tabulation"], ["\x7f", "DEL"], ["\u0085", "NEL (contrôle C1)"], ["\u009b", "CSI (contrôle C1)"]]) {
       refus(jouer({ tip: nomBrut(base, JETON.slice(0, 14) + sep + JETON.slice(14) + ".md", "x\n") }), J, "jeton coupé par un " + quoi + " dans un nom");
     }
     // Les noms s'affichent INERTES : un nom qui commence par « :: » ou qui contient « ##[ » ne forge aucune commande du
@@ -786,6 +786,17 @@ test("⑬ ce qui part dans un dépôt public : CHAQUE commit de l'agent est lu �
       const i = lignes.indexOf(nom);
       assert.ok(i > arret && i < reprise, nom + " s'imprime entre l'arrêt et la reprise\n" + forge.sortie.slice(-600));
     }
+    // Le refus « Chemin interdit » imprime les noms SANS leurs caractères de contrôle : un retour chariot y couperait la
+    // ligne de l'annotation, et la suite deviendrait une commande du runner (relecture de #903).
+    const interditForge = jouer({ tip: nomBrut(base, ".gitleaks\r::notice title=forgé::par un nom interdit", "x\n") });
+    refus(interditForge, I, "nom interdit porteur d'un retour chariot");
+    assert.ok(!interditForge.sortie.split(/\r\n|\r|\n/).some((l) => l.replace(/^[\t ]+/, "").startsWith("::notice")), "aucune commande forgée par un nom interdit\n" + interditForge.sortie.slice(-400));
+    // Un `od` en échec : le refus annoncé (« Garde illisible »), rien de publié, rien de laissé derrière.
+    fs.writeFileSync(faux + "/od", "#!/usr/bin/env bash\nexit 1\n"); fs.chmodSync(faux + "/od", 0o755);
+    const sansCle = jouer({ tip: commits(base, [{ fichiers: { "oc.txt": "x\n" } }]), chemin: faux });
+    fs.rmSync(faux + "/od");
+    refus(sansCle, "Garde illisible", "od en échec");
+    assert.ok(sansCle.sortie.includes("La clé d'arrêt des commandes n'a pas pu être tirée"), sansCle.sortie.slice(-400));
     // La clé est TIRÉE à chaque passage (une constante, lisible dans le workflow public, laisserait un nom forger la
     // reprise puis une commande) : deux passages, deux clés.
     const autre = jouer({ tip: commits(base, [{ fichiers: { "k2.txt": "x\n" } }]) });
@@ -889,6 +900,22 @@ test("⑭ la fiche du résultat ne fait tourner AUCUN code de l'arbre de l'agent
     assert.match(fiche, /### Fiche \(message de commit\)/);
     assert.match(fiche, /Cause: un défaut/);
     assert.ok(!fs.existsSync(temp + "/arbre-de-confiance"), "l'arbre de confiance est retiré après usage");
+    // Un OBJET DE REMPLACEMENT posé sur le départ ne change pas l'arbre de confiance (`--no-replace-objects`) : le
+    // détecteur qui s'exécute est celui du départ, jamais celui d'un commit substitué (relecture de #903).
+    git("checkout", "-q", "--detach", depart);
+    fs.appendFileSync(depot + "/scripts/sentinelle-detecter.mjs", "\n(await import(\"node:fs\")).writeFileSync(process.env.RUNNER_TEMP + \"/remplacement.txt\", \"x\");\n");
+    git("commit", "-qam", "détecteur substitué");
+    const substitue = git("rev-parse", "HEAD").trim();
+    git("checkout", "-q", "claude/issue-7-1");
+    git("replace", depart, substitue);
+    try {
+      fs.rmSync(temp + "/fiche.md", { force: true });
+      const r3 = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8",
+        env: { ...process.env, RUNNER_TEMP: temp, DEPART: depart, BRANCHE: "claude/issue-7-1", SENTINELLE: "oui", GH_TOKEN: "jeton-du-banc" } });
+      assert.equal(r3.status, 0, (r3.stdout || "") + (r3.stderr || ""));
+      assert.ok(!fs.existsSync(temp + "/remplacement.txt"), "le détecteur d'un commit substitué ne s'exécute pas");
+      assert.match(fs.readFileSync(temp + "/fiche.md", "utf8"), /### Fiche \(message de commit\)/);
+    } finally { git("replace", "-d", depart); }
     // Un départ non noté, ou un départ qui ne s'extrait pas : la fiche de repli et un avertissement, la marche CONTINUE
     // (sinon « Signaler l'échec » annoncerait « Rien n'a été modifié » alors que la branche est poussée — relecture de la
     // suite de #875) ; et jamais un import depuis l'arbre de l'agent.
@@ -954,4 +981,14 @@ test("⑯ la marche « Preuve d'exécution réelle » affiche les noms INERTES, 
     return cle;
   };
   assert.notEqual(jouerBloc(), jouerBloc(), "la clé est tirée à chaque passage");
+  // Un `od` en échec : cette marche tourne APRÈS la poussée — elle ne s'arrête pas, la liste se tait (relecture de #903).
+  const faux = fs.mkdtempSync(path.join(os.tmpdir(), "preuve-od-")).split("\\").join("/");
+  fs.writeFileSync(faux + "/od", "#!/usr/bin/env bash\nexit 1\n"); fs.chmodSync(faux + "/od", 0o755);
+  try {
+    const r = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", 'fichiers="${FICHIERS}"\n' + bloc], { encoding: "utf8",
+      env: { ...process.env, FICHIERS: NOMS.join("\n"), PATH: faux.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase()) + path.delimiter + process.env.PATH } });
+    assert.equal(r.status, 0, "od en échec : la marche continue\n" + (r.stdout || "") + (r.stderr || ""));
+    assert.match(r.stdout || "", /liste non affichée/);
+    for (const nom of NOMS) assert.ok(!(r.stdout || "").split(/\r?\n/).includes(nom), "aucun nom affiché sans la suspension : " + nom);
+  } finally { fs.rmSync(faux, { recursive: true, force: true }); }
 });

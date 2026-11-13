@@ -1236,9 +1236,10 @@ jobs:
           publie="${RUNNER_TEMP}/passio-travail-publie.txt"
           noms="${RUNNER_TEMP}/passio-noms-publies.txt"
           lire_publie --format=raw -m -p --no-color --text --no-ext-diff --no-textconv > "${publie}.brut"
-          # Les NOMS aussi, caractères de contrôle retirés : dans le patch, git cite un nom qui en porte (\r, \n, \t…)
-          # sous une forme échappée, où un jeton coupé par l'un d'eux ne se lirait plus (relecture de la suite de #875).
-          lire_publie --format= -m --name-only --no-renames -z | tr -d '\001-\037' | tr '\0' '\n' >> "${publie}.brut"
+          # Les NOMS aussi, débarrassés de leurs caractères de contrôle — C0 (\r, \n, \t…), DEL et C1 (U+0080 à U+009F,
+          # deux octets en UTF-8) : dans le patch, git cite un nom qui en porte sous une forme échappée, où un jeton coupé
+          # par l'un d'eux ne se lirait plus (relectures de la suite de #875 et de #903).
+          lire_publie --format= -m --name-only --no-renames -z | tr -d '\001-\037\177' | LC_ALL=C sed -e 's/\xc2[\x80-\x9f]//g' | tr '\0' '\n' >> "${publie}.brut"
           tr -d '\r' < "${publie}.brut" > "${publie}"
           rm -f "${publie}.brut"
           rc=0; grep -qE 'gh[oprsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|x-access-token:[A-Za-z0-9_-]{10,}|sb_secret_[A-Za-z0-9_-]{20,}' "${publie}" || rc=$?
@@ -1299,18 +1300,22 @@ jobs:
           shopt -u nocasematch
           if [ -n "${interdits}" ]; then
             rm -f "${noms}"
-            echo "::error title=Chemin interdit::Claude a modifié des fichiers qui le contrôlent : ${interdits}. Refus de publier. Ces chemins se changent à la main, avec contre-revue."
+            # Les noms, sans leurs caractères de contrôle : un retour chariot y couperait la ligne de l'annotation, et la
+            # suite deviendrait une commande du runner (relecture de #903).
+            affiches="$(printf '%s' "${interdits}" | tr -d '\001-\037\177')"
+            echo "::error title=Chemin interdit::Claude a modifié des fichiers qui le contrôlent : ${affiches}. Refus de publier. Ces chemins se changent à la main, avec contre-revue."
             exit 1
           fi
           # Les noms ne s'affichent qu'ICI, une fois les gardes passées : un nom peut porter un jeton, et le journal
           # d'un dépôt public est public (relecture de #875). Et ils s'affichent INERTES : un nom est une donnée de
           # l'agent, et le runner lirait comme une commande une ligne qui commence par « :: » ou qui contient « ##[ »
-          # (un nom à saut de ligne en fait deux lignes). `::stop-commands::` suspend cette lecture, avec une clé
+          # (un nom à saut de ligne en fait deux lignes). Dans le refus « Chemin interdit », plus haut, ils s'impriment
+          # sans leurs caractères de contrôle. Ici, `::stop-commands::` suspend cette lecture, avec une clé
           # tirée au hasard que l'agent ne connaît pas (relecture de la suite de #875).
-          arret="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
-          case "${arret}" in
-            *[!0-9a-f]*|"") echo "::error title=Garde illisible::La clé d'arrêt des commandes n'a pas pu être tirée. Refus de publier."; rm -f "${noms}"; exit 1 ;;
-          esac
+          arret="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')" || arret=""
+          if [ "${#arret}" -ne 32 ] || [ -n "${arret//[0-9a-f]/}" ]; then
+            echo "::error title=Garde illisible::La clé d'arrêt des commandes n'a pas pu être tirée. Refus de publier."; rm -f "${noms}"; exit 1
+          fi
           echo "::stop-commands::${arret}"
           echo "Fichiers produits (${commits} commit(s)) :"; cat "${noms}"
           echo "::${arret}::"
@@ -1516,11 +1521,12 @@ jobs:
           # ── NOMS INERTES (preuve):DEBUT ── (joué tel quel par tests/unit/reparation-journal.test.mjs ⑯)
           # Un nom est une donnée de l'agent : affiché dans le journal public, il ne doit forger aucune commande du
           # runner (« :: » en tête de ligne, « ##[ » n'importe où) — comme la liste de la publication (relecture de #903).
-          arret="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
-          case "${arret}" in
-            *[!0-9a-f]*|"") echo "Fichiers modifiés : $(printf '%s\n' "${fichiers}" | wc -l) (liste non affichée : la clé d'arrêt des commandes n'a pas pu être tirée)" ;;
-            *) echo "::stop-commands::${arret}"; echo "Fichiers modifiés :"; printf '%s\n' "${fichiers}"; echo "::${arret}::" ;;
-          esac
+          arret="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')" || arret=""
+          if [ "${#arret}" -eq 32 ] && [ -z "${arret//[0-9a-f]/}" ]; then
+            echo "::stop-commands::${arret}"; echo "Fichiers modifiés :"; printf '%s\n' "${fichiers}"; echo "::${arret}::"
+          else
+            echo "Fichiers modifiés : $(printf '%s\n' "${fichiers}" | wc -l) (liste non affichée : la clé d'arrêt des commandes n'a pas pu être tirée)"
+          fi
           # ── NOMS INERTES (preuve):FIN
 
           # 5. Une PR pointe-t-elle EXACTEMENT sur cette branche ?
@@ -1588,7 +1594,7 @@ jobs:
           case "${DEPART:-}" in
             *[!0-9a-f]*|"") echo "::warning title=Départ illisible::Le commit de départ du run n'a pas été noté : la fiche n'est pas produite." ;;
             *)
-          if ! git -c core.hooksPath=/dev/null worktree add --detach --quiet "${confiance}" "${DEPART}"; then
+          if ! git --no-replace-objects -c core.hooksPath=/dev/null worktree add --detach --quiet "${confiance}" "${DEPART}"; then
             echo "::warning title=Fiche non produite::L'arbre de confiance n'a pas pu être extrait du commit de départ."
           elif ! env -i PATH="${PATH}" HOME="${HOME}" RUNNER_TEMP="${RUNNER_TEMP}" SENTINELLE="${SENTINELLE}" CONFIANCE="${confiance}" node --input-type=module -e '
             import fs from "node:fs";
