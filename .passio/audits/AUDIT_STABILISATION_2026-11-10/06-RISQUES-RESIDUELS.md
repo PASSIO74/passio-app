@@ -15,7 +15,7 @@
 | 4 | **STAB-04 / STAB-05** : comptes privés par défaut ; 35 publications masquées. | Décisions de l'éditeur, données de production. | Trancher ; si STAB-05 n'est pas voulu, préparer le geste de données. |
 | 5 | **Succès annoncés sans écriture** : SRV-03, SRV-04, ETAT-04, ETAT-09, PARC-01. | Corrections client + policies à préparer. | Un lot « verdicts » côté client ; les policies en migration. |
 | 6 | **SRV-02, SRV-08, PIL-02** : contrôles serveur manquants (détail au dossier privé). | Migrations. | À préparer avec leur banc ; contre-revue. |
-| 7 | **STAB-10 / EXPL-03** : la page minifiée n'est pas testée avant de partir. | `.github/` est critique. | Un job qui teste l'artefact final et que le déploiement publie tel quel. |
+| 7 | **STAB-10 / EXPL-03** : la page minifiée n'est pas testée avant de partir. **Corrigé (#868)** : testée par « Gates artefact », et le déploiement refuse un artefact d'une autre empreinte. | `.github/` est critique. | Un job qui teste l'artefact final et que le déploiement publie tel quel. |
 | 8 | **EXPL-01, EXPL-02, EXPL-05** : déchiffrement des archives jamais éprouvé ; échec de sauvegarde lu « ok » ; retour arrière non rejoué depuis le 14/09. | Demandent la clé privée, un créneau, une heure creuse. | Les trois exercices, datés et consignés. |
 | 9 | **Capacité** : aucune mesure pour le code servi ; L (10 000 / 500) ne tient pas en calcul. | Aucun banc autorisé d'ici. | Rejouer le banc sur le staging avec le protocole du rapport PERF § 2.7. |
 

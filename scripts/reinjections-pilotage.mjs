@@ -24,10 +24,10 @@ const PJ = "supabase/functions/_shared/pilotage.js";
 const BT = "supabase/functions/_shared/battement.js";
 const BANC = "tests/unit/pilotage-chemins.test.mjs";
 const M = [
-  ["R01 une seule exécution lue (per_page=1)", FN, `const filtre = cle === "deploy" ? "&event=push&per_page=10" : "&per_page=10";`, `const filtre = cle === "deploy" ? "&event=push&per_page=1" : "&per_page=1";`, BANC, "⑫"],
+  ["R01 une seule exécution lue (per_page=1)", FN, "&event=${ev}&per_page=10", "&event=${ev}&per_page=1", BANC, "⑫"],
   ["R02 seule « failure » est un échec", PJ, `Object.freeze(["failure", "timed_out", "startup_failure"])`, `Object.freeze(["failure"])`, BANC, "⑪"],
   ["R03 une exécution annulée ne dit rien", PJ, `return termine && r.conclusion ? { nature: "inabouti", run: r } : null;`, `return null;`, BANC, "⑪"],
-  ["R04 une lecture d'exécutions refusée n'est pas notée", FN, `if (!j || !Array.isArray(j.workflow_runs)) { runsNonLus.push(cle); return null; }`, `if (!j || !Array.isArray(j.workflow_runs)) { return null; }`, BANC, "⑩"],
+  ["R04 une lecture d'exécutions refusée n'est pas notée", FN, `if (lectures.some((l) => !l)) { runsNonLus.push(cle); return null; }`, `if (lectures.some((l) => !l)) { return null; }`, BANC, "⑩"],
   ["R05 des issues suivies qui débordent leur filtre ne se disent pas", FN, `issuesTronquees = lots.some((l) => l.tronque);`, `issuesTronquees = false;`, BANC, "⑩"],
   ["R06 l'écran ignore ce que GitHub n'a pas rendu", FN, `out.verdict = verdictAffiche(v, nonLus, ((out.github as { partiel?: string[] } | null)?.partiel) || []);`, `out.verdict = verdictAffiche(v, nonLus);`, BANC, "⑩"],
   ["R07 la veille baisse son voyant sur des exécutions non lues", FN, ` || !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0;`, ` || !!(parcoursVeille && parcoursVeille.tronque);`, BANC, "㉚"],
@@ -63,14 +63,41 @@ const M = [
   ["R36 la version armée n'est pas notée", FN, `const { error } = await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT_GESTE, properties: { geste: "fusion_armee", numero: n, sha: shaVu } });`, `const error = null;`, BANC, "⑱ bis"],
   ["R37 l'écran ne compare pas la tête à la version armée", PJ, `if (i.autoFusion && fusionner && shaValide(armee) && armee !== i.sha) {`, `if (false) {`, BANC, "⑱ bis"],
   ["R38 une fusion déjà armée est réarmée au lieu d'être validée", FN, `(!!p.auto_merge || await armerAutoFusion(`, `(await armerAutoFusion(`, BANC, "⑱ bis"],
-  ["R39 des issues qui débordent tiennent le voyant de la veille (un tiers la fige)", FN, `const partielGh = partielGithub({ runsNonLus: ((e.github as { runsNonLus?: string[] } | null)?.runsNonLus) || [] }) as string[];`, `const partielGh = (((e.github as { partiel?: string[] } | null)?.partiel) || []) as string[];`, BANC, "㉚ bis"],
+  ["R39 des issues qui débordent tiennent le voyant de la veille (un tiers la fige)", FN, `const partielGh = partielGithub({ runsNonLus: runsNonLusVoyant }) as string[];`, `const partielGh = (((e.github as { partiel?: string[] } | null)?.partiel) || []) as string[];`, BANC, "㉚ bis"],
   ["R40 « la dernière terminée » : une exécution annulée blanchit l'échec d'avant", PJ, `const tranche = tries.slice(1).find(runATranche);`, `const tranche = tries.slice(1).find((r) => r.status === "completed");`, BANC, "⑫"],
   ["R41 les marques se comptent en nombre, pas en adresses prouvées", FN, `if (marques.adresses.size < attendus.size) {`, `if (uids.length < attendus.size) {`, BANC, "㊳ bis"],
   ["R42 au-delà de cent issues, les issues du pilote sans label ne sont plus lues", FN, `.map((l) => "labels=" + encodeURIComponent(l)), "creator=" + PILOTE_GITHUB];`, `.map((l) => "labels=" + encodeURIComponent(l))];`, BANC, "⑩"],
   ["R43 au-delà de cent issues, les correctifs ne sont plus lus", FN, `    for (const p of listePr) if (!vues.has(p.number)) vues.set(p.number, { ...p, pull_request: {} });\n`, ``, BANC, "⑩"],
   ["R44 une tentative illisible ne se dit pas", FN, `if (!ja || typeof ja !== "object") { nonLu(); break; }`, `if (!ja || typeof ja !== "object") { break; }`, BANC, "⑫ bis"],
   ["R45 relancer un échec sonne « résolu » au départ de la relance", PJ, `    if (Number(r.run_attempt) > 1 && Number.isInteger(r.id) && r.id > 0) out.push({ id: r.id, tentative: Number(r.run_attempt) - 1 });\n`, ``, BANC, "㉙ bis"],
-  ["R46 la mise en ligne se lit sans filtre d'événement côté GitHub", FN, `"&event=push&per_page=10" : "&per_page=10"`, `"&per_page=10" : "&per_page=10"`, BANC, "⑪ bis"],
+  ["R46 la mise en ligne se lit sans filtre d'événement côté GitHub", FN, "&event=${ev}&per_page=10", "&per_page=10", BANC, "⑪ bis"],
+  // Suites de #848 (2026-11-12, seconde relecture) : les trous côté écran.
+  ["R47 la Sentinelle se lit sans filtre d'événement : dix exécutions d'un fork la chassent", FN, "&event=${ev}&per_page=10", "&per_page=10", BANC, "㊴"],
+  ["R48 une lecture d'exécutions refusée passe si l'autre répond", FN, `if (lectures.some((l) => !l))`, `if (lectures.every((l) => !l))`, BANC, "㊴"],
+  ["R49 les PR se lisent sur une seule page", FN, `const PR_PAGES_MAX = 3;`, `const PR_PAGES_MAX = 1;`, BANC, "㊵"],
+  ["R50 une liste de PR illisible passe pour vide", FN, `if (!Array.isArray(lot)) return { ok: false, lignes, raison: "GitHub : liste des PR illisible" };`, `if (!Array.isArray(lot)) return { ok: true, lignes, raison: null };`, BANC, "㊵"],
+  ["R51 au-delà de trois pages, rien n'est dit", FN, `? "plus de " + PR_PAGES_MAX * 100 + " PR ouvertes : les plus anciennes ne sont pas lues"`, `? null`, BANC, "㊵"],
+  ["R52 un défaut du code passe pour une panne de GitHub", FN, `|| "") === "ReferenceError";`, `|| "") === "AucuneErreur";`, BANC, "㊶"],
+  ["R53 une TypeError (un fetch qui ne joint pas GitHub) passe pour un défaut du code", FN, `const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";`, `const defaut = ["ReferenceError", "TypeError"].includes(String((err as { name?: string })?.name || ""));`, BANC, "㊶"],
+  ["R54 un défaut du code n'est qu'un avertissement dans les journaux", FN, `console.error("pilotage : défaut du code dans un geste "`, `console.warn("pilotage : défaut du code dans un geste "`, BANC, "㊶"],
+  ["R55 la note armée illisible laisse dire « part en ligne »", PJ, `if (i.autoFusion && fusionner && nonLus.includes("fusionsArmees")) {`, `if (false) {`, BANC, "㊷"],
+  ["R56 sept jours de notes armées : une auto-fusion plus ancienne n'est plus comparée", FN, `.gte("created_at", ilYa(30 * 864e5))`, `.gte("created_at", ilYa(7 * 864e5))`, BANC, "㊷"],
+  // Le scan de sécurité du lundi (contre-revue de #863) : dit, à trier par Benjamin, jamais réparé.
+  ["R57 le scan en échec ne se dit pas", PJ, `  if (sc) {\n`, `  if (false) {\n`, BANC, "㊸"],
+  ["R58 le scan devient réparable (un agent trierait les secrets)", PJ, `  veille: { fichier: "veille-production.yml", libelle: "Veille de production" },\n};`, `  veille: { fichier: "veille-production.yml", libelle: "Veille de production" },\n  securite: { fichier: "securite.yml", libelle: "Scan de sécurité" },\n};`, BANC, "㊸"],
+  ["R59 les exécutions de PR du scan comptent", PJ, `securite: Object.freeze(["schedule", "workflow_dispatch"]),`, `securite: Object.freeze(["schedule", "workflow_dispatch", "pull_request"]),`, BANC, "㊸"],
+  ["R60 le scan illisible ne se dit pas", PJ, `, securite: "le scan de sécurité" });`, ` });`, BANC, "㊸"],
+  // Relecture indépendante de #866 (2026-11-13).
+  ["R61 une SyntaxError (un corps qui n'est pas du JSON) passe pour un défaut du code", FN, `const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";`, `const defaut = ["ReferenceError", "SyntaxError"].includes(String((err as { name?: string })?.name || ""));`, BANC, "㊶"],
+  ["R62 une RangeError (une date illisible) passe pour un défaut du code", FN, `const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";`, `const defaut = ["ReferenceError", "RangeError"].includes(String((err as { name?: string })?.name || ""));`, BANC, "㊶"],
+  ["R63 les passages manuels du scan ne comptent plus : un tri relancé et vert garde la ligne", PJ, `securite: Object.freeze(["schedule", "workflow_dispatch"]),`, `securite: Object.freeze(["schedule"]),`, BANC, "㊸"],
+  ["R64 toute exécution non lue tient la veille (un scan illisible la fige)", FN, `.filter((c) => (RUNS_DU_VOYANT as readonly string[]).includes(c));`, `.filter(() => true);`, BANC, "㊹"],
+  ["R65 la Sentinelle illisible ne tient plus la veille", PJ, `export const RUNS_DU_VOYANT = Object.freeze(["deploy", "sentinelle"]);`, `export const RUNS_DU_VOYANT = Object.freeze(["deploy"]);`, BANC, "㊹"],
+  ["R66 la liste du voyant et ce que lit verdict divergent", PJ, `export const RUNS_DU_VOYANT = Object.freeze(["deploy", "sentinelle"]);`, `export const RUNS_DU_VOYANT = Object.freeze(["deploy", "sentinelle", "securite"]);`, "tests/unit/pilotage.test.mjs", "㊴ bis"],
+  ["R67 trois cents PR tout juste se disent « plus de trois cents »", FN, `    if (Array.isArray(reste) && reste.length === 0) return { ok: true, lignes, raison: null };\n`, ``, BANC, "㊵"],
+  ["R68 une lecture d'au-delà illisible passe pour « tout est lu »", FN, `if (Array.isArray(reste) && reste.length === 0)`, `if (!Array.isArray(reste) || reste.length === 0)`, BANC, "㊵"],
+  ["R69 une page en échec jette les pages lues (le correctif récent disparaît)", FN, `if (!r || !r.ok) return { ok: false, lignes, raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };`, `if (!r || !r.ok) return { ok: false, lignes: [], raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };`, BANC, "㊵"],
+  ["R70 le scan dit tout sur une ligne de téléphone (son détail hors du repli)", PJ, `quoi: "À trier par toi, jamais par une machine.",`, `quoi: "À trier par toi, jamais par une machine. Son journal dit quel job : les secrets, npm audit ou la gate des workflows.",`, "tests/unit/pilotage.test.mjs", "㊴"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");
@@ -90,13 +117,14 @@ for (const [nom, fichier, de, vers, suite, motif] of M) {
   let code = null, sortie = "";
   try {
     fs.writeFileSync(fichier, origine.replace(de, () => vers));
-    const r = spawnSync(process.execPath, ["--test", "--test-name-pattern", "^" + motif + " ", suite], { encoding: "utf8" });
+    const r = spawnSync(process.execPath, ["--test", "--test-name-pattern", "^" + motif + " ", suite], { encoding: "utf8", timeout: 300_000 });
     code = r.status; sortie = (r.stdout || "") + (r.stderr || "");
+    if (r.error || r.signal) sortie = "BLOQUÉ (" + ((r.error && r.error.code) || r.signal) + ")\n" + sortie;
   } finally { fs.writeFileSync(fichier, origine); }
   const joues = /ℹ tests (\d+)/.exec(sortie);
   const rouge = code !== 0 && /ℹ fail [1-9]/.test(sortie);
   if (rouge) rouges++;
-  lignes.push(`${rouge ? "ROUGE" : "VERT "} ${nom} → ${motif} (${joues ? joues[1] : "?"} test joué)`);
+  lignes.push(`${rouge ? "ROUGE" : sortie.startsWith("BLOQUÉ") ? "BLOQUÉ" : "VERT "} ${nom} → ${motif} (${joues ? joues[1] : "?"} test joué)`);
 }
 console.log(lignes.join("\n"));
 console.log(`\n${rouges}/${M.length} réinjections rougissent leur test.`);

@@ -12787,3 +12787,36 @@ button, a, label, select, summary,
 .psel-item.psel-item-choisie .psel-item-plus { color: var(--accent); font-weight: 800; }
 .psel-note { margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; color: #5b21b6; font-weight: 600; }
 :root.passio-ui-6 #fieldMood .pill-row .pill { min-height: 44px; font-size: 13px; }
+
+/* LOT-16 (audit UX/UI du 2026-11-10) — le profil.
+   PRO-C21 : la pastille du nombre de publications est posée DANS la vignette
+   (le rail, en défilement horizontal, rognait tout ce qui dépassait). */
+.profile-tile-count { top: 1px !important; right: 1px !important; }
+/* PRO-C13 : le badge photo d'une passion, 28 px (sa zone reste de 44 px). */
+.passion-photo-badge { width: 28px; height: 28px; font-size: 14px; }
+/* PRO-C17 : les actions du profil visité à 44 px, texte 14 px. */
+.btn.profil-action { min-height: 44px; font-size: 14px; padding: 10px 18px; }
+/* PRO-C07 : un compte que j'ai bloqué le dit, à la place des actions. */
+#visitedProfileActionsMasquees { display: none !important; }
+.profil-bloque { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 4px; padding: 10px 12px; border-radius: 14px; background: #fff1f2; border: 1px solid #fecdd3; color: #9f1239; font-size: 14px; font-weight: 600; }
+/* PRO-C10 : revenir à la liste d'où le profil a été ouvert. */
+.profil-retour-liste { position: absolute; top: 12px; left: 12px; z-index: 21; min-height: 44px; padding: 0 14px; border: none; border-radius: 999px; background: rgba(255, 255, 255, 0.92); color: #4c1d95; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; box-shadow: 0 2px 10px rgba(24, 18, 48, 0.18); }
+/* PRO-C09 : une ligne de personne est un bouton (focus visible). */
+.personne-ligne:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* PRO-C15 : « Ajouter un réseau », et la barre d'enregistrement reste à portée. */
+.rs-ajouter { min-height: 44px; font-size: 13px; }
+.edit-profil-actions { position: sticky; bottom: -1px; z-index: 2; padding: 10px 0 4px; background: var(--bg-card, #fff); }
+/* PRO-C19 : une passion déjà mienne n'est pas une idée. */
+.psel-item.psel-item-possedee { opacity: 0.6; cursor: default; }
+.psel-item-deja { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--muted); }
+
+/* LOT-17 (audit UX/UI du 2026-11-10) — règles transverses.
+   TRA-C02 : un toast long ne touche plus les bords ; coins de carte dès deux lignes. */
+.toast { max-width: min(440px, calc(100% - 32px)); border-radius: 16px; }
+/* TRA-C09 : « Débloquer » à 44 px. */
+.btn.bloque-debloquer { min-height: 44px; font-size: 13px; padding: 8px 14px; }
+/* TRA-C27 : la copie de ses données, proposée avant la suppression. */
+.suppression-export { margin: 0 0 12px; padding: 12px; border-radius: 12px; background: rgba(124, 58, 237, 0.07); border: 1px solid rgba(124, 58, 237, 0.2); }
+.suppression-export .btn { min-height: 44px; }
+/* TRA-C21 : le titre qui reçoit le focus ne dessine pas de cadre à la souris. */
+#modalContent .modal-title:focus:not(:focus-visible) { outline: none; }

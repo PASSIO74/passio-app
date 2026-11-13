@@ -40,7 +40,7 @@ Les findings marqués `agent` sont des lectures : **non revérifiés par le coor
 | ETAT-07 | **P2** | confirmé, **corrigé** (PR #826) | agent, puis coord. (code + verrous) | Au démarrage, la conversation locale est remplacée par celle du serveur : bulle texte en échec et brouillon perdus | lot 2 (client) |
 | ETAT-08 | **P2** | confirmé (statique), **corrigé** (#852 : lecteurs à `null` sur échec, remplacement sous session vérifiée, verdict de « ne plus suivre ») | agent | Désabonnement, déblocage, désinscription reviennent (fusion en union) ; « ne plus suivre » sans verdict | lot à préparer |
 | ETAT-09 | **P2** | confirmé (statique), **corrigé** (PR #836) | agent | Commentaire d'activité : échec muet, commentaire fantôme durable | lot à préparer |
-| STAB-10 | **P2** | confirmé | coord. | La PAGE minifiée qui part en production n'est testée par rien : la minification a lieu dans le job de déploiement, après tous les tests | lot CI (critique) |
+| STAB-10 | **P2** | confirmé, corrigé (#868) | coord. | La PAGE minifiée qui part en production n'est testée par rien : la minification a lieu dans le job de déploiement, après tous les tests | lot CI (critique) |
 | STAB-01 | P3 | confirmé, **corrigé** | coord. | Chargeur des 9 scripts : un `load` rejoué lève 9 erreurs par page (vu en production le 10/11) | **PR #822** |
 | STAB-02 | P3 | confirmé | coord. | `onload` d'une couverture du fil : `this.parentNode` nul quand l'image est détachée (vu en production, iPhone / Instagram) | lot 2 (client) |
 | STAB-03 | P3 | confirmé | coord. | Les robots de prévisualisation (écran 2000 × 2000, plateforme Linux sous agent « Windows ») sont comptés dans l'audience | décision de mesure |
@@ -125,11 +125,12 @@ sans compte par l'API, alors que l'application ne les montre que 24 h (`supaLoad
 Sonde anonyme du 10/11 : `profiles` rend aussi `bio` et `rs_links` (liens vers d'autres réseaux) des 9 comptes privés.
 Correction : compléter le texte, ou fermer ces deux colonnes — validation juridique nécessaire, non faite.
 
-## STAB-10 — La page qui part en production n'est testée par rien — P2 — confirmé
+## STAB-10 — La page qui part en production n'est testée par rien — P2 — confirmé, corrigé (#868, 2026-11-13)
 
 - **Preuve** : `deploy.yml`, job « Déploiement production » : `html-minifier-terser --minify-js` puis `clean-css` s'exécutent APRÈS tous les jobs de test ; seul `verifier-integrite-app.js` relit la page. Le job « Gates artefact production (dist) » joue 2 suites sur la page NON minifiée. `scripts/servir-dist.js` l'écrit lui-même : « Ce que ça ne prouve PAS : le comportement APRÈS minification de la PAGE ».
 - **Ce que l'audit a fait à la place** : reconstruit localement la page minifiée, la feuille de style minifiée, `sw.js` et les 9 scripts — **identiques à l'octet à la production** (sha256 `4649d4dd…` pour la page) — voir `05-VERIFICATIONS.md`.
 - **Correction recommandée** : un job qui construit ET minifie comme le déploiement, joue au moins la fumée et les gates sur ces octets, et dont le déploiement publie l'artefact (au lieu de le reconstruire). Périmètre critique (`.github/`).
+- **Corrigé (#868, 2026-11-13)** : la page est minifiée par `scripts/build.js` (étape 6 ter, arbre `dist/` identique à l'octet à l'ancien chemin) ; « Gates artefact » joue `release-integrity`, `passion-context` et la fumée sur la page minifiée, puis publie l'empreinte de l'arbre servi ; le déploiement reconstruit et refuse d'envoyer un `dist/` d'une autre empreinte (`scripts/empreinte-dist.js`). Reste : le déploiement reconstruit au lieu de publier l'artefact du test — déterministe, prouvé à chaque envoi.
 
 ## STAB-11 — Une suite réécrit des fichiers versionnés — P4 — confirmé
 
@@ -180,7 +181,7 @@ d'outils, sans réseau ; `main` protégée, administrateurs compris.
 |---|---|---|---|
 | EXPL-01 | P2 | non vérifié | Archives chiffrées en `age` depuis le 07/11 : aucun déchiffrement éprouvé avec la clé privée |
 | EXPL-02 | P2 | confirmé | La veille lit l'âge du dernier run d'une sauvegarde, jamais sa conclusion : un échec chaque nuit resterait « ok » |
-| EXPL-03 | P2 | confirmé | = STAB-10 (la page minifiée n'est testée par rien) |
+| EXPL-03 | P2 | confirmé, corrigé (#868) | = STAB-10 (la page minifiée n'est testée par rien) |
 | EXPL-04 | P2 | confirmé | `netlify-cli` installé sans lockfile avant de recevoir le jeton de déploiement |
 | EXPL-05 | P2 | confirmé | Retour arrière exercé une seule fois, le 14/09, avant les 9 scripts et `integrity` ; `rollback.yml` : zéro run |
 | EXPL-06 | P2 | confirmé | Une panne totale de Supabase n'est vue que par les crons GitHub : écart médian 5,7 h, maximum 10,6 h |
