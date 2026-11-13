@@ -9606,9 +9606,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-6a .v6a-menu-item:hover { background: var(--bg-soft); }
 
-/* « Musique · Dernier message… » — la Passio devant l'aperçu (§10). */
-:root.passio-ui-6a .v6a-psn { color: var(--accent); font-weight: 700; }
-
 @media (max-width: 380px) {
   :root.passio-ui-6a .v6a-title { font-size: 20px; }
 }

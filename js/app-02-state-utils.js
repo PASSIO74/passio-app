@@ -10843,7 +10843,6 @@ function renderPostHTML(p) {
       <div class="avatar sm" role="link" aria-label="Profil de ${escapeHtml(cu.name)}" style="background:${avatarBg(cu)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(cu)}</div>
       <div class="comment-body">
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(cu.name)}</div>
-        ${identitePassionsHTML(cu, "ident-passions-sm")}
         <div class="comment-text">${escapeHtml(c.text)}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
         <div class="comment-actions">

@@ -6,7 +6,7 @@
 //   [Rechercher…]
 //
 //   [avatar] Nina
-//   Musique · Dernier message…        12:43
+//   Dernier message…                  12:43
 //
 // « Le + regroupe Nouveau message et Nouveau groupe. »
 //
@@ -18,10 +18,8 @@
 // ⚠️ TROIS PIÈGES DE CET ÉCRAN, mesurés avant d'écrire une ligne :
 // ① `renderMessages()` REPART DE ZÉRO (`list.innerHTML = …`) à chaque envoi,
 //    chaque réception, chaque frappe dans la recherche et chaque changement de
-//    filtre. Une ligne de Passio écrite une fois disparaîtrait au premier
-//    message reçu. Elle est donc (re)posée par un MutationObserver, avec une
-//    signature par carte pour n'écrire qu'au changement — l'observateur voit
-//    ses propres écritures.
+//    filtre. Rien de ce module ne s'écrit donc DANS une carte : la tête est
+//    posée en frère de la liste, et reposée par un MutationObserver.
 // ② `renderMessages()` SORT TÔT quand l'écran n'est pas actif, ou quand la
 //    conversation plein écran est ouverte. Décorer avant que l'écran soit actif
 //    ne décore donc rien : c'est l'observateur, et lui seul, qui fait foi.
@@ -96,15 +94,6 @@
     origines = [];
     var h = el(HOTE_ID);
     if (h && h.parentNode) h.parentNode.removeChild(h);
-    // Les lignes de Passio sont retirées : la coupure rend l'inbox d'avant.
-    try {
-      var lignes = document.querySelectorAll(".v6a-psn");
-      for (var j = 0; j < lignes.length; j++) {
-        if (lignes[j].parentNode) lignes[j].parentNode.removeChild(lignes[j]);
-      }
-      var cartes = document.querySelectorAll("[data-v6a-psn]");
-      for (var k = 0; k < cartes.length; k++) cartes[k].removeAttribute("data-v6a-psn");
-    } catch (e) { fail("nettoyage", e); }
   }
 
   // ── Le menu du « + » ─────────────────────────────────────────────────────
@@ -221,62 +210,13 @@
   // ⚠️ `v8()` et `majMoi()` ont été RETIRÉES le 2026-08-31 avec la ligne
   // d'identité de la tête. Les garder aurait laissé une fonction qui ne peut
   // plus rien écrire — le nœud qu'elle adressait n'est plus construit.
-  // Le lot UI-8 continue de gouverner les passions affichées sur les CARTES
-  // (`decorerCartes`), qui lisent `identitePassionsTexte` comme partout ailleurs.
 
-  // ── ② « Moto · Podcast · Dernier message… » ──────────────────────────────
-  // Les passions de l'interlocuteur, devant l'aperçu. Aucun appel réseau : la
-  // donnée est déjà dans l'état local. §2 : c'est la MÊME formule que partout
-  // ailleurs (`identitePassionsTexte`), pas la seule passion principale.
-  function passionDe(convId) {
-    try {
-      if (typeof getConversations !== "function") return "";
-      var convs = getConversations() || [];
-      var c = null;
-      for (var i = 0; i < convs.length; i++) { if (convs[i].id === convId) { c = convs[i]; break; } }
-      if (!c || c.isGroup || !c.userId) return "";
-      var u = (typeof userById === "function") ? userById(c.userId) : null;
-      if (!u || typeof identitePassionsTexte !== "function") return "";
-      return identitePassionsTexte(u) || "";
-    } catch (e) { return ""; }
-  }
-
-  // `openConversation('<id>')` — l'id est échappé par `escapeJsArg` au rendu ;
-  // on ne le ré-interprète pas, on le relit tel quel pour retrouver la conv.
-  function convIdDe(carte) {
-    try {
-      var h = carte.getAttribute("onclick") || "";
-      var m = h.match(/openConversation\('([^']*)'\)/);
-      if (!m) return "";
-      // `escapeJsArg` échappe l'apostrophe et l'antislash : on défait ces deux-là.
-      return m[1].replace(/\\'/g, "'").replace(/\\\\/g, "\\");
-    } catch (e) { return ""; }
-  }
-
-  function decorerCartes() {
-    var cartes = document.querySelectorAll("#messageList .msg-card");
-    for (var i = 0; i < cartes.length; i++) {
-      var carte = cartes[i];
-      var id = convIdDe(carte);
-      if (!id) continue;
-      var label = passionDe(id);
-      // Signature : l'observateur voit ses propres écritures, on n'écrit qu'au
-      // changement réel — sinon la décoration boucle.
-      if (carte.getAttribute("data-v6a-psn") === (label || "-")) continue;
-      carte.setAttribute("data-v6a-psn", label || "-");
-
-      var ancienne = carte.querySelector(".v6a-psn");
-      if (ancienne && ancienne.parentNode) ancienne.parentNode.removeChild(ancienne);
-      if (!label) continue;
-
-      var apercu = carte.querySelector(".msg-preview");
-      if (!apercu || !apercu.parentNode) continue;
-      var span = document.createElement("span");
-      span.className = "v6a-psn";
-      span.textContent = label + " · ";
-      apercu.insertBefore(span, apercu.firstChild);
-    }
-  }
+  // ⚠️ 2026-11-13 : la ligne « Moto · Podcast · Dernier message… » des CARTES est
+  // RETIRÉE à son tour, sur demande de Benjamin (« ce n'est pas joli et trop
+  // chargé ») : une carte de conversation porte le pseudo, l'aperçu et l'heure,
+  // rien d'autre. `passionDe`, `convIdDe`, `decorerCartes`, la signature
+  // `data-v6a-psn` et la règle CSS `.v6a-psn` sont parties ensemble.
+  // Verrou : `tests/e2e/ui-v6a-messages.spec.js` (« aucune passion sur une carte »).
 
   function decorer() {
     if (enPanne) return;
@@ -287,7 +227,6 @@
     if (!ec) return;
     try {
       if (!el(HOTE_ID) && !construire()) return;
-      decorerCartes();
     } catch (e) {
       enPanne = true;
       fail("decoration", e);

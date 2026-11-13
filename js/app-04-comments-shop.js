@@ -896,7 +896,6 @@ function _renderCommentsList(allComments, postId) {
       <div class="comment-body">
         ${cEpingle ? '<div class="cmt-pinned-badge">Épinglé</div>' : ""}
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(name)}</div>
-        ${identitePassionsHTML(_cAv, "ident-passions-sm")}
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt || c.at)}${c.edited ? " · modifié" : ""}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, c) : ""}</div>
         <div class="comment-actions">
@@ -945,7 +944,7 @@ function _renderCommentsList(allComments, postId) {
           const rLikes = r.likes || 0;
           return `<div class="comment-reply" data-replyid="${escapeHtml(r.id)}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
             <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAvT)}</div>
-            <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}${identitePassionsHTML(ru, "ident-passions-sm")}
+            <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
             <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
               <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, r) : ""}</span>
               <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(r.id)}" style="font-size:12px;" onclick="return likeCommentNode('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
@@ -4422,13 +4421,9 @@ function searchUsers(query) {
     results.innerHTML = matches.map(function(u) {
       var nameEsc = escapeHtml(u.name || "Passionné");
       var emoji = u.profileEmoji || "✨";
-      // §2 : la MÊME ligne d'identité que partout ailleurs, au lieu des pastilles
-      // propres à cet écran. `identitePassionsHTML` échappe (le jsonb
-      // `profiles.passions` d'un AUTRE compte est du contenu libre — un
-      // `<img src=x onerror=…>` s'y exécutait avant le correctif du 2026-08-30)
-      // et borne la liste, pour qu'un compte à douze passions ne pousse pas
-      // « Message → » hors de l'écran.
-      var passionBadges = identitePassionsHTML(u, "ident-passions-sm");
+      // 2026-11-13 : plus de ligne de passions sous le pseudo dans la messagerie
+      // (demande de Benjamin : « ce n'est pas joli et trop chargé »). Le pseudo
+      // seul, comme dans la liste des conversations.
       // ⚠️ data-emoji recevait `profiles.emoji` BRUT dans un attribut simple-quoté :
       // une valeur du type `' onmouseover='…` refermait l'attribut et ouvrait un
       // gestionnaire d'événement. Tout ce qui entre ici doit être échappé, y compris
@@ -4442,8 +4437,7 @@ function searchUsers(query) {
         '<div style="width:38px;height:38px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">'
          + avatarInner(u) + "</div>" +
         "<div style='flex:1;min-width:0;'>" +
-          "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + nameEsc + "</div>" +
-          "<div>" + passionBadges + "</div>" +
+          "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + nameEsc + "</div>" +
         "</div>" +
         "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;'>Message →</div>" +
       "</div>";

@@ -52,11 +52,13 @@ test.describe("UI-6A — pas de boucle de repeinte", () => {
     await expect(page.locator("#v6aHead .v6a-title")).toHaveText("Messages");
   });
 
-  test("l'inbox reste décorée : la tête et les Passio des cartes sont là", async ({ page }) => {
+  // 2026-11-13 : les passions des cartes sont retirées (demande de Benjamin).
+  test("l'inbox reste décorée : la tête est là, sans passion sur les cartes", async ({ page }) => {
     await bootOnboarded(page);
     await page.evaluate(() => goTo("messages"));
     await expect(page.locator("#v6aHead")).toHaveCount(1);
     await expect(page.locator("[data-v6a-plus]")).toHaveCount(1);
-    expect(await page.locator(".v6a-psn").count()).toBeGreaterThan(0);
+    await expect(page.locator("#messageList .msg-card").first()).toBeVisible();
+    await expect(page.locator(".v6a-psn")).toHaveCount(0);
   });
 });
