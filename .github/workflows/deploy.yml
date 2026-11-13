@@ -171,7 +171,39 @@ jobs:
           sentinelle=false
           if [[ "${head_ref}" =~ ^claude/issue-([0-9]+)-[0-9]+$ ]]; then
             issue_num="${BASH_REMATCH[1]}"
-            if gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_num}" --jq '.labels[].name' 2>/dev/null | grep -qx 'sentinelle'; then
+            # Les labels LUS d'abord, cherchés ensuite (2026-11-13, #875) : sous pipefail, `gh … | grep -qx` rend 141
+            # dès que `gh` écrit encore APRÈS la ligne « sentinelle » (grep déjà sorti : SIGPIPE) — une réparation de la
+            # Sentinelle passait alors pour une PR humaine, hors de son périmètre strict. Illisibles (GitHub muet), on ne
+            # sait pas ce qu'est cette PR : la gouvernance s'arrête au lieu de la traiter comme humaine. La cause se dit
+            # (relecture de #875), nettoyée de ses retours chariot et sauts de ligne (le runner coupe une commande sur
+            # l'un comme sur l'autre). C'est un texte de GitHub ; s'il part un jour chez un agent (le journal d'une
+            # réparation de déploiement), c'est comme DONNÉE, relue par la marche de confiance de claude-code.yml.
+            # Une issue introuvable (404) ou supprimée (410) ne reviendra pas :
+            #  · sur une PR ouverte, refus, avec un remède qui marche : republier hors du motif claude/issue-… (la PR
+            #    est alors jugée comme humaine, contre-revue comprise) ;
+            #  · sur un push dans main, la PR est DÉJÀ fusionnée. Ce qu'elle était (réparation de la Sentinelle ou non)
+            #    n'est plus lisible, et rien ici ne rejoue le contrôle qui l'a laissée fusionner — avant #875, une issue
+            #    illisible y passait pour humaine. Elle est jugée comme humaine : cette garde ne bloque pas sa mise en
+            #    ligne pour une issue effacée (la contre-revue des fichiers critiques, plus bas, s'applique comme à toute
+            #    PR humaine), et un avertissement dit ce qui n'est pas revérifié.
+            disparue=false
+            if ! labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_num}" --jq '.labels[].name' 2> "${RUNNER_TEMP}/gouvernance-labels.err")"; then
+              cause="$(head -c 300 "${RUNNER_TEMP}/gouvernance-labels.err" | tr '\r\n' '  ' | sed 's/[[:space:]]*$//')"
+              if grep -qE 'HTTP 404|HTTP 410|Not Found' <<< "${cause}"; then
+                if [ "${EVENT_NAME}" = "push" ]; then
+                  echo "::warning title=Gouvernance::L'issue #${issue_num} est introuvable (${cause}) ; la PR #${pr} est déjà fusionnée : elle est jugée ici comme humaine. L'issue introuvable ne bloque pas son déploiement ; la contre-revue des fichiers critiques s'applique comme à toute PR humaine. Non revérifié ici : si c'était une réparation de la Sentinelle, qu'elle restait dans son périmètre et dans sa taille."
+                  disparue=true
+                else
+                  echo "::error title=Gouvernance::L'issue #${issue_num} est introuvable (${cause}) : la branche ${head_ref} prétend réparer une issue introuvable, relancer n'y changera rien. Republie le travail depuis une branche qui ne suit pas claude/issue-<n>-<run>."
+                  exit 1
+                fi
+              else
+                echo "::error title=Gouvernance::Les labels de l'issue #${issue_num} n'ont pas pu être lus (${cause:-sans message}) : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job."
+                exit 1
+              fi
+            fi
+            if [ "${disparue}" = "true" ]; then labels=""; fi
+            if grep -qx 'sentinelle' <<< "${labels}"; then
               sentinelle=true
             fi
           fi

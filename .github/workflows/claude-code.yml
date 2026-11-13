@@ -1201,8 +1201,10 @@ jobs:
             case "${fichier}" in
               # Ces specs et ces aides tournent avec la clé de production au push (E-04).
               # Les exceptions du scan des secrets : leur tri est à Benjamin, jamais à un agent — une vraie clé se
-              # révoque d'abord (relecture de #866 ; le scan n'est ni « Régler », ni dans RUNS_REPARABLES).
-              .github/*|.claude/*|.agents/*|.codex/*|.npmrc|.mcp.json|package.json|package-lock.json|dashboard/package*.json|playwright.config.js|scripts/*|tests/ci/*|migrations/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|.gitleaksignore|.gitleaks.toml)
+              # révoque d'abord (relecture de #866 ; le scan n'est ni « Régler », ni dans RUNS_REPARABLES). Un
+              # `.gitattributes` aussi (relecture de #875) : `-diff` rend un fichier « binaire » — gitleaks le saute
+              # (`git log -p` sans --text), le scan de TOUT l'historique se tairait.
+              .github/*|.claude/*|.agents/*|.codex/*|.npmrc|.mcp.json|package.json|package-lock.json|dashboard/package*.json|playwright.config.js|scripts/*|tests/ci/*|migrations/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|.gitleaksignore|.gitleaks.toml|.gitattributes|*/.gitattributes)
                 interdits="${interdits}${fichier} " ;;
             esac
           # `-z` : un chemin non ASCII entre guillemets ne matchait plus rien. `--no-renames` : un
@@ -1215,12 +1217,40 @@ jobs:
 
           # ── Ce qui part dans un dépôt public ne porte aucun jeton (revue adverse du 2026-11-06) ──
           # `git commit -F .git/config` recopiait le jeton du run dans un message : l'outil l'interdit désormais,
-          # et cette lecture rattrape toute autre voie, message comme contenu.
-          if { git log --format=%B "${base}..${tip}"; git diff "${base}" "${tip}"; } \
-               | grep -qE 'gh[opsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|x-access-token:[A-Za-z0-9_-]{10,}'; then
+          # et cette lecture en est le dernier filet — elle lit l'arbre FINAL et les MESSAGES de tous les commits.
+          # ⚠️ Pas encore (relecture de #875, P1-14 bis) : le contenu d'un commit INTERMÉDIAIRE (ajouté puis retiré)
+          # ni l'AUTEUR d'un commit — la poussée publie pourtant les deux. Tant que ce n'est pas lu, ne pas écrire
+          # que cette garde « rattrape toute voie ».
+          # ⚠️ Lu dans un FICHIER, jamais à travers un tube (2026-11-13) : sous pipefail, `git … | grep -q` faisait
+          # mourir `git` de SIGPIPE dès que grep trouvait le jeton au début d'un gros diff — le pipeline rendait 141,
+          # et le `if` ne voyait RIEN, précisément quand un jeton était là (prouvé sur le runner, #875). Écrit d'abord,
+          # un `git` en échec arrête la marche (`set -e`) au lieu de la laisser publier.
+          # `--text --no-ext-diff --no-textconv` (relecture de #875) : sans eux, un fichier que git tient pour binaire —
+          # un octet nul, ou un `.gitattributes` qui le marque `-diff`, même laissé NON commité dans l'arbre — ne
+          # montrait que « Binary files differ », et le jeton partait.
+          publie="${RUNNER_TEMP}/passio-travail-publie.txt"
+          { git log --format=%B "${base}..${tip}"; git diff --no-color --text --no-ext-diff --no-textconv "${base}" "${tip}"; } > "${publie}"
+          if grep -qE 'gh[opsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|x-access-token:[A-Za-z0-9_-]{10,}' "${publie}"; then
+            rm -f "${publie}"
             echo "::error title=Jeton dans le travail produit::Le diff ou un message de commit porte un jeton. Refus de publier."
             exit 1
           fi
+
+          # ── Un commentaire d'exception du scan des secrets ajouté au diff final est refusé (relecture de #866) ──
+          # `.gitleaksignore` et `.gitleaks.toml` sont des chemins interdits ; un commentaire en ligne `gitleaks:allow`
+          # AJOUTÉ au diff tairait une trouvaille NEUVE du scan. Leur tri est à Benjamin : refus. Une ligne qui le
+          # RETIRE passe. Seul le diff FINAL est lu : un commit intermédiaire ne l'est pas encore (P1-14 bis, PR
+          # suivante), comme pour la garde des jetons. Les lignes ajoutées se lisent hunk par hunk : un contenu qui commence par « ++ » est une
+          # ligne, pas un en-tête de fichier.
+          # Même lecture en texte : un `.gitattributes` `-diff` rendait le marqueur invisible ici AUSSI. (`--no-renames` :
+          # un renommage pur d'un fichier déjà marqué est refusé — côté sûr, délibéré.)
+          git diff -U0 --no-color --text --no-ext-diff --no-textconv --no-renames "${base}" "${tip}" > "${publie}"
+          if awk '/^diff --git /{h=1} /^@@/{h=0; next} !h && /^\+/ && index($0, "gitleaks:allow") {t=1} END{exit !t}' "${publie}"; then
+            rm -f "${publie}"
+            echo "::error title=Exception du scan des secrets::Claude a ajouté un commentaire « gitleaks:allow » : il tairait une trouvaille du scan, dont le tri est à Benjamin. Refus de publier."
+            exit 1
+          fi
+          rm -f "${publie}"
 
           # ── Audits du dépôt, exécutés par le WORKFLOW ─────────────────────
           # Même doctrine que la publication : la vérification appartient au
