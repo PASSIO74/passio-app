@@ -4625,8 +4625,53 @@ function _ecranActifId() {
   try { var s = document.querySelector(".screen.active"); return s && s.id ? s.id.replace(/^screen-/, "") : null; } catch (e) { return null; }
 }
 function _convOrigineProfil(userId) { window._convOrigineProfil = userId || null; }
+// LOT-52 (audit UX/UI du 2026-11-10, PCS-C05) : écrire à quelqu'un dont on vient
+// d'ouvrir le profil DEPUIS UNE PUBLICATION ouvrait une conversation vide, sans
+// rien de ce qui l'avait motivée. On note la publication (identifiant seulement)
+// quand on ouvre son auteur ; si la conversation suit dans les 10 minutes, elle
+// la rappelle au-dessus du champ — une ligne qu'on peut fermer. RIEN n'est
+// envoyé ni publié : c'est un rappel, pas un message (§10 du lot UI-6C).
+function _contexteDepuisPublication(postId) {
+  window._contexteMessage = postId ? { postId: String(postId), a: Date.now() } : null;
+}
+function _peindreContexteConv() {
+  try {
+    var fp = document.getElementById("conv-fullpage");
+    if (!fp) return;
+    var ancien = document.getElementById("convContexte");
+    if (ancien) ancien.remove();
+    var o = window._convOrigine;
+    var ctx = o && o.contexte;
+    if (!ctx || window._openedConvId !== o.convId) return;
+    var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(ctx.postId) : null;
+    if (!p) return;
+    var extrait = String(p.text || "").replace(/\s+/g, " ").trim().slice(0, 90) || "sa publication";
+    var barre = fp.querySelector(".conv-toolbar") || document.getElementById("convFpInput");
+    if (!barre || !barre.parentNode) return;
+    var d = document.createElement("div");
+    d.id = "convContexte";
+    d.className = "conv-contexte";
+    d.setAttribute("role", "note");
+    var t = document.createElement("span");
+    t.className = "conv-contexte-texte";
+    t.textContent = "À propos de sa publication : « " + extrait + " »";
+    var x = document.createElement("button");
+    x.type = "button";
+    x.className = "conv-contexte-fermer";
+    x.setAttribute("aria-label", "Fermer le rappel");
+    x.textContent = "×";
+    x.addEventListener("click", function () { d.remove(); if (window._convOrigine) window._convOrigine.contexte = null; });
+    d.appendChild(t); d.appendChild(x);
+    barre.parentNode.insertBefore(d, barre);
+  } catch (e) { try { diagLog("conv_contexte " + (e && e.message)); } catch (_) {} }
+}
 async function startDirectMessage(userId, userName, userEmoji, userAvatar, userPhoto) {
-  window._convOrigineEnAttente = { ecran: _ecranActifId(), profil: window._convOrigineProfil || null };
+  // LOT-52 (PCS-C05) : la publication d'où l'on vient, si c'est bien son auteur.
+  var _ctx = window._contexteMessage;
+  window._contexteMessage = null;
+  var _p = (_ctx && typeof findPostAnywhere === "function") ? findPostAnywhere(_ctx.postId) : null;
+  var _contexte = (_ctx && _p && _p.authorId === userId && Date.now() - _ctx.a < 10 * 60000) ? { postId: _ctx.postId } : null;
+  window._convOrigineEnAttente = { ecran: _ecranActifId(), profil: window._convOrigineProfil || null, contexte: _contexte };
   window._convOrigineProfil = null;
   // ⚠️ Ouvrir un DM avec un compte que J'AI bloqué créait la conversation EN
   // BASE (`supaCreateConversation` insère les deux membres), puis `renderMessages`
@@ -6400,6 +6445,8 @@ async function openConversation(convId) {
   // LOT-46 (PCS-C02) : l'origine posée par startDirectMessage, ou aucune.
   window._convOrigine = window._convOrigineEnAttente || null;
   window._convOrigineEnAttente = null;
+  if (window._convOrigine) window._convOrigine.convId = convId;
+  setTimeout(_peindreContexteConv, 60); // LOT-52 (PCS-C05)
   const sp = document.getElementById("convSettingsPanel");
   if (sp) { sp.classList.remove("open"); sp.style.transform = "translateX(100%)"; sp.style.display = "none"; sp.style.pointerEvents = "none"; }
   // Réinitialise un éventuel contexte de réponse d'une conversation précédente.

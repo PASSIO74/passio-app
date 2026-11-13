@@ -13349,3 +13349,9 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
     max-width: none;
   }
 }
+
+/* LOT-52 (audit UX/UI du 2026-11-10, PCS-C05) : le rappel de la publication
+   d'origine, au-dessus du champ — une ligne qu'on peut fermer. */
+.conv-contexte { display: flex; align-items: center; gap: 8px; margin: 0 10px 6px; padding: 6px 6px 6px 12px; border-radius: 12px; background: var(--accent-wash, #f1ebfe); color: var(--text); font-size: 13px; }
+.conv-contexte-texte { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-contexte-fermer { flex-shrink: 0; width: 44px; height: 44px; border-radius: 22px; font-size: 20px; color: var(--muted); }

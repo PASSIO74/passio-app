@@ -10985,8 +10985,8 @@ function renderPostHTML(p) {
   // écrivait déjà le texte collé. Verrou : `controle-general-2026-11-10.spec.js` ①.
   return `<article class="post" data-postid="${escapeHtml(p.id)}">
     <div class="post-header">
-      <div class="avatar" role="button" tabindex="0" aria-label="Profil de ${escapeHtml(author.name || "Moi")}" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">${avatarInner(author)}</div>
-      <div class="post-author" role="button" tabindex="0" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
+      <div class="avatar" role="button" tabindex="0" aria-label="Profil de ${escapeHtml(author.name || "Moi")}" style="background:${avatarBg(author)};cursor:pointer;" onclick="_contexteDepuisPublication('${escapeJsArg(p.id)}');openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">${avatarInner(author)}</div>
+      <div class="post-author" role="button" tabindex="0" style="cursor:pointer;" onclick="_contexteDepuisPublication('${escapeJsArg(p.id)}');openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
           <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}${p.editedAt ? ' · <span class="post-modifie">modifié</span>' : ""}${p.authorPrive ? ' · <span class="post-prive" title="Réservé aux abonnés" aria-label="Réservé aux abonnés"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Abonnés</span>' : ""}
