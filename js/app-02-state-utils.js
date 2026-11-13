@@ -2314,6 +2314,16 @@ function fmtEventDate(ts) {
   };
 }
 
+// LOT-20 (MSG-C83) : la taille d'un fichier, en français — « moins de 1 Ko »,
+// « 240 Ko », « 3,2 Mo » (l'ancien « 0 KB » pour tout petit fichier).
+function tailleFichierLisible(octets) {
+  var n = Number(octets);
+  if (!isFinite(n) || n < 0) return "";
+  if (n < 1024) return "moins de 1 Ko";
+  if (n < 1024 * 1024) return Math.round(n / 1024) + " Ko";
+  return (n / (1024 * 1024)).toFixed(1).replace(".", ",") + " Mo";
+}
+
 // Nombre de jours de CALENDRIER entre aujourd'hui et `ts` : 0 = aujourd'hui,
 // 1 = demain, négatif = passé. On compare des MINUITS locaux, jamais une durée.
 // ⚠️ `Math.ceil((ts - Date.now()) / 86400000)` N'EST PAS CE NOMBRE (2026-11-10) :

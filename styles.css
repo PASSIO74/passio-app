@@ -12996,6 +12996,41 @@ button, a, label, select, summary,
 /* IRL-C53 / C66 : pied de l'organisation et d'un exemple. */
 :root.passio-ui-4b #eventDetailCta .v4b-rsvp-exemple .v4b-rsvp-etat { color: var(--muted); }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOT-20 (audit UX/UI du 2026-11-10) — messagerie
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* MSG-C62 : un seul état par message, en toutes lettres. */
+.msg-st { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.msg-st-envoi { opacity: 0.8; }
+.msg-st-echec {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  margin: -12px 0 -12px 4px;
+  border-radius: 999px;
+  background: #fef3f2;
+  color: #b42318;
+  border: 1px solid rgba(180, 35, 24, 0.35);
+  cursor: pointer;
+}
+.msg-st-echec:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* MSG-C83 : le nom d'un fichier sur deux lignes, en entier au survol. */
+.msg-fichier-nom {
+  font-size: 13px;
+  font-weight: 700;
+  max-width: 200px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+  line-height: 1.3;
+}
+/* MSG-C67 : un lien dans un message, souligné dans la couleur du texte. */
+.msg-lien { color: inherit; text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+/* MSG-C19 / C32 : l'état vide se termine par une action. */
+.msg-vide-action { margin-top: 12px; min-height: 44px; }
 /* Décisions de Benjamin du 2026-11-13 (CRE-C16 / FIL-C24, CRE-C13). */
 .post-modifie { color: var(--muted); font-style: italic; }
 .v7-passion-ligne { display: flex; gap: 8px; align-items: center; }

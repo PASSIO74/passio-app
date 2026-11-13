@@ -7429,6 +7429,7 @@ async function _rafraichirConversationsServeur(opts) {
   _primeProfileCache(conversationsState); // pré-remplir cache → 0 requête lors de la réception
   saveConversations();
   window._convNetLoaded = true; // fin du squelette de la liste de conversations
+  window._convChargementLent = false; // LOT-20 (MSG-C32) : la lecture est revenue
   try { renderMessages(); } catch(e) {}
 }
 

@@ -2223,6 +2223,7 @@ function pickGroupPhoto(convId) {
     var file = e.target.files[0];
     document.body.removeChild(input);
     if (!file) return;
+    if (!/^image\//.test(file.type || "")) { toast("Choisis une image (JPG, PNG…)", "warning"); return; }
     var reader = new FileReader();
     reader.onload = function(ev) {
       var convs = getConversations();
@@ -2230,23 +2231,24 @@ function pickGroupPhoto(convId) {
       if (!c) return;
       c.groupPhoto = ev.target.result;
       saveConversations();
-      toast("Photo du groupe mise à jour", "success");
-      // Mettre à jour l'avatar dans le header sans recharger la conversation
-      var avatarStyle = "background:url(" + ev.target.result + ") center/cover;width:40px;height:40px;font-size:0;flex-shrink:0;";
-      var avatarEl = document.querySelector("#convFpHead .msg-avatar");
-      if (avatarEl) {
-        avatarEl.style.cssText = avatarStyle;
+      // LOT-20 (audit UX/UI du 2026-11-10, MSG-C11) : trois références mortes —
+      // `renderConvList` (inexistante : ReferenceError, rien après ne tournait),
+      // `#convFpHead .msg-avatar` et `#modal-backdrop` (absents du DOM). Succès
+      // annoncé, rien ne changeait. Et la photo n'est écrite que sur CET appareil
+      // (aucun dépôt serveur pour un groupe) : on le dit.
+      var avatarEl = document.querySelector("#convFpHead .conv-fp-head-avatar");
+      if (avatarEl && window._openedConvId === convId) {
         avatarEl.textContent = "";
+        avatarEl.style.backgroundImage = 'url("' + String(ev.target.result).replace(/"/g, "%22") + '")';
+        avatarEl.style.backgroundSize = "cover";
+        avatarEl.style.backgroundPosition = "center";
       }
-      // Mettre à jour dans la liste
-      renderConvList();
-      // Mettre à jour dans la modale si ouverte
-      var modalAvatarEl = document.querySelector(".modal-content .msg-avatar[data-grp], .modal-content [style*='border-radius:50%']");
-      // Re-render la modale membres si elle est ouverte
-      var modalBackdrop = document.getElementById("modal-backdrop");
-      if (modalBackdrop && modalBackdrop.style.display !== "none") {
-        _renderGroupMembersModal(convId);
+      try { if (typeof renderMessages === "function") renderMessages(); } catch (e2) {}
+      var modalBackdrop = document.getElementById("modalBackdrop");
+      if (modalBackdrop && modalBackdrop.classList.contains("active") && typeof _renderGroupMembersModal === "function") {
+        try { _renderGroupMembersModal(convId); } catch (e3) {}
       }
+      toast("Photo du groupe mise à jour sur cet appareil", "success");
     };
     reader.readAsDataURL(file);
   };
