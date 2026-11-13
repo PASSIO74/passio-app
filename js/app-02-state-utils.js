@@ -8121,7 +8121,7 @@ function _boutonOptionsPost(p) {
   if (!p || !p.id) return "";
   var svg = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>';
   if (_estMonPost(p)) {
-    return '<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions(\'' + escapeJsArg(p.id) + '\')" aria-label="Options du post" title="Options">' + svg + '</button>';
+    return '<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions(\'' + escapeJsArg(p.id) + '\')" aria-label="Options de la publication" title="Options">' + svg + '</button>';
   }
   var auteur = String(p.authorId || "");
   if (!auteur || /^u_/.test(auteur)) return "";
@@ -10292,7 +10292,7 @@ function renderFeed() {
         // d'autant mieux qu'aucun test ne le lit.
         if (emptyText) emptyText.textContent = "Les personnes que tu suis n'ont rien publié. Ajoute une passion depuis « Gérer mes passions », sur ton profil, pour découvrir d'autres contenus.";
       } else if (_activeFeedPassions.size > 0) {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette sélection";
+        if (emptyTitle) emptyTitle.textContent = "Aucune publication pour cette sélection";
         if (emptyText) emptyText.textContent = intentsEnabled
           ? "Sois le premier à publier autour de cette passion."
           : "Essaie un autre mood ou sois le premier à publier ici.";
@@ -10801,7 +10801,7 @@ function renderPostHTML(p) {
       media = `<div class="post-media">
         <img
           src="${safeUrlAttr(passioThumb(p.image, 700))}"
-          alt="post"
+          alt="Image de la publication"
           loading="lazy" decoding="async"
           onerror="imageFilIndisponible(this)"
           style="width:100%;display:block;background:var(--accent-tile, #f5f3ff);"
@@ -11006,7 +11006,7 @@ async function openPost(id) {
   let media = "";
   if (post.type === "photo" || (post.cover && post.type !== "vlog" && post.type !== "audio")) {
     media = post.image
-      ? `<div class="post-media"><img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(post.image, 700))}" alt="post" style="width:100%;border-radius:14px;"/></div>`
+      ? `<div class="post-media"><img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(post.image, 700))}" alt="Image de la publication" style="width:100%;border-radius:14px;"/></div>`
       : renderPostCover(post, passion);
   }
   if (post.type === "audio") {

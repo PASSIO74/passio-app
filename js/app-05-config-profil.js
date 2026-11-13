@@ -2139,7 +2139,7 @@ function _renderGroupMembersModal(convId) {
     var filtered = filter ? nonMembers.filter(function(u) {
       return plierRecherche(u.name).includes(plierRecherche(filter));
     }) : nonMembers;
-    if (nonMembers.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Tous les utilisateurs sont déjà membres.</div>';
+    if (nonMembers.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Toutes les personnes que tu connais sont déjà membres.</div>';
     if (filtered.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Aucun résultat.</div>';
     return filtered.map(function(u) {
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
@@ -2185,7 +2185,7 @@ function _renderGroupMembersModal(convId) {
     '<div id="grpPanel_add" style="display:none;">' +
       '<div style="position:relative;margin-bottom:10px;">' +
         '<span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;display:inline-flex;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:14px;height:14px;color:var(--muted);display:block;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg></span>' +
-        '<input id="grpSearchInput" type="text" placeholder="Rechercher un utilisateur..." aria-label="Chercher une personne à ajouter" enterkeyhint="search" oninput="filterGroupAddList(this.value)" ' +
+        '<input id="grpSearchInput" type="text" placeholder="Chercher une personne…" aria-label="Chercher une personne à ajouter" enterkeyhint="search" oninput="filterGroupAddList(this.value)" ' +
           'style="width:100%;box-sizing:border-box;padding:9px 12px 9px 34px;border-radius:12px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:13px;outline:none;">' +
       '</div>' +
       '<div id="grpAddList" style="max-height:240px;overflow-y:auto;">' + buildNonMembersHTML("") + '</div>' +
@@ -2287,7 +2287,7 @@ function filterGroupAddList(query) {
   var list = document.getElementById("grpAddList");
   if (!list) return;
   if (nonMembers.length === 0) {
-    list.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Tous les utilisateurs sont déjà membres.</div>';
+    list.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Toutes les personnes que tu connais sont déjà membres.</div>';
     return;
   }
   if (filtered.length === 0) {
