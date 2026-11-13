@@ -62,7 +62,7 @@
   var LIBELLE_RSVP = "Je participe";
   var LIBELLE_RSVP_FILE = "Rejoindre la liste d'attente";
   var LIBELLE_RSVP_FAIT = "✓ Tu participes";
-  var LIBELLE_RSVP_ATTENTE = "Sur liste d'attente";
+  var LIBELLE_RSVP_ATTENTE = "Tu es sur la liste d'attente";
   // Formulé du point de vue de la personne (LOT-3, PCS-C03).
   var LIBELLE_RSVP_RETIRER = "Je ne peux plus venir";
   // Le retrait est inerte juste après une inscription : un second appui au même
@@ -590,7 +590,13 @@
 
     var etat = etatRsvp(ev.id);
     var complet = estComplet(ev);
-    var sig = (etat || "none") + (complet ? "|full" : "");
+    // LOT-19 (audit UX/UI du 2026-11-10) : deux états que le pied confondait
+    // avec celui d'une participante ordinaire — l'ORGANISATION (IRL-C53 : elle
+    // voyait « ✓ Je participe / Retirer ma participation » sur sa propre
+    // activité) et l'EXEMPLE (IRL-C66 : bouton actif, refus seulement après).
+    var orga = estOrganisation(ev);
+    var exemple = !orga && estExemple(ev);
+    var sig = (etat || "none") + (complet ? "|full" : "") + (orga ? "|orga:" + nbInscrits(ev, "going") : "") + (exemple ? "|exemple" : "");
     // ⚠️ Le marqueur vit sur le nœud INJECTÉ, jamais sur `#eventDetailCta` : le
     // moteur historique repeint la barre par `innerHTML`, ce qui efface les
     // enfants mais conserve les attributs de l'hôte. Un marqueur posé sur l'hôte
@@ -599,8 +605,66 @@
     if (box && box.getAttribute("data-v4b-rsvp") === sig) return false;
 
     cta.innerHTML = "";
-    cta.appendChild(construireCta(sig, etat, complet));
+    cta.appendChild(orga ? construireCtaOrga(sig, ev) : exemple ? construireCtaExemple(sig) : construireCta(sig, etat, complet));
     return true;
+  }
+
+  function estOrganisation(ev) {
+    try { return typeof _canManageEvent === "function" && !estDemo(ev.id) && !!_canManageEvent(ev); }
+    catch (e) { fail("etat_orga", e); return false; }
+  }
+
+  function estExemple(ev) {
+    try { return !!(window.PassioFirstRun && typeof PassioFirstRun.masquerChiffresDemo === "function" && PassioFirstRun.masquerChiffresDemo(ev)); }
+    catch (e) { fail("etat_exemple", e); return false; }
+  }
+
+  // IRL-C53 : l'organisation n'a pas à « participer » à sa propre activité ni à
+  // pouvoir s'en retirer d'un geste — son pied dit qu'elle organise, combien
+  // viennent, et mène à ses deux gestes : écrire aux participants, gérer.
+  function construireCtaOrga(sig, ev) {
+    var box = document.createElement("div");
+    box.className = "v4b-rsvp v4b-rsvp-inscrit v4b-rsvp-orga";
+    box.setAttribute("data-v4b-rsvp", sig);
+    var st = document.createElement("div");
+    st.className = "v4b-rsvp-etat";
+    st.setAttribute("role", "status");
+    var n = nbInscrits(ev, "going");
+    st.textContent = "Tu organises · " + n + " participant" + (n > 1 ? "s" : "");
+    box.appendChild(st);
+    var suite = document.createElement("div");
+    suite.className = "v4b-rsvp-suite";
+    var chat = document.createElement("button");
+    chat.type = "button";
+    chat.className = "btn primary v4b-rsvp-chat";
+    chat.setAttribute("data-v4b-rsvp-chat", "1");
+    chat.textContent = "Écrire aux participants";
+    suite.appendChild(chat);
+    var gerer = document.createElement("button");
+    gerer.type = "button";
+    gerer.className = "btn ghost v4b-rsvp-gerer";
+    gerer.setAttribute("data-v4b-rsvp-gerer", "1");
+    gerer.textContent = "Gérer l'activité";
+    suite.appendChild(gerer);
+    box.appendChild(suite);
+    return box;
+  }
+
+  // IRL-C66 : une activité d'exemple le dit AVANT le geste ; le pied est neutre.
+  function construireCtaExemple(sig) {
+    var box = document.createElement("div");
+    box.className = "v4b-rsvp v4b-rsvp-exemple";
+    box.setAttribute("data-v4b-rsvp", sig);
+    var st = document.createElement("div");
+    st.className = "v4b-rsvp-etat";
+    st.setAttribute("role", "status");
+    st.textContent = "Exemple — participation désactivée";
+    box.appendChild(st);
+    var d = document.createElement("div");
+    d.className = "v4b-rsvp-detail";
+    d.textContent = "Cette activité montre ce qui se partage sur PASSIO ; elle n'a pas lieu.";
+    box.appendChild(d);
+    return box;
   }
 
   function construireCta(sig, etat, complet) {
@@ -628,14 +692,18 @@
       var ev = evenementCourant();
       var detail = document.createElement("div");
       detail.className = "v4b-rsvp-detail";
+      // IRL-C55 : la liste d'attente dit ce qui va se passer (inscription
+      // AUTOMATIQUE, prévenu·e) — pas de rang : la base ne le montre plus (C-04).
       detail.textContent = etat === "going"
         ? (ev ? texteDate(ev) + (texteHeure(ev) ? " · " + texteHeure(ev) : "") + " — l'organisation est prévenue." : "")
-        : "Tu seras prévenu·e si une place se libère.";
+        : "Si une place se libère, tu es inscrit·e automatiquement et prévenu·e.";
       if (detail.textContent) box.appendChild(detail);
       // Le pied est fixé en BAS et grandit vers le haut : l'élément du bas prend
       // la place de l'ancien bouton. Le retrait passe donc AU-DESSUS de la suite —
       // sous le doigt qui vient de s'inscrire, c'est « Écrire aux participants ».
-      box.appendChild(construireRetrait());
+      var rmInscrit = construireRetrait();
+      if (etat === "waitlist") rmInscrit.textContent = "Quitter la liste d'attente";
+      box.appendChild(rmInscrit);
       if (etat === "going") {
         var suite = document.createElement("div");
         suite.className = "v4b-rsvp-suite";
@@ -823,6 +891,14 @@
       var evI = evenementCourant();
       track("ui_v4b_rsvp_suite", { v: VERSION, quoi: "inviter" });
       try { if (evI && typeof openEventInvite === "function") openEventInvite(evI.id); } catch (x) { fail("rsvp_inviter", x); }
+      return;
+    }
+    var gerer = e.target.closest("[data-v4b-rsvp-gerer]");
+    if (gerer) {
+      e.preventDefault(); e.stopPropagation();
+      var evG = evenementCourant();
+      track("ui_v4b_rsvp_suite", { v: VERSION, quoi: "gerer" });
+      try { if (evG && typeof openEventManage === "function") openEventManage(evG.id); } catch (x) { fail("rsvp_gerer", x); }
       return;
     }
     var rm = e.target.closest("[data-v4b-rsvp-remove]");

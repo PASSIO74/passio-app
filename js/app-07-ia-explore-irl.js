@@ -802,6 +802,25 @@ function _eventSpotsLeft(ev) {
 }
 function _eventIsFull(ev) { const s = _eventSpotsLeft(ev); return s !== null && s <= 0; }
 
+// LOT-19 (IRL-C54) : la base a refusé « je viens » parce que l'activité est
+// complète. Les compteurs sont relus (`supaLireParticipants`, seule source) ;
+// si la lecture ne rend rien, le refus du serveur suffit à poser le plein.
+async function _rafraichirApresComplet(ev) {
+  if (!ev) return;
+  try {
+    if (typeof supaLireParticipants === "function") {
+      const lu = await supaLireParticipants([ev.id], "rsvp_complet");
+      const c = lu && lu.comptesLus && lu.countsByEvent ? lu.countsByEvent[ev.id] : null;
+      if (c) ev.counts = Object.assign({}, ev.counts || {}, c);
+    }
+  } catch (e) { try { diagLog("rsvp complet : relecture — " + (e && e.message)); } catch (_) {} }
+  if (ev.maxAttendees && !_eventIsFull(ev)) {
+    ev.counts = Object.assign({}, ev.counts || {}, { going: Math.max(Number(ev.maxAttendees) || 0, Number((ev.counts || {}).going) || 0) });
+  }
+  try { _patchEventCardJoin(ev.id); } catch (e) {}
+  try { _refreshEventDetailIfOpen(ev.id); } catch (e) {}
+}
+
 function _eventIsCancelled(ev) { return !!ev && ev.status === "cancelled"; }
 function _eventIsLive(ev) { const n = Date.now(); return !!ev && ev.date <= n && _eventEndAt(ev) > n; }
 function _eventIsOver(ev) { return !!ev && _eventEndAt(ev) <= Date.now(); }
@@ -1354,7 +1373,7 @@ function requestUserLocation() {
       // sortie est nommée : choisir sa ville.
       if (!window._geoRefusDit) {
         window._geoRefusDit = true;
-        try { toast("Localisation indisponible — résultats autour de Paris. Choisis ta ville dans Filtre → Autour de moi.", "warning"); } catch (e) {}
+        try { toast("Position indisponible. Choisis ta ville dans « Où ? ».", "warning"); /* IRL-C19 : le mot qui est à l'écran */ } catch (e) {}
       }
 
       // Afficher Paris comme fallback
@@ -1983,8 +2002,24 @@ function toggleIrlMapFullscreen() {
   } else if (typeof releaseOverlayHistory === "function") {
     releaseOverlayHistory();
   }
+  majBoutonPleinEcranCarte();
   // Laisse Leaflet s'adapter à la nouvelle taille
   setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 320);
+}
+
+// LOT-19 (audit UX/UI du 2026-11-10, IRL-C10) : en plein écran, la seule sortie
+// était l'icône d'entrée, sans libellé. Le bouton dit maintenant « Fermer la
+// carte » (texte visible, nom accessible) ; appelé par les TROIS chemins qui
+// entrent ou sortent du plein écran (bouton, retour, changement d'écran).
+function majBoutonPleinEcranCarte() {
+  try {
+    var wrap = document.getElementById("irlMapWrap");
+    var btn = document.getElementById("irlMapExpandBtn");
+    if (!wrap || !btn) return;
+    var plein = wrap.classList.contains("fullscreen");
+    btn.setAttribute("aria-label", plein ? "Fermer la carte" : "Carte en plein écran");
+    btn.setAttribute("title", plein ? "Fermer la carte" : "Carte en plein écran");
+  } catch (e) {}
 }
 
 // Déplier / replier la carte (« peek » content-first). État mémorisé.
@@ -2024,6 +2059,7 @@ document.addEventListener("keydown", (e) => {
     const wrap = document.getElementById("irlMapWrap");
     if (wrap && wrap.classList.contains("fullscreen")) {
       wrap.classList.remove("fullscreen");
+      majBoutonPleinEcranCarte();
       setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 320);
     }
   }
@@ -3011,6 +3047,13 @@ function _irlEmptyStateHtml() {
       + '<div class="empty-text">Tes souvenirs IRL apparaîtront ici après ton premier événement.</div>'
       + '<button class="btn primary" style="margin-top:10px;" onclick="setIrlPastMode(false)">Voir les événements à venir</button></div>';
   }
+  // LOT-19 (IRL-C12) : une RECHERCHE sans résultat n'accuse pas des filtres
+  // qu'on n'a pas posés.
+  if (irlSearchQuery && _irlActiveFilterCount() === 0) {
+    return '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Aucune activité pour « ' + escapeHtml(String(irlSearchQuery)) + ' »</div>'
+      + '<div class="empty-text">Essaie un autre mot, ou une passion voisine.</div>'
+      + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">Effacer la recherche</button></div>';
+  }
   if (filtered) {
     return '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Rien avec ces filtres</div>'
       + '<div class="empty-text">Élargis la zone, la date ou la passion pour voir plus d\'événements.</div>'
@@ -3178,7 +3221,7 @@ function renderIRL() {
       data-city="${escapeHtml((e.city||'').toLowerCase())}" data-title="${escapeHtml((e.title||'').toLowerCase())}"
       onclick="openEventDetails('${escapeJsArg(e.id)}')"
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEventDetails('${escapeJsArg(e.id)}');}">
-      ${cancelled ? '<div class="event-card-banner cancelled">Événement annulé par l\'organisateur</div>' : live ? '<div class="event-card-banner live">C\'est maintenant</div>' : ""}
+      ${cancelled ? '<div class="event-card-banner cancelled">Activité annulée par l\'organisateur</div>' : live ? '<div class="event-card-banner live">C\'est maintenant</div>' : ""}
       <div style="display:flex;gap:10px;">
         <div class="event-date-block">
           <div class="event-date-day">${d.day}</div>
@@ -3740,10 +3783,16 @@ async function setEventRsvp(id, rsvp) {
     // Le serveur tient désormais la capacité, le statut et la date (IRL-05) :
     // quand il nomme sa raison, on la dit — et on nomme la sortie.
     const motif = window._irlRefusMotif || null;
-    annuler(motif === "complete" ? "Activité complète — tu peux rejoindre la liste d'attente"
+    annuler(motif === "complete" ? "La dernière place vient d'être prise — tu peux rejoindre la liste d'attente"
       : motif === "annulee" ? "Cette activité a été annulée"
       : motif === "passee" ? "Cette activité est déjà passée"
       : "⚠️ Inscription non enregistrée — réessaie");
+    // LOT-19 (IRL-C54) : sur « complète », l'écran gardait le compteur périmé
+    // (« 1 place restante ») et le bouton « Je participe », qu'un nouvel appui
+    // faisait refuser de nouveau. La base a tranché : l'activité est COMPLÈTE.
+    // On relit les compteurs, et au pire on pose le plein — le pied repasse à
+    // « Rejoindre la liste d'attente ».
+    if (motif === "complete") await _rafraichirApresComplet(ev);
     return;
   }
   if (rsvpOk === true) { _rsvpRegle(true); _majAdresseActivite(ev); }
@@ -4565,17 +4614,28 @@ function openEventDetails(id) {
   };
   const participantsHtml = _facesEtReste(atts, 12, nbVenants);
 
+  // LOT-19 (audit UX/UI du 2026-11-10, IRL-C58) : quand l'adresse est réservée
+  // à qui participe, la zone publique (code postal, ville) n'est PAS une adresse.
+  // Elle s'affichait « Adresse : 69001, Lyon » avec un lien de carte vers la
+  // ville entière, puis « Adresse exacte : Communiquée une fois inscrit·e » —
+  // deux lignes qui se contredisaient. Une seule ligne « Lieu » désormais, sans
+  // lien tant que l'adresse n'est pas connue. Règle de confidentialité inchangée.
+  const adresseReservee = !!(ev.fromSupabase && !ev.address && myRsvp(ev.id) !== "going");
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
-  const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
+  const mapsLink = (addressFull && !adresseReservee) ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
   const priceStr = fmtEventPrice(ev.price);
+  const zonePublique = [ev.postalCode, ev.city].filter(Boolean).join(" ");
+  const lieuReserve = [ev.venue, zonePublique].filter(Boolean).join(" · ");
 
   // Build info rows (only show filled fields)
   const infoRows = [
     infoRow("Date & heure", `${dateStr} à ${timeStr}`),
-    addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : ""),
-    ev.venue ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
-    // Une activité du serveur sans adresse lisible : elle existe peut-être, réservée à qui vient.
-    (ev.fromSupabase && !ev.address && myRsvp(ev.id) !== "going") ? infoRow("Adresse exacte", "Communiquée une fois inscrit·e") : "",
+    adresseReservee
+      ? (lieuReserve
+        ? infoRow("Lieu", escapeHtml(lieuReserve), '<span class="event-detail-info-note">L\'adresse exacte s\'affiche ici dès que tu participes.</span>')
+        : infoRow("Lieu", "L'adresse exacte s'affiche ici dès que tu participes."))
+      : (addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : "")),
+    (ev.venue && !adresseReservee) ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
     infoRow("Prix", priceStr),
     // ⚠️ LE LIEN `tel:` ÉTAIT POSÉ SUR N'IMPORTE QUEL CONTACT (2026-09-10), y
     // compris une adresse e-mail : toucher « Contact » lançait alors un appel
@@ -4595,9 +4655,10 @@ function openEventDetails(id) {
   const mine = _isMyEvent(ev);
 
   document.getElementById("eventDetailContent").innerHTML = `
-    ${cancelled ? '<div class="event-detail-urgency cancelled">Cet événement a été annulé par l\'organisateur</div>'
+    ${cancelled ? '<div class="event-detail-urgency cancelled" role="alert"><b>Activité annulée par l\'organisation.</b>'
+        + (["going", "maybe", "waitlist"].indexOf(myRsvp(ev.id)) > -1 ? ' Ta participation est annulée, rien d\'autre à faire.' : '') + '</div>'
       : live ? '<div class="event-detail-urgency live">C\'est maintenant — bon moment !</div>'
-      : over ? '<div class="event-detail-urgency past">Événement terminé</div>'
+      : over ? '<div class="event-detail-urgency past">Activité terminée</div>'
       : `<div class="event-detail-urgency ${urgencyClass}">${urgencyText}</div>`}
 
     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
@@ -7096,7 +7157,9 @@ async function toggleCancelEvent(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
   const cancel = !_eventIsCancelled(ev);
-  if (cancel && !(await confirmerAction({ titre: "Annuler cette activité ?", texte: "Les inscrits seront prévenus. Tu pourras la réactiver.", libelle: "Annuler l'activité", annuler: "Garder l'activité", danger: true }))) return;
+  // LOT-19 (IRL-C60) : la confirmation dit COMBIEN de personnes seront prévenues.
+  const _nbPrevenus = (typeof _destinatairesActivite === "function") ? _destinatairesActivite(ev).length : 0;
+  if (cancel && !(await confirmerAction({ titre: "Annuler cette activité ?", texte: (_nbPrevenus ? _nbPrevenus + " personne" + (_nbPrevenus > 1 ? "s seront prévenues" : " sera prévenue") : "Personne n'est encore inscrit") + ". Tu pourras la réactiver.", libelle: "Annuler l'activité", annuler: "Garder l'activité", danger: true }))) return;
   // Le serveur d'abord : « annulé » n'est ni affiché ni notifié sur un refus
   // (même famille que ROB-02 / IRL-06 ; l'annulation optimiste restait barrée
   // à l'écran après « Changement non synchronisé »).
@@ -7115,7 +7178,10 @@ async function toggleCancelEvent(id) {
 async function deleteEventConfirm(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
-  if (!(await confirmerAction({ titre: "Supprimer « " + (ev.title || "cette activité") + " » ?", texte: "Elle disparaît pour tout le monde, et ses inscrits sont prévenus. Cette action est définitive.", libelle: "Supprimer définitivement", danger: true }))) return;
+  // LOT-19 (IRL-C60) : le nombre de personnes touchées, et l'annulation
+  // recommandée quand il y a des inscrits (elle se réactive, la suppression non).
+  const _nbTouches = (typeof _destinatairesActivite === "function") ? _destinatairesActivite(ev).length : 0;
+  if (!(await confirmerAction({ titre: "Supprimer « " + (ev.title || "cette activité") + " » ?", texte: "Elle disparaît pour tout le monde" + (_nbTouches ? ", et " + _nbTouches + " personne" + (_nbTouches > 1 ? "s seront prévenues" : " sera prévenue") + ". Pour garder une trace, préfère « Annuler l'activité »" : "") + ". Cette action est définitive.", libelle: "Supprimer définitivement", danger: true }))) return;
   // ⚠️ LE VERDICT DU SERVEUR EST LU, ET LES INSCRITS SONT PRÉVENUS (IRL-06,
   // 2026-09-14). « Événement supprimé » était affiché quel que soit le retour de
   // `supaDeleteEvent` (qui rendait déjà false sur refus ou zéro ligne) : un
@@ -7172,13 +7238,31 @@ function _messageEventAttendees(id) {
   `);
 }
 
-function _sendEventBroadcast(id) {
+// LOT-19 (audit UX/UI du 2026-11-10, IRL-C63) : « Message envoyé aux inscrits »
+// partait avant toute écriture, sans lire un seul verdict — un refus (réseau,
+// droits) laissait croire que tout le monde était prévenu. On attend chaque
+// écriture et on dit ce qui est vrai : combien sur combien.
+async function _sendEventBroadcast(id) {
   const ev = _findCanonicalEvent(id);
   const txt = (document.getElementById("evBroadcast")?.value || "").trim();
   if (!ev || !txt) { toast("Écris un message"); return; }
-  _notifyEventAttendees(ev, escapeHtml(txt.slice(0, 200)));
+  const cibles = _destinatairesActivite(ev);
   closeModal();
-  toast("Message envoyé aux inscrits");
+  if (!cibles.length) { toast("Personne à prévenir pour l'instant"); return; }
+  if (!window._supaReal || typeof supaInsertNotif !== "function") {
+    _notifyEventAttendees(ev, escapeHtml(txt.slice(0, 200)));
+    toast("Message enregistré sur cet appareil");
+    return;
+  }
+  const verdicts = await Promise.all(cibles.map(function (uidTo) {
+    try { return Promise.resolve(supaInsertNotif(uidTo, "event_update", ev.id, escapeHtml(txt.slice(0, 200)))).catch(function () { return false; }); }
+    catch (e) { return Promise.resolve(false); }
+  }));
+  const ok = verdicts.filter(function (v) { return v === true; }).length;
+  const total = cibles.length;
+  if (ok === total) toast("Message envoyé à " + total + " personne" + (total > 1 ? "s" : ""));
+  else if (ok === 0) toast("⚠️ Message non envoyé — réessaie", "warning");
+  else toast("⚠️ Message envoyé à " + ok + " personne" + (ok > 1 ? "s" : "") + " sur " + total + " — réessaie pour les autres", "warning");
 }
 
 // Signalement d'un événement (parité avec posts / profils).
@@ -7968,18 +8052,25 @@ function setEventRatingDraft(n) {
   if (box) box.innerHTML = _evRatingStarsHtml(n);
 }
 
-function submitEventFeedback(eventId) {
+// LOT-19 (audit UX/UI du 2026-11-10, IRL-C63) : « Merci pour ton retour »
+// partait AVANT `supaRateEvent`, jamais attendu — une note refusée (zéro ligne,
+// réseau) était annoncée prise puis disparaissait au rechargement. Le serveur
+// d'abord ; un refus garde la fenêtre ouverte et le dit.
+async function submitEventFeedback(eventId) {
   var n = window._ratingDraft || 0;
   if (!n) { toast("Choisis une note d'abord"); return; }
   var txt = ((document.getElementById("evFeedbackText") || {}).value || "").trim().slice(0, 500);
 
+  if (window._supaReal && typeof supaRateEvent === "function") {
+    var ok = false;
+    try { ok = await supaRateEvent(eventId, n, txt); } catch (e) { ok = false; }
+    if (!ok) { toast("⚠️ Retour non enregistré — réessaie", "warning"); return; }
+  }
   state.user.eventRatings = state.user.eventRatings || {};
   state.user.eventRatings[eventId] = { rating: n, feedback: txt, at: Date.now() };
   saveState();
   closeModal();
   toast("Merci pour ton retour");
-
-  if (window._supaReal && typeof supaRateEvent === "function") supaRateEvent(eventId, n, txt);
 
   // Le retour notifie l'organisateur : c'est le signal qu'il attend.
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });

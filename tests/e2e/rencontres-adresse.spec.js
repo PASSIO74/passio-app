@@ -115,9 +115,10 @@ test.describe("Le lieu d'une activité", () => {
       await new Promise((r) => setTimeout(r, 150));
       return document.body.innerText;
     }, adresse);
-    expect(await fiche("")).toContain("Communiquée une fois inscrit·e");
+    // LOT-19 (IRL-C58) : une seule ligne « Lieu », sans adresse inventée.
+    expect(await fiche("")).toContain("L'adresse exacte s'affiche ici dès que tu participes.");
     const avec = await fiche("12 rue du Domicile");
     expect(avec).toContain("12 rue du Domicile");
-    expect(avec).not.toContain("Communiquée une fois inscrit·e");
+    expect(avec).not.toContain("L'adresse exacte s'affiche ici");
   });
 });
