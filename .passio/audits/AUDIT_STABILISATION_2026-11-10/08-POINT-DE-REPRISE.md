@@ -190,3 +190,18 @@ Ordre de Benjamin : « Oui, enchaîne » (durcissements CLI-01 serveur, SRV-02, 
   - les médias orphelins, à retirer avec la clé de service ;
   - `entrerEnSessionExpiree()` exige un jeton persisté au démarrage suivant ;
   - les gestes de Benjamin (essais sur appareil réel, inscription réelle, retour arrière Netlify).
+
+## Ajout du 2026-11-13 — session perdue, démarrage suivant (branche `fix/session-expiree-marque`)
+
+- **Le reste d'ETAT-02** : une session finie en cours de route (`SIGNED_OUT`, 401 sur une publication) pose le mode
+  « session expirée », mais le SDK retire son jeton ; au démarrage suivant, `entrerEnSessionExpiree()` n'en trouvait
+  plus et `boot()` montrait l'ancienne landing par-dessus un fil complet.
+- **Corrigé** : `poserSessionExpiree()` pose la marque de compte `passio_session_expiree_v1` = `{uid, t}`. Au
+  démarrage, le jeton OU cette marque (même `passio_uid`, moins de 30 jours) ouvre le fil en lecture. La clé est de
+  compte (purgée à la déconnexion), effacée quand une session est retrouvée, jamais posée pour une session anonyme.
+- Verrous `session-expiree.spec.js` ② bis à ② quater et ⑧ ; mutations vues rouges (jeton exigé seul, clé hors
+  `ACCOUNT_SCOPED_KEYS`, borne de 30 jours retirée, garde anonyme retirée). 13/13 sur la suite, suites voisines vertes.
+- Relecture `audit-passio` (modèle Claude, pas une revue humaine) : aucun P1 ; deux P2 corrigés avant la PR (compte
+  supprimé ailleurs rouvert sans fin → borne de 30 jours ; compte anonyme enfermé → pas de marque) ; P3 regex en
+  double corrigé, deux P3 notés sans effet.
+- Restent ouverts : SRV-02 (événement métier par genre), médias orphelins (clé de service), gestes de Benjamin.

@@ -3170,6 +3170,8 @@ async function boot() {
     if (session?.user && (!_authIntent || _recuperationEnCours)) {
       // Une session est là : la marque d'une session perdue n'a plus de cause.
       try { if (typeof _oublierMarqueSessionExpiree === "function") _oublierMarqueSessionExpiree(); } catch (e) {}
+      // Une session anonyme ne posera pas de marque si elle meurt (app-02).
+      try { window._sessionAnonyme = session.user.is_anonymous === true; } catch (e) {}
       // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` : le discriminant est l'INSTANTANÉ
       // pris au chargement (`_uidProprietaireEtat`, app-02). Ce chemin-ci couvre
       // les entrées qui ne passent PAS par `onbDoAuth` : retour de
@@ -3404,6 +3406,8 @@ async function boot() {
         try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
         return;
       }
+      // Une session anonyme ne posera pas de marque si elle meurt (app-02).
+      try { if (session?.user) window._sessionAnonyme = session.user.is_anonymous === true; } catch (e) {}
       if (session?.user && window._sessionExpiree === true) {
         // SESSION REVENUE EN MODE EXPIRÉ (UXO-02) : le SDK a rafraîchi seul le
         // jeton (retour du réseau), ou une connexion vient d'aboutir. On ne

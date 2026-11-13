@@ -915,20 +915,31 @@ window.poserSessionExpiree = poserSessionExpiree;
 // compte-là : elle porte l'uuid, et ne vaut que tant que `passio_uid` est le même.
 // ⚠️ Clé DE COMPTE (`ACCOUNT_SCOPED_KEYS`) : une déconnexion volontaire l'emporte
 // avec le reste. Effacée dès qu'une session est retrouvée au démarrage (app-08).
+// ⚠️ BORNÉE À 30 JOURS (relecture du 2026-11-13) : un compte supprimé ou révoqué
+// depuis un AUTRE appareil émet ici `SIGNED_OUT` ; sans borne, cet appareil-ci
+// rouvrirait à chaque lancement, en lecture, le contenu local d'un compte dont
+// la reconnexion ne peut plus réussir. Passé le délai, la landing reprend.
+// ⚠️ JAMAIS POUR UNE SESSION ANONYME (`signInAnonymously`, onboarding historique) :
+// « Se reconnecter » ouvre un formulaire e-mail que ce compte n'a pas — il serait
+// enfermé. `window._sessionAnonyme` est posé par `boot()` quand la session est lue.
 const CLE_SESSION_EXPIREE = "passio_session_expiree_v1";
-const _UUID_COMPTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DUREE_MARQUE_SESSION_MS = 30 * 24 * 3600 * 1000;
 function _marquerSessionExpiree() {
   try {
+    if (window._sessionAnonyme === true) return false;
     const uid = (typeof MY_UID === "string") ? MY_UID : "";
-    if (!_UUID_COMPTE.test(uid) || localStorage.getItem("passio_uid") !== uid) return false;
-    localStorage.setItem(CLE_SESSION_EXPIREE, uid);
+    if (!RE_UID_COMPTE.test(uid) || localStorage.getItem("passio_uid") !== uid) return false;
+    localStorage.setItem(CLE_SESSION_EXPIREE, JSON.stringify({ uid: uid, t: Date.now() }));
     return true;
   } catch (e) { return false; }
 }
 function _marqueSessionExpiree() {
   try {
-    const m = localStorage.getItem(CLE_SESSION_EXPIREE);
-    return !!m && _UUID_COMPTE.test(m) && localStorage.getItem("passio_uid") === m;
+    const m = JSON.parse(localStorage.getItem(CLE_SESSION_EXPIREE) || "null");
+    if (!m || typeof m.uid !== "string" || !RE_UID_COMPTE.test(m.uid)) return false;
+    if (localStorage.getItem("passio_uid") !== m.uid) return false;
+    const age = Date.now() - Number(m.t);
+    return age >= 0 && age < DUREE_MARQUE_SESSION_MS;
   } catch (e) { return false; }
 }
 function _oublierMarqueSessionExpiree() {
