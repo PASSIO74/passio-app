@@ -7488,6 +7488,17 @@ async function submitEvent(editId) {
   if (ok && backend && !editId) proposerInvitationActivite(ev);
   // …et sa carte arrive dans le fil, sans geste de plus (cf. `publierActiviteAuFil`).
   if (ok && backend && !editId) publierActiviteAuFil(ev);
+  // LOT-22 (audit UX/UI du 2026-11-10, IRL-C51) : tant que l'organisation
+  // n'avait pas ouvert la discussion elle-même, aucun participant ne pouvait y
+  // entrer (« La discussion n'est pas encore ouverte… »). Elle est créée ICI,
+  // dès la publication confirmée, par le chemin existant
+  // (`_joinEventConversation` → `supaCreateEventConversation`, réservé à qui
+  // gère l'activité) : aucune règle serveur nouvelle, aucune migration.
+  if (ok && backend && !editId && typeof _joinEventConversation === "function") {
+    _joinEventConversation(ev).then(function (entre) {
+      if (!entre) { try { diagLog("discussion d'activité : création à la publication refusée " + ev.id); } catch (e) {} }
+    }, function (e) { try { diagLog("discussion d'activité : " + (e && e.message)); } catch (_) {} });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
