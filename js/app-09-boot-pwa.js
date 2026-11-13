@@ -1230,14 +1230,16 @@ function handleAttachFile(input, kind) {
 
 // Aperçu d'une photo avant envoi (MSG-C72). Rendu DOM ; l'image est une URL
 // `data:image/…` produite ICI par la compression, passée par `safeUrlAttr`.
-function _apercuPhotoAvantEnvoi(durl, envoyer, annuler) {
+// LOT-40 (MSG-C71) : le même aperçu sert au GIF (URL https du fournisseur, même
+// désinfectant) — `titre` et `alt` disent ce qui va partir.
+function _apercuPhotoAvantEnvoi(durl, envoyer, annuler, titre, alt) {
   var src = (typeof safeUrlAttr === "function") ? safeUrlAttr(durl) : "#";
   if (!src || src === "#") { envoyer(); return; }
   var decide = false;
   openModal(
     '<div class="modal-handle"></div>' +
-    '<div class="modal-title">Envoyer cette photo ?</div>' +
-    '<div class="pj-apercu"><img id="pjApercuImg" alt="Photo à envoyer" /></div>' +
+    '<div class="modal-title">' + escapeHtml(titre || "Envoyer cette photo ?") + '</div>' +
+    '<div class="pj-apercu"><img id="pjApercuImg" alt="' + escapeHtml(alt || "Photo à envoyer") + '" /></div>' +
     '<div style="display:flex;gap:8px;margin-top:12px;">' +
       '<button type="button" class="btn ghost block" id="pjApercuAnnuler">Annuler</button>' +
       '<button type="button" class="btn primary block" id="pjApercuEnvoyer">Envoyer</button>' +
