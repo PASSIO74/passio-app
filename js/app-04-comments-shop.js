@@ -3921,7 +3921,10 @@ function deduplicateConversations(convs) {
   var seen = {};
   var result = [];
   // Trier par lastAt desc pour traiter le plus récent en premier
-  var sorted = [...convs].sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
+  // LOT-43 (relecture audit-passio) : à paire égale, un fil RÉEL passe avant un
+  // brouillon, quel que soit son `lastAt` — sinon le brouillon (plus récent)
+  // absorbait la conversation serveur et gardait son identifiant local.
+  var sorted = [...convs].sort((a, b) => ((a && a._brouillon ? 1 : 0) - (b && b._brouillon ? 1 : 0)) || ((b.lastAt || 0) - (a.lastAt || 0)));
   for (var c of sorted) {
     if (c.isGroup) { result.push(c); continue; }
     // Repli : d'anciennes conversations (créées avant la résolution fiable du
@@ -3958,6 +3961,16 @@ function deduplicateConversations(convs) {
       if (!main.userPhoto && c.userPhoto) main.userPhoto = c.userPhoto;
       if ((!main.userEmoji || main.userEmoji === "✨") && c.userEmoji && c.userEmoji !== "✨") main.userEmoji = c.userEmoji;
       if (!main.userId && c.userId) main.userId = c.userId;
+      // LOT-43 : un BROUILLON absorbé par le fil réel — ses messages en file
+      // visent encore son identifiant local, qui n'existera jamais en base. On
+      // les réaffecte au fil réel, sinon le rejeu les perdait.
+      if (c._brouillon && !main._brouillon && c.id !== main.id) {
+        try {
+          var _f = _outboxLoad(), _change = false;
+          _f.forEach(function (e) { if (e && e.convId === c.id) { e.convId = main.id; _change = true; } });
+          if (_change) _outboxSave(_f);
+        } catch (e) { try { diagLog("conv_brouillon_file " + (e && e.message)); } catch (_) {} }
+      }
     }
   }
   result.forEach(_dedoublonnerDecorConversation);
@@ -4629,21 +4642,64 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && userId !== "me") {
     goTo("messages");
     let supaConvId = null;
+    // LOT-43 (relecture audit-passio) : la recherche LIT ses erreurs. Une panne
+    // (hors ligne, 401, 500) rendait `data: null`, lu comme « aucune
+    // conversation » : un brouillon s'ouvrait alors qu'un fil existait, et le
+    // premier envoi en créait un SECOND chez l'autre. `absenceProuvee` n'est
+    // vrai que si les trois lectures ont répondu sans erreur.
+    let absenceProuvee = false;
     try {
       // Chercher une conv directe existante entre les deux users dans Supabase
-      const { data: myMemberships } = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
-      const myConvIds = (myMemberships || []).map(m => m.conv_id);
-      if (myConvIds.length) {
-        const { data: shared } = await supa.from("conv_members")
+      const r1 = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
+      if (r1 && r1.error) throw r1.error;
+      const myConvIds = ((r1 && r1.data) || []).map(m => m.conv_id);
+      if (!myConvIds.length) absenceProuvee = true;
+      else {
+        const r2 = await supa.from("conv_members")
           .select("conv_id").eq("user_id", userId).in("conv_id", myConvIds);
-        if (shared && shared.length) {
+        if (r2 && r2.error) throw r2.error;
+        const shared = (r2 && r2.data) || [];
+        if (!shared.length) absenceProuvee = true;
+        else {
           // Vérifier que c'est une conv directe (pas groupe)
-          const { data: convData } = await supa.from("conversations")
+          const r3 = await supa.from("conversations")
             .select("id, is_group").in("id", shared.map(s => s.conv_id)).eq("is_group", false).limit(1);
-          supaConvId = convData?.[0]?.id || null;
+          if (r3 && r3.error) throw r3.error;
+          supaConvId = (r3 && r3.data && r3.data[0] && r3.data[0].id) || null;
+          if (!supaConvId) absenceProuvee = true;
         }
       }
-    } catch(e) {}
+    } catch(e) { try { diagLog("dm_recherche_echec " + String((e && (e.code || e.message)) || "")); } catch (_) {} }
+
+    // LOT-43 (audit UX/UI du 2026-11-10, MSG-C22) : choisir une personne
+    // CRÉAIT la conversation chez elle (une ligne `conversations`, deux
+    // `conv_members`) avant tout message — un fil vide surgissait dans sa liste
+    // si l'on changeait d'avis. Pour un compte qui écrit à un autre compte, on
+    // ouvre un BROUILLON local (identifiant déjà choisi) ; la base ne le connaît
+    // qu'au premier envoi (`_materialiserConv`, sous ce même identifiant). Un
+    // brouillon vide n'est pas listé.
+    if (!supaConvId && absenceProuvee && window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId || ""))) {
+      var convsB = getConversations();
+      var brouillon = convsB.find(function (c) { return !c.isGroup && c.userId === userId; });
+      if (!brouillon) {
+        brouillon = { id: "conv_" + uid(), userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", userPhoto: userPhoto || null, passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false, _brouillon: true };
+        convsB.unshift(brouillon);
+        conversationsState = convsB;
+        saveConversations();
+      }
+      var idB = brouillon.id;
+      setTimeout(function() { renderMessages(); openConversation(idB); }, 120);
+      return;
+    }
+
+    // Recherche en panne pour un compte réel : on ne devine pas (un fil existe
+    // peut-être) — on le dit, sans rien ouvrir ni créer (LOT-28, MSG-C23).
+    if (!supaConvId && !absenceProuvee && window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId || ""))) {
+      toast("Conversation non ouverte — vérifie ta connexion et réessaie.", "warning");
+      return;
+    }
 
     // Pas de conv existante → en créer une dans Supabase
     if (!supaConvId) {
@@ -4655,6 +4711,8 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
       var convs = getConversations();
       var existing = convs.find(c => c.id === supaConvId || (!c.isGroup && c.userId === userId));
       if (existing) {
+        // LOT-43 : ce fil existe en base — ce n'est plus (ou jamais) un brouillon.
+        delete existing._brouillon;
         existing.id = supaConvId;
         existing.userId = userId;
         existing.userName = userName || existing.userName || "Passionné";
@@ -6034,6 +6092,8 @@ function renderMessages() {
 
   // Masquer les conversations avec un utilisateur bloqué (modération)
   let filtered = convs.filter(c => !(typeof isBlocked === "function" && isBlocked(c.userId)));
+  // LOT-43 (MSG-C22) : un brouillon sans message n'est pas une conversation.
+  filtered = filtered.filter(c => !(c && c._brouillon && !(c.messages || []).length));
   // LOT-31 (audit UX/UI du 2026-11-10, MSG-C24) : pour un COMPTE, les cinq
   // conversations d'exemple (`SEED_CONVERSATIONS`) restaient mêlées aux vraies
   // jusqu'au démarrage suivant. Dès qu'une vraie conversation existe, elles
@@ -7672,7 +7732,8 @@ function _forwardPick(convId, msgId) {
   // liste, un toucher renvoyait le message là où il était déjà), ni celle d'un
   // compte bloqué ; et un toucher demande confirmation au lieu d'envoyer.
   var convs = getConversations().filter(function(c){
-    return !c.archived && c.id !== convId && !(typeof isBlocked === "function" && c.userId && isBlocked(c.userId));
+    return !c.archived && c.id !== convId && !(typeof isBlocked === "function" && c.userId && isBlocked(c.userId))
+      && !(c._brouillon && !(c.messages || []).length); // LOT-43 : un brouillon vide n'est pas une conversation
   }).sort(function(a,b){ return (b.lastAt||0)-(a.lastAt||0); }).slice(0, 30);
   var rows = convs.map(function(c){
     var name = c.isGroup ? (c.groupName || "Groupe") : (c.userName || "Conversation");
@@ -7730,6 +7791,10 @@ async function _forwardTo(targetConvId) {
   var m = r.m;
   var convs = getConversations();
   var target = convs.find(function(x){ return x.id === targetConvId; }); if (!target) return;
+  // LOT-43 : un brouillon devient une conversation en base AVANT le transfert.
+  if (typeof _convBrouillon === "function" && _convBrouillon(targetConvId)) {
+    if (!(await _materialiserConv(targetConvId))) { toast("Transfert non envoyé — réessaie.", "warning"); return; }
+  }
   // Lu AVANT que la copie ne remplace l'URL : seule la copie locale porte le
   // conteneur dans son mime.
   var _conteneurAudio = m.voiceData ? _conteneurAudioDuMessage(m) : null;
@@ -8398,6 +8463,40 @@ var MSG_ESSAIS_MAX = 10;
 // appel de plus à chaque tour.
 window._convReparationTentee = window._convReparationTentee || {};
 
+// LOT-43 (MSG-C22) : brouillon de conversation directe — local, jamais écrit en
+// base tant qu'aucun message n'est parti.
+function _convBrouillon(convId) {
+  try {
+    var c = getConversations().find(function (x) { return x && x.id === convId; });
+    return (c && c._brouillon && !c.isGroup && c.userId) ? c : null;
+  } catch (e) { try { diagLog("conv_brouillon_lecture " + (e && e.message)); } catch (_) {} return null; }
+}
+var _materialisationsEnCours = {};
+function _materialiserConv(convId) {
+  var c = _convBrouillon(convId);
+  if (!c) return Promise.resolve(true);
+  if (_materialisationsEnCours[convId]) return _materialisationsEnCours[convId];
+  var p = Promise.resolve()
+    .then(function () { return supaCreateConversation(c.userId, null, convId); })
+    .then(function (id) {
+      delete _materialisationsEnCours[convId];
+      if (id !== convId) { try { diagLog("conv_brouillon_refus " + String(convId)); } catch (e) {} return false; }
+      var cc = _convBrouillon(convId);
+      if (cc) { delete cc._brouillon; saveConversations(); }
+      // Le canal « en train d'écrire » d'un brouillon a replié sur le public
+      // (`is_conv_member` ne le connaissait pas) : on le rouvre, privé.
+      try { if (window._openedConvId === convId && typeof _subscribeTyping === "function") _subscribeTyping(convId); } catch (e) {}
+      return true;
+    })
+    .catch(function (e) {
+      delete _materialisationsEnCours[convId];
+      try { diagLog("conv_brouillon_erreur " + (e && e.message)); } catch (_) {}
+      return false;
+    });
+  _materialisationsEnCours[convId] = p;
+  return p;
+}
+
 async function _reparerAppartenanceConv(convId) {
   if (!convId || window._convReparationTentee[convId]) return false;
   window._convReparationTentee[convId] = true;
@@ -8546,6 +8645,25 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
     return;
   }
   if (_msgEstEnVol(msgId)) return;
+  // LOT-43 (MSG-C22) : un brouillon devient une conversation en base ICI, au
+  // premier envoi ; un refus laisse le message en échec et en file, comme une
+  // panne d'écriture — le rejeu retente la création.
+  if (_convBrouillon(convId)) {
+    _materialiserConv(convId).then(function (ok) {
+      if (ok) { _sendTextToSupa(convId, msgId, content, moi, gen); return; }
+      _setMsgStatus(convId, msgId, "failed");
+      // Refus de RÈGLE (blocage, pas créateur) : aucun renvoi ne le lèvera.
+      if (supaCreateConversation.dernierRefus === "42501") {
+        _outboxRemove(msgId);
+        toast("Message non envoyé — cette personne n'accepte pas de nouvelle conversation.", "warning");
+        return;
+      }
+      // Purge ou changement de compte pendant la création : la réponse est périmée.
+      if (gen !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== moi) return;
+      _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
+    });
+    return;
+  }
   _msgEnVol[msgId] = true;
   var _flux = _fluxEnvoiMessage(convId);
   // `from_id: moi` et non `MY_UID` : même si la garde ci-dessus était un jour

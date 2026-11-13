@@ -7041,20 +7041,46 @@ async function supaUsernameTaken(name) {
 }
 window.supaUsernameTaken = supaUsernameTaken;
 
-async function supaCreateConversation(withUserId) {
+// LOT-43 (audit UX/UI du 2026-11-10, MSG-C22) : `idImpose` (facultatif) crée la
+// conversation sous l'identifiant d'un BROUILLON local — celui que le fil affiche
+// déjà —, au premier message. Rejouable : un conflit de clé (23505, la ligne
+// existe déjà d'un essai précédent dont la réponse s'est perdue) n'est pas un
+// échec, ni pour la conversation ni pour un membre.
+async function supaCreateConversation(withUserId, _passion, idImpose) {
   try {
     await supaEnsureProfileExists();
-    const convId = "conv_" + uid();
+    const convId = idImpose || ("conv_" + uid());
+    const _dejaLa = (r) => r && r.error && /23505|duplicate|already exists/i.test(String(r.error.code || "") + " " + String(r.error.message || ""));
     const rConv = await supa.from("conversations").insert({
       id: convId, is_group: false,
       passion_id: null, created_by: MY_UID,
     });
-    if (rConv.error) { console.warn("Conv error (conversations):", rConv.error.message); return null; }
+    if (rConv.error && !(idImpose && _dejaLa(rConv))) {
+      if (idImpose) supaCreateConversation.dernierRefus = (Number(rConv.status) === 403 || String(rConv.error.code || "") === "42501") ? "42501" : null;
+      console.warn("Conv error (conversations):", rConv.error.message); return null;
+    }
     // Inserts séparés : un échec sur l'autre membre ne doit pas annuler le nôtre.
     // ⚠️ L'ajout de l'AUTRE membre exige la policy de migration_fix_conv_members_insert.sql
     // (sans elle, RLS v2 refuse → la conv serait invisible pour le destinataire).
-    const rMe = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
-    const rHim = await supa.from("conv_members").insert({ conv_id: convId, user_id: withUserId });
+    let rMe = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
+    let rHim = await supa.from("conv_members").insert({ conv_id: convId, user_id: withUserId });
+    if (idImpose) {
+      if (_dejaLa(rMe)) rMe = { error: null };
+      if (_dejaLa(rHim)) rHim = { error: null };
+      // ⚠️ JAMAIS DE NETTOYAGE SOUS UN ID IMPOSÉ (relecture audit-passio, LOT-43) :
+      // la conversation peut EXISTER déjà (créée par l'autre) — le DELETE ci-dessous
+      // m'en retirait, et « Suppression admin » retirait les DEUX membres. On
+      // rend le verdict : `supaCreateConversation.dernierRefus` porte le code
+      // d'un refus de règle (42501 : pas créateur, blocage), sinon null.
+      supaCreateConversation.dernierRefus = null;
+      const _refus = (r) => r && r.error && (Number(r.status) === 403 || String(r.error.code || "") === "42501");
+      if (rMe.error || rHim.error) {
+        supaCreateConversation.dernierRefus = (_refus(rMe) || _refus(rHim)) ? "42501" : null;
+        console.warn("Conv error (conv_members, id imposé):", (rMe.error || rHim.error).message);
+        return null;
+      }
+      return convId;
+    }
     if (rMe.error || rHim.error) {
       console.warn("Conv error (conv_members):", (rMe.error || rHim.error).message);
       // Conversation inutilisable côté serveur → nettoyer et laisser le fallback local
@@ -7473,6 +7499,8 @@ async function supaMarkRead(convId) {
     // d'un visiteur est refusé (13 × 401, 0 compte). Un visiteur n'a de toute
     // façon aucune conversation à marquer comme lue.
     if (typeof supa === "undefined" || !supa || !_compteAuthReel() || !window._supaReal || !convId) return;
+    // LOT-43 (MSG-C22) : un brouillon n'existe pas encore en base — rien à marquer.
+    if (typeof _convBrouillon === "function" && _convBrouillon(convId)) return;
     // Identité prouvée divergente : la ligne serait refusée (`reads_upsert`
     // exige `user_id = auth.uid()`). On le TRACE au lieu de le taire — sans
     // trace, une divergence d'identité est indiscernable d'un calme plat.
