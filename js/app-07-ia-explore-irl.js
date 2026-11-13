@@ -1720,7 +1720,7 @@ function initIrlMap() {
       // il faut juste le dire au lieu de laisser un cadre vide.
       .catch(function(){
         el.innerHTML = '<div class="irl-map-fallback">La carte n\'est pas disponible sur cet appareil.<br/>'
-          + 'La liste des événements ci-dessous fonctionne normalement.</div>';
+          + 'La liste des activités ci-dessous fonctionne normalement.</div>';
       });
     return;
   }
@@ -1968,7 +1968,7 @@ function updateIrlMapMarkers() {
           const dd = fmtEventDate(ev.date);
           const pp = passionById(ev.passion) || { emoji: "📍", label: "" };
           return `<button type="button" class="irl-popup-ligne" onclick="openEventDetails('${escapeJsArg(ev.id)}')">
-            <span class="irl-popup-ligne-titre">${escapeHtml(ev.title || "Événement")}</span>
+            <span class="irl-popup-ligne-titre">${escapeHtml(ev.title || "Activité")}</span>
             <span class="irl-popup-ligne-meta">${escapeHtml(pp.label || "")} · ${dd.day} ${dd.month} à ${_eventTimeLabel(ev)}</span>
           </button>`;
         }).join("")}</div>
@@ -2005,7 +2005,7 @@ function updateIrlMapMarkers() {
     try { _exPop = !!(window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)); } catch (e) {}
     m.bindPopup(`
       ${_exPop ? '<div class="irl-popup-exemple">Activité d\'exemple · pas d\'inscription</div>' : ""}
-      <div class="irl-popup-title">${escapeHtml(ev.title || "Événement")}</div>
+      <div class="irl-popup-title">${escapeHtml(ev.title || "Activité")}</div>
       <div class="irl-popup-meta">${escapeHtml(passion.emoji || "")} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${_eventTimeLabel(ev)}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
       <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'activité</button>
     `);
@@ -2612,8 +2612,8 @@ function _syncIrlFiltersFooter(count) {
   if (done) {
     done.textContent = n === null ? "Voir les activités"
       : n === 0 ? "Aucun résultat"
-      : n === 1 ? "Voir 1 événement"
-      : "Voir les " + n + " événements";
+      : n === 1 ? "Voir 1 activité"
+      : "Voir les " + n + " activités";
   }
   if (reset) {
     var active = _irlActiveFilterCount() > 0 || !!irlSearchQuery;
@@ -3074,9 +3074,9 @@ function irlToolsSections() {
           sub: advCount ? (advCount + " filtre" + (advCount > 1 ? "s" : "") + " actif" + (advCount > 1 ? "s" : "")) : "Tout afficher",
           badge: advCount || "", onClick: "closeCtxTools();openIrlFiltersPanel()" }
       ] },
-      { id: "miens", title: "Mes événements", items: [
-        { icon: pers, label: "Mes événements", data: { irlfilter: "mine" }, active: hasMine },
-        { icon: coche, label: "Mes inscriptions", data: { irlfilter: "joined" }, active: hasJoined }
+      { id: "miens", title: "Mes activités", items: [
+        { icon: pers, label: "Mes activités", data: { irlfilter: "mine" }, active: hasMine },
+        { icon: coche, label: "Je participe", data: { irlfilter: "joined" }, active: hasJoined }
       ] }
     ]
   };
@@ -4348,21 +4348,24 @@ function openEventRsvpSheet(id) {
   const cur = myRsvp(id);
   const full = _eventIsFull(ev);
   const spots = _eventSpotsLeft(ev);
+  // LOT-47 (audit UX/UI du 2026-11-10, IRL-C59) : titre et description étaient
+  // côte à côte (« Je participe » sur deux lignes) ; ils s'empilent, alignés à
+  // gauche, sur une cible de 56 px. Les mots sont ceux de la fiche.
   const opt = (key, desc) => `
-    <button class="btn ${cur === key ? "primary" : "ghost"} block" style="margin-bottom:8px;text-align:left;"
+    <button class="btn ${cur === key ? "primary" : "ghost"} block rsvp-option" style="margin-bottom:8px;text-align:left;"
       onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', '${escapeJsArg(key)}')">
       <b>${RSVP_LABELS[key].label}</b>
       <span style="display:block;font-size:11px;opacity:.75;font-weight:500;">${desc}</span>
     </button>`;
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">${escapeHtml(ev.title || "Événement")}</div>
-    <div class="modal-subtitle">${spots === null ? "Places illimitées" : full ? "Complet — file d'attente ouverte" : spots + " place" + (spots > 1 ? "s" : "") + " restante" + (spots > 1 ? "s" : "")}</div>
+    <div class="modal-title">${escapeHtml(ev.title || "Activité")}</div>
+    <div class="modal-subtitle">${spots === null ? "Places illimitées" : full ? "Complet — liste d'attente ouverte" : spots + " place" + (spots > 1 ? "s" : "") + " restante" + (spots > 1 ? "s" : "")}</div>
     <div style="margin-top:14px;">
       ${full && cur !== "going"
         ? opt("waitlist", "Tu seras inscrit·e automatiquement si une place se libère")
         : opt("going", "Tu comptes dans les places et tu rejoins la discussion du groupe")}
-      ${opt("maybe", "Tu suis l'événement sans bloquer de place")}
+      ${opt("maybe", "Tu suis l'activité sans bloquer de place")}
       ${opt("declined", "Tu ne participes pas — l'organisateur est fixé")}
     </div>
     ${cur ? `<button class="btn secondary block" style="margin-top:6px;" onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', null)">Retirer ma réponse</button>` : ""}
@@ -4667,7 +4670,7 @@ function openEventDetails(id) {
     // n'empêche une insertion REST directe.
     heroTitle.innerHTML = `
       <div class="event-detail-passion-badge">${passion.emoji} ${passion.label}${ev.eventType ? ` · ${escapeHtml(ev.eventType)}` : ""}</div>
-      <div class="event-detail-title">${escapeHtml(ev.title || "Événement")}</div>
+      <div class="event-detail-title">${escapeHtml(ev.title || "Activité")}</div>
     `;
   }
 
@@ -5206,7 +5209,7 @@ function _irlWeeklyDigest() {
     const top = soon[0];
     const city = irlSelectedCity ? irlSelectedCity.name
       : (irlUserLocation ? getClosestCity(irlUserLocation.lat, irlUserLocation.lng) : "près de toi");
-    const text = `<b>${soon.length} événement${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(city === "près de toi" ? city : "à " + city)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
+    const text = `<b>${soon.length} activité${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(city === "près de toi" ? city : "à " + city)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
     // Identifiant par semaine : il distingue ce résumé, compté sur le réel, de
     // ceux d'avant le 2026-11-09 que `stripLegacyEconomy` retire (app-02).
     if (typeof pushNotification === "function") pushNotification(text, "📍", "me", { id: NOTIF_DIGEST_IRL_PREFIXE + wk });
@@ -5216,7 +5219,7 @@ function _irlWeeklyDigest() {
         && navigator.serviceWorker && navigator.serviceWorker.ready) {
       navigator.serviceWorker.ready.then(reg => {
         reg.showNotification("PASSIO — ça bouge près de toi", {
-          body: `${soon.length} événement${soon.length > 1 ? "s" : ""} cette semaine · ${top.title || ""}`,
+          body: `${soon.length} activité${soon.length > 1 ? "s" : ""} cette semaine · ${top.title || ""}`,
           icon: "./icons/icon-192.png", tag: "irl-digest", data: { url: "./#irl-event-" + top.id },
         });
       }).catch(() => {});
@@ -5563,7 +5566,7 @@ function _postActiviteAuFil(ev, authorName, postId) {
     authorName: authorName,
     authorEmoji: (prof && prof.emoji) || g.emoji || "✨",
     authorColor: (prof && prof.color) || g.color || "#8b5cf6",
-    text: `📍 A partagé un événement\n\n${ev.title}\n${passion.emoji} ${passion.label}${ev.city ? " · " + ev.city : ""} · ${dateStr}`,
+    text: `📍 A partagé une activité\n\n${ev.title}\n${passion.emoji} ${passion.label}${ev.city ? " · " + ev.city : ""} · ${dateStr}`,
     passion: passionDeRepartage(ev.passion),   // cf. `sharePostInFeed` (app-03)
     mood: "irl",
     createdAt: Date.now(),
@@ -7122,7 +7125,7 @@ function openEventManage(id) {
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Co-organisateurs (${(ev.coOrganizers || []).length})</button>
     ${enAttente ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
-    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'activité" : "Annuler l'événement"}</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'activité" : "Annuler l'activité"}</button>
     ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">Supprimer définitivement</button>
     <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
@@ -7399,7 +7402,7 @@ async function reportEvent(id) {
   // fenêtre. On abandonne, et on le dit au journal.
   var motif = null;
   try {
-    if (typeof _demanderMotifSignalement === "function") motif = await _demanderMotifSignalement("cette rencontre");
+    if (typeof _demanderMotifSignalement === "function") motif = await _demanderMotifSignalement("cette activité");
     else motif = "";
   } catch (e) {
     try { if (typeof diagLog === "function") diagLog("signalement_motif_indisponible " + ((e && e.message) || "?")); } catch (e2) {}

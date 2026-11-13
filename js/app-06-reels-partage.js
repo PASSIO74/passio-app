@@ -6106,12 +6106,12 @@ async function aiGenerateResponse(query) {
     var cardsHTML = matched.length ? matched.map(function(e) {
       var p = passionById(e.passion) || { emoji:"📍", label: e.passion };
       return '<div class="ai-card" onclick="navigateTo(\'irl\')">' +
-        '<div class="ai-card-title">' + p.emoji + ' ' + escapeHtml(e.title || "Événement") + '</div>' +
+        '<div class="ai-card-title">' + p.emoji + ' ' + escapeHtml(e.title || "Activité") + '</div>' +
         '<div class="ai-card-meta">📍 ' + escapeHtml(e.city || "France") + ' · ' + escapeHtml(e.date || "Bientôt") + '</div>' +
       '</div>';
-    }).join("") : '<div style="font-size:12px;color:var(--muted);">Aucun événement trouvé pour ta recherche.</div>';
-    return '<div><div class="ai-section-label">📍 Événements IRL</div>' + cardsHTML +
-      '<div style="margin-top:10px;font-size:12px;color:var(--muted);">Tu peux aussi créer ton propre événement dans l\'onglet IRL → <b>+ Créer</b>.</div></div>';
+    }).join("") : '<div style="font-size:12px;color:var(--muted);">Aucune activité trouvée pour ta recherche.</div>';
+    return '<div><div class="ai-section-label">📍 Activités IRL</div>' + cardsHTML +
+      '<div style="margin-top:10px;font-size:12px;color:var(--muted);">Tu peux aussi créer ta propre activité dans l\'onglet Rencontrer → <b>+ Créer</b>.</div></div>';
   }
 
   // --- Créateurs ---
@@ -6191,7 +6191,7 @@ async function aiGenerateResponse(query) {
 
     if (!knowledge) {
       // Passion sans base de connaissance — réponse générique + données app
-      html += '<div style="font-size:13px;line-height:1.6;margin-bottom:10px;">La passion <b>' + passionLabel + '</b> rassemble une belle communauté sur PASSIO. Explore les posts, connecte-toi aux créateurs et participe aux événements IRL !</div>';
+      html += '<div style="font-size:13px;line-height:1.6;margin-bottom:10px;">La passion <b>' + passionLabel + '</b> rassemble une belle communauté sur PASSIO. Explore les publications, connecte-toi aux créateurs et participe aux activités IRL !</div>';
     } else if (isDebutant) {
       html += '<div class="ai-section-label">Pour débuter</div>';
       html += '<div style="font-size:13px;line-height:1.6;background:var(--bg-deep);border-radius:12px;padding:12px;margin-bottom:8px;">' + knowledge.pour_debuter + '</div>';
@@ -6228,7 +6228,7 @@ async function aiGenerateResponse(query) {
       html += '<div class="ai-section-label" style="margin-top:10px;">📍 Events IRL</div>';
       passionEvents.forEach(function(e) {
         html += '<div class="ai-card" onclick="navigateTo(\'irl\')">' +
-          '<div class="ai-card-title">' + escapeHtml(e.title || "Événement") + '</div>' +
+          '<div class="ai-card-title">' + escapeHtml(e.title || "Activité") + '</div>' +
           '<div class="ai-card-meta">📍 ' + escapeHtml(e.city || "France") + ' · ' + escapeHtml(e.date || "") + '</div>' +
         '</div>';
       });
@@ -6296,7 +6296,7 @@ async function aiGenerateResponse(query) {
     'Je n\'ai pas de réponse précise pour <em>"' + escapeHtml(query) + '"</em>.<br><br>' +
     'Tu peux :<br>' +
     '• Explorer une passion dans l\'onglet <b>Recherche</b><br>' +
-    '• Chercher des événements IRL<br>' +
+    '• Chercher des activités IRL<br>' +
     '• Organiser ou rejoindre une rencontre<br><br>' +
     'Essaie des questions comme :<br>' +
     '<em>"Conseils en photographie"</em>, <em>"Events IRL Lyon"</em>, <em>"Rencontrer des passionnés"</em>' +
