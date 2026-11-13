@@ -1321,6 +1321,13 @@ test("㊵ cent vingt PR de forks plus récentes ne font plus sortir un correctif
   assert.match(String(r.corps.github.prNonLues), /plus de 300 PR ouvertes/);
   assert.match(String(ligneAFaire(r, "lecture:pr") && ligneAFaire(r, "lecture:pr").reference), /plus de 300 PR ouvertes/);
   assert.deepEqual(appelsGithub("GET", /\/pulls\?/).map((x) => /per_page=(\d+)&page=(\d+)/.exec(x.chemin).slice(1).join("/")), ["100/1", "100/2", "100/3", "1/301"]);
+  // Au-delà de trois cents, les trois cents LUES restent (P1-15) : un correctif récent, en page 1, garde sa ligne.
+  await monter();
+  ouvrirPr({ number: 5000 });
+  for (let n = 0; n < 320; n++) prDuFork(1000 + n);
+  r = await appeler({ action: "etat" });
+  assert.match(String(r.corps.github.prNonLues), /plus de 300 PR ouvertes/);
+  assert.equal(ligneAFaire(r, "pr:5000") && ligneAFaire(r, "pr:5000").titre, "Un correctif est prêt", "les pages lues ne sont pas jetées au-delà de trois cents");
   // Trois cents TOUT JUSTE (relecture de #866) : ce ne sont pas « plus de trois cents » — rien à dire.
   await monter();
   ouvrirPr({ number: 12 });
@@ -1345,6 +1352,14 @@ test("㊵ cent vingt PR de forks plus récentes ne font plus sortir un correctif
   assert.match(String(r.corps.github.prNonLues), /GitHub HTTP 502/);
   assert.ok(ligneAFaire(r, "lecture:pr"));
   assert.equal(ligneAFaire(r, "pr:2000") && ligneAFaire(r, "pr:2000").titre, "Un correctif est prêt", "le correctif de la page lue n'est pas jeté");
+  // Une page 2 ILLISIBLE (servie en 200, sans liste) — pas un échec HTTP : la page 1 reste aussi (P1-15).
+  await monter();
+  ouvrirPr({ number: 2000 });
+  for (let n = 0; n < 120; n++) prDuFork(1000 + n);
+  banc.gh.panne = (m, chemin) => (/\/pulls\?.*[?&]page=2(&|$)/.test(chemin) ? { status: 200, brut: "<html>coupé</html>" } : null);
+  r = await appeler({ action: "etat" });
+  assert.match(String(r.corps.github.prNonLues), /liste des PR illisible/);
+  assert.equal(ligneAFaire(r, "pr:2000") && ligneAFaire(r, "pr:2000").titre, "Un correctif est prêt", "une page illisible ne jette pas la page lue");
   // Un corps de liste illisible n'est pas une liste vide : c'est dit, et aucun bouton ne met en ligne à l'aveugle.
   await monter();
   ouvrirPr({ number: 12 });
@@ -1456,6 +1471,17 @@ test("㊸ le scan de sécurité se voit — À TRIER par Benjamin, jamais « Ré
   banc.gh.runs["securite.yml"] = [run({ id: 5, le: ilYa(9 * 864e5) })];
   const muet = ligneAFaire(await appeler({ action: "etat" }), "scan:securite");
   assert.deepEqual([muet && muet.titre, muet && muet.prio], ["Le scan de sécurité n'a pas tourné depuis plus de 8 jours", 2]);
+  // Le seuil est HUIT jours (P1-15) : un succès de cinq jours ne dit rien — un seuil ramené à quatre rougit ici.
+  await monter();
+  banc.gh.runs["securite.yml"] = [run({ id: 5, le: ilYa(5 * 864e5) })];
+  assert.equal(ligneAFaire(await appeler({ action: "etat" }), "scan:securite"), null);
+  // Le dernier passage ANNULÉ, le précédent réussi (P1-15) : « n'a pas abouti », sans urgence, un lien vers lui.
+  await monter();
+  banc.gh.runs["securite.yml"] = [run({ conclusion: "cancelled", id: 8, le: ilYa(3600e3) }), run({ id: 1, le: ilYa(3 * 864e5) })];
+  const annule = ligneAFaire(await appeler({ action: "etat" }), "scan:securite");
+  assert.deepEqual([annule && annule.titre, annule && annule.prio, annule && annule.etiquette], ["Le scan de sécurité n'a pas abouti", 2, "À trier"]);
+  assert.match(String(annule.url), /\/runs\/8$/);
+  assert.ok(!(annule.gestes || []).some((g) => g.corps), "un lien, aucune action");
   // Illisible : l'écran ne passe pas au vert, et le dit.
   await monter();
   banc.gh.panne = (m, chemin) => (/securite\.yml\/runs/.test(chemin) ? { status: 502 } : null);

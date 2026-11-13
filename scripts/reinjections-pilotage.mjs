@@ -98,6 +98,14 @@ const M = [
   ["R68 une lecture d'au-delà illisible passe pour « tout est lu »", FN, `if (Array.isArray(reste) && reste.length === 0)`, `if (!Array.isArray(reste) || reste.length === 0)`, BANC, "㊵"],
   ["R69 une page en échec jette les pages lues (le correctif récent disparaît)", FN, `if (!r || !r.ok) return { ok: false, lignes, raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };`, `if (!r || !r.ok) return { ok: false, lignes: [], raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };`, BANC, "㊵"],
   ["R70 le scan dit tout sur une ligne de téléphone (son détail hors du repli)", PJ, `quoi: "À trier par toi, jamais par une machine.",`, `quoi: "À trier par toi, jamais par une machine. Son journal dit quel job : les secrets, npm audit ou la gate des workflows.",`, "tests/unit/pilotage.test.mjs", "㊴"],
+
+  // P1-15 (2026-11-13) : les cinq trous de tests relevés par la relecture de #866.
+  ["R71 le scan annulé (« n'a pas abouti ») ne se dit plus", PJ, `  if (sc) {\n`, `  if (sc && sc.nature === "echec") {\n`, BANC, "㊸"],
+  ["R72 le seuil du scan muet ramené à quatre jours", PJ, `export const SCAN_MUET_MS = 8 * 864e5;`, `export const SCAN_MUET_MS = 4 * 864e5;`, BANC, "㊸"],
+  ["R73 au-delà de trois cents PR, les lues sont jetées", FN, `return { ok: true, lignes, raison: Array.isArray(reste)`, `return { ok: true, lignes: [], raison: Array.isArray(reste)`, BANC, "㊵"],
+  ["R74 une page ILLISIBLE jette les pages lues", FN, `if (!Array.isArray(lot)) return { ok: false, lignes, raison:`, `if (!Array.isArray(lot)) return { ok: false, lignes: [], raison:`, BANC, "㊵"],
+  ["R75 verdict lit runs[\"veille\"] sans que la liste du voyant le sache", PJ, `  const runs = gh.runs || {};\n`, `  const runs = gh.runs || {};\n  if (runs["veille"] && false) orange.push("x");\n`, "tests/unit/pilotage.test.mjs", "㊴ bis"],
+  ["R76 verdict déstructure runs (le relevé ne la voit pas)", PJ, `  const runs = gh.runs || {};\n`, `  const runs = gh.runs || {};\n  const { veille: _v } = runs;\n`, "tests/unit/pilotage.test.mjs", "㊴ bis"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");

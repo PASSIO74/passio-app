@@ -864,8 +864,11 @@ test("㊴ bis (relecture de #866) : la veille n'est TENUE que par les exécution
   const debut = src.indexOf("export function verdict(e) {");
   assert.ok(debut >= 0, "verdict se lit");
   const corpsVerdict = src.slice(debut, src.indexOf("\n}\n", debut));
-  const lues = [...new Set([...corpsVerdict.matchAll(/\bruns\.(\w+)/g)].map((m) => m[1]))].sort();
+  // `runs.x` ET `runs["x"]` (P1-15) ; une déstructuration de `runs` échapperait au relevé : elle est refusée.
+  const lues = [...new Set([...corpsVerdict.matchAll(/\bruns\.(\w+)|\bruns\[\s*["'`](\w+)["'`]\s*\]/g)].map((m) => m[1] || m[2]))].sort();
   assert.deepEqual(lues, [...RUNS_DU_VOYANT].sort());
+  assert.doesNotMatch(corpsVerdict, /\{[^{}]*\}\s*=\s*runs\b/, "pas de déstructuration de `runs` dans verdict : le relevé ne la verrait pas");
+  assert.doesNotMatch(corpsVerdict, /\bruns\[\s*[^"'`\s]/, "pas d'accès calculé à `runs` dans verdict : le relevé ne le verrait pas");
 });
 
 test("㊽ « Tout régler » : seulement ce qui répare ; jamais le retour arrière, la modération, ni un paiement", () => {
