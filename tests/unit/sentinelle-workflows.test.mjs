@@ -146,8 +146,9 @@ function fixtures(obj) {
 
 /** Ce que le runner lit comme une commande dans ce qu'une étape écrit, sur sa sortie standard ET son erreur standard
  *  (le `flux` de `jouer`, même quand l'étape réussit) : chaque ligne coupée sur \r\n, \r ou \n (sa lecture ligne à
- *  ligne), espaces de tête retirés, qui commence par « :: » ou par la forme historique « ##[ ». */
-const annotations = (r) => r.flux.split(/\r\n|\r|\n/).map((l) => l.trimStart()).filter((l) => l.startsWith("::") || l.startsWith("##["));
+ *  ligne), espaces de tête retirés, qui commence par « :: », ou qui contient OÙ QUE CE SOIT la forme historique
+ *  « ##[ » (le runner la cherche dans toute la ligne). */
+const annotations = (r) => r.flux.split(/\r\n|\r|\n/).map((l) => l.trimStart()).filter((l) => l.startsWith("::") || l.includes("##["));
 
 /** Exécute un bloc `run:` réel dans le bac ; rend code, sortie, journal, outputs, résumé. */
 function jouer(script, env = {}) {
@@ -663,11 +664,10 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   });
   const muet = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
   assert.notEqual(muet.code, 0, muet.sortie.slice(-600));
-  // Chaque annotation de ce bloc se vérifie EN ENTIER, seule de sa sortie (seconde relecture de #875) : ici, la cause
-  // du faux gh (la commande entière) n'a pas de parenthèse ; ancrée des deux côtés, rien ne s'y ajoute.
-  const illisibles = annotations(muet);
-  assert.equal(illisibles.length, 1, illisibles.join("\n"));
-  assert.match(illisibles[0], /^::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus \(faux gh : échec simulé : [^()]*\) : impossible de savoir si cette PR est une réparation de la Sentinelle\. Relance le job\.$/);
+  // Chaque annotation de ce bloc se vérifie EN ENTIER, seule de ce que l'étape écrit (relectures de `ae533574` et de
+  // `94a1c975`) : la cause est celle, déterministe, du faux gh — la commande qu'il a reçue.
+  const ILLISIBLES = "::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus (faux gh : échec simulé : api repos/o/r/issues/700 --jq .labels[].name) : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job.";
+  assert.deepEqual(annotations(muet), [ILLISIBLES]);
   // L'issue introuvable (404) ou supprimée (410) sur une PR OUVERTE : refus, avec un remède qui marche (relecture de
   // #875). Le 404 vient avec ou sans corps JSON (gh écrit le corps sur sa sortie standard) ; la cause se cite telle
   // quelle, sans l'espace qu'y laissait le saut de ligne final.
@@ -720,7 +720,7 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   assert.equal(apres.code, 0, apres.sortie.slice(-600));
   assert.deepEqual(annotations(apres), [AVERTISSEMENT], apres.sortie.slice(-600));
   assert.ok(!apres.log.includes("issue comment 700"), "rien n'est écrit sur une issue introuvable");
-  // Un push d'une PR CRITIQUE : la contre-revue s'applique comme à toute PR humaine (seconde relecture de #875 : dire
+  // Un push d'une PR CRITIQUE : la contre-revue s'applique comme à toute PR humaine (relecture de `ae533574` : dire
   // « cette garde ne bloque pas son déploiement » était faux ici). Sans elle, refus ; avec elle, l'avertissement seul.
   const critique = { "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: "sw.js", additions: 1, deletions: 0 }], "commit-pulls": [{ number: 77 }] };
   fixtures(critique);
@@ -737,9 +737,7 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   // … mais une PANNE (pas une disparition) sur un push reste un refus à relancer.
   const panne = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
   assert.notEqual(panne.code, 0);
-  const pannes = annotations(panne);
-  assert.equal(pannes.length, 1, pannes.join("\n"));
-  assert.match(pannes[0], /^::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus \(faux gh : échec simulé : [^()]*\) : impossible de savoir si cette PR est une réparation de la Sentinelle\. Relance le job\.$/);
+  assert.deepEqual(annotations(panne), [ILLISIBLES]);
 });
 
 // ═══ Gouvernance — course de l'index « commit → PR » (2026-11-03) ═════════
