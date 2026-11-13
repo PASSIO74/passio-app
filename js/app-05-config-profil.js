@@ -3778,22 +3778,26 @@ function autoResizeReelCommentInput() {
 function _envoyerCommentaireBobine(postId, op) {
   if (typeof supa === "undefined" || !supa) return;
   if (typeof MY_UID === "undefined" || !MY_UID) return;
-  if (typeof _enqueueCommentSync === "function") {
-    _enqueueCommentSync(Object.assign({ threadId: postId }, op));
-  } else if (op.type === "post_comment" && typeof supaAddComment === "function") {
-    supaAddComment(postId, op.text, op.commentId);
-  } else if (op.type === "reply" && typeof supaCommentInteract === "function") {
-    supaCommentInteract(op.parentId, postId, "reply", op.text);
-  }
-  // Prévenir l'auteur, comme le fait le chemin du Fil.
+  // Prévenir l'auteur, comme le fait le chemin du Fil — à la CONFIRMATION de
+  // l'écriture (SRV-02 : la base exige le commentaire réel) ; la file pose la
+  // notification au succès.
+  let notif = null;
   try {
     const cible = typeof findPostAnywhere === "function" ? findPostAnywhere(postId) : null;
-    if (cible && cible.authorId && cible.authorId !== MY_UID && cible.fromSupabase
-        && typeof supaInsertNotif === "function") {
-      supaInsertNotif(cible.authorId, "comment", postId, "a commenté ta bobine");
+    if (cible && cible.authorId && cible.authorId !== MY_UID && cible.fromSupabase) {
+      notif = { to: cible.authorId, kind: "comment", text: "a commenté ta bobine" };
     }
     // ASTRA-24 : les mentions partent depuis `supaAddComment`, une fois le commentaire en base.
   } catch (e) {}
+  let ecriture = null;
+  if (typeof _enqueueCommentSync === "function") {
+    _enqueueCommentSync(Object.assign({ threadId: postId }, op, { notif: notif }));
+  } else if (op.type === "post_comment" && typeof supaAddComment === "function") {
+    ecriture = supaAddComment(postId, op.text, op.commentId);
+  } else if (op.type === "reply" && typeof supaCommentInteract === "function") {
+    ecriture = supaCommentInteract(op.parentId, postId, "reply", op.text);
+  }
+  if (ecriture && notif && typeof notifierApresEcriture === "function") notifierApresEcriture(ecriture, notif.to, notif.kind, postId, notif.text);
 }
 
 function submitReelComment() {
@@ -3907,9 +3911,10 @@ function likeReelComment(postId, commentIdx) {
     comment.likedBy.push(userId);
     comment.likes++;
     // Sync cross-compte : sans elle, le like restait dans ce seul navigateur.
-    if (typeof supaCommentInteract === "function") supaCommentInteract(comment.id, postId, "like", "");
-    if (comment.authorId && comment.authorId !== userId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(comment.authorId, "like", postId, "a aimé ton commentaire"); } catch (e) {}
+    const ecrit = (typeof supaCommentInteract === "function") ? supaCommentInteract(comment.id, postId, "like", "") : false;
+    // Au verdict de l'écriture (SRV-02 : la base exige le j'aime réel).
+    if (comment.authorId && comment.authorId !== userId && comment.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(ecrit, comment.authorId, "like", postId, "a aimé ton commentaire");
     }
   }
 

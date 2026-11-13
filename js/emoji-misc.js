@@ -333,10 +333,11 @@ function likeComment(postId, commentId, event) {
   } else {
     comment.likes = (comment.likes || 0) + 1;
     comment.likedBy.push(meId);
-    if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "like", "");
-    // Notifie l'auteur du commentaire (interaction cross-compte).
-    if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(comment.authorId, "like", postId, "a aimé ton commentaire"); } catch(e) {}
+    var _ecrit = (typeof supaCommentInteract === "function") ? supaCommentInteract(commentId, postId, "like", "") : false;
+    // Notifie l'auteur du commentaire (interaction cross-compte) — au verdict de
+    // l'écriture, jamais avant (SRV-02 : la base exige le j'aime réel).
+    if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(_ecrit, comment.authorId, "like", postId, "a aimé ton commentaire");
     }
   }
   _diag("✅ Like toggle: " + comment.likes + " likes");
@@ -421,10 +422,14 @@ function _submitReply(arg) {
   comment.replies.push({ id: _rid, authorId: meId, text: text, createdAt: Date.now() });
   if (typeof thread.save === "function") thread.save(); else saveState();
   // Sync Supabase via la FILE D'ATTENTE (#14) : envoi + réessai auto, statut sur la réponse.
-  if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "reply", threadId: postId, parentId: commentId, nodeId: _rid, text: text });
-  else if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", text);
-  if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-    try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu à ton commentaire"); } catch(e) {}
+  // La notification VOYAGE AVEC l'envoi (SRV-02) : la file la pose à la
+  // confirmation de la réponse, qui peut venir bien plus tard (hors ligne).
+  var _notifRep = (comment.authorId && comment.authorId !== meId && comment.fromSupabase)
+    ? { to: comment.authorId, kind: "comment", text: "a répondu à ton commentaire" } : null;
+  if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "reply", threadId: postId, parentId: commentId, nodeId: _rid, text: text, notif: _notifRep });
+  else if (typeof supaCommentInteract === "function") {
+    var _ecritRep = supaCommentInteract(commentId, postId, "reply", text);
+    if (_notifRep && typeof notifierApresEcriture === "function") notifierApresEcriture(_ecritRep, _notifRep.to, _notifRep.kind, postId, _notifRep.text);
   }
   if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, text);
   var w = inp.closest(".comment-reply-input"); if (w) w.remove();
@@ -542,9 +547,9 @@ function addGifToComment(postId, commentId, gifUrl) {
   var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user && state.user.id) || "me";
   comment.replies.push({ id: "reply_" + Date.now(), authorId: meId, text: gifUrl, createdAt: Date.now() });
   if (typeof thread.save === "function") thread.save(); else saveState();
-  if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", gifUrl);
-  if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-    try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu avec un GIF"); } catch (e) {}
+  var _ecritGif = (typeof supaCommentInteract === "function") ? supaCommentInteract(commentId, postId, "reply", gifUrl) : false;
+  if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof notifierApresEcriture === "function") {
+    notifierApresEcriture(_ecritGif, comment.authorId, "comment", postId, "a répondu avec un GIF");
   }
   window._repliesExpanded = window._repliesExpanded || {}; window._repliesExpanded[commentId] = true;
   // Nouvelle réponse = la liste change → refresh (scroll préservé via _setThreadHtml).
@@ -642,20 +647,22 @@ function addEmojiToPost(postId, emoji) {
   // POST lui-même). On efface d'abord MES réactions (journal append-only) puis on
   // (ré)insère la nouvelle — sauf toggle off. Chargée par supaLoadPosts, propagée
   // par realtime:comment_interactions.
-  _syncReactionEmoji(postId, postId, res.removedSame ? "" : emoji);
-  if (!res.removedSame) _notifyPostReaction(post, emoji);
+  var _geste = _syncReactionEmoji(postId, postId, res.removedSame ? "" : emoji);
+  if (!res.removedSame) _notifyPostReaction(post, emoji, _geste);
 
   if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);
   return false;
 }
 
-// Notifie l'auteur du post d'une réaction reçue (cross-compte uniquement).
-function _notifyPostReaction(post, face) {
+// Notifie l'auteur du post d'une réaction reçue (cross-compte uniquement), au
+// verdict de l'insertion de la réaction : `ecriture` est la file de
+// `_syncReactionEmoji`, qui rend le booléen de `supaCommentInteract` (SRV-02).
+function _notifyPostReaction(post, face, ecriture) {
   try {
     var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-    if (post && post.authorId && post.authorId !== me && post.fromSupabase && typeof supaInsertNotif === "function") {
-      supaInsertNotif(post.authorId, "like", post.id, "a réagi " + face + " à ton post");
+    if (post && post.authorId && post.authorId !== me && post.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(ecriture, post.authorId, "like", post.id, "a réagi " + face + " à ton post");
     }
   } catch(e) {}
 }
@@ -708,15 +715,20 @@ function _postGifComment(threadId, gifUrl) {
   // confirmation qui fait entrer la ligne dans le total exact du fil). Le tir
   // sans confirmation laissait le GIF « local » pour toujours : compté deux
   // fois au tour suivant du filet (contre-revue).
+  // Notifie l'auteur du fil (cross-compte) — au verdict de l'écriture, ou à la
+  // confirmation par la file (SRV-02 : la base exige le commentaire réel).
+  var _notifGif = (thread.targetUserId && thread.targetUserId !== meId && thread.fromSupabase)
+    ? { to: thread.targetUserId, kind: "comment", text: "a commenté avec un GIF" } : null;
+  var _apres = function (ecriture) {
+    if (_notifGif && typeof notifierApresEcriture === "function") notifierApresEcriture(ecriture, _notifGif.to, _notifGif.kind, threadId, _notifGif.text);
+  };
   try {
-    if (kind === "event" && typeof supaAddEventComment === "function") supaAddEventComment(threadId, gifUrl);
-    else if (typeof MY_UID !== "undefined" && MY_UID && typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: threadId, commentId: cid, nodeId: cid, text: gifUrl });
-    else if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) Promise.resolve(supaAddComment(threadId, gifUrl, cid)).then(function (ok) { if (ok && typeof _commentaireConfirme === "function") _commentaireConfirme(threadId, cid); }).catch(function () {});
-  } catch (e) {}
-  // Notifie l'auteur du fil (cross-compte).
-  try {
-    if (thread.targetUserId && thread.targetUserId !== meId && thread.fromSupabase && typeof supaInsertNotif === "function") {
-      supaInsertNotif(thread.targetUserId, "comment", threadId, "a commenté avec un GIF");
+    if (kind === "event" && typeof supaAddEventComment === "function") _apres(supaAddEventComment(threadId, gifUrl));
+    else if (typeof MY_UID !== "undefined" && MY_UID && typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: threadId, commentId: cid, nodeId: cid, text: gifUrl, notif: _notifGif });
+    else if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) {
+      var _ecritCmt = Promise.resolve(supaAddComment(threadId, gifUrl, cid));
+      _ecritCmt.then(function (ok) { if (ok && typeof _commentaireConfirme === "function") _commentaireConfirme(threadId, cid); }).catch(function () {});
+      _apres(_ecritCmt);
     }
   } catch (e) {}
   if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);

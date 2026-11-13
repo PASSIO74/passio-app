@@ -549,6 +549,19 @@ function _enqueueCommentSync(op) {
   _cmtObStartTimer();
   _cmtObFlush();
 }
+// ⚠️ SRV-02 (2026-11-13) : la notification d'un commentaire part à SA
+// CONFIRMATION, jamais à la mise en file. La base exige le commentaire réel
+// derrière une notification `comment` ; posée en parallèle, elle arrivait avant
+// lui (hors ligne : des minutes avant) et se faisait refuser. `op.notif` =
+// { to, kind, text } ; la référence est le fil (`op.threadId`). L'entrée a déjà
+// passé la garde du compte (AUTH-06) : c'est bien son auteur qui notifie.
+function _cmtObNotifier(op) {
+  try {
+    var n = op && op.notif;
+    if (!n || !n.to || !n.kind || typeof supaInsertNotif !== "function") return;
+    supaInsertNotif(n.to, n.kind, op.threadId, n.text);
+  } catch (e) {}
+}
 // Exécute UN envoi ; renvoie une Promise<boolean> (succès serveur).
 function _cmtObRun(op) {
   try {
@@ -614,7 +627,7 @@ async function _cmtObFlush() {
       if ((op.tries || 0) >= 8) continue; // auto-stop : le clic « Réessayer » remet tries à 0
       var ok = false;
       try { ok = await _cmtObRun(op); } catch (e) { ok = false; }
-      if (ok) { _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; })); _cmtObSetStatus(op.threadId, op.nodeId, true); }
+      if (ok) { _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; })); _cmtObSetStatus(op.threadId, op.nodeId, true); _cmtObNotifier(op); }
       else { op.tries = (op.tries || 0) + 1; _cmtObSave(_cmtObLoad().map(function (o) { return o.opId === op.opId ? op : o; })); _cmtObSetStatus(op.threadId, op.nodeId, false); }
     }
   } finally { _cmtObFlushing = false; }
@@ -1214,9 +1227,10 @@ function likeCommentNode(threadId, nodeId, event) {
     if (typeof supaCommentRemoveLike === "function") supaCommentRemoveLike(nodeId);
   } else {
     node.likedBy.push(meId); node.likes += 1;
-    if (typeof supaCommentInteract === "function") supaCommentInteract(nodeId, threadId, "like", "");
-    if (node.authorId && node.authorId !== meId && node.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(node.authorId, "like", threadId, "a aimé ta réponse"); } catch(e) {}
+    var _ecrit = (typeof supaCommentInteract === "function") ? supaCommentInteract(nodeId, threadId, "like", "") : false;
+    // Au verdict de l'écriture (SRV-02 : la base exige le j'aime réel).
+    if (node.authorId && node.authorId !== meId && node.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(_ecrit, node.authorId, "like", threadId, "a aimé ta réponse");
     }
   }
   if (thread && typeof thread.save === "function") thread.save(); else { try { saveState(); } catch(e){} }
@@ -1524,12 +1538,16 @@ function submitComment(postId) {
   // Sync avec Supabase — via la FILE D'ATTENTE (#14) : envoi + réessai auto si
   // offline/erreur, avec statut « Envoi… / Non envoyé » sur le commentaire.
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: postId, commentId: _cid, nodeId: _cid, text: text });
-    else Promise.resolve(supaAddComment(postId, text, _cid)).then(function (ok) { if (ok) _commentaireConfirme(postId, _cid); }).catch(function () {});
-    // Notifier l'auteur du post
+    // Notifier l'auteur du post — à la CONFIRMATION du commentaire (SRV-02) : la
+    // notification voyage avec l'envoi dans la file, qui la pose au succès.
     const commentedPost = findPostAnywhere(postId);
-    if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {
-      supaInsertNotif(commentedPost.authorId, "comment", postId, "a commenté ton post");
+    const _notifCmt = (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase)
+      ? { to: commentedPost.authorId, kind: "comment", text: "a commenté ton post" } : null;
+    if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: postId, commentId: _cid, nodeId: _cid, text: text, notif: _notifCmt });
+    else {
+      const _ecrit = Promise.resolve(supaAddComment(postId, text, _cid));
+      _ecrit.then(function (ok) { if (ok) _commentaireConfirme(postId, _cid); }).catch(function () {});
+      if (_notifCmt) notifierApresEcriture(_ecrit, _notifCmt.to, _notifCmt.kind, postId, _notifCmt.text);
     }
     // ASTRA-24 : les mentions partent depuis `supaAddComment`, une fois le commentaire en base.
   }
