@@ -162,6 +162,20 @@ jobs:
           # Aucun jeton laissé dans .git/ : l'agent lit ce dossier, et l'action pose sa propre identification.
           persist-credentials: false
 
+      # Le commit d'où l'agent PART, noté par le workflow AVANT lui (relecture de #875) : la publication lit tout ce
+      # que l'agent a ajouté depuis — chaque commit, ses en-têtes, ses fichiers —, jamais le seul diff des extrémités,
+      # et jamais par rapport à un main relu qui a pu bouger pendant le run. Une sortie de marche ne se réécrit pas.
+      - name: Noter le commit de départ
+        id: depart
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          case "${sha}" in
+            *[!0-9a-f]*|"") echo "::error title=Départ illisible::HEAD ne se lit pas comme un commit." ; exit 1 ;;
+          esac
+          [ "${#sha}" -eq 40 ] || { echo "::error title=Départ illisible::HEAD n'a pas 40 caractères." ; exit 1 ; }
+          echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
+
       # Avant toute dépense de jeton : prouver que l'auth est bien l'abonnement.
       - name: Contrôle d'authentification (subscription-only)
         id: auth
@@ -1154,6 +1168,7 @@ jobs:
           DEPOT: ${{ github.repository }}
           ATTENDUE: ${{ steps.branche.outputs.nom }}
           NUMERO: ${{ github.event.issue.number || github.event.pull_request.number }}
+          DEPART: ${{ steps.depart.outputs.sha }}
         run: |
           set -euo pipefail
 
@@ -1182,12 +1197,71 @@ jobs:
             git branch -f "${ATTENDUE}" "${tip}"
           fi
 
-          if git diff --quiet "${base}" "${tip}"; then
-            echo "État laissé par l'agent : $(git status --porcelain | wc -l) fichier(s) non committé(s), $(git branch --list | wc -l) branche(s) locale(s), $(git rev-list --count "${base}..${tip}") commit(s) d'avance."
+          # ── GARDES DE PUBLICATION:DEBUT ── (jouées telles quelles par tests/unit/reparation-journal.test.mjs ⑬)
+          # CE QUI PART, c'est CHAQUE commit que l'agent a ajouté depuis le commit de DÉPART (noté par le workflow avant
+          # lui, marche « Noter le commit de départ ») : son contenu, ses en-têtes (auteur, committer), ses noms de
+          # fichiers. La poussée publie tout cela, et gitleaks lit chaque commit d'une PR. Lire le seul diff des
+          # extrémités laissait passer un jeton ajouté puis retiré, un `gitleaks:allow` posé dans un commit
+          # intermédiaire, un jeton dans l'auteur (relecture à trois lentilles de #875, P1-14 bis). Borné par
+          # `--not base DEPART` : si main a bougé pendant le run, ses changements ne passent pas pour ceux de l'agent
+          # (un refus à tort), et la racine superficielle du clone n'entre pas dans la lecture.
+          # `--no-replace-objects` : un objet de remplacement ne change pas ce qui est lu.
+          case "${DEPART:-}" in
+            *[!0-9a-f]*|"") echo "::error title=Départ illisible::Le commit de départ du run n'a pas été noté. Refus de publier."; exit 1 ;;
+          esac
+          git cat-file -e "${DEPART}^{commit}"
+          lire_publie() { git --no-replace-objects log "$@" "${tip}" --not "${base}" "${DEPART}"; }
+          # Chaque statut est LU (relecture de #875) : dans une condition, `set -e` ne joue plus, et un code d'erreur
+          # (2, 128…) y valait « rien trouvé » — une garde ouverte sur une panne.
+          commits="$(lire_publie --format=%H | wc -l | tr -d ' ')"
+          rc=0; git diff --quiet "${DEPART}" "${tip}" || rc=$?
+          case "${rc}" in 0|1) ;; *) echo "::error title=Garde illisible::Le diff du travail produit n'a pas pu être lu (code ${rc}). Refus de publier."; exit 1 ;; esac
+          if [ "${commits}" -eq 0 ] || [ "${rc}" -eq 0 ]; then
+            echo "État laissé par l'agent : $(git status --porcelain | wc -l) fichier(s) non committé(s), ${commits} commit(s) d'avance."
             echo "::error title=Aucun changement::Claude n'a produit aucun commit : rien à publier. Ce run n'est pas un succès."
             exit 1
           fi
-          echo "Fichiers produits :"; git diff --name-only "${base}" "${tip}"
+
+          # ── Ce qui part dans un dépôt public ne porte aucun jeton (revue adverse du 2026-11-06) ──
+          # Le dernier filet derrière les outils de l'agent : chaque commit en BRUT (`--format=raw` : auteur,
+          # committer, message), avec son patch. ⚠️ Lu dans un FICHIER, jamais à travers un tube : sous pipefail,
+          # `git … | grep -q` faisait mourir `git` de SIGPIPE dès que grep trouvait le jeton au début d'un gros diff —
+          # le `if` ne voyait RIEN, précisément quand un jeton était là (prouvé sur le runner, #875). En texte
+          # (`--text --no-ext-diff --no-textconv`) : un octet nul ou un `.gitattributes -diff` ne cache rien. Les
+          # retours chariot retirés avant la recherche : un jeton coupé par l'un d'eux reste un jeton.
+          publie="${RUNNER_TEMP}/passio-travail-publie.txt"
+          noms="${RUNNER_TEMP}/passio-noms-publies.txt"
+          lire_publie --format=raw -m -p --no-color --text --no-ext-diff --no-textconv > "${publie}.brut"
+          tr -d '\r' < "${publie}.brut" > "${publie}"
+          rm -f "${publie}.brut"
+          rc=0; grep -qE 'gh[oprsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|x-access-token:[A-Za-z0-9_-]{10,}|sb_secret_[A-Za-z0-9_-]{20,}' "${publie}" || rc=$?
+          case "${rc}" in
+            0) rm -f "${publie}"
+               echo "::error title=Jeton dans le travail produit::Un commit (contenu, nom de fichier, auteur ou message) porte un jeton. Refus de publier."
+               exit 1 ;;
+            1) ;;
+            *) rm -f "${publie}"
+               echo "::error title=Garde illisible::La recherche des jetons a échoué (code ${rc}). Refus de publier."
+               exit 1 ;;
+          esac
+
+          # ── Les exceptions du scan des secrets ne s'écrivent pas par l'agent (relecture de #866) ──
+          # Un commentaire en ligne `gitleaks:allow` AJOUTÉ par un commit — même intermédiaire, que gitleaks lit aussi —
+          # tairait une trouvaille NEUVE du scan. Leur tri est à Benjamin : refus. Une ligne qui le RETIRE passe. Les
+          # lignes ajoutées se lisent hunk par hunk : un contenu qui commence par « ++ » est une ligne, pas un en-tête.
+          # (`--no-renames` : un renommage pur d'un fichier déjà marqué est refusé — côté sûr, délibéré.)
+          lire_publie --format= -m -p -U0 --no-color --text --no-ext-diff --no-textconv --no-renames > "${publie}"
+          rc=0; awk '/^diff --git /{h=1} /^@@/{h=0; next} !h && /^\+/ && index($0, "gitleaks:allow") {t=1} END{exit !t}' "${publie}" || rc=$?
+          case "${rc}" in
+            0) rm -f "${publie}"
+               echo "::error title=Exception du scan des secrets::Claude a ajouté un commentaire « gitleaks:allow » : il tairait une trouvaille du scan, dont le tri est à Benjamin. Refus de publier."
+               exit 1 ;;
+            1) ;;
+            *) rm -f "${publie}"
+               echo "::error title=Garde illisible::La recherche des exceptions du scan a échoué (code ${rc}). Refus de publier."
+               exit 1 ;;
+          esac
+          rm -f "${publie}"
 
           # ── Chemins interdits ─────────────────────────────────────────
           # Claude ne doit pas pouvoir modifier ce qui le contrôle. Sans cette
@@ -1195,62 +1269,34 @@ jobs:
           # liste d'outils : écrire un script dans package.json puis
           # l'exécuter. Les deux contrôles se renforcent — npm/npx retirés de
           # la liste, et package.json/scripts hors d'atteinte.
+          # Les noms de TOUS les commits de l'agent, pas du seul diff des extrémités : un chemin touché puis rétabli a
+          # quand même été poussé. Sans casse (`nocasematch`) : un `.GitAttributes` compte comme les autres.
+          lire_publie --format= --name-only --no-renames -z | tr '\0' '\n' | sed '/^$/d' | sort -u > "${noms}"
           interdits=""
+          shopt -s nocasematch
           while IFS= read -r fichier; do
             [ -z "${fichier}" ] && continue
             case "${fichier}" in
               # Ces specs et ces aides tournent avec la clé de production au push (E-04).
               # Les exceptions du scan des secrets : leur tri est à Benjamin, jamais à un agent — une vraie clé se
-              # révoque d'abord (relecture de #866 ; le scan n'est ni « Régler », ni dans RUNS_REPARABLES). Un
-              # `.gitattributes` aussi (relecture de #875) : `-diff` rend un fichier « binaire » — gitleaks le saute
-              # (`git log -p` sans --text), le scan de TOUT l'historique se tairait.
-              .github/*|.claude/*|.agents/*|.codex/*|.npmrc|.mcp.json|package.json|package-lock.json|dashboard/package*.json|playwright.config.js|scripts/*|tests/ci/*|migrations/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|.gitleaksignore|.gitleaks.toml|.gitattributes|*/.gitattributes)
+              # révoque d'abord (relecture de #866). `.gitleaks*` : gitleaks lit aussi `.gitleaks.json`, `.yaml`…, et un
+              # DOSSIER `.gitleaks.toml/` (relecture de #875). Un `.gitattributes` aussi : `-diff` rend un fichier
+              # « binaire » — gitleaks le saute (`git log -p` sans --text), le scan de TOUT l'historique se tairait.
+              .github/*|.claude/*|.agents/*|.codex/*|.npmrc|.mcp.json|package.json|package-lock.json|dashboard/package*.json|playwright.config.js|scripts/*|tests/ci/*|migrations/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|.gitleaks*|.gitattributes|*/.gitattributes)
                 interdits="${interdits}${fichier} " ;;
             esac
-          # `-z` : un chemin non ASCII entre guillemets ne matchait plus rien. `--no-renames` : un
-          # `git mv scripts/x js/x` ne montrait que l'arrivée (E-15).
-          done < <(git diff -z --no-renames --name-only "${base}" "${tip}" | tr '\0' '\n')
+          done < "${noms}"
+          shopt -u nocasematch
           if [ -n "${interdits}" ]; then
+            rm -f "${noms}"
             echo "::error title=Chemin interdit::Claude a modifié des fichiers qui le contrôlent : ${interdits}. Refus de publier. Ces chemins se changent à la main, avec contre-revue."
             exit 1
           fi
-
-          # ── Ce qui part dans un dépôt public ne porte aucun jeton (revue adverse du 2026-11-06) ──
-          # `git commit -F .git/config` recopiait le jeton du run dans un message : l'outil l'interdit désormais,
-          # et cette lecture en est le dernier filet — elle lit l'arbre FINAL et les MESSAGES de tous les commits.
-          # ⚠️ Pas encore (relecture de #875, P1-14 bis) : le contenu d'un commit INTERMÉDIAIRE (ajouté puis retiré)
-          # ni l'AUTEUR d'un commit — la poussée publie pourtant les deux. Tant que ce n'est pas lu, ne pas écrire
-          # que cette garde « rattrape toute voie ».
-          # ⚠️ Lu dans un FICHIER, jamais à travers un tube (2026-11-13) : sous pipefail, `git … | grep -q` faisait
-          # mourir `git` de SIGPIPE dès que grep trouvait le jeton au début d'un gros diff — le pipeline rendait 141,
-          # et le `if` ne voyait RIEN, précisément quand un jeton était là (prouvé sur le runner, #875). Écrit d'abord,
-          # un `git` en échec arrête la marche (`set -e`) au lieu de la laisser publier.
-          # `--text --no-ext-diff --no-textconv` (relecture de #875) : sans eux, un fichier que git tient pour binaire —
-          # un octet nul, ou un `.gitattributes` qui le marque `-diff`, même laissé NON commité dans l'arbre — ne
-          # montrait que « Binary files differ », et le jeton partait.
-          publie="${RUNNER_TEMP}/passio-travail-publie.txt"
-          { git log --format=%B "${base}..${tip}"; git diff --no-color --text --no-ext-diff --no-textconv "${base}" "${tip}"; } > "${publie}"
-          if grep -qE 'gh[opsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|x-access-token:[A-Za-z0-9_-]{10,}' "${publie}"; then
-            rm -f "${publie}"
-            echo "::error title=Jeton dans le travail produit::Le diff ou un message de commit porte un jeton. Refus de publier."
-            exit 1
-          fi
-
-          # ── Un commentaire d'exception du scan des secrets ajouté au diff final est refusé (relecture de #866) ──
-          # `.gitleaksignore` et `.gitleaks.toml` sont des chemins interdits ; un commentaire en ligne `gitleaks:allow`
-          # AJOUTÉ au diff tairait une trouvaille NEUVE du scan. Leur tri est à Benjamin : refus. Une ligne qui le
-          # RETIRE passe. Seul le diff FINAL est lu : un commit intermédiaire ne l'est pas encore (P1-14 bis, PR
-          # suivante), comme pour la garde des jetons. Les lignes ajoutées se lisent hunk par hunk : un contenu qui commence par « ++ » est une
-          # ligne, pas un en-tête de fichier.
-          # Même lecture en texte : un `.gitattributes` `-diff` rendait le marqueur invisible ici AUSSI. (`--no-renames` :
-          # un renommage pur d'un fichier déjà marqué est refusé — côté sûr, délibéré.)
-          git diff -U0 --no-color --text --no-ext-diff --no-textconv --no-renames "${base}" "${tip}" > "${publie}"
-          if awk '/^diff --git /{h=1} /^@@/{h=0; next} !h && /^\+/ && index($0, "gitleaks:allow") {t=1} END{exit !t}' "${publie}"; then
-            rm -f "${publie}"
-            echo "::error title=Exception du scan des secrets::Claude a ajouté un commentaire « gitleaks:allow » : il tairait une trouvaille du scan, dont le tri est à Benjamin. Refus de publier."
-            exit 1
-          fi
-          rm -f "${publie}"
+          # Les noms ne s'affichent qu'ICI, une fois les gardes passées : un nom peut porter un jeton, et le journal
+          # d'un dépôt public est public (relecture de #875).
+          echo "Fichiers produits (${commits} commit(s)) :"; cat "${noms}"
+          rm -f "${noms}"
+          # ── GARDES DE PUBLICATION:FIN
 
           # ── Audits du dépôt, exécutés par le WORKFLOW ─────────────────────
           # Même doctrine que la publication : la vérification appartient au
@@ -1324,7 +1370,7 @@ jobs:
               echo "Branche imposée par le run : \`${ATTENDUE}\`"
               echo
               echo "Fichiers :"
-              git diff --name-only "${base}" "${tip}" | sed 's/^/- `/;s/$/`/'
+              git diff --name-only "${DEPART}" "${tip}" | sed 's/^/- `/;s/$/`/'
               echo
               echo "Message de commit de Claude :"
               echo
@@ -1488,19 +1534,33 @@ jobs:
           AUTO_FUSION: ${{ steps.publier.outputs.auto_fusion || 'sans objet (PR déjà ouverte)' }}
           # Égalité sur le NOM du label (contains sur le tableau), pas une sous-chaîne d'un join.
           SENTINELLE: ${{ contains(github.event.issue.labels.*.name, 'sentinelle') && 'oui' || 'non' }}
+          DEPART: ${{ steps.depart.outputs.sha }}
         run: |
           set -euo pipefail
           # ── La fiche : le bloc Cause / Correctif / Verrou / Leçon du commit ──
           # C'est du texte du MODÈLE : de la donnée, jamais interpolée dans un
           # `run:`. Lu dans un FICHIER, passé par le même `desamorcer` que les
-          # issues de la sentinelle (scripts/ n a pas pu être modifié par Claude :
-          # la publication le refuse plus haut), écrit dans un fichier, concaténé.
+          # issues de la sentinelle, écrit dans un fichier, concaténé.
           # Sans ce bloc, la leçon restait dans un message de commit que personne
           # ne relit (mesuré : la même enquête trois fois le 12/09).
+          # ⚠️ AUCUN CODE DE L'ARBRE DE L'AGENT NE S'EXÉCUTE ICI (relecture à trois lentilles de #875). La publication
+          # a remis l'arbre sur le travail de l'agent (`git checkout --force`) ; `scripts/` lui est interdit, mais
+          # sentinelle-detecter.mjs importe `supabase/functions/_shared/*.js`, qu'il PEUT modifier — son code tournait
+          # dans ce `node`, avec le jeton en écriture du job dans l'environnement. Le détecteur vient donc d'un arbre
+          # extrait du commit de DÉPART (noté avant l'agent), et `node` part d'un environnement VIDE (`env -i`) : ni
+          # jeton, ni variable du runner ; seuls le chemin des binaires, le dossier temporaire et le drapeau voulus.
+          # ── FICHE DE CONFIANCE:DEBUT ── (jouée telle quelle par tests/unit/reparation-journal.test.mjs ⑭)
+          case "${DEPART:-}" in
+            *[!0-9a-f]*|"") echo "::error title=Départ illisible::Le commit de départ du run n'a pas été noté." ; exit 1 ;;
+          esac
+          confiance="${RUNNER_TEMP}/arbre-de-confiance"
+          rm -rf "${confiance}"
+          git -c core.hooksPath=/dev/null worktree add --detach --quiet "${confiance}" "${DEPART}"
           git log -1 --format=%b "${BRANCHE}" > "${RUNNER_TEMP}/corps-commit.txt" 2>/dev/null || : > "${RUNNER_TEMP}/corps-commit.txt"
-          if ! node --input-type=module -e '
+          if ! env -i PATH="${PATH}" HOME="${HOME}" RUNNER_TEMP="${RUNNER_TEMP}" SENTINELLE="${SENTINELLE}" CONFIANCE="${confiance}" node --input-type=module -e '
             import fs from "node:fs";
-            const { desamorcer } = await import("./scripts/sentinelle-detecter.mjs");
+            import { pathToFileURL } from "node:url";
+            const { desamorcer } = await import(pathToFileURL(process.env.CONFIANCE + "/scripts/sentinelle-detecter.mjs").href);
             const corps = fs.readFileSync(process.env.RUNNER_TEMP + "/corps-commit.txt", "utf8");
             const RE = /^(Cause|Correctif|Verrou|Le[cç]on|Hors-champ)\s*:/i;
             const bloc = [];
@@ -1515,6 +1575,8 @@ jobs:
           '; then
             printf '%s\n' "### Fiche" "" "(fiche illisible : erreur du workflow, non bloquante)" "" > "${RUNNER_TEMP}/fiche.md"
           fi
+          git worktree remove --force "${confiance}" 2>/dev/null || rm -rf "${confiance}"
+          # ── FICHE DE CONFIANCE:FIN
           {
             echo "### ✅ Claude Code a exécuté cette tâche"
             echo
