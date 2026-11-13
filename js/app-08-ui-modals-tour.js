@@ -5270,7 +5270,19 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     if (!lectureValide()) return [];
     // Résout les auteurs des aperçus en une requête (sans embed) — le cache ne
     // redemande que les manquants.
-    const commentProfs = await _resolveProfilesByIds(complements.auteursApercus, lectureValide);
+    // ⚠️ ET LEURS RÉPONSES ET « J'AIME » (2026-11-13, retour de Benjamin, captures
+    // à l'appui). `fil_compteurs` rend le TEXTE des deux aperçus, pas leurs
+    // interactions : sur la carte du fil, un commentaire qui portait quatre
+    // réponses et sept « j'aime » s'affichait nu, et la bulle disait « 1 » — il
+    // fallait ouvrir la publication pour voir qu'on lui avait répondu. Une lecture
+    // de plus par page, bornée aux DEUX aperçus que la carte montre (le repli
+    // sans `fil_compteurs` en rend jusqu'à 200 : on ne lit pas les leurs).
+    const idsApercus = [];
+    complements.parPost.forEach(function (c) { (c.apercus || []).slice(0, FIL_APERCUS_PEINTS).forEach(function (a) { if (a && a.id) idsApercus.push(a.id); }); });
+    const [commentProfs, interApercus] = await Promise.all([
+      _resolveProfilesByIds(complements.auteursApercus, lectureValide),
+      idsApercus.length ? supaLoadCommentInteractions(idsApercus) : Promise.resolve(null),
+    ]);
     if (!lectureValide()) return [];
     memoriserPage();
     servir();
@@ -5280,8 +5292,17 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       // remplace l'objet à chaque tour, il ne doit pas la ramener à deux lignes
       // (ni perdre son curseur) sous un titre qui en annonce quarante.
       const precedent = _discussionChargee(r.id, cpl.apercus, commentProfs);
+      // Les interactions d'un aperçu : celles que la lecture vient de rendre ;
+      // sinon (lecture en échec, ou aucune ligne pour lui) celles que sa copie
+      // précédente portait — même règle que `hydrateCommentInteractions`, qui ne
+      // touche pas un commentaire sans ligne. Sans ce report, chaque tour du
+      // filet (l'objet est refait à chaque lecture) effaçait une réponse ou un
+      // « j'aime » encore en route.
+      const avantPost = (!precedent && typeof findPostAnywhere === "function") ? findPostAnywhere(r.id) : null;
+      const avantCommentaires = (avantPost && Array.isArray(avantPost.comments)) ? avantPost.comments : [];
       const postComments = precedent ? precedent.comments : cpl.apercus.map(c => {
         const cp = commentProfs[c.author_id] || {};
+        const inter = (interApercus && interApercus[c.id]) || avantCommentaires.find(function (x) { return x && x.id === c.id; }) || null;
         return {
         id: c.id, authorId: c.author_id,
         authorName: cp.username || "Profil",
@@ -5289,6 +5310,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         text: c.content || "", content: c.content || "",
         createdAt: supaTs(c.created_at),
         fromSupabase: true,
+        ...(inter ? { likes: inter.likes || 0, likedBy: (inter.likedBy || []).slice(), replies: (inter.replies || []).slice() } : {}),
       };});
 
       // Diagnostic du premier post
@@ -5456,6 +5478,9 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
 // fonction retirée sans rechargement du cache ne doivent ni peindre un fil à
 // « 0 », ni payer un essai raté à chaque page. Un succès remet le compte à zéro.
 const FIL_COMPTEURS_ABSENTE_CLE = "passio_fil_compteurs_absente";
+// Nombre d'aperçus de commentaires que la carte du fil peint (`renderPostHTML`,
+// app-02 : `slice(0, 2)`) — ceux dont `supaLoadPosts` lit les interactions.
+const FIL_APERCUS_PEINTS = 2;
 // Échecs CONSÉCUTIFS de la fonction (hors « absente ») avant de cesser de la
 // tenter pour la session. En mémoire seulement : la session suivante réessaie.
 const FIL_COMPTEURS_ECHECS_MAX = 3;

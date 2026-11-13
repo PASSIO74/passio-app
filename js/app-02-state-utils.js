@@ -10826,7 +10826,14 @@ function renderPostHTML(p) {
   }
 
   const commentsPreview = (p.comments || []).slice(0, 2).map(c => {
-    const cu = userById(c.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+    // Le pseudo que le serveur a rendu avec le commentaire (`authorName`) prime,
+    // comme dans la discussion (`_renderCommentsList`, app-04). Sans lui, un
+    // auteur absent du cache local s'affichait « ? » sur la carte du fil, alors
+    // que la page de la publication donnait son nom (2026-11-13).
+    const cuCache = userById(c.authorId);
+    const cu = (c.authorName && c.authorName !== "Profil")
+      ? { avatar: (cuCache && cuCache.avatar) || "#8b5cf6", profileEmoji: (cuCache && cuCache.profileEmoji) || c.authorEmoji || "✨", name: c.authorName, photoUrl: (cuCache && cuCache.photoUrl) || null }
+      : (cuCache || { name: "?", profileEmoji: "👤", avatar: "#64748b" });
     const cSrc = c.authorId === "me" ? "me" : "seed";
     // « Aimé par moi » : likeComment() enregistre le like sous MY_UID (souvent ≠
     // state.user.id, parfois vide) → comparer likedBy à TOUTES mes identités,

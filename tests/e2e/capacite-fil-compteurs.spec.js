@@ -121,6 +121,10 @@ async function preparer(page, opts = {}) {
           }
           if (table === "post_comments") return rendre({ data: __commentaires.filter((c) => (req.ids || []).includes(c.post_id)).slice(0, req.limit || 200), error: null });
           if (table === "post_likes") return rendre({ data: [].concat(...(req.ids || []).map((id) => Array.from({ length: __likes[id] || 0 }, (_, i) => ({ post_id: id, user_id: i === 0 && id === "fil_00" ? MY_UID : "u" + i })))), error: null });
+          // Interactions des commentaires (réponses, « j'aime ») : vide par défaut,
+          // posées par le cas « aperçus » ; `__interactionsPanne` simule un refus.
+          if (table === "comment_interactions" && window.__interactionsPanne) return rendre({ data: null, error: { message: "permission denied" } });
+          if (table === "comment_interactions") return rendre({ data: (window.__interactions || []).filter((x) => (req.ids || []).includes(x.comment_id)), error: null });
           return rendre({ data: [], error: null });
         },
       };
@@ -150,7 +154,7 @@ test("une page de fil = une lecture groupée, aucune liste de likes/commentaires
   });
   expect(r.n).toBe(20);
   expect(r.rpc).toEqual([{ fn: "fil_compteurs", n: 20, premier: "fil_00" }]);
-  expect(r.tables).toEqual(["posts", "profiles"]); // les profils des auteurs d'aperçus, en une requête, comme avant
+  expect(r.tables).toEqual(["posts", "profiles", "comment_interactions"]); // profils des auteurs d'aperçus + interactions des aperçus (2026-11-13), une requête chacun
   expect(r.p0).toEqual({ likes: 12, liked: true, total: 45, apercus: ["c_044", "c_043"], auteurs: ["Dominique", "Camille"], reactions: ["😍"], affiche: 45 });
   expect(r.p1).toEqual({ likes: 0, liked: false, total: 1, apercus: 1, affiche: 1 });
   expect(r.compteurCarte).toBe("💬 45");
@@ -172,9 +176,9 @@ test("fonction absente (PGRST202) : repli sur les lectures d'avant, mémorisé p
       p0: { likes: p0.likes, liked: p0.liked, total: p0.commentsTotal, nb: p0.comments.length, affiche: nbCommentairesPost(p0) } };
   });
   expect(r.rpcApres1).toBe(1);
-  expect(r.lecturesApres1).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "profiles"]);
+  expect(r.lecturesApres1).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "profiles", "comment_interactions"]);
   expect(r.rpcApres2).toBe(1); // pas de second essai dans la session
-  expect(r.lectures2).toEqual(["posts", "post_likes", "post_comments", "comment_interactions"]); // profils en cache
+  expect(r.lectures2).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "comment_interactions"]); // profils en cache
   expect(r.memo).toBeTruthy();
   // Chemin d'avant : la liste entière, et le compte est sa longueur.
   expect(r.p0).toEqual({ likes: 12, liked: true, total: undefined, nb: 45, affiche: 45 });
@@ -194,11 +198,11 @@ for (const mode of ["erreur", "reseau"]) {
         avant: { likes: p0.likes, total: p0.commentsTotal, nb: p0.comments.length }, apres: { likes: q0.likes, total: q0.commentsTotal, tables: __lectures.map((q) => q.table) } };
     });
     expect(r.n).toBe(20);
-    expect(r.tables1).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "profiles"]);
+    expect(r.tables1).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "profiles", "comment_interactions"]);
     expect(r.rpc).toBe(2);
     expect(r.memo).toBeNull();
     expect(r.avant).toEqual({ likes: 12, total: undefined, nb: 45 });
-    expect(r.apres).toEqual({ likes: 12, total: 45, tables: ["posts"] });
+    expect(r.apres).toEqual({ likes: 12, total: 45, tables: ["posts", "comment_interactions"] });
   });
 }
 
@@ -210,7 +214,7 @@ test("sans SDK réel, le chemin d'avant est pris sans appel RPC", async ({ page 
     return { rpc: __rpc.length, tables: __lectures.map((q) => q.table) };
   });
   expect(r.rpc).toBe(0);
-  expect(r.tables).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "profiles"]);
+  expect(r.tables).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "profiles"]); // sans SDK réel, les interactions des aperçus ne sont pas lues
 });
 
 test("la discussion se charge par pages de 30, les plus récents d'abord, puis « précédents » avec un curseur", async ({ page }) => {
@@ -475,11 +479,11 @@ test("trois erreurs consécutives de la fonction : plus d'essai de la session, l
       likes: p.likes, nb: p.comments.length, tables5: __lectures.map((x) => x.table) };
   });
   expect(r.rpc).toBe(3);
-  expect(r.tables4).toEqual(["posts", "post_likes", "post_comments", "comment_interactions"]);
+  expect(r.tables4).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "comment_interactions"]);
   expect(r.memo).toBeNull();
   expect(r.likes).toBe(12);
   expect(r.nb).toBe(45);
-  expect(r.tables5).toEqual(["posts", "post_likes", "post_comments", "comment_interactions"]);
+  expect(r.tables5).toEqual(["posts", "post_likes", "post_comments", "comment_interactions", "comment_interactions"]);
 });
 
 test("la clé de mémorisation est l'identifiant de build, jamais « [object Object] »", async ({ page }) => {
@@ -745,4 +749,56 @@ test("un commentaire supprimé en base par son auteur ne revient pas à la réou
   expect(r.avant).toEqual({ charges: 5, affiche: 5 });
   expect(r.apres).toEqual({ charges: 3, ids: ["d_1", "d_2", "d_3"], affiche: 3, total: 3, titre: "Discussion (3)" });
   expect(r.paginee).toEqual({ charges: 44, revenu: false, affiche: 44, total: 44, suite: null });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2026-11-13 — retour de Benjamin, deux captures : sur la carte du fil, un
+// commentaire qui portait quatre réponses s'affichait nu sous le pseudo « ? »,
+// bulle à « 1 » ; la page de la publication montrait le nom et les réponses.
+// ═══════════════════════════════════════════════════════════════════════════
+test("aperçus du fil : les réponses et les « j'aime » d'un commentaire sont lus, et son pseudo affiché", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    const ligne = (kind, user, i, payload) => ({ id: "ci_" + kind + i, comment_id: "c_044", post_id: "fil_00", user_id: user, kind, payload: payload || null, created_at: "2026-09-21T13:00:0" + i + "+00:00" });
+    window.__interactions = [0, 1, 2, 3].map((i) => ligne("reply", MY_UID, i, "Réponse " + i))
+      .concat([0, 1, 2, 3, 4, 5, 6].map((i) => ligne("like", "u" + i, i)));
+    const posts = await supaLoadPosts();
+    state.supabasePosts = posts;
+    const p0 = posts.find((p) => p.id === "fil_00");
+    const lus = __lectures.filter((q) => q.table === "comment_interactions").map((q) => q.ids.length);
+    const carte = document.createElement("div"); carte.innerHTML = renderPostHTML(p0);
+    const c0 = carte.querySelector('.comment[data-commentid="c_044"]');
+    const out = {
+      lus,
+      reponses: p0.comments[0].replies.length, likes: p0.comments[0].likes,
+      lienReponses: (c0.querySelector(".comment-reply-count") || {}).textContent,
+      coeur: c0.querySelector("[data-cmtlike]").textContent.replace(/s+/g, " ").trim(),
+      bulle: carte.querySelector('[data-cmtcount="fil_00"]').getAttribute("data-n"),
+      voisin: p0.comments[1].replies,
+    };
+    // Lecture suivante en ÉCHEC : ce qui était connu reste (l'objet est refait à chaque tour).
+    window.__interactionsPanne = true;
+    const posts2 = await supaLoadPosts();
+    const q0 = posts2.find((p) => p.id === "fil_00");
+    out.apresPanne = { reponses: q0.comments[0].replies.length, likes: q0.comments[0].likes };
+    // Le pseudo rendu par le serveur prime sur un cache local vide.
+    const inconnu = Object.assign({}, p0, { comments: [{ id: "c_x", authorId: "compte_hors_cache", authorName: "Romain", authorEmoji: "✨", text: "Salut", createdAt: Date.now(), fromSupabase: true }] });
+    const carte2 = document.createElement("div"); carte2.innerHTML = renderPostHTML(inconnu);
+    out.cache = !!userById("compte_hors_cache");
+    out.pseudo = carte2.querySelector(".comment-author").textContent;
+    out.reponseA = carte2.querySelector('[aria-label="Répondre"]').getAttribute("onclick").includes("'Romain'");
+    return out;
+  });
+  // Une seule lecture, bornée aux aperçus peints : 2 (fil_00) + 1 (fil_01).
+  expect(r.lus).toEqual([3]);
+  expect(r.reponses).toBe(4);
+  expect(r.likes).toBe(7);
+  expect(r.lienReponses).toBe("▼ 4 réponses");
+  expect(r.coeur).toBe("🤍 7");
+  expect(r.bulle).toBe("49"); // 45 commentaires + 4 réponses, comme sur la page de la publication
+  expect(r.voisin).toBeUndefined(); // un aperçu sans interaction reste tel quel
+  expect(r.apresPanne).toEqual({ reponses: 4, likes: 7 });
+  expect(r.cache).toBe(false);
+  expect(r.pseudo).toBe("Romain");
+  expect(r.reponseA).toBe(true);
 });
