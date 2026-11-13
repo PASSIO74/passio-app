@@ -9444,12 +9444,16 @@ async function _sessionEstMoi() {
 }
 function _fusionnerSuivisServeur(ids, remplacer) {
   if (!Array.isArray(ids) || !state || !state.user) return false;
-  if (remplacer !== true) { state.user.following = [...new Set([...(state.user.following || []), ...ids])]; return true; }
-  var enVol = Object.keys((typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) || {});
-  state.user.following = [...new Set([
-    ...ids.filter(function (id) { return enVol.indexOf(id) < 0; }),
-    ...(state.user.following || []).filter(function (id) { return enVol.indexOf(id) > -1 || !RE_UID_COMPTE.test(String(id)); }),
-  ])];
+  if (remplacer !== true) { state.user.following = [...new Set([...(state.user.following || []), ...ids])]; }
+  else {
+    var enVol = Object.keys((typeof _ecritureSuiviEnCours !== "undefined" && _ecritureSuiviEnCours) || {});
+    state.user.following = [...new Set([
+      ...ids.filter(function (id) { return enVol.indexOf(id) < 0; }),
+      ...(state.user.following || []).filter(function (id) { return enVol.indexOf(id) > -1 || !RE_UID_COMPTE.test(String(id)); }),
+    ])];
+  }
+  // FIL-C30 : « Passionnés à découvrir » ne propose pas un compte déjà suivi.
+  try { if (window.PassioUIV2 && typeof window.PassioUIV2.rafraichirPassionnes === "function") window.PassioUIV2.rafraichirPassionnes(); } catch (e) {}
   return true;
 }
 // ⚠️ Rend VRAI seulement si la liste a CHANGÉ (2026-11-12, LOT-13) : elle rendait

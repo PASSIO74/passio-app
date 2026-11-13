@@ -604,7 +604,9 @@ function likePost(id, skipRender = false, el = null) {
   _likePending.add(id);
   setTimeout(() => _likePending.delete(id), 800);
 
-  const liked = state.user.likedPosts.includes(id);
+  // FIL-C03 : l'état VU à l'écran (une copie serveur « aimé » compte), sinon un
+  // toucher sur un cœur rouge renvoyait un second j'aime.
+  const liked = typeof postAimeParMoi === "function" ? postAimeParMoi(post) : state.user.likedPosts.includes(id);
   const want = !liked;                       // état VOULU par l'utilisateur
   // Pas d'écriture serveur pour le contenu de DÉMO : ses identifiants (p48,
   // pac_yoga, reel_seed_*) n'existent dans aucune table, la ligne écrite n'est

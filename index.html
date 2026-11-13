@@ -1259,16 +1259,17 @@
        exceptions, et exactement celles qui cassaient. Aucun style ni aucun
        script ne dépendait de leur ancien emplacement (mesuré au grep). -->
     <!-- Banner mode hors-ligne (affiché par le SW quand réseau indisponible) -->
-    <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e1b4b;color:#fff;text-align:center;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;font-size:13px;font-weight:600;letter-spacing:.01em;">
-      Mode hors-ligne — contenu en cache
-      <button onclick="document.getElementById('offlineBanner').style.display='none'" style="background:none;border:none;color:#c4b5fd;font-size:16px;cursor:pointer;margin-left:8px;">×</button>
+    <!-- FIL-C25 : le bandeau ne recouvre plus la barre du haut — il se pose au-dessus de la barre d'onglets ; croix nommée, 44 px. -->
+    <div id="offlineBanner" class="bandeau-hors-ligne" role="status" style="display:none;">
+      <span>Mode hors-ligne — contenu en cache</span>
+      <button type="button" aria-label="Fermer le bandeau hors ligne" onclick="document.getElementById('offlineBanner').style.display='none'">×</button>
     </div>
 
     <!-- Post detail full-screen overlay -->
-    <div id="postDetailPage" style="display:none;position:fixed;inset:0;z-index:200;background:#ede9fe;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:fadeIn 200ms ease-out;">
-      <div style="position:sticky;top:0;z-index:2;background:#ede9fe;border-bottom:1px solid var(--border);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:10px;">
+    <div id="postDetailPage" style="display:none;position:fixed;inset:0;z-index:200;background:var(--bg-deep);flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:fadeIn 200ms ease-out;">
+      <div style="position:sticky;top:0;z-index:2;background:var(--bg-deep);border-bottom:1px solid var(--border);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:10px;">
         <button onclick="closePost()" aria-label="Fermer la publication" title="Fermer" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text);line-height:1;padding:0;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;margin:-11px -13px;">←</button>
-        <span style="font-size:15px;font-weight:800;">Post</span>
+        <span style="font-size:15px;font-weight:800;">Publication</span>
       </div>
       <div id="postDetailContent" style="padding:16px 16px 100px;"></div>
     </div>

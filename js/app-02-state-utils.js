@@ -8938,15 +8938,22 @@ function poserSeparateurExemples(list, repere) {
     if (ancien) ancien.remove();
     return;
   }
+  var _visiteurAvant = false;
+  try { _visiteurAvant = !!(window.PassioFirstRun && typeof PassioFirstRun.estVisiteur === "function" && PassioFirstRun.estVisiteur()); } catch (e) {}
   if (ancien && ancien.nextElementSibling === cible && ancien.getAttribute("data-genre") === genre
-      && ancien.hasAttribute("data-invite") === invite) return;
+      && ancien.hasAttribute("data-invite") === invite && ancien.hasAttribute("data-visiteur") === _visiteurAvant) return;
   if (ancien) ancien.remove();
   var sep = document.createElement("div");
   sep.className = "feed-exemples-sep";
   sep.setAttribute("role", "note");
   sep.setAttribute("data-genre", genre);
   if (invite) sep.setAttribute("data-invite", "1");
-  var gestes = (genre === "seul"
+  // FIL-C15 (audit UX/UI du 2026-11-10) : un VISITEUR n'a ni communauté ni
+  // droit de publier — le séparateur se réduit à son titre et une ligne.
+  var visiteur = false;
+  try { visiteur = !!(window.PassioFirstRun && typeof PassioFirstRun.estVisiteur === "function" && PassioFirstRun.estVisiteur()); } catch (e) {}
+  if (visiteur) sep.setAttribute("data-visiteur", "1");
+  var gestes = (genre === "seul" && !visiteur
       ? '<button type="button" class="btn small primary feed-exemples-sep-cta" onclick="goTo(\'studio\')">Publier la première</button>'
       : "")
     + (genre === "panne"
@@ -8957,11 +8964,14 @@ function poserSeparateurExemples(list, repere) {
       : "");
   sep.innerHTML = '<div class="feed-exemples-sep-titre"><span>Exemples PASSIO</span></div>'
     + '<div class="feed-exemples-sep-texte">'
+    // FIL-C16 : une phrase, pas quatre lignes.
     + (genre === "apres-reel"
-        ? "Tu es à jour : au-dessus, toutes les publications de ta communauté. En dessous, des exemples pour découvrir ce qui se partage sur PASSIO, en attendant que vous soyez plus nombreux."
+        ? "Tu es à jour. En dessous : des exemples de ce qui se partage sur PASSIO."
         : genre === "panne"
         ? "Impossible de charger les publications de ta communauté pour l'instant. En attendant, voici des exemples de ce qui s'y partage."
-        : "Pas encore de publication de ta communauté par ici. En attendant, voici des exemples de ce qui s'y partage — les vraies publications passeront toujours au-dessus.")
+        : visiteur
+        ? "Voici des exemples de ce qui se partage sur PASSIO."
+        : "Pas encore de publication de ta communauté ici : voici des exemples.")
     + '</div>'
     + (gestes ? '<div class="feed-exemples-sep-actions">' + gestes + '</div>' : "");
   cible.parentNode.insertBefore(sep, cible);
@@ -10129,7 +10139,7 @@ function renderFeed() {
 
   renderStories();
 
-  const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
+  const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">Afficher la suite</button></div>`;
   if (posts.length === 0) {
     _feedWindowNoterVisibles(0);   // aucune carte : aucun frein de fenêtre ne tient
     // Ce rendu périme AUSSI le complément différé d'un rendu complet précédent :
@@ -10193,7 +10203,7 @@ function renderFeed() {
         // « Suivis » coché, aucun abonnement : le message dit quoi FAIRE, et où.
         // Ne jamais y proposer du contenu d'inconnus (cf. repli ci-dessus).
         if (emptyTitle) emptyTitle.textContent = "Tu ne suis encore personne";
-        if (emptyText) emptyText.textContent = "Ouvre le profil de quelqu'un et touche « Suivre » : ses publications apparaîtront ici. Tu peux aussi cocher une passion ci-dessus.";
+        if (emptyText) emptyText.textContent = "Ouvre le profil de quelqu'un et touche « Suivre » : ses publications apparaîtront ici. Tu peux aussi cocher une passion ci-dessus.";
       } else if (_seulSuivis) {
         if (emptyTitle) emptyTitle.textContent = "Rien de neuf chez tes abonnements";
         if (emptyText) emptyText.textContent = "Les comptes que tu suis n'ont rien publié pour le moment. Coche une passion ci-dessus pour élargir ton fil.";
@@ -10227,7 +10237,9 @@ function renderFeed() {
       // (§5). Les textes ci-dessus ne bougent pas — le module ajoute un bouton
       // et le retire de lui-même dès que la V2 est coupée.
       if (window.PassioUIV2 && typeof window.PassioUIV2.decorateEmpty === "function") {
-        window.PassioUIV2.decorateEmpty(emptyEl, { nothingSelected: nothingSelected });
+        window.PassioUIV2.decorateEmpty(emptyEl, { nothingSelected: nothingSelected,
+          // FIL-C17 : le bouton fait ce que le message conseille.
+          aucunSuivi: !_envieAVide && _seulSuivis && !suitQuelquun });
       }
       emptyEl.style.display = "block";
     }
@@ -10609,6 +10621,44 @@ function _feedCompteursFrais(p) {
   } catch (e) { return p; }
 }
 
+// FIL-C18 (audit UX/UI du 2026-11-10) : une photo qui ne charge pas laissait
+// un rectangle gris #eee muet. L'échec se dit, sur le lavis de la palette.
+function imageFilIndisponible(img) {
+  try {
+    if (!img || !img.parentNode) return;
+    img.onerror = null;
+    var boite = document.createElement("div");
+    boite.className = "post-image-indisponible";
+    boite.setAttribute("role", "img");
+    boite.setAttribute("aria-label", "Image indisponible");
+    boite.textContent = "Image indisponible";
+    img.parentNode.replaceChild(boite, img);
+  } catch (e) {}
+}
+
+// FIL-C03 (audit UX/UI du 2026-11-10) : MON j'aime, tel que l'écran doit le
+// peindre. `state.user.likedPosts` est l'état local ; la lecture du fil porte
+// aussi `liked` (= `aime`, lu en base pour MOI). Sur un appareil neuf, la liste
+// locale est vide : le cœur restait gris quelques secondes et un toucher
+// envoyait un SECOND j'aime. Une copie serveur qui dit « aimé » est adoptée
+// dans la liste — sauf pendant une écriture de j'aime en vol sur ce post, où
+// l'intention locale fait foi (jamais re-déduire l'écriture d'une lecture).
+function postAimeParMoi(p) {
+  if (!p || !p.id) return false;
+  var list = (state.user && state.user.likedPosts) || [];
+  if (list.indexOf(p.id) > -1) return true;
+  try {
+    var enVol = typeof _postLikeRefreshEntries !== "undefined" && _postLikeRefreshEntries.get(p.id);
+    if (enVol && enVol.pending) return false;
+    var copies = typeof _postLikeCopies === "function" ? _postLikeCopies(p.id) : [p];
+    var aime = (copies.length ? copies : [p]).some(function (c) { return c && c.fromSupabase && c.liked === true; });
+    if (!aime) return false;
+    if (!state.user.likedPosts) state.user.likedPosts = [];
+    state.user.likedPosts.push(p.id);
+    return true;
+  } catch (e) { return false; }
+}
+
 function renderPostHTML(p) {
   // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
   let authorName = p.authorName;
@@ -10644,7 +10694,7 @@ function renderPostHTML(p) {
     photoUrl: _cuAuthor.photoUrl || p.authorAvatar || null,  // 📷 photo de profil (live > snapshot)
   };
   const passion = passionById(p.passion);
-  const liked = (state.user.likedPosts || []).includes(p.id);
+  const liked = postAimeParMoi(p);
   const likeClass = liked ? "liked" : "";
 
   let media = "";
@@ -10684,8 +10734,8 @@ function renderPostHTML(p) {
           src="${safeUrlAttr(passioThumb(p.image, 700))}"
           alt="post"
           loading="lazy" decoding="async"
-          onerror="this.onerror=null;this.style.background='#eee';this.style.minHeight='200px';"
-          style="width:100%;display:block;background:#f5f5f5;"
+          onerror="imageFilIndisponible(this)"
+          style="width:100%;display:block;background:var(--accent-tile, #f5f3ff);"
         />
       </div>`;
     } else {
@@ -10733,18 +10783,18 @@ function renderPostHTML(p) {
     const cReplies = (typeof _reponsesComptees === "function") ? _reponsesComptees(c.replies) : (c.replies || []);
 
     return `<div class="comment" data-commentid="${escapeHtml(c.id)}">
-      <div class="avatar sm" style="background:${avatarBg(cu)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(cu)}</div>
+      <div class="avatar sm" role="link" aria-label="Profil de ${escapeHtml(cu.name)}" style="background:${avatarBg(cu)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(cu)}</div>
       <div class="comment-body">
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(cu.name)}</div>
         ${identitePassionsHTML(cu, "ident-passions-sm")}
         <div class="comment-text">${escapeHtml(c.text)}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
         <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);">
+          <span class="comment-action ${cLiked ? "liked" : ""}" role="button" aria-label="J'aime ce commentaire — ${cLikes}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="return replyToComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}','${escapeJsArg(cu.name)}', event);" title="Répondre">💬</span>
-          <span class="comment-action" onclick="return showEmojiPickerForComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
+          <span class="comment-action" role="button" aria-label="Répondre" onclick="return replyToComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}','${escapeJsArg(cu.name)}', event);" title="Répondre">💬</span>
+          <span class="comment-action" role="button" aria-label="Réagir" onclick="return showEmojiPickerForComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();openComments('${escapeJsArg(p.id)}');return false;">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
       </div>
@@ -10867,7 +10917,7 @@ async function openPost(id) {
     // plus tôt, montrait avec son avatar (2026-11-10, mesuré sur les exemples).
     : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { id: post.authorId, passions: cu.passions, passion: cu.passion || post.passion, name: post.authorName, profileEmoji: post.authorEmoji || cu.profileEmoji || "✨", avatar: post.authorColor || cu.avatar || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
   const passion = passionById(post.passion);
-  const liked = state.user.likedPosts.includes(id);
+  const liked = postAimeParMoi(post);
 
   // Media (réutilise la logique de renderPostHTML)
   let media = "";
@@ -10919,8 +10969,9 @@ async function openPost(id) {
       </div>
     </div>
     <div style="margin-top:8px;">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;">Commentaires (${nbCommentairesPost(post)})</div>
-      <div id="postDetailComments" data-thread="${escapeHtml(id)}">${allComments || '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>'}</div>
+      <div class="post-page-intertitre">Discussion (${nbCommentairesPost(post)})</div>
+      <div id="postDetailComments" data-thread="${escapeHtml(id)}">${allComments || '<div class="post-page-vide">Aucun commentaire — sois le premier 💬</div>'}</div>
+      <button type="button" class="btn primary post-page-ecrire" onclick="openComments('${escapeJsArg(id)}')">Écrire un commentaire</button>
     </div>
     <div style="height:20px;"></div>
   `;
@@ -10958,7 +11009,7 @@ async function _loadPostDetailComments(id, post) {
     if (pd && pd.getAttribute("data-thread") === id && typeof _setThreadHtml === "function") {
       _setThreadHtml(pd, post.comments.length
         ? _renderCommentsList(post.comments, id)
-        : '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>');
+        : '<div class="post-page-vide">Aucun commentaire — sois le premier 💬</div>');
     }
   } catch(e) {}
 }

@@ -752,7 +752,8 @@
         insertAfterNthPost(list, buildBobinesModule(bobines), REEL_AFTER);
       }
 
-      var gens = pickPassionnes(Array.isArray(posts) ? posts : []);
+      _postsDecor = Array.isArray(posts) ? posts : [];
+      var gens = pickPassionnes(_postsDecor);
       if (gens.length) insertAfterNthPost(list, buildPassionnesModule(gens), PEOPLE_AFTER);
       return true;
     } catch (e) {
@@ -760,6 +761,27 @@
       // (piège « catch large » du projet) : on nettoie et on le dit.
       if (window.console && console.error) console.error("[ui-v2] décoration du fil :", e);
       removeFeedModules(list);
+      return false;
+    }
+  }
+
+  // FIL-C30 (audit UX/UI du 2026-11-10) : « Passionnés à découvrir » était peint
+  // AVANT la lecture des abonnements et jamais repeint — il proposait des
+  // comptes déjà suivis. À l'arrivée des abonnements (`_fusionnerSuivisServeur`,
+  // app-08), le module seul est recomposé, sans repeindre le fil.
+  var _postsDecor = [];
+  function rafraichirPassionnes() {
+    try {
+      var list = feedList();
+      if (!list || !uiV2Enabled()) return false;
+      var ancien = list.querySelector("[" + MODULE_ATTR + '="people"]');
+      if (!ancien) return false;
+      var gens = pickPassionnes(_postsDecor);
+      if (!gens.length) { ancien.parentNode.removeChild(ancien); return true; }
+      ancien.parentNode.replaceChild(buildPassionnesModule(gens), ancien);
+      return true;
+    } catch (e) {
+      if (window.console && console.error) console.error("[ui-v2] Passionnés à découvrir :", e);
       return false;
     }
   }
@@ -775,14 +797,18 @@
     if (!uiV2Enabled()) return false;
 
     var rienChoisi = !!(ctx && ctx.nothingSelected);
+    // FIL-C17 (audit UX/UI du 2026-11-10) : « Tu ne suis encore personne »
+    // conseille de suivre quelqu'un — le bouton y mène (écran Rechercher).
+    var aucunSuivi = !rienChoisi && !!(ctx && ctx.aucunSuivi);
+    var genre = rienChoisi ? "explore" : (aucunSuivi ? "people" : "create");
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "btn primary v2-empty-cta";
-    btn.setAttribute("data-v2-empty-cta", rienChoisi ? "explore" : "create");
-    btn.textContent = rienChoisi ? "Explorer les passions" : "Publier quelque chose";
+    btn.setAttribute("data-v2-empty-cta", genre);
+    btn.textContent = rienChoisi ? "Explorer les passions" : (aucunSuivi ? "Trouver des personnes à suivre" : "Publier quelque chose");
     btn.addEventListener("click", function () {
-      track("ui_v2_empty_cta", { kind: rienChoisi ? "explore" : "create" });
-      if (rienChoisi) { goToScreen("explore"); return; }
+      track("ui_v2_empty_cta", { kind: genre });
+      if (genre !== "create") { goToScreen("explore"); return; }
       openCreateSheet();
     });
     emptyEl.appendChild(btn);
@@ -859,6 +885,7 @@
     dismissHint: fermerAideContextuelle,
     // UI-2 — appelées par `renderFeed` (app-02). Inertes quand la V2 est coupée.
     decorateFeed: decorateFeed,
+    rafraichirPassionnes: rafraichirPassionnes,
     decorateEmpty: decorateEmpty,
   };
 })();
