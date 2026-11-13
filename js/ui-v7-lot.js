@@ -400,8 +400,11 @@
       + '<label class="v7-champ"><span>Description</span>'
       + '<textarea class="input" id="v7BobineDesc" rows="2" maxlength="600"'
       + ' placeholder="Raconte ce moment en une phrase…"></textarea></label>'
-      + '<label class="v7-champ"><span>Passion</span>'
-      + '<select class="input" id="v7BobinePassion"></select></label>'
+      // CRE-C13 (décision du 2026-11-13, « 2 : a ») : même mot et même sélecteur
+      // que le Studio. Le `<select>` reste la source de vérité de `publierBobine`.
+      + '<div class="v7-champ"><span>Publier dans</span>'
+      + '<div class="v7-passion-ligne"><select class="input" id="v7BobinePassion" aria-label="Passion de la bobine"></select>'
+      + '<button type="button" class="btn small ghost" id="v7BobinePassionChoisir">Changer</button></div></div>'
       + '<div class="v7-champ"><span>Couverture</span>'
       + '<div class="v7-cover-row">'
       + '<div class="v7-cover-vue" id="v7BobineCoverVue" aria-hidden="true">🎞️</div>'
@@ -433,6 +436,13 @@
     if (clear) clear.addEventListener("click", function () { poserCouverture(null); });
     var pub = el("v7BobinePublier");
     if (pub) pub.addEventListener("click", function () { publierBobine(); });
+    var choisir = el("v7BobinePassionChoisir");
+    if (choisir) choisir.addEventListener("click", function () {
+      var sel = el("v7BobinePassion");
+      var ok = false;
+      try { ok = !!(window.PassioFlatUI && typeof PassioFlatUI.ouvrirChoixPassion === "function" && PassioFlatUI.ouvrirChoixPassion(sel)); } catch (x) { fail("passion_bobine", x); }
+      if (!ok && sel) { try { sel.focus(); } catch (x) {} }
+    });
     return f;
   }
 
