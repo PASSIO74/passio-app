@@ -171,7 +171,15 @@ jobs:
           sentinelle=false
           if [[ "${head_ref}" =~ ^claude/issue-([0-9]+)-[0-9]+$ ]]; then
             issue_num="${BASH_REMATCH[1]}"
-            if gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_num}" --jq '.labels[].name' 2>/dev/null | grep -qx 'sentinelle'; then
+            # Les labels LUS d'abord, cherchés ensuite (2026-11-13, #875) : sous pipefail, `gh … | grep -qx` rend 141
+            # dès que `gh` écrit encore APRÈS la ligne « sentinelle » (grep déjà sorti : SIGPIPE) — une réparation de la
+            # Sentinelle passait alors pour une PR humaine, hors de son périmètre strict. Illisibles (GitHub muet), on ne
+            # sait pas ce qu'est cette PR : la gouvernance s'arrête au lieu de la traiter comme humaine.
+            if ! labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_num}" --jq '.labels[].name' 2>/dev/null)"; then
+              echo "::error title=Gouvernance::Les labels de l'issue #${issue_num} n'ont pas pu être lus : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job."
+              exit 1
+            fi
+            if grep -qx 'sentinelle' <<< "${labels}"; then
               sentinelle=true
             fi
           fi

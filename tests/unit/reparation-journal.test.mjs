@@ -658,5 +658,28 @@ test("⑬ ce qui part dans un dépôt public : un jeton est vu même au DÉBUT d
     const propre = jouerGarde(gros("rien de secret\n"));
     assert.equal(propre.code, 0, propre.sortie.slice(-600));
     assert.match(propre.sortie, /PUBLIE/);
+    // Un `gitleaks:allow` AJOUTÉ par l'agent tairait une trouvaille neuve du scan : refus (relecture de #866). Écrit
+    // à l'exécution, lui aussi : en clair, il passerait pour une vraie exception dans ce fichier même.
+    const PERMIS = "gitleaks" + ":allow";
+    const permis = jouerGarde("const cle = 'x'; // " + PERMIS + "\n");
+    assert.equal(permis.code, 1, permis.sortie.slice(-600));
+    assert.match(permis.sortie, /::error title=Exception du scan des secrets::/);
+    assert.ok(!permis.sortie.includes("PUBLIE"));
+    // Une ligne de contenu qui commence par « ++ » n'est pas un en-tête de fichier : elle est lue aussi.
+    assert.equal(jouerGarde("++compteur; // " + PERMIS + "\n").code, 1, "une ligne « ++… » ajoutée");
+    // Le RETIRER passe : seul l'ajout tait une trouvaille.
+    git("checkout", "-q", "--detach", base);
+    fs.writeFileSync(depot + "/c.txt", "ligne // " + PERMIS + "\n"); git("add", "c.txt"); git("commit", "-qm", "exception d'avant");
+    const avecException = git("rev-parse", "HEAD").trim();
+    fs.writeFileSync(depot + "/c.txt", "ligne\n"); git("add", "c.txt"); git("commit", "-qm", "exception retirée");
+    const retiree = git("rev-parse", "HEAD").trim();
+    fs.writeFileSync(script, "set -euo pipefail\nbase=" + avecException + "\ntip=" + retiree + "\n" + garde + "\necho PUBLIE\n");
+    const retrait = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
+    assert.equal(retrait.status, 0, (retrait.stdout || "") + (retrait.stderr || ""));
+    // Un `git` qui échoue (une révision inconnue) ARRÊTE la marche : jamais « rien trouvé, publié ».
+    fs.writeFileSync(script, "set -euo pipefail\nbase=" + base + "\ntip=" + "0".repeat(40) + "\n" + garde + "\necho PUBLIE\n");
+    const casse = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", script], { cwd: depot, encoding: "utf8", env: { ...process.env, RUNNER_TEMP: temp } });
+    assert.notEqual(casse.status, 0);
+    assert.ok(!(casse.stdout || "").includes("PUBLIE"), "un diff illisible n'est pas un diff propre");
   } finally { fs.rmSync(depot, { recursive: true, force: true }); fs.rmSync(temp, { recursive: true, force: true }); }
 });

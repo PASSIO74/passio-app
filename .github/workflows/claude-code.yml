@@ -1216,11 +1216,28 @@ jobs:
           # ── Ce qui part dans un dépôt public ne porte aucun jeton (revue adverse du 2026-11-06) ──
           # `git commit -F .git/config` recopiait le jeton du run dans un message : l'outil l'interdit désormais,
           # et cette lecture rattrape toute autre voie, message comme contenu.
-          if { git log --format=%B "${base}..${tip}"; git diff "${base}" "${tip}"; } \
-               | grep -qE 'gh[opsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|x-access-token:[A-Za-z0-9_-]{10,}'; then
+          # ⚠️ Lu dans un FICHIER, jamais à travers un tube (2026-11-13) : sous pipefail, `git … | grep -q` faisait
+          # mourir `git` de SIGPIPE dès que grep trouvait le jeton au début d'un gros diff — le pipeline rendait 141,
+          # et le `if` ne voyait RIEN, précisément quand un jeton était là (prouvé sur le runner, #875). Écrit d'abord,
+          # un `git` en échec arrête la marche (`set -e`) au lieu de la laisser publier.
+          publie="${RUNNER_TEMP}/passio-travail-publie.txt"
+          { git log --format=%B "${base}..${tip}"; git diff --no-color "${base}" "${tip}"; } > "${publie}"
+          if grep -qE 'gh[opsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|x-access-token:[A-Za-z0-9_-]{10,}' "${publie}"; then
             echo "::error title=Jeton dans le travail produit::Le diff ou un message de commit porte un jeton. Refus de publier."
             exit 1
           fi
+
+          # ── Les exceptions du scan des secrets ne s'écrivent pas par l'agent (relecture de #866) ──
+          # `.gitleaksignore` et `.gitleaks.toml` sont des chemins interdits ; un commentaire en ligne `gitleaks:allow`
+          # AJOUTÉ au diff tairait une trouvaille NEUVE du scan. Leur tri est à Benjamin : refus. Une ligne qui le
+          # RETIRE passe. Les lignes ajoutées se lisent hunk par hunk : un contenu qui commence par « ++ » est une
+          # ligne, pas un en-tête de fichier.
+          git diff -U0 --no-color --no-renames "${base}" "${tip}" > "${publie}"
+          if awk '/^diff --git /{h=1} /^@@/{h=0; next} !h && /^\+/ && index($0, "gitleaks:allow") {t=1} END{exit !t}' "${publie}"; then
+            echo "::error title=Exception du scan des secrets::Claude a ajouté un commentaire « gitleaks:allow » : il tairait une trouvaille du scan, dont le tri est à Benjamin. Refus de publier."
+            exit 1
+          fi
+          rm -f "${publie}"
 
           # ── Audits du dépôt, exécutés par le WORKFLOW ─────────────────────
           # Même doctrine que la publication : la vérification appartient au
