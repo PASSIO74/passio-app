@@ -144,14 +144,18 @@ function fixtures(obj) {
   for (const [k, v] of Object.entries(obj)) fs.writeFileSync(path.join(FX, k + ".json"), JSON.stringify(v));
 }
 
-/** Les commandes du runner dans ce qu'une étape écrit, d'après la lecture de son code (actions/runner,
- *  `ActionCommand` : `TryParseV2` puis `TryParse` ; le lecteur de flux de .NET) — rien n'est exécuté sur un vrai
- *  runner. Sortie standard ET erreur standard (le `flux` de `jouer`, même quand l'étape réussit), une marque d'ordre
- *  des octets retirée en tête de chaque flux seulement ; chaque ligne coupée sur \r\n, \r ou \n ; les blancs de tête
- *  retirés EXACTEMENT comme `TrimStart` de .NET (`char.IsWhiteSpace` : U+0085 oui, U+FEFF non — l'inverse de
- *  `trimStart` de JS) ; une ligne qui commence alors par « :: », ou qui contient OÙ QUE CE SOIT « ##[ ».
- *  Écarts connus avec le runner : une ligne « :: » ou « ##[ » sans commande valide, et l'effet de
- *  `::stop-commands::`, sont retenus ici et pas par lui — au pire un faux rouge. */
+/** Un MODÈLE des commandes que le runner lit dans ce qu'une étape écrit, tiré de la lecture de son code
+ *  (actions/runner, `ActionCommand` : `TryParseV2` puis `TryParse` ; le lecteur de flux de .NET) — rien n'est
+ *  exécuté sur un vrai runner, et ce n'est pas une équivalence exacte. Ce qu'il modélise, pour un flux UTF-8 écrit
+ *  d'un seul tenant : sortie standard ET erreur standard (le `flux` de `jouer`, même quand l'étape réussit), une
+ *  marque d'ordre des octets retirée en tête de chaque flux seulement ; chaque ligne coupée sur \r\n, \r ou \n ; les
+ *  blancs de tête retirés comme `TrimStart` de .NET (`char.IsWhiteSpace` : U+0085 oui, U+FEFF non — l'inverse de
+ *  `trimStart` de JS) ; une ligne qui commence alors par « :: », ou qui contient où que ce soit « ##[ ».
+ *  Ce qu'il ne modélise pas, et qui peut donner un faux rouge comme un faux vert : un flux UTF-16 ou UTF-32 (le
+ *  lecteur de .NET change d'encodage sur sa marque), une marque coupée entre deux écritures, les comparaisons de
+ *  culture du runner. Aucune étape jouée par ce banc n'écrit autre chose que de l'UTF-8 d'un seul tenant.
+ *  Retenus ici et pas par le runner (un faux rouge) : une ligne « :: » ou « ##[ » sans commande valide, et l'effet
+ *  de `::stop-commands::`. */
 const BLANCS_DOTNET = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/;
 const annotations = (r) => r.flux.split(/\r\n|\r|\n/).map((l) => l.replace(BLANCS_DOTNET, "")).filter((l) => l.startsWith("::") || l.includes("##["));
 
