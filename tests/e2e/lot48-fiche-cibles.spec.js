@@ -3,7 +3,8 @@
 //   ① PCS-C04 : suivre un compte public fait +1 sur son compteur d'abonnés, se
 //      désabonner −1 ; une demande en attente ne compte pas.
 //   ② IRL-C64 : « C'est complet » ne s'accompagne plus d'un second toast.
-//   ③ IRL-C67 : un seul « Partager » et un seul tri dans la fiche.
+//   ③ IRL-C67 : un seul tri des commentaires dans la fiche (les deux portes de
+//      partage décidées par LOT-12, PAR-C12, restent).
 //   ④ PAR-C18 : le « × » des fenêtres a une zone de 44 px.
 // Compte de démonstration local (`bootOnboarded`) ; écritures simulées.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -50,7 +51,7 @@ test("② IRL-C64 : un seul toast quand l'activité est complète", async ({ pag
   expect(r.filter((t) => /complet|Liste d'attente|En attente/i.test(t))).toEqual(["C'est complet — tu es sur liste d'attente"]);
 });
 
-test("③ IRL-C67 : un seul « Partager », un seul tri", async ({ page }) => {
+test("③ IRL-C67 : un seul tri des commentaires, deux portes de partage", async ({ page }) => {
   await bootOnboarded(page);
   const r = await page.evaluate(async () => {
     const ev = { id: "ev_l48b", title: "Jam", passion: "musique", city: "Lyon", lat: 45.76, lng: 4.83, date: Date.now() + 2 * 86400000, time: "19:00",
@@ -68,7 +69,7 @@ test("③ IRL-C67 : un seul « Partager », un seul tri", async ({ page }) => {
     const aimes = [...page.querySelectorAll("button")].filter((b) => b.textContent.trim() === "Aimés").length;
     return { partages, aimes };
   });
-  expect(r.partages).toBe(1);
+  expect(r.partages).toBe(2);
   expect(r.aimes).toBe(0);
 });
 
