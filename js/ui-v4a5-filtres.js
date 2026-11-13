@@ -555,6 +555,38 @@
       reset.disabled = off;
       reset.hidden = off;
     }
+    piedSansResultat(n === 0 && !off);
+  }
+
+  // LOT-25 (audit UX/UI du 2026-11-10, IRL-C05) : des choix sans résultat
+  // laissaient un pied grisé, sans explication ni issue — « Tout effacer » était
+  // en haut de la vue, hors écran. Le pied dit pourquoi, et porte la sortie.
+  function piedSansResultat(montrer) {
+    var p = el(PIED_ID);
+    if (!p) return;
+    var bloc = p.querySelector("[data-v4a5-vide]");
+    if (!montrer) { if (bloc) bloc.remove(); return; }
+    if (bloc) return;
+    bloc = document.createElement("div");
+    bloc.className = "v4a5-pied-vide";
+    bloc.setAttribute("data-v4a5-vide", "1");
+    bloc.setAttribute("role", "status");
+    var t = document.createElement("span");
+    t.textContent = "Aucune activité ne coche tous ces choix. Retire-en un, ou :";
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn small ghost";
+    b.textContent = "Tout effacer";
+    b.addEventListener("click", function () {
+      try {
+        if (typeof clearAllIrlFilters === "function") clearAllIrlFilters();
+        replierVolets();
+        track("ui_v4a5_reset_pied", { v: VERSION });
+      } catch (e) { fail("reset_pied", e); }
+    });
+    bloc.appendChild(t);
+    bloc.appendChild(b);
+    p.insertBefore(bloc, p.firstChild);
   }
 
   // ── Les bulles de passion entrent dans le filtre ─────────────────────────

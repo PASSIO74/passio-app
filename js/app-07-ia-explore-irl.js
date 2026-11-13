@@ -1948,7 +1948,7 @@ function updateIrlMapMarkers() {
       ${_exPop ? '<div class="irl-popup-exemple">Activité d\'exemple · pas d\'inscription</div>' : ""}
       <div class="irl-popup-title">${escapeHtml(ev.title || "Événement")}</div>
       <div class="irl-popup-meta">${escapeHtml(passion.emoji || "")} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${_eventTimeLabel(ev)}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
-      <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'événement</button>
+      <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'activité</button>
     `);
     points.push([lat, lng]);
   });
@@ -2192,7 +2192,7 @@ function renderIrlPassionTiles() {
       <div class="irl-extra-list">
         ${extra.map(pid => _irlExtraChipHtml(pid, counts, true)).join("")}
         ${others.map(pid => _irlExtraChipHtml(pid, counts, false)).join("")}
-        ${!extra.length && !others.length ? '<span class="irl-extra-empty">Aucune autre passion avec des événements pour le moment.</span>' : ""}
+        ${!extra.length && !others.length ? '<span class="irl-extra-empty">Aucune autre passion avec des activités pour le moment.</span>' : ""}
       </div>
     </div>` : ""}`;
 }
@@ -2509,6 +2509,11 @@ function setIrlPassionsMiennes() {
 // l'utilisateur n'est jamais mesurée (cf. `js/telemetry.js`).
 function irlLieuReference() {
   if (irlSelectedCity) return { nom: irlSelectedCity.name, sub: "Ville choisie" };
+  // LOT-25 (IRL-C04) : après un REFUS, le point est le repli Paris — jamais
+  // « Position actuelle », que l'écran affichait pour un point qu'il n'a pas.
+  if (irlUserLocation && typeof irlUserLocationError !== "undefined" && irlUserLocationError) {
+    return { nom: "Choisir une ville", sub: "Aucune position (repli : Paris)" };
+  }
   if (irlUserLocation) {
     var el = document.getElementById("irlUserCityName");
     var n = (el && el.textContent && el.textContent !== "…") ? el.textContent : "Ma position";
@@ -2546,7 +2551,7 @@ function _syncIrlFiltersFooter(count) {
   // ne le verrait — les deux nombres restant plausibles.
   window._irlResultCount = n;
   if (done) {
-    done.textContent = n === null ? "Voir les événements"
+    done.textContent = n === null ? "Voir les activités"
       : n === 0 ? "Aucun résultat"
       : n === 1 ? "Voir 1 événement"
       : "Voir les " + n + " événements";
@@ -2585,7 +2590,7 @@ function _syncIrlTimeUI() {
   if (ds) ds.textContent = String(start).padStart(2, "0") + ":00";
   if (de) de.textContent = String(end).padStart(2, "0") + ":00";
   var sum = document.getElementById("irlTimeSum");
-  if (sum) sum.textContent = irlTimeFilter ? "Événements entre " + irlTimeFilter : "Aucune contrainte d'horaire";
+  if (sum) sum.textContent = irlTimeFilter ? "Activités entre " + irlTimeFilter : "Aucune contrainte d'horaire";
   var clear = document.getElementById("irlTimeClearBtn");
   if (clear) clear.style.display = irlTimeFilter ? "block" : "none";
   // La pastille qui correspond à la plage réglée est cochée : sans ça, revenir
@@ -2824,7 +2829,21 @@ function _filterIrlEvents(events) {
         .some(function(v) { return String(v || "").toLowerCase().indexOf(q) > -1; });
     });
   }
-  return _sortIrlEvents(filtered);
+  return _reelsAvantExemples(_sortIrlEvents(filtered));
+}
+
+// LOT-25 (audit UX/UI du 2026-11-10, IRL-C14) : les vraies activités d'abord,
+// les exemples ensuite — 9 des 12 premières cartes étaient des exemples
+// ailleurs en France, alors que 7 vraies activités attendaient à Lyon. Tri
+// STABLE : l'ordre choisi (imminent, proche, populaire) tient dans chaque groupe.
+function _reelsAvantExemples(list) {
+  var estExemple = function (e) {
+    try { return !!(window.PassioFirstRun && typeof PassioFirstRun.evenementDemo === "function" && PassioFirstRun.evenementDemo(e)); }
+    catch (x) { return false; }
+  };
+  var reels = [], exemples = [];
+  (list || []).forEach(function (e) { (estExemple(e) ? exemples : reels).push(e); });
+  return reels.concat(exemples);
 }
 
 // Tri de la liste : imminent (défaut) / le plus proche / le plus populaire.
@@ -3040,9 +3059,9 @@ function setIrlPastMode(past) {
 function _irlEmptyStateHtml() {
   var filtered = _irlActiveFilterCount() > 0 || irlSearchQuery;
   if (irlShowPast) {
-    return '<div class="empty"><div class="empty-icon">🕰</div><div class="empty-title">Aucun événement passé</div>'
-      + '<div class="empty-text">Tes souvenirs IRL apparaîtront ici après ton premier événement.</div>'
-      + '<button class="btn primary" style="margin-top:10px;" onclick="setIrlPastMode(false)">Voir les événements à venir</button></div>';
+    return '<div class="empty"><div class="empty-icon">🕰</div><div class="empty-title">Aucune activité passée</div>'
+      + '<div class="empty-text">Tes souvenirs IRL apparaîtront ici après ta première activité.</div>'
+      + '<button class="btn primary" style="margin-top:10px;" onclick="setIrlPastMode(false)">Voir les activités à venir</button></div>';
   }
   // LOT-19 (IRL-C12) : une RECHERCHE sans résultat n'accuse pas des filtres
   // qu'on n'a pas posés.
@@ -3053,10 +3072,10 @@ function _irlEmptyStateHtml() {
   }
   if (filtered) {
     return '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Rien avec ces filtres</div>'
-      + '<div class="empty-text">Élargis la zone, la date ou la passion pour voir plus d\'événements.</div>'
+      + '<div class="empty-text">Élargis la zone, la date ou la passion pour voir plus d\'activités.</div>'
       + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">✕ Tout afficher</button></div>';
   }
-  return '<div class="empty"><div class="empty-icon">🗓</div><div class="empty-title">Aucun événement</div>'
+  return '<div class="empty"><div class="empty-icon">🗓</div><div class="empty-title">Aucune activité</div>'
     + '<div class="empty-text">Crée le premier et donne rendez-vous.</div>'
     + '<button class="btn primary" style="margin-top:10px;" onclick="openCreateEvent()">+ Créer</button></div>';
 }
@@ -3082,6 +3101,31 @@ function _scheduleIrlMapUpdate() {
     if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 800 });
     else run();
   }, 60);
+}
+
+// LOT-25 (audit UX/UI du 2026-11-10, IRL-C03) : la seule porte vers « ma
+// position » était enfouie à trois gestes, dans le panneau Filtre — et les
+// distances se calculaient en silence depuis Paris. Tant qu'aucune référence
+// réelle n'existe (ni ville choisie, ni position), une ligne en TÊTE de la
+// liste l'offre ; elle disparaît dès qu'une référence existe. Posée DANS
+// `#eventList` (repeinte à chaque rendu) : le commutateur Liste / Carte et la
+// carte restent ses voisins immédiats (verrou ui-v4a3-vue).
+function _peindreInvitationVille(list) {
+  try {
+    if (!list) return;
+    var ancien = document.getElementById("irlVilleInvite");
+    if (ancien) ancien.remove();
+    // Le repli Paris d'un refus n'est pas une référence (IRL-C04).
+    var aReference = !!(irlSelectedCity || (irlUserLocation && !irlUserLocationError));
+    if (aReference || irlShowPast) return;
+    var b = document.createElement("button");
+    b.type = "button";
+    b.id = "irlVilleInvite";
+    b.className = "irl-ville-invite";
+    b.textContent = "📍 Choisis ta ville pour voir les distances";
+    b.addEventListener("click", function () { if (typeof openIrlCitySelector === "function") openIrlCitySelector(); });
+    list.insertBefore(b, list.firstChild);
+  } catch (e) { try { diagLog("invitation ville : " + (e && e.message)); } catch (_) {} }
 }
 
 function renderIRL() {
@@ -3153,6 +3197,7 @@ function renderIRL() {
   const list = $("#eventList");
   if (filtered.length === 0) {
     list.innerHTML = _irlEmptyStateHtml();
+    _peindreInvitationVille(list);
     return;
   }
 
@@ -3250,6 +3295,7 @@ function renderIRL() {
   }).join("") + (rest > 0
     ? `<button class="btn ghost block" style="margin-top:10px;" onclick="_showMoreIrlEvents()">Afficher plus (${rest} restant${rest > 1 ? "s" : ""})</button>`
     : "");
+  _peindreInvitationVille(list);
 
   // Compteurs de commentaires + likes/réactions + aperçu commentaires (lots, patch
   // DOM). UNIQUEMENT pour les vrais événements Supabase — sinon les résultats vides
@@ -3687,7 +3733,7 @@ async function setEventRsvp(id, rsvp) {
   try {
     if (window.PassioFirstRun && !PassioFirstRun.participationPossible(ev)) return;
   } catch (e) {}
-  if (_eventIsCancelled(ev) && rsvp) { toast("Cet événement a été annulé", "warning"); return; }
+  if (_eventIsCancelled(ev) && rsvp) { toast("Cette activité a été annulée", "warning"); return; }
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const prev = myRsvp(id);
   if (prev === rsvp) return;
@@ -4112,7 +4158,7 @@ async function openEventChat(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
   if (myRsvp(id) !== "going" && !_canManageEvent(ev)) {
-    toast(myRsvp(id) ? "La discussion est réservée à celles et ceux qui viennent : passe en « Je participe »" : "Rejoins l'événement pour accéder à la discussion");
+    toast(myRsvp(id) ? "La discussion est réservée à celles et ceux qui viennent : passe en « Je participe »" : "Rejoins l'activité pour accéder à la discussion");
     return;
   }
   if (!ev.convId) {
@@ -4230,7 +4276,7 @@ function _refreshEventDetailIfOpen(id) {
 function openEventRsvpSheet(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (_eventIsCancelled(ev)) { toast("Cet événement a été annulé", "warning"); return; }
+  if (_eventIsCancelled(ev)) { toast("Cette activité a été annulée", "warning"); return; }
   const cur = myRsvp(id);
   const full = _eventIsFull(ev);
   const spots = _eventSpotsLeft(ev);
@@ -4699,12 +4745,12 @@ function openEventDetails(id) {
     ${_eventFeedbackPromptHtml(ev)}
     <div data-evrating="${escapeHtml(ev.id)}">${_eventRatingSummaryHtml(ev)}</div>
 
-    ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">Événement récurrent — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
+    ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">Activité récurrente — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
 
     ${over && !cancelled ? `
       <div class="event-recap-cta">
         <div class="event-recap-title">Tu y étais ?</div>
-        <div class="event-recap-text">Partage tes photos et ton ressenti — ça fait vivre l'événement après coup.</div>
+        <div class="event-recap-text">Partage tes photos et ton ressenti — ça fait vivre l'activité après coup.</div>
         <button class="btn primary block" style="margin-top:8px;font-size:12px;" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">Partager mon expérience</button>
       </div>` : ""}
 
@@ -4738,8 +4784,8 @@ function openEventDetails(id) {
       <div class="event-detail-section-title">Co-organisateurs</div>
       <div class="event-detail-participants">${_faces(ev.coOrganizers, 8)}</div>` : ""}
 
-    <!-- Album de l'événement : les publications faites après coup. -->
-    <div class="event-detail-section-title">Album de l'événement</div>
+    <!-- Album de l'activité : les publications faites après coup. -->
+    <div class="event-detail-section-title">Album de l'activité</div>
     <div id="eventAlbum" class="event-album"><div class="event-album-empty">Chargement…</div></div>
 
     <!-- Barre d'engagement : la fiche n'avait NI like NI réaction emoji (alors que
@@ -4763,7 +4809,7 @@ function openEventDetails(id) {
       <button class="btn primary" onclick="addEventComment('${escapeJsArg(ev.id)}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
     </div>
 
-    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">Signaler cet événement</button>`}
+    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">Signaler cette activité</button>`}
   `;
 
   _loadEventComments(ev.id);
@@ -4792,7 +4838,7 @@ function _refreshEventDetailCta(ev, joined) {
   const cta = document.getElementById("eventDetailCta");
   if (!cta) return;
   if (_eventIsCancelled(ev)) {
-    cta.innerHTML = `<button class="btn ghost block" disabled>Événement annulé</button>`;
+    cta.innerHTML = `<button class="btn ghost block" disabled>Activité annulée</button>`;
     return;
   }
   if (_eventIsOver(ev)) {
@@ -4876,7 +4922,7 @@ function shareEventExperience(id) {
   }, 250);
 }
 
-// ===== Album de l'événement =====
+// ===== Album de l'activité =====
 // Les posts publiés via « Partager mon expérience » (colonne posts.event_id),
 // fusionnés avec mes posts locaux pas encore synchronisés.
 async function _loadEventAlbum(eventId) {
@@ -5142,7 +5188,7 @@ function downloadEventIcs(id) {
     a.download = (ev.title || "evenement").replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40) + ".ics";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-    toast("Événement ajouté à ton calendrier (rappel J-1 inclus)");
+    toast("Activité ajoutée à ton calendrier (rappel J-1 inclus)");
   } catch (e) { toast("Export calendrier impossible"); }
 }
 
@@ -5214,7 +5260,7 @@ function _openIrlEventFromHash() {
     // L'événement peut n'arriver qu'avec le chargement Supabase : on retente.
     if (++_irlEvLinkEssais <= 12) { _irlEvLinkReplanifier(); return false; }
     _irlEvLinkId = "";
-    toast("Événement introuvable ou supprimé");
+    toast("Activité introuvable ou supprimée");
     return false;
   } catch (e) {
     // Ne JAMAIS conclure sur une exception : c'est exactement ce qui tuait la
@@ -5378,7 +5424,7 @@ async function shareEventInFeed(id) {
   if (btn) { btn.disabled = true; btn.textContent = "Partage en cours…"; }
 
   if (typeof MY_UID === "undefined" || !MY_UID) {
-    toast("Connexion requise pour partager cet événement.");
+    toast("Connexion requise pour partager cette activité.");
     closeModal();
     return;
   }
@@ -5404,7 +5450,7 @@ async function shareEventInFeed(id) {
 
   closeModal();
   setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
-  toast("Événement partagé dans ton feed.");
+  toast("Activité partagée dans ton fil.");
 
   if (typeof supa !== "undefined" && supa) {
     try {
@@ -6750,7 +6796,7 @@ function openCreateEvent(editId) {
   // sien juste après (feedIrlBridgeOpen → openCreateEvent → prefill).
   feedIrlBridgeConsumeOrigin();
   const ed = editId ? _findCanonicalEvent(editId) : null;
-  if (editId && !ed) { toast("Événement introuvable"); return; }
+  if (editId && !ed) { toast("Activité introuvable"); return; }
   window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng } : null;
 
   // Toutes les passions sont proposées (les miennes en tête) : restreindre le
@@ -6813,7 +6859,7 @@ function openCreateEvent(editId) {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">${editId ? "Modifier l'événement" : "Créer un événement IRL"}</div>
+    <div class="modal-title">${editId ? "Modifier l'activité" : "Créer une activité"}</div>
     <div class="modal-subtitle">${editId ? "Les inscrits seront prévenus de tes changements." : "Rejoins ou crée des moments réels avec ta communauté."}</div>
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">Photo de couverture</div>
@@ -6989,7 +7035,7 @@ function _evPlacePick(i) {
 function openEventManage(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cet événement"); return; }
+  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cette activité"); return; }
   const cancelled = _eventIsCancelled(ev);
   // Les NOMBRES affichés passent par `_nbInscrits` (C-04) : la liste lisible
   // n'est pas le compteur, même si l'organisation, elle, lit toutes les lignes.
@@ -6999,13 +7045,13 @@ function openEventManage(id) {
   const enAttente = _nbInscrits(ev, "waitlist");
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Gérer l'événement</div>
+    <div class="modal-title">Gérer l'activité</div>
     <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""}${checked ? " · " + checked + " sur place" : ""}</div>
     <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Co-organisateurs (${(ev.coOrganizers || []).length})</button>
     ${enAttente ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${enAttente})</button>` : ""}
-    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'événement" : "Annuler l'événement"}</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'activité" : "Annuler l'événement"}</button>
     ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">Supprimer définitivement</button>
     <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
@@ -7035,7 +7081,7 @@ function openEventCoOrganizers(id) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Co-organisateurs</div>
-    <div class="modal-subtitle">Ils pourront modifier l'événement et prévenir les inscrits.</div>
+    <div class="modal-subtitle">Ils pourront modifier l'activité et prévenir les inscrits.</div>
     <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
       ${[...new Set(co.concat(candidates))].map(row).join("")
         || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Aucun participant à promouvoir pour l\'instant.</div>'}
@@ -7172,7 +7218,7 @@ async function toggleCancelEvent(id) {
   closeModal();
   renderIRL();
   if (cancel) _notifyEventAttendees(ev, "a annulé un événement auquel tu participais", "event_cancelled");
-  toast(cancel ? "Événement annulé — inscrits prévenus" : "Événement réactivé");
+  toast(cancel ? "Activité annulée — inscrits prévenus" : "Activité réactivée");
 }
 
 async function deleteEventConfirm(id) {
@@ -7210,7 +7256,7 @@ async function deleteEventConfirm(id) {
   closeEventDetail();
   window._irlMapSig = null; // la carte doit perdre son marqueur
   renderIRL();
-  toast(serveur ? "Événement supprimé" : "Événement supprimé sur cet appareil");
+  toast(serveur ? "Activité supprimée" : "Activité supprimée sur cet appareil");
 }
 
 // Prévient tout le monde qu'une activité vient d'être supprimée : inscrits,
@@ -7267,7 +7313,7 @@ async function _sendEventBroadcast(id) {
 
 // Signalement d'un événement (parité avec posts / profils).
 // ⚠️ CETTE PORTE EST OUVERTE AUX VISITEURS : `openEventDetails` est un chemin
-// invité assumé et le bouton « Signaler cet événement » s'affiche dès que la
+// invité assumé et le bouton « Signaler cette activité » s'affiche dès que la
 // rencontre n'est pas la sienne. Sans compte, `MY_UID` est un `u_<aléatoire>`
 // fabriqué, la RLS refuse l'insert — et la personne lisait « Signalement envoyé
 // — merci ». D'où la porte d'authentification, l'`await` et la lecture du
@@ -7364,7 +7410,7 @@ async function submitEvent(editId) {
 
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const existing = editId ? _findCanonicalEvent(editId) : null;
-  if (editId && !existing) { toast("Événement introuvable"); return; }
+  if (editId && !existing) { toast("Activité introuvable"); return; }
 
   const p = passionById(passion) || { emoji: "✨" };
   const ev = Object.assign(existing || {}, {
@@ -7476,8 +7522,8 @@ async function submitEvent(editId) {
   // confirmation juste au-dessus, et « pas encore envoyé » se lirait comme
   // « publié ». Passer "warning" en dur teindrait au contraire le succès en alerte.
   toast(ok
-    ? (editId ? "Événement mis à jour"
-      : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Événement publié !")
+    ? (editId ? "Activité mise à jour"
+      : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Activité publiée !")
     : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
     ok ? "success" : "warning");
   // L'invitation ne se propose que si l'activité EXISTE pour les autres :
@@ -8592,7 +8638,7 @@ function _openIrlCheckinFromHash() {
     if (!ev) {
       if (++_irlCkLinkEssais <= 12) { _irlCkLinkReplanifier(); return false; }
       _irlCkLinkId = ""; _irlCkLinkCode = "";
-      toast("Événement introuvable ou supprimé");
+      toast("Activité introuvable ou supprimée");
       return false;
     }
     // Même règle qu'au-dessus, et elle compte davantage ici : un id mémorisé qui

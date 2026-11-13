@@ -168,7 +168,7 @@ test("⑧ TRA-C17 : au bas de la fiche d'activité, « Signaler cet événement 
     const page = document.getElementById("eventDetailPage");
     const sc = [page, ...page.querySelectorAll("*")].find((el) => el.scrollHeight > el.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(el).overflowY)) || page;
     sc.scrollTop = sc.scrollHeight;
-    const b = [...page.querySelectorAll("button")].find((x) => /Signaler cet événement/.test(x.textContent));
+    const b = [...page.querySelectorAll("button")].find((x) => /Signaler cette activité/.test(x.textContent));
     if (!b) return { absent: true };
     // On mesure le bouton CONTRE LE PIED collant : c'est lui qui le recouvrait
     // (une bulle d'aide passagère peut aussi se poser là, elle n'est pas l'objet).
