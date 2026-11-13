@@ -3807,9 +3807,13 @@ async function setEventRsvp(id, rsvp) {
   if (prev === rsvp) return;
 
   // Complet : on ne peut pas passer « je viens » de force, on entre en file.
+  // LOT-48 (audit UX/UI du 2026-11-10, IRL-C64) : un seul message par geste —
+  // « C'est complet… » était suivi de « Liste d'attente » pour le même tap.
+  let _gesteDejaDit = false;
   if (rsvp === "going" && _eventIsFull(ev) && prev !== "going") {
     rsvp = "waitlist";
     toast("C'est complet — tu es sur liste d'attente");
+    _gesteDejaDit = true;
   }
 
   // LOT E (2026-09-18) : le flow s'ouvre ICI — seule porte commune à la carte,
@@ -3927,7 +3931,7 @@ async function setEventRsvp(id, rsvp) {
 
   if (rsvp === "going" && prev !== "going") {
     pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
-  } else {
+  } else if (!_gesteDejaDit) {
     toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
   }
   // Notifier l'organisateur (interaction cross-compte sur SON événement) — sur
@@ -4866,7 +4870,7 @@ function openEventDetails(id) {
     <div class="post-actions" style="margin-top:18px;">
       <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "❤️" : "🤍"} ${((window._eventLikes || {})[ev.id] || {}).likes || 0}</span>
       <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(ev.id)}', event);" title="Réagir">😊</span>
-      <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(ev.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+      <!-- LOT-48 (IRL-C67) : « Partager » est l'icône du haut de la fiche ; ce doublon est retiré. -->
       <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(ev.id)}" style="margin-left:auto;">${_evReactChipHtml(ev.id)}</span>
     </div>
 
@@ -5828,7 +5832,9 @@ function _renderEventComments(eventId) {
   }
   var sortMode = window._eventCommentSort || "recent";
   var sorted = sortComments(list, sortMode);
-  var bar = list.length > 1 ? commentSortBarHtml(sortMode, "setEventCommentSort") : "";
+  // LOT-48 (IRL-C67) : la liste unifiée porte déjà son tri (« Pertinents /
+  // Récents ») ; la barre « Récents / Aimés » faisait deux tris l'un sous l'autre.
+  var bar = "";
   // Renderer unifié : like / répondre / emoji / GIF / menu ⋯, comme le fil.
   box.innerHTML = bar + _renderCommentsList(sorted, eventId);
 }
