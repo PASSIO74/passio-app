@@ -312,7 +312,7 @@ function confirmDeletePost(postId) {
       <div class="pay-modal-title">Supprimer cette publication ?</div>
     </div>
     <div style="font-size:13px;color:var(--text);margin-bottom:14px;line-height:1.55;text-align:center;">
-      Cette action est <b>définitive</b>. Le post et ses commentaires seront supprimés.
+      Cette action est <b>définitive</b>. La publication et ses commentaires seront supprimés.
     </div>
     ${preview ? `<div style="background:rgba(139,92,246,0.06);padding:10px 12px;border-radius:10px;margin-bottom:14px;font-size:12px;color:var(--text-dim);font-style:italic;line-height:1.5;">« ${escapeHtml(preview)} »</div>` : ""}
     <button class="btn block" style="background:#dc2626;color:#fff;border-color:#dc2626;margin-bottom:8px;" onclick="deletePost('${escapeJsArg(postId)}')">
@@ -4382,7 +4382,7 @@ function openNewMessage() {
     
     <div style="font-weight:800;font-size:16px;margin-bottom:14px;">Nouveau message</div>
     <div style="position:relative;">
-      <input id="_nmSearch" type="text" class="input" placeholder="Chercher un utilisateur…" aria-label="Chercher une personne à qui écrire" enterkeyhint="search" autocomplete="off"
+      <input id="_nmSearch" type="text" class="input" placeholder="Chercher une personne…" aria-label="Chercher une personne à qui écrire" enterkeyhint="search" autocomplete="off"
         style="width:100%;box-sizing:border-box;padding-right:40px;"
         oninput="_nmDoSearch(this.value)" />
     </div>
@@ -4446,7 +4446,7 @@ function _nmDoSearch(q) {
     if (serveur && navigator.onLine === false) { box.innerHTML = _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne"); return; }
     box.innerHTML = (compte && !q)
       ? `<div class="nm-consigne" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Écris le nom d'une personne pour la trouver.</div>`
-      : (serveur ? _nmMessage("Recherche…", "attente") : _nmMessage("Aucun utilisateur trouvé", "vide"));
+      : (serveur ? _nmMessage("Recherche…", "attente") : _nmMessage("Aucune personne trouvée", "vide"));
     // Lancer aussi la recherche Supabase si query non vide
     if (serveur) {
       // ⚠️ GARDE D'OBSOLESCENCE. Les réponses reviennent dans l'ordre du réseau,
@@ -4458,7 +4458,7 @@ function _nmDoSearch(q) {
         if (_nmRequeteCourante() !== _qA || !box) return;
         if (res && res.echec) { box.innerHTML = _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne"); return; }
         var trouves = (res || []).filter(_nmPasMoi).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); });
-        if (!trouves.length) { box.innerHTML = _nmMessage("Aucun utilisateur trouvé", "vide"); return; }
+        if (!trouves.length) { box.innerHTML = _nmMessage("Aucune personne trouvée", "vide"); return; }
         box.innerHTML = trouves.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
       }).catch(function(){ if (box && _nmRequeteCourante() === _qA) box.innerHTML = _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne"); });
     }
@@ -4561,7 +4561,7 @@ function searchUsers(query) {
       // LOT-28 (MSG-C23) : une panne n'est pas une absence.
       results.innerHTML = (supaUsers && supaUsers.echec)
         ? _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne")
-        : _nmMessage("Aucun utilisateur trouvé", "vide");
+        : _nmMessage("Aucune personne trouvée", "vide");
       return;
     }
 
@@ -5000,7 +5000,7 @@ async function openUserProfile(authorId, source) {
     // visité tirent désormais du MÊME référentiel (`PROFILE_TAB_KEYS`, app-06).
     audio:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11c0 3.9 3.1 7 7 7s7-3.1 7-7"/><path d="M12 18v3.5"/><path d="M9 21.5h6"/></svg>'
   };
-  var _VTAB_TITLES = { posts: "Posts", photos: "Photos", videos: "Vidéos", bobines: "Bobines", audio: "Audio / podcast" };
+  var _VTAB_TITLES = { posts: "Publications", photos: "Photos", videos: "Vidéos", bobines: "Bobines", audio: "Audio / podcast" };
   // ⚠️ 2026-08-31 : plus de ligne d'aide au-dessus des sous-filtres (mon profil
   // l'a perdue le même jour). Les icônes portent déjà leur libellé.
   var tabsHTML = canSeeContent
