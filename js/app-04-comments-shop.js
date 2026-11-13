@@ -5913,7 +5913,12 @@ function renderMessages() {
   if (archRow) {
     if (_q) archRow.innerHTML = "";
     else if (_showArch) archRow.innerHTML = `<button class="btn ghost block" onclick="_toggleArchivedView()" style="font-size:13px;">← Retour aux conversations</button>`;
-    else if (archivedCount) archRow.innerHTML = `<button class="btn ghost block" onclick="_toggleArchivedView()" style="font-size:13px;">Archivées (${archivedCount})</button>`;
+    // LOT-24 (MSG-C14) : les non-lus d'une conversation archivée font compter
+    // l'onglet ; la rangée « Archivées » les dit, sinon on ne les trouve pas.
+    else if (archivedCount) {
+      const _nlArch = filtered.filter(c => c.archived && (c.unread || 0) > 0).reduce((t, c) => t + (c.unread || 0), 0);
+      archRow.innerHTML = `<button class="btn ghost block${_nlArch ? " archives-non-lues" : ""}" onclick="_toggleArchivedView()" style="font-size:13px;">Archivées (${archivedCount})${_nlArch ? ` · <span class="archives-pastille">${_nlArch} non lu${_nlArch > 1 ? "s" : ""}</span>` : ""}</button>`;
+    }
     else archRow.innerHTML = "";
   }
 
@@ -6623,14 +6628,28 @@ function renderConvFpThread(c, displayName) {
         // ⚠️ La CLÉ de `m.reactions` vient de la ligne `conv_messages` de l'autre
         // compte : rien n'oblige un client à y mettre un emoji. Échappée à
         // l'affichage, comme tout payload librement insérable (règle CLAUDE.md).
-        Object.keys(m.reactions).map(function(e){ return '<span class="conv-react-badge">' + escapeHtml(e) + (m.reactions[e]>1?(' '+escapeHtml(String(m.reactions[e]))):'') + '</span>'; }).join('') +
+        // LOT-24 (MSG-C76) : MA réaction est un bouton — la toucher la retire
+        // (le handler est délégué, `_wireMsgActions` : aucun payload dans un onclick).
+        Object.keys(m.reactions).map(function(e){
+          var compte = (m.reactions[e]>1?(' '+escapeHtml(String(m.reactions[e]))):'');
+          return (m.myReact && m.myReact[e])
+            ? '<button type="button" class="conv-react-badge mine" data-react="' + escapeHtml(e) + '" aria-label="Retirer ta réaction ' + escapeHtml(e) + '">' + escapeHtml(e) + compte + '</button>'
+            : '<span class="conv-react-badge">' + escapeHtml(e) + compte + '</span>';
+        }).join('') +
         '</div>';
     }
 
+    // LOT-24 (MSG-C76) : une bulle est atteignable au clavier et nommée ; Entrée
+    // ou la touche Menu ouvrent ses actions. (MSG-C65) Une vidéo garde ses
+    // commandes natives au toucher : un bouton ⋯ porte ses actions.
+    var _nomBulle = (isMe ? "Ton message" : "Message de " + (m.fromName || c.userName || "ton interlocuteur"))
+      + (m.at ? ", " + String(new Date(m.at).getHours()).padStart(2, "0") + " h " + String(new Date(m.at).getMinutes()).padStart(2, "0") : "")
+      + " : " + String(_msgPreviewText(m) || "").slice(0, 80);
     parts.push(
-      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + '" data-mid="' + escapeHtml((m.id||'')) + '" data-me="' + (isMe?'1':'0') + '">' +
+      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + '" data-mid="' + escapeHtml((m.id||'')) + '" data-me="' + (isMe?'1':'0') + '" tabindex="0" aria-label="' + escapeHtml(_nomBulle) + '">' +
         senderLine +
         '<div class="conv-bubble ' + (isMe?'me':'them') + '"' + bubbleStyle + '>' + replyHtml + content + '</div>' +
+        (m.video ? '<button type="button" class="conv-actions-btn" data-actions="1" aria-label="Actions de la vidéo">⋯</button>' : '') +
         reactHtml +
         timeStr +
       '</div>'
@@ -6839,13 +6858,54 @@ function _wireMsgActions(thread, convId) {
     var mid = bubbleMid(e.target); if (!mid) return;
     e.preventDefault(); _openMsgActions(thread._curConvId, mid);
   });
+  // LOT-24 (MSG-C64) : la feuille s'ouvre sous le doigt encore posé ; le clic de
+  // synthèse du relâchement tombait sur une de ses lignes (« Répondre »,
+  // « Supprimer… ») ou sur le fond, qui la refermait. Après un appui long, le
+  // relâchement est neutralisé (touchend non passif) et le clic qui suit, avalé.
   thread.addEventListener("touchstart", function(e) {
     var mid = bubbleMid(e.target); if (!mid) return;
     moved = false;
-    pressTimer = setTimeout(function(){ if (!moved) _openMsgActions(thread._curConvId, mid); }, 480);
+    pressTimer = setTimeout(function(){ if (!moved) { window._msgActionsOuvertA = Date.now(); _openMsgActions(thread._curConvId, mid); } }, 480);
   }, { passive: true });
   thread.addEventListener("touchmove", function(){ moved = true; clearTimeout(pressTimer); }, { passive: true });
-  thread.addEventListener("touchend", function(){ clearTimeout(pressTimer); }, { passive: true });
+  thread.addEventListener("touchend", function(e){
+    clearTimeout(pressTimer);
+    var o = window._msgActionsOuvertA || 0;
+    if (o && Date.now() - o < 1500) { try { e.preventDefault(); } catch (x) {} }
+  }, { passive: false });
+  if (!window._msgActionsClicAvale) {
+    window._msgActionsClicAvale = true;
+    document.addEventListener("click", function (e) {
+      var o = window._msgActionsOuvertA || 0;
+      if (o && Date.now() - o < 700) { e.preventDefault(); e.stopPropagation(); window._msgActionsOuvertA = 0; }
+    }, true);
+  }
+  // LOT-24 (MSG-C65 / C76) : bouton ⋯ d'une vidéo, ma réaction retirée d'un
+  // toucher, et le clavier (Entrée, touche Menu, Maj+F10) sur une bulle.
+  // Posés UNE fois par fil (le câblage ci-dessus se rejoue à chaque conversation) :
+  // deux écouteurs retireraient puis remettraient la même réaction.
+  if (thread._lot24Wired) return;
+  thread._lot24Wired = true;
+  thread.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var act = t.closest("[data-actions]");
+    if (act) { e.preventDefault(); var mid1 = bubbleMid(act); if (mid1) _openMsgActions(thread._curConvId, mid1); return; }
+    var re = t.closest(".conv-react-badge.mine");
+    if (re) {
+      e.preventDefault();
+      var mid2 = bubbleMid(re);
+      if (mid2 && typeof _toggleReaction === "function") _toggleReaction(thread._curConvId, mid2, re.getAttribute("data-react"));
+    }
+  });
+  thread.addEventListener("keydown", function (e) {
+    var w = e.target && e.target.classList && e.target.classList.contains("conv-bubble-wrap") ? e.target : null;
+    if (!w) return;
+    if (e.key === "Enter" || e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+      e.preventDefault();
+      _openMsgActions(thread._curConvId, w.getAttribute("data-mid"));
+    }
+  });
 }
 
 // Scroll jusqu'au message cité (surbrillance brève).
@@ -8653,6 +8713,12 @@ function closeConversation() {
   // Refermer les panneaux glissants pour ne pas les retrouver ouverts dans la prochaine conversation
   document.getElementById("convSettingsPanel")?.classList.remove("open");
   document.getElementById("convFilesPanel")?.classList.remove("open");
+  // LOT-24 (MSG-C73) : le panneau emoji/GIF et le menu « + » restaient
+  // affichés par-dessus la liste quand le retour fermait la conversation.
+  document.getElementById("convEmojiPanel")?.classList.remove("open");
+  document.getElementById("btnEmoji")?.classList.remove("active");
+  document.getElementById("convAttachMenu")?.classList.remove("open");
+  document.getElementById("btnAttach")?.classList.remove("active");
   renderMessages();
 }
 
