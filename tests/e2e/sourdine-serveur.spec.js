@@ -25,7 +25,11 @@ async function poser(page, reponse) {
         const q = {
           update(v) { ecr.champs = v; return q; },
           eq(c, v) { ecr.filtres.push([c, v]); return q; },
-          select() { window.__ecritures.push(ecr); return Promise.resolve(rep); },
+          // Seules les ÉCRITURES de `conv_members` sont relevées : en CI, le
+          // reste de l'application lit d'autres tables par le même client.
+          select() { if (ecr.table === "conv_members" && ecr.champs) window.__ecritures.push(ecr); return Promise.resolve(ecr.champs ? rep : { data: [], error: null }); },
+          order() { return q; }, limit() { return q; }, in() { return q; }, maybeSingle() { return Promise.resolve({ data: null, error: null }); },
+          then(a, c) { return Promise.resolve({ data: [], error: null }).then(a, c); },
         };
         return q;
       },
