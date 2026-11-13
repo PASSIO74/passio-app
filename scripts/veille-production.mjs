@@ -94,12 +94,15 @@ export const SEUILS_CRONS = {
 // ne scannent que leur diff : ne comptent que ses scans COMPLETS — le passage planifié du lundi ET un
 // passage lancé à la main (« Run workflow »), que gitleaks-action, au SHA épinglé, traite comme le
 // planifié : TOUT l'historique (relecture de #866). Un tri relancé à la main et réussi efface donc
-// l'attention sans attendre le lundi — comme la ligne du pilotage (EVENEMENTS_RUNS.securite).
+// l'attention sans attendre le lundi — comme la ligne du pilotage (EVENEMENTS_RUNS.securite). Sur `main`
+// SEULEMENT (relecture de #874) : un « Run workflow » se lance sur n'importe quelle branche — un scan vert sur
+// une branche de tri effaçait l'attention alors que `main` n'était pas corrigé, un échec sur une vieille branche
+// la faisait revenir. Le pilotage lit `branch=main` ; la veille aussi, et filtre `head_branch`.
 export const SCAN = Object.freeze({
   workflow: "securite", warn: 8 * 24,
   evenements: Object.freeze(["schedule", "workflow_dispatch"]),
-  ou: "Actions > « Sécurité de la chaîne » > son dernier scan complet (planifié ou lancé à la main)",
-  geste: "Actions > « Sécurité de la chaîne » > son dernier scan complet (planifié ou lancé à la main) : quel job a échoué ? « Secrets dans le diff » : l'artefact `gitleaks-results.sarif` liste ce que gitleaks a trouvé dans TOUT l'historique — à trier par Benjamin, jamais par un agent : une clé publique par conception s'inscrit dans `.gitleaksignore` (empreinte et raison) ; une vraie clé se RÉVOQUE d'abord, puis s'y inscrit aussi (elle reste dans l'historique). « Workflows et dépendances » : le journal de `npm audit` ou de la gate dit quoi corriger. Trié, relance-le (« Run workflow ») : un scan complet réussi efface cette attention.",
+  ou: "Actions > « Sécurité de la chaîne » > son dernier scan complet sur main",
+  geste: "Actions > « Sécurité de la chaîne » > son dernier scan complet sur main (planifié ou lancé à la main) : quel job a échoué ? « Secrets dans le diff » : l'artefact `gitleaks-results.sarif` liste ce que gitleaks a trouvé dans TOUT l'historique — à trier par Benjamin, jamais par un agent : une clé publique par conception s'inscrit dans `.gitleaksignore` (empreinte et raison) ; une vraie clé se RÉVOQUE d'abord, puis s'y inscrit aussi (elle reste dans l'historique). « Workflows et dépendances » : le journal de `npm audit` ou de la gate dit quoi corriger. Trié, relance-le SUR MAIN (« Run workflow », branche main) : un scan complet réussi sur main efface cette attention — un passage sur une autre branche ne compte pas.",
 });
 /** Les passages d'un cron qui comptent : les PLANIFIÉS seuls — une relance à la main ne remet pas le compte à zéro. */
 const PLANIFIES = Object.freeze(["schedule"]);
@@ -114,15 +117,16 @@ const CONCLUSIONS_ECHEC_CRON = new Set(["failure", "timed_out", "startup_failure
  * change `run_started_at` et remontait un ancien passage en tête. Un même run lu dans deux listes
  * (une réplique en retard) compte une fois, dans sa version la plus récente. Un passage annulé,
  * sauté ou pas encore terminé ne tranche pas ; le premier succès arrête le compte. `evenements` : les
- * événements qui comptent (PLANIFIES par défaut ; SCAN.evenements pour le scan de sécurité).
+ * événements qui comptent (PLANIFIES par défaut ; SCAN.evenements pour le scan de sécurité). Seuls les passages
+ * de `branche` (main) comptent : un passage lancé à la main sur une autre branche ne dit rien de main.
  * @returns {{suite:number, lus:number, vus:number, dernier:{conclusion:string,le:string|null}|null, dernierSucces:{le:string|null}|null}}
  */
-export function echecsPlanifies(runs, evenements = PLANIFIES) {
+export function echecsPlanifies(runs, evenements = PLANIFIES, branche = "main") {
   const t = (s) => Date.parse(s || "") || 0;
   const parRun = new Map();
   let sansId = 0;
   for (const r of Array.isArray(runs) ? runs : []) {
-    if (!r || !evenements.includes(r.event) || r.status !== "completed") continue;
+    if (!r || !evenements.includes(r.event) || r.head_branch !== branche || r.status !== "completed") continue;
     const cle = r.id != null ? "id:" + r.id : "n:" + sansId++;
     const deja = parRun.get(cle);
     if (!deja || t(r.updated_at) > t(deja.updated_at)) parRun.set(cle, r);
@@ -862,7 +866,7 @@ async function mesurerWorkflow(env, nom, evenements = PLANIFIES) {
   try {
     const lus = [...((runs && runs.workflow_runs) || [])];
     for (const ev of evenements) {
-      const parEv = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?event=${ev}&per_page=10`);
+      const parEv = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?event=${ev}&branch=main&per_page=10`);
       lus.push(...((parEv && parEv.workflow_runs) || []));
     }
     out.planifies = echecsPlanifies(lus, evenements);

@@ -790,7 +790,7 @@ export function aFaire(d, maintenant = Date.now()) {
     ajoute({ id: "scan:securite", prio: sc.nature === "echec" ? 1 : 2, etiquette: "À trier",
       titre: sc.nature === "echec" ? "Le scan de sécurité a échoué" : "Le scan de sécurité n'a pas abouti",
       quoi: "À trier par toi, jamais par une machine.",
-      reference: "Son journal dit quel job : les secrets (une clé publique par conception s'inscrit dans .gitleaksignore ; une vraie clé se révoque d'abord, puis s'y inscrit aussi), npm audit ou la gate des workflows. Trié, relance-le (« Run workflow ») : un passage réussi efface cette ligne.",
+      reference: "Son journal dit quel job : les secrets (une clé publique par conception s'inscrit dans .gitleaksignore ; une vraie clé se révoque d'abord, puis s'y inscrit aussi), npm audit ou la gate des workflows. Trié, relance-le SUR MAIN (« Run workflow », branche main) : un passage réussi sur main efface cette ligne.",
       url, gestes: url ? [{ libelle: "Ouvrir", principal: true, ouvrir: url }] : [] });
   } else if (runs.securite && runs.securite.le && maintenant - dateUtc(runs.securite.le) > SCAN_MUET_MS) {
     ajoute({ id: "scan:securite", prio: 2, etiquette: "À trier", titre: "Le scan de sécurité n'a pas tourné depuis plus de 8 jours",

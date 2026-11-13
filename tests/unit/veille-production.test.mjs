@@ -266,7 +266,7 @@ test("crons (2026-11-12) : echecsPlanifies compte les passages PLANIFIÉS en éc
   // Mutation : trier par `run_started_at` → une relance d'un ancien passage remonte en tête → rougit.
   const T = Date.parse("2026-11-12T12:00:00Z");
   let id = 100;
-  const run = (event, conclusion, h, status = "completed", extra = {}) => ({ id: id++, event, status, conclusion, created_at: new Date(T - h * H).toISOString(), updated_at: new Date(T - h * H + 60e3).toISOString(), ...extra });
+  const run = (event, conclusion, h, status = "completed", extra = {}) => ({ id: id++, event, head_branch: "main", status, conclusion, created_at: new Date(T - h * H).toISOString(), updated_at: new Date(T - h * H + 60e3).toISOString(), ...extra });
   const vide = { suite: 0, lus: 0, vus: 0, dernier: null, dernierSucces: null };
   assert.deepEqual(echecsPlanifies([]), vide);
   assert.deepEqual(echecsPlanifies(null), vide);
@@ -286,7 +286,7 @@ test("crons (2026-11-12) : echecsPlanifies compte les passages PLANIFIÉS en éc
   const relance = echecsPlanifies([run("schedule", "success", 48, "completed", { run_started_at: new Date(T - 0.5 * H).toISOString(), updated_at: new Date(T - 0.4 * H).toISOString() }), run("schedule", "failure", 24)]);
   assert.equal(relance.suite, 1, "le passage le plus récent (24 h) a cassé, la relance d'il y a 48 h ne le cache pas");
   // Le même run lu dans deux listes (une réplique en retard) : une fois, dans sa version la plus récente.
-  const enRetard = { id: 7, event: "schedule", status: "completed", conclusion: "failure", created_at: new Date(T - 3 * H).toISOString(), updated_at: new Date(T - 2.9 * H).toISOString() };
+  const enRetard = { id: 7, event: "schedule", head_branch: "main", status: "completed", conclusion: "failure", created_at: new Date(T - 3 * H).toISOString(), updated_at: new Date(T - 2.9 * H).toISOString() };
   const frais = { ...enRetard, conclusion: "success", updated_at: new Date(T - 1 * H).toISOString() };
   const double = echecsPlanifies([enRetard, frais, run("schedule", "success", 27)]);
   assert.deepEqual([double.suite, double.vus, double.dernierSucces.le], [0, 2, frais.updated_at]);
@@ -349,7 +349,7 @@ test("crons (2026-11-12, contre-revue de #863) : un passage BLOQUÉ jusqu'à son
   const now = Date.parse("2026-11-12T12:00:00Z");
   const il_y_a = (h) => new Date(now - h * H).toISOString();
   let id = 1;
-  const passe = (conclusion, h) => ({ id: id++, event: "schedule", status: "completed", conclusion, created_at: il_y_a(h), updated_at: il_y_a(h - 0.5) });
+  const passe = (conclusion, h) => ({ id: id++, event: "schedule", head_branch: "main", status: "completed", conclusion, created_at: il_y_a(h), updated_at: il_y_a(h - 0.5) });
   const reussi = echecsPlanifies([passe("success", 5)]);
   const sain = Object.fromEntries(Object.keys(SEUILS_CRONS).map((k) => [k, { state: "active", dernierRunFin: il_y_a(2), planifies: reussi }]));
   // Trois nuits : la sauvegarde dépasse ses 30 min, GitHub conclut `cancelled`. L'âge du dernier RUN reste frais (2 h).
@@ -436,7 +436,8 @@ test("scan (contre-revue de #863) : le scan de sécurité est un signal À PART 
   const echec = { ...ok, planifies: { suite: 1, lus: 4, vus: 4, dernier: { conclusion: "failure", le: il_y_a(7 * 24 - 1) }, dernierSucces: { le: il_y_a(14 * 24) } } };
   const s = signalScan(echec, now);
   assert.equal(s.etat, "warn");
-  assert.match(s.texte, /securite : dernier scan complet en échec \(failure le 2026-11-09 13:00 UTC\) — à trier par Benjamin \(Actions > « Sécurité de la chaîne » > son dernier scan complet \(planifié ou lancé à la main\)\)/);
+  assert.match(s.texte, /securite : dernier scan complet en échec \(failure le 2026-11-09 13:00 UTC\) — à trier par Benjamin \(Actions > « Sécurité de la chaîne » > son dernier scan complet sur main\)/);
+  assert.match(s.geste, /relance-le SUR MAIN \(« Run workflow », branche main\)/);
   assert.match(s.geste, /gitleaks-results\.sarif/);
   assert.match(s.geste, /jamais par un agent/);
   assert.match(s.geste, /\.gitleaksignore/);
@@ -496,7 +497,7 @@ test("scan (suite de #866) : ses scans COMPLETS comptent — le planifié du lun
   const now = Date.parse("2026-11-16T12:00:00Z");
   const il_y_a = (h) => new Date(now - h * H).toISOString();
   let id = 1;
-  const passe = (event, conclusion, h) => ({ id: id++, event, status: "completed", conclusion, created_at: il_y_a(h), updated_at: il_y_a(h - 0.2) });
+  const passe = (event, conclusion, h, branche = "main") => ({ id: id++, event, head_branch: branche, status: "completed", conclusion, created_at: il_y_a(h), updated_at: il_y_a(h - 0.2) });
   // Le 09/11 planifié en échec ; trié, puis relancé à la main le 16/11 et vert ; une PR verte plus récente encore.
   const runs = [passe("pull_request", "success", 1), passe("workflow_dispatch", "success", 3), passe("schedule", "failure", 7 * 24 - 1), passe("schedule", "success", 14 * 24)];
   assert.deepEqual(SCAN.evenements, ["schedule", "workflow_dispatch"]);
@@ -519,7 +520,7 @@ test("scan et crons (suite de #866) : la mesure EXÉCUTÉE contre un faux GitHub
   // Mutation : mesurerScan sans SCAN.evenements → aucune lecture `event=workflow_dispatch` → rougit.
   const now = Date.now();
   const il_y_a = (h) => new Date(now - h * H).toISOString();
-  const run = (id, event, conclusion, h) => ({ id, event, status: "completed", conclusion, created_at: il_y_a(h), updated_at: il_y_a(h - 0.2) });
+  const run = (id, event, conclusion, h, branche = "main") => ({ id, event, head_branch: branche, status: "completed", conclusion, created_at: il_y_a(h), updated_at: il_y_a(h - 0.2) });
   let tous = [run(4, "pull_request", "success", 1), run(3, "workflow_dispatch", "success", 3), run(2, "schedule", "failure", 70), run(1, "schedule", "success", 300)];
   const demandes = [];
   let refuser = null;
@@ -531,17 +532,28 @@ test("scan et crons (suite de #866) : la mesure EXÉCUTÉE contre un faux GitHub
     demandes.push(u.pathname.replace(/^\/repos\/P\/p\/actions\/workflows\//, "") + u.search);
     if (refuser && refuser(u)) return new Response(JSON.stringify({ message: "Bad credentials" }), { status: 403 });
     if (/\/runs$/.test(u.pathname)) {
-      const ev = u.searchParams.get("event");
-      return new Response(JSON.stringify({ workflow_runs: tous.filter((r) => !ev || (r.event === ev && !enRetard.has(r.id))) }), { status: 200 });
+      // Comme GitHub : `event` et `branch` filtrent ; la première liste (sans filtre) a toutes les branches.
+      const ev = u.searchParams.get("event"), br = u.searchParams.get("branch");
+      return new Response(JSON.stringify({ workflow_runs: tous.filter((r) => (!ev || (r.event === ev && !enRetard.has(r.id))) && (!br || r.head_branch === br)) }), { status: 200 });
     }
     return new Response(JSON.stringify({ state: "active" }), { status: 200 });
   };
   try {
     const env = { GITHUB_REPOSITORY: "P/p", GH_TOKEN: "jeton-du-banc" };
     const scan = await mesurerScan(env);
-    assert.deepEqual(demandes, ["securite.yml", "securite.yml/runs?per_page=10", "securite.yml/runs?event=schedule&per_page=10", "securite.yml/runs?event=workflow_dispatch&per_page=10"]);
+    assert.deepEqual(demandes, ["securite.yml", "securite.yml/runs?per_page=10", "securite.yml/runs?event=schedule&branch=main&per_page=10", "securite.yml/runs?event=workflow_dispatch&branch=main&per_page=10"]);
     assert.equal(scan.planifies.suite, 0, JSON.stringify(scan.planifies));
     assert.equal(signalScan(scan, now).etat, "ok");
+    // Un « Run workflow » sur une AUTRE branche ne dit rien de main (relecture de #874), dans les deux sens.
+    // Mutation : le filtre `head_branch` retiré → la première liste (toutes branches) les fait compter → rougit.
+    const base = tous;
+    tous = [run(9, "workflow_dispatch", "success", 0.5, "fix/tri-du-scan"), run(2, "schedule", "failure", 70), run(1, "schedule", "success", 300)];
+    const brancheVerte = await mesurerScan(env);
+    assert.equal(signalScan(brancheVerte, now).etat, "warn", "un scan vert sur une branche de tri n'efface pas l'échec de main : " + signalScan(brancheVerte, now).texte);
+    tous = [run(10, "workflow_dispatch", "failure", 0.5, "vieille-branche"), run(3, "workflow_dispatch", "success", 3), run(1, "schedule", "success", 300)];
+    const brancheRouge = await mesurerScan(env);
+    assert.equal(signalScan(brancheRouge, now).etat, "ok", "un échec sur une vieille branche ne remet pas l'attention : " + signalScan(brancheRouge, now).texte);
+    tous = base;
     // Un cron : ses seuls passages planifiés, et la relance à la main ne le blanchit pas.
     demandes.length = 0;
     const crons = await mesurerCrons(env);
@@ -569,7 +581,7 @@ test("crons et scan (2026-11-12) : la mesure lit les passages PLANIFIÉS à part
   // Mutation : la requête sans `event=schedule` → rougit.
   const source = fs.readFileSync("scripts/veille-production.mjs", "utf8");
   const mesure = source.slice(source.indexOf("async function mesurerWorkflow"), source.indexOf("export async function mesurerBase"));
-  assert.match(mesure, /\/runs\?event=\$\{ev\}&per_page=10`/);
+  assert.match(mesure, /\/runs\?event=\$\{ev\}&branch=main&per_page=10`/);
   assert.match(mesure, /out\.planifies = echecsPlanifies\(lus, evenements\);/);
   assert.match(mesure, /catch \(e\) \{ out\.planifies = enErreur\(e\); \}/, "une lecture des passages planifiés refusée se note, et l'âge déjà lu reste");
   assert.match(mesure, /export async function mesurerScan\(env\) \{\s*return mesurerWorkflow\(env, SCAN\.workflow, SCAN\.evenements\);/);
