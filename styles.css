@@ -13257,3 +13257,10 @@ body.passio-hors-ligne #passioBandeauDistant {
 .conv-bubble-time.conv-bubble-time-statut { margin-top: 0; min-height: 0; }
 .conv-bubble-time.conv-bubble-time-statut:has(> [data-msgst]:empty) { display: none; }
 .msg-actions-heure { text-align: center; font-size: 12px; color: var(--muted); padding: 2px 0 8px; }
+
+/* LOT-44 (audit UX/UI du 2026-11-10, TRA-C26) : sommaire des textes légaux —
+   des liens de 44 px qui mènent au point, au-dessus du texte qui défile. */
+.legal-sommaire { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 4px 0 10px; max-height: 22vh; overflow-y: auto; }
+.legal-sommaire-lien { min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 22px; background: var(--bg-card); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer; }
+.legal-sommaire-lien:hover, .legal-sommaire-lien:focus-visible { border-color: var(--accent); color: var(--accent); }
+.legal-corps { scroll-behavior: smooth; }
