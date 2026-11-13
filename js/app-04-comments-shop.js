@@ -5362,7 +5362,7 @@ function _renderVisitedEvents() {
       + '<div style="flex:1;min-width:0;">'
       + '<div style="font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
       + escapeHtml(e.title || "Activité") + '</div>'
-      + '<div style="font-size:10.5px;color:var(--muted);">' + escapeHtml(bas) + '</div>'
+      + '<div style="font-size:12px;color:var(--muted);">' + escapeHtml(bas) + '</div>'
       + '</div></div>';
   }).join("");
 }
