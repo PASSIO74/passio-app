@@ -163,9 +163,11 @@ test.describe("UI-7 — le parcours complet", () => {
     await boot(page);
     await page.evaluate(() => {
       conversationsState = [{
-        id: "v7_conv", userId: "u_nina", userName: "Nina Costa",
+        id: "v7_conv", userId: "a1b2c3d4-0000-4000-8000-0000000007a1", userName: "Nina Costa",
         lastAt: Date.now(), unread: 0, archived: false, pinned: false,
-        messages: [{ id: "m1", from: "u_nina", text: "Salut !", at: Date.now() }],
+        // LOT-23 : un vrai compte (uuid) — avec un personnage d'exemple, la
+        // conversation est en lecture seule et le menu « + » n'existe plus.
+        messages: [{ id: "m1", from: "a1b2c3d4-0000-4000-8000-0000000007a1", text: "Salut !", at: Date.now() }],
       }];
     });
     await allerA(page, "messages");
