@@ -482,7 +482,7 @@ test.describe("Audit 2026-11 — signaler un message (E-08) et identifiants éch
       // Un identifiant absent ET hostile : le sélecteur reste valide, le refus est dit.
       window.__toasts = [];
       try { _jumpToMsg('absent"]x'); out.absentErreur = null; } catch (e) { out.absentErreur = String(e && e.message); }
-      out.absentDit = window.__toasts.some((t) => /introuvable/.test(t.t));
+      out.absentDit = window.__toasts.some((t) => /introuvable|plus disponible/.test(t.t)); // LOT-40 (MSG-C86)
       Element.prototype.scrollIntoView = vraiDefile;
 
       // ── _setMsgStatus : patch EN PLACE du holder [data-msgst] ──
