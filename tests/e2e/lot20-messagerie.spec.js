@@ -42,7 +42,7 @@ test("① MSG-C61 : un seul « Aujourd'hui », et « Hier » est hier", async ({
   await boot(page);
   const m0 = await page.evaluate(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); });
   await ouvrir(page, {
-    id: "c_l20_jours", userId: "u_lea", userName: "Léa", lastAt: Date.now(), unread: 0,
+    id: "c_l20_jours", userId: "a1b2c3d4-0000-4000-8000-00000000c0a1", userName: "Léa", lastAt: Date.now(), unread: 0,
     messages: [
       { id: "j1", from: "u_lea", text: "le jour d'avant", at: m0 - 864e5 - 6 * 3600e3 },
       { id: "j2", from: "u_lea", text: "hier soir", at: m0 - 2 * 3600e3 },
@@ -62,7 +62,7 @@ test("① MSG-C61 : un seul « Aujourd'hui », et « Hier » est hier", async ({
 test("② MSG-C62 : pas de « ✓ » sur un message non parti ; « réessayer » est une cible nommée de 44 px", async ({ page }) => {
   await boot(page);
   await ouvrir(page, {
-    id: "c_l20_echec", userId: "u_lea", userName: "Léa", lastAt: Date.now(), unread: 0,
+    id: "c_l20_echec", userId: "a1b2c3d4-0000-4000-8000-00000000c0a1", userName: "Léa", lastAt: Date.now(), unread: 0,
     messages: [{ id: "e1", from: "me", text: "bonjour", at: Date.now() - 1000, status: "failed" }],
   });
   const r = await page.evaluate(() => {
@@ -99,7 +99,7 @@ test("③ MSG-C12 / C66 : aperçus et citations par type ; « Copier le texte »
   expect(r.copieTexte).toBe(true);
   // La liste passe par la même autorité.
   await page.evaluate(() => {
-    conversationsState = [{ id: "c_l20_liste", userId: "u_lea", userName: "Léa", lastAt: Date.now(), unread: 0,
+    conversationsState = [{ id: "c_l20_liste", userId: "a1b2c3d4-0000-4000-8000-00000000c0a1", userName: "Léa", lastAt: Date.now(), unread: 0,
       messages: [{ id: "l1", from: "u_lea", text: "[DOC] topo-falaise.pdf", at: Date.now() }] }];
     goTo("messages");
     renderMessages();
@@ -111,7 +111,7 @@ test("③ MSG-C12 / C66 : aperçus et citations par type ; « Copier le texte »
 test("④ MSG-C67 / C51 / C83 : liens cliquables et sûrs, fichier audio en carte, tailles en Ko", async ({ page }) => {
   await boot(page);
   await ouvrir(page, {
-    id: "c_l20_liens", userId: "u_lea", userName: "Léa", lastAt: Date.now(), unread: 0,
+    id: "c_l20_liens", userId: "a1b2c3d4-0000-4000-8000-00000000c0a1", userName: "Léa", lastAt: Date.now(), unread: 0,
     messages: [
       { id: "k1", from: "u_lea", text: "Billets : https://exemple.passio.test/billet?id=4. À jeudi", at: Date.now() - 3000 },
       { id: "k2", from: "u_lea", text: "piège javascript:alert(1) et <img src=x onerror=alert(2)>", at: Date.now() - 2000 },
@@ -163,7 +163,7 @@ test("⑥ MSG-C59 / C11 : Entrée au doigt saute une ligne ; la photo de groupe 
   await boot(page);
   const erreurs = [];
   page.on("pageerror", (e) => erreurs.push(String(e && e.message)));
-  await ouvrir(page, { id: "c_l20_tactile", userId: "u_lea", userName: "Léa", lastAt: Date.now(), unread: 0, messages: [] });
+  await ouvrir(page, { id: "c_l20_tactile", userId: "a1b2c3d4-0000-4000-8000-00000000c0a1", userName: "Léa", lastAt: Date.now(), unread: 0, messages: [] });
   const champ = page.locator("#convFpInput");
   await champ.click();
   await champ.type("ligne un");

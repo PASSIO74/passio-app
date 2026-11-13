@@ -13074,3 +13074,19 @@ button, a, label, select, summary,
 }
 .config-taille.actif { border-color: var(--accent); background: var(--accent-tile, #f5efff); }
 .config-taille-aa { font-weight: 800; line-height: 1; }
+
+/* LOT-23 (audit UX/UI du 2026-11-10, MSG-C78 / C87) : à la place de la saisie
+   d'une conversation qui ne peut pas aboutir, une ligne qui dit pourquoi. */
+.conv-issue {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-dim, #4b4563);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.conv-issue span { flex: 1; min-width: 0; }
+.conv-issue .btn { min-height: 44px; flex-shrink: 0; }

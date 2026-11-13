@@ -37,7 +37,7 @@ async function semerConv(page, nbMessages) {
       msgs.push({ id: "m" + i, from: i % 2 ? "me" : "u_lea",
         text: "Message numéro " + i, at: Date.now() - (n - i) * 600000 });
     }
-    convs.push({ id: "c_lea", userId: "u_lea", userName: "Léa", userEmoji: "🔎",
+    convs.push({ id: "c_lea", userId: "a1b2c3d4-0000-4000-8000-00000000c0a1", userName: "Léa", userEmoji: "🔎",
       userColor: "#7c3aed", unread: 0, messages: msgs });
     saveConversationsNow();
     goTo("messages"); renderMessages();
