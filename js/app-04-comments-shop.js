@@ -6211,7 +6211,13 @@ async function openConversation(convId) {
   if (!c) { console.warn("openConversation: conv not found:", convId); return; }
   // 1ʳᵉ ouverture d'une conversation : proposer les notifications d'appel pour
   // pouvoir RECEVOIR un appel même app fermée (geste utilisateur = autorisé).
-  if (!c.isGroup) { try { if (typeof requestCallNotifications === "function") requestCallNotifications(); } catch(e) {} }
+  // LOT-29 (audit UX/UI du 2026-11-10, MSG-C25) : la demande du SYSTÈME partait
+  // sans un mot à la première conversation. Ici, on ne fait plus que renouveler
+  // l'abonnement d'une permission DÉJÀ accordée ; la demande se fait là où elle
+  // s'explique (« Autoriser les notifications », réglages des notifications).
+  if (!c.isGroup && typeof Notification !== "undefined" && Notification.permission === "granted") {
+    try { if (typeof requestCallNotifications === "function") requestCallNotifications(); } catch(e) {}
+  }
   c._convPage = 1; // repart du bas (messages récents) à chaque ouverture
   _alignerIdentiteConv(c); // pseudo changé depuis la création du fil
   const u = (state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
@@ -6242,9 +6248,22 @@ async function openConversation(convId) {
       <div style="position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:8px;border:1.5px solid var(--bg-soft);">📷</div>
     </div>`;
   } else {
-    const _hu = { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
-    avatarHtml = `<div class="conv-fp-head-avatar" style="background:${avatarBg(_hu)};" onclick="${c.isGroup ? '' : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">${avatarInner(_hu)}</div>`;
+    // LOT-29 (MSG-C20) : un groupe sans photo montrait la photo de son premier
+    // membre — la liste, elle, montre 👥. L'avatar d'un groupe ouvre sa fenêtre.
+    const _hu = c.isGroup
+      ? { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: null }
+      : { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
+    avatarHtml = `<div class="conv-fp-head-avatar" style="background:${avatarBg(_hu)};" onclick="${c.isGroup ? `showGroupMembers('${escapeJsArg(convId)}')` : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">${avatarInner(_hu)}</div>`;
   }
+  // LOT-29 (MSG-C20) : la discussion d'une activité (`evgrp_<id>`) mène à
+  // l'activité — seulement si elle est connue ici (jamais un lien mort).
+  var _evIdConv = (c.isGroup && /^evgrp_/.test(String(convId))) ? String(convId).slice(6) : "";
+  var _evConnue = !!(_evIdConv && typeof allEvents === "function" && (allEvents() || []).some(function (e) { return e && e.id === _evIdConv; }));
+  var _ligneGroupe = c.isGroup
+    ? (_evConnue
+        ? `<span class="conv-fp-lien-activite" data-ev="${escapeHtml(_evIdConv)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(_evIdConv)}')">Voir l'activité ›</span>`
+        : `👥 ${nbMembresGroupe(c)} membres`)
+    : (_estConvDemo(c) ? 'Exemple PASSIO' : 'Voir le profil');
 
   // ── Header ──
   const headEl = document.getElementById("convFpHead");
@@ -6253,9 +6272,9 @@ async function openConversation(convId) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
     </button>
     ${avatarHtml}
-    <div class="conv-fp-head-info" onclick="${c.isGroup ? '' : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">
+    <div class="conv-fp-head-info" onclick="${c.isGroup ? `showGroupMembers('${escapeJsArg(convId)}')` : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">
       <div class="conv-fp-name">${escapeHtml(displayName)}</div>
-      <div class="conv-fp-passion">${c.isGroup ? `👥 ${(c.userIds||[]).length} membres` : (_estConvDemo(c) ? 'Exemple PASSIO' : 'Voir le profil')}</div>
+      <div class="conv-fp-passion">${_ligneGroupe}</div>
     </div>
     <div class="conv-actions">
       ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${escapeJsArg(convId)}')" title="Membres">
@@ -7162,11 +7181,17 @@ function _renderReplyBar() {
   if (!rt) { if (bar) bar.remove(); return; }
   var toolbar = document.querySelector("#conv-fullpage .conv-toolbar");
   if (!toolbar) return;
+  // LOT-29 (audit UX/UI du 2026-11-10, MSG-C86) : la barre (≈ 53 px) apparaissait
+  // par-dessus le bas du fil — réactions et heure du dernier message cachées. Si
+  // l'on était en bas du fil, on y reste une fois la barre posée.
+  var fil = document.getElementById("convFpThread");
+  var enBas = !!(fil && (fil.scrollHeight - fil.scrollTop - fil.clientHeight) < 48);
   if (!bar) { bar = document.createElement("div"); bar.id = "convReplyBar"; toolbar.parentNode.insertBefore(bar, toolbar); }
   bar.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-soft);border-left:3px solid var(--accent);border-radius:8px;margin:0 8px 6px;">' +
     '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:800;color:var(--accent);">Réponse à ' + escapeHtml(rt.n) + '</div>' +
     '<div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(rt.t) + '</div></div>' +
-    '<span onclick="_cancelReply()" style="font-size:18px;cursor:pointer;color:var(--muted);padding:0 4px;">✕</span></div>';
+    '<button type="button" class="conv-reply-annuler" onclick="_cancelReply()" aria-label="Annuler la réponse" style="font-size:18px;cursor:pointer;color:var(--muted);background:none;border:0;min-width:44px;min-height:44px;margin:-10px -8px -10px 0;">✕</button></div>';
+  if (enBas && fil) fil.scrollTop = fil.scrollHeight;
 }
 
 // LOT-4 (audit UX/UI du 2026-11-10) — FEUILLE DE CONFIRMATION de la messagerie.
