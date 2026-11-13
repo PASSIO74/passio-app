@@ -1236,7 +1236,7 @@ jobs:
             exit 1
           fi
 
-          # ── Une exception du scan des secrets ajoutée au diff final est refusée (relecture de #866) ──
+          # ── Un commentaire d'exception du scan des secrets ajouté au diff final est refusé (relecture de #866) ──
           # `.gitleaksignore` et `.gitleaks.toml` sont des chemins interdits ; un commentaire en ligne `gitleaks:allow`
           # AJOUTÉ au diff tairait une trouvaille NEUVE du scan. Leur tri est à Benjamin : refus. Une ligne qui le
           # RETIRE passe. Seul le diff FINAL est lu : un commit intermédiaire ne l'est pas encore (P1-14 bis, PR

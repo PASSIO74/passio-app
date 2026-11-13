@@ -29,7 +29,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parse } from "./lib/yaml-mini.mjs";
 import { evaluer, decide } from "./lib/expression-github.mjs";
@@ -99,7 +99,7 @@ case "$tout" in
   # Le commit lui-même (message) et une PR par numéro : le repli de la gouvernance quand l'index est vide.
   "api"*"/commits/"*) corps="$(cat "$FX/commit.json")" ;;
   "api"*"/pulls/"*"/files"*) corps="$(cat "$FX/pr-files.json")" ;;
-  "api"*"/pulls/"*"/reviews"*) corps="[]" ;;
+  "api"*"/pulls/"*"/reviews"*) corps="$(cat "$FX/pr-reviews.json" 2>/dev/null || echo "[]")" ;;
   "api"*"/pulls/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/pulls/([0-9]+).*#\\1#')"; corps="$(cat "$FX/pr-$n.json")" ;;
   "api"*"/issues/"*) n="$(printf '%s' "$tout" | sed -E 's#.*/issues/([0-9]+).*#\\1#')"; corps="$(cat "$FX/issue-$n.json")" ;;
   "issue create"*) printf '%s :: jeton=%s\\n' "$tout" "\${GH_TOKEN:-}" >> "$LOG"; echo "https://github.com/o/r/issues/999"; exit 0 ;;
@@ -144,8 +144,10 @@ function fixtures(obj) {
   for (const [k, v] of Object.entries(obj)) fs.writeFileSync(path.join(FX, k + ".json"), JSON.stringify(v));
 }
 
-/** Les commandes du runner d'une sortie (« ::error … », « ::warning … ») : une par ligne, sans retour chariot. */
-const annotations = (sortie) => sortie.split(/\r?\n/).filter((l) => l.startsWith("::"));
+/** Ce que le runner lit comme une commande dans ce qu'une étape écrit, sur sa sortie standard ET son erreur standard
+ *  (le `flux` de `jouer`, même quand l'étape réussit) : chaque ligne coupée sur \r\n, \r ou \n (sa lecture ligne à
+ *  ligne), espaces de tête retirés, qui commence par « :: » ou par la forme historique « ##[ ». */
+const annotations = (r) => r.flux.split(/\r\n|\r|\n/).map((l) => l.trimStart()).filter((l) => l.startsWith("::") || l.startsWith("##["));
 
 /** Exécute un bloc `run:` réel dans le bac ; rend code, sortie, journal, outputs, résumé. */
 function jouer(script, env = {}) {
@@ -156,23 +158,25 @@ function jouer(script, env = {}) {
   const texte = script.replace(/\$\{\{[^}]*\}\}/g, "").split("/tmp/").join(BAC + "/")
     .split('execFileSync("gh", args, { encoding: "utf8" })').join('execFileSync("node", [process.env.FAUX_GH_JS, ...args], { encoding: "utf8" })');
   fs.writeFileSync(BAC + "/etape.sh", texte);
-  try {
-    // `-e` comme GitHub (`bash -e {0}` est le shell par défaut d'un `run:` sans `shell:`) : sans lui, un
-    // `node …; code=$?` qui tue l'étape en production resterait vert ici (défaut du digest, 2026-09-18).
-    sortie = execFileSync("bash", ["-e", BAC + "/etape.sh"], {
-      cwd: RACINE, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        // Sous Git Bash, `C:/x` sur le PATH devient `/c/x` ; sous Linux, rien à convertir.
-        PATH: BAC.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase()) + "/bin" + path.delimiter + process.env.PATH,
-        JQ_BIN: JQ, FX, LOG, FAUX_GH_JS: BAC + "/bin/faux-gh.mjs",
-        GITHUB_REPOSITORY: "o/r", GITHUB_SERVER_URL: "https://github.com", GITHUB_RUN_ID: "1", GITHUB_SHA: "a".repeat(40),
-        GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: summ, RUNNER_TEMP: BAC, ...env,
-      },
-    });
-  } catch (e) { code = e.status; sortie = String(e.stdout || "") + String(e.stderr || ""); }
+  // `-e` comme GitHub (`bash -e {0}` est le shell par défaut d'un `run:` sans `shell:`) : sans lui, un
+  // `node …; code=$?` qui tue l'étape en production resterait vert ici (défaut du digest, 2026-09-18).
+  // `spawnSync` : l'erreur standard d'une étape RÉUSSIE est gardée aussi (`flux`) — le runner y lit ses commandes.
+  const r = spawnSync("bash", ["-e", BAC + "/etape.sh"], {
+    cwd: RACINE, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024,
+    env: {
+      ...process.env,
+      // Sous Git Bash, `C:/x` sur le PATH devient `/c/x` ; sous Linux, rien à convertir.
+      PATH: BAC.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase()) + "/bin" + path.delimiter + process.env.PATH,
+      JQ_BIN: JQ, FX, LOG, FAUX_GH_JS: BAC + "/bin/faux-gh.mjs",
+      GITHUB_REPOSITORY: "o/r", GITHUB_SERVER_URL: "https://github.com", GITHUB_RUN_ID: "1", GITHUB_SHA: "a".repeat(40),
+      GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: summ, RUNNER_TEMP: BAC, ...env,
+    },
+  });
+  if (r.error) throw r.error;
+  const stdout = String(r.stdout || ""), stderr = String(r.stderr || "");
+  if (r.status === 0) sortie = stdout; else { code = r.status; sortie = stdout + stderr; }
   const log = fs.readFileSync(LOG, "utf8");
-  return { code, sortie, log, lignes: log.split("\n").filter(Boolean), out: fs.readFileSync(out, "utf8"), summary: fs.readFileSync(summ, "utf8") };
+  return { code, sortie, flux: stdout + "\n" + stderr, log, lignes: log.split("\n").filter(Boolean), out: fs.readFileSync(out, "utf8"), summary: fs.readFileSync(summ, "utf8") };
 }
 
 const iso = (minAgo) => new Date(Date.now() - minAgo * 60_000).toISOString();
@@ -659,11 +663,14 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   });
   const muet = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
   assert.notEqual(muet.code, 0, muet.sortie.slice(-600));
-  assert.match(muet.sortie, /::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus \(faux gh : échec simulé/);
-  assert.match(muet.sortie, /Relance le job/);
-  // L'issue SUPPRIMÉE (404, 410) sur une PR OUVERTE : refus, avec un remède qui marche (relecture de #875). Le 404
-  // vient avec ou sans corps JSON (gh écrit le corps sur sa sortie standard) ; la cause se cite telle quelle, sans
-  // l'espace qu'y laissait le saut de ligne final.
+  // Chaque annotation de ce bloc se vérifie EN ENTIER, seule de sa sortie (seconde relecture de #875) : ici, la cause
+  // du faux gh (la commande entière) n'a pas de parenthèse ; ancrée des deux côtés, rien ne s'y ajoute.
+  const illisibles = annotations(muet);
+  assert.equal(illisibles.length, 1, illisibles.join("\n"));
+  assert.match(illisibles[0], /^::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus \(faux gh : échec simulé : [^()]*\) : impossible de savoir si cette PR est une réparation de la Sentinelle\. Relance le job\.$/);
+  // L'issue introuvable (404) ou supprimée (410) sur une PR OUVERTE : refus, avec un remède qui marche (relecture de
+  // #875). Le 404 vient avec ou sans corps JSON (gh écrit le corps sur sa sortie standard) ; la cause se cite telle
+  // quelle, sans l'espace qu'y laissait le saut de ligne final.
   for (const [nom, env, cause] of [
     ["404", { FAUX_404: "/issues/700" }, "gh: Not Found (HTTP 404)"],
     ["404 sans corps JSON", { FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "gh: HTTP 404" }, "gh: HTTP 404"],
@@ -672,8 +679,9 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
     const disparue = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", ...env });
     assert.notEqual(disparue.code, 0, nom + " : " + disparue.sortie.slice(-600));
     // Ce remède-là, et lui seul (un second, jamais éprouvé, avait été proposé) : l'annotation est comparée EN ENTIER,
-    // et c'est la seule de la sortie — rien avant elle, rien après, rien dans une autre annotation.
-    assert.deepEqual(annotations(disparue.sortie), [
+    // et c'est la seule de ce que l'étape écrit — rien avant elle, rien après, rien dans une autre annotation, sur la
+    // sortie standard comme sur l'erreur, en tête de ligne ou après des espaces, sous la forme « :: » ou « ##[ ».
+    assert.deepEqual(annotations(disparue), [
       "::error title=Gouvernance::L'issue #700 est introuvable (" + cause + ") : la branche claude/issue-700-1 prétend réparer une issue introuvable, relancer n'y changera rien. Republie le travail depuis une branche qui ne suit pas claude/issue-<n>-<run>.",
     ], nom);
     assert.doesNotMatch(disparue.sortie, /Relance le job/, nom);
@@ -681,8 +689,9 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   // Une limite de débit (403) n'est PAS une issue disparue : « Relance le job ».
   const debit = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "gh: API rate limit exceeded (HTTP 403)" });
   assert.notEqual(debit.code, 0);
-  assert.match(debit.sortie, /Les labels de l'issue #700 n'ont pas pu être lus \(gh: API rate limit exceeded \(HTTP 403\)/);
-  assert.match(debit.sortie, /Relance le job/);
+  assert.deepEqual(annotations(debit), [
+    "::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus (gh: API rate limit exceeded (HTTP 403)) : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job.",
+  ]);
   // Une cause sur plusieurs lignes, retour chariot compris : UNE ligne d'annotation, rien qui commence une autre commande.
   const multi = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "ligne une\\r::warning::forgée\\nligne deux" });
   assert.notEqual(multi.code, 0);
@@ -690,6 +699,9 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   assert.ok(ligneErreur && ligneErreur.includes("ligne une") && ligneErreur.includes("ligne deux"), "la cause tient sur la ligne de l'annotation : " + multi.sortie.slice(-400));
   assert.ok(!/\r/.test(ligneErreur), "aucun retour chariot dans l'annotation");
   assert.ok(!multi.sortie.split(/\r|\n/).some((l) => l.startsWith("::warning::forgée")), "aucune commande du runner forgée par la cause");
+  assert.deepEqual(annotations(multi), [
+    "::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus (ligne une ::warning::forgée ligne deux) : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job.",
+  ]);
   // La Sentinelle en SECOND label est vue (un `.labels[0]` ne lirait que le premier).
   fixtures({
     "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
@@ -700,19 +712,34 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   assert.notEqual(second.code, 0);
   assert.ok(second.log.includes("issue comment 700"), "la réparation est jugée comme telle\n" + second.log);
   // Sur un PUSH dans main, la PR est DÉJÀ fusionnée : une issue effacée après coup ne bloque pas sa mise en ligne — dit.
+  // L'avertissement EN ENTIER, seul de ce que l'étape écrit : il dit ce que fait la garde (l'issue introuvable ne bloque
+  // pas ; la contre-revue, si) et ce qu'elle ne revérifie pas — jamais « a passé la gouvernance », qu'elle ne sait pas.
+  const AVERTISSEMENT = "::warning title=Gouvernance::L'issue #700 est introuvable (gh: Not Found (HTTP 404)) ; la PR #77 est déjà fusionnée : elle est jugée ici comme humaine. L'issue introuvable ne bloque pas son déploiement ; la contre-revue des fichiers critiques s'applique comme à toute PR humaine. Non revérifié ici : si c'était une réparation de la Sentinelle, qu'elle restait dans son périmètre et dans sa taille.";
   fixtures({ "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }], "commit-pulls": [{ number: 77 }] });
   const apres = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
   assert.equal(apres.code, 0, apres.sortie.slice(-600));
-  // L'avertissement EN ENTIER, seul de sa sortie : il dit ce que cette garde fait (elle ne bloque pas) et ce qu'elle
-  // ne revérifie pas — jamais « a passé la gouvernance », qu'elle ne sait pas.
-  assert.deepEqual(annotations(apres.sortie), [
-    "::warning title=Gouvernance::L'issue #700 est introuvable (gh: Not Found (HTTP 404)) ; la PR #77 est déjà fusionnée : elle est jugée ici comme humaine, et cette garde ne bloque pas son déploiement. Non revérifié ici : si c'était une réparation de la Sentinelle, qu'elle restait dans son périmètre.",
-  ], apres.sortie.slice(-600));
-  assert.ok(!apres.log.includes("issue comment 700"), "rien n'est écrit sur une issue qui n'existe plus");
+  assert.deepEqual(annotations(apres), [AVERTISSEMENT], apres.sortie.slice(-600));
+  assert.ok(!apres.log.includes("issue comment 700"), "rien n'est écrit sur une issue introuvable");
+  // Un push d'une PR CRITIQUE : la contre-revue s'applique comme à toute PR humaine (seconde relecture de #875 : dire
+  // « cette garde ne bloque pas son déploiement » était faux ici). Sans elle, refus ; avec elle, l'avertissement seul.
+  const critique = { "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: "sw.js", additions: 1, deletions: 0 }], "commit-pulls": [{ number: 77 }] };
+  fixtures(critique);
+  const sansRevue = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
+  assert.notEqual(sansRevue.code, 0, sansRevue.sortie.slice(-600));
+  assert.deepEqual(annotations(sansRevue), [
+    AVERTISSEMENT,
+    "::error title=Contre-revue manquante::Cette PR touche un périmètre critique. Une revue GitHub par PASSIO74, ancrée sur le SHA courant et contenant le marqueur « Contre-revue technique indépendante », est obligatoire avant preview ou production.",
+  ]);
+  fixtures({ ...critique, "pr-reviews": [{ user: { login: "PASSIO74" }, commit_id: "b".repeat(40), body: "## Contre-revue technique indépendante — version b" }] });
+  const avecRevue = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
+  assert.equal(avecRevue.code, 0, avecRevue.sortie.slice(-600));
+  assert.deepEqual(annotations(avecRevue), [AVERTISSEMENT]);
   // … mais une PANNE (pas une disparition) sur un push reste un refus à relancer.
   const panne = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
   assert.notEqual(panne.code, 0);
-  assert.match(panne.sortie, /Relance le job/);
+  const pannes = annotations(panne);
+  assert.equal(pannes.length, 1, pannes.join("\n"));
+  assert.match(pannes[0], /^::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus \(faux gh : échec simulé : [^()]*\) : impossible de savoir si cette PR est une réparation de la Sentinelle\. Relance le job\.$/);
 });
 
 // ═══ Gouvernance — course de l'index « commit → PR » (2026-11-03) ═════════

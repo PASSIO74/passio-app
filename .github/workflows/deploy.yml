@@ -191,7 +191,7 @@ jobs:
               cause="$(head -c 300 "${RUNNER_TEMP}/gouvernance-labels.err" | tr '\r\n' '  ' | sed 's/[[:space:]]*$//')"
               if grep -qE 'HTTP 404|HTTP 410|Not Found' <<< "${cause}"; then
                 if [ "${EVENT_NAME}" = "push" ]; then
-                  echo "::warning title=Gouvernance::L'issue #${issue_num} est introuvable (${cause}) ; la PR #${pr} est déjà fusionnée : elle est jugée ici comme humaine, et cette garde ne bloque pas son déploiement. Non revérifié ici : si c'était une réparation de la Sentinelle, qu'elle restait dans son périmètre."
+                  echo "::warning title=Gouvernance::L'issue #${issue_num} est introuvable (${cause}) ; la PR #${pr} est déjà fusionnée : elle est jugée ici comme humaine. L'issue introuvable ne bloque pas son déploiement ; la contre-revue des fichiers critiques s'applique comme à toute PR humaine. Non revérifié ici : si c'était une réparation de la Sentinelle, qu'elle restait dans son périmètre et dans sa taille."
                   disparue=true
                 else
                   echo "::error title=Gouvernance::L'issue #${issue_num} est introuvable (${cause}) : la branche ${head_ref} prétend réparer une issue introuvable, relancer n'y changera rien. Republie le travail depuis une branche qui ne suit pas claude/issue-<n>-<run>."
