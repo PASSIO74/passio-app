@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, COMMENTAIRE_CONFIER, dejaConfiee, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE } from "../../supabase/functions/_shared/pilotage.js";
+import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, COMMENTAIRE_CONFIER, dejaConfiee, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE, RUNS_DU_VOYANT } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
 
@@ -806,7 +806,8 @@ const touteLaPanne = (extra = {}) => ({
       iss(6, ["reparation", "claude"], { titre: "[RÉPARER] #90", reparation: true, confiee: true, depuis: "2026-10-22T00:00:00Z" }),
       iss(7, [], { pr: true, correctif: true, titre: "fix: x" }),
     ],
-    runs: { deploy: { conclusion: "failure", etat: "completed" }, sentinelle: { conclusion: "success", etat: "completed", le: MUTE_LE }, veille: { conclusion: "failure", etat: "completed", le: MUTE_LE } },
+    runs: { deploy: { conclusion: "failure", etat: "completed" }, sentinelle: { conclusion: "success", etat: "completed", le: MUTE_LE }, veille: { conclusion: "failure", etat: "completed", le: MUTE_LE },
+      securite: { conclusion: "failure", etat: "completed", le: MUTE_LE, url: "https://github.com/P/p/actions/runs/9" } },
     aReparer: [
       { cible: "issue", numero: 1, libelle: "#1", enCours: null }, { cible: "issue", numero: 2, libelle: "#2", enCours: 5 }, { cible: "issue", numero: 3, libelle: "#3", enCours: null },
       { cible: "run", cle: "deploy", libelle: "d", enCours: null }, { cible: "run", cle: "veille", libelle: "v", enCours: null },
@@ -827,11 +828,18 @@ test("㊴ n'importe quel problème a son bouton : un seul « Régler », et il d
   for (const d of etats) {
     const pbs = aFaire(d, MAINTENANT_AF).filter((x) => x.prio <= 1 && !x.enCours);
     assert.ok(pbs.length >= 8, "le banc couvre bien toutes les familles : " + pbs.map((x) => x.id));
+    assert.ok(pbs.some((x) => x.id === "scan:securite"), "le banc couvre le scan de sécurité (relecture de #866)");
     for (const x of pbs) {
       const principaux = x.gestes.filter((g) => g.principal);
       if (x.id.startsWith("signalement:")) {
         assert.equal(principaux.length, 0, "aucune machine ne décide d'un signalement");
         assert.deepEqual(x.gestes.map((g) => g.corps.statut), ["handled", "dismissed"]);
+      } else if (x.etiquette === "À trier") {
+        // Un tri HUMAIN (le scan de sécurité) : un lien, jamais un « Régler » ni une action de la fonction.
+        assert.equal(principaux.length, 1, x.id);
+        assert.equal(principaux[0].libelle, "Ouvrir", x.id);
+        assert.ok(principaux[0].ouvrir && !principaux[0].special, x.id);
+        assert.ok(!x.gestes.some((g) => g.corps || g.libelle === "Régler"), x.id + " : aucune action, aucun « Régler »");
       } else {
         assert.equal(principaux.length, 1, x.id + " : un problème sans bouton, ou avec deux");
         assert.equal(principaux[0].libelle, "Régler", x.id);
@@ -847,6 +855,17 @@ test("㊴ n'importe quel problème a son bouton : un seul « Régler », et il d
   assert.ok(!l.find((x) => x.id === "issue:2").gestes.some((g) => g.principal));
   // Plus aucune confirmation à relire : la page laisse 5 s pour annuler.
   for (const x of l) for (const g of x.gestes) assert.equal(g.confirmation, undefined, x.id);
+});
+
+test("㊴ bis (relecture de #866) : la veille n'est TENUE que par les exécutions que le voyant lit — `verdict` et RUNS_DU_VOYANT se tiennent ensemble", () => {
+  // Un scan de sécurité illisible figeait la veille alors que `verdict` ne le lit pas. Si `verdict` se met à lire une
+  // exécution de plus (runs.veille, runs.securite…), elle doit entrer dans RUNS_DU_VOYANT — et l'inverse.
+  const src = fs.readFileSync("supabase/functions/_shared/pilotage.js", "utf8");
+  const debut = src.indexOf("export function verdict(e) {");
+  assert.ok(debut >= 0, "verdict se lit");
+  const corpsVerdict = src.slice(debut, src.indexOf("\n}\n", debut));
+  const lues = [...new Set([...corpsVerdict.matchAll(/\bruns\.(\w+)/g)].map((m) => m[1]))].sort();
+  assert.deepEqual(lues, [...RUNS_DU_VOYANT].sort());
 });
 
 test("㊽ « Tout régler » : seulement ce qui répare ; jamais le retour arrière, la modération, ni un paiement", () => {

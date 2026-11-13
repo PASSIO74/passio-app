@@ -75,18 +75,29 @@ const M = [
   ["R47 la Sentinelle se lit sans filtre d'événement : dix exécutions d'un fork la chassent", FN, "&event=${ev}&per_page=10", "&per_page=10", BANC, "㊴"],
   ["R48 une lecture d'exécutions refusée passe si l'autre répond", FN, `if (lectures.some((l) => !l))`, `if (lectures.every((l) => !l))`, BANC, "㊴"],
   ["R49 les PR se lisent sur une seule page", FN, `const PR_PAGES_MAX = 3;`, `const PR_PAGES_MAX = 1;`, BANC, "㊵"],
-  ["R50 une liste de PR illisible passe pour vide", FN, `if (!Array.isArray(lot)) return { ok: false, lignes: [], raison: "GitHub : liste des PR illisible" };`, `if (!Array.isArray(lot)) return { ok: true, lignes: [], raison: null };`, BANC, "㊵"],
-  ["R51 au-delà de trois pages, rien n'est dit", FN, `raison: "plus de " + PR_PAGES_MAX * 100 + " PR ouvertes : les plus anciennes ne sont pas lues" };`, `raison: null };`, BANC, "㊵"],
-  ["R52 un défaut du code passe pour une panne de GitHub", FN, `const defaut = ["ReferenceError", "SyntaxError", "RangeError"].includes(`, `const defaut = [].includes(`, BANC, "㊶"],
-  ["R53 une TypeError (un fetch qui ne joint pas GitHub) passe pour un défaut du code", FN, `const defaut = ["ReferenceError", "SyntaxError", "RangeError"].includes(`, `const defaut = ["ReferenceError", "SyntaxError", "RangeError", "TypeError"].includes(`, BANC, "㊶"],
+  ["R50 une liste de PR illisible passe pour vide", FN, `if (!Array.isArray(lot)) return { ok: false, lignes, raison: "GitHub : liste des PR illisible" };`, `if (!Array.isArray(lot)) return { ok: true, lignes, raison: null };`, BANC, "㊵"],
+  ["R51 au-delà de trois pages, rien n'est dit", FN, `? "plus de " + PR_PAGES_MAX * 100 + " PR ouvertes : les plus anciennes ne sont pas lues"`, `? null`, BANC, "㊵"],
+  ["R52 un défaut du code passe pour une panne de GitHub", FN, `|| "") === "ReferenceError";`, `|| "") === "AucuneErreur";`, BANC, "㊶"],
+  ["R53 une TypeError (un fetch qui ne joint pas GitHub) passe pour un défaut du code", FN, `const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";`, `const defaut = ["ReferenceError", "TypeError"].includes(String((err as { name?: string })?.name || ""));`, BANC, "㊶"],
   ["R54 un défaut du code n'est qu'un avertissement dans les journaux", FN, `console.error("pilotage : défaut du code dans un geste "`, `console.warn("pilotage : défaut du code dans un geste "`, BANC, "㊶"],
   ["R55 la note armée illisible laisse dire « part en ligne »", PJ, `if (i.autoFusion && fusionner && nonLus.includes("fusionsArmees")) {`, `if (false) {`, BANC, "㊷"],
   ["R56 sept jours de notes armées : une auto-fusion plus ancienne n'est plus comparée", FN, `.gte("created_at", ilYa(30 * 864e5))`, `.gte("created_at", ilYa(7 * 864e5))`, BANC, "㊷"],
   // Le scan de sécurité du lundi (contre-revue de #863) : dit, à trier par Benjamin, jamais réparé.
   ["R57 le scan en échec ne se dit pas", PJ, `  if (sc) {\n`, `  if (false) {\n`, BANC, "㊸"],
   ["R58 le scan devient réparable (un agent trierait les secrets)", PJ, `  veille: { fichier: "veille-production.yml", libelle: "Veille de production" },\n};`, `  veille: { fichier: "veille-production.yml", libelle: "Veille de production" },\n  securite: { fichier: "securite.yml", libelle: "Scan de sécurité" },\n};`, BANC, "㊸"],
-  ["R59 les exécutions de PR du scan comptent", PJ, `securite: Object.freeze(["schedule"]),`, `securite: Object.freeze(["schedule", "pull_request"]),`, BANC, "㊸"],
-  ["R60 le scan illisible ne se dit pas", PJ, `, securite: "le scan de sécurité du lundi" });`, ` });`, BANC, "㊸"],
+  ["R59 les exécutions de PR du scan comptent", PJ, `securite: Object.freeze(["schedule", "workflow_dispatch"]),`, `securite: Object.freeze(["schedule", "workflow_dispatch", "pull_request"]),`, BANC, "㊸"],
+  ["R60 le scan illisible ne se dit pas", PJ, `, securite: "le scan de sécurité" });`, ` });`, BANC, "㊸"],
+  // Relecture indépendante de #866 (2026-11-13).
+  ["R61 une SyntaxError (un corps qui n'est pas du JSON) passe pour un défaut du code", FN, `const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";`, `const defaut = ["ReferenceError", "SyntaxError"].includes(String((err as { name?: string })?.name || ""));`, BANC, "㊶"],
+  ["R62 une RangeError (une date illisible) passe pour un défaut du code", FN, `const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";`, `const defaut = ["ReferenceError", "RangeError"].includes(String((err as { name?: string })?.name || ""));`, BANC, "㊶"],
+  ["R63 les passages manuels du scan ne comptent plus : un tri relancé et vert garde la ligne", PJ, `securite: Object.freeze(["schedule", "workflow_dispatch"]),`, `securite: Object.freeze(["schedule"]),`, BANC, "㊸"],
+  ["R64 toute exécution non lue tient la veille (un scan illisible la fige)", FN, `.filter((c) => (RUNS_DU_VOYANT as readonly string[]).includes(c));`, `.filter(() => true);`, BANC, "㊹"],
+  ["R65 la Sentinelle illisible ne tient plus la veille", PJ, `export const RUNS_DU_VOYANT = Object.freeze(["deploy", "sentinelle"]);`, `export const RUNS_DU_VOYANT = Object.freeze(["deploy"]);`, BANC, "㊹"],
+  ["R66 la liste du voyant et ce que lit verdict divergent", PJ, `export const RUNS_DU_VOYANT = Object.freeze(["deploy", "sentinelle"]);`, `export const RUNS_DU_VOYANT = Object.freeze(["deploy", "sentinelle", "securite"]);`, "tests/unit/pilotage.test.mjs", "㊴ bis"],
+  ["R67 trois cents PR tout juste se disent « plus de trois cents »", FN, `    if (Array.isArray(reste) && reste.length === 0) return { ok: true, lignes, raison: null };\n`, ``, BANC, "㊵"],
+  ["R68 une lecture d'au-delà illisible passe pour « tout est lu »", FN, `if (Array.isArray(reste) && reste.length === 0)`, `if (!Array.isArray(reste) || reste.length === 0)`, BANC, "㊵"],
+  ["R69 une page en échec jette les pages lues (le correctif récent disparaît)", FN, `if (!r || !r.ok) return { ok: false, lignes, raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };`, `if (!r || !r.ok) return { ok: false, lignes: [], raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };`, BANC, "㊵"],
+  ["R70 le scan dit tout sur une ligne de téléphone (son détail hors du repli)", PJ, `quoi: "À trier par toi, jamais par une machine.",`, `quoi: "À trier par toi, jamais par une machine. Son journal dit quel job : les secrets, npm audit ou la gate des workflows.",`, "tests/unit/pilotage.test.mjs", "㊴"],
 ];
 
 const lire = (f) => fs.readFileSync(f, "utf8");
@@ -106,13 +117,14 @@ for (const [nom, fichier, de, vers, suite, motif] of M) {
   let code = null, sortie = "";
   try {
     fs.writeFileSync(fichier, origine.replace(de, () => vers));
-    const r = spawnSync(process.execPath, ["--test", "--test-name-pattern", "^" + motif + " ", suite], { encoding: "utf8" });
+    const r = spawnSync(process.execPath, ["--test", "--test-name-pattern", "^" + motif + " ", suite], { encoding: "utf8", timeout: 300_000 });
     code = r.status; sortie = (r.stdout || "") + (r.stderr || "");
+    if (r.error || r.signal) sortie = "BLOQUÉ (" + ((r.error && r.error.code) || r.signal) + ")\n" + sortie;
   } finally { fs.writeFileSync(fichier, origine); }
   const joues = /ℹ tests (\d+)/.exec(sortie);
   const rouge = code !== 0 && /ℹ fail [1-9]/.test(sortie);
   if (rouge) rouges++;
-  lignes.push(`${rouge ? "ROUGE" : "VERT "} ${nom} → ${motif} (${joues ? joues[1] : "?"} test joué)`);
+  lignes.push(`${rouge ? "ROUGE" : sortie.startsWith("BLOQUÉ") ? "BLOQUÉ" : "VERT "} ${nom} → ${motif} (${joues ? joues[1] : "?"} test joué)`);
 }
 console.log(lignes.join("\n"));
 console.log(`\n${rouges}/${M.length} réinjections rougissent leur test.`);

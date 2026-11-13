@@ -120,6 +120,8 @@ async function github(methode, url, corps) {
   const g = banc.gh, chemin = url.pathname, q = url.searchParams;
   if (g.lenteur) await g.lenteur(methode, chemin);
   const p = g.panne ? g.panne(methode, chemin + url.search) : null;
+  // `brut` : un corps qui n'est PAS du JSON (une page de maintenance servie en 200) — `Response.json()` y lève une SyntaxError.
+  if (p && p.brut != null) return new Response(p.brut, { status: p.status || 200, headers: { "Content-Type": "text/html", ...(p.entetes || {}) } });
   if (p) return rep(p.corps ?? { message: "panne du banc" }, p.status, p.entetes || {});
   const entetes = g.expiration ? { "github-authentication-token-expiration": g.expiration } : {};
   let m;
@@ -1310,14 +1312,39 @@ test("㊵ cent vingt PR de forks plus récentes ne font plus sortir un correctif
   assert.equal(ligneAFaire(r, "lecture:pr"), null);
   assert.deepEqual(appelsGithub("GET", /\/pulls\?/).map((x) => /[?&]page=(\d+)/.exec(x.chemin)[1]), ["1", "2"], "deux pages lues, pas une de plus");
   assert.ok(!(r.corps.aFaire || []).some((x) => /fork/.test(String(x.titre) + String(x.reference))), "aucune PR de fork n'entre dans la liste");
-  // Plus de trois cents : les plus anciennes ne sont pas lues — et c'est dit à l'écran.
+  // Plus de trois cents : les plus anciennes ne sont pas lues — et c'est dit à l'écran. Trois pages, puis une lecture
+  // d'UNE ligne qui dit s'il en reste.
   await monter();
   ouvrirPr({ number: 12 });
   for (let n = 0; n < 320; n++) prDuFork(1000 + n);
   r = await appeler({ action: "etat" });
   assert.match(String(r.corps.github.prNonLues), /plus de 300 PR ouvertes/);
   assert.match(String(ligneAFaire(r, "lecture:pr") && ligneAFaire(r, "lecture:pr").reference), /plus de 300 PR ouvertes/);
-  assert.equal(appelsGithub("GET", /\/pulls\?/).length, 3, "trois pages, pas une de plus");
+  assert.deepEqual(appelsGithub("GET", /\/pulls\?/).map((x) => /per_page=(\d+)&page=(\d+)/.exec(x.chemin).slice(1).join("/")), ["100/1", "100/2", "100/3", "1/301"]);
+  // Trois cents TOUT JUSTE (relecture de #866) : ce ne sont pas « plus de trois cents » — rien à dire.
+  await monter();
+  ouvrirPr({ number: 12 });
+  for (let n = 0; n < 299; n++) prDuFork(1000 + n);
+  r = await appeler({ action: "etat" });
+  assert.equal(r.corps.github.prNonLues, null);
+  assert.equal(ligneAFaire(r, "lecture:pr"), null);
+  // La lecture d'au-delà illisible : on ne sait pas — c'est dit, jamais « tout est lu ».
+  await monter();
+  ouvrirPr({ number: 12 });
+  for (let n = 0; n < 299; n++) prDuFork(1000 + n);
+  banc.gh.panne = (m, chemin) => (/\/pulls\?.*per_page=1&page=301/.test(chemin) ? { status: 502 } : null);
+  r = await appeler({ action: "etat" });
+  assert.match(String(r.corps.github.prNonLues), /300 PR lues, la suite n'a pas pu l'être \(GitHub HTTP 502\)/);
+  // Une page en échec APRÈS une page lue : ce qui est lu reste (relecture de #866) — le correctif récent garde sa ligne,
+  // et l'écran dit ce qui manque. Une PR non lue n'est jamais un bouton qui met en ligne.
+  await monter();
+  ouvrirPr({ number: 2000 });
+  for (let n = 0; n < 120; n++) prDuFork(1000 + n);
+  banc.gh.panne = (m, chemin) => (/\/pulls\?.*[?&]page=2(&|$)/.test(chemin) ? { status: 502 } : null);
+  r = await appeler({ action: "etat" });
+  assert.match(String(r.corps.github.prNonLues), /GitHub HTTP 502/);
+  assert.ok(ligneAFaire(r, "lecture:pr"));
+  assert.equal(ligneAFaire(r, "pr:2000") && ligneAFaire(r, "pr:2000").titre, "Un correctif est prêt", "le correctif de la page lue n'est pas jeté");
   // Un corps de liste illisible n'est pas une liste vide : c'est dit, et aucun bouton ne met en ligne à l'aveugle.
   await monter();
   ouvrirPr({ number: 12 });
@@ -1329,11 +1356,11 @@ test("㊵ cent vingt PR de forks plus récentes ne font plus sortir un correctif
   assert.ok(!l12 || !(l12.gestes || []).some((g) => g.corps && g.corps.action === "fusionner"), "sans lecture de la PR, jamais un bouton qui met en ligne : " + JSON.stringify(l12));
 });
 
-test("㊶ un DÉFAUT DU CODE dans un geste se dit comme tel (500, « défaut du code », en ERREUR dans les journaux) — une TypeError reste ambiguë (un fetch qui ne joint pas GitHub en lève une) : 502, « peut-être parti »", async () => {
+test("㊶ un DÉFAUT DU CODE dans un geste se dit comme tel (500, « défaut du code », en ERREUR dans les journaux) — seule la ReferenceError le prouve : SyntaxError, RangeError et TypeError viennent aussi des données ou du réseau, 502, « peut-être parti »", async () => {
   for (const [Erreur, status, motif, journal] of [
     [ReferenceError, 500, /défaut du code, pas une panne de GitHub/, /^\[erreur\] pilotage : défaut du code dans un geste/],
-    [SyntaxError, 500, /défaut du code, pas une panne de GitHub/, /^\[erreur\] pilotage : défaut du code dans un geste/],
-    [RangeError, 500, /défaut du code, pas une panne de GitHub/, /^\[erreur\] pilotage : défaut du code dans un geste/],
+    [SyntaxError, 502, /peut-être parti/, /^pilotage : geste interrompu/],
+    [RangeError, 502, /peut-être parti/, /^pilotage : geste interrompu/],
     [TypeError, 502, /peut-être parti/, /^pilotage : geste interrompu/],
   ]) {
     await monter();
@@ -1344,6 +1371,18 @@ test("㊶ un DÉFAUT DU CODE dans un geste se dit comme tel (500, « défaut du 
     assert.match(r.corps.error, motif, Erreur.name);
     assert.ok(banc.console.some((l) => journal.test(l) && l.includes('"nom":"' + Erreur.name + '"')), Erreur.name + " : " + banc.console.join(" | "));
   }
+  // Le cas RÉEL de la relecture de #866 : GitHub sert une page HTML en 200 quand la fonction relit la PR avant de la
+  // fusionner — `Response.json()` lève une SyntaxError. Ce sont des données, pas le code : « peut-être parti » (la
+  // fonction ne sait pas où l'exception est née), jamais « un défaut du code ».
+  await monter();
+  ouvrirPr({ number: 12 });
+  banc.gh.panne = (m, chemin) => (m === "GET" && /\/pulls\/12$/.test(chemin) ? { status: 200, brut: "<html><body>GitHub est en maintenance</body></html>" } : null);
+  const r = await appeler({ action: "fusionner", numero: 12, sha: sha("c") });
+  assert.equal(r.status, 502, JSON.stringify(r.corps));
+  assert.match(r.corps.error, /peut-être parti/);
+  assert.ok(banc.console.some((l) => /^pilotage : geste interrompu/.test(l) && l.includes('"nom":"SyntaxError"')), banc.console.join(" | "));
+  assert.ok(!banc.console.some((l) => /défaut du code/.test(l)), banc.console.join(" | "));
+  assert.equal(appelsGithub("PUT", /\/merge$/).length, 0, "rien n'a été fusionné");
 });
 
 test("㊷ la note de la version armée ILLISIBLE ne laisse plus dire « part en ligne » : la ligne dit qu'elle n'a pas pu vérifier, et propose de relire", async () => {
@@ -1375,16 +1414,17 @@ test("㊷ la note de la version armée ILLISIBLE ne laisse plus dire « part en 
   assert.equal(ligneAFaire(e14, "pr:14").titre, "Un correctif a changé depuis ton « Régler »");
 });
 
-test("㊸ le scan de sécurité du lundi se voit — À TRIER par Benjamin, jamais « Régler » : ni réparation, ni bouton d'action, seulement un lien ; ses exécutions de PR ne comptent pas ; illisible, c'est dit", async () => {
+test("㊸ le scan de sécurité se voit — À TRIER par Benjamin, jamais « Régler » : ni réparation, ni bouton d'action, seulement un lien ; ses passages planifiés ET manuels comptent, ceux des PR non ; illisible, c'est dit", async () => {
   // Le 09/11 rejoué : le passage planifié a échoué (gitleaks sur tout l'historique), les PR d'après sont vertes.
   await monter();
   banc.gh.runs["securite.yml"] = [run({ event: "pull_request", id: 3, le: ilYa(3600e3) }), run({ conclusion: "failure", id: 2, le: ilYa(3 * 864e5) }), run({ id: 1, le: ilYa(10 * 864e5) })];
   let r = await appeler({ action: "etat" });
   const l = ligneAFaire(r, "scan:securite");
   assert.ok(l, JSON.stringify((r.corps.aFaire || []).map((x) => x.id)));
-  assert.deepEqual([l.titre, l.prio, l.etiquette], ["Le scan de sécurité du lundi a échoué", 1, "À trier"]);
-  assert.match(l.quoi, /À trier par toi, pas par une machine/);
-  assert.match(l.quoi, /une vraie clé se révoque d'abord/);
+  assert.deepEqual([l.titre, l.prio, l.etiquette], ["Le scan de sécurité a échoué", 1, "À trier"]);
+  assert.equal(l.quoi, "À trier par toi, jamais par une machine.");
+  assert.match(l.reference, /une vraie clé se révoque d'abord/);
+  assert.match(l.reference, /relance-le \(« Run workflow »\) : un passage réussi efface cette ligne/);
   assert.match(String(l.url), /\/runs\/2$/, "le lien mène au passage planifié en échec, pas à la PR");
   assert.equal(l.gestes.length, 1);
   assert.ok(l.gestes[0].ouvrir && !l.gestes[0].corps, "un lien, aucune action de la fonction");
@@ -1394,12 +1434,24 @@ test("㊸ le scan de sécurité du lundi se voit — À TRIER par Benjamin, jama
   // Et la fonction refuse de le confier à un agent, même forgé.
   assert.equal((await appeler({ action: "reparer", cible: "run", cle: "securite" })).status, 400);
   assert.equal(appelsGithub("POST", /\/issues$/).length, 0);
-  // Seul le passage PLANIFIÉ est demandé à GitHub.
-  assert.ok(appelsGithub("GET", /securite\.yml\/runs/).every((x) => /event=schedule/.test(x.chemin) && /branch=main/.test(x.chemin)));
+  // Seuls les passages PLANIFIÉS et MANUELS sont demandés à GitHub — ceux qui parcourent tout l'historique.
+  const lus = appelsGithub("GET", /securite\.yml\/runs/);
+  assert.ok(lus.every((x) => /event=(schedule|workflow_dispatch)&/.test(x.chemin) && /branch=main/.test(x.chemin)), lus.map((x) => x.chemin).join(" | "));
+  assert.deepEqual(lus.map((x) => /event=(\w+)/.exec(x.chemin)[1]).sort(), ["schedule", "workflow_dispatch"]);
   // Le passage suivant réussit : plus rien à dire. Un succès de plus de 8 jours : un lundi manqué, dit sans urgence.
   await monter();
   banc.gh.runs["securite.yml"] = [run({ id: 4, le: ilYa(2 * 864e5) }), run({ conclusion: "failure", id: 2, le: ilYa(9 * 864e5) })];
   assert.equal(ligneAFaire(await appeler({ action: "etat" }), "scan:securite"), null);
+  // Trié, puis relancé à la main (« Run workflow ») : un passage MANUEL réussi efface la ligne sans attendre le lundi
+  // (relecture de #866) ; un passage manuel en échec la remet, et son lien mène à lui.
+  await monter();
+  banc.gh.runs["securite.yml"] = [run({ event: "workflow_dispatch", id: 6, le: ilYa(3600e3) }), run({ conclusion: "failure", id: 2, le: ilYa(3 * 864e5) })];
+  assert.equal(ligneAFaire(await appeler({ action: "etat" }), "scan:securite"), null, "le tri relancé et vert efface la ligne");
+  await monter();
+  banc.gh.runs["securite.yml"] = [run({ event: "workflow_dispatch", conclusion: "failure", id: 7, le: ilYa(3600e3) }), run({ id: 1, le: ilYa(3 * 864e5) })];
+  const manuel = ligneAFaire(await appeler({ action: "etat" }), "scan:securite");
+  assert.equal(manuel && manuel.titre, "Le scan de sécurité a échoué");
+  assert.match(String(manuel.url), /\/runs\/7$/);
   await monter();
   banc.gh.runs["securite.yml"] = [run({ id: 5, le: ilYa(9 * 864e5) })];
   const muet = ligneAFaire(await appeler({ action: "etat" }), "scan:securite");
@@ -1410,7 +1462,31 @@ test("㊸ le scan de sécurité du lundi se voit — À TRIER par Benjamin, jama
   r = await appeler({ action: "etat" });
   assert.ok(r.corps.github.runsNonLus.includes("securite"));
   assert.notEqual(r.corps.verdict.couleur, "vert");
-  assert.match(r.corps.verdict.raisons.join(" "), /non lu en entier : GitHub, le scan de sécurité du lundi/);
+  assert.match(r.corps.verdict.raisons.join(" "), /non lu en entier : GitHub, le scan de sécurité/);
+});
+
+test("㊹ un scan de sécurité ILLISIBLE ne fige pas la veille — `verdict` ne le lit pas : un rouge réglé sonne « résolu », le battement dit GitHub lu ; les exécutions que le voyant lit, elles, la tiennent toujours (relecture de #866)", async () => {
+  const rougeMemorise = () => banc.base.semer("analytics_events", [{ user_id: "systeme:pilotage", event: "pilotage_etat", created_at: ilYa(30 * 60e3), properties: { couleur: "rouge", dispo: true, raisons: ["dernier déploiement en échec"], alerteLe: ilYa(30 * 60e3) } }]);
+  // Le scan (un 404 durable si `securite.yml` est un jour renommé), ou l'activité de la veille : `verdict` ne les lit pas.
+  for (const [nom, motif] of [["le scan de sécurité", /securite\.yml\/runs/], ["l'activité de la veille", /veille-production\.yml\/runs/]]) {
+    await monter({ battement: false });
+    rougeMemorise();
+    banc.gh.panne = (m, chemin) => (motif.test(chemin) ? { status: 404 } : null);
+    await veille();
+    assert.equal(etats().at(-1).properties.couleur, "vert", nom + " : la mise en ligne a réussi depuis, le voyant n'est pas tenu");
+    assert.match(banc.pushes.at(-1).charge.titre, /Problème résolu/, nom);
+    assert.equal(evenements(BATTEMENT)[0].properties.lectures.github, "ok", nom);
+    assert.ok(!banc.console.some((l) => /lecture incomplète/.test(l)), nom + " : " + banc.console.join(" | "));
+  }
+  // La Sentinelle, que le voyant lit (« n'a pas tourné depuis plus de 8 h ») : illisible, elle TIENT la veille, comme la mise en ligne (㉚).
+  await monter({ battement: false });
+  rougeMemorise();
+  banc.gh.panne = (m, chemin) => (/sentinelle-autonome\.yml\/runs/.test(chemin) ? { status: 502 } : null);
+  await veille();
+  assert.equal(banc.pushes.length, 0, "ni « résolu » ni nouvelle alerte");
+  assert.equal(etats().length, 1, "le voyant mémorisé n'a pas bougé");
+  assert.equal(evenements(BATTEMENT)[0].properties.lectures.github, "ko");
+  assert.ok(banc.console.some((l) => /lecture incomplète/.test(l) && /en partie : GitHub, l'activité de la Sentinelle/.test(l)), banc.console.join(" | "));
 });
 
 test("㊲ chaque action du gestionnaire est exécutée par ce banc, ET menée au bout au moins une fois — une action neuve sans exercice, ou seulement refusée, rougit ici", () => {

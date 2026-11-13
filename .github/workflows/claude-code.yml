@@ -316,11 +316,13 @@ jobs:
               case "${n_cible}" in
                 ''|*[!0-9]*) ;;
                 *)
-                  # L'issue visée ne se relit pas (introuvable, transférée, GitHub indisponible) : sans elle, il n'y a
-                  # rien à réparer. `set -e` tuait la marche sans un mot ; l'échec se DIT, et aucun agent ne part. La
-                  # réponse d'erreur de l'API (que `gh api` écrit sur sa sortie standard) reste capturée, jamais écrite.
-                  if ! source_cible="$(gh api "repos/${DEPOT}/issues/${n_cible}" --jq '{login: .user.login, title: .title, body: (.body // "(corps vide)")}')"; then
-                    echo "::error title=Issue visée illisible::« [RÉPARER] #${n_cible} » : l'issue #${n_cible} n'a pas pu être relue (introuvable, transférée, ou GitHub indisponible). Aucun appel à Claude : sans elle, il n'y a rien à réparer. Relance la réparation depuis le pilotage quand elle se relit."
+                  # L'issue visée ne se relit pas (introuvable, ou GitHub indisponible) : sans elle, il n'y a rien à
+                  # réparer. `set -e` tuait la marche sans un mot ; l'échec se DIT, et aucun agent ne part. La réponse
+                  # d'erreur de l'API (que `gh api` écrit sur sa sortie standard) reste capturée, jamais écrite ; sa
+                  # ligne « gh: … (HTTP n) » sur l'erreur standard est jetée, comme aux lectures du journal (#854).
+                  # Le pilotage croit la réparation en cours tant que son issue est ouverte : c'est elle qu'on referme.
+                  if ! source_cible="$(gh api "repos/${DEPOT}/issues/${n_cible}" --jq '{login: .user.login, title: .title, body: (.body // "(corps vide)")}' 2>/dev/null)"; then
+                    echo "::error title=Issue visée illisible::« [RÉPARER] #${n_cible} » : l'issue #${n_cible} n'a pas pu être relue (introuvable, ou GitHub indisponible). Aucun appel à Claude : sans elle, il n'y a rien à réparer. Referme cette issue de réparation (le pilotage la croit en cours tant qu'elle est ouverte) ; si #${n_cible} se relit, le pilotage reproposera « Régler »."
                     exit 1
                   fi
                   case "$(printf '%s' "${source_cible}" | jq -r '.login')" in
@@ -1198,7 +1200,9 @@ jobs:
             [ -z "${fichier}" ] && continue
             case "${fichier}" in
               # Ces specs et ces aides tournent avec la clé de production au push (E-04).
-              .github/*|.claude/*|.agents/*|.codex/*|.npmrc|.mcp.json|package.json|package-lock.json|dashboard/package*.json|playwright.config.js|scripts/*|tests/ci/*|migrations/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml)
+              # Les exceptions du scan des secrets : leur tri est à Benjamin, jamais à un agent — une vraie clé se
+              # révoque d'abord (relecture de #866 ; le scan n'est ni « Régler », ni dans RUNS_REPARABLES).
+              .github/*|.claude/*|.agents/*|.codex/*|.npmrc|.mcp.json|package.json|package-lock.json|dashboard/package*.json|playwright.config.js|scripts/*|tests/ci/*|migrations/*|tests/e2e/authz-critical.spec.js|tests/e2e/compte-e2e.js|tests/e2e/global-teardown.js|tests/e2e/cible-supabase.js|tests/e2e/gate-helper.js|dashboard/aiworker*.mjs|dashboard/supervise.mjs|render.yaml|.gitleaksignore|.gitleaks.toml)
                 interdits="${interdits}${fichier} " ;;
             esac
           # `-z` : un chemin non ASCII entre guillemets ne matchait plus rien. `--no-renames` : un

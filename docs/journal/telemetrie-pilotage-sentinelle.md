@@ -1415,20 +1415,51 @@ banc `pilotage-chemins`, qui EXÉCUTE la fonction) :
   ne porte jamais de bouton qui met en ligne à l'aveugle. Choix maintenu de #703 : les PR non lues font
   une ligne, pas le voyant (un tiers peut ouvrir 300 PR : il ne doit pas pouvoir teindre l'écran).
 - **Un défaut du code dans un geste** (la `ReferenceError` de #753) sortait en « GitHub n'a pas répondu,
-  peut-être parti » : par le NOM de l'erreur, `ReferenceError`/`SyntaxError`/`RangeError` → 500 « défaut
-  du code », en `console.error`. Une `TypeError` reste ambiguë — sous Deno, un `fetch` qui ne joint pas
-  GitHub en lève une.
+  peut-être parti » : par le NOM de l'erreur, la seule `ReferenceError` → 500 « défaut du code », en
+  `console.error`. Les autres restent ambiguës : une `SyntaxError` naît aussi d'un corps qui n'est pas du
+  JSON (`Response.json()` sur une page HTML servie en 200 par GitHub, un corps Netlify vide), une
+  `RangeError` d'une date illisible, une `TypeError` d'un `fetch` qui ne joint pas GitHub (relecture de #866).
 - **La note de la version armée illisible** laissait dire « part en ligne » : la ligne dit « sans pouvoir
   vérifier sa version ». La note se relit sur trente jours (sept laissaient une auto-fusion armée sans
   comparaison).
-- **Le scan de sécurité du lundi** (échec du 09/11, vu par personne) : la fonction lit son seul passage
-  PLANIFIÉ et l'écran dit « Le scan de sécurité du lundi a échoué — À trier ». ⚠️ **Jamais « Régler »** :
+- **Le scan de sécurité** (échec du 09/11, vu par personne) : la fonction lit ses passages PLANIFIÉS et
+  MANUELS — gitleaks-action, au SHA épinglé, traite `workflow_dispatch` comme `schedule` : tout l'historique ;
+  une PR ne scanne que son diff — et l'écran dit « Le scan de sécurité a échoué — À trier ». Trié puis
+  relancé (« Run workflow »), un passage réussi efface la ligne sans attendre le lundi. ⚠️ **Jamais « Régler »** :
   le tri des secrets est une décision de Benjamin (une clé publique par conception s'inscrit dans
   `.gitleaksignore`, une vraie clé se révoque d'abord). Un agent lancé sur la [VEILLE] du scan aurait écrit
   des exceptions sans voir le rapport. La ligne n'a qu'un lien ; le scan n'est pas dans `RUNS_REPARABLES`.
-  Côté veille (#863), même règle : signal `scan` à part, plafonné à l'attention.
+  Côté veille (#863), même règle : signal `scan` à part, plafonné à l'attention, et ABSENT du corps des
+  [VEILLE] — « Régler » confie ce corps à un agent. Et la règle devient mécanique : `.gitleaksignore` et
+  `.gitleaks.toml` sont des chemins interdits à l'agent (`claude-code.yml`, exercice `reparation-journal` ⑫).
 - **« [RÉPARER] #N » sur une issue qui ne se relit pas** : `set -e` tuait la marche de confiance sans un
-  mot. L'échec se dit (annotation « Issue visée illisible »), et aucun agent ne part.
+  mot. L'échec se dit (annotation « Issue visée illisible »), aucun agent ne part, et l'annotation dit le
+  geste qui débloque : refermer la réparation (le pilotage la croit en cours tant qu'elle est ouverte).
+
+**La relecture indépendante de #866 (13/11) : « à corriger », six constats dans le diff.**
+- ⚠️ **Un scan de sécurité illisible FIGEAIT la veille.** `securite` entrait dans `partielGithub`, donc
+  dans la lecture « incomplète » qui tient le voyant (`tenirVerdict`) — alors que `verdict` ne lit pas
+  `runs.securite`. Plus de « résolu », plus de rappel ; un `securite.yml` renommé l'aurait figée sans fin.
+  `RUNS_DU_VOYANT` (`deploy`, `sentinelle`) : seules les exécutions que `verdict` LIT tiennent la veille ;
+  `pilotage.test` ㊴ bis tient cette liste et le corps de `verdict` ensemble ; exercice ㊹. L'écran, lui,
+  dit tout ce qui manque.
+- **Trois cents PR tout juste** se disaient « plus de trois cents » : trois pages pleines sont suivies d'une
+  lecture d'UNE ligne qui dit s'il en reste. **Une page en échec** jetait les pages lues — un correctif
+  récent perdait sa ligne : ce qui est lu reste, une PR non lue reste un chantier, jamais un bouton.
+- **La ligne du scan** échappait au banc des boutons (㊴) : « À trier » y exige désormais un lien, jamais un
+  « Régler » ; son détail passe dans `reference` (un `quoi` de 237 caractères ne tient pas sur un téléphone).
+
+**Pièges de la relecture.**
+- ⚠️ **Un faux outil plus poli que le vrai** : le faux `gh` du banc n'écrivait rien sur l'erreur standard ;
+  le vrai y écrit « gh: Not Found (HTTP 404) », et la garde de « [RÉPARER] #N » le laissait passer dans le
+  journal. Le faux l'écrit désormais : c'est l'exercice qui a obligé le `2>/dev/null`.
+- ⚠️ **Un banc qui ne FINIT pas a été compté « vert »** (aide de test du pilotage local, #870) : une
+  mutation faisait échouer l'aide, l'exercice n'arrêtait pas ce qu'il avait ouvert, le fichier de test ne
+  finissait jamais, et le banc de mutations, tué par son délai, ne voyait aucun « fail ». Chaque exercice
+  libère ce qu'il ouvre, même sur échec ; `scripts/reinjections-pilotage.mjs` dit « BLOQUÉ » au lieu de
+  « vert » (délai de 5 min).
+- ⚠️ **Une sonde de relecteur se rejoue avant d'être corrigée** : la `SyntaxError` « à la fusion » naissait
+  en fait à la RELECTURE de la PR (`pr.json()`), avant toute écriture — l'exercice ㊶ vise cet appel-là.
 
 **Pièges du lot.**
 - ⚠️ **Une réinjection qui ne mord plus est un verrou mort.** Après la lecture filtrée par GitHub, celle

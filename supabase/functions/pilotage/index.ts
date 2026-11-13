@@ -37,7 +37,7 @@ import {
   PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
   tenirVerdict, verdictAffiche, tendance, fenetreMiseEnLigne, aFaire, compteCree, comptesRecents, COMPTES_RECENTS_MAX,
   pageInscrits, INSCRITS_PAR_PAGE, canariDu, ligneCanari, bandePassanteEstimee, coutMensuel, resumerPr, croissanceInscrits,
-  EVT_GESTE, RELANCE_SUIVIE_MS, resumerRuns, tentativesARelire, runATranche, TENTATIVES_RELUES_MAX, EVENEMENTS_RUNS, partielGithub, ISSUES_PAR_FILTRE_MAX, LABELS_SUIVIS, shaValide, PILOTE_GITHUB, seuilsLancement,
+  EVT_GESTE, RELANCE_SUIVIE_MS, resumerRuns, tentativesARelire, runATranche, TENTATIVES_RELUES_MAX, EVENEMENTS_RUNS, partielGithub, RUNS_DU_VOYANT, ISSUES_PAR_FILTRE_MAX, LABELS_SUIVIS, shaValide, PILOTE_GITHUB, seuilsLancement,
 } from "../_shared/pilotage.js";
 import { croissance } from "../_shared/croissance.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
@@ -148,11 +148,13 @@ Deno.serve(async (req) => {
   // geste qui ÉCRIT est peut-être parti — c'est dit ; rien n'est promis, rien n'est rejoué.
   try { return await geste(); }
   catch (err) {
-    // Un DÉFAUT DU CODE (une variable jamais déclarée — le défaut de #753 —, une syntaxe, une plage) n'est pas une panne
-    // de GitHub : il se dit comme tel, en erreur dans les journaux (seconde relecture de #848). Une erreur de type reste
-    // ambiguë : sous Deno, un `fetch` qui n'arrive pas à joindre GitHub lève aussi une TypeError.
+    // Un DÉFAUT DU CODE (une variable jamais déclarée — le défaut de #753) n'est pas une panne de GitHub : il se dit
+    // comme tel, en erreur dans les journaux (seconde relecture de #848). Seule la ReferenceError le prouve : une
+    // SyntaxError vient aussi d'un CORPS qui n'est pas du JSON (`Response.json()` sur une page HTML de GitHub, un corps
+    // Netlify vide), une RangeError d'une date illisible, une TypeError d'un `fetch` qui ne joint pas GitHub — des
+    // DONNÉES ou le réseau, donc ambiguës : « peut-être parti » (relecture de #866).
     // Par le NOM, pas `instanceof` : une erreur venue d'un autre domaine d'exécution garde son nom.
-    const defaut = ["ReferenceError", "SyntaxError", "RangeError"].includes(String((err as { name?: string })?.name || ""));
+    const defaut = String((err as { name?: string })?.name || "") === "ReferenceError";
     const trace = JSON.stringify({ action: action.slice(0, 30), nom: String((err as { name?: string })?.name || ""), erreur: String((err as { message?: string })?.message || err).slice(0, 120) });
     if (defaut) {
       console.error("pilotage : défaut du code dans un geste " + trace);
@@ -211,11 +213,14 @@ async function veille(admin: Admin) {
   // « Problème » de nouveau.
   // Une lecture des parcours TRONQUÉE (au-delà de 5 pages) ne prouve pas le calme :
   // un flot de lignes peut pousser l'heure réelle hors de la lecture (revue adversariale).
-  // Des EXÉCUTIONS non lues non plus (2026-11-12, partielGithub) : on ne sait pas si la dernière
-  // mise en ligne a réussi. Les issues, elles, ne tiennent JAMAIS le voyant : le dépôt est public,
-  // et tenir tant qu'il y a du bruit donnait à un tiers le moyen de figer la veille — plus de
-  // « résolu », et un nouveau rouge ne sonnait plus (contre-revue du 12/11).
-  const partielGh = partielGithub({ runsNonLus: ((e.github as { runsNonLus?: string[] } | null)?.runsNonLus) || [] }) as string[];
+  // Des EXÉCUTIONS non lues non plus (2026-11-12, partielGithub) — celles que le VOYANT lit
+  // (RUNS_DU_VOYANT) : on ne sait pas si la dernière mise en ligne a réussi. Le scan de sécurité,
+  // que `verdict` ne lit pas, ne tient rien : illisible, il figeait la veille (relecture de #866).
+  // Les issues, elles, ne tiennent JAMAIS le voyant : le dépôt est public, et tenir tant qu'il y a
+  // du bruit donnait à un tiers le moyen de figer la veille — plus de « résolu », et un nouveau
+  // rouge ne sonnait plus (contre-revue du 12/11).
+  const runsNonLusVoyant = (((e.github as { runsNonLus?: string[] } | null)?.runsNonLus) || []).filter((c) => (RUNS_DU_VOYANT as readonly string[]).includes(c));
+  const partielGh = partielGithub({ runsNonLus: runsNonLusVoyant }) as string[];
   const incomplet = [sante, signalements, github, parc].some((r) => r.status === "rejected") || !!(parcoursVeille && parcoursVeille.tronque) || partielGh.length > 0;
   // Une lecture incomplète laisse sa raison dans les journaux de la fonction : sans elle, rien ne disait
   // pourquoi le voyant mémorisé restait figé. Des codes et des délais, jamais une donnée.
@@ -1561,17 +1566,27 @@ async function lireGithub() {
   // PR de forks plus récentes faisaient sortir un correctif armé de la liste — il devenait un « chantier », et la ligne
   // « a changé depuis ton Régler » disparaissait. Le CORPS se lit dans la même promesse : lu après coup, un corps illisible
   // devenait une liste vide sans rien dire. Au-delà des pages lues, c'est dit (`prNonLues`).
+  // Une page en échec GARDE les pages déjà lues (relecture de #866) : les jeter faisait passer un correctif
+  // récent, et sa ligne « a changé depuis ton Régler », derrière la ligne « non lues ». Une PR non lue reste
+  // un chantier (`infosPr` absente → externe) : jamais un bouton qui met en ligne à l'aveugle.
   const lirePulls = async (): Promise<{ ok: boolean; lignes: IssueBrute[]; raison: string | null }> => {
     const lignes: IssueBrute[] = [];
     for (let page = 1; page <= PR_PAGES_MAX; page++) {
       const r = await gh(`/repos/${DEPOT}/pulls?state=open&per_page=100&page=${page}`).catch(() => null);
-      if (!r || !r.ok) return { ok: false, lignes: [], raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };
+      if (!r || !r.ok) return { ok: false, lignes, raison: r ? "GitHub HTTP " + r.status : "GitHub muet" };
       const lot = await r.json().catch(() => null);
-      if (!Array.isArray(lot)) return { ok: false, lignes: [], raison: "GitHub : liste des PR illisible" };
+      if (!Array.isArray(lot)) return { ok: false, lignes, raison: "GitHub : liste des PR illisible" };
       lignes.push(...(lot as IssueBrute[]));
       if (lot.length < 100) return { ok: true, lignes, raison: null };
     }
-    return { ok: true, lignes, raison: "plus de " + PR_PAGES_MAX * 100 + " PR ouvertes : les plus anciennes ne sont pas lues" };
+    // Trois pages pleines : une lecture d'UNE ligne dit s'il en reste — trois cents PR tout juste ne sont pas
+    // « plus de trois cents » (relecture de #866). Illisible, on ne sait pas : c'est dit aussi.
+    const r = await gh(`/repos/${DEPOT}/pulls?state=open&per_page=1&page=${PR_PAGES_MAX * 100 + 1}`).catch(() => null);
+    const reste = r && r.ok ? await r.json().catch(() => null) : null;
+    if (Array.isArray(reste) && reste.length === 0) return { ok: true, lignes, raison: null };
+    return { ok: true, lignes, raison: Array.isArray(reste)
+      ? "plus de " + PR_PAGES_MAX * 100 + " PR ouvertes : les plus anciennes ne sont pas lues"
+      : PR_PAGES_MAX * 100 + " PR lues, la suite n'a pas pu l'être (" + (r ? "GitHub HTTP " + r.status : "GitHub muet") + ")" };
   };
   // Le scan de sécurité du lundi (`securite`) : lu pour être DIT, à trier par Benjamin — jamais réparé (RUNS_REPARABLES).
   const [sentinelle, veille, deploy, securite, pulls] = await Promise.all([run("sentinelle", "sentinelle-autonome.yml"), run("veille", "veille-production.yml"), run("deploy", "deploy.yml"), run("securite", "securite.yml"), lirePulls()]);
@@ -1605,8 +1620,8 @@ async function lireGithub() {
   const suivies = issues.map((i) => (i.pr ? { ...i, ...(infosPr.get(i.numero) || { externe: true, correctif: false, autoFusion: false, brouillon: false }) } : i));
   // `luLe` : l'heure de CETTE lecture — la réponse peut sortir du cache (2 min).
   const val: Record<string, unknown> = { issues: suivies, runs: { sentinelle, veille, deploy, securite }, pause: issues.some((i) => i.pause), luLe: new Date().toISOString(), prNonLues: pulls.raison, jetonExpire: Number.isFinite(finJeton) ? new Date(finJeton).toISOString() : null };
-  // `runsNonLus` tient le voyant de la VEILLE (on ne sait pas si la mise en ligne a réussi) ;
-  // `partiel` dit à l'ÉCRAN tout ce qui manque, issues comprises — elles ne figent jamais la veille.
+  // `runsNonLus` : ceux que le voyant lit (RUNS_DU_VOYANT) tiennent la VEILLE (on ne sait pas si la mise en
+  // ligne a réussi) ; `partiel` dit à l'ÉCRAN tout ce qui manque, issues comprises — elles ne figent jamais la veille.
   val.runsNonLus = runsNonLus;
   val.partiel = partielGithub({ runsNonLus, issuesTronquees });
   val.aReparer = aReparer(val);
