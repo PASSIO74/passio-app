@@ -5137,7 +5137,7 @@ async function openUserProfile(authorId, source) {
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\
           <div class="main-profile-stat"><span>' + postCount + '</span><span>publication' + (postCount > 1 ? "s" : "") + '</span></div>\
-          <div class="main-profile-stat"><span>' + followerCount + '</span><span>abonnés</span></div>\
+          <div class="main-profile-stat"><span data-abonnes-visite="' + followerCount + '" data-suivi-initial="' + ((typeof etatSuivi === "function" && etatSuivi(authorId) === "suivi") ? 1 : 0) + '">' + followerCount + '</span><span>abonnés</span></div>\
           <div class="main-profile-stat"><span>' + followingCount + '</span><span>abonnements</span></div>\
         </div>\
       </div>\
@@ -5669,7 +5669,25 @@ function toggleFollowUser(userId, userName) {
 // Peint TOUS les boutons « Suivre » d'un compte (jusqu'à trois surfaces) dans
 // l'un des trois états. Seul point qui écrit ces libellés : `libelleBoutonSuivi`
 // (app-02) est la source des mots, ceci n'en est que la mise en couleur.
+// LOT-48 (audit UX/UI du 2026-11-10, PCS-C04) : « ✓ Suivi » et « 0 abonnés »
+// côte à côte — le compteur du profil visité ne bougeait pas. Il suit l'état
+// du bouton : +1 quand je suis, −1 quand je me désabonne, rien pour une demande
+// en attente (compte privé). Le nombre de départ est celui lu en base à
+// l'ouverture, corrigé de MON abonnement d'alors.
+function _majCompteurAbonnesVisite(userId, etat) {
+  try {
+    var v = window._visited;
+    if (!v || v.authorId !== userId) return;
+    document.querySelectorAll("[data-abonnes-visite]").forEach(function (el) {
+      var base = Number(el.getAttribute("data-abonnes-visite")) || 0;
+      var initial = el.getAttribute("data-suivi-initial") === "1" ? 1 : 0;
+      var n = Math.max(0, base - initial + (etat === "suivi" ? 1 : 0));
+      el.textContent = String(n);
+    });
+  } catch (e) { try { diagLog("compteur_abonnes " + (e && e.message)); } catch (_) {} }
+}
 function _peindreBoutonsSuivi(userId, etat) {
+  _majCompteurAbonnesVisite(userId, etat);
   // L'état est écrit AVANT chaque appel : le libellé se lit dans la seule table.
   var libelle = libelleBoutonSuivi(userId);
   // Appelée NUE, comme `libelleBoutonSuivi` juste au-dessus : un `typeof` y
