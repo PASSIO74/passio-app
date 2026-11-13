@@ -2354,3 +2354,54 @@ function syncAppViewportHeight() {
 //    tests/e2e/interactions.spec.js) ;
 //  · les règles `.chrome-collapsed` ont été retirées de styles.css avec ce
 //    code : aucune classe n'est plus posée nulle part.
+
+// ═══ LOT-42 (audit UX/UI du 2026-11-10, MSG-C88) : la conversation se cale sur
+// le CLAVIER. `syncAppViewportHeight` refuse — à raison — de réduire `--app-vh`
+// pendant la frappe (une hauteur amputée resterait figée après la fermeture du
+// clavier, zone réglée trois fois). Mais la coque garde alors toute sa hauteur
+// et le navigateur fait glisser la page pour montrer le champ : l'en-tête
+// (retour, nom) sort de l'écran. Pendant la frappe DANS une conversation, et
+// seulement quand la zone visible a vraiment rétréci (clavier), SEUL
+// #conv-fullpage prend la hauteur et la position de `visualViewport` : en-tête
+// en haut, fil réduit, barre au-dessus du clavier. Tout est retiré dès que le
+// clavier se ferme ou que le champ perd le focus — `--app-vh` n'est jamais
+// touché.
+function calerConvSurClavier() {
+  try {
+    var fp = document.getElementById("conv-fullpage");
+    if (!fp) return;
+    var vv = window.visualViewport;
+    var ae = document.activeElement;
+    var frappe = !!(ae && fp.contains(ae) && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable));
+    var total = window.innerHeight || document.documentElement.clientHeight || 0;
+    var clavier = !!(vv && total && fp.classList.contains("active") && frappe
+      && (!vv.scale || vv.scale <= 1.05) && vv.height < total * 0.85);
+    if (!clavier) {
+      if (fp.classList.contains("conv-cale-clavier")) {
+        fp.classList.remove("conv-cale-clavier");
+        fp.style.removeProperty("top");
+        fp.style.removeProperty("height");
+        fp.style.removeProperty("bottom");
+      }
+      return;
+    }
+    var parent = fp.offsetParent || fp.parentElement;
+    var haut = parent ? parent.getBoundingClientRect().top : 0;
+    var thread = document.getElementById("convFpThread");
+    var auBas = !!(thread && thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 80);
+    fp.classList.add("conv-cale-clavier");
+    fp.style.setProperty("top", Math.round((vv.offsetTop || 0) - haut) + "px");
+    fp.style.setProperty("bottom", "auto");
+    fp.style.setProperty("height", Math.round(vv.height) + "px");
+    if (auBas && thread) thread.scrollTop = thread.scrollHeight;
+  } catch (e) { try { diagLog("calerConvSurClavier : " + (e && e.message)); } catch (_) {} }
+}
+(function () {
+  var vv = window.visualViewport;
+  if (vv) {
+    vv.addEventListener("resize", calerConvSurClavier);
+    vv.addEventListener("scroll", calerConvSurClavier);
+  }
+  document.addEventListener("focusin", function () { setTimeout(calerConvSurClavier, 0); });
+  document.addEventListener("focusout", function () { setTimeout(calerConvSurClavier, 0); });
+})();
