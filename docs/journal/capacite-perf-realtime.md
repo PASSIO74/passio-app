@@ -2226,6 +2226,17 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
   le rejeu est alors REPORTÉ (retour en ligne, action suivante, lancement suivant), jamais perdu.
   Même famille, même ordre de grandeur : un geste fait pendant ce chargement peut appeler un
   fichier pas encore exécuté (`ReferenceError` remontée, sans autre effet).
+  **Suite (2026-11-13) : ce verrou ⑤ mesurait un état de plus que son invariant, et c'est lui
+  qui a rougi.** Il exigeait `document.readyState === "interactive"` au premier script ; le
+  déploiement de `main` (exécution 43433603440) l'a trouvé à « loading » sous Chromium, aux trois
+  essais, l'application restant prête avant `load`. Rien n'avait changé au chargeur : le premier
+  script est inséré dès le gate franchi (microtâche), et la page continue de parser-exécuter les
+  ~20 modules inlinés APRÈS le chargeur — lequel des deux finit le premier est une course de
+  quelques millisecondes que la taille de ces modules (NAV-V2 du 12/11, entre autres) fait pencher.
+  « loading », c'est d'ailleurs exactement ce que faisait l'ancien `app.js`, parseur-bloquant.
+  Le verrou mesure désormais ce qu'il garde : « loading » ou « interactive », jamais « complete ».
+  Il n'y perd pas sa mutation — un `<script>` inséré retarde `load`, donc « complete » ne sort
+  d'ici que si le chargeur n'a rien inséré avant, et `__appAuLoad` tombe alors avec lui.
 - ⚠️ **SOUS WEBKIT, LE `fetch` DU WORKER NE VOIT PAS LE CACHE OÙ LA PAGE A RANGÉ SES SCRIPTS** (Playwright
   WebKit 2388) : premier chargement contrôlé = 9 requêtes, et avec le worker d'avant ce lot, une
   version qui ne changeait QU'UN fichier faisait repartir les 9 — l'activation vide le cache du worker,
