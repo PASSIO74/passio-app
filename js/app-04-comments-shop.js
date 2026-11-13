@@ -4401,27 +4401,35 @@ function _nmDoSearch(q) {
   if (compte) all = all.filter(function (u) { return !estPersonneExemple(u.id); });
   // LOT-6 (REC-C03) : ni personne bloquée.
   all = all.filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); });
+  // LOT-28 (MSG-C22) : mon propre compte n'est jamais une personne à qui écrire.
+  all = all.filter(_nmPasMoi);
 
   var matches = q ? all.filter(function(u) { return plierRecherche(u.name).includes(q); }) : all;
   matches = matches.slice(0, 10);
 
   if (matches.length === 0) {
+    var serveur = !!(q && typeof supaSearchUsers === "function" && supa && MY_UID);
+    // LOT-28 (MSG-C23) : hors ligne, « Aucun utilisateur trouvé » faisait croire
+    // que la personne n'existait pas. Tant que le serveur n'a pas répondu, on
+    // cherche ; s'il ne peut pas répondre, on le dit.
+    if (serveur && navigator.onLine === false) { box.innerHTML = _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne"); return; }
     box.innerHTML = (compte && !q)
       ? `<div class="nm-consigne" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Écris le nom d'une personne pour la trouver.</div>`
-      : `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun utilisateur trouvé</div>`;
+      : (serveur ? _nmMessage("Recherche…", "attente") : _nmMessage("Aucun utilisateur trouvé", "vide"));
     // Lancer aussi la recherche Supabase si query non vide
-    if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
+    if (serveur) {
       // ⚠️ GARDE D'OBSOLESCENCE. Les réponses reviennent dans l'ordre du réseau,
       // pas dans celui de la frappe : taper « ab » puis « abc » pouvait laisser
       // la réponse d'« ab » écraser celle d'« abc ». On ne peint que si la
       // question posée est encore la question courante.
       var _qA = q;
-      supaSearchUsers(brut).then(function(res) {
-        if (_nmRequeteCourante() !== _qA) return;
-        if (!res || !res.length) return;
-        var html2 = res.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
-        if (box) box.innerHTML = html2;
-      }).catch(function(){});
+      Promise.resolve(supaSearchUsers(brut)).then(function(res) {
+        if (_nmRequeteCourante() !== _qA || !box) return;
+        if (res && res.echec) { box.innerHTML = _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne"); return; }
+        var trouves = (res || []).filter(_nmPasMoi).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); });
+        if (!trouves.length) { box.innerHTML = _nmMessage("Aucun utilisateur trouvé", "vide"); return; }
+        box.innerHTML = trouves.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
+      }).catch(function(){ if (box && _nmRequeteCourante() === _qA) box.innerHTML = _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne"); });
     }
     return;
   }
@@ -4434,10 +4442,18 @@ function _nmDoSearch(q) {
     supaSearchUsers(brut).then(function(res) {
       if (_nmRequeteCourante() !== _qB) return;   // cf. garde d'obsolescence
       if (!res || !box) return;
-      var extra = res.filter(function(u) { return !matches.find(function(m) { return m.id === u.id; }); }).slice(0,5);
+      var extra = res.filter(_nmPasMoi).filter(function(u) { return !matches.find(function(m) { return m.id === u.id; }) && !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0,5);
       if (extra.length) box.innerHTML += extra.map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
     }).catch(function(){});
   }
+}
+
+function _nmPasMoi(u) {
+  return !!(u && u.id && u.id !== "me" && !(typeof MY_UID !== "undefined" && MY_UID && u.id === MY_UID));
+}
+
+function _nmMessage(texte, etat) {
+  return '<div class="nm-etat" data-etat="' + escapeHtml(etat) + '" role="status" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">' + escapeHtml(texte) + '</div>';
 }
 
 function _nmUserRow(id, name, emoji, color, photoUrl) {
@@ -4508,10 +4524,13 @@ function searchUsers(query) {
     // Seed : exclure ceux déjà dans Supabase
     var seedFiltered = seedUsers.filter(function(u) { return !supaIds.has(u.id); });
     // LOT-6 (REC-C03) : une personne bloquée n'est pas un résultat.
-    var matches = supaFormatted.concat(seedFiltered).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).slice(0, 8);
+    var matches = supaFormatted.concat(seedFiltered).filter(function (u) { return !(typeof isBlocked === "function" && isBlocked(u.id)); }).filter(_nmPasMoi).slice(0, 8);
 
     if (matches.length === 0) {
-      results.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun utilisateur trouvé</div>";
+      // LOT-28 (MSG-C23) : une panne n'est pas une absence.
+      results.innerHTML = (supaUsers && supaUsers.echec)
+        ? _nmMessage("Pas de connexion — réessaie quand le réseau revient.", "hors-ligne")
+        : _nmMessage("Aucun utilisateur trouvé", "vide");
       return;
     }
 
@@ -4564,6 +4583,8 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
     toast("Compte bloqué — débloque-le pour lui écrire", "warning");
     return;
   }
+  // LOT-28 (MSG-C22) : mon propre compte ouvrait un fil avec moi-même.
+  if (userId && !_nmPasMoi({ id: userId })) { toast("C'est ton propre compte"); return; }
   // Photo : argument explicite, sinon profil déjà connu en cache
   if (!userPhoto) userPhoto = (userById(userId) || {}).photoUrl || null;
   var results = document.getElementById("msgUserResults");
@@ -4625,6 +4646,14 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
   if (existing) {
     goTo("messages");
     setTimeout(function() { openConversation(existing.id); }, 120);
+    return;
+  }
+  // LOT-28 (audit UX/UI du 2026-11-10, MSG-C23) : pour un COMPTE qui écrit à un
+  // autre compte, une création refusée (hors ligne, 500) ouvrait un fil local
+  // sans un mot — un fil que l'autre ne verrait jamais. On le dit, sans ouvrir.
+  if (window._supaReal && typeof _compteAuthReel === "function" && _compteAuthReel()
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId || ""))) {
+    toast("Conversation non ouverte — vérifie ta connexion et réessaie.", "warning");
     return;
   }
   var newConv = { id: "conv_" + uid(), userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", userPhoto: userPhoto || null, passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false };
@@ -5658,6 +5687,7 @@ async function unblockUser(userId, name) {
   saveState();
   try { renderFeed(); } catch(e) {}
   try { if (typeof renderBlockedList === "function") renderBlockedList(); } catch(e) {}
+  _repeindreApresBlocage(userId);
   if (typeof supaUnblockUser !== "function" || !window._supaReal || !(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) {
     toast("✅ " + libelle + " débloqué sur cet appareil");
     return true;
@@ -5669,11 +5699,30 @@ async function unblockUser(userId, name) {
     saveState();
     try { renderFeed(); } catch(e) {}
     try { if (typeof renderBlockedList === "function") renderBlockedList(); } catch(e) {}
+    _repeindreApresBlocage(userId);
     toast("⚠️ Déblocage non enregistré — réessaie");
     return false;
   }
   toast("✅ " + libelle + " débloqué");
   return true;
+}
+
+// LOT-28 (audit UX/UI du 2026-11-10, MSG-C29) : débloquer repeignait le fil et la
+// fenêtre des comptes bloqués, pas la liste des messages — la conversation restait
+// absente jusqu'au prochain rendu. La liste ET la conversation ouverte avec cette
+// personne (fil, bandeau « Tu as bloqué… ») suivent l'état du blocage.
+function _repeindreApresBlocage(userId) {
+  try { if (typeof renderMessages === "function") renderMessages(); } catch (e) {}
+  try {
+    var ouverte = window._openedConvId;
+    if (!ouverte || typeof getConversations !== "function") return;
+    var c = (getConversations() || []).find(function (x) { return x && x.id === ouverte; });
+    if (!c || c.isGroup || c.userId !== userId) return;
+    var fp = document.getElementById("conv-fullpage");
+    var nom = fp ? fp.getAttribute("data-display-name") : "";
+    if (typeof renderConvFpThread === "function") renderConvFpThread(c, nom);
+    _peindreIssueConversation(c, nom);
+  } catch (e) { try { diagLog("repeindre après blocage : " + (e && e.message)); } catch (_) {} }
 }
 
 // ⚠️ « SIGNALEMENT ENVOYÉ » ÉTAIT ANNONCÉ MÊME QUAND RIEN N'ÉTAIT ÉCRIT

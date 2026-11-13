@@ -6973,6 +6973,10 @@ async function supaSearchUsers(query) {
         : `username.ilike.${searchPattern},bio.ilike.${searchPattern}`)
       .limit(30);
 
+    // LOT-28 (audit UX/UI du 2026-11-10, MSG-C23) : une panne n'est pas une
+    // absence. Le tableau vide porte `echec` : l'appelant dit « Pas de connexion »
+    // au lieu de « Aucun utilisateur trouvé ».
+    if (error) return _rechercheEchouee();
     if (!data) return [];
 
     const results = data.map(profile => {
@@ -7009,8 +7013,14 @@ async function supaSearchUsers(query) {
       .slice(0, 8);
   } catch(e) {
     console.error("[SEARCH] Error:", e);
-    return [];
+    return _rechercheEchouee();
   }
+}
+
+function _rechercheEchouee() {
+  const vide = [];
+  vide.echec = true;
+  return vide;
 }
 
 // Unicité des pseudos : un même pseudo ne doit jamais être porté par deux comptes

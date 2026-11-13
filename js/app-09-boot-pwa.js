@@ -1676,8 +1676,15 @@ function openConvSettings(convId) {
           '<div class="csetting-icon">🚩</div><div class="csetting-label" style="color:#ef4444;">Signaler</div></div>'
         : '') +
 
-      '<div class="csetting-item" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Supprimer la conversation</div></div>';
+      // LOT-28 (audit UX/UI du 2026-11-10, MSG-C21) : un groupe n'a qu'UNE sortie,
+      // « Quitter le groupe » (l'appartenance part, les messages cessent) — l'ancien
+      // « Supprimer » ne retirait que la copie locale, et le prochain message le
+      // faisait revenir. En 1:1, la portée est dans le libellé : « pour moi ».
+      (c.isGroup
+        ? '<div class="csetting-item" onclick="closeConvSettings();leaveGroup(\'' + escapeJsArg(convId) + '\')">' +
+            '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Quitter le groupe</div></div>'
+        : '<div class="csetting-item" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
+            '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Supprimer pour moi</div></div>');
 
     // 🔑 FIX : openConversation pose des styles inline (display:none, transform,
     // pointer-events) sur ce panneau → ils écrasaient la classe .open et le panneau
@@ -1760,7 +1767,7 @@ function _exportConv(convId) {
 }
 
 async function _deleteConv(convId) {
-  if (!(await confirmerAction({ titre: "Supprimer cette conversation ?", texte: "Elle disparaît de ta liste et de cet appareil. Elle reste chez les autres.", libelle: "Supprimer", danger: true }))) return;
+  if (!(await confirmerAction({ titre: "Supprimer cette conversation pour toi ?", texte: "Elle disparaît de ta liste et de cet appareil. L'autre personne garde tout l'historique.", libelle: "Supprimer pour moi", danger: true }))) return;
   conversationsState = (conversationsState||[]).filter(function(c){ return c.id !== convId; });
   // Pierres tombales : la conversation ne revient ni au boot ni par la fusion,
   // et son historique reste effacé si un nouveau message la fait réapparaître
