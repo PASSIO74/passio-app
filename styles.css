@@ -13334,3 +13334,18 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
   min-height: 44px; padding: 0 16px; border-radius: 22px;
   background: #fff; color: #1f1147; font-weight: 800; font-size: 14px;
 }
+
+/* LOT-51 (audit UX/UI du 2026-11-10, SOC-C03) : sur ordinateur, la colonne
+   mobile de 440 px laissait 70 % de l'écran vide — et la télémétrie de la
+   semaine compte autant d'ordinateurs et de tablettes que de téléphones
+   (13 + 8 appareils sur 32, hors équipe et robots). Sur un grand écran, la
+   colonne s'élargit (640 px) : fil, fiches et conversations y gagnent de la
+   place, sans changer de structure — la navigation reste en bas, le choix
+   mobile-first est gardé. Aucun calcul de l'app ne lit la largeur de la
+   colonne ; le téléphone et la tablette ne changent pas. */
+@media (min-width: 1100px) and (min-height: 700px) {
+  .app-shell {
+    width: min(640px, calc(100vw - 96px));
+    max-width: none;
+  }
+}
