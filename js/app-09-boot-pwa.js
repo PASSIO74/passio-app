@@ -1178,7 +1178,13 @@ function handleAttachFile(input, kind) {
   if (kind === "media" && file.type && file.type.indexOf("image/") === 0 && typeof passioCompressImage === "function") {
     if (file.size > 40 * 1024 * 1024) { input.value = ""; return toast("Image trop lourde (>40 Mo)."); }
     passioCompressImage(file).then(function (durl) {
-      _processAttach(input, kind, _passioDataUrlToFile(durl, file.name));
+      // LOT-24 (MSG-C72) : la photo touchée dans la galerie partait SANS être
+      // montrée — une vignette voisine, une capture personnelle, et c'était
+      // envoyé. On la montre d'abord ; « Envoyer » la fait partir, « Annuler »
+      // ne laisse rien. Aucun nouveau format de message.
+      _apercuPhotoAvantEnvoi(durl, function () {
+        _processAttach(input, kind, _passioDataUrlToFile(durl, file.name));
+      }, function () { input.value = ""; });
     }).catch(function () { input.value = ""; toast("Impossible de lire cette image."); });
     return;
   }
@@ -1212,6 +1218,29 @@ function handleAttachFile(input, kind) {
     return;
   }
   _processAttach(input, kind, file);
+}
+
+// Aperçu d'une photo avant envoi (MSG-C72). Rendu DOM ; l'image est une URL
+// `data:image/…` produite ICI par la compression, passée par `safeUrlAttr`.
+function _apercuPhotoAvantEnvoi(durl, envoyer, annuler) {
+  var src = (typeof safeUrlAttr === "function") ? safeUrlAttr(durl) : "#";
+  if (!src || src === "#") { envoyer(); return; }
+  var decide = false;
+  openModal(
+    '<div class="modal-handle"></div>' +
+    '<div class="modal-title">Envoyer cette photo ?</div>' +
+    '<div class="pj-apercu"><img id="pjApercuImg" alt="Photo à envoyer" /></div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px;">' +
+      '<button type="button" class="btn ghost block" id="pjApercuAnnuler">Annuler</button>' +
+      '<button type="button" class="btn primary block" id="pjApercuEnvoyer">Envoyer</button>' +
+    '</div>'
+  );
+  var img = document.getElementById("pjApercuImg");
+  if (img) img.src = src;
+  var bE = document.getElementById("pjApercuEnvoyer");
+  var bA = document.getElementById("pjApercuAnnuler");
+  if (bE) bE.addEventListener("click", function () { if (decide) return; decide = true; closeModal(); envoyer(); });
+  if (bA) bA.addEventListener("click", function () { if (decide) return; decide = true; closeModal(); annuler(); });
 }
 
 function _processAttach(input, kind, file) {
@@ -1908,6 +1937,16 @@ window._onGifSearch = _onGifSearch;
 
 // FIX 5 — Clic sur une image dans le chat : ouvre un visualiseur
 // plein écran (avant : ReferenceError, rien ne se passait).
+// Ferme la visionneuse (bouton, fond, Échap) en rendant son entrée d'historique ;
+// `depuisRetour` : l'entrée vient d'être retirée par le navigateur.
+function fermerVisionneuseImage(depuisRetour) {
+  var v = document.getElementById("fullImgViewer");
+  if (!v) return false;
+  v.remove();
+  if (!depuisRetour) { try { if (typeof releaseOverlayHistory === "function") releaseOverlayHistory(); } catch (e) {} }
+  return true;
+}
+
 function openFullImg(src) {
   if (!src) return;
   var old = document.getElementById("fullImgViewer");
@@ -1928,14 +1967,17 @@ function openFullImg(src) {
     '</div>' +
     '<div style="position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:rgba(255,255,255,0.6);font-size:12px;pointer-events:none;">Double-tap pour zoomer · glisser pour déplacer</div>';
   document.body.appendChild(v);
+  // LOT-24 (MSG-C73) : une entrée d'historique, comme une modale — le retour
+  // système ferme l'image au lieu de fermer la conversation derrière elle.
+  try { if (typeof pushOverlayHistory === "function") pushOverlayHistory("image", "#image"); } catch (e) {}
   var img = v.querySelector("#_fiv_img");
   var scale = 1, tx = 0, ty = 0, dragging = false, sx = 0, sy = 0, lastTap = 0;
   function apply() { img.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")"; img.style.cursor = scale > 1 ? "grab" : "zoom-in"; }
   function reset() { scale = 1; tx = 0; ty = 0; apply(); }
-  v.querySelector("#_fiv_close").onclick = function (e) { e.stopPropagation(); v.remove(); };
+  v.querySelector("#_fiv_close").onclick = function (e) { e.stopPropagation(); fermerVisionneuseImage(); };
   v.querySelector("#_fiv_dl").onclick = function (e) { e.stopPropagation(); try { var a = document.createElement("a"); a.href = src; a.download = "passio_image"; a.click(); } catch (err) {} };
   // Fond cliqué (hors image) → fermer.
-  v.addEventListener("click", function (e) { if (e.target === v) v.remove(); });
+  v.addEventListener("click", function (e) { if (e.target === v) fermerVisionneuseImage(); });
   // Double-tap / double-clic → zoom toggle.
   img.addEventListener("click", function (e) {
     e.stopPropagation();
