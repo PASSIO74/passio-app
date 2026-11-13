@@ -887,7 +887,7 @@ function _callRafraichirIdentite(inv) {
     var el = document.querySelector("#callOverlay .call-name, .call-overlay.active .call-name");
     if (el) el.textContent = inv.identite.name;
     var av = document.querySelector("#callOverlay .call-avatar, .call-overlay.active .call-avatar");
-    if (av) av.textContent = inv.identite.emoji;
+    if (av) av.outerHTML = _callAvatarHtml(inv.identite, "var(--accent)");
   }).catch(function () {});
 }
 
@@ -1341,6 +1341,7 @@ function _callMarkConnected() {
   cs.startedAt = Date.now();
   const statusEl = document.getElementById("callStatusText");
   if (statusEl) statusEl.textContent = cs.kind === "video" ? "Appel vidéo" : "Appel audio";
+  try { var _tm = document.getElementById("callTimer"); if (_tm) _tm.hidden = false; } catch (e) {}
   // Monte la qualité (débits d'encodage) une fois la connexion établie.
   _callApplyMediaQuality();
   // Ré-affirme la qualité après quelques secondes (le 1ᵉʳ setParameters avant
@@ -1417,7 +1418,9 @@ function toggleCallMute(btn) {
   const tracks = cs.localStream.getAudioTracks();
   const on = tracks[0] && tracks[0].enabled;
   tracks.forEach(t => t.enabled = !on);
-  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🔇" : "🎙"; }
+  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🔇" : "🎙";
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.setAttribute("aria-label", on ? "Réactiver le micro" : "Couper le micro"); }
 }
 function toggleCallVideo(btn) {
   const cs = window._call; if (!cs || !cs.localStream) return;
@@ -1425,7 +1428,9 @@ function toggleCallVideo(btn) {
   if (!tracks.length) return;
   const on = tracks[0].enabled;
   tracks.forEach(t => t.enabled = !on);
-  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🚫" : "📷"; }
+  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🚫" : "📷";
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.setAttribute("aria-label", on ? "Réactiver la caméra" : "Couper la caméra"); }
 }
 async function flipCallCamera() {
   const cs = window._call; if (!cs || cs.kind !== "video" || !cs.pc) return;
@@ -1490,6 +1495,29 @@ function _emojiBorne(e) {
   return Array.from(String(e == null ? "" : e)).slice(0, 4).join("") || "🙂";
 }
 function _emojiSur(e) { return escapeHtml(_emojiBorne(e)); }
+
+// LOT-38 (audit UX/UI du 2026-11-10, MSG-C26) : l'écran d'appel montrait un
+// emoji sur un violet fixe, jamais la photo de la personne. La photo vient du
+// profil (identité SERVEUR, jamais la charge de l'invitation), passée par
+// safeUrlAttr ; sans photo, l'emoji du profil comme avant.
+function _callAvatarHtml(idn, couleur) {
+  var photo = (idn && idn.photo) || "";
+  // safeUrlAttr rend "#" pour une URL refusée : ce n'est PAS une photo.
+  if (photo && safeUrlAttr(photo) !== "#") return '<div class="call-avatar call-avatar-photo" style="background:' + _cssColor(couleur || "var(--accent)") + ';"><img src="' + safeUrlAttr(photo) + '" alt=""></div>';
+  return '<div class="call-avatar" style="background:' + _cssColor(couleur || "var(--accent)") + ';">' + _emojiSur(idn && idn.emoji) + '</div>';
+}
+// Le calque d'appel est un dialogue nommé, et le focus y entre.
+function _callDialogue(el, nom) {
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-modal", "true");
+  el.setAttribute("aria-label", "Appel avec " + (nom || "Contact"));
+  setTimeout(function () { try { var b = el.querySelector(".call-control-btn"); if (b) b.focus({ preventScroll: true }); } catch (e) {} }, 0);
+}
+// Les chiffres du réseau (« audio · 32 kb/s · relais ») sont de la mise au point :
+// on ne les montre que sur demande (localStorage.passio_appel_stats = "1").
+function _callStatsVisibles() {
+  try { return localStorage.getItem("passio_appel_stats") === "1"; } catch (e) { return false; }
+}
 function _callRenderIncomingUI(inv) {
   const el = _callOverlayEl();
   const isVideo = inv.kind === "video";
@@ -1498,14 +1526,15 @@ function _callRenderIncomingUI(inv) {
   const idn = inv.identite || _callIdentiteServeur(inv.from);
   el.innerHTML =
     '<div class="call-card">' +
-      '<div class="call-avatar" style="background:#7c3aed;">' + _emojiSur(idn.emoji) + '</div>' +
+      _callAvatarHtml(idn, "var(--accent)") +
       '<div class="call-name">' + escapeHtml(idn.name || "Contact") + '</div>' +
       '<div class="call-status">' + (isVideo ? "Appel vidéo entrant…" : "Appel entrant…") + '</div>' +
-      '<div class="call-controls">' +
-        '<button class="call-control-btn hangup" onclick="declineIncomingCall()" title="Refuser">📵</button>' +
-        '<button class="call-control-btn accept" onclick="acceptIncomingCall()" title="Répondre">✅</button>' +
+      '<div class="call-controls call-controls-entrant">' +
+        '<div class="call-commande"><button class="call-control-btn hangup" onclick="declineIncomingCall()" aria-label="Refuser l\'appel" title="Refuser">📵</button><span>Refuser</span></div>' +
+        '<div class="call-commande"><button class="call-control-btn accept" onclick="acceptIncomingCall()" aria-label="Répondre" title="Répondre">✅</button><span>Répondre</span></div>' +
       '</div>' +
     '</div>';
+  _callDialogue(el, idn.name);
   // Entrée d'historique : sans elle, un geste de retour pendant la sonnerie
   // quittait l'application. Le filet du bouton retour (closeCurrentOverlay,
   // app-02) la consomme sans raccrocher — cf. le commentaire là-bas.
@@ -1523,19 +1552,23 @@ function _callRenderActiveUI() {
     (isVideo ? '<video id="callRemoteVideo" class="call-remote-video" autoplay playsinline></video>' : '<audio id="callRemoteAudio" autoplay></audio>') +
     (isVideo ? '<video id="callLocalVideo" class="call-local-video" autoplay playsinline muted></video>' : '') +
     '<div class="call-card ' + (isVideo ? 'call-card-video' : '') + '">' +
-      (isVideo ? '' : '<div class="call-avatar" style="background:' + _cssColor(cs.peer.color || "#7c3aed") + ';">' + escapeHtml(cs.peer.emoji || "🙂") + '</div>') +
+      (isVideo ? '' : _callAvatarHtml({ photo: cs.peer.photo || null, emoji: cs.peer.emoji || "🙂" }, cs.peer.color || "var(--accent)")) +
       '<div class="call-name">' + escapeHtml(cs.peer.name || "Contact") + '</div>' +
-      '<div class="call-status" id="callStatusText">' + (cs.role === "caller" ? "Appel en cours…" : "Connexion…") + '</div>' +
-      '<div class="call-timer" id="callTimer">00:00</div>' +
-      '<div class="call-stats" id="callStats"></div>' +
+      // LOT-38 (MSG-C26) : « Appel en cours… 00:00 » pendant la SONNERIE disait
+      // un appel décroché ; c'est « Ça sonne… », et le minuteur n'apparaît qu'à
+      // la connexion (_callMarkConnected).
+      '<div class="call-status" id="callStatusText">' + (cs.role === "caller" ? "Ça sonne…" : "Connexion…") + '</div>' +
+      '<div class="call-timer" id="callTimer" hidden>00:00</div>' +
+      (_callStatsVisibles() ? '<div class="call-stats" id="callStats"></div>' : '') +
       '<div class="call-controls">' +
-        '<button class="call-control-btn mute" onclick="toggleCallMute(this)" title="Micro">🎙</button>' +
-        (isVideo ? '<button class="call-control-btn video" onclick="toggleCallVideo(this)" title="Caméra">📷</button>' : '') +
-        (isVideo ? '<button class="call-control-btn flip" onclick="flipCallCamera()" title="Changer de caméra">🔄</button>' : '') +
-        '<button class="call-control-btn hangup" onclick="endCall()" title="Raccrocher">📞</button>' +
+        '<button class="call-control-btn mute" onclick="toggleCallMute(this)" aria-label="Couper le micro" aria-pressed="false" title="Micro">🎙</button>' +
+        (isVideo ? '<button class="call-control-btn video" onclick="toggleCallVideo(this)" aria-label="Couper la caméra" aria-pressed="false" title="Caméra">📷</button>' : '') +
+        (isVideo ? '<button class="call-control-btn flip" onclick="flipCallCamera()" aria-label="Changer de caméra" title="Changer de caméra">🔄</button>' : '') +
+        '<button class="call-control-btn hangup" onclick="endCall()" aria-label="Raccrocher" title="Raccrocher">📞</button>' +
       '</div>' +
     '</div>';
   el.classList.add("active");
+  _callDialogue(el, cs.peer.name);
   // Aperçu local — muted posé en PROPRIÉTÉ : l'attribut écrit par innerHTML
   // n'est pas toujours répercuté (même piège que meSetMedia) → l'aperçu
   // rejouait le propre micro de l'utilisateur = écho/larsen immédiat.

@@ -13228,3 +13228,15 @@ body.passio-hors-ligne #passioBandeauDistant {
 #convEmojiPanel #emojiGrid { grid-template-columns: repeat(8, minmax(0, 1fr)) !important; gap: 0 !important; padding: 6px 8px !important; }
 #convEmojiPanel .emoji-item { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0; border: 0; background: transparent; font-size: 26px; font-family: inherit; color: inherit; }
 #convEmojiPanel .emoji-item:hover { transform: none; }
+
+/* LOT-38 (audit UX/UI du 2026-11-10, MSG-C26) : écrans d'appel — minuteur blanc
+   (#6D32F4 sur fond nuit tombait à 2,1:1), Refuser et Répondre écartés et
+   légendés, la photo de la personne dans l'avatar. */
+.call-overlay .call-timer { color: #fff; }
+.call-overlay .call-timer[hidden] { display: none; }
+.call-controls.call-controls-entrant { gap: 72px; }
+.call-commande { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.call-commande > span { font-size: 13px; font-weight: 600; color: #fff; }
+.call-avatar.call-avatar-photo { overflow: hidden; padding: 0; }
+.call-avatar.call-avatar-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.call-overlay .call-control-btn.mute, .call-overlay .call-control-btn.video { background: rgba(255, 255, 255, 0.16); color: #fff; }
