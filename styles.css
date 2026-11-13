@@ -13288,3 +13288,18 @@ body.passio-hors-ligne #passioBandeauDistant {
   background: var(--accent);
   color: #fff;
 }
+/* LOT-46 (audit UX/UI du 2026-11-10, MSG-C63) : hors ligne, le bandeau global
+   (fixe, au-dessus de tout) recouvrait l'en-tête de la conversation — retour,
+   nom et ⋯ ne répondaient plus. Dans une conversation, le bandeau s'efface et
+   l'état se dit SOUS l'en-tête, en une ligne. */
+body.passio-hors-ligne:has(#conv-fullpage.active) #offlineBanner { display: none !important; }
+body.passio-hors-ligne #conv-fullpage .conv-fp-head { position: relative; }
+body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
+  content: "Hors ligne — tes messages partiront au retour du réseau";
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 5;
+  padding: 4px 14px; font-size: 12px; font-weight: 600; line-height: 1.4;
+  background: #fef3c7; color: #78350f; border-bottom: 1px solid #fde68a;
+}
+/* MSG-C69 : le bouton d'en-tête « Proposer un moment IRL » porte la couleur
+   du passage au réel (corail), comme l'entrée du menu « + ». */
+#conv-fullpage .conv-action-btn.irl-proposal-action { color: #E5533F; }

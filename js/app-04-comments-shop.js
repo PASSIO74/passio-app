@@ -4616,7 +4616,18 @@ function _pickMsgUser(el) {
 }
 
 
+// LOT-46 (audit UX/UI du 2026-11-10, PCS-C02) : « Retour » depuis une
+// conversation ouverte d'un profil (lui-même ouvert du fil) menait à la liste
+// Messages — profil et fil perdus. L'ORIGINE est notée ici (écran actif,
+// profil d'où l'on vient) et consommée par openConversation ; closeConversation
+// y ramène. Ouverte depuis la liste Messages, la conversation y revient.
+function _ecranActifId() {
+  try { var s = document.querySelector(".screen.active"); return s && s.id ? s.id.replace(/^screen-/, "") : null; } catch (e) { return null; }
+}
+function _convOrigineProfil(userId) { window._convOrigineProfil = userId || null; }
 async function startDirectMessage(userId, userName, userEmoji, userAvatar, userPhoto) {
+  window._convOrigineEnAttente = { ecran: _ecranActifId(), profil: window._convOrigineProfil || null };
+  window._convOrigineProfil = null;
   // ⚠️ Ouvrir un DM avec un compte que J'AI bloqué créait la conversation EN
   // BASE (`supaCreateConversation` insère les deux membres), puis `renderMessages`
   // la masquait au rendu : la ligne restait, et la conversation redevenait
@@ -5138,7 +5149,7 @@ async function openUserProfile(authorId, source) {
         + '<button type="button" class="btn ghost profil-action" onclick="unblockUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\');closeModal();">Débloquer</button></div>'
       : '') + '\
     <div id="' + (_bloqueParMoi ? 'visitedProfileActionsMasquees" hidden' : 'visitedProfileActions"') + ' style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
-      <button class="btn primary profil-action" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;border-radius:14px;">Message</button>\
+      <button class="btn primary profil-action" onclick="closeModal();_convOrigineProfil(\'' + escapeJsArg(authorId) + '\');startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;border-radius:14px;">Message</button>\
       <button class="btn ghost profil-action" id="followBtn_' + escapeHtml(authorId) + '"' + (estPersonneExemple(authorId) ? ' disabled aria-disabled="true" data-exemple="1"' : '') + ' onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;border-radius:14px;' + (isFollowing ? 'background:rgba(124, 58, 237, 0.1);color:var(--accent);border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
@@ -6368,6 +6379,9 @@ function _pointeurFin() {
 }
 
 async function openConversation(convId) {
+  // LOT-46 (PCS-C02) : l'origine posée par startDirectMessage, ou aucune.
+  window._convOrigine = window._convOrigineEnAttente || null;
+  window._convOrigineEnAttente = null;
   const sp = document.getElementById("convSettingsPanel");
   if (sp) { sp.classList.remove("open"); sp.style.transform = "translateX(100%)"; sp.style.display = "none"; sp.style.pointerEvents = "none"; }
   // Réinitialise un éventuel contexte de réponse d'une conversation précédente.
@@ -9171,6 +9185,14 @@ function closeConversation() {
   // continuait, sans plus rien à l'écran pour l'arrêter.
   try { if (window._vocalEnCours) { window._vocalEnCours.audio.pause(); window._vocalEnCours = null; } } catch (e) {}
   renderMessages();
+  // LOT-46 (PCS-C02) : on revient d'où l'on vient — l'écran, puis le profil.
+  var origine = window._convOrigine; window._convOrigine = null;
+  if (etaitOuverte && origine && origine.ecran && origine.ecran !== "messages") {
+    try {
+      if (typeof goTo === "function") goTo(origine.ecran);
+      if (origine.profil && typeof openUserProfile === "function") setTimeout(function () { openUserProfile(origine.profil); }, 60);
+    } catch (e) { try { diagLog("conv_retour_origine " + (e && e.message)); } catch (_) {} }
+  }
 }
 
 // ===== CONFIGURATEUR — personnalisation de l'app =====
