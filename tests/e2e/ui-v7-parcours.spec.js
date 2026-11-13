@@ -175,6 +175,8 @@ test.describe("UI-7 — le parcours complet", () => {
     await page.waitForFunction(() => !!window._openedConvId, null, { timeout: 5000 });
     await page.waitForTimeout(400);
 
+    // LOT-46 (MSG-C69) : l'entrée lit le verdict serveur avant d'ouvrir ; « oui » ici.
+    await page.evaluate(() => { window.irlProposalServerVerdict = async () => ({ ok: true, reason: "ok" }); });
     const geoAvant = await page.evaluate(() => window.__geoCalls);
     // L'entrée vit dans le menu de pièces jointes : elle n'est visible qu'une
     // fois ce menu ouvert, exactement comme les cinq entrées historiques.
