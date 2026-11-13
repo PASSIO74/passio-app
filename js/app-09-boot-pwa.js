@@ -1271,11 +1271,13 @@ function _processAttach(input, kind, file) {
       msg.voiceDuration = 0;
       msg.isFile = true;
       msg.fileName = file.name;
+      msg.fileSize = tailleFichierLisible(file.size);
       _diag("handleAttachFile: AUDIO added");
     } else if(kind === 'doc') {
       msg.docData = dataUrl;
       msg.fileName = file.name;
-      msg.fileSize = (file.size/1024).toFixed(0) + " KB";
+      // LOT-20 (MSG-C83) : « moins de 1 Ko » plutôt que « 0 KB », en français.
+      msg.fileSize = tailleFichierLisible(file.size);
       msg.fileType = file.name.split(".").pop().toUpperCase();
       _diag("handleAttachFile: DOCUMENT added");
     }

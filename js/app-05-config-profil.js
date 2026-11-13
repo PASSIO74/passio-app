@@ -2223,6 +2223,7 @@ function pickGroupPhoto(convId) {
     var file = e.target.files[0];
     document.body.removeChild(input);
     if (!file) return;
+    if (!/^image\//.test(file.type || "")) { toast("Choisis une image (JPG, PNG…)", "warning"); return; }
     var reader = new FileReader();
     reader.onload = function(ev) {
       var convs = getConversations();
@@ -2230,23 +2231,24 @@ function pickGroupPhoto(convId) {
       if (!c) return;
       c.groupPhoto = ev.target.result;
       saveConversations();
-      toast("Photo du groupe mise à jour", "success");
-      // Mettre à jour l'avatar dans le header sans recharger la conversation
-      var avatarStyle = "background:url(" + ev.target.result + ") center/cover;width:40px;height:40px;font-size:0;flex-shrink:0;";
-      var avatarEl = document.querySelector("#convFpHead .msg-avatar");
-      if (avatarEl) {
-        avatarEl.style.cssText = avatarStyle;
+      // LOT-20 (audit UX/UI du 2026-11-10, MSG-C11) : trois références mortes —
+      // `renderConvList` (inexistante : ReferenceError, rien après ne tournait),
+      // `#convFpHead .msg-avatar` et `#modal-backdrop` (absents du DOM). Succès
+      // annoncé, rien ne changeait. Et la photo n'est écrite que sur CET appareil
+      // (aucun dépôt serveur pour un groupe) : on le dit.
+      var avatarEl = document.querySelector("#convFpHead .conv-fp-head-avatar");
+      if (avatarEl && window._openedConvId === convId) {
         avatarEl.textContent = "";
+        avatarEl.style.backgroundImage = 'url("' + String(ev.target.result).replace(/"/g, "%22") + '")';
+        avatarEl.style.backgroundSize = "cover";
+        avatarEl.style.backgroundPosition = "center";
       }
-      // Mettre à jour dans la liste
-      renderConvList();
-      // Mettre à jour dans la modale si ouverte
-      var modalAvatarEl = document.querySelector(".modal-content .msg-avatar[data-grp], .modal-content [style*='border-radius:50%']");
-      // Re-render la modale membres si elle est ouverte
-      var modalBackdrop = document.getElementById("modal-backdrop");
-      if (modalBackdrop && modalBackdrop.style.display !== "none") {
-        _renderGroupMembersModal(convId);
+      try { if (typeof renderMessages === "function") renderMessages(); } catch (e2) {}
+      var modalBackdrop = document.getElementById("modalBackdrop");
+      if (modalBackdrop && modalBackdrop.classList.contains("active") && typeof _renderGroupMembersModal === "function") {
+        try { _renderGroupMembersModal(convId); } catch (e3) {}
       }
+      toast("Photo du groupe mise à jour sur cet appareil", "success");
     };
     reader.readAsDataURL(file);
   };
@@ -3778,22 +3780,26 @@ function autoResizeReelCommentInput() {
 function _envoyerCommentaireBobine(postId, op) {
   if (typeof supa === "undefined" || !supa) return;
   if (typeof MY_UID === "undefined" || !MY_UID) return;
-  if (typeof _enqueueCommentSync === "function") {
-    _enqueueCommentSync(Object.assign({ threadId: postId }, op));
-  } else if (op.type === "post_comment" && typeof supaAddComment === "function") {
-    supaAddComment(postId, op.text, op.commentId);
-  } else if (op.type === "reply" && typeof supaCommentInteract === "function") {
-    supaCommentInteract(op.parentId, postId, "reply", op.text);
-  }
-  // Prévenir l'auteur, comme le fait le chemin du Fil.
+  // Prévenir l'auteur, comme le fait le chemin du Fil — à la CONFIRMATION de
+  // l'écriture (SRV-02 : la base exige le commentaire réel) ; la file pose la
+  // notification au succès.
+  let notif = null;
   try {
     const cible = typeof findPostAnywhere === "function" ? findPostAnywhere(postId) : null;
-    if (cible && cible.authorId && cible.authorId !== MY_UID && cible.fromSupabase
-        && typeof supaInsertNotif === "function") {
-      supaInsertNotif(cible.authorId, "comment", postId, "a commenté ta bobine");
+    if (cible && cible.authorId && cible.authorId !== MY_UID && cible.fromSupabase) {
+      notif = { to: cible.authorId, kind: "comment", text: "a commenté ta bobine" };
     }
     // ASTRA-24 : les mentions partent depuis `supaAddComment`, une fois le commentaire en base.
   } catch (e) {}
+  let ecriture = null;
+  if (typeof _enqueueCommentSync === "function") {
+    _enqueueCommentSync(Object.assign({ threadId: postId }, op, { notif: notif }));
+  } else if (op.type === "post_comment" && typeof supaAddComment === "function") {
+    ecriture = supaAddComment(postId, op.text, op.commentId);
+  } else if (op.type === "reply" && typeof supaCommentInteract === "function") {
+    ecriture = supaCommentInteract(op.parentId, postId, "reply", op.text);
+  }
+  if (ecriture && notif && typeof notifierApresEcriture === "function") notifierApresEcriture(ecriture, notif.to, notif.kind, postId, notif.text);
 }
 
 function submitReelComment() {
@@ -3907,9 +3913,10 @@ function likeReelComment(postId, commentIdx) {
     comment.likedBy.push(userId);
     comment.likes++;
     // Sync cross-compte : sans elle, le like restait dans ce seul navigateur.
-    if (typeof supaCommentInteract === "function") supaCommentInteract(comment.id, postId, "like", "");
-    if (comment.authorId && comment.authorId !== userId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(comment.authorId, "like", postId, "a aimé ton commentaire"); } catch (e) {}
+    const ecrit = (typeof supaCommentInteract === "function") ? supaCommentInteract(comment.id, postId, "like", "") : false;
+    // Au verdict de l'écriture (SRV-02 : la base exige le j'aime réel).
+    if (comment.authorId && comment.authorId !== userId && comment.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(ecrit, comment.authorId, "like", postId, "a aimé ton commentaire");
     }
   }
 

@@ -28,6 +28,7 @@
 - 📡 LE RELAIS DES LIVES ET DES APPELS ÉTAIT MORT — relais Cloudflare, identifiants fabriqués par le serveur (2026-11-09)
 - 📵 LES PUSH SOCIALES PLANTAIENT DEPUIS LE 07/11 — `uid` jamais déclaré dans `notify-call` (2026-11-09)
 - 🎞️ LES GIF PASSENT PAR KLIPY — Tenor fermé, Giphy plafonné à 100 recherches par heure pour toute l'app (2026-11-09)
+- 🔔 PAS DE NOTIFICATION SANS ÉVÉNEMENT MÉTIER — elle part au verdict de son écriture (2026-11-13)
 - 🔔 DES NOTIFICATIONS D'EXEMPLE PRÉSENTÉES COMME RÉELLES — résumé IRL, copies de la graine, tendances (2026-11-09)
 - 🪆 LE DÉCOR DES EXEMPLES : UNE DISCUSSION QUI SE VIDAIT, DES MESSAGES QUI SE DÉDOUBLAIENT (2026-11-10)
 - ✅ CE QUI EST ANNONCÉ EST CE QUI EST GARDÉ : PROFIL, BULLES EN ATTENTE, COMMENTAIRE MODIFIÉ (2026-11-10)
@@ -908,3 +909,25 @@ Trois P2 corrigés dans le même temps :
 
 Enfin, `supaUnfollowUser` rend un succès local pour un visiteur (`parcours-suivre` l'a rattrapé : le suivi
 revenait).
+
+## 🔔 PAS DE NOTIFICATION SANS ÉVÉNEMENT MÉTIER — elle part au verdict de son écriture (2026-11-13)
+
+SRV-02, reste (PR #883). Pour `like`, `comment`, `event_join`, `event_comment`, `event_feedback`, `event_invite`,
+`live_video` et `event_cancelled`, la base exige le FAIT qui lie l'émetteur au destinataire à propos de `ref_id`
+(`trg_notifications_preuve`, entre `trg_notifications_origine` et `trg_notifications_texte`). Un fait ne vaut qu'une
+notification sur 24 h.
+
+**Règle pour tout nouveau site** : une notification soumise à la preuve ne part JAMAIS en parallèle de son écriture.
+Passer par `notifierApresEcriture(promesseDeLEcriture, …)` (app-08) ; dans la file des commentaires, poser
+`op.notif = { to, kind, text }` et laisser `_cmtObNotifier` notifier à la confirmation. `tests/unit/notifications-apres-ecriture.test.mjs`
+recense chaque appel direct à `supaInsertNotif` pour ces genres et refuse un site inconnu.
+
+**Pièges** :
+- `follows_notifier` pose `passio.notification_serveur` et ne le remet pas : dans une même transaction, tout ce qui
+  suit passe pour « serveur ». Une épreuve qui crée un abonnement doit remettre le réglage à zéro avant d'éprouver.
+- `co_organizers` est rempli par l'auteur seul, sans accord : il désigne qui PARLE pour l'activité, jamais qui
+  REÇOIT ses interactions.
+- Une réponse lue du serveur a l'identifiant `srep_<date>`, qu'aucune table ne porte : un j'aime de réponse vise
+  cet identifiant, sa cible se résout dans le fil.
+- Une suite à comptes réels qui écrit une notification doit poser son fait d'abord (`authz-critical`,
+  `realtime-poussee-reelle`).

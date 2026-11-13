@@ -11,7 +11,16 @@ function openPostOptions(postId) {
   // éditeur n'existe plus. Les publications de type `vlog` n'apparaissent
   // d'ailleurs plus nulle part, donc ce menu ne peut plus s'ouvrir sur l'une
   // d'elles.
-  var _editBtn = "";
+  // CRE-C16 / FIL-C24 (décision de Benjamin du 2026-11-13, « 1 : a ») : le
+  // TEXTE d'une publication se corrige — rien d'autre (passion, média, type).
+  // Pas pour un repartage : son texte est la citation de l'original.
+  var _p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var _editBtn = (_p && !_p.sharedReelData && !_p.sharedFromPostId && !_p.isReel)
+    ? `<button class="post-option" onclick="closeModal();modifierTextePublication('${escapeJsArg(postId)}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+        Modifier le texte
+      </button>`
+    : "";
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
@@ -23,6 +32,71 @@ function openPostOptions(postId) {
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
+}
+
+// ── CORRIGER LE TEXTE D'UNE PUBLICATION (CRE-C16 / FIL-C24) ───────────────────
+// Le serveur d'abord : le texte affiché ne change qu'une fois l'écriture
+// confirmée (`{ error }` lu, zéro ligne = refus). La migration du 2026-11-13
+// n'ouvre que la colonne `content`, à l'auteur ; `edited_at` est posé par le
+// serveur. Une publication qui n'existe que sur cet appareil se corrige ici.
+var TEXTE_PUBLICATION_MAX = 5000;
+function modifierTextePublication(postId) {
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!p) { toast("Cette publication n'est plus disponible."); return; }
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Modifier le texte</div>
+    <div class="modal-subtitle">La passion, la photo et la vidéo ne changent pas. La publication portera la mention « modifié ».</div>
+    <textarea class="textarea" id="pubTexteEdit" aria-label="Texte de la publication" maxlength="${TEXTE_PUBLICATION_MAX}" style="min-height:120px;"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn ghost block" onclick="closeModal()">Annuler</button>
+      <button class="btn primary block" id="pubTexteEnregistrer" onclick="enregistrerTextePublication('${escapeJsArg(postId)}')">Enregistrer</button>
+    </div>
+  `);
+  var champ = document.getElementById("pubTexteEdit");
+  if (champ) { champ.value = String(p.text || ""); try { champ.focus(); } catch (e) {} }
+}
+async function enregistrerTextePublication(postId) {
+  var champ = document.getElementById("pubTexteEdit");
+  var bouton = document.getElementById("pubTexteEnregistrer");
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!champ || !p) return;
+  var texte = String(champ.value || "").trim().slice(0, TEXTE_PUBLICATION_MAX);
+  if (!texte && !p.image && !p.video && !p.audio) { toast("Écris quelque chose, ou supprime la publication"); return; }
+  if (texte === String(p.text || "").trim()) { closeModal(); return; }
+  if (bouton) { if (bouton.disabled) return; bouton.disabled = true; bouton.textContent = "Enregistrement…"; }
+  var serveur = !!(p.fromSupabase && typeof supa !== "undefined" && supa && window._supaReal
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+  var editedAt = Date.now();
+  if (serveur) {
+    var r = null;
+    try {
+      r = await supa.from("posts").update({ content: texte }).eq("id", postId).eq("author_id", MY_UID).select("id, edited_at");
+    } catch (e) { r = { error: e }; }
+    var ok = r && !r.error && Array.isArray(r.data) && r.data.length === 1;
+    if (!ok) {
+      if (bouton) { bouton.disabled = false; bouton.textContent = "Enregistrer"; }
+      try { diagLog("modification de publication refusée " + String((r && r.error && (r.error.code || r.error.message)) || "0 ligne")); } catch (e) {}
+      toast(typeof estEchecReseau === "function" && r && r.error && estEchecReseau(r.error)
+        ? "⚠️ Pas de connexion — modification non enregistrée"
+        : "⚠️ Modification non enregistrée — réessaie", "warning");
+      return;
+    }
+    if (r.data[0].edited_at) editedAt = supaTs(r.data[0].edited_at);
+  }
+  // Toutes les copies vivantes (userPosts, supabasePosts, seed, extras du fil).
+  [state.userPosts, state.supabasePosts, state.seed && state.seed.posts, window._feedExtraPosts].forEach(function (liste) {
+    (liste || []).forEach(function (x) { if (x && x.id === postId) { x.text = texte; x.editedAt = editedAt; } });
+  });
+  try { saveState(); } catch (e) {}
+  closeModal();
+  window._feedDomSig = null; window._lastHtml = null;
+  try { renderFeed(); } catch (e) {}
+  try {
+    var page = document.getElementById("postDetailPage");
+    if (page && page.style.display === "flex" && typeof openPost === "function") openPost(postId);
+  } catch (e) {}
+  toast(serveur ? "Publication modifiée" : "Publication modifiée sur cet appareil");
 }
 
 // Le ⋯ d'une publication d'AUTRUI : signaler la publication, bloquer l'auteur.
@@ -356,6 +430,26 @@ function _linkifyText(safe) {
   }
   return out;
 }
+// LOT-20 (audit UX/UI du 2026-11-10, MSG-C67) : les liens d'un MESSAGE, sur un
+// texte DÉJÀ échappé — même reconnaissance que `_linkifyText` (http(s) seulement,
+// ponctuation finale hors du lien, aucun `<`, `"` déjà en entité), sans mentions
+// ni mots-dièse. Nouvel onglet, `noopener noreferrer nofollow`.
+function _liensMessage(safe) {
+  if (!safe) return "";
+  var adresse = /^https?:\/\/[^\s<]+/;
+  var bord = /[\s(]/;
+  var out = "", i = 0, m;
+  while (i < safe.length) {
+    var ch = safe[i];
+    if (ch === "h" && (i === 0 || bord.test(safe[i - 1])) && (m = adresse.exec(safe.slice(i)))) {
+      var clean = m[0].replace(/[.,;!?)]+$/, "");
+      out += '<a href="' + clean + '" target="_blank" rel="noopener noreferrer nofollow" class="msg-lien">' + clean + '</a>';
+      i += clean.length; continue;
+    }
+    out += ch; i++;
+  }
+  return out;
+}
 function _commentBodyHtml(txt) {
   return _looksLikeMediaUrl(txt)
     ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(txt) + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
@@ -549,6 +643,19 @@ function _enqueueCommentSync(op) {
   _cmtObStartTimer();
   _cmtObFlush();
 }
+// ⚠️ SRV-02 (2026-11-13) : la notification d'un commentaire part à SA
+// CONFIRMATION, jamais à la mise en file. La base exige le commentaire réel
+// derrière une notification `comment` ; posée en parallèle, elle arrivait avant
+// lui (hors ligne : des minutes avant) et se faisait refuser. `op.notif` =
+// { to, kind, text } ; la référence est le fil (`op.threadId`). L'entrée a déjà
+// passé la garde du compte (AUTH-06) : c'est bien son auteur qui notifie.
+function _cmtObNotifier(op) {
+  try {
+    var n = op && op.notif;
+    if (!n || !n.to || !n.kind || typeof supaInsertNotif !== "function") return;
+    supaInsertNotif(n.to, n.kind, op.threadId, n.text);
+  } catch (e) {}
+}
 // Exécute UN envoi ; renvoie une Promise<boolean> (succès serveur).
 function _cmtObRun(op) {
   try {
@@ -614,7 +721,7 @@ async function _cmtObFlush() {
       if ((op.tries || 0) >= 8) continue; // auto-stop : le clic « Réessayer » remet tries à 0
       var ok = false;
       try { ok = await _cmtObRun(op); } catch (e) { ok = false; }
-      if (ok) { _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; })); _cmtObSetStatus(op.threadId, op.nodeId, true); }
+      if (ok) { _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; })); _cmtObSetStatus(op.threadId, op.nodeId, true); _cmtObNotifier(op); }
       else { op.tries = (op.tries || 0) + 1; _cmtObSave(_cmtObLoad().map(function (o) { return o.opId === op.opId ? op : o; })); _cmtObSetStatus(op.threadId, op.nodeId, false); }
     }
   } finally { _cmtObFlushing = false; }
@@ -1214,9 +1321,10 @@ function likeCommentNode(threadId, nodeId, event) {
     if (typeof supaCommentRemoveLike === "function") supaCommentRemoveLike(nodeId);
   } else {
     node.likedBy.push(meId); node.likes += 1;
-    if (typeof supaCommentInteract === "function") supaCommentInteract(nodeId, threadId, "like", "");
-    if (node.authorId && node.authorId !== meId && node.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(node.authorId, "like", threadId, "a aimé ta réponse"); } catch(e) {}
+    var _ecrit = (typeof supaCommentInteract === "function") ? supaCommentInteract(nodeId, threadId, "like", "") : false;
+    // Au verdict de l'écriture (SRV-02 : la base exige le j'aime réel).
+    if (node.authorId && node.authorId !== meId && node.fromSupabase && typeof notifierApresEcriture === "function") {
+      notifierApresEcriture(_ecrit, node.authorId, "like", threadId, "a aimé ta réponse");
     }
   }
   if (thread && typeof thread.save === "function") thread.save(); else { try { saveState(); } catch(e){} }
@@ -1524,12 +1632,16 @@ function submitComment(postId) {
   // Sync avec Supabase — via la FILE D'ATTENTE (#14) : envoi + réessai auto si
   // offline/erreur, avec statut « Envoi… / Non envoyé » sur le commentaire.
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: postId, commentId: _cid, nodeId: _cid, text: text });
-    else Promise.resolve(supaAddComment(postId, text, _cid)).then(function (ok) { if (ok) _commentaireConfirme(postId, _cid); }).catch(function () {});
-    // Notifier l'auteur du post
+    // Notifier l'auteur du post — à la CONFIRMATION du commentaire (SRV-02) : la
+    // notification voyage avec l'envoi dans la file, qui la pose au succès.
     const commentedPost = findPostAnywhere(postId);
-    if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {
-      supaInsertNotif(commentedPost.authorId, "comment", postId, "a commenté ton post");
+    const _notifCmt = (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase)
+      ? { to: commentedPost.authorId, kind: "comment", text: "a commenté ton post" } : null;
+    if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: postId, commentId: _cid, nodeId: _cid, text: text, notif: _notifCmt });
+    else {
+      const _ecrit = Promise.resolve(supaAddComment(postId, text, _cid));
+      _ecrit.then(function (ok) { if (ok) _commentaireConfirme(postId, _cid); }).catch(function () {});
+      if (_notifCmt) notifierApresEcriture(_ecrit, _notifCmt.to, _notifCmt.kind, postId, _notifCmt.text);
     }
     // ASTRA-24 : les mentions partent depuis `supaAddComment`, une fois le commentaire en base.
   }
@@ -4432,6 +4544,22 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
   setTimeout(function() { renderMessages(); openConversation(newConv.id); }, 120);
 }
 
+// Vrai si un blocage existe entre ce compte et moi ET que ce n'est pas MOI qui
+// ai bloqué — c'est donc lui. `is_blocked_with` (SECURITY DEFINER, comptes
+// seulement) répond pour les deux sens sans révéler lequel ; le sens « moi »
+// se lit dans ma propre liste. Visiteur, compte d'exemple, panne : faux — le
+// profil s'affiche comme avant.
+async function _profilIndisponiblePourMoi(authorId) {
+  try {
+    if (!authorId || typeof supa === "undefined" || !supa || !window._supaReal) return false;
+    if (typeof _uidEstUnCompte === "function" && !_uidEstUnCompte()) return false;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(authorId))) return false;
+    if (typeof isBlocked === "function" && isBlocked(authorId)) return false;
+    var r = await supa.rpc("is_blocked_with", { _other: String(authorId) });
+    return !!(r && !r.error && r.data === true);
+  } catch (e) { return false; }
+}
+
 async function openUserProfile(authorId, source) {
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
@@ -4443,6 +4571,20 @@ async function openUserProfile(authorId, source) {
 
   if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
     goTo("profiles");
+    return;
+  }
+
+  // PRO-C20 (décision de Benjamin du 2026-11-13, « 3 : b ») : le profil d'un
+  // compte qui M'A bloqué n'est pas affiché — « Ce profil n'est pas
+  // disponible », comme un compte supprimé, sans bouton menant à un refus
+  // certain. (Un compte que J'AI bloqué garde son profil et « Débloquer », LOT-16.)
+  if (await _profilIndisponiblePourMoi(authorId)) {
+    openModal(`
+      <div class="modal-handle"></div>
+      <div class="modal-title">Ce profil n'est pas disponible</div>
+      <div class="modal-subtitle">Il a peut-être été supprimé, ou n'est pas visible pour toi.</div>
+      <button class="btn primary block" onclick="closeModal()">Fermer</button>
+    `);
     return;
   }
 
@@ -5753,6 +5895,10 @@ function renderMessages() {
     if (!_q && !_showArch && !window._convNetLoaded && window._supaReal !== false) {
       if (!window._convSkelTimeout) {
         window._convSkelTimeout = setTimeout(function () {
+          // LOT-20 (MSG-C32) : le filet ne prétend plus que la lecture est finie —
+          // il dit qu'elle est LENTE. « Aucune conversation » est réservé à une
+          // lecture réellement revenue vide (`_convNetLoaded` posé par app-08).
+          if (!window._convNetLoaded) window._convChargementLent = true;
           window._convNetLoaded = true;
           try { renderMessages(); } catch (e) {}
         }, 8000);
@@ -5775,7 +5921,13 @@ function renderMessages() {
       const t = empt.querySelector(".empty-title"), x = empt.querySelector(".empty-text");
       if (_q) { if (t) t.textContent = "Aucun résultat"; if (x) x.textContent = "Aucune conversation ni message ne correspond à ta recherche."; }
       else if (_showArch) { if (t) t.textContent = "Aucune conversation archivée"; if (x) x.textContent = "Les conversations archivées apparaîtront ici."; }
-      else { if (t) t.textContent = "Aucune conversation"; if (x) x.textContent = "Recherche un utilisateur ci-dessus pour démarrer une discussion."; }
+      else if (window._convChargementLent) {
+        if (t) t.textContent = "Chargement plus long que prévu…";
+        if (x) x.textContent = "Tes conversations n'ont pas encore répondu.";
+      }
+      // MSG-C19 : la consigne envoyait vers un champ qui ne cherche pas de personnes.
+      else { if (t) t.textContent = "Aucune conversation"; if (x) x.textContent = "Écris à une personne pour démarrer une discussion."; }
+      _peindreActionEtatVideMessages(empt, !_q && !_showArch);
     }
     return;
   }
@@ -5802,9 +5954,8 @@ function renderMessages() {
     const u = seedUsersArr.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
     const _visibles = (c.messages || []).filter(_msgVisiblePourMoi);
     const lastMsg = _visibles.length ? _visibles[_visibles.length - 1] : null;
-    const _previewContent = lastMsg
-      ? (lastMsg.gif ? "GIF" : lastMsg.voiceData ? "Message vocal" : lastMsg.video ? "Vidéo" : lastMsg.img ? "Photo" : lastMsg.docData ? "Document · " + (lastMsg.fileName || "Fichier") : _sansEmojiEnveloppe(lastMsg.text) || "")
-      : "";
+    // MSG-C12 : une seule autorité (le TYPE d'abord), jamais l'étiquette technique.
+    const _previewContent = lastMsg ? (_msgPreviewText(lastMsg) || "") : "";
     const previewText = (c.draft && c.id !== window._openedConvId)
       ? "Brouillon : " + c.draft
       : (lastMsg
@@ -5981,8 +6132,15 @@ async function openConversation(convId) {
     inp.value = c.draft || ""; // restaure le brouillon non envoyé
     inp.style.height = "auto";
     try { if (inp.value) autoResizeTextarea(inp); } catch(e) {}
+    // LOT-20 (MSG-C59) : sur un clavier TACTILE il n'y a pas de Maj+Entrée — la
+    // touche de retour envoyait le message en cours, impossible de sauter une
+    // ligne. Au doigt, Entrée insère un saut de ligne et seul le bouton envoie ;
+    // sur ordinateur (pointeur fin), Entrée envoie et Maj+Entrée saute une ligne.
+    var _tactile = !_pointeurFin();
+    inp.setAttribute("enterkeyhint", _tactile ? "enter" : "send");
+    if (!inp.getAttribute("aria-label")) inp.setAttribute("aria-label", "Écrire un message");
     inp.onkeydown = function(e) {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessageFp(convId, displayName); }
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !_tactile) { e.preventDefault(); sendMessageFp(convId, displayName); }
     };
   }
   if (btn) btn.onclick = () => sendMessageFp(convId, displayName);
@@ -6203,9 +6361,13 @@ function renderConvFpThread(c, displayName) {
     if (!ts) return "";
     var d = new Date(ts), now = new Date();
     var sameYear = d.getFullYear() === now.getFullYear();
-    var diffDays = Math.floor((now - d) / 86400000);
+    // LOT-20 (MSG-C61) : des JOURS CALENDAIRES (minuit local), pas des tranches
+    // de 24 h — un message d'hier soir passait sous « Aujourd'hui », suivi d'un
+    // second « Aujourd'hui », et « Hier » désignait avant-hier.
+    var diffDays = -joursCalendairesAvant(d.getTime(), now.getTime());
     if (diffDays === 0) return "Aujourd'hui";
     if (diffDays === 1) return "Hier";
+    if (diffDays > 1 && diffDays < 7) return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
     return d.toLocaleDateString("fr-FR", { day:"numeric", month:"long", year: sameYear ? undefined : "numeric" });
   }
   function _dayKey(ts) { var d = new Date(ts); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
@@ -6263,14 +6425,16 @@ function renderConvFpThread(c, displayName) {
     var isLastInGroup = (i === msgs.length - 1) || (msgs[i+1] && msgs[i+1].from !== m.from) || (msgs[i+1] && m.at && msgs[i+1].at && _dayKey(msgs[i+1].at) !== msgDay);
     var timeStr = '';
     if (m.at) {
-      var receipt = (isLastMe && isLastInGroup) ? readReceipt : '';
+      // LOT-20 (MSG-C62) : pas de « ✓ » sur un message qui n'est pas parti.
+      var _pasParti = m.status === "sending" || m.status === "failed";
+      var receipt = (isLastMe && isLastInGroup && !_pasParti) ? readReceipt : '';
       var d = new Date(m.at);
       var hours = String(d.getHours()).padStart(2, '0');
       var mins = String(d.getMinutes()).padStart(2, '0');
       var timeExact = hours + ':' + mins;
       timeStr = '<span class="conv-bubble-time">' + timeExact + receipt + statusInd + '</span>';
     } else if (isMe) {
-      timeStr = '<span class="conv-bubble-time">' + ((isLastMe && isLastInGroup) ? readReceipt : '') + statusInd + '</span>';
+      timeStr = '<span class="conv-bubble-time">' + ((isLastMe && isLastInGroup && m.status !== "sending" && m.status !== "failed") ? readReceipt : '') + statusInd + '</span>';
     }
 
     // Contenu
@@ -6319,7 +6483,7 @@ function renderConvFpThread(c, displayName) {
       content = '<a ' + attrMediaSrc(m.fileUrl, "href") + ' target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:inline-block;">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;">' +
         '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">' + fileIcon + '</div>' +
-        '<div><div style="font-size:13px;font-weight:700;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
+        '<div style="min-width:0;"><div class="msg-fichier-nom" title="' + fname + '">' + fname + '</div>' +
         '<div style="font-size:10px;opacity:0.6;">Télécharger</div></div></div></a>';
     } else if (m.location) {
       isMedia = true;
@@ -6341,6 +6505,18 @@ function renderConvFpThread(c, displayName) {
         '<span id="dur_' + aid + '" style="font-size:11px;opacity:0.75;flex-shrink:0;min-width:30px;text-align:right;">' + vDurStr + '</span>' +
         '<button class="voice-speed-btn" onclick="_cycleVoiceSpeed()" style="flex-shrink:0;background:' + (isMe?'rgba(255,255,255,0.18)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';font-size:10px;font-weight:800;border-radius:8px;padding:2px 6px;cursor:pointer;">' + (((window._voiceSpeed||1) % 1 === 0) ? (window._voiceSpeed||1) : String(window._voiceSpeed).replace(".",",")) + '×</button>' +
         '</div>';
+    } else if (m.voiceData && m.isFile) {
+      // LOT-20 (MSG-C51) : ma copie LOCALE d'un fichier audio envoyé était une
+      // bulle vide (aucune branche ne la peignait) ; rechargée du serveur, la
+      // même devenait une carte « 🎵 nom · Télécharger ». Même carte, tout de suite.
+      isMedia = true;
+      var aname = escapeHtml(m.fileName || 'Fichier audio');
+      content = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;">' +
+        (isMe
+          ? '<div style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;" aria-hidden="true">🎵</div>'
+          : '<div style="width:36px;height:36px;border-radius:10px;background:var(--bg-soft);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;" aria-hidden="true">🎵</div>') +
+        '<div style="min-width:0;"><div class="msg-fichier-nom" title="' + aname + '">' + aname + '</div>' +
+        '<div style="font-size:11px;opacity:0.75;">Fichier audio' + (m.fileSize ? ' · ' + escapeHtml(m.fileSize) : '') + '</div></div></div>';
     } else if (m.docData) {
       isMedia = true;
       var fname = escapeHtml(m.fileName || 'Fichier');
@@ -6348,7 +6524,7 @@ function renderConvFpThread(c, displayName) {
       var docBorder = isMe ? 'rgba(255,255,255,0.2)' : 'var(--border)';
       content = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer;" onclick="_docDownload(\'' + escapeJsArg((m.id||i)) + '\')">' +
         '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📄</div>' +
-        '<div><div style="font-size:13px;font-weight:700;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
+        '<div style="min-width:0;"><div class="msg-fichier-nom" title="' + fname + '">' + fname + '</div>' +
         '<div style="font-size:10px;opacity:0.6;">' + escapeHtml((m.fileType||'') + (m.fileSize ? ' · '+m.fileSize : '')) + '</div></div></div>';
       // stocker pour le téléchargement
       window['_doc_' + (m.id||i)] = { data: m.docData, name: m.fileName || 'fichier' };
@@ -6360,7 +6536,9 @@ function renderConvFpThread(c, displayName) {
         // (il n'accepte que http(s), data:image|audio|video et blob:).
         content = '<a href="' + safeUrlAttr(parts2[1]||'') + '" target="_blank" rel="noopener" style="color:inherit;">' + escapeHtml(m.text) + '</a>';
       } else {
-        content = escapeHtml(m.text);
+        // LOT-20 (MSG-C67) : les liens http(s) d'un message s'ouvrent — échappement
+        // D'ABORD, puis liens seulement (ni mentions ni mots-dièse ici).
+        content = _liensMessage(escapeHtml(m.text));
       }
     }
 
@@ -6661,12 +6839,36 @@ function _msgVisiblePourMoi(m) {
   if (!m || m.from === "me" || !m.from) return true;
   return !(typeof isBlocked === "function" && isBlocked(m.from));
 }
+// LOT-20 (audit UX/UI du 2026-11-10, MSG-C12 / C66) : le libellé d'un message
+// se décide par son TYPE, avant de regarder son texte. Le texte d'une pièce
+// jointe est une étiquette TECHNIQUE (« [DOC] topo.pdf », « [AUDIO] … »,
+// « [MEDIA] atelier.jpg », app-09) et une position est une adresse Google
+// Maps : la liste, la barre de réponse et la citation les affichaient tels
+// quels. Une seule autorité pour les trois.
+var _ETIQUETTE_PJ_RE = /^\[(MEDIA|IMAGE|PHOTO|VIDEO|AUDIO|DOC|FILE|FICHIER)\]\s*(.*)$/i;
+function _msgEstTexte(m) {
+  if (!m || !m.text || /^\{/.test(m.text)) return false;
+  if (m.gif || m.img || m.video || m.voiceData || m.fileUrl || m.docData || m.location) return false;
+  return !_ETIQUETTE_PJ_RE.test(m.text) && !/^📍 Ma position : https?:\/\//.test(m.text);
+}
 function _msgPreviewText(m) {
   if (!m) return "";
-  if (m.text && !/^\{/.test(m.text)) return _sansEmojiEnveloppe(m.text);
   if (m.gif) return "GIF"; if (m.img) return "Photo"; if (m.video) return "Vidéo";
-  if (m.voiceData) return "Message vocal"; if (m.fileUrl || m.docData) return "Document · " + (m.fileName || "Fichier");
-  if (m.location) return "Position"; return m.text || "Message";
+  if (m.voiceData) return "Message vocal" + (m.voiceDuration ? " · " + m.voiceDuration : "");
+  if (m.fileUrl || m.docData) return (/^audio\//.test(String(m.fileType || "")) ? "Fichier audio · " : "Document · ") + (m.fileName || "Fichier");
+  if (m.location) return "Position";
+  var t = String(m.text || "");
+  if (/^📍 Ma position : https?:\/\//.test(t)) return "Position";
+  var e = t.match(_ETIQUETTE_PJ_RE);
+  if (e) {
+    var k = e[1].toUpperCase(), nom = e[2] || "";
+    if (k === "AUDIO") return /^message vocal/i.test(nom) ? nom : "Fichier audio · " + nom;
+    if (k === "VIDEO") return "Vidéo";
+    if (k === "MEDIA" || k === "IMAGE" || k === "PHOTO") return /\.(mp4|mov|webm|m4v)$/i.test(nom) ? "Vidéo" : "Photo";
+    return "Document · " + (nom || "Fichier");
+  }
+  if (t && !/^\{/.test(t)) return _sansEmojiEnveloppe(t);
+  return t || "Message";
 }
 
 function _openMsgActions(convId, msgId) {
@@ -6679,7 +6881,8 @@ function _openMsgActions(convId, msgId) {
     return '<div class="csetting-item" onclick="' + fn + '"><div class="csetting-icon">' + icon + '</div>' +
       '<div class="csetting-label"' + (danger?' style="color:#ef4444;"':'') + '>' + label + '</div></div>';
   }
-  var canCopy = m.text && !/^\{/.test(m.text);
+  // MSG-C66 : « Copier le texte » seulement pour un message de TEXTE.
+  var canCopy = _msgEstTexte(m);
   // ⚠️ LES IDENTIFIANTS SONT ÉCRITS PAR D'AUTRES COMPTES (audit 2026-11-03) :
   // `conv_messages.id` et `conversations.id` sont posés par l'EXPÉDITEUR, sans
   // forme imposée par le serveur. Concaténés tels quels dans un onclick, un
@@ -6730,8 +6933,12 @@ function _reactAndClose(convId, msgId, emoji) { closeModal(); _toggleReaction(co
 function _copyMsg(convId, msgId) {
   var r = _msgById(convId, msgId); if (!r || !r.m) return;
   var t = r.m.text || "";
-  try { navigator.clipboard.writeText(t); toast("Copié"); } catch(e) { toast("Copie impossible"); }
   closeModal();
+  // Le succès s'annonce APRÈS la réponse du presse-papiers (même défaut que FIL-C09).
+  try {
+    Promise.resolve(navigator.clipboard.writeText(t))
+      .then(function () { toast("Copié"); }, function () { toast("Copie impossible"); });
+  } catch(e) { toast("Copie impossible"); }
 }
 
 // Répondre : mémorise la cible et affiche un bandeau au-dessus du champ de saisie.
@@ -7708,10 +7915,50 @@ function _outboxAdd(convId, msgId, content, owner, contexte) {
 }
 function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ return x.msgId !== msgId; })); }
 
+// LOT-20 (MSG-C19 / C32) : l'état vide de la messagerie se termine par une
+// ACTION — « Nouveau message » (même geste que le « + »), ou « Réessayer »
+// quand la lecture est lente. Bouton peint en DOM, sans onclick inline.
+function _peindreActionEtatVideMessages(empt, actif) {
+  if (!empt) return;
+  var ancien = empt.querySelector("[data-msg-vide-action]");
+  if (ancien) ancien.remove();
+  if (!actif) return;
+  var lent = !!window._convChargementLent;
+  var b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn primary msg-vide-action";
+  b.setAttribute("data-msg-vide-action", lent ? "reessayer" : "nouveau");
+  b.textContent = lent ? "Réessayer" : "Nouveau message";
+  b.addEventListener("click", function () {
+    if (lent) {
+      window._convChargementLent = false;
+      window._convNetLoaded = false;
+      window._convSkelTimeout = null;
+      try {
+        if (typeof _rafraichirConversationsServeur === "function") {
+          var p = _rafraichirConversationsServeur({ fusion: true });
+          if (p && typeof p.catch === "function") p.catch(function (e) { try { diagLog("conversations : réessai — " + (e && e.message)); } catch (_) {} });
+        }
+      } catch (e) {}
+      try { renderMessages(); } catch (e) {}
+      return;
+    }
+    try { if (typeof openNewMessage === "function") openNewMessage(); } catch (e) {}
+  });
+  empt.appendChild(b);
+}
+
 // HTML de l'indicateur d'envoi (🕓 en cours / ⚠️ échec cliquable / rien si envoyé).
+// LOT-20 (audit UX/UI du 2026-11-10, MSG-C62) : un seul état par message, en
+// toutes lettres — « Envoi… », « En attente du réseau » (hors ligne : il part
+// seul au retour), « Non envoyé · réessayer » en vraie cible de 44 px (c'était
+// un mot rouge de 47 × 15 px collé à l'heure, à côté d'un « ✓ » mensonger).
 function _msgStatusIndHtml(convId, msgId, status) {
-  if (status === "sending") return ' <span style="opacity:0.55;">🕓</span>';
-  if (status === "failed") return ' <span style="color:#ef4444;cursor:pointer;font-weight:700;" onclick="_retryMsg(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\')">réessayer</span>';
+  if (status === "sending") {
+    var horsLigne = (typeof navigator !== "undefined" && navigator.onLine === false);
+    return ' <span class="msg-st msg-st-envoi">🕓 ' + (horsLigne ? "En attente du réseau" : "Envoi…") + '</span>';
+  }
+  if (status === "failed") return ' <span class="msg-st msg-st-echec" role="button" tabindex="0" aria-label="Message non envoyé — réessayer" onclick="_retryMsg(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">Non envoyé · réessayer</span>';
   return '';
 }
 
