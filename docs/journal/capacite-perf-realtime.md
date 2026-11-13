@@ -37,6 +37,7 @@
 - 🔂 LE CHARGEUR DES 9 SCRIPTS : CHAQUE SCRIPT N'AVANCE LA CHAÎNE QU'UNE FOIS (2026-11-10)
 - 🕰️ LE REJEU DE L'ÉTAT COMPARE À LA BASE DU BLOB, PAS AU REPÈRE QUE LA LECTURE VIENT D'AVANCER (2026-11-12, ETAT-01 et ETAT-09)
 - 🧾 LE JOB `dist` NE LIT PLUS LA PRODUCTION : `release-integrity` SOUS LE PROJET VIDE, SA RAISON AU SOCLE ÉTAIT PÉRIMÉE (2026-11-12)
+- 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
 
 ---
 
@@ -2226,6 +2227,17 @@ la première version qui touche le bloc ; huit requêtes de plus, en parallèle.
   le rejeu est alors REPORTÉ (retour en ligne, action suivante, lancement suivant), jamais perdu.
   Même famille, même ordre de grandeur : un geste fait pendant ce chargement peut appeler un
   fichier pas encore exécuté (`ReferenceError` remontée, sans autre effet).
+  **Suite (2026-11-13) : ce verrou ⑤ mesurait un état de plus que son invariant, et c'est lui
+  qui a rougi.** Il exigeait `document.readyState === "interactive"` au premier script ; le
+  déploiement de `main` (exécution 43433603440) l'a trouvé à « loading » sous Chromium, aux trois
+  essais, l'application restant prête avant `load`. Rien n'avait changé au chargeur : le premier
+  script est inséré dès le gate franchi (microtâche), et la page continue de parser-exécuter les
+  ~20 modules inlinés APRÈS le chargeur — lequel des deux finit le premier est une course de
+  quelques millisecondes que la taille de ces modules (NAV-V2 du 12/11, entre autres) fait pencher.
+  « loading », c'est d'ailleurs exactement ce que faisait l'ancien `app.js`, parseur-bloquant.
+  Le verrou mesure désormais ce qu'il garde : « loading » ou « interactive », jamais « complete ».
+  Il n'y perd pas sa mutation — un `<script>` inséré retarde `load`, donc « complete » ne sort
+  d'ici que si le chargeur n'a rien inséré avant, et `__appAuLoad` tombe alors avec lui.
 - ⚠️ **SOUS WEBKIT, LE `fetch` DU WORKER NE VOIT PAS LE CACHE OÙ LA PAGE A RANGÉ SES SCRIPTS** (Playwright
   WebKit 2388) : premier chargement contrôlé = 9 requêtes, et avec le worker d'avant ce lot, une
   version qui ne changeait QU'UN fichier faisait repartir les 9 — l'activation vide le cache du worker,
@@ -2665,10 +2677,10 @@ référence : **≈ 79 requêtes de production PAR RUN, contre ≈ 2 860 — −
 57 runs en auraient envoyé ≈ 163 000.
 Ce qui reste est, pour l'essentiel, ce qui parle au vrai projet PAR CONSTRUCTION : les gates `dist`
 (démarrage réel de l'artefact et sa télémétrie : `passions`, `profiles`, `posts`, `events`,
-`fil_compteurs`, `notifications`), `authz-critical` (comptes réels — `auth/v1/admin` 60, soit
-≈ 30 comptes en 24 h —, dépôts dans le stockage 90, écritures de profils 86), le contrat désigné de
-`telemetrie-preauth` (avec la télémétrie réelle des gates `dist` : 199 lots), et des lectures de
-comptage des scripts Node (HEAD `stories` / `profiles`).
+`fil_compteurs`, `notifications`), `authz-critical` (comptes réels — `auth/v1/admin` 60 **[121 :
+paragraphe suivant]**, soit ≈ 30 comptes en 24 h —, dépôts dans le stockage 90, écritures de profils
+86), le contrat désigné de `telemetrie-preauth` (avec la télémétrie réelle des gates `dist` : 199
+lots), et des lectures de comptage des scripts Node (HEAD `stories` / `profiles`).
 ⚠️ **UN RÉSIDU NEUF, PROPRE À WEBKIT : 320 PRÉ-REQUÊTES CORS** (`OPTIONS /rest/v1/passions`,
 ≈ 6 par run) contre 6 `GET` réels sur la même table. Sous WebKit, la pré-requête d'une requête que la
 route sert part quand même au serveur : la requête est servie par le miroir, son `OPTIONS` ne l'est
@@ -2676,10 +2688,81 @@ pas. Aucune donnée ne revient (une pré-requête n'a pas de corps), mais c'est 
 Chromium, lui, ne la laisse pas partir. S'y ajoutent ≈ 90 lectures WebKit réelles en 24 h
 (`profiles` 24, `posts` 22, `fil_compteurs` 18…), compatibles avec `pwa-maj-pendant-appel`, qui garde
 EXPRÈS le vrai service worker (son sujet) — donc des requêtes qui, une fois le worker aux commandes,
-échappent aux routes. Ni l'un ni l'autre ne vaut un lot tant que ces chiffres restent à ce niveau.
+échappent aux routes **[rectifié au paragraphe suivant : ce sont les lectures des deux seuls runs de
+la PR #820, jamais de `main`]**. Ni l'un ni l'autre ne vaut un lot tant que ces chiffres restent à ce
+niveau.
 ⚠️ **LA PART EN POURCENTAGE BAISSE MOINS VITE QUE LE PAR-RUN** (68,1 % → 12,2 % pour −97 % par run) :
 la CI a tourné quatre fois plus, et le reste du trafic a lui aussi changé. Le bon indicateur reste
-**par run**, rapporté au nombre de runs de `gh run list --created`.
+**par run**, rapporté au nombre de runs de `gh run list --created` **[rectifié au paragraphe suivant :
+de runs EXÉCUTÉS, 51 des 57]**.
+
+**APRÈS LA FUSION DE #804 — 24 H PLEINES (2026-11-09 21:10 → 2026-11-10 21:10 UTC), SECONDE LECTURE :
+ADRESSE PAR ADRESSE.** Mêmes journaux (`query_logs`, `edge_logs`, canal ① en lecture seule), relus le
+12/11 en même temps que la précédente : mêmes totaux à l'unité (37 200 requêtes, 4 520 du réseau des
+runners, 57 runs créés). Ces 4 520 viennent de 175 adresses : headless 3 248, Node 833, WebKit
+(« iPhone OS 15_0 ») 439. **51 des 57 runs ont joué au moins un job**, dont les 15 `push` ; les six
+autres : trois `push` et un run de PR annulés avant leur premier job, deux runs de PR d'agent
+(`claude/issue-806`, `-807`, déclenchés par `github-actions[bot]`) restés en attente d'approbation puis
+clos en `failure` le lendemain, sans un job. Près de quatre fois l'activité de la fenêtre d'avant
+(13 runs), pour **88 % de requêtes en moins en valeur absolue**.
+Lu adresse par adresse (une adresse = un job), classé par SIGNATURE, puis contrôlé par les fenêtres
+des runs de `gh run list` :
+- **`authz-critical` : 15 exécutions, les 15 runs `push` exécutés — 3 256 requêtes, 217 par
+  exécution**, inchangé par construction (1 301 / 6 = 217 avant). Chacune : ≈ 170 du navigateur (dont
+  2 `/auth/v1/verify` et une connexion temps réel), ≈ 45 du service role (dont 8 `/auth/v1/admin` —
+  créer, lier, lister, supprimer les deux comptes — et la purge d'environ 25 tables). C'est désormais
+  LE poste de la CI : 75 % de ses requêtes.
+- **Gates `dist` (référent `127.0.0.1:8091`) : 466.** Jusqu'à #819 (fusionnée le 10/11 à 13:53 UTC),
+  `passion-context` y parlait à la production ; ensuite `release-integrity` seul : 3 GET (`posts`,
+  `events`, `passions`) et leurs 3 pré-requêtes par passage — le « reste à faire » de #819
+  (`telemetrie-pilotage-sentinelle.md`).
+- **Télémétrie (référent `:8080`) : 197 POST acceptés (201).** Avant #819, surtout les envois
+  `keepalive` du DÉPART d'une page (`telemetrie-trafic` ④, la fuite que #819 ferme) ; ensuite 25 pour
+  19 runs : le lot voulu de `telemetrie-preauth` ①, et lui seul.
+- **WebKit : 343 pré-requêtes CORS** (`OPTIONS`, 200, sans corps ni requête en base) — 320 sur la
+  pagination du référentiel (`passions?…&offset=N000`), 18 sur `post_comments`, ≈ 7 par job. La route
+  sert la requête, mais sous WebKit sa pré-requête part au réseau.
+- **Une fuite WebKit, arrêtée par son banc : 96 vraies lectures** (`profiles`, `posts`,
+  `fil_compteurs`, la messagerie de `conv_lea`) par les deux runs de la PR #820, à 13:27 et 13:37 UTC :
+  la suite qu'elle ajoutait au socle WebKit démarrait l'application sans bloquer le service worker. Le
+  banc ⑦ de `tests/unit/isolation-projet-supabase.test.mjs` a rougi les deux runs (« Audits statiques
+  et bancs serveur »), 8fd2f5bf l'a corrigée avant la fusion : **jamais sur `main`** — et aucune autre
+  adresse WebKit n'a lu une table dans la fenêtre.
+- **Bord de fenêtre : 1** WebSocket à 21:10:28, d'un run créé avant le début de la fenêtre.
+- **Hors CI : 161** — « Sauvegarde production » 119 (10:19, Node, dont la liste des comptes),
+  « Sentinelle autonome » 38 (six passages de 6 ou 7 lectures), « Veille de production » 3, « Alerte
+  de modération » 1.
+**PAR RUN EXÉCUTÉ : la CI hors `authz-critical` pèse 1 103 / 51 ≈ 22 requêtes de production, contre
+2 746 avant — −99,2 %** (≈ 20 sans la fuite de #820) ; **depuis #819, 277 / 19 ≈ 15** (pré-requêtes
+WebKit ≈ 8,4, `release-integrity` ≈ 4,8, lot de télémétrie voulu ≈ 1,3). **S'y ajoutent ≈ 217 par run
+`push`** (`authz-critical`). Méthode brute d'avant (tout le réseau des runners / runs) : 4 520 / 51
+≈ 89 contre 2 858, **−96,9 %**. L'attendu (≈ 35 par run, + ≈ 216 quand `authz-critical` tourne) est
+tenu, et passé.
+⚠️ **CE QUE CETTE LECTURE RECTIFIE DANS LA PRÉCÉDENTE** (#830, même fenêtre, fusionnée pendant que
+celle-ci passait sa CI) : ① les ≈ 90 lectures WebKit ne viennent pas de `pwa-maj-pendant-appel` : ce
+sont les 96 des deux runs de #820 (puce ci-dessus) — une suite du socle aurait lu à CHAQUE run WebKit,
+et aucune autre adresse WebKit n'a lu une table ; ② le dénominateur est le run EXÉCUTÉ (puce « UN RUN
+CRÉÉ… » ci-dessous) : 4 520 / 51 ≈ 89, et non / 57 ≈ 79 — le même −97 %, mais un « par run » qui se
+dilue dès qu'une rafale de fusions annule des runs ; ③ les appels `/auth/v1/admin` sont 121, et non
+60 — 8 par exécution d'`authz-critical` (30 créations, 30 liens, 30 listes, 30 suppressions), plus la
+liste de la sauvegarde ; les 30 comptes créés concordent.
+⚠️ **LA RÉFÉRENCE, DÉCOMPOSÉE DE MÊME** (requête rejouée le 09/11 sur la fenêtre d'avant : 54 563,
+37 159 et 34 318 retrouvés à l'unité) : headless 33 668, WebKit 2 036, `authz-critical` 1 301 en six
+exécutions, Node hors CI 154 — d'où 35 704 / 13 = 2 746 par run hors `authz-critical`. La part hors CI
+y pesait 0,4 % ; elle pèse 3,6 % aujourd'hui : **ce qui se rapporte à un run se lit par classe
+d'adresse, plus par réseau.**
+⚠️ **`authz-critical` = `/auth/v1/admin` ET un navigateur sur la même adresse** : la sauvegarde lit
+aussi `/auth/v1/admin/users` (la liste des comptes) — une règle « admin ⇒ authz » la range en CI.
+⚠️ **UN RUN CRÉÉ N'EST PAS UN RUN EXÉCUTÉ** : six des 57 n'ont joué aucun job. Compter par
+`gh run view --json jobs` (au moins un job `success` ou `failure`), sinon le « par run » se dilue.
+⚠️ **LE PARSEUR DE `query_logs` REFUSE LES CTE** (la requête y est enveloppée) et l'accès `r.1` aux
+tuples ; les sous-requêtes imbriquées, `tupleElement`, `arrayJoin([...])` et `cross join` passent.
+**Ce qui reste, par poids.** `authz-critical`, voulu : 30 comptes créés en 24 h, deux par déploiement
+— à quinze déploiements par jour, ~900 MAU par mois et non ~360 (paragraphe suivant), moins de 1 % des
+100 000 du forfait ; deux comptes PERMANENTS le ramèneraient à 2. Les pré-requêtes WebKit, sans coût
+en base : les faire disparaître demanderait de pointer le SDK des suites vers une adresse qui ne
+résout pas, plutôt que vers la production. `release-integrity` (3 GET par passage), dont la raison au
+socle est périmée d'après #819.
 
 **LES SUITES À COMPTES RÉELS, AU STRICT NÉCESSAIRE.** Une seule vise encore la production :
 `authz-critical` (la barrière RLS de la production ; le reste du projet `prod` tourne sur le staging) —
@@ -2874,3 +2957,147 @@ worker) : une surcouche de config HORS du dépôt reprend celle du dépôt et aj
 `globalTeardown` (« Cannot find module './tests/e2e/global-teardown.js' » au premier essai) et `webServer.cwd` sont à
 poser en absolu. Un port à part (`PASSIO_PORT`) : le 8080 est souvent tenu par une autre session, et `dist` refuse
 de réutiliser un serveur.
+
+---
+
+## 📜 L'APPLICATION DÉMARRE AVANT LA FIN DE LA PAGE — CE QUI LA LIT L'ATTEND : LA GRILLE DES EMOJIS RESTAIT VIDE (2026-11-12)
+
+> **Fusion du 2026-11-13 (après LOT-37).** Ce lot a été écrit avant LOT-37 (MSG-C70), qui a retiré de `emoji-misc.js` toute écriture sur la grille : la mise en colonnes est portée par `styles.css` (8 colonnes, `!important`) et le remplissage à l'ouverture y était déjà. De ce lot n'entrent donc que l'attente de `DOMContentLoaded` d'app-09 et le banc ⑤ bis, dont l'assertion « 12 colonnes » devient « grille remplie ». Les mesures « 12 / 8 colonnes » ci-dessous décrivent l'état d'avant LOT-37.
+
+`js/emoji-misc.js`, `js/app-09-boot-pwa.js`, `tests/e2e/app-scripts-par-fichier.spec.js` ⑤ et ⑤ bis. Point de départ
+(mesuré le 2026-11-10) : l'intermittence de ⑤ vue en mesurant #821 — `window.__etatAuDebut` (l'état du document quand
+app-01 a tourné) valait parfois `loading` au lieu d'`interactive`, 1 fois sur 12 avant #821, 2 sur 12 après.
+
+**La question.** Un script inséré par le chargeur n'attend pas le parseur : il s'exécute dès que ses octets sont là, à la
+première pause du parseur — et le parseur s'arrête chaque fois qu'il attend le réseau. Or le chargeur est au MILIEU de
+la page minifiée (il finit à 201 Ko sur 391) : 190 Ko le suivent (44 Ko compressés), 23 scripts inlinés
+(contextual-nav, ui-v2 à ui-v7, passions-flat*, récapitulatif, affiche), puis `#pwa-overlay` et `#convEmojiPanel`,
+tout à la fin. Sortis du cache (HTTP ou worker), les 9 pouvaient-ils tourner, jusqu'à app-09 et `boot()`, avant ?
+
+**Mesuré : oui, en production comme sur l'artefact.** Sonde dans la page (`addInitScript`, aucun octet servi touché) :
+`readyState`, `#emojiGrid`, `#pwa-overlay` et les modules de fin de page au `load` de chaque script, à l'entrée de
+`boot()` (enveloppe posée au `load` d'app-08, celle qu'app-09 appelle) et à `passio:app-ready`. Profil PERSISTANT,
+aucune route (Playwright couperait le cache HTTP), 5 ouvertures après une première qui remplit les caches. L'artefact
+est celui de la production du jour (`buildId` `3d8e98bb12ad`, le même des deux côtés), minifié comme au déploiement.
+
+| Où | Conditions | app-01 avant la fin de la page | app-09, `boot()`, `passio:app-ready` avant la fin | Grille des emojis à la fin |
+|---|---|---|---|---|
+| Artefact | page d'un coup, Chromium, avec ou sans worker | 2 à 4 / 5 | 0 / 5 | remplie, 12 colonnes |
+| Artefact | page d'un coup, Chromium, CPU ×4 | 4 à 5 / 5 | 0 / 5 | remplie, 12 colonnes |
+| Artefact | page d'un coup, WebKit, avec ou sans worker | 0 / 5 | 0 / 5 | remplie, 12 colonnes |
+| Artefact | page à ~1,5 Mbit/s compressé, Chromium, avec ou sans worker | 5 / 5 | **5 / 5** | **VIDE, 5 / 5** |
+| Artefact | idem, WebKit sans worker · avec worker | 5 / 5 | **4 / 5 · 5 / 5** | **vide 3 / 5 · 5 / 5** |
+| Artefact | page à ~6 Mbit/s, Chromium, avec ou sans worker | 5 / 5 | **5 / 5** | remplie plus tard, **8 colonnes** (4 et 5 / 5) |
+| Artefact | idem, WebKit sans worker | 4 / 5 | 0 / 5 | remplie, 12 colonnes |
+| **Production** (`?equipe=1`, visiteur) | Chromium · WebKit, avec worker, réseau du poste | 3 / 5 · 0 / 5 | 0 / 5 | remplie, 12 colonnes |
+| **Production** | Chromium sans worker, 1,6 Mbit/s + 150 ms (CDP) | 5 / 5 | **5 / 5** — le parseur encore au chargeur (16ᵉ script inline sur 38) ou un à deux plus loin | **VIDE, 5 / 5** |
+| **Production** | Chromium sans worker, 6 Mbit/s | 5 / 5 | **5 / 5** | remplie plus tard, **8 colonnes, 5 / 5** |
+
+Le cas réel : un téléphone sur réseau mobile qui rouvre l'application, scripts en cache, page venue du réseau — une
+nouvelle version (la page change, 8 scripts sur 9 restent en cache : le but même du découpage), ou une ouverture sans
+worker. Dans les cas lents, `DOMContentLoaded` arrivait 160 à 450 ms APRÈS `passio:app-ready`.
+
+**Ce que ça cassait — mesuré, et seulement ça.** La grille des emojis de la messagerie : emoji-misc.js (fermé dans le
+9ᵉ script) posait sa mise en forme compacte au chargement, une fois, au niveau du fichier ; `_populateEmojiGrid` (app-09)
+la remplissait 100 ms plus tard, une fois aussi (« avec délai pour garantir que le DOM est chargé » : un espoir, pas une
+garantie). Fin de page arrivée après les deux : panneau VIDE pour toute la session (seule une recherche le remplissait).
+Entre les deux : rempli, sur 8 colonnes espacées au lieu de 12 serrées. **Tout le reste de l'écran finit identique avec
+ou sans la course** — mêmes 24 cartes dans le fil, mêmes classes dans le fil et sur `<html>`, à ~1,5 et ~0,4 Mbit/s
+(Chromium) : les modules ui-v* de fin de page, arrivés après `passio:app-ready`, se rattrapent par `DOMContentLoaded`
+et leurs reprises bornées (`openCreateEvent.__v6a0` vrai à la fin, toujours). `#pwaLogoImg` (fin de page), lu par
+`boot()` : sans effet, `pwaShowOverlay` — appelé par un geste, jamais au démarrage — repose le logo.
+
+**Le correctif rejeté, sur mesure : retenir le 9ᵉ script jusqu'à la fin de la page.** Écrit, verrouillé, éprouvé
+(mutations rouges sur les deux moteurs, puis 0 sur 35 ouvertures avant la fin de la page, grille sur 12 colonnes
+35 / 35). Puis mesuré contre l'artefact de `main`, en ALTERNANCE, page à ~1,5 Mbit/s, 15 ouvertures de chaque côté —
+la première VRAIE carte du fil (pas le squelette, voir les pièges), en médiane :
+
+| | `main` (la course) | app-09 retenu | Écart |
+|---|---|---|---|
+| Chromium sans worker | 1 051 ms | 1 443 ms | **+392 ms** |
+| Chromium avec worker | 3 530 ms | 3 968 ms | **+438 ms** |
+| WebKit avec worker | 2 303 ms | 3 218 ms | **+915 ms** |
+
+Avec la course, `boot()` fait son travail asynchrone (SDK, session, hydratation) PENDANT que la fin de la page arrive :
+la première carte vient après `DOMContentLoaded` dans les 45 ouvertures, mais plus tôt. Retenir app-09 sérialise les
+deux. Payer 0,4 à 0,9 s sur réseau lent, à chaque nouvelle version, pour un seul panneau dont la réparation est locale :
+non. Retenir les 9 aurait coûté plus encore (210 à 260 ms d'exécution d'app-01 à app-08 à CPU ×4, ajoutés après la page).
+Second motif, trouvé par la relecture `audit-passio` et mesuré par elle (HTTP/1.1 local) : une connexion COUPÉE pendant
+la fin de la page laisse `readyState` à `loading` pour de bon — Chromium, et WebKit avec `Content-Length` ; ni
+`DOMContentLoaded` ni `load`. Avec la retenue, app-09 n'est alors jamais inséré : pas de `boot()`, l'application ne
+démarre pas avant un rechargement. Sans elle, `boot()` part sur la page tronquée.
+**Le chargeur reste tel quel, exprès ; ce qui lit la fin de la page l'attend lui-même.**
+
+**Le correctif.**
+- emoji-misc.js : la mise en forme compacte attend `DOMContentLoaded` quand la grille n'est pas encore là. Ce bloc
+  ajoutait aussi sa propre liste, découpée par unité UTF-16 (des MOITIÉS d'emojis, `emojiList[i]`), que
+  `_populateEmojiGrid` remplaçait 100 ms plus tard : retirée. Ses `var grid`, `i`, `d`, `emojiList` n'étaient que des
+  globales accidentelles (aucun lecteur, `audit-globals` vert).
+- app-09 : au bout des 100 ms, sans grille, le remplissage attend `DOMContentLoaded`.
+- emoji-misc.js, `toggleEmojiPanel` : une grille restée vide se remplit à l'ouverture — le commentaire d'app-09 le
+  promettait (« appelé de nouveau à l'ouverture »), rien ne le faisait.
+- Seul le 9ᵉ script change d'octets : la mise en ligne ne fait retélécharger que lui.
+
+**Le verrou : ⑤ bis.** Le banc coupe la page juste après le chargeur et retient la fin jusqu'à ce que l'application soit
+prête ET que le remplissage d'app-09 (armé à 100 ms) soit passé — une CONDITION, pas une durée : un minuteur de même
+délai, armé au `load` d'app-09 donc après lui, part après lui (HTML : à délai égal, dans l'ordre d'armement) ; une attente
+fixe de 400 ms laissait, sous charge, la mutation MA passer verte (relevé par `audit-passio`). Prémisses assertées :
+coupe juste après le chargeur (repéré à sa liste, une fois), fin retenue qui porte la grille et la fenêtre
+d'installation, et LA COURSE REPRODUITE — app-09, `boot()` et `passio:app-ready` partis en `loading`, sans grille, sans
+fenêtre, sans modules de fin de page (une retenue réintroduite plus tard dans le chargeur ferait rougir cette prémisse :
+la décision ci-dessus est verrouillée aussi). Puis : aucune `TypeError` « … of null » / « null is not an object » (une
+lecture sans garde d'un élément de la fin de page ; le banc ne relevait que les `ReferenceError`), la grille remplie sur
+12 colonnes, `openCreateEvent.__v6a0` posé (le défaut de #813 : un module qui n'écoutait que `passio:app-ready`), un
+panneau ouvert sur une grille vidée se remplit, l'application prête avant `load`.
+
+| Mutation | Chromium | WebKit |
+|---|---|---|
+| MA — sans l'attente d'app-09 | ⑤ bis rouge : grille vide (12 colonnes) | idem |
+| MB — sans l'attente d'emoji-misc.js | ⑤ bis rouge : `repeat(8, 1fr)` | idem |
+| MC — sans le remplissage à l'ouverture | ⑤ bis rouge : « le panneau ne s'ouvre jamais sur une grille vide » | idem |
+| MD — les deux fichiers de `main` | ⑤ bis rouge : grille vide ET 8 colonnes — le symptôme de la production | idem |
+| ME — emoji-misc.js lit la grille sans garde ni attente | ⑤ bis rouge : `Cannot read properties of null (reading 'style')` | rouge : `null is not an object (evaluating 'grille.style')` |
+
+**Après le correctif, sur l'artefact** (minifié comme en production), contre celui de `main`, en ALTERNANCE, page à
+~1,5 Mbit/s, 10 ouvertures de chaque côté : la course demeure (app-09 avant la fin de la page 40 / 40, des deux côtés),
+la grille est remplie sur 12 colonnes 40 / 40 (`main` : vide 40 / 40), `openCreateEvent.__v6a0` vrai partout. Première
+vraie carte du fil, en médiane : Chromium 1 024 → 1 029 ms, Chromium + worker 2 049 → 2 053, WebKit 1 164 → 1 139,
+WebKit + worker 1 219 → 1 324 — sur cette dernière ligne, `DOMContentLoaded` a glissé d'autant (801 → 926 ms) pour des
+octets de page identiques : du bruit de poste, pas le correctif. Aucun coût mesurable.
+
+**⑤ remis à ce qu'il garde.** Il exigeait `interactive` au premier script : ce n'est pas ce qu'il prétend garder
+(« l'application s'exécute avant `load` »), et un script inséré tourne légitimement pendant le parsing. Il exige
+désormais `loading` ou `interactive` — jamais `complete` — et l'application prête au `load`. La mutation qui lance la
+chaîne au `load` de la page (le chargeur rejeté le 2026-11-09) le fait toujours rougir, sur les deux moteurs.
+Répétés, ⑤ et ⑤ bis : 24 / 24 sous Chromium (×12, trois workers), 12 / 12 sous WebKit (×6, deux workers) ; le banc
+complet 13 / 13 sous chacun des deux moteurs.
+
+**Pièges.**
+- ⚠️ **LE CHARGEUR NE SE REPÈRE PAS À `passio:app-ready`** : telemetry.js, identity-transition.js et d'autres scripts
+  de l'EN-TÊTE le nomment aussi. Ma première coupe tombait à 72 Ko, dans l'en-tête, avant même la feuille de style :
+  rien ne tournait pendant la retenue, et j'ai d'abord cru le chargeur à 18 % de la page. Le banc le repère à sa liste
+  (`["app/app-01-`) et asserte qu'il coupe juste après lui, une fois.
+- ⚠️ **`#feedList` NAÎT AVEC SON SQUELETTE** (`#feedSkeleton`, dans le balisage) : « premier enfant du fil » mesure le
+  parseur, pas l'application. La première vraie carte est le premier enfant qui n'est pas le squelette.
+- ⚠️ **PAGE D'UN COUP, LA COURSE NE TOUCHE PAS app-09** : sur le réseau du poste, le parseur ne fait que de courtes
+  pauses ; app-01 seul les attrape (⑤, 1 à 2 fois sur 12). Il faut une page qui ARRIVE lentement pour voir le reste.
+- ⚠️ **UN CORRECTIF QUI MARCHE N'EST PAS ENCORE LE BON** : la retenue était verte, mutée, stable — c'est la mesure de son
+  coût, contre `main` et en alternance, qui l'a écartée. Mesurer l'écran final AVANT de choisir où réparer : ici, il
+  disait qu'un seul panneau dépendait de l'ordre.
+- ⚠️ **PROBABLEMENT PAS NEUF** (lu dans le code, non mesuré) : l'ancien `app.js` unique, inséré par un chargeur du même
+  genre depuis le 2026-07-03, sortait lui aussi du cache sans attendre le parseur.
+- ⚠️ **COLLISION DE NUMÉROS LAISSÉE TELLE QUELLE** : #821 (la feuille de style) et #822 (le `load` rejoué), fusionnées
+  le même jour, ont chacune nommé un cas ⑨ dans ce banc. Ceux de la feuille (⑨ ⑩) sont cités partout ; renommer celui
+  de #822 (en ⑪) oblige à changer le renvoi de `scripts/build.js` (étape 1, paragraphe STAB-01) — sans quoi ce « ⑨ »
+  désignerait le cas de la feuille, le mauvais. C'est un chemin critique (contre-revue humaine) : ce lot n'y touche
+  pas, la renumérotation se fera au prochain passage dans ce fichier.
+- Vu en route, non traité : emoji-misc.js retire, 100 ms après son chargement, le premier élément dont le style en
+  ligne contient `rgba(0,0,0,0.5)` (« fermer les diagnostics ») — aucun dans le balisage aujourd'hui, mais n'importe
+  quel élément créé ainsi avant ces 100 ms disparaîtrait.
+- ⚠️ **Vu en route, non traité — L'ORDRE NORMAL A SON DÉFAUT AUSSI** (relevé par `audit-passio`, mesuré par elle sur
+  l'artefact, 2 ouvertures sur 2 par moteur ; lu dans le code ici) : `app-08` pose au niveau du fichier
+  `$$(".nav-item").forEach(…)` (clic + clavier → `goTo`). En production, app-08 tourne d'ordinaire APRÈS la fin de la
+  page, où `ui-v2-shell.js` a déjà créé ses boutons `.nav-item.nav-v2-item` avec leur propre écouteur : un toucher sur
+  la barre v2 fait deux `goTo`, deux entrées d'historique, et le premier « retour » ne fait rien de visible. En
+  développement (app-08 avant ui-v2) le défaut n'existe pas — le commentaire d'ui-v2-shell.js suppose cet ordre-là.
+  Remède proposé : `#appNav .nav-item` ou `.nav-item:not(.nav-v2-item)`. Proposé en lot séparé.
