@@ -6655,7 +6655,18 @@ function renderConvFpThread(c, displayName) {
     // Temps — affiché sur chaque message avec heure exacte (HH:MM)
     var isLastInGroup = (i === msgs.length - 1) || (msgs[i+1] && msgs[i+1].from !== m.from) || (msgs[i+1] && m.at && msgs[i+1].at && _dayKey(msgs[i+1].at) !== msgDay);
     var timeStr = '';
-    if (m.at) {
+    // LOT-41 (audit UX/UI du 2026-11-10, MSG-C77) : l'heure sous CHAQUE bulle et
+    // 12 px entre deux messages d'une même série — sept messages courts par
+    // écran. Une SÉRIE = même expéditeur, même jour, moins de 5 min d'écart :
+    // l'heure ne s'écrit que sous son dernier message, et ses bulles se serrent
+    // (4 px). L'heure de chaque message reste dans son nom accessible et en tête
+    // de sa feuille d'actions. Mes messages gardent leur porte-statut
+    // [data-msgst] (🕓 / ⚠️), que _setMsgStatus patche en place.
+    var _suivant = msgs[i + 1];
+    var _finDeSerie = isLastInGroup || !_suivant || !m.at || !_suivant.at || (_suivant.at - m.at) > 5 * 60000;
+    if (!_finDeSerie) {
+      timeStr = isMe ? '<span class="conv-bubble-time conv-bubble-time-statut">' + statusInd + '</span>' : '';
+    } else if (m.at) {
       // LOT-20 (MSG-C62) : pas de « ✓ » sur un message qui n'est pas parti.
       var _pasParti = m.status === "sending" || m.status === "failed";
       var receipt = (isLastMe && isLastInGroup && !_pasParti) ? readReceipt : '';
@@ -6825,7 +6836,7 @@ function renderConvFpThread(c, displayName) {
       + (m.at ? ", " + String(new Date(m.at).getHours()).padStart(2, "0") + " h " + String(new Date(m.at).getMinutes()).padStart(2, "0") : "")
       + " : " + String(_msgPreviewText(m) || "").slice(0, 80);
     parts.push(
-      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + '" data-mid="' + escapeHtml((m.id||'')) + '" data-me="' + (isMe?'1':'0') + '" tabindex="0" aria-label="' + escapeHtml(_nomBulle) + '">' +
+      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + (_finDeSerie ? '' : ' conv-serie') + '" data-mid="' + escapeHtml((m.id||'')) + '" data-me="' + (isMe?'1':'0') + '" tabindex="0" aria-label="' + escapeHtml(_nomBulle) + '">' +
         senderLine +
         '<div class="conv-bubble ' + (isMe?'me':'them') + '"' + bubbleStyle + '>' + replyHtml + content + '</div>' +
         (m.video ? '<button type="button" class="conv-actions-btn" data-actions="1" aria-label="Actions de la vidéo">⋯</button>' : '') +
@@ -7203,8 +7214,18 @@ function _openMsgActions(convId, msgId) {
   // longuement sur le message — XSS stockée, même famille que B-01. Le rendu
   // des bulles les échappait (`data-mid`, escapeHtml) ; ce menu, non.
   var cj = escapeJsArg(convId), mj = escapeJsArg(msgId);
+  // LOT-41 (MSG-C77) : l'heure n'est plus écrite sous chaque bulle ; elle est ici.
+  var _heure = "";
+  if (m.at) {
+    var _d = new Date(m.at);
+    var _auj = new Date();
+    var _jour = _d.toDateString() === _auj.toDateString() ? "aujourd'hui"
+      : _d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+    _heure = '<div class="msg-actions-heure">' + (isMe ? "Envoyé " : "Reçu ") + escapeHtml(_jour) + " à "
+      + String(_d.getHours()).padStart(2, "0") + ":" + String(_d.getMinutes()).padStart(2, "0") + '</div>';
+  }
   openModal(
-    '<div class="modal-handle"></div>' + reactRow +
+    '<div class="modal-handle"></div>' + _heure + reactRow +
     item(picto("repondre"), 'Répondre', "_setReplyTo('" + cj + "','" + mj + "')") +
     (canCopy ? item(picto("copier"), 'Copier le texte', "_copyMsg('" + cj + "','" + mj + "')") : '') +
     item(picto("transferer"), 'Transférer', "_forwardPick('" + cj + "','" + mj + "')") +

@@ -1482,21 +1482,21 @@
       gap: 6px;
       pointer-events: none;
       /* LOT-1 (audit UX/UI du 2026-11-10, TRA-C01 : PAR-C03, IRL-C65, MSG-C85,
-         BOB-C20). La pile était à 200 : toute fenêtre (10001), conversation
-         (1200), lecteur de bobines (9999), panneau Paramètres (50000) ou feuille
-         la recouvrait, et les refus, validations et confirmations émis pendant
-         qu'elles étaient ouvertes ne se voyaient JAMAIS. Elle passe au-dessus de
-         tout ce que l'application superpose (le plus haut : la boîte des
+         BOB-C20). La pile ï¿½tait ï¿½ 200 : toute fenï¿½tre (10001), conversation
+         (1200), lecteur de bobines (9999), panneau Paramï¿½tres (50000) ou feuille
+         la recouvrait, et les refus, validations et confirmations ï¿½mis pendant
+         qu'elles ï¿½taient ouvertes ne se voyaient JAMAIS. Elle passe au-dessus de
+         tout ce que l'application superpose (le plus haut : la boï¿½te des
          @mentions, 100004). Elle reste `pointer-events: none` : elle ne vole
-         aucun toucher (un toast cliquable rétablit les siens). */
+         aucun toucher (un toast cliquable rï¿½tablit les siens). */
       z-index: 100010;
     }
 
-    /* Une superposition occupe le bas de l'écran (champ de saisie d'une
-       conversation, bouton d'une fenêtre, pied d'une fiche, commandes du
-       lecteur) : la pile se pose EN HAUT, sous la zone sûre, pour ne masquer ni
+    /* Une superposition occupe le bas de l'ï¿½cran (champ de saisie d'une
+       conversation, bouton d'une fenï¿½tre, pied d'une fiche, commandes du
+       lecteur) : la pile se pose EN HAUT, sous la zone sï¿½re, pour ne masquer ni
        le champ ni le bouton principal. Sans `:has` (navigateurs anciens), la
-       pile reste en bas, et reste visible grâce au z-index ci-dessus. */
+       pile reste en bas, et reste visible grï¿½ce au z-index ci-dessus. */
     body:has(#conv-fullpage.active, #modalBackdrop.active, .reels-viewer.open, .event-detail-page:not([style*="none"]), .cmt-sheet-ov, .v2-sheet-backdrop.open, .v7-sheet-backdrop.open, .dev-panel.active, #storyViewer.active, #storyViewer.open) .toast-stack {
       top: calc(env(safe-area-inset-top, 0px) + 14px);
       bottom: auto;
@@ -1586,12 +1586,12 @@
     }
 
     /* LOT-2 (audit UX/UI du 2026-11-10, PAR-C01, P0) : ouvert par le mode
-       invité depuis une publication (200), une fiche d'activité (200) ou le
-       lecteur de bobines (9999), le formulaire (50) s'ouvrait DESSOUS : « Créer
-       mon compte » ne changeait rien à l'écran. Il passe au-dessus du contenu,
-       qui reste ouvert dessous (le retour système ferme le formulaire et le
-       rend tel quel). Il reste SOUS les fenêtres (10001 : CGU, confidentialité)
-       et les toasts. Classe posée et retirée par `ouvrirAuth` (first-run.js). */
+       invitï¿½ depuis une publication (200), une fiche d'activitï¿½ (200) ou le
+       lecteur de bobines (9999), le formulaire (50) s'ouvrait DESSOUS : ï¿½ Crï¿½er
+       mon compte ï¿½ ne changeait rien ï¿½ l'ï¿½cran. Il passe au-dessus du contenu,
+       qui reste ouvert dessous (le retour systï¿½me ferme le formulaire et le
+       rend tel quel). Il reste SOUS les fenï¿½tres (10001 : CGU, confidentialitï¿½)
+       et les toasts. Classe posï¿½e et retirï¿½e par `ouvrirAuth` (first-run.js). */
     body.fr-auth-dessus #onboarding.onboarding-shell { z-index: 10000; }
 
     .onboarding-shell.active { display: flex; }
@@ -13249,3 +13249,11 @@ body.passio-hors-ligne #passioBandeauDistant {
 .csetting-item.csetting-danger .csetting-icon { color: #b42318; }
 .cmt-sheet-ic { display: inline-flex; align-items: center; justify-content: center; }
 .post-option .picto { margin-right: 2px; }
+
+/* LOT-41 (audit UX/UI du 2026-11-10, MSG-C77) : une sÃ©rie de messages se serre
+   (4 px au lieu de 12) ; l'heure est sous son dernier message ; le porte-statut
+   d'un de mes messages au milieu d'une sÃ©rie ne prend pas de place Ã  vide. */
+.conv-bubble-wrap.conv-serie { margin-bottom: 4px; }
+.conv-bubble-time.conv-bubble-time-statut { margin-top: 0; min-height: 0; }
+.conv-bubble-time.conv-bubble-time-statut:has(> [data-msgst]:empty) { display: none; }
+.msg-actions-heure { text-align: center; font-size: 12px; color: var(--muted); padding: 2px 0 8px; }
