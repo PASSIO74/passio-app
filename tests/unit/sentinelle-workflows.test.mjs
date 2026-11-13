@@ -144,11 +144,13 @@ function fixtures(obj) {
   for (const [k, v] of Object.entries(obj)) fs.writeFileSync(path.join(FX, k + ".json"), JSON.stringify(v));
 }
 
-/** Ce que le runner lit comme une commande dans ce qu'une étape écrit, sur sa sortie standard ET son erreur standard
- *  (le `flux` de `jouer`, même quand l'étape réussit) : chaque ligne coupée sur \r\n, \r ou \n (sa lecture ligne à
- *  ligne), espaces de tête retirés, qui commence par « :: », ou qui contient OÙ QUE CE SOIT la forme historique
- *  « ##[ » (le runner la cherche dans toute la ligne). */
-const annotations = (r) => r.flux.split(/\r\n|\r|\n/).map((l) => l.trimStart()).filter((l) => l.startsWith("::") || l.includes("##["));
+/** Les commandes du runner dans ce qu'une étape écrit, d'après la lecture de son code (actions/runner,
+ *  `ActionCommand` : `TryParseV2` puis `TryParse`) — rien n'est exécuté sur un vrai runner. Sortie standard ET
+ *  erreur standard (le `flux` de `jouer`, même quand l'étape réussit) ; chaque ligne coupée sur \r\n, \r ou \n (sa
+ *  lecture ligne à ligne) ; les blancs de tête retirés au sens de .NET, U+0085 compris, que `trimStart` de JS garde
+ *  (U+FEFF, que .NET garde, est retiré aussi : au pire un faux rouge) ; une ligne qui commence alors par « :: », ou
+ *  qui contient OÙ QUE CE SOIT la forme historique « ##[ ». Plus large que le runner : jamais un faux vert. */
+const annotations = (r) => r.flux.split(/\r\n|\r|\n/).map((l) => l.replace(/^[\s\u0085]+/, "")).filter((l) => l.startsWith("::") || l.includes("##["));
 
 /** Exécute un bloc `run:` réel dans le bac ; rend code, sortie, journal, outputs, résumé. */
 function jouer(script, env = {}) {
@@ -679,8 +681,8 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
     const disparue = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", ...env });
     assert.notEqual(disparue.code, 0, nom + " : " + disparue.sortie.slice(-600));
     // Ce remède-là, et lui seul (un second, jamais éprouvé, avait été proposé) : l'annotation est comparée EN ENTIER,
-    // et c'est la seule de ce que l'étape écrit — rien avant elle, rien après, rien dans une autre annotation, sur la
-    // sortie standard comme sur l'erreur, en tête de ligne ou après des espaces, sous la forme « :: » ou « ##[ ».
+    // et c'est la seule de ce que l'étape écrit — rien avant elle, rien après, rien dans une autre annotation, sous
+    // toutes les formes que lit `annotations` (sortie et erreur standard, blancs de tête, « ##[ » où qu'il soit).
     assert.deepEqual(annotations(disparue), [
       "::error title=Gouvernance::L'issue #700 est introuvable (" + cause + ") : la branche claude/issue-700-1 prétend réparer une issue introuvable, relancer n'y changera rien. Republie le travail depuis une branche qui ne suit pas claude/issue-<n>-<run>.",
     ], nom);
