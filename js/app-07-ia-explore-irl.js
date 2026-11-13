@@ -1612,12 +1612,19 @@ function openIrlCitySelector() {
       if (!box || searchInput.value.trim() !== brut) return;
       // On ne propose que des communes, et pas celles déjà listées localement.
       const seen = new Set();
-      const cities = (res || []).filter(r => {
+      const toutes = (res || []).filter(r => {
         const c = (r.city || "").toLowerCase();
         if (!c || seen.has(c) || FRANCE_CITIES[c]) return false;
         seen.add(c);
         return true;
       });
+      // LOT-36 (audit UX/UI du 2026-11-10, IRL-C18) : « Grenoble » ramenait aussi
+      // Le Boupère, Arcisses, Aulnay-sous-Bois — des communes dont une RUE ou un
+      // lieu-dit porte le nom. Seules restent celles dont le NOM contient la
+      // saisie. Si aucune ne la contient et que rien n'est trouvé localement, on
+      // garde la réponse du géocodeur : c'est sans doute une faute de frappe.
+      const contenant = toutes.filter(r => _normIrlCityName(r.city).indexOf(query) > -1);
+      const cities = (contenant.length || localHits) ? contenant : toutes;
       if (!cities.length) {
         montrerVide(localHits ? "" : "Aucune ville trouvée pour « " + brut + " ».");
         return;
@@ -1725,6 +1732,22 @@ function initIrlMap() {
     maxZoom: 19,
   }).addTo(irlMap);
   irlMarkersLayer = L.layerGroup().addTo(irlMap);
+  // LOT-36 (audit UX/UI du 2026-11-10, IRL-C15) : tuiles refusées (réseau
+  // faible, service du fond de carte indisponible) → un fond gris uni, sans un
+  // mot. La carte le dit, et renvoie à la liste ; le message part dès qu'une
+  // tuile arrive.
+  if (typeof irlMap.surEchecFond === "function") {
+    irlMap.surEchecFond(function (echec) {
+      var msg = el.querySelector(".irl-map-tuiles");
+      if (!echec) { if (msg) msg.remove(); return; }
+      if (msg) return;
+      msg = document.createElement("div");
+      msg.className = "irl-map-fallback irl-map-tuiles";
+      msg.setAttribute("role", "status");
+      msg.textContent = "Le fond de carte ne charge pas (connexion ?). Les activités restent dans la liste ci-dessous.";
+      el.appendChild(msg);
+    });
+  }
   // Minimal delay pour laisser le DOM se stabiliser
   setTimeout(() => irlMap.invalidateSize(), 10);
   // Flag pour tracer la première initialisation
@@ -1915,9 +1938,45 @@ function updateIrlMapMarkers() {
   var filtered = _filteredNow;
 
   const points = [];
+  // LOT-36 (audit UX/UI du 2026-11-10, IRL-C15) : six activités au même lieu
+  // (une ville géocodée à sa mairie, un même local) donnaient six marqueurs
+  // empilés, impossibles à toucher séparément — le micro-décalage ne les
+  // écartait que de quelques mètres. Les activités d'un même lieu (~100 m) sont
+  // regroupées en UNE pastille qui dit leur nombre ; sa bulle les liste toutes.
+  // Zoomer n'aurait rien séparé : elles partagent le même point.
+  const lieux = new Map();
   filtered.forEach(ev => {
     const ll = eventLatLng(ev);
     if (!ll) return;
+    const cle = Number(ll[0]).toFixed(3) + "," + Number(ll[1]).toFixed(3);
+    if (!lieux.has(cle)) lieux.set(cle, { ll, evs: [] });
+    lieux.get(cle).evs.push(ev);
+  });
+  lieux.forEach(({ ll, evs }) => {
+    if (evs.length > 1) {
+      const icone = L.divIcon({
+        className: "passio-marker-wrap",
+        html: `<div class="passio-marker passio-marker-groupe" aria-label="${evs.length} activités à cet endroit">${evs.length}</div>`,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -18],
+      });
+      const mg = L.marker([ll[0], ll[1]], { icon: icone }).addTo(irlMarkersLayer);
+      mg.bindPopup(`
+        <div class="irl-popup-title">${evs.length} activités à cet endroit</div>
+        <div class="irl-popup-liste">${evs.map(ev => {
+          const dd = fmtEventDate(ev.date);
+          const pp = passionById(ev.passion) || { emoji: "📍", label: "" };
+          return `<button type="button" class="irl-popup-ligne" onclick="openEventDetails('${escapeJsArg(ev.id)}')">
+            <span class="irl-popup-ligne-titre">${escapeHtml(ev.title || "Événement")}</span>
+            <span class="irl-popup-ligne-meta">${escapeHtml(pp.label || "")} · ${dd.day} ${dd.month} à ${_eventTimeLabel(ev)}</span>
+          </button>`;
+        }).join("")}</div>
+      `);
+      points.push([ll[0], ll[1]]);
+      return;
+    }
+    const ev = evs[0];
     // Micro-jitter DÉTERMINISTE basé sur l'id (minimal, évite le chevauchement sans décalage visible)
     const h = String(ev.id || "").split("").reduce((s, c) => s + c.charCodeAt(0), 0);
     const lat = ll[0] + (((h * 13) % 100) / 50000 - 0.001);
