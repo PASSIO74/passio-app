@@ -4958,6 +4958,16 @@ function _syncVisitedUI() {
 // Rend #visitedContent — équivalent de renderProfileContent pour un profil
 // visité : union des types cochés, grille 3 colonnes si la sélection vaut
 // EXACTEMENT « photos » ou « bobines », sinon liste renderPostHTML.
+// LOT-14 (audit UX/UI du 2026-11-10, BOB-C10) : une bobine ouverte depuis le
+// profil VISITÉ ramène à ce profil quand on ferme le lecteur — la fenêtre du
+// profil disparaissait, et l'on tombait sur « Mon profil ».
+function ouvrirBobineDepuisProfil(id) {
+  var v = window._visited;
+  window._bobineRetourProfil = (v && v.authorId) ? String(v.authorId) : null;
+  closeModal();
+  openReelById(id);
+}
+
 function _renderVisitedContent() {
   var v = window._visited;
   var el = document.getElementById("visitedContent");
@@ -5011,8 +5021,8 @@ function _renderVisitedContent() {
     el.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">' + bobines.map(function(p) {
           var poster = p.image || p.poster || "";
-          var thumb = miniatureVideoPubliqueHTML(poster);
-          return '<div onclick="closeModal();openReelById(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
+          var thumb = miniatureVideoPubliqueHTML(poster, p.video);
+          return '<div onclick="ouvrirBobineDepuisProfil(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
         }).join("") + '</div>'
       : _vEmpty("Aucune bobine");
   } else {

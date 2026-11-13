@@ -1286,7 +1286,37 @@
     try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
     tel("guest_passions_saved", { n: p.passions.length, s: p.specialites.length, from: _panneauOrigine });
     try { toast("Ton fil est à toi ✨"); } catch (e) {}
+    try { poserNoteLocale(); } catch (e) { journal("note locale", e); }
     planifierTour();
+  }
+
+  // ENT-C15 (audit UX/UI du 2026-11-10) : au moment où le visiteur vient
+  // d'investir (ses passions), on dit qu'elles ne vivent que sur cet appareil,
+  // et la porte du compte qui les garderait. Une seule fois, refermable.
+  function poserNoteLocale() {
+    if (!estVisiteur()) return false;
+    var p = prefs();
+    if (p.noteLocaleVue || document.getElementById("frNoteLocale")) return false;
+    var rangee = document.getElementById("profileStrip");
+    if (!rangee || !rangee.parentNode) return false;
+    var n = document.createElement("div");
+    n.id = "frNoteLocale";
+    n.className = "fr-note-locale";
+    n.setAttribute("role", "status");
+    n.innerHTML = '<span class="fr-note-locale-texte">Gardées sur cet appareil.</span>'
+      + '<button type="button" class="fr-note-locale-cta">Créer mon compte pour les retrouver partout</button>'
+      + '<button type="button" class="fr-note-locale-fermer" aria-label="Fermer">×</button>';
+    n.querySelector(".fr-note-locale-cta").addEventListener("click", function () {
+      if (n.parentNode) n.parentNode.removeChild(n);
+      ouvrirAuth("signup", "passions_locales");
+    });
+    n.querySelector(".fr-note-locale-fermer").addEventListener("click", function () {
+      if (n.parentNode) n.parentNode.removeChild(n);
+    });
+    rangee.parentNode.insertBefore(n, rangee.nextSibling);
+    p.noteLocaleVue = true;
+    sauverPrefs();
+    return true;
   }
 
   // Applique les préférences du visiteur au moteur EXISTANT du fil. Aucun
@@ -1665,7 +1695,10 @@
     b.className = "fr-back-explore";
     b.textContent = "← Continuer à explorer";
     b.addEventListener("click", retourExploration);
-    onb.appendChild(b);
+    // ENT-C03 (audit UX/UI du 2026-11-10) : une BARRE en tête du conteneur
+    // (colonne flex), plus une pastille flottante — elle ne recouvre plus le
+    // logo ni la première ligne d'un refus.
+    onb.insertBefore(b, onb.firstChild);
   }
 
   var _authHistoriquePose = false;
@@ -1876,7 +1909,11 @@
   // `ETAPES` n'y change rien — il faudrait l'ajouter ici aussi, et le lot
   // l'interdit (« trois indications principales maximum »).
   var ORDRE_ETAPES = ["decouvrir", "rencontrer", "creer"];
-  var ETAPES_ECRAN = { profiles: "profil", messages: "messages", studio: "studio" };
+  // ENT-C05 (audit UX/UI du 2026-11-10) : plus aucun repère d'ÉCRAN posé à
+  // l'ouverture de Profil, Messages ou Studio — neuf repères interrompaient
+  // chaque premier passage. Les trois marches du tour restent ; les textes de
+  // `ETAPES.profil/messages/studio` restent appelables (`montrerEtape`).
+  var ETAPES_ECRAN = {};
 
   function etapeVue(id) { return !!prefs().tour[id]; }
   function tourAbandonne() { return !!prefs().tour.abandonne; }
@@ -1884,6 +1921,8 @@
   function bulleVisible() { return !!document.querySelector(".fr-tip"); }
 
   function fermerBulle(raison) {
+    // ENT-C05 : le contour de la cible part avec sa bulle.
+    try { Array.prototype.forEach.call(document.querySelectorAll(".fr-tip-cible"), function (n) { n.classList.remove("fr-tip-cible"); }); } catch (_) {}
     var el = document.querySelector(".fr-tip");
     if (!el) return;
     var id = el.getAttribute("data-fr-tip") || "";
@@ -1939,15 +1978,22 @@
 
     // Ancrage borné à la fenêtre, en respectant les safe areas basses (la barre
     // de navigation occupe le bas de l'écran sur mobile).
-    var largeur = Math.min(300, window.innerWidth - 24);
+    // ENT-C05 (audit UX/UI du 2026-11-10) : la bulle ne se pose plus SUR ce
+    // qu'elle présente. C'est une carte en bas de l'écran, au-dessus de la barre
+    // d'onglets, et la cible reçoit un contour ; si la cible occupe elle-même
+    // ce bas d'écran, la carte monte en haut.
+    var largeur = Math.min(360, window.innerWidth - 24);
+    bulle.classList.add("fr-tip-carte");
     document.body.appendChild(bulle);
     var h = bulle.offsetHeight || 120;
-    var gauche = Math.max(12, Math.min(r.left, window.innerWidth - largeur - 12));
-    var haut = r.bottom + 10;
-    if (haut + h + 90 > window.innerHeight) haut = Math.max(12, r.top - h - 10);
+    var BAS = 84;
+    var basCarte = window.innerHeight - BAS;
+    var enHaut = r.bottom > basCarte - h - 8 && r.top < basCarte;
     bulle.style.width = largeur + "px";
-    bulle.style.left = Math.round(gauche) + "px";
-    bulle.style.top = Math.round(haut) + "px";
+    bulle.style.left = Math.round((window.innerWidth - largeur) / 2) + "px";
+    if (enHaut) bulle.style.top = "calc(12px + env(safe-area-inset-top, 0px))";
+    else bulle.style.bottom = "calc(" + BAS + "px + env(safe-area-inset-bottom, 0px))";
+    try { cible.classList.add("fr-tip-cible"); } catch (_) {}
 
     // Échap ferme la bulle. Écouteur porté par la BULLE, pas par `document` :
     // celui d'app-02 ferme déjà la modale sur Échap, et un second écouteur
@@ -2664,6 +2710,7 @@
     voirToutes: voirToutes,
     chercherDansPanneau: chercherDansPanneau,
     validerPersonnalisation: validerPersonnalisation,
+    poserNoteLocale: poserNoteLocale,
     chercher: chercher,
     specialitesDe: specialitesDe,
     // Exposée pour que le banc éprouve le classement RÉEL (2026-10-06).

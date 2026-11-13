@@ -511,19 +511,31 @@ test.describe("Tour contextuel", () => {
     await page.evaluate(() => { PassioFirstRun.fermerBulle(); goTo("feed"); });
     await page.waitForTimeout(600);
 
-    // ⚠️ Profil / Messages / Studio ne sont PAS dans le premier tour : ils ne se
-    // déclenchent qu'à l'ouverture de leur propre écran.
-    await page.evaluate(() => { PassioFirstRun.fermerBulle(); PassioFirstRun.prefs().tour = {}; goTo("profiles"); });
-    await page.waitForTimeout(1400);
-    await expect(page.locator('.fr-tip[data-fr-tip="profil"]')).toHaveCount(1);
-    await expect(page.locator(".fr-tip .fr-tip-eyebrow")).toHaveText("Tout ce qui te passionne");
-
-    // Et une seule fois : y revenir ne la remontre pas.
-    await page.evaluate(() => { PassioFirstRun.fermerBulle(); goTo("feed"); });
-    await page.waitForTimeout(500);
-    await page.evaluate(() => { PassioFirstRun.fermerBulle(); goTo("profiles"); });
-    await page.waitForTimeout(1400);
-    await expect(page.locator('.fr-tip[data-fr-tip="profil"]')).toHaveCount(0);
+    // ⚠️ LOT-13 (audit UX/UI du 2026-11-10, ENT-C05) : Profil / Messages / Studio
+    // ne posent PLUS de repère à leur ouverture — neuf repères interrompaient
+    // chaque premier passage. Les trois marches du tour restent les seules.
+    for (const ecran of ["profiles", "messages", "studio"]) {
+      await page.evaluate((ec) => { PassioFirstRun.fermerBulle(); PassioFirstRun.prefs().tour = {}; goTo(ec); }, ecran);
+      await page.waitForTimeout(1200);
+      await expect(page.locator(".fr-tip"), `aucun repère posé à l'ouverture de ${ecran}`).toHaveCount(0);
+    }
+    // Et une marche du tour ne recouvre plus sa cible : carte + contour.
+    await page.evaluate(() => { goTo("feed"); PassioFirstRun.prefs().tour = {}; });
+    await page.waitForTimeout(600);
+    const r = await page.evaluate(() => {
+      PassioFirstRun.fermerBulle();
+      PassioFirstRun.prefs().tour = {};
+      if (!PassioFirstRun.montrerEtape("decouvrir")) return null;
+      const b = document.querySelector(".fr-tip").getBoundingClientRect();
+      const c = document.querySelector(".fr-tip-cible");
+      const t = c && c.getBoundingClientRect();
+      return { contour: !!c, chevauche: !!t && !(b.bottom <= t.top || b.top >= t.bottom) };
+    });
+    expect(r, "la marche « Découvrir » s'affiche").not.toBeNull();
+    expect(r.contour, "la cible porte un contour").toBe(true);
+    expect(r.chevauche, "la bulle ne recouvre pas sa cible").toBe(false);
+    await page.evaluate(() => PassioFirstRun.fermerBulle());
+    expect(await page.locator(".fr-tip-cible").count(), "le contour part avec la bulle").toBe(0);
   });
 });
 
