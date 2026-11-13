@@ -106,7 +106,12 @@ case "$tout" in
   *) echo "faux gh : forme inconnue : $tout" >&2; exit 2 ;;
 esac
 # jq.exe écrit CRLF sur Windows, le jq du runner Linux écrit LF : on aligne.
-if [ -n "$jqexpr" ]; then printf '%s' "$corps" | "$JQ_BIN" -r "$jqexpr" | tr -d '\\r'; else printf '%s' "$corps"; fi
+# FAUX_LIGNE_A_LIGNE : un gh qui écrit ses résultats UN À UN, une pause entre deux (le VRAI sleep, pas celui du bac) —
+# ce qu'un lecteur qui sort au premier résultat (grep -q) doit supporter sous pipefail (#875).
+if [ -n "$jqexpr" ] && [ -n "\${FAUX_LIGNE_A_LIGNE:-}" ]; then
+  printf '%s' "$corps" | "$JQ_BIN" -r "$jqexpr" | tr -d '\\r' > "$FX/.lignes"
+  while IFS= read -r l; do printf '%s\\n' "$l"; command -p sleep 0.3; done < "$FX/.lignes"
+elif [ -n "$jqexpr" ]; then printf '%s' "$corps" | "$JQ_BIN" -r "$jqexpr" | tr -d '\\r'; else printf '%s' "$corps"; fi
 `);
 // Le faux sleep JOURNALISE sa durée : `sleep 8` est la garde A1 contre la course d'événements.
 fs.writeFileSync(BAC + "/bin/sleep", '#!/usr/bin/env bash\nprintf \'sleep %s\\n\' "${1:-}" >> "$LOG"\nexit 0\n');
@@ -626,6 +631,28 @@ test("gouvernance : un refus de périmètre ou de taille est ÉCRIT sur l'issue 
   const g5 = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "78", TRUSTED_REVIEWER: "PASSIO74" });
   assert.equal(g5.code, 0, g5.sortie);
   assert.equal(g5.log.trim(), "", "PR humaine non critique : aucun commentaire");
+});
+
+test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'être cherchés — un gh qui écrit « sentinelle » puis une autre ligne ne fait plus passer une réparation pour une PR humaine ; illisibles, la gouvernance s'arrête", () => {
+  // Sous pipefail, `gh … | grep -qx sentinelle` rendait 141 quand gh écrivait encore après « sentinelle » : grep était
+  // sorti, gh mourait de SIGPIPE, le `if` rendait faux. Mutation : rétablir le tube → rougit sur le runner Linux.
+  const gov = etape(DEP, "governance", "Résoudre la PR").run;
+  fixtures({
+    "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
+    "issue-700": { labels: [{ name: "sentinelle" }, { name: "claude" }, { name: "reparation" }] },
+    "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }, { filename: "dashboard/server/x.js", additions: 1, deletions: 0 }],
+  });
+  const lent = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", GH_TOKEN: "integre", FAUX_LIGNE_A_LIGNE: "1" });
+  assert.notEqual(lent.code, 0, "une réparation de la Sentinelle hors périmètre est refusée, même quand gh écrit ses labels un à un\n" + lent.sortie.slice(-800));
+  assert.ok(lent.log.includes("issue comment 700") && lent.log.includes("dashboard/server/x.js"), "le refus est écrit sur l'issue d'origine\n" + lent.log);
+  // Les labels illisibles : on ne sait pas ce qu'est la PR — refus dit, jamais « PR humaine ».
+  fixtures({
+    "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
+    "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }],
+  });
+  const muet = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
+  assert.notEqual(muet.code, 0, muet.sortie.slice(-600));
+  assert.match(muet.sortie, /::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus/);
 });
 
 // ═══ Gouvernance — course de l'index « commit → PR » (2026-11-03) ═════════
