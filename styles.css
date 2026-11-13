@@ -13264,3 +13264,27 @@ body.passio-hors-ligne #passioBandeauDistant {
 .legal-sommaire-lien { min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 22px; background: var(--bg-card); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer; }
 .legal-sommaire-lien:hover, .legal-sommaire-lien:focus-visible { border-color: var(--accent); color: var(--accent); }
 .legal-corps { scroll-behavior: smooth; }
+/* LOT-45 (audit UX/UI du 2026-11-10, IRL-C07) : trois filtres actifs, la vue
+   Liste disait « Rien avec ces filtres » et l'onglet « Filtre » ne portait
+   aucune marque — la pastille, alimentée à chaque rendu, était masquée par la
+   maquette du 2026-09-04. Elle réapparaît QUAND un filtre est actif (le moteur
+   pose display:block), en nombre blanc sur l'accent ; à zéro, rien. */
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger .ctx-trigger-badge[style*="block"] {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger:not([aria-selected="true"]) .ctx-trigger-badge[style*="block"] {
+  background: var(--accent);
+  color: #fff;
+}
