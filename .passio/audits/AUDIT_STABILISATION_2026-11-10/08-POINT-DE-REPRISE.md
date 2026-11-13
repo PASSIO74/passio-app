@@ -174,3 +174,19 @@ Ordre de Benjamin : « Oui, enchaîne » (durcissements CLI-01 serveur, SRV-02, 
   - l'événement métier n'est pas encore exigé pour chaque genre de notification ;
   - les médias orphelins, à retirer avec la clé de service ;
   - les gestes de Benjamin (essais sur appareil réel, inscription réelle, retour arrière Netlify).
+
+## Ajout du 2026-11-13, matin — STAB-10 (PR #868, fusionnée et déployée)
+
+- Production = `cbab5da9` (buildId `c14c2bad2f29`), run `43386994004` entièrement vert.
+- **STAB-10 / EXPL-03** : la page est minifiée par `scripts/build.js` (étape 6 ter, mêmes octets que l'ancienne
+  étape du workflow, retirée). « Gates artefact » joue `release-integrity`, `passion-context` et la fumée sur la
+  page minifiée (12/12), puis publie l'empreinte de l'arbre `dist/` servi. Le déploiement reconstruit et refuse
+  d'envoyer un arbre d'une autre empreinte : au premier déploiement, « dist/ identique à l'artefact testé :
+  34 fichiers ». La page servie est d'une seule ligne (minifiée).
+- Relecture `audit-passio` (modèle Claude) : aucun P1 ; trois P3 corrigés avant fusion, le quatrième noté au journal
+  (le buildId reste celui de la page brute).
+- Restent ouverts :
+  - l'événement métier n'est pas encore exigé pour chaque genre de notification (SRV-02, reste) ;
+  - les médias orphelins, à retirer avec la clé de service ;
+  - `entrerEnSessionExpiree()` exige un jeton persisté au démarrage suivant ;
+  - les gestes de Benjamin (essais sur appareil réel, inscription réelle, retour arrière Netlify).
