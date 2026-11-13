@@ -106,11 +106,11 @@
     { debut: 18, fin: 23, label: "Soir" },
   ];
   var RACCOURCIS = [
-    { filtre: "mine", label: "Mes événements" },
+    { filtre: "mine", label: "Mes activités" },
     // « Mes rencontres » = les activités auxquelles je me suis INSCRIT, le même
     // état `joined` que « Mes inscriptions » du dialogue historique. Seul le
     // mot change ; l'identifiant, lui, ne bouge pas.
-    { filtre: "joined", label: "Mes rencontres" },
+    { filtre: "joined", label: "Je participe" },
   ];
 
   var vueFiltres = false;

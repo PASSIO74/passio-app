@@ -558,7 +558,7 @@ test.describe("IRL — création, récurrence et vues", () => {
 
     // Pied de la feuille : compte réel + « Réinitialiser » éteint tant qu'aucun
     // filtre n'est posé.
-    await expect(page.locator("#irlFiltersDoneBtn")).toHaveText("Voir les 3 événements");
+    await expect(page.locator("#irlFiltersDoneBtn")).toHaveText("Voir les 3 activités");
     await expect(page.locator("#irlFiltersResetBtn")).toBeDisabled();
 
     // Le mois courant est le plancher : « ‹ » est éteint et ne recule pas.
@@ -576,7 +576,7 @@ test.describe("IRL — création, récurrence et vues", () => {
     await expect(page.locator("#irlFiltersResetBtn")).toBeEnabled();
     await expect(page.locator("#irlFiltersDoneBtn")).toHaveText("Aucun résultat");
     await page.locator("#irlFiltersResetBtn").click();
-    await expect(page.locator("#irlFiltersDoneBtn")).toHaveText("Voir les 3 événements");
+    await expect(page.locator("#irlFiltersDoneBtn")).toHaveText("Voir les 3 activités");
   });
 
   test("le digest hebdo ne se déclenche qu'une fois par semaine", async ({ page }) => {

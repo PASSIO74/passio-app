@@ -162,7 +162,7 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
 
     const corps = page.locator("#ctxToolsBody");
     await expect(corps).toContainText("Choisir une ville");
-    await expect(corps).toContainText("Mes inscriptions");
+    await expect(corps).toContainText("Je participe"); // LOT-47 (IRL-C62) : le geste a un seul nom
     // L'identifiant du filtre est inchangé : c'est bien le MÊME état.
     await expect(corps.locator('[data-irlfilter="joined"]')).toHaveCount(1);
     // Et l'action explicite de position vit dans le sélecteur de ville existant.
