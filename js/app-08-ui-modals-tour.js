@@ -6496,7 +6496,9 @@ async function supaLoadEvents(authorId) {
       passion: r.passion_id || null,   // jamais la valeur fantôme « autre »
       lat: r.lat, lng: r.lng,
       city: r.city || "",
-      emoji: r.emoji || "📍",
+      // LOT-19 (IRL-C08) : sans emoji propre, celui de la PASSION (comme les
+      // marqueurs de la carte) — l'épingle « 📍 » ne disait plus de quoi il s'agit.
+      emoji: r.emoji || (function () { try { var ps = r.passion_id && typeof passionById === "function" ? passionById(r.passion_id) : null; return (ps && ps.id === r.passion_id && ps.emoji) || "📍"; } catch (e) { return "📍"; } })(),
       // supaTs : date_at est stockée en UTC SANS fuseau → un parse local décalait
       // l'heure affichée de l'événement (ex. -2h en été) chez tous les comptes.
       date: r.date_at ? supaTs(r.date_at) : Date.now(),
@@ -7587,9 +7589,11 @@ async function supaLoadMyConversations() {
 // supaSubscribeMessages() remplacée par _supaConvSpecificChannel() — voir plus haut
 
 // ---- NOTIFICATIONS ----
+// LOT-19 (IRL-C63) : rend le VERDICT (vrai = ligne écrite) — les appelants qui
+// l'ignorent ne changent pas ; « Prévenir les inscrits » compte les réussites.
 async function supaInsertNotif(toUserId, kind, refId, content) {
   try {
-    if (toUserId === MY_UID) return;
+    if (toUserId === MY_UID) return false;
     const prof = currentProfile();
     const safeName = (typeof escapeHtml === "function") ? escapeHtml(prof?.name || "Quelqu'un") : (prof?.name || "Quelqu'un");
     const fullText = `${safeName} ${content}`;
@@ -7601,7 +7605,8 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
     });
     // Push Web → réveille le destinataire même app fermée (fire-and-forget).
     if (!error) _pousserPushNotif(toUserId, kind, fullText);
-  } catch(e) {}
+    return !error;
+  } catch(e) { return false; }
 }
 // ⚠️ ASTRA-24 (2026-09-15) : LES MENTIONS SONT ÉCRITES PAR LE SERVEUR. Le client
 // porte des IDENTIFIANTS (jamais des noms) à `notifier_mentions`, qui vérifie

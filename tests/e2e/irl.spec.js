@@ -180,11 +180,11 @@ test.describe("IRL — découverte et filtres", () => {
     await expect(cards(page)).toHaveCount(1);
   });
 
-  test("état vide : « rien avec ces filtres » ≠ « aucun événement »", async ({ page }) => {
+  test("état vide : une recherche sans résultat ≠ « aucun événement »", async ({ page }) => {
     await bootIrl(page);
     await seedEvents(page, [{ passion: "musique" }, { passion: "sport" }]);
     await page.fill("#irlCitySearch", "zzzintrouvable");
-    await expect(page.locator("#eventList .empty-title")).toHaveText(/Rien avec ces filtres/);
+    await expect(page.locator("#eventList .empty-title")).toHaveText(/Aucune activité pour « zzzintrouvable »/); // LOT-19 (IRL-C12)
     // Ne JAMAIS inviter à « créer le premier » quand des événements existent.
     await expect(page.locator("#eventList")).not.toContainText("Crée le premier");
   });

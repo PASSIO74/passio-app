@@ -165,7 +165,7 @@ test.describe("ROB-05 — la géolocalisation refusée se dit", () => {
     expect(r.erreur).toBe(true);
     expect(r.titre).toBe("Paris (par défaut)");
     expect(r.label).toBe("Paris (par défaut)");
-    expect(r.t1.filter((t) => /Localisation indisponible/.test(t)).length).toBe(1);
+    expect(r.t1.filter((t) => /Position indisponible/.test(t)).length).toBe(1);
     expect(r.t2).toBe(1);
     // La sortie existe : choisir une ville remplace le repli.
     expect(await page.evaluate(() => { irlSelectedCity = { name: "Lyon", lat: 45.76, lng: 4.83 }; updateIrlCityTitle(); return _irlReferenceLabel(); })).toBe("Lyon");

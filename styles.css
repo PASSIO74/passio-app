@@ -12925,3 +12925,73 @@ button, a, label, select, summary,
   font-size: 20px;
   cursor: pointer;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOT-19 (audit UX/UI du 2026-11-10) — rencontrer (IRL)
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* IRL-C09 : les commandes de la carte à 44 px (zoom 29, replier / plein écran 38). */
+.maplibregl-ctrl-group button { width: 44px; height: 44px; }
+.irl-map-collapse,
+.irl-map-expand { width: 44px; height: 44px; }
+.irl-map-collapse { right: 62px; }
+/* IRL-C10 : en plein écran, la sortie se lit — « Fermer la carte ». */
+.irl-map-expand-txt { display: none; }
+.irl-map-wrap.fullscreen .irl-map-expand {
+  width: auto;
+  padding: 0 14px 0 10px;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.irl-map-wrap.fullscreen .irl-map-expand-txt { display: inline; }
+.irl-map-wrap.fullscreen .maplibregl-popup-close-button {
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+}
+/* IRL-C11 : le rouge de l'annulation passe l'AA (#ef4444 : 3,23:1 et 3,76:1). */
+.event-card-banner.cancelled,
+.event-detail-urgency.cancelled,
+:root.passio-ui-4a2 .v4a2-etat-annule { color: #b42318; }
+:root.passio-ui-4a2 .v4a2-etat-annule { border-color: rgba(180, 35, 24, 0.45); }
+/* IRL-C57 : l'annulation en tête de fiche se voit — bandeau plein, pas une pastille. */
+.event-detail-urgency.cancelled {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(180, 35, 24, 0.35);
+  background: #fef3f2;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+}
+/* IRL-C16 : flèches de mois à 44 px. */
+.irl-cal-nav,
+:root.passio-ui-4a5 #v4a5Avance .irl-cal-nav { width: 44px; height: 44px; }
+/* IRL-C17 : « C'est maintenant » et « En cours » disaient deux fois la même
+   chose sur la même carte — la ligne « En cours » du corps reste seule. */
+:root.passio-ui-4a2 .event-card[data-v4a2] > .event-card-banner.live { display: none !important; }
+/* IRL-C68 : petites commandes des fenêtres d'organisation — zone de 44 px. */
+#modalContent .btn.small { position: relative; }
+#modalContent .btn.small::after {
+  content: "";
+  position: absolute;
+  inset: 50% -2px auto -2px;
+  height: 44px;
+  transform: translateY(-50%);
+}
+/* IRL-C69 : sur ordinateur, la fiche garde une largeur de lecture. */
+@media (min-width: 900px) {
+  #eventDetailContent,
+  #eventDetailCta {
+    max-width: 680px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+/* IRL-C58 : la note sous « Lieu » quand l'adresse est réservée. */
+.event-detail-info-note { font-size: 12.5px; color: var(--muted); }
+/* IRL-C53 / C66 : pied de l'organisation et d'un exemple. */
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-exemple .v4b-rsvp-etat { color: var(--muted); }
