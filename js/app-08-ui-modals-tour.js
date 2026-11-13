@@ -2483,17 +2483,8 @@ function _notifTexteHtml(n) {
   return deConfiance ? String(n.text || "") : _neutraliserBalisesNotif(n.text);
 }
 
-// §2 : sous le texte d'une notification, les passions de la personne qui l'a
-// déclenchée — quand on sait qui c'est. `identitePassionsHTML` rend "" pour un
-// émetteur inconnu ou sans passion publiée, et on ne peint alors rien.
-function _notifIdentiteHtml(n) {
-  try {
-    var id = n && (n.fromId || n.authorId);
-    if (!id || id === "me") return "";
-    var u = (typeof userById === "function") ? userById(id) : null;
-    return u ? identitePassionsHTML(u, "ident-passions-sm") : "";
-  } catch (e) { return ""; }
-}
+// 2026-11-13 (Benjamin) : les passions de l'émetteur ne s'affichent plus sous
+// le texte d'une notification (« trop chargé »). _notifIdentiteHtml est retirée.
 
 function _notifListHtml(notifs) {
   notifs = notifs || [];
@@ -2508,7 +2499,6 @@ function _notifListHtml(notifs) {
       <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
         <div class="notif-text">${_notifTexteHtml(n)}</div>
-        ${_notifIdentiteHtml(n)}
         ${_notifDemandeAbonnementHtml(n)}
         <div class="notif-meta">${escapeHtml(fmtNotifHeure(n.createdAt))}</div>
       </div>
