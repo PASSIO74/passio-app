@@ -85,8 +85,11 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
       expect(v.h, k + " : hauteur tapable").toBeGreaterThanOrEqual(44);
       expect(v.w, k + " : largeur tapable").toBeGreaterThanOrEqual(38);
     }
-    expect(z.back.visuelW).toBe(36);
-    expect(z.action.visuelW).toBe(34);
+    // LOT-32 (audit UX/UI du 2026-11-10, MSG-C67) : « ← » et les actions de
+    // l'en-tête sont DESSINÉS à 44 px (ils l'étaient à 36 et 34, agrandis par un
+    // ::after) ; l'envoi garde sa taille.
+    expect(z.back.visuelW).toBe(44);
+    expect(z.action.visuelW).toBe(44);
     expect(z.envoi.visuelW).toBe(40);
     // Les voisins ne se volent pas leurs taps : le centre de chacun reste à lui.
     const centres = await page.evaluate(() => [".conv-fp-back", ".conv-action-btn", "#convFpSendBtn"].map((s) => { const e = document.querySelector(s); const b = e.getBoundingClientRect(); const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return t === e || e.contains(t); }));

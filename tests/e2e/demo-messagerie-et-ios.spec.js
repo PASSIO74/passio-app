@@ -35,6 +35,13 @@ async function banc(page) {
 test.describe("UXO-03 — messagerie de démonstration", () => {
   test("① une conversation de démonstration porte « Exemple PASSIO » et aucune pastille", async ({ page }) => {
     await banc(page);
+    // LOT-31 (MSG-C24) : pour un compte, les exemples quittent la liste dès
+    // qu'une VRAIE conversation existe. On mesure donc la démonstration seule,
+    // telle qu'un compte neuf la voit (la vraie est retirée du banc ici).
+    await page.evaluate(() => {
+      conversationsState = getConversations().filter((c) => c.id !== "c_reel");
+      saveConversationsNow(); renderMessages(); renderMsgBadge();
+    });
     const r = await page.evaluate(() => { const card = document.querySelector('#messageList .msg-card[data-conv-demo="1"]') || [...document.querySelectorAll("#messageList .msg-card")].find((c) => /openConversation\('conv_lea'\)/.test(c.getAttribute("onclick") || "")); return { present: !!card, texte: card ? card.textContent : "", badge: card ? !!card.querySelector(".msg-badge") : null, classe: card ? card.className : "" }; });
     // RÉINJECTION : sur le code d'avant, aucune étiquette, pastille « 3 », classe unread.
     expect(r.present).toBe(true);

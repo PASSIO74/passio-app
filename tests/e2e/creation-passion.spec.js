@@ -304,7 +304,9 @@ test.describe("Créer une passion", () => {
       return vu;
     });
     expect(texte).not.toMatch(/signalée\. On vérifie/i);
-    expect(texte).toMatch(/déjà envoyé|impossible/i);
+    // LOT-26 (TRA-C18) : toutes les portes de signalement répondent pareil ; un
+    // refus dit « non envoyé » — jamais « signalée ».
+    expect(texte).toMatch(/déjà envoyé|impossible|non envoyé/i);
   });
 
   // ⑬ ARCHIVER DOIT AVOIR UN EFFET RÉEL. Le retrait de modération passe par
