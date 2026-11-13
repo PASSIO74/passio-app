@@ -69,7 +69,7 @@ create table public.events (id text primary key, organizer_id text, author_id te
 create table public.event_attendees (event_id text not null references public.events(id) on delete cascade, user_id text not null, rsvp text, rating smallint, rated_at timestamptz, created_at timestamptz default now(), primary key (event_id, user_id));
 create table public.event_reactions (event_id text not null references public.events(id) on delete cascade, user_id text not null, emoji text not null, created_at timestamptz default now());
 create table public.event_comments (id text primary key, event_id text not null references public.events(id) on delete cascade, author_id text not null, text text, created_at timestamptz default now());
-create table public.video_lives (id text primary key, author_id text not null, title text, status text, started_at timestamptz);
+create table public.video_lives (id text primary key, author_id text not null, title text, status text, started_at timestamptz, last_seen timestamptz, ended_at timestamptz);
 create table public.follows (follower_id text not null, following_id text not null, status text default 'accepted', created_at timestamptz default now(), primary key (follower_id, following_id));
 create table public.conversations (id text primary key, is_group boolean default false, created_by text, group_name text);
 create table public.conv_members (conv_id text, user_id text, primary key (conv_id, user_id));
@@ -86,6 +86,19 @@ begin
   return new;
 end \$fn\$;
 create trigger trg_notifications_origine before insert on public.notifications for each row execute function public.notifications_origine();
+-- `follows_notifier` de PRODUCTION (relevé le 13/11), dans ce qui compte ici : il pose
+-- `passio.notification_serveur` et ne le REMET PAS. Sans lui au socle, l'épreuve de la
+-- migration passait ici et échouait en production (relecture adversariale du 13/11, P1).
+create or replace function public.follows_notifier() returns trigger language plpgsql security definer set search_path = public, pg_temp as $fn$
+begin
+  if new.follower_id = new.following_id then return new; end if;
+  perform set_config('passio.notification_serveur', '1', true);
+  insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen)
+    values ('n_fw_' || left(new.follower_id, 8) || '_' || left(new.following_id, 8), new.following_id, 'follow', new.follower_id, new.follower_id, 'a commencé à te suivre', false)
+    on conflict (id) do nothing;
+  return new;
+end $fn$;
+create trigger trg_follows_notifier after insert on public.follows for each row execute function public.follows_notifier();
 
 insert into public.profiles (id, username) values ('$A', 'Alice'), ('$B', 'Bruno'), ('$D', 'Dan');
 insert into public.posts (id, author_id, content) values ('p1', '$A', 'ma publication');
@@ -115,14 +128,15 @@ PY
   if APPLIQUER "$f" >/dev/null 2>&1; then verifier "mutation « $1 » : refusée" "refusée" "APPLIQUÉE"; else verifier "mutation « $1 » : refusée" "refusée" "refusée"; fi
   verifier "…et rien n'en reste" "0" "$(Q "select count(*)::int from pg_trigger where tgname = 'trg_notifications_preuve';")"
 }
-muter "un genre qu'aucun client n'écrit passe" "ok := false;   -- reaction" "ok := true;   -- reaction"
+muter "un genre qu'aucun client n'écrit passe" "n_faits := 0;   -- reaction" "n_faits := 1;   -- reaction"
 muter "un j'aime vaut pour n'importe quel destinataire" "where l.post_id = ref and l.user_id = de and p.author_id = a)" "where l.post_id = ref and l.user_id = de)"
-muter "l'annulation n'exige plus l'état annulé" "where e.id = ref and e.status = 'cancelled');" "where e.id = ref);"
+muter "l'annulation n'exige plus l'état annulé" "where e.id = ref and e.status = 'cancelled'" "where e.id = ref"
+muter "le fait ne se consomme plus" "n_deja >= n_faits" "n_deja > 999"
 
 echo "── ③ APPLICATION, VERDICT, REJEU ─────────────────────────────────────"
 sortie="$(APPLIQUER "$MIGRATION")" || { echo "  ❌ la migration a échoué :"; echo "$sortie" | tail -10; exit 1; }
 verifier "verdict : aucun ECHEC" "0" "$(printf '%s\n' "$sortie" | grep -cE '\|\s*ECHEC' || true)"
-verifier "verdict : 31 contrôles OK" "31" "$(printf '%s\n' "$sortie" | grep -cE '\|\s*OK\s*$' || true)"
+verifier "verdict : 37 contrôles OK" "37" "$(printf '%s\n' "$sortie" | grep -cE '\|\s*OK\s*$' || true)"
 APPLIQUER "$MIGRATION" >/dev/null 2>&1 && verifier "rejeu sans erreur" "oui" "oui" || verifier "rejeu sans erreur" "oui" "non"
 verifier "un seul déclencheur de preuve" "1" "$(Q "select count(*)::int from pg_trigger where tgname = 'trg_notifications_preuve';")"
 
