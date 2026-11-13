@@ -4066,6 +4066,9 @@ function closeCurrentOverlay() {
     if (window.PassioFirstRun && typeof PassioFirstRun.fermerAuthParRetour === "function"
         && PassioFirstRun.fermerAuthParRetour()) return true;
   } catch (e) {}
+  // LOT-24 (MSG-C73) : la visionneuse d'image est au-dessus de tout — le retour
+  // la ferme, elle, et non la conversation derrière.
+  try { if (typeof fermerVisionneuseImage === "function" && fermerVisionneuseImage(true)) return true; } catch (e) {}
   // ENT-C07 / ENT-C06 (audit UX/UI du 2026-11-10) : la feuille « Créer » et le
   // panneau Paramètres se ferment au retour système, sans changer d'écran dessous.
   const feuilleCreer = document.getElementById("v2CreateSheet");

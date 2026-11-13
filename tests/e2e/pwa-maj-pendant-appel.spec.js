@@ -1007,6 +1007,8 @@ test.describe("PWA — le rechargement d'une mise à jour attend un enregistreme
     expect(await messagesRelus(page)).toEqual([]);
 
     await page.evaluate(() => window.__relacherCompression());
+    // LOT-24 (MSG-C72) : la photo est montrée avant de partir — on confirme l'envoi.
+    await page.locator("#pjApercuEnvoyer").click();
     await depotTenu(page);
     await preparationDepassee(page);
     await toujoursRetenue(page, docs);

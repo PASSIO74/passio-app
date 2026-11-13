@@ -2339,6 +2339,13 @@ function unreadCount() {
   return (state.notifications || []).filter(n => n.unread).length;
 }
 
+// LOT-24 (MSG-C15) : un message reçu comptait DEUX FOIS au titre et à l'icône
+// de l'application — son non-lu de messagerie ET sa notification de cloche.
+// Le total ne prend, côté cloche, que ce qui n'est pas un message.
+function _notifsNonLuesHorsMessages() {
+  return (state.notifications || []).filter(function (n) { return n && n.unread && n.kind !== "message"; }).length;
+}
+
 function renderBell() {
   const dot = $("#bellDot");
   if (dot) {
@@ -2348,7 +2355,7 @@ function renderBell() {
   // Badge titre de l'onglet navigateur (notifs + messages non-lus)
   try {
     let _total = 0;
-    try { _total += unreadCount(); } catch(e) {}
+    try { _total += _notifsNonLuesHorsMessages(); } catch(e) {}
     try { _total += (typeof _convNonLus === "function") ? _convNonLus() : 0; } catch(e) {}
     document.title = _total > 0 ? `(${_total > 99 ? "99+" : _total}) PASSIO` : "PASSIO";
   } catch(e) {}
@@ -2362,7 +2369,7 @@ function updateAppBadge() {
   try {
     if (!("setAppBadge" in navigator)) return;
     let n = 0;
-    try { n += unreadCount(); } catch (e) {}
+    try { n += _notifsNonLuesHorsMessages(); } catch (e) {}
     try { n += (typeof _convNonLus === "function") ? _convNonLus() : 0; } catch (e) {}
     if (n > 0) navigator.setAppBadge(n).catch(() => {});
     else navigator.clearAppBadge().catch(() => {});
