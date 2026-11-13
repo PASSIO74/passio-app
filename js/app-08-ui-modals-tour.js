@@ -2493,8 +2493,46 @@ function _notifTexteHtml(n) {
 // 2026-11-13 (Benjamin) : les passions de l'émetteur ne s'affichent plus sous
 // le texte d'une notification (« trop chargé »). _notifIdentiteHtml est retirée.
 
+// LOT-26 (audit UX/UI du 2026-11-10, TRA-C14) : une publication qui plaît
+// noyait le reste — une ligne par j'aime. Les j'aime (et les réactions) d'une
+// même cible sont regroupés en UNE ligne, à la place de la plus récente :
+// « Léa, Malik et 3 autres ont aimé ta publication ». Toucher la ligne ouvre la
+// cible, comme avant ; elle est non lue si l'une des notifications l'est.
+var _NOTIF_REGROUPABLES = { like: "ont aimé ta publication", reaction: "ont réagi à ta publication" };
+function _regrouperNotifs(notifs) {
+  var groupes = {}, sortie = [];
+  (notifs || []).forEach(function (n) {
+    if (!n || !_NOTIF_REGROUPABLES[n.kind] || !n.refId) { sortie.push(n); return; }
+    var cle = n.kind + "|" + n.refId;
+    if (!groupes[cle]) { groupes[cle] = { tete: n, membres: [n] }; sortie.push(groupes[cle]); }
+    else groupes[cle].membres.push(n);
+  });
+  return sortie.map(function (x) {
+    if (!x || !x.membres) return x;
+    if (x.membres.length === 1) return x.tete;
+    var vus = [], noms = [];
+    x.membres.forEach(function (m) {
+      var id = m.fromId || "";
+      if (vus.indexOf(id) > -1) return;
+      vus.push(id);
+      var u = (typeof userById === "function" && id) ? userById(id) : null;
+      noms.push((u && u.name) || "Quelqu'un");
+    });
+    var reste = noms.length - 2;
+    var qui = noms.length === 1 ? "<b>" + escapeHtml(noms[0]) + "</b>"
+      : noms.length === 2 ? "<b>" + escapeHtml(noms[0]) + "</b> et <b>" + escapeHtml(noms[1]) + "</b>"
+      : "<b>" + escapeHtml(noms[0]) + "</b>, <b>" + escapeHtml(noms[1]) + "</b> et " + reste + " autre" + (reste > 1 ? "s" : "");
+    var verbe = noms.length === 1 ? _NOTIF_REGROUPABLES[x.tete.kind].replace(/^ont /, "a ") : _NOTIF_REGROUPABLES[x.tete.kind];
+    return Object.assign({}, x.tete, {
+      unread: x.membres.some(function (m) { return m.unread; }),
+      _texteGroupe: qui + " " + verbe,
+      _ids: x.membres.map(function (m) { return m.id; }),
+    });
+  });
+}
+
 function _notifListHtml(notifs) {
-  notifs = notifs || [];
+  notifs = _regrouperNotifs(notifs || []);
   if (!notifs.length) return `
     <div class="empty">
       <div class="empty-icon">🔕</div>
@@ -2505,7 +2543,7 @@ function _notifListHtml(notifs) {
     <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${escapeJsArg(n.id)}')">
       <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
-        <div class="notif-text">${_notifTexteHtml(n)}</div>
+        <div class="notif-text">${n._texteGroupe ? n._texteGroupe : _notifTexteHtml(n)}</div>
         ${_notifDemandeAbonnementHtml(n)}
         <div class="notif-meta">${escapeHtml(fmtNotifHeure(n.createdAt))}</div>
       </div>
@@ -5345,6 +5383,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
         authorColor: r.profiles?.color || "#8b5cf6",  // ✅ Utiliser la couleur depuis profiles
         authorAvatar: r.profiles?.avatar_url || null,  // 📷 Photo de profil (URL Storage) si définie
+        authorPrive: r.profiles?.is_private === true,  // FIL-C27 : cadenas « Réservé aux abonnés »
         // ⚠️ Jamais « autre » : cette valeur fantôme n'est dans aucun des 19
         // identifiants du référentiel. Elle ne changeait rien à l'affichage
         // (`passionById` retombe sur son défaut dans les deux cas) mais elle
@@ -9317,9 +9356,13 @@ async function supaReport(targetType, targetId, reason) {
     // 23505 — « le cas le plus fréquent » (app-04). C'est une règle, pas une panne.
     const code = v.ok ? null : String(v.error && v.error.code) === "23505" ? "doublon" : (typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(v.error) : null);
     _repRegle(v.ok, code ? { code, message: code } : v.error);
+    // LOT-26 (TRA-C18) : le motif du dernier refus, lu par `messageSignalement`
+    // (app-04) — « déjà signalé » n'est pas une panne.
+    window._dernierSignalementMotif = code;
     return v.ok;
   } catch(e) {
     console.warn("signalement :", e && e.message);
+    window._dernierSignalementMotif = null;
     const code = typeof _codeEchecEcriture === "function" ? _codeEchecEcriture(e) : null;
     _repRegle(false, code ? { code, message: code } : e);
     return false;
