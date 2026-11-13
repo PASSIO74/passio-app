@@ -757,6 +757,8 @@ test("⑬ ce qui part dans un dépôt public : CHAQUE commit de l'agent est lu �
     const avecScript = commits(base, [{ fichiers: { "scripts/audit.js": "v\n" } }]);
     refus(jouer({ tip: commits(avecScript, [{ fichiers: { "scripts/audit.js": null, "js/audit.js": "v\n" } }]), depart: avecScript, socle: avecScript }), I, "renommage d'un chemin interdit");
     refus(jouer({ tip: commits(base, [{ fichiers: { "scripts/évité.js": "x\n" } }]) }), I, "chemin interdit non ASCII");
+    // … et touché puis rétabli : seule la lecture commit par commit le voit, et elle doit le lire tel quel (`-z`).
+    refus(jouer({ tip: commits(base, [{ fichiers: { "scripts/évité.js": "x\n" } }, { fichiers: { "scripts/évité.js": null, "a.txt": "autre\n" } }]) }), I, "chemin interdit non ASCII touché puis rétabli");
     // Des NOMS que le poste ne sait pas écrire (caractère de contrôle, « : ») : posés par la plomberie de git, sans
     // passer par l'arbre de travail.
     const nomBrut = (depuis, nom, contenu) => {
@@ -784,6 +786,30 @@ test("⑬ ce qui part dans un dépôt public : CHAQUE commit de l'agent est lu �
       const i = lignes.indexOf(nom);
       assert.ok(i > arret && i < reprise, nom + " s'imprime entre l'arrêt et la reprise\n" + forge.sortie.slice(-600));
     }
+    // La clé est TIRÉE à chaque passage (une constante, lisible dans le workflow public, laisserait un nom forger la
+    // reprise puis une commande) : deux passages, deux clés.
+    const autre = jouer({ tip: commits(base, [{ fichiers: { "k2.txt": "x\n" } }]) });
+    const cle2 = (autre.sortie.match(/^::stop-commands::([0-9a-f]{32})$/m) || [])[1];
+    assert.ok(cle2 && cle2 !== cle, "deux passages, deux clés : " + cle + " / " + cle2);
+    // Une PANNE de `git diff --quiet` n'est pas « aucun changement » ni « des changements » : refus dit, pour chacune
+    // des deux comparaisons (le travail contre son départ, puis contre main relu).
+    const vraiGitDiff = execFileSync("bash", ["--noprofile", "--norc", "-c", "command -v git"], { encoding: "utf8" }).trim();
+    const tipPanneDiff = commits(base, [{ fichiers: { "pd.txt": "propre\n" } }]);
+    for (const [cible, message] of [["DEPART", "Le diff du travail produit n'a pas pu être lu"], ["MAIN", "Le travail produit n'a pas pu être comparé à main"]]) {
+      // `diff --quiet <visée> …` échoue ; tout le reste est le vrai git. Pour MAIN, la base relue est un commit à part.
+      const socleMain = cible === "MAIN" ? commits(base, [{ fichiers: { "mn.txt": "main a bougé\n" } }]) : base;
+      const vise = cible === "DEPART" ? base : socleMain;
+      fs.writeFileSync(faux + "/git", "#!/usr/bin/env bash\nq=0; v=0\nfor a in \"$@\"; do [ \"$a\" = \"--quiet\" ] && q=1; [ \"$a\" = \"" + vise + "\" ] && v=1; done\n[ $q = 1 ] && [ $v = 1 ] && exit 128\nexec \"" + vraiGitDiff + "\" \"$@\"\n");
+      fs.chmodSync(faux + "/git", 0o755);
+      const r = jouer({ tip: tipPanneDiff, depart: base, socle: socleMain, chemin: faux });
+      fs.rmSync(faux + "/git");
+      refus(r, "Garde illisible", "git diff --quiet en panne (" + cible + ")");
+      assert.ok(r.sortie.includes(message), cible + " : " + r.sortie.slice(-400));
+    }
+    // MAIN A REÇU LE MÊME CHANGEMENT pendant le run : le travail est identique à main relu — rien à publier.
+    const memeChangement = commits(base, [{ fichiers: { "mc.txt": "le correctif\n" } }]);
+    const mainAvecLeMeme = commits(base, [{ fichiers: { "mc.txt": "le correctif\n" } }, { message: "un commit vide de plus" }]);
+    refus(jouer({ tip: memeChangement, depart: base, socle: mainAvecLeMeme }), "Aucun changement", "main a reçu le même changement");
     // Un `git` EN ÉCHEC pendant la lecture des jetons arrête la marche (`set -e`) : rien n'est publié. (L'exercice de
     // #875 « la lecture des jetons jouée seule » ne mordait pas : il coupait la garde sur un titre absent du workflow.)
     const vraiGit = execFileSync("bash", ["--noprofile", "--norc", "-c", "command -v git"], { encoding: "utf8" }).trim();
@@ -888,13 +914,44 @@ test("⑮ le commit de départ est noté AVANT l'agent, rien ne déplace HEAD en
   const iAgent = pas.findIndex((x) => x.id === "claude");
   assert.ok(iDepart >= 0 && iAgent > iDepart, "la marche « Noter le commit de départ » précède l'agent");
   assert.match(pas[iDepart].run, /sha="\$\(git rev-parse HEAD\)"/, "elle note HEAD, et rien d'autre");
+  // Entre les deux, aucune marche n'appelle git du tout (relecture de #903 : un verbe cherché juste après `git` laissait
+  // passer `git -c … checkout`) ; une marche qui en aurait besoin se discute ici, pas en douce.
   for (const p of pas.slice(iDepart + 1, iAgent)) {
     assert.ok(!/actions\/checkout/.test(p.uses || ""), "aucun second checkout avant l'agent : " + p.name);
-    assert.ok(!/\bgit\s+(checkout|switch|reset|rebase|merge|pull|commit|cherry-pick|am)\b/.test(p.run || ""), "aucune marche ne déplace HEAD avant l'agent : " + p.name);
+    const lignesCode = String(p.run || "").split("\n").filter((l) => !/^\s*#/.test(l));
+    assert.ok(!lignesCode.some((l) => /\bgit\b/.test(l)), "aucune marche n'appelle git avant l'agent : " + p.name);
   }
   for (const nom of ["Publier la branche produite par Claude", "Signaler le résultat sur l'issue"]) {
     const p = pas.find((x) => x.name === nom);
     assert.ok(p, nom);
     assert.equal(p.env && p.env.DEPART, "${{ steps.depart.outputs.sha }}", nom + " lit le départ noté");
   }
+});
+
+test("⑯ la marche « Preuve d'exécution réelle » affiche les noms INERTES, elle aussi : ni « :: » ni « ##[ » ne forgent de commande du runner dans le journal public", () => {
+  // Relecture de #903 : la publication imprimait ses noms entre `::stop-commands::` et la reprise, mais la preuve, dans
+  // le MÊME job et le même journal public, les imprimait tels quels. Le bloc réel est extrait et joué par bash.
+  const etape = WF.jobs.claude.steps.find((x) => x.name === "Preuve d'exécution réelle");
+  assert.ok(etape && typeof etape.run === "string", "la marche existe");
+  const debut = etape.run.indexOf("# ── NOMS INERTES (preuve):DEBUT");
+  const fin = etape.run.indexOf("# ── NOMS INERTES (preuve):FIN", debut);
+  assert.ok(debut >= 0 && fin > debut, "le bloc se lit entre ses marqueurs");
+  const bloc = etape.run.slice(debut, fin);
+  const NOMS = ["js/ordinaire.js", "::warning title=forgé::par un nom", "docs/x##[warning]forgé.md"];
+  const jouerBloc = () => {
+    const r = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", 'fichiers="${FICHIERS}"\n' + bloc], { encoding: "utf8", env: { ...process.env, FICHIERS: NOMS.join("\n") } });
+    assert.equal(r.status, 0, (r.stdout || "") + (r.stderr || ""));
+    const lignes = (r.stdout || "").split(/\r?\n/);
+    const arret = lignes.findIndex((l) => /^::stop-commands::[0-9a-f]{32}$/.test(l));
+    assert.ok(arret >= 0, "la lecture des commandes est suspendue avant les noms\n" + r.stdout);
+    const cle = lignes[arret].slice("::stop-commands::".length);
+    const reprise = lignes.indexOf("::" + cle + "::");
+    assert.ok(reprise > arret, "elle reprend après, avec la même clé");
+    for (const nom of NOMS) {
+      const i = lignes.indexOf(nom);
+      assert.ok(i > arret && i < reprise, nom + " s'imprime entre l'arrêt et la reprise\n" + r.stdout);
+    }
+    return cle;
+  };
+  assert.notEqual(jouerBloc(), jouerBloc(), "la clé est tirée à chaque passage");
 });

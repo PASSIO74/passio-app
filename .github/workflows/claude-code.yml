@@ -1216,9 +1216,13 @@ jobs:
           commits="$(lire_publie --format=%H | wc -l | tr -d ' ')"
           rc=0; git diff --quiet "${DEPART}" "${tip}" || rc=$?
           case "${rc}" in 0|1) ;; *) echo "::error title=Garde illisible::Le diff du travail produit n'a pas pu être lu (code ${rc}). Refus de publier."; exit 1 ;; esac
-          if [ "${commits}" -eq 0 ] || [ "${rc}" -eq 0 ]; then
+          # Un travail déjà identique à main relu n'a rien à publier non plus (main a reçu le même changement pendant le
+          # run) : refusé ici, comme avant cette borne, plutôt que poussé puis jugé « sans changement » par la preuve.
+          rc_main=0; git diff --quiet "${base}" "${tip}" || rc_main=$?
+          case "${rc_main}" in 0|1) ;; *) echo "::error title=Garde illisible::Le travail produit n'a pas pu être comparé à main (code ${rc_main}). Refus de publier."; exit 1 ;; esac
+          if [ "${commits}" -eq 0 ] || [ "${rc}" -eq 0 ] || [ "${rc_main}" -eq 0 ]; then
             echo "État laissé par l'agent : $(git status --porcelain | wc -l) fichier(s) non committé(s), ${commits} commit(s) d'avance."
-            echo "::error title=Aucun changement::Claude n'a produit aucun changement net depuis son départ (aucun commit, ou des commits qui s'annulent) : rien à publier. Ce run n'est pas un succès."
+            echo "::error title=Aucun changement::Claude n'a produit aucun changement net (aucun commit, des commits qui s'annulent, ou un travail déjà identique à main) : rien à publier. Ce run n'est pas un succès."
             exit 1
           fi
 
@@ -1509,7 +1513,15 @@ jobs:
             exit 1
           fi
           fichiers="$(git diff --name-only "${sha_main}" "${sha_branche}")"
-          echo "Fichiers modifiés :"; printf '%s\n' "${fichiers}"
+          # ── NOMS INERTES (preuve):DEBUT ── (joué tel quel par tests/unit/reparation-journal.test.mjs ⑯)
+          # Un nom est une donnée de l'agent : affiché dans le journal public, il ne doit forger aucune commande du
+          # runner (« :: » en tête de ligne, « ##[ » n'importe où) — comme la liste de la publication (relecture de #903).
+          arret="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
+          case "${arret}" in
+            *[!0-9a-f]*|"") echo "Fichiers modifiés : $(printf '%s\n' "${fichiers}" | wc -l) (liste non affichée : la clé d'arrêt des commandes n'a pas pu être tirée)" ;;
+            *) echo "::stop-commands::${arret}"; echo "Fichiers modifiés :"; printf '%s\n' "${fichiers}"; echo "::${arret}::" ;;
+          esac
+          # ── NOMS INERTES (preuve):FIN
 
           # 5. Une PR pointe-t-elle EXACTEMENT sur cette branche ?
           pr="$(gh pr list --repo "${DEPOT}" --head "${RENVOYEE}" --state open \
