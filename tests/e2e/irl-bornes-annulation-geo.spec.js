@@ -116,7 +116,7 @@ test.describe("IRL-13 — annuler prévient les trois listes, après le verdict"
     expect(r.statut).toBe("active");
     expect(r.notifs).toEqual([]);
     expect(r.toasts.some((t) => /non enregistré/.test(t))).toBe(true);
-    expect(r.toasts.some((t) => /^Événement annulé/.test(t))).toBe(false);
+    expect(r.toasts.some((t) => /^(Événement|Activité) annulée?/.test(t))).toBe(false);
   });
 
   // IRL-13, second volet (contre-revue Astra, 2026-09-15) : l'annulation d'une

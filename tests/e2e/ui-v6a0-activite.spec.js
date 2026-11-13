@@ -193,7 +193,7 @@ test.describe("UI-6A0 — Créer une activité", () => {
   test("⑤ coupé, la modale d'avant revient, sans rangement ni garde", async ({ page }) => {
     await boot(page, { coupe: true });
     await ouvrir(page);
-    await expect(page.locator("#modalContent .modal-title")).toHaveText("Créer un événement IRL");
+    await expect(page.locator("#modalContent .modal-title")).toHaveText("Créer une activité");
     expect(await page.evaluate(() => document.getElementById("modalContent").classList.contains("v6a0"))).toBe(false);
     await expect(page.locator("#modalContent details.v6a0-options")).toHaveCount(0);
     await compterEnvois(page);
