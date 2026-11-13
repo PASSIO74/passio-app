@@ -151,6 +151,13 @@ export async function autoriserPushNotif(admin, fromUid, toUserId, maintenantMs)
     const conv = await unSeul(admin, "conversations", [["id", lien.refId]]);
     if (!conv.erreur && conv.ligne && conv.ligne.is_group === true) genre = "message_groupe";
   }
+  // MSG-C02, volet serveur (audit UX/UI du 2026-11-10) : un membre qui a COUPÉ
+  // une conversation n'est pas réveillé par elle — ni message, ni mention.
+  // Refus silencieux (même réponse qu'un blocage). Le message est livré.
+  if ((lien.kind === "message" || lien.kind === "mention") && lien.refId
+      && await membreEnSourdine(admin, lien.refId, toUserId)) {
+    return { ok: false, raison: "conversation en sourdine" };
+  }
   const texte = textePush(genre, idn.name);
   if (!texte) return { ok: false, raison: "genre sans gabarit : " + lien.kind };
   return { ok: true, raison: "", id: lien.id, texte, kind: lien.kind };
@@ -215,6 +222,19 @@ export async function reserverPush(admin, idNotification, toUserId, maxParHeure 
 // Genre inconnu, `ref_id` absent là où il est requis, lecture en erreur : REFUS
 // (fail-closed) — une push manquée vaut mieux qu'une push qui perce.
 const FENETRE_EVENEMENT_MS = 10 * 60_000;
+
+/**
+ * La sourdine d'un membre pour une conversation (`conv_members.muted`,
+ * migration du 2026-11-13). Vrai SEULEMENT si la ligne dit `muted === true` :
+ * colonne absente (migration pas encore appliquée), ligne absente ou lecture
+ * en erreur → faux. C'est une PRÉFÉRENCE, pas une barrière de sécurité : dans
+ * le doute, la notification part, comme avant.
+ */
+export async function membreEnSourdine(admin, convId, userId) {
+  if (!convId || !userId) return false;
+  const r = await unSeul(admin, "conv_members", [["conv_id", String(convId)], ["user_id", String(userId)]]);
+  return !r.erreur && !!r.ligne && r.ligne.muted === true;
+}
 
 async function unSeul(admin, table, filtres) {
   let q = admin.from(table).select("*");

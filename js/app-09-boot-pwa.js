@@ -1662,6 +1662,33 @@ function _toggleMuteConv(convId) {
   saveConversations();
   openConvSettings(convId);
   toast(c._muted ? "🔕 Notifications coupées" : "🔔 Notifications activées");
+  _ecrireSourdineServeur(convId, !!c._muted);
+}
+
+// MSG-C02, volet serveur (audit UX/UI du 2026-11-10) : la sourdine n'existait
+// que sur CET appareil — l'expéditeur, lui, déclenchait la push vers tous les
+// appareils du destinataire. Elle est écrite sur MA ligne `conv_members`
+// (`muted`, seule colonne que la migration du 2026-11-13 me laisse écrire), et
+// `notify-call` ne réveille plus un membre en sourdine. Le réglage LOCAL reste
+// la vérité de cet appareil : un refus serveur ne l'annule pas, il le dit.
+async function _ecrireSourdineServeur(convId, muted) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    if (typeof _uidEstUnCompte === "function" && !_uidEstUnCompte()) return;
+    if (!convId || typeof MY_UID === "undefined" || !MY_UID) return;
+    var r = await supa.from("conv_members").update({ muted: muted })
+      .eq("conv_id", convId).eq("user_id", MY_UID).select("conv_id");
+    if (r && r.error) {
+      var code = String(r.error.code || "");
+      // Base pas encore migrée (colonne inconnue) : rien à dire, la sourdine
+      // locale fonctionne comme avant.
+      if (code === "42703" || code === "PGRST204") { try { diagLog("sourdine serveur : colonne absente"); } catch (e) {} return; }
+      try { diagLog("sourdine serveur refusée " + code); } catch (e) {}
+      toast("Sourdine enregistrée sur cet appareil seulement — tes autres appareils sonneront encore", "warning");
+      return;
+    }
+    // Zéro ligne : la conversation n'existe pas en base (exemple, locale) — rien à dire.
+  } catch (e) { try { diagLog("sourdine serveur : " + (e && e.message)); } catch (_) {} }
 }
 
 async function _clearConvMessages(convId) {
