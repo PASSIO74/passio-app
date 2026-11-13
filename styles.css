@@ -13316,3 +13316,21 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 .profile-dots-menu button { min-height: 44px; }
 .event-invite-btn { min-height: 44px; }
 .modal .btn.block, #modalContent .btn.block { min-height: 44px; }
+
+/* LOT-49 (audit UX/UI du 2026-11-10, BOB-C09) : répondre à une story — un champ
+   en bas de la visionneuse, au-dessus de la zone sûre. */
+.story-reply-bar {
+  position: absolute; left: 12px; right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 6; display: flex; gap: 8px; align-items: center;
+}
+.story-reply-input {
+  flex: 1; min-width: 0; min-height: 44px; padding: 0 16px;
+  border: 1.5px solid rgba(255, 255, 255, 0.7); border-radius: 22px;
+  background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 16px;
+}
+.story-reply-input::placeholder { color: rgba(255, 255, 255, 0.85); }
+.story-reply-send {
+  min-height: 44px; padding: 0 16px; border-radius: 22px;
+  background: #fff; color: #1f1147; font-weight: 800; font-size: 14px;
+}
