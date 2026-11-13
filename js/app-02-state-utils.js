@@ -5417,7 +5417,7 @@ function openDeleteAccountConfirm() {
       <li>ton profil et tes passions ;</li>\
       <li>toutes tes publications, photos, vidéos et stories ;</li>\
       <li>tes messages, conversations et notifications ;</li>\
-      <li>tes likes, commentaires, abonnements et événements.</li>\
+      <li>tes j\'aime, commentaires, abonnements et activités.</li>\
     </ul>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ton compte et ton adresse e-mail sont retirés de nos serveurs immédiatement ; en cas d’incident technique, au plus tard sous 30 jours (art. 17 RGPD). Pour toute question : ' + escapeHtml(PASSIO_EDITEUR.email) + '</p>\
     <div class="suppression-export">\
@@ -10834,8 +10834,8 @@ function renderPostHTML(p) {
           <div class="event-date-month">${sd ? escapeHtml(sd.month) : ""}</div>
         </div>
         <div style="flex:1;min-width:0;">
-          <span class="cdv-feed-tag" style="display:inline-block;margin-bottom:4px;">ÉVÉNEMENT IRL</span>
-          <div style="font-weight:800;font-size:15px;line-height:1.25;">${escapeHtml(se.title || "Événement")}</div>
+          <span class="cdv-feed-tag" style="display:inline-block;margin-bottom:4px;">ACTIVITÉ IRL</span>
+          <div style="font-weight:800;font-size:15px;line-height:1.25;">${escapeHtml(se.title || "Activité")}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:3px;">${sp.emoji} ${escapeHtml(sp.label)}${se.city ? " · 📍 " + escapeHtml(se.city) : ""}</div>
         </div>
         <span class="btn small primary" style="flex-shrink:0;pointer-events:none;">Voir</span>

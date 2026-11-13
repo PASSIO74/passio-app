@@ -1042,7 +1042,7 @@
            que le kill switch passio_ui_4a0="0" le restitue. -->
       <div class="irl-actionbar">
         <button class="irl-chip irl-chip-create" onclick="openCreateEvent()">
-          <span class="irl-chip-label">Créer un événement</span>
+          <span class="irl-chip-label">Créer une activité</span>
         </button>
         <button type="button" class="ctx-trigger" id="irlToolsBtn"
           onclick="ContextualTools.open('irl', this)" aria-haspopup="dialog"
@@ -1183,7 +1183,7 @@
                d'événements restaient avant de refermer la feuille. -->
           <div style="display:flex;gap:8px;">
             <button class="btn secondary block" id="irlFiltersResetBtn" onclick="clearAllIrlFilters()">✕ Réinitialiser</button>
-            <button class="btn primary block" id="irlFiltersDoneBtn" onclick="closeIrlFiltersPanel()">Voir les événements</button>
+            <button class="btn primary block" id="irlFiltersDoneBtn" onclick="closeIrlFiltersPanel()">Voir les activités</button>
           </div>
         </div>
       </div>
@@ -1194,10 +1194,10 @@
       <div id="irlSearchRow" style="display:flex;align-items:center;gap:8px;padding:4px 0 8px;">
   <div style="display:flex;align-items:center;gap:6px;flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:14px;height:14px;color:var(--muted);flex-shrink:0;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
-    <input id="irlCitySearch" type="text" placeholder="Rechercher une ville, un événement…" oninput="filterIrlByCity()" style="border:none;background:transparent;font-size:16px;color:var(--text);outline:none;flex:1;"/>
+    <input id="irlCitySearch" type="text" placeholder="Rechercher une ville, une activité…" oninput="filterIrlByCity()" style="border:none;background:transparent;font-size:16px;color:var(--text);outline:none;flex:1;"/>
   </div>
 </div>
-<div id="irlSearchEmpty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:13px;">Aucun événement trouvé pour cette recherche.</div>
+<div id="irlSearchEmpty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:13px;">Aucune activité trouvée pour cette recherche.</div>
 <div id="eventList"></div>
     </section>
 
@@ -1365,7 +1365,7 @@
       </svg></span>
       <span class="nav-label">Créer</span>
     </div>
-    <div class="nav-item" data-screen="irl" role="button" tabindex="0" aria-label="Événements IRL">
+    <div class="nav-item" data-screen="irl" role="button" tabindex="0" aria-label="Rencontrer">
       <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0 -3 -3.85"/></svg></span>
       <span class="nav-label">IRL</span>
     </div>

@@ -161,7 +161,7 @@ const TOUR_STEPS = [
     title: "Retrouvez-vous en vrai",
     lede: "Le cœur de PASSIO : transformer une passion en moments réels avec d'autres.",
     points: [
-      "Événements près de chez toi, organisés par la communauté",
+      "Activités près de chez toi, organisées par la communauté",
       "Carte interactive France et Europe",
       "Skate jam, atelier, dégustation, book club…"
     ]
@@ -6634,7 +6634,7 @@ async function supaLoadEvents(authorId) {
       authorId: r.author_id,
       organizerId: r.organizer_id || r.author_id,
       organizerName: (profs[r.organizer_id || r.author_id] || {}).username || "Passionné",
-      title: r.title || "Événement",
+      title: r.title || "Activité",
       passion: r.passion_id || null,   // jamais la valeur fantôme « autre »
       lat: r.lat, lng: r.lng,
       city: r.city || "",
@@ -9797,7 +9797,7 @@ async function supaCreateEventConversation(ev) {
     const convId = "evgrp_" + (ev.id || uid());
     const r = await supa.from("conversations").insert({
       id: convId, is_group: true,
-      group_name: "📍 " + String(ev.title || "Événement").slice(0, 40),
+      group_name: "📍 " + String(ev.title || "Activité").slice(0, 40),
       // Politique FACULTATIVE (ADR-010) : la discussion des participants ne
       // doit pas être bloquée par le classement de son événement.
       passion_id: optionalCanonicalPassion(ev.passion), created_by: MY_UID,

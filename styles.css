@@ -13303,3 +13303,8 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 /* MSG-C69 : le bouton d'en-tête « Proposer un moment IRL » porte la couleur
    du passage au réel (corail), comme l'entrée du menu « + ». */
 #conv-fullpage .conv-action-btn.irl-proposal-action { color: #E5533F; }
+
+/* LOT-47 (audit UX/UI du 2026-11-10, IRL-C59) : la feuille à trois états —
+   le titre au-dessus de sa description, alignés à gauche, cibles de 56 px. */
+.btn.block.rsvp-option { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 56px; height: auto; white-space: normal; padding-top: 10px; padding-bottom: 10px; }
+.btn.block.rsvp-option > b { display: block; }
