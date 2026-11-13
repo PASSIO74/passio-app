@@ -13173,3 +13173,17 @@ button, a, label, select, summary,
 body.passio-hors-ligne #passioBandeauDistant {
   bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
 }
+
+/* LOT-32 (audit UX/UI du 2026-11-10, MSG-C10 / MSG-C75) : retour (36 px) et
+   boutons d'icône de l'en-tête de conversation (34 px, zone 38 × 46) portés à
+   44 × 44. Les icônes gardent leur taille ; la zone ::after d'avant devient
+   inutile. Même règle pour le retour du panneau Paramètres. */
+#conv-fullpage .conv-fp-back,
+#convSettingsPanel .conv-fp-back,
+#conv-fullpage .conv-action-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+}
+#conv-fullpage .conv-action-btn::after { content: none; }
+#conv-fullpage .conv-actions { gap: 0; }
