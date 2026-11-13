@@ -1461,6 +1461,19 @@ banc `pilotage-chemins`, qui EXÉCUTE la fonction) :
 - ⚠️ **Une sonde de relecteur se rejoue avant d'être corrigée** : la `SyntaxError` « à la fusion » naissait
   en fait à la RELECTURE de la PR (`pr.json()`), avant toute écriture — l'exercice ㊶ vise cet appel-là.
 
+**Les fusions du 13/11 (#863, #870, #866).**
+- ⚠️ **Un run de déploiement EN ATTENTE est remplacé par le suivant.** Le groupe `passio-deploy-main` a
+  `cancel-in-progress: false`, ce qui ne protège que le run qui TOURNE : GitHub ne garde qu'un run en attente
+  par groupe. Le run de `d41f09bc` (#863) a fini « annulé » sans avoir joué, remplacé par celui de #870. La
+  preuve du déploiement d'une fusion est donc le run vert d'un commit qui la CONTIENT
+  (`git merge-base --is-ancestor`), puis la version servie (`release.json`, `X-Passio-Revision`).
+- ⚠️ **Relire le titre de la PR avant de fusionner.** La fusion en un seul commit reprend ce titre tel quel ;
+  celui de #863 datait d'avant la contre-revue (« … et le scan de sécurité alertent dès le premier échec ») —
+  faux sur `main` pour toujours, rectifié par un commentaire sur la PR.
+- **Observé** : la fonction sert `f5bbab8c` (#866) depuis 08:08 UTC ; battements de 08:20 et 08:35 sous cette
+  révision, toutes lectures `ok`, voyant vert — le scan en échec du 09/11 ne le colore pas, comme voulu ;
+  journaux de la fonction sans avertissement ni erreur.
+
 **Pièges du lot.**
 - ⚠️ **Une réinjection qui ne mord plus est un verrou mort.** Après la lecture filtrée par GitHub, celle
   qui retirait le filtre LOCAL (R29) restait verte : le filtre était devenu invisible au banc, pas inutile.
