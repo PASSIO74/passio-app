@@ -13240,3 +13240,12 @@ body.passio-hors-ligne #passioBandeauDistant {
 .call-avatar.call-avatar-photo { overflow: hidden; padding: 0; }
 .call-avatar.call-avatar-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .call-overlay .call-control-btn.mute, .call-overlay .call-control-btn.video { background: rgba(255, 255, 255, 0.16); color: #fff; }
+
+/* LOT-39 (audit UX/UI du 2026-11-10, FIL-C23, MSG-C82) : pictogrammes au trait
+   dans les menus — même taille partout, couleur du texte (rouge lisible pour
+   une action grave). */
+.csetting-icon { display: flex; align-items: center; justify-content: center; color: var(--text); }
+.csetting-icon .picto, .cmt-sheet-ic .picto, .post-option .picto { width: 22px; height: 22px; flex-shrink: 0; }
+.csetting-item.csetting-danger .csetting-icon { color: #b42318; }
+.cmt-sheet-ic { display: inline-flex; align-items: center; justify-content: center; }
+.post-option .picto { margin-right: 2px; }

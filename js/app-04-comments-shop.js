@@ -111,10 +111,10 @@ function openPostOptionsAutrui(postId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
-      <button class="post-option" onclick="closeModal();reportPost('${escapeJsArg(postId)}')">🚩 Signaler cette publication</button>
+      <button class="post-option" onclick="closeModal();reportPost('${escapeJsArg(postId)}')">${picto("signaler")} Signaler cette publication</button>
       ${bloque
-        ? `<button class="post-option" onclick="closeModal();unblockUser('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">✅ Débloquer ${escapeHtml(nom)}</button>`
-        : `<button class="post-option danger" onclick="closeModal();demanderBlocage('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">🚫 Bloquer ${escapeHtml(nom)}</button>`}
+        ? `<button class="post-option" onclick="closeModal();unblockUser('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">${picto("debloquer")} Débloquer ${escapeHtml(nom)}</button>`
+        : `<button class="post-option danger" onclick="closeModal();demanderBlocage('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">${picto("bloquer")} Bloquer ${escapeHtml(nom)}</button>`}
       <button class="post-option" onclick="closeModal()">Annuler</button>
     </div>
   `);
@@ -2606,23 +2606,23 @@ function openCommentOptions(threadId, commentId, mine, event) {
     name: c.authorName || c.author || "ce compte", authorId: c.authorId,
     text: c.text || c.content || "" };
   var rows = ""
-    + _cmtRow("💬", "Répondre", "reply")
-    + _cmtRow("😊", "Réagir avec un emoji", "react")
-    + _cmtRow("🎬", "Réagir avec un GIF", "gif")
-    + _cmtRow("📋", "Copier le texte", "copy");
+    + _cmtRow(picto("repondre"), "Répondre", "reply")
+    + _cmtRow(picto("emoji"), "Réagir avec un emoji", "react")
+    + _cmtRow(picto("gif"), "Réagir avec un GIF", "gif")
+    + _cmtRow(picto("copier"), "Copier le texte", "copy");
   window._cmtSheetCtx.owner = (typeof _isThreadOwner === "function") ? _isThreadOwner(threadId) : false;
   // Épingler : réservé au propriétaire du fil (auteur du post/événement/live) — et
   // jamais dans un fil homonyme, que la garde du serveur refuse (`_filAmbigu`).
   if (window._cmtSheetCtx.owner && !_filAmbigu(threadId)) {
-    rows += _cmtRow("📌", _estEpingle(threadId, c) ? "Retirer l'épingle" : "Épingler en haut", "pin");
+    rows += _cmtRow(picto("epingler"), _estEpingle(threadId, c) ? "Retirer l'épingle" : "Épingler en haut", "pin");
   }
   if (isMine) {
-    if (_commentaireModifiable(commentId, c.text || c.content || "")) rows += _cmtRow("✏️", "Modifier", "edit");
-    rows += _cmtRow("🗑", "Supprimer", "delete", true);
+    if (_commentaireModifiable(commentId, c.text || c.content || "")) rows += _cmtRow(picto("modifier"), "Modifier", "edit");
+    rows += _cmtRow(picto("supprimer"), "Supprimer", "delete", true);
   } else {
-    rows += _cmtRow("🔕", "Masquer ce commentaire", "hide");
-    rows += _cmtRow("🚫", "Bloquer ce compte", "block", true);
-    rows += _cmtRow("⚠️", "Signaler", "report", true);
+    rows += _cmtRow(picto("masquer"), "Masquer ce commentaire", "hide");
+    rows += _cmtRow(picto("bloquer"), "Bloquer ce compte", "block", true);
+    rows += _cmtRow(picto("signaler"), "Signaler", "report", true);
   }
   var ov = document.createElement("div");
   ov.id = "cmtSheet";
@@ -7167,8 +7167,9 @@ function _openMsgActions(convId, msgId) {
   var reactRow = '<div style="display:flex;justify-content:space-around;padding:6px 4px 12px;">' +
     reacts.map(function(e){ return '<span onclick="_reactAndClose(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\',\'' + escapeJsArg(e) + '\')" style="font-size:26px;cursor:pointer;">' + e + '</span>'; }).join('') + '</div>';
   function item(icon, label, fn, danger) {
-    return '<div class="csetting-item" onclick="' + fn + '"><div class="csetting-icon">' + icon + '</div>' +
-      '<div class="csetting-label"' + (danger?' style="color:#ef4444;"':'') + '>' + label + '</div></div>';
+    // LOT-39 (MSG-C82) : pictogramme au trait, rouge lisible (.csetting-danger).
+    return '<div class="csetting-item' + (danger ? ' csetting-danger' : '') + '" onclick="' + fn + '"><div class="csetting-icon">' + icon + '</div>' +
+      '<div class="csetting-label">' + label + '</div></div>';
   }
   // MSG-C66 : « Copier le texte » seulement pour un message de TEXTE.
   var canCopy = _msgEstTexte(m);
@@ -7181,16 +7182,16 @@ function _openMsgActions(convId, msgId) {
   var cj = escapeJsArg(convId), mj = escapeJsArg(msgId);
   openModal(
     '<div class="modal-handle"></div>' + reactRow +
-    item('↩️', 'Répondre', "_setReplyTo('" + cj + "','" + mj + "')") +
-    (canCopy ? item('📋', 'Copier le texte', "_copyMsg('" + cj + "','" + mj + "')") : '') +
-    item('↪️', 'Transférer', "_forwardPick('" + cj + "','" + mj + "')") +
+    item(picto("repondre"), 'Répondre', "_setReplyTo('" + cj + "','" + mj + "')") +
+    (canCopy ? item(picto("copier"), 'Copier le texte', "_copyMsg('" + cj + "','" + mj + "')") : '') +
+    item(picto("transferer"), 'Transférer', "_forwardPick('" + cj + "','" + mj + "')") +
     // Signaler CE message (E-08, DSA : un contenu se signale, pas seulement son
     // auteur) — jamais pour les miens ni pour les messages système.
-    (!isMe && m.from ? item('🚩', 'Signaler ce message', "reportMessage('" + cj + "','" + mj + "')") : '') +
+    (!isMe && m.from ? item(picto("signaler"), 'Signaler ce message', "reportMessage('" + cj + "','" + mj + "')") : '') +
     // LOT-4 (MSG-C58) : une seule entrée, séparée des autres ; la portée se choisit
     // dans la confirmation (« pour moi » / « pour tout le monde »).
     '<div style="height:1px;background:var(--border);margin:6px 0;"></div>' +
-    item('🗑️', 'Supprimer…', "_demanderSuppressionMsg('" + cj + "','" + mj + "')", true)
+    item(picto("supprimer"), 'Supprimer…', "_demanderSuppressionMsg('" + cj + "','" + mj + "')", true)
   );
 }
 

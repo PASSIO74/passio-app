@@ -11111,3 +11111,43 @@ function likePostDetail(id, el) {
     peindreLikePost(el, liked, n);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOT-39 (audit UX/UI du 2026-11-10, FIL-C23, MSG-C82) : PICTOGRAMMES DE FONCTION
+// La charte réserve les emojis au CONTENU (passions, réactions) ; une FONCTION
+// (répondre, signaler, supprimer…) se dessine au trait, en currentColor — le
+// menu « + » le faisait déjà, les menus d'un commentaire, d'un message, d'une
+// publication d'autrui et des réglages d'une conversation mêlaient des emojis
+// dont le rendu varie d'un appareil à l'autre. Markup CONSTANT : aucune donnée
+// n'y entre, `picto(nom)` se pose tel quel dans un gabarit.
+var PICTO_TRACES = {
+  repondre: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v4"/>',
+  transferer: '<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0-6 6v4"/>',
+  copier: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  signaler: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+  supprimer: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+  emoji: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01"/><path d="M15 9.5h.01"/>',
+  gif: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 10H8v4h2v-2"/><path d="M13 10v4"/><path d="M16 14v-4h2"/><path d="M16 12h1.5"/>',
+  epingler: '<path d="M12 17v4"/><path d="M8 3h8l-1 6 3 4H6l3-4z"/>',
+  modifier: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  masquer: '<path d="M3 3l18 18"/><path d="M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 9 6 9 6a16 16 0 0 1-2.6 3.2"/><path d="M6.6 6.6C4.3 8.1 3 12 3 12s4 6 9 6a9 9 0 0 0 4.4-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  oeil: '<path d="M3 12s4-6 9-6 9 6 9 6-4 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="3"/>',
+  bloquer: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+  debloquer: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  profil: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>',
+  cloche: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  clocheCoupee: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/>',
+  recherche: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+  trombone: '<path d="M20 11.5 12 19.5a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10 17.5a2 2 0 0 1-3-3l7.5-7.5"/>',
+  archiver: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10h14V9"/><path d="M10 13h4"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.5-.9 1.5-1.6 0-1.4-1-1.6-1-2.9 0-1 .8-1.5 1.8-1.5H16a5 5 0 0 0 5-5c0-3.9-4-7-9-7z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
+  nonLu: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  exporter: '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>',
+  quitter: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/>',
+};
+function picto(nom) {
+  var t = PICTO_TRACES[nom];
+  if (!t) return "";
+  return '<svg class="picto" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + t + '</svg>';
+}
