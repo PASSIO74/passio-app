@@ -86,8 +86,8 @@ begin
   return new;
 end \$fn\$;
 create trigger trg_notifications_origine before insert on public.notifications for each row execute function public.notifications_origine();
--- `follows_notifier` de PRODUCTION (relevé le 13/11), dans ce qui compte ici : il pose
--- `passio.notification_serveur` et ne le REMET PAS. Sans lui au socle, l'épreuve de la
+-- «» de PRODUCTION (relevé le 13/11), dans ce qui compte ici : il pose
+-- «» et ne le REMET PAS. Sans lui au socle, l'épreuve de la
 -- migration passait ici et échouait en production (relecture adversariale du 13/11, P1).
 create or replace function public.follows_notifier() returns trigger language plpgsql security definer set search_path = public, pg_temp as $fn$
 begin
