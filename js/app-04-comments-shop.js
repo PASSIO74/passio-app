@@ -7088,10 +7088,33 @@ function _wireMsgActions(thread, convId) {
 }
 
 // Scroll jusqu'au message cité (surbrillance brève).
+// LOT-40 (audit UX/UI du 2026-11-10, MSG-C86) : une citation d'un message plus
+// ancien que la page affichée (40 par page) menait à « Message introuvable ».
+// On charge les pages nécessaires (comme en remontant le fil), puis on y va ;
+// seul un message qui n'existe plus du tout le dit.
 function _jumpToMsg(mid) {
   if (!mid) return;
-  var el = document.querySelector('.conv-bubble-wrap[data-mid="' + (window.CSS && CSS.escape ? CSS.escape(mid) : mid) + '"]');
-  if (!el) { toast("Message introuvable (peut-être plus ancien)"); return; }
+  var sel = '.conv-bubble-wrap[data-mid="' + (window.CSS && CSS.escape ? CSS.escape(mid) : mid) + '"]';
+  var el = document.querySelector(sel);
+  if (!el) {
+    try {
+      var thread = document.getElementById("convFpThread");
+      var c = thread && getConversations().find(function (x) { return x.id === thread._curConvId; });
+      if (c && (c.messages || []).some(function (m) { return m && m.id === mid; })) {
+        var fp = document.getElementById("conv-fullpage");
+        var nom = fp ? fp.getAttribute("data-display-name") : (c.userName || "");
+        var garde = 0;
+        while (!el && garde++ < 200 && Math.min(c.messages.length, (c._convPage || 1) * 40) < c.messages.length) {
+          c._convPage = (c._convPage || 1) + 1;
+          c._loadingOlder = true;
+          renderConvFpThread(c, nom);
+          c._loadingOlder = false;
+          el = document.querySelector(sel);
+        }
+      }
+    } catch (e) { try { diagLog("_jumpToMsg : " + (e && e.message)); } catch (_) {} }
+  }
+  if (!el) { toast("Ce message n'est plus disponible"); return; }
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   var b = el.querySelector(".conv-bubble");
   if (b) { b.style.transition = "box-shadow .3s"; b.style.boxShadow = "0 0 0 3px var(--accent)"; setTimeout(function(){ b.style.boxShadow = ""; }, 1200); }

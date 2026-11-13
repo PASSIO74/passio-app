@@ -276,9 +276,24 @@ window._fillEmojiGifGrid = function(query) {
       img.loading = "lazy"; // 🔧 PERF : ne charge que les GIFs visibles
       img.src = url;
       img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+      // LOT-40 (audit UX/UI du 2026-11-10, MSG-C71) : effleurer une vignette en
+      // faisant défiler ENVOYAIT le GIF, sans étape. Il est montré d'abord ;
+      // « Envoyer » le fait partir, « Annuler » rouvre le panneau pour en choisir
+      // un autre. (Avant, l'envoi refermait le panneau puis le basculait : il se
+      // rouvrait aussitôt.)
+      img.alt = "GIF";
       img.onclick = function() {
-        if(window._sendGif) window._sendGif(url);
-        window.toggleEmojiPanel();
+        var envoyer = function () { if (window._sendGif) window._sendGif(url); };
+        if (typeof _closeEmojiPanel === "function") _closeEmojiPanel();
+        if (typeof _apercuPhotoAvantEnvoi !== "function") { envoyer(); return; }
+        _apercuPhotoAvantEnvoi(url, envoyer, function () {
+          // Après la fin du clic : rouvert pendant, l'écouteur « clic en dehors »
+          // (même événement, remonté au document) le refermait aussitôt.
+          setTimeout(function () {
+            var p = document.getElementById("convEmojiPanel");
+            if (p && !p.classList.contains("open")) window.toggleEmojiPanel();
+          }, 0);
+        }, "Envoyer ce GIF ?", "GIF à envoyer");
       };
       d.appendChild(img);
       gifGrid.appendChild(d);
