@@ -6374,7 +6374,7 @@ async function openConversation(convId) {
   const fp = document.getElementById("conv-fullpage");
   var thread = document.getElementById("convFpThread");
   // Fond de conversation personnalisé (réglages → 🎨), sinon fond par défaut.
-  if (thread) thread.style.background = c.bg || "var(--bg-deep)";
+  if (thread) thread.style.background = (typeof fondConvClair === "function") ? fondConvClair(c.bg) : (c.bg || "var(--bg-deep)"); // LOT-35 (MSG-C16)
 
   // ⚠️ LE FIL EST PEINT AVANT QUE LE PANNEAU N'ENTRE À L'ÉCRAN.
   // Défaut vécu (« j'ouvre une conversation, les messages déjà envoyés ne

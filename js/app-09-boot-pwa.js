@@ -1640,69 +1640,66 @@ function openConvSettings(convId) {
     // proposait quatorze actions réelles (bloquer, signaler, exporter…) sur un
     // personnage qui n'existe pas. Elle n'en garde qu'une : la retirer.
     if (typeof _estConvDemo === "function" && _estConvDemo(c)) {
+      var titreEx = document.getElementById("convSettingsTitre");
+      if (titreEx) titreEx.textContent = c.userName || "Exemple";
       content.innerHTML =
         '<div class="csetting-section">EXEMPLE PASSIO</div>' +
         '<div class="csetting-note" style="padding:4px 16px 12px;color:var(--muted);font-size:13px;line-height:1.4;">Cette conversation montre à quoi ressemble la messagerie. Personne ne la lit.</div>' +
-        '<div class="csetting-item" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
-          '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Supprimer cet exemple</div></div>';
+        '<div class="csetting-item csetting-danger" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
+          '<div class="csetting-icon">❌</div><div class="csetting-label">Supprimer cet exemple</div></div>';
       panel.style.display = ""; panel.style.transform = ""; panel.style.pointerEvents = "";
       panel.classList.add("open");
       return;
     }
 
+    // LOT-35 (audit UX/UI du 2026-11-10, MSG-C17) : quatorze entrées mal rangées.
+    // Le titre dit de QUI il s'agit ; ce qui touche la conversation est groupé ;
+    // les accusés de lecture, réglage de TOUT le compte, le disent ; ce qui efface
+    // ou fait sortir est rassemblé en bas, dans un rouge lisible (.csetting-danger,
+    // 6:1 au lieu de 3,5:1), « Effacer les messages » compris (il était gris).
+    var titre = document.getElementById("convSettingsTitre");
+    if (titre) titre.textContent = c.isGroup ? (c.groupName || "Groupe") : (c.userName || "Conversation");
+    var item = function (action, icone, libelle, danger) {
+      return '<div class="csetting-item' + (danger ? ' csetting-danger' : '') + '" onclick="' + action + '">' +
+        '<div class="csetting-icon">' + icone + '</div><div class="csetting-label">' + libelle + '</div></div>';
+    };
+    var idJs = escapeJsArg(convId);
+    var accuses = !((state.user.general || {}).readReceipts === false);
     content.innerHTML =
       '<div class="csetting-section">CONVERSATION</div>' +
-      (isDM ? '<div class="csetting-item" onclick="closeConvSettings();openUserProfile(\'' + escapeJsArg(uid) + '\',\'seed\')">' +
-        '<div class="csetting-icon">👤</div><div class="csetting-label">Voir le profil</div></div>' : '') +
-      '<div class="csetting-item" onclick="_toggleMuteConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">' + (c._muted ? '🔕' : '🔔') + '</div>' +
-        '<div class="csetting-label">' + (c._muted ? 'Activer les notifications' : 'Couper les notifications') + '</div></div>' +
-      '<div class="csetting-item" onclick="openConvFiles()">' +
-        '<div class="csetting-icon">📎</div><div class="csetting-label">Pièces jointes & médias</div></div>' +
-      '<div class="csetting-item" onclick="_togglePinConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">📌</div><div class="csetting-label">' + (c.pinned ? 'Désépingler la conversation' : 'Épingler en haut de la liste') + '</div></div>' +
-      '<div class="csetting-item" onclick="_openConvBgPicker(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">🎨</div><div class="csetting-label">Fond de conversation</div></div>' +
-      (c.isGroup ? '<div class="csetting-item" onclick="closeConvSettings();pickGroupPhoto(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">🖼️</div><div class="csetting-label">Changer la photo du groupe</div></div>' : '') +
-      '<div class="csetting-item" onclick="_markConvUnread(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">📩</div><div class="csetting-label">Marquer comme non lu</div></div>' +
-      (function(){ var on = !((state.user.general||{}).readReceipts === false);
-        return '<div class="csetting-item" onclick="_toggleReadReceipts(\'' + escapeJsArg(convId) + '\')">' +
-          '<div class="csetting-icon">' + (on ? '👁️' : '🚫') + '</div>' +
-          '<div class="csetting-label">Accusés de lecture<span style="color:var(--muted);font-weight:600;"> · ' + (on ? 'activés' : 'désactivés') + '</span></div></div>'; })() +
+      (isDM ? item("closeConvSettings();openUserProfile('" + escapeJsArg(uid) + "','seed')", "👤", "Voir le profil") : '') +
+      item("_toggleMuteConv('" + idJs + "')", c._muted ? '🔕' : '🔔', c._muted ? 'Activer les notifications' : 'Couper les notifications') +
+      item("_searchConv('" + idJs + "')", "🔍", "Rechercher dans la conversation") +
+      item("openConvFiles()", "📎", "Pièces jointes & médias") +
+      item("_togglePinConv('" + idJs + "')", "📌", c.pinned ? 'Désépingler la conversation' : 'Épingler en haut de la liste') +
+      item("_markConvUnread('" + idJs + "')", "📩", "Marquer comme non lu") +
+      item("_toggleArchiveConv('" + idJs + "')", "🗃️", c.archived ? 'Désarchiver' : 'Archiver la conversation') +
+      item("_openConvBgPicker('" + idJs + "')", "🎨", "Fond de conversation") +
+      (c.isGroup ? item("closeConvSettings();pickGroupPhoto('" + idJs + "')", "🖼️", "Changer la photo du groupe") : '') +
+      item("_exportConv('" + idJs + "')", "⬇️", "Exporter la conversation") +
 
-      '<div class="csetting-section">ACTIONS</div>' +
-      '<div class="csetting-item" onclick="_toggleArchiveConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">' + (c.archived ? '📤' : '📥') + '</div><div class="csetting-label">' + (c.archived ? 'Désarchiver' : 'Archiver la conversation') + '</div></div>' +
-      '<div class="csetting-item" onclick="_searchConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">🔍</div><div class="csetting-label">Rechercher dans la conversation</div></div>' +
-      '<div class="csetting-item" onclick="_exportConv(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">📤</div><div class="csetting-label">Exporter la conversation</div></div>' +
-      '<div class="csetting-item" onclick="_clearConvMessages(\'' + escapeJsArg(convId) + '\')">' +
-        '<div class="csetting-icon">🗑️</div><div class="csetting-label" style="color:var(--muted);">Effacer les messages</div></div>' +
+      '<div class="csetting-section">TON COMPTE</div>' +
+      item("_toggleReadReceipts('" + idJs + "')", accuses ? '👁️' : '🚫',
+        'Accusés de lecture<span style="color:var(--muted);font-weight:600;"> · ' + (accuses ? 'activés' : 'désactivés') + '</span>' +
+        '<div class="csetting-aide">Pour toutes tes conversations</div>') +
 
       (isDM ?
         '<div class="csetting-section">CONFIDENTIALITÉ</div>' +
-        (blocked ?
-          '<div class="csetting-item" onclick="closeConvSettings();unblockUser(\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(uname) + '\')">' +
-            '<div class="csetting-icon">✅</div><div class="csetting-label">Débloquer ' + escapeHtml(c.userName || '') + '</div></div>'
-          :
-          '<div class="csetting-item" onclick="_blockFromConv(\'' + escapeJsArg(convId) + '\')">' +
-            '<div class="csetting-icon">🚫</div><div class="csetting-label" style="color:#ef4444;">Bloquer ' + escapeHtml(c.userName || '') + '</div></div>') +
-        '<div class="csetting-item" onclick="closeConvSettings();reportUser(\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(uname) + '\')">' +
-          '<div class="csetting-icon">🚩</div><div class="csetting-label" style="color:#ef4444;">Signaler</div></div>'
+        (blocked
+          ? item("closeConvSettings();unblockUser('" + escapeJsArg(uid) + "','" + escapeJsArg(uname) + "')", "✅", "Débloquer " + escapeHtml(c.userName || ''))
+          : item("_blockFromConv('" + idJs + "')", "🚫", "Bloquer " + escapeHtml(c.userName || ''), true)) +
+        item("closeConvSettings();reportUser('" + escapeJsArg(uid) + "','" + escapeJsArg(uname) + "')", "🚩", "Signaler", true)
         : '') +
 
+      '<div class="csetting-section">EFFACER</div>' +
+      item("_clearConvMessages('" + idJs + "')", "🗑️", "Effacer les messages", true) +
       // LOT-28 (audit UX/UI du 2026-11-10, MSG-C21) : un groupe n'a qu'UNE sortie,
       // « Quitter le groupe » (l'appartenance part, les messages cessent) — l'ancien
       // « Supprimer » ne retirait que la copie locale, et le prochain message le
       // faisait revenir. En 1:1, la portée est dans le libellé : « pour moi ».
       (c.isGroup
-        ? '<div class="csetting-item" onclick="closeConvSettings();leaveGroup(\'' + escapeJsArg(convId) + '\')">' +
-            '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Quitter le groupe</div></div>'
-        : '<div class="csetting-item" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
-            '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Supprimer pour moi</div></div>');
+        ? item("closeConvSettings();leaveGroup('" + idJs + "')", "❌", "Quitter le groupe", true)
+        : item("_deleteConv('" + idJs + "')", "❌", "Supprimer pour moi", true));
 
     // 🔑 FIX : openConversation pose des styles inline (display:none, transform,
     // pointer-events) sur ce panneau → ils écrasaient la classe .open et le panneau
@@ -1888,18 +1885,34 @@ function _togglePinConv(convId) {
 
 // Fond de conversation : applique un dégradé/couleur au fil (#convFpThread),
 // mémorisé par conversation (c.bg) et réappliqué à l'ouverture.
+// LOT-35 (audit UX/UI du 2026-11-10, MSG-C16, MSG-C79) : cinq fonds sur six
+// étaient sombres — un mode sombre par conversation, alors que le produit n'en a
+// plus : heures et séparateurs (#6E6987) y tombaient à 3:1. Six fonds CLAIRS, où
+// l'habillage du fil reste lisible. Un fond sombre déjà choisi (c.bg, mémorisé
+// sur l'appareil) est traduit à l'affichage vers le clair de même rang.
 var CONV_BGS = [
   { label: "Par défaut", css: "var(--bg-deep)" },
-  { label: "Violet",     css: "linear-gradient(160deg,#2a1a4a,#160d2a)" },
-  { label: "Océan",      css: "linear-gradient(160deg,#0f2a3a,#0a1722)" },
-  { label: "Coucher",    css: "linear-gradient(160deg,#3a1a2a,#241019)" },
-  { label: "Forêt",      css: "linear-gradient(160deg,#16291f,#0d1a12)" },
-  { label: "Nuit",       css: "#0a0a0f" }
+  { label: "Lavande",    css: "linear-gradient(160deg,#f4effe,#e9e1fc)" },
+  { label: "Ciel",       css: "linear-gradient(160deg,#eef6fc,#dcecf7)" },
+  { label: "Pêche",      css: "linear-gradient(160deg,#fdf2ec,#f9e3d8)" },
+  { label: "Menthe",     css: "linear-gradient(160deg,#eef8f1,#dcefe3)" },
+  { label: "Sable",      css: "linear-gradient(160deg,#f8f4ea,#eee6d4)" }
 ];
+var CONV_BGS_SOMBRES = [
+  "linear-gradient(160deg,#2a1a4a,#160d2a)",
+  "linear-gradient(160deg,#0f2a3a,#0a1722)",
+  "linear-gradient(160deg,#3a1a2a,#241019)",
+  "linear-gradient(160deg,#16291f,#0d1a12)",
+  "#0a0a0f"
+];
+function fondConvClair(css) {
+  var i = CONV_BGS_SOMBRES.indexOf(String(css || ""));
+  return i > -1 ? CONV_BGS[i + 1].css : (css || "var(--bg-deep)");
+}
 
 function _applyConvBg(css) {
   var thread = document.getElementById("convFpThread");
-  if (thread) thread.style.background = css || "var(--bg-deep)";
+  if (thread) thread.style.background = fondConvClair(css);
 }
 
 function _openConvBgPicker(convId) {
@@ -1907,10 +1920,10 @@ function _openConvBgPicker(convId) {
   var c = convs.find(function(x){ return x.id === convId; });
   if (!c) return;
   var swatches = CONV_BGS.map(function(b, i) {
-    var sel = (c.bg || "var(--bg-deep)") === b.css;
-    return '<div onclick="_setConvBg(\'' + escapeJsArg(convId) + '\',' + i + ')" style="cursor:pointer;border-radius:14px;overflow:hidden;border:2px solid ' + (sel ? 'var(--accent)' : 'transparent') + ';">' +
+    var sel = fondConvClair(c.bg) === b.css;
+    return '<button type="button" class="conv-fond-choix" aria-pressed="' + (sel ? 'true' : 'false') + '" onclick="_setConvBg(\'' + escapeJsArg(convId) + '\',' + i + ')" style="cursor:pointer;border-radius:14px;overflow:hidden;border:2px solid ' + (sel ? 'var(--accent)' : 'var(--border)') + ';padding:0;background:none;font:inherit;">' +
       '<div style="height:62px;background:' + b.css + ';"></div>' +
-      '<div style="font-size:11px;text-align:center;padding:6px 0;color:var(--text);font-weight:600;">' + b.label + '</div></div>';
+      '<div style="font-size:12px;text-align:center;padding:6px 0;color:var(--text);font-weight:600;">' + b.label + '</div></button>';
   }).join("");
   openModal(
     '<div class="modal-handle"></div>' +
