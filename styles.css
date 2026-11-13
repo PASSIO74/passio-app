@@ -13202,3 +13202,9 @@ body.passio-hors-ligne #passioBandeauDistant {
   height: 44px;
   transform: translate(-50%, -50%);
 }
+
+/* LOT-35 (audit UX/UI du 2026-11-10, MSG-C17) : les actions qui effacent ou font
+   sortir, dans un rouge lisible (#B42318 sur #F7F5FC ≈ 6:1, l'ancien #EF4444
+   tombait à 3,5:1) ; l'aide sous un réglage qui vaut pour tout le compte. */
+.csetting-item.csetting-danger .csetting-label { color: #b42318; }
+.csetting-aide { font-size: 12px; font-weight: 500; color: var(--muted); margin-top: 2px; }
