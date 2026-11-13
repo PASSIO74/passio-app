@@ -6034,6 +6034,17 @@ function renderMessages() {
 
   // Masquer les conversations avec un utilisateur bloqué (modération)
   let filtered = convs.filter(c => !(typeof isBlocked === "function" && isBlocked(c.userId)));
+  // LOT-31 (audit UX/UI du 2026-11-10, MSG-C24) : pour un COMPTE, les cinq
+  // conversations d'exemple (`SEED_CONVERSATIONS`) restaient mêlées aux vraies
+  // jusqu'au démarrage suivant. Dès qu'une vraie conversation existe, elles
+  // quittent la liste. Seuls les exemples du socle : jamais un fil avec un
+  // interlocuteur réel, même mis en cache.
+  if (typeof SEED_CONVERSATIONS !== "undefined" && typeof _compteAuthReel === "function" && _compteAuthReel()) {
+    const _idsExemples = new Set(SEED_CONVERSATIONS.map(s => s.id));
+    if (filtered.some(c => c && !_idsExemples.has(c.id) && !_estConvDemo(c))) {
+      filtered = filtered.filter(c => !(c && _idsExemples.has(c.id)));
+    }
+  }
 
   // Bandeau « Archivées » : compteur + bascule (caché pendant une recherche).
   const archivedCount = filtered.filter(c => c.archived).length;
@@ -8691,7 +8702,17 @@ function _flushOutbox() {
   _outboxSave(restants);
 }
 if (typeof window !== "undefined") {
-  window.addEventListener("online", function(){ try { toast("🟢 Connexion rétablie — envoi des messages en attente"); } catch(e){} _flushOutbox(); });
+  // LOT-31 (audit UX/UI du 2026-11-10, TRA-C19) : le toast annonçait un envoi à
+  // CHAQUE reconnexion, file vide comprise — un envoi fantôme. Il ne parle plus
+  // que des messages de CE compte réellement en attente, et les compte.
+  window.addEventListener("online", function(){
+    try {
+      var moi = (typeof _fileProprietaire === "function") ? _fileProprietaire() : null;
+      var n = (_outboxLoad() || []).filter(function (it) { return it && _outboxVerdict(it, moi) === "moi"; }).length;
+      if (n > 0) toast("Connexion rétablie — envoi de " + n + " message" + (n > 1 ? "s" : "") + " en attente");
+    } catch(e){}
+    _flushOutbox();
+  });
 }
 
 // ── Notification sonore ──
