@@ -3934,6 +3934,51 @@ function _dedoublonnerDecorConversation(c) {
 // étiquette, pastille « 3 » de non-lus sur l'onglet Messages, et un message
 // qu'on y écrivait partait vers un compte qui n'existe pas. Même règle que le
 // fil (`contenuDemoSignale`) : le décor se dit, ne compte pas, ne répond pas.
+// LOT-23 (audit UX/UI du 2026-11-10) — la barre de saisie d'une conversation
+// qui ne peut pas aboutir est REMPLACÉE par une ligne qui dit pourquoi :
+//   · MSG-C87 : conversation d'exemple — l'envoi était refusé par un toast que
+//     le panneau masquait ; on écrivait, on touchait « Envoyer », rien.
+//   · MSG-C78 : compte que J'AI bloqué — le fil amputé de ses messages laissait
+//     écrire des messages voués à l'échec. Le blocage subi n'est pas révélé ici.
+// Rendu DOM (`textContent`), jamais de nom dans un onclick inline (CLAUDE.md).
+function _peindreIssueConversation(c, displayName) {
+  try {
+    var barre = document.querySelector("#conv-fullpage .conv-toolbar");
+    var ancien = document.getElementById("convFpIssue");
+    if (ancien) ancien.remove();
+    var demo = _estConvDemo(c);
+    var bloque = !!(c && !c.isGroup && c.userId && typeof isBlocked === "function" && isBlocked(c.userId));
+    if (barre) barre.style.display = (demo || bloque) ? "none" : "";
+    if (!demo && !bloque) return;
+    var note = document.createElement("div");
+    note.id = "convFpIssue";
+    note.className = "conv-issue";
+    note.setAttribute("role", "status");
+    note.setAttribute("data-issue", demo ? "exemple" : "bloque");
+    var texte = document.createElement("span");
+    texte.textContent = demo
+      ? "Conversation d'exemple — pour écrire à quelqu'un, ouvre son profil."
+      : "Tu as bloqué " + (displayName || "ce compte") + ". Vous ne pouvez plus vous écrire.";
+    var bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.className = "btn small " + (demo ? "primary" : "ghost");
+    bouton.textContent = demo ? "Découvrir des profils" : "Débloquer";
+    bouton.addEventListener("click", function () {
+      if (demo) {
+        try { closeConversation(); } catch (e) {}
+        try { goTo("explore"); } catch (e) {}
+        return;
+      }
+      Promise.resolve(typeof unblockUser === "function" ? unblockUser(c.userId, displayName) : false).then(function () {
+        if (window._openedConvId === c.id) _peindreIssueConversation(c, displayName);
+      });
+    });
+    note.appendChild(texte);
+    note.appendChild(bouton);
+    if (barre && barre.parentNode) barre.parentNode.insertBefore(note, barre);
+  } catch (e) { try { diagLog("issue de conversation : " + (e && e.message)); } catch (_) {} }
+}
+
 function _estConvDemo(c) {
   if (!c) return false;
   if (typeof SEED_CONVERSATIONS !== "undefined" && SEED_CONVERSATIONS.some(function (s) { return s.id === c.id; })) return true;
@@ -6102,7 +6147,7 @@ async function openConversation(convId) {
     ${avatarHtml}
     <div class="conv-fp-head-info" onclick="${c.isGroup ? '' : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">
       <div class="conv-fp-name">${escapeHtml(displayName)}</div>
-      <div class="conv-fp-passion">${c.isGroup ? `👥 ${(c.userIds||[]).length} membres` : 'Voir le profil'}</div>
+      <div class="conv-fp-passion">${c.isGroup ? `👥 ${(c.userIds||[]).length} membres` : (_estConvDemo(c) ? 'Exemple PASSIO' : 'Voir le profil')}</div>
     </div>
     <div class="conv-actions">
       ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${escapeJsArg(convId)}')" title="Membres">
@@ -6162,6 +6207,11 @@ async function openConversation(convId) {
   // une conversation qu'on ouvre part du bas, quelle que soit la précédente.
   if (thread) { thread.scrollTop = thread.scrollHeight; thread._auBas = true; thread._nouveaux = 0; }
   try { var _bas = document.getElementById("convFpBas"); if (_bas) _bas.hidden = true; } catch (e) {}
+
+  // LOT-23 (MSG-C78 / C87) : une conversation d'exemple, ou avec un compte que
+  // j'ai bloqué, n'offre pas une saisie qui n'aboutira pas — elle dit pourquoi
+  // et propose la sortie. Peint AVANT la révélation du panneau (CLAUDE.md).
+  _peindreIssueConversation(c, displayName);
 
   // ── Afficher pleine page ──
   if (fp) {
