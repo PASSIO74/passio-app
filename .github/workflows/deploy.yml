@@ -175,17 +175,30 @@ jobs:
             # dès que `gh` écrit encore APRÈS la ligne « sentinelle » (grep déjà sorti : SIGPIPE) — une réparation de la
             # Sentinelle passait alors pour une PR humaine, hors de son périmètre strict. Illisibles (GitHub muet), on ne
             # sait pas ce qu'est cette PR : la gouvernance s'arrête au lieu de la traiter comme humaine. La cause se dit
-            # (relecture de #875) : une issue SUPPRIMÉE (404, 410) ne reviendra pas — « relance » serait faux. Ce texte
-            # vient de GitHub, et il ne va à aucun agent.
+            # (relecture de #875), nettoyée de ses retours chariot et sauts de ligne (le runner coupe une commande sur
+            # l'un comme sur l'autre). C'est un texte de GitHub ; s'il part un jour chez un agent (le journal d'une
+            # réparation de déploiement), c'est comme DONNÉE, relue par la marche de confiance de claude-code.yml.
+            # Une issue SUPPRIMÉE (404, 410) ne reviendra pas :
+            #  · sur une PR ouverte, refus, avec le seul remède qui marche (republier hors du motif claude/issue-…) ;
+            #  · sur un push dans main, la PR est DÉJÀ fusionnée — elle a passé cette gouvernance quand l'issue existait :
+            #    on ne bloque pas sa mise en ligne pour une issue effacée après coup (un avertissement le dit).
+            disparue=false
             if ! labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_num}" --jq '.labels[].name' 2> "${RUNNER_TEMP}/gouvernance-labels.err")"; then
-              cause="$(head -c 300 "${RUNNER_TEMP}/gouvernance-labels.err" | tr '\n' ' ')"
-              if grep -qE 'HTTP 40[4]|HTTP 410|Not Found' <<< "${cause}"; then
-                echo "::error title=Gouvernance::L'issue #${issue_num} n'existe plus (${cause}) : la branche ${head_ref} prétend réparer une issue introuvable. Ferme cette PR, ou rouvre l'issue d'origine ; relancer n'y changera rien."
+              cause="$(head -c 300 "${RUNNER_TEMP}/gouvernance-labels.err" | tr '\r\n' '  ')"
+              if grep -qE 'HTTP 404|HTTP 410|Not Found' <<< "${cause}"; then
+                if [ "${EVENT_NAME}" = "push" ]; then
+                  echo "::warning title=Gouvernance::L'issue #${issue_num} n'existe plus (${cause}) ; la PR #${pr}, déjà fusionnée, a passé la gouvernance quand elle était ouverte. Ce déploiement continue : la PR est traitée comme humaine."
+                  disparue=true
+                else
+                  echo "::error title=Gouvernance::L'issue #${issue_num} n'existe plus (${cause}) : la branche ${head_ref} prétend réparer une issue introuvable, relancer n'y changera rien. Republie le travail depuis une branche qui ne suit pas claude/issue-<n>-<run> (ou recrée l'issue et renomme la branche)."
+                  exit 1
+                fi
               else
                 echo "::error title=Gouvernance::Les labels de l'issue #${issue_num} n'ont pas pu être lus (${cause:-sans message}) : impossible de savoir si cette PR est une réparation de la Sentinelle. Relance le job."
+                exit 1
               fi
-              exit 1
             fi
+            if [ "${disparue}" = "true" ]; then labels=""; fi
             if grep -qx 'sentinelle' <<< "${labels}"; then
               sentinelle=true
             fi

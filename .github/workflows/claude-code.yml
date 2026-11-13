@@ -1217,7 +1217,10 @@ jobs:
 
           # ── Ce qui part dans un dépôt public ne porte aucun jeton (revue adverse du 2026-11-06) ──
           # `git commit -F .git/config` recopiait le jeton du run dans un message : l'outil l'interdit désormais,
-          # et cette lecture rattrape toute autre voie, message comme contenu.
+          # et cette lecture en est le dernier filet — elle lit l'arbre FINAL et les MESSAGES de tous les commits.
+          # ⚠️ Pas encore (relecture de #875, P1-14 bis) : le contenu d'un commit INTERMÉDIAIRE (ajouté puis retiré)
+          # ni l'AUTEUR d'un commit — la poussée publie pourtant les deux. Tant que ce n'est pas lu, ne pas écrire
+          # que cette garde « rattrape toute voie ».
           # ⚠️ Lu dans un FICHIER, jamais à travers un tube (2026-11-13) : sous pipefail, `git … | grep -q` faisait
           # mourir `git` de SIGPIPE dès que grep trouvait le jeton au début d'un gros diff — le pipeline rendait 141,
           # et le `if` ne voyait RIEN, précisément quand un jeton était là (prouvé sur le runner, #875). Écrit d'abord,

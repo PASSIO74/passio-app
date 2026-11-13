@@ -78,6 +78,8 @@ tout="$*"
 if [ -n "\${FAUX_ECHEC:-}" ] && [[ "$tout" == *"\${FAUX_ECHEC}"* ]]; then echo "faux gh : échec simulé : $tout" >&2; exit 1; fi
 # FAUX_404 : comme le vrai gh sur une ressource disparue — le message de GitHub sur l'erreur standard, code 1 (#875).
 if [ -n "\${FAUX_404:-}" ] && [[ "$tout" == *"\${FAUX_404}"* ]]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi
+# FAUX_ERREUR_SUR + FAUX_ERREUR : une commande qui contient le premier échoue en écrivant le second (\\n, \\r compris).
+if [ -n "\${FAUX_ERREUR_SUR:-}" ] && [[ "$tout" == *"\${FAUX_ERREUR_SUR}"* ]]; then printf '%b\\n' "\${FAUX_ERREUR:-}" >&2; exit 1; fi
 corps=""
 case "$tout" in
   "issue list"*"--label disponibilite"*) corps="$(cat "$FX/issues-dispo.json")" ;;
@@ -656,12 +658,45 @@ test("gouvernance (#875) : les labels de l'issue se LISENT en entier avant d'êt
   assert.notEqual(muet.code, 0, muet.sortie.slice(-600));
   assert.match(muet.sortie, /::error title=Gouvernance::Les labels de l'issue #700 n'ont pas pu être lus \(faux gh : échec simulé/);
   assert.match(muet.sortie, /Relance le job/);
-  // L'issue SUPPRIMÉE (404) : relancer n'y changera rien — c'est dit, avec la cause (relecture de #875).
-  const disparue = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
-  assert.notEqual(disparue.code, 0, disparue.sortie.slice(-600));
-  assert.match(disparue.sortie, /::error title=Gouvernance::L'issue #700 n'existe plus \(gh: Not Found \(HTTP 404\)/);
-  assert.match(disparue.sortie, /relancer n'y changera rien/);
-  assert.doesNotMatch(disparue.sortie, /Relance le job/);
+  // L'issue SUPPRIMÉE (404, 410) sur une PR OUVERTE : refus, avec le seul remède qui marche (relecture de #875).
+  for (const [nom, env] of [["404", { FAUX_404: "/issues/700" }], ["410", { FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "gh: This issue was deleted (HTTP 410)" }]]) {
+    const disparue = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", ...env });
+    assert.notEqual(disparue.code, 0, nom + " : " + disparue.sortie.slice(-600));
+    assert.match(disparue.sortie, /::error title=Gouvernance::L'issue #700 n'existe plus/, nom);
+    assert.match(disparue.sortie, /relancer n'y changera rien\. Republie le travail depuis une branche qui ne suit pas claude\/issue-<n>-<run>/, nom);
+    assert.doesNotMatch(disparue.sortie, /Relance le job/, nom);
+  }
+  // Une limite de débit (403) n'est PAS une issue disparue : « Relance le job ».
+  const debit = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "gh: API rate limit exceeded (HTTP 403)" });
+  assert.notEqual(debit.code, 0);
+  assert.match(debit.sortie, /Les labels de l'issue #700 n'ont pas pu être lus \(gh: API rate limit exceeded \(HTTP 403\)/);
+  assert.match(debit.sortie, /Relance le job/);
+  // Une cause sur plusieurs lignes, retour chariot compris : UNE ligne d'annotation, rien qui commence une autre commande.
+  const multi = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", FAUX_ERREUR_SUR: "/issues/700", FAUX_ERREUR: "ligne une\\r::warning::forgée\\nligne deux" });
+  assert.notEqual(multi.code, 0);
+  const ligneErreur = multi.sortie.split("\n").find((l) => l.startsWith("::error title=Gouvernance::Les labels"));
+  assert.ok(ligneErreur && ligneErreur.includes("ligne une") && ligneErreur.includes("ligne deux"), "la cause tient sur la ligne de l'annotation : " + multi.sortie.slice(-400));
+  assert.ok(!/\r/.test(ligneErreur), "aucun retour chariot dans l'annotation");
+  assert.ok(!multi.sortie.split(/\r|\n/).some((l) => l.startsWith("::warning::forgée")), "aucune commande du runner forgée par la cause");
+  // La Sentinelle en SECOND label est vue (un `.labels[0]` ne lirait que le premier).
+  fixtures({
+    "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) },
+    "issue-700": { labels: [{ name: "claude" }, { name: "sentinelle" }] },
+    "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }, { filename: "dashboard/server/x.js", additions: 1, deletions: 0 }],
+  });
+  const second = jouer(gov, { EVENT_NAME: "pull_request", EVENT_PR: "77", TRUSTED_REVIEWER: "PASSIO74", GH_TOKEN: "integre" });
+  assert.notEqual(second.code, 0);
+  assert.ok(second.log.includes("issue comment 700"), "la réparation est jugée comme telle\n" + second.log);
+  // Sur un PUSH dans main, la PR est DÉJÀ fusionnée : une issue effacée après coup ne bloque pas sa mise en ligne — dit.
+  fixtures({ "pr-view": { headRefName: "claude/issue-700-1", headRefOid: "b".repeat(40) }, "pr-files": [{ filename: "js/app-03-posts.js", additions: 3, deletions: 0 }], "commit-pulls": [{ number: 77 }] });
+  const apres = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_404: "/issues/700" });
+  assert.equal(apres.code, 0, apres.sortie.slice(-600));
+  assert.match(apres.sortie, /::warning title=Gouvernance::L'issue #700 n'existe plus .* la PR #77, déjà fusionnée, a passé la gouvernance quand elle était ouverte/);
+  assert.ok(!apres.log.includes("issue comment 700"), "rien n'est écrit sur une issue qui n'existe plus");
+  // … mais une PANNE (pas une disparition) sur un push reste un refus à relancer.
+  const panne = jouer(gov, { EVENT_NAME: "push", EVENT_PR: "", TRUSTED_REVIEWER: "PASSIO74", FAUX_ECHEC: "/issues/700" });
+  assert.notEqual(panne.code, 0);
+  assert.match(panne.sortie, /Relance le job/);
 });
 
 // ═══ Gouvernance — course de l'index « commit → PR » (2026-11-03) ═════════

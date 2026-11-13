@@ -654,6 +654,7 @@ test("⑬ ce qui part dans un dépôt public : un jeton est vu même au DÉBUT d
     assert.match(tot.sortie, /::error title=Jeton dans le travail produit::/);
     assert.ok(!tot.sortie.includes("PUBLIE"));
     assert.ok(!fs.existsSync(temp + "/passio-travail-publie.txt"), "le refus d'un jeton efface le travail lu, qui le porte");
+    assert.ok(!tot.sortie.includes(JETON), "le refus ne recopie pas le jeton dans le journal du run (dépôt public)");
     // Un petit diff avec un jeton : refus ; un gros diff sans jeton : publié.
     assert.equal(jouerGarde("x\n" + JETON + "\n").code, 1);
     const propre = jouerGarde(gros("rien de secret\n"));
