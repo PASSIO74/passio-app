@@ -58,14 +58,80 @@ export const JOURNEE_MEDIANE_MIN = 500;
 export const DEPLOIEMENT_RETARD_MIN = 90;
 // Crons : âge du dernier run terminé, en heures (warn, alert). Les tolérances
 // absorbent la desserte réelle (cron 10 min servi ~4 %, écarts jusqu'à 5,5 h).
+// LA CONCLUSION des passages PLANIFIÉS (2026-11-12, #863) : un run terminé n'est pas un run
+// réussi — une sauvegarde ratée « terminait » quand même et remettait l'âge à zéro. Deux règles,
+// sur les seuls passages `event: schedule` (une PR, une relance à la main ne comptent ni pour ni contre) :
+//  · `echecs` : passages en échec DE SUITE (failure, timed_out, startup_failure) qui font la
+//    réaction (en dessous : attention). 1 pour ce qui passe une fois par jour ; 2 pour ce qui passe
+//    toutes les heures ou plus souvent (une panne passagère du runner se rattrape au passage
+//    suivant) ; 3 pour `sentinelle-distante`, qui ÉCHOUE EXPRÈS quand la santé est mauvaise, après
+//    avoir ouvert sa propre issue — ses échecs ne comptent ici que s'ils durent ;
+//  · l'âge du dernier passage planifié RÉUSSI, sous les mêmes seuils `warn`/`alert` que l'âge. Un
+//    job qui dépasse son `timeout-minutes` finit `cancelled`, jamais `timed_out` (contre-revue de
+//    #863 : aucun run `timed_out` dans tout le dépôt ; run 40014875507), et un `cancelled` est aussi
+//    l'éviction d'un passage en file (`concurrency`) : le compte le saute, cette règle le rattrape —
+//    trois nuits de sauvegarde bloquée jusqu'à son délai rendaient « ok ». Aucun succès parmi les
+//    passages lus : la réaction aussi.
+// `conclusions: "warn"` : ces deux règles ne font qu'une attention. Pour `sentinelle-autonome`, le
+// pilotage dit déjà « La Sentinelle s'est arrêtée », avec son « Régler » : une [VEILLE] de plus
+// lancerait un second agent sur la même panne (contre-revue de #863).
+// Mesuré le 12/11 sur les 100 derniers passages planifiés de chaque workflow : `securite` en échec
+// le 09/11 (rien ne l'a dit), `sentinelle-distante` le 11/11 (sa propre issue #829 l'a dit).
 export const SEUILS_CRONS = {
-  "sentinelle-autonome": { warn: 8, alert: 24 },
-  "sentinelle-distante": { warn: 12, alert: 36 },
+  "sentinelle-autonome": { warn: 8, alert: 24, echecs: 2, conclusions: "warn" },
+  "sentinelle-distante": { warn: 12, alert: 36, echecs: 3 },
   // Mesuré le 2026-10-05 : cron « */10 » servi avec des trous jusqu'à 6,4 h.
-  "disponibilite": { warn: 9, alert: 24 },
-  "sauvegarde": { warn: 30, alert: 54 },
-  "moderation-alerte": { warn: 30, alert: 54 },
+  "disponibilite": { warn: 9, alert: 24, echecs: 2 },
+  "sauvegarde": { warn: 30, alert: 54, echecs: 1 },
+  "moderation-alerte": { warn: 30, alert: 54, echecs: 1 },
 };
+// Le scan de sécurité (`securite.yml`, le lundi) : un signal À PART, `scan`, qui ne dépasse JAMAIS
+// l'attention (contre-revue de #863). Son tri est une décision de Benjamin — une clé publique par
+// conception s'inscrit en exception, une vraie clé se RÉVOQUE d'abord — : en alerte, la [VEILLE] le
+// faisait « Régler » depuis le pilotage par un agent qui aurait écrit des exceptions sans voir le
+// rapport. Rangé dans `crons`, son alerte (une semaine au moins) cachait aussi une sauvegarde ratée :
+// même titre d'issue, même geste, aucune notification. Ses exécutions de PR gardent son âge frais :
+// seul son passage PLANIFIÉ compte (le scan des secrets y parcourt TOUT l'historique).
+export const SCAN = Object.freeze({
+  workflow: "securite", warn: 8 * 24,
+  ou: "Actions > « Sécurité de la chaîne » > son dernier passage planifié",
+  geste: "Actions > « Sécurité de la chaîne » > son dernier passage planifié : quel job a échoué ? « Secrets dans le diff » : l'artefact `gitleaks-results.sarif` liste ce que gitleaks a trouvé dans TOUT l'historique — à trier par Benjamin, jamais par un agent : une clé publique par conception s'inscrit dans `.gitleaksignore` (empreinte et raison) ; une vraie clé se RÉVOQUE d'abord, puis s'y inscrit aussi (elle reste dans l'historique). « Workflows et dépendances » : le journal de `npm audit` ou de la gate dit quoi corriger.",
+});
+// Une conclusion qui dit « ce passage a cassé ». `cancelled` (éviction de la file OU délai dépassé :
+// GitHub ne les distingue pas) et `skipped` sont sautés par le compte — l'âge du dernier succès
+// rattrape un délai dépassé.
+const CONCLUSIONS_ECHEC_CRON = new Set(["failure", "timed_out", "startup_failure"]);
+/**
+ * Les passages PLANIFIÉS (`event: schedule`) d'un workflow → combien ont échoué DE SUITE en
+ * partant du plus récent, le dernier qui a tranché, le dernier RÉUSSI, et combien de passages
+ * terminés ont été vus. Triés par `created_at` (l'heure du passage) : une relance (`gh run rerun`)
+ * change `run_started_at` et remontait un ancien passage en tête. Un même run lu dans deux listes
+ * (une réplique en retard) compte une fois, dans sa version la plus récente. Un passage annulé,
+ * sauté ou pas encore terminé ne tranche pas ; le premier succès arrête le compte.
+ * @returns {{suite:number, lus:number, vus:number, dernier:{conclusion:string,le:string|null}|null, dernierSucces:{le:string|null}|null}}
+ */
+export function echecsPlanifies(runs) {
+  const t = (s) => Date.parse(s || "") || 0;
+  const parRun = new Map();
+  let sansId = 0;
+  for (const r of Array.isArray(runs) ? runs : []) {
+    if (!r || r.event !== "schedule" || r.status !== "completed") continue;
+    const cle = r.id != null ? "id:" + r.id : "n:" + sansId++;
+    const deja = parRun.get(cle);
+    if (!deja || t(r.updated_at) > t(deja.updated_at)) parRun.set(cle, r);
+  }
+  const termines = [...parRun.values()].sort((a, b) => t(b.created_at) - t(a.created_at));
+  const tranches = termines.filter((r) => r.conclusion !== "cancelled" && r.conclusion !== "skipped");
+  let suite = 0;
+  for (const r of tranches) { if (CONCLUSIONS_ECHEC_CRON.has(r.conclusion)) suite++; else break; }
+  const d = tranches[0];
+  const s = tranches.find((r) => r.conclusion === "success");
+  return {
+    suite, lus: tranches.length, vus: termines.length,
+    dernier: d ? { conclusion: String(d.conclusion), le: d.updated_at || d.created_at || null } : null,
+    dernierSucces: s ? { le: s.updated_at || s.created_at || null } : null,
+  };
+}
 // Base : plan Pro 8 Go.
 export const BASE_WARN_GO = 6;
 export const BASE_ALERT_GO = 7.5;
@@ -318,35 +384,100 @@ export function signalCrons(m, now) {
   const ko = inconnu(m, "crons");
   if (ko) return ko;
   let etat = "ok";
+  // L'état ne fait que MONTER (alerte > attention > inconnu > ok) : une attention ou une lecture
+  // manquée plus loin dans la liste ne rabaisse jamais une alerte déjà posée.
+  const monte = (e) => { if (ORDRE[e] > ORDRE[etat]) etat = e; };
   const lignes = [];
   let geste;
+  const gesteConclusion = "Actions > le workflow nommé > son dernier passage planifié : lis le journal de l'étape en échec (ou bloquée jusqu'à son délai : le run finit « annulé »), corrige la cause, puis relance-le (`gh workflow run <fichier>.yml`). Un passage relancé à la main ne remet pas ce compte à zéro : seul un passage planifié réussi le fait.";
+  const heures = (h) => `${Math.round(h * 10) / 10} h`;
   for (const [nom, seuil] of Object.entries(SEUILS_CRONS)) {
     const x = m[nom];
-    if (!x) { lignes.push(`${nom} : non mesuré`); if (etat === "ok") etat = "unknown"; continue; }
+    if (!x) { lignes.push(`${nom} : non mesuré`); monte("unknown"); continue; }
     // Une lecture refusée (403 sans `actions: read`, 404) doit se lire telle
     // quelle : « aucun run terminé » cacherait le code HTTP (constat B-01).
-    if (x.erreur) { lignes.push(`${nom} : lecture en échec (${String(x.erreur).slice(0, 120)})`); if (etat === "ok") etat = "unknown"; continue; }
+    if (x.erreur) { lignes.push(`${nom} : lecture en échec (${String(x.erreur).slice(0, 120)})`); monte("unknown"); continue; }
     if (x.state && /^disabled/.test(x.state)) {
-      etat = "alert";
+      monte("alert");
       lignes.push(`${nom} : DÉSACTIVÉ (${x.state})`);
       geste = "Actions > le workflow nommé > « Enable workflow » (GitHub coupe les crons après 60 j sans commit).";
       continue;
     }
     const age = x.dernierRunFin ? (now - Date.parse(x.dernierRunFin)) / H : NaN;
-    if (!Number.isFinite(age)) { lignes.push(`${nom} : aucun run terminé`); if (etat !== "alert") etat = etat === "ok" ? "unknown" : etat; continue; }
-    const ageTxt = `${Math.round(age * 10) / 10} h`;
+    if (!Number.isFinite(age)) { lignes.push(`${nom} : aucun run terminé`); monte("unknown"); continue; }
     if (age > seuil.alert) {
-      etat = "alert";
-      lignes.push(`${nom} : dernier run il y a ${ageTxt} (> ${seuil.alert} h)`);
+      monte("alert");
+      lignes.push(`${nom} : dernier run il y a ${heures(age)} (> ${seuil.alert} h)`);
       geste = geste || "Actions > le workflow nommé : est-il désactivé ou en échec ? `gh workflow run <fichier>.yml` pour le relancer à la main.";
     } else if (age > seuil.warn) {
-      if (etat !== "alert") etat = "warn";
-      lignes.push(`${nom} : dernier run il y a ${ageTxt} (> ${seuil.warn} h)`);
+      monte("warn");
+      lignes.push(`${nom} : dernier run il y a ${heures(age)} (> ${seuil.warn} h)`);
     } else {
-      lignes.push(`${nom} : ${ageTxt}`);
+      lignes.push(`${nom} : ${heures(age)}`);
+    }
+    // La CONCLUSION des passages planifiés (2026-11-12) : un run terminé n'est pas un run réussi.
+    const p = x.planifies;
+    if (!p) { lignes.push(`${nom} : conclusions planifiées non mesurées`); monte("unknown"); continue; }
+    if (p.erreur) { lignes.push(`${nom} : conclusions planifiées illisibles (${String(p.erreur).slice(0, 120)})`); monte("unknown"); continue; }
+    // `conclusions: "warn"` : la réaction plafonne à l'attention (voir SEUILS_CRONS).
+    const reaction = seuil.conclusions === "warn" ? "warn" : "alert";
+    const reagir = (texte) => {
+      monte(reaction);
+      lignes.push(texte + (reaction === "warn" ? " — attention seulement : le pilotage le dit déjà, avec son « Régler »" : ""));
+      if (reaction === "alert") geste = geste || gesteConclusion;
+    };
+    if (p.suite > 0) {
+      const seuilEchecs = Number.isInteger(seuil.echecs) && seuil.echecs > 0 ? seuil.echecs : 2;
+      const quand = p.dernier && Date.parse(p.dernier.le) ? ` le ${new Date(Date.parse(p.dernier.le)).toISOString().slice(0, 16).replace("T", " ")} UTC` : "";
+      const texte = `${nom} : ${p.suite} passage(s) planifié(s) en échec de suite (dernier : ${p.dernier ? p.dernier.conclusion : "?"}${quand})`;
+      if (p.suite >= seuilEchecs) reagir(texte + ` — seuil ${seuilEchecs}`);
+      else { monte("warn"); lignes.push(texte + ` (${reaction === "alert" ? "alerte" : "attention"} à ${seuilEchecs})`); }
+    }
+    // Le dernier passage planifié RÉUSSI : un passage bloqué jusqu'à son délai finit `cancelled`,
+    // que le compte saute — c'est l'âge de ce succès qui le rattrape.
+    const ageSucces = p.dernierSucces ? (now - Date.parse(p.dernierSucces.le)) / H : NaN;
+    if (p.dernierSucces && Number.isFinite(ageSucces)) {
+      if (ageSucces > seuil.alert) reagir(`${nom} : dernier passage planifié réussi il y a ${heures(ageSucces)} (> ${seuil.alert} h)`);
+      else if (ageSucces > seuil.warn) { monte("warn"); lignes.push(`${nom} : dernier passage planifié réussi il y a ${heures(ageSucces)} (> ${seuil.warn} h)`); }
+    } else if (p.dernierSucces) {
+      lignes.push(`${nom} : date du dernier passage planifié réussi illisible`); monte("unknown");
+    } else if (p.vus > (p.suite || 0)) {
+      // Aucun succès, et ce n'est pas seulement la série d'échecs (que la règle d'avant juge) : des
+      // passages annulés ou sautés — un délai dépassé finit « annulé ».
+      reagir(`${nom} : aucun passage planifié réussi parmi les ${p.vus} derniers` + (p.vus > (p.lus || 0) ? ` (${p.vus - (p.lus || 0)} annulé(s) ou sauté(s) : délai dépassé, ou évincé de la file)` : ""));
+    } else if (!(p.vus > 0)) {
+      lignes.push(`${nom} : aucun passage planifié terminé lu`); monte("unknown");
     }
   }
   return { etat, texte: lignes.join(" ; "), geste };
+}
+
+/**
+ * Le scan de sécurité (SCAN) : la conclusion de son passage PLANIFIÉ du lundi. JAMAIS plus qu'une
+ * attention — son tri est une décision de Benjamin, pas d'un agent (voir SCAN). Le texte dit où
+ * regarder : une attention n'a pas de « Ce que tu fais » (seule une alerte ouvre une issue).
+ * @param {{state?:string|null, planifies?:object, erreur?:string}|null} m
+ */
+export function signalScan(m, now) {
+  const ko = inconnu(m, "scan");
+  if (ko) return ko;
+  const nom = SCAN.workflow;
+  const trier = ` — à trier par Benjamin (${SCAN.ou})`;
+  if (m.state && /^disabled/.test(m.state)) return { etat: "warn", texte: `${nom} : DÉSACTIVÉ (${m.state}) — le scan du lundi ne passe plus (Actions > « Sécurité de la chaîne » > « Enable workflow »)`, geste: SCAN.geste };
+  const p = m.planifies;
+  if (!p) return { etat: "unknown", texte: `${nom} : conclusions planifiées non mesurées` };
+  if (p.erreur) return { etat: "unknown", texte: `${nom} : conclusions planifiées illisibles (${String(p.erreur).slice(0, 120)})` };
+  if (!p.vus) return { etat: "unknown", texte: `${nom} : aucun passage planifié terminé lu` };
+  if (p.suite > 0) {
+    const quand = p.dernier && Date.parse(p.dernier.le) ? ` le ${new Date(Date.parse(p.dernier.le)).toISOString().slice(0, 16).replace("T", " ")} UTC` : "";
+    return { etat: "warn", texte: `${nom} : dernier passage planifié en échec (${p.dernier ? p.dernier.conclusion : "?"}${quand})` + trier, geste: SCAN.geste };
+  }
+  if (!p.dernierSucces) return { etat: "warn", texte: `${nom} : aucun passage planifié réussi parmi les ${p.vus} derniers` + trier, geste: SCAN.geste };
+  const age = (now - Date.parse(p.dernierSucces.le)) / H;
+  if (!Number.isFinite(age)) return { etat: "unknown", texte: `${nom} : date du dernier passage planifié réussi illisible` };
+  const jours = `${Math.round((age / 24) * 10) / 10} j`;
+  if (age > SCAN.warn) return { etat: "warn", texte: `${nom} : dernier passage planifié réussi il y a ${jours} (> ${SCAN.warn / 24} j)` + trier, geste: SCAN.geste };
+  return { etat: "ok", texte: `${nom} : dernier passage planifié réussi il y a ${jours}` };
 }
 
 /**
@@ -469,6 +600,10 @@ export function signalBattement(m, now) {
 }
 
 const SYMBOLE = { alert: "[ALERTE]", warn: "[ATTENTION]", ok: "[ok]", unknown: "[?]" };
+// Ce qui n'entre JAMAIS dans le corps d'une [VEILLE] : « Régler » confie ce corps à un agent, et le
+// tri du scan de sécurité est à Benjamin (voir SCAN ; relecture de #866). Il reste dans le résumé,
+// donc dans le [TABLEAU] (label `tableau` seul, jamais confié à un agent) et dans le pilotage.
+const HORS_ISSUE = new Set(["scan"]);
 
 /**
  * Fonction PURE : mesures → verdict. Testée seule (tests/unit/veille-production.test.mjs).
@@ -484,6 +619,7 @@ export function verdictVeille(mesures, now) {
     { cle: "api", ...signalApi(m.api) },
     { cle: "deploiement", ...signalDeploiement(m.deploiement, t) },
     { cle: "crons", ...signalCrons(m.crons, t) },
+    { cle: "scan", ...signalScan(m.scan, t) },
     { cle: "base", ...signalBase(m.base) },
     { cle: "jetons", ...signalJetons(m.jetons) },
     { cle: "battement", ...signalBattement(m.battement, t) },
@@ -500,7 +636,7 @@ export function verdictVeille(mesures, now) {
     ...enAlerte.map((s) => `- **${s.cle}** : ${s.geste || "lis le détail ci-dessous et le RUNBOOK (docs/RUNBOOK_MOIS_DE_TEST.md)."}`),
     "",
     "## Tous les signaux",
-    ...tri.map((s) => `- ${SYMBOLE[s.etat]} **${s.cle}** — ${s.texte}`),
+    ...tri.filter((s) => !HORS_ISSUE.has(s.cle)).map((s) => `- ${SYMBOLE[s.etat]} **${s.cle}** — ${s.texte}`),
     "",
     "Cette issue est ouverte par `.github/workflows/veille-production.yml` et se referme",
     "d'elle-même quand plus aucun signal n'est en alerte. Un cron GitHub est servi toutes",
@@ -701,18 +837,37 @@ export async function mesurerDeploiement(env) {
   };
 }
 
-export async function mesurerCrons(env) {
+/**
+ * Un workflow planifié : son état, la fin de son dernier run terminé, et ses passages PLANIFIÉS.
+ * Trois lectures. Les passages planifiés sont lus à part (`event=schedule`) : les exécutions de PR
+ * et les relances à la main remplissent les dix dernières. Ceux que la première liste contient aussi
+ * s'y ajoutent, par identifiant : une réponse filtrée peut venir d'une réplique en retard (mesuré le
+ * 2026-10-05, runPlusRecent). Illisibles, ils se disent — jamais « aucun échec » — et l'âge déjà lu reste.
+ */
+async function mesurerWorkflow(env, nom) {
   const repo = env.GITHUB_REPOSITORY;
+  const wf = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml`);
+  const runs = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?per_page=10`);
+  const r = runPlusRecent(runs && runs.workflow_runs, (x) => x.status === "completed");
+  const out = { state: wf && wf.state, dernierRunFin: r ? r.updated_at : null };
+  try {
+    const sched = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?event=schedule&per_page=10`);
+    out.planifies = echecsPlanifies([...((runs && runs.workflow_runs) || []), ...((sched && sched.workflow_runs) || [])]);
+  } catch (e) { out.planifies = enErreur(e); }
+  return out;
+}
+
+export async function mesurerCrons(env) {
   const out = {};
   for (const nom of Object.keys(SEUILS_CRONS)) {
-    try {
-      const wf = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml`);
-      const runs = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?per_page=10`);
-      const r = runPlusRecent(runs && runs.workflow_runs, (x) => x.status === "completed");
-      out[nom] = { state: wf && wf.state, dernierRunFin: r ? r.updated_at : null };
-    } catch (e) { out[nom] = enErreur(e); }
+    try { out[nom] = await mesurerWorkflow(env, nom); } catch (e) { out[nom] = enErreur(e); }
   }
   return out;
+}
+
+/** Le scan de sécurité (SCAN) : les mêmes lectures, un signal à part. */
+export async function mesurerScan(env) {
+  return mesurerWorkflow(env, SCAN.workflow);
 }
 
 export async function mesurerBase(env) {
@@ -775,6 +930,7 @@ export async function mesurer(env) {
     api: await mesure(() => mesurerApi(env)),
     deploiement: await mesure(() => mesurerDeploiement(env)),
     crons: await mesure(() => mesurerCrons(env)),
+    scan: await mesure(() => mesurerScan(env)),
     base: await mesure(() => mesurerBase(env)),
     jetons: await mesure(() => mesurerJetons(env)),
     battement: await mesure(() => mesurerBattement(env)),
