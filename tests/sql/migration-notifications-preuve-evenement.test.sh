@@ -86,10 +86,10 @@ begin
   return new;
 end \$fn\$;
 create trigger trg_notifications_origine before insert on public.notifications for each row execute function public.notifications_origine();
--- «» de PRODUCTION (relevé le 13/11), dans ce qui compte ici : il pose
--- «» et ne le REMET PAS. Sans lui au socle, l'épreuve de la
+-- « follows_notifier » de PRODUCTION (relevé le 13/11), dans ce qui compte ici : il pose
+-- « passio.notification_serveur » et ne le REMET PAS. Sans lui au socle, l'épreuve de la
 -- migration passait ici et échouait en production (relecture adversariale du 13/11, P1).
-create or replace function public.follows_notifier() returns trigger language plpgsql security definer set search_path = public, pg_temp as $fn$
+create or replace function public.follows_notifier() returns trigger language plpgsql security definer set search_path = public, pg_temp as \$fn\$
 begin
   if new.follower_id = new.following_id then return new; end if;
   perform set_config('passio.notification_serveur', '1', true);
@@ -97,7 +97,7 @@ begin
     values ('n_fw_' || left(new.follower_id, 8) || '_' || left(new.following_id, 8), new.following_id, 'follow', new.follower_id, new.follower_id, 'a commencé à te suivre', false)
     on conflict (id) do nothing;
   return new;
-end $fn$;
+end \$fn\$;
 create trigger trg_follows_notifier after insert on public.follows for each row execute function public.follows_notifier();
 
 insert into public.profiles (id, username) values ('$A', 'Alice'), ('$B', 'Bruno'), ('$D', 'Dan');
