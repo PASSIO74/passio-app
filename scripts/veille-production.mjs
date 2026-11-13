@@ -90,13 +90,22 @@ export const SEUILS_CRONS = {
 // conception s'inscrit en exception, une vraie clé se RÉVOQUE d'abord — : en alerte, la [VEILLE] le
 // faisait « Régler » depuis le pilotage par un agent qui aurait écrit des exceptions sans voir le
 // rapport. Rangé dans `crons`, son alerte (une semaine au moins) cachait aussi une sauvegarde ratée :
-// même titre d'issue, même geste, aucune notification. Ses exécutions de PR gardent son âge frais :
-// seul son passage PLANIFIÉ compte (le scan des secrets y parcourt TOUT l'historique).
+// même titre d'issue, même geste, aucune notification. Ses exécutions de PR gardent son âge frais et
+// ne scannent que leur diff : ne comptent que ses scans COMPLETS — le passage planifié du lundi ET un
+// passage lancé à la main (« Run workflow »), que gitleaks-action, au SHA épinglé, traite comme le
+// planifié : TOUT l'historique (relecture de #866). Un tri relancé à la main et réussi efface donc
+// l'attention sans attendre le lundi — comme la ligne du pilotage (EVENEMENTS_RUNS.securite). Sur `main`
+// SEULEMENT (relecture de #874) : un « Run workflow » se lance sur n'importe quelle branche — un scan vert sur
+// une branche de tri effaçait l'attention alors que `main` n'était pas corrigé, un échec sur une vieille branche
+// la faisait revenir. Le pilotage lit `branch=main` ; la veille aussi, et filtre `head_branch`.
 export const SCAN = Object.freeze({
   workflow: "securite", warn: 8 * 24,
-  ou: "Actions > « Sécurité de la chaîne » > son dernier passage planifié",
-  geste: "Actions > « Sécurité de la chaîne » > son dernier passage planifié : quel job a échoué ? « Secrets dans le diff » : l'artefact `gitleaks-results.sarif` liste ce que gitleaks a trouvé dans TOUT l'historique — à trier par Benjamin, jamais par un agent : une clé publique par conception s'inscrit dans `.gitleaksignore` (empreinte et raison) ; une vraie clé se RÉVOQUE d'abord, puis s'y inscrit aussi (elle reste dans l'historique). « Workflows et dépendances » : le journal de `npm audit` ou de la gate dit quoi corriger.",
+  evenements: Object.freeze(["schedule", "workflow_dispatch"]),
+  ou: "Actions > « Sécurité de la chaîne » > son dernier scan complet sur main",
+  geste: "Actions > « Sécurité de la chaîne » > son dernier scan complet sur main (planifié ou lancé à la main) : quel job a échoué ? « Secrets dans le diff » : l'artefact `gitleaks-results.sarif` liste ce que gitleaks a trouvé dans TOUT l'historique — à trier par Benjamin, jamais par un agent : une clé publique par conception s'inscrit dans `.gitleaksignore` (empreinte et raison) ; une vraie clé se RÉVOQUE d'abord, puis s'y inscrit aussi (elle reste dans l'historique). « Workflows et dépendances » : le journal de `npm audit` ou de la gate dit quoi corriger. Trié, relance-le SUR MAIN (« Run workflow », branche main) : un scan complet réussi sur main efface cette attention — un passage sur une autre branche ne compte pas.",
 });
+/** Les passages d'un cron qui comptent : les PLANIFIÉS seuls — une relance à la main ne remet pas le compte à zéro. */
+const PLANIFIES = Object.freeze(["schedule"]);
 // Une conclusion qui dit « ce passage a cassé ». `cancelled` (éviction de la file OU délai dépassé :
 // GitHub ne les distingue pas) et `skipped` sont sautés par le compte — l'âge du dernier succès
 // rattrape un délai dépassé.
@@ -107,15 +116,17 @@ const CONCLUSIONS_ECHEC_CRON = new Set(["failure", "timed_out", "startup_failure
  * terminés ont été vus. Triés par `created_at` (l'heure du passage) : une relance (`gh run rerun`)
  * change `run_started_at` et remontait un ancien passage en tête. Un même run lu dans deux listes
  * (une réplique en retard) compte une fois, dans sa version la plus récente. Un passage annulé,
- * sauté ou pas encore terminé ne tranche pas ; le premier succès arrête le compte.
+ * sauté ou pas encore terminé ne tranche pas ; le premier succès arrête le compte. `evenements` : les
+ * événements qui comptent (PLANIFIES par défaut ; SCAN.evenements pour le scan de sécurité). Seuls les passages
+ * de `branche` (main) comptent : un passage lancé à la main sur une autre branche ne dit rien de main.
  * @returns {{suite:number, lus:number, vus:number, dernier:{conclusion:string,le:string|null}|null, dernierSucces:{le:string|null}|null}}
  */
-export function echecsPlanifies(runs) {
+export function echecsPlanifies(runs, evenements = PLANIFIES, branche = "main") {
   const t = (s) => Date.parse(s || "") || 0;
   const parRun = new Map();
   let sansId = 0;
   for (const r of Array.isArray(runs) ? runs : []) {
-    if (!r || r.event !== "schedule" || r.status !== "completed") continue;
+    if (!r || !evenements.includes(r.event) || r.head_branch !== branche || r.status !== "completed") continue;
     const cle = r.id != null ? "id:" + r.id : "n:" + sansId++;
     const deja = parRun.get(cle);
     if (!deja || t(r.updated_at) > t(deja.updated_at)) parRun.set(cle, r);
@@ -453,9 +464,10 @@ export function signalCrons(m, now) {
 }
 
 /**
- * Le scan de sécurité (SCAN) : la conclusion de son passage PLANIFIÉ du lundi. JAMAIS plus qu'une
- * attention — son tri est une décision de Benjamin, pas d'un agent (voir SCAN). Le texte dit où
- * regarder : une attention n'a pas de « Ce que tu fais » (seule une alerte ouvre une issue).
+ * Le scan de sécurité (SCAN) : la conclusion de son dernier scan COMPLET — le passage planifié du lundi
+ * ou un passage lancé à la main, sur tout l'historique. JAMAIS plus qu'une attention — son tri est une
+ * décision de Benjamin, pas d'un agent (voir SCAN). Le texte dit où regarder : une attention n'a pas de
+ * « Ce que tu fais » (seule une alerte ouvre une issue).
  * @param {{state?:string|null, planifies?:object, erreur?:string}|null} m
  */
 export function signalScan(m, now) {
@@ -465,19 +477,19 @@ export function signalScan(m, now) {
   const trier = ` — à trier par Benjamin (${SCAN.ou})`;
   if (m.state && /^disabled/.test(m.state)) return { etat: "warn", texte: `${nom} : DÉSACTIVÉ (${m.state}) — le scan du lundi ne passe plus (Actions > « Sécurité de la chaîne » > « Enable workflow »)`, geste: SCAN.geste };
   const p = m.planifies;
-  if (!p) return { etat: "unknown", texte: `${nom} : conclusions planifiées non mesurées` };
-  if (p.erreur) return { etat: "unknown", texte: `${nom} : conclusions planifiées illisibles (${String(p.erreur).slice(0, 120)})` };
-  if (!p.vus) return { etat: "unknown", texte: `${nom} : aucun passage planifié terminé lu` };
+  if (!p) return { etat: "unknown", texte: `${nom} : conclusions des scans complets non mesurées` };
+  if (p.erreur) return { etat: "unknown", texte: `${nom} : conclusions des scans complets illisibles (${String(p.erreur).slice(0, 120)})` };
+  if (!p.vus) return { etat: "unknown", texte: `${nom} : aucun scan complet terminé lu` };
   if (p.suite > 0) {
     const quand = p.dernier && Date.parse(p.dernier.le) ? ` le ${new Date(Date.parse(p.dernier.le)).toISOString().slice(0, 16).replace("T", " ")} UTC` : "";
-    return { etat: "warn", texte: `${nom} : dernier passage planifié en échec (${p.dernier ? p.dernier.conclusion : "?"}${quand})` + trier, geste: SCAN.geste };
+    return { etat: "warn", texte: `${nom} : dernier scan complet en échec (${p.dernier ? p.dernier.conclusion : "?"}${quand})` + trier, geste: SCAN.geste };
   }
-  if (!p.dernierSucces) return { etat: "warn", texte: `${nom} : aucun passage planifié réussi parmi les ${p.vus} derniers` + trier, geste: SCAN.geste };
+  if (!p.dernierSucces) return { etat: "warn", texte: `${nom} : aucun scan complet réussi parmi les ${p.vus} derniers` + trier, geste: SCAN.geste };
   const age = (now - Date.parse(p.dernierSucces.le)) / H;
-  if (!Number.isFinite(age)) return { etat: "unknown", texte: `${nom} : date du dernier passage planifié réussi illisible` };
+  if (!Number.isFinite(age)) return { etat: "unknown", texte: `${nom} : date du dernier scan complet réussi illisible` };
   const jours = `${Math.round((age / 24) * 10) / 10} j`;
-  if (age > SCAN.warn) return { etat: "warn", texte: `${nom} : dernier passage planifié réussi il y a ${jours} (> ${SCAN.warn / 24} j)` + trier, geste: SCAN.geste };
-  return { etat: "ok", texte: `${nom} : dernier passage planifié réussi il y a ${jours}` };
+  if (age > SCAN.warn) return { etat: "warn", texte: `${nom} : dernier scan complet réussi il y a ${jours} (> ${SCAN.warn / 24} j)` + trier, geste: SCAN.geste };
+  return { etat: "ok", texte: `${nom} : dernier scan complet réussi il y a ${jours}` };
 }
 
 /**
@@ -843,16 +855,21 @@ export async function mesurerDeploiement(env) {
  * et les relances à la main remplissent les dix dernières. Ceux que la première liste contient aussi
  * s'y ajoutent, par identifiant : une réponse filtrée peut venir d'une réplique en retard (mesuré le
  * 2026-10-05, runPlusRecent). Illisibles, ils se disent — jamais « aucun échec » — et l'âge déjà lu reste.
+ * `evenements` : une lecture filtrée par événement (PLANIFIES pour un cron ; SCAN.evenements pour le scan).
  */
-async function mesurerWorkflow(env, nom) {
+async function mesurerWorkflow(env, nom, evenements = PLANIFIES) {
   const repo = env.GITHUB_REPOSITORY;
   const wf = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml`);
   const runs = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?per_page=10`);
   const r = runPlusRecent(runs && runs.workflow_runs, (x) => x.status === "completed");
   const out = { state: wf && wf.state, dernierRunFin: r ? r.updated_at : null };
   try {
-    const sched = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?event=schedule&per_page=10`);
-    out.planifies = echecsPlanifies([...((runs && runs.workflow_runs) || []), ...((sched && sched.workflow_runs) || [])]);
+    const lus = [...((runs && runs.workflow_runs) || [])];
+    for (const ev of evenements) {
+      const parEv = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?event=${ev}&branch=main&per_page=10`);
+      lus.push(...((parEv && parEv.workflow_runs) || []));
+    }
+    out.planifies = echecsPlanifies(lus, evenements);
   } catch (e) { out.planifies = enErreur(e); }
   return out;
 }
@@ -865,9 +882,9 @@ export async function mesurerCrons(env) {
   return out;
 }
 
-/** Le scan de sécurité (SCAN) : les mêmes lectures, un signal à part. */
+/** Le scan de sécurité (SCAN) : les mêmes lectures, ses scans complets (planifiés ET manuels), un signal à part. */
 export async function mesurerScan(env) {
-  return mesurerWorkflow(env, SCAN.workflow);
+  return mesurerWorkflow(env, SCAN.workflow, SCAN.evenements);
 }
 
 export async function mesurerBase(env) {

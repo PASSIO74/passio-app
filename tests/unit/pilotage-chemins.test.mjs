@@ -1424,7 +1424,7 @@ test("㊸ le scan de sécurité se voit — À TRIER par Benjamin, jamais « Ré
   assert.deepEqual([l.titre, l.prio, l.etiquette], ["Le scan de sécurité a échoué", 1, "À trier"]);
   assert.equal(l.quoi, "À trier par toi, jamais par une machine.");
   assert.match(l.reference, /une vraie clé se révoque d'abord/);
-  assert.match(l.reference, /relance-le \(« Run workflow »\) : un passage réussi efface cette ligne/);
+  assert.match(l.reference, /relance-le SUR MAIN \(« Run workflow », branche main\) : un passage réussi sur main efface cette ligne/);
   assert.match(String(l.url), /\/runs\/2$/, "le lien mène au passage planifié en échec, pas à la PR");
   assert.equal(l.gestes.length, 1);
   assert.ok(l.gestes[0].ouvrir && !l.gestes[0].corps, "un lien, aucune action de la fonction");
