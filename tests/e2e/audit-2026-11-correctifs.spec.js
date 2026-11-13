@@ -126,7 +126,8 @@ test.describe("AUDIT D — correctifs D-02 à D-05", () => {
     // RÉINJECTION : sur le code d'avant, 20×20 et aucun nom.
     expect(r.w).toBeGreaterThanOrEqual(44);
     expect(r.h).toBeGreaterThanOrEqual(44);
-    expect(r.visuelW).toBeLessThanOrEqual(20);   // 17 px dans la carte v8, 20 px ailleurs
+    // LOT-16 (PRO-C13) : le badge passe à 28 px (zone de 44 px inchangée) ; 17 px dans la carte v8.
+    expect(r.visuelW).toBeLessThanOrEqual(28);
     expect(r.label).toMatch(/photo/i);
     expect(r.role).toBe("button");
     expect(r.tab).toBe("0");

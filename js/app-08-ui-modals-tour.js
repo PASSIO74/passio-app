@@ -37,6 +37,10 @@ function openModal(html, panel) {
     pushOverlayHistory("modal", "#modal");
   }
 
+  // LOT-16 (PRO-C22) : une fenêtre qui en REMPLACE une autre n'hérite pas de son
+  // plein écran (« Signaler ce compte » prenait celui du profil visité). Celle
+  // qui le veut le repose après l'ouverture (`openUserProfile`).
+  try { const _m = document.querySelector(".modal"); if (_m) _m.classList.remove("modal-fullscreen"); } catch (e) {}
   // Injecte un bouton × de fermeture en haut à droite de tous les modals
   const closeBtn = `<button type="button" class="modal-close" onclick="closeModal()" aria-label="Fermer">×</button>`;
   $("#modalContent").innerHTML = closeBtn + html;

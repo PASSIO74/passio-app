@@ -105,6 +105,9 @@
       titre: options.titre || "Qu'est-ce qui te passionne ?",
       sousTitre: "Recherche et choisis directement ce que tu aimes.",
       selection: [],
+      // LOT-16 (PRO-C19) : les passions déjà miennes sont marquées « Déjà ajoutée »
+      // au lieu d'être proposées comme des idées.
+      possedees: deja.slice(),
       max: places,
       onMax: annoncerPlafond,
       valider: "Ajouter à mes passions",
