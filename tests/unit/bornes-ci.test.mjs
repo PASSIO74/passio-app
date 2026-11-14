@@ -112,6 +112,42 @@ test("① ② deploy.yml réel : les quatre jobs qui installent Playwright sont 
   for (const j of ["test-prod", "test-local", "gates-artefact"]) assert.match(etapeReelle(DEPLOY, j).run, /--with-deps chromium/);
 });
 
+// ── ⑥ Chaque job de deploy.yml a sa borne, issue d'une mesure (P1-9, 2026-11-14) ──
+// Pire durée de chaque job qui n'installe pas Playwright, en minutes : API Actions, 60 derniers runs terminés de
+// deploy.yml (PR et main, du 13/11 au 14/11). Une borne vient d'une mesure : au moins trois fois le pire, et 10 min au
+// moins (la mise en route d'un runner, un gh lent) ; au-delà d'une heure, elle ne borne plus rien.
+const PIRE_MESURE = { governance: 0.3, audits: 6.5, smoke: 0.1, deploy: 1.3, "retour-issue": 0.2, preview: 2.8 };
+function auditerJobs(texte) {
+  const doc = parse(texte);
+  const defauts = [];
+  for (const [id, j] of Object.entries(doc.jobs || {})) {
+    const J = entier(j["timeout-minutes"]);
+    if (J === null) { defauts.push(`${id} : aucun timeout-minutes de job — le défaut de GitHub est 360 min`); continue; }
+    if (J > 60) defauts.push(`${id} : borne de job de ${J} min — au-delà d'une heure elle ne borne plus rien`);
+    if (HORS_INSTALLATION_PIRE[id] !== undefined) continue; // ① ② les tiennent, avec leur installation
+    const pire = PIRE_MESURE[id];
+    if (pire === undefined) { defauts.push(`${id} : aucune mesure de durée — mesurer avant de borner`); continue; }
+    const plancher = Math.max(10, Math.ceil(3 * pire));
+    if (J < plancher) defauts.push(`${id} : borne de job ${J} min < ${plancher} (trois fois le pire mesuré, ${pire} min, et 10 au moins)`);
+  }
+  return defauts;
+}
+
+test("⑥ deploy.yml réel : CHAQUE job a sa borne, issue d'une mesure — aucun n'attend les 360 min de GitHub (P1-9)", () => {
+  assert.deepEqual(auditerJobs(DEPLOY), []);
+  // Mutations sur le texte réel : une borne retirée, trop basse, trop haute ; un job neuf sans mesure.
+  const muter = (de, vers) => { assert.equal(DEPLOY.split(de).length - 1, 1, "cible unique : " + de); return DEPLOY.replace(de, () => vers); };
+  const AUDITS = "    timeout-minutes: 20 # pire mesuré sur 60 runs (13-14/11) : 6,5 min (bornes-ci ⑥)\n";
+  const sans = auditerJobs(muter(AUDITS, ""));
+  assert.ok(sans.some((d) => /^audits : aucun timeout-minutes de job/.test(d)), sans.join("\n"));
+  const bas = auditerJobs(muter(AUDITS, "    timeout-minutes: 15\n"));
+  assert.ok(bas.some((d) => /^audits : borne de job 15 min < 20/.test(d)), bas.join("\n"));
+  const haut = auditerJobs(muter("    timeout-minutes: 10 # pire mesuré sur 19 runs (13-14/11) : 0,2 min (bornes-ci ⑥)\n", "    timeout-minutes: 360\n"));
+  assert.ok(haut.some((d) => /^retour-issue : borne de job de 360 min/.test(d)), haut.join("\n"));
+  const neuf = auditerJobs(DEPLOY + "\n  autre-job:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n      - run: echo x\n");
+  assert.ok(neuf.some((d) => /^autre-job : aucune mesure de durée/.test(d)), neuf.join("\n"));
+});
+
 // ── ③ Le bloc réel, joué contre un faux npx et le vrai `timeout` raccourci ──────
 const VRAI_TIMEOUT = execFileSync("bash", ["-c", "command -v timeout"], { encoding: "utf8" }).trim();
 const VRAI_SLEEP = execFileSync("bash", ["-c", "command -v sleep"], { encoding: "utf8" }).trim();
