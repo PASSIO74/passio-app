@@ -77,6 +77,9 @@ function applyConfig() {
         .main-profile-cover:not([data-has-photo=\"1\"]) { background: radial-gradient(130% 140% at 12% -10%, " + c.c5 + " 0%, transparent 55%), radial-gradient(120% 130% at 95% 15%, " + c.soft + " 0%, transparent 60%), radial-gradient(160% 130% at 50% 115%, " + c.c3 + " 0%, " + c.c2 + " 70%) !important; }\
       ";
       if (c.dark) {
+        // La feuille des fenêtres est blanche en dur : en Sombre, son texte clair
+        // (`--text`) y devenait illisible. Elle prend le fond du thème.
+        colorOverride.textContent += " .modal { background: " + c.bgSoft + " !important; }";
         root.style.setProperty("--text", "#e2e8f0");
         root.style.setProperty("--text-dim", "#cbd5e1");
         root.style.setProperty("--muted", "#94a3b8");
@@ -182,41 +185,60 @@ function applyConfig() {
   }, 150);
 }
 
-// LOT-21 (audit UX/UI du 2026-11-10, TRA-C06) — « AFFICHAGE », PLUS UN
-// CONFIGURATEUR. L'écran « Apparence & thème » datait d'avant la charte UI v2 :
-// sept palettes (dont « Sombre », mode retiré), seize polices Google chargées à
-// l'ouverture, trois styles de coins, un ordre d'onglets qu'aucune barre ne lit
-// plus, et un « Appliquer » qui ne faisait que fermer. Il ne garde que la TAILLE
-// DU TEXTE (utile à la lecture). À l'ouverture, les réglages hors charte déjà
-// posés (`accent`, `fontFamily`, `radius`, `navOrder`) sont retirés de
-// `passio_config` et leurs surcharges effacées — rien d'autre n'est touché.
-var CONFIG_HORS_CHARTE = ["accent", "fontFamily", "radius", "navOrder"];
+// « AFFICHAGE » — couleurs, police, taille du texte (2026-11-14, demande de
+// Benjamin : « remets dans Affichage les choix de couleur et de typographie »).
+// LOT-21 (TRA-C06) avait réduit l'écran à la taille du texte seule ; les palettes
+// et les polices REVIENNENT. Restent retirés : les coins et l'ordre des onglets
+// (qu'aucune barre ne lit plus) et le « Appliquer » sans effet — chaque choix
+// s'applique au toucher. À l'ouverture, seules ces deux clés (`radius`,
+// `navOrder`) sortent de `passio_config`, ainsi qu'une couleur ou une police
+// qui n'existe pas dans les listes.
+var CONFIG_HORS_CHARTE = ["radius", "navOrder"];
 var PROPRIETES_THEME = ["--accent", "--accent-soft", "--accent-2", "--accent-2-soft", "--accent-3", "--accent-3-soft",
   "--accent-4", "--accent-4-soft", "--accent-5", "--accent-5-soft", "--bg-deep", "--bg-soft", "--border", "--border-strong",
   "--shadow-soft", "--shadow-strong", "--shadow-glow", "--shadow-glow-2", "--grad-hero", "--grad-hero-2", "--grad-warm",
   "--grad-cool", "--text", "--text-dim", "--muted", "--muted-2", "--bg-card",
   "--att-photo", "--att-doc", "--att-audio", "--att-lieu", "--att-fichiers", "--att-irl"];
-function retirerReglagesHorsCharte() {
-  var cfg = getCurrentConfig();
-  var avait = CONFIG_HORS_CHARTE.some(function (k) { return cfg[k] !== undefined; });
-  if (!avait) return false;
-  CONFIG_HORS_CHARTE.forEach(function (k) { delete cfg[k]; });
-  saveConfig(cfg);
+// Revenir à la couleur de la charte : aucune surcharge, la feuille de style seule.
+function effacerSurchargesCouleur() {
   var root = document.documentElement;
   PROPRIETES_THEME.forEach(function (p) { root.style.removeProperty(p); });
-  ["passio-color-override", "passio-ff-override", "passio-gfont", "passio-rd-override"].forEach(function (id) {
-    var el = document.getElementById(id); if (el) el.remove();
-  });
+  var el = document.getElementById("passio-color-override"); if (el) el.remove();
   document.body.style.background = "";
-  try { if (typeof applyNavOrder === "function") applyNavOrder(); } catch (e) {}
   try { if (typeof updateLogos === "function") updateLogos(); } catch (e) {}
+}
+function retirerReglagesHorsCharte() {
+  var cfg = getCurrentConfig();
+  var change = false;
+  CONFIG_HORS_CHARTE.forEach(function (k) { if (cfg[k] !== undefined) { delete cfg[k]; change = true; } });
+  var couleurInconnue = cfg.accent !== undefined && !ACCENT_COLORS.some(function (c) { return c.id === cfg.accent; });
+  if (couleurInconnue) { delete cfg.accent; change = true; }
+  if (cfg.fontFamily !== undefined && !FONT_FAMILIES.some(function (f) { return f.id === cfg.fontFamily; })) { delete cfg.fontFamily; change = true; }
+  if (!change) return false;
+  saveConfig(cfg);
+  var rd = document.getElementById("passio-rd-override"); if (rd) rd.remove();
+  if (couleurInconnue) effacerSurchargesCouleur();
+  try { if (typeof applyNavOrder === "function") applyNavOrder(); } catch (e) {}
   return true;
 }
 
 function openConfigurator() {
   retirerReglagesHorsCharte();
   var cfg = getCurrentConfig();
+  var accentNow = cfg.accent || "violet";
+  var fontFamilyNow = cfg.fontFamily || "default";
   var fontSizeNow = cfg.fontSize || "medium";
+  var accentHTML = ACCENT_COLORS.map(function(c) {
+    var actif = c.id === accentNow;
+    return '<button type="button" class="config-couleur' + (actif ? ' actif' : '') + '" aria-pressed="' + (actif ? 'true' : 'false') + '" onclick="setConfig(\'accent\',\'' + escapeJsArg(c.id) + '\')"><span class="config-couleur-pastille" aria-hidden="true" style="background:' + c.grad1 + ';"></span><span>' + escapeHtml(c.name) + '</span></button>';
+  }).join("");
+  var currentFF = FONT_FAMILIES.find(function(f) { return f.id === fontFamilyNow; }) || FONT_FAMILIES[0];
+  var fontFamilyHTML = '\
+    <button type="button" id="fontDropdown" class="config-police" aria-expanded="false" aria-controls="fontDropdownList" onclick="toggleFontDropdown()">\
+      <span class="config-police-nom" style="font-family:' + currentFF.family + ';">' + escapeHtml(currentFF.name) + '</span>\
+      <span id="fontDropdownArrow" aria-hidden="true">▼</span>\
+    </button>\
+    <div id="fontDropdownList" class="config-police-liste" style="display:none;"></div>';
   var fontSizeHTML = FONT_SIZES.map(function(f) {
     var actif = f.id === fontSizeNow;
     return '<button type="button" class="config-taille' + (actif ? ' actif' : '') + '" aria-pressed="' + (actif ? 'true' : 'false') + '" onclick="setConfig(\'fontSize\',\'' + escapeJsArg(f.id) + '\')"><span class="config-taille-aa" aria-hidden="true" style="font-size:' + (Number(f.px) + 4) + 'px;">Aa</span><span>' + escapeHtml(f.name) + '</span></button>';
@@ -224,7 +246,12 @@ function openConfigurator() {
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Affichage</div>\
-    <div class="modal-subtitle">La taille du texte, pour lire confortablement.</div>\
+    <div class="modal-subtitle">La couleur, la police et la taille du texte.</div>\
+    <div class="config-rubrique">Couleur</div>\
+    <div class="config-couleurs">' + accentHTML + '</div>\
+    <div class="config-rubrique">Police d\'écriture</div>\
+    ' + fontFamilyHTML + '\
+    <div class="config-rubrique">Taille du texte</div>\
     <div class="config-tailles">' + fontSizeHTML + '</div>\
     <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Fermer</button>\
   ');
@@ -232,8 +259,11 @@ function openConfigurator() {
 
 function setConfig(key, value) {
   var cfg = getCurrentConfig();
-  cfg[key] = value;
-  saveConfig(cfg);
+  // Le violet et la police « Par défaut » SONT la charte : on retire le réglage
+  // au lieu de poser une surcharge qui la recopierait à peu près.
+  if (key === "accent" && value === "violet") { delete cfg.accent; saveConfig(cfg); effacerSurchargesCouleur(); }
+  else if (key === "fontFamily" && value === "default") { delete cfg.fontFamily; saveConfig(cfg); }
+  else { cfg[key] = value; saveConfig(cfg); }
   applyConfig();
   if (key !== "navOrder") openConfigurator();
 }
@@ -260,57 +290,55 @@ var _fontExamples = {
 function toggleFontDropdown() {
   var list = document.getElementById("fontDropdownList");
   var arrow = document.getElementById("fontDropdownArrow");
+  var bouton = document.getElementById("fontDropdown");
   if (!list) return;
   if (list.style.display === "block") {
     list.style.display = "none";
     if (arrow) arrow.textContent = "▼";
+    if (bouton) bouton.setAttribute("aria-expanded", "false");
     return;
   }
   if (arrow) arrow.textContent = "▲";
+  if (bouton) bouton.setAttribute("aria-expanded", "true");
+  // Les polices ne se chargent qu'ICI, quand la liste s'ouvre — jamais à
+  // l'ouverture du panneau (seize feuilles Google pour qui ne veut que la taille).
+  FONT_FAMILIES.forEach(function(f) {
+    if (!f.url || document.querySelector('link[href="' + f.url + '"]')) return;
+    var link = document.createElement("link"); link.rel = "stylesheet"; link.href = f.url;
+    document.head.appendChild(link);
+  });
   var cfg = getCurrentConfig();
   var activeId = cfg.fontFamily || "default";
-  
-  // Vider et reconstruire via DOM pour pouvoir mettre !important
   list.innerHTML = "";
-  
   FONT_FAMILIES.forEach(function(f) {
     var isActive = f.id === activeId;
-    var desc = _fontExamples[f.id] || "";
-    
-    var row = document.createElement("div");
-    row.style.cssText = "cursor:pointer;padding:14px 16px;border-bottom:1px solid var(--border);background:" + (isActive ? "var(--bg-deep)" : "transparent") + ";";
+    var row = document.createElement("button");
+    row.type = "button";
+    row.className = "config-police-choix" + (isActive ? " actif" : "");
+    row.setAttribute("aria-pressed", isActive ? "true" : "false");
     row.onclick = function(e) { e.stopPropagation(); setConfig("fontFamily", f.id); };
-    
-    var nameEl = document.createElement("div");
+    var left = document.createElement("span");
+    left.className = "config-police-choix-texte";
+    var nameEl = document.createElement("span");
+    nameEl.className = "config-police-choix-nom";
     nameEl.textContent = f.name;
-    nameEl.style.cssText = "font-size:20px;font-weight:800;color:var(--text);margin-bottom:3px;";
     nameEl.style.setProperty("font-family", f.family, "important");
-    
-    var descEl = document.createElement("div");
-    descEl.textContent = desc;
-    descEl.style.cssText = "font-size:11px;color:var(--muted);";
+    var descEl = document.createElement("span");
+    descEl.className = "config-police-choix-desc";
+    descEl.textContent = _fontExamples[f.id] || "";
     descEl.style.setProperty("font-family", f.family, "important");
-    
-    var left = document.createElement("div");
-    left.style.cssText = "flex:1;";
     left.appendChild(nameEl);
     left.appendChild(descEl);
-    
-    var wrap = document.createElement("div");
-    wrap.style.cssText = "display:flex;align-items:center;gap:10px;";
-    wrap.appendChild(left);
-    
+    row.appendChild(left);
     if (isActive) {
       var check = document.createElement("span");
       check.textContent = "✓";
-      check.style.cssText = "font-size:18px;color:var(--accent);";
-      wrap.appendChild(check);
+      check.setAttribute("aria-hidden", "true");
+      check.className = "config-police-choix-coche";
+      row.appendChild(check);
     }
-    
-    row.appendChild(wrap);
     list.appendChild(row);
   });
-  
   list.style.display = "block";
 }
 

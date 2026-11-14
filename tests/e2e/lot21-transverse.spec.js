@@ -4,8 +4,8 @@
 //      Refuser à 44 px, « Hier, 19:25 », l'état de la permission du téléphone.
 //   ② TRA-C12 : une notification dont la cible a disparu le dit, et le panneau
 //      reste ouvert.
-//   ③ TRA-C06 : « Affichage » ne garde que la taille du texte ; les réglages
-//      hors charte déjà posés sont retirés à l'ouverture.
+//   ③ TRA-C06 : « Affichage » — couleur, police, taille du texte (couleurs et
+//      polices revenues le 2026-11-14) ; coins et ordre d'onglets retirés à l'ouverture.
 //   ④ TRA-C29 / C20 : « Aide et retour » commence par l'aide ; sur Android,
 //      la consigne d'installation parle du menu ⋮.
 // Compte de démonstration local (`bootOnboarded`) : aucune écriture réseau.
@@ -58,8 +58,15 @@ test("② TRA-C12 : une cible disparue se dit, le panneau reste ouvert", async (
   expect(r.ouvert, "le panneau reste ouvert").toBe(true);
 });
 
-test("③ TRA-C06 : « Affichage » — la taille du texte seule, réglages hors charte retirés", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("passio_config", JSON.stringify({ accent: "dark", radius: "pill", navOrder: ["feed"], fontFamily: "x", fontSize: "large" })));
+test("③ TRA-C06 : « Affichage » — couleur, police et taille ; coins et ordre d'onglets retirés", async ({ page }) => {
+  // 2026-11-14 (demande de Benjamin) : les couleurs et les polices REVIENNENT
+  // dans « Affichage ». Restent retirés : coins, ordre d'onglets, « Appliquer ».
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("__cfg_pose")) {
+      localStorage.setItem("__cfg_pose", "1");
+      localStorage.setItem("passio_config", JSON.stringify({ accent: "dark", radius: "pill", navOrder: ["feed"], fontFamily: "x", fontSize: "large" }));
+    }
+  });
   await boot(page);
   const r = await page.evaluate(() => {
     openConfigurator();
@@ -69,17 +76,76 @@ test("③ TRA-C06 : « Affichage » — la taille du texte seule, réglages hors
       titre: m.querySelector(".modal-title").textContent,
       texte: m.innerText,
       tailles: m.querySelectorAll(".config-taille").length,
+      couleurs: m.querySelectorAll(".config-couleur").length,
+      police: !!m.querySelector("#fontDropdown"),
+      polices_chargees: document.querySelectorAll('link[href*="fonts.googleapis.com"]').length,
       cfg,
       surcharge: !!document.getElementById("passio-color-override"),
+      coins: !!document.getElementById("passio-rd-override"),
       textColor: document.documentElement.style.getPropertyValue("--text"),
     };
   });
   expect(r.titre).toBe("Affichage");
-  expect(r.tailles).toBeGreaterThan(1);
-  for (const mot of ["Sombre", "Police", "coins", "Disposition des onglets", "Appliquer"]) expect(r.texte).not.toContain(mot);
+  expect(r.tailles).toBe(4);
+  expect(r.couleurs).toBe(7);
+  expect(r.police).toBe(true);
+  expect(r.polices_chargees, "aucune police chargée avant d'ouvrir la liste").toBe(0);
+  for (const mot of ["coins", "Disposition des onglets", "Appliquer"]) expect(r.texte).not.toContain(mot);
+  // Une couleur et une police inconnues sortent avec les clés hors charte.
   expect(r.cfg).toEqual({ fontSize: "large" });
   expect(r.surcharge).toBe(false);
+  expect(r.coins).toBe(false);
   expect(r.textColor).toBe("");
+
+  // Choisir une couleur l'applique tout de suite et la garde.
+  const rose = await page.evaluate(() => {
+    document.querySelector('.config-couleur:nth-child(2)').click();
+    return {
+      cfg: JSON.parse(localStorage.getItem("passio_config")),
+      accent: document.documentElement.style.getPropertyValue("--accent"),
+      actif: document.querySelector("#modalContent .config-couleur.actif").textContent.trim(),
+    };
+  });
+  expect(rose.cfg.accent).toBe("rose");
+  expect(rose.accent).toBe("#ec4899");
+  expect(rose.actif).toBe("Rose");
+
+  // Choisir une police dans la liste l'applique.
+  const police = await page.evaluate(() => {
+    toggleFontDropdown();
+    const choix = Array.from(document.querySelectorAll("#fontDropdownList .config-police-choix"));
+    const n = choix.length;
+    choix.find((b) => b.textContent.includes("Poppins")).click();
+    return {
+      n,
+      cfg: JSON.parse(localStorage.getItem("passio_config")),
+      regle: (document.getElementById("passio-ff-override") || {}).textContent || "",
+    };
+  });
+  expect(police.n).toBe(16);
+  expect(police.cfg.fontFamily).toBe("poppins");
+  expect(police.regle).toContain("Poppins");
+
+  // Revenir au violet et à la police par défaut retire les réglages : la charte seule.
+  const retour = await page.evaluate(() => {
+    setConfig("accent", "violet");
+    setConfig("fontFamily", "default");
+    return {
+      cfg: JSON.parse(localStorage.getItem("passio_config")),
+      surcharge: !!document.getElementById("passio-color-override"),
+      accent: document.documentElement.style.getPropertyValue("--accent"),
+      police: !!document.getElementById("passio-ff-override"),
+    };
+  });
+  expect(retour.cfg).toEqual({ fontSize: "large" });
+  expect(retour.surcharge).toBe(false);
+  expect(retour.accent).toBe("");
+  expect(retour.police).toBe(false);
+
+  // Le choix tient au rechargement.
+  await page.evaluate(() => { setConfig("accent", "bleu"); });
+  await page.reload();
+  await page.waitForFunction(() => typeof openConfigurator === "function" && document.documentElement.style.getPropertyValue("--accent") === "#0ea5e9");
 });
 
 test("④ TRA-C29 / C20 : « Aide et retour » commence par l'aide ; Android parle du menu ⋮", async ({ page }) => {
