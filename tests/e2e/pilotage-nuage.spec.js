@@ -450,7 +450,7 @@ const REGLAGES = {
   delestage: { niveau: 1, pose_par: "veille", maj: MAINTENANT, motif: "Délestage automatique : connexions temps réel à 84 %" },
   coupures: { cles: ["passio_invitations_v1"], maj: MAINTENANT },
   bandeau: { texte: CHARGE, niveau: "alerte", maj: MAINTENANT },
-  coupuresPossibles: ["passio_invitations_v1", "passio_recap_semaine", "passio_ui_8"],
+  coupuresPossibles: ["passio_invitations_v1", "passio_liens_courts_v1", "passio_ui_8"],
 };
 
 test("⑭ Protection : état lu, textes hostiles en texte, chaque geste envoie EXACTEMENT sa demande", async ({ page }) => {

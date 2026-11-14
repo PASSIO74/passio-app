@@ -4499,7 +4499,8 @@ function toggleSettingsSection(el) {
 // changeait rien. Même règle que la confidentialité le 2026-11-06 : un réglage ne
 // revient qu'avec son effet, branché côté émetteur ET côté `notify-call`.
 // Restent : ce qui notifie, dit en une phrase ; l'état de la permission du
-// téléphone ; le récap de la semaine (lu par js/recap-semaine.js).
+// téléphone. Le récap de la semaine et sa case ont été RETIRÉS le 2026-11-14
+// (demande de Benjamin) : plus rien à enregistrer ici, donc plus de « Sauvegarder ».
 function _etatPermissionNotif() {
   try {
     if (typeof Notification === "undefined") return "absent";
@@ -4526,25 +4527,14 @@ async function _notifAutoriser() {
   try { openNotifSettings(); } catch (e) {}
 }
 function openNotifSettings() {
-  var cfg = getCurrentConfig();
-  var notifs = cfg.notifs || {};
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Notifications</div>\
     <p class="notif-ce-qui-notifie" style="font-size:13px;line-height:1.5;margin:4px 0 12px;">Tu es prévenu·e des messages qu\'on t\'envoie, des j\'aime et des commentaires sur ce que tu publies, des abonnements, et de ce qui se passe autour des activités que tu organises ou que tu as rejointes (dont un rappel la veille et deux heures avant).</p>\
     ' + _notifPermissionHTML() + '\
-    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border);"><span style="font-size:13px;">Récap de la semaine<br><span style="font-size:11.5px;color:var(--muted);">Une carte en tête du fil, une fois par semaine, dans l\'app seulement.</span></span><input type="checkbox" id="notifRecap" ' + (notifs.recap !== false ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);"></label>\
     <p style="font-size:12px;color:var(--muted);margin:6px 0 0;">Pour couper une conversation précise : ouvre-la, puis « Paramètres » › « Couper les notifications ».</p>\
-    <button class="btn primary block" onclick="saveNotifSettings()" style="margin-top:14px;">Sauvegarder</button>\
+    <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Fermer</button>\
   ');
-}
-function saveNotifSettings() {
-  var cfg = getCurrentConfig();
-  // `recap` (2026-10-06) : le récap de la semaine, js/recap-semaine.js — absent = oui.
-  // Les clés retirées ne sont plus écrites (rien ne les lisait).
-  var recap = document.getElementById("notifRecap");
-  cfg.notifs = { recap: recap ? recap.checked : true };
-  saveConfig(cfg); closeModal(); toast("Récap de la semaine " + ((recap ? recap.checked : true) ? "activé" : "désactivé"));
 }
 
 function openPrivacySettings() {
@@ -5038,8 +5028,8 @@ var ACCOUNT_SCOPED_KEYS = [
   // Ajoutée le 2026-11-13 : la preuve qu'une session de CE compte a fini en cours
   // de route (`_marquerSessionExpiree`, plus haut). Elle part avec le compte.
   CLE_SESSION_EXPIREE,       // "passio_session_expiree_v1"
-  // Ajoutée le 2026-10-06 : la semaine où le récap a été traité POUR CE COMPTE
-  // (js/recap-semaine.js). Un autre compte sur l'appareil a droit à son récap.
+  // Récap de la semaine RETIRÉ le 2026-11-14 : la clé reste ici pour que la marque
+  // laissée sur les appareils parte encore avec le compte.
   "passio_recap_semaine_v1",
   // Ajoutée le 2026-10-23 : les dernières villes choisies dans « Rencontrer »
   // (app-07, `irlVillesRecentes`). Une donnée de LIEU de la personne.
