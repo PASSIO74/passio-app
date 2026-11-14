@@ -17,7 +17,8 @@
 //      ① ter aussi en PWA iPhone (zones sûres), ① bis quand la bio s'allonge
 //   ② la bio en paragraphes : une ligne vide = un écart, pas une ligne blanche —
 //      sur mon profil ET sur le profil visité ; texte intact à l'octet près
-//   ③ « Partager » à droite de l'avatar : 44 px, sur la photo, aucune hauteur
+//   ③ plus de bouton « Partager » (retiré le 2026-11-14) ; le lien du profil
+//      reste au menu du crayon, « Inviter des amis »
 //   ④ le rail des passions va jusqu'au bord et laisse voir une 5e bulle entamée
 //   ⑤ les onglets restent à portée quand on défile ; changer d'onglet ramène au
 //      début de la section — ⑤ bis : re-toucher l'onglet actif ne remonte rien
@@ -78,7 +79,6 @@ function mesurerPage() {
     couverture: b("#mainProfileCover"),
     pseudo: b("#mainProfileUsername"),
     avatar: b("#mainProfileAvatar"),
-    partager: b("#mainProfileCard .main-profile-partager"),
     rail: b("#v9ProfilePassions"),
     onglets: b("#v7ProfileTabs"),
     formats: b("#screen-profiles .v7-subfilters"),
@@ -198,36 +198,24 @@ test("② bis — le profil VISITÉ rend la bio de la même façon, échappée",
 });
 
 // ── ③ ────────────────────────────────────────────────────────────────────────
-for (const w of [390, 320]) {
-  test(`③ ${w} px — « Partager » à droite de l'avatar, sur la photo, sans rangée à lui`, async ({ page }) => {
-    await page.setViewportSize({ width: w, height: 760 });
-    await ouvrirProfil(page);
-    const m = await page.evaluate(mesurerPage);
-    expect(m.partager, "visible dans la carte d'identité").not.toBeNull();
-    expect(m.partager.h, "cible de 44 px").toBeGreaterThanOrEqual(44);
-    expect(m.partager.bottom, "posé sur la photo, pas sous les statistiques").toBeLessThanOrEqual(m.couverture.bottom);
-    expect(m.partager.left, "à droite de l'avatar, sans le chevaucher").toBeGreaterThanOrEqual(m.avatar.right);
-    expect(m.partager.right, "dans la carte, même à 320 px").toBeLessThanOrEqual(m.carte.right);
-    const r = await page.evaluate(() => {
-      const b = document.querySelector("#mainProfileCard .main-profile-partager");
-      const rc = b.getBoundingClientRect();
-      const cible = document.elementFromPoint(rc.left + rc.width / 2, rc.top + rc.height / 2);
-      return { touche: !!(cible && cible.closest(".main-profile-partager")), nom: b.getAttribute("aria-label"), visible: b.textContent.trim() };
-    });
-    expect(r.touche, "rien ne le recouvre (la couverture est positionnée)").toBe(true);
-    expect(r.nom, "le nom accessible garde le geste entier").toBe("Partager mon profil");
-    expect(r.nom, "et contient le libellé visible (WCAG 2.5.3)").toContain(r.visible);
-  });
-}
-
-test("③ bis — le bouton Partager appelle partagerMonProfil, une fois", async ({ page }) => {
+test("③ plus de bouton « Partager » dans la carte ; le lien du profil reste au menu du crayon", async ({ page }) => {
+  // Retiré le 2026-11-14 sur demande de Benjamin : « supprime "partager profil",
+  // il sert à rien ». La fonction `partagerMonProfil` est partie avec lui.
   await ouvrirProfil(page);
-  await page.evaluate(() => { window.__partages = 0; window.partagerMonProfil = () => { window.__partages++; }; });
-  await page.locator("#mainProfileCard .main-profile-partager").click();
-  expect(await page.evaluate(() => window.__partages)).toBe(1);
-  // Le crayon d'UI-6B reste le point d'édition (décision du 2026-08-29), seul
-  // au coin haut droit : aucun bouton « Modifier » n'a été ajouté.
-  await expect(page.locator("#v6bModifier")).toBeVisible();
+  const r = await page.evaluate(() => ({
+    bouton: document.querySelectorAll("#mainProfileCard .main-profile-partager").length,
+    visibles: [...document.querySelectorAll("#mainProfileCard button")]
+      .filter((b) => b.offsetParent && /partager/i.test(b.textContent + " " + (b.getAttribute("aria-label") || ""))).length,
+    fonction: typeof window.partagerMonProfil,
+  }));
+  expect(r.bouton, "le bouton n'existe plus").toBe(0);
+  expect(r.visibles, "aucun autre bouton « Partager » dans la carte").toBe(0);
+  expect(r.fonction, "sa fonction est partie avec lui (cible supprimée)").toBe("undefined");
+  // Le partage du profil ne disparaît pas : « Inviter des amis » est au menu du
+  // crayon d'UI-6B, qui reste le point d'édition (décision du 2026-08-29).
+  await page.locator("#v6bModifier").click();
+  await expect(page.locator(".profile-dots-menu")).toContainText("Inviter des amis");
+  // Et aucun bouton « Modifier » visible n'a été ajouté dans la carte.
   expect(await page.locator("#mainProfileCard button:visible", { hasText: /^Modifier/ }).count()).toBe(0);
 });
 
@@ -328,12 +316,9 @@ test("⑥ Entrée sur la bio ouvre l'éditeur UNE fois", async ({ page }) => {
 });
 
 // ── ⑦ ────────────────────────────────────────────────────────────────────────
-test("⑦ ordinateur 1440 × 900 : la barre collée au ras de l'en-tête, Partager dans la carte", async ({ page }) => {
+test("⑦ ordinateur 1440 × 900 : la barre collée au ras de l'en-tête", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await ouvrirProfil(page, { posts: 8 });
-  const m = await page.evaluate(mesurerPage);
-  expect(m.partager.bottom).toBeLessThanOrEqual(m.couverture.bottom);
-  expect(m.partager.right).toBeLessThanOrEqual(m.carte.right);
   await page.evaluate(() => { document.getElementById("appMain").scrollTop = 1400; });
   await page.waitForTimeout(250);
   const r = await page.evaluate(() => ({
@@ -359,12 +344,10 @@ test("⑧ coupure du lot UI-7 : pas de barre collante, le profil reste entier", 
     barre: !!document.getElementById("v7ProfileTabs"),
     posts: !!document.getElementById("myPosts"),
     bio: document.getElementById("mainProfileBio").textContent,
-    partager: !!document.querySelector("#mainProfileCard .main-profile-partager"),
   }));
   expect(r.barre, "sans le lot UI-7, aucune barre d'onglets").toBe(false);
   expect(r.posts).toBe(true);
   expect(r.bio).toBe(BIO_BENJAMIN);
-  expect(r.partager).toBe(true);
   expect(errors.js, "aucune erreur JS").toEqual([]);
 });
 

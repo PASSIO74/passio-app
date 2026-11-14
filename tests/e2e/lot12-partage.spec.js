@@ -4,8 +4,8 @@
 //   ② PAR-C10 / C11 : le message dit de qui est le contenu ; un lien signé le dit.
 //   ③ PAR-C13 : « Inviter mes abonnements » — un ×, 44 px, déjà invités, 5 s pour annuler.
 //   ④ PAR-C16 : le souvenir rattaché à l'album se voit, se retire, ne survit pas au Studio.
-//   ⑤ PAR-C14 : « Partager mon profil » visible dans la carte d'identité (à droite
-//      de l'avatar depuis le 2026-11-14 — profil-ergonomie.spec.js ③).
+//   ⑤ PAR-C14 : « Partager mon profil » — bouton RETIRÉ le 2026-11-14 (demande de
+//      Benjamin) ; voir profil-ergonomie.spec.js ③.
 //   ⑥ PAR-C12 : deux portes de partage sur la fiche d'activité, une icône.
 // Compte de démonstration local (`bootOnboarded`) : aucune écriture réseau.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -107,13 +107,11 @@ test("④ PAR-C16 : le souvenir d'une activité se voit, se retire, et ne survit
   expect(await page.evaluate(() => window._pendingEventPost)).toBeNull();
 });
 
-test("⑤ PAR-C14 : « Partager mon profil » est visible dans la carte d'identité, en 44 px", async ({ page }) => {
-  await bootOnboarded(page);
-  await page.evaluate(() => goTo("profiles"));
-  const b = page.locator("#mainProfileCard .main-profile-partager");
-  await expect(b).toBeVisible();
-  expect((await b.boundingBox()).height).toBeGreaterThanOrEqual(44);
-});
+// ⑤ PAR-C14 (« Partager mon profil » visible dans la carte d'identité) : RETIRÉ le
+// 2026-11-14 sur demande de Benjamin — « supprime "partager profil", il sert à
+// rien ». Le bouton et `partagerMonProfil` sont partis ; leur ABSENCE est
+// verrouillée par `profil-ergonomie.spec.js` ③, avec la porte qui reste
+// (« Inviter des amis », menu du crayon).
 
 test("⑥ PAR-C12 : deux portes de partage sur la fiche d'activité, la même icône en haut", async ({ page }) => {
   await bootOnboarded(page);

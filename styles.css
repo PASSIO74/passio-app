@@ -12643,10 +12643,8 @@ button, a, label, select, summary,
 .studio-souvenir { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; margin-bottom: 8px; border-radius: 12px; background: #fff4ef; border: 1px solid #f6c5b5; color: #8a2f1c; font-size: 13px; font-weight: 600; }
 .studio-souvenir-texte { flex: 1; min-width: 0; }
 .studio-souvenir-retirer { width: 44px; height: 44px; flex: 0 0 44px; border: none; background: transparent; color: inherit; font-size: 20px; cursor: pointer; }
-/* PAR-C14 : « Partager mon profil », visible. Ce socle (44 px) vaut partout ; depuis le
-   2026-11-14 le bouton vit à droite de l'avatar et le bloc PROFIL-ERGONOMIE ② le
-   met en forme (sa marge haute d'ici n'y s'applique plus). */
-.main-profile-partager { min-height: 44px; margin-top: 12px; }
+/* PAR-C14 : le bouton « Partager mon profil » a été RETIRÉ le 2026-11-14 sur demande
+   de Benjamin (« il sert à rien ») ; sa règle part avec lui (cible supprimée). */
 /* PAR-C20 : l'invitation reste visible, en bas, au-dessus de la barre d'onglets. */
 .invitation-bandeau {
   position: fixed; left: 12px; right: 12px; z-index: 900;
@@ -13390,66 +13388,11 @@ body.passio-hors-ligne #conv-fullpage .conv-fp-head::after {
 /* La bio d'un AUTRE compte n'ouvre rien (aucun rôle, aucun clic) : le curseur
    « main » de la règle de base y promettait un geste qui n'existe pas. */
 .main-profile-bio:not([role="button"]) { cursor: auto; }
-/* ② « Partager mon profil » à droite de l'avatar, sur la photo (index.html) :
-   il ne coûte plus aucune hauteur à la carte. Il s'aligne sur le bord BAS de
-   l'avatar (`.main-profile-avatar-wrap` : flex, `align-items: flex-end`,
-   `space-between`) — la rangée garde ses 116 px, le pseudo ne bouge pas.
-   ⚠️ CIBLE 44 px, PILULE VISIBLE 34 px : même patron que le crayon d'UI-6B — la
-   boîte du bouton garde 44 px (verrou lot12-partage ⑤, mesuré sur la BOÎTE),
-   un `::before` en `inset: 5px 0` peint la pilule. Blanche à texte sombre : lisible
-   sur n'importe quelle photo comme sur le dégradé par défaut, quel que soit le
-   thème. `position: relative` : la couverture est positionnée, un bouton qui ne
-   l'est pas serait peint SOUS elle. */
-#screen-profiles .main-profile-avatar-wrap .main-profile-partager {
-  position: relative;
-  z-index: 1;
-  flex: 0 0 auto;
-  width: auto;
-  height: 44px;
-  min-height: 44px;
-  margin: 0 0 0 12px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 22px;
-  background: none;
-  box-shadow: none;
-  color: #1f1147;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-  gap: 6px;
-}
-#screen-profiles .main-profile-avatar-wrap .main-profile-partager::before {
-  content: "";
-  position: absolute;
-  inset: 5px 0;
-  z-index: -1;
-  border-radius: 17px;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 2px 10px rgba(15, 8, 40, 0.25);
-}
-#screen-profiles .main-profile-avatar-wrap .main-profile-partager:hover::before { background: #fff; }
-#screen-profiles .main-profile-avatar-wrap .main-profile-partager svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  color: var(--accent);
-}
-/* Anneau de focus DOUBLE (accent + blanc) : un anneau blanc seul disparaît sur
-   une couverture claire. */
-#screen-profiles .main-profile-avatar-wrap .main-profile-partager:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-  box-shadow: 0 0 0 5px #fff;
-}
-/* Taille de texte « Très grand » (configurateur, `!important`) à 320 px : le
-   libellé cède avant de sortir de la carte, l'icône reste. */
-#screen-profiles .main-profile-avatar-wrap .main-profile-partager { flex: 0 1 auto; min-width: 0; }
-#screen-profiles .main-profile-avatar-wrap .main-profile-partager span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* ② (Le bouton « Partager mon profil », posé un temps à droite de l'avatar, a
+   été RETIRÉ le 2026-11-14 sur demande de Benjamin — « il sert à rien ». Ses
+   règles sont parties avec lui. Le lien de mon profil reste au menu du crayon,
+   « Inviter des amis ».) */
+
 /* ③ Le rail des passions VA JUSQU'AUX BORDS DE L'ÉCRAN, et il dit qu'il défile.
    Capture de Benjamin : 7 passions, 4 bulles visibles, coupées PILE dans la
    marge de la 5e — rien ne disait qu'il y en avait trois autres. Le rail

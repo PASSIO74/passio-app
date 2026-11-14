@@ -681,18 +681,11 @@
               <div class="main-profile-avatar-badge">📷</div>
               <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>
             </div>
-            <!-- « Partager mon profil » — LOT-12 (audit UX/UI du 2026-11-10, PAR-C14) :
-                 inviter quelqu'un était la 6e entrée d'un menu et le 7e bouton de
-                 « Support ». Visible.
-                 ⚠️ 2026-11-14 (« la page de profil n'est pas ergonomique ») : il
-                 quitte la rangée pleine largeur sous les statistiques (56 px de haut,
-                 c'est elle qui faisait passer les onglets sous la barre du bas) pour
-                 la place LIBRE à droite de l'avatar, sur la photo, à hauteur de son
-                 bord bas. Même commande, même classe (verrou lot12-partage ⑤), aucun
-                 pixel de hauteur. `renderMainProfile` réécrit l'AVATAR, jamais cette
-                 rangée : le bouton survit aux rendus. Libellé court pour tenir à
-                 320 px ; le nom accessible garde le geste entier. -->
-            <button type="button" class="btn secondary main-profile-partager" onclick="partagerMonProfil()" aria-label="Partager mon profil" title="Partager mon profil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v6.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V12"/></svg><span>Partager</span></button>
+            <!-- ⚠️ PLUS DE BOUTON « Partager mon profil » (retiré le 2026-11-14 sur
+                 demande de Benjamin : « supprime "partager profil", il sert à
+                 rien »). Il venait de LOT-12 (PAR-C14) ; `partagerMonProfil` et ses
+                 styles sont partis avec lui. Le lien de MON profil reste à un geste :
+                 crayon → « Inviter des amis » (`inviterDesAmis`, app-06). -->
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
           <!-- ⚠️ 2026-08-31 : plus AUCUNE pastille sous le pseudo. ADR-009 avait

@@ -915,8 +915,8 @@ window.addEventListener("passio:app-ready", function () {
 // ③ Le partage part du CLIC (`partagerOuCopier`, synchrone). `link_create` et
 //    `link_share` sont émis au geste ; le type `beta` est gardé pour la
 //    continuité du pilotage, la cible nomme la porte.
-// Portes : Paramètres → Support (`shareBeta`), le menu ⋯ de mon profil, le
-// séparateur « Exemples PASSIO » du fil (compte seulement).
+// Portes : Paramètres → Support (`shareBeta`), le menu ⋯ (crayon) de mon profil,
+// le séparateur « Exemples PASSIO » du fil (compte seulement).
 // ═══════════════════════════════════════════════════════════════════════════
 var INVITATION_AMIS_TEXTE = "Je suis sur PASSIO, le réseau des passions — rejoins-moi :";
 
@@ -925,14 +925,11 @@ function lienInvitationAmis() {
   return location.origin + location.pathname;
 }
 
-// LOT-12 (PAR-C14) : le bouton visible du profil. Un vrai compte envoie le lien de
-// SON profil (feuille unique) ; sans compte, l'invitation générale.
-function partagerMonProfil() {
-  var compte = (typeof _uidEstUnCompte === "function") && _uidEstUnCompte();
-  if (!compte) { inviterDesAmis("profil"); return; }
-  var g = (state.user && state.user.general) || {};
-  shareUserProfile(MY_UID, g.username || state.user.name || "Mon profil");
-}
+// ⚠️ `partagerMonProfil` (LOT-12, PAR-C14 : le bouton « Partager mon profil » de
+// la carte d'identité) a été RETIRÉE le 2026-11-14 avec son unique appelant, sur
+// demande de Benjamin (« il sert à rien »). Le lien de mon profil part toujours
+// par « Inviter des amis » (menu du crayon), qui envoie `lienPartageDe("user",
+// MY_UID)` pour un vrai compte.
 
 function inviterDesAmis(porte) {
   var brut = lienInvitationAmis();
